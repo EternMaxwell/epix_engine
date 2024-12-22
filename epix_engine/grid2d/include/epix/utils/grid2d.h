@@ -553,6 +553,7 @@ Grid2D<T> shrink(const Grid2D<T>& grid, glm::ivec2* offset = nullptr) {
             result.set(i - min.x, j - min.y, grid(i, j));
         }
     }
+    return result;
 }
 
 /**
@@ -784,6 +785,18 @@ std::vector<std::vector<glm::ivec2>> get_polygon(
     return std::move(earcut_polygon);
 }
 
+/**
+ * @brief Get the polygons of a binary grid with multiple objects
+ *
+ * @tparam T The type of the binary grid, must have a `size() -> glm::ivec2`
+ * method and a `contains(int, int) -> bool` method
+ *
+ * @param pixelbin The binary grid
+ * @param include_diagonal Whether to include diagonal pixels connected
+ * as part of the target obj
+ *
+ * @return The polygons of the binary grid, all in cw order
+ */
 template <typename T>
     requires BoolGrid<T>
 std::vector<std::vector<std::vector<glm::ivec2>>> get_polygon_multi(
@@ -825,6 +838,19 @@ std::vector<std::vector<glm::ivec2>> get_polygon_simplified(
     return std::move(earcut_polygon);
 }
 
+/**
+ * @brief Get the polygons of a binary grid with multiple objects
+ *
+ * @tparam T The type of the binary grid, must have a `size() -> glm::ivec2`
+ * method and a `contains(int, int) -> bool` method
+ *
+ * @param pixelbin The binary grid
+ * @param epsilon The epsilon value for the Douglas-Peucker algorithm
+ * @param include_diagonal Whether to include diagonal pixels connected
+ * as part of the target obj
+ *
+ * @return The polygons of the binary grid, all in cw order
+ */
 template <typename T>
     requires BoolGrid<T>
 std::vector<std::vector<std::vector<glm::ivec2>>> get_polygon_simplified_multi(

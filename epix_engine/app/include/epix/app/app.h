@@ -187,7 +187,16 @@ struct App {
     }
     template <typename T>
     App& add_plugin(T&& plugin) {
-        m_plugins.emplace(
+        if (m_plugin_types.find(
+                std::type_index(typeid(std::remove_reference_t<T>))
+            ) != m_plugin_types.end()) {
+            spdlog::warn(
+                "Plugin {} already exists, skipping",
+                typeid(std::remove_reference_t<T>).name()
+            );
+            return *this;
+        }
+        m_plugins.emplace_back(
             std::type_index(typeid(std::remove_reference_t<T>)),
             std::make_shared<std::remove_reference_t<T>>(std::forward<T>(plugin)
             )
@@ -196,7 +205,13 @@ struct App {
     }
     template <typename T>
     std::shared_ptr<T> get_plugin() {
-        return std::static_pointer_cast<T>(m_plugins[std::type_index(typeid(T))]
+        return std::static_pointer_cast<T>(
+            std::find_if(
+                m_plugins.begin(), m_plugins.end(),
+                [](const auto& pair) {
+                    return pair.first == std::type_index(typeid(T));
+                }
+            )->second
         );
     }
     template <typename T, typename Target = MainSubApp, typename... Args>
@@ -319,7 +334,8 @@ struct App {
         spp::sparse_hash_map<std::type_index, std::unique_ptr<SubApp>>>
         m_sub_apps;
     std::unique_ptr<Runner> m_runner;
-    spp::sparse_hash_map<std::type_index, std::shared_ptr<Plugin>> m_plugins;
+    std::vector<std::pair<std::type_index, std::shared_ptr<Plugin>>> m_plugins;
+    spp::sparse_hash_set<std::type_index> m_plugin_types;
     std::unique_ptr<BasicSystem<bool>> m_check_exit_func;
     bool m_loop_enabled = false;
 

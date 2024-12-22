@@ -21,7 +21,7 @@ EPIX_API std::vector<std::vector<std::vector<glm::ivec2>>> get_chunk_collision(
     const epix::world::sand::components::Simulation::Chunk& chunk
 ) {
     ChunkConverter grid{sim, chunk};
-    return epix::utils::grid2d::get_polygon_multi(grid);
+    return epix::utils::grid2d::get_polygon_simplified_multi(grid, 0.0f);
 }
 EPIX_API SimulationCollisions<void>::SimulationCollisions()
     : thread_pool(
@@ -30,7 +30,6 @@ EPIX_API SimulationCollisions<void>::SimulationCollisions()
 EPIX_API void SimulationCollisions<void>::sync(
     const epix::world::sand::components::Simulation& sim
 ) {
-    modified.clear();
     for (auto [pos, chunk] : sim.chunk_map()) {
         collisions.try_emplace(
             pos.x, pos.y, SimulationCollisions::ChunkCollisions{}
@@ -46,5 +45,81 @@ EPIX_API void SimulationCollisions<void>::sync(
         });
     }
     thread_pool->wait();
+}
+
+EPIX_API SimulationCollisionGeneral::PositionConverter
+SimulationCollisionGeneral::pos_converter(
+    int chunk_size, float cell_size, const glm::ivec2& offset
+) {
+    return {chunk_size, cell_size, offset};
+}
+EPIX_API SimulationCollisionGeneral::PositionConverter
+SimulationCollisionGeneral::pos_converter(
+    int chunk_size, float cell_size, int offset_x, int offset_y
+) {
+    return {chunk_size, cell_size, {offset_x, offset_y}};
+}
+EPIX_API SimulationCollisionGeneral::SimulationCollisionGeneral()
+    : SimulationCollisions() {}
+EPIX_API void SimulationCollisionGeneral::sync(
+    const epix::world::sand::components::Simulation& sim
+) {
+    SimulationCollisions::sync(sim);
+}
+EPIX_API void SimulationCollisionGeneral::sync(
+    b2WorldId world, const PositionConverter& converter
+) {
+    for (auto&& pos : modified) {
+        auto real_pos = glm::ivec2(
+            converter.chunk_size * pos.x - converter.offset.x,
+            converter.chunk_size * pos.y - converter.offset.y
+        );
+        auto&& chunk_collision_opt = collisions(pos.x, pos.y);
+        if (!chunk_collision_opt) continue;
+        auto&& chunk_collision = *chunk_collision_opt;
+        auto&& body_id         = chunk_collision.user_data;
+        if (b2Body_IsValid(body_id)) b2DestroyBody(body_id);
+        if (chunk_collision.collisions.empty()) continue;
+        spdlog::info("Creating chunk collision body at ({}, {})", pos.x, pos.y);
+        auto body_def = b2DefaultBodyDef();
+        // immutable body
+        body_def.type = b2_staticBody;
+        body_id       = b2CreateBody(world, &body_def);
+        for (auto&& polygon : chunk_collision.collisions) {
+            if (polygon.empty()) continue;
+            auto outline   = polygon[0];
+            b2Vec2* points = new b2Vec2[outline.size()];
+            for (size_t i = 0; i < outline.size(); i++) {
+                points[i] = {
+                    converter.cell_size *
+                        (outline[outline.size() - i - 1].x + real_pos.x),
+                    converter.cell_size *
+                        (outline[outline.size() - i - 1].y + real_pos.y)
+                };
+            }
+            auto chain_def   = b2DefaultChainDef();
+            chain_def.points = points;
+            chain_def.count  = outline.size();
+            b2CreateChain(body_id, &chain_def);
+            spdlog::info("Creating chain shape with {} points", outline.size());
+            for (size_t i = 1; i < polygon.size(); i++) {
+                auto hole           = polygon[i];
+                b2Vec2* hole_points = new b2Vec2[hole.size()];
+                for (size_t j = 0; j < hole.size(); j++) {
+                    hole_points[j] = {
+                        converter.cell_size * (hole[j].x + real_pos.x),
+                        converter.cell_size * (hole[j].y + real_pos.y)
+                    };
+                }
+                chain_def.points = hole_points;
+                chain_def.count  = hole.size();
+                b2CreateChain(body_id, &chain_def);
+                spdlog::info(
+                    "Creating hole chain shape with {} points", hole.size()
+                );
+            }
+        }
+    }
+    clear_modified();
 }
 }  // namespace epix::world::sand_physics

@@ -9,5 +9,6 @@ target_include_directories(epix_sand_physics PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/
 target_link_libraries(epix_sand_physics PUBLIC epix::app)
 target_link_libraries(epix_sand_physics PUBLIC epix::physics::2d)
 target_link_libraries(epix_sand_physics PUBLIC epix::world::sand)
+target_link_libraries(epix_sand_physics PUBLIC box2d)
 
 add_library(epix::world::sand_physics ALIAS epix_sand_physics)

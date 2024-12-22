@@ -96,7 +96,8 @@ EPIX_API App::App()
     add_event<AppExit>();
 }
 EPIX_API void App::build_plugins() {
-    for (auto& [ptr, plugin] : m_plugins) {
+    for (size_t i = 0; i < m_plugins.size(); i++) {
+        auto& [ptr, plugin] = m_plugins[i];
         m_logger->debug("Building plugin: {}", ptr.name());
         plugin->build(*this);
         for (auto& [app_ptr, subapp] : *m_sub_apps) {

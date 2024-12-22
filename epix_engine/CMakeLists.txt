@@ -41,6 +41,8 @@ target_link_libraries (epix_engine PUBLIC BSThreadPool)
 target_link_libraries (epix_engine PUBLIC glm::glm)
 target_link_libraries (epix_engine PUBLIC freetype)
 target_link_libraries (epix_engine PUBLIC VulkanMemoryAllocator)
+target_link_libraries (epix_engine PUBLIC earcut.hpp)
+target_link_libraries (epix_engine PUBLIC sparsepp)
 # EPIX CORE LIBRARIES
 target_link_libraries (epix_engine PUBLIC epix_common)
 target_link_libraries (epix_engine PUBLIC epix::app)
@@ -83,6 +85,7 @@ target_link_libraries (epix_engine_shared PUBLIC glm::glm)
 target_link_libraries (epix_engine_shared PUBLIC freetype)
 target_link_libraries (epix_engine_shared PUBLIC VulkanMemoryAllocator)
 target_link_libraries (epix_engine_shared PUBLIC earcut.hpp)
+target_link_libraries (epix_engine_shared PUBLIC box2d)
 
 set_target_properties(epix_engine_shared PROPERTIES OUTPUT_NAME epix)
 

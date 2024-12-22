@@ -332,12 +332,32 @@ void render_bodies(
         std::vector<b2ShapeId> shapes(shape_count);
         b2Body_GetShapes(body, shapes.data(), shape_count);
         for (auto&& shape : shapes) {
-            if (b2Shape_GetType(shape) != b2ShapeType::b2_polygonShape)
-                continue;
-            auto polygon = b2Shape_GetPolygon(shape);
-            for (size_t i = 0; i < polygon.count; i++) {
-                auto& vertex1 = polygon.vertices[i];
-                auto& vertex2 = polygon.vertices[(i + 1) % polygon.count];
+            if (b2Shape_GetType(shape) == b2ShapeType::b2_polygonShape) {
+                auto polygon = b2Shape_GetPolygon(shape);
+                for (size_t i = 0; i < polygon.count; i++) {
+                    auto& vertex1 = polygon.vertices[i];
+                    auto& vertex2 = polygon.vertices[(i + 1) % polygon.count];
+                    bool awake    = b2Body_IsAwake(body);
+                    line_drawer.drawLine(
+                        {vertex1.x, vertex1.y, 0.0f},
+                        {vertex2.x, vertex2.y, 0.0f},
+                        {awake ? 0.0f : 1.0f, awake ? 1.0f : 0.0f, 0.0f, 0.3f}
+                    );
+                }
+            } else if (b2Shape_GetType(shape) ==
+                       b2ShapeType::b2_smoothSegmentShape) {
+                auto segment  = b2Shape_GetSmoothSegment(shape);
+                auto& vertex1 = segment.segment.point1;
+                auto& vertex2 = segment.segment.point2;
+                bool awake    = b2Body_IsAwake(body);
+                line_drawer.drawLine(
+                    {vertex1.x, vertex1.y, 0.0f}, {vertex2.x, vertex2.y, 0.0f},
+                    {awake ? 0.0f : 1.0f, awake ? 1.0f : 0.0f, 0.0f, 0.3f}
+                );
+            } else if (b2Shape_GetType(shape) == b2ShapeType::b2_segmentShape) {
+                auto segment  = b2Shape_GetSegment(shape);
+                auto& vertex1 = segment.point1;
+                auto& vertex2 = segment.point2;
                 bool awake    = b2Body_IsAwake(body);
                 line_drawer.drawLine(
                     {vertex1.x, vertex1.y, 0.0f}, {vertex2.x, vertex2.y, 0.0f},
@@ -670,7 +690,7 @@ void create_simulation(Command command) {
     }
     command.spawn(
         std::move(simulation),
-        epix::world::sand_physics::SimulationCollisions<void>{}
+        epix::world::sand_physics::SimulationCollisionGeneral{}
     );
 }
 
@@ -767,7 +787,7 @@ struct RepeatTimer {
 
 void update_simulation(
     Query<
-        Get<Simulation, epix::world::sand_physics::SimulationCollisions<void>>>
+        Get<Simulation, epix::world::sand_physics::SimulationCollisionGeneral>>
         query,
     Local<std::optional<RepeatTimer>> timer
 ) {
@@ -999,7 +1019,7 @@ constexpr bool render_collision_outline = true;
 void render_simulation_chunk_outline(
     Query<
         Get<const Simulation,
-            const epix::world::sand_physics::SimulationCollisions<void>>> query,
+            const epix::world::sand_physics::SimulationCollisionGeneral>> query,
     Query<Get<Device, Swapchain, Queue>, With<RenderContext>> context_query,
     Query<Get<epix::render::debug::vulkan::components::LineDrawer>>
         line_drawer_query
@@ -1075,25 +1095,126 @@ void render_simulation_chunk_outline(
     line_drawer.end();
 }
 
+void render_simulation_collision(
+    Query<
+        Get<const Simulation,
+            const epix::world::sand_physics::SimulationCollisionGeneral>> query,
+    Query<Get<Device, Swapchain, Queue>, With<RenderContext>> context_query,
+    Query<Get<epix::render::debug::vulkan::components::LineDrawer>>
+        line_drawer_query
+) {
+    using namespace epix::render::debug::vulkan::components;
+    if (!query) return;
+    if (!context_query) return;
+    if (!line_drawer_query) return;
+    auto [device, swap_chain, queue]  = context_query.single();
+    auto [line_drawer]                = line_drawer_query.single();
+    auto [simulation, sim_collisions] = query.single();
+    line_drawer.begin(device, queue, swap_chain);
+    float alpha = 0.3f;
+    for (auto&& [pos, chunk] : simulation.chunk_map()) {
+        if (sim_collisions.collisions.contains(pos.x, pos.y)) {
+            auto body = sim_collisions.collisions.get(pos.x, pos.y)->user_data;
+            if (!b2Body_IsValid(body)) continue;
+            auto shape_count = b2Body_GetShapeCount(body);
+            auto shapes      = new b2ShapeId[shape_count];
+            b2Body_GetShapes(body, shapes, shape_count);
+            for (int i = 0; i < shape_count; i++) {
+                auto shape = shapes[i];
+                if (b2Shape_GetType(shape) == b2ShapeType::b2_polygonShape) {
+                    auto polygon = b2Shape_GetPolygon(shape);
+                    for (size_t i = 0; i < polygon.count; i++) {
+                        auto& vertex1 = polygon.vertices[i];
+                        auto& vertex2 =
+                            polygon.vertices[(i + 1) % polygon.count];
+                        bool awake = b2Body_IsAwake(body);
+                        line_drawer.drawLine(
+                            {vertex1.x, vertex1.y, 0.0f},
+                            {vertex2.x, vertex2.y, 0.0f},
+                            {awake ? 0.0f : 1.0f, awake ? 1.0f : 0.0f, 0.0f,
+                             0.3f}
+                        );
+                    }
+                } else if (b2Shape_GetType(shape) ==
+                           b2ShapeType::b2_smoothSegmentShape) {
+                    auto segment  = b2Shape_GetSmoothSegment(shape);
+                    auto& vertex1 = segment.segment.point1;
+                    auto& vertex2 = segment.segment.point2;
+                    bool awake    = b2Body_IsAwake(body);
+                    line_drawer.drawLine(
+                        {vertex1.x, vertex1.y, 0.0f},
+                        {vertex2.x, vertex2.y, 0.0f},
+                        {awake ? 0.0f : 1.0f, awake ? 1.0f : 0.0f, 0.0f, 0.3f}
+                    );
+                } else if (b2Shape_GetType(shape) ==
+                           b2ShapeType::b2_segmentShape) {
+                    auto segment  = b2Shape_GetSegment(shape);
+                    auto& vertex1 = segment.point1;
+                    auto& vertex2 = segment.point2;
+                    bool awake    = b2Body_IsAwake(body);
+                    line_drawer.drawLine(
+                        {vertex1.x, vertex1.y, 0.0f},
+                        {vertex2.x, vertex2.y, 0.0f},
+                        {awake ? 0.0f : 1.0f, awake ? 1.0f : 0.0f, 0.0f, 0.3f}
+                    );
+                }
+            }
+        }
+    }
+    line_drawer.end();
+}
+
+enum class InputState { Simulation, Body };
+
+void toggle_input_state(
+    ResMut<NextState<InputState>> next_state,
+    Query<Get<ButtonInput<KeyCode>>, With<PrimaryWindow>> query
+) {
+    if (!query) return;
+    auto [key_input] = query.single();
+    if (key_input.just_pressed(epix::input::KeyTab)) {
+        if (next_state.has_value()) {
+            auto next = next_state->is_state(InputState::Simulation)
+                            ? InputState::Body
+                            : InputState::Simulation;
+            spdlog::info(
+                "Input mode switching to {}",
+                next == InputState::Simulation ? "Simulation" : "Body"
+            );
+            next_state->set_state(next);
+        }
+    }
+}
+
+void sync_simulatino_with_b2d(
+    Query<
+        Get<epix::world::sand_physics::SimulationCollisionGeneral>,
+        With<Simulation>> simulation_query,
+    Query<Get<b2WorldId>> world_query
+) {
+    if (!simulation_query) return;
+    if (!world_query) return;
+    auto [collisions] = simulation_query.single();
+    auto [world]      = world_query.single();
+    collisions.sync(world, collisions.pos_converter(16, scale, {0, 0}));
+}
+
 struct Box2dTestPlugin : Plugin {
     void build(App& app) override {
         using namespace epix;
 
         app.enable_loop();
         app.insert_state(SimulateState::Running);
-        app.add_system(
-               Startup, create_b2d_world, create_ground, create_dynamic,
-               create_pixel_block_with_collision
-        )
-            .chain();
+        app.add_system(Startup, create_b2d_world).chain();
         app.add_system(PreUpdate, update_b2d_world)
             .in_state(SimulateState::Running);
-        app.add_system(
-            Update, destroy_too_far_bodies, create_dynamic_from_click,
-            update_mouse_joint, toggle_simulation
-        );
+        app.add_system(Update, toggle_input_state);
+        app.add_system(Update, destroy_too_far_bodies, toggle_simulation);
+        app.add_system(PostUpdate, sync_simulatino_with_b2d);
+        app.add_system(Update, create_dynamic_from_click, update_mouse_joint)
+            .in_state(InputState::Body);
         app.add_system(Render, render_pixel_block);
-        app.add_system(PostRender, render_bodies)
+        app.add_system(PostRender, render_bodies, render_simulation_collision)
             .before(epix::render_vk::systems::present_frame);
         app.add_system(Exit, destroy_b2d_world);
     }
@@ -1112,13 +1233,17 @@ struct VK_TrialPlugin : Plugin {
         // app.add_system(Startup, create_text);
         // app.add_system(Startup, create_pixel_block);
         // app.add_system(Render, draw_lines);
+        app.add_plugin(Box2dTestPlugin{});
+
         app.insert_state(SimulateState::Paused);
-        // app.add_plugin(Box2dTestPlugin{});
+        app.insert_state(InputState::Simulation);
         app.add_system(Startup, create_simulation);
         app.add_system(
-            Update, toggle_simulation, create_element_from_click /* ,
+            Update, toggle_simulation /* ,
              print_hover_data */
         );
+        app.add_system(Update, create_element_from_click)
+            .in_state(InputState::Simulation);
         app.add_system(Update, update_simulation)
             .chain()
             .in_state(SimulateState::Running);
