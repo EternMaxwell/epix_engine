@@ -34,7 +34,6 @@ struct SimulationCollisions {
 
     SimulationCollisions() : thread_pool(std::make_unique<BS::thread_pool>()) {}
     void sync(const epix::world::sand::components::Simulation& sim) {
-        modified.clear();
         for (auto [pos, chunk] : sim.chunk_map()) {
             collisions.try_emplace(
                 pos.x, pos.y, SimulationCollisions::ChunkCollisions{}
@@ -70,7 +69,8 @@ struct SimulationCollisions<void> {
     EPIX_API SimulationCollisions();
     EPIX_API void sync(const epix::world::sand::components::Simulation& sim);
 };
-struct SimulationCollisionGeneral : SimulationCollisions<b2BodyId> {
+struct SimulationCollisionGeneral
+    : SimulationCollisions<std::pair<b2BodyId, std::vector<b2ChainId>>> {
     struct PositionConverter {
         int chunk_size;   // size of a chunk in cells
         float cell_size;  // size of a cell in box2d world

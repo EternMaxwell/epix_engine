@@ -609,6 +609,8 @@ void update_mouse_joint(
 using namespace epix::world::sand;
 using namespace epix::world::sand::components;
 
+constexpr int CHUNK_SIZE = 32;
+
 void create_simulation(Command command) {
     spdlog::info("Creating falling sand simulation");
 
@@ -681,8 +683,8 @@ void create_simulation(Command command) {
                                })
                                .set_density(0.0007f)
                                .set_friction(0.3f));
-    Simulation simulation(std::move(registry), 16);
-    const int simulation_size = 16;
+    Simulation simulation(std::move(registry), CHUNK_SIZE);
+    const int simulation_size = 512 / CHUNK_SIZE;
     for (int i = -simulation_size; i < simulation_size; i++) {
         for (int j = -simulation_size; j < simulation_size; j++) {
             simulation.load_chunk(i, j);
@@ -694,7 +696,7 @@ void create_simulation(Command command) {
     );
 }
 
-static constexpr float scale = 2.0f;
+static constexpr float scale = 1.0f;
 
 void create_element_from_click(
     Query<Get<Simulation>> query,
@@ -1114,7 +1116,8 @@ void render_simulation_collision(
     float alpha = 0.3f;
     for (auto&& [pos, chunk] : simulation.chunk_map()) {
         if (sim_collisions.collisions.contains(pos.x, pos.y)) {
-            auto body = sim_collisions.collisions.get(pos.x, pos.y)->user_data;
+            auto body =
+                sim_collisions.collisions.get(pos.x, pos.y)->user_data.first;
             if (!b2Body_IsValid(body)) continue;
             auto shape_count = b2Body_GetShapeCount(body);
             auto shapes      = new b2ShapeId[shape_count];
@@ -1190,13 +1193,21 @@ void sync_simulatino_with_b2d(
     Query<
         Get<epix::world::sand_physics::SimulationCollisionGeneral>,
         With<Simulation>> simulation_query,
-    Query<Get<b2WorldId>> world_query
+    Query<Get<b2WorldId>> world_query,
+    Local<std::optional<RepeatTimer>> timer
 ) {
     if (!simulation_query) return;
     if (!world_query) return;
+    if (!timer->has_value()) {
+        *timer = RepeatTimer(1.0 / 5);
+    }
     auto [collisions] = simulation_query.single();
     auto [world]      = world_query.single();
-    collisions.sync(world, collisions.pos_converter(16, scale, {0, 0}));
+    if (timer->value().tick() > 0) {
+        collisions.sync(
+            world, collisions.pos_converter(CHUNK_SIZE, scale, {0, 0})
+        );
+    }
 }
 
 struct Box2dTestPlugin : Plugin {

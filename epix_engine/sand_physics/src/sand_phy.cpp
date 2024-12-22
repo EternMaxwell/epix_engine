@@ -21,7 +21,7 @@ EPIX_API std::vector<std::vector<std::vector<glm::ivec2>>> get_chunk_collision(
     const epix::world::sand::components::Simulation::Chunk& chunk
 ) {
     ChunkConverter grid{sim, chunk};
-    return epix::utils::grid2d::get_polygon_simplified_multi(grid, 0.0f);
+    return epix::utils::grid2d::get_polygon_simplified_multi(grid, 0.5f);
 }
 EPIX_API SimulationCollisions<void>::SimulationCollisions()
     : thread_pool(
@@ -77,14 +77,19 @@ EPIX_API void SimulationCollisionGeneral::sync(
         auto&& chunk_collision_opt = collisions(pos.x, pos.y);
         if (!chunk_collision_opt) continue;
         auto&& chunk_collision = *chunk_collision_opt;
-        auto&& body_id         = chunk_collision.user_data;
-        if (b2Body_IsValid(body_id)) b2DestroyBody(body_id);
+        auto&& body_id         = chunk_collision.user_data.first;
+        auto&& chain_ids       = chunk_collision.user_data.second;
+        if (b2Body_IsValid(body_id)) {
+            for (auto&& chain_id : chain_ids) {
+                b2DestroyChain(chain_id);
+            }
+            chain_ids.clear();
+        } else {
+            auto body_def = b2DefaultBodyDef();
+            body_def.type = b2_staticBody;
+            body_id       = b2CreateBody(world, &body_def);
+        }
         if (chunk_collision.collisions.empty()) continue;
-        spdlog::info("Creating chunk collision body at ({}, {})", pos.x, pos.y);
-        auto body_def = b2DefaultBodyDef();
-        // immutable body
-        body_def.type = b2_staticBody;
-        body_id       = b2CreateBody(world, &body_def);
         for (auto&& polygon : chunk_collision.collisions) {
             if (polygon.empty()) continue;
             auto outline   = polygon[0];
@@ -100,8 +105,7 @@ EPIX_API void SimulationCollisionGeneral::sync(
             auto chain_def   = b2DefaultChainDef();
             chain_def.points = points;
             chain_def.count  = outline.size();
-            b2CreateChain(body_id, &chain_def);
-            spdlog::info("Creating chain shape with {} points", outline.size());
+            chain_ids.push_back(b2CreateChain(body_id, &chain_def));
             for (size_t i = 1; i < polygon.size(); i++) {
                 auto hole           = polygon[i];
                 b2Vec2* hole_points = new b2Vec2[hole.size()];
@@ -113,10 +117,7 @@ EPIX_API void SimulationCollisionGeneral::sync(
                 }
                 chain_def.points = hole_points;
                 chain_def.count  = hole.size();
-                b2CreateChain(body_id, &chain_def);
-                spdlog::info(
-                    "Creating hole chain shape with {} points", hole.size()
-                );
+                chain_ids.push_back(b2CreateChain(body_id, &chain_def));
             }
         }
     }
