@@ -1261,8 +1261,8 @@ struct VK_TrialPlugin : Plugin {
         app.add_system(Update, step_simulation).in_state(SimulateState::Paused);
         app.add_system(PreUpdate, toggle_full_screen);
         app.add_system(
-               Render, render_simulation, render_simulation_chunk_outline,
-               /* render_simulation_cell_vel,  */ render_simulation_state
+               Render, render_simulation /* , render_simulation_chunk_outline,
+                render_simulation_cell_vel, render_simulation_state */
         )
             .chain()
             .before(render_bodies, render_pixel_block);

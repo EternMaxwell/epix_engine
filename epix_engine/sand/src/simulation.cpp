@@ -1289,7 +1289,8 @@ void epix::world::sand::components::update_cell(
                                     final_x, final_y, tx_1, ty_1
                                 );
                             }
-                            if (sim.valid(
+                            if (res_1.hit &&
+                                sim.valid(
                                     res_1.hit->first, res_1.hit->second
                                 ) &&
                                 sim.contain_cell(
@@ -1366,22 +1367,22 @@ void epix::world::sand::components::update_cell(
             sim.touch(x_ + 1, y_);
             sim.touch(x_, y_ - 1);
             sim.touch(x_, y_ + 1);
-            sim.touch(x_ - 1, y_ - 1);
-            sim.touch(x_ + 1, y_ - 1);
-            sim.touch(x_ - 1, y_ + 1);
-            sim.touch(x_ + 1, y_ + 1);
+            // sim.touch(x_ - 1, y_ - 1);
+            // sim.touch(x_ + 1, y_ - 1);
+            // sim.touch(x_ - 1, y_ + 1);
+            // sim.touch(x_ + 1, y_ + 1);
             sim.touch(final_x - 1, final_y);
             sim.touch(final_x + 1, final_y);
             sim.touch(final_x, final_y - 1);
             sim.touch(final_x, final_y + 1);
-            sim.touch(final_x - 1, final_y - 1);
-            sim.touch(final_x + 1, final_y - 1);
-            sim.touch(final_x - 1, final_y + 1);
-            sim.touch(final_x + 1, final_y + 1);
-            apply_viscosity(sim, cell, final_x, final_y, x_ - 1, y_);
-            apply_viscosity(sim, cell, final_x, final_y, x_ + 1, y_);
-            apply_viscosity(sim, cell, final_x, final_y, x_, y_ - 1);
-            apply_viscosity(sim, cell, final_x, final_y, x_, y_ + 1);
+            // sim.touch(final_x - 1, final_y - 1);
+            // sim.touch(final_x + 1, final_y - 1);
+            // sim.touch(final_x - 1, final_y + 1);
+            // sim.touch(final_x + 1, final_y + 1);
+            // apply_viscosity(sim, cell, final_x, final_y, x_ - 1, y_);
+            // apply_viscosity(sim, cell, final_x, final_y, x_ + 1, y_);
+            // apply_viscosity(sim, cell, final_x, final_y, x_, y_ - 1);
+            // apply_viscosity(sim, cell, final_x, final_y, x_, y_ + 1);
         } else {
             cell.not_move_count++;
             if (cell.not_move_count >= sim.not_moving_threshold(grav) / 5) {
