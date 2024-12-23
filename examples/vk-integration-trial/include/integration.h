@@ -609,7 +609,10 @@ void update_mouse_joint(
 using namespace epix::world::sand;
 using namespace epix::world::sand::components;
 
-constexpr int CHUNK_SIZE = 32;
+constexpr int CHUNK_SIZE                = 32;
+constexpr float scale                   = 1.0f;
+constexpr bool enable_collision         = true;
+constexpr bool render_collision_outline = true;
 
 void create_simulation(Command command) {
     spdlog::info("Creating falling sand simulation");
@@ -695,8 +698,6 @@ void create_simulation(Command command) {
         epix::world::sand_physics::SimulationCollisionGeneral{}
     );
 }
-
-static constexpr float scale = 1.0f;
 
 void create_element_from_click(
     Query<Get<Simulation>> query,
@@ -801,7 +802,7 @@ void update_simulation(
     auto count                        = timer->value().tick();
     for (int i = 0; i <= count; i++) {
         simulation.update_multithread((float)timer->value().interval);
-        sim_collisions.sync(simulation);
+        if constexpr (enable_collision) sim_collisions.sync(simulation);
         return;
     }
 }
@@ -1016,8 +1017,6 @@ void render_simulation_state(
     line_drawer.end();
 }
 
-constexpr bool render_collision_outline = true;
-
 void render_simulation_chunk_outline(
     Query<
         Get<const Simulation,
@@ -1221,7 +1220,9 @@ struct Box2dTestPlugin : Plugin {
             .in_state(SimulateState::Running);
         app.add_system(Update, toggle_input_state);
         app.add_system(Update, destroy_too_far_bodies, toggle_simulation);
-        app.add_system(PostUpdate, sync_simulatino_with_b2d);
+        if constexpr (enable_collision)
+            app.add_system(PostUpdate, sync_simulatino_with_b2d)
+                .in_state(SimulateState::Running);
         app.add_system(Update, create_dynamic_from_click, update_mouse_joint)
             .in_state(InputState::Body);
         app.add_system(Render, render_pixel_block);

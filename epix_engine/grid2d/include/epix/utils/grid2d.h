@@ -568,9 +568,8 @@ Grid2D<T> shrink(const Grid2D<T>& grid, glm::ivec2* offset = nullptr) {
 template <typename T>
     requires std::copyable<T>
 std::vector<Grid2D<T>> split(
-    const Grid2D<T>& grid_t, bool include_diagonal = false
+    const Grid2D<T>& grid, bool include_diagonal = false
 ) {
-    Grid2D<bool> grid(grid_t);
     std::vector<Grid2D<bool>> result_grid;
     Grid2D<bool> visited = get_outland(grid);
     while (true) {
@@ -625,8 +624,8 @@ std::vector<Grid2D<T>> split(
         }
     }
     std::vector<Grid2D<T>> result;
-    for (auto& grid : result_grid) {
-        result.emplace_back(grid_t & grid);
+    for (auto& grid_i : result_grid) {
+        result.emplace_back(grid & grid_i);
     }
     return result;
 }
@@ -687,6 +686,63 @@ std::vector<glm::ivec2> find_outline(
     } while (current != start);
     return outline;
 }
+/**
+ * @brief Find the outline of a binary grid
+ *
+ * @tparam T The type of the binary grid, must have a `size() -> glm::ivec2`
+ * method and a `contains(int, int) -> bool` method
+ *
+ * @param pixelbin The binary grid
+ * @param include_diagonal Whether to include diagonal pixels connected
+ * as part of the target obj
+ * @param outline The outline of the binary grid, in cw order, this wont clear
+ * the vector
+ */
+template <BoolGrid T>
+void find_outline(
+    const T& pixelbin,
+    std::vector<glm::ivec2>& outline,
+    bool include_diagonal = false
+) {
+    outline.clear();
+    static constexpr std::array<glm::ivec2, 4> move = {
+        glm::ivec2(-1, 0), glm::ivec2(0, 1), glm::ivec2(1, 0), glm::ivec2(0, -1)
+    };
+    static constexpr std::array<glm::ivec2, 4> offsets = {
+        glm::ivec2{-1, -1}, glm::ivec2{-1, 0}, glm::ivec2{0, 0},
+        glm::ivec2{0, -1}
+    };  // if dir is i then in ccw order, i+1 is the right pixel coord, i is
+        // the left pixel coord, i = 0 means left.
+    glm::ivec2 start(-1, -1);
+    for (int i = 0; i < pixelbin.size().x; i++) {
+        for (int j = 0; j < pixelbin.size().y; j++) {
+            if (pixelbin.contains(i, j)) {
+                start = {i, j};
+                break;
+            }
+        }
+        if (start.x != -1) break;
+    }
+    if (start.x == -1) return;
+    glm::ivec2 current = start;
+    int dir            = 0;
+    do {
+        outline.push_back(current);
+        for (int ndir = (include_diagonal ? dir + 3 : dir + 1) % 4;
+             ndir != (dir + 2) % 4;
+             ndir = (include_diagonal ? ndir + 1 : ndir + 3) % 4) {
+            auto outside = current + offsets[ndir];
+            auto inside  = current + offsets[(ndir + 1) % 4];
+            if (!pixelbin.contains(outside.x, outside.y) &&
+                pixelbin.contains(inside.x, inside.y)) {
+                current = current + move[ndir];
+                if (dir == ndir) outline.pop_back();
+                dir = ndir;
+                break;
+            }
+        }
+    } while (current != start);
+}
 
 /**
  * @brief Find holes in a binary grid
@@ -712,6 +768,33 @@ std::vector<std::vector<glm::ivec2>> find_holes(
         holes.emplace_back(find_outline(hole, !include_diagonal));
     }
     return holes;
+}
+/**
+ * @brief Find holes in a binary grid
+ *
+ * @tparam T The type of the binary grid, must have a `size() -> glm::ivec2`
+ * method and a `contains(int, int) -> bool` method
+ *
+ * @param pixelbin The binary grid
+ * @param include_diagonal Whether to include diagonal pixels connected
+ * as part of the target obj
+ * @param holes The holes in the binary grid, in cw order, this wont clear the
+ * vector
+ */
+template <BoolGrid T>
+void find_holes(
+    const T& pixelbin,
+    std::vector<std::vector<glm::ivec2>>& holes,
+    int start_size        = 1,
+    bool include_diagonal = false
+) {
+    Grid2D<bool> grid(pixelbin);
+    auto outland     = get_outland(grid, !include_diagonal);
+    auto holes_solid = split(~(outland | grid), !include_diagonal);
+    holes.resize(holes_solid.size() + start_size);
+    for (int i = 0; i < holes_solid.size(); i++) {
+        find_outline(holes_solid[i], holes[start_size + i], !include_diagonal);
+    }
 }
 
 /**
@@ -779,10 +862,31 @@ std::vector<std::vector<glm::ivec2>> get_polygon(
     auto earcut_polygon = std::vector<std::vector<glm::ivec2>>();
     earcut_polygon.emplace_back(std::move(outline));
     for (auto& hole : holes) {
-        hole.push_back(hole[0]);
         earcut_polygon.emplace_back(std::move(hole));
     }
     return std::move(earcut_polygon);
+}
+/**
+ * @brief Get the polygon of a binary grid
+ *
+ * @tparam T The type of the binary grid, must have a `size() -> glm::ivec2`
+ * method and a `contains(int, int) -> bool` method
+ *
+ * @param pixelbin The binary grid
+ * @param include_diagonal Whether to include diagonal pixels connected
+ * as part of the target obj
+ */
+template <BoolGrid T>
+bool get_polygon(
+    const T& pixelbin,
+    std::vector<std::vector<glm::ivec2>>& polygon,
+    bool include_diagonal = false
+) {
+    polygon.resize(std::max(1, (int)polygon.size()));
+    find_outline(pixelbin, polygon[0], include_diagonal);
+    if (polygon[0].empty()) return false;
+    find_holes(pixelbin, polygon, 1, include_diagonal);
+    return true;
 }
 
 /**
@@ -808,6 +912,33 @@ std::vector<std::vector<std::vector<glm::ivec2>>> get_polygon_multi(
         result.emplace_back(std::move(get_polygon(bin, include_diagonal)));
     }
     return result;
+}
+/**
+ * @brief Get the polygons of a binary grid with multiple objects
+ *
+ * @tparam T The type of the binary grid, must have a `size() -> glm::ivec2`
+ * method and a `contains(int, int) -> bool` method
+ *
+ * @param pixelbin The binary grid
+ * @param include_diagonal Whether to include diagonal pixels connected
+ * as part of the target obj
+ *
+ * @return The polygons of the binary grid, all in cw order
+ */
+template <typename T>
+    requires BoolGrid<T>
+bool get_polygon_multi(
+    const T& pixelbin,
+    std::vector<std::vector<std::vector<glm::ivec2>>>& polygons,
+    bool include_diagonal = false
+) {
+    auto split_bin = split(Grid2D<bool>(pixelbin), include_diagonal);
+    if (split_bin.empty()) return false;
+    polygons.resize(split_bin.size());
+    for (int i = 0; i < split_bin.size(); i++) {
+        get_polygon(split_bin[i], polygons[i], include_diagonal);
+    }
+    return true;
 }
 
 /**

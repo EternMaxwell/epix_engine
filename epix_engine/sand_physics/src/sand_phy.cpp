@@ -16,12 +16,13 @@ struct ChunkConverter {
 };
 
 namespace epix::world::sand_physics {
-EPIX_API std::vector<std::vector<std::vector<glm::ivec2>>> get_chunk_collision(
+EPIX_API bool get_chunk_collision(
     const epix::world::sand::components::Simulation& sim,
-    const epix::world::sand::components::Simulation::Chunk& chunk
+    const epix::world::sand::components::Simulation::Chunk& chunk,
+    std::vector<std::vector<std::vector<glm::ivec2>>>& polygons
 ) {
     ChunkConverter grid{sim, chunk};
-    return epix::utils::grid2d::get_polygon_simplified_multi(grid, 0.5f);
+    return epix::utils::grid2d::get_polygon_multi(grid, polygons);
 }
 EPIX_API SimulationCollisions<void>::SimulationCollisions()
     : thread_pool(
@@ -30,21 +31,7 @@ EPIX_API SimulationCollisions<void>::SimulationCollisions()
 EPIX_API void SimulationCollisions<void>::sync(
     const epix::world::sand::components::Simulation& sim
 ) {
-    for (auto [pos, chunk] : sim.chunk_map()) {
-        collisions.try_emplace(
-            pos.x, pos.y, SimulationCollisions::ChunkCollisions{}
-        );
-    }
-    for (auto [pos, chunk] : sim.chunk_map()) {
-        if (!collisions.contains(pos.x, pos.y)) continue;
-        if (!chunk.should_update()) continue;
-        modified.insert(pos);
-        thread_pool->submit_task([this, &sim, &chunk, pos]() {
-            auto collisions = get_chunk_collision(sim, chunk);
-            this->collisions.get(pos.x, pos.y)->collisions = collisions;
-        });
-    }
-    thread_pool->wait();
+    SimulationCollisions::sync(sim);
 }
 
 EPIX_API SimulationCollisionGeneral::PositionConverter
@@ -89,7 +76,7 @@ EPIX_API void SimulationCollisionGeneral::sync(
             body_def.type = b2_staticBody;
             body_id       = b2CreateBody(world, &body_def);
         }
-        if (chunk_collision.collisions.empty()) continue;
+        if (!chunk_collision.has_collision) continue;
         for (auto&& polygon : chunk_collision.collisions) {
             if (polygon.empty()) continue;
             auto outline   = polygon[0];

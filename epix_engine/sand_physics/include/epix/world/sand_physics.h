@@ -8,9 +8,10 @@
 #include <glm/glm.hpp>
 
 namespace epix::world::sand_physics {
-EPIX_API std::vector<std::vector<std::vector<glm::ivec2>>> get_chunk_collision(
+EPIX_API bool get_chunk_collision(
     const epix::world::sand::components::Simulation& sim,
-    const epix::world::sand::components::Simulation::Chunk& chunk
+    const epix::world::sand::components::Simulation::Chunk& chunk,
+    std::vector<std::vector<std::vector<glm::ivec2>>>& polygons
 );
 struct Ivec2Hash {
     std::size_t operator()(const glm::ivec2& vec) const {
@@ -21,7 +22,8 @@ template <typename T>
 struct SimulationCollisions {
     struct ChunkCollisions {
         std::vector<std::vector<std::vector<glm::ivec2>>> collisions = {};
-        T user_data                                                  = {};
+        bool has_collision;
+        T user_data = {};
         operator bool() const { return !collisions.empty(); }
         bool operator!() const { return collisions.empty(); }
     };
@@ -44,8 +46,10 @@ struct SimulationCollisions {
             if (!chunk.should_update()) continue;
             modified.insert(pos);
             thread_pool->submit_task([this, &sim, &chunk, pos]() {
-                auto collisions = get_chunk_collision(sim, chunk);
-                this->collisions.get(pos.x, pos.y)->collisions = collisions;
+                collisions.get(pos.x, pos.y)->has_collision =
+                    get_chunk_collision(
+                        sim, chunk, collisions.get(pos.x, pos.y)->collisions
+                    );
             });
         }
         thread_pool->wait();
