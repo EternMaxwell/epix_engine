@@ -24,8 +24,8 @@ struct SimulationCollisions {
         std::vector<std::vector<std::vector<glm::ivec2>>> collisions = {};
         bool has_collision;
         T user_data = {};
-        operator bool() const { return !collisions.empty(); }
-        bool operator!() const { return collisions.empty(); }
+        operator bool() const { return has_collision; }
+        bool operator!() const { return !has_collision; }
     };
     using user_data_type = T;
     using Grid =
