@@ -90,7 +90,7 @@ struct Cell {
 };
 struct ElemRegistry {
    private:
-    mutable std::shared_mutex mutex;
+    // mutable std::shared_mutex mutex;
     spp::sparse_hash_map<std::string, uint32_t> elemId_map;
     std::vector<Element> elements;
 
@@ -117,10 +117,10 @@ struct Simulation {
         Grid cells;
         const int width;
         const int height;
-        int time_since_last_swap  = 0;
-        int time_threshold        = 8;
-        int updating_area[4]      = {0, width - 1, 0, height - 1};
-        int updating_area_next[4] = {width, 0, height, 0};
+        int time_since_last_swap;
+        int time_threshold;
+        int updating_area[4];
+        int updating_area_next[4];
 
         EPIX_API Chunk(int width, int height);
         EPIX_API Chunk(const Chunk& other);
@@ -161,8 +161,7 @@ struct Simulation {
 
     struct ChunkMap {
         const int chunk_size;
-        using Grid =
-            epix::utils::grid2d::ExtendableGrid2D<std::optional<Chunk>>;
+        using Grid = epix::utils::grid2d::ExtendableGrid2D<Chunk>;
         Grid chunks;
 
         struct IterateSetting {

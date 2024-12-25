@@ -1,3 +1,5 @@
+#include <iostream>
+
 #include "epix/world/sand_physics.h"
 
 struct ChunkConverter {
@@ -5,9 +7,10 @@ struct ChunkConverter {
     const epix::world::sand::components::Simulation::Chunk& chunk;
 
     bool contains(int x, int y) const {
+        if (!chunk.contains(x, y)) return false;
         auto& cell = chunk.get(x, y);
-        if (!cell) return false;
         auto& elem = sim.registry().get_elem(cell.elem_id);
+        if (elem.is_solid()) return true;
         if (elem.is_gas() || elem.is_liquid()) return false;
         if (elem.is_powder() && cell.freefall) return false;
         return true;
@@ -28,11 +31,7 @@ EPIX_API SimulationCollisions<void>::SimulationCollisions()
     : thread_pool(
           std::make_unique<BS::thread_pool>(std::thread::hardware_concurrency())
       ) {}
-EPIX_API void SimulationCollisions<void>::sync(
-    const epix::world::sand::components::Simulation& sim
-) {
-    SimulationCollisions::sync(sim);
-}
+EPIX_API void SimulationCollisions<void>::clear_modified() { modified.clear(); }
 
 EPIX_API SimulationCollisionGeneral::PositionConverter
 SimulationCollisionGeneral::pos_converter(
@@ -51,23 +50,31 @@ EPIX_API SimulationCollisionGeneral::SimulationCollisionGeneral()
 EPIX_API void SimulationCollisionGeneral::sync(
     const epix::world::sand::components::Simulation& sim
 ) {
-    SimulationCollisions::sync(sim);
+    SimulationCollisions::sync(
+        sim, std::make_pair(b2_nullBodyId, std::vector<b2ChainId>())
+    );
 }
 EPIX_API void SimulationCollisionGeneral::sync(
     b2WorldId world, const PositionConverter& converter
 ) {
     for (auto&& pos : modified) {
+        if (!collisions.contains(pos.x, pos.y)) continue;
         auto real_pos = glm::ivec2(
             converter.chunk_size * pos.x - converter.offset.x,
             converter.chunk_size * pos.y - converter.offset.y
         );
-        auto&& chunk_collision_opt = collisions(pos.x, pos.y);
-        if (!chunk_collision_opt) continue;
-        auto&& chunk_collision = *chunk_collision_opt;
+        auto&& chunk_collision = collisions(pos.x, pos.y);
         auto&& body_id         = chunk_collision.user_data.first;
         auto&& chain_ids       = chunk_collision.user_data.second;
+        if (!chunk_collision.has_collision) {
+            if (b2Body_IsValid(body_id)) {
+                b2DestroyBody(body_id);
+            }
+            collisions.remove(pos.x, pos.y);
+            continue;
+        }
         if (b2Body_IsValid(body_id)) {
-            for (auto&& chain_id : chain_ids) {
+            for (auto chain_id : chain_ids) {
                 b2DestroyChain(chain_id);
             }
             chain_ids.clear();
@@ -76,10 +83,8 @@ EPIX_API void SimulationCollisionGeneral::sync(
             body_def.type = b2_staticBody;
             body_id       = b2CreateBody(world, &body_def);
         }
-        if (!chunk_collision.has_collision) continue;
         for (auto&& polygon : chunk_collision.collisions) {
-            if (polygon.empty()) continue;
-            auto outline   = polygon[0];
+            auto&& outline = polygon[0];
             b2Vec2* points = new b2Vec2[outline.size()];
             for (size_t i = 0; i < outline.size(); i++) {
                 points[i] = {
@@ -91,10 +96,12 @@ EPIX_API void SimulationCollisionGeneral::sync(
             }
             auto chain_def   = b2DefaultChainDef();
             chain_def.points = points;
+            chain_def.isLoop = true;
             chain_def.count  = outline.size();
             chain_ids.push_back(b2CreateChain(body_id, &chain_def));
+            delete[] points;
             for (size_t i = 1; i < polygon.size(); i++) {
-                auto hole           = polygon[i];
+                auto&& hole         = polygon[i];
                 b2Vec2* hole_points = new b2Vec2[hole.size()];
                 for (size_t j = 0; j < hole.size(); j++) {
                     hole_points[j] = {
@@ -105,9 +112,22 @@ EPIX_API void SimulationCollisionGeneral::sync(
                 chain_def.points = hole_points;
                 chain_def.count  = hole.size();
                 chain_ids.push_back(b2CreateChain(body_id, &chain_def));
+                delete[] hole_points;
             }
         }
     }
+    collisions.shrink();
     clear_modified();
 }
+// EPIX_API SimulationCollisionGeneral::~SimulationCollisionGeneral() {
+//     for (auto&& [pos, user_data] : collisions.data()) {
+//         auto& [body_id, chain_ids] = user_data.user_data;
+//         if (b2Body_IsValid(body_id)) {
+//             for (auto chain_id : chain_ids) {
+//                 b2DestroyChain(chain_id);
+//             }
+//             b2DestroyBody(body_id);
+//         }
+//     }
+// }
 }  // namespace epix::world::sand_physics

@@ -1,8 +1,11 @@
 #pragma once
 
+#include <spdlog/spdlog.h>
+
 #include <array>
 #include <concepts>
 #include <earcut.hpp>
+#include <format>
 #include <glm/glm.hpp>
 #include <stack>
 #include <stdexcept>
@@ -46,58 +49,60 @@ template <typename T>
         { !t } -> std::same_as<bool>;
     }
 struct Grid2D {
-    const int width;
-    const int height;
-    std::vector<T> data;
+   private:
+    int width;
+    int height;
+    std::vector<T> _data;
 
+   public:
     Grid2D(int width, int height) : width(width), height(height) {
-        data.resize(width * height);
+        _data.resize(width * height);
     }
     template <typename... Args>
     Grid2D(int width, int height, Args&&... args)
         : width(width), height(height) {
-        data.resize(width * height, T(std::forward<Args>(args)...));
+        _data.resize(width * height, T(std::forward<Args>(args)...));
     }
     Grid2D(const Grid2D& other) : width(other.width), height(other.height) {
-        data = other.data;
+        _data = other._data;
     }
     Grid2D(Grid2D&& other) : width(other.width), height(other.height) {
-        data = std::move(other.data);
+        _data = std::move(other._data);
     }
     Grid2D& operator=(const Grid2D& other) {
-        if (width != other.width || height != other.height)
-            throw std::runtime_error("Grid2D::operator=(): size mismatch");
-        data = other.data;
+        width  = other.width;
+        height = other.height;
+        _data  = other._data;
         return *this;
     }
     Grid2D& operator=(Grid2D&& other) {
-        if (width != other.width || height != other.height)
-            throw std::runtime_error("Grid2D::operator=(): size mismatch");
-        data = std::move(other.data);
+        width  = other.width;
+        height = other.height;
+        _data  = std::move(other._data);
         return *this;
     }
     void set(int x, int y, const T& value) {
         if (x < 0 || x >= width || y < 0 || y >= height) return;
-        data[x + y * width] = value;
+        _data[x + y * width] = value;
     }
     void set(int x, int y, T&& value) {
         if (x < 0 || x >= width || y < 0 || y >= height) return;
-        data[x + y * width] = std::move(value);
+        _data[x + y * width] = std::move(value);
     }
     template <typename... Args>
     void emplace(int x, int y, Args&&... args) {
         if (x < 0 || x >= width || y < 0 || y >= height) return;
-        data[x + y * width] = T(std::forward<Args>(args)...);
+        _data[x + y * width] = T(std::forward<Args>(args)...);
     }
     template <typename... Args>
     void try_emplace(int x, int y, Args&&... args) {
         if (x < 0 || x >= width || y < 0 || y >= height) return;
-        if (!data[x + y * width]) {
-            data[x + y * width] = T(std::forward<Args>(args)...);
+        if (!_data[x + y * width]) {
+            _data[x + y * width] = T(std::forward<Args>(args)...);
         }
     }
-    T& operator()(int x, int y) { return data[x + y * width]; }
-    const T& operator()(int x, int y) const { return data[x + y * width]; }
+    T& operator()(int x, int y) { return _data[x + y * width]; }
+    const T& operator()(int x, int y) const { return _data[x + y * width]; }
     bool valid(int x, int y) const {
         return x >= 0 && x < width && y >= 0 && y < height;
     }
@@ -105,28 +110,32 @@ struct Grid2D {
         return valid(x, y) && (bool)(*this)(x, y);
     }
     glm::ivec2 size() const { return {width, height}; }
+    std::vector<T>& data() { return _data; }
 };
 template <>
 struct Grid2D<bool> {
-    const int width;
-    const int height;
-    const int column;
-    std::vector<uint32_t> data;
+   private:
+    int width;
+    int height;
+    int column;
+    std::vector<uint32_t> _data;
+
+   public:
     Grid2D(int width, int height)
         : width(width),
           height(height),
           column(width / 32 + (width % 32 ? 1 : 0)) {
-        data.reserve(column * height);
-        data.resize(column * height);
+        _data.reserve(column * height);
+        _data.resize(column * height);
     }
     Grid2D(int width, int height, bool value)
         : width(width),
           height(height),
           column(width / 32 + (width % 32 ? 1 : 0)) {
-        data.reserve(column * height);
-        data.resize(column * height);
+        _data.reserve(column * height);
+        _data.resize(column * height);
         for (int i = 0; i < column * height; i++) {
-            data[i] = value ? 0xFFFFFFFF : 0;
+            _data[i] = value ? 0xFFFFFFFF : 0;
         }
     }
     template <typename T>
@@ -134,8 +143,8 @@ struct Grid2D<bool> {
         : width(other.width),
           height(other.height),
           column(width / 32 + (width % 32 ? 1 : 0)) {
-        data.reserve(column * height);
-        data.resize(column * height);
+        _data.reserve(column * height);
+        _data.resize(column * height);
         for (int y = 0; y < height; y++) {
             for (int x = 0; x < width; x++) {
                 set(x, y, (bool)other(x, y));
@@ -147,22 +156,48 @@ struct Grid2D<bool> {
         : width(other.size().x),
           height(other.size().y),
           column(width / 32 + (width % 32 ? 1 : 0)) {
-        data.reserve(column * height);
-        data.resize(column * height);
+        _data.reserve(column * height);
+        _data.resize(column * height);
         for (int y = 0; y < height; y++) {
             for (int x = 0; x < width; x++) {
                 set(x, y, other.contains(x, y));
             }
         }
     }
+    Grid2D(const Grid2D& other)
+        : width(other.width),
+          height(other.height),
+          column(width / 32 + (width % 32 ? 1 : 0)) {
+        _data = other._data;
+    }
+    Grid2D(Grid2D&& other)
+        : width(other.width),
+          height(other.height),
+          column(width / 32 + (width % 32 ? 1 : 0)) {
+        _data = std::move(other._data);
+    }
+    Grid2D& operator=(const Grid2D& other) {
+        width  = other.width;
+        height = other.height;
+        column = other.column;
+        _data  = other._data;
+        return *this;
+    }
+    Grid2D& operator=(Grid2D&& other) {
+        width  = other.width;
+        height = other.height;
+        column = other.column;
+        _data  = std::move(other._data);
+        return *this;
+    }
     void set(int x, int y, bool value) {
         if (x < 0 || x >= width || y < 0 || y >= height) return;
         int index = x / 32 + y * column;
         int bit   = x % 32;
         if (value)
-            data[index] |= 1 << bit;
+            _data[index] |= 1 << bit;
         else
-            data[index] &= ~(1 << bit);
+            _data[index] &= ~(1 << bit);
     }
     void emplace(int x, int y, bool value) { set(x, y, value); }
     void try_emplace(int x, int y, bool value) { set(x, y, value); }
@@ -170,7 +205,7 @@ struct Grid2D<bool> {
         if (x < 0 || x >= width || y < 0 || y >= height) return false;
         int index = x / 32 + y * column;
         int bit   = x % 32;
-        return data[index] & (1 << bit);
+        return _data[index] & (1 << bit);
     }
     bool valid(int x, int y) const {
         return x >= 0 && x < width && y >= 0 && y < height;
@@ -179,7 +214,7 @@ struct Grid2D<bool> {
         if (x < 0 || x >= width || y < 0 || y >= height) return false;
         int index = x / 32 + y * column;
         int bit   = x % 32;
-        return data[index] & (1 << bit);
+        return _data[index] & (1 << bit);
     }
     glm::ivec2 size() const { return {width, height}; }
 };
@@ -475,17 +510,18 @@ Grid2D<bool> operator~(const Grid2D<T>& a) {
  */
 template <BoolGrid T>
 Grid2D<bool> get_outland(const T& grid, bool include_diagonal = false) {
-    Grid2D<bool> outland(grid.width, grid.height);
+    auto size  = grid.size();
+    auto width = size.x, height = size.y;
+    Grid2D<bool> outland(width, height);
     // use dimension first search
     std::stack<std::pair<int, int>> stack;
-    for (int i = 0; i < grid.width; i++) {
+    for (int i = 0; i < width; i++) {
         if (!grid.contains(i, 0)) stack.push({i, 0});
-        if (!grid.contains(i, grid.height - 1))
-            stack.push({i, grid.height - 1});
+        if (!grid.contains(i, height - 1)) stack.push({i, height - 1});
     }
-    for (int i = 0; i < grid.height; i++) {
+    for (int i = 0; i < height; i++) {
         if (!grid.contains(0, i)) stack.push({0, i});
-        if (!grid.contains(grid.width - 1, i)) stack.push({grid.width - 1, i});
+        if (!grid.contains(width - 1, i)) stack.push({width - 1, i});
     }
     while (!stack.empty()) {
         auto [x, y] = stack.top();
@@ -494,25 +530,25 @@ Grid2D<bool> get_outland(const T& grid, bool include_diagonal = false) {
         outland.set(x, y, true);
         if (x > 0 && !grid.contains(x - 1, y) && !outland.contains(x - 1, y))
             stack.push({x - 1, y});
-        if (x < grid.width - 1 && !grid.contains(x + 1, y) &&
+        if (x < width - 1 && !grid.contains(x + 1, y) &&
             !outland.contains(x + 1, y))
             stack.push({x + 1, y});
         if (y > 0 && !grid.contains(x, y - 1) && !outland.contains(x, y - 1))
             stack.push({x, y - 1});
-        if (y < grid.height - 1 && !grid.contains(x, y + 1) &&
+        if (y < height - 1 && !grid.contains(x, y + 1) &&
             !outland.contains(x, y + 1))
             stack.push({x, y + 1});
         if (include_diagonal) {
             if (x > 0 && y > 0 && !grid.contains(x - 1, y - 1) &&
                 !outland.contains(x - 1, y - 1))
                 stack.push({x - 1, y - 1});
-            if (x < grid.width - 1 && y > 0 && !grid.contains(x + 1, y - 1) &&
+            if (x < width - 1 && y > 0 && !grid.contains(x + 1, y - 1) &&
                 !outland.contains(x + 1, y - 1))
                 stack.push({x + 1, y - 1});
-            if (x > 0 && y < grid.height - 1 && !grid.contains(x - 1, y + 1) &&
+            if (x > 0 && y < height - 1 && !grid.contains(x - 1, y + 1) &&
                 !outland.contains(x - 1, y + 1))
                 stack.push({x - 1, y + 1});
-            if (x < grid.width - 1 && y < grid.height - 1 &&
+            if (x < width - 1 && y < height - 1 &&
                 !grid.contains(x + 1, y + 1) && !outland.contains(x + 1, y + 1))
                 stack.push({x + 1, y + 1});
         }
@@ -572,6 +608,8 @@ std::vector<Grid2D<T>> split(
 ) {
     std::vector<Grid2D<bool>> result_grid;
     Grid2D<bool> visited = get_outland(grid);
+    auto size            = grid.size();
+    auto width = size.x, height = size.y;
     while (true) {
         glm::ivec2 current(-1, -1);
         for (int i = 0; i < visited.size().x; i++) {
@@ -584,7 +622,7 @@ std::vector<Grid2D<T>> split(
             if (current.x != -1) break;
         }
         if (current.x == -1) break;
-        result_grid.push_back(Grid2D<bool>(grid.width, grid.height));
+        result_grid.push_back(Grid2D<bool>(width, height));
         auto& current_grid = result_grid.back();
         std::stack<std::pair<int, int>> stack;
         stack.push({current.x, current.y});
@@ -596,27 +634,26 @@ std::vector<Grid2D<T>> split(
             visited.set(x, y, true);
             if (x > 0 && !visited.contains(x - 1, y) && grid.contains(x - 1, y))
                 stack.push({x - 1, y});
-            if (x < grid.width - 1 && !visited.contains(x + 1, y) &&
+            if (x < width - 1 && !visited.contains(x + 1, y) &&
                 grid.contains(x + 1, y))
                 stack.push({x + 1, y});
             if (y > 0 && !visited.contains(x, y - 1) && grid.contains(x, y - 1))
                 stack.push({x, y - 1});
-            if (y < grid.height - 1 && !visited.contains(x, y + 1) &&
+            if (y < height - 1 && !visited.contains(x, y + 1) &&
                 grid.contains(x, y + 1))
                 stack.push({x, y + 1});
             if (include_diagonal) {
                 if (x > 0 && y > 0 && !visited.contains(x - 1, y - 1) &&
                     grid.contains(x - 1, y - 1))
                     stack.push({x - 1, y - 1});
-                if (x < grid.width - 1 && y > 0 &&
-                    !visited.contains(x + 1, y - 1) &&
+                if (x < width - 1 && y > 0 && !visited.contains(x + 1, y - 1) &&
                     grid.contains(x + 1, y - 1))
                     stack.push({x + 1, y - 1});
-                if (x > 0 && y < grid.height - 1 &&
+                if (x > 0 && y < height - 1 &&
                     !visited.contains(x - 1, y + 1) &&
                     grid.contains(x - 1, y + 1))
                     stack.push({x - 1, y + 1});
-                if (x < grid.width - 1 && y < grid.height - 1 &&
+                if (x < width - 1 && y < height - 1 &&
                     !visited.contains(x + 1, y + 1) &&
                     grid.contains(x + 1, y + 1))
                     stack.push({x + 1, y + 1});
@@ -656,8 +693,8 @@ std::vector<glm::ivec2> find_outline(
     };  // if dir is i then in ccw order, i+1 is the right pixel coord, i is
         // the left pixel coord, i = 0 means left.
     glm::ivec2 start(-1, -1);
-    for (int i = 0; i < pixelbin.size().x; i++) {
-        for (int j = 0; j < pixelbin.size().y; j++) {
+    for (int j = 0; j < pixelbin.size().y; j++) {
+        for (int i = 0; i < pixelbin.size().x; i++) {
             if (pixelbin.contains(i, j)) {
                 start = {i, j};
                 break;
@@ -714,8 +751,8 @@ void find_outline(
     };  // if dir is i then in ccw order, i+1 is the right pixel coord, i is
         // the left pixel coord, i = 0 means left.
     glm::ivec2 start(-1, -1);
-    for (int i = 0; i < pixelbin.size().x; i++) {
-        for (int j = 0; j < pixelbin.size().y; j++) {
+    for (int j = 0; j < pixelbin.size().y; j++) {
+        for (int i = 0; i < pixelbin.size().x; i++) {
             if (pixelbin.contains(i, j)) {
                 start = {i, j};
                 break;
@@ -997,104 +1034,99 @@ std::vector<std::vector<std::vector<glm::ivec2>>> get_polygon_simplified_multi(
     return result;
 }
 
-template <typename T, bool use_list = false>
-    requires std::move_constructible<T> && std::movable<T> && requires(T t) {
-        { T() } -> std::same_as<T>;
-        { !t } -> std::same_as<bool>;
-        { (bool)t } -> std::same_as<bool>;
-    }
+template <typename T>
+    requires std::movable<T>
 struct ExtendableGrid2D {
    private:
-    std::vector<std::vector<T>> grid_data;
+    std::vector<std::pair<glm::ivec2, T>> grid_data;
+    Grid2D<int64_t> grid_indices;
     glm::ivec2 grid_origin;
-    glm::ivec2 grid_size;
-    size_t elem_count = 0;
-    void _TestResizeX(int x) {
-        if (x < grid_origin.x) {
-            grid_data.insert(
-                grid_data.begin(), grid_origin.x - x,
-                std::vector<T>(grid_size.y)
-            );
-            grid_origin.x = x;
-        }
-        if (x >= grid_origin.x + grid_size.x) {
-            grid_data.insert(
-                grid_data.end(), x - grid_origin.x - grid_size.x + 1,
-                std::vector<T>(grid_size.y)
-            );
-            grid_size.x = x - grid_origin.x + 1;
-        }
-    }
-    void _TestResizeY(int y) {
-        if (y < grid_origin.y) {
-            for (auto& row : grid_data) {
-                row.insert(row.begin(), grid_origin.y - y, T());
-            }
-            grid_origin.y = y;
-        }
-        if (y >= grid_origin.y + grid_size.y) {
-            for (auto& row : grid_data) {
-                row.insert(row.end(), y - grid_origin.y - grid_size.y + 1, T());
-            }
-            grid_size.y = y - grid_origin.y + 1;
-        }
-    }
     int _OcupiedXmin() {
-        for (int i = 0; i < grid_size.x; i++) {
-            for (int j = 0; j < grid_size.y; j++) {
-                if ((bool)grid_data[i][j]) return i;
+        for (int i = 0; i < grid_indices.size().x; i++) {
+            for (int j = 0; j < grid_indices.size().y; j++) {
+                if (grid_indices(i, j) >= 0) return i;
             }
         }
-        return grid_size.x;
+        return grid_indices.size().x;
     }
     int _OcupiedXmax() {
-        for (int i = grid_size.x - 1; i >= 0; i--) {
-            for (int j = 0; j < grid_size.y; j++) {
-                if ((bool)grid_data[i][j]) return i;
+        for (int i = grid_indices.size().x - 1; i >= 0; i--) {
+            for (int j = 0; j < grid_indices.size().y; j++) {
+                if (grid_indices(i, j) >= 0) return i;
             }
         }
         return -1;
     }
     int _OcupiedYmin() {
-        for (int j = 0; j < grid_size.y; j++) {
-            for (int i = 0; i < grid_size.x; i++) {
-                if ((bool)grid_data[i][j]) return j;
+        for (int j = 0; j < grid_indices.size().y; j++) {
+            for (int i = 0; i < grid_indices.size().x; i++) {
+                if (grid_indices(i, j) >= 0) return j;
             }
         }
-        return grid_size.y;
+        return grid_indices.size().y;
     }
     int _OcupiedYmax() {
-        for (int j = grid_size.y - 1; j >= 0; j--) {
-            for (int i = 0; i < grid_size.x; i++) {
-                if ((bool)grid_data[i][j]) return j;
+        for (int j = grid_indices.size().y - 1; j >= 0; j--) {
+            for (int i = 0; i < grid_indices.size().x; i++) {
+                if (grid_indices(i, j) >= 0) return j;
             }
         }
         return -1;
     }
 
    public:
-    ExtendableGrid2D() : grid_origin(0, 0), grid_size(0, 0) {}
+    ExtendableGrid2D() : grid_origin(0, 0), grid_indices(0, 0, -1) {}
     ExtendableGrid2D(const ExtendableGrid2D& other)            = default;
     ExtendableGrid2D(ExtendableGrid2D&& other)                 = default;
     ExtendableGrid2D& operator=(const ExtendableGrid2D& other) = default;
     ExtendableGrid2D& operator=(ExtendableGrid2D&& other)      = default;
 
-    bool empty() const { return grid_size.x == 0 || grid_size.y == 0; }
-    size_t count() const { return elem_count; }
+    bool empty() const { return grid_data.empty(); }
+    size_t count() const { return grid_data.size(); }
     glm::ivec2 origin() const { return grid_origin; }
 
     template <typename... Args>
     void emplace(int x, int y, Args... args) {
-        if (empty()) {
-            grid_data.emplace_back(1, T(args...));
-            grid_origin = {x, y};
-            grid_size   = {1, 1};
+        if (contains(x, y)) {
+            grid_data[grid_indices(x - grid_origin.x, y - grid_origin.y)] =
+                std::make_pair(glm::ivec2(x, y), T(args...));
             return;
         }
-        _TestResizeX(x);
-        _TestResizeY(y);
-        grid_data[x - grid_origin.x][y - grid_origin.y] = T(args...);
-        elem_count++;
+        grid_data.emplace_back(glm::ivec2(x, y), T(args...));
+        if (empty()) {
+            grid_origin  = {x, y};
+            grid_indices = Grid2D<int64_t>(1, 1, -1);
+            return;
+        }
+        auto new_width = std::max(
+            grid_indices.size().x,
+            std::max(
+                x - grid_origin.x + 1, grid_indices.size().x - x + grid_origin.x
+            )
+        );
+        auto new_height = std::max(
+            grid_indices.size().y,
+            std::max(
+                y - grid_origin.y + 1, grid_indices.size().y - y + grid_origin.y
+            )
+        );
+        auto new_origin =
+            glm::ivec2(std::min(grid_origin.x, x), std::min(grid_origin.y, y));
+        auto diff = grid_origin - new_origin;
+        if (new_width != grid_indices.size().x ||
+            new_height != grid_indices.size().y) {
+            Grid2D<int64_t> new_indices(new_width, new_height, -1);
+            for (int i = 0; i < grid_indices.size().x; i++) {
+                for (int j = 0; j < grid_indices.size().y; j++) {
+                    new_indices.set(i + diff.x, j + diff.y, grid_indices(i, j));
+                }
+            }
+            grid_indices = std::move(new_indices);
+        }
+        grid_origin = new_origin;
+        grid_indices.set(
+            x - grid_origin.x, y - grid_origin.y, grid_data.size() - 1
+        );
     }
     template <typename... Args>
     void emplace(glm::ivec2 pos, Args... args) {
@@ -1102,9 +1134,7 @@ struct ExtendableGrid2D {
     }
     template <typename... Args>
     void try_emplace(int x, int y, Args... args) {
-        if (contains(x, y)) {
-            return;
-        }
+        if (contains(x, y)) return;
         emplace(x, y, args...);
     }
     template <typename... Args>
@@ -1112,26 +1142,40 @@ struct ExtendableGrid2D {
         try_emplace(pos.x, pos.y, args...);
     }
     T& get(int x, int y) {
-        if (x < grid_origin.x || x >= grid_origin.x + grid_size.x ||
-            y < grid_origin.y || y >= grid_origin.y + grid_size.y)
-            throw std::out_of_range("Out of range");
-        return grid_data[x - grid_origin.x][y - grid_origin.y];
+        if (!valid(x, y))
+            throw std::out_of_range(std::format(
+                "(x={}, y={}) out of range ({}, {})", x, y, grid_origin.x,
+                grid_origin.y
+            ));
+        if (!contains(x, y)) {
+            std::string msg = std::format("(x={}, y={}) not in grid", x, y);
+            throw std::exception(msg.c_str());
+        }
+        return grid_data[grid_indices(x - grid_origin.x, y - grid_origin.y)]
+            .second;
     }
     const T& get(int x, int y) const {
-        if (x < grid_origin.x || x >= grid_origin.x + grid_size.x ||
-            y < grid_origin.y || y >= grid_origin.y + grid_size.y)
-            throw std::out_of_range("Out of range");
-        return grid_data[x - grid_origin.x][y - grid_origin.y];
+        if (!valid(x, y))
+            throw std::out_of_range(std::format(
+                "(x={}, y={}) out of range ({}, {})", x, y, grid_origin.x,
+                grid_origin.y
+            ));
+        if (!contains(x, y)) {
+            std::string msg = std::format("(x={}, y={}) not in grid", x, y);
+            throw std::exception(msg.c_str());
+        }
+        return grid_data[grid_indices(x - grid_origin.x, y - grid_origin.y)]
+            .second;
     }
     T& operator()(int x, int y) { return get(x, y); }
     const T& operator()(int x, int y) const { return get(x, y); }
-    glm::ivec2 size() const { return grid_size; }
+    glm::ivec2 size() const { return grid_indices.size(); }
     bool valid(int x, int y) const {
-        return x >= grid_origin.x && x < grid_origin.x + grid_size.x &&
-               y >= grid_origin.y && y < grid_origin.y + grid_size.y;
+        return grid_indices.valid(x - grid_origin.x, y - grid_origin.y);
     }
     bool contains(int x, int y) const {
-        return valid(x, y) && (bool)(*this)(x, y);
+        return valid(x, y) &&
+               grid_indices(x - grid_origin.x, y - grid_origin.y) >= 0;
     }
     void shrink() {
         int xmin = _OcupiedXmin();
@@ -1139,43 +1183,33 @@ struct ExtendableGrid2D {
         int ymin = _OcupiedYmin();
         int ymax = _OcupiedYmax();
         if (xmin > xmax || ymin > ymax) {
+            grid_indices = Grid2D<int64_t>(0, 0, -1);
             grid_data.clear();
-            grid_origin = {0, 0};
-            grid_size   = {0, 0};
             return;
         }
-        grid_data.erase(grid_data.begin(), grid_data.begin() + xmin);
-        grid_data.erase(grid_data.begin() + xmax - xmin + 1, grid_data.end());
-        for (auto& row : grid_data) {
-            row.erase(row.begin(), row.begin() + ymin);
-            row.erase(row.begin() + ymax - ymin + 1, row.end());
-        }
-        grid_origin.x += xmin;
-        grid_origin.y += ymin;
-        grid_size = {xmax - xmin + 1, ymax - ymin + 1};
-
-        std::vector<std::vector<T>> new_data(
-            grid_size.x, std::vector<T>(grid_size.y)
-        );
-        for (int i = 0; i < grid_size.x; i++) {
-            for (int j = 0; j < grid_size.y; j++) {
-                std::swap(
-                    new_data[i][j],
-                    grid_data[i + grid_origin.x][j + grid_origin.y]
-                );
+        auto new_size = glm::ivec2(xmax - xmin + 1, ymax - ymin + 1);
+        if (new_size == grid_indices.size()) return;
+        Grid2D<int64_t> new_indices(new_size.x, new_size.y, -1);
+        for (int i = xmin; i <= xmax; i++) {
+            for (int j = ymin; j <= ymax; j++) {
+                new_indices.set(i - xmin, j - ymin, grid_indices(i, j));
             }
         }
-        grid_data = std::move(new_data);
+        grid_origin += glm::ivec2(xmin, ymin);
+        grid_indices = std::move(new_indices);
     }
     void remove(int x, int y) {
-        if (x < grid_origin.x || x >= grid_origin.x + grid_size.x ||
-            y < grid_origin.y || y >= grid_origin.y + grid_size.y)
-            return;
-        if (contains(x, y)) {
-            grid_data[x - grid_origin.x][y - grid_origin.y] = T();
-            elem_count--;
-        }
+        if (!contains(x, y)) return;
+        auto index = grid_indices(x - grid_origin.x, y - grid_origin.y);
+        auto pos   = grid_data.back().first;
+        grid_indices(pos.x - grid_origin.x, pos.y - grid_origin.y) = index;
+        grid_indices(x - grid_origin.x, y - grid_origin.y)         = -1;
+        grid_data[index] = std::move(grid_data.back());
+        grid_data.pop_back();
     }
     void remove(glm::ivec2 pos) { remove(pos.x, pos.y); }
+    const std::vector<std::pair<glm::ivec2, T>>& data() const {
+        return grid_data;
+    }
 };
 }  // namespace epix::utils::grid2d

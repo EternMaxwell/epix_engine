@@ -18,37 +18,42 @@ struct Ivec2Hash {
         return std::hash<size_t>()(*(size_t*)&vec);
     }
 };
+struct Ivec2Equal {
+    bool operator()(const glm::ivec2& lhs, const glm::ivec2& rhs) const {
+        return lhs == rhs;
+    }
+};
 template <typename T>
 struct SimulationCollisions {
     struct ChunkCollisions {
+        T user_data                                                  = {};
+        bool has_collision                                           = false;
         std::vector<std::vector<std::vector<glm::ivec2>>> collisions = {};
-        bool has_collision;
-        T user_data = {};
         operator bool() const { return has_collision; }
         bool operator!() const { return !has_collision; }
     };
     using user_data_type = T;
-    using Grid =
-        epix::utils::grid2d::ExtendableGrid2D<std::optional<ChunkCollisions>>;
+    using Grid = epix::utils::grid2d::ExtendableGrid2D<ChunkCollisions>;
     Grid collisions;
-    spp::sparse_hash_set<glm::ivec2, Ivec2Hash> modified;
+    spp::sparse_hash_set<glm::ivec2, Ivec2Hash, Ivec2Equal> modified;
     std::unique_ptr<BS::thread_pool> thread_pool;
 
     SimulationCollisions() : thread_pool(std::make_unique<BS::thread_pool>()) {}
-    void sync(const epix::world::sand::components::Simulation& sim) {
+    template <typename... Args>
+    void sync(
+        const epix::world::sand::components::Simulation& sim, Args&&... args
+    ) {
         for (auto [pos, chunk] : sim.chunk_map()) {
-            collisions.try_emplace(
-                pos.x, pos.y, SimulationCollisions::ChunkCollisions{}
-            );
+            if (!chunk.should_update()) continue;
+            modified.insert(pos);
+            collisions.try_emplace(pos.x, pos.y, std::forward<Args>(args)...);
         }
         for (auto [pos, chunk] : sim.chunk_map()) {
             if (!collisions.contains(pos.x, pos.y)) continue;
-            if (!chunk.should_update()) continue;
-            modified.insert(pos);
             thread_pool->submit_task([this, &sim, &chunk, pos]() {
-                collisions.get(pos.x, pos.y)->has_collision =
+                collisions.get(pos.x, pos.y).has_collision =
                     get_chunk_collision(
-                        sim, chunk, collisions.get(pos.x, pos.y)->collisions
+                        sim, chunk, collisions.get(pos.x, pos.y).collisions
                     );
             });
         }
@@ -59,19 +64,38 @@ struct SimulationCollisions {
 template <>
 struct SimulationCollisions<void> {
     struct ChunkCollisions {
+        bool has_collision                                           = false;
         std::vector<std::vector<std::vector<glm::ivec2>>> collisions = {};
         operator bool() const { return !collisions.empty(); }
         bool operator!() const { return collisions.empty(); }
     };
     using user_data_type = void;
-    using Grid =
-        epix::utils::grid2d::ExtendableGrid2D<std::optional<ChunkCollisions>>;
+    using Grid = epix::utils::grid2d::ExtendableGrid2D<ChunkCollisions>;
     Grid collisions;
     spp::sparse_hash_set<glm::ivec2, Ivec2Hash> modified;
     std::unique_ptr<BS::thread_pool> thread_pool;
 
     EPIX_API SimulationCollisions();
-    EPIX_API void sync(const epix::world::sand::components::Simulation& sim);
+    template <typename... Args>
+    void sync(
+        const epix::world::sand::components::Simulation& sim, Args&&... args
+    ) {
+        for (auto [pos, chunk] : sim.chunk_map()) {
+            if (!chunk.should_update()) continue;
+            modified.insert(pos);
+            collisions.try_emplace(pos.x, pos.y, std::forward<Args>(args)...);
+        }
+        for (auto [pos, chunk] : sim.chunk_map()) {
+            if (!collisions.contains(pos.x, pos.y)) continue;
+            thread_pool->submit_task([this, &sim, &chunk, pos]() {
+                auto& chunk_collision = collisions.get(pos.x, pos.y);
+                chunk_collision.has_collision =
+                    get_chunk_collision(sim, chunk, chunk_collision.collisions);
+            });
+        }
+        thread_pool->wait();
+    }
+    EPIX_API void clear_modified();
 };
 struct SimulationCollisionGeneral
     : SimulationCollisions<std::pair<b2BodyId, std::vector<b2ChainId>>> {
@@ -105,5 +129,6 @@ struct SimulationCollisionGeneral
     EPIX_API SimulationCollisionGeneral();
     EPIX_API void sync(const epix::world::sand::components::Simulation& sim);
     EPIX_API void sync(b2WorldId world, const PositionConverter& converter);
+    // EPIX_API ~SimulationCollisionGeneral();
 };
 }  // namespace epix::world::sand_physics

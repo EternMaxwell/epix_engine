@@ -60,11 +60,29 @@ EPIX_API Cell::operator bool() const { return valid(); }
 EPIX_API bool Cell::operator!() const { return !valid(); }
 
 EPIX_API Simulation::Chunk::Chunk(int width, int height)
-    : cells(width, height, Cell{}), width(width), height(height) {}
+    : cells(width, height, Cell{}),
+      width(width),
+      height(height),
+      time_since_last_swap(0),
+      time_threshold(EPIX_WORLD_SAND_DEFAULT_CHUNK_RESET_TIME),
+      updating_area{width, 0, height, 0},
+      updating_area_next{width, 0, height, 0} {}
 EPIX_API Simulation::Chunk::Chunk(const Chunk& other)
-    : cells(other.cells), width(other.width), height(other.height) {}
+    : cells(other.cells),
+      width(other.width),
+      height(other.height),
+      time_since_last_swap(0),
+      time_threshold(EPIX_WORLD_SAND_DEFAULT_CHUNK_RESET_TIME),
+      updating_area{width, 0, height, 0},
+      updating_area_next{width, 0, height, 0} {}
 EPIX_API Simulation::Chunk::Chunk(Chunk&& other)
-    : cells(std::move(other.cells)), width(other.width), height(other.height) {}
+    : cells(std::move(other.cells)),
+      width(other.width),
+      height(other.height),
+      time_since_last_swap(0),
+      time_threshold(EPIX_WORLD_SAND_DEFAULT_CHUNK_RESET_TIME),
+      updating_area{width, 0, height, 0},
+      updating_area_next{width, 0, height, 0} {}
 EPIX_API Simulation::Chunk& Simulation::Chunk::operator=(const Chunk& other) {
     assert(width == other.width && height == other.height);
     cells = other.cells;
@@ -76,11 +94,18 @@ EPIX_API Simulation::Chunk& Simulation::Chunk::operator=(Chunk&& other) {
     return *this;
 }
 EPIX_API void Simulation::Chunk::reset_updated() {
-    for (auto& each : cells.data) {
+    for (auto& each : cells.data()) {
         each.updated = false;
     }
 }
-EPIX_API void Simulation::Chunk::count_time() { time_since_last_swap++; }
+EPIX_API void Simulation::Chunk::count_time() {
+    time_since_last_swap++;
+    if (time_since_last_swap >= time_threshold) {
+        time_since_last_swap = 0;
+        swap_area();
+    }
+    time_threshold = EPIX_WORLD_SAND_DEFAULT_CHUNK_RESET_TIME;
+}
 EPIX_API Cell& Simulation::Chunk::get(int x, int y) { return cells(x, y); }
 EPIX_API const Cell& Simulation::Chunk::get(int x, int y) const {
     return cells(x, y);
@@ -112,7 +137,10 @@ EPIX_API Cell& Simulation::Chunk::create(
     return cell;
 }
 EPIX_API void Simulation::Chunk::swap_area() {
-    std::swap(updating_area, updating_area_next);
+    updating_area[0]      = updating_area_next[0];
+    updating_area[1]      = updating_area_next[1];
+    updating_area[2]      = updating_area_next[2];
+    updating_area[3]      = updating_area_next[3];
     updating_area_next[0] = width;
     updating_area_next[1] = 0;
     updating_area_next[2] = height;
@@ -166,11 +194,11 @@ EPIX_API bool Simulation::ChunkMap::contains(int x, int y) const {
     return chunks.contains(x, y);
 }
 EPIX_API Simulation::Chunk& Simulation::ChunkMap::get_chunk(int x, int y) {
-    return *chunks(x, y);
+    return chunks(x, y);
 }
 EPIX_API const Simulation::Chunk& Simulation::ChunkMap::get_chunk(int x, int y)
     const {
-    return *chunks(x, y);
+    return chunks(x, y);
 }
 EPIX_API size_t Simulation::ChunkMap::chunk_count() const {
     return chunks.count();
@@ -417,11 +445,6 @@ EPIX_API void Simulation::ChunkMap::reset_updated() {
 EPIX_API void Simulation::ChunkMap::count_time() {
     for (auto&& [pos, chunk] : *this) {
         chunk.count_time();
-        if (chunk.time_since_last_swap > chunk.time_threshold) {
-            chunk.time_since_last_swap = 0;
-            chunk.swap_area();
-        }
-        chunk.time_threshold = EPIX_WORLD_SAND_DEFAULT_CHUNK_RESET_TIME;
     }
 }
 
@@ -543,9 +566,7 @@ EPIX_API const Cell& Simulation::get_cell(int x, int y) const {
 }
 EPIX_API const Element& Simulation::get_elem(int x, int y) const {
     assert(contain_cell(x, y));
-    auto id = get_cell(x, y).elem_id;
-    assert(id >= 0);
-    return m_registry.get_elem(id);
+    return m_registry.get_elem(get_cell(x, y).elem_id);
 }
 EPIX_API void Simulation::remove(int x, int y) {
     assert(valid(x, y));
@@ -1534,10 +1555,17 @@ void epix::world::sand::components::update_cell(
     }
 }
 EPIX_API void Simulation::update_multithread(float delta) {
-    std::vector<std::pair<int, int>> modres = {{0, 0}, {1, 0}, {0, 1}, {1, 1}};
-    reset_updated();
+    std::vector<std::pair<int, int>> modres;
+    int mod = 2;
+    modres.reserve(mod * mod);
+    for (int i = 0; i < mod; i++) {
+        for (int j = 0; j < mod; j++) {
+            modres.push_back({i, j});
+        }
+    }
+    // reset_updated();
     update_state.next();
-    m_chunk_map.count_time();
+    // m_chunk_map.count_time();
     static thread_local std::random_device rd;
     static thread_local std::mt19937 gen(rd());
     std::shuffle(modres.begin(), modres.end(), gen);
@@ -1550,18 +1578,13 @@ EPIX_API void Simulation::update_multithread(float delta) {
         yorder  = dis(gen) > 0;
         x_outer = dis(gen) > 0;
     }
-    std::vector<glm::ivec2> chunks_to_update;
-    chunks_to_update.reserve(m_chunk_map.chunk_count());
     m_chunk_map.set_iterate_setting(xorder, yorder, x_outer);
-    for (auto&& [pos, chunk] : m_chunk_map) {
-        chunks_to_update.push_back(pos);
-    }
     for (auto&& [xmod, ymod] : modres) {
-        for (auto pos : chunks_to_update) {
-            if ((pos.x + xmod) % 2 == 0 && (pos.y + ymod) % 2 == 0) {
-                m_thread_pool->submit_task([=]() {
-                    auto& chunk = m_chunk_map.get_chunk(pos.x, pos.y);
-                    if (!chunk.should_update()) return;
+        for (auto&& [pos, chunk] : m_chunk_map) {
+            if ((pos.x + xmod) % mod == 0 && (pos.y + ymod) % mod == 0) {
+                if (!chunk.should_update()) continue;
+                m_thread_pool->submit_task([=, &chunk]() {
+                    chunk.reset_updated();
                     std::tuple<int, int, int> xbounds, ybounds;
                     xbounds = {
                         xorder ? chunk.updating_area[0]
@@ -1596,6 +1619,7 @@ EPIX_API void Simulation::update_multithread(float delta) {
                             );
                         }
                     }
+                    chunk.count_time();
                 });
             }
         }

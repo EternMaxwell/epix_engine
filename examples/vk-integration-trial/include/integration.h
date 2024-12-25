@@ -114,11 +114,11 @@ void create_pixel_block_with_collision(
     for (auto& block : blocks_bin) {
         glm::ivec2 offset;
         auto shrinked = shrink(block, &offset);
-        blocks.emplace_back(
-            PixelBlockWrapper(shrinked.width, shrinked.height), offset
-        );
-        for (int i = 0; i < shrinked.width; i++) {
-            for (int j = 0; j < shrinked.height; j++) {
+        auto size     = shrinked.size();
+        auto width = size.x, height = size.y;
+        blocks.emplace_back(PixelBlockWrapper(width, height), offset);
+        for (int i = 0; i < width; i++) {
+            for (int j = 0; j < height; j++) {
                 if (shrinked.contains(i, j)) {
                     blocks.back().first.block[{i, j}] =
                         m_block.block[offset + glm::ivec2(i, j)];
@@ -612,7 +612,7 @@ using namespace epix::world::sand::components;
 constexpr int CHUNK_SIZE                = 32;
 constexpr float scale                   = 1.0f;
 constexpr bool enable_collision         = true;
-constexpr bool render_collision_outline = true;
+constexpr bool render_collision_outline = false;
 
 void create_simulation(Command command) {
     spdlog::info("Creating falling sand simulation");
@@ -1065,7 +1065,7 @@ void render_simulation_chunk_outline(
         if constexpr (render_collision_outline) {
             if (sim_collisions.collisions.contains(pos.x, pos.y)) {
                 auto& collision_outline =
-                    sim_collisions.collisions.get(pos.x, pos.y)->collisions;
+                    sim_collisions.collisions.get(pos.x, pos.y).collisions;
                 for (auto&& outlines : collision_outline) {
                     for (auto&& outline : outlines) {
                         for (size_t i = 0; i < outline.size(); i++) {
@@ -1116,7 +1116,7 @@ void render_simulation_collision(
     for (auto&& [pos, chunk] : simulation.chunk_map()) {
         if (sim_collisions.collisions.contains(pos.x, pos.y)) {
             auto body =
-                sim_collisions.collisions.get(pos.x, pos.y)->user_data.first;
+                sim_collisions.collisions.get(pos.x, pos.y).user_data.first;
             if (!b2Body_IsValid(body)) continue;
             auto shape_count = b2Body_GetShapeCount(body);
             auto shapes      = new b2ShapeId[shape_count];
@@ -1262,7 +1262,7 @@ struct VK_TrialPlugin : Plugin {
         app.add_system(Update, step_simulation).in_state(SimulateState::Paused);
         app.add_system(PreUpdate, toggle_full_screen);
         app.add_system(
-               Render, render_simulation /* , render_simulation_chunk_outline,
+               Render, render_simulation , render_simulation_chunk_outline/* ,
                 render_simulation_cell_vel, render_simulation_state */
         )
             .chain()
