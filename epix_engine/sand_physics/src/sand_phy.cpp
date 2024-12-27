@@ -5,6 +5,7 @@
 struct ChunkConverter {
     const epix::world::sand::components::Simulation& sim;
     const epix::world::sand::components::Simulation::Chunk& chunk;
+    const bool should_update = chunk.should_update();
 
     bool contains(int x, int y) const {
         if (!chunk.contains(x, y)) return false;
@@ -12,7 +13,7 @@ struct ChunkConverter {
         auto& elem = sim.registry().get_elem(cell.elem_id);
         if (elem.is_solid()) return true;
         if (elem.is_gas() || elem.is_liquid()) return false;
-        if (elem.is_powder() && cell.freefall) return false;
+        if (elem.is_powder() && cell.freefall && should_update) return false;
         return true;
     }
     glm::ivec2 size() const { return chunk.size(); }
@@ -31,7 +32,23 @@ EPIX_API SimulationCollisions<void>::SimulationCollisions()
     : thread_pool(
           std::make_unique<BS::thread_pool>(std::thread::hardware_concurrency())
       ) {}
-EPIX_API void SimulationCollisions<void>::clear_modified() { modified.clear(); }
+EPIX_API void SimulationCollisions<void>::sync(
+    const epix::world::sand::components::Simulation& sim
+) {
+    for (auto pos : cached) {
+        if (!sim.chunk_map().contains(pos.x, pos.y)) continue;
+        auto& chunk = sim.chunk_map().get_chunk(pos.x, pos.y);
+        if (!collisions.contains(pos.x, pos.y) || !chunk.should_update())
+            continue;
+        thread_pool->submit_task([this, &sim, &chunk, pos]() {
+            auto& chunk_collision = collisions.get(pos.x, pos.y);
+            chunk_collision.has_collision =
+                get_chunk_collision(sim, chunk, chunk_collision.collisions);
+        });
+    }
+    thread_pool->wait();
+}
+EPIX_API void SimulationCollisions<void>::clear_modified() { cached.clear(); }
 
 EPIX_API SimulationCollisionGeneral::PositionConverter
 SimulationCollisionGeneral::pos_converter(
@@ -47,17 +64,22 @@ SimulationCollisionGeneral::pos_converter(
 }
 EPIX_API SimulationCollisionGeneral::SimulationCollisionGeneral()
     : SimulationCollisions() {}
-EPIX_API void SimulationCollisionGeneral::sync(
+EPIX_API void SimulationCollisionGeneral::cache(
     const epix::world::sand::components::Simulation& sim
 ) {
-    SimulationCollisions::sync(
+    SimulationCollisions::cache(
         sim, std::make_pair(b2_nullBodyId, std::vector<b2ChainId>())
     );
 }
 EPIX_API void SimulationCollisionGeneral::sync(
+    const epix::world::sand::components::Simulation& sim
+) {
+    SimulationCollisions::sync(sim);
+}
+EPIX_API void SimulationCollisionGeneral::sync(
     b2WorldId world, const PositionConverter& converter
 ) {
-    for (auto&& pos : modified) {
+    for (auto&& pos : cached) {
         if (!collisions.contains(pos.x, pos.y)) continue;
         auto real_pos = glm::ivec2(
             converter.chunk_size * pos.x - converter.offset.x,

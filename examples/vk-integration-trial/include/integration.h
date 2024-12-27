@@ -699,6 +699,8 @@ void create_simulation(Command command) {
     );
 }
 
+constexpr int input_size = 16;
+
 void create_element_from_click(
     Query<Get<Simulation>> query,
     Query<
@@ -706,7 +708,8 @@ void create_element_from_click(
             const ButtonInput<MouseButton>,
             const ButtonInput<KeyCode>>> window_query,
     ResMut<epix::imgui::ImGuiContext> imgui_context,
-    Local<std::optional<int>> elem_id
+    Local<std::optional<int>> elem_id,
+    Local<std::optional<glm::vec2>> last_cursor
 ) {
     if (!query) return;
     if (!window_query) return;
@@ -746,20 +749,42 @@ void create_element_from_click(
             glm::translate(glm::mat4(1.0f), {0.0f, 0.0f, 0.0f}),
             {scale, scale, 1.0f}
         ));
-        glm::vec4 world_pos         = viewport_to_world * cursor_pos;
-        int cell_x                  = static_cast<int>(world_pos.x);
-        int cell_y                  = static_cast<int>(world_pos.y);
-        for (int tx = cell_x - 8; tx < cell_x + 8; tx++) {
-            for (int ty = cell_y - 8; ty < cell_y + 8; ty++) {
-                if (simulation.valid(tx, ty)) {
-                    if (mouse_input.pressed(epix::input::MouseButton1)) {
-                        simulation.create(tx, ty, CellDef(elem_id->value()));
-                    } else if (mouse_input.pressed(epix::input::MouseButton2)) {
-                        simulation.remove(tx, ty);
+        glm::vec4 world_pos1        = viewport_to_world * cursor_pos;
+        glm::vec2 world_pos2        = world_pos1;
+        if (last_cursor->has_value()) {
+            world_pos2 = last_cursor->value();
+        }
+        float distance = std::sqrt(
+            (world_pos1.x - world_pos2.x) * (world_pos1.x - world_pos2.x) +
+            (world_pos1.y - world_pos2.y) * (world_pos1.y - world_pos2.y)
+        );
+        int count = std::max(distance * 2 / input_size, 1.0f);
+        for (int i = 0; i < count; i++) {
+            int cell_x = static_cast<int>(
+                world_pos1.x * i / count + world_pos2.x * (count - i) / count
+            );
+            int cell_y = static_cast<int>(
+                world_pos1.y * i / count + world_pos2.y * (count - i) / count
+            );
+            for (int tx = cell_x - input_size; tx < cell_x + input_size; tx++) {
+                for (int ty = cell_y - input_size; ty < cell_y + input_size;
+                     ty++) {
+                    if (simulation.valid(tx, ty)) {
+                        if (mouse_input.pressed(epix::input::MouseButton1)) {
+                            simulation.create(
+                                tx, ty, CellDef(elem_id->value())
+                            );
+                        } else if (mouse_input.pressed(epix::input::MouseButton2
+                                   )) {
+                            simulation.remove(tx, ty);
+                        }
                     }
                 }
             }
         }
+        *last_cursor = world_pos1;
+    } else {
+        last_cursor->reset();
     }
 }
 
@@ -801,8 +826,11 @@ void update_simulation(
     auto [simulation, sim_collisions] = query.single();
     auto count                        = timer->value().tick();
     for (int i = 0; i <= count; i++) {
+        epix::time_scope a("Update simulation");
         simulation.update_multithread((float)timer->value().interval);
-        if constexpr (enable_collision) sim_collisions.sync(simulation);
+        if constexpr (enable_collision) {
+            sim_collisions.cache(simulation);
+        }
         return;
     }
 }
@@ -872,7 +900,10 @@ void render_simulation(
         for (int i = 0; i < chunk.size().x; i++) {
             for (int j = 0; j < chunk.size().y; j++) {
                 auto& elem = chunk.get(i, j);
-                if (elem) renderer.draw(elem.color, {i, j});
+                if (elem)
+                    renderer.draw(
+                        elem.freefall ? elem.color : elem.color * 0.5f, {i, j}
+                    );
             }
         }
     }
@@ -1190,8 +1221,8 @@ void toggle_input_state(
 
 void sync_simulatino_with_b2d(
     Query<
-        Get<epix::world::sand_physics::SimulationCollisionGeneral>,
-        With<Simulation>> simulation_query,
+        Get<epix::world::sand_physics::SimulationCollisionGeneral, Simulation>>
+        simulation_query,
     Query<Get<b2WorldId>> world_query,
     Local<std::optional<RepeatTimer>> timer
 ) {
@@ -1200,9 +1231,11 @@ void sync_simulatino_with_b2d(
     if (!timer->has_value()) {
         *timer = RepeatTimer(1.0 / 5);
     }
-    auto [collisions] = simulation_query.single();
-    auto [world]      = world_query.single();
+    auto [collisions, sim] = simulation_query.single();
+    auto [world]           = world_query.single();
     if (timer->value().tick() > 0) {
+        epix::time_scope a("Sync simulation with b2d");
+        collisions.sync(sim);
         collisions.sync(
             world, collisions.pos_converter(CHUNK_SIZE, scale, {0, 0})
         );
@@ -1262,7 +1295,7 @@ struct VK_TrialPlugin : Plugin {
         app.add_system(Update, step_simulation).in_state(SimulateState::Paused);
         app.add_system(PreUpdate, toggle_full_screen);
         app.add_system(
-               Render, render_simulation , render_simulation_chunk_outline/* ,
+               Render, render_simulation, render_simulation_chunk_outline /* ,
                 render_simulation_cell_vel, render_simulation_state */
         )
             .chain()

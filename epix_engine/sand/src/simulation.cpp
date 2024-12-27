@@ -3,7 +3,7 @@
 
 #include "epix/world/sand.h"
 
-#define EPIX_WORLD_SAND_DEFAULT_CHUNK_RESET_TIME 24i32
+#define EPIX_WORLD_SAND_DEFAULT_CHUNK_RESET_TIME 8i32
 
 using namespace epix::world::sand::components;
 
@@ -145,6 +145,18 @@ EPIX_API void Simulation::Chunk::swap_area() {
     updating_area_next[1] = 0;
     updating_area_next[2] = height;
     updating_area_next[3] = 0;
+    if (!should_update()) {
+        for (auto& each : cells.data()) {
+            if (each) {
+                each.freefall = false;
+                each.velocity = {0.0f, 0.0f};
+            }
+        }
+    }
+}
+EPIX_API bool Simulation::Chunk::in_area(int x, int y) const {
+    return x >= updating_area_next[0] && x <= updating_area_next[1] &&
+           y >= updating_area_next[2] && y <= updating_area_next[3];
 }
 EPIX_API void Simulation::Chunk::remove(int x, int y) {
     assert(x >= 0 && x < width && y >= 0 && y < height);
@@ -155,6 +167,12 @@ EPIX_API bool Simulation::Chunk::is_updated(int x, int y) const {
 }
 EPIX_API void Simulation::Chunk::touch(int x, int y) {
     assert(x >= 0 && x < width && y >= 0 && y < height);
+    if (!should_update()) {
+        updating_area[0] = 0;
+        updating_area[1] = width - 1;
+        updating_area[2] = 0;
+        updating_area[3] = height - 1;
+    }
     if (x < updating_area[0]) updating_area[0] = x;
     if (x > updating_area[1]) updating_area[1] = x;
     if (y < updating_area[2]) updating_area[2] = y;
@@ -664,13 +682,14 @@ void epix::world::sand::components::update_cell(
     auto [chunk_x, chunk_y] = sim.to_chunk_pos(x_, y_);
     auto [cell_x, cell_y]   = sim.to_in_chunk_pos(x_, y_);
     auto& chunk             = sim.chunk_map().get_chunk(chunk_x, chunk_y);
-    int final_x             = x_;
-    int final_y             = y_;
-    if (chunk.is_updated(cell_x, cell_y)) return;
-    if (!sim.contain_cell(x_, y_)) return;
-    auto [cell, elem] = sim.get(x_, y_);
-    auto grav         = sim.get_grav(x_, y_);
-    cell.updated      = true;
+    auto& cell              = chunk.get(cell_x, cell_y);
+    if (!cell || cell.updated) return;
+    auto& elem = sim.registry().get_elem(cell.elem_id);
+    if (elem.is_solid()) return;
+    int final_x  = x_;
+    int final_y  = y_;
+    auto grav    = sim.get_grav(x_, y_);
+    cell.updated = true;
     if (elem.is_powder()) {
         {
             int liquid_count     = 0;
@@ -959,8 +978,10 @@ void epix::world::sand::components::update_cell(
                 cell.freefall       = false;
                 cell.velocity       = {0.0f, 0.0f};
             }
+            if (cell.freefall) sim.touch(final_x, final_y);
         }
     } else if (elem.is_liquid()) {
+        cell.freefall = true;
         if (!cell.freefall) {
             float angle = std::atan2(grav.y, grav.x);
             // into a 8 direction
@@ -1057,6 +1078,14 @@ void epix::world::sand::components::update_cell(
                     std::round(std::cos(grav_angle + std::numbers::pi)),
                     std::round(std::sin(grav_angle + std::numbers::pi))
                 };
+                glm::ivec2 la = {
+                    std::round(std::cos(grav_angle - std::numbers::pi / 4)),
+                    std::round(std::sin(grav_angle - std::numbers::pi / 4))
+                };
+                glm::ivec2 ra = {
+                    std::round(std::cos(grav_angle + std::numbers::pi / 4)),
+                    std::round(std::sin(grav_angle + std::numbers::pi / 4))
+                };
                 glm::ivec2 l = {
                     std::round(std::cos(grav_angle - std::numbers::pi / 2)),
                     std::round(std::sin(grav_angle - std::numbers::pi / 2))
@@ -1082,6 +1111,11 @@ void epix::world::sand::components::update_cell(
                         liquid_count++;
                         liquid_density += telem.density;
                     }
+                    // if (telem.is_liquid()) {
+                    //     sim.touch(x_ + above.x, y_ + above.y);
+                    //     // sim.touch(x_ + la.x, y_ + la.y);
+                    //     // sim.touch(x_ + ra.x, y_ + ra.y);
+                    // }
                 } else {
                     empty_count++;
                 }

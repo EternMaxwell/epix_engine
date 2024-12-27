@@ -55,4 +55,44 @@ template <typename G, typename I = With<>, typename E = Without<>>
 using Extract = app::Extract<G, I, E>;
 template <typename T>
 using Local = app::Local<T>;
+
+// OTHER TOOLS
+template <typename Resolution = std::chrono::milliseconds>
+    requires std::same_as<Resolution, std::chrono::nanoseconds> ||
+             std::same_as<Resolution, std::chrono::microseconds> ||
+             std::same_as<Resolution, std::chrono::milliseconds> ||
+             std::same_as<Resolution, std::chrono::seconds> ||
+             std::same_as<Resolution, std::chrono::minutes> ||
+             std::same_as<Resolution, std::chrono::hours>
+struct time_scope {
+    std::chrono::time_point<std::chrono::high_resolution_clock> start;
+    std::string name;
+    time_scope(const std::string& name) : name(name) {
+        start = std::chrono::high_resolution_clock::now();
+    }
+    ~time_scope() {
+        auto end = std::chrono::high_resolution_clock::now();
+        auto dur = std::chrono::duration_cast<Resolution>(end - start);
+        char resolution_char;
+        if constexpr (std::same_as<Resolution, std::chrono::nanoseconds>) {
+            resolution_char = 'n';
+        } else if constexpr (std::same_as<
+                                 Resolution, std::chrono::microseconds>) {
+            resolution_char = 'u';
+        } else if constexpr (std::same_as<
+                                 Resolution, std::chrono::milliseconds>) {
+            resolution_char = 'm';
+        } else if constexpr (std::same_as<Resolution, std::chrono::seconds>) {
+            resolution_char = 's';
+        } else if constexpr (std::same_as<Resolution, std::chrono::minutes>) {
+            resolution_char = 'M';
+        } else if constexpr (std::same_as<Resolution, std::chrono::hours>) {
+            resolution_char = 'h';
+        }
+        spdlog::info("{}: {}{}s", name, dur.count(), resolution_char);
+    }
+};
 }  // namespace epix::prelude
+namespace epix {
+using namespace epix::prelude;
+}

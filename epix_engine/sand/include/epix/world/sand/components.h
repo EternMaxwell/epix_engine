@@ -135,6 +135,7 @@ struct Simulation {
             int x, int y, const CellDef& def, ElemRegistry& m_registry
         );
         EPIX_API void swap_area();
+        EPIX_API bool in_area(int x, int y) const;
         EPIX_API void remove(int x, int y);
         EPIX_API bool is_updated(int x, int y) const;
         EPIX_API void touch(int x, int y);
