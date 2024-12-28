@@ -1017,8 +1017,8 @@ void epix::world::sand::components::update_cell(
                     if (belem.is_solid()) {
                         shouldnot_freefall = true;
                     }
-                    if ((belem.is_powder() && !bcell.freefall) ||
-                        belem.is_liquid()) {
+                    if ((belem.is_powder() || belem.is_liquid()) &&
+                        !bcell.freefall) {
                         shouldnot_freefall = true;
                     }
                 }
@@ -1032,8 +1032,8 @@ void epix::world::sand::components::update_cell(
                     if (lbelem.is_solid()) {
                         shouldnot_freefall = true;
                     }
-                    if ((lbelem.is_powder() && !lbcell.freefall) ||
-                        lbelem.is_liquid()) {
+                    if ((lbelem.is_powder() || lbelem.is_liquid()) &&
+                        !lbcell.freefall) {
                         shouldnot_freefall = true;
                     }
                 }
@@ -1047,8 +1047,8 @@ void epix::world::sand::components::update_cell(
                     if (rbelem.is_solid()) {
                         shouldnot_freefall = true;
                     }
-                    if ((rbelem.is_powder() && !rbcell.freefall) ||
-                        rbelem.is_liquid()) {
+                    if ((rbelem.is_powder() || rbelem.is_liquid()) &&
+                        !rbcell.freefall) {
                         shouldnot_freefall = true;
                     }
                 }
@@ -1059,6 +1059,7 @@ void epix::world::sand::components::update_cell(
             cell.velocity = sim.get_default_vel(x_, y_);
             cell.freefall = true;
         }
+        // sim.touch(x_, y_);
         apply_viscosity(sim, cell, final_x, final_y, final_x - 1, final_y);
         apply_viscosity(sim, cell, final_x, final_y, final_x + 1, final_y);
         apply_viscosity(sim, cell, final_x, final_y, final_x, final_y - 1);
@@ -1440,7 +1441,7 @@ void epix::world::sand::components::update_cell(
             // apply_viscosity(sim, cell, final_x, final_y, x_, y_ + 1);
         } else {
             cell.not_move_count++;
-            if (cell.not_move_count >= sim.not_moving_threshold(grav) / 5) {
+            if (cell.not_move_count >= sim.not_moving_threshold(grav) / 15) {
                 cell.not_move_count = 0;
                 cell.freefall       = false;
                 cell.velocity       = {0.0f, 0.0f};

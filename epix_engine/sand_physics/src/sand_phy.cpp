@@ -67,9 +67,7 @@ EPIX_API SimulationCollisionGeneral::SimulationCollisionGeneral()
 EPIX_API void SimulationCollisionGeneral::cache(
     const epix::world::sand::components::Simulation& sim
 ) {
-    SimulationCollisions::cache(
-        sim, std::make_pair(b2_nullBodyId, std::vector<b2ChainId>())
-    );
+    SimulationCollisions::cache(sim);
 }
 EPIX_API void SimulationCollisionGeneral::sync(
     const epix::world::sand::components::Simulation& sim

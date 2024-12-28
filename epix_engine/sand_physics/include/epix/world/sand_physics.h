@@ -64,8 +64,7 @@ struct SimulationCollisions {
         for (auto pos : cached) {
             if (!sim.chunk_map().contains(pos.x, pos.y)) continue;
             auto& chunk = sim.chunk_map().get_chunk(pos.x, pos.y);
-            if (!collisions.contains(pos.x, pos.y) || !chunk.should_update())
-                continue;
+            if (!collisions.contains(pos.x, pos.y)) continue;
             thread_pool->submit_task([this, &sim, &chunk, pos]() {
                 auto& chunk_collision = collisions.get(pos.x, pos.y);
                 chunk_collision.has_collision =
@@ -104,7 +103,7 @@ struct SimulationCollisions<void> {
     ) {
         for (auto [pos, chunk] : sim.chunk_map()) {
             if (!chunk.should_update()) continue;
-            cached.insert(pos);
+            cached.emplace(pos);
             collisions.try_emplace(pos.x, pos.y, std::forward<Args>(args)...);
         }
         // for (auto [pos, chunk] : sim.chunk_map()) {
