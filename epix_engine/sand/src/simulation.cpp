@@ -821,6 +821,7 @@ void epix::world::sand::components::update_cell(
             cell.velocity = sim.get_default_vel(x_, y_);
             cell.freefall = true;
         }
+        sim.touch(x_, y_);
         cell.velocity += grav * delta;
         cell.velocity *= 0.99f;
         cell.inpos += cell.velocity * delta;
@@ -978,7 +979,6 @@ void epix::world::sand::components::update_cell(
                 cell.freefall       = false;
                 cell.velocity       = {0.0f, 0.0f};
             }
-            if (cell.freefall) sim.touch(final_x, final_y);
         }
     } else if (elem.is_liquid()) {
         cell.freefall = true;
