@@ -44,10 +44,30 @@ template <typename T>
 concept SetBoolGrid = BoolGrid<T> && requires(T t) {
     { t.set(0i32, 0i32, true) };
 };
+template <typename T, typename U>
+concept Boolifiable = requires(T t, U u) {
+    { u.operator()(t) } -> std::same_as<bool>;
+};
 template <typename T>
-    requires std::convertible_to<T, bool> && requires(T t) {
+    requires std::convertible_to<T, bool> || requires(T t) {
+        { (bool)t } -> std::same_as<bool>;
         { !t } -> std::same_as<bool>;
     }
+struct boolify {
+    bool operator()(const T& t) const {
+        if constexpr (std::convertible_to<T, bool>) {
+            return static_cast<bool>(t);
+        } else {
+            return (bool)t;
+        }
+    }
+};
+template <>
+struct boolify<bool> {
+    bool operator()(bool t) const { return t; }
+};
+template <typename T, typename Boolify = boolify<T>>
+    requires Boolifiable<T, Boolify>
 struct Grid2D {
    private:
     int width;
@@ -107,13 +127,13 @@ struct Grid2D {
         return x >= 0 && x < width && y >= 0 && y < height;
     }
     bool contains(int x, int y) const {
-        return valid(x, y) && (bool)(*this)(x, y);
+        return valid(x, y) && Boolify()((*this)(x, y));
     }
     glm::ivec2 size() const { return {width, height}; }
     std::vector<T>& data() { return _data; }
 };
 template <>
-struct Grid2D<bool> {
+struct Grid2D<bool, boolify<bool>> {
    private:
     int width;
     int height;
@@ -219,10 +239,12 @@ struct Grid2D<bool> {
     glm::ivec2 size() const { return {width, height}; }
 };
 
-template <typename T, size_t width, size_t height>
-    requires std::convertible_to<T, bool> && requires(T t) {
-        { !t } -> std::same_as<bool>;
-    }
+template <
+    typename T,
+    size_t width,
+    size_t height,
+    typename Boolify = boolify<T>>
+    requires Boolifiable<T, Boolify>
 struct Grid2DOnStack {
     std::array<T, width * height> data;
     Grid2DOnStack() = default;
@@ -255,14 +277,14 @@ struct Grid2DOnStack {
     }
     bool contains(int x, int y) const {
         return x >= 0 && x < width && y >= 0 && y < height &&
-               (bool)(*this)(x, y);
+               Boolify()((*this)(x, y));
     }
     T& operator()(int x, int y) { return data[x + y * width]; }
     const T& operator()(int x, int y) const { return data[x + y * width]; }
     glm::ivec2 size() const { return {width, height}; }
 };
 template <size_t width, size_t height>
-struct Grid2DOnStack<bool, width, height> {
+struct Grid2DOnStack<bool, width, height, boolify<bool>> {
     static constexpr int column = width / 32 + (width % 32 ? 1 : 0);
     std::array<uint32_t, column * height> data;
     Grid2DOnStack() = default;
@@ -312,12 +334,19 @@ struct GridOpArea {
     }
 };
 
-template <typename T, typename U, size_t width, size_t height>
-Grid2DOnStack<T, width, height> op_and(
-    const Grid2DOnStack<T, width, height>& a,
-    const Grid2DOnStack<U, width, height>& b
+template <
+    typename T,
+    typename U,
+    size_t width,
+    size_t height,
+    typename TB,
+    typename UB>
+    requires std::copyable<T>
+Grid2DOnStack<T, width, height, TB> op_and(
+    const Grid2DOnStack<T, width, height, TB>& a,
+    const Grid2DOnStack<U, width, height, UB>& b
 ) {
-    Grid2DOnStack<T, width, height> result;
+    Grid2DOnStack<T, width, height, TB> result;
     for (int y = 0; y < height; y++) {
         for (int x = 0; x < width; x++) {
             if (b.contains(x, y)) {
@@ -327,17 +356,17 @@ Grid2DOnStack<T, width, height> op_and(
     }
     return result;
 }
-template <typename U, size_t width, size_t height>
+template <typename U, size_t width, size_t height, typename UB>
 Grid2DOnStack<bool, width, height> operator&(
     const Grid2DOnStack<bool, width, height>& a,
-    const Grid2DOnStack<U, width, height>& b
+    const Grid2DOnStack<U, width, height, UB>& b
 ) {
     return op_and(a, b);
 }
-template <typename U, size_t width, size_t height>
+template <typename U, size_t width, size_t height, typename UB>
 Grid2DOnStack<bool, width, height> op_or(
     const Grid2DOnStack<bool, width, height>& a,
-    const Grid2DOnStack<U, width, height>& b
+    const Grid2DOnStack<U, width, height, UB>& b
 ) {
     Grid2DOnStack<bool, width, height> result;
     for (int y = 0; y < height; y++) {
@@ -347,17 +376,17 @@ Grid2DOnStack<bool, width, height> op_or(
     }
     return result;
 }
-template <typename U, size_t width, size_t height>
+template <typename U, size_t width, size_t height, typename UB>
 Grid2DOnStack<bool, width, height> operator|(
     const Grid2DOnStack<bool, width, height>& a,
-    const Grid2DOnStack<U, width, height>& b
+    const Grid2DOnStack<U, width, height, UB>& b
 ) {
     return op_or(a, b);
 }
-template <typename U, size_t width, size_t height>
+template <typename U, size_t width, size_t height, typename UB>
 Grid2DOnStack<bool, width, height> op_xor(
     const Grid2DOnStack<bool, width, height>& a,
-    const Grid2DOnStack<U, width, height>& b
+    const Grid2DOnStack<U, width, height, UB>& b
 ) {
     Grid2DOnStack<bool, width, height> result;
     for (int y = 0; y < height; y++) {
@@ -367,16 +396,16 @@ Grid2DOnStack<bool, width, height> op_xor(
     }
     return result;
 }
-template <typename U, size_t width, size_t height>
+template <typename U, size_t width, size_t height, typename UB>
 Grid2DOnStack<bool, width, height> operator^(
     const Grid2DOnStack<bool, width, height>& a,
-    const Grid2DOnStack<U, width, height>& b
+    const Grid2DOnStack<U, width, height, UB>& b
 ) {
     return op_xor(a, b);
 }
-template <typename T, size_t width, size_t height>
+template <typename T, size_t width, size_t height, typename TB>
 Grid2DOnStack<bool, width, height> op_not(
-    const Grid2DOnStack<T, width, height>& a
+    const Grid2DOnStack<T, width, height, TB>& a
 ) {
     Grid2DOnStack<bool, width, height> result;
     for (int y = 0; y < height; y++) {
@@ -393,16 +422,16 @@ Grid2DOnStack<bool, width, height> operator~(
     return op_not(a);
 }
 
-template <typename T, typename U>
+template <typename T, typename U, typename TB, typename UB>
     requires std::copyable<T>
-Grid2D<T> op_and(
-    const Grid2D<T>& a,
-    const Grid2D<U>& b,
+Grid2D<T, TB> op_and(
+    const Grid2D<T, TB>& a,
+    const Grid2D<U, UB>& b,
     const GridOpArea& area =
         {0, 0, 0, 0, std::min(a.size().x, b.size().x),
          std::min(a.size().y, b.size().y)}
 ) {
-    Grid2D<T> result(area.width, area.height);
+    Grid2D<T, TB> result(area.width, area.height);
     for (int y = 0; y < area.height; y++) {
         for (int x = 0; x < area.width; x++) {
             if (b.contains(x + area.x1, y + area.y1)) {
@@ -412,9 +441,9 @@ Grid2D<T> op_and(
     }
     return result;
 }
-template <typename U>
+template <typename U, typename UB>
 Grid2D<bool> op_and(
-    const Grid2D<bool>& a, const Grid2D<U>& b, const GridOpArea& area
+    const Grid2D<bool>& a, const Grid2D<U, UB>& b, const GridOpArea& area
 ) {
     Grid2D<bool> result(area.width, area.height);
     for (int y = 0; y < area.height; y++) {
@@ -428,17 +457,17 @@ Grid2D<bool> op_and(
     }
     return result;
 }
-template <typename T, typename U>
-Grid2D<T> operator&(const Grid2D<T>& a, const Grid2D<U>& b) {
+template <typename T, typename U, typename TB, typename UB>
+Grid2D<T, TB> operator&(const Grid2D<T, TB>& a, const Grid2D<U, UB>& b) {
     return op_and(
         a, b,
         {0, 0, 0, 0, std::min(a.size().x, b.size().x),
          std::min(a.size().y, b.size().y)}
     );
 }
-template <typename T, typename U>
+template <typename T, typename U, typename TB, typename UB>
 Grid2D<bool> op_or(
-    const Grid2D<T>& a, const Grid2D<U>& b, const GridOpArea& area
+    const Grid2D<T, TB>& a, const Grid2D<U, UB>& b, const GridOpArea& area
 ) {
     Grid2D<bool> result(area.width, area.height);
     for (int y = 0; y < area.height; y++) {
@@ -452,17 +481,17 @@ Grid2D<bool> op_or(
     }
     return result;
 }
-template <typename T, typename U>
-Grid2D<bool> operator|(const Grid2D<T>& a, const Grid2D<U>& b) {
+template <typename T, typename U, typename TB, typename UB>
+Grid2D<bool> operator|(const Grid2D<T, TB>& a, const Grid2D<U, UB>& b) {
     return op_or(
         a, b,
         {0, 0, 0, 0, std::min(a.size().x, b.size().x),
          std::min(a.size().y, b.size().y)}
     );
 }
-template <typename T, typename U>
+template <typename T, typename U, typename TB, typename UB>
 Grid2D<bool> op_xor(
-    const Grid2D<T>& a, const Grid2D<U>& b, const GridOpArea& area
+    const Grid2D<T, TB>& a, const Grid2D<U, UB>& b, const GridOpArea& area
 ) {
     Grid2D<bool> result(area.width, area.height);
     for (int y = 0; y < area.height; y++) {
@@ -476,16 +505,16 @@ Grid2D<bool> op_xor(
     }
     return result;
 }
-template <typename T, typename U>
-Grid2D<bool> operator^(const Grid2D<T>& a, const Grid2D<U>& b) {
+template <typename T, typename U, typename TB, typename UB>
+Grid2D<bool> operator^(const Grid2D<T, TB>& a, const Grid2D<U, UB>& b) {
     return op_xor(
         a, b,
         {0, 0, 0, 0, std::min(a.size().x, b.size().x),
          std::min(a.size().y, b.size().y)}
     );
 }
-template <typename T>
-Grid2D<bool> op_not(const Grid2D<T>& a, const GridOpArea& area) {
+template <typename T, typename TB>
+Grid2D<bool> op_not(const Grid2D<T, TB>& a, const GridOpArea& area) {
     Grid2D<bool> result(area.width, area.height);
     for (int y = 0; y < area.height; y++) {
         for (int x = 0; x < area.width; x++) {
@@ -494,8 +523,8 @@ Grid2D<bool> op_not(const Grid2D<T>& a, const GridOpArea& area) {
     }
     return result;
 }
-template <typename T>
-Grid2D<bool> operator~(const Grid2D<T>& a) {
+template <typename T, typename TB>
+Grid2D<bool> operator~(const Grid2D<T, TB>& a) {
     return op_not(a, GridOpArea{0, 0, 0, 0, a.size().x, a.size().y});
 }
 
