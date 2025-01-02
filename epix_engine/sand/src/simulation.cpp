@@ -692,9 +692,10 @@ void epix::world::sand::components::update_cell(
     cell.updated = true;
     if (elem.is_powder()) {
         {
-            int liquid_count     = 0;
-            int empty_count      = 0;
-            float liquid_density = 0.0f;
+            int liquid_count         = 0;
+            int empty_count          = 0;
+            float liquid_density     = 0.0f;
+            int b_lb_rb_not_freefall = 0;
             if (grav != glm::vec2(0.0f, 0.0f)) {
                 float grav_angle = std::atan2(grav.y, grav.x);
                 glm::ivec2 below = {
@@ -719,6 +720,9 @@ void epix::world::sand::components::update_cell(
                     if (telem.is_liquid()) {
                         liquid_count++;
                         liquid_density += telem.density;
+                    }
+                    if (telem.is_powder() && !tcell.freefall) {
+                        b_lb_rb_not_freefall++;
                     }
                 } else {
                     empty_count++;
@@ -751,6 +755,9 @@ void epix::world::sand::components::update_cell(
                                 liquid_drag * vel_hori +
                                 (1.0f - liquid_drag) * cell.velocity;
                     }
+                    if (telem.is_powder() && !tcell.freefall) {
+                        b_lb_rb_not_freefall++;
+                    }
                 } else {
                     empty_count++;
                 }
@@ -770,9 +777,16 @@ void epix::world::sand::components::update_cell(
                                 liquid_drag * vel_hori +
                                 (1.0f - liquid_drag) * cell.velocity;
                     }
+                    if (telem.is_powder() && !tcell.freefall) {
+                        b_lb_rb_not_freefall++;
+                    }
                 } else {
                     empty_count++;
                 }
+            }
+            if (b_lb_rb_not_freefall == 3) {
+                cell.freefall = false;
+                cell.velocity = {0.0f, 0.0f};
             }
             if (liquid_count > empty_count) {
                 liquid_density /= liquid_count;
