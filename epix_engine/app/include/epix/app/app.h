@@ -3,7 +3,47 @@
 #include "common.h"
 #include "runner.h"
 
-namespace epix::prelude {
+// namespace epix::prelude {
+// enum MainStartupStage {
+//     PreStartup,
+//     Startup,
+//     PostStartup,
+// };
+// enum MainTransitStage {
+//     Transit,
+// };
+// enum MainLoopStage {
+//     First,
+//     PreUpdate,
+//     Update,
+//     PostUpdate,
+//     Last,
+// };
+// enum MainExitStage {
+//     PreExit,
+//     Exit,
+//     PostExit,
+// };
+// enum RenderStartupStage {
+//     PreRenderStartup,
+//     RenderStartup,
+//     PostRenderStartup,
+// };
+// enum RenderLoopStage {
+//     Prepare,
+//     PreRender,
+//     Render,
+//     PostRender,
+// };
+// enum RenderExitStage {
+//     PreRenderExit,
+//     RenderExit,
+//     PostRenderExit,
+// };
+// }  // namespace epix::prelude
+namespace epix::app {
+// using namespace epix::prelude;
+namespace stages {
 enum MainStartupStage {
     PreStartup,
     Startup,
@@ -40,9 +80,10 @@ enum RenderExitStage {
     RenderExit,
     PostRenderExit,
 };
-}  // namespace epix::prelude
-namespace epix::app {
-using namespace epix::prelude;
+enum ExtractStage {
+    Extraction,
+};
+}  // namespace stages
 struct AppExit {};
 struct App;
 struct MainSubApp {};

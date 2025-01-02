@@ -26,6 +26,9 @@ using Bundle   = internal_components::Bundle;
 using Parent   = internal_components::Parent;
 using Children = internal_components::Children;
 
+// STAGES
+using namespace app::stages;
+
 // EVENTS
 using AppExit = app::AppExit;
 

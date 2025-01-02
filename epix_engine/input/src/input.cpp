@@ -141,11 +141,11 @@ EPIX_API InputPlugin &InputPlugin::disable_output() {
 EPIX_API void InputPlugin::build(App &app) {
     app.add_event<events::KeyEvent>();
     app.add_event<events::MouseButtonEvent>();
-    app.add_system(app::Startup, create_input_for_window)
-        ->add_system(app::First, create_input_for_window, update_input)
+    app.add_system(epix::Startup, create_input_for_window)
+        ->add_system(epix::First, create_input_for_window, update_input)
         .after(window::systems::poll_events)
         .use_worker("single");
     if (enable_output_event) {
-        app.add_system(app::PreUpdate, output_event);
+        app.add_system(epix::PreUpdate, output_event);
     }
 }
