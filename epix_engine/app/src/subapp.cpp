@@ -1,4 +1,4 @@
-#include "epix/app/subapp.h"
+#include "epix/app.h"
 
 using namespace epix::app;
 

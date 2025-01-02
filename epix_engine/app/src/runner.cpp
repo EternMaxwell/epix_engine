@@ -1,4 +1,4 @@
-#include "epix/app/runner.h"
+#include "epix/app.h"
 
 using namespace epix::app;
 

@@ -1,4 +1,4 @@
-#include "epix/app/stage_runner.h"
+#include "epix/app.h"
 
 using namespace epix::app;
 
