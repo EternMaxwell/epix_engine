@@ -12,9 +12,11 @@
 #include <earcut.hpp>
 #include <random>
 #include <stack>
+#include <tracy/Tracy.hpp>
 
 #include "fragment_shader.h"
 #include "vertex_shader.h"
+
 
 using namespace epix::prelude;
 using namespace epix::window;
@@ -826,7 +828,7 @@ void update_simulation(
     auto [simulation, sim_collisions] = query.single();
     auto count                        = timer->value().tick();
     for (int i = 0; i <= count; i++) {
-        epix::time_scope a("Update simulation");
+        ZoneScopedN("Update simulation");
         simulation.update_multithread((float)timer->value().interval);
         if constexpr (enable_collision) {
             sim_collisions.cache(simulation);
@@ -882,6 +884,7 @@ void render_simulation(
     auto [device, swap_chain, queue] = context_query.single();
     auto [renderer]                  = renderer_query.single();
     auto [simulation]                = query.single();
+    ZoneScopedN("Render simulation");
     PixelUniformBuffer uniform_buffer;
     uniform_buffer.proj = glm::ortho(
         -static_cast<float>(swap_chain.extent.width) / 2.0f,
@@ -1063,6 +1066,7 @@ void render_simulation_chunk_outline(
     auto [device, swap_chain, queue]  = context_query.single();
     auto [line_drawer]                = line_drawer_query.single();
     auto [simulation, sim_collisions] = query.single();
+    ZoneScopedN("Render simulation collision");
     line_drawer.begin(device, queue, swap_chain);
     float alpha = 0.3f;
     for (auto&& [pos, chunk] : simulation.chunk_map()) {
@@ -1234,7 +1238,7 @@ void sync_simulatino_with_b2d(
     auto [collisions, sim] = simulation_query.single();
     auto [world]           = world_query.single();
     if (timer->value().tick() > 0) {
-        epix::time_scope a("Sync simulation with b2d");
+        ZoneScopedN("Sync simulation with b2d");
         collisions.sync(sim);
         collisions.sync(
             world, collisions.pos_converter(CHUNK_SIZE, scale, {0, 0})

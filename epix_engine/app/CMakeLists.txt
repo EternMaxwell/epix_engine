@@ -11,6 +11,7 @@ target_link_libraries(epix_app PUBLIC EnTT::EnTT)
 target_link_libraries(epix_app PUBLIC BSThreadPool)
 target_link_libraries(epix_app PUBLIC spdlog::spdlog)
 target_link_libraries(epix_app PUBLIC sparsepp)
+target_link_libraries(epix_app PUBLIC TracyClient)
 
 add_library(epix::app ALIAS epix_app)
 

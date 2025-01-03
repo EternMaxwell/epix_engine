@@ -483,17 +483,17 @@ EPIX_API Simulation::Simulation(const ElemRegistry& registry, int chunk_size)
       m_chunk_size(chunk_size),
       m_chunk_map{chunk_size},
       max_travel({chunk_size / 2, chunk_size / 2}),
-      m_thread_pool(
-          std::make_unique<BS::thread_pool>(std::thread::hardware_concurrency())
-      ) {}
+      m_thread_pool(std::make_unique<BS::thread_pool<BS::tp::none>>(
+          std::thread::hardware_concurrency()
+      )) {}
 EPIX_API Simulation::Simulation(ElemRegistry&& registry, int chunk_size)
     : m_registry(std::move(registry)),
       m_chunk_size(chunk_size),
       m_chunk_map{chunk_size},
       max_travel({chunk_size / 2, chunk_size / 2}),
-      m_thread_pool(
-          std::make_unique<BS::thread_pool>(std::thread::hardware_concurrency())
-      ) {}
+      m_thread_pool(std::make_unique<BS::thread_pool<BS::tp::none>>(
+          std::thread::hardware_concurrency()
+      )) {}
 
 EPIX_API Simulation::UpdatingState& Simulation::updating_state() {
     return m_updating_state;

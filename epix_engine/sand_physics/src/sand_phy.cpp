@@ -30,7 +30,7 @@ EPIX_API bool get_chunk_collision(
 }
 EPIX_API SimulationCollisions<void>::SimulationCollisions()
     : thread_pool(
-          std::make_unique<BS::thread_pool>(std::thread::hardware_concurrency())
+          std::make_unique<thread_pool_t>(std::thread::hardware_concurrency())
       ) {}
 EPIX_API void SimulationCollisions<void>::sync(
     const epix::world::sand::components::Simulation& sim

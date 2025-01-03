@@ -1,4 +1,7 @@
+#include <tracy/Tracy.hpp>
+
 #include "epix/render_vk.h"
+
 
 using namespace epix;
 using namespace epix::prelude;
@@ -1167,6 +1170,7 @@ EPIX_API void Swapchain::recreate(
         physical_device->getSurfaceCapabilitiesKHR(surface).currentExtent) {
         return;
     }
+    ZoneScopedN("Vulkan recreate swap chain");
     device->waitIdle();
     for (auto& image_view : image_views) {
         image_view.destroy(device);

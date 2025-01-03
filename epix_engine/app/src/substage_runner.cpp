@@ -1,3 +1,6 @@
+#include <format>
+#include <tracy/Tracy.hpp>
+
 #include "epix/app.h"
 
 using namespace epix::app;
@@ -89,6 +92,9 @@ EPIX_API void SubStageRunner::run(std::shared_ptr<SystemNode> node) {
     auto pool = m_pools->get_pool(node->m_worker);
     if (pool) {
         auto ftr = pool->submit_task([this, node]() {
+            auto name =
+                std::format("system: {:#018x}", (size_t)node->m_sys_addr.func);
+            ZoneTransientN(zone, name.c_str(), true);
             node->run(m_src, m_dst);
             msg_queue.push(node);
         });

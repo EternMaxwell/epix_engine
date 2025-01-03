@@ -1,3 +1,5 @@
+#include <tracy/Tracy.hpp>
+
 #include "epix/app.h"
 
 using namespace epix::app;
@@ -12,23 +14,44 @@ EPIX_API App::SystemInfo& App::SystemInfo::chain() {
 
 EPIX_API App App::create() {
     App app;
-    app.add_sub_app<RenderSubApp>();
-    app.m_runner->assign_startup_stage<MainSubApp, MainSubApp>(
+    app.runner().assign_startup_stage<MainSubApp, MainSubApp>(
         PreStartup, Startup, PostStartup
     );
-    app.m_runner->assign_state_transition_stage<MainSubApp, MainSubApp>(Transit
-    );
-    app.m_runner->assign_loop_stage<MainSubApp, MainSubApp>(
+    app.runner().assign_state_transition_stage<MainSubApp, MainSubApp>(Transit);
+    app.runner().assign_loop_stage<MainSubApp, MainSubApp>(
         First, PreUpdate, Update, PostUpdate, Last
     );
-    app.m_runner
-        ->assign_loop_stage<MainSubApp, MainSubApp>(
+    app.runner()
+        .assign_loop_stage<MainSubApp, MainSubApp>(
             Prepare, PreRender, Render, PostRender
         )
-        ->add_prev_stage<MainLoopStage>();
+        .add_prev_stage<MainLoopStage>();
     // this is temporary, currently the render stages are still in main
     // subapp
-    app.m_runner->assign_exit_stage<MainSubApp, MainSubApp>(
+    app.runner().assign_exit_stage<MainSubApp, MainSubApp>(
+        PreExit, Exit, PostExit
+    );
+    return std::move(app);
+}
+EPIX_API App App::create2() {
+    App app;
+    app.add_sub_app<RenderSubApp>();
+    app.runner().assign_startup_stage<MainSubApp, MainSubApp>(
+        PreStartup, Startup, PostStartup
+    );
+    app.runner().assign_state_transition_stage<MainSubApp, MainSubApp>(Transit);
+    app.runner().assign_loop_stage<MainSubApp, RenderSubApp>(Extraction);
+    app.runner()
+        .assign_loop_stage<MainSubApp, MainSubApp>(
+            First, PreUpdate, Update, PostUpdate, Last
+        )
+        .add_prev_stage<ExtractStage>();
+    app.runner()
+        .assign_loop_stage<RenderSubApp, RenderSubApp>(
+            Prepare, PreRender, Render, PostRender
+        )
+        .add_prev_stage<ExtractStage>();
+    app.runner().assign_exit_stage<MainSubApp, MainSubApp>(
         PreExit, Exit, PostExit
     );
     return std::move(app);
@@ -37,28 +60,29 @@ EPIX_API void App::run() {
     m_logger->info("Building App");
     build();
     m_logger->info("Running App");
-    m_logger->debug("Startup stage");
+    m_logger->trace("Startup stage");
     m_runner->run_startup();
     end_commands();
+    m_logger->trace("Transition stage");
+    m_runner->run_state_transition();
+    end_commands();
     do {
-        m_logger->debug("Transition stage");
-        m_runner->run_state_transition();
+        FrameMark;
         update_states();
-        m_logger->debug("Loop stage");
+        m_logger->trace("Loop stage");
         m_runner->run_loop();
         tick_events();
+        m_logger->trace("Transition stage");
+        m_runner->run_state_transition();
         end_commands();
     } while (m_loop_enabled &&
              !m_check_exit_func->run(
                  m_sub_apps->at(std::type_index(typeid(MainSubApp))).get(),
                  m_sub_apps->at(std::type_index(typeid(MainSubApp))).get()
              ));
-    m_logger->debug("Transition stage");
-    m_runner->run_state_transition();
-    end_commands();
     update_states();
     m_logger->info("Exiting App");
-    m_logger->debug("Exit stage");
+    m_logger->trace("Exit stage");
     m_runner->run_exit();
     end_commands();
     m_logger->info("App terminated");
@@ -125,3 +149,4 @@ EPIX_API void App::update_states() {
         subapp->update_states();
     }
 }
+EPIX_API Runner& App::runner() { return *m_runner; }

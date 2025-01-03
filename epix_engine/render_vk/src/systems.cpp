@@ -11,6 +11,8 @@
 #include <GLFW/glfw3.h>
 #include <spdlog/spdlog.h>
 
+#include <tracy/Tracy.hpp>
+
 using namespace epix::prelude;
 using namespace epix::render_vk;
 using namespace epix::render_vk::components;
@@ -29,6 +31,7 @@ EPIX_API void systems::create_context(
     if (!query) {
         return;
     }
+    ZoneScopedN("Create vulkan context");
     auto [window] = query.single();
     Instance instance =
         Instance::create("Pixel Engine", VK_MAKE_VERSION(0, 1, 0), logger);
@@ -72,6 +75,7 @@ EPIX_API void systems::get_next_image(
     if (!cmd_query) return;
     auto [cmd_buffer, cmd_fence]                   = cmd_query.single();
     auto [device, swap_chain, command_pool, queue] = query.single();
+    ZoneScopedN("Vulkan get next image");
     auto image = swap_chain.next_image(device);
     device->waitForFences(*cmd_fence, VK_TRUE, UINT64_MAX);
     device->resetFences(*cmd_fence);
@@ -129,6 +133,7 @@ EPIX_API void systems::present_frame(
     if (!cmd_query) return;
     auto [cmd_buffer, cmd_fence]                   = cmd_query.single();
     auto [swap_chain, queue, device, command_pool] = query.single();
+    ZoneScopedN("Vulkan present frame");
     device->waitForFences(*cmd_fence, VK_TRUE, UINT64_MAX);
     device->resetFences(*cmd_fence);
     cmd_buffer->reset(vk::CommandBufferResetFlagBits::eReleaseResources);
@@ -176,6 +181,7 @@ EPIX_API void systems::destroy_context(
     if (!cmd_query) return;
     auto [cmd_buffer, cmd_fence] = cmd_query.single();
     auto [instance, device, surface, swap_chain, command_pool] = query.single();
+    ZoneScopedN("Destroy vulkan context");
     device->waitIdle();
     swap_chain.destroy(device);
     surface.destroy(instance);

@@ -10,8 +10,7 @@ EPIX_API void RenderVKPlugin::build(App& app) {
     );
 
     app.add_system(PreStartup, systems::create_context)
-        .in_set(window::WindowStartUpSets::after_window_creation)
-        .use_worker("single");
+        .in_set(window::WindowStartUpSets::after_window_creation);
     app.add_system(Prepare, systems::recreate_swap_chain);
     app.add_system(Prepare, systems::get_next_image)
         .after(systems::recreate_swap_chain);

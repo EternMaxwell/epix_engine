@@ -1,3 +1,6 @@
+#include <format>
+#include <tracy/Tracy.hpp>
+
 #include "epix/app.h"
 
 using namespace epix::app;
@@ -40,6 +43,8 @@ EPIX_API void StageRunner::bake() {
 
 EPIX_API void StageRunner::run() {
     for (auto sub_stage : m_sub_stage_order) {
+        auto name = std::format("sub stage: {}-{}", m_stage.name(), sub_stage);
+        ZoneTransientN(zone, name.c_str(), true);
         m_sub_stages[sub_stage]->run();
     }
 }

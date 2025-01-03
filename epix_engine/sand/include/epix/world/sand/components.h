@@ -233,7 +233,7 @@ struct Simulation {
     ElemRegistry m_registry;
     const int m_chunk_size;
     ChunkMap m_chunk_map;
-    std::unique_ptr<BS::thread_pool> m_thread_pool;
+    std::unique_ptr<BS::thread_pool<BS::tp::none>> m_thread_pool;
     struct NotMovingThresholdSetting {
         float power     = 0.3f;
         float numerator = 4000.0f;

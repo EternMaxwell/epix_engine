@@ -4,6 +4,7 @@
 #include <sparsepp/spp.h>
 #include <spdlog/spdlog.h>
 
+#define BS_THREAD_POOL_NATIVE_EXTENSIONS
 #include <BS_thread_pool.hpp>
 #include <entt/entity/registry.hpp>
 // ----THIRD PARTY INCLUDES----
@@ -107,7 +108,8 @@ struct Query;
 
 // UTILS
 template <typename T>
-concept is_enum = std::is_enum_v<T>;
+concept is_enum   = std::is_enum_v<T>;
+using thread_pool = BS::thread_pool<BS::tp::none>;
 
 namespace stages {
 enum MainStartupStage {
@@ -1688,10 +1690,10 @@ struct MsgQueueBase {
     }
 };
 struct WorkerPool {
-    EPIX_API BS::thread_pool* get_pool(const std::string& name);
+    EPIX_API thread_pool* get_pool(const std::string& name);
     EPIX_API void add_pool(const std::string& name, uint32_t num_threads);
 
-    spp::sparse_hash_map<std::string, std::unique_ptr<BS::thread_pool>> m_pools;
+    spp::sparse_hash_map<std::string, std::unique_ptr<thread_pool>> m_pools;
 };
 struct SubStageRunner {
     template <typename StageT>
@@ -1844,7 +1846,7 @@ struct Runner {
     };
 
     template <typename SrcT, typename DstT, typename StageT, typename... Subs>
-    StageNode* assign_startup_stage(StageT stage, Subs... sub_stages) {
+    StageNode& assign_startup_stage(StageT stage, Subs... sub_stages) {
         auto& src   = m_sub_apps->at(std::type_index(typeid(SrcT)));
         auto& dst   = m_sub_apps->at(std::type_index(typeid(DstT)));
         auto runner = std::make_unique<StageRunner>(
@@ -1856,10 +1858,10 @@ struct Runner {
             std::type_index(typeid(StageT)), std::move(runner)
         );
         m_startup_stages.emplace(std::type_index(typeid(StageT)), node);
-        return node.get();
+        return *node.get();
     }
     template <typename SrcT, typename DstT, typename StageT, typename... Subs>
-    StageNode* assign_loop_stage(StageT stage, Subs... sub_stages) {
+    StageNode& assign_loop_stage(StageT stage, Subs... sub_stages) {
         auto& src   = m_sub_apps->at(std::type_index(typeid(SrcT)));
         auto& dst   = m_sub_apps->at(std::type_index(typeid(DstT)));
         auto runner = std::make_unique<StageRunner>(
@@ -1871,10 +1873,10 @@ struct Runner {
             std::type_index(typeid(StageT)), std::move(runner)
         );
         m_loop_stages.emplace(std::type_index(typeid(StageT)), node);
-        return node.get();
+        return *node.get();
     }
     template <typename SrcT, typename DstT, typename StageT, typename... Subs>
-    StageNode* assign_state_transition_stage(StageT stage, Subs... sub_stages) {
+    StageNode& assign_state_transition_stage(StageT stage, Subs... sub_stages) {
         auto& src   = m_sub_apps->at(std::type_index(typeid(SrcT)));
         auto& dst   = m_sub_apps->at(std::type_index(typeid(DstT)));
         auto runner = std::make_unique<StageRunner>(
@@ -1888,10 +1890,10 @@ struct Runner {
         m_state_transition_stages.emplace(
             std::type_index(typeid(StageT)), node
         );
-        return node.get();
+        return *node.get();
     }
     template <typename SrcT, typename DstT, typename StageT, typename... Subs>
-    StageNode* assign_exit_stage(StageT stage, Subs... sub_stages) {
+    StageNode& assign_exit_stage(StageT stage, Subs... sub_stages) {
         auto& src   = m_sub_apps->at(std::type_index(typeid(SrcT)));
         auto& dst   = m_sub_apps->at(std::type_index(typeid(DstT)));
         auto runner = std::make_unique<StageRunner>(
@@ -1903,7 +1905,7 @@ struct Runner {
             std::type_index(typeid(StageT)), std::move(runner)
         );
         m_exit_stages.emplace(std::type_index(typeid(StageT)), node);
-        return node.get();
+        return *node.get();
     }
 
     template <typename StageT>
@@ -1986,7 +1988,7 @@ struct Runner {
     spp::sparse_hash_map<std::type_index, std::shared_ptr<StageNode>>
         m_exit_stages;
     std::unique_ptr<WorkerPool> m_pools;
-    std::unique_ptr<BS::thread_pool> m_control_pool;
+    std::unique_ptr<thread_pool> m_control_pool;
     std::unique_ptr<SetMap> m_sets;
 
     std::shared_ptr<spdlog::logger> m_logger;
@@ -1999,6 +2001,7 @@ struct Plugin {
 };
 struct App {
     EPIX_API static App create();
+    EPIX_API static App create2();
     struct SystemInfo {
         std::vector<SystemNode*> nodes;
         App* app;
@@ -2276,6 +2279,7 @@ struct App {
     EPIX_API void end_commands();
     EPIX_API void tick_events();
     EPIX_API void update_states();
+    EPIX_API Runner& runner();
 
     std::unique_ptr<
         spp::sparse_hash_map<std::type_index, std::unique_ptr<SubApp>>>
@@ -2301,29 +2305,46 @@ template <typename Resolution = std::chrono::milliseconds>
 struct time_scope {
     std::chrono::time_point<std::chrono::high_resolution_clock> start;
     std::string name;
+    std::function<void(int64_t)> dur_op;
+    std::function<void(int64_t, int64_t)> dur_op2;
+    std::function<void(int64_t, int64_t, int64_t)> dur_op3;
     time_scope(const std::string& name) : name(name) {
         start = std::chrono::high_resolution_clock::now();
     }
+    time_scope(const std::string& name, std::function<void(int64_t)> operation)
+        : name(name), dur_op(operation) {
+        start = std::chrono::high_resolution_clock::now();
+    }
+    time_scope(
+        const std::string& name, std::function<void(int64_t, int64_t)> operation
+    )
+        : name(name), dur_op2(operation) {
+        start = std::chrono::high_resolution_clock::now();
+    }
+    time_scope(
+        const std::string& name,
+        std::function<void(int64_t, int64_t, int64_t)> operation
+    )
+        : name(name), dur_op3(operation) {
+        start = std::chrono::high_resolution_clock::now();
+    }
     ~time_scope() {
-        auto end = std::chrono::high_resolution_clock::now();
-        auto dur = std::chrono::duration_cast<Resolution>(end - start);
-        char resolution_char;
-        if constexpr (std::same_as<Resolution, std::chrono::nanoseconds>) {
-            resolution_char = 'n';
-        } else if constexpr (std::same_as<
-                                 Resolution, std::chrono::microseconds>) {
-            resolution_char = 'u';
-        } else if constexpr (std::same_as<
-                                 Resolution, std::chrono::milliseconds>) {
-            resolution_char = 'm';
-        } else if constexpr (std::same_as<Resolution, std::chrono::seconds>) {
-            resolution_char = 's';
-        } else if constexpr (std::same_as<Resolution, std::chrono::minutes>) {
-            resolution_char = 'M';
-        } else if constexpr (std::same_as<Resolution, std::chrono::hours>) {
-            resolution_char = 'h';
-        }
-        spdlog::info("{}: {}{}s", name, dur.count(), resolution_char);
+        auto end        = std::chrono::high_resolution_clock::now();
+        auto dur        = std::chrono::duration_cast<Resolution>(end - start);
+        auto start_time = std::chrono::time_point_cast<Resolution>(start);
+        auto end_time   = std::chrono::time_point_cast<Resolution>(end);
+
+        if (dur_op) dur_op(dur.count());
+        if (dur_op2)
+            dur_op2(
+                start_time.time_since_epoch().count(),
+                end_time.time_since_epoch().count()
+            );
+        if (dur_op3)
+            dur_op3(
+                start_time.time_since_epoch().count(),
+                end_time.time_since_epoch().count(), dur.count()
+            );
     }
 };
 }  // namespace epix::utility
@@ -2360,6 +2381,7 @@ using app::With;
 using app::Without;
 
 // OTHER TOOLS
+using epix::app::thread_pool;
 using epix::utility::time_scope;
 }  // namespace epix
 namespace epix::prelude {

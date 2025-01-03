@@ -1,3 +1,5 @@
+#include <tracy/Tracy.hpp>
+
 #include "epix/app.h"
 
 using namespace epix::app;
@@ -8,9 +10,11 @@ EPIX_API Runner::Runner(
     : m_sub_apps(sub_apps),
       m_pools(std::make_unique<WorkerPool>()),
       m_sets(std::make_unique<SetMap>()),
-      m_control_pool(std::make_unique<BS::thread_pool>(4)) {
+      m_control_pool(std::make_unique<thread_pool>(2, []() {
+          BS::this_thread::set_os_thread_name("control");
+      })) {
     add_worker(
-        "default", std::clamp(std::thread::hardware_concurrency(), 4u, 16u)
+        "default", std::clamp(std::thread::hardware_concurrency(), 2u, 4u)
     );
     add_worker("single", 1);
     m_logger = spdlog::default_logger()->clone("runner");
@@ -217,12 +221,15 @@ EPIX_API void Runner::bake_all() {
 
 EPIX_API void Runner::run(std::shared_ptr<StageNode> node) {
     auto ftr = m_control_pool->submit_task([this, node]() {
+        auto name = std::format("stage: {}", node->stage.name());
+        ZoneTransientN(zone, name.c_str(), true);
         node->runner->run();
         msg_queue.push(node);
     });
 }
 
 EPIX_API void Runner::run_startup() {
+    ZoneScopedN("startup stages");
     for (auto& [ptr, stage] : m_startup_stages) {
         stage->prev_count =
             stage->strong_prev_stages.size() + stage->weak_prev_stages.size();
@@ -265,6 +272,7 @@ EPIX_API void Runner::run_startup() {
 }
 
 EPIX_API void Runner::run_loop() {
+    ZoneScopedN("loop stages");
     for (auto& [ptr, stage] : m_loop_stages) {
         stage->prev_count =
             stage->strong_prev_stages.size() + stage->weak_prev_stages.size();
@@ -307,6 +315,7 @@ EPIX_API void Runner::run_loop() {
 }
 
 EPIX_API void Runner::run_state_transition() {
+    ZoneScopedN("transition stages");
     for (auto& [ptr, stage] : m_state_transition_stages) {
         stage->prev_count =
             stage->strong_prev_stages.size() + stage->weak_prev_stages.size();
@@ -349,6 +358,7 @@ EPIX_API void Runner::run_state_transition() {
 }
 
 EPIX_API void Runner::run_exit() {
+    ZoneScopedN("exit stages");
     for (auto& [ptr, stage] : m_exit_stages) {
         stage->prev_count =
             stage->strong_prev_stages.size() + stage->weak_prev_stages.size();

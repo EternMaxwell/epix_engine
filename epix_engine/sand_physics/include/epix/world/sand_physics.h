@@ -34,11 +34,12 @@ struct SimulationCollisions {
     };
     using user_data_type = T;
     using Grid = epix::utils::grid2d::ExtendableGrid2D<ChunkCollisions>;
+    using thread_pool_t = BS::thread_pool<BS::tp::none>;
     Grid collisions;
     spp::sparse_hash_set<glm::ivec2, Ivec2Hash, Ivec2Equal> cached;
-    std::unique_ptr<BS::thread_pool> thread_pool;
+    std::unique_ptr<thread_pool_t> thread_pool;
 
-    SimulationCollisions() : thread_pool(std::make_unique<BS::thread_pool>()) {}
+    SimulationCollisions() : thread_pool(std::make_unique<thread_pool_t>()) {}
     template <typename... Args>
     void cache(
         const epix::world::sand::components::Simulation& sim, Args&&... args
@@ -92,9 +93,10 @@ struct SimulationCollisions<void> {
     };
     using user_data_type = void;
     using Grid = epix::utils::grid2d::ExtendableGrid2D<ChunkCollisions>;
+    using thread_pool_t = BS::thread_pool<BS::tp::none>;
     Grid collisions;
     spp::sparse_hash_set<glm::ivec2, Ivec2Hash> cached;
-    std::unique_ptr<BS::thread_pool> thread_pool;
+    std::unique_ptr<thread_pool_t> thread_pool;
 
     EPIX_API SimulationCollisions();
     template <typename... Args>
