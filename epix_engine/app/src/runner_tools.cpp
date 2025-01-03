@@ -36,7 +36,7 @@ EPIX_API void SystemNode::clear_tmp() {
 }
 EPIX_API double SystemNode::reach_time() {
     if (m_reach_time) return m_reach_time.value();
-    m_reach_time = 0;
+    m_reach_time = 0.01;
     for (auto& bef : m_strong_prevs) {
         if (auto bef_sys = bef.lock()) {
             m_reach_time = std::max(
@@ -58,7 +58,7 @@ EPIX_API thread_pool* WorkerPool::get_pool(const std::string& name) {
 EPIX_API void WorkerPool::add_pool(
     const std::string& name, uint32_t num_threads
 ) {
-    m_pools.emplace(name, std::make_unique<thread_pool>(num_threads, [&name]() {
+    m_pools.emplace(name, std::make_unique<thread_pool>(num_threads, [name]() {
                         BS::this_thread::set_os_thread_name(name.c_str());
                     }));
 }

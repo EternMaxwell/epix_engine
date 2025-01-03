@@ -17,7 +17,6 @@
 #include "fragment_shader.h"
 #include "vertex_shader.h"
 
-
 using namespace epix::prelude;
 using namespace epix::window;
 using namespace epix::render_vk::components;
@@ -1315,7 +1314,7 @@ void run() {
     app.add_plugin(epix::input::InputPlugin{});
     app.add_plugin(epix::render_vk::RenderVKPlugin{});
     app.add_plugin(epix::render::debug::vulkan::DebugRenderPlugin{});
-    app.add_plugin(epix::font::FontPlugin{});
+    // app.add_plugin(epix::font::FontPlugin{});
     app.add_plugin(vk_trial::VK_TrialPlugin{});
     app.add_plugin(epix::imgui::ImGuiPluginVK{});
     app.add_plugin(epix::render::pixel::PixelRenderPlugin{});

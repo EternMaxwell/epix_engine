@@ -220,7 +220,7 @@ EPIX_API void Runner::bake_all() {
 }
 
 EPIX_API void Runner::run(std::shared_ptr<StageNode> node) {
-    auto ftr = m_control_pool->submit_task([this, node]() {
+    m_control_pool->detach_task([this, node]() {
         auto name = std::format("stage: {}", node->stage.name());
         ZoneTransientN(zone, name.c_str(), true);
         node->runner->run();
@@ -271,6 +271,12 @@ EPIX_API void Runner::run_startup() {
     }
 }
 
+EPIX_API void Runner::bake_loop() {
+    for (auto& [ptr, stage] : m_loop_stages) {
+        stage->runner->bake();
+    }
+}
+
 EPIX_API void Runner::run_loop() {
     ZoneScopedN("loop stages");
     for (auto& [ptr, stage] : m_loop_stages) {
@@ -311,6 +317,12 @@ EPIX_API void Runner::run_loop() {
     }
     if (m_remain > 0) {
         m_logger->warn("Loop stages have circular dependencies");
+    }
+}
+
+EPIX_API void Runner::bake_state_transition() {
+    for (auto& [ptr, stage] : m_state_transition_stages) {
+        stage->runner->bake();
     }
 }
 

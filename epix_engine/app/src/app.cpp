@@ -74,7 +74,15 @@ EPIX_API void App::run() {
         tick_events();
         m_logger->trace("Transition stage");
         m_runner->run_state_transition();
-        end_commands();
+        {
+            ZoneScopedN("end_commands");
+            end_commands();
+        }
+        {
+            ZoneScopedN("bake runner");
+            m_runner->bake_loop();
+            m_runner->bake_state_transition();
+        }
     } while (m_loop_enabled &&
              !m_check_exit_func->run(
                  m_sub_apps->at(std::type_index(typeid(MainSubApp))).get(),

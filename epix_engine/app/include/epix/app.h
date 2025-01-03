@@ -1571,10 +1571,10 @@ struct System : public BasicSystem<void> {
     void run(SubApp* src, SubApp* dst) override {
         auto start = std::chrono::high_resolution_clock::now();
         SystemFunctionInvoker::invoke(func, this, src, dst);
-        auto end = std::chrono::high_resolution_clock::now();
-        auto delta =
-            std::chrono::duration_cast<std::chrono::milliseconds>(end - start)
-                .count();
+        auto end   = std::chrono::high_resolution_clock::now();
+        auto delta = (double
+        )std::chrono::duration_cast<std::chrono::nanoseconds>(end - start)
+                         .count();
         avg_time = delta * 0.1 + avg_time * 0.9;
     }
 };
@@ -1736,7 +1736,7 @@ struct SubStageRunner {
     SystemStage m_sub_stage;
     MsgQueueBase<std::shared_ptr<SystemNode>> msg_queue;
     spp::sparse_hash_map<FuncIndex, std::shared_ptr<SystemNode>> m_systems;
-    spp::sparse_hash_set<std::shared_ptr<SystemNode>> m_heads;
+    std::vector<std::shared_ptr<SystemNode>> m_heads;
     SetMap* m_sets;
 
     std::shared_ptr<spdlog::logger> m_logger;
@@ -1967,7 +1967,9 @@ struct Runner {
     EPIX_API void bake_all();
     EPIX_API void run(std::shared_ptr<StageNode> node);
     EPIX_API void run_startup();
+    EPIX_API void bake_loop();
     EPIX_API void run_loop();
+    EPIX_API void bake_state_transition();
     EPIX_API void run_state_transition();
     EPIX_API void run_exit();
     EPIX_API void tick_events();

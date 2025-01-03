@@ -65,7 +65,8 @@ EPIX_API void SubStageRunner::bake() {
     for (auto& [ptr, system] : m_systems) {
         system->clear_tmp();
     }
-    std::vector<std::shared_ptr<SystemNode>> systems;
+    static thread_local std::vector<std::shared_ptr<SystemNode>> systems;
+    systems.clear();
     for (auto& [ptr, system] : m_systems) {
         systems.push_back(system);
     }
@@ -82,16 +83,15 @@ EPIX_API void SubStageRunner::bake() {
     }
     m_heads.clear();
     for (auto& system : systems) {
-        if (!system->m_strong_prevs.empty()) return;
-        if (system->m_weak_prevs.empty()) {
-            m_heads.insert(system);
+        if (system->m_weak_prevs.empty() && system->m_strong_prevs.empty()) {
+            m_heads.push_back(system);
         }
     }
 }
 EPIX_API void SubStageRunner::run(std::shared_ptr<SystemNode> node) {
     auto pool = m_pools->get_pool(node->m_worker);
     if (pool) {
-        auto ftr = pool->submit_task([this, node]() {
+        pool->detach_task([this, node]() {
             auto name =
                 std::format("system: {:#018x}", (size_t)node->m_sys_addr.func);
             ZoneTransientN(zone, name.c_str(), true);
