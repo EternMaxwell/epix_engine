@@ -34,3 +34,11 @@
 	path = libs/box2d
 	url = https://github.com/erincatto/box2d.git
 	tag = v3.0.0
+[submodule "libs/tracy"]
+	path = libs/tracy
+	url = https://github.com/wolfpld/tracy.git
+	tag = v0.11.1
+[submodule "libs/thread-pool"]
+	path = libs/thread-pool
+	url = https://github.com/bshoshany/thread-pool.git
+	tag = v5.0.0
