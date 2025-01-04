@@ -56,6 +56,40 @@ EPIX_API App App::create2() {
     );
     return std::move(app);
 }
+EPIX_API App App::create(const AppSettings& settings) {
+    App app;
+    app.runner().assign_startup_stage<MainSubApp, MainSubApp>(
+        PreStartup, Startup, PostStartup
+    );
+    app.runner().assign_state_transition_stage<MainSubApp, MainSubApp>(Transit);
+    if (settings.parrallel_rendering) {
+        app.add_sub_app<RenderSubApp>();
+        app.runner().assign_loop_stage<MainSubApp, RenderSubApp>(Extraction);
+        app.runner()
+            .assign_loop_stage<MainSubApp, MainSubApp>(
+                First, PreUpdate, Update, PostUpdate, Last
+            )
+            .add_prev_stage<ExtractStage>();
+        app.runner()
+            .assign_loop_stage<RenderSubApp, RenderSubApp>(
+                Prepare, PreRender, Render, PostRender
+            )
+            .add_prev_stage<ExtractStage>();
+    } else {
+        app.runner().assign_loop_stage<MainSubApp, MainSubApp>(
+            First, PreUpdate, Update, PostUpdate, Last
+        );
+        app.runner()
+            .assign_loop_stage<MainSubApp, MainSubApp>(
+                Prepare, PreRender, Render, PostRender
+            )
+            .add_prev_stage<MainLoopStage>();
+    }
+    app.runner().assign_exit_stage<MainSubApp, MainSubApp>(
+        PreExit, Exit, PostExit
+    );
+    return std::move(app);
+}
 EPIX_API void App::run() {
     m_logger->info("Building App");
     build();

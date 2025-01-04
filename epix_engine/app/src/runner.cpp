@@ -220,12 +220,15 @@ EPIX_API void Runner::bake_all() {
 }
 
 EPIX_API void Runner::run(std::shared_ptr<StageNode> node) {
-    m_control_pool->detach_task([this, node]() {
-        auto name = std::format("stage: {}", node->stage.name());
-        ZoneTransientN(zone, name.c_str(), true);
-        node->runner->run();
-        msg_queue.push(node);
-    });
+    m_control_pool->detach_task(
+        [this, node]() {
+            auto name = std::format("stage: {}", node->stage.name());
+            ZoneTransientN(zone, name.c_str(), true);
+            node->runner->run();
+            msg_queue.push(node);
+        },
+        127
+    );
 }
 
 EPIX_API void Runner::run_startup() {

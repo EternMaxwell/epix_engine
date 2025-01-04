@@ -90,14 +90,18 @@ EPIX_API void SubStageRunner::bake() {
 }
 EPIX_API void SubStageRunner::run(std::shared_ptr<SystemNode> node) {
     auto pool = m_pools->get_pool(node->m_worker);
+    ZoneScopedN("try detach task");
+    auto name = std::format("system: {:#018x}", (size_t)node->m_sys_addr.func);
+    ZoneText(name.c_str(), name.size());
     if (pool) {
-        pool->detach_task([this, node]() {
-            auto name =
-                std::format("system: {:#018x}", (size_t)node->m_sys_addr.func);
-            ZoneTransientN(zone, name.c_str(), true);
-            node->run(m_src, m_dst);
-            msg_queue.push(node);
-        });
+        pool->detach_task(
+            [this, name, node]() {
+                ZoneTransientN(zone, name.c_str(), true);
+                node->run(m_src, m_dst);
+                msg_queue.push(node);
+            },
+            127
+        );
     } else {
         m_logger->warn(
             "The runner does not have a worker pool named {}. Skipping "
@@ -108,20 +112,33 @@ EPIX_API void SubStageRunner::run(std::shared_ptr<SystemNode> node) {
     }
 }
 EPIX_API void SubStageRunner::run() {
-    for (auto& [ptr, system] : m_systems) {
-        system->m_prev_count =
-            system->m_strong_prevs.size() + system->m_weak_prevs.size();
-        system->m_next_count =
-            system->m_strong_nexts.size() + system->m_weak_nexts.size();
+    {
+        ZoneScopedN("preparation");
+        for (auto& [ptr, system] : m_systems) {
+            system->m_prev_count =
+                system->m_strong_prevs.size() + system->m_weak_prevs.size();
+            system->m_next_count =
+                system->m_strong_nexts.size() + system->m_weak_nexts.size();
+        }
     }
-    for (auto& head : m_heads) {
-        run(head);
+    {
+        ZoneScopedN("head systems");
+        for (auto& head : m_heads) {
+            run(head);
+        }
     }
     size_t m_remain  = m_systems.size();
     size_t m_running = m_heads.size();
     while (m_running > 0) {
-        msg_queue.wait();
+        {
+            ZoneScopedN("waiting for system finish");
+            msg_queue.wait();
+        }
+        ZoneScopedN("handling finished systems");
         auto ptr = msg_queue.pop();
+        auto name =
+            std::format("system: {:#018x}", (size_t)ptr->m_sys_addr.func);
+        ZoneText(name.c_str(), name.size());
         --m_remain;
         --m_running;
         for (auto& next_weak : ptr->m_strong_nexts) {

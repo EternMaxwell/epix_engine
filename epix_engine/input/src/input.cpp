@@ -1,5 +1,7 @@
 #include <spdlog/spdlog.h>
 
+#include <tracy/Tracy.hpp>
+
 #include "epix/input.h"
 
 using namespace epix;
@@ -15,6 +17,7 @@ EPIX_API void systems::create_input_for_window(
         Get<Entity, const window::components::Window>,
         Without<ButtonInput<KeyCode>, ButtonInput<MouseButton>>> query
 ) {
+    ZoneScopedN("input::create_input_for_window");
     for (auto [entity, window] : query.iter()) {
         spdlog::debug("create input for window {}.", window.m_title);
         command.entity(entity).emplace(ButtonInput<KeyCode>(entity));
@@ -33,6 +36,7 @@ EPIX_API void systems::update_input(
     EventReader<events::MouseButtonEvent> mouse_button_event_reader,
     EventWriter<events::MouseButtonEvent> mouse_button_event_writer
 ) {
+    ZoneScopedN("input::update_input");
     for (auto [entity, key_input, mouse_input, window] : query.iter()) {
         if (window.get_handle() == nullptr) {
             continue;
@@ -88,6 +92,7 @@ EPIX_API void systems::output_event(
         query,
     EventReader<epix::input::events::CursorMove> cursor_move_events
 ) {
+    ZoneScopedN("input::output_event");
     for (auto event : scroll_events.read()) {
         logger->info("scroll : {}", event.yoffset);
     }

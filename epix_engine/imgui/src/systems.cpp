@@ -1,5 +1,7 @@
 #include "epix/imgui.h"
 
+#include <tracy/Tracy.hpp>
+
 using namespace epix::prelude;
 using namespace epix::render_vk::components;
 using namespace epix::window::components;
@@ -21,6 +23,7 @@ EPIX_API void systems::init_imgui(
     auto [instance, physical_device, device, queue, command_pool] =
         context_query.single();
     auto [window] = window_query.single();
+    ZoneScopedN("Init ImGui");
     vk::RenderPassCreateInfo render_pass_info;
     vk::AttachmentDescription color_attachment;
     color_attachment.setFormat(vk::Format::eB8G8R8A8Srgb);
@@ -78,6 +81,7 @@ EPIX_API void systems::deinit_imgui(
 ) {
     if (!context_query) return;
     auto [device, command_pool] = context_query.single();
+    ZoneScopedN("Deinit ImGui");
     device->waitForFences(*imgui_context->fence, VK_TRUE, UINT64_MAX);
     ImGui_ImplVulkan_Shutdown();
     ImGui_ImplGlfw_Shutdown();
@@ -94,6 +98,7 @@ EPIX_API void systems::begin_imgui(
 ) {
     if (!query) return;
     auto [device, queue, swapchain] = query.single();
+    ZoneScopedN("Begin ImGui");
     ImGui_ImplVulkan_NewFrame();
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
@@ -104,6 +109,7 @@ EPIX_API void systems::end_imgui(
 ) {
     if (!query) return;
     auto [device, queue, swapchain] = query.single();
+    ZoneScopedN("End ImGui");
     ImGui::Render();
     device->waitForFences(*ctx->fence, VK_TRUE, UINT64_MAX);
     device->resetFences(*ctx->fence);

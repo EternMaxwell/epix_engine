@@ -1,5 +1,8 @@
 #pragma once
 
+#include <epix/app.h>
+#include <epix/window.h>
+
 namespace epix {
 namespace input {
 namespace systems {

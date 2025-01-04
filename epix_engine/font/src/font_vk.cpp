@@ -1,3 +1,4 @@
+#include <tracy/Tracy.hpp>
 #include <unordered_map>
 
 #include "epix/font.h"
@@ -565,6 +566,7 @@ EPIX_API void systems::vulkan::draw_text(
     if (!swapchain_query) return;
     auto [device, queue, command_pool, swapchain] = swapchain_query.single();
     auto [text_renderer] = text_renderer_query.single();
+    ZoneScopedN("render::font::draw_text");
     text_renderer.begin(
         &device, &swapchain, &queue, &command_pool, ft2_library
     );

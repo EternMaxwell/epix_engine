@@ -6,6 +6,8 @@
 #endif
 #include <GLFW/glfw3.h>
 
+#include <tracy/Tracy.hpp>
+
 using namespace epix::window::systems;
 using namespace epix::window;
 using namespace epix::prelude;
@@ -29,10 +31,9 @@ EPIX_API void systems::insert_primary_window(
 static std::mutex scroll_mutex;
 static std::vector<events::MouseScroll> scroll_cache;
 
-EPIX_API void scroll_callback(
-    GLFWwindow* window, double xoffset, double yoffset
-) {
-    std::lock_guard<std::mutex> lock(scroll_mutex);
+void scroll_callback(GLFWwindow* window, double xoffset, double yoffset) {
+    ZoneScopedN("scroll_callback");
+    std::unique_lock<std::mutex> lock(scroll_mutex);
     std::pair<Entity, resources::WindowThreadPool*>* ptr =
         static_cast<std::pair<Entity, resources::WindowThreadPool*>*>(
             glfwGetWindowUserPointer(window)
@@ -45,6 +46,7 @@ EPIX_API void systems::create_window(
     Query<Get<Entity, const WindowDescription>, Without<Window>> desc_query,
     ResMut<resources::WindowThreadPool> pool
 ) {
+    ZoneScopedN("window::create_window");
     for (auto [entity, desc] : desc_query.iter()) {
         spdlog::debug("create window {}.", desc.title);
         auto window = pool->submit_task([desc]() {
@@ -75,6 +77,7 @@ EPIX_API void systems::update_window_state(
     EventReader<events::CursorMove> cursor_read,
     EventWriter<events::CursorMove> cursor_event
 ) {
+    ZoneScopedN("window::update_window_state");
     cursor_read.clear();
     for (auto [entity, window] : query.iter()) {
         components::update_state(window);
@@ -90,6 +93,7 @@ EPIX_API void systems::close_window(
     EventReader<AnyWindowClose> any_close_event,
     Query<Get<Window>> query
 ) {
+    ZoneScopedN("window::close_window");
     for (auto [entity] : any_close_event.read()) {
         auto [window] = query.get(entity);
         window.destroy();
@@ -102,6 +106,7 @@ EPIX_API void systems::primary_window_close(
     Query<Get<Entity, Window>, With<PrimaryWindow>> query,
     EventWriter<AnyWindowClose> any_close_event
 ) {
+    ZoneScopedN("window::primary_window_close");
     for (auto [entity, window] : query.iter()) {
         if (window.should_close()) {
             any_close_event.write(AnyWindowClose{entity});
@@ -114,6 +119,7 @@ EPIX_API void systems::window_close(
     Query<Get<Entity, Window>, Without<PrimaryWindow>> query,
     EventWriter<AnyWindowClose> any_close_event
 ) {
+    ZoneScopedN("window::window_close");
     for (auto [entity, window] : query.iter()) {
         if (window.should_close()) {
             any_close_event.write(AnyWindowClose{entity});
@@ -124,6 +130,7 @@ EPIX_API void systems::window_close(
 EPIX_API void systems::no_window_exists(
     Query<Get<Window>> query, EventWriter<NoWindowExists> no_window_event
 ) {
+    ZoneScopedN("window::no_window_exists");
     for (auto [window] : query.iter()) {
         if (!window.should_close()) return;
     }
@@ -138,6 +145,7 @@ EPIX_API void systems::poll_events(
 ) {
     if (!query) return;
     auto [window] = query.single();
+    ZoneScopedN("window::poll_events");
     if (!future->valid() || future->wait_for(std::chrono::milliseconds(0)) ==
                                 std::future_status::ready) {
         (*future) = pool->submit_task([]() { glfwPollEvents(); });
@@ -151,8 +159,9 @@ EPIX_API void systems::poll_events(
 EPIX_API void systems::scroll_events(
     EventReader<MouseScroll> scroll_read, EventWriter<MouseScroll> scroll_event
 ) {
+    ZoneScopedN("window::scroll_events");
     scroll_read.clear();
-    std::lock_guard<std::mutex> lock(scroll_mutex);
+    std::unique_lock<std::mutex> lock(scroll_mutex);
     for (auto& scroll : scroll_cache) {
         scroll_event.write(scroll);
     }
@@ -162,6 +171,7 @@ EPIX_API void systems::scroll_events(
 EPIX_API void systems::exit_on_no_window(
     EventReader<NoWindowExists> no_window_event, EventWriter<AppExit> exit_event
 ) {
+    ZoneScopedN("window::exit_on_no_window");
     for (auto _ : no_window_event.read()) {
         exit_event.write(AppExit{});
     }

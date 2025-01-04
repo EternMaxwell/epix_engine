@@ -2,6 +2,7 @@
 
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
+#include <tracy/Tracy.hpp>
 
 #include "epix/render/pixel.h"
 #include "shaders/block/fragment_shader.h"
@@ -574,6 +575,7 @@ EPIX_API void systems::draw_pixel_blocks_vk(
     if (!query) return;
     auto [device, command_pool, swapchain, queue] = query.single();
     auto [renderer]                               = renderer_query.single();
+    ZoneScopedN("render::pixel::draw_pixel_blocks_vk");
     PixelUniformBuffer uniform_buffer;
     uniform_buffer.view = glm::mat4(1.0f);
     uniform_buffer.proj = glm::ortho(

@@ -36,6 +36,7 @@ struct SubApp;
 struct MainSubApp;
 struct RenderSubApp;
 struct App;
+struct AppSettings;
 struct AppExit;
 
 struct Plugin;
@@ -109,7 +110,7 @@ struct Query;
 // UTILS
 template <typename T>
 concept is_enum   = std::is_enum_v<T>;
-using thread_pool = BS::thread_pool<BS::tp::none>;
+using thread_pool = BS::thread_pool<BS::tp::priority>;
 
 namespace stages {
 enum MainStartupStage {
@@ -2001,9 +2002,14 @@ struct RenderSubApp {};
 struct Plugin {
     virtual void build(App&) = 0;
 };
+struct AppSettings : public Plugin {
+    bool parrallel_rendering = false;
+    void build(App& app) override {}
+};
 struct App {
     EPIX_API static App create();
     EPIX_API static App create2();
+    EPIX_API static App create(const AppSettings& settings);
     struct SystemInfo {
         std::vector<SystemNode*> nodes;
         App* app;

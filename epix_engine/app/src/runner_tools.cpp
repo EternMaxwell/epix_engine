@@ -1,3 +1,5 @@
+#include <tracy/Tracy.hpp>
+
 #include "epix/app.h"
 
 using namespace epix::app;
@@ -17,9 +19,13 @@ EPIX_API bool SystemSet::operator!=(const SystemSet& other) const {
 }
 
 EPIX_API bool SystemNode::run(SubApp* src, SubApp* dst) {
-    for (auto& cond : m_conditions) {
-        if (!cond->run(src, dst)) return false;
+    {
+        ZoneScopedN("conditions");
+        for (auto& cond : m_conditions) {
+            if (!cond->run(src, dst)) return false;
+        }
     }
+    ZoneScopedN("system");
     m_system->run(src, dst);
     return true;
 }
