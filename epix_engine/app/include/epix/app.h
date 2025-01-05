@@ -1934,6 +1934,13 @@ struct Runner {
     }
     EPIX_API bool stage_exit(std::type_index stage);
 
+    template <typename StageT>
+    bool stage_present() {
+        return stage_startup<StageT>() || stage_loop<StageT>() ||
+               stage_state_transition<StageT>() || stage_exit<StageT>();
+    }
+    EPIX_API bool stage_present(std::type_index stage);
+
     template <typename SetT, typename... Sets>
     void configure_sets(SetT set, Sets... sets) {
         m_sets->emplace(
@@ -2267,6 +2274,11 @@ struct App {
     EPIX_API App& enable_loop();
     EPIX_API App& disable_loop();
     EPIX_API App* operator->();
+    template <typename T>
+    bool has_sub_app() {
+        return m_sub_apps->find(std::type_index(typeid(T))) !=
+               m_sub_apps->end();
+    }
 
    protected:
     EPIX_API App();
@@ -2277,6 +2289,12 @@ struct App {
 
     template <typename T>
     void add_sub_app() {
+        if (has_sub_app<T>()) {
+            spdlog::warn(
+                "Sub app {} already exists, skipping", typeid(T).name()
+            );
+            return;
+        }
         m_sub_apps->emplace(
             std::type_index(typeid(T)), std::make_unique<SubApp>()
         );
@@ -2297,6 +2315,7 @@ struct App {
     spp::sparse_hash_set<std::type_index> m_plugin_types;
     std::unique_ptr<BasicSystem<bool>> m_check_exit_func;
     bool m_loop_enabled = false;
+    AppSettings m_settings;
 
     std::shared_ptr<spdlog::logger> m_logger;
 };

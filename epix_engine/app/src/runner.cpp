@@ -51,6 +51,10 @@ EPIX_API bool Runner::stage_state_transition(std::type_index stage) {
 EPIX_API bool Runner::stage_exit(std::type_index stage) {
     return m_exit_stages.find(stage) != m_exit_stages.end();
 }
+EPIX_API bool Runner::stage_present(std::type_index stage) {
+    return stage_startup(stage) || stage_loop(stage) ||
+           stage_state_transition(stage) || stage_exit(stage);
+}
 EPIX_API void Runner::build() {
     for (auto& [ptr, stage] : m_startup_stages) {
         stage->runner->build();
@@ -220,9 +224,11 @@ EPIX_API void Runner::bake_all() {
 }
 
 EPIX_API void Runner::run(std::shared_ptr<StageNode> node) {
+    ZoneScopedN("push control");
+    auto name = std::format("stage: {}", node->stage.name());
+    ZoneText(name.c_str(), name.size());
     m_control_pool->detach_task(
-        [this, node]() {
-            auto name = std::format("stage: {}", node->stage.name());
+        [this, node, name]() {
             ZoneTransientN(zone, name.c_str(), true);
             node->runner->run();
             msg_queue.push(node);
