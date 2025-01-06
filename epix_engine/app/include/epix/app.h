@@ -183,7 +183,7 @@ void registry_emplace_single(
                   std::is_base_of_v<Bundle, std::remove_reference_t<T>>) {
         registry_emplace_tuple(registry, entity, std::forward<T>(arg).unpack());
     } else if constexpr (!std::is_same_v<Bundle, std::remove_reference_t<T>>) {
-        registry->emplace<std::remove_reference_t<T>>(
+        registry->emplace<std::remove_const_t<std::remove_reference_t<T>>>(
             entity, std::forward<T>(arg)
         );
     }

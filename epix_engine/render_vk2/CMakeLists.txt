@@ -11,6 +11,7 @@ target_link_libraries(epix_rdvk2 VulkanMemoryAllocator)
 target_link_libraries(epix_rdvk2 glm::glm)
 target_link_libraries(epix_rdvk2 epix::app)
 target_link_libraries(epix_rdvk2 epix::window)
+target_link_libraries(epix_rdvk2 epix::render::vulkan)
 
 add_library(epix::render::vulkan2 ALIAS epix_rdvk2)
 
