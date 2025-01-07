@@ -4,6 +4,8 @@ file(GLOB_RECURSE MODULE_SOURCES "src/*.c" "src/*.cpp")
 list(APPEND ENGINE_SOURCES ${MODULE_SOURCES})
 list(APPEND ENGINE_INCLUDES ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
+set(EPIX_ENABLE_TRACY ON)
+
 # EPIX CORE MODULES
 add_subdirectory(common)
 add_subdirectory(app)
@@ -28,6 +30,9 @@ add_subdirectory(sand_physics)
 
 # BUILD STATIC
 add_library(epix_engine STATIC ${MODULE_SOURCES})
+if(EPIX_ENABLE_TRACY)
+    target_compile_definitions(epix_engine PRIVATE EPIX_ENABLE_TRACY)
+endif()
 # THIRD PARTY LIBRARIES
 target_include_directories(epix_engine PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_include_directories(epix_engine PUBLIC ../libs/stb)
@@ -70,6 +75,9 @@ add_library(epix ALIAS epix_engine)
 # ADD IMGUI SOURCES AND INCLUDES
 set(ENGINE_SOURCES ${ENGINE_SOURCES} ${IMGUI_SOURCES})
 add_library(epix_engine_shared SHARED ${ENGINE_SOURCES})
+if (EPIX_ENABLE_TRACY)
+    target_compile_definitions(epix_engine_shared PRIVATE EPIX_ENABLE_TRACY)
+endif()
 target_compile_definitions(epix_engine_shared PRIVATE EPIX_BUILD_SHARED)
 target_include_directories(epix_engine_shared PUBLIC ${ENGINE_INCLUDES})
 target_include_directories(epix_engine_shared PRIVATE ../libs/stb)
