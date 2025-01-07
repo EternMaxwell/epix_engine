@@ -6,8 +6,6 @@
 #endif
 #include <GLFW/glfw3.h>
 
-#include <tracy/Tracy.hpp>
-
 using namespace epix::window::systems;
 using namespace epix::window;
 using namespace epix::prelude;

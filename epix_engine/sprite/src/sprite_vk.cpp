@@ -3,7 +3,6 @@
 #include <filesystem>
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #include <glm/gtc/matrix_transform.hpp>
-#include <tracy/Tracy.hpp>
 
 #include "epix/sprite.h"
 #include "epix/sprite/shaders/fragment_shader.h"

@@ -1,7 +1,5 @@
 #include <spdlog/spdlog.h>
 
-#include <tracy/Tracy.hpp>
-
 #include "epix/input.h"
 
 using namespace epix;

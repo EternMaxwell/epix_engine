@@ -30,6 +30,13 @@
 #include "epix/common.h"
 // ----EPIX API----
 
+#ifdef EPIX_ENABLE_TRACY
+#include <tracy/Tracy.hpp>
+#else
+#undef TRACY_ENABLE
+#include <tracy/Tracy.hpp>
+#endif
+
 namespace epix::app {
 struct World;
 struct SubApp;

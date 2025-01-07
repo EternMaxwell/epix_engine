@@ -1,5 +1,3 @@
-#include <tracy/Tracy.hpp>
-
 #include "epix/app.h"
 
 using namespace epix::app;

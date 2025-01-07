@@ -2,7 +2,6 @@
 
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
-#include <tracy/Tracy.hpp>
 
 #include "epix/render/pixel.h"
 #include "shaders/block/fragment_shader.h"

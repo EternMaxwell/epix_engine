@@ -1,5 +1,3 @@
-#include <tracy/Tracy.hpp>
-
 #include "epix/rdvk.h"
 
 using namespace epix::render::vulkan2;

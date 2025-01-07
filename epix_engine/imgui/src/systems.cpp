@@ -1,7 +1,5 @@
 #include "epix/imgui.h"
 
-#include <tracy/Tracy.hpp>
-
 using namespace epix::prelude;
 using namespace epix::render_vk::components;
 using namespace epix::window::components;

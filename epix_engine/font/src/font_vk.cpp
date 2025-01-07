@@ -1,4 +1,3 @@
-#include <tracy/Tracy.hpp>
 #include <unordered_map>
 
 #include "epix/font.h"

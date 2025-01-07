@@ -1,5 +1,4 @@
 #include <format>
-#include <tracy/Tracy.hpp>
 
 #include "epix/app.h"
 
