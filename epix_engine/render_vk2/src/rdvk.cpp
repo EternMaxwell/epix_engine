@@ -688,7 +688,7 @@ EPIX_API void Swapchain::recreate() {
             .setPresentMode(present_mode)
             .setClipped(true);
     others->swapchain = device.createSwapchainKHR(create_info);
-    others->images = device.getSwapchainImagesKHR(others->swapchain);
+    others->images    = device.getSwapchainImagesKHR(others->swapchain);
     others->image_views.resize(others->images.size());
     for (int i = 0; i < others->images.size(); i += 1) {
         others->image_views[i] = device.createImageView(
@@ -734,6 +734,10 @@ EPIX_API vk::Fence Swapchain::fence() const {
 }  // namespace epix::render::vulkan2::backend
 
 namespace epix::render::vulkan2 {
+EPIX_API RenderVKPlugin& RenderVKPlugin::set_vsync(bool vsync) {
+    this->vsync = vsync;
+    return *this;
+}
 EPIX_API void RenderVKPlugin::build(epix::App& app) {
     auto window_plugin = app.get_plugin<window::WindowPlugin>();
     window_plugin->primary_desc().set_vsync(vsync).set_hints(

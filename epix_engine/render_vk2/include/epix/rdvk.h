@@ -260,6 +260,7 @@ EPIX_API void present_frame(
 }  // namespace systems
 struct RenderVKPlugin : public epix::Plugin {
     bool vsync = false;
+    EPIX_API RenderVKPlugin& set_vsync(bool vsync);
     EPIX_API void build(epix::App& app) override;
 };
 }  // namespace epix::render::vulkan2
