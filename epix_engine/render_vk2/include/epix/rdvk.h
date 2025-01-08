@@ -56,12 +56,15 @@ struct Instance {
     EPIX_API vk::Instance& operator*();
 
     EPIX_API static Instance create(
-        vk::ApplicationInfo app_info, std::shared_ptr<spdlog::logger> logger
+        vk::ApplicationInfo app_info,
+        std::shared_ptr<spdlog::logger> logger,
+        bool debug = false
     );
     EPIX_API static Instance create(
         const char* app_name,
         uint32_t app_version,
-        std::shared_ptr<spdlog::logger> logger
+        std::shared_ptr<spdlog::logger> logger,
+        bool debug = false
     );
     EPIX_API void destroy();
 
@@ -221,7 +224,9 @@ using epix::Without;
 using window::components::PrimaryWindow;
 using window::components::Window;
 EPIX_API void create_context(
-    Command cmd, Query<Get<Window>, With<PrimaryWindow>> query
+    Command cmd,
+    Query<Get<Window>, With<PrimaryWindow>> query,
+    Res<RenderVKPlugin> plugin
 );
 EPIX_API void destroy_context(
     Command cmd,
@@ -257,6 +262,8 @@ EPIX_API void present_frame(
 );
 }  // namespace systems
 struct RenderVKPlugin : public epix::Plugin {
+    bool debug_callback = false;
+    EPIX_API RenderVKPlugin& set_debug_callback(bool debug);
     EPIX_API void build(epix::App& app) override;
 };
 }  // namespace epix::render::vulkan2

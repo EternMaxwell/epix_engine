@@ -7,7 +7,7 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL debugUtilsMessengerCallback(
     VkDebugUtilsMessengerCallbackDataEXT const* pCallbackData,
     void* pUserData
 ) {
-#if !defined(NDEBUG)
+    // #if !defined(NDEBUG)
     switch (static_cast<uint32_t>(pCallbackData->messageIdNumber)) {
         case 0:
             // Validation Warning: Override layer has override paths set to
@@ -24,7 +24,7 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL debugUtilsMessengerCallback(
             // validation layers *will* adversely affect performance.
             return vk::False;
     }
-#endif
+    // #endif
 
     auto* logger = (spdlog::logger*)pUserData;
 
@@ -96,7 +96,8 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL debugUtilsMessengerCallback(
 EPIX_API Instance Instance::create(
     const char* app_name,
     uint32_t app_version,
-    std::shared_ptr<spdlog::logger> logger
+    std::shared_ptr<spdlog::logger> logger,
+    bool debug
 ) {
     auto app_info = vk::ApplicationInfo()
                         .setPApplicationName(app_name)
@@ -104,19 +105,20 @@ EPIX_API Instance Instance::create(
                         .setPEngineName("Pixel Engine")
                         .setEngineVersion(VK_MAKE_VERSION(0, 1, 0))
                         .setApiVersion(VK_API_VERSION_1_3);
-    return create(app_info, logger);
+    return create(app_info, logger, debug);
 };
 
 EPIX_API Instance Instance::create(
-    vk::ApplicationInfo app_info, std::shared_ptr<spdlog::logger> logger
+    vk::ApplicationInfo app_info,
+    std::shared_ptr<spdlog::logger> logger,
+    bool debug
 ) {
     Instance instance;
     instance.logger                 = logger;
-    std::vector<char const*> layers = {
-#if !defined(NDEBUG)
-        "VK_LAYER_KHRONOS_validation"
-#endif
-    };
+    std::vector<char const*> layers = {};
+    if (debug) {
+        layers.push_back("VK_LAYER_KHRONOS_validation");
+    }
     uint32_t glfwExtensionCount = 0;
     auto glfwExtensions =
         glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
@@ -162,38 +164,43 @@ EPIX_API Instance Instance::create(
     logger->debug(instance_extensions_info);
 
     instance.instance = vk::createInstance(instance_info);
-#if !defined(NDEBUG)
-    auto debugMessengerInfo =
-        vk::DebugUtilsMessengerCreateInfoEXT()
-            .setMessageSeverity(
-                vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning |
-                vk::DebugUtilsMessageSeverityFlagBitsEXT::eError
+    if (debug) {
+        auto debugMessengerInfo =
+            vk::DebugUtilsMessengerCreateInfoEXT()
+                .setMessageSeverity(
+                    vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning |
+                    vk::DebugUtilsMessageSeverityFlagBitsEXT::eError
+                )
+                .setMessageType(
+                    vk::DebugUtilsMessageTypeFlagBitsEXT::eGeneral |
+                    vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation |
+                    vk::DebugUtilsMessageTypeFlagBitsEXT::ePerformance
+                )
+                .setPfnUserCallback(debugUtilsMessengerCallback)
+                .setPUserData(logger.get());
+        auto func =
+            (PFN_vkCreateDebugUtilsMessengerEXT)glfwGetInstanceProcAddress(
+                instance.instance, "vkCreateDebugUtilsMessengerEXT"
+            );
+        if (!func) {
+            logger->error(
+                "Failed to load function vkCreateDebugUtilsMessengerEXT"
+            );
+            throw std::runtime_error(
+                "Failed to load function vkCreateDebugUtilsMessengerEXT"
+            );
+        }
+        func(
+            instance.instance,
+            reinterpret_cast<VkDebugUtilsMessengerCreateInfoEXT*>(
+                &debugMessengerInfo
+            ),
+            nullptr,
+            reinterpret_cast<VkDebugUtilsMessengerEXT*>(
+                &instance.debug_messenger
             )
-            .setMessageType(
-                vk::DebugUtilsMessageTypeFlagBitsEXT::eGeneral |
-                vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation |
-                vk::DebugUtilsMessageTypeFlagBitsEXT::ePerformance
-            )
-            .setPfnUserCallback(debugUtilsMessengerCallback)
-            .setPUserData(logger.get());
-    auto func = (PFN_vkCreateDebugUtilsMessengerEXT)glfwGetInstanceProcAddress(
-        instance.instance, "vkCreateDebugUtilsMessengerEXT"
-    );
-    if (!func) {
-        logger->error("Failed to load function vkCreateDebugUtilsMessengerEXT");
-        throw std::runtime_error(
-            "Failed to load function vkCreateDebugUtilsMessengerEXT"
         );
     }
-    func(
-        instance.instance,
-        reinterpret_cast<VkDebugUtilsMessengerCreateInfoEXT*>(
-            &debugMessengerInfo
-        ),
-        nullptr,
-        reinterpret_cast<VkDebugUtilsMessengerEXT*>(&instance.debug_messenger)
-    );
-#endif
     return instance;
 }
 EPIX_API void Instance::destroy() {
@@ -713,7 +720,11 @@ EPIX_API void Swapchain::recreate() {
 }
 EPIX_API vk::Image Swapchain::next_image() {
     others->current_frame = (others->current_frame + 1) % 2;
-    others->image_index   = device
+    device.waitForFences(
+        in_flight_fence[others->current_frame], VK_TRUE, UINT64_MAX
+    );
+    device.resetFences(in_flight_fence[others->current_frame]);
+    others->image_index = device
                               .acquireNextImageKHR(
                                   others->swapchain, UINT64_MAX, nullptr,
                                   in_flight_fence[others->current_frame]
@@ -733,6 +744,10 @@ EPIX_API vk::Fence Swapchain::fence() const {
 }  // namespace epix::render::vulkan2::backend
 
 namespace epix::render::vulkan2 {
+EPIX_API RenderVKPlugin& RenderVKPlugin::set_debug_callback(bool debug) {
+    debug_callback = debug;
+    return *this;
+}
 EPIX_API void RenderVKPlugin::build(epix::App& app) {
     auto window_plugin = app.get_plugin<window::WindowPlugin>();
     window_plugin->primary_desc().set_hints(

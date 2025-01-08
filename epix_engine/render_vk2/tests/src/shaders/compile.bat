@@ -1,0 +1,1 @@
+glslangValidator -V --vn vertex_spv -o vertex_shader.h shader.vert

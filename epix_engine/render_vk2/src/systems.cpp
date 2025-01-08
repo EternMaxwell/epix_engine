@@ -3,7 +3,9 @@
 using namespace epix::render::vulkan2;
 
 EPIX_API void systems::create_context(
-    Command cmd, Query<Get<Window>, With<PrimaryWindow>> query
+    Command cmd,
+    Query<Get<Window>, With<PrimaryWindow>> query,
+    Res<RenderVKPlugin> plugin
 ) {
     if (!query) {
         return;
@@ -12,7 +14,7 @@ EPIX_API void systems::create_context(
     auto [window]     = query.single();
     Instance instance = Instance::create(
         "Pixel Engine", VK_MAKE_VERSION(0, 1, 0),
-        spdlog::default_logger()->clone("vulkan")
+        spdlog::default_logger()->clone("vulkan"), plugin->debug_callback
     );
     PhysicalDevice physical_device =
         instance.instance.enumeratePhysicalDevices().front();
@@ -20,9 +22,9 @@ EPIX_API void systems::create_context(
     Surface surface      = Surface::create(instance, window.get_handle());
     Swapchain swap_chain = Swapchain::create(device, surface, window.m_vsync);
     CommandPool command_pool = device.createCommandPool(
-        vk::CommandPoolCreateInfo().setQueueFamilyIndex(
-            device.queue_family_index
-        )
+        vk::CommandPoolCreateInfo()
+            .setQueueFamilyIndex(device.queue_family_index)
+            .setFlags(vk::CommandPoolCreateFlagBits::eResetCommandBuffer)
     );
     Queue queue = device.getQueue(device.queue_family_index, 0);
     cmd.spawn(
@@ -53,6 +55,8 @@ EPIX_API void systems::destroy_context(
     auto [cmd_buffer, cmd_fence] = cmd_query.single();
     auto [instance, device, surface, swap_chain, command_pool] = query.single();
     ZoneScopedN("Destroy vulkan context");
+    device.waitForFences(swap_chain.fence(), VK_TRUE, UINT64_MAX);
+    device.waitForFences(cmd_fence, VK_TRUE, UINT64_MAX);
     device.destroyFence(cmd_fence);
     device.freeCommandBuffers(command_pool, cmd_buffer);
     swap_chain.destroy();
@@ -129,8 +133,8 @@ EPIX_API void systems::get_next_image(
     cmd_buffer.reset(vk::CommandBufferResetFlagBits::eReleaseResources);
     cmd_buffer.begin(vk::CommandBufferBeginInfo{});
     vk::ImageMemoryBarrier barrier;
-    barrier.setOldLayout(vk::ImageLayout::eColorAttachmentOptimal);
-    barrier.setNewLayout(vk::ImageLayout::ePresentSrcKHR);
+    barrier.setOldLayout(vk::ImageLayout::ePresentSrcKHR);
+    barrier.setNewLayout(vk::ImageLayout::eTransferDstOptimal);
     barrier.setSrcQueueFamilyIndex(VK_QUEUE_FAMILY_IGNORED);
     barrier.setDstQueueFamilyIndex(VK_QUEUE_FAMILY_IGNORED);
     barrier.setImage(swap_chain.current_image());

@@ -42,3 +42,6 @@
 	path = libs/thread-pool
 	url = https://github.com/bshoshany/thread-pool.git
 	tag = v5.0.0
+[submodule "libs/SPIRV-Cross"]
+	path = libs/SPIRV-Cross
+	url = https://github.com/KhronosGroup/SPIRV-Cross.git
