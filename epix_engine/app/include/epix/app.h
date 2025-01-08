@@ -2177,14 +2177,16 @@ struct App {
     }
     template <typename T>
     std::shared_ptr<T> get_plugin() {
-        return std::static_pointer_cast<T>(
-            std::find_if(
-                m_plugins.begin(), m_plugins.end(),
-                [](const auto& pair) {
-                    return pair.first == std::type_index(typeid(T));
-                }
-            )->second
+        auto&& iter = std::find_if(
+            m_plugins.begin(), m_plugins.end(),
+            [](const auto& pair) {
+                return pair.first == std::type_index(typeid(T));
+            }
         );
+        if (iter != m_plugins.end()) {
+            return std::static_pointer_cast<T>(iter->second);
+        }
+        return nullptr;
     }
     template <typename T, typename Target = MainSubApp, typename... Args>
     App& emplace_resource(Args&&... args) {

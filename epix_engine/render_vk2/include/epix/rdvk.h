@@ -221,9 +221,7 @@ using epix::Without;
 using window::components::PrimaryWindow;
 using window::components::Window;
 EPIX_API void create_context(
-    Command cmd,
-    Query<Get<Window>, With<PrimaryWindow>> query,
-    Res<RenderVKPlugin> plugin
+    Command cmd, Query<Get<Window>, With<PrimaryWindow>> query
 );
 EPIX_API void destroy_context(
     Command cmd,
@@ -259,8 +257,6 @@ EPIX_API void present_frame(
 );
 }  // namespace systems
 struct RenderVKPlugin : public epix::Plugin {
-    bool vsync = false;
-    EPIX_API RenderVKPlugin& set_vsync(bool vsync);
     EPIX_API void build(epix::App& app) override;
 };
 }  // namespace epix::render::vulkan2

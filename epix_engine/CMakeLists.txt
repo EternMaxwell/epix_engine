@@ -57,6 +57,7 @@ target_link_libraries (epix_engine PUBLIC epix::window)
 target_link_libraries (epix_engine PUBLIC epix::input)
 # EPIX RENDER LIBRARIES
 target_link_libraries (epix_engine PUBLIC epix::render::vulkan)
+target_link_libraries (epix_engine PUBLIC epix::render::vulkan2)
 target_link_libraries (epix_engine PUBLIC epix::render::debug)
 target_link_libraries (epix_engine PUBLIC epix::imgui)
 target_link_libraries (epix_engine PUBLIC epix::render::font)

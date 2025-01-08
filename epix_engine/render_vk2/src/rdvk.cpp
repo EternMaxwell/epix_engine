@@ -651,7 +651,6 @@ EPIX_API void Swapchain::recreate() {
     if (others->extent == capabilities.currentExtent) {
         return;
     }
-    device.waitIdle();
     for (auto& image_view : others->image_views) {
         device.destroyImageView(image_view);
     }
@@ -734,13 +733,9 @@ EPIX_API vk::Fence Swapchain::fence() const {
 }  // namespace epix::render::vulkan2::backend
 
 namespace epix::render::vulkan2 {
-EPIX_API RenderVKPlugin& RenderVKPlugin::set_vsync(bool vsync) {
-    this->vsync = vsync;
-    return *this;
-}
 EPIX_API void RenderVKPlugin::build(epix::App& app) {
     auto window_plugin = app.get_plugin<window::WindowPlugin>();
-    window_plugin->primary_desc().set_vsync(vsync).set_hints(
+    window_plugin->primary_desc().set_hints(
         {{GLFW_RESIZABLE, GLFW_TRUE}, {GLFW_CLIENT_API, GLFW_NO_API}}
     );
     app.add_system(PreStartup, systems::create_context)

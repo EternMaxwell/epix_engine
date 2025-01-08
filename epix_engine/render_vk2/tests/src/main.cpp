@@ -9,6 +9,7 @@ int main() {
 
     App app2 = App::create2();
     app2.add_plugin(WindowPlugin{});
+    app2.get_plugin<WindowPlugin>()->primary_desc().set_vsync(false);
     app2.add_plugin(epix::render::vulkan2::RenderVKPlugin{});
     app2.add_plugin(epix::input::InputPlugin{}.enable_output());
     app2.run();
