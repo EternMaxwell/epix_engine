@@ -78,6 +78,7 @@ struct Device : vk::Device {
 
     Instance instance;
     PhysicalDevice physical_device;
+    Queue queue;
 
     EPIX_API operator bool() const;
 
@@ -103,12 +104,20 @@ struct Device : vk::Device {
     EPIX_API void destroy(Image& image);
 };
 struct Image {
-    Device device;
-    VmaAllocation allocation;
+    Device device            = {};
+    VmaAllocation allocation = {};
     vk::Image image;
 
     EPIX_API vk::Image& operator*();
     EPIX_API operator bool() const;
+    operator vk::Image() const { return image; }
+    Image() = default;
+    Image(const vk::Image& img) : image(img) {}
+
+    Image& operator=(const vk::Image& img) {
+        image = img;
+        return *this;
+    }
 
     EPIX_API static Image create(
         Device& device,
@@ -122,12 +131,20 @@ struct Image {
     );
 };
 struct Buffer {
-    Device device;
-    VmaAllocation allocation;
+    Device device            = {};
+    VmaAllocation allocation = {};
     vk::Buffer buffer;
 
     EPIX_API vk::Buffer& operator*();
     EPIX_API operator bool() const;
+    operator vk::Buffer() const { return buffer; }
+    Buffer() = default;
+    Buffer(const vk::Buffer& buf) : buffer(buf) {}
+
+    Buffer& operator=(const vk::Buffer& buf) {
+        buffer = buf;
+        return *this;
+    }
 
     EPIX_API static Buffer create(
         Device& device,
@@ -200,8 +217,8 @@ struct Swapchain {
     );
     EPIX_API void destroy();
     EPIX_API void recreate();
-    EPIX_API vk::Image next_image();
-    EPIX_API vk::Image current_image() const;
+    EPIX_API Image next_image();
+    EPIX_API Image current_image() const;
     EPIX_API ImageView current_image_view() const;
     EPIX_API vk::Fence fence() const;
 };
@@ -261,6 +278,147 @@ EPIX_API void present_frame(
     Query<Get<CommandBuffer, Fence>, With<ContextCommandBuffer>> cmd_query
 );
 }  // namespace systems
+namespace util {
+inline void default_blend_attachment(
+    vk::PipelineColorBlendAttachmentState* state
+) {
+    *state =
+        vk::PipelineColorBlendAttachmentState()
+            .setColorWriteMask(
+                vk::ColorComponentFlagBits::eR |
+                vk::ColorComponentFlagBits::eG |
+                vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA
+            )
+            .setBlendEnable(true)
+            .setSrcColorBlendFactor(vk::BlendFactor::eSrcAlpha)
+            .setDstColorBlendFactor(vk::BlendFactor::eOneMinusSrcAlpha)
+            .setColorBlendOp(vk::BlendOp::eAdd)
+            .setSrcAlphaBlendFactor(vk::BlendFactor::eOne)
+            .setDstAlphaBlendFactor(vk::BlendFactor::eZero)
+            .setAlphaBlendOp(vk::BlendOp::eAdd);
+}
+inline [[nodiscard]] std::vector<vk::PipelineColorBlendAttachmentState>
+default_blend_attachments(uint32_t count) {
+    std::vector<vk::PipelineColorBlendAttachmentState> states(count);
+    for (auto& state : states) {
+        default_blend_attachment(&state);
+    }
+    return std::move(states);
+}
+inline void default_depth_stencil(vk::PipelineDepthStencilStateCreateInfo* state
+) {
+    *state = vk::PipelineDepthStencilStateCreateInfo()
+                 .setDepthTestEnable(true)
+                 .setDepthWriteEnable(true)
+                 .setDepthCompareOp(vk::CompareOp::eLess)
+                 .setDepthBoundsTestEnable(false)
+                 .setStencilTestEnable(false);
+}
+inline [[nodiscard]] std::vector<vk::DynamicState> default_dynamic_states(
+    vk::PipelineDynamicStateCreateInfo* state
+) {
+    auto states = std::vector<vk::DynamicState>{
+        vk::DynamicState::eViewport, vk::DynamicState::eScissor
+    };
+    *state = vk::PipelineDynamicStateCreateInfo().setDynamicStates(states);
+    return std::move(states);
+}
+inline void default_input_assembly(
+    vk::PipelineInputAssemblyStateCreateInfo* state,
+    vk::PrimitiveTopology topology = vk::PrimitiveTopology::eTriangleList
+) {
+    *state = vk::PipelineInputAssemblyStateCreateInfo()
+                 .setTopology(topology)
+                 .setPrimitiveRestartEnable(false);
+}
+inline void default_multisample(vk::PipelineMultisampleStateCreateInfo* state) {
+    *state = vk::PipelineMultisampleStateCreateInfo()
+                 .setRasterizationSamples(vk::SampleCountFlagBits::e1)
+                 .setSampleShadingEnable(false)
+                 .setMinSampleShading(1.0f)
+                 .setAlphaToCoverageEnable(false)
+                 .setAlphaToOneEnable(false);
+}
+inline void default_rasterization(
+    vk::PipelineRasterizationStateCreateInfo* state,
+    bool cull      = false,
+    bool cull_back = false,
+    bool ccw       = true
+) {
+    *state = vk::PipelineRasterizationStateCreateInfo()
+                 .setDepthClampEnable(false)
+                 .setRasterizerDiscardEnable(false)
+                 .setPolygonMode(vk::PolygonMode::eFill)
+                 .setLineWidth(1.0f)
+                 .setCullMode(
+                     cull ? (cull_back ? vk::CullModeFlagBits::eBack
+                                       : vk::CullModeFlagBits::eFront)
+                          : vk::CullModeFlagBits::eNone
+                 )
+                 .setFrontFace(
+                     ccw ? vk::FrontFace::eCounterClockwise
+                         : vk::FrontFace::eClockwise
+                 )
+                 .setDepthBiasEnable(false)
+                 .setDepthBiasConstantFactor(0.0f)
+                 .setDepthBiasClamp(0.0f)
+                 .setDepthBiasSlopeFactor(0.0f);
+}
+inline std::tuple<std::vector<vk::Viewport>, std::vector<vk::Rect2D>>
+default_viewport_scissor(
+    vk::PipelineViewportStateCreateInfo* state,
+    vk::Extent2D extent,
+    uint32_t count
+) {
+    std::vector<vk::Viewport> viewports(count);
+    std::vector<vk::Rect2D> scissors(count);
+    for (uint32_t i = 0; i < count; i++) {
+        viewports[i] = vk::Viewport()
+                           .setX(0.0f)
+                           .setY(0.0f)
+                           .setWidth(static_cast<float>(extent.width))
+                           .setHeight(static_cast<float>(extent.height))
+                           .setMinDepth(0.0f)
+                           .setMaxDepth(1.0f);
+        scissors[i] = vk::Rect2D().setOffset({0, 0}).setExtent(extent);
+    }
+    *state = vk::PipelineViewportStateCreateInfo()
+                 .setViewports(viewports)
+                 .setScissors(scissors);
+    return {std::move(viewports), std::move(scissors)};
+}
+inline void default_tessellation(vk::PipelineTessellationStateCreateInfo* state
+) {
+    *state = vk::PipelineTessellationStateCreateInfo();
+}
+inline void default_vertex_input(
+    vk::PipelineVertexInputStateCreateInfo* state,
+    std::vector<vk::VertexInputBindingDescription>& bindings,
+    std::vector<vk::VertexInputAttributeDescription>& attributes
+) {
+    *state = vk::PipelineVertexInputStateCreateInfo()
+                 .setVertexBindingDescriptions(bindings)
+                 .setVertexAttributeDescriptions(attributes);
+}
+template <typename... Args>
+std::vector<vk::PipelineShaderStageCreateInfo> default_shader_stages(
+    vk::ShaderStageFlagBits flags, vk::ShaderModule& module, Args&&... args
+) {
+    if constexpr (sizeof...(Args) == 0) {
+        return {vk::PipelineShaderStageCreateInfo()
+                    .setStage(flags)
+                    .setModule(module)
+                    .setPName("main")};
+    } else {
+        auto stages = default_shader_stages(std::forward<Args>(args)...);
+        stages.push_back(vk::PipelineShaderStageCreateInfo()
+                             .setStage(flags)
+                             .setModule(module)
+                             .setPName("main"));
+        return std::move(stages);
+    }
+}
+}  // namespace util
 struct RenderVKPlugin : public epix::Plugin {
     bool debug_callback = false;
     EPIX_API RenderVKPlugin& set_debug_callback(bool debug);

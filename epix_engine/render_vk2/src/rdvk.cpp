@@ -383,6 +383,7 @@ EPIX_API Image Image::create(
     return image;
 }
 EPIX_API void Image::destroy() {
+    if (!device || !allocation) return;
     vmaDestroyImage(device.allocator, image, allocation);
 }
 EPIX_API vk::SubresourceLayout Image::get_subresource_layout(
@@ -450,6 +451,7 @@ Buffer::create_host(Device& device, uint64_t size, vk::BufferUsageFlags usage) {
     );
 }
 EPIX_API void Buffer::destroy() {
+    if (!device || !allocation) return;
     vmaDestroyBuffer(device.allocator, buffer, allocation);
 }
 EPIX_API void* Buffer::map() {
@@ -718,7 +720,7 @@ EPIX_API void Swapchain::recreate() {
         );
     }
 }
-EPIX_API vk::Image Swapchain::next_image() {
+EPIX_API Image Swapchain::next_image() {
     others->current_frame = (others->current_frame + 1) % 2;
     device.waitForFences(
         in_flight_fence[others->current_frame], VK_TRUE, UINT64_MAX
@@ -732,7 +734,7 @@ EPIX_API vk::Image Swapchain::next_image() {
                               .value;
     return others->images[others->image_index];
 }
-EPIX_API vk::Image Swapchain::current_image() const {
+EPIX_API Image Swapchain::current_image() const {
     return others->images[others->image_index];
 }
 EPIX_API ImageView Swapchain::current_image_view() const {
@@ -756,12 +758,14 @@ EPIX_API void RenderVKPlugin::build(epix::App& app) {
     app.add_system(PreStartup, systems::create_context)
         .in_set(window::WindowStartUpSets::after_window_creation);
     app.add_system(Extraction, systems::extract_context);
-    app.add_system(Prepare, systems::recreate_swap_chain);
-    app.add_system(Prepare, systems::get_next_image)
-        .after(systems::recreate_swap_chain);
-    app.add_system(PostRender, systems::present_frame)
-        .before(systems::clear_extracted_context);
-    app.add_system(PostRender, systems::clear_extracted_context);
+    app.add_system(
+           Prepare, systems::recreate_swap_chain, systems::get_next_image
+    )
+        .chain();
+    app.add_system(
+           PostRender, systems::present_frame, systems::clear_extracted_context
+    )
+        .chain();
     app.add_system(PostExit, systems::destroy_context);
 }
 }  // namespace epix::render::vulkan2

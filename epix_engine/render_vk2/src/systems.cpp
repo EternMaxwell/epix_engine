@@ -218,3 +218,52 @@ EPIX_API void systems::present_frame(
     } catch (vk::OutOfDateKHRError& e) {
     } catch (std::exception& e) {}
 }
+
+#include "epix/rdvk_res.h"
+
+EPIX_API void systems::create_res_manager(
+    Command cmd, Query<Get<Entity, Device>, With<RenderContext>> query
+) {
+    if (!query) {
+        return;
+    }
+    ZoneScopedN("Create resource manager");
+    auto [entity, device] = query.single();
+    ResourceManager res_manager{device};
+    cmd.entity(entity).emplace(res_manager);
+}
+
+EPIX_API void systems::destroy_res_manager(
+    Command cmd, Query<Get<vulkan2::ResourceManager>, With<RenderContext>> query
+) {
+    if (!query) {
+        return;
+    }
+    ZoneScopedN("Destroy resource manager");
+    auto [res_manager] = query.single();
+    res_manager.destroy();
+}
+
+EPIX_API void systems::extract_res_manager(
+    Extract<Get<vulkan2::ResourceManager>, With<RenderContext>> query,
+    Command cmd
+) {
+    if (!query) {
+        return;
+    }
+    ZoneScopedN("Extract resource manager");
+    auto [res_manager] = query.single();
+    cmd.spawn(res_manager, RenderContext{});
+}
+
+EPIX_API void systems::clear_extracted_res_manager(
+    Query<Get<Entity>, With<RenderContext>> query, Command cmd
+) {
+    if (!query) {
+        return;
+    }
+    ZoneScopedN("Clear extracted resource manager");
+    for (auto [entity] : query.iter()) {
+        cmd.entity(entity).despawn();
+    }
+}

@@ -30,7 +30,7 @@
 #include "epix/common.h"
 // ----EPIX API----
 
-#ifdef EPIX_ENABLE_TRACY
+#if defined(EPIX_ENABLE_TRACY) && defined(NDEBUG)
 #include <tracy/Tracy.hpp>
 #else
 #undef TRACY_ENABLE

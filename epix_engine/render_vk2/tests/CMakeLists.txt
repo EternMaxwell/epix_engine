@@ -8,5 +8,6 @@ target_link_libraries(rdvk_test epix::app)
 target_link_libraries(rdvk_test epix::window)
 target_link_libraries(rdvk_test epix::render::vulkan2)
 target_link_libraries(rdvk_test epix::input)
+target_link_libraries(rdvk_test boost_pfr)
 
 target_link_libraries(rdvk_test spirv-cross-glsl)
