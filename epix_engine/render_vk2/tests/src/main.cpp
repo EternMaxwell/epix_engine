@@ -192,6 +192,34 @@ void destroy_pipeline(Query<Get<TestPipeline>> query) {
     pipeline.destroy();
 }
 
+void create_sampler(Query<
+                    Get<epix::render::vulkan2::ResourceManager>,
+                    With<epix::render::vulkan2::RenderContextResManager>> query
+) {
+    if (!query) {
+        return;
+    }
+    auto [res_manager] = query.single();
+    auto& device       = res_manager.device;
+    vk::SamplerCreateInfo sampler_info;
+    sampler_info.setMagFilter(vk::Filter::eLinear);
+    sampler_info.setMinFilter(vk::Filter::eLinear);
+    sampler_info.setAddressModeU(vk::SamplerAddressMode::eRepeat);
+    sampler_info.setAddressModeV(vk::SamplerAddressMode::eRepeat);
+    sampler_info.setAddressModeW(vk::SamplerAddressMode::eRepeat);
+    sampler_info.setAnisotropyEnable(true);
+    sampler_info.setMaxAnisotropy(16);
+    sampler_info.setBorderColor(vk::BorderColor::eIntOpaqueBlack);
+    sampler_info.setUnnormalizedCoordinates(false);
+    sampler_info.setCompareEnable(false);
+    sampler_info.setCompareOp(vk::CompareOp::eAlways);
+    sampler_info.setMipmapMode(vk::SamplerMipmapMode::eLinear);
+    sampler_info.setMipLodBias(0.0f);
+    sampler_info.setMinLod(0.0f);
+    sampler_info.setMaxLod(0.0f);
+    res_manager.add_sampler("default", device.createSampler(sampler_info));
+}
+
 int main() {
     using namespace epix::app;
     using namespace epix::window;
@@ -204,7 +232,7 @@ int main() {
     );
     app2.add_plugin(epix::render::vulkan2::VulkanResManagerPlugin{});
     app2.add_plugin(epix::input::InputPlugin{});
-    app2.add_system(epix::Startup, create_pipeline);
+    app2.add_system(epix::Startup, create_pipeline, create_sampler);
     app2.add_system(epix::Exit, destroy_pipeline);
     app2.run();
 }

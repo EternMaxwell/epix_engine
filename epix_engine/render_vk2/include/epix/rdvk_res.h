@@ -24,31 +24,28 @@ struct ResourceManager {
     std::vector<ImageView> image_views;
     std::vector<std::string> image_view_names;
     entt::dense_map<std::string, uint32_t> image_view_map;
+    std::vector<std::pair<uint32_t, ImageView>> view_cache;
+    std::vector<uint32_t> view_cache_remove;
 
     std::vector<Sampler> samplers;
     std::vector<std::string> sampler_names;
     entt::dense_map<std::string, uint32_t> sampler_map;
+    std::vector<std::pair<uint32_t, Sampler>> sampler_cache;
+    std::vector<uint32_t> sampler_cache_remove;
+
+    vk::DescriptorPool descriptor_pool;
+    vk::DescriptorSetLayout descriptor_set_layout;
+    vk::DescriptorSet descriptor_set;
+
+    EPIX_API ResourceManager(Device device);
+
+    EPIX_API void apply_cache();
 
     EPIX_API void destroy();
-    EPIX_API uint32_t create_buffer(
-        const std::string& name,
-        vk::BufferCreateInfo& create_info,
-        AllocationCreateInfo& alloc_info
-    );
     EPIX_API uint32_t add_buffer(const std::string& name, Buffer buffer);
-    EPIX_API uint32_t create_image(
-        const std::string& name,
-        vk::ImageCreateInfo& create_info,
-        AllocationCreateInfo& alloc_info
-    );
     EPIX_API uint32_t add_image(const std::string& name, Image image);
-    EPIX_API uint32_t create_image_view(
-        const std::string& name, vk::ImageViewCreateInfo& create_info
-    );
     EPIX_API uint32_t
     add_image_view(const std::string& name, ImageView image_view);
-    EPIX_API uint32_t
-    create_sampler(const std::string& name, vk::SamplerCreateInfo& create_info);
     EPIX_API uint32_t add_sampler(const std::string& name, Sampler sampler);
 
     EPIX_API Buffer get_buffer(const std::string& name) const;
@@ -73,6 +70,9 @@ struct ResourceManager {
     EPIX_API uint32_t image_index(const std::string& name) const;
     EPIX_API uint32_t image_view_index(const std::string& name) const;
     EPIX_API uint32_t sampler_index(const std::string& name) const;
+
+    EPIX_API vk::DescriptorSet get_descriptor_set() const;
+    EPIX_API vk::DescriptorSetLayout get_descriptor_set_layout() const;
 };
 struct RenderContextResManager {};
 namespace systems {
