@@ -245,34 +245,20 @@ EPIX_API void systems::destroy_res_manager(
 }
 
 EPIX_API void systems::extract_res_manager(
-    Extract<Get<vulkan2::ResourceManager>, With<RenderContextResManager>> query,
-    Query<Get<vulkan2::ResourceManager>, With<RenderContextResManager>>
-        render_query,
+    Extract<
+        Get<Entity, vulkan2::ResourceManager>,
+        With<RenderContextResManager>> query,
+    Query<
+        Get<Wrapper<const vulkan2::ResourceManager>>,
+        With<RenderContextResManager>> render_query,
     Command cmd
 ) {
     if (!query) {
         return;
     }
-    ZoneScopedN("Extract resource manager");
-    auto [res_manager] = query.single();
+    auto [entity, res_manager] = query.single();
     if (!render_query) {
-        cmd.spawn(std::move(res_manager), RenderContextResManager{});
-    } else {
-        auto [render_res_manager] = render_query.single();
-        render_res_manager        = std::move(res_manager);
+        ZoneScopedN("Extract resource manager");
+        cmd.spawn(query.wrap(entity), RenderContextResManager{});
     }
-}
-
-EPIX_API void systems::feedback_res_manager(
-    Extract<Get<vulkan2::ResourceManager>, With<RenderContextResManager>> query,
-    Query<Get<vulkan2::ResourceManager>, With<RenderContextResManager>>
-        main_query
-) {
-    if (!query || !main_query) {
-        return;
-    }
-    ZoneScopedN("Clear extracted resource manager");
-    auto [res_manager]      = query.single();
-    auto [main_res_manager] = main_query.single();
-    main_res_manager        = std::move(res_manager);
 }

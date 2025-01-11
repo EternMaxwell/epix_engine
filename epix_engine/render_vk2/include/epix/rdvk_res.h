@@ -94,15 +94,13 @@ EPIX_API void destroy_res_manager(
     Query<Get<vulkan2::ResourceManager>, With<RenderContextResManager>> query
 );
 EPIX_API void extract_res_manager(
-    Extract<Get<vulkan2::ResourceManager>, With<RenderContextResManager>> query,
-    Query<Get<vulkan2::ResourceManager>, With<RenderContextResManager>>
-        render_query,
+    Extract<
+        Get<Entity, vulkan2::ResourceManager>,
+        With<RenderContextResManager>> query,
+    Query<
+        Get<Wrapper<const vulkan2::ResourceManager>>,
+        With<RenderContextResManager>> render_query,
     Command cmd
-);
-EPIX_API void feedback_res_manager(
-    Extract<Get<vulkan2::ResourceManager>, With<RenderContextResManager>> query,
-    Query<Get<vulkan2::ResourceManager>, With<RenderContextResManager>>
-        main_query
 );
 }  // namespace systems
 struct VulkanResManagerPlugin : epix::Plugin {

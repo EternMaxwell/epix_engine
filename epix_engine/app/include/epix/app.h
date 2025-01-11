@@ -159,9 +159,6 @@ enum RenderExitStage {
 enum ExtractStage {
     Extraction,
 };
-enum FeedbackStage {
-    Feedback,
-};
 }  // namespace stages
 }  // namespace epix::app
 

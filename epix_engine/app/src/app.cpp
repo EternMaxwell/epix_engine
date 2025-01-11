@@ -49,10 +49,6 @@ EPIX_API App App::create2() {
             Prepare, PreRender, Render, PostRender
         )
         .add_prev_stage<ExtractStage>();
-    app.runner()
-        .assign_loop_stage<RenderSubApp, MainSubApp>(Feedback)
-        .add_prev_stage<RenderLoopStage>()
-        .add_prev_stage<MainLoopStage>();
     app.runner().assign_exit_stage<MainSubApp, MainSubApp>(
         PreExit, Exit, PostExit
     );

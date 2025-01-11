@@ -235,7 +235,6 @@ EPIX_API uint32_t ResourceManager::sampler_index(const std::string& name
 EPIX_API void VulkanResManagerPlugin::build(epix::App& app) {
     app.add_system(epix::Startup, systems::create_res_manager);
     app.add_system(epix::Extraction, systems::extract_res_manager);
-    app.add_system(epix::Feedback, systems::feedback_res_manager);
     app.add_system(epix::Exit, systems::destroy_res_manager);
 }
 }  // namespace epix::render::vulkan2
