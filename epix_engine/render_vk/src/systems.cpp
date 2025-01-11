@@ -1,10 +1,5 @@
 #include "epix/render_vk.h"
 
-#ifndef VMA_IMPLEMENTATION
-#define VMA_IMPLEMENTATION
-#endif
-#include <vk_mem_alloc.h>
-
 #ifndef GLFW_INCLUDE_VULKAN
 #define GLFW_INCLUDE_VULKAN
 #endif
