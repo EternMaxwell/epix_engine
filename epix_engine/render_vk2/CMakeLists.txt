@@ -9,12 +9,12 @@ if(EPIX_ENABLE_TRACY)
 endif()
 target_include_directories(epix_rdvk2 PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
-target_link_libraries(epix_rdvk2 Vulkan::Vulkan)
-target_link_libraries(epix_rdvk2 VulkanMemoryAllocator)
-target_link_libraries(epix_rdvk2 glm::glm)
-target_link_libraries(epix_rdvk2 epix::app)
-target_link_libraries(epix_rdvk2 epix::window)
-target_link_libraries(epix_rdvk2 epix::render::vulkan)
+target_link_libraries(epix_rdvk2 PUBLIC Vulkan::Vulkan)
+target_link_libraries(epix_rdvk2 PUBLIC VulkanMemoryAllocator)
+target_link_libraries(epix_rdvk2 PUBLIC spirv-cross-glsl)
+target_link_libraries(epix_rdvk2 PUBLIC glm::glm)
+target_link_libraries(epix_rdvk2 PUBLIC epix::app)
+target_link_libraries(epix_rdvk2 PUBLIC epix::window)
 
 add_library(epix::render::vulkan2 ALIAS epix_rdvk2)
 

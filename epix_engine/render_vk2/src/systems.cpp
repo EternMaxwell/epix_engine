@@ -1,7 +1,6 @@
 #include "epix/rdvk.h"
 
 using namespace epix::render::vulkan2;
-
 EPIX_API void systems::create_context(
     Command cmd,
     Query<Get<Window>, With<PrimaryWindow>> query,

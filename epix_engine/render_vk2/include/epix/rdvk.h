@@ -12,6 +12,7 @@
 
 #include <memory>
 #include <mutex>
+#include <spirv_glsl.hpp>
 #include <vector>
 #include <vulkan/vulkan.hpp>
 
@@ -279,127 +280,59 @@ EPIX_API void present_frame(
 );
 }  // namespace systems
 namespace util {
-inline void default_blend_attachment(
+EPIX_API void get_shader_resource_bindings(
+    std::vector<std::vector<vk::DescriptorSetLayoutBinding>>& bindings,
+    spirv_cross::CompilerGLSL& glsl,
+    vk::ShaderStageFlags stage,
+    uint32_t max_descriptor_count = 65536
+);
+
+EPIX_API bool get_push_constant_ranges(
+    vk::PushConstantRange& range,
+    spirv_cross::CompilerGLSL& glsl,
+    vk::ShaderStageFlags stage,
+    uint32_t offset = 0u
+);
+
+EPIX_API std::vector<vk::VertexInputAttributeDescription>
+get_vertex_input_attributes(spirv_cross::CompilerGLSL& vert);
+EPIX_API void default_blend_attachment(
     vk::PipelineColorBlendAttachmentState* state
-) {
-    *state =
-        vk::PipelineColorBlendAttachmentState()
-            .setColorWriteMask(
-                vk::ColorComponentFlagBits::eR |
-                vk::ColorComponentFlagBits::eG |
-                vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA
-            )
-            .setBlendEnable(true)
-            .setSrcColorBlendFactor(vk::BlendFactor::eSrcAlpha)
-            .setDstColorBlendFactor(vk::BlendFactor::eOneMinusSrcAlpha)
-            .setColorBlendOp(vk::BlendOp::eAdd)
-            .setSrcAlphaBlendFactor(vk::BlendFactor::eOne)
-            .setDstAlphaBlendFactor(vk::BlendFactor::eZero)
-            .setAlphaBlendOp(vk::BlendOp::eAdd);
-}
-inline [[nodiscard]] std::vector<vk::PipelineColorBlendAttachmentState>
-default_blend_attachments(uint32_t count) {
-    std::vector<vk::PipelineColorBlendAttachmentState> states(count);
-    for (auto& state : states) {
-        default_blend_attachment(&state);
-    }
-    return std::move(states);
-}
-inline void default_depth_stencil(vk::PipelineDepthStencilStateCreateInfo* state
-) {
-    *state = vk::PipelineDepthStencilStateCreateInfo()
-                 .setDepthTestEnable(true)
-                 .setDepthWriteEnable(true)
-                 .setDepthCompareOp(vk::CompareOp::eLess)
-                 .setDepthBoundsTestEnable(false)
-                 .setStencilTestEnable(false);
-}
-inline [[nodiscard]] std::vector<vk::DynamicState> default_dynamic_states(
+);
+EPIX_API [[nodiscard]] std::vector<vk::PipelineColorBlendAttachmentState>
+default_blend_attachments(uint32_t count);
+EPIX_API void default_depth_stencil(
+    vk::PipelineDepthStencilStateCreateInfo* state
+);
+EPIX_API [[nodiscard]] std::vector<vk::DynamicState> default_dynamic_states(
     vk::PipelineDynamicStateCreateInfo* state
-) {
-    auto states = std::vector<vk::DynamicState>{
-        vk::DynamicState::eViewport, vk::DynamicState::eScissor
-    };
-    *state = vk::PipelineDynamicStateCreateInfo().setDynamicStates(states);
-    return std::move(states);
-}
-inline void default_input_assembly(
+);
+EPIX_API void default_input_assembly(
     vk::PipelineInputAssemblyStateCreateInfo* state,
     vk::PrimitiveTopology topology = vk::PrimitiveTopology::eTriangleList
-) {
-    *state = vk::PipelineInputAssemblyStateCreateInfo()
-                 .setTopology(topology)
-                 .setPrimitiveRestartEnable(false);
-}
-inline void default_multisample(vk::PipelineMultisampleStateCreateInfo* state) {
-    *state = vk::PipelineMultisampleStateCreateInfo()
-                 .setRasterizationSamples(vk::SampleCountFlagBits::e1)
-                 .setSampleShadingEnable(false)
-                 .setMinSampleShading(1.0f)
-                 .setAlphaToCoverageEnable(false)
-                 .setAlphaToOneEnable(false);
-}
-inline void default_rasterization(
+);
+EPIX_API void default_multisample(vk::PipelineMultisampleStateCreateInfo* state
+);
+EPIX_API void default_rasterization(
     vk::PipelineRasterizationStateCreateInfo* state,
     bool cull      = false,
     bool cull_back = false,
     bool ccw       = true
-) {
-    *state = vk::PipelineRasterizationStateCreateInfo()
-                 .setDepthClampEnable(false)
-                 .setRasterizerDiscardEnable(false)
-                 .setPolygonMode(vk::PolygonMode::eFill)
-                 .setLineWidth(1.0f)
-                 .setCullMode(
-                     cull ? (cull_back ? vk::CullModeFlagBits::eBack
-                                       : vk::CullModeFlagBits::eFront)
-                          : vk::CullModeFlagBits::eNone
-                 )
-                 .setFrontFace(
-                     ccw ? vk::FrontFace::eCounterClockwise
-                         : vk::FrontFace::eClockwise
-                 )
-                 .setDepthBiasEnable(false)
-                 .setDepthBiasConstantFactor(0.0f)
-                 .setDepthBiasClamp(0.0f)
-                 .setDepthBiasSlopeFactor(0.0f);
-}
-inline std::tuple<std::vector<vk::Viewport>, std::vector<vk::Rect2D>>
+);
+EPIX_API std::tuple<std::vector<vk::Viewport>, std::vector<vk::Rect2D>>
 default_viewport_scissor(
     vk::PipelineViewportStateCreateInfo* state,
     vk::Extent2D extent,
     uint32_t count
-) {
-    std::vector<vk::Viewport> viewports(count);
-    std::vector<vk::Rect2D> scissors(count);
-    for (uint32_t i = 0; i < count; i++) {
-        viewports[i] = vk::Viewport()
-                           .setX(0.0f)
-                           .setY(0.0f)
-                           .setWidth(static_cast<float>(extent.width))
-                           .setHeight(static_cast<float>(extent.height))
-                           .setMinDepth(0.0f)
-                           .setMaxDepth(1.0f);
-        scissors[i] = vk::Rect2D().setOffset({0, 0}).setExtent(extent);
-    }
-    *state = vk::PipelineViewportStateCreateInfo()
-                 .setViewports(viewports)
-                 .setScissors(scissors);
-    return {std::move(viewports), std::move(scissors)};
-}
-inline void default_tessellation(vk::PipelineTessellationStateCreateInfo* state
-) {
-    *state = vk::PipelineTessellationStateCreateInfo();
-}
-inline void default_vertex_input(
+);
+EPIX_API void default_tessellation(
+    vk::PipelineTessellationStateCreateInfo* state
+);
+EPIX_API void default_vertex_input(
     vk::PipelineVertexInputStateCreateInfo* state,
     std::vector<vk::VertexInputBindingDescription>& bindings,
     std::vector<vk::VertexInputAttributeDescription>& attributes
-) {
-    *state = vk::PipelineVertexInputStateCreateInfo()
-                 .setVertexBindingDescriptions(bindings)
-                 .setVertexAttributeDescriptions(attributes);
-}
+);
 template <typename... Args>
 std::vector<vk::PipelineShaderStageCreateInfo> default_shader_stages(
     vk::ShaderStageFlagBits flags, vk::ShaderModule& module, Args&&... args

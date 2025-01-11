@@ -98,6 +98,7 @@ target_link_libraries (epix_engine_shared PUBLIC VulkanMemoryAllocator)
 target_link_libraries (epix_engine_shared PUBLIC earcut.hpp)
 target_link_libraries (epix_engine_shared PUBLIC box2d)
 target_link_libraries (epix_engine_shared PUBLIC TracyClient)
+target_link_libraries (epix_engine_shared PUBLIC spirv-cross-glsl)
 
 set_target_properties(epix_engine_shared PROPERTIES OUTPUT_NAME epix)
 
