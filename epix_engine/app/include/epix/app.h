@@ -157,7 +157,9 @@ enum RenderExitStage {
     PostRenderExit,
 };
 enum ExtractStage {
+    PreExtract,
     Extraction,
+    PostExtract,
 };
 }  // namespace stages
 }  // namespace epix::app
@@ -879,9 +881,7 @@ class QueryBase<Get<Entity, Qus...>, With<Ins...>, Without<Exs...>> {
     operator bool() { return iter().begin() != iter().end(); }
     bool operator!() { return iter().begin() == iter().end(); }
 
-    auto wrap(Entity entity) {
-        return Wrapper<Qus...>(entity, registry);
-    }
+    auto wrap(Entity entity) { return Wrapper<Qus...>(entity, registry); }
 
     template <typename Func>
     void for_each(Func func) {
@@ -894,10 +894,7 @@ struct QueryBase<Get<Gets...>, Without<Withouts...>, W>
     : QueryBase<Get<Gets...>, With<>, Without<Withouts...>> {};
 template <typename... Gets, typename... Withs, typename... Withouts>
 struct Extract<Get<Gets...>, With<Withs...>, Without<Withouts...>> {
-    using type = QueryBase<
-        Get<std::add_const_t<Gets>...>,
-        With<std::add_const_t<Withs>...>,
-        Without<std::add_const_t<Withouts>...>>;
+    using type = QueryBase<Get<Gets...>, With<Withs...>, Without<Withouts...>>;
 
    private:
     type query;
@@ -920,10 +917,8 @@ struct Extract<Get<Gets...>, With<Withs...>, Without<Withouts...>> {
 };
 template <typename... Gets, typename... Withs, typename... Withouts>
 struct Extract<Get<Entity, Gets...>, With<Withs...>, Without<Withouts...>> {
-    using type = QueryBase<
-        Get<Entity, std::add_const_t<Gets>...>,
-        With<std::add_const_t<Withs>...>,
-        Without<std::add_const_t<Withouts>...>>;
+    using type =
+        QueryBase<Get<Entity, Gets...>, With<Withs...>, Without<Withouts...>>;
 
    private:
     type query;

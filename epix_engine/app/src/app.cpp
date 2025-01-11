@@ -38,7 +38,9 @@ EPIX_API App App::create2() {
         PreStartup, Startup, PostStartup
     );
     app.runner().assign_state_transition_stage<MainSubApp, MainSubApp>(Transit);
-    app.runner().assign_loop_stage<MainSubApp, RenderSubApp>(Extraction);
+    app.runner().assign_loop_stage<MainSubApp, RenderSubApp>(
+        PreExtract, Extraction, PostExtract
+    );
     app.runner()
         .assign_loop_stage<MainSubApp, MainSubApp>(
             First, PreUpdate, Update, PostUpdate, Last
@@ -62,7 +64,9 @@ EPIX_API App App::create(const AppSettings& settings) {
     app.runner().assign_state_transition_stage<MainSubApp, MainSubApp>(Transit);
     if (settings.parrallel_rendering) {
         app.add_sub_app<RenderSubApp>();
-        app.runner().assign_loop_stage<MainSubApp, RenderSubApp>(Extraction);
+        app.runner().assign_loop_stage<MainSubApp, RenderSubApp>(
+            PreExtract, Extraction, PostExtract
+        );
         app.runner()
             .assign_loop_stage<MainSubApp, MainSubApp>(
                 First, PreUpdate, Update, PostUpdate, Last

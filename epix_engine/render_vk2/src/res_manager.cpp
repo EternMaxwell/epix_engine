@@ -65,6 +65,13 @@ ResourceManager::add_buffer(const std::string& name, Buffer buffer) {
     if (buffer_map.contains(name)) {
         return buffer_map[name];
     }
+    if (!buffer_free_indices.empty()) {
+        auto index = buffer_free_indices.top();
+        buffer_free_indices.pop();
+        buffer_map[name] = index;
+        buffers[index]   = buffer;
+        return index;
+    }
     buffer_names.push_back(name);
     buffer_map[name] = buffers.size();
     buffers.push_back(buffer);
@@ -75,6 +82,13 @@ ResourceManager::add_image(const std::string& name, Image image) {
     if (image_map.contains(name)) {
         return image_map[name];
     }
+    if (!image_free_indices.empty()) {
+        auto index = image_free_indices.top();
+        image_free_indices.pop();
+        image_map[name] = index;
+        images[index]   = image;
+        return index;
+    }
     image_names.push_back(name);
     image_map[name] = images.size();
     images.push_back(image);
@@ -84,6 +98,13 @@ EPIX_API uint32_t
 ResourceManager::add_image_view(const std::string& name, ImageView image_view) {
     if (image_view_map.contains(name)) {
         return image_view_map[name];
+    }
+    if (!view_free_indices.empty()) {
+        auto index = view_free_indices.top();
+        view_free_indices.pop();
+        image_view_map[name] = index;
+        image_views[index]   = image_view;
+        return index;
     }
     image_view_names.push_back(name);
     image_view_map[name] = image_views.size();
@@ -96,6 +117,13 @@ ResourceManager::add_sampler(const std::string& name, Sampler sampler) {
     if (sampler_map.contains(name)) {
         return sampler_map[name];
     }
+    if (!sampler_free_indices.empty()) {
+        auto index = sampler_free_indices.top();
+        sampler_free_indices.pop();
+        sampler_map[name] = index;
+        samplers[index]   = sampler;
+        return index;
+    }
     sampler_names.push_back(name);
     sampler_map[name] = samplers.size();
     samplers.push_back(sampler);
@@ -103,6 +131,14 @@ ResourceManager::add_sampler(const std::string& name, Sampler sampler) {
     return samplers.size() - 1;
 }
 EPIX_API void ResourceManager::apply_cache() {
+    for (auto index : buffer_cache_remove) {
+        device.destroy_buffer(buffers[index]);
+        buffer_free_indices.push(index);
+    }
+    for (auto index : image_cache_remove) {
+        device.destroy_image(images[index]);
+        image_free_indices.push(index);
+    }
     std::vector<vk::DescriptorImageInfo> image_infos;
     image_infos.reserve(view_cache.size() + sampler_cache.size());
     std::vector<vk::WriteDescriptorSet> descriptor_writes;
@@ -136,30 +172,22 @@ EPIX_API void ResourceManager::apply_cache() {
         );
     }
     device.updateDescriptorSets(descriptor_writes, {});
-    view_cache.clear();
-    sampler_cache.clear();
     image_infos.clear();
     descriptor_writes.clear();
-    image_infos.reserve(view_cache_remove.size() + sampler_cache_remove.size());
-    descriptor_writes.reserve(
-        view_cache_remove.size() + sampler_cache_remove.size()
-    );
     for (auto index : view_cache_remove) {
-        image_infos.push_back(
-            vk::DescriptorImageInfo()
-                .setImageView(image_views[index])
-                .setImageLayout(vk::ImageLayout::eShaderReadOnlyOptimal)
-        );
-        descriptor_writes.push_back(
-            vk::WriteDescriptorSet()
-                .setDstSet(descriptor_set)
-                .setDstBinding(0)
-                .setDstArrayElement(index)
-                .setDescriptorType(vk::DescriptorType::eSampledImage)
-                .setDescriptorCount(1)
-                .setImageInfo(image_infos.back())
-        );
+        device.destroyImageView(image_views[index]);
+        view_free_indices.push(index);
     }
+    for (auto index : sampler_cache_remove) {
+        device.destroySampler(samplers[index]);
+        sampler_free_indices.push(index);
+    }
+    view_cache.clear();
+    sampler_cache.clear();
+    buffer_cache_remove.clear();
+    image_cache_remove.clear();
+    view_cache_remove.clear();
+    sampler_cache_remove.clear();
 }
 EPIX_API Buffer ResourceManager::get_buffer(const std::string& name) const {
     auto index = buffer_index(name);
@@ -207,65 +235,39 @@ EPIX_API void ResourceManager::remove_buffer(const std::string& name) {
         return;
     }
     auto index = buffer_map[name];
-    remove_buffer(index);
+    buffer_cache_remove.push_back(index);
 }
 EPIX_API void ResourceManager::remove_image(const std::string& name) {
     if (!image_map.contains(name)) {
         return;
     }
     auto index = image_map[name];
-    remove_image(index);
+    image_cache_remove.push_back(index);
 }
 EPIX_API void ResourceManager::remove_image_view(const std::string& name) {
     if (!image_view_map.contains(name)) {
         return;
     }
     auto index = image_view_map[name];
-    remove_image_view(index);
+    view_cache_remove.push_back(index);
 }
 EPIX_API void ResourceManager::remove_sampler(const std::string& name) {
     if (!sampler_map.contains(name)) {
         return;
     }
     auto index = sampler_map[name];
-    remove_sampler(index);
+    sampler_cache_remove.push_back(index);
 }
 EPIX_API void ResourceManager::remove_buffer(uint32_t index) {
-    device.destroy_buffer(buffers[index]);
-    std::swap(buffers[index], buffers.back());
-    std::swap(buffer_names[index], buffer_names.back());
-    buffer_map[buffer_names[index]] = index;
-    buffer_map.erase(buffer_names.back());
-    buffers.pop_back();
-    buffer_names.pop_back();
+    buffer_cache_remove.push_back(index);
 }
 EPIX_API void ResourceManager::remove_image(uint32_t index) {
-    device.destroy_image(images[index]);
-    std::swap(images[index], images.back());
-    std::swap(image_names[index], image_names.back());
-    image_map[image_names[index]] = index;
-    image_map.erase(image_names.back());
-    images.pop_back();
-    image_names.pop_back();
+    image_cache_remove.push_back(index);
 }
 EPIX_API void ResourceManager::remove_image_view(uint32_t index) {
-    device.destroyImageView(image_views[index]);
-    std::swap(image_views[index], image_views.back());
-    std::swap(image_view_names[index], image_view_names.back());
-    image_view_map[image_view_names[index]] = index;
-    image_view_map.erase(image_view_names.back());
-    image_views.pop_back();
-    image_view_names.pop_back();
     view_cache_remove.push_back(index);
 }
 EPIX_API void ResourceManager::remove_sampler(uint32_t index) {
-    device.destroySampler(samplers[index]);
-    std::swap(samplers[index], samplers.back());
-    std::swap(sampler_names[index], sampler_names.back());
-    sampler_map[sampler_names[index]] = index;
-    sampler_map.erase(sampler_names.back());
-    samplers.pop_back();
-    sampler_names.pop_back();
     sampler_cache_remove.push_back(index);
 }
 EPIX_API uint32_t ResourceManager::buffer_index(const std::string& name) const {
@@ -304,7 +306,7 @@ EPIX_API vk::DescriptorSetLayout ResourceManager::get_descriptor_set_layout(
 EPIX_API void VulkanResManagerPlugin::build(epix::App& app) {
     app.add_system(epix::PreStartup, systems::create_res_manager)
         .after(vulkan2::systems::create_context);
-    app.add_system(epix::Extraction, systems::extract_res_manager);
+    app.add_system(epix::PreExtract, systems::extract_res_manager);
     app.add_system(epix::Exit, systems::destroy_res_manager);
 }
 }  // namespace epix::render::vulkan2

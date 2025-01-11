@@ -249,14 +249,23 @@ EPIX_API void systems::extract_res_manager(
         Get<Entity, vulkan2::ResourceManager>,
         With<RenderContextResManager>> query,
     Query<
-        Get<Wrapper<const vulkan2::ResourceManager>>,
-        With<RenderContextResManager>> render_query,
+        Get<Entity>,
+        With<RenderContextResManager, Wrapper<vulkan2::ResourceManager>>>
+        render_query,
     Command cmd
 ) {
     if (!query) {
         return;
     }
     auto [entity, res_manager] = query.single();
+    {
+        ZoneScopedN("apply resource manager cache");
+        res_manager.apply_cache();
+    }
+    {
+        ZoneScopedN("Copy resource manager");
+        auto render_res_manager = res_manager;
+    }
     if (!render_query) {
         ZoneScopedN("Extract resource manager");
         cmd.spawn(query.wrap(entity), RenderContextResManager{});

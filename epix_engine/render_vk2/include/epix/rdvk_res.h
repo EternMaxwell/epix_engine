@@ -1,5 +1,7 @@
 #pragma once
 
+#include <stack>
+
 #include "rdvk.h"
 
 namespace epix::render::vulkan2 {
@@ -16,22 +18,28 @@ struct ResourceManager {
     std::vector<Buffer> buffers;
     std::vector<std::string> buffer_names;
     entt::dense_map<std::string, uint32_t> buffer_map;
+    std::vector<uint32_t> buffer_cache_remove;
+    std::stack<uint32_t> buffer_free_indices;
 
     std::vector<Image> images;
     std::vector<std::string> image_names;
     entt::dense_map<std::string, uint32_t> image_map;
+    std::vector<uint32_t> image_cache_remove;
+    std::stack<uint32_t> image_free_indices;
 
     std::vector<ImageView> image_views;
     std::vector<std::string> image_view_names;
     entt::dense_map<std::string, uint32_t> image_view_map;
     std::vector<std::pair<uint32_t, ImageView>> view_cache;
     std::vector<uint32_t> view_cache_remove;
+    std::stack<uint32_t> view_free_indices;
 
     std::vector<Sampler> samplers;
     std::vector<std::string> sampler_names;
     entt::dense_map<std::string, uint32_t> sampler_map;
     std::vector<std::pair<uint32_t, Sampler>> sampler_cache;
     std::vector<uint32_t> sampler_cache_remove;
+    std::stack<uint32_t> sampler_free_indices;
 
     vk::DescriptorPool descriptor_pool;
     vk::DescriptorSetLayout descriptor_set_layout;
@@ -98,8 +106,9 @@ EPIX_API void extract_res_manager(
         Get<Entity, vulkan2::ResourceManager>,
         With<RenderContextResManager>> query,
     Query<
-        Get<Wrapper<const vulkan2::ResourceManager>>,
-        With<RenderContextResManager>> render_query,
+        Get<Entity>,
+        With<RenderContextResManager, Wrapper<vulkan2::ResourceManager>>>
+        render_query,
     Command cmd
 );
 }  // namespace systems
