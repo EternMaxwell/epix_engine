@@ -74,6 +74,7 @@ struct ResourceManager {
     EPIX_API uint32_t image_view_index(const std::string& name) const;
     EPIX_API uint32_t sampler_index(const std::string& name) const;
 };
+struct RenderContextResManager {};
 namespace systems {
 using namespace epix::render::vulkan2::backend;
 using epix::Command;
@@ -86,17 +87,22 @@ using epix::With;
 using epix::Without;
 
 EPIX_API void create_res_manager(
-    Command cmd, Query<Get<Entity, Device>, With<RenderContext>> query
+    Command cmd, Query<Get<Device>, With<RenderContext>> query
 );
 EPIX_API void destroy_res_manager(
-    Command cmd, Query<Get<vulkan2::ResourceManager>, With<RenderContext>> query
+    Command cmd,
+    Query<Get<vulkan2::ResourceManager>, With<RenderContextResManager>> query
 );
 EPIX_API void extract_res_manager(
-    Extract<Get<vulkan2::ResourceManager>, With<RenderContext>> query,
+    Extract<Get<vulkan2::ResourceManager>, With<RenderContextResManager>> query,
+    Query<Get<vulkan2::ResourceManager>, With<RenderContextResManager>>
+        render_query,
     Command cmd
 );
-EPIX_API void clear_extracted_res_manager(
-    Query<Get<Entity>, With<RenderContext>> query, Command cmd
+EPIX_API void feedback_res_manager(
+    Extract<Get<vulkan2::ResourceManager>, With<RenderContextResManager>> query,
+    Query<Get<vulkan2::ResourceManager>, With<RenderContextResManager>>
+        main_query
 );
 }  // namespace systems
 struct VulkanResManagerPlugin : epix::Plugin {

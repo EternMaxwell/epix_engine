@@ -159,6 +159,9 @@ enum RenderExitStage {
 enum ExtractStage {
     Extraction,
 };
+enum FeedbackStage {
+    Feedback,
+};
 }  // namespace stages
 }  // namespace epix::app
 
@@ -702,6 +705,23 @@ template <typename... T>
 struct With {};
 template <typename... T>
 struct Without {};
+
+template <typename... Gets>
+struct Wrapper {
+    using type = std::tuple<Gets...>;
+
+   private:
+    Entity entity;
+    entt::registry& registry;
+
+   public:
+    Wrapper(Entity entity, entt::registry& registry)
+        : entity(entity), registry(registry) {}
+    type operator*() {
+        return std::tuple<Gets&...>(registry.get<Gets>(entity.id)...);
+    }
+};
+
 template <typename... Qus, typename... Ins, typename... Exs>
 class QueryBase<Get<Qus...>, With<Ins...>, Without<Exs...>> {
     using view_type =
@@ -774,6 +794,8 @@ class QueryBase<Get<Qus...>, With<Ins...>, Without<Exs...>> {
 
     operator bool() { return iter().begin() != iter().end(); }
     bool operator!() { return iter().begin() == iter().end(); }
+
+    auto wrap(Entity entity) { return Wrapper<Qus...>(entity, registry); }
 
     template <typename Func>
     void for_each(Func func) {
@@ -860,6 +882,10 @@ class QueryBase<Get<Entity, Qus...>, With<Ins...>, Without<Exs...>> {
     operator bool() { return iter().begin() != iter().end(); }
     bool operator!() { return iter().begin() == iter().end(); }
 
+    auto wrap(Entity entity) {
+        return Wrapper<Qus...>(entity, registry);
+    }
+
     template <typename Func>
     void for_each(Func func) {
         m_view.each(func);
@@ -892,6 +918,7 @@ struct Extract<Get<Gets...>, With<Withs...>, Without<Withouts...>> {
         query.for_each(func);
     }
     auto get(entt::entity id) { return query.get(id); }
+    auto wrap(Entity entity) { return query.wrap(entity); }
     bool contains(entt::entity id) { return query.contains(id); }
 };
 template <typename... Gets, typename... Withs, typename... Withouts>
@@ -917,6 +944,7 @@ struct Extract<Get<Entity, Gets...>, With<Withs...>, Without<Withouts...>> {
         query.for_each(func);
     }
     auto get(Entity id) { return query.get(id); }
+    auto wrap(Entity entity) { return query.wrap(entity); }
     bool contains(Entity id) { return query.contains(id); }
 };
 template <typename... Gets, typename... Withouts, typename W>
@@ -942,6 +970,7 @@ struct Query {
         query.for_each(func);
     }
     auto get(Entity id) { return query.get(id); }
+    auto wrap(Entity entity) { return query.wrap(entity); }
     bool contains(Entity id) { return query.contains(id); }
 };
 struct SubApp {
@@ -1842,12 +1871,14 @@ struct Runner {
             std::type_index stage, std::unique_ptr<StageRunner>&& runner
         );
         template <typename T>
-        void add_prev_stage() {
+        StageNode& add_prev_stage() {
             prev_stages.insert(std::type_index(typeid(T)));
+            return *this;
         }
         template <typename T>
-        void add_next_stage() {
+        StageNode& add_next_stage() {
             next_stages.insert(std::type_index(typeid(T)));
+            return *this;
         }
         EPIX_API void clear_tmp();
         EPIX_API size_t get_depth();
@@ -2415,6 +2446,7 @@ using app::ResMut;
 using app::State;
 using app::With;
 using app::Without;
+using app::Wrapper;
 
 // OTHER TOOLS
 using epix::app::thread_pool;

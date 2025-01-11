@@ -254,6 +254,9 @@ EPIX_API void Runner::run_startup() {
         auto ptr = msg_queue.pop();
         --m_remain;
         --m_running;
+        if (m_running == 0) {
+            end_commands();
+        }
         for (auto& next_weak : ptr->strong_next_stages) {
             if (auto next = next_weak.lock()) {
                 --next->prev_count;
@@ -303,6 +306,9 @@ EPIX_API void Runner::run_loop() {
         auto ptr = msg_queue.pop();
         --m_remain;
         --m_running;
+        if (m_running == 0) {
+            end_commands();
+        }
         for (auto& next_weak : ptr->strong_next_stages) {
             if (auto next = next_weak.lock()) {
                 --next->prev_count;
@@ -352,6 +358,9 @@ EPIX_API void Runner::run_state_transition() {
         auto ptr = msg_queue.pop();
         --m_remain;
         --m_running;
+        if (m_running == 0) {
+            end_commands();
+        }
         for (auto& next_weak : ptr->strong_next_stages) {
             if (auto next = next_weak.lock()) {
                 --next->prev_count;
@@ -395,6 +404,9 @@ EPIX_API void Runner::run_exit() {
         auto ptr = msg_queue.pop();
         --m_remain;
         --m_running;
+        if (m_running == 0) {
+            end_commands();
+        }
         for (auto& next_weak : ptr->strong_next_stages) {
             if (auto next = next_weak.lock()) {
                 --next->prev_count;
@@ -433,6 +445,7 @@ EPIX_API void Runner::tick_events() {
 }
 
 EPIX_API void Runner::end_commands() {
+    ZoneScopedN("end commands");
     for (auto&& [type, subapp] : *m_sub_apps) {
         subapp->end_commands();
     }

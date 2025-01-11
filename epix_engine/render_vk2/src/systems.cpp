@@ -222,19 +222,20 @@ EPIX_API void systems::present_frame(
 #include "epix/rdvk_res.h"
 
 EPIX_API void systems::create_res_manager(
-    Command cmd, Query<Get<Entity, Device>, With<RenderContext>> query
+    Command cmd, Query<Get<Device>, With<RenderContext>> query
 ) {
     if (!query) {
         return;
     }
     ZoneScopedN("Create resource manager");
-    auto [entity, device] = query.single();
+    auto [device] = query.single();
     ResourceManager res_manager{device};
-    cmd.entity(entity).emplace(res_manager);
+    cmd.spawn(res_manager, RenderContextResManager{});
 }
 
 EPIX_API void systems::destroy_res_manager(
-    Command cmd, Query<Get<vulkan2::ResourceManager>, With<RenderContext>> query
+    Command cmd,
+    Query<Get<vulkan2::ResourceManager>, With<RenderContextResManager>> query
 ) {
     if (!query) {
         return;
@@ -245,7 +246,9 @@ EPIX_API void systems::destroy_res_manager(
 }
 
 EPIX_API void systems::extract_res_manager(
-    Extract<Get<vulkan2::ResourceManager>, With<RenderContext>> query,
+    Extract<Get<vulkan2::ResourceManager>, With<RenderContextResManager>> query,
+    Query<Get<vulkan2::ResourceManager>, With<RenderContextResManager>>
+        render_query,
     Command cmd
 ) {
     if (!query) {
@@ -253,17 +256,24 @@ EPIX_API void systems::extract_res_manager(
     }
     ZoneScopedN("Extract resource manager");
     auto [res_manager] = query.single();
-    cmd.spawn(res_manager, RenderContext{});
+    if (!render_query) {
+        cmd.spawn(std::move(res_manager), RenderContextResManager{});
+    } else {
+        auto [render_res_manager] = render_query.single();
+        render_res_manager        = std::move(res_manager);
+    }
 }
 
-EPIX_API void systems::clear_extracted_res_manager(
-    Query<Get<Entity>, With<RenderContext>> query, Command cmd
+EPIX_API void systems::feedback_res_manager(
+    Extract<Get<vulkan2::ResourceManager>, With<RenderContextResManager>> query,
+    Query<Get<vulkan2::ResourceManager>, With<RenderContextResManager>>
+        main_query
 ) {
-    if (!query) {
+    if (!query || !main_query) {
         return;
     }
     ZoneScopedN("Clear extracted resource manager");
-    for (auto [entity] : query.iter()) {
-        cmd.entity(entity).despawn();
-    }
+    auto [res_manager]      = query.single();
+    auto [main_res_manager] = main_query.single();
+    main_res_manager        = std::move(res_manager);
 }
