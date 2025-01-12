@@ -9,6 +9,7 @@
 #include <pfr.hpp>
 #include <spirv_glsl.hpp>
 
+#include "shaders/fragment_shader.h"
 #include "shaders/vertex_shader.h"
 
 using namespace epix::render::vulkan2::backend;
@@ -23,8 +24,6 @@ using namespace epix;
 
 struct Vertex {
     glm::vec3 pos;
-    glm::mat4 model;
-    int x;
 };
 
 struct TestPipeline {
@@ -79,16 +78,28 @@ struct TestPipeline {
         auto source_vert = std::vector<uint32_t>(
             vertex_spv, vertex_spv + sizeof(vertex_spv) / sizeof(uint32_t)
         );
+        auto source_frag = std::vector<uint32_t>(
+            fragment_spv, fragment_spv + sizeof(fragment_spv) / sizeof(uint32_t)
+        );
         vk::ShaderModuleCreateInfo vert_info;
         vert_info.setCode(source_vert);
+        vk::ShaderModuleCreateInfo frag_info;
+        frag_info.setCode(source_frag);
         spirv_cross::CompilerGLSL vert(source_vert);
+        spirv_cross::CompilerGLSL frag(source_frag);
         std::vector<std::vector<vk::DescriptorSetLayoutBinding>> bindings;
         get_shader_resource_bindings(
             bindings, vert, vk::ShaderStageFlagBits::eVertex
         );
+        get_shader_resource_bindings(
+            bindings, frag, vk::ShaderStageFlagBits::eFragment
+        );
         vk::PushConstantRange range;
         if (get_push_constant_ranges(
                 range, vert, vk::ShaderStageFlagBits::eVertex
+            ) ||
+            get_push_constant_ranges(
+                range, frag, vk::ShaderStageFlagBits::eFragment
             )) {
             layout_info.setPushConstantRanges(range);
         }
@@ -110,11 +121,19 @@ struct TestPipeline {
         auto vert_module = device.createShaderModule(
             vk::ShaderModuleCreateInfo().setCode(vert_source)
         );
+        auto frag_source = std::vector<uint32_t>(
+            fragment_spv, fragment_spv + sizeof(fragment_spv) / sizeof(uint32_t)
+        );
+        auto frag_module = device.createShaderModule(
+            vk::ShaderModuleCreateInfo().setCode(frag_source)
+        );
         spirv_cross::CompilerGLSL vert(vert_source);
+        spirv_cross::CompilerGLSL frag(frag_source);
 
         auto pipeline_info = vk::GraphicsPipelineCreateInfo();
         auto stages        = default_shader_stages(
-            vk::ShaderStageFlagBits::eVertex, vert_module
+            vk::ShaderStageFlagBits::eVertex, vert_module,
+            vk::ShaderStageFlagBits::eFragment, frag_module
         );
         pipeline_info.setStages(stages);
         pipeline_info.setLayout(layout);
@@ -154,6 +173,7 @@ struct TestPipeline {
             device.createGraphicsPipeline(vk::PipelineCache(), pipeline_info)
                 .value;
         device.destroyShaderModule(vert_module);
+        device.destroyShaderModule(frag_module);
     }
 
     void destroy() {
@@ -217,7 +237,149 @@ void create_sampler(Query<
     sampler_info.setMipLodBias(0.0f);
     sampler_info.setMinLod(0.0f);
     sampler_info.setMaxLod(0.0f);
-    res_manager.add_sampler("default", device.createSampler(sampler_info));
+    res_manager.add_sampler(
+        "test::rdvk::sampler1", device.createSampler(sampler_info)
+    );
+}
+
+void create_image_and_view(
+    Query<
+        Get<epix::render::vulkan2::ResourceManager>,
+        With<epix::render::vulkan2::RenderContextResManager>> query,
+    Query<Get<Queue, CommandPool>, With<epix::render::vulkan2::RenderContext>>
+        query2
+) {
+    if (!query || !query2) {
+        return;
+    }
+    auto [queue, command_pool] = query2.single();
+    auto [res_manager]         = query.single();
+    auto& device               = res_manager.device;
+    auto image_create_info     = vk::ImageCreateInfo()
+                                 .setImageType(vk::ImageType::e2D)
+                                 .setFormat(vk::Format::eR8G8B8A8Unorm)
+                                 .setExtent(vk::Extent3D(1, 1, 1))
+                                 .setMipLevels(1)
+                                 .setArrayLayers(1)
+                                 .setSamples(vk::SampleCountFlagBits::e1)
+                                 .setTiling(vk::ImageTiling::eOptimal)
+                                 .setUsage(
+                                     vk::ImageUsageFlagBits::eSampled |
+                                     vk::ImageUsageFlagBits::eTransferDst
+                                 )
+                                 .setSharingMode(vk::SharingMode::eExclusive)
+                                 .setInitialLayout(vk::ImageLayout::eUndefined);
+    auto alloc_info = AllocationCreateInfo()
+                          .setUsage(VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE)
+                          .setFlags(VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT);
+    auto image           = device.create_image(image_create_info, alloc_info);
+    auto stagging_buffer = device.create_buffer(
+        vk::BufferCreateInfo()
+            .setSize(4)
+            .setUsage(vk::BufferUsageFlagBits::eTransferSrc)
+            .setSharingMode(vk::SharingMode::eExclusive),
+        AllocationCreateInfo()
+            .setUsage(VMA_MEMORY_USAGE_AUTO_PREFER_HOST)
+            .setFlags(
+                VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT |
+                VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT
+            )
+    );
+    auto data = (uint8_t*)stagging_buffer.map();
+    data[0]   = 255;
+    data[1]   = 0;
+    data[2]   = 0;
+    data[3]   = 255;
+    stagging_buffer.unmap();
+    auto cmd = device.allocateCommandBuffers(
+        vk::CommandBufferAllocateInfo()
+            .setCommandPool(command_pool)
+            .setLevel(vk::CommandBufferLevel::ePrimary)
+            .setCommandBufferCount(1)
+    )[0];
+    cmd.begin(vk::CommandBufferBeginInfo());
+    vk::ImageMemoryBarrier barrier1;
+    barrier1.setOldLayout(vk::ImageLayout::eUndefined);
+    barrier1.setNewLayout(vk::ImageLayout::eTransferDstOptimal);
+    barrier1.setSrcQueueFamilyIndex(VK_QUEUE_FAMILY_IGNORED);
+    barrier1.setDstQueueFamilyIndex(VK_QUEUE_FAMILY_IGNORED);
+    barrier1.setImage(image.image);
+    barrier1.setSubresourceRange(
+        vk::ImageSubresourceRange()
+            .setAspectMask(vk::ImageAspectFlagBits::eColor)
+            .setBaseMipLevel(0)
+            .setLevelCount(1)
+            .setBaseArrayLayer(0)
+            .setLayerCount(1)
+    );
+    cmd.pipelineBarrier(
+        vk::PipelineStageFlagBits::eTopOfPipe,
+        vk::PipelineStageFlagBits::eTransfer, {}, {}, {}, {barrier1}
+    );
+    vk::BufferImageCopy copy_region;
+    copy_region.setBufferOffset(0);
+    copy_region.setBufferRowLength(0);
+    copy_region.setBufferImageHeight(0);
+    copy_region.setImageSubresource(
+        vk::ImageSubresourceLayers()
+            .setAspectMask(vk::ImageAspectFlagBits::eColor)
+            .setMipLevel(0)
+            .setBaseArrayLayer(0)
+            .setLayerCount(1)
+    );
+    copy_region.setImageOffset({0, 0, 0});
+    copy_region.setImageExtent({1, 1, 1});
+    cmd.copyBufferToImage(
+        stagging_buffer.buffer, image.image,
+        vk::ImageLayout::eTransferDstOptimal, copy_region
+    );
+    vk::ImageMemoryBarrier barrier;
+    barrier.setOldLayout(vk::ImageLayout::eTransferDstOptimal);
+    barrier.setNewLayout(vk::ImageLayout::eShaderReadOnlyOptimal);
+    barrier.setSrcQueueFamilyIndex(VK_QUEUE_FAMILY_IGNORED);
+    barrier.setDstQueueFamilyIndex(VK_QUEUE_FAMILY_IGNORED);
+    barrier.setImage(image.image);
+    barrier.setSubresourceRange(
+        vk::ImageSubresourceRange()
+            .setAspectMask(vk::ImageAspectFlagBits::eColor)
+            .setBaseMipLevel(0)
+            .setLevelCount(1)
+            .setBaseArrayLayer(0)
+            .setLayerCount(1)
+    );
+    cmd.pipelineBarrier(
+        vk::PipelineStageFlagBits::eTransfer,
+        vk::PipelineStageFlagBits::eFragmentShader, {}, {}, {}, {barrier}
+    );
+    cmd.end();
+    auto submit_info = vk::SubmitInfo().setCommandBuffers(cmd);
+    auto fence       = device.createFence(vk::FenceCreateInfo());
+    queue.submit(submit_info, fence);
+    device.waitForFences(fence, VK_TRUE, UINT64_MAX);
+    device.destroyFence(fence);
+    device.destroyBuffer(stagging_buffer);
+    device.freeCommandBuffers(command_pool, cmd);
+    auto view = device.createImageView(
+        vk::ImageViewCreateInfo()
+            .setImage(image.image)
+            .setViewType(vk::ImageViewType::e2D)
+            .setFormat(vk::Format::eR8G8B8A8Unorm)
+            .setComponents(vk::ComponentMapping()
+                               .setR(vk::ComponentSwizzle::eIdentity)
+                               .setG(vk::ComponentSwizzle::eIdentity)
+                               .setB(vk::ComponentSwizzle::eIdentity)
+                               .setA(vk::ComponentSwizzle::eIdentity))
+            .setSubresourceRange(
+                vk::ImageSubresourceRange()
+                    .setAspectMask(vk::ImageAspectFlagBits::eColor)
+                    .setBaseMipLevel(0)
+                    .setLevelCount(1)
+                    .setBaseArrayLayer(0)
+                    .setLayerCount(1)
+            )
+    );
+    res_manager.add_image("test::rdvk::image1", image);
+    res_manager.add_image_view("test::rdvk::image1::view", view);
 }
 
 int main() {
@@ -232,7 +394,9 @@ int main() {
     );
     app2.add_plugin(epix::render::vulkan2::VulkanResManagerPlugin{});
     app2.add_plugin(epix::input::InputPlugin{});
-    app2.add_system(epix::Startup, create_pipeline, create_sampler);
+    app2.add_system(
+        epix::Startup, create_pipeline, create_sampler, create_image_and_view
+    );
     app2.add_system(epix::Exit, destroy_pipeline);
     app2.run();
 }
