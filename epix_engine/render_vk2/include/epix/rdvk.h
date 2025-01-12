@@ -48,7 +48,8 @@ EPIX_API void clear_extracted_context(
     Command cmd
 );
 EPIX_API void recreate_swap_chain(
-    Query<Get<Swapchain>, With<RenderContext>> query
+    Query<Get<Swapchain>, With<RenderContext>> query,
+    Query<Get<CommandBuffer, Fence>, With<ContextCommandBuffer>> cmd_query
 );
 EPIX_API void get_next_image(
     Query<Get<Device, Swapchain, CommandPool, Queue>, With<RenderContext>>

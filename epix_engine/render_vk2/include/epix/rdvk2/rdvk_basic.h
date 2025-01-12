@@ -76,7 +76,6 @@ struct Device : vk::Device {
 
     Instance instance;
     PhysicalDevice physical_device;
-    Queue queue;
 
     EPIX_API operator bool() const;
 
@@ -197,6 +196,7 @@ struct Surface {
 struct Swapchain {
     Device device;
     Surface surface;
+    bool need_transition = true;
     vk::SurfaceFormatKHR surface_format;
     vk::PresentModeKHR present_mode;
     vk::Fence in_flight_fence[2];
@@ -219,5 +219,9 @@ struct Swapchain {
     EPIX_API Image current_image() const;
     EPIX_API ImageView current_image_view() const;
     EPIX_API vk::Fence fence() const;
+
+    EPIX_API void transition_image_layout(
+        CommandBuffer& command_buffer, Fence& fence
+    );
 };
 }  // namespace epix::render::vulkan2::backend

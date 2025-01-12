@@ -102,14 +102,19 @@ EPIX_API void systems::clear_extracted_context(
 }
 
 EPIX_API void systems::recreate_swap_chain(
-    Query<Get<Swapchain>, With<RenderContext>> query
+    Query<Get<Swapchain>, With<RenderContext>> query,
+    Query<Get<CommandBuffer, Fence>, With<ContextCommandBuffer>> cmd_query
 ) {
-    if (!query) {
+    if (!query || !cmd_query) {
         return;
     }
     auto [swap_chain] = query.single();
     ZoneScopedN("Recreate swap chain");
     swap_chain.recreate();
+    if (swap_chain.need_transition) {
+        auto [cmd_buffer, cmd_fence] = cmd_query.single();
+        swap_chain.transition_image_layout(cmd_buffer, cmd_fence);
+    }
 }
 
 EPIX_API void systems::get_next_image(

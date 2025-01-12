@@ -603,7 +603,6 @@ Swapchain::create(Device& device, Surface& surface, bool vsync) {
                 vk::ImageUsageFlagBits::eColorAttachment |
                 vk::ImageUsageFlagBits::eTransferDst |
                 vk::ImageUsageFlagBits::eTransferSrc |
-                vk::ImageUsageFlagBits::eStorage |
                 vk::ImageUsageFlagBits::eSampled |
                 vk::ImageUsageFlagBits::eInputAttachment
             )
@@ -685,7 +684,6 @@ EPIX_API void Swapchain::recreate() {
                 vk::ImageUsageFlagBits::eColorAttachment |
                 vk::ImageUsageFlagBits::eTransferDst |
                 vk::ImageUsageFlagBits::eTransferSrc |
-                vk::ImageUsageFlagBits::eStorage |
                 vk::ImageUsageFlagBits::eSampled |
                 vk::ImageUsageFlagBits::eInputAttachment
             )
@@ -719,6 +717,7 @@ EPIX_API void Swapchain::recreate() {
                 )
         );
     }
+    need_transition = true;
 }
 EPIX_API Image Swapchain::next_image() {
     others->current_frame = (others->current_frame + 1) % 2;
@@ -742,5 +741,52 @@ EPIX_API ImageView Swapchain::current_image_view() const {
 }
 EPIX_API vk::Fence Swapchain::fence() const {
     return in_flight_fence[others->current_frame];
+}
+EPIX_API void Swapchain::transition_image_layout(
+    CommandBuffer& command_buffer, Fence& fence
+) {
+    device.waitForFences(fence, VK_TRUE, UINT64_MAX);
+    device.resetFences(fence);
+    command_buffer.begin(vk::CommandBufferBeginInfo());
+    vk::ImageLayout old_layout = vk::ImageLayout::eUndefined;
+    vk::ImageLayout new_layout = vk::ImageLayout::ePresentSrcKHR;
+    for (auto&& image : others->images) {
+        auto subresource_range =
+            vk::ImageSubresourceRange()
+                .setAspectMask(vk::ImageAspectFlagBits::eColor)
+                .setBaseMipLevel(0)
+                .setLevelCount(1)
+                .setBaseArrayLayer(0)
+                .setLayerCount(1);
+        auto barrier = vk::ImageMemoryBarrier()
+                           .setOldLayout(old_layout)
+                           .setNewLayout(new_layout)
+                           .setSrcQueueFamilyIndex(VK_QUEUE_FAMILY_IGNORED)
+                           .setDstQueueFamilyIndex(VK_QUEUE_FAMILY_IGNORED)
+                           .setImage(image)
+                           .setSubresourceRange(subresource_range)
+                           .setSrcAccessMask(vk::AccessFlagBits::eNone)
+                           .setDstAccessMask(
+                               vk::AccessFlagBits::eTransferWrite |
+                               vk::AccessFlagBits::eTransferRead |
+                               vk::AccessFlagBits::eMemoryRead |
+                               vk::AccessFlagBits::eMemoryWrite
+                           );
+        command_buffer.pipelineBarrier(
+            vk::PipelineStageFlagBits::eTopOfPipe,
+            vk::PipelineStageFlagBits::eTransfer, {}, {}, {}, barrier
+        );
+    }
+    command_buffer.end();
+    auto queue = device.getQueue(device.queue_family_index, 0);
+    queue.submit(
+        vk::SubmitInfo()
+            .setCommandBuffers(command_buffer)
+            .setSignalSemaphores({})
+            .setWaitSemaphores({})
+            .setWaitDstStageMask({})
+            .setSignalSemaphores({}),
+        fence
+    );
 }
 }  // namespace epix::render::vulkan2::backend
