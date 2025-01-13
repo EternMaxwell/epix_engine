@@ -132,11 +132,11 @@ ResourceManager::add_sampler(const std::string& name, Sampler sampler) {
 }
 EPIX_API void ResourceManager::apply_cache() {
     for (auto index : buffer_cache_remove) {
-        device.destroy_buffer(buffers[index]);
+        device.destroyBuffer(buffers[index]);
         buffer_free_indices.push(index);
     }
     for (auto index : image_cache_remove) {
-        device.destroy_image(images[index]);
+        device.destroyImage(images[index]);
         image_free_indices.push(index);
     }
     std::vector<vk::DescriptorImageInfo> image_infos;

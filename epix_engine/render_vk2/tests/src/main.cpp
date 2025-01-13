@@ -272,18 +272,15 @@ void create_image_and_view(
     auto alloc_info = AllocationCreateInfo()
                           .setUsage(VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE)
                           .setFlags(VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT);
-    auto image           = device.create_image(image_create_info, alloc_info);
-    auto stagging_buffer = device.create_buffer(
+    auto image           = device.createImage(image_create_info, alloc_info);
+    auto stagging_buffer = device.createBuffer(
         vk::BufferCreateInfo()
             .setSize(4)
             .setUsage(vk::BufferUsageFlagBits::eTransferSrc)
             .setSharingMode(vk::SharingMode::eExclusive),
         AllocationCreateInfo()
             .setUsage(VMA_MEMORY_USAGE_AUTO_PREFER_HOST)
-            .setFlags(
-                VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT |
-                VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT
-            )
+            .setFlags(VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT)
     );
     auto data = (uint8_t*)stagging_buffer.map();
     data[0]   = 255;

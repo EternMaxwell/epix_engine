@@ -223,7 +223,7 @@ Instance::enumerate_physical_device_groups() {
     return instance.enumeratePhysicalDeviceGroups();
 }
 
-EPIX_API Buffer Device::create_buffer(
+EPIX_API Buffer Device::createBuffer(
     vk::BufferCreateInfo& create_info, AllocationCreateInfo& alloc_info
 ) {
     Buffer buffer;
@@ -232,15 +232,16 @@ EPIX_API Buffer Device::create_buffer(
         reinterpret_cast<VmaAllocationCreateInfo*>(&alloc_info),
         reinterpret_cast<VkBuffer*>(&buffer.buffer), &buffer.allocation, nullptr
     );
+    buffer.device = *this;
     return buffer;
 }
-EPIX_API void Device::destroy_buffer(Buffer& buffer) {
+EPIX_API void Device::destroyBuffer(Buffer& buffer) {
     vmaDestroyBuffer(allocator, buffer.buffer, buffer.allocation);
 }
 EPIX_API void Device::destroy(Buffer& buffer) {
     vmaDestroyBuffer(allocator, buffer.buffer, buffer.allocation);
 }
-EPIX_API Image Device::create_image(
+EPIX_API Image Device::createImage(
     vk::ImageCreateInfo& create_info, AllocationCreateInfo& alloc_info
 ) {
     Image image;
@@ -249,9 +250,10 @@ EPIX_API Image Device::create_image(
         reinterpret_cast<VmaAllocationCreateInfo*>(&alloc_info),
         reinterpret_cast<VkImage*>(&image.image), &image.allocation, nullptr
     );
+    image.device = *this;
     return image;
 }
-EPIX_API void Device::destroy_image(Image& image) {
+EPIX_API void Device::destroyImage(Image& image) {
     vmaDestroyImage(allocator, image.image, image.allocation);
 }
 EPIX_API void Device::destroy(Image& image) {
@@ -350,10 +352,16 @@ EPIX_API Device Device::create(
                            .setPEnabledExtensionNames(device_extensions);
     device           = physical_device.createDevice(device_info);
     device.allocator = VmaAllocator();
-    VmaAllocatorCreateInfo allocator_info = {};
-    allocator_info.physicalDevice         = physical_device;
-    allocator_info.device                 = device;
-    allocator_info.instance               = instance.instance;
+    VmaVulkanFunctions vulkan_functions    = {};
+    vulkan_functions.vkGetInstanceProcAddr = &vkGetInstanceProcAddr;
+    vulkan_functions.vkGetDeviceProcAddr   = &vkGetDeviceProcAddr;
+    VmaAllocatorCreateInfo allocator_info  = {};
+    allocator_info.flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT;
+    allocator_info.pVulkanFunctions = &vulkan_functions;
+    allocator_info.vulkanApiVersion = VK_API_VERSION_1_2;
+    allocator_info.physicalDevice   = physical_device;
+    allocator_info.device           = device;
+    allocator_info.instance         = instance.instance;
     vmaCreateAllocator(&allocator_info, &device.allocator);
 
     return device;
@@ -380,6 +388,7 @@ EPIX_API Image Image::create(
         reinterpret_cast<VmaAllocationCreateInfo*>(&alloc_info),
         reinterpret_cast<VkImage*>(&image.image), &image.allocation, nullptr
     );
+    image.device = device;
     return image;
 }
 EPIX_API void Image::destroy() {
@@ -404,6 +413,7 @@ EPIX_API Buffer Buffer::create(
         reinterpret_cast<VmaAllocationCreateInfo*>(&alloc_info),
         reinterpret_cast<VkBuffer*>(&buffer.buffer), &buffer.allocation, nullptr
     );
+    buffer.device = device;
     return buffer;
 }
 EPIX_API Buffer Buffer::create_device(

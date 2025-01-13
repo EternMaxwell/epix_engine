@@ -88,16 +88,16 @@ struct Device : vk::Device {
     );
     EPIX_API void destroy();
 
-    EPIX_API Buffer create_buffer(
+    EPIX_API Buffer createBuffer(
         vk::BufferCreateInfo& create_info, AllocationCreateInfo& alloc_info
     );
-    EPIX_API void destroy_buffer(Buffer& buffer);
+    EPIX_API void destroyBuffer(Buffer& buffer);
     EPIX_API void destroy(Buffer& buffer);
 
-    EPIX_API Image create_image(
+    EPIX_API Image createImage(
         vk::ImageCreateInfo& create_info, AllocationCreateInfo& alloc_info
     );
-    EPIX_API void destroy_image(Image& image);
+    EPIX_API void destroyImage(Image& image);
     EPIX_API void destroy(Image& image);
 };
 struct Image {

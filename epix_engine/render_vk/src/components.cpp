@@ -1,7 +1,4 @@
-#include <tracy/Tracy.hpp>
-
 #include "epix/render_vk.h"
-
 
 using namespace epix;
 using namespace epix::prelude;
