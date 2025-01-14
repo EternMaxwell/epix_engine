@@ -1,5 +1,7 @@
-#include "epix/rdvk2/rdvk_utils.h"
 #include <spdlog/spdlog.h>
+
+#include "epix/rdvk2/rdvk_utils.h"
+
 
 namespace epix::render::vulkan2 {
 
@@ -18,10 +20,11 @@ EPIX_API void util::get_shader_resource_bindings(
             bindings.resize(set + 1);
         }
         auto binding = glsl.get_decoration(resource.id, spv::DecorationBinding);
-        uint32_t count = type.array.size() ? (type.array_size_literal[0]
-                                                  ? type.array[0]
-                                                  : max_descriptor_count)
-                                           : 1;
+        uint32_t count = type.array.size()
+                             ? ((type.array_size_literal[0] && type.array[0])
+                                    ? type.array[0]
+                                    : max_descriptor_count)
+                             : 1;
         auto res_binding =
             vk::DescriptorSetLayoutBinding()
                 .setBinding(binding)
@@ -62,10 +65,11 @@ EPIX_API void util::get_shader_resource_bindings(
             bindings.resize(set + 1);
         }
         auto binding = glsl.get_decoration(resource.id, spv::DecorationBinding);
-        uint32_t count = type.array.size() ? (type.array_size_literal[0]
-                                                  ? type.array[0]
-                                                  : max_descriptor_count)
-                                           : 1;
+        uint32_t count = type.array.size()
+                             ? ((type.array_size_literal[0] && type.array[0])
+                                    ? type.array[0]
+                                    : max_descriptor_count)
+                             : 1;
         auto res_binding =
             vk::DescriptorSetLayoutBinding()
                 .setBinding(binding)
@@ -106,10 +110,11 @@ EPIX_API void util::get_shader_resource_bindings(
             bindings.resize(set + 1);
         }
         auto binding = glsl.get_decoration(resource.id, spv::DecorationBinding);
-        uint32_t count = type.array.size() ? (type.array_size_literal[0]
-                                                  ? type.array[0]
-                                                  : max_descriptor_count)
-                                           : 1;
+        uint32_t count = type.array.size()
+                             ? ((type.array_size_literal[0] && type.array[0])
+                                    ? type.array[0]
+                                    : max_descriptor_count)
+                             : 1;
         auto res_binding =
             vk::DescriptorSetLayoutBinding()
                 .setBinding(binding)
@@ -150,10 +155,11 @@ EPIX_API void util::get_shader_resource_bindings(
             bindings.resize(set + 1);
         }
         auto binding = glsl.get_decoration(resource.id, spv::DecorationBinding);
-        uint32_t count   = type.array.size() ? (type.array_size_literal[0]
-                                                    ? type.array[0]
-                                                    : max_descriptor_count)
-                                             : 1;
+        uint32_t count = type.array.size()
+                             ? ((type.array_size_literal[0] && type.array[0])
+                                    ? type.array[0]
+                                    : max_descriptor_count)
+                             : 1;
         auto res_binding = vk::DescriptorSetLayoutBinding()
                                .setBinding(binding)
                                .setDescriptorType(
@@ -197,10 +203,11 @@ EPIX_API void util::get_shader_resource_bindings(
             bindings.resize(set + 1);
         }
         auto binding = glsl.get_decoration(resource.id, spv::DecorationBinding);
-        uint32_t count   = type.array.size() ? (type.array_size_literal[0]
-                                                    ? type.array[0]
-                                                    : max_descriptor_count)
-                                             : 1;
+        uint32_t count = type.array.size()
+                             ? ((type.array_size_literal[0] && type.array[0])
+                                    ? type.array[0]
+                                    : max_descriptor_count)
+                             : 1;
         auto res_binding = vk::DescriptorSetLayoutBinding()
                                .setBinding(binding)
                                .setDescriptorType(vk::DescriptorType::eSampler)
@@ -240,10 +247,11 @@ EPIX_API void util::get_shader_resource_bindings(
             bindings.resize(set + 1);
         }
         auto binding = glsl.get_decoration(resource.id, spv::DecorationBinding);
-        uint32_t count   = type.array.size() ? (type.array_size_literal[0]
-                                                    ? type.array[0]
-                                                    : max_descriptor_count)
-                                             : 1;
+        uint32_t count = type.array.size()
+                             ? ((type.array_size_literal[0] && type.array[0])
+                                    ? type.array[0]
+                                    : max_descriptor_count)
+                             : 1;
         auto res_binding = vk::DescriptorSetLayoutBinding()
                                .setBinding(binding)
                                .setDescriptorType(
@@ -288,10 +296,11 @@ EPIX_API void util::get_shader_resource_bindings(
             bindings.resize(set + 1);
         }
         auto binding = glsl.get_decoration(resource.id, spv::DecorationBinding);
-        uint32_t count = type.array.size() ? (type.array_size_literal[0]
-                                                  ? type.array[0]
-                                                  : max_descriptor_count)
-                                           : 1;
+        uint32_t count = type.array.size()
+                             ? ((type.array_size_literal[0] && type.array[0])
+                                    ? type.array[0]
+                                    : max_descriptor_count)
+                             : 1;
         auto res_binding =
             vk::DescriptorSetLayoutBinding()
                 .setBinding(binding)

@@ -267,10 +267,6 @@ EPIX_API void systems::extract_res_manager(
         ZoneScopedN("apply resource manager cache");
         res_manager.apply_cache();
     }
-    {
-        ZoneScopedN("Copy resource manager");
-        auto render_res_manager = res_manager;
-    }
     if (!render_query) {
         ZoneScopedN("Extract resource manager");
         cmd.spawn(query.wrap(entity), RenderContextResManager{});

@@ -411,22 +411,19 @@ void create_pipeline(
     cmd.spawn(pipeline);
 }
 
-void extract_pipeline(Extract<Get<Entity, TestPipeline>> query, Command cmd) {
-    if (!query) {
-        return;
-    }
-    auto [entity, pipeline] = query.single();
-    cmd.spawn(query.wrap(entity));
-}
-
-void clear_extracted_pipeline(
-    Query<Get<Entity>, With<Wrapper<TestPipeline>>> query, Command cmd
+void extract_pipeline(
+    Extract<Get<Entity, TestPipeline>> query,
+    Query<Get<Entity>, With<Wrapper<TestPipeline>>> query2,
+    Command cmd
 ) {
     if (!query) {
         return;
     }
-    auto [entity] = query.single();
-    cmd.entity(entity).despawn();
+    if (!query2) {
+        auto [entity, pipeline] = query.single();
+        ZoneScopedN("Extract pipeline");
+        cmd.spawn(query.wrap(entity));
+    }
 }
 
 void destroy_pipeline(Query<Get<TestPipeline>> query) {
@@ -617,6 +614,7 @@ void test_render(
     auto [pipeline_ref]    = query2.single();
     auto [res_manager]     = *res_manager_ref;
     auto [pipeline]        = *pipeline_ref;
+    ZoneScopedN("Test render");
     TestPipeline::mesh mesh(
         res_manager.image_index("test::rdvk::image1"),
         res_manager.sampler_index("test::rdvk::sampler1"),
@@ -634,7 +632,7 @@ int main() {
     app2.add_plugin(WindowPlugin{});
     app2.get_plugin<WindowPlugin>()->primary_desc().set_vsync(false);
     app2.add_plugin(
-        epix::render::vulkan2::RenderVKPlugin{}.set_debug_callback(true)
+        epix::render::vulkan2::RenderVKPlugin{}.set_debug_callback(false)
     );
     app2.add_plugin(epix::render::vulkan2::VulkanResManagerPlugin{});
     app2.add_plugin(epix::input::InputPlugin{});
@@ -643,7 +641,6 @@ int main() {
     );
     app2.add_system(epix::Extraction, extract_pipeline);
     app2.add_system(epix::Render, test_render);
-    app2.add_system(epix::PostRender, clear_extracted_pipeline);
     app2.add_system(epix::Exit, destroy_pipeline);
     app2.run();
 }

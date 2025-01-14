@@ -7,8 +7,8 @@ layout(location = 1) in vec4 inColor;
 
 layout(location = 0) out vec4 outColor;
 
-layout(set = 0, binding = 0) uniform texture2D tex[65536];
-layout(set = 0, binding = 1) uniform sampler smp[65536];
+layout(set = 0, binding = 0) uniform texture2D tex[];
+layout(set = 0, binding = 1) uniform sampler smp[];
 
 layout(push_constant) uniform PushConstant {
     int imageIndex;
