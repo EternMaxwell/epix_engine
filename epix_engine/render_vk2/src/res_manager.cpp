@@ -307,6 +307,7 @@ EPIX_API void VulkanResManagerPlugin::build(epix::App& app) {
     app.add_system(epix::PreStartup, systems::create_res_manager)
         .after(vulkan2::systems::create_context);
     app.add_system(epix::PreExtract, systems::extract_res_manager);
-    app.add_system(epix::Exit, systems::destroy_res_manager);
+    app.add_system(epix::PostExit, systems::destroy_res_manager)
+        .before(vulkan2::systems::destroy_context);
 }
 }  // namespace epix::render::vulkan2

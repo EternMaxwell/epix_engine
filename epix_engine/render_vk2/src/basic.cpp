@@ -746,10 +746,10 @@ EPIX_API Image Swapchain::next_image() {
 EPIX_API Image Swapchain::current_image() const {
     return others->images[others->image_index];
 }
-EPIX_API ImageView Swapchain::current_image_view() const {
+EPIX_API ImageView& Swapchain::current_image_view() const {
     return others->image_views[others->image_index];
 }
-EPIX_API vk::Fence Swapchain::fence() const {
+EPIX_API vk::Fence& Swapchain::fence() const {
     return in_flight_fence[others->current_frame];
 }
 EPIX_API void Swapchain::transition_image_layout(

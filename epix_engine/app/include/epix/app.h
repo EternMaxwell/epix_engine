@@ -707,7 +707,7 @@ struct Without {};
 
 template <typename... Gets>
 struct Wrapper {
-    using type = std::tuple<Gets...>;
+    using type = std::tuple<Gets&...>;
 
    private:
     Entity entity;

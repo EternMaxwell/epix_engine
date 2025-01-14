@@ -199,11 +199,11 @@ struct Swapchain {
     bool need_transition = true;
     vk::SurfaceFormatKHR surface_format;
     vk::PresentModeKHR present_mode;
-    vk::Fence in_flight_fence[2];
+    mutable vk::Fence in_flight_fence[2];
     struct Others {
         vk::SwapchainKHR swapchain;
         std::vector<vk::Image> images;
-        std::vector<ImageView> image_views;
+        mutable std::vector<ImageView> image_views;
         vk::Extent2D extent;
         uint32_t image_index   = 0;
         uint32_t current_frame = 0;
@@ -217,8 +217,8 @@ struct Swapchain {
     EPIX_API void recreate();
     EPIX_API Image next_image();
     EPIX_API Image current_image() const;
-    EPIX_API ImageView current_image_view() const;
-    EPIX_API vk::Fence fence() const;
+    EPIX_API ImageView& current_image_view() const;
+    EPIX_API vk::Fence& fence() const;
 
     EPIX_API void transition_image_layout(
         CommandBuffer& command_buffer, Fence& fence
