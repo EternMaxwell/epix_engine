@@ -10,6 +10,9 @@ using namespace epix::window::systems;
 using namespace epix::window;
 using namespace epix::prelude;
 
+std::shared_ptr<spdlog::logger> logger =
+    spdlog::default_logger()->clone("window");
+
 EPIX_API void systems::init_glfw() {
     if (!glfwInit()) {
         throw std::runtime_error("Failed to initialize GLFW");
@@ -46,7 +49,7 @@ EPIX_API void systems::create_window(
 ) {
     ZoneScopedN("window::create_window");
     for (auto [entity, desc] : desc_query.iter()) {
-        spdlog::debug("create window {}.", desc.title);
+        logger->debug("create window {}.", desc.title);
         auto window = pool->submit_task([desc]() {
                               return components::create_window(desc);
                           }
@@ -62,7 +65,7 @@ EPIX_API void systems::create_window(
             );
             glfwSetScrollCallback(window.value().get_handle(), scroll_callback);
         } else {
-            spdlog::error(
+            logger->error(
                 "Failed to create window {} with size {}x{}", desc.title,
                 desc.width, desc.height
             );
@@ -132,7 +135,7 @@ EPIX_API void systems::no_window_exists(
     for (auto [window] : query.iter()) {
         if (!window.should_close()) return;
     }
-    spdlog::info("No window exists.");
+    logger->info("Windows should close.");
     no_window_event.write(NoWindowExists{});
 }
 
