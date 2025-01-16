@@ -603,9 +603,9 @@ void create_image_and_view(
 
 void test_render(
     Query<
-        Get<Wrapper<epix::render::vulkan2::ResourceManager>>,
+        epix::CWrap<epix::render::vulkan2::ResourceManager>,
         With<epix::render::vulkan2::RenderContextResManager>> query,
-    Query<Get<Wrapper<TestPipeline>>> query2
+    Query<epix::Wrap<TestPipeline>> query2
 ) {
     if (!query || !query2) {
         return;
@@ -632,7 +632,7 @@ int main() {
     app2.add_plugin(WindowPlugin{});
     app2.get_plugin<WindowPlugin>()->primary_desc().set_vsync(false);
     app2.add_plugin(
-        epix::render::vulkan2::RenderVKPlugin{}.set_debug_callback(false)
+        epix::render::vulkan2::RenderVKPlugin{}.set_debug_callback(true)
     );
     app2.add_plugin(epix::render::vulkan2::VulkanResManagerPlugin{});
     app2.add_plugin(epix::input::InputPlugin{});

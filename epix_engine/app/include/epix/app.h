@@ -75,6 +75,8 @@ struct Condition;
 struct Entity;
 struct EntityCommand;
 struct Command;
+template <typename... T>
+struct Wrapper;
 
 template <typename T>
 struct Res;
@@ -708,6 +710,7 @@ struct Without {};
 template <typename... Gets>
 struct Wrapper {
     using type = std::tuple<Gets&...>;
+    using const_type = std::tuple<const Gets&...>;
 
    private:
     Entity entity;
@@ -719,6 +722,11 @@ struct Wrapper {
     type operator*() {
         return std::tuple<Gets&...>(registry.get<Gets>(entity.id)...);
     }
+    const_type operator*() const {
+        return std::tuple<const Gets&...>(registry.get<Gets>(entity.id)...);
+    }
+
+    Entity id() { return entity; }
 };
 
 template <typename... Qus, typename... Ins, typename... Exs>
@@ -767,6 +775,11 @@ class QueryBase<Get<Qus...>, With<Ins...>, Without<Exs...>> {
             auto operator*() {
                 return std::tuple<Qus&...>(std::get<Qus&>(*m_iter)...);
             }
+            auto wrap() {
+                return Wrapper<Qus...>(
+                    Entity{std::get<entt::entity>(*m_iter)}, registry
+                );
+            }
         };
 
        public:
@@ -795,6 +808,8 @@ class QueryBase<Get<Qus...>, With<Ins...>, Without<Exs...>> {
     bool operator!() { return iter().begin() == iter().end(); }
 
     auto wrap(Entity entity) { return Wrapper<Qus...>(entity, registry); }
+
+    auto size_hint() { return m_view.size_hint(); }
 
     template <typename Func>
     void for_each(Func func) {
@@ -851,6 +866,11 @@ class QueryBase<Get<Entity, Qus...>, With<Ins...>, Without<Exs...>> {
                     std::get<Qus&>(*m_iter)...
                 );
             }
+            auto wrap() {
+                return Wrapper<Qus...>(
+                    Entity{std::get<entt::entity>(*m_iter)}, registry
+                );
+            }
         };
 
        public:
@@ -883,6 +903,8 @@ class QueryBase<Get<Entity, Qus...>, With<Ins...>, Without<Exs...>> {
 
     auto wrap(Entity entity) { return Wrapper<Qus...>(entity, registry); }
 
+    auto size_hint() { return m_view.size_hint(); }
+
     template <typename Func>
     void for_each(Func func) {
         m_view.each(func);
@@ -913,6 +935,7 @@ struct Extract<Get<Gets...>, With<Withs...>, Without<Withouts...>> {
     }
     auto get(entt::entity id) { return query.get(id); }
     auto wrap(Entity entity) { return query.wrap(entity); }
+    auto size_hint() { return query.size_hint(); }
     bool contains(entt::entity id) { return query.contains(id); }
 };
 template <typename... Gets, typename... Withs, typename... Withouts>
@@ -937,6 +960,7 @@ struct Extract<Get<Entity, Gets...>, With<Withs...>, Without<Withouts...>> {
     }
     auto get(Entity id) { return query.get(id); }
     auto wrap(Entity entity) { return query.wrap(entity); }
+    auto size_hint() { return query.size_hint(); }
     bool contains(Entity id) { return query.contains(id); }
 };
 template <typename... Gets, typename... Withouts, typename W>
@@ -963,6 +987,7 @@ struct Query {
     }
     auto get(Entity id) { return query.get(id); }
     auto wrap(Entity entity) { return query.wrap(entity); }
+    auto size_hint() { return query.size_hint(); }
     bool contains(Entity id) { return query.contains(id); }
 };
 struct SubApp {
@@ -2439,6 +2464,14 @@ using app::State;
 using app::With;
 using app::Without;
 using app::Wrapper;
+template <typename... T>
+using Wrap = app::Get<app::Wrapper<T...>>;
+template <typename... T>
+using WithWrap = app::With<app::Wrapper<T...>>;
+template <typename... T>
+using WithoutWrap = app::Without<app::Wrapper<T...>>;
+template <typename... T>
+using CWrap = app::Get<const app::Wrapper<T...>>;
 
 // OTHER TOOLS
 using epix::app::thread_pool;
