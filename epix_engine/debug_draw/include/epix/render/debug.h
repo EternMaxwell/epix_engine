@@ -1,5 +1,7 @@
 #pragma once
 
+#include <epix/rdvk.h>
+
 #include "draw_dbg/components.h"
 #include "draw_dbg/systems.h"
 
@@ -12,4 +14,9 @@ struct DebugRenderPlugin : Plugin {
     EPIX_API void build(App& app) override;
 };
 }  // namespace vulkan
+namespace vulkan2 {
+struct DebugPipelines {
+
+};
+}  // namespace vulkan2
 }  // namespace epix::render::debug

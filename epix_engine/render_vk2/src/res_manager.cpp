@@ -70,7 +70,8 @@ VulkanResources::add_buffer(const std::string& name, Buffer buffer) {
         auto index = buffer_free_indices.top();
         buffer_free_indices.pop();
         buffer_add_cache.emplace_back(name, index);
-        buffers[index] = buffer;
+        buffers[index]      = buffer;
+        buffer_names[index] = name;
         return index;
     }
     buffer_names.push_back(name);
@@ -87,7 +88,8 @@ VulkanResources::add_image(const std::string& name, Image image) {
         auto index = image_free_indices.top();
         image_free_indices.pop();
         image_add_cache.emplace_back(name, index);
-        images[index] = image;
+        images[index]      = image;
+        image_names[index] = name;
         return index;
     }
     image_names.push_back(name);
@@ -104,7 +106,8 @@ VulkanResources::add_image_view(const std::string& name, ImageView image_view) {
         auto index = view_free_indices.top();
         view_free_indices.pop();
         view_add_cache.emplace_back(name, index);
-        image_views[index] = image_view;
+        image_views[index]      = image_view;
+        image_view_names[index] = name;
         return index;
     }
     image_view_names.push_back(name);
@@ -122,7 +125,8 @@ VulkanResources::add_sampler(const std::string& name, Sampler sampler) {
         auto index = sampler_free_indices.top();
         sampler_free_indices.pop();
         sampler_add_cache.emplace_back(name, index);
-        samplers[index] = sampler;
+        samplers[index]      = sampler;
+        sampler_names[index] = name;
         return index;
     }
     sampler_names.push_back(name);
@@ -252,40 +256,40 @@ EPIX_API void VulkanResources::remove_buffer(const std::string& name) {
         return;
     }
     auto index = buffer_map[name];
-    buffer_cache_remove.push_back(index);
+    buffer_cache_remove.emplace(index);
 }
 EPIX_API void VulkanResources::remove_image(const std::string& name) {
     if (!image_map.contains(name)) {
         return;
     }
     auto index = image_map[name];
-    image_cache_remove.push_back(index);
+    image_cache_remove.emplace(index);
 }
 EPIX_API void VulkanResources::remove_image_view(const std::string& name) {
     if (!image_view_map.contains(name)) {
         return;
     }
     auto index = image_view_map[name];
-    view_cache_remove.push_back(index);
+    view_cache_remove.emplace(index);
 }
 EPIX_API void VulkanResources::remove_sampler(const std::string& name) {
     if (!sampler_map.contains(name)) {
         return;
     }
     auto index = sampler_map[name];
-    sampler_cache_remove.push_back(index);
+    sampler_cache_remove.emplace(index);
 }
 EPIX_API void VulkanResources::remove_buffer(uint32_t index) {
-    buffer_cache_remove.push_back(index);
+    buffer_cache_remove.emplace(index);
 }
 EPIX_API void VulkanResources::remove_image(uint32_t index) {
-    image_cache_remove.push_back(index);
+    image_cache_remove.emplace(index);
 }
 EPIX_API void VulkanResources::remove_image_view(uint32_t index) {
-    view_cache_remove.push_back(index);
+    view_cache_remove.emplace(index);
 }
 EPIX_API void VulkanResources::remove_sampler(uint32_t index) {
-    sampler_cache_remove.push_back(index);
+    sampler_cache_remove.emplace(index);
 }
 EPIX_API uint32_t VulkanResources::buffer_index(const std::string& name) const {
     if (!buffer_map.contains(name)) {

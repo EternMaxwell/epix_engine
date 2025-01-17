@@ -141,14 +141,14 @@ struct VulkanResources {
     std::vector<Buffer> buffers;
     std::vector<std::string> buffer_names;
     entt::dense_map<std::string, uint32_t> buffer_map;
-    std::vector<uint32_t> buffer_cache_remove;
+    entt::dense_set<uint32_t> buffer_cache_remove;
     std::vector<std::pair<std::string, uint32_t>> buffer_add_cache;
     std::stack<uint32_t> buffer_free_indices;
 
     std::vector<Image> images;
     std::vector<std::string> image_names;
     entt::dense_map<std::string, uint32_t> image_map;
-    std::vector<uint32_t> image_cache_remove;
+    entt::dense_set<uint32_t> image_cache_remove;
     std::vector<std::pair<std::string, uint32_t>> image_add_cache;
     std::stack<uint32_t> image_free_indices;
 
@@ -156,7 +156,7 @@ struct VulkanResources {
     std::vector<std::string> image_view_names;
     entt::dense_map<std::string, uint32_t> image_view_map;
     std::vector<std::pair<uint32_t, ImageView>> view_cache;
-    std::vector<uint32_t> view_cache_remove;
+    entt::dense_set<uint32_t> view_cache_remove;
     std::vector<std::pair<std::string, uint32_t>> view_add_cache;
     std::stack<uint32_t> view_free_indices;
 
@@ -164,7 +164,7 @@ struct VulkanResources {
     std::vector<std::string> sampler_names;
     entt::dense_map<std::string, uint32_t> sampler_map;
     std::vector<std::pair<uint32_t, Sampler>> sampler_cache;
-    std::vector<uint32_t> sampler_cache_remove;
+    entt::dense_set<uint32_t> sampler_cache_remove;
     std::vector<std::pair<std::string, uint32_t>> sampler_add_cache;
     std::stack<uint32_t> sampler_free_indices;
 

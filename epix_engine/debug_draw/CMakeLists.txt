@@ -12,5 +12,6 @@ target_include_directories(epix_rdbg PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(epix_rdbg epix::app)
 target_link_libraries(epix_rdbg epix::window)
 target_link_libraries(epix_rdbg epix::render::vulkan)
+target_link_libraries(epix_rdbg epix::render::vulkan2)
 
 add_library(epix::render::debug ALIAS epix_rdbg)
