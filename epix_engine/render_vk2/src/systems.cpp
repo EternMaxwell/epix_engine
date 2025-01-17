@@ -98,14 +98,17 @@ EPIX_API void systems::recreate_swap_chain(
 }
 
 EPIX_API void systems::get_next_image(
-    ResMut<RenderContext> context, ResMut<CtxCmdBuffer> ctx_cmd
+    ResMut<RenderContext> context,
+    ResMut<CtxCmdBuffer> ctx_cmd,
+    ResMut<VulkanResources> p_res_manager
 ) {
-    if (!context || !ctx_cmd) return;
-    auto& swap_chain = context->primary_swapchain;
-    auto& cmd_buffer = ctx_cmd->cmd_buffer;
-    auto& cmd_fence  = ctx_cmd->fence;
-    auto& queue      = context->queue;
-    auto& device     = context->device;
+    if (!context || !ctx_cmd || !p_res_manager) return;
+    auto& swap_chain  = context->primary_swapchain;
+    auto& cmd_buffer  = ctx_cmd->cmd_buffer;
+    auto& cmd_fence   = ctx_cmd->fence;
+    auto& queue       = context->queue;
+    auto& device      = context->device;
+    auto& res_manager = *p_res_manager;
     ZoneScopedN("Vulkan get next image");
     auto image = swap_chain.next_image();
     device.waitForFences(cmd_fence, VK_TRUE, UINT64_MAX);
@@ -155,6 +158,9 @@ EPIX_API void systems::get_next_image(
     cmd_buffer.end();
     auto submit_info = vk::SubmitInfo().setCommandBuffers(cmd_buffer);
     queue.submit(submit_info, cmd_fence);
+    res_manager.replace_image_view(
+        "primary_swapchain", swap_chain.current_image_view()
+    );
 }
 
 EPIX_API void systems::present_frame(
@@ -210,7 +216,10 @@ EPIX_API void systems::create_res_manager(
     ZoneScopedN("Create resource manager");
     auto& device = context->device;
     VulkanResources res_manager{device};
-    cmd.insert_resource(res_manager);
+    res_manager.add_image_view(
+        "primary_swapchain", context->primary_swapchain.current_image_view()
+    );
+    cmd.insert_resource(std::move(res_manager));
 }
 
 EPIX_API void systems::destroy_res_manager(
@@ -218,6 +227,7 @@ EPIX_API void systems::destroy_res_manager(
 ) {
     if (!res_manager) return;
     ZoneScopedN("Destroy resource manager");
+    res_manager->replace_image_view("primary_swapchain", ImageView());
     res_manager->destroy();
 }
 

@@ -135,6 +135,47 @@ VulkanResources::add_sampler(const std::string& name, Sampler sampler) {
     sampler_cache.emplace_back((uint32_t)samplers.size() - 1, sampler);
     return samplers.size() - 1;
 }
+EPIX_API Buffer
+VulkanResources::replace_buffer(const std::string& name, Buffer buffer) {
+    auto index = buffer_index(name);
+    if (index == -1) {
+        return Buffer();
+    }
+    auto old       = buffers[index];
+    buffers[index] = buffer;
+    return old;
+}
+EPIX_API Image
+VulkanResources::replace_image(const std::string& name, Image image) {
+    auto index = image_index(name);
+    if (index == -1) {
+        return Image();
+    }
+    auto old      = images[index];
+    images[index] = image;
+    return old;
+}
+EPIX_API ImageView VulkanResources::replace_image_view(
+    const std::string& name, ImageView image_view
+) {
+    auto index = image_view_index(name);
+    if (index == -1) {
+        return ImageView();
+    }
+    auto old           = image_views[index];
+    image_views[index] = image_view;
+    return old;
+}
+EPIX_API Sampler
+VulkanResources::replace_sampler(const std::string& name, Sampler sampler) {
+    auto index = sampler_index(name);
+    if (index == -1) {
+        return Sampler();
+    }
+    auto old        = samplers[index];
+    samplers[index] = sampler;
+    return old;
+}
 EPIX_API void VulkanResources::apply_cache() {
     for (auto&& [name, index] : buffer_add_cache) {
         buffer_map.emplace(std::move(name), index);
@@ -153,11 +194,15 @@ EPIX_API void VulkanResources::apply_cache() {
     view_add_cache.clear();
     sampler_add_cache.clear();
     for (auto index : buffer_cache_remove) {
-        m_device.destroyBuffer(buffers[index]);
+        if (buffers[index]) {
+            m_device.destroyBuffer(buffers[index]);
+        }
         buffer_free_indices.push(index);
     }
     for (auto index : image_cache_remove) {
-        m_device.destroyImage(images[index]);
+        if (images[index]) {
+            m_device.destroyImage(images[index]);
+        }
         image_free_indices.push(index);
     }
     std::vector<vk::DescriptorImageInfo> image_infos;
@@ -167,7 +212,7 @@ EPIX_API void VulkanResources::apply_cache() {
     for (auto&& [index, view] : view_cache) {
         image_infos.push_back(
             vk::DescriptorImageInfo().setImageView(view).setImageLayout(
-                vk::ImageLayout::eShaderReadOnlyOptimal
+                vk::ImageLayout::eGeneral
             )
         );
         descriptor_writes.push_back(
@@ -196,11 +241,15 @@ EPIX_API void VulkanResources::apply_cache() {
     image_infos.clear();
     descriptor_writes.clear();
     for (auto index : view_cache_remove) {
-        m_device.destroyImageView(image_views[index]);
+        if (image_views[index]) {
+            m_device.destroyImageView(image_views[index]);
+        }
         view_free_indices.push(index);
     }
     for (auto index : sampler_cache_remove) {
-        m_device.destroySampler(samplers[index]);
+        if (samplers[index]) {
+            m_device.destroySampler(samplers[index]);
+        }
         sampler_free_indices.push(index);
     }
     view_cache.clear();

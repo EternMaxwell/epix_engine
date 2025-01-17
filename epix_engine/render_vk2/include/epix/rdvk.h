@@ -13,6 +13,7 @@ namespace epix::render::vulkan2 {
 struct RenderContext;
 struct VulkanPlugin;
 struct CtxCmdBuffer;
+struct VulkanResources;
 namespace systems {
 using namespace epix::render::vulkan2::backend;
 using epix::Command;
@@ -93,7 +94,9 @@ EPIX_API void recreate_swap_chain(
     ResMut<RenderContext> context, ResMut<CtxCmdBuffer> ctx_cmd
 );
 EPIX_API void get_next_image(
-    ResMut<RenderContext> context, ResMut<CtxCmdBuffer> ctx_cmd
+    ResMut<RenderContext> context,
+    ResMut<CtxCmdBuffer> ctx_cmd,
+    ResMut<VulkanResources> res_manager
 );
 EPIX_API void present_frame(
     ResMut<RenderContext> context, ResMut<CtxCmdBuffer> ctx_cmd
@@ -183,6 +186,11 @@ struct VulkanResources {
     EPIX_API uint32_t
     add_image_view(const std::string& name, ImageView image_view);
     EPIX_API uint32_t add_sampler(const std::string& name, Sampler sampler);
+    EPIX_API Buffer replace_buffer(const std::string& name, Buffer buffer);
+    EPIX_API Image replace_image(const std::string& name, Image image);
+    EPIX_API ImageView
+    replace_image_view(const std::string& name, ImageView image_view);
+    EPIX_API Sampler replace_sampler(const std::string& name, Sampler sampler);
 
     EPIX_API Buffer get_buffer(const std::string& name) const;
     EPIX_API Image get_image(const std::string& name) const;

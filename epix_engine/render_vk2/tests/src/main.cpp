@@ -604,7 +604,7 @@ void test_render(
     auto [pipeline]     = *pipeline_ref;
     ZoneScopedN("Test render");
     TestPipeline::mesh mesh(
-        res_manager.image_index("test::rdvk::image1"),
+        res_manager.image_view_index("test::rdvk::image1::view"),
         res_manager.sampler_index("test::rdvk::sampler1"),
         res_manager.get_descriptor_set()
     );
