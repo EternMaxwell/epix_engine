@@ -13,6 +13,7 @@
 #include "shaders/vertex_shader.h"
 
 using namespace epix::render::vulkan2::backend;
+using epix::render::vulkan2::VulkanResources;
 
 struct test {
     float x;
@@ -391,15 +392,14 @@ struct TestPipeline {
 };
 
 void create_pipeline(
-    Query<
-        Get<Device, Swapchain, CommandPool>,
-        With<epix::render::vulkan2::RenderContext>> query,
-    Command cmd
+    Res<epix::render::vulkan2::RenderContext> context, Command cmd
 ) {
-    if (!query) {
+    if (!context) {
         return;
     }
-    auto [device, swapchain, command_pool] = query.single();
+    auto& device       = context->device();
+    auto& swapchain    = context->primary_swapchain();
+    auto& command_pool = context->command_pool();
     TestPipeline pipeline;
     pipeline.device    = device;
     pipeline.swapchain = swapchain;
@@ -434,15 +434,10 @@ void destroy_pipeline(Query<Get<TestPipeline>> query) {
     pipeline.destroy();
 }
 
-void create_sampler(Query<
-                    Get<epix::render::vulkan2::VulkanResources>,
-                    With<epix::render::vulkan2::RenderContextResManager>> query
-) {
-    if (!query) {
-        return;
-    }
-    auto [res_manager] = query.single();
-    auto& device       = res_manager.device;
+void create_sampler(ResMut<VulkanResources> p_res_manager) {
+    if (!p_res_manager) return;
+    auto& res_manager = *p_res_manager;
+    auto& device      = res_manager.device();
     vk::SamplerCreateInfo sampler_info;
     sampler_info.setMagFilter(vk::Filter::eLinear);
     sampler_info.setMinFilter(vk::Filter::eLinear);
@@ -465,19 +460,17 @@ void create_sampler(Query<
 }
 
 void create_image_and_view(
-    Query<
-        Get<epix::render::vulkan2::VulkanResources>,
-        With<epix::render::vulkan2::RenderContextResManager>> query,
-    Query<Get<Queue, CommandPool>, With<epix::render::vulkan2::RenderContext>>
-        query2
+    ResMut<VulkanResources> p_res_manager,
+    ResMut<epix::render::vulkan2::RenderContext> context
 ) {
-    if (!query || !query2) {
+    if (!p_res_manager || !context) {
         return;
     }
-    auto [queue, command_pool] = query2.single();
-    auto [res_manager]         = query.single();
-    auto& device               = res_manager.device;
-    auto image_create_info     = vk::ImageCreateInfo()
+    auto& queue            = context->queue();
+    auto& command_pool     = context->command_pool();
+    auto& res_manager      = *p_res_manager;
+    auto& device           = res_manager.device();
+    auto image_create_info = vk::ImageCreateInfo()
                                  .setImageType(vk::ImageType::e2D)
                                  .setFormat(vk::Format::eR8G8B8A8Unorm)
                                  .setExtent(vk::Extent3D(1, 1, 1))
@@ -602,18 +595,14 @@ void create_image_and_view(
 }
 
 void test_render(
-    Query<
-        epix::CWrap<epix::render::vulkan2::VulkanResources>,
-        With<epix::render::vulkan2::RenderContextResManager>> query,
-    Query<epix::Wrap<TestPipeline>> query2
+    Res<VulkanResources> p_res_manager, Query<epix::Wrap<TestPipeline>> query2
 ) {
-    if (!query || !query2) {
+    if (!p_res_manager || !query2) {
         return;
     }
-    auto [res_manager_ref] = query.single();
-    auto [pipeline_ref]    = query2.single();
-    auto [res_manager]     = *res_manager_ref;
-    auto [pipeline]        = *pipeline_ref;
+    auto [pipeline_ref] = query2.single();
+    auto& res_manager   = *p_res_manager;
+    auto [pipeline]     = *pipeline_ref;
     ZoneScopedN("Test render");
     TestPipeline::mesh mesh(
         res_manager.image_index("test::rdvk::image1"),
@@ -632,9 +621,9 @@ int main() {
     app2.add_plugin(WindowPlugin{});
     app2.get_plugin<WindowPlugin>()->primary_desc().set_vsync(false);
     app2.add_plugin(
-        epix::render::vulkan2::RenderVKPlugin{}.set_debug_callback(true)
+        epix::render::vulkan2::VulkanPlugin{}.set_debug_callback(true)
     );
-    app2.add_plugin(epix::render::vulkan2::VulkanResManagerPlugin{});
+    app2.add_plugin(epix::render::vulkan2::VkResourcePlugin{});
     app2.add_plugin(epix::input::InputPlugin{});
     app2.add_system(
         epix::Startup, create_pipeline, create_sampler, create_image_and_view

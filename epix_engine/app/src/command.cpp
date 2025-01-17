@@ -26,7 +26,10 @@ EPIX_API EntityCommand::operator Entity() { return m_entity; }
 EPIX_API Command::Command(World* world)
     : m_world(world),
       m_despawns(std::make_shared<entt::dense_set<Entity>>()),
-      m_recursive_despawns(std::make_shared<entt::dense_set<Entity>>()) {}
+      m_recursive_despawns(std::make_shared<entt::dense_set<Entity>>()),
+      m_resource_removers(
+          std::make_shared<std::vector<std::function<void(World*)>>>()
+      ) {}
 
 EPIX_API EntityCommand Command::entity(Entity entity) {
     return EntityCommand(
@@ -49,4 +52,8 @@ EPIX_API void Command::end() {
         m_registry->destroy(entity);
     }
     m_despawns->clear();
+    for (auto remover : *m_resource_removers) {
+        remover(m_world);
+    }
+    m_resource_removers->clear();
 }

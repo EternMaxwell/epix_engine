@@ -4,7 +4,7 @@ using namespace epix::render::vulkan2;
 EPIX_API void systems::create_context(
     Command cmd,
     Query<Get<Window>, With<PrimaryWindow>> query,
-    Res<RenderVKPlugin> plugin
+    Res<VulkanPlugin> plugin
 ) {
     if (!query) {
         return;
@@ -26,10 +26,10 @@ EPIX_API void systems::create_context(
             .setFlags(vk::CommandPoolCreateFlagBits::eResetCommandBuffer)
     );
     Queue queue = device.getQueue(device.queue_family_index, 0);
-    cmd.spawn(
-        instance, physical_device, device, surface, swap_chain, queue,
-        command_pool, RenderContext{}
-    );
+    RenderContext context;
+    context.context =
+        new RenderContext_T{instance,     physical_device, device,    queue,
+                            command_pool, surface,         swap_chain};
     CommandBuffer cmd_buffer = device.allocateCommandBuffers(
         vk::CommandBufferAllocateInfo()
             .setCommandPool(command_pool)
@@ -39,20 +39,24 @@ EPIX_API void systems::create_context(
     Fence fence = device.createFence(
         vk::FenceCreateInfo().setFlags(vk::FenceCreateFlagBits::eSignaled)
     );
-    cmd.spawn(cmd_buffer, fence, ContextCommandBuffer{});
+    CtxCmdBuffer ctx_cmd;
+    ctx_cmd.cmd = new ContextCmd_T{cmd_buffer, fence};
+    cmd.insert_resource(context);
+    cmd.insert_resource(ctx_cmd);
 }
 
 EPIX_API void systems::destroy_context(
-    Command cmd,
-    Query<
-        Get<Instance, Device, Surface, Swapchain, CommandPool>,
-        With<RenderContext>> query,
-    Query<Get<CommandBuffer, Fence>, With<ContextCommandBuffer>> cmd_query
+    Command cmd, ResMut<RenderContext> context, ResMut<CtxCmdBuffer> ctx_cmd
 ) {
-    if (!query) return;
-    if (!cmd_query) return;
-    auto [cmd_buffer, cmd_fence] = cmd_query.single();
-    auto [instance, device, surface, swap_chain, command_pool] = query.single();
+    if (!context) return;
+    if (!ctx_cmd) return;
+    auto& cmd_fence    = ctx_cmd->fence();
+    auto& cmd_buffer   = ctx_cmd->cmd_buffer();
+    auto& instance     = context->instance();
+    auto& device       = context->device();
+    auto& surface      = context->primary_surface();
+    auto& swap_chain   = context->primary_swapchain();
+    auto& command_pool = context->command_pool();
     ZoneScopedN("Destroy vulkan context");
     device.waitForFences(swap_chain.fence(), VK_TRUE, UINT64_MAX);
     device.waitForFences(cmd_fence, VK_TRUE, UINT64_MAX);
@@ -63,69 +67,50 @@ EPIX_API void systems::destroy_context(
     surface.destroy();
     device.destroy();
     instance.destroy();
+    delete context->context;
+    delete ctx_cmd->cmd;
 }
 
 EPIX_API void systems::extract_context(
-    Extract<
-        Get<Instance, Device, Surface, Swapchain, CommandPool, Queue>,
-        With<RenderContext>> query,
-    Extract<Get<CommandBuffer, Fence>, With<ContextCommandBuffer>> cmd_query,
-    Command cmd
+    ResMut<RenderContext> context, ResMut<CtxCmdBuffer> ctx_cmd, Command cmd
 ) {
-    if (!query) return;
-    if (!cmd_query) return;
-    auto [instance, device, surface, swap_chain, command_pool, queue] =
-        query.single();
-    auto [cmd_buffer, cmd_fence] = cmd_query.single();
+    if (!context) return;
+    if (!ctx_cmd) return;
     ZoneScopedN("Extract vulkan context");
-    cmd.spawn(
-        instance, device, surface, swap_chain, command_pool, queue,
-        RenderContext{}
-    );
-    cmd.spawn(cmd_buffer, cmd_fence, ContextCommandBuffer{});
+    cmd.insert_resource(*context);
+    cmd.insert_resource(*ctx_cmd);
 }
 
 EPIX_API void systems::clear_extracted_context(
-    Query<Get<Entity>, With<RenderContext>> query,
-    Query<Get<Entity>, With<ContextCommandBuffer>> cmd_query,
-    Command cmd
+    ResMut<RenderContext> context, ResMut<CtxCmdBuffer> ctx_cmd, Command cmd
 ) {
-    if (!query) return;
-    if (!cmd_query) return;
-    ZoneScopedN("Clear extracted vulkan context");
-    for (auto [entity] : query.iter()) {
-        cmd.entity(entity).despawn();
-    }
-    for (auto [entity] : cmd_query.iter()) {
-        cmd.entity(entity).despawn();
-    }
+    cmd.remove_resource<RenderContext>();
+    cmd.remove_resource<CtxCmdBuffer>();
 }
 
 EPIX_API void systems::recreate_swap_chain(
-    Query<Get<Swapchain>, With<RenderContext>> query,
-    Query<Get<CommandBuffer, Fence>, With<ContextCommandBuffer>> cmd_query
+    ResMut<RenderContext> context, ResMut<CtxCmdBuffer> ctx_cmd
 ) {
-    if (!query || !cmd_query) {
-        return;
-    }
-    auto [swap_chain] = query.single();
+    if (!context || !ctx_cmd) return;
+    auto& swap_chain = context->primary_swapchain();
     ZoneScopedN("Recreate swap chain");
     swap_chain.recreate();
     if (swap_chain.need_transition) {
-        auto [cmd_buffer, cmd_fence] = cmd_query.single();
+        auto& cmd_buffer = ctx_cmd->cmd_buffer();
+        auto& cmd_fence  = ctx_cmd->fence();
         swap_chain.transition_image_layout(cmd_buffer, cmd_fence);
     }
 }
 
 EPIX_API void systems::get_next_image(
-    Query<Get<Device, Swapchain, CommandPool, Queue>, With<RenderContext>>
-        query,
-    Query<Get<CommandBuffer, Fence>, With<ContextCommandBuffer>> cmd_query
+    ResMut<RenderContext> context, ResMut<CtxCmdBuffer> ctx_cmd
 ) {
-    if (!query) return;
-    if (!cmd_query) return;
-    auto [cmd_buffer, cmd_fence]                   = cmd_query.single();
-    auto [device, swap_chain, command_pool, queue] = query.single();
+    if (!context || !ctx_cmd) return;
+    auto& swap_chain = context->primary_swapchain();
+    auto& cmd_buffer = ctx_cmd->cmd_buffer();
+    auto& cmd_fence  = ctx_cmd->fence();
+    auto& queue      = context->queue();
+    auto& device     = context->device();
     ZoneScopedN("Vulkan get next image");
     auto image = swap_chain.next_image();
     device.waitForFences(cmd_fence, VK_TRUE, UINT64_MAX);
@@ -178,14 +163,14 @@ EPIX_API void systems::get_next_image(
 }
 
 EPIX_API void systems::present_frame(
-    Query<Get<Swapchain, Queue, Device, CommandPool>, With<RenderContext>>
-        query,
-    Query<Get<CommandBuffer, Fence>, With<ContextCommandBuffer>> cmd_query
+    ResMut<RenderContext> context, ResMut<CtxCmdBuffer> ctx_cmd
 ) {
-    if (!query) return;
-    if (!cmd_query) return;
-    auto [cmd_buffer, cmd_fence]                   = cmd_query.single();
-    auto [swap_chain, queue, device, command_pool] = query.single();
+    if (!context || !ctx_cmd) return;
+    auto& swap_chain = context->primary_swapchain();
+    auto& cmd_buffer = ctx_cmd->cmd_buffer();
+    auto& cmd_fence  = ctx_cmd->fence();
+    auto& queue      = context->queue();
+    auto& device     = context->device();
     ZoneScopedN("Vulkan present frame");
     device.waitForFences(cmd_fence, VK_TRUE, UINT64_MAX);
     device.resetFences(cmd_fence);
@@ -226,49 +211,38 @@ EPIX_API void systems::present_frame(
 #include "epix/rdvk_res.h"
 
 EPIX_API void systems::create_res_manager(
-    Command cmd, Query<Get<Device>, With<RenderContext>> query
+    Command cmd, Res<RenderContext> context
 ) {
-    if (!query) {
-        return;
-    }
+    if (!context) return;
     ZoneScopedN("Create resource manager");
-    auto [device] = query.single();
+    auto& device = context->device();
     VulkanResources res_manager{device};
-    cmd.spawn(res_manager, RenderContextResManager{});
+    cmd.insert_resource(res_manager);
 }
 
 EPIX_API void systems::destroy_res_manager(
-    Command cmd,
-    Query<Get<vulkan2::VulkanResources>, With<RenderContextResManager>> query
+    Command cmd, ResMut<VulkanResources> res_manager
 ) {
-    if (!query) {
-        return;
-    }
+    if (!res_manager) return;
     ZoneScopedN("Destroy resource manager");
-    auto [res_manager] = query.single();
-    res_manager.destroy();
+    res_manager->destroy();
 }
 
 EPIX_API void systems::extract_res_manager(
-    Extract<
-        Get<Entity, vulkan2::VulkanResources>,
-        With<RenderContextResManager>> query,
-    Query<
-        Get<Entity>,
-        With<RenderContextResManager, Wrapper<vulkan2::VulkanResources>>>
-        render_query,
-    Command cmd
+    ResMut<VulkanResources> res_manager, Command cmd
 ) {
-    if (!query) {
-        return;
-    }
-    auto [entity, res_manager] = query.single();
+    if (!res_manager) return;
     {
         ZoneScopedN("apply resource manager cache");
-        res_manager.apply_cache();
+        res_manager->apply_cache();
     }
-    if (!render_query) {
-        ZoneScopedN("Extract resource manager");
-        cmd.spawn(query.wrap(entity), RenderContextResManager{});
-    }
+    ZoneScopedN("Extract resource manager");
+    cmd.insert_resource(*res_manager);
+}
+
+EPIX_API void systems::clear_extracted(
+    ResMut<VulkanResources> res_manager, Command cmd
+) {
+    if (!res_manager) return;
+    cmd.remove_resource<VulkanResources>();
 }

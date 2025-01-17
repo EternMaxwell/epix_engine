@@ -5,8 +5,9 @@
 
 #define BS_THREAD_POOL_NATIVE_EXTENSIONS
 #include <BS_thread_pool.hpp>
-#include <entt/entity/registry.hpp>
 #include <entt/container/dense_set.hpp>
+#include <entt/entity/registry.hpp>
+
 // ----THIRD PARTY INCLUDES----
 
 // ----STANDARD LIBRARY INCLUDES----
@@ -602,6 +603,8 @@ struct Command {
     World* const m_world;
     std::shared_ptr<entt::dense_set<Entity>> m_despawns;
     std::shared_ptr<entt::dense_set<Entity>> m_recursive_despawns;
+    std::shared_ptr<std::vector<std::function<void(World*)>>>
+        m_resource_removers;
 
    public:
     EPIX_API Command(World* world);
@@ -674,8 +677,11 @@ struct Command {
     }
     template <typename T>
     void remove_resource() {
-        auto m_resources = &m_world->m_resources;
-        m_resources->erase(std::type_index(typeid(std::remove_reference_t<T>)));
+        m_resource_removers->push_back([](World* world) {
+            auto& resources = world->m_resources;
+            resources.erase(std::type_index(typeid(std::remove_reference_t<T>))
+            );
+        });
     }
     /*! @brief Insert Resource using default values.
      * If the resource already exists, nothing will happen.
@@ -1022,7 +1028,7 @@ struct SubApp {
                                  )]
                                  .get());
         }
-        static Res<ResT> get(SubApp& src, SubApp& dst) { return get(dst); }
+        static Res<ResT> get(SubApp& src, SubApp& dst) { return get(src); }
     };
 
     template <typename ResT>
@@ -1034,7 +1040,7 @@ struct SubApp {
                                     )]
                                     .get());
         }
-        static ResMut<ResT> get(SubApp& src, SubApp& dst) { return get(dst); }
+        static ResMut<ResT> get(SubApp& src, SubApp& dst) { return get(src); }
     };
 
     template <>
@@ -2471,10 +2477,10 @@ template <typename... T>
 using CWrap = app::Get<const app::Wrapper<T...>>;
 
 // OTHER TOOLS
-using epix::app::thread_pool;
-using epix::utility::time_scope;
 using entt::dense_map;
 using entt::dense_set;
+using epix::app::thread_pool;
+using epix::utility::time_scope;
 }  // namespace epix
 namespace epix::prelude {
 using namespace epix;

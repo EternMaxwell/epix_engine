@@ -5,14 +5,35 @@
 #include "rdvk.h"
 
 namespace epix::render::vulkan2 {
-struct VulkanResources {
-    using Device               = backend::Device;
-    using Buffer               = backend::Buffer;
-    using Image                = backend::Image;
-    using ImageView            = backend::ImageView;
-    using Sampler              = backend::Sampler;
+struct VulkanResources;
+namespace systems {
+using namespace epix::render::vulkan2::backend;
+using epix::Command;
+using epix::Extract;
+using epix::Get;
+using epix::Query;
+using epix::Res;
+using epix::ResMut;
+using epix::With;
+using epix::Without;
 
-    Device device;
+EPIX_API void create_res_manager(Command cmd, Res<RenderContext> context);
+EPIX_API void destroy_res_manager(
+    Command cmd, ResMut<VulkanResources> res_manager
+);
+EPIX_API void extract_res_manager(
+    ResMut<VulkanResources> res_manager, Command cmd
+);
+EPIX_API void clear_extracted(ResMut<VulkanResources> res_manager, Command cmd);
+}  // namespace systems
+struct VulkanResources_T {
+    using Device    = backend::Device;
+    using Buffer    = backend::Buffer;
+    using Image     = backend::Image;
+    using ImageView = backend::ImageView;
+    using Sampler   = backend::Sampler;
+
+    mutable Device device;
 
     std::vector<Buffer> buffers;
     std::vector<std::string> buffer_names;
@@ -43,11 +64,22 @@ struct VulkanResources {
     vk::DescriptorPool descriptor_pool;
     vk::DescriptorSetLayout descriptor_set_layout;
     vk::DescriptorSet descriptor_set;
+};
+struct VulkanResources {
+    using Device    = backend::Device;
+    using Buffer    = backend::Buffer;
+    using Image     = backend::Image;
+    using ImageView = backend::ImageView;
+    using Sampler   = backend::Sampler;
+
+   private:
+    VulkanResources_T* resources;
 
     EPIX_API VulkanResources(Device device);
-
     EPIX_API void apply_cache();
 
+   public:
+    EPIX_API Device& device() const;
     EPIX_API void destroy();
     EPIX_API uint32_t add_buffer(const std::string& name, Buffer buffer);
     EPIX_API uint32_t add_image(const std::string& name, Image image);
@@ -80,38 +112,19 @@ struct VulkanResources {
 
     EPIX_API vk::DescriptorSet get_descriptor_set() const;
     EPIX_API vk::DescriptorSetLayout get_descriptor_set_layout() const;
+
+    friend EPIX_API void systems::create_res_manager(
+        Command cmd, Res<RenderContext> context
+    );
+    friend EPIX_API void systems::destroy_res_manager(
+        Command cmd, ResMut<VulkanResources> res_manager
+    );
+    friend EPIX_API void systems::extract_res_manager(
+        ResMut<VulkanResources> res_manager, Command cmd
+    );
 };
 struct RenderContextResManager {};
-namespace systems {
-using namespace epix::render::vulkan2::backend;
-using epix::Command;
-using epix::Extract;
-using epix::Get;
-using epix::Query;
-using epix::Res;
-using epix::ResMut;
-using epix::With;
-using epix::Without;
-
-EPIX_API void create_res_manager(
-    Command cmd, Query<Get<Device>, With<RenderContext>> query
-);
-EPIX_API void destroy_res_manager(
-    Command cmd,
-    Query<Get<vulkan2::VulkanResources>, With<RenderContextResManager>> query
-);
-EPIX_API void extract_res_manager(
-    Extract<
-        Get<Entity, vulkan2::VulkanResources>,
-        With<RenderContextResManager>> query,
-    Query<
-        Get<Entity>,
-        With<RenderContextResManager, Wrapper<vulkan2::VulkanResources>>>
-        render_query,
-    Command cmd
-);
-}  // namespace systems
-struct VulkanResManagerPlugin : epix::Plugin {
+struct VkResourcePlugin : epix::Plugin {
     EPIX_API void build(epix::App& app) override;
 };
 }  // namespace epix::render::vulkan2

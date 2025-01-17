@@ -1,11 +1,11 @@
 #include "epix/rdvk.h"
 
 namespace epix::render::vulkan2 {
-EPIX_API RenderVKPlugin& RenderVKPlugin::set_debug_callback(bool debug) {
+EPIX_API VulkanPlugin& VulkanPlugin::set_debug_callback(bool debug) {
     debug_callback = debug;
     return *this;
 }
-EPIX_API void RenderVKPlugin::build(epix::App& app) {
+EPIX_API void VulkanPlugin::build(epix::App& app) {
     auto window_plugin = app.get_plugin<window::WindowPlugin>();
     window_plugin->primary_desc().set_hints(
         {{GLFW_RESIZABLE, GLFW_TRUE}, {GLFW_CLIENT_API, GLFW_NO_API}}
