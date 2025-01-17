@@ -601,13 +601,14 @@ struct EntityCommand {
 struct Command {
    private:
     World* const m_world;
+    World* const m_src;
     std::shared_ptr<entt::dense_set<Entity>> m_despawns;
     std::shared_ptr<entt::dense_set<Entity>> m_recursive_despawns;
     std::shared_ptr<std::vector<std::function<void(World*)>>>
         m_resource_removers;
 
    public:
-    EPIX_API Command(World* world);
+    EPIX_API Command(World* world, World* src);
     /**
      * @brief Get the entity command for the entity.
      *
@@ -698,6 +699,36 @@ struct Command {
             m_resources->emplace(
                 std::type_index(typeid(std::remove_reference_t<T>)), res
             );
+        }
+    }
+    /*! @brief Share a resource from the source world.
+     * If the resource already exists or the source world does not have
+     * the resource, nothing will happen.
+     * @tparam T The type of the resource.
+     */
+    template <typename T>
+    void share_resource(Res<T>&) {
+        auto& src_res = m_src->m_resources;
+        auto& dst_res = m_world->m_resources;
+        auto src_it   = src_res.find(std::type_index(typeid(T)));
+        auto dst_it   = dst_res.find(std::type_index(typeid(T)));
+        if (src_it != src_res.end() && dst_it == dst_res.end()) {
+            dst_res.emplace(src_it->first, src_it->second);
+        }
+    }
+    /*! @brief Share a resource from the source world.
+     * If the resource already exists or the source world does not have
+     * the resource, nothing will happen.
+     * @tparam T The type of the resource.
+     */
+    template <typename T>
+    void share_resource(ResMut<T>&) {
+        auto& src_res = m_src->m_resources;
+        auto& dst_res = m_world->m_resources;
+        auto src_it   = src_res.find(std::type_index(typeid(T)));
+        auto dst_it   = dst_res.find(std::type_index(typeid(T)));
+        if (src_it != src_res.end() && dst_it == dst_res.end()) {
+            dst_res.emplace(src_it->first, src_it->second);
         }
     }
 
@@ -1046,10 +1077,13 @@ struct SubApp {
     template <>
     struct value_type<Command> {
         static Command get(SubApp& app) {
-            app.m_command_cache.emplace_back(&app.m_world);
+            app.m_command_cache.emplace_back(&app.m_world, &app.m_world);
             return app.m_command_cache.back();
         }
-        static Command get(SubApp& src, SubApp& dst) { return get(dst); }
+        static Command get(SubApp& src, SubApp& dst) {
+            dst.m_command_cache.emplace_back(&dst.m_world, &src.m_world);
+            return dst.m_command_cache.back();
+        }
     };
 
     template <typename T>
@@ -1149,7 +1183,7 @@ struct SubApp {
             spdlog::warn("State already exists.");
             return;
         }
-        Command command(&m_world);
+        Command command(&m_world, &m_world);
         command.insert_resource(State<T>(std::forward<T>(state)));
         command.insert_resource(NextState<T>(std::forward<T>(state)));
         m_state_updates.push_back(
@@ -1170,7 +1204,7 @@ struct SubApp {
             spdlog::warn("State already exists.");
             return;
         }
-        Command command(&m_world);
+        Command command(&m_world, &m_world);
         command.init_resource<State<T>>();
         command.init_resource<NextState<T>>();
         m_state_updates.push_back(

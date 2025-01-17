@@ -26,10 +26,8 @@ EPIX_API void systems::create_context(
             .setFlags(vk::CommandPoolCreateFlagBits::eResetCommandBuffer)
     );
     Queue queue = device.getQueue(device.queue_family_index, 0);
-    RenderContext context;
-    context.context =
-        new RenderContext_T{instance,     physical_device, device,    queue,
-                            command_pool, surface,         swap_chain};
+    RenderContext context{instance,     physical_device, device,    queue,
+                          command_pool, surface,         swap_chain};
     CommandBuffer cmd_buffer = device.allocateCommandBuffers(
         vk::CommandBufferAllocateInfo()
             .setCommandPool(command_pool)
@@ -39,8 +37,7 @@ EPIX_API void systems::create_context(
     Fence fence = device.createFence(
         vk::FenceCreateInfo().setFlags(vk::FenceCreateFlagBits::eSignaled)
     );
-    CtxCmdBuffer ctx_cmd;
-    ctx_cmd.cmd = new ContextCmd_T{cmd_buffer, fence};
+    CtxCmdBuffer ctx_cmd{cmd_buffer, fence};
     cmd.insert_resource(context);
     cmd.insert_resource(ctx_cmd);
 }
@@ -50,13 +47,13 @@ EPIX_API void systems::destroy_context(
 ) {
     if (!context) return;
     if (!ctx_cmd) return;
-    auto& cmd_fence    = ctx_cmd->fence();
-    auto& cmd_buffer   = ctx_cmd->cmd_buffer();
-    auto& instance     = context->instance();
-    auto& device       = context->device();
-    auto& surface      = context->primary_surface();
-    auto& swap_chain   = context->primary_swapchain();
-    auto& command_pool = context->command_pool();
+    auto& cmd_fence    = ctx_cmd->fence;
+    auto& cmd_buffer   = ctx_cmd->cmd_buffer;
+    auto& instance     = context->instance;
+    auto& device       = context->device;
+    auto& surface      = context->primary_surface;
+    auto& swap_chain   = context->primary_swapchain;
+    auto& command_pool = context->command_pool;
     ZoneScopedN("Destroy vulkan context");
     device.waitForFences(swap_chain.fence(), VK_TRUE, UINT64_MAX);
     device.waitForFences(cmd_fence, VK_TRUE, UINT64_MAX);
@@ -67,8 +64,6 @@ EPIX_API void systems::destroy_context(
     surface.destroy();
     device.destroy();
     instance.destroy();
-    delete context->context;
-    delete ctx_cmd->cmd;
 }
 
 EPIX_API void systems::extract_context(
@@ -77,8 +72,8 @@ EPIX_API void systems::extract_context(
     if (!context) return;
     if (!ctx_cmd) return;
     ZoneScopedN("Extract vulkan context");
-    cmd.insert_resource(*context);
-    cmd.insert_resource(*ctx_cmd);
+    cmd.share_resource(context);
+    cmd.share_resource(ctx_cmd);
 }
 
 EPIX_API void systems::clear_extracted_context(
@@ -92,12 +87,12 @@ EPIX_API void systems::recreate_swap_chain(
     ResMut<RenderContext> context, ResMut<CtxCmdBuffer> ctx_cmd
 ) {
     if (!context || !ctx_cmd) return;
-    auto& swap_chain = context->primary_swapchain();
+    auto& swap_chain = context->primary_swapchain;
     ZoneScopedN("Recreate swap chain");
     swap_chain.recreate();
     if (swap_chain.need_transition) {
-        auto& cmd_buffer = ctx_cmd->cmd_buffer();
-        auto& cmd_fence  = ctx_cmd->fence();
+        auto& cmd_buffer = ctx_cmd->cmd_buffer;
+        auto& cmd_fence  = ctx_cmd->fence;
         swap_chain.transition_image_layout(cmd_buffer, cmd_fence);
     }
 }
@@ -106,11 +101,11 @@ EPIX_API void systems::get_next_image(
     ResMut<RenderContext> context, ResMut<CtxCmdBuffer> ctx_cmd
 ) {
     if (!context || !ctx_cmd) return;
-    auto& swap_chain = context->primary_swapchain();
-    auto& cmd_buffer = ctx_cmd->cmd_buffer();
-    auto& cmd_fence  = ctx_cmd->fence();
-    auto& queue      = context->queue();
-    auto& device     = context->device();
+    auto& swap_chain = context->primary_swapchain;
+    auto& cmd_buffer = ctx_cmd->cmd_buffer;
+    auto& cmd_fence  = ctx_cmd->fence;
+    auto& queue      = context->queue;
+    auto& device     = context->device;
     ZoneScopedN("Vulkan get next image");
     auto image = swap_chain.next_image();
     device.waitForFences(cmd_fence, VK_TRUE, UINT64_MAX);
@@ -166,11 +161,11 @@ EPIX_API void systems::present_frame(
     ResMut<RenderContext> context, ResMut<CtxCmdBuffer> ctx_cmd
 ) {
     if (!context || !ctx_cmd) return;
-    auto& swap_chain = context->primary_swapchain();
-    auto& cmd_buffer = ctx_cmd->cmd_buffer();
-    auto& cmd_fence  = ctx_cmd->fence();
-    auto& queue      = context->queue();
-    auto& device     = context->device();
+    auto& swap_chain = context->primary_swapchain;
+    auto& cmd_buffer = ctx_cmd->cmd_buffer;
+    auto& cmd_fence  = ctx_cmd->fence;
+    auto& queue      = context->queue;
+    auto& device     = context->device;
     ZoneScopedN("Vulkan present frame");
     device.waitForFences(cmd_fence, VK_TRUE, UINT64_MAX);
     device.resetFences(cmd_fence);
@@ -208,14 +203,12 @@ EPIX_API void systems::present_frame(
     } catch (std::exception& e) {}
 }
 
-#include "epix/rdvk_res.h"
-
 EPIX_API void systems::create_res_manager(
     Command cmd, Res<RenderContext> context
 ) {
     if (!context) return;
     ZoneScopedN("Create resource manager");
-    auto& device = context->device();
+    auto& device = context->device;
     VulkanResources res_manager{device};
     cmd.insert_resource(res_manager);
 }
@@ -237,7 +230,7 @@ EPIX_API void systems::extract_res_manager(
         res_manager->apply_cache();
     }
     ZoneScopedN("Extract resource manager");
-    cmd.insert_resource(*res_manager);
+    cmd.share_resource(res_manager);
 }
 
 EPIX_API void systems::clear_extracted(

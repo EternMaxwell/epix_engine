@@ -1,7 +1,6 @@
 #include <epix/app.h>
 #include <epix/input.h>
 #include <epix/rdvk.h>
-#include <epix/rdvk_res.h>
 #include <epix/window.h>
 
 #include <filesystem>
@@ -42,7 +41,7 @@ struct TestPipeline {
     Framebuffer framebuffer = {};
 
     Buffer vertex_buffer;
-    const uint32_t vertex_max_count = 1 * 3;
+    const uint32_t vertex_max_count = 3 * 1024;
     Buffer staging_buffer;
     uint32_t staging_buffer_size = 0;
 
@@ -291,7 +290,7 @@ struct TestPipeline {
             data, mesh.vertices.data(), mesh.vertices.size() * sizeof(Vertex)
         );
         staging_buffer.unmap();
-        device.waitForFences(fence, VK_TRUE, UINT64_MAX);
+        auto res = device.waitForFences(fence, VK_TRUE, UINT64_MAX);
         device.resetFences(fence);
         if (framebuffer) {
             device.destroyFramebuffer(framebuffer);
@@ -350,7 +349,7 @@ struct TestPipeline {
             vk::Rect2D scissor;
             scissor.setExtent(swapchain.others->extent);
             cmd.setScissor(0, scissor);
-            int pc[] = {mesh.image_index, mesh.sampler_index};
+            int pc[] = {(int)mesh.image_index, (int)mesh.sampler_index};
             cmd.pushConstants(
                 layout, vk::ShaderStageFlagBits::eFragment, 0, sizeof(pc), &pc
             );
@@ -374,7 +373,7 @@ struct TestPipeline {
     }
 
     void destroy() {
-        device.waitForFences(fence, VK_TRUE, UINT64_MAX);
+        auto res = device.waitForFences(fence, VK_TRUE, UINT64_MAX);
         device.resetFences(fence);
         device.destroyPipeline(pipeline);
         device.destroyPipelineLayout(layout);
@@ -397,9 +396,9 @@ void create_pipeline(
     if (!context) {
         return;
     }
-    auto& device       = context->device();
-    auto& swapchain    = context->primary_swapchain();
-    auto& command_pool = context->command_pool();
+    auto& device       = context->device;
+    auto& swapchain    = context->primary_swapchain;
+    auto& command_pool = context->command_pool;
     TestPipeline pipeline;
     pipeline.device    = device;
     pipeline.swapchain = swapchain;
@@ -466,8 +465,8 @@ void create_image_and_view(
     if (!p_res_manager || !context) {
         return;
     }
-    auto& queue            = context->queue();
-    auto& command_pool     = context->command_pool();
+    auto& queue            = context->queue;
+    auto& command_pool     = context->command_pool;
     auto& res_manager      = *p_res_manager;
     auto& device           = res_manager.device();
     auto image_create_info = vk::ImageCreateInfo()
@@ -623,7 +622,6 @@ int main() {
     app2.add_plugin(
         epix::render::vulkan2::VulkanPlugin{}.set_debug_callback(true)
     );
-    app2.add_plugin(epix::render::vulkan2::VkResourcePlugin{});
     app2.add_plugin(epix::input::InputPlugin{});
     app2.add_system(
         epix::Startup, create_pipeline, create_sampler, create_image_and_view

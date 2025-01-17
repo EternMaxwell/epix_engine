@@ -23,8 +23,9 @@ EPIX_API Entity EntityCommand::id() { return m_entity; }
 
 EPIX_API EntityCommand::operator Entity() { return m_entity; }
 
-EPIX_API Command::Command(World* world)
+EPIX_API Command::Command(World* world, World* src)
     : m_world(world),
+      m_src(src),
       m_despawns(std::make_shared<entt::dense_set<Entity>>()),
       m_recursive_despawns(std::make_shared<entt::dense_set<Entity>>()),
       m_resource_removers(
