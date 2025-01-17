@@ -1,12 +1,12 @@
 #pragma once
 
 // ----THIRD PARTY INCLUDES----
-#include <sparsepp/spp.h>
 #include <spdlog/spdlog.h>
 
 #define BS_THREAD_POOL_NATIVE_EXTENSIONS
 #include <BS_thread_pool.hpp>
 #include <entt/entity/registry.hpp>
+#include <entt/container/dense_set.hpp>
 // ----THIRD PARTY INCLUDES----
 
 // ----STANDARD LIBRARY INCLUDES----
@@ -54,7 +54,7 @@ struct SystemStage;
 struct SystemSet;
 struct SystemNode;
 
-using SetMap = spp::sparse_hash_map<std::type_index, std::vector<SystemSet>>;
+using SetMap = entt::dense_map<std::type_index, std::vector<SystemSet>>;
 
 template <typename T>
 struct MsgQueueBase;
@@ -346,8 +346,8 @@ struct std::equal_to<epix::app::Entity> {
 namespace epix::app {
 struct World {
     entt::registry m_registry;
-    spp::sparse_hash_map<std::type_index, std::shared_ptr<void>> m_resources;
-    spp::sparse_hash_map<std::type_index, std::unique_ptr<EventQueueBase>>
+    entt::dense_map<std::type_index, std::shared_ptr<void>> m_resources;
+    entt::dense_map<std::type_index, std::unique_ptr<EventQueueBase>>
         m_event_queues;
 };
 struct FuncIndex {
@@ -425,7 +425,7 @@ struct Parent {
     Entity id;
 };
 struct Children {
-    spp::sparse_hash_set<Entity> children;
+    entt::dense_set<Entity> children;
 };
 template <typename T>
 struct State {
@@ -539,15 +539,15 @@ struct EntityCommand {
    private:
     entt::registry* const m_registry;
     const Entity m_entity;
-    spp::sparse_hash_set<Entity>* m_despawns;
-    spp::sparse_hash_set<Entity>* m_recursive_despawns;
+    entt::dense_set<Entity>* m_despawns;
+    entt::dense_set<Entity>* m_recursive_despawns;
 
    public:
     EPIX_API EntityCommand(
         entt::registry* registry,
         Entity entity,
-        spp::sparse_hash_set<Entity>* despawns,
-        spp::sparse_hash_set<Entity>* recursive_despawns
+        entt::dense_set<Entity>* despawns,
+        entt::dense_set<Entity>* recursive_despawns
     );
     /*! @brief Spawn an entity.
      * Note that the components to be added should not be type that is
@@ -569,7 +569,7 @@ struct EntityCommand {
             m_registry, child, Parent{.id = m_entity}, args...
         );
         auto& children = m_registry->get_or_emplace<Children>(m_entity.id);
-        children.children.insert(child);
+        children.children.insert({child});
         return {m_registry, {child}, m_despawns, m_recursive_despawns};
     }
     /*! @brief Emplace new components to the entity.
@@ -600,8 +600,8 @@ struct EntityCommand {
 struct Command {
    private:
     World* const m_world;
-    std::shared_ptr<spp::sparse_hash_set<Entity>> m_despawns;
-    std::shared_ptr<spp::sparse_hash_set<Entity>> m_recursive_despawns;
+    std::shared_ptr<entt::dense_set<Entity>> m_despawns;
+    std::shared_ptr<entt::dense_set<Entity>> m_recursive_despawns;
 
    public:
     EPIX_API Command(World* world);
@@ -709,7 +709,7 @@ struct Without {};
 
 template <typename... Gets>
 struct Wrapper {
-    using type = std::tuple<Gets&...>;
+    using type       = std::tuple<Gets&...>;
     using const_type = std::tuple<const Gets&...>;
 
    private:
@@ -1197,7 +1197,7 @@ struct SubApp {
 template <typename Ret>
 struct BasicSystem {
    protected:
-    spp::sparse_hash_map<std::type_index, std::shared_ptr<void>> m_locals;
+    entt::dense_map<std::type_index, std::shared_ptr<void>> m_locals;
     double avg_time = 1.0;  // in milliseconds
     struct system_info {
         bool has_command = false;
@@ -1695,12 +1695,12 @@ struct SystemNode {
     FuncIndex m_sys_addr;
     std::unique_ptr<BasicSystem<void>> m_system;
     std::string m_worker = "default";
-    spp::sparse_hash_set<std::weak_ptr<SystemNode>> m_strong_prevs;
-    spp::sparse_hash_set<std::weak_ptr<SystemNode>> m_strong_nexts;
-    spp::sparse_hash_set<std::weak_ptr<SystemNode>> m_weak_prevs;
-    spp::sparse_hash_set<std::weak_ptr<SystemNode>> m_weak_nexts;
-    spp::sparse_hash_set<FuncIndex> m_ptr_prevs;
-    spp::sparse_hash_set<FuncIndex> m_ptr_nexts;
+    entt::dense_set<std::weak_ptr<SystemNode>> m_strong_prevs;
+    entt::dense_set<std::weak_ptr<SystemNode>> m_strong_nexts;
+    entt::dense_set<std::weak_ptr<SystemNode>> m_weak_prevs;
+    entt::dense_set<std::weak_ptr<SystemNode>> m_weak_nexts;
+    entt::dense_set<FuncIndex> m_ptr_prevs;
+    entt::dense_set<FuncIndex> m_ptr_nexts;
     std::vector<std::unique_ptr<BasicSystem<bool>>> m_conditions;
 
     std::optional<double> m_reach_time;
@@ -1747,7 +1747,7 @@ struct WorkerPool {
     EPIX_API thread_pool* get_pool(const std::string& name);
     EPIX_API void add_pool(const std::string& name, uint32_t num_threads);
 
-    spp::sparse_hash_map<std::string, std::unique_ptr<thread_pool>> m_pools;
+    entt::dense_map<std::string, std::unique_ptr<thread_pool>> m_pools;
 };
 struct SubStageRunner {
     template <typename StageT>
@@ -1789,7 +1789,7 @@ struct SubStageRunner {
 
     SystemStage m_sub_stage;
     MsgQueueBase<std::shared_ptr<SystemNode>> msg_queue;
-    spp::sparse_hash_map<FuncIndex, std::shared_ptr<SystemNode>> m_systems;
+    entt::dense_map<FuncIndex, std::shared_ptr<SystemNode>> m_systems;
     std::vector<std::shared_ptr<SystemNode>> m_heads;
     SetMap* m_sets;
 
@@ -1862,13 +1862,13 @@ struct StageRunner {
     SetMap* m_sets;
 
     std::type_index m_stage;
-    spp::sparse_hash_map<size_t, std::unique_ptr<SubStageRunner>> m_sub_stages;
+    entt::dense_map<size_t, std::unique_ptr<SubStageRunner>> m_sub_stages;
     std::vector<size_t> m_sub_stage_order;
     std::shared_ptr<spdlog::logger> m_logger;
 };
 struct Runner {
     EPIX_API Runner(
-        spp::sparse_hash_map<std::type_index, std::unique_ptr<SubApp>>* sub_apps
+        entt::dense_map<std::type_index, std::unique_ptr<SubApp>>* sub_apps
     );
     EPIX_API Runner(Runner&& other)            = default;
     EPIX_API Runner& operator=(Runner&& other) = default;
@@ -1876,12 +1876,12 @@ struct Runner {
     struct StageNode {
         std::type_index stage;
         std::unique_ptr<StageRunner> runner;
-        spp::sparse_hash_set<std::weak_ptr<StageNode>> strong_prev_stages;
-        spp::sparse_hash_set<std::weak_ptr<StageNode>> strong_next_stages;
-        spp::sparse_hash_set<std::weak_ptr<StageNode>> weak_prev_stages;
-        spp::sparse_hash_set<std::weak_ptr<StageNode>> weak_next_stages;
-        spp::sparse_hash_set<std::type_index> prev_stages;
-        spp::sparse_hash_set<std::type_index> next_stages;
+        entt::dense_set<std::weak_ptr<StageNode>> strong_prev_stages;
+        entt::dense_set<std::weak_ptr<StageNode>> strong_next_stages;
+        entt::dense_set<std::weak_ptr<StageNode>> weak_prev_stages;
+        entt::dense_set<std::weak_ptr<StageNode>> weak_next_stages;
+        entt::dense_set<std::type_index> prev_stages;
+        entt::dense_set<std::type_index> next_stages;
         size_t prev_count;
         std::optional<size_t> depth;
         EPIX_API StageNode(
@@ -2043,15 +2043,13 @@ struct Runner {
 
    protected:
     MsgQueueBase<std::shared_ptr<StageNode>> msg_queue;
-    spp::sparse_hash_map<std::type_index, std::unique_ptr<SubApp>>* m_sub_apps;
-    spp::sparse_hash_map<std::type_index, std::shared_ptr<StageNode>>
+    entt::dense_map<std::type_index, std::unique_ptr<SubApp>>* m_sub_apps;
+    entt::dense_map<std::type_index, std::shared_ptr<StageNode>>
         m_startup_stages;
-    spp::sparse_hash_map<std::type_index, std::shared_ptr<StageNode>>
-        m_loop_stages;
-    spp::sparse_hash_map<std::type_index, std::shared_ptr<StageNode>>
+    entt::dense_map<std::type_index, std::shared_ptr<StageNode>> m_loop_stages;
+    entt::dense_map<std::type_index, std::shared_ptr<StageNode>>
         m_state_transition_stages;
-    spp::sparse_hash_map<std::type_index, std::shared_ptr<StageNode>>
-        m_exit_stages;
+    entt::dense_map<std::type_index, std::shared_ptr<StageNode>> m_exit_stages;
     std::unique_ptr<WorkerPool> m_pools;
     std::unique_ptr<thread_pool> m_control_pool;
     std::unique_ptr<SetMap> m_sets;
@@ -2364,12 +2362,11 @@ struct App {
     EPIX_API void update_states();
     EPIX_API Runner& runner();
 
-    std::unique_ptr<
-        spp::sparse_hash_map<std::type_index, std::unique_ptr<SubApp>>>
+    std::unique_ptr<entt::dense_map<std::type_index, std::unique_ptr<SubApp>>>
         m_sub_apps;
     std::unique_ptr<Runner> m_runner;
     std::vector<std::pair<std::type_index, std::shared_ptr<Plugin>>> m_plugins;
-    spp::sparse_hash_set<std::type_index> m_plugin_types;
+    entt::dense_set<std::type_index> m_plugin_types;
     std::unique_ptr<BasicSystem<bool>> m_check_exit_func;
     bool m_loop_enabled = false;
     AppSettings m_settings;

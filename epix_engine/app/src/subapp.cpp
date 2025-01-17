@@ -3,7 +3,7 @@
 using namespace epix::app;
 
 EPIX_API void SubApp::tick_events() {
-    for (auto& [ptr, queue] : m_world.m_event_queues) {
+    for (auto&& [ptr, queue] : m_world.m_event_queues) {
         queue->tick();
     }
 }

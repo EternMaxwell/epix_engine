@@ -149,11 +149,11 @@ struct ButtonInput<KeyCode> {
     EPIX_API bool just_released(KeyCode key) const;
     EPIX_API bool pressed(KeyCode key) const;
 
-    EPIX_API const spp::sparse_hash_set<KeyCode, KeyHash>& just_pressed_keys(
+    EPIX_API const entt::dense_set<KeyCode, KeyHash>& just_pressed_keys(
     ) const;
-    EPIX_API const spp::sparse_hash_set<KeyCode, KeyHash>& just_released_keys(
+    EPIX_API const entt::dense_set<KeyCode, KeyHash>& just_released_keys(
     ) const;
-    EPIX_API const spp::sparse_hash_set<KeyCode, KeyHash>& pressed_keys() const;
+    EPIX_API const entt::dense_set<KeyCode, KeyHash>& pressed_keys() const;
 
     EPIX_API bool any_just_pressed(const std::vector<KeyCode>& keys) const;
     EPIX_API bool any_just_released(const std::vector<KeyCode>& keys) const;
@@ -168,9 +168,9 @@ struct ButtonInput<KeyCode> {
    private:
     Entity m_window;
 
-    spp::sparse_hash_set<KeyCode, KeyHash> m_just_pressed;
-    spp::sparse_hash_set<KeyCode, KeyHash> m_just_released;
-    spp::sparse_hash_set<KeyCode, KeyHash> m_pressed;
+    entt::dense_set<KeyCode, KeyHash> m_just_pressed;
+    entt::dense_set<KeyCode, KeyHash> m_just_released;
+    entt::dense_set<KeyCode, KeyHash> m_pressed;
 
     friend EPIX_API void update_key_button_input(
         ButtonInput<KeyCode>& key_input, GLFWwindow* window
@@ -211,11 +211,11 @@ struct ButtonInput<MouseButton> {
     EPIX_API bool just_released(MouseButton button) const;
     EPIX_API bool pressed(MouseButton button) const;
 
-    EPIX_API const spp::sparse_hash_set<MouseButton, MouseButtonHash>&
+    EPIX_API const entt::dense_set<MouseButton, MouseButtonHash>&
     just_pressed_buttons() const;
-    EPIX_API const spp::sparse_hash_set<MouseButton, MouseButtonHash>&
+    EPIX_API const entt::dense_set<MouseButton, MouseButtonHash>&
     just_released_buttons() const;
-    EPIX_API const spp::sparse_hash_set<MouseButton, MouseButtonHash>&
+    EPIX_API const entt::dense_set<MouseButton, MouseButtonHash>&
     pressed_buttons() const;
 
     EPIX_API bool any_just_pressed(const std::vector<MouseButton>& buttons
@@ -231,9 +231,9 @@ struct ButtonInput<MouseButton> {
    private:
     Entity m_window;
 
-    spp::sparse_hash_set<MouseButton, MouseButtonHash> m_just_pressed;
-    spp::sparse_hash_set<MouseButton, MouseButtonHash> m_just_released;
-    spp::sparse_hash_set<MouseButton, MouseButtonHash> m_pressed;
+    entt::dense_set<MouseButton, MouseButtonHash> m_just_pressed;
+    entt::dense_set<MouseButton, MouseButtonHash> m_just_released;
+    entt::dense_set<MouseButton, MouseButtonHash> m_pressed;
 
     friend EPIX_API void update_mouse_button_input(
         ButtonInput<MouseButton>& mouse_input, GLFWwindow* window

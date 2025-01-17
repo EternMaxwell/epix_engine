@@ -10,6 +10,11 @@ static std::shared_ptr<spdlog::logger> logger =
 
 using namespace epix::font::resources::tools;
 
+EPIX_API size_t std::hash<Font>::operator()(const Font& font) const {
+    return (std::hash<int>()(font.pixels) ^ std::hash<bool>()(font.antialias)) *
+           std::hash<FT_Face>()(font.font_face);
+}
+
 EPIX_API const Glyph& GlyphMap::get_glyph(uint32_t index) const {
     if (glyphs->find(index) == glyphs->end()) {
         throw std::runtime_error("Glyph not found");
@@ -455,7 +460,7 @@ EPIX_API std::optional<const Glyph> FT2Library::get_glyph_add(
 }
 
 EPIX_API void FT2Library::clear_font_textures(Device& device) {
-    for (auto& [font, texture] : font_textures) {
+    for (auto&& [font, texture] : font_textures) {
         auto [image, image_view, glyph_map] = texture;
         image.destroy(device);
         image_view.destroy(device);
@@ -464,7 +469,7 @@ EPIX_API void FT2Library::clear_font_textures(Device& device) {
 }
 
 EPIX_API void FT2Library::destroy() {
-    for (auto& [_, face] : font_faces) {
+    for (auto&& [_, face] : font_faces) {
         FT_Done_Face(face);
     }
     FT_Done_FreeType(library);

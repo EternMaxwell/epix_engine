@@ -7,7 +7,7 @@ using Image                = backend::Image;
 using ImageView            = backend::ImageView;
 using Sampler              = backend::Sampler;
 using AllocationCreateInfo = backend::AllocationCreateInfo;
-EPIX_API ResourceManager::ResourceManager(Device device) : device(device) {
+EPIX_API VulkanResources::VulkanResources(Device device) : device(device) {
     std::vector<vk::DescriptorPoolSize> pool_sizes = {
         vk::DescriptorPoolSize()
             .setType(vk::DescriptorType::eSampledImage)
@@ -44,7 +44,7 @@ EPIX_API ResourceManager::ResourceManager(Device device) : device(device) {
     alloc_info.setSetLayouts(descriptor_set_layout);
     descriptor_set = device.allocateDescriptorSets(alloc_info)[0];
 }
-EPIX_API void ResourceManager::destroy() {
+EPIX_API void VulkanResources::destroy() {
     device.destroyDescriptorSetLayout(descriptor_set_layout);
     device.destroyDescriptorPool(descriptor_pool);
     for (auto& buffer : buffers) {
@@ -61,7 +61,7 @@ EPIX_API void ResourceManager::destroy() {
     }
 }
 EPIX_API uint32_t
-ResourceManager::add_buffer(const std::string& name, Buffer buffer) {
+VulkanResources::add_buffer(const std::string& name, Buffer buffer) {
     if (buffer_map.contains(name)) {
         return buffer_map[name];
     }
@@ -78,7 +78,7 @@ ResourceManager::add_buffer(const std::string& name, Buffer buffer) {
     return buffers.size() - 1;
 }
 EPIX_API uint32_t
-ResourceManager::add_image(const std::string& name, Image image) {
+VulkanResources::add_image(const std::string& name, Image image) {
     if (image_map.contains(name)) {
         return image_map[name];
     }
@@ -95,7 +95,7 @@ ResourceManager::add_image(const std::string& name, Image image) {
     return images.size() - 1;
 }
 EPIX_API uint32_t
-ResourceManager::add_image_view(const std::string& name, ImageView image_view) {
+VulkanResources::add_image_view(const std::string& name, ImageView image_view) {
     if (image_view_map.contains(name)) {
         return image_view_map[name];
     }
@@ -113,7 +113,7 @@ ResourceManager::add_image_view(const std::string& name, ImageView image_view) {
     return image_views.size() - 1;
 }
 EPIX_API uint32_t
-ResourceManager::add_sampler(const std::string& name, Sampler sampler) {
+VulkanResources::add_sampler(const std::string& name, Sampler sampler) {
     if (sampler_map.contains(name)) {
         return sampler_map[name];
     }
@@ -130,7 +130,7 @@ ResourceManager::add_sampler(const std::string& name, Sampler sampler) {
     sampler_cache.emplace_back(samplers.size() - 1, sampler);
     return samplers.size() - 1;
 }
-EPIX_API void ResourceManager::apply_cache() {
+EPIX_API void VulkanResources::apply_cache() {
     for (auto index : buffer_cache_remove) {
         device.destroyBuffer(buffers[index]);
         buffer_free_indices.push(index);
@@ -189,21 +189,21 @@ EPIX_API void ResourceManager::apply_cache() {
     view_cache_remove.clear();
     sampler_cache_remove.clear();
 }
-EPIX_API Buffer ResourceManager::get_buffer(const std::string& name) const {
+EPIX_API Buffer VulkanResources::get_buffer(const std::string& name) const {
     auto index = buffer_index(name);
     if (index == -1) {
         return Buffer();
     }
     return buffers[index];
 }
-EPIX_API Image ResourceManager::get_image(const std::string& name) const {
+EPIX_API Image VulkanResources::get_image(const std::string& name) const {
     auto index = image_index(name);
     if (index == -1) {
         return Image();
     }
     return images[index];
 }
-EPIX_API ImageView ResourceManager::get_image_view(const std::string& name
+EPIX_API ImageView VulkanResources::get_image_view(const std::string& name
 ) const {
     auto index = image_view_index(name);
     if (index == -1) {
@@ -211,95 +211,95 @@ EPIX_API ImageView ResourceManager::get_image_view(const std::string& name
     }
     return image_views[index];
 }
-EPIX_API Sampler ResourceManager::get_sampler(const std::string& name) const {
+EPIX_API Sampler VulkanResources::get_sampler(const std::string& name) const {
     auto index = sampler_index(name);
     if (index == -1) {
         return Sampler();
     }
     return samplers[index];
 }
-EPIX_API Buffer ResourceManager::get_buffer(uint32_t index) const {
+EPIX_API Buffer VulkanResources::get_buffer(uint32_t index) const {
     return buffers[index];
 }
-EPIX_API Image ResourceManager::get_image(uint32_t index) const {
+EPIX_API Image VulkanResources::get_image(uint32_t index) const {
     return images[index];
 }
-EPIX_API ImageView ResourceManager::get_image_view(uint32_t index) const {
+EPIX_API ImageView VulkanResources::get_image_view(uint32_t index) const {
     return image_views[index];
 }
-EPIX_API Sampler ResourceManager::get_sampler(uint32_t index) const {
+EPIX_API Sampler VulkanResources::get_sampler(uint32_t index) const {
     return samplers[index];
 }
-EPIX_API void ResourceManager::remove_buffer(const std::string& name) {
+EPIX_API void VulkanResources::remove_buffer(const std::string& name) {
     if (!buffer_map.contains(name)) {
         return;
     }
     auto index = buffer_map[name];
     buffer_cache_remove.push_back(index);
 }
-EPIX_API void ResourceManager::remove_image(const std::string& name) {
+EPIX_API void VulkanResources::remove_image(const std::string& name) {
     if (!image_map.contains(name)) {
         return;
     }
     auto index = image_map[name];
     image_cache_remove.push_back(index);
 }
-EPIX_API void ResourceManager::remove_image_view(const std::string& name) {
+EPIX_API void VulkanResources::remove_image_view(const std::string& name) {
     if (!image_view_map.contains(name)) {
         return;
     }
     auto index = image_view_map[name];
     view_cache_remove.push_back(index);
 }
-EPIX_API void ResourceManager::remove_sampler(const std::string& name) {
+EPIX_API void VulkanResources::remove_sampler(const std::string& name) {
     if (!sampler_map.contains(name)) {
         return;
     }
     auto index = sampler_map[name];
     sampler_cache_remove.push_back(index);
 }
-EPIX_API void ResourceManager::remove_buffer(uint32_t index) {
+EPIX_API void VulkanResources::remove_buffer(uint32_t index) {
     buffer_cache_remove.push_back(index);
 }
-EPIX_API void ResourceManager::remove_image(uint32_t index) {
+EPIX_API void VulkanResources::remove_image(uint32_t index) {
     image_cache_remove.push_back(index);
 }
-EPIX_API void ResourceManager::remove_image_view(uint32_t index) {
+EPIX_API void VulkanResources::remove_image_view(uint32_t index) {
     view_cache_remove.push_back(index);
 }
-EPIX_API void ResourceManager::remove_sampler(uint32_t index) {
+EPIX_API void VulkanResources::remove_sampler(uint32_t index) {
     sampler_cache_remove.push_back(index);
 }
-EPIX_API uint32_t ResourceManager::buffer_index(const std::string& name) const {
+EPIX_API uint32_t VulkanResources::buffer_index(const std::string& name) const {
     if (!buffer_map.contains(name)) {
         return -1;
     }
     return buffer_map.at(name);
 }
-EPIX_API uint32_t ResourceManager::image_index(const std::string& name) const {
+EPIX_API uint32_t VulkanResources::image_index(const std::string& name) const {
     if (!image_map.contains(name)) {
         return -1;
     }
     return image_map.at(name);
 }
-EPIX_API uint32_t ResourceManager::image_view_index(const std::string& name
+EPIX_API uint32_t VulkanResources::image_view_index(const std::string& name
 ) const {
     if (!image_view_map.contains(name)) {
         return -1;
     }
     return image_view_map.at(name);
 }
-EPIX_API uint32_t ResourceManager::sampler_index(const std::string& name
+EPIX_API uint32_t VulkanResources::sampler_index(const std::string& name
 ) const {
     if (!sampler_map.contains(name)) {
         return -1;
     }
     return sampler_map.at(name);
 }
-EPIX_API vk::DescriptorSet ResourceManager::get_descriptor_set() const {
+EPIX_API vk::DescriptorSet VulkanResources::get_descriptor_set() const {
     return descriptor_set;
 }
-EPIX_API vk::DescriptorSetLayout ResourceManager::get_descriptor_set_layout(
+EPIX_API vk::DescriptorSetLayout VulkanResources::get_descriptor_set_layout(
 ) const {
     return descriptor_set_layout;
 }

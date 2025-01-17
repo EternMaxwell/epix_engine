@@ -18,7 +18,7 @@ EPIX_API StageRunner::StageRunner(
 
 EPIX_API void StageRunner::set_log_level(spdlog::level::level_enum level) {
     m_logger->set_level(level);
-    for (auto& [sub_stage, sub_stage_runner] : m_sub_stages) {
+    for (auto&& [sub_stage, sub_stage_runner] : m_sub_stages) {
         sub_stage_runner->set_log_level(level);
     }
 }
@@ -29,13 +29,13 @@ EPIX_API bool StageRunner::conflict(const StageRunner* other) const {
 }
 
 EPIX_API void StageRunner::build() {
-    for (auto& [sub_stage, sub_stage_runner] : m_sub_stages) {
+    for (auto&& [sub_stage, sub_stage_runner] : m_sub_stages) {
         sub_stage_runner->build();
     }
 }
 
 EPIX_API void StageRunner::bake() {
-    for (auto& [sub_stage, sub_stage_runner] : m_sub_stages) {
+    for (auto&& [sub_stage, sub_stage_runner] : m_sub_stages) {
         sub_stage_runner->bake();
     }
 }

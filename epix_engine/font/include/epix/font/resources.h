@@ -1,11 +1,30 @@
 #pragma once
 
-#include <freetype/freetype.h>
-#include <ft2build.h>
 #include <epix/app.h>
 #include <epix/render_vk.h>
+#include <freetype/freetype.h>
+#include <ft2build.h>
 
 #include <filesystem>
+
+namespace epix::font::resources {
+struct Font;
+namespace tools {
+struct Glyph;
+struct GlyphMap;
+}  // namespace tools
+namespace res_ogl {
+struct FT2LibGL;
+}
+namespace vulkan {
+struct FT2Library;
+}
+}  // namespace epix::font::resources
+
+template <>
+struct std::hash<epix::font::resources::Font> {
+    EPIX_API size_t operator()(const epix::font::resources::Font& font) const;
+};
 
 namespace epix {
 namespace font {
@@ -72,10 +91,10 @@ struct FT2LibGL {
     const uint32_t font_texture_height = 2048;
     const uint32_t font_texture_layers = 256;
     buffer_id font_texture_buffer;
-    spp::sparse_hash_map<std::string, FT_Face> font_faces;
-    spp::sparse_hash_map<Font, texture_handle> font_texture_handles;
-    spp::sparse_hash_map<Font, texture_id> font_texture_ids;
-    spp::sparse_hash_map<Font, CharLoadingState> char_loading_states;
+    entt::dense_map<std::string, FT_Face> font_faces;
+    entt::dense_map<Font, texture_handle> font_texture_handles;
+    entt::dense_map<Font, texture_id> font_texture_ids;
+    entt::dense_map<Font, CharLoadingState> char_loading_states;
 };
 }  // namespace res_ogl
 namespace vulkan {
@@ -124,11 +143,10 @@ struct FT2Library {
     const uint32_t font_texture_height = 2048;
     const uint32_t font_texture_layers = 256;
     FT_Library library;
-    spp::sparse_hash_map<std::string, FT_Face> font_faces;
-    spp::sparse_hash_map<Font, uint32_t> font_texture_index;
-    spp::sparse_hash_map<Font, std::tuple<Image, ImageView, GlyphMap>>
-        font_textures;
-    spp::sparse_hash_map<Font, CharLoadingState> char_loading_states;
+    entt::dense_map<std::string, FT_Face> font_faces;
+    entt::dense_map<Font, uint32_t> font_texture_index;
+    entt::dense_map<Font, std::tuple<Image, ImageView, GlyphMap>> font_textures;
+    entt::dense_map<Font, CharLoadingState> char_loading_states;
     DescriptorSetLayout font_texture_descriptor_set_layout;
     DescriptorPool font_texture_descriptor_pool;
     DescriptorSet font_texture_descriptor_set;

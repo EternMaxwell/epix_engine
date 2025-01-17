@@ -435,7 +435,7 @@ void destroy_pipeline(Query<Get<TestPipeline>> query) {
 }
 
 void create_sampler(Query<
-                    Get<epix::render::vulkan2::ResourceManager>,
+                    Get<epix::render::vulkan2::VulkanResources>,
                     With<epix::render::vulkan2::RenderContextResManager>> query
 ) {
     if (!query) {
@@ -466,7 +466,7 @@ void create_sampler(Query<
 
 void create_image_and_view(
     Query<
-        Get<epix::render::vulkan2::ResourceManager>,
+        Get<epix::render::vulkan2::VulkanResources>,
         With<epix::render::vulkan2::RenderContextResManager>> query,
     Query<Get<Queue, CommandPool>, With<epix::render::vulkan2::RenderContext>>
         query2
@@ -603,7 +603,7 @@ void create_image_and_view(
 
 void test_render(
     Query<
-        epix::CWrap<epix::render::vulkan2::ResourceManager>,
+        epix::CWrap<epix::render::vulkan2::VulkanResources>,
         With<epix::render::vulkan2::RenderContextResManager>> query,
     Query<epix::Wrap<TestPipeline>> query2
 ) {

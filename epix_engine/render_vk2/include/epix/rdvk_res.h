@@ -5,13 +5,12 @@
 #include "rdvk.h"
 
 namespace epix::render::vulkan2 {
-struct ResourceManager {
+struct VulkanResources {
     using Device               = backend::Device;
     using Buffer               = backend::Buffer;
     using Image                = backend::Image;
     using ImageView            = backend::ImageView;
     using Sampler              = backend::Sampler;
-    using AllocationCreateInfo = backend::AllocationCreateInfo;
 
     Device device;
 
@@ -45,7 +44,7 @@ struct ResourceManager {
     vk::DescriptorSetLayout descriptor_set_layout;
     vk::DescriptorSet descriptor_set;
 
-    EPIX_API ResourceManager(Device device);
+    EPIX_API VulkanResources(Device device);
 
     EPIX_API void apply_cache();
 
@@ -99,15 +98,15 @@ EPIX_API void create_res_manager(
 );
 EPIX_API void destroy_res_manager(
     Command cmd,
-    Query<Get<vulkan2::ResourceManager>, With<RenderContextResManager>> query
+    Query<Get<vulkan2::VulkanResources>, With<RenderContextResManager>> query
 );
 EPIX_API void extract_res_manager(
     Extract<
-        Get<Entity, vulkan2::ResourceManager>,
+        Get<Entity, vulkan2::VulkanResources>,
         With<RenderContextResManager>> query,
     Query<
         Get<Entity>,
-        With<RenderContextResManager, Wrapper<vulkan2::ResourceManager>>>
+        With<RenderContextResManager, Wrapper<vulkan2::VulkanResources>>>
         render_query,
     Command cmd
 );

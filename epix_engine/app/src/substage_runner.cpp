@@ -8,12 +8,12 @@ EPIX_API void SubStageRunner::build() {
     // clear previous dependencies if any
     // tmp dependencies will be reset in prepare function
     // so no need to clear them here
-    for (auto& [ptr, system] : m_systems) {
+    for (auto&& [ptr, system] : m_systems) {
         system->m_strong_prevs.clear();
         system->m_strong_nexts.clear();
     }
     // user defined dependencies
-    for (auto& [ptr, system] : m_systems) {
+    for (auto&& [ptr, system] : m_systems) {
         for (auto& next_ptr : system->m_ptr_nexts) {
             auto it = m_systems.find(next_ptr);
             if (it != m_systems.end()) {
@@ -30,12 +30,12 @@ EPIX_API void SubStageRunner::build() {
         }
     }
     // set dependencies
-    for (auto& [type, sets] : *m_sets) {
-        std::vector<spp::sparse_hash_set<std::shared_ptr<SystemNode>>> set_ptrs;
+    for (auto&& [type, sets] : *m_sets) {
+        std::vector<entt::dense_set<std::shared_ptr<SystemNode>>> set_ptrs;
         // set_ptrs[i] contains all systems that are in set i
         for (auto& set : sets) {
             auto& per_set_ptrs = set_ptrs.emplace_back();
-            for (auto& [ptr, system] : m_systems) {
+            for (auto&& [ptr, system] : m_systems) {
                 if (std::find_if(
                         system->m_in_sets.begin(), system->m_in_sets.end(),
                         [&set](const SystemSet& s) {
@@ -61,12 +61,12 @@ EPIX_API void SubStageRunner::build() {
     }
 }
 EPIX_API void SubStageRunner::bake() {
-    for (auto& [ptr, system] : m_systems) {
+    for (auto&& [ptr, system] : m_systems) {
         system->clear_tmp();
     }
     static thread_local std::vector<std::shared_ptr<SystemNode>> systems;
     systems.clear();
-    for (auto& [ptr, system] : m_systems) {
+    for (auto&& [ptr, system] : m_systems) {
         systems.push_back(system);
     }
     std::sort(systems.begin(), systems.end(), [](const auto& a, const auto& b) {
@@ -113,7 +113,7 @@ EPIX_API void SubStageRunner::run(std::shared_ptr<SystemNode> node) {
 EPIX_API void SubStageRunner::run() {
     {
         ZoneScopedN("preparation");
-        for (auto& [ptr, system] : m_systems) {
+        for (auto&& [ptr, system] : m_systems) {
             system->m_prev_count =
                 system->m_strong_prevs.size() + system->m_weak_prevs.size();
             system->m_next_count =

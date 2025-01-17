@@ -145,7 +145,7 @@ EPIX_API App* App::operator->() { return this; }
 EPIX_API App::App()
     : m_sub_apps(
           std::make_unique<
-              spp::sparse_hash_map<std::type_index, std::unique_ptr<SubApp>>>()
+              entt::dense_map<std::type_index, std::unique_ptr<SubApp>>>()
       ),
       m_runner(std::make_unique<Runner>(m_sub_apps.get())) {
     m_logger          = spdlog::default_logger()->clone("app");
@@ -165,7 +165,7 @@ EPIX_API void App::build_plugins() {
         auto& [ptr, plugin] = m_plugins[i];
         m_logger->debug("Building plugin: {}", ptr.name());
         plugin->build(*this);
-        for (auto& [app_ptr, subapp] : *m_sub_apps) {
+        for (auto&& [app_ptr, subapp] : *m_sub_apps) {
             subapp->m_world.m_resources.emplace(ptr, plugin);
         }
     }
@@ -176,17 +176,17 @@ EPIX_API void App::build() {
     m_runner->bake_all();
 }
 EPIX_API void App::end_commands() {
-    for (auto& [ptr, subapp] : *m_sub_apps) {
+    for (auto&& [ptr, subapp] : *m_sub_apps) {
         subapp->end_commands();
     }
 }
 EPIX_API void App::tick_events() {
-    for (auto& [ptr, subapp] : *m_sub_apps) {
+    for (auto&& [ptr, subapp] : *m_sub_apps) {
         subapp->tick_events();
     }
 }
 EPIX_API void App::update_states() {
-    for (auto& [ptr, subapp] : *m_sub_apps) {
+    for (auto&& [ptr, subapp] : *m_sub_apps) {
         subapp->update_states();
     }
 }

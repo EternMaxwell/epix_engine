@@ -19,15 +19,15 @@ EPIX_API bool ButtonInput<KeyCode>::just_released(KeyCode key) const {
 EPIX_API bool ButtonInput<KeyCode>::pressed(KeyCode key) const {
     return m_pressed.find(key) != m_pressed.end();
 }
-EPIX_API const spp::sparse_hash_set<KeyCode, KeyHash>&
+EPIX_API const entt::dense_set<KeyCode, KeyHash>&
 ButtonInput<KeyCode>::just_pressed_keys() const {
     return m_just_pressed;
 }
-EPIX_API const spp::sparse_hash_set<KeyCode, KeyHash>&
+EPIX_API const entt::dense_set<KeyCode, KeyHash>&
 ButtonInput<KeyCode>::just_released_keys() const {
     return m_just_released;
 }
-EPIX_API const spp::sparse_hash_set<KeyCode, KeyHash>&
+EPIX_API const entt::dense_set<KeyCode, KeyHash>&
 ButtonInput<KeyCode>::pressed_keys() const {
     return m_pressed;
 }
@@ -226,15 +226,15 @@ EPIX_API bool ButtonInput<MouseButton>::just_released(MouseButton button
 EPIX_API bool ButtonInput<MouseButton>::pressed(MouseButton button) const {
     return m_pressed.find(button) != m_pressed.end();
 }
-EPIX_API const spp::sparse_hash_set<MouseButton, MouseButtonHash>&
+EPIX_API const entt::dense_set<MouseButton, MouseButtonHash>&
 ButtonInput<MouseButton>::just_pressed_buttons() const {
     return m_just_pressed;
 }
-EPIX_API const spp::sparse_hash_set<MouseButton, MouseButtonHash>&
+EPIX_API const entt::dense_set<MouseButton, MouseButtonHash>&
 ButtonInput<MouseButton>::just_released_buttons() const {
     return m_just_released;
 }
-EPIX_API const spp::sparse_hash_set<MouseButton, MouseButtonHash>&
+EPIX_API const entt::dense_set<MouseButton, MouseButtonHash>&
 ButtonInput<MouseButton>::pressed_buttons() const {
     return m_pressed;
 }

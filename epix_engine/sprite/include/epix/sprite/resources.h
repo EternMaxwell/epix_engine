@@ -18,10 +18,10 @@ struct SpriteServerVK {
     SpriteServerVK& operator=(const SpriteServerVK&) = delete;
     SpriteServerVK& operator=(SpriteServerVK&&)      = default;
 
-    spp::sparse_hash_map<std::string, Entity> images;
+    entt::dense_map<std::string, Entity> images;
     std::deque<int> free_image_indices;
     int next_image_index = 0;
-    spp::sparse_hash_map<std::string, Entity> samplers;
+    entt::dense_map<std::string, Entity> samplers;
     std::deque<int> free_sampler_indices;
     int next_sampler_index = 0;
     // The entity the handle points to will have image, image view, image index.

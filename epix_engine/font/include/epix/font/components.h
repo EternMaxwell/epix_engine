@@ -1,10 +1,10 @@
 #pragma once
 
-#include <freetype/freetype.h>
-#include <ft2build.h>
 #include <epix/app.h>
 #include <epix/render_ogl.h>
 #include <epix/render_vk.h>
+#include <freetype/freetype.h>
+#include <ft2build.h>
 
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -110,11 +110,3 @@ struct TextRendererGl {
 }  // namespace components
 }  // namespace font
 }  // namespace epix
-template <>
-struct std::hash<epix::font::components::Font> {
-    EPIX_API size_t operator()(const epix::font::components::Font& font) const {
-        return (std::hash<int>()(font.pixels) ^
-                std::hash<bool>()(font.antialias)) *
-               std::hash<FT_Face>()(font.font_face);
-    }
-};

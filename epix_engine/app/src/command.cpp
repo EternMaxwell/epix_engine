@@ -5,8 +5,8 @@ using namespace epix::app;
 EPIX_API EntityCommand::EntityCommand(
     entt::registry* registry,
     Entity entity,
-    spp::sparse_hash_set<Entity>* despawns,
-    spp::sparse_hash_set<Entity>* recursive_despawns
+    entt::dense_set<Entity>* despawns,
+    entt::dense_set<Entity>* recursive_despawns
 )
     : m_registry(registry),
       m_entity(entity),
@@ -25,8 +25,8 @@ EPIX_API EntityCommand::operator Entity() { return m_entity; }
 
 EPIX_API Command::Command(World* world)
     : m_world(world),
-      m_despawns(std::make_shared<spp::sparse_hash_set<Entity>>()),
-      m_recursive_despawns(std::make_shared<spp::sparse_hash_set<Entity>>()) {}
+      m_despawns(std::make_shared<entt::dense_set<Entity>>()),
+      m_recursive_despawns(std::make_shared<entt::dense_set<Entity>>()) {}
 
 EPIX_API EntityCommand Command::entity(Entity entity) {
     return EntityCommand(

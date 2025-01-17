@@ -233,13 +233,13 @@ EPIX_API void systems::create_res_manager(
     }
     ZoneScopedN("Create resource manager");
     auto [device] = query.single();
-    ResourceManager res_manager{device};
+    VulkanResources res_manager{device};
     cmd.spawn(res_manager, RenderContextResManager{});
 }
 
 EPIX_API void systems::destroy_res_manager(
     Command cmd,
-    Query<Get<vulkan2::ResourceManager>, With<RenderContextResManager>> query
+    Query<Get<vulkan2::VulkanResources>, With<RenderContextResManager>> query
 ) {
     if (!query) {
         return;
@@ -251,11 +251,11 @@ EPIX_API void systems::destroy_res_manager(
 
 EPIX_API void systems::extract_res_manager(
     Extract<
-        Get<Entity, vulkan2::ResourceManager>,
+        Get<Entity, vulkan2::VulkanResources>,
         With<RenderContextResManager>> query,
     Query<
         Get<Entity>,
-        With<RenderContextResManager, Wrapper<vulkan2::ResourceManager>>>
+        With<RenderContextResManager, Wrapper<vulkan2::VulkanResources>>>
         render_query,
     Command cmd
 ) {

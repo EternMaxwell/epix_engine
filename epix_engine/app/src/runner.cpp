@@ -3,7 +3,7 @@
 using namespace epix::app;
 
 EPIX_API Runner::Runner(
-    spp::sparse_hash_map<std::type_index, std::unique_ptr<SubApp>>* sub_apps
+    entt::dense_map<std::type_index, std::unique_ptr<SubApp>>* sub_apps
 )
     : m_sub_apps(sub_apps),
       m_pools(std::make_unique<WorkerPool>()),
@@ -54,7 +54,7 @@ EPIX_API bool Runner::stage_present(std::type_index stage) {
            stage_state_transition(stage) || stage_exit(stage);
 }
 EPIX_API void Runner::build() {
-    for (auto& [ptr, stage] : m_startup_stages) {
+    for (auto&& [ptr, stage] : m_startup_stages) {
         stage->runner->build();
         for (auto next_ptr : stage->next_stages) {
             auto it = m_startup_stages.find(next_ptr);
@@ -72,7 +72,7 @@ EPIX_API void Runner::build() {
         }
     }
     std::vector<std::shared_ptr<StageNode>> startup_stages;
-    for (auto& [ptr, stage] : m_startup_stages) {
+    for (auto&& [ptr, stage] : m_startup_stages) {
         startup_stages.push_back(stage);
     }
     std::sort(
@@ -91,7 +91,7 @@ EPIX_API void Runner::build() {
             }
         }
     }
-    for (auto& [ptr, stage] : m_loop_stages) {
+    for (auto&& [ptr, stage] : m_loop_stages) {
         stage->runner->build();
         for (auto next_ptr : stage->next_stages) {
             auto it = m_loop_stages.find(next_ptr);
@@ -109,7 +109,7 @@ EPIX_API void Runner::build() {
         }
     }
     std::vector<std::shared_ptr<StageNode>> loop_stages;
-    for (auto& [ptr, stage] : m_loop_stages) {
+    for (auto&& [ptr, stage] : m_loop_stages) {
         loop_stages.push_back(stage);
     }
     std::sort(
@@ -127,7 +127,7 @@ EPIX_API void Runner::build() {
             }
         }
     }
-    for (auto& [ptr, stage] : m_state_transition_stages) {
+    for (auto&& [ptr, stage] : m_state_transition_stages) {
         stage->runner->build();
         for (auto next_ptr : stage->next_stages) {
             auto it = m_state_transition_stages.find(next_ptr);
@@ -145,7 +145,7 @@ EPIX_API void Runner::build() {
         }
     }
     std::vector<std::shared_ptr<StageNode>> state_transition_stages;
-    for (auto& [ptr, stage] : m_state_transition_stages) {
+    for (auto&& [ptr, stage] : m_state_transition_stages) {
         state_transition_stages.push_back(stage);
     }
     std::sort(
@@ -168,7 +168,7 @@ EPIX_API void Runner::build() {
             }
         }
     }
-    for (auto& [ptr, stage] : m_exit_stages) {
+    for (auto&& [ptr, stage] : m_exit_stages) {
         stage->runner->build();
         for (auto next_ptr : stage->next_stages) {
             auto it = m_exit_stages.find(next_ptr);
@@ -186,7 +186,7 @@ EPIX_API void Runner::build() {
         }
     }
     std::vector<std::shared_ptr<StageNode>> exit_stages;
-    for (auto& [ptr, stage] : m_exit_stages) {
+    for (auto&& [ptr, stage] : m_exit_stages) {
         exit_stages.push_back(stage);
     }
     std::sort(
@@ -207,16 +207,16 @@ EPIX_API void Runner::build() {
 }
 
 EPIX_API void Runner::bake_all() {
-    for (auto& [ptr, stage] : m_startup_stages) {
+    for (auto&& [ptr, stage] : m_startup_stages) {
         stage->runner->bake();
     }
-    for (auto& [ptr, stage] : m_loop_stages) {
+    for (auto&& [ptr, stage] : m_loop_stages) {
         stage->runner->bake();
     }
-    for (auto& [ptr, stage] : m_state_transition_stages) {
+    for (auto&& [ptr, stage] : m_state_transition_stages) {
         stage->runner->bake();
     }
-    for (auto& [ptr, stage] : m_exit_stages) {
+    for (auto&& [ptr, stage] : m_exit_stages) {
         stage->runner->bake();
     }
 }
@@ -237,13 +237,13 @@ EPIX_API void Runner::run(std::shared_ptr<StageNode> node) {
 
 EPIX_API void Runner::run_startup() {
     ZoneScopedN("startup stages");
-    for (auto& [ptr, stage] : m_startup_stages) {
+    for (auto&& [ptr, stage] : m_startup_stages) {
         stage->prev_count =
             stage->strong_prev_stages.size() + stage->weak_prev_stages.size();
     }
     size_t m_remain  = m_startup_stages.size();
     size_t m_running = 0;
-    for (auto& [ptr, stage] : m_startup_stages) {
+    for (auto&& [ptr, stage] : m_startup_stages) {
         if (stage->prev_count == 0) {
             run(stage);
             ++m_running;
@@ -282,20 +282,20 @@ EPIX_API void Runner::run_startup() {
 }
 
 EPIX_API void Runner::bake_loop() {
-    for (auto& [ptr, stage] : m_loop_stages) {
+    for (auto&& [ptr, stage] : m_loop_stages) {
         stage->runner->bake();
     }
 }
 
 EPIX_API void Runner::run_loop() {
     ZoneScopedN("loop stages");
-    for (auto& [ptr, stage] : m_loop_stages) {
+    for (auto&& [ptr, stage] : m_loop_stages) {
         stage->prev_count =
             stage->strong_prev_stages.size() + stage->weak_prev_stages.size();
     }
     size_t m_remain  = m_loop_stages.size();
     size_t m_running = 0;
-    for (auto& [ptr, stage] : m_loop_stages) {
+    for (auto&& [ptr, stage] : m_loop_stages) {
         if (stage->prev_count == 0) {
             run(stage);
             ++m_running;
@@ -334,20 +334,20 @@ EPIX_API void Runner::run_loop() {
 }
 
 EPIX_API void Runner::bake_state_transition() {
-    for (auto& [ptr, stage] : m_state_transition_stages) {
+    for (auto&& [ptr, stage] : m_state_transition_stages) {
         stage->runner->bake();
     }
 }
 
 EPIX_API void Runner::run_state_transition() {
     ZoneScopedN("transition stages");
-    for (auto& [ptr, stage] : m_state_transition_stages) {
+    for (auto&& [ptr, stage] : m_state_transition_stages) {
         stage->prev_count =
             stage->strong_prev_stages.size() + stage->weak_prev_stages.size();
     }
     size_t m_remain  = m_state_transition_stages.size();
     size_t m_running = 0;
-    for (auto& [ptr, stage] : m_state_transition_stages) {
+    for (auto&& [ptr, stage] : m_state_transition_stages) {
         if (stage->prev_count == 0) {
             run(stage);
             ++m_running;
@@ -387,13 +387,13 @@ EPIX_API void Runner::run_state_transition() {
 
 EPIX_API void Runner::run_exit() {
     ZoneScopedN("exit stages");
-    for (auto& [ptr, stage] : m_exit_stages) {
+    for (auto&& [ptr, stage] : m_exit_stages) {
         stage->prev_count =
             stage->strong_prev_stages.size() + stage->weak_prev_stages.size();
     }
     size_t m_remain  = m_exit_stages.size();
     size_t m_running = 0;
-    for (auto& [ptr, stage] : m_exit_stages) {
+    for (auto&& [ptr, stage] : m_exit_stages) {
         if (stage->prev_count == 0) {
             run(stage);
             ++m_running;
