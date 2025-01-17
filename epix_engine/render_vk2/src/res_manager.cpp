@@ -109,7 +109,7 @@ VulkanResources::add_image_view(const std::string& name, ImageView image_view) {
     image_view_names.push_back(name);
     image_view_map[name] = image_views.size();
     image_views.push_back(image_view);
-    view_cache.emplace_back(image_views.size() - 1, image_view);
+    view_cache.emplace_back((uint32_t)image_views.size() - 1, image_view);
     return image_views.size() - 1;
 }
 EPIX_API uint32_t
@@ -127,7 +127,7 @@ VulkanResources::add_sampler(const std::string& name, Sampler sampler) {
     sampler_names.push_back(name);
     sampler_map[name] = samplers.size();
     samplers.push_back(sampler);
-    sampler_cache.emplace_back(samplers.size() - 1, sampler);
+    sampler_cache.emplace_back((uint32_t)samplers.size() - 1, sampler);
     return samplers.size() - 1;
 }
 EPIX_API void VulkanResources::apply_cache() {

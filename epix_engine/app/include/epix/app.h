@@ -2473,6 +2473,8 @@ using CWrap = app::Get<const app::Wrapper<T...>>;
 // OTHER TOOLS
 using epix::app::thread_pool;
 using epix::utility::time_scope;
+using entt::dense_map;
+using entt::dense_set;
 }  // namespace epix
 namespace epix::prelude {
 using namespace epix;
