@@ -1,12 +1,11 @@
-#include "epix/render/debug.h"
+#include "epix/render/pixel.h"
 
-using namespace epix::render::debug;
+using namespace epix::render::pixel::vulkan2;
 
-EPIX_API vulkan2::PipelineBase::mesh
-vulkan2::PipelineBase::Context::generate_mesh() {
+EPIX_API PixelPipeline::mesh PixelPipeline::Context::generate_mesh() {
     return mesh(max_vertex_count, max_model_count);
 }
-EPIX_API void vulkan2::PipelineBase::Context::destroy_mesh(mesh& mesh) {
+EPIX_API void PixelPipeline::Context::destroy_mesh(mesh& mesh) {
     mesh.clear();
     device.waitForFences(fence, VK_TRUE, UINT64_MAX);
     if (mesh.vertex_staging_buffer) {
@@ -17,7 +16,7 @@ EPIX_API void vulkan2::PipelineBase::Context::destroy_mesh(mesh& mesh) {
     }
 }
 
-EPIX_API vulkan2::PipelineBase::Context::Context(
+EPIX_API PixelPipeline::Context::Context(
     Device device,
     RenderPass render_pass,
     Pipeline pipeline,
@@ -42,7 +41,7 @@ EPIX_API vulkan2::PipelineBase::Context::Context(
       command_buffer(command_buffer),
       fence(fence) {}
 
-EPIX_API void vulkan2::PipelineBase::Context::begin(
+EPIX_API void PixelPipeline::Context::begin(
     Buffer uniform_buffer, ImageView render_target, vk::Extent2D extent
 ) {
     auto res = device.waitForFences(fence, VK_TRUE, UINT64_MAX);
@@ -87,7 +86,7 @@ EPIX_API void vulkan2::PipelineBase::Context::begin(
     command_buffer.begin(vk::CommandBufferBeginInfo());
     this->extent = extent;
 }
-EPIX_API void vulkan2::PipelineBase::Context::draw_mesh(mesh& mesh) {
+EPIX_API void PixelPipeline::Context::draw_mesh(mesh& mesh) {
     static auto staging_buffer_resize = [](Device& device, Buffer& buffer,
                                            size_t size) {
         if (buffer) {
@@ -118,7 +117,7 @@ EPIX_API void vulkan2::PipelineBase::Context::draw_mesh(mesh& mesh) {
         mesh.vertex_staging_capacity = mesh.vertices.size();
         staging_buffer_resize(
             device, mesh.vertex_staging_buffer,
-            sizeof(DebugVertex) * mesh.vertex_staging_capacity
+            sizeof(PixelVertex) * mesh.vertex_staging_capacity
         );
     }
     auto* model_data = (glm::mat4*)mesh.model_staging_buffer.map();
@@ -126,23 +125,23 @@ EPIX_API void vulkan2::PipelineBase::Context::draw_mesh(mesh& mesh) {
         model_data, mesh.models.data(), sizeof(glm::mat4) * mesh.models.size()
     );
     mesh.model_staging_buffer.unmap();
-    auto* vertex_data = (DebugVertex*)mesh.vertex_staging_buffer.map();
+    auto* vertex_data = (PixelVertex*)mesh.vertex_staging_buffer.map();
     std::memcpy(
         vertex_data, mesh.vertices.data(),
-        sizeof(DebugVertex) * mesh.vertices.size()
+        sizeof(PixelVertex) * mesh.vertices.size()
     );
     mesh.vertex_staging_buffer.unmap();
     for (auto& draw_call : mesh.draw_calls) {
         vk::BufferCopy copy_region;
-        copy_region.setSize(sizeof(DebugVertex) * draw_call.vertex_count);
-        copy_region.setSrcOffset(sizeof(DebugVertex) * draw_call.vertex_offset);
+        copy_region.setSize(sizeof(PixelVertex) * draw_call.vertex_count);
+        copy_region.setSrcOffset(sizeof(PixelVertex) * draw_call.vertex_offset);
         copy_region.setDstOffset(0);
         command_buffer.copyBuffer(
             mesh.vertex_staging_buffer, vertex_buffer, copy_region
         );
         vk::BufferMemoryBarrier barrier;
         barrier.setBuffer(vertex_buffer);
-        barrier.setSize(sizeof(DebugVertex) * draw_call.vertex_count);
+        barrier.setSize(sizeof(PixelVertex) * draw_call.vertex_count);
         barrier.setSrcAccessMask(vk::AccessFlagBits::eTransferWrite);
         barrier.setDstAccessMask(vk::AccessFlagBits::eVertexAttributeRead);
         command_buffer.pipelineBarrier(
@@ -186,11 +185,11 @@ EPIX_API void vulkan2::PipelineBase::Context::draw_mesh(mesh& mesh) {
         );
     }
 }
-EPIX_API void vulkan2::PipelineBase::Context::end(Queue& queue) {
+EPIX_API void PixelPipeline::Context::end(Queue& queue) {
     command_buffer.end();
     queue.submit(vk::SubmitInfo().setCommandBuffers(command_buffer), fence);
 }
-EPIX_API void vulkan2::PipelineBase::Context::begin_pass() {
+EPIX_API void PixelPipeline::Context::begin_pass() {
     vk::RenderPassBeginInfo render_pass_info;
     render_pass_info.setRenderPass(render_pass);
     render_pass_info.setFramebuffer(framebuffer);

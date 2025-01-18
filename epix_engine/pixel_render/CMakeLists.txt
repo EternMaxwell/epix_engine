@@ -12,6 +12,9 @@ target_include_directories(epix_pxrd PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(epix_pxrd epix::app)
 target_link_libraries(epix_pxrd epix::window)
 target_link_libraries(epix_pxrd epix::render::vulkan)
+target_link_libraries(epix_pxrd epix::render::vulkan2)
 target_link_libraries(epix_pxrd epix::render::font)
 
 add_library(epix::render::pixel ALIAS epix_pxrd)
+
+add_subdirectory(tests)

@@ -632,11 +632,28 @@ EPIX_API void systems::destroy_pixel_pipeline(
 }
 
 EPIX_API void PixelRenderPlugin::build(App& app) {
-    app.add_system(Startup, systems::create_pixel_block_pipeline);
-    app.add_system(Startup, systems::create_pixel_pipeline);
-    app.add_system(Render, systems::draw_pixel_blocks_vk)
-        .before(font::systems::vulkan::draw_text);
-    app.add_system(Exit, systems::destroy_pixel_block_pipeline);
-    app.add_system(Exit, systems::destroy_pixel_pipeline);
+    if (app.get_plugin<epix::render_vk::RenderVKPlugin>()) {
+        app.add_system(Startup, systems::create_pixel_block_pipeline);
+        app.add_system(Startup, systems::create_pixel_pipeline);
+        app.add_system(Render, systems::draw_pixel_blocks_vk)
+            .before(font::systems::vulkan::draw_text);
+        app.add_system(Exit, systems::destroy_pixel_block_pipeline);
+        app.add_system(Exit, systems::destroy_pixel_pipeline);
+    } else if (app.get_plugin<epix::render::vulkan2::VulkanPlugin>()) {
+        app.add_system(
+               PreStartup,
+               epix::render::pixel::vulkan2::systems::create_pixel_pipeline
+        )
+            .after(epix::render::vulkan2::systems::create_context);
+        app.add_system(
+            Extraction,
+            epix::render::pixel::vulkan2::systems::extract_pixel_pipeline
+        );
+        app.add_system(
+               PostExit,
+               epix::render::pixel::vulkan2::systems::destroy_pixel_pipeline
+        )
+            .before(epix::render::vulkan2::systems::destroy_context);
+    }
 }
 }  // namespace epix::render::pixel
