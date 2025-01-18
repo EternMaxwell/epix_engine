@@ -15,3 +15,5 @@ target_link_libraries(epix_rdbg epix::render::vulkan)
 target_link_libraries(epix_rdbg epix::render::vulkan2)
 
 add_library(epix::render::debug ALIAS epix_rdbg)
+
+add_subdirectory(tests)

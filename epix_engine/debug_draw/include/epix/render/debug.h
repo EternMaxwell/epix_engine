@@ -35,6 +35,16 @@ struct PipelineBase {
 
         EPIX_API void clear();
         EPIX_API void set_model(const glm::mat4& model);
+        EPIX_API void draw_point(const glm::vec3& pos, const glm::vec4& color);
+        EPIX_API void draw_line(
+            const glm::vec3& start, const glm::vec3& end, const glm::vec4& color
+        );
+        EPIX_API void draw_triangle(
+            const glm::vec3& v0,
+            const glm::vec3& v1,
+            const glm::vec3& v2,
+            const glm::vec4& color
+        );
 
        protected:
         EPIX_API void assure_new(size_t count);
@@ -82,6 +92,7 @@ struct PipelineBase {
         const size_t max_model_count;
 
         EPIX_API mesh generate_mesh();
+        EPIX_API void destroy_mesh(mesh& mesh);
 
         EPIX_API void begin(
             Buffer uniform_buffer, ImageView render_target, vk::Extent2D extent

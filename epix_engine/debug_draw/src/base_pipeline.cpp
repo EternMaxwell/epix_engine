@@ -17,7 +17,10 @@ EPIX_API vulkan2::PipelineBase::Context vulkan2::PipelineBase::create_context(
     auto vertex_buffer = device.createBuffer(
         vk::BufferCreateInfo()
             .setSize(sizeof(DebugVertex) * max_vertex_count)
-            .setUsage(vk::BufferUsageFlagBits::eVertexBuffer)
+            .setUsage(
+                vk::BufferUsageFlagBits::eVertexBuffer |
+                vk::BufferUsageFlagBits::eTransferDst
+            )
             .setSharingMode(vk::SharingMode::eExclusive),
         AllocationCreateInfo()
             .setUsage(VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE)
@@ -26,7 +29,10 @@ EPIX_API vulkan2::PipelineBase::Context vulkan2::PipelineBase::create_context(
     auto model_buffer = device.createBuffer(
         vk::BufferCreateInfo()
             .setSize(sizeof(glm::mat4) * max_model_count)
-            .setUsage(vk::BufferUsageFlagBits::eUniformBuffer)
+            .setUsage(
+                vk::BufferUsageFlagBits::eStorageBuffer |
+                vk::BufferUsageFlagBits::eTransferDst
+            )
             .setSharingMode(vk::SharingMode::eExclusive),
         AllocationCreateInfo()
             .setUsage(VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE)
@@ -95,20 +101,23 @@ EPIX_API void vulkan2::PipelineBase::create_descriptor_pool() {
             .setDescriptorCount(256)
     };
     descriptor_pool = device.createDescriptorPool(
-        vk::DescriptorPoolCreateInfo().setMaxSets(256).setPoolSizes(pool_sizes)
+        vk::DescriptorPoolCreateInfo()
+            .setMaxSets(256)
+            .setPoolSizes(pool_sizes)
+            .setFlags(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet)
     );
 }
 EPIX_API void vulkan2::PipelineBase::create_render_pass() {
     auto attachments = std::array{
         vk::AttachmentDescription()
-            .setFormat(vk::Format::eB8G8R8A8Srgb)
+            .setFormat(vk::Format::eR8G8B8A8Srgb)
             .setSamples(vk::SampleCountFlagBits::e1)
             .setLoadOp(vk::AttachmentLoadOp::eLoad)
             .setStoreOp(vk::AttachmentStoreOp::eStore)
             .setStencilLoadOp(vk::AttachmentLoadOp::eDontCare)
             .setStencilStoreOp(vk::AttachmentStoreOp::eDontCare)
             .setInitialLayout(vk::ImageLayout::eColorAttachmentOptimal)
-            .setFinalLayout(vk::ImageLayout::ePresentSrcKHR)
+            .setFinalLayout(vk::ImageLayout::eColorAttachmentOptimal)
     };
     auto color_attachment =
         vk::AttachmentReference().setAttachment(0).setLayout(
@@ -156,14 +165,24 @@ EPIX_API void vulkan2::PipelineBase::create_pipeline(
     spirv_cross::CompilerGLSL frag(frag_source);
 
     auto pipeline_info = vk::GraphicsPipelineCreateInfo();
-    auto stages        = default_shader_stages(
+
+    auto vertex_input_info = vk::PipelineVertexInputStateCreateInfo();
+    auto attributes        = get_vertex_input_attributes(vert);
+    auto bindings          = std::vector<vk::VertexInputBindingDescription>{
+        vk::VertexInputBindingDescription().setStride(sizeof(DebugVertex))
+    };
+    default_vertex_input(&vertex_input_info, bindings, attributes);
+    pipeline_info.setPVertexInputState(&vertex_input_info);
+
+    auto stages = default_shader_stages(
         vk::ShaderStageFlagBits::eVertex, vert_module,
         vk::ShaderStageFlagBits::eFragment, frag_module
     );
     pipeline_info.setStages(stages);
     pipeline_info.setLayout(pipeline_layout);
     vk::PipelineViewportStateCreateInfo viewport_state;
-    auto view_scissors = default_viewport_scissor(&viewport_state, {0, 0}, 1);
+    auto view_scissors =
+        default_viewport_scissor(&viewport_state, {800, 600}, 1);
     pipeline_info.setPViewportState(&viewport_state);
     vk::PipelineInputAssemblyStateCreateInfo input_assembly;
     input_assembly.setTopology(topology);
@@ -181,6 +200,13 @@ EPIX_API void vulkan2::PipelineBase::create_pipeline(
     vk::PipelineColorBlendStateCreateInfo color_blend;
     color_blend.setAttachments(color_blend_attachments);
     pipeline_info.setPColorBlendState(&color_blend);
+    vk::PipelineDynamicStateCreateInfo dynamic_states_info;
+    auto dynamic_states = default_dynamic_states(&dynamic_states_info);
+    pipeline_info.setPDynamicState(&dynamic_states_info);
+
+    pipeline_info.setRenderPass(render_pass);
+    pipeline_info.setSubpass(0);
+
     pipeline =
         device.createGraphicsPipeline(vk::PipelineCache(), pipeline_info).value;
 

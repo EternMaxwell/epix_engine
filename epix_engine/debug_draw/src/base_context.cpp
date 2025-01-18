@@ -6,6 +6,16 @@ EPIX_API vulkan2::PipelineBase::mesh
 vulkan2::PipelineBase::Context::generate_mesh() {
     return mesh(max_vertex_count, max_model_count);
 }
+EPIX_API void vulkan2::PipelineBase::Context::destroy_mesh(mesh& mesh) {
+    mesh.clear();
+    device.waitForFences(fence, VK_TRUE, UINT64_MAX);
+    if (mesh.vertex_staging_buffer) {
+        device.destroyBuffer(mesh.vertex_staging_buffer);
+    }
+    if (mesh.model_staging_buffer) {
+        device.destroyBuffer(mesh.model_staging_buffer);
+    }
+}
 
 EPIX_API vulkan2::PipelineBase::Context::Context(
     Device device,

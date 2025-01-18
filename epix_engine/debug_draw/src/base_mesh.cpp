@@ -20,6 +20,7 @@ EPIX_API void vulkan2::PipelineBase::mesh::set_model(const glm::mat4& model) {
         next_draw_call();
     }
     auto& last_call = draw_calls.back();
+    last_call.model_count++;
     models.push_back(model);
 }
 
@@ -36,6 +37,7 @@ EPIX_API void vulkan2::PipelineBase::mesh::add_vertex(
     }
     assure_new(1);
     auto& last_call = draw_calls.back();
+    last_call.vertex_count++;
     uint32_t model_index =
         static_cast<uint32_t>(models.size() - last_call.model_offset);
     if (model_index == 0) {
@@ -47,4 +49,29 @@ EPIX_API void vulkan2::PipelineBase::mesh::next_draw_call() {
     size_t vertex_offset = vertices.size();
     size_t model_offset  = models.size();
     draw_calls.emplace_back(vertex_offset, 0, model_offset, 0);
+}
+
+EPIX_API void vulkan2::PipelineBase::mesh::draw_point(
+    const glm::vec3& pos, const glm::vec4& color
+) {
+    assure_new(1);
+    add_vertex(pos, color);
+}
+EPIX_API void vulkan2::PipelineBase::mesh::draw_line(
+    const glm::vec3& start, const glm::vec3& end, const glm::vec4& color
+) {
+    assure_new(2);
+    add_vertex(start, color);
+    add_vertex(end, color);
+}
+EPIX_API void vulkan2::PipelineBase::mesh::draw_triangle(
+    const glm::vec3& v0,
+    const glm::vec3& v1,
+    const glm::vec3& v2,
+    const glm::vec4& color
+) {
+    assure_new(3);
+    add_vertex(v0, color);
+    add_vertex(v1, color);
+    add_vertex(v2, color);
 }
