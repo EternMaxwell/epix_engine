@@ -70,11 +70,8 @@ EPIX_API void PipelineBase::create_render_pass() {
     render_pass = func_create_render_pass(device);
 }
 EPIX_API void PipelineBase::create_descriptor_pool() {
-    if (!func_create_descriptor_pool) {
-        throw std::runtime_error("No descriptor pool creation function provided"
-        );
-    }
-    descriptor_pool = func_create_descriptor_pool(device);
+    if (func_create_descriptor_pool)
+        descriptor_pool = func_create_descriptor_pool(device);
 }
 EPIX_API void PipelineBase::create_layout() {
     vk::PipelineLayoutCreateInfo layout_info;
@@ -218,17 +215,12 @@ EPIX_API void PipelineBase::destroy() {
     device.destroyPipelineLayout(pipeline_layout);
     device.destroyPipeline(pipeline);
     device.destroyRenderPass(render_pass);
-    device.destroyDescriptorPool(descriptor_pool);
+    if (descriptor_pool) device.destroyDescriptorPool(descriptor_pool);
 }
 EPIX_API void PipelineBase::create() {
     if (!func_create_render_pass) {
         spdlog::error("No render pass creation function provided");
         throw std::runtime_error("No render pass creation function provided");
-    }
-    if (!func_create_descriptor_pool) {
-        spdlog::error("No descriptor pool creation function provided");
-        throw std::runtime_error("No descriptor pool creation function provided"
-        );
     }
     if (shader_sources.size() == 0) {
         spdlog::error("No shaders provided");

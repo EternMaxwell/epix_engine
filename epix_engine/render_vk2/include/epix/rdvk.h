@@ -1196,7 +1196,13 @@ struct Batch<Mesh<Ts...>, PushConstantT> {
         );
     }
 
-    Batch(PipelineBase& pipeline, backend::CommandPool& command_pool)
+    Batch(
+        PipelineBase& pipeline,
+        backend::CommandPool& command_pool,
+        std::function<
+            void(backend::Device&, backend::DescriptorPool&, std::vector<backend::DescriptorSet>&)>
+            func_desc_set = {}
+    )
         : Batch(
               pipeline.device,
               command_pool,
@@ -1205,6 +1211,9 @@ struct Batch<Mesh<Ts...>, PushConstantT> {
               pipeline.pipeline_layout
           ) {
         _push_constant_stage = pipeline.push_constant_stage;
+        if (func_desc_set) {
+            func_desc_set(_device, pipeline.descriptor_pool, _descriptor_sets);
+        }
     }
 
     void destroy() {

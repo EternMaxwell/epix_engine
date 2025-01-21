@@ -85,20 +85,6 @@ struct TestPipeline : public PipelineBase {
             render_pass_info.setDependencies(dependency);
             return device.createRenderPass(render_pass_info);
         });
-        set_descriptor_pool([](Device& device) {
-            std::vector<vk::DescriptorPoolSize> pool_size{
-                vk::DescriptorPoolSize()
-                    .setType(vk::DescriptorType::eSampledImage)
-                    .setDescriptorCount(65536),
-                vk::DescriptorPoolSize()
-                    .setType(vk::DescriptorType::eSampler)
-                    .setDescriptorCount(65536),
-            };
-            vk::DescriptorPoolCreateInfo pool_info;
-            pool_info.setPoolSizes(pool_size);
-            pool_info.setMaxSets(1);
-            return device.createDescriptorPool(pool_info);
-        });
         set_vertex_bindings([]() {
             return std::vector<vk::VertexInputBindingDescription>{
                 vk::VertexInputBindingDescription()
