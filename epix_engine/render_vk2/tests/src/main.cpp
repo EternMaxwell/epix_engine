@@ -12,6 +12,7 @@
 #include "shaders/vertex_shader.h"
 
 using namespace epix::render::vulkan2::backend;
+using namespace epix::render::vulkan2;
 using epix::render::vulkan2::VulkanResources;
 
 struct test {
@@ -28,370 +29,98 @@ struct Vertex {
     glm::vec4 color = {1.0f, 1.0f, 1.0f, 1.0f};
 };
 
-struct TestPipeline {
-    Device device;
-    Swapchain swapchain;
-    vk::RenderPass render_pass;
-    vk::Pipeline pipeline;
-    vk::PipelineLayout layout;
-    std::vector<vk::DescriptorSetLayout> set_layouts;
+struct PushConstants {
+    int image_index;
+    int sampler_index;
+};
 
-    CommandBuffer command_buffer;
-    Fence fence;
-    Framebuffer framebuffer = {};
+using test_mesh    = Mesh<Vertex>;
+using staging_mesh = StagingMesh<test_mesh>;
+using batch        = Batch<test_mesh, PushConstants>;
 
-    Buffer vertex_buffer;
-    const uint32_t vertex_max_count = 3 * 1024;
-    Buffer staging_buffer;
-    uint32_t staging_buffer_size = 0;
-
-    struct mesh {
-        std::vector<Vertex> vertices;
-        uint32_t image_index;
-        uint32_t sampler_index;
-        DescriptorSet descriptor_set;
-
-        mesh(
-            uint32_t image_index,
-            uint32_t sampler_index,
-            const DescriptorSet& descriptor_set
-        )
-            : image_index(image_index),
-              sampler_index(sampler_index),
-              descriptor_set(descriptor_set) {}
-
-        void add_quad(
-            const glm::vec3& pos, const glm::vec2& size, const glm::vec4& color
-        ) {
-            vertices.push_back({pos, {0.0f, 0.0f}, color});
-            vertices.push_back(
-                {pos + glm::vec3{size.x, 0.0f, 0.0f}, {1.0f, 0.0f}, color}
+struct TestPipeline : public PipelineBase {
+    TestPipeline(Device& device) : PipelineBase(device) {
+        set_render_pass([](Device& device) {
+            vk::AttachmentDescription color_attachment;
+            color_attachment.setFormat(vk::Format::eR8G8B8A8Srgb);
+            color_attachment.setSamples(vk::SampleCountFlagBits::e1);
+            color_attachment.setLoadOp(vk::AttachmentLoadOp::eLoad);
+            color_attachment.setStoreOp(vk::AttachmentStoreOp::eStore);
+            color_attachment.setStencilLoadOp(vk::AttachmentLoadOp::eDontCare);
+            color_attachment.setStencilStoreOp(vk::AttachmentStoreOp::eDontCare
             );
-            vertices.push_back(
-                {pos + glm::vec3{size.x, size.y, 0.0f}, {1.0f, 1.0f}, color}
+            color_attachment.setInitialLayout(
+                vk::ImageLayout::eColorAttachmentOptimal
             );
-            vertices.push_back(
-                {pos + glm::vec3{0.0f, size.y, 0.0f}, {0.0f, 1.0f}, color}
+            color_attachment.setFinalLayout(
+                vk::ImageLayout::eColorAttachmentOptimal
             );
-            vertices.push_back({pos, {0.0f, 0.0f}, color});
-            vertices.push_back(
-                {pos + glm::vec3{size.x, size.y, 0.0f}, {1.0f, 1.0f}, color}
+            vk::AttachmentReference color_attachment_ref;
+            color_attachment_ref.setAttachment(0);
+            color_attachment_ref.setLayout(
+                vk::ImageLayout::eColorAttachmentOptimal
             );
-        }
-    };
-
-    void create_render_pass() {
-        vk::AttachmentDescription color_attachment;
-        color_attachment.setFormat(swapchain.surface_format.format);
-        color_attachment.setSamples(vk::SampleCountFlagBits::e1);
-        color_attachment.setLoadOp(vk::AttachmentLoadOp::eLoad);
-        color_attachment.setStoreOp(vk::AttachmentStoreOp::eStore);
-        color_attachment.setStencilLoadOp(vk::AttachmentLoadOp::eDontCare);
-        color_attachment.setStencilStoreOp(vk::AttachmentStoreOp::eDontCare);
-        color_attachment.setInitialLayout(
-            vk::ImageLayout::eColorAttachmentOptimal
-        );
-        color_attachment.setFinalLayout(vk::ImageLayout::eColorAttachmentOptimal
-        );
-        vk::AttachmentReference color_attachment_ref;
-        color_attachment_ref.setAttachment(0);
-        color_attachment_ref.setLayout(vk::ImageLayout::eColorAttachmentOptimal
-        );
-        vk::SubpassDescription subpass;
-        subpass.setPipelineBindPoint(vk::PipelineBindPoint::eGraphics);
-        subpass.setColorAttachments(color_attachment_ref);
-        vk::SubpassDependency dependency;
-        dependency.setSrcSubpass(VK_SUBPASS_EXTERNAL);
-        dependency.setDstSubpass(0);
-        dependency.setSrcStageMask(
-            vk::PipelineStageFlagBits::eColorAttachmentOutput
-        );
-        dependency.setDstStageMask(
-            vk::PipelineStageFlagBits::eColorAttachmentOutput
-        );
-        dependency.setSrcAccessMask(vk::AccessFlagBits::eColorAttachmentWrite);
-        dependency.setDstAccessMask(vk::AccessFlagBits::eColorAttachmentWrite);
-        dependency.setDependencyFlags(vk::DependencyFlagBits::eByRegion);
-        vk::RenderPassCreateInfo render_pass_info;
-        render_pass_info.setAttachments(color_attachment);
-        render_pass_info.setSubpasses(subpass);
-        render_pass_info.setDependencies(dependency);
-        render_pass = device.createRenderPass(render_pass_info);
-    }
-    void create_layout() {
-        using namespace epix::render::vulkan2::util;
-        vk::PipelineLayoutCreateInfo layout_info;
-        auto source_vert = std::vector<uint32_t>(
-            vertex_spv, vertex_spv + sizeof(vertex_spv) / sizeof(uint32_t)
-        );
-        auto source_frag = std::vector<uint32_t>(
-            fragment_spv, fragment_spv + sizeof(fragment_spv) / sizeof(uint32_t)
-        );
-        vk::ShaderModuleCreateInfo vert_info;
-        vert_info.setCode(source_vert);
-        vk::ShaderModuleCreateInfo frag_info;
-        frag_info.setCode(source_frag);
-        spirv_cross::CompilerGLSL vert(source_vert);
-        spirv_cross::CompilerGLSL frag(source_frag);
-        std::vector<std::vector<vk::DescriptorSetLayoutBinding>> bindings;
-        get_shader_resource_bindings(
-            bindings, vert, vk::ShaderStageFlagBits::eVertex
-        );
-        get_shader_resource_bindings(
-            bindings, frag, vk::ShaderStageFlagBits::eFragment
-        );
-        vk::PushConstantRange range;
-        if (get_push_constant_ranges(
-                range, vert, vk::ShaderStageFlagBits::eVertex
-            ) ||
-            get_push_constant_ranges(
-                range, frag, vk::ShaderStageFlagBits::eFragment
-            )) {
-            layout_info.setPushConstantRanges(range);
-        }
-        auto& layouts = set_layouts;
-        layouts.reserve(bindings.size());
-        for (auto& binding : bindings) {
-            vk::DescriptorSetLayoutCreateInfo layout_info;
-            layout_info.setBindings(binding);
-            layouts.push_back(device.createDescriptorSetLayout(layout_info));
-        }
-        layout_info.setSetLayouts(layouts);
-        layout = device.createPipelineLayout(layout_info);
-    }
-    void create_pipeline() {
-        using namespace epix::render::vulkan2::util;
-        auto vert_source = std::vector<uint32_t>(
-            vertex_spv, vertex_spv + sizeof(vertex_spv) / sizeof(uint32_t)
-        );
-        auto vert_module = device.createShaderModule(
-            vk::ShaderModuleCreateInfo().setCode(vert_source)
-        );
-        auto frag_source = std::vector<uint32_t>(
-            fragment_spv, fragment_spv + sizeof(fragment_spv) / sizeof(uint32_t)
-        );
-        auto frag_module = device.createShaderModule(
-            vk::ShaderModuleCreateInfo().setCode(frag_source)
-        );
-        spirv_cross::CompilerGLSL vert(vert_source);
-        spirv_cross::CompilerGLSL frag(frag_source);
-
-        auto pipeline_info = vk::GraphicsPipelineCreateInfo();
-        auto stages        = default_shader_stages(
-            vk::ShaderStageFlagBits::eVertex, vert_module,
-            vk::ShaderStageFlagBits::eFragment, frag_module
-        );
-        pipeline_info.setStages(stages);
-        pipeline_info.setLayout(layout);
-        vk::PipelineViewportStateCreateInfo viewport_state;
-        auto view_scissors = default_viewport_scissor(
-            &viewport_state, swapchain.others->extent, 1
-        );
-        pipeline_info.setPViewportState(&viewport_state);
-        vk::PipelineInputAssemblyStateCreateInfo input_assembly;
-        input_assembly.setTopology(vk::PrimitiveTopology::eTriangleList);
-        pipeline_info.setPInputAssemblyState(&input_assembly);
-        vk::PipelineRasterizationStateCreateInfo rasterization;
-        default_rasterization(&rasterization);
-        pipeline_info.setPRasterizationState(&rasterization);
-        vk::PipelineMultisampleStateCreateInfo multisample;
-        default_multisample(&multisample);
-        pipeline_info.setPMultisampleState(&multisample);
-        vk::PipelineDepthStencilStateCreateInfo depth_stencil;
-        default_depth_stencil(&depth_stencil);
-        pipeline_info.setPDepthStencilState(&depth_stencil);
-        auto color_blend_attachments = default_blend_attachments(1);
-        vk::PipelineColorBlendStateCreateInfo color_blend;
-        color_blend.setAttachments(color_blend_attachments);
-        pipeline_info.setPColorBlendState(&color_blend);
-        vk::PipelineDynamicStateCreateInfo dynamic_state;
-        auto dynamic_states = default_dynamic_states(&dynamic_state);
-        pipeline_info.setPDynamicState(&dynamic_state);
-        vk::PipelineVertexInputStateCreateInfo vertex_input;
-        auto attributes = get_vertex_input_attributes(vert);
-        auto bindings   = std::vector<vk::VertexInputBindingDescription>{
-            vk::VertexInputBindingDescription().setStride(sizeof(Vertex))
-        };
-        default_vertex_input(&vertex_input, bindings, attributes);
-        pipeline_info.setPVertexInputState(&vertex_input);
-        pipeline_info.setRenderPass(render_pass);
-        pipeline =
-            device.createGraphicsPipeline(vk::PipelineCache(), pipeline_info)
-                .value;
-        device.destroyShaderModule(vert_module);
-        device.destroyShaderModule(frag_module);
-    }
-    void create_buffers() {
-        auto vertex_buffer_info =
-            vk::BufferCreateInfo()
-                .setSize(sizeof(Vertex) * vertex_max_count)
-                .setUsage(
-                    vk::BufferUsageFlagBits::eVertexBuffer |
-                    vk::BufferUsageFlagBits::eTransferDst
-                )
-                .setSharingMode(vk::SharingMode::eExclusive);
-        auto alloc_info =
-            AllocationCreateInfo()
-                .setUsage(VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE)
-                .setFlags(VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT);
-        vertex_buffer = device.createBuffer(vertex_buffer_info, alloc_info);
-        auto staging_buffer_info =
-            vk::BufferCreateInfo()
-                .setSize(sizeof(Vertex) * vertex_max_count)
-                .setUsage(vk::BufferUsageFlagBits::eTransferSrc)
-                .setSharingMode(vk::SharingMode::eExclusive);
-        staging_buffer_size = vertex_max_count;
-        auto staging_alloc_info =
-            AllocationCreateInfo()
-                .setUsage(VMA_MEMORY_USAGE_AUTO_PREFER_HOST)
-                .setFlags(VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT
-                );
-        staging_buffer =
-            device.createBuffer(staging_buffer_info, staging_alloc_info);
-    }
-    void resize_staging_buffer(uint32_t size) {
-        if (size > staging_buffer_size) {
-            staging_buffer_size = size;
-            device.destroyBuffer(staging_buffer);
-            auto staging_buffer_info =
-                vk::BufferCreateInfo()
-                    .setSize(sizeof(Vertex) * size * 1.5)
-                    .setUsage(vk::BufferUsageFlagBits::eTransferSrc)
-                    .setSharingMode(vk::SharingMode::eExclusive);
-            auto staging_alloc_info =
-                AllocationCreateInfo()
-                    .setUsage(VMA_MEMORY_USAGE_AUTO_PREFER_HOST)
-                    .setFlags(
-                        VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT
-                    );
-            staging_buffer =
-                device.createBuffer(staging_buffer_info, staging_alloc_info);
-        }
-    }
-    void create_cmd_fence(CommandPool& pool) {
-        command_buffer = device.allocateCommandBuffers(
-            vk::CommandBufferAllocateInfo()
-                .setCommandPool(pool)
-                .setLevel(vk::CommandBufferLevel::ePrimary)
-                .setCommandBufferCount(1)
-        )[0];
-        fence = device.createFence(
-            vk::FenceCreateInfo().setFlags(vk::FenceCreateFlagBits::eSignaled)
-        );
-    }
-
-    void draw_mesh(mesh& mesh) {
-        if (mesh.vertices.empty()) {
-            return;
-        }
-        resize_staging_buffer(mesh.vertices.size());
-        auto* data = (Vertex*)staging_buffer.map();
-        std::memcpy(
-            data, mesh.vertices.data(), mesh.vertices.size() * sizeof(Vertex)
-        );
-        staging_buffer.unmap();
-        auto res = device.waitForFences(fence, VK_TRUE, UINT64_MAX);
-        device.resetFences(fence);
-        if (framebuffer) {
-            device.destroyFramebuffer(framebuffer);
-        }
-        framebuffer = device.createFramebuffer(
-            vk::FramebufferCreateInfo()
-                .setRenderPass(render_pass)
-                .setAttachments(swapchain.current_image_view())
-                .setWidth(swapchain.others->extent.width)
-                .setHeight(swapchain.others->extent.height)
-                .setLayers(1)
-        );
-        auto& cmd = command_buffer;
-        cmd.reset(vk::CommandBufferResetFlagBits::eReleaseResources);
-        cmd.begin(vk::CommandBufferBeginInfo());
-        vk::RenderPassBeginInfo render_pass_info;
-        render_pass_info.setRenderPass(render_pass);
-        render_pass_info.setFramebuffer(framebuffer);
-        render_pass_info.setRenderArea(
-            vk::Rect2D().setExtent(swapchain.others->extent)
-        );
-        // std::array<vk::ClearValue, 1> clear_values;
-        // clear_values[0].setColor(vk::ClearColorValue().setFloat32({0.0f,
-        // 0.0f, 0.0f, 1.0f})); render_pass_info.setClearValues(clear_values);
-        uint32_t offset = 0;
-        while (offset < mesh.vertices.size()) {
-            uint32_t count = std::min(
-                (uint32_t)mesh.vertices.size() - offset, vertex_max_count
+            vk::SubpassDescription subpass;
+            subpass.setPipelineBindPoint(vk::PipelineBindPoint::eGraphics);
+            subpass.setColorAttachments(color_attachment_ref);
+            vk::SubpassDependency dependency;
+            dependency.setSrcSubpass(VK_SUBPASS_EXTERNAL);
+            dependency.setDstSubpass(0);
+            dependency.setSrcStageMask(
+                vk::PipelineStageFlagBits::eColorAttachmentOutput
             );
-            vk::BufferCopy copy_region;
-            copy_region.setSize(count * sizeof(Vertex));
-            copy_region.setSrcOffset(offset * sizeof(Vertex));
-            copy_region.setDstOffset(0);
-            cmd.copyBuffer(staging_buffer, vertex_buffer, copy_region);
-            vk::BufferMemoryBarrier barrier;
-            barrier.setBuffer(vertex_buffer);
-            barrier.setSize(count * sizeof(Vertex));
-            barrier.setSrcAccessMask(vk::AccessFlagBits::eTransferWrite);
-            barrier.setDstAccessMask(vk::AccessFlagBits::eVertexAttributeRead);
-            cmd.pipelineBarrier(
-                vk::PipelineStageFlagBits::eTransfer,
-                vk::PipelineStageFlagBits::eVertexInput, {}, {}, barrier, {}
+            dependency.setDstStageMask(
+                vk::PipelineStageFlagBits::eColorAttachmentOutput
             );
-            cmd.beginRenderPass(render_pass_info, vk::SubpassContents::eInline);
-            cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, pipeline);
-            vk::DeviceSize boffset = 0;
-            cmd.bindVertexBuffers(0, *vertex_buffer, boffset);
-            cmd.bindDescriptorSets(
-                vk::PipelineBindPoint::eGraphics, layout, 0,
-                mesh.descriptor_set, {}
+            dependency.setSrcAccessMask(
+                vk::AccessFlagBits::eColorAttachmentWrite
             );
-            vk::Viewport viewport;
-            viewport.setWidth(swapchain.others->extent.width);
-            viewport.setHeight(swapchain.others->extent.height);
-            cmd.setViewport(0, viewport);
-            vk::Rect2D scissor;
-            scissor.setExtent(swapchain.others->extent);
-            cmd.setScissor(0, scissor);
-            int pc[] = {(int)mesh.image_index, (int)mesh.sampler_index};
-            cmd.pushConstants(
-                layout, vk::ShaderStageFlagBits::eFragment, 0, sizeof(pc), &pc
+            dependency.setDstAccessMask(
+                vk::AccessFlagBits::eColorAttachmentWrite
             );
-            cmd.draw(count, 1, 0, 0);
-            cmd.endRenderPass();
-            barrier.setBuffer(vertex_buffer);
-            barrier.setSize(count * sizeof(Vertex));
-            barrier.setSrcAccessMask(vk::AccessFlagBits::eVertexAttributeRead);
-            barrier.setDstAccessMask(vk::AccessFlagBits::eTransferWrite);
-            cmd.pipelineBarrier(
-                vk::PipelineStageFlagBits::eVertexInput,
-                vk::PipelineStageFlagBits::eTransfer, {}, {}, barrier, {}
-            );
-            offset += vertex_max_count;
-        }
-        cmd.end();
-        vk::SubmitInfo submit_info;
-        submit_info.setCommandBuffers(cmd);
-        device.getQueue(device.queue_family_index, 0)
-            .submit(submit_info, fence);
-    }
-
-    void destroy() {
-        auto res = device.waitForFences(fence, VK_TRUE, UINT64_MAX);
-        device.resetFences(fence);
-        device.destroyPipeline(pipeline);
-        device.destroyPipelineLayout(layout);
-        device.destroyRenderPass(render_pass);
-        for (auto& layout : set_layouts) {
-            device.destroyDescriptorSetLayout(layout);
-        }
-        device.destroyBuffer(vertex_buffer);
-        device.destroyBuffer(staging_buffer);
-        device.destroyFence(fence);
-        if (framebuffer) {
-            device.destroyFramebuffer(framebuffer);
-        }
+            dependency.setDependencyFlags(vk::DependencyFlagBits::eByRegion);
+            vk::RenderPassCreateInfo render_pass_info;
+            render_pass_info.setAttachments(color_attachment);
+            render_pass_info.setSubpasses(subpass);
+            render_pass_info.setDependencies(dependency);
+            return device.createRenderPass(render_pass_info);
+        });
+        set_descriptor_pool([](Device& device) {
+            std::vector<vk::DescriptorPoolSize> pool_size{
+                vk::DescriptorPoolSize()
+                    .setType(vk::DescriptorType::eSampledImage)
+                    .setDescriptorCount(65536),
+                vk::DescriptorPoolSize()
+                    .setType(vk::DescriptorType::eSampler)
+                    .setDescriptorCount(65536),
+            };
+            vk::DescriptorPoolCreateInfo pool_info;
+            pool_info.setPoolSizes(pool_size);
+            pool_info.setMaxSets(1);
+            return device.createDescriptorPool(pool_info);
+        });
+        set_vertex_bindings([]() {
+            return std::vector<vk::VertexInputBindingDescription>{
+                vk::VertexInputBindingDescription()
+                    .setBinding(0)
+                    .setStride(sizeof(Vertex))
+                    .setInputRate(vk::VertexInputRate::eVertex),
+            };
+        });
+        add_shader(
+            vk::ShaderStageFlagBits::eVertex, vertex_spv,
+            vertex_spv + sizeof(vertex_spv) / sizeof(uint32_t)
+        );
+        add_shader(
+            vk::ShaderStageFlagBits::eFragment, fragment_spv,
+            fragment_spv + sizeof(fragment_spv) / sizeof(uint32_t)
+        );
+        set_default_topology(vk::PrimitiveTopology::eTriangleList);
     }
 };
 
 void create_pipeline(
-    Res<epix::render::vulkan2::RenderContext> context, Command cmd
+    ResMut<epix::render::vulkan2::RenderContext> context, Command cmd
 ) {
     if (!context) {
         return;
@@ -399,38 +128,38 @@ void create_pipeline(
     auto& device       = context->device;
     auto& swapchain    = context->primary_swapchain;
     auto& command_pool = context->command_pool;
-    TestPipeline pipeline;
-    pipeline.device    = device;
-    pipeline.swapchain = swapchain;
-    pipeline.create_render_pass();
-    pipeline.create_layout();
-    pipeline.create_pipeline();
-    pipeline.create_buffers();
-    pipeline.create_cmd_fence(command_pool);
-    cmd.spawn(pipeline);
+    TestPipeline pipeline(device);
+    pipeline.create();
+    batch btch(pipeline, command_pool);
+    staging_mesh mesh(device);
+    cmd.insert_resource(std::move(pipeline));
+    cmd.insert_resource(std::move(btch));
+    cmd.insert_resource(std::move(mesh));
 }
 
 void extract_pipeline(
-    Extract<Get<Entity, TestPipeline>> query,
-    Query<Get<Entity>, With<Wrapper<TestPipeline>>> query2,
-    Command cmd
+    ResMut<TestPipeline> pipeline,
+    Command cmd,
+    ResMut<batch> btch,
+    ResMut<staging_mesh> mesh
 ) {
-    if (!query) {
+    if (!pipeline) {
         return;
     }
-    if (!query2) {
-        auto [entity, pipeline] = query.single();
-        ZoneScopedN("Extract pipeline");
-        cmd.spawn(query.wrap(entity));
-    }
+    cmd.share_resource(pipeline);
+    cmd.share_resource(btch);
+    cmd.share_resource(mesh);
 }
 
-void destroy_pipeline(Query<Get<TestPipeline>> query) {
-    if (!query) {
+void destroy_pipeline(
+    ResMut<TestPipeline> pipeline, ResMut<batch> btch, ResMut<staging_mesh> mesh
+) {
+    if (!pipeline || !btch || !mesh) {
         return;
     }
-    auto [pipeline] = query.single();
-    pipeline.destroy();
+    btch->destroy();
+    mesh->destroy();
+    pipeline->destroy();
 }
 
 void create_sampler(ResMut<VulkanResources> p_res_manager) {
@@ -594,22 +323,57 @@ void create_image_and_view(
 }
 
 void test_render(
-    Res<VulkanResources> p_res_manager, Query<epix::Wrap<TestPipeline>> query2
+    Res<VulkanResources> p_res_manager,
+    ResMut<epix::render::vulkan2::RenderContext> context,
+    ResMut<TestPipeline> pipeline,
+    ResMut<batch> btch,
+    ResMut<staging_mesh> mesh,
+    Command cmd
 ) {
-    if (!p_res_manager || !query2) {
+    if (!p_res_manager || !pipeline || !btch || !mesh || !context) {
         return;
     }
-    auto [pipeline_ref] = query2.single();
-    auto& res_manager   = *p_res_manager;
-    auto [pipeline]     = *pipeline_ref;
     ZoneScopedN("Test render");
-    TestPipeline::mesh mesh(
-        res_manager.image_view_index("test::rdvk::image1::view"),
-        res_manager.sampler_index("test::rdvk::sampler1"),
-        res_manager.get_descriptor_set()
+    auto& res_manager = *p_res_manager;
+    auto& device      = res_manager.device();
+    auto& queue       = context->queue;
+    auto& swapchain   = context->primary_swapchain;
+    test_mesh ms;
+    ms.set_16bit_indices();
+    ms.emplace_vertex(glm::vec3{-0.5f, -0.5f, 0.0f}, glm::vec2{0.0f, 0.0f});
+    ms.emplace_vertex(glm::vec3{0.5f, -0.5f, 0.0f}, glm::vec2{1.0f, 0.0f});
+    ms.emplace_vertex(glm::vec3{0.5f, 0.5f, 0.0f}, glm::vec2{1.0f, 1.0f});
+    ms.emplace_vertex(glm::vec3{-0.5f, 0.5f, 0.0f}, glm::vec2{0.0f, 1.0f});
+    ms.emplace_index(0);
+    ms.emplace_index(1);
+    ms.emplace_index(2);
+    ms.emplace_index(2);
+    ms.emplace_index(3);
+    ms.emplace_index(0);
+    mesh->update(ms);
+    btch->begin(
+        [=](auto& device, auto& render_pass) {
+            vk::FramebufferCreateInfo framebuffer_info;
+            framebuffer_info.setRenderPass(render_pass);
+            framebuffer_info.setAttachments(swapchain.current_image_view());
+            framebuffer_info.setWidth(swapchain.extent().width);
+            framebuffer_info.setHeight(swapchain.extent().height);
+            framebuffer_info.setLayers(1);
+            return device.createFramebuffer(framebuffer_info);
+        },
+        swapchain.extent(),
+        [=](auto& descriptor_sets) {
+            descriptor_sets.resize(1);
+            descriptor_sets[0] = res_manager.get_descriptor_set();
+        }
     );
-    mesh.add_quad({-0.5f, -0.5f, 0.0f}, {1.0f, 1.0f}, {1.0f, 1.0f, 1.0f, 1.0f});
-    pipeline.draw_mesh(mesh);
+    PushConstants push_constants;
+    push_constants.image_index =
+        res_manager.image_view_index("test::rdvk::image1::view");
+    push_constants.sampler_index =
+        res_manager.sampler_index("test::rdvk::sampler1");
+    btch->draw(*mesh, push_constants);
+    btch->end(queue);
 }
 
 int main() {

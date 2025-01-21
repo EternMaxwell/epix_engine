@@ -22,6 +22,32 @@ struct DebugVertex {
     glm::vec4 color;
     uint32_t model_index;
 };
+struct DebugMesh : public epix::render::vulkan2::Mesh<DebugVertex> {
+    DebugMesh() : epix::render::vulkan2::Mesh<DebugVertex>(false) {}
+    void draw_point(const glm::vec3& pos, const glm::vec4& color) {
+        emplace_vertex(pos, color, 0);
+    }
+    void draw_line(
+        const glm::vec3& start, const glm::vec3& end, const glm::vec4& color
+    ) {
+        emplace_vertex(start, color, 0);
+        emplace_vertex(end, color, 0);
+    }
+    void draw_triangle(
+        const glm::vec3& v0,
+        const glm::vec3& v1,
+        const glm::vec3& v2,
+        const glm::vec4& color
+    ) {
+        emplace_vertex(v0, color, 0);
+        emplace_vertex(v1, color, 0);
+        emplace_vertex(v2, color, 0);
+    }
+};
+using DebugStagingMesh = epix::render::vulkan2::StagingMesh<
+    epix::render::vulkan2::Mesh<DebugVertex>>;
+using DebugBatch =
+    epix::render::vulkan2::Batch<epix::render::vulkan2::Mesh<DebugVertex>, void>;
 struct PipelineBase {
     Device device;
     RenderPass render_pass;

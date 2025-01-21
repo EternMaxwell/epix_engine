@@ -38,7 +38,7 @@ struct TestMesh {
 };
 
 void create_context_and_mesh(
-    Res<epix::render::vulkan2::RenderContext> context,
+    ResMut<epix::render::vulkan2::RenderContext> context,
     ResMut<epix::render::pixel::vulkan2::PixelPipeline> pipeline,
     Command cmd
 ) {
@@ -93,7 +93,7 @@ void draw_mesh(
 }
 
 void destroy_context_and_mesh(
-    Res<epix::render::vulkan2::RenderContext> context,
+    ResMut<epix::render::vulkan2::RenderContext> context,
     ResMut<epix::render::pixel::vulkan2::PixelPipeline> pipelines,
     ResMut<ImmediateCtx> immediate_context,
     ResMut<TestMesh> mesh,

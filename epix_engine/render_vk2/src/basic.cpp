@@ -752,6 +752,7 @@ EPIX_API ImageView& Swapchain::current_image_view() const {
 EPIX_API vk::Fence& Swapchain::fence() const {
     return in_flight_fence[others->current_frame];
 }
+EPIX_API vk::Extent2D Swapchain::extent() const { return others->extent; }
 EPIX_API void Swapchain::transition_image_layout(
     CommandBuffer& command_buffer, Fence& fence
 ) {

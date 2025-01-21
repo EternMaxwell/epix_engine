@@ -219,6 +219,7 @@ struct Swapchain {
     EPIX_API Image current_image() const;
     EPIX_API ImageView& current_image_view() const;
     EPIX_API vk::Fence& fence() const;
+    EPIX_API vk::Extent2D extent() const;
 
     EPIX_API void transition_image_layout(
         CommandBuffer& command_buffer, Fence& fence
