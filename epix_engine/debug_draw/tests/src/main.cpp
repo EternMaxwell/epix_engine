@@ -27,13 +27,15 @@ void create_camera_uniform_buffer(
     res_manager->add_buffer("camera_uniform_buffer", buffer);
 }
 
-struct ImmediateCtx {
-    epix::render::debug::vulkan2::PipelineBase::Context context;
+struct ImmediateCtx : epix::render::debug::vulkan2::DebugBatch {
+    ImmediateCtx(
+        epix::render::vulkan2::PipelineBase& pipeline, vk::CommandPool& pool
+    )
+        : DebugBatch(pipeline, pool) {}
 };
 
-struct TestMesh {
-    epix::render::debug::vulkan2::PipelineBase::mesh mesh;
-};
+struct TestMesh : epix::render::debug::vulkan2::DebugMesh {};
+struct TestStagingMesh : epix::render::debug::vulkan2::DebugStagingMesh {};
 
 void create_context_and_mesh(
     ResMut<epix::render::vulkan2::RenderContext> context,
@@ -42,16 +44,16 @@ void create_context_and_mesh(
 ) {
     auto& point_pipeline = pipelines->point_pipeline;
 
-    ImmediateCtx immediate_context{point_pipeline.create_context(
-        context->command_pool, 2048 * 256, 2048 * 64
-    )};
-    TestMesh mesh{immediate_context.context.generate_mesh()};
+    ImmediateCtx immediate_context(point_pipeline, context->command_pool);
+    TestStagingMesh mesh(context->device);
     cmd.insert_resource(std::move(immediate_context));
     cmd.insert_resource(std::move(mesh));
 }
 
 void extract_context_and_mesh(
-    ResMut<ImmediateCtx> immediate_context, ResMut<TestMesh> mesh, Command cmd
+    ResMut<ImmediateCtx> immediate_context,
+    ResMut<TestStagingMesh> mesh,
+    Command cmd
 ) {
     if (!immediate_context || !mesh) {
         return;
@@ -61,51 +63,77 @@ void extract_context_and_mesh(
     cmd.share_resource(mesh);
 }
 
-void prepare_mesh(ResMut<TestMesh> mesh) {
+void prepare_mesh(ResMut<TestStagingMesh> mesh) {
     if (!mesh) {
         return;
     }
     ZoneScopedN("Prepare mesh");
-    auto& mesh_data = mesh->mesh;
-    mesh_data.clear();
-    mesh_data.set_model(glm::mat4(1.0f));
-    mesh_data.draw_point(glm::vec3(0.0f), glm::vec4(1.0f));
+    auto& mesh_data = *mesh;
+    TestMesh ms;
+    ms.draw_point({0.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f, 1.0f});
+    mesh_data.update(ms);
 }
 
 void draw_mesh(
     ResMut<epix::render::vulkan2::RenderContext> context,
     Res<epix::render::vulkan2::VulkanResources> res_manager,
     ResMut<ImmediateCtx> immediate_context,
-    ResMut<TestMesh> mesh,
+    ResMut<TestStagingMesh> mesh,
     Command cmd
 ) {
     if (!immediate_context || !mesh || !context || !res_manager) {
         return;
     }
     ZoneScopedN("Draw mesh");
-    immediate_context->context.begin(
-        res_manager->get_buffer("camera_uniform_buffer"),
-        context->primary_swapchain.current_image_view(),
-        context->primary_swapchain.others->extent
+    immediate_context->begin(
+        [&](auto& device, auto& render_pass) {
+            vk::FramebufferCreateInfo framebuffer_info;
+            framebuffer_info.setRenderPass(render_pass);
+            framebuffer_info.setAttachments(
+                context->primary_swapchain.current_image_view()
+            );
+            framebuffer_info.setWidth(context->primary_swapchain.extent().width
+            );
+            framebuffer_info.setHeight(
+                context->primary_swapchain.extent().height
+            );
+            framebuffer_info.setLayers(1);
+            return device.createFramebuffer(framebuffer_info);
+        },
+        context->primary_swapchain.extent(),
+        [&](auto& device, auto& descriptor_sets) {
+            vk::WriteDescriptorSet write_descriptor_set;
+            write_descriptor_set.setDstSet(descriptor_sets[0]);
+            write_descriptor_set.setDstBinding(0);
+            write_descriptor_set.setDstArrayElement(0);
+            write_descriptor_set.setDescriptorType(
+                vk::DescriptorType::eUniformBuffer
+            );
+            write_descriptor_set.setDescriptorCount(1);
+            vk::DescriptorBufferInfo buffer_info;
+            buffer_info.setBuffer(
+                res_manager->get_buffer("camera_uniform_buffer")
+            );
+            buffer_info.setOffset(0);
+            buffer_info.setRange(sizeof(glm::mat4) * 2);
+            write_descriptor_set.setPBufferInfo(&buffer_info);
+            device.updateDescriptorSets(write_descriptor_set, {});
+        }
     );
-    immediate_context->context.draw_mesh(mesh->mesh);
-    immediate_context->context.end(context->queue);
+    immediate_context->draw(*mesh, glm::mat4(1.0f));
+    immediate_context->end(context->queue);
 }
 
 void destroy_context_and_mesh(
-    ResMut<epix::render::vulkan2::RenderContext> context,
-    ResMut<epix::render::debug::vulkan2::DebugPipelines> pipelines,
     ResMut<ImmediateCtx> immediate_context,
-    ResMut<TestMesh> mesh,
+    ResMut<TestStagingMesh> mesh,
     Command cmd
 ) {
-    if (!immediate_context || !mesh || !context || !pipelines) {
+    if (!immediate_context || !mesh) {
         return;
     }
-    immediate_context->context.destroy_mesh(mesh->mesh);
-    pipelines->point_pipeline.destroy_context(
-        immediate_context->context, context->command_pool
-    );
+    immediate_context->destroy();
+    mesh->destroy();
 }
 
 int main() {

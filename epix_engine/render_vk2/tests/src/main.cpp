@@ -348,7 +348,7 @@ void test_render(
             return device.createFramebuffer(framebuffer_info);
         },
         swapchain.extent(),
-        [=](auto& descriptor_sets) {
+        [=](auto& device, auto& descriptor_sets) {
             descriptor_sets.resize(1);
             descriptor_sets[0] = res_manager.get_descriptor_set();
         }

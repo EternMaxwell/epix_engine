@@ -281,9 +281,9 @@ struct Mesh {
    public:
     template <typename... Args>
         requires(std::same_as<bool, Args> && ...) &&
-                (sizeof...(Args) == sizeof...(Ts) + 1)
-    Mesh(Args... args) : input_rate_instance(args...) {}
-    Mesh() : input_rate_instance(false) {}
+                    (sizeof...(Args) == sizeof...(Ts) + 1)
+    Mesh(Args... args) : input_rate_instance(args...), indices(nullptr) {}
+    Mesh() : input_rate_instance(false), indices(nullptr) {}
 
     void clear() {
         std::apply([](auto&... vertices) { (vertices.clear(), ...); }, data);
@@ -361,7 +361,10 @@ struct Mesh {
         }
     }
     void no_indices() { indices = nullptr; }
-    bool has_indices() const { return !std::holds_alternative<void*>(indices); }
+    bool has_indices() const {
+        return !std::holds_alternative<void*>(indices) &&
+               (indices16bit() || indices32bit());
+    }
     bool indices16bit() const {
         return std::holds_alternative<std::vector<uint16_t>>(indices);
     }
@@ -983,7 +986,7 @@ struct PipelineBase {
 
     std::function<vk::PipelineInputAssemblyStateCreateInfo()>
         func_input_assembly_state;
-    vk::PrimitiveTopology default_topology;
+    std::optional<vk::PrimitiveTopology> default_topology;
     std::function<vk::PipelineRasterizationStateCreateInfo()>
         func_rasterization_state;
     std::function<vk::PipelineMultisampleStateCreateInfo()>
@@ -1054,7 +1057,9 @@ struct Batch<Mesh<Ts...>, PushConstantT> {
         std::function<
             backend::Framebuffer(backend::Device&, backend::RenderPass&)> func,
         vk::Extent2D extent,
-        std::function<void(std::vector<backend::DescriptorSet>&)> func_desc = {}
+        std::function<
+            void(backend::Device&, std::vector<backend::DescriptorSet>&)>
+            func_desc = {}
     ) {
         _device.waitForFences(_fence, true, UINT64_MAX);
         _device.resetFences(_fence);
@@ -1065,7 +1070,7 @@ struct Batch<Mesh<Ts...>, PushConstantT> {
         _extent      = extent;
         rendering    = true;
         if (func_desc) {
-            func_desc(_descriptor_sets);
+            func_desc(_device, _descriptor_sets);
         }
         _command_buffer.reset();
         _command_buffer.begin(vk::CommandBufferBeginInfo());
@@ -1199,8 +1204,9 @@ struct Batch<Mesh<Ts...>, PushConstantT> {
     Batch(
         PipelineBase& pipeline,
         backend::CommandPool& command_pool,
-        std::function<
-            void(backend::Device&, backend::DescriptorPool&, std::vector<backend::DescriptorSet>&)>
+        std::function<std::vector<
+            backend::
+                DescriptorSet>(backend::Device&, backend::DescriptorPool&, std::vector<backend::DescriptorSetLayout>&)>
             func_desc_set = {}
     )
         : Batch(
@@ -1212,7 +1218,16 @@ struct Batch<Mesh<Ts...>, PushConstantT> {
           ) {
         _push_constant_stage = pipeline.push_constant_stage;
         if (func_desc_set) {
-            func_desc_set(_device, pipeline.descriptor_pool, _descriptor_sets);
+            _descriptor_sets = func_desc_set(
+                _device, pipeline.descriptor_pool,
+                pipeline.descriptor_set_layouts
+            );
+        } else if (pipeline.descriptor_pool) {
+            _descriptor_sets = _device.allocateDescriptorSets(
+                vk::DescriptorSetAllocateInfo()
+                    .setDescriptorPool(pipeline.descriptor_pool)
+                    .setSetLayouts(pipeline.descriptor_set_layouts)
+            );
         }
     }
 

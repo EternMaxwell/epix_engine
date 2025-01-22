@@ -827,13 +827,8 @@ EPIX_API void systems::create_pipelines(
     if (!context) return;
     auto& device       = context->device;
     auto& command_pool = context->command_pool;
-    DebugPipelines pipelines;
-    pipelines.line_pipeline.device     = device;
-    pipelines.point_pipeline.device    = device;
-    pipelines.triangle_pipeline.device = device;
-    pipelines.line_pipeline.create();
-    pipelines.point_pipeline.create();
-    pipelines.triangle_pipeline.create();
+    DebugPipelines pipelines(device);
+    pipelines.create();
     cmd.insert_resource(std::move(pipelines));
 }
 EPIX_API void systems::extract_pipelines(
@@ -846,8 +841,6 @@ EPIX_API void systems::destroy_pipelines(
     Command cmd, ResMut<DebugPipelines> pipelines
 ) {
     if (!pipelines) return;
-    pipelines->line_pipeline.destroy();
-    pipelines->point_pipeline.destroy();
-    pipelines->triangle_pipeline.destroy();
+    pipelines->destroy();
 }
 }  // namespace epix::render::debug::vulkan2

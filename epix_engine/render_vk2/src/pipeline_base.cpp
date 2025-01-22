@@ -159,8 +159,11 @@ EPIX_API void PipelineBase::create_pipeline(uint32_t subpass) {
     if (func_input_assembly_state) {
         input_assembly_state = func_input_assembly_state();
     } else {
+        if (!default_topology) {
+            spdlog::error("No default topology provided");
+        }
         input_assembly_state = vk::PipelineInputAssemblyStateCreateInfo()
-                                   .setTopology(default_topology)
+                                   .setTopology(default_topology.value())
                                    .setPrimitiveRestartEnable(false);
     }
     pipeline_info.setPInputAssemblyState(&input_assembly_state);

@@ -20,18 +20,17 @@ using namespace epix::render::vulkan2::backend;
 struct DebugVertex {
     glm::vec3 pos;
     glm::vec4 color;
-    uint32_t model_index;
 };
 struct DebugMesh : public epix::render::vulkan2::Mesh<DebugVertex> {
     DebugMesh() : epix::render::vulkan2::Mesh<DebugVertex>(false) {}
     void draw_point(const glm::vec3& pos, const glm::vec4& color) {
-        emplace_vertex(pos, color, 0);
+        emplace_vertex(pos, color);
     }
     void draw_line(
         const glm::vec3& start, const glm::vec3& end, const glm::vec4& color
     ) {
-        emplace_vertex(start, color, 0);
-        emplace_vertex(end, color, 0);
+        emplace_vertex(start, color);
+        emplace_vertex(end, color);
     }
     void draw_triangle(
         const glm::vec3& v0,
@@ -39,141 +38,33 @@ struct DebugMesh : public epix::render::vulkan2::Mesh<DebugVertex> {
         const glm::vec3& v2,
         const glm::vec4& color
     ) {
-        emplace_vertex(v0, color, 0);
-        emplace_vertex(v1, color, 0);
-        emplace_vertex(v2, color, 0);
+        emplace_vertex(v0, color);
+        emplace_vertex(v1, color);
+        emplace_vertex(v2, color);
     }
 };
 using DebugStagingMesh = epix::render::vulkan2::StagingMesh<
     epix::render::vulkan2::Mesh<DebugVertex>>;
-using DebugBatch =
-    epix::render::vulkan2::Batch<epix::render::vulkan2::Mesh<DebugVertex>, void>;
-struct PipelineBase {
-    Device device;
-    RenderPass render_pass;
-    Pipeline pipeline;
-    PipelineLayout pipeline_layout;
-    DescriptorSetLayout descriptor_set_layout;
-    DescriptorPool descriptor_pool;
-    struct Context;
-    struct mesh {
-        EPIX_API mesh(size_t max_vertex_count, size_t max_model_count);
-
-        EPIX_API void clear();
-        EPIX_API void set_model(const glm::mat4& model);
-        EPIX_API void draw_point(const glm::vec3& pos, const glm::vec4& color);
-        EPIX_API void draw_line(
-            const glm::vec3& start, const glm::vec3& end, const glm::vec4& color
-        );
-        EPIX_API void draw_triangle(
-            const glm::vec3& v0,
-            const glm::vec3& v1,
-            const glm::vec3& v2,
-            const glm::vec4& color
-        );
-
-       protected:
-        EPIX_API void assure_new(size_t count);
-        EPIX_API void add_vertex(const glm::vec3& pos, const glm::vec4& color);
-        EPIX_API void next_draw_call();
-
-        struct PerDrawCall {
-            size_t vertex_offset;
-            size_t vertex_count;
-            size_t model_offset;
-            size_t model_count;
-        };
-        std::vector<DebugVertex> vertices;
-        std::vector<glm::mat4> models;
-        std::vector<PerDrawCall> draw_calls;
-
-        Buffer vertex_staging_buffer   = {};
-        size_t vertex_staging_capacity = 0;
-        Buffer model_staging_buffer    = {};
-        size_t model_staging_capacity  = 0;
-
-        const size_t max_vertex_count;
-        const size_t max_model_count;
-
-        friend struct Context;
-    };
-    struct Context {
-        Device device;
-
-        RenderPass render_pass;
-        Pipeline pipeline;
-        PipelineLayout pipeline_layout;
-
-        DescriptorSet descriptor_set;
-        Buffer vertex_buffer;
-        Buffer model_buffer;
-
-        CommandBuffer command_buffer;
-        Fence fence;
-
-        Framebuffer framebuffer;
-        vk::Extent2D extent;
-
-        const size_t max_vertex_count;
-        const size_t max_model_count;
-
-        EPIX_API mesh generate_mesh();
-        EPIX_API void destroy_mesh(mesh& mesh);
-
-        EPIX_API void begin(
-            Buffer uniform_buffer, ImageView render_target, vk::Extent2D extent
-        );
-        EPIX_API void draw_mesh(mesh& mesh);
-        EPIX_API void end(Queue& queue);
-
-       private:
-        EPIX_API Context(
-            Device device,
-            RenderPass render_pass,
-            Pipeline pipeline,
-            PipelineLayout pipeline_layout,
-            DescriptorSet descriptor_set,
-            Buffer vertex_buffer,
-            Buffer model_buffer,
-            CommandBuffer command_buffer,
-            Fence fence,
-            size_t max_vertex_count,
-            size_t max_model_count
-        );
-        EPIX_API void begin_pass();
-
-        friend struct PipelineBase;
-    };
-    EPIX_API Context create_context(
-        CommandPool& command_pool,
-        size_t max_vertex_count,
-        size_t max_model_count
-    );
-    EPIX_API void destroy_context(Context& context, CommandPool& command_pool);
-
-   protected:
-    EPIX_API void create_descriptor_set_layout();
-    EPIX_API void create_pipeline_layout();
-    EPIX_API void create_descriptor_pool();
-    EPIX_API void create_render_pass();
-    EPIX_API void create_pipeline(vk::PrimitiveTopology topology);
+struct DebugBatch
+    : epix::render::vulkan2::
+          Batch<epix::render::vulkan2::Mesh<DebugVertex>, glm::mat4> {
+    DebugBatch(
+        epix::render::vulkan2::PipelineBase& pipeline, vk::CommandPool& pool
+    )
+        : epix::render::vulkan2::
+              Batch<epix::render::vulkan2::Mesh<DebugVertex>, glm::mat4>(
+                  pipeline, pool
+              ) {}
 };
-struct PointPipeline : PipelineBase {
-    EPIX_API void create();
-    EPIX_API void destroy();
-};
-struct LinePipeline : PipelineBase {
-    EPIX_API void create();
-    EPIX_API void destroy();
-};
-struct TrianglePipeline : PipelineBase {
-    EPIX_API void create();
-    EPIX_API void destroy();
-};
+
 struct DebugPipelines {
-    PointPipeline point_pipeline;
-    LinePipeline line_pipeline;
-    TrianglePipeline triangle_pipeline;
+    epix::render::vulkan2::PipelineBase point_pipeline;
+    epix::render::vulkan2::PipelineBase line_pipeline;
+    epix::render::vulkan2::PipelineBase triangle_pipeline;
+
+    EPIX_API DebugPipelines(Device device);
+    EPIX_API void create();
+    EPIX_API void destroy();
 };
 namespace systems {
 EPIX_API void create_pipelines(

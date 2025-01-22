@@ -11,9 +11,9 @@ layout(std140, binding = 0) uniform CameraBuffer {
     mat4 projection;
 };
 
-layout(std140, binding = 1) buffer ModelBuffer { mat4 models[]; };
+layout(push_constant) uniform Model { mat4 model; };
 
 void main() {
-    gl_Position = projection * view * models[model_id] * vec4(in_position, 1.0);
+    gl_Position = projection * view * model * vec4(in_position, 1.0);
     color       = in_color;
 }
