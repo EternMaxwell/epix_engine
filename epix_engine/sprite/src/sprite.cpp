@@ -4,8 +4,8 @@
 #include <filesystem>
 
 #include "epix/sprite.h"
-#include "epix/sprite/shaders/fragment_shader.h"
-#include "epix/sprite/shaders/vertex_shader.h"
+#include "shaders/fragment_shader.h"
+#include "shaders/vertex_shader.h"
 
 using namespace epix::sprite;
 using namespace epix::sprite::components;
@@ -261,8 +261,7 @@ EPIX_API void SpritePluginVK::build(App& app) {
     app.add_system(Prepare, update_sampler_bindings)
         .after(creating_actual_sampler);
     app.add_system(PreRender, update_sprite_depth_vk);
-    app.add_system(Render, draw_sprite_2d_vk)
-        .before(epix::font::systems::vulkan::draw_text);
+    app.add_system(Render, draw_sprite_2d_vk);
     app.add_system(
         Exit, destroy_sprite_server_vk_images,
         destroy_sprite_server_vk_samplers, destroy_sprite_depth_vk,

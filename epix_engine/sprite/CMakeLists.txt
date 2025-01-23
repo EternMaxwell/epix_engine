@@ -15,6 +15,6 @@ target_link_libraries(epix_sprite freetype)
 target_link_libraries(epix_sprite epix::app)
 target_link_libraries(epix_sprite epix::window)
 target_link_libraries(epix_sprite epix::render::vulkan)
-target_link_libraries(epix_sprite epix::render::font)
+target_link_libraries(epix_sprite epix::render::vulkan2)
 
 add_library(epix::render::sprite ALIAS epix_sprite)

@@ -9,8 +9,8 @@ layout(location = 3) flat in int samplerIndex;
 
 layout(location = 0) out vec4 fragColor;
 
-layout(binding = 2) uniform texture2D textures[65536];
-layout(binding = 3) uniform sampler samplers[256];
+layout(set = 1, binding = 0) uniform texture2D textures[];
+layout(set = 1, binding = 1) uniform sampler samplers[];
 
 void main() {
     fragColor =

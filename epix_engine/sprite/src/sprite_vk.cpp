@@ -5,8 +5,8 @@
 #include <glm/gtc/matrix_transform.hpp>
 
 #include "epix/sprite.h"
-#include "epix/sprite/shaders/fragment_shader.h"
-#include "epix/sprite/shaders/vertex_shader.h"
+#include "shaders/fragment_shader.h"
+#include "shaders/vertex_shader.h"
 
 using namespace epix::sprite;
 using namespace epix::sprite::components;
