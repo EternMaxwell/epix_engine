@@ -193,6 +193,11 @@ struct VulkanResources {
     replace_image_view(const std::string& name, ImageView image_view);
     EPIX_API Sampler replace_sampler(const std::string& name, Sampler sampler);
 
+    EPIX_API bool contains_buffer(const std::string& name) const;
+    EPIX_API bool contains_image(const std::string& name) const;
+    EPIX_API bool contains_image_view(const std::string& name) const;
+    EPIX_API bool contains_sampler(const std::string& name) const;
+
     EPIX_API Buffer get_buffer(const std::string& name) const;
     EPIX_API Image get_image(const std::string& name) const;
     EPIX_API ImageView get_image_view(const std::string& name) const;
@@ -416,6 +421,7 @@ struct Mesh {
     }
 };
 constexpr double mesh_buffer_growth_factor = 1.2;
+constexpr uint32_t min_size                = 16;
 template <typename MeshT>
 struct StagingMesh {};
 template <typename MeshT>
@@ -450,13 +456,12 @@ struct StagingMesh<Mesh<VertT, Ts...>> {
             }
             _buffer_capacities[I] = sizeof(T) * mesh.vertices<I>().size() *
                                     mesh_buffer_growth_factor;
+            _buffer_capacities[I] =
+                std::max(_buffer_capacities[I], min_size * sizeof(T));
             buffer = _device.createBuffer(
                 vk::BufferCreateInfo()
                     .setSize(_buffer_capacities[I])
-                    .setUsage(
-                        vk::BufferUsageFlagBits::eVertexBuffer |
-                        vk::BufferUsageFlagBits::eTransferSrc
-                    )
+                    .setUsage(vk::BufferUsageFlagBits::eTransferSrc)
                     .setSharingMode(vk::SharingMode::eExclusive),
                 backend::AllocationCreateInfo()
                     .setUsage(VMA_MEMORY_USAGE_AUTO_PREFER_HOST)
@@ -469,11 +474,13 @@ struct StagingMesh<Mesh<VertT, Ts...>> {
     }
     template <size_t I = 0>
     void update_buffers(const Mesh<VertT, Ts...>& mesh) {
-        auto& buffer = _vertex_buffers[I];
         resize_buffer<I>(mesh);
-        auto data = buffer.map();
-        std::memcpy(data, mesh.vertices<I>().data(), _buffer_sizes[I]);
-        buffer.unmap();
+        auto& buffer = _vertex_buffers[I];
+        if (buffer) {
+            auto data = buffer.map();
+            std::memcpy(data, mesh.vertices<I>().data(), _buffer_sizes[I]);
+            buffer.unmap();
+        }
         if constexpr (I < sizeof...(Ts)) {
             update_buffers<I + 1>(mesh);
         }
@@ -491,13 +498,13 @@ struct StagingMesh<Mesh<VertT, Ts...>> {
                     _index_buffer_capacity = mesh.indices16().size() *
                                              sizeof(uint16_t) *
                                              mesh_buffer_growth_factor;
+                    _index_buffer_capacity = std::max(
+                        _index_buffer_capacity, min_size * sizeof(uint16_t)
+                    );
                     _index_buffer = _device.createBuffer(
                         vk::BufferCreateInfo()
                             .setSize(_index_buffer_capacity)
-                            .setUsage(
-                                vk::BufferUsageFlagBits::eIndexBuffer |
-                                vk::BufferUsageFlagBits::eTransferSrc
-                            )
+                            .setUsage(vk::BufferUsageFlagBits::eTransferSrc)
                             .setSharingMode(vk::SharingMode::eExclusive),
                         backend::AllocationCreateInfo()
                             .setUsage(VMA_MEMORY_USAGE_AUTO_PREFER_HOST)
@@ -518,6 +525,9 @@ struct StagingMesh<Mesh<VertT, Ts...>> {
                     _index_buffer_capacity = mesh.indices32().size() *
                                              sizeof(uint32_t) *
                                              mesh_buffer_growth_factor;
+                    _index_buffer_capacity = std::max(
+                        _index_buffer_capacity, min_size * sizeof(uint32_t)
+                    );
                     _index_buffer = _device.createBuffer(
                         vk::BufferCreateInfo()
                             .setSize(_index_buffer_capacity)
@@ -633,6 +643,8 @@ struct GPUMesh<Mesh<VertT, Ts...>> {
             }
             _buffer_capacities[I] = sizeof(T) * mesh.vertices<I>().size() *
                                     mesh_buffer_growth_factor;
+            _buffer_capacities[I] =
+                std::max(_buffer_capacities[I], min_size * sizeof(T));
             buffer = _device.createBuffer(
                 vk::BufferCreateInfo()
                     .setSize(_buffer_capacities[I])
@@ -649,11 +661,13 @@ struct GPUMesh<Mesh<VertT, Ts...>> {
     }
     template <size_t I = 0>
     void update_buffers(const Mesh<VertT, Ts...>& mesh) {
-        auto& buffer = _vertex_buffers[I];
         resize_buffer<I>(mesh);
-        auto data = buffer.map();
-        std::memcpy(data, mesh.vertices<I>().data(), _buffer_sizes[I]);
-        buffer.unmap();
+        auto& buffer = _vertex_buffers[I];
+        if (buffer) {
+            auto data = buffer.map();
+            std::memcpy(data, mesh.vertices<I>().data(), _buffer_sizes[I]);
+            buffer.unmap();
+        }
         if constexpr (I < sizeof...(Ts)) {
             update_buffers<I + 1>(mesh);
         }
@@ -671,6 +685,9 @@ struct GPUMesh<Mesh<VertT, Ts...>> {
                     _index_buffer_capacity = mesh.indices16().size() *
                                              sizeof(uint16_t) *
                                              mesh_buffer_growth_factor;
+                    _index_buffer_capacity = std::max(
+                        _index_buffer_capacity, min_size * sizeof(uint16_t)
+                    );
                     _index_buffer = _device.createBuffer(
                         vk::BufferCreateInfo()
                             .setSize(_index_buffer_capacity)
@@ -694,6 +711,9 @@ struct GPUMesh<Mesh<VertT, Ts...>> {
                     _index_buffer_capacity = mesh.indices32().size() *
                                              sizeof(uint32_t) *
                                              mesh_buffer_growth_factor;
+                    _index_buffer_capacity = std::max(
+                        _index_buffer_capacity, min_size * sizeof(uint32_t)
+                    );
                     _index_buffer = _device.createBuffer(
                         vk::BufferCreateInfo()
                             .setSize(_index_buffer_capacity)
@@ -714,15 +734,21 @@ struct GPUMesh<Mesh<VertT, Ts...>> {
         resize_index_buffer(mesh);
         if (mesh.has_indices()) {
             auto& buffer = _index_buffer;
-            auto data    = buffer.map();
-            if (mesh.indices16bit()) {
-                std::memcpy(data, mesh.indices16().data(), _index_buffer_size);
-                _index_type = vk::IndexType::eUint16;
-            } else {
-                std::memcpy(data, mesh.indices32().data(), _index_buffer_size);
-                _index_type = vk::IndexType::eUint32;
+            if (buffer) {
+                auto data = buffer.map();
+                if (mesh.indices16bit()) {
+                    std::memcpy(
+                        data, mesh.indices16().data(), _index_buffer_size
+                    );
+                    _index_type = vk::IndexType::eUint16;
+                } else {
+                    std::memcpy(
+                        data, mesh.indices32().data(), _index_buffer_size
+                    );
+                    _index_type = vk::IndexType::eUint32;
+                }
+                buffer.unmap();
             }
-            buffer.unmap();
         }
     }
 
@@ -796,6 +822,8 @@ struct GPUMesh<StagingMesh<Mesh<VertT, Ts...>>> {
             }
             _buffer_capacities[I] =
                 mesh._buffer_sizes[I] * mesh_buffer_growth_factor;
+            _buffer_capacities[I] =
+                std::max(_buffer_capacities[I], min_size * sizeof(T));
             buffer = _device.createBuffer(
                 vk::BufferCreateInfo()
                     .setSize(_buffer_capacities[I])
@@ -817,10 +845,12 @@ struct GPUMesh<StagingMesh<Mesh<VertT, Ts...>>> {
     ) {
         auto& buffer = _vertex_buffers[I];
         resize_buffer<I>(mesh);
-        cmd.copyBuffer(
-            mesh.vertex_buffer(I), buffer,
-            vk::BufferCopy().setSize(_buffer_sizes[I])
-        );
+        if (buffer && _buffer_sizes[I] > 0) {
+            cmd.copyBuffer(
+                mesh.vertex_buffer(I), buffer,
+                vk::BufferCopy().setSize(_buffer_sizes[I])
+            );
+        }
         if constexpr (I < sizeof...(Ts)) {
             update_buffers<I + 1>(mesh);
         }
@@ -835,6 +865,12 @@ struct GPUMesh<StagingMesh<Mesh<VertT, Ts...>>> {
                 }
                 _index_buffer_capacity =
                     mesh._index_buffer_size * mesh_buffer_growth_factor;
+                _index_buffer_capacity = std::max(
+                    _index_buffer_capacity,
+                    min_size * (_index_type == vk::IndexType::eUint16
+                                    ? sizeof(uint16_t)
+                                    : sizeof(uint32_t))
+                );
                 _index_buffer = _device.createBuffer(
                     vk::BufferCreateInfo()
                         .setSize(_index_buffer_capacity)
@@ -855,13 +891,15 @@ struct GPUMesh<StagingMesh<Mesh<VertT, Ts...>>> {
         const StagingMesh<Mesh<VertT, Ts...>>& mesh, backend::CommandBuffer& cmd
     ) {
         resize_index_buffer(mesh);
-        if (mesh._index_buffer) {
+        if (mesh._index_buffer && _index_buffer_size > 0) {
             auto& buffer = _index_buffer;
-            cmd.copyBuffer(
-                mesh.index_buffer(), buffer,
-                vk::BufferCopy().setSize(_index_buffer_size)
-            );
-            _index_type = mesh.index_type();
+            if (buffer) {
+                cmd.copyBuffer(
+                    mesh.index_buffer(), buffer,
+                    vk::BufferCopy().setSize(_index_buffer_size)
+                );
+                _index_type = mesh.index_type();
+            }
         }
     }
 
@@ -1063,6 +1101,8 @@ struct Batch<Mesh<Ts...>, PushConstantT> {
     ) {
         _device.waitForFences(_fence, true, UINT64_MAX);
         _device.resetFences(_fence);
+        _command_buffer.reset(vk::CommandBufferResetFlagBits::eReleaseResources
+        );
         if (_framebuffer) {
             _device.destroyFramebuffer(_framebuffer);
         }
@@ -1072,7 +1112,6 @@ struct Batch<Mesh<Ts...>, PushConstantT> {
         if (func_desc) {
             func_desc(_device, _descriptor_sets);
         }
-        _command_buffer.reset();
         _command_buffer.begin(vk::CommandBufferBeginInfo());
     }
     void draw(const staging_mesh_t& mesh, const PushConstantT& push_constant) {
@@ -1207,16 +1246,21 @@ struct Batch<Mesh<Ts...>, PushConstantT> {
         std::function<std::vector<
             backend::
                 DescriptorSet>(backend::Device&, backend::DescriptorPool&, std::vector<backend::DescriptorSetLayout>&)>
-            func_desc_set = {}
+            func_desc_set = {},
+        std::function<
+            void(backend::Device&, backend::DescriptorPool&, std::vector<backend::DescriptorSet>&)>
+            func_destroy_desc_set = {}
     )
         : Batch(
               pipeline.device,
               command_pool,
               pipeline.render_pass,
               pipeline.pipeline,
-              pipeline.pipeline_layout
+              pipeline.pipeline_layout,
+              pipeline.descriptor_pool
           ) {
-        _push_constant_stage = pipeline.push_constant_stage;
+        _push_constant_stage   = pipeline.push_constant_stage;
+        _func_destroy_desc_set = func_destroy_desc_set;
         if (func_desc_set) {
             _descriptor_sets = func_desc_set(
                 _device, pipeline.descriptor_pool,
@@ -1236,6 +1280,9 @@ struct Batch<Mesh<Ts...>, PushConstantT> {
         if (_framebuffer) {
             _device.destroyFramebuffer(_framebuffer);
         }
+        if (_func_destroy_desc_set) {
+            _func_destroy_desc_set(_device, _descriptor_pool, _descriptor_sets);
+        }
         _device.destroyFence(_fence);
         _device.freeCommandBuffers(_command_pool, _command_buffer);
         _mesh.destroy();
@@ -1248,10 +1295,14 @@ struct Batch<Mesh<Ts...>, PushConstantT> {
     backend::RenderPass _render_pass;
     backend::Pipeline _pipeline;
     backend::PipelineLayout _pipeline_layout;
+    backend::DescriptorPool _descriptor_pool;
 
     vk::ShaderStageFlags _push_constant_stage;
 
     std::vector<backend::DescriptorSet> _descriptor_sets;
+    std::function<
+        void(backend::Device&, backend::DescriptorPool&, std::vector<backend::DescriptorSet>&)>
+        _func_destroy_desc_set;
 
     backend::CommandBuffer _command_buffer;
     backend::Fence _fence;
@@ -1268,15 +1319,17 @@ struct Batch<Mesh<Ts...>, PushConstantT> {
         backend::CommandPool& command_pool,
         backend::RenderPass& render_pass,
         backend::Pipeline& pipeline,
-        backend::PipelineLayout& pipeline_layout
+        backend::PipelineLayout& pipeline_layout,
+        backend::DescriptorPool& descriptor_pool
     )
-        : _mesh(device) {
-        this->_device          = device;
-        this->_command_pool    = command_pool;
-        this->_render_pass     = render_pass;
-        this->_pipeline        = pipeline;
-        this->_pipeline_layout = pipeline_layout;
-        _command_buffer        = _device.allocateCommandBuffers(
+        : _mesh(device),
+          _device(device),
+          _command_pool(command_pool),
+          _render_pass(render_pass),
+          _pipeline(pipeline),
+          _pipeline_layout(pipeline_layout),
+          _descriptor_pool(descriptor_pool) {
+        _command_buffer = _device.allocateCommandBuffers(
             vk::CommandBufferAllocateInfo()
                 .setCommandPool(_command_pool)
                 .setCommandBufferCount(1)
@@ -1367,6 +1420,8 @@ struct Batch<Mesh<Ts...>, void> {
     ) {
         _device.waitForFences(_fence, true, UINT64_MAX);
         _device.resetFences(_fence);
+        _command_buffer.reset(vk::CommandBufferResetFlagBits::eReleaseResources
+        );
         if (_framebuffer) {
             _device.destroyFramebuffer(_framebuffer);
         }
@@ -1375,7 +1430,6 @@ struct Batch<Mesh<Ts...>, void> {
         if (func_desc_set) {
             func_desc_set(_descriptor_sets);
         }
-        _command_buffer.reset();
         _command_buffer.begin(vk::CommandBufferBeginInfo());
     }
     void draw(const staging_mesh_t& mesh) {
@@ -1494,19 +1548,47 @@ struct Batch<Mesh<Ts...>, void> {
         );
     }
 
-    Batch(PipelineBase& pipeline, backend::CommandPool& command_pool)
+    Batch(
+        PipelineBase& pipeline,
+        backend::CommandPool& command_pool,
+        std::function<std::vector<
+            backend::
+                DescriptorSet>(backend::Device&, backend::DescriptorPool&, std::vector<backend::DescriptorSetLayout>&)>
+            func_desc_set = {},
+        std::function<
+            void(backend::Device&, backend::DescriptorPool&, std::vector<backend::DescriptorSet>&)>
+            func_destroy_desc_set = {}
+    )
         : Batch(
               pipeline.device,
               command_pool,
               pipeline.render_pass,
               pipeline.pipeline,
-              pipeline.pipeline_layout
-          ) {}
+              pipeline.pipeline_layout,
+              pipeline.descriptor_pool
+          ) {
+        _func_destroy_desc_set = func_destroy_desc_set;
+        if (func_desc_set) {
+            _descriptor_sets = func_desc_set(
+                _device, pipeline.descriptor_pool,
+                pipeline.descriptor_set_layouts
+            );
+        } else if (pipeline.descriptor_pool) {
+            _descriptor_sets = _device.allocateDescriptorSets(
+                vk::DescriptorSetAllocateInfo()
+                    .setDescriptorPool(pipeline.descriptor_pool)
+                    .setSetLayouts(pipeline.descriptor_set_layouts)
+            );
+        }
+    }
 
     void destroy() {
         _device.waitForFences(_fence, true, UINT64_MAX);
         if (_framebuffer) {
             _device.destroyFramebuffer(_framebuffer);
+        }
+        if (_func_destroy_desc_set) {
+            _func_destroy_desc_set(_device, _descriptor_pool, _descriptor_sets);
         }
         _mesh.destroy();
         _device.destroyFence(_fence);
@@ -1520,8 +1602,12 @@ struct Batch<Mesh<Ts...>, void> {
     backend::RenderPass _render_pass;
     backend::Pipeline _pipeline;
     backend::PipelineLayout _pipeline_layout;
+    backend::DescriptorPool _descriptor_pool;
 
     std::vector<backend::DescriptorSet> _descriptor_sets;
+    std::function<
+        void(backend::Device&, backend::DescriptorPool&, std::vector<backend::DescriptorSet>&)>
+        _func_destroy_desc_set;
 
     backend::CommandBuffer _command_buffer;
     backend::Fence _fence;
@@ -1538,15 +1624,17 @@ struct Batch<Mesh<Ts...>, void> {
         backend::CommandPool& command_pool,
         backend::RenderPass& render_pass,
         backend::Pipeline& pipeline,
-        backend::PipelineLayout& pipeline_layout
+        backend::PipelineLayout& pipeline_layout,
+        backend::DescriptorPool& descriptor_pool
     )
-        : _mesh(device) {
-        this->_device          = device;
-        this->_command_pool    = command_pool;
-        this->_render_pass     = render_pass;
-        this->_pipeline        = pipeline;
-        this->_pipeline_layout = pipeline_layout;
-        _command_buffer        = _device.allocateCommandBuffers(
+        : _mesh(device),
+          _device(device),
+          _command_pool(command_pool),
+          _render_pass(render_pass),
+          _pipeline(pipeline),
+          _pipeline_layout(pipeline_layout),
+          _descriptor_pool(descriptor_pool) {
+        _command_buffer = _device.allocateCommandBuffers(
             vk::CommandBufferAllocateInfo()
                 .setCommandPool(_command_pool)
                 .setCommandBufferCount(1)

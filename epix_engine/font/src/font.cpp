@@ -476,13 +476,31 @@ EPIX_API void FT2Library::destroy() {
 }
 
 EPIX_API void FontPlugin::build(App& app) {
-    auto render_vk_plugin = app.get_plugin<render_vk::RenderVKPlugin>();
-    if (!render_vk_plugin) {
-        throw std::runtime_error("FontPlugin requires RenderVKPlugin");
+    if (app.get_plugin<render_vk::RenderVKPlugin>()) {
+        app.add_system(PreStartup, systems::vulkan::insert_ft2_library)
+            .after(render_vk::systems::create_context);
+        app.add_system(Startup, systems::vulkan::create_renderer);
+        app.add_system(Render, systems::vulkan::draw_text);
+        app.add_system(Exit, systems::vulkan::destroy_renderer);
+    } else if (app.get_plugin<epix::render::vulkan2::VulkanPlugin>()) {
+        app.add_system(
+               PreStartup, epix::font::vulkan2::systems::insert_font_atlas,
+               epix::font::vulkan2::systems::create_pipeline
+        )
+            .after(
+                epix::render::vulkan2::systems::create_context,
+                epix::render::vulkan2::systems::create_res_manager
+            );
+        app.add_system(
+            PreExtract, epix::font::vulkan2::systems::extract_font_atlas
+        );
+        app.add_system(
+            PreExtract, epix::font::vulkan2::systems::extract_pipeline
+        );
+        app.add_system(
+               PostExit, epix::font::vulkan2::systems::destroy_pipeline,
+               epix::font::vulkan2::systems::destroy_font_atlas
+        )
+            .before(epix::render::vulkan2::systems::destroy_context);
     }
-    app.add_system(PreStartup, systems::vulkan::insert_ft2_library)
-        .after(render_vk::systems::create_context);
-    app.add_system(Startup, systems::vulkan::create_renderer);
-    app.add_system(Render, systems::vulkan::draw_text);
-    app.add_system(Exit, systems::vulkan::destroy_renderer);
 }

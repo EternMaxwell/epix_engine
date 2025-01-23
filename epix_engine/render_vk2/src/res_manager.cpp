@@ -1,5 +1,8 @@
 #include "epix/rdvk.h"
 
+static std::shared_ptr<spdlog::logger> logger =
+    spdlog::default_logger()->clone("font");
+
 namespace epix::render::vulkan2 {
 using Device               = backend::Device;
 using Buffer               = backend::Buffer;
@@ -38,6 +41,17 @@ EPIX_API VulkanResources::VulkanResources(Device device) : m_device(device) {
     };
     vk::DescriptorSetLayoutCreateInfo layout_info;
     layout_info.setBindings(bindings);
+    layout_info.setFlags(
+        vk::DescriptorSetLayoutCreateFlagBits::eUpdateAfterBindPool
+    );
+    vk::DescriptorSetLayoutBindingFlagsCreateInfo binding_flags;
+    std::vector<vk::DescriptorBindingFlags> flags(
+        bindings.size(), vk::DescriptorBindingFlags(
+                             vk::DescriptorBindingFlagBits::eUpdateAfterBind
+                         )
+    );
+    binding_flags.setBindingFlags(flags);
+    layout_info.setPNext(&binding_flags);
     descriptor_set_layout = device.createDescriptorSetLayout(layout_info);
     vk::DescriptorSetAllocateInfo alloc_info;
     alloc_info.setDescriptorPool(descriptor_pool);
@@ -164,6 +178,7 @@ EPIX_API ImageView VulkanResources::replace_image_view(
     }
     auto old           = image_views[index];
     image_views[index] = image_view;
+    view_cache.emplace_back(index, image_view);
     return old;
 }
 EPIX_API Sampler
@@ -174,7 +189,21 @@ VulkanResources::replace_sampler(const std::string& name, Sampler sampler) {
     }
     auto old        = samplers[index];
     samplers[index] = sampler;
+    sampler_cache.emplace_back(index, sampler);
     return old;
+}
+EPIX_API bool VulkanResources::contains_buffer(const std::string& name) const {
+    return buffer_map.contains(name);
+}
+EPIX_API bool VulkanResources::contains_image(const std::string& name) const {
+    return image_map.contains(name);
+}
+EPIX_API bool VulkanResources::contains_image_view(const std::string& name
+) const {
+    return image_view_map.contains(name);
+}
+EPIX_API bool VulkanResources::contains_sampler(const std::string& name) const {
+    return sampler_map.contains(name);
 }
 EPIX_API void VulkanResources::apply_cache() {
     for (auto&& [name, index] : buffer_add_cache) {
@@ -210,6 +239,7 @@ EPIX_API void VulkanResources::apply_cache() {
     std::vector<vk::WriteDescriptorSet> descriptor_writes;
     descriptor_writes.reserve(view_cache.size() + sampler_cache.size());
     for (auto&& [index, view] : view_cache) {
+        if (!view) continue;
         image_infos.push_back(
             vk::DescriptorImageInfo().setImageView(view).setImageLayout(
                 vk::ImageLayout::eGeneral
@@ -226,6 +256,7 @@ EPIX_API void VulkanResources::apply_cache() {
         );
     }
     for (auto&& [index, sampler] : sampler_cache) {
+        if (!sampler) continue;
         image_infos.push_back(vk::DescriptorImageInfo().setSampler(sampler));
         descriptor_writes.push_back(
             vk::WriteDescriptorSet()
@@ -342,12 +373,14 @@ EPIX_API void VulkanResources::remove_sampler(uint32_t index) {
 }
 EPIX_API uint32_t VulkanResources::buffer_index(const std::string& name) const {
     if (!buffer_map.contains(name)) {
+        logger->warn("Buffer not found: {}, returning -1", name);
         return -1;
     }
     return buffer_map.at(name);
 }
 EPIX_API uint32_t VulkanResources::image_index(const std::string& name) const {
     if (!image_map.contains(name)) {
+        logger->warn("Image not found: {}, returning -1", name);
         return -1;
     }
     return image_map.at(name);
@@ -355,6 +388,7 @@ EPIX_API uint32_t VulkanResources::image_index(const std::string& name) const {
 EPIX_API uint32_t VulkanResources::image_view_index(const std::string& name
 ) const {
     if (!image_view_map.contains(name)) {
+        logger->warn("Image view not found: {}, returning -1", name);
         return -1;
     }
     return image_view_map.at(name);
@@ -362,6 +396,7 @@ EPIX_API uint32_t VulkanResources::image_view_index(const std::string& name
 EPIX_API uint32_t VulkanResources::sampler_index(const std::string& name
 ) const {
     if (!sampler_map.contains(name)) {
+        logger->warn("Sampler not found: {}, returning -1", name);
         return -1;
     }
     return sampler_map.at(name);

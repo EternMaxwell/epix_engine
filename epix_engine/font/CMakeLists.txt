@@ -16,5 +16,8 @@ target_link_libraries(epix_font epix::app)
 target_link_libraries(epix_font epix::window)
 target_link_libraries(epix_font epix::render::ogl)
 target_link_libraries(epix_font epix::render::vulkan)
+target_link_libraries(epix_font epix::render::vulkan2)
 
 add_library(epix::render::font ALIAS epix_font)
+
+add_subdirectory(tests)

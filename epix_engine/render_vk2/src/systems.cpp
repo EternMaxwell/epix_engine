@@ -175,6 +175,7 @@ EPIX_API void systems::present_frame(
     ZoneScopedN("Vulkan present frame");
     device.waitForFences(cmd_fence, VK_TRUE, UINT64_MAX);
     device.resetFences(cmd_fence);
+    // queue.waitIdle();
     cmd_buffer.reset(vk::CommandBufferResetFlagBits::eReleaseResources);
     cmd_buffer.begin(vk::CommandBufferBeginInfo{});
     vk::ImageMemoryBarrier barrier;

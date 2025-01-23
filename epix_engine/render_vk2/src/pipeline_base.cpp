@@ -99,6 +99,17 @@ EPIX_API void PipelineBase::create_layout() {
     for (auto& binding : bindings) {
         vk::DescriptorSetLayoutCreateInfo layout_info;
         layout_info.setBindings(binding);
+        layout_info.setFlags(
+            vk::DescriptorSetLayoutCreateFlagBits::eUpdateAfterBindPool
+        );
+        vk::DescriptorSetLayoutBindingFlagsCreateInfo binding_flags;
+        std::vector<vk::DescriptorBindingFlags> flags(
+            binding.size(), vk::DescriptorBindingFlags(
+                                vk::DescriptorBindingFlagBits::eUpdateAfterBind
+                            )
+        );
+        binding_flags.setBindingFlags(flags);
+        layout_info.setPNext(&binding_flags);
         set_layouts.push_back(device.createDescriptorSetLayout(layout_info));
     }
     layout_info.setSetLayouts(set_layouts);

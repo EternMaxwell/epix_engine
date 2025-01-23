@@ -389,6 +389,8 @@ struct Res {
 
     const ResT& operator*() { return *m_res; }
     const ResT* operator->() { return m_res; }
+
+    const ResT* get() { return m_res; }
 };
 
 template <typename ResT>
@@ -408,8 +410,12 @@ struct ResMut {
     operator bool() { return has_value(); }
     bool operator!() { return !has_value(); }
 
+    operator Res<ResT>() { return Res<ResT>(m_res); }
+
     ResT& operator*() { return *m_res; }
     ResT* operator->() { return m_res; }
+
+    ResT* get() { return m_res; }
 };
 template <typename T>
 struct Local {

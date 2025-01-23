@@ -342,7 +342,15 @@ EPIX_API Device Device::create(
             // commandbuffer used the bindDescriptorsSet
             .setDescriptorBindingStorageBufferUpdateAfterBind(true)
             .setDescriptorBindingSampledImageUpdateAfterBind(true)
+            .setDescriptorBindingUniformBufferUpdateAfterBind(true)
+            .setDescriptorBindingUpdateUnusedWhilePending(true)
             .setDescriptorBindingStorageImageUpdateAfterBind(true);
+    auto buffer_device_address_features =
+        vk::PhysicalDeviceBufferDeviceAddressFeatures()
+            .setBufferDeviceAddress(true)
+            .setBufferDeviceAddressCaptureReplay(true)
+            .setBufferDeviceAddressMultiDevice(true);
+    descriptor_indexing_features.setPNext(&buffer_device_address_features);
     dynamic_rendering_features.setPNext(&descriptor_indexing_features);
     auto device_feature2  = physical_device.getFeatures2();
     device_feature2.pNext = &dynamic_rendering_features;
