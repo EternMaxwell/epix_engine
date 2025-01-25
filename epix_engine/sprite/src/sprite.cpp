@@ -253,18 +253,33 @@ EPIX_API void systems::destroy_sprite_server_vk_samplers(
 }
 
 EPIX_API void SpritePluginVK::build(App& app) {
-    app.add_system(PreStartup, insert_sprite_server_vk);
-    app.add_system(Startup, create_sprite_renderer_vk);
-    app.add_system(PostStartup, create_sprite_depth_vk);
-    app.add_system(Prepare, loading_actual_image, creating_actual_sampler);
-    app.add_system(Prepare, update_image_bindings).after(loading_actual_image);
-    app.add_system(Prepare, update_sampler_bindings)
-        .after(creating_actual_sampler);
-    app.add_system(PreRender, update_sprite_depth_vk);
-    app.add_system(Render, draw_sprite_2d_vk);
-    app.add_system(
-        Exit, destroy_sprite_server_vk_images,
-        destroy_sprite_server_vk_samplers, destroy_sprite_depth_vk,
-        destroy_sprite_renderer_vk
-    );
+    if (app.get_plugin<render_vk::RenderVKPlugin>()) {
+        app.add_system(PreStartup, insert_sprite_server_vk);
+        app.add_system(Startup, create_sprite_renderer_vk);
+        app.add_system(PostStartup, create_sprite_depth_vk);
+        app.add_system(Prepare, loading_actual_image, creating_actual_sampler);
+        app.add_system(Prepare, update_image_bindings)
+            .after(loading_actual_image);
+        app.add_system(Prepare, update_sampler_bindings)
+            .after(creating_actual_sampler);
+        app.add_system(PreRender, update_sprite_depth_vk);
+        app.add_system(Render, draw_sprite_2d_vk);
+        app.add_system(
+            Exit, destroy_sprite_server_vk_images,
+            destroy_sprite_server_vk_samplers, destroy_sprite_depth_vk,
+            destroy_sprite_renderer_vk
+        );
+    } else if (app.get_plugin<epix::render::vulkan2::VulkanPlugin>()) {
+        app.add_system(
+               PreStartup, epix::sprite::vulkan2::systems::create_pipeline
+        )
+            .after(epix::render::vulkan2::systems::create_context);
+        app.add_system(
+            Extraction, epix::sprite::vulkan2::systems::extract_pipeline
+        );
+        app.add_system(
+               PostExit, epix::sprite::vulkan2::systems::destroy_pipeline
+        )
+            .before(epix::render::vulkan2::systems::destroy_context);
+    }
 }

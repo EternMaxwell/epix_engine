@@ -18,3 +18,5 @@ target_link_libraries(epix_sprite epix::render::vulkan)
 target_link_libraries(epix_sprite epix::render::vulkan2)
 
 add_library(epix::render::sprite ALIAS epix_sprite)
+
+add_subdirectory(tests)

@@ -324,6 +324,8 @@ struct Mesh {
             } else {
                 indices32().emplace_back(index);
             }
+        } else {
+            spdlog::warn("Index type not set, cannot emplace indices.");
         }
     }
     std::vector<uint16_t>& indices16() {
@@ -1415,7 +1417,8 @@ struct Batch<Mesh<Ts...>, void> {
         std::function<
             backend::Framebuffer(backend::Device&, backend::RenderPass&)> func,
         vk::Extent2D extent,
-        std::function<void(std::vector<backend::DescriptorSet>&)>
+        std::function<
+            void(backend::Device&, std::vector<backend::DescriptorSet>&)>
             func_desc_set = {}
     ) {
         _device.waitForFences(_fence, true, UINT64_MAX);
@@ -1426,9 +1429,10 @@ struct Batch<Mesh<Ts...>, void> {
             _device.destroyFramebuffer(_framebuffer);
         }
         _framebuffer = func(_device, _render_pass);
+        _extent      = extent;
         rendering    = true;
         if (func_desc_set) {
-            func_desc_set(_descriptor_sets);
+            func_desc_set(_device, _descriptor_sets);
         }
         _command_buffer.begin(vk::CommandBufferBeginInfo());
     }

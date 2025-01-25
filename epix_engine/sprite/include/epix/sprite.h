@@ -39,7 +39,7 @@ struct SpriteVertex {
 
 struct SpriteMesh : public Mesh<SpriteVertex> {
     int smpler_id = -1;
-    EPIX_API SpriteMesh() : Mesh<SpriteVertex>(false) {}
+    EPIX_API SpriteMesh() : Mesh<SpriteVertex>(false) { set_16bit_indices(); }
     EPIX_API void set_sampler(
         const VulkanResources* res_manager, const std::string& sampler_name
     ) {
@@ -52,39 +52,42 @@ struct SpriteMesh : public Mesh<SpriteVertex> {
         const glm::mat4& model,
         const VulkanResources* res_manager
     ) {
-        int image_index = res_manager->image_index(sprite.image_name);
+        int image_index = res_manager->image_view_index(sprite.image_name);
+        if (image_index == -1) {
+            spdlog::warn("Texture not found, skipping this sprite");
+            return;
+        }
         if (smpler_id == -1) {
             spdlog::warn("Sampler not set, skipping this sprite");
             return;
         }
         int sampler_index = smpler_id;
         emplace_vertex(
-            glm::vec3(-sprite.size * sprite.center, 0.0f) +
-                glm::vec3(pos, 0.0f),
-            {0.0f, 0.0f}, color, model, image_index, sampler_index
+            glm::vec3(-sprite.size * sprite.center, 0.0f) + glm::vec3(pos),
+            glm::vec2{0.0f, 0.0f}, color, model, image_index, sampler_index
         );
         emplace_vertex(
             glm::vec3(
                 sprite.size.x * (1.0f - sprite.center.x),
                 -sprite.size.y * sprite.center.y, 0.0f
-            ) + glm::vec3(pos, 0.0f),
-            {1.0f, 0.0f}, color, model, image_index, sampler_index
+            ) + glm::vec3(pos),
+            glm::vec2{1.0f, 0.0f}, color, model, image_index, sampler_index
         );
         emplace_vertex(
             glm::vec3(
                 sprite.size.x * (1.0f - sprite.center.x),
                 sprite.size.y * (1.0f - sprite.center.y), 0.0f
-            ) + glm::vec3(pos, 0.0f),
-            {1.0f, 1.0f}, color, model, image_index, sampler_index
+            ) + glm::vec3(pos),
+            glm::vec2{1.0f, 1.0f}, color, model, image_index, sampler_index
         );
         emplace_vertex(
             glm::vec3(
                 -sprite.size.x * sprite.center.x,
                 sprite.size.y * (1.0f - sprite.center.y), 0.0f
-            ) + glm::vec3(pos, 0.0f),
-            {0.0f, 1.0f}, color, model, image_index, sampler_index
+            ) + glm::vec3(pos),
+            glm::vec2{0.0f, 1.0f}, color, model, image_index, sampler_index
         );
-        uint32_t current_index = vertex_count().value();
+        uint32_t current_index = vertex_count().value() - 1;
         emplace_index(current_index - 3);
         emplace_index(current_index - 2);
         emplace_index(current_index - 1);
@@ -104,36 +107,35 @@ struct SpriteMesh : public Mesh<SpriteVertex> {
 };
 
 using SpriteStagingMesh = StagingMesh<Mesh<SpriteVertex>>;
-struct SpriteBatch : public Batch<SpriteVertex, void> {
-    EPIX_API SpriteBatch(PipelineBase& pipeline, vk::CommandPool& pool)
-        : Batch<SpriteVertex, void>(pipeline, pool) {}
+struct SpriteBatch : public Batch<Mesh<SpriteVertex>, void> {
+    EPIX_API SpriteBatch(PipelineBase& pipeline, backend::CommandPool& pool);
     EPIX_API void begin(
         std::function<vk::Framebuffer(backend::Device&, backend::RenderPass&)>
             func,
         vk::Extent2D extent,
+        backend::Buffer uniform_buffer,
         const VulkanResources* res_manager
-    ) {
-        Batch<SpriteVertex, void>::begin(
-            func, extent,
-            [&](auto& device, auto& sets) {
-                sets.resize(1);
-                sets[0] = res_manager->get_descriptor_set();
-            }
-        );
-    }
+    );
     EPIX_API void begin(
         std::function<vk::Framebuffer(backend::Device&, backend::RenderPass&)>
             func,
         vk::Extent2D extent,
+        backend::Buffer uniform_buffer,
         Res<VulkanResources> res_manager
-    ) {
-        begin(func, extent, res_manager.get());
-    }
+    );
 };
 
 struct SpritePipeline : public PipelineBase {
-    EPIX_API SpritePipeline(Device& device);
+    EPIX_API SpritePipeline(backend::Device& device);
 };
+
+namespace systems {
+EPIX_API void create_pipeline(
+    Command cmd, Res<epix::render::vulkan2::RenderContext> context
+);
+EPIX_API void destroy_pipeline(Command cmd, ResMut<SpritePipeline> pipeline);
+EPIX_API void extract_pipeline(ResMut<SpritePipeline> pipeline, Command cmd);
+}  // namespace systems
 
 }  // namespace vulkan2
 }  // namespace sprite

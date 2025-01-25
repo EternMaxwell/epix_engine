@@ -1,7 +1,7 @@
 #include "epix/rdvk.h"
 
 static std::shared_ptr<spdlog::logger> logger =
-    spdlog::default_logger()->clone("font");
+    spdlog::default_logger()->clone("vk-res");
 
 namespace epix::render::vulkan2 {
 using Device               = backend::Device;
