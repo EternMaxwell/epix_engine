@@ -56,9 +56,13 @@ EPIX_API SpritePipeline::SpritePipeline(backend::Device& device)
                 .setDescriptorCount(256)
         };
         return device.createDescriptorPool(
-            vk::DescriptorPoolCreateInfo().setMaxSets(256).setPoolSizes(
-                pool_sizes
-            )
+            vk::DescriptorPoolCreateInfo()
+                .setMaxSets(256)
+                .setPoolSizes(pool_sizes)
+                .setFlags(
+                    vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet |
+                    vk::DescriptorPoolCreateFlagBits::eUpdateAfterBind
+                )
         );
     });
 }
