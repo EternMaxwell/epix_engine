@@ -45,26 +45,13 @@ struct DebugMesh : public epix::render::vulkan2::Mesh<DebugVertex> {
 };
 using DebugStagingMesh = epix::render::vulkan2::StagingMesh<
     epix::render::vulkan2::Mesh<DebugVertex>>;
-struct DebugBatch
-    : epix::render::vulkan2::
-          Batch<epix::render::vulkan2::Mesh<DebugVertex>, glm::mat4> {
-    DebugBatch(
-        epix::render::vulkan2::PipelineBase& pipeline, vk::CommandPool& pool
-    )
-        : epix::render::vulkan2::
-              Batch<epix::render::vulkan2::Mesh<DebugVertex>, glm::mat4>(
-                  pipeline, pool
-              ) {}
-};
 
 struct DebugPipelines {
     epix::render::vulkan2::PipelineBase point_pipeline;
     epix::render::vulkan2::PipelineBase line_pipeline;
     epix::render::vulkan2::PipelineBase triangle_pipeline;
 
-    EPIX_API DebugPipelines(Device device);
-    EPIX_API void create();
-    EPIX_API void destroy();
+    EPIX_API DebugPipelines();
 };
 namespace systems {
 EPIX_API void create_pipelines(

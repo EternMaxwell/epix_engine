@@ -5,17 +5,6 @@
 using namespace epix;
 using namespace epix::sprite::vulkan2;
 
-void create_batch_and_mesh(
-    Command cmd,
-    ResMut<SpritePipeline> pipeline,
-    ResMut<epix::render::vulkan2::RenderContext> context
-) {
-    SpriteBatch batch(*pipeline, context->command_pool);
-    SpriteStagingMesh mesh(context->device);
-    cmd.insert_resource(std::move(batch));
-    cmd.insert_resource(std::move(mesh));
-}
-
 void create_test_texture(
     ResMut<epix::render::vulkan2::RenderContext> context,
     ResMut<epix::render::vulkan2::VulkanResources> res_manager
@@ -173,7 +162,6 @@ void create_sampler(ResMut<epix::render::vulkan2::VulkanResources> res_manager
 void prepare_mesh(
     Command cmd,
     ResMut<SpriteStagingMesh> mesh,
-    ResMut<SpriteBatch> batch,
     Res<VulkanResources> res_manager
 ) {
     Sprite sprite;
@@ -209,49 +197,6 @@ void create_uniform_buffer(
     res_manager->add_buffer("uniform_buffer", buffer);
 }
 
-void draw_mesh(
-    Command cmd,
-    ResMut<SpriteBatch> batch,
-    ResMut<SpriteStagingMesh> mesh,
-    Res<epix::render::vulkan2::VulkanResources> res_manager,
-    ResMut<epix::render::vulkan2::RenderContext> context
-) {
-    batch->begin(
-        [&](auto& device, auto& render_pass) {
-            return device.createFramebuffer(
-                vk::FramebufferCreateInfo()
-                    .setRenderPass(render_pass)
-                    .setAttachments(
-                        context->primary_swapchain.current_image_view()
-                    )
-                    .setWidth(context->primary_swapchain.extent().width)
-                    .setHeight(context->primary_swapchain.extent().height)
-                    .setLayers(1)
-            );
-        },
-        context->primary_swapchain.extent(),
-        res_manager->get_buffer("uniform_buffer"), res_manager.get()
-    );
-    batch->draw(*mesh);
-    batch->end(context->queue);
-}
-
-void extract_mesh_batch(
-    ResMut<SpriteBatch> batch, ResMut<SpriteStagingMesh> mesh, Command cmd
-) {
-    cmd.share_resource(batch);
-    cmd.share_resource(mesh);
-}
-
-void destroy_batch_mesh(
-    ResMut<epix::render::vulkan2::RenderContext> context,
-    ResMut<SpriteBatch> batch,
-    ResMut<SpriteStagingMesh> mesh
-) {
-    batch->destroy();
-    mesh->destroy();
-}
-
 int main() {
     App app = App::create2();
     app.add_plugin(epix::window::WindowPlugin{});
@@ -262,11 +207,8 @@ int main() {
     app.add_plugin(epix::input::InputPlugin{});
     app.add_plugin(epix::sprite::SpritePluginVK{});
     app.add_system(
-        Startup, create_batch_and_mesh, create_test_texture, create_sampler,
-        create_uniform_buffer
+        Startup, create_test_texture, create_sampler, create_uniform_buffer
     );
-    app.add_system(Extraction, prepare_mesh, extract_mesh_batch);
-    app.add_system(Render, draw_mesh);
-    app.add_system(Exit, destroy_batch_mesh);
+    app.add_system(Extraction, prepare_mesh);
     app.run();
 }

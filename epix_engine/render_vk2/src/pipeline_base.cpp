@@ -2,8 +2,9 @@
 
 namespace epix::render::vulkan2 {
 using namespace epix::render::vulkan2::backend;
-EPIX_API PipelineBase::PipelineBase(Device& device)
+EPIX_API PipelineBase::PipelineBase()
     : device(device),
+      render_pass(render_pass),
       func_rasterization_state([]() {
           return vk::PipelineRasterizationStateCreateInfo()
               .setDepthClampEnable(false)
@@ -63,12 +64,6 @@ EPIX_API PipelineBase::PipelineBase(Device& device)
               vk::DynamicState::eViewport, vk::DynamicState::eScissor
           };
       }) {}
-EPIX_API void PipelineBase::create_render_pass() {
-    if (!func_create_render_pass) {
-        throw std::runtime_error("No render pass creation function provided");
-    }
-    render_pass = func_create_render_pass(device);
-}
 EPIX_API void PipelineBase::create_descriptor_pool() {
     if (func_create_descriptor_pool)
         descriptor_pool = func_create_descriptor_pool(device);
@@ -115,7 +110,7 @@ EPIX_API void PipelineBase::create_layout() {
     layout_info.setSetLayouts(set_layouts);
     pipeline_layout = device.createPipelineLayout(layout_info);
 }
-EPIX_API void PipelineBase::create_pipeline(uint32_t subpass) {
+EPIX_API void PipelineBase::create_pipeline() {
     if (!func_vertex_input_bindings) {
         spdlog::error("No vertex input bindings function provided");
         throw std::runtime_error("No vertex input bindings function provided");
@@ -123,7 +118,7 @@ EPIX_API void PipelineBase::create_pipeline(uint32_t subpass) {
     vk::GraphicsPipelineCreateInfo pipeline_info;
     pipeline_info.setLayout(pipeline_layout);
     pipeline_info.setRenderPass(render_pass);
-    pipeline_info.setSubpass(subpass);
+    pipeline_info.setSubpass(subpass_index);
 
     std::vector<vk::ShaderModule> modules;
     for (auto& [stage, source] : shader_sources) {
@@ -228,13 +223,28 @@ EPIX_API void PipelineBase::destroy() {
     }
     device.destroyPipelineLayout(pipeline_layout);
     device.destroyPipeline(pipeline);
-    device.destroyRenderPass(render_pass);
     if (descriptor_pool) device.destroyDescriptorPool(descriptor_pool);
 }
 EPIX_API void PipelineBase::create() {
-    if (!func_create_render_pass) {
-        spdlog::error("No render pass creation function provided");
-        throw std::runtime_error("No render pass creation function provided");
+    if (!device) {
+        spdlog::error(
+            "No device provided, make sure this is called inside a pass base."
+        );
+        throw std::runtime_error("No device provided");
+    }
+    if (!render_pass) {
+        spdlog::error(
+            "No render pass provided, make sure this is called inside a pass "
+            "base."
+        );
+        throw std::runtime_error("No render pass provided");
+    }
+    if (subpass_index == -1) {
+        spdlog::error(
+            "No subpass index provided, make sure this is called inside a pass "
+            "base."
+        );
+        throw std::runtime_error("No subpass index provided");
     }
     if (shader_sources.size() == 0) {
         spdlog::error("No shaders provided");
@@ -257,16 +267,9 @@ EPIX_API void PipelineBase::create() {
         // this will not throw in case this is intended
     }
 
-    create_render_pass();
     create_descriptor_pool();
     create_layout();
     create_pipeline();
-}
-EPIX_API PipelineBase& PipelineBase::set_render_pass(
-    std::function<backend::RenderPass(backend::Device&)> func
-) {
-    func_create_render_pass = func;
-    return *this;
 }
 EPIX_API PipelineBase& PipelineBase::set_descriptor_pool(
     std::function<backend::DescriptorPool(backend::Device&)> func

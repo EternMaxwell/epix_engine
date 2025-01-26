@@ -6,42 +6,8 @@ using namespace epix::render::debug;
 
 using namespace epix::render::debug::vulkan2;
 
-EPIX_API DebugPipelines::DebugPipelines(Device device)
-    : point_pipeline(device), line_pipeline(device), triangle_pipeline(device) {
-    auto create_render_pass_func = [](Device& device) {
-        return device.createRenderPass(
-            vk::RenderPassCreateInfo()
-                .setAttachments(
-                    vk::AttachmentDescription()
-                        .setFormat(vk::Format::eR8G8B8A8Srgb)
-                        .setSamples(vk::SampleCountFlagBits::e1)
-                        .setLoadOp(vk::AttachmentLoadOp::eLoad)
-                        .setStoreOp(vk::AttachmentStoreOp::eStore)
-                        .setStencilLoadOp(vk::AttachmentLoadOp::eDontCare)
-                        .setStencilStoreOp(vk::AttachmentStoreOp::eDontCare)
-                        .setInitialLayout(
-                            vk::ImageLayout::eColorAttachmentOptimal
-                        )
-                        .setFinalLayout(vk::ImageLayout::eColorAttachmentOptimal
-                        )
-                )
-                .setSubpasses(
-                    vk::SubpassDescription()
-                        .setPipelineBindPoint(vk::PipelineBindPoint::eGraphics)
-                        .setColorAttachmentCount(1)
-                        .setPColorAttachments(
-                            &vk::AttachmentReference()
-                                 .setAttachment(0)
-                                 .setLayout(
-                                     vk::ImageLayout::eColorAttachmentOptimal
-                                 )
-                        )
-                )
-        );
-    };
-    point_pipeline.set_render_pass(create_render_pass_func);
-    line_pipeline.set_render_pass(create_render_pass_func);
-    triangle_pipeline.set_render_pass(create_render_pass_func);
+EPIX_API DebugPipelines::DebugPipelines()
+    : point_pipeline(), line_pipeline(), triangle_pipeline() {
     auto create_descriptor_pool_func = [](Device& device) {
         vk::DescriptorPoolSize pool_size =
             vk::DescriptorPoolSize()
@@ -100,16 +66,4 @@ EPIX_API DebugPipelines::DebugPipelines(Device device)
     line_pipeline.set_default_topology(vk::PrimitiveTopology::eLineList);
     triangle_pipeline.set_default_topology(vk::PrimitiveTopology::eTriangleList
     );
-}
-
-EPIX_API void DebugPipelines::create() {
-    point_pipeline.create();
-    line_pipeline.create();
-    triangle_pipeline.create();
-}
-
-EPIX_API void DebugPipelines::destroy() {
-    point_pipeline.destroy();
-    line_pipeline.destroy();
-    triangle_pipeline.destroy();
 }

@@ -47,22 +47,3 @@ EPIX_API void TextMesh::draw_text(
 ) {
     draw_text(text, pos, font_atlas.get(), res_manager.get());
 }
-
-EPIX_API TextBatch::TextBatch(PipelineBase& pipeline, vk::CommandPool& pool)
-    : Batch<Mesh<TextVertex>, glm::mat4>(
-          pipeline,
-          pool,
-          [](auto& device, auto& pool, auto& set_layouts) {
-              std::vector<vk::DescriptorSet> sets;
-              sets.resize(2);
-              sets[0] = device.allocateDescriptorSets(
-                  vk::DescriptorSetAllocateInfo()
-                      .setDescriptorPool(pool)
-                      .setSetLayouts(set_layouts[0])
-              )[0];
-              return sets;
-          },
-          [](auto& device, auto& pool, auto& sets) {
-              device.freeDescriptorSets(pool, sets[0]);
-          }
-      ) {}

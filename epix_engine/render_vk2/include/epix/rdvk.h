@@ -787,6 +787,7 @@ struct GPUMesh<Mesh<VertT, Ts...>> {
     backend::Buffer vertex_buffer(size_t I = 0) const {
         return _vertex_buffers[I];
     }
+    auto&& vertex_buffers() { return _vertex_buffers; }
     backend::Buffer index_buffer() const { return _index_buffer; }
     size_t index_buffer_size() const { return _index_buffer_size; }
     size_t vertex_buffer_size(size_t I = 0) const { return _buffer_sizes[I]; }
@@ -942,6 +943,7 @@ struct GPUMesh<StagingMesh<Mesh<VertT, Ts...>>> {
     backend::Buffer vertex_buffer(size_t I = 0) const {
         return _vertex_buffers[I];
     }
+    auto&& vertex_buffers() { return _vertex_buffers; }
     backend::Buffer index_buffer() const { return _index_buffer; }
     vk::IndexType index_type() const { return _index_type; }
     size_t index_buffer_size() const { return _index_buffer_size; }
@@ -951,17 +953,17 @@ struct GPUMesh<StagingMesh<Mesh<VertT, Ts...>>> {
     std::optional<size_t> instance_count() const { return _instance_count; }
     std::optional<size_t> index_count() const { return _index_count; }
 };
-template <typename MeshT, typename PushConstantT>
-struct Batch {};
+
+struct Subpass;
+struct PassBase;
+struct Pass;
+
 struct PipelineBase {
    public:
-    EPIX_API PipelineBase(backend::Device& device);
+    EPIX_API PipelineBase();
     EPIX_API void create();
     EPIX_API void destroy();
 
-    EPIX_API PipelineBase& set_render_pass(
-        std::function<backend::RenderPass(backend::Device&)> func
-    );
     EPIX_API PipelineBase& set_descriptor_pool(
         std::function<backend::DescriptorPool(backend::Device&)> func
     );
@@ -1004,6 +1006,7 @@ struct PipelineBase {
    private:
     backend::Device device;
     backend::RenderPass render_pass;
+    uint32_t subpass_index = -1;
     backend::Pipeline pipeline;
     backend::PipelineLayout pipeline_layout;
     std::vector<backend::DescriptorSetLayout> descriptor_set_layouts;
@@ -1014,8 +1017,6 @@ struct PipelineBase {
     std::vector<std::pair<vk::ShaderStageFlagBits, std::vector<uint32_t>>>
         shader_sources;
 
-    std::function<backend::RenderPass(backend::Device&)>
-        func_create_render_pass;
     std::function<backend::DescriptorPool(backend::Device&)>
         func_create_descriptor_pool;
 
@@ -1039,639 +1040,288 @@ struct PipelineBase {
         func_color_blend_state;
     std::function<std::vector<vk::DynamicState>()> func_dynamic_states;
 
-    EPIX_API void create_render_pass();
     EPIX_API void create_descriptor_pool();
     EPIX_API void create_layout();
-    EPIX_API void create_pipeline(uint32_t subpass = 0);
+    EPIX_API void create_pipeline();
 
-    template <typename MeshT, typename PushConstantT>
-    friend struct Batch;
+    friend struct Subpass;
+    friend struct PassBase;
+    friend struct Pass;
 };
-template <typename... Ts, typename PushConstantT>
-struct Batch<Mesh<Ts...>, PushConstantT> {
-    using mesh_t           = Mesh<Ts...>;
-    using staging_mesh_t   = StagingMesh<mesh_t>;
-    using gpu_mesh_t       = GPUMesh<mesh_t>;
-    using dedicated_mesh_t = GPUMesh<staging_mesh_t>;
+
+struct PassBase {
+   protected:
+    backend::Device _device;
+    backend::RenderPass _render_pass;
+    std::vector<vk::AttachmentDescription> _attachments;
+
+    struct SubpassInfo {
+        vk::PipelineBindPoint bind_point = vk::PipelineBindPoint::eGraphics;
+        std::vector<vk::AttachmentReference> color_attachments;
+        std::optional<vk::AttachmentReference> depth_attachment;
+        std::vector<vk::AttachmentReference> resolve_attachment;
+        std::vector<vk::AttachmentReference> input_attachments;
+        std::vector<uint32_t> preserve_attachments;
+
+        EPIX_API SubpassInfo& set_bind_point(vk::PipelineBindPoint bind_point);
+        EPIX_API SubpassInfo& set_colors(
+            const vk::ArrayProxy<const vk::AttachmentReference>& attachments
+        );
+        EPIX_API SubpassInfo& set_depth(vk::AttachmentReference attachment);
+        EPIX_API SubpassInfo& set_resolves(
+            const vk::ArrayProxy<const vk::AttachmentReference>& attachments
+        );
+        EPIX_API SubpassInfo& set_inputs(
+            const vk::ArrayProxy<const vk::AttachmentReference>& attachments
+        );
+        EPIX_API SubpassInfo& set_preserves(
+            const vk::ArrayProxy<const uint32_t>& attachments
+        );
+    };
+
+    std::vector<SubpassInfo> _subpasses;
+    std::vector<vk::SubpassDependency> _dependencies;
+
+    std::vector<std::vector<std::unique_ptr<PipelineBase>>> _pipelines;
+    std::vector<entt::dense_map<std::string, uint32_t>> _pipeline_maps;
+
+    EPIX_API PassBase(backend::Device& device);
+    EPIX_API void create();
 
    public:
-    void update_descriptor_sets(
-        std::function<void(std::vector<backend::DescriptorSet>&)> func
-    ) {
-        if (!rendering) {
-            spdlog::warn(
-                "Batch::update_descriptor_sets called outside of "
-                "rendering context"
-            );
-            return;
-        }
-        func(_descriptor_sets);
-    }
-    void update_descriptor_sets(
+    EPIX_API static PassBase* create_new(
+        backend::Device& device, std::function<void(PassBase&)> pass_setup
+    );
+    EPIX_API static std::unique_ptr<PassBase> create_unique(
+        backend::Device& device, std::function<void(PassBase&)> pass_setup
+    );
+    EPIX_API static std::shared_ptr<PassBase> create_shared(
+        backend::Device& device, std::function<void(PassBase&)> pass_setup
+    );
+    EPIX_API static PassBase* create_simple(backend::Device& device);
+    EPIX_API static PassBase* create_simple_depth(backend::Device& device);
+
+    EPIX_API void set_attachments(
+        const vk::ArrayProxy<const vk::AttachmentDescription>& attachments
+    );
+    EPIX_API void set_dependencies(
+        const vk::ArrayProxy<const vk::SubpassDependency>& dependencies
+    );
+
+    EPIX_API SubpassInfo& subpass_info(uint32_t index);
+
+    EPIX_API uint32_t add_pipeline(
+        uint32_t subpass,
+        const std::string& name,
+        std::function<void(PipelineBase&)> pipeline_setup
+    );
+
+    EPIX_API uint32_t add_pipeline(
+        uint32_t subpass, const std::string& name, PipelineBase* pipeline
+    );
+
+    EPIX_API uint32_t pipeline_index(uint32_t subpass, const std::string& name);
+
+    EPIX_API PipelineBase* get_pipeline(uint32_t subpass, uint32_t index);
+
+    EPIX_API PipelineBase* get_pipeline(
+        uint32_t subpass, const std::string& name
+    );
+
+    EPIX_API void destroy();
+
+    EPIX_API uint32_t subpass_count() const;
+
+    friend struct Pass;
+    friend struct Subpass;
+};
+
+struct Subpass {
+    backend::CommandBuffer _cmd;
+
+    backend::Device _device;
+    std::vector<const PipelineBase*> _pipelines;
+    std::vector<std::vector<vk::Viewport>> _viewports;
+    std::vector<std::vector<vk::Rect2D>> _scissors;
+    std::vector<std::vector<backend::DescriptorSet>> _descriptor_sets;
+    std::vector<std::function<
+        void(backend::Device&, const backend::DescriptorPool&, std::vector<backend::DescriptorSet>&)>>
+        _funcs_destroy_desc_set;
+    uint32_t _active_pipeline = -1;
+
+    EPIX_API void activate_pipeline(
+        uint32_t index,
         std::function<
-            void(backend::Device&, std::vector<backend::DescriptorSet>&)> func
-    ) {
-        if (!rendering) {
-            spdlog::warn(
-                "Batch::update_descriptor_sets called outside of "
-                "rendering context"
-            );
-            return;
-        }
-        func(_device, _descriptor_sets);
-    }
-    void update_descriptor_sets(
-        std::vector<vk::WriteDescriptorSet> writes,
-        std::vector<vk::CopyDescriptorSet> copies = {}
-    ) {
-        if (!rendering) {
-            spdlog::warn(
-                "Batch::update_descriptor_sets called outside of "
-                "rendering context"
-            );
-            return;
-        }
-        _device.updateDescriptorSets(writes, copies);
-    }
-    void begin(
-        std::function<
-            backend::Framebuffer(backend::Device&, backend::RenderPass&)> func,
-        vk::Extent2D extent,
+            void(std::vector<vk::Viewport>&, std::vector<vk::Rect2D>&)>
+            func_viewport_scissor,
         std::function<
             void(backend::Device&, std::vector<backend::DescriptorSet>&)>
             func_desc = {}
-    ) {
-        _device.waitForFences(_fence, true, UINT64_MAX);
-        _device.resetFences(_fence);
-        _command_buffer.reset(vk::CommandBufferResetFlagBits::eReleaseResources
-        );
-        if (_framebuffer) {
-            _device.destroyFramebuffer(_framebuffer);
-        }
-        _framebuffer = func(_device, _render_pass);
-        _extent      = extent;
-        rendering    = true;
-        if (func_desc) {
-            func_desc(_device, _descriptor_sets);
-        }
-        _command_buffer.begin(vk::CommandBufferBeginInfo());
-    }
-    void draw(const staging_mesh_t& mesh, const PushConstantT& push_constant) {
-        if (!rendering) {
-            spdlog::warn("Batch::draw called outside of rendering context");
-            return;
-        }
-        if (!mesh.vertex_count()) {
-            spdlog::warn(
-                "Batch::draw called with invalid mesh, vertex count in "
-                "different bindings may be different"
-            );
-            return;
-        }
-        if (!mesh.instance_count()) {
-            spdlog::warn(
-                "Batch::draw called with invalid mesh, instance count in "
-                "different bindings may be different"
-            );
-            return;
-        }
-        _mesh.update(mesh, _command_buffer);
-        draw(_mesh, push_constant);
-    }
-    void draw(const gpu_mesh_t& mesh, const PushConstantT& push_constant) {
-        if (!rendering) {
-            spdlog::warn("Batch::draw called outside of rendering context");
-            return;
-        }
-        if (!mesh.vertex_count()) {
-            spdlog::warn(
-                "Batch::draw called with invalid mesh, vertex count in "
-                "different bindings may be different"
-            );
-            return;
-        }
-        if (!mesh.instance_count()) {
-            spdlog::warn(
-                "Batch::draw called with invalid mesh, instance count in "
-                "different bindings may be different"
-            );
-            return;
-        }
-        begin_pipeline();
-        _command_buffer.pushConstants(
-            _pipeline_layout, _push_constant_stage, 0, sizeof(PushConstantT),
-            &push_constant
-        );
-        std::vector<vk::Buffer> vertex_buffers;
-        std::vector<vk::DeviceSize> offsets;
-        vertex_buffers.reserve(mesh.vertex_bindings());
-        offsets.reserve(mesh.vertex_bindings());
-        for (size_t i = 0; i < mesh.vertex_bindings(); i++) {
-            vertex_buffers.push_back(mesh.vertex_buffer(i).buffer);
-            offsets.push_back(0);
-        }
-        _command_buffer.bindVertexBuffers(0, vertex_buffers, offsets);
-        if (mesh.index_buffer() && mesh.index_count()) {
-            vk::Buffer index_buffer = mesh.index_buffer().buffer;
-            _command_buffer.bindIndexBuffer(index_buffer, 0, mesh.index_type());
-            _command_buffer.drawIndexed(
-                mesh.index_count().value(), mesh.instance_count().value(), 0, 0,
-                0
-            );
-        } else {
-            _command_buffer.draw(
-                mesh.vertex_count().value(), mesh.instance_count().value(), 0, 0
-            );
-        }
-        end_pipeline();
-    }
-    void draw(
-        const dedicated_mesh_t& mesh, const PushConstantT& push_constant
-    ) {
-        if (!rendering) {
-            spdlog::warn("Batch::draw called outside of rendering context");
-            return;
-        }
-        if (!mesh.vertex_count()) {
-            spdlog::warn(
-                "Batch::draw called with invalid mesh, vertex count in "
-                "different bindings may be different"
-            );
-            return;
-        }
-        if (!mesh.instance_count()) {
-            spdlog::warn(
-                "Batch::draw called with invalid mesh, instance count in "
-                "different bindings may be different"
-            );
-            return;
-        }
-        begin_pipeline();
-        _command_buffer.pushConstants(
-            _pipeline_layout, _push_constant_stage, 0, sizeof(PushConstantT),
-            &push_constant
-        );
-        std::vector<vk::Buffer> vertex_buffers;
-        std::vector<vk::DeviceSize> offsets;
-        vertex_buffers.reserve(mesh.vertex_bindings());
-        offsets.reserve(mesh.vertex_bindings());
-        for (size_t i = 0; i < mesh.vertex_bindings(); i++) {
-            vertex_buffers.push_back(mesh.vertex_buffer(i).buffer);
-            offsets.push_back(0);
-        }
-        _command_buffer.bindVertexBuffers(0, vertex_buffers, offsets);
-        if (mesh.index_buffer() && mesh.index_count()) {
-            vk::Buffer index_buffer = mesh.index_buffer().buffer;
-            _command_buffer.bindIndexBuffer(index_buffer, 0, mesh.index_type());
-            _command_buffer.drawIndexed(
-                mesh.index_count().value(), mesh.instance_count().value(), 0, 0,
-                0
-            );
-        } else {
-            _command_buffer.draw(
-                mesh.vertex_count().value(), mesh.instance_count().value(), 0, 0
-            );
-        }
-        end_pipeline();
-    }
-    void end(backend::Queue& queue) {
-        _command_buffer.end();
-        rendering = false;
-        queue.submit(
-            vk::SubmitInfo().setCommandBuffers(_command_buffer), _fence
-        );
-    }
+    );
 
-    Batch(
-        PipelineBase& pipeline,
-        backend::CommandPool& command_pool,
+    Subpass() = default;
+
+    EPIX_API uint32_t add_pipeline(
+        const PipelineBase* pipeline,
         std::function<std::vector<
             backend::
-                DescriptorSet>(backend::Device&, backend::DescriptorPool&, std::vector<backend::DescriptorSetLayout>&)>
+                DescriptorSet>(backend::Device&, const backend::DescriptorPool&, const std::vector<backend::DescriptorSetLayout>&)>
             func_desc_set = {},
         std::function<
-            void(backend::Device&, backend::DescriptorPool&, std::vector<backend::DescriptorSet>&)>
+            void(backend::Device&, const backend::DescriptorPool&, std::vector<backend::DescriptorSet>&)>
             func_destroy_desc_set = {}
-    )
-        : Batch(
-              pipeline.device,
-              command_pool,
-              pipeline.render_pass,
-              pipeline.pipeline,
-              pipeline.pipeline_layout,
-              pipeline.descriptor_pool
-          ) {
-        _push_constant_stage   = pipeline.push_constant_stage;
-        _func_destroy_desc_set = func_destroy_desc_set;
-        if (func_desc_set) {
-            _descriptor_sets = func_desc_set(
-                _device, pipeline.descriptor_pool,
-                pipeline.descriptor_set_layouts
+    );
+
+    EPIX_API Subpass(Pass& pass);
+    EPIX_API void destroy();
+
+    EPIX_API void begin(backend::CommandBuffer& cmd);
+    EPIX_API void task(std::function<void(backend::CommandBuffer&)> func);
+
+    template <typename MeshTs>
+        requires requires(GPUMesh<MeshTs> mesh) {
+            mesh.vertex_buffers();
+            mesh.index_buffer();
+            mesh.index_count();
+            mesh.vertex_count();
+            mesh.instance_count();
+        }
+    void draw(const GPUMesh<MeshTs>& mesh) {
+        if (_active_pipeline == -1) {
+            spdlog::warn("Subpass::draw called without activating pipeline");
+            return;
+        }
+        std::vector<vk::DeviceSize> offsets(mesh.vertex_buffers().size(), 0);
+        _cmd.bindVertexBuffers(0, mesh.vertex_buffers(), offsets);
+        if (mesh.index_buffer() && mesh.index_count()) {
+            _cmd.bindIndexBuffer(
+                mesh.index_buffer().buffer, 0, mesh.index_buffer_size()
             );
-        } else if (pipeline.descriptor_pool) {
-            _descriptor_sets = _device.allocateDescriptorSets(
-                vk::DescriptorSetAllocateInfo()
-                    .setDescriptorPool(pipeline.descriptor_pool)
-                    .setSetLayouts(pipeline.descriptor_set_layouts)
+            _cmd.drawIndexed(
+                mesh.index_count().value(), mesh.instance_count().value(), 0, 0,
+                0
+            );
+        } else {
+            _cmd.draw(
+                mesh.vertex_count().value(), mesh.instance_count().value(), 0, 0
             );
         }
     }
-
-    void destroy() {
-        _device.waitForFences(_fence, true, UINT64_MAX);
-        if (_framebuffer) {
-            _device.destroyFramebuffer(_framebuffer);
+    template <typename MeshTs, typename PushConstantT>
+        requires requires(GPUMesh<MeshTs> mesh) {
+            mesh.vertex_buffers();
+            mesh.index_buffer();
+            mesh.index_count();
+            mesh.vertex_count();
+            mesh.instance_count();
         }
-        if (_func_destroy_desc_set) {
-            _func_destroy_desc_set(_device, _descriptor_pool, _descriptor_sets);
+    void draw(const GPUMesh<MeshTs>& mesh, const PushConstantT& push_constant) {
+        if (_active_pipeline == -1) {
+            spdlog::warn("Subpass::draw called without activating pipeline");
+            return;
         }
-        _device.destroyFence(_fence);
-        _device.freeCommandBuffers(_command_pool, _command_buffer);
-        _mesh.destroy();
+        auto pipeline = _pipelines[_active_pipeline];
+        std::vector<vk::DeviceSize> offsets(mesh.vertex_buffers().size(), 0);
+        _cmd.pushConstants(
+            pipeline->pipeline_layout, pipeline->push_constant_stage, 0,
+            sizeof(PushConstantT), &push_constant
+        );
+        _cmd.bindVertexBuffers(0, mesh.vertex_buffers(), offsets);
+        if (mesh.index_buffer() && mesh.index_count()) {
+            _cmd.bindIndexBuffer(
+                mesh.index_buffer().buffer, 0, mesh.index_buffer_size()
+            );
+            _cmd.drawIndexed(
+                mesh.index_count().value(), mesh.instance_count().value(), 0, 0,
+                0
+            );
+        } else {
+            _cmd.draw(
+                mesh.vertex_count().value(), mesh.instance_count().value(), 0, 0
+            );
+        }
     }
+};
 
-   private:
+struct Pass {
     backend::Device _device;
-    backend::CommandPool _command_pool;
-
+    backend::CommandPool _cmd_pool;
     backend::RenderPass _render_pass;
-    backend::Pipeline _pipeline;
-    backend::PipelineLayout _pipeline_layout;
-    backend::DescriptorPool _descriptor_pool;
+    const uint32_t _subpass_count;
+    std::vector<Subpass> _subpasses;
+    PassBase* _base;
 
-    vk::ShaderStageFlags _push_constant_stage;
-
-    std::vector<backend::DescriptorSet> _descriptor_sets;
-    std::function<
-        void(backend::Device&, backend::DescriptorPool&, std::vector<backend::DescriptorSet>&)>
-        _func_destroy_desc_set;
-
-    backend::CommandBuffer _command_buffer;
+    backend::CommandBuffer _cmd;
     backend::Fence _fence;
 
     backend::Framebuffer _framebuffer;
     vk::Extent2D _extent;
 
-    dedicated_mesh_t _mesh;
+    bool recording           = false;
+    bool in_render_pass      = false;
+    bool ready               = false;
+    uint32_t current_subpass = 0;
 
-    bool rendering = false;
-
-    Batch(
-        backend::Device& device,
+    EPIX_API Pass(
+        PassBase* base,
         backend::CommandPool& command_pool,
-        backend::RenderPass& render_pass,
-        backend::Pipeline& pipeline,
-        backend::PipelineLayout& pipeline_layout,
-        backend::DescriptorPool& descriptor_pool
-    )
-        : _mesh(device),
-          _device(device),
-          _command_pool(command_pool),
-          _render_pass(render_pass),
-          _pipeline(pipeline),
-          _pipeline_layout(pipeline_layout),
-          _descriptor_pool(descriptor_pool) {
-        _command_buffer = _device.allocateCommandBuffers(
-            vk::CommandBufferAllocateInfo()
-                .setCommandPool(_command_pool)
-                .setCommandBufferCount(1)
-                .setLevel(vk::CommandBufferLevel::ePrimary)
-        )[0];
-        _fence = _device.createFence(
-            vk::FenceCreateInfo().setFlags(vk::FenceCreateFlagBits::eSignaled)
-        );
-    }
+        std::function<void(Pass&, PassBase&)> subpass_setup
+    );
 
-    void begin_pipeline() {
-        vk::RenderPassBeginInfo render_pass_info;
-        render_pass_info.setRenderPass(_render_pass);
-        render_pass_info.setFramebuffer(_framebuffer);
-        render_pass_info.setRenderArea(vk::Rect2D().setExtent(_extent));
-        _command_buffer.beginRenderPass(
-            render_pass_info, vk::SubpassContents::eInline
-        );
-        _command_buffer.bindPipeline(
-            vk::PipelineBindPoint::eGraphics, _pipeline
-        );
-        _command_buffer.bindDescriptorSets(
-            vk::PipelineBindPoint::eGraphics, _pipeline_layout, 0,
-            _descriptor_sets, {}
-        );
-        _command_buffer.setViewport(
-            0, vk::Viewport()
-                   .setWidth(_extent.width)
-                   .setHeight(_extent.height)
-                   .setMaxDepth(1.0f)
-        );
-        _command_buffer.setScissor(0, vk::Rect2D().setExtent(_extent));
-    }
-    void end_pipeline() { _command_buffer.endRenderPass(); }
-};
-template <typename... Ts>
-struct Batch<Mesh<Ts...>, void> {
-    using mesh_t           = Mesh<Ts...>;
-    using staging_mesh_t   = StagingMesh<mesh_t>;
-    using gpu_mesh_t       = GPUMesh<mesh_t>;
-    using dedicated_mesh_t = GPUMesh<staging_mesh_t>;
+    EPIX_API Pass& add_subpass(
+        uint32_t index,
+        std::function<void(PassBase&, Pass&, Subpass&)> subpass_setup = {}
+    );
 
-   public:
-    void update_descriptor_sets(
-        std::function<void(std::vector<backend::DescriptorSet>&)> func
-    ) {
-        if (!rendering) {
-            spdlog::warn(
-                "Batch::update_descriptor_sets called outside of "
-                "rendering context"
-            );
-            return;
-        }
-        func(_descriptor_sets);
-    }
-    void update_descriptor_sets(
+    EPIX_API uint32_t subpass_add_pipeline(
+        uint32_t subpass_index,
+        uint32_t pipeline_index,
+        std::function<std::vector<
+            backend::
+                DescriptorSet>(backend::Device&, const backend::DescriptorPool&, const std::vector<backend::DescriptorSetLayout>&)>
+            func_desc_set = {},
         std::function<
-            void(backend::Device&, std::vector<backend::DescriptorSet>&)> func
-    ) {
-        if (!rendering) {
-            spdlog::warn(
-                "Batch::update_descriptor_sets called outside of "
-                "rendering context"
-            );
-            return;
-        }
-        func(_device, _descriptor_sets);
-    }
-    void update_descriptor_sets(
-        std::vector<vk::WriteDescriptorSet> writes,
-        std::vector<vk::CopyDescriptorSet> copies = {}
-    ) {
-        if (!rendering) {
-            spdlog::warn(
-                "Batch::update_descriptor_sets called outside of "
-                "rendering context"
-            );
-            return;
-        }
-        _device.updateDescriptorSets(writes, copies);
-    }
-    void begin(
+            void(backend::Device&, const backend::DescriptorPool&, std::vector<backend::DescriptorSet>&)>
+            func_destroy_desc_set = {}
+    );
+
+    EPIX_API uint32_t subpass_add_pipeline(
+        uint32_t subpass_index,
+        const std::string& pipeline_name,
+        std::function<std::vector<
+            backend::
+                DescriptorSet>(backend::Device&, const backend::DescriptorPool&, const std::vector<backend::DescriptorSetLayout>&)>
+            func_desc_set = {},
+        std::function<
+            void(backend::Device&, const backend::DescriptorPool&, std::vector<backend::DescriptorSet>&)>
+            func_destroy_desc_set = {}
+    );
+
+    EPIX_API void begin(
         std::function<
             backend::Framebuffer(backend::Device&, backend::RenderPass&)> func,
-        vk::Extent2D extent,
-        std::function<
-            void(backend::Device&, std::vector<backend::DescriptorSet>&)>
-            func_desc_set = {}
+        vk::Extent2D extent
+    );
+
+    template <typename... Verts>
+    void update_mesh(
+        GPUMesh<StagingMesh<Verts...>>& dst, const StagingMesh<Verts...>& src
     ) {
-        _device.waitForFences(_fence, true, UINT64_MAX);
-        _device.resetFences(_fence);
-        _command_buffer.reset(vk::CommandBufferResetFlagBits::eReleaseResources
-        );
-        if (_framebuffer) {
-            _device.destroyFramebuffer(_framebuffer);
-        }
-        _framebuffer = func(_device, _render_pass);
-        _extent      = extent;
-        rendering    = true;
-        if (func_desc_set) {
-            func_desc_set(_device, _descriptor_sets);
-        }
-        _command_buffer.begin(vk::CommandBufferBeginInfo());
-    }
-    void draw(const staging_mesh_t& mesh) {
-        if (!rendering) {
-            spdlog::warn("Batch::draw called outside of rendering context");
-            return;
-        }
-        if (!mesh.vertex_count()) {
+        if (!recording) {
             spdlog::warn(
-                "Batch::draw called with invalid mesh, vertex count in "
-                "different bindings may be different"
+                "Pass::update_mesh called outside of recording context."
             );
             return;
         }
-        if (!mesh.instance_count()) {
-            spdlog::warn(
-                "Batch::draw called with invalid mesh, instance count in "
-                "different bindings may be different"
-            );
+        if (in_render_pass) {
+            spdlog::warn("Pass::update_mesh called inside of render pass.");
             return;
         }
-        _mesh.update(mesh, _command_buffer);
-        draw(_mesh);
-    }
-    void draw(const gpu_mesh_t& mesh) {
-        if (!rendering) {
-            spdlog::warn("Batch::draw called outside of rendering context");
-            return;
-        }
-        if (!mesh.vertex_count()) {
-            spdlog::warn(
-                "Batch::draw called with invalid mesh, vertex count in "
-                "different bindings may be different"
-            );
-            return;
-        }
-        if (!mesh.instance_count()) {
-            spdlog::warn(
-                "Batch::draw called with invalid mesh, instance count in "
-                "different bindings may be different"
-            );
-            return;
-        }
-        begin_pipeline();
-        std::vector<vk::Buffer> vertex_buffers;
-        std::vector<vk::DeviceSize> offsets;
-        vertex_buffers.reserve(mesh.vertex_bindings());
-        offsets.reserve(mesh.vertex_bindings());
-        for (size_t i = 0; i < mesh.vertex_bindings(); i++) {
-            vertex_buffers.push_back(mesh.vertex_buffer(i).buffer);
-            offsets.push_back(0);
-        }
-        _command_buffer.bindVertexBuffers(0, vertex_buffers, offsets);
-        if (mesh.index_buffer() && mesh.index_count()) {
-            vk::Buffer index_buffer = mesh.index_buffer().buffer;
-            _command_buffer.bindIndexBuffer(index_buffer, 0, mesh.index_type());
-            _command_buffer.drawIndexed(
-                mesh.index_count().value(), mesh.instance_count().value(), 0, 0,
-                0
-            );
-        } else {
-            _command_buffer.draw(
-                mesh.vertex_count().value(), mesh.instance_count().value(), 0, 0
-            );
-        }
-        end_pipeline();
-    }
-    void draw(const dedicated_mesh_t& mesh) {
-        if (!rendering) {
-            spdlog::warn("Batch::draw called outside of rendering context");
-            return;
-        }
-        if (!mesh.vertex_count()) {
-            spdlog::warn(
-                "Batch::draw called with invalid mesh, vertex count in "
-                "different bindings may be different"
-            );
-            return;
-        }
-        if (!mesh.instance_count()) {
-            spdlog::warn(
-                "Batch::draw called with invalid mesh, instance count in "
-                "different bindings may be different"
-            );
-            return;
-        }
-        begin_pipeline();
-        std::vector<vk::Buffer> vertex_buffers;
-        std::vector<vk::DeviceSize> offsets;
-        vertex_buffers.reserve(mesh.vertex_bindings());
-        offsets.reserve(mesh.vertex_bindings());
-        for (size_t i = 0; i < mesh.vertex_bindings(); i++) {
-            vertex_buffers.push_back(mesh.vertex_buffer(i).buffer);
-            offsets.push_back(0);
-        }
-        _command_buffer.bindVertexBuffers(0, vertex_buffers, offsets);
-        if (mesh.index_buffer() && mesh.index_count()) {
-            vk::Buffer index_buffer = mesh.index_buffer().buffer;
-            _command_buffer.bindIndexBuffer(index_buffer, 0, mesh.index_type());
-            _command_buffer.drawIndexed(
-                mesh.index_count().value(), mesh.instance_count().value(), 0, 0,
-                0
-            );
-        } else {
-            _command_buffer.draw(
-                mesh.vertex_count().value(), mesh.instance_count().value(), 0, 0
-            );
-        }
-        end_pipeline();
-    }
-    void end(backend::Queue& queue) {
-        _command_buffer.end();
-        rendering = false;
-        queue.submit(
-            vk::SubmitInfo().setCommandBuffers(_command_buffer), _fence
-        );
+        dst.update(src, _cmd);
     }
 
-    Batch(
-        PipelineBase& pipeline,
-        backend::CommandPool& command_pool,
-        std::function<std::vector<
-            backend::
-                DescriptorSet>(backend::Device&, backend::DescriptorPool&, std::vector<backend::DescriptorSetLayout>&)>
-            func_desc_set = {},
-        std::function<
-            void(backend::Device&, backend::DescriptorPool&, std::vector<backend::DescriptorSet>&)>
-            func_destroy_desc_set = {}
-    )
-        : Batch(
-              pipeline.device,
-              command_pool,
-              pipeline.render_pass,
-              pipeline.pipeline,
-              pipeline.pipeline_layout,
-              pipeline.descriptor_pool
-          ) {
-        _func_destroy_desc_set = func_destroy_desc_set;
-        if (func_desc_set) {
-            _descriptor_sets = func_desc_set(
-                _device, pipeline.descriptor_pool,
-                pipeline.descriptor_set_layouts
-            );
-        } else if (pipeline.descriptor_pool) {
-            _descriptor_sets = _device.allocateDescriptorSets(
-                vk::DescriptorSetAllocateInfo()
-                    .setDescriptorPool(pipeline.descriptor_pool)
-                    .setSetLayouts(pipeline.descriptor_set_layouts)
-            );
-        }
-    }
-
-    void destroy() {
-        _device.waitForFences(_fence, true, UINT64_MAX);
-        if (_framebuffer) {
-            _device.destroyFramebuffer(_framebuffer);
-        }
-        if (_func_destroy_desc_set) {
-            _func_destroy_desc_set(_device, _descriptor_pool, _descriptor_sets);
-        }
-        _mesh.destroy();
-        _device.destroyFence(_fence);
-        _device.freeCommandBuffers(_command_pool, _command_buffer);
-    }
-
-   private:
-    backend::Device _device;
-    backend::CommandPool _command_pool;
-
-    backend::RenderPass _render_pass;
-    backend::Pipeline _pipeline;
-    backend::PipelineLayout _pipeline_layout;
-    backend::DescriptorPool _descriptor_pool;
-
-    std::vector<backend::DescriptorSet> _descriptor_sets;
-    std::function<
-        void(backend::Device&, backend::DescriptorPool&, std::vector<backend::DescriptorSet>&)>
-        _func_destroy_desc_set;
-
-    backend::CommandBuffer _command_buffer;
-    backend::Fence _fence;
-
-    backend::Framebuffer _framebuffer;
-    vk::Extent2D _extent;
-
-    dedicated_mesh_t _mesh;
-
-    bool rendering = false;
-
-    Batch(
-        backend::Device& device,
-        backend::CommandPool& command_pool,
-        backend::RenderPass& render_pass,
-        backend::Pipeline& pipeline,
-        backend::PipelineLayout& pipeline_layout,
-        backend::DescriptorPool& descriptor_pool
-    )
-        : _mesh(device),
-          _device(device),
-          _command_pool(command_pool),
-          _render_pass(render_pass),
-          _pipeline(pipeline),
-          _pipeline_layout(pipeline_layout),
-          _descriptor_pool(descriptor_pool) {
-        _command_buffer = _device.allocateCommandBuffers(
-            vk::CommandBufferAllocateInfo()
-                .setCommandPool(_command_pool)
-                .setCommandBufferCount(1)
-                .setLevel(vk::CommandBufferLevel::ePrimary)
-        )[0];
-        _fence = _device.createFence(
-            vk::FenceCreateInfo().setFlags(vk::FenceCreateFlagBits::eSignaled)
-        );
-    }
-
-    void begin_pipeline() {
-        vk::RenderPassBeginInfo render_pass_info;
-        render_pass_info.setRenderPass(_render_pass);
-        render_pass_info.setFramebuffer(_framebuffer);
-        render_pass_info.setRenderArea(vk::Rect2D().setExtent(_extent));
-        _command_buffer.beginRenderPass(
-            render_pass_info, vk::SubpassContents::eInline
-        );
-        _command_buffer.bindPipeline(
-            vk::PipelineBindPoint::eGraphics, _pipeline
-        );
-        _command_buffer.bindDescriptorSets(
-            vk::PipelineBindPoint::eGraphics, _pipeline_layout, 0,
-            _descriptor_sets, {}
-        );
-        _command_buffer.setViewport(
-            0, vk::Viewport()
-                   .setWidth(_extent.width)
-                   .setHeight(_extent.height)
-                   .setMaxDepth(1.0f)
-        );
-        _command_buffer.setScissor(0, vk::Rect2D().setExtent(_extent));
-    }
-    void end_pipeline() { _command_buffer.endRenderPass(); }
+    EPIX_API Subpass& next_subpass();
+    EPIX_API void end();
+    EPIX_API void submit(backend::Queue& queue);
 };
 }  // namespace epix::render::vulkan2

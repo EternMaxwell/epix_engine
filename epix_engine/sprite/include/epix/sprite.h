@@ -107,35 +107,10 @@ struct SpriteMesh : public Mesh<SpriteVertex> {
 };
 
 using SpriteStagingMesh = StagingMesh<Mesh<SpriteVertex>>;
-struct SpriteBatch : public Batch<Mesh<SpriteVertex>, void> {
-    EPIX_API SpriteBatch(PipelineBase& pipeline, backend::CommandPool& pool);
-    EPIX_API void begin(
-        std::function<vk::Framebuffer(backend::Device&, backend::RenderPass&)>
-            func,
-        vk::Extent2D extent,
-        backend::Buffer uniform_buffer,
-        const VulkanResources* res_manager
-    );
-    EPIX_API void begin(
-        std::function<vk::Framebuffer(backend::Device&, backend::RenderPass&)>
-            func,
-        vk::Extent2D extent,
-        backend::Buffer uniform_buffer,
-        Res<VulkanResources> res_manager
-    );
-};
 
 struct SpritePipeline : public PipelineBase {
-    EPIX_API SpritePipeline(backend::Device& device);
+    EPIX_API SpritePipeline();
 };
-
-namespace systems {
-EPIX_API void create_pipeline(
-    Command cmd, Res<epix::render::vulkan2::RenderContext> context
-);
-EPIX_API void destroy_pipeline(Command cmd, ResMut<SpritePipeline> pipeline);
-EPIX_API void extract_pipeline(ResMut<SpritePipeline> pipeline, Command cmd);
-}  // namespace systems
 
 }  // namespace vulkan2
 }  // namespace sprite

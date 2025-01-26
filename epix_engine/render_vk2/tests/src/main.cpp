@@ -36,55 +36,9 @@ struct PushConstants {
 
 using test_mesh    = Mesh<Vertex>;
 using staging_mesh = StagingMesh<test_mesh>;
-using batch        = Batch<test_mesh, PushConstants>;
 
 struct TestPipeline : public PipelineBase {
-    TestPipeline(Device& device) : PipelineBase(device) {
-        set_render_pass([](Device& device) {
-            vk::AttachmentDescription color_attachment;
-            color_attachment.setFormat(vk::Format::eR8G8B8A8Srgb);
-            color_attachment.setSamples(vk::SampleCountFlagBits::e1);
-            color_attachment.setLoadOp(vk::AttachmentLoadOp::eLoad);
-            color_attachment.setStoreOp(vk::AttachmentStoreOp::eStore);
-            color_attachment.setStencilLoadOp(vk::AttachmentLoadOp::eDontCare);
-            color_attachment.setStencilStoreOp(vk::AttachmentStoreOp::eDontCare
-            );
-            color_attachment.setInitialLayout(
-                vk::ImageLayout::eColorAttachmentOptimal
-            );
-            color_attachment.setFinalLayout(
-                vk::ImageLayout::eColorAttachmentOptimal
-            );
-            vk::AttachmentReference color_attachment_ref;
-            color_attachment_ref.setAttachment(0);
-            color_attachment_ref.setLayout(
-                vk::ImageLayout::eColorAttachmentOptimal
-            );
-            vk::SubpassDescription subpass;
-            subpass.setPipelineBindPoint(vk::PipelineBindPoint::eGraphics);
-            subpass.setColorAttachments(color_attachment_ref);
-            vk::SubpassDependency dependency;
-            dependency.setSrcSubpass(VK_SUBPASS_EXTERNAL);
-            dependency.setDstSubpass(0);
-            dependency.setSrcStageMask(
-                vk::PipelineStageFlagBits::eColorAttachmentOutput
-            );
-            dependency.setDstStageMask(
-                vk::PipelineStageFlagBits::eColorAttachmentOutput
-            );
-            dependency.setSrcAccessMask(
-                vk::AccessFlagBits::eColorAttachmentWrite
-            );
-            dependency.setDstAccessMask(
-                vk::AccessFlagBits::eColorAttachmentWrite
-            );
-            dependency.setDependencyFlags(vk::DependencyFlagBits::eByRegion);
-            vk::RenderPassCreateInfo render_pass_info;
-            render_pass_info.setAttachments(color_attachment);
-            render_pass_info.setSubpasses(subpass);
-            render_pass_info.setDependencies(dependency);
-            return device.createRenderPass(render_pass_info);
-        });
+    TestPipeline() : PipelineBase() {
         set_vertex_bindings([]() {
             return std::vector<vk::VertexInputBindingDescription>{
                 vk::VertexInputBindingDescription()
@@ -104,49 +58,6 @@ struct TestPipeline : public PipelineBase {
         set_default_topology(vk::PrimitiveTopology::eTriangleList);
     }
 };
-
-void create_pipeline(
-    ResMut<epix::render::vulkan2::RenderContext> context, Command cmd
-) {
-    if (!context) {
-        return;
-    }
-    auto& device       = context->device;
-    auto& swapchain    = context->primary_swapchain;
-    auto& command_pool = context->command_pool;
-    TestPipeline pipeline(device);
-    pipeline.create();
-    batch btch(pipeline, command_pool);
-    staging_mesh mesh(device);
-    cmd.insert_resource(std::move(pipeline));
-    cmd.insert_resource(std::move(btch));
-    cmd.insert_resource(std::move(mesh));
-}
-
-void extract_pipeline(
-    ResMut<TestPipeline> pipeline,
-    Command cmd,
-    ResMut<batch> btch,
-    ResMut<staging_mesh> mesh
-) {
-    if (!pipeline) {
-        return;
-    }
-    cmd.share_resource(pipeline);
-    cmd.share_resource(btch);
-    cmd.share_resource(mesh);
-}
-
-void destroy_pipeline(
-    ResMut<TestPipeline> pipeline, ResMut<batch> btch, ResMut<staging_mesh> mesh
-) {
-    if (!pipeline || !btch || !mesh) {
-        return;
-    }
-    btch->destroy();
-    mesh->destroy();
-    pipeline->destroy();
-}
 
 void create_sampler(ResMut<VulkanResources> p_res_manager) {
     if (!p_res_manager) return;
@@ -308,60 +219,6 @@ void create_image_and_view(
     res_manager.add_image_view("test::rdvk::image1::view", view);
 }
 
-void test_render(
-    Res<VulkanResources> p_res_manager,
-    ResMut<epix::render::vulkan2::RenderContext> context,
-    ResMut<TestPipeline> pipeline,
-    ResMut<batch> btch,
-    ResMut<staging_mesh> mesh,
-    Command cmd
-) {
-    if (!p_res_manager || !pipeline || !btch || !mesh || !context) {
-        return;
-    }
-    ZoneScopedN("Test render");
-    auto& res_manager = *p_res_manager;
-    auto& device      = res_manager.device();
-    auto& queue       = context->queue;
-    auto& swapchain   = context->primary_swapchain;
-    test_mesh ms;
-    ms.set_16bit_indices();
-    ms.emplace_vertex(glm::vec3{-0.5f, -0.5f, 0.0f}, glm::vec2{0.0f, 0.0f});
-    ms.emplace_vertex(glm::vec3{0.5f, -0.5f, 0.0f}, glm::vec2{1.0f, 0.0f});
-    ms.emplace_vertex(glm::vec3{0.5f, 0.5f, 0.0f}, glm::vec2{1.0f, 1.0f});
-    ms.emplace_vertex(glm::vec3{-0.5f, 0.5f, 0.0f}, glm::vec2{0.0f, 1.0f});
-    ms.emplace_index(0);
-    ms.emplace_index(1);
-    ms.emplace_index(2);
-    ms.emplace_index(2);
-    ms.emplace_index(3);
-    ms.emplace_index(0);
-    mesh->update(ms);
-    btch->begin(
-        [=](auto& device, auto& render_pass) {
-            vk::FramebufferCreateInfo framebuffer_info;
-            framebuffer_info.setRenderPass(render_pass);
-            framebuffer_info.setAttachments(swapchain.current_image_view());
-            framebuffer_info.setWidth(swapchain.extent().width);
-            framebuffer_info.setHeight(swapchain.extent().height);
-            framebuffer_info.setLayers(1);
-            return device.createFramebuffer(framebuffer_info);
-        },
-        swapchain.extent(),
-        [=](auto& device, auto& descriptor_sets) {
-            descriptor_sets.resize(1);
-            descriptor_sets[0] = res_manager.get_descriptor_set();
-        }
-    );
-    PushConstants push_constants;
-    push_constants.image_index =
-        res_manager.image_view_index("test::rdvk::image1::view");
-    push_constants.sampler_index =
-        res_manager.sampler_index("test::rdvk::sampler1");
-    btch->draw(*mesh, push_constants);
-    btch->end(queue);
-}
-
 int main() {
     using namespace epix::app;
     using namespace epix::window;
@@ -373,11 +230,6 @@ int main() {
         epix::render::vulkan2::VulkanPlugin{}.set_debug_callback(true)
     );
     app2.add_plugin(epix::input::InputPlugin{});
-    app2.add_system(
-        epix::Startup, create_pipeline, create_sampler, create_image_and_view
-    );
-    app2.add_system(epix::Extraction, extract_pipeline);
-    app2.add_system(epix::Render, test_render);
-    app2.add_system(epix::Exit, destroy_pipeline);
+    app2.add_system(epix::Startup, create_sampler, create_image_and_view);
     app2.run();
 }

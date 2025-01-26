@@ -140,16 +140,11 @@ using TextStagingMesh   = StagingMesh<Mesh<TextVertex>>;
 using TextGPUMesh       = GPUMesh<Mesh<TextVertex>>;
 using TextDedicatedMesh = GPUMesh<StagingMesh<Mesh<TextVertex>>>;
 
-struct TextBatch : Batch<Mesh<TextVertex>, glm::mat4> {
-    EPIX_API TextBatch(PipelineBase& pipeline, vk::CommandPool& pool);
-};
-
 struct TextPipeline : public PipelineBase {
-    EPIX_API TextPipeline(Device& device);
+    EPIX_API TextPipeline();
 };
 
 namespace systems {
-EPIX_API void create_pipeline(Command cmd, Res<RenderContext> context);
 EPIX_API void insert_font_atlas(
     Command cmd,
     ResMut<RenderContext> context,
@@ -161,8 +156,6 @@ EPIX_API void extract_font_atlas(
     ResMut<RenderContext> context,
     ResMut<VulkanResources> res_manager
 );
-EPIX_API void extract_pipeline(ResMut<TextPipeline> context, Command cmd);
-EPIX_API void destroy_pipeline(Command cmd, ResMut<TextPipeline> pipeline);
 EPIX_API void destroy_font_atlas(ResMut<FontAtlas> font_atlas);
 }  // namespace systems
 

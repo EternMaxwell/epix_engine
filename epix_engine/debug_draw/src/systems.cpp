@@ -819,28 +819,3 @@ EPIX_API void systems::destroy_triangle_drawer(
     if (drawer.framebuffer) drawer.framebuffer.destroy(device);
 }
 }  // namespace epix::render::debug::vulkan
-
-namespace epix::render::debug::vulkan2 {
-EPIX_API void systems::create_pipelines(
-    Command cmd, Res<render::vulkan2::RenderContext> context
-) {
-    if (!context) return;
-    auto& device       = context->device;
-    auto& command_pool = context->command_pool;
-    DebugPipelines pipelines(device);
-    pipelines.create();
-    cmd.insert_resource(std::move(pipelines));
-}
-EPIX_API void systems::extract_pipelines(
-    ResMut<DebugPipelines> pipelines, Command cmd
-) {
-    if (!pipelines) return;
-    cmd.share_resource(pipelines);
-}
-EPIX_API void systems::destroy_pipelines(
-    Command cmd, ResMut<DebugPipelines> pipelines
-) {
-    if (!pipelines) return;
-    pipelines->destroy();
-}
-}  // namespace epix::render::debug::vulkan2

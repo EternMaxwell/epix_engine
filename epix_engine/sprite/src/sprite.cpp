@@ -270,16 +270,5 @@ EPIX_API void SpritePluginVK::build(App& app) {
             destroy_sprite_renderer_vk
         );
     } else if (app.get_plugin<epix::render::vulkan2::VulkanPlugin>()) {
-        app.add_system(
-               PreStartup, epix::sprite::vulkan2::systems::create_pipeline
-        )
-            .after(epix::render::vulkan2::systems::create_context);
-        app.add_system(
-            Extraction, epix::sprite::vulkan2::systems::extract_pipeline
-        );
-        app.add_system(
-               PostExit, epix::sprite::vulkan2::systems::destroy_pipeline
-        )
-            .before(epix::render::vulkan2::systems::destroy_context);
     }
 }
