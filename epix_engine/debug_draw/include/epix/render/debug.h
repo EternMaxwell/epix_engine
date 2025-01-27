@@ -46,19 +46,12 @@ struct DebugMesh : public epix::render::vulkan2::Mesh<DebugVertex> {
 using DebugStagingMesh = epix::render::vulkan2::StagingMesh<
     epix::render::vulkan2::Mesh<DebugVertex>>;
 
-struct DebugPipelines {
-    epix::render::vulkan2::PipelineBase point_pipeline;
-    epix::render::vulkan2::PipelineBase line_pipeline;
-    epix::render::vulkan2::PipelineBase triangle_pipeline;
+using DebugGPUMesh = epix::render::vulkan2::GPUMesh<DebugStagingMesh>;
 
-    EPIX_API DebugPipelines();
+struct DebugPipelines {
+    EPIX_API static epix::render::vulkan2::PipelineBase* point_pipeline();
+    EPIX_API static epix::render::vulkan2::PipelineBase* line_pipeline();
+    EPIX_API static epix::render::vulkan2::PipelineBase* triangle_pipeline();
 };
-namespace systems {
-EPIX_API void create_pipelines(
-    Command cmd, Res<render::vulkan2::RenderContext> context
-);
-EPIX_API void extract_pipelines(ResMut<DebugPipelines> pipelines, Command cmd);
-EPIX_API void destroy_pipelines(Command cmd, ResMut<DebugPipelines> pipelines);
-}  // namespace systems
 }  // namespace vulkan2
 }  // namespace epix::render::debug

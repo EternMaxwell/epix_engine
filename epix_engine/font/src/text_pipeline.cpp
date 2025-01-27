@@ -5,8 +5,9 @@
 
 using namespace epix::font::vulkan2;
 
-EPIX_API TextPipeline::TextPipeline() : PipelineBase() {
-    set_descriptor_pool([](Device& device) {
+EPIX_API PipelineBase* TextPipeline::create() {
+    auto* pipeline = new PipelineBase();
+    pipeline->set_descriptor_pool([](Device& device) {
         std::vector<vk::DescriptorPoolSize> pool_sizes = {
             vk::DescriptorPoolSize()
                 .setType(vk::DescriptorType::eUniformBuffer)
@@ -21,7 +22,7 @@ EPIX_API TextPipeline::TextPipeline() : PipelineBase() {
         );
         return device.createDescriptorPool(pool_info);
     });
-    set_vertex_bindings([]() {
+    pipeline->set_vertex_bindings([]() {
         return std::vector<vk::VertexInputBindingDescription>{
             vk::VertexInputBindingDescription()
                 .setBinding(0)
@@ -29,17 +30,18 @@ EPIX_API TextPipeline::TextPipeline() : PipelineBase() {
                 .setInputRate(vk::VertexInputRate::eVertex),
         };
     });
-    add_shader(
+    pipeline->add_shader(
         vk::ShaderStageFlagBits::eVertex, font_vk_vertex_spv,
         font_vk_vertex_spv + sizeof(font_vk_vertex_spv) / sizeof(uint32_t)
     );
-    add_shader(
+    pipeline->add_shader(
         vk::ShaderStageFlagBits::eFragment, font_vk_fragment_spv,
         font_vk_fragment_spv + sizeof(font_vk_fragment_spv) / sizeof(uint32_t)
     );
-    add_shader(
+    pipeline->add_shader(
         vk::ShaderStageFlagBits::eGeometry, font_vk_geometry_spv,
         font_vk_geometry_spv + sizeof(font_vk_geometry_spv) / sizeof(uint32_t)
     );
-    set_default_topology(vk::PrimitiveTopology::ePointList);
+    pipeline->set_default_topology(vk::PrimitiveTopology::ePointList);
+    return pipeline;
 }

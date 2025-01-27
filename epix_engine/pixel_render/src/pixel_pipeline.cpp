@@ -5,9 +5,9 @@
 
 using namespace epix::render::pixel::vulkan2;
 
-EPIX_API PixelPipeline::PixelPipeline()
-    : epix::render::vulkan2::PipelineBase() {
-    set_vertex_bindings([]() {
+EPIX_API epix::render::vulkan2::PipelineBase* PixelPipeline::create() {
+    auto* pipeline = new epix::render::vulkan2::PipelineBase();
+    pipeline->set_vertex_bindings([]() {
         return std::vector<vk::VertexInputBindingDescription>{
             vk::VertexInputBindingDescription()
                 .setBinding(0)
@@ -15,19 +15,19 @@ EPIX_API PixelPipeline::PixelPipeline()
                 .setInputRate(vk::VertexInputRate::eVertex),
         };
     });
-    add_shader(
+    pipeline->add_shader(
         vk::ShaderStageFlagBits::eVertex, pixel_vk_vertex_spv,
         pixel_vk_vertex_spv + sizeof(pixel_vk_vertex_spv) / sizeof(uint32_t)
     );
-    add_shader(
+    pipeline->add_shader(
         vk::ShaderStageFlagBits::eFragment, pixel_vk_fragment_spv,
         pixel_vk_fragment_spv + sizeof(pixel_vk_fragment_spv) / sizeof(uint32_t)
     );
-    add_shader(
+    pipeline->add_shader(
         vk::ShaderStageFlagBits::eGeometry, pixel_vk_geometry_spv,
         pixel_vk_geometry_spv + sizeof(pixel_vk_geometry_spv) / sizeof(uint32_t)
     );
-    set_descriptor_pool([](Device& device) {
+    pipeline->set_descriptor_pool([](Device& device) {
         vk::DescriptorPoolSize pool_size =
             vk::DescriptorPoolSize()
                 .setType(vk::DescriptorType::eUniformBuffer)
@@ -38,5 +38,6 @@ EPIX_API PixelPipeline::PixelPipeline()
             )
         );
     });
-    set_default_topology(vk::PrimitiveTopology::ePointList);
+    pipeline->set_default_topology(vk::PrimitiveTopology::ePointList);
+    return pipeline;
 }

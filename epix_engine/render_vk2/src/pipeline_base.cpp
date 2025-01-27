@@ -3,9 +3,7 @@
 namespace epix::render::vulkan2 {
 using namespace epix::render::vulkan2::backend;
 EPIX_API PipelineBase::PipelineBase()
-    : device(device),
-      render_pass(render_pass),
-      func_rasterization_state([]() {
+    : func_rasterization_state([]() {
           return vk::PipelineRasterizationStateCreateInfo()
               .setDepthClampEnable(false)
               .setRasterizerDiscardEnable(false)

@@ -6,22 +6,31 @@ using namespace epix::render::debug;
 
 using namespace epix::render::debug::vulkan2;
 
-EPIX_API DebugPipelines::DebugPipelines()
-    : point_pipeline(), line_pipeline(), triangle_pipeline() {
-    auto create_descriptor_pool_func = [](Device& device) {
+epix::render::vulkan2::PipelineBase* debug_base() {
+    auto pipeline = new epix::render::vulkan2::PipelineBase();
+    pipeline->set_descriptor_pool([](Device& device) {
         vk::DescriptorPoolSize pool_size =
             vk::DescriptorPoolSize()
                 .setType(vk::DescriptorType::eUniformBuffer)
                 .setDescriptorCount(256);
         return device.createDescriptorPool(
-            vk::DescriptorPoolCreateInfo().setMaxSets(256).setPoolSizes(
-                pool_size
-            )
+            vk::DescriptorPoolCreateInfo()
+                .setMaxSets(256)
+                .setPoolSizes(pool_size)
+                .setFlags(
+                    vk::DescriptorPoolCreateFlagBits::eUpdateAfterBind |
+                    vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet
+                )
         );
-    };
-    point_pipeline.set_descriptor_pool(create_descriptor_pool_func);
-    line_pipeline.set_descriptor_pool(create_descriptor_pool_func);
-    triangle_pipeline.set_descriptor_pool(create_descriptor_pool_func);
+    });
+    pipeline->set_vertex_bindings([]() {
+        return std::vector<vk::VertexInputBindingDescription>{
+            vk::VertexInputBindingDescription()
+                .setBinding(0)
+                .setStride(sizeof(DebugVertex))
+                .setInputRate(vk::VertexInputRate::eVertex),
+        };
+    });
     std::vector<uint32_t> vertex_spv(
         debug_vk_vertex_spv,
         debug_vk_vertex_spv + sizeof(debug_vk_vertex_spv) / sizeof(uint32_t)
@@ -30,40 +39,26 @@ EPIX_API DebugPipelines::DebugPipelines()
         debug_vk_fragment_spv,
         debug_vk_fragment_spv + sizeof(debug_vk_fragment_spv) / sizeof(uint32_t)
     );
-    point_pipeline.set_vertex_bindings([]() {
-        return std::vector<vk::VertexInputBindingDescription>{
-            vk::VertexInputBindingDescription()
-                .setBinding(0)
-                .setStride(sizeof(DebugVertex))
-                .setInputRate(vk::VertexInputRate::eVertex),
-        };
-    });
-    point_pipeline.add_shader(vk::ShaderStageFlagBits::eVertex, vertex_spv);
-    point_pipeline.add_shader(vk::ShaderStageFlagBits::eFragment, fragment_spv);
-    line_pipeline.set_vertex_bindings([]() {
-        return std::vector<vk::VertexInputBindingDescription>{
-            vk::VertexInputBindingDescription()
-                .setBinding(0)
-                .setStride(sizeof(DebugVertex))
-                .setInputRate(vk::VertexInputRate::eVertex),
-        };
-    });
-    line_pipeline.add_shader(vk::ShaderStageFlagBits::eVertex, vertex_spv);
-    line_pipeline.add_shader(vk::ShaderStageFlagBits::eFragment, fragment_spv);
-    triangle_pipeline.set_vertex_bindings([]() {
-        return std::vector<vk::VertexInputBindingDescription>{
-            vk::VertexInputBindingDescription()
-                .setBinding(0)
-                .setStride(sizeof(DebugVertex))
-                .setInputRate(vk::VertexInputRate::eVertex),
-        };
-    });
-    triangle_pipeline.add_shader(vk::ShaderStageFlagBits::eVertex, vertex_spv);
-    triangle_pipeline.add_shader(
-        vk::ShaderStageFlagBits::eFragment, fragment_spv
-    );
-    point_pipeline.set_default_topology(vk::PrimitiveTopology::ePointList);
-    line_pipeline.set_default_topology(vk::PrimitiveTopology::eLineList);
-    triangle_pipeline.set_default_topology(vk::PrimitiveTopology::eTriangleList
-    );
+    pipeline->add_shader(vk::ShaderStageFlagBits::eVertex, vertex_spv);
+    pipeline->add_shader(vk::ShaderStageFlagBits::eFragment, fragment_spv);
+    return pipeline;
+}
+
+EPIX_API epix::render::vulkan2::PipelineBase* DebugPipelines::point_pipeline() {
+    auto pipeline = debug_base();
+    pipeline->set_default_topology(vk::PrimitiveTopology::ePointList);
+    return pipeline;
+}
+
+EPIX_API epix::render::vulkan2::PipelineBase* DebugPipelines::line_pipeline() {
+    auto pipeline = debug_base();
+    pipeline->set_default_topology(vk::PrimitiveTopology::eLineList);
+    return pipeline;
+}
+
+EPIX_API epix::render::vulkan2::PipelineBase* DebugPipelines::triangle_pipeline(
+) {
+    auto pipeline = debug_base();
+    pipeline->set_default_topology(vk::PrimitiveTopology::eTriangleList);
+    return pipeline;
 }

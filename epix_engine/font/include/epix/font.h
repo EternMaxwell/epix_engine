@@ -140,8 +140,8 @@ using TextStagingMesh   = StagingMesh<Mesh<TextVertex>>;
 using TextGPUMesh       = GPUMesh<Mesh<TextVertex>>;
 using TextDedicatedMesh = GPUMesh<StagingMesh<Mesh<TextVertex>>>;
 
-struct TextPipeline : public PipelineBase {
-    EPIX_API TextPipeline();
+struct TextPipeline {
+    EPIX_API static PipelineBase* create();
 };
 
 namespace systems {
