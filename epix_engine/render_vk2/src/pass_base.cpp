@@ -51,19 +51,24 @@ EPIX_API void PassBase::create() {
     std::vector<vk::SubpassDescription> subpasses;
     subpasses.reserve(_subpasses.size());
     for (auto& subpass : _subpasses) {
-        subpasses.push_back(
-            vk::SubpassDescription()
-                .setPipelineBindPoint(subpass.bind_point)
-                .setColorAttachments(subpass.color_attachments)
-                .setPDepthStencilAttachment(
-                    subpass.depth_attachment.has_value()
-                        ? &subpass.depth_attachment.value()
-                        : nullptr
-                )
-                .setResolveAttachments(subpass.resolve_attachment)
-                .setInputAttachments(subpass.input_attachments)
-                .setPreserveAttachments(subpass.preserve_attachments)
-        );
+        auto description = vk::SubpassDescription()
+                               .setPipelineBindPoint(subpass.bind_point)
+                               .setColorAttachments(subpass.color_attachments);
+        if (subpass.depth_attachment) {
+            description.setPDepthStencilAttachment(
+                &subpass.depth_attachment.value()
+            );
+        }
+        if (!subpass.resolve_attachment.empty()) {
+            description.setResolveAttachments(subpass.resolve_attachment);
+        }
+        if (!subpass.input_attachments.empty()) {
+            description.setInputAttachments(subpass.input_attachments);
+        }
+        if (!subpass.preserve_attachments.empty()) {
+            description.setPreserveAttachments(subpass.preserve_attachments);
+        }
+        subpasses.push_back(description);
     }
     _render_pass =
         _device.createRenderPass(vk::RenderPassCreateInfo()
@@ -196,8 +201,13 @@ EPIX_API uint32_t PassBase::add_pipeline(
 EPIX_API uint32_t PassBase::add_pipeline(
     uint32_t subpass, const std::string& name, PipelineBase* pipeline
 ) {
+    if (subpass >= subpass_count()) {
+        spdlog::warn("PassBase::add_pipeline called with invalid subpass");
+        return -1;
+    }
     if (subpass >= _pipelines.size()) {
         _pipelines.resize(subpass + 1);
+        _pipeline_maps.resize(subpass + 1);
     }
     pipeline->device        = _device;
     pipeline->render_pass   = _render_pass;
@@ -209,7 +219,7 @@ EPIX_API uint32_t PassBase::add_pipeline(
 }
 
 EPIX_API uint32_t
-PassBase::pipeline_index(uint32_t subpass, const std::string& name) {
+PassBase::pipeline_index(uint32_t subpass, const std::string& name) const {
     if (subpass >= _pipeline_maps.size()) {
         spdlog::warn("PassBase::pipeline_index called with invalid subpass");
         return -1;
@@ -222,9 +232,8 @@ PassBase::pipeline_index(uint32_t subpass, const std::string& name) {
     return it->second;
 }
 
-EPIX_API PipelineBase* PassBase::get_pipeline(
-    uint32_t subpass, uint32_t index
-) {
+EPIX_API PipelineBase* PassBase::get_pipeline(uint32_t subpass, uint32_t index)
+    const {
     if (subpass >= _pipelines.size()) {
         spdlog::warn("PassBase::get_pipeline called with invalid subpass");
         return nullptr;
@@ -238,7 +247,7 @@ EPIX_API PipelineBase* PassBase::get_pipeline(
 
 EPIX_API PipelineBase* PassBase::get_pipeline(
     uint32_t subpass, const std::string& name
-) {
+) const {
     if (subpass >= _pipeline_maps.size()) {
         spdlog::warn("PassBase::get_pipeline called with invalid subpass");
         return nullptr;

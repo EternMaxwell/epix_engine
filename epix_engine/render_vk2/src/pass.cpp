@@ -2,9 +2,9 @@
 
 namespace epix::render::vulkan2 {
 EPIX_API Pass::Pass(
-    PassBase* base,
+    const PassBase* base,
     backend::CommandPool& command_pool,
-    std::function<void(Pass&, PassBase&)> subpass_setup
+    std::function<void(Pass&, const PassBase&)> subpass_setup
 )
     : _base(base),
       _device(base->_device),
@@ -26,9 +26,21 @@ EPIX_API Pass::Pass(
                       // constructor
 }
 
+EPIX_API void Pass::destroy() {
+    _device.waitForFences(_fence, true, UINT64_MAX);
+    if (_framebuffer) {
+        _device.destroyFramebuffer(_framebuffer);
+    }
+    _device.freeCommandBuffers(_cmd_pool, _cmd);
+    _device.destroyFence(_fence);
+    for (auto& subpass : _subpasses) {
+        subpass.destroy();
+    }
+}
+
 EPIX_API Pass& Pass::add_subpass(
     uint32_t index,
-    std::function<void(PassBase&, Pass&, Subpass&)> subpass_setup
+    std::function<void(const PassBase&, Pass&, Subpass&)> subpass_setup
 ) {
     if (!_base) {
         spdlog::error("Pass::add_subpass called outside of constructor.");
@@ -155,7 +167,7 @@ EPIX_API void Pass::begin(
 
 EPIX_API Subpass& Pass::next_subpass() {
     if (!recording) {
-        spdlog::warn("Pass::subpass called outside of recording context.");
+        spdlog::warn("Pass::next_subpass called outside of recording context.");
         return _subpasses[0];
     }
     if (!in_render_pass) {
@@ -175,7 +187,7 @@ EPIX_API Subpass& Pass::next_subpass() {
     current_subpass++;
     if (current_subpass >= _subpass_count) {
         spdlog::warn(
-            "Pass::subpass called after last subpass. Returning "
+            "Pass::next_subpass called after last subpass. Returning "
             "first subpass."
         );
         return _subpasses[0];
@@ -209,5 +221,6 @@ EPIX_API void Pass::submit(backend::Queue& queue) {
     }
     _device.resetFences(_fence);
     queue.submit(vk::SubmitInfo().setCommandBuffers(_cmd), _fence);
+    ready = false;
 }
 }  // namespace epix::render::vulkan2

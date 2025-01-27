@@ -52,6 +52,9 @@ EPIX_API uint32_t Subpass::add_pipeline(
                 .setSetLayouts(pipeline->descriptor_set_layouts)
         ));
     }
+    if (_descriptor_sets.size() < _pipelines.size()) {
+        _descriptor_sets.resize(_pipelines.size());
+    }
     _funcs_destroy_desc_set.push_back(func_destroy_desc_set);
     _viewports.resize(_pipelines.size());
     _scissors.resize(_pipelines.size());

@@ -788,6 +788,7 @@ struct GPUMesh<Mesh<VertT, Ts...>> {
         return _vertex_buffers[I];
     }
     auto&& vertex_buffers() { return _vertex_buffers; }
+    auto&& vertex_buffers() const { return _vertex_buffers; }
     backend::Buffer index_buffer() const { return _index_buffer; }
     size_t index_buffer_size() const { return _index_buffer_size; }
     size_t vertex_buffer_size(size_t I = 0) const { return _buffer_sizes[I]; }
@@ -907,16 +908,6 @@ struct GPUMesh<StagingMesh<Mesh<VertT, Ts...>>> {
     }
 
    public:
-    GPUMesh(
-        backend::Device& device, const StagingMesh<Mesh<VertT, Ts...>>& mesh
-    ) {
-        this->_device = device;
-        update_buffers(mesh);
-        update_index_buffer(mesh);
-        _vertex_count   = mesh._vertex_count;
-        _instance_count = mesh._instance_count;
-        _index_count    = mesh._index_count;
-    };
     GPUMesh(backend::Device& device) { this->_device = device; };
     void destroy() {
         for (auto& buffer : _vertex_buffers) {
@@ -944,6 +935,7 @@ struct GPUMesh<StagingMesh<Mesh<VertT, Ts...>>> {
         return _vertex_buffers[I];
     }
     auto&& vertex_buffers() { return _vertex_buffers; }
+    auto&& vertex_buffers() const { return _vertex_buffers; }
     backend::Buffer index_buffer() const { return _index_buffer; }
     vk::IndexType index_type() const { return _index_type; }
     size_t index_buffer_size() const { return _index_buffer_size; }
@@ -1050,11 +1042,6 @@ struct PipelineBase {
 };
 
 struct PassBase {
-   protected:
-    backend::Device _device;
-    backend::RenderPass _render_pass;
-    std::vector<vk::AttachmentDescription> _attachments;
-
     struct SubpassInfo {
         vk::PipelineBindPoint bind_point = vk::PipelineBindPoint::eGraphics;
         std::vector<vk::AttachmentReference> color_attachments;
@@ -1078,6 +1065,11 @@ struct PassBase {
             const vk::ArrayProxy<const uint32_t>& attachments
         );
     };
+
+   protected:
+    backend::Device _device;
+    backend::RenderPass _render_pass;
+    std::vector<vk::AttachmentDescription> _attachments;
 
     std::vector<SubpassInfo> _subpasses;
     std::vector<vk::SubpassDependency> _dependencies;
@@ -1120,13 +1112,14 @@ struct PassBase {
         uint32_t subpass, const std::string& name, PipelineBase* pipeline
     );
 
-    EPIX_API uint32_t pipeline_index(uint32_t subpass, const std::string& name);
+    EPIX_API uint32_t
+    pipeline_index(uint32_t subpass, const std::string& name) const;
 
-    EPIX_API PipelineBase* get_pipeline(uint32_t subpass, uint32_t index);
+    EPIX_API PipelineBase* get_pipeline(uint32_t subpass, uint32_t index) const;
 
     EPIX_API PipelineBase* get_pipeline(
         uint32_t subpass, const std::string& name
-    );
+    ) const;
 
     EPIX_API void destroy();
 
@@ -1192,10 +1185,15 @@ struct Subpass {
             return;
         }
         std::vector<vk::DeviceSize> offsets(mesh.vertex_buffers().size(), 0);
-        _cmd.bindVertexBuffers(0, mesh.vertex_buffers(), offsets);
+        std::vector<vk::Buffer> buffers;
+        buffers.reserve(mesh.vertex_buffers().size());
+        for (auto& buffer : mesh.vertex_buffers()) {
+            buffers.push_back(buffer.buffer);
+        }
+        _cmd.bindVertexBuffers(0, buffers, offsets);
         if (mesh.index_buffer() && mesh.index_count()) {
             _cmd.bindIndexBuffer(
-                mesh.index_buffer().buffer, 0, mesh.index_buffer_size()
+                mesh.index_buffer().buffer, 0, mesh.index_type()
             );
             _cmd.drawIndexed(
                 mesh.index_count().value(), mesh.instance_count().value(), 0, 0,
@@ -1222,14 +1220,19 @@ struct Subpass {
         }
         auto pipeline = _pipelines[_active_pipeline];
         std::vector<vk::DeviceSize> offsets(mesh.vertex_buffers().size(), 0);
+        std::vector<vk::Buffer> buffers;
+        buffers.reserve(mesh.vertex_buffers().size());
+        for (auto& buffer : mesh.vertex_buffers()) {
+            buffers.push_back(buffer.buffer);
+        }
         _cmd.pushConstants(
             pipeline->pipeline_layout, pipeline->push_constant_stage, 0,
             sizeof(PushConstantT), &push_constant
         );
-        _cmd.bindVertexBuffers(0, mesh.vertex_buffers(), offsets);
+        _cmd.bindVertexBuffers(0, buffers, offsets);
         if (mesh.index_buffer() && mesh.index_count()) {
             _cmd.bindIndexBuffer(
-                mesh.index_buffer().buffer, 0, mesh.index_buffer_size()
+                mesh.index_buffer().buffer, 0, mesh.index_type()
             );
             _cmd.drawIndexed(
                 mesh.index_count().value(), mesh.instance_count().value(), 0, 0,
@@ -1249,7 +1252,7 @@ struct Pass {
     backend::RenderPass _render_pass;
     const uint32_t _subpass_count;
     std::vector<Subpass> _subpasses;
-    PassBase* _base;
+    const PassBase* _base;
 
     backend::CommandBuffer _cmd;
     backend::Fence _fence;
@@ -1263,14 +1266,16 @@ struct Pass {
     uint32_t current_subpass = 0;
 
     EPIX_API Pass(
-        PassBase* base,
+        const PassBase* base,
         backend::CommandPool& command_pool,
-        std::function<void(Pass&, PassBase&)> subpass_setup
+        std::function<void(Pass&, const PassBase&)> subpass_setup
     );
+
+    EPIX_API void destroy();
 
     EPIX_API Pass& add_subpass(
         uint32_t index,
-        std::function<void(PassBase&, Pass&, Subpass&)> subpass_setup = {}
+        std::function<void(const PassBase&, Pass&, Subpass&)> subpass_setup = {}
     );
 
     EPIX_API uint32_t subpass_add_pipeline(

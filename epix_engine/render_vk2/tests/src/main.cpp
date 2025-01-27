@@ -36,6 +36,7 @@ struct PushConstants {
 
 using test_mesh    = Mesh<Vertex>;
 using staging_mesh = StagingMesh<test_mesh>;
+using gpu_mesh     = GPUMesh<staging_mesh>;
 
 struct TestPipeline : public PipelineBase {
     TestPipeline() : PipelineBase() {
@@ -58,6 +59,185 @@ struct TestPipeline : public PipelineBase {
         set_default_topology(vk::PrimitiveTopology::eTriangleList);
     }
 };
+
+struct TestPassBase : public PassBase {
+   protected:
+    TestPassBase(Device& device) : PassBase(device) {
+        set_attachments(
+            vk::AttachmentDescription()
+                .setFormat(vk::Format::eR8G8B8A8Srgb)
+                .setSamples(vk::SampleCountFlagBits::e1)
+                .setLoadOp(vk::AttachmentLoadOp::eLoad)
+                .setStoreOp(vk::AttachmentStoreOp::eStore)
+                .setStencilLoadOp(vk::AttachmentLoadOp::eDontCare)
+                .setStencilStoreOp(vk::AttachmentStoreOp::eDontCare)
+                .setInitialLayout(vk::ImageLayout::eColorAttachmentOptimal)
+                .setFinalLayout(vk::ImageLayout::eColorAttachmentOptimal)
+        );
+        subpass_info(0)
+            .set_colors(vk::AttachmentReference().setAttachment(0).setLayout(
+                vk::ImageLayout::eColorAttachmentOptimal
+            ))
+            .set_bind_point(vk::PipelineBindPoint::eGraphics);
+        create();
+        add_pipeline(0, "test::rdvk::pipeline1", new TestPipeline());
+    }
+
+   public:
+    static TestPassBase* create_new(Device& device) {
+        return new TestPassBase(device);
+    }
+};
+
+struct TestPass : public Pass {
+   protected:
+    TestPass(const PassBase* base, CommandPool& command_pool)
+        : Pass(base, command_pool, [](Pass& pass, const PassBase& base) {
+              pass.add_subpass(0);
+              pass.subpass_add_pipeline(0, "test::rdvk::pipeline1");
+          }) {}
+
+   public:
+    static TestPass* create_new(
+        const TestPassBase* base, CommandPool& command_pool
+    ) {
+        return new TestPass(base, command_pool);
+    }
+};
+
+void create_pass_base(Command cmd, Res<RenderContext> context) {
+    if (!context) return;
+    auto& device = context->device;
+    cmd.add_resource(TestPassBase::create_new(device));
+}
+
+void create_pass(
+    Command cmd, ResMut<RenderContext> context, Res<TestPassBase> base
+) {
+    if (!context) return;
+    auto& device       = context->device;
+    auto& command_pool = context->command_pool;
+    cmd.add_resource(TestPass::create_new(base.get(), command_pool));
+}
+
+void create_meshes(Command cmd, Res<RenderContext> context) {
+    if (!context) return;
+    auto& device = context->device;
+    staging_mesh mesh(device);
+    cmd.insert_resource(mesh);
+    gpu_mesh mesh2(device);
+    cmd.insert_resource(mesh2);
+}
+
+void destroy_meshes(
+    Command cmd, ResMut<staging_mesh> mesh, ResMut<gpu_mesh> mesh2
+) {
+    if (!mesh || !mesh2) return;
+    mesh->destroy();
+    mesh2->destroy();
+}
+
+void prepare_mesh(ResMut<staging_mesh> mesh) {
+    if (!mesh) return;
+    test_mesh ms;
+    ms.emplace_vertex(glm::vec3(-0.5f, -0.5f, 0.0f), glm::vec2(0.0f, 0.0f));
+    ms.emplace_vertex(glm::vec3(0.5f, -0.5f, 0.0f), glm::vec2(1.0f, 0.0f));
+    ms.emplace_vertex(glm::vec3(0.5f, 0.5f, 0.0f), glm::vec2(1.0f, 1.0f));
+    ms.emplace_vertex(glm::vec3(-0.5f, 0.5f, 0.0f), glm::vec2(0.0f, 1.0f));
+    ms.set_16bit_indices();
+    ms.emplace_index(0);
+    ms.emplace_index(1);
+    ms.emplace_index(2);
+    ms.emplace_index(2);
+    ms.emplace_index(3);
+    ms.emplace_index(0);
+    mesh->update(ms);
+}
+
+void extract_meshes(
+    ResMut<staging_mesh> mesh, ResMut<gpu_mesh> mesh2, Command cmd
+) {
+    if (!mesh || !mesh2) return;
+    cmd.share_resource(mesh);
+    cmd.share_resource(mesh2);
+}
+
+void extract_pass(Command cmd, ResMut<TestPass> pass) {
+    if (!pass) return;
+    cmd.share_resource(pass);
+}
+
+void draw_mesh(
+    Command cmd,
+    ResMut<staging_mesh> mesh,
+    Res<VulkanResources> res,
+    ResMut<TestPass> pass,
+    ResMut<gpu_mesh> gpu_mesh,
+    ResMut<RenderContext> context
+) {
+    if (!mesh || !pass || !gpu_mesh) return;
+    auto& pass_     = *pass;
+    auto& mesh_     = *mesh;
+    auto& gpu_mesh_ = *gpu_mesh;
+    pass_.begin(
+        [&](auto& device, auto& render_pass) {
+            vk::FramebufferCreateInfo framebuffer_info;
+            framebuffer_info.setRenderPass(render_pass);
+            framebuffer_info.setAttachments(
+                context->primary_swapchain.current_image_view()
+            );
+            framebuffer_info.setWidth(context->primary_swapchain.extent().width
+            );
+            framebuffer_info.setHeight(
+                context->primary_swapchain.extent().height
+            );
+            framebuffer_info.setLayers(1);
+            return device.createFramebuffer(framebuffer_info);
+        },
+        context->primary_swapchain.extent()
+    );
+    pass_.update_mesh(gpu_mesh_, mesh_);
+    auto subpass = pass_.next_subpass();
+    subpass.activate_pipeline(
+        0,
+        [&](auto& viewports, auto& scissors) {
+            viewports.resize(1);
+            viewports[0].setWidth(context->primary_swapchain.extent().width);
+            viewports[0].setHeight(context->primary_swapchain.extent().height);
+            viewports[0].setMinDepth(0.0f);
+            viewports[0].setMaxDepth(1.0f);
+            scissors.resize(1);
+            scissors[0].setExtent(context->primary_swapchain.extent());
+            scissors[0].setOffset({0, 0});
+        },
+        [&](auto& device, auto& descriptor_sets) {
+            descriptor_sets.resize(1);
+            descriptor_sets[0] = res->get_descriptor_set();
+        }
+    );
+    PushConstants push_constants{
+        res->image_view_index("test::rdvk::image1::view"),
+        res->sampler_index("test::rdvk::sampler1")
+    };
+    if (push_constants.image_index == -1 ||
+        push_constants.sampler_index == -1) {
+        spdlog::warn("Image or sampler not found, skipping draw");
+    } else {
+        subpass.draw(gpu_mesh_, push_constants);
+    }
+    pass_.end();
+    pass_.submit(context->queue);
+}
+
+void destroy_pass_base(Command cmd, ResMut<TestPassBase> pass) {
+    if (!pass) return;
+    pass->destroy();
+}
+
+void destroy_pass(Command cmd, ResMut<TestPass> pass) {
+    if (!pass) return;
+    pass->destroy();
+}
 
 void create_sampler(ResMut<VulkanResources> p_res_manager) {
     if (!p_res_manager) return;
@@ -231,5 +411,13 @@ int main() {
     );
     app2.add_plugin(epix::input::InputPlugin{});
     app2.add_system(epix::Startup, create_sampler, create_image_and_view);
+    app2.add_system(epix::Startup, create_pass_base, create_pass).chain();
+    app2.add_system(epix::Startup, create_meshes);
+    app2.add_system(
+        epix::Extraction, extract_pass, prepare_mesh, extract_meshes
+    );
+    app2.add_system(epix::Render, draw_mesh);
+    app2.add_system(epix::Exit, destroy_pass, destroy_pass_base).chain();
+    app2.add_system(epix::Exit, destroy_meshes);
     app2.run();
 }

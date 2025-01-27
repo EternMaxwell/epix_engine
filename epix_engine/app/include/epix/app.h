@@ -683,6 +683,28 @@ struct Command {
         }
     }
     template <typename T>
+    void add_resource(std::shared_ptr<T> res) {
+        auto m_resources = &m_world->m_resources;
+        if (m_resources->find(std::type_index(typeid(std::remove_reference_t<T>)
+            )) == m_resources->end()) {
+            m_resources->emplace(
+                std::type_index(typeid(std::remove_reference_t<T>)),
+                std::static_pointer_cast<void>(res)
+            );
+        }
+    }
+    template <typename T>
+    void add_resource(T* res) {
+        auto m_resources = &m_world->m_resources;
+        if (m_resources->find(std::type_index(typeid(std::remove_reference_t<T>)
+            )) == m_resources->end()) {
+            m_resources->emplace(
+                std::type_index(typeid(std::remove_reference_t<T>)),
+                std::static_pointer_cast<void>(std::shared_ptr<T>(res))
+            );
+        }
+    }
+    template <typename T>
     void remove_resource() {
         m_resource_removers->push_back([](World* world) {
             auto& resources = world->m_resources;
@@ -1174,6 +1196,16 @@ struct SubApp {
     void insert_resource(T&& res) {
         Command command(&m_world);
         command.insert_resource(std::forward<T>(res));
+    }
+    template <typename T>
+    void add_resource(std::shared_ptr<T> res) {
+        Command command(&m_world);
+        command.add_resource(res);
+    }
+    template <typename T>
+    void add_resource(T* res) {
+        Command command(&m_world);
+        command.add_resource(res);
     }
     template <typename T>
     void init_resource() {
