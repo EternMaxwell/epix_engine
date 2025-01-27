@@ -33,9 +33,13 @@ EPIX_API epix::render::vulkan2::PipelineBase* PixelPipeline::create() {
                 .setType(vk::DescriptorType::eUniformBuffer)
                 .setDescriptorCount(256);
         return device.createDescriptorPool(
-            vk::DescriptorPoolCreateInfo().setMaxSets(256).setPoolSizes(
-                pool_size
-            )
+            vk::DescriptorPoolCreateInfo()
+                .setMaxSets(256)
+                .setPoolSizes(pool_size)
+                .setFlags(
+                    vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet |
+                    vk::DescriptorPoolCreateFlagBits::eUpdateAfterBind
+                )
         );
     });
     pipeline->set_default_topology(vk::PrimitiveTopology::ePointList);

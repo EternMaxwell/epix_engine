@@ -25,6 +25,7 @@ struct PixelMesh : public epix::render::vulkan2::Mesh<PixelVertex> {
 };
 using PixelStagingMesh = epix::render::vulkan2::StagingMesh<
     epix::render::vulkan2::Mesh<PixelVertex>>;
+using PixelGPUMesh = epix::render::vulkan2::GPUMesh<PixelStagingMesh>;
 
 struct PixelPipeline {
     EPIX_API static epix::render::vulkan2::PipelineBase* create();

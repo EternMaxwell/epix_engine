@@ -136,9 +136,8 @@ struct TextMesh : public Mesh<TextVertex> {
     );
 };
 
-using TextStagingMesh   = StagingMesh<Mesh<TextVertex>>;
-using TextGPUMesh       = GPUMesh<Mesh<TextVertex>>;
-using TextDedicatedMesh = GPUMesh<StagingMesh<Mesh<TextVertex>>>;
+using TextStagingMesh = StagingMesh<Mesh<TextVertex>>;
+using TextGPUMesh     = GPUMesh<StagingMesh<Mesh<TextVertex>>>;
 
 struct TextPipeline {
     EPIX_API static PipelineBase* create();
