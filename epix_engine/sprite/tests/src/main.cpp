@@ -159,6 +159,116 @@ void create_sampler(ResMut<epix::render::vulkan2::VulkanResources> res_manager
     res_manager->add_sampler("test", sampler);
 }
 
+struct TestPassBase : PassBase {
+   protected:
+    TestPassBase(Device& device) : PassBase(device) {
+        set_attachments(
+            vk::AttachmentDescription()
+                .setFormat(vk::Format::eR8G8B8A8Srgb)
+                .setSamples(vk::SampleCountFlagBits::e1)
+                .setLoadOp(vk::AttachmentLoadOp::eLoad)
+                .setStoreOp(vk::AttachmentStoreOp::eStore)
+                .setStencilLoadOp(vk::AttachmentLoadOp::eDontCare)
+                .setStencilStoreOp(vk::AttachmentStoreOp::eDontCare)
+                .setInitialLayout(vk::ImageLayout::eColorAttachmentOptimal)
+                .setFinalLayout(vk::ImageLayout::eColorAttachmentOptimal)
+        );
+        subpass_info(0)
+            .set_colors(vk::AttachmentReference().setAttachment(0).setLayout(
+                vk::ImageLayout::eColorAttachmentOptimal
+            ))
+            .set_bind_point(vk::PipelineBindPoint::eGraphics);
+        create();
+        add_pipeline(0, "test::sprite::pipeline", SpritePipeline::create());
+    }
+
+   public:
+    static TestPassBase* create_new(Device& device) {
+        return new TestPassBase(device);
+    }
+};
+
+struct TestPass : Pass {
+   protected:
+    TestPass(const PassBase* base, CommandPool& command_pool)
+        : Pass(base, command_pool, [](Pass& pass, const PassBase& base) {
+              using namespace epix::render::vulkan2::backend;
+              pass.add_subpass(0);
+              auto create_desc_set =
+                  [](Device& device, const DescriptorPool& pool,
+                     const std::vector<DescriptorSetLayout>& layouts) {
+                      return device.allocateDescriptorSets(
+                          vk::DescriptorSetAllocateInfo()
+                              .setDescriptorPool(pool)
+                              .setSetLayouts(layouts[0])
+                      );
+                  };
+              auto destroy_desc_set = [](Device& device,
+                                         const DescriptorPool& pool,
+                                         std::vector<DescriptorSet>& sets) {
+                  device.freeDescriptorSets(pool, sets[0]);
+              };
+              pass.subpass_add_pipeline(
+                  0, "test::sprite::pipeline", create_desc_set, destroy_desc_set
+              );
+          }) {}
+
+   public:
+    static TestPass* create_new(
+        const TestPassBase* base, CommandPool& command_pool
+    ) {
+        return new TestPass(base, command_pool);
+    }
+};
+
+void create_pass_base(Command cmd, Res<RenderContext> context) {
+    if (!context) return;
+    cmd.add_resource(TestPassBase::create_new(context->device));
+}
+
+void create_pass(
+    Command cmd, ResMut<RenderContext> context, Res<TestPassBase> base
+) {
+    if (!context || !base) return;
+    cmd.add_resource(TestPass::create_new(base.get(), context->command_pool));
+}
+
+void destroy_pass(ResMut<TestPassBase> base, ResMut<TestPass> pass) {
+    if (!base || !pass) return;
+    pass->destroy();
+    base->destroy();
+}
+
+void create_meshes(Command cmd, Res<RenderContext> context) {
+    if (!context) return;
+    auto& device = context->device;
+    SpriteStagingMesh mesh(device);
+    cmd.insert_resource(mesh);
+    SpriteGPUMesh mesh2(device);
+    cmd.insert_resource(mesh2);
+}
+
+void destroy_meshes(
+    ResMut<SpriteStagingMesh> staging_mesh, ResMut<SpriteGPUMesh> mesh
+) {
+    if (!mesh || !staging_mesh) return;
+    mesh->destroy();
+    staging_mesh->destroy();
+}
+
+void extract_pass(ResMut<TestPass> pass, Command cmd) {
+    if (!pass) return;
+    cmd.share_resource(pass);
+}
+
+void extract_meshes(
+    ResMut<SpriteStagingMesh> smesh, ResMut<SpriteGPUMesh> mesh, Command cmd
+) {
+    if (!smesh || !mesh) return;
+    cmd.share_resource(mesh);
+    cmd.share_resource(smesh);
+}
+
 void prepare_mesh(
     Command cmd,
     ResMut<SpriteStagingMesh> mesh,
@@ -175,6 +285,69 @@ void prepare_mesh(
         glm::mat4(1.0f), res_manager.get()
     );
     mesh->update(ms);
+}
+
+void draw_mesh(
+    Res<SpriteStagingMesh> staging_mesh,
+    ResMut<SpriteGPUMesh> gpu_mesh,
+    ResMut<TestPass> pass,
+    ResMut<RenderContext> context,
+    Res<VulkanResources> res_manager
+) {
+    if (!staging_mesh || !gpu_mesh || !pass || !context || !res_manager) return;
+    auto& queue = context->queue;
+    pass->begin(
+        [&](auto& device, auto& render_pass) {
+            vk::FramebufferCreateInfo framebuffer_info;
+            framebuffer_info.setRenderPass(render_pass);
+            framebuffer_info.setAttachments(
+                context->primary_swapchain.current_image_view()
+            );
+            framebuffer_info.setWidth(context->primary_swapchain.extent().width
+            );
+            framebuffer_info.setHeight(
+                context->primary_swapchain.extent().height
+            );
+            framebuffer_info.setLayers(1);
+            return device.createFramebuffer(framebuffer_info);
+        },
+        context->primary_swapchain.extent()
+    );
+    pass->update_mesh(*gpu_mesh, *staging_mesh);
+    auto& subpass = pass->next_subpass();
+    subpass.activate_pipeline(
+        0,
+        [&](auto& viewports, auto& scissors) {
+            viewports.resize(1);
+            viewports[0].setWidth(context->primary_swapchain.extent().width);
+            viewports[0].setHeight(context->primary_swapchain.extent().height);
+            viewports[0].setMinDepth(0.0f);
+            viewports[0].setMaxDepth(1.0f);
+            scissors.resize(1);
+            scissors[0].setExtent(context->primary_swapchain.extent());
+            scissors[0].setOffset({0, 0});
+        },
+        [&](auto& device, auto& descriptor_sets) {
+            descriptor_sets.resize(2);
+            vk::DescriptorBufferInfo buffer_info;
+            buffer_info.setBuffer(res_manager->get_buffer("uniform_buffer"));
+            buffer_info.setOffset(0);
+            buffer_info.setRange(sizeof(glm::mat4) * 2);
+            vk::WriteDescriptorSet descriptor_writes =
+                vk::WriteDescriptorSet()
+                    .setDstSet(descriptor_sets[0])
+                    .setDstBinding(0)
+                    .setDstArrayElement(0)
+                    .setDescriptorType(vk::DescriptorType::eUniformBuffer)
+                    .setDescriptorCount(1)
+                    .setPBufferInfo(&buffer_info);
+            device.updateDescriptorSets(descriptor_writes, {});
+            descriptor_sets[1] = res_manager->get_descriptor_set();
+        }
+    );
+    subpass.draw(*gpu_mesh);
+    pass->end();
+    pass->submit(queue);
 }
 
 void create_uniform_buffer(
@@ -209,6 +382,10 @@ int main() {
     app.add_system(
         Startup, create_test_texture, create_sampler, create_uniform_buffer
     );
-    app.add_system(Extraction, prepare_mesh);
+    app.add_system(Startup, create_pass_base, create_pass, create_meshes)
+        .chain();
+    app.add_system(Extraction, prepare_mesh, extract_pass, extract_meshes);
+    app.add_system(Render, draw_mesh);
+    app.add_system(Exit, destroy_pass, destroy_meshes).chain();
     app.run();
 }

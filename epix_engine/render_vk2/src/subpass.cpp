@@ -8,11 +8,11 @@ EPIX_API void Subpass::activate_pipeline(
     std::function<void(backend::Device&, std::vector<backend::DescriptorSet>&)>
         func_desc
 ) {
+    _active_pipeline = -1;
     if (index >= _pipelines.size()) {
         spdlog::warn("Subpass::activate_pipeline called with invalid index");
         return;
     }
-    _active_pipeline = index;
     if (func_desc) {
         func_desc(_device, _descriptor_sets[index]);
     }
@@ -22,12 +22,23 @@ EPIX_API void Subpass::activate_pipeline(
     _cmd.bindPipeline(
         vk::PipelineBindPoint::eGraphics, _pipelines[index]->pipeline
     );
+    if (_pipelines[index]->descriptor_set_layouts.size() >
+        _descriptor_sets[index].size()) {
+        spdlog::warn(
+            "Subpass::activate_pipeline: Descriptor sets (size {}) provided is "
+            "less than needed ({}). Ignoring call.",
+            _descriptor_sets[index].size(),
+            _pipelines[index]->descriptor_set_layouts.size()
+        );
+        return;
+    }
     _cmd.bindDescriptorSets(
         vk::PipelineBindPoint::eGraphics, _pipelines[index]->pipeline_layout, 0,
         _descriptor_sets[index], {}
     );
     _cmd.setViewport(0, _viewports[index]);
     _cmd.setScissor(0, _scissors[index]);
+    _active_pipeline = index;
 }
 
 EPIX_API uint32_t Subpass::add_pipeline(

@@ -107,11 +107,11 @@ struct SpriteMesh : public Mesh<SpriteVertex> {
 };
 
 using SpriteStagingMesh = StagingMesh<Mesh<SpriteVertex>>;
+using SpriteGPUMesh     = GPUMesh<SpriteStagingMesh>;
 
-struct SpritePipeline : public PipelineBase {
-    EPIX_API SpritePipeline();
+struct SpritePipeline {
+    EPIX_API static PipelineBase* create();
 };
-
 }  // namespace vulkan2
 }  // namespace sprite
 }  // namespace epix

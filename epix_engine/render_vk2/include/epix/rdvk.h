@@ -1130,6 +1130,7 @@ struct PassBase {
 };
 
 struct Subpass {
+   protected:
     backend::CommandBuffer _cmd;
 
     backend::Device _device;
@@ -1142,6 +1143,9 @@ struct Subpass {
         _funcs_destroy_desc_set;
     uint32_t _active_pipeline = -1;
 
+   public:
+    Subpass() = default;
+
     EPIX_API void activate_pipeline(
         uint32_t index,
         std::function<
@@ -1151,8 +1155,6 @@ struct Subpass {
             void(backend::Device&, std::vector<backend::DescriptorSet>&)>
             func_desc = {}
     );
-
-    Subpass() = default;
 
     EPIX_API uint32_t add_pipeline(
         const PipelineBase* pipeline,
@@ -1225,10 +1227,17 @@ struct Subpass {
         for (auto& buffer : mesh.vertex_buffers()) {
             buffers.push_back(buffer.buffer);
         }
-        _cmd.pushConstants(
-            pipeline->pipeline_layout, pipeline->push_constant_stage, 0,
-            sizeof(PushConstantT), &push_constant
-        );
+        if (pipeline->push_constant_stage != vk::ShaderStageFlags(0)) {
+            _cmd.pushConstants(
+                pipeline->pipeline_layout, pipeline->push_constant_stage, 0,
+                sizeof(PushConstantT), &push_constant
+            );
+        } else {
+            spdlog::warn(
+                "No push constant block for in this pipeline, ignoring "
+                "provided push constant data."
+            );
+        }
         _cmd.bindVertexBuffers(0, buffers, offsets);
         if (mesh.index_buffer() && mesh.index_count()) {
             _cmd.bindIndexBuffer(
@@ -1244,9 +1253,12 @@ struct Subpass {
             );
         }
     }
+
+    friend struct Pass;
 };
 
 struct Pass {
+   protected:
     backend::Device _device;
     backend::CommandPool _cmd_pool;
     backend::RenderPass _render_pass;
@@ -1265,6 +1277,7 @@ struct Pass {
     bool ready               = false;
     uint32_t current_subpass = 0;
 
+   public:
     EPIX_API Pass(
         const PassBase* base,
         backend::CommandPool& command_pool,
@@ -1328,5 +1341,7 @@ struct Pass {
     EPIX_API Subpass& next_subpass();
     EPIX_API void end();
     EPIX_API void submit(backend::Queue& queue);
+
+    friend struct Subpass;
 };
 }  // namespace epix::render::vulkan2
