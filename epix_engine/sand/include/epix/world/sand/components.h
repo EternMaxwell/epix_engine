@@ -113,7 +113,7 @@ struct ElemRegistry {
 };
 struct Simulation {
     struct Chunk {
-        using Grid = epix::utils::grid2d::Grid2D<Cell>;
+        using Grid = epix::utils::grid2d::packed_grid2d<Cell>;
         Grid cells;
         const int width;
         const int height;

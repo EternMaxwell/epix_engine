@@ -60,7 +60,7 @@ EPIX_API Cell::operator bool() const { return valid(); }
 EPIX_API bool Cell::operator!() const { return !valid(); }
 
 EPIX_API Simulation::Chunk::Chunk(int width, int height)
-    : cells(width, height, Cell{}),
+    : cells({width, height}, Cell{}),
       width(width),
       height(height),
       time_since_last_swap(0),
@@ -106,9 +106,9 @@ EPIX_API void Simulation::Chunk::count_time() {
     }
     time_threshold = EPIX_WORLD_SAND_DEFAULT_CHUNK_RESET_TIME;
 }
-EPIX_API Cell& Simulation::Chunk::get(int x, int y) { return cells(x, y); }
+EPIX_API Cell& Simulation::Chunk::get(int x, int y) { return cells.get(x, y); }
 EPIX_API const Cell& Simulation::Chunk::get(int x, int y) const {
-    return cells(x, y);
+    return cells.get(x, y);
 }
 EPIX_API Cell& Simulation::Chunk::create(
     int x, int y, const CellDef& def, ElemRegistry& m_registry
@@ -163,7 +163,7 @@ EPIX_API void Simulation::Chunk::remove(int x, int y) {
     get(x, y).elem_id = -1;
 }
 EPIX_API bool Simulation::Chunk::is_updated(int x, int y) const {
-    return cells(x, y).updated;
+    return cells.get(x, y).updated;
 }
 EPIX_API void Simulation::Chunk::touch(int x, int y) {
     assert(x >= 0 && x < width && y >= 0 && y < height);
@@ -191,7 +191,7 @@ EPIX_API glm::ivec2 Simulation::Chunk::size() const {
 }
 EPIX_API bool Simulation::Chunk::contains(int x, int y) const {
     return x >= 0 && x < width && y >= 0 && y < height &&
-           cells(x, y).elem_id >= 0;
+           cells.get(x, y).elem_id >= 0;
 }
 
 EPIX_API Simulation::ChunkMap::ChunkMap(int chunk_size)

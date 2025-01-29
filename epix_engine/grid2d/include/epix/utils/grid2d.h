@@ -2,11 +2,13 @@
 
 #include <spdlog/spdlog.h>
 
+#include <algorithm>
 #include <array>
 #include <concepts>
 #include <earcut.hpp>
 #include <format>
 #include <glm/glm.hpp>
+#include <numeric>
 #include <stack>
 #include <stdexcept>
 #include <vector>
@@ -37,12 +39,9 @@ struct nth<1, glm::ivec2> {
 namespace epix::utils::grid2d {
 template <typename T>
 concept BoolGrid = requires(T t) {
-    { t.size() } -> std::same_as<glm::ivec2>;
+    { t.size(0) } -> std::same_as<int>;
+    { t.size(1) } -> std::same_as<int>;
     { t.contains(0i32, 0i32) } -> std::same_as<bool>;
-};
-template <typename T>
-concept SetBoolGrid = BoolGrid<T> && requires(T t) {
-    { t.set(0i32, 0i32, true) };
 };
 template <typename T, typename U>
 concept Boolifiable = requires(T t, U u) {
@@ -66,467 +65,914 @@ template <>
 struct boolify<bool> {
     bool operator()(bool t) const { return t; }
 };
-template <typename T, typename Boolify = boolify<T>>
+template <typename T, size_t D>
+struct sparse_grid;
+template <typename T, size_t D, typename Boolify = boolify<T>>
     requires Boolifiable<T, Boolify>
-struct Grid2D {
+struct packed_grid {
    private:
-    int width;
-    int height;
+    std::array<int, D> _size;
     std::vector<T> _data;
+    Boolify _boolify;
+
+    struct view_t {
+        packed_grid& _grid;
+        struct iterator {
+            std::array<int, D> pos;
+            T* data;
+            packed_grid& grid;
+
+            iterator(packed_grid& grid, const std::array<int, D>& pos)
+                : grid(grid), pos(pos) {
+                if (!grid.valid(pos)) {
+                    data = nullptr;
+                }
+                int index = pos[D - 1];
+                for (int i = D - 2; i >= 0; i--) {
+                    index = index * grid._size[i] + pos[i];
+                }
+                data = &grid._data[index];
+            }
+            iterator& operator++() {
+                for (int i = D - 1; i >= 0; i--) {
+                    if (pos[i] < size[i] - 1) {
+                        pos[i]++;
+                        return *this;
+                    } else {
+                        pos[i] = 0;
+                    }
+                }
+                data = nullptr;
+                return *this;
+            }
+            bool operator!=(const iterator& other) const {
+                return data != other.data;
+            }
+            bool operator==(const iterator& other) const {
+                return data == other.data;
+            }
+            std::pair<std::array<int, D>, T&> operator*() {
+                return {pos, *data};
+            }
+        };
+
+        view_t(packed_grid& grid) : _grid(grid) {}
+        iterator begin() { return iterator(_grid, std::array<int, D>()); }
+        iterator end() { return iterator(_grid, _grid._size); }
+    };
+    struct const_view_t {
+        const packed_grid& _grid;
+        struct iterator {
+            std::array<int, D> pos;
+            const T* data;
+            const packed_grid& grid;
+
+            iterator(const packed_grid& grid, const std::array<int, D>& pos)
+                : grid(grid), pos(pos) {
+                if (!grid.valid(pos)) {
+                    data = nullptr;
+                }
+                int index = pos[D - 1];
+                for (int i = D - 2; i >= 0; i--) {
+                    index = index * grid._size[i] + pos[i];
+                }
+                data = &grid._data[index];
+            }
+            iterator& operator++() {
+                for (int i = D - 1; i >= 0; i--) {
+                    if (pos[i] < size[i] - 1) {
+                        pos[i]++;
+                        return *this;
+                    } else {
+                        pos[i] = 0;
+                    }
+                }
+                data = nullptr;
+                return *this;
+            }
+            bool operator!=(const iterator& other) const {
+                return data != other.data;
+            }
+            bool operator==(const iterator& other) const {
+                return data == other.data;
+            }
+            std::pair<std::array<int, D>, const T&> operator*() {
+                return {pos, *data};
+            }
+        };
+
+        const_view_t(const packed_grid& grid) : _grid(grid) {}
+        iterator begin() { return iterator(_grid, std::array<int, D>()); }
+        iterator end() { return iterator(_grid, _grid._size); }
+    };
 
    public:
-    Grid2D(int width, int height) : width(width), height(height) {
-        _data.resize(width * height);
-    }
-    template <typename... Args>
-    Grid2D(int width, int height, Args&&... args)
-        : width(width), height(height) {
-        _data.resize(width * height, T(std::forward<Args>(args)...));
-    }
-    Grid2D(const Grid2D& other) : width(other.width), height(other.height) {
+    packed_grid(const std::array<int, D>& size)
+        : _size(size),
+          _data(std::accumulate(
+              size.begin(), size.end(), 1, std::multiplies<int>()
+          )) {}
+    packed_grid(const std::array<int, D>& size, const T& value)
+        : _size(size),
+          _data(
+              std::accumulate(
+                  size.begin(), size.end(), 1, std::multiplies<int>()
+              ),
+              value
+          ) {}
+    packed_grid(const packed_grid& other)
+        : _size(other._size), _data(other._data) {}
+    packed_grid(packed_grid&& other)
+        : _size(other._size), _data(std::move(other._data)) {}
+    packed_grid& operator=(const packed_grid& other) {
+        _size = other._size;
         _data = other._data;
+        return *this;
     }
-    Grid2D(Grid2D&& other) : width(other.width), height(other.height) {
+    packed_grid& operator=(packed_grid&& other) {
+        _size = other._size;
         _data = std::move(other._data);
-    }
-    Grid2D& operator=(const Grid2D& other) {
-        width  = other.width;
-        height = other.height;
-        _data  = other._data;
         return *this;
     }
-    Grid2D& operator=(Grid2D&& other) {
-        width  = other.width;
-        height = other.height;
-        _data  = std::move(other._data);
-        return *this;
-    }
-    void set(int x, int y, const T& value) {
-        if (x < 0 || x >= width || y < 0 || y >= height) return;
-        _data[x + y * width] = value;
-    }
-    void set(int x, int y, T&& value) {
-        if (x < 0 || x >= width || y < 0 || y >= height) return;
-        _data[x + y * width] = std::move(value);
-    }
-    template <typename... Args>
-    void emplace(int x, int y, Args&&... args) {
-        if (x < 0 || x >= width || y < 0 || y >= height) return;
-        _data[x + y * width] = T(std::forward<Args>(args)...);
-    }
-    template <typename... Args>
-    void try_emplace(int x, int y, Args&&... args) {
-        if (x < 0 || x >= width || y < 0 || y >= height) return;
-        if (!_data[x + y * width]) {
-            _data[x + y * width] = T(std::forward<Args>(args)...);
+    void reset_at(const std::array<int, D>& pos) {
+        for (int i = 0; i < D; i++) {
+            if (pos[i] >= _size[i] || pos[i] < 0) return;
         }
+        int index = pos[D - 1];
+        for (int i = D - 2; i >= 0; i--) {
+            index = index * _size[i] + pos[i];
+        }
+        _data[index] = T();
     }
-    T& operator()(int x, int y) { return _data[x + y * width]; }
-    const T& operator()(int x, int y) const { return _data[x + y * width]; }
-    bool valid(int x, int y) const {
-        return x >= 0 && x < width && y >= 0 && y < height;
+    template <typename... Args>
+        requires(
+            sizeof...(Args) == D &&
+            ((std::same_as<Args, int> || std::convertible_to<Args, int>) && ...)
+        )
+    void reset(Args&&... args) {
+        reset_at(std::array<int, D>{args...});
     }
-    bool contains(int x, int y) const {
-        return valid(x, y) && Boolify()((*this)(x, y));
+    template <typename... Args>
+        requires std::constructible_from<T, Args...>
+    void emplace_at(const std::array<int, D>& pos, Args&&... args) {
+        for (int i = 0; i < D; i++) {
+            if (pos[i] >= _size[i] || pos[i] < 0) return;
+        }
+        int index = pos[D - 1];
+        for (int i = D - 2; i >= 0; i--) {
+            index = index * _size[i] + pos[i];
+        }
+        _data[index] = std::move(T(std::forward<Args>(args)...));
     }
-    glm::ivec2 size() const { return {width, height}; }
+    template <typename... Args, size_t... I, size_t... J>
+    void
+    emplace_i(std::tuple<Args...>& args, std::index_sequence<I...>, std::index_sequence<J...>) {
+        emplace_at(
+            std::array<int, D>{std::get<I>(args)...},
+            std::forward<std::tuple_element_t<D + J, std::tuple<Args...>>>(
+                std::get<D + J>(args)
+            )...
+        );
+    }
+    template <typename... Args>
+        requires(sizeof...(Args) > D)
+    void emplace(Args&&... args) {
+        auto tuple = std::forward_as_tuple(args...);
+        emplace_i(
+            tuple, std::make_index_sequence<D>(),
+            std::make_index_sequence<sizeof...(Args) - D>()
+        );
+    }
+    template <typename... Args>
+        requires std::constructible_from<T, Args...>
+    bool try_emplace_at(const std::array<int, D>& pos, Args&&... args) {
+        for (int i = 0; i < D; i++) {
+            if (pos[i] >= _size[i] || pos[i] < 0) return;
+        }
+        int index = pos[D - 1];
+        for (int i = D - 2; i >= 0; i--) {
+            index = index * _size[i] + pos[i];
+        }
+        if (!_boolify(_data[index])) {
+            _data[index] = std::move(T(std::forward<Args>(args)...));
+            return true;
+        }
+        return false;
+    }
+    template <typename... Args, size_t... I, size_t... J>
+    bool
+    try_emplace_i(std::tuple<Args...>& args, std::index_sequence<I...>, std::index_sequence<J...>) {
+        return try_emplace_at(
+            std::array<int, D>{std::get<I>(args)...},
+            std::forward<std::tuple_element_t<D + J, std::tuple<Args...>>>(
+                std::get<D + J>(args)
+            )...
+        );
+    }
+    template <typename... Args>
+        requires(sizeof...(Args) > D)
+    bool try_emplace(Args&&... args) {
+        auto tuple = std::forward_as_tuple(args...);
+        return try_emplace_i(
+            tuple, std::make_index_sequence<D>(),
+            std::make_index_sequence<sizeof...(Args) - D>()
+        );
+    }
+    bool contains_at(const std::array<int, D>& pos) const {
+        for (int i = 0; i < D; i++) {
+            if (pos[i] >= _size[i] || pos[i] < 0) return false;
+        }
+        int index = pos[D - 1];
+        for (int i = D - 2; i >= 0; i--) {
+            index = index * _size[i] + pos[i];
+        }
+        return _boolify(_data[index]);
+    }
+    template <typename... Args>
+        requires(
+            sizeof...(Args) == D &&
+            ((std::same_as<Args, int> || std::convertible_to<Args, int>) && ...)
+        )
+    bool contains(Args&&... args) const {
+        return contains_at(std::array<int, D>{args...});
+    }
+    bool valid_at(const std::array<int, D>& pos) const {
+        for (int i = 0; i < D; i++) {
+            if (pos[i] >= _size[i] || pos[i] < 0) return false;
+        }
+        return true;
+    }
+    template <typename... Args>
+        requires(
+            sizeof...(Args) == D &&
+            ((std::same_as<Args, int> || std::convertible_to<Args, int>) && ...)
+        )
+    bool valid(Args&&... args) const {
+        return valid_at(std::array<int, D>{args...});
+    }
+    T& get_at(const std::array<int, D>& pos) {
+        for (int i = 0; i < D; i++) {
+            if (pos[i] >= _size[i] || pos[i] < 0)
+                throw std::out_of_range("Position invalid");
+        }
+        int index = pos[D - 1];
+        for (int i = D - 2; i >= 0; i--) {
+            index = index * _size[i] + pos[i];
+        }
+        return _data[index];
+    }
+    template <typename... Args>
+        requires(
+            sizeof...(Args) == D &&
+            ((std::same_as<Args, int> || std::convertible_to<Args, int>) && ...)
+        )
+    T& get(Args&&... args) {
+        return get_at(std::array<int, D>{args...});
+    }
+    const T& get_at(const std::array<int, D>& pos) const {
+        for (int i = 0; i < D; i++) {
+            if (pos[i] >= _size[i] || pos[i] < 0)
+                throw std::out_of_range("Position invalid");
+        }
+        int index = pos[D - 1];
+        for (int i = D - 2; i >= 0; i--) {
+            index = index * _size[i] + pos[i];
+        }
+        return _data[index];
+    }
+    template <typename... Args>
+        requires(
+            sizeof...(Args) == D &&
+            ((std::same_as<Args, int> || std::convertible_to<Args, int>) && ...)
+        )
+    const T& get(Args&&... args) const {
+        return get_at(std::array<int, D>{args...});
+    }
+
+    const std::array<int, D>& size() const { return _size; }
+    int size(int i) const { return _size[i]; }
+    const std::vector<T>& data() const { return _data; }
     std::vector<T>& data() { return _data; }
+
+    view_t view() { return view_t(*this); }
+    const_view_t view() const { return const_view_t(*this); }
+
+    template <typename T, size_t D>
+    friend struct sparse_grid;
 };
-template <>
-struct Grid2D<bool, boolify<bool>> {
+template <size_t D>
+struct packed_grid<bool, D, boolify<bool>> {
    private:
-    int width;
-    int height;
-    int column;
-    std::vector<uint32_t> _data;
+    std::array<int, D> _size;
+    int _column;
+    std::vector<uint8_t> _data;
 
    public:
-    Grid2D(int width, int height)
-        : width(width),
-          height(height),
-          column(width / 32 + (width % 32 ? 1 : 0)) {
-        _data.reserve(column * height);
-        _data.resize(column * height);
-    }
-    Grid2D(int width, int height, bool value)
-        : width(width),
-          height(height),
-          column(width / 32 + (width % 32 ? 1 : 0)) {
-        _data.reserve(column * height);
-        _data.resize(column * height);
-        for (int i = 0; i < column * height; i++) {
-            _data[i] = value ? 0xFFFFFFFF : 0;
+    packed_grid(const std::array<int, D>& size)
+        : _size(size),
+          _column((size[0] + 7) / 8),
+          _data(
+              std::accumulate(
+                  size.begin(), size.end(), 1, std::multiplies<int>()
+              ) *
+              _column
+          ) {}
+    packed_grid(const std::array<int, D>& size, bool value)
+        : _size(size),
+          _column((size[0] + 7) / 8),
+          _data(
+              std::accumulate(
+                  size.begin(), size.end(), 1, std::multiplies<int>()
+              ) * _column,
+              value ? 0xff : 0
+          ) {}
+    packed_grid(const packed_grid& other)
+        : _size(other._size), _column(other._column), _data(other._data) {}
+    template <typename T, typename TB>
+    packed_grid(const packed_grid<T, D, TB>& other)
+        : _size(other.size()),
+          _column((other.size()[0] + 7) / 8),
+          _data(
+              std::accumulate(
+                  other.size().begin(),
+                  other.size().end(),
+                  1,
+                  std::multiplies<int>()
+              ) *
+              _column
+          ) {
+        for (auto&& [pos, value] : other.view()) {
+            insert(pos, other._boolify(value));
         }
     }
-    template <typename T>
-    Grid2D(const Grid2D<T>& other)
-        : width(other.width),
-          height(other.height),
-          column(width / 32 + (width % 32 ? 1 : 0)) {
-        _data.reserve(column * height);
-        _data.resize(column * height);
-        for (int y = 0; y < height; y++) {
-            for (int x = 0; x < width; x++) {
-                set(x, y, (bool)other(x, y));
+    template <BoolGrid G>
+        requires(D == 2)
+    packed_grid(const G& other)
+        : _size({other.size(0), other.size(1)}),
+          _column((other.size(0) + 7) / 8),
+          _data(other.size(1) * _column) {
+        for (int y = 0; y < other.size(1); y++) {
+            for (int x = 0; x < other.size(0); x++) {
+                insert({x, y}, other.contains(x, y));
             }
         }
     }
-    template <BoolGrid T>
-    Grid2D(const T& other)
-        : width(other.size().x),
-          height(other.size().y),
-          column(width / 32 + (width % 32 ? 1 : 0)) {
-        _data.reserve(column * height);
-        _data.resize(column * height);
-        for (int y = 0; y < height; y++) {
-            for (int x = 0; x < width; x++) {
-                set(x, y, other.contains(x, y));
+    packed_grid(packed_grid&& other)
+        : _size(other._size),
+          _column(other._column),
+          _data(std::move(other._data)) {}
+    packed_grid& operator=(const packed_grid& other) {
+        _size   = other._size;
+        _column = other._column;
+        _data   = other._data;
+        return *this;
+    }
+    packed_grid& operator=(packed_grid&& other) {
+        _size   = other._size;
+        _column = other._column;
+        _data   = std::move(other._data);
+        return *this;
+    }
+    bool valid_at(const std::array<int, D>& pos) const {
+        for (int i = 0; i < D; i++) {
+            if (pos[i] >= _size[i] || pos[i] < 0) return false;
+        }
+        return true;
+    }
+    template <typename... Args>
+        requires(
+            sizeof...(Args) == D &&
+            ((std::same_as<Args, int> || std::convertible_to<Args, int>) && ...)
+        )
+    bool valid(Args&&... args) const {
+        return valid_at(std::array<int, D>{args...});
+    }
+    bool contains_at(const std::array<int, D>& pos) const {
+        for (int i = 0; i < D; i++) {
+            if (pos[i] >= _size[i] || pos[i] < 0) return false;
+        }
+        int index = pos[D - 1];
+        for (int i = D - 2; i > 0; i--) {
+            index = index * _size[i] + pos[i];
+        }
+        return (_data[index * _column + pos[0] / 8] & (1 << (pos[0] % 8))) != 0;
+    }
+    template <typename... Args>
+        requires(
+            sizeof...(Args) == D &&
+            ((std::same_as<Args, int> || std::convertible_to<Args, int>) && ...)
+        )
+    bool contains(Args&&... args) const {
+        return contains_at(std::array<int, D>{args...});
+    }
+    void insert(const std::array<int, D>& pos, bool value) {
+        for (int i = 0; i < D; i++) {
+            if (pos[i] >= _size[i] || pos[i] < 0) return;
+        }
+        int index = pos[D - 1];
+        for (int i = D - 2; i > 0; i--) {
+            index = index * _size[i] + pos[i];
+        }
+        if (value) {
+            _data[index * _column + pos[0] / 8] |= 1 << (pos[0] % 8);
+        } else {
+            _data[index * _column + pos[0] / 8] &= ~(1 << (pos[0] % 8));
+        }
+    }
+    void emplace_at(const std::array<int, D>& pos, bool value) {
+        insert(pos, value);
+    }
+    template <typename... Args, size_t... I>
+    void emplace_i(std::tuple<Args...>& args, std::index_sequence<I...>) {
+        emplace_at(std::array<int, D>{std::get<I>(args)...}, std::get<D>(args));
+    }
+    template <typename... Args>
+        requires(
+            sizeof...(Args) == D + 1 &&
+            (std::same_as<std::tuple_element_t<D, std::tuple<Args...>>, int> ||
+             std::convertible_to<
+                 std::tuple_element_t<D, std::tuple<Args...>>,
+                 int>)
+        )
+    void emplace(Args&&... args) {
+        auto tuple = std::forward_as_tuple(args...);
+        emplace_i(tuple, std::make_index_sequence<D>());
+    }
+    bool try_emplace_at(const std::array<int, D>& pos, bool value) {
+        if (!valid(pos)) return false;
+        if (contains(pos)) return false;
+        insert(pos, value);
+        return true;
+    }
+    template <typename... Args, size_t... I>
+    bool try_emplace_i(std::tuple<Args...>& args, std::index_sequence<I...>) {
+        return try_emplace_at(
+            std::array<int, D>{std::get<I>(args)...}, std::get<D>(args)
+        );
+    }
+    template <typename... Args>
+        requires(
+            sizeof...(Args) == D + 1 &&
+            (std::same_as<std::tuple_element_t<D, std::tuple<Args...>>, int> ||
+             std::convertible_to<
+                 std::tuple_element_t<D, std::tuple<Args...>>,
+                 int>)
+        )
+    bool try_emplace(Args&&... args) {
+        auto tuple = std::forward_as_tuple(args...);
+        return try_emplace_i(tuple, std::make_index_sequence<D>());
+    }
+    void reset_at(const std::array<int, D>& pos) {
+        for (int i = 0; i < D; i++) {
+            if (pos[i] >= _size[i] || pos[i] < 0) return;
+        }
+        int index = pos[D - 1];
+        for (int i = D - 2; i > 0; i--) {
+            index = index * _size[i] + pos[i];
+        }
+        _data[index * _column + pos[0] / 8] &= ~(1 << (pos[0] % 8));
+    }
+    template <typename... Args>
+        requires(
+            sizeof...(Args) == D &&
+            ((std::same_as<Args, int> || std::convertible_to<Args, int>) && ...)
+        )
+    void reset(Args&&... args) {
+        reset_at(std::array<int, D>{args...});
+    }
+    bool get_at(const std::array<int, D>& pos) const {
+        for (int i = 0; i < D; i++) {
+            if (pos[i] >= _size[i] || pos[i] < 0) return false;
+        }
+        int index = pos[D - 1];
+        for (int i = D - 2; i > 0; i--) {
+            index = index * _size[i] + pos[i];
+        }
+        return (_data[index * _column + pos[0] / 8] & (1 << (pos[0] % 8))) != 0;
+    }
+    template <typename... Args>
+        requires(
+            sizeof...(Args) == D &&
+            ((std::same_as<Args, int> || std::convertible_to<Args, int>) && ...)
+        )
+    bool get(Args&&... args) const {
+        return get_at(std::array<int, D>{args...});
+    }
+    const std::array<int, D>& size() const { return _size; }
+    int size(int i) const { return _size[i]; }
+    const std::vector<uint8_t>& data() const { return _data; }
+};
+template <size_t D>
+using binary_grid = packed_grid<bool, D, boolify<bool>>;
+template <typename T, size_t D>
+struct sparse_grid {
+   private:
+    struct index_boolify {
+        bool operator()(int index) { return index != -1; }
+    };
+
+    packed_grid<int, D, index_boolify> _index_grid;
+    std::vector<T> _data;
+    std::vector<std::array<int, D>> _pos;
+
+    struct view_t {
+        sparse_grid& _grid;
+        struct iterator {
+            sparse_grid& grid;
+            int index;
+            iterator(sparse_grid& grid, int index) : grid(grid), index(index) {}
+            iterator& operator++() {
+                if (index < grid._data.size()) index++;
+                return *this;
             }
+            bool operator!=(const iterator& other) const {
+                return index != other.index || &grid != &other.grid;
+            }
+            bool operator==(const iterator& other) const {
+                return index == other.index && &grid == &other.grid;
+            }
+            std::pair<std::array<int, D>, T&> operator*() {
+                return {grid._pos[index], grid._data[index]};
+            }
+        };
+        view_t(sparse_grid& grid) : _grid(grid) {}
+        iterator begin() { return iterator(_grid, 0); }
+        iterator end() { return iterator(_grid, _grid._data.size()); }
+    };
+    struct const_view_t {
+        const sparse_grid& _grid;
+        struct iterator {
+            const sparse_grid& grid;
+            int index;
+            iterator(const sparse_grid& grid, int index)
+                : grid(grid), index(index) {}
+            iterator& operator++() {
+                if (index < grid._data.size()) index++;
+                return *this;
+            }
+            bool operator!=(const iterator& other) const {
+                return index != other.index || &grid != &other.grid;
+            }
+            bool operator==(const iterator& other) const {
+                return index == other.index && &grid == &other.grid;
+            }
+            std::pair<std::array<int, D>, const T&> operator*() {
+                return {grid._pos[index], grid._data[index]};
+            }
+        };
+        const_view_t(const sparse_grid& grid) : _grid(grid) {}
+        iterator begin() { return iterator(_grid, 0); }
+        iterator end() { return iterator(_grid, _grid._data.size()); }
+    };
+
+   public:
+    sparse_grid(const std::array<int, D>& size)
+        : _index_grid(size, -1), _data(), _pos() {}
+    sparse_grid(const sparse_grid& other)
+        : _index_grid(other._index_grid),
+          _data(other._data),
+          _pos(other._pos) {}
+    sparse_grid(sparse_grid&& other)
+        : _index_grid(std::move(other._index_grid)),
+          _data(std::move(other._data)),
+          _pos(std::move(other._pos)) {}
+    sparse_grid& operator=(const sparse_grid& other) {
+        _index_grid = other._index_grid;
+        _data       = other._data;
+        _pos        = other._pos;
+        return *this;
+    }
+    sparse_grid& operator=(sparse_grid&& other) {
+        _index_grid = std::move(other._index_grid);
+        _data       = std::move(other._data);
+        _pos        = std::move(other._pos);
+        return *this;
+    }
+
+    void insert(const std::array<int, D>& pos, const T& value) {
+        if (!_index_grid.valid(pos)) return;
+        if (_index_grid.contains(pos)) {
+            _data[_index_grid.get(pos)] = value;
+        } else {
+            _index_grid.insert(pos, _data.size());
+            _pos.push_back(pos);
+            _data.push_back(value);
         }
     }
-    Grid2D(const Grid2D& other)
-        : width(other.width),
-          height(other.height),
-          column(width / 32 + (width % 32 ? 1 : 0)) {
-        _data = other._data;
-    }
-    Grid2D(Grid2D&& other)
-        : width(other.width),
-          height(other.height),
-          column(width / 32 + (width % 32 ? 1 : 0)) {
-        _data = std::move(other._data);
-    }
-    Grid2D& operator=(const Grid2D& other) {
-        width  = other.width;
-        height = other.height;
-        column = other.column;
-        _data  = other._data;
-        return *this;
-    }
-    Grid2D& operator=(Grid2D&& other) {
-        width  = other.width;
-        height = other.height;
-        column = other.column;
-        _data  = std::move(other._data);
-        return *this;
-    }
-    void set(int x, int y, bool value) {
-        if (x < 0 || x >= width || y < 0 || y >= height) return;
-        int index = x / 32 + y * column;
-        int bit   = x % 32;
-        if (value)
-            _data[index] |= 1 << bit;
-        else
-            _data[index] &= ~(1 << bit);
-    }
-    void emplace(int x, int y, bool value) { set(x, y, value); }
-    void try_emplace(int x, int y, bool value) { set(x, y, value); }
-    bool operator()(int x, int y) const {
-        if (x < 0 || x >= width || y < 0 || y >= height) return false;
-        int index = x / 32 + y * column;
-        int bit   = x % 32;
-        return _data[index] & (1 << bit);
-    }
-    bool valid(int x, int y) const {
-        return x >= 0 && x < width && y >= 0 && y < height;
-    }
-    bool contains(int x, int y) const {
-        if (x < 0 || x >= width || y < 0 || y >= height) return false;
-        int index = x / 32 + y * column;
-        int bit   = x % 32;
-        return _data[index] & (1 << bit);
-    }
-    glm::ivec2 size() const { return {width, height}; }
-};
-
-template <
-    typename T,
-    size_t width,
-    size_t height,
-    typename Boolify = boolify<T>>
-    requires Boolifiable<T, Boolify>
-struct Grid2DOnStack {
-    std::array<T, width * height> data;
-    Grid2DOnStack() = default;
-    template <typename... Args>
-    Grid2DOnStack(Args&&... args) {
-        data.fill(T(std::forward<Args>(args)...));
-    }
-    void set(int x, int y, const T& value) {
-        if (x < 0 || x >= width || y < 0 || y >= height) return;
-        data[x + y * width] = value;
-    }
-    void set(int x, int y, T&& value) {
-        if (x < 0 || x >= width || y < 0 || y >= height) return;
-        data[x + y * width] = std::move(value);
+    bool try_insert(const std::array<int, D>& pos, const T& value) {
+        if (!_index_grid.valid(pos)) return false;
+        if (_index_grid.contains(pos)) return false;
+        _index_grid.insert(pos, _data.size());
+        _pos.push_back(pos);
+        _data.push_back(value);
     }
     template <typename... Args>
-    void emplace(int x, int y, Args&&... args) {
-        if (x < 0 || x >= width || y < 0 || y >= height) return;
-        data[x + y * width] = T(std::forward<Args>(args)...);
-    }
-    template <typename... Args>
-    void try_emplace(int x, int y, Args&&... args) {
-        if (x < 0 || x >= width || y < 0 || y >= height) return;
-        if (!data[x + y * width]) {
-            data[x + y * width] = T(std::forward<Args>(args)...);
+    void emplace(const std::array<int, D>& pos, Args&&... args) {
+        if (!_index_grid.valid(pos)) return;
+        if (_index_grid.contains(pos)) {
+            _data[_index_grid.get(pos)] = T(std::forward<Args>(args)...);
+        } else {
+            _index_grid.insert(pos, _data.size());
+            _pos.push_back(pos);
+            _data.emplace_back(std::forward<Args>(args)...);
         }
     }
-    bool valid(int x, int y) const {
-        return x >= 0 && x < width && y >= 0 && y < height;
+    template <typename... Args>
+    bool try_emplace(const std::array<int, D>& pos, Args&&... args) {
+        if (!_index_grid.valid(pos)) return false;
+        if (_index_grid.contains(pos)) return false;
+        _index_grid.insert(pos, _data.size());
+        _pos.push_back(pos);
+        _data.emplace_back(std::forward<Args>(args)...);
+        return true;
     }
-    bool contains(int x, int y) const {
-        return x >= 0 && x < width && y >= 0 && y < height &&
-               Boolify()((*this)(x, y));
+
+    bool remove(const std::array<int, D>& pos) {
+        if (!_index_grid.valid(pos)) return false;
+        if (!_index_grid.contains(pos)) return false;
+        int index = _index_grid.get(pos);
+        std::swap(_data[index], _data.back());
+        std::swap(_pos[index], _pos.back());
+        _index_grid.insert(_pos[index], index);
+        _data.pop_back();
+        _pos.pop_back();
+        _index_grid.insert(pos, -1u);
+        return true;
     }
-    T& operator()(int x, int y) { return data[x + y * width]; }
-    const T& operator()(int x, int y) const { return data[x + y * width]; }
-    glm::ivec2 size() const { return {width, height}; }
-};
-template <size_t width, size_t height>
-struct Grid2DOnStack<bool, width, height, boolify<bool>> {
-    static constexpr int column = width / 32 + (width % 32 ? 1 : 0);
-    std::array<uint32_t, column * height> data;
-    Grid2DOnStack() = default;
-    Grid2DOnStack(bool value) { data.fill(value ? 0xFFFFFFFF : 0); }
-    void set(int x, int y, bool value) {
-        if (x < 0 || x >= width || y < 0 || y >= height) return;
-        int index = x / 32 + y * column;
-        int bit   = x % 32;
-        if (value)
-            data[index] |= 1 << bit;
-        else
-            data[index] &= ~(1 << bit);
+
+    bool contains(const std::array<int, D>& pos) const {
+        return _index_grid.contains(pos);
     }
-    void emplace(int x, int y, bool value) { set(x, y, value); }
-    void try_emplace(int x, int y, bool value) { set(x, y, value); }
-    bool operator()(int x, int y) const {
-        if (x < 0 || x >= width || y < 0 || y >= height) return false;
-        int index = x / 32 + y * column;
-        int bit   = x % 32;
-        return data[index] & (1 << bit);
+    bool valid(const std::array<int, D>& pos) const {
+        return _index_grid.valid(pos);
     }
-    bool contains(int x, int y) const {
-        if (x < 0 || x >= width || y < 0 || y >= height) return false;
-        int index = x / 32 + y * column;
-        int bit   = x % 32;
-        return data[index] & (1 << bit);
+
+    T& get(const std::array<int, D>& pos) {
+        if (!_index_grid.valid(pos))
+            throw std::out_of_range("Invalid position");
+        if (!_index_grid.contains(pos))
+            throw std::out_of_range("Position empty");
+        return _data[_index_grid.get(pos)];
     }
-    glm::ivec2 size() const { return {width, height}; }
+    const T& get(const std::array<int, D>& pos) const {
+        if (!_index_grid.valid(pos))
+            throw std::out_of_range("Invalid position");
+        if (!_index_grid.contains(pos))
+            throw std::out_of_range("Position empty");
+        return _data[_index_grid.get(pos)];
+    }
+
+    const std::array<int, D>& size() const { return _index_grid.size(); }
+    const std::vector<T>& data() const { return _data; }
+
+    view_t view() { return view_t(*this); }
+    const_view_t view() const { return const_view_t(*this); }
 };
 
-struct GridOpArea {
-    int x1, y1, x2, y2, width, height;
-    GridOpArea& setOrigin1(int x, int y) {
-        x1 = x;
-        y1 = y;
+template <size_t D>
+struct OpArea {
+    std::array<int, D> origin1;
+    std::array<int, D> origin2;
+    std::array<int, D> extent;
+    OpArea& setOrigin1(const std::array<int, D>& origin) {
+        origin1 = origin;
         return *this;
     }
-    GridOpArea& setOrigin2(int x, int y) {
-        x2 = x;
-        y2 = y;
+    OpArea& setOrigin2(const std::array<int, D>& origin) {
+        origin2 = origin;
         return *this;
     }
-    GridOpArea& setExtent(int w, int h) {
-        width  = w;
-        height = h;
+    OpArea& setExtent(const std::array<int, D>& extent) {
+        this->extent = extent;
         return *this;
     }
 };
 
-template <
-    typename T,
-    typename U,
-    size_t width,
-    size_t height,
-    typename TB,
-    typename UB>
+template <size_t D>
+std::array<int, D> operator+(
+    const std::array<int, D>& a, const std::array<int, D>& b
+) {
+    std::array<int, D> result;
+    for (int i = 0; i < D; i++) {
+        result[i] = a[i] + b[i];
+    }
+    return result;
+}
+template <size_t D>
+std::array<int, D> operator-(
+    const std::array<int, D>& a, const std::array<int, D>& b
+) {
+    std::array<int, D> result;
+    for (int i = 0; i < D; i++) {
+        result[i] = a[i] - b[i];
+    }
+    return result;
+}
+template <size_t D>
+std::array<int, D> operator*(
+    const std::array<int, D>& a, const std::array<int, D>& b
+) {
+    std::array<int, D> result;
+    for (int i = 0; i < D; i++) {
+        result[i] = a[i] * b[i];
+    }
+    return result;
+}
+template <size_t D>
+std::array<int, D> min(
+    const std::array<int, D>& a, const std::array<int, D>& b
+) {
+    std::array<int, D> result;
+    for (int i = 0; i < D; i++) {
+        result[i] = std::min(a[i], b[i]);
+    }
+    return result;
+}
+template <size_t D>
+std::array<int, D> max(
+    const std::array<int, D>& a, const std::array<int, D>& b
+) {
+    std::array<int, D> result;
+    for (int i = 0; i < D; i++) {
+        result[i] = std::max(a[i], b[i]);
+    }
+    return result;
+}
+
+template <size_t D>
+std::array<int, D> array_fill(int value) {
+    std::array<int, D> result;
+    result.fill(value);
+    return result;
+}
+
+template <typename T, typename U, typename TB, typename UB, size_t D>
     requires std::copyable<T>
-Grid2DOnStack<T, width, height, TB> op_and(
-    const Grid2DOnStack<T, width, height, TB>& a,
-    const Grid2DOnStack<U, width, height, UB>& b
+packed_grid<T, D, TB> op_and(
+    const packed_grid<T, D, TB>& a,
+    const packed_grid<U, D, UB>& b,
+    const OpArea<D>& area =
+        {array_fill<D>(0), array_fill<D>(0), min(a.size(), b.size())}
 ) {
-    Grid2DOnStack<T, width, height, TB> result;
-    for (int y = 0; y < height; y++) {
-        for (int x = 0; x < width; x++) {
-            if (b.contains(x, y)) {
-                result.set(x, y, a(x, y));
+    packed_grid<T, TB> result(area.extent);
+    std::array<int, D> pos;
+    pos.fill(0);
+    bool should_break = false;
+    while (!should_break) {
+        if (b.contains(pos + area.origin2)) {
+            result.insert(pos, a.get(pos + area.origin1));
+        }
+        for (int i = 0; i < D; i++) {
+            if (pos[i] < area.extent[i] - 1) {
+                pos[i]++;
+                break;
+            } else if (i < D - 1) {
+                pos[i] = 0;
+            } else {
+                should_break = true;
             }
         }
     }
     return result;
 }
-template <typename U, size_t width, size_t height, typename UB>
-Grid2DOnStack<bool, width, height> operator&(
-    const Grid2DOnStack<bool, width, height>& a,
-    const Grid2DOnStack<U, width, height, UB>& b
+template <typename U, typename UB, size_t D>
+binary_grid<D> op_and(
+    const binary_grid<D>& a,
+    const packed_grid<U, D, UB>& b,
+    const OpArea<D>& area
 ) {
-    return op_and(a, b);
-}
-template <typename U, size_t width, size_t height, typename UB>
-Grid2DOnStack<bool, width, height> op_or(
-    const Grid2DOnStack<bool, width, height>& a,
-    const Grid2DOnStack<U, width, height, UB>& b
-) {
-    Grid2DOnStack<bool, width, height> result;
-    for (int y = 0; y < height; y++) {
-        for (int x = 0; x < width; x++) {
-            result.set(x, y, a.contains(x, y) || b.contains(x, y));
+    binary_grid<D> result(area.extent);
+    std::array<int, D> pos;
+    pos.fill(0);
+    bool should_break = false;
+    while (!should_break) {
+        if (b.contains_at(pos + area.origin2)) {
+            result.insert(pos, a.get_at(pos + area.origin1));
         }
-    }
-    return result;
-}
-template <typename U, size_t width, size_t height, typename UB>
-Grid2DOnStack<bool, width, height> operator|(
-    const Grid2DOnStack<bool, width, height>& a,
-    const Grid2DOnStack<U, width, height, UB>& b
-) {
-    return op_or(a, b);
-}
-template <typename U, size_t width, size_t height, typename UB>
-Grid2DOnStack<bool, width, height> op_xor(
-    const Grid2DOnStack<bool, width, height>& a,
-    const Grid2DOnStack<U, width, height, UB>& b
-) {
-    Grid2DOnStack<bool, width, height> result;
-    for (int y = 0; y < height; y++) {
-        for (int x = 0; x < width; x++) {
-            result.set(x, y, a.contains(x, y) ^ b.contains(x, y));
-        }
-    }
-    return result;
-}
-template <typename U, size_t width, size_t height, typename UB>
-Grid2DOnStack<bool, width, height> operator^(
-    const Grid2DOnStack<bool, width, height>& a,
-    const Grid2DOnStack<U, width, height, UB>& b
-) {
-    return op_xor(a, b);
-}
-template <typename T, size_t width, size_t height, typename TB>
-Grid2DOnStack<bool, width, height> op_not(
-    const Grid2DOnStack<T, width, height, TB>& a
-) {
-    Grid2DOnStack<bool, width, height> result;
-    for (int y = 0; y < height; y++) {
-        for (int x = 0; x < width; x++) {
-            result.set(x, y, !a.contains(x, y));
-        }
-    }
-    return result;
-}
-template <size_t width, size_t height>
-Grid2DOnStack<bool, width, height> operator~(
-    const Grid2DOnStack<bool, width, height>& a
-) {
-    return op_not(a);
-}
-
-template <typename T, typename U, typename TB, typename UB>
-    requires std::copyable<T>
-Grid2D<T, TB> op_and(
-    const Grid2D<T, TB>& a,
-    const Grid2D<U, UB>& b,
-    const GridOpArea& area =
-        {0, 0, 0, 0, std::min(a.size().x, b.size().x),
-         std::min(a.size().y, b.size().y)}
-) {
-    Grid2D<T, TB> result(area.width, area.height);
-    for (int y = 0; y < area.height; y++) {
-        for (int x = 0; x < area.width; x++) {
-            if (b.contains(x + area.x1, y + area.y1)) {
-                result(x, y) = a(x + area.x1, y + area.y1);
+        for (int i = 0; i < D; i++) {
+            if (pos[i] < area.extent[i] - 1) {
+                pos[i]++;
+                break;
+            } else if (i < D - 1) {
+                pos[i] = 0;
+            } else {
+                should_break = true;
             }
         }
     }
     return result;
 }
-template <typename U, typename UB>
-Grid2D<bool> op_and(
-    const Grid2D<bool>& a, const Grid2D<U, UB>& b, const GridOpArea& area
+template <typename T, typename U, typename TB, typename UB, size_t D>
+packed_grid<T, D, TB> operator&(
+    const packed_grid<T, D, TB>& a, const packed_grid<U, D, UB>& b
 ) {
-    Grid2D<bool> result(area.width, area.height);
-    for (int y = 0; y < area.height; y++) {
-        for (int x = 0; x < area.width; x++) {
-            result.set(
-                x, y,
-                a.contains(x + area.x1, y + area.y1) &&
-                    b.contains(x + area.x1, y + area.y1)
-            );
-        }
-    }
-    return result;
-}
-template <typename T, typename U, typename TB, typename UB>
-Grid2D<T, TB> operator&(const Grid2D<T, TB>& a, const Grid2D<U, UB>& b) {
     return op_and(
-        a, b,
-        {0, 0, 0, 0, std::min(a.size().x, b.size().x),
-         std::min(a.size().y, b.size().y)}
+        a, b, {array_fill<D>(0), array_fill<D>(0), min(a.size(), b.size())}
     );
 }
-template <typename T, typename U, typename TB, typename UB>
-Grid2D<bool> op_or(
-    const Grid2D<T, TB>& a, const Grid2D<U, UB>& b, const GridOpArea& area
+template <typename T, typename U, typename TB, typename UB, size_t D>
+binary_grid<D> op_or(
+    const packed_grid<T, D, TB>& a,
+    const packed_grid<U, D, UB>& b,
+    const OpArea<D>& area
 ) {
-    Grid2D<bool> result(area.width, area.height);
-    for (int y = 0; y < area.height; y++) {
-        for (int x = 0; x < area.width; x++) {
-            result.set(
-                x, y,
-                a.contains(x + area.x1, y + area.y1) ||
-                    b.contains(x + area.x1, y + area.y1)
-            );
+    binary_grid<D> result(area.extent);
+    std::array<int, D> pos;
+    pos.fill(0);
+    bool should_break = false;
+    while (!should_break) {
+        result.insert(
+            pos, a.contains_at(pos + area.origin1) ||
+                     b.contains_at(pos + area.origin2)
+        );
+        for (int i = 0; i < D; i++) {
+            if (pos[i] < area.extent[i] - 1) {
+                pos[i]++;
+                break;
+            } else if (i < D - 1) {
+                pos[i] = 0;
+            } else {
+                should_break = true;
+            }
         }
     }
     return result;
 }
-template <typename T, typename U, typename TB, typename UB>
-Grid2D<bool> operator|(const Grid2D<T, TB>& a, const Grid2D<U, UB>& b) {
+template <typename T, typename U, typename TB, typename UB, size_t D>
+binary_grid<D> operator|(
+    const packed_grid<T, D, TB>& a, const packed_grid<U, D, UB>& b
+) {
     return op_or(
-        a, b,
-        {0, 0, 0, 0, std::min(a.size().x, b.size().x),
-         std::min(a.size().y, b.size().y)}
+        a, b, {array_fill<D>(0), array_fill<D>(0), min(a.size(), b.size())}
     );
 }
-template <typename T, typename U, typename TB, typename UB>
-Grid2D<bool> op_xor(
-    const Grid2D<T, TB>& a, const Grid2D<U, UB>& b, const GridOpArea& area
+template <typename T, typename U, typename TB, typename UB, size_t D>
+binary_grid<D> op_xor(
+    const binary_grid<D>& a,
+    const packed_grid<U, D, UB>& b,
+    const OpArea<D>& area
 ) {
-    Grid2D<bool> result(area.width, area.height);
-    for (int y = 0; y < area.height; y++) {
-        for (int x = 0; x < area.width; x++) {
-            result.set(
-                x, y,
-                a.contains(x + area.x1, y + area.y1) ^
-                    b.contains(x + area.x1, y + area.y1)
-            );
+    binary_grid<D> result(area.width, area.height);
+    std::array<int, D> pos;
+    pos.fill(0);
+    bool should_break = false;
+    while (!should_break) {
+        result.insert(
+            pos, a.contains_at(pos + area.origin1) ^
+                     b.contains_at(pos + area.origin2)
+        );
+        for (int i = 0; i < D; i++) {
+            if (pos[i] < area.extent[i] - 1) {
+                pos[i]++;
+                break;
+            } else if (i < D - 1) {
+                pos[i] = 0;
+            } else {
+                should_break = true;
+            }
         }
     }
     return result;
 }
-template <typename T, typename U, typename TB, typename UB>
-Grid2D<bool> operator^(const Grid2D<T, TB>& a, const Grid2D<U, UB>& b) {
+template <typename T, typename U, typename TB, typename UB, size_t D>
+binary_grid<D> operator^(
+    const packed_grid<T, D, TB>& a, const packed_grid<U, D, UB>& b
+) {
     return op_xor(
-        a, b,
-        {0, 0, 0, 0, std::min(a.size().x, b.size().x),
-         std::min(a.size().y, b.size().y)}
+        a, b, {array_fill<D>(0), array_fill<D>(0), min(a.size(), b.size())}
     );
 }
-template <typename T, typename TB>
-Grid2D<bool> op_not(const Grid2D<T, TB>& a, const GridOpArea& area) {
-    Grid2D<bool> result(area.width, area.height);
-    for (int y = 0; y < area.height; y++) {
-        for (int x = 0; x < area.width; x++) {
-            result.set(x, y, !a.contains(x + area.x1, y + area.y1));
+template <typename T, typename TB, size_t D>
+binary_grid<D> op_not(const packed_grid<T, D, TB>& a, const OpArea<D>& area) {
+    binary_grid<D> result(area.extent);
+    std::array<int, D> pos;
+    pos.fill(0);
+    bool should_break = false;
+    while (!should_break) {
+        result.insert(pos, !a.contains_at(pos + area.origin1));
+        for (int i = 0; i < D; i++) {
+            if (pos[i] < area.extent[i] - 1) {
+                pos[i]++;
+                break;
+            } else if (i < D - 1) {
+                pos[i] = 0;
+            } else {
+                should_break = true;
+            }
         }
     }
     return result;
 }
-template <typename T, typename TB>
-Grid2D<bool> operator~(const Grid2D<T, TB>& a) {
-    return op_not(a, GridOpArea{0, 0, 0, 0, a.size().x, a.size().y});
+template <typename T, typename TB, size_t D>
+binary_grid<D> operator~(const packed_grid<T, D, TB>& a) {
+    return op_not(a, {array_fill<D>(0), array_fill<D>(0), a.size()});
 }
+
+using binary_grid2d = binary_grid<2>;
+template <typename T, typename TB = boolify<T>>
+using packed_grid2d = packed_grid<T, 2, TB>;
+template <typename T>
+using sparse_grid2d = sparse_grid<T, 2>;
 
 /**
  * @brief Get the outland of a binary grid
@@ -537,11 +983,13 @@ Grid2D<bool> operator~(const Grid2D<T, TB>& a) {
  *
  * @return Grid2D<bool> The outland of the binary grid
  */
-template <BoolGrid T>
-Grid2D<bool> get_outland(const T& grid, bool include_diagonal = false) {
+template <typename T, typename TB>
+binary_grid2d get_outland(
+    const packed_grid<T, 2, TB>& grid, bool include_diagonal = false
+) {
     auto size  = grid.size();
-    auto width = size.x, height = size.y;
-    Grid2D<bool> outland(width, height);
+    auto width = size[0], height = size[1];
+    binary_grid2d outland(size);
     // use dimension first search
     std::stack<std::pair<int, int>> stack;
     for (int i = 0; i < width; i++) {
@@ -556,7 +1004,7 @@ Grid2D<bool> get_outland(const T& grid, bool include_diagonal = false) {
         auto [x, y] = stack.top();
         stack.pop();
         if (outland.contains(x, y)) continue;
-        outland.set(x, y, true);
+        outland.insert({x, y}, true);
         if (x > 0 && !grid.contains(x - 1, y) && !outland.contains(x - 1, y))
             stack.push({x - 1, y});
         if (x < width - 1 && !grid.contains(x + 1, y) &&
@@ -595,27 +1043,57 @@ Grid2D<bool> get_outland(const T& grid, bool include_diagonal = false) {
  *
  * @return Grid2D<bool> The shrunken grid
  */
-template <typename T>
+template <typename T, typename TB, size_t D>
     requires std::copyable<T>
-Grid2D<T> shrink(const Grid2D<T>& grid, glm::ivec2* offset = nullptr) {
-    auto size  = grid.size();
-    auto width = size.x, height = size.y;
-    glm::ivec2 min(width, height), max(-1, -1);
-    for (int i = 0; i < width; i++) {
-        for (int j = 0; j < height; j++) {
-            if (grid.contains(i, j)) {
-                min.x = std::min(min.x, i);
-                min.y = std::min(min.y, j);
-                max.x = std::max(max.x, i);
-                max.y = std::max(max.y, j);
+packed_grid<T, D, TB> shrink(
+    const packed_grid<T, D, TB>& grid, std::array<int, D>* offset = nullptr
+) {
+    auto size              = grid.size();
+    std::array<int, D> min = size;
+    std::array<int, D> max = {0};
+    std::array<int, D> pos;
+    pos.fill(0);
+    bool should_break = false;
+    while (!should_break) {
+        if (grid.contains(pos)) {
+            for (int i = 0; i < D; i++) {
+                min[i] = std::min(min[i], pos[i]);
+                max[i] = std::max(max[i], pos[i]);
+            }
+        }
+        for (int i = 0; i < D; i++) {
+            if (pos[i] < size[i] - 1) {
+                pos[i]++;
+                break;
+            } else if (i < D - 1) {
+                pos[i] = 0;
+            } else {
+                should_break = true;
             }
         }
     }
+    for (int i = 0; i < D; i++) {
+        if (min[i] > max[i]) {
+            return packed_grid<T, D, TB>(array_fill<D>(0));
+        }
+    }
     if (offset) *offset = min;
-    Grid2D<T> result(max.x - min.x + 1, max.y - min.y + 1);
-    for (int i = min.x; i <= max.x; i++) {
-        for (int j = min.y; j <= max.y; j++) {
-            result.set(i - min.x, j - min.y, grid(i, j));
+    packed_grid<T, D, TB> result(max - min + array_fill<D>(1));
+    pos.fill(0);
+    should_break = false;
+    while (!should_break) {
+        if (grid.contains(pos + min)) {
+            result.insert(pos, grid.get(pos + min));
+        }
+        for (int i = 0; i < D; i++) {
+            if (pos[i] < result.size()[i] - 1) {
+                pos[i]++;
+                break;
+            } else if (i < D - 1) {
+                pos[i] = 0;
+            } else {
+                should_break = true;
+            }
         }
     }
     return result;
@@ -630,19 +1108,19 @@ Grid2D<T> shrink(const Grid2D<T>& grid, glm::ivec2* offset = nullptr) {
  *
  * @return `std::vector<Grid2D<bool>>` The splitted binary grids
  */
-template <typename T>
+template <typename T, typename TB>
     requires std::copyable<T>
-std::vector<Grid2D<T>> split(
-    const Grid2D<T>& grid, bool include_diagonal = false
+std::vector<packed_grid<T, 2, TB>> split(
+    const packed_grid<T, 2, TB>& grid, bool include_diagonal = false
 ) {
-    std::vector<Grid2D<bool>> result_grid;
-    Grid2D<bool> visited = get_outland(grid);
-    auto size            = grid.size();
-    auto width = size.x, height = size.y;
+    std::vector<binary_grid2d> result_grid;
+    binary_grid2d visited = get_outland(grid);
+    auto size             = grid.size();
+    auto width = size[0], height = size[1];
     while (true) {
         glm::ivec2 current(-1, -1);
-        for (int i = 0; i < visited.size().x; i++) {
-            for (int j = 0; j < visited.size().y; j++) {
+        for (int i = 0; i < visited.size()[0]; i++) {
+            for (int j = 0; j < visited.size()[1]; j++) {
                 if (!visited.contains(i, j) && grid.contains(i, j)) {
                     current = {i, j};
                     break;
@@ -651,7 +1129,7 @@ std::vector<Grid2D<T>> split(
             if (current.x != -1) break;
         }
         if (current.x == -1) break;
-        result_grid.push_back(Grid2D<bool>(width, height));
+        result_grid.emplace_back(binary_grid2d({width, height}));
         auto& current_grid = result_grid.back();
         std::stack<std::pair<int, int>> stack;
         stack.push({current.x, current.y});
@@ -659,8 +1137,8 @@ std::vector<Grid2D<T>> split(
             auto [x, y] = stack.top();
             stack.pop();
             if (current_grid.contains(x, y)) continue;
-            current_grid.set(x, y, true);
-            visited.set(x, y, true);
+            current_grid.emplace(x, y, true);
+            visited.emplace(x, y, true);
             if (x > 0 && !visited.contains(x - 1, y) && grid.contains(x - 1, y))
                 stack.push({x - 1, y});
             if (x < width - 1 && !visited.contains(x + 1, y) &&
@@ -689,7 +1167,7 @@ std::vector<Grid2D<T>> split(
             }
         }
     }
-    std::vector<Grid2D<T>> result;
+    std::vector<packed_grid2d<T, TB>> result;
     for (auto& grid_i : result_grid) {
         result.emplace_back(grid & grid_i);
     }
@@ -780,8 +1258,8 @@ void find_outline(
     };  // if dir is i then in ccw order, i+1 is the right pixel coord, i is
         // the left pixel coord, i = 0 means left.
     glm::ivec2 start(-1, -1);
-    for (int j = 0; j < pixelbin.size().y; j++) {
-        for (int i = 0; i < pixelbin.size().x; i++) {
+    for (int j = 0; j < pixelbin.size(1); j++) {
+        for (int i = 0; i < pixelbin.size(0); i++) {
             if (pixelbin.contains(i, j)) {
                 start = {i, j};
                 break;
@@ -826,7 +1304,7 @@ template <BoolGrid T>
 std::vector<std::vector<glm::ivec2>> find_holes(
     const T& pixelbin, bool include_diagonal = false
 ) {
-    Grid2D<bool> grid(pixelbin);
+    binary_grid2d grid(pixelbin);
     auto outland     = get_outland(grid, !include_diagonal);
     auto holes_solid = split(~(outland | grid), !include_diagonal);
     std::vector<std::vector<glm::ivec2>> holes;
@@ -854,7 +1332,7 @@ void find_holes(
     int start_size        = 1,
     bool include_diagonal = false
 ) {
-    Grid2D<bool> grid(pixelbin);
+    binary_grid2d grid(pixelbin);
     auto outland     = get_outland(grid, !include_diagonal);
     auto holes_solid = split(~(outland | grid), !include_diagonal);
     holes.resize(holes_solid.size() + start_size);
@@ -998,7 +1476,7 @@ bool get_polygon_multi(
     std::vector<std::vector<std::vector<glm::ivec2>>>& polygons,
     bool include_diagonal = false
 ) {
-    auto split_bin = split(Grid2D<bool>(pixelbin), include_diagonal);
+    auto split_bin = split(binary_grid2d(pixelbin), include_diagonal);
     if (split_bin.empty()) return false;
     polygons.resize(split_bin.size());
     for (int i = 0; i < split_bin.size(); i++) {
@@ -1068,43 +1546,43 @@ template <typename T>
 struct ExtendableGrid2D {
    private:
     std::vector<std::pair<glm::ivec2, T>> grid_data;
-    Grid2D<int64_t> grid_indices;
+    packed_grid2d<int64_t> grid_indices;
     glm::ivec2 grid_origin;
     int _OcupiedXmin() {
-        for (int i = 0; i < grid_indices.size().x; i++) {
-            for (int j = 0; j < grid_indices.size().y; j++) {
-                if (grid_indices(i, j) >= 0) return i;
+        for (int i = 0; i < grid_indices.size(0); i++) {
+            for (int j = 0; j < grid_indices.size(1); j++) {
+                if (grid_indices.get(i, j) >= 0) return i;
             }
         }
-        return grid_indices.size().x;
+        return grid_indices.size(0);
     }
     int _OcupiedXmax() {
-        for (int i = grid_indices.size().x - 1; i >= 0; i--) {
-            for (int j = 0; j < grid_indices.size().y; j++) {
-                if (grid_indices(i, j) >= 0) return i;
+        for (int i = grid_indices.size(0) - 1; i >= 0; i--) {
+            for (int j = 0; j < grid_indices.size(1); j++) {
+                if (grid_indices.get(i, j) >= 0) return i;
             }
         }
         return -1;
     }
     int _OcupiedYmin() {
-        for (int j = 0; j < grid_indices.size().y; j++) {
-            for (int i = 0; i < grid_indices.size().x; i++) {
-                if (grid_indices(i, j) >= 0) return j;
+        for (int j = 0; j < grid_indices.size(1); j++) {
+            for (int i = 0; i < grid_indices.size(0); i++) {
+                if (grid_indices.get(i, j) >= 0) return j;
             }
         }
-        return grid_indices.size().y;
+        return grid_indices.size(1);
     }
     int _OcupiedYmax() {
-        for (int j = grid_indices.size().y - 1; j >= 0; j--) {
-            for (int i = 0; i < grid_indices.size().x; i++) {
-                if (grid_indices(i, j) >= 0) return j;
+        for (int j = grid_indices.size(1) - 1; j >= 0; j--) {
+            for (int i = 0; i < grid_indices.size(0); i++) {
+                if (grid_indices.get(i, j) >= 0) return j;
             }
         }
         return -1;
     }
 
    public:
-    ExtendableGrid2D() : grid_origin(0, 0), grid_indices(0, 0, -1) {}
+    ExtendableGrid2D() : grid_origin(0, 0), grid_indices({0, 0}, -1) {}
     ExtendableGrid2D(const ExtendableGrid2D& other)            = default;
     ExtendableGrid2D(ExtendableGrid2D&& other)                 = default;
     ExtendableGrid2D& operator=(const ExtendableGrid2D& other) = default;
@@ -1115,45 +1593,53 @@ struct ExtendableGrid2D {
     glm::ivec2 origin() const { return grid_origin; }
 
     template <typename... Args>
-    void emplace(int x, int y, Args... args) {
+    void emplace(int x, int y, Args&&... args) {
         if (contains(x, y)) {
-            grid_data[grid_indices(x - grid_origin.x, y - grid_origin.y)] =
-                std::make_pair(glm::ivec2(x, y), T(args...));
+            grid_data[grid_indices.get(x - grid_origin.x, y - grid_origin.y)] =
+                std::make_pair(
+                    glm::ivec2(x, y), T(std::forward<Args>(args)...)
+                );
             return;
         }
-        grid_data.emplace_back(glm::ivec2(x, y), T(args...));
+        grid_data.emplace_back(
+            glm::ivec2(x, y), T(std::forward<Args>(args)...)
+        );
         if (empty()) {
             grid_origin  = {x, y};
-            grid_indices = Grid2D<int64_t>(1, 1, -1);
+            grid_indices = packed_grid2d<int64_t>({1, 1}, -1);
             return;
         }
         auto new_width = std::max(
-            grid_indices.size().x,
+            grid_indices.size()[0],
             std::max(
-                x - grid_origin.x + 1, grid_indices.size().x - x + grid_origin.x
+                x - grid_origin.x + 1,
+                grid_indices.size()[0] - x + grid_origin.x
             )
         );
         auto new_height = std::max(
-            grid_indices.size().y,
+            grid_indices.size()[1],
             std::max(
-                y - grid_origin.y + 1, grid_indices.size().y - y + grid_origin.y
+                y - grid_origin.y + 1,
+                grid_indices.size()[1] - y + grid_origin.y
             )
         );
         auto new_origin =
             glm::ivec2(std::min(grid_origin.x, x), std::min(grid_origin.y, y));
         auto diff = grid_origin - new_origin;
-        if (new_width != grid_indices.size().x ||
-            new_height != grid_indices.size().y) {
-            Grid2D<int64_t> new_indices(new_width, new_height, -1);
-            for (int i = 0; i < grid_indices.size().x; i++) {
-                for (int j = 0; j < grid_indices.size().y; j++) {
-                    new_indices.set(i + diff.x, j + diff.y, grid_indices(i, j));
+        if (new_width != grid_indices.size()[0] ||
+            new_height != grid_indices.size()[1]) {
+            packed_grid2d<int64_t> new_indices({new_width, new_height}, -1);
+            for (int i = 0; i < grid_indices.size()[0]; i++) {
+                for (int j = 0; j < grid_indices.size()[1]; j++) {
+                    new_indices.emplace(
+                        i + diff.x, j + diff.y, grid_indices.get(i, j)
+                    );
                 }
             }
             grid_indices = std::move(new_indices);
         }
         grid_origin = new_origin;
-        grid_indices.set(
+        grid_indices.emplace(
             x - grid_origin.x, y - grid_origin.y, grid_data.size() - 1
         );
     }
@@ -1180,7 +1666,7 @@ struct ExtendableGrid2D {
             std::string msg = std::format("(x={}, y={}) not in grid", x, y);
             throw std::exception(msg.c_str());
         }
-        return grid_data[grid_indices(x - grid_origin.x, y - grid_origin.y)]
+        return grid_data[grid_indices.get(x - grid_origin.x, y - grid_origin.y)]
             .second;
     }
     const T& get(int x, int y) const {
@@ -1193,18 +1679,20 @@ struct ExtendableGrid2D {
             std::string msg = std::format("(x={}, y={}) not in grid", x, y);
             throw std::exception(msg.c_str());
         }
-        return grid_data[grid_indices(x - grid_origin.x, y - grid_origin.y)]
+        return grid_data[grid_indices.get(x - grid_origin.x, y - grid_origin.y)]
             .second;
     }
     T& operator()(int x, int y) { return get(x, y); }
     const T& operator()(int x, int y) const { return get(x, y); }
-    glm::ivec2 size() const { return grid_indices.size(); }
+    glm::ivec2 size() const {
+        return glm::ivec2(grid_indices.size()[0], grid_indices.size()[1]);
+    }
     bool valid(int x, int y) const {
         return grid_indices.valid(x - grid_origin.x, y - grid_origin.y);
     }
     bool contains(int x, int y) const {
         return valid(x, y) &&
-               grid_indices(x - grid_origin.x, y - grid_origin.y) >= 0;
+               grid_indices.get(x - grid_origin.x, y - grid_origin.y) >= 0;
     }
     void shrink() {
         int xmin = _OcupiedXmin();
@@ -1212,16 +1700,18 @@ struct ExtendableGrid2D {
         int ymin = _OcupiedYmin();
         int ymax = _OcupiedYmax();
         if (xmin > xmax || ymin > ymax) {
-            grid_indices = Grid2D<int64_t>(0, 0, -1);
+            grid_indices = packed_grid2d<int64_t>({0, 0}, -1);
             grid_data.clear();
             return;
         }
-        auto new_size = glm::ivec2(xmax - xmin + 1, ymax - ymin + 1);
-        if (new_size == grid_indices.size()) return;
-        Grid2D<int64_t> new_indices(new_size.x, new_size.y, -1);
+        auto new_size = std::array{xmax - xmin + 1, ymax - ymin + 1};
+        if (new_size[0] == grid_indices.size()[0] &&
+            new_size[1] == grid_indices.size()[1])
+            return;
+        packed_grid2d<int64_t> new_indices({new_size[0], new_size[1]}, -1);
         for (int i = xmin; i <= xmax; i++) {
             for (int j = ymin; j <= ymax; j++) {
-                new_indices.set(i - xmin, j - ymin, grid_indices(i, j));
+                new_indices.emplace(i - xmin, j - ymin, grid_indices.get(i, j));
             }
         }
         grid_origin += glm::ivec2(xmin, ymin);
@@ -1229,10 +1719,10 @@ struct ExtendableGrid2D {
     }
     void remove(int x, int y) {
         if (!contains(x, y)) return;
-        auto index = grid_indices(x - grid_origin.x, y - grid_origin.y);
+        auto index = grid_indices.get(x - grid_origin.x, y - grid_origin.y);
         auto pos   = grid_data.back().first;
-        grid_indices(pos.x - grid_origin.x, pos.y - grid_origin.y) = index;
-        grid_indices(x - grid_origin.x, y - grid_origin.y)         = -1;
+        grid_indices.get(pos.x - grid_origin.x, pos.y - grid_origin.y) = index;
+        grid_indices.get(x - grid_origin.x, y - grid_origin.y)         = -1;
         grid_data[index] = std::move(grid_data.back());
         grid_data.pop_back();
     }

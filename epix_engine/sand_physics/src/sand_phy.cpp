@@ -17,6 +17,10 @@ struct ChunkConverter {
         return true;
     }
     glm::ivec2 size() const { return chunk.size(); }
+    int size(int i) const {
+        if (i == 0) return chunk.width;
+        return chunk.height;
+    }
 };
 
 namespace epix::world::sand_physics {
