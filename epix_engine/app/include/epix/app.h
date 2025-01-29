@@ -1218,7 +1218,7 @@ struct SubApp {
                 m_world.m_resources.end() ||
             m_world.m_resources.find(std::type_index(typeid(NextState<T>))) !=
                 m_world.m_resources.end()) {
-            spdlog::warn("State already exists.");
+            spdlog::warn("State {} already exists.", typeid(T).name());
             return;
         }
         Command command(&m_world, &m_world);
@@ -1239,7 +1239,7 @@ struct SubApp {
                 m_world.m_resources.end() ||
             m_world.m_resources.find(std::type_index(typeid(NextState<T>))) !=
                 m_world.m_resources.end()) {
-            spdlog::warn("State already exists.");
+            spdlog::warn("State {} already exists.", typeid(T).name());
             return;
         }
         Command command(&m_world, &m_world);
@@ -1281,39 +1281,37 @@ struct BasicSystem {
         bool has_command = false;
         bool has_query   = false;
         std::vector<std::tuple<
-            std::vector<std::type_index>,
-            std::vector<std::type_index>,
-            std::vector<std::type_index>>>
+            entt::dense_set<std::type_index>,
+            entt::dense_set<std::type_index>,
+            entt::dense_set<std::type_index>>>
             query_types;
-        std::vector<std::type_index> resource_types;
-        std::vector<std::type_index> resource_const;
-        std::vector<std::type_index> event_read_types;
-        std::vector<std::type_index> event_write_types;
-        std::vector<std::type_index> state_types;
-        std::vector<std::type_index> next_state_types;
+        entt::dense_set<std::type_index> resource_types;
+        entt::dense_set<std::type_index> resource_const;
+        entt::dense_set<std::type_index> event_read_types;
+        entt::dense_set<std::type_index> event_write_types;
+        entt::dense_set<std::type_index> state_types;
+        entt::dense_set<std::type_index> next_state_types;
     } system_infos;
 
     template <typename Arg>
     struct info_add {
-        static void add(std::vector<std::type_index>& infos) {
-            infos.push_back(std::type_index(typeid(std::remove_const_t<Arg>)));
+        static void add(entt::dense_set<std::type_index>& infos) {
+            infos.emplace(typeid(std::remove_const_t<Arg>));
         }
     };
 
     template <typename Arg>
     struct const_infos_adder {
-        static void add(std::vector<std::type_index>& infos) {
+        static void add(entt::dense_set<std::type_index>& infos) {
             if constexpr (std::is_const_v<Arg>)
-                infos.push_back(std::type_index(typeid(std::remove_const_t<Arg>)
-                ));
+                infos.emplace(typeid(std::remove_const_t<Arg>));
         }
     };
 
     template <typename Arg>
-    struct non_const_infos_adder {
-        static void add(std::vector<std::type_index>& infos) {
-            if constexpr (!std::is_const_v<Arg>)
-                infos.push_back(std::type_index(typeid(Arg)));
+    struct mutable_infos_adder {
+        static void add(entt::dense_set<std::type_index>& infos) {
+            if constexpr (!std::is_const_v<Arg>) infos.emplace(typeid(Arg));
         }
     };
 
@@ -1327,15 +1325,16 @@ struct BasicSystem {
         Query<Get<Includes...>, With<Withs...>, Without<Excludes...>>> {
         static void add(system_info& info) {
             auto& query_types = info.query_types;
-            std::vector<std::type_index> query_include_types,
+            entt::dense_set<std::type_index> query_include_types,
                 query_exclude_types, query_include_const;
-            (non_const_infos_adder<Includes>::add(query_include_types), ...);
+            (mutable_infos_adder<Includes>::add(query_include_types), ...);
             (const_infos_adder<Includes>::add(query_include_const), ...);
             (info_add<Withs>::add(query_include_const), ...);
             (info_add<Excludes>::add(query_exclude_types), ...);
-            query_types.push_back(std::make_tuple(
-                query_include_types, query_include_const, query_exclude_types
-            ));
+            query_types.emplace_back(
+                std::move(query_include_types), std::move(query_include_const),
+                std::move(query_exclude_types)
+            );
         }
     };
 
@@ -1343,14 +1342,15 @@ struct BasicSystem {
     struct infos_adder<Query<Get<Includes...>, Without<Excludes...>, T>> {
         static void add(system_info& info) {
             auto& query_types = info.query_types;
-            std::vector<std::type_index> query_include_types,
+            entt::dense_set<std::type_index> query_include_types,
                 query_exclude_types, query_include_const;
-            (non_const_infos_adder<Includes>::add(query_include_types), ...);
+            (mutable_infos_adder<Includes>::add(query_include_types), ...);
             (const_infos_adder<Includes>::add(query_include_const), ...);
             (info_add<Excludes>::add(query_exclude_types), ...);
-            query_types.push_back(std::make_tuple(
-                query_include_types, query_include_const, query_exclude_types
-            ));
+            query_types.emplace_back(
+                std::move(query_include_types), std::move(query_include_const),
+                std::move(query_exclude_types)
+            );
         }
     };
 
@@ -1417,12 +1417,11 @@ struct BasicSystem {
         } else {
             infos_adder<Arg>().add(system_infos);
         }
-        if constexpr (sizeof...(Args) > 0) add_infos_inernal<Args...>();
     }
 
     template <typename... Args>
     void add_infos() {
-        if constexpr (sizeof...(Args) > 0) add_infos_inernal<Args...>();
+        (add_infos_inernal<Args>(), ...);
     }
 
     template <typename T>
@@ -1518,7 +1517,7 @@ struct BasicSystem {
 
         bool resource_one_empty = resource_types.empty() ||
                                   other->system_infos.resource_types.empty();
-        bool resource_contrary = !resource_one_empty;
+        bool resource_contrary = false;
         if (!resource_one_empty) {
             for (auto type : resource_types) {
                 if (std::find(
@@ -2553,6 +2552,26 @@ using entt::dense_map;
 using entt::dense_set;
 using epix::app::thread_pool;
 using epix::utility::time_scope;
+
+template <typename... Args1, typename... Args2>
+bool test_systems_conflict(
+    std::function<void(Args1...)> func1, std::function<void(Args2...)> func2
+) {
+    std::unique_ptr<app::BasicSystem<void>> sys1 =
+        std::make_unique<app::System<Args1...>>(func1);
+    std::unique_ptr<app::BasicSystem<void>> sys2 =
+        std::make_unique<app::System<Args2...>>(func2);
+    return sys1->contrary_to(sys2.get());
+}
+template <typename... Args1, typename... Args2>
+bool test_systems_conflict(void (*func1)(Args1...), void (*func2)(Args2...)) {
+    std::unique_ptr<app::BasicSystem<void>> sys1 =
+        std::make_unique<app::System<Args1...>>(func1);
+    std::unique_ptr<app::BasicSystem<void>> sys2 =
+        std::make_unique<app::System<Args2...>>(func2);
+    return sys1->contrary_to(sys2.get());
+}
+
 }  // namespace epix
 namespace epix::prelude {
 using namespace epix;

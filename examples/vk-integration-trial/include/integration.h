@@ -19,9 +19,6 @@
 
 using namespace epix::prelude;
 using namespace epix::window;
-using namespace epix::render_vk::components;
-using namespace epix::sprite::components;
-using namespace epix::sprite::resources;
 
 namespace vk_trial {
 using namespace epix::utils::grid2d;
@@ -72,154 +69,11 @@ struct pixelbin {
     glm::ivec2 size() const { return {width, height}; }
 };
 
-using PixelBlock = epix::render::pixel::components::PixelBlock;
-struct PixelBlockWrapper {
-    PixelBlock block;
-    bool contains(int x, int y) const {
-        if (x < 0 || x >= block.size.x || y < 0 || y >= block.size.y)
-            return false;
-        return block[{x, y}].a > 0.1f;
-    }
-    glm::ivec2 size() const { return block.size; }
-    PixelBlockWrapper(int width, int height)
-        : block(PixelBlock::create({width, height})) {}
-};
-
 void create_b2d_world(Command command) {
     b2WorldDef def = b2DefaultWorldDef();
     def.gravity    = {0.0f, -29.8f};
     auto world     = b2CreateWorld(&def);
     command.spawn(world);
-}
-
-void create_pixel_block_with_collision(
-    Command command, Query<Get<b2WorldId>> world_query
-) {
-    if (!world_query) return;
-    auto [world] = world_query.single();
-    auto m_block = PixelBlockWrapper(64, 64);
-    std::random_device rd;
-    std::mt19937 gen(rd());
-    std::uniform_int_distribution<> dis(0, 255);
-    for (int i = 0; i < m_block.size().x; i++) {
-        for (int j = 0; j < m_block.size().y; j++) {
-            m_block.block[{i, j}] = {
-                (float)(dis(gen) / 255.0f), (float)(dis(gen) / 255.0f),
-                (float)(dis(gen) / 255.0f), dis(gen) > 127 ? 0.2f : 0.0f
-            };
-        }
-    }
-    using binary_grid = Grid2D<bool>;
-    auto blocks_bin   = split(binary_grid(m_block));
-    std::vector<std::pair<PixelBlockWrapper, glm::ivec2>> blocks;
-    for (auto& block : blocks_bin) {
-        glm::ivec2 offset;
-        auto shrinked = shrink(block, &offset);
-        auto size     = shrinked.size();
-        auto width = size.x, height = size.y;
-        blocks.emplace_back(PixelBlockWrapper(width, height), offset);
-        for (int i = 0; i < width; i++) {
-            for (int j = 0; j < height; j++) {
-                if (shrinked.contains(i, j)) {
-                    blocks.back().first.block[{i, j}] =
-                        m_block.block[offset + glm::ivec2(i, j)];
-                }
-            }
-        }
-    }
-    for (auto&& [block, offset] : blocks) {
-        auto outline = find_outline(block);
-        outline.push_back(outline[0]);
-        auto simplified = douglas_peucker(outline, 0.5f);
-        simplified.pop_back();
-        auto holes          = find_holes(block);
-        auto earcut_polygon = std::vector<std::vector<glm::ivec2>>();
-        earcut_polygon.emplace_back(std::move(simplified));
-        for (auto& hole : holes) {
-            hole.push_back(hole[0]);
-            auto hole_simplified = douglas_peucker(hole, 0.8f);
-            hole_simplified.pop_back();
-            earcut_polygon.emplace_back(std::move(hole_simplified));
-        }
-        auto triangle_list = mapbox::earcut(earcut_polygon);
-        // std::cout << "triangle amount: " << triangle_list.size() / 3
-        //           << std::endl;
-        // for (size_t i = 0; i < triangle_list.size(); i += 3) {
-        //     for (int j = 2; j >= 0; j--) {
-        //         std::cout << std::format(
-        //             "({},{}) ",
-        //             value_at(earcut_polygon, triangle_list[i + j]).x,
-        //             value_at(earcut_polygon, triangle_list[i + j]).y
-        //         );
-        //     }
-        //     std::cout << std::endl;
-        // }
-        b2BodyDef body_def = b2DefaultBodyDef();
-        body_def.type      = b2BodyType::b2_dynamicBody;
-        body_def.position  = b2Vec2(offset.x, offset.y) * 5 +
-                            b2Vec2(-m_block.size().x / 2, 40) * 5;
-        auto body = b2CreateBody(world, &body_def);
-        for (size_t i = 0; i < triangle_list.size(); i += 3) {
-            b2Vec2 points[3];
-            for (int j = 2; j >= 0; j--) {
-                points[j] = {
-                    (float)value_at(earcut_polygon, triangle_list[i + j]).x * 5,
-                    (float)value_at(earcut_polygon, triangle_list[i + j]).y * 5
-                };
-            }
-            b2Hull hull           = b2ComputeHull(points, 3);
-            b2Polygon polygon     = b2MakePolygon(&hull, 0.0f);
-            b2ShapeDef shape_def  = b2DefaultShapeDef();
-            shape_def.density     = 1.0f;
-            shape_def.friction    = 0.6f;
-            shape_def.restitution = 0.1f;
-            b2CreatePolygonShape(body, &shape_def, &polygon);
-        }
-        command.spawn(body, block);
-    }
-}
-
-void render_pixel_block(
-    Query<Get<PixelBlockWrapper, b2BodyId>> query,
-    Query<Get<Device, Swapchain, Queue>, With<RenderContext>> context_query,
-    Query<Get<epix::render::pixel::components::PixelRenderer>>
-        pixel_renderer_query,
-    Query<Get<b2WorldId>> world_query
-) {
-    if (!context_query) return;
-    if (!pixel_renderer_query) return;
-    if (!world_query) return;
-    auto [b2_world]                  = world_query.single();
-    auto [device, swap_chain, queue] = context_query.single();
-    auto [pixel_renderer]            = pixel_renderer_query.single();
-    epix::render::pixel::components::PixelUniformBuffer uniform_buffer;
-    uniform_buffer.proj = glm::ortho(
-        -(float)swap_chain.extent.width / 2.0f,
-        (float)swap_chain.extent.width / 2.0f,
-        (float)swap_chain.extent.height / 2.0f,
-        -(float)swap_chain.extent.height / 2.0f, -1000.0f, 1000.0f
-    );
-    uniform_buffer.view = glm::mat4(1.0f);
-    pixel_renderer.begin(device, swap_chain, queue, uniform_buffer);
-    for (auto [block, body] : query.iter()) {
-        if (!b2Body_IsValid(body)) continue;
-        auto position = b2Body_GetPosition(body);
-        auto rotation = b2Body_GetRotation(body);
-        auto angle    = std::atan2(rotation.s, rotation.c);
-        glm::mat4 model =
-            glm::translate(glm::mat4(1.0f), {position.x, position.y, 0.0f});
-        model = glm::rotate(model, angle, {0.0f, 0.0f, 1.0f});
-        model = glm::scale(model, {5.0f, 5.0f, 1.0f});
-        pixel_renderer.set_model(model);
-        for (int i = 0; i < block.size().x; i++) {
-            for (int j = 0; j < block.size().y; j++) {
-                auto& color = block.block[{i, j}];
-                if (color.a == 0.0f) continue;
-                pixel_renderer.draw(color, {i, j});
-            }
-        }
-    }
-    pixel_renderer.end();
 }
 
 void create_ground(Command command, Query<Get<b2WorldId>> world_query) {
@@ -300,17 +154,220 @@ void toggle_full_screen(Query<Get<Window, ButtonInput<KeyCode>>> query) {
     }
 }
 
-void render_bodies(
-    Query<Get<b2BodyId>> query,
-    Query<Get<epix::render::debug::vulkan::components::LineDrawer>>
-        line_drawer_query,
-    Query<Get<Device, Swapchain, Queue>, With<RenderContext>> context_query
+using namespace epix::render::vulkan2::backend;
+using namespace epix::render::vulkan2;
+
+struct WholePassBase : public render::vulkan2::PassBase {
+   protected:
+    WholePassBase(Device& device) : PassBase(device) {
+        set_attachments(
+            vk::AttachmentDescription()
+                .setFormat(vk::Format::eR8G8B8A8Srgb)
+                .setSamples(vk::SampleCountFlagBits::e1)
+                .setLoadOp(vk::AttachmentLoadOp::eLoad)
+                .setStoreOp(vk::AttachmentStoreOp::eStore)
+                .setStencilLoadOp(vk::AttachmentLoadOp::eDontCare)
+                .setStencilStoreOp(vk::AttachmentStoreOp::eDontCare)
+                .setInitialLayout(vk::ImageLayout::eColorAttachmentOptimal)
+                .setFinalLayout(vk::ImageLayout::eColorAttachmentOptimal)
+        );
+        subpass_info(0)
+            .set_colors(vk::AttachmentReference().setAttachment(0).setLayout(
+                vk::ImageLayout::eColorAttachmentOptimal
+            ))
+            .set_bind_point(vk::PipelineBindPoint::eGraphics);
+        subpass_info(1)
+            .set_colors(vk::AttachmentReference().setAttachment(0).setLayout(
+                vk::ImageLayout::eColorAttachmentOptimal
+            ))
+            .set_bind_point(vk::PipelineBindPoint::eGraphics);
+        vk::SubpassDependency dependency;
+        dependency.setSrcSubpass(0);
+        dependency.setDstSubpass(1);
+        dependency.setSrcStageMask(
+            vk::PipelineStageFlagBits::eColorAttachmentOutput
+        );
+        dependency.setDstStageMask(
+            vk::PipelineStageFlagBits::eColorAttachmentOutput
+        );
+        dependency.setSrcAccessMask(vk::AccessFlagBits::eColorAttachmentWrite);
+        dependency.setDstAccessMask(vk::AccessFlagBits::eColorAttachmentWrite);
+        dependency.setDependencyFlags(vk::DependencyFlagBits::eByRegion);
+        set_dependencies(dependency);
+        create();
+        add_pipeline(
+            0, "test::sand::falling_sand",
+            render::pixel::vulkan2::PixelPipeline::create()
+        );
+        add_pipeline(
+            1, "test::sand::box2d_body",
+            render::debug::vulkan2::DebugPipelines::line_pipeline()
+        );
+    }
+
+   public:
+    static WholePassBase* create_new(Device& device) {
+        return new WholePassBase(device);
+    }
+};
+
+struct WholePass : public render::vulkan2::Pass {
+   protected:
+    WholePass(const WholePassBase* base, CommandPool& command_pool)
+        : Pass(base, command_pool, [](Pass& pass, const PassBase& base) {
+              pass.add_subpass(0);
+              pass.subpass_add_pipeline(
+                  0, "test::sand::falling_sand",
+                  [](Device& device, const DescriptorPool& pool,
+                     const std::vector<DescriptorSetLayout>& layouts) {
+                      return device.allocateDescriptorSets(
+                          vk::DescriptorSetAllocateInfo()
+                              .setDescriptorPool(pool)
+                              .setSetLayouts(layouts[0])
+                      );
+                  },
+                  [](Device& device, const DescriptorPool& pool,
+                     std::vector<DescriptorSet>& sets) {
+                      device.freeDescriptorSets(pool, sets[0]);
+                  }
+              );
+              pass.add_subpass(1);
+              pass.subpass_add_pipeline(
+                  1, "test::sand::box2d_body",
+                  [](Device& device, const DescriptorPool& pool,
+                     const std::vector<DescriptorSetLayout>& layouts) {
+                      return device.allocateDescriptorSets(
+                          vk::DescriptorSetAllocateInfo()
+                              .setDescriptorPool(pool)
+                              .setSetLayouts(layouts[0])
+                      );
+                  },
+                  [](Device& device, const DescriptorPool& pool,
+                     std::vector<DescriptorSet>& sets) {
+                      device.freeDescriptorSets(pool, sets[0]);
+                  }
+              );
+          }) {}
+
+   public:
+    static WholePass* create_new(
+        const WholePassBase* base, CommandPool& command_pool
+    ) {
+        return new WholePass(base, command_pool);
+    }
+};
+
+void create_whole_pass_base(Command command, Res<RenderContext> context) {
+    if (!context) return;
+    auto& device = context->device;
+    spdlog::info("Creating whole pass base");
+    command.add_resource(WholePassBase::create_new(device));
+}
+
+void create_whole_pass(
+    Command command, ResMut<RenderContext> context, Res<WholePassBase> base
 ) {
-    if (!line_drawer_query) return;
-    if (!context_query) return;
-    auto [device, swap_chain, queue] = context_query.single();
-    auto [line_drawer]               = line_drawer_query.single();
-    line_drawer.begin(device, queue, swap_chain);
+    if (!context) return;
+    auto& device       = context->device;
+    auto& command_pool = context->command_pool;
+    spdlog::info("Creating whole pass");
+    command.add_resource(WholePass::create_new(base.get(), command_pool));
+}
+
+void destroy_whole_pass(
+    ResMut<WholePass> pass, ResMut<WholePassBase> pass_base
+) {
+    if (!pass || !pass_base) return;
+    pass->destroy();
+    pass_base->destroy();
+}
+
+void extract_whole_pass(ResMut<WholePass> pass, Command command) {
+    if (!pass) return;
+    ZoneScoped;
+    command.share_resource(pass);
+}
+
+struct SandMesh : render::pixel::vulkan2::PixelMesh {};
+struct SandMeshStaging : render::pixel::vulkan2::PixelStagingMesh {};
+struct SandMeshGPU : render::pixel::vulkan2::PixelGPUMesh {};
+
+struct Box2dMesh : render::debug::vulkan2::DebugMesh {};
+struct Box2dMeshStaging : render::debug::vulkan2::DebugStagingMesh {};
+struct Box2dMeshGPU : render::debug::vulkan2::DebugGPUMesh {};
+
+void create_sand_meshes(Command command, Res<RenderContext> context) {
+    if (!context) return;
+    auto& device = context->device;
+    spdlog::info("Creating sand meshes");
+    SandMeshStaging mesh(device);
+    command.insert_resource(mesh);
+    SandMeshGPU mesh2(device);
+    command.insert_resource(mesh2);
+    SandMesh mesh3;
+    command.insert_resource(mesh3);
+}
+
+void destroy_sand_meshes(
+    Command command, ResMut<SandMeshStaging> mesh, ResMut<SandMeshGPU> mesh2
+) {
+    if (!mesh || !mesh2) return;
+    mesh->destroy();
+    mesh2->destroy();
+}
+
+void extract_sand_mesh(
+    ResMut<SandMeshStaging> mesh,
+    ResMut<SandMeshGPU> mesh2,
+    ResMut<SandMesh> mesh3,
+    Command command
+) {
+    if (!mesh || !mesh2 || !mesh3) return;
+    ZoneScoped;
+    mesh->update(*mesh3);
+    mesh3->clear();
+    command.share_resource(mesh);
+    command.share_resource(mesh2);
+}
+
+void create_box2d_meshes(Command command, Res<RenderContext> context) {
+    if (!context) return;
+    auto& device = context->device;
+    spdlog::info("Creating box2d meshes");
+    Box2dMeshStaging mesh(device);
+    command.insert_resource(mesh);
+    Box2dMeshGPU mesh2(device);
+    command.insert_resource(mesh2);
+    Box2dMesh mesh3;
+    command.insert_resource(mesh3);
+}
+
+void destroy_box2d_meshes(
+    Command command, ResMut<Box2dMeshStaging> mesh, ResMut<Box2dMeshGPU> mesh2
+) {
+    if (!mesh || !mesh2) return;
+    mesh->destroy();
+    mesh2->destroy();
+}
+
+void extract_box2d_mesh(
+    ResMut<Box2dMeshStaging> mesh,
+    ResMut<Box2dMeshGPU> mesh2,
+    ResMut<Box2dMesh> mesh3,
+    Command command
+) {
+    if (!mesh || !mesh2 || !mesh3) return;
+    ZoneScoped;
+    mesh->update(*mesh3);
+    mesh3->clear();
+    command.share_resource(mesh);
+    command.share_resource(mesh2);
+}
+
+void render_bodies(Extract<Get<b2BodyId>> query, ResMut<Box2dMesh> mesh) {
+    if (!query) return;
+    if (!mesh) return;
+    ZoneScoped;
     for (auto [body] : query.iter()) {
         if (!b2Body_IsValid(body)) continue;
         b2Vec2 position  = b2Body_GetPosition(body);
@@ -318,17 +375,16 @@ void render_bodies(
         auto mass_center = b2Body_GetWorldCenterOfMass(body);
         auto rotation    = b2Body_GetRotation(body);  // a cosine / sine pair
         auto angle       = std::atan2(rotation.s, rotation.c);
-        glm::mat4 model  = glm::translate(
+        glm::vec3 p1     = {mass_center.x, mass_center.y, 0.0f};
+        glm::vec3 p2     = {
+            mass_center.x + velocity.x / 2, mass_center.y + velocity.y / 2, 0.0f
+        };
+        mesh->draw_line(p1, p2, {0.0f, 0.0f, 1.0f, 1.0f});
+        glm::mat4 model = glm::translate(
             glm::mat4(1.0f), {mass_center.x, mass_center.y, 0.0f}
-        );
-        line_drawer.setModel(model);
-        line_drawer.drawLine(
-            {0.0f, 0.0f, 0.0f}, {velocity.x / 2, velocity.y / 2, 0.0f},
-            {0.0f, 0.0f, 1.0f, 1.0f}
         );
         model = glm::translate(glm::mat4(1.0f), {position.x, position.y, 0.0f});
         model = glm::rotate(model, angle, {0.0f, 0.0f, 1.0f});
-        line_drawer.setModel(model);
         auto shape_count = b2Body_GetShapeCount(body);
         std::vector<b2ShapeId> shapes(shape_count);
         b2Body_GetShapes(body, shapes.data(), shape_count);
@@ -339,9 +395,12 @@ void render_bodies(
                     auto& vertex1 = polygon.vertices[i];
                     auto& vertex2 = polygon.vertices[(i + 1) % polygon.count];
                     bool awake    = b2Body_IsAwake(body);
-                    line_drawer.drawLine(
-                        {vertex1.x, vertex1.y, 0.0f},
-                        {vertex2.x, vertex2.y, 0.0f},
+                    glm::vec3 p1  = {vertex1.x, vertex1.y, 0.0f};
+                    glm::vec3 p2  = {vertex2.x, vertex2.y, 0.0f};
+                    p1            = glm::vec3(model * glm::vec4(p1, 1.0f));
+                    p2            = glm::vec3(model * glm::vec4(p2, 1.0f));
+                    mesh->draw_line(
+                        p1, p2,
                         {awake ? 0.0f : 1.0f, awake ? 1.0f : 0.0f, 0.0f, 0.3f}
                     );
                 }
@@ -351,8 +410,12 @@ void render_bodies(
                 auto& vertex1 = segment.segment.point1;
                 auto& vertex2 = segment.segment.point2;
                 bool awake    = b2Body_IsAwake(body);
-                line_drawer.drawLine(
-                    {vertex1.x, vertex1.y, 0.0f}, {vertex2.x, vertex2.y, 0.0f},
+                glm::vec3 p1  = {vertex1.x, vertex1.y, 0.0f};
+                glm::vec3 p2  = {vertex2.x, vertex2.y, 0.0f};
+                p1            = glm::vec3(model * glm::vec4(p1, 1.0f));
+                p2            = glm::vec3(model * glm::vec4(p2, 1.0f));
+                mesh->draw_line(
+                    p1, p2,
                     {awake ? 0.0f : 1.0f, awake ? 1.0f : 0.0f, 0.0f, 0.3f}
                 );
             } else if (b2Shape_GetType(shape) == b2ShapeType::b2_segmentShape) {
@@ -360,20 +423,24 @@ void render_bodies(
                 auto& vertex1 = segment.point1;
                 auto& vertex2 = segment.point2;
                 bool awake    = b2Body_IsAwake(body);
-                line_drawer.drawLine(
-                    {vertex1.x, vertex1.y, 0.0f}, {vertex2.x, vertex2.y, 0.0f},
+                glm::vec3 p1  = {vertex1.x, vertex1.y, 0.0f};
+                glm::vec3 p2  = {vertex2.x, vertex2.y, 0.0f};
+                p1            = glm::vec3(model * glm::vec4(p1, 1.0f));
+                p2            = glm::vec3(model * glm::vec4(p2, 1.0f));
+                mesh->draw_line(
+                    p1, p2,
                     {awake ? 0.0f : 1.0f, awake ? 1.0f : 0.0f, 0.0f, 0.3f}
                 );
             }
         }
     }
-    line_drawer.end();
 }
 
 void update_b2d_world(
     Query<Get<b2WorldId>> world_query, Local<std::optional<double>> last_time
 ) {
     if (!world_query) return;
+    ZoneScoped;
     auto [world] = world_query.single();
     if (!last_time->has_value()) {
         *last_time = std::chrono::duration<double>(
@@ -400,6 +467,7 @@ void destroy_too_far_bodies(
     Command command
 ) {
     if (!world_query) return;
+    ZoneScoped;
     auto [world] = world_query.single();
     for (auto [entity, body] : query.iter()) {
         auto position = b2Body_GetPosition(body);
@@ -418,105 +486,6 @@ void destroy_b2d_world(Query<Get<b2WorldId>> query) {
     }
 }
 
-void create_text(
-    Command command,
-    ResMut<epix::font::resources::vulkan::FT2Library> ft2_library
-) {
-    if (!ft2_library.has_value()) return;
-    epix::font::components::Text text;
-    auto font_face =
-        ft2_library->load_font("../assets/fonts/FiraSans-Bold.ttf");
-    text.font        = epix::font::components::Font{.font_face = font_face};
-    text.font.pixels = 32;
-    text.text =
-        L"Hello, "
-        L"Worldajthgreawiohguhiuwearjhoiughjoaewrughiowahioulgerjioweahjgiu"
-        L"awhi"
-        L"ohiouaewhoiughjwaoigoiehafgioerhiiUWEGHNVIOAHJEDSKGBHJIUAERWHJIUG"
-        L"OHoa"
-        L"ghweiuo ioweafgioewajiojoiatg huihkljh";
-    command.spawn(text, epix::font::components::TextPos{100, 500});
-    epix::font::components::Text text2;
-    font_face = ft2_library->load_font(
-        "../assets/fonts/HachicroUndertaleBattleFontRegular-L3zlg.ttf"
-    );
-    text2.font        = epix::font::components::Font{.font_face = font_face};
-    text2.font.pixels = 32;
-    text2.text =
-        L"Hello, "
-        L"Worldoawgheruiahjgijanglkjwaehjgo;"
-        L"ierwhjgiohnweaioulgfhjewjfweg3ioioiwefiowejhoiewfgjoiweaghioweahi"
-        L"oawe"
-        L"gHJWEAIOUHAWEFGIOULHJEAWio;hWE$gowaejgio";
-    command.spawn(text2, epix::font::components::TextPos{100, 200});
-}
-
-void shuffle_text(Query<Get<epix::font::components::Text>> text_query) {
-    for (auto [text] : text_query.iter()) {
-        std::random_device rd;
-        std::mt19937 g(rd());
-        for (size_t i = 0; i < text.text.size(); i++) {
-            std::uniform_int_distribution<> dis(0, text.text.size() - 1);
-            text.text[i] = wchar_t(dis(g));
-        }
-    }
-}
-
-void create_pixel_block(Command command) {
-    auto block =
-        epix::render::pixel::components::PixelBlock::create({512, 512});
-    for (size_t i = 0; i < block.size.x; i++) {
-        for (size_t j = 0; j < block.size.y; j++) {
-            block[{i, j}] = {
-                std::rand() / (float)RAND_MAX, std::rand() / (float)RAND_MAX,
-                std::rand() / (float)RAND_MAX, 1.0f
-            };
-        }
-    }
-    command.spawn(
-        std::move(block),
-        epix::render::pixel::components::BlockPos2d{
-            .pos = {-1000, -1000, 0}, .scale = {4.0f, 4.0f}
-        }
-    );
-}
-
-void imgui_demo_window(ResMut<epix::imgui::ImGuiContext> imgui_context) {
-    if (imgui_context.has_value()) {
-        ImGui::SetCurrentContext(imgui_context->context);
-        ImGui::ShowDemoWindow();
-    }
-}
-
-void render_pixel_renderer_test(
-    Query<Get<epix::render::pixel::components::PixelRenderer>> query,
-    Query<Get<Device, Swapchain, Queue>, With<RenderContext>> context_query
-) {
-    using namespace epix::render::pixel::components;
-    if (!query) return;
-    if (!context_query) return;
-    auto [device, swap_chain, queue] = context_query.single();
-    auto [renderer]                  = query.single();
-    PixelUniformBuffer pixel_uniform;
-    pixel_uniform.view = glm::mat4(1.0f);
-    pixel_uniform.proj = glm::ortho(
-        -static_cast<float>(swap_chain.extent.width) / 2.0f,
-        static_cast<float>(swap_chain.extent.width) / 2.0f,
-        static_cast<float>(swap_chain.extent.height) / 2.0f,
-        -static_cast<float>(swap_chain.extent.height) / 2.0f, 1000.0f, -1000.0f
-    );
-    renderer.begin(device, swap_chain, queue, pixel_uniform);
-    renderer.set_model(
-        glm::vec2(0.0f, 0.0f), glm::vec2(4.0f), glm::radians(45.0f)
-    );
-    for (int x = -10; x < 10; x++) {
-        for (int y = -10; y < 10; y++) {
-            renderer.draw({1.0f, 0.0f, 0.0f, 1.0f}, {x, y});
-        }
-    }
-    renderer.end();
-}
-
 enum class SimulateState { Running, Paused };
 
 void toggle_simulation(
@@ -524,6 +493,7 @@ void toggle_simulation(
     Query<Get<ButtonInput<KeyCode>>, With<PrimaryWindow>> query
 ) {
     if (!query) return;
+    ZoneScoped;
     auto [key_input] = query.single();
     if (key_input.just_pressed(epix::input::KeyEscape)) {
         if (next_state.has_value()) {
@@ -567,6 +537,7 @@ void update_mouse_joint(
 ) {
     if (!world_query) return;
     if (!input_query) return;
+    ZoneScoped;
     auto [world]               = world_query.single();
     auto [window, mouse_input] = input_query.single();
     if (mouse_joint_query) {
@@ -714,6 +685,7 @@ void create_element_from_click(
 ) {
     if (!query) return;
     if (!window_query) return;
+    ZoneScoped;
     auto [simulation]                     = query.single();
     auto [window, mouse_input, key_input] = window_query.single();
     if (!elem_id->has_value()) {
@@ -737,6 +709,7 @@ void create_element_from_click(
     }
     if (imgui_context.has_value()) {
         ImGui::SetCurrentContext(imgui_context->context);
+        imgui_context->sync_context();
         if (ImGui::GetIO().WantCaptureMouse) return;
     }
     if (mouse_input.pressed(epix::input::MouseButton1) ||
@@ -821,6 +794,7 @@ void update_simulation(
     Local<std::optional<RepeatTimer>> timer
 ) {
     if (!query) return;
+    ZoneScoped;
     if (!timer->has_value()) {
         *timer = RepeatTimer(1.0 / 60.0);
     }
@@ -841,6 +815,7 @@ void step_simulation(
 ) {
     if (!query) return;
     if (!query2) return;
+    ZoneScoped;
     auto [simulation] = query.single();
     auto [key_input]  = query2.single();
     if (key_input.just_pressed(epix::input::KeySpace)) {
@@ -872,44 +847,25 @@ void step_simulation(
 }
 
 void render_simulation(
-    Query<Get<const Simulation>> query,
-    Query<Get<Device, Swapchain, Queue>, With<RenderContext>> context_query,
-    Query<Get<epix::render::pixel::components::PixelRenderer>> renderer_query
+    Extract<Get<const Simulation>> query, ResMut<SandMesh> mesh
 ) {
-    using namespace epix::render::pixel::components;
     if (!query) return;
-    if (!context_query) return;
-    if (!renderer_query) return;
-    auto [device, swap_chain, queue] = context_query.single();
-    auto [renderer]                  = renderer_query.single();
-    auto [simulation]                = query.single();
+    if (!mesh) return;
+    auto [simulation] = query.single();
     ZoneScopedN("Render simulation");
-    PixelUniformBuffer uniform_buffer;
-    uniform_buffer.proj = glm::ortho(
-        -static_cast<float>(swap_chain.extent.width) / 2.0f,
-        static_cast<float>(swap_chain.extent.width) / 2.0f,
-        static_cast<float>(swap_chain.extent.height) / 2.0f,
-        -static_cast<float>(swap_chain.extent.height) / 2.0f, 1000.0f, -1000.0f
-    );
-    uniform_buffer.view = glm::scale(glm::mat4(1.0f), {scale, scale, 1.0f});
-    renderer.begin(device, swap_chain, queue, uniform_buffer);
     for (auto&& [pos, chunk] : simulation.chunk_map()) {
-        glm::mat4 model = glm::translate(
-            glm::mat4(1.0f), {pos.x * simulation.chunk_size(),
-                              pos.y * simulation.chunk_size(), 0.0f}
-        );
-        renderer.set_model(model);
         for (int i = 0; i < chunk.size().x; i++) {
             for (int j = 0; j < chunk.size().y; j++) {
                 auto& elem = chunk.get(i, j);
                 if (elem)
-                    renderer.draw(
-                        elem.freefall ? elem.color : elem.color * 0.5f, {i, j}
+                    mesh->draw_pixel(
+                        {i + pos.x * simulation.chunk_size(),
+                         j + pos.y * simulation.chunk_size()},
+                        elem.freefall ? elem.color : elem.color * 0.5f
                     );
             }
         }
     }
-    renderer.end();
 }
 
 void print_hover_data(
@@ -918,6 +874,7 @@ void print_hover_data(
 ) {
     if (!query) return;
     if (!window_query) return;
+    ZoneScoped;
     auto [simulation] = query.single();
     auto [window]     = window_query.single();
     auto cursor       = window.get_cursor();
@@ -945,157 +902,55 @@ void print_hover_data(
     }
 }
 
-void render_simulation_cell_vel(
-    Query<Get<const Simulation>> query,
-    Query<Get<Device, Swapchain, Queue>, With<RenderContext>> context_query,
-    Query<Get<epix::render::debug::vulkan::components::LineDrawer>>
-        line_drawer_query
+void render_simulation_chunk_outline(
+    Extract<
+        Get<const Simulation,
+            const epix::world::sand_physics::SimulationCollisionGeneral>> query,
+    ResMut<Box2dMesh> mesh
 ) {
-    using namespace epix::render::debug::vulkan::components;
     if (!query) return;
-    if (!context_query) return;
-    if (!line_drawer_query) return;
-    auto [device, swap_chain, queue] = context_query.single();
-    auto [line_drawer]               = line_drawer_query.single();
-    auto [simulation]                = query.single();
-    line_drawer.begin(device, queue, swap_chain);
+    if (!mesh) return;
+    auto [simulation, sim_collisions] = query.single();
+    ZoneScopedN("Render simulation collision");
     float alpha = 0.3f;
     for (auto&& [pos, chunk] : simulation.chunk_map()) {
         glm::mat4 model = glm::translate(
             glm::mat4(1.0f), {pos.x * simulation.chunk_size() * scale,
                               pos.y * simulation.chunk_size() * scale, 0.0f}
         );
-        model = glm::scale(model, {scale, scale, 1.0f});
-        line_drawer.setModel(model);
-        for (int i = 0; i < chunk.size().x; i++) {
-            for (int j = 0; j < chunk.size().y; j++) {
-                auto& elem = chunk.get(i, j);
-                if (elem) {
-                    auto& type = simulation.registry().get_elem(elem.elem_id);
-                    if (type.name == "grind")
-                        line_drawer.drawLine(
-                            {.5f + i + elem.inpos.x, .5f + j + elem.inpos.y,
-                             0.0f},
-                            {.5f + i + elem.inpos.x + elem.velocity.x,
-                             .5f + j + elem.inpos.y + elem.velocity.y, 0.0f},
-                            {0.0f, 0.0f, 1.0f, alpha}
-                        );
-                }
-            }
-        }
-    }
-    line_drawer.end();
-}
-
-void render_simulation_state(
-    Query<Get<const Simulation>> query,
-    Query<Get<Device, Swapchain, Queue>, With<RenderContext>> context_query,
-    Query<Get<epix::render::debug::vulkan::components::LineDrawer>>
-        line_drawer_query
-) {
-    using namespace epix::render::debug::vulkan::components;
-    if (!query) return;
-    if (!context_query) return;
-    if (!line_drawer_query) return;
-    auto [device, swap_chain, queue] = context_query.single();
-    auto [line_drawer]               = line_drawer_query.single();
-    auto [simulation]                = query.single();
-    line_drawer.begin(device, queue, swap_chain);
-    float alpha = 0.5f;
-    if (simulation.updating_state().is_updating) {
-        auto&& post = simulation.updating_state().current_chunk();
-        if (post) {
-            auto&& pos      = post.value();
-            auto& chunk     = simulation.chunk_map().get_chunk(pos.x, pos.y);
-            glm::mat4 model = glm::translate(
-                glm::mat4(1.0f), {pos.x * simulation.chunk_size() * scale,
-                                  pos.y * simulation.chunk_size() * scale, 0.0f}
-            );
-            model           = glm::scale(model, {scale, scale, 1.0f});
-            glm::vec4 color = {0.0f, 0.0f, 1.0f, alpha / 2};
-            line_drawer.setModel(model);
-            line_drawer.drawLine(
-                {0.0f, 0.0f, 0.0f},
-                {0.0f, static_cast<float>(simulation.chunk_size()), 0.0f}, color
-            );
-            line_drawer.drawLine(
-                {0.0f, 0.0f, 0.0f},
-                {static_cast<float>(simulation.chunk_size()), 0.0f, 0.0f}, color
-            );
-            line_drawer.drawLine(
-                {static_cast<float>(simulation.chunk_size()), 0.0f, 0.0f},
-                {static_cast<float>(simulation.chunk_size()),
-                 static_cast<float>(simulation.chunk_size()), 0.0f},
-                color
-            );
-            line_drawer.drawLine(
-                {0.0f, static_cast<float>(simulation.chunk_size()), 0.0f},
-                {static_cast<float>(simulation.chunk_size()),
-                 static_cast<float>(simulation.chunk_size()), 0.0f},
-                color
-            );
-            if (chunk.should_update()) {
-                color    = {1.0f, 0.0f, 0.0f, alpha};
-                float x1 = chunk.updating_area[0];
-                float x2 = chunk.updating_area[1] + 1;
-                float y1 = chunk.updating_area[2];
-                float y2 = chunk.updating_area[3] + 1;
-                line_drawer.drawLine({x1, y1, 0.0f}, {x2, y1, 0.0f}, color);
-                line_drawer.drawLine({x2, y1, 0.0f}, {x2, y2, 0.0f}, color);
-                line_drawer.drawLine({x2, y2, 0.0f}, {x1, y2, 0.0f}, color);
-                line_drawer.drawLine({x1, y2, 0.0f}, {x1, y1, 0.0f}, color);
-            }
-        }
-    }
-    line_drawer.end();
-}
-
-void render_simulation_chunk_outline(
-    Query<
-        Get<const Simulation,
-            const epix::world::sand_physics::SimulationCollisionGeneral>> query,
-    Query<Get<Device, Swapchain, Queue>, With<RenderContext>> context_query,
-    Query<Get<epix::render::debug::vulkan::components::LineDrawer>>
-        line_drawer_query
-) {
-    using namespace epix::render::debug::vulkan::components;
-    if (!query) return;
-    if (!context_query) return;
-    if (!line_drawer_query) return;
-    auto [device, swap_chain, queue]  = context_query.single();
-    auto [line_drawer]                = line_drawer_query.single();
-    auto [simulation, sim_collisions] = query.single();
-    ZoneScopedN("Render simulation collision");
-    line_drawer.begin(device, queue, swap_chain);
-    float alpha = 0.3f;
-    for (auto&& [pos, chunk] : simulation.chunk_map()) {
-        glm::mat4 model = glm::translate(
-            glm::mat4(1.0f), {pos.x * simulation.chunk_size() * scale,
-                              pos.y * simulation.chunk_size() * scale, 0.0f}
+        glm::vec3 origin = glm::vec3(
+            pos.x * simulation.chunk_size(), pos.y * simulation.chunk_size(),
+            0.0f
         );
         model           = glm::scale(model, {scale, scale, 1.0f});
         glm::vec4 color = {1.0f, 1.0f, 1.0f, alpha / 4};
-        line_drawer.setModel(model);
-        line_drawer.drawLine(
-            {0.0f, 0.0f, 0.0f},
-            {0.0f, static_cast<float>(simulation.chunk_size()), 0.0f}, color
-        );
-        line_drawer.drawLine(
-            {0.0f, 0.0f, 0.0f},
-            {static_cast<float>(simulation.chunk_size()), 0.0f, 0.0f}, color
-        );
-        line_drawer.drawLine(
-            {static_cast<float>(simulation.chunk_size()), 0.0f, 0.0f},
-            {static_cast<float>(simulation.chunk_size()),
-             static_cast<float>(simulation.chunk_size()), 0.0f},
-            color
-        );
-        line_drawer.drawLine(
-            {0.0f, static_cast<float>(simulation.chunk_size()), 0.0f},
-            {static_cast<float>(simulation.chunk_size()),
-             static_cast<float>(simulation.chunk_size()), 0.0f},
-            color
-        );
+        glm::vec3 lb    = glm::vec3(
+                           pos.x * simulation.chunk_size(),
+                           pos.y * simulation.chunk_size(), 0.0f
+                       ) *
+                       scale;
+        glm::vec3 rt =
+            glm::vec3(
+                pos.x * simulation.chunk_size() + simulation.chunk_size(),
+                pos.y * simulation.chunk_size() + simulation.chunk_size(), 0.0f
+            ) *
+            scale;
+        glm::vec3 lt =
+            glm::vec3(
+                pos.x * simulation.chunk_size(),
+                pos.y * simulation.chunk_size() + simulation.chunk_size(), 0.0f
+            ) *
+            scale;
+        glm::vec3 rb =
+            glm::vec3(
+                pos.x * simulation.chunk_size() + simulation.chunk_size(),
+                pos.y * simulation.chunk_size(), 0.0f
+            ) *
+            scale;
+        mesh->draw_line(lb, rb, color);
+        mesh->draw_line(rb, rt, color);
+        mesh->draw_line(rt, lt, color);
+        mesh->draw_line(lt, lb, color);
         if constexpr (render_collision_outline) {
             if (sim_collisions.collisions.contains(pos.x, pos.y)) {
                 auto& collision_outline =
@@ -1103,11 +958,16 @@ void render_simulation_chunk_outline(
                 for (auto&& outlines : collision_outline) {
                     for (auto&& outline : outlines) {
                         for (size_t i = 0; i < outline.size(); i++) {
-                            auto start = outline[i];
-                            auto end   = outline[(i + 1) % outline.size()];
-                            line_drawer.drawLine(
-                                {start.x, start.y, 0.0f}, {end.x, end.y, 0.0f},
-                                {0.0f, 1.0f, 0.0f, alpha}
+                            auto start = glm::vec3(outline[i], 0.0f) + origin;
+                            auto end =
+                                glm::vec3(
+                                    outline[(i + 1) % outline.size()], 0.0f
+                                ) +
+                                origin;
+                            start *= scale;
+                            end *= scale;
+                            mesh->draw_line(
+                                start, end, {0.0f, 1.0f, 0.0f, alpha}
                             );
                         }
                     }
@@ -1116,37 +976,38 @@ void render_simulation_chunk_outline(
         }
         if (chunk.should_update()) {
             // orange
-            color    = {1.0f, 0.5f, 0.0f, alpha};
-            float x1 = chunk.updating_area[0];
-            float x2 = chunk.updating_area[1] + 1;
-            float y1 = chunk.updating_area[2];
-            float y2 = chunk.updating_area[3] + 1;
-            line_drawer.drawLine({x1, y1, 0.0f}, {x2, y1, 0.0f}, color);
-            line_drawer.drawLine({x2, y1, 0.0f}, {x2, y2, 0.0f}, color);
-            line_drawer.drawLine({x2, y2, 0.0f}, {x1, y2, 0.0f}, color);
-            line_drawer.drawLine({x1, y2, 0.0f}, {x1, y1, 0.0f}, color);
+            color        = {1.0f, 0.5f, 0.0f, alpha};
+            float x1     = chunk.updating_area[0];
+            float x2     = chunk.updating_area[1] + 1;
+            float y1     = chunk.updating_area[2];
+            float y2     = chunk.updating_area[3] + 1;
+            glm::vec3 p1 = glm::vec3{x1, y1, 0.0f} + origin;
+            glm::vec3 p2 = glm::vec3{x2, y1, 0.0f} + origin;
+            glm::vec3 p3 = glm::vec3{x2, y2, 0.0f} + origin;
+            glm::vec3 p4 = glm::vec3{x1, y2, 0.0f} + origin;
+            p1 *= scale;
+            p2 *= scale;
+            p3 *= scale;
+            p4 *= scale;
+            mesh->draw_line(p1, p2, color);
+            mesh->draw_line(p2, p3, color);
+            mesh->draw_line(p3, p4, color);
+            mesh->draw_line(p4, p1, color);
         }
     }
-    line_drawer.end();
 }
 
 void render_simulation_collision(
-    Query<
+    Extract<
         Get<const Simulation,
             const epix::world::sand_physics::SimulationCollisionGeneral>> query,
-    Query<Get<Device, Swapchain, Queue>, With<RenderContext>> context_query,
-    Query<Get<epix::render::debug::vulkan::components::LineDrawer>>
-        line_drawer_query
+    ResMut<Box2dMesh> mesh
 ) {
-    using namespace epix::render::debug::vulkan::components;
     if (!query) return;
-    if (!context_query) return;
-    if (!line_drawer_query) return;
-    auto [device, swap_chain, queue]  = context_query.single();
-    auto [line_drawer]                = line_drawer_query.single();
+    if (!mesh) return;
+    ZoneScoped;
     auto [simulation, sim_collisions] = query.single();
-    line_drawer.begin(device, queue, swap_chain);
-    float alpha = 0.3f;
+    float alpha                       = 0.3f;
     for (auto&& [pos, chunk] : simulation.chunk_map()) {
         if (sim_collisions.collisions.contains(pos.x, pos.y)) {
             auto body =
@@ -1164,7 +1025,7 @@ void render_simulation_collision(
                         auto& vertex2 =
                             polygon.vertices[(i + 1) % polygon.count];
                         bool awake = b2Body_IsAwake(body);
-                        line_drawer.drawLine(
+                        mesh->draw_line(
                             {vertex1.x, vertex1.y, 0.0f},
                             {vertex2.x, vertex2.y, 0.0f},
                             {awake ? 0.0f : 1.0f, awake ? 1.0f : 0.0f, 0.0f,
@@ -1177,7 +1038,7 @@ void render_simulation_collision(
                     auto& vertex1 = segment.segment.point1;
                     auto& vertex2 = segment.segment.point2;
                     bool awake    = b2Body_IsAwake(body);
-                    line_drawer.drawLine(
+                    mesh->draw_line(
                         {vertex1.x, vertex1.y, 0.0f},
                         {vertex2.x, vertex2.y, 0.0f},
                         {awake ? 0.0f : 1.0f, awake ? 1.0f : 0.0f, 0.0f, 0.3f}
@@ -1188,7 +1049,7 @@ void render_simulation_collision(
                     auto& vertex1 = segment.point1;
                     auto& vertex2 = segment.point2;
                     bool awake    = b2Body_IsAwake(body);
-                    line_drawer.drawLine(
+                    mesh->draw_line(
                         {vertex1.x, vertex1.y, 0.0f},
                         {vertex2.x, vertex2.y, 0.0f},
                         {awake ? 0.0f : 1.0f, awake ? 1.0f : 0.0f, 0.0f, 0.3f}
@@ -1197,7 +1058,6 @@ void render_simulation_collision(
             }
         }
     }
-    line_drawer.end();
 }
 
 enum class InputState { Simulation, Body };
@@ -1207,6 +1067,7 @@ void toggle_input_state(
     Query<Get<ButtonInput<KeyCode>>, With<PrimaryWindow>> query
 ) {
     if (!query) return;
+    ZoneScoped;
     auto [key_input] = query.single();
     if (key_input.just_pressed(epix::input::KeyTab)) {
         if (next_state.has_value()) {
@@ -1245,6 +1106,156 @@ void sync_simulatino_with_b2d(
     }
 }
 
+void draw_meshes(
+    ResMut<RenderContext> context,
+    ResMut<Box2dMeshGPU> b2d_gpu_mesh,
+    ResMut<SandMeshGPU> sand_gpu_mesh,
+    Res<Box2dMeshStaging> b2d_staging,
+    Res<SandMeshStaging> sand_staging,
+    ResMut<WholePass> pass,
+    Res<VulkanResources> res_mgr
+) {
+    if (!b2d_staging) return;
+    if (!sand_staging) return;
+    if (!b2d_gpu_mesh) return;
+    if (!sand_gpu_mesh) return;
+    if (!pass) return;
+    if (!res_mgr) return;
+    if (!context) return;
+    ZoneScopedN("Draw meshes");
+    pass->begin(
+        [&](auto& device, auto& renderpass) {
+            vk::FramebufferCreateInfo framebuffer_info;
+            framebuffer_info.setRenderPass(renderpass);
+            framebuffer_info.setAttachments(
+                context->primary_swapchain.current_image_view()
+            );
+            framebuffer_info.setWidth(context->primary_swapchain.extent().width
+            );
+            framebuffer_info.setHeight(
+                context->primary_swapchain.extent().height
+            );
+            framebuffer_info.setLayers(1);
+            return device.createFramebuffer(framebuffer_info);
+        },
+        context->primary_swapchain.extent()
+    );
+    pass->update_mesh(*b2d_gpu_mesh, *b2d_staging);
+    pass->update_mesh(*sand_gpu_mesh, *sand_staging);
+    auto& subpass_sand = pass->next_subpass();
+    subpass_sand.activate_pipeline(
+        0,
+        [&](auto& viewports, auto& scissors) {
+            viewports.resize(1);
+            viewports[0].setWidth(context->primary_swapchain.extent().width);
+            viewports[0].setHeight(context->primary_swapchain.extent().height);
+            viewports[0].setX(0);
+            viewports[0].setY(0);
+            viewports[0].setMinDepth(0.0f);
+            viewports[0].setMaxDepth(1.0f);
+            scissors.resize(1);
+            scissors[0].setExtent(context->primary_swapchain.extent());
+            scissors[0].setOffset({0, 0});
+        },
+        [&](auto& device, auto& sets) {
+            sets.resize(1);
+            vk::DescriptorBufferInfo buffer_info;
+            buffer_info.setBuffer(res_mgr->get_buffer("uniform_buffer"));
+            buffer_info.setOffset(0);
+            buffer_info.setRange(sizeof(glm::mat4) * 2);
+            vk::WriteDescriptorSet descriptor_write;
+            descriptor_write.setDstSet(sets[0]);
+            descriptor_write.setDstBinding(0);
+            descriptor_write.setDstArrayElement(0);
+            descriptor_write.setDescriptorType(
+                vk::DescriptorType::eUniformBuffer
+            );
+            descriptor_write.setDescriptorCount(1);
+            descriptor_write.setPBufferInfo(&buffer_info);
+            device.updateDescriptorSets({descriptor_write}, {});
+        }
+    );
+    subpass_sand.draw(*sand_gpu_mesh, glm::mat4(1.0f));
+    auto& subpass_b2d = pass->next_subpass();
+    subpass_b2d.activate_pipeline(
+        0,
+        [&](auto& viewports, auto& scissors) {
+            viewports.resize(1);
+            viewports[0].setWidth(context->primary_swapchain.extent().width);
+            viewports[0].setHeight(context->primary_swapchain.extent().height);
+            viewports[0].setX(0);
+            viewports[0].setY(0);
+            viewports[0].setMinDepth(0.0f);
+            viewports[0].setMaxDepth(1.0f);
+            scissors.resize(1);
+            scissors[0].setExtent(context->primary_swapchain.extent());
+            scissors[0].setOffset({0, 0});
+        },
+        [&](auto& device, auto& sets) {
+            sets.resize(1);
+            vk::DescriptorBufferInfo buffer_info;
+            buffer_info.setBuffer(res_mgr->get_buffer("uniform_buffer"));
+            buffer_info.setOffset(0);
+            buffer_info.setRange(sizeof(glm::mat4) * 2);
+            vk::WriteDescriptorSet descriptor_write;
+            descriptor_write.setDstSet(sets[0]);
+            descriptor_write.setDstBinding(0);
+            descriptor_write.setDstArrayElement(0);
+            descriptor_write.setDescriptorType(
+                vk::DescriptorType::eUniformBuffer
+            );
+            descriptor_write.setDescriptorCount(1);
+            descriptor_write.setPBufferInfo(&buffer_info);
+            device.updateDescriptorSets({descriptor_write}, {});
+        }
+    );
+    subpass_b2d.draw(*b2d_gpu_mesh, glm::mat4(1.0f));
+    pass->end();
+    pass->submit(context->queue);
+}
+
+void create_uniform_buffer(
+    ResMut<VulkanResources> res_mgr, ResMut<RenderContext> context
+) {
+    if (!res_mgr) return;
+    if (!context) return;
+    ZoneScopedN("Create uniform buffer");
+    auto& device = context->device;
+    auto buffer  = device.createBuffer(
+        vk::BufferCreateInfo()
+            .setSize(sizeof(glm::mat4) * 2)
+            .setUsage(vk::BufferUsageFlagBits::eUniformBuffer)
+            .setSharingMode(vk::SharingMode::eExclusive),
+        backend::AllocationCreateInfo()
+            .setUsage(VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE)
+            .setFlags(VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT)
+    );
+    auto data = (glm::mat4*)buffer.map();
+    data[0]   = glm::ortho(
+        -(float)context->primary_swapchain.extent().width / 2.0f,
+        (float)context->primary_swapchain.extent().width / 2.0f,
+        (float)context->primary_swapchain.extent().height / 2.0f,
+        -(float)context->primary_swapchain.extent().height / 2.0f, -1.0f, 1.0f
+    );
+    data[1] = glm::mat4(1.0f);
+    res_mgr->add_buffer("uniform_buffer", buffer);
+}
+
+void update_uniform_buffer(
+    Res<RenderContext> context, Res<VulkanResources> res_mgr
+) {
+    if (!res_mgr || !context) return;
+    auto buffer = res_mgr->get_buffer("uniform_buffer");
+    auto data   = (glm::mat4*)buffer.map();
+    data[0]     = glm::ortho(
+        -(float)context->primary_swapchain.extent().width / 2.0f,
+        (float)context->primary_swapchain.extent().width / 2.0f,
+        (float)context->primary_swapchain.extent().height / 2.0f,
+        -(float)context->primary_swapchain.extent().height / 2.0f, -1.0f, 1.0f
+    );
+    buffer.unmap();
+}
+
 struct Box2dTestPlugin : Plugin {
     void build(App& app) override {
         using namespace epix;
@@ -1261,9 +1272,7 @@ struct Box2dTestPlugin : Plugin {
                 .in_state(SimulateState::Running);
         app.add_system(Update, create_dynamic_from_click, update_mouse_joint)
             .in_state(InputState::Body);
-        app.add_system(Render, render_pixel_block);
-        app.add_system(PostRender, render_bodies, render_simulation_collision)
-            .before(epix::render_vk::systems::present_frame);
+        app.add_system(Extraction, render_bodies, render_simulation_collision);
         app.add_system(Exit, destroy_b2d_world);
     }
 };
@@ -1273,14 +1282,11 @@ struct VK_TrialPlugin : Plugin {
         auto window_plugin                   = app.get_plugin<WindowPlugin>();
         window_plugin->primary_desc().width  = 1080;
         window_plugin->primary_desc().height = 1080;
-        // window_plugin->primary_window_vsync = false;
+        window_plugin->primary_desc().set_vsync(false);
 
         using namespace epix;
 
         app.enable_loop();
-        // app.add_system(Startup, create_text);
-        // app.add_system(Startup, create_pixel_block);
-        // app.add_system(Render, draw_lines);
         app.add_plugin(Box2dTestPlugin{});
 
         app.insert_state(SimulateState::Paused);
@@ -1298,26 +1304,42 @@ struct VK_TrialPlugin : Plugin {
         app.add_system(Update, step_simulation).in_state(SimulateState::Paused);
         app.add_system(PreUpdate, toggle_full_screen);
         app.add_system(
-               Render, render_simulation, render_simulation_chunk_outline /* ,
-                render_simulation_cell_vel, render_simulation_state */
-        )
-            .chain()
-            .before(render_bodies, render_pixel_block);
+            Extraction, render_simulation, render_simulation_chunk_outline
+        );
+        spdlog::info(
+            "conflict: {}",
+            epix::test_systems_conflict(
+                render_simulation, render_simulation_chunk_outline
+            )
+        );
+        app.add_system(Startup, create_whole_pass_base, create_whole_pass)
+            .chain();
+        app.add_system(
+            Startup, create_box2d_meshes, create_sand_meshes,
+            create_uniform_buffer
+        );
+        app.add_system(
+            PostExtract, extract_whole_pass, extract_box2d_mesh,
+            extract_sand_mesh, update_uniform_buffer
+        );
+        app.add_system(Render, draw_meshes);
+        app.add_system(
+            Exit, destroy_whole_pass, destroy_box2d_meshes, destroy_sand_meshes
+        );
     }
 };
 
 void run() {
-    App app = App::create();
+    App app = App::create2();
     app.enable_loop();
     app.set_log_level(spdlog::level::info);
     app.add_plugin(epix::window::WindowPlugin{});
     app.add_plugin(epix::input::InputPlugin{});
-    app.add_plugin(epix::render_vk::RenderVKPlugin{});
-    app.add_plugin(epix::render::debug::vulkan::DebugRenderPlugin{});
+    app.add_plugin(epix::render::vulkan2::VulkanPlugin{}.set_debug_callback(true
+    ));
     // app.add_plugin(epix::font::FontPlugin{});
     app.add_plugin(vk_trial::VK_TrialPlugin{});
     app.add_plugin(epix::imgui::ImGuiPluginVK{});
-    app.add_plugin(epix::render::pixel::PixelRenderPlugin{});
     // app.add_plugin(pixel_engine::sprite::SpritePluginVK{});
     app.run();
 }

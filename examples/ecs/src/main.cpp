@@ -1,6 +1,6 @@
 ﻿#pragma once
 
-#include <epix/entity.h>
+#include <epix/prelude.h>
 
 #include <iostream>
 #include <random>
@@ -18,9 +18,7 @@ struct test_t {
     test_t() { std::cout << "Constructor called" << std::endl; }
     test_t(int* a) : a(a) { std::cout << "Constructor called" << std::endl; }
     test_t(const test_t&) = delete;
-    test_t(test_t&&) {
-        std::cout << "Move constructor called" << std::endl;
-    }
+    test_t(test_t&&) { std::cout << "Move constructor called" << std::endl; }
     test_t& operator=(const test_t&) = delete;
     test_t& operator=(test_t&&) {
         std::cout << "Move assignment called" << std::endl;

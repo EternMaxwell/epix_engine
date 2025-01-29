@@ -9,6 +9,6 @@ target_include_directories(rd_imgui_test PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/incl
 
 target_link_libraries(rd_imgui_test epix::app)
 target_link_libraries(rd_imgui_test epix::window)
-target_link_libraries(rd_imgui_test epix::render::vulkan2)
+target_link_libraries(rd_imgui_test epix::render::vulkan)
 target_link_libraries(rd_imgui_test epix::input)
 target_link_libraries(rd_imgui_test epix::imgui)

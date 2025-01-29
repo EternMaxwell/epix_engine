@@ -7,6 +7,9 @@ project(${PROJNAME})
 #add self files
 file(GLOB_RECURSE SOURCES "include/*.h" "include/*.hpp" "src/*.c" "src/*.cpp")
 add_executable (${PROJNAME} ${SOURCES})
+if(EPIX_ENABLE_TRACY)
+    target_compile_definitions(${PROJNAME} PRIVATE EPIX_ENABLE_TRACY)
+endif()
 target_include_directories(${PROJNAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
 set_target_properties(${PROJNAME} PROPERTIES CXX_STANDARD 20)

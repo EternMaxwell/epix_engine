@@ -13,7 +13,6 @@ target_link_libraries(epix_imgui epix::app)
 target_link_libraries(epix_imgui epix::window)
 target_link_libraries(epix_imgui epix::render::ogl)
 target_link_libraries(epix_imgui epix::render::vulkan)
-target_link_libraries(epix_imgui epix::render::vulkan2)
 target_link_libraries(epix_imgui imgui)
 
 add_library(epix::imgui ALIAS epix_imgui)
