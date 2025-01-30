@@ -854,13 +854,14 @@ void render_simulation(
     auto [simulation] = query.single();
     ZoneScopedN("Render simulation");
     for (auto&& [pos, chunk] : simulation.chunk_map()) {
+        int offset_x = pos.x * simulation.chunk_size();
+        int offset_y = pos.y * simulation.chunk_size();
         for (int i = 0; i < chunk.size().x; i++) {
             for (int j = 0; j < chunk.size().y; j++) {
                 auto& elem = chunk.get(i, j);
                 if (elem)
                     mesh->draw_pixel(
-                        {i + pos.x * simulation.chunk_size(),
-                         j + pos.y * simulation.chunk_size()},
+                        {i + offset_x, j + offset_y},
                         elem.freefall ? elem.color : elem.color * 0.5f
                     );
             }
@@ -914,38 +915,22 @@ void render_simulation_chunk_outline(
     ZoneScopedN("Render simulation collision");
     float alpha = 0.3f;
     for (auto&& [pos, chunk] : simulation.chunk_map()) {
-        glm::mat4 model = glm::translate(
-            glm::mat4(1.0f), {pos.x * simulation.chunk_size() * scale,
-                              pos.y * simulation.chunk_size() * scale, 0.0f}
-        );
         glm::vec3 origin = glm::vec3(
             pos.x * simulation.chunk_size(), pos.y * simulation.chunk_size(),
             0.0f
         );
-        model           = glm::scale(model, {scale, scale, 1.0f});
         glm::vec4 color = {1.0f, 1.0f, 1.0f, alpha / 4};
-        glm::vec3 lb    = glm::vec3(
-                           pos.x * simulation.chunk_size(),
-                           pos.y * simulation.chunk_size(), 0.0f
+        glm::vec3 lb    = glm::vec3(origin.x, origin.y, 0.0f) * scale;
+        glm::vec3 rt    = glm::vec3(
+                           origin.x + simulation.chunk_size(),
+                           origin.y + simulation.chunk_size(), 0.0f
                        ) *
                        scale;
-        glm::vec3 rt =
-            glm::vec3(
-                pos.x * simulation.chunk_size() + simulation.chunk_size(),
-                pos.y * simulation.chunk_size() + simulation.chunk_size(), 0.0f
-            ) *
-            scale;
         glm::vec3 lt =
-            glm::vec3(
-                pos.x * simulation.chunk_size(),
-                pos.y * simulation.chunk_size() + simulation.chunk_size(), 0.0f
-            ) *
+            glm::vec3(origin.x, origin.y + simulation.chunk_size(), 0.0f) *
             scale;
         glm::vec3 rb =
-            glm::vec3(
-                pos.x * simulation.chunk_size() + simulation.chunk_size(),
-                pos.y * simulation.chunk_size(), 0.0f
-            ) *
+            glm::vec3(origin.x + simulation.chunk_size(), origin.y, 0.0f) *
             scale;
         mesh->draw_line(lb, rb, color);
         mesh->draw_line(rb, rt, color);
@@ -1238,6 +1223,7 @@ void create_uniform_buffer(
         -(float)context->primary_swapchain.extent().height / 2.0f, -1.0f, 1.0f
     );
     data[1] = glm::mat4(1.0f);
+    buffer.unmap();
     res_mgr->add_buffer("uniform_buffer", buffer);
 }
 

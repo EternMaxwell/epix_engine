@@ -215,9 +215,7 @@ struct packed_grid {
     template <typename... Args>
         requires std::constructible_from<T, Args...>
     void emplace_at(const std::array<int, D>& pos, Args&&... args) {
-        for (int i = 0; i < D; i++) {
-            if (pos[i] >= _size[i] || pos[i] < 0) return;
-        }
+        assert(valid_at(pos));
         int index = pos[D - 1];
         for (int i = D - 2; i >= 0; i--) {
             index = index * _size[i] + pos[i];
@@ -246,9 +244,7 @@ struct packed_grid {
     template <typename... Args>
         requires std::constructible_from<T, Args...>
     bool try_emplace_at(const std::array<int, D>& pos, Args&&... args) {
-        for (int i = 0; i < D; i++) {
-            if (pos[i] >= _size[i] || pos[i] < 0) return;
-        }
+        assert(valid_at(pos));
         int index = pos[D - 1];
         for (int i = D - 2; i >= 0; i--) {
             index = index * _size[i] + pos[i];
@@ -279,9 +275,7 @@ struct packed_grid {
         );
     }
     bool contains_at(const std::array<int, D>& pos) const {
-        for (int i = 0; i < D; i++) {
-            if (pos[i] >= _size[i] || pos[i] < 0) return false;
-        }
+        assert(valid_at(pos));
         int index = pos[D - 1];
         for (int i = D - 2; i >= 0; i--) {
             index = index * _size[i] + pos[i];
@@ -311,10 +305,7 @@ struct packed_grid {
         return valid_at(std::array<int, D>{args...});
     }
     T& get_at(const std::array<int, D>& pos) {
-        for (int i = 0; i < D; i++) {
-            if (pos[i] >= _size[i] || pos[i] < 0)
-                throw std::out_of_range("Position invalid");
-        }
+        assert(valid_at(pos));
         int index = pos[D - 1];
         for (int i = D - 2; i >= 0; i--) {
             index = index * _size[i] + pos[i];
@@ -330,10 +321,7 @@ struct packed_grid {
         return get_at(std::array<int, D>{args...});
     }
     const T& get_at(const std::array<int, D>& pos) const {
-        for (int i = 0; i < D; i++) {
-            if (pos[i] >= _size[i] || pos[i] < 0)
-                throw std::out_of_range("Position invalid");
-        }
+        assert(valid_at(pos));
         int index = pos[D - 1];
         for (int i = D - 2; i >= 0; i--) {
             index = index * _size[i] + pos[i];
@@ -466,9 +454,7 @@ struct packed_grid<bool, D, boolify<bool>> {
         return contains_at(std::array<int, D>{args...});
     }
     void insert(const std::array<int, D>& pos, bool value) {
-        for (int i = 0; i < D; i++) {
-            if (pos[i] >= _size[i] || pos[i] < 0) return;
-        }
+        assert(valid_at(pos));
         int index = pos[D - 1];
         for (int i = D - 2; i > 0; i--) {
             index = index * _size[i] + pos[i];
@@ -499,7 +485,7 @@ struct packed_grid<bool, D, boolify<bool>> {
         emplace_i(tuple, std::make_index_sequence<D>());
     }
     bool try_emplace_at(const std::array<int, D>& pos, bool value) {
-        if (!valid(pos)) return false;
+        assert(valid_at(pos));
         if (contains(pos)) return false;
         insert(pos, value);
         return true;
@@ -523,9 +509,7 @@ struct packed_grid<bool, D, boolify<bool>> {
         return try_emplace_i(tuple, std::make_index_sequence<D>());
     }
     void reset_at(const std::array<int, D>& pos) {
-        for (int i = 0; i < D; i++) {
-            if (pos[i] >= _size[i] || pos[i] < 0) return;
-        }
+        assert(valid_at(pos));
         int index = pos[D - 1];
         for (int i = D - 2; i > 0; i--) {
             index = index * _size[i] + pos[i];
@@ -541,9 +525,7 @@ struct packed_grid<bool, D, boolify<bool>> {
         reset_at(std::array<int, D>{args...});
     }
     bool get_at(const std::array<int, D>& pos) const {
-        for (int i = 0; i < D; i++) {
-            if (pos[i] >= _size[i] || pos[i] < 0) return false;
-        }
+        assert(valid_at(pos));
         int index = pos[D - 1];
         for (int i = D - 2; i > 0; i--) {
             index = index * _size[i] + pos[i];
@@ -568,7 +550,7 @@ template <typename T, size_t D>
 struct sparse_grid {
    private:
     struct index_boolify {
-        bool operator()(int index) { return index != -1; }
+        bool operator()(int index) const { return index != -1; }
     };
 
     packed_grid<int, D, index_boolify> _index_grid;
@@ -648,85 +630,206 @@ struct sparse_grid {
         _pos        = std::move(other._pos);
         return *this;
     }
-
-    void insert(const std::array<int, D>& pos, const T& value) {
-        if (!_index_grid.valid(pos)) return;
-        if (_index_grid.contains(pos)) {
-            _data[_index_grid.get(pos)] = value;
-        } else {
-            _index_grid.insert(pos, _data.size());
-            _pos.push_back(pos);
-            _data.push_back(value);
-        }
-    }
-    bool try_insert(const std::array<int, D>& pos, const T& value) {
-        if (!_index_grid.valid(pos)) return false;
-        if (_index_grid.contains(pos)) return false;
-        _index_grid.insert(pos, _data.size());
-        _pos.push_back(pos);
-        _data.push_back(value);
-    }
     template <typename... Args>
-    void emplace(const std::array<int, D>& pos, Args&&... args) {
-        if (!_index_grid.valid(pos)) return;
-        if (_index_grid.contains(pos)) {
-            _data[_index_grid.get(pos)] = T(std::forward<Args>(args)...);
+    void emplace_at(const std::array<int, D>& pos, Args&&... args) {
+        assert(valid_at(pos));
+        if (_index_grid.contains_at(pos)) {
+            _data[_index_grid.get_at(pos)] = T(std::forward<Args>(args)...);
         } else {
-            _index_grid.insert(pos, _data.size());
+            _index_grid.emplace_at(pos, _data.size());
             _pos.push_back(pos);
             _data.emplace_back(std::forward<Args>(args)...);
         }
     }
+    template <typename... Args, size_t... I, size_t... J>
+    void
+    emplace_i(std::tuple<Args...>& args, std::index_sequence<I...>, std::index_sequence<J...>) {
+        emplace_at(
+            std::array<int, D>{std::get<I>(args)...}, std::get<J + D>(args)...
+        );
+    }
     template <typename... Args>
-    bool try_emplace(const std::array<int, D>& pos, Args&&... args) {
-        if (!_index_grid.valid(pos)) return false;
-        if (_index_grid.contains(pos)) return false;
-        _index_grid.insert(pos, _data.size());
+    void emplace(Args&&... args) {
+        auto tuple = std::forward_as_tuple(args...);
+        emplace_i(
+            tuple, std::make_index_sequence<D>(),
+            std::make_index_sequence<sizeof...(Args) - D>()
+        );
+    }
+    template <typename... Args>
+    bool try_emplace_at(const std::array<int, D>& pos, Args&&... args) {
+        assert(valid_at(pos));
+        if (_index_grid.contains_at(pos)) return false;
+        _index_grid.emplace_at(pos, _data.size());
         _pos.push_back(pos);
         _data.emplace_back(std::forward<Args>(args)...);
         return true;
     }
+    template <typename... Args, size_t... I, size_t... J>
+    bool
+    try_emplace_i(std::tuple<Args...>& args, std::index_sequence<I...>, std::index_sequence<J...>) {
+        return try_emplace_at(
+            std::array<int, D>{std::get<I>(args)...}, std::get<J + D>(args)...
+        );
+    }
+    template <typename... Args>
+    bool try_emplace(Args&&... args) {
+        auto tuple = std::forward_as_tuple(args...);
+        return try_emplace_i(
+            tuple, std::make_index_sequence<D>(),
+            std::make_index_sequence<sizeof...(Args) - D>()
+        );
+    }
 
-    bool remove(const std::array<int, D>& pos) {
-        if (!_index_grid.valid(pos)) return false;
-        if (!_index_grid.contains(pos)) return false;
-        int index = _index_grid.get(pos);
+    bool remove_at(const std::array<int, D>& pos) {
+        if (!_index_grid.valid_at(pos)) return false;
+        if (!_index_grid.contains_at(pos)) return false;
+        int index = _index_grid.get_at(pos);
         std::swap(_data[index], _data.back());
         std::swap(_pos[index], _pos.back());
-        _index_grid.insert(_pos[index], index);
+        _index_grid.emplace_at(_pos[index], index);
         _data.pop_back();
         _pos.pop_back();
-        _index_grid.insert(pos, -1u);
+        _index_grid.emplace_at(pos, -1u);
         return true;
     }
+    template <typename... Args>
+        requires(
+            sizeof...(Args) == D &&
+            ((std::same_as<Args, int> || std::convertible_to<Args, int>) && ...)
+        )
+    bool remove(Args&&... args) {
+        return remove_at(std::array<int, D>{args...});
+    }
 
-    bool contains(const std::array<int, D>& pos) const {
-        return _index_grid.contains(pos);
+    bool contains_at(const std::array<int, D>& pos) const {
+        return _index_grid.contains_at(pos);
     }
-    bool valid(const std::array<int, D>& pos) const {
-        return _index_grid.valid(pos);
+    template <typename... Args>
+        requires(
+            sizeof...(Args) == D &&
+            ((std::same_as<Args, int> || std::convertible_to<Args, int>) && ...)
+        )
+    bool contains(Args&&... args) const {
+        return _index_grid.contains_at(std::array<int, D>{args...});
+    }
+    bool valid_at(const std::array<int, D>& pos) const {
+        return _index_grid.valid_at(pos);
+    }
+    template <typename... Args>
+        requires(
+            sizeof...(Args) == D &&
+            ((std::same_as<Args, int> || std::convertible_to<Args, int>) && ...)
+        )
+    bool valid(Args&&... args) const {
+        return _index_grid.valid_at(std::array<int, D>{args...});
     }
 
-    T& get(const std::array<int, D>& pos) {
-        if (!_index_grid.valid(pos))
+    T& get_at(const std::array<int, D>& pos) {
+        if (!_index_grid.valid_at(pos))
             throw std::out_of_range("Invalid position");
-        if (!_index_grid.contains(pos))
+        if (!_index_grid.contains_at(pos))
             throw std::out_of_range("Position empty");
-        return _data[_index_grid.get(pos)];
+        return _data[_index_grid.get_at(pos)];
     }
-    const T& get(const std::array<int, D>& pos) const {
-        if (!_index_grid.valid(pos))
+    template <typename... Args>
+        requires(
+            sizeof...(Args) == D &&
+            ((std::same_as<Args, int> || std::convertible_to<Args, int>) && ...)
+        )
+    T& get(Args&&... args) {
+        return get_at(std::array<int, D>{args...});
+    }
+    const T& get_at(const std::array<int, D>& pos) const {
+        if (!_index_grid.valid_at(pos))
             throw std::out_of_range("Invalid position");
-        if (!_index_grid.contains(pos))
+        if (!_index_grid.contains_at(pos))
             throw std::out_of_range("Position empty");
-        return _data[_index_grid.get(pos)];
+        return _data[_index_grid.get_at(pos)];
+    }
+    template <typename... Args>
+        requires(
+            sizeof...(Args) == D &&
+            ((std::same_as<Args, int> || std::convertible_to<Args, int>) && ...)
+        )
+    const T& get(Args&&... args) const {
+        return get_at(std::array<int, D>{args...});
     }
 
     const std::array<int, D>& size() const { return _index_grid.size(); }
+    int size(int i) const { return _index_grid.size(i); }
     const std::vector<T>& data() const { return _data; }
+    std::vector<T>& data() { return _data; }
+
+    void swap_at(
+        const std::array<int, D>& pos1, const std::array<int, D>& pos2
+    ) {
+        if (!_index_grid.valid_at(pos1) || !_index_grid.valid_at(pos2)) return;
+        auto index1 = _index_grid.get_at(pos1);
+        auto index2 = _index_grid.get_at(pos2);
+        if (index1 >= 0 && index1 < _pos.size()) {
+            _pos[index1] = pos2;
+        }
+        if (index2 >= 0 && index2 < _pos.size()) {
+            _pos[index2] = pos1;
+        }
+        _index_grid.emplace_at(pos1, index2);
+        _index_grid.emplace_at(pos2, index1);
+    }
 
     view_t view() { return view_t(*this); }
     const_view_t view() const { return const_view_t(*this); }
+};
+template <typename T, size_t D>
+struct sparse_grid_with_default : public sparse_grid<T, D> {
+    T _default_value;
+    sparse_grid_with_default(const std::array<int, D>& size)
+        : sparse_grid<T, D>(size), _default_value() {}
+    sparse_grid_with_default(
+        const std::array<int, D>& size, const T& default_value
+    )
+        : sparse_grid<T, D>(size), _default_value(default_value) {}
+    sparse_grid_with_default(const sparse_grid_with_default& other)
+        : sparse_grid<T, D>(other), _default_value(other._default_value) {}
+    sparse_grid_with_default(sparse_grid_with_default&& other)
+        : sparse_grid<T, D>(std::move(other)),
+          _default_value(other._default_value) {}
+    sparse_grid_with_default& operator=(const sparse_grid_with_default& other) {
+        sparse_grid<T, D>::operator=(other);
+        _default_value = other._default_value;
+        return *this;
+    }
+    sparse_grid_with_default& operator=(sparse_grid_with_default&& other) {
+        sparse_grid<T, D>::operator=(std::move(other));
+        _default_value = other._default_value;
+        return *this;
+    }
+    T& get_at(const std::array<int, D>& pos) {
+        if (!sparse_grid<T, D>::valid_at(pos)) return _default_value;
+        if (!sparse_grid<T, D>::contains_at(pos)) return _default_value;
+        return sparse_grid<T, D>::get_at(pos);
+    }
+    template <typename... Args>
+        requires(
+            sizeof...(Args) == D &&
+            ((std::same_as<Args, int> || std::convertible_to<Args, int>) && ...)
+        )
+    T& get(Args&&... args) {
+        return get_at(std::array<int, D>{args...});
+    }
+    const T& get_at(const std::array<int, D>& pos) const {
+        if (!sparse_grid<T, D>::valid_at(pos)) return _default_value;
+        if (!sparse_grid<T, D>::contains_at(pos)) return _default_value;
+        return sparse_grid<T, D>::get_at(pos);
+    }
+    template <typename... Args>
+        requires(
+            sizeof...(Args) == D &&
+            ((std::same_as<Args, int> || std::convertible_to<Args, int>) && ...)
+        )
+    const T& get(Args&&... args) const {
+        return get_at(std::array<int, D>{args...});
+    }
 };
 
 template <size_t D>
