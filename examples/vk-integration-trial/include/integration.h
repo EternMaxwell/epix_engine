@@ -278,6 +278,7 @@ void destroy_whole_pass(
     ResMut<WholePass> pass, ResMut<WholePassBase> pass_base
 ) {
     if (!pass || !pass_base) return;
+    spdlog::info("Destroying whole pass");
     pass->destroy();
     pass_base->destroy();
 }
@@ -309,9 +310,10 @@ void create_sand_meshes(Command command, Res<RenderContext> context) {
 }
 
 void destroy_sand_meshes(
-    Command command, ResMut<SandMeshStaging> mesh, ResMut<SandMeshGPU> mesh2
+    ResMut<SandMeshStaging> mesh, ResMut<SandMeshGPU> mesh2
 ) {
     if (!mesh || !mesh2) return;
+    spdlog::info("Destroying sand meshes");
     mesh->destroy();
     mesh2->destroy();
 }
@@ -343,9 +345,10 @@ void create_box2d_meshes(Command command, Res<RenderContext> context) {
 }
 
 void destroy_box2d_meshes(
-    Command command, ResMut<Box2dMeshStaging> mesh, ResMut<Box2dMeshGPU> mesh2
+    ResMut<Box2dMeshStaging> mesh, ResMut<Box2dMeshGPU> mesh2
 ) {
     if (!mesh || !mesh2) return;
+    spdlog::info("Destroying box2d meshes");
     mesh->destroy();
     mesh2->destroy();
 }
@@ -481,6 +484,7 @@ void destroy_too_far_bodies(
 }
 
 void destroy_b2d_world(Query<Get<b2WorldId>> query) {
+    spdlog::info("Destroying b2d world");
     for (auto [world] : query.iter()) {
         b2DestroyWorld(world);
     }
@@ -856,15 +860,10 @@ void render_simulation(
     for (auto&& [pos, chunk] : simulation.chunk_map()) {
         int offset_x = pos.x * simulation.chunk_size();
         int offset_y = pos.y * simulation.chunk_size();
-        for (int i = 0; i < chunk.size().x; i++) {
-            for (int j = 0; j < chunk.size().y; j++) {
-                auto& elem = chunk.get(i, j);
-                if (elem)
-                    mesh->draw_pixel(
-                        {i + offset_x, j + offset_y},
-                        elem.freefall ? elem.color : elem.color * 0.5f
-                    );
-            }
+        for (auto&& [cell_pos, cell] : chunk.cells.view()) {
+            mesh->draw_pixel(
+                {cell_pos[0] + offset_x, cell_pos[1] + offset_y}, cell.color
+            );
         }
     }
 }
@@ -1310,8 +1309,10 @@ struct VK_TrialPlugin : Plugin {
         );
         app.add_system(Render, draw_meshes);
         app.add_system(
-            Exit, destroy_whole_pass, destroy_box2d_meshes, destroy_sand_meshes
-        );
+               Exit, destroy_whole_pass, destroy_box2d_meshes,
+               destroy_sand_meshes
+        )
+            .chain();
     }
 };
 

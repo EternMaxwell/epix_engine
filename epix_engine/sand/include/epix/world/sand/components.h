@@ -113,7 +113,7 @@ struct ElemRegistry {
 };
 struct Simulation {
     struct Chunk {
-        using Grid = epix::utils::grid2d::packed_grid2d<Cell>;
+        using Grid = epix::utils::grid2d::sparse_grid<Cell, 2>;
         Grid cells;
         const int width;
         const int height;
@@ -134,6 +134,8 @@ struct Simulation {
         EPIX_API Cell& create(
             int x, int y, const CellDef& def, ElemRegistry& m_registry
         );
+        EPIX_API void insert(int x, int y, const Cell& cell);
+        EPIX_API void insert(int x, int y, Cell&& cell);
         EPIX_API void swap_area();
         EPIX_API bool in_area(int x, int y) const;
         EPIX_API void remove(int x, int y);
@@ -403,6 +405,8 @@ struct Simulation {
      */
     EPIX_API Cell& get_cell(int x, int y);
     EPIX_API const Cell& get_cell(int x, int y) const;
+
+    EPIX_API void swap(int x, int y, int tx, int ty);
     /**
      * @brief Get the element at location (x, y)
      *

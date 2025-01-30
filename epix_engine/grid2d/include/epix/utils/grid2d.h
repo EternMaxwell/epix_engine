@@ -682,7 +682,6 @@ struct sparse_grid {
     }
 
     bool remove_at(const std::array<int, D>& pos) {
-        if (!_index_grid.valid_at(pos)) return false;
         if (!_index_grid.contains_at(pos)) return false;
         int index = _index_grid.get_at(pos);
         std::swap(_data[index], _data.back());
@@ -726,8 +725,6 @@ struct sparse_grid {
     }
 
     T& get_at(const std::array<int, D>& pos) {
-        if (!_index_grid.valid_at(pos))
-            throw std::out_of_range("Invalid position");
         if (!_index_grid.contains_at(pos))
             throw std::out_of_range("Position empty");
         return _data[_index_grid.get_at(pos)];
@@ -741,8 +738,6 @@ struct sparse_grid {
         return get_at(std::array<int, D>{args...});
     }
     const T& get_at(const std::array<int, D>& pos) const {
-        if (!_index_grid.valid_at(pos))
-            throw std::out_of_range("Invalid position");
         if (!_index_grid.contains_at(pos))
             throw std::out_of_range("Position empty");
         return _data[_index_grid.get_at(pos)];
