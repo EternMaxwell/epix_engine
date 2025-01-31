@@ -586,7 +586,7 @@ using namespace epix::world::sand;
 using namespace epix::world::sand::components;
 
 constexpr int CHUNK_SIZE                = 16;
-constexpr float scale                   = 1.0f;
+constexpr float scale                   = 2.0f;
 constexpr bool enable_collision         = true;
 constexpr bool render_collision_outline = false;
 
@@ -663,7 +663,7 @@ void create_simulation(Command command) {
                                .set_density(0.0007f)
                                .set_friction(0.3f));
     Simulation simulation(std::move(registry), CHUNK_SIZE);
-    const int simulation_size = 512 / CHUNK_SIZE;
+    const int simulation_size = 512 / CHUNK_SIZE / scale;
     for (int i = -simulation_size; i < simulation_size; i++) {
         for (int j = -simulation_size; j < simulation_size; j++) {
             simulation.load_chunk(i, j);
@@ -804,7 +804,7 @@ void update_simulation(
     }
     auto [simulation, sim_collisions] = query.single();
     auto count                        = timer->value().tick();
-    for (int i = 0; i <= count; i++) {
+    for (int i = 0; i < count; i++) {
         ZoneScopedN("Update simulation");
         simulation.update_multithread((float)timer->value().interval);
         if constexpr (enable_collision) {
@@ -1159,7 +1159,9 @@ void draw_meshes(
             device.updateDescriptorSets({descriptor_write}, {});
         }
     );
-    subpass_sand.draw(*sand_gpu_mesh, glm::mat4(1.0f));
+    subpass_sand.draw(
+        *sand_gpu_mesh, glm::scale(glm::mat4(1.0f), {scale, scale, 1.0f})
+    );
     auto& subpass_b2d = pass->next_subpass();
     subpass_b2d.activate_pipeline(
         0,
@@ -1267,7 +1269,7 @@ struct VK_TrialPlugin : Plugin {
         auto window_plugin                   = app.get_plugin<WindowPlugin>();
         window_plugin->primary_desc().width  = 1080;
         window_plugin->primary_desc().height = 1080;
-        window_plugin->primary_desc().set_vsync(false);
+        window_plugin->primary_desc().set_vsync(true);
 
         using namespace epix;
 

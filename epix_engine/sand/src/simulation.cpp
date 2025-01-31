@@ -4,7 +4,7 @@
 
 #include "epix/world/sand.h"
 
-#define EPIX_WORLD_SAND_DEFAULT_CHUNK_RESET_TIME 8i32
+#define EPIX_WORLD_SAND_DEFAULT_CHUNK_RESET_TIME 12i32
 
 using namespace epix::world::sand::components;
 
@@ -489,7 +489,7 @@ EPIX_API Simulation::Simulation(const ElemRegistry& registry, int chunk_size)
     : m_registry(registry),
       m_chunk_size(chunk_size),
       m_chunk_map{chunk_size},
-      max_travel({chunk_size / 2, chunk_size / 2}),
+      max_travel({chunk_size, chunk_size}),
       m_thread_pool(std::make_unique<BS::thread_pool<BS::tp::none>>(
           std::thread::hardware_concurrency()
       )) {}
@@ -497,7 +497,7 @@ EPIX_API Simulation::Simulation(ElemRegistry&& registry, int chunk_size)
     : m_registry(std::move(registry)),
       m_chunk_size(chunk_size),
       m_chunk_map{chunk_size},
-      max_travel({chunk_size / 2, chunk_size / 2}),
+      max_travel({chunk_size, chunk_size}),
       m_thread_pool(std::make_unique<BS::thread_pool<BS::tp::none>>(
           std::thread::hardware_concurrency()
       )) {}
@@ -1211,7 +1211,7 @@ void epix::world::sand::components::update_cell(
             if (liquid_count > empty_count) {
                 liquid_density /= liquid_count;
                 grav *= (elem.density - liquid_density) / elem.density;
-                cell.velocity *= 0.9f;
+                cell.velocity *= 0.95f;
             }
         }
         cell.velocity += grav * delta;
