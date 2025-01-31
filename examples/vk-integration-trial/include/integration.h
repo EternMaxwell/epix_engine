@@ -585,7 +585,7 @@ void update_mouse_joint(
 using namespace epix::world::sand;
 using namespace epix::world::sand::components;
 
-constexpr int CHUNK_SIZE                = 32;
+constexpr int CHUNK_SIZE                = 16;
 constexpr float scale                   = 1.0f;
 constexpr bool enable_collision         = true;
 constexpr bool render_collision_outline = false;

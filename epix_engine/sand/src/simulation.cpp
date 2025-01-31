@@ -1060,10 +1060,9 @@ void epix::world::sand::components::update_cell(
             }
             bool should_freefall = false;
             if (sim.valid(below_x, below_y)) {
-                auto& bcell             = sim.get_cell(below_x, below_y);
                 bool shouldnot_freefall = false;
-                if (bcell) {
-                    auto& belem = sim.get_elem(below_x, below_y);
+                if (sim.contain_cell(below_x, below_y)) {
+                    auto&& [bcell, belem] = sim.get(below_x, below_y);
                     if (belem.is_solid()) {
                         shouldnot_freefall = true;
                     }
@@ -1075,10 +1074,9 @@ void epix::world::sand::components::update_cell(
                 should_freefall |= !shouldnot_freefall;
             }
             if (sim.valid(lb_x, lb_y)) {
-                auto& lbcell            = sim.get_cell(lb_x, lb_y);
                 bool shouldnot_freefall = false;
-                if (lbcell) {
-                    auto& lbelem = sim.get_elem(lb_x, lb_y);
+                if (sim.contain_cell(lb_x, lb_y)) {
+                    auto&& [lbcell, lbelem] = sim.get(lb_x, lb_y);
                     if (lbelem.is_solid()) {
                         shouldnot_freefall = true;
                     }
@@ -1090,10 +1088,9 @@ void epix::world::sand::components::update_cell(
                 should_freefall |= !shouldnot_freefall;
             }
             if (sim.valid(rb_x, rb_y)) {
-                auto& rbcell            = sim.get_cell(rb_x, rb_y);
                 bool shouldnot_freefall = false;
-                if (rbcell) {
-                    auto& rbelem = sim.get_elem(rb_x, rb_y);
+                if (sim.contain_cell(rb_x, rb_y)) {
+                    auto&& [rbcell, rbelem] = sim.get(rb_x, rb_y);
                     if (rbelem.is_solid()) {
                         shouldnot_freefall = true;
                     }
@@ -1218,8 +1215,6 @@ void epix::world::sand::components::update_cell(
             }
         }
         cell.velocity += grav * delta;
-        cell.velocity += cell.impact;
-        cell.impact = {0.0f, 0.0f};
         cell.velocity *= 0.99f;
         cell.inpos += cell.velocity * delta;
         int delta_x = std::round(cell.inpos.x);
@@ -1239,7 +1234,6 @@ void epix::world::sand::components::update_cell(
         int ty              = y_ + delta_y;
         bool moved          = false;
         auto raycast_result = sim.raycast_to(x_, y_, tx, ty);
-        auto ncell = &sim.get_cell(raycast_result.new_x, raycast_result.new_y);
         // if (raycast_result.hit) {
         //     auto [tchunk_x, tchunk_y] = sim.to_chunk_pos(
         //         raycast_result.hit->first, raycast_result.hit->second
@@ -1259,7 +1253,7 @@ void epix::world::sand::components::update_cell(
         //     }
         // }
         if (raycast_result.steps) {
-            std::swap(cell, *ncell);
+            sim.swap(x_, y_, raycast_result.new_x, raycast_result.new_y);
             final_x = raycast_result.new_x;
             final_y = raycast_result.new_y;
             moved   = true;
@@ -1277,10 +1271,9 @@ void epix::world::sand::components::update_cell(
                         raycast_result.new_x, raycast_result.new_y, hit_x, hit_y
                     );
                 } else {
-                    std::swap(*ncell, tcell);
+                    sim.swap(final_x, final_y, hit_x, hit_y);
                     final_x = hit_x;
                     final_y = hit_y;
-                    ncell   = &tcell;
                     moved   = true;
                 }
             }
@@ -1338,13 +1331,12 @@ void epix::world::sand::components::update_cell(
                         int tx = final_x + delta_x;
                         int ty = final_y + delta_y;
                         if (!sim.valid(tx, ty)) continue;
-                        auto& tcell = sim.get_cell(tx, ty);
-                        if (!tcell) {
-                            std::swap(*ncell, tcell);
-                            ncell = &tcell;
-                            ncell->velocity +=
-                                idirs[i] * sim.liquid_spread_setting.prefix /
-                                delta;
+                        if (!sim.contain_cell(tx, ty)) {
+                            sim.swap(final_x, final_y, tx, ty);
+                            auto& ncell = sim.get_cell(tx, ty);
+                            ncell.velocity += idirs[i] *
+                                              sim.liquid_spread_setting.prefix /
+                                              delta;
                             final_x = tx;
                             final_y = ty;
                             moved   = true;
@@ -1353,9 +1345,9 @@ void epix::world::sand::components::update_cell(
                             auto& telem = sim.get_elem(tx, ty);
                             if (telem.is_liquid() &&
                                 telem.density < elem.density) {
-                                std::swap(*ncell, tcell);
-                                ncell = &tcell;
-                                ncell->velocity +=
+                                sim.swap(final_x, final_y, tx, ty);
+                                auto& ncell = sim.get_cell(tx, ty);
+                                ncell.velocity +=
                                     idirs[i] *
                                     sim.liquid_spread_setting.prefix / delta;
                                 final_x = tx;
@@ -1413,7 +1405,7 @@ void epix::world::sand::components::update_cell(
                                     res_1.hit = std::nullopt;
                                 }
                             }
-                            if (res_1.hit && dis(gen) > 0.08f &&
+                            if (res_1.hit && dis(gen) > 0.07f &&
                                 sim.valid(
                                     res_1.hit->first, res_1.hit->second
                                 ) &&
@@ -1435,25 +1427,25 @@ void epix::world::sand::components::update_cell(
                         }
                         if (res_1.steps >= res_2.steps) {
                             if (res_1.steps) {
-                                auto& tcell =
-                                    sim.get_cell(res_1.new_x, res_1.new_y);
-                                std::swap(*ncell, tcell);
+                                sim.swap(
+                                    final_x, final_y, res_1.new_x, res_1.new_y
+                                );
                                 final_x = res_1.new_x;
                                 final_y = res_1.new_y;
-                                ncell   = &tcell;
-                                ncell->velocity +=
+                                auto& ncell =
+                                    sim.get_cell(res_1.new_x, res_1.new_y);
+                                ncell.velocity +=
                                     (inverse_pressure ? -0.3f : 1.0f) *
                                     glm::vec2(idirs[0]) *
                                     sim.liquid_spread_setting.prefix / delta;
                                 moved = true;
                             }
                         } else if (res_2.steps) {
-                            auto& tcell =
-                                sim.get_cell(res_2.new_x, res_2.new_y);
-                            std::swap(*ncell, tcell);
+                            sim.swap(
+                                final_x, final_y, res_2.new_x, res_2.new_y
+                            );
                             final_x = res_2.new_x;
                             final_y = res_2.new_y;
-                            ncell   = &tcell;
                             // ncell->velocity -=
                             //     glm::vec2(idirs[1]) *
                             //     sim.liquid_spread_setting.prefix / delta;
@@ -1468,7 +1460,8 @@ void epix::world::sand::components::update_cell(
             // }
         }
         if (moved) {
-            ncell->not_move_count = 0;
+            auto& ncell          = sim.get_cell(final_x, final_y);
+            ncell.not_move_count = 0;
             sim.touch(x_ - 1, y_);
             sim.touch(x_ + 1, y_);
             sim.touch(x_, y_ - 1);
@@ -1512,7 +1505,6 @@ void epix::world::sand::components::update_cell(
         cell.velocity -=
             0.1f * glm::length(cell.velocity) * cell.velocity / 20.0f;
         cell.inpos += cell.velocity * delta;
-        auto ncell  = &cell;
         int delta_x = std::round(cell.inpos.x);
         int delta_y = std::round(cell.inpos.y);
         if (delta_x == 0 && delta_y == 0) {
@@ -1531,16 +1523,14 @@ void epix::world::sand::components::update_cell(
         bool moved          = false;
         auto raycast_result = sim.raycast_to(x_, y_, tx, ty);
         if (raycast_result.steps) {
-            auto& tcell =
-                sim.get_cell(raycast_result.new_x, raycast_result.new_y);
-            std::swap(tcell, *ncell);
-            ncell   = &tcell;
+            sim.swap(x_, y_, raycast_result.new_x, raycast_result.new_y);
             final_x = raycast_result.new_x;
             final_y = raycast_result.new_y;
             moved   = true;
         }
+        auto& ncell = sim.get_cell(final_x, final_y);
         float prefix_vdotgf =
-            ncell->velocity.x * grav.x + ncell->velocity.y * grav.y;
+            ncell.velocity.x * grav.x + ncell.velocity.y * grav.y;
         int prefix = prefix_vdotgf > 0 ? 1 : (prefix_vdotgf < 0 ? -1 : 0);
         if (elem.density > sim.air_density(x_, y_)) {
             prefix *= -1;
@@ -1557,8 +1547,10 @@ void epix::world::sand::components::update_cell(
                 );
                 if (telem.is_gas() &&
                     telem.density * prefix > elem.density * prefix) {
-                    std::swap(*ncell, tcell);
-                    ncell   = &tcell;
+                    sim.swap(
+                        final_x, final_y, raycast_result.hit->first,
+                        raycast_result.hit->second
+                    );
                     final_x = raycast_result.hit->first;
                     final_y = raycast_result.hit->second;
                     moved   = true;
@@ -1604,20 +1596,28 @@ void epix::world::sand::components::update_cell(
                     int tx = final_x + delta_x;
                     int ty = final_y + delta_y;
                     if (!sim.valid(tx, ty)) continue;
-                    auto [tcell, telem] = sim.get(tx, ty);
-                    if (!tcell || (telem.is_gas() && telem != elem)) {
-                        std::swap(*ncell, tcell);
-                        ncell   = &tcell;
+                    if (!sim.contain_cell(tx, ty)) {
+                        sim.swap(final_x, final_y, tx, ty);
                         final_x = tx;
                         final_y = ty;
                         moved   = true;
                         break;
+                    } else {
+                        auto [tcell, telem] = sim.get(tx, ty);
+                        if (telem.is_gas() && telem != elem) {
+                            sim.swap(final_x, final_y, tx, ty);
+                            final_x = tx;
+                            final_y = ty;
+                            moved   = true;
+                            break;
+                        }
                     }
                 }
             }
         }
         if (moved) {
-            ncell->not_move_count = 0;
+            auto& ncell          = sim.get_cell(final_x, final_y);
+            ncell.not_move_count = 0;
             sim.touch(x_ - 1, y_);
             sim.touch(x_ + 1, y_);
             sim.touch(x_, y_ - 1);

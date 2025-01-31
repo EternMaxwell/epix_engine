@@ -79,7 +79,7 @@ struct Cell {
     glm::vec4 color = glm::vec4(0.0f);
     glm::vec2 velocity;
     glm::vec2 inpos;
-    glm::vec2 impact;
+    // glm::vec2 impact;
     bool freefall;
     bool updated;
     int not_move_count = 0;
