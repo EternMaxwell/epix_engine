@@ -21,7 +21,7 @@ using namespace epix::prelude;
 using namespace epix::window;
 
 namespace vk_trial {
-using namespace epix::utils::grid2d;
+using namespace epix::utils::grid;
 
 template <typename T>
 T& value_at(std::vector<std::vector<T>>& vec, size_t index) {

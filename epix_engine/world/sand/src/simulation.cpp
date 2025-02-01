@@ -219,11 +219,11 @@ EPIX_API bool Simulation::ChunkMap::contains(int x, int y) const {
     return chunks.contains(x, y);
 }
 EPIX_API Simulation::Chunk& Simulation::ChunkMap::get_chunk(int x, int y) {
-    return chunks(x, y);
+    return chunks.get(x, y);
 }
 EPIX_API const Simulation::Chunk& Simulation::ChunkMap::get_chunk(int x, int y)
     const {
-    return chunks(x, y);
+    return chunks.get(x, y);
 }
 EPIX_API size_t Simulation::ChunkMap::chunk_count() const {
     return chunks.count();
@@ -240,8 +240,8 @@ std::tuple<int, int, int> chunk_map_xbounds(
     auto origin = chunk_map.chunks.origin();
     auto size   = chunk_map.chunks.size();
     return {
-        increasing ? origin.x : origin.x + size.x - 1,
-        increasing ? origin.x + size.x : origin.x - 1,
+        increasing ? origin[0] : origin[0] + size[0] - 1,
+        increasing ? origin[0] + size[0] : origin[0] - 1,
         increasing ? 1 : -1,
     };
 }
@@ -252,8 +252,8 @@ std::tuple<int, int, int> chunk_map_ybounds(
     auto origin = chunk_map.chunks.origin();
     auto size   = chunk_map.chunks.size();
     return {
-        increasing ? origin.y : origin.y + size.y - 1,
-        increasing ? origin.y + size.y : origin.y - 1,
+        increasing ? origin[1] : origin[1] + size[1] - 1,
+        increasing ? origin[1] + size[1] : origin[1] - 1,
         increasing ? 1 : -1,
     };
 }
@@ -262,7 +262,7 @@ EPIX_API Simulation::ChunkMap::iterator&
 Simulation::ChunkMap::iterator::operator++() {
     auto origin = chunk_map->chunks.origin();
     auto size   = chunk_map->chunks.size();
-    if (x == origin.x + size.x && y == origin.y + size.y) {
+    if (x == origin[0] + size[0] && y == origin[1] + size[1]) {
         return *this;
     }
     std::tuple<int, int, int> xbounds =
@@ -298,8 +298,8 @@ Simulation::ChunkMap::iterator::operator++() {
             start_x = std::get<0>(xbounds);
         }
     }
-    x = origin.x + size.x;
-    y = origin.y + size.y;
+    x = origin[0] + size[0];
+    y = origin[1] + size[1];
     return *this;
 }
 
@@ -327,7 +327,7 @@ EPIX_API Simulation::ChunkMap::const_iterator&
 Simulation::ChunkMap::const_iterator::operator++() {
     auto origin = chunk_map->chunks.origin();
     auto size   = chunk_map->chunks.size();
-    if (x == origin.x + size.x && y == origin.y + size.y) {
+    if (x == origin[0] + size[0] && y == origin[1] + size[1]) {
         return *this;
     }
     std::tuple<int, int, int> xbounds =
@@ -363,8 +363,8 @@ Simulation::ChunkMap::const_iterator::operator++() {
             start_x = std::get<0>(xbounds);
         }
     }
-    x = origin.x + size.x;
-    y = origin.y + size.y;
+    x = origin[0] + size[0];
+    y = origin[1] + size[1];
     return *this;
 }
 
@@ -453,13 +453,13 @@ EPIX_API Simulation::ChunkMap::const_iterator Simulation::ChunkMap::begin(
 EPIX_API Simulation::ChunkMap::iterator Simulation::ChunkMap::end() {
     auto origin = chunks.origin();
     auto size   = chunks.size();
-    return iterator(this, origin.x + size.x, origin.y + size.y);
+    return iterator(this, origin[0] + size[0], origin[1] + size[1]);
 }
 EPIX_API Simulation::ChunkMap::const_iterator Simulation::ChunkMap::end(
 ) const {
     auto origin = chunks.origin();
     auto size   = chunks.size();
-    return const_iterator(this, origin.x + size.x, origin.y + size.y);
+    return const_iterator(this, origin[0] + size[0], origin[1] + size[1]);
 }
 
 EPIX_API void Simulation::ChunkMap::reset_updated() {

@@ -63,7 +63,7 @@ target_link_libraries (epix_engine PUBLIC epix::render::font)
 target_link_libraries (epix_engine PUBLIC epix::render::sprite)
 target_link_libraries (epix_engine PUBLIC epix::render::pixel)
 # EPIX UTILS LIBRARIES
-target_link_libraries (epix_engine PUBLIC epix::utils::grid2d)
+target_link_libraries (epix_engine PUBLIC epix::utils::grid)
 # EPIX WORLD LIBRARIES
 target_link_libraries (epix_engine PUBLIC epix::world::sand)
 target_link_libraries (epix_engine PUBLIC epix::physics::2d)

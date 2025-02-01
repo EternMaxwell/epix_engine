@@ -33,7 +33,7 @@ struct SimulationCollisions {
         bool operator!() const { return !has_collision; }
     };
     using user_data_type = T;
-    using Grid = epix::utils::grid2d::ExtendableGrid2D<ChunkCollisions>;
+    using Grid = epix::utils::grid::extendable_grid<ChunkCollisions, 2>;
     using thread_pool_t = BS::thread_pool<BS::tp::none>;
     Grid collisions;
     spp::sparse_hash_set<glm::ivec2, Ivec2Hash, Ivec2Equal> cached;
@@ -92,7 +92,7 @@ struct SimulationCollisions<void> {
         bool operator!() const { return collisions.empty(); }
     };
     using user_data_type = void;
-    using Grid = epix::utils::grid2d::ExtendableGrid2D<ChunkCollisions>;
+    using Grid = epix::utils::grid::extendable_grid<ChunkCollisions, 2>;
     using thread_pool_t = BS::thread_pool<BS::tp::none>;
     Grid collisions;
     spp::sparse_hash_set<glm::ivec2, Ivec2Hash> cached;

@@ -11,7 +11,7 @@
 #include <shared_mutex>
 
 #include "epix/common.h"
-#include "epix/utils/grid2d.h"
+#include "epix/utils/grid.h"
 
 namespace epix::world::sand::components {
 struct Element {
@@ -113,7 +113,7 @@ struct ElemRegistry {
 };
 struct Simulation {
     struct Chunk {
-        using Grid = epix::utils::grid2d::sparse_grid<Cell, 2>;
+        using Grid = epix::utils::grid::sparse_grid<Cell, 2>;
         Grid cells;
         const int width;
         const int height;
@@ -164,7 +164,7 @@ struct Simulation {
 
     struct ChunkMap {
         const int chunk_size;
-        using Grid = epix::utils::grid2d::ExtendableGrid2D<Chunk>;
+        using Grid = epix::utils::grid::extendable_grid<Chunk, 2>;
         Grid chunks;
 
         struct IterateSetting {

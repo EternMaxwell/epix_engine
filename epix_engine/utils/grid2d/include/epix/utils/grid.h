@@ -36,7 +36,7 @@ struct nth<1, glm::ivec2> {
 }  // namespace util
 }  // namespace mapbox
 
-namespace epix::utils::grid2d {
+namespace epix::utils::grid {
 template <typename T>
 concept BoolGrid = requires(T t) {
     { t.size(0) } -> std::same_as<int>;
@@ -774,57 +774,6 @@ struct sparse_grid {
 
     view_t view() { return view_t(*this); }
     const_view_t view() const { return const_view_t(*this); }
-};
-template <typename T, size_t D>
-struct sparse_grid_with_default : public sparse_grid<T, D> {
-    T _default_value;
-    sparse_grid_with_default(const std::array<int, D>& size)
-        : sparse_grid<T, D>(size), _default_value() {}
-    sparse_grid_with_default(
-        const std::array<int, D>& size, const T& default_value
-    )
-        : sparse_grid<T, D>(size), _default_value(default_value) {}
-    sparse_grid_with_default(const sparse_grid_with_default& other)
-        : sparse_grid<T, D>(other), _default_value(other._default_value) {}
-    sparse_grid_with_default(sparse_grid_with_default&& other)
-        : sparse_grid<T, D>(std::move(other)),
-          _default_value(other._default_value) {}
-    sparse_grid_with_default& operator=(const sparse_grid_with_default& other) {
-        sparse_grid<T, D>::operator=(other);
-        _default_value = other._default_value;
-        return *this;
-    }
-    sparse_grid_with_default& operator=(sparse_grid_with_default&& other) {
-        sparse_grid<T, D>::operator=(std::move(other));
-        _default_value = other._default_value;
-        return *this;
-    }
-    T& get_at(const std::array<int, D>& pos) {
-        if (!sparse_grid<T, D>::valid_at(pos)) return _default_value;
-        if (!sparse_grid<T, D>::contains_at(pos)) return _default_value;
-        return sparse_grid<T, D>::get_at(pos);
-    }
-    template <typename... Args>
-        requires(
-            sizeof...(Args) == D &&
-            ((std::same_as<Args, int> || std::convertible_to<Args, int>) && ...)
-        )
-    T& get(Args&&... args) {
-        return get_at(std::array<int, D>{args...});
-    }
-    const T& get_at(const std::array<int, D>& pos) const {
-        if (!sparse_grid<T, D>::valid_at(pos)) return _default_value;
-        if (!sparse_grid<T, D>::contains_at(pos)) return _default_value;
-        return sparse_grid<T, D>::get_at(pos);
-    }
-    template <typename... Args>
-        requires(
-            sizeof...(Args) == D &&
-            ((std::same_as<Args, int> || std::convertible_to<Args, int>) && ...)
-        )
-    const T& get(Args&&... args) const {
-        return get_at(std::array<int, D>{args...});
-    }
 };
 
 template <size_t D>
@@ -1639,194 +1588,306 @@ std::vector<std::vector<std::vector<glm::ivec2>>> get_polygon_simplified_multi(
     return result;
 }
 
-template <typename T>
-    requires std::movable<T>
-struct ExtendableGrid2D {
+template <typename T, size_t D>
+struct extendable_grid {
+    struct index_boolify {
+        bool operator()(int64_t i) const { return i >= 0; }
+    };
+
+    struct view_t {
+        extendable_grid& grid;
+        struct iterator {
+            extendable_grid& grid;
+            int64_t index;
+            iterator(extendable_grid& grid, int64_t index)
+                : grid(grid), index(index) {}
+            std::tuple<std::array<int, D>&, T&> operator*() {
+                return {grid._pos[index], grid._data[index]};
+            }
+            iterator& operator++() {
+                if (index < grid._data.size()) index++;
+                return *this;
+            }
+            bool operator!=(const iterator& other) const {
+                return index != other.index || &grid != &other.grid;
+            }
+            bool operator==(const iterator& other) const {
+                return index == other.index && &grid == &other.grid;
+            }
+        };
+
+        view_t(extendable_grid& grid) : grid(grid) {}
+        iterator begin() { return {grid, 0}; }
+        iterator end() { return {grid, grid._data.size()}; }
+    };
+
+    struct const_view_t {
+        const extendable_grid& grid;
+        struct iterator {
+            const extendable_grid& grid;
+            int64_t index;
+            iterator(const extendable_grid& grid, int64_t index)
+                : grid(grid), index(index) {}
+            std::tuple<const std::array<int, D>&, const T&> operator*() {
+                return {grid._pos[index], grid._data[index]};
+            }
+            iterator& operator++() {
+                if (index < grid._data.size()) index++;
+                return *this;
+            }
+            bool operator!=(const iterator& other) const {
+                return index != other.index || &grid != &other.grid;
+            }
+            bool operator==(const iterator& other) const {
+                return index == other.index && &grid == &other.grid;
+            }
+        };
+
+        const_view_t(const extendable_grid& grid) : grid(grid) {}
+        iterator begin() { return {grid, 0}; }
+        iterator end() { return {grid, grid._data.size()}; }
+    };
+
    private:
-    std::vector<std::pair<glm::ivec2, T>> grid_data;
-    packed_grid2d<int64_t> grid_indices;
-    glm::ivec2 grid_origin;
-    int _OcupiedXmin() {
-        for (int i = 0; i < grid_indices.size(0); i++) {
-            for (int j = 0; j < grid_indices.size(1); j++) {
-                if (grid_indices.get(i, j) >= 0) return i;
-            }
+    packed_grid<int64_t, D, index_boolify> grid_indices;
+    std::vector<T> _data;
+    std::vector<std::array<int, D>> _pos;
+    std::array<int, D> _origin;
+    std::array<std::vector<int>, D> _count_cache;
+    int _Max(int axis) const {
+        auto& _counts = _count_cache[axis];
+        for (int i = grid_indices.size(axis) - 1; i >= 0; i--) {
+            if (_counts[i]) return i;
         }
-        return grid_indices.size(0);
+        return 0;
     }
-    int _OcupiedXmax() {
-        for (int i = grid_indices.size(0) - 1; i >= 0; i--) {
-            for (int j = 0; j < grid_indices.size(1); j++) {
-                if (grid_indices.get(i, j) >= 0) return i;
-            }
+    int _Min(int axis) const {
+        auto& _counts = _count_cache[axis];
+        for (int i = 0; i < grid_indices.size(axis); i++) {
+            if (_counts[i]) return i;
         }
-        return -1;
-    }
-    int _OcupiedYmin() {
-        for (int j = 0; j < grid_indices.size(1); j++) {
-            for (int i = 0; i < grid_indices.size(0); i++) {
-                if (grid_indices.get(i, j) >= 0) return j;
-            }
-        }
-        return grid_indices.size(1);
-    }
-    int _OcupiedYmax() {
-        for (int j = grid_indices.size(1) - 1; j >= 0; j--) {
-            for (int i = 0; i < grid_indices.size(0); i++) {
-                if (grid_indices.get(i, j) >= 0) return j;
-            }
-        }
-        return -1;
+        return grid_indices.size(axis) - 1;
     }
 
    public:
-    ExtendableGrid2D() : grid_origin(0, 0), grid_indices({0, 0}, -1) {}
-    ExtendableGrid2D(const ExtendableGrid2D& other)            = default;
-    ExtendableGrid2D(ExtendableGrid2D&& other)                 = default;
-    ExtendableGrid2D& operator=(const ExtendableGrid2D& other) = default;
-    ExtendableGrid2D& operator=(ExtendableGrid2D&& other)      = default;
+    extendable_grid() : grid_indices(array_fill<D>(0), -1) { _origin.fill(0); }
+    extendable_grid(const extendable_grid& other)            = default;
+    extendable_grid(extendable_grid&& other)                 = default;
+    extendable_grid& operator=(const extendable_grid& other) = default;
+    extendable_grid& operator=(extendable_grid&& other)      = default;
 
-    bool empty() const { return grid_data.empty(); }
-    size_t count() const { return grid_data.size(); }
-    glm::ivec2 origin() const { return grid_origin; }
+    bool empty() const { return _data.empty(); }
+    size_t count() const { return _data.size(); }
+    int origin(int i) const { return _origin[i]; }
+    std::array<int, D> origin() const { return _origin; }
+    std::array<int, D> size() const { return grid_indices.size(); }
+
+    bool valid_at(const std::array<int, D>& pos) const {
+        return grid_indices.valid_at(pos - _origin);
+    }
+    template <typename... Args>
+        requires(
+            sizeof...(Args) == D &&
+            ((std::convertible_to<Args, int> || std::same_as<Args, int>) && ...)
+        )
+    bool valid(Args... pos) const {
+        return valid_at(std::array<int, D>{pos...});
+    }
+    bool contains_at(const std::array<int, D>& pos) const {
+        if (!valid_at(pos)) return false;
+        return grid_indices.contains_at(pos - _origin);
+    }
+    template <typename... Args>
+        requires(
+            sizeof...(Args) == D &&
+            ((std::convertible_to<Args, int> || std::same_as<Args, int>) && ...)
+        )
+    bool contains(Args... pos) const {
+        return contains_at(std::array<int, D>{pos...});
+    }
+    T& get_at(const std::array<int, D>& pos) {
+        return _data[grid_indices.get_at(pos - _origin)];
+    }
+    template <typename... Args>
+        requires(
+            sizeof...(Args) == D &&
+            ((std::convertible_to<Args, int> || std::same_as<Args, int>) && ...)
+        )
+    T& get(Args... pos) {
+        return get_at(std::array<int, D>{pos...});
+    }
+    const T& get_at(const std::array<int, D>& pos) const {
+        return _data[grid_indices.get_at(pos - _origin)];
+    }
+    template <typename... Args>
+        requires(
+            sizeof...(Args) == D &&
+            ((std::convertible_to<Args, int> || std::same_as<Args, int>) && ...)
+        )
+    const T& get(Args... pos) const {
+        return get_at(std::array<int, D>{pos...});
+    }
 
     template <typename... Args>
-    void emplace(int x, int y, Args&&... args) {
-        if (contains(x, y)) {
-            grid_data[grid_indices.get(x - grid_origin.x, y - grid_origin.y)] =
-                std::make_pair(
-                    glm::ivec2(x, y), T(std::forward<Args>(args)...)
-                );
+    void emplace_at(const std::array<int, D>& pos, Args&&... args) {
+        if (contains_at(pos)) {
+            _data[grid_indices.get_at(pos - _origin)] =
+                T(std::forward<Args>(args)...);
             return;
         }
-        grid_data.emplace_back(
-            glm::ivec2(x, y), T(std::forward<Args>(args)...)
-        );
         if (empty()) {
-            grid_origin  = {x, y};
-            grid_indices = packed_grid2d<int64_t>({1, 1}, -1);
+            _data.emplace_back(T(std::forward<Args>(args)...));
+            _pos.emplace_back(pos);
+            _origin      = pos;
+            grid_indices = packed_grid<int64_t, D, index_boolify>({1, 1}, -1);
+            grid_indices.emplace_at(pos - _origin, 0);
             return;
         }
-        auto new_width = std::max(
-            grid_indices.size()[0],
-            std::max(
-                x - grid_origin.x + 1,
-                grid_indices.size()[0] - x + grid_origin.x
-            )
-        );
-        auto new_height = std::max(
-            grid_indices.size()[1],
-            std::max(
-                y - grid_origin.y + 1,
-                grid_indices.size()[1] - y + grid_origin.y
-            )
-        );
-        auto new_origin =
-            glm::ivec2(std::min(grid_origin.x, x), std::min(grid_origin.y, y));
-        auto diff = grid_origin - new_origin;
-        if (new_width != grid_indices.size()[0] ||
-            new_height != grid_indices.size()[1]) {
-            packed_grid2d<int64_t> new_indices({new_width, new_height}, -1);
-            for (int i = 0; i < grid_indices.size()[0]; i++) {
-                for (int j = 0; j < grid_indices.size()[1]; j++) {
-                    new_indices.emplace(
-                        i + diff.x, j + diff.y, grid_indices.get(i, j)
+        _data.emplace_back(std::forward<Args>(args)...);
+        _pos.emplace_back(pos);
+        std::array<int, D> new_size =
+            max(grid_indices.size(), max(pos - _origin + array_fill<D>(1),
+                                         grid_indices.size() - pos + _origin));
+        std::array<int, D> new_origin = min(_origin, pos);
+        std::array<int, D> diff       = _origin - new_origin;
+        bool to_resize                = false;
+        for (int i = 0; i < D; i++) {
+            if (new_size[i] != grid_indices.size(i)) {
+                to_resize = true;
+                break;
+            }
+        }
+        if (to_resize) {
+            packed_grid<int64_t, D, index_boolify> new_indices(new_size, -1);
+            std::array<int, D> cur;
+            cur.fill(0);
+            bool should_break = false;
+            while (!should_break) {
+                if (grid_indices.contains_at(cur)) {
+                    new_indices.emplace_at(
+                        cur + diff, grid_indices.get_at(cur)
                     );
                 }
+                for (int i = 0; i < D; i++) {
+                    if (cur[i] < grid_indices.size(i) - 1) {
+                        cur[i]++;
+                        break;
+                    } else if (i < D - 1) {
+                        cur[i] = 0;
+                    } else {
+                        should_break = true;
+                    }
+                }
+            }
+            for (int i = 0; i < D; i++) {
+                _count_cache[i].insert(_count_cache[i].begin(), diff[i], 0);
+                _count_cache[i].resize(new_indices.size(i));
             }
             grid_indices = std::move(new_indices);
         }
-        grid_origin = new_origin;
-        grid_indices.emplace(
-            x - grid_origin.x, y - grid_origin.y, grid_data.size() - 1
+        _origin = new_origin;
+        for (int i = 0; i < D; i++) {
+            _count_cache[i][pos[i] - _origin[i]]++;
+        }
+        grid_indices.emplace_at(pos - _origin, _data.size() - 1);
+    }
+    template <typename... Args, size_t... I, size_t... J>
+    void
+    emplace_i(std::tuple<Args...>& args, std::index_sequence<I...>, std::index_sequence<J...>) {
+        emplace_at(
+            std::array<int, D>{std::get<I>(args)...}, std::get<J + D>(args)...
         );
     }
     template <typename... Args>
-    void emplace(glm::ivec2 pos, Args... args) {
-        emplace(pos.x, pos.y, args...);
+    void emplace(Args&&... args) {
+        auto tuple = std::forward_as_tuple(args...);
+        emplace_i(
+            tuple, std::make_index_sequence<D>{},
+            std::make_index_sequence<sizeof...(Args) - D>{}
+        );
+    }
+
+    template <typename... Args>
+    void try_emplace_at(const std::array<int, D>& pos, Args&&... args) {
+        if (contains_at(pos)) return;
+        emplace_at(pos, std::forward<Args>(args)...);
+    }
+    template <typename... Args, size_t... I, size_t... J>
+    void
+    try_emplace_i(std::tuple<Args...>& args, std::index_sequence<I...>, std::index_sequence<J...>) {
+        try_emplace_at(
+            std::array<int, D>{std::get<I>(args)...}, std::get<J + D>(args)...
+        );
     }
     template <typename... Args>
-    void try_emplace(int x, int y, Args... args) {
-        if (contains(x, y)) return;
-        emplace(x, y, args...);
+    void try_emplace(Args&&... args) {
+        auto tuple = std::forward_as_tuple(args...);
+        try_emplace_i(
+            tuple, std::make_index_sequence<D>{},
+            std::make_index_sequence<sizeof...(Args) - D>{}
+        );
+    }
+
+    void remove_at(const std::array<int, D>& pos) {
+        if (!contains_at(pos)) return;
+        auto index = grid_indices.get_at(pos - _origin);
+        std::swap(_data[index], _data.back());
+        std::swap(_pos[index], _pos.back());
+        grid_indices.emplace_at(_pos[index] - _origin, index);
+        _pos.pop_back();
+        _data.pop_back();
+        grid_indices.emplace_at(pos - _origin, -1);
     }
     template <typename... Args>
-    void try_emplace(glm::ivec2 pos, Args... args) {
-        try_emplace(pos.x, pos.y, args...);
+        requires(
+            sizeof...(Args) == D &&
+            ((std::convertible_to<Args, int> || std::same_as<Args, int>) && ...)
+        )
+    void remove(Args... pos) {
+        remove_at(std::array<int, D>{pos...});
     }
-    T& get(int x, int y) {
-        if (!valid(x, y))
-            throw std::out_of_range(std::format(
-                "(x={}, y={}) out of range ({}, {})", x, y, grid_origin.x,
-                grid_origin.y
-            ));
-        if (!contains(x, y)) {
-            std::string msg = std::format("(x={}, y={}) not in grid", x, y);
-            throw std::exception(msg.c_str());
-        }
-        return grid_data[grid_indices.get(x - grid_origin.x, y - grid_origin.y)]
-            .second;
-    }
-    const T& get(int x, int y) const {
-        if (!valid(x, y))
-            throw std::out_of_range(std::format(
-                "(x={}, y={}) out of range ({}, {})", x, y, grid_origin.x,
-                grid_origin.y
-            ));
-        if (!contains(x, y)) {
-            std::string msg = std::format("(x={}, y={}) not in grid", x, y);
-            throw std::exception(msg.c_str());
-        }
-        return grid_data[grid_indices.get(x - grid_origin.x, y - grid_origin.y)]
-            .second;
-    }
-    T& operator()(int x, int y) { return get(x, y); }
-    const T& operator()(int x, int y) const { return get(x, y); }
-    glm::ivec2 size() const {
-        return glm::ivec2(grid_indices.size()[0], grid_indices.size()[1]);
-    }
-    bool valid(int x, int y) const {
-        return grid_indices.valid(x - grid_origin.x, y - grid_origin.y);
-    }
-    bool contains(int x, int y) const {
-        return valid(x, y) &&
-               grid_indices.get(x - grid_origin.x, y - grid_origin.y) >= 0;
-    }
+
     void shrink() {
-        int xmin = _OcupiedXmin();
-        int xmax = _OcupiedXmax();
-        int ymin = _OcupiedYmin();
-        int ymax = _OcupiedYmax();
-        if (xmin > xmax || ymin > ymax) {
-            grid_indices = packed_grid2d<int64_t>({0, 0}, -1);
-            grid_data.clear();
+        if (empty()) {
+            grid_indices = packed_grid<int64_t, D, index_boolify>({0, 0}, -1);
+            _origin.fill(0);
             return;
         }
-        auto new_size = std::array{xmax - xmin + 1, ymax - ymin + 1};
-        if (new_size[0] == grid_indices.size()[0] &&
-            new_size[1] == grid_indices.size()[1])
-            return;
-        packed_grid2d<int64_t> new_indices({new_size[0], new_size[1]}, -1);
-        for (int i = xmin; i <= xmax; i++) {
-            for (int j = ymin; j <= ymax; j++) {
-                new_indices.emplace(i - xmin, j - ymin, grid_indices.get(i, j));
+        std::array<int, D> new_size = array_fill<D>(0);
+        std::array<int, D> new_origin;
+        for (int i = 0; i < D; i++) {
+            int min = _Min(i), max = _Max(i);
+            new_size[i]   = max - min + 1;
+            new_origin[i] = min + _origin[i];
+        }
+        std::array<int, D> diff = _origin - new_origin;
+        packed_grid<int64_t, D, index_boolify> new_indices(new_size, -1);
+        std::array<int, D> cur;
+        cur.fill(0);
+        bool should_break = false;
+        while (!should_break) {
+            if (grid_indices.contains_at(cur)) {
+                new_indices.emplace_at(cur + diff, grid_indices.get_at(cur));
+            }
+            for (int i = 0; i < D; i++) {
+                if (cur[i] < grid_indices.size(i) - 1) {
+                    cur[i]++;
+                    break;
+                } else if (i < D - 1) {
+                    cur[i] = 0;
+                } else {
+                    should_break = true;
+                }
             }
         }
-        grid_origin += glm::ivec2(xmin, ymin);
+        for (int i = 0; i < D; i++) {
+            _count_cache[i].insert(_count_cache[i].begin(), diff[i], 0);
+            _count_cache[i].resize(new_indices.size(i));
+        }
         grid_indices = std::move(new_indices);
     }
-    void remove(int x, int y) {
-        if (!contains(x, y)) return;
-        auto index = grid_indices.get(x - grid_origin.x, y - grid_origin.y);
-        auto pos   = grid_data.back().first;
-        grid_indices.get(pos.x - grid_origin.x, pos.y - grid_origin.y) = index;
-        grid_indices.get(x - grid_origin.x, y - grid_origin.y)         = -1;
-        grid_data[index] = std::move(grid_data.back());
-        grid_data.pop_back();
-    }
-    void remove(glm::ivec2 pos) { remove(pos.x, pos.y); }
-    const std::vector<std::pair<glm::ivec2, T>>& data() const {
-        return grid_data;
-    }
+
+    view_t view() { return {*this}; }
+    const_view_t view() const { return {*this}; }
 };
-}  // namespace epix::utils::grid2d
+}  // namespace epix::utils::grid

@@ -30,7 +30,7 @@ EPIX_API bool get_chunk_collision(
     std::vector<std::vector<std::vector<glm::ivec2>>>& polygons
 ) {
     ChunkConverter grid{sim, chunk};
-    return epix::utils::grid2d::get_polygon_multi(grid, polygons);
+    return epix::utils::grid::get_polygon_multi(grid, polygons);
 }
 EPIX_API SimulationCollisions<void>::SimulationCollisions()
     : thread_pool(
@@ -87,7 +87,7 @@ EPIX_API void SimulationCollisionGeneral::sync(
             converter.chunk_size * pos.x - converter.offset.x,
             converter.chunk_size * pos.y - converter.offset.y
         );
-        auto&& chunk_collision = collisions(pos.x, pos.y);
+        auto&& chunk_collision = collisions.get(pos.x, pos.y);
         auto&& body_id         = chunk_collision.user_data.first;
         auto&& chain_ids       = chunk_collision.user_data.second;
         if (!chunk_collision.has_collision) {
