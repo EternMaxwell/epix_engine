@@ -151,7 +151,7 @@ EPIX_API void systems::poll_events(
                                 std::future_status::ready) {
         (*future) = pool->submit_task([]() { glfwPollEvents(); });
     }
-    if (future->wait_for(std::chrono::nanoseconds(0)) ==
+    if (future->wait_for(std::chrono::microseconds(300)) ==
         std::future_status::ready) {
         future->get();
     }
