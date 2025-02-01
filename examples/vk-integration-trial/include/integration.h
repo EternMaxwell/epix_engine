@@ -586,7 +586,7 @@ using namespace epix::world::sand;
 using namespace epix::world::sand::components;
 
 constexpr int CHUNK_SIZE                = 16;
-constexpr float scale                   = 2.0f;
+constexpr float scale                   = 1.0f;
 constexpr bool enable_collision         = true;
 constexpr bool render_collision_outline = false;
 
@@ -804,7 +804,7 @@ void update_simulation(
     }
     auto [simulation, sim_collisions] = query.single();
     auto count                        = timer->value().tick();
-    for (int i = 0; i < count; i++) {
+    for (int i = 0; i <= count; i++) {
         ZoneScopedN("Update simulation");
         simulation.update_multithread((float)timer->value().interval);
         if constexpr (enable_collision) {
@@ -1269,7 +1269,7 @@ struct VK_TrialPlugin : Plugin {
         auto window_plugin                   = app.get_plugin<WindowPlugin>();
         window_plugin->primary_desc().width  = 1080;
         window_plugin->primary_desc().height = 1080;
-        window_plugin->primary_desc().set_vsync(true);
+        window_plugin->primary_desc().set_vsync(false);
 
         using namespace epix;
 

@@ -22,11 +22,11 @@ add_subdirectory(render/font)
 add_subdirectory(render/sprite)
 add_subdirectory(render/pixel)
 # EPIX UTILS MODULES
-add_subdirectory(grid2d)
+add_subdirectory(utils/grid2d)
 # EPIX WORLD MODULES
-add_subdirectory(sand)
-add_subdirectory(physics2d)
-add_subdirectory(sand_physics)
+add_subdirectory(world/sand)
+add_subdirectory(world/physics2d)
+add_subdirectory(world/sand_physics)
 
 # BUILD STATIC
 add_library(epix_engine STATIC ${MODULE_SOURCES})
