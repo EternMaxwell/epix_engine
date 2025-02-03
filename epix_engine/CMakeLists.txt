@@ -22,7 +22,7 @@ add_subdirectory(render/font)
 add_subdirectory(render/sprite)
 add_subdirectory(render/pixel)
 # EPIX UTILS MODULES
-add_subdirectory(utils/grid2d)
+add_subdirectory(utils/grid)
 # EPIX WORLD MODULES
 add_subdirectory(world/sand)
 add_subdirectory(world/physics2d)
