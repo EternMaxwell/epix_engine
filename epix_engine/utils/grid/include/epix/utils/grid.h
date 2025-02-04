@@ -37,6 +37,11 @@ struct nth<1, glm::ivec2> {
 }  // namespace mapbox
 
 namespace epix::utils::grid {
+template <typename T, size_t D>
+struct sparse_grid;
+template <typename T, size_t D>
+struct extendable_grid;
+
 template <typename T>
 concept BoolGrid = requires(T t) {
     { t.size(0) } -> std::same_as<int>;
@@ -198,7 +203,7 @@ struct packed_grid {
         for (int i = 0; i < D; i++) {
             if (pos[i] >= _size[i] || pos[i] < 0) return;
         }
-        int index = pos[D - 1];
+        int64_t index = pos[D - 1];
         for (int i = D - 2; i >= 0; i--) {
             index = index * _size[i] + pos[i];
         }
@@ -216,7 +221,7 @@ struct packed_grid {
         requires std::constructible_from<T, Args...>
     void emplace_at(const std::array<int, D>& pos, Args&&... args) {
         assert(valid_at(pos));
-        int index = pos[D - 1];
+        int64_t index = pos[D - 1];
         for (int i = D - 2; i >= 0; i--) {
             index = index * _size[i] + pos[i];
         }
@@ -276,7 +281,7 @@ struct packed_grid {
     }
     bool contains_at(const std::array<int, D>& pos) const {
         assert(valid_at(pos));
-        int index = pos[D - 1];
+        int64_t index = pos[D - 1];
         for (int i = D - 2; i >= 0; i--) {
             index = index * _size[i] + pos[i];
         }
@@ -344,6 +349,16 @@ struct packed_grid {
 
     view_t view() { return view_t(*this); }
     const_view_t view() const { return const_view_t(*this); }
+
+    size_t write_to(void* buffer, size_t size_field_stride = sizeof(int) * D)
+        const {
+        std::memcpy(buffer, _size.data(), size_field_stride);
+        std::memcpy(
+            buffer + (void*)(sizeof(int) * D), _data.data(),
+            sizeof(T) * _data.size()
+        );
+        return size_field_stride + sizeof(T) * _data.size();
+    }
 
     template <typename T, size_t D>
     friend struct sparse_grid;
@@ -550,10 +565,10 @@ template <typename T, size_t D>
 struct sparse_grid {
    private:
     struct index_boolify {
-        bool operator()(int index) const { return index != -1; }
+        bool operator()(int64_t index) const { return index != -1; }
     };
 
-    packed_grid<int, D, index_boolify> _index_grid;
+    packed_grid<int64_t, D, index_boolify> _index_grid;
     std::vector<T> _data;
     std::vector<std::array<int, D>> _pos;
 
@@ -561,7 +576,7 @@ struct sparse_grid {
         sparse_grid& _grid;
         struct iterator {
             sparse_grid& grid;
-            int index;
+            size_t index;
             iterator(sparse_grid& grid, int index) : grid(grid), index(index) {}
             iterator& operator++() {
                 if (index < grid._data.size()) index++;
@@ -585,7 +600,7 @@ struct sparse_grid {
         const sparse_grid& _grid;
         struct iterator {
             const sparse_grid& grid;
-            int index;
+            size_t index;
             iterator(const sparse_grid& grid, int index)
                 : grid(grid), index(index) {}
             iterator& operator++() {
@@ -683,13 +698,13 @@ struct sparse_grid {
 
     bool remove_at(const std::array<int, D>& pos) {
         if (!_index_grid.contains_at(pos)) return false;
-        int index = _index_grid.get_at(pos);
+        int64_t index = _index_grid.get_at(pos);
         std::swap(_data[index], _data.back());
         std::swap(_pos[index], _pos.back());
         _index_grid.emplace_at(_pos[index], index);
         _data.pop_back();
         _pos.pop_back();
-        _index_grid.emplace_at(pos, -1u);
+        _index_grid.emplace_at(pos, -1);
         return true;
     }
     template <typename... Args>
@@ -755,6 +770,673 @@ struct sparse_grid {
     int size(int i) const { return _index_grid.size(i); }
     const std::vector<T>& data() const { return _data; }
     std::vector<T>& data() { return _data; }
+    bool empty() const { return _data.empty(); }
+    size_t count() const { return _data.size(); }
+
+    void swap_at(
+        const std::array<int, D>& pos1, const std::array<int, D>& pos2
+    ) {
+        if (!_index_grid.valid_at(pos1) || !_index_grid.valid_at(pos2)) return;
+        auto index1 = _index_grid.get_at(pos1);
+        auto index2 = _index_grid.get_at(pos2);
+        if (index1 >= 0 && index1 < _pos.size()) {
+            _pos[index1] = pos2;
+        }
+        if (index2 >= 0 && index2 < _pos.size()) {
+            _pos[index2] = pos1;
+        }
+        _index_grid.emplace_at(pos1, index2);
+        _index_grid.emplace_at(pos2, index1);
+    }
+
+    view_t view() { return view_t(*this); }
+    const_view_t view() const { return const_view_t(*this); }
+
+    size_t index_write_to(
+        void* buffer, size_t size_field_stride = sizeof(int) * D
+    ) const {
+        return _index_grid.write_to(buffer, size_field_stride);
+    }
+
+    void data_write_to(
+        void* buffer, size_t offset = 0, size_t stride = sizeof(T)
+    ) const {
+        if (stride == sizeof(T)) {
+            std::memcpy(
+                buffer + offset, _data.data(), sizeof(T) * _data.size()
+            );
+        } else {
+            for (int i = 0; i < _data.size(); i++) {
+                std::memcpy(
+                    buffer + (void*)(offset + i * stride), &_data[i], sizeof(T)
+                );
+            }
+        }
+    }
+
+    void pos_write_to(
+        void* buffer, size_t offset = 0, size_t stride = sizeof(int) * D
+    ) const {
+        if (stride == sizeof(int) * D) {
+            std::memcpy(
+                buffer + offset, _pos.data(), sizeof(int) * D * _pos.size()
+            );
+        } else {
+            for (int i = 0; i < _pos.size(); i++) {
+                std::memcpy(
+                    buffer + (void*)(offset + i * stride), _pos[i].data(),
+                    sizeof(int) * D
+                );
+            }
+        }
+    }
+
+    friend struct extendable_grid<T, D>;
+};
+
+template <typename T, size_t D>
+struct sparse_stable_grid {
+   private:
+    struct index_boolify {
+        bool operator()(int64_t index) const { return index != -1; }
+    };
+
+    packed_grid<int64_t, D, index_boolify> _index_grid;
+    std::vector<T> _data;
+    std::vector<bool> _occupied;
+    std::vector<std::array<int, D>> _pos;
+    std::stack<int> _free_indices;
+
+    struct view_t {
+        sparse_stable_grid& _grid;
+        struct iterator {
+            sparse_stable_grid& grid;
+            size_t index;
+            iterator(sparse_stable_grid& grid, int index)
+                : grid(grid), index(index) {}
+            iterator& operator++() {
+                if (index < grid._data.size()) index++;
+                while (index < grid._data.size() && !grid._occupied[index]) {
+                    index++;
+                }
+                return *this;
+            }
+            bool operator!=(const iterator& other) const {
+                return index != other.index || &grid != &other.grid;
+            }
+            bool operator==(const iterator& other) const {
+                return index == other.index && &grid == &other.grid;
+            }
+            std::pair<std::array<int, D>, T&> operator*() {
+                return {grid._pos[index], grid._data[index]};
+            }
+        };
+        view_t(sparse_stable_grid& grid) : _grid(grid) {}
+        iterator begin() {
+            size_t index = 0;
+            while (index < _grid._data.size() && !_grid._occupied[index]) {
+                index++;
+            }
+            return iterator(_grid, index);
+        }
+        iterator end() { return iterator(_grid, _grid._data.size()); }
+    };
+
+    struct const_view_t {
+        const sparse_stable_grid& _grid;
+        struct iterator {
+            const sparse_stable_grid& grid;
+            size_t index;
+            iterator(const sparse_stable_grid& grid, int index)
+                : grid(grid), index(index) {}
+            iterator& operator++() {
+                if (index < grid._data.size()) index++;
+                while (index < grid._data.size() && !grid._occupied[index]) {
+                    index++;
+                }
+                return *this;
+            }
+            bool operator!=(const iterator& other) const {
+                return index != other.index || &grid != &other.grid;
+            }
+            bool operator==(const iterator& other) const {
+                return index == other.index && &grid == &other.grid;
+            }
+            std::pair<std::array<int, D>, const T&> operator*() {
+                return {grid._pos[index], grid._data[index]};
+            }
+        };
+        const_view_t(const sparse_stable_grid& grid) : _grid(grid) {}
+        iterator begin() {
+            size_t index = 0;
+            while (index < _grid._data.size() && !_grid._occupied[index]) {
+                index++;
+            }
+            return iterator(_grid, index);
+        }
+        iterator end() { return iterator(_grid, _grid._data.size()); }
+    };
+
+   public:
+    sparse_stable_grid(const std::array<int, D>& size)
+        : _index_grid(size, -1),
+          _data(),
+          _occupied(),
+          _pos(),
+          _free_indices() {}
+    sparse_stable_grid(const sparse_stable_grid& other)
+        : _index_grid(other._index_grid),
+          _data(other._data),
+          _occupied(other._occupied),
+          _pos(other._pos),
+          _free_indices(other._free_indices) {}
+    sparse_stable_grid(sparse_stable_grid&& other)
+        : _index_grid(std::move(other._index_grid)),
+          _data(std::move(other._data)),
+          _occupied(std::move(other._occupied)),
+          _pos(std::move(other._pos)),
+          _free_indices(std::move(other._free_indices)) {}
+    sparse_stable_grid& operator=(const sparse_stable_grid& other) {
+        _index_grid   = other._index_grid;
+        _data         = other._data;
+        _occupied     = other._occupied;
+        _pos          = other._pos;
+        _free_indices = other._free_indices;
+        return *this;
+    }
+    sparse_stable_grid& operator=(sparse_stable_grid&& other) {
+        _index_grid   = std::move(other._index_grid);
+        _data         = std::move(other._data);
+        _occupied     = std::move(other._occupied);
+        _pos          = std::move(other._pos);
+        _free_indices = std::move(other._free_indices);
+        return *this;
+    }
+    template <typename... Args>
+    void emplace_at(const std::array<int, D>& pos, Args&&... args) {
+        assert(valid_at(pos));
+        if (_index_grid.contains_at(pos)) {
+            _data[_index_grid.get_at(pos)] = T(std::forward<Args>(args)...);
+        } else {
+            int index;
+            if (_free_indices.empty()) {
+                index = _data.size();
+                _data.emplace_back(std::forward<Args>(args)...);
+                _occupied.push_back(true);
+                _pos.push_back(pos);
+            } else {
+                index = _free_indices.top();
+                _free_indices.pop();
+                _data[index]     = T(std::forward<Args>(args)...);
+                _occupied[index] = true;
+                _pos[index]      = pos;
+            }
+            _index_grid.emplace_at(pos, index);
+        }
+    }
+    template <typename... Args, size_t... I, size_t... J>
+    void
+    emplace_i(std::tuple<Args...>& args, std::index_sequence<I...>, std::index_sequence<J...>) {
+        emplace_at(
+            std::array<int, D>{std::get<I>(args)...}, std::get<J + D>(args)...
+        );
+    }
+    template <typename... Args>
+    void emplace(Args&&... args) {
+        auto tuple = std::forward_as_tuple(args...);
+        emplace_i(
+            tuple, std::make_index_sequence<D>(),
+            std::make_index_sequence<sizeof...(Args) - D>()
+        );
+    }
+    template <typename... Args>
+    bool try_emplace_at(const std::array<int, D>& pos, Args&&... args) {
+        assert(valid_at(pos));
+        if (_index_grid.contains_at(pos)) return false;
+        int index;
+        if (_free_indices.empty()) {
+            index = _data.size();
+            _data.push_back(std::forward<Args>(args)...);
+            _occupied.push_back(true);
+            _pos.push_back(pos);
+        } else {
+            index = _free_indices.top();
+            _free_indices.pop();
+            _data[index]     = T(std::forward<Args>(args)...);
+            _occupied[index] = true;
+            _pos[index]      = pos;
+        }
+        _index_grid.emplace_at(pos, index);
+        return true;
+    }
+    template <typename... Args, size_t... I, size_t... J>
+    bool
+    try_emplace_i(std::tuple<Args...>& args, std::index_sequence<I...>, std::index_sequence<J...>) {
+        return try_emplace_at(
+            std::array<int, D>{std::get<I>(args)...}, std::get<J + D>(args)...
+        );
+    }
+    template <typename... Args>
+    bool try_emplace(Args&&... args) {
+        auto tuple = std::forward_as_tuple(args...);
+        return try_emplace_i(
+            tuple, std::make_index_sequence<D>(),
+            std::make_index_sequence<sizeof...(Args) - D>()
+        );
+    }
+
+    bool remove_at(const std::array<int, D>& pos) {
+        if (!_index_grid.contains_at(pos)) return false;
+        int index = _index_grid.get_at(pos);
+        if (index == _data.size() - 1) {
+            while (index >= 0 && !_occupied[index]) {
+                index--;
+            }
+            _data.resize(index + 1);
+            _occupied.resize(index + 1);
+            _pos.resize(index + 1);
+        }
+        _occupied[index] = false;
+        _free_indices.push(index);
+        _index_grid.emplace_at(pos, -1);
+        return true;
+    }
+    template <typename... Args>
+        requires(
+            sizeof...(Args) == D &&
+            ((std::same_as<Args, int> || std::convertible_to<Args, int>) && ...)
+        )
+    bool remove(Args&&... args) {
+        return remove_at(std::array<int, D>{args...});
+    }
+
+    bool contains_at(const std::array<int, D>& pos) const {
+        return _index_grid.contains_at(pos);
+    }
+    template <typename... Args>
+        requires(
+            sizeof...(Args) == D &&
+            ((std::same_as<Args, int> || std::convertible_to<Args, int>) && ...)
+        )
+    bool contains(Args&&... args) const {
+        return _index_grid.contains_at(std::array<int, D>{args...});
+    }
+    bool valid_at(const std::array<int, D>& pos) const {
+        return _index_grid.valid_at(pos);
+    }
+    template <typename... Args>
+        requires(
+            sizeof...(Args) == D &&
+            ((std::same_as<Args, int> || std::convertible_to<Args, int>) && ...)
+        )
+    bool valid(Args&&... args) const {
+        return _index_grid.valid_at(std::array<int, D>{args...});
+    }
+
+    T& get_at(const std::array<int, D>& pos) {
+        if (!_index_grid.contains_at(pos))
+            throw std::out_of_range("Position empty");
+        return _data[_index_grid.get_at(pos)];
+    }
+    template <typename... Args>
+        requires(
+            sizeof...(Args) == D &&
+            ((std::same_as<Args, int> || std::convertible_to<Args, int>) && ...)
+        )
+    T& get(Args&&... args) {
+        return get_at(std::array<int, D>{args...});
+    }
+    const T& get_at(const std::array<int, D>& pos) const {
+        if (!_index_grid.contains_at(pos))
+            throw std::out_of_range("Position empty");
+        return _data[_index_grid.get_at(pos)];
+    }
+    template <typename... Args>
+        requires(
+            sizeof...(Args) == D &&
+            ((std::same_as<Args, int> || std::convertible_to<Args, int>) && ...)
+        )
+    const T& get(Args&&... args) const {
+        return get_at(std::array<int, D>{args...});
+    }
+
+    const std::array<int, D>& size() const { return _index_grid.size(); }
+    int size(int i) const { return _index_grid.size(i); }
+    const std::vector<T>& data() const { return _data; }
+    std::vector<T>& data() { return _data; }
+    bool empty() const { return _data.empty(); }
+    size_t count() const { return _data.size(); }
+
+    void swap_at(
+        const std::array<int, D>& pos1, const std::array<int, D>& pos2
+    ) {
+        if (!_index_grid.valid_at(pos1) || !_index_grid.valid_at(pos2)) return;
+        auto index1 = _index_grid.get_at(pos1);
+        auto index2 = _index_grid.get_at(pos2);
+        if (index1 >= 0 && index1 < _pos.size()) {
+            _pos[index1] = pos2;
+        }
+        if (index2 >= 0 && index2 < _pos.size()) {
+            _pos[index2] = pos1;
+        }
+        _index_grid.emplace_at(pos1, index2);
+        _index_grid.emplace_at(pos2, index1);
+    }
+
+    view_t view() { return view_t(*this); }
+    const_view_t view() const { return const_view_t(*this); }
+};
+
+template <typename T, size_t D>
+struct sparse_linked_grid {
+   private:
+    struct index_boolify {
+        bool operator()(int64_t index) const { return index != -1; }
+    };
+
+    packed_grid<int64_t, D, index_boolify> _index_grid;
+    std::vector<T> _data;
+    std::vector<std::array<int, D>> _pos;
+    std::vector<int64_t> _next;
+    std::vector<int64_t> _prev;
+    int64_t _head;
+    int64_t _tail;
+
+    struct view_t {
+        sparse_linked_grid& _grid;
+        struct iterator {
+            sparse_linked_grid& grid;
+            int index;
+            iterator(sparse_linked_grid& grid, int index)
+                : grid(grid), index(index) {}
+            iterator& operator++() {
+                index = grid._next[index];
+                return *this;
+            }
+            bool operator!=(const iterator& other) const {
+                return index != other.index || &grid != &other.grid;
+            }
+            bool operator==(const iterator& other) const {
+                return index == other.index && &grid == &other.grid;
+            }
+            std::pair<std::array<int, D>, T&> operator*() {
+                return {grid._pos[index], grid._data[index]};
+            }
+        };
+        view_t(sparse_linked_grid& grid) : _grid(grid) {}
+        iterator begin() { return iterator(_grid, _grid._head); }
+        iterator end() { return iterator(_grid, -1); }
+    };
+
+    struct const_view_t {
+        const sparse_linked_grid& _grid;
+        struct iterator {
+            const sparse_linked_grid& grid;
+            int index;
+            iterator(const sparse_linked_grid& grid, int index)
+                : grid(grid), index(index) {}
+            iterator& operator++() {
+                index = grid._next[index];
+                return *this;
+            }
+            bool operator!=(const iterator& other) const {
+                return index != other.index || &grid != &other.grid;
+            }
+            bool operator==(const iterator& other) const {
+                return index == other.index && &grid == &other.grid;
+            }
+            std::pair<std::array<int, D>, const T&> operator*() {
+                return {grid._pos[index], grid._data[index]};
+            }
+        };
+        const_view_t(const sparse_linked_grid& grid) : _grid(grid) {}
+        iterator begin() { return iterator(_grid, _grid._head); }
+        iterator end() { return iterator(_grid, -1); }
+    };
+
+   public:
+    sparse_linked_grid(const std::array<int, D>& size)
+        : _index_grid(size, -1),
+          _data(),
+          _pos(),
+          _next(),
+          _prev(),
+          _head(-1),
+          _tail(-1) {}
+    sparse_linked_grid(const sparse_linked_grid& other)
+        : _index_grid(other._index_grid),
+          _data(other._data),
+          _pos(other._pos),
+          _next(other._next),
+          _prev(other._prev),
+          _head(other._head),
+          _tail(other._tail) {}
+    sparse_linked_grid(sparse_linked_grid&& other)
+        : _index_grid(std::move(other._index_grid)),
+          _data(std::move(other._data)),
+          _pos(std::move(other._pos)),
+          _next(std::move(other._next)),
+          _prev(std::move(other._prev)),
+          _head(other._head),
+          _tail(other._tail) {}
+    sparse_linked_grid& operator=(const sparse_linked_grid& other) {
+        _index_grid = other._index_grid;
+        _data       = other._data;
+        _pos        = other._pos;
+        _next       = other._next;
+        _prev       = other._prev;
+        _head       = other._head;
+        _tail       = other._tail;
+        return *this;
+    }
+    sparse_linked_grid& operator=(sparse_linked_grid&& other) {
+        _index_grid = std::move(other._index_grid);
+        _data       = std::move(other._data);
+        _pos        = std::move(other._pos);
+        _next       = std::move(other._next);
+        _prev       = std::move(other._prev);
+        _head       = other._head;
+        _tail       = other._tail;
+        return *this;
+    }
+    template <typename... Args>
+    void emplace_at(const std::array<int, D>& pos, Args&&... args) {
+        assert(valid_at(pos));
+        if (_index_grid.contains_at(pos)) {
+            _data[_index_grid.get_at(pos)] = T(std::forward<Args>(args)...);
+        } else {
+            int index = _data.size();
+            _index_grid.emplace_at(pos, index);
+            _pos.push_back(pos);
+            _data.emplace_back(std::forward<Args>(args)...);
+            _next.push_back(-1);
+            _prev.push_back(_tail);
+            if (_tail != -1) {
+                _next[_tail] = index;
+            }
+            _tail = index;
+            if (_head == -1) {
+                _head = index;
+            }
+        }
+    }
+    template <typename... Args, size_t... I, size_t... J>
+    void
+    emplace_i(std::tuple<Args...>& args, std::index_sequence<I...>, std::index_sequence<J...>) {
+        emplace_at(
+            std::array<int, D>{std::get<I>(args)...}, std::get<J + D>(args)...
+        );
+    }
+    template <typename... Args>
+    void emplace(Args&&... args) {
+        auto tuple = std::forward_as_tuple(args...);
+        emplace_i(
+            tuple, std::make_index_sequence<D>(),
+            std::make_index_sequence<sizeof...(Args) - D>()
+        );
+    }
+    template <typename... Args>
+    bool try_emplace_at(const std::array<int, D>& pos, Args&&... args) {
+        assert(valid_at(pos));
+        if (_index_grid.contains_at(pos)) return false;
+        int index = _data.size();
+        _index_grid.emplace_at(pos, index);
+        _pos.push_back(pos);
+        _data.emplace_back(std::forward<Args>(args)...);
+        _next.push_back(-1);
+        _prev.push_back(_tail);
+        if (_tail != -1) {
+            _next[_tail] = index;
+        }
+        _tail = index;
+        if (_head == -1) {
+            _head = index;
+        }
+        return true;
+    }
+    template <typename... Args, size_t... I, size_t... J>
+    bool
+    try_emplace_i(std::tuple<Args...>& args, std::index_sequence<I...>, std::index_sequence<J...>) {
+        return try_emplace_at(
+            std::array<int, D>{std::get<I>(args)...}, std::get<J + D>(args)...
+        );
+    }
+    template <typename... Args>
+    bool try_emplace(Args&&... args) {
+        auto tuple = std::forward_as_tuple(args...);
+        return try_emplace_i(
+            tuple, std::make_index_sequence<D>(),
+            std::make_index_sequence<sizeof...(Args) - D>()
+        );
+    }
+
+    void swap_index(int64_t a, int64_t b) {
+        if (a == b) return;
+        if (a == _head) {
+            _head = b;
+        } else if (b == _head) {
+            _head = a;
+        }
+        if (a == _tail) {
+            _tail = b;
+        } else if (b == _tail) {
+            _tail = a;
+        }
+        auto a_prev = _prev[a];
+        auto b_prev = _prev[b];
+        auto a_next = _next[a];
+        auto b_next = _next[b];
+        if (a_prev != -1) {
+            _next[a_prev] = b;
+        }
+        if (b_prev != -1) {
+            _next[b_prev] = a;
+        }
+        if (a_next != -1) {
+            _prev[a_next] = b;
+        }
+        if (b_next != -1) {
+            _prev[b_next] = a;
+        }
+        std::swap(_next[a], _next[b]);
+        std::swap(_prev[a], _prev[b]);
+        std::swap(_pos[a], _pos[b]);
+        std::swap(_data[a], _data[b]);
+    }
+
+    bool remove_at(const std::array<int, D>& pos) {
+        if (!_index_grid.contains_at(pos)) return false;
+        int64_t index = _index_grid.get_at(pos);
+        // before removing, exchange index with the last element of
+        // the data array
+        swap_index(index, _data.size() - 1);
+        _index_grid.emplace_at(_pos[index], index);
+        _index_grid.emplace_at(pos, -1);
+        // now it is equivalent to removing the last element
+        if (_head == _data.size() - 1) {
+            _head = _next.back();
+        }
+        if (_tail == _data.size() - 1) {
+            _tail = _prev.back();
+        }
+        if (_next.back() != -1) {
+            _prev[_next.back()] = _prev.back();
+        }
+        if (_prev.back() != -1) {
+            _next[_prev.back()] = _next.back();
+        }
+        _data.pop_back();
+        _pos.pop_back();
+        _next.pop_back();
+        _prev.pop_back();
+        return true;
+    }
+    template <typename... Args>
+        requires(
+            sizeof...(Args) == D &&
+            ((std::same_as<Args, int> || std::convertible_to<Args, int>) && ...)
+        )
+    bool remove(Args&&... args) {
+        return remove_at(std::array<int, D>{args...});
+    }
+
+    bool contains_at(const std::array<int, D>& pos) const {
+        return _index_grid.contains_at(pos);
+    }
+    template <typename... Args>
+        requires(
+            sizeof...(Args) == D &&
+            ((std::same_as<Args, int> || std::convertible_to<Args, int>) && ...)
+        )
+    bool contains(Args&&... args) const {
+        return _index_grid.contains_at(std::array<int, D>{args...});
+    }
+
+    bool valid_at(const std::array<int, D>& pos) const {
+        return _index_grid.valid_at(pos);
+    }
+    template <typename... Args>
+        requires(
+            sizeof...(Args) == D &&
+            ((std::same_as<Args, int> || std::convertible_to<Args, int>) && ...)
+        )
+    bool valid(Args&&... args) const {
+        return _index_grid.valid_at(std::array<int, D>{args...});
+    }
+
+    T& get_at(const std::array<int, D>& pos) {
+        if (!_index_grid.contains_at(pos))
+            throw std::out_of_range("Position empty");
+        return _data[_index_grid.get_at(pos)];
+    }
+    template <typename... Args>
+        requires(
+            sizeof...(Args) == D &&
+            ((std::same_as<Args, int> || std::convertible_to<Args, int>) && ...)
+        )
+    T& get(Args&&... args) {
+        return get_at(std::array<int, D>{args...});
+    }
+    const T& get_at(const std::array<int, D>& pos) const {
+        if (!_index_grid.contains_at(pos))
+            throw std::out_of_range("Position empty");
+        return _data[_index_grid.get_at(pos)];
+    }
+    template <typename... Args>
+        requires(
+            sizeof...(Args) == D &&
+            ((std::same_as<Args, int> || std::convertible_to<Args, int>) && ...)
+        )
+    const T& get(Args&&... args) const {
+        return get_at(std::array<int, D>{args...});
+    }
+
+    const std::array<int, D>& size() const { return _index_grid.size(); }
+    int size(int i) const { return _index_grid.size(i); }
+    const std::vector<T>& data() const { return _data; }
+    std::vector<T>& data() { return _data; }
+    bool empty() const { return _data.empty(); }
+    size_t count() const { return _data.size(); }
 
     void swap_at(
         const std::array<int, D>& pos1, const std::array<int, D>& pos2
@@ -1598,7 +2280,7 @@ struct extendable_grid {
         extendable_grid& grid;
         struct iterator {
             extendable_grid& grid;
-            int64_t index;
+            size_t index;
             iterator(extendable_grid& grid, int64_t index)
                 : grid(grid), index(index) {}
             std::tuple<std::array<int, D>&, T&> operator*() {
@@ -1625,7 +2307,7 @@ struct extendable_grid {
         const extendable_grid& grid;
         struct iterator {
             const extendable_grid& grid;
-            int64_t index;
+            size_t index;
             iterator(const extendable_grid& grid, int64_t index)
                 : grid(grid), index(index) {}
             std::tuple<const std::array<int, D>&, const T&> operator*() {
@@ -1681,6 +2363,7 @@ struct extendable_grid {
     int origin(int i) const { return _origin[i]; }
     std::array<int, D> origin() const { return _origin; }
     std::array<int, D> size() const { return grid_indices.size(); }
+    int size(int i) const { return grid_indices.size(i); }
 
     bool valid_at(const std::array<int, D>& pos) const {
         return grid_indices.valid_at(pos - _origin);
@@ -1889,5 +2572,41 @@ struct extendable_grid {
 
     view_t view() { return {*this}; }
     const_view_t view() const { return {*this}; }
+
+   private:
+    sparse_grid<T, D> move_into_sparse_grid() {
+        sparse_grid<T, D> result(array_fill<D>(0));
+        result._index_grid = std::move(grid_indices);
+        result._data       = std::move(_data);
+        result._pos        = std::move(_pos);
+        std::for_each(result._pos.begin(), result._pos.end(), [&](auto& pos) {
+            pos -= _origin;
+        });
+        return std::move(result);
+    }
+    sparse_grid<T, D> copy_into_sparse_grid() const {
+        sparse_grid<T, D> result(array_fill<D>(0));
+        result._index_grid = grid_indices;
+        result._data       = _data;
+        result._pos        = _pos;
+        std::for_each(result._pos.begin(), result._pos.end(), [&](auto& pos) {
+            pos -= _origin;
+        });
+        return std::move(result);
+    }
+
+    template <typename T, size_t D>
+    friend sparse_grid<T, D> into_sparse(const extendable_grid<T, D>& grid);
+    template <typename T, size_t D>
+    friend sparse_grid<T, D> into_sparse(extendable_grid<T, D>&& grid);
 };
+
+template <typename T, size_t D>
+sparse_grid<T, D> into_sparse(const extendable_grid<T, D>& grid) {
+    return grid.move_into_sparse_grid();
+}
+template <typename T, size_t D>
+sparse_grid<T, D> into_sparse(extendable_grid<T, D>&& grid) {
+    return grid.move_into_sparse_grid();
+}
 }  // namespace epix::utils::grid

@@ -113,7 +113,7 @@ struct ElemRegistry {
 };
 struct Simulation {
     struct Chunk {
-        using Grid = epix::utils::grid::sparse_grid<Cell, 2>;
+        using Grid = epix::utils::grid::sparse_linked_grid<Cell, 2>;
         Grid cells;
         const int width;
         const int height;
@@ -264,7 +264,7 @@ struct Simulation {
     } m_updating_state;
     struct PowderSlideSetting {
         bool always_slide = true;
-        float prefix      = 0.05f;
+        float prefix      = 0.07f;
     } powder_slide_setting;
     // settings
 

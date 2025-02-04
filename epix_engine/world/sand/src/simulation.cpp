@@ -990,7 +990,7 @@ void epix::world::sand::components::update_cell(
                                 sim.swap(final_x, final_y, tx, ty);
                                 auto& ncell = sim.get_cell(tx, ty);
                                 ncell.velocity +=
-                                    glm::vec2(idirs[i]) *
+                                    glm::vec2(idirs[i] + dirs[i]) *
                                     sim.powder_slide_setting.prefix / delta;
                                 final_x = tx;
                                 final_y = ty;

@@ -13,5 +13,6 @@ target_link_libraries(epix_physics2d PUBLIC epix::app)
 target_link_libraries(epix_physics2d PUBLIC box2d)
 target_link_libraries(epix_physics2d PUBLIC glm::glm)
 target_link_libraries(epix_physics2d PUBLIC earcut.hpp)
+target_link_libraries(epix_physics2d PUBLIC epix::utils::grid)
 
 add_library(epix::physics::2d ALIAS epix_physics2d)
