@@ -142,6 +142,26 @@ struct TextMesh : public Mesh<TextVertex> {
 using TextStagingMesh = StagingMesh<Mesh<TextVertex>>;
 using TextGPUMesh     = GPUMesh<StagingMesh<Mesh<TextVertex>>>;
 
+struct TextDrawMesh : public MultiDraw<Mesh<TextVertex>, glm::mat4> {
+    EPIX_API TextDrawMesh();
+    EPIX_API void draw_text(
+        const Text& text,
+        const glm::vec2& pos,
+        const FontAtlas* font_atlas,
+        const VulkanResources* res_manager
+    );
+    EPIX_API void draw_text(
+        const Text& text,
+        const glm::vec2& pos,
+        Res<FontAtlas> font_atlas,
+        Res<VulkanResources> res_manager
+    );
+};
+
+using TextDrawStagingMesh = MultiDraw<StagingMesh<Mesh<TextVertex>>, glm::mat4>;
+using TextDrawGPUMesh =
+    MultiDraw<GPUMesh<StagingMesh<Mesh<TextVertex>>>, glm::mat4>;
+
 struct TextPipeline {
     EPIX_API static PipelineBase* create();
 };

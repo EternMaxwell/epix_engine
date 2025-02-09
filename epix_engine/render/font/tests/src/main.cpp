@@ -137,14 +137,14 @@ void create_meshes(Command cmd, Res<RenderContext> context) {
         return;
     }
     auto& device = context->device;
-    TextStagingMesh mesh(device);
+    TextDrawStagingMesh mesh(device);
     cmd.insert_resource(mesh);
-    TextGPUMesh mesh2(device);
+    TextDrawGPUMesh mesh2(device);
     cmd.insert_resource(mesh2);
 }
 
 void destroy_meshes(
-    Command cmd, ResMut<TextStagingMesh> mesh, ResMut<TextGPUMesh> mesh2
+    Command cmd, ResMut<TextDrawStagingMesh> mesh, ResMut<TextDrawGPUMesh> mesh2
 ) {
     if (!mesh || !mesh2) {
         return;
@@ -154,7 +154,7 @@ void destroy_meshes(
 }
 
 void extract_meshes(
-    ResMut<TextStagingMesh> mesh, ResMut<TextGPUMesh> mesh2, Command cmd
+    ResMut<TextDrawStagingMesh> mesh, ResMut<TextDrawGPUMesh> mesh2, Command cmd
 ) {
     if (!mesh || !mesh2) {
         return;
@@ -171,7 +171,7 @@ void extract_pass(ResMut<TestPass> pass, Command cmd) {
 }
 
 void prepare_mesh(
-    ResMut<TextStagingMesh> staging_mesh,
+    ResMut<TextDrawStagingMesh> staging_mesh,
     Res<FontAtlas> font_atlas,
     Res<VulkanResources> res_manager
 ) {
@@ -179,19 +179,21 @@ void prepare_mesh(
         return;
     }
     auto& mesh_data = *staging_mesh;
-    TextMesh ms;
+    TextDrawMesh ms;
+    ms.emplace_constant(1.0f);
     Text text;
     text.font.font_identifier = "default";
     text.text                 = L"Hello, World!";
     text.height               = 0.005f;
     text.center               = {0.5f, 0.5f};
     ms.draw_text(text, {0.0f, 0.0f}, font_atlas.get(), res_manager.get());
+    ms.next_call();
     mesh_data.update(ms);
 }
 
 void draw_mesh(
-    Res<TextStagingMesh> staging_mesh,
-    ResMut<TextGPUMesh> mesh,
+    Res<TextDrawStagingMesh> staging_mesh,
+    ResMut<TextDrawGPUMesh> mesh,
     ResMut<TestPass> pass,
     ResMut<RenderContext> context,
     Res<VulkanResources> res_manager
@@ -252,7 +254,7 @@ void draw_mesh(
             descriptor_sets[1] = res_manager->get_descriptor_set();
         }
     );
-    subpass.draw(mesh_, glm::mat4(1.0f));
+    subpass.draw(mesh_);
     pass_.end();
     pass_.submit(queue);
 }

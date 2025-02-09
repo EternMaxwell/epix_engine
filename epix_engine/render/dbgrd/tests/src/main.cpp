@@ -27,9 +27,9 @@ void create_camera_uniform_buffer(
     res_manager->add_buffer("camera_uniform_buffer", buffer);
 }
 
-struct TestMesh : epix::render::debug::vulkan2::DebugMesh {};
-struct TestStagingMesh : epix::render::debug::vulkan2::DebugStagingMesh {};
-struct TestGPUMesh : epix::render::debug::vulkan2::DebugGPUMesh {};
+struct TestMesh : epix::render::debug::vulkan2::DebugDrawMesh {};
+struct TestStagingMesh : epix::render::debug::vulkan2::DebugDrawStagingMesh {};
+struct TestGPUMesh : epix::render::debug::vulkan2::DebugDrawGPUMesh {};
 
 struct TestPassBase : public epix::render::vulkan2::PassBase {
    protected:
@@ -171,9 +171,11 @@ void prepare_mesh(ResMut<TestStagingMesh> mesh) {
     ZoneScopedN("Prepare mesh");
     auto& mesh_data = *mesh;
     TestMesh ms;
+    ms.emplace_constant(1.0f);
     ms.draw_point({0.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f, 1.0f});
     ms.draw_point({0.1f, 0.1f, 0.0f}, {0.0f, 1.0f, 0.0f, 1.0f});
     ms.draw_point({-0.1f, 0.1f, 0.0f}, {0.0f, 0.0f, 1.0f, 1.0f});
+    ms.next_call();
     mesh_data.update(ms);
 }
 

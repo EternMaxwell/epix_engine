@@ -29,9 +29,9 @@ void create_camera_uniform_buffer(
     res_manager->add_buffer("camera_uniform_buffer", buffer);
 }
 
-struct TestMesh : epix::render::pixel::vulkan2::PixelMesh {};
-struct TestStagingMesh : epix::render::pixel::vulkan2::PixelStagingMesh {};
-struct TestGPUMesh : epix::render::pixel::vulkan2::PixelGPUMesh {};
+struct TestMesh : epix::render::pixel::vulkan2::PixelDrawMesh {};
+struct TestStagingMesh : epix::render::pixel::vulkan2::PixelDrawStagingMesh {};
+struct TestGPUMesh : epix::render::pixel::vulkan2::PixelDrawGPUMesh {};
 
 struct TestPassBase : public epix::render::vulkan2::PassBase {
    protected:
@@ -191,7 +191,9 @@ void prepare_mesh(ResMut<TestStagingMesh> mesh) {
     ZoneScopedN("Prepare mesh");
     auto& mesh_data = *mesh;
     TestMesh ms;
+    ms.emplace_constant(1.0f);
     ms.draw_pixel(glm::vec2(0.0f), glm::vec4(1.0f));
+    ms.next_call();
     mesh_data.update(ms);
 }
 
@@ -259,7 +261,7 @@ void draw_mesh(
             device.updateDescriptorSets(descriptor_writes, {});
         }
     );
-    subpass.draw(mesh_, glm::mat4(1.0f));
+    subpass.draw(mesh_);
     pass_.end();
     pass_.submit(queue);
 }

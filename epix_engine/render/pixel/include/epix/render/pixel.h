@@ -22,6 +22,27 @@ using PixelStagingMesh = epix::render::vulkan2::StagingMesh<
     epix::render::vulkan2::Mesh<PixelVertex>>;
 using PixelGPUMesh = epix::render::vulkan2::GPUMesh<PixelStagingMesh>;
 
+struct PixelDrawMesh
+    : public epix::render::vulkan2::
+          MultiDraw<epix::render::vulkan2::Mesh<PixelVertex>, glm::mat4> {
+    PixelDrawMesh()
+        : epix::render::vulkan2::
+              MultiDraw<epix::render::vulkan2::Mesh<PixelVertex>, glm::mat4>(
+                  false
+              ) {}
+    void draw_pixel(const glm::vec2& pos, const glm::vec4& color) {
+        emplace_vertex(color, pos);
+    }
+};
+using PixelDrawStagingMesh = epix::render::vulkan2::MultiDraw<
+    epix::render::vulkan2::StagingMesh<
+        epix::render::vulkan2::Mesh<PixelVertex>>,
+    glm::mat4>;
+using PixelDrawGPUMesh = epix::render::vulkan2::MultiDraw<
+    epix::render::vulkan2::GPUMesh<epix::render::vulkan2::StagingMesh<
+        epix::render::vulkan2::Mesh<PixelVertex>>>,
+    glm::mat4>;
+
 struct PixelPipeline {
     EPIX_API static epix::render::vulkan2::PipelineBase* create();
 };

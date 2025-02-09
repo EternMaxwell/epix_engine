@@ -34,9 +34,9 @@ struct PushConstants {
     int sampler_index;
 };
 
-using test_mesh    = Mesh<Vertex>;
-using staging_mesh = StagingMesh<test_mesh>;
-using gpu_mesh     = GPUMesh<staging_mesh>;
+using test_mesh    = MultiDraw<Mesh<Vertex>, PushConstants>;
+using staging_mesh = MultiDraw<StagingMesh<Mesh<Vertex>>, PushConstants>;
+using gpu_mesh = MultiDraw<GPUMesh<StagingMesh<Mesh<Vertex>>>, PushConstants>;
 
 struct TestPipeline : public PipelineBase {
     TestPipeline() : PipelineBase() {
@@ -137,20 +137,34 @@ void destroy_meshes(
     mesh2->destroy();
 }
 
-void prepare_mesh(ResMut<staging_mesh> mesh) {
-    if (!mesh) return;
+void prepare_mesh(ResMut<staging_mesh> mesh, Res<VulkanResources> res) {
+    if (!mesh || !res) return;
+    PushConstants push_constants{
+        res->image_view_index("test::rdvk::image1::view"),
+        res->sampler_index("test::rdvk::sampler1")
+    };
+    if (push_constants.image_index == -1 ||
+        push_constants.sampler_index == -1) {
+        return;
+    }
     test_mesh ms;
+    ms.push_constant(push_constants);
     ms.emplace_vertex(glm::vec3(-0.5f, -0.5f, 0.0f), glm::vec2(0.0f, 0.0f));
     ms.emplace_vertex(glm::vec3(0.5f, -0.5f, 0.0f), glm::vec2(1.0f, 0.0f));
     ms.emplace_vertex(glm::vec3(0.5f, 0.5f, 0.0f), glm::vec2(1.0f, 1.0f));
+    // ms.emplace_vertex(glm::vec3(-0.5f, 0.5f, 0.0f), glm::vec2(0.0f, 1.0f));
+    ms.next_call();
+    ms.emplace_vertex(glm::vec3(0.5f, 0.5f, 0.0f), glm::vec2(1.0f, 1.0f));
     ms.emplace_vertex(glm::vec3(-0.5f, 0.5f, 0.0f), glm::vec2(0.0f, 1.0f));
-    ms.set_16bit_indices();
-    ms.emplace_index(0);
-    ms.emplace_index(1);
-    ms.emplace_index(2);
-    ms.emplace_index(2);
-    ms.emplace_index(3);
-    ms.emplace_index(0);
+    ms.emplace_vertex(glm::vec3(-0.5f, -0.5f, 0.0f), glm::vec2(0.0f, 0.0f));
+    // ms.set_16bit_indices();
+    // ms.emplace_index(0);
+    // ms.emplace_index(1);
+    // ms.emplace_index(2);
+    // ms.emplace_index(2);
+    // ms.emplace_index(3);
+    // ms.emplace_index(0);
+    ms.next_call();
     mesh->update(ms);
 }
 
@@ -215,16 +229,7 @@ void draw_mesh(
             descriptor_sets[0] = res->get_descriptor_set();
         }
     );
-    PushConstants push_constants{
-        res->image_view_index("test::rdvk::image1::view"),
-        res->sampler_index("test::rdvk::sampler1")
-    };
-    if (push_constants.image_index == -1 ||
-        push_constants.sampler_index == -1) {
-        spdlog::warn("Image or sampler not found, skipping draw");
-    } else {
-        subpass.draw(gpu_mesh_, push_constants);
-    }
+    subpass.draw(gpu_mesh_);
     pass_.end();
     pass_.submit(context->queue);
 }

@@ -39,6 +39,45 @@ using DebugStagingMesh = epix::render::vulkan2::StagingMesh<
 
 using DebugGPUMesh = epix::render::vulkan2::GPUMesh<DebugStagingMesh>;
 
+struct DebugDrawMesh
+    : public epix::render::vulkan2::
+          MultiDraw<epix::render::vulkan2::Mesh<DebugVertex>, glm::mat4> {
+    DebugDrawMesh()
+        : epix::render::vulkan2::
+              MultiDraw<epix::render::vulkan2::Mesh<DebugVertex>, glm::mat4>(
+                  false
+              ) {}
+    void draw_point(const glm::vec3& pos, const glm::vec4& color) {
+        emplace_vertex(pos, color);
+    }
+    void draw_line(
+        const glm::vec3& start, const glm::vec3& end, const glm::vec4& color
+    ) {
+        emplace_vertex(start, color);
+        emplace_vertex(end, color);
+    }
+    void draw_triangle(
+        const glm::vec3& v0,
+        const glm::vec3& v1,
+        const glm::vec3& v2,
+        const glm::vec4& color
+    ) {
+        emplace_vertex(v0, color);
+        emplace_vertex(v1, color);
+        emplace_vertex(v2, color);
+    }
+};
+
+using DebugDrawStagingMesh = epix::render::vulkan2::MultiDraw<
+    epix::render::vulkan2::StagingMesh<
+        epix::render::vulkan2::Mesh<DebugVertex>>,
+    glm::mat4>;
+
+using DebugDrawGPUMesh = epix::render::vulkan2::MultiDraw<
+    epix::render::vulkan2::GPUMesh<epix::render::vulkan2::StagingMesh<
+        epix::render::vulkan2::Mesh<DebugVertex>>>,
+    glm::mat4>;
+
 struct DebugPipelines {
     EPIX_API static epix::render::vulkan2::PipelineBase* point_pipeline();
     EPIX_API static epix::render::vulkan2::PipelineBase* line_pipeline();

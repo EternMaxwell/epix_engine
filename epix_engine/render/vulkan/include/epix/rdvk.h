@@ -946,6 +946,331 @@ struct GPUMesh<StagingMesh<Mesh<VertT, Ts...>>> {
     std::optional<size_t> index_count() const { return _index_count; }
 };
 
+template <typename MeshT, typename PushConstantT = void>
+struct MultiDraw;
+
+struct DrawCall {
+    size_t vertex_offset;
+    size_t instance_offset;
+    size_t vertex_count;
+    size_t instance_count;
+    size_t first_index;
+    size_t index_count;
+    size_t constant_index;
+};
+
+template <typename PushConstantT, typename VertT, typename... Ts>
+struct MultiDraw<Mesh<VertT, Ts...>, PushConstantT>
+    : public Mesh<VertT, Ts...> {
+   private:
+    std::vector<DrawCall> _draw_calls;
+    std::vector<PushConstantT> _push_constants;
+
+   public:
+    template <typename... Args>
+    MultiDraw(Args&&... args)
+        : Mesh<VertT, Ts...>(std::forward<Args>(args)...) {}
+    MultiDraw() = default;
+
+    void clear() {
+        Mesh<VertT, Ts...>::clear();
+        _draw_calls.clear();
+        _push_constants.clear();
+    }
+
+    void push_constant(const PushConstantT& constant) {
+        _push_constants.push_back(constant);
+    }
+
+    template <typename... Args>
+    void emplace_constant(Args&&... args) {
+        _push_constants.emplace_back(std::forward<Args>(args)...);
+    }
+
+    void next_call() {
+        if (_push_constants.empty()) {
+            spdlog::warn("Calling next_call without any push constants.");
+        }
+        size_t vertex_offset   = 0;
+        size_t instance_offset = 0;
+        size_t index_offset    = 0;
+        if (!_draw_calls.empty()) {
+            auto& last_call = _draw_calls.back();
+            vertex_offset   = last_call.vertex_offset + last_call.vertex_count;
+            instance_offset =
+                last_call.instance_offset + last_call.instance_count;
+            index_offset = last_call.first_index + last_call.index_count;
+        }
+        auto vertex_count_opt = Mesh<VertT, Ts...>::vertex_count();
+        if (!vertex_count_opt) {
+            spdlog::warn("MultiDraw::next_call : Cannot determine vertex count."
+            );
+            return;
+        }
+        auto vertex_count       = vertex_count_opt.value() - vertex_offset;
+        auto instance_count_opt = Mesh<VertT, Ts...>::instance_count();
+        if (!instance_count_opt) {
+            spdlog::warn(
+                "MultiDraw::next_call : Cannot determine instance count."
+            );
+            return;
+        }
+        auto instance_count = instance_count_opt.value() - instance_offset;
+        instance_count      = std::max(instance_count, (size_t)1u);
+        instance_offset     = instance_count == 1u ? 0 : instance_offset;
+        auto index_count =
+            Mesh<VertT, Ts...>::index_count().value_or(0) - index_offset;
+        _draw_calls.emplace_back(
+            vertex_offset, instance_offset, vertex_count, instance_count,
+            index_offset, index_count, _push_constants.size() - 1
+        );
+    }
+
+    auto&& draw_calls() { return _draw_calls; }
+    auto&& draw_calls() const { return _draw_calls; }
+    auto&& push_constants() { return _push_constants; }
+    auto&& push_constants() const { return _push_constants; }
+};
+
+template <typename VertT, typename... Ts>
+struct MultiDraw<Mesh<VertT, Ts...>, void> : public Mesh<VertT, Ts...> {
+   private:
+    std::vector<DrawCall> _draw_calls;
+
+   public:
+    MultiDraw() = default;
+
+    void clear() {
+        Mesh<VertT, Ts...>::clear();
+        _draw_calls.clear();
+    }
+
+    void next_call() {
+        uint32_t vertex_offset   = 0;
+        uint32_t instance_offset = 0;
+        uint32_t index_offset    = 0;
+        if (!_draw_calls.empty()) {
+            auto& last_call = _draw_calls.back();
+            vertex_offset   = last_call.vertex_offset + last_call.vertex_count;
+            instance_offset =
+                last_call.instance_offset + last_call.instance_count;
+            index_offset = last_call.first_index + last_call.index_count;
+        }
+        auto vertex_count_opt = Mesh<VertT, Ts...>::vertex_count();
+        if (!vertex_count_opt) {
+            spdlog::warn("MultiDraw::next_call : Cannot determine vertex count."
+            );
+            return;
+        }
+        auto vertex_count       = vertex_count_opt.value() - vertex_offset;
+        auto instance_count_opt = Mesh<VertT, Ts...>::instance_count();
+        if (!instance_count_opt) {
+            spdlog::warn(
+                "MultiDraw::next_call : Cannot determine instance count."
+            );
+            return;
+        }
+        auto instance_count = instance_count_opt.value() - instance_offset;
+        instance_count      = std::max(instance_count, 1u);
+        instance_offset     = instance_count == 1u ? 0 : instance_offset;
+        auto index_count =
+            Mesh<VertT, Ts...>::index_count().value_or(0) - index_offset;
+        if (vertex_count == 0 && index_count == 0) {
+            return;
+        }
+        _draw_calls.emplace_back(
+            vertex_offset, instance_offset, vertex_count, instance_count,
+            index_offset, index_count, 0
+        );
+    }
+
+    auto&& draw_calls() { return _draw_calls; }
+    auto&& draw_calls() const { return _draw_calls; }
+};
+
+template <typename MeshT, typename PushConstantT>
+struct MultiDraw<StagingMesh<MeshT>, PushConstantT>
+    : public StagingMesh<MeshT> {
+   private:
+    std::vector<DrawCall> _draw_calls;
+    std::vector<PushConstantT> _push_constants;
+
+   public:
+    MultiDraw(backend::Device& device) : StagingMesh<MeshT>(device) {}
+
+    void destroy() {
+        StagingMesh<MeshT>::destroy();
+        _draw_calls.clear();
+        _push_constants.clear();
+    }
+    void update(const MultiDraw<MeshT, PushConstantT>& multi_draw) {
+        StagingMesh<MeshT>::update(multi_draw);
+        _draw_calls     = multi_draw.draw_calls();
+        _push_constants = multi_draw.push_constants();
+    }
+    void update(MultiDraw<MeshT, PushConstantT>&& multi_draw) {
+        StagingMesh<MeshT>::update(multi_draw);
+        _draw_calls     = std::move(multi_draw.draw_calls());
+        _push_constants = std::move(multi_draw.push_constants());
+    }
+
+    auto&& draw_calls() { return _draw_calls; }
+    auto&& draw_calls() const { return _draw_calls; }
+    auto&& push_constants() { return _push_constants; }
+    auto&& push_constants() const { return _push_constants; }
+};
+
+template <typename MeshT>
+struct MultiDraw<StagingMesh<MeshT>, void> : public StagingMesh<MeshT> {
+   private:
+    std::vector<DrawCall> _draw_calls;
+
+   public:
+    MultiDraw(backend::Device& device) : StagingMesh<MeshT>(device) {}
+
+    void destroy() {
+        StagingMesh<MeshT>::destroy();
+        _draw_calls.clear();
+    }
+    void update(const MultiDraw<MeshT, void>& multi_draw) {
+        StagingMesh<MeshT>::update(multi_draw);
+        _draw_calls = multi_draw.draw_calls();
+    }
+    void update(MultiDraw<MeshT, void>&& multi_draw) {
+        StagingMesh<MeshT>::update(multi_draw);
+        _draw_calls = std::move(multi_draw.draw_calls());
+    }
+
+    auto&& draw_calls() { return _draw_calls; }
+    auto&& draw_calls() const { return _draw_calls; }
+};
+
+template <typename MeshT, typename PushConstantT>
+struct MultiDraw<GPUMesh<MeshT>, PushConstantT> : public GPUMesh<MeshT> {
+   private:
+    std::vector<DrawCall> _draw_calls;
+    std::vector<PushConstantT> _push_constants;
+
+   public:
+    MultiDraw(backend::Device& device) : GPUMesh<MeshT>(device) {}
+
+    void destroy() {
+        GPUMesh<MeshT>::destroy();
+        _draw_calls.clear();
+        _push_constants.clear();
+    }
+    void update(const MultiDraw<MeshT, PushConstantT>& multi_draw) {
+        GPUMesh<MeshT>::update(multi_draw);
+        _draw_calls     = multi_draw.draw_calls();
+        _push_constants = multi_draw.push_constants();
+    }
+    void update(MultiDraw<MeshT, PushConstantT>&& multi_draw) {
+        GPUMesh<MeshT>::update(multi_draw);
+        _draw_calls     = std::move(multi_draw.draw_calls());
+        _push_constants = std::move(multi_draw.push_constants());
+    }
+
+    auto&& draw_calls() { return _draw_calls; }
+    auto&& draw_calls() const { return _draw_calls; }
+    auto&& push_constants() { return _push_constants; }
+    auto&& push_constants() const { return _push_constants; }
+};
+
+template <typename MeshT>
+struct MultiDraw<GPUMesh<MeshT>, void> : public GPUMesh<MeshT> {
+   private:
+    std::vector<DrawCall> _draw_calls;
+
+   public:
+    MultiDraw(backend::Device& device) : GPUMesh<MeshT>(device) {}
+
+    void destroy() {
+        GPUMesh<MeshT>::destroy();
+        _draw_calls.clear();
+    }
+    void update(const MultiDraw<MeshT, void>& multi_draw) {
+        GPUMesh<MeshT>::update(multi_draw);
+        _draw_calls = multi_draw.draw_calls();
+    }
+    void update(MultiDraw<MeshT, void>&& multi_draw) {
+        GPUMesh<MeshT>::update(multi_draw);
+        _draw_calls = std::move(multi_draw.draw_calls());
+    }
+
+    auto&& draw_calls() { return _draw_calls; }
+    auto&& draw_calls() const { return _draw_calls; }
+};
+
+template <typename MeshT, typename PushConstantT>
+struct MultiDraw<GPUMesh<StagingMesh<MeshT>>, PushConstantT>
+    : public GPUMesh<StagingMesh<MeshT>> {
+   private:
+    std::vector<DrawCall> _draw_calls;
+    std::vector<PushConstantT> _push_constants;
+
+   public:
+    MultiDraw(backend::Device& device) : GPUMesh<StagingMesh<MeshT>>(device) {}
+
+    void destroy() {
+        GPUMesh<StagingMesh<MeshT>>::destroy();
+        _draw_calls.clear();
+        _push_constants.clear();
+    }
+    void update(
+        const MultiDraw<StagingMesh<MeshT>, PushConstantT>& multi_draw,
+        backend::CommandBuffer& cmd
+    ) {
+        GPUMesh<StagingMesh<MeshT>>::update(multi_draw, cmd);
+        _draw_calls     = multi_draw.draw_calls();
+        _push_constants = multi_draw.push_constants();
+    }
+    void update(
+        MultiDraw<StagingMesh<MeshT>, PushConstantT>&& multi_draw,
+        backend::CommandBuffer& cmd
+    ) {
+        GPUMesh<StagingMesh<MeshT>>::update(multi_draw, cmd);
+        _draw_calls     = std::move(multi_draw.draw_calls());
+        _push_constants = std::move(multi_draw.push_constants());
+    }
+
+    auto&& draw_calls() { return _draw_calls; }
+    auto&& draw_calls() const { return _draw_calls; }
+    auto&& push_constants() { return _push_constants; }
+    auto&& push_constants() const { return _push_constants; }
+};
+
+template <typename MeshT>
+struct MultiDraw<GPUMesh<StagingMesh<MeshT>>, void>
+    : public GPUMesh<StagingMesh<MeshT>> {
+   private:
+    std::vector<DrawCall> _draw_calls;
+
+   public:
+    MultiDraw(backend::Device& device) : GPUMesh<StagingMesh<MeshT>>(device) {}
+
+    void destroy() {
+        GPUMesh<StagingMesh<MeshT>>::destroy();
+        _draw_calls.clear();
+    }
+    void update(
+        const MultiDraw<StagingMesh<MeshT>, void>& multi_draw,
+        backend::CommandBuffer& cmd
+    ) {
+        GPUMesh<StagingMesh<MeshT>>::update(multi_draw, cmd);
+        _draw_calls = multi_draw.draw_calls();
+    }
+    void update(
+        MultiDraw<StagingMesh<MeshT>, void>&& multi_draw,
+        backend::CommandBuffer& cmd
+    ) {
+        GPUMesh<StagingMesh<MeshT>>::update(multi_draw, cmd);
+        _draw_calls = std::move(multi_draw.draw_calls());
+    }
+
+    auto&& draw_calls() { return _draw_calls; }
+    auto&& draw_calls() const { return _draw_calls; }
+};
+
 struct Subpass;
 struct PassBase;
 struct Pass;
@@ -1254,6 +1579,63 @@ struct Subpass {
         }
     }
 
+    template <typename MeshT, typename PushConstantT>
+    void draw(const MultiDraw<GPUMesh<MeshT>, PushConstantT>& multi_draw_mesh) {
+        auto& mesh = multi_draw_mesh;
+        if (_active_pipeline == -1) {
+            spdlog::warn("Subpass::draw called without activating pipeline");
+            return;
+        }
+        auto pipeline = _pipelines[_active_pipeline];
+        std::vector<vk::DeviceSize> offsets(mesh.vertex_buffers().size(), 0);
+        std::vector<vk::Buffer> buffers;
+        buffers.reserve(mesh.vertex_buffers().size());
+        for (auto& buffer : mesh.vertex_buffers()) {
+            buffers.push_back(buffer.buffer);
+        }
+        _cmd.bindVertexBuffers(0, buffers, offsets);
+        bool draw_indexed = mesh.index_buffer() && mesh.index_count();
+        if (draw_indexed) {
+            _cmd.bindIndexBuffer(
+                mesh.index_buffer().buffer, 0, mesh.index_type()
+            );
+        }
+        for (auto& draw_call : mesh.draw_calls()) {
+            if (pipeline->push_constant_stage != vk::ShaderStageFlags(0)) {
+                if constexpr (!std::same_as<PushConstantT, void>) {
+                    _cmd.pushConstants(
+                        pipeline->pipeline_layout,
+                        pipeline->push_constant_stage, 0, sizeof(PushConstantT),
+                        &mesh.push_constants()[draw_call.constant_index]
+                    );
+                } else {
+                    spdlog::warn(
+                        "Push constant block is defined in pipeline, but no "
+                        "push constant data provided by this MultiDraw mesh "
+                        "type."
+                    );
+                }
+            } else if constexpr (!std::same_as<PushConstantT, void>) {
+                spdlog::warn(
+                    "No push constant block for in this pipeline, ignoring "
+                    "provided push constant data."
+                );
+            }
+            if (draw_indexed) {
+                _cmd.drawIndexed(
+                    draw_call.index_count, draw_call.instance_count,
+                    draw_call.first_index, draw_call.vertex_offset,
+                    draw_call.instance_offset
+                );
+            } else {
+                _cmd.draw(
+                    draw_call.vertex_count, draw_call.instance_count,
+                    draw_call.vertex_offset, draw_call.instance_offset
+                );
+            }
+        }
+    }
+
     friend struct Pass;
 };
 
@@ -1321,9 +1703,9 @@ struct Pass {
         vk::Extent2D extent
     );
 
-    template <typename... Verts>
+    template <typename MeshT>
     void update_mesh(
-        GPUMesh<StagingMesh<Verts...>>& dst, const StagingMesh<Verts...>& src
+        GPUMesh<StagingMesh<MeshT>>& dst, const StagingMesh<MeshT>& src
     ) {
         if (!recording) {
             spdlog::warn(
@@ -1336,6 +1718,42 @@ struct Pass {
             return;
         }
         dst.update(src, _cmd);
+    }
+
+    template <typename MeshT, typename PushConstantT>
+    void update_mesh(
+        MultiDraw<GPUMesh<StagingMesh<MeshT>>, PushConstantT>& dst,
+        const MultiDraw<StagingMesh<MeshT>, PushConstantT>& src
+    ) {
+        if (!recording) {
+            spdlog::warn(
+                "Pass::update_mesh called outside of recording context."
+            );
+            return;
+        }
+        if (in_render_pass) {
+            spdlog::warn("Pass::update_mesh called inside of render pass.");
+            return;
+        }
+        dst.update(src, _cmd);
+    }
+
+    template <typename MeshT, typename PushConstantT>
+    void update_mesh(
+        MultiDraw<GPUMesh<StagingMesh<MeshT>>, PushConstantT>& dst,
+        MultiDraw<StagingMesh<MeshT>, PushConstantT>&& src
+    ) {
+        if (!recording) {
+            spdlog::warn(
+                "Pass::update_mesh called outside of recording context."
+            );
+            return;
+        }
+        if (in_render_pass) {
+            spdlog::warn("Pass::update_mesh called inside of render pass.");
+            return;
+        }
+        dst.update(std::move(src), _cmd);
     }
 
     EPIX_API Subpass& next_subpass();
