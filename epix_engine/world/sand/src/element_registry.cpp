@@ -7,7 +7,9 @@ using namespace epix::world::sand::components;
 static std::shared_ptr<spdlog::logger> elem_registry_logger =
     spdlog::default_logger()->clone("elem_registry");
 
-EPIX_API ElemRegistry::ElemRegistry() {}
+EPIX_API ElemRegistry::ElemRegistry() {
+    register_elem(Element::place_holder());
+}
 EPIX_API ElemRegistry::ElemRegistry(const ElemRegistry& other)
     : elemId_map(other.elemId_map), elements(other.elements) {}
 EPIX_API ElemRegistry::ElemRegistry(ElemRegistry&& other)

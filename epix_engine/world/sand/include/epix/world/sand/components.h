@@ -14,6 +14,7 @@
 #include "epix/utils/grid.h"
 
 namespace epix::world::sand::components {
+struct ElemRegistry;
 struct Element {
    private:
     enum class GravType : uint8_t {
@@ -21,6 +22,8 @@ struct Element {
         LIQUID,
         SOLID,
         GAS,
+        PLACEHOLDER  // for cells that are occupied by non-elemental entities
+                     // e.g. bodies
     } grav_type = GravType::SOLID;
 
    public:
@@ -33,6 +36,9 @@ struct Element {
 
    private:
     std::function<glm::vec4()> color_gen;
+    EPIX_API static Element place_holder();
+
+    friend struct ElemRegistry;
 
    public:
     EPIX_API Element(const std::string& name, GravType type);
@@ -57,9 +63,10 @@ struct Element {
     EPIX_API bool is_liquid() const;
     EPIX_API bool is_powder() const;
     EPIX_API bool is_gas() const;
+    EPIX_API bool is_place_holder() const;
 };
 struct CellDef {
-    enum class DefIdentifier { Name, Id } identifier;
+    enum class DefIdentifier { Name, Id, None } identifier;
     glm::vec2 default_vel;
     union {
         std::string elem_name;
@@ -80,9 +87,16 @@ struct Cell {
     glm::vec2 velocity;
     glm::vec2 inpos;
     // glm::vec2 impact;
-    bool freefall;
-    bool updated;
     int not_move_count = 0;
+    uint8_t bitfield;
+
+    static constexpr uint8_t FREEFALL = 1 << 0;
+    static constexpr uint8_t UPDATED  = 1 << 1;
+
+    EPIX_API bool freefall() const;
+    EPIX_API void set_freefall(bool freefall);
+    EPIX_API bool updated() const;
+    EPIX_API void set_updated(bool updated);
 
     EPIX_API bool valid() const;
     EPIX_API operator bool() const;
@@ -113,7 +127,7 @@ struct ElemRegistry {
 };
 struct Simulation {
     struct Chunk {
-        using Grid = epix::utils::grid::sparse_linked_grid<Cell, 2>;
+        using Grid = epix::utils::grid::sparse_grid<Cell, 2>;
         Grid cells;
         const int width;
         const int height;
@@ -264,7 +278,7 @@ struct Simulation {
     } m_updating_state;
     struct PowderSlideSetting {
         bool always_slide = true;
-        float prefix      = 0.07f;
+        float prefix      = 0.05f;
     } powder_slide_setting;
     // settings
 

@@ -16,6 +16,12 @@ EPIX_API Element Element::powder(const std::string& name) {
 EPIX_API Element Element::gas(const std::string& name) {
     return Element(name, GravType::GAS);
 }
+EPIX_API Element Element::place_holder() {
+    return Element("<=PLACE_HOLDER=>", GravType::PLACEHOLDER)
+        .set_color([]() { return glm::vec4(0.0f, 0.0f, 0.0f, 0.0f); })
+        .set_density(1000.0f)
+        .set_description("PLACE_HOLDER");
+}
 EPIX_API Element& Element::set_grav_type(GravType type) {
     grav_type = type;
     return *this;
@@ -58,7 +64,10 @@ EPIX_API bool Element::operator==(const Element& other) const {
 EPIX_API bool Element::operator!=(const Element& other) const {
     return name != other.name;
 }
-EPIX_API bool Element::is_solid() const { return grav_type == GravType::SOLID; }
+EPIX_API bool Element::is_solid() const {
+    return grav_type == GravType::SOLID || grav_type == GravType::PLACEHOLDER;
+    // placeholder is also viewed as solid
+}
 EPIX_API bool Element::is_liquid() const {
     return grav_type == GravType::LIQUID;
 }
@@ -66,3 +75,6 @@ EPIX_API bool Element::is_powder() const {
     return grav_type == GravType::POWDER;
 }
 EPIX_API bool Element::is_gas() const { return grav_type == GravType::GAS; }
+EPIX_API bool Element::is_place_holder() const {
+    return grav_type == GravType::PLACEHOLDER;
+}
