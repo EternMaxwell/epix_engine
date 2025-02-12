@@ -586,7 +586,7 @@ using namespace epix::world::sand;
 using namespace epix::world::sand::components;
 
 constexpr int CHUNK_SIZE                = 16;
-constexpr float scale                   = 1.0f;
+constexpr float scale                   = 2.0f;
 constexpr bool enable_collision         = true;
 constexpr bool render_collision_outline = false;
 
@@ -804,7 +804,7 @@ void update_simulation(
     }
     auto [simulation, sim_collisions] = query.single();
     auto count                        = timer->value().tick();
-    for (int i = 0; i <= count; i++) {
+    for (int i = 0; i < count; i++) {
         ZoneScopedN("Update simulation");
         simulation.update_multithread((float)timer->value().interval);
         if constexpr (enable_collision) {
@@ -862,7 +862,8 @@ void render_simulation(
         int offset_y = pos.y * simulation.chunk_size();
         for (auto&& [cell_pos, cell] : chunk.cells.view()) {
             mesh->draw_pixel(
-                {cell_pos[0] + offset_x, cell_pos[1] + offset_y}, cell.color
+                {cell_pos[0] + offset_x, cell_pos[1] + offset_y},
+                cell.freefall() ? cell.color : cell.color * 0.5f
             );
         }
     }
@@ -896,7 +897,7 @@ void print_hover_data(
         spdlog::info(
             "Hovering over cell ({}, {}) with element {}, freefall: {}, "
             "velocity: ({}, {}) ",
-            cell_x, cell_y, elem.name, cell.freefall, cell.velocity.x,
+            cell_x, cell_y, elem.name, cell.freefall(), cell.velocity.x,
             cell.velocity.y
         );
     }

@@ -561,16 +561,25 @@ struct packed_grid<bool, D, boolify<bool>> {
 };
 template <size_t D>
 using binary_grid = packed_grid<bool, D, boolify<bool>>;
+
+struct index_boolify {
+    bool operator()(int64_t i) const { return i >= 0; }
+};
+
 template <typename T, size_t D>
 struct sparse_grid {
    private:
-    struct index_boolify {
-        bool operator()(int64_t index) const { return index != -1; }
-    };
-
     packed_grid<int64_t, D, index_boolify> _index_grid;
     std::vector<T> _data;
     std::vector<std::array<int, D>> _pos;
+    std::function<void(sparse_grid&, const std::array<int, D>&)>
+        _on_remove_success;
+    std::function<void(sparse_grid&, const std::array<int, D>&)>
+        _on_emplace_success;
+    std::function<void(sparse_grid&, const std::array<int, D>&)>
+        _on_remove_fail;
+    std::function<void(sparse_grid&, const std::array<int, D>&)>
+        _on_emplace_fail;
 
     struct view_t {
         sparse_grid& _grid;
@@ -645,6 +654,46 @@ struct sparse_grid {
         _pos        = std::move(other._pos);
         return *this;
     }
+
+    void set_on_remove_success(
+        const std::function<void(sparse_grid&, const std::array<int, D>&)>&
+            on_remove_success
+    ) {
+        _on_remove_success = on_remove_success;
+    }
+    void set_on_emplace_success(
+        const std::function<void(sparse_grid&, const std::array<int, D>&)>&
+            on_emplace_success
+    ) {
+        _on_emplace_success = on_emplace_success;
+    }
+    void set_on_remove_fail(
+        const std::function<void(sparse_grid&, const std::array<int, D>&)>&
+            on_remove_fail
+    ) {
+        _on_remove_fail = on_remove_fail;
+    }
+    void set_on_emplace_fail(
+        const std::function<void(sparse_grid&, const std::array<int, D>&)>&
+            on_emplace_fail
+    ) {
+        _on_emplace_fail = on_emplace_fail;
+    }
+    void set_on_remove(
+        const std::function<void(sparse_grid&, const std::array<int, D>&)>&
+            on_remove
+    ) {
+        set_on_remove_success(on_remove);
+        set_on_remove_fail(on_remove);
+    }
+    void set_on_emplace(
+        const std::function<void(sparse_grid&, const std::array<int, D>&)>&
+            on_emplace
+    ) {
+        set_on_emplace_success(on_emplace);
+        set_on_emplace_fail(on_emplace);
+    }
+
     template <typename... Args>
     void emplace_at(const std::array<int, D>& pos, Args&&... args) {
         assert(valid_at(pos));
@@ -655,6 +704,7 @@ struct sparse_grid {
             _pos.push_back(pos);
             _data.emplace_back(std::forward<Args>(args)...);
         }
+        if (_on_emplace_success) _on_emplace_success(*this, pos);
     }
     template <typename... Args, size_t... I, size_t... J>
     void
@@ -674,10 +724,14 @@ struct sparse_grid {
     template <typename... Args>
     bool try_emplace_at(const std::array<int, D>& pos, Args&&... args) {
         assert(valid_at(pos));
-        if (_index_grid.contains_at(pos)) return false;
+        if (_index_grid.contains_at(pos)) {
+            if (_on_emplace_fail) _on_emplace_fail(*this, pos);
+            return false;
+        }
         _index_grid.emplace_at(pos, _data.size());
         _pos.push_back(pos);
         _data.emplace_back(std::forward<Args>(args)...);
+        if (_on_emplace_success) _on_emplace_success(*this, pos);
         return true;
     }
     template <typename... Args, size_t... I, size_t... J>
@@ -697,7 +751,10 @@ struct sparse_grid {
     }
 
     bool remove_at(const std::array<int, D>& pos) {
-        if (!_index_grid.contains_at(pos)) return false;
+        if (!_index_grid.contains_at(pos)) {
+            if (_on_remove_fail) _on_remove_fail(*this, pos);
+            return false;
+        }
         int64_t index = _index_grid.get_at(pos);
         std::swap(_data[index], _data.back());
         std::swap(_pos[index], _pos.back());
@@ -705,6 +762,7 @@ struct sparse_grid {
         _data.pop_back();
         _pos.pop_back();
         _index_grid.emplace_at(pos, -1);
+        if (_on_remove_success) _on_remove_success(*this, pos);
         return true;
     }
     template <typename... Args>
@@ -837,15 +895,20 @@ struct sparse_grid {
 template <typename T, size_t D>
 struct sparse_stable_grid {
    private:
-    struct index_boolify {
-        bool operator()(int64_t index) const { return index != -1; }
-    };
-
     packed_grid<int64_t, D, index_boolify> _index_grid;
     std::vector<T> _data;
     std::vector<bool> _occupied;
     std::vector<std::array<int, D>> _pos;
     std::stack<int> _free_indices;
+
+    std::function<void(sparse_stable_grid&, const std::array<int, D>&)>
+        _on_remove_success;
+    std::function<void(sparse_stable_grid&, const std::array<int, D>&)>
+        _on_emplace_success;
+    std::function<void(sparse_stable_grid&, const std::array<int, D>&)>
+        _on_remove_fail;
+    std::function<void(sparse_stable_grid&, const std::array<int, D>&)>
+        _on_emplace_fail;
 
     struct view_t {
         sparse_stable_grid& _grid;
@@ -952,6 +1015,50 @@ struct sparse_stable_grid {
         _free_indices = std::move(other._free_indices);
         return *this;
     }
+
+    void set_on_remove_success(
+        const std::function<
+            void(sparse_stable_grid&, const std::array<int, D>&)>&
+            on_remove_success
+    ) {
+        _on_remove_success = on_remove_success;
+    }
+    void set_on_emplace_success(
+        const std::function<
+            void(sparse_stable_grid&, const std::array<int, D>&)>&
+            on_emplace_success
+    ) {
+        _on_emplace_success = on_emplace_success;
+    }
+    void set_on_remove_fail(
+        const std::function<
+            void(sparse_stable_grid&, const std::array<int, D>&)>&
+            on_remove_fail
+    ) {
+        _on_remove_fail = on_remove_fail;
+    }
+    void set_on_emplace_fail(
+        const std::function<
+            void(sparse_stable_grid&, const std::array<int, D>&)>&
+            on_emplace_fail
+    ) {
+        _on_emplace_fail = on_emplace_fail;
+    }
+    void set_on_remove(
+        const std::function<
+            void(sparse_stable_grid&, const std::array<int, D>&)>& on_remove
+    ) {
+        set_on_remove_success(on_remove);
+        set_on_remove_fail(on_remove);
+    }
+    void set_on_emplace(
+        const std::function<
+            void(sparse_stable_grid&, const std::array<int, D>&)>& on_emplace
+    ) {
+        set_on_emplace_success(on_emplace);
+        set_on_emplace_fail(on_emplace);
+    }
+
     template <typename... Args>
     void emplace_at(const std::array<int, D>& pos, Args&&... args) {
         assert(valid_at(pos));
@@ -973,6 +1080,7 @@ struct sparse_stable_grid {
             }
             _index_grid.emplace_at(pos, index);
         }
+        if (_on_emplace_success) _on_emplace_success(*this, pos);
     }
     template <typename... Args, size_t... I, size_t... J>
     void
@@ -992,7 +1100,10 @@ struct sparse_stable_grid {
     template <typename... Args>
     bool try_emplace_at(const std::array<int, D>& pos, Args&&... args) {
         assert(valid_at(pos));
-        if (_index_grid.contains_at(pos)) return false;
+        if (_index_grid.contains_at(pos)) {
+            if (_on_emplace_fail) _on_emplace_fail(*this, pos);
+            return false;
+        }
         int index;
         if (_free_indices.empty()) {
             index = _data.size();
@@ -1007,6 +1118,7 @@ struct sparse_stable_grid {
             _pos[index]      = pos;
         }
         _index_grid.emplace_at(pos, index);
+        if (_on_emplace_success) _on_emplace_success(*this, pos);
         return true;
     }
     template <typename... Args, size_t... I, size_t... J>
@@ -1026,7 +1138,10 @@ struct sparse_stable_grid {
     }
 
     bool remove_at(const std::array<int, D>& pos) {
-        if (!_index_grid.contains_at(pos)) return false;
+        if (!_index_grid.contains_at(pos)) {
+            if (_on_remove_fail) _on_remove_fail(*this, pos);
+            return false;
+        }
         int index = _index_grid.get_at(pos);
         if (index == _data.size() - 1) {
             while (index >= 0 && !_occupied[index]) {
@@ -1039,6 +1154,7 @@ struct sparse_stable_grid {
         _occupied[index] = false;
         _free_indices.push(index);
         _index_grid.emplace_at(pos, -1);
+        if (_on_remove_success) _on_remove_success(*this, pos);
         return true;
     }
     template <typename... Args>
@@ -1130,10 +1246,6 @@ struct sparse_stable_grid {
 template <typename T, size_t D>
 struct sparse_linked_grid {
    private:
-    struct index_boolify {
-        bool operator()(int64_t index) const { return index != -1; }
-    };
-
     packed_grid<int64_t, D, index_boolify> _index_grid;
     std::vector<T> _data;
     std::vector<std::array<int, D>> _pos;
@@ -1141,6 +1253,15 @@ struct sparse_linked_grid {
     std::vector<int64_t> _prev;
     int64_t _head;
     int64_t _tail;
+
+    std::function<void(sparse_linked_grid&, const std::array<int, D>&)>
+        _on_remove_success;
+    std::function<void(sparse_linked_grid&, const std::array<int, D>&)>
+        _on_emplace_success;
+    std::function<void(sparse_linked_grid&, const std::array<int, D>&)>
+        _on_remove_fail;
+    std::function<void(sparse_linked_grid&, const std::array<int, D>&)>
+        _on_emplace_fail;
 
     struct view_t {
         sparse_linked_grid& _grid;
@@ -1239,6 +1360,50 @@ struct sparse_linked_grid {
         _tail       = other._tail;
         return *this;
     }
+
+    void set_on_remove_success(
+        const std::function<
+            void(sparse_linked_grid&, const std::array<int, D>&)>&
+            on_remove_success
+    ) {
+        _on_remove_success = on_remove_success;
+    }
+    void set_on_emplace_success(
+        const std::function<
+            void(sparse_linked_grid&, const std::array<int, D>&)>&
+            on_emplace_success
+    ) {
+        _on_emplace_success = on_emplace_success;
+    }
+    void set_on_remove_fail(
+        const std::function<
+            void(sparse_linked_grid&, const std::array<int, D>&)>&
+            on_remove_fail
+    ) {
+        _on_remove_fail = on_remove_fail;
+    }
+    void set_on_emplace_fail(
+        const std::function<
+            void(sparse_linked_grid&, const std::array<int, D>&)>&
+            on_emplace_fail
+    ) {
+        _on_emplace_fail = on_emplace_fail;
+    }
+    void set_on_remove(
+        const std::function<
+            void(sparse_linked_grid&, const std::array<int, D>&)>& on_remove
+    ) {
+        set_on_remove_success(on_remove);
+        set_on_remove_fail(on_remove);
+    }
+    void set_on_emplace(
+        const std::function<
+            void(sparse_linked_grid&, const std::array<int, D>&)>& on_emplace
+    ) {
+        set_on_emplace_success(on_emplace);
+        set_on_emplace_fail(on_emplace);
+    }
+
     template <typename... Args>
     void emplace_at(const std::array<int, D>& pos, Args&&... args) {
         assert(valid_at(pos));
@@ -1259,6 +1424,7 @@ struct sparse_linked_grid {
                 _head = index;
             }
         }
+        if (_on_emplace_success) _on_emplace_success(*this, pos);
     }
     template <typename... Args, size_t... I, size_t... J>
     void
@@ -1278,7 +1444,10 @@ struct sparse_linked_grid {
     template <typename... Args>
     bool try_emplace_at(const std::array<int, D>& pos, Args&&... args) {
         assert(valid_at(pos));
-        if (_index_grid.contains_at(pos)) return false;
+        if (_index_grid.contains_at(pos)) {
+            if (_on_emplace_fail) _on_emplace_fail(*this, pos);
+            return false;
+        }
         int index = _data.size();
         _index_grid.emplace_at(pos, index);
         _pos.push_back(pos);
@@ -1292,6 +1461,7 @@ struct sparse_linked_grid {
         if (_head == -1) {
             _head = index;
         }
+        if (_on_emplace_success) _on_emplace_success(*this, pos);
         return true;
     }
     template <typename... Args, size_t... I, size_t... J>
@@ -1345,7 +1515,10 @@ struct sparse_linked_grid {
     }
 
     bool remove_at(const std::array<int, D>& pos) {
-        if (!_index_grid.contains_at(pos)) return false;
+        if (!_index_grid.contains_at(pos)) {
+            if (_on_remove_fail) _on_remove_fail(*this, pos);
+            return false;
+        }
         int64_t index = _index_grid.get_at(pos);
         // before removing, exchange index with the last element of
         // the data array
@@ -1369,6 +1542,7 @@ struct sparse_linked_grid {
         _pos.pop_back();
         _next.pop_back();
         _prev.pop_back();
+        if (_on_remove_success) _on_remove_success(*this, pos);
         return true;
     }
     template <typename... Args>
@@ -1929,8 +2103,8 @@ std::vector<glm::ivec2> find_outline(
     };  // if dir is i then in ccw order, i+1 is the right pixel coord, i is
         // the left pixel coord, i = 0 means left.
     glm::ivec2 start(-1, -1);
-    for (int j = 0; j < pixelbin.size().y; j++) {
-        for (int i = 0; i < pixelbin.size().x; i++) {
+    for (int j = 0; j < pixelbin.size(1); j++) {
+        for (int i = 0; i < pixelbin.size(0); i++) {
             if (pixelbin.contains(i, j)) {
                 start = {i, j};
                 break;
@@ -2179,7 +2353,7 @@ template <typename T>
 std::vector<std::vector<std::vector<glm::ivec2>>> get_polygon_multi(
     const T& pixelbin, bool include_diagonal = false
 ) {
-    auto split_bin = split(Grid2D<bool>(pixelbin), include_diagonal);
+    auto split_bin = split(binary_grid2d(pixelbin), include_diagonal);
     std::vector<std::vector<std::vector<glm::ivec2>>> result;
     for (auto& bin : split_bin) {
         result.emplace_back(std::move(get_polygon(bin, include_diagonal)));
@@ -2272,10 +2446,6 @@ std::vector<std::vector<std::vector<glm::ivec2>>> get_polygon_simplified_multi(
 
 template <typename T, size_t D>
 struct extendable_grid {
-    struct index_boolify {
-        bool operator()(int64_t i) const { return i >= 0; }
-    };
-
     struct view_t {
         extendable_grid& grid;
         struct iterator {
@@ -2283,7 +2453,7 @@ struct extendable_grid {
             size_t index;
             iterator(extendable_grid& grid, int64_t index)
                 : grid(grid), index(index) {}
-            std::tuple<std::array<int, D>&, T&> operator*() {
+            std::tuple<const std::array<int, D>&, T&> operator*() {
                 return {grid._pos[index], grid._data[index]};
             }
             iterator& operator++() {
@@ -2336,17 +2506,27 @@ struct extendable_grid {
     std::vector<std::array<int, D>> _pos;
     std::array<int, D> _origin;
     std::array<std::vector<int>, D> _count_cache;
+
+    std::function<void(extendable_grid&, const std::array<int, D>&)>
+        _on_emplace_success;
+    std::function<void(extendable_grid&, const std::array<int, D>&)>
+        _on_emplace_fail;
+    std::function<void(extendable_grid&, const std::array<int, D>&)>
+        _on_remove_success;
+    std::function<void(extendable_grid&, const std::array<int, D>&)>
+        _on_remove_fail;
+
     int _Max(int axis) const {
         auto& _counts = _count_cache[axis];
         for (int i = grid_indices.size(axis) - 1; i >= 0; i--) {
-            if (_counts[i]) return i;
+            if (_counts[i] > 0) return i;
         }
         return 0;
     }
     int _Min(int axis) const {
         auto& _counts = _count_cache[axis];
         for (int i = 0; i < grid_indices.size(axis); i++) {
-            if (_counts[i]) return i;
+            if (_counts[i] > 0) return i;
         }
         return grid_indices.size(axis) - 1;
     }
@@ -2357,6 +2537,45 @@ struct extendable_grid {
     extendable_grid(extendable_grid&& other)                 = default;
     extendable_grid& operator=(const extendable_grid& other) = default;
     extendable_grid& operator=(extendable_grid&& other)      = default;
+
+    void set_on_emplace_success(
+        const std::function<void(extendable_grid&, const std::array<int, D>&)>&
+            on_emplace_success
+    ) {
+        _on_emplace_success = on_emplace_success;
+    }
+    void set_on_emplace_fail(
+        const std::function<void(extendable_grid&, const std::array<int, D>&)>&
+            on_emplace_fail
+    ) {
+        _on_emplace_fail = on_emplace_fail;
+    }
+    void set_on_remove_success(
+        const std::function<void(extendable_grid&, const std::array<int, D>&)>&
+            on_remove_success
+    ) {
+        _on_remove_success = on_remove_success;
+    }
+    void set_on_remove_fail(
+        const std::function<void(extendable_grid&, const std::array<int, D>&)>&
+            on_remove_fail
+    ) {
+        _on_remove_fail = on_remove_fail;
+    }
+    void set_on_emplace(
+        const std::function<void(extendable_grid&, const std::array<int, D>&)>&
+            on_emplace
+    ) {
+        set_on_emplace_success(on_emplace);
+        set_on_emplace_fail(on_emplace);
+    }
+    void set_on_remove(
+        const std::function<void(extendable_grid&, const std::array<int, D>&)>&
+            on_remove
+    ) {
+        set_on_remove_success(on_remove);
+        set_on_remove_fail(on_remove);
+    }
 
     bool empty() const { return _data.empty(); }
     size_t count() const { return _data.size(); }
@@ -2416,6 +2635,7 @@ struct extendable_grid {
         if (contains_at(pos)) {
             _data[grid_indices.get_at(pos - _origin)] =
                 T(std::forward<Args>(args)...);
+            if (_on_emplace_success) _on_emplace_success(*this, pos);
             return;
         }
         if (empty()) {
@@ -2424,6 +2644,11 @@ struct extendable_grid {
             _origin      = pos;
             grid_indices = packed_grid<int64_t, D, index_boolify>({1, 1}, -1);
             grid_indices.emplace_at(pos - _origin, 0);
+            for (int i = 0; i < D; i++) {
+                _count_cache[i].resize(1);
+                _count_cache[i][0] = 1;
+            }
+            if (_on_emplace_success) _on_emplace_success(*this, pos);
             return;
         }
         _data.emplace_back(std::forward<Args>(args)...);
@@ -2464,7 +2689,7 @@ struct extendable_grid {
             }
             for (int i = 0; i < D; i++) {
                 _count_cache[i].insert(_count_cache[i].begin(), diff[i], 0);
-                _count_cache[i].resize(new_indices.size(i));
+                _count_cache[i].resize(new_indices.size(i), 0);
             }
             grid_indices = std::move(new_indices);
         }
@@ -2473,6 +2698,7 @@ struct extendable_grid {
             _count_cache[i][pos[i] - _origin[i]]++;
         }
         grid_indices.emplace_at(pos - _origin, _data.size() - 1);
+        if (_on_emplace_success) _on_emplace_success(*this, pos);
     }
     template <typename... Args, size_t... I, size_t... J>
     void
@@ -2492,7 +2718,10 @@ struct extendable_grid {
 
     template <typename... Args>
     void try_emplace_at(const std::array<int, D>& pos, Args&&... args) {
-        if (contains_at(pos)) return;
+        if (contains_at(pos)) {
+            if (_on_emplace_fail) _on_emplace_fail(*this, pos);
+            return;
+        }
         emplace_at(pos, std::forward<Args>(args)...);
     }
     template <typename... Args, size_t... I, size_t... J>
@@ -2512,7 +2741,10 @@ struct extendable_grid {
     }
 
     void remove_at(const std::array<int, D>& pos) {
-        if (!contains_at(pos)) return;
+        if (!contains_at(pos)) {
+            if (_on_remove_fail) _on_remove_fail(*this, pos);
+            return;
+        }
         auto index = grid_indices.get_at(pos - _origin);
         std::swap(_data[index], _data.back());
         std::swap(_pos[index], _pos.back());
@@ -2520,6 +2752,10 @@ struct extendable_grid {
         _pos.pop_back();
         _data.pop_back();
         grid_indices.emplace_at(pos - _origin, -1);
+        for (int i = 0; i < D; i++) {
+            _count_cache[i][pos[i] - _origin[i]]--;
+        }
+        if (_on_remove_success) _on_remove_success(*this, pos);
     }
     template <typename... Args>
         requires(
@@ -2543,17 +2779,25 @@ struct extendable_grid {
             new_size[i]   = max - min + 1;
             new_origin[i] = min + _origin[i];
         }
-        std::array<int, D> diff = _origin - new_origin;
+        bool should_resize = false;
+        for (int i = 0; i < D; i++) {
+            if (new_size[i] != grid_indices.size(i)) {
+                should_resize = true;
+                break;
+            }
+        }
+        if (!should_resize) return;
+        std::array<int, D> diff = new_origin - _origin;
         packed_grid<int64_t, D, index_boolify> new_indices(new_size, -1);
         std::array<int, D> cur;
         cur.fill(0);
         bool should_break = false;
         while (!should_break) {
-            if (grid_indices.contains_at(cur)) {
-                new_indices.emplace_at(cur + diff, grid_indices.get_at(cur));
+            if (grid_indices.contains_at(cur + diff)) {
+                new_indices.emplace_at(cur, grid_indices.get_at(cur + diff));
             }
             for (int i = 0; i < D; i++) {
-                if (cur[i] < grid_indices.size(i) - 1) {
+                if (cur[i] < new_indices.size(i) - 1) {
                     cur[i]++;
                     break;
                 } else if (i < D - 1) {
@@ -2564,9 +2808,14 @@ struct extendable_grid {
             }
         }
         for (int i = 0; i < D; i++) {
-            _count_cache[i].insert(_count_cache[i].begin(), diff[i], 0);
-            _count_cache[i].resize(new_indices.size(i));
+            for (int j = 0; j < new_indices.size(i) &&
+                            j + diff[i] < _count_cache[i].size();
+                 j++) {
+                _count_cache[i][j] = _count_cache[i][j + diff[i]];
+            }
+            _count_cache[i].resize(new_indices.size(i), 0);
         }
+        _origin      = new_origin;
         grid_indices = std::move(new_indices);
     }
 
@@ -2590,7 +2839,7 @@ struct extendable_grid {
         result._data       = _data;
         result._pos        = _pos;
         std::for_each(result._pos.begin(), result._pos.end(), [&](auto& pos) {
-            pos -= _origin;
+            pos = pos - _origin;
         });
         return std::move(result);
     }
@@ -2603,7 +2852,7 @@ struct extendable_grid {
 
 template <typename T, size_t D>
 sparse_grid<T, D> into_sparse(const extendable_grid<T, D>& grid) {
-    return grid.move_into_sparse_grid();
+    return grid.copy_into_sparse_grid();
 }
 template <typename T, size_t D>
 sparse_grid<T, D> into_sparse(extendable_grid<T, D>&& grid) {

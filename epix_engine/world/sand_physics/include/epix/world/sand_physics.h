@@ -1,7 +1,6 @@
 #pragma once
 
 #include <box2d/box2d.h>
-#include <epix/physics2d.h>
 #include <epix/world/sand.h>
 
 #include <BS_thread_pool.hpp>

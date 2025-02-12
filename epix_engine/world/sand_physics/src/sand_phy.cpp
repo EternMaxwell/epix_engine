@@ -11,9 +11,10 @@ struct ChunkConverter {
         if (!chunk.contains(x, y)) return false;
         auto& cell = chunk.get(x, y);
         auto& elem = sim.registry().get_elem(cell.elem_id);
-        if (elem.is_solid()) return true;
+        if (elem.is_solid() && !elem.is_place_holder()) return true;
+        if (elem.is_place_holder()) return false;
         if (elem.is_gas() || elem.is_liquid()) return false;
-        if (elem.is_powder() && cell.freefall && should_update) return false;
+        if (elem.is_powder() && cell.freefall() && should_update) return false;
         return true;
     }
     glm::ivec2 size() const { return chunk.size(); }
