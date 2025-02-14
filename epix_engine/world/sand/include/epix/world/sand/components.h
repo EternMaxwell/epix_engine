@@ -1,9 +1,9 @@
 #pragma once
 
-#include <sparsepp/spp.h>
 #include <spdlog/spdlog.h>
 
 #include <BS_thread_pool.hpp>
+#include <entt/entity/registry.hpp>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <mutex>
@@ -105,7 +105,7 @@ struct Cell {
 struct ElemRegistry {
    private:
     // mutable std::shared_mutex mutex;
-    spp::sparse_hash_map<std::string, uint32_t> elemId_map;
+    entt::dense_map<std::string, uint32_t> elemId_map;
     std::vector<Element> elements;
 
    public:

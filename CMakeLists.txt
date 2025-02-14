@@ -25,7 +25,6 @@ add_library(BSThreadPool INTERFACE)
 target_include_directories(BSThreadPool INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/libs/thread-pool/include)
 
 add_subdirectory (libs/entt)
-add_subdirectory (libs/sparsepp)
 add_subdirectory (libs/glad)
 add_subdirectory (libs/glfw)
 add_subdirectory (libs/spdlog)

@@ -14,14 +14,9 @@ target_include_directories(${PROJNAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/includ
 
 set_target_properties(${PROJNAME} PROPERTIES CXX_STANDARD 20)
 
-target_link_libraries (${PROJNAME} PUBLIC epix)
-target_link_libraries (${PROJNAME} PUBLIC VulkanMemoryAllocator)
-target_link_libraries (${PROJNAME} PUBLIC epix::imgui)
-target_link_libraries (${PROJNAME} PUBLIC epix::physics::2d)
-target_link_libraries (${PROJNAME} PUBLIC box2d)
 target_link_libraries (${PROJNAME} PUBLIC earcut.hpp)
 
-target_link_libraries (${PROJNAME} PRIVATE epix_engine)
+target_link_libraries (${PROJNAME} PRIVATE epix)
 # target_compile_definitions(${PROJNAME} PRIVATE EPIX_SHARED)
 # add_custom_command(TARGET ${PROJNAME} POST_BUILD
 #   COMMAND ${CMAKE_COMMAND} -E copy 

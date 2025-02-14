@@ -5,7 +5,7 @@
 #include <GLFW/glfw3.h>
 #include <box2d/box2d.h>
 #include <epix/imgui.h>
-#include <epix/physics2d.h>
+#include <epix/pixel_b2d.h>
 #include <epix/world/sand_physics.h>
 #include <stb_image.h>
 
@@ -671,7 +671,7 @@ void create_simulation(Command command) {
     }
     command.spawn(
         std::move(simulation),
-        epix::world::sand_physics::SimulationCollisionGeneral{}
+        epix::world::sync::sand2b2d::SimulationCollisionGeneral{}
     );
 }
 
@@ -793,8 +793,8 @@ struct RepeatTimer {
 
 void update_simulation(
     Query<
-        Get<Simulation, epix::world::sand_physics::SimulationCollisionGeneral>>
-        query,
+        Get<Simulation,
+            epix::world::sync::sand2b2d::SimulationCollisionGeneral>> query,
     Local<std::optional<RepeatTimer>> timer
 ) {
     if (!query) return;
@@ -904,9 +904,9 @@ void print_hover_data(
 }
 
 void render_simulation_chunk_outline(
-    Extract<
-        Get<const Simulation,
-            const epix::world::sand_physics::SimulationCollisionGeneral>> query,
+    Extract<Get<
+        const Simulation,
+        const epix::world::sync::sand2b2d::SimulationCollisionGeneral>> query,
     ResMut<Box2dMesh> mesh
 ) {
     if (!query) return;
@@ -983,9 +983,9 @@ void render_simulation_chunk_outline(
 }
 
 void render_simulation_collision(
-    Extract<
-        Get<const Simulation,
-            const epix::world::sand_physics::SimulationCollisionGeneral>> query,
+    Extract<Get<
+        const Simulation,
+        const epix::world::sync::sand2b2d::SimulationCollisionGeneral>> query,
     ResMut<Box2dMesh> mesh
 ) {
     if (!query) return;
@@ -1070,8 +1070,8 @@ void toggle_input_state(
 
 void sync_simulatino_with_b2d(
     Query<
-        Get<epix::world::sand_physics::SimulationCollisionGeneral, Simulation>>
-        simulation_query,
+        Get<epix::world::sync::sand2b2d::SimulationCollisionGeneral,
+            Simulation>> simulation_query,
     Query<Get<b2WorldId>> world_query,
     Local<std::optional<RepeatTimer>> timer
 ) {

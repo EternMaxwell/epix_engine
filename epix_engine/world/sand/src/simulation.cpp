@@ -1052,6 +1052,11 @@ void epix::world::sand::components::update_cell(
             }
         }
     } else if (elem.is_liquid()) {
+        // we cannot calculate the pressure at each grid point,
+        // but we can calculate the pressure gradient by evaluating
+        // nearby grid points, and use this gradient to apply
+        // force that does the same thing as pressure.
+
         cell.set_freefall(true);
         if (!cell.freefall()) {
             float angle = std::atan2(grav.y, grav.x);
