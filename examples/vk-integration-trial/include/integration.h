@@ -6,7 +6,7 @@
 #include <box2d/box2d.h>
 #include <epix/imgui.h>
 #include <epix/pixel_b2d.h>
-#include <epix/world/sand_physics.h>
+#include <epix/world/sync/sand2b2d.h>
 #include <stb_image.h>
 
 #include <earcut.hpp>

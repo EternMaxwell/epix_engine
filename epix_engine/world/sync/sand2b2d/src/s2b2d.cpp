@@ -1,6 +1,6 @@
 #include <iostream>
 
-#include "epix/world/sand_physics.h"
+#include "epix/world/sync/sand2b2d.h"
 
 struct ChunkConverter {
     const epix::world::sand::components::Simulation& sim;
