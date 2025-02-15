@@ -70,80 +70,65 @@ struct pixelbin {
 };
 
 void create_b2d_world(Command command) {
-    b2WorldDef def = b2DefaultWorldDef();
-    def.gravity    = {0.0f, -29.8f};
-    auto world     = b2CreateWorld(&def);
-    command.spawn(world);
-}
-
-void create_ground(Command command, Query<Get<b2WorldId>> world_query) {
-    if (!world_query) return;
-    auto [world]         = world_query.single();
-    b2BodyDef body_def   = b2DefaultBodyDef();
-    body_def.type        = b2BodyType::b2_staticBody;
-    body_def.position    = {0.0f, -100.0f};
-    auto ground          = b2CreateBody(world, &body_def);
-    b2Polygon ground_box = b2MakeBox(1000.0f, 10.0f);
-    b2ShapeDef shape_def = b2DefaultShapeDef();
-    b2CreatePolygonShape(ground, &shape_def, &ground_box);
-    command.spawn(ground);
-}
-
-void create_dynamic(Command command, Query<Get<b2WorldId>> world_query) {
-    if (!world_query) return;
-    auto [world]          = world_query.single();
-    b2BodyDef body_def    = b2DefaultBodyDef();
-    body_def.type         = b2BodyType::b2_dynamicBody;
-    body_def.position     = {0.0f, 100.0f};
-    auto body             = b2CreateBody(world, &body_def);
-    b2Polygon box         = b2MakeBox(4.0f, 4.0f);
-    b2ShapeDef shape_def  = b2DefaultShapeDef();
-    shape_def.density     = 1.0f;
-    shape_def.friction    = 0.1f;
-    shape_def.restitution = 0.9f;
-    b2CreatePolygonShape(body, &shape_def, &box);
-    command.spawn(body);
+    epix::world::px_phy2d::PixPhyWorld world;
+    world.create();
+    command.spawn(std::move(world));
 }
 
 using namespace epix::input;
 
+constexpr int CHUNK_SIZE                = 16;
+constexpr float scale                   = 2.0f;
+constexpr bool render_collision_outline = false;
+constexpr float pixel_size              = 0.1f;
+
 void create_dynamic_from_click(
     Command command,
-    Query<Get<b2WorldId>> world_query,
-    Query<
-        Get<const Window,
-            const ButtonInput<MouseButton>,
-            const ButtonInput<KeyCode>>> window_query,
-    ResMut<epix::imgui::ImGuiContext> imgui_context
+    Query<Get<epix::world::px_phy2d::PixPhyWorld>> world_query,
+    Query<Get<const Window, const ButtonInput<MouseButton>>> window_query,
+    ResMut<epix::imgui::ImGuiContext> imgui_context,
+    Local<std::unique_ptr<epix::utils::grid::extendable_grid<
+        epix::world::sand::components::Cell,
+        2>>> cached_grid,
+    Local<glm::vec2> cached_pos
 ) {
     if (!world_query) return;
     if (!window_query) return;
-    auto [window, mouse_input, key_input] = window_query.single();
+    auto [window, mouse_input] = window_query.single();
+    auto [world]               = world_query.single();
+    bool create                = false;
     if (imgui_context.has_value()) {
         ImGui::SetCurrentContext(imgui_context->context);
-        if (ImGui::GetIO().WantCaptureMouse) return;
+        if (ImGui::GetIO().WantCaptureMouse) create = true;
     }
-    if (!mouse_input.pressed(epix::input::MouseButton1) &&
-        !key_input.just_pressed(epix::input::KeySpace))
+    if (!mouse_input.pressed(epix::input::MouseButton1)) create = true;
+    if (*cached_grid && create) {
+        // create body
         return;
-    auto [world]       = world_query.single();
-    b2BodyDef body_def = b2DefaultBodyDef();
-    body_def.type      = b2BodyType::b2_dynamicBody;
-    body_def.position  = {
-        (float)window.get_cursor().x - (float)window.get_size().width / 2.0f,
-        -(float)window.get_cursor().y + (float)window.get_size().height / 2.0f
-    };
-    spdlog::info(
-        "Creating body at {}, {}", body_def.position.x, body_def.position.y
-    );
-    auto body             = b2CreateBody(world, &body_def);
-    b2Polygon box         = b2MakeBox(4.0f, 4.0f);
-    b2ShapeDef shape_def  = b2DefaultShapeDef();
-    shape_def.density     = 1.0f;
-    shape_def.friction    = 0.6f;
-    shape_def.restitution = 0.1f;
-    b2CreatePolygonShape(body, &shape_def, &box);
-    command.spawn(body);
+    }
+    if (mouse_input.pressed(epix::input::MouseButton1)) {
+        glm::vec2 pos = {
+            (float)window.get_cursor().x -
+                (float)window.get_size().width / 2.0f,
+            -(float)window.get_cursor().y +
+                (float)window.get_size().height / 2.0f
+        };
+        pos /= scale;       // scale to world space;
+        pos *= pixel_size;  // 1 in b2d space equal to 10 pixel in sand space.
+                            // this pos should be in world space, and currently
+                            // the screen space is the same as the world space.
+        if (!(*cached_grid)) {
+            // create cache
+            *cached_grid = std::make_unique<epix::utils::grid::extendable_grid<
+                epix::world::sand::components::Cell, 2>>();
+            *cached_pos  = pos;
+        }
+        // add to the grid
+        auto diff = pos - *cached_pos;
+        int x     = std::round(diff.x / pixel_size);
+        int y     = std::round(diff.y / pixel_size);
+        return;
+    }
 }
 
 void toggle_full_screen(Query<Get<Window, ButtonInput<KeyCode>>> query) {
@@ -585,11 +570,6 @@ void update_mouse_joint(
 using namespace epix::world::sand;
 using namespace epix::world::sand::components;
 
-constexpr int CHUNK_SIZE                = 16;
-constexpr float scale                   = 2.0f;
-constexpr bool enable_collision         = true;
-constexpr bool render_collision_outline = false;
-
 void create_simulation(Command command) {
     spdlog::info("Creating falling sand simulation");
 
@@ -807,9 +787,7 @@ void update_simulation(
     for (int i = 0; i < count; i++) {
         ZoneScopedN("Update simulation");
         simulation.update_multithread((float)timer->value().interval);
-        if constexpr (enable_collision) {
-            sim_collisions.cache(simulation);
-        }
+        sim_collisions.cache(simulation);
         return;
     }
 }
@@ -1244,62 +1222,23 @@ void update_uniform_buffer(
     buffer.unmap();
 }
 
-struct Box2dTestPlugin : Plugin {
+struct SimulationPlugin : Plugin {
     void build(App& app) override {
-        using namespace epix;
-
-        app.enable_loop();
-        app.insert_state(SimulateState::Running);
-        app.add_system(Startup, create_b2d_world).chain();
-        app.add_system(PreUpdate, update_b2d_world)
-            .in_state(SimulateState::Running);
-        app.add_system(Update, toggle_input_state);
-        app.add_system(Update, destroy_too_far_bodies, toggle_simulation);
-        if constexpr (enable_collision)
-            app.add_system(PostUpdate, sync_simulatino_with_b2d)
-                .in_state(SimulateState::Running);
-        app.add_system(Update, create_dynamic_from_click, update_mouse_joint)
-            .in_state(InputState::Body);
-        app.add_system(Extraction, render_bodies, render_simulation_collision);
-        app.add_system(Exit, destroy_b2d_world);
-    }
-};
-
-struct VK_TrialPlugin : Plugin {
-    void build(App& app) override {
-        auto window_plugin                   = app.get_plugin<WindowPlugin>();
-        window_plugin->primary_desc().width  = 1080;
-        window_plugin->primary_desc().height = 1080;
-        window_plugin->primary_desc().set_vsync(false);
-
-        using namespace epix;
-
-        app.enable_loop();
-        app.add_plugin(Box2dTestPlugin{});
-
-        app.insert_state(SimulateState::Paused);
-        app.insert_state(InputState::Simulation);
         app.add_system(Startup, create_simulation);
-        app.add_system(
-            Update, toggle_simulation /* ,
-             print_hover_data */
-        );
         app.add_system(Update, create_element_from_click)
             .in_state(InputState::Simulation);
         app.add_system(Update, update_simulation)
             .chain()
             .in_state(SimulateState::Running);
         app.add_system(Update, step_simulation).in_state(SimulateState::Paused);
-        app.add_system(PreUpdate, toggle_full_screen);
         app.add_system(
             Extraction, render_simulation, render_simulation_chunk_outline
         );
-        spdlog::info(
-            "conflict: {}",
-            epix::test_systems_conflict(
-                render_simulation, render_simulation_chunk_outline
-            )
-        );
+    }
+};
+
+struct RenderPassPlugin : Plugin {
+    void build(App& app) override {
         app.add_system(Startup, create_whole_pass_base, create_whole_pass)
             .chain();
         app.add_system(
@@ -1316,6 +1255,48 @@ struct VK_TrialPlugin : Plugin {
                destroy_sand_meshes
         )
             .chain();
+        app.add_system(PreUpdate, toggle_full_screen);
+    }
+};
+
+struct PixelB2dTestPlugin : Plugin {
+    void build(App& app) override {
+        app.add_system(Startup, create_b2d_world).chain();
+        app.add_system(PreUpdate, update_b2d_world)
+            .in_state(SimulateState::Running);
+        app.add_system(Update, destroy_too_far_bodies, toggle_simulation);
+        app.add_system(Update, create_dynamic_from_click, update_mouse_joint)
+            .in_state(InputState::Body);
+        app.add_system(Extraction, render_bodies);
+        app.add_system(Exit, destroy_b2d_world);
+    }
+};
+
+struct WorldSyncPlugin : Plugin {
+    void build(App& app) override {
+        app.add_system(PostUpdate, sync_simulatino_with_b2d)
+            .in_state(SimulateState::Running);
+        app.add_system(Extraction, render_simulation_collision);
+    }
+};
+
+struct VK_TrialPlugin : Plugin {
+    void build(App& app) override {
+        auto window_plugin                   = app.get_plugin<WindowPlugin>();
+        window_plugin->primary_desc().width  = 1080;
+        window_plugin->primary_desc().height = 1080;
+        window_plugin->primary_desc().set_vsync(false);
+
+        using namespace epix;
+
+        app.insert_state(SimulateState::Paused);
+        app.insert_state(InputState::Simulation);
+        app.add_system(Update, toggle_input_state);
+        app.add_system(Update, toggle_simulation);
+
+        app.add_plugin(RenderPassPlugin{});
+        app.add_plugin(SimulationPlugin{});
+        app.add_plugin(PixelB2dTestPlugin{});
     }
 };
 

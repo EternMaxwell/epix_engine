@@ -17,6 +17,7 @@ struct PixPhyWorld {
         glm::vec2 _pos;
         utils::grid::extendable_grid<Cell, 2> _grid;
         float _scale;
+        const epix::world::sand::components::ElemRegistry* _reg;
     };
     struct PixBody {
         b2BodyId _body;
@@ -69,12 +70,29 @@ struct PixPhyWorld {
             _free_bodies.pop();
         }
         auto body_def     = b2DefaultBodyDef();
+        body_def.type     = b2BodyType::b2_dynamicBody;
         body_def.position = {info._pos.x, info._pos.y};
         body_def.position.x += info._grid.origin(0) * info._scale;
         body_def.position.y += info._grid.origin(1) * info._scale;
         auto body         = b2CreateBody(_world, &body_def);
         auto _sparse_grid = utils::grid::into_sparse(std::move(info._grid));
-        auto outlines     = utils::grid::get_polygon_simplified(_sparse_grid);
+        float density = 0.f, friction = 0.f, restitution = 0.f;
+        {
+            int count  = 0;
+            auto&& reg = *info._reg;
+            for (auto&& [pos, cell] : _sparse_grid.view()) {
+                count++;
+                auto&& elem = reg.get_elem(cell.elem_id);
+                friction += elem.friction;
+                density += elem.density;
+                restitution += elem.bouncing;
+            }
+            if (!count) return;
+            friction /= count;
+            density /= count;
+            restitution /= count;
+        }
+        auto outlines = utils::grid::get_polygon_simplified(_sparse_grid);
         auto triangle_indices = mapbox::earcut(outlines);
         auto vertex_at        = [&](size_t i) {
             for (size_t x = 0; x < outlines.size(); x++) {
@@ -95,14 +113,27 @@ struct PixPhyWorld {
             float radius          = 0.0f;
             b2Polygon triangle    = b2MakePolygon(&hull, radius);
             b2ShapeDef shape_def  = b2DefaultShapeDef();
-            shape_def.density     = 1.0f;
-            shape_def.friction    = 0.1f;
-            shape_def.restitution = 0.9f;
+            shape_def.density     = density;
+            shape_def.friction    = friction;
+            shape_def.restitution = restitution;
             b2CreatePolygonShape(body, &shape_def, &triangle);
         }
         _bodies[index] =
             new PixBody(body, info._scale, std::move(_sparse_grid));
         return index;
+    }
+
+    void destroy_body(size_t index) {
+        if (_bodies[index]) {
+            delete _bodies[index];
+            _bodies[index] = nullptr;
+        }
+    }
+
+    void destroy() {
+        for (auto&& body : _bodies) {
+            if (body) delete body;
+        }
     }
 };
 }  // namespace epix::world::px_phy2d
