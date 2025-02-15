@@ -850,10 +850,40 @@ struct GPUMesh<StagingMesh<Mesh<VertT, Ts...>>> {
         auto& buffer = _vertex_buffers[I];
         resize_buffer<I>(mesh);
         if (buffer && _buffer_sizes[I] > 0) {
+            {
+                auto barrier =
+                    vk::BufferMemoryBarrier()
+                        .setBuffer(buffer)
+                        .setOffset(0)
+                        .setSize(_buffer_sizes[I])
+                        .setDstAccessMask(vk::AccessFlagBits::eTransferWrite)
+                        .setSrcAccessMask(
+                            vk::AccessFlagBits::eVertexAttributeRead
+                        );
+                cmd.pipelineBarrier(
+                    vk::PipelineStageFlagBits::eVertexInput,
+                    vk::PipelineStageFlagBits::eTransfer, {}, {}, barrier, {}
+                );
+            }
             cmd.copyBuffer(
                 mesh.vertex_buffer(I), buffer,
                 vk::BufferCopy().setSize(_buffer_sizes[I])
             );
+            {
+                auto barrier =
+                    vk::BufferMemoryBarrier()
+                        .setBuffer(buffer)
+                        .setOffset(0)
+                        .setSize(_buffer_sizes[I])
+                        .setSrcAccessMask(vk::AccessFlagBits::eTransferWrite)
+                        .setDstAccessMask(
+                            vk::AccessFlagBits::eVertexAttributeRead
+                        );
+                cmd.pipelineBarrier(
+                    vk::PipelineStageFlagBits::eTransfer,
+                    vk::PipelineStageFlagBits::eVertexInput, {}, {}, barrier, {}
+                );
+            }
         }
         if constexpr (I < sizeof...(Ts)) {
             update_buffers<I + 1>(mesh);
