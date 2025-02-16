@@ -586,7 +586,8 @@ struct sparse_grid {
         struct iterator {
             sparse_grid& grid;
             size_t index;
-            iterator(sparse_grid& grid, int index) : grid(grid), index(index) {}
+            iterator(sparse_grid& grid, size_t index)
+                : grid(grid), index(index) {}
             iterator& operator++() {
                 if (index < grid._data.size()) index++;
                 return *this;
@@ -610,7 +611,7 @@ struct sparse_grid {
         struct iterator {
             const sparse_grid& grid;
             size_t index;
-            iterator(const sparse_grid& grid, int index)
+            iterator(const sparse_grid& grid, size_t index)
                 : grid(grid), index(index) {}
             iterator& operator++() {
                 if (index < grid._data.size()) index++;
@@ -915,7 +916,7 @@ struct sparse_stable_grid {
         struct iterator {
             sparse_stable_grid& grid;
             size_t index;
-            iterator(sparse_stable_grid& grid, int index)
+            iterator(sparse_stable_grid& grid, size_t index)
                 : grid(grid), index(index) {}
             iterator& operator++() {
                 if (index < grid._data.size()) index++;
@@ -950,7 +951,7 @@ struct sparse_stable_grid {
         struct iterator {
             const sparse_stable_grid& grid;
             size_t index;
-            iterator(const sparse_stable_grid& grid, int index)
+            iterator(const sparse_stable_grid& grid, size_t index)
                 : grid(grid), index(index) {}
             iterator& operator++() {
                 if (index < grid._data.size()) index++;
@@ -1267,8 +1268,8 @@ struct sparse_linked_grid {
         sparse_linked_grid& _grid;
         struct iterator {
             sparse_linked_grid& grid;
-            int index;
-            iterator(sparse_linked_grid& grid, int index)
+            int64_t index;
+            iterator(sparse_linked_grid& grid, int64_t index)
                 : grid(grid), index(index) {}
             iterator& operator++() {
                 index = grid._next[index];
@@ -1293,8 +1294,8 @@ struct sparse_linked_grid {
         const sparse_linked_grid& _grid;
         struct iterator {
             const sparse_linked_grid& grid;
-            int index;
-            iterator(const sparse_linked_grid& grid, int index)
+            int64_t index;
+            iterator(const sparse_linked_grid& grid, int64_t index)
                 : grid(grid), index(index) {}
             iterator& operator++() {
                 index = grid._next[index];
@@ -2451,7 +2452,7 @@ struct extendable_grid {
         struct iterator {
             extendable_grid& grid;
             size_t index;
-            iterator(extendable_grid& grid, int64_t index)
+            iterator(extendable_grid& grid, size_t index)
                 : grid(grid), index(index) {}
             std::tuple<const std::array<int, D>&, T&> operator*() {
                 return {grid._pos[index], grid._data[index]};
@@ -2478,7 +2479,7 @@ struct extendable_grid {
         struct iterator {
             const extendable_grid& grid;
             size_t index;
-            iterator(const extendable_grid& grid, int64_t index)
+            iterator(const extendable_grid& grid, size_t index)
                 : grid(grid), index(index) {}
             std::tuple<const std::array<int, D>&, const T&> operator*() {
                 return {grid._pos[index], grid._data[index]};

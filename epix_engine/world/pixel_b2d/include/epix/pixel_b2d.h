@@ -14,8 +14,64 @@ struct PixPhyWorld {
 
     b2WorldId _world;
     struct PixBodyCreateInfo {
+        struct PixelDef {
+            enum class Type { NAME, ID } type;
+            union {
+                std::string name;
+                int id;
+            };
+
+            PixelDef(const std::string& name) : type(Type::NAME), name(name) {}
+            PixelDef(int id) : type(Type::ID), id(id) {}
+
+            PixelDef(const PixelDef& other) : type(other.type) {
+                if (type == Type::NAME) {
+                    new (&name) std::string(other.name);
+                } else {
+                    id = other.id;
+                }
+            }
+            PixelDef(PixelDef&& other) : type(other.type) {
+                if (type == Type::NAME) {
+                    new (&name) std::string(std::move(other.name));
+                } else {
+                    id = other.id;
+                }
+            }
+            PixelDef& operator=(const PixelDef& other) {
+                if (type == Type::NAME) {
+                    name.~basic_string();
+                }
+                type = other.type;
+                if (type == Type::NAME) {
+                    new (&name) std::string(other.name);
+                } else {
+                    id = other.id;
+                }
+                return *this;
+            }
+            PixelDef& operator=(PixelDef&& other) {
+                if (type == Type::NAME) {
+                    name.~basic_string();
+                }
+                type = other.type;
+                if (type == Type::NAME) {
+                    new (&name) std::string(std::move(other.name));
+                } else {
+                    id = other.id;
+                }
+                return *this;
+            }
+
+            ~PixelDef() {
+                if (type == Type::NAME) {
+                    name.~basic_string();
+                }
+            }
+        };
+
         glm::vec2 _pos;
-        utils::grid::extendable_grid<Cell, 2> _grid;
+        utils::grid::extendable_grid<PixelDef, 2> _grid;
         float _scale;
         const epix::world::sand::components::ElemRegistry* _reg;
     };
@@ -74,25 +130,43 @@ struct PixPhyWorld {
         body_def.position = {info._pos.x, info._pos.y};
         body_def.position.x += info._grid.origin(0) * info._scale;
         body_def.position.y += info._grid.origin(1) * info._scale;
-        auto body         = b2CreateBody(_world, &body_def);
-        auto _sparse_grid = utils::grid::into_sparse(std::move(info._grid));
+        auto body = b2CreateBody(_world, &body_def);
+        utils::grid::sparse_grid<Cell, 2> cell_grid(info._grid.size());
+        for (auto&& [r_pos, cell] : info._grid.view()) {
+            int id;
+            auto x = r_pos[0] - info._grid.origin(0);
+            auto y = r_pos[1] - info._grid.origin(1);
+            if (cell.type == PixBodyCreateInfo::PixelDef::Type::NAME) {
+                id = info._reg->elem_id(cell.name);
+            } else {
+                id = cell.id;
+            }
+            cell_grid.emplace(x, y, id, info._reg->get_elem(id).gen_color());
+        }
         float density = 0.f, friction = 0.f, restitution = 0.f;
         {
             int count  = 0;
             auto&& reg = *info._reg;
-            for (auto&& [pos, cell] : _sparse_grid.view()) {
+            for (auto&& [pos, def] : info._grid.view()) {
                 count++;
-                auto&& elem = reg.get_elem(cell.elem_id);
-                friction += elem.friction;
-                density += elem.density;
-                restitution += elem.bouncing;
+                if (def.type == PixBodyCreateInfo::PixelDef::Type::NAME) {
+                    auto&& elem = reg.get_elem(def.name);
+                    friction += elem.friction;
+                    density += elem.density;
+                    restitution += elem.bouncing;
+                } else {
+                    auto&& elem = reg.get_elem(def.id);
+                    friction += elem.friction;
+                    density += elem.density;
+                    restitution += elem.bouncing;
+                }
             }
-            if (!count) return;
+            if (!count) return index;
             friction /= count;
             density /= count;
             restitution /= count;
         }
-        auto outlines = utils::grid::get_polygon_simplified(_sparse_grid);
+        auto outlines         = utils::grid::get_polygon_simplified(cell_grid);
         auto triangle_indices = mapbox::earcut(outlines);
         auto vertex_at        = [&](size_t i) {
             for (size_t x = 0; x < outlines.size(); x++) {
@@ -118,8 +192,7 @@ struct PixPhyWorld {
             shape_def.restitution = restitution;
             b2CreatePolygonShape(body, &shape_def, &triangle);
         }
-        _bodies[index] =
-            new PixBody(body, info._scale, std::move(_sparse_grid));
+        _bodies[index] = new PixBody(body, info._scale, std::move(cell_grid));
         return index;
     }
 

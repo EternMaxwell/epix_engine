@@ -82,16 +82,16 @@ struct CellDef {
     EPIX_API ~CellDef();
 };
 struct Cell {
-    int elem_id     = -1;
-    glm::vec4 color = glm::vec4(0.0f);
-    glm::vec2 velocity;
-    glm::vec2 inpos;
-    // glm::vec2 impact;
+    int elem_id        = -1;
+    glm::vec4 color    = glm::vec4(0.0f);
+    glm::vec2 velocity = glm::vec2(0.0f);
+    glm::vec2 inpos    = glm::vec2(0.0f);
     int not_move_count = 0;
-    uint8_t bitfield;
+    uint8_t bitfield   = 0;
 
     static constexpr uint8_t FREEFALL = 1 << 0;
     static constexpr uint8_t UPDATED  = 1 << 1;
+    static constexpr uint8_t BURNING  = 1 << 2;
 
     EPIX_API bool freefall() const;
     EPIX_API void set_freefall(bool freefall);
