@@ -20,6 +20,7 @@ struct PixPhyWorld {
                 std::string name;
                 int id;
             };
+            std::optional<glm::vec4> color;
 
             PixelDef(const std::string& name) : type(Type::NAME), name(name) {}
             PixelDef(int id) : type(Type::ID), id(id) {}
@@ -60,6 +61,15 @@ struct PixPhyWorld {
                 } else {
                     id = other.id;
                 }
+                return *this;
+            }
+
+            PixelDef& set_color(const glm::vec4& color) {
+                this->color = color;
+                return *this;
+            }
+            PixelDef& set_color(float r, float g, float b, float a) {
+                this->color = glm::vec4{r, g, b, a};
                 return *this;
             }
 
@@ -141,7 +151,10 @@ struct PixPhyWorld {
             } else {
                 id = cell.id;
             }
-            cell_grid.emplace(x, y, id, info._reg->get_elem(id).gen_color());
+            cell_grid.emplace(
+                x, y, id,
+                cell.color ? *cell.color : info._reg->get_elem(id).gen_color()
+            );
         }
         float density = 0.f, friction = 0.f, restitution = 0.f;
         {
