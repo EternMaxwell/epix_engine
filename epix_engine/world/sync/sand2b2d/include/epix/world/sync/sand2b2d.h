@@ -164,5 +164,58 @@ struct SimulationCollisionGeneral
     EPIX_API void sync(const epix::world::sand::components::Simulation& sim);
     EPIX_API void sync(b2WorldId world, const PositionConverter& converter);
     // EPIX_API ~SimulationCollisionGeneral();
+
+    template <typename Arg = int>
+    void draw_debug_cache(std::function<void(Arg, Arg, Arg, Arg)>& draw_line) {
+        for (auto&& [pos, chunk] : collisions.view()) {
+            if (!chunk.has_collision) continue;
+            for (auto&& outlines : chunk.collisions) {
+                for (auto&& outline : outlines) {
+                    for (size_t i = 0; i < outline.size(); i++) {
+                        draw_line(
+                            outline[i].x, outline[i].y,
+                            outline[(i + 1) % outline.size()].x,
+                            outline[(i + 1) % outline.size()].y
+                        );
+                    }
+                }
+            }
+        }
+    }
+    template <typename Arg = float>
+    void draw_debug_b2d(std::function<void(Arg, Arg, Arg, Arg)>& draw_line) {
+        for (auto&& [pos, chunk] : collisions.view()) {
+            if (!chunk.has_collision) continue;
+            auto&& body = chunk.user_data.first;
+            if (!b2Body_IsValid(body)) continue;
+            auto shape_count = b2Body_GetShapeCount(body);
+            auto shapes      = new b2ShapeId[shape_count];
+            b2Body_GetShapes(body, shapes, shape_count);
+            for (int i = 0; i < shape_count; i++) {
+                auto shape = shapes[i];
+                if (b2Shape_GetType(shape) == b2ShapeType::b2_polygonShape) {
+                    auto polygon = b2Shape_GetPolygon(shape);
+                    for (size_t i = 0; i < polygon.count; i++) {
+                        auto& vertex1 = polygon.vertices[i];
+                        auto& vertex2 =
+                            polygon.vertices[(i + 1) % polygon.count];
+                        draw_line(vertex1.x, vertex1.y, vertex2.x, vertex2.y);
+                    }
+                } else if (b2Shape_GetType(shape) ==
+                           b2ShapeType::b2_smoothSegmentShape) {
+                    auto segment  = b2Shape_GetSmoothSegment(shape);
+                    auto& vertex1 = segment.segment.point1;
+                    auto& vertex2 = segment.segment.point2;
+                    draw_line(vertex1.x, vertex1.y, vertex2.x, vertex2.y);
+                } else if (b2Shape_GetType(shape) ==
+                           b2ShapeType::b2_segmentShape) {
+                    auto segment  = b2Shape_GetSegment(shape);
+                    auto& vertex1 = segment.point1;
+                    auto& vertex2 = segment.point2;
+                    draw_line(vertex1.x, vertex1.y, vertex2.x, vertex2.y);
+                }
+            }
+        }
+    }
 };
-}  // namespace epix::world::sand_physics
+}  // namespace epix::world::sync::sand2b2d
