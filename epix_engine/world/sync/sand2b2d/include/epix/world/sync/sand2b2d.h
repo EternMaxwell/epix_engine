@@ -166,7 +166,9 @@ struct SimulationCollisionGeneral
     // EPIX_API ~SimulationCollisionGeneral();
 
     template <typename Arg = int>
-    void draw_debug_cache(std::function<void(Arg, Arg, Arg, Arg)>& draw_line) {
+    void draw_debug_cache(
+        const std::function<void(Arg, Arg, Arg, Arg)>& draw_line
+    ) const {
         for (auto&& [pos, chunk] : collisions.view()) {
             if (!chunk.has_collision) continue;
             for (auto&& outlines : chunk.collisions) {
@@ -183,7 +185,8 @@ struct SimulationCollisionGeneral
         }
     }
     template <typename Arg = float>
-    void draw_debug_b2d(std::function<void(Arg, Arg, Arg, Arg)>& draw_line) {
+    void draw_debug_b2d(const std::function<void(Arg, Arg, Arg, Arg)>& draw_line
+    ) const {
         for (auto&& [pos, chunk] : collisions.view()) {
             if (!chunk.has_collision) continue;
             auto&& body = chunk.user_data.first;

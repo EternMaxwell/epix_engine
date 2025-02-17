@@ -971,6 +971,12 @@ void render_simulation_collision(
     ZoneScoped;
     auto [simulation, sim_collisions] = query.single();
     float alpha                       = 0.3f;
+    sim_collisions.draw_debug_b2d<float>([&](float x1, float y1, float x2,
+                                             float y2) {
+        mesh->draw_line(
+            {x1, y1, 0.0f}, {x2, y2, 0.0f}, {1.0f, 0.0f, 0.0f, alpha}
+        );
+    });
     for (auto&& [pos, chunk] : simulation.chunk_map()) {
         if (sim_collisions.collisions.contains(pos.x, pos.y)) {
             auto body =

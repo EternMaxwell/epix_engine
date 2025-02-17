@@ -73,9 +73,16 @@ struct PixPhyWorld {
             return *this;
         }
 
-        PixelDef& def(int x, int y) {
+        PixelDef& def(int x, int y, const std::string& name) {
             if (!_grid.contains(x, y)) {
-                _grid.emplace(x, y);
+                _grid.emplace(x, y, name);
+            }
+            return _grid.get(x, y);
+        }
+
+        PixelDef& def(int x, int y, int id) {
+            if (!_grid.contains(x, y)) {
+                _grid.emplace(x, y, id);
             }
             return _grid.get(x, y);
         }
