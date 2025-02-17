@@ -9,81 +9,80 @@
 #include "epix/world/sand.h"
 
 namespace epix::world::px_phy2d {
+struct PixelDef {
+    std::variant<std::string, int> type;
+    std::optional<glm::vec4> color;
+
+    PixelDef(const std::string& name) : type(name) {}
+    PixelDef(int id) : type(id) {}
+
+    PixelDef(const PixelDef& other) : type(other.type), color(other.color) {}
+    PixelDef(PixelDef&& other)
+        : type(std::move(other.type)), color(std::move(other.color)) {}
+    PixelDef& operator=(const PixelDef& other) {
+        type  = other.type;
+        color = other.color;
+        return *this;
+    }
+    PixelDef& operator=(PixelDef&& other) {
+        type  = std::move(other.type);
+        color = std::move(other.color);
+        return *this;
+    }
+
+    PixelDef& set_color(const glm::vec4& color) {
+        this->color = color;
+        return *this;
+    }
+    PixelDef& set_color(float r, float g, float b, float a) {
+        this->color = glm::vec4{r, g, b, a};
+        return *this;
+    }
+};
+
 struct PixPhyWorld {
     using Cell = epix::world::sand::components::Cell;
 
     b2WorldId _world;
     struct PixBodyCreateInfo {
-        struct PixelDef {
-            enum class Type { NAME, ID } type;
-            union {
-                std::string name;
-                int id;
-            };
-            std::optional<glm::vec4> color;
-
-            PixelDef(const std::string& name) : type(Type::NAME), name(name) {}
-            PixelDef(int id) : type(Type::ID), id(id) {}
-
-            PixelDef(const PixelDef& other) : type(other.type) {
-                if (type == Type::NAME) {
-                    new (&name) std::string(other.name);
-                } else {
-                    id = other.id;
-                }
-            }
-            PixelDef(PixelDef&& other) : type(other.type) {
-                if (type == Type::NAME) {
-                    new (&name) std::string(std::move(other.name));
-                } else {
-                    id = other.id;
-                }
-            }
-            PixelDef& operator=(const PixelDef& other) {
-                if (type == Type::NAME) {
-                    name.~basic_string();
-                }
-                type = other.type;
-                if (type == Type::NAME) {
-                    new (&name) std::string(other.name);
-                } else {
-                    id = other.id;
-                }
-                return *this;
-            }
-            PixelDef& operator=(PixelDef&& other) {
-                if (type == Type::NAME) {
-                    name.~basic_string();
-                }
-                type = other.type;
-                if (type == Type::NAME) {
-                    new (&name) std::string(std::move(other.name));
-                } else {
-                    id = other.id;
-                }
-                return *this;
-            }
-
-            PixelDef& set_color(const glm::vec4& color) {
-                this->color = color;
-                return *this;
-            }
-            PixelDef& set_color(float r, float g, float b, float a) {
-                this->color = glm::vec4{r, g, b, a};
-                return *this;
-            }
-
-            ~PixelDef() {
-                if (type == Type::NAME) {
-                    name.~basic_string();
-                }
-            }
-        };
-
+       private:
         glm::vec2 _pos;
         utils::grid::extendable_grid<PixelDef, 2> _grid;
         float _scale;
         const epix::world::sand::components::ElemRegistry* _reg;
+
+       public:
+        PixBodyCreateInfo& set_pos(const glm::vec2& pos) {
+            _pos = pos;
+            return *this;
+        }
+        PixBodyCreateInfo& set_grid(
+            utils::grid::extendable_grid<PixelDef, 2>&& grid
+        ) {
+            _grid = std::move(grid);
+            return *this;
+        }
+        PixBodyCreateInfo& set_scale(float scale) {
+            _scale = scale;
+            return *this;
+        }
+        PixBodyCreateInfo& set_reg(
+            const epix::world::sand::components::ElemRegistry& reg
+        ) {
+            _reg = &reg;
+            return *this;
+        }
+
+        PixelDef& def(int x, int y) {
+            if (!_grid.contains(x, y)) {
+                _grid.emplace(x, y);
+            }
+            return _grid.get(x, y);
+        }
+
+        utils::grid::extendable_grid<PixelDef, 2>& grid() { return _grid; }
+
+        friend struct PixPhyWorld;
     };
     struct PixBody {
         b2BodyId _body;
@@ -142,18 +141,18 @@ struct PixPhyWorld {
         body_def.position.y += info._grid.origin(1) * info._scale;
         auto body = b2CreateBody(_world, &body_def);
         utils::grid::sparse_grid<Cell, 2> cell_grid(info._grid.size());
-        for (auto&& [r_pos, cell] : info._grid.view()) {
+        for (auto&& [r_pos, def] : info._grid.view()) {
             int id;
             auto x = r_pos[0] - info._grid.origin(0);
             auto y = r_pos[1] - info._grid.origin(1);
-            if (cell.type == PixBodyCreateInfo::PixelDef::Type::NAME) {
-                id = info._reg->elem_id(cell.name);
+            if (std::holds_alternative<std::string>(def.type)) {
+                id = info._reg->elem_id(std::get<std::string>(def.type));
             } else {
-                id = cell.id;
+                id = std::get<int>(def.type);
             }
             cell_grid.emplace(
                 x, y, id,
-                cell.color ? *cell.color : info._reg->get_elem(id).gen_color()
+                def.color ? *def.color : info._reg->get_elem(id).gen_color()
             );
         }
         float density = 0.f, friction = 0.f, restitution = 0.f;
@@ -162,13 +161,13 @@ struct PixPhyWorld {
             auto&& reg = *info._reg;
             for (auto&& [pos, def] : info._grid.view()) {
                 count++;
-                if (def.type == PixBodyCreateInfo::PixelDef::Type::NAME) {
-                    auto&& elem = reg.get_elem(def.name);
+                if (std::holds_alternative<std::string>(def.type)) {
+                    auto&& elem = reg.get_elem(std::get<std::string>(def.type));
                     friction += elem.friction;
                     density += elem.density;
                     restitution += elem.bouncing;
                 } else {
-                    auto&& elem = reg.get_elem(def.id);
+                    auto&& elem = reg.get_elem(std::get<int>(def.type));
                     friction += elem.friction;
                     density += elem.density;
                     restitution += elem.bouncing;
