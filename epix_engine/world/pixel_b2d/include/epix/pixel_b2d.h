@@ -125,9 +125,8 @@ struct PixPhyWorld {
 
     PixPhyWorld() {}
     void create() {
-        auto world_def    = b2DefaultWorldDef();
-        world_def.gravity = {0.0f, -9.8f};
-        _world            = b2CreateWorld(&world_def);
+        auto world_def                   = b2DefaultWorldDef();
+        _world                           = b2CreateWorld(&world_def);
     }
 
     b2WorldId get_world() { return _world; }
@@ -223,7 +222,7 @@ struct PixPhyWorld {
     template <typename Arg = float>
     void draw_debug_shape(
         const std::function<void(Arg, Arg, Arg, Arg, bool)>& draw_line_shape
-    ) {
+    ) const {
         // draw the collision shapes.
         for (auto&& body : _bodies) {
             if (body) {
@@ -283,7 +282,7 @@ struct PixPhyWorld {
 
     template <typename Arg = float>
     void draw_debug_vel(const std::function<void(Arg, Arg, Arg, Arg)>& draw_func
-    ) {
+    ) const {
         for (auto&& body : _bodies) {
             if (body) {
                 auto id = body->_body;
@@ -300,7 +299,7 @@ struct PixPhyWorld {
         const std::function<void(const glm::mat4&, bool)>& each_body,
         const std::function<void(const glm::vec2&, const glm::vec4&)>&
             each_pixel
-    ) {
+    ) const {
         for (auto&& body : _bodies) {
             if (body) {
                 if (!b2Body_IsValid(body->_body)) continue;
@@ -323,16 +322,20 @@ struct PixPhyWorld {
         const glm::vec2&
             anchor,        // the corner of any pixel in the render target
         float pixel_size,  // pixel size in world space
-        const std::function<void(const glm::vec2&)>
-            each_body,  // left bottom of the draw grid aabb
+        const std::function<bool(const glm::vec2&, bool, size_t)>&
+            each_body,  // left bottom of the draw grid aabb, bool value control
+                        // whether to do further draw
         const std::function<void(const glm::vec2&, const glm::vec4&)>&
             each_pixel  // x, y related to anchor in world space
-    ) {
-        for (auto&& body : _bodies) {
+    ) const {
+        for (size_t i = 0; i < _bodies.size(); i++) {
+            auto body = _bodies[i];
             if (body) {
                 if (!b2Body_IsValid(body->_body)) continue;
                 auto pos = b2Body_GetPosition(body->_body);
-                each_body({pos.x, pos.y});
+                auto v =
+                    each_body({pos.x, pos.y}, b2Body_IsAwake(body->_body), i);
+                if (!v) continue;
                 auto rot  = b2Body_GetRotation(body->_body);
                 auto sinv = rot.s, cosv = rot.c;
                 // get the aabb of the grid in body

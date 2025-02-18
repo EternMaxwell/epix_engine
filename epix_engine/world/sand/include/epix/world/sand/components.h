@@ -28,7 +28,7 @@ struct Element {
 
    public:
     float density    = 0.0f;
-    float bouncing   = 0.0f;
+    float bouncing   = 0.1f;
     float friction   = 0.0f;
     float awake_rate = 1.0f;
     std::string name;

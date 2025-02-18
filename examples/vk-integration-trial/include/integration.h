@@ -6,6 +6,7 @@
 #include <box2d/box2d.h>
 #include <epix/imgui.h>
 #include <epix/pixel_b2d.h>
+#include <epix/world/sync/b2d2sand.h>
 #include <epix/world/sync/sand2b2d.h>
 #include <stb_image.h>
 
@@ -72,7 +73,8 @@ struct pixelbin {
 void create_b2d_world(Command command) {
     epix::world::pixel_b2d::PixPhyWorld world;
     world.create();
-    command.spawn(std::move(world));
+    epix::world::sync::b2d2sand::PixPhy2Simulation sync_er;
+    command.spawn(std::move(world), std::move(sync_er));
 }
 
 using namespace epix::input;
@@ -94,8 +96,8 @@ void create_test_body(
     info.set_reg(sim.registry());
     info.set_scale(scale);
     info.set_pos({0, 0});
-    for (int x = 0; x < 10; x++) {
-        for (int y = 0; y < 10; y++) {
+    for (int x = 0; x < 5; x++) {
+        for (int y = 0; y < 5; y++) {
             info.def(x, y, "wall");
         }
     }
@@ -381,32 +383,34 @@ void render_bodies(
     if (!mesh) return;
     ZoneScoped;
     auto [world] = query.single();
-    // world.draw_pixel_smooth(
-    //     [&](const glm::mat4& model, bool awake) {
-    //         mesh->next_call();
-    //         mesh->push_constant(glm::scale(model, {scale, scale, 1.0f}));
-    //     },
-    //     [&](const glm::vec2& pos, const glm::vec4& color) {
-    //         mesh->draw_pixel(pos, color);
-    //     }
-    // );
-    world.draw_pixel_rasterized(
-        {0.0f, 0.0f}, scale,
-        [&](const glm::vec2& pos) {
+    world.draw_pixel_smooth(
+        [&](const glm::mat4& model, bool awake) {
             mesh->next_call();
-            mesh->push_constant(
-                glm::scale(glm::mat4(1.0f), {scale, scale, 1.0f})
-            );
+            mesh->push_constant(glm::scale(model, {scale, scale, 1.0f}));
         },
         [&](const glm::vec2& pos, const glm::vec4& color) {
-            mesh->draw_pixel(pos / scale, color);
+            mesh->draw_pixel(pos, color);
         }
     );
+    // world.draw_pixel_rasterized(
+    //     {0.0f, 0.0f}, scale,
+    //     [&](const glm::vec2& pos, bool awake, size_t index) {
+    //         mesh->next_call();
+    //         mesh->push_constant(
+    //             glm::scale(glm::mat4(1.0f), {scale, scale, 1.0f})
+    //         );
+    //         return true;
+    //     },
+    //     [&](const glm::vec2& pos, const glm::vec4& color) {
+    //         mesh->draw_pixel(pos / scale, color);
+    //     }
+    // );
     mesh->next_call();
     world.draw_debug_shape<float>([&](auto x1, auto y1, auto x2, auto y2,
                                       bool awake) {
         box2d_mesh->draw_line(
-            {x1, y1, 0.0f}, {x2, y2, 0.0f}, {1.0f, 0.0f, 0.0f, 1.0f}
+            {x1, y1, 0.0f}, {x2, y2, 0.0f},
+            {awake ? 0.0f : 1.0f, awake ? 1.0f : 0.0f, 0.0f, 1.0f}
         );
     });
     // velocity
@@ -1028,6 +1032,24 @@ void sync_simulatino_with_b2d(
     }
 }
 
+void sync_b2d_with_simulation(
+    Query<
+        Get<const epix::world::pixel_b2d::PixPhyWorld,
+            epix::world::sync::b2d2sand::PixPhy2Simulation>> b2d_query,
+    Query<Get<Simulation>> simulation_query
+) {
+    if (!b2d_query) return;
+    if (!simulation_query) return;
+    auto [world, sync] = b2d_query.single();
+    auto [simulation]  = simulation_query.single();
+    ZoneScoped;
+    auto pos_converter =
+        epix::world::sync::b2d2sand::PixPhy2Simulation::PosConverter(
+            {0.0f, 0.0f}, scale
+        );
+    sync.sync(world, simulation, pos_converter);
+}
+
 void draw_meshes(
     ResMut<RenderContext> context,
     ResMut<Box2dMeshGPU> b2d_gpu_mesh,
@@ -1232,9 +1254,15 @@ struct PixelB2dTestPlugin : Plugin {
 
 struct WorldSyncPlugin : Plugin {
     void build(App& app) override {
+        // === simulation to b2d === //
         app.add_system(PostUpdate, sync_simulatino_with_b2d)
             .in_state(SimulateState::Running);
         app.add_system(Extraction, render_simulation_collision);
+        // === b2d to simulation === //
+        app.add_system(Update, sync_b2d_with_simulation)
+            .after(update_b2d_world)
+            .before(update_simulation)
+            .in_state(SimulateState::Running);
     }
 };
 
