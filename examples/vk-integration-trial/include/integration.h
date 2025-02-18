@@ -82,6 +82,25 @@ constexpr float scale                   = 2.0f;
 constexpr bool render_collision_outline = false;
 constexpr float pixel_size              = 0.1f;
 
+void create_test_body(
+    Query<Get<epix::world::pixel_b2d::PixPhyWorld>> world_query,
+    Query<Get<const epix::world::sand::components::Simulation>> sim_query
+) {
+    if (!world_query) return;
+    if (!sim_query) return;
+    auto [world] = world_query.single();
+    auto [sim]   = sim_query.single();
+    epix::world::pixel_b2d::PixPhyWorld::PixBodyCreateInfo info;
+    info.set_reg(sim.registry());
+    info.set_scale(scale);
+    for (int x; x < 10; x++) {
+        for (int y; y < 10; y++) {
+            info.def(x, y, "wall");
+        }
+    }
+    world.create_body(info);
+}
+
 void create_dynamic_from_click(
     Command command,
     Query<Get<epix::world::pixel_b2d::PixPhyWorld>> world_query,
@@ -1171,6 +1190,7 @@ struct RenderPassPlugin : Plugin {
 struct PixelB2dTestPlugin : Plugin {
     void build(App& app) override {
         app.add_system(Startup, create_b2d_world).chain();
+        app.add_system(PostStartup, create_test_body);
         app.add_system(PreUpdate, update_b2d_world)
             .in_state(SimulateState::Running);
         app.add_system(Update, destroy_too_far_bodies, toggle_simulation);

@@ -195,6 +195,7 @@ struct PixPhyWorld {
                     i -= outlines[x].size();
                 }
             }
+            return glm::ivec2(0, 0);
         };
         for (size_t i = 0; i < triangle_indices.size(); i += 3) {
             b2Vec2 vertices[3];
