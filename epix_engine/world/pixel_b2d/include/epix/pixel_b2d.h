@@ -8,7 +8,7 @@
 #include "epix/utils/grid.h"
 #include "epix/world/sand.h"
 
-namespace epix::world::px_phy2d {
+namespace epix::world::pixel_b2d {
 struct PixelDef {
     std::variant<std::string, int> type;
     std::optional<glm::vec4> color;
@@ -213,6 +213,10 @@ struct PixPhyWorld {
         }
         _bodies[index] = new PixBody(body, info._scale, std::move(cell_grid));
         return index;
+    }
+
+    void update(float dt, int sub_steps = 6) {
+        b2World_Step(_world, dt, sub_steps);
     }
 
     template <typename Arg = float>
@@ -421,4 +425,4 @@ struct PixPhyWorld {
         }
     }
 };
-}  // namespace epix::world::px_phy2d
+}  // namespace epix::world::pixel_b2d

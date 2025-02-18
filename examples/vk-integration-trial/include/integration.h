@@ -70,7 +70,7 @@ struct pixelbin {
 };
 
 void create_b2d_world(Command command) {
-    epix::world::px_phy2d::PixPhyWorld world;
+    epix::world::pixel_b2d::PixPhyWorld world;
     world.create();
     command.spawn(std::move(world));
 }
@@ -84,7 +84,7 @@ constexpr float pixel_size              = 0.1f;
 
 void create_dynamic_from_click(
     Command command,
-    Query<Get<epix::world::px_phy2d::PixPhyWorld>> world_query,
+    Query<Get<epix::world::pixel_b2d::PixPhyWorld>> world_query,
     Query<Get<const Window, const ButtonInput<MouseButton>>> window_query,
     ResMut<epix::imgui::ImGuiContext> imgui_context,
     Local<std::unique_ptr<epix::utils::grid::extendable_grid<
@@ -274,9 +274,9 @@ void extract_whole_pass(ResMut<WholePass> pass, Command command) {
     command.share_resource(pass);
 }
 
-struct SandMesh : render::pixel::vulkan2::PixelMesh {};
-struct SandMeshStaging : render::pixel::vulkan2::PixelStagingMesh {};
-struct SandMeshGPU : render::pixel::vulkan2::PixelGPUMesh {};
+struct SandMesh : render::pixel::vulkan2::PixelDrawMesh {};
+struct SandMeshStaging : render::pixel::vulkan2::PixelDrawStagingMesh {};
+struct SandMeshGPU : render::pixel::vulkan2::PixelDrawGPUMesh {};
 
 struct Box2dMesh : render::debug::vulkan2::DebugMesh {};
 struct Box2dMeshStaging : render::debug::vulkan2::DebugStagingMesh {};
@@ -352,80 +352,28 @@ void extract_box2d_mesh(
     command.share_resource(mesh2);
 }
 
-void render_bodies(Extract<Get<b2BodyId>> query, ResMut<Box2dMesh> mesh) {
+void render_bodies(
+    Extract<Get<epix::world::pixel_b2d::PixPhyWorld>> query,
+    ResMut<SandMesh> mesh
+) {
     if (!query) return;
     if (!mesh) return;
     ZoneScoped;
-    for (auto [body] : query.iter()) {
-        if (!b2Body_IsValid(body)) continue;
-        b2Vec2 position  = b2Body_GetPosition(body);
-        b2Vec2 velocity  = b2Body_GetLinearVelocity(body);
-        auto mass_center = b2Body_GetWorldCenterOfMass(body);
-        auto rotation    = b2Body_GetRotation(body);  // a cosine / sine pair
-        auto angle       = std::atan2(rotation.s, rotation.c);
-        glm::vec3 p1     = {mass_center.x, mass_center.y, 0.0f};
-        glm::vec3 p2     = {
-            mass_center.x + velocity.x / 2, mass_center.y + velocity.y / 2, 0.0f
-        };
-        mesh->draw_line(p1, p2, {0.0f, 0.0f, 1.0f, 1.0f});
-        glm::mat4 model = glm::translate(
-            glm::mat4(1.0f), {mass_center.x, mass_center.y, 0.0f}
-        );
-        model = glm::translate(glm::mat4(1.0f), {position.x, position.y, 0.0f});
-        model = glm::rotate(model, angle, {0.0f, 0.0f, 1.0f});
-        auto shape_count = b2Body_GetShapeCount(body);
-        std::vector<b2ShapeId> shapes(shape_count);
-        b2Body_GetShapes(body, shapes.data(), shape_count);
-        for (auto&& shape : shapes) {
-            if (b2Shape_GetType(shape) == b2ShapeType::b2_polygonShape) {
-                auto polygon = b2Shape_GetPolygon(shape);
-                for (size_t i = 0; i < polygon.count; i++) {
-                    auto& vertex1 = polygon.vertices[i];
-                    auto& vertex2 = polygon.vertices[(i + 1) % polygon.count];
-                    bool awake    = b2Body_IsAwake(body);
-                    glm::vec3 p1  = {vertex1.x, vertex1.y, 0.0f};
-                    glm::vec3 p2  = {vertex2.x, vertex2.y, 0.0f};
-                    p1            = glm::vec3(model * glm::vec4(p1, 1.0f));
-                    p2            = glm::vec3(model * glm::vec4(p2, 1.0f));
-                    mesh->draw_line(
-                        p1, p2,
-                        {awake ? 0.0f : 1.0f, awake ? 1.0f : 0.0f, 0.0f, 0.3f}
-                    );
-                }
-            } else if (b2Shape_GetType(shape) ==
-                       b2ShapeType::b2_smoothSegmentShape) {
-                auto segment  = b2Shape_GetSmoothSegment(shape);
-                auto& vertex1 = segment.segment.point1;
-                auto& vertex2 = segment.segment.point2;
-                bool awake    = b2Body_IsAwake(body);
-                glm::vec3 p1  = {vertex1.x, vertex1.y, 0.0f};
-                glm::vec3 p2  = {vertex2.x, vertex2.y, 0.0f};
-                p1            = glm::vec3(model * glm::vec4(p1, 1.0f));
-                p2            = glm::vec3(model * glm::vec4(p2, 1.0f));
-                mesh->draw_line(
-                    p1, p2,
-                    {awake ? 0.0f : 1.0f, awake ? 1.0f : 0.0f, 0.0f, 0.3f}
-                );
-            } else if (b2Shape_GetType(shape) == b2ShapeType::b2_segmentShape) {
-                auto segment  = b2Shape_GetSegment(shape);
-                auto& vertex1 = segment.point1;
-                auto& vertex2 = segment.point2;
-                bool awake    = b2Body_IsAwake(body);
-                glm::vec3 p1  = {vertex1.x, vertex1.y, 0.0f};
-                glm::vec3 p2  = {vertex2.x, vertex2.y, 0.0f};
-                p1            = glm::vec3(model * glm::vec4(p1, 1.0f));
-                p2            = glm::vec3(model * glm::vec4(p2, 1.0f));
-                mesh->draw_line(
-                    p1, p2,
-                    {awake ? 0.0f : 1.0f, awake ? 1.0f : 0.0f, 0.0f, 0.3f}
-                );
-            }
+    auto [world] = query.single();
+    world.draw_pixel_smooth(
+        [&](const glm::mat4& model, bool awake) {
+            mesh->next_call();
+            mesh->push_constant(glm::scale(model, {scale, scale, 1.0f}));
+        },
+        [&](const glm::vec2& pos, const glm::vec4& color) {
+            mesh->draw_pixel(pos, color);
         }
-    }
+    );
 }
 
 void update_b2d_world(
-    Query<Get<b2WorldId>> world_query, Local<std::optional<double>> last_time
+    Query<Get<epix::world::pixel_b2d::PixPhyWorld>> world_query,
+    Local<std::optional<double>> last_time
 ) {
     if (!world_query) return;
     ZoneScoped;
@@ -445,33 +393,33 @@ void update_b2d_world(
         auto dt    = current_time - last_time->value();
         dt         = std::min(dt, 0.1);
         *last_time = current_time;
-        b2World_Step(world, dt, 6);
+        world.update(dt);
     }
 }
 
 void destroy_too_far_bodies(
-    Query<Get<Entity, b2BodyId>> query,
-    Query<Get<b2WorldId>> world_query,
-    Command command
+    Query<Get<epix::world::pixel_b2d::PixPhyWorld>> world_query, Command command
 ) {
     if (!world_query) return;
     ZoneScoped;
     auto [world] = world_query.single();
-    for (auto [entity, body] : query.iter()) {
+    for (size_t i = 0; i < world._bodies.size(); i++) {
+        if (!world._bodies[i]) continue;
+        auto body = world._bodies[i]->_body;
+        if (!b2Body_IsValid(body)) continue;
         auto position = b2Body_GetPosition(body);
         if (position.y < -1000.0f || position.y > 1000.0f ||
             position.x < -2000.0f || position.x > 2000.0f) {
             spdlog::info("Destroying body at {}, {}", position.x, position.y);
-            b2DestroyBody(body);
-            command.entity(entity).despawn();
+            world.destroy_body(i);
         }
     }
 }
 
-void destroy_b2d_world(Query<Get<b2WorldId>> query) {
+void destroy_b2d_world(Query<Get<epix::world::pixel_b2d::PixPhyWorld>> query) {
     spdlog::info("Destroying b2d world");
     for (auto [world] : query.iter()) {
-        b2DestroyWorld(world);
+        world.destroy();
     }
 }
 
@@ -519,7 +467,7 @@ bool overlap_callback(b2ShapeId shapeId, void* context) {
 }
 void update_mouse_joint(
     Command command,
-    Query<Get<b2WorldId>> world_query,
+    Query<Get<epix::world::pixel_b2d::PixPhyWorld>> world_query,
     Query<Get<Entity, MouseJoint>> mouse_joint_query,
     Query<Get<const Window, const ButtonInput<MouseButton>>> input_query,
     ResMut<epix::imgui::ImGuiContext> imgui_context
@@ -552,12 +500,16 @@ void update_mouse_joint(
             window.get_cursor().x - window.get_size().width / 2,
             window.get_size().height / 2 - window.get_cursor().y
         );
-        std::tuple<b2WorldId, MouseJoint, b2Vec2> context = {world, {}, cursor};
+        std::tuple<b2WorldId, MouseJoint, b2Vec2> context = {
+            world.get_world(), {}, cursor
+        };
         spdlog::info("Cursor at {}, {}", cursor.x, cursor.y);
         aabb.lowerBound      = cursor - b2Vec2(0.1f, 0.1f);
         aabb.upperBound      = cursor + b2Vec2(0.1f, 0.1f);
         b2QueryFilter filter = b2DefaultQueryFilter();
-        b2World_OverlapAABB(world, aabb, filter, overlap_callback, &context);
+        b2World_OverlapAABB(
+            world.get_world(), aabb, filter, overlap_callback, &context
+        );
         if (b2Joint_IsValid(std::get<1>(context).joint) &&
             b2Body_IsValid(std::get<1>(context).body)) {
             spdlog::info("Create Mouse Joint");
@@ -835,6 +787,7 @@ void render_simulation(
     if (!mesh) return;
     auto [simulation] = query.single();
     ZoneScopedN("Render simulation");
+    mesh->push_constant(glm::scale(glm::mat4(1.0f), {scale, scale, 1.0f}));
     for (auto&& [pos, chunk] : simulation.chunk_map()) {
         int offset_x = pos.x * simulation.chunk_size();
         int offset_y = pos.y * simulation.chunk_size();
@@ -845,6 +798,7 @@ void render_simulation(
             );
         }
     }
+    mesh->next_call();
 }
 
 void print_hover_data(
@@ -977,56 +931,6 @@ void render_simulation_collision(
             {x1, y1, 0.0f}, {x2, y2, 0.0f}, {1.0f, 0.0f, 0.0f, alpha}
         );
     });
-    for (auto&& [pos, chunk] : simulation.chunk_map()) {
-        if (sim_collisions.collisions.contains(pos.x, pos.y)) {
-            auto body =
-                sim_collisions.collisions.get(pos.x, pos.y).user_data.first;
-            if (!b2Body_IsValid(body)) continue;
-            auto shape_count = b2Body_GetShapeCount(body);
-            auto shapes      = new b2ShapeId[shape_count];
-            b2Body_GetShapes(body, shapes, shape_count);
-            for (int i = 0; i < shape_count; i++) {
-                auto shape = shapes[i];
-                if (b2Shape_GetType(shape) == b2ShapeType::b2_polygonShape) {
-                    auto polygon = b2Shape_GetPolygon(shape);
-                    for (size_t i = 0; i < polygon.count; i++) {
-                        auto& vertex1 = polygon.vertices[i];
-                        auto& vertex2 =
-                            polygon.vertices[(i + 1) % polygon.count];
-                        bool awake = b2Body_IsAwake(body);
-                        mesh->draw_line(
-                            {vertex1.x, vertex1.y, 0.0f},
-                            {vertex2.x, vertex2.y, 0.0f},
-                            {awake ? 0.0f : 1.0f, awake ? 1.0f : 0.0f, 0.0f,
-                             0.3f}
-                        );
-                    }
-                } else if (b2Shape_GetType(shape) ==
-                           b2ShapeType::b2_smoothSegmentShape) {
-                    auto segment  = b2Shape_GetSmoothSegment(shape);
-                    auto& vertex1 = segment.segment.point1;
-                    auto& vertex2 = segment.segment.point2;
-                    bool awake    = b2Body_IsAwake(body);
-                    mesh->draw_line(
-                        {vertex1.x, vertex1.y, 0.0f},
-                        {vertex2.x, vertex2.y, 0.0f},
-                        {awake ? 0.0f : 1.0f, awake ? 1.0f : 0.0f, 0.0f, 0.3f}
-                    );
-                } else if (b2Shape_GetType(shape) ==
-                           b2ShapeType::b2_segmentShape) {
-                    auto segment  = b2Shape_GetSegment(shape);
-                    auto& vertex1 = segment.point1;
-                    auto& vertex2 = segment.point2;
-                    bool awake    = b2Body_IsAwake(body);
-                    mesh->draw_line(
-                        {vertex1.x, vertex1.y, 0.0f},
-                        {vertex2.x, vertex2.y, 0.0f},
-                        {awake ? 0.0f : 1.0f, awake ? 1.0f : 0.0f, 0.0f, 0.3f}
-                    );
-                }
-            }
-        }
-    }
 }
 
 enum class InputState { Simulation, Body };
@@ -1056,7 +960,7 @@ void sync_simulatino_with_b2d(
     Query<
         Get<epix::world::sync::sand2b2d::SimulationCollisionGeneral,
             Simulation>> simulation_query,
-    Query<Get<b2WorldId>> world_query,
+    Query<Get<epix::world::pixel_b2d::PixPhyWorld>> world_query,
     Local<std::optional<RepeatTimer>> timer
 ) {
     if (!simulation_query) return;
@@ -1070,7 +974,8 @@ void sync_simulatino_with_b2d(
         ZoneScopedN("Sync simulation with b2d");
         collisions.sync(sim);
         collisions.sync(
-            world, collisions.pos_converter(CHUNK_SIZE, scale, {0, 0})
+            world.get_world(),
+            collisions.pos_converter(CHUNK_SIZE, scale, {0, 0})
         );
     }
 }
@@ -1144,9 +1049,7 @@ void draw_meshes(
             device.updateDescriptorSets({descriptor_write}, {});
         }
     );
-    subpass_sand.draw(
-        *sand_gpu_mesh, glm::scale(glm::mat4(1.0f), {scale, scale, 1.0f})
-    );
+    subpass_sand.draw(*sand_gpu_mesh);
     auto& subpass_b2d = pass->next_subpass();
     subpass_b2d.activate_pipeline(
         0,
@@ -1303,6 +1206,7 @@ struct VK_TrialPlugin : Plugin {
         app.add_plugin(RenderPassPlugin{});
         app.add_plugin(SimulationPlugin{});
         app.add_plugin(PixelB2dTestPlugin{});
+        app.add_plugin(WorldSyncPlugin{});
     }
 };
 
