@@ -280,7 +280,7 @@ struct packed_grid {
         );
     }
     bool contains_at(const std::array<int, D>& pos) const {
-        assert(valid_at(pos));
+        if (!valid_at(pos)) return false;
         int64_t index = pos[D - 1];
         for (int i = D - 2; i >= 0; i--) {
             index = index * _size[i] + pos[i];

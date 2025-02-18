@@ -93,8 +93,9 @@ void create_test_body(
     epix::world::pixel_b2d::PixPhyWorld::PixBodyCreateInfo info;
     info.set_reg(sim.registry());
     info.set_scale(scale);
-    for (int x; x < 10; x++) {
-        for (int y; y < 10; y++) {
+    info.set_pos({0, 0});
+    for (int x = 0; x < 10; x++) {
+        for (int y = 0; y < 10; y++) {
             info.def(x, y, "wall");
         }
     }
