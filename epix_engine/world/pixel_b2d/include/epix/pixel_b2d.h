@@ -215,6 +215,199 @@ struct PixPhyWorld {
         return index;
     }
 
+    template <typename Arg = float>
+    void draw_debug_shape(
+        const std::function<void(Arg, Arg, Arg, Arg, bool)>& draw_line_shape
+    ) {
+        // draw the collision shapes.
+        for (auto&& body : _bodies) {
+            if (body) {
+                auto id = body->_body;
+                if (!b2Body_IsValid(id)) continue;
+                auto pos  = b2Body_GetPosition(id);
+                auto vel  = b2Body_GetLinearVelocity(id);
+                auto rot  = b2Body_GetRotation(id);  // a cosine / sine pair
+                auto sinv = rot.s, cosv = rot.c;
+                auto shape_count = b2Body_GetShapeCount(id);
+                bool awake       = b2Body_IsAwake(id);
+                std::vector<b2ShapeId> shapes(shape_count);
+                b2Body_GetShapes(id, shapes.data(), shape_count);
+                for (auto&& shape : shapes) {
+                    if (b2Shape_GetType(shape) ==
+                        b2ShapeType::b2_polygonShape) {
+                        auto polygon = b2Shape_GetPolygon(shape);
+                        for (size_t i = 0; i < polygon.count; i++) {
+                            auto& vertex1 = polygon.vertices[i];
+                            auto& vertex2 =
+                                polygon.vertices[(i + 1) % polygon.count];
+                            auto x1 =
+                                vertex1.x * cosv - vertex1.y * sinv + pos.x;
+                            auto y1 =
+                                vertex1.x * sinv + vertex1.y * cosv + pos.y;
+                            auto x2 =
+                                vertex2.x * cosv - vertex2.y * sinv + pos.x;
+                            auto y2 =
+                                vertex2.x * sinv + vertex2.y * cosv + pos.y;
+                            draw_line_shape(x1, y1, x2, y2, awake);
+                        }
+                    } else if (b2Shape_GetType(shape) ==
+                               b2ShapeType::b2_smoothSegmentShape) {
+                        auto segment  = b2Shape_GetSmoothSegment(shape);
+                        auto& vertex1 = segment.segment.point1;
+                        auto& vertex2 = segment.segment.point2;
+                        auto x1 = vertex1.x * cosv - vertex1.y * sinv + pos.x;
+                        auto y1 = vertex1.x * sinv + vertex1.y * cosv + pos.y;
+                        auto x2 = vertex2.x * cosv - vertex2.y * sinv + pos.x;
+                        auto y2 = vertex2.x * sinv + vertex2.y * cosv + pos.y;
+                        draw_line_shape(x1, y1, x2, y2, awake);
+                    } else if (b2Shape_GetType(shape) ==
+                               b2ShapeType::b2_segmentShape) {
+                        auto segment  = b2Shape_GetSegment(shape);
+                        auto& vertex1 = segment.point1;
+                        auto& vertex2 = segment.point2;
+                        auto x1 = vertex1.x * cosv - vertex1.y * sinv + pos.x;
+                        auto y1 = vertex1.x * sinv + vertex1.y * cosv + pos.y;
+                        auto x2 = vertex2.x * cosv - vertex2.y * sinv + pos.x;
+                        auto y2 = vertex2.x * sinv + vertex2.y * cosv + pos.y;
+                        draw_line_shape(x1, y1, x2, y2, awake);
+                    }
+                }
+            }
+        }
+    }
+
+    template <typename Arg = float>
+    void draw_debug_vel(const std::function<void(Arg, Arg, Arg, Arg)>& draw_func
+    ) {
+        for (auto&& body : _bodies) {
+            if (body) {
+                auto id = body->_body;
+                if (!b2Body_IsValid(id)) continue;
+                if (!b2Body_IsAwake(id)) continue;
+                auto pos = b2Body_GetPosition(id);
+                auto msc = b2Body_GetMassCenter(id);
+                auto vel = b2Body_GetLinearVelocity(id);
+                auto x1  = pos.x + msc.x;
+                auto y1  = pos.y + msc.y;
+                draw_line_vel(x1, y1, vel.x, vel.y);
+            }
+        }
+    }
+
+    void draw_pixel_smooth(
+        const std::function<void(const glm::mat4&, bool)>& each_body,
+        const std::function<void(const glm::vec2&, const glm::vec4&)>&
+            each_pixel
+    ) {
+        for (auto&& body : _bodies) {
+            if (body) {
+                if (!b2Body_IsValid(body->_body)) continue;
+                auto awake = b2Body_IsAwake(body->_body);
+                auto pos   = b2Body_GetPosition(body->_body);
+                auto rot   = b2Body_GetRotation(body->_body);
+                auto angle = std::atan2(rot.s, rot.c);
+                glm::mat4 model =
+                    glm::translate(glm::mat4(1.0f), {pos.x, pos.y, 0.0f});
+                model = glm::rotate(model, angle, {0.0f, 0.0f, 1.0f});
+                each_body(model, awake);
+                for (auto&& [pos, cell] : body->_grid.view()) {
+                    each_pixel({pos[0], pos[1]}, cell.color);
+                }
+            }
+        }
+    }
+
+    void draw_pixel_rasterized(
+        const glm::vec2&
+            anchor,        // the corner of any pixel in the render target
+        float pixel_size,  // pixel size in world space
+        const std::function<void(const glm::vec2&)>
+            each_body,  // left bottom of the draw grid aabb
+        const std::function<void(const glm::vec2&, const glm::vec4&)>&
+            each_pixel  // x, y related to anchor
+    ) {
+        for (auto&& body : _bodies) {
+            if (body) {
+                if (!b2Body_IsValid(body->_body)) continue;
+                auto pos = b2Body_GetPosition(body->_body);
+                each_body({pos.x, pos.y});
+                auto rot  = b2Body_GetRotation(body->_body);
+                auto sinv = rot.s, cosv = rot.c;
+                // get the aabb of the grid in body
+                auto&& grid_size = body->_grid.size();
+                glm::vec2 c1     = {0, 0};
+                glm::vec2 c2     = {grid_size[0] * cosv, grid_size[0] * sinv};
+                glm::vec2 c3     = {
+                    grid_size[0] * cosv + grid_size[1] * -sinv,
+                    grid_size[0] * sinv + grid_size[1] * cosv
+                };
+                glm::vec2 c4 = {grid_size[1] * -sinv, grid_size[1] * cosv};
+                float minx   = std::min({c1.x, c2.x, c3.x, c4.x});
+                float miny   = std::min({c1.y, c2.y, c3.y, c4.y});
+                float maxx   = std::max({c1.x, c2.x, c3.x, c4.x});
+                float maxy   = std::max({c1.y, c2.y, c3.y, c4.y});
+                // extend the aabb to the make the coords be anchor.x(y) + n *
+                // pixel_size
+                minx = std::floor((minx) / pixel_size) * pixel_size;
+                miny = std::floor((miny) / pixel_size) * pixel_size;
+                maxx = std::ceil((maxx) / pixel_size) * pixel_size;
+                maxy = std::ceil((maxy) / pixel_size) * pixel_size;
+                for (float x = minx; x < maxx; x += pixel_size) {
+                    for (float y = miny; y < maxy; y += pixel_size) {
+                        // get the x, y in grid space
+                        auto x_     = x + pixel_size / 2;
+                        auto y_     = y + pixel_size / 2;
+                        auto xg     = x_ * cosv + y_ * sinv;
+                        auto yg     = y_ * cosv - x_ * sinv;
+                        int floor_x = std::floor(xg);
+                        int floor_y = std::floor(yg);
+                        int ceil_x  = std::ceil(xg);
+                        int ceil_y  = std::ceil(yg);
+                        float lerpx = xg - floor_x;
+                        float lerpy = yg - floor_y;
+                        std::array<glm::ivec2, 4> checks = {
+                            glm::ivec2{floor_x, floor_y},
+                            glm::ivec2{ceil_x, floor_y},
+                            glm::ivec2{ceil_x, ceil_y},
+                            glm::ivec2{floor_x, ceil_y}
+                        };
+                        uint16_t count = 0;
+                        for (auto&& check : checks) {
+                            if (!body->_grid.valid(check.x, check.y)) continue;
+                            if (!body->_grid.contains(check.x, check.y))
+                                continue;
+                            count++;
+                        }
+                        if (count != 4) continue;
+                        auto&& color1 = body->_grid.get(floor_x, floor_y).color;
+                        auto&& color2 = body->_grid.get(ceil_x, floor_y).color;
+                        auto&& color3 = body->_grid.get(ceil_x, ceil_y).color;
+                        auto&& color4 = body->_grid.get(floor_x, ceil_y).color;
+                        glm::vec4 color = {
+                            std::lerp(
+                                std::lerp(color1.r, color2.r, lerpx),
+                                std::lerp(color4.r, color3.r, lerpx), lerpy
+                            ),
+                            std::lerp(
+                                std::lerp(color1.g, color2.g, lerpx),
+                                std::lerp(color4.g, color3.g, lerpx), lerpy
+                            ),
+                            std::lerp(
+                                std::lerp(color1.b, color2.b, lerpx),
+                                std::lerp(color4.b, color3.b, lerpx), lerpy
+                            ),
+                            std::lerp(
+                                std::lerp(color1.a, color2.a, lerpx),
+                                std::lerp(color4.a, color3.a, lerpx), lerpy
+                            )
+                        };
+                        each_pixel({x, y}, color);
+                    }
+                }
+            }
+        }
+    }
+
     void destroy_body(size_t index) {
         if (_bodies[index]) {
             delete _bodies[index];
