@@ -78,7 +78,7 @@ void create_b2d_world(Command command) {
 using namespace epix::input;
 
 constexpr int CHUNK_SIZE                = 16;
-constexpr float scale                   = 2.0f;
+constexpr float scale                   = 4.0f;
 constexpr bool render_collision_outline = false;
 constexpr float pixel_size              = 0.1f;
 
@@ -374,21 +374,49 @@ void extract_box2d_mesh(
 
 void render_bodies(
     Extract<Get<epix::world::pixel_b2d::PixPhyWorld>> query,
-    ResMut<SandMesh> mesh
+    ResMut<SandMesh> mesh,
+    ResMut<Box2dMesh> box2d_mesh
 ) {
     if (!query) return;
     if (!mesh) return;
     ZoneScoped;
     auto [world] = query.single();
-    world.draw_pixel_smooth(
-        [&](const glm::mat4& model, bool awake) {
+    // world.draw_pixel_smooth(
+    //     [&](const glm::mat4& model, bool awake) {
+    //         mesh->next_call();
+    //         mesh->push_constant(glm::scale(model, {scale, scale, 1.0f}));
+    //     },
+    //     [&](const glm::vec2& pos, const glm::vec4& color) {
+    //         mesh->draw_pixel(pos, color);
+    //     }
+    // );
+    world.draw_pixel_rasterized(
+        {0.0f, 0.0f}, scale,
+        [&](const glm::vec2& pos) {
             mesh->next_call();
-            mesh->push_constant(glm::scale(model, {scale, scale, 1.0f}));
+            mesh->push_constant(
+                glm::scale(glm::mat4(1.0f), {scale, scale, 1.0f})
+            );
         },
         [&](const glm::vec2& pos, const glm::vec4& color) {
-            mesh->draw_pixel(pos, color);
+            mesh->draw_pixel(pos / scale, color);
         }
     );
+    mesh->next_call();
+    world.draw_debug_shape<float>([&](auto x1, auto y1, auto x2, auto y2,
+                                      bool awake) {
+        box2d_mesh->draw_line(
+            {x1, y1, 0.0f}, {x2, y2, 0.0f}, {1.0f, 0.0f, 0.0f, 1.0f}
+        );
+    });
+    // velocity
+    world.draw_debug_vel<float>([&](auto x1, auto y1, auto x2, auto y2) {
+        glm::vec3 start = {x1, y1, 0.0f};
+        glm::vec3 vel   = {x2, y2, 0.0f};
+        float scale     = 1.0f;
+        glm::vec3 end   = start + vel * scale;
+        box2d_mesh->draw_line(start, end, {0.0f, 0.0f, 1.0f, 1.0f});
+    });
 }
 
 void update_b2d_world(

@@ -1050,6 +1050,13 @@ struct MultiDraw<Mesh<VertT, Ts...>, PushConstantT>
         instance_offset     = instance_count == 1u ? 0 : instance_offset;
         auto index_count =
             Mesh<VertT, Ts...>::index_count().value_or(0) - index_offset;
+        if (instance_count == 0) {
+            return;
+        } else if (Mesh<VertT, Ts...>::has_indices() && index_count == 0) {
+            return;
+        } else if (vertex_count == 0) {
+            return;
+        }
         _draw_calls.emplace_back(
             vertex_offset, instance_offset, vertex_count, instance_count,
             index_offset, index_count, _push_constants.size() - 1

@@ -289,12 +289,9 @@ struct PixPhyWorld {
                 auto id = body->_body;
                 if (!b2Body_IsValid(id)) continue;
                 if (!b2Body_IsAwake(id)) continue;
-                auto pos = b2Body_GetPosition(id);
-                auto msc = b2Body_GetMassCenter(id);
+                auto pos = b2Body_GetWorldCenterOfMass(id);
                 auto vel = b2Body_GetLinearVelocity(id);
-                auto x1  = pos.x + msc.x;
-                auto y1  = pos.y + msc.y;
-                draw_line_vel(x1, y1, vel.x, vel.y);
+                draw_func(pos.x, pos.y, vel.x, vel.y);
             }
         }
     }
@@ -329,7 +326,7 @@ struct PixPhyWorld {
         const std::function<void(const glm::vec2&)>
             each_body,  // left bottom of the draw grid aabb
         const std::function<void(const glm::vec2&, const glm::vec4&)>&
-            each_pixel  // x, y related to anchor
+            each_pixel  // x, y related to anchor in world space
     ) {
         for (auto&& body : _bodies) {
             if (body) {
@@ -347,10 +344,14 @@ struct PixPhyWorld {
                     grid_size[0] * sinv + grid_size[1] * cosv
                 };
                 glm::vec2 c4 = {grid_size[1] * -sinv, grid_size[1] * cosv};
-                float minx   = std::min({c1.x, c2.x, c3.x, c4.x});
-                float miny   = std::min({c1.y, c2.y, c3.y, c4.y});
-                float maxx   = std::max({c1.x, c2.x, c3.x, c4.x});
-                float maxy   = std::max({c1.y, c2.y, c3.y, c4.y});
+                float minx   = std::min({c1.x, c2.x, c3.x, c4.x}) * pixel_size -
+                             anchor.x + pos.x;
+                float miny = std::min({c1.y, c2.y, c3.y, c4.y}) * pixel_size -
+                             anchor.y + pos.y;
+                float maxx = std::max({c1.x, c2.x, c3.x, c4.x}) * pixel_size -
+                             anchor.x + pos.x;
+                float maxy = std::max({c1.y, c2.y, c3.y, c4.y}) * pixel_size -
+                             anchor.y + pos.y;
                 // extend the aabb to the make the coords be anchor.x(y) + n *
                 // pixel_size
                 minx = std::floor((minx) / pixel_size) * pixel_size;
@@ -360,14 +361,23 @@ struct PixPhyWorld {
                 for (float x = minx; x < maxx; x += pixel_size) {
                     for (float y = miny; y < maxy; y += pixel_size) {
                         // get the x, y in grid space
-                        auto x_     = x + pixel_size / 2;
-                        auto y_     = y + pixel_size / 2;
-                        auto xg     = x_ * cosv + y_ * sinv;
-                        auto yg     = y_ * cosv - x_ * sinv;
+                        auto x_ = x + pixel_size / 2 - pos.x;
+                        auto y_ = y + pixel_size / 2 - pos.y;
+                        auto xg = x_ * cosv + y_ * sinv;
+                        auto yg = y_ * cosv - x_ * sinv;
+                        xg -= pixel_size / 2;
+                        yg -= pixel_size / 2;
+                        xg /= pixel_size;
+                        yg /= pixel_size;
                         int floor_x = std::floor(xg);
                         int floor_y = std::floor(yg);
                         int ceil_x  = std::ceil(xg);
                         int ceil_y  = std::ceil(yg);
+                        int round_x = std::round(xg);
+                        int round_y = std::round(yg);
+                        if (!body->_grid.valid(round_x, round_y)) continue;
+                        if (!body->_grid.contains(round_x, round_y)) continue;
+                        auto colori = body->_grid.get(round_x, round_y).color;
                         float lerpx = xg - floor_x;
                         float lerpy = yg - floor_y;
                         std::array<glm::ivec2, 4> checks = {
@@ -383,7 +393,10 @@ struct PixPhyWorld {
                                 continue;
                             count++;
                         }
-                        if (count != 4) continue;
+                        if (count != 4) {
+                            each_pixel({x, y}, colori);
+                            continue;
+                        }
                         auto&& color1 = body->_grid.get(floor_x, floor_y).color;
                         auto&& color2 = body->_grid.get(ceil_x, floor_y).color;
                         auto&& color3 = body->_grid.get(ceil_x, ceil_y).color;
