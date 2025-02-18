@@ -15,22 +15,33 @@ struct PixPhy2Simulation {
    private:
     std::vector<std::vector<std::array<int, 2>>>
         _occupies;  // each body links to a vector
+    std::vector<std::pair<glm::vec2, glm::vec2>> _last_transforms;
 
    public:
     void sync(
         const epix::world::pixel_b2d::PixPhyWorld& world,
         epix::world::sand::components::Simulation& sim,
-        const PosConverter& converter
+        const PosConverter& converter,
+        float max_diff = 0.5f
     ) {
         size_t index = 0;
         world.draw_pixel_rasterized(
             converter.offset, converter.cell_size,
-            [&](const glm::vec2& pos, bool awake, size_t i) {
+            [&](const glm::vec2& pos, const glm::vec2& rot, bool awake,
+                size_t i) {
                 index = i;
                 if (awake) {
                     if (index >= _occupies.size()) {
                         _occupies.resize(index + 1);
+                        _last_transforms.resize(index + 1);
+                        _last_transforms[index] = {pos, rot};
                     }
+                    if (glm::length(_last_transforms[index].first - pos) <
+                            max_diff &&
+                        glm::length(_last_transforms[index].second - rot) <
+                            max_diff / 5)
+                        return false;
+                    _last_transforms[index] = {pos, rot};
                     for (auto&& [x, y] : _occupies[index]) {
                         if (!sim.valid(x, y)) continue;
                         if (!sim.contain_cell(x, y)) continue;

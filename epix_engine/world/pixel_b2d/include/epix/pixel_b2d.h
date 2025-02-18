@@ -125,8 +125,8 @@ struct PixPhyWorld {
 
     PixPhyWorld() {}
     void create() {
-        auto world_def                   = b2DefaultWorldDef();
-        _world                           = b2CreateWorld(&world_def);
+        auto world_def = b2DefaultWorldDef();
+        _world         = b2CreateWorld(&world_def);
     }
 
     b2WorldId get_world() { return _world; }
@@ -322,7 +322,8 @@ struct PixPhyWorld {
         const glm::vec2&
             anchor,        // the corner of any pixel in the render target
         float pixel_size,  // pixel size in world space
-        const std::function<bool(const glm::vec2&, bool, size_t)>&
+        const std::function<
+            bool(const glm::vec2&, const glm::vec2&, bool, size_t)>&
             each_body,  // left bottom of the draw grid aabb, bool value control
                         // whether to do further draw
         const std::function<void(const glm::vec2&, const glm::vec4&)>&
@@ -333,10 +334,12 @@ struct PixPhyWorld {
             if (body) {
                 if (!b2Body_IsValid(body->_body)) continue;
                 auto pos = b2Body_GetPosition(body->_body);
-                auto v =
-                    each_body({pos.x, pos.y}, b2Body_IsAwake(body->_body), i);
+                auto rot = b2Body_GetRotation(body->_body);
+                auto v   = each_body(
+                    {pos.x, pos.y}, {rot.c, rot.s}, b2Body_IsAwake(body->_body),
+                    i
+                );
                 if (!v) continue;
-                auto rot  = b2Body_GetRotation(body->_body);
                 auto sinv = rot.s, cosv = rot.c;
                 // get the aabb of the grid in body
                 auto&& grid_size = body->_grid.size();

@@ -80,7 +80,7 @@ void create_b2d_world(Command command) {
 using namespace epix::input;
 
 constexpr int CHUNK_SIZE                = 16;
-constexpr float scale                   = 4.0f;
+constexpr float scale                   = 2.0f;
 constexpr bool render_collision_outline = false;
 constexpr float pixel_size              = 0.1f;
 
@@ -96,8 +96,8 @@ void create_test_body(
     info.set_reg(sim.registry());
     info.set_scale(scale);
     info.set_pos({0, 0});
-    for (int x = 0; x < 5; x++) {
-        for (int y = 0; y < 5; y++) {
+    for (int x = 0; x < 20; x++) {
+        for (int y = 0; y < 20; y++) {
             info.def(x, y, "wall");
         }
     }
@@ -394,7 +394,7 @@ void render_bodies(
     );
     // world.draw_pixel_rasterized(
     //     {0.0f, 0.0f}, scale,
-    //     [&](const glm::vec2& pos, bool awake, size_t index) {
+    //     [&](const glm::vec2& pos, const glm::vec2&, bool, size_t) {
     //         mesh->next_call();
     //         mesh->push_constant(
     //             glm::scale(glm::mat4(1.0f), {scale, scale, 1.0f})
