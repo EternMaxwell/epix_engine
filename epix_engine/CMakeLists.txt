@@ -27,6 +27,7 @@ add_subdirectory(utils/grid)
 add_subdirectory(world/sand)
 add_subdirectory(world/pixel_b2d)
 add_subdirectory(world/sync/sand2b2d)
+add_subdirectory(world/sync/b2d2sand)
 
 # BUILD STATIC
 add_library(epix_engine STATIC ${MODULE_SOURCES})
@@ -67,6 +68,7 @@ target_link_libraries (epix_engine PUBLIC epix::utils::grid)
 target_link_libraries (epix_engine PUBLIC epix::world::sand)
 target_link_libraries (epix_engine PUBLIC epix::world::pixel_b2d)
 target_link_libraries (epix_engine PUBLIC epix::world::sync::sand2b2d)
+target_link_libraries (epix_engine PUBLIC epix::world::sync::b2d2sand)
 # EPIX ALIAS LIBRARY
 add_library(epix ALIAS epix_engine)
 
