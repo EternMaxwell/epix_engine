@@ -40,57 +40,57 @@ struct PixelDef {
     }
 };
 
+struct PixBodyCreateInfo {
+   private:
+    glm::vec2 _pos;
+    utils::grid::extendable_grid<PixelDef, 2> _grid;
+    float _scale;
+    const epix::world::sand::components::ElemRegistry* _reg;
+
+   public:
+    PixBodyCreateInfo& set_pos(const glm::vec2& pos) {
+        _pos = pos;
+        return *this;
+    }
+    PixBodyCreateInfo& set_grid(utils::grid::extendable_grid<PixelDef, 2>&& grid
+    ) {
+        _grid = std::move(grid);
+        return *this;
+    }
+    PixBodyCreateInfo& set_scale(float scale) {
+        _scale = scale;
+        return *this;
+    }
+    PixBodyCreateInfo& set_reg(
+        const epix::world::sand::components::ElemRegistry& reg
+    ) {
+        _reg = &reg;
+        return *this;
+    }
+
+    PixelDef& def(int x, int y, const std::string& name) {
+        if (!_grid.contains(x, y)) {
+            _grid.emplace(x, y, name);
+        }
+        return _grid.get(x, y);
+    }
+
+    PixelDef& def(int x, int y, int id) {
+        if (!_grid.contains(x, y)) {
+            _grid.emplace(x, y, id);
+        }
+        return _grid.get(x, y);
+    }
+
+    utils::grid::extendable_grid<PixelDef, 2>& grid() { return _grid; }
+
+    friend struct PixPhyWorld;
+};
+
 struct PixPhyWorld {
     using Cell = epix::world::sand::components::Cell;
 
     b2WorldId _world;
-    struct PixBodyCreateInfo {
-       private:
-        glm::vec2 _pos;
-        utils::grid::extendable_grid<PixelDef, 2> _grid;
-        float _scale;
-        const epix::world::sand::components::ElemRegistry* _reg;
-
-       public:
-        PixBodyCreateInfo& set_pos(const glm::vec2& pos) {
-            _pos = pos;
-            return *this;
-        }
-        PixBodyCreateInfo& set_grid(
-            utils::grid::extendable_grid<PixelDef, 2>&& grid
-        ) {
-            _grid = std::move(grid);
-            return *this;
-        }
-        PixBodyCreateInfo& set_scale(float scale) {
-            _scale = scale;
-            return *this;
-        }
-        PixBodyCreateInfo& set_reg(
-            const epix::world::sand::components::ElemRegistry& reg
-        ) {
-            _reg = &reg;
-            return *this;
-        }
-
-        PixelDef& def(int x, int y, const std::string& name) {
-            if (!_grid.contains(x, y)) {
-                _grid.emplace(x, y, name);
-            }
-            return _grid.get(x, y);
-        }
-
-        PixelDef& def(int x, int y, int id) {
-            if (!_grid.contains(x, y)) {
-                _grid.emplace(x, y, id);
-            }
-            return _grid.get(x, y);
-        }
-
-        utils::grid::extendable_grid<PixelDef, 2>& grid() { return _grid; }
-
-        friend struct PixPhyWorld;
-    };
     struct PixBody {
         b2BodyId _body;
         float _scale;

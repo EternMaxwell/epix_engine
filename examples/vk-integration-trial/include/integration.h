@@ -92,7 +92,7 @@ void create_test_body(
     if (!sim_query) return;
     auto [world] = world_query.single();
     auto [sim]   = sim_query.single();
-    epix::world::pixel_b2d::PixPhyWorld::PixBodyCreateInfo info;
+    epix::world::pixel_b2d::PixBodyCreateInfo info;
     info.set_reg(sim.registry());
     info.set_scale(pixel_size);
     info.set_pos({0, 0});
@@ -103,6 +103,13 @@ void create_test_body(
     }
     world.create_body(info);
 }
+
+struct BodyCreate : public epix::world::pixel_b2d::PixBodyCreateInfo {
+    BodyCreate() {
+        set_scale(pixel_size);
+        set_pos({0, 0});
+    }
+};
 
 void create_dynamic_from_click(
     Command command,
