@@ -2435,7 +2435,7 @@ template <typename T>
 std::vector<std::vector<std::vector<glm::ivec2>>> get_polygon_simplified_multi(
     const T& pixelbin, float epsilon = 0.5f, bool include_diagonal = false
 ) {
-    auto split_bin = split(Grid2D<bool>(pixelbin), include_diagonal);
+    auto split_bin = split(binary_grid2d(pixelbin), include_diagonal);
     std::vector<std::vector<std::vector<glm::ivec2>>> result;
     for (auto& bin : split_bin) {
         result.emplace_back(

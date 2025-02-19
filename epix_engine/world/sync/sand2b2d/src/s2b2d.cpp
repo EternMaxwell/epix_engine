@@ -31,7 +31,9 @@ EPIX_API bool get_chunk_collision(
     std::vector<std::vector<std::vector<glm::ivec2>>>& polygons
 ) {
     ChunkConverter grid{sim, chunk};
-    return epix::utils::grid::get_polygon_multi(grid, polygons);
+    polygons =
+        std::move(epix::utils::grid::get_polygon_simplified_multi(grid, 1.0f));
+    return !polygons.empty();
 }
 EPIX_API SimulationCollisions<void>::SimulationCollisions()
     : thread_pool(

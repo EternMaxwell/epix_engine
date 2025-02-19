@@ -445,6 +445,7 @@ struct Simulation {
         def.default_vel = get_default_vel(x, y);
         return create_def(x, y, def);
     }
+    EPIX_API void extrusion(int x, int y, float intense);
     /**
      * @brief Remove a cell at location (x, y)
      *

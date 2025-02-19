@@ -641,6 +641,18 @@ EPIX_API const Element& Simulation::get_elem(int x, int y) const {
     assert(contain_cell(x, y));
     return m_registry.get_elem(get_cell(x, y).elem_id);
 }
+EPIX_API void Simulation::extrusion(int x, int y, float intense) {
+    assert(valid(x, y));
+    if (!contain_cell(x, y)) return;
+    auto&& [cell, elem] = get(x, y);
+    if (elem.is_solid()) return;
+    static thread_local std::random_device rd;
+    static thread_local std::mt19937 gen(rd());
+    static thread_local std::uniform_real_distribution<float>
+        dis(-std::numbers::pi_v<float>, std::numbers::pi_v<float>);
+    cell.velocity +=
+        glm::vec2{std::cos(dis(gen)) * intense, std::sin(dis(gen)) * intense};
+}
 EPIX_API void Simulation::remove(int x, int y) {
     assert(valid(x, y));
     touch(x, y);

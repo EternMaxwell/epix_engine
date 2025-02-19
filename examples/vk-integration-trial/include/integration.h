@@ -94,7 +94,7 @@ void create_test_body(
     auto [sim]   = sim_query.single();
     epix::world::pixel_b2d::PixPhyWorld::PixBodyCreateInfo info;
     info.set_reg(sim.registry());
-    info.set_scale(scale);
+    info.set_scale(pixel_size);
     info.set_pos({0, 0});
     for (int x = 0; x < 20; x++) {
         for (int y = 0; y < 20; y++) {
@@ -300,9 +300,9 @@ struct SandMesh : render::pixel::vulkan2::PixelDrawMesh {};
 struct SandMeshStaging : render::pixel::vulkan2::PixelDrawStagingMesh {};
 struct SandMeshGPU : render::pixel::vulkan2::PixelDrawGPUMesh {};
 
-struct Box2dMesh : render::debug::vulkan2::DebugMesh {};
-struct Box2dMeshStaging : render::debug::vulkan2::DebugStagingMesh {};
-struct Box2dMeshGPU : render::debug::vulkan2::DebugGPUMesh {};
+struct Box2dMesh : render::debug::vulkan2::DebugDrawMesh {};
+struct Box2dMeshStaging : render::debug::vulkan2::DebugDrawStagingMesh {};
+struct Box2dMeshGPU : render::debug::vulkan2::DebugDrawGPUMesh {};
 
 void create_sand_meshes(Command command, Res<RenderContext> context) {
     if (!context) return;
@@ -383,29 +383,34 @@ void render_bodies(
     if (!mesh) return;
     ZoneScoped;
     auto [world] = query.single();
-    world.draw_pixel_smooth(
-        [&](const glm::mat4& model, bool awake) {
-            mesh->next_call();
-            mesh->push_constant(glm::scale(model, {scale, scale, 1.0f}));
-        },
-        [&](const glm::vec2& pos, const glm::vec4& color) {
-            mesh->draw_pixel(pos, color);
-        }
-    );
-    // world.draw_pixel_rasterized(
-    //     {0.0f, 0.0f}, scale,
-    //     [&](const glm::vec2& pos, const glm::vec2&, bool, size_t) {
+    // world.draw_pixel_smooth(
+    //     [&](const glm::mat4& model, bool awake) {
     //         mesh->next_call();
-    //         mesh->push_constant(
-    //             glm::scale(glm::mat4(1.0f), {scale, scale, 1.0f})
-    //         );
-    //         return true;
+    //         mesh->push_constant(glm::scale(
+    //             model, {scale, scale, 1.0f}
+    //         ));
     //     },
     //     [&](const glm::vec2& pos, const glm::vec4& color) {
-    //         mesh->draw_pixel(pos / scale, color);
+    //         mesh->draw_pixel(pos, color);
     //     }
     // );
+    world.draw_pixel_rasterized(
+        {0.0f, 0.0f}, pixel_size,
+        [&](const glm::vec2& pos, const glm::vec2&, bool, size_t) {
+            mesh->next_call();
+            mesh->push_constant(
+                glm::scale(glm::mat4(1.0f), {scale, scale, 1.0f})
+            );
+            return true;
+        },
+        [&](const glm::vec2& pos, const glm::vec4& color) {
+            mesh->draw_pixel(pos / pixel_size, color);
+        }
+    );
     mesh->next_call();
+    box2d_mesh->push_constant(glm::scale(
+        glm::mat4(1.0f), {scale / pixel_size, scale / pixel_size, 1.0f}
+    ));
     world.draw_debug_shape<float>([&](auto x1, auto y1, auto x2, auto y2,
                                       bool awake) {
         box2d_mesh->draw_line(
@@ -421,6 +426,7 @@ void render_bodies(
         glm::vec3 end   = start + vel * scale;
         box2d_mesh->draw_line(start, end, {0.0f, 0.0f, 1.0f, 1.0f});
     });
+    box2d_mesh->next_call();
 }
 
 void update_b2d_world(
@@ -532,9 +538,10 @@ void update_mouse_joint(
     if (mouse_joint_query) {
         auto [entity, joint] = mouse_joint_query.single();
         b2Vec2 cursor        = b2Vec2(
-            window.get_cursor().x - window.get_size().width / 2,
-            window.get_size().height / 2 - window.get_cursor().y
-        );
+                            window.get_cursor().x - window.get_size().width / 2,
+                            window.get_size().height / 2 - window.get_cursor().y
+                        ) *
+                        (pixel_size / scale);
         b2MouseJoint_SetTarget(joint.joint, cursor);
         if (!mouse_input.pressed(epix::input::MouseButton2)) {
             spdlog::info("Destroy Mouse Joint");
@@ -549,9 +556,10 @@ void update_mouse_joint(
         if (mouse_joint_query) return;
         b2AABB aabb   = b2AABB();
         b2Vec2 cursor = b2Vec2(
-            window.get_cursor().x - window.get_size().width / 2,
-            window.get_size().height / 2 - window.get_cursor().y
-        );
+                            window.get_cursor().x - window.get_size().width / 2,
+                            window.get_size().height / 2 - window.get_cursor().y
+                        ) *
+                        (pixel_size / scale);
         std::tuple<b2WorldId, MouseJoint, b2Vec2> context = {
             world.get_world(), {}, cursor
         };
@@ -898,24 +906,22 @@ void render_simulation_chunk_outline(
     auto [simulation, sim_collisions] = query.single();
     ZoneScopedN("Render simulation collision");
     float alpha = 0.3f;
+    mesh->push_constant(glm::scale(glm::mat4(1.0f), {scale, scale, 1.0f}));
     for (auto&& [pos, chunk] : simulation.chunk_map()) {
         glm::vec3 origin = glm::vec3(
             pos.x * simulation.chunk_size(), pos.y * simulation.chunk_size(),
             0.0f
         );
         glm::vec4 color = {1.0f, 1.0f, 1.0f, alpha / 4};
-        glm::vec3 lb    = glm::vec3(origin.x, origin.y, 0.0f) * scale;
+        glm::vec3 lb    = glm::vec3(origin.x, origin.y, 0.0f);
         glm::vec3 rt    = glm::vec3(
-                           origin.x + simulation.chunk_size(),
-                           origin.y + simulation.chunk_size(), 0.0f
-                       ) *
-                       scale;
+            origin.x + simulation.chunk_size(),
+            origin.y + simulation.chunk_size(), 0.0f
+        );
         glm::vec3 lt =
-            glm::vec3(origin.x, origin.y + simulation.chunk_size(), 0.0f) *
-            scale;
+            glm::vec3(origin.x, origin.y + simulation.chunk_size(), 0.0f);
         glm::vec3 rb =
-            glm::vec3(origin.x + simulation.chunk_size(), origin.y, 0.0f) *
-            scale;
+            glm::vec3(origin.x + simulation.chunk_size(), origin.y, 0.0f);
         mesh->draw_line(lb, rb, color);
         mesh->draw_line(rb, rt, color);
         mesh->draw_line(rt, lt, color);
@@ -954,16 +960,13 @@ void render_simulation_chunk_outline(
             glm::vec3 p2 = glm::vec3{x2, y1, 0.0f} + origin;
             glm::vec3 p3 = glm::vec3{x2, y2, 0.0f} + origin;
             glm::vec3 p4 = glm::vec3{x1, y2, 0.0f} + origin;
-            p1 *= scale;
-            p2 *= scale;
-            p3 *= scale;
-            p4 *= scale;
             mesh->draw_line(p1, p2, color);
             mesh->draw_line(p2, p3, color);
             mesh->draw_line(p3, p4, color);
             mesh->draw_line(p4, p1, color);
         }
     }
+    mesh->next_call();
 }
 
 void render_simulation_collision(
@@ -977,12 +980,16 @@ void render_simulation_collision(
     ZoneScoped;
     auto [simulation, sim_collisions] = query.single();
     float alpha                       = 0.3f;
+    mesh->push_constant(glm::scale(
+        glm::mat4(1.0f), {scale / pixel_size, scale / pixel_size, 1.0f}
+    ));
     sim_collisions.draw_debug_b2d<float>([&](float x1, float y1, float x2,
                                              float y2) {
         mesh->draw_line(
             {x1, y1, 0.0f}, {x2, y2, 0.0f}, {1.0f, 0.0f, 0.0f, alpha}
         );
     });
+    mesh->next_call();
 }
 
 enum class InputState { Simulation, Body };
@@ -1027,7 +1034,7 @@ void sync_simulatino_with_b2d(
         collisions.sync(sim);
         collisions.sync(
             world.get_world(),
-            collisions.pos_converter(CHUNK_SIZE, scale, {0, 0})
+            collisions.pos_converter(CHUNK_SIZE, pixel_size, {0, 0})
         );
     }
 }
@@ -1045,9 +1052,9 @@ void sync_b2d_with_simulation(
     ZoneScoped;
     auto pos_converter =
         epix::world::sync::b2d2sand::PixPhy2Simulation::PosConverter(
-            {0.0f, 0.0f}, scale
+            {0.0f, 0.0f}, pixel_size
         );
-    sync.sync(world, simulation, pos_converter);
+    sync.sync(world, simulation, pos_converter, pixel_size * 3);
 }
 
 void draw_meshes(
@@ -1153,7 +1160,7 @@ void draw_meshes(
             device.updateDescriptorSets({descriptor_write}, {});
         }
     );
-    subpass_b2d.draw(*b2d_gpu_mesh, glm::mat4(1.0f));
+    subpass_b2d.draw(*b2d_gpu_mesh);
     pass->end();
     pass->submit(context->queue);
 }
