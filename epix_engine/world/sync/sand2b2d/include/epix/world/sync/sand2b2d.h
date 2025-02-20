@@ -11,7 +11,7 @@ namespace epix::world::sync::sand2b2d {
 EPIX_API bool get_chunk_collision(
     const epix::world::sand::components::Simulation& sim,
     const epix::world::sand::components::Simulation::Chunk& chunk,
-    std::vector<std::vector<std::vector<glm::ivec2>>>& polygons
+    std::vector<std::vector<std::vector<std::vector<glm::ivec2>>>>& polygons
 );
 struct Ivec2Hash {
     std::size_t operator()(const glm::ivec2& vec) const {
@@ -26,9 +26,12 @@ struct Ivec2Equal {
 template <typename T>
 struct SimulationCollisions {
     struct ChunkCollisions {
-        T user_data                                                  = {};
-        bool has_collision                                           = false;
-        std::vector<std::vector<std::vector<glm::ivec2>>> collisions = {};
+        T user_data        = {};
+        bool has_collision = false;
+        std::vector<std::vector<std::vector<std::vector<glm::ivec2>>>>
+            collisions = {
+        };  // 0 is static, 1... are for dynamic, with index indicating the
+            // density area of the elements in the collision
         operator bool() const { return has_collision; }
         bool operator!() const { return !has_collision; }
     };
@@ -86,8 +89,9 @@ struct SimulationCollisions {
 template <>
 struct SimulationCollisions<void> {
     struct ChunkCollisions {
-        bool has_collision                                           = false;
-        std::vector<std::vector<std::vector<glm::ivec2>>> collisions = {};
+        bool has_collision = false;
+        std::vector<std::vector<std::vector<std::vector<glm::ivec2>>>>
+            collisions = {};
         operator bool() const { return !collisions.empty(); }
         bool operator!() const { return collisions.empty(); }
     };

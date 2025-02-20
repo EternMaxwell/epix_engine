@@ -913,6 +913,14 @@ void render_simulation_chunk_outline(
     auto [simulation, sim_collisions] = query.single();
     ZoneScopedN("Render simulation collision");
     float alpha = 0.3f;
+    // mesh->push_constant(glm::scale(
+    //     glm::mat4(1.0f), {scale / pixel_size, scale / pixel_size, 1.0f}
+    // ));
+    // sim_collisions.draw_debug_b2d<float>([&](auto x1, auto y1, auto x2,
+    //                                          auto y2) {
+    //     mesh->draw_line({x1, y1, 0.f}, {x2, y2, 0.f}, {1.0f, 0.f, 0.f, alpha});
+    // });
+    // mesh->next_call();
     mesh->push_constant(glm::scale(glm::mat4(1.0f), {scale, scale, 1.0f}));
     for (auto&& [pos, chunk] : simulation.chunk_map()) {
         glm::vec3 origin = glm::vec3(
@@ -933,29 +941,6 @@ void render_simulation_chunk_outline(
         mesh->draw_line(rb, rt, color);
         mesh->draw_line(rt, lt, color);
         mesh->draw_line(lt, lb, color);
-        if constexpr (render_collision_outline) {
-            if (sim_collisions.collisions.contains(pos.x, pos.y)) {
-                auto& collision_outline =
-                    sim_collisions.collisions.get(pos.x, pos.y).collisions;
-                for (auto&& outlines : collision_outline) {
-                    for (auto&& outline : outlines) {
-                        for (size_t i = 0; i < outline.size(); i++) {
-                            auto start = glm::vec3(outline[i], 0.0f) + origin;
-                            auto end =
-                                glm::vec3(
-                                    outline[(i + 1) % outline.size()], 0.0f
-                                ) +
-                                origin;
-                            start *= scale;
-                            end *= scale;
-                            mesh->draw_line(
-                                start, end, {0.0f, 1.0f, 0.0f, alpha}
-                            );
-                        }
-                    }
-                }
-            }
-        }
         if (chunk.should_update()) {
             // orange
             color        = {1.0f, 0.5f, 0.0f, alpha};
@@ -1255,7 +1240,7 @@ struct RenderPassPlugin : Plugin {
 struct PixelB2dTestPlugin : Plugin {
     void build(App& app) override {
         app.add_system(Startup, create_b2d_world).chain();
-        app.add_system(PostStartup, create_test_body);
+        // app.add_system(PostStartup, create_test_body);
         app.add_system(PreUpdate, update_b2d_world)
             .in_state(SimulateState::Running);
         app.add_system(Update, destroy_too_far_bodies, toggle_simulation);

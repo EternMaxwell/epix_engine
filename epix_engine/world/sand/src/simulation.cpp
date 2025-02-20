@@ -77,6 +77,40 @@ EPIX_API bool Cell::valid() const { return elem_id >= 0; }
 EPIX_API Cell::operator bool() const { return valid(); }
 EPIX_API bool Cell::operator!() const { return !valid(); }
 
+EPIX_API void Simulation::Chunk::set_static_updated(bool updated) {
+    if (updated) {
+        flags |= STATIC_UPDATED;
+    } else {
+        flags &= ~STATIC_UPDATED;
+    }
+}
+EPIX_API void Simulation::Chunk::set_powder_updated(bool updated) {
+    if (updated) {
+        flags |= POWDER_UPDATED;
+    } else {
+        flags &= ~POWDER_UPDATED;
+    }
+}
+EPIX_API void Simulation::Chunk::set_liquid_updated(bool updated) {
+    if (updated) {
+        flags |= LIQUID_UPDATED;
+    } else {
+        flags &= ~LIQUID_UPDATED;
+    }
+}
+EPIX_API bool Simulation::Chunk::static_updated() const {
+    return flags & STATIC_UPDATED;
+}
+EPIX_API bool Simulation::Chunk::powder_updated() const {
+    return flags & POWDER_UPDATED;
+}
+EPIX_API bool Simulation::Chunk::liquid_updated() const {
+    return flags & LIQUID_UPDATED;
+}
+EPIX_API bool Simulation::Chunk::updated() const {
+    return flags & (STATIC_UPDATED | POWDER_UPDATED | LIQUID_UPDATED);
+}
+
 EPIX_API Simulation::Chunk::Chunk(int width, int height)
     : cells({width, height}),
       width(width),
@@ -115,6 +149,7 @@ EPIX_API void Simulation::Chunk::reset_updated() {
     for (auto& each : cells.data()) {
         each.set_updated(false);
     }
+    flags = 0;
 }
 EPIX_API void Simulation::Chunk::count_time() {
     time_since_last_swap++;
@@ -139,14 +174,22 @@ EPIX_API Cell& Simulation::Chunk::create(
     if (cell.elem_id < 0) {
         return cells.get(x, y);
     }
-    cell.color = m_registry.get_elem(cell.elem_id).gen_color();
+    auto&& elem = m_registry.get_elem(cell.elem_id);
+    if (elem.is_solid()) {
+        set_static_updated(true);
+    } else if (elem.is_powder()) {
+        set_powder_updated(true);
+    } else if (elem.is_liquid()) {
+        set_liquid_updated(true);
+    }
+    cell.color = elem.gen_color();
     static thread_local std::random_device rd;
     static thread_local std::mt19937 gen(rd());
     static thread_local std::uniform_real_distribution<float> dis(-0.4f, 0.4f);
     cell.inpos = {dis(gen), dis(gen)};
     cell.velocity =
         def.default_vel + glm::vec2{dis(gen) * 0.1f, dis(gen) * 0.1f};
-    if (!m_registry.get_elem(cell.elem_id).is_solid()) {
+    if (!elem.is_solid()) {
         cell.set_freefall(true);
     } else {
         cell.velocity = {0.0f, 0.0f};
@@ -605,6 +648,7 @@ EPIX_API const Cell& Simulation::get_cell(int x, int y) const {
     return m_chunk_map.get_chunk(chunk_x, chunk_y).get(cell_x, cell_y);
 }
 EPIX_API void Simulation::swap(int x, int y, int tx, int ty) {
+    if (x == tx && y == ty) return;
     auto [chunk_x, chunk_y]   = to_chunk_pos(x, y);
     auto [cell_x, cell_y]     = to_in_chunk_pos(x, y);
     auto [tchunk_x, tchunk_y] = to_chunk_pos(tx, ty);
@@ -620,18 +664,62 @@ EPIX_API void Simulation::swap(int x, int y, int tx, int ty) {
     }
     if (chunk.contains(cell_x, cell_y) && tchunk.contains(tcell_x, tcell_y)) {
         auto& cell  = chunk.get(cell_x, cell_y);
+        auto& elem  = m_registry.get_elem(cell.elem_id);
         auto& tcell = tchunk.get(tcell_x, tcell_y);
+        auto& telem = m_registry.get_elem(tcell.elem_id);
+        if (elem.is_solid()) {
+            chunk.set_static_updated(true);
+            tchunk.set_static_updated(true);
+        } else if (elem.is_powder()) {
+            chunk.set_powder_updated(true);
+            tchunk.set_powder_updated(true);
+        } else if (elem.is_liquid()) {
+            chunk.set_liquid_updated(true);
+            tchunk.set_liquid_updated(true);
+        }
+        if (telem.is_solid()) {
+            chunk.set_static_updated(true);
+            tchunk.set_static_updated(true);
+        } else if (telem.is_powder()) {
+            chunk.set_powder_updated(true);
+            tchunk.set_powder_updated(true);
+        } else if (telem.is_liquid()) {
+            chunk.set_liquid_updated(true);
+            tchunk.set_liquid_updated(true);
+        }
         std::swap(cell, tcell);
         return;
     }
     if (chunk.contains(cell_x, cell_y)) {
         auto& cell = chunk.get(cell_x, cell_y);
+        auto& elem = m_registry.get_elem(cell.elem_id);
+        if (elem.is_solid()) {
+            chunk.set_static_updated(true);
+            tchunk.set_static_updated(true);
+        } else if (elem.is_powder()) {
+            chunk.set_powder_updated(true);
+            tchunk.set_powder_updated(true);
+        } else if (elem.is_liquid()) {
+            chunk.set_liquid_updated(true);
+            tchunk.set_liquid_updated(true);
+        }
         tchunk.insert(tcell_x, tcell_y, std::move(cell));
         chunk.remove(cell_x, cell_y);
         return;
     }
     if (tchunk.contains(tcell_x, tcell_y)) {
         auto& tcell = tchunk.get(tcell_x, tcell_y);
+        auto& telem = m_registry.get_elem(tcell.elem_id);
+        if (telem.is_solid()) {
+            chunk.set_static_updated(true);
+            tchunk.set_static_updated(true);
+        } else if (telem.is_powder()) {
+            chunk.set_powder_updated(true);
+            tchunk.set_powder_updated(true);
+        } else if (telem.is_liquid()) {
+            chunk.set_liquid_updated(true);
+            tchunk.set_liquid_updated(true);
+        }
         chunk.insert(cell_x, cell_y, std::move(tcell));
         tchunk.remove(tcell_x, tcell_y);
         return;
@@ -2036,6 +2124,11 @@ EPIX_API void Simulation::touch(int x, int y) {
     auto& elem = m_registry.get_elem(cell.elem_id);
     if (elem.is_solid()) return;
     if (cell.freefall()) return;
+    if (elem.is_powder()) {
+        chunk.set_powder_updated(true);
+    } else if (elem.is_liquid()) {
+        chunk.set_liquid_updated(true);
+    }
     static thread_local std::random_device rd;
     static thread_local std::mt19937 gen(rd());
     static thread_local std::uniform_real_distribution<float> dis(0.0f, 1.0f);

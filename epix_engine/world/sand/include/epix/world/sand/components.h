@@ -127,7 +127,9 @@ struct ElemRegistry {
 };
 struct Simulation {
     struct Chunk {
-        using Grid = epix::utils::grid::sparse_grid<Cell, 2>;
+        using Grid       = epix::utils::grid::sparse_grid<Cell, 2>;
+        using bitfield_t = uint8_t;
+
         Grid cells;
         const int width;
         const int height;
@@ -136,12 +138,29 @@ struct Simulation {
         int updating_area[4];
         int updating_area_next[4];
 
+        bitfield_t flags;
+
+        static constexpr bitfield_t STATIC_UPDATED = 1 << 0;
+        static constexpr bitfield_t POWDER_UPDATED = 1 << 1;
+        static constexpr bitfield_t LIQUID_UPDATED = 1 << 2;
+        static constexpr bitfield_t SOLID_UPDATED  = STATIC_UPDATED;
+
+       protected:
+        EPIX_API void set_static_updated(bool updated);
+        EPIX_API void set_powder_updated(bool updated);
+        EPIX_API void set_liquid_updated(bool updated);
+
+       public:
         EPIX_API Chunk(int width, int height);
         EPIX_API Chunk(const Chunk& other);
         EPIX_API Chunk(Chunk&& other);
         EPIX_API Chunk& operator=(const Chunk& other);
         EPIX_API Chunk& operator=(Chunk&& other);
         EPIX_API void reset_updated();
+        EPIX_API bool static_updated() const;
+        EPIX_API bool powder_updated() const;
+        EPIX_API bool liquid_updated() const;
+        EPIX_API bool updated() const;
         EPIX_API void count_time();
         EPIX_API Cell& get(int x, int y);
         EPIX_API const Cell& get(int x, int y) const;
@@ -174,6 +193,8 @@ struct Simulation {
          * @return false if the cell is outside the chunk
          */
         EPIX_API bool contains(int x, int y) const;
+
+        friend struct Simulation;
     };
 
     struct ChunkMap {
