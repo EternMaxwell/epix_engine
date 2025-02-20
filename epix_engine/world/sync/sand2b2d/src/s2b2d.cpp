@@ -152,17 +152,17 @@ EPIX_API void SimulationCollisionGeneral::sync(
                             (outline[outline.size() - i - 1].y + real_pos.y)
                     };
                 }
-                uint32_t filter = 0;
+                uint32_t filter = 1;
                 if (j != 0) {
+                    filter           = 0;
                     auto max_density = polygons.size();
-                    // filter.categoryBits : 0x0001 << max_density ~ 1 << j
-                    std::vector<int> bit_offsets(max_density - j);
+                    std::vector<int> bit_offsets(j);
                     for (int i = 0; i < bit_offsets.size(); i++) {
-                        bit_offsets[i] = i + j;
+                        bit_offsets[i] = i;
                     }
                     filter = std::accumulate(
-                        bit_offsets.begin(), bit_offsets.end(), 1u,
-                        [](auto&& bits, auto&& v) { return bits | v; }
+                        bit_offsets.begin(), bit_offsets.end(), 0u,
+                        [](auto&& bits, auto&& v) { return bits | (2u << v); }
                     );
                 }
                 auto chain_def                = b2DefaultChainDef();
@@ -170,7 +170,8 @@ EPIX_API void SimulationCollisionGeneral::sync(
                 chain_def.isLoop              = true;
                 chain_def.count               = outline.size();
                 chain_def.filter.categoryBits = filter;
-                chain_def.filter.maskBits     = filter;
+                if (j != 0) spdlog::info("chain mask: {:#x}", filter);
+                if (j != 0) chain_def.filter.maskBits = filter;
                 chain_ids.push_back(b2CreateChain(body_id, &chain_def));
                 delete[] points;
                 for (size_t i = 1; i < polygon.size(); i++) {

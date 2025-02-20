@@ -918,7 +918,8 @@ void render_simulation_chunk_outline(
     // ));
     // sim_collisions.draw_debug_b2d<float>([&](auto x1, auto y1, auto x2,
     //                                          auto y2) {
-    //     mesh->draw_line({x1, y1, 0.f}, {x2, y2, 0.f}, {1.0f, 0.f, 0.f, alpha});
+    //     mesh->draw_line({x1, y1, 0.f}, {x2, y2, 0.f}, {1.0f, 0.f, 0.f,
+    //     alpha});
     // });
     // mesh->next_call();
     mesh->push_constant(glm::scale(glm::mat4(1.0f), {scale, scale, 1.0f}));
@@ -1240,7 +1241,7 @@ struct RenderPassPlugin : Plugin {
 struct PixelB2dTestPlugin : Plugin {
     void build(App& app) override {
         app.add_system(Startup, create_b2d_world).chain();
-        // app.add_system(PostStartup, create_test_body);
+        app.add_system(PostStartup, create_test_body);
         app.add_system(PreUpdate, update_b2d_world)
             .in_state(SimulateState::Running);
         app.add_system(Update, destroy_too_far_bodies, toggle_simulation);

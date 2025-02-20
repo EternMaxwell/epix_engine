@@ -202,12 +202,14 @@ struct PixPhyWorld {
                 auto&& vertex = vertex_at(triangle_indices[i + j]);
                 vertices[j] = {vertex.x * info._scale, vertex.y * info._scale};
             }
-            b2Hull hull           = b2ComputeHull(vertices, 3);
-            float radius          = 0.0f;
-            b2Polygon triangle    = b2MakePolygon(&hull, radius);
-            b2ShapeDef shape_def  = b2DefaultShapeDef();
-            shape_def.density     = density;
-            shape_def.friction    = friction;
+            b2Hull hull                   = b2ComputeHull(vertices, 3);
+            float radius                  = 0.0f;
+            b2Polygon triangle            = b2MakePolygon(&hull, radius);
+            b2ShapeDef shape_def          = b2DefaultShapeDef();
+            shape_def.density             = density;
+            shape_def.friction            = friction;
+            shape_def.filter.categoryBits = 2u << (uint32_t)(density / 2);
+            spdlog::info("box cat: {:#x}", shape_def.filter.categoryBits);
             shape_def.restitution = restitution;
             b2CreatePolygonShape(body, &shape_def, &triangle);
         }
