@@ -45,7 +45,6 @@ struct PixBodyCreateInfo {
     glm::vec2 _pos;
     utils::grid::extendable_grid<PixelDef, 2> _grid;
     float _scale;
-    const epix::world::sand::components::ElemRegistry* _reg;
 
    public:
     PixBodyCreateInfo& set_pos(const glm::vec2& pos) {
@@ -59,12 +58,6 @@ struct PixBodyCreateInfo {
     }
     PixBodyCreateInfo& set_scale(float scale) {
         _scale = scale;
-        return *this;
-    }
-    PixBodyCreateInfo& set_reg(
-        const epix::world::sand::components::ElemRegistry& reg
-    ) {
-        _reg = &reg;
         return *this;
     }
 
@@ -88,9 +81,11 @@ struct PixBodyCreateInfo {
 };
 
 struct PixPhyWorld {
-    using Cell = epix::world::sand::components::Cell;
+    using Cell = epix::world::sand::Particle;
 
     b2WorldId _world;
+    const epix::world::sand::Registry* _reg;
+
     struct PixBody {
         b2BodyId _body;
         float _scale;
@@ -152,31 +147,31 @@ struct PixPhyWorld {
             auto x = r_pos[0] - info._grid.origin(0);
             auto y = r_pos[1] - info._grid.origin(1);
             if (std::holds_alternative<std::string>(def.type)) {
-                id = info._reg->elem_id(std::get<std::string>(def.type));
+                id = _reg->id_of(std::get<std::string>(def.type));
             } else {
                 id = std::get<int>(def.type);
             }
             cell_grid.emplace(
                 x, y, id,
-                def.color ? *def.color : info._reg->get_elem(id).gen_color()
+                def.color ? *def.color : _reg->get_elem(id).gen_color()
             );
         }
         float density = 0.f, friction = 0.f, restitution = 0.f;
         {
             int count  = 0;
-            auto&& reg = *info._reg;
+            auto&& reg = *_reg;
             for (auto&& [pos, def] : info._grid.view()) {
                 count++;
                 if (std::holds_alternative<std::string>(def.type)) {
                     auto&& elem = reg.get_elem(std::get<std::string>(def.type));
                     friction += elem.friction;
                     density += elem.density;
-                    restitution += elem.bouncing;
+                    restitution += elem.restitution;
                 } else {
                     auto&& elem = reg.get_elem(std::get<int>(def.type));
                     friction += elem.friction;
                     density += elem.density;
-                    restitution += elem.bouncing;
+                    restitution += elem.resitution;
                 }
             }
             if (!count) return index;

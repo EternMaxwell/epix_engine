@@ -1,6 +1,291 @@
 #pragma once
 
-#include "sand/components.h"
-#include "sand/systems.h"
+#pragma once
 
-namespace epix::world::sand {}
+#include <spdlog/spdlog.h>
+
+#include <BS_thread_pool.hpp>
+#include <entt/entity/registry.hpp>
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <mutex>
+#include <random>
+#include <shared_mutex>
+
+#include "epix/common.h"
+#include "epix/utils/grid.h"
+
+// === DECLARATION  ===//
+namespace epix::world::sand {
+struct Registry;
+struct Element;
+struct Particle;  // Previously known as Cell
+struct PartDef;
+struct Chunk;
+struct World;
+struct Simulator;  // This class is used to update the world. Constructing
+                   // should be cheap.
+}  // namespace epix::world::sand
+
+// === STRUCTS ===//
+namespace epix::world::sand {
+enum class ElemType : uint8_t { POWDER, LIQUID, SOLID, GAS, PLACEHOLDER };
+struct Element {
+   private:
+    ElemType m_type = ElemType::SOLID;
+
+   public:
+    float density     = 0.0f;
+    float restitution = 0.1f;
+    float friction    = 0.0f;
+    float awake_rate  = 1.0f;
+    std::string name;
+    std::string description = "";
+
+   private:
+    std::function<glm::vec4()> fn_color_gen;
+    EPIX_API static Element place_holder();
+
+    friend struct Registry;
+
+   public:
+    EPIX_API Element(const std::string& name, ElemType type);
+    EPIX_API static Element solid(const std::string& name);
+    EPIX_API static Element liquid(const std::string& name);
+    EPIX_API static Element powder(const std::string& name);
+    EPIX_API static Element gas(const std::string& name);
+    EPIX_API Element& set_type(ElemType type);
+    EPIX_API Element& set_density(float density);
+    EPIX_API Element& set_restitution(float bouncing);
+    EPIX_API Element& set_friction(float friction);
+    EPIX_API Element& set_awake_rate(float rate);
+    EPIX_API Element& set_description(const std::string& description);
+    EPIX_API Element& set_color(std::function<glm::vec4()> color_gen);
+    EPIX_API Element& set_color(const glm::vec4& color);
+    EPIX_API bool is_complete() const;
+    EPIX_API glm::vec4 gen_color() const;
+
+    EPIX_API bool operator==(const Element& other) const;
+    EPIX_API bool operator!=(const Element& other) const;
+    EPIX_API bool is_solid() const;
+    EPIX_API bool is_liquid() const;
+    EPIX_API bool is_powder() const;
+    EPIX_API bool is_gas() const;
+    EPIX_API bool is_place_holder() const;
+};
+
+struct Particle {
+   public:
+    int elem_id        = -1;
+    glm::vec4 color    = glm::vec4(0.0f);
+    glm::vec2 velocity = glm::vec2(0.0f);
+    glm::vec2 inpos    = glm::vec2(0.0f);
+    int not_move_count = 0;
+
+   private:
+    uint8_t bitfield = 0;
+
+    static constexpr uint8_t FREEFALL = 1 << 0;
+    static constexpr uint8_t UPDATED  = 1 << 1;
+    static constexpr uint8_t BURNING  = 1 << 2;
+
+   public:
+    EPIX_API bool freefall() const;
+    EPIX_API void set_freefall(bool freefall);
+    EPIX_API bool updated() const;
+    EPIX_API void set_updated(bool updated);
+
+    EPIX_API bool valid() const;
+    EPIX_API operator bool() const;
+    EPIX_API bool operator!() const;
+};
+
+struct PartDef {
+    std::variant<std::string, int> id;
+
+    EPIX_API PartDef(const std::string& name);
+    EPIX_API PartDef(int id);
+};
+
+struct Registry {
+   private:
+    entt::dense_map<std::string, int> elemId_map;
+    std::vector<Element> elements;
+
+   protected:
+    EPIX_API Registry();
+    EPIX_API Registry(const Registry& other);
+    EPIX_API Registry(Registry&& other);
+    EPIX_API Registry& operator=(const Registry& other);
+    EPIX_API Registry& operator=(Registry&& other);
+
+   public:
+    EPIX_API static Registry* create();
+    EPIX_API static void destroy(Registry* registry);
+    EPIX_API static std::unique_ptr<Registry> create_unique();
+    EPIX_API static std::shared_ptr<Registry> create_shared();
+
+    EPIX_API int register_elem(const std::string& name, const Element& elem);
+    EPIX_API int register_elem(const Element& elem);
+    EPIX_API int id_of(const std::string& name) const;
+    EPIX_API const std::string& name_of(int id) const;
+    EPIX_API int count() const;
+    EPIX_API const Element& get_elem(const std::string& name) const;
+    EPIX_API const Element& get_elem(int id) const;
+    EPIX_API const Element& operator[](int id) const;
+    EPIX_API const Element& operator[](const std::string& name) const;
+    EPIX_API void add_equiv(const std::string& name, const std::string& equiv);
+
+    EPIX_API Particle create_particle(const PartDef& def);
+};
+
+struct Chunk {
+    using grid_t = epix::utils::grid::sparse_grid<Particle, 2>;
+    grid_t grid;
+    const int width;
+    const int height;
+    int time_since_last_swap;
+    int time_threshold;
+    int updating_area[4];
+    int updating_area_next[4];
+
+    EPIX_API Chunk(int width, int height);
+    EPIX_API Chunk(const Chunk& other);
+    EPIX_API Chunk(Chunk&& other);
+    EPIX_API Chunk& operator=(const Chunk& other);
+    EPIX_API Chunk& operator=(Chunk&& other);
+    EPIX_API void reset_updated();
+    EPIX_API void step_time();
+    EPIX_API Particle& get(int x, int y);
+    EPIX_API const Particle& get(int x, int y) const;
+    EPIX_API void insert(int x, int y, const Particle& cell);
+    EPIX_API void insert(int x, int y, Particle&& cell);
+    EPIX_API void swap_area();
+    EPIX_API void remove(int x, int y);
+    EPIX_API void touch(int x, int y);
+    EPIX_API bool should_update() const;
+
+    EPIX_API int size(int dim) const;
+    EPIX_API bool contains(int x, int y) const;
+};
+
+struct World {
+    using grid_t = epix::utils::grid::extendable_grid<Chunk, 2>;
+    grid_t m_chunks;
+    const int m_chunk_size;
+    const Registry* m_registry;
+    std::unique_ptr<BS::thread_pool<BS::tp::none>> m_thread_pool;
+
+    struct NotMovingThresholdSetting {
+        float power     = 0.3f;
+        float numerator = 4000.0f;
+    } not_moving_threshold_setting;
+
+   protected:
+    EPIX_API World(const Registry* registry, int chunk_size);
+
+   public:
+    // === CONSTRUCTORS ===//
+    EPIX_API static World* create(const Registry* registry, int chunk_size);
+    EPIX_API static std::unique_ptr<World> create_unique(
+        const Registry* registry, int chunk_size
+    );
+    EPIX_API static std::shared_ptr<World> create_shared(
+        const Registry* registry, int chunk_size
+    );
+
+    // === WORLD GLOBAL ===//
+    EPIX_API int chunk_size() const;
+    EPIX_API const Registry& registry() const;
+
+    // === HELPER FUNCTIONS ===//
+    EPIX_API std::pair<int, int> to_chunk_pos(int x, int y) const;
+    EPIX_API std::pair<int, int> in_chunk_pos(int x, int y) const;
+    EPIX_API std::pair<std::pair<int, int>, std::pair<int, int>> decode_pos(
+        int x, int y
+    ) const;
+
+    // === CHUNK OPERATIONS ===//
+    EPIX_API void insert_chunk(int x, int y, Chunk&& chunk);
+    EPIX_API void insert_chunk(int x, int y);
+    EPIX_API void remove_chunk(int x, int y);
+    EPIX_API void shrink_to_fit();
+
+    // === OTHER DATA ===//
+    EPIX_API glm::vec2 gravity_at(int x, int y) const;
+    EPIX_API glm::vec2 default_velocity_at(int x, int y) const;
+    EPIX_API float air_density_at(int x, int y) const;
+    EPIX_API int not_moving_threshold(const glm::vec2& grav) const;
+
+    // === PART CHECK FUNCTIONS ===//
+    EPIX_API bool valid(int x, int y) const;
+    EPIX_API bool contains(int x, int y) const;
+
+    // === PART GET FUNCTIONS ===//
+    EPIX_API Particle& particle_at(int x, int y);
+    EPIX_API const Particle& particle_at(int x, int y) const;
+    EPIX_API const Element& elem_at(int x, int y) const;
+    EPIX_API std::tuple<Particle&, const Element&> get(int x, int y);
+    EPIX_API std::tuple<const Particle&, const Element&> get(int x, int y)
+        const;
+
+    // === PARTICLE MOVE FUNCTIONS ===//
+    EPIX_API void swap(int x, int y, int tx, int ty);
+    EPIX_API void insert(int x, int y, Particle&& cell);
+    EPIX_API void remove(int x, int y);
+
+    // === CHUNK ITERATION ===//
+    EPIX_API grid_t::view_t view();
+    EPIX_API grid_t::const_view_t view() const;
+};
+
+struct Simulator {
+   private:
+    World* m_world;
+    struct LiquidSpreadSetting {
+        float spread_len = 3.0f;
+        float prefix     = 0.01f;
+    } liquid_spread_setting;
+    struct UpdateState {
+        bool random_state = true;
+        bool xorder       = true;
+        bool yorder       = true;
+        bool x_outer      = true;
+        EPIX_API void next();
+    } update_state;
+    std::optional<glm::ivec2> max_travel;
+    struct UpdatingState {
+        bool is_updating = false;
+        std::vector<glm::ivec2> updating_chunks;
+        std::pair<std::tuple<int, int, int>, std::tuple<int, int, int>> bounds;
+        int updating_index = 0;
+        std::optional<glm::ivec2> in_chunk_pos;
+
+        EPIX_API std::optional<glm::ivec2> current_chunk() const;
+        EPIX_API std::optional<glm::ivec2> current_cell() const;
+    } updating_state;
+    struct PowderSlideSetting {
+        bool always_slide = true;
+        float prefix      = 0.05f;
+    } powder_slide_setting;
+
+   public:
+    struct RaycastResult {
+        int steps;
+        int new_x;
+        int new_y;
+        std::optional<std::pair<int, int>> hit;
+    };
+    EPIX_API RaycastResult raycast_to(int x, int y, int tx, int ty);
+    EPIX_API RaycastResult raycast_to(int x, int y, float dx, float dy);
+    EPIX_API bool collide(int x, int y, int tx, int ty);
+    EPIX_API bool collide(
+        Particle& part1, Particle& part2, const glm::vec2& dir
+    );
+
+    EPIX_API void touch(int x, int y);
+
+    // === SIMULATION FUNCTIONS ===//
+    EPIX_API void step(float delta);
+};
+}  // namespace epix::world::sand

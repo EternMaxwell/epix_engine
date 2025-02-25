@@ -1,37 +1,37 @@
-#include "epix/world/sand/components.h"
+#include "epix/world/sand.h"
 
-using namespace epix::world::sand::components;
+using namespace epix::world::sand;
 
-EPIX_API Element::Element(const std::string& name, GravType type)
-    : name(name), grav_type(type) {}
+EPIX_API Element::Element(const std::string& name, ElemType type)
+    : name(name), m_type(type) {}
 EPIX_API Element Element::solid(const std::string& name) {
-    return Element(name, GravType::SOLID);
+    return Element(name, ElemType::SOLID);
 }
 EPIX_API Element Element::liquid(const std::string& name) {
-    return Element(name, GravType::LIQUID);
+    return Element(name, ElemType::LIQUID);
 }
 EPIX_API Element Element::powder(const std::string& name) {
-    return Element(name, GravType::POWDER);
+    return Element(name, ElemType::POWDER);
 }
 EPIX_API Element Element::gas(const std::string& name) {
-    return Element(name, GravType::GAS);
+    return Element(name, ElemType::GAS);
 }
 EPIX_API Element Element::place_holder() {
-    return Element("<=PLACE_HOLDER=>", GravType::PLACEHOLDER)
+    return Element("<=PLACE_HOLDER=>", ElemType::PLACEHOLDER)
         .set_color([]() { return glm::vec4(0.0f, 0.0f, 0.0f, 0.0f); })
         .set_density(1000.0f)
         .set_description("PLACE_HOLDER");
 }
-EPIX_API Element& Element::set_grav_type(GravType type) {
-    grav_type = type;
+EPIX_API Element& Element::set_type(ElemType type) {
+    type = type;
     return *this;
 }
 EPIX_API Element& Element::set_density(float density) {
     this->density = density;
     return *this;
 }
-EPIX_API Element& Element::set_bouncing(float bouncing) {
-    this->bouncing = bouncing;
+EPIX_API Element& Element::set_restitution(float restitution) {
+    this->restitution = restitution;
     return *this;
 }
 EPIX_API Element& Element::set_friction(float friction) {
@@ -47,17 +47,17 @@ EPIX_API Element& Element::set_description(const std::string& description) {
     return *this;
 }
 EPIX_API Element& Element::set_color(std::function<glm::vec4()> color_gen) {
-    this->color_gen = color_gen;
+    this->fn_color_gen = color_gen;
     return *this;
 }
 EPIX_API Element& Element::set_color(const glm::vec4& color) {
-    this->color_gen = [color]() { return color; };
+    this->fn_color_gen = [color]() { return color; };
     return *this;
 }
 EPIX_API bool Element::is_complete() const {
-    return !name.empty() && color_gen && density != 0.0f;
+    return !name.empty() && fn_color_gen && density != 0.0f;
 }
-EPIX_API glm::vec4 Element::gen_color() const { return color_gen(); }
+EPIX_API glm::vec4 Element::gen_color() const { return fn_color_gen(); }
 EPIX_API bool Element::operator==(const Element& other) const {
     return name == other.name;
 }
@@ -65,16 +65,12 @@ EPIX_API bool Element::operator!=(const Element& other) const {
     return name != other.name;
 }
 EPIX_API bool Element::is_solid() const {
-    return grav_type == GravType::SOLID || grav_type == GravType::PLACEHOLDER;
+    return m_type == ElemType::SOLID || m_type == ElemType::PLACEHOLDER;
     // placeholder is also viewed as solid
 }
-EPIX_API bool Element::is_liquid() const {
-    return grav_type == GravType::LIQUID;
-}
-EPIX_API bool Element::is_powder() const {
-    return grav_type == GravType::POWDER;
-}
-EPIX_API bool Element::is_gas() const { return grav_type == GravType::GAS; }
+EPIX_API bool Element::is_liquid() const { return m_type == ElemType::LIQUID; }
+EPIX_API bool Element::is_powder() const { return m_type == ElemType::POWDER; }
+EPIX_API bool Element::is_gas() const { return m_type == ElemType::GAS; }
 EPIX_API bool Element::is_place_holder() const {
-    return grav_type == GravType::PLACEHOLDER;
+    return m_type == ElemType::PLACEHOLDER;
 }
