@@ -2,6 +2,8 @@
 
 project("examples")
 
+set(EPIX_ENABLE_TRACY ON)
+
 # add_subdirectory(window-gl)
 add_subdirectory(ecs)
 # add_subdirectory(font-gl)

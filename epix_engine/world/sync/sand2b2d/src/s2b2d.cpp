@@ -3,21 +3,21 @@
 #include "epix/world/sync/sand2b2d.h"
 
 struct ChunkConverter {
-    const epix::world::sand::components::Simulation& sim;
-    const epix::world::sand::components::Simulation::Chunk& chunk;
+    const epix::world::sand::World sim;
+    const epix::world::sand::Chunk& chunk;
     const bool should_update = chunk.should_update();
 
     bool contains(int x, int y) const {
         if (!chunk.contains(x, y)) return false;
         auto& cell = chunk.get(x, y);
-        auto& elem = sim.registry().get_elem(cell.elem_id);
+        auto& elem = sim->registry().get_elem(cell.elem_id);
         if (elem.is_solid() && !elem.is_place_holder()) return true;
         if (elem.is_place_holder()) return false;
         if (elem.is_gas() || elem.is_liquid()) return false;
         if (elem.is_powder() && cell.freefall() && should_update) return false;
         return true;
     }
-    glm::ivec2 size() const { return chunk.size(); }
+    glm::ivec2 size() const { return {chunk.size(0), chunk.size(1)}; }
     int size(int i) const {
         if (i == 0) return chunk.width;
         return chunk.height;
@@ -26,8 +26,8 @@ struct ChunkConverter {
 
 namespace epix::world::sync::sand2b2d {
 EPIX_API bool get_chunk_collision(
-    const epix::world::sand::components::Simulation& sim,
-    const epix::world::sand::components::Simulation::Chunk& chunk,
+    const epix::world::sand::World sim,
+    const epix::world::sand::Chunk& chunk,
     std::vector<std::vector<std::vector<glm::ivec2>>>& polygons
 ) {
     ChunkConverter grid{sim, chunk};
@@ -40,14 +40,14 @@ EPIX_API SimulationCollisions<void>::SimulationCollisions()
           std::make_unique<thread_pool_t>(std::thread::hardware_concurrency())
       ) {}
 EPIX_API void SimulationCollisions<void>::sync(
-    const epix::world::sand::components::Simulation& sim
+    const epix::world::sand::World sim
 ) {
     for (auto pos : cached) {
-        if (!sim.chunk_map().contains(pos.x, pos.y)) continue;
-        auto& chunk = sim.chunk_map().get_chunk(pos.x, pos.y);
+        if (!sim->m_chunks.contains(pos.x, pos.y)) continue;
+        auto& chunk = sim->m_chunks.get(pos.x, pos.y);
         if (!collisions.contains(pos.x, pos.y) || !chunk.should_update())
             continue;
-        thread_pool->submit_task([this, &sim, &chunk, pos]() {
+        thread_pool->detach_task([this, &sim, &chunk, pos]() {
             auto& chunk_collision = collisions.get(pos.x, pos.y);
             chunk_collision.has_collision =
                 get_chunk_collision(sim, chunk, chunk_collision.collisions);
@@ -72,12 +72,12 @@ SimulationCollisionGeneral::pos_converter(
 EPIX_API SimulationCollisionGeneral::SimulationCollisionGeneral()
     : SimulationCollisions() {}
 EPIX_API void SimulationCollisionGeneral::cache(
-    const epix::world::sand::components::Simulation& sim
+    const epix::world::sand::World sim
 ) {
     SimulationCollisions::cache(sim);
 }
 EPIX_API void SimulationCollisionGeneral::sync(
-    const epix::world::sand::components::Simulation& sim
+    const epix::world::sand::World sim
 ) {
     SimulationCollisions::sync(sim);
 }

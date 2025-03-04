@@ -70,9 +70,14 @@ struct pixelbin {
     glm::ivec2 size() const { return {width, height}; }
 };
 
-void create_b2d_world(Command command) {
+void create_b2d_world(
+    Command command,
+    Query<Get<epix::world::sand::RegistryUnique>> registry_query
+) {
+    if (!registry_query) return;
+    auto [registry] = registry_query.single();
     epix::world::pixel_b2d::PixPhyWorld world;
-    world.create();
+    world.create(registry.get());
     epix::world::sync::b2d2sand::PixPhy2Simulation sync_er;
     command.spawn(std::move(world), std::move(sync_er));
 }
@@ -85,15 +90,11 @@ constexpr bool render_collision_outline = false;
 constexpr float pixel_size              = 0.1f;
 
 void create_test_body(
-    Query<Get<epix::world::pixel_b2d::PixPhyWorld>> world_query,
-    Query<Get<const epix::world::sand::components::Simulation>> sim_query
+    Query<Get<epix::world::pixel_b2d::PixPhyWorld>> world_query
 ) {
     if (!world_query) return;
-    if (!sim_query) return;
     auto [world] = world_query.single();
-    auto [sim]   = sim_query.single();
     epix::world::pixel_b2d::PixBodyCreateInfo info;
-    info.set_reg(sim.registry());
     info.set_scale(pixel_size);
     info.set_pos({0, 0});
     for (int x = 0; x < 20; x++) {
@@ -116,9 +117,9 @@ void create_dynamic_from_click(
     Query<Get<epix::world::pixel_b2d::PixPhyWorld>> world_query,
     Query<Get<const Window, const ButtonInput<MouseButton>>> window_query,
     ResMut<epix::imgui::ImGuiContext> imgui_context,
-    Local<std::unique_ptr<epix::utils::grid::extendable_grid<
-        epix::world::sand::components::Cell,
-        2>>> cached_grid,
+    Local<std::unique_ptr<
+        epix::utils::grid::extendable_grid<epix::world::sand::Particle, 2>>>
+        cached_grid,
     Local<glm::vec2> cached_pos
 ) {
     if (!world_query) return;
@@ -149,7 +150,7 @@ void create_dynamic_from_click(
         if (!(*cached_grid)) {
             // create cache
             *cached_grid = std::make_unique<epix::utils::grid::extendable_grid<
-                epix::world::sand::components::Cell, 2>>();
+                epix::world::sand::Particle, 2>>();
             *cached_pos  = pos;
         }
         // add to the grid
@@ -587,13 +588,12 @@ void update_mouse_joint(
 }
 
 using namespace epix::world::sand;
-using namespace epix::world::sand::components;
 
 void create_simulation(Command command) {
     spdlog::info("Creating falling sand simulation");
 
-    ElemRegistry registry;
-    registry.register_elem(
+    RegistryUnique registry = Registry_T::create_unique();
+    registry->register_elem(
         Element::solid("wall")
             .set_color([]() {
                 static std::random_device rd;
@@ -605,7 +605,7 @@ void create_simulation(Command command) {
             .set_density(5.0f)
             .set_friction(0.6f)
     );
-    registry.register_elem(
+    registry->register_elem(
         Element::powder("sand")
             .set_color([]() {
                 static std::random_device rd;
@@ -618,7 +618,7 @@ void create_simulation(Command command) {
             .set_friction(0.3f)
             .set_awake_rate(0.8f)
     );
-    registry.register_elem(
+    registry->register_elem(
         Element::powder("grind")
             .set_color([]() {
                 static std::random_device rd;
@@ -631,19 +631,19 @@ void create_simulation(Command command) {
             .set_friction(0.3f)
             .set_awake_rate(0.6f)
     );
-    registry.register_elem(Element::liquid("water")
-                               .set_color([]() {
-                                   return glm::vec4(0.0f, 0.0f, 1.0f, 0.4f);
-                               })
-                               .set_density(1.0f)
-                               .set_friction(0.0003f));
-    registry.register_elem(Element::liquid("oil")
-                               .set_color([]() {
-                                   return glm::vec4(0.2f, 0.2f, 0.2f, 0.6f);
-                               })
-                               .set_density(0.8f)
-                               .set_friction(0.0003f));
-    registry.register_elem(
+    registry->register_elem(Element::liquid("water")
+                                .set_color([]() {
+                                    return glm::vec4(0.0f, 0.0f, 1.0f, 0.4f);
+                                })
+                                .set_density(1.0f)
+                                .set_friction(0.0003f));
+    registry->register_elem(Element::liquid("oil")
+                                .set_color([]() {
+                                    return glm::vec4(0.2f, 0.2f, 0.2f, 0.6f);
+                                })
+                                .set_density(0.8f)
+                                .set_friction(0.0003f));
+    registry->register_elem(
         Element::gas("smoke")
             .set_color([]() {
                 static std::random_device rd;
@@ -655,21 +655,22 @@ void create_simulation(Command command) {
             .set_density(0.001f)
             .set_friction(0.3f)
     );
-    registry.register_elem(Element::gas("steam")
-                               .set_color([]() {
-                                   return glm::vec4(1.0f, 1.0f, 1.0f, 0.3f);
-                               })
-                               .set_density(0.0007f)
-                               .set_friction(0.3f));
-    Simulation simulation(std::move(registry), CHUNK_SIZE);
+    registry->register_elem(Element::gas("steam")
+                                .set_color([]() {
+                                    return glm::vec4(1.0f, 1.0f, 1.0f, 0.3f);
+                                })
+                                .set_density(0.0007f)
+                                .set_friction(0.3f));
+    WorldUnique simulation = World_T::create_unique(registry.get(), CHUNK_SIZE);
     const int simulation_size = 512 / CHUNK_SIZE / scale;
     for (int i = -simulation_size; i < simulation_size; i++) {
         for (int j = -simulation_size; j < simulation_size; j++) {
-            simulation.load_chunk(i, j);
+            simulation->insert_chunk(i, j);
         }
     }
+    Simulator sim;
     command.spawn(
-        std::move(simulation),
+        std::move(registry), std::move(simulation), std::move(sim),
         epix::world::sync::sand2b2d::SimulationCollisionGeneral{}
     );
 }
@@ -677,7 +678,7 @@ void create_simulation(Command command) {
 constexpr int input_size = 16;
 
 void create_element_from_click(
-    Query<Get<Simulation>> query,
+    Query<Get<WorldUnique, const RegistryUnique>> query,
     Query<
         Get<const Window,
             const ButtonInput<MouseButton>,
@@ -689,26 +690,17 @@ void create_element_from_click(
     if (!query) return;
     if (!window_query) return;
     ZoneScoped;
-    auto [simulation]                     = query.single();
+    auto [world, reg]                     = query.single();
     auto [window, mouse_input, key_input] = window_query.single();
     if (!elem_id->has_value()) {
         *elem_id = 0;
     }
     if (key_input.just_pressed(epix::input::KeyEqual)) {
-        elem_id->value() =
-            (elem_id->value() + 1) % simulation.registry().count();
-        spdlog::info(
-            "Current element: {}",
-            simulation.registry().elem_name(elem_id->value())
-        );
+        elem_id->value() = (elem_id->value() + 1) % reg->count();
+        spdlog::info("Current element: {}", reg->name_of(elem_id->value()));
     } else if (key_input.just_pressed(epix::input::KeyMinus)) {
-        elem_id->value() =
-            (elem_id->value() - 1 + simulation.registry().count()) %
-            simulation.registry().count();
-        spdlog::info(
-            "Current element: {}",
-            simulation.registry().elem_name(elem_id->value())
-        );
+        elem_id->value() = (elem_id->value() - 1 + reg->count()) % reg->count();
+        spdlog::info("Current element: {}", reg->name_of(elem_id->value()));
     }
     if (imgui_context.has_value()) {
         ImGui::SetCurrentContext(imgui_context->context);
@@ -746,14 +738,14 @@ void create_element_from_click(
             for (int tx = cell_x - input_size; tx < cell_x + input_size; tx++) {
                 for (int ty = cell_y - input_size; ty < cell_y + input_size;
                      ty++) {
-                    if (simulation.valid(tx, ty)) {
+                    if (world->valid(tx, ty)) {
                         if (mouse_input.pressed(epix::input::MouseButton1)) {
-                            simulation.create(
-                                tx, ty, CellDef(elem_id->value())
+                            world->insert(
+                                tx, ty, reg->create_particle(elem_id->value())
                             );
                         } else if (mouse_input.pressed(epix::input::MouseButton2
                                    )) {
-                            simulation.remove(tx, ty);
+                            world->remove(tx, ty);
                         }
                     }
                 }
@@ -792,7 +784,8 @@ struct RepeatTimer {
 
 void update_simulation(
     Query<
-        Get<Simulation,
+        Get<Simulator,
+            WorldUnique,
             epix::world::sync::sand2b2d::SimulationCollisionGeneral>> query,
     Local<std::optional<RepeatTimer>> timer
 ) {
@@ -801,64 +794,28 @@ void update_simulation(
     if (!timer->has_value()) {
         *timer = RepeatTimer(1.0 / 60.0);
     }
-    auto [simulation, sim_collisions] = query.single();
-    auto count                        = timer->value().tick();
+    auto [simulation, world, sim_collisions] = query.single();
+    auto count                               = timer->value().tick();
     for (int i = 0; i < count; i++) {
         ZoneScopedN("Update simulation");
-        simulation.update_multithread((float)timer->value().interval);
-        sim_collisions.cache(simulation);
+        simulation.step(world.get(), (float)timer->value().interval);
+        sim_collisions.cache(world.get());
         return;
     }
 }
 
-void step_simulation(
-    Query<Get<Simulation>> query, Query<Get<const ButtonInput<KeyCode>>> query2
-) {
-    if (!query) return;
-    if (!query2) return;
-    ZoneScoped;
-    auto [simulation] = query.single();
-    auto [key_input]  = query2.single();
-    if (key_input.just_pressed(epix::input::KeySpace)) {
-        spdlog::info("Step simulation");
-        simulation.update((float)1.0 / 60.0);
-    } else if (key_input.just_pressed(epix::input::KeyC) ||
-               (key_input.pressed(epix::input::KeyC) &&
-                key_input.pressed(epix::input::KeyLeftAlt))) {
-        spdlog::info("Step simulation chunk");
-        simulation.init_update_state();
-        simulation.update_chunk((float)1.0 / 60.0);
-        if (simulation.next_chunk()) {
-            simulation.update_chunk((float)1.0 / 60.0);
-        } else {
-            simulation.deinit_update_state();
-        }
-    } else if (key_input.just_pressed(epix::input::KeyV) ||
-               (key_input.pressed(epix::input::KeyV) &&
-                key_input.pressed(epix::input::KeyLeftAlt))) {
-        spdlog::info("Reset simulation");
-        simulation.init_update_state();
-        simulation.update_cell((float)1.0 / 60.0);
-        if (simulation.next_cell()) {
-            simulation.update_cell((float)1.0 / 60.0);
-        } else if (!simulation.next_chunk()) {
-            simulation.deinit_update_state();
-        }
-    }
-}
-
 void render_simulation(
-    Extract<Get<const Simulation>> query, ResMut<SandMesh> mesh
+    Extract<Get<const WorldUnique>> query, ResMut<SandMesh> mesh
 ) {
     if (!query) return;
     if (!mesh) return;
-    auto [simulation] = query.single();
+    auto [world] = query.single();
     ZoneScopedN("Render simulation");
     mesh->push_constant(glm::scale(glm::mat4(1.0f), {scale, scale, 1.0f}));
-    for (auto&& [pos, chunk] : simulation.chunk_map()) {
-        int offset_x = pos.x * simulation.chunk_size();
-        int offset_y = pos.y * simulation.chunk_size();
-        for (auto&& [cell_pos, cell] : chunk.cells.view()) {
+    for (auto&& [pos, chunk] : world->view()) {
+        int offset_x = pos[0] * world->chunk_size();
+        int offset_y = pos[1] * world->chunk_size();
+        for (auto&& [cell_pos, cell] : chunk.grid.view()) {
             mesh->draw_pixel(
                 {cell_pos[0] + offset_x, cell_pos[1] + offset_y},
                 cell.freefall() ? cell.color : cell.color * 0.5f
@@ -869,15 +826,15 @@ void render_simulation(
 }
 
 void print_hover_data(
-    Query<Get<const Simulation>> query,
+    Query<Get<const WorldUnique>> query,
     Query<Get<const Window>, With<PrimaryWindow>> window_query
 ) {
     if (!query) return;
     if (!window_query) return;
     ZoneScoped;
-    auto [simulation] = query.single();
-    auto [window]     = window_query.single();
-    auto cursor       = window.get_cursor();
+    auto [world]  = query.single();
+    auto [window] = window_query.single();
+    auto cursor   = window.get_cursor();
     if (!window.focused()) return;
     glm::vec4 cursor_pos = glm::vec4(
         cursor.x - window.get_size().width / 2,
@@ -890,9 +847,8 @@ void print_hover_data(
     glm::vec4 world_pos         = viewport_to_world * cursor_pos;
     int cell_x                  = static_cast<int>(world_pos.x + 0.5f);
     int cell_y                  = static_cast<int>(world_pos.y + 0.5f);
-    if (simulation.valid(cell_x, cell_y) &&
-        simulation.contain_cell(cell_x, cell_y)) {
-        auto [cell, elem] = simulation.get(cell_x, cell_y);
+    if (world->valid(cell_x, cell_y) && world->contains(cell_x, cell_y)) {
+        auto&& [cell, elem] = world->get(cell_x, cell_y);
         spdlog::info(
             "Hovering over cell ({}, {}) with element {}, freefall: {}, "
             "velocity: ({}, {}) ",
@@ -903,59 +859,31 @@ void print_hover_data(
 }
 
 void render_simulation_chunk_outline(
-    Extract<Get<
-        const Simulation,
-        const epix::world::sync::sand2b2d::SimulationCollisionGeneral>> query,
-    ResMut<Box2dMesh> mesh
+    Extract<Get<const WorldUnique>> query, ResMut<Box2dMesh> mesh
 ) {
     if (!query) return;
     if (!mesh) return;
-    auto [simulation, sim_collisions] = query.single();
+    auto [world] = query.single();
     ZoneScopedN("Render simulation collision");
     float alpha = 0.3f;
     mesh->push_constant(glm::scale(glm::mat4(1.0f), {scale, scale, 1.0f}));
-    for (auto&& [pos, chunk] : simulation.chunk_map()) {
+    for (auto&& [pos, chunk] : world->view()) {
         glm::vec3 origin = glm::vec3(
-            pos.x * simulation.chunk_size(), pos.y * simulation.chunk_size(),
-            0.0f
+            pos[0] * world->chunk_size(), pos[1] * world->chunk_size(), 0.0f
         );
         glm::vec4 color = {1.0f, 1.0f, 1.0f, alpha / 4};
         glm::vec3 lb    = glm::vec3(origin.x, origin.y, 0.0f);
         glm::vec3 rt    = glm::vec3(
-            origin.x + simulation.chunk_size(),
-            origin.y + simulation.chunk_size(), 0.0f
+            origin.x + world->chunk_size(), origin.y + world->chunk_size(), 0.0f
         );
         glm::vec3 lt =
-            glm::vec3(origin.x, origin.y + simulation.chunk_size(), 0.0f);
+            glm::vec3(origin.x, origin.y + world->chunk_size(), 0.0f);
         glm::vec3 rb =
-            glm::vec3(origin.x + simulation.chunk_size(), origin.y, 0.0f);
+            glm::vec3(origin.x + world->chunk_size(), origin.y, 0.0f);
         mesh->draw_line(lb, rb, color);
         mesh->draw_line(rb, rt, color);
         mesh->draw_line(rt, lt, color);
         mesh->draw_line(lt, lb, color);
-        if constexpr (render_collision_outline) {
-            if (sim_collisions.collisions.contains(pos.x, pos.y)) {
-                auto& collision_outline =
-                    sim_collisions.collisions.get(pos.x, pos.y).collisions;
-                for (auto&& outlines : collision_outline) {
-                    for (auto&& outline : outlines) {
-                        for (size_t i = 0; i < outline.size(); i++) {
-                            auto start = glm::vec3(outline[i], 0.0f) + origin;
-                            auto end =
-                                glm::vec3(
-                                    outline[(i + 1) % outline.size()], 0.0f
-                                ) +
-                                origin;
-                            start *= scale;
-                            end *= scale;
-                            mesh->draw_line(
-                                start, end, {0.0f, 1.0f, 0.0f, alpha}
-                            );
-                        }
-                    }
-                }
-            }
-        }
         if (chunk.should_update()) {
             // orange
             color        = {1.0f, 0.5f, 0.0f, alpha};
@@ -977,16 +905,15 @@ void render_simulation_chunk_outline(
 }
 
 void render_simulation_collision(
-    Extract<Get<
-        const Simulation,
-        const epix::world::sync::sand2b2d::SimulationCollisionGeneral>> query,
+    Extract<Get<const epix::world::sync::sand2b2d::SimulationCollisionGeneral>>
+        query,
     ResMut<Box2dMesh> mesh
 ) {
     if (!query) return;
     if (!mesh) return;
     ZoneScoped;
-    auto [simulation, sim_collisions] = query.single();
-    float alpha                       = 0.3f;
+    auto [sim_collisions] = query.single();
+    float alpha           = 0.3f;
     mesh->push_constant(glm::scale(
         glm::mat4(1.0f), {scale / pixel_size, scale / pixel_size, 1.0f}
     ));
@@ -1025,7 +952,7 @@ void toggle_input_state(
 void sync_simulatino_with_b2d(
     Query<
         Get<epix::world::sync::sand2b2d::SimulationCollisionGeneral,
-            Simulation>> simulation_query,
+            const WorldUnique>> simulation_query,
     Query<Get<epix::world::pixel_b2d::PixPhyWorld>> world_query,
     Local<std::optional<RepeatTimer>> timer
 ) {
@@ -1038,7 +965,7 @@ void sync_simulatino_with_b2d(
     auto [world]           = world_query.single();
     if (timer->value().tick() > 0) {
         ZoneScopedN("Sync simulation with b2d");
-        collisions.sync(sim);
+        collisions.sync(sim.get());
         collisions.sync(
             world.get_world(),
             collisions.pos_converter(CHUNK_SIZE, pixel_size, {0, 0})
@@ -1050,7 +977,7 @@ void sync_b2d_with_simulation(
     Query<
         Get<const epix::world::pixel_b2d::PixPhyWorld,
             epix::world::sync::b2d2sand::PixPhy2Simulation>> b2d_query,
-    Query<Get<Simulation>> simulation_query
+    Query<Get<WorldUnique>> simulation_query
 ) {
     if (!b2d_query) return;
     if (!simulation_query) return;
@@ -1061,7 +988,7 @@ void sync_b2d_with_simulation(
         epix::world::sync::b2d2sand::PixPhy2Simulation::PosConverter(
             {0.0f, 0.0f}, pixel_size
         );
-    sync.sync(world, simulation, pos_converter, pixel_size * 3);
+    sync.sync(world, simulation.get(), pos_converter, pixel_size * 3);
 }
 
 void draw_meshes(
@@ -1223,7 +1150,6 @@ struct SimulationPlugin : Plugin {
         app.add_system(Update, update_simulation)
             .chain()
             .in_state(SimulateState::Running);
-        app.add_system(Update, step_simulation).in_state(SimulateState::Paused);
         app.add_system(
             Extraction, render_simulation, render_simulation_chunk_outline
         );
@@ -1254,7 +1180,7 @@ struct RenderPassPlugin : Plugin {
 
 struct PixelB2dTestPlugin : Plugin {
     void build(App& app) override {
-        app.add_system(Startup, create_b2d_world).chain();
+        app.add_system(Startup, create_b2d_world).after(create_simulation);
         app.add_system(PostStartup, create_test_body);
         app.add_system(PreUpdate, update_b2d_world)
             .in_state(SimulateState::Running);

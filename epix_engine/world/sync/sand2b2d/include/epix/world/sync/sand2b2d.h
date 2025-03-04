@@ -9,8 +9,8 @@
 
 namespace epix::world::sync::sand2b2d {
 EPIX_API bool get_chunk_collision(
-    const epix::world::sand::components::Simulation& sim,
-    const epix::world::sand::components::Simulation::Chunk& chunk,
+    epix::world::sand::World sim,
+    const epix::world::sand::Chunk& chunk,
     std::vector<std::vector<std::vector<glm::ivec2>>>& polygons
 );
 struct Ivec2Hash {
@@ -41,13 +41,11 @@ struct SimulationCollisions {
 
     SimulationCollisions() : thread_pool(std::make_unique<thread_pool_t>()) {}
     template <typename... Args>
-    void cache(
-        const epix::world::sand::components::Simulation& sim, Args&&... args
-    ) {
-        for (auto [pos, chunk] : sim.chunk_map()) {
+    void cache(const epix::world::sand::World sim, Args&&... args) {
+        for (auto&& [pos, chunk] : sim->view()) {
             if (!chunk.should_update()) continue;
-            cached.insert(pos);
-            collisions.try_emplace(pos.x, pos.y, std::forward<Args>(args)...);
+            cached.insert({pos[0], pos[1]});
+            collisions.try_emplace(pos[0], pos[1], std::forward<Args>(args)...);
         }
         // for (auto [pos, chunk] : sim.chunk_map()) {
         //     if (!collisions.contains(pos.x, pos.y) || !chunk.should_update())
@@ -61,12 +59,12 @@ struct SimulationCollisions {
         // }
         // thread_pool->wait();
     }
-    void sync(const epix::world::sand::components::Simulation& sim) {
+    void sync(const epix::world::sand::World sim) {
         for (auto pos : cached) {
-            if (!sim.chunk_map().contains(pos.x, pos.y)) continue;
-            auto& chunk = sim.chunk_map().get_chunk(pos.x, pos.y);
+            if (!sim->m_chunks.contains(pos.x, pos.y)) continue;
+            auto& chunk = sim->m_chunks.get(pos.x, pos.y);
             if (!collisions.contains(pos.x, pos.y)) continue;
-            thread_pool->submit_task([this, &sim, &chunk, pos]() {
+            thread_pool->detach_task([this, &sim, &chunk, pos]() {
                 auto& chunk_collision = collisions.get(pos.x, pos.y);
                 chunk_collision.has_collision =
                     get_chunk_collision(sim, chunk, chunk_collision.collisions);
@@ -75,9 +73,7 @@ struct SimulationCollisions {
         thread_pool->wait();
     }
     template <typename... Args>
-    void cache_sync(
-        const epix::world::sand::components::Simulation& sim, Args&&... args
-    ) {
+    void cache_sync(const epix::world::sand::World sim, Args&&... args) {
         cache(sim, std::forward<Args>(args)...);
         sync(sim);
     }
@@ -100,10 +96,8 @@ struct SimulationCollisions<void> {
 
     EPIX_API SimulationCollisions();
     template <typename... Args>
-    void cache(
-        const epix::world::sand::components::Simulation& sim, Args&&... args
-    ) {
-        for (auto [pos, chunk] : sim.chunk_map()) {
+    void cache(const epix::world::sand::World sim, Args&&... args) {
+        for (auto [pos, chunk] : sim.view()) {
             if (!chunk.should_update()) continue;
             cached.emplace(pos);
             collisions.try_emplace(pos.x, pos.y, std::forward<Args>(args)...);
@@ -119,11 +113,9 @@ struct SimulationCollisions<void> {
         // }
         // thread_pool->wait();
     }
-    EPIX_API void sync(const epix::world::sand::components::Simulation& sim);
+    EPIX_API void sync(const epix::world::sand::World sim);
     template <typename... Args>
-    void cache_sync(
-        const epix::world::sand::components::Simulation& sim, Args&&... args
-    ) {
+    void cache_sync(const epix::world::sand::World sim, Args&&... args) {
         cache(sim, std::forward<Args>(args)...);
         sync(sim);
     }
@@ -159,9 +151,9 @@ struct SimulationCollisionGeneral
     EPIX_API PositionConverter
     pos_converter(int chunk_size, float cell_size, int offset_x, int offset_y);
     EPIX_API SimulationCollisionGeneral();
-    EPIX_API void cache(const epix::world::sand::components::Simulation& sim);
+    EPIX_API void cache(const epix::world::sand::World sim);
 
-    EPIX_API void sync(const epix::world::sand::components::Simulation& sim);
+    EPIX_API void sync(const epix::world::sand::World sim);
     EPIX_API void sync(b2WorldId world, const PositionConverter& converter);
     // EPIX_API ~SimulationCollisionGeneral();
 

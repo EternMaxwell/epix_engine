@@ -17,14 +17,21 @@
 
 // === DECLARATION  ===//
 namespace epix::world::sand {
-struct Registry;
+struct Registry_T;
+using Registry       = Registry_T*;
+using RegistryUnique = std::unique_ptr<Registry_T>;
+using RegistryShared = std::shared_ptr<Registry_T>;
 struct Element;
 struct Particle;  // Previously known as Cell
 struct PartDef;
 struct Chunk;
-struct World;
-struct Simulator;  // This class is used to update the world. Constructing
-                   // should be cheap.
+struct World_T;
+using World       = World_T*;
+using WorldUnique = std::unique_ptr<World_T>;
+using WorldShared = std::shared_ptr<World_T>;
+struct Simulator_T;  // This class is used to update the world. Constructing
+                     // should be cheap.
+using Simulator = Simulator_T;
 }  // namespace epix::world::sand
 
 // === STRUCTS ===//
@@ -46,7 +53,7 @@ struct Element {
     std::function<glm::vec4()> fn_color_gen;
     EPIX_API static Element place_holder();
 
-    friend struct Registry;
+    friend struct Registry_T;
 
    public:
     EPIX_API Element(const std::string& name, ElemType type);
@@ -82,7 +89,6 @@ struct Particle {
     glm::vec2 inpos    = glm::vec2(0.0f);
     int not_move_count = 0;
 
-   private:
     uint8_t bitfield = 0;
 
     static constexpr uint8_t FREEFALL = 1 << 0;
@@ -107,23 +113,21 @@ struct PartDef {
     EPIX_API PartDef(int id);
 };
 
-struct Registry {
+struct Registry_T {
    private:
     entt::dense_map<std::string, int> elemId_map;
     std::vector<Element> elements;
 
-   protected:
-    EPIX_API Registry();
-    EPIX_API Registry(const Registry& other);
-    EPIX_API Registry(Registry&& other);
-    EPIX_API Registry& operator=(const Registry& other);
-    EPIX_API Registry& operator=(Registry&& other);
-
    public:
-    EPIX_API static Registry* create();
-    EPIX_API static void destroy(Registry* registry);
-    EPIX_API static std::unique_ptr<Registry> create_unique();
-    EPIX_API static std::shared_ptr<Registry> create_shared();
+    EPIX_API Registry_T();
+    EPIX_API Registry_T(const Registry_T& other);
+    EPIX_API Registry_T(Registry_T&& other);
+    EPIX_API Registry_T& operator=(const Registry_T& other);
+    EPIX_API Registry_T& operator=(Registry_T&& other);
+    EPIX_API static Registry_T* create();
+    EPIX_API static void destroy(Registry_T* registry);
+    EPIX_API static std::unique_ptr<Registry_T> create_unique();
+    EPIX_API static std::shared_ptr<Registry_T> create_shared();
 
     EPIX_API int register_elem(const std::string& name, const Element& elem);
     EPIX_API int register_elem(const Element& elem);
@@ -136,7 +140,7 @@ struct Registry {
     EPIX_API const Element& operator[](const std::string& name) const;
     EPIX_API void add_equiv(const std::string& name, const std::string& equiv);
 
-    EPIX_API Particle create_particle(const PartDef& def);
+    EPIX_API Particle create_particle(const PartDef& def) const;
 };
 
 struct Chunk {
@@ -169,11 +173,11 @@ struct Chunk {
     EPIX_API bool contains(int x, int y) const;
 };
 
-struct World {
+struct World_T {
     using grid_t = epix::utils::grid::extendable_grid<Chunk, 2>;
     grid_t m_chunks;
     const int m_chunk_size;
-    const Registry* m_registry;
+    const Registry_T* m_registry;
     std::unique_ptr<BS::thread_pool<BS::tp::none>> m_thread_pool;
 
     struct NotMovingThresholdSetting {
@@ -181,22 +185,20 @@ struct World {
         float numerator = 4000.0f;
     } not_moving_threshold_setting;
 
-   protected:
-    EPIX_API World(const Registry* registry, int chunk_size);
-
    public:
+    EPIX_API World_T(const Registry_T* registry, int chunk_size);
     // === CONSTRUCTORS ===//
-    EPIX_API static World* create(const Registry* registry, int chunk_size);
-    EPIX_API static std::unique_ptr<World> create_unique(
-        const Registry* registry, int chunk_size
+    EPIX_API static World_T* create(const Registry_T* registry, int chunk_size);
+    EPIX_API static std::unique_ptr<World_T> create_unique(
+        const Registry_T* registry, int chunk_size
     );
-    EPIX_API static std::shared_ptr<World> create_shared(
-        const Registry* registry, int chunk_size
+    EPIX_API static std::shared_ptr<World_T> create_shared(
+        const Registry_T* registry, int chunk_size
     );
 
     // === WORLD GLOBAL ===//
     EPIX_API int chunk_size() const;
-    EPIX_API const Registry& registry() const;
+    EPIX_API const Registry_T& registry() const;
 
     // === HELPER FUNCTIONS ===//
     EPIX_API std::pair<int, int> to_chunk_pos(int x, int y) const;
@@ -230,6 +232,7 @@ struct World {
         const;
 
     // === PARTICLE MOVE FUNCTIONS ===//
+    EPIX_API void touch(int x, int y);
     EPIX_API void swap(int x, int y, int tx, int ty);
     EPIX_API void insert(int x, int y, Particle&& cell);
     EPIX_API void remove(int x, int y);
@@ -239,9 +242,8 @@ struct World {
     EPIX_API grid_t::const_view_t view() const;
 };
 
-struct Simulator {
+struct Simulator_T {
    private:
-    World* m_world;
     struct LiquidSpreadSetting {
         float spread_len = 3.0f;
         float prefix     = 0.01f;
@@ -254,38 +256,36 @@ struct Simulator {
         EPIX_API void next();
     } update_state;
     std::optional<glm::ivec2> max_travel;
-    struct UpdatingState {
-        bool is_updating = false;
-        std::vector<glm::ivec2> updating_chunks;
-        std::pair<std::tuple<int, int, int>, std::tuple<int, int, int>> bounds;
-        int updating_index = 0;
-        std::optional<glm::ivec2> in_chunk_pos;
-
-        EPIX_API std::optional<glm::ivec2> current_chunk() const;
-        EPIX_API std::optional<glm::ivec2> current_cell() const;
-    } updating_state;
     struct PowderSlideSetting {
         bool always_slide = true;
         float prefix      = 0.05f;
     } powder_slide_setting;
 
    public:
+    Simulator_T() = default;
+
     struct RaycastResult {
         int steps;
         int new_x;
         int new_y;
         std::optional<std::pair<int, int>> hit;
     };
-    EPIX_API RaycastResult raycast_to(int x, int y, int tx, int ty);
-    EPIX_API RaycastResult raycast_to(int x, int y, float dx, float dy);
-    EPIX_API bool collide(int x, int y, int tx, int ty);
+    EPIX_API RaycastResult
+    raycast_to(const World_T* world, int x, int y, int tx, int ty);
+    EPIX_API RaycastResult
+    raycast_to(const World_T* world, int x, int y, float dx, float dy);
+    EPIX_API bool collide(World_T* world, int x, int y, int tx, int ty);
     EPIX_API bool collide(
-        Particle& part1, Particle& part2, const glm::vec2& dir
+        World_T* world, Particle& part1, Particle& part2, const glm::vec2& dir
     );
 
-    EPIX_API void touch(int x, int y);
+    EPIX_API void touch(World_T* world, int x, int y);
 
     // === SIMULATION FUNCTIONS ===//
-    EPIX_API void step(float delta);
+    EPIX_API void apply_viscosity(
+        World_T* world, Particle& p, int x, int y, int tx, int ty
+    );
+    EPIX_API void step_particle(World_T* world, int x, int y, float delta);
+    EPIX_API void step(World_T* world, float delta);
 };
 }  // namespace epix::world::sand

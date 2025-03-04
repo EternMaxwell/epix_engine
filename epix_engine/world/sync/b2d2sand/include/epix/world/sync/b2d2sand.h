@@ -20,7 +20,7 @@ struct PixPhy2Simulation {
    public:
     void sync(
         const epix::world::pixel_b2d::PixPhyWorld& world,
-        epix::world::sand::components::Simulation& sim,
+        epix::world::sand::World sim,
         const PosConverter& converter,
         float max_diff = 0.5f
     ) {
@@ -38,9 +38,9 @@ struct PixPhy2Simulation {
                 }
                 if (awake != _last_awake[index] && awake) {
                     for (auto&& [x, y] : _occupies[index]) {
-                        if (!sim.valid(x, y)) continue;
-                        if (!sim.contain_cell(x, y)) continue;
-                        sim.remove(x, y);
+                        if (!sim->valid(x, y)) continue;
+                        if (!sim->contains(x, y)) continue;
+                        sim->remove(x, y);
                     }
                     _occupies[index].clear();
                     if (!awake) {
@@ -52,15 +52,18 @@ struct PixPhy2Simulation {
             [&](const glm::vec2& pos, const glm::vec4& color) {
                 int x = std::round(pos.x / converter.cell_size);
                 int y = std::round(pos.y / converter.cell_size);
-                if (!sim.valid(x, y)) return;
+                if (!sim->valid(x, y)) return;
                 if (occupy) {
-                    if (sim.contain_cell(x, y)) return;
-                    sim.create(
-                        x, y, epix::world::sand::components::CellDef(0)
+                    if (sim->contains(x, y)) return;
+                    sim->insert(
+                        x, y,
+                        sim->registry().create_particle(
+                            epix::world::sand::PartDef(0)
+                        )
                     );  // 0 is placeholder by default in elem registry
                     _occupies[index].push_back({x, y});
                 } else {
-                    sim.extrusion(x, y, max_diff);
+                    // sim.extrusion(x, y, max_diff);
                 }
             }
         );

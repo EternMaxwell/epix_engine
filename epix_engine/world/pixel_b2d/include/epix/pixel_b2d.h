@@ -84,7 +84,7 @@ struct PixPhyWorld {
     using Cell = epix::world::sand::Particle;
 
     b2WorldId _world;
-    const epix::world::sand::Registry* _reg;
+    const epix::world::sand::Registry_T* _reg;
 
     struct PixBody {
         b2BodyId _body;
@@ -119,9 +119,10 @@ struct PixPhyWorld {
     std::stack<size_t> _free_bodies;
 
     PixPhyWorld() {}
-    void create() {
+    void create(const epix::world::sand::Registry_T* reg) {
         auto world_def = b2DefaultWorldDef();
         _world         = b2CreateWorld(&world_def);
+        _reg           = reg;
     }
 
     b2WorldId get_world() { return _world; }
@@ -171,7 +172,7 @@ struct PixPhyWorld {
                     auto&& elem = reg.get_elem(std::get<int>(def.type));
                     friction += elem.friction;
                     density += elem.density;
-                    restitution += elem.resitution;
+                    restitution += elem.restitution;
                 }
             }
             if (!count) return index;
