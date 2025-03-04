@@ -486,7 +486,7 @@ EPIX_API void Simulator_T::step_particle(
                             if (!m_world->valid(tx, ty)) continue;
                             if (m_world->contains(tx, ty)) {
                                 auto&& [tcell, telem] = m_world->get(tx, ty);
-                                if (telem.is_liquid()) continue;
+                                if (!telem.is_liquid()) continue;
                             }
                             if (m_world->valid(ux, uy) &&
                                 !m_world->contains(ux, uy)) {
