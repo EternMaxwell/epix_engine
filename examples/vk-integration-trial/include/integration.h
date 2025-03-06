@@ -668,7 +668,7 @@ void create_simulation(Command command) {
             simulation->insert_chunk(i, j);
         }
     }
-    Simulator sim;
+    SimulatorUnique sim = Simulator_T::create_unique();
     command.spawn(
         std::move(registry), std::move(simulation), std::move(sim),
         epix::world::sync::sand2b2d::SimulationCollisionGeneral{}
@@ -678,7 +678,7 @@ void create_simulation(Command command) {
 constexpr int input_size = 16;
 
 void create_element_from_click(
-    Query<Get<WorldUnique, const RegistryUnique>> query,
+    Query<Get<WorldUnique, SimulatorUnique, const RegistryUnique>> query,
     Query<
         Get<const Window,
             const ButtonInput<MouseButton>,
@@ -690,7 +690,7 @@ void create_element_from_click(
     if (!query) return;
     if (!window_query) return;
     ZoneScoped;
-    auto [world, reg]                     = query.single();
+    auto [world, sim, reg]                = query.single();
     auto [window, mouse_input, key_input] = window_query.single();
     if (!elem_id->has_value()) {
         *elem_id = 0;
@@ -740,12 +740,13 @@ void create_element_from_click(
                      ty++) {
                     if (world->valid(tx, ty)) {
                         if (mouse_input.pressed(epix::input::MouseButton1)) {
-                            world->insert(
-                                tx, ty, reg->create_particle(elem_id->value())
+                            sim->insert(
+                                world.get(), tx, ty,
+                                reg->create_particle(elem_id->value())
                             );
                         } else if (mouse_input.pressed(epix::input::MouseButton2
                                    )) {
-                            world->remove(tx, ty);
+                            sim->remove(world.get(), tx, ty);
                         }
                     }
                 }
@@ -784,7 +785,7 @@ struct RepeatTimer {
 
 void update_simulation(
     Query<
-        Get<Simulator,
+        Get<SimulatorUnique,
             WorldUnique,
             epix::world::sync::sand2b2d::SimulationCollisionGeneral>> query,
     Local<std::optional<RepeatTimer>> timer
@@ -798,8 +799,8 @@ void update_simulation(
     auto count                               = timer->value().tick();
     for (int i = 0; i < count; i++) {
         ZoneScopedN("Update simulation");
-        simulation.step(world.get(), (float)timer->value().interval);
         sim_collisions.cache(world.get());
+        simulation->step(world.get(), (float)timer->value().interval);
         return;
     }
 }
@@ -815,7 +816,7 @@ void render_simulation(
     for (auto&& [pos, chunk] : world->view()) {
         int offset_x = pos[0] * world->chunk_size();
         int offset_y = pos[1] * world->chunk_size();
-        for (auto&& [cell_pos, cell] : chunk.grid.view()) {
+        for (auto&& [cell_pos, cell] : chunk.view()) {
             mesh->draw_pixel(
                 {cell_pos[0] + offset_x, cell_pos[1] + offset_y},
                 cell.freefall() ? cell.color : cell.color * 0.5f
@@ -859,11 +860,12 @@ void print_hover_data(
 }
 
 void render_simulation_chunk_outline(
-    Extract<Get<const WorldUnique>> query, ResMut<Box2dMesh> mesh
+    Extract<Get<const WorldUnique, SimulatorUnique>> query,
+    ResMut<Box2dMesh> mesh
 ) {
     if (!query) return;
     if (!mesh) return;
-    auto [world] = query.single();
+    auto [world, sim] = query.single();
     ZoneScopedN("Render simulation collision");
     float alpha = 0.3f;
     mesh->push_constant(glm::scale(glm::mat4(1.0f), {scale, scale, 1.0f}));
@@ -884,13 +886,15 @@ void render_simulation_chunk_outline(
         mesh->draw_line(rb, rt, color);
         mesh->draw_line(rt, lt, color);
         mesh->draw_line(lt, lb, color);
-        if (chunk.should_update()) {
+        sim->assure_chunk(world.get(), pos[0], pos[1]);
+        auto& data = sim->chunk_data().get(pos[0], pos[1]);
+        if (data.active()) {
             // orange
             color        = {1.0f, 0.5f, 0.0f, alpha};
-            float x1     = chunk.updating_area[0];
-            float x2     = chunk.updating_area[1] + 1;
-            float y1     = chunk.updating_area[2];
-            float y2     = chunk.updating_area[3] + 1;
+            float x1     = data.active_area[0];
+            float x2     = data.active_area[1] + 1;
+            float y1     = data.active_area[2];
+            float y2     = data.active_area[3] + 1;
             glm::vec3 p1 = glm::vec3{x1, y1, 0.0f} + origin;
             glm::vec3 p2 = glm::vec3{x2, y1, 0.0f} + origin;
             glm::vec3 p3 = glm::vec3{x2, y2, 0.0f} + origin;

@@ -112,13 +112,6 @@ EPIX_API std::tuple<const Particle&, const Element&> World_T::get(int x, int y)
     return {cell, elem};
 }
 
-EPIX_API void World_T::touch(int x, int y) {
-    if (!valid(x, y)) return;
-    auto&& [chunk_x, chunk_y] = to_chunk_pos(x, y);
-    auto&& [cell_x, cell_y]   = in_chunk_pos(x, y);
-    m_chunks.get(chunk_x, chunk_y).touch(cell_x, cell_y);
-}
-
 EPIX_API void World_T::swap(int x, int y, int tx, int ty) {
     assert(valid(x, y) && valid(tx, ty));
     auto&& [chunk_x, chunk_y]   = to_chunk_pos(x, y);
@@ -153,20 +146,12 @@ EPIX_API void World_T::insert(int x, int y, Particle&& cell) {
     auto& chunk               = m_chunks.get(chunk_x, chunk_y);
     if (chunk.contains(cell_x, cell_y)) return;
     chunk.insert(cell_x, cell_y, std::move(cell));
-    touch(x - 1, y);
-    touch(x + 1, y);
-    touch(x, y - 1);
-    touch(x, y + 1);
 }
 EPIX_API void World_T::remove(int x, int y) {
     assert(valid(x, y));
     auto&& [chunk_x, chunk_y] = to_chunk_pos(x, y);
     auto&& [cell_x, cell_y]   = in_chunk_pos(x, y);
     m_chunks.get(chunk_x, chunk_y).remove(cell_x, cell_y);
-    touch(x - 1, y);
-    touch(x + 1, y);
-    touch(x, y - 1);
-    touch(x, y + 1);
 }
 
 EPIX_API World_T::grid_t::view_t World_T::view() { return m_chunks.view(); }

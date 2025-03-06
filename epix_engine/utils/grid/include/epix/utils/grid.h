@@ -568,19 +568,6 @@ struct index_boolify {
 
 template <typename T, size_t D>
 struct sparse_grid {
-   private:
-    packed_grid<int64_t, D, index_boolify> _index_grid;
-    std::vector<T> _data;
-    std::vector<std::array<int, D>> _pos;
-    std::function<void(sparse_grid&, const std::array<int, D>&)>
-        _on_remove_success;
-    std::function<void(sparse_grid&, const std::array<int, D>&)>
-        _on_emplace_success;
-    std::function<void(sparse_grid&, const std::array<int, D>&)>
-        _on_remove_fail;
-    std::function<void(sparse_grid&, const std::array<int, D>&)>
-        _on_emplace_fail;
-
     struct view_t {
         sparse_grid& _grid;
         struct iterator {
@@ -632,6 +619,19 @@ struct sparse_grid {
         iterator end() { return iterator(_grid, _grid._data.size()); }
     };
 
+   private:
+    packed_grid<int64_t, D, index_boolify> _index_grid;
+    std::vector<T> _data;
+    std::vector<std::array<int, D>> _pos;
+    std::function<void(sparse_grid&, const std::array<int, D>&)>
+        _on_remove_success;
+    std::function<void(sparse_grid&, const std::array<int, D>&)>
+        _on_emplace_success;
+    std::function<void(sparse_grid&, const std::array<int, D>&)>
+        _on_remove_fail;
+    std::function<void(sparse_grid&, const std::array<int, D>&)>
+        _on_emplace_fail;
+
    public:
     sparse_grid(const std::array<int, D>& size)
         : _index_grid(size, -1), _data(), _pos() {}
@@ -654,6 +654,11 @@ struct sparse_grid {
         _data       = std::move(other._data);
         _pos        = std::move(other._pos);
         return *this;
+    }
+
+    void reserve(size_t size) {
+        _data.reserve(size);
+        _pos.reserve(size);
     }
 
     void set_on_remove_success(
@@ -895,22 +900,6 @@ struct sparse_grid {
 
 template <typename T, size_t D>
 struct sparse_stable_grid {
-   private:
-    packed_grid<int64_t, D, index_boolify> _index_grid;
-    std::vector<T> _data;
-    std::vector<bool> _occupied;
-    std::vector<std::array<int, D>> _pos;
-    std::stack<int> _free_indices;
-
-    std::function<void(sparse_stable_grid&, const std::array<int, D>&)>
-        _on_remove_success;
-    std::function<void(sparse_stable_grid&, const std::array<int, D>&)>
-        _on_emplace_success;
-    std::function<void(sparse_stable_grid&, const std::array<int, D>&)>
-        _on_remove_fail;
-    std::function<void(sparse_stable_grid&, const std::array<int, D>&)>
-        _on_emplace_fail;
-
     struct view_t {
         sparse_stable_grid& _grid;
         struct iterator {
@@ -981,6 +970,22 @@ struct sparse_stable_grid {
         iterator end() { return iterator(_grid, _grid._data.size()); }
     };
 
+   private:
+    packed_grid<int64_t, D, index_boolify> _index_grid;
+    std::vector<T> _data;
+    std::vector<bool> _occupied;
+    std::vector<std::array<int, D>> _pos;
+    std::stack<int> _free_indices;
+
+    std::function<void(sparse_stable_grid&, const std::array<int, D>&)>
+        _on_remove_success;
+    std::function<void(sparse_stable_grid&, const std::array<int, D>&)>
+        _on_emplace_success;
+    std::function<void(sparse_stable_grid&, const std::array<int, D>&)>
+        _on_remove_fail;
+    std::function<void(sparse_stable_grid&, const std::array<int, D>&)>
+        _on_emplace_fail;
+
    public:
     sparse_stable_grid(const std::array<int, D>& size)
         : _index_grid(size, -1),
@@ -1015,6 +1020,12 @@ struct sparse_stable_grid {
         _pos          = std::move(other._pos);
         _free_indices = std::move(other._free_indices);
         return *this;
+    }
+
+    void reserve(size_t n) {
+        _data.reserve(n);
+        _occupied.reserve(n);
+        _pos.reserve(n);
     }
 
     void set_on_remove_success(
@@ -1221,8 +1232,8 @@ struct sparse_stable_grid {
     int size(int i) const { return _index_grid.size(i); }
     const std::vector<T>& data() const { return _data; }
     std::vector<T>& data() { return _data; }
-    bool empty() const { return _data.empty(); }
-    size_t count() const { return _data.size(); }
+    bool empty() const { return count() == 0; }
+    size_t count() const { return _data.size() - _free_indices.size(); }
 
     void swap_at(
         const std::array<int, D>& pos1, const std::array<int, D>& pos2
@@ -1246,24 +1257,6 @@ struct sparse_stable_grid {
 
 template <typename T, size_t D>
 struct sparse_linked_grid {
-   private:
-    packed_grid<int64_t, D, index_boolify> _index_grid;
-    std::vector<T> _data;
-    std::vector<std::array<int, D>> _pos;
-    std::vector<int64_t> _next;
-    std::vector<int64_t> _prev;
-    int64_t _head;
-    int64_t _tail;
-
-    std::function<void(sparse_linked_grid&, const std::array<int, D>&)>
-        _on_remove_success;
-    std::function<void(sparse_linked_grid&, const std::array<int, D>&)>
-        _on_emplace_success;
-    std::function<void(sparse_linked_grid&, const std::array<int, D>&)>
-        _on_remove_fail;
-    std::function<void(sparse_linked_grid&, const std::array<int, D>&)>
-        _on_emplace_fail;
-
     struct view_t {
         sparse_linked_grid& _grid;
         struct iterator {
@@ -1316,6 +1309,24 @@ struct sparse_linked_grid {
         iterator end() { return iterator(_grid, -1); }
     };
 
+   private:
+    packed_grid<int64_t, D, index_boolify> _index_grid;
+    std::vector<T> _data;
+    std::vector<std::array<int, D>> _pos;
+    std::vector<int64_t> _next;
+    std::vector<int64_t> _prev;
+    int64_t _head;
+    int64_t _tail;
+
+    std::function<void(sparse_linked_grid&, const std::array<int, D>&)>
+        _on_remove_success;
+    std::function<void(sparse_linked_grid&, const std::array<int, D>&)>
+        _on_emplace_success;
+    std::function<void(sparse_linked_grid&, const std::array<int, D>&)>
+        _on_remove_fail;
+    std::function<void(sparse_linked_grid&, const std::array<int, D>&)>
+        _on_emplace_fail;
+
    public:
     sparse_linked_grid(const std::array<int, D>& size)
         : _index_grid(size, -1),
@@ -1360,6 +1371,13 @@ struct sparse_linked_grid {
         _head       = other._head;
         _tail       = other._tail;
         return *this;
+    }
+
+    void reserve(size_t size) {
+        _data.reserve(size);
+        _pos.reserve(size);
+        _next.reserve(size);
+        _prev.reserve(size);
     }
 
     void set_on_remove_success(
@@ -2538,6 +2556,11 @@ struct extendable_grid {
     extendable_grid(extendable_grid&& other)                 = default;
     extendable_grid& operator=(const extendable_grid& other) = default;
     extendable_grid& operator=(extendable_grid&& other)      = default;
+
+    void reserve(size_t size) {
+        _data.reserve(size);
+        _pos.reserve(size);
+    }
 
     void set_on_emplace_success(
         const std::function<void(extendable_grid&, const std::array<int, D>&)>&

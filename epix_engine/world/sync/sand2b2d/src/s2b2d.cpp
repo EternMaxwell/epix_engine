@@ -5,7 +5,6 @@
 struct ChunkConverter {
     const epix::world::sand::World sim;
     const epix::world::sand::Chunk& chunk;
-    const bool should_update = chunk.should_update();
 
     bool contains(int x, int y) const {
         if (!chunk.contains(x, y)) return false;
@@ -14,7 +13,7 @@ struct ChunkConverter {
         if (elem.is_solid() && !elem.is_place_holder()) return true;
         if (elem.is_place_holder()) return false;
         if (elem.is_gas() || elem.is_liquid()) return false;
-        if (elem.is_powder() && cell.freefall() && should_update) return false;
+        if (elem.is_powder() && cell.freefall()) return false;
         return true;
     }
     glm::ivec2 size() const { return {chunk.size(0), chunk.size(1)}; }
@@ -45,8 +44,7 @@ EPIX_API void SimulationCollisions<void>::sync(
     for (auto pos : cached) {
         if (!sim->m_chunks.contains(pos.x, pos.y)) continue;
         auto& chunk = sim->m_chunks.get(pos.x, pos.y);
-        if (!collisions.contains(pos.x, pos.y) || !chunk.should_update())
-            continue;
+        if (!collisions.contains(pos.x, pos.y) || !chunk.updated()) continue;
         thread_pool->detach_task([this, &sim, &chunk, pos]() {
             auto& chunk_collision = collisions.get(pos.x, pos.y);
             chunk_collision.has_collision =

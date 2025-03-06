@@ -43,7 +43,7 @@ struct SimulationCollisions {
     template <typename... Args>
     void cache(const epix::world::sand::World sim, Args&&... args) {
         for (auto&& [pos, chunk] : sim->view()) {
-            if (!chunk.should_update()) continue;
+            if (!chunk.updated()) continue;
             cached.insert({pos[0], pos[1]});
             collisions.try_emplace(pos[0], pos[1], std::forward<Args>(args)...);
         }
@@ -98,7 +98,7 @@ struct SimulationCollisions<void> {
     template <typename... Args>
     void cache(const epix::world::sand::World sim, Args&&... args) {
         for (auto [pos, chunk] : sim.view()) {
-            if (!chunk.should_update()) continue;
+            if (!chunk.updated()) continue;
             cached.emplace(pos);
             collisions.try_emplace(pos.x, pos.y, std::forward<Args>(args)...);
         }

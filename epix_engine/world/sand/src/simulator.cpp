@@ -3,7 +3,22 @@
 
 #include "epix/world/sand.h"
 
+#define EPIX_WORLD_SAND_DEFAULT_CHUNK_RESET_TIME 12i32
+
 using namespace epix::world::sand;
+
+EPIX_API void Simulator_T::assure_chunk(const World_T* world, int x, int y) {
+    if (!world->m_chunks.contains(x, y)) return;
+    if (!m_chunk_data.contains(x, y)) {
+        m_chunk_data.try_emplace(
+            x, y, world->m_chunk_size, world->m_chunk_size
+        );
+    }
+}
+EPIX_API const epix::utils::grid::extendable_grid<Simulator_T::SimChunkData, 2>&
+Simulator_T::chunk_data() const {
+    return m_chunk_data;
+}
 
 EPIX_API void Simulator_T::UpdateState::next() {
     static thread_local std::random_device rd;
@@ -20,6 +35,99 @@ EPIX_API void Simulator_T::UpdateState::next() {
         yorder  = state & 0b010;
         x_outer = state & 0b001;
     }
+}
+
+EPIX_API Simulator_T::SimChunkData::SimChunkData(int width, int height)
+    : width(width),
+      height(height),
+      active_area{width, 0, height, 0},
+      next_active_area{width, 0, height, 0},
+      time_threshold(EPIX_WORLD_SAND_DEFAULT_CHUNK_RESET_TIME),
+      time_since_last_swap(0) {}
+EPIX_API Simulator_T::SimChunkData::SimChunkData(const SimChunkData& other)
+    : width(other.width),
+      height(other.height),
+      time_threshold(other.time_threshold),
+      time_since_last_swap(other.time_since_last_swap) {
+    std::memcpy(active_area, other.active_area, sizeof(active_area));
+    std::memcpy(
+        next_active_area, other.next_active_area, sizeof(next_active_area)
+    );
+}
+EPIX_API Simulator_T::SimChunkData::SimChunkData(SimChunkData&& other)
+    : width(other.width),
+      height(other.height),
+      time_threshold(other.time_threshold),
+      time_since_last_swap(other.time_since_last_swap) {
+    std::memcpy(active_area, other.active_area, sizeof(active_area));
+    std::memcpy(
+        next_active_area, other.next_active_area, sizeof(next_active_area)
+    );
+}
+EPIX_API Simulator_T::SimChunkData& Simulator_T::SimChunkData::operator=(
+    const SimChunkData& other
+) {
+    if (this == &other) return *this;
+    width                = other.width;
+    height               = other.height;
+    time_threshold       = other.time_threshold;
+    time_since_last_swap = other.time_since_last_swap;
+    std::memcpy(active_area, other.active_area, sizeof(active_area));
+    std::memcpy(
+        next_active_area, other.next_active_area, sizeof(next_active_area)
+    );
+    return *this;
+}
+EPIX_API Simulator_T::SimChunkData& Simulator_T::SimChunkData::operator=(
+    SimChunkData&& other
+) {
+    if (this == &other) return *this;
+    width                = other.width;
+    height               = other.height;
+    time_threshold       = other.time_threshold;
+    time_since_last_swap = other.time_since_last_swap;
+    std::memcpy(active_area, other.active_area, sizeof(active_area));
+    std::memcpy(
+        next_active_area, other.next_active_area, sizeof(next_active_area)
+    );
+    return *this;
+}
+
+EPIX_API void Simulator_T::SimChunkData::touch(int x, int y) {
+    active_area[0]      = std::min(active_area[0], x);
+    active_area[1]      = std::max(active_area[1], x);
+    active_area[2]      = std::min(active_area[2], y);
+    active_area[3]      = std::max(active_area[3], y);
+    next_active_area[0] = std::min(next_active_area[0], x);
+    next_active_area[1] = std::max(next_active_area[1], x);
+    next_active_area[2] = std::min(next_active_area[2], y);
+    next_active_area[3] = std::max(next_active_area[3], y);
+}
+EPIX_API void Simulator_T::SimChunkData::swap(int chunk_size) {
+    time_since_last_swap = 0;
+    std::memcpy(active_area, next_active_area, sizeof(active_area));
+    next_active_area[0] = chunk_size;
+    next_active_area[1] = 0;
+    next_active_area[2] = chunk_size;
+    next_active_area[3] = 0;
+}
+EPIX_API void Simulator_T::SimChunkData::step_time(int chunk_size) {
+    time_since_last_swap++;
+    if (time_since_last_swap >= time_threshold) {
+        swap(chunk_size);
+    }
+    time_threshold = EPIX_WORLD_SAND_DEFAULT_CHUNK_RESET_TIME;
+}
+EPIX_API bool Simulator_T::SimChunkData::active() const {
+    return active_area[0] <= active_area[1] && active_area[2] <= active_area[3];
+}
+
+EPIX_API Simulator_T* Simulator_T::create() { return new Simulator_T(); }
+EPIX_API std::unique_ptr<Simulator_T> Simulator_T::create_unique() {
+    return std::make_unique<Simulator_T>();
+}
+EPIX_API std::shared_ptr<Simulator_T> Simulator_T::create_shared() {
+    return std::make_shared<Simulator_T>();
 }
 
 EPIX_API Simulator_T::RaycastResult Simulator_T::raycast_to(
@@ -206,8 +314,10 @@ EPIX_API void Simulator_T::touch(World_T* m_world, int x, int y) {
     auto&& [chunk_x, chunk_y] = m_world->to_chunk_pos(x, y);
     auto&& [cell_x, cell_y]   = m_world->in_chunk_pos(x, y);
     if (!m_world->m_chunks.contains(chunk_x, chunk_y)) return;
-    auto& chunk = m_world->m_chunks.get(chunk_x, chunk_y);
-    chunk.touch(cell_x, cell_y);
+    assure_chunk(m_world, chunk_x, chunk_y);
+    auto& chunk      = m_world->m_chunks.get(chunk_x, chunk_y);
+    auto& chunk_data = m_chunk_data.get(chunk_x, chunk_y);
+    chunk_data.touch(cell_x, cell_y);
     if (!chunk.contains(cell_x, cell_y)) return;
     auto& cell = chunk.get(cell_x, cell_y);
     auto& elem = m_world->m_registry->get_elem(cell.elem_id);
@@ -218,6 +328,38 @@ EPIX_API void Simulator_T::touch(World_T* m_world, int x, int y) {
     static thread_local std::uniform_real_distribution<float> dis(0.0f, 1.0f);
     cell.set_freefall(dis(gen) <= (elem.awake_rate * elem.awake_rate));
 }
+
+EPIX_API void Simulator_T::insert(
+    World_T* m_world, int x, int y, Particle&& cell
+) {
+    auto&& [chunk_x, chunk_y] = m_world->to_chunk_pos(x, y);
+    auto&& [cell_x, cell_y]   = m_world->in_chunk_pos(x, y);
+    if (!m_world->m_chunks.contains(chunk_x, chunk_y)) return;
+    assure_chunk(m_world, chunk_x, chunk_y);
+    auto& chunk = m_world->m_chunks.get(chunk_x, chunk_y);
+    if (chunk.contains(cell_x, cell_y)) return;
+    chunk.insert(cell_x, cell_y, std::move(cell));
+    touch(m_world, x, y);
+    touch(m_world, x + 1, y);
+    touch(m_world, x - 1, y);
+    touch(m_world, x, y + 1);
+    touch(m_world, x, y - 1);
+}
+EPIX_API void Simulator_T::remove(World_T* m_world, int x, int y) {
+    auto&& [chunk_x, chunk_y] = m_world->to_chunk_pos(x, y);
+    auto&& [cell_x, cell_y]   = m_world->in_chunk_pos(x, y);
+    if (!m_world->m_chunks.contains(chunk_x, chunk_y)) return;
+    assure_chunk(m_world, chunk_x, chunk_y);
+    auto& chunk = m_world->m_chunks.get(chunk_x, chunk_y);
+    if (!chunk.contains(cell_x, cell_y)) return;
+    chunk.remove(cell_x, cell_y);
+    touch(m_world, x, y);
+    touch(m_world, x + 1, y);
+    touch(m_world, x - 1, y);
+    touch(m_world, x, y + 1);
+    touch(m_world, x, y - 1);
+}
+
 EPIX_API void Simulator_T::apply_viscosity(
     World_T* m_world, Particle& cell, int x, int y, int tx, int ty
 ) {
@@ -538,12 +680,12 @@ EPIX_API void Simulator_T::step_particle(
     } else if (elem.is_gas()) {
     }
     if (grav_len_s > 0.0f) {
-        auto& chunk = m_world->m_chunks.get(chunk_x, chunk_y);
+        auto& chunk = m_chunk_data.get(chunk_x, chunk_y);
         chunk.time_threshold =
-            std::max(chunk.time_threshold, (int)(12 * 10000 / grav_len_s));
+            std::max(chunk.time_threshold, (uint32_t)(12 * 10000 / grav_len_s));
     } else {
-        auto& chunk          = m_world->m_chunks.get(chunk_x, chunk_y);
-        chunk.time_threshold = std::numeric_limits<int>::max();
+        auto& chunk          = m_chunk_data.get(chunk_x, chunk_y);
+        chunk.time_threshold = std::numeric_limits<uint32_t>::max();
     }
 }
 EPIX_API void Simulator_T::step(World_T* m_world, float delta) {
@@ -572,20 +714,28 @@ EPIX_API void Simulator_T::step(World_T* m_world, float delta) {
             }
         }
     }
+    m_chunk_data.reserve(m_world->m_chunks.count());
+    // to make sure the references are valid
     for (auto&& [xmod, ymod] : modres) {
         for (auto&& [pos, chunk] : m_world->view()) {
             if ((pos[0] + xmod) % mod != 0 || (pos[1] + ymod) % mod != 0)
                 continue;
-            if (!chunk.should_update()) continue;
-            m_world->m_thread_pool->detach_task([=, &chunk]() {
+            if (!m_chunk_data.contains(pos[0], pos[1])) {
+                m_chunk_data.emplace(
+                    pos[0], pos[1], m_world->m_chunk_size, m_world->m_chunk_size
+                );
+            }
+            auto& chunk_data = m_chunk_data.get(pos[0], pos[1]);
+            if (!chunk_data.active()) continue;
+            m_world->m_thread_pool->detach_task([=, &chunk, &chunk_data]() {
                 chunk.reset_updated();
-                int xmin = chunk.updating_area[0];
-                int xmax = chunk.updating_area[1];
-                int ymin = chunk.updating_area[2];
-                int ymax = chunk.updating_area[3];
+                int xmin = chunk_data.active_area[0];
+                int xmax = chunk_data.active_area[1];
+                int ymin = chunk_data.active_area[2];
+                int ymax = chunk_data.active_area[3];
                 std::vector<std::pair<int, int>> cells;
-                cells.reserve(chunk.grid.data().size());
-                for (auto&& [cell_pos, cell] : chunk.grid.view()) {
+                cells.reserve(chunk.count());
+                for (auto&& [cell_pos, cell] : chunk.view()) {
                     cells.emplace_back(cell_pos[0], cell_pos[1]);
                 }
                 for (auto&& [cx, cy] :
@@ -600,7 +750,7 @@ EPIX_API void Simulator_T::step(World_T* m_world, float delta) {
                     auto y = pos[1] * m_world->m_chunk_size + cy;
                     step_particle(m_world, x, y, delta);
                 }
-                chunk.step_time();
+                chunk_data.step_time(m_world->m_chunk_size);
             });
         }
         m_world->m_thread_pool->wait();

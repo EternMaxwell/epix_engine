@@ -31,7 +31,9 @@ using WorldUnique = std::unique_ptr<World_T>;
 using WorldShared = std::shared_ptr<World_T>;
 struct Simulator_T;  // This class is used to update the world. Constructing
                      // should be cheap.
-using Simulator = Simulator_T;
+using Simulator       = Simulator_T*;
+using SimulatorUnique = std::unique_ptr<Simulator_T>;
+using SimulatorShared = std::shared_ptr<Simulator_T>;
 }  // namespace epix::world::sand
 
 // === STRUCTS ===//
@@ -145,32 +147,35 @@ struct Registry_T {
 
 struct Chunk {
     using grid_t = epix::utils::grid::sparse_grid<Particle, 2>;
-    grid_t grid;
+
     const int width;
     const int height;
-    int time_since_last_swap;
-    int time_threshold;
-    int updating_area[4];
-    int updating_area_next[4];
 
+   private:
+    grid_t grid;
+    bool _updated = false;
+
+   public:
     EPIX_API Chunk(int width, int height);
     EPIX_API Chunk(const Chunk& other);
     EPIX_API Chunk(Chunk&& other);
     EPIX_API Chunk& operator=(const Chunk& other);
     EPIX_API Chunk& operator=(Chunk&& other);
     EPIX_API void reset_updated();
-    EPIX_API void step_time();
     EPIX_API Particle& get(int x, int y);
     EPIX_API const Particle& get(int x, int y) const;
     EPIX_API void insert(int x, int y, const Particle& cell);
     EPIX_API void insert(int x, int y, Particle&& cell);
-    EPIX_API void swap_area();
     EPIX_API void remove(int x, int y);
-    EPIX_API void touch(int x, int y);
-    EPIX_API bool should_update() const;
 
     EPIX_API int size(int dim) const;
     EPIX_API bool contains(int x, int y) const;
+
+    EPIX_API grid_t::view_t view();
+    EPIX_API grid_t::const_view_t view() const;
+
+    EPIX_API bool updated() const;
+    EPIX_API size_t count() const;
 };
 
 struct World_T {
@@ -232,7 +237,6 @@ struct World_T {
         const;
 
     // === PARTICLE MOVE FUNCTIONS ===//
-    EPIX_API void touch(int x, int y);
     EPIX_API void swap(int x, int y, int tx, int ty);
     EPIX_API void insert(int x, int y, Particle&& cell);
     EPIX_API void remove(int x, int y);
@@ -261,8 +265,38 @@ struct Simulator_T {
         float prefix      = 0.05f;
     } powder_slide_setting;
 
+    struct SimChunkData {
+        uint32_t time_threshold;
+        uint32_t time_since_last_swap;
+        int width;
+        int height;
+        int active_area[4];
+        int next_active_area[4];
+
+        EPIX_API SimChunkData(int width, int height);
+        EPIX_API SimChunkData(const SimChunkData& other);
+        EPIX_API SimChunkData(SimChunkData&& other);
+        EPIX_API SimChunkData& operator=(const SimChunkData& other);
+        EPIX_API SimChunkData& operator=(SimChunkData&& other);
+
+        EPIX_API void touch(int x, int y);
+        EPIX_API void swap(int chunk_size);
+        EPIX_API void step_time(int chunk_size);
+        EPIX_API bool active() const;
+    };
+
+    utils::grid::extendable_grid<SimChunkData, 2> m_chunk_data;
+
    public:
     Simulator_T() = default;
+
+    EPIX_API static Simulator_T* create();
+    EPIX_API static std::unique_ptr<Simulator_T> create_unique();
+    EPIX_API static std::shared_ptr<Simulator_T> create_shared();
+
+    EPIX_API void assure_chunk(const World_T* world, int x, int y);
+    EPIX_API const utils::grid::extendable_grid<SimChunkData, 2>& chunk_data(
+    ) const;
 
     struct RaycastResult {
         int steps;
@@ -280,6 +314,10 @@ struct Simulator_T {
     );
 
     EPIX_API void touch(World_T* world, int x, int y);
+
+    // === INSERT REMOVE OPERATIONS OVERLAY ===//
+    EPIX_API void insert(World_T* world, int x, int y, Particle&& cell);
+    EPIX_API void remove(World_T* world, int x, int y);
 
     // === SIMULATION FUNCTIONS ===//
     EPIX_API void apply_viscosity(
