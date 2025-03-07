@@ -1,6 +1,7 @@
 #include <spdlog/spdlog.h>
 
 #include "epix/rdvk2/rdvk_utils.h"
+#include "epix/render_api.h"
 
 namespace epix::render::vulkan2 {
 
