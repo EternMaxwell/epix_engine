@@ -18,6 +18,7 @@ endif ()
 #find third-party if possible
 find_package (OpenGL REQUIRED)
 find_package (Vulkan REQUIRED)
+add_library (Vulkan-Headers ALIAS Vulkan::Headers) # ADD THIS LINE TO AVOID DAWN TO REINCLUDE vulkan-headers
 
 #sub directories
 

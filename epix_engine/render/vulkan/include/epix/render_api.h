@@ -3,8 +3,9 @@
 #include <epix/window.h>
 
 namespace epix::render::api {
-enum class RenderAPI { Vulkan, OpenGL, DirectX, Metal };
-class Context;
+class Instance;
+class Device;
+class Surface;
 class Swapchain;
 class GraphicPipeline;
 class ComputePipeline;
