@@ -115,7 +115,15 @@ EPIX_API Particle Registry_T::create_particle(const PartDef& def) const {
     auto& elem = get_elem(p.elem_id);
     p.color    = elem.gen_color();
     if (elem.is_liquid() || elem.is_gas() || elem.is_powder()) {
+        static thread_local std::random_device rd;
+        static thread_local std::mt19937 gen(rd());
+        static thread_local std::uniform_real_distribution<float> dis(
+            -0.5f, 0.5f
+        );
         p.set_freefall(true);
+        p.velocity = {dis(gen), dis(gen)};
+        p.inpos    = {dis(gen), dis(gen)};
+        p.inpos /= 2.0f;
     }
     return p;
 }

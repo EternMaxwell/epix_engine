@@ -80,6 +80,7 @@ struct packed_grid {
     std::vector<T> _data;
     Boolify _boolify;
 
+   public:
     struct view_t {
         packed_grid& _grid;
         struct iterator {
@@ -171,7 +172,6 @@ struct packed_grid {
         iterator end() { return iterator(_grid, _grid._size); }
     };
 
-   public:
     packed_grid(const std::array<int, D>& size)
         : _size(size),
           _data(std::accumulate(
@@ -349,6 +349,8 @@ struct packed_grid {
 
     view_t view() { return view_t(*this); }
     const_view_t view() const { return const_view_t(*this); }
+
+    void fill(const T& value) { std::fill(_data.begin(), _data.end(), value); }
 
     size_t write_to(void* buffer, size_t size_field_stride = sizeof(int) * D)
         const {

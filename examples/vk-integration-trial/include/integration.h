@@ -805,6 +805,23 @@ void update_simulation(
     }
 }
 
+void step_simulation(
+    Query<
+        Get<SimulatorUnique,
+            WorldUnique,
+            epix::world::sync::sand2b2d::SimulationCollisionGeneral>> query,
+    Query<Get<epix::input::ButtonInput<epix::input::KeyCode>>> key_query
+) {
+    if (!query) return;
+    if (!key_query) return;
+    auto [simulation, world, sim_collisions] = query.single();
+    auto [key_input]                         = key_query.single();
+    if (key_input.just_pressed(epix::input::KeyCode::KeySpace)) {
+        sim_collisions.cache(world.get());
+        simulation->step(world.get(), 1.0f / 60.0f);
+    }
+}
+
 void render_simulation(
     Extract<Get<const WorldUnique>> query, ResMut<SandMesh> mesh
 ) {
@@ -1154,6 +1171,9 @@ struct SimulationPlugin : Plugin {
         app.add_system(Update, update_simulation)
             .chain()
             .in_state(SimulateState::Running);
+        app.add_system(Update, step_simulation)
+            .chain()
+            .in_state(SimulateState::Paused);
         app.add_system(
             Extraction, render_simulation, render_simulation_chunk_outline
         );
@@ -1226,8 +1246,8 @@ struct VK_TrialPlugin : Plugin {
 
         app.add_plugin(RenderPassPlugin{});
         app.add_plugin(SimulationPlugin{});
-        app.add_plugin(PixelB2dTestPlugin{});
-        app.add_plugin(WorldSyncPlugin{});
+        // app.add_plugin(PixelB2dTestPlugin{});
+        // app.add_plugin(WorldSyncPlugin{});
     }
 };
 

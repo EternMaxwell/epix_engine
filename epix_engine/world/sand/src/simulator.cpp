@@ -7,6 +7,13 @@
 
 using namespace epix::world::sand;
 
+EPIX_API Simulator_T::Simulator_T()
+    : liquid_spread_setting{.spread_len = 3.0f, .prefix = 0.1f},
+      update_state{true, true, true, true},
+      max_travel(std::nullopt),
+      powder_slide_setting{.always_slide = true, .prefix = 0.05f},
+      m_chunk_data() {}
+
 EPIX_API void Simulator_T::assure_chunk(const World_T* world, int x, int y) {
     if (!world->m_chunks.contains(x, y)) return;
     if (!m_chunk_data.contains(x, y)) {
@@ -29,7 +36,9 @@ EPIX_API void Simulator_T::UpdateState::next() {
         yorder  = dis(gen);
         x_outer = dis(gen);
     } else {
-        uint8_t state = xorder << 2 | yorder << 1 | x_outer;
+        uint8_t state = (static_cast<uint8_t>(xorder) << 2) |
+                        (static_cast<uint8_t>(yorder) << 1) |
+                        static_cast<uint8_t>(x_outer);
         state++;
         xorder  = state & 0b100;
         yorder  = state & 0b010;
@@ -43,11 +52,23 @@ EPIX_API Simulator_T::SimChunkData::SimChunkData(int width, int height)
       active_area{width, 0, height, 0},
       next_active_area{width, 0, height, 0},
       time_threshold(EPIX_WORLD_SAND_DEFAULT_CHUNK_RESET_TIME),
+      velocity({width, height}),
+      velocity_back({width, height}),
+      pressure({width, height}),
+      pressure_back({width, height}),
+      temperature({width, height}),
+      temperature_back({width, height}),
       time_since_last_swap(0) {}
 EPIX_API Simulator_T::SimChunkData::SimChunkData(const SimChunkData& other)
     : width(other.width),
       height(other.height),
       time_threshold(other.time_threshold),
+      velocity(other.velocity),
+      velocity_back(other.velocity_back),
+      pressure(other.pressure),
+      pressure_back(other.pressure_back),
+      temperature(other.temperature),
+      temperature_back(other.temperature_back),
       time_since_last_swap(other.time_since_last_swap) {
     std::memcpy(active_area, other.active_area, sizeof(active_area));
     std::memcpy(
@@ -58,6 +79,12 @@ EPIX_API Simulator_T::SimChunkData::SimChunkData(SimChunkData&& other)
     : width(other.width),
       height(other.height),
       time_threshold(other.time_threshold),
+      velocity(std::move(other.velocity)),
+      velocity_back(std::move(other.velocity_back)),
+      pressure(std::move(other.pressure)),
+      pressure_back(std::move(other.pressure_back)),
+      temperature(std::move(other.temperature)),
+      temperature_back(std::move(other.temperature_back)),
       time_since_last_swap(other.time_since_last_swap) {
     std::memcpy(active_area, other.active_area, sizeof(active_area));
     std::memcpy(
@@ -76,6 +103,12 @@ EPIX_API Simulator_T::SimChunkData& Simulator_T::SimChunkData::operator=(
     std::memcpy(
         next_active_area, other.next_active_area, sizeof(next_active_area)
     );
+    velocity         = other.velocity;
+    pressure         = other.pressure;
+    temperature      = other.temperature;
+    velocity_back    = other.velocity_back;
+    pressure_back    = other.pressure_back;
+    temperature_back = other.temperature_back;
     return *this;
 }
 EPIX_API Simulator_T::SimChunkData& Simulator_T::SimChunkData::operator=(
@@ -90,6 +123,12 @@ EPIX_API Simulator_T::SimChunkData& Simulator_T::SimChunkData::operator=(
     std::memcpy(
         next_active_area, other.next_active_area, sizeof(next_active_area)
     );
+    velocity         = std::move(other.velocity);
+    pressure         = std::move(other.pressure);
+    temperature      = std::move(other.temperature);
+    velocity_back    = std::move(other.velocity_back);
+    pressure_back    = std::move(other.pressure_back);
+    temperature_back = std::move(other.temperature_back);
     return *this;
 }
 
@@ -110,6 +149,15 @@ EPIX_API void Simulator_T::SimChunkData::swap(int chunk_size) {
     next_active_area[1] = 0;
     next_active_area[2] = chunk_size;
     next_active_area[3] = 0;
+    std::swap(velocity, velocity_back);
+    std::swap(pressure, pressure_back);
+    std::swap(temperature, temperature_back);
+    // velocity_back.fill(glm::vec2{0.0f, 0.0f});
+    // pressure_back.fill(0.0f);
+    // temperature_back.fill(0.0f);
+    velocity_back    = velocity;
+    pressure_back    = pressure;
+    temperature_back = temperature;
 }
 EPIX_API void Simulator_T::SimChunkData::step_time(int chunk_size) {
     time_since_last_swap++;
@@ -224,7 +272,7 @@ EPIX_API bool Simulator_T::collide(
         telem.grav_type == Element::GravType::SOLID */) {
         dx         = (float)(tx - x);
         dy         = (float)(ty - y);
-        bool dir_x = std::abs(dx) > std::abs(dy);
+        bool dir_x = std::fabsf(dx) > std::fabsf(dy);
         dx         = dir_x ? (float)(tx - x) : 0;
         dy         = dir_x ? 0 : (float)(ty - y);
     }
@@ -237,10 +285,10 @@ EPIX_API bool Simulator_T::collide(
     cell.velocity.y += jy * m2;
     tcell.velocity.x -= jx * m1;
     tcell.velocity.y -= jy * m1;
-    float friction = std::sqrt(elem.friction * telem.friction);
+    float friction = std::sqrtf(elem.friction * telem.friction);
     float dot2     = (dv_x * dy - dv_y * dx) / dist;
     float jf       = dot2 / (m1 + m2);
-    float jfabs    = std::min(friction * std::abs(j), std::fabs(jf));
+    float jfabs    = std::min(friction * std::fabsf(j), std::fabsf(jf));
     float jfx_mod  = dot2 > 0 ? dy / dist : -dy / dist;
     float jfy_mod  = dot2 > 0 ? -dx / dist : dx / dist;
     float jfx      = jfabs * jfx_mod * 2.0f / 3.0f;
@@ -263,6 +311,8 @@ EPIX_API bool Simulator_T::collide(
 EPIX_API bool Simulator_T::collide(
     World_T* m_world, Particle& part1, Particle& part2, const glm::vec2& dir
 ) {
+    auto& elem1   = m_world->registry().get_elem(part1.elem_id);
+    auto& elem2   = m_world->registry().get_elem(part2.elem_id);
     float dx      = dir.x;
     float dy      = dir.y;
     float dist    = glm::length(glm::vec2(dx, dy));
@@ -270,18 +320,31 @@ EPIX_API bool Simulator_T::collide(
     float dv_y    = part1.velocity.y - part2.velocity.y;
     float v_dot_d = dv_x * dx + dv_y * dy;
     if (v_dot_d <= 0) return false;
-    float m1 = part1.elem_id == -1
-                   ? 0
-                   : m_world->registry().get_elem(part1.elem_id).density;
-    float m2 = part2.elem_id == -1
-                   ? 0
-                   : m_world->registry().get_elem(part2.elem_id).density;
+    float m1 = elem1.density;
+    float m2 = elem2.density;
+    if (elem2.is_solid()) {
+        m1 = 0;
+    }
+    if (elem2.is_powder() && !part2.freefall()) {
+        m1 *= 0.5f;
+    }
+    if (elem2.is_powder() && elem1.is_liquid() &&
+        elem2.density < elem1.density) {
+        return true;
+    }
+    if (elem1.is_solid()) {
+        m2 = 0;
+    }
+    if (elem1.is_liquid()/*  &&
+        elem2.grav_type == Element::GravType::SOLID */) {
+        dx         = dir.x;
+        dy         = dir.y;
+        bool dir_x = std::fabsf(dx) > std::fabsf(dy);
+        dx         = dir_x ? dir.x : 0;
+        dy         = dir_x ? 0 : dir.y;
+    }
     if (m1 == 0 && m2 == 0) return false;
-    float restitution = std::max(
-        m1 == 0 ? 0.0f
-                : m_world->registry().get_elem(part1.elem_id).restitution,
-        m2 == 0 ? 0.0f : m_world->registry().get_elem(part2.elem_id).restitution
-    );
+    float restitution = std::max(elem1.restitution, elem2.restitution);
     float j  = -(1 + restitution) * v_dot_d / (m1 + m2);  // impulse scalar
     float jx = j * dx / dist;
     float jy = j * dy / dist;
@@ -289,25 +352,21 @@ EPIX_API bool Simulator_T::collide(
     part1.velocity.y += jy * m2;
     part2.velocity.x -= jx * m1;
     part2.velocity.y -= jy * m1;
-    float friction = std::sqrt(
-        m1 == 0
-            ? 0.0f
-            : m_world->registry().get_elem(part1.elem_id).friction *
-                  (m2 == 0
-                       ? 0.0f
-                       : m_world->registry().get_elem(part2.elem_id).friction)
-    );
-    float dot2    = (dv_x * dy - dv_y * dx) / dist;
-    float jf      = dot2 / (m1 + m2);
-    float jfabs   = std::min(friction * std::abs(j), std::fabs(jf));
-    float jfx_mod = dot2 > 0 ? dy / dist : -dy / dist;
-    float jfy_mod = dot2 > 0 ? -dx / dist : dx / dist;
-    float jfx     = jfabs * jfx_mod * 2.0f / 3.0f;
-    float jfy     = jfabs * jfy_mod * 2.0f / 3.0f;
+    float friction = std::sqrtf(elem1.friction * elem2.friction);
+    float dot2     = (dv_x * dy - dv_y * dx) / dist;
+    float jf       = dot2 / (m1 + m2);
+    float jfabs    = std::min(friction * std::fabsf(j), std::fabsf(jf));
+    float jfx_mod  = dot2 > 0 ? dy / dist : -dy / dist;
+    float jfy_mod  = dot2 > 0 ? -dx / dist : dx / dist;
+    float jfx      = jfabs * jfx_mod * 2.0f / 3.0f;
+    float jfy      = jfabs * jfy_mod * 2.0f / 3.0f;
     part1.velocity.x -= jfx * m2;
     part1.velocity.y -= jfy * m2;
     part2.velocity.x += jfx * m1;
     part2.velocity.y += jfy * m1;
+    if (!part2.freefall()) {
+        part2.velocity = {0.0f, 0.0f};
+    }
     return true;
 }
 EPIX_API void Simulator_T::touch(World_T* m_world, int x, int y) {
@@ -376,305 +435,299 @@ EPIX_API void Simulator_T::step_particle(
     // calling this function
     auto [chunk_x, chunk_y] = m_world->to_chunk_pos(x_, y_);
     auto [cell_x, cell_y]   = m_world->in_chunk_pos(x_, y_);
-    auto& cell = m_world->m_chunks.get(chunk_x, chunk_y).get(cell_x, cell_y);
-    if (cell.updated()) return;
-    auto& elem = m_world->m_registry->get_elem(cell.elem_id);
+    auto* cell = &m_world->m_chunks.get(chunk_x, chunk_y).get(cell_x, cell_y);
+    if (cell->updated()) return;
+    auto& elem = m_world->m_registry->get_elem(cell->elem_id);
     if (elem.is_place_holder() || elem.is_solid()) return;
-    int final_x      = x_;
-    int final_y      = y_;
-    auto grav        = m_world->gravity_at(x_, y_);
-    float grav_len_s = grav.x * grav.x + grav.y * grav.y;
-    float grav_angle = std::atan2(grav.y, grav.x);
-    glm::ivec2 below_d, above_d, lb_d, rb_d, left_d, right_d;
+    int final_x = x_;
+    int final_y = y_;
+    auto grav   = m_world->gravity_at(x_, y_);
     {
-        static const float sqrt2 = std::sqrt(2.0f);
-
-        float gs = std::sin(grav_angle);
-        float gc = std::cos(grav_angle);
-        below_d  = {std::round(gc), std::round(gs)};
-        above_d  = {-std::round(gc), -std::round(gs)};
-        lb_d     = {std::round(gc - gs), std::round(gs + gc)};
-        rb_d     = {std::round(gc + gs), std::round(gs - gc)};
-        left_d   = {-std::round(gs), std::round(gc)};
-        right_d  = {std::round(gs), -std::round(gc)};
-    }
-    cell.set_updated(true);
-    if (elem.is_powder()) {
-        {
-            int liquid_count = 0;  // surrounding liquid particle count
-            int empty_count  = 0;  // surrounding empty cell count
-            float liquid_density =
-                0.0f;  // surrounding liquid density in average
-            int b_lb_rb_not_freefall = 0;  // surrounding not freefall count
-            if (grav_len_s > 0.0f) {
-                // below
-                if (m_world->valid(x_ + below_d.x, y_ + below_d.y) &&
-                    m_world->contains(x_ + below_d.x, y_ + below_d.y)) {
-                    auto&& [tcell, telem] =
-                        m_world->get(x_ + below_d.x, y_ + below_d.y);
-                    if (telem.is_liquid()) {
-                        liquid_count++;
-                        liquid_density += telem.density;
-                    }
-                    if (telem.is_powder() && !tcell.freefall()) {
-                        b_lb_rb_not_freefall++;
-                    }
-                } else {
-                    empty_count++;
+        // set gravity value to effective gravity
+        if (elem.is_powder()) {
+            const auto checks = std::array<glm::ivec2, 8>{
+                {glm::ivec2{0, 1}, glm::ivec2{0, -1}, glm::ivec2{1, 0},
+                 glm::ivec2{-1, 0}, glm::ivec2{1, 1}, glm::ivec2{-1, 1},
+                 glm::ivec2{1, -1}, glm::ivec2{-1, -1}}
+            };
+            int empty_count      = 0;
+            int liquid_count     = 0;
+            float liquid_density = 0.0f;
+            for (const auto& check : checks) {
+                if (!m_world->valid(x_ + check.x, y_ + check.y)) {
+                    continue;
                 }
-                // above
-                if (m_world->valid(x_ + above_d.x, y_ + above_d.y) &&
-                    m_world->contains(x_ + above_d.x, y_ + above_d.y)) {
-                    auto&& [tcell, telem] =
-                        m_world->get(x_ + above_d.x, y_ + above_d.y);
-                    if (telem.is_liquid()) {
-                        liquid_count++;
-                        liquid_density += telem.density;
-                    }
-                } else {
+                if (!m_world->contains(x_ + check.x, y_ + check.y)) {
                     empty_count++;
+                    continue;
                 }
-                // drag liquid (left and right only)
-                static constexpr float liquid_drag   = 0.4f;
-                static constexpr float vertical_rate = 0.0f;
-                // left
-                if (m_world->valid(x_ + left_d.x, y_ + left_d.y) &&
-                    m_world->contains(x_ + left_d.x, y_ + left_d.y)) {
-                    auto&& [tcell, telem] =
-                        m_world->get(x_ + left_d.x, y_ + left_d.y);
-                    if (telem.is_liquid() && telem.density > elem.density) {
-                        liquid_count++;
-                        liquid_density += telem.density;
-                        glm::vec2 vel =
-                            glm::normalize(glm::vec2(left_d)) *
-                            glm::dot(tcell.velocity, glm::vec2(left_d));
-                        vel = (1 - vertical_rate) * vel +
-                              vertical_rate * tcell.velocity;
-                        if (glm::length(vel) > glm::length(cell.velocity)) {
-                            cell.velocity =
-                                liquid_drag * vel +
-                                (1.0f - liquid_drag) * cell.velocity;
-                        }
-                    }
-                } else {
-                    empty_count++;
-                }
-                // right
-                if (m_world->valid(x_ + right_d.x, y_ + right_d.y) &&
-                    m_world->contains(x_ + right_d.x, y_ + right_d.y)) {
-                    auto&& [tcell, telem] =
-                        m_world->get(x_ + right_d.x, y_ + right_d.y);
-                    if (telem.is_liquid() && telem.density > elem.density) {
-                        liquid_count++;
-                        liquid_density += telem.density;
-                        glm::vec2 vel =
-                            glm::normalize(glm::vec2(right_d)) *
-                            glm::dot(tcell.velocity, glm::vec2(right_d));
-                        vel = (1 - vertical_rate) * vel +
-                              vertical_rate * tcell.velocity;
-                        if (glm::length(vel) > glm::length(cell.velocity)) {
-                            cell.velocity =
-                                liquid_drag * vel +
-                                (1.0f - liquid_drag) * cell.velocity;
-                        }
-                    }
-                } else {
-                    empty_count++;
-                }
-                // left bottom
-                if (m_world->valid(x_ + lb_d.x, y_ + lb_d.y) &&
-                    m_world->contains(x_ + lb_d.x, y_ + lb_d.y)) {
-                    auto&& [tcell, telem] =
-                        m_world->get(x_ + lb_d.x, y_ + lb_d.y);
-                    if (telem.is_powder() && !tcell.freefall()) {
-                        b_lb_rb_not_freefall++;
-                    }
-                } else {
-                    empty_count++;
-                }
-                // right bottom
-                if (m_world->valid(x_ + rb_d.x, y_ + rb_d.y) &&
-                    m_world->contains(x_ + rb_d.x, y_ + rb_d.y)) {
-                    auto&& [tcell, telem] =
-                        m_world->get(x_ + rb_d.x, y_ + rb_d.y);
-                    if (telem.is_powder() && !tcell.freefall()) {
-                        b_lb_rb_not_freefall++;
-                    }
-                } else {
-                    empty_count++;
+                auto&& [check_cell, check_elem] =
+                    m_world->get(x_ + check.x, y_ + check.y);
+                if (check_elem.is_liquid()) {
+                    liquid_count++;
+                    liquid_density += check_elem.density;
                 }
             }
-            if (b_lb_rb_not_freefall == 3) {
-                cell.set_freefall(false);
-                cell.velocity = {0.0f, 0.0f};
-            }
+            liquid_density /= liquid_count;
             if (liquid_count > empty_count) {
-                liquid_density /= liquid_count;
-                grav *= (elem.density - liquid_density) / elem.density;
-                cell.velocity += 0.9f;
+                grav = m_world->gravity_at(x_, y_) *
+                       (1 - elem.density / liquid_density);
             }
         }
-        if (!cell.freefall()) {
-            if (!m_world->valid(x_ + below_d.x, y_ + below_d.y)) return;
-            if (m_world->contains(x_ + below_d.x, y_ + below_d.y)) {
-                auto&& [tcell, telem] =
-                    m_world->get(x_ + below_d.x, y_ + below_d.y);
-                if (telem.is_solid()) return;
-                if (telem.is_powder() && !tcell.freefall()) return;
-            }
-            if (m_world->valid(x_ + above_d.x, y_ + above_d.y) &&
-                m_world->contains(x_ + above_d.x, y_ + above_d.y)) {
-                auto&& [tcell, telem] =
-                    m_world->get(x_ + above_d.x, y_ + above_d.y);
-                if (telem.is_powder() && !tcell.freefall()) {
-                    tcell.set_freefall(true);
-                    tcell.velocity = m_world->default_velocity_at(
-                        x_ + above_d.x, y_ + above_d.y
-                    );
-                    touch(m_world, x_ + above_d.x, y_ + above_d.y);
-                    touch(m_world, x_ + above_d.x - 1, y_ + above_d.y);
-                    touch(m_world, x_ + above_d.x + 1, y_ + above_d.y);
-                    touch(m_world, x_ + above_d.x, y_ + above_d.y - 1);
-                    touch(m_world, x_ + above_d.x, y_ + above_d.y + 1);
-                }
-            }
-            cell.velocity = m_world->default_velocity_at(x_, y_);
-            cell.set_freefall(true);
-        }
-        touch(m_world, x_, y_);
-        cell.velocity += grav * delta;
-        cell.velocity *= 0.99f;
-        cell.inpos += cell.velocity * delta;
-        int delta_x = std::round(cell.inpos.x);
-        int delta_y = std::round(cell.inpos.y);
-        if (delta_x == 0 && delta_y == 0) return;
-        cell.inpos.x -= delta_x;
-        cell.inpos.y -= delta_y;
-        if (max_travel) {
-            delta_x = std::clamp(delta_x, -max_travel->x, max_travel->x);
-            delta_y = std::clamp(delta_y, -max_travel->y, max_travel->y);
-        }
-        int tx              = x_ + delta_x;
-        int ty              = y_ + delta_y;
-        bool moved          = false;
-        auto raycast_result = raycast_to(m_world, x_, y_, tx, ty);
-        if (raycast_result.steps) {
-            m_world->swap(x_, y_, raycast_result.new_x, raycast_result.new_y);
-            final_x = raycast_result.new_x;
-            final_y = raycast_result.new_y;
-            moved   = true;
-        }
-        if (raycast_result.hit) {
-            auto&& [hit_x, hit_y]  = raycast_result.hit.value();
-            bool blocking_freefall = false;
-            bool collided          = false;
-            if (m_world->valid(hit_x, hit_y)) {
-                auto&& [tcell, telem] = m_world->get(hit_x, hit_y);
-                if (telem.is_solid() || telem.is_powder()) {
-                    collided = collide(
-                        m_world, raycast_result.new_x, raycast_result.new_y,
-                        hit_x, hit_y
-                    );
-                    blocking_freefall = tcell.freefall();
+    }
+    float grav_len_s      = grav.x * grav.x + grav.y * grav.y;
+    float grav_len        = std::sqrtf(grav_len_s);
+    float grav_angle      = std::atan2f(grav.y, grav.x);
+    static auto cal_angle = [](const glm::vec2& a,
+                               const glm::vec2& b) -> float {
+        float dot = a.x * b.x + a.y * b.y;
+        float det = a.x * b.y - a.y * b.x;
+        return std::atan2f(det, dot);
+    };
+    glm::vec2 below_d, above_d, lb_d, rb_d, left_d, right_d, ra_d, la_d;
+    glm::ivec2 ibelow_d, iabove_d, ilb_d, irb_d, ileft_d, iright_d, ira_d,
+        ila_d;
+    {
+        static const float sqrt2 = std::sqrtf(2.0f);
+
+        float gs = std::sinf(grav_angle);
+        float gc = std::cosf(grav_angle);
+        below_d  = {gc, gs};
+        above_d  = {-gc, -gs};
+        left_d   = {gs, -gc};
+        right_d  = {-gs, gc};
+        lb_d     = below_d + left_d;
+        rb_d     = below_d + right_d;
+        la_d     = above_d + left_d;
+        ra_d     = above_d + right_d;
+        ibelow_d = {
+            static_cast<int>(std::roundf(below_d.x)),
+            static_cast<int>(std::roundf(below_d.y))
+        };
+        iabove_d = {
+            static_cast<int>(std::roundf(above_d.x)),
+            static_cast<int>(std::roundf(above_d.y))
+        };
+        ileft_d = {
+            static_cast<int>(std::roundf(left_d.x)),
+            static_cast<int>(std::roundf(left_d.y))
+        };
+        iright_d = {
+            static_cast<int>(std::roundf(right_d.x)),
+            static_cast<int>(std::roundf(right_d.y))
+        };
+        ilb_d = {
+            static_cast<int>(std::roundf(lb_d.x)),
+            static_cast<int>(std::roundf(lb_d.y))
+        };
+        irb_d = {
+            static_cast<int>(std::roundf(rb_d.x)),
+            static_cast<int>(std::roundf(rb_d.y))
+        };
+        ira_d = {
+            static_cast<int>(std::roundf(ra_d.x)),
+            static_cast<int>(std::roundf(ra_d.y))
+        };
+        ila_d = {
+            static_cast<int>(std::roundf(la_d.x)),
+            static_cast<int>(std::roundf(la_d.y))
+        };
+    }
+    cell->set_updated(true);
+    if (elem.is_powder()) {
+        if (!cell->freefall()) {
+            if (m_world->valid(ibelow_d.x + x_, ibelow_d.y + y_)) {
+                if (!m_world->contains(ibelow_d.x + x_, ibelow_d.y + y_)) {
+                    cell->set_freefall(true);
                 } else {
-                    m_world->swap(final_x, final_y, hit_x, hit_y);
-                    final_x = hit_x;
-                    final_y = hit_y;
-                    moved   = true;
+                    auto&& [below_cell, below_elem] =
+                        m_world->get(ibelow_d.x + x_, ibelow_d.y + y_);
+                    if (!(below_elem.is_solid() ||
+                          (below_elem.is_powder() && !below_cell.freefall()))) {
+                        cell->set_freefall(true);
+                    }
                 }
             }
-            if (!moved && grav_len_s > 0.0f) {
-                if (powder_slide_setting.always_slide ||
-                    (m_world->valid(hit_x, hit_y) &&
-                     m_world->contains(hit_x, hit_y) &&
-                     !m_world->particle_at(hit_x, hit_y).freefall())) {
-                    static constexpr auto cal_angle_diff = [](glm::vec2& v1,
-                                                              glm::vec2& v2) {
-                        float dot = v1.x * v2.x + v1.y * v2.y;
-                        float det = v1.x * v2.y - v1.y * v2.x;
-                        return std::atan2(det, dot);
-                    };
-                    float diff = cal_angle_diff(cell.velocity, grav);
-                    if (std::abs(diff) < std::numbers::pi / 2) {
-                        glm::ivec2 dirs[2];
-                        glm::ivec2 idirs[2];
-                        static thread_local std::random_device rd;
-                        static thread_local std::mt19937 gen(rd());
-                        static thread_local std::uniform_real_distribution<
-                            float>
-                            dis(-1.0f, 1.0f);
-                        if (dis(gen) > 0.0f) {
-                            dirs[0]  = lb_d;
-                            dirs[1]  = rb_d;
-                            idirs[0] = left_d;
-                            idirs[1] = right_d;
-                        } else {
-                            dirs[0]  = rb_d;
-                            dirs[1]  = lb_d;
-                            idirs[0] = right_d;
-                            idirs[1] = left_d;
+            if (cell->freefall()) {
+                // this cell is now set to freefall, try set the above one as
+                // well.
+                if (m_world->valid(iabove_d.x + x_, iabove_d.y + y_) &&
+                    m_world->contains(iabove_d.x + x_, iabove_d.y + y_)) {
+                    {
+                        auto&& [above_cell, above_elem] =
+                            m_world->get(iabove_d.x + x_, iabove_d.y + y_);
+                        if (above_elem.is_liquid() || above_elem.is_gas() ||
+                            above_elem.is_powder()) {
+                            above_cell.set_freefall(true);
+                            touch(m_world, iabove_d.x + x_, iabove_d.y + y_);
+                            touch(
+                                m_world, x_ + iabove_d.x + iabove_d.x,
+                                y_ + iabove_d.y + iabove_d.y
+                            );
                         }
-                        for (int i = 0; i < 2; i++) {
-                            auto& dir   = dirs[i];
-                            int delta_x = dir.x;
-                            int delta_y = dir.y;
-                            if (delta_x == 0 && delta_y == 0) {
-                                continue;
+                    }
+                }
+                // diagonal above
+                if (m_world->valid(ila_d.x + x_, ila_d.y + y_) &&
+                    m_world->contains(ila_d.x + x_, ila_d.y + y_)) {
+                    auto&& [above_cell, above_elem] =
+                        m_world->get(ila_d.x + x_, ila_d.y + y_);
+                    if (above_elem.is_liquid() || above_elem.is_gas() ||
+                        above_elem.is_powder()) {
+                        touch(m_world, ila_d.x + x_, ila_d.y + y_);
+                    }
+                }
+                if (m_world->valid(ira_d.x + x_, ira_d.y + y_) &&
+                    m_world->contains(ira_d.x + x_, ira_d.y + y_)) {
+                    auto&& [above_cell, above_elem] =
+                        m_world->get(ira_d.x + x_, ira_d.y + y_);
+                    if (above_elem.is_liquid() || above_elem.is_gas() ||
+                        above_elem.is_powder()) {
+                        touch(m_world, ira_d.x + x_, ira_d.y + y_);
+                    }
+                }
+            }
+        }
+        if (cell->freefall()) {
+            touch(m_world, x_, y_);
+            float angle_diff = cal_angle(cell->velocity, grav);
+            cell->velocity += grav * delta;
+            cell->inpos += cell->velocity * delta;
+            int delta_x = static_cast<int>(std::round(cell->inpos.x));
+            int delta_y = static_cast<int>(std::round(cell->inpos.y));
+            cell->inpos.x -= delta_x;
+            cell->inpos.y -= delta_y;
+            if (max_travel.has_value()) {
+                delta_x = std::clamp(delta_x, -max_travel->x, max_travel->x);
+                delta_y = std::clamp(delta_y, -max_travel->y, max_travel->y);
+            }
+            auto raycast_result =
+                raycast_to(m_world, x_, y_, x_ + delta_x, y_ + delta_y);
+            if (raycast_result.steps) {
+                m_world->swap(
+                    x_, y_, raycast_result.new_x, raycast_result.new_y
+                );
+                final_x = raycast_result.new_x;
+                final_y = raycast_result.new_y;
+                cell    = &m_world->particle_at(final_x, final_y);
+            }
+            if (raycast_result.hit) {
+                if (!m_world->valid(
+                        raycast_result.hit->first, raycast_result.hit->second
+                    )) {
+                    cell->velocity = {0.0f, 0.0f};
+                    cell->inpos *= 0.5f;
+                } else if (m_world->contains(
+                               raycast_result.hit->first,
+                               raycast_result.hit->second
+                           )) {
+                    auto&& [tcell, telem] = m_world->get(
+                        raycast_result.hit->first, raycast_result.hit->second
+                    );
+                    if (!telem.is_gas() && !telem.is_liquid()) {
+                        collide(
+                            m_world, *cell, tcell,
+                            glm::vec2{
+                                raycast_result.hit->first - final_x,
+                                raycast_result.hit->second - final_y
+                            } + tcell.inpos -
+                                cell->inpos
+                        );
+                    } else {
+                        m_world->swap(
+                            final_x, final_y, raycast_result.hit->first,
+                            raycast_result.hit->second
+                        );
+                    }
+                }
+                if (final_x == x_ && final_y == y_ &&
+                    std::fabsf(angle_diff) < std::numbers::pi / 2) {
+                    {
+                        const auto dirs = std::array<glm::ivec2, 2>{
+                            angle_diff >= 0 ? ilb_d : irb_d,
+                            angle_diff >= 0 ? irb_d : ilb_d
+                        };
+                        const auto dirfs = std::array<glm::vec2, 2>{
+                            angle_diff >= 0 ? lb_d : rb_d,
+                            angle_diff >= 0 ? rb_d : lb_d
+                        };
+                        for (auto i = 0; i < 2; i++) {
+                            auto& dir  = dirs[i];
+                            auto& dirf = dirfs[i];
+                            if (m_world->valid(x_ + dir.x, y_ + dir.y)) {
+                                if (!m_world->contains(
+                                        x_ + dir.x, y_ + dir.y
+                                    )) {
+                                    m_world->swap(
+                                        x_, y_, x_ + dir.x, y_ + dir.y
+                                    );
+                                    final_x = x_ + dir.x;
+                                    final_y = y_ + dir.y;
+                                    cell =
+                                        &m_world->particle_at(final_x, final_y);
+                                } else {
+                                    auto&& [tcell, telem] =
+                                        m_world->get(x_ + dir.x, y_ + dir.y);
+                                    if (!telem.is_solid() &&
+                                        !telem.is_powder()) {
+                                        m_world->swap(
+                                            x_, y_, x_ + dir.x, y_ + dir.y
+                                        );
+                                        final_x = x_ + dir.x;
+                                        final_y = y_ + dir.y;
+                                        cell    = &m_world->particle_at(
+                                            final_x, final_y
+                                        );
+                                    }
+                                }
                             }
-                            int tx = final_x + delta_x;
-                            int ty = final_y + delta_y;
-                            int ux = final_x + idirs[i].x;
-                            int uy = final_y + idirs[i].y;
-                            if (!m_world->valid(tx, ty)) continue;
-                            if (m_world->contains(tx, ty)) {
-                                auto&& [tcell, telem] = m_world->get(tx, ty);
-                                if (!telem.is_liquid()) continue;
+                            if (final_x != x_ || final_y != y_) {
+                                cell->velocity += dirf * delta * grav_len *
+                                                  powder_slide_setting.prefix;
+                                break;
                             }
-                            if (m_world->valid(ux, uy) &&
-                                !m_world->contains(ux, uy)) {
-                                m_world->swap(tx, ty, ux, uy);
+                        }
+                    }
+                    if (final_x == x_ && final_y == y_) {  // still not moved
+                        bool set_not_freefall = false;
+                        if (!m_world->valid(
+                                final_x + ibelow_d.x, final_y + ibelow_d.y
+                            )) {
+                            set_not_freefall = true;
+                        } else if (m_world->contains(
+                                       final_x + ibelow_d.x,
+                                       final_y + ibelow_d.y
+                                   )) {
+                            auto&& [below_cell, below_elem] = m_world->get(
+                                final_x + ibelow_d.x, final_y + ibelow_d.y
+                            );
+                            if (below_elem.is_solid() ||
+                                (below_elem.is_powder() &&
+                                 !below_cell.freefall())) {
+                                set_not_freefall = true;
                             }
-                            m_world->swap(final_x, final_y, tx, ty);
-                            auto& ncell = m_world->particle_at(tx, ty);
-                            ncell.velocity += glm::vec2(idirs[i] + dir) *
-                                              powder_slide_setting.prefix /
-                                              delta;
-                            final_x = tx;
-                            final_y = ty;
-                            moved   = true;
-                            break;
+                        }
+                        if (set_not_freefall) {
+                            cell->velocity = {0.0f, 0.0f};
+                            cell->inpos *= 0.5f;
+                            cell->set_freefall(false);
                         }
                     }
                 }
             }
-            if (!blocking_freefall && !moved) {
-                auto& ncell = m_world->particle_at(final_x, final_y);
-                ncell.set_freefall(false);
-                ncell.velocity = {0.0f, 0.0f};
-            }
         }
-        if (moved) {
-            auto& ncell          = m_world->particle_at(final_x, final_y);
-            ncell.not_move_count = 0;
-            touch(m_world, x_ - 1, y_);
+        if (final_x != x_ || final_y != y_) {
+            cell->not_move_count = 0;
             touch(m_world, x_ + 1, y_);
-            touch(m_world, x_, y_ - 1);
+            touch(m_world, x_ - 1, y_);
             touch(m_world, x_, y_ + 1);
-            touch(m_world, x_ - 1, y_ - 1);
-            touch(m_world, x_ + 1, y_ - 1);
-            touch(m_world, x_ - 1, y_ + 1);
-            touch(m_world, x_ + 1, y_ + 1);
-            touch(m_world, final_x - 1, final_y);
+            touch(m_world, x_, y_ - 1);
             touch(m_world, final_x + 1, final_y);
-            touch(m_world, final_x, final_y - 1);
+            touch(m_world, final_x - 1, final_y);
             touch(m_world, final_x, final_y + 1);
+            touch(m_world, final_x, final_y - 1);
         } else {
-            cell.not_move_count++;
-            if (cell.not_move_count >= m_world->not_moving_threshold(grav)) {
-                cell.not_move_count = 0;
-                cell.set_freefall(false);
-                cell.velocity = {0.0f, 0.0f};
-            }
+            cell->not_move_count++;
         }
     } else if (elem.is_liquid()) {
     } else if (elem.is_gas()) {
@@ -715,6 +768,7 @@ EPIX_API void Simulator_T::step(World_T* m_world, float delta) {
         }
     }
     m_chunk_data.reserve(m_world->m_chunks.count());
+    max_travel = {m_world->m_chunk_size, m_world->m_chunk_size};
     // to make sure the references are valid
     for (auto&& [xmod, ymod] : modres) {
         for (auto&& [pos, chunk] : m_world->view()) {

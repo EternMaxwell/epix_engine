@@ -249,20 +249,20 @@ struct World_T {
 struct Simulator_T {
    private:
     struct LiquidSpreadSetting {
-        float spread_len = 3.0f;
-        float prefix     = 0.01f;
+        float spread_len;
+        float prefix;
     } liquid_spread_setting;
     struct UpdateState {
-        bool random_state = true;
-        bool xorder       = true;
-        bool yorder       = true;
-        bool x_outer      = true;
+        bool random_state;
+        bool xorder;
+        bool yorder;
+        bool x_outer;
         EPIX_API void next();
     } update_state;
     std::optional<glm::ivec2> max_travel;
     struct PowderSlideSetting {
-        bool always_slide = true;
-        float prefix      = 0.05f;
+        bool always_slide;
+        float prefix;
     } powder_slide_setting;
 
     struct SimChunkData {
@@ -272,6 +272,16 @@ struct Simulator_T {
         int height;
         int active_area[4];
         int next_active_area[4];
+
+        struct vec2_boolify {
+            bool operator()(const glm::vec2& v) const { return true; }
+        };
+        utils::grid::packed_grid<glm::vec2, 2, vec2_boolify> velocity;
+        utils::grid::packed_grid<glm::vec2, 2, vec2_boolify> velocity_back;
+        utils::grid::packed_grid<float, 2> pressure;
+        utils::grid::packed_grid<float, 2> pressure_back;
+        utils::grid::packed_grid<float, 2> temperature;
+        utils::grid::packed_grid<float, 2> temperature_back;
 
         EPIX_API SimChunkData(int width, int height);
         EPIX_API SimChunkData(const SimChunkData& other);
@@ -288,7 +298,7 @@ struct Simulator_T {
     utils::grid::extendable_grid<SimChunkData, 2> m_chunk_data;
 
    public:
-    Simulator_T() = default;
+    EPIX_API Simulator_T();
 
     EPIX_API static Simulator_T* create();
     EPIX_API static std::unique_ptr<Simulator_T> create_unique();
