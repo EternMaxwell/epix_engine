@@ -291,6 +291,7 @@ struct Simulator_T {
 
         EPIX_API void touch(int x, int y);
         EPIX_API void swap(int chunk_size);
+        EPIX_API void swap_maps();
         EPIX_API void step_time(int chunk_size);
         EPIX_API bool active() const;
     };
@@ -329,11 +330,32 @@ struct Simulator_T {
     EPIX_API void insert(World_T* world, int x, int y, Particle&& cell);
     EPIX_API void remove(World_T* world, int x, int y);
 
+    // === SIMULATION CHUNK DATA GET SET ===//
+    EPIX_API void read_velocity(
+        const World_T* world, int x, int y, glm::vec2* velocity
+    ) const;
+    EPIX_API void write_velocity(
+        World_T* world, int x, int y, const glm::vec2& velocity
+    );
+    EPIX_API void read_pressure(
+        const World_T* world, int x, int y, float* pressure
+    ) const;
+    EPIX_API void write_pressure(World_T* world, int x, int y, float pressure);
+    EPIX_API void read_temperature(
+        const World_T* world, int x, int y, float* temperature
+    ) const;
+    EPIX_API void write_temperature(
+        World_T* world, int x, int y, float temperature
+    );
+
     // === SIMULATION FUNCTIONS ===//
     EPIX_API void apply_viscosity(
         World_T* world, Particle& p, int x, int y, int tx, int ty
     );
     EPIX_API void step_particle(World_T* world, int x, int y, float delta);
     EPIX_API void step(World_T* world, float delta);
+    EPIX_API void step_maps(
+        World_T* world, float delta
+    );  // velocity, pressure, temperature updates
 };
 }  // namespace epix::world::sand

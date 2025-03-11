@@ -149,6 +149,8 @@ EPIX_API void Simulator_T::SimChunkData::swap(int chunk_size) {
     next_active_area[1] = 0;
     next_active_area[2] = chunk_size;
     next_active_area[3] = 0;
+}
+EPIX_API void Simulator_T::SimChunkData::swap_maps() {
     std::swap(velocity, velocity_back);
     std::swap(pressure, pressure_back);
     std::swap(temperature, temperature_back);
@@ -417,6 +419,66 @@ EPIX_API void Simulator_T::remove(World_T* m_world, int x, int y) {
     touch(m_world, x - 1, y);
     touch(m_world, x, y + 1);
     touch(m_world, x, y - 1);
+}
+
+EPIX_API void Simulator_T::read_velocity(
+    const World_T* m_world, int x, int y, glm::vec2* velocity
+) const {
+    auto&& [chunk_x, chunk_y] = m_world->to_chunk_pos(x, y);
+    auto&& [cell_x, cell_y]   = m_world->in_chunk_pos(x, y);
+    if (!m_chunk_data.contains(chunk_x, chunk_y)) return;
+    auto& chunk_data = m_chunk_data.get(chunk_x, chunk_y);
+    *velocity        = chunk_data.velocity.get(cell_x, cell_y);
+}
+EPIX_API void Simulator_T::write_velocity(
+    World_T* m_world, int x, int y, const glm::vec2& velocity
+) {
+    auto&& [chunk_x, chunk_y] = m_world->to_chunk_pos(x, y);
+    auto&& [cell_x, cell_y]   = m_world->in_chunk_pos(x, y);
+    if (!m_chunk_data.contains(chunk_x, chunk_y)) return;
+    assure_chunk(m_world, chunk_x, chunk_y);
+    auto& chunk_data = m_chunk_data.get(chunk_x, chunk_y);
+    chunk_data.velocity.get(cell_x, cell_y) = velocity;
+}
+
+EPIX_API void Simulator_T::read_pressure(
+    const World_T* m_world, int x, int y, float* pressure
+) const {
+    auto&& [chunk_x, chunk_y] = m_world->to_chunk_pos(x, y);
+    auto&& [cell_x, cell_y]   = m_world->in_chunk_pos(x, y);
+    if (!m_chunk_data.contains(chunk_x, chunk_y)) return;
+    auto& chunk_data = m_chunk_data.get(chunk_x, chunk_y);
+    *pressure        = chunk_data.pressure.get(cell_x, cell_y);
+}
+EPIX_API void Simulator_T::write_pressure(
+    World_T* m_world, int x, int y, float pressure
+) {
+    auto&& [chunk_x, chunk_y] = m_world->to_chunk_pos(x, y);
+    auto&& [cell_x, cell_y]   = m_world->in_chunk_pos(x, y);
+    if (!m_chunk_data.contains(chunk_x, chunk_y)) return;
+    assure_chunk(m_world, chunk_x, chunk_y);
+    auto& chunk_data = m_chunk_data.get(chunk_x, chunk_y);
+    chunk_data.pressure.get(cell_x, cell_y) = pressure;
+}
+
+EPIX_API void Simulator_T::read_temperature(
+    const World_T* m_world, int x, int y, float* temperature
+) const {
+    auto&& [chunk_x, chunk_y] = m_world->to_chunk_pos(x, y);
+    auto&& [cell_x, cell_y]   = m_world->in_chunk_pos(x, y);
+    if (!m_chunk_data.contains(chunk_x, chunk_y)) return;
+    auto& chunk_data = m_chunk_data.get(chunk_x, chunk_y);
+    *temperature     = chunk_data.temperature.get(cell_x, cell_y);
+}
+EPIX_API void Simulator_T::write_temperature(
+    World_T* m_world, int x, int y, float temperature
+) {
+    auto&& [chunk_x, chunk_y] = m_world->to_chunk_pos(x, y);
+    auto&& [cell_x, cell_y]   = m_world->in_chunk_pos(x, y);
+    if (!m_chunk_data.contains(chunk_x, chunk_y)) return;
+    assure_chunk(m_world, chunk_x, chunk_y);
+    auto& chunk_data = m_chunk_data.get(chunk_x, chunk_y);
+    chunk_data.temperature.get(cell_x, cell_y) = temperature;
 }
 
 EPIX_API void Simulator_T::apply_viscosity(
@@ -809,4 +871,40 @@ EPIX_API void Simulator_T::step(World_T* m_world, float delta) {
         }
         m_world->m_thread_pool->wait();
     }
+    step_maps(m_world, delta);
+}
+EPIX_API void Simulator_T::step_maps(World_T* m_world, float delta) {
+    m_chunk_data.reserve(m_world->m_chunks.count());
+    // currently only velocity
+    static const float factor = std::powf(0.95f, delta / 0.016f);
+    for (auto&& [pos, chunk] : m_world->view()) {
+        if (!m_chunk_data.contains(pos[0], pos[1])) {
+            m_chunk_data.emplace(
+                pos[0], pos[1], m_world->m_chunk_size, m_world->m_chunk_size
+            );
+        }
+        auto& chunk_data = m_chunk_data.get(pos[0], pos[1]);
+        m_world->m_thread_pool->detach_task([&]() {
+            for (auto&& [cell_pos, cell] : chunk.view()) {
+                auto x = pos[0] * m_world->m_chunk_size + cell_pos[0];
+                auto y = pos[1] * m_world->m_chunk_size + cell_pos[1];
+                glm::vec2 velocity;
+                read_velocity(m_world, x, y, &velocity);
+                velocity *= factor;
+                write_velocity(m_world, x, y, velocity);
+            }
+        });
+    }
+    m_world->m_thread_pool->wait();
+    // swap maps
+    for (auto&& [pos, chunk] : m_world->view()) {
+        if (!m_chunk_data.contains(pos[0], pos[1])) {
+            m_chunk_data.emplace(
+                pos[0], pos[1], m_world->m_chunk_size, m_world->m_chunk_size
+            );
+        }
+        auto& chunk_data = m_chunk_data.get(pos[0], pos[1]);
+        m_world->m_thread_pool->detach_task([&]() { chunk_data.swap_maps(); });
+    }
+    m_world->m_thread_pool->wait();
 }
