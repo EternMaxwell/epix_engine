@@ -1,12 +1,12 @@
 #pragma once
 
 #include <epix/common.h>
+#include <epix/vulkan.h>
 
 #include <memory>
 #include <mutex>
 #include <spirv_glsl.hpp>
 #include <vector>
-#include <vulkan/vulkan.hpp>
 
 namespace epix::render::vulkan2 {
 

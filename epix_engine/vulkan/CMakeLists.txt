@@ -10,7 +10,8 @@ endif()
 target_include_directories(epix_vulkan PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
 target_link_libraries(epix_vulkan epix::common)
-target_link_libraries(epix_vulkan Vulkan::Vulkan)
+target_link_libraries(epix_vulkan Vulkan::Headers)
+target_link_libraries(epix_vulkan volk)
 target_link_libraries(epix_vulkan VulkanMemoryAllocator)
 
 add_library(epix::vulkan ALIAS epix_vulkan)

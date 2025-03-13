@@ -10,7 +10,6 @@ endif()
 target_include_directories(epix_font PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
 target_link_libraries(epix_font freetype)
-target_link_libraries(epix_font Vulkan::Vulkan)
 target_link_libraries(epix_font glfw)
 target_link_libraries(epix_font epix::app)
 target_link_libraries(epix_font epix::window)

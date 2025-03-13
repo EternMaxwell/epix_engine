@@ -1,17 +1,19 @@
 #pragma once
 
-#ifndef GLFW_INCLUDE_VULKAN
-#define GLFW_INCLUDE_VULKAN
-#endif
+#include <epix/vulkan.h>
+// volk before glfw
 #include <GLFW/glfw3.h>
 #include <epix/common.h>
-#include <epix/vulkan.h>
 #include <spdlog/spdlog.h>
 
 #include <memory>
 #include <mutex>
 #include <spirv_glsl.hpp>
 #include <vector>
+
+namespace vk::detail {
+inline DispatchLoaderDynamic defaultDispatchLoaderDynamic;
+}
 
 namespace epix::render::vulkan2::backend {
 using vk::Result;

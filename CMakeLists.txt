@@ -17,8 +17,6 @@ endif ()
 
 #find third-party if possible
 find_package (OpenGL REQUIRED)
-find_package (Vulkan REQUIRED)
-add_library (Vulkan-Headers ALIAS Vulkan::Headers) # ADD THIS LINE TO AVOID DAWN TO REINCLUDE vulkan-headers
 
 #sub directories
 
@@ -28,6 +26,13 @@ target_include_directories(BSThreadPool INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/li
 add_subdirectory (libs/entt)
 add_subdirectory (libs/glad)
 add_subdirectory (libs/glfw)
+add_subdirectory (libs/vulkan-headers)
+if (WIN32)
+  set (VOLK_STATIC_DEFINES VK_USE_PLATFORM_WIN32_KHR)
+elseif (UNIX)
+  set (VOLK_STATIC_DEFINES VK_USE_PLATFORM_XCB_KHR)
+endif ()
+add_subdirectory (libs/volk)
 add_subdirectory (libs/spdlog)
 add_subdirectory (libs/fmt)
 add_subdirectory (libs/pfr)

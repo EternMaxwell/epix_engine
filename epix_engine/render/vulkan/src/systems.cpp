@@ -9,12 +9,16 @@ EPIX_API void systems::create_context(
     if (!query) {
         return;
     }
+    volkInitialize();
+    vk::detail::defaultDispatchLoaderDynamic.init(vkGetInstanceProcAddr);
     ZoneScopedN("Create vulkan context");
     auto [window]     = query.single();
     Instance instance = Instance::create(
         "Pixel Engine", VK_MAKE_VERSION(0, 1, 0),
         spdlog::default_logger()->clone("vulkan"), plugin->debug_callback
     );
+    volkLoadInstance(instance.instance);
+    vk::detail::defaultDispatchLoaderDynamic.init(instance.instance);
     PhysicalDevice physical_device =
         instance.instance.enumeratePhysicalDevices().front();
     Device device        = Device::create(instance, physical_device);

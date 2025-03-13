@@ -361,9 +361,43 @@ EPIX_API Device Device::create(
     device           = physical_device.createDevice(device_info);
     device.allocator = VmaAllocator();
     VmaVulkanFunctions vulkan_functions    = {};
-    vulkan_functions.vkGetInstanceProcAddr = &vkGetInstanceProcAddr;
-    vulkan_functions.vkGetDeviceProcAddr   = &vkGetDeviceProcAddr;
-    VmaAllocatorCreateInfo allocator_info  = {};
+    vulkan_functions.vkGetInstanceProcAddr = vkGetInstanceProcAddr;
+    vulkan_functions.vkGetDeviceProcAddr   = vkGetDeviceProcAddr;
+    vulkan_functions.vkGetPhysicalDeviceProperties =
+        vkGetPhysicalDeviceProperties;
+    vulkan_functions.vkGetPhysicalDeviceMemoryProperties =
+        vkGetPhysicalDeviceMemoryProperties;
+    vulkan_functions.vkAllocateMemory          = vkAllocateMemory;
+    vulkan_functions.vkFreeMemory              = vkFreeMemory;
+    vulkan_functions.vkMapMemory               = vkMapMemory;
+    vulkan_functions.vkUnmapMemory             = vkUnmapMemory;
+    vulkan_functions.vkFlushMappedMemoryRanges = vkFlushMappedMemoryRanges;
+    vulkan_functions.vkInvalidateMappedMemoryRanges =
+        vkInvalidateMappedMemoryRanges;
+    vulkan_functions.vkBindBufferMemory = vkBindBufferMemory;
+    vulkan_functions.vkBindImageMemory  = vkBindImageMemory;
+    vulkan_functions.vkGetBufferMemoryRequirements =
+        vkGetBufferMemoryRequirements;
+    vulkan_functions.vkGetImageMemoryRequirements =
+        vkGetImageMemoryRequirements;
+    vulkan_functions.vkCreateBuffer  = vkCreateBuffer;
+    vulkan_functions.vkDestroyBuffer = vkDestroyBuffer;
+    vulkan_functions.vkCreateImage   = vkCreateImage;
+    vulkan_functions.vkDestroyImage  = vkDestroyImage;
+    vulkan_functions.vkCmdCopyBuffer = vkCmdCopyBuffer;
+    vulkan_functions.vkGetBufferMemoryRequirements2KHR =
+        vkGetBufferMemoryRequirements2;
+    vulkan_functions.vkGetImageMemoryRequirements2KHR =
+        vkGetImageMemoryRequirements2KHR;
+    vulkan_functions.vkBindBufferMemory2KHR = vkBindBufferMemory2KHR;
+    vulkan_functions.vkBindImageMemory2KHR  = vkBindImageMemory2KHR;
+    vulkan_functions.vkGetPhysicalDeviceMemoryProperties2KHR =
+        vkGetPhysicalDeviceMemoryProperties2KHR;
+    vulkan_functions.vkGetDeviceBufferMemoryRequirements =
+        vkGetDeviceBufferMemoryRequirements;
+    vulkan_functions.vkGetDeviceImageMemoryRequirements =
+        vkGetDeviceImageMemoryRequirements;
+    VmaAllocatorCreateInfo allocator_info = {};
     allocator_info.flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT;
     allocator_info.pVulkanFunctions = &vulkan_functions;
     allocator_info.vulkanApiVersion = VK_API_VERSION_1_2;

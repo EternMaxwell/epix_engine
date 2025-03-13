@@ -45,3 +45,9 @@
 [submodule "libs/SPIRV-Cross"]
 	path = libs/SPIRV-Cross
 	url = https://github.com/KhronosGroup/SPIRV-Cross.git
+[submodule "libs/volk"]
+	path = libs/volk
+	url = https://github.com/zeux/volk.git
+[submodule "libs/vulkan-headers"]
+	path = libs/vulkan-headers
+	url = https://github.com/KhronosGroup/Vulkan-Headers.git
