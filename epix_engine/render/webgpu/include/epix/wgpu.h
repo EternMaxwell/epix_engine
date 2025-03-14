@@ -1,3 +1,3 @@
 #pragma once
 
-#include <wgpu.h>
+#include <webgpu/webgpu_cpp.h>

@@ -51,3 +51,9 @@
 [submodule "libs/vulkan-headers"]
 	path = libs/vulkan-headers
 	url = https://github.com/KhronosGroup/Vulkan-Headers.git
+[submodule "libs/webgpu"]
+	path = libs/webgpu
+	url = https://github.com/eliemichel/WebGPU-distribution.git
+[submodule "libs/dawn"]
+	path = libs/dawn
+	url = https://github.com/google/dawn.git
