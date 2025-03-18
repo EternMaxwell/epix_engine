@@ -57,3 +57,6 @@
 [submodule "libs/dawn"]
 	path = libs/dawn
 	url = https://github.com/google/dawn.git
+[submodule "libs/glfw_webgpu"]
+	path = libs/glfw_webgpu
+	url = https://github.com/eliemichel/glfw3webgpu.git
