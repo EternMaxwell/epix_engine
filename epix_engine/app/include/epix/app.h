@@ -38,6 +38,20 @@
 #include <tracy/Tracy.hpp>
 #endif
 
+#define __EPIX_STRINGIZE2(x) #x
+#define __EPIX_STRINGIZE(x) __EPIX_STRINGIZE2(##x)
+#define EPIX_CONCAT2(a, b) a##b
+#define EPIX_CONCAT(a, b) EPIX_CONCAT2(a, b)
+#define EPIX_SYSTEM(sys_name, body)                                            \
+    auto fn_##sys_name##body;                                                  \
+    const char* EPIX_CONCAT(id_##sys_name, __LINE__) =                         \
+        "system::" #sys_name " at " __FILE__ ":" __EPIX_STRINGIZE(__LINE__);   \
+    struct EPIX_CONCAT(System_##sys_name, __LINE__)                            \
+        : public epix::app::BasicSystem<decltype(##sys_name)::return_type> {}; \
+    epix::app::SystemT sys_name = SystemT{                                     \
+        EPIX_CONCAT(id_##sys_name, __LINE__), std::function(fn_##sys_name)     \
+    };
+
 namespace epix::app {
 struct World;
 struct SubApp;
@@ -54,6 +68,22 @@ struct FuncIndex;
 struct SystemStage;
 struct SystemSet;
 struct SystemNode;
+
+template <typename Ret, typename... Args>
+struct SystemT {
+    using return_type    = Ret;
+    using argument_types = std::tuple<Args...>;
+    const char* name;
+    std::function<Ret(Args...)> func;
+};
+
+EPIX_SYSTEM(
+    test,
+    (int a, int b) {
+        spdlog::info("{}, {}", a, b);
+        spdlog::info("{}", a);
+    }
+)
 
 using SetMap = entt::dense_map<std::type_index, std::vector<SystemSet>>;
 
