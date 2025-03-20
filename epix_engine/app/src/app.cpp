@@ -2,14 +2,6 @@
 
 using namespace epix::app;
 
-EPIX_API App* App::SystemInfo::operator->() { return app; }
-EPIX_API App::SystemInfo& App::SystemInfo::chain() {
-    for (size_t i = 0; i < nodes.size() - 1; i++) {
-        nodes[i]->before(nodes[i + 1]->m_sys_addr);
-    }
-    return *this;
-}
-
 EPIX_API App App::create() {
     App app;
     app.runner().assign_startup_stage<MainSubApp, MainSubApp>(
@@ -143,20 +135,17 @@ EPIX_API App& App::disable_loop() {
 EPIX_API App* App::operator->() { return this; }
 
 EPIX_API App::App()
-    : m_sub_apps(
-          std::make_unique<
-              entt::dense_map<std::type_index, std::unique_ptr<SubApp>>>()
-      ),
+    : m_sub_apps(std::make_unique<
+                 entt::dense_map<std::type_index, std::unique_ptr<SubApp>>>()),
       m_runner(std::make_unique<Runner>(m_sub_apps.get())) {
-    m_logger          = spdlog::default_logger()->clone("app");
-    m_check_exit_func = std::make_unique<Condition<EventReader<AppExit>>>(
-        [](EventReader<AppExit> reader) {
+    m_logger = spdlog::default_logger()->clone("app");
+    m_check_exit_func =
+        std::make_unique<BasicSystem<bool>>([](EventReader<AppExit> reader) {
             for (auto&& evt : reader.read()) {
                 return true;
             }
             return false;
-        }
-    );
+        });
     add_sub_app<MainSubApp>();
     add_event<AppExit>();
 }

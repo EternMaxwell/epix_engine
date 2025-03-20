@@ -43,8 +43,8 @@
 #define __EPIX_STRINGIZE(x) __EPIX_STRINGIZE2(##x)
 #define EPIX_CONCAT2(a, b) a##b
 #define EPIX_CONCAT(a, b) EPIX_CONCAT2(a, b)
-#define EPIX_SYSTEM(sys_name, body)                                            \
-    auto fn_##sys_name##body;                                                  \
+#define EPIX_SYSTEMT(type, sys_name, body)                                     \
+    type fn_##sys_name##body;                                                  \
     constexpr auto EPIX_CONCAT(get_##sys_name, _name)() {                      \
         auto fn_name =                                                         \
             std::string_view(std::source_location::current().function_name()); \
@@ -54,6 +54,7 @@
     auto id_##sys_name =                                                       \
         std::string(EPIX_CONCAT(get_##sys_name, _name)()).c_str();             \
     auto sys_name = epix::app::SystemT(id_##sys_name, fn_##sys_name);
+#define EPIX_SYSTEM(sys_name, body) EPIX_SYSTEMT(auto, ##sys_name, ##body)
 
 namespace epix::app {
 struct World;
@@ -1684,14 +1685,28 @@ struct BasicSystem {
           }) {}
     Ret run(SubApp* src, SubApp* dst) {
         auto start = std::chrono::high_resolution_clock::now();
-        auto&& ret = m_func(src, dst);
-        auto end   = std::chrono::high_resolution_clock::now();
-        auto delta =
-            (double
-            )std::chrono::duration_cast<std::chrono::nanoseconds>(end - start)
-                .count() /
-            1000000.0;
-        avg_time = delta * 0.1 + avg_time * 0.9;
+        if constexpr (std::is_same_v<Ret, void>) {
+            m_func(src, dst);
+            auto end = std::chrono::high_resolution_clock::now();
+            auto delta =
+                (double)std::chrono::duration_cast<std::chrono::nanoseconds>(
+                    end - start
+                )
+                    .count() /
+                1000000.0;
+            avg_time = delta * 0.1 + avg_time * 0.9;
+        } else {
+            auto&& ret = m_func(src, dst);
+            auto end   = std::chrono::high_resolution_clock::now();
+            auto delta =
+                (double)std::chrono::duration_cast<std::chrono::nanoseconds>(
+                    end - start
+                )
+                    .count() /
+                1000000.0;
+            avg_time = delta * 0.1 + avg_time * 0.9;
+            return ret;
+        }
     }
 };
 
@@ -1729,6 +1744,9 @@ struct SystemAddInfo {
     entt::dense_set<FuncIndex> m_ptr_nexts;
 
     bool is_state_transition = false;
+    bool m_chain             = false;
+
+    SystemAddInfo& chain() { m_chain = true; }
 
     template <typename T, typename... Args>
     SystemAddInfo& before(const SystemT<T, Args...>& system) {
@@ -1751,9 +1769,11 @@ struct SystemAddInfo {
     }
     template <typename... Args>
     SystemAddInfo& run_if(const std::function<bool(Args...)>& func) {
-        m_systems.back().conditions.emplace_back(
-            std::make_unique<BasicSystem<bool>>(func)
-        );
+        for (auto& each : m_systems) {
+            each.conditions.emplace_back(
+                std::make_unique<BasicSystem<bool>>(func)
+            );
+        }
         return *this;
     }
     template <typename... Args>
@@ -1815,6 +1835,46 @@ struct SystemT {
         });
         return std::move(info);
     }
+
+    template <typename T, typename... Args>
+    SystemAddInfo before(const SystemT<T, Args...>& system) {
+        return operator SystemAddInfo().before(system);
+    }
+    template <typename T, typename... Args>
+    SystemAddInfo after(const SystemT<T, Args...>& system) {
+        return operator SystemAddInfo().after(system);
+    }
+    template <typename T>
+    SystemAddInfo in_set(T t) {
+        return operator SystemAddInfo().in_set(t);
+    }
+    SystemAddInfo worker(const std::string& worker) {
+        return operator SystemAddInfo().worker(worker);
+    }
+    template <typename... Args>
+    SystemAddInfo run_if(const std::function<bool(Args...)>& func) {
+        return operator SystemAddInfo().run_if(func);
+    }
+    template <typename... Args>
+    SystemAddInfo run_if(bool (*func)(Args...)) {
+        return operator SystemAddInfo().run_if(func);
+    }
+    template <typename T>
+    SystemAddInfo on_enter(T state) {
+        return operator SystemAddInfo().on_enter(state);
+    };
+    template <typename T>
+    SystemAddInfo on_exit(T state) {
+        return operator SystemAddInfo().on_exit(state);
+    };
+    template <typename T>
+    SystemAddInfo on_change() {
+        return operator SystemAddInfo().on_change();
+    };
+    template <typename T>
+    SystemAddInfo in_state(T state) {
+        return operator SystemAddInfo().in_state(state);
+    };
 };
 
 template <typename T>
@@ -1825,7 +1885,7 @@ concept SystemLike = requires(T t) {
 };
 
 template <typename... Systems>
-    requires(SystemLike<Systems> && ...)
+// requires(SystemLike<Systems> && ...)
 SystemAddInfo bundle(Systems&&... systems) {
     SystemAddInfo info;
     (info.m_systems.emplace_back(SystemAddInfo::each_t{
@@ -1835,32 +1895,33 @@ SystemAddInfo bundle(Systems&&... systems) {
      ...);
     return std::move(info);
 }
+template <typename... Systems>
+// requires(SystemLike<Systems> && ...)
+SystemAddInfo chain(Systems&&... systems) {
+    return bundle(systems...).chain();
+}
 
 struct SystemNode {
     template <typename StageT, typename... Args>
-    SystemNode(StageT stage, void (*func)(Args...))
+    SystemNode(
+        StageT stage,
+        const char* id,
+        FuncIndex index,
+        std::unique_ptr<BasicSystem<void>>&& system
+    )
         : m_stage(stage),
-          m_system(std::make_unique<System<Args...>>(func)),
-          m_sys_addr(func) {}
+          m_system(std::move(system)),
+          m_id(id),
+          m_sys_addr(index) {}
     EPIX_API bool run(SubApp* src, SubApp* dst);
-    template <typename T, typename... Args>
-    void before(T (*func)(Args...)) {
-        m_ptr_nexts.emplace(func);
-    }
-    EPIX_API void before(const FuncIndex& func);
-    template <typename T, typename... Args>
-    void after(T (*func)(Args...)) {
-        m_ptr_prevs.emplace(func);
-    }
-    EPIX_API void after(const FuncIndex& func);
     EPIX_API void clear_tmp();
     EPIX_API double reach_time();
 
     SystemStage m_stage;
-    std::vector<SystemSet> m_in_sets;
     std::string m_id;
     FuncIndex m_sys_addr;
     std::unique_ptr<BasicSystem<void>> m_system;
+    std::vector<SystemSet> m_in_sets;
     std::string m_worker = "default";
     entt::dense_set<std::weak_ptr<SystemNode>> m_strong_prevs;
     entt::dense_set<std::weak_ptr<SystemNode>> m_strong_nexts;
@@ -1933,15 +1994,30 @@ struct SubStageRunner {
     }
     SubStageRunner(SubStageRunner&& other)            = default;
     SubStageRunner& operator=(SubStageRunner&& other) = default;
-    template <typename StageT, typename... Args>
-    SystemNode* add_system(StageT stage, void (*func)(Args...)) {
-        if (auto it = m_systems.find(FuncIndex(func)); it != m_systems.end()) {
-            m_logger->warn("System {:#018x} already present", (size_t)(func));
-            return it->second.get();
+    template <typename StageT>
+    SubStageRunner& add_system(StageT stage, const SystemAddInfo& system) {
+        for (size_t i = 0; i < system.m_systems.size(); i++) {
+            auto&& each = system.m_systems[i];
+            if (m_systems.find(each.index) != m_systems.end()) {
+                m_logger->warn(
+                    "system-{:#016x} is already present, ignoring this add."
+                );
+                continue;
+            }
+            std::shared_ptr<SystemNode> target = std::make_shared<SystemNode>(
+                stage, each.name, each.index, std::move(each.system)
+            );
+            target->m_conditions = std::move(each.conditions);
+            target->m_ptr_nexts  = system.m_ptr_nexts;
+            for (size_t j = i + 1; j < system.m_systems.size(); j++) {
+                target->m_ptr_nexts.emplace(system.m_systems[j].index);
+            }
+            target->m_ptr_prevs = system.m_ptr_prevs;
+            target->m_worker    = system.m_worker;
+            target->m_in_sets   = system.m_in_sets;
+            m_systems.emplace(each.index, target);
         }
-        auto ptr = std::make_shared<SystemNode>(stage, func);
-        m_systems.emplace(FuncIndex(func), ptr);
-        return ptr.get();
+        return *this;
     }
     EPIX_API void build();
     EPIX_API void bake();
@@ -1999,8 +2075,8 @@ struct StageRunner {
         };
     }
 
-    template <typename StageT, typename... Args>
-    SystemNode* add_system(StageT stage, void (*func)(Args...)) {
+    template <typename StageT>
+    StageRunner& add_system(StageT stage, const SystemAddInfo& systems) {
         if (auto it = m_sub_stages.find(static_cast<size_t>(stage));
             it == m_sub_stages.end()) {
             m_sub_stages.emplace(
@@ -2010,9 +2086,8 @@ struct StageRunner {
                 )
             );
         }
-        return m_sub_stages[static_cast<size_t>(stage)]->add_system(
-            stage, func
-        );
+        m_sub_stages[static_cast<size_t>(stage)]->add_system(stage, systems);
+        return *this;
     }
 
     EPIX_API bool conflict(const StageRunner* other) const;
@@ -2170,27 +2245,36 @@ struct Runner {
         );
     }
 
-    template <typename StageT, typename... Args>
-    SystemNode* add_system(StageT stage, void (*func)(Args...)) {
-        if (auto it = m_startup_stages.find(std::type_index(typeid(StageT)));
-            it != m_startup_stages.end()) {
-            return it->second->runner->add_system(stage, func);
-        }
-        if (auto it = m_loop_stages.find(std::type_index(typeid(StageT)));
-            it != m_loop_stages.end()) {
-            return it->second->runner->add_system(stage, func);
-        }
+    template <typename StageT>
+    Runner& add_system(StageT stage, const SystemAddInfo& systems) {
         if (auto it =
                 m_state_transition_stages.find(std::type_index(typeid(StageT)));
             it != m_state_transition_stages.end()) {
-            return it->second->runner->add_system(stage, func);
+            it->second->runner->add_system(stage, systems);
+            return *this;
+        } else if (systems.is_state_transition) {
+            m_logger->warn(
+                "Trying to add systems with state transition requirements to "
+                "non-state-transition stages."
+            );
+        }
+        if (auto it = m_startup_stages.find(std::type_index(typeid(StageT)));
+            it != m_startup_stages.end()) {
+            it->second->runner->add_system(stage, systems);
+            return *this;
+        }
+        if (auto it = m_loop_stages.find(std::type_index(typeid(StageT)));
+            it != m_loop_stages.end()) {
+            it->second->runner->add_system(stage, systems);
+            return *this;
         }
         if (auto it = m_exit_stages.find(std::type_index(typeid(StageT)));
             it != m_exit_stages.end()) {
-            return it->second->runner->add_system(stage, func);
+            it->second->runner->add_system(stage, systems);
+            return *this;
         }
         spdlog::warn("Stage {} not found", typeid(StageT).name());
-        return nullptr;
+        return *this;
     }
 
     EPIX_API void build();
@@ -2237,141 +2321,17 @@ struct App {
     EPIX_API static App create();
     EPIX_API static App create2();
     EPIX_API static App create(const AppSettings& settings);
-    struct SystemInfo {
-        std::vector<SystemNode*> nodes;
-        App* app;
 
-        template <typename... Ptrs>
-        SystemInfo& before(Ptrs... ptrs) {
-            for (auto node : nodes) (node->before(ptrs), ...);
-            return *this;
-        }
-        template <typename... Ptrs>
-        SystemInfo& after(Ptrs... ptrs) {
-            for (auto node : nodes) (node->after(ptrs), ...);
-            return *this;
-        }
-        template <typename... Args>
-        SystemInfo& run_if(std::function<bool(Args...)> func) {
-            for (auto node : nodes)
-                node->m_conditions.emplace_back(
-                    std::make_unique<Condition<Args...>>(func)
-                );
-            return *this;
-        }
-        template <typename... Args>
-        SystemInfo& use_worker(const std::string& pool_name) {
-            for (auto node : nodes) node->m_worker = pool_name;
-            return *this;
-        }
-        template <typename... Sets>
-        SystemInfo& in_set(Sets... sets) {
-            for (auto node : nodes)
-                (node->m_in_sets.push_back(SystemSet(sets)), ...);
-            return *this;
-        }
-        template <typename T>
-        SystemInfo& on_enter(T state) {
-            if (app->m_runner->stage_state_transition(nodes[0]->m_stage.m_stage
-                )) {
-                for (auto node : nodes)
-                    node->m_conditions.emplace_back(
-                        std::make_unique<
-                            Condition<Res<State<T>>, Res<NextState<T>>>>(
-                            [state](Res<State<T>> s, Res<NextState<T>> ns) {
-                                return (s->is_state(state) &&
-                                        s->is_just_created()) ||
-                                       (ns->is_state(state) &&
-                                        !s->is_state(state));
-                            }
-                        )
-                    );
-            } else {
-                for (auto node : nodes)
-                    spdlog::warn(
-                        "adding system {:#018x} to stage {} is not allowed"
-                        "on_enter can only be used in state transition "
-                        "stages",
-                        (size_t)node->m_sys_addr.func,
-                        node->m_stage.m_stage.name()
-                    );
-            }
-            return *this;
-        }
-        template <typename T>
-        SystemInfo& on_exit(T state) {
-            if (app->m_runner->stage_state_transition(nodes[0]->m_stage.m_stage
-                )) {
-                for (auto node : nodes)
-                    node->m_conditions.emplace_back(
-                        std::make_unique<
-                            Condition<Res<State<T>>, Res<NextState<T>>>>(
-                            [state](Res<State<T>> s, Res<NextState<T>> ns) {
-                                return !ns->is_state(state) &&
-                                       s->is_state(state);
-                            }
-                        )
-                    );
-            } else {
-                for (auto node : nodes)
-                    spdlog::warn(
-                        "adding system {:#018x} to stage {} is not allowed"
-                        "on_exit can only be used in state transition "
-                        "stages",
-                        (size_t)node->m_sys_addr, node->m_stage.m_stage->name()
-                    );
-            }
-            return *this;
-        }
-        template <typename T>
-        SystemInfo& on_change() {
-            if (app->m_runner->stage_state_transition(nodes[0]->m_stage.m_stage
-                )) {
-                for (auto node : nodes)
-                    node->m_conditions.emplace_back(
-                        std::make_unique<
-                            Condition<Res<State<T>>, Res<NextState<T>>>>(
-                            [](Res<State<T>> s, Res<NextState<T>> ns) {
-                                return !s->is_state(ns);
-                            }
-                        )
-                    );
-            } else {
-                for (auto node : nodes)
-                    spdlog::warn(
-                        "adding system {:#018x} to stage {} is not allowed"
-                        "on_change can only be used in state transition "
-                        "stages",
-                        (size_t)node->m_sys_addr, node->m_stage.m_stage->name()
-                    );
-            }
-            return *this;
-        }
-        template <typename T>
-        SystemInfo& in_state(T state) {
-            for (auto node : nodes)
-                node->m_conditions.emplace_back(
-                    std::make_unique<Condition<Res<State<T>>>>(
-                        [state](Res<State<T>> s) { return s->is_state(state); }
-                    )
-                );
-            return *this;
-        }
-        EPIX_API SystemInfo& chain();
-
-        EPIX_API App* operator->();
-    };
-
-    template <typename StageT, typename... Args>
-    SystemInfo add_system(StageT stage, void (*func)(Args...)) {
-        SystemNode* ptr = m_runner->add_system(stage, func);
-        return {{ptr}, this};
+    template <typename StageT>
+    App& add_system(StageT stage, const SystemAddInfo& systems) {
+        m_runner->add_system(stage, systems);
+        return *this;
     }
     template <typename StageT, typename... Funcs>
-    SystemInfo add_system(StageT stage, Funcs... funcs) {
-        std::vector<SystemNode*> nodes = {m_runner->add_system(stage, funcs)...
-        };
-        return {std::move(nodes), this};
+        requires(std::same_as<std::remove_cvref_t<Funcs>, SystemAddInfo> && ...)
+    App& add_system(StageT stage, Funcs&&... systems) {
+        (m_runner->add_system(stage, systems), ...);
+        return *this;
     }
     template <typename T>
     App& add_plugin(T&& plugin) {
@@ -2643,41 +2603,12 @@ using CWrap = app::Get<const app::Wrapper<T...>>;
 // OTHER TOOLS
 using entt::dense_map;
 using entt::dense_set;
+using epix::app::bundle;
+using epix::app::chain;
 using epix::app::thread_pool;
 using epix::utility::time_scope;
-
-template <typename... Args1, typename... Args2>
-bool test_systems_conflict(
-    std::function<void(Args1...)> func1, std::function<void(Args2...)> func2
-) {
-    std::unique_ptr<app::BasicSystem<void>> sys1 =
-        std::make_unique<app::System<Args1...>>(func1);
-    std::unique_ptr<app::BasicSystem<void>> sys2 =
-        std::make_unique<app::System<Args2...>>(func2);
-    return sys1->contrary_to(sys2.get());
-}
-template <typename... Args1, typename... Args2>
-bool test_systems_conflict(void (*func1)(Args1...), void (*func2)(Args2...)) {
-    std::unique_ptr<app::BasicSystem<void>> sys1 =
-        std::make_unique<app::System<Args1...>>(func1);
-    std::unique_ptr<app::BasicSystem<void>> sys2 =
-        std::make_unique<app::System<Args2...>>(func2);
-    return sys1->contrary_to(sys2.get());
-}
 
 }  // namespace epix
 namespace epix::prelude {
 using namespace epix;
-}
-
-EPIX_SYSTEM(test, (int a, int b)->void)
-
-auto fn_test(int a, int b) -> void {
-    auto func_name =
-        std::string(std::source_location::current().function_name());
-    // get the current namespace name from the function name
-    auto ns_name = func_name.substr(0, func_name.find_last_of("::"));
-    spdlog::info("{}, {}", a, b);
-    spdlog::info("{}", a);
-    __FUNCTION__;
 }

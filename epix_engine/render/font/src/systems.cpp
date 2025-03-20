@@ -3,7 +3,7 @@
 using namespace epix;
 
 namespace epix::font::vulkan2 {
-EPIX_API void systems::insert_font_atlas(
+EPIX_API void systems::fn_insert_font_atlas(
     Command cmd,
     ResMut<RenderContext> context,
     ResMut<VulkanResources> res_manager
@@ -13,7 +13,7 @@ EPIX_API void systems::insert_font_atlas(
         context->device, context->command_pool, res_manager
     );
 }
-EPIX_API void systems::extract_font_atlas(
+EPIX_API void systems::fn_extract_font_atlas(
     ResMut<FontAtlas> font_atlas,
     Command cmd,
     ResMut<RenderContext> context,
@@ -27,7 +27,7 @@ EPIX_API void systems::extract_font_atlas(
     ZoneScopedN("Extract FontAtlas");
     cmd.share_resource(font_atlas);
 }
-EPIX_API void systems::destroy_font_atlas(ResMut<FontAtlas> font_atlas) {
+EPIX_API void systems::fn_destroy_font_atlas(ResMut<FontAtlas> font_atlas) {
     if (!font_atlas) return;
     font_atlas->destroy();
 }

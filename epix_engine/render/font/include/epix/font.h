@@ -167,18 +167,22 @@ struct TextPipeline {
 };
 
 namespace systems {
-EPIX_API void insert_font_atlas(
-    Command cmd,
-    ResMut<RenderContext> context,
-    ResMut<VulkanResources> res_manager
-);
-EPIX_API void extract_font_atlas(
-    ResMut<FontAtlas> font_atlas,
-    Command cmd,
-    ResMut<RenderContext> context,
-    ResMut<VulkanResources> res_manager
-);
-EPIX_API void destroy_font_atlas(ResMut<FontAtlas> font_atlas);
+EPIX_SYSTEMT(
+    EPIX_API void,
+    insert_font_atlas,
+    (Command cmd,
+     ResMut<RenderContext> context,
+     ResMut<VulkanResources> res_manager)
+)
+EPIX_SYSTEMT(
+    EPIX_API void,
+    extract_font_atlas,
+    (ResMut<FontAtlas> font_atlas,
+     Command cmd,
+     ResMut<RenderContext> context,
+     ResMut<VulkanResources> res_manager)
+)
+EPIX_SYSTEMT(EPIX_API void, destroy_font_atlas, (ResMut<FontAtlas> font_atlas))
 }  // namespace systems
 
 }  // namespace vulkan2

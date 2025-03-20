@@ -11,24 +11,24 @@ EPIX_API void VulkanPlugin::build(epix::App& app) {
         {{GLFW_RESIZABLE, GLFW_TRUE}, {GLFW_CLIENT_API, GLFW_NO_API}}
     );
     app.add_system(
-           PreStartup, systems::create_context, systems::create_res_manager
-    )
-        .in_set(window::WindowStartUpSets::after_window_creation)
-        .chain();
-    app.add_system(
-        PreExtract, systems::extract_context, systems::extract_res_manager
+        PreStartup,
+        bundle(systems::create_context, systems::create_res_manager)
+            .in_set(window::WindowStartUpSets::after_window_creation)
+            .chain()
     );
     app.add_system(
-           Prepare, systems::recreate_swap_chain, systems::get_next_image
-    )
-        .chain();
+        PreExtract,
+        bundle(systems::extract_context, systems::extract_res_manager)
+    );
     app.add_system(
-           PostRender, systems::present_frame, systems::clear_extracted_context
-    )
-        .chain();
+        Prepare, chain(systems::recreate_swap_chain, systems::get_next_image)
+    );
     app.add_system(
-           PostExit, systems::destroy_res_manager, systems::destroy_context
-    )
-        .chain();
+        PostRender,
+        chain(systems::present_frame, systems::clear_extracted_context)
+    );
+    app.add_system(
+        PostExit, chain(systems::destroy_res_manager, systems::destroy_context)
+    );
 }
 }  // namespace epix::render::vulkan2

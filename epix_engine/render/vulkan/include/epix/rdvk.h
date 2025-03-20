@@ -27,14 +27,18 @@ using epix::With;
 using epix::Without;
 using window::components::PrimaryWindow;
 using window::components::Window;
-EPIX_API void create_context(
-    Command cmd,
-    Query<Get<Window>, With<PrimaryWindow>> query,
-    Res<VulkanPlugin> plugin
-);
-EPIX_API void destroy_context(
-    Command cmd, ResMut<RenderContext> context, ResMut<CtxCmdBuffer> ctx_cmd
-);
+EPIX_SYSTEMT(
+    EPIX_API void,
+    create_context,
+    (Command cmd,
+     Query<Get<Window>, With<PrimaryWindow>> query,
+     Res<VulkanPlugin> plugin)
+)
+EPIX_SYSTEMT(
+    EPIX_API void,
+    destroy_context,
+    (Command cmd, ResMut<RenderContext> context, ResMut<CtxCmdBuffer> ctx_cmd)
+)
 }  // namespace systems
 struct RenderContext {
    public:
@@ -46,14 +50,14 @@ struct RenderContext {
     mutable backend::Surface primary_surface;
     mutable backend::Swapchain primary_swapchain;
 
-    friend EPIX_API void systems::create_context(
+    friend EPIX_API void systems::fn_create_context(
         Command cmd,
         Query<
             Get<window::components::Window>,
             With<window::components::PrimaryWindow>> query,
         Res<VulkanPlugin> plugin
     );
-    friend EPIX_API void systems::destroy_context(
+    friend EPIX_API void systems::fn_destroy_context(
         Command cmd, ResMut<RenderContext> context, ResMut<CtxCmdBuffer> ctx_cmd
     );
 };
@@ -62,14 +66,14 @@ struct CtxCmdBuffer {
     backend::CommandBuffer cmd_buffer;
     backend::Fence fence;
 
-    friend EPIX_API void systems::create_context(
+    friend EPIX_API void systems::fn_create_context(
         Command cmd,
         Query<
             Get<window::components::Window>,
             With<window::components::PrimaryWindow>> query,
         Res<VulkanPlugin> plugin
     );
-    friend EPIX_API void systems::destroy_context(
+    friend EPIX_API void systems::fn_destroy_context(
         Command cmd, ResMut<RenderContext> context, ResMut<CtxCmdBuffer> ctx_cmd
     );
 };
@@ -85,23 +89,33 @@ using epix::With;
 using epix::Without;
 using window::components::PrimaryWindow;
 using window::components::Window;
-EPIX_API void extract_context(
-    ResMut<RenderContext> context, ResMut<CtxCmdBuffer> ctx_cmd, Command cmd
-);
-EPIX_API void clear_extracted_context(
-    ResMut<RenderContext> context, ResMut<CtxCmdBuffer> ctx_cmd, Command cmd
-);
-EPIX_API void recreate_swap_chain(
-    ResMut<RenderContext> context, ResMut<CtxCmdBuffer> ctx_cmd
-);
-EPIX_API void get_next_image(
-    ResMut<RenderContext> context,
-    ResMut<CtxCmdBuffer> ctx_cmd,
-    ResMut<VulkanResources> res_manager
-);
-EPIX_API void present_frame(
-    ResMut<RenderContext> context, ResMut<CtxCmdBuffer> ctx_cmd
-);
+EPIX_SYSTEMT(
+    EPIX_API void,
+    extract_context,
+    (ResMut<RenderContext> context, ResMut<CtxCmdBuffer> ctx_cmd, Command cmd)
+)
+EPIX_SYSTEMT(
+    EPIX_API void,
+    clear_extracted_context,
+    (ResMut<RenderContext> context, ResMut<CtxCmdBuffer> ctx_cmd, Command cmd)
+)
+EPIX_SYSTEMT(
+    EPIX_API void,
+    recreate_swap_chain,
+    (ResMut<RenderContext> context, ResMut<CtxCmdBuffer> ctx_cmd)
+)
+EPIX_SYSTEMT(
+    EPIX_API void,
+    get_next_image,
+    (ResMut<RenderContext> context,
+     ResMut<CtxCmdBuffer> ctx_cmd,
+     ResMut<VulkanResources> res_manager)
+)
+EPIX_SYSTEMT(
+    EPIX_API void,
+    present_frame,
+    (ResMut<RenderContext> context, ResMut<CtxCmdBuffer> ctx_cmd)
+)
 }  // namespace systems
 struct VulkanPlugin : public epix::Plugin {
     bool debug_callback = false;
@@ -123,14 +137,24 @@ using epix::ResMut;
 using epix::With;
 using epix::Without;
 
-EPIX_API void create_res_manager(Command cmd, Res<RenderContext> context);
-EPIX_API void destroy_res_manager(
-    Command cmd, ResMut<VulkanResources> res_manager
-);
-EPIX_API void extract_res_manager(
-    ResMut<VulkanResources> res_manager, Command cmd
-);
-EPIX_API void clear_extracted(ResMut<VulkanResources> res_manager, Command cmd);
+EPIX_SYSTEMT(
+    EPIX_API void, create_res_manager, (Command cmd, Res<RenderContext> context)
+)
+EPIX_SYSTEMT(
+    EPIX_API void,
+    destroy_res_manager,
+    (Command cmd, ResMut<VulkanResources> res_manager)
+)
+EPIX_SYSTEMT(
+    EPIX_API void,
+    extract_res_manager,
+    (ResMut<VulkanResources> res_manager, Command cmd)
+)
+EPIX_SYSTEMT(
+    EPIX_API void,
+    clear_extracted,
+    (ResMut<VulkanResources> res_manager, Command cmd)
+)
 }  // namespace systems
 struct VulkanResources {
     using Device    = backend::Device;
@@ -224,13 +248,13 @@ struct VulkanResources {
     EPIX_API vk::DescriptorSet get_descriptor_set() const;
     EPIX_API vk::DescriptorSetLayout get_descriptor_set_layout() const;
 
-    friend EPIX_API void systems::create_res_manager(
+    friend EPIX_API void systems::fn_create_res_manager(
         Command cmd, Res<RenderContext> context
     );
-    friend EPIX_API void systems::destroy_res_manager(
+    friend EPIX_API void systems::fn_destroy_res_manager(
         Command cmd, ResMut<VulkanResources> res_manager
     );
-    friend EPIX_API void systems::extract_res_manager(
+    friend EPIX_API void systems::fn_extract_res_manager(
         ResMut<VulkanResources> res_manager, Command cmd
     );
 };
