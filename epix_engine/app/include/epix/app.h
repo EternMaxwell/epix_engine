@@ -45,11 +45,14 @@
 #define EPIX_CONCAT(a, b) EPIX_CONCAT2(a, b)
 #define EPIX_SYSTEM(sys_name, body)                                            \
     auto fn_##sys_name##body;                                                  \
-    auto EPIX_CONCAT(get_##sys_name, )() {                                     \
-        static auto fn_name = std::source_location::current().function_name(); \
-        return fn_name;                                                        \
+    constexpr auto EPIX_CONCAT(get_##sys_name, _name)() {                      \
+        auto fn_name =                                                         \
+            std::string_view(std::source_location::current().function_name()); \
+        auto namespace_name = fn_name.substr(0, fn_name.rfind("::"));          \
+        return std::string(namespace_name) + "::" + #sys_name;                 \
     }                                                                          \
-    const char* id_##sys_name = "system::" #sys_name;                          \
+    auto id_##sys_name =                                                       \
+        std::string(EPIX_CONCAT(get_##sys_name, _name)()).c_str();             \
     auto sys_name = epix::app::SystemT(id_##sys_name, fn_##sys_name);
 
 namespace epix::app {
@@ -1464,8 +1467,15 @@ struct BasicSystem {
         static Local<T> get(BasicSystem* sys) { return sys->get_local<T>(); }
     };
 
+    entt::dense_set<const BasicSystem*> m_contrary_to;
+    entt::dense_set<const BasicSystem*> m_not_contrary_to;
+
    public:
-    bool contrary_to(const BasicSystem* other) const {
+    bool contrary_to(BasicSystem* other) {
+        if (m_contrary_to.find(other) != m_contrary_to.end()) return true;
+        if (m_not_contrary_to.find(other) != m_not_contrary_to.end())
+            return false;
+
         auto& has_command       = system_infos.has_command;
         auto& has_query         = system_infos.has_query;
         auto& query_types       = system_infos.query_types;
@@ -1476,10 +1486,17 @@ struct BasicSystem {
         auto& state_types       = system_infos.state_types;
         auto& next_state_types  = system_infos.next_state_types;
 
-        if (has_command &&
-            (other->system_infos.has_command || other->system_infos.has_query))
+        if (has_command && (other->system_infos.has_command ||
+                            other->system_infos.has_query)) {
+            m_contrary_to.insert(other);
+            other->m_contrary_to.insert(this);
             return true;
-        if (has_query && other->system_infos.has_command) return true;
+        }
+        if (has_query && other->system_infos.has_command) {
+            m_contrary_to.insert(other);
+            other->m_contrary_to.insert(this);
+            return true;
+        }
         for (auto& [query_include_types, query_include_const, query_exclude_types] :
              query_types) {
             for (auto& [other_query_include_types, other_query_include_const, other_query_exclude_types] :
@@ -1521,12 +1538,16 @@ struct BasicSystem {
                             other_query_include_types.begin(),
                             other_query_include_types.end(), type
                         ) != other_query_include_types.end()) {
+                        m_contrary_to.insert(other);
+                        other->m_contrary_to.insert(this);
                         return true;
                     }
                     if (std::find(
                             other_query_include_const.begin(),
                             other_query_include_const.end(), type
                         ) != other_query_include_const.end()) {
+                        m_contrary_to.insert(other);
+                        other->m_contrary_to.insert(this);
                         return true;
                     }
                 }
@@ -1564,7 +1585,11 @@ struct BasicSystem {
                 }
             }
         }
-        if (resource_contrary) return true;
+        if (resource_contrary) {
+            m_contrary_to.insert(other);
+            other->m_contrary_to.insert(this);
+            return true;
+        }
 
         bool event_contrary = false;
         for (auto type : event_write_types) {
@@ -1593,7 +1618,11 @@ struct BasicSystem {
                 event_contrary = true;
             }
         }
-        if (event_contrary) return true;
+        if (event_contrary) {
+            m_contrary_to.insert(other);
+            other->m_contrary_to.insert(this);
+            return true;
+        }
 
         bool state_contrary = false;
         for (auto type : next_state_types) {
@@ -1621,7 +1650,14 @@ struct BasicSystem {
                 state_contrary = true;
             }
         }
-        return state_contrary;
+        if (state_contrary) {
+            m_contrary_to.insert(other);
+            other->m_contrary_to.insert(this);
+            return true;
+        }
+        m_not_contrary_to.insert(other);
+        other->m_not_contrary_to.insert(this);
+        return false;
     }
     const double get_avg_time() const { return avg_time; }
     struct ParaRetriever {
@@ -1799,6 +1835,7 @@ SystemAddInfo bundle(Systems&&... systems) {
      ...);
     return std::move(info);
 }
+
 struct SystemNode {
     template <typename StageT, typename... Args>
     SystemNode(StageT stage, void (*func)(Args...))
@@ -1821,6 +1858,7 @@ struct SystemNode {
 
     SystemStage m_stage;
     std::vector<SystemSet> m_in_sets;
+    std::string m_id;
     FuncIndex m_sys_addr;
     std::unique_ptr<BasicSystem<void>> m_system;
     std::string m_worker = "default";
