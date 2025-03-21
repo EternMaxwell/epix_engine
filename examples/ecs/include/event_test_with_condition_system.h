@@ -61,14 +61,11 @@ class EventTestPlugin : public Plugin {
    public:
     void build(App& app) override {
         app.add_event<TestEvent>();
-        app.add_system(Startup, write_event_s)
-            ->add_system(Startup, read_event_s)
-            .after(write_event_s)
+        app.add_system(Startup, into(write_event_s))
+            ->add_system(Startup, into(read_event_s).after(write_event_s))
             ->add_system(Update, read_event_u)
-            ->add_system(Update, write_event_u)
-            .after(read_event_u)
-            ->add_system(Update, read_event_u2)
-            .after(write_event_u);
+            ->add_system(Update, into(write_event_u).after(read_event_u))
+            ->add_system(Update, into(read_event_u2).after(write_event_u));
     }
 };
 

@@ -1,7 +1,7 @@
 #include "epix/rdvk.h"
 
 using namespace epix::render::vulkan2;
-EPIX_API void systems::create_context(
+EPIX_API void systems::fn_create_context(
     Command cmd,
     Query<Get<Window>, With<PrimaryWindow>> query,
     Res<VulkanPlugin> plugin
@@ -46,7 +46,7 @@ EPIX_API void systems::create_context(
     cmd.insert_resource(ctx_cmd);
 }
 
-EPIX_API void systems::destroy_context(
+EPIX_API void systems::fn_destroy_context(
     Command cmd, ResMut<RenderContext> context, ResMut<CtxCmdBuffer> ctx_cmd
 ) {
     if (!context) return;
@@ -70,7 +70,7 @@ EPIX_API void systems::destroy_context(
     instance.destroy();
 }
 
-EPIX_API void systems::extract_context(
+EPIX_API void systems::fn_extract_context(
     ResMut<RenderContext> context, ResMut<CtxCmdBuffer> ctx_cmd, Command cmd
 ) {
     if (!context) return;
@@ -80,14 +80,14 @@ EPIX_API void systems::extract_context(
     cmd.share_resource(ctx_cmd);
 }
 
-EPIX_API void systems::clear_extracted_context(
+EPIX_API void systems::fn_clear_extracted_context(
     ResMut<RenderContext> context, ResMut<CtxCmdBuffer> ctx_cmd, Command cmd
 ) {
     cmd.remove_resource<RenderContext>();
     cmd.remove_resource<CtxCmdBuffer>();
 }
 
-EPIX_API void systems::recreate_swap_chain(
+EPIX_API void systems::fn_recreate_swap_chain(
     ResMut<RenderContext> context, ResMut<CtxCmdBuffer> ctx_cmd
 ) {
     if (!context || !ctx_cmd) return;
@@ -101,7 +101,7 @@ EPIX_API void systems::recreate_swap_chain(
     }
 }
 
-EPIX_API void systems::get_next_image(
+EPIX_API void systems::fn_get_next_image(
     ResMut<RenderContext> context,
     ResMut<CtxCmdBuffer> ctx_cmd,
     ResMut<VulkanResources> p_res_manager
@@ -167,7 +167,7 @@ EPIX_API void systems::get_next_image(
     );
 }
 
-EPIX_API void systems::present_frame(
+EPIX_API void systems::fn_present_frame(
     ResMut<RenderContext> context, ResMut<CtxCmdBuffer> ctx_cmd
 ) {
     if (!context || !ctx_cmd) return;
@@ -214,7 +214,7 @@ EPIX_API void systems::present_frame(
     } catch (std::exception& e) {}
 }
 
-EPIX_API void systems::create_res_manager(
+EPIX_API void systems::fn_create_res_manager(
     Command cmd, Res<RenderContext> context
 ) {
     if (!context) return;
@@ -227,7 +227,7 @@ EPIX_API void systems::create_res_manager(
     cmd.insert_resource(std::move(res_manager));
 }
 
-EPIX_API void systems::destroy_res_manager(
+EPIX_API void systems::fn_destroy_res_manager(
     Command cmd, ResMut<VulkanResources> res_manager
 ) {
     if (!res_manager) return;
@@ -236,7 +236,7 @@ EPIX_API void systems::destroy_res_manager(
     res_manager->destroy();
 }
 
-EPIX_API void systems::extract_res_manager(
+EPIX_API void systems::fn_extract_res_manager(
     ResMut<VulkanResources> res_manager, Command cmd
 ) {
     if (!res_manager) return;
@@ -248,7 +248,7 @@ EPIX_API void systems::extract_res_manager(
     cmd.share_resource(res_manager);
 }
 
-EPIX_API void systems::clear_extracted(
+EPIX_API void systems::fn_clear_extracted(
     ResMut<VulkanResources> res_manager, Command cmd
 ) {
     if (!res_manager) return;

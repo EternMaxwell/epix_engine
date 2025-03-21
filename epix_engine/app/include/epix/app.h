@@ -19,6 +19,7 @@
 #include <mutex>
 #include <optional>
 #include <queue>
+#include <source_location>
 #include <string>
 #include <tuple>
 #include <type_traits>
@@ -54,6 +55,8 @@ struct FuncIndex;
 struct SystemStage;
 struct SystemSet;
 struct SystemNode;
+template <typename Ret, typename... Args>
+struct SystemT;
 
 using SetMap = entt::dense_map<std::type_index, std::vector<SystemSet>>;
 
@@ -66,18 +69,12 @@ struct SubStageRunner;
 
 template <typename T>
 struct BasicSystem;
-template <typename... Args>
-struct System;
-template <typename... Args>
-struct Condition;
 
 // STRUCTS THAT USED MOSTLY IN SYSTEMS
 
 struct Entity;
 struct EntityCommand;
 struct Command;
-template <typename... T>
-struct Wrapper;
 
 template <typename T>
 struct Res;
@@ -772,28 +769,6 @@ struct With {};
 template <typename... T>
 struct Without {};
 
-template <typename... Gets>
-struct Wrapper {
-    using type       = std::tuple<Gets&...>;
-    using const_type = std::tuple<const Gets&...>;
-
-   private:
-    Entity entity;
-    entt::registry& registry;
-
-   public:
-    Wrapper(Entity entity, entt::registry& registry)
-        : entity(entity), registry(registry) {}
-    type operator*() {
-        return std::tuple<Gets&...>(registry.get<Gets>(entity.id)...);
-    }
-    const_type operator*() const {
-        return std::tuple<const Gets&...>(registry.get<Gets>(entity.id)...);
-    }
-
-    Entity id() { return entity; }
-};
-
 template <typename... Qus, typename... Ins, typename... Exs>
 class QueryBase<Get<Qus...>, With<Ins...>, Without<Exs...>> {
     using view_type =
@@ -1224,14 +1199,12 @@ struct SubApp {
         Command command(&m_world, &m_world);
         command.insert_resource(State<T>(std::forward<T>(state)));
         command.insert_resource(NextState<T>(std::forward<T>(state)));
-        m_state_updates.push_back(
-            std::make_unique<System<ResMut<State<T>>, Res<NextState<T>>>>(
-                [](ResMut<State<T>> state, Res<NextState<T>> next_state) {
-                    state->m_state      = next_state->m_state;
-                    state->just_created = false;
-                }
-            )
-        );
+        m_state_updates.emplace_back(std::make_unique<BasicSystem<void>>(
+            [](ResMut<State<T>> state, Res<NextState<T>> next_state) {
+                state->m_state      = next_state->m_state;
+                state->just_created = false;
+            }
+        ));
     }
     template <typename T>
     void init_state() {
@@ -1245,14 +1218,12 @@ struct SubApp {
         Command command(&m_world, &m_world);
         command.init_resource<State<T>>();
         command.init_resource<NextState<T>>();
-        m_state_updates.push_back(
-            std::make_unique<System<ResMut<State<T>>, Res<NextState<T>>>>(
-                [](ResMut<State<T>> state, Res<NextState<T>> next_state) {
-                    state->m_state      = next_state->m_state;
-                    state->just_created = false;
-                }
-            )
-        );
+        m_state_updates.emplace_back(std::make_unique<BasicSystem<void>>(
+            [](ResMut<State<T>> state, Res<NextState<T>> next_state) {
+                state->m_state      = next_state->m_state;
+                state->just_created = false;
+            }
+        ));
     }
     template <typename T>
     void add_event() {
@@ -1276,7 +1247,9 @@ template <typename Ret>
 struct BasicSystem {
    protected:
     entt::dense_map<std::type_index, std::shared_ptr<void>> m_locals;
-    double avg_time = 1.0;  // in milliseconds
+    std::function<Ret(SubApp*, SubApp*)> m_func;
+    double factor;
+    double avg_time;  // in milliseconds
     struct system_info {
         bool has_command = false;
         bool has_query   = false;
@@ -1446,8 +1419,15 @@ struct BasicSystem {
         static Local<T> get(BasicSystem* sys) { return sys->get_local<T>(); }
     };
 
+    entt::dense_set<const BasicSystem*> m_contrary_to;
+    entt::dense_set<const BasicSystem*> m_not_contrary_to;
+
    public:
     bool contrary_to(BasicSystem* other) {
+        if (m_contrary_to.find(other) != m_contrary_to.end()) return true;
+        if (m_not_contrary_to.find(other) != m_not_contrary_to.end())
+            return false;
+
         auto& has_command       = system_infos.has_command;
         auto& has_query         = system_infos.has_query;
         auto& query_types       = system_infos.query_types;
@@ -1458,10 +1438,17 @@ struct BasicSystem {
         auto& state_types       = system_infos.state_types;
         auto& next_state_types  = system_infos.next_state_types;
 
-        if (has_command &&
-            (other->system_infos.has_command || other->system_infos.has_query))
+        if (has_command && (other->system_infos.has_command ||
+                            other->system_infos.has_query)) {
+            m_contrary_to.insert(other);
+            other->m_contrary_to.insert(this);
             return true;
-        if (has_query && other->system_infos.has_command) return true;
+        }
+        if (has_query && other->system_infos.has_command) {
+            m_contrary_to.insert(other);
+            other->m_contrary_to.insert(this);
+            return true;
+        }
         for (auto& [query_include_types, query_include_const, query_exclude_types] :
              query_types) {
             for (auto& [other_query_include_types, other_query_include_const, other_query_exclude_types] :
@@ -1503,12 +1490,16 @@ struct BasicSystem {
                             other_query_include_types.begin(),
                             other_query_include_types.end(), type
                         ) != other_query_include_types.end()) {
+                        m_contrary_to.insert(other);
+                        other->m_contrary_to.insert(this);
                         return true;
                     }
                     if (std::find(
                             other_query_include_const.begin(),
                             other_query_include_const.end(), type
                         ) != other_query_include_const.end()) {
+                        m_contrary_to.insert(other);
+                        other->m_contrary_to.insert(this);
                         return true;
                     }
                 }
@@ -1546,7 +1537,11 @@ struct BasicSystem {
                 }
             }
         }
-        if (resource_contrary) return true;
+        if (resource_contrary) {
+            m_contrary_to.insert(other);
+            other->m_contrary_to.insert(this);
+            return true;
+        }
 
         bool event_contrary = false;
         for (auto type : event_write_types) {
@@ -1575,7 +1570,11 @@ struct BasicSystem {
                 event_contrary = true;
             }
         }
-        if (event_contrary) return true;
+        if (event_contrary) {
+            m_contrary_to.insert(other);
+            other->m_contrary_to.insert(this);
+            return true;
+        }
 
         bool state_contrary = false;
         for (auto type : next_state_types) {
@@ -1603,61 +1602,16 @@ struct BasicSystem {
                 state_contrary = true;
             }
         }
-        return state_contrary;
-    }
-    void print_info_types_name() {
-        std::cout << "has command: " << system_infos.has_command << std::endl;
-
-        for (auto& [query_include_types, query_include_const, query_exclude_types] :
-             system_infos.query_types) {
-            std::cout << "query_include_types: ";
-            for (auto type : query_include_types)
-                std::cout << type.name() << " ";
-            std::cout << std::endl;
-
-            std::cout << "query_include_const: ";
-            for (auto type : query_include_const)
-                std::cout << type.name() << " ";
-            std::cout << std::endl;
-
-            std::cout << "query_exclude_types: ";
-            for (auto type : query_exclude_types)
-                std::cout << type.name() << " ";
-            std::cout << std::endl;
+        if (state_contrary) {
+            m_contrary_to.insert(other);
+            other->m_contrary_to.insert(this);
+            return true;
         }
-
-        std::cout << "resource_types: ";
-        for (auto type : system_infos.resource_types)
-            std::cout << type.name() << " ";
-        std::cout << std::endl;
-
-        std::cout << "resource_const: ";
-        for (auto type : system_infos.resource_const)
-            std::cout << type.name() << " ";
-        std::cout << std::endl;
-
-        std::cout << "event_read_types: ";
-        for (auto type : system_infos.event_read_types)
-            std::cout << type.name() << " ";
-        std::cout << std::endl;
-
-        std::cout << "event_write_types: ";
-        for (auto type : system_infos.event_write_types)
-            std::cout << type.name() << " ";
-        std::cout << std::endl;
-
-        std::cout << "state_types: ";
-        for (auto type : system_infos.state_types)
-            std::cout << type.name() << " ";
-        std::cout << std::endl;
-
-        std::cout << "next_state_types: ";
-        for (auto type : system_infos.next_state_types)
-            std::cout << type.name() << " ";
-        std::cout << std::endl;
+        m_not_contrary_to.insert(other);
+        other->m_not_contrary_to.insert(this);
+        return false;
     }
-    const double get_avg_time() { return avg_time; }
-    virtual Ret run(SubApp* src, SubApp* dst) = 0;
+    const double get_avg_time() const { return avg_time; }
     struct ParaRetriever {
         template <typename T>
         static T retrieve(
@@ -1670,61 +1624,57 @@ struct BasicSystem {
             }
         }
     };
-};
-
-struct SystemFunctionInvoker {
-    template <typename Ret, typename... Args>
-    static Ret invoke(
-        std::function<Ret(Args...)> func,
-        BasicSystem<Ret>* sys,
-        SubApp* src,
-        SubApp* dst
-    ) {
-        return func(
-            BasicSystem<Ret>::ParaRetriever::retrieve<Args>(sys, src, dst)...
-        );
-    }
-};
-
-template <typename... Args>
-struct System : public BasicSystem<void> {
-   private:
-    std::function<void(Args...)> func;
-
-   public:
-    System(std::function<void(Args...)> func)
-        : BasicSystem<void>(), func(func) {
+    template <typename... Args>
+    BasicSystem(std::function<Ret(Args...)> func)
+        : m_func([func, this](SubApp* src, SubApp* dst) {
+              return func(ParaRetriever::retrieve<Args>(this, src, dst)...);
+          }),
+          factor(0.1),
+          avg_time(1) {
         add_infos<Args...>();
     }
-    // System(void (*func)(Args...)) : BasicSystem<void>(), func(func) {
-    //     add_infos<Args...>();
-    // }
-    void run(SubApp* src, SubApp* dst) override {
+    template <typename... Args>
+    BasicSystem(Ret (*func)(Args...))
+        : m_func([func, this](SubApp* src, SubApp* dst) {
+              return func(ParaRetriever::retrieve<Args>(this, src, dst)...);
+          }),
+          factor(0.1),
+          avg_time(1) {
+        add_infos<Args...>();
+    }
+    template <typename T>
+        requires requires(T t) {
+            { std::function(t) };
+        }
+    BasicSystem(T&& func) : BasicSystem(std::function(std::forward<T>(func))) {}
+    BasicSystem(const BasicSystem& other)            = delete;
+    BasicSystem(BasicSystem&& other)                 = delete;
+    BasicSystem& operator=(const BasicSystem& other) = delete;
+    BasicSystem& operator=(BasicSystem&& other)      = delete;
+    Ret run(SubApp* src, SubApp* dst) {
         auto start = std::chrono::high_resolution_clock::now();
-        SystemFunctionInvoker::invoke(func, this, src, dst);
-        auto end   = std::chrono::high_resolution_clock::now();
-        auto delta = (double
-        )std::chrono::duration_cast<std::chrono::nanoseconds>(end - start)
-                         .count();
-        avg_time = delta * 0.1 + avg_time * 0.9;
-    }
-};
-
-template <typename... Args>
-struct Condition : public BasicSystem<bool> {
-   private:
-    std::function<bool(Args...)> func;
-
-   public:
-    Condition(std::function<bool(Args...)> func)
-        : BasicSystem<bool>(), func(func) {
-        add_infos<Args...>();
-    }
-    // Condition(bool (*func)(Args...)) : BasicSystem<bool>(), func(func) {
-    //     add_infos<Args...>();
-    // }
-    bool run(SubApp* src, SubApp* dst) override {
-        return SystemFunctionInvoker::invoke(func, this, src, dst);
+        if constexpr (std::is_same_v<Ret, void>) {
+            m_func(src, dst);
+            auto end = std::chrono::high_resolution_clock::now();
+            auto delta =
+                (double)std::chrono::duration_cast<std::chrono::nanoseconds>(
+                    end - start
+                )
+                    .count() /
+                1000000.0;
+            avg_time = delta * 0.1 + avg_time * 0.9;
+        } else {
+            auto&& ret = m_func(src, dst);
+            auto end   = std::chrono::high_resolution_clock::now();
+            auto delta =
+                (double)std::chrono::duration_cast<std::chrono::nanoseconds>(
+                    end - start
+                )
+                    .count() /
+                1000000.0;
+            avg_time = delta * 0.1 + avg_time * 0.9;
+            return ret;
+        }
     }
 };
 
@@ -1747,30 +1697,283 @@ struct SystemSet {
     std::type_index m_type;
     size_t m_value;
 };
+struct SystemAddInfo {
+    struct each_t {
+        std::string name;
+        FuncIndex index;
+        std::unique_ptr<BasicSystem<void>> system;
+        std::vector<std::unique_ptr<BasicSystem<bool>>> conditions;
+
+        each_t(
+            const std::string& name,
+            FuncIndex index,
+            std::unique_ptr<BasicSystem<void>> system
+        )
+            : name(name), index(index), system(std::move(system)) {}
+        each_t(each_t&& other)
+            : name(other.name),
+              index(other.index),
+              system(std::move(other.system)) {}
+        each_t& operator=(each_t&& other) {
+            name   = other.name;
+            index  = other.index;
+            system = std::move(other.system);
+            return *this;
+        }
+    };
+    std::vector<each_t> m_systems;
+
+    std::vector<SystemSet> m_in_sets;
+    std::string m_worker = "default";
+    entt::dense_set<FuncIndex> m_ptr_prevs;
+    entt::dense_set<FuncIndex> m_ptr_nexts;
+
+    bool is_state_transition = false;
+    bool m_chain             = false;
+
+    SystemAddInfo()                                      = default;
+    SystemAddInfo(const SystemAddInfo& other)            = delete;
+    SystemAddInfo(SystemAddInfo&& other)                 = default;
+    SystemAddInfo& operator=(const SystemAddInfo& other) = delete;
+    SystemAddInfo& operator=(SystemAddInfo&& other)      = default;
+
+    SystemAddInfo& chain() {
+        m_chain = true;
+        return *this;
+    }
+
+    template <typename T, typename... Args>
+    SystemAddInfo& before(const SystemT<T, Args...>& system) {
+        m_ptr_nexts.emplace(system.index);
+        return *this;
+    }
+    template <typename T, typename... Args>
+    SystemAddInfo& before(T (*func)(Args...)) {
+        m_ptr_nexts.emplace(FuncIndex(func));
+        return *this;
+    }
+    template <typename T, typename... Args>
+    SystemAddInfo& after(const SystemT<T, Args...>& system) {
+        m_ptr_prevs.emplace(system.index);
+        return *this;
+    }
+    template <typename T, typename... Args>
+    SystemAddInfo& after(T (*func)(Args...)) {
+        m_ptr_prevs.emplace(FuncIndex(func));
+        return *this;
+    }
+    template <typename T>
+    SystemAddInfo& in_set(T t) {
+        m_in_sets.emplace_back(SystemSet(t));
+        return *this;
+    }
+    SystemAddInfo& worker(const std::string& worker) {
+        m_worker = worker;
+        return *this;
+    }
+    template <typename... Args>
+    SystemAddInfo& run_if(const std::function<bool(Args...)>& func) {
+        for (auto& each : m_systems) {
+            each.conditions.emplace_back(
+                std::make_unique<BasicSystem<bool>>(func)
+            );
+        }
+        return *this;
+    }
+    template <typename... Args>
+    SystemAddInfo& run_if(std::function<bool(Args...)>&& func) {
+        for (auto& each : m_systems) {
+            each.conditions.emplace_back(
+                std::make_unique<BasicSystem<bool>>(func)
+            );
+        }
+        return *this;
+    }
+    template <typename... Args>
+    SystemAddInfo& run_if(bool (*func)(Args...)) {
+        for (auto& each : m_systems) {
+            each.conditions.emplace_back(
+                std::make_unique<BasicSystem<bool>>(func)
+            );
+        }
+        return *this;
+    }
+    template <typename T>
+        requires requires(T t) {
+            { std::function(t) };
+        }
+    SystemAddInfo& run_if(T&& func) {
+        run_if(std::function(func));
+        return *this;
+    }
+    template <typename T>
+    SystemAddInfo& on_enter(T state) {
+        is_state_transition = true;
+        run_if([state](Res<State<T>> cur, Res<NextState<T>> next) {
+            return (cur->is_state(state) && cur->is_just_created()) ||
+                   (!cur->is_state(state) && next->is_state(state));
+        });
+        return *this;
+    };
+    template <typename T>
+    SystemAddInfo& on_exit(T state) {
+        is_state_transition = true;
+        run_if([state](Res<State<T>> cur, Res<NextState<T>> next) {
+            return cur->is_state(state) && !next->is_state(state);
+        });
+        return *this;
+    };
+    template <typename T>
+    SystemAddInfo& on_change() {
+        is_state_transition = true;
+        run_if([](Res<State<T>> cur, Res<NextState<T>> next) {
+            return !cur->is_state(next->m_state);
+        });
+        return *this;
+    };
+    template <typename T>
+    SystemAddInfo& in_state(T state) {
+        is_state_transition = true;
+        run_if([state](Res<State<T>> cur) { return cur->is_state(state); });
+        return *this;
+    };
+};
+
+template <typename Ret, typename... Args>
+struct SystemT {
+    using return_type    = Ret;
+    using argument_types = std::tuple<Args...>;
+    using func_type      = Ret (*)(Args...);
+    std::string name;
+    FuncIndex index;
+    std::function<Ret(Args...)> func;
+
+    SystemT(const std::string& name, Ret (*func)(Args...))
+        : name(name), index(FuncIndex(func)), func(func) {}
+    SystemT(Ret (*func)(Args...))
+        : name(std::format("{:#016x}", (size_t)func)),
+          index(FuncIndex(func)),
+          func(func) {}
+
+    operator FuncIndex&() { return index; }
+    operator const FuncIndex&() const { return index; }
+    operator SystemAddInfo() const {
+        SystemAddInfo info;
+        info.m_systems.emplace_back(
+            name, index, std::make_unique<BasicSystem<void>>(func)
+        );
+        return std::move(info);
+    }
+
+    template <typename T>
+    SystemAddInfo before(T&& system) {
+        return std::move(operator SystemAddInfo().before(system));
+    }
+    template <typename T>
+    SystemAddInfo after(T&& system) {
+        return std::move(operator SystemAddInfo().after(system));
+    }
+    template <typename T>
+    SystemAddInfo in_set(T t) {
+        return std::move(operator SystemAddInfo().in_set(t));
+    }
+    SystemAddInfo worker(const std::string& worker) {
+        return std::move(operator SystemAddInfo().worker(worker));
+    }
+    template <typename... Args>
+    SystemAddInfo run_if(const std::function<bool(Args...)>& func) {
+        return std::move(operator SystemAddInfo().run_if(func));
+    }
+    template <typename... Args>
+    SystemAddInfo run_if(bool (*func)(Args...)) {
+        return std::move(operator SystemAddInfo().run_if(func));
+    }
+    template <typename T>
+    SystemAddInfo on_enter(T state) {
+        return std::move(operator SystemAddInfo().on_enter(state));
+    };
+    template <typename T>
+    SystemAddInfo on_exit(T state) {
+        return std::move(operator SystemAddInfo().on_exit(state));
+    };
+    template <typename T>
+    SystemAddInfo on_change() {
+        return std::move(operator SystemAddInfo().on_change());
+    };
+    template <typename T>
+    SystemAddInfo in_state(T state) {
+        return std::move(operator SystemAddInfo().in_state(state));
+    };
+};
+
+template <typename T>
+auto&& into(T&& t) {
+    return std::forward<T>(t);
+}
+
+template <typename Ret, typename... Args>
+SystemT<Ret, Args...> into(Ret (*func)(Args...), const std::string& name) {
+    return SystemT<Ret, Args...>(name, func);
+}
+
+template <typename Ret, typename... Args>
+SystemT<Ret, Args...> into(Ret (*func)(Args...)) {
+    return SystemT<Ret, Args...>(std::format("{:#016x}", (size_t)func), func);
+}
+
+template <typename T>
+concept SystemLike = requires(T t) {
+    { t.name };
+    { t.index };
+    { std::make_unique<BasicSystem<void>>(t.func) };
+};
+
+template <typename... Systems>
+    requires(SystemLike<std::remove_cvref_t<Systems>> && ...)
+SystemAddInfo bundle(Systems&&... systems) {
+    SystemAddInfo info;
+    (info.m_systems.emplace_back(
+         systems.name, systems.index,
+         std::make_unique<BasicSystem<void>>(systems.func)
+     ),
+     ...);
+    return std::move(info);
+}
+template <typename... Systems, typename... Args, typename Ret>
+SystemAddInfo bundle(Ret (*systems)(Args...), Systems&&... rest) {
+    return std::move(bundle(into(systems), into(rest)...));
+}
+template <typename... Systems>
+    requires(SystemLike<std::remove_cvref_t<Systems>> && ...)
+SystemAddInfo chain(Systems&&... systems) {
+    return std::move(bundle(systems...).chain());
+}
+template <typename... Systems, typename... Args, typename Ret>
+SystemAddInfo chain(Ret (*systems)(Args...), Systems&&... rest) {
+    return std::move(chain(into(systems), into(rest)...));
+}
+
 struct SystemNode {
     template <typename StageT, typename... Args>
-    SystemNode(StageT stage, void (*func)(Args...))
+    SystemNode(
+        StageT stage,
+        const std::string& id,
+        FuncIndex index,
+        std::unique_ptr<BasicSystem<void>>&& system
+    )
         : m_stage(stage),
-          m_system(std::make_unique<System<Args...>>(func)),
-          m_sys_addr(func) {}
+          m_system(std::move(system)),
+          m_id(id),
+          m_sys_addr(index) {}
     EPIX_API bool run(SubApp* src, SubApp* dst);
-    template <typename T, typename... Args>
-    void before(T (*func)(Args...)) {
-        m_ptr_nexts.emplace(func);
-    }
-    EPIX_API void before(const FuncIndex& func);
-    template <typename T, typename... Args>
-    void after(T (*func)(Args...)) {
-        m_ptr_prevs.emplace(func);
-    }
-    EPIX_API void after(const FuncIndex& func);
     EPIX_API void clear_tmp();
     EPIX_API double reach_time();
 
     SystemStage m_stage;
-    std::vector<SystemSet> m_in_sets;
+    std::string m_id;
     FuncIndex m_sys_addr;
     std::unique_ptr<BasicSystem<void>> m_system;
+    std::vector<SystemSet> m_in_sets;
     std::string m_worker = "default";
     entt::dense_set<std::weak_ptr<SystemNode>> m_strong_prevs;
     entt::dense_set<std::weak_ptr<SystemNode>> m_strong_nexts;
@@ -1843,15 +2046,33 @@ struct SubStageRunner {
     }
     SubStageRunner(SubStageRunner&& other)            = default;
     SubStageRunner& operator=(SubStageRunner&& other) = default;
-    template <typename StageT, typename... Args>
-    SystemNode* add_system(StageT stage, void (*func)(Args...)) {
-        if (auto it = m_systems.find(FuncIndex(func)); it != m_systems.end()) {
-            m_logger->warn("System {:#018x} already present", (size_t)(func));
-            return it->second.get();
+    template <typename StageT>
+    SubStageRunner& add_system(StageT stage, SystemAddInfo&& system) {
+        for (size_t i = 0; i < system.m_systems.size(); i++) {
+            auto&& each = system.m_systems[i];
+            if (m_systems.find(each.index) != m_systems.end()) {
+                m_logger->warn(
+                    "system-{:#016x} is already present, ignoring this add."
+                );
+                continue;
+            }
+            std::shared_ptr<SystemNode> target = std::make_shared<SystemNode>(
+                stage, each.name, each.index, std::move(each.system)
+            );
+            std::move(
+                each.conditions.begin(), each.conditions.end(),
+                std::back_inserter(target->m_conditions)
+            );
+            target->m_ptr_nexts = system.m_ptr_nexts;
+            for (size_t j = i + 1; j < system.m_systems.size(); j++) {
+                target->m_ptr_nexts.emplace(system.m_systems[j].index);
+            }
+            target->m_ptr_prevs = system.m_ptr_prevs;
+            target->m_worker    = system.m_worker;
+            target->m_in_sets   = system.m_in_sets;
+            m_systems.emplace(each.index, target);
         }
-        auto ptr = std::make_shared<SystemNode>(stage, func);
-        m_systems.emplace(FuncIndex(func), ptr);
-        return ptr.get();
+        return *this;
     }
     EPIX_API void build();
     EPIX_API void bake();
@@ -1909,8 +2130,8 @@ struct StageRunner {
         };
     }
 
-    template <typename StageT, typename... Args>
-    SystemNode* add_system(StageT stage, void (*func)(Args...)) {
+    template <typename StageT>
+    StageRunner& add_system(StageT stage, SystemAddInfo&& systems) {
         if (auto it = m_sub_stages.find(static_cast<size_t>(stage));
             it == m_sub_stages.end()) {
             m_sub_stages.emplace(
@@ -1920,9 +2141,10 @@ struct StageRunner {
                 )
             );
         }
-        return m_sub_stages[static_cast<size_t>(stage)]->add_system(
-            stage, func
+        m_sub_stages[static_cast<size_t>(stage)]->add_system(
+            stage, std::move(systems)
         );
+        return *this;
     }
 
     EPIX_API bool conflict(const StageRunner* other) const;
@@ -2080,27 +2302,36 @@ struct Runner {
         );
     }
 
-    template <typename StageT, typename... Args>
-    SystemNode* add_system(StageT stage, void (*func)(Args...)) {
-        if (auto it = m_startup_stages.find(std::type_index(typeid(StageT)));
-            it != m_startup_stages.end()) {
-            return it->second->runner->add_system(stage, func);
-        }
-        if (auto it = m_loop_stages.find(std::type_index(typeid(StageT)));
-            it != m_loop_stages.end()) {
-            return it->second->runner->add_system(stage, func);
-        }
+    template <typename StageT>
+    Runner& add_system(StageT stage, SystemAddInfo&& systems) {
         if (auto it =
                 m_state_transition_stages.find(std::type_index(typeid(StageT)));
             it != m_state_transition_stages.end()) {
-            return it->second->runner->add_system(stage, func);
+            it->second->runner->add_system(stage, std::move(systems));
+            return *this;
+        } else if (systems.is_state_transition) {
+            m_logger->warn(
+                "Trying to add systems with state transition requirements to "
+                "non-state-transition stages."
+            );
+        }
+        if (auto it = m_startup_stages.find(std::type_index(typeid(StageT)));
+            it != m_startup_stages.end()) {
+            it->second->runner->add_system(stage, std::move(systems));
+            return *this;
+        }
+        if (auto it = m_loop_stages.find(std::type_index(typeid(StageT)));
+            it != m_loop_stages.end()) {
+            it->second->runner->add_system(stage, std::move(systems));
+            return *this;
         }
         if (auto it = m_exit_stages.find(std::type_index(typeid(StageT)));
             it != m_exit_stages.end()) {
-            return it->second->runner->add_system(stage, func);
+            it->second->runner->add_system(stage, std::move(systems));
+            return *this;
         }
         spdlog::warn("Stage {} not found", typeid(StageT).name());
-        return nullptr;
+        return *this;
     }
 
     EPIX_API void build();
@@ -2147,138 +2378,22 @@ struct App {
     EPIX_API static App create();
     EPIX_API static App create2();
     EPIX_API static App create(const AppSettings& settings);
-    struct SystemInfo {
-        std::vector<SystemNode*> nodes;
-        App* app;
 
-        template <typename... Ptrs>
-        SystemInfo& before(Ptrs... ptrs) {
-            for (auto node : nodes) (node->before(ptrs), ...);
-            return *this;
-        }
-        template <typename... Ptrs>
-        SystemInfo& after(Ptrs... ptrs) {
-            for (auto node : nodes) (node->after(ptrs), ...);
-            return *this;
-        }
-        template <typename... Args>
-        SystemInfo& run_if(std::function<bool(Args...)> func) {
-            for (auto node : nodes)
-                node->m_conditions.emplace_back(
-                    std::make_unique<Condition<Args...>>(func)
-                );
-            return *this;
-        }
-        template <typename... Args>
-        SystemInfo& use_worker(const std::string& pool_name) {
-            for (auto node : nodes) node->m_worker = pool_name;
-            return *this;
-        }
-        template <typename... Sets>
-        SystemInfo& in_set(Sets... sets) {
-            for (auto node : nodes)
-                (node->m_in_sets.push_back(SystemSet(sets)), ...);
-            return *this;
-        }
-        template <typename T>
-        SystemInfo& on_enter(T state) {
-            if (app->m_runner->stage_state_transition(nodes[0]->m_stage.m_stage
-                )) {
-                for (auto node : nodes)
-                    node->m_conditions.emplace_back(
-                        std::make_unique<
-                            Condition<Res<State<T>>, Res<NextState<T>>>>(
-                            [state](Res<State<T>> s, Res<NextState<T>> ns) {
-                                return (s->is_state(state) &&
-                                        s->is_just_created()) ||
-                                       (ns->is_state(state) &&
-                                        !s->is_state(state));
-                            }
-                        )
-                    );
-            } else {
-                for (auto node : nodes)
-                    spdlog::warn(
-                        "adding system {:#018x} to stage {} is not allowed"
-                        "on_enter can only be used in state transition stages",
-                        (size_t)node->m_sys_addr.func,
-                        node->m_stage.m_stage.name()
-                    );
-            }
-            return *this;
-        }
-        template <typename T>
-        SystemInfo& on_exit(T state) {
-            if (app->m_runner->stage_state_transition(nodes[0]->m_stage.m_stage
-                )) {
-                for (auto node : nodes)
-                    node->m_conditions.emplace_back(
-                        std::make_unique<
-                            Condition<Res<State<T>>, Res<NextState<T>>>>(
-                            [state](Res<State<T>> s, Res<NextState<T>> ns) {
-                                return !ns->is_state(state) &&
-                                       s->is_state(state);
-                            }
-                        )
-                    );
-            } else {
-                for (auto node : nodes)
-                    spdlog::warn(
-                        "adding system {:#018x} to stage {} is not allowed"
-                        "on_exit can only be used in state transition stages",
-                        (size_t)node->m_sys_addr, node->m_stage.m_stage->name()
-                    );
-            }
-            return *this;
-        }
-        template <typename T>
-        SystemInfo& on_change() {
-            if (app->m_runner->stage_state_transition(nodes[0]->m_stage.m_stage
-                )) {
-                for (auto node : nodes)
-                    node->m_conditions.emplace_back(
-                        std::make_unique<
-                            Condition<Res<State<T>>, Res<NextState<T>>>>(
-                            [](Res<State<T>> s, Res<NextState<T>> ns) {
-                                return !s->is_state(ns);
-                            }
-                        )
-                    );
-            } else {
-                for (auto node : nodes)
-                    spdlog::warn(
-                        "adding system {:#018x} to stage {} is not allowed"
-                        "on_change can only be used in state transition stages",
-                        (size_t)node->m_sys_addr, node->m_stage.m_stage->name()
-                    );
-            }
-            return *this;
-        }
-        template <typename T>
-        SystemInfo& in_state(T state) {
-            for (auto node : nodes)
-                node->m_conditions.emplace_back(
-                    std::make_unique<Condition<Res<State<T>>>>(
-                        [state](Res<State<T>> s) { return s->is_state(state); }
-                    )
-                );
-            return *this;
-        }
-        EPIX_API SystemInfo& chain();
-
-        EPIX_API App* operator->();
-    };
-
-    template <typename StageT, typename... Args>
-    SystemInfo add_system(StageT stage, void (*func)(Args...)) {
-        SystemNode* ptr = m_runner->add_system(stage, func);
-        return {{ptr}, this};
+    template <typename StageT>
+    App& add_system(StageT stage, SystemAddInfo&& systems) {
+        m_runner->add_system(stage, std::move(systems));
+        return *this;
     }
     template <typename StageT, typename... Funcs>
-    SystemInfo add_system(StageT stage, Funcs... funcs) {
-        std::vector<SystemNode*> nodes = {m_runner->add_system(stage, funcs)...
-        };
-        return {std::move(nodes), this};
+        requires(
+            std::convertible_to<
+                std::remove_cvref_t<decltype(into(std::declval<Funcs>()))>,
+                SystemAddInfo> &&
+            ...
+        )
+    App& add_system(StageT stage, Funcs&&... systems) {
+        (m_runner->add_system(stage, std::move(into(systems))), ...);
+        return *this;
     }
     template <typename T>
     App& add_plugin(T&& plugin) {
@@ -2537,42 +2652,39 @@ using app::ResMut;
 using app::State;
 using app::With;
 using app::Without;
-using app::Wrapper;
-template <typename... T>
-using Wrap = app::Get<app::Wrapper<T...>>;
-template <typename... T>
-using WithWrap = app::With<app::Wrapper<T...>>;
-template <typename... T>
-using WithoutWrap = app::Without<app::Wrapper<T...>>;
-template <typename... T>
-using CWrap = app::Get<const app::Wrapper<T...>>;
 
 // OTHER TOOLS
 using entt::dense_map;
 using entt::dense_set;
+using epix::app::bundle;
+using epix::app::chain;
+using epix::app::into;
 using epix::app::thread_pool;
 using epix::utility::time_scope;
-
-template <typename... Args1, typename... Args2>
-bool test_systems_conflict(
-    std::function<void(Args1...)> func1, std::function<void(Args2...)> func2
-) {
-    std::unique_ptr<app::BasicSystem<void>> sys1 =
-        std::make_unique<app::System<Args1...>>(func1);
-    std::unique_ptr<app::BasicSystem<void>> sys2 =
-        std::make_unique<app::System<Args2...>>(func2);
-    return sys1->contrary_to(sys2.get());
-}
-template <typename... Args1, typename... Args2>
-bool test_systems_conflict(void (*func1)(Args1...), void (*func2)(Args2...)) {
-    std::unique_ptr<app::BasicSystem<void>> sys1 =
-        std::make_unique<app::System<Args1...>>(func1);
-    std::unique_ptr<app::BasicSystem<void>> sys2 =
-        std::make_unique<app::System<Args2...>>(func2);
-    return sys1->contrary_to(sys2.get());
-}
 
 }  // namespace epix
 namespace epix::prelude {
 using namespace epix;
 }
+
+#define __EPIX_STRINGIZE2(x) #x
+#define __EPIX_STRINGIZE(x) __EPIX_STRINGIZE2(##x)
+#define EPIX_CONCAT2(a, b) a##b
+#define EPIX_CONCAT(a, b) EPIX_CONCAT2(a, b)
+#define EPIX_SYSTEMT(type, sys_name, body)                                     \
+    type fn_##sys_name##body;                                                  \
+    constexpr auto EPIX_CONCAT(get_##sys_name, _name)() {                      \
+        auto fn_name =                                                         \
+            std::string_view(std::source_location::current().function_name()); \
+        auto namespace_name = fn_name.substr(0, fn_name.rfind("::"));          \
+        return std::string(namespace_name) + "::" + #sys_name;                 \
+    }                                                                          \
+    inline auto sys_name = epix::app::SystemT(                                 \
+        EPIX_CONCAT(get_##sys_name, _name)(), fn_##sys_name                    \
+    );
+#define EPIX_SYSTEM(sys_name, body) EPIX_SYSTEMT(auto, ##sys_name, ##body)
+#define EPIX_INTO(function) epix::app::into(##function, #function)
+
+#ifndef into2
+#define into2(x) EPIX_INTO(##x)
+#endif

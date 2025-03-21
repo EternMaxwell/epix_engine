@@ -150,18 +150,14 @@ class SpawnDespawnPlugin : public Plugin {
    public:
     void build(App& app) override {
         app.add_system(Startup, spawn)
-            ->add_system(Startup, print_count_1)
-            .after(spawn)
-            ->add_system(Startup, print_1)
-            .after(print_count_1)
-            ->add_system(Startup, change_component_data)
-            .after(print_1)
-            ->add_system(Startup, print_count_2)
-            .after(change_component_data)
-            ->add_system(Startup, print_2)
-            .after(print_count_2)
-            ->add_system(Startup, despawn)
-            .after(print_2)
+            ->add_system(Startup, into(print_count_1).after(spawn))
+            ->add_system(Startup, into(print_1).after(print_count_1))
+            ->add_system(Startup, into(change_component_data).after(print_1))
+            ->add_system(
+                Startup, into(print_count_2).after(change_component_data)
+            )
+            ->add_system(Startup, into(print_2).after(print_count_2))
+            ->add_system(Startup, into(despawn).after(print_2))
             ->add_system(Update, print_count_3);
     }
 };

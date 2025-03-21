@@ -274,15 +274,17 @@ int main() {
     app.add_plugin(epix::render::vulkan2::VulkanPlugin{}.set_debug_callback(true
     ));
     app.add_plugin(epix::input::InputPlugin{});
-    app.add_system(epix::Startup, create_camera_uniform_buffer);
-    app.add_system(epix::Startup, create_pass_base, create_pass, create_meshes)
-        .chain();
+    app.add_system(epix::Startup, into(create_camera_uniform_buffer));
     app.add_system(
-        epix::Extraction, prepare_mesh, extract_meshes, extract_pass
+        epix::Startup, chain(create_pass_base, create_pass, create_meshes)
     );
-    app.add_system(epix::Render, draw_mesh);
-    app.add_system(epix::Exit, destroy_pass, destroy_pass_base, destroy_meshes)
-        .chain();
+    app.add_system(
+        epix::Extraction, bundle(prepare_mesh, extract_meshes, extract_pass)
+    );
+    app.add_system(epix::Render, into(draw_mesh));
+    app.add_system(
+        epix::Exit, chain(destroy_pass, destroy_pass_base, destroy_meshes)
+    );
     app.run();
     return 0;
 }

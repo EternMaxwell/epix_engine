@@ -379,12 +379,16 @@ int main() {
     ));
     app.add_plugin(epix::input::InputPlugin{});
     app.add_system(
-        Startup, create_test_texture, create_sampler, create_uniform_buffer
+        Startup,
+        bundle(create_test_texture, create_sampler, create_uniform_buffer)
     );
-    app.add_system(Startup, create_pass_base, create_pass, create_meshes)
-        .chain();
-    app.add_system(Extraction, prepare_mesh, extract_pass, extract_meshes);
-    app.add_system(Render, draw_mesh);
-    app.add_system(Exit, destroy_pass, destroy_meshes).chain();
+    app.add_system(
+        Startup, chain(create_pass_base, create_pass, create_meshes)
+    );
+    app.add_system(
+        Extraction, bundle(prepare_mesh, extract_pass, extract_meshes)
+    );
+    app.add_system(Render, into(draw_mesh));
+    app.add_system(Exit, chain(destroy_pass, destroy_meshes));
     app.run();
 }

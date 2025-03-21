@@ -1218,22 +1218,28 @@ void update_uniform_buffer(
 struct SimulationPlugin : Plugin {
     void build(App& app) override {
         app.add_system(Startup, create_simulation);
-        app.add_system(Update, create_element_from_click)
-            .in_state(InputState::Simulation);
-        app.add_system(Update, update_simulation)
-            .chain()
-            .in_state(SimulateState::Running);
-        app.add_system(Update, step_simulation).in_state(SimulateState::Paused);
         app.add_system(
-            Extraction, render_simulation, render_simulation_chunk_outline
+            Update,
+            into(create_element_from_click).in_state(InputState::Simulation)
+        );
+        app.add_system(
+            Update, into(update_simulation).in_state(SimulateState::Running)
+        );
+        app.add_system(
+            Update, into(step_simulation).in_state(SimulateState::Paused)
+        );
+        app.add_system(
+            Extraction,
+            bundle(render_simulation, render_simulation_chunk_outline)
         );
     }
 };
 
 struct RenderPassPlugin : Plugin {
     void build(App& app) override {
-        app.add_system(Startup, create_whole_pass_base, create_whole_pass)
-            .chain();
+        app.add_system(
+            Startup, chain(create_whole_pass_base, create_whole_pass)
+        );
         app.add_system(
             Startup, create_box2d_meshes, create_sand_meshes,
             create_uniform_buffer
@@ -1244,23 +1250,25 @@ struct RenderPassPlugin : Plugin {
         );
         app.add_system(Render, draw_meshes);
         app.add_system(
-               Exit, destroy_whole_pass, destroy_box2d_meshes,
-               destroy_sand_meshes
-        )
-            .chain();
+            Exit,
+            chain(destroy_whole_pass, destroy_box2d_meshes, destroy_sand_meshes)
+        );
         app.add_system(PreUpdate, toggle_full_screen);
     }
 };
 
 struct PixelB2dTestPlugin : Plugin {
     void build(App& app) override {
-        app.add_system(Startup, create_b2d_world).chain();
+        app.add_system(Startup, create_b2d_world);
         app.add_system(PostStartup, create_test_body);
-        app.add_system(PreUpdate, update_b2d_world)
-            .in_state(SimulateState::Running);
+        app.add_system(
+            PreUpdate, into(update_b2d_world).in_state(SimulateState::Running)
+        );
         app.add_system(Update, destroy_too_far_bodies, toggle_simulation);
-        app.add_system(Update, create_dynamic_from_click, update_mouse_joint)
-            .in_state(InputState::Body);
+        app.add_system(
+            Update, bundle(create_dynamic_from_click, update_mouse_joint)
+                        .in_state(InputState::Body)
+        );
         app.add_system(Extraction, render_bodies);
         app.add_system(Exit, destroy_b2d_world);
     }
@@ -1269,14 +1277,18 @@ struct PixelB2dTestPlugin : Plugin {
 struct WorldSyncPlugin : Plugin {
     void build(App& app) override {
         // === simulation to b2d === //
-        app.add_system(PostUpdate, sync_simulatino_with_b2d)
-            .in_state(SimulateState::Running);
+        app.add_system(
+            PostUpdate,
+            into(sync_simulatino_with_b2d).in_state(SimulateState::Running)
+        );
         app.add_system(Extraction, render_simulation_collision);
         // === b2d to simulation === //
-        app.add_system(Update, sync_b2d_with_simulation)
-            .after(update_b2d_world)
-            .before(update_simulation)
-            .in_state(SimulateState::Running);
+        app.add_system(
+            Update, into(sync_b2d_with_simulation)
+                        .after(update_b2d_world)
+                        .before(update_simulation)
+                        .in_state(SimulateState::Running)
+        );
     }
 };
 

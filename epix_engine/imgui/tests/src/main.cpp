@@ -5,7 +5,10 @@
 
 using namespace epix;
 
-void show_test_window(Res<imgui::ImGuiContext> ctx) { ImGui::ShowDemoWindow(); }
+EPIX_SYSTEM(
+    show_test_window,
+    (Res<imgui::ImGuiContext> ctx) { ImGui::ShowDemoWindow(); }
+)
 
 int main() {
     App app = App::create2();

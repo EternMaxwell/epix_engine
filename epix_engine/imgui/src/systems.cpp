@@ -6,10 +6,10 @@ using namespace epix::imgui;
 using namespace epix::render::vulkan2;
 
 namespace epix::imgui {
-EPIX_API void systems::insert_imgui_ctx(Command cmd) {
+EPIX_API void systems::fn_insert_imgui_ctx(Command cmd) {
     cmd.insert_resource(ImGuiContext{});
 }
-EPIX_API void systems::init_imgui(
+EPIX_API void systems::fn_init_imgui(
     ResMut<RenderContext> context,
     Query<Get<Window>, With<PrimaryWindow>> window_query,
     ResMut<ImGuiContext> imgui_context
@@ -77,7 +77,7 @@ EPIX_API void systems::init_imgui(
         vk::FenceCreateInfo().setFlags(vk::FenceCreateFlagBits::eSignaled)
     );
 }
-EPIX_API void systems::deinit_imgui(
+EPIX_API void systems::fn_deinit_imgui(
     ResMut<RenderContext> context, ResMut<ImGuiContext> imgui_context
 ) {
     if (!context) return;
@@ -95,14 +95,14 @@ EPIX_API void systems::deinit_imgui(
     if (imgui_context->framebuffer)
         device.destroyFramebuffer(imgui_context->framebuffer);
 }
-EPIX_API void systems::extract_imgui_ctx(
+EPIX_API void systems::fn_extract_imgui_ctx(
     Command cmd, ResMut<ImGuiContext> imgui_context
 ) {
     if (!imgui_context) return;
     ZoneScopedN("Extract ImGui");
     cmd.share_resource(imgui_context);
 }
-EPIX_API void systems::begin_imgui(
+EPIX_API void systems::fn_begin_imgui(
     ResMut<ImGuiContext> ctx, Res<RenderContext> context
 ) {
     if (!context) return;
@@ -111,7 +111,7 @@ EPIX_API void systems::begin_imgui(
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
 }
-EPIX_API void systems::end_imgui(
+EPIX_API void systems::fn_end_imgui(
     ResMut<ImGuiContext> ctx, Res<RenderContext> context
 ) {
     if (!context) return;

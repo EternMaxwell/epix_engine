@@ -27,12 +27,6 @@ EPIX_API bool SystemNode::run(SubApp* src, SubApp* dst) {
     m_system->run(src, dst);
     return true;
 }
-EPIX_API void SystemNode::before(const FuncIndex& func) {
-    m_ptr_nexts.insert(func);
-}
-EPIX_API void SystemNode::after(const FuncIndex& func) {
-    m_ptr_prevs.insert(func);
-}
 EPIX_API void SystemNode::clear_tmp() {
     m_weak_nexts.clear();
     m_weak_prevs.clear();
