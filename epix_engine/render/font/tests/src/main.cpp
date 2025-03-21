@@ -266,12 +266,16 @@ int main() {
     app.add_plugin(font::FontPlugin{})
         .add_plugin(VulkanPlugin{}.set_debug_callback(true))
         .add_plugin(input::InputPlugin{})
-        .add_system(Startup, create_uniform_buffer);
-    app.add_system(Startup, create_pass_base, create_pass, create_meshes)
-        .chain();
-    app.add_system(Extraction, prepare_mesh, extract_meshes, extract_pass);
-    app.add_system(Render, draw_mesh);
-    app.add_system(Exit, destroy_pass, destroy_pass_base, destroy_meshes)
-        .chain();
+        .add_system(Startup, into(create_uniform_buffer));
+    app.add_system(
+        Startup, chain(create_pass_base, create_pass, create_meshes)
+    );
+    app.add_system(
+        Extraction, bundle(prepare_mesh, extract_meshes, extract_pass)
+    );
+    app.add_system(Render, into(draw_mesh));
+    app.add_system(
+        Exit, chain(destroy_pass, destroy_pass_base, destroy_meshes)
+    );
     app.run();
 }

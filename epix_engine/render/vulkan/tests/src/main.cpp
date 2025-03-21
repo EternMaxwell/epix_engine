@@ -415,14 +415,17 @@ int main() {
         epix::render::vulkan2::VulkanPlugin{}.set_debug_callback(true)
     );
     app2.add_plugin(epix::input::InputPlugin{});
-    app2.add_system(epix::Startup, create_sampler, create_image_and_view);
-    app2.add_system(epix::Startup, create_pass_base, create_pass).chain();
-    app2.add_system(epix::Startup, create_meshes);
     app2.add_system(
-        epix::Extraction, extract_pass, prepare_mesh, extract_meshes
+        epix::Startup, epix::bundle(create_sampler, create_image_and_view)
     );
-    app2.add_system(epix::Render, draw_mesh);
-    app2.add_system(epix::Exit, destroy_pass, destroy_pass_base).chain();
-    app2.add_system(epix::Exit, destroy_meshes);
+    app2.add_system(epix::Startup, epix::chain(create_pass_base, create_pass));
+    app2.add_system(epix::Startup, epix::into(create_meshes));
+    app2.add_system(
+        epix::Extraction,
+        epix::bundle(extract_pass, prepare_mesh, extract_meshes)
+    );
+    app2.add_system(epix::Render, epix::into(draw_mesh));
+    app2.add_system(epix::Exit, epix::chain(destroy_pass, destroy_pass_base));
+    app2.add_system(epix::Exit, epix::into(destroy_meshes));
     app2.run();
 }

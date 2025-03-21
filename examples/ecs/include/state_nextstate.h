@@ -67,15 +67,13 @@ class StateTestPlugin : public Plugin {
     void build(App& app) override {
         app.init_state<States>()
             ->add_system(Startup, is_state_start)
-            ->add_system(Transit, set_state_middle)
-            .on_enter(States::Start)
-            ->add_system(Transit, set_state_end)
-            .on_enter(States::Middle)
+            ->add_system(
+                Transit, into(set_state_middle).on_enter(States::Start)
+            )
+            ->add_system(Transit, into(set_state_end).on_enter(States::Middle))
             ->add_system(Update, is_state_middle)
-            ->add_system(Update, is_state_end)
-            .after(is_state_middle)
-            ->add_system(Update, exit)
-            .after(is_state_end);
+            ->add_system(Update, into(is_state_end).after(is_state_middle))
+            ->add_system(Update, into(exit).after(is_state_end));
     }
 };
 

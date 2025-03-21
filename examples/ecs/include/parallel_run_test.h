@@ -56,12 +56,9 @@ class ParallelTestPlugin : public Plugin {
         app.enable_loop()
             ->add_system(Startup, spawn_data1)
             ->add_system(Startup, spawn_data2)
-            ->add_system(Update, print_data1)
-            .in_set(Stage::data)
-            ->add_system(Update, print_data2)
-            .in_set(Stage::data)
-            ->add_system(Update, print_endl)
-            .in_set(Stage::endl)
+            ->add_system(Update, into(print_data1).in_set(Stage::data))
+            ->add_system(Update, into(print_data2).in_set(Stage::data))
+            ->add_system(Update, into(print_endl).in_set(Stage::endl))
             ->configure_sets(Stage::data, Stage::endl)
             ->add_system(Update, exit);
     }
