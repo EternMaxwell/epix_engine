@@ -219,7 +219,7 @@ void cleanup_context(epix::ResMut<Context> ctx) {
 
 struct TestPlugin : epix::Plugin {
     void build(epix::App& app) override {
-        app.add_system(Startup, insert_context, setup_context).chain();
+        app.add_system(Startup, chain(insert_context, setup_context));
         app.add_system(Update, submit_test);
         app.add_system(First, begin_frame);
         app.add_system(Last, end_frame);
