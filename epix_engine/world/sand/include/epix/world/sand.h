@@ -153,6 +153,8 @@ struct Chunk {
 
    private:
     grid_t grid;
+    utils::grid::packed_grid<float, 2> _pressure;
+    utils::grid::packed_grid<float, 2> _temperature;
     bool _updated = false;
 
    public:
@@ -167,6 +169,11 @@ struct Chunk {
     EPIX_API void insert(int x, int y, const Particle& cell);
     EPIX_API void insert(int x, int y, Particle&& cell);
     EPIX_API void remove(int x, int y);
+
+    EPIX_API utils::grid::packed_grid<float, 2>& pressure();
+    EPIX_API const utils::grid::packed_grid<float, 2>& pressure() const;
+    EPIX_API utils::grid::packed_grid<float, 2>& temperature();
+    EPIX_API const utils::grid::packed_grid<float, 2>& temperature() const;
 
     EPIX_API int size(int dim) const;
     EPIX_API bool contains(int x, int y) const;
@@ -278,9 +285,7 @@ struct Simulator_T {
         };
         utils::grid::packed_grid<glm::vec2, 2, vec2_boolify> velocity;
         utils::grid::packed_grid<glm::vec2, 2, vec2_boolify> velocity_back;
-        utils::grid::packed_grid<float, 2> pressure;
         utils::grid::packed_grid<float, 2> pressure_back;
-        utils::grid::packed_grid<float, 2> temperature;
         utils::grid::packed_grid<float, 2> temperature_back;
 
         EPIX_API SimChunkData(int width, int height);

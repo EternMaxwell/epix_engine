@@ -11,7 +11,7 @@ EPIX_API Simulator_T::Simulator_T()
     : liquid_spread_setting{.spread_len = 3.0f, .prefix = 0.1f},
       update_state{true, true, true, true},
       max_travel(std::nullopt),
-      powder_slide_setting{.always_slide = true, .prefix = 0.05f},
+      powder_slide_setting{.always_slide = true, .prefix = 1.0f},
       m_chunk_data() {}
 
 EPIX_API void Simulator_T::assure_chunk(const World_T* world, int x, int y) {
@@ -54,9 +54,7 @@ EPIX_API Simulator_T::SimChunkData::SimChunkData(int width, int height)
       time_threshold(EPIX_WORLD_SAND_DEFAULT_CHUNK_RESET_TIME),
       velocity({width, height}),
       velocity_back({width, height}),
-      pressure({width, height}),
       pressure_back({width, height}),
-      temperature({width, height}),
       temperature_back({width, height}),
       time_since_last_swap(0) {}
 EPIX_API Simulator_T::SimChunkData::SimChunkData(const SimChunkData& other)
@@ -65,9 +63,7 @@ EPIX_API Simulator_T::SimChunkData::SimChunkData(const SimChunkData& other)
       time_threshold(other.time_threshold),
       velocity(other.velocity),
       velocity_back(other.velocity_back),
-      pressure(other.pressure),
       pressure_back(other.pressure_back),
-      temperature(other.temperature),
       temperature_back(other.temperature_back),
       time_since_last_swap(other.time_since_last_swap) {
     std::memcpy(active_area, other.active_area, sizeof(active_area));
@@ -81,9 +77,7 @@ EPIX_API Simulator_T::SimChunkData::SimChunkData(SimChunkData&& other)
       time_threshold(other.time_threshold),
       velocity(std::move(other.velocity)),
       velocity_back(std::move(other.velocity_back)),
-      pressure(std::move(other.pressure)),
       pressure_back(std::move(other.pressure_back)),
-      temperature(std::move(other.temperature)),
       temperature_back(std::move(other.temperature_back)),
       time_since_last_swap(other.time_since_last_swap) {
     std::memcpy(active_area, other.active_area, sizeof(active_area));
@@ -104,8 +98,6 @@ EPIX_API Simulator_T::SimChunkData& Simulator_T::SimChunkData::operator=(
         next_active_area, other.next_active_area, sizeof(next_active_area)
     );
     velocity         = other.velocity;
-    pressure         = other.pressure;
-    temperature      = other.temperature;
     velocity_back    = other.velocity_back;
     pressure_back    = other.pressure_back;
     temperature_back = other.temperature_back;
@@ -124,8 +116,6 @@ EPIX_API Simulator_T::SimChunkData& Simulator_T::SimChunkData::operator=(
         next_active_area, other.next_active_area, sizeof(next_active_area)
     );
     velocity         = std::move(other.velocity);
-    pressure         = std::move(other.pressure);
-    temperature      = std::move(other.temperature);
     velocity_back    = std::move(other.velocity_back);
     pressure_back    = std::move(other.pressure_back);
     temperature_back = std::move(other.temperature_back);
@@ -152,14 +142,10 @@ EPIX_API void Simulator_T::SimChunkData::swap(int chunk_size) {
 }
 EPIX_API void Simulator_T::SimChunkData::swap_maps() {
     std::swap(velocity, velocity_back);
-    std::swap(pressure, pressure_back);
-    std::swap(temperature, temperature_back);
     // velocity_back.fill(glm::vec2{0.0f, 0.0f});
     // pressure_back.fill(0.0f);
     // temperature_back.fill(0.0f);
-    velocity_back    = velocity;
-    pressure_back    = pressure;
-    temperature_back = temperature;
+    velocity_back = velocity;
 }
 EPIX_API void Simulator_T::SimChunkData::step_time(int chunk_size) {
     time_since_last_swap++;
@@ -317,7 +303,7 @@ EPIX_API bool Simulator_T::collide(
     auto& elem2   = m_world->registry().get_elem(part2.elem_id);
     float dx      = dir.x;
     float dy      = dir.y;
-    float dist    = glm::length(glm::vec2(dx, dy));
+    float dist    = glm::length(dir);
     float dv_x    = part1.velocity.x - part2.velocity.x;
     float dv_y    = part1.velocity.y - part2.velocity.y;
     float v_dot_d = dv_x * dx + dv_y * dy;
@@ -327,15 +313,15 @@ EPIX_API bool Simulator_T::collide(
     if (elem2.is_solid()) {
         m1 = 0;
     }
+    if (elem1.is_solid()) {
+        m2 = 0;
+    }
     if (elem2.is_powder() && !part2.freefall()) {
         m1 *= 0.5f;
     }
     if (elem2.is_powder() && elem1.is_liquid() &&
         elem2.density < elem1.density) {
         return true;
-    }
-    if (elem1.is_solid()) {
-        m2 = 0;
     }
     if (elem1.is_liquid()/*  &&
         elem2.grav_type == Element::GravType::SOLID */) {
@@ -438,7 +424,7 @@ EPIX_API void Simulator_T::write_velocity(
     if (!m_chunk_data.contains(chunk_x, chunk_y)) return;
     assure_chunk(m_world, chunk_x, chunk_y);
     auto& chunk_data = m_chunk_data.get(chunk_x, chunk_y);
-    chunk_data.velocity.get(cell_x, cell_y) = velocity;
+    chunk_data.velocity_back.get(cell_x, cell_y) = velocity;
 }
 
 EPIX_API void Simulator_T::read_pressure(
@@ -446,9 +432,9 @@ EPIX_API void Simulator_T::read_pressure(
 ) const {
     auto&& [chunk_x, chunk_y] = m_world->to_chunk_pos(x, y);
     auto&& [cell_x, cell_y]   = m_world->in_chunk_pos(x, y);
-    if (!m_chunk_data.contains(chunk_x, chunk_y)) return;
-    auto& chunk_data = m_chunk_data.get(chunk_x, chunk_y);
-    *pressure        = chunk_data.pressure.get(cell_x, cell_y);
+    if (!m_world->m_chunks.contains(chunk_x, chunk_y)) return;
+    auto& chunk = m_world->m_chunks.get(chunk_x, chunk_y);
+    *pressure   = chunk.pressure().get(cell_x, cell_y);
 }
 EPIX_API void Simulator_T::write_pressure(
     World_T* m_world, int x, int y, float pressure
@@ -458,7 +444,7 @@ EPIX_API void Simulator_T::write_pressure(
     if (!m_chunk_data.contains(chunk_x, chunk_y)) return;
     assure_chunk(m_world, chunk_x, chunk_y);
     auto& chunk_data = m_chunk_data.get(chunk_x, chunk_y);
-    chunk_data.pressure.get(cell_x, cell_y) = pressure;
+    chunk_data.pressure_back.get(cell_x, cell_y) = pressure;
 }
 
 EPIX_API void Simulator_T::read_temperature(
@@ -466,9 +452,9 @@ EPIX_API void Simulator_T::read_temperature(
 ) const {
     auto&& [chunk_x, chunk_y] = m_world->to_chunk_pos(x, y);
     auto&& [cell_x, cell_y]   = m_world->in_chunk_pos(x, y);
-    if (!m_chunk_data.contains(chunk_x, chunk_y)) return;
-    auto& chunk_data = m_chunk_data.get(chunk_x, chunk_y);
-    *temperature     = chunk_data.temperature.get(cell_x, cell_y);
+    if (!m_world->m_chunks.contains(chunk_x, chunk_y)) return;
+    auto& chunk  = m_world->m_chunks.get(chunk_x, chunk_y);
+    *temperature = chunk.temperature().get(cell_x, cell_y);
 }
 EPIX_API void Simulator_T::write_temperature(
     World_T* m_world, int x, int y, float temperature
@@ -478,7 +464,7 @@ EPIX_API void Simulator_T::write_temperature(
     if (!m_chunk_data.contains(chunk_x, chunk_y)) return;
     assure_chunk(m_world, chunk_x, chunk_y);
     auto& chunk_data = m_chunk_data.get(chunk_x, chunk_y);
-    chunk_data.temperature.get(cell_x, cell_y) = temperature;
+    chunk_data.temperature_back.get(cell_x, cell_y) = temperature;
 }
 
 EPIX_API void Simulator_T::apply_viscosity(
@@ -497,7 +483,9 @@ EPIX_API void Simulator_T::step_particle(
     // calling this function
     auto [chunk_x, chunk_y] = m_world->to_chunk_pos(x_, y_);
     auto [cell_x, cell_y]   = m_world->in_chunk_pos(x_, y_);
-    auto* cell = &m_world->m_chunks.get(chunk_x, chunk_y).get(cell_x, cell_y);
+    auto& chunk             = m_world->m_chunks.get(chunk_x, chunk_y);
+    if (!chunk.contains(cell_x, cell_y)) return;
+    auto* cell = &chunk.get(cell_x, cell_y);
     if (cell->updated()) return;
     auto& elem = m_world->m_registry->get_elem(cell->elem_id);
     if (elem.is_place_holder() || elem.is_solid()) return;
@@ -653,10 +641,11 @@ EPIX_API void Simulator_T::step_particle(
         if (cell->freefall()) {
             touch(m_world, x_, y_);
             float angle_diff = cal_angle(cell->velocity, grav);
+            cell->inpos += cell->velocity * delta + 0.5f * grav * delta * delta;
             cell->velocity += grav * delta;
-            cell->inpos += cell->velocity * delta;
-            int delta_x = static_cast<int>(std::round(cell->inpos.x));
-            int delta_y = static_cast<int>(std::round(cell->inpos.y));
+            cell->velocity *= 0.99f;
+            int delta_x = static_cast<int>((cell->inpos.x));
+            int delta_y = static_cast<int>((cell->inpos.y));
             cell->inpos.x -= delta_x;
             cell->inpos.y -= delta_y;
             if (max_travel.has_value()) {
@@ -673,12 +662,25 @@ EPIX_API void Simulator_T::step_particle(
                 final_y = raycast_result.new_y;
                 cell    = &m_world->particle_at(final_x, final_y);
             }
+            // if (raycast_result.hit) {
+            //     auto [hit_x, hit_y] = *raycast_result.hit;
+            //     if (m_world->valid(hit_x, hit_y)) {
+            //         auto [hit_chunk_x, hit_chunk_y] =
+            //             m_world->to_chunk_pos(hit_x, hit_y);
+            //         if (hit_chunk_x == chunk_x && hit_chunk_y == chunk_y) {
+            //             step_particle(m_world, hit_x, hit_y, delta);
+            //             raycast_result = raycast_to(
+            //                 m_world, x_, y_, x_ + delta_x, y_ + delta_y
+            //             );
+            //         }
+            //     }
+            // }
             if (raycast_result.hit) {
                 if (!m_world->valid(
                         raycast_result.hit->first, raycast_result.hit->second
                     )) {
                     cell->velocity = {0.0f, 0.0f};
-                    cell->inpos *= 0.5f;
+                    cell->inpos *= 0.3f;
                 } else if (m_world->contains(
                                raycast_result.hit->first,
                                raycast_result.hit->second
@@ -689,33 +691,51 @@ EPIX_API void Simulator_T::step_particle(
                     if (!telem.is_gas() && !telem.is_liquid()) {
                         collide(
                             m_world, *cell, tcell,
-                            glm::vec2{
+                            glm::vec2(
                                 raycast_result.hit->first - final_x,
                                 raycast_result.hit->second - final_y
-                            } + tcell.inpos -
+                            ) + tcell.inpos -
                                 cell->inpos
                         );
+                        // collide(
+                        //     m_world, final_x, final_y,
+                        //     raycast_result.hit->first,
+                        //     raycast_result.hit->second
+                        // );
                     } else {
                         m_world->swap(
                             final_x, final_y, raycast_result.hit->first,
                             raycast_result.hit->second
                         );
+                        final_x = raycast_result.hit->first;
+                        final_y = raycast_result.hit->second;
+                        cell    = &m_world->particle_at(final_x, final_y);
                     }
                 }
                 if (final_x == x_ && final_y == y_ &&
                     std::fabsf(angle_diff) < std::numbers::pi / 2) {
                     {
+                        static thread_local std::random_device rd;
+                        static thread_local std::mt19937 gen(rd());
+                        static thread_local std::uniform_real_distribution<
+                            float>
+                            dis(-0.3f, 0.3f);
+                        float angle     = angle_diff + dis(gen);
                         const auto dirs = std::array<glm::ivec2, 2>{
-                            angle_diff >= 0 ? ilb_d : irb_d,
-                            angle_diff >= 0 ? irb_d : ilb_d
+                            angle >= 0 ? ilb_d : irb_d,
+                            angle >= 0 ? irb_d : ilb_d
                         };
                         const auto dirfs = std::array<glm::vec2, 2>{
-                            angle_diff >= 0 ? lb_d : rb_d,
-                            angle_diff >= 0 ? rb_d : lb_d
+                            angle >= 0 ? lb_d : rb_d, angle >= 0 ? rb_d : lb_d
+                        };
+                        const auto dirf_fixs = std::array<glm::vec2, 2>{
+                            angle >= 0 ? left_d : right_d,
+                            angle >= 0 ? right_d : left_d
                         };
                         for (auto i = 0; i < 2; i++) {
-                            auto& dir  = dirs[i];
-                            auto& dirf = dirfs[i];
+                            auto& dir      = dirs[i];
+                            auto& dirf     = dirfs[i];
+                            auto& dirf_fix = dirf_fixs[i];
                             if (m_world->valid(x_ + dir.x, y_ + dir.y)) {
                                 if (!m_world->contains(
                                         x_ + dir.x, y_ + dir.y
@@ -744,7 +764,8 @@ EPIX_API void Simulator_T::step_particle(
                                 }
                             }
                             if (final_x != x_ || final_y != y_) {
-                                cell->velocity += dirf * delta * grav_len *
+                                cell->velocity += (dirf + dirf_fix) * delta *
+                                                  grav_len *
                                                   powder_slide_setting.prefix;
                                 break;
                             }
@@ -771,7 +792,7 @@ EPIX_API void Simulator_T::step_particle(
                         }
                         if (set_not_freefall) {
                             cell->velocity = {0.0f, 0.0f};
-                            cell->inpos *= 0.5f;
+                            cell->inpos *= 0.3f;
                             cell->set_freefall(false);
                         }
                     }
@@ -784,6 +805,10 @@ EPIX_API void Simulator_T::step_particle(
             touch(m_world, x_ - 1, y_);
             touch(m_world, x_, y_ + 1);
             touch(m_world, x_, y_ - 1);
+            touch(m_world, x_ + 1, y_ + 1);
+            touch(m_world, x_ - 1, y_ + 1);
+            touch(m_world, x_ + 1, y_ - 1);
+            touch(m_world, x_ - 1, y_ - 1);
             touch(m_world, final_x + 1, final_y);
             touch(m_world, final_x - 1, final_y);
             touch(m_world, final_x, final_y + 1);
@@ -829,9 +854,9 @@ EPIX_API void Simulator_T::step(World_T* m_world, float delta) {
             }
         }
     }
+    // to make sure the references are valid:
     m_chunk_data.reserve(m_world->m_chunks.count());
     max_travel = {m_world->m_chunk_size, m_world->m_chunk_size};
-    // to make sure the references are valid
     for (auto&& [xmod, ymod] : modres) {
         for (auto&& [pos, chunk] : m_world->view()) {
             if ((pos[0] + xmod) % mod != 0 || (pos[1] + ymod) % mod != 0)
@@ -849,7 +874,7 @@ EPIX_API void Simulator_T::step(World_T* m_world, float delta) {
                 int xmax = chunk_data.active_area[1];
                 int ymin = chunk_data.active_area[2];
                 int ymax = chunk_data.active_area[3];
-                std::vector<std::pair<int, int>> cells;
+                static thread_local std::vector<std::pair<int, int>> cells;
                 cells.reserve(chunk.count());
                 for (auto&& [cell_pos, cell] : chunk.view()) {
                     cells.emplace_back(cell_pos[0], cell_pos[1]);
@@ -866,12 +891,13 @@ EPIX_API void Simulator_T::step(World_T* m_world, float delta) {
                     auto y = pos[1] * m_world->m_chunk_size + cy;
                     step_particle(m_world, x, y, delta);
                 }
+                cells.clear();
                 chunk_data.step_time(m_world->m_chunk_size);
             });
         }
         m_world->m_thread_pool->wait();
     }
-    step_maps(m_world, delta);
+    // step_maps(m_world, delta);
 }
 EPIX_API void Simulator_T::step_maps(World_T* m_world, float delta) {
     m_chunk_data.reserve(m_world->m_chunks.count());
@@ -904,7 +930,13 @@ EPIX_API void Simulator_T::step_maps(World_T* m_world, float delta) {
             );
         }
         auto& chunk_data = m_chunk_data.get(pos[0], pos[1]);
-        m_world->m_thread_pool->detach_task([&]() { chunk_data.swap_maps(); });
+        m_world->m_thread_pool->detach_task([&]() {
+            chunk_data.swap_maps();
+            std::swap(chunk_data.pressure_back, chunk.pressure());
+            std::swap(chunk_data.temperature_back, chunk.temperature());
+            chunk_data.pressure_back    = chunk.pressure();
+            chunk_data.temperature_back = chunk.temperature();
+        });
     }
     m_world->m_thread_pool->wait();
 }

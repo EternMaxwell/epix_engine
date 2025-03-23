@@ -3,19 +3,35 @@
 using namespace epix::world::sand;
 
 EPIX_API Chunk::Chunk(int width, int height)
-    : grid({width, height}), width(width), height(height) {}
+    : grid({width, height}),
+      width(width),
+      height(height),
+      _pressure({width, height}),
+      _temperature({width, height}) {}
 EPIX_API Chunk::Chunk(const Chunk& other)
-    : grid(other.grid), width(other.width), height(other.height) {}
+    : grid(other.grid),
+      width(other.width),
+      height(other.height),
+      _pressure(other._pressure),
+      _temperature(other._temperature) {}
 EPIX_API Chunk::Chunk(Chunk&& other)
-    : grid(std::move(other.grid)), width(other.width), height(other.height) {}
+    : grid(std::move(other.grid)),
+      width(other.width),
+      height(other.height),
+      _pressure(std::move(other._pressure)),
+      _temperature(std::move(other._temperature)) {}
 EPIX_API Chunk& Chunk::operator=(const Chunk& other) {
     assert(width == other.width && height == other.height);
-    grid = other.grid;
+    grid         = other.grid;
+    _pressure    = other._pressure;
+    _temperature = other._temperature;
     return *this;
 }
 EPIX_API Chunk& Chunk::operator=(Chunk&& other) {
     assert(width == other.width && height == other.height);
-    grid = std::move(other.grid);
+    grid         = std::move(other.grid);
+    _pressure    = std::move(other._pressure);
+    _temperature = std::move(other._temperature);
     return *this;
 }
 EPIX_API void Chunk::reset_updated() {
@@ -47,6 +63,22 @@ EPIX_API void Chunk::remove(int x, int y) {
     grid.remove(x, y);
     _updated = true;
 }
+
+EPIX_API epix::utils::grid::packed_grid<float, 2>& Chunk::pressure() {
+    return _pressure;
+}
+EPIX_API const epix::utils::grid::packed_grid<float, 2>& Chunk::pressure(
+) const {
+    return _pressure;
+}
+EPIX_API epix::utils::grid::packed_grid<float, 2>& Chunk::temperature() {
+    return _temperature;
+}
+EPIX_API const epix::utils::grid::packed_grid<float, 2>& Chunk::temperature(
+) const {
+    return _temperature;
+}
+
 EPIX_API int Chunk::size(int dim) const {
     if (dim == 0) {
         return width;
