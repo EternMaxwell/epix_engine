@@ -155,7 +155,9 @@ EPIX_API void App::build_plugins() {
         m_logger->debug("Building plugin: {}", ptr.name());
         plugin->build(*this);
         for (auto&& [app_ptr, subapp] : *m_sub_apps) {
-            subapp->m_world.m_resources.emplace(ptr, plugin);
+            subapp->m_world.m_resources.emplace(
+                ptr, std::pair{plugin, std::make_shared<std::shared_mutex>()}
+            );
         }
     }
 }

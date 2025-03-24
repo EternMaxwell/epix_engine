@@ -19,6 +19,7 @@
 #include <mutex>
 #include <optional>
 #include <queue>
+#include <shared_mutex>
 #include <source_location>
 #include <string>
 #include <tuple>
@@ -76,6 +77,12 @@ struct Entity;
 struct EntityCommand;
 struct Command;
 
+template <typename T>
+struct external_thread_safe {
+    static constexpr bool value = false;
+};
+template <typename T>
+static constexpr bool external_thread_safe_v = external_thread_safe<T>::value;
 template <typename T>
 struct Res;
 template <typename T>
@@ -344,7 +351,10 @@ struct std::equal_to<epix::app::Entity> {
 namespace epix::app {
 struct World {
     entt::registry m_registry;
-    entt::dense_map<std::type_index, std::shared_ptr<void>> m_resources;
+    entt::dense_map<
+        std::type_index,
+        std::pair<std::shared_ptr<void>, std::shared_ptr<std::shared_mutex>>>
+        m_resources;
     entt::dense_map<std::type_index, std::unique_ptr<EventQueueBase>>
         m_event_queues;
 };
@@ -370,11 +380,30 @@ struct Entity {
 template <typename ResT>
 struct Res {
    private:
-    const ResT* m_res;
+    std::shared_ptr<ResT> m_res;
+    std::shared_ptr<std::shared_mutex> m_mutex;
 
    public:
-    Res(void* resource) : m_res(static_cast<const ResT*>(resource)) {}
-    Res() : m_res(nullptr) {}
+    Res(const std::shared_ptr<void>& resource,
+        const std::shared_ptr<std::shared_mutex>& mutex)
+        : m_res(std::static_pointer_cast<ResT>(resource)), m_mutex(mutex) {
+        if constexpr (external_thread_safe_v<ResT>) {
+            return;
+        }
+        if (m_mutex) m_mutex->lock_shared();
+    }
+    Res() : m_res(nullptr), m_mutex(nullptr) {}
+    Res(const Res<ResT>& other) = delete;
+    Res(Res<ResT>&& other) {
+        m_res   = std::move(other.m_res);
+        m_mutex = std::move(other.m_mutex);
+    }
+    Res& operator=(const Res<ResT>& other) = delete;
+    Res& operator=(Res<ResT>&& other) {
+        m_res   = std::move(other.m_res);
+        m_mutex = std::move(other.m_mutex);
+        return *this;
+    }
 
     /**
      * @brief Check if the resource has a value.
@@ -385,19 +414,47 @@ struct Res {
     bool operator!() { return !has_value(); }
 
     const ResT& operator*() { return *m_res; }
-    const ResT* operator->() { return m_res; }
+    const ResT* operator->() { return m_res.get(); }
 
-    const ResT* get() { return m_res; }
+    const ResT* get() { return m_res.get(); }
+
+    ~Res() {
+        if constexpr (external_thread_safe_v<ResT>) {
+            return;
+        }
+        if (m_mutex) m_mutex->unlock_shared();
+    }
 };
 
 template <typename ResT>
 struct ResMut {
    private:
-    ResT* m_res;
+    std::shared_ptr<ResT> m_res;
+    std::shared_ptr<std::shared_mutex> m_mutex;
 
    public:
-    ResMut(void* resource) : m_res(static_cast<ResT*>(resource)) {}
-    ResMut() : m_res(nullptr) {}
+    ResMut(
+        const std::shared_ptr<void>& resource,
+        const std::shared_ptr<std::shared_mutex>& mutex
+    )
+        : m_res(std::static_pointer_cast<ResT>(resource)), m_mutex(mutex) {
+        if constexpr (external_thread_safe_v<ResT>) {
+            return;
+        }
+        if (m_mutex) m_mutex->lock();
+    }
+    ResMut() : m_res(nullptr), m_mutex(nullptr) {}
+    ResMut(ResMut<ResT>& other) = delete;
+    ResMut(ResMut<ResT>&& other) {
+        m_res   = std::move(other.m_res);
+        m_mutex = std::move(other.m_mutex);
+    }
+    ResMut& operator=(ResMut<ResT>& other) = delete;
+    ResMut& operator=(ResMut<ResT>&& other) {
+        m_res   = std::move(other.m_res);
+        m_mutex = std::move(other.m_mutex);
+        return *this;
+    }
 
     /**
      * @brief Check if the resource has a value.
@@ -410,9 +467,16 @@ struct ResMut {
     operator Res<ResT>() { return Res<ResT>(m_res); }
 
     ResT& operator*() { return *m_res; }
-    ResT* operator->() { return m_res; }
+    ResT* operator->() { return m_res.get(); }
 
-    ResT* get() { return m_res; }
+    ResT* get() { return m_res.get(); }
+
+    ~ResMut() {
+        if constexpr (external_thread_safe_v<ResT>) {
+            return;
+        }
+        if (m_mutex) m_mutex->unlock();
+    }
 };
 template <typename T>
 struct Local {
@@ -656,11 +720,14 @@ struct Command {
             )) == m_resources->end()) {
             m_resources->emplace(
                 std::type_index(typeid(std::remove_reference_t<T>)),
-                std::static_pointer_cast<void>(
-                    std::make_shared<std::remove_reference_t<T>>(
-                        std::forward<Args>(args)...
-                    )
-                )
+                std::pair{
+                    std::static_pointer_cast<void>(
+                        std::make_shared<std::remove_reference_t<T>>(
+                            std::forward<Args>(args)...
+                        )
+                    ),
+                    std::make_shared<std::shared_mutex>()
+                }
             );
         }
     }
@@ -671,11 +738,14 @@ struct Command {
             )) == m_resources->end()) {
             m_resources->emplace(
                 std::type_index(typeid(std::remove_reference_t<T>)),
-                std::static_pointer_cast<void>(
-                    std::make_shared<std::remove_reference_t<T>>(
-                        std::forward<T>(res)
-                    )
-                )
+                std::pair{
+                    std::static_pointer_cast<void>(
+                        std::make_shared<std::remove_reference_t<T>>(
+                            std::forward<T>(res)
+                        )
+                    ),
+                    std::make_shared<std::shared_mutex>()
+                }
             );
         }
     }
@@ -686,7 +756,10 @@ struct Command {
             )) == m_resources->end()) {
             m_resources->emplace(
                 std::type_index(typeid(std::remove_reference_t<T>)),
-                std::static_pointer_cast<void>(res)
+                std::pair{
+                    std::static_pointer_cast<void>(res),
+                    std::make_shared<std::shared_mutex>()
+                }
             );
         }
     }
@@ -697,7 +770,10 @@ struct Command {
             )) == m_resources->end()) {
             m_resources->emplace(
                 std::type_index(typeid(std::remove_reference_t<T>)),
-                std::static_pointer_cast<void>(std::shared_ptr<T>(res))
+                std::pair{
+                    std::static_pointer_cast<void>(std::shared_ptr<T>(res)),
+                    std::make_shared<std::shared_mutex>()
+                }
             );
         }
     }
@@ -722,7 +798,8 @@ struct Command {
                 std::make_shared<std::remove_reference_t<T>>()
             );
             m_resources->emplace(
-                std::type_index(typeid(std::remove_reference_t<T>)), res
+                std::type_index(typeid(std::remove_reference_t<T>)),
+                std::pair{res, std::make_shared<std::shared_mutex>()}
             );
         }
     }
@@ -1056,25 +1133,27 @@ struct SubApp {
     template <typename ResT>
     struct value_type<Res<ResT>> {
         static Res<ResT> get(SubApp& app) {
-            return Res<ResT>(app.m_world
-                                 .m_resources[std::type_index(
-                                     typeid(std::remove_const_t<ResT>)
-                                 )]
-                                 .get());
+            auto& pair = app.m_world.m_resources[std::type_index(
+                typeid(std::remove_const_t<ResT>)
+            )];
+            return std::move(Res<ResT>(pair.first, pair.second));
         }
-        static Res<ResT> get(SubApp& src, SubApp& dst) { return get(src); }
+        static Res<ResT> get(SubApp& src, SubApp& dst) {
+            return std::move(get(src));
+        }
     };
 
     template <typename ResT>
     struct value_type<ResMut<ResT>> {
         static ResMut<ResT> get(SubApp& app) {
-            return ResMut<ResT>(app.m_world
-                                    .m_resources[std::type_index(
-                                        typeid(std::remove_const_t<ResT>)
-                                    )]
-                                    .get());
+            auto& pair = app.m_world.m_resources[std::type_index(
+                typeid(std::remove_const_t<ResT>)
+            )];
+            return std::move(ResMut<ResT>(pair.first, pair.second));
         }
-        static ResMut<ResT> get(SubApp& src, SubApp& dst) { return get(src); }
+        static ResMut<ResT> get(SubApp& src, SubApp& dst) {
+            return std::move(get(src));
+        }
     };
 
     template <>
@@ -1276,7 +1355,7 @@ struct BasicSystem {
     template <typename Arg>
     struct const_infos_adder {
         static void add(entt::dense_set<std::type_index>& infos) {
-            if constexpr (std::is_const_v<Arg>)
+            if constexpr (std::is_const_v<Arg> || external_thread_safe_v<Arg>)
                 infos.emplace(typeid(std::remove_const_t<Arg>));
         }
     };
@@ -1284,7 +1363,8 @@ struct BasicSystem {
     template <typename Arg>
     struct mutable_infos_adder {
         static void add(entt::dense_set<std::type_index>& infos) {
-            if constexpr (!std::is_const_v<Arg>) infos.emplace(typeid(Arg));
+            if constexpr (!std::is_const_v<Arg> && !external_thread_safe_v<Arg>)
+                infos.emplace(typeid(Arg));
         }
     };
 
