@@ -10,7 +10,7 @@ EPIX_API void systems::fn_create_context(
         return;
     }
     volkInitialize();
-    vk::detail::defaultDispatchLoaderDynamic.init(vkGetInstanceProcAddr);
+    vk::defaultDispatchLoaderDynamic.init(vkGetInstanceProcAddr);
     ZoneScopedN("Create vulkan context");
     auto [window]     = query.single();
     Instance instance = Instance::create(
@@ -18,7 +18,7 @@ EPIX_API void systems::fn_create_context(
         spdlog::default_logger()->clone("vulkan"), plugin->debug_callback
     );
     volkLoadInstance(instance.instance);
-    vk::detail::defaultDispatchLoaderDynamic.init(instance.instance);
+    vk::defaultDispatchLoaderDynamic.init(instance.instance);
     PhysicalDevice physical_device =
         instance.instance.enumeratePhysicalDevices().front();
     Device device        = Device::create(instance, physical_device);

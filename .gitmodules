@@ -43,9 +43,6 @@
 [submodule "libs/webgpu"]
 	path = libs/webgpu
 	url = https://github.com/eliemichel/WebGPU-distribution.git
-[submodule "libs/dawn"]
-	path = libs/dawn
-	url = https://dawn.googlesource.com/dawn
 [submodule "libs/glfw_webgpu"]
 	path = libs/glfw_webgpu
 	url = https://github.com/eliemichel/glfw3webgpu.git

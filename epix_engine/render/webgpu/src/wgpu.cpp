@@ -1,1 +1,2 @@
-#include "epix/wgpu.h"
+#define WEBGPU_CPP_IMPLEMENTATION
+#include <webgpu/webgpu.hpp>
