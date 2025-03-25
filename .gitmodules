@@ -1,47 +1,36 @@
 ﻿[submodule "libs/entt"]
 	path = libs/entt
 	url = https://github.com/skypjack/entt.git
-	tag = v3.13.2
 [submodule "libs/glfw"]
 	path = libs/glfw
 	url = https://github.com/glfw/glfw.git
-	tag = 3.4
 [submodule "libs/spdlog"]
 	path = libs/spdlog
 	url = https://github.com/gabime/spdlog.git
-	tag = v1.14.1
 [submodule "libs/fmt"]
 	path = libs/fmt
 	url = https://github.com/fmtlib/fmt.git
-	tag = 11.0.2
 [submodule "libs/pfr"]
 	path = libs/pfr
 	url = https://github.com/apolukhin/pfr_non_boost.git
-	tag = 2.2.0
 [submodule "libs/freetype"]
 	path = libs/freetype
 	url = https://github.com/freetype/freetype.git
-	tag = VER-2-13-3
 [submodule "libs/vma"]
 	path = libs/vma
 	url = https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator.git
-	tag = v3.1.0
 [submodule "libs/glm"]
 	path = libs/glm
 	url = https://github.com/g-truc/glm.git
-	tag = 1.0.1
 [submodule "libs/box2d"]
 	path = libs/box2d
 	url = https://github.com/erincatto/box2d.git
-	tag = v3.0.0
 [submodule "libs/tracy"]
 	path = libs/tracy
 	url = https://github.com/wolfpld/tracy.git
-	tag = v0.11.1
 [submodule "libs/thread-pool"]
 	path = libs/thread-pool
 	url = https://github.com/bshoshany/thread-pool.git
-	tag = v5.0.0
 [submodule "libs/SPIRV-Cross"]
 	path = libs/SPIRV-Cross
 	url = https://github.com/KhronosGroup/SPIRV-Cross.git
@@ -56,7 +45,7 @@
 	url = https://github.com/eliemichel/WebGPU-distribution.git
 [submodule "libs/dawn"]
 	path = libs/dawn
-	url = https://github.com/google/dawn.git
+	url = https://dawn.googlesource.com/dawn
 [submodule "libs/glfw_webgpu"]
 	path = libs/glfw_webgpu
 	url = https://github.com/eliemichel/glfw3webgpu.git
