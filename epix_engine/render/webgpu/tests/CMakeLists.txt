@@ -12,6 +12,22 @@ target_link_libraries(wgpu_test epix::window)
 target_link_libraries(wgpu_test epix::webgpu)
 target_link_libraries(wgpu_test epix::input)
 
+
+if (GLFW_BUILD_COCOA)
+    target_compile_definitions(wgpu_test PRIVATE _GLFW_COCOA)
+    target_compile_options(wgpu_test PRIVATE -x objective-c)
+    target_link_libraries(wgpu_test PRIVATE "-framework Cocoa" "-framework CoreVideo" "-framework IOKit" "-framework QuartzCore")
+endif()
+if (GLFW_BUILD_WIN32)
+    target_compile_definitions(wgpu_test PRIVATE _GLFW_WIN32)
+endif()
+if (GLFW_BUILD_X11)
+    target_compile_definitions(wgpu_test PRIVATE _GLFW_X11)
+endif()
+if (GLFW_BUILD_WAYLAND)
+    target_compile_definitions(wgpu_test PRIVATE _GLFW_WAYLAND)
+endif()
+
 # set (PROJNAME wgpu_test)
 
 # add_custom_command(TARGET ${PROJNAME} POST_BUILD
