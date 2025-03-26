@@ -46,17 +46,6 @@ fn fs_main() -> @location(0) vec4f {
 
 void insert_context(epix::Command cmd) { cmd.insert_resource(Context{}); }
 
-void device_lost_callback(
-    WGPUDeviceLostReason reason, const char* message, void* userdata
-) {
-    spdlog::error("Device lost: {}", message);
-}
-void uncaptured_error_callback(
-    WGPUErrorType type, const char* message, void* userdata
-) {
-    spdlog::error("Error: {}", message);
-}
-
 void setup_context(
     epix::ResMut<Context> ctx,
     Query<Get<window::Window>, With<window::PrimaryWindow>> window_query
@@ -76,13 +65,20 @@ void setup_context(
         .defaultQueue{
             .label{"Queue", WGPU_STRLEN},
         },
-        //    .deviceLostCallbackInfo{
-        //        .mode     = wgpu::CallbackMode::AllowProcessEvents,
-        //        .callback = device_lost_callback,
-        // },
-        //    .uncapturedErrorCallbackInfo{
-        //        .callback = uncaptured_error_callback,
-        // },
+        .deviceLostCallbackInfo{
+            .mode     = wgpu::CallbackMode::AllowProcessEvents,
+            .callback = [](const WGPUDevice* device,
+                           WGPUDeviceLostReason reason, WGPUStringView message,
+                           void* userdata1, void* userdata2
+                        ) { spdlog::error("Device lost: {}", message.data); },
+        },
+        .uncapturedErrorCallbackInfo{
+            .callback =
+                [](const WGPUDevice* device, WGPUErrorType type,
+                   WGPUStringView message, void* userdata1, void* userdata2) {
+                    spdlog::error("Uncaptured error: {}", message.data);
+                },
+        },
     };
     ctx->device = ctx->adapter.requestDevice(desc_device);
     wgpu::SurfaceCapabilities capabilities;
