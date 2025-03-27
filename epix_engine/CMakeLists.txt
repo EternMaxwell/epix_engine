@@ -11,6 +11,9 @@ add_subdirectory(common)
 add_subdirectory(app)
 add_subdirectory(window)
 add_subdirectory(input)
+# EPIX UTILS MODULES
+add_subdirectory(utils/grid)
+add_subdirectory(assets)
 # EPIX RENDER MODULES
 add_subdirectory(vulkan)
 add_subdirectory(render_ogl)
@@ -22,8 +25,6 @@ add_subdirectory(render/dbgrd)
 add_subdirectory(render/font)
 add_subdirectory(render/sprite)
 add_subdirectory(render/pixel)
-# EPIX UTILS MODULES
-add_subdirectory(utils/grid)
 # EPIX WORLD MODULES
 add_subdirectory(world/sand)
 add_subdirectory(world/pixel_b2d)

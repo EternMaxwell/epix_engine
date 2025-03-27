@@ -43,3 +43,6 @@
 [submodule "libs/webgpu"]
 	path = libs/webgpu
 	url = https://github.com/eliemichel/WebGPU-distribution.git
+[submodule "libs/concurrentqueue"]
+	path = libs/concurrentqueue
+	url = https://github.com/cameron314/concurrentqueue.git
