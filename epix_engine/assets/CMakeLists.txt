@@ -10,7 +10,7 @@ endif()
 target_include_directories(epix_assets PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
 target_link_libraries(epix_assets PUBLIC epix_common)
-target_link_libraries(epix_assets PUBLIC concurrentqueue)
+target_link_libraries(epix_assets PUBLIC index_utilities)
 
 add_library(epix::assets ALIAS epix_assets)
 

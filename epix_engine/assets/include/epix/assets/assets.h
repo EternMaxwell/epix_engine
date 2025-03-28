@@ -1,7 +1,8 @@
 #pragma once
 
-#include <concurrentqueue.h>
+// #include <concurrentqueue.h>
 #include <epix/common.h>
+#include <index/concurrent/channel.h>
 
 #include <atomic>
 #include <deque>
@@ -14,81 +15,9 @@
 
 namespace epix::assets {
 template <typename T>
-struct conqueue {
-   private:
-    std::deque<T> m_queue;
-    std::mutex m_mutex;
-    std::condition_variable m_cv;
-
-   public:
-    conqueue()                           = default;
-    conqueue(const conqueue&)            = delete;
-    conqueue(conqueue&&)                 = delete;
-    conqueue& operator=(const conqueue&) = delete;
-    conqueue& operator=(conqueue&&)      = delete;
-
-    template <typename... Args>
-    void emplace(Args&&... args) {
-        std::lock_guard<std::mutex> lock(m_mutex);
-        m_queue.emplace_back(std::forward<Args>(args)...);
-        m_cv.notify_one();
-    }
-    std::optional<T> try_pop() {
-        std::lock_guard<std::mutex> lock(m_mutex);
-        if (m_queue.empty()) {
-            return std::nullopt;
-        } else {
-            T value = std::move(m_queue.front());
-            m_queue.pop_front();
-            return std::make_optional(std::move(value));
-        }
-    }
-    T pop() {
-        std::unique_lock<std::mutex> lock(m_mutex);
-        m_cv.wait(lock, [this] { return !m_queue.empty(); });
-        T value = std::move(m_queue.front());
-        m_queue.pop_front();
-        return std::move(value);
-    }
-};
-
+using Sender = index::channel::Sender<T>;
 template <typename T>
-struct Sender {
-    std::shared_ptr<conqueue<T>> queue;
-
-    Sender(const std::shared_ptr<conqueue<T>>& queue) : queue(queue) {}
-    Sender() = default;
-
-    template <typename... Args>
-    void send(Args&&... args) {
-        queue->emplace(std::forward<Args>(args)...);
-    }
-
-    operator bool() const { return queue != nullptr; }
-    bool operator!() const { return queue == nullptr; }
-};
-
-template <typename T>
-struct Receiver {
-    std::shared_ptr<conqueue<T>> queue;
-
-    Receiver(const std::shared_ptr<conqueue<T>>& queue) : queue(queue) {}
-    Receiver() = default;
-
-    std::optional<T> try_receive() { return std::move(queue->try_pop()); }
-    T receive() { return std::move(queue->pop()); }
-
-    Sender<T> create_sender() { return Sender<T>(queue); }
-
-    operator bool() const { return queue != nullptr; }
-    bool operator!() const { return queue == nullptr; }
-};
-
-template <typename T>
-std::tuple<Sender<T>, Receiver<T>> make_channel() {
-    auto queue = std::make_shared<conqueue<T>>();
-    return std::make_tuple(Sender<T>(queue), Receiver<T>(queue));
-}
+using Receiver = index::channel::Receiver<T>;
 
 struct AssetIndex {
     uint32_t index      = -1;
@@ -146,7 +75,7 @@ struct Handle {
     std::variant<std::shared_ptr<StrongHandle>, AssetIndex> ref;
 
     Handle(const std::shared_ptr<StrongHandle>& handle) : ref(handle) {}
-    Handle(const AssetIndex<T>& index) : ref(index) {}
+    Handle(const AssetIndex& index) : ref(index) {}
 
     Handle(const Handle& other) {
         ref = other.operator epix::assets::AssetIndex();
@@ -182,7 +111,7 @@ struct Handle {
         if (is_strong()) {
             return std::get<std::shared_ptr<StrongHandle>>(ref)->index;
         } else {
-            return std::get<AssetIndex<T>>(ref);
+            return std::get<AssetIndex>(ref);
         }
     }
 };
@@ -204,7 +133,8 @@ struct Assets {
     Assets() {
         m_assets.reserve(16);
         m_free_indices.reserve(16);
-        m_event_receiver = std::get<1>(make_channel<DestructionEvent>());
+        m_event_receiver =
+            std::get<1>(index::channel::make_channel<DestructionEvent>());
     }
     Assets(const Assets&)            = delete;
     Assets(Assets&&)                 = delete;
@@ -239,7 +169,7 @@ struct Assets {
         }
     }
 
-    std::optional<Handle<T>> get_strong_handle(const AssetIndex<T>& index) {
+    std::optional<Handle<T>> get_strong_handle(const AssetIndex& index) {
         if (index.index < m_assets.size() &&
             m_assets[index.index].generation == index.generation &&
             m_assets[index.index].asset) {
@@ -252,8 +182,7 @@ struct Assets {
         }
     }
 
-    std::optional<std::reference_wrapper<const T>> get(
-        const AssetIndex<T>& index
+    std::optional<std::reference_wrapper<const T>> get(const AssetIndex& index
     ) const {
         if (index.index < m_assets.size() &&
             m_assets[index.index].generation == index.generation &&
@@ -265,8 +194,7 @@ struct Assets {
             return std::nullopt;
         }
     }
-    std::optional<std::reference_wrapper<T>> get_mut(const AssetIndex<T>& index
-    ) {
+    std::optional<std::reference_wrapper<T>> get_mut(const AssetIndex& index) {
         if (index.index < m_assets.size() &&
             m_assets[index.index].generation == index.generation &&
             m_assets[index.index].asset) {

@@ -46,3 +46,6 @@
 [submodule "libs/concurrentqueue"]
 	path = libs/concurrentqueue
 	url = https://github.com/cameron314/concurrentqueue.git
+[submodule "libs/index_utilities"]
+	path = libs/index_utilities
+	url = https://github.com/EternMaxwell/index_utilities.git
