@@ -4,10 +4,12 @@
 #include <epix/common.h>
 #include <index/concurrent/channel.h>
 #include <index/traits/variant.h>
+#include <spdlog/spdlog.h>
 
 #include <atomic>
 #include <deque>
 #include <functional>
+#include <iostream>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -77,6 +79,7 @@ struct Handle {
 
     Handle(const std::shared_ptr<StrongHandle>& handle) : ref(handle) {}
     Handle(const AssetIndex& index) : ref(index) {}
+    Handle() : ref(AssetIndex()) {}
 
     Handle(const Handle& other) {
         ref = other.operator epix::assets::AssetIndex();
@@ -130,12 +133,14 @@ struct Assets {
     std::deque<uint32_t> m_free_indices;
     Receiver<DestructionEvent> m_event_receiver;
     std::function<void(T&&)> m_destruct_behaviour;
+    std::shared_ptr<spdlog::logger> m_logger;
 
-    Assets() {
-        m_assets.reserve(16);
-        m_free_indices.reserve(16);
-        m_event_receiver =
-            std::get<1>(index::channel::make_channel<DestructionEvent>());
+    Assets()
+        : m_event_receiver(
+              std::get<1>(index::channel::make_channel<DestructionEvent>())
+          ) {
+        m_logger =
+            spdlog::default_logger()->clone(typeid(decltype(*this)).name());
     }
     Assets(const Assets&)            = delete;
     Assets(Assets&&)                 = delete;
@@ -145,6 +150,12 @@ struct Assets {
     void set_destruct_behaviour(std::function<void(T&&)> behaviour) {
         m_destruct_behaviour = behaviour;
     }
+    void set_log_level(spdlog::level::level_enum level) {
+        m_logger->set_level(level);
+    }
+    void set_log_label(const std::string& label) {
+        m_logger = m_logger->clone(label);
+    }
 
     template <typename... Args>
     Handle<T> emplace(Args&&... args) {
@@ -152,7 +163,7 @@ struct Assets {
         if (m_free_indices.empty()) {
             index = m_assets.size();
             m_assets.emplace_back(
-                std::make_optional<T>(std::forward<Args>(args)...), 0, 0
+                std::make_optional<T>(std::forward<Args>(args)...), 0, 1
             );
             return Handle<T>(std::make_shared<StrongHandle>(
                 index, 0, m_event_receiver.create_sender()
@@ -163,6 +174,7 @@ struct Assets {
             m_assets[index].generation++;
             m_assets[index].asset =
                 std::make_optional<T>(std::forward<Args>(args)...);
+            m_assets[index].ref_count = 1;
             return Handle<T>(std::make_shared<StrongHandle>(
                 index, m_assets[index].generation,
                 m_event_receiver.create_sender()
@@ -208,13 +220,30 @@ struct Assets {
     }
 
     void handle_events() {
-        while (auto event = m_event_receiver.receive()) {
+        m_logger->trace("Handling events");
+        while (auto event = m_event_receiver.try_receive()) {
             auto& index = event->index;
             if (index.index < m_assets.size() &&
                 m_assets[index.index].generation == index.generation &&
                 m_assets[index.index].asset) {
+                m_logger->trace(
+                    "Decrease ref count of asset at {} with gen {}, current "
+                    "ref count is {}",
+                    index.index, index.generation,
+                    m_assets[index.index].ref_count
+                );
                 m_assets[index.index].ref_count--;
+                m_logger->trace(
+                    "Ref count of asset at {} with gen {} is now {}",
+                    index.index, index.generation,
+                    m_assets[index.index].ref_count
+                );
                 if (m_assets[index.index].ref_count == 0) {
+                    m_logger->trace(
+                        "Ref count of asset at {} with gen {} is 0, "
+                        "destructing",
+                        index.index, index.generation
+                    );
                     if (m_destruct_behaviour) {
                         m_destruct_behaviour(
                             std::move(m_assets[index.index].asset.value())
@@ -225,6 +254,7 @@ struct Assets {
                 }
             }
         }
+        m_logger->trace("Finished handling events");
     }
 };
 }  // namespace epix::assets
