@@ -24,7 +24,7 @@ int main() {
             }
         }
         std::cout << "create weak handle from handle 1" << std::endl;
-        auto weak_handle = handle;
+        auto weak_handle = handle.weak();
         auto strong2     = assets.get_strong_handle(handle);
         handle.~Handle();
         std::cout << "emplace new asset and assign to handle 1" << std::endl;
