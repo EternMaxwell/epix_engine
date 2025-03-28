@@ -3,6 +3,7 @@
 // #include <concurrentqueue.h>
 #include <epix/common.h>
 #include <index/concurrent/channel.h>
+#include <index/traits/variant.h>
 
 #include <atomic>
 #include <deque>
