@@ -13,10 +13,6 @@ int main() {
         assets.set_log_level(spdlog::level::trace);
         assets.set_log_label("Assets");
         auto handle = assets.emplace("Hello, World!");
-        std::cout << "check handle events to ensure the handle assignment with "
-                     "value returned by emplace is not copy"
-                  << std::endl;
-        assets.handle_events();
         {
             std::cout << "check handle 1" << std::endl;
             if (auto&& str_opt = assets.get(handle)) {
@@ -25,7 +21,9 @@ int main() {
         }
         std::cout << "create weak handle from handle 1" << std::endl;
         auto weak_handle = handle.weak();
-        auto strong2     = assets.get_strong_handle(handle);
+        std::cout << "create a new strong handle from handle 1" << std::endl;
+        auto strong2 = assets.get_strong_handle(handle);
+        std::cout << "destruct handle 1" << std::endl;
         handle.~Handle();
         std::cout << "emplace new asset and assign to handle 1" << std::endl;
         handle = assets.emplace("Hello, World2!");
@@ -41,6 +39,19 @@ int main() {
         {
             std::cout << "check weak handle" << std::endl;
             if (auto&& str_opt = assets.get(weak_handle)) {
+                std::cout << str_opt.value().get() << std::endl;
+            }
+        }
+        std::cout << "Emplace new asset, this time it should be allocated with "
+                     "index 1, gen 1."
+                  << std::endl;
+        auto handle2 = assets.emplace("Hello, World3!");
+        {
+            std::cout << "check handle 2" << std::endl;
+            AssetIndex index = handle2;
+            std::cout << "handle2 index: " << index.index << std::endl;
+            std::cout << "handle2 gen: " << index.generation << std::endl;
+            if (auto&& str_opt = assets.get(handle2)) {
                 std::cout << str_opt.value().get() << std::endl;
             }
         }
