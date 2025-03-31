@@ -116,18 +116,68 @@ struct Entry {
     uint32_t ref_count     = 0;
 };
 
-template <typename T>
-struct Assets {
-    std::vector<Entry<T>> m_assets;
-    std::deque<uint32_t> m_free_indices;
-    Receiver<DestructionEvent> m_event_receiver;
-    std::function<void(T&&)> m_destruct_behaviour;
-    std::shared_ptr<spdlog::logger> m_logger;
+struct AssetIndexAllocator {
+    std::atomic<uint32_t> m_next = 0;
+    Sender<AssetIndex> m_free_indices_sender;
+    Receiver<AssetIndex> m_free_indices_receiver;
 
-    Assets()
+    AssetIndexAllocator()
+        : m_free_indices_receiver(
+              std::get<1>(index::channel::make_channel<AssetIndex>())
+          ),
+          m_free_indices_sender(m_free_indices_receiver.create_sender()) {}
+    AssetIndexAllocator(const AssetIndexAllocator&)            = delete;
+    AssetIndexAllocator(AssetIndexAllocator&&)                 = delete;
+    AssetIndexAllocator& operator=(const AssetIndexAllocator&) = delete;
+    AssetIndexAllocator& operator=(AssetIndexAllocator&&)      = delete;
+
+    AssetIndex reserve() {
+        if (auto index = m_free_indices_receiver.try_receive()) {
+            index->generation++;
+            return index.value();
+        } else {
+            uint32_t i = m_next.fetch_add(1, std::memory_order_relaxed);
+            return AssetIndex{i, 0};
+        }
+    }
+    void release(const AssetIndex& index) { m_free_indices_sender.send(index); }
+};
+
+template <typename T>
+struct HandleProvider {
+    AssetIndexAllocator m_allocator;
+    Sender<DestructionEvent> m_event_sender;
+    Receiver<DestructionEvent> m_event_receiver;
+
+    HandleProvider()
         : m_event_receiver(
               std::get<1>(index::channel::make_channel<DestructionEvent>())
-          ) {
+          ),
+          m_event_sender(m_event_receiver.create_sender()) {}
+    HandleProvider(const HandleProvider&)            = delete;
+    HandleProvider(HandleProvider&&)                 = delete;
+    HandleProvider& operator=(const HandleProvider&) = delete;
+    HandleProvider& operator=(HandleProvider&&)      = delete;
+
+    Handle<T> reserve() {
+        auto index = m_allocator.reserve();
+        return Handle<T>(std::make_shared<StrongHandle>(index, m_event_sender));
+    }
+
+    void release(const Handle<T>& handle) { m_allocator.release(handle); }
+    void release(const AssetIndex& index) { m_allocator.release(index); }
+};
+
+template <typename T>
+struct Assets {
+   private:
+    std::vector<Entry<T>> m_assets;
+    std::shared_ptr<HandleProvider<T>> m_handle_provider;
+    std::function<void(T&)> m_destruct_behaviour;
+    std::shared_ptr<spdlog::logger> m_logger;
+
+   public:
+    Assets() : m_handle_provider(std::make_shared<HandleProvider<T>>()) {
         m_logger =
             spdlog::default_logger()->clone(typeid(decltype(*this)).name());
     }
@@ -146,38 +196,39 @@ struct Assets {
         m_logger = m_logger->clone(label);
     }
 
+    std::shared_ptr<HandleProvider<T>> get_handle_provider() {
+        return m_handle_provider;
+    }
+
     template <typename... Args>
     Handle<T> emplace(Args&&... args) {
-        std::size_t index;
-        if (m_free_indices.empty()) {
-            index = m_assets.size();
-            m_assets.emplace_back(
-                std::make_optional<T>(std::forward<Args>(args)...), 0, 1
-            );
-            return Handle<T>(std::make_shared<StrongHandle>(
-                index, 0, m_event_receiver.create_sender()
-            ));
-        } else {
-            index = m_free_indices.front();
-            m_free_indices.pop_front();
-            m_assets[index].generation++;
-            m_assets[index].asset =
-                std::make_optional<T>(std::forward<Args>(args)...);
-            m_assets[index].ref_count = 1;
-            return Handle<T>(std::make_shared<StrongHandle>(
-                index, m_assets[index].generation,
-                m_event_receiver.create_sender()
-            ));
+        Handle<T> handle = m_handle_provider->reserve();
+        AssetIndex index = handle;
+        if (index.index >= m_assets.size()) {
+            m_assets.resize(index.index + 1);
         }
+        m_assets[index.index].asset =
+            std::make_optional<T>(std::forward<Args>(args)...);
+        m_assets[index.index].generation = index.generation;
+        m_assets[index.index].ref_count  = 1;
+        m_logger->trace(
+            "Emplaced asset at {} with gen {}", index.index, index.generation
+        );
+        return handle;
+    }
+
+    bool valid(const AssetIndex& index) const {
+        return index.index < m_assets.size() &&
+               m_assets[index.index].generation == index.generation &&
+               m_assets[index.index].asset;
     }
 
     std::optional<Handle<T>> get_strong_handle(const AssetIndex& index) {
-        if (index.index < m_assets.size() &&
-            m_assets[index.index].generation == index.generation &&
-            m_assets[index.index].asset) {
+        if (valid(index)) {
             m_assets[index.index].ref_count++;
             return std::make_optional<Handle<T>>(std::make_shared<StrongHandle>(
-                index.index, index.generation, m_event_receiver.create_sender()
+                index.index, index.generation,
+                m_handle_provider->m_event_receiver.create_sender()
             ));
         } else {
             return std::nullopt;
@@ -186,9 +237,7 @@ struct Assets {
 
     std::optional<std::reference_wrapper<const T>> get(const AssetIndex& index
     ) const {
-        if (index.index < m_assets.size() &&
-            m_assets[index.index].generation == index.generation &&
-            m_assets[index.index].asset) {
+        if (valid(index)) {
             return std::make_optional<std::reference_wrapper<const T>>(
                 m_assets[index.index].asset.value()
             );
@@ -197,9 +246,7 @@ struct Assets {
         }
     }
     std::optional<std::reference_wrapper<T>> get_mut(const AssetIndex& index) {
-        if (index.index < m_assets.size() &&
-            m_assets[index.index].generation == index.generation &&
-            m_assets[index.index].asset) {
+        if (valid(index)) {
             return std::make_optional<std::reference_wrapper<T>>(
                 m_assets[index.index].asset.value()
             );
@@ -207,10 +254,25 @@ struct Assets {
             return std::nullopt;
         }
     }
+    std::optional<T> remove(const AssetIndex& index) {
+        if (valid(index)) {
+            m_logger->trace(
+                "Force removing asset at {} with gen {}, current ref count is "
+                "{}",
+                index.index, index.generation, m_assets[index.index].ref_count
+            );
+            auto asset = std::move(m_assets[index.index].asset.value());
+            m_assets[index.index].asset = std::nullopt;
+            m_handle_provider->release(index);
+            return asset;
+        } else {
+            return std::nullopt;
+        }
+    }
 
     void handle_events() {
         m_logger->trace("Handling events");
-        while (auto event = m_event_receiver.try_receive()) {
+        while (auto event = m_handle_provider->m_event_receiver.try_receive()) {
             auto& index = event->index;
             if (index.index < m_assets.size() &&
                 m_assets[index.index].generation == index.generation &&
@@ -234,12 +296,11 @@ struct Assets {
                         index.index, index.generation
                     );
                     if (m_destruct_behaviour) {
-                        m_destruct_behaviour(
-                            std::move(m_assets[index.index].asset.value())
+                        m_destruct_behaviour(m_assets[index.index].asset.value()
                         );
                     }
                     m_assets[index.index].asset = std::nullopt;
-                    m_free_indices.push_back(index.index);
+                    m_handle_provider->release(index);
                 }
             }
         }
