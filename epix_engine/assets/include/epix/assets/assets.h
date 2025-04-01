@@ -1,5 +1,9 @@
 #pragma once
 
+#include <epix/app.h>
+
+#include <concepts>
+
 #include "handle.h"
 #include "index.h"
 
@@ -36,6 +40,7 @@ struct AssetStorage {
      * was inserted. If the generation is different, std::nullopt is returned.
      */
     template <typename... Args>
+        requires std::constructible_from<T, Args...>
     std::optional<bool> insert(const AssetIndex& index, Args&&... args) {
         if (index.index >= m_storage.size()) {
             m_storage.resize(index.index + 1);
@@ -166,6 +171,7 @@ struct AssetStorage {
 };
 
 template <typename T>
+    requires std::move_constructible<T> && std::is_move_assignable_v<T>
 struct Assets {
    private:
     AssetStorage<T> m_assets;
@@ -216,6 +222,7 @@ struct Assets {
      * @return `Handle<T>` The handle to the new asset.
      */
     template <typename... Args>
+        requires std::constructible_from<T, Args...>
     Handle<T> emplace(Args&&... args) {
         Handle<T> handle = m_handle_provider->reserve();
         AssetIndex index = handle;
@@ -251,6 +258,7 @@ struct Assets {
      * (generation mismatch or no asset slot at given index).
      */
     template <typename... Args>
+        requires std::constructible_from<T, Args...>
     std::optional<bool> insert(const AssetIndex& index, Args&&... args) {
         if (m_assets.valid(index)) {
             auto res = *m_assets.insert(index, std::forward<Args>(args)...);
@@ -391,6 +399,12 @@ struct Assets {
             m_assets.remove_dereferenced(index);
         });
         m_logger->trace("Finished handling events");
+    }
+
+    static void res_handle_events(epix::ResMut<Assets<T>> assets) {
+        if (assets) {
+            assets->handle_events();
+        }
     }
 };
 }  // namespace epix::assets

@@ -1,7 +1,18 @@
+#include <epix/app.h>
 #include <epix/assets.h>
 
 #include <iostream>
 #include <string>
+
+struct NonCopy {
+    NonCopy()                          = default;
+    NonCopy(const NonCopy&)            = delete;
+    NonCopy& operator=(const NonCopy&) = delete;
+    NonCopy(NonCopy&&)                 = default;
+    NonCopy& operator=(NonCopy&&)      = default;
+};
+
+struct string : public std::string {};
 
 void test_1() {
     static const auto* description = R"(
@@ -19,7 +30,7 @@ void test_1() {
     std::cout << description << std::endl;
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
-    epix::assets::Assets<std::string> assets;
+    epix::assets::Assets<string> assets;
     // assets.set_log_level(spdlog::level::trace);
     assets.set_log_label("Assets");
 
@@ -247,6 +258,41 @@ void test_4() {
     std::cout << "Test 4 pass!" << std::endl;
 }
 
+namespace test5 {
+using namespace epix;
+void end_app(EventWriter<AppExit> exit, Local<std::optional<int>> count) {
+    if (!*count) {
+        *count = std::make_optional<int>(5);
+    }
+    (**count)--;
+    if (!**count) {
+        exit.write(AppExit{});
+    }
+}
+void set_log(ResMut<assets::Assets<string>> ass) {
+    if (ass) {
+        ass->set_log_label("Assets");
+        ass->set_log_level(spdlog::level::trace);
+    }
+}
+}  // namespace test5
+
+void test_5() {
+    std::cout << "===== Test 5: Assets<T> in App =====" << std::endl;
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+
+    using namespace epix;
+
+    App app = App::create2();
+    app.init_resource<assets::Assets<string>>()
+        .enable_loop()
+        .add_system(Startup, test5::set_log)
+        .add_system(Last, assets::Assets<string>::res_handle_events)
+        .add_system(Update, test5::end_app)
+        .run();
+}
+
 int main() {
     using namespace epix::assets;
 
@@ -255,4 +301,5 @@ int main() {
     test_2();
     test_3();
     test_4();
+    test_5();
 }

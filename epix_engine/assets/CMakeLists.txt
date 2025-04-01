@@ -10,6 +10,7 @@ endif()
 target_include_directories(epix_assets PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
 target_link_libraries(epix_assets PUBLIC epix_common)
+target_link_libraries(epix_assets PUBLIC epix::app)
 target_link_libraries(epix_assets PUBLIC index_utilities)
 target_link_libraries(epix_assets PUBLIC spdlog::spdlog)
 

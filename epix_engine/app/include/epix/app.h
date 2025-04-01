@@ -611,7 +611,7 @@ struct Command {
         m_resource_removers;
 
    public:
-    EPIX_API Command(World* world, World* src);
+    EPIX_API Command(World* world, World* src = nullptr);
     /**
      * @brief Get the entity command for the entity.
      *
