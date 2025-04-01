@@ -1,124 +1,9 @@
 #pragma once
 
-// #include <concurrentqueue.h>
-#include <epix/common.h>
-#include <index/concurrent/channel.h>
-#include <index/traits/variant.h>
-#include <spdlog/spdlog.h>
-
-#include <atomic>
-#include <deque>
-#include <functional>
-#include <iostream>
-#include <memory>
-#include <mutex>
-#include <optional>
-#include <variant>
-#include <vector>
+#include "handle.h"
+#include "index.h"
 
 namespace epix::assets {
-template <typename T>
-struct Handle;
-struct StrongHandle;
-struct AssetIndexAllocator;
-template <typename T>
-using Sender = index::channel::Sender<T>;
-template <typename T>
-using Receiver = index::channel::Receiver<T>;
-
-struct AssetIndex {
-    uint32_t index;
-    uint32_t generation;
-
-   protected:
-    AssetIndex(uint32_t index, uint32_t generation)
-        : index(index), generation(generation) {}
-
-   public:
-    AssetIndex(const AssetIndex&)            = default;
-    AssetIndex(AssetIndex&&)                 = default;
-    AssetIndex& operator=(const AssetIndex&) = default;
-    AssetIndex& operator=(AssetIndex&&)      = default;
-
-    friend struct StrongHandle;
-    template <typename T>
-    friend struct Handle;
-    friend struct AssetIndexAllocator;
-};
-struct AssetEvent {
-    enum class Type { ADDED, REMOVED, MODIFIED, UNUSED };
-
-    Type type;
-    AssetIndex index;
-};
-struct DestructionEvent {
-    AssetIndex index;
-};
-struct StrongHandle {
-    AssetIndex index;
-    Sender<DestructionEvent> event_sender;
-
-    StrongHandle(
-        const AssetIndex& index, const Sender<DestructionEvent>& event_sender
-    )
-        : index(index), event_sender(event_sender) {}
-    StrongHandle(
-        uint32_t index,
-        uint32_t generation,
-        const Sender<DestructionEvent>& event_sender
-    )
-        : event_sender(event_sender), index(index, generation) {}
-    StrongHandle(const StrongHandle&) = delete;
-    StrongHandle(StrongHandle&& other) : index(other.index) {
-        other.event_sender = Sender<DestructionEvent>();
-    }
-
-    StrongHandle& operator=(const StrongHandle&)  = delete;
-    StrongHandle& operator=(StrongHandle&& other) = delete;
-
-    ~StrongHandle() {
-        if (event_sender) {
-            event_sender.send(DestructionEvent{index});
-        }
-    }
-};
-template <typename T>
-struct Handle {
-   private:
-    std::variant<std::shared_ptr<StrongHandle>, AssetIndex> ref;
-
-   public:
-    Handle(const std::shared_ptr<StrongHandle>& handle) : ref(handle) {}
-    Handle(const AssetIndex& index) : ref(index) {}
-
-    Handle(const Handle& other)            = default;
-    Handle(Handle&& other)                 = default;
-    Handle& operator=(const Handle& other) = default;
-    Handle& operator=(Handle&& other)      = default;
-
-    bool is_strong() const {
-        return std::holds_alternative<std::shared_ptr<StrongHandle>>(ref);
-    }
-    bool is_weak() const { return std::holds_alternative<AssetIndex>(ref); }
-
-    Handle<T> weak() const { return Handle<T>(operator const AssetIndex&()); }
-
-    operator const AssetIndex&() const {
-        if (is_strong()) {
-            return std::get<std::shared_ptr<StrongHandle>>(ref)->index;
-        } else {
-            return std::get<AssetIndex>(ref);
-        }
-    }
-    operator AssetIndex&() {
-        if (is_strong()) {
-            return std::get<std::shared_ptr<StrongHandle>>(ref)->index;
-        } else {
-            return std::get<AssetIndex>(ref);
-        }
-    }
-};
-
 template <typename T>
 struct Entry {
     std::optional<T> asset = std::nullopt;
@@ -168,9 +53,46 @@ struct AssetStorage {
         return res;
     }
 
+    /**
+     * @brief Check if the asset at the given index is valid.
+     *
+     * This means that the index is within bounds, the slot at this index is
+     * available, and the generation matches.
+     *
+     * @param index The index to check.
+     * @return True if the asset is valid, false otherwise.
+     */
+    bool valid(const AssetIndex& index) const {
+        return index.index < m_storage.size() && m_storage[index.index] &&
+               m_storage[index.index]->generation == index.generation;
+    }
+
+    /**
+     * @brief Check if the asset at the given index is valid and has a value.
+     *
+     * This means that the index is within bounds, the slot at this index is
+     * available, the generation matches, and the asset has a value.
+     *
+     * @param index The index to check.
+     * @return True if the asset is valid and has a value, false otherwise.
+     */
+    bool contains(const AssetIndex& index) const {
+        return index.index < m_storage.size() && m_storage[index.index] &&
+               m_storage[index.index]->asset.has_value() &&
+               m_storage[index.index]->generation == index.generation;
+    }
+
+    /**
+     * @brief Pop the asset at the given index. This will remove the asset from
+     * the storage and return it. But the slot at this index is still valid.
+     *
+     * This is used in force remove and pop.
+     *
+     * @param index The index to pop.
+     * @return The asset at the given index, or std::nullopt if the index
+     */
     std::optional<T> pop(const AssetIndex& index) {
-        if (index.index < m_storage.size() && m_storage[index.index] &&
-            m_storage[index.index]->generation == index.generation) {
+        if (contains(index)) {
             auto asset = std::move(m_storage[index.index]->asset.value());
             m_storage[index.index]->asset = std::nullopt;
             m_size--;
@@ -180,17 +102,15 @@ struct AssetStorage {
         }
     }
 
-    bool valid(const AssetIndex& index) const {
-        return index.index < m_storage.size() && m_storage[index.index] &&
-               m_storage[index.index]->generation == index.generation;
-    }
-
-    bool contains(const AssetIndex& index) const {
-        return index.index < m_storage.size() && m_storage[index.index] &&
-               m_storage[index.index]->asset.has_value() &&
-               m_storage[index.index]->generation == index.generation;
-    }
-
+    /**
+     * @brief Remove the asset at the given index. This will remove the asset
+     * from the storage. But the slot at this index is still valid.
+     *
+     * This is used in force remove and pop.
+     *
+     * @param index The index to remove.
+     * @return True if the asset was removed, false otherwise.
+     */
     bool remove(const AssetIndex& index) {
         if (index.index < m_storage.size() && m_storage[index.index] &&
             m_storage[index.index]->generation == index.generation) {
@@ -202,6 +122,16 @@ struct AssetStorage {
         }
     }
 
+    /**
+     * @brief Remove the asset at the given index. This will remove the asset
+     * from the storage and invalidate the slot at this index.
+     *
+     * This is used in handle destruction, where the index will be released and
+     * recycled.
+     *
+     * @param index The index to remove.
+     * @return True if the asset was removed, false otherwise.
+     */
     bool remove_dereferenced(const AssetIndex& index) {
         if (index.index < m_storage.size() && m_storage[index.index] &&
             m_storage[index.index]->generation == index.generation) {
@@ -214,9 +144,7 @@ struct AssetStorage {
     }
 
     std::optional<std::reference_wrapper<T>> get(const AssetIndex& index) {
-        if (index.index < m_storage.size() && m_storage[index.index] &&
-            m_storage[index.index]->generation == index.generation &&
-            m_storage[index.index]->asset) {
+        if (contains(index)) {
             return std::make_optional<std::reference_wrapper<T>>(
                 m_storage[index.index]->asset.value()
             );
@@ -227,98 +155,12 @@ struct AssetStorage {
 
     std::optional<std::reference_wrapper<const T>> get(const AssetIndex& index
     ) const {
-        if (index.index < m_storage.size() && m_storage[index.index] &&
-            m_storage[index.index]->generation == index.generation &&
-            m_storage[index.index]->asset) {
+        if (contains(index)) {
             return std::make_optional<std::reference_wrapper<const T>>(
                 m_storage[index.index]->asset.value()
             );
         } else {
             return std::nullopt;
-        }
-    }
-};
-
-struct AssetIndexAllocator {
-   private:
-    std::atomic<uint32_t> m_next = 0;
-    Sender<AssetIndex> m_free_indices_sender;
-    Receiver<AssetIndex> m_free_indices_receiver;
-
-   public:
-    AssetIndexAllocator()
-        : m_free_indices_receiver(
-              std::get<1>(index::channel::make_channel<AssetIndex>())
-          ) {
-        m_free_indices_sender = m_free_indices_receiver.create_sender();
-    }
-    AssetIndexAllocator(const AssetIndexAllocator&)            = delete;
-    AssetIndexAllocator(AssetIndexAllocator&&)                 = delete;
-    AssetIndexAllocator& operator=(const AssetIndexAllocator&) = delete;
-    AssetIndexAllocator& operator=(AssetIndexAllocator&&)      = delete;
-
-    AssetIndex reserve() {
-        if (auto index = m_free_indices_receiver.try_receive()) {
-            return AssetIndex(index->index, index->generation + 1);
-        } else {
-            uint32_t i = m_next.fetch_add(1, std::memory_order_relaxed);
-            return AssetIndex(i, 0);
-        }
-    }
-    void release(const AssetIndex& index) { m_free_indices_sender.send(index); }
-};
-
-template <typename T>
-struct HandleProvider {
-    AssetIndexAllocator m_allocator;
-    Sender<DestructionEvent> m_event_sender;
-    Receiver<DestructionEvent> m_event_receiver;
-    std::vector<uint32_t> m_ref_counts;
-
-    HandleProvider()
-        : m_event_receiver(
-              std::get<1>(index::channel::make_channel<DestructionEvent>())
-          ) {
-        m_event_sender = m_event_receiver.create_sender();
-    }
-    HandleProvider(const HandleProvider&)            = delete;
-    HandleProvider(HandleProvider&&)                 = delete;
-    HandleProvider& operator=(const HandleProvider&) = delete;
-    HandleProvider& operator=(HandleProvider&&)      = delete;
-
-    Handle<T> reserve() {
-        auto index = m_allocator.reserve();
-        reference(index.index);
-        return Handle<T>(std::make_shared<StrongHandle>(index, m_event_sender));
-    }
-
-    void reference(uint32_t index) {
-        if (index >= m_ref_counts.size()) {
-            m_ref_counts.resize(index + 1, 0);
-        }
-        m_ref_counts[index]++;
-    }
-
-    uint32_t ref_count(uint32_t index) {
-        if (m_ref_counts.size() > index) {
-            return m_ref_counts[index];
-        }
-        return 0;
-    }
-
-    void release(const Handle<T>& handle) { m_allocator.release(handle); }
-    void release(const AssetIndex& index) { m_allocator.release(index); }
-
-    void handle_events(const std::function<void(const AssetIndex&)>& callback) {
-        while (auto event = m_event_receiver.try_receive()) {
-            if (event->index.index < m_ref_counts.size() &&
-                m_ref_counts[event->index.index] > 0) {
-                m_ref_counts[event->index.index]--;
-                if (m_ref_counts[event->index.index] == 0) {
-                    callback(event->index);
-                    release(event->index);
-                }
-            }
         }
     }
 };
@@ -341,6 +183,12 @@ struct Assets {
     Assets& operator=(const Assets&) = delete;
     Assets& operator=(Assets&&)      = delete;
 
+    /**
+     * @brief Set the callback when an asset is released(has no strong
+     * references).
+     *
+     * @param behaviour The callback to call when an asset is released.
+     */
     void set_destruct_behaviour(std::function<void(T&&)> behaviour) {
         m_destruct_behaviour = behaviour;
     }
@@ -351,10 +199,22 @@ struct Assets {
         m_logger = m_logger->clone(label);
     }
 
+    /**
+     * @brief Get the handle provider for this assets collection.
+     *
+     * @return `std::shared_ptr<HandleProvider<T>>` The handle provider for this
+     */
     std::shared_ptr<HandleProvider<T>> get_handle_provider() {
         return m_handle_provider;
     }
 
+    /**
+     * @brief Emplace an asset at a new index. This will create a new asset and
+     * return a handle to it. The asset will be constructed in place with the
+     * given arguments.
+     *
+     * @return `Handle<T>` The handle to the new asset.
+     */
     template <typename... Args>
     Handle<T> emplace(Args&&... args) {
         Handle<T> handle = m_handle_provider->reserve();
@@ -383,6 +243,13 @@ struct Assets {
         return handle;
     }
 
+    /**
+     * @brief Insert an asset at the given index.
+     *
+     * @return `std::optional<bool>` True if the asset was replaced, false if
+     * new value was inserted. `std::nullopt` if the index is invalid
+     * (generation mismatch or no asset slot at given index).
+     */
     template <typename... Args>
     std::optional<bool> insert(const AssetIndex& index, Args&&... args) {
         if (m_assets.valid(index)) {
@@ -392,12 +259,27 @@ struct Assets {
             return std::nullopt;
     }
 
-    bool valid(const AssetIndex& index) const {
+    /**
+     * @brief Check if there is an asset at the given index.
+     *
+     * This is used internally.
+     */
+    bool contains(const AssetIndex& index) const {
         return m_assets.contains(index);
     }
 
+    /**
+     * @brief Create a strong handle to the asset at the given index.
+     *
+     * This will increment the reference count of the asset and return a strong
+     * handle to it. If the asset is not valid, std::nullopt is returned.
+     *
+     * @param index The index of the asset to get a handle to.
+     * @return `std::optional<Handle<T>>` The strong handle to the asset, or
+     * std::nullopt if the asset is not valid.
+     */
     std::optional<Handle<T>> get_strong_handle(const AssetIndex& index) {
-        if (valid(index)) {
+        if (contains(index)) {
             m_handle_provider->reference(index.index);
             return std::make_optional<Handle<T>>(std::make_shared<StrongHandle>(
                 index.index, index.generation,
@@ -408,15 +290,43 @@ struct Assets {
         }
     }
 
+    /**
+     * @brief Get the asset at the given index.
+     *
+     * This will return a reference to the asset at the given index. If the
+     * asset is not valid, std::nullopt is returned.
+     *
+     * @param index The index of the asset to get.
+     * @return `std::optional<std::reference_wrapper<T>>` A reference to the
+     * asset, or std::nullopt if the asset is not valid.
+     */
     std::optional<std::reference_wrapper<const T>> get(const AssetIndex& index
     ) const {
         return m_assets.get(index);
     }
+    /**
+     * @brief Get the asset at the given index.
+     *
+     * This will return a reference to the asset at the given index. If the
+     * asset is not valid, std::nullopt is returned.
+     *
+     * @param index The index of the asset to get.
+     * @return `std::optional<std::reference_wrapper<T>>` A reference to the
+     * asset, or std::nullopt if the asset is not valid.
+     */
     std::optional<std::reference_wrapper<T>> get_mut(const AssetIndex& index) {
         return m_assets.get(index);
     }
+
+    /**
+     * @brief Remove the asset at the given index. This will remove the asset
+     * from the storage but not invalidate the slot at this index.
+     *
+     * @param index The index of the asset to remove.
+     * @return `bool` True if the operation was successful, false otherwise.
+     */
     bool remove(const AssetIndex& index) {
-        if (valid(index)) {
+        if (contains(index)) {
             m_logger->trace(
                 "Force removing asset at {} with gen {}, current ref count is "
                 "{}",
@@ -428,8 +338,17 @@ struct Assets {
             return false;
         }
     }
+
+    /**
+     * @brief Pop the asset at the given index. This will remove the asset from
+     * the storage but not invalidate the slot at this index.
+     *
+     * @param index The index of the asset to pop.
+     * @return `std::optional<T>` The asset at the given index, or std::nullopt
+     * if the asset is not valid.
+     */
     std::optional<T> pop(const AssetIndex& index) {
-        if (valid(index)) {
+        if (contains(index)) {
             m_logger->trace(
                 "Force popping asset at {} with gen {}, current ref count is "
                 "{}",
@@ -442,6 +361,9 @@ struct Assets {
         }
     }
 
+    /**
+     * @brief Handle strong handle destruction events.
+     */
     void handle_events() {
         m_logger->trace("Handling events");
         m_handle_provider->handle_events([this](const AssetIndex& index) {
