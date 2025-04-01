@@ -3,100 +3,187 @@
 #include <iostream>
 #include <string>
 
+void test_1() {
+    static const auto* description = R"(
+    Test 1: Asset Auto Destruction
+    - Create an asset and get a strong handle to it
+    - Create a weak handle from the strong handle
+    - Check if the handles are valid
+    - Destroy strong handle1
+    - Handle handle destruction events
+    - Check if the weak handle is still valid
+    - Check if the strong handle is invalid
+    )";
+
+    std::cout << "===== Test 1: Asset Auto Destruction =====" << std::endl;
+    std::cout << description << std::endl;
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+
+    epix::assets::Assets<std::string> assets;
+    // assets.set_log_level(spdlog::level::trace);
+    assets.set_log_label("Assets");
+
+    // Create an asset and get a strong handle to it
+    auto handle1 = assets.emplace("Hello Assets!");
+
+    // Create a weak handle from the strong handle
+    auto weak_handle1 = handle1.weak();
+
+    // Check if the handles are valid
+    if (auto&& opt = assets.get(handle1)) {
+    } else {
+        std::cerr
+            << "Test fail: Handle1 is invalid after creation and handle assign."
+            << std::endl;
+        return;
+    }
+
+    // Check if the weak handle is valid
+    if (auto&& opt = assets.get(weak_handle1)) {
+    } else {
+        std::cerr << "Test fail: Weak handle1 from handle1 is invalid but it "
+                     "should be valid"
+                  << std::endl;
+        return;
+    }
+
+    // Destroy strong handle1
+    handle1.~Handle();
+
+    // Handle events
+    assets.handle_events();
+
+    // Check if the weak handle is still valid
+    if (auto&& opt = assets.get(handle1)) {
+        std::cerr << "Test fail: Handle1 is valid after destruction but it "
+                     "should be invalid"
+                  << std::endl;
+        return;
+    } else {
+    }
+
+    std::cout << "Test 1 passed!" << std::endl;
+}
+
+void test_2() {
+    static const auto* description = R"(
+    Test 2: Multi strong handle
+    - Create an asset and get a strong handle to it
+    - Create a second strong handle from the first one
+    - Check if the handles are valid
+    - Destroy the first strong handle
+    - Handle handle destruction events
+    - Check if the asset is still valid
+    )";
+
+    std::cout << "===== Test 2: Multi strong handle =====" << std::endl;
+    std::cout << description << std::endl;
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+
+    epix::assets::Assets<std::string> assets;
+    // assets.set_log_level(spdlog::level::trace);
+    assets.set_log_label("Assets");
+
+    // Create an asset and get a strong handle to it
+    auto handle1     = assets.emplace("Hello Assets!");
+    auto handle2_opt = assets.get_strong_handle(handle1);
+    if (!handle2_opt) {
+        std::cerr << "Test fail: Cannot get strong handle from handle1"
+                  << std::endl;
+        return;
+    }
+    auto handle2 = *handle2_opt;
+
+    // Check if the handles are valid
+    if (auto&& opt = assets.get(handle1)) {
+    } else {
+        std::cerr << "Test fail: Handle1 is invalid after creation and handle "
+                     "assign."
+                  << std::endl;
+        return;
+    }
+    if (auto&& opt = assets.get(handle2)) {
+    } else {
+        std::cerr << "Test fail: Handle2 is invalid after creation and handle "
+                     "assign."
+                  << std::endl;
+        return;
+    }
+
+    // Destructing 1
+    handle1.~Handle();
+    // Handle events
+    assets.handle_events();
+
+    // Check if the asset is still valid
+    if (auto&& opt = assets.get(handle2)) {
+    } else {
+        std::cerr << "Test fail: Handle2 is invalid after handle1 destruction "
+                     "but it should be valid"
+                  << std::endl;
+        return;
+    }
+
+    std::cout << "Test 2 passed!" << std::endl;
+}
+
+void test_3() {
+    static const auto* description = R"(
+    Test 3: AssetIndex recycle
+    - Create an asset and get a strong handle to it
+    - Get the AssetIndex from the handle
+    - Destroy the handle
+    - Handle handle destruction events
+    - Create a new asset and get a strong handle to it
+    - Get the AssetIndex from the new handle
+    - Check if the AssetIndex from the new handle is equal to the AssetIndex from the old handle
+    - Check if the generation of the new handle is equal to the generation of the old handle + 1
+    )";
+
+    std::cout << "===== Test 3: AssetIndex recycle =====" << std::endl;
+    std::cout << description << std::endl;
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+
+    epix::assets::Assets<std::string> assets;
+    // assets.set_log_level(spdlog::level::trace);
+    assets.set_log_label("Assets");
+
+    // Create an asset and get a strong handle to it
+    auto handle1 = assets.emplace("Hello Assets!");
+
+    epix::assets::AssetIndex index1 = handle1;
+
+    handle1.~Handle();
+    // Handle events
+    assets.handle_events();
+
+    auto handle2                    = assets.emplace("Hello Assets2!");
+    epix::assets::AssetIndex index2 = handle2;
+
+    // Compare the indexes
+    if (index1.index != index2.index) {
+        std::cerr << "Test fail: Index2 is not equal to Index1 after handle1 "
+                     "destruction but it should be equal"
+                  << std::endl;
+        return;
+    }
+    if (index1.generation + 1 != index2.generation) {
+        std::cerr
+            << "Test fail: Index2 generation is not equal to Index1 "
+               "generation + 1 after handle1 destruction but it should be "
+               "equal"
+            << std::endl;
+        return;
+    }
+
+    std::cout << "Test 3 passed!" << std::endl;
+}
+
 int main() {
     using namespace epix::assets;
-    {
-        std::cout << "===== Single thread test =====" << std::endl;
-        std::cout << "Press any to continue" << std::endl;
-        std::cin.get();
-        Assets<std::string> assets;
-        assets.set_log_level(spdlog::level::trace);
-        assets.set_log_label("Assets");
-        auto handle = assets.emplace("Hello, World!");
-        {
-            std::cout << "check handle 1" << std::endl;
-            if (auto&& str_opt = assets.get(handle)) {
-                std::cout << str_opt.value().get() << std::endl;
-            }
-        }
-        std::cout << "create weak handle from handle 1" << std::endl;
-        auto weak_handle = handle.weak();
-        std::cout << "create a new strong handle from handle 1" << std::endl;
-        auto strong2 = assets.get_strong_handle(handle);
-        std::cout << "destruct handle 1" << std::endl;
-        handle.~Handle();
-        std::cout << "emplace new asset and assign to handle 1" << std::endl;
-        handle = assets.emplace("Hello, World2!");
-        assets.handle_events();
-        {
-            std::cout << "check handle 1" << std::endl;
-            if (auto&& str_opt = assets.get(handle)) {
-                std::cout << str_opt.value().get() << std::endl;
-            }
-        }
-        handle.~Handle();
-        assets.handle_events();
-        {
-            std::cout << "check weak handle" << std::endl;
-            if (auto&& str_opt = assets.get(weak_handle)) {
-                std::cout << str_opt.value().get() << std::endl;
-            }
-        }
-        std::cout << "Emplace new asset, this time it should be allocated with "
-                     "index 1, gen 1."
-                  << std::endl;
-        auto handle2 = assets.emplace("Hello, World3!");
-        {
-            std::cout << "check handle 2" << std::endl;
-            AssetIndex index = handle2;
-            std::cout << "handle2 index: " << index.index << std::endl;
-            std::cout << "handle2 gen: " << index.generation << std::endl;
-            if (auto&& str_opt = assets.get(handle2)) {
-                std::cout << str_opt.value().get() << std::endl;
-            }
-        }
-    }
-    // {
-    //     std::cout << "===== Multi thread test =====" << std::endl;
-    //     std::cout << "Note that Assets struct it self is not thread safe"
-    //               << std::endl;
-    //     std::cout << "But the handles are thread safe" << std::endl;
-    //     std::cout << "Thread safety of Assets is guaranteed by epix::Res and
-    //     "
-    //                  "epix::ResMut which are the preferred way to access
-    //                  assets"
-    //               << std::endl;
-    //     std::cout << "Press any to continue" << std::endl;
-    //     std::cin.get();
-    //     Assets<std::string> assets;
-    //     assets.set_log_label("Assets");
-    //     assets.set_log_level(spdlog::level::trace);
-    //     std::cout << std::endl;
-    //     auto handle = assets.emplace("Hello, World!");
-    //     auto weak   = handle;
-    //     Handle<std::string> handle2;
-    //     handle.~Handle();
-    //     std::thread t1([&assets, weak, &handle2]() {
-    //         auto handle = assets.get_strong_handle(weak);
-    //         if (handle) {
-    //             handle2 = std::move(handle.value());
-    //         }
-    //         std::this_thread::sleep_for(std::chrono::seconds(1));
-    //         if (auto&& str_opt = assets.get(weak)) {
-    //             std::cout << "Thread 1: " << str_opt.value().get() <<
-    //             std::endl;
-    //         }
-    //     });
-    //     std::thread t2([&assets, &handle2]() {
-    //         std::this_thread::sleep_for(std::chrono::milliseconds(500));
-    //         if (auto&& str_opt = assets.get(handle2)) {
-    //             std::cout << "Thread 2: " << str_opt.value().get() <<
-    //             std::endl;
-    //         }
-    //     });
-    //     t1.join();
-    //     t2.join();
-    //     handle2.~Handle();
-    //     assets.handle_events();
-    // }
+
+    std::cout << "===== Unit tests for Assets<T> =====" << std::endl;
+    test_1();
+    test_2();
+    test_3();
 }
