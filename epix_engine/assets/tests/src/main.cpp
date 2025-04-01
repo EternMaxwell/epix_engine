@@ -12,7 +12,7 @@ struct NonCopy {
     NonCopy& operator=(NonCopy&&)      = default;
 };
 
-struct string : public std::string {};
+struct string : public std::string, public NonCopy {};
 
 void test_1() {
     static const auto* description = R"(
