@@ -299,6 +299,13 @@ struct HandleProvider {
         m_ref_counts[index]++;
     }
 
+    uint32_t ref_count(uint32_t index) {
+        if (m_ref_counts.size() > index) {
+            return m_ref_counts[index];
+        }
+        return 0;
+    }
+
     void release(const Handle<T>& handle) { m_allocator.release(handle); }
     void release(const AssetIndex& index) { m_allocator.release(index); }
 
@@ -376,6 +383,15 @@ struct Assets {
         return handle;
     }
 
+    template <typename... Args>
+    std::optional<bool> insert(const AssetIndex& index, Args&&... args) {
+        if (m_assets.valid(index)) {
+            auto res = *m_assets.insert(index, std::forward<Args>(args)...);
+            return res;
+        } else
+            return std::nullopt;
+    }
+
     bool valid(const AssetIndex& index) const {
         return m_assets.contains(index);
     }
@@ -404,7 +420,8 @@ struct Assets {
             m_logger->trace(
                 "Force removing asset at {} with gen {}, current ref count is "
                 "{}",
-                index.index, index.generation, m_assets[index.index].ref_count
+                index.index, index.generation,
+                m_handle_provider->ref_count(index.index)
             );
             return m_assets.remove(index);
         } else {
@@ -416,7 +433,8 @@ struct Assets {
             m_logger->trace(
                 "Force popping asset at {} with gen {}, current ref count is "
                 "{}",
-                index.index, index.generation, m_assets[index.index].ref_count
+                index.index, index.generation,
+                m_handle_provider->ref_count(index.index)
             );
             return std::move(m_assets.pop(index));
         } else {

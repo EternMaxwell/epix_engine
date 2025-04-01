@@ -179,6 +179,74 @@ void test_3() {
     std::cout << "Test 3 passed!" << std::endl;
 }
 
+void test_4() {
+    static const auto* description = R"(
+    Test 4: Force removal and replacement
+    - Create an asset and get a strong handle to it
+    - Force remove the asset
+    - Check if the handle is valid
+    - Replace the asset with a new value
+    - Check if the handle is valid
+    - Check if the value is the expected value
+    )";
+
+    std::cout << "===== Test 4: Force removal and replacement ====="
+              << std::endl;
+    std::cout << description << std::endl;
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+
+    epix::assets::Assets<std::string> assets;
+    // assets.set_log_level(spdlog::level::trace);
+    assets.set_log_label("Assets");
+
+    // Create an asset and get a strong handle to it
+    auto handle1 = assets.emplace("Hello Assets!");
+    auto res     = assets.remove(handle1);
+    if (!res) {
+        std::cerr << "Test fail: Cannot remove handle1" << std::endl;
+        return;
+    }
+
+    // Check if the handle is valid
+    if (auto&& opt = assets.get(handle1)) {
+        std::cerr << "Test fail: Handle should be invalid after force removal"
+                  << std::endl;
+        return;
+    }
+
+    // Replacing value
+    std::optional<bool> res2 = assets.insert(handle1, "Hello Assets2!");
+    if (!res2) {
+        std::cerr << "Test fail: Unable to insert new value at the index that "
+                     "has been force removed: index not valid(gen mismatch or "
+                     "no asset slot at given index)"
+                  << std::endl;
+        return;
+    } else if (res2.value()) {
+        std::cerr << "Test fail: Insert value replaced old value, but old "
+                     "value should have been removed"
+                  << std::endl;
+        return;
+    }
+
+    // Check value
+    if (auto&& opt = assets.get(handle1)) {
+        auto& str = (*opt).get();
+        if (str != "Hello Assets2!") {
+            std::cerr << "Test fail: Insert value is not the expected value."
+                      << std::endl;
+            return;
+        }
+    } else {
+        std::cerr << "Test fail: Handle invalid, but it should be valid after "
+                     "inserting new value."
+                  << std::endl;
+        return;
+    }
+
+    std::cout << "Test 4 pass!" << std::endl;
+}
+
 int main() {
     using namespace epix::assets;
 
@@ -186,4 +254,5 @@ int main() {
     test_1();
     test_2();
     test_3();
+    test_4();
 }
