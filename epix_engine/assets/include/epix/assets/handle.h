@@ -77,12 +77,16 @@ struct HandleProvider {
     Sender<DestructionEvent> m_event_sender;
     Receiver<DestructionEvent> m_event_receiver;
     std::vector<uint32_t> m_ref_counts;
+    Receiver<AssetIndex> m_reserved;
+    Sender<AssetIndex> m_reserved_sender;
 
     HandleProvider()
         : m_event_receiver(
               std::get<1>(index::channel::make_channel<DestructionEvent>())
-          ) {
-        m_event_sender = m_event_receiver.create_sender();
+          ),
+          m_reserved(std::get<1>(index::channel::make_channel<AssetIndex>())) {
+        m_event_sender    = m_event_receiver.create_sender();
+        m_reserved_sender = m_reserved.create_sender();
     }
     HandleProvider(const HandleProvider&)            = delete;
     HandleProvider(HandleProvider&&)                 = delete;
@@ -91,6 +95,7 @@ struct HandleProvider {
 
     Handle<T> reserve() {
         auto index = m_allocator.reserve();
+        m_reserved_sender.send(index);
         reference(index.index);
         return Handle<T>(std::make_shared<StrongHandle>(index, m_event_sender));
     }

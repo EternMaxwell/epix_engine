@@ -30,6 +30,8 @@ struct AssetStorage {
     uint32_t size() const { return m_size; }
     bool empty() const { return m_size == 0; }
 
+    void resize_slots(uint32_t index) { m_storage.resize(index + 1); }
+
     /**
      * @brief Insert an asset into the storage. If the asset already exists, it
      * will be replaced.
@@ -37,13 +39,14 @@ struct AssetStorage {
      * @param index The index and generation of the asset to insert.
      * @param args The arguments to construct the asset.
      * @return std::optional<bool> True if the asset was replaced, false if it
-     * was inserted. If the generation is different, std::nullopt is returned.
+     * was inserted. If the generation is different or if it is out of range,
+     * std::nullopt is returned.
      */
     template <typename... Args>
         requires std::constructible_from<T, Args...>
     std::optional<bool> insert(const AssetIndex& index, Args&&... args) {
         if (index.index >= m_storage.size()) {
-            m_storage.resize(index.index + 1);
+            return std::nullopt;
         }
         if (!m_storage[index.index]) {
             m_storage[index.index]             = Entry<T>();
@@ -225,6 +228,9 @@ struct Assets {
         requires std::constructible_from<T, Args...>
     Handle<T> emplace(Args&&... args) {
         Handle<T> handle = m_handle_provider->reserve();
+        while (auto&& opt = m_handle_provider->m_reserved.try_receive()) {
+            m_assets.resize_slots(opt->index);
+        }
         AssetIndex index = handle;
         m_logger->trace(
             "Emplacing asset at {} with gen {}", index.index, index.generation
@@ -260,11 +266,10 @@ struct Assets {
     template <typename... Args>
         requires std::constructible_from<T, Args...>
     std::optional<bool> insert(const AssetIndex& index, Args&&... args) {
-        if (m_assets.valid(index)) {
-            auto res = *m_assets.insert(index, std::forward<Args>(args)...);
-            return res;
-        } else
-            return std::nullopt;
+        while (auto&& opt = m_handle_provider->m_reserved.try_receive()) {
+            m_assets.resize_slots(opt->index);
+        }
+        return m_assets.insert(index, std::forward<Args>(args)...);
     }
 
     /**
@@ -374,6 +379,9 @@ struct Assets {
      */
     void handle_events() {
         m_logger->trace("Handling events");
+        while (auto&& opt = m_handle_provider->m_reserved.try_receive()) {
+            m_assets.resize_slots(opt->index);
+        }
         m_handle_provider->handle_events([this](const AssetIndex& index) {
             // this index now has 0 references, we can destroy the asset
             m_logger->debug(

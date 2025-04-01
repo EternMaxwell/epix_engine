@@ -293,6 +293,53 @@ void test_5() {
         .run();
 }
 
+void test_6() {
+    static const auto* description = R"(
+    Test 6: Reserving handles outside Asset<T>
+    - Get the handle provider
+    - Reserve a handle
+    - Insert value to Assets<T> at index the handle points to
+    
+    )";
+
+    std::cout << "===== Test 6: Reserving handles outside Asset<T> ====="
+              << std::endl;
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+
+    epix::assets::Assets<std::string> assets;
+    // assets.set_log_level(spdlog::level::trace);
+    assets.set_log_label("Assets");
+
+    auto provider = assets.get_handle_provider();
+    auto handle1  = provider->reserve();
+
+    auto res = assets.insert(handle1, "Hello Assets!");
+    if (!res) {
+        std::cerr
+            << "Test fail: Unable to insert new value at the index: "
+               "index not valid(gen mismatch or no asset slot at given index)"
+            << std::endl;
+        return;
+    }
+
+    // Check value
+    if (auto&& opt = assets.get(handle1)) {
+        auto& str = (*opt).get();
+        if (str != "Hello Assets!") {
+            std::cerr << "Test fail: Insert value is not the expected value."
+                      << std::endl;
+            return;
+        }
+    } else {
+        std::cerr << "Test fail: Handle invalid, but it should be valid after "
+                     "inserting new value."
+                  << std::endl;
+        return;
+    }
+
+    std::cout << "Test 6 pass!" << std::endl;
+}
+
 int main() {
     using namespace epix::assets;
 
@@ -302,4 +349,5 @@ int main() {
     test_3();
     test_4();
     test_5();
+    test_6();
 }
