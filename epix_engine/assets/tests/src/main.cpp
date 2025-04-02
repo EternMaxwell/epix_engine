@@ -275,21 +275,51 @@ void set_log(ResMut<assets::Assets<string>> ass) {
         ass->set_log_level(spdlog::level::trace);
     }
 }
+std::optional<assets::Handle<string>> handle;
+void load_str(ResMut<assets::AssetLoader<string>> loader) {
+    handle = loader->reserve("Hello Assets!");
+}
+void print_asset(Res<assets::Assets<string>> assets) {
+    if (handle && assets) {
+        if (auto&& opt = assets->get(*handle)) {
+            auto&& str = opt.value().get();
+            std::cout << str << std::endl;
+        } else {
+            std::cout << "Asset not loaded yet." << std::endl;
+        }
+    }
+}
+void frame_wait() {
+    std::this_thread::sleep_for(std::chrono::milliseconds(16));
+}
 }  // namespace test5
 
+template <>
+template <>
+std::optional<string> epix::assets::AssetLoader<string>::load(
+    const std::string& path
+) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(30));
+    return std::make_optional<string>(path);
+}
+
 void test_5() {
-    std::cout << "===== Test 5: Assets<T> in App =====" << std::endl;
+    std::cout << "===== Test 5: Assets<T> and loader in App =====" << std::endl;
 
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
     using namespace epix;
 
     App app = App::create2();
-    app.init_resource<assets::Assets<string>>()
+    app.add_plugin(
+           assets::AssetPlugin{}.register_asset<string>().add_loader<string>()
+    )
         .enable_loop()
-        .add_system(Startup, test5::set_log)
+        .add_system(Startup, test5::set_log, test5::load_str)
         .add_system(Last, assets::Assets<string>::res_handle_events)
-        .add_system(Update, test5::end_app)
+        .add_system(
+            Update, test5::end_app, test5::print_asset, test5::frame_wait
+        )
         .run();
 }
 
@@ -299,11 +329,12 @@ void test_6() {
     - Get the handle provider
     - Reserve a handle
     - Insert value to Assets<T> at index the handle points to
-    
+    - Check the value
     )";
 
     std::cout << "===== Test 6: Reserving handles outside Asset<T> ====="
               << std::endl;
+    std::cout << description << std::endl;
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
     epix::assets::Assets<std::string> assets;
@@ -340,14 +371,20 @@ void test_6() {
     std::cout << "Test 6 pass!" << std::endl;
 }
 
+void test(void (*f)()) {
+    f();
+    std::cout << std::endl;
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+}
+
 int main() {
     using namespace epix::assets;
 
     std::cout << "===== Unit tests for Assets<T> =====" << std::endl;
-    test_1();
-    test_2();
-    test_3();
-    test_4();
-    test_5();
-    test_6();
+    test(test_1);
+    test(test_2);
+    test(test_3);
+    test(test_4);
+    test(test_5);
+    test(test_6);
 }
