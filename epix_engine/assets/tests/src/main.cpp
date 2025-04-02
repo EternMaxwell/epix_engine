@@ -316,7 +316,6 @@ void test_5() {
     )
         .enable_loop()
         .add_system(Startup, test5::set_log, test5::load_str)
-        .add_system(Last, assets::Assets<string>::res_handle_events)
         .add_system(
             Update, test5::end_app, test5::print_asset, test5::frame_wait
         )
