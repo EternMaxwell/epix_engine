@@ -2,7 +2,6 @@
 #include <epix/input.h>
 #include <epix/wgpu.h>
 #include <epix/window.h>
-#include <glfw3webgpu.h>
 
 using namespace epix;
 
@@ -11,7 +10,6 @@ struct Context {
     wgpu::Surface surface;
     wgpu::Adapter adapter;
     wgpu::Device device;
-    std::unique_ptr<wgpu::ErrorCallback> error_callback;
     wgpu::Queue queue;
     wgpu::CommandEncoder encoder;
     wgpu::TextureView target_view;
@@ -58,48 +56,54 @@ void setup_context(
         .nextInChain = nullptr,
     });
     ctx->surface =
-        glfwCreateWindowWGPUSurface(ctx->instance, window.get_handle());
-    ctx->adapter = ctx->instance.requestAdapter(WGPURequestAdapterOptions{
-        .compatibleSurface = ctx->surface,
+        epix::webgpu::utils::create_surface(ctx->instance, window.get_handle());
+    ctx->adapter     = ctx->instance.requestAdapter(WGPURequestAdapterOptions{
+            .compatibleSurface = ctx->surface,
     });
-    ctx->device  = ctx->adapter.requestDevice(WGPUDeviceDescriptor{
-         .label = "Device",
-         .defaultQueue{
-             .label = "Queue",
+    auto desc_device = WGPUDeviceDescriptor{
+        .label{"Device", WGPU_STRLEN},
+        .defaultQueue{
+            .label{"Queue", WGPU_STRLEN},
         },
-         .deviceLostCallback = [](WGPUDeviceLostReason reason,
-                                 const char* message, void* userdata
-                              ) { spdlog::error("Device lost: {}", message); },
-    });
+        .deviceLostCallbackInfo{
+            .mode     = wgpu::CallbackMode::AllowProcessEvents,
+            .callback = [](const WGPUDevice* device,
+                           WGPUDeviceLostReason reason, WGPUStringView message,
+                           void* userdata1, void* userdata2
+                        ) { spdlog::error("Device lost: {}", message.data); },
+        },
+        .uncapturedErrorCallbackInfo{
+            .callback =
+                [](const WGPUDevice* device, WGPUErrorType type,
+                   WGPUStringView message, void* userdata1, void* userdata2) {
+                    spdlog::error("Uncaptured error: {}", message.data);
+                },
+        },
+    };
+    ctx->device = ctx->adapter.requestDevice(desc_device);
+    wgpu::SurfaceCapabilities capabilities;
+    ctx->surface.getCapabilities(ctx->adapter, &capabilities);
     ctx->surface.configure(WGPUSurfaceConfiguration{
         .device      = ctx->device,
-        .format      = ctx->surface.getPreferredFormat(ctx->adapter),
+        .format      = capabilities.formats[0],
         .usage       = wgpu::TextureUsage::RenderAttachment,
-        .alphaMode   = wgpu::CompositeAlphaMode::Auto,
         .width       = (uint32_t)window.get_size().width,
         .height      = (uint32_t)window.get_size().height,
+        .alphaMode   = wgpu::CompositeAlphaMode::Auto,
         .presentMode = wgpu::PresentMode::Immediate,
     });
-    ctx->error_callback =
-        ctx->device.setUncapturedErrorCallback([](WGPUErrorType type,
-                                                  const char* message) {
-            spdlog::error("Uncaptured error: {}", message);
-        });
     ctx->queue = ctx->device.getQueue();
 
-    WGPUShaderModuleWGSLDescriptor wgsl = WGPUShaderModuleWGSLDescriptor{
-        .chain =
-            WGPUChainedStruct{
-                .next  = nullptr,
-                .sType = wgpu::SType::ShaderModuleWGSLDescriptor,
-            },
-        .code = shader,
+    auto source = WGPUShaderSourceWGSL{
+        .chain{
+            .next  = nullptr,
+            .sType = WGPUSType_ShaderSourceWGSL,
+        },
+        .code = {shader, WGPU_STRLEN},
     };
     wgpu::ShaderModuleDescriptor desc;
-    desc.nextInChain = &wgsl.chain;  // nextInChain will be set to nullptr when
-                                     // converting WGPU type ot wgpu:: type if
-                                     // trying to implicitly convert
-    desc.label         = "Shader Module";
+    desc.label         = {"Shader Module", WGPU_STRLEN};
+    desc.nextInChain   = &source.chain;
     auto shader_module = ctx->device.createShaderModule(desc);
 
     ctx->pipeline =
@@ -108,7 +112,7 @@ void setup_context(
             .layout = nullptr,
             .vertex{
                 .module      = shader_module,
-                .entryPoint  = "vs_main",
+                .entryPoint  = {"vs_main", WGPU_STRLEN},
                 .bufferCount = 0,
                 .buffers     = nullptr,
             },
@@ -126,10 +130,10 @@ void setup_context(
             },
             .fragment = addressof(WGPUFragmentState{
                 .module      = shader_module,
-                .entryPoint  = "fs_main",
+                .entryPoint  = {"fs_main", WGPU_STRLEN},
                 .targetCount = 1,
                 .targets     = addressof(WGPUColorTargetState{
-                        .format    = ctx->surface.getPreferredFormat(ctx->adapter),
+                        .format    = capabilities.formats[0],
                         .blend     = addressof(WGPUBlendState{
                                 .color{
                                     .operation = wgpu::BlendOperation::Add,
@@ -157,7 +161,7 @@ void begin_frame(epix::ResMut<Context> ctx) {
     wgpu::SurfaceTexture surface_texture;
     ctx->surface.getCurrentTexture(&surface_texture);
     if (surface_texture.status !=
-        wgpu::SurfaceGetCurrentTextureStatus::Success) {
+        wgpu::SurfaceGetCurrentTextureStatus::SuccessOptimal) {
         spdlog::error("Failed to get current texture");
         throw std::runtime_error("Failed to get current texture");
         return;
@@ -206,7 +210,7 @@ void submit_test(epix::ResMut<Context> ctx) {
     wgpu::CommandBuffer commands = ctx->encoder.finish();
     ctx->queue.submit(commands);
     commands.release();
-    ctx->device.poll(false);
+    ctx->device.poll(false, nullptr);
 }
 
 void cleanup_context(epix::ResMut<Context> ctx) {

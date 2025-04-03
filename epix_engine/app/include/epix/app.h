@@ -675,7 +675,7 @@ struct Command {
         m_resource_removers;
 
    public:
-    EPIX_API Command(World* world, World* src);
+    EPIX_API Command(World* world, World* src = nullptr);
     /**
      * @brief Get the entity command for the entity.
      *
@@ -1692,22 +1692,18 @@ struct BasicSystem {
         return false;
     }
     const double get_avg_time() const { return avg_time; }
-    struct ParaRetriever {
-        template <typename T>
-        static T retrieve(
-            BasicSystem<Ret>* basic_sys, SubApp* src, SubApp* dst
-        ) {
-            if constexpr (app_tools::is_template_of<Local, T>::value) {
-                return BasicSystem<Ret>::LocalRetriever<T>::get(basic_sys);
-            } else {
-                return SubApp::value_type<T>::get(*src, *dst);
-            }
+    template <typename T>
+    T retrieve(SubApp* src, SubApp* dst) {
+        if constexpr (app_tools::is_template_of<Local, T>::value) {
+            return LocalRetriever<T>::get(this);
+        } else {
+            return SubApp::value_type<T>::get(*src, *dst);
         }
-    };
+    }
     template <typename... Args>
     BasicSystem(std::function<Ret(Args...)> func)
         : m_func([func, this](SubApp* src, SubApp* dst) {
-              return func(ParaRetriever::retrieve<Args>(this, src, dst)...);
+              return func(retrieve<Args>(src, dst)...);
           }),
           factor(0.1),
           avg_time(1) {
@@ -1716,7 +1712,7 @@ struct BasicSystem {
     template <typename... Args>
     BasicSystem(Ret (*func)(Args...))
         : m_func([func, this](SubApp* src, SubApp* dst) {
-              return func(ParaRetriever::retrieve<Args>(this, src, dst)...);
+              return func(retrieve<Args>(src, dst)...);
           }),
           factor(0.1),
           avg_time(1) {

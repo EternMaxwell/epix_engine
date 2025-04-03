@@ -11,12 +11,3 @@ target_link_libraries(wgpu_test epix::app)
 target_link_libraries(wgpu_test epix::window)
 target_link_libraries(wgpu_test epix::webgpu)
 target_link_libraries(wgpu_test epix::input)
-
-# set (PROJNAME wgpu_test)
-
-# add_custom_command(TARGET ${PROJNAME} POST_BUILD
-#   COMMAND ${CMAKE_COMMAND} -E copy 
-#   $<TARGET_RUNTIME_DLLS:${PROJNAME}>
-#   $<TARGET_FILE_DIR:${PROJNAME}>
-#   COMMAND_EXPAND_LISTS
-#   )
