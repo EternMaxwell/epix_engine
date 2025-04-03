@@ -58,6 +58,7 @@ void setup_context(
     ctx->surface =
         epix::webgpu::utils::create_surface(ctx->instance, window.get_handle());
     ctx->adapter     = ctx->instance.requestAdapter(WGPURequestAdapterOptions{
+            .backendType       = wgpu::BackendType::D3D12,
             .compatibleSurface = ctx->surface,
     });
     auto desc_device = WGPUDeviceDescriptor{
