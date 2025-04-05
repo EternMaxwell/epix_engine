@@ -116,7 +116,7 @@ template <typename... T>
 struct Without;
 template <typename Get, typename With = With<>, typename Without = Without<>>
 struct QueryBase;
-template <typename Get, typename With = With<>, typename Without = Without<>>
+template <typename T>
 struct Extract;
 template <typename Get, typename With = With<>, typename Without = Without<>>
 struct Query;
@@ -1031,58 +1031,6 @@ class QueryBase<Get<Entity, Qus...>, With<Ins...>, Without<Exs...>> {
 template <typename... Gets, typename... Withouts, typename W>
 struct QueryBase<Get<Gets...>, Without<Withouts...>, W>
     : QueryBase<Get<Gets...>, With<>, Without<Withouts...>> {};
-template <typename... Gets, typename... Withs, typename... Withouts>
-struct Extract<Get<Gets...>, With<Withs...>, Without<Withouts...>> {
-    using type = QueryBase<Get<Gets...>, With<Withs...>, Without<Withouts...>>;
-
-   private:
-    type query;
-
-   public:
-    Extract(entt::registry& registry) : query(registry) {}
-    Extract(type query) : query(query) {}
-    Extract(type&& query) : query(query) {}
-    auto iter() { return query.iter(); }
-    auto single() { return query.single(); }
-    operator bool() { return query; }
-    bool operator!() { return !query; }
-    template <typename Func>
-    void for_each(Func func) {
-        query.for_each(func);
-    }
-    auto get(entt::entity id) { return query.get(id); }
-    auto wrap(Entity entity) { return query.wrap(entity); }
-    auto size_hint() { return query.size_hint(); }
-    bool contains(entt::entity id) { return query.contains(id); }
-};
-template <typename... Gets, typename... Withs, typename... Withouts>
-struct Extract<Get<Entity, Gets...>, With<Withs...>, Without<Withouts...>> {
-    using type =
-        QueryBase<Get<Entity, Gets...>, With<Withs...>, Without<Withouts...>>;
-
-   private:
-    type query;
-
-   public:
-    Extract(entt::registry& registry) : query(registry) {}
-    Extract(type query) : query(query) {}
-    Extract(type&& query) : query(query) {}
-    auto iter() { return query.iter(); }
-    auto single() { return query.single(); }
-    operator bool() { return query; }
-    bool operator!() { return !query; }
-    template <typename Func>
-    void for_each(Func func) {
-        query.for_each(func);
-    }
-    auto get(Entity id) { return query.get(id); }
-    auto wrap(Entity entity) { return query.wrap(entity); }
-    auto size_hint() { return query.size_hint(); }
-    bool contains(Entity id) { return query.contains(id); }
-};
-template <typename... Gets, typename... Withouts, typename W>
-struct Extract<Get<Gets...>, Without<Withouts...>, W>
-    : Extract<Get<Gets...>, With<>, Without<Withouts...>> {};
 template <typename G, typename W, typename WO>
 struct Query {
     using type = QueryBase<G, W, WO>;
@@ -1107,28 +1055,11 @@ struct Query {
     auto size_hint() { return query.size_hint(); }
     bool contains(Entity id) { return query.contains(id); }
 };
+template <typename T>
+struct Extract : public T {};
 struct SubApp {
     template <typename T>
-    struct value_type {
-        static T get(SubApp& app) {
-            if constexpr (app_tools::is_template_of<Query, T>::value) {
-                return T(app.m_world.m_registry);
-            } else if constexpr (app_tools::is_template_of<Extract, T>::value) {
-                return T(app.m_world.m_registry);
-            } else {
-                static_assert(false, "Not allowed type");
-            }
-        }
-        static T get(SubApp& src, SubApp& dst) {
-            if constexpr (app_tools::is_template_of<Query, T>::value) {
-                return T(dst.m_world.m_registry);
-            } else if constexpr (app_tools::is_template_of<Extract, T>::value) {
-                return T(src.m_world.m_registry);
-            } else {
-                static_assert(false, "Not allowed type");
-            }
-        }
-    };
+    struct value_type {};
 
     template <typename ResT>
     struct value_type<Res<ResT>> {
@@ -1144,6 +1075,19 @@ struct SubApp {
     };
 
     template <typename ResT>
+    struct value_type<Extract<Res<ResT>>> {
+        static Extract<Res<ResT>> get(SubApp& app) {
+            auto& pair = app.m_world.m_resources[std::type_index(
+                typeid(std::remove_const_t<ResT>)
+            )];
+            return std::move(Extract<Res<ResT>>(pair.first, pair.second));
+        }
+        static Extract<Res<ResT>> get(SubApp& src, SubApp& dst) {
+            return std::move(get(src));
+        }
+    };
+
+    template <typename ResT>
     struct value_type<ResMut<ResT>> {
         static ResMut<ResT> get(SubApp& app) {
             auto& pair = app.m_world.m_resources[std::type_index(
@@ -1152,6 +1096,19 @@ struct SubApp {
             return std::move(ResMut<ResT>(pair.first, pair.second));
         }
         static ResMut<ResT> get(SubApp& src, SubApp& dst) {
+            return std::move(get(dst));
+        }
+    };
+
+    template <typename ResT>
+    struct value_type<Extract<ResMut<ResT>>> {
+        static Extract<ResMut<ResT>> get(SubApp& app) {
+            auto& pair = app.m_world.m_resources[std::type_index(
+                typeid(std::remove_const_t<ResT>)
+            )];
+            return std::move(Extract<ResMut<ResT>>(pair.first, pair.second));
+        }
+        static Extract<ResMut<ResT>> get(SubApp& src, SubApp& dst) {
             return std::move(get(src));
         }
     };
@@ -1184,7 +1141,28 @@ struct SubApp {
             }
             return EventReader<T>(it->second.get());
         }
-        static EventReader<T> get(SubApp& src, SubApp& dst) { return get(src); }
+        static EventReader<T> get(SubApp& src, SubApp& dst) { return get(dst); }
+    };
+
+    template <typename T>
+    struct value_type<Extract<EventReader<T>>> {
+        static Extract<EventReader<T>> get(SubApp& app) {
+            auto it =
+                app.m_world.m_event_queues.find(std::type_index(typeid(T)));
+            if (it == app.m_world.m_event_queues.end()) {
+                app.m_world.m_event_queues.emplace(
+                    std::type_index(typeid(T)),
+                    std::make_unique<EventQueue<T>>()
+                );
+                return Extract<EventReader<T>>(
+                    app.m_world.m_event_queues[std::type_index(typeid(T))].get()
+                );
+            }
+            return Extract<EventReader<T>>(it->second.get());
+        }
+        static Extract<EventReader<T>> get(SubApp& src, SubApp& dst) {
+            return get(src);
+        }
     };
 
     template <typename T>
@@ -1206,32 +1184,22 @@ struct SubApp {
         static EventWriter<T> get(SubApp& src, SubApp& dst) { return get(dst); }
     };
 
-    template <typename... Gs, typename... Ws, typename... WOs>
-    struct value_type<Query<Get<Gs...>, With<Ws...>, Without<WOs...>>> {
-        static Query<Get<Gs...>, With<Ws...>, Without<WOs...>> get(SubApp& app
-        ) {
-            return Query<Get<Gs...>, With<Ws...>, Without<WOs...>>(
-                app.m_world.m_registry
-            );
+    template <typename Gs, typename Ws, typename WOs>
+    struct value_type<Query<Gs, Ws, WOs>> {
+        static Query<Gs, Ws, WOs> get(SubApp& app) {
+            return Query<Gs, Ws, WOs>(app.m_world.m_registry);
         }
-        static Query<Get<Gs...>, With<Ws...>, Without<WOs...>> get(
-            SubApp& src, SubApp& dst
-        ) {
+        static Query<Gs, Ws, WOs> get(SubApp& src, SubApp& dst) {
             return get(dst);
         }
     };
 
-    template <typename... Gs, typename... Ws, typename... WOs>
-    struct value_type<Extract<Get<Gs...>, With<Ws...>, Without<WOs...>>> {
-        static Extract<Get<Gs...>, With<Ws...>, Without<WOs...>> get(SubApp& app
-        ) {
-            return Extract<Get<Gs...>, With<Ws...>, Without<WOs...>>(
-                app.m_world.m_registry
-            );
+    template <typename Gs, typename Ws, typename WOs>
+    struct value_type<Extract<Query<Gs, Ws, WOs>>> {
+        static Extract<Query<Gs, Ws, WOs>> get(SubApp& app) {
+            return Extract<Query<Gs, Ws, WOs>>(app.m_world.m_registry);
         }
-        static Extract<Get<Gs...>, With<Ws...>, Without<WOs...>> get(
-            SubApp& src, SubApp& dst
-        ) {
+        static Extract<Query<Gs, Ws, WOs>> get(SubApp& src, SubApp& dst) {
             return get(src);
         }
     };
@@ -1329,7 +1297,7 @@ struct BasicSystem {
     std::function<Ret(SubApp*, SubApp*)> m_func;
     double factor;
     double avg_time;  // in milliseconds
-    struct system_info {
+    struct param_info {
         bool has_command = false;
         bool has_query   = false;
         std::vector<std::tuple<
@@ -1341,19 +1309,17 @@ struct BasicSystem {
         entt::dense_set<std::type_index> resource_const;
         entt::dense_set<std::type_index> event_read_types;
         entt::dense_set<std::type_index> event_write_types;
-        entt::dense_set<std::type_index> state_types;
-        entt::dense_set<std::type_index> next_state_types;
-    } system_infos;
+    } system_param_src, system_param_dst;
 
     template <typename Arg>
-    struct info_add {
+    struct param_add {
         static void add(entt::dense_set<std::type_index>& infos) {
             infos.emplace(typeid(std::remove_const_t<Arg>));
         }
     };
 
     template <typename Arg>
-    struct const_infos_adder {
+    struct cparam_add {
         static void add(entt::dense_set<std::type_index>& infos) {
             if constexpr (std::is_const_v<Arg> || external_thread_safe_v<Arg>)
                 infos.emplace(typeid(std::remove_const_t<Arg>));
@@ -1361,7 +1327,7 @@ struct BasicSystem {
     };
 
     template <typename Arg>
-    struct mutable_infos_adder {
+    struct mparam_add {
         static void add(entt::dense_set<std::type_index>& infos) {
             if constexpr (!std::is_const_v<Arg> && !external_thread_safe_v<Arg>)
                 infos.emplace(typeid(Arg));
@@ -1370,20 +1336,21 @@ struct BasicSystem {
 
     template <typename T>
     struct infos_adder {
-        static void add(system_info& info) {};
+        static void add(param_info& src_info, param_info& dst_info);
     };
 
     template <typename... Includes, typename... Withs, typename... Excludes>
     struct infos_adder<
         Query<Get<Includes...>, With<Withs...>, Without<Excludes...>>> {
-        static void add(system_info& info) {
-            auto& query_types = info.query_types;
+        static void add(param_info& src_info, param_info& dst_info) {
+            dst_info.has_query = true;
+            auto& query_types  = dst_info.query_types;
             entt::dense_set<std::type_index> query_include_types,
                 query_exclude_types, query_include_const;
-            (mutable_infos_adder<Includes>::add(query_include_types), ...);
-            (const_infos_adder<Includes>::add(query_include_const), ...);
-            (info_add<Withs>::add(query_include_const), ...);
-            (info_add<Excludes>::add(query_exclude_types), ...);
+            (mparam_add<Includes>::add(query_include_types), ...);
+            (cparam_add<Includes>::add(query_include_const), ...);
+            (param_add<Withs>::add(query_include_const), ...);
+            (param_add<Excludes>::add(query_exclude_types), ...);
             query_types.emplace_back(
                 std::move(query_include_types), std::move(query_include_const),
                 std::move(query_exclude_types)
@@ -1393,13 +1360,14 @@ struct BasicSystem {
 
     template <typename... Includes, typename... Excludes, typename T>
     struct infos_adder<Query<Get<Includes...>, Without<Excludes...>, T>> {
-        static void add(system_info& info) {
-            auto& query_types = info.query_types;
+        static void add(param_info& src_info, param_info& dst_info) {
+            dst_info.has_query = true;
+            auto& query_types  = dst_info.query_types;
             entt::dense_set<std::type_index> query_include_types,
                 query_exclude_types, query_include_const;
-            (mutable_infos_adder<Includes>::add(query_include_types), ...);
-            (const_infos_adder<Includes>::add(query_include_const), ...);
-            (info_add<Excludes>::add(query_exclude_types), ...);
+            (mparam_add<Includes>::add(query_include_types), ...);
+            (cparam_add<Includes>::add(query_include_const), ...);
+            (param_add<Excludes>::add(query_exclude_types), ...);
             query_types.emplace_back(
                 std::move(query_include_types), std::move(query_include_const),
                 std::move(query_exclude_types)
@@ -1409,55 +1377,43 @@ struct BasicSystem {
 
     template <typename T>
     struct infos_adder<Res<T>> {
-        static void add(system_info& info) {
-            auto& resource_const = info.resource_const;
-            info_add<T>().add(resource_const);
+        static void add(param_info& src_info, param_info& dst_info) {
+            auto& resource_const = dst_info.resource_const;
+            param_add<T>().add(resource_const);
         }
     };
 
     template <typename T>
     struct infos_adder<ResMut<T>> {
-        static void add(system_info& info) {
-            auto& resource_types = info.resource_types;
-            auto& resource_const = info.resource_const;
-            if constexpr (std::is_const_v<T>)
-                info_add<T>().add(resource_const);
-            else
-                info_add<T>().add(resource_types);
+        static void add(param_info& src_info, param_info& dst_info) {
+            auto& resource_types = dst_info.resource_types;
+            param_add<T>().add(resource_types);
         }
     };
 
     template <typename T>
     struct infos_adder<EventReader<T>> {
-        static void add(system_info& info) {
-            auto& event_read_types = info.event_read_types;
-            info_add<T>().add(event_read_types);
+        static void add(param_info& src_info, param_info& dst_info) {
+            auto& event_read_types = dst_info.event_read_types;
+            param_add<T>().add(event_read_types);
         }
     };
 
     template <typename T>
     struct infos_adder<EventWriter<T>> {
-        static void add(system_info& info) {
-            auto& event_write_types = info.event_write_types;
-            info_add<T>().add(event_write_types);
+        static void add(param_info& src_info, param_info& dst_info) {
+            auto& event_write_types = dst_info.event_write_types;
+            param_add<T>().add(event_write_types);
         }
     };
 
     template <typename T>
-    struct infos_adder<State<T>> {
-        static void add(system_info& info) {
-            auto& state_types = info.state_types;
-            info_add<T>().add(state_types);
+    struct infos_adder<Extract<T>> {
+        static void add(param_info& src_info, param_info& dst_info) {
+            // reverse the order of src and dst for extracted parameters
+            infos_adder<T>().add(dst_info, src_info);
         }
-    };
-
-    template <typename T>
-    struct infos_adder<NextState<T>> {
-        static void add(system_info& info) {
-            auto& next_state_types = info.next_state_types;
-            info_add<T>().add(next_state_types);
-        }
-    };
+    }
 
     template <typename Arg, typename... Args>
     void add_infos_inernal() {
