@@ -297,7 +297,7 @@ void destroy_whole_pass(
     pass_base->destroy();
 }
 
-void extract_whole_pass(ResMut<WholePass> pass, Command command) {
+void extract_whole_pass(Extract<ResMut<WholePass>> pass, Command command) {
     if (!pass) return;
     ZoneScoped;
     command.share_resource(pass);
@@ -333,9 +333,9 @@ void destroy_sand_meshes(
 }
 
 void extract_sand_mesh(
-    ResMut<SandMeshStaging> mesh,
-    ResMut<SandMeshGPU> mesh2,
-    ResMut<SandMesh> mesh3,
+    Extract<ResMut<SandMeshStaging>> mesh,
+    Extract<ResMut<SandMeshGPU>> mesh2,
+    Extract<ResMut<SandMesh>> mesh3,
     Command command
 ) {
     if (!mesh || !mesh2 || !mesh3) return;
@@ -368,9 +368,9 @@ void destroy_box2d_meshes(
 }
 
 void extract_box2d_mesh(
-    ResMut<Box2dMeshStaging> mesh,
-    ResMut<Box2dMeshGPU> mesh2,
-    ResMut<Box2dMesh> mesh3,
+    Extract<ResMut<Box2dMeshStaging>> mesh,
+    Extract<ResMut<Box2dMeshGPU>> mesh2,
+    Extract<ResMut<Box2dMesh>> mesh3,
     Command command
 ) {
     if (!mesh || !mesh2 || !mesh3) return;
@@ -382,9 +382,9 @@ void extract_box2d_mesh(
 }
 
 void render_bodies(
-    Extract<Get<epix::world::pixel_b2d::PixPhyWorld>> query,
-    ResMut<SandMesh> mesh,
-    ResMut<Box2dMesh> box2d_mesh
+    Extract<Query<Get<epix::world::pixel_b2d::PixPhyWorld>>> query,
+    Extract<ResMut<SandMesh>> mesh,
+    Extract<ResMut<Box2dMesh>> box2d_mesh
 ) {
     if (!query) return;
     if (!mesh) return;
@@ -848,7 +848,7 @@ void step_simulation(
 }
 
 void render_simulation(
-    Extract<Get<const Simulation>> query, ResMut<SandMesh> mesh
+    Extract<Query<Get<const Simulation>>> query, Extract<ResMut<SandMesh>> mesh
 ) {
     if (!query) return;
     if (!mesh) return;
@@ -903,10 +903,10 @@ void print_hover_data(
 }
 
 void render_simulation_chunk_outline(
-    Extract<Get<
+    Extract<Query<Get<
         const Simulation,
-        const epix::world::sync::sand2b2d::SimulationCollisionGeneral>> query,
-    ResMut<Box2dMesh> mesh
+        const epix::world::sync::sand2b2d::SimulationCollisionGeneral>>> query,
+    Extract<ResMut<Box2dMesh>> mesh
 ) {
     if (!query) return;
     if (!mesh) return;
@@ -977,10 +977,10 @@ void render_simulation_chunk_outline(
 }
 
 void render_simulation_collision(
-    Extract<Get<
+    Extract<Query<Get<
         const Simulation,
-        const epix::world::sync::sand2b2d::SimulationCollisionGeneral>> query,
-    ResMut<Box2dMesh> mesh
+        const epix::world::sync::sand2b2d::SimulationCollisionGeneral>>> query,
+    Extract<ResMut<Box2dMesh>> mesh
 ) {
     if (!query) return;
     if (!mesh) return;
@@ -1201,7 +1201,7 @@ void create_uniform_buffer(
 }
 
 void update_uniform_buffer(
-    Res<RenderContext> context, Res<VulkanResources> res_mgr
+    Extract<Res<RenderContext>> context, Extract<Res<VulkanResources>> res_mgr
 ) {
     if (!res_mgr || !context) return;
     auto buffer = res_mgr->get_buffer("uniform_buffer");

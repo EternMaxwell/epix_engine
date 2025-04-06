@@ -71,7 +71,9 @@ EPIX_API void systems::fn_destroy_context(
 }
 
 EPIX_API void systems::fn_extract_context(
-    ResMut<RenderContext> context, ResMut<CtxCmdBuffer> ctx_cmd, Command cmd
+    Extract<ResMut<RenderContext>> context,
+    Extract<ResMut<CtxCmdBuffer>> ctx_cmd,
+    Command cmd
 ) {
     if (!context) return;
     if (!ctx_cmd) return;
@@ -237,7 +239,7 @@ EPIX_API void systems::fn_destroy_res_manager(
 }
 
 EPIX_API void systems::fn_extract_res_manager(
-    ResMut<VulkanResources> res_manager, Command cmd
+    Extract<ResMut<VulkanResources>> res_manager, Command cmd
 ) {
     if (!res_manager) return;
     {

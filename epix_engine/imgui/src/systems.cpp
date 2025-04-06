@@ -96,7 +96,7 @@ EPIX_API void systems::fn_deinit_imgui(
         device.destroyFramebuffer(imgui_context->framebuffer);
 }
 EPIX_API void systems::fn_extract_imgui_ctx(
-    Command cmd, ResMut<ImGuiContext> imgui_context
+    Command cmd, Extract<ResMut<ImGuiContext>> imgui_context
 ) {
     if (!imgui_context) return;
     ZoneScopedN("Extract ImGui");

@@ -32,7 +32,7 @@ EPIX_SYSTEMT(
 EPIX_SYSTEMT(
     EPIX_API void,
     extract_imgui_ctx,
-    (Command cmd, ResMut<ImGuiContext> imgui_context)
+    (Command cmd, Extract<ResMut<ImGuiContext>> imgui_context)
 )
 EPIX_SYSTEMT(
     EPIX_API void,

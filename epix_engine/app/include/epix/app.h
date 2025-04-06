@@ -1056,7 +1056,22 @@ struct Query {
     bool contains(Entity id) { return query.contains(id); }
 };
 template <typename T>
-struct Extract : public T {};
+struct Extract : public T {
+    template <typename... Args>
+    Extract(Args&&... args) : T(std::forward<Args>(args)...) {}
+    Extract(const T& other) : T(other) {}
+    Extract(T&& other) : T(std::move(other)) {}
+    Extract(const Extract& other) : T(other) {}
+    Extract(Extract&& other) : T(std::move(other)) {}
+    Extract& operator=(const Extract& other) {
+        T::operator=(other);
+        return *this;
+    }
+    Extract& operator=(Extract&& other) {
+        T::operator=(std::move(other));
+        return *this;
+    }
+};
 struct SubApp {
     template <typename T>
     struct value_type {};
@@ -1309,6 +1324,96 @@ struct BasicSystem {
         entt::dense_set<std::type_index> resource_const;
         entt::dense_set<std::type_index> event_read_types;
         entt::dense_set<std::type_index> event_write_types;
+
+        bool conflict_with(const param_info& other) const {
+            // systems with command cannot run parallelly with systems with
+            // command or query
+            if (has_command && (other.has_command || other.has_query)) {
+                return true;
+            }
+            if (other.has_command && (has_command || has_query)) {
+                return true;
+            }
+            // check if queries conflict
+            static auto query_conflict =
+                [](const std::tuple<
+                       entt::dense_set<std::type_index>,
+                       entt::dense_set<std::type_index>,
+                       entt::dense_set<std::type_index>>& query,
+                   const std::tuple<
+                       entt::dense_set<std::type_index>,
+                       entt::dense_set<std::type_index>,
+                       entt::dense_set<std::type_index>>& other_query) -> bool {
+                auto&& [get_a, with_a, without_a] = query;
+                auto&& [get_b, with_b, without_b] = other_query;
+                for (auto& type : without_a) {
+                    if (get_b.contains(type) || with_b.contains(type))
+                        return false;
+                }
+                for (auto& type : without_b) {
+                    if (get_a.contains(type) || with_a.contains(type))
+                        return false;
+                }
+                for (auto& type : get_a) {
+                    if (get_b.contains(type) || with_b.contains(type))
+                        return true;
+                }
+                for (auto& type : get_b) {
+                    if (get_a.contains(type) || with_a.contains(type))
+                        return true;
+                }
+                return false;
+            };
+            for (auto& query : query_types) {
+                for (auto& other_query : other.query_types) {
+                    if (query_conflict(query, other_query)) {
+                        return true;
+                    }
+                }
+            }
+            // check if resources conflict
+            for (auto& res : resource_types) {
+                if (other.resource_types.contains(res) ||
+                    other.resource_const.contains(res)) {
+                    return true;
+                }
+            }
+            for (auto& res : other.resource_types) {
+                if (resource_types.contains(res) ||
+                    resource_const.contains(res)) {
+                    return true;
+                }
+            }
+            // check if events conflict
+            // currently event read and event write can all modify the
+            // queue, but in future maybe we will replace it by a
+            // thread safe queue
+            for (auto& event : event_read_types) {
+                if (other.event_read_types.contains(event) ||
+                    other.event_write_types.contains(event)) {
+                    return true;
+                }
+            }
+            for (auto& event : other.event_read_types) {
+                if (event_read_types.contains(event) ||
+                    event_write_types.contains(event)) {
+                    return true;
+                }
+            }
+            for (auto& event : event_write_types) {
+                if (other.event_read_types.contains(event) ||
+                    other.event_write_types.contains(event)) {
+                    return true;
+                }
+            }
+            for (auto& event : other.event_write_types) {
+                if (event_read_types.contains(event) ||
+                    event_write_types.contains(event)) {
+                    return true;
+                }
+            }
+            return false;
+        }
     } system_param_src, system_param_dst;
 
     template <typename Arg>
@@ -1407,30 +1512,29 @@ struct BasicSystem {
         }
     };
 
+    template <>
+    struct infos_adder<Command> {
+        static void add(param_info& src_info, param_info& dst_info) {
+            dst_info.has_command = true;
+        }
+    };
+
     template <typename T>
     struct infos_adder<Extract<T>> {
         static void add(param_info& src_info, param_info& dst_info) {
             // reverse the order of src and dst for extracted parameters
             infos_adder<T>().add(dst_info, src_info);
         }
-    }
+    };
 
-    template <typename Arg, typename... Args>
-    void add_infos_inernal() {
-        using namespace app_tools;
-        if constexpr (std::is_same_v<Arg, Command>) {
-            system_infos.has_command = true;
-        } else if constexpr (is_template_of<Query, Arg>::value) {
-            system_infos.has_query = true;
-            infos_adder<Arg>().add(system_infos);
-        } else {
-            infos_adder<Arg>().add(system_infos);
-        }
-    }
+    template <typename T>
+    struct infos_adder<Local<T>> {
+        static void add(param_info& src_info, param_info& dst_info) {}
+    };
 
     template <typename... Args>
     void add_infos() {
-        (add_infos_inernal<Args>(), ...);
+        (infos_adder<Args>().add(system_param_src, system_param_dst), ...);
     }
 
     template <typename T>
@@ -1463,189 +1567,14 @@ struct BasicSystem {
         if (m_contrary_to.find(other) != m_contrary_to.end()) return true;
         if (m_not_contrary_to.find(other) != m_not_contrary_to.end())
             return false;
-
-        auto& has_command       = system_infos.has_command;
-        auto& has_query         = system_infos.has_query;
-        auto& query_types       = system_infos.query_types;
-        auto& resource_types    = system_infos.resource_types;
-        auto& resource_const    = system_infos.resource_const;
-        auto& event_read_types  = system_infos.event_read_types;
-        auto& event_write_types = system_infos.event_write_types;
-        auto& state_types       = system_infos.state_types;
-        auto& next_state_types  = system_infos.next_state_types;
-
-        if (has_command && (other->system_infos.has_command ||
-                            other->system_infos.has_query)) {
-            m_contrary_to.insert(other);
-            other->m_contrary_to.insert(this);
+        if (system_param_src.conflict_with(other->system_param_src) ||
+            system_param_dst.conflict_with(other->system_param_dst)) {
+            m_contrary_to.emplace(other);
             return true;
+        } else {
+            m_not_contrary_to.emplace(other);
+            return false;
         }
-        if (has_query && other->system_infos.has_command) {
-            m_contrary_to.insert(other);
-            other->m_contrary_to.insert(this);
-            return true;
-        }
-        for (auto& [query_include_types, query_include_const, query_exclude_types] :
-             query_types) {
-            for (auto& [other_query_include_types, other_query_include_const, other_query_exclude_types] :
-                 other->system_infos.query_types) {
-                bool this_exclude_other = false;
-                for (auto type : query_exclude_types) {
-                    if (std::find(
-                            other_query_include_types.begin(),
-                            other_query_include_types.end(), type
-                        ) != other_query_include_types.end()) {
-                        this_exclude_other = true;
-                    }
-                    if (std::find(
-                            other_query_include_const.begin(),
-                            other_query_include_const.end(), type
-                        ) != other_query_include_const.end()) {
-                        this_exclude_other = true;
-                    }
-                }
-                if (this_exclude_other) continue;
-                bool other_exclude_this = false;
-                for (auto type : other_query_exclude_types) {
-                    if (std::find(
-                            query_include_types.begin(),
-                            query_include_types.end(), type
-                        ) != query_include_types.end()) {
-                        other_exclude_this = true;
-                    }
-                    if (std::find(
-                            query_include_const.begin(),
-                            query_include_const.end(), type
-                        ) != query_include_const.end()) {
-                        other_exclude_this = true;
-                    }
-                }
-                if (other_exclude_this) continue;
-                for (auto type : query_include_types) {
-                    if (std::find(
-                            other_query_include_types.begin(),
-                            other_query_include_types.end(), type
-                        ) != other_query_include_types.end()) {
-                        m_contrary_to.insert(other);
-                        other->m_contrary_to.insert(this);
-                        return true;
-                    }
-                    if (std::find(
-                            other_query_include_const.begin(),
-                            other_query_include_const.end(), type
-                        ) != other_query_include_const.end()) {
-                        m_contrary_to.insert(other);
-                        other->m_contrary_to.insert(this);
-                        return true;
-                    }
-                }
-            }
-        }
-
-        bool resource_one_empty = resource_types.empty() ||
-                                  other->system_infos.resource_types.empty();
-        bool resource_contrary = false;
-        if (!resource_one_empty) {
-            for (auto type : resource_types) {
-                if (std::find(
-                        other->system_infos.resource_const.begin(),
-                        other->system_infos.resource_const.end(), type
-                    ) != other->system_infos.resource_const.end()) {
-                    resource_contrary = true;
-                }
-                if (std::find(
-                        other->system_infos.resource_types.begin(),
-                        other->system_infos.resource_types.end(), type
-                    ) != other->system_infos.resource_types.end()) {
-                    resource_contrary = true;
-                }
-            }
-            for (auto type : other->system_infos.resource_types) {
-                if (std::find(
-                        resource_const.begin(), resource_const.end(), type
-                    ) != resource_const.end()) {
-                    resource_contrary = true;
-                }
-                if (std::find(
-                        resource_types.begin(), resource_types.end(), type
-                    ) != resource_types.end()) {
-                    resource_contrary = true;
-                }
-            }
-        }
-        if (resource_contrary) {
-            m_contrary_to.insert(other);
-            other->m_contrary_to.insert(this);
-            return true;
-        }
-
-        bool event_contrary = false;
-        for (auto type : event_write_types) {
-            if (std::find(
-                    other->system_infos.event_write_types.begin(),
-                    other->system_infos.event_write_types.end(), type
-                ) != other->system_infos.event_write_types.end()) {
-                event_contrary = true;
-            }
-            if (std::find(
-                    other->system_infos.event_read_types.begin(),
-                    other->system_infos.event_read_types.end(), type
-                ) != other->system_infos.event_read_types.end()) {
-                event_contrary = true;
-            }
-        }
-        for (auto type : other->system_infos.event_write_types) {
-            if (std::find(
-                    event_write_types.begin(), event_write_types.end(), type
-                ) != event_write_types.end()) {
-                event_contrary = true;
-            }
-            if (std::find(
-                    event_read_types.begin(), event_read_types.end(), type
-                ) != event_read_types.end()) {
-                event_contrary = true;
-            }
-        }
-        if (event_contrary) {
-            m_contrary_to.insert(other);
-            other->m_contrary_to.insert(this);
-            return true;
-        }
-
-        bool state_contrary = false;
-        for (auto type : next_state_types) {
-            if (std::find(
-                    other->system_infos.next_state_types.begin(),
-                    other->system_infos.next_state_types.end(), type
-                ) != other->system_infos.next_state_types.end()) {
-                state_contrary = true;
-            }
-            if (std::find(
-                    other->system_infos.state_types.begin(),
-                    other->system_infos.state_types.end(), type
-                ) != other->system_infos.state_types.end()) {
-                state_contrary = true;
-            }
-        }
-        for (auto type : other->system_infos.next_state_types) {
-            if (std::find(
-                    next_state_types.begin(), next_state_types.end(), type
-                ) != next_state_types.end()) {
-                state_contrary = true;
-            }
-            if (std::find(state_types.begin(), state_types.end(), type) !=
-                state_types.end()) {
-                state_contrary = true;
-            }
-        }
-        if (state_contrary) {
-            m_contrary_to.insert(other);
-            other->m_contrary_to.insert(this);
-            return true;
-        }
-        m_not_contrary_to.insert(other);
-        other->m_not_contrary_to.insert(this);
-        return false;
     }
     const double get_avg_time() const { return avg_time; }
     template <typename T>
