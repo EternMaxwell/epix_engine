@@ -177,10 +177,10 @@ EPIX_SYSTEMT(
 EPIX_SYSTEMT(
     EPIX_API void,
     extract_font_atlas,
-    (ResMut<FontAtlas> font_atlas,
+    (Extract<ResMut<FontAtlas>> font_atlas,
      Command cmd,
-     ResMut<RenderContext> context,
-     ResMut<VulkanResources> res_manager)
+     Extract<ResMut<RenderContext>> context,
+     Extract<ResMut<VulkanResources>> res_manager)
 )
 EPIX_SYSTEMT(EPIX_API void, destroy_font_atlas, (ResMut<FontAtlas> font_atlas))
 }  // namespace systems
