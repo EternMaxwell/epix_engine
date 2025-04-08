@@ -71,6 +71,6 @@ class EventTestPlugin : public Plugin {
 
 void test() {
     App app = App::create();
-    app.add_plugin(EventTestPlugin{}).run();
+    app.add_plugin(EventTestPlugin{}).add_event<TestEvent>().run();
 }
 }  // namespace test_event
