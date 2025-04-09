@@ -33,8 +33,7 @@ EPIX_API App App::create() { return App(); }
 EPIX_API App App::create2() { return App(); }
 
 EPIX_API App::App() {
-    m_pool     = std::make_unique<BS::thread_pool<BS::tp::priority>>(2, []()
-    {
+    m_pool     = std::make_unique<BS::thread_pool<BS::tp::priority>>(2, []() {
         // set thread name to "control"
         BS::this_thread::set_os_thread_name("control");
     });
@@ -179,11 +178,12 @@ EPIX_API App& App::add_exit_schedule(Schedule& schedule) {
 };
 
 EPIX_API void App::build_plugins() {
-    for (auto&& [id, plugin] : m_plugins) {
+    for (size_t i = 0; i < m_plugins.size(); i++) {
+        auto&& [id, plugin] = m_plugins[i];
         plugin->build(*this);
         auto mutex = std::make_shared<std::shared_mutex>();
         for (auto&& [type, world] : m_worlds) {
-            if (world->resource(id).resource) {
+            if (!world->resource(id).resource) {
                 world->add_resource(
                     id,
                     UntypedRes{std::static_pointer_cast<void>(plugin), mutex}

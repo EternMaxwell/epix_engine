@@ -1833,7 +1833,8 @@ struct App {
     };
 
    private:
-    entt::dense_map<std::type_index, std::shared_ptr<Plugin>> m_plugins;
+    std::vector<std::pair<std::type_index, std::shared_ptr<Plugin>>> m_plugins;
+    entt::dense_set<std::type_index> m_built_plugins;
 
     entt::dense_map<std::type_index, std::unique_ptr<World>> m_worlds;
 
@@ -1923,9 +1924,14 @@ struct App {
     template <typename T>
     App& add_plugin(T&& plugin) {
         auto id = std::type_index(typeid(std::remove_cvref_t<T>));
-        if (!m_plugins.contains(id)) {
-            m_plugins.emplace(
-                id, std::make_shared<std::remove_cvref_t<T>>(std::move(plugin))
+        if (std::find_if(
+                m_plugins.begin(), m_plugins.end(),
+                [id](const auto& pair) { return pair.first == id; }
+            ) == m_plugins.end()) {
+            m_plugins.emplace_back(
+                id,
+                std::make_shared<std::remove_cvref_t<T>>(std::forward<T>(plugin)
+                )
             );
         }
         return *this;
@@ -1934,7 +1940,11 @@ struct App {
     template <typename T>
     T& plugin() {
         auto id = std::type_index(typeid(std::remove_cvref_t<T>));
-        if (auto it = m_plugins.find(id); it != m_plugins.end()) {
+        if (auto it = std::find_if(
+                m_plugins.begin(), m_plugins.end(),
+                [id](const auto& pair) { return pair.first == id; }
+            );
+            it != m_plugins.end()) {
             return *std::static_pointer_cast<T>(it->second).get();
         }
         throw std::runtime_error("Plugin not found.");
@@ -1942,7 +1952,11 @@ struct App {
     template <typename T>
     std::shared_ptr<T> get_plugin() {
         auto id = std::type_index(typeid(std::remove_cvref_t<T>));
-        if (auto it = m_plugins.find(id); it != m_plugins.end()) {
+        if (auto it = std::find_if(
+                m_plugins.begin(), m_plugins.end(),
+                [id](const auto& pair) { return pair.first == id; }
+            );
+            it != m_plugins.end()) {
             return std::static_pointer_cast<T>(it->second);
         }
         return nullptr;
