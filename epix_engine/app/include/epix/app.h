@@ -1636,15 +1636,15 @@ struct Schedule {
 
     size_t m_prev_count = 0;
 
+    EPIX_API Schedule& set_logger(const std::shared_ptr<spdlog::logger>& logger
+    );
+
    public:
     EPIX_API Schedule(ScheduleId id);
     Schedule(Schedule&& other)            = default;
     Schedule& operator=(Schedule&& other) = default;
 
     EPIX_API Schedule& set_executor(const std::shared_ptr<Executor>& executor);
-    EPIX_API Schedule& set_logger(
-        const std::shared_ptr<spdlog::logger>& logger
-    );
     template <typename T, typename... Args>
     Schedule& after(T scheduleId, Args... others) {
         m_prev_ids.emplace(scheduleId);
@@ -1834,6 +1834,31 @@ struct Plugin {
     virtual void build(App& app) = 0;
 };
 
+struct AppCreateInfo {
+    uint32_t control_threads                                     = 2;
+    std::vector<std::pair<std::string, uint32_t>> worker_threads = {
+        {"default", 4},
+        {"single", 1},
+    };
+    bool enable_loop                       = false;
+    std::shared_ptr<spdlog::logger> logger = nullptr;
+};
+
+inline struct StartGraphT {
+} StartGraph;
+inline struct LoopGraphT {
+} LoopGraph;
+inline struct ExitGraphT {
+} ExitGraph;
+struct GraphId : public std::type_index {
+    template <typename T>
+    GraphId(T value) : std::type_index(typeid(std::remove_cvref_t<T>)) {}
+    GraphId(const GraphId& other)            = default;
+    GraphId(GraphId&& other)                 = default;
+    GraphId& operator=(const GraphId& other) = default;
+    GraphId& operator=(GraphId&& other)      = default;
+};
+
 struct App {
     struct ScheduleGraph {
         entt::dense_map<ScheduleId, std::shared_ptr<Schedule>> m_schedules;
@@ -1846,7 +1871,8 @@ struct App {
 
     entt::dense_map<std::type_index, std::unique_ptr<World>> m_worlds;
 
-    ScheduleGraph startup_graph, loop_graph, exit_graph;
+    entt::dense_map<std::type_index, std::unique_ptr<ScheduleGraph>> m_graphs;
+    entt::dense_map<ScheduleId, std::type_index> m_graph_ids;
 
     std::unique_ptr<BS::thread_pool<BS::tp::priority>> m_pool;
     std::shared_ptr<Executor> m_executor;
@@ -1855,27 +1881,27 @@ struct App {
 
     std::shared_ptr<spdlog::logger> m_logger;
 
-   public:
-    EPIX_API static App create();
-    EPIX_API static App create2();
+    EPIX_API App(const AppCreateInfo& info);
 
-    EPIX_API App();
+   public:
+    EPIX_API static App create(const AppCreateInfo& info = {});
+    EPIX_API static App create2(const AppCreateInfo& info = {});
 
     EPIX_API App* operator->();
     EPIX_API App& enable_loop();
     EPIX_API App& set_log_level(spdlog::level::level_enum level);
 
-    EPIX_API App& add_startup_schedule(Schedule&& schedule);
-    EPIX_API App& add_startup_schedule(Schedule& schedule);
-    EPIX_API App& add_loop_schedule(Schedule&& schedule);
-    EPIX_API App& add_loop_schedule(Schedule& schedule);
-    EPIX_API App& add_exit_schedule(Schedule&& schedule);
-    EPIX_API App& add_exit_schedule(Schedule& schedule);
+    EPIX_API App& add_schedule(GraphId, Schedule&& schedule);
+    EPIX_API App& add_schedule(GraphId, Schedule& schedule);
+
+    template <typename... Schs>
+        requires(sizeof...(Schs) != 1)
+    App& add_schedule(GraphId id, Schs&&... schs) {
+        (add_schedule(id, std::forward<Schs>(schs)), ...);
+        return *this;
+    }
 
     EPIX_API App& set_logger(const std::shared_ptr<spdlog::logger>& logger);
-    EPIX_API App& set_logger_all(
-        const std::shared_ptr<spdlog::logger>& logger
-    );
     EPIX_API std::shared_ptr<spdlog::logger> logger() const;
 
     template <typename T>
@@ -1905,36 +1931,23 @@ struct App {
 
     template <typename... Args>
     App& configure_sets(Args... sets) {
-        for (auto&& each : startup_graph.m_schedules) {
-            each.second->configure_sets(std::forward<Args>(sets)...);
-        }
-        for (auto&& each : loop_graph.m_schedules) {
-            each.second->configure_sets(std::forward<Args>(sets)...);
-        }
-        for (auto&& each : exit_graph.m_schedules) {
-            each.second->configure_sets(std::forward<Args>(sets)...);
+        for (auto&& [id, graph] : m_graphs) {
+            for (auto&& [type, schedules] : graph->m_schedules) {
+                schedules->configure_sets(sets...);
+            }
         }
         return *this;
     }
 
-    template <typename T, typename... Funcs>
-    App& add_system(T&& scheduleId, Funcs&&... funcs) {
-        auto id = ScheduleId(std::forward<T>(scheduleId));
-        if (auto it = startup_graph.m_schedules.find(id);
-            it != startup_graph.m_schedules.end()) {
-            auto&& schedule = it->second;
-            (schedule->add_system(std::move(into(funcs))), ...);
+    template <typename... Funcs>
+    App& add_system(ScheduleId id, Funcs&&... funcs) {
+        if (!m_graph_ids.contains(id)) {
+            return *this;
         }
-        if (auto it = loop_graph.m_schedules.find(id);
-            it != loop_graph.m_schedules.end()) {
-            auto&& schedule = it->second;
-            (schedule->add_system(std::move(into(funcs))), ...);
-        }
-        if (auto it = exit_graph.m_schedules.find(id);
-            it != exit_graph.m_schedules.end()) {
-            auto&& schedule = it->second;
-            (schedule->add_system(std::move(into(funcs))), ...);
-        }
+        auto&& graph    = m_graphs.at(m_graph_ids.at(id));
+        auto&& schedule = graph->m_schedules[id];
+        (schedule->add_system(std::move(into(std::forward<Funcs>(funcs)))),
+         ...);
         return *this;
     };
     template <typename T>

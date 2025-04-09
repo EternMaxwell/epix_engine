@@ -128,6 +128,7 @@ EPIX_API void Schedule::bake() {
     }
 }
 EPIX_API void Schedule::run(World* src, World* dst) {
+    if (m_systems.empty()) return;
     auto start = std::chrono::high_resolution_clock::now();
     ZoneScopedN("Run Schedule");
     auto name = std::format("Run Schedule {}#{}", m_id.type.name(), m_id.value);

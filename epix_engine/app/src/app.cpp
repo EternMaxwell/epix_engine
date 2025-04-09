@@ -29,91 +29,106 @@ EPIX_API std::shared_ptr<BS::thread_pool<BS::tp::priority>> Executor::get(
     return it->second;
 }
 
-EPIX_API App App::create() { return App(); }
-EPIX_API App App::create2() { return App(); }
+EPIX_API App App::create(const AppCreateInfo& info) { return App(info); }
+EPIX_API App App::create2(const AppCreateInfo& info) { return App(info); }
 
-EPIX_API App::App() {
-    m_pool     = std::make_unique<BS::thread_pool<BS::tp::priority>>(2, []() {
-        // set thread name to "control"
-        BS::this_thread::set_os_thread_name("control");
-    });
+EPIX_API App::App(const AppCreateInfo& info) {
+    if (info.control_threads)
+        m_pool = std::make_unique<BS::thread_pool<BS::tp::priority>>(
+            info.control_threads,
+            []() {
+                // set thread name to "control"
+                BS::this_thread::set_os_thread_name("control");
+            }
+        );
     m_executor = std::make_shared<Executor>();
-    m_executor->add("default", 4);
-    m_executor->add("single", 1);
-    m_enable_loop = std::make_unique<bool>(false);
+    for (auto&& [name, count] : info.worker_threads) {
+        m_executor->add(name, count);
+    }
+    m_enable_loop = std::make_unique<bool>(info.enable_loop);
+    set_logger(info.logger ? info.logger : spdlog::default_logger());
+    m_graphs.emplace(typeid(StartGraphT), std::make_unique<ScheduleGraph>());
+    m_graphs.emplace(typeid(LoopGraphT), std::make_unique<ScheduleGraph>());
+    m_graphs.emplace(typeid(ExitGraphT), std::make_unique<ScheduleGraph>());
     add_world<MainWorld>();
     add_world<RenderWorld>();
-    add_startup_schedule(Schedule(PreStartup)
-                             .set_src_world<MainWorld>()
-                             .set_dst_world<MainWorld>());
-    add_startup_schedule(Schedule(Startup)
-                             .set_src_world<MainWorld>()
-                             .set_dst_world<MainWorld>()
-                             .after(PreStartup));
-    add_startup_schedule(Schedule(PostStartup)
-                             .set_src_world<MainWorld>()
-                             .set_dst_world<MainWorld>()
-                             .after(Startup));
-    add_loop_schedule(Schedule(PreExtract)
-                          .set_src_world<MainWorld>()
-                          .set_dst_world<RenderWorld>());
-    add_loop_schedule(Schedule(Extraction)
-                          .set_src_world<MainWorld>()
-                          .set_dst_world<RenderWorld>()
-                          .after(PreExtract));
-    add_loop_schedule(Schedule(PostExtract)
-                          .set_src_world<MainWorld>()
-                          .set_dst_world<RenderWorld>()
-                          .after(Extraction));
-    add_loop_schedule(Schedule(First)
-                          .set_src_world<MainWorld>()
-                          .set_dst_world<MainWorld>()
-                          .after(PostExtract));
-    add_loop_schedule(Schedule(PreUpdate)
-                          .set_src_world<MainWorld>()
-                          .set_dst_world<MainWorld>()
-                          .after(First));
-    add_loop_schedule(Schedule(Update)
-                          .set_src_world<MainWorld>()
-                          .set_dst_world<MainWorld>()
-                          .after(PreUpdate));
-    add_loop_schedule(Schedule(PostUpdate)
-                          .set_src_world<MainWorld>()
-                          .set_dst_world<MainWorld>()
-                          .after(Update));
-    add_loop_schedule(Schedule(Last)
-                          .set_src_world<MainWorld>()
-                          .set_dst_world<MainWorld>()
-                          .after(PostUpdate));
-    add_loop_schedule(Schedule(Prepare)
-                          .set_src_world<RenderWorld>()
-                          .set_dst_world<RenderWorld>()
-                          .after(PostExtract));
-    add_loop_schedule(Schedule(PreRender)
-                          .set_src_world<RenderWorld>()
-                          .set_dst_world<RenderWorld>()
-                          .after(Prepare));
-    add_loop_schedule(Schedule(Render)
-                          .set_src_world<RenderWorld>()
-                          .set_dst_world<RenderWorld>()
-                          .after(PreRender));
-    add_loop_schedule(Schedule(PostRender)
-                          .set_src_world<RenderWorld>()
-                          .set_dst_world<RenderWorld>()
-                          .after(Render));
-    add_exit_schedule(
-        Schedule(PreExit).set_src_world<MainWorld>().set_dst_world<MainWorld>()
+    add_schedule(
+        StartGraph,
+        Schedule(PreStartup)
+            .set_src_world<MainWorld>()
+            .set_dst_world<MainWorld>(),
+        Schedule(Startup)
+            .set_src_world<MainWorld>()
+            .set_dst_world<MainWorld>()
+            .after(PreStartup),
+        Schedule(PostStartup)
+            .set_src_world<MainWorld>()
+            .set_dst_world<MainWorld>()
+            .after(Startup)
     );
-    add_exit_schedule(Schedule(Exit)
-                          .set_src_world<MainWorld>()
-                          .set_dst_world<MainWorld>()
-                          .after(PreExit));
-    add_exit_schedule(Schedule(PostExit)
-                          .set_src_world<MainWorld>()
-                          .set_dst_world<MainWorld>()
-                          .after(Exit));
+    add_schedule(
+        LoopGraph,
+        Schedule(PreExtract)
+            .set_src_world<MainWorld>()
+            .set_dst_world<RenderWorld>(),
+        Schedule(Extraction)
+            .set_src_world<MainWorld>()
+            .set_dst_world<RenderWorld>()
+            .after(PreExtract),
+        Schedule(PostExtract)
+            .set_src_world<MainWorld>()
+            .set_dst_world<RenderWorld>()
+            .after(Extraction),
+        Schedule(First)
+            .set_src_world<MainWorld>()
+            .set_dst_world<MainWorld>()
+            .after(PostExtract),
+        Schedule(PreUpdate)
+            .set_src_world<MainWorld>()
+            .set_dst_world<MainWorld>()
+            .after(First),
+        Schedule(Update)
+            .set_src_world<MainWorld>()
+            .set_dst_world<MainWorld>()
+            .after(PreUpdate),
+        Schedule(PostUpdate)
+            .set_src_world<MainWorld>()
+            .set_dst_world<MainWorld>()
+            .after(Update),
+        Schedule(Last)
+            .set_src_world<MainWorld>()
+            .set_dst_world<MainWorld>()
+            .after(PostUpdate),
+        Schedule(Prepare)
+            .set_src_world<RenderWorld>()
+            .set_dst_world<RenderWorld>()
+            .after(PostExtract),
+        Schedule(PreRender)
+            .set_src_world<RenderWorld>()
+            .set_dst_world<RenderWorld>()
+            .after(Prepare),
+        Schedule(Render)
+            .set_src_world<RenderWorld>()
+            .set_dst_world<RenderWorld>()
+            .after(PreRender),
+        Schedule(PostRender)
+            .set_src_world<RenderWorld>()
+            .set_dst_world<RenderWorld>()
+            .after(Render)
+    );
+    add_schedule(
+        ExitGraph,
+        Schedule(PreExit).set_src_world<MainWorld>().set_dst_world<MainWorld>(),
+        Schedule(Exit)
+            .set_src_world<MainWorld>()
+            .set_dst_world<MainWorld>()
+            .after(PreExit),
+        Schedule(PostExit)
+            .set_src_world<MainWorld>()
+            .set_dst_world<MainWorld>()
+            .after(Exit)
+    );
     add_event<AppExit>();
-    set_logger(spdlog::default_logger()->clone("app"));
 }
 
 EPIX_API App* App::operator->() { return this; }
@@ -126,73 +141,29 @@ EPIX_API App& App::set_log_level(spdlog::level::level_enum level) {
     return *this;
 };
 
-EPIX_API App& App::add_startup_schedule(Schedule&& schedule) {
+EPIX_API App& App::add_schedule(GraphId gid, Schedule&& schedule) {
     schedule.set_executor(m_executor);
-    auto id            = schedule.m_id;
-    auto&& m_schedules = startup_graph.m_schedules;
-    if (m_schedules.contains(id)) {
-        m_schedules[id] = std::make_shared<Schedule>(std::move(schedule));
-    } else {
-        m_schedules.emplace(
-            id, std::make_shared<Schedule>(std::move(schedule))
-        );
+    schedule.set_logger(m_logger);
+    auto id = schedule.m_id;
+    if (!m_graphs.contains(gid) || m_graph_ids.contains(id)) {
+        return *this;
     }
+    m_graph_ids.emplace(id, gid);
+    auto&& m_schedules = m_graphs.at(gid)->m_schedules;
+    m_schedules.emplace(id, std::make_shared<Schedule>(std::move(schedule)));
     return *this;
 };
-EPIX_API App& App::add_startup_schedule(Schedule& schedule) {
-    add_startup_schedule(std::move(schedule));
-    return *this;
-};
-EPIX_API App& App::add_loop_schedule(Schedule&& schedule) {
-    schedule.set_executor(m_executor);
-    auto id            = schedule.m_id;
-    auto&& m_schedules = loop_graph.m_schedules;
-    if (m_schedules.contains(id)) {
-        m_schedules[id] = std::make_shared<Schedule>(std::move(schedule));
-    } else {
-        m_schedules.emplace(
-            id, std::make_shared<Schedule>(std::move(schedule))
-        );
-    }
-    return *this;
-};
-EPIX_API App& App::add_loop_schedule(Schedule& schedule) {
-    add_loop_schedule(std::move(schedule));
-    return *this;
-};
-EPIX_API App& App::add_exit_schedule(Schedule&& schedule) {
-    schedule.set_executor(m_executor);
-    auto id            = schedule.m_id;
-    auto&& m_schedules = exit_graph.m_schedules;
-    if (m_schedules.contains(id)) {
-        m_schedules[id] = std::make_shared<Schedule>(std::move(schedule));
-    } else {
-        m_schedules.emplace(
-            id, std::make_shared<Schedule>(std::move(schedule))
-        );
-    }
-    return *this;
-};
-EPIX_API App& App::add_exit_schedule(Schedule& schedule) {
-    add_exit_schedule(std::move(schedule));
+EPIX_API App& App::add_schedule(GraphId id, Schedule& schedule) {
+    add_schedule(id, std::move(schedule));
     return *this;
 };
 
 EPIX_API App& App::set_logger(const std::shared_ptr<spdlog::logger>& logger) {
     m_logger = logger->clone("app");
-    return *this;
-};
-EPIX_API App& App::set_logger_all(const std::shared_ptr<spdlog::logger>& logger
-) {
-    m_logger = logger->clone("app");
-    for (auto&& [id, schedule] : startup_graph.m_schedules) {
-        schedule->set_logger(logger);
-    }
-    for (auto&& [id, schedule] : loop_graph.m_schedules) {
-        schedule->set_logger(logger);
-    }
-    for (auto&& [id, schedule] : exit_graph.m_schedules) {
-        schedule->set_logger(logger);
+    for (auto&& [id, graph] : m_graphs) {
+        for (auto&& [type, schedule] : graph->m_schedules) {
+            schedule->set_logger(m_logger);
+        }
     }
     return *this;
 };
@@ -335,6 +306,9 @@ EPIX_API void App::run(ScheduleGraph& graph) {
 EPIX_API void App::run() {
     m_logger->info("Building App");
     build_plugins();
+    auto&& startup_graph = *m_graphs.at(typeid(StartGraphT));
+    auto&& loop_graph    = *m_graphs.at(typeid(LoopGraphT));
+    auto&& exit_graph    = *m_graphs.at(typeid(ExitGraphT));
     build(startup_graph);
     build(loop_graph);
     build(exit_graph);
