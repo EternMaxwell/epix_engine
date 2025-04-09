@@ -35,6 +35,21 @@ EPIX_API SystemAddInfo& SystemAddInfo::worker(const std::string& worker) {
     return *this;
 }
 
+EPIX_API SystemAddInfo& SystemAddInfo::set_label(const std::string& label) {
+    for (auto&& each : m_systems) {
+        each.name = label;
+    }
+    return *this;
+}
+
+EPIX_API SystemAddInfo& SystemAddInfo::set_label(
+    uint32_t index, const std::string& label
+) {
+    if (index >= m_systems.size()) return *this;
+    m_systems[index].name = std::format("{}#{}", label, index);
+    return *this;
+}
+
 EPIX_API System::System(
     const std::string& label,
     FuncIndex index,
@@ -47,10 +62,19 @@ EPIX_API System::System(
       m_next_count(0) {}
 
 EPIX_API bool System::run(World* src, World* dst) {
-    for (auto& each : conditions) {
-        if (!each->run(src, dst)) return false;
+    ZoneScopedN("Try Run System");
+    auto name = std::format("System: {}", label);
+    ZoneName(name.c_str(), name.size());
+    {
+        ZoneScopedN("Check Conditions");
+        for (auto& each : conditions) {
+            if (!each->run(src, dst)) return false;
+        }
     }
-    system->run(src, dst);
+    {
+        ZoneScopedN("Run System");
+        system->run(src, dst);
+    }
     return true;
 }
 EPIX_API void System::clear_tmp() {

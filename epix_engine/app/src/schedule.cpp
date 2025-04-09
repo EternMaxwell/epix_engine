@@ -24,6 +24,14 @@ EPIX_API Schedule& Schedule::set_executor(
     return *this;
 }
 
+EPIX_API Schedule& Schedule::set_logger(
+    const std::shared_ptr<spdlog::logger>& logger
+) {
+    m_logger =
+        logger->clone(std::format("{}#{}", m_id.type.name(), m_id.value));
+    return *this;
+}
+
 EPIX_API Schedule& Schedule::add_system(SystemAddInfo&& info) {
     for (size_t i = 0; i < info.m_systems.size(); i++) {
         auto&& each = info.m_systems[i];
@@ -121,7 +129,13 @@ EPIX_API void Schedule::bake() {
 }
 EPIX_API void Schedule::run(World* src, World* dst) {
     auto start = std::chrono::high_resolution_clock::now();
-    bake();
+    ZoneScopedN("Run Schedule");
+    auto name = std::format("Run Schedule {}#{}", m_id.type.name(), m_id.value);
+    ZoneName(name.c_str(), name.size());
+    {
+        ZoneScopedN("Baking Schedule");
+        bake();
+    }
     size_t m_remain  = m_systems.size();
     size_t m_running = 0;
     for (auto&& [ptr, system] : m_systems) {
@@ -176,8 +190,11 @@ EPIX_API void Schedule::run(World* src, World* dst) {
 EPIX_API void Schedule::run(
     std::shared_ptr<System> system, World* src, World* dst
 ) {
+    ZoneScopedN("Detach System");
+    auto name   = std::format("Detach System: {}", system->label);
     auto&& pool = m_executor->get(system->worker);
     if (!pool) {
+        ZoneScopedN("Run System");
         system->run(src, dst);
         m_finishes->emplace(system);
     }

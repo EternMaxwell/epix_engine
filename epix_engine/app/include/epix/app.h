@@ -1479,6 +1479,8 @@ struct SystemAddInfo {
         run_if([state](Res<State<T>> cur) { return cur->is_state(state); });
         return *this;
     };
+    EPIX_API SystemAddInfo& set_label(const std::string& label);
+    EPIX_API SystemAddInfo& set_label(uint32_t index, const std::string& label);
 };
 template <typename Ret, typename... Args>
 struct SystemT {
@@ -1533,6 +1535,9 @@ struct SystemT {
     SystemAddInfo in_state(T state) {
         return std::move(operator SystemAddInfo().in_state(state));
     };
+    SystemAddInfo set_label(const std::string& label) {
+        return std::move(operator SystemAddInfo().set_label(label));
+    }
 };
 
 struct System {
@@ -1637,6 +1642,9 @@ struct Schedule {
     Schedule& operator=(Schedule&& other) = default;
 
     EPIX_API Schedule& set_executor(const std::shared_ptr<Executor>& executor);
+    EPIX_API Schedule& set_logger(
+        const std::shared_ptr<spdlog::logger>& logger
+    );
     template <typename T, typename... Args>
     Schedule& after(T scheduleId, Args... others) {
         m_prev_ids.emplace(scheduleId);
@@ -1845,6 +1853,8 @@ struct App {
 
     std::unique_ptr<bool> m_enable_loop;
 
+    std::shared_ptr<spdlog::logger> m_logger;
+
    public:
     EPIX_API static App create();
     EPIX_API static App create2();
@@ -1861,6 +1871,12 @@ struct App {
     EPIX_API App& add_loop_schedule(Schedule& schedule);
     EPIX_API App& add_exit_schedule(Schedule&& schedule);
     EPIX_API App& add_exit_schedule(Schedule& schedule);
+
+    EPIX_API App& set_logger(const std::shared_ptr<spdlog::logger>& logger);
+    EPIX_API App& set_logger_all(
+        const std::shared_ptr<spdlog::logger>& logger
+    );
+    EPIX_API std::shared_ptr<spdlog::logger> logger() const;
 
     template <typename T>
     App& add_world() {

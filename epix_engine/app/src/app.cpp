@@ -113,6 +113,7 @@ EPIX_API App::App() {
                           .set_dst_world<MainWorld>()
                           .after(Exit));
     add_event<AppExit>();
+    set_logger(spdlog::default_logger()->clone("app"));
 }
 
 EPIX_API App* App::operator->() { return this; }
@@ -175,6 +176,28 @@ EPIX_API App& App::add_exit_schedule(Schedule&& schedule) {
 EPIX_API App& App::add_exit_schedule(Schedule& schedule) {
     add_exit_schedule(std::move(schedule));
     return *this;
+};
+
+EPIX_API App& App::set_logger(const std::shared_ptr<spdlog::logger>& logger) {
+    m_logger = logger->clone("app");
+    return *this;
+};
+EPIX_API App& App::set_logger_all(const std::shared_ptr<spdlog::logger>& logger
+) {
+    m_logger = logger->clone("app");
+    for (auto&& [id, schedule] : startup_graph.m_schedules) {
+        schedule->set_logger(logger);
+    }
+    for (auto&& [id, schedule] : loop_graph.m_schedules) {
+        schedule->set_logger(logger);
+    }
+    for (auto&& [id, schedule] : exit_graph.m_schedules) {
+        schedule->set_logger(logger);
+    }
+    return *this;
+};
+EPIX_API std::shared_ptr<spdlog::logger> App::logger() const {
+    return m_logger;
 };
 
 EPIX_API void App::build_plugins() {
@@ -248,13 +271,18 @@ EPIX_API void App::run(ScheduleGraph& graph) {
     size_t m_running   = 0;
     size_t m_remain    = m_schedules.size();
     auto run_schedule  = [&](std::shared_ptr<Schedule> schedule) {
+        ZoneScopedN("Try Detach Schedule");
+        auto name = std::format(
+            "Detach Schedule: {}#{}", schedule->m_id.type.name(),
+            schedule->m_id.value
+        );
+        ZoneName(name.c_str(), name.size());
         auto src = m_worlds[schedule->m_src_world].get();
         auto dst = m_worlds[schedule->m_dst_world].get();
         if (!src || !dst) {
             m_finishes.emplace(schedule);
             return;
         }
-        schedule->bake();
         if (!m_pool) {
             schedule->run(src, dst);
             m_finishes.emplace(schedule);
@@ -305,20 +333,27 @@ EPIX_API void App::run(ScheduleGraph& graph) {
 }
 
 EPIX_API void App::run() {
+    m_logger->info("Building App");
     build_plugins();
     build(startup_graph);
     build(loop_graph);
     build(exit_graph);
+    m_logger->info("Running App");
+    m_logger->debug("Running startup schedules");
     run(startup_graph);
     std::unique_ptr<BasicSystem<bool>> to_loop =
-        std::make_unique<BasicSystem<bool>>([](EventReader<AppExit> read) {
-            return read.empty();
+        std::make_unique<BasicSystem<bool>>([&](EventReader<AppExit> read) {
+            return *m_enable_loop && read.empty();
         });
+    m_logger->debug("Running loop schedules");
     do {
+        FrameMark;
         run(loop_graph);
-    } while (*m_enable_loop && to_loop->run(
-                                   m_worlds[typeid(MainWorld)].get(),
-                                   m_worlds[typeid(MainWorld)].get()
-                               ));
+    } while (to_loop->run(
+        m_worlds[typeid(MainWorld)].get(), m_worlds[typeid(MainWorld)].get()
+    ));
+    m_logger->info("Exiting App");
+    m_logger->debug("Running exit schedules");
     run(exit_graph);
+    m_logger->info("App terminated.");
 }
