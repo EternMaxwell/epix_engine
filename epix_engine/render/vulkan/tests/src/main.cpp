@@ -137,7 +137,9 @@ void destroy_meshes(
     mesh2->destroy();
 }
 
-void prepare_mesh(ResMut<staging_mesh> mesh, Res<VulkanResources> res) {
+void prepare_mesh(
+    Extract<ResMut<staging_mesh>> mesh, Extract<Res<VulkanResources>> res
+) {
     if (!mesh || !res) return;
     PushConstants push_constants{
         res->image_view_index("test::rdvk::image1::view"),
@@ -169,14 +171,16 @@ void prepare_mesh(ResMut<staging_mesh> mesh, Res<VulkanResources> res) {
 }
 
 void extract_meshes(
-    ResMut<staging_mesh> mesh, ResMut<gpu_mesh> mesh2, Command cmd
+    Extract<ResMut<staging_mesh>> mesh,
+    Extract<ResMut<gpu_mesh>> mesh2,
+    Command cmd
 ) {
     if (!mesh || !mesh2) return;
     cmd.share_resource(mesh);
     cmd.share_resource(mesh2);
 }
 
-void extract_pass(Command cmd, ResMut<TestPass> pass) {
+void extract_pass(Command cmd, Extract<ResMut<TestPass>> pass) {
     if (!pass) return;
     cmd.share_resource(pass);
 }

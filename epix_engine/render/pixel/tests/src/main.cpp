@@ -168,7 +168,9 @@ void destroy_meshes(
 }
 
 void extract_meshes(
-    ResMut<TestStagingMesh> mesh, ResMut<TestGPUMesh> mesh2, Command cmd
+    Extract<ResMut<TestStagingMesh>> mesh,
+    Extract<ResMut<TestGPUMesh>> mesh2,
+    Command cmd
 ) {
     if (!mesh || !mesh2) {
         return;
@@ -177,14 +179,14 @@ void extract_meshes(
     cmd.share_resource(mesh2);
 }
 
-void extract_pass(ResMut<TestPass> pass, Command cmd) {
+void extract_pass(Extract<ResMut<TestPass>> pass, Command cmd) {
     if (!pass) {
         return;
     }
     cmd.share_resource(pass);
 }
 
-void prepare_mesh(ResMut<TestStagingMesh> mesh) {
+void prepare_mesh(Extract<ResMut<TestStagingMesh>> mesh) {
     if (!mesh) {
         return;
     }

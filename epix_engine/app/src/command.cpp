@@ -2,59 +2,64 @@
 
 using namespace epix::app;
 
-EPIX_API EntityCommand::EntityCommand(
-    entt::registry* registry,
-    Entity entity,
-    entt::dense_set<Entity>* despawns,
-    entt::dense_set<Entity>* recursive_despawns
-)
-    : m_registry(registry),
-      m_entity(entity),
-      m_despawns(despawns),
-      m_recursive_despawns(recursive_despawns) {}
-
-EPIX_API void EntityCommand::despawn() { m_despawns->emplace(m_entity); }
-
-EPIX_API void EntityCommand::despawn_recurse() {
-    m_recursive_despawns->emplace(m_entity);
-}
-
-EPIX_API Entity EntityCommand::id() { return m_entity; }
-
-EPIX_API EntityCommand::operator Entity() { return m_entity; }
-
-EPIX_API Command::Command(World* world, World* src)
-    : m_world(world),
-      m_src(src),
-      m_despawns(std::make_shared<entt::dense_set<Entity>>()),
-      m_recursive_despawns(std::make_shared<entt::dense_set<Entity>>()),
-      m_resource_removers(
-          std::make_shared<std::vector<std::function<void(World*)>>>()
-      ) {}
-
 EPIX_API EntityCommand Command::entity(Entity entity) {
-    return EntityCommand(
-        &m_world->m_registry, entity, m_despawns.get(),
-        m_recursive_despawns.get()
-    );
+    return EntityCommand(dst_cmd->m_world, dst_cmd, entity);
 }
 
-EPIX_API void Command::end() {
-    auto m_registry = &m_world->m_registry;
-    for (auto entity : *m_recursive_despawns) {
-        auto& children = m_registry->get_or_emplace<Children>(entity);
-        for (auto child : children.children) {
-            m_registry->destroy(child);
+EPIX_API Command::Command(WorldCommand* src, WorldCommand* dst)
+    : src_cmd(src), dst_cmd(dst) {}
+
+EPIX_API WorldEntityCommand WorldCommand::entity(Entity entity) {
+    return WorldEntityCommand(m_world, this, entity);
+}
+
+EPIX_API WorldCommand::WorldCommand(World* world) : m_world(world) {}
+EPIX_API void WorldCommand::flush() {
+    while (auto&& opt = m_despawn.try_pop()) {
+        auto entity = *opt;
+        if (m_world->m_registry.valid(entity)) {
+            m_world->m_registry.destroy(entity);
         }
-        m_registry->destroy(entity);
     }
-    m_recursive_despawns->clear();
-    for (auto entity : *m_despawns) {
-        m_registry->destroy(entity);
+    while (auto&& opt = m_recurse_despawn.try_pop()) {
+        auto entity = *opt;
+        if (m_world->m_registry.valid(entity)) {
+            for (auto&& child :
+                 m_world->m_registry.get_or_emplace<Children>(entity)
+                     .children) {
+                m_recurse_despawn.emplace(child);
+            }
+            m_world->m_registry.destroy(entity);
+        }
     }
-    m_despawns->clear();
-    for (auto remover : *m_resource_removers) {
-        remover(m_world);
+    flush_relax();
+}
+EPIX_API void WorldCommand::flush_relax() {
+    while (auto&& opt = m_remove_resources.try_pop()) {
+        auto res_type = *opt;
+        m_world->m_resources.erase(res_type);
     }
-    m_resource_removers->clear();
+    while (auto&& opt = m_entity_erase.try_pop()) {
+        auto&& [func, entity] = *opt;
+        if (m_world->m_registry.valid(entity)) {
+            func(m_world, entity);
+        }
+    }
+    // while (auto&& opt = m_add_resources.try_pop()) {
+    //     auto&& [type, res, mutex] = *opt;
+    //     if (!m_world->m_resources.contains(type)) {
+    //         m_world->m_resources.emplace(type, UntypedRes{res, mutex});
+    //     }
+    // }
+}
+
+EPIX_API WorldEntityCommand::WorldEntityCommand(
+    World* world, WorldCommand* command, Entity entity
+)
+    : m_world(world), m_command(command), m_entity(entity) {}
+EPIX_API void WorldEntityCommand::despawn() {
+    m_command->m_despawn.emplace(m_entity);
+}
+EPIX_API void WorldEntityCommand::despawn_recurse() {
+    m_command->m_recurse_despawn.emplace(m_entity);
 }

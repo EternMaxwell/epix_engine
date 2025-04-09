@@ -154,7 +154,9 @@ void destroy_meshes(
 }
 
 void extract_meshes(
-    ResMut<TextDrawStagingMesh> mesh, ResMut<TextDrawGPUMesh> mesh2, Command cmd
+    Extract<ResMut<TextDrawStagingMesh>> mesh,
+    Extract<ResMut<TextDrawGPUMesh>> mesh2,
+    Command cmd
 ) {
     if (!mesh || !mesh2) {
         return;
@@ -163,7 +165,7 @@ void extract_meshes(
     cmd.share_resource(mesh2);
 }
 
-void extract_pass(ResMut<TestPass> pass, Command cmd) {
+void extract_pass(Extract<ResMut<TestPass>> pass, Command cmd) {
     if (!pass) {
         return;
     }
@@ -171,9 +173,9 @@ void extract_pass(ResMut<TestPass> pass, Command cmd) {
 }
 
 void prepare_mesh(
-    ResMut<TextDrawStagingMesh> staging_mesh,
-    Res<FontAtlas> font_atlas,
-    Res<VulkanResources> res_manager
+    Extract<ResMut<TextDrawStagingMesh>> staging_mesh,
+    Extract<Res<FontAtlas>> font_atlas,
+    Extract<Res<VulkanResources>> res_manager
 ) {
     if (!staging_mesh) {
         return;
@@ -264,7 +266,7 @@ int main() {
     app.add_plugin(window::WindowPlugin{});
     app.get_plugin<window::WindowPlugin>()->primary_desc().set_vsync(false);
     app.add_plugin(font::FontPlugin{})
-        .add_plugin(VulkanPlugin{}.set_debug_callback(true))
+        .add_plugin(VulkanPlugin{}.set_debug_callback(false))
         .add_plugin(input::InputPlugin{})
         .add_system(Startup, into(create_uniform_buffer));
     app.add_system(

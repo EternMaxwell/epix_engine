@@ -33,8 +33,14 @@ EPIX_API size_t std::hash<FuncIndex>::operator()(const FuncIndex& func) const {
 EPIX_API size_t std::hash<Entity>::operator()(const Entity& entity) const {
     return std::hash<entt::entity>()(entity.id);
 }
+
 EPIX_API bool std::equal_to<Entity>::operator()(
     const Entity& a, const Entity& b
 ) const {
     return a.id == b.id;
+}
+
+EPIX_API size_t std::hash<ScheduleId>::operator()(const ScheduleId& id) const {
+    return std::hash<std::type_index>()(id.type) ^
+           std::hash<size_t>()(id.value);
 }

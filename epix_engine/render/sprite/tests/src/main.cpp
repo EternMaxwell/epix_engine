@@ -256,13 +256,15 @@ void destroy_meshes(
     staging_mesh->destroy();
 }
 
-void extract_pass(ResMut<TestPass> pass, Command cmd) {
+void extract_pass(Extract<ResMut<TestPass>> pass, Command cmd) {
     if (!pass) return;
     cmd.share_resource(pass);
 }
 
 void extract_meshes(
-    ResMut<SpriteStagingMesh> smesh, ResMut<SpriteGPUMesh> mesh, Command cmd
+    Extract<ResMut<SpriteStagingMesh>> smesh,
+    Extract<ResMut<SpriteGPUMesh>> mesh,
+    Command cmd
 ) {
     if (!smesh || !mesh) return;
     cmd.share_resource(mesh);
@@ -271,8 +273,8 @@ void extract_meshes(
 
 void prepare_mesh(
     Command cmd,
-    ResMut<SpriteStagingMesh> mesh,
-    Res<VulkanResources> res_manager
+    Extract<ResMut<SpriteStagingMesh>> mesh,
+    Extract<Res<VulkanResources>> res_manager
 ) {
     Sprite sprite;
     sprite.image_name = "test";

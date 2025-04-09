@@ -92,7 +92,9 @@ using window::components::Window;
 EPIX_SYSTEMT(
     EPIX_API void,
     extract_context,
-    (ResMut<RenderContext> context, ResMut<CtxCmdBuffer> ctx_cmd, Command cmd)
+    (Extract<ResMut<RenderContext>> context,
+     Extract<ResMut<CtxCmdBuffer>> ctx_cmd,
+     Command cmd)
 )
 EPIX_SYSTEMT(
     EPIX_API void,
@@ -148,7 +150,7 @@ EPIX_SYSTEMT(
 EPIX_SYSTEMT(
     EPIX_API void,
     extract_res_manager,
-    (ResMut<VulkanResources> res_manager, Command cmd)
+    (Extract<ResMut<VulkanResources>> res_manager, Command cmd)
 )
 EPIX_SYSTEMT(
     EPIX_API void,
@@ -255,7 +257,7 @@ struct VulkanResources {
         Command cmd, ResMut<VulkanResources> res_manager
     );
     friend EPIX_API void systems::fn_extract_res_manager(
-        ResMut<VulkanResources> res_manager, Command cmd
+        Extract<ResMut<VulkanResources>> res_manager, Command cmd
     );
 };
 }  // namespace epix::render::vulkan2

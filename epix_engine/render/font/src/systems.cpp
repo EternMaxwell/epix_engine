@@ -14,10 +14,10 @@ EPIX_API void systems::fn_insert_font_atlas(
     );
 }
 EPIX_API void systems::fn_extract_font_atlas(
-    ResMut<FontAtlas> font_atlas,
+    Extract<ResMut<FontAtlas>> font_atlas,
     Command cmd,
-    ResMut<RenderContext> context,
-    ResMut<VulkanResources> res_manager
+    Extract<ResMut<RenderContext>> context,
+    Extract<ResMut<VulkanResources>> res_manager
 ) {
     if (!font_atlas || !context || !res_manager) return;
     {

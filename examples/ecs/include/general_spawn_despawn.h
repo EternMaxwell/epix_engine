@@ -35,13 +35,13 @@ struct Position {
     ~Position() { std::cout << "Position destructor" << std::endl; }
 };
 
-struct InnerBundle : Bundle {
+struct InnerBundle {
     int a;
 
     auto unpack() { return std::tie(a); }
 };
 
-struct HealthPositionBundle : Bundle {
+struct HealthPositionBundle {
     InnerBundle inner;
     Health health;
     Position position;
@@ -96,7 +96,7 @@ void print_2(Query<Get<Entity, Health, Position>, With<>, Without<>> query) {
 }
 
 void print_count_1(Query<Get<Entity, Health>, With<>, Without<>> query) {
-    std::cout << "print_count" << std::endl;
+    std::cout << "print_count1" << std::endl;
     int count = 0;
     for (auto [entity, health] : query.iter()) {
         count++;
@@ -106,7 +106,7 @@ void print_count_1(Query<Get<Entity, Health>, With<>, Without<>> query) {
 }
 
 void print_count_2(Query<Get<Entity, Health>, With<>, Without<>> query) {
-    std::cout << "print_count" << std::endl;
+    std::cout << "print_count2" << std::endl;
     int count = 0;
     for (auto [entity, health] : query.iter()) {
         count++;
@@ -116,7 +116,7 @@ void print_count_2(Query<Get<Entity, Health>, With<>, Without<>> query) {
 }
 
 void print_count_3(Query<Get<Entity, Health>, With<>, Without<>> query) {
-    std::cout << "print_count" << std::endl;
+    std::cout << "print_count3" << std::endl;
     int count = 0;
     for (auto [entity, health] : query.iter()) {
         count++;

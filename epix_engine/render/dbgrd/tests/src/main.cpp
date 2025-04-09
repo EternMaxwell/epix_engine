@@ -168,7 +168,7 @@ EPIX_SYSTEM(
 )
 EPIX_SYSTEM(
     prepare_mesh,
-    (ResMut<TestStagingMesh> mesh) {
+    (Extract<ResMut<TestStagingMesh>> mesh) {
         if (!mesh) {
             return;
         }
@@ -197,7 +197,9 @@ EPIX_SYSTEM(
 
 EPIX_SYSTEM(
     extract_meshes,
-    (ResMut<TestStagingMesh> mesh, ResMut<TestGPUMesh> mesh2, Command cmd) {
+    (Extract<ResMut<TestStagingMesh>> mesh,
+     Extract<ResMut<TestGPUMesh>> mesh2,
+     Command cmd) {
         if (!mesh || !mesh2) {
             return;
         }
@@ -277,7 +279,7 @@ EPIX_SYSTEM(
 )
 EPIX_SYSTEM(
     extract_pass,
-    (Command cmd, ResMut<TestPass> pass) {
+    (Command cmd, Extract<ResMut<TestPass>> pass) {
         if (!pass) {
             return;
         }
