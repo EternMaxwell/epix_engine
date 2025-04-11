@@ -58,7 +58,7 @@ void setup_context(
     ctx->surface =
         epix::webgpu::utils::create_surface(ctx->instance, window.get_handle());
     ctx->adapter     = ctx->instance.requestAdapter(WGPURequestAdapterOptions{
-            .backendType       = wgpu::BackendType::D3D12,
+        // .backendType       = wgpu::BackendType::D3D12,
             .compatibleSurface = ctx->surface,
     });
     auto desc_device = WGPUDeviceDescriptor{
@@ -224,7 +224,7 @@ void cleanup_context(epix::ResMut<Context> ctx) {
 
 struct TestPlugin : epix::Plugin {
     void build(epix::App& app) override {
-        app.add_system(Startup, chain(insert_context, setup_context));
+        app.add_system(Startup, into(insert_context, setup_context).chain());
         app.add_system(Update, submit_test);
         app.add_system(First, begin_frame);
         app.add_system(Last, end_frame);

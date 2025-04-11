@@ -270,14 +270,14 @@ int main() {
         .add_plugin(input::InputPlugin{})
         .add_system(Startup, into(create_uniform_buffer));
     app.add_system(
-        Startup, chain(create_pass_base, create_pass, create_meshes)
+        Startup, into(create_pass_base, create_pass, create_meshes).chain()
     );
     app.add_system(
-        Extraction, bundle(prepare_mesh, extract_meshes, extract_pass)
+        Extraction, into(prepare_mesh, extract_meshes, extract_pass).chain()
     );
     app.add_system(Render, into(draw_mesh));
     app.add_system(
-        Exit, chain(destroy_pass, destroy_pass_base, destroy_meshes)
+        Exit, into(destroy_pass, destroy_pass_base, destroy_meshes).chain()
     );
     app.run();
 }

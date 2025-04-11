@@ -27,18 +27,14 @@ using epix::With;
 using epix::Without;
 using window::components::PrimaryWindow;
 using window::components::Window;
-EPIX_SYSTEMT(
-    EPIX_API void,
-    create_context,
-    (Command cmd,
-     Query<Get<Window>, With<PrimaryWindow>> query,
-     Res<VulkanPlugin> plugin)
-)
-EPIX_SYSTEMT(
-    EPIX_API void,
-    destroy_context,
-    (Command cmd, ResMut<RenderContext> context, ResMut<CtxCmdBuffer> ctx_cmd)
-)
+EPIX_API void create_context(
+    Command cmd,
+    Query<Get<Window>, With<PrimaryWindow>> query,
+    Res<VulkanPlugin> plugin
+);
+EPIX_API void destroy_context(
+    Command cmd, ResMut<RenderContext> context, ResMut<CtxCmdBuffer> ctx_cmd
+);
 }  // namespace systems
 struct RenderContext {
    public:
@@ -50,14 +46,14 @@ struct RenderContext {
     mutable backend::Surface primary_surface;
     mutable backend::Swapchain primary_swapchain;
 
-    friend EPIX_API void systems::fn_create_context(
+    friend EPIX_API void systems::create_context(
         Command cmd,
         Query<
             Get<window::components::Window>,
             With<window::components::PrimaryWindow>> query,
         Res<VulkanPlugin> plugin
     );
-    friend EPIX_API void systems::fn_destroy_context(
+    friend EPIX_API void systems::destroy_context(
         Command cmd, ResMut<RenderContext> context, ResMut<CtxCmdBuffer> ctx_cmd
     );
 };
@@ -66,14 +62,14 @@ struct CtxCmdBuffer {
     backend::CommandBuffer cmd_buffer;
     backend::Fence fence;
 
-    friend EPIX_API void systems::fn_create_context(
+    friend EPIX_API void systems::create_context(
         Command cmd,
         Query<
             Get<window::components::Window>,
             With<window::components::PrimaryWindow>> query,
         Res<VulkanPlugin> plugin
     );
-    friend EPIX_API void systems::fn_destroy_context(
+    friend EPIX_API void systems::destroy_context(
         Command cmd, ResMut<RenderContext> context, ResMut<CtxCmdBuffer> ctx_cmd
     );
 };
@@ -89,35 +85,25 @@ using epix::With;
 using epix::Without;
 using window::components::PrimaryWindow;
 using window::components::Window;
-EPIX_SYSTEMT(
-    EPIX_API void,
-    extract_context,
-    (Extract<ResMut<RenderContext>> context,
-     Extract<ResMut<CtxCmdBuffer>> ctx_cmd,
-     Command cmd)
-)
-EPIX_SYSTEMT(
-    EPIX_API void,
-    clear_extracted_context,
-    (ResMut<RenderContext> context, ResMut<CtxCmdBuffer> ctx_cmd, Command cmd)
-)
-EPIX_SYSTEMT(
-    EPIX_API void,
-    recreate_swap_chain,
-    (ResMut<RenderContext> context, ResMut<CtxCmdBuffer> ctx_cmd)
-)
-EPIX_SYSTEMT(
-    EPIX_API void,
-    get_next_image,
-    (ResMut<RenderContext> context,
-     ResMut<CtxCmdBuffer> ctx_cmd,
-     ResMut<VulkanResources> res_manager)
-)
-EPIX_SYSTEMT(
-    EPIX_API void,
-    present_frame,
-    (ResMut<RenderContext> context, ResMut<CtxCmdBuffer> ctx_cmd)
-)
+EPIX_API void extract_context(
+    Extract<ResMut<RenderContext>> context,
+    Extract<ResMut<CtxCmdBuffer>> ctx_cmd,
+    Command cmd
+);
+EPIX_API void clear_extracted_context(
+    ResMut<RenderContext> context, ResMut<CtxCmdBuffer> ctx_cmd, Command cmd
+);
+EPIX_API void recreate_swap_chain(
+    ResMut<RenderContext> context, ResMut<CtxCmdBuffer> ctx_cmd
+);
+EPIX_API void get_next_image(
+    ResMut<RenderContext> context,
+    ResMut<CtxCmdBuffer> ctx_cmd,
+    ResMut<VulkanResources> res_manager
+);
+EPIX_API void present_frame(
+    ResMut<RenderContext> context, ResMut<CtxCmdBuffer> ctx_cmd
+);
 }  // namespace systems
 struct VulkanPlugin : public epix::Plugin {
     bool debug_callback = false;
@@ -139,24 +125,14 @@ using epix::ResMut;
 using epix::With;
 using epix::Without;
 
-EPIX_SYSTEMT(
-    EPIX_API void, create_res_manager, (Command cmd, Res<RenderContext> context)
-)
-EPIX_SYSTEMT(
-    EPIX_API void,
-    destroy_res_manager,
-    (Command cmd, ResMut<VulkanResources> res_manager)
-)
-EPIX_SYSTEMT(
-    EPIX_API void,
-    extract_res_manager,
-    (Extract<ResMut<VulkanResources>> res_manager, Command cmd)
-)
-EPIX_SYSTEMT(
-    EPIX_API void,
-    clear_extracted,
-    (ResMut<VulkanResources> res_manager, Command cmd)
-)
+EPIX_API void create_res_manager(Command cmd, Res<RenderContext> context);
+EPIX_API void destroy_res_manager(
+    Command cmd, ResMut<VulkanResources> res_manager
+);
+EPIX_API void extract_res_manager(
+    Extract<ResMut<VulkanResources>> res_manager, Command cmd
+);
+EPIX_API void clear_extracted(ResMut<VulkanResources> res_manager, Command cmd);
 }  // namespace systems
 struct VulkanResources {
     using Device    = backend::Device;
@@ -250,13 +226,13 @@ struct VulkanResources {
     EPIX_API vk::DescriptorSet get_descriptor_set() const;
     EPIX_API vk::DescriptorSetLayout get_descriptor_set_layout() const;
 
-    friend EPIX_API void systems::fn_create_res_manager(
+    friend EPIX_API void systems::create_res_manager(
         Command cmd, Res<RenderContext> context
     );
-    friend EPIX_API void systems::fn_destroy_res_manager(
+    friend EPIX_API void systems::destroy_res_manager(
         Command cmd, ResMut<VulkanResources> res_manager
     );
-    friend EPIX_API void systems::fn_extract_res_manager(
+    friend EPIX_API void systems::extract_res_manager(
         Extract<ResMut<VulkanResources>> res_manager, Command cmd
     );
 };
@@ -313,8 +289,8 @@ struct Mesh {
     template <typename... Args>
         requires(std::same_as<bool, Args> && ...) &&
                     (sizeof...(Args) == sizeof...(Ts) + 1)
-    Mesh(Args... args) : input_rate_instance(args...), indices(nullptr) {}
-    Mesh() : input_rate_instance(false), indices(nullptr) {}
+    Mesh(Args... args) : input_rate_instance({args...}), indices(nullptr) {}
+    Mesh() : indices(nullptr), input_rate_instance({false}) {}
 
     void clear() {
         std::apply([](auto&... vertices) { (vertices.clear(), ...); }, data);
@@ -476,13 +452,14 @@ struct StagingMesh<Mesh<VertT, Ts...>> {
     void resize_buffer(const Mesh<VertT, Ts...>& mesh) {
         using T      = std::tuple_element_t<I, types>;
         auto& buffer = _vertex_buffers[I];
-        if (!buffer ||
-            _buffer_capacities[I] < sizeof(T) * mesh.vertices<I>().size()) {
+        if (!buffer || _buffer_capacities[I] <
+                           sizeof(T) * mesh.template vertices<I>().size()) {
             if (buffer) {
                 _device.destroyBuffer(buffer);
-                buffer = {};
+                buffer = backend::Buffer{};
             }
-            _buffer_capacities[I] = sizeof(T) * mesh.vertices<I>().size() *
+            _buffer_capacities[I] = sizeof(T) *
+                                    mesh.template vertices<I>().size() *
                                     mesh_buffer_growth_factor;
             _buffer_capacities[I] =
                 std::max(_buffer_capacities[I], min_size * sizeof(T));
@@ -498,7 +475,7 @@ struct StagingMesh<Mesh<VertT, Ts...>> {
                     )
             );
         }
-        _buffer_sizes[I] = sizeof(T) * mesh.vertices<I>().size();
+        _buffer_sizes[I] = sizeof(T) * mesh.template vertices<I>().size();
     }
     template <size_t I = 0>
     void update_buffers(const Mesh<VertT, Ts...>& mesh) {
@@ -506,7 +483,9 @@ struct StagingMesh<Mesh<VertT, Ts...>> {
         auto& buffer = _vertex_buffers[I];
         if (buffer) {
             auto data = buffer.map();
-            std::memcpy(data, mesh.vertices<I>().data(), _buffer_sizes[I]);
+            std::memcpy(
+                data, mesh.template vertices<I>().data(), _buffer_sizes[I]
+            );
             buffer.unmap();
         }
         if constexpr (I < sizeof...(Ts)) {
@@ -521,7 +500,7 @@ struct StagingMesh<Mesh<VertT, Ts...>> {
                         mesh.indices16().size() * sizeof(uint16_t)) {
                     if (_index_buffer) {
                         _device.destroyBuffer(_index_buffer);
-                        _index_buffer = {};
+                        _index_buffer = backend::Buffer{};
                     }
                     _index_buffer_capacity = mesh.indices16().size() *
                                              sizeof(uint16_t) *
@@ -548,7 +527,7 @@ struct StagingMesh<Mesh<VertT, Ts...>> {
                         mesh.indices32().size() * sizeof(uint32_t)) {
                     if (_index_buffer) {
                         _device.destroyBuffer(_index_buffer);
-                        _index_buffer = {};
+                        _index_buffer = backend::Buffer{};
                     }
                     _index_buffer_capacity = mesh.indices32().size() *
                                              sizeof(uint32_t) *
@@ -611,12 +590,12 @@ struct StagingMesh<Mesh<VertT, Ts...>> {
         for (auto& buffer : _vertex_buffers) {
             if (buffer) {
                 _device.destroyBuffer(buffer);
-                buffer = {};
+                buffer = backend::Buffer{};
             }
         }
         if (_index_buffer) {
             _device.destroyBuffer(_index_buffer);
-            _index_buffer = {};
+            _index_buffer = backend::Buffer{};
         }
     }
     void update(const Mesh<VertT, Ts...>& mesh) {
@@ -663,13 +642,14 @@ struct GPUMesh<Mesh<VertT, Ts...>> {
     void resize_buffer(const Mesh<VertT, Ts...>& mesh) {
         using T      = std::tuple_element_t<I, types>;
         auto& buffer = _vertex_buffers[I];
-        if (!buffer ||
-            _buffer_capacities[I] < sizeof(T) * mesh.vertices<I>().size()) {
+        if (!buffer || _buffer_capacities[I] <
+                           sizeof(T) * mesh.template vertices<I>().size()) {
             if (buffer) {
                 _device.destroyBuffer(buffer);
                 buffer = {};
             }
-            _buffer_capacities[I] = sizeof(T) * mesh.vertices<I>().size() *
+            _buffer_capacities[I] = sizeof(T) *
+                                    mesh.template vertices<I>().size() *
                                     mesh_buffer_growth_factor;
             _buffer_capacities[I] =
                 std::max(_buffer_capacities[I], min_size * sizeof(T));
@@ -685,7 +665,7 @@ struct GPUMesh<Mesh<VertT, Ts...>> {
                     )
             );
         }
-        _buffer_sizes[I] = sizeof(T) * mesh.vertices<I>().size();
+        _buffer_sizes[I] = sizeof(T) * mesh.template vertices<I>().size();
     }
     template <size_t I = 0>
     void update_buffers(const Mesh<VertT, Ts...>& mesh) {
@@ -693,7 +673,9 @@ struct GPUMesh<Mesh<VertT, Ts...>> {
         auto& buffer = _vertex_buffers[I];
         if (buffer) {
             auto data = buffer.map();
-            std::memcpy(data, mesh.vertices<I>().data(), _buffer_sizes[I]);
+            std::memcpy(
+                data, mesh.template vertices<I>().data(), _buffer_sizes[I]
+            );
             buffer.unmap();
         }
         if constexpr (I < sizeof...(Ts)) {
@@ -708,7 +690,7 @@ struct GPUMesh<Mesh<VertT, Ts...>> {
                         mesh.indices16().size() * sizeof(uint16_t)) {
                     if (_index_buffer) {
                         _device.destroyBuffer(_index_buffer);
-                        _index_buffer = {};
+                        _index_buffer = backend::Buffer{};
                     }
                     _index_buffer_capacity = mesh.indices16().size() *
                                              sizeof(uint16_t) *
@@ -734,7 +716,7 @@ struct GPUMesh<Mesh<VertT, Ts...>> {
                     _index_buffer_capacity < mesh.indices32().size()) {
                     if (_index_buffer) {
                         _device.destroyBuffer(_index_buffer);
-                        _index_buffer = {};
+                        _index_buffer = backend::Buffer{};
                     }
                     _index_buffer_capacity = mesh.indices32().size() *
                                              sizeof(uint32_t) *
@@ -799,7 +781,7 @@ struct GPUMesh<Mesh<VertT, Ts...>> {
         }
         if (_index_buffer) {
             _device.destroyBuffer(_index_buffer);
-            _index_buffer = {};
+            _index_buffer = backend::Buffer{};
         }
     }
     void update(const Mesh<VertT, Ts...>& mesh) {
@@ -848,7 +830,7 @@ struct GPUMesh<StagingMesh<Mesh<VertT, Ts...>>> {
         if (!buffer || _buffer_capacities[I] < mesh._buffer_sizes[I]) {
             if (buffer) {
                 _device.destroyBuffer(buffer);
-                buffer = {};
+                buffer = backend::Buffer{};
             }
             _buffer_capacities[I] =
                 mesh._buffer_sizes[I] * mesh_buffer_growth_factor;
@@ -921,7 +903,7 @@ struct GPUMesh<StagingMesh<Mesh<VertT, Ts...>>> {
                 _index_buffer_capacity < mesh._index_buffer_size) {
                 if (_index_buffer) {
                     _device.destroyBuffer(_index_buffer);
-                    _index_buffer = {};
+                    _index_buffer = backend::Buffer{};
                 }
                 _index_buffer_capacity =
                     mesh._index_buffer_size * mesh_buffer_growth_factor;
@@ -969,12 +951,12 @@ struct GPUMesh<StagingMesh<Mesh<VertT, Ts...>>> {
         for (auto& buffer : _vertex_buffers) {
             if (buffer) {
                 _device.destroyBuffer(buffer);
-                buffer = {};
+                buffer = backend::Buffer{};
             }
         }
         if (_index_buffer) {
             _device.destroyBuffer(_index_buffer);
-            _index_buffer = {};
+            _index_buffer = backend::Buffer{};
         }
     }
     void update(

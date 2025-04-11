@@ -38,10 +38,10 @@ EPIX_API Schedule& Schedule::add_system(SystemAddInfo&& info) {
         auto system = std::make_shared<System>(
             each.name, each.index, std::move(each.system)
         );
-        system->sets        = info.m_in_sets;
-        system->m_ptr_prevs = info.m_ptr_prevs;
-        system->m_ptr_nexts = info.m_ptr_nexts;
-        system->worker      = info.m_worker;
+        system->sets        = std::move(each.m_in_sets);
+        system->m_ptr_prevs = std::move(each.m_ptr_prevs);
+        system->m_ptr_nexts = std::move(each.m_ptr_nexts);
+        system->worker      = std::move(each.m_worker);
         std::move(
             each.conditions.begin(), each.conditions.end(),
             std::back_inserter(system->conditions)

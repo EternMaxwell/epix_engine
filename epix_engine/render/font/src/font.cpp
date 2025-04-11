@@ -7,7 +7,7 @@ EPIX_API void FontPlugin::build(App& app) {
     if (app.get_plugin<epix::render::vulkan2::VulkanPlugin>()) {
         app.add_system(
             PreStartup,
-            epix::font::vulkan2::systems::insert_font_atlas
+            into(epix::font::vulkan2::systems::insert_font_atlas)
                 .after(epix::render::vulkan2::systems::create_context)
                 .after(epix::render::vulkan2::systems::create_res_manager)
         );
@@ -15,9 +15,9 @@ EPIX_API void FontPlugin::build(App& app) {
             PreExtract, epix::font::vulkan2::systems::extract_font_atlas
         );
         app.add_system(
-            PostExit, epix::font::vulkan2::systems::destroy_font_atlas.before(
-                          epix::render::vulkan2::systems::destroy_context
-                      )
+            PostExit,
+            into(epix::font::vulkan2::systems::destroy_font_atlas)
+                .before(epix::render::vulkan2::systems::destroy_context)
         );
     }
 }

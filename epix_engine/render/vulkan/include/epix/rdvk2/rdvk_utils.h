@@ -30,12 +30,12 @@ get_vertex_input_attributes(spirv_cross::CompilerGLSL& vert);
 EPIX_API void default_blend_attachment(
     vk::PipelineColorBlendAttachmentState* state
 );
-EPIX_API [[nodiscard]] std::vector<vk::PipelineColorBlendAttachmentState>
+[[nodiscard]] EPIX_API std::vector<vk::PipelineColorBlendAttachmentState>
 default_blend_attachments(uint32_t count);
 EPIX_API void default_depth_stencil(
     vk::PipelineDepthStencilStateCreateInfo* state
 );
-EPIX_API [[nodiscard]] std::vector<vk::DynamicState> default_dynamic_states(
+[[nodiscard]] EPIX_API std::vector<vk::DynamicState> default_dynamic_states(
     vk::PipelineDynamicStateCreateInfo* state
 );
 EPIX_API void default_input_assembly(

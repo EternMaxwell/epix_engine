@@ -142,8 +142,8 @@ void prepare_mesh(
 ) {
     if (!mesh || !res) return;
     PushConstants push_constants{
-        res->image_view_index("test::rdvk::image1::view"),
-        res->sampler_index("test::rdvk::sampler1")
+        (int)res->image_view_index("test::rdvk::image1::view"),
+        (int)res->sampler_index("test::rdvk::sampler1")
     };
     if (push_constants.image_index == -1 ||
         push_constants.sampler_index == -1) {
@@ -420,16 +420,19 @@ int main() {
     );
     app2.add_plugin(epix::input::InputPlugin{});
     app2.add_system(
-        epix::Startup, epix::bundle(create_sampler, create_image_and_view)
+        epix::Startup, epix::into(create_sampler, create_image_and_view)
     );
-    app2.add_system(epix::Startup, epix::chain(create_pass_base, create_pass));
+    app2.add_system(
+        epix::Startup, epix::into(create_pass_base, create_pass).chain()
+    );
     app2.add_system(epix::Startup, epix::into(create_meshes));
     app2.add_system(
-        epix::Extraction,
-        epix::bundle(extract_pass, prepare_mesh, extract_meshes)
+        epix::Extraction, epix::into(extract_pass, prepare_mesh, extract_meshes)
     );
     app2.add_system(epix::Render, epix::into(draw_mesh));
-    app2.add_system(epix::Exit, epix::chain(destroy_pass, destroy_pass_base));
+    app2.add_system(
+        epix::Exit, epix::into(destroy_pass, destroy_pass_base).chain()
+    );
     app2.add_system(epix::Exit, epix::into(destroy_meshes));
     app2.run();
 }

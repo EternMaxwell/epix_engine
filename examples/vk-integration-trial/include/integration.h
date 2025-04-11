@@ -1229,8 +1229,7 @@ struct SimulationPlugin : Plugin {
             Update, into(step_simulation).in_state(SimulateState::Paused)
         );
         app.add_system(
-            Extraction,
-            bundle(render_simulation, render_simulation_chunk_outline)
+            Extraction, into(render_simulation, render_simulation_chunk_outline)
         );
     }
 };
@@ -1238,7 +1237,7 @@ struct SimulationPlugin : Plugin {
 struct RenderPassPlugin : Plugin {
     void build(App& app) override {
         app.add_system(
-            Startup, chain(create_whole_pass_base, create_whole_pass)
+            Startup, into(create_whole_pass_base, create_whole_pass).chain()
         );
         app.add_system(
             Startup, create_box2d_meshes, create_sand_meshes,
@@ -1251,7 +1250,8 @@ struct RenderPassPlugin : Plugin {
         app.add_system(Render, draw_meshes);
         app.add_system(
             Exit,
-            chain(destroy_whole_pass, destroy_box2d_meshes, destroy_sand_meshes)
+            into(destroy_whole_pass, destroy_box2d_meshes, destroy_sand_meshes)
+                .chain()
         );
         app.add_system(PreUpdate, toggle_full_screen);
     }
@@ -1266,7 +1266,7 @@ struct PixelB2dTestPlugin : Plugin {
         );
         app.add_system(Update, destroy_too_far_bodies, toggle_simulation);
         app.add_system(
-            Update, bundle(create_dynamic_from_click, update_mouse_joint)
+            Update, into(create_dynamic_from_click, update_mouse_joint)
                         .in_state(InputState::Body)
         );
         app.add_system(Extraction, render_bodies);

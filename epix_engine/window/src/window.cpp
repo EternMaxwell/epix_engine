@@ -1,6 +1,6 @@
 #include "epix/window.h"
-
 #include "epix/window/systems.h"
+
 
 using namespace epix::window::systems;
 using namespace epix::window::events;
@@ -31,47 +31,52 @@ EPIX_API void epix::window::WindowPlugin::build(App& app) {
         )
         ->add_system(
             epix::PreStartup,
-            init_glfw.in_set(WindowStartUpSets::glfw_initialization)
-                .worker("single")
-        )
-        ->add_system(
-            epix::PreStartup,
-            create_window_thread_pool
+            into(init_glfw)
                 .in_set(WindowStartUpSets::glfw_initialization)
                 .worker("single")
         )
         ->add_system(
             epix::PreStartup,
-            insert_primary_window.before(systems::create_window)
-        )
-        ->add_system(
-            epix::PreStartup,
-            systems::create_window.in_set(WindowStartUpSets::window_creation)
+            into(create_window_thread_pool)
+                .in_set(WindowStartUpSets::glfw_initialization)
                 .worker("single")
         )
         ->add_system(
-            epix::First,
-            systems::create_window.before(poll_events).worker("single")
+            epix::PreStartup,
+            into(insert_primary_window).before(systems::create_window)
         )
-        ->add_system(epix::First, poll_events.worker("single"))
-        ->add_system(epix::First, scroll_events.after(poll_events))
         ->add_system(
-            epix::First, update_window_state.after(poll_events)
+            epix::PreStartup, into(systems::create_window)
+                                  .in_set(WindowStartUpSets::window_creation)
+                                  .worker("single")
+        )
+        ->add_system(
+            epix::First,
+            into(systems::create_window).before(poll_events).worker("single")
+        )
+        ->add_system(epix::First, into(poll_events).worker("single"))
+        ->add_system(epix::First, into(scroll_events).after(poll_events))
+        ->add_system(
+            epix::First, into(update_window_state)
+                             .after(poll_events)
                              .before(close_window)
                              .worker("single")
         )
         ->add_system(epix::First, close_window)
         ->add_system(
             epix::Last,
-            primary_window_close.before(no_window_exists).worker("single")
-        )
-        ->add_system(
-            epix::Last, window_close.before(no_window_exists).worker("single")
+            into(primary_window_close).before(no_window_exists).worker("single")
         )
         ->add_system(
             epix::Last,
-            no_window_exists.before(exit_on_no_window).worker("single")
+            into(window_close).before(no_window_exists).worker("single")
+        )
+        ->add_system(
+            epix::Last,
+            into(no_window_exists).before(exit_on_no_window).worker("single")
         )
         ->add_system(epix::Last, exit_on_no_window)
-        ->add_system(epix::PreExit, systems::close_window.worker("single"));
+        ->add_system(
+            epix::PreExit, into(systems::close_window).worker("single")
+        );
 }

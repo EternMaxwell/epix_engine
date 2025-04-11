@@ -46,7 +46,7 @@ template <typename T>
 concept BoolGrid = requires(T t) {
     { t.size(0) } -> std::same_as<int>;
     { t.size(1) } -> std::same_as<int>;
-    { t.contains(0i32, 0i32) } -> std::same_as<bool>;
+    { t.contains(0, 0) } -> std::same_as<bool>;
 };
 template <typename T, typename U>
 concept Boolifiable = requires(T t, U u) {
@@ -100,7 +100,7 @@ struct packed_grid {
             }
             iterator& operator++() {
                 for (int i = D - 1; i >= 0; i--) {
-                    if (pos[i] < size[i] - 1) {
+                    if (pos[i] < grid.size(i) - 1) {
                         pos[i]++;
                         return *this;
                     } else {
@@ -145,7 +145,7 @@ struct packed_grid {
             }
             iterator& operator++() {
                 for (int i = D - 1; i >= 0; i--) {
-                    if (pos[i] < size[i] - 1) {
+                    if (pos[i] < grid.size(i) - 1) {
                         pos[i]++;
                         return *this;
                     } else {
@@ -354,13 +354,13 @@ struct packed_grid {
         const {
         std::memcpy(buffer, _size.data(), size_field_stride);
         std::memcpy(
-            buffer + (void*)(sizeof(int) * D), _data.data(),
+            (uintptr_t)buffer + (sizeof(int) * D), _data.data(),
             sizeof(T) * _data.size()
         );
         return size_field_stride + sizeof(T) * _data.size();
     }
 
-    template <typename T, size_t D>
+    template <typename T2, size_t D2>
     friend struct sparse_grid;
 };
 template <size_t D>
@@ -862,12 +862,14 @@ struct sparse_grid {
     ) const {
         if (stride == sizeof(T)) {
             std::memcpy(
-                buffer + offset, _data.data(), sizeof(T) * _data.size()
+                (uintptr_t)buffer + offset, _data.data(),
+                sizeof(T) * _data.size()
             );
         } else {
             for (int i = 0; i < _data.size(); i++) {
                 std::memcpy(
-                    buffer + (void*)(offset + i * stride), &_data[i], sizeof(T)
+                    (uintptr_t)buffer + (offset + i * stride), &_data[i],
+                    sizeof(T)
                 );
             }
         }
@@ -878,12 +880,13 @@ struct sparse_grid {
     ) const {
         if (stride == sizeof(int) * D) {
             std::memcpy(
-                buffer + offset, _pos.data(), sizeof(int) * D * _pos.size()
+                (uintptr_t)buffer + offset, _pos.data(),
+                sizeof(int) * D * _pos.size()
             );
         } else {
             for (int i = 0; i < _pos.size(); i++) {
                 std::memcpy(
-                    buffer + (void*)(offset + i * stride), _pos[i].data(),
+                    (uintptr_t)buffer + (offset + i * stride), _pos[i].data(),
                     sizeof(int) * D
                 );
             }
@@ -1715,10 +1718,9 @@ template <typename T, typename U, typename TB, typename UB, size_t D>
 packed_grid<T, D, TB> op_and(
     const packed_grid<T, D, TB>& a,
     const packed_grid<U, D, UB>& b,
-    const OpArea<D>& area =
-        {array_fill<D>(0), array_fill<D>(0), min(a.size(), b.size())}
+    const OpArea<D>& area
 ) {
-    packed_grid<T, TB> result(area.extent);
+    packed_grid<T, D, TB> result(area.extent);
     std::array<int, D> pos;
     pos.fill(0);
     bool should_break = false;
@@ -2845,10 +2847,10 @@ struct extendable_grid {
         return std::move(result);
     }
 
-    template <typename T, size_t D>
-    friend sparse_grid<T, D> into_sparse(const extendable_grid<T, D>& grid);
-    template <typename T, size_t D>
-    friend sparse_grid<T, D> into_sparse(extendable_grid<T, D>&& grid);
+    template <typename T2, size_t D2>
+    friend sparse_grid<T2, D2> into_sparse(const extendable_grid<T2, D2>& grid);
+    template <typename T2, size_t D2>
+    friend sparse_grid<T2, D2> into_sparse(extendable_grid<T2, D2>&& grid);
 };
 
 template <typename T, size_t D>

@@ -1,6 +1,7 @@
+#include <spdlog/spdlog.h>
+
 #include "epix/input.h"
 
-#include <spdlog/spdlog.h>
 
 using namespace epix;
 using namespace epix::input;
@@ -9,7 +10,7 @@ using namespace epix::input::systems;
 
 static auto logger = spdlog::default_logger()->clone("input");
 
-EPIX_API void systems::fn_create_input_for_window(
+EPIX_API void systems::create_input_for_window(
     Command command,
     Query<
         Get<Entity, const window::components::Window>,
@@ -23,7 +24,7 @@ EPIX_API void systems::fn_create_input_for_window(
     }
 }
 
-EPIX_API void systems::fn_update_input(
+EPIX_API void systems::update_input(
     Query<
         Get<Entity,
             ButtonInput<KeyCode>,
@@ -84,7 +85,7 @@ EPIX_API void systems::fn_update_input(
     }
 }
 
-EPIX_API void systems::fn_output_event(
+EPIX_API void systems::output_event(
     EventReader<epix::input::events::MouseScroll> scroll_events,
     Query<Get<ButtonInput<KeyCode>, ButtonInput<MouseButton>, const Window>>
         query,
@@ -146,7 +147,7 @@ EPIX_API void InputPlugin::build(App &app) {
     app.add_event<events::MouseButtonEvent>();
     app.add_system(epix::Startup, create_input_for_window)
         ->add_system(
-            epix::First, epix::bundle(create_input_for_window, update_input)
+            epix::First, epix::into(create_input_for_window, update_input)
                              .after(window::systems::poll_events)
                              .worker("single")
         );

@@ -4,12 +4,7 @@
 #include <epix/window.h>
 
 using namespace epix;
-
-EPIX_SYSTEM(
-    show_test_window,
-    (Res<imgui::ImGuiContext> ctx) { ImGui::ShowDemoWindow(); }
-)
-
+void show_test_window(Res<imgui::ImGuiContext> ctx) { ImGui::ShowDemoWindow(); }
 int main() {
     App app = App::create2();
     app.add_plugin(window::WindowPlugin{});

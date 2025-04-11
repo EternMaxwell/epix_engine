@@ -278,14 +278,16 @@ int main() {
     app.add_plugin(epix::input::InputPlugin{});
     app.add_system(epix::Startup, into(create_camera_uniform_buffer));
     app.add_system(
-        epix::Startup, chain(create_pass_base, create_pass, create_meshes)
+        epix::Startup,
+        into(create_pass_base, create_pass, create_meshes).chain()
     );
     app.add_system(
-        epix::Extraction, bundle(prepare_mesh, extract_meshes, extract_pass)
+        epix::Extraction, into(prepare_mesh, extract_meshes, extract_pass)
     );
     app.add_system(epix::Render, into(draw_mesh));
     app.add_system(
-        epix::Exit, chain(destroy_pass, destroy_pass_base, destroy_meshes)
+        epix::Exit,
+        into(destroy_pass, destroy_pass_base, destroy_meshes).chain()
     );
     app.run();
     return 0;

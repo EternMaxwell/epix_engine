@@ -4,7 +4,7 @@
 
 #include "epix/world/sand.h"
 
-#define EPIX_WORLD_SAND_DEFAULT_CHUNK_RESET_TIME 12i32
+#define EPIX_WORLD_SAND_DEFAULT_CHUNK_RESET_TIME (int)12
 
 using namespace epix::world::sand::components;
 
