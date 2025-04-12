@@ -11,7 +11,7 @@
 #include <spirv_glsl.hpp>
 #include <vector>
 
-namespace vk {
+namespace vk::detail {
 inline DispatchLoaderDynamic defaultDispatchLoaderDynamic;
 }
 
