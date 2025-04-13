@@ -1781,6 +1781,7 @@ struct AppCreateInfo {
     };
     bool enable_loop                       = false;
     bool enable_tracy                      = true;
+    bool enable_frame_mark                 = true;
     std::shared_ptr<spdlog::logger> logger = nullptr;
 };
 
@@ -1806,6 +1807,17 @@ struct AppProfile {
     double fps = 0.0;
 };
 
+/**
+ * @brief This is a struct that contains the setting data of the app.
+ * This is not designed to be mutable, but maybe in the future we will
+ * add some mutable data to it.
+ */
+struct AppInfo {
+    bool enable_loop;
+    bool enable_tracy;
+    bool tracy_frame_mark;
+};
+
 struct App {
     struct ScheduleGraph {
         entt::dense_map<ScheduleId, std::shared_ptr<Schedule>> m_schedules;
@@ -1826,6 +1838,7 @@ struct App {
 
     std::unique_ptr<bool> m_enable_loop;
     std::unique_ptr<bool> m_enable_tracy;
+    std::unique_ptr<bool> m_tracy_frame_mark;
 
     std::shared_ptr<spdlog::logger> m_logger;
 
@@ -1840,6 +1853,8 @@ struct App {
     EPIX_API App& disable_loop();
     EPIX_API App& enable_tracy();
     EPIX_API App& disable_tracy();
+    EPIX_API App& enable_frame_mark();
+    EPIX_API App& disable_frame_mark();
     EPIX_API App& set_log_level(spdlog::level::level_enum level);
 
     EPIX_API App& add_schedule(GraphId, Schedule&& schedule);

@@ -45,8 +45,9 @@ EPIX_API App::App(const AppCreateInfo& info) {
     for (auto&& [name, count] : info.worker_threads) {
         m_executor->add(name, count);
     }
-    m_enable_loop  = std::make_unique<bool>(info.enable_loop);
-    m_enable_tracy = std::make_unique<bool>(info.enable_tracy);
+    m_enable_loop      = std::make_unique<bool>(info.enable_loop);
+    m_enable_tracy     = std::make_unique<bool>(info.enable_tracy);
+    m_tracy_frame_mark = std::make_unique<bool>(info.enable_frame_mark);
     set_logger(info.logger ? info.logger : spdlog::default_logger());
     m_graphs.emplace(typeid(StartGraphT), std::make_unique<ScheduleGraph>());
     m_graphs.emplace(typeid(LoopGraphT), std::make_unique<ScheduleGraph>());
@@ -147,6 +148,14 @@ EPIX_API App& App::enable_tracy() {
 };
 EPIX_API App& App::disable_tracy() {
     *m_enable_tracy = false;
+    return *this;
+};
+EPIX_API App& App::enable_frame_mark() {
+    *m_tracy_frame_mark = true;
+    return *this;
+};
+EPIX_API App& App::disable_frame_mark() {
+    *m_tracy_frame_mark = false;
     return *this;
 };
 
@@ -346,6 +355,9 @@ EPIX_API void App::run() {
     build(startup_graph);
     build(loop_graph);
     build(exit_graph);
+    const bool enable_loop  = *m_enable_loop;
+    const bool enable_tracy = *m_enable_tracy;
+    const bool frame_mark   = *m_tracy_frame_mark;
     std::unique_ptr<BasicSystem<void>> update_profile =
         std::make_unique<BasicSystem<void>>(
             [&](ResMut<AppProfile> profile,
@@ -370,9 +382,20 @@ EPIX_API void App::run() {
                 *last_time   = now;
             }
         );
+    std::unique_ptr<BasicSystem<void>> sync_info =
+        std::make_unique<BasicSystem<void>>([&](Res<AppInfo> info) {
+            *m_enable_loop      = info->enable_loop;
+            *m_enable_tracy     = info->enable_tracy;
+            *m_tracy_frame_mark = info->tracy_frame_mark;
+        });
     // add AppProfile to MainWorld
     auto&& w = world<MainWorld>();
     w.init_resource<AppProfile>();
+    w.insert_resource(AppInfo{
+        .enable_loop      = *m_enable_loop,
+        .enable_tracy     = *m_enable_tracy,
+        .tracy_frame_mark = *m_tracy_frame_mark,
+    });
     m_logger->info("Running App");
     m_logger->debug("Running startup schedules");
     run(startup_graph);
@@ -382,7 +405,7 @@ EPIX_API void App::run() {
         });
     m_logger->debug("Running loop schedules");
     do {
-        if (*m_enable_tracy) {
+        if (*m_tracy_frame_mark) {
             FrameMark;
         }
         // update profile
@@ -398,5 +421,9 @@ EPIX_API void App::run() {
     // remove AppProfile from MainWorld
     auto&& w2 = world<MainWorld>();
     w2.remove_resource<AppProfile>();
+    w2.remove_resource<AppInfo>();
     m_logger->info("App terminated.");
+    *m_enable_loop      = enable_loop;
+    *m_enable_tracy     = enable_tracy;
+    *m_tracy_frame_mark = frame_mark;
 }
