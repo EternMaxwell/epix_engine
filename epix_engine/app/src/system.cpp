@@ -38,7 +38,12 @@ EPIX_API SystemAddInfo::each_t& SystemAddInfo::each_t::operator=(each_t&& other
 }
 
 EPIX_API SystemAddInfo& SystemAddInfo::chain() {
-    m_chain = true;
+    for (size_t i = 0; i < m_systems.size(); i++) {
+        auto&& each = m_systems[i];
+        if (i + 1 < m_systems.size()) {
+            each.m_ptr_nexts.emplace(m_systems[i + 1].index);
+        }
+    }
     return *this;
 }
 
@@ -109,18 +114,25 @@ EPIX_API System::System(
       m_prev_count(0),
       m_next_count(0) {}
 
-EPIX_API bool System::run(World* src, World* dst) {
-    ZoneScopedN("Try Run System");
-    auto name = std::format("System: {}", label);
-    ZoneName(name.c_str(), name.size());
-    {
-        ZoneScopedN("Check Conditions");
+EPIX_API bool System::run(World* src, World* dst, bool enable_tracy) {
+    if (enable_tracy) {
+        ZoneScopedN("Try Run System");
+        auto name = std::format("System: {}", label);
+        ZoneName(name.c_str(), name.size());
+        {
+            ZoneScopedN("Check Conditions");
+            for (auto& each : conditions) {
+                if (!each->run(src, dst)) return false;
+            }
+        }
+        {
+            ZoneScopedN("Run System");
+            system->run(src, dst);
+        }
+    } else {
         for (auto& each : conditions) {
             if (!each->run(src, dst)) return false;
         }
-    }
-    {
-        ZoneScopedN("Run System");
         system->run(src, dst);
     }
     return true;

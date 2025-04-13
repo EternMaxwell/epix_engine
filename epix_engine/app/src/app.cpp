@@ -45,7 +45,8 @@ EPIX_API App::App(const AppCreateInfo& info) {
     for (auto&& [name, count] : info.worker_threads) {
         m_executor->add(name, count);
     }
-    m_enable_loop = std::make_unique<bool>(info.enable_loop);
+    m_enable_loop  = std::make_unique<bool>(info.enable_loop);
+    m_enable_tracy = std::make_unique<bool>(info.enable_tracy);
     set_logger(info.logger ? info.logger : spdlog::default_logger());
     m_graphs.emplace(typeid(StartGraphT), std::make_unique<ScheduleGraph>());
     m_graphs.emplace(typeid(LoopGraphT), std::make_unique<ScheduleGraph>());
@@ -134,6 +135,18 @@ EPIX_API App::App(const AppCreateInfo& info) {
 EPIX_API App* App::operator->() { return this; }
 EPIX_API App& App::enable_loop() {
     *m_enable_loop = true;
+    return *this;
+};
+EPIX_API App& App::disable_loop() {
+    *m_enable_loop = false;
+    return *this;
+};
+EPIX_API App& App::enable_tracy() {
+    *m_enable_tracy = true;
+    return *this;
+};
+EPIX_API App& App::disable_tracy() {
+    *m_enable_tracy = false;
     return *this;
 };
 
@@ -242,30 +255,51 @@ EPIX_API void App::run(ScheduleGraph& graph) {
     size_t m_running   = 0;
     size_t m_remain    = m_schedules.size();
     auto run_schedule  = [&](std::shared_ptr<Schedule> schedule) {
-        ZoneScopedN("Try Detach Schedule");
-        auto name = std::format(
-            "Detach Schedule: {}#{}", schedule->m_id.type.name(),
-            schedule->m_id.value
-        );
-        ZoneName(name.c_str(), name.size());
-        auto src = m_worlds[schedule->m_src_world].get();
-        auto dst = m_worlds[schedule->m_dst_world].get();
-        if (!src || !dst) {
-            m_finishes.emplace(schedule);
-            return;
-        }
-        if (!m_pool) {
-            schedule->run(src, dst);
-            m_finishes.emplace(schedule);
-            return;
-        }
-        m_pool->detach_task(
-            [this, src, dst, schedule, &m_finishes]() mutable {
-                schedule->run(src, dst);
+        if (*m_enable_tracy) {
+            ZoneScopedN("Try Detach Schedule");
+            auto name = std::format(
+                "Detach Schedule: {}#{}", schedule->m_id.type.name(),
+                schedule->m_id.value
+            );
+            ZoneName(name.c_str(), name.size());
+            auto src = m_worlds[schedule->m_src_world].get();
+            auto dst = m_worlds[schedule->m_dst_world].get();
+            if (!src || !dst) {
                 m_finishes.emplace(schedule);
-            },
-            127
-        );
+                return;
+            }
+            if (!m_pool) {
+                schedule->run(src, dst, true);
+                m_finishes.emplace(schedule);
+                return;
+            }
+            m_pool->detach_task(
+                [this, src, dst, schedule, &m_finishes]() mutable {
+                    schedule->run(src, dst, true);
+                    m_finishes.emplace(schedule);
+                },
+                127
+            );
+        } else {
+            auto src = m_worlds[schedule->m_src_world].get();
+            auto dst = m_worlds[schedule->m_dst_world].get();
+            if (!src || !dst) {
+                m_finishes.emplace(schedule);
+                return;
+            }
+            if (!m_pool) {
+                schedule->run(src, dst, false);
+                m_finishes.emplace(schedule);
+                return;
+            }
+            m_pool->detach_task(
+                [this, src, dst, schedule, &m_finishes]() mutable {
+                    schedule->run(src, dst, false);
+                    m_finishes.emplace(schedule);
+                },
+                127
+            );
+        }
     };
     for (auto&& [id, schedule] : m_schedules) {
         schedule->m_prev_count =
@@ -312,6 +346,33 @@ EPIX_API void App::run() {
     build(startup_graph);
     build(loop_graph);
     build(exit_graph);
+    std::unique_ptr<BasicSystem<void>> update_profile =
+        std::make_unique<BasicSystem<void>>(
+            [&](ResMut<AppProfile> profile,
+                Local<std::optional<std::chrono::steady_clock::time_point>>
+                    last_time) {
+                if (!last_time->has_value()) {
+                    *last_time = std::chrono::high_resolution_clock::now();
+                    return;
+                }
+                auto now = std::chrono::high_resolution_clock::now();
+                auto delta =
+                    (double)
+                        std::chrono::duration_cast<std::chrono::nanoseconds>(
+                            now - last_time->value()
+                        )
+                            .count() /
+                    1000000.0;
+                float factor = 0.1;
+                profile->frame_time =
+                    profile->frame_time * (1 - factor) + delta * factor;
+                profile->fps = 1000.0 / profile->frame_time;
+                *last_time   = now;
+            }
+        );
+    // add AppProfile to MainWorld
+    auto&& w = world<MainWorld>();
+    w.init_resource<AppProfile>();
     m_logger->info("Running App");
     m_logger->debug("Running startup schedules");
     run(startup_graph);
@@ -321,7 +382,12 @@ EPIX_API void App::run() {
         });
     m_logger->debug("Running loop schedules");
     do {
-        FrameMark;
+        if (*m_enable_tracy) {
+            FrameMark;
+        }
+        // update profile
+        auto&& w2 = get_world<MainWorld>();
+        update_profile->run(w2, w2);
         run(loop_graph);
     } while (to_loop->run(
         m_worlds[typeid(MainWorld)].get(), m_worlds[typeid(MainWorld)].get()
@@ -329,5 +395,8 @@ EPIX_API void App::run() {
     m_logger->info("Exiting App");
     m_logger->debug("Running exit schedules");
     run(exit_graph);
+    // remove AppProfile from MainWorld
+    auto&& w2 = world<MainWorld>();
+    w2.remove_resource<AppProfile>();
     m_logger->info("App terminated.");
 }

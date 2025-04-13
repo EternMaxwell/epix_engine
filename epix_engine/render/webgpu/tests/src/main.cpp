@@ -225,7 +225,26 @@ void cleanup_context(epix::ResMut<Context> ctx) {
 struct TestPlugin : epix::Plugin {
     void build(epix::App& app) override {
         app.add_system(Startup, into(insert_context, setup_context).chain());
-        app.add_system(Update, submit_test);
+        app.add_system(
+            Update,
+            into(
+                submit_test,
+                [](epix::Res<epix::AppProfile> profile,
+                   Local<std::optional<double>> count) {
+                    if (!count->has_value()) {
+                        *count = 1000;
+                    }
+                    if (*count > 0) {
+                        (*count).value() -= 1;
+                        return;
+                    } else {
+                        *count = 1000;
+                    }
+                    spdlog::info("FrameTime: {:1.3f}ms", profile->frame_time);
+                    spdlog::info("FPS:       {:4.2f}", profile->fps);
+                }
+            )
+        );
         app.add_system(First, begin_frame);
         app.add_system(Last, end_frame);
         app.add_system(Exit, cleanup_context);
@@ -244,5 +263,5 @@ int main() {
         .set_vsync(false);
     app.add_plugin(epix::input::InputPlugin{});
     app.add_plugin(TestPlugin{});
-    app.run();
+    app.disable_tracy().run();
 }

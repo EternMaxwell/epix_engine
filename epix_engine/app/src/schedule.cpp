@@ -43,11 +43,6 @@ EPIX_API Schedule& Schedule::add_system(SystemAddInfo&& info) {
         system->m_ptr_nexts = std::move(each.m_ptr_nexts);
         system->worker      = std::move(each.m_worker);
         system->conditions  = std::move(each.conditions);
-        if (info.m_chain) {
-            for (size_t j = i + 1; j < info.m_systems.size(); j++) {
-                system->m_ptr_nexts.emplace(info.m_systems[j].index);
-            }
-        }
         m_systems.emplace(each.index, system);
     }
     return *this;
@@ -124,56 +119,99 @@ EPIX_API void Schedule::bake() {
         }
     }
 }
-EPIX_API void Schedule::run(World* src, World* dst) {
+EPIX_API void Schedule::run(World* src, World* dst, bool enable_tracy) {
     if (m_systems.empty()) return;
-    auto start = std::chrono::high_resolution_clock::now();
-    ZoneScopedN("Run Schedule");
-    auto name = std::format("Run Schedule {}#{}", m_id.type.name(), m_id.value);
-    ZoneName(name.c_str(), name.size());
-    {
-        ZoneScopedN("Baking Schedule");
-        bake();
-    }
+    auto start       = std::chrono::high_resolution_clock::now();
     size_t m_remain  = m_systems.size();
     size_t m_running = 0;
-    for (auto&& [ptr, system] : m_systems) {
-        system->m_prev_count =
-            system->m_tmp_prevs.size() + system->m_prevs.size();
-        system->m_next_count =
-            system->m_tmp_nexts.size() + system->m_nexts.size();
-        if (system->m_prev_count == 0) {
-            m_running++;
-            run(system, src, dst);
+    if (enable_tracy) {
+        ZoneScopedN("Run Schedule");
+        auto name =
+            std::format("Run Schedule {}#{}", m_id.type.name(), m_id.value);
+        ZoneName(name.c_str(), name.size());
+        {
+            ZoneScopedN("Baking Schedule");
+            bake();
         }
-    }
-    while (m_running > 0) {
-        auto&& system = m_finishes->pop();
-        m_running--;
-        m_remain--;
-        for (auto&& each : system->m_nexts) {
-            if (auto ptr = each.lock()) {
-                ptr->m_prev_count--;
-                if (ptr->m_prev_count == 0) {
-                    m_running++;
-                    run(ptr, src, dst);
-                }
-            } else {
-                system->m_tmp_prevs.erase(each);
+        for (auto&& [ptr, system] : m_systems) {
+            system->m_prev_count =
+                system->m_tmp_prevs.size() + system->m_prevs.size();
+            system->m_next_count =
+                system->m_tmp_nexts.size() + system->m_nexts.size();
+            if (system->m_prev_count == 0) {
+                m_running++;
+                run(system, src, dst, enable_tracy);
             }
         }
-        for (auto&& each : system->m_tmp_nexts) {
-            if (auto ptr = each.lock()) {
-                ptr->m_prev_count--;
-                if (ptr->m_prev_count == 0) {
-                    m_running++;
-                    run(ptr, src, dst);
+        while (m_running > 0) {
+            auto&& system = m_finishes->pop();
+            m_running--;
+            m_remain--;
+            for (auto&& each : system->m_nexts) {
+                if (auto ptr = each.lock()) {
+                    ptr->m_prev_count--;
+                    if (ptr->m_prev_count == 0) {
+                        m_running++;
+                        run(ptr, src, dst, enable_tracy);
+                    }
+                } else {
+                    system->m_tmp_prevs.erase(each);
                 }
-            } else {
-                system->m_tmp_nexts.erase(each);
+            }
+            for (auto&& each : system->m_tmp_nexts) {
+                if (auto ptr = each.lock()) {
+                    ptr->m_prev_count--;
+                    if (ptr->m_prev_count == 0) {
+                        m_running++;
+                        run(ptr, src, dst, enable_tracy);
+                    }
+                } else {
+                    system->m_tmp_nexts.erase(each);
+                }
             }
         }
+        dst->m_command.flush();
+    } else {
+        bake();
+        for (auto&& [ptr, system] : m_systems) {
+            system->m_prev_count =
+                system->m_tmp_prevs.size() + system->m_prevs.size();
+            system->m_next_count =
+                system->m_tmp_nexts.size() + system->m_nexts.size();
+            if (system->m_prev_count == 0) {
+                m_running++;
+                run(system, src, dst, enable_tracy);
+            }
+        }
+        while (m_running > 0) {
+            auto&& system = m_finishes->pop();
+            m_running--;
+            m_remain--;
+            for (auto&& each : system->m_nexts) {
+                if (auto ptr = each.lock()) {
+                    ptr->m_prev_count--;
+                    if (ptr->m_prev_count == 0) {
+                        m_running++;
+                        run(ptr, src, dst, enable_tracy);
+                    }
+                } else {
+                    system->m_tmp_prevs.erase(each);
+                }
+            }
+            for (auto&& each : system->m_tmp_nexts) {
+                if (auto ptr = each.lock()) {
+                    ptr->m_prev_count--;
+                    if (ptr->m_prev_count == 0) {
+                        m_running++;
+                        run(ptr, src, dst, enable_tracy);
+                    }
+                } else {
+                    system->m_tmp_nexts.erase(each);
+                }
+            }
+        }
+        dst->m_command.flush();
     }
-    dst->m_command.flush();
     if (m_remain != 0) {
         m_logger->warn("Some systems are not finished.");
     }
@@ -186,23 +224,38 @@ EPIX_API void Schedule::run(World* src, World* dst) {
     m_avg_time = delta * 0.1 + m_avg_time * 0.9;
 }
 EPIX_API void Schedule::run(
-    std::shared_ptr<System> system, World* src, World* dst
+    std::shared_ptr<System> system, World* src, World* dst, bool enable_tracy
 ) {
-    ZoneScopedN("Detach System");
-    auto name   = std::format("Detach System: {}", system->label);
-    auto&& pool = m_executor->get(system->worker);
-    if (!pool) {
-        ZoneScopedN("Run System");
-        system->run(src, dst);
-        m_finishes->emplace(system);
-    }
-    pool->detach_task(
-        [this, src, dst, system]() mutable {
-            system->run(src, dst);
+    if (enable_tracy) {
+        ZoneScopedN("Detach System");
+        auto name = std::format("Detach System: {}", system->label);
+        ZoneName(name.c_str(), name.size());
+        auto&& pool = m_executor->get(system->worker);
+        if (!pool) {
+            system->run(src, dst, true);
             m_finishes->emplace(system);
-        },
-        127
-    );
+        }
+        pool->detach_task(
+            [this, src, dst, system]() mutable {
+                system->run(src, dst, true);
+                m_finishes->emplace(system);
+            },
+            127
+        );
+    } else {
+        auto&& pool = m_executor->get(system->worker);
+        if (!pool) {
+            system->run(src, dst, false);
+            m_finishes->emplace(system);
+        }
+        pool->detach_task(
+            [this, src, dst, system]() mutable {
+                system->run(src, dst, false);
+                m_finishes->emplace(system);
+            },
+            127
+        );
+    }
 }
 EPIX_API double Schedule::get_avg_time() const { return m_avg_time; }
 EPIX_API void Schedule::clear_tmp() {

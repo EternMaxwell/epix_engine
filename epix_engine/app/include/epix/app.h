@@ -1401,8 +1401,6 @@ struct SystemAddInfo {
     };
     std::vector<each_t> m_systems;
 
-    bool m_chain = false;
-
     SystemAddInfo()                                      = default;
     SystemAddInfo(const SystemAddInfo& other)            = delete;
     SystemAddInfo(SystemAddInfo&& other)                 = default;
@@ -1491,7 +1489,7 @@ struct System {
     System& operator=(const System& other) = delete;
     System& operator=(System&& other)      = delete;
 
-    EPIX_API bool run(World* src, World* dst);
+    EPIX_API bool run(World* src, World* dst, bool enable_tracy);
     EPIX_API void clear_tmp();
     EPIX_API double reach_time();
 
@@ -1621,8 +1619,13 @@ struct Schedule {
     EPIX_API Schedule& add_system(SystemAddInfo&& info);
     EPIX_API void build();
     EPIX_API void bake();
-    EPIX_API void run(World* src, World* dst);
-    EPIX_API void run(std::shared_ptr<System> system, World* src, World* dst);
+    EPIX_API void run(World* src, World* dst, bool enable_tracy);
+    EPIX_API void run(
+        std::shared_ptr<System> system,
+        World* src,
+        World* dst,
+        bool enable_tracy
+    );
     EPIX_API double get_avg_time() const;
     EPIX_API void clear_tmp();
     EPIX_API double reach_time();
@@ -1777,6 +1780,7 @@ struct AppCreateInfo {
         {"single", 1},
     };
     bool enable_loop                       = false;
+    bool enable_tracy                      = true;
     std::shared_ptr<spdlog::logger> logger = nullptr;
 };
 
@@ -1793,6 +1797,13 @@ struct GraphId : public std::type_index {
     GraphId(GraphId&& other)                 = default;
     GraphId& operator=(const GraphId& other) = default;
     GraphId& operator=(GraphId&& other)      = default;
+};
+
+struct AppProfile {
+    /// in milliseconds
+    double frame_time = 0.0;
+    /// frames per second
+    double fps = 0.0;
 };
 
 struct App {
@@ -1814,6 +1825,7 @@ struct App {
     std::shared_ptr<Executor> m_executor;
 
     std::unique_ptr<bool> m_enable_loop;
+    std::unique_ptr<bool> m_enable_tracy;
 
     std::shared_ptr<spdlog::logger> m_logger;
 
@@ -1825,6 +1837,9 @@ struct App {
 
     EPIX_API App* operator->();
     EPIX_API App& enable_loop();
+    EPIX_API App& disable_loop();
+    EPIX_API App& enable_tracy();
+    EPIX_API App& disable_tracy();
     EPIX_API App& set_log_level(spdlog::level::level_enum level);
 
     EPIX_API App& add_schedule(GraphId, Schedule&& schedule);
@@ -1857,10 +1872,10 @@ struct App {
         throw std::runtime_error("World not found.");
     };
     template <typename T>
-    std::shared_ptr<T> get_world() {
+    World* get_world() {
         auto id = std::type_index(typeid(std::remove_cvref_t<T>));
         if (auto it = m_worlds.find(id); it != m_worlds.end()) {
-            return std::static_pointer_cast<T>(it->second);
+            return it->second.get();
         }
         return nullptr;
     };
@@ -2201,10 +2216,14 @@ namespace epix {
 
 // ENTITY PART
 using app::App;
+using app::AppCreateInfo;
 using app::Children;
 using app::Entity;
 using app::Parent;
 using app::Plugin;
+
+// PROFILE
+using app::AppProfile;
 
 // EVENTS
 using app::AppExit;
