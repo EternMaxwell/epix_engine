@@ -42,10 +42,7 @@ EPIX_API Schedule& Schedule::add_system(SystemAddInfo&& info) {
         system->m_ptr_prevs = std::move(each.m_ptr_prevs);
         system->m_ptr_nexts = std::move(each.m_ptr_nexts);
         system->worker      = std::move(each.m_worker);
-        std::move(
-            each.conditions.begin(), each.conditions.end(),
-            std::back_inserter(system->conditions)
-        );
+        system->conditions  = std::move(each.conditions);
         if (info.m_chain) {
             for (size_t j = i + 1; j < info.m_systems.size(); j++) {
                 system->m_ptr_nexts.emplace(info.m_systems[j].index);
@@ -153,17 +150,6 @@ EPIX_API void Schedule::run(World* src, World* dst) {
         auto&& system = m_finishes->pop();
         m_running--;
         m_remain--;
-        for (auto&& each : system->m_tmp_nexts) {
-            if (auto ptr = each.lock()) {
-                ptr->m_prev_count--;
-                if (ptr->m_prev_count == 0) {
-                    m_running++;
-                    run(ptr, src, dst);
-                }
-            } else {
-                system->m_tmp_nexts.erase(each);
-            }
-        }
         for (auto&& each : system->m_nexts) {
             if (auto ptr = each.lock()) {
                 ptr->m_prev_count--;
@@ -173,6 +159,17 @@ EPIX_API void Schedule::run(World* src, World* dst) {
                 }
             } else {
                 system->m_tmp_prevs.erase(each);
+            }
+        }
+        for (auto&& each : system->m_tmp_nexts) {
+            if (auto ptr = each.lock()) {
+                ptr->m_prev_count--;
+                if (ptr->m_prev_count == 0) {
+                    m_running++;
+                    run(ptr, src, dst);
+                }
+            } else {
+                system->m_tmp_nexts.erase(each);
             }
         }
     }

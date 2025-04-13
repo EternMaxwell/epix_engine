@@ -1723,14 +1723,6 @@ struct ExitControl {};
 
 struct AppExit {};
 
-template <typename T, typename... Args>
-void info_append(SystemAddInfo& info, T (*func)(Args&&...)) {
-    info.m_systems.emplace_back(
-        std::format("system:{:#016x}", (size_t)func), FuncIndex(func),
-        std::make_unique<BasicSystem<void>>(func)
-    );
-}
-
 template <typename T>
     requires std::same_as<SystemAddInfo, std::remove_cvref_t<T>>
 void info_append(SystemAddInfo& info, T&& func) {
@@ -1746,12 +1738,21 @@ template <typename Func>
         { std::function(func) };
     }
 void info_append(SystemAddInfo& info, Func&& func) {
-    auto ptr = std::make_unique<BasicSystem<void>>(func);
-    FuncIndex index;
-    index.func = ptr.get();
-    info.m_systems.emplace_back(
-        std::format("system:{:#016x}", (size_t)ptr.get()), index, std::move(ptr)
-    );
+    if constexpr (std::is_function_v<
+                      std::remove_pointer_t<std::remove_cvref_t<Func>>>) {
+        info.m_systems.emplace_back(
+            std::format("system:{:#016x}", (size_t)func), FuncIndex(func),
+            std::make_unique<BasicSystem<void>>(func)
+        );
+    } else {
+        auto ptr = std::make_unique<BasicSystem<void>>(func);
+        FuncIndex index;
+        index.func = ptr.get();
+        info.m_systems.emplace_back(
+            std::format("system:{:#016x}", (size_t)ptr.get()), index,
+            std::move(ptr)
+        );
+    }
 }
 
 template <typename... Funcs>
