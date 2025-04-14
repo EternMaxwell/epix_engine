@@ -36,7 +36,7 @@ struct AssetLoader {
         if (io && loader && context) {
             while (!loader->m_to_load.empty()) {
                 auto&& [index, path] = loader->m_to_load.front();
-                io->submit([sender = m_loaded.create_sender(), index, path,
+                io->submit([sender = loader->m_loaded.create_sender(), index, path,
                             ptr    = context.get()] {
                     if (auto&& asset = load(path, ptr)) {
                         sender.send(std::make_pair(index, std::move(*asset)));

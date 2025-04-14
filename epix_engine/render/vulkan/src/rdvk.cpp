@@ -12,23 +12,23 @@ EPIX_API void VulkanPlugin::build(epix::App& app) {
     );
     app.add_system(
         PreStartup,
-        bundle(systems::create_context, systems::create_res_manager)
+        into(systems::create_context, systems::create_res_manager)
             .in_set(window::WindowStartUpSets::after_window_creation)
             .chain()
     );
     app.add_system(
-        PreExtract,
-        bundle(systems::extract_context, systems::extract_res_manager)
+        PreExtract, into(systems::extract_context, systems::extract_res_manager)
     );
     app.add_system(
-        Prepare, chain(systems::recreate_swap_chain, systems::get_next_image)
+        Prepare, into(systems::recreate_swap_chain, systems::get_next_image).chain()
     );
     app.add_system(
         PostRender,
-        chain(systems::present_frame, systems::clear_extracted_context)
+        into(systems::present_frame, systems::clear_extracted_context).chain()
     );
     app.add_system(
-        PostExit, chain(systems::destroy_res_manager, systems::destroy_context)
+        PostExit,
+        into(systems::destroy_res_manager, systems::destroy_context).chain()
     );
 }
 }  // namespace epix::render::vulkan2

@@ -16,28 +16,51 @@ EPIX_API SystemAddInfo::each_t::each_t(
 )
     : name(name), index(index), system(std::move(system)) {}
 EPIX_API SystemAddInfo::each_t::each_t(each_t&& other)
-    : name(other.name), index(other.index), system(std::move(other.system)) {}
+    : name(other.name),
+      index(other.index),
+      system(std::move(other.system)),
+      conditions(std::move(other.conditions)),
+      m_in_sets(std::move(other.m_in_sets)),
+      m_worker(std::move(other.m_worker)),
+      m_ptr_prevs(std::move(other.m_ptr_prevs)),
+      m_ptr_nexts(std::move(other.m_ptr_nexts)) {}
 EPIX_API SystemAddInfo::each_t& SystemAddInfo::each_t::operator=(each_t&& other
 ) {
-    name   = other.name;
-    index  = other.index;
-    system = std::move(other.system);
+    name        = other.name;
+    index       = other.index;
+    system      = std::move(other.system);
+    conditions  = std::move(other.conditions);
+    m_in_sets   = std::move(other.m_in_sets);
+    m_worker    = std::move(other.m_worker);
+    m_ptr_prevs = std::move(other.m_ptr_prevs);
+    m_ptr_nexts = std::move(other.m_ptr_nexts);
     return *this;
 }
 
 EPIX_API SystemAddInfo& SystemAddInfo::chain() {
-    m_chain = true;
+    for (size_t i = 0; i < m_systems.size(); i++) {
+        auto&& each = m_systems[i];
+        if (i + 1 < m_systems.size()) {
+            each.m_ptr_nexts.emplace(m_systems[i + 1].index);
+        }
+    }
     return *this;
 }
 
 EPIX_API SystemAddInfo& SystemAddInfo::worker(const std::string& worker) {
-    m_worker = worker;
+    for (auto& each : m_systems) {
+        each.m_worker = worker;
+    }
     return *this;
 }
 
 EPIX_API SystemAddInfo& SystemAddInfo::set_label(const std::string& label) {
-    for (auto&& each : m_systems) {
-        each.name = label;
+    if (m_systems.size() == 1) {
+        m_systems[0].name = label;
+    } else {
+        for (size_t i = 0; i < m_systems.size(); ++i) {
+            m_systems[i].name = std::format("{}#{}", label, i);
+        }
     }
     return *this;
 }
@@ -46,7 +69,37 @@ EPIX_API SystemAddInfo& SystemAddInfo::set_label(
     uint32_t index, const std::string& label
 ) {
     if (index >= m_systems.size()) return *this;
-    m_systems[index].name = std::format("{}#{}", label, index);
+    m_systems[index].name = label;
+    return *this;
+}
+
+EPIX_API SystemAddInfo& SystemAddInfo::set_labels(
+    index::ArrayProxy<std::string> labels
+) {
+    auto&& in_begin  = labels.begin();
+    auto&& in_end    = labels.end();
+    auto&& out_begin = m_systems.begin();
+    auto&& out_end   = m_systems.end();
+    while (in_begin != in_end && out_begin != out_end) {
+        out_begin->name = *in_begin;
+        ++in_begin;
+        ++out_begin;
+    }
+    return *this;
+}
+
+EPIX_API SystemAddInfo& SystemAddInfo::set_labels(
+    index::ArrayProxy<const char*> labels
+) {
+    auto&& in_begin  = labels.begin();
+    auto&& in_end    = labels.end();
+    auto&& out_begin = m_systems.begin();
+    auto&& out_end   = m_systems.end();
+    while (in_begin != in_end && out_begin != out_end) {
+        out_begin->name = *in_begin;
+        ++in_begin;
+        ++out_begin;
+    }
     return *this;
 }
 
@@ -61,18 +114,25 @@ EPIX_API System::System(
       m_prev_count(0),
       m_next_count(0) {}
 
-EPIX_API bool System::run(World* src, World* dst) {
-    ZoneScopedN("Try Run System");
-    auto name = std::format("System: {}", label);
-    ZoneName(name.c_str(), name.size());
-    {
-        ZoneScopedN("Check Conditions");
+EPIX_API bool System::run(World* src, World* dst, bool enable_tracy) {
+    if (enable_tracy) {
+        ZoneScopedN("Try Run System");
+        auto name = std::format("System: {}", label);
+        ZoneName(name.c_str(), name.size());
+        {
+            ZoneScopedN("Check Conditions");
+            for (auto& each : conditions) {
+                if (!each->run(src, dst)) return false;
+            }
+        }
+        {
+            ZoneScopedN("Run System");
+            system->run(src, dst);
+        }
+    } else {
         for (auto& each : conditions) {
             if (!each->run(src, dst)) return false;
         }
-    }
-    {
-        ZoneScopedN("Run System");
         system->run(src, dst);
     }
     return true;
@@ -98,4 +158,9 @@ EPIX_API double System::reach_time() {
         }
     }
     return m_reach_time.value();
+}
+
+template <>
+EPIX_API SystemAddInfo epix::app::into(SystemAddInfo&& info) {
+    return std::move(info);
 }

@@ -1,6 +1,7 @@
 #pragma once
 
 // ----THIRD PARTY INCLUDES----
+#include <index/array_proxy.h>
 #include <index/concurrent/channel.h>
 #include <index/concurrent/conqueue.h>
 #include <index/traits/template.h>
@@ -50,12 +51,12 @@ struct t_weak_ptr : std::weak_ptr<T> {
     t_weak_ptr(std::shared_ptr<T> ptr) : std::weak_ptr<T>(ptr) {}
     t_weak_ptr(std::weak_ptr<T> ptr) : std::weak_ptr<T>(ptr) {}
 
-    T* get_p() { return std::weak_ptr<T>::get(); }
+    T* get_p() { return *reinterpret_cast<T**>(this); }
 };
 }  // namespace epix::app_tools
 
 template <typename T>
-struct ::std::hash<std::weak_ptr<T>> {
+struct std::hash<std::weak_ptr<T>> {
     size_t operator()(const std::weak_ptr<T>& ptr) const {
         epix::app_tools::t_weak_ptr<T> tptr(ptr);
         return std::hash<T*>()(tptr.get_p());
@@ -63,7 +64,7 @@ struct ::std::hash<std::weak_ptr<T>> {
 };
 
 template <typename T>
-struct ::std::equal_to<std::weak_ptr<T>> {
+struct std::equal_to<std::weak_ptr<T>> {
     bool operator()(const std::weak_ptr<T>& a, const std::weak_ptr<T>& b)
         const {
         epix::app_tools::t_weak_ptr<T> aptr(a);
@@ -75,12 +76,18 @@ struct ::std::equal_to<std::weak_ptr<T>> {
 namespace epix::app {
 struct World;
 template <typename T>
-struct Res;
-template <typename T>
-struct ResMut;
-struct UntypedRes;
-template <typename T>
 static constexpr bool external_thread_safe_v = false;
+
+struct FuncIndex;
+struct Entity;
+struct Children;
+
+template <typename Ret>
+struct BasicSystem;
+
+struct SystemSet;
+struct System;
+struct SystemAddInfo;
 
 template <typename T>
 struct EventReader;
@@ -91,26 +98,11 @@ struct State;
 template <typename T>
 struct NextState;
 
-struct FuncIndex;
-struct Entity;
-struct Children;
-
-// App will has add_system(const Schedule& schedule, systems...) and
-// add_system(Schedule(*schedule)(), systems...)
-struct Schedule;
-struct ScheduleId;
-struct ScheduleInfo;
-
-struct SystemAddInfo;
-
-struct SystemSet;
-struct System;
-
-template <typename Ret, typename... Args>
-struct SystemT;
-
-template <typename Ret>
-struct BasicSystem;
+template <typename T>
+struct Res;
+template <typename T>
+struct ResMut;
+struct UntypedRes;
 
 template <typename... T>
 struct Get;
@@ -130,7 +122,9 @@ struct Local;
 struct Command;
 struct EntityCommand;
 
+struct Schedule;
 struct ScheduleId;
+struct ScheduleInfo;
 
 struct App;
 
@@ -138,21 +132,21 @@ using thread_pool = BS::thread_pool<BS::tp::priority>;
 }  // namespace epix::app
 
 template <>
-struct ::std::hash<epix::app::FuncIndex> {
+struct std::hash<epix::app::FuncIndex> {
     EPIX_API size_t operator()(const epix::app::FuncIndex& func) const;
 };
 template <>
-struct ::std::hash<epix::app::Entity> {
+struct std::hash<epix::app::Entity> {
     EPIX_API size_t operator()(const epix::app::Entity& entity) const;
 };
 template <>
-struct ::std::equal_to<epix::app::Entity> {
+struct std::equal_to<epix::app::Entity> {
     EPIX_API bool operator()(
         const epix::app::Entity& a, const epix::app::Entity& b
     ) const;
 };
 template <>
-struct ::std::hash<epix::app::ScheduleId> {
+struct std::hash<epix::app::ScheduleId> {
     EPIX_API size_t operator()(const epix::app::ScheduleId& id) const;
 };
 
@@ -172,8 +166,7 @@ struct FuncIndex {
     std::type_index type;
     void* func;
     template <typename T, typename... Args>
-    FuncIndex(T (*func)(Args...))
-        : type(typeid(T)), func(static_cast<void*>(func)) {}
+    FuncIndex(T (*func)(Args...)) : type(typeid(T)), func((void*)(func)) {}
     FuncIndex() : type(typeid(void)), func(nullptr) {}
     EPIX_API bool operator==(const FuncIndex& other) const;
 };
@@ -633,7 +626,7 @@ struct Query<Get<Gets...>, With<Withs...>, Without<Withouts...>> {
      */
     auto iter() { return iterable(m_view.each()); }
     std::tuple<Gets&...> get(entt::entity id) {
-        return m_view.get<Gets...>(id);
+        return m_view.template get<Gets...>(id);
     }
     bool contains(entt::entity id) { return m_view.contains(id); }
     /*! @brief Get the single entity and requaired components.
@@ -719,7 +712,7 @@ struct Query<Get<Entity, Gets...>, With<Withs...>, Without<Withouts...>> {
      */
     auto iter() { return iterable(m_view.each()); }
     std::tuple<Gets&...> get(entt::entity id) {
-        return m_view.get<Gets...>(id);
+        return m_view.template get<Gets...>(id);
     }
     bool contains(entt::entity id) { return m_view.contains(id); }
     /*! @brief Get the single entity and requaired components.
@@ -938,98 +931,98 @@ struct World {
         using type = T;
     };
 
-    template <typename T>
-    struct param_type<Res<T>> {
-        using type = Res<T>;
-        static Res<T> get(World* src, World* dst) {
-            return std::move(dst->resource<T>().into<T>());
-        }
-    };
-    template <typename T>
-    struct param_type<ResMut<T>> {
-        using type = ResMut<T>;
-        static ResMut<T> get(World* src, World* dst) {
-            return std::move(dst->resource<T>().into_mut<T>());
-        }
-    };
-    template <typename T>
-    struct param_type<EventReader<T>> {
-        using type = EventReader<T>;
-        static EventReader<T> get(World* src, World* dst) {
-            auto&& it = dst->m_events.find(typeid(T));
-            if (it == dst->m_events.end()) {
-                spdlog::error("Event {} not found", typeid(T).name());
-                throw std::runtime_error("Event not found");
-            }
-            return EventReader<T>(it->second);
-        }
-    };
-    template <typename T>
-    struct param_type<EventWriter<T>> {
-        using type = EventWriter<T>;
-        static EventWriter<T> get(World* src, World* dst) {
-            auto&& it = dst->m_events.find(typeid(T));
-            if (it == dst->m_events.end()) {
-                spdlog::error("Event {} not found", typeid(T).name());
-                throw std::runtime_error("Event not found");
-            }
-            return EventWriter<T>(it->second);
-        }
-    };
-    template <typename G, typename W, typename WO>
-    struct param_type<Query<G, W, WO>> {
-        using type = Query<G, W, WO>;
-        static Query<G, W, WO> get(World* src, World* dst) {
-            return Query<G, W, WO>(dst->m_registry);
-        }
-    };
-    template <>
-    struct param_type<Command> {
-        using type = Command;
-        static Command get(World* src, World* dst) {
-            return Command(&src->m_command, &dst->m_command);
-        }
-    };
-
-    template <typename T>
-    struct param_type<Extract<Res<T>>> {
-        using type = Extract<Res<T>>;
-        static Extract<Res<T>> get(World* src, World* dst) {
-            return std::move(src->resource<T>().into<T>());
-        }
-    };
-    template <typename T>
-    struct param_type<Extract<ResMut<T>>> {
-        using type = Extract<ResMut<T>>;
-        static Extract<ResMut<T>> get(World* src, World* dst) {
-            return std::move(src->resource<T>().into_mut<T>());
-        }
-    };
-    template <typename T>
-    struct param_type<Extract<EventReader<T>>> {
-        using type = Extract<EventReader<T>>;
-        static Extract<EventReader<T>> get(World* src, World* dst) {
-            return param_type<EventReader<T>>::get(dst, src);
-        }
-    };
-    template <typename T>
-    struct param_type<Extract<EventWriter<T>>> {
-        using type = Extract<EventWriter<T>>;
-        static Extract<EventWriter<T>> get(World* src, World* dst) {
-            return param_type<EventWriter<T>>::get(dst, src);
-        }
-    };
-    template <typename G, typename W, typename WO>
-    struct param_type<Extract<Query<G, W, WO>>> {
-        using type = Extract<Query<G, W, WO>>;
-        static Extract<Query<G, W, WO>> get(World* src, World* dst) {
-            return Extract<Query<G, W, WO>>(src->m_registry);
-        }
-    };
-
     friend struct Schedule;
     friend struct WorldCommand;
     friend struct WorldEntityCommand;
+};
+
+template <typename T>
+struct World::param_type<Res<T>> {
+    using type = Res<T>;
+    static Res<T> get(World* src, World* dst) {
+        return std::move(dst->resource<T>().template into<T>());
+    }
+};
+template <typename T>
+struct World::param_type<ResMut<T>> {
+    using type = ResMut<T>;
+    static ResMut<T> get(World* src, World* dst) {
+        return std::move(dst->resource<T>().template into_mut<T>());
+    }
+};
+template <typename T>
+struct World::param_type<EventReader<T>> {
+    using type = EventReader<T>;
+    static EventReader<T> get(World* src, World* dst) {
+        auto&& it = dst->m_events.find(typeid(T));
+        if (it == dst->m_events.end()) {
+            spdlog::error("Event {} not found", typeid(T).name());
+            throw std::runtime_error("Event not found");
+        }
+        return EventReader<T>(it->second);
+    }
+};
+template <typename T>
+struct World::param_type<EventWriter<T>> {
+    using type = EventWriter<T>;
+    static EventWriter<T> get(World* src, World* dst) {
+        auto&& it = dst->m_events.find(typeid(T));
+        if (it == dst->m_events.end()) {
+            spdlog::error("Event {} not found", typeid(T).name());
+            throw std::runtime_error("Event not found");
+        }
+        return EventWriter<T>(it->second);
+    }
+};
+template <typename G, typename W, typename WO>
+struct World::param_type<Query<G, W, WO>> {
+    using type = Query<G, W, WO>;
+    static Query<G, W, WO> get(World* src, World* dst) {
+        return Query<G, W, WO>(dst->m_registry);
+    }
+};
+template <>
+struct World::param_type<Command> {
+    using type = Command;
+    static Command get(World* src, World* dst) {
+        return Command(&src->m_command, &dst->m_command);
+    }
+};
+
+template <typename T>
+struct World::param_type<Extract<Res<T>>> {
+    using type = Extract<Res<T>>;
+    static Extract<Res<T>> get(World* src, World* dst) {
+        return std::move(src->resource<T>().template into<T>());
+    }
+};
+template <typename T>
+struct World::param_type<Extract<ResMut<T>>> {
+    using type = Extract<ResMut<T>>;
+    static Extract<ResMut<T>> get(World* src, World* dst) {
+        return std::move(src->resource<T>().template into_mut<T>());
+    }
+};
+template <typename T>
+struct World::param_type<Extract<EventReader<T>>> {
+    using type = Extract<EventReader<T>>;
+    static Extract<EventReader<T>> get(World* src, World* dst) {
+        return param_type<EventReader<T>>::get(dst, src);
+    }
+};
+template <typename T>
+struct World::param_type<Extract<EventWriter<T>>> {
+    using type = Extract<EventWriter<T>>;
+    static Extract<EventWriter<T>> get(World* src, World* dst) {
+        return param_type<EventWriter<T>>::get(dst, src);
+    }
+};
+template <typename G, typename W, typename WO>
+struct World::param_type<Extract<Query<G, W, WO>>> {
+    using type = Extract<Query<G, W, WO>>;
+    static Extract<Query<G, W, WO>> get(World* src, World* dst) {
+        return Extract<Query<G, W, WO>>(src->m_registry);
+    }
 };
 
 template <typename Ret>
@@ -1168,95 +1161,11 @@ struct BasicSystem {
 
     template <typename T>
     struct infos_adder {
-        static void add(param_info& src_info, param_info& dst_info);
-    };
-
-    template <typename... Includes, typename... Withs, typename... Excludes>
-    struct infos_adder<
-        Query<Get<Includes...>, With<Withs...>, Without<Excludes...>>> {
         static void add(param_info& src_info, param_info& dst_info) {
-            dst_info.has_query = true;
-            auto& query_types  = dst_info.query_types;
-            entt::dense_set<std::type_index> query_include_types,
-                query_exclude_types, query_include_const;
-            (mparam_add<Includes>::add(query_include_types), ...);
-            (cparam_add<Includes>::add(query_include_const), ...);
-            (param_add<Withs>::add(query_include_const), ...);
-            (param_add<Excludes>::add(query_exclude_types), ...);
-            query_types.emplace_back(
-                std::move(query_include_types), std::move(query_include_const),
-                std::move(query_exclude_types)
-            );
+            if constexpr (std::same_as<Command, std::remove_cvref_t<T>>) {
+                dst_info.has_command = true;
+            }
         }
-    };
-
-    template <typename... Includes, typename... Excludes, typename T>
-    struct infos_adder<Query<Get<Includes...>, Without<Excludes...>, T>> {
-        static void add(param_info& src_info, param_info& dst_info) {
-            dst_info.has_query = true;
-            auto& query_types  = dst_info.query_types;
-            entt::dense_set<std::type_index> query_include_types,
-                query_exclude_types, query_include_const;
-            (mparam_add<Includes>::add(query_include_types), ...);
-            (cparam_add<Includes>::add(query_include_const), ...);
-            (param_add<Excludes>::add(query_exclude_types), ...);
-            query_types.emplace_back(
-                std::move(query_include_types), std::move(query_include_const),
-                std::move(query_exclude_types)
-            );
-        }
-    };
-
-    template <typename T>
-    struct infos_adder<Res<T>> {
-        static void add(param_info& src_info, param_info& dst_info) {
-            auto& resource_const = dst_info.resource_const;
-            param_add<T>().add(resource_const);
-        }
-    };
-
-    template <typename T>
-    struct infos_adder<ResMut<T>> {
-        static void add(param_info& src_info, param_info& dst_info) {
-            auto& resource_types = dst_info.resource_types;
-            param_add<T>().add(resource_types);
-        }
-    };
-
-    template <typename T>
-    struct infos_adder<EventReader<T>> {
-        static void add(param_info& src_info, param_info& dst_info) {
-            auto& event_read_types = dst_info.event_read_types;
-            param_add<T>().add(event_read_types);
-        }
-    };
-
-    template <typename T>
-    struct infos_adder<EventWriter<T>> {
-        static void add(param_info& src_info, param_info& dst_info) {
-            auto& event_write_types = dst_info.event_write_types;
-            param_add<T>().add(event_write_types);
-        }
-    };
-
-    template <>
-    struct infos_adder<Command> {
-        static void add(param_info& src_info, param_info& dst_info) {
-            dst_info.has_command = true;
-        }
-    };
-
-    template <typename T>
-    struct infos_adder<Extract<T>> {
-        static void add(param_info& src_info, param_info& dst_info) {
-            // reverse the order of src and dst for extracted parameters
-            infos_adder<T>().add(dst_info, src_info);
-        }
-    };
-
-    template <typename T>
-    struct infos_adder<Local<T>> {
-        static void add(param_info& src_info, param_info& dst_info) {}
     };
 
     template <typename... Args>
@@ -1366,6 +1275,96 @@ struct BasicSystem {
     }
 };
 
+template <typename Ret>
+template <typename... Includes, typename... Withs, typename... Excludes>
+struct BasicSystem<Ret>::infos_adder<
+    Query<Get<Includes...>, With<Withs...>, Without<Excludes...>>> {
+    static void add(param_info& src_info, param_info& dst_info) {
+        dst_info.has_query = true;
+        auto& query_types  = dst_info.query_types;
+        entt::dense_set<std::type_index> query_include_types,
+            query_exclude_types, query_include_const;
+        (mparam_add<Includes>::add(query_include_types), ...);
+        (cparam_add<Includes>::add(query_include_const), ...);
+        (param_add<Withs>::add(query_include_const), ...);
+        (param_add<Excludes>::add(query_exclude_types), ...);
+        query_types.emplace_back(
+            std::move(query_include_types), std::move(query_include_const),
+            std::move(query_exclude_types)
+        );
+    }
+};
+
+template <typename Ret>
+template <typename... Includes, typename... Excludes, typename T>
+struct BasicSystem<Ret>::infos_adder<
+    Query<Get<Includes...>, Without<Excludes...>, T>> {
+    static void add(param_info& src_info, param_info& dst_info) {
+        dst_info.has_query = true;
+        auto& query_types  = dst_info.query_types;
+        entt::dense_set<std::type_index> query_include_types,
+            query_exclude_types, query_include_const;
+        (mparam_add<Includes>::add(query_include_types), ...);
+        (cparam_add<Includes>::add(query_include_const), ...);
+        (param_add<Excludes>::add(query_exclude_types), ...);
+        query_types.emplace_back(
+            std::move(query_include_types), std::move(query_include_const),
+            std::move(query_exclude_types)
+        );
+    }
+};
+
+template <typename Ret>
+template <typename T>
+struct BasicSystem<Ret>::infos_adder<Res<T>> {
+    static void add(param_info& src_info, param_info& dst_info) {
+        auto& resource_const = dst_info.resource_const;
+        param_add<T>().add(resource_const);
+    }
+};
+
+template <typename Ret>
+template <typename T>
+struct BasicSystem<Ret>::infos_adder<ResMut<T>> {
+    static void add(param_info& src_info, param_info& dst_info) {
+        auto& resource_types = dst_info.resource_types;
+        param_add<T>().add(resource_types);
+    }
+};
+
+template <typename Ret>
+template <typename T>
+struct BasicSystem<Ret>::infos_adder<EventReader<T>> {
+    static void add(param_info& src_info, param_info& dst_info) {
+        auto& event_read_types = dst_info.event_read_types;
+        param_add<T>().add(event_read_types);
+    }
+};
+
+template <typename Ret>
+template <typename T>
+struct BasicSystem<Ret>::infos_adder<EventWriter<T>> {
+    static void add(param_info& src_info, param_info& dst_info) {
+        auto& event_write_types = dst_info.event_write_types;
+        param_add<T>().add(event_write_types);
+    }
+};
+
+template <typename Ret>
+template <typename T>
+struct BasicSystem<Ret>::infos_adder<Extract<T>> {
+    static void add(param_info& src_info, param_info& dst_info) {
+        // reverse the order of src and dst for extracted parameters
+        infos_adder<T>().add(dst_info, src_info);
+    }
+};
+
+template <typename Ret>
+template <typename T>
+struct BasicSystem<Ret>::infos_adder<Local<T>> {
+    static void add(param_info& src_info, param_info& dst_info) {}
+};
+
 struct SystemSet {
     std::type_index type;
     size_t value;
@@ -1387,6 +1386,11 @@ struct SystemAddInfo {
         std::unique_ptr<BasicSystem<void>> system;
         std::vector<std::unique_ptr<BasicSystem<bool>>> conditions;
 
+        std::vector<SystemSet> m_in_sets;
+        std::string m_worker = "default";
+        entt::dense_set<FuncIndex> m_ptr_prevs;
+        entt::dense_set<FuncIndex> m_ptr_nexts;
+
         EPIX_API each_t(
             const std::string& name,
             FuncIndex index,
@@ -1397,13 +1401,6 @@ struct SystemAddInfo {
     };
     std::vector<each_t> m_systems;
 
-    std::vector<SystemSet> m_in_sets;
-    std::string m_worker = "default";
-    entt::dense_set<FuncIndex> m_ptr_prevs;
-    entt::dense_set<FuncIndex> m_ptr_nexts;
-
-    bool m_chain = false;
-
     SystemAddInfo()                                      = default;
     SystemAddInfo(const SystemAddInfo& other)            = delete;
     SystemAddInfo(SystemAddInfo&& other)                 = default;
@@ -1413,29 +1410,25 @@ struct SystemAddInfo {
     EPIX_API SystemAddInfo& chain();
 
     template <typename T, typename... Args>
-    SystemAddInfo& before(const SystemT<T, Args...>& system) {
-        m_ptr_nexts.emplace(system.index);
-        return *this;
-    }
-    template <typename T, typename... Args>
     SystemAddInfo& before(T (*func)(Args...)) {
-        m_ptr_nexts.emplace(FuncIndex(func));
-        return *this;
-    }
-    template <typename T, typename... Args>
-    SystemAddInfo& after(const SystemT<T, Args...>& system) {
-        m_ptr_prevs.emplace(system.index);
+        for (auto& each : m_systems) {
+            each.m_ptr_nexts.emplace(FuncIndex(func));
+        }
         return *this;
     }
     template <typename T, typename... Args>
     SystemAddInfo& after(T (*func)(Args...)) {
-        m_ptr_prevs.emplace(FuncIndex(func));
+        for (auto& each : m_systems) {
+            each.m_ptr_prevs.emplace(FuncIndex(func));
+        }
         return *this;
     }
     template <typename T>
         requires std::is_enum_v<T>
     SystemAddInfo& in_set(T t) {
-        m_in_sets.emplace_back(SystemSet(t));
+        for (auto& each : m_systems) {
+            each.m_in_sets.emplace_back(SystemSet(t));
+        }
         return *this;
     }
     EPIX_API SystemAddInfo& worker(const std::string& worker);
@@ -1481,63 +1474,8 @@ struct SystemAddInfo {
     };
     EPIX_API SystemAddInfo& set_label(const std::string& label);
     EPIX_API SystemAddInfo& set_label(uint32_t index, const std::string& label);
-};
-template <typename Ret, typename... Args>
-struct SystemT {
-    using return_type    = Ret;
-    using argument_types = std::tuple<Args...>;
-    using func_type      = Ret (*)(Args...);
-    std::string name;
-    FuncIndex index;
-    std::function<Ret(Args...)> func;
-
-    SystemT(const std::string& name, Ret (*func)(Args...))
-        : name(name), index(FuncIndex(func)), func(func) {}
-    SystemT(Ret (*func)(Args...))
-        : name(std::format("{:#016x}", (size_t)func)),
-          index(FuncIndex(func)),
-          func(func) {}
-
-    operator FuncIndex&() { return index; }
-    operator const FuncIndex&() const { return index; }
-    operator SystemAddInfo() const {
-        SystemAddInfo info;
-        info.m_systems.emplace_back(
-            name, index, std::make_unique<BasicSystem<void>>(func)
-        );
-        return std::move(info);
-    }
-
-    template <typename T>
-    SystemAddInfo before(T&& system) {
-        return std::move(operator SystemAddInfo().before(system));
-    }
-    template <typename T>
-    SystemAddInfo after(T&& system) {
-        return std::move(operator SystemAddInfo().after(system));
-    }
-    template <typename T>
-    SystemAddInfo in_set(T t) {
-        return std::move(operator SystemAddInfo().in_set(t));
-    }
-    SystemAddInfo worker(const std::string& worker) {
-        return std::move(operator SystemAddInfo().worker(worker));
-    }
-    template <typename... Args>
-    SystemAddInfo run_if(const std::function<bool(Args...)>& func) {
-        return std::move(operator SystemAddInfo().run_if(func));
-    }
-    template <typename... Args>
-    SystemAddInfo run_if(bool (*func)(Args...)) {
-        return std::move(operator SystemAddInfo().run_if(func));
-    }
-    template <typename T>
-    SystemAddInfo in_state(T state) {
-        return std::move(operator SystemAddInfo().in_state(state));
-    };
-    SystemAddInfo set_label(const std::string& label) {
-        return std::move(operator SystemAddInfo().set_label(label));
-    }
+    EPIX_API SystemAddInfo& set_labels(index::ArrayProxy<std::string> labels);
+    EPIX_API SystemAddInfo& set_labels(index::ArrayProxy<const char*> labels);
 };
 
 struct System {
@@ -1551,7 +1489,7 @@ struct System {
     System& operator=(const System& other) = delete;
     System& operator=(System&& other)      = delete;
 
-    EPIX_API bool run(World* src, World* dst);
+    EPIX_API bool run(World* src, World* dst, bool enable_tracy);
     EPIX_API void clear_tmp();
     EPIX_API double reach_time();
 
@@ -1681,8 +1619,13 @@ struct Schedule {
     EPIX_API Schedule& add_system(SystemAddInfo&& info);
     EPIX_API void build();
     EPIX_API void bake();
-    EPIX_API void run(World* src, World* dst);
-    EPIX_API void run(std::shared_ptr<System> system, World* src, World* dst);
+    EPIX_API void run(World* src, World* dst, bool enable_tracy);
+    EPIX_API void run(
+        std::shared_ptr<System> system,
+        World* src,
+        World* dst,
+        bool enable_tracy
+    );
     EPIX_API double get_avg_time() const;
     EPIX_API void clear_tmp();
     EPIX_API double reach_time();
@@ -1784,51 +1727,47 @@ struct ExitControl {};
 struct AppExit {};
 
 template <typename T>
-auto&& into(T&& t) {
-    return std::forward<T>(t);
+    requires std::same_as<SystemAddInfo, std::remove_cvref_t<T>>
+void info_append(SystemAddInfo& info, T&& func) {
+    SystemAddInfo&& info2 = std::move(func);
+    std::move(
+        info2.m_systems.begin(), info2.m_systems.end(),
+        std::back_inserter(info.m_systems)
+    );
 }
 
-template <typename Ret, typename... Args>
-SystemT<Ret, Args...> into(Ret (*func)(Args...), const std::string& name) {
-    return SystemT<Ret, Args...>(name, func);
+template <typename Func>
+    requires requires(Func func) {
+        { std::function(func) };
+    }
+void info_append(SystemAddInfo& info, Func&& func) {
+    if constexpr (std::is_function_v<
+                      std::remove_pointer_t<std::remove_cvref_t<Func>>>) {
+        info.m_systems.emplace_back(
+            std::format("system:{:#016x}", (size_t)func), FuncIndex(func),
+            std::make_unique<BasicSystem<void>>(func)
+        );
+    } else {
+        auto ptr = std::make_unique<BasicSystem<void>>(func);
+        FuncIndex index;
+        index.func = ptr.get();
+        info.m_systems.emplace_back(
+            std::format("system:{:#016x}", (size_t)ptr.get()), index,
+            std::move(ptr)
+        );
+    }
 }
 
-template <typename Ret, typename... Args>
-SystemT<Ret, Args...> into(Ret (*func)(Args...)) {
-    return SystemT<Ret, Args...>(std::format("{:#016x}", (size_t)func), func);
-}
-
-template <typename T>
-concept SystemLike = requires(T t) {
-    { t.name };
-    { t.index };
-    { std::make_unique<BasicSystem<void>>(t.func) };
-};
-
-template <typename... Systems>
-    requires(SystemLike<std::remove_cvref_t<Systems>> && ...)
-SystemAddInfo bundle(Systems&&... systems) {
+template <typename... Funcs>
+SystemAddInfo into(Funcs&&... funcs) {
     SystemAddInfo info;
-    (info.m_systems.emplace_back(
-         systems.name, systems.index,
-         std::make_unique<BasicSystem<void>>(systems.func)
-     ),
-     ...);
+    info.m_systems.reserve(sizeof...(funcs));
+    (info_append(info, std::forward<Funcs>(funcs)), ...);
     return std::move(info);
 }
-template <typename... Systems, typename... Args, typename Ret>
-SystemAddInfo bundle(Ret (*systems)(Args...), Systems&&... rest) {
-    return std::move(bundle(into(systems), into(rest)...));
-}
-template <typename... Systems>
-    requires(SystemLike<std::remove_cvref_t<Systems>> && ...)
-SystemAddInfo chain(Systems&&... systems) {
-    return std::move(bundle(systems...).chain());
-}
-template <typename... Systems, typename... Args, typename Ret>
-SystemAddInfo chain(Ret (*systems)(Args...), Systems&&... rest) {
-    return std::move(chain(into(systems), into(rest)...));
-}
+
+template <>
+EPIX_API SystemAddInfo into(SystemAddInfo&& info);
 
 struct Plugin {
     virtual void build(App& app) = 0;
@@ -1841,6 +1780,8 @@ struct AppCreateInfo {
         {"single", 1},
     };
     bool enable_loop                       = false;
+    bool enable_tracy                      = true;
+    bool enable_frame_mark                 = true;
     std::shared_ptr<spdlog::logger> logger = nullptr;
 };
 
@@ -1857,6 +1798,24 @@ struct GraphId : public std::type_index {
     GraphId(GraphId&& other)                 = default;
     GraphId& operator=(const GraphId& other) = default;
     GraphId& operator=(GraphId&& other)      = default;
+};
+
+struct AppProfile {
+    /// in milliseconds
+    double frame_time = 0.0;
+    /// frames per second
+    double fps = 0.0;
+};
+
+/**
+ * @brief This is a struct that contains the setting data of the app.
+ * This is not designed to be mutable, but maybe in the future we will
+ * add some mutable data to it.
+ */
+struct AppInfo {
+    bool enable_loop;
+    bool enable_tracy;
+    bool tracy_frame_mark;
 };
 
 struct App {
@@ -1878,6 +1837,8 @@ struct App {
     std::shared_ptr<Executor> m_executor;
 
     std::unique_ptr<bool> m_enable_loop;
+    std::unique_ptr<bool> m_enable_tracy;
+    std::unique_ptr<bool> m_tracy_frame_mark;
 
     std::shared_ptr<spdlog::logger> m_logger;
 
@@ -1889,6 +1850,11 @@ struct App {
 
     EPIX_API App* operator->();
     EPIX_API App& enable_loop();
+    EPIX_API App& disable_loop();
+    EPIX_API App& enable_tracy();
+    EPIX_API App& disable_tracy();
+    EPIX_API App& enable_frame_mark();
+    EPIX_API App& disable_frame_mark();
     EPIX_API App& set_log_level(spdlog::level::level_enum level);
 
     EPIX_API App& add_schedule(GraphId, Schedule&& schedule);
@@ -1921,10 +1887,10 @@ struct App {
         throw std::runtime_error("World not found.");
     };
     template <typename T>
-    std::shared_ptr<T> get_world() {
+    World* get_world() {
         auto id = std::type_index(typeid(std::remove_cvref_t<T>));
         if (auto it = m_worlds.find(id); it != m_worlds.end()) {
-            return std::static_pointer_cast<T>(it->second);
+            return it->second.get();
         }
         return nullptr;
     };
@@ -2265,10 +2231,14 @@ namespace epix {
 
 // ENTITY PART
 using app::App;
+using app::AppCreateInfo;
 using app::Children;
 using app::Entity;
 using app::Parent;
 using app::Plugin;
+
+// PROFILE
+using app::AppProfile;
 
 // EVENTS
 using app::AppExit;
@@ -2318,8 +2288,6 @@ using app::Without;
 // OTHER TOOLS
 using entt::dense_map;
 using entt::dense_set;
-using epix::app::bundle;
-using epix::app::chain;
 using epix::app::into;
 using epix::app::thread_pool;
 using epix::utility::time_scope;
@@ -2329,23 +2297,7 @@ namespace epix::prelude {
 using namespace epix;
 }
 
-#define __EPIX_STRINGIZE2(x) #x
-#define __EPIX_STRINGIZE(x) __EPIX_STRINGIZE2(##x)
-#define EPIX_CONCAT2(a, b) a##b
-#define EPIX_CONCAT(a, b) EPIX_CONCAT2(a, b)
-#define EPIX_SYSTEMT(type, sys_name, body)                                     \
-    type fn_##sys_name##body;                                                  \
-    constexpr auto EPIX_CONCAT(get_##sys_name, _name)() {                      \
-        auto fn_name =                                                         \
-            std::string_view(std::source_location::current().function_name()); \
-        auto namespace_name = fn_name.substr(0, fn_name.rfind("::"));          \
-        return std::string(namespace_name) + "::" + #sys_name;                 \
-    }                                                                          \
-    inline auto sys_name = epix::app::SystemT(                                 \
-        EPIX_CONCAT(get_##sys_name, _name)(), fn_##sys_name                    \
-    );
-#define EPIX_SYSTEM(sys_name, body) EPIX_SYSTEMT(auto, ##sys_name, ##body)
-#define EPIX_INTO(function) epix::app::into(##function, #function)
+#define EPIX_INTO(function) epix::app::into(##function).set_label(#function)
 
 #ifndef into2
 #define into2(x) EPIX_INTO(##x)

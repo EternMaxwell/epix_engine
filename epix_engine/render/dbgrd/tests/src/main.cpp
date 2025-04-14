@@ -5,29 +5,26 @@
 #include <epix/window.h>
 
 using namespace epix;
-
-EPIX_SYSTEM(
-    create_camera_uniform_buffer,
-    (ResMut<epix::render::vulkan2::VulkanResources> res_manager, Command cmd) {
-        using namespace epix::render::vulkan2::backend;
-        auto& device = res_manager->device();
-        auto buffer  = device.createBuffer(
-            vk::BufferCreateInfo()
-                .setSize(sizeof(glm::mat4) * 2)
-                .setUsage(vk::BufferUsageFlagBits::eUniformBuffer)
-                .setSharingMode(vk::SharingMode::eExclusive),
-            AllocationCreateInfo()
-                .setUsage(VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE)
-                .setFlags(VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT
-                 )
-        );
-        auto* data = (glm::mat4*)buffer.map();
-        data[0]    = glm::mat4(1.0f);
-        data[1]    = glm::mat4(1.0f);
-        buffer.unmap();
-        res_manager->add_buffer("camera_uniform_buffer", buffer);
-    }
-)
+void create_camera_uniform_buffer(
+    ResMut<epix::render::vulkan2::VulkanResources> res_manager, Command cmd
+) {
+    using namespace epix::render::vulkan2::backend;
+    auto& device = res_manager->device();
+    auto buffer  = device.createBuffer(
+        vk::BufferCreateInfo()
+            .setSize(sizeof(glm::mat4) * 2)
+            .setUsage(vk::BufferUsageFlagBits::eUniformBuffer)
+            .setSharingMode(vk::SharingMode::eExclusive),
+        AllocationCreateInfo()
+            .setUsage(VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE)
+            .setFlags(VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT)
+    );
+    auto* data = (glm::mat4*)buffer.map();
+    data[0]    = glm::mat4(1.0f);
+    data[1]    = glm::mat4(1.0f);
+    buffer.unmap();
+    res_manager->add_buffer("camera_uniform_buffer", buffer);
+}
 
 struct TestMesh : epix::render::debug::vulkan2::DebugDrawMesh {};
 struct TestStagingMesh : epix::render::debug::vulkan2::DebugDrawStagingMesh {};
@@ -129,181 +126,156 @@ struct TestPass : public epix::render::vulkan2::Pass {
         return new TestPass(base, command_pool);
     }
 };
-
-EPIX_SYSTEM(
-    create_pass_base,
-    (Command cmd, Res<epix::render::vulkan2::RenderContext> context) {
-        if (!context) {
-            return;
-        }
-        auto& device = context->device;
-        cmd.add_resource(TestPassBase::create_new(device));
+void create_pass_base(
+    Command cmd, Res<epix::render::vulkan2::RenderContext> context
+) {
+    if (!context) {
+        return;
     }
-)
-EPIX_SYSTEM(
-    create_pass,
-    (Command cmd,
-     ResMut<epix::render::vulkan2::RenderContext> context,
-     Res<TestPassBase> base) {
-        if (!context) {
-            return;
-        }
-        auto& device       = context->device;
-        auto& command_pool = context->command_pool;
-        cmd.add_resource(TestPass::create_new(base.get(), command_pool));
+    auto& device = context->device;
+    cmd.add_resource(TestPassBase::create_new(device));
+}
+void create_pass(
+    Command cmd,
+    ResMut<epix::render::vulkan2::RenderContext> context,
+    Res<TestPassBase> base
+) {
+    if (!context) {
+        return;
     }
-)
-EPIX_SYSTEM(
-    create_meshes,
-    (Command cmd, Res<epix::render::vulkan2::RenderContext> context) {
-        if (!context) {
-            return;
-        }
-        auto& device = context->device;
-        TestStagingMesh mesh(device);
-        cmd.insert_resource(mesh);
-        TestGPUMesh mesh2(device);
-        cmd.insert_resource(mesh2);
+    auto& device       = context->device;
+    auto& command_pool = context->command_pool;
+    cmd.add_resource(TestPass::create_new(base.get(), command_pool));
+}
+void create_meshes(
+    Command cmd, Res<epix::render::vulkan2::RenderContext> context
+) {
+    if (!context) {
+        return;
     }
-)
-EPIX_SYSTEM(
-    prepare_mesh,
-    (Extract<ResMut<TestStagingMesh>> mesh) {
-        if (!mesh) {
-            return;
-        }
-        ZoneScopedN("Prepare mesh");
-        auto& mesh_data = *mesh;
-        TestMesh ms;
-        ms.emplace_constant(1.0f);
-        ms.draw_point({0.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f, 1.0f});
-        ms.draw_point({0.1f, 0.1f, 0.0f}, {0.0f, 1.0f, 0.0f, 1.0f});
-        ms.draw_point({-0.1f, 0.1f, 0.0f}, {0.0f, 0.0f, 1.0f, 1.0f});
-        ms.next_call();
-        mesh_data.update(ms);
+    auto& device = context->device;
+    TestStagingMesh mesh(device);
+    cmd.insert_resource(mesh);
+    TestGPUMesh mesh2(device);
+    cmd.insert_resource(mesh2);
+}
+void prepare_mesh(Extract<ResMut<TestStagingMesh>> mesh) {
+    if (!mesh) {
+        return;
     }
-)
-
-EPIX_SYSTEM(
-    destroy_meshes,
-    (Command cmd, ResMut<TestStagingMesh> mesh, ResMut<TestGPUMesh> mesh2) {
-        if (!mesh || !mesh2) {
-            return;
-        }
-        mesh->destroy();
-        mesh2->destroy();
+    // ZoneScopedN("Prepare mesh");
+    auto& mesh_data = *mesh;
+    TestMesh ms;
+    ms.emplace_constant(1.0f);
+    ms.draw_point({0.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f, 1.0f});
+    ms.draw_point({0.1f, 0.1f, 0.0f}, {0.0f, 1.0f, 0.0f, 1.0f});
+    ms.draw_point({-0.1f, 0.1f, 0.0f}, {0.0f, 0.0f, 1.0f, 1.0f});
+    ms.next_call();
+    mesh_data.update(ms);
+}
+void destroy_meshes(
+    Command cmd, ResMut<TestStagingMesh> mesh, ResMut<TestGPUMesh> mesh2
+) {
+    if (!mesh || !mesh2) {
+        return;
     }
-)
-
-EPIX_SYSTEM(
-    extract_meshes,
-    (Extract<ResMut<TestStagingMesh>> mesh,
-     Extract<ResMut<TestGPUMesh>> mesh2,
-     Command cmd) {
-        if (!mesh || !mesh2) {
-            return;
-        }
-        cmd.share_resource(mesh);
-        cmd.share_resource(mesh2);
+    mesh->destroy();
+    mesh2->destroy();
+}
+void extract_meshes(
+    Extract<ResMut<TestStagingMesh>> mesh,
+    Extract<ResMut<TestGPUMesh>> mesh2,
+    Command cmd
+) {
+    if (!mesh || !mesh2) {
+        return;
     }
-)
-EPIX_SYSTEM(
-    draw_mesh,
-    (Res<TestStagingMesh> staging_mesh,
-     ResMut<TestGPUMesh> mesh,
-     ResMut<TestPass> pass,
-     ResMut<epix::render::vulkan2::RenderContext> context,
-     Res<epix::render::vulkan2::VulkanResources> res_manager) {
-        if (!mesh || !pass || !context || !staging_mesh || !res_manager) {
-            return;
-        }
-        auto& queue = context->queue;
-        pass->begin(
-            [&](auto& device, auto& render_pass) {
-                vk::FramebufferCreateInfo framebuffer_info;
-                framebuffer_info.setRenderPass(render_pass);
-                framebuffer_info.setAttachments(
-                    context->primary_swapchain.current_image_view()
-                );
-                framebuffer_info.setWidth(
-                    context->primary_swapchain.extent().width
-                );
-                framebuffer_info.setHeight(
-                    context->primary_swapchain.extent().height
-                );
-                framebuffer_info.setLayers(1);
-                return device.createFramebuffer(framebuffer_info);
-            },
-            context->primary_swapchain.extent()
-        );
-        pass->update_mesh(*mesh, *staging_mesh);
-        auto& subpass = pass->next_subpass();
-        subpass.activate_pipeline(
-            0,
-            [&](auto& viewports, auto& scissors) {
-                viewports.resize(1);
-                viewports[0].setWidth(context->primary_swapchain.extent().width
-                );
-                viewports[0].setHeight(
-                    context->primary_swapchain.extent().height
-                );
-                viewports[0].setMinDepth(0.0f);
-                viewports[0].setMaxDepth(1.0f);
-                scissors.resize(1);
-                scissors[0].setExtent(context->primary_swapchain.extent());
-                scissors[0].setOffset({0, 0});
-            },
-            [&](auto& device, auto& descriptor_sets) {
-                descriptor_sets.resize(1);
-                vk::DescriptorBufferInfo buffer_info;
-                buffer_info.setBuffer(
-                    res_manager->get_buffer("camera_uniform_buffer")
-                );
-                buffer_info.setOffset(0);
-                buffer_info.setRange(sizeof(glm::mat4) * 2);
-                vk::WriteDescriptorSet descriptor_writes =
-                    vk::WriteDescriptorSet()
-                        .setDstSet(descriptor_sets[0])
-                        .setDstBinding(0)
-                        .setDstArrayElement(0)
-                        .setDescriptorType(vk::DescriptorType::eUniformBuffer)
-                        .setDescriptorCount(1)
-                        .setPBufferInfo(&buffer_info);
-                device.updateDescriptorSets(descriptor_writes, {});
-            }
-        );
-        subpass.draw(*mesh, glm::mat4(1.0f));
-        pass->end();
-        pass->submit(queue);
+    cmd.share_resource(mesh);
+    cmd.share_resource(mesh2);
+}
+void draw_mesh(
+    Res<TestStagingMesh> staging_mesh,
+    ResMut<TestGPUMesh> mesh,
+    ResMut<TestPass> pass,
+    ResMut<epix::render::vulkan2::RenderContext> context,
+    Res<epix::render::vulkan2::VulkanResources> res_manager
+) {
+    if (!mesh || !pass || !context || !staging_mesh || !res_manager) {
+        return;
     }
-)
-EPIX_SYSTEM(
-    extract_pass,
-    (Command cmd, Extract<ResMut<TestPass>> pass) {
-        if (!pass) {
-            return;
+    auto& queue = context->queue;
+    pass->begin(
+        [&](auto& device, auto& render_pass) {
+            vk::FramebufferCreateInfo framebuffer_info;
+            framebuffer_info.setRenderPass(render_pass);
+            framebuffer_info.setAttachments(
+                context->primary_swapchain.current_image_view()
+            );
+            framebuffer_info.setWidth(context->primary_swapchain.extent().width
+            );
+            framebuffer_info.setHeight(
+                context->primary_swapchain.extent().height
+            );
+            framebuffer_info.setLayers(1);
+            return device.createFramebuffer(framebuffer_info);
+        },
+        context->primary_swapchain.extent()
+    );
+    pass->update_mesh(*mesh, *staging_mesh);
+    auto& subpass = pass->next_subpass();
+    subpass.activate_pipeline(
+        0,
+        [&](auto& viewports, auto& scissors) {
+            viewports.resize(1);
+            viewports[0].setWidth(context->primary_swapchain.extent().width);
+            viewports[0].setHeight(context->primary_swapchain.extent().height);
+            viewports[0].setMinDepth(0.0f);
+            viewports[0].setMaxDepth(1.0f);
+            scissors.resize(1);
+            scissors[0].setExtent(context->primary_swapchain.extent());
+            scissors[0].setOffset({0, 0});
+        },
+        [&](auto& device, auto& descriptor_sets) {
+            descriptor_sets.resize(1);
+            vk::DescriptorBufferInfo buffer_info;
+            buffer_info.setBuffer(
+                res_manager->get_buffer("camera_uniform_buffer")
+            );
+            buffer_info.setOffset(0);
+            buffer_info.setRange(sizeof(glm::mat4) * 2);
+            vk::WriteDescriptorSet descriptor_writes =
+                vk::WriteDescriptorSet()
+                    .setDstSet(descriptor_sets[0])
+                    .setDstBinding(0)
+                    .setDstArrayElement(0)
+                    .setDescriptorType(vk::DescriptorType::eUniformBuffer)
+                    .setDescriptorCount(1)
+                    .setPBufferInfo(&buffer_info);
+            device.updateDescriptorSets(descriptor_writes, {});
         }
-        cmd.share_resource(pass);
+    );
+    subpass.draw(*mesh, glm::mat4(1.0f));
+    pass->end();
+    pass->submit(queue);
+}
+void extract_pass(Command cmd, Extract<ResMut<TestPass>> pass) {
+    if (!pass) {
+        return;
     }
-)
-EPIX_SYSTEM(
-    destroy_pass_base,
-    (Command cmd, ResMut<TestPassBase> pass) {
-        if (!pass) {
-            return;
-        }
-        pass->destroy();
+    cmd.share_resource(pass);
+}
+void destroy_pass_base(Command cmd, ResMut<TestPassBase> pass) {
+    if (!pass) {
+        return;
     }
-)
-EPIX_SYSTEM(
-    destroy_pass,
-    (Command cmd, ResMut<TestPass> pass) {
-        if (!pass) {
-            return;
-        }
-        pass->destroy();
+    pass->destroy();
+}
+void destroy_pass(Command cmd, ResMut<TestPass> pass) {
+    if (!pass) {
+        return;
     }
-)
+    pass->destroy();
+}
 
 int main() {
     epix::App app = epix::App::create2();
@@ -314,17 +286,18 @@ int main() {
     ));
     app.add_plugin(epix::input::InputPlugin{});
     app.add_system(
-        epix::Startup, chain(
+        epix::Startup, into(
                            create_camera_uniform_buffer, create_pass_base,
                            create_pass, create_meshes
                        )
+                           .chain()
     );
     app.add_system(
-        epix::Extraction, bundle(prepare_mesh, extract_meshes, extract_pass)
+        epix::Extraction, into(prepare_mesh, extract_meshes, extract_pass)
     );
     app.add_system(epix::Render, draw_mesh);
     app.add_system(
-        epix::Exit, chain(destroy_pass, destroy_pass_base, destroy_meshes)
+        epix::Exit, into(destroy_pass, destroy_pass_base, destroy_meshes)
     );
     app.run();
     return 0;

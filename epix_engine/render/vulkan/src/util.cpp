@@ -518,7 +518,7 @@ EPIX_API void util::default_blend_attachment(
             .setDstAlphaBlendFactor(vk::BlendFactor::eZero)
             .setAlphaBlendOp(vk::BlendOp::eAdd);
 }
-EPIX_API [[nodiscard]] std::vector<vk::PipelineColorBlendAttachmentState>
+[[nodiscard]] EPIX_API std::vector<vk::PipelineColorBlendAttachmentState>
 util::default_blend_attachments(uint32_t count) {
     std::vector<vk::PipelineColorBlendAttachmentState> states(count);
     for (auto& state : states) {
@@ -536,7 +536,7 @@ EPIX_API void util::default_depth_stencil(
                  .setDepthBoundsTestEnable(false)
                  .setStencilTestEnable(false);
 }
-EPIX_API [[nodiscard]] std::vector<vk::DynamicState>
+[[nodiscard]] EPIX_API std::vector<vk::DynamicState>
 util::default_dynamic_states(vk::PipelineDynamicStateCreateInfo* state) {
     auto states = std::vector<vk::DynamicState>{
         vk::DynamicState::eViewport, vk::DynamicState::eScissor

@@ -12,6 +12,8 @@ if(EPIX_ENABLE_TRACY)
 endif()
 target_include_directories(${PROJNAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
+target_include_directories(${PROJNAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/../../libs/stb)
+
 set_target_properties(${PROJNAME} PROPERTIES CXX_STANDARD 20)
 
 target_link_libraries (${PROJNAME} PUBLIC earcut.hpp)
