@@ -10,6 +10,7 @@ EPIX_API Schedule::Schedule(ScheduleId id)
     : m_id(id),
       m_src_world(typeid(void)),
       m_dst_world(typeid(void)),
+      m_run_once(false),
       m_finishes(std::make_shared<
                  index::concurrent::conqueue<std::shared_ptr<System>>>()) {
     m_logger = spdlog::default_logger()->clone(
@@ -272,6 +273,9 @@ EPIX_API void Schedule::run(World* src, World* dst, bool enable_tracy) {
     if (m_remain != 0) {
         m_logger->warn("Some systems are not finished.");
     }
+    if (m_run_once) {
+        m_systems.clear();
+    }
     auto end = std::chrono::high_resolution_clock::now();
     auto delta =
         (double
@@ -314,6 +318,10 @@ EPIX_API void Schedule::run(
             127
         );
     }
+}
+EPIX_API Schedule& Schedule::run_once(bool once) {
+    m_run_once = once;
+    return *this;
 }
 EPIX_API double Schedule::get_avg_time() const { return m_avg_time; }
 EPIX_API void Schedule::clear_tmp() {

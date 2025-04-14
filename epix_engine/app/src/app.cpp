@@ -58,15 +58,18 @@ EPIX_API App::App(const AppCreateInfo& info) {
         StartGraph,
         Schedule(PreStartup)
             .set_src_world<MainWorld>()
-            .set_dst_world<MainWorld>(),
+            .set_dst_world<MainWorld>()
+            .run_once(true),
         Schedule(Startup)
             .set_src_world<MainWorld>()
             .set_dst_world<MainWorld>()
-            .after(PreStartup),
+            .after(PreStartup)
+            .run_once(true),
         Schedule(PostStartup)
             .set_src_world<MainWorld>()
             .set_dst_world<MainWorld>()
             .after(Startup)
+            .run_once(true)
     );
     add_schedule(
         LoopGraph,
@@ -389,14 +392,16 @@ EPIX_API void App::run() {
             *m_tracy_frame_mark = info->tracy_frame_mark;
         });
     // add AppProfile to MainWorld
-    auto&& w = world<MainWorld>();
-    w.init_resource<AppProfile>();
-    w.insert_resource(AppInfo{
-        .enable_loop      = *m_enable_loop,
-        .enable_tracy     = *m_enable_tracy,
-        .tracy_frame_mark = *m_tracy_frame_mark,
-    });
-    w.emplace_resource<AppSystems>(*this);
+    {
+        auto&& w = world<MainWorld>();
+        w.init_resource<AppProfile>();
+        w.insert_resource(AppInfo{
+            .enable_loop      = *m_enable_loop,
+            .enable_tracy     = *m_enable_tracy,
+            .tracy_frame_mark = *m_tracy_frame_mark,
+        });
+        w.emplace_resource<AppSystems>(*this);
+    }
     m_logger->info("Running App");
     m_logger->debug("Running startup schedules");
     run(startup_graph);
@@ -409,10 +414,12 @@ EPIX_API void App::run() {
         if (*m_tracy_frame_mark) {
             FrameMark;
         }
+        run(startup_graph);
         // update profile
         auto&& w2 = get_world<MainWorld>();
         update_profile->run(w2, w2);
         run(loop_graph);
+        sync_info->run(w2, w2);
     } while (to_loop->run(
         m_worlds[typeid(MainWorld)].get(), m_worlds[typeid(MainWorld)].get()
     ));

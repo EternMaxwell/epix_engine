@@ -1562,6 +1562,7 @@ struct Schedule {
     std::shared_ptr<Executor> m_executor;
     ScheduleId m_id;
     entt::dense_map<FuncIndex, std::shared_ptr<System>> m_systems;
+    bool m_run_once;
 
     std::type_index m_src_world;
     std::type_index m_dst_world;
@@ -1647,6 +1648,7 @@ struct Schedule {
         World* dst,
         bool enable_tracy
     );
+    EPIX_API Schedule& run_once(bool once = true);
     EPIX_API double get_avg_time() const;
     EPIX_API void clear_tmp();
     EPIX_API double reach_time();
