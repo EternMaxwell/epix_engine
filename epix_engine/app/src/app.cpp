@@ -396,6 +396,7 @@ EPIX_API void App::run() {
         .enable_tracy     = *m_enable_tracy,
         .tracy_frame_mark = *m_tracy_frame_mark,
     });
+    w.emplace_resource<AppSystems>(*this);
     m_logger->info("Running App");
     m_logger->debug("Running startup schedules");
     run(startup_graph);

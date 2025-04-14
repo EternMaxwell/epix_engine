@@ -1500,14 +1500,22 @@ struct System {
     std::vector<SystemSet> sets;
     std::vector<std::unique_ptr<BasicSystem<bool>>> conditions;
 
+    // set when building
     entt::dense_set<std::weak_ptr<System>> m_prevs;
     entt::dense_set<std::weak_ptr<System>> m_nexts;
+
+    // set when baking
     entt::dense_set<std::weak_ptr<System>> m_tmp_prevs;
     entt::dense_set<std::weak_ptr<System>> m_tmp_nexts;
+
+    // set when creationg
     entt::dense_set<FuncIndex> m_ptr_prevs;
     entt::dense_set<FuncIndex> m_ptr_nexts;
 
+    // used when baking
     std::optional<double> m_reach_time;
+
+    // used when running
     size_t m_prev_count;
     size_t m_next_count;
 };
@@ -1553,26 +1561,38 @@ struct Schedule {
     std::shared_ptr<spdlog::logger> m_logger;
     std::shared_ptr<Executor> m_executor;
     ScheduleId m_id;
+    entt::dense_map<FuncIndex, std::shared_ptr<System>> m_systems;
 
     std::type_index m_src_world;
     std::type_index m_dst_world;
 
+    // set when building
     entt::dense_set<std::weak_ptr<Schedule>> m_prev_schedules;
     entt::dense_set<std::weak_ptr<Schedule>> m_next_schedules;
+
+    // set when baking
     entt::dense_set<std::weak_ptr<Schedule>> m_tmp_prevs;
     entt::dense_set<std::weak_ptr<Schedule>> m_tmp_nexts;
 
-    entt::dense_map<FuncIndex, std::shared_ptr<System>> m_systems;
-    std::shared_ptr<index::concurrent::conqueue<std::shared_ptr<System>>>
-        m_finishes;
-
+    // set when creation
     entt::dense_set<ScheduleId> m_prev_ids;
     entt::dense_set<ScheduleId> m_next_ids;
 
+    // used when running
+    std::shared_ptr<index::concurrent::conqueue<std::shared_ptr<System>>>
+        m_finishes;
+    size_t m_prev_count = 0;
+
+    // cached ops for runtime system adding and removal
+    std::vector<FuncIndex> m_removes;
+    std::vector<SystemAddInfo> m_adds;
+    std::vector<std::pair<uint32_t, uint32_t>> m_cached_ops;
+    std::unique_ptr<std::mutex> m_op_mutex;
+    bool m_running = false;
+
+    // used when baking
     double m_avg_time = 1.0;
     std::optional<double> m_reach_time;
-
-    size_t m_prev_count = 0;
 
     EPIX_API Schedule& set_logger(const std::shared_ptr<spdlog::logger>& logger
     );
@@ -1617,6 +1637,7 @@ struct Schedule {
         return *this;
     }
     EPIX_API Schedule& add_system(SystemAddInfo&& info);
+    EPIX_API Schedule& remove_system(FuncIndex index);
     EPIX_API void build();
     EPIX_API void bake();
     EPIX_API void run(World* src, World* dst, bool enable_tracy);
@@ -1818,6 +1839,19 @@ struct AppInfo {
     bool tracy_frame_mark;
 };
 
+struct AppSystems {
+   private:
+    App& app;
+
+   public:
+    AppSystems(App& app) : app(app) {}
+
+    template <typename... Funcs>
+    AppSystems& add_system(ScheduleId id, Funcs&&... funcs);
+    template <typename... Args>
+    AppSystems& remove_system(ScheduleId id, Args&&... args);
+};
+
 struct App {
     struct ScheduleGraph {
         entt::dense_map<ScheduleId, std::shared_ptr<Schedule>> m_schedules;
@@ -1916,6 +1950,19 @@ struct App {
          ...);
         return *this;
     };
+    template <typename... Args>
+    App& remove_system(ScheduleId id, FuncIndex index, Args&&... args) {
+        if (!m_graph_ids.contains(id)) {
+            return *this;
+        }
+        auto&& graph    = m_graphs.at(m_graph_ids.at(id));
+        auto&& schedule = graph->m_schedules[id];
+        schedule->remove_system(index);
+        if constexpr (sizeof...(Args)) {
+            remove_system(id, args...);
+        }
+        return *this;
+    }
     template <typename T>
     App& add_plugin(T&& plugin) {
         auto id = std::type_index(typeid(std::remove_cvref_t<T>));
@@ -2225,6 +2272,17 @@ template <typename T>
 void Command::remove_resource() {
     dst_cmd->remove_resource<T>();
 }
+
+template <typename... Funcs>
+AppSystems& AppSystems::add_system(ScheduleId id, Funcs&&... funcs) {
+    app.add_system(id, std::forward<Funcs>(funcs)...);
+    return *this;
+};
+template <typename... Args>
+AppSystems& AppSystems::remove_system(ScheduleId id, Args&&... args) {
+    app.remove_system(id, std::forward<Args>(args)...);
+    return *this;
+}
 }  // namespace epix::app
 
 namespace epix {
@@ -2284,6 +2342,10 @@ using app::ResMut;
 using app::State;
 using app::With;
 using app::Without;
+
+// APP UTILS
+using app::AppInfo;
+using app::AppSystems;
 
 // OTHER TOOLS
 using entt::dense_map;
