@@ -11,10 +11,6 @@
 #include <spirv_glsl.hpp>
 #include <vector>
 
-namespace vk::detail {
-inline DispatchLoaderDynamic defaultDispatchLoaderDynamic;
-}
-
 namespace epix::render::vulkan2::backend {
 using vk::Result;
 

@@ -1,0 +1,9 @@
+#include <epix/common.h>
+
+#define VULKAN_HPP_DISPATCH_LOADER_DYNAMIC 1
+#include <vulkan/vulkan.hpp>
+
+#ifdef EPIX_BUILD_SHARED
+#define VULKAN_HPP_STORAGE_SHARED_EXPORT
+#endif
+VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE
