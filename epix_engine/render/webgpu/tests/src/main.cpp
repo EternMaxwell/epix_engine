@@ -1,5 +1,6 @@
 #include <epix/app.h>
 #include <epix/input.h>
+#include <epix/utils/time.h>
 #include <epix/wgpu.h>
 #include <epix/window.h>
 
@@ -230,16 +231,13 @@ struct TestPlugin : epix::Plugin {
             into(
                 submit_test,
                 [](epix::Res<epix::AppProfile> profile,
-                   Local<std::optional<double>> count,
+                   Local<std::optional<epix::utils::time::Timer>> timer,
                    epix::Res<epix::app::ScheduleProfiles> profiles) {
-                    if (!count->has_value()) {
-                        *count = 1000;
+                    if (!timer->has_value()) {
+                        *timer = epix::utils::time::Timer::repeat(1);
                     }
-                    if (*count > 0) {
-                        (*count).value() -= 1;
+                    if (!(**timer).tick()) {
                         return;
-                    } else {
-                        *count = 1000;
                     }
                     spdlog::info("FrameTime: {:1.3f}ms", profile->frame_time);
                     spdlog::info("FPS:       {:4.2f}", profile->fps);
