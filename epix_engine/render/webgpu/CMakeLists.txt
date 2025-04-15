@@ -11,7 +11,7 @@ target_include_directories(epix_wgpu PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
 target_link_libraries(epix_wgpu PUBLIC epix::app)
 target_link_libraries(epix_wgpu PUBLIC epix::window)
-target_link_libraries(epix_wgpu PUBLIC webgpu)
+target_link_libraries(epix_wgpu PRIVATE webgpu)
 
 if (GLFW_BUILD_COCOA)
     target_compile_definitions(epix_wgpu PRIVATE _GLFW_COCOA)

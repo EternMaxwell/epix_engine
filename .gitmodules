@@ -49,3 +49,6 @@
 [submodule "libs/index_utilities"]
 	path = libs/index_utilities
 	url = https://github.com/EternMaxwell/index_utilities.git
+[submodule "libs/wgpu-dawn/src"]
+	path = libs/wgpu-dawn/src
+	url = https://dawn.googlesource.com/dawn

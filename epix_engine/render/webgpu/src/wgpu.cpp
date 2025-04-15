@@ -1,28 +1,26 @@
 #define WEBGPU_CPP_IMPLEMENTATION
 #include <epix/wgpu.h>
-
-#include <webgpu/webgpu.hpp>
-
+#include <webgpu/webgpu_cpp.h>
 
 // === GLFW === //
 #include <GLFW/glfw3.h>
+
 #ifdef __EMSCRIPTEN__
 #define GLFW_EXPOSE_NATIVE_EMSCRIPTEN
 #ifndef GLFW_PLATFORM_EMSCRIPTEN  // not defined in older versions of emscripten
 #define GLFW_PLATFORM_EMSCRIPTEN 0
 #endif
 #else  // __EMSCRIPTEN__
-#ifdef _GLFW_X11
+#if defined(_WIN32)
+#define GLFW_EXPOSE_NATIVE_WIN32
+#elif defined(__APPLE__)
+#define GLFW_EXPOSE_NATIVE_COCOA
+#elif defined(__linux__)
+#if defined(__WAYLAND__)
+#define GLFW_EXPOSE_NATIVE_WAYLAND
+#else
 #define GLFW_EXPOSE_NATIVE_X11
 #endif
-#ifdef _GLFW_WAYLAND
-#define GLFW_EXPOSE_NATIVE_WAYLAND
-#endif
-#ifdef _GLFW_COCOA
-#define GLFW_EXPOSE_NATIVE_COCOA
-#endif
-#ifdef _GLFW_WIN32
-#define GLFW_EXPOSE_NATIVE_WIN32
 #endif
 #endif  // __EMSCRIPTEN__
 
