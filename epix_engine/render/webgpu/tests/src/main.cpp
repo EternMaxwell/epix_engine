@@ -230,7 +230,8 @@ struct TestPlugin : epix::Plugin {
             into(
                 submit_test,
                 [](epix::Res<epix::AppProfile> profile,
-                   Local<std::optional<double>> count) {
+                   Local<std::optional<double>> count,
+                   epix::Res<epix::app::ScheduleProfiles> profiles) {
                     if (!count->has_value()) {
                         *count = 1000;
                     }
@@ -242,6 +243,13 @@ struct TestPlugin : epix::Plugin {
                     }
                     spdlog::info("FrameTime: {:1.3f}ms", profile->frame_time);
                     spdlog::info("FPS:       {:4.2f}", profile->fps);
+                    profiles->for_each([](auto&& id, auto&& profile) {
+                        spdlog::info(
+                            "Schedule {:<30}: average-> {:2.3f}ms",
+                            std::format("{}#{}", id.type.name(), id.value),
+                            profile.time_avg
+                        );
+                    });
                 }
             )
         );

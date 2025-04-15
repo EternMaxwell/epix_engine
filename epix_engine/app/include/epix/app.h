@@ -1593,6 +1593,7 @@ struct Schedule {
 
     // used when baking
     double m_avg_time = 1.0;
+    double m_last_time = 0.0;
     std::optional<double> m_reach_time;
 
     EPIX_API Schedule& set_logger(const std::shared_ptr<spdlog::logger>& logger
@@ -1830,6 +1831,30 @@ struct AppProfile {
     double fps = 0.0;
 };
 
+struct ScheduleProfiles {
+    struct ScheduleProfile {
+        double time_last = 0.0;
+        double time_avg  = 0.0;
+    };
+
+   private:
+    entt::dense_map<ScheduleId, ScheduleProfile> m_profiles;
+
+   public:
+    EPIX_API ScheduleProfile& profile(ScheduleId id);
+    EPIX_API const ScheduleProfile& profile(ScheduleId id) const;
+    EPIX_API ScheduleProfile* get_profile(ScheduleId id);
+    EPIX_API const ScheduleProfile* get_profile(ScheduleId id) const;
+    EPIX_API void for_each(
+        const std::function<void(ScheduleId, ScheduleProfile&)>& func
+    );
+    EPIX_API void for_each(
+        const std::function<void(ScheduleId, const ScheduleProfile&)>& func
+    ) const;
+
+    friend struct Schedule;
+};
+
 /**
  * @brief This is a struct that contains the setting data of the app.
  * This is not designed to be mutable, but maybe in the future we will
@@ -1861,21 +1886,27 @@ struct App {
     };
 
    private:
+   // plugin to build;
     std::vector<std::pair<std::type_index, std::shared_ptr<Plugin>>> m_plugins;
     entt::dense_set<std::type_index> m_built_plugins;
 
+    // world data
     entt::dense_map<std::type_index, std::unique_ptr<World>> m_worlds;
 
+    // graph data
     entt::dense_map<std::type_index, std::unique_ptr<ScheduleGraph>> m_graphs;
     entt::dense_map<ScheduleId, std::type_index> m_graph_ids;
 
+    // control and worker pools
     std::unique_ptr<BS::thread_pool<BS::tp::priority>> m_pool;
     std::shared_ptr<Executor> m_executor;
 
+    // settings
     std::unique_ptr<bool> m_enable_loop;
     std::unique_ptr<bool> m_enable_tracy;
     std::unique_ptr<bool> m_tracy_frame_mark;
 
+    // logger
     std::shared_ptr<spdlog::logger> m_logger;
 
     EPIX_API App(const AppCreateInfo& info);

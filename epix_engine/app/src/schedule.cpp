@@ -177,7 +177,11 @@ EPIX_API void Schedule::run(World* src, World* dst, bool enable_tracy) {
         m_logger->debug("Rebuilding Schedule.");
         build();
     }
-    if (m_systems.empty()) return;
+    if (m_systems.empty()) {
+        m_avg_time *= 0.9;
+        m_last_time = 0.0;
+        return;
+    }
     m_running       = true;
     auto start      = std::chrono::high_resolution_clock::now();
     size_t m_remain = m_systems.size();
@@ -282,8 +286,9 @@ EPIX_API void Schedule::run(World* src, World* dst, bool enable_tracy) {
         )std::chrono::duration_cast<std::chrono::nanoseconds>(end - start)
             .count() /
         1000000.0;
-    m_avg_time = delta * 0.1 + m_avg_time * 0.9;
-    m_running  = false;
+    m_avg_time  = delta * 0.1 + m_avg_time * 0.9;
+    m_last_time = delta;
+    m_running   = false;
 }
 EPIX_API void Schedule::run(
     std::shared_ptr<System> system, World* src, World* dst, bool enable_tracy
@@ -342,4 +347,64 @@ EPIX_API double Schedule::reach_time() {
         }
     }
     return m_avg_time;
+}
+
+EPIX_API ScheduleProfiles::ScheduleProfile& ScheduleProfiles::profile(
+    ScheduleId id
+) {
+    if (auto it = m_profiles.find(id); it != m_profiles.end()) {
+        return it->second;
+    } else {
+        m_profiles.emplace(id, ScheduleProfile{});
+        return m_profiles.at(id);
+    }
+}
+
+EPIX_API const ScheduleProfiles::ScheduleProfile& ScheduleProfiles::profile(
+    ScheduleId id
+) const {
+    if (auto it = m_profiles.find(id); it != m_profiles.end()) {
+        return it->second;
+    } else {
+        throw std::runtime_error(
+            std::format("Schedule {}#{} not found", id.type.name(), id.value)
+        );
+    }
+}
+
+EPIX_API ScheduleProfiles::ScheduleProfile* ScheduleProfiles::get_profile(
+    ScheduleId id
+) {
+    if (auto it = m_profiles.find(id); it != m_profiles.end()) {
+        return &it->second;
+    } else {
+        m_profiles.emplace(id, ScheduleProfile{});
+        return &m_profiles.at(id);
+    }
+}
+
+EPIX_API const ScheduleProfiles::ScheduleProfile* ScheduleProfiles::get_profile(
+    ScheduleId id
+) const {
+    if (auto it = m_profiles.find(id); it != m_profiles.end()) {
+        return &it->second;
+    } else {
+        return nullptr;
+    }
+}
+
+EPIX_API void ScheduleProfiles::for_each(
+    const std::function<void(ScheduleId, ScheduleProfile&)>& func
+) {
+    for (auto&& [id, profile] : m_profiles) {
+        func(id, profile);
+    }
+}
+
+EPIX_API void ScheduleProfiles::for_each(
+    const std::function<void(ScheduleId, const ScheduleProfile&)>& func
+) const {
+    for (auto&& [id, profile] : m_profiles) {
+        func(id, profile);
+    }
 }

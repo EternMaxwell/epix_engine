@@ -347,6 +347,18 @@ EPIX_API void App::run(ScheduleGraph& graph) {
             }
         }
     }
+    std::unique_ptr<BasicSystem<void>> update_profile =
+        std::make_unique<BasicSystem<void>>(
+            [&](ResMut<ScheduleProfiles> profiles) {
+                for (auto&& [id, schedule] : m_schedules) {
+                    auto&& profile    = profiles->profile(id);
+                    profile.time_avg  = schedule->m_avg_time;
+                    profile.time_last = schedule->m_last_time;
+                }
+            }
+        );
+    auto&& w2 = world<MainWorld>();
+    update_profile->run(&w2, &w2);
 }
 
 EPIX_API void App::run() {
@@ -391,7 +403,7 @@ EPIX_API void App::run() {
             *m_enable_tracy     = info->enable_tracy;
             *m_tracy_frame_mark = info->tracy_frame_mark;
         });
-    // add AppProfile to MainWorld
+    // add Profile and util res to MainWorld
     {
         auto&& w = world<MainWorld>();
         w.init_resource<AppProfile>();
@@ -401,6 +413,15 @@ EPIX_API void App::run() {
             .tracy_frame_mark = *m_tracy_frame_mark,
         });
         w.emplace_resource<AppSystems>(*this);
+        w.init_resource<ScheduleProfiles>();
+        auto&& profile  = w.resource<AppProfile>();
+        auto&& profiles = w.resource<ScheduleProfiles>();
+        for (auto&& [id, w2] : m_worlds) {
+            if (w2.get() != &w) {
+                w2->add_resource<AppProfile>(profile);
+                w2->add_resource<ScheduleProfiles>(profiles);
+            }
+        }
     }
     m_logger->info("Running App");
     m_logger->debug("Running startup schedules");
