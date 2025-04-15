@@ -1,159 +1,7 @@
 #include <epix/app.h>
 #include <epix/input.h>
+#include <epix/wgpu.h>
 #include <epix/window.h>
-#include <webgpu/webgpu_cpp.h>
-
-// === GLFW === //
-#include <GLFW/glfw3.h>
-
-#ifdef __EMSCRIPTEN__
-#define GLFW_EXPOSE_NATIVE_EMSCRIPTEN
-#ifndef GLFW_PLATFORM_EMSCRIPTEN  // not defined in older versions of emscripten
-#define GLFW_PLATFORM_EMSCRIPTEN 0
-#endif
-#else  // __EMSCRIPTEN__
-#if defined(_WIN32)
-#define GLFW_EXPOSE_NATIVE_WIN32
-#elif defined(__APPLE__)
-#define GLFW_EXPOSE_NATIVE_COCOA
-#elif defined(__linux__)
-#if defined(__WAYLAND__)
-#define GLFW_EXPOSE_NATIVE_WAYLAND
-#else
-#define GLFW_EXPOSE_NATIVE_X11
-#endif
-#endif
-#endif  // __EMSCRIPTEN__
-
-#ifdef GLFW_EXPOSE_NATIVE_COCOA
-#include <Foundation/Foundation.h>
-#include <QuartzCore/CAMetalLayer.h>
-#endif
-
-#ifndef __EMSCRIPTEN__
-#include <GLFW/glfw3native.h>
-#endif
-namespace epix::webgpu::utils {
-WGPUSurface create_surface(WGPUInstance instance, GLFWwindow* window) {
-#ifndef __EMSCRIPTEN__
-    switch (glfwGetPlatform()) {
-#else
-    // glfwGetPlatform is not available in older versions of emscripten
-    switch (GLFW_PLATFORM_EMSCRIPTEN) {
-#endif
-
-#ifdef GLFW_EXPOSE_NATIVE_X11
-        case GLFW_PLATFORM_X11: {
-            Display* x11_display = glfwGetX11Display();
-            Window x11_window    = glfwGetX11Window(window);
-
-            WGPUSurfaceSourceXlibWindow fromXlibWindow;
-            fromXlibWindow.chain.sType = WGPUSType_SurfaceSourceXlibWindow;
-            fromXlibWindow.chain.next  = NULL;
-            fromXlibWindow.display     = x11_display;
-            fromXlibWindow.window      = x11_window;
-
-            WGPUSurfaceDescriptor surfaceDescriptor;
-            surfaceDescriptor.nextInChain  = &fromXlibWindow.chain;
-            surfaceDescriptor.label.data   = NULL;
-            surfaceDescriptor.label.length = 0;
-
-            return wgpuInstanceCreateSurface(instance, &surfaceDescriptor);
-        }
-#endif  // GLFW_EXPOSE_NATIVE_X11
-
-#ifdef GLFW_EXPOSE_NATIVE_WAYLAND
-        case GLFW_PLATFORM_WAYLAND: {
-            struct wl_display* wayland_display = glfwGetWaylandDisplay();
-            struct wl_surface* wayland_surface = glfwGetWaylandWindow(window);
-
-            WGPUSurfaceSourceWaylandSurface fromWaylandSurface;
-            fromWaylandSurface.chain.sType =
-                WGPUSType_SurfaceSourceWaylandSurface;
-            fromWaylandSurface.chain.next = NULL;
-            fromWaylandSurface.display    = wayland_display;
-            fromWaylandSurface.surface    = wayland_surface;
-
-            WGPUSurfaceDescriptor surfaceDescriptor;
-            surfaceDescriptor.nextInChain  = &fromWaylandSurface.chain;
-            surfaceDescriptor.label.data   = NULL;
-            surfaceDescriptor.label.length = 0;
-
-            return wgpuInstanceCreateSurface(instance, &surfaceDescriptor);
-        }
-#endif  // GLFW_EXPOSE_NATIVE_WAYLAND
-
-#ifdef GLFW_EXPOSE_NATIVE_COCOA
-        case GLFW_PLATFORM_COCOA: {
-            id metal_layer      = [CAMetalLayer layer];
-            NSWindow* ns_window = glfwGetCocoaWindow(window);
-            [ns_window.contentView setWantsLayer:YES];
-            [ns_window.contentView setLayer:metal_layer];
-
-            WGPUSurfaceSourceMetalLayer fromMetalLayer;
-            fromMetalLayer.chain.sType = WGPUSType_SurfaceSourceMetalLayer;
-            fromMetalLayer.chain.next  = NULL;
-            fromMetalLayer.layer       = metal_layer;
-
-            WGPUSurfaceDescriptor surfaceDescriptor;
-            surfaceDescriptor.nextInChain  = &fromMetalLayer.chain;
-            surfaceDescriptor.label.data   = NULL;
-            surfaceDescriptor.label.length = 0;
-
-            return wgpuInstanceCreateSurface(instance, &surfaceDescriptor);
-        }
-#endif  // GLFW_EXPOSE_NATIVE_COCOA
-
-#ifdef GLFW_EXPOSE_NATIVE_WIN32
-        case GLFW_PLATFORM_WIN32: {
-            HWND hwnd           = glfwGetWin32Window(window);
-            HINSTANCE hinstance = GetModuleHandle(NULL);
-
-            WGPUSurfaceSourceWindowsHWND fromWindowsHWND;
-            fromWindowsHWND.chain.sType = WGPUSType_SurfaceSourceWindowsHWND;
-            fromWindowsHWND.chain.next  = NULL;
-            fromWindowsHWND.hinstance   = hinstance;
-            fromWindowsHWND.hwnd        = hwnd;
-
-            WGPUSurfaceDescriptor surfaceDescriptor;
-            surfaceDescriptor.nextInChain  = &fromWindowsHWND.chain;
-            surfaceDescriptor.label.data   = NULL;
-            surfaceDescriptor.label.length = 0;
-
-            return wgpuInstanceCreateSurface(instance, &surfaceDescriptor);
-        }
-#endif  // GLFW_EXPOSE_NATIVE_WIN32
-
-#ifdef GLFW_EXPOSE_NATIVE_EMSCRIPTEN
-        case GLFW_PLATFORM_EMSCRIPTEN: {
-#ifdef WEBGPU_BACKEND_DAWN
-            WGPUSurfaceSourceCanvasHTMLSelector_Emscripten
-                fromCanvasHTMLSelector;
-            fromCanvasHTMLSelector.chain.sType =
-                WGPUSType_SurfaceSourceCanvasHTMLSelector_Emscripten;
-#else
-            WGPUSurfaceDescriptorFromCanvasHTMLSelector fromCanvasHTMLSelector;
-            fromCanvasHTMLSelector.chain.sType =
-                WGPUSType_SurfaceDescriptorFromCanvasHTMLSelector;
-#endif
-            fromCanvasHTMLSelector.chain.next = NULL;
-            fromCanvasHTMLSelector.selector   = "canvas";
-
-            WGPUSurfaceDescriptor surfaceDescriptor;
-            surfaceDescriptor.nextInChain  = &fromCanvasHTMLSelector.chain;
-            surfaceDescriptor.label.data   = NULL;
-            surfaceDescriptor.label.length = 0;
-
-            return wgpuInstanceCreateSurface(instance, &surfaceDescriptor);
-        }
-#endif  // GLFW_EXPOSE_NATIVE_EMSCRIPTEN
-
-        default:
-            // Unsupported platform
-            return NULL;
-    }
-}
-}  // namespace epix::webgpu::utils
 
 using namespace epix;
 
@@ -204,98 +52,68 @@ void setup_context(
 ) {
     if (!window_query) return;
     auto [window] = window_query.single();
-    {
-        auto desc = wgpu::InstanceDescriptor{
-            .nextInChain = nullptr,
-        };
-        ctx->instance = wgpu::CreateInstance(&desc);
-    }
-    ctx->surface = wgpu::Surface::Acquire(epix::webgpu::utils::create_surface(
-        ctx->instance.Get(), window.get_handle()
-    ));
-    {
-        auto options = wgpu::RequestAdapterOptions{
-            .backendType       = wgpu::BackendType::Vulkan,
+    ctx->instance = wgpu::createInstance(WGPUInstanceDescriptor{
+        .nextInChain = nullptr,
+    });
+    ctx->surface =
+        epix::webgpu::utils::create_surface(ctx->instance, window.get_handle());
+    ctx->adapter     = ctx->instance.requestAdapter(WGPURequestAdapterOptions{
+        // .backendType       = wgpu::BackendType::D3D12,
             .compatibleSurface = ctx->surface,
-        };
-        auto future = ctx->instance.RequestAdapter(
-            &options, wgpu::CallbackMode::AllowProcessEvents,
-            [&](wgpu::RequestAdapterStatus status, wgpu::Adapter adapter,
-                wgpu::StringView message) {
-                if (status == wgpu::RequestAdapterStatus::Success) {
-                    ctx->adapter = adapter;
-                } else {
-                    spdlog::error(
-                        "Failed to request adapter: {}", message.data
-                    );
-                }
-            }
-        );
-        ctx->instance.WaitAny(future, 0);
-    }
-    {
-        auto desc               = wgpu::DeviceDescriptor{};
-        desc.label              = "Device";
-        desc.defaultQueue.label = "Default Queue";
-        desc.SetDeviceLostCallback(
-            wgpu::CallbackMode::AllowProcessEvents,
-            [](const wgpu::Device& device, wgpu::DeviceLostReason reason,
-               wgpu::StringView message) {
-                spdlog::error(
-                    "Device lost: {} {}", (uint32_t)reason, message.data
-                );
-            }
-        );
-        desc.SetUncapturedErrorCallback([](const wgpu::Device& device,
-                                           wgpu::ErrorType type,
-                                           wgpu::StringView message) {
-            spdlog::error(
-                "Uncaptured error: {} {}", (uint32_t)type, message.data
-            );
-        });
-        auto future = ctx->adapter.RequestDevice(
-            &desc, wgpu::CallbackMode::AllowProcessEvents,
-            [&](wgpu::RequestDeviceStatus status, wgpu::Device device,
-                wgpu::StringView message) {
-                if (status == wgpu::RequestDeviceStatus::Success) {
-                    ctx->device = device;
-                } else {
-                    spdlog::error("Failed to request device: {}", message.data);
-                }
-            }
-        );
-        ctx->instance.WaitAny(future, 0);
-    }
+    });
+    auto desc_device = WGPUDeviceDescriptor{
+        .label{"Device", WGPU_STRLEN},
+        .defaultQueue{
+            .label{"Queue", WGPU_STRLEN},
+        },
+        .deviceLostCallbackInfo{
+            .mode     = wgpu::CallbackMode::AllowProcessEvents,
+            .callback = [](const WGPUDevice* device,
+                           WGPUDeviceLostReason reason, WGPUStringView message,
+                           void* userdata1, void* userdata2
+                        ) { spdlog::error("Device lost: {}", message.data); },
+        },
+        .uncapturedErrorCallbackInfo{
+            .callback =
+                [](const WGPUDevice* device, WGPUErrorType type,
+                   WGPUStringView message, void* userdata1, void* userdata2) {
+                    spdlog::error("Uncaptured error: {}", message.data);
+                },
+        },
+    };
+    ctx->device = ctx->adapter.requestDevice(desc_device);
     wgpu::SurfaceCapabilities capabilities;
-    ctx->surface.GetCapabilities(ctx->adapter, &capabilities);
-    {
-        auto configure = wgpu::SurfaceConfiguration{
-            .device      = ctx->device,
-            .format      = capabilities.formats[0],
-            .usage       = wgpu::TextureUsage::RenderAttachment,
-            .width       = (uint32_t)window.get_size().width,
-            .height      = (uint32_t)window.get_size().height,
-            .alphaMode   = wgpu::CompositeAlphaMode::Auto,
-            .presentMode = wgpu::PresentMode::Immediate,
-        };
-        ctx->surface.Configure(&configure);
-    }
-    ctx->queue = ctx->device.GetQueue();
+    ctx->surface.getCapabilities(ctx->adapter, &capabilities);
+    ctx->surface.configure(WGPUSurfaceConfiguration{
+        .device      = ctx->device,
+        .format      = capabilities.formats[0],
+        .usage       = wgpu::TextureUsage::RenderAttachment,
+        .width       = (uint32_t)window.get_size().width,
+        .height      = (uint32_t)window.get_size().height,
+        .alphaMode   = wgpu::CompositeAlphaMode::Auto,
+        .presentMode = wgpu::PresentMode::Immediate,
+    });
+    ctx->queue = ctx->device.getQueue();
 
-    auto source = wgpu::ShaderSourceWGSL{};
-    source.code = shader;
+    auto source = WGPUShaderSourceWGSL{
+        .chain{
+            .next  = nullptr,
+            .sType = WGPUSType_ShaderSourceWGSL,
+        },
+        .code = {shader, WGPU_STRLEN},
+    };
     wgpu::ShaderModuleDescriptor desc;
     desc.label         = {"Shader Module", WGPU_STRLEN};
-    desc.nextInChain   = &source;
-    auto shader_module = ctx->device.CreateShaderModule(&desc);
+    desc.nextInChain   = &source.chain;
+    auto shader_module = ctx->device.createShaderModule(desc);
 
-    ctx->pipeline = ctx->device.CreateRenderPipeline(
-        addressof(wgpu::RenderPipelineDescriptor{
+    ctx->pipeline =
+        ctx->device.createRenderPipeline(WGPURenderPipelineDescriptor{
             .label  = "Render Pipeline",
             .layout = nullptr,
             .vertex{
                 .module      = shader_module,
-                .entryPoint  = "vs_main",
+                .entryPoint  = {"vs_main", WGPU_STRLEN},
                 .bufferCount = 0,
                 .buffers     = nullptr,
             },
@@ -311,13 +129,13 @@ void setup_context(
                 .mask                   = 0xFFFFFFFF,
                 .alphaToCoverageEnabled = false,
             },
-            .fragment = addressof(wgpu::FragmentState{
+            .fragment = addressof(WGPUFragmentState{
                 .module      = shader_module,
-                .entryPoint  = "fs_main",
+                .entryPoint  = {"fs_main", WGPU_STRLEN},
                 .targetCount = 1,
-                .targets     = addressof(wgpu::ColorTargetState{
+                .targets     = addressof(WGPUColorTargetState{
                         .format    = capabilities.formats[0],
-                        .blend     = addressof(wgpu::BlendState{
+                        .blend     = addressof(WGPUBlendState{
                                 .color{
                                     .operation = wgpu::BlendOperation::Add,
                                     .srcFactor = wgpu::BlendFactor::SrcAlpha,
@@ -332,50 +150,48 @@ void setup_context(
                         .writeMask = wgpu::ColorWriteMask::All,
                 }),
             })
-        })
-    );
-    shader_module = nullptr;
+        });
+    shader_module.release();
 }
 
 void begin_frame(epix::ResMut<Context> ctx) {
-    ctx->encoder = ctx->device.CreateCommandEncoder(
-        addressof(wgpu::CommandEncoderDescriptor{
+    ctx->encoder =
+        ctx->device.createCommandEncoder(WGPUCommandEncoderDescriptor{
             .label = "Command Encoder",
-        })
-    );
+        });
     wgpu::SurfaceTexture surface_texture;
-    ctx->surface.GetCurrentTexture(&surface_texture);
+    ctx->surface.getCurrentTexture(&surface_texture);
     if (surface_texture.status !=
         wgpu::SurfaceGetCurrentTextureStatus::SuccessOptimal) {
         spdlog::error("Failed to get current texture");
         throw std::runtime_error("Failed to get current texture");
         return;
     }
-    ctx->target_view = surface_texture.texture.CreateView(
-        addressof(wgpu::TextureViewDescriptor{
-            .label           = "Target View",
-            .format          = surface_texture.texture.GetFormat(),
-            .dimension       = wgpu::TextureViewDimension::e2D,
-            .baseMipLevel    = 0,
-            .mipLevelCount   = 1,
+    ctx->target_view = wgpu::Texture{surface_texture.texture}.createView(
+        WGPUTextureViewDescriptor{
+            .label         = "Target View",
+            .format        = wgpu::Texture{surface_texture.texture}.getFormat(),
+            .dimension     = wgpu::TextureViewDimension::_2D,
+            .baseMipLevel  = 0,
+            .mipLevelCount = 1,
             .baseArrayLayer  = 0,
             .arrayLayerCount = 1,
             .aspect          = wgpu::TextureAspect::All,
-        })
+        }
     );
 }
 
 void end_frame(epix::ResMut<Context> ctx) {
-    ctx->target_view = nullptr;
-    ctx->surface.Present();
-    ctx->encoder = nullptr;
+    ctx->target_view.release();
+    ctx->surface.present();
+    ctx->encoder.release();
 }
 
 void submit_test(epix::ResMut<Context> ctx) {
     wgpu::RenderPassEncoder pass =
-        ctx->encoder.BeginRenderPass(addressof(wgpu::RenderPassDescriptor{
+        ctx->encoder.beginRenderPass(WGPURenderPassDescriptor{
             .colorAttachmentCount   = 1,
-            .colorAttachments       = addressof(wgpu::RenderPassColorAttachment{
+            .colorAttachments       = addressof(WGPURenderPassColorAttachment{
                       .view    = ctx->target_view,
                       .loadOp  = wgpu::LoadOp::Clear,
                       .storeOp = wgpu::StoreOp::Store,
@@ -387,25 +203,23 @@ void submit_test(epix::ResMut<Context> ctx) {
                 }
             }),
             .depthStencilAttachment = nullptr,
-        }));
-    pass.SetPipeline(ctx->pipeline);
-    pass.Draw(3, 1, 0, 0);
-    pass.End();
-    pass                         = nullptr;
-    wgpu::CommandBuffer commands = ctx->encoder.Finish();
-    ctx->queue.Submit(1, &commands);
-    commands = nullptr;
-    ctx->device.Tick();
+        });
+    pass.setPipeline(ctx->pipeline);
+    pass.draw(3, 1, 0, 0);
+    pass.end();
+    pass.release();
+    wgpu::CommandBuffer commands = ctx->encoder.finish();
+    ctx->queue.submit(commands);
+    commands.release();
+    ctx->device.poll(false, nullptr);
 }
 
 void cleanup_context(epix::ResMut<Context> ctx) {
-    ctx->device.Tick();
-    ctx->pipeline = nullptr;
-    ctx->queue    = nullptr;
-    ctx->device   = nullptr;
-    ctx->adapter  = nullptr;
-    ctx->surface  = nullptr;
-    ctx->instance = nullptr;
+    ctx->queue.release();
+    ctx->device.release();
+    ctx->adapter.release();
+    ctx->surface.release();
+    ctx->instance.release();
 }
 
 struct TestPlugin : epix::Plugin {

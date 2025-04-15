@@ -9,6 +9,5 @@ target_include_directories(wgpu_test PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
 target_link_libraries(wgpu_test epix::app)
 target_link_libraries(wgpu_test epix::window)
-# target_link_libraries(wgpu_test epix::webgpu)
+target_link_libraries(wgpu_test epix::webgpu)
 target_link_libraries(wgpu_test epix::input)
-target_link_libraries(wgpu_test webgpu)
