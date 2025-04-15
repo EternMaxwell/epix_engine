@@ -10,11 +10,13 @@ EPIX_API Schedule::Schedule(ScheduleId id)
     : m_id(id),
       m_src_world(typeid(void)),
       m_dst_world(typeid(void)),
+      m_run_once(false),
       m_finishes(std::make_shared<
                  index::concurrent::conqueue<std::shared_ptr<System>>>()) {
     m_logger = spdlog::default_logger()->clone(
         std::format("{}#{}", id.type.name(), id.value)
     );
+    m_op_mutex = std::make_unique<std::mutex>();
 }
 
 EPIX_API Schedule& Schedule::set_executor(
@@ -33,6 +35,12 @@ EPIX_API Schedule& Schedule::set_logger(
 }
 
 EPIX_API Schedule& Schedule::add_system(SystemAddInfo&& info) {
+    if (m_running) {
+        std::unique_lock lock(*m_op_mutex);
+        m_cached_ops.emplace_back(1, m_adds.size());
+        m_adds.emplace_back(std::move(info));
+        return *this;
+    }
     for (size_t i = 0; i < info.m_systems.size(); i++) {
         auto&& each = info.m_systems[i];
         auto system = std::make_shared<System>(
@@ -47,8 +55,53 @@ EPIX_API Schedule& Schedule::add_system(SystemAddInfo&& info) {
     }
     return *this;
 }
+EPIX_API Schedule& Schedule::remove_system(FuncIndex index) {
+    if (m_running) {
+        std::unique_lock lock(*m_op_mutex);
+        m_cached_ops.emplace_back(0, m_removes.size());
+        m_removes.emplace_back(index);
+        return *this;
+    }
+    m_systems.erase(index);
+    return *this;
+}
 
 EPIX_API void Schedule::build() {
+    {
+        std::unique_lock lock(*m_op_mutex);
+        for (auto&& [op, id] : m_cached_ops) {
+            switch (op) {
+                case 0:
+                    m_systems.erase(m_removes[id]);
+                    break;
+                case 1:
+                    for (size_t i = 0; i < m_adds[id].m_systems.size(); i++) {
+                        auto&& each = m_adds[id].m_systems[i];
+                        auto system = std::make_shared<System>(
+                            each.name, each.index, std::move(each.system)
+                        );
+                        system->sets        = std::move(each.m_in_sets);
+                        system->m_ptr_prevs = std::move(each.m_ptr_prevs);
+                        system->m_ptr_nexts = std::move(each.m_ptr_nexts);
+                        system->worker      = std::move(each.m_worker);
+                        system->conditions  = std::move(each.conditions);
+                        if (m_systems.contains(each.index)) {
+                            m_logger->warn(
+                                "System {} already exists, replacing.",
+                                system->label
+                            );
+                        }
+                        m_systems.emplace(each.index, system);
+                    }
+                    break;
+                default:
+                    break;
+            }
+        }
+        m_removes.clear();
+        m_adds.clear();
+        m_cached_ops.clear();
+    }
     for (auto&& [ptr, system] : m_systems) {
         system->m_prevs.clear();
         system->m_nexts.clear();
@@ -120,10 +173,19 @@ EPIX_API void Schedule::bake() {
     }
 }
 EPIX_API void Schedule::run(World* src, World* dst, bool enable_tracy) {
-    if (m_systems.empty()) return;
-    auto start       = std::chrono::high_resolution_clock::now();
-    size_t m_remain  = m_systems.size();
-    size_t m_running = 0;
+    if (!m_cached_ops.empty()) {
+        m_logger->debug("Rebuilding Schedule.");
+        build();
+    }
+    if (m_systems.empty()) {
+        m_avg_time *= 0.9;
+        m_last_time = 0.0;
+        return;
+    }
+    m_running       = true;
+    auto start      = std::chrono::high_resolution_clock::now();
+    size_t m_remain = m_systems.size();
+    size_t running  = 0;
     if (enable_tracy) {
         ZoneScopedN("Run Schedule");
         auto name =
@@ -139,19 +201,19 @@ EPIX_API void Schedule::run(World* src, World* dst, bool enable_tracy) {
             system->m_next_count =
                 system->m_tmp_nexts.size() + system->m_nexts.size();
             if (system->m_prev_count == 0) {
-                m_running++;
+                running++;
                 run(system, src, dst, enable_tracy);
             }
         }
-        while (m_running > 0) {
+        while (running > 0) {
             auto&& system = m_finishes->pop();
-            m_running--;
+            running--;
             m_remain--;
             for (auto&& each : system->m_nexts) {
                 if (auto ptr = each.lock()) {
                     ptr->m_prev_count--;
                     if (ptr->m_prev_count == 0) {
-                        m_running++;
+                        running++;
                         run(ptr, src, dst, enable_tracy);
                     }
                 } else {
@@ -162,7 +224,7 @@ EPIX_API void Schedule::run(World* src, World* dst, bool enable_tracy) {
                 if (auto ptr = each.lock()) {
                     ptr->m_prev_count--;
                     if (ptr->m_prev_count == 0) {
-                        m_running++;
+                        running++;
                         run(ptr, src, dst, enable_tracy);
                     }
                 } else {
@@ -179,19 +241,19 @@ EPIX_API void Schedule::run(World* src, World* dst, bool enable_tracy) {
             system->m_next_count =
                 system->m_tmp_nexts.size() + system->m_nexts.size();
             if (system->m_prev_count == 0) {
-                m_running++;
+                running++;
                 run(system, src, dst, enable_tracy);
             }
         }
-        while (m_running > 0) {
+        while (running > 0) {
             auto&& system = m_finishes->pop();
-            m_running--;
+            running--;
             m_remain--;
             for (auto&& each : system->m_nexts) {
                 if (auto ptr = each.lock()) {
                     ptr->m_prev_count--;
                     if (ptr->m_prev_count == 0) {
-                        m_running++;
+                        running++;
                         run(ptr, src, dst, enable_tracy);
                     }
                 } else {
@@ -202,7 +264,7 @@ EPIX_API void Schedule::run(World* src, World* dst, bool enable_tracy) {
                 if (auto ptr = each.lock()) {
                     ptr->m_prev_count--;
                     if (ptr->m_prev_count == 0) {
-                        m_running++;
+                        running++;
                         run(ptr, src, dst, enable_tracy);
                     }
                 } else {
@@ -215,13 +277,18 @@ EPIX_API void Schedule::run(World* src, World* dst, bool enable_tracy) {
     if (m_remain != 0) {
         m_logger->warn("Some systems are not finished.");
     }
+    if (m_run_once) {
+        m_systems.clear();
+    }
     auto end = std::chrono::high_resolution_clock::now();
     auto delta =
         (double
         )std::chrono::duration_cast<std::chrono::nanoseconds>(end - start)
             .count() /
         1000000.0;
-    m_avg_time = delta * 0.1 + m_avg_time * 0.9;
+    m_avg_time  = delta * 0.1 + m_avg_time * 0.9;
+    m_last_time = delta;
+    m_running   = false;
 }
 EPIX_API void Schedule::run(
     std::shared_ptr<System> system, World* src, World* dst, bool enable_tracy
@@ -257,6 +324,10 @@ EPIX_API void Schedule::run(
         );
     }
 }
+EPIX_API Schedule& Schedule::run_once(bool once) {
+    m_run_once = once;
+    return *this;
+}
 EPIX_API double Schedule::get_avg_time() const { return m_avg_time; }
 EPIX_API void Schedule::clear_tmp() {
     m_reach_time.reset();
@@ -276,4 +347,64 @@ EPIX_API double Schedule::reach_time() {
         }
     }
     return m_avg_time;
+}
+
+EPIX_API ScheduleProfiles::ScheduleProfile& ScheduleProfiles::profile(
+    ScheduleId id
+) {
+    if (auto it = m_profiles.find(id); it != m_profiles.end()) {
+        return it->second;
+    } else {
+        m_profiles.emplace(id, ScheduleProfile{});
+        return m_profiles.at(id);
+    }
+}
+
+EPIX_API const ScheduleProfiles::ScheduleProfile& ScheduleProfiles::profile(
+    ScheduleId id
+) const {
+    if (auto it = m_profiles.find(id); it != m_profiles.end()) {
+        return it->second;
+    } else {
+        throw std::runtime_error(
+            std::format("Schedule {}#{} not found", id.type.name(), id.value)
+        );
+    }
+}
+
+EPIX_API ScheduleProfiles::ScheduleProfile* ScheduleProfiles::get_profile(
+    ScheduleId id
+) {
+    if (auto it = m_profiles.find(id); it != m_profiles.end()) {
+        return &it->second;
+    } else {
+        m_profiles.emplace(id, ScheduleProfile{});
+        return &m_profiles.at(id);
+    }
+}
+
+EPIX_API const ScheduleProfiles::ScheduleProfile* ScheduleProfiles::get_profile(
+    ScheduleId id
+) const {
+    if (auto it = m_profiles.find(id); it != m_profiles.end()) {
+        return &it->second;
+    } else {
+        return nullptr;
+    }
+}
+
+EPIX_API void ScheduleProfiles::for_each(
+    const std::function<void(ScheduleId, ScheduleProfile&)>& func
+) {
+    for (auto&& [id, profile] : m_profiles) {
+        func(id, profile);
+    }
+}
+
+EPIX_API void ScheduleProfiles::for_each(
+    const std::function<void(ScheduleId, const ScheduleProfile&)>& func
+) const {
+    for (auto&& [id, profile] : m_profiles) {
+        func(id, profile);
+    }
 }

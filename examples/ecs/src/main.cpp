@@ -10,6 +10,7 @@
 #include "general_spawn_despawn.h"
 #include "parallel_run_test.h"
 #include "resource_test.h"
+#include "runtime_system_adding_removal.h"
 #include "spawn_with_child.h"
 #include "state_nextstate.h"
 
@@ -42,6 +43,8 @@ int main() {
     test_state::test();
     std::cout << "===========TEST PARALLEL RUN==========" << std::endl;
     test_parallel_run::test();
+    std::cout << "==========TEST RUNTIME SYSTEM ADD========" << std::endl;
+    test_rt_system::test();
 
     return 0;
 }

@@ -13,6 +13,7 @@ add_subdirectory(window)
 add_subdirectory(input)
 # EPIX UTILS MODULES
 add_subdirectory(utils/grid)
+add_subdirectory(utils/time)
 add_subdirectory(assets)
 # EPIX RENDER MODULES
 add_subdirectory(vulkan)
