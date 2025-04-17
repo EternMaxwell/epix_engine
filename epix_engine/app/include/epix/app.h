@@ -1592,7 +1592,7 @@ struct Schedule {
     bool m_running = false;
 
     // used when baking
-    double m_avg_time = 1.0;
+    double m_avg_time  = 1.0;
     double m_last_time = 0.0;
     std::optional<double> m_reach_time;
 
@@ -1657,6 +1657,8 @@ struct Schedule {
     friend struct App;
 };
 struct ScheduleInfo : public ScheduleId {
+    using ScheduleId::ScheduleId;
+    inline operator ScheduleId() const { return *this; }
     std::vector<std::function<void(SystemAddInfo&)>> transforms;
 };
 
@@ -1874,7 +1876,7 @@ struct AppSystems {
     AppSystems(App& app) : app(app) {}
 
     template <typename... Funcs>
-    AppSystems& add_system(ScheduleId id, Funcs&&... funcs);
+    AppSystems& add_system(ScheduleInfo id, Funcs&&... funcs);
     template <typename... Args>
     AppSystems& remove_system(ScheduleId id, Args&&... args);
 };
@@ -1886,7 +1888,7 @@ struct App {
     };
 
    private:
-   // plugin to build;
+    // plugin to build
     std::vector<std::pair<std::type_index, std::shared_ptr<Plugin>>> m_plugins;
     entt::dense_set<std::type_index> m_built_plugins;
 
@@ -1951,6 +1953,9 @@ struct App {
         if (auto it = m_worlds.find(id); it != m_worlds.end()) {
             return *it->second;
         }
+        m_logger->error(
+            "World {} not found. Please add it first.", typeid(T).name()
+        );
         throw std::runtime_error("World not found.");
     };
     template <typename T>
@@ -1973,19 +1978,37 @@ struct App {
     }
 
     template <typename... Funcs>
-    App& add_system(ScheduleId id, Funcs&&... funcs) {
+    App& add_system(ScheduleInfo info, Funcs&&... funcs) {
+        ScheduleId& id = info;
         if (!m_graph_ids.contains(id)) {
+            m_logger->warn(
+                "Schedule {}#{} not found. Ignoring add_system.",
+                id.type.name(), id.value
+            );
             return *this;
         }
-        auto&& graph    = m_graphs.at(m_graph_ids.at(id));
-        auto&& schedule = graph->m_schedules[id];
-        (schedule->add_system(std::move(into(std::forward<Funcs>(funcs)))),
-         ...);
+        auto&& graph        = m_graphs.at(m_graph_ids.at(id));
+        auto&& schedule     = graph->m_schedules[id];
+        auto&& system_infos = std::array<SystemAddInfo, sizeof...(Funcs)>{
+            into(std::forward<Funcs>(funcs))...
+        };
+        for (auto&& system_info : system_infos) {
+            for (auto&& transform : info.transforms) {
+                transform(system_info);
+            }
+        }
+        for (auto&& system_info : system_infos) {
+            schedule->add_system(std::move(system_info));
+        }
         return *this;
     };
     template <typename... Args>
     App& remove_system(ScheduleId id, FuncIndex index, Args&&... args) {
         if (!m_graph_ids.contains(id)) {
+            m_logger->warn(
+                "Schedule {}#{} not found. Ignoring remove_system.",
+                id.type.name(), id.value
+            );
             return *this;
         }
         auto&& graph    = m_graphs.at(m_graph_ids.at(id));
@@ -2071,6 +2094,7 @@ struct App {
     App& insert_state(T&& state) {
         auto&& w = world<MainWorld>();
         w.insert_resource<State<T>>(State<T>(std::forward<T>(state)));
+        w.insert_resource<NextState<T>>(NextState<T>(std::forward<T>(state)));
         SystemAddInfo info;
         info.m_systems.emplace_back(
             std::format("update State<{}>", typeid(T).name()), FuncIndex(),
@@ -2088,6 +2112,7 @@ struct App {
     App& init_state() {
         auto&& w = world<MainWorld>();
         w.init_resource<State<T>>();
+        w.init_resource<NextState<T>>();
         SystemAddInfo info;
         info.m_systems.emplace_back(
             std::format("update State<{}>", typeid(T).name()), FuncIndex(),
@@ -2307,7 +2332,7 @@ void Command::remove_resource() {
 }
 
 template <typename... Funcs>
-AppSystems& AppSystems::add_system(ScheduleId id, Funcs&&... funcs) {
+AppSystems& AppSystems::add_system(ScheduleInfo id, Funcs&&... funcs) {
     app.add_system(id, std::forward<Funcs>(funcs)...);
     return *this;
 };

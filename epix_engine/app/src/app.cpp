@@ -92,10 +92,17 @@ EPIX_API App::App(const AppCreateInfo& info) {
             .set_src_world<MainWorld>()
             .set_dst_world<MainWorld>()
             .after(First),
-        Schedule(Update)
+        Schedule(StateTransition)
             .set_src_world<MainWorld>()
             .set_dst_world<MainWorld>()
             .after(PreUpdate),
+        Schedule(Update)
+            .set_src_world<MainWorld>()
+            .set_dst_world<MainWorld>()
+            .configure_sets(
+                StateTransitionSet::Callback, StateTransitionSet::Transit
+            )
+            .after(StateTransition),
         Schedule(PostUpdate)
             .set_src_world<MainWorld>()
             .set_dst_world<MainWorld>()
