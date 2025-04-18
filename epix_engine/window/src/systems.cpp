@@ -58,7 +58,7 @@ EPIX_API void systems::create_window(
         ).get();
         command.entity(entity).erase<WindowDescription>();
         if (window.has_value()) {
-            command.entity(entity).emplace(std::move(window.value()));
+            command.entity(entity).insert(std::move(window.value()));
             auto* ptr = new std::pair<Entity, resources::WindowThreadPool*>{
                 entity, &(*pool)
             };

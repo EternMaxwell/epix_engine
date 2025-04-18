@@ -32,7 +32,7 @@ EPIX_API void systems::context_creation(
             spdlog::error("Failed to initialize OpenGL context");
             throw std::runtime_error("Failed to initialize OpenGL context");
         }
-        cmd.entity(entity).emplace(systems::ContextCreated{});
+        cmd.entity(entity).insert(systems::ContextCreated{});
 #ifndef NDEBUG
         glEnable(GL_DEBUG_OUTPUT);
         glDebugMessageCallback(

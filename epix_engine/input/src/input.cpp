@@ -19,8 +19,8 @@ EPIX_API void systems::create_input_for_window(
     ZoneScopedN("input::create_input_for_window");
     for (auto [entity, window] : query.iter()) {
         spdlog::debug("create input for window {}.", window.m_title);
-        command.entity(entity).emplace(ButtonInput<KeyCode>(entity));
-        command.entity(entity).emplace(ButtonInput<MouseButton>(entity));
+        command.entity(entity).insert(ButtonInput<KeyCode>(entity));
+        command.entity(entity).insert(ButtonInput<MouseButton>(entity));
     }
 }
 

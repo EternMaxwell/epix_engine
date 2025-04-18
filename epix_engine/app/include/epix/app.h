@@ -479,7 +479,7 @@ struct WorldEntityCommand {
     template <typename T, typename... Args>
     void emplace(Args&&... args);
     template <typename T>
-    void emplace(T&& t);
+    void insert(T&& t);
     template <typename... Args>
     void erase();
 
@@ -777,12 +777,12 @@ struct World {
     template <typename T>
     void init_resource() {
         std::unique_lock lock(m_resources_mutex);
-        if (!m_resources.contains(typeid(std::remove_cvref_t<T>))) {
+        if (!m_resources.contains(typeid(std::decay_t<T>))) {
             m_resources.emplace(
                 typeid(T),
                 UntypedRes{
                     std::static_pointer_cast<void>(
-                        std::make_shared<std::remove_cvref_t<T>>()
+                        std::make_shared<std::decay_t<T>>()
                     ),
                     std::make_shared<std::shared_mutex>()
                 }
@@ -792,14 +792,12 @@ struct World {
     template <typename T>
     void insert_resource(T&& res) {
         std::unique_lock lock(m_resources_mutex);
-        if (!m_resources.contains(typeid(std::remove_cvref_t<T>))) {
+        if (!m_resources.contains(typeid(std::decay_t<T>))) {
             m_resources.emplace(
                 typeid(T),
                 UntypedRes{
                     std::static_pointer_cast<void>(
-                        std::make_shared<std::remove_cvref_t<T>>(
-                            std::forward<T>(res)
-                        )
+                        std::make_shared<std::decay_t<T>>(std::forward<T>(res))
                     ),
                     std::make_shared<std::shared_mutex>()
                 }
@@ -809,12 +807,12 @@ struct World {
     template <typename T, typename... Args>
     void emplace_resource(Args&&... args) {
         std::unique_lock lock(m_resources_mutex);
-        if (!m_resources.contains(typeid(std::remove_cvref_t<T>))) {
+        if (!m_resources.contains(typeid(std::decay_t<T>))) {
             m_resources.emplace(
                 typeid(T),
                 UntypedRes{
                     std::static_pointer_cast<void>(
-                        std::make_shared<std::remove_cvref_t<T>>(
+                        std::make_shared<std::decay_t<T>>(
                             std::forward<Args>(args)...
                         )
                     ),
@@ -826,7 +824,7 @@ struct World {
     template <typename T>
     void add_resource(const std::shared_ptr<T>& res) {
         std::unique_lock lock(m_resources_mutex);
-        if (!m_resources.contains(typeid(std::remove_cvref_t<T>))) {
+        if (!m_resources.contains(typeid(std::decay_t<T>))) {
             m_resources.emplace(
                 typeid(T),
                 UntypedRes{
@@ -842,7 +840,7 @@ struct World {
         const std::shared_ptr<std::shared_mutex>& mutex
     ) {
         std::unique_lock lock(m_resources_mutex);
-        if (!m_resources.contains(typeid(std::remove_cvref_t<T>))) {
+        if (!m_resources.contains(typeid(std::decay_t<T>))) {
             m_resources.emplace(
                 typeid(T),
                 UntypedRes{std::static_pointer_cast<void>(res), mutex}
@@ -852,7 +850,7 @@ struct World {
     template <typename T>
     void add_resource(T* res) {
         std::unique_lock lock(m_resources_mutex);
-        if (!m_resources.contains(typeid(std::remove_cvref_t<T>))) {
+        if (!m_resources.contains(typeid(std::decay_t<T>))) {
             m_resources.emplace(
                 typeid(T),
                 UntypedRes{
@@ -865,7 +863,7 @@ struct World {
     template <typename T>
     void add_resource(const UntypedRes& res) {
         std::unique_lock lock(m_resources_mutex);
-        if (!m_resources.contains(typeid(std::remove_cvref_t<T>))) {
+        if (!m_resources.contains(typeid(std::decay_t<T>))) {
             m_resources.emplace(typeid(T), res);
         }
     }
@@ -887,14 +885,15 @@ struct World {
     }
 
     template <typename T, typename... Args>
-        requires std::constructible_from<std::remove_cvref_t<T>, Args...> ||
+        requires std::constructible_from<std::decay_t<T>, Args...> ||
                  is_bundle<T>
     void entity_emplace(Entity entity, Args&&... args) {
+        using type = std::decay_t<T>;
         if constexpr (is_bundle<T>) {
             auto&& bundle = T(std::forward<Args>(args)...);
             entity_emplace_tuple(entity, std::move(bundle.unpack()));
         } else {
-            m_registry.emplace<std::remove_cvref_t<T>>(
+            m_registry.emplace<std::decay_t<T>>(
                 entity, std::forward<Args>(args)...
             );
         }
@@ -1162,7 +1161,7 @@ struct BasicSystem {
     template <typename T>
     struct infos_adder {
         static void add(param_info& src_info, param_info& dst_info) {
-            if constexpr (std::same_as<Command, std::remove_cvref_t<T>>) {
+            if constexpr (std::same_as<Command, std::decay_t<T>>) {
                 dst_info.has_command = true;
             }
         }
@@ -1372,8 +1371,7 @@ struct SystemSet {
     template <typename T>
         requires std::is_enum_v<T>
     SystemSet(T value)
-        : type(typeid(std::remove_cvref_t<T>)),
-          value(static_cast<size_t>(value)) {}
+        : type(typeid(std::decay_t<T>)), value(static_cast<size_t>(value)) {}
 
     EPIX_API bool operator==(const SystemSet& other) const;
     EPIX_API bool operator!=(const SystemSet& other) const;
@@ -1524,8 +1522,8 @@ struct ScheduleId {
     std::type_index type;
     size_t value;
     template <typename T>
-    ScheduleId(T value) : type(typeid(std::remove_cvref_t<T>)) {
-        if constexpr (std::is_enum_v<std::remove_cvref_t<T>>) {
+    ScheduleId(T value) : type(typeid(std::decay_t<T>)) {
+        if constexpr (std::is_enum_v<std::decay_t<T>>) {
             this->value = static_cast<size_t>(value);
         } else {
             this->value = 0;
@@ -1620,7 +1618,7 @@ struct Schedule {
     template <typename T, typename... Args>
     Schedule& configure_sets(T set, Args... others) {
         m_sets.emplace(
-            std::type_index(typeid(std::remove_cvref_t<T>)),
+            std::type_index(typeid(std::decay_t<T>)),
             std::vector<SystemSet>{
                 SystemSet(std::forward<T>(set)),
                 SystemSet(std::forward<Args>(others))...
@@ -1630,12 +1628,12 @@ struct Schedule {
     }
     template <typename T>
     Schedule& set_src_world() {
-        m_src_world = typeid(std::remove_cvref_t<T>);
+        m_src_world = typeid(std::decay_t<T>);
         return *this;
     }
     template <typename T>
     Schedule& set_dst_world() {
-        m_dst_world = typeid(std::remove_cvref_t<T>);
+        m_dst_world = typeid(std::decay_t<T>);
         return *this;
     }
     EPIX_API Schedule& add_system(SystemAddInfo&& info);
@@ -1753,7 +1751,7 @@ struct ExitControl {};
 struct AppExit {};
 
 template <typename T>
-    requires std::same_as<SystemAddInfo, std::remove_cvref_t<T>>
+    requires std::same_as<SystemAddInfo, std::decay_t<T>>
 void info_append(SystemAddInfo& info, T&& func) {
     SystemAddInfo&& info2 = std::move(func);
     std::move(
@@ -1768,7 +1766,7 @@ template <typename Func>
     }
 void info_append(SystemAddInfo& info, Func&& func) {
     if constexpr (std::is_function_v<
-                      std::remove_pointer_t<std::remove_cvref_t<Func>>>) {
+                      std::remove_pointer_t<std::decay_t<Func>>>) {
         info.m_systems.emplace_back(
             std::format("system:{:#016x}", (size_t)func), FuncIndex(func),
             std::make_unique<BasicSystem<void>>(func)
@@ -1819,7 +1817,7 @@ inline struct ExitGraphT {
 } ExitGraph;
 struct GraphId : public std::type_index {
     template <typename T>
-    GraphId(T value) : std::type_index(typeid(std::remove_cvref_t<T>)) {}
+    GraphId(T value) : std::type_index(typeid(std::decay_t<T>)) {}
     GraphId(const GraphId& other)            = default;
     GraphId(GraphId&& other)                 = default;
     GraphId& operator=(const GraphId& other) = default;
@@ -1941,7 +1939,7 @@ struct App {
 
     template <typename T>
     App& add_world() {
-        auto id = std::type_index(typeid(std::remove_cvref_t<T>));
+        auto id = std::type_index(typeid(std::decay_t<T>));
         if (!m_worlds.contains(id)) {
             m_worlds.emplace(id, std::make_unique<World>());
         }
@@ -1949,7 +1947,7 @@ struct App {
     };
     template <typename T>
     World& world() {
-        auto id = std::type_index(typeid(std::remove_cvref_t<T>));
+        auto id = std::type_index(typeid(std::decay_t<T>));
         if (auto it = m_worlds.find(id); it != m_worlds.end()) {
             return *it->second;
         }
@@ -1960,7 +1958,7 @@ struct App {
     };
     template <typename T>
     World* get_world() {
-        auto id = std::type_index(typeid(std::remove_cvref_t<T>));
+        auto id = std::type_index(typeid(std::decay_t<T>));
         if (auto it = m_worlds.find(id); it != m_worlds.end()) {
             return it->second.get();
         }
@@ -2021,15 +2019,13 @@ struct App {
     }
     template <typename T>
     App& add_plugin(T&& plugin) {
-        auto id = std::type_index(typeid(std::remove_cvref_t<T>));
+        auto id = std::type_index(typeid(std::decay_t<T>));
         if (std::find_if(
                 m_plugins.begin(), m_plugins.end(),
                 [id](const auto& pair) { return pair.first == id; }
             ) == m_plugins.end()) {
             m_plugins.emplace_back(
-                id,
-                std::make_shared<std::remove_cvref_t<T>>(std::forward<T>(plugin)
-                )
+                id, std::make_shared<std::decay_t<T>>(std::forward<T>(plugin))
             );
         }
         return *this;
@@ -2037,7 +2033,7 @@ struct App {
 
     template <typename T>
     T& plugin() {
-        auto id = std::type_index(typeid(std::remove_cvref_t<T>));
+        auto id = std::type_index(typeid(std::decay_t<T>));
         if (auto it = std::find_if(
                 m_plugins.begin(), m_plugins.end(),
                 [id](const auto& pair) { return pair.first == id; }
@@ -2049,7 +2045,7 @@ struct App {
     };
     template <typename T>
     std::shared_ptr<T> get_plugin() {
-        auto id = std::type_index(typeid(std::remove_cvref_t<T>));
+        auto id = std::type_index(typeid(std::decay_t<T>));
         if (auto it = std::find_if(
                 m_plugins.begin(), m_plugins.end(),
                 [id](const auto& pair) { return pair.first == id; }
@@ -2215,7 +2211,7 @@ void WorldEntityCommand::emplace(Args&&... args) {
     m_world->entity_emplace<T>(m_entity, std::forward<Args>(args)...);
 }
 template <typename T>
-void WorldEntityCommand::emplace(T&& obj) {
+void WorldEntityCommand::insert(T&& obj) {
     m_world->entity_emplace<T>(m_entity, std::forward<T>(obj));
 }
 template <typename... Args>
