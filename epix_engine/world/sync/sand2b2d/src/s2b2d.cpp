@@ -47,7 +47,7 @@ EPIX_API void SimulationCollisions<void>::sync(
         auto& chunk = sim.chunk_map().get_chunk(pos.x, pos.y);
         if (!collisions.contains(pos.x, pos.y) || !chunk.should_update())
             continue;
-        thread_pool->submit_task([this, &sim, &chunk, pos]() {
+        thread_pool->detach_task([this, &sim, &chunk, pos]() {
             auto& chunk_collision = collisions.get(pos.x, pos.y);
             chunk_collision.has_collision =
                 get_chunk_collision(sim, chunk, chunk_collision.collisions);

@@ -482,6 +482,8 @@ struct WorldEntityCommand {
     );
     EPIX_API void despawn();
     EPIX_API void despawn_recurse();
+    EPIX_API Entity id() const;
+
     template <typename T, typename... Args>
     void emplace(Args&&... args);
     template <typename T>
@@ -544,7 +546,7 @@ struct Command {
     EPIX_API Command(WorldCommand* src, WorldCommand* dst);
 
     template <typename... Args>
-    Entity spawn(Args&&... args);
+    EntityCommand spawn(Args&&... args);
     template <typename T, typename... Args>
     void emplace_resource(Args&&... args);
     template <typename T>
@@ -2335,8 +2337,9 @@ void WorldCommand::remove_resource() {
 }
 
 template <typename... Args>
-Entity Command::spawn(Args&&... args) {
-    return dst_cmd->spawn(std::forward<Args>(args)...);
+EntityCommand Command::spawn(Args&&... args) {
+    auto id = dst_cmd->spawn(std::forward<Args>(args)...);
+    return entity(id);
 }
 template <typename T, typename... Args>
 void Command::emplace_resource(Args&&... args) {

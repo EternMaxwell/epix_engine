@@ -37,7 +37,7 @@ EPIX_API Schedule& Schedule::set_logger(
 EPIX_API Schedule& Schedule::add_system(SystemAddInfo&& info) {
     if (m_running) {
         std::unique_lock lock(*m_op_mutex);
-        m_cached_ops.emplace_back(1, m_adds.size());
+        m_cached_ops.emplace_back(1, static_cast<uint32_t>(m_adds.size()));
         m_adds.emplace_back(std::move(info));
         return *this;
     }
@@ -58,7 +58,7 @@ EPIX_API Schedule& Schedule::add_system(SystemAddInfo&& info) {
 EPIX_API Schedule& Schedule::remove_system(FuncIndex index) {
     if (m_running) {
         std::unique_lock lock(*m_op_mutex);
-        m_cached_ops.emplace_back(0, m_removes.size());
+        m_cached_ops.emplace_back(0, static_cast<uint32_t>(m_removes.size()));
         m_removes.emplace_back(index);
         return *this;
     }

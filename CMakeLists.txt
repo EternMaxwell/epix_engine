@@ -13,6 +13,7 @@ set(CMAKE_CXX_STANDARD 20)
 
 if (MSVC)
   add_compile_options(/bigobj)
+  add_compile_options(/wd4819)
 else ()
   add_compile_options(-Wa,-mbig-obj)
   add_compile_options(-w)

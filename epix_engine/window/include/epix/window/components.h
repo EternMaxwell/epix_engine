@@ -1,8 +1,5 @@
 ﻿#pragma once
 
-#define VK_NO_PROTOTYPES
-#include <volk.h>
-// volk before glfw
 #include <GLFW/glfw3.h>
 #include <epix/app.h>
 

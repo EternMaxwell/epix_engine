@@ -63,3 +63,4 @@ EPIX_API void WorldEntityCommand::despawn() {
 EPIX_API void WorldEntityCommand::despawn_recurse() {
     m_command->m_recurse_despawn.emplace(m_entity);
 }
+EPIX_API Entity WorldEntityCommand::id() const { return m_entity; }
