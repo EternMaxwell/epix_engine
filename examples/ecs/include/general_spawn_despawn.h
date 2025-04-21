@@ -76,7 +76,7 @@ void spawn(Command command) {
 void print_1(Query<Get<Entity, Health, Position>, With<>, Without<>> query) {
     std::cout << "print" << std::endl;
     for (auto [entity, health, position] : query.iter()) {
-        std::string id = std::format("{:#05x}", static_cast<int>(entity));
+        std::string id = std::format("{:#05x}", entity.index());
         std::cout << "entity: " << id << " [health: " << health.life
                   << " position: " << position.x << ", " << position.y << "]"
                   << " " << query.contains(entity) << std::endl;
@@ -84,13 +84,16 @@ void print_1(Query<Get<Entity, Health, Position>, With<>, Without<>> query) {
     std::cout << std::endl;
 }
 
-void print_2(Query<Get<Entity, Health, Position>, With<>, Without<>> query) {
+void print_2(Query<Get<Entity, Health, Opt<Position>>, With<>, Without<>> query
+) {
     std::cout << "print" << std::endl;
     for (auto [entity, health, position] : query.iter()) {
-        std::string id = std::format("{:#05x}", static_cast<int>(entity));
-        std::cout << "entity: " << id << " [health: " << health.life
-                  << " position: " << position.x << ", " << position.y << "]"
-                  << " " << query.contains(entity) << std::endl;
+        std::string id = std::format("{:#05x}", entity.index());
+        std::cout << "entity: " << id << " [health: " << health.life;
+        if (position) {
+            std::cout << " position: " << position->x << ", " << position->y;
+        }
+        std::cout << "]" << " " << query.contains(entity) << std::endl;
     }
     std::cout << std::endl;
 }
@@ -126,12 +129,14 @@ void print_count_3(Query<Get<Entity, Health>, With<>, Without<>> query) {
 }
 
 void change_component_data(
-    Command command, Query<Get<Entity, Health>, With<>, Without<>> query
+    Command command,
+    Query<Get<Entity, Health, Opt<Position>>, With<>, Without<>> query
 ) {
     std::cout << "change_component_data" << std::endl;
-    for (auto [id, health] : query.iter()) {
-        auto [heal2] = query.get(id);
-        heal2.life   = 200.0f;
+    for (auto [id, health, pos] : query.iter()) {
+        auto [_, heal2, pos2] = query.get(id);
+        heal2.life            = 200.0f;
+        if (pos2) pos2->x = 1.0f;
     }
     std::cout << std::endl;
 }

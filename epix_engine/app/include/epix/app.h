@@ -111,6 +111,11 @@ struct With;
 template <typename... T>
 struct Without;
 
+template <typename T>
+struct Has;
+template <typename T>
+struct Opt;
+
 template <typename G, typename W = With<>, typename WO = Without<>>
 struct Query;
 
@@ -161,6 +166,7 @@ struct Entity {
     EPIX_API bool operator!=(const Entity& other);
     EPIX_API bool operator==(const entt::entity& other);
     EPIX_API bool operator!=(const entt::entity& other);
+    EPIX_API size_t index() const;
 };
 struct FuncIndex {
     std::type_index type;
@@ -566,11 +572,126 @@ template <typename... T>
 struct With {};
 template <typename... T>
 struct Without {};
+template <typename... T>
+struct IntoQueryGetAbsolute;
+template <>
+struct IntoQueryGetAbsolute<> {
+    using type = std::tuple<>;
+};
+template <typename A, typename... Other>
+struct IntoQueryGetAbsolute<A, Other...> {
+    using type = decltype(std::tuple_cat(
+        std::declval<std::tuple<A>>(),
+        std::declval<typename IntoQueryGetAbsolute<Other...>::type>()
+    ));
+};
+template <typename A, typename... Other>
+struct IntoQueryGetAbsolute<Has<A>, Other...> {
+    using type = typename IntoQueryGetAbsolute<Other...>::type;
+};
+template <typename A, typename... Other>
+struct IntoQueryGetAbsolute<Opt<A>, Other...> {
+    using type = typename IntoQueryGetAbsolute<Other...>::type;
+};
+template <typename... Other>
+struct IntoQueryGetAbsolute<Entity, Other...> {
+    using type = typename IntoQueryGetAbsolute<Other...>::type;
+};
+template <typename T, typename U>
+struct FromTupleGetView;
+
+template <typename... T, typename... U>
+struct FromTupleGetView<std::tuple<T...>, std::tuple<U...>> {
+    using includes = std::tuple<T...>;
+    using excludes = std::tuple<U...>;
+    static auto get(entt::registry& registry) {
+        return registry.view<T...>(entt::exclude<U...>);
+    }
+};
+
+template <typename T>
+struct is_has {
+    static constexpr bool value = false;
+};
+template <typename T>
+struct is_has<Has<T>> {
+    static constexpr bool value = true;
+};
+template <typename T>
+struct is_opt {
+    static constexpr bool value = false;
+};
+template <typename T>
+struct is_opt<Opt<T>> {
+    static constexpr bool value = true;
+};
+
+template <typename T>
+struct GetFromViewIterOrRegistry {
+    template <typename... TupleT>
+    static T& get(std::tuple<TupleT...>&& tuple, entt::registry& registry) {
+        return std::get<T&>(tuple);
+    }
+};
+template <typename T>
+struct GetFromViewIterOrRegistry<Has<T>> {
+    template <typename... TupleT>
+    static bool get(std::tuple<TupleT...>&& tuple, entt::registry& registry) {
+        auto id = std::get<entt::entity>(tuple);
+        return registry.try_get<T>(id) != nullptr;
+    }
+};
+template <typename T>
+struct GetFromViewIterOrRegistry<Opt<T>> {
+    template <typename... TupleT>
+    static T* get(std::tuple<TupleT...>&& tuple, entt::registry& registry) {
+        auto id = std::get<entt::entity>(tuple);
+        return registry.try_get<T>(id);
+    }
+};
+template <>
+struct GetFromViewIterOrRegistry<Entity> {
+    template <typename... TupleT>
+    static Entity get(std::tuple<TupleT...>&& tuple, entt::registry& registry) {
+        return Entity{std::get<entt::entity>(tuple)};
+    }
+};
+
+template <typename T>
+struct GetFromViewRegistry {
+    template <typename ViewT>
+    static T& get(ViewT&& view, entt::registry& registry, entt::entity id) {
+        return view.template get<T>(id);
+    }
+};
+template <typename T>
+struct GetFromViewRegistry<Has<T>> {
+    template <typename ViewT>
+    static bool get(ViewT&& view, entt::registry& registry, entt::entity id) {
+        return registry.try_get<T>(id) != nullptr;
+    }
+};
+template <typename T>
+struct GetFromViewRegistry<Opt<T>> {
+    template <typename ViewT>
+    static T* get(ViewT&& view, entt::registry& registry, entt::entity id) {
+        return registry.try_get<T>(id);
+    }
+};
+template <>
+struct GetFromViewRegistry<Entity> {
+    template <typename ViewT>
+    static Entity get(ViewT&& view, entt::registry& registry, entt::entity id) {
+        return Entity{id};
+    }
+};
+
 template <typename... Gets, typename... Withs, typename... Withouts>
 struct Query<Get<Gets...>, With<Withs...>, Without<Withouts...>> {
+    using get_type = typename IntoQueryGetAbsolute<Gets..., Withs...>::type;
     using view_type =
-        decltype(std::declval<entt::registry>().view<Gets..., Withs...>(
-            entt::exclude_t<Withouts...>{}
+        decltype(FromTupleGetView<get_type, std::tuple<Withouts...>>::get(
+            std::declval<entt::registry&>()
         ));
     using iterable_type = decltype(std::declval<view_type>().each());
     using iterator_type = decltype(std::declval<iterable_type>().begin());
@@ -578,13 +699,16 @@ struct Query<Get<Gets...>, With<Withs...>, Without<Withouts...>> {
     struct iterable {
        private:
         iterable_type m_full;
+        entt::registry& m_registry;
 
         struct iterator {
            private:
             iterator_type m_iter;
+            entt::registry& m_registry;
 
            public:
-            iterator(iterator_type iter) : m_iter(iter) {}
+            iterator(iterator_type iter, entt::registry& registry)
+                : m_iter(iter), m_registry(registry) {}
             iterator& operator++() {
                 m_iter++;
                 return *this;
@@ -601,100 +725,17 @@ struct Query<Get<Gets...>, With<Withs...>, Without<Withouts...>> {
                 return m_iter != rhs.m_iter;
             }
             auto operator*() {
-                return std::tuple<Gets&...>(std::get<Gets&>(*m_iter)...);
-            }
-        };
-
-       public:
-        iterable(iterable_type full) : m_full(full) {}
-        auto begin() { return iterator(m_full.begin()); }
-        auto end() { return iterator(m_full.end()); }
-    };
-
-   private:
-    entt::registry& registry;
-    view_type m_view;
-
-   public:
-    Query(entt::registry& registry) : registry(registry) {
-        m_view =
-            registry.view<Gets..., Withs...>(entt::exclude_t<Withouts...>{});
-    }
-
-    /*! @brief Get the iterator for the query.
-     * @return The iterator for the query.
-     */
-    auto iter() { return iterable(m_view.each()); }
-    std::tuple<Gets&...> get(entt::entity id) {
-        return m_view.template get<Gets...>(id);
-    }
-    bool contains(entt::entity id) { return m_view.contains(id); }
-    /*! @brief Get the single entity and requaired components.
-     * @return An optional of a single tuple of entity and requaired
-     * components.
-     */
-    auto single() {
-        // auto start = *(iter().begin());
-        if (iter().begin() == iter().end()) throw std::bad_optional_access();
-        return *(iter().begin());
-    }
-
-    operator bool() { return iter().begin() != iter().end(); }
-    bool operator!() { return iter().begin() == iter().end(); }
-
-    auto size_hint() { return m_view.size_hint(); }
-
-    template <typename Func>
-    void for_each(Func func) {
-        m_view.each(func);
-    }
-};
-template <typename... Gets, typename... Withs, typename... Withouts>
-struct Query<Get<Entity, Gets...>, With<Withs...>, Without<Withouts...>> {
-    using view_type =
-        decltype(std::declval<entt::registry>().view<Gets..., Withs...>(
-            entt::exclude_t<Withouts...>{}
-        ));
-    using iterable_type = decltype(std::declval<view_type>().each());
-    using iterator_type = decltype(std::declval<iterable_type>().begin());
-
-    class iterable {
-       private:
-        iterable_type m_full;
-
-        struct iterator {
-           private:
-            iterator_type m_iter;
-
-           public:
-            iterator(iterator_type iter) : m_iter(iter) {}
-            iterator& operator++() {
-                m_iter++;
-                return *this;
-            }
-            iterator operator++(int) {
-                iterator tmp = *this;
-                ++(*this);
-                return tmp;
-            }
-            bool operator==(const iterator& rhs) const {
-                return m_iter == rhs.m_iter;
-            }
-            bool operator!=(const iterator& rhs) const {
-                return m_iter != rhs.m_iter;
-            }
-            auto operator*() {
-                return std::tuple<Entity, Gets&...>(
-                    Entity{std::get<entt::entity>(*m_iter)},
-                    std::get<Gets&>(*m_iter)...
+                return std::forward_as_tuple(
+                    GetFromViewIterOrRegistry<Gets>::get(*m_iter, m_registry)...
                 );
             }
         };
 
        public:
-        iterable(decltype(m_full) full) : m_full(full) {}
-        auto begin() { return iterator(m_full.begin()); }
-        auto end() { return iterator(m_full.end()); }
+        iterable(iterable_type full, entt::registry& registry)
+            : m_full(full), m_registry(registry) {}
+        auto begin() { return iterator(m_full.begin(), m_registry); }
+        auto end() { return iterator(m_full.end(), m_registry); }
     };
 
    private:
@@ -704,15 +745,17 @@ struct Query<Get<Entity, Gets...>, With<Withs...>, Without<Withouts...>> {
    public:
     Query(entt::registry& registry) : registry(registry) {
         m_view =
-            registry.view<Gets..., Withs...>(entt::exclude_t<Withouts...>{});
+            FromTupleGetView<get_type, std::tuple<Withouts...>>::get(registry);
     }
 
     /*! @brief Get the iterator for the query.
      * @return The iterator for the query.
      */
-    auto iter() { return iterable(m_view.each()); }
-    std::tuple<Gets&...> get(entt::entity id) {
-        return m_view.template get<Gets...>(id);
+    auto iter() { return iterable(m_view.each(), registry); }
+    auto get(entt::entity id) {
+        return std::forward_as_tuple(
+            GetFromViewRegistry<Gets>::get(m_view, registry, id)...
+        );
     }
     bool contains(entt::entity id) { return m_view.contains(id); }
     /*! @brief Get the single entity and requaired components.
@@ -1274,6 +1317,23 @@ struct BasicSystem {
     }
 };
 
+template <typename T>
+struct QueryTypeDecay {
+    using type = T;
+};
+template <typename T>
+struct QueryTypeDecay<Has<T>> {
+    using type = T;
+};
+template <typename T>
+struct QueryTypeDecay<Opt<T>> {
+    using type = T;
+};
+template <>
+struct QueryTypeDecay<Entity> {
+    using type = const Entity;
+};
+
 template <typename Ret>
 template <typename... Includes, typename... Withs, typename... Excludes>
 struct BasicSystem<Ret>::infos_adder<
@@ -1283,8 +1343,14 @@ struct BasicSystem<Ret>::infos_adder<
         auto& query_types  = dst_info.query_types;
         entt::dense_set<std::type_index> query_include_types,
             query_exclude_types, query_include_const;
-        (mparam_add<Includes>::add(query_include_types), ...);
-        (cparam_add<Includes>::add(query_include_const), ...);
+        (mparam_add<typename QueryTypeDecay<Includes>::type>::add(
+             query_include_types
+         ),
+         ...);
+        (cparam_add<typename QueryTypeDecay<Includes>::type>::add(
+             query_include_const
+         ),
+         ...);
         (param_add<Withs>::add(query_include_const), ...);
         (param_add<Excludes>::add(query_exclude_types), ...);
         query_types.emplace_back(
@@ -2388,8 +2454,10 @@ using app::EventReader;
 using app::EventWriter;
 using app::Extract;
 using app::Get;
+using app::Has;
 using app::Local;
 using app::NextState;
+using app::Opt;
 using app::Query;
 using app::Res;
 using app::ResMut;

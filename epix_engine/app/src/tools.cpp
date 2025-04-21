@@ -18,6 +18,7 @@ EPIX_API bool Entity::operator==(const entt::entity& other) {
 EPIX_API bool Entity::operator!=(const entt::entity& other) {
     return id != other;
 }
+EPIX_API size_t Entity::index() const { return entt::to_integral(id); }
 
 EPIX_API bool FuncIndex::operator==(const FuncIndex& other) const {
     return type == other.type && func == other.func;
