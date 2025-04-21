@@ -1090,14 +1090,13 @@ struct BasicSystem {
         entt::dense_set<std::type_index> event_write_types;
 
         bool conflict_with(const param_info& other) const {
-            // systems with command cannot run parallelly with systems with
-            // command or query
-            if (has_command && (other.has_command || other.has_query)) {
-                return true;
-            }
-            if (other.has_command && (has_command || has_query)) {
-                return true;
-            }
+            // use command and query at the same time is now always thread safe
+            // if (has_command && (other.has_command || other.has_query)) {
+            //     return true;
+            // }
+            // if (other.has_command && (has_command || has_query)) {
+            //     return true;
+            // }
             // check if queries conflict
             static auto query_conflict =
                 [](const std::tuple<
