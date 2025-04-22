@@ -226,27 +226,21 @@ struct Res {
     std::shared_ptr<T> m_res;
     std::shared_ptr<std::shared_mutex> m_mutex;
 
+    void lock() {
+        if (m_mutex) m_mutex->lock_shared();
+    }
+    void unlock() {
+        if (m_mutex) m_mutex->unlock_shared();
+    }
+
+    template <typename U>
+    friend struct PrepareParam;
+
    public:
     Res(const std::shared_ptr<void>& resource,
         const std::shared_ptr<std::shared_mutex>& mutex)
-        : m_res(std::static_pointer_cast<T>(resource)), m_mutex(mutex) {
-        if constexpr (external_thread_safe_v<T>) {
-            return;
-        }
-        if (m_mutex) m_mutex->lock_shared();
-    }
+        : m_res(std::static_pointer_cast<T>(resource)), m_mutex(mutex) {}
     Res() : m_res(nullptr), m_mutex(nullptr) {}
-    Res(const Res<T>& other) = delete;
-    Res(Res<T>&& other) {
-        m_res   = std::move(other.m_res);
-        m_mutex = std::move(other.m_mutex);
-    }
-    Res& operator=(const Res<T>& other) = delete;
-    Res& operator=(Res<T>&& other) {
-        m_res   = std::move(other.m_res);
-        m_mutex = std::move(other.m_mutex);
-        return *this;
-    }
 
     /**
      * @brief Check if the resource has a value.
@@ -262,13 +256,6 @@ struct Res {
     const T* operator->() { return m_res.get(); }
 
     const T* get() { return m_res.get(); }
-
-    ~Res() {
-        if constexpr (external_thread_safe_v<T>) {
-            return;
-        }
-        if (m_mutex) m_mutex->unlock_shared();
-    }
 };
 template <typename T>
 struct ResMut {
@@ -276,29 +263,35 @@ struct ResMut {
     std::shared_ptr<T> m_res;
     std::shared_ptr<std::shared_mutex> m_mutex;
 
+    void lock() {
+        if (m_mutex) {
+            if constexpr (std::is_const_v<T> || external_thread_safe_v<T>) {
+                m_mutex->lock_shared();
+            } else {
+                m_mutex->lock();
+            }
+        }
+    }
+    void unlock() {
+        if (m_mutex) {
+            if constexpr (std::is_const_v<T> || external_thread_safe_v<T>) {
+                m_mutex->unlock_shared();
+            } else {
+                m_mutex->unlock();
+            }
+        }
+    }
+
+    template <typename U>
+    friend struct PrepareParam;
+
    public:
     ResMut(
         const std::shared_ptr<void>& resource,
         const std::shared_ptr<std::shared_mutex>& mutex
     )
-        : m_res(std::static_pointer_cast<T>(resource)), m_mutex(mutex) {
-        if constexpr (external_thread_safe_v<T>) {
-            return;
-        }
-        if (m_mutex) m_mutex->lock();
-    }
+        : m_res(std::static_pointer_cast<T>(resource)), m_mutex(mutex) {}
     ResMut() : m_res(nullptr), m_mutex(nullptr) {}
-    ResMut(const ResMut<T>& other) = delete;
-    ResMut(ResMut<T>&& other) {
-        m_res   = std::move(other.m_res);
-        m_mutex = std::move(other.m_mutex);
-    }
-    ResMut& operator=(const ResMut<T>& other) = delete;
-    ResMut& operator=(ResMut<T>&& other) {
-        m_res   = std::move(other.m_res);
-        m_mutex = std::move(other.m_mutex);
-        return *this;
-    }
 
     /**
      * @brief Check if the resource has a value.
@@ -314,13 +307,6 @@ struct ResMut {
     T* operator->() { return m_res.get(); }
 
     T* get() { return m_res.get(); }
-
-    ~ResMut() {
-        if constexpr (external_thread_safe_v<T>) {
-            return;
-        }
-        if (m_mutex) m_mutex->unlock();
-    }
 };
 struct UntypedRes {
     std::shared_ptr<void> resource;
@@ -800,6 +786,59 @@ struct Extract : public T {
         return *this;
     }
 };
+
+template <typename T>
+concept IsStaticFunction = std::is_function_v<T>;
+
+template <typename T>
+struct IsTupleV {
+    static constexpr bool value = false;
+};
+template <typename... Args>
+struct IsTupleV<std::tuple<Args...>> {
+    static constexpr bool value = true;
+};
+
+template <typename T>
+concept IsTuple = IsTupleV<std::decay_t<T>>::value;
+
+template <typename T>
+struct FunctionParam;
+
+template <typename Ret, typename... Args>
+struct FunctionParam<Ret(Args...)> {
+    using type = std::tuple<Args...>;
+};
+
+template <typename T>
+concept FromSystemParam = requires(T t) {
+    IsStaticFunction<decltype(T::from_system_param)>;
+    {
+        std::apply(
+            T::from_system_param,
+            std::declval<typename FunctionParam<std::remove_pointer_t<
+                std::decay_t<decltype(T::from_system_param)>>>::type>()
+        )
+    } -> std::same_as<T>;
+};
+
+template <typename T, template <typename...> typename U>
+struct specialize_of {
+    static constexpr bool value = false;
+};
+template <template <typename... Args> typename T, typename... Args>
+struct specialize_of<T<Args...>, T> {
+    static constexpr bool value = true;
+};
+
+template <typename T>
+concept ValidSystemParam =
+    FromSystemParam<T> || specialize_of<T, Query>::value ||
+    specialize_of<T, Local>::value || specialize_of<T, Res>::value ||
+    specialize_of<T, ResMut>::value || specialize_of<T, EventReader>::value ||
+    specialize_of<T, Extract>::value || specialize_of<T, EventWriter>::value ||
+    std::same_as<T, Command>;
+
 struct World {
    private:
     entt::registry m_registry;
@@ -970,10 +1009,8 @@ struct World {
         return Entity{entity};
     }
 
-    template <typename T>
-    struct param_type {
-        using type = T;
-    };
+    template <ValidSystemParam T>
+    struct param_type;
 
     friend struct Schedule;
     friend struct WorldCommand;
@@ -982,21 +1019,24 @@ struct World {
 
 template <typename T>
 struct World::param_type<Res<T>> {
-    using type = Res<T>;
+    using out_type = Res<T>;
+    using in_type  = Res<T>;
     static Res<T> get(World* src, World* dst) {
         return std::move(dst->resource<T>().template into<T>());
     }
 };
 template <typename T>
 struct World::param_type<ResMut<T>> {
-    using type = ResMut<T>;
+    using out_type = ResMut<T>;
+    using in_type  = ResMut<T>;
     static ResMut<T> get(World* src, World* dst) {
         return std::move(dst->resource<T>().template into_mut<T>());
     }
 };
 template <typename T>
 struct World::param_type<EventReader<T>> {
-    using type = EventReader<T>;
+    using out_type = EventReader<T>;
+    using in_type  = EventReader<T>;
     static EventReader<T> get(World* src, World* dst) {
         auto&& it = dst->m_events.find(typeid(T));
         if (it == dst->m_events.end()) {
@@ -1008,7 +1048,8 @@ struct World::param_type<EventReader<T>> {
 };
 template <typename T>
 struct World::param_type<EventWriter<T>> {
-    using type = EventWriter<T>;
+    using out_type = EventWriter<T>;
+    using in_type  = EventWriter<T>;
     static EventWriter<T> get(World* src, World* dst) {
         auto&& it = dst->m_events.find(typeid(T));
         if (it == dst->m_events.end()) {
@@ -1020,14 +1061,16 @@ struct World::param_type<EventWriter<T>> {
 };
 template <typename G, typename W, typename WO>
 struct World::param_type<Query<G, W, WO>> {
-    using type = Query<G, W, WO>;
+    using out_type = Query<G, W, WO>;
+    using in_type  = Query<G, W, WO>;
     static Query<G, W, WO> get(World* src, World* dst) {
         return Query<G, W, WO>(dst->m_registry);
     }
 };
 template <>
 struct World::param_type<Command> {
-    using type = Command;
+    using out_type = Command;
+    using in_type  = Command;
     static Command get(World* src, World* dst) {
         return Command(&src->m_command, &dst->m_command);
     }
@@ -1035,208 +1078,493 @@ struct World::param_type<Command> {
 
 template <typename T>
 struct World::param_type<Extract<Res<T>>> {
-    using type = Extract<Res<T>>;
+    using out_type = Extract<Res<T>>;
+    using in_type  = Extract<Res<T>>;
     static Extract<Res<T>> get(World* src, World* dst) {
         return std::move(src->resource<T>().template into<T>());
     }
 };
 template <typename T>
 struct World::param_type<Extract<ResMut<T>>> {
-    using type = Extract<ResMut<T>>;
+    using out_type = Extract<ResMut<T>>;
+    using in_type  = Extract<ResMut<T>>;
     static Extract<ResMut<T>> get(World* src, World* dst) {
         return std::move(src->resource<T>().template into_mut<T>());
     }
 };
 template <typename T>
 struct World::param_type<Extract<EventReader<T>>> {
-    using type = Extract<EventReader<T>>;
+    using out_type = Extract<EventReader<T>>;
+    using in_type  = Extract<EventReader<T>>;
     static Extract<EventReader<T>> get(World* src, World* dst) {
         return param_type<EventReader<T>>::get(dst, src);
     }
 };
 template <typename T>
 struct World::param_type<Extract<EventWriter<T>>> {
-    using type = Extract<EventWriter<T>>;
+    using out_type = Extract<EventWriter<T>>;
+    using in_type  = Extract<EventWriter<T>>;
     static Extract<EventWriter<T>> get(World* src, World* dst) {
         return param_type<EventWriter<T>>::get(dst, src);
     }
 };
 template <typename G, typename W, typename WO>
 struct World::param_type<Extract<Query<G, W, WO>>> {
-    using type = Extract<Query<G, W, WO>>;
+    using out_type = Extract<Query<G, W, WO>>;
+    using in_type  = Extract<Query<G, W, WO>>;
     static Extract<Query<G, W, WO>> get(World* src, World* dst) {
         return Extract<Query<G, W, WO>>(src->m_registry);
+    }
+};
+
+template <typename T>
+struct World::param_type<Local<T>> {
+    using out_type = Local<T>;
+    using in_type  = Local<T>;
+};
+
+template <FromSystemParam T>
+struct World::param_type<T> {
+    using out_type = T;
+    using in_type =
+        typename FunctionParam<decltype(T::from_system_param)>::type;
+    template <typename U>
+    struct helper;
+    template <typename... Args>
+    struct helper<std::tuple<Args...>> {
+        using type = std::tuple<typename param_type<Args>::type...>;
+        static T get(World* src, World* dst) {
+            return T::from_system_param(
+                World::param_type<Args>::get(src, dst)...
+            );
+        }
+    };
+    static T get(World* src, World* dst) {
+        return helper<typename FunctionParam<decltype(T::from_system_param
+        )>::type>::get(src, dst);
+    }
+};
+
+template <typename... Args>
+struct HasCustomParam {
+    static constexpr bool value =
+        ((ValidSystemParam<Args> && FromSystemParam<Args>) || ...);
+};
+
+template <typename T>
+struct ParamResolve {
+    using out_params = typename World::param_type<T>::out_type;
+    using in_params  = typename World::param_type<T>::in_type;
+};
+template <typename T>
+struct ParamResolve<Local<T>> {
+    using out_params = Local<T>;
+    using in_params  = Local<T>;
+};
+
+template <typename... Args>
+struct ParamResolve<std::tuple<Args...>> {
+    using out_params = std::tuple<typename ParamResolve<Args>::out_params...>;
+    using in_params  = std::tuple<typename ParamResolve<Args>::in_params...>;
+    template <typename O, typename I>
+    struct RootParams {
+        using type =
+            typename RootParams<I, typename ParamResolve<I>::in_params>::type;
+    };
+    template <typename T>
+    struct RootParams<T, T> {
+        using type = T;
+    };
+    using root_params = typename RootParams<out_params, in_params>::type;
+    template <size_t I>
+    static auto&& resolve_i(in_params&& in) {
+        using type = std::tuple_element_t<I, in_params>;
+        if constexpr (IsTupleV<type>::value) {
+            // use from system_param to resolve the tuple
+            return std::apply(
+                std::tuple_element_t<I, out_params>::from_system_param,
+                std::forward<type>(std::get<I>(in))
+            );
+        } else {
+            return std::forward<type>(std::get<I>(in));
+        }
+    }
+    template <size_t... I>
+    static out_params resolve(in_params&& in, std::index_sequence<I...>) {
+        return std::forward_as_tuple(resolve_i<I>(std::forward<in_params>(in)
+        )...);
+    }
+    static out_params resolve(in_params&& in) {
+        if constexpr (std::same_as<in_params, out_params>) {
+            return std::forward<in_params>(in);
+        } else {
+            return resolve(
+                std::forward<in_params>(in), std::index_sequence_for<Args...>()
+            );
+        }
+    }
+    static auto&& resolve_from_root(root_params& in_addr) {
+        if constexpr (std::same_as<root_params, out_params>) {
+            return std::forward<root_params>(in_addr);
+        } else {
+            return resolve(ParamResolve<in_params>::resolve_from_root(in_addr));
+        }
+    }
+};
+
+template <typename T>
+struct ParamResolver;
+
+struct LocalData {
+   private:
+    entt::dense_map<std::type_index, std::shared_ptr<void>> m_locals;
+
+   public:
+    template <typename T>
+    auto get() {
+        auto it = m_locals.find(typeid(T));
+        if (it == m_locals.end()) {
+            m_locals.emplace(typeid(T), std::make_shared<T>());
+            return m_locals.at(typeid(T));
+        }
+        return it->second;
+    }
+};
+
+template <typename T>
+struct LocalType;
+template <typename T>
+struct LocalType<Local<T>> {
+    using type = T;
+};
+
+template <typename T>
+struct GetParam {
+    static T get(World* src, World* dst, LocalData* local_data) {
+        if constexpr (specialize_of<T, Local>::value) {
+            return T(std::static_pointer_cast<typename LocalType<T>::type>(
+                         local_data->get<typename LocalType<T>::type>()
+            )
+                         .get());
+        } else {
+            return World::param_type<T>::get(src, dst);
+        }
+    }
+};
+
+template <typename T>
+struct GetParams {
+    static T get(World* src, World* dst, LocalData* local_data) {
+        return GetParam<T>::get(src, dst, local_data);
+    }
+};
+
+template <typename... Args>
+struct GetParams<std::tuple<Args...>> {
+    static auto get(World* src, World* dst, LocalData* local_data) {
+        return std::forward_as_tuple(
+            GetParams<Args>::get(src, dst, local_data)...
+        );
+    }
+};
+
+// prepare params. now only for resources since it need lock and unlock.
+template <typename T>
+struct PrepareParam {
+    static void prepare(T& t) {};
+    static void unprepare(T& t) {};
+};
+
+template <typename T>
+struct PrepareParam<Res<T>> {
+    static void prepare(Res<T>& t) { t.lock(); }
+    static void unprepare(Res<T>& t) { t.unlock(); }
+};
+template <typename T>
+struct PrepareParam<ResMut<T>> {
+    static void prepare(ResMut<T>& t) { t.lock(); }
+    static void unprepare(ResMut<T>& t) { t.unlock(); }
+};
+
+template <typename... Args>
+struct PrepareParam<std::tuple<Args...>> {
+    template <size_t... I>
+    static void prepare(std::tuple<Args...>& t, std::index_sequence<I...>) {
+        (PrepareParam<std::tuple_element_t<I, std::tuple<Args...>>>::prepare(
+             std::get<I>(t)
+         ),
+         ...);
+    }
+    template <size_t... I>
+    static void unprepare(std::tuple<Args...>& t, std::index_sequence<I...>) {
+        (PrepareParam<std::tuple_element_t<I, std::tuple<Args...>>>::unprepare(
+             std::get<I>(t)
+         ),
+         ...);
+    }
+    static void prepare(std::tuple<Args...>& t) {
+        prepare(t, std::index_sequence_for<Args...>());
+    }
+    static void unprepare(std::tuple<Args...>& t) {
+        unprepare(t, std::index_sequence_for<Args...>());
+    }
+};
+
+template <typename... Args>
+struct ParamResolver<std::tuple<Args...>> {
+    using param_data_t =
+        typename ParamResolve<std::tuple<Args...>>::root_params;
+
+    param_data_t m_param_data;
+
+    ParamResolver(World* src, World* dst, LocalData* local_data)
+        : m_param_data(GetParams<param_data_t>::get(src, dst, local_data)) {}
+
+    void prepare() { PrepareParam<param_data_t>::prepare(m_param_data); };
+    void unprepare() { PrepareParam<param_data_t>::unprepare(m_param_data); };
+
+    std::tuple<Args...> resolve() {
+        return ParamResolve<std::tuple<Args...>>::resolve_from_root(m_param_data
+        );
+    }
+};
+
+struct SystemParamInfo {
+    bool has_command = false;
+    bool has_query   = false;
+    std::vector<std::tuple<
+        entt::dense_set<std::type_index>,
+        entt::dense_set<std::type_index>,
+        entt::dense_set<std::type_index>>>
+        query_types;
+    entt::dense_set<std::type_index> resource_types;
+    entt::dense_set<std::type_index> resource_const;
+    entt::dense_set<std::type_index> event_read_types;
+    entt::dense_set<std::type_index> event_write_types;
+
+    bool conflict_with(const SystemParamInfo& other) const {
+        // use command and query at the same time is now always thread safe
+        // if (has_command && (other.has_command || other.has_query)) {
+        //     return true;
+        // }
+        // if (other.has_command && (has_command || has_query)) {
+        //     return true;
+        // }
+        // check if queries conflict
+        static auto query_conflict =
+            [](const std::tuple<
+                   entt::dense_set<std::type_index>,
+                   entt::dense_set<std::type_index>,
+                   entt::dense_set<std::type_index>>& query,
+               const std::tuple<
+                   entt::dense_set<std::type_index>,
+                   entt::dense_set<std::type_index>,
+                   entt::dense_set<std::type_index>>& other_query) -> bool {
+            auto&& [get_a, with_a, without_a] = query;
+            auto&& [get_b, with_b, without_b] = other_query;
+            for (auto& type : without_a) {
+                if (get_b.contains(type) || with_b.contains(type)) return false;
+            }
+            for (auto& type : without_b) {
+                if (get_a.contains(type) || with_a.contains(type)) return false;
+            }
+            for (auto& type : get_a) {
+                if (get_b.contains(type) || with_b.contains(type)) return true;
+            }
+            for (auto& type : get_b) {
+                if (get_a.contains(type) || with_a.contains(type)) return true;
+            }
+            return false;
+        };
+        for (auto& query : query_types) {
+            for (auto& other_query : other.query_types) {
+                if (query_conflict(query, other_query)) {
+                    return true;
+                }
+            }
+        }
+        // check if resources conflict
+        for (auto& res : resource_types) {
+            if (other.resource_types.contains(res) ||
+                other.resource_const.contains(res)) {
+                return true;
+            }
+        }
+        for (auto& res : other.resource_types) {
+            if (resource_types.contains(res) || resource_const.contains(res)) {
+                return true;
+            }
+        }
+        // check if events conflict
+        // currently event read and event write can all modify the
+        // queue, but in future maybe we will replace it by a
+        // thread safe queue
+        for (auto& event : event_read_types) {
+            if (other.event_read_types.contains(event) ||
+                other.event_write_types.contains(event)) {
+                return true;
+            }
+        }
+        for (auto& event : other.event_read_types) {
+            if (event_read_types.contains(event) ||
+                event_write_types.contains(event)) {
+                return true;
+            }
+        }
+        for (auto& event : event_write_types) {
+            if (other.event_read_types.contains(event) ||
+                other.event_write_types.contains(event)) {
+                return true;
+            }
+        }
+        for (auto& event : other.event_write_types) {
+            if (event_read_types.contains(event) ||
+                event_write_types.contains(event)) {
+                return true;
+            }
+        }
+        return false;
+    }
+};
+
+template <typename T>
+struct SystemParamInfoWrite;
+
+template <typename T>
+struct SystemParamInfoWrite<Local<T>> {
+    static void add(SystemParamInfo& src, SystemParamInfo& dst) {}
+};
+
+template <typename T>
+struct SystemParamInfoWrite<Res<T>> {
+    static void add(SystemParamInfo& src, SystemParamInfo& dst) {
+        dst.resource_const.emplace(typeid(T));
+    }
+};
+
+template <typename T>
+struct SystemParamInfoWrite<ResMut<T>> {
+    static void add(SystemParamInfo& src, SystemParamInfo& dst) {
+        if constexpr (std::is_const_v<T> || external_thread_safe_v<T>) {
+            dst.resource_const.emplace(typeid(T));
+        } else {
+            dst.resource_types.emplace(typeid(T));
+        }
+    }
+};
+
+template <typename T>
+struct SystemParamInfoWrite<EventReader<T>> {
+    static void add(SystemParamInfo& src, SystemParamInfo& dst) {
+        dst.event_read_types.emplace(typeid(T));
+    }
+};
+template <typename T>
+struct SystemParamInfoWrite<EventWriter<T>> {
+    static void add(SystemParamInfo& src, SystemParamInfo& dst) {
+        dst.event_write_types.emplace(typeid(T));
+    }
+};
+
+template <typename T>
+struct QueryTypeDecay {
+    using type = T;
+};
+template <typename T>
+struct QueryTypeDecay<Has<T>> {
+    using type = T;
+};
+template <typename T>
+struct QueryTypeDecay<Opt<T>> {
+    using type = T;
+};
+template <>
+struct QueryTypeDecay<Entity> {
+    using type = const Entity;
+};
+
+template <typename G, typename W, typename WO>
+struct SystemParamInfoWrite<Query<G, W, WO>> {
+    template <typename T>
+    struct query_info_write {
+        static void add(SystemParamInfo& src, SystemParamInfo& dst) {}
+    };
+    template <typename... Args>
+    struct query_info_write<With<Args...>> {
+        static void add(SystemParamInfo& src, SystemParamInfo& dst) {
+            auto&& [mutable_types, const_types, exclude_types] =
+                dst.query_types.back();
+            (const_types.emplace(typeid(std::decay_t<Args>)), ...);
+        }
+    };
+    template <typename... Args>
+    struct query_info_write<Without<Args...>> {
+        static void add(SystemParamInfo& src, SystemParamInfo& dst) {
+            auto&& [mutable_types, const_types, exclude_types] =
+                dst.query_types.back();
+            (exclude_types.emplace(typeid(std::decay_t<Args>)), ...);
+        }
+    };
+    template <typename... Args>
+    struct query_info_write<Get<Args...>> {
+        template <typename T>
+        struct write_single {
+            static void add(SystemParamInfo& src, SystemParamInfo& dst) {
+                auto&& [mutable_types, const_types, exclude_types] =
+                    dst.query_types.back();
+                if constexpr (std::is_const_v<T> || external_thread_safe_v<T>) {
+                    const_types.emplace(typeid(std::decay_t<T>));
+                } else {
+                    mutable_types.emplace(typeid(std::decay_t<T>));
+                }
+            }
+        };
+        static void add(SystemParamInfo& src, SystemParamInfo& dst) {
+            (write_single<typename QueryTypeDecay<Args>::type>::add(src, dst),
+             ...);
+        }
+    };
+    static void add(SystemParamInfo& src, SystemParamInfo& dst) {
+        dst.query_types.emplace_back(
+            entt::dense_set<std::type_index>{},
+            entt::dense_set<std::type_index>{},
+            entt::dense_set<std::type_index>{}
+        );
+        query_info_write<G>::add(src, dst);
+        query_info_write<W>::add(src, dst);
+        query_info_write<WO>::add(src, dst);
+    }
+};
+
+template <>
+struct SystemParamInfoWrite<Command> {
+    static void add(SystemParamInfo& src, SystemParamInfo& dst) {
+        dst.has_command = true;
+    }
+};
+
+template <typename T>
+struct SystemParamInfoWrite<Extract<T>> {
+    static void add(SystemParamInfo& src, SystemParamInfo& dst) {
+        SystemParamInfoWrite<T>::add(dst, src);
+    }
+};
+
+template <typename... Args>
+struct SystemParamInfoWrite<std::tuple<Args...>> {
+    static void add(SystemParamInfo& src, SystemParamInfo& dst) {
+        (SystemParamInfoWrite<Args>::add(src, dst), ...);
     }
 };
 
 template <typename Ret>
 struct BasicSystem {
    protected:
-    entt::dense_map<std::type_index, std::shared_ptr<void>> m_locals;
+    LocalData m_locals;
     std::function<Ret(World*, World*, BasicSystem*)> m_func;
     double factor;
     double avg_time;  // in milliseconds
-    struct param_info {
-        bool has_command = false;
-        bool has_query   = false;
-        std::vector<std::tuple<
-            entt::dense_set<std::type_index>,
-            entt::dense_set<std::type_index>,
-            entt::dense_set<std::type_index>>>
-            query_types;
-        entt::dense_set<std::type_index> resource_types;
-        entt::dense_set<std::type_index> resource_const;
-        entt::dense_set<std::type_index> event_read_types;
-        entt::dense_set<std::type_index> event_write_types;
-
-        bool conflict_with(const param_info& other) const {
-            // use command and query at the same time is now always thread safe
-            // if (has_command && (other.has_command || other.has_query)) {
-            //     return true;
-            // }
-            // if (other.has_command && (has_command || has_query)) {
-            //     return true;
-            // }
-            // check if queries conflict
-            static auto query_conflict =
-                [](const std::tuple<
-                       entt::dense_set<std::type_index>,
-                       entt::dense_set<std::type_index>,
-                       entt::dense_set<std::type_index>>& query,
-                   const std::tuple<
-                       entt::dense_set<std::type_index>,
-                       entt::dense_set<std::type_index>,
-                       entt::dense_set<std::type_index>>& other_query) -> bool {
-                auto&& [get_a, with_a, without_a] = query;
-                auto&& [get_b, with_b, without_b] = other_query;
-                for (auto& type : without_a) {
-                    if (get_b.contains(type) || with_b.contains(type))
-                        return false;
-                }
-                for (auto& type : without_b) {
-                    if (get_a.contains(type) || with_a.contains(type))
-                        return false;
-                }
-                for (auto& type : get_a) {
-                    if (get_b.contains(type) || with_b.contains(type))
-                        return true;
-                }
-                for (auto& type : get_b) {
-                    if (get_a.contains(type) || with_a.contains(type))
-                        return true;
-                }
-                return false;
-            };
-            for (auto& query : query_types) {
-                for (auto& other_query : other.query_types) {
-                    if (query_conflict(query, other_query)) {
-                        return true;
-                    }
-                }
-            }
-            // check if resources conflict
-            for (auto& res : resource_types) {
-                if (other.resource_types.contains(res) ||
-                    other.resource_const.contains(res)) {
-                    return true;
-                }
-            }
-            for (auto& res : other.resource_types) {
-                if (resource_types.contains(res) ||
-                    resource_const.contains(res)) {
-                    return true;
-                }
-            }
-            // check if events conflict
-            // currently event read and event write can all modify the
-            // queue, but in future maybe we will replace it by a
-            // thread safe queue
-            for (auto& event : event_read_types) {
-                if (other.event_read_types.contains(event) ||
-                    other.event_write_types.contains(event)) {
-                    return true;
-                }
-            }
-            for (auto& event : other.event_read_types) {
-                if (event_read_types.contains(event) ||
-                    event_write_types.contains(event)) {
-                    return true;
-                }
-            }
-            for (auto& event : event_write_types) {
-                if (other.event_read_types.contains(event) ||
-                    other.event_write_types.contains(event)) {
-                    return true;
-                }
-            }
-            for (auto& event : other.event_write_types) {
-                if (event_read_types.contains(event) ||
-                    event_write_types.contains(event)) {
-                    return true;
-                }
-            }
-            return false;
-        }
-    } system_param_src, system_param_dst;
-
-    template <typename Arg>
-    struct param_add {
-        static void add(entt::dense_set<std::type_index>& infos) {
-            infos.emplace(typeid(std::remove_const_t<Arg>));
-        }
-    };
-
-    template <typename Arg>
-    struct cparam_add {
-        static void add(entt::dense_set<std::type_index>& infos) {
-            if constexpr (std::is_const_v<Arg> || external_thread_safe_v<Arg>)
-                infos.emplace(typeid(std::remove_const_t<Arg>));
-        }
-    };
-
-    template <typename Arg>
-    struct mparam_add {
-        static void add(entt::dense_set<std::type_index>& infos) {
-            if constexpr (!std::is_const_v<Arg> && !external_thread_safe_v<Arg>)
-                infos.emplace(typeid(Arg));
-        }
-    };
-
-    template <typename T>
-    struct infos_adder {
-        static void add(param_info& src_info, param_info& dst_info) {
-            if constexpr (std::same_as<Command, std::decay_t<T>>) {
-                dst_info.has_command = true;
-            }
-        }
-    };
-
-    template <typename... Args>
-    void add_infos() {
-        (infos_adder<Args>().add(system_param_src, system_param_dst), ...);
-    }
-
-    template <typename T>
-    Local<T> get_local() {
-        if (auto it = m_locals.find(std::type_index(typeid(T)));
-            it == m_locals.end()) {
-            m_locals.emplace(
-                std::type_index(typeid(T)),
-                std::static_pointer_cast<void>(std::make_shared<T>())
-            );
-        }
-        return Local<T>(
-            static_cast<T*>(m_locals[std::type_index(typeid(T))].get())
-        );
-    }
-
-    template <typename T>
-    struct LocalRetriever {};
-
-    template <typename T>
-    struct LocalRetriever<Local<T>> {
-        static Local<T> get(BasicSystem* sys) { return sys->get_local<T>(); }
-    };
+    SystemParamInfo system_param_src, system_param_dst;
 
     entt::dense_set<const BasicSystem*> m_contrary_to;
     entt::dense_set<const BasicSystem*> m_not_contrary_to;
@@ -1256,31 +1584,35 @@ struct BasicSystem {
         }
     }
     const double get_avg_time() const { return avg_time; }
-    template <typename T>
-    T retrieve(World* src, World* dst) {
-        if constexpr (index::is_template_of<Local, T>::value) {
-            return LocalRetriever<T>::get(this);
-        } else {
-            return World::param_type<T>::get(src, dst);
-        }
-    }
     template <typename... Args>
     BasicSystem(std::function<Ret(Args...)> func)
         : m_func([func](World* src, World* dst, BasicSystem* sys) {
-              return func(sys->retrieve<Args>(src, dst)...);
+              ParamResolver<std::tuple<Args...>> param_resolver(
+                  src, dst, &sys->m_locals
+              );
+              param_resolver.prepare();
+              return std::apply(func, param_resolver.resolve());
+              param_resolver.unprepare();
           }),
           factor(0.1),
           avg_time(1) {
-        add_infos<Args...>();
+        SystemParamInfoWrite<typename ParamResolve<std::tuple<
+            Args...>>::root_params>::add(system_param_src, system_param_dst);
     }
     template <typename... Args>
     BasicSystem(Ret (*func)(Args...))
         : m_func([func](World* src, World* dst, BasicSystem* sys) {
-              return func(sys->retrieve<Args>(src, dst)...);
+              ParamResolver<std::tuple<Args...>> param_resolver(
+                  src, dst, &sys->m_locals
+              );
+              param_resolver.prepare();
+              return std::apply(func, param_resolver.resolve());
+              param_resolver.unprepare();
           }),
           factor(0.1),
           avg_time(1) {
-        add_infos<Args...>();
+        SystemParamInfoWrite<typename ParamResolve<std::tuple<
+            Args...>>::root_params>::add(system_param_src, system_param_dst);
     }
     template <typename T>
         requires requires(T t) {
@@ -1316,119 +1648,6 @@ struct BasicSystem {
             return ret;
         }
     }
-};
-
-template <typename T>
-struct QueryTypeDecay {
-    using type = T;
-};
-template <typename T>
-struct QueryTypeDecay<Has<T>> {
-    using type = T;
-};
-template <typename T>
-struct QueryTypeDecay<Opt<T>> {
-    using type = T;
-};
-template <>
-struct QueryTypeDecay<Entity> {
-    using type = const Entity;
-};
-
-template <typename Ret>
-template <typename... Includes, typename... Withs, typename... Excludes>
-struct BasicSystem<Ret>::infos_adder<
-    Query<Get<Includes...>, With<Withs...>, Without<Excludes...>>> {
-    static void add(param_info& src_info, param_info& dst_info) {
-        dst_info.has_query = true;
-        auto& query_types  = dst_info.query_types;
-        entt::dense_set<std::type_index> query_include_types,
-            query_exclude_types, query_include_const;
-        (mparam_add<typename QueryTypeDecay<Includes>::type>::add(
-             query_include_types
-         ),
-         ...);
-        (cparam_add<typename QueryTypeDecay<Includes>::type>::add(
-             query_include_const
-         ),
-         ...);
-        (param_add<Withs>::add(query_include_const), ...);
-        (param_add<Excludes>::add(query_exclude_types), ...);
-        query_types.emplace_back(
-            std::move(query_include_types), std::move(query_include_const),
-            std::move(query_exclude_types)
-        );
-    }
-};
-
-template <typename Ret>
-template <typename... Includes, typename... Excludes, typename T>
-struct BasicSystem<Ret>::infos_adder<
-    Query<Get<Includes...>, Without<Excludes...>, T>> {
-    static void add(param_info& src_info, param_info& dst_info) {
-        dst_info.has_query = true;
-        auto& query_types  = dst_info.query_types;
-        entt::dense_set<std::type_index> query_include_types,
-            query_exclude_types, query_include_const;
-        (mparam_add<Includes>::add(query_include_types), ...);
-        (cparam_add<Includes>::add(query_include_const), ...);
-        (param_add<Excludes>::add(query_exclude_types), ...);
-        query_types.emplace_back(
-            std::move(query_include_types), std::move(query_include_const),
-            std::move(query_exclude_types)
-        );
-    }
-};
-
-template <typename Ret>
-template <typename T>
-struct BasicSystem<Ret>::infos_adder<Res<T>> {
-    static void add(param_info& src_info, param_info& dst_info) {
-        auto& resource_const = dst_info.resource_const;
-        param_add<T>().add(resource_const);
-    }
-};
-
-template <typename Ret>
-template <typename T>
-struct BasicSystem<Ret>::infos_adder<ResMut<T>> {
-    static void add(param_info& src_info, param_info& dst_info) {
-        auto& resource_types = dst_info.resource_types;
-        param_add<T>().add(resource_types);
-    }
-};
-
-template <typename Ret>
-template <typename T>
-struct BasicSystem<Ret>::infos_adder<EventReader<T>> {
-    static void add(param_info& src_info, param_info& dst_info) {
-        auto& event_read_types = dst_info.event_read_types;
-        param_add<T>().add(event_read_types);
-    }
-};
-
-template <typename Ret>
-template <typename T>
-struct BasicSystem<Ret>::infos_adder<EventWriter<T>> {
-    static void add(param_info& src_info, param_info& dst_info) {
-        auto& event_write_types = dst_info.event_write_types;
-        param_add<T>().add(event_write_types);
-    }
-};
-
-template <typename Ret>
-template <typename T>
-struct BasicSystem<Ret>::infos_adder<Extract<T>> {
-    static void add(param_info& src_info, param_info& dst_info) {
-        // reverse the order of src and dst for extracted parameters
-        infos_adder<T>().add(dst_info, src_info);
-    }
-};
-
-template <typename Ret>
-template <typename T>
-struct BasicSystem<Ret>::infos_adder<Local<T>> {
-    static void add(param_info& src_info, param_info& dst_info) {}
 };
 
 struct SystemSet {
