@@ -241,6 +241,24 @@ struct Res {
         const std::shared_ptr<std::shared_mutex>& mutex)
         : m_res(std::static_pointer_cast<T>(resource)), m_mutex(mutex) {}
     Res() : m_res(nullptr), m_mutex(nullptr) {}
+    Res(const Res& other) {
+        m_res   = other.m_res;
+        m_mutex = other.m_mutex;
+    }
+    Res(Res&& other) {
+        m_res   = other.m_res;
+        m_mutex = other.m_mutex;
+    }
+    Res& operator=(const Res& other) {
+        m_res   = other.m_res;
+        m_mutex = other.m_mutex;
+        return *this;
+    }
+    Res& operator=(Res&& other) {
+        m_res   = other.m_res;
+        m_mutex = other.m_mutex;
+        return *this;
+    }
 
     /**
      * @brief Check if the resource has a value.
@@ -292,6 +310,24 @@ struct ResMut {
     )
         : m_res(std::static_pointer_cast<T>(resource)), m_mutex(mutex) {}
     ResMut() : m_res(nullptr), m_mutex(nullptr) {}
+    ResMut(const ResMut& other) {
+        m_res   = other.m_res;
+        m_mutex = other.m_mutex;
+    }
+    ResMut(ResMut&& other) {
+        m_res   = other.m_res;
+        m_mutex = other.m_mutex;
+    }
+    ResMut& operator=(const ResMut& other) {
+        m_res   = other.m_res;
+        m_mutex = other.m_mutex;
+        return *this;
+    }
+    ResMut& operator=(ResMut&& other) {
+        m_res   = other.m_res;
+        m_mutex = other.m_mutex;
+        return *this;
+    }
 
     /**
      * @brief Check if the resource has a value.
@@ -713,7 +749,11 @@ struct Query<Get<Gets...>, With<Withs...>, Without<Withouts...>> {
                 return m_iter != rhs.m_iter;
             }
             auto operator*() {
-                return std::forward_as_tuple(
+                // explicitly declaring tuple type to avoid returning temporary
+                // rvalue in tuple
+                return std::tuple<decltype(GetFromViewIterOrRegistry<Gets>::get(
+                    *m_iter, m_registry
+                ))...>(
                     GetFromViewIterOrRegistry<Gets>::get(*m_iter, m_registry)...
                 );
             }
@@ -735,13 +775,24 @@ struct Query<Get<Gets...>, With<Withs...>, Without<Withouts...>> {
         m_view =
             FromTupleGetView<get_type, std::tuple<Withouts...>>::get(registry);
     }
+    Query(const Query&) = default;
+    Query(Query&& other) : Query(other) {}
+    Query& operator=(const Query&) = default;
+    Query& operator=(Query&& other) {
+        m_view   = other.m_view;
+        registry = other.registry;
+        return *this;
+    }
 
     /*! @brief Get the iterator for the query.
      * @return The iterator for the query.
      */
     auto iter() { return iterable(m_view.each(), registry); }
     auto get(entt::entity id) {
-        return std::forward_as_tuple(
+        // explicitly declaring tuple type to avoid returning temporary rvalue
+        // in tuple
+        return std::tuple<
+            decltype(GetFromViewRegistry<Gets>::get(m_view, registry, id))...>(
             GetFromViewRegistry<Gets>::get(m_view, registry, id)...
         );
     }
@@ -1177,22 +1228,25 @@ struct ParamResolve<std::tuple<Args...>> {
     };
     using root_params = typename RootParams<out_params, in_params>::type;
     template <size_t I>
-    static auto&& resolve_i(in_params&& in) {
-        using type = std::tuple_element_t<I, in_params>;
+    static auto resolve_i(in_params&& in) {
+        using type     = std::tuple_element_t<I, in_params>;
+        using out_type = std::tuple_element_t<I, out_params>;
         if constexpr (IsTupleV<type>::value) {
-            // use from system_param to resolve the tuple
-            return std::apply(
-                std::tuple_element_t<I, out_params>::from_system_param,
-                std::forward<type>(std::get<I>(in))
-            );
+            if constexpr (IsTupleV<out_type>::value) {
+                // this is a tuple, so it needs to be resolved recursively
+                return ParamResolve<out_type>::resolve(std::move(std::get<I>(in)
+                ));
+            } else {
+                // this is a FromSystemParam, so it should just be constructed
+                return std::apply(out_type::from_system_param, std::get<I>(in));
+            }
         } else {
             return std::forward<type>(std::get<I>(in));
         }
     }
     template <size_t... I>
     static out_params resolve(in_params&& in, std::index_sequence<I...>) {
-        return std::forward_as_tuple(resolve_i<I>(std::forward<in_params>(in)
-        )...);
+        return std::make_tuple(resolve_i<I>(std::forward<in_params>(in))...);
     }
     static out_params resolve(in_params&& in) {
         if constexpr (std::same_as<in_params, out_params>) {
@@ -1203,7 +1257,7 @@ struct ParamResolve<std::tuple<Args...>> {
             );
         }
     }
-    static auto&& resolve_from_root(root_params& in_addr) {
+    static out_params resolve_from_root(root_params& in_addr) {
         if constexpr (std::same_as<root_params, out_params>) {
             return std::forward<root_params>(in_addr);
         } else {
@@ -1262,9 +1316,7 @@ struct GetParams {
 template <typename... Args>
 struct GetParams<std::tuple<Args...>> {
     static auto get(World* src, World* dst, LocalData* local_data) {
-        return std::forward_as_tuple(
-            GetParams<Args>::get(src, dst, local_data)...
-        );
+        return std::make_tuple(GetParams<Args>::get(src, dst, local_data)...);
     }
 };
 
@@ -1315,13 +1367,18 @@ struct ParamResolver<std::tuple<Args...>> {
     using param_data_t =
         typename ParamResolve<std::tuple<Args...>>::root_params;
 
+   private:
     param_data_t m_param_data;
-
-    ParamResolver(World* src, World* dst, LocalData* local_data)
-        : m_param_data(GetParams<param_data_t>::get(src, dst, local_data)) {}
 
     void prepare() { PrepareParam<param_data_t>::prepare(m_param_data); };
     void unprepare() { PrepareParam<param_data_t>::unprepare(m_param_data); };
+
+   public:
+    ParamResolver(World* src, World* dst, LocalData* local_data)
+        : m_param_data(GetParams<param_data_t>::get(src, dst, local_data)) {
+        prepare();
+    }
+    ~ParamResolver() { unprepare(); };
 
     std::tuple<Args...> resolve() {
         return ParamResolve<std::tuple<Args...>>::resolve_from_root(m_param_data
@@ -1590,9 +1647,7 @@ struct BasicSystem {
               ParamResolver<std::tuple<Args...>> param_resolver(
                   src, dst, &sys->m_locals
               );
-              param_resolver.prepare();
               return std::apply(func, param_resolver.resolve());
-              param_resolver.unprepare();
           }),
           factor(0.1),
           avg_time(1) {
@@ -1605,9 +1660,7 @@ struct BasicSystem {
               ParamResolver<std::tuple<Args...>> param_resolver(
                   src, dst, &sys->m_locals
               );
-              param_resolver.prepare();
               return std::apply(func, param_resolver.resolve());
-              param_resolver.unprepare();
           }),
           factor(0.1),
           avg_time(1) {
