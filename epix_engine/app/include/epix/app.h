@@ -1995,7 +1995,6 @@ struct Schedule {
 };
 struct ScheduleInfo : public ScheduleId {
     using ScheduleId::ScheduleId;
-    inline operator ScheduleId() const { return *this; }
     std::vector<std::function<void(SystemAddInfo&)>> transforms;
 };
 
