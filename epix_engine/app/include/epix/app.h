@@ -190,6 +190,8 @@ struct Local {
     Local(T* t) : t(t) {}
     T& operator*() { return *t; }
     T* operator->() { return t; }
+    const T& operator*() const { return *t; }
+    const T* operator->() const { return t; }
 
    private:
     T* t;
@@ -263,17 +265,18 @@ struct Res {
     /**
      * @brief Check if the resource has a value.
      */
-    bool has_value() { return m_res != nullptr; }
+    bool has_value() const { return m_res != nullptr; }
 
-    operator bool() { return has_value(); }
-    bool operator!() { return !has_value(); }
+    operator bool() const { return has_value(); }
+    bool operator!() const { return !has_value(); }
 
-    operator ResMut<T>() { return ResMut<T>(m_res, m_mutex); }
+    // const T& operator*() { return *m_res; }
+    // const T* operator->() { return m_res.get(); }
+    const T& operator*() const { return *m_res; }
+    const T* operator->() const { return m_res.get(); }
 
-    const T& operator*() { return *m_res; }
-    const T* operator->() { return m_res.get(); }
-
-    const T* get() { return m_res.get(); }
+    // const T* get() { return m_res.get(); }
+    const T* get() const { return m_res.get(); }
 };
 template <typename T>
 struct ResMut {
@@ -332,17 +335,20 @@ struct ResMut {
     /**
      * @brief Check if the resource has a value.
      */
-    bool has_value() { return m_res != nullptr; }
+    bool has_value() const { return m_res != nullptr; }
 
-    operator bool() { return has_value(); }
-    bool operator!() { return !has_value(); }
+    operator bool() const { return has_value(); }
+    bool operator!() const { return !has_value(); }
 
-    operator Res<T>() { return Res<T>(m_res, m_mutex); }
+    operator Res<T>() const { return Res<T>(m_res, m_mutex); }
 
     T& operator*() { return *m_res; }
+    const T& operator*() const { return *m_res; }
     T* operator->() { return m_res.get(); }
+    const T* operator->() const { return m_res.get(); }
 
     T* get() { return m_res.get(); }
+    const T* get() const { return m_res.get(); }
 };
 struct UntypedRes {
     std::shared_ptr<void> resource;
@@ -357,131 +363,235 @@ struct UntypedRes {
         return ResMut<T>(resource, mutex);
     }
 };
-struct TickableEventQueue {
-    virtual void tick() = 0;
-};
 template <typename T>
-struct EventQueue : public TickableEventQueue {
+struct Events {
    private:
-    std::deque<T> m_queue;
-    std::deque<int> m_lifetime;
-    mutable std::shared_mutex m_mutex;
+    std::deque<std::pair<T, uint32_t>> m_events;  // event lifetime pair
+    uint32_t m_head;
+    uint32_t m_tail;  // m_tail - m_head should be equal to m_events.size()
 
    public:
-    EventQueue()                             = default;
-    EventQueue(const EventQueue&)            = delete;
-    EventQueue(EventQueue&&)                 = delete;
-    EventQueue& operator=(const EventQueue&) = delete;
-    EventQueue& operator=(EventQueue&&)      = delete;
-    ~EventQueue()                            = default;
-
-    void tick() override {
-        std::unique_lock lock(m_mutex);
-        while (!m_queue.empty()) {
-            auto& front = m_queue.front();
-            if (m_lifetime.front() == 0) {
-                m_queue.pop_front();
-                m_lifetime.pop_front();
-            } else {
-                break;
-            }
-        }
-        for (auto it = m_lifetime.begin(); it != m_lifetime.end(); it++) {
-            (*it)--;
-        }
+    Events() : m_head(0), m_tail(0) {}
+    Events(const Events&) = delete;
+    Events(Events&& other) {
+        m_events = std::move(other.m_events);
+        m_head   = other.m_head;
+        m_tail   = other.m_tail;
+    }
+    Events& operator=(const Events&) = delete;
+    Events& operator=(Events&& other) {
+        m_events = std::move(other.m_events);
+        m_head   = other.m_head;
+        m_tail   = other.m_tail;
+        return *this;
     }
 
+    void push(const T& event) {
+        m_events.emplace_back(event, 1);
+        m_tail++;
+    }
+    void push(T&& event) {
+        m_events.emplace_back(std::move(event), 1);
+        m_tail++;
+    }
     template <typename... Args>
     void emplace(Args&&... args) {
-        std::unique_lock lock(m_mutex);
-        m_queue.emplace_back(std::forward<Args>(args)...);
-        m_lifetime.emplace_back(1);
+        m_events.emplace_back(T(std::forward<Args>(args)...), 1);
+        m_tail++;
     }
-    void push(T&& value) {
-        std::unique_lock lock(m_mutex);
-        m_queue.emplace_back(std::move(value));
-        m_lifetime.emplace_back(1);
-    }
-    void push(const T& value) {
-        std::unique_lock lock(m_mutex);
-        m_queue.push_back(value);
-        m_lifetime.push_back(1);
+    void update() {
+        while (!m_events.empty() && m_events.front().second == 0) {
+            m_events.pop_front();
+            m_head++;
+        }
+        for (auto& event : m_events) {
+            if (event.second > 0) {
+                event.second--;
+            }
+        }
     }
     void clear() {
-        std::unique_lock lock(m_mutex);
-        m_queue.clear();
-        m_lifetime.clear();
+        m_events.clear();
+        m_head = m_tail;
     }
-    bool empty() const {
-        std::shared_lock lock(m_mutex);
-        return m_queue.empty();
+    bool empty() const { return m_events.empty(); }
+    size_t size() const { return m_events.size(); }
+    uint32_t head() const { return m_head; }
+    uint32_t tail() const { return m_tail; }
+    T* get(uint32_t index) {
+        if (index >= m_head && index < m_tail) {
+            return &m_events[index - m_head].first;
+        }
+        return nullptr;
     }
-    std::optional<T> try_pop() {
-        std::unique_lock lock(m_mutex);
-        if (m_queue.empty()) return std::nullopt;
-        T value = std::move(m_queue.front());
-        m_queue.pop_front();
-        m_lifetime.pop_front();
-        return std::move(value);
+    const T* get(uint32_t index) const {
+        if (index >= m_head && index < m_tail) {
+            return &m_events[index - m_head].first;
+        }
+        return nullptr;
     }
-    struct iterator {
-        struct iter {
-            typename std::deque<T>::iterator it;
-            iter operator++() {
-                it++;
-                return *this;
-            }
-            bool operator!=(const iter& other) { return it != other.it; }
-            const T& operator*() { return *it; }
-        };
-
-       private:
-        EventQueue* queue;
-        std::shared_lock<std::shared_mutex> lock;
-
-       public:
-        iterator(EventQueue* queue) : queue(queue), lock(queue->m_mutex) {}
-        iter begin() { return iter{queue->m_queue.begin()}; }
-        iter end() { return iter{queue->m_queue.end()}; }
-    };
-    iterator read() { return iterator(this); }
+};
+template <typename T>
+struct EventPointer {
+    uint32_t index = 0;
 };
 template <typename T>
 struct EventReader {
+    struct iterator {
+        uint32_t index;
+        const Events<T>* events;
+        iterator(uint32_t index, const Events<T>* events)
+            : index(index), events(events) {}
+        iterator& operator++() {
+            index++;
+            return *this;
+        }
+        bool operator==(const iterator& rhs) const {
+            return index == rhs.index;
+        }
+        bool operator!=(const iterator& rhs) const {
+            return index != rhs.index;
+        }
+        const T& operator*() {
+            auto event = events->get(index);
+            return *event;
+        }
+    };
+    struct iterator_index {
+        uint32_t index;
+        const Events<T>* events;
+        iterator_index(uint32_t index, const Events<T>* events)
+            : index(index), events(events) {}
+        iterator_index& operator++() {
+            index++;
+            return *this;
+        }
+        bool operator==(const iterator_index& rhs) const {
+            return index == rhs.index;
+        }
+        bool operator!=(const iterator_index& rhs) const {
+            return index != rhs.index;
+        }
+        std::pair<uint32_t, const T&> operator*() {
+            auto event = events->get(index);
+            return {index, *event};
+        }
+    };
+    struct iterable {
+       private:
+        const uint32_t m_read_begin;
+        const Events<T>* m_events;
+        const iterator m_begin;
+        const iterator m_end;
+
+       public:
+        iterable(uint32_t read_begin, const Events<T>* events)
+            : m_read_begin(read_begin),
+              m_events(events),
+              m_begin(read_begin, events),
+              m_end(events->tail(), events) {}
+        iterator begin() { return m_begin; }
+        iterator end() { return m_end; }
+    };
+    struct iterable_index {
+       private:
+        const uint32_t m_read_begin;
+        const Events<T>* m_events;
+        const iterator_index m_begin;
+        const iterator_index m_end;
+
+       public:
+        iterable_index(uint32_t read_begin, const Events<T>* events)
+            : m_read_begin(read_begin),
+              m_events(events),
+              m_begin(read_begin, events),
+              m_end(events->tail(), events) {}
+        iterator_index begin() { return m_begin; }
+        iterator_index end() { return m_end; }
+    };
+
    private:
-    std::shared_ptr<EventQueue<T>> m_queue;
+    Local<EventPointer<T>> m_pointer;
+    Res<Events<T>> m_events;
+    EventReader(Local<EventPointer<T>> pointer, Res<Events<T>> events)
+        : m_pointer(pointer), m_events(events) {}
 
    public:
-    EventReader(const std::shared_ptr<TickableEventQueue>& queue)
-        : m_queue(std::dynamic_pointer_cast<EventQueue<T>>(queue)) {}
-    EventReader(const std::shared_ptr<EventQueue<T>>& queue) : m_queue(queue) {}
+    static EventReader<T> from_system_param(
+        Local<EventPointer<T>> pointer, Res<Events<T>> events
+    ) {
+        pointer->index = std::max(pointer->index, events->head());
+        pointer->index = std::min(pointer->index, events->tail());
+        return EventReader<T>(pointer, events);
+    }
 
-    operator bool() { return m_queue != nullptr; }
-
-    auto read() { return m_queue->read(); }
-    void clear() { m_queue->clear(); }
-    bool empty() { return m_queue->empty(); }
-    std::optional<T> try_get() { return m_queue->try_pop(); }
+    /**
+     * @brief Iterating through events this reader has not yet read.
+     *
+     * @return `iterable` object that can be used to iterate through events.
+     */
+    auto read() {
+        iterable iter(m_pointer->index, m_events.get());
+        m_pointer->index = m_events->tail();
+        return iter;
+    }
+    auto read_with_index() {
+        iterable_index iter(m_pointer->index, m_events.get());
+        m_pointer->index = m_events->tail();
+        return iter;
+    }
+    /**
+     * @brief Get the remaining events this reader has not yet read.
+     *
+     * @return `size_t` number of events remaining.
+     */
+    size_t size() const { return m_events->tail() - m_pointer->index; }
+    /**
+     * @brief Read the next event.
+     *
+     * @return `T*` pointer to the next event, or `nullptr` if there are no more
+     */
+    T* read_one() {
+        auto event = m_events->get(m_pointer->index);
+        if (event) {
+            m_pointer->index++;
+            return event;
+        } else {
+            return nullptr;
+        }
+    }
+    /**
+     * @brief Read the next event and its index.
+     *
+     * @return `std::pair<uint32_t, T*>` pair of the index and pointer to the
+     * next event, or {current_ptr, nullptr} if there are no more
+     */
+    std::pair<uint32_t, T*> read_one_index() {
+        auto pair =
+            std::make_pair(m_pointer->index, m_events->get(m_pointer->index));
+        if (pair.second) {
+            m_pointer->index++;
+        }
+        return pair;
+    }
+    bool empty() const { return m_pointer->index == m_events->tail(); }
 };
 template <typename T>
 struct EventWriter {
    private:
-    std::shared_ptr<EventQueue<T>> m_queue;
+    ResMut<Events<T>> m_events;
+    EventWriter(ResMut<Events<T>> events) : m_events(events) {}
 
    public:
-    EventWriter(const std::shared_ptr<TickableEventQueue>& queue)
-        : m_queue(std::dynamic_pointer_cast<EventQueue<T>>(queue)) {}
-    EventWriter(const std::shared_ptr<EventQueue<T>>& queue) : m_queue(queue) {}
-
-    operator bool() { return m_queue != nullptr; }
-
-    EventWriter& write(const T& event) {
-        m_queue->push(event);
-        return *this;
+    static EventWriter<T> from_system_param(ResMut<Events<T>> events) {
+        return EventWriter<T>(events);
     }
-    EventWriter& write(T&& event) {
-        m_queue->push(std::move(event));
-        return *this;
+
+    void write(const T& event) { m_events->push(event); }
+    void write(T&& event) { m_events->push(std::move(event)); }
+    template <typename... Args>
+    void emplace(Args&&... args) {
+        m_events->emplace(std::forward<Args>(args)...);
     }
 
     friend struct App;
@@ -822,12 +932,20 @@ struct Query<Get<Gets...>, Without<Withouts...>, W>
     : public Query<Get<Gets...>, With<>, Without<Withouts...>> {};
 template <typename T>
 struct Extract : public T {
-    template <typename... Args>
-    Extract(Args&&... args) : T(std::forward<Args>(args)...) {}
-    Extract(const T& other) : T(other) {}
-    Extract(T&& other) : T(std::move(other)) {}
+    using value_type = T;
+    using T::T;
+    Extract(const T& t) : T(t) {}
+    Extract(T&& t) : T(std::move(t)) {}
     Extract(const Extract& other) : T(other) {}
     Extract(Extract&& other) : T(std::move(other)) {}
+    Extract& operator=(const T& other) {
+        T::operator=(other);
+        return *this;
+    }
+    Extract& operator=(T&& other) {
+        T::operator=(std::move(other));
+        return *this;
+    }
     Extract& operator=(const Extract& other) {
         T::operator=(other);
         return *this;
@@ -883,24 +1001,37 @@ struct specialize_of<T<Args...>, T> {
 };
 
 template <typename T>
+struct ExtractType {
+    using type = T;
+};
+
+template <typename T>
+struct ExtractType<Extract<T>> {
+    using type = T;
+};
+
+template <typename T>
 concept ValidSystemParam =
     FromSystemParam<T> || specialize_of<T, Query>::value ||
     specialize_of<T, Local>::value || specialize_of<T, Res>::value ||
-    specialize_of<T, ResMut>::value || specialize_of<T, EventReader>::value ||
-    specialize_of<T, Extract>::value || specialize_of<T, EventWriter>::value ||
-    std::same_as<T, Command>;
+    specialize_of<T, ResMut>::value || std::same_as<T, Command> ||
+    (specialize_of<T, Extract>::value &&
+     (specialize_of<typename ExtractType<T>::type, Query>::value ||
+      specialize_of<typename ExtractType<T>::type, Local>::value ||
+      specialize_of<typename ExtractType<T>::type, Res>::value ||
+      specialize_of<typename ExtractType<T>::type, ResMut>::value ||
+      std::same_as<typename ExtractType<T>::type, Command> ||
+      FromSystemParam<typename ExtractType<T>::type>));
 
 struct World {
    private:
     entt::registry m_registry;
     entt::dense_map<std::type_index, UntypedRes> m_resources;
     std::shared_mutex m_resources_mutex;
-    entt::dense_map<std::type_index, std::shared_ptr<TickableEventQueue>>
-        m_events;
     WorldCommand m_command;
 
    public:
-    World() : m_resources(), m_resources_mutex(), m_events(), m_command(this) {}
+    World() : m_resources(), m_resources_mutex(), m_command(this) {}
 
     template <typename T>
     UntypedRes resource() {
@@ -1012,13 +1143,6 @@ struct World {
         }
     }
 
-    template <typename T>
-    void add_event() {
-        if (!m_events.contains(typeid(T))) {
-            m_events.emplace(typeid(T), std::make_shared<EventQueue<T>>());
-        }
-    }
-
     template <typename T, typename... Args>
         requires std::constructible_from<std::decay_t<T>, Args...> ||
                  is_bundle<T>
@@ -1084,32 +1208,6 @@ struct World::param_type<ResMut<T>> {
         return std::move(dst->resource<T>().template into_mut<T>());
     }
 };
-template <typename T>
-struct World::param_type<EventReader<T>> {
-    using out_type = EventReader<T>;
-    using in_type  = EventReader<T>;
-    static EventReader<T> get(World* src, World* dst) {
-        auto&& it = dst->m_events.find(typeid(T));
-        if (it == dst->m_events.end()) {
-            spdlog::error("Event {} not found", typeid(T).name());
-            throw std::runtime_error("Event not found");
-        }
-        return EventReader<T>(it->second);
-    }
-};
-template <typename T>
-struct World::param_type<EventWriter<T>> {
-    using out_type = EventWriter<T>;
-    using in_type  = EventWriter<T>;
-    static EventWriter<T> get(World* src, World* dst) {
-        auto&& it = dst->m_events.find(typeid(T));
-        if (it == dst->m_events.end()) {
-            spdlog::error("Event {} not found", typeid(T).name());
-            throw std::runtime_error("Event not found");
-        }
-        return EventWriter<T>(it->second);
-    }
-};
 template <typename G, typename W, typename WO>
 struct World::param_type<Query<G, W, WO>> {
     using out_type = Query<G, W, WO>;
@@ -1143,22 +1241,6 @@ struct World::param_type<Extract<ResMut<T>>> {
         return std::move(src->resource<T>().template into_mut<T>());
     }
 };
-template <typename T>
-struct World::param_type<Extract<EventReader<T>>> {
-    using out_type = Extract<EventReader<T>>;
-    using in_type  = Extract<EventReader<T>>;
-    static Extract<EventReader<T>> get(World* src, World* dst) {
-        return param_type<EventReader<T>>::get(dst, src);
-    }
-};
-template <typename T>
-struct World::param_type<Extract<EventWriter<T>>> {
-    using out_type = Extract<EventWriter<T>>;
-    using in_type  = Extract<EventWriter<T>>;
-    static Extract<EventWriter<T>> get(World* src, World* dst) {
-        return param_type<EventWriter<T>>::get(dst, src);
-    }
-};
 template <typename G, typename W, typename WO>
 struct World::param_type<Extract<Query<G, W, WO>>> {
     using out_type = Extract<Query<G, W, WO>>;
@@ -1169,43 +1251,44 @@ struct World::param_type<Extract<Query<G, W, WO>>> {
 };
 
 template <typename T>
-struct World::param_type<Local<T>> {
-    using out_type = Local<T>;
-    using in_type  = Local<T>;
-};
-
-template <FromSystemParam T>
-struct World::param_type<T> {
-    using out_type = T;
-    using in_type =
-        typename FunctionParam<decltype(T::from_system_param)>::type;
-    template <typename U>
-    struct helper;
-    template <typename... Args>
-    struct helper<std::tuple<Args...>> {
-        using type = std::tuple<typename param_type<Args>::type...>;
-        static T get(World* src, World* dst) {
-            return T::from_system_param(
-                World::param_type<Args>::get(src, dst)...
-            );
-        }
-    };
-    static T get(World* src, World* dst) {
-        return helper<typename FunctionParam<decltype(T::from_system_param
-        )>::type>::get(src, dst);
-    }
-};
-
-template <typename... Args>
-struct HasCustomParam {
-    static constexpr bool value =
-        ((ValidSystemParam<Args> && FromSystemParam<Args>) || ...);
-};
-
-template <typename T>
 struct ParamResolve {
-    using out_params = typename World::param_type<T>::out_type;
-    using in_params  = typename World::param_type<T>::in_type;
+    using out_params = T;
+    using in_params  = T;
+};
+template <typename T>
+struct ParamResolve<Extract<T>> {
+    using out_params = Extract<T>;
+    using in_params  = Extract<T>;
+};
+template <typename T>
+struct ParamResolve<Extract<Local<T>>> {
+    using out_params = Local<T>;
+    using in_params  = Local<T>;
+};
+template <FromSystemParam T>
+struct ParamResolve<T> {
+    using out_params = T;
+    using in_params =
+        typename FunctionParam<decltype(T::from_system_param)>::type;
+};
+template <typename T>
+struct TupleAddExtract {
+    using type = T;
+};
+template <typename... Args>
+struct TupleAddExtract<std::tuple<Args...>> {
+    using type = std::tuple<Extract<Args>...>;
+};
+template <FromSystemParam T>
+struct ParamResolve<Extract<T>> {
+    using out_params = Extract<T>;
+    using in_params  = typename TupleAddExtract<
+         typename FunctionParam<decltype(T::from_system_param)>::type>::type;
+};
+template <typename T>
+struct ParamResolve<Extract<Extract<T>>> {
+    using out_params = ParamResolve<T>::out_params;
+    using in_params  = ParamResolve<T>::in_params;
 };
 template <typename T>
 struct ParamResolve<Local<T>> {
@@ -1305,6 +1388,12 @@ struct GetParam {
         }
     }
 };
+// template <typename T>
+// struct GetParam<Extract<Extract<T>>> {
+//     static T get(World* src, World* dst, LocalData* local_data) {
+//         return GetParam<T>::get(src, dst, local_data);
+//     }
+// };
 
 template <typename T>
 struct GetParams {
@@ -2101,7 +2190,7 @@ void info_append(SystemAddInfo& info, T&& func) {
 template <typename Func>
     requires requires(Func func) {
         { std::function(func) };
-    }
+    } || std::is_function_v<std::remove_pointer_t<std::decay_t<Func>>>
 void info_append(SystemAddInfo& info, Func&& func) {
     if constexpr (std::is_function_v<
                       std::remove_pointer_t<std::decay_t<Func>>>) {
@@ -2463,19 +2552,22 @@ struct App {
     template <typename T>
     App& add_event() {
         auto&& w = world<MainWorld>();
-        w.add_event<T>();
-        SystemAddInfo info;
-        auto func =
-            std::make_unique<BasicSystem<void>>([](EventWriter<T> event) {
-                event.m_queue->tick();
-            });
-        FuncIndex index;
-        index.func = func.get();
-        info.m_systems.emplace_back(
-            std::format("update Event<{}>", typeid(T).name()), index,
-            std::move(func)
+        w.init_resource<Events<T>>();
+        // SystemAddInfo info;
+        // auto func =
+        //     std::make_unique<BasicSystem<void>>([](ResMut<Events<T>> event) {
+        //         event->update();
+        //     });
+        // FuncIndex index;
+        // index.func = func.get();
+        // info.m_systems.emplace_back(
+        //     std::format("update Event<{}>", typeid(T).name()), index,
+        //     std::move(func)
+        // );
+        add_system(
+            Last, into([](ResMut<Events<T>> event) { event->update(); }
+                  ).set_label(std::format("update Event<{}>", typeid(T).name()))
         );
-        add_system(Last, std::move(info));
         return *this;
     };
 

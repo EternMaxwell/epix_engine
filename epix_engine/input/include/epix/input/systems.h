@@ -24,9 +24,9 @@ EPIX_API void update_input(
             ButtonInput<KeyCode>,
             ButtonInput<MouseButton>,
             const Window>> query,
-    EventReader<events::KeyEvent> key_event_reader,
+    // EventReader<events::KeyEvent> key_event_reader,
     EventWriter<events::KeyEvent> key_event_writer,
-    EventReader<events::MouseButtonEvent> mouse_button_event_reader,
+    // EventReader<events::MouseButtonEvent> mouse_button_event_reader,
     EventWriter<events::MouseButtonEvent> mouse_button_event_writer
 );
 

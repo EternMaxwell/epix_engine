@@ -27,7 +27,7 @@ EPIX_API void create_window(
 );
 EPIX_API void update_window_state(
     Query<Get<Entity, Window>> query,
-    EventReader<CursorMove> cursor_read,
+    // EventReader<CursorMove> cursor_read,
     EventWriter<CursorMove> cursor_event
 );
 EPIX_API void close_window(
@@ -54,7 +54,8 @@ EPIX_API void poll_events(
     Query<Get<Window>, With<PrimaryWindow>> query
 );
 EPIX_API void scroll_events(
-    EventReader<MouseScroll> scroll_read, EventWriter<MouseScroll> scroll_event
+    // EventReader<MouseScroll> scroll_read,
+    EventWriter<MouseScroll> scroll_event
 );
 EPIX_API void exit_on_no_window(
     EventReader<NoWindowExists> no_window_event, EventWriter<AppExit> exit_event

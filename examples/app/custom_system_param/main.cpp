@@ -50,8 +50,33 @@ void custom_system2(CustomParam2 param) {
     std::cout << "res.value: " << res->value << std::endl;
 }
 
+struct CustomParam3 {
+    Extract<Query<Get<TestT>>> query;
+    ResMut<TestT> res;
+
+    static CustomParam3 from_system_param(
+        Extract<Query<Get<TestT>>> query, ResMut<TestT> res
+    ) {
+        return CustomParam3{query, std::move(res)};
+    }
+};
+
+// Testing Extract in Extract CustomParam and Testing recursive Extract
+// Double Extract will acted as no Extract
+void custom_system3(Extract<Extract<CustomParam3>> param) {
+    auto& query = param.query;
+    auto& res   = param.res;
+    for (auto [test] : query.iter()) {
+        test.value += 1;
+        std::cout << "test.value: " << test.value << std::endl;
+    }
+    res->value += 1;
+    std::cout << "res.value: " << res->value << std::endl;
+}
+
 int main() {
     App app = App::create();
-    app.add_system(Startup, custom_system).add_system(Update, custom_system2);
+    app.add_system(Startup, custom_system)
+        .add_system(Update, into(custom_system2, custom_system3).chain());
     app.run();
 }

@@ -1,7 +1,7 @@
-#include "epix/window.h"
-#include "epix/window/resources.h"
 #include "epix/window/systems.h"
 
+#include "epix/window.h"
+#include "epix/window/resources.h"
 
 #ifndef GLFW_INCLUDE_VULKAN
 #define GLFW_INCLUDE_VULKAN
@@ -77,11 +77,11 @@ EPIX_API void systems::create_window(
 
 EPIX_API void systems::update_window_state(
     Query<Get<Entity, Window>> query,
-    EventReader<events::CursorMove> cursor_read,
+    // EventReader<events::CursorMove> cursor_read,
     EventWriter<events::CursorMove> cursor_event
 ) {
     ZoneScopedN("window::update_window_state");
-    cursor_read.clear();
+    // cursor_read.clear();
     for (auto [entity, window] : query.iter()) {
         components::update_state(window);
         if (window.get_cursor_move().has_value()) {
@@ -160,10 +160,11 @@ EPIX_API void systems::poll_events(
 }
 
 EPIX_API void systems::scroll_events(
-    EventReader<MouseScroll> scroll_read, EventWriter<MouseScroll> scroll_event
+    // EventReader<MouseScroll> scroll_read,
+    EventWriter<MouseScroll> scroll_event
 ) {
     ZoneScopedN("window::scroll_events");
-    scroll_read.clear();
+    // scroll_read.clear();
     std::unique_lock<std::mutex> lock(scroll_mutex);
     for (auto& scroll : scroll_cache) {
         scroll_event.write(scroll);

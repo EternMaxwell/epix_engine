@@ -1,7 +1,6 @@
-#include <spdlog/spdlog.h>
-
 #include "epix/input.h"
 
+#include <spdlog/spdlog.h>
 
 using namespace epix;
 using namespace epix::input;
@@ -30,9 +29,9 @@ EPIX_API void systems::update_input(
             ButtonInput<KeyCode>,
             ButtonInput<MouseButton>,
             const window::components::Window>> query,
-    EventReader<events::KeyEvent> key_event_reader,
+    // EventReader<events::KeyEvent> key_event_reader,
     EventWriter<events::KeyEvent> key_event_writer,
-    EventReader<events::MouseButtonEvent> mouse_button_event_reader,
+    // EventReader<events::MouseButtonEvent> mouse_button_event_reader,
     EventWriter<events::MouseButtonEvent> mouse_button_event_writer
 ) {
     ZoneScopedN("input::update_input");
@@ -43,8 +42,8 @@ EPIX_API void systems::update_input(
         update_key_button_input(key_input, window.get_handle());
         update_mouse_button_input(mouse_input, window.get_handle());
     }
-    key_event_reader.clear();
-    mouse_button_event_reader.clear();
+    // key_event_reader.clear();
+    // mouse_button_event_reader.clear();
     for (auto [entity, key_input, mouse_input, window] : query.iter()) {
         for (auto key : key_input.just_pressed_keys()) {
             key_event_writer.write(events::KeyEvent{

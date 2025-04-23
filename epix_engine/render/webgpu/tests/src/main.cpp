@@ -267,7 +267,7 @@ int main() {
         })
         .set_size(800, 600)
         .set_vsync(false);
-    app.add_plugin(epix::input::InputPlugin{});
+    app.add_plugin(epix::input::InputPlugin{}.enable_output());
     app.add_plugin(TestPlugin{});
     app.disable_tracy().run();
 }
