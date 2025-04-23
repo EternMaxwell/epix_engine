@@ -1496,6 +1496,10 @@ struct SystemParamInfo {
         // if (other.has_command && (has_command || has_query)) {
         //     return true;
         // }
+        // if two systems use command at the same time, it is not thread safe
+        if (has_command && other.has_command) {
+            return true;
+        }
         // check if queries conflict
         static auto query_conflict =
             [](const std::tuple<
