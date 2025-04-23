@@ -18,6 +18,7 @@ add_subdirectory(utils/time)
 add_subdirectory(assets)
 # EPIX RENDER MODULES
 add_subdirectory(render/webgpu)
+add_subdirectory(render/graph)
 # EPIX WORLD MODULES
 add_subdirectory(world/sand)
 add_subdirectory(world/pixel_b2d)

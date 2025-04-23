@@ -244,8 +244,7 @@ struct TestPlugin : epix::Plugin {
                     profiles->for_each([](auto&& id, auto&& profile) {
                         spdlog::info(
                             "Schedule {:<30}: average-> {:2.3f}ms",
-                            std::format("{}#{}", id.type.name(), id.value),
-                            profile.time_avg
+                            std::format("{}", id.name()), profile.time_avg
                         );
                     });
                 }
