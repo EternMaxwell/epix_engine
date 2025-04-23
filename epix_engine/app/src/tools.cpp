@@ -3,6 +3,25 @@
 using namespace epix::app;
 using namespace epix::app_tools;
 
+EPIX_API Label::Label(std::type_index t, size_t i) : type(t), index(i) {}
+EPIX_API Label::Label() : type(typeid(void)), index(0) {}
+EPIX_API bool Label::operator==(const Label& other) const {
+    return type == other.type && index == other.index;
+}
+EPIX_API bool Label::operator!=(const Label& other) const {
+    return !(*this == other);
+}
+EPIX_API void Label::set_type(std::type_index t) { type = t; }
+EPIX_API void Label::set_index(size_t i) { index = i; }
+EPIX_API size_t Label::hash_code() const {
+    size_t seed = type.hash_code();
+    seed ^= std::hash<size_t>()(index) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+    return seed;
+}
+EPIX_API std::string Label::name() const {
+    return std::format("{}#{}", type.name(), index);
+}
+
 EPIX_API Entity& Entity::operator=(entt::entity id) {
     this->id = id;
     return *this;
@@ -19,29 +38,10 @@ EPIX_API bool Entity::operator!=(const entt::entity& other) {
     return id != other;
 }
 EPIX_API size_t Entity::index() const { return static_cast<size_t>(id); }
-
-EPIX_API bool FuncIndex::operator==(const FuncIndex& other) const {
-    return type == other.type && func == other.func;
+EPIX_API size_t Entity::hash_code() const {
+    return std::hash<entt::entity>()(id);
 }
-
-EPIX_API size_t std::hash<FuncIndex>::operator()(const FuncIndex& func) const {
-    size_t type_hash = func.type.hash_code();
-    size_t func_hash = std::hash<void*>()(func.func);
-    return type_hash ^
-           (func_hash + 0x9e3779b9 + (type_hash << 6) + (type_hash >> 2));
-}
-
-EPIX_API size_t std::hash<Entity>::operator()(const Entity& entity) const {
-    return std::hash<entt::entity>()(entity.id);
-}
-
-EPIX_API bool std::equal_to<Entity>::operator()(
-    const Entity& a, const Entity& b
+EPIX_API size_t std::hash<epix::app::Entity>::operator()(const Entity& entity
 ) const {
-    return a.id == b.id;
-}
-
-EPIX_API size_t std::hash<ScheduleId>::operator()(const ScheduleId& id) const {
-    return std::hash<std::type_index>()(id.type) ^
-           std::hash<size_t>()(id.value);
+    return entity.hash_code();
 }

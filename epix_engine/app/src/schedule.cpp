@@ -2,10 +2,6 @@
 
 using namespace epix::app;
 
-EPIX_API bool ScheduleId::operator==(const ScheduleId& other) const {
-    return type == other.type && value == other.value;
-}
-
 EPIX_API Schedule::Schedule(ScheduleId id)
     : m_id(id),
       m_src_world(typeid(void)),
@@ -13,9 +9,7 @@ EPIX_API Schedule::Schedule(ScheduleId id)
       m_run_once(false),
       m_finishes(std::make_shared<
                  index::concurrent::conqueue<std::shared_ptr<System>>>()) {
-    m_logger = spdlog::default_logger()->clone(
-        std::format("{}#{}", id.type.name(), id.value)
-    );
+    m_logger   = spdlog::default_logger()->clone(id.name());
     m_op_mutex = std::make_unique<std::mutex>();
 }
 
@@ -29,8 +23,7 @@ EPIX_API Schedule& Schedule::set_executor(
 EPIX_API Schedule& Schedule::set_logger(
     const std::shared_ptr<spdlog::logger>& logger
 ) {
-    m_logger =
-        logger->clone(std::format("{}#{}", m_id.type.name(), m_id.value));
+    m_logger = logger->clone(m_id.name());
     return *this;
 }
 
@@ -188,8 +181,7 @@ EPIX_API void Schedule::run(World* src, World* dst, bool enable_tracy) {
     size_t running  = 0;
     if (enable_tracy) {
         ZoneScopedN("Run Schedule");
-        auto name =
-            std::format("Run Schedule {}#{}", m_id.type.name(), m_id.value);
+        auto name = std::format("Run Schedule {}", m_id.name());
         ZoneName(name.c_str(), name.size());
         {
             ZoneScopedN("Baking Schedule");
@@ -366,8 +358,7 @@ EPIX_API const ScheduleProfiles::ScheduleProfile& ScheduleProfiles::profile(
     if (auto it = m_profiles.find(id); it != m_profiles.end()) {
         return it->second;
     } else {
-        throw std::runtime_error(
-            std::format("Schedule {}#{} not found", id.type.name(), id.value)
+        throw std::runtime_error(std::format("Schedule {} not found", id.name())
         );
     }
 }

@@ -53,6 +53,43 @@ struct t_weak_ptr : std::weak_ptr<T> {
 
     T* get_p() { return *reinterpret_cast<T**>(this); }
 };
+struct Label {
+   protected:
+    std::type_index type;
+    size_t index;
+
+    template <typename U>
+    Label(U u) : type(typeid(U)), index(0) {
+        if constexpr (std::is_enum_v<U>) {
+            index = static_cast<size_t>(u);
+        }
+    }
+    EPIX_API Label(std::type_index t, size_t i);
+    EPIX_API Label();
+
+   public:
+    Label(const Label&)            = default;
+    Label(Label&&)                 = default;
+    Label& operator=(const Label&) = default;
+    Label& operator=(Label&&)      = default;
+    EPIX_API bool operator==(const Label& other) const;
+    EPIX_API bool operator!=(const Label& other) const;
+    EPIX_API void set_type(std::type_index t);
+    EPIX_API void set_index(size_t i);
+    EPIX_API size_t hash_code() const;
+    EPIX_API std::string name() const;
+};
+template <typename T>
+struct Hasher {
+    size_t operator()(const T& t) const { return std::hash<T>()(t); }
+};
+template <typename T>
+    requires requires(T t) {
+        { t.hash_code() } -> std::convertible_to<size_t>;
+    }
+struct Hasher<T> {
+    size_t operator()(const T& t) const { return t.hash_code(); }
+};
 }  // namespace epix::app_tools
 
 template <typename T>
@@ -61,6 +98,10 @@ struct std::hash<std::weak_ptr<T>> {
         epix::app_tools::t_weak_ptr<T> tptr(ptr);
         return std::hash<T*>()(tptr.get_p());
     }
+};
+template <std::derived_from<epix::app_tools::Label> T>
+struct std::hash<T> {
+    size_t operator()(const T& label) const { return label.hash_code(); }
 };
 
 template <typename T>
@@ -74,6 +115,19 @@ struct std::equal_to<std::weak_ptr<T>> {
 };
 
 namespace epix::app {
+using app_tools::Label;
+template <
+    typename Key,
+    typename Value,
+    typename Hash  = app_tools::Hasher<Key>,
+    typename Equal = std::equal_to<Key>>
+using dense_map = entt::dense_map<Key, Value, Hash, Equal>;
+template <
+    typename Value,
+    typename Hash  = app_tools::Hasher<Value>,
+    typename Equal = std::equal_to<Value>>
+using dense_set = entt::dense_set<Value, Hash, Equal>;
+
 struct World;
 template <typename T>
 static constexpr bool external_thread_safe_v = false;
@@ -137,22 +191,8 @@ using thread_pool = BS::thread_pool<BS::tp::priority>;
 }  // namespace epix::app
 
 template <>
-struct std::hash<epix::app::FuncIndex> {
-    EPIX_API size_t operator()(const epix::app::FuncIndex& func) const;
-};
-template <>
 struct std::hash<epix::app::Entity> {
     EPIX_API size_t operator()(const epix::app::Entity& entity) const;
-};
-template <>
-struct std::equal_to<epix::app::Entity> {
-    EPIX_API bool operator()(
-        const epix::app::Entity& a, const epix::app::Entity& b
-    ) const;
-};
-template <>
-struct std::hash<epix::app::ScheduleId> {
-    EPIX_API size_t operator()(const epix::app::ScheduleId& id) const;
 };
 
 namespace epix::app {
@@ -167,18 +207,18 @@ struct Entity {
     EPIX_API bool operator==(const entt::entity& other);
     EPIX_API bool operator!=(const entt::entity& other);
     EPIX_API size_t index() const;
+    EPIX_API size_t hash_code() const;
 };
-struct FuncIndex {
-    std::type_index type;
-    void* func;
+struct FuncIndex : Label {
     template <typename T, typename... Args>
-    FuncIndex(T (*func)(Args...)) : type(typeid(T)), func((void*)(func)) {}
-    FuncIndex() : type(typeid(void)), func(nullptr) {}
-    EPIX_API bool operator==(const FuncIndex& other) const;
+    FuncIndex(T (*func)(Args...)) : Label(typeid(func), (size_t)func) {}
+    FuncIndex() : Label() {}
+    using Label::operator==;
+    using Label::operator!=;
 };
 
 struct Children {
-    entt::dense_set<Entity> children;
+    dense_set<Entity> children;
 };
 struct Parent {
     Entity id;
@@ -1026,7 +1066,7 @@ concept ValidSystemParam =
 struct World {
    private:
     entt::registry m_registry;
-    entt::dense_map<std::type_index, UntypedRes> m_resources;
+    dense_map<std::type_index, UntypedRes> m_resources;
     std::shared_mutex m_resources_mutex;
     WorldCommand m_command;
 
@@ -1818,8 +1858,8 @@ struct SystemAddInfo {
 
         std::vector<SystemSet> m_in_sets;
         std::string m_worker = "default";
-        entt::dense_set<FuncIndex> m_ptr_prevs;
-        entt::dense_set<FuncIndex> m_ptr_nexts;
+        dense_set<FuncIndex> m_ptr_prevs;
+        dense_set<FuncIndex> m_ptr_nexts;
 
         EPIX_API each_t(
             const std::string& name,
@@ -1931,16 +1971,16 @@ struct System {
     std::vector<std::unique_ptr<BasicSystem<bool>>> conditions;
 
     // set when building
-    entt::dense_set<std::weak_ptr<System>> m_prevs;
-    entt::dense_set<std::weak_ptr<System>> m_nexts;
+    dense_set<std::weak_ptr<System>> m_prevs;
+    dense_set<std::weak_ptr<System>> m_nexts;
 
     // set when baking
-    entt::dense_set<std::weak_ptr<System>> m_tmp_prevs;
-    entt::dense_set<std::weak_ptr<System>> m_tmp_nexts;
+    dense_set<std::weak_ptr<System>> m_tmp_prevs;
+    dense_set<std::weak_ptr<System>> m_tmp_nexts;
 
     // set when creationg
-    entt::dense_set<FuncIndex> m_ptr_prevs;
-    entt::dense_set<FuncIndex> m_ptr_nexts;
+    dense_set<FuncIndex> m_ptr_prevs;
+    dense_set<FuncIndex> m_ptr_nexts;
 
     // used when baking
     std::optional<double> m_reach_time;
@@ -1950,29 +1990,15 @@ struct System {
     size_t m_next_count;
 };
 using SetMap = entt::dense_map<std::type_index, std::vector<SystemSet>>;
-struct ScheduleId {
-    std::type_index type;
-    size_t value;
+struct ScheduleId : Label {
     template <typename T>
-    ScheduleId(T value) : type(typeid(std::decay_t<T>)) {
-        if constexpr (std::is_enum_v<std::decay_t<T>>) {
-            this->value = static_cast<size_t>(value);
-        } else {
-            this->value = 0;
-        }
-    }
-    ScheduleId(const ScheduleId& other)            = default;
-    ScheduleId(ScheduleId&& other)                 = default;
-    ScheduleId& operator=(const ScheduleId& other) = default;
-    ScheduleId& operator=(ScheduleId&& other)      = default;
-
-    EPIX_API bool operator==(const ScheduleId& other) const;
+    ScheduleId(T value) : Label(value) {}
+    using Label::operator==;
+    using Label::operator!=;
 };
 struct Executor {
    private:
-    entt::dense_map<
-        std::string,
-        std::shared_ptr<BS::thread_pool<BS::tp::priority>>>
+    dense_map<std::string, std::shared_ptr<BS::thread_pool<BS::tp::priority>>>
         m_pools;
 
    public:
@@ -1991,23 +2017,23 @@ struct Schedule {
     std::shared_ptr<spdlog::logger> m_logger;
     std::shared_ptr<Executor> m_executor;
     ScheduleId m_id;
-    entt::dense_map<FuncIndex, std::shared_ptr<System>> m_systems;
+    dense_map<FuncIndex, std::shared_ptr<System>> m_systems;
     bool m_run_once;
 
     std::type_index m_src_world;
     std::type_index m_dst_world;
 
     // set when building
-    entt::dense_set<std::weak_ptr<Schedule>> m_prev_schedules;
-    entt::dense_set<std::weak_ptr<Schedule>> m_next_schedules;
+    dense_set<std::weak_ptr<Schedule>> m_prev_schedules;
+    dense_set<std::weak_ptr<Schedule>> m_next_schedules;
 
     // set when baking
-    entt::dense_set<std::weak_ptr<Schedule>> m_tmp_prevs;
-    entt::dense_set<std::weak_ptr<Schedule>> m_tmp_nexts;
+    dense_set<std::weak_ptr<Schedule>> m_tmp_prevs;
+    dense_set<std::weak_ptr<Schedule>> m_tmp_nexts;
 
     // set when creation
-    entt::dense_set<ScheduleId> m_prev_ids;
-    entt::dense_set<ScheduleId> m_next_ids;
+    dense_set<ScheduleId> m_prev_ids;
+    dense_set<ScheduleId> m_next_ids;
 
     // used when running
     std::shared_ptr<index::concurrent::conqueue<std::shared_ptr<System>>>
@@ -2205,7 +2231,7 @@ void info_append(SystemAddInfo& info, Func&& func) {
     } else {
         auto ptr = std::make_unique<BasicSystem<void>>(func);
         FuncIndex index;
-        index.func = ptr.get();
+        index.set_index((size_t)ptr.get());
         info.m_systems.emplace_back(
             std::format("system:{:#016x}", (size_t)ptr.get()), index,
             std::move(ptr)
@@ -2269,7 +2295,7 @@ struct ScheduleProfiles {
     };
 
    private:
-    entt::dense_map<ScheduleId, ScheduleProfile> m_profiles;
+    dense_map<ScheduleId, ScheduleProfile> m_profiles;
 
    public:
     EPIX_API ScheduleProfile& profile(ScheduleId id);
@@ -2312,21 +2338,21 @@ struct AppSystems {
 
 struct App {
     struct ScheduleGraph {
-        entt::dense_map<ScheduleId, std::shared_ptr<Schedule>> m_schedules;
+        dense_map<ScheduleId, std::shared_ptr<Schedule>> m_schedules;
         index::concurrent::conqueue<std::shared_ptr<Schedule>> m_finishes;
     };
 
    private:
     // plugin to build
     std::vector<std::pair<std::type_index, std::shared_ptr<Plugin>>> m_plugins;
-    entt::dense_set<std::type_index> m_built_plugins;
+    dense_set<std::type_index> m_built_plugins;
 
     // world data
-    entt::dense_map<std::type_index, std::unique_ptr<World>> m_worlds;
+    dense_map<std::type_index, std::unique_ptr<World>> m_worlds;
 
     // graph data
-    entt::dense_map<std::type_index, std::unique_ptr<ScheduleGraph>> m_graphs;
-    entt::dense_map<ScheduleId, std::type_index> m_graph_ids;
+    dense_map<std::type_index, std::unique_ptr<ScheduleGraph>> m_graphs;
+    dense_map<ScheduleId, std::type_index> m_graph_ids;
 
     // control and worker pools
     std::unique_ptr<BS::thread_pool<BS::tp::priority>> m_pool;
@@ -2411,8 +2437,7 @@ struct App {
         ScheduleId& id = info;
         if (!m_graph_ids.contains(id)) {
             m_logger->warn(
-                "Schedule {}#{} not found. Ignoring add_system.",
-                id.type.name(), id.value
+                "Schedule {} not found. Ignoring add_system.", id.name()
             );
             return *this;
         }
@@ -2435,8 +2460,7 @@ struct App {
     App& remove_system(ScheduleId id, FuncIndex index, Args&&... args) {
         if (!m_graph_ids.contains(id)) {
             m_logger->warn(
-                "Schedule {}#{} not found. Ignoring remove_system.",
-                id.type.name(), id.value
+                "Schedule {} not found. Ignoring remove_system.", id.name()
             );
             return *this;
         }

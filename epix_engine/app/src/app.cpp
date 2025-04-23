@@ -276,10 +276,7 @@ EPIX_API void App::run(ScheduleGraph& graph) {
     auto run_schedule  = [&](std::shared_ptr<Schedule> schedule) {
         if (*m_enable_tracy) {
             ZoneScopedN("Try Detach Schedule");
-            auto name = std::format(
-                "Detach Schedule: {}#{}", schedule->m_id.type.name(),
-                schedule->m_id.value
-            );
+            auto name = std::format("Detach Schedule: ", schedule->m_id.name());
             ZoneName(name.c_str(), name.size());
             auto src = m_worlds[schedule->m_src_world].get();
             auto dst = m_worlds[schedule->m_dst_world].get();
