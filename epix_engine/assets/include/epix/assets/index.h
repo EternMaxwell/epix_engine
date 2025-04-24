@@ -1,8 +1,7 @@
 #pragma once
 
 #include <epix/common.h>
-#include <index/concurrent/channel.h>
-#include <index/traits/variant.h>
+#include <epix/utils/async.h>
 #include <spdlog/spdlog.h>
 
 #include <atomic>
@@ -21,8 +20,8 @@ template <typename T>
 struct Handle;
 struct AssetIndexAllocator;
 
-using index::channel::Receiver;
-using index::channel::Sender;
+using epix::utils::async::Receiver;
+using epix::utils::async::Sender;
 
 struct AssetIndex {
     uint32_t index;
@@ -53,7 +52,7 @@ struct AssetIndexAllocator {
    public:
     AssetIndexAllocator()
         : m_free_indices_receiver(
-              std::get<1>(index::channel::make_channel<AssetIndex>())
+              std::get<1>(epix::utils::async::make_channel<AssetIndex>())
           ) {
         m_free_indices_sender = m_free_indices_receiver.create_sender();
     }

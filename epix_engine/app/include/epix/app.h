@@ -1,11 +1,7 @@
 #pragma once
 
 // ----THIRD PARTY INCLUDES----
-#include <index/array_proxy.h>
-#include <index/concurrent/channel.h>
-#include <index/concurrent/conqueue.h>
-#include <index/traits/template.h>
-#include <index/traits/tuple.h>
+#include <epix/utils/core.h>
 #include <spdlog/spdlog.h>
 
 #define BS_THREAD_POOL_NATIVE_EXTENSIONS
@@ -116,17 +112,8 @@ struct std::equal_to<std::weak_ptr<T>> {
 
 namespace epix::app {
 using app_tools::Label;
-template <
-    typename Key,
-    typename Value,
-    typename Hash  = app_tools::Hasher<Key>,
-    typename Equal = std::equal_to<Key>>
-using dense_map = entt::dense_map<Key, Value, Hash, Equal>;
-template <
-    typename Value,
-    typename Hash  = app_tools::Hasher<Value>,
-    typename Equal = std::equal_to<Value>>
-using dense_set = entt::dense_set<Value, Hash, Equal>;
+using entt::dense_map;
+using entt::dense_set;
 
 struct World;
 template <typename T>
@@ -669,10 +656,10 @@ struct WorldEntityCommand {
 struct WorldCommand {
    private:
     World* m_world;
-    index::concurrent::conqueue<Entity> m_despawn;
-    index::concurrent::conqueue<Entity> m_recurse_despawn;
-    index::concurrent::conqueue<std::type_index> m_remove_resources;
-    index::concurrent::conqueue<std::pair<void (*)(World*, Entity), Entity>>
+    epix::utils::async::ConQueue<Entity> m_despawn;
+    epix::utils::async::ConQueue<Entity> m_recurse_despawn;
+    epix::utils::async::ConQueue<std::type_index> m_remove_resources;
+    epix::utils::async::ConQueue<std::pair<void (*)(World*, Entity), Entity>>
         m_entity_erase;
 
    public:
@@ -2036,7 +2023,7 @@ struct Schedule {
     dense_set<ScheduleId> m_next_ids;
 
     // used when running
-    std::shared_ptr<index::concurrent::conqueue<std::shared_ptr<System>>>
+    std::shared_ptr<epix::utils::async::ConQueue<std::shared_ptr<System>>>
         m_finishes;
     size_t m_prev_count = 0;
 
@@ -2339,7 +2326,7 @@ struct AppSystems {
 struct App {
     struct ScheduleGraph {
         dense_map<ScheduleId, std::shared_ptr<Schedule>> m_schedules;
-        index::concurrent::conqueue<std::shared_ptr<Schedule>> m_finishes;
+        epix::utils::async::ConQueue<std::shared_ptr<Schedule>> m_finishes;
     };
 
    private:

@@ -14,7 +14,7 @@ struct AssetLoader {
 
     AssetLoader()
         : m_loaded(std::get<1>(
-              index::channel::make_channel<std::pair<AssetIndex, T>>()
+              epix::utils::async::make_channel<std::pair<AssetIndex, T>>()
           )) {
         m_handle_provider = std::make_shared<HandleProvider<T>>();
     }

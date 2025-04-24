@@ -9,6 +9,7 @@ set(EPIX_WITH_SHARED OFF)
 
 # EPIX CORE MODULES
 add_subdirectory(common)
+add_subdirectory(utils/core)
 add_subdirectory(app)
 add_subdirectory(window)
 add_subdirectory(input)

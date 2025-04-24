@@ -82,9 +82,10 @@ struct HandleProvider {
 
     HandleProvider()
         : m_event_receiver(
-              std::get<1>(index::channel::make_channel<DestructionEvent>())
+              std::get<1>(epix::utils::async::make_channel<DestructionEvent>())
           ),
-          m_reserved(std::get<1>(index::channel::make_channel<AssetIndex>())) {
+          m_reserved(std::get<1>(epix::utils::async::make_channel<AssetIndex>())
+          ) {
         m_event_sender    = m_event_receiver.create_sender();
         m_reserved_sender = m_reserved.create_sender();
     }

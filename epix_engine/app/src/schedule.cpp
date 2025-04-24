@@ -8,7 +8,7 @@ EPIX_API Schedule::Schedule(ScheduleId id)
       m_dst_world(typeid(void)),
       m_run_once(false),
       m_finishes(std::make_shared<
-                 index::concurrent::conqueue<std::shared_ptr<System>>>()) {
+                 epix::utils::async::ConQueue<std::shared_ptr<System>>>()) {
     m_logger   = spdlog::default_logger()->clone(id.name());
     m_op_mutex = std::make_unique<std::mutex>();
 }

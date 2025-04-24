@@ -326,7 +326,7 @@ EPIX_API void App::run(ScheduleGraph& graph) {
         }
     }
     while (m_running > 0) {
-        auto&& schedule = m_finishes.pop();
+        std::shared_ptr<Schedule> schedule = m_finishes.pop();
         m_running--;
         for (auto&& each : schedule->m_tmp_nexts) {
             if (auto ptr = each.lock()) {
