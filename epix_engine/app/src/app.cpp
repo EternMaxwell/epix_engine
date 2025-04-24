@@ -2,6 +2,9 @@
 
 using namespace epix::app;
 
+EPIX_API World::World() : m_resources(), m_resources_mutex(), m_command(this) {}
+EPIX_API World::~World() { m_command.flush(); }
+
 EPIX_API UntypedRes World::resource(std::type_index type) {
     auto&& it = m_resources.find(type);
     if (it == m_resources.end()) return UntypedRes{};

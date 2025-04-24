@@ -44,10 +44,10 @@
 namespace epix::app_tools {
 template <typename T>
 struct t_weak_ptr : std::weak_ptr<T> {
-    t_weak_ptr(std::shared_ptr<T> ptr) : std::weak_ptr<T>(ptr) {}
-    t_weak_ptr(std::weak_ptr<T> ptr) : std::weak_ptr<T>(ptr) {}
+    t_weak_ptr(std::shared_ptr<T> ptr) noexcept : std::weak_ptr<T>(ptr) {}
+    t_weak_ptr(std::weak_ptr<T> ptr) noexcept : std::weak_ptr<T>(ptr) {}
 
-    T* get_p() { return *reinterpret_cast<T**>(this); }
+    T* get_p() noexcept { return *reinterpret_cast<T**>(this); }
 };
 struct Label {
    protected:
@@ -55,25 +55,25 @@ struct Label {
     size_t index;
 
     template <typename U>
-    Label(U u) : type(typeid(U)), index(0) {
+    Label(U u) noexcept : type(typeid(U)), index(0) {
         if constexpr (std::is_enum_v<U>) {
             index = static_cast<size_t>(u);
         }
     }
-    EPIX_API Label(std::type_index t, size_t i);
-    EPIX_API Label();
+    EPIX_API Label(std::type_index t, size_t i) noexcept;
+    EPIX_API Label() noexcept;
 
    public:
     Label(const Label&)            = default;
     Label(Label&&)                 = default;
     Label& operator=(const Label&) = default;
     Label& operator=(Label&&)      = default;
-    EPIX_API bool operator==(const Label& other) const;
-    EPIX_API bool operator!=(const Label& other) const;
-    EPIX_API void set_type(std::type_index t);
-    EPIX_API void set_index(size_t i);
-    EPIX_API size_t hash_code() const;
-    EPIX_API std::string name() const;
+    EPIX_API bool operator==(const Label& other) const noexcept;
+    EPIX_API bool operator!=(const Label& other) const noexcept;
+    EPIX_API void set_type(std::type_index t) noexcept;
+    EPIX_API void set_index(size_t i) noexcept;
+    EPIX_API size_t hash_code() const noexcept;
+    EPIX_API std::string name() const noexcept;
 };
 template <typename T>
 struct Hasher {
@@ -97,13 +97,16 @@ struct std::hash<std::weak_ptr<T>> {
 };
 template <std::derived_from<epix::app_tools::Label> T>
 struct std::hash<T> {
-    size_t operator()(const T& label) const { return label.hash_code(); }
+    size_t operator()(const T& label) const
+        noexcept(noexcept(label.hash_code())) {
+        return label.hash_code();
+    }
 };
 
 template <typename T>
 struct std::equal_to<std::weak_ptr<T>> {
     bool operator()(const std::weak_ptr<T>& a, const std::weak_ptr<T>& b)
-        const {
+        const noexcept {
         epix::app_tools::t_weak_ptr<T> aptr(a);
         epix::app_tools::t_weak_ptr<T> bptr(b);
         return aptr.get_p() == bptr.get_p();
@@ -1042,6 +1045,7 @@ concept ValidSystemParam =
     FromSystemParam<T> || specialize_of<T, Query>::value ||
     specialize_of<T, Local>::value || specialize_of<T, Res>::value ||
     specialize_of<T, ResMut>::value || std::same_as<T, Command> ||
+    std::same_as<World&, std::remove_cv_t<T>> ||
     (specialize_of<T, Extract>::value &&
      (specialize_of<typename ExtractType<T>::type, Query>::value ||
       specialize_of<typename ExtractType<T>::type, Local>::value ||
@@ -1058,7 +1062,12 @@ struct World {
     WorldCommand m_command;
 
    public:
-    World() : m_resources(), m_resources_mutex(), m_command(this) {}
+    EPIX_API World();
+    World(const World&)            = delete;
+    World(World&&)                 = delete;
+    World& operator=(const World&) = delete;
+    World& operator=(World&&)      = delete;
+    EPIX_API ~World();
 
     template <typename T>
     UntypedRes resource() {
@@ -1277,10 +1286,23 @@ struct World::param_type<Extract<Query<G, W, WO>>> {
     }
 };
 
+template <>
+struct World::param_type<World&> {
+    using out_type = World&;
+    using in_type  = World&;
+    static World& get(World* src, World* dst) { return *dst; }
+};
+
 template <typename T>
 struct ParamResolve {
     using out_params = T;
-    using in_params  = T;
+    using in_params  = std::decay_t<T>;
+};
+template <typename T>
+    requires std::same_as<std::decay_t<T>, World>
+struct ParamResolve<T> {
+    using out_params = T;
+    using in_params  = World&;
 };
 template <typename T>
 struct ParamResolve<Extract<T>> {
@@ -1431,8 +1453,12 @@ struct GetParams {
 
 template <typename... Args>
 struct GetParams<std::tuple<Args...>> {
-    static auto get(World* src, World* dst, LocalData* local_data) {
-        return std::make_tuple(GetParams<Args>::get(src, dst, local_data)...);
+    static std::tuple<Args...> get(
+        World* src, World* dst, LocalData* local_data
+    ) {
+        return std::forward_as_tuple(
+            GetParams<Args>::get(src, dst, local_data)...
+        );
     }
 };
 
@@ -1503,6 +1529,7 @@ struct ParamResolver<std::tuple<Args...>> {
 };
 
 struct SystemParamInfo {
+    bool has_world   = false;
     bool has_command = false;
     bool has_query   = false;
     std::vector<std::tuple<
@@ -1516,6 +1543,11 @@ struct SystemParamInfo {
     entt::dense_set<std::type_index> event_write_types;
 
     bool conflict_with(const SystemParamInfo& other) const {
+        // any system with world is not thread safe, since you can get any
+        // allowed param type from a single world.
+        if (has_world || other.has_world) {
+            return true;
+        }
         // use command and query at the same time is now always thread safe
         // if (has_command && (other.has_command || other.has_query)) {
         //     return true;
@@ -1606,6 +1638,13 @@ struct SystemParamInfo {
 
 template <typename T>
 struct SystemParamInfoWrite;
+
+template <>
+struct SystemParamInfoWrite<World&> {
+    static void add(SystemParamInfo& src, SystemParamInfo& dst) {
+        dst.has_world = true;
+    }
+};
 
 template <typename T>
 struct SystemParamInfoWrite<Local<T>> {
@@ -1734,6 +1773,20 @@ struct SystemParamInfoWrite<std::tuple<Args...>> {
     }
 };
 
+template <typename T>
+struct param_decay {
+    using type = std::decay_t<T>;
+};
+
+template <typename T>
+    requires std::same_as<std::decay_t<T>, World>
+struct param_decay<T> {
+    using type = World&;
+};
+
+template <typename T>
+using param_decay_t = typename param_decay<T>::type;
+
 template <typename Ret>
 struct BasicSystem {
    protected:
@@ -1764,28 +1817,30 @@ struct BasicSystem {
     template <typename... Args>
     BasicSystem(std::function<Ret(Args...)> func)
         : m_func([func](World* src, World* dst, BasicSystem* sys) {
-              ParamResolver<std::tuple<Args...>> param_resolver(
+              ParamResolver<std::tuple<param_decay_t<Args>...>> param_resolver(
                   src, dst, &sys->m_locals
               );
-              return std::apply(func, param_resolver.resolve());
+              auto resolved = param_resolver.resolve();
+              return std::apply(func, resolved);
           }),
           factor(0.1),
           avg_time(1) {
-        SystemParamInfoWrite<typename ParamResolve<std::tuple<
-            Args...>>::root_params>::add(system_param_src, system_param_dst);
+        SystemParamInfoWrite<typename ParamResolve<std::tuple<param_decay_t<
+            Args>...>>::root_params>::add(system_param_src, system_param_dst);
     }
     template <typename... Args>
     BasicSystem(Ret (*func)(Args...))
         : m_func([func](World* src, World* dst, BasicSystem* sys) {
-              ParamResolver<std::tuple<Args...>> param_resolver(
+              ParamResolver<std::tuple<param_decay_t<Args>...>> param_resolver(
                   src, dst, &sys->m_locals
               );
-              return std::apply(func, param_resolver.resolve());
+              auto resolved = param_resolver.resolve();
+              return std::apply(func, resolved);
           }),
           factor(0.1),
           avg_time(1) {
-        SystemParamInfoWrite<typename ParamResolve<std::tuple<
-            Args...>>::root_params>::add(system_param_src, system_param_dst);
+        SystemParamInfoWrite<typename ParamResolve<std::tuple<param_decay_t<
+            Args>...>>::root_params>::add(system_param_src, system_param_dst);
     }
     template <typename T>
         requires requires(T t) {

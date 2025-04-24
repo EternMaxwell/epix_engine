@@ -155,7 +155,7 @@ void setup_context(
     shader_module.release();
 }
 
-void begin_frame(epix::ResMut<Context> ctx) {
+void begin_frame(epix::ResMut<Context>& ctx, const epix::app::World&) {
     ctx->encoder =
         ctx->device.createCommandEncoder(WGPUCommandEncoderDescriptor{
             .label = "Command Encoder",
