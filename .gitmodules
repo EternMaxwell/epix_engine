@@ -7,18 +7,9 @@
 [submodule "libs/spdlog"]
 	path = libs/spdlog
 	url = https://github.com/gabime/spdlog.git
-[submodule "libs/fmt"]
-	path = libs/fmt
-	url = https://github.com/fmtlib/fmt.git
-[submodule "libs/pfr"]
-	path = libs/pfr
-	url = https://github.com/apolukhin/pfr_non_boost.git
 [submodule "libs/freetype"]
 	path = libs/freetype
 	url = https://github.com/freetype/freetype.git
-[submodule "libs/vma"]
-	path = libs/vma
-	url = https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator.git
 [submodule "libs/glm"]
 	path = libs/glm
 	url = https://github.com/g-truc/glm.git
@@ -31,18 +22,12 @@
 [submodule "libs/thread-pool"]
 	path = libs/thread-pool
 	url = https://github.com/bshoshany/thread-pool.git
-[submodule "libs/SPIRV-Cross"]
-	path = libs/SPIRV-Cross
-	url = https://github.com/KhronosGroup/SPIRV-Cross.git
-[submodule "libs/volk"]
-	path = libs/volk
-	url = https://github.com/zeux/volk.git
-[submodule "libs/vulkan-headers"]
-	path = libs/vulkan-headers
-	url = https://github.com/KhronosGroup/Vulkan-Headers.git
 [submodule "libs/webgpu"]
 	path = libs/webgpu
 	url = https://github.com/eliemichel/WebGPU-distribution.git
-[submodule "libs/concurrentqueue"]
-	path = libs/concurrentqueue
-	url = https://github.com/cameron314/concurrentqueue.git
+[submodule "libs/imgui/src"]
+	path = libs/imgui/src
+	url = https://github.com/ocornut/imgui.git
+[submodule "libs/stb/src"]
+	path = libs/stb/src
+	url = https://github.com/nothings/stb.git

@@ -3,14 +3,13 @@ cmake_minimum_required(VERSION 3.21)
 project(imgui LANGUAGES CXX)
 
 file(GLOB MODULE_SOURCES
-    "imgui.cpp"
-    "imgui_demo.cpp"
-    "imgui_draw.cpp"
-    "imgui_widgets.cpp"
-    "imgui_tables.cpp"
-    "backends/imgui_impl_glfw.cpp"
-    "backends/imgui_impl_opengl3.cpp"
-    "backends/imgui_impl_vulkan.cpp"
+    "src/imgui.cpp"
+    "src/imgui_demo.cpp"
+    "src/imgui_draw.cpp"
+    "src/imgui_widgets.cpp"
+    "src/imgui_tables.cpp"
+    "src/backends/imgui_impl_glfw.cpp"
+    "src/backends/imgui_impl_wgpu.cpp"
 )
 set(IMGUI_SOURCES ${IMGUI_SOURCES} ${MODULE_SOURCES} PARENT_SCOPE)
 set(IMGUI_INCLUDES ${CMAKE_CURRENT_SOURCE_DIR}/include PARENT_SCOPE)
@@ -19,7 +18,6 @@ add_library(imgui STATIC ${MODULE_SOURCES})
 target_include_directories(imgui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
 target_link_libraries(imgui PRIVATE glfw)
-target_link_libraries(imgui PRIVATE OpenGL::GL)
-target_link_libraries(imgui PRIVATE volk)
+target_link_libraries(imgui PRIVATE webgpu)
 
-target_compile_definitions(imgui PRIVATE IMGUI_IMPL_VULKAN_USE_VOLK)
+target_compile_definitions(imgui PRIVATE IMGUI_IMPL_WEBGPU_BACKEND_WGPU)
