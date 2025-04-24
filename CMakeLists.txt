@@ -9,22 +9,6 @@ endif()
 
 project ("epix_engine.cmake" LANGUAGES CXX C)
 
-set(CMAKE_CXX_STANDARD 20)
-
-if (MSVC)
-  add_compile_options(/bigobj)
-  add_compile_options(/wd4819)
-else ()
-  add_compile_options(-Wa,-mbig-obj)
-  add_compile_options(-w)
-  add_compile_options(-Wpointer-arith)
-  add_compile_options(-fpch-preprocess)
-  add_compile_options(-Wno-invalid-token-paste)
-endif ()
-
-#find third-party if possible
-find_package (OpenGL REQUIRED)
-
 #sub directories
 
 add_library(BSThreadPool INTERFACE)
@@ -44,5 +28,19 @@ add_subdirectory (libs/box2d)
 add_subdirectory (libs/earcut.hpp)
 add_subdirectory (libs/tracy)
 add_subdirectory (libs/stb)
+
+set(CMAKE_CXX_STANDARD 23)
+
+if (MSVC)
+  add_compile_options(/bigobj)
+  add_compile_options(/wd4819)
+else ()
+  add_compile_options(-Wa,-mbig-obj)
+  add_compile_options(-w)
+  add_compile_options(-Wpointer-arith)
+  add_compile_options(-fpch-preprocess)
+  add_compile_options(-Wno-invalid-token-paste)
+endif ()
+
 add_subdirectory (epix_engine)
 add_subdirectory (examples)
