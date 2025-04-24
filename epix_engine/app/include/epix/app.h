@@ -1301,7 +1301,7 @@ struct ParamResolve {
 template <typename T>
     requires std::same_as<std::decay_t<T>, World>
 struct ParamResolve<T> {
-    using out_params = T;
+    using out_params = World&;
     using in_params  = World&;
 };
 template <typename T>
@@ -1378,7 +1378,7 @@ struct ParamResolve<std::tuple<Args...>> {
     }
     template <size_t... I>
     static out_params resolve(in_params&& in, std::index_sequence<I...>) {
-        return std::make_tuple(resolve_i<I>(std::forward<in_params>(in))...);
+        return out_params(resolve_i<I>(std::forward<in_params>(in))...);
     }
     static out_params resolve(in_params&& in) {
         if constexpr (std::same_as<in_params, out_params>) {
@@ -1781,11 +1781,37 @@ struct param_decay {
 template <typename T>
     requires std::same_as<std::decay_t<T>, World>
 struct param_decay<T> {
+    static_assert(
+        std::is_reference_v<T>, "World as param must be a reference type"
+    );
     using type = World&;
 };
 
 template <typename T>
 using param_decay_t = typename param_decay<T>::type;
+
+template <typename T>
+struct IsValidSystem {
+    static constexpr bool value = false;
+};
+
+template <typename Ret, typename... Args>
+struct IsValidSystem<std::function<Ret(Args...)>> {
+    static constexpr bool value =
+        (ValidSystemParam<param_decay_t<Args>> && ...);
+};
+
+template <typename T>
+    requires requires(T t) {
+        { std::function(t) };
+    }
+struct IsValidSystem<T> {
+    static constexpr bool value =
+        IsValidSystem<decltype(std::function(std::declval<T>()))>::value;
+};
+
+template <typename T>
+concept ValidSystem = IsValidSystem<T>::value;
 
 template <typename Ret>
 struct BasicSystem {
@@ -1814,7 +1840,10 @@ struct BasicSystem {
         }
     }
     const double get_avg_time() const { return avg_time; }
+    template <ValidSystem T>
+    BasicSystem(T&& func) : BasicSystem(std::function(std::forward<T>(func))) {}
     template <typename... Args>
+    // requires(ValidSystemParam<param_decay_t<Args>> && ...)
     BasicSystem(std::function<Ret(Args...)> func)
         : m_func([func](World* src, World* dst, BasicSystem* sys) {
               ParamResolver<std::tuple<param_decay_t<Args>...>> param_resolver(
@@ -1829,6 +1858,7 @@ struct BasicSystem {
             Args>...>>::root_params>::add(system_param_src, system_param_dst);
     }
     template <typename... Args>
+    // requires(ValidSystemParam<param_decay_t<Args>> && ...)
     BasicSystem(Ret (*func)(Args...))
         : m_func([func](World* src, World* dst, BasicSystem* sys) {
               ParamResolver<std::tuple<param_decay_t<Args>...>> param_resolver(
@@ -1842,11 +1872,6 @@ struct BasicSystem {
         SystemParamInfoWrite<typename ParamResolve<std::tuple<param_decay_t<
             Args>...>>::root_params>::add(system_param_src, system_param_dst);
     }
-    template <typename T>
-        requires requires(T t) {
-            { std::function(t) };
-        }
-    BasicSystem(T&& func) : BasicSystem(std::function(std::forward<T>(func))) {}
     BasicSystem(const BasicSystem& other)            = default;
     BasicSystem(BasicSystem&& other)                 = default;
     BasicSystem& operator=(const BasicSystem& other) = default;
@@ -2625,7 +2650,8 @@ struct App {
         w.init_resource<Events<T>>();
         // SystemAddInfo info;
         // auto func =
-        //     std::make_unique<BasicSystem<void>>([](ResMut<Events<T>> event) {
+        //     std::make_unique<BasicSystem<void>>([](ResMut<Events<T>>
+        //     event) {
         //         event->update();
         //     });
         // FuncIndex index;
