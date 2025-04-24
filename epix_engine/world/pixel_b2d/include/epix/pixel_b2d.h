@@ -202,13 +202,13 @@ struct PixPhyWorld {
                 auto&& vertex = vertex_at(triangle_indices[i + j]);
                 vertices[j] = {vertex.x * info._scale, vertex.y * info._scale};
             }
-            b2Hull hull           = b2ComputeHull(vertices, 3);
-            float radius          = 0.0f;
-            b2Polygon triangle    = b2MakePolygon(&hull, radius);
-            b2ShapeDef shape_def  = b2DefaultShapeDef();
-            shape_def.density     = density;
-            shape_def.friction    = friction;
-            shape_def.restitution = restitution;
+            b2Hull hull                    = b2ComputeHull(vertices, 3);
+            float radius                   = 0.0f;
+            b2Polygon triangle             = b2MakePolygon(&hull, radius);
+            b2ShapeDef shape_def           = b2DefaultShapeDef();
+            shape_def.density              = density;
+            shape_def.material.friction    = friction;
+            shape_def.material.restitution = restitution;
             b2CreatePolygonShape(body, &shape_def, &triangle);
         }
         _bodies[index] = new PixBody(body, info._scale, std::move(cell_grid));
@@ -255,8 +255,8 @@ struct PixPhyWorld {
                             draw_line_shape(x1, y1, x2, y2, awake);
                         }
                     } else if (b2Shape_GetType(shape) ==
-                               b2ShapeType::b2_smoothSegmentShape) {
-                        auto segment  = b2Shape_GetSmoothSegment(shape);
+                               b2ShapeType::b2_chainSegmentShape) {
+                        auto segment  = b2Shape_GetChainSegment(shape);
                         auto& vertex1 = segment.segment.point1;
                         auto& vertex2 = segment.segment.point2;
                         auto x1 = vertex1.x * cosv - vertex1.y * sinv + pos.x;

@@ -383,10 +383,10 @@ EPIX_API void App::run() {
                 Local<std::optional<std::chrono::steady_clock::time_point>>
                     last_time) {
                 if (!last_time->has_value()) {
-                    *last_time = std::chrono::high_resolution_clock::now();
+                    *last_time = std::chrono::steady_clock::now();
                     return;
                 }
-                auto now = std::chrono::high_resolution_clock::now();
+                auto now = std::chrono::steady_clock::now();
                 auto delta =
                     (double)
                         std::chrono::duration_cast<std::chrono::nanoseconds>(

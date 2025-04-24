@@ -205,8 +205,8 @@ struct SimulationCollisionGeneral
                         draw_line(vertex1.x, vertex1.y, vertex2.x, vertex2.y);
                     }
                 } else if (b2Shape_GetType(shape) ==
-                           b2ShapeType::b2_smoothSegmentShape) {
-                    auto segment  = b2Shape_GetSmoothSegment(shape);
+                           b2ShapeType::b2_chainSegmentShape) {
+                    auto segment  = b2Shape_GetChainSegment(shape);
                     auto& vertex1 = segment.segment.point1;
                     auto& vertex2 = segment.segment.point2;
                     draw_line(vertex1.x, vertex1.y, vertex2.x, vertex2.y);
