@@ -418,7 +418,13 @@ struct LocalData {
 };
 
 template <typename T>
-struct GetWorldParam;
+struct GetWorldParam {
+    static_assert(
+        false,
+        "GetWorldParam not supported for this type. This type maybe passed "
+        "here by GetParams."
+    );
+};
 template <>
 struct GetWorldParam<Commands> {
     using type = Commands;
