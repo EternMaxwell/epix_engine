@@ -13,7 +13,7 @@ struct AssetIO {
     AssetIO& operator=(AssetIO&&)      = delete;
 
     template <typename T>
-    auto&& submit(T&& func) {
+    auto submit(T&& func) {
         return pool.submit_task(func);
     }
 };

@@ -63,20 +63,20 @@ EPIX_API void CommandQueue::flush(World& world) {
 }
 
 EPIX_API void CommandQueue::despawn(const Entity& entity) {
-    m_commands.emplace_back(0 << 24 | m_despawn_list.size());
+    m_commands.emplace_back(0 << 24 | (uint32_t)m_despawn_list.size());
     m_despawn_list.emplace_back(entity);
 }
 EPIX_API void CommandQueue::despawn_recurse(const Entity& entity) {
-    m_commands.emplace_back(1 << 24 | m_recurse_despawn_list.size());
+    m_commands.emplace_back(1 << 24 | (uint32_t)m_recurse_despawn_list.size());
     m_recurse_despawn_list.emplace_back(entity);
 }
 EPIX_API void CommandQueue::remove_resource(const std::type_index& type) {
-    m_commands.emplace_back(2 << 24 | m_remove_resources_list.size());
+    m_commands.emplace_back(2 << 24 | (uint32_t)m_remove_resources_list.size());
     m_remove_resources_list.emplace_back(type);
 }
 EPIX_API void CommandQueue::entity_erase(
     void (*func)(World*, Entity), const Entity& entity
 ) {
-    m_commands.emplace_back(3 << 24 | m_entity_erase_list.size());
+    m_commands.emplace_back(3 << 24 | (uint32_t)m_entity_erase_list.size());
     m_entity_erase_list.emplace_back(func, entity);
 }
