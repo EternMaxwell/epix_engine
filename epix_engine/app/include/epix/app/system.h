@@ -162,16 +162,21 @@ struct PrepareParam {
     static void unprepare(T& t) {};
 };
 
-// template <typename T>
-// struct PrepareParam<Res<T>> {
-//     static void prepare(Res<T>& t) { t.lock(); }
-//     static void unprepare(Res<T>& t) { t.unlock(); }
-// };
-// template <typename T>
-// struct PrepareParam<ResMut<T>> {
-//     static void prepare(ResMut<T>& t) { t.lock(); }
-//     static void unprepare(ResMut<T>& t) { t.unlock(); }
-// };
+template <typename T>
+struct PrepareParam<Res<T>> {
+    static void prepare(Res<T>& t) { t.lock(); }
+    static void unprepare(Res<T>& t) { t.unlock(); }
+};
+template <typename T>
+struct PrepareParam<ResMut<T>> {
+    static void prepare(ResMut<T>& t) { t.lock(); }
+    static void unprepare(ResMut<T>& t) { t.unlock(); }
+};
+template <typename T>
+struct PrepareParam<Extract<T>> {
+    static void prepare(Extract<T>& t) { PrepareParam<T>::prepare(t); }
+    static void unprepare(Extract<T>& t) { PrepareParam<T>::unprepare(t); }
+};
 
 template <typename... Args>
 struct PrepareParam<std::tuple<Args...>> {
@@ -205,9 +210,15 @@ struct ParamResolver<std::tuple<Args...>> {
    private:
     param_data_t m_param_data;
 
+    void prepare() { PrepareParam<param_data_t>::prepare(m_param_data); }
+    void unprepare() { PrepareParam<param_data_t>::unprepare(m_param_data); }
+
    public:
     ParamResolver(World* src, World* dst, LocalData* local_data)
-        : m_param_data(GetParams<param_data_t>::get(src, dst, local_data)) {}
+        : m_param_data(GetParams<param_data_t>::get(src, dst, local_data)) {
+        prepare();
+    }
+    ~ParamResolver() { unprepare(); }
 
     auto resolve() {
         return ParamResolve<

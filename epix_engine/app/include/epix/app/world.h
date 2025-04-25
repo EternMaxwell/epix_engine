@@ -61,10 +61,18 @@ concept is_bundle = requires(T t) {
     { t.unpack() };
 };
 
+struct UntypedRes {
+    std::shared_ptr<void> resource;
+    std::shared_ptr<std::shared_mutex> mutex;
+
+    EPIX_API operator bool() const { return resource != nullptr; }
+    EPIX_API bool operator!() const { return resource == nullptr; }
+};
+
 struct World {
    private:
     entt::registry m_registry;
-    dense_map<std::type_index, std::shared_ptr<void>> m_resources;
+    dense_map<std::type_index, UntypedRes> m_resources;
     mutable std::shared_mutex m_resources_mutex;
     CommandQueue m_command_queue;
 
@@ -76,34 +84,69 @@ struct World {
     World& operator=(World&&)      = delete;
     EPIX_API ~World();
 
-    template <typename T>
-    T& resource() {
-        return *static_cast<T*>(get_resource(typeid(T)).get());
-    }
-    template <typename T>
-    const T& resource() const {
-        return *static_cast<T*>(get_resource(typeid(T)).get());
-    }
-    template <typename T>
-    std::shared_ptr<T> get_resource() const {
-        std::shared_lock lock(m_resources_mutex);
-        auto it = m_resources.find(typeid(std::decay_t<T>));
-        if (it != m_resources.end()) {
-            return std::static_pointer_cast<T>(it->second);
-        }
-        return nullptr;
-    }
-    EPIX_API std::shared_ptr<void> get_resource(const std::type_index& type
-    ) const;
+    // template <typename T>
+    // std::pair<T&, std::shared_lock<std::shared_mutex>> resource_mut() {
+    //     std::shared_lock lock(m_resources_mutex);
+    //     auto it = m_resources.find(typeid(T));
+    //     if (it != m_resources.end()) {
+    //         return {
+    //             *std::static_pointer_cast<T>(it->second.resource),
+    //             std::shared_lock<std::shared_mutex>(*it->second.mutex)
+    //         };
+    //     }
+    //     throw std::runtime_error("Resource not found");
+    // }
+    // template <typename T>
+    // std::pair<const T&, std::unique_lock<std::shared_mutex>> resource() const {
+    //     std::shared_lock lock(m_resources_mutex);
+    //     auto it = m_resources.find(typeid(T));
+    //     if (it != m_resources.end()) {
+    //         return {
+    //             *std::static_pointer_cast<T>(it->second.resource),
+    //             std::unique_lock<std::shared_mutex>(*it->second.mutex)
+    //         };
+    //     }
+    //     throw std::runtime_error("Resource not found");
+    // }
+    // template <typename T>
+    // std::pair<const T*, std::shared_lock<std::shared_mutex>> get_resource(
+    // ) const {
+    //     std::unique_lock lock(m_resources_mutex);
+    //     auto it = m_resources.find(typeid(T));
+    //     if (it != m_resources.end()) {
+    //         return {
+    //             std::static_pointer_cast<T>(it->second.resource).get(),
+    //             std::shared_lock<std::shared_mutex>(*it->second.mutex)
+    //         };
+    //     }
+    //     return {nullptr, std::shared_lock<std::shared_mutex>()};
+    // }
+    // template <typename T>
+    // std::pair<T*, std::unique_lock<std::shared_mutex>> get_resource_mut() {
+    //     std::unique_lock lock(m_resources_mutex);
+    //     auto it = m_resources.find(typeid(T));
+    //     if (it != m_resources.end()) {
+    //         return {
+    //             std::static_pointer_cast<T>(it->second.resource).get(),
+    //             std::unique_lock<std::shared_mutex>(*it->second.mutex)
+    //         };
+    //     }
+    //     return {nullptr, std::unique_lock<std::shared_mutex>()};
+    // }
+    EPIX_API UntypedRes resource(const std::type_index& type) const;
 
     template <typename T>
     void init_resource() {
         std::unique_lock lock(m_resources_mutex);
         if (!m_resources.contains(typeid(std::decay_t<T>))) {
             m_resources.emplace(
-                typeid(std::decay_t<T>), std::static_pointer_cast<void>(
-                                             std::make_shared<std::decay_t<T>>()
-                                         )
+                typeid(std::decay_t<T>),
+                UntypedRes{
+                    std::static_pointer_cast<void>(
+                        std::make_shared<std::decay_t<T>>()
+                    ),
+                    std::make_shared<std::shared_mutex>()
+                }
             );
         }
     }
@@ -113,9 +156,12 @@ struct World {
         if (!m_resources.contains(typeid(std::decay_t<T>))) {
             m_resources.emplace(
                 typeid(std::decay_t<T>),
-                std::static_pointer_cast<void>(
-                    std::make_shared<std::decay_t<T>>(std::forward<T>(res))
-                )
+                UntypedRes{
+                    std::static_pointer_cast<void>(
+                        std::make_shared<std::decay_t<T>>(std::forward<T>(res))
+                    ),
+                    std::make_shared<std::shared_mutex>()
+                }
             );
         }
     }
@@ -125,10 +171,14 @@ struct World {
         if (!m_resources.contains(typeid(std::decay_t<T>))) {
             m_resources.emplace(
                 typeid(std::decay_t<T>),
-                std::static_pointer_cast<void>(
-                    std::make_shared<std::decay_t<T>>(std::forward<Args>(args
-                    )...)
-                )
+                UntypedRes{
+                    std::static_pointer_cast<void>(
+                        std::make_shared<std::decay_t<T>>(
+                            std::forward<Args>(args)...
+                        )
+                    ),
+                    std::make_shared<std::shared_mutex>()
+                }
             );
         }
     }
@@ -137,7 +187,11 @@ struct World {
         std::unique_lock lock(m_resources_mutex);
         if (!m_resources.contains(typeid(std::decay_t<T>))) {
             m_resources.emplace(
-                typeid(std::decay_t<T>), std::static_pointer_cast<void>(res)
+                typeid(std::decay_t<T>),
+                UntypedRes{
+                    std::static_pointer_cast<void>(res),
+                    std::make_shared<std::shared_mutex>()
+                }
             );
         }
     }
@@ -147,12 +201,28 @@ struct World {
         if (!m_resources.contains(typeid(std::decay_t<T>))) {
             m_resources.emplace(
                 typeid(std::decay_t<T>),
-                std::static_pointer_cast<void>(
-                    std::shared_ptr<std::decay_t<T>>(res)
-                )
+                UntypedRes{
+                    std::static_pointer_cast<void>(
+                        std::shared_ptr<std::decay_t<T>>(res)
+                    ),
+                    std::make_shared<std::shared_mutex>()
+                }
             );
         }
     }
+    template <typename T>
+    void add_resource(
+        std::shared_ptr<T> res, std::shared_ptr<std::shared_mutex> mutex
+    ) {
+        std::unique_lock lock(m_resources_mutex);
+        if (!m_resources.contains(typeid(std::decay_t<T>))) {
+            m_resources.emplace(
+                typeid(std::decay_t<T>),
+                UntypedRes{std::static_pointer_cast<void>(res), mutex}
+            );
+        }
+    }
+    EPIX_API void add_resource(std::type_index type, UntypedRes res);
     EPIX_API void add_resource(std::type_index type, std::shared_ptr<void> res);
     template <typename T>
     void remove_resource() {

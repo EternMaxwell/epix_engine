@@ -197,7 +197,7 @@ EPIX_API void App::build_plugins() {
         plugin->build(*this);
         auto mutex = std::make_shared<std::shared_mutex>();
         for (auto&& [type, world] : m_worlds) {
-            if (!world->get_resource(id)) {
+            if (!world->resource(id)) {
                 world->add_resource(id, plugin);
             }
         }
@@ -403,14 +403,14 @@ EPIX_API void App::run() {
         });
         w.emplace_resource<AppSystems>(*this);
         w.init_resource<ScheduleProfiles>();
-        // auto&& profile  = w.resource<AppProfile>();
-        // auto&& profiles = w.resource<ScheduleProfiles>();
-        // for (auto&& [id, w2] : m_worlds) {
-        //     if (w2.get() != &w) {
-        //         w2->insert_resource(profile);
-        //         w2->insert_resource(profiles);
-        //     }
-        // }
+        auto&& profile  = w.resource(typeid(AppProfile));
+        auto&& profiles = w.resource(typeid(ScheduleProfiles));
+        for (auto&& [id, w2] : m_worlds) {
+            if (w2.get() != &w) {
+                w2->add_resource(typeid(AppProfile), profile);
+                w2->add_resource(typeid(ScheduleProfiles), profiles);
+            }
+        }
     }
     m_logger->info("Running App");
     m_logger->debug("Running startup schedules");

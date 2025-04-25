@@ -9,18 +9,29 @@ EPIX_API World::~World() {
     m_resources.clear();
 }
 
-EPIX_API std::shared_ptr<void> World::get_resource(const std::type_index& type
-) const {
+EPIX_API UntypedRes World::resource(const std::type_index& type) const {
     std::shared_lock lock(m_resources_mutex);
     auto it = m_resources.find(type);
     if (it != m_resources.end()) {
         return it->second;
     }
-    return nullptr;
+    return UntypedRes{};
 }
 EPIX_API void World::add_resource(
     std::type_index type, std::shared_ptr<void> res
 ) {
+    std::unique_lock lock(m_resources_mutex);
+    if (!m_resources.contains(type)) {
+        m_resources.emplace(
+            type,
+            UntypedRes{
+                std::static_pointer_cast<void>(res),
+                std::make_shared<std::shared_mutex>()
+            }
+        );
+    }
+}
+EPIX_API void World::add_resource(std::type_index type, UntypedRes res) {
     std::unique_lock lock(m_resources_mutex);
     if (!m_resources.contains(type)) {
         m_resources.emplace(type, res);

@@ -50,6 +50,9 @@ struct Extract;
 template <typename T>
 struct Local;
 struct LocalData;
+
+template <typename T>
+struct PrepareParam;
 }  // namespace epix::app
 
 // define
@@ -97,6 +100,7 @@ struct Commands {
     void add_resource(const std::shared_ptr<T>& res) noexcept;
     template <typename T>
     void add_resource(T* res) noexcept;
+    EPIX_API void add_resource(std::type_index type, UntypedRes res);
     template <typename T>
     void remove_resource() noexcept;
 
@@ -113,13 +117,22 @@ struct Res {
     using decayed_type  = std::decay_t<T>;
     using resource_type = const T;
 
-    Res(std::shared_ptr<decayed_type> res) noexcept : resource(res) {}
-    Res(std::shared_ptr<void> res) noexcept
-        : resource(std::static_pointer_cast<decayed_type>(res)) {}
-    Res(const Res& other) noexcept            = default;
-    Res(Res&& other) noexcept                 = default;
-    Res& operator=(const Res& other) noexcept = default;
-    Res& operator=(Res&& other) noexcept      = default;
+    Res(const UntypedRes& res) noexcept
+        : resource(std::static_pointer_cast<decayed_type>(res.resource)),
+          mutex(res.mutex) {}
+    Res(const Res& other) noexcept
+        : resource(other.resource), mutex(other.mutex) {}
+    Res(Res&& other) noexcept : resource(other.resource), mutex(other.mutex) {}
+    Res& operator=(const Res& other) noexcept {
+        resource = other.resource;
+        mutex    = other.mutex;
+        return *this;
+    }
+    Res& operator=(Res&& other) noexcept {
+        resource = other.resource;
+        mutex    = other.mutex;
+        return *this;
+    }
     operator bool() const noexcept { return resource != nullptr; }
     bool operator!() const noexcept { return resource == nullptr; }
 
@@ -127,20 +140,77 @@ struct Res {
     const T* operator->() const noexcept { return resource.get(); }
     const T* get() const noexcept { return resource.get(); }
 
+    UntypedRes untyped() const noexcept {
+        return UntypedRes{std::static_pointer_cast<void>(resource), mutex};
+    }
+
+   private:
+    void lock() const noexcept {
+        if (this->mutex) this->mutex->lock_shared();
+    }
+    void unlock() const noexcept {
+        if (this->mutex) this->mutex->unlock_shared();
+    }
+
    protected:
     std::shared_ptr<decayed_type> resource;
+    std::shared_ptr<std::shared_mutex> mutex;
+
+    template <typename T>
+    friend struct PrepareParam;
 };
 template <typename T>
     requires(!std::is_reference_v<T>)
-struct ResMut : public Res<T> {
+struct ResMut {
    public:
-    using resource_type = T;
+    using decayed_type  = std::decay_t<T>;
+    using resource_type = const T;
 
-    using Res<T>::Res;
+    ResMut(const UntypedRes& res) noexcept
+        : resource(std::static_pointer_cast<decayed_type>(res.resource)),
+          mutex(res.mutex) {}
+    ResMut(const ResMut& other) noexcept
+        : resource(other.resource), mutex(other.mutex) {}
+    ResMut(ResMut&& other) noexcept
+        : resource(other.resource), mutex(other.mutex) {}
+    ResMut& operator=(const ResMut& other) noexcept {
+        resource = other.resource;
+        mutex    = other.mutex;
+        return *this;
+    }
+    ResMut& operator=(ResMut&& other) noexcept {
+        resource = other.resource;
+        mutex    = other.mutex;
+        return *this;
+    }
+    operator bool() const noexcept { return resource != nullptr; }
+    bool operator!() const noexcept { return resource == nullptr; }
 
-    T& operator*() noexcept { return *this->resource; }
-    T* operator->() noexcept { return this->resource.get(); }
-    T* get() noexcept { return this->resource.get(); }
+    const T& operator*() const noexcept { return *resource; }
+    const T* operator->() const noexcept { return resource.get(); }
+    const T* get() const noexcept { return resource.get(); }
+    T& operator*() noexcept { return *resource; }
+    T* operator->() noexcept { return resource.get(); }
+    T* get() noexcept { return resource.get(); }
+
+    UntypedRes untyped() const noexcept {
+        return UntypedRes{std::static_pointer_cast<void>(resource), mutex};
+    }
+
+   private:
+    void lock() const noexcept {
+        if (this->mutex) this->mutex->lock();
+    }
+    void unlock() const noexcept {
+        if (this->mutex) this->mutex->unlock();
+    }
+
+   protected:
+    std::shared_ptr<decayed_type> resource;
+    std::shared_ptr<std::shared_mutex> mutex;
+
+    template <typename T>
+    friend struct PrepareParam;
 };
 
 // query helpers
