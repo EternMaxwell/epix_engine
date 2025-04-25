@@ -68,6 +68,8 @@ struct std::equal_to<std::weak_ptr<T>> {
 };
 
 namespace epix::app {
+template <typename T>
+static constexpr bool external_thread_safe_v = false;
 struct Entity {
    private:
     entt::entity id;
