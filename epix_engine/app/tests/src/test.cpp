@@ -17,7 +17,7 @@ void func1(ResMut<TestRes> res, Query<Get<TestComp>> query) {
         std::cout << "comp: " << comp.v++ << std::endl;
     }
 };
-void func2(Command cmd, Local<int> v) {
+void func2(Commands cmd, Local<int> v) {
     cmd.insert_resource(TestRes{1});
     cmd.spawn(TestComp{1});
     std::cout << "func2" << std::endl;

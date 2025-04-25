@@ -224,7 +224,7 @@ EPIX_API void Schedule::run(World* src, World* dst, bool enable_tracy) {
                 }
             }
         }
-        dst->m_command.flush();
+        dst->m_command_queue.flush(*dst);
     } else {
         bake();
         for (auto&& [ptr, system] : m_systems) {
@@ -264,7 +264,7 @@ EPIX_API void Schedule::run(World* src, World* dst, bool enable_tracy) {
                 }
             }
         }
-        dst->m_command.flush();
+        dst->m_command_queue.flush(*dst);
     }
     if (m_remain != 0) {
         m_logger->warn("Some systems are not finished.");

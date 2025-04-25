@@ -2,21 +2,6 @@
 
 using namespace epix::app;
 
-EPIX_API World::World() : m_resources(), m_resources_mutex(), m_command(this) {}
-EPIX_API World::~World() { m_command.flush(); }
-
-EPIX_API UntypedRes World::resource(std::type_index type) {
-    auto&& it = m_resources.find(type);
-    if (it == m_resources.end()) return UntypedRes{};
-    return it->second;
-}
-EPIX_API void World::add_resource(std::type_index type, UntypedRes res) {
-    std::unique_lock lock(m_resources_mutex);
-    if (!m_resources.contains(type)) {
-        m_resources.emplace(type, res);
-    }
-}
-
 EPIX_API void Executor::add(const std::string& name, size_t count) {
     m_pools.emplace(
         name, std::make_shared<BS::thread_pool<BS::tp::priority>>(
@@ -212,11 +197,8 @@ EPIX_API void App::build_plugins() {
         plugin->build(*this);
         auto mutex = std::make_shared<std::shared_mutex>();
         for (auto&& [type, world] : m_worlds) {
-            if (!world->resource(id).resource) {
-                world->add_resource(
-                    id,
-                    UntypedRes{std::static_pointer_cast<void>(plugin), mutex}
-                );
+            if (!world->get_resource(id)) {
+                world->add_resource(id, plugin);
             }
         }
     }
@@ -421,14 +403,14 @@ EPIX_API void App::run() {
         });
         w.emplace_resource<AppSystems>(*this);
         w.init_resource<ScheduleProfiles>();
-        auto&& profile  = w.resource<AppProfile>();
-        auto&& profiles = w.resource<ScheduleProfiles>();
-        for (auto&& [id, w2] : m_worlds) {
-            if (w2.get() != &w) {
-                w2->add_resource<AppProfile>(profile);
-                w2->add_resource<ScheduleProfiles>(profiles);
-            }
-        }
+        // auto&& profile  = w.resource<AppProfile>();
+        // auto&& profiles = w.resource<ScheduleProfiles>();
+        // for (auto&& [id, w2] : m_worlds) {
+        //     if (w2.get() != &w) {
+        //         w2->insert_resource(profile);
+        //         w2->insert_resource(profiles);
+        //     }
+        // }
     }
     m_logger->info("Running App");
     m_logger->debug("Running startup schedules");

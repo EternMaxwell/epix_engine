@@ -1,7 +1,7 @@
 #include "epix/app.h"
 
 using namespace epix::app;
-using namespace epix::app_tools;
+using namespace epix::app::tools;
 
 EPIX_API Label::Label(std::type_index t, size_t i) noexcept
     : type(t), index(i) {}
@@ -22,24 +22,31 @@ EPIX_API size_t Label::hash_code() const noexcept {
 EPIX_API std::string Label::name() const noexcept {
     return std::format("{}#{}", type.name(), index);
 }
-
-EPIX_API Entity& Entity::operator=(entt::entity id) {
+EPIX_API Entity::Entity(entt::entity id) noexcept : id(id) {}
+EPIX_API Entity::Entity() noexcept : id(entt::null) {}
+EPIX_API Entity& Entity::operator=(entt::entity id) noexcept {
     this->id = id;
     return *this;
 }
-EPIX_API Entity::operator entt::entity() { return id; }
-EPIX_API Entity::operator bool() { return id != entt::null; }
-EPIX_API bool Entity::operator!() { return id == entt::null; }
-EPIX_API bool Entity::operator==(const Entity& other) { return id == other.id; }
-EPIX_API bool Entity::operator!=(const Entity& other) { return id != other.id; }
-EPIX_API bool Entity::operator==(const entt::entity& other) {
+EPIX_API Entity::operator entt::entity() const noexcept { return id; }
+EPIX_API Entity::operator bool() const noexcept { return id != entt::null; }
+EPIX_API bool Entity::operator!() const noexcept { return id == entt::null; }
+EPIX_API bool Entity::operator==(const Entity& other) const noexcept {
+    return id == other.id;
+}
+EPIX_API bool Entity::operator!=(const Entity& other) const noexcept {
+    return id != other.id;
+}
+EPIX_API bool Entity::operator==(const entt::entity& other) const noexcept {
     return id == other;
 }
-EPIX_API bool Entity::operator!=(const entt::entity& other) {
+EPIX_API bool Entity::operator!=(const entt::entity& other) const noexcept {
     return id != other;
 }
-EPIX_API size_t Entity::index() const { return static_cast<size_t>(id); }
-EPIX_API size_t Entity::hash_code() const {
+EPIX_API size_t Entity::index() const noexcept {
+    return static_cast<size_t>(id);
+}
+EPIX_API size_t Entity::hash_code() const noexcept {
     return std::hash<entt::entity>()(id);
 }
 EPIX_API size_t std::hash<epix::app::Entity>::operator()(const Entity& entity
