@@ -381,13 +381,13 @@ struct SystemParam<Local<T>> {
 template <typename... Args>
 struct SystemParam<std::tuple<Args...>>
     : public std::tuple<SystemParam<Args>...> {
-    using get_type =
-        std::tuple<decltype(std::declval<SystemParam<Args>>().get())...>;
     template <size_t... I>
-    get_type get(std::index_sequence<I...>) {
-        return get_type(std::get<I>(*this).get()...);
+    std::tuple<Args&...> get(std::index_sequence<I...>) {
+        return std::tuple<Args&...>(std::get<I>(*this).get()...);
     }
-    get_type get() { return get(std::index_sequence_for<Args...>{}); }
+    std::tuple<Args&...> get() {
+        return get(std::index_sequence_for<Args...>{});
+    }
     template <size_t... I>
     void
     complete(World& src, World& dst, LocalData& locals, std::index_sequence<I...>) {
@@ -443,7 +443,7 @@ struct SystemParam<T> {
             using return_type = decltype(std::apply(T::from_param, from.get()));
             if constexpr (epix::util::type_traits::specialization_of<
                               return_type, std::optional>) {
-                auto res = std ::apply(T::from_param, from.get());
+                auto res = std::apply(T::from_param, from.get());
                 if (res) {
                     param.emplace(std::move(res.value()));
                 }
@@ -536,7 +536,22 @@ struct SystemParam<Extract<World>> : public SystemParam<World> {
     }
 };
 template <typename T>
-struct SystemParam<Extract<Extract<T>>> : public SystemParam<T> {};
+struct SystemParam<Extract<Extract<T>>> : public SystemParam<T> {
+    std::optional<Extract<Extract<T>>> param;
+    void complete(World& src, World& dst, LocalData& locals) {
+        SystemParam<T>::complete(dst, src, locals);
+        if (!param && SystemParam<T>::valid()) {
+            param.emplace(SystemParam<T>::get());
+        }
+    }
+    Extract<Extract<T>>& get() {
+        if (!param) {
+            throw BadSystemParamParseException<Extract<Extract<T>>>();
+        }
+        return param.value();
+    }
+    bool valid() { return param.has_value(); }
+};
 template <typename T>
 struct SystemParam<std::optional<T>> : public SystemParam<T> {
     bool valid() { return true; }

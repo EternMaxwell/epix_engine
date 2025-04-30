@@ -14,6 +14,7 @@ struct Context {
     wgpu::Queue queue;
     wgpu::CommandEncoder encoder;
     wgpu::TextureView target_view;
+    wgpu::Texture surface_texture;
 
     wgpu::RenderPipeline pipeline;
 };
@@ -168,23 +169,25 @@ void begin_frame(epix::ResMut<Context>& ctx, const epix::app::World&) {
         throw std::runtime_error("Failed to get current texture");
         return;
     }
-    ctx->target_view = wgpu::Texture{surface_texture.texture}.createView(
+    ctx->surface_texture = surface_texture.texture;
+    ctx->target_view     = wgpu::Texture{surface_texture.texture}.createView(
         WGPUTextureViewDescriptor{
-            .label         = "Target View",
-            .format        = wgpu::Texture{surface_texture.texture}.getFormat(),
-            .dimension     = wgpu::TextureViewDimension::_2D,
-            .baseMipLevel  = 0,
-            .mipLevelCount = 1,
-            .baseArrayLayer  = 0,
-            .arrayLayerCount = 1,
-            .aspect          = wgpu::TextureAspect::All,
+                .label         = "Target View",
+                .format        = wgpu::Texture{surface_texture.texture}.getFormat(),
+                .dimension     = wgpu::TextureViewDimension::_2D,
+                .baseMipLevel  = 0,
+                .mipLevelCount = 1,
+                .baseArrayLayer  = 0,
+                .arrayLayerCount = 1,
+                .aspect          = wgpu::TextureAspect::All,
         }
     );
 }
 
 void end_frame(epix::ResMut<Context> ctx) {
-    ctx->target_view.release();
     ctx->surface.present();
+    ctx->target_view.release();
+    ctx->surface_texture.release();
     ctx->encoder.release();
 }
 

@@ -14,9 +14,7 @@ struct ParamResolver {
         system_param.prepare();
     }
     ~ParamResolver() { system_param.unprepare(); }
-    typename SystemParam<std::tuple<Args...>>::get_type resolve() {
-        return system_param.get();
-    }
+    std::tuple<Args&...> resolve() { return system_param.get(); }
 };
 template <typename Ret>
 struct BasicSystem {
