@@ -18,31 +18,23 @@ struct AssetPlugin : public epix::Plugin {
     AssetPlugin& register_asset() {
         m_assets_inserts.push_back([](epix::App& app) {
             app.init_resource<Assets<T>>();
-            app.add_system(First, Assets<T>::res_handle_events);
+            app.add_systems(First, into(Assets<T>::res_handle_events));
         });
         return *this;
     }
-    template <typename T, typename Context = void>
+    template <typename T>
     AssetPlugin& add_loader() {
         m_loader_inserts.push_back([](epix::App& app) {
             app.init_resource<AssetLoader<T>>()
-                .add_system(
-                    epix::PreStartup, AssetLoader<T>::get_handle_provider
+                .add_systems(
+                    epix::PreStartup, into(AssetLoader<T>::get_handle_provider)
                 )
-                .add_system(epix::First, AssetLoader<T>::loaded);
-            if constexpr (!std::is_same_v<Context, void>) {
-                void (*func)(epix::ResMut<AssetIO>, epix::ResMut<AssetLoader<T>>, epix::ResMut<Context>) =
-                    AssetLoader<T>::load_cached_ctx;
-                app.add_system(
-                    epix::First, into(func).before(AssetLoader<T>::loaded)
-                );
-            } else {
-                void (*func)(epix::ResMut<AssetIO>, epix::ResMut<AssetLoader<T>>) =
-                    AssetLoader<T>::load_cached;
-                app.add_system(
-                    epix::First, into(func).before(AssetLoader<T>::loaded)
-                );
-            }
+                .add_systems(epix::First, into(AssetLoader<T>::loaded));
+            void (*func)(epix::ResMut<AssetIO>, epix::ResMut<AssetLoader<T>>) =
+                AssetLoader<T>::load_cached;
+            app.add_systems(
+                epix::First, into(func).before(AssetLoader<T>::loaded)
+            );
         });
         return *this;
     }

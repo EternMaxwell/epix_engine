@@ -8,7 +8,7 @@
 namespace epix {
 namespace input {
 namespace events {
-using namespace epix::prelude;
+using namespace epix;
 using MouseScroll = window::events::MouseScroll;
 using CursorMove  = window::events::CursorMove;
 enum ButtonState { Pressed, Released, Repeat };

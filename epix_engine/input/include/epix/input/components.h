@@ -6,7 +6,6 @@
 namespace epix {
 namespace input {
 namespace components {
-using namespace prelude;
 using namespace window::components;
 
 template <typename T>

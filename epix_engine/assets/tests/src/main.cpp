@@ -270,17 +270,15 @@ void end_app(EventWriter<AppExit> exit, Local<std::optional<int>> count) {
     }
 }
 void set_log(ResMut<assets::Assets<string>> ass) {
-    if (ass) {
-        ass->set_log_label("Assets");
-        ass->set_log_level(spdlog::level::trace);
-    }
+    ass->set_log_label("Assets");
+    ass->set_log_level(spdlog::level::trace);
 }
 std::optional<assets::Handle<string>> handle;
 void load_str(ResMut<assets::AssetLoader<string>> loader) {
     handle = loader->reserve("Hello Assets!");
 }
 void print_asset(Res<assets::Assets<string>> assets) {
-    if (handle && assets) {
+    if (handle) {
         if (auto&& opt = assets->get(*handle)) {
             auto&& str = opt.value().get();
             std::cout << str << std::endl;
@@ -310,14 +308,14 @@ void test_5() {
 
     using namespace epix;
 
-    App app = App::create2();
+    App app = App::create();
     app.add_plugin(
            assets::AssetPlugin{}.register_asset<string>().add_loader<string>()
     )
-        .enable_loop()
-        .add_system(Startup, test5::set_log, test5::load_str)
-        .add_system(
-            Update, test5::end_app, test5::print_asset, test5::frame_wait
+        .add_plugin(LoopPlugin{})
+        .add_systems(Startup, into(test5::set_log, test5::load_str))
+        .add_systems(
+            Update, into(test5::end_app, test5::print_asset, test5::frame_wait)
         )
         .run();
 }

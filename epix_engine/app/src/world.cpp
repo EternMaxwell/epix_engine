@@ -1,93 +1,47 @@
-#include "epix/app.h"
+#include "epix/app/world.h"
 
 using namespace epix::app;
 
-EPIX_API World::World() {}
-EPIX_API World::~World() {
-    m_command_queue.flush(*this);
-    m_registry.clear();
-    m_resources.clear();
-}
-
-EPIX_API UntypedRes World::resource(const std::type_index& type) const {
-    std::shared_lock lock(m_resources_mutex);
-    auto it = m_resources.find(type);
-    if (it != m_resources.end()) {
-        return it->second;
+EPIX_API World::World()
+    : m_data(std::make_unique<WorldData>()),
+      m_command_queue(std::make_unique<CommandQueue>()) {}
+EPIX_API CommandQueue& World::command_queue() { return *m_command_queue; }
+EPIX_API entt::registry& World::registry() { return m_data->registry; }
+EPIX_API void World::add_resource(const UntypedRes& res) {
+    std::unique_lock lock(m_data->resources_mutex);
+    if (m_data->resources.contains(res.type)) {
+        return;
     }
-    return UntypedRes{};
-}
-EPIX_API void World::add_resource(
-    std::type_index type, std::shared_ptr<void> res
-) {
-    std::unique_lock lock(m_resources_mutex);
-    if (!m_resources.contains(type)) {
-        m_resources.emplace(
-            type,
-            UntypedRes{
-                std::static_pointer_cast<void>(res),
-                std::make_shared<std::shared_mutex>()
-            }
-        );
-    }
-}
-EPIX_API void World::add_resource(std::type_index type, UntypedRes res) {
-    std::unique_lock lock(m_resources_mutex);
-    if (!m_resources.contains(type)) {
-        m_resources.emplace(type, res);
-    }
+    m_data->resources.emplace(res.type, res);
 }
 EPIX_API void World::remove_resource(const std::type_index& type) {
-    std::unique_lock lock(m_resources_mutex);
-    auto it = m_resources.find(type);
-    if (it != m_resources.end()) {
-        m_resources.erase(it);
-    }
+    std::unique_lock lock(m_data->resources_mutex);
+    m_data->resources.erase(type);
+}
+EPIX_API bool World::entity_valid(Entity entity) {
+    return m_data->registry.valid(entity);
 }
 
-EPIX_API void CommandQueue::flush(World& world) {
-    std::unique_lock lock(m_mutex);
-    for (auto&& each : m_commands) {
-        uint32_t index = each >> 24;
-        uint32_t id    = each & 0x00FFFFFF;
-        if (index == 0) {
-            world.m_registry.destroy(m_despawn_list[id]);
-        } else if (index == 1) {
-            auto& children =
-                world.m_registry.get_or_emplace<Children>(m_despawn_list[id]);
-            for (auto&& child : children.children) {
-                world.m_registry.destroy(child);
-            }
-            world.m_registry.destroy(m_despawn_list[id]);
-        } else if (index == 2) {
-            world.remove_resource(m_remove_resources_list[id]);
-        } else if (index == 3) {
-            auto&& [func, entity] = m_entity_erase_list[id];
-            func(&world, entity);
-        }
-    }
-    m_commands.clear();
-    m_despawn_list.clear();
-    m_recurse_despawn_list.clear();
-    m_remove_resources_list.clear();
-    m_entity_erase_list.clear();
+EPIX_API void World::despawn(Entity entity) {
+    if (!m_data->registry.valid(entity)) return;
+    m_data->registry.destroy(entity);
 }
 
-EPIX_API void CommandQueue::despawn(const Entity& entity) {
-    m_commands.emplace_back(0 << 24 | (uint32_t)m_despawn_list.size());
-    m_despawn_list.emplace_back(entity);
+EPIX_API UntypedRes World::untyped_resource(const std::type_index& type) const {
+    std::shared_lock lock(m_data->resources_mutex);
+    auto it = m_data->resources.find(type);
+    if (it != m_data->resources.end()) {
+        return it->second;
+    }
+    throw std::runtime_error("Resource not found: " + std::string(type.name()));
 }
-EPIX_API void CommandQueue::despawn_recurse(const Entity& entity) {
-    m_commands.emplace_back(1 << 24 | (uint32_t)m_recurse_despawn_list.size());
-    m_recurse_despawn_list.emplace_back(entity);
-}
-EPIX_API void CommandQueue::remove_resource(const std::type_index& type) {
-    m_commands.emplace_back(2 << 24 | (uint32_t)m_remove_resources_list.size());
-    m_remove_resources_list.emplace_back(type);
-}
-EPIX_API void CommandQueue::entity_erase(
-    void (*func)(World*, Entity), const Entity& entity
-) {
-    m_commands.emplace_back(3 << 24 | (uint32_t)m_entity_erase_list.size());
-    m_entity_erase_list.emplace_back(func, entity);
+EPIX_API std::optional<UntypedRes> World::get_untyped_resource(
+    const std::type_index& type
+) const {
+    std::shared_lock lock(m_data->resources_mutex);
+    auto it = m_data->resources.find(type);
+    if (it != m_data->resources.end()) {
+        return it->second;
+    }
+    return std::nullopt;
 }

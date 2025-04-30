@@ -9,7 +9,6 @@
 
 namespace epix {
 namespace input {
-using namespace prelude;
 using namespace systems;
 using namespace events;
 

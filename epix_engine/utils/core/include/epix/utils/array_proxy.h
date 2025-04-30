@@ -4,7 +4,7 @@
 #include <initializer_list>
 #include <type_traits>
 
-namespace index {
+namespace epix::util {
 
 template <typename T>
 class ArrayProxy {

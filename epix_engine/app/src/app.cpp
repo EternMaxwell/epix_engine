@@ -1,447 +1,482 @@
-#include "epix/app.h"
+#include "epix/app/app.h"
 
 using namespace epix::app;
 
-EPIX_API void Executor::add(const std::string& name, size_t count) {
-    m_pools.emplace(
-        name, std::make_shared<BS::thread_pool<BS::tp::priority>>(
-                  count, [=]() { BS::this_thread::set_os_thread_name(name); }
-              )
-    );
-}
-EPIX_API std::shared_ptr<BS::thread_pool<BS::tp::priority>> Executor::get(
-    const std::string& name
-) {
-    auto it = m_pools.find(name);
-    if (it == m_pools.end()) return nullptr;
-    return it->second;
-}
+EPIX_API ScheduleConfig::ScheduleConfig(Schedule&& schedule)
+    : label(schedule.label),
+      schedule(std::move(schedule)),
+      src_world(MainWorld),
+      dst_world(MainWorld) {}
+EPIX_API ScheduleConfig::ScheduleConfig(ScheduleLabel label)
+    : label(label), src_world(MainWorld), dst_world(MainWorld) {}
+EPIX_API ScheduleConfig& ScheduleConfig::after(ScheduleLabel label) {
+    depends.emplace(label);
+    return *this;
+};
+EPIX_API ScheduleConfig& ScheduleConfig::before(ScheduleLabel label) {
+    succeeds.emplace(label);
+    return *this;
+};
+EPIX_API ScheduleConfig& ScheduleConfig::set_src(WorldLabel label) {
+    src_world = label;
+    return *this;
+};
+EPIX_API ScheduleConfig& ScheduleConfig::set_dst(WorldLabel label) {
+    dst_world = label;
+    return *this;
+};
+EPIX_API ScheduleConfig& ScheduleConfig::set_run_once() {
+    run_once = true;
+    return *this;
+};
 
-EPIX_API App App::create(const AppCreateInfo& info) { return App(info); }
-EPIX_API App App::create2(const AppCreateInfo& info) { return App(info); }
-
-EPIX_API App::App(const AppCreateInfo& info) {
-    if (info.control_threads)
-        m_pool = std::make_unique<BS::thread_pool<BS::tp::priority>>(
-            info.control_threads,
-            []() {
-                // set thread name to "control"
-                BS::this_thread::set_os_thread_name("control");
-            }
-        );
-    m_executor = std::make_shared<Executor>();
-    for (auto&& [name, count] : info.worker_threads) {
-        m_executor->add(name, count);
+struct OnceRunner : public AppRunner {
+    int run(App& app) override {
+        app.run_group(LoopGroup);
+        app.logger()->info("Exiting app.");
+        app.run_group(ExitGroup);
+        app.logger()->info("App terminated.");
+        return 0;
     }
-    m_enable_loop      = std::make_unique<bool>(info.enable_loop);
-    m_enable_tracy     = std::make_unique<bool>(info.enable_tracy);
-    m_tracy_frame_mark = std::make_unique<bool>(info.enable_frame_mark);
-    set_logger(info.logger ? info.logger : spdlog::default_logger());
-    m_graphs.emplace(typeid(StartGraphT), std::make_unique<ScheduleGraph>());
-    m_graphs.emplace(typeid(LoopGraphT), std::make_unique<ScheduleGraph>());
-    m_graphs.emplace(typeid(ExitGraphT), std::make_unique<ScheduleGraph>());
-    add_world<MainWorld>();
-    add_world<RenderWorld>();
-    add_schedule(
-        StartGraph,
-        Schedule(PreStartup)
-            .set_src_world<MainWorld>()
-            .set_dst_world<MainWorld>()
-            .run_once(true),
-        Schedule(Startup)
-            .set_src_world<MainWorld>()
-            .set_dst_world<MainWorld>()
-            .after(PreStartup)
-            .run_once(true),
-        Schedule(PostStartup)
-            .set_src_world<MainWorld>()
-            .set_dst_world<MainWorld>()
-            .after(Startup)
-            .run_once(true)
-    );
-    add_schedule(
-        LoopGraph,
-        Schedule(PreExtract)
-            .set_src_world<MainWorld>()
-            .set_dst_world<RenderWorld>(),
-        Schedule(Extraction)
-            .set_src_world<MainWorld>()
-            .set_dst_world<RenderWorld>()
-            .after(PreExtract),
-        Schedule(PostExtract)
-            .set_src_world<MainWorld>()
-            .set_dst_world<RenderWorld>()
-            .after(Extraction),
-        Schedule(First)
-            .set_src_world<MainWorld>()
-            .set_dst_world<MainWorld>()
-            .after(PostExtract),
-        Schedule(PreUpdate)
-            .set_src_world<MainWorld>()
-            .set_dst_world<MainWorld>()
-            .after(First),
-        Schedule(StateTransition)
-            .set_src_world<MainWorld>()
-            .set_dst_world<MainWorld>()
-            .after(PreUpdate),
-        Schedule(Update)
-            .set_src_world<MainWorld>()
-            .set_dst_world<MainWorld>()
-            .configure_sets(
-                StateTransitionSet::Callback, StateTransitionSet::Transit
-            )
-            .after(StateTransition),
-        Schedule(PostUpdate)
-            .set_src_world<MainWorld>()
-            .set_dst_world<MainWorld>()
-            .after(Update),
-        Schedule(Last)
-            .set_src_world<MainWorld>()
-            .set_dst_world<MainWorld>()
-            .after(PostUpdate),
-        Schedule(Prepare)
-            .set_src_world<RenderWorld>()
-            .set_dst_world<RenderWorld>()
-            .after(PostExtract),
-        Schedule(PreRender)
-            .set_src_world<RenderWorld>()
-            .set_dst_world<RenderWorld>()
-            .after(Prepare),
-        Schedule(Render)
-            .set_src_world<RenderWorld>()
-            .set_dst_world<RenderWorld>()
-            .after(PreRender),
-        Schedule(PostRender)
-            .set_src_world<RenderWorld>()
-            .set_dst_world<RenderWorld>()
-            .after(Render)
-    );
-    add_schedule(
-        ExitGraph,
-        Schedule(PreExit).set_src_world<MainWorld>().set_dst_world<MainWorld>(),
-        Schedule(Exit)
-            .set_src_world<MainWorld>()
-            .set_dst_world<MainWorld>()
-            .after(PreExit),
-        Schedule(PostExit)
-            .set_src_world<MainWorld>()
-            .set_dst_world<MainWorld>()
-            .after(Exit)
-    );
-    add_event<AppExit>();
+};
+
+template <typename... Labels>
+void add_schedules(App& app, GroupLabel group, Labels&&... labels) {
+    (app.add_schedule(group, ScheduleConfig(labels)), ...);
+}
+template <typename... Labels>
+void add_run_once_schedules(App& app, GroupLabel group, Labels&&... labels) {
+    (app.add_schedule(group, ScheduleConfig(labels).set_run_once()), ...);
+}
+template <typename... Labels>
+void schedules_set_src_world(App& app, WorldLabel label, Labels&&... labels) {
+    (app.schedule_set_src(labels, label), ...);
+}
+template <typename... Labels>
+void schedules_set_dst_world(App& app, WorldLabel label, Labels&&... labels) {
+    (app.schedule_set_dst(labels, label), ...);
 }
 
-EPIX_API App* App::operator->() { return this; }
-EPIX_API App& App::enable_loop() {
-    *m_enable_loop = true;
-    return *this;
-};
-EPIX_API App& App::disable_loop() {
-    *m_enable_loop = false;
-    return *this;
-};
-EPIX_API App& App::enable_tracy() {
-    *m_enable_tracy = true;
-    return *this;
-};
-EPIX_API App& App::disable_tracy() {
-    *m_enable_tracy = false;
-    return *this;
-};
-EPIX_API App& App::enable_frame_mark() {
-    *m_tracy_frame_mark = true;
-    return *this;
-};
-EPIX_API App& App::disable_frame_mark() {
-    *m_tracy_frame_mark = false;
-    return *this;
-};
+EPIX_API App::App()
+    : m_executors(std::make_shared<Executors>()),
+      m_control_pool(std::make_shared<executor_t>(2)),
+      m_mutex(std::make_unique<std::shared_mutex>()),
+      m_logger(spdlog::default_logger()->clone("app")) {
+    add_world(MainWorld);
+    add_schedule_group(LoopGroup);
+    add_schedule_group(ExitGroup);
+    add_schedules(
+        *this, LoopGroup, First, PreUpdate, StateTransition, Update, PostUpdate,
+        Last
+    );
+    add_run_once_schedules(*this, LoopGroup, PreStartup, Startup, PostStartup);
+    add_schedules(*this, ExitGroup, PreExit, Exit, PostExit);
+    schedule_sequence(
+        PreStartup, Startup, PostStartup, First, PreUpdate, StateTransition,
+        Update, PostUpdate, Last
+    );
+    schedule_sequence(PreExit, Exit, PostExit);
+}
 
-EPIX_API App& App::set_log_level(spdlog::level::level_enum level) {
-    return *this;
-};
+EPIX_API App App::create() {
+    App app;
+    app.add_world(RenderWorld);
+    add_schedules(
+        app, LoopGroup, Prepare, PreRender, Render, PostRender, PreExtract,
+        Extraction, PostExtract
+    );
+    app.schedule_sequence(
+        PostStartup, PreExtract, Extraction, PostExtract, Prepare, PreRender,
+        Render, PostRender
+    );
+    app.schedule_sequence(PostExtract, First);
+    schedules_set_dst_world(
+        app, RenderWorld, Prepare, PreRender, Render, PostRender, PreExtract,
+        Extraction, PostExtract
+    );
+    schedules_set_src_world(
+        app, RenderWorld, Prepare, PreRender, Render, PostRender
+    );
+    return app;
+}
 
-EPIX_API App& App::add_schedule(GraphId gid, Schedule&& schedule) {
-    schedule.set_executor(m_executor);
-    schedule.set_logger(m_logger);
-    auto id = schedule.m_id;
-    if (!m_graphs.contains(gid) || m_graph_ids.contains(id)) {
-        return *this;
-    }
-    m_graph_ids.emplace(id, gid);
-    auto&& m_schedules = m_graphs.at(gid)->m_schedules;
-    m_schedules.emplace(id, std::make_shared<Schedule>(std::move(schedule)));
-    return *this;
-};
-EPIX_API App& App::add_schedule(GraphId id, Schedule& schedule) {
-    add_schedule(id, std::move(schedule));
-    return *this;
-};
-
-EPIX_API App& App::set_logger(const std::shared_ptr<spdlog::logger>& logger) {
+EPIX_API App& App::set_logger(std::shared_ptr<spdlog::logger> logger) {
     m_logger = logger->clone("app");
-    for (auto&& [id, graph] : m_graphs) {
-        for (auto&& [type, schedule] : graph->m_schedules) {
+    for (auto&& [label, group] : m_schedule_groups) {
+        for (auto&& [schedule_label, schedule] : group.schedules) {
             schedule->set_logger(m_logger);
         }
     }
     return *this;
 };
-EPIX_API std::shared_ptr<spdlog::logger> App::logger() const {
-    return m_logger;
-};
+EPIX_API std::shared_ptr<spdlog::logger> App::logger() { return m_logger; };
 
-EPIX_API void App::build_plugins() {
-    for (size_t i = 0; i < m_plugins.size(); i++) {
-        auto&& [id, plugin] = m_plugins[i];
-        plugin->build(*this);
-        auto mutex = std::make_shared<std::shared_mutex>();
-        for (auto&& [type, world] : m_worlds) {
-            if (!world->resource(id)) {
-                world->add_resource(id, plugin);
-            }
+EPIX_API std::optional<GroupLabel> App::find_belonged_group(
+    const ScheduleLabel& label
+) const noexcept {
+    std::shared_lock lock(*m_mutex);
+    for (auto&& [schedules_label, group] : m_schedule_groups) {
+        if (group.schedules.contains(label)) {
+            return schedules_label;
         }
     }
-};
-EPIX_API void App::build(ScheduleGraph& graph) {
-    auto&& m_schedules = graph.m_schedules;
-    for (auto&& [id, schedule] : m_schedules) {
-        schedule->build();
-        schedule->m_prev_schedules.clear();
-        schedule->m_next_schedules.clear();
-    }
-    for (auto&& [id, schedule] : m_schedules) {
-        for (auto&& each : schedule->m_prev_ids) {
-            if (auto it = m_schedules.find(each); it != m_schedules.end()) {
-                schedule->m_prev_schedules.emplace(it->second);
-                it->second->m_next_schedules.emplace(schedule);
-            }
-        }
-        for (auto&& each : schedule->m_next_ids) {
-            if (auto it = m_schedules.find(each); it != m_schedules.end()) {
-                schedule->m_next_schedules.emplace(it->second);
-                it->second->m_prev_schedules.emplace(schedule);
-            }
-        }
-    }
-};
-EPIX_API void App::bake(ScheduleGraph& graph) {
-    auto&& m_schedules = graph.m_schedules;
-    std::vector<std::shared_ptr<Schedule>> schedules;
-    schedules.reserve(m_schedules.size());
-    for (auto&& [id, schedule] : m_schedules) {
-        schedule->clear_tmp();
-        schedules.emplace_back(schedule);
-    }
-    std::sort(
-        schedules.begin(), schedules.end(),
-        [](const auto& lhs, const auto& rhs) {
-            return lhs->reach_time() < rhs->reach_time();
-        }
-    );
-    for (size_t i = 0; i < schedules.size(); i++) {
-        for (size_t j = i + 1; j < schedules.size(); j++) {
-            if (schedules[i]->m_src_world == schedules[j]->m_dst_world ||
-                schedules[i]->m_dst_world == schedules[j]->m_src_world ||
-                schedules[i]->m_src_world == schedules[j]->m_src_world ||
-                schedules[i]->m_dst_world == schedules[j]->m_dst_world) {
-                schedules[i]->m_tmp_nexts.emplace(schedules[j]);
-                schedules[j]->m_tmp_prevs.emplace(schedules[i]);
-            }
-        }
-    }
-};
-
-EPIX_API void App::run(ScheduleGraph& graph) {
-    bake(graph);
-    auto&& m_schedules = graph.m_schedules;
-    auto&& m_finishes  = graph.m_finishes;
-    size_t m_running   = 0;
-    size_t m_remain    = m_schedules.size();
-    auto run_schedule  = [&](std::shared_ptr<Schedule> schedule) {
-        if (*m_enable_tracy) {
-            ZoneScopedN("Try Detach Schedule");
-            auto name = std::format("Detach Schedule: ", schedule->m_id.name());
-            ZoneName(name.c_str(), name.size());
-            auto src = m_worlds[schedule->m_src_world].get();
-            auto dst = m_worlds[schedule->m_dst_world].get();
-            if (!src || !dst) {
-                m_finishes.emplace(schedule);
-                return;
-            }
-            if (!m_pool) {
-                schedule->run(src, dst, true);
-                m_finishes.emplace(schedule);
-                return;
-            }
-            m_pool->detach_task(
-                [this, src, dst, schedule, &m_finishes]() mutable {
-                    schedule->run(src, dst, true);
-                    m_finishes.emplace(schedule);
-                },
-                127
-            );
-        } else {
-            auto src = m_worlds[schedule->m_src_world].get();
-            auto dst = m_worlds[schedule->m_dst_world].get();
-            if (!src || !dst) {
-                m_finishes.emplace(schedule);
-                return;
-            }
-            if (!m_pool) {
-                schedule->run(src, dst, false);
-                m_finishes.emplace(schedule);
-                return;
-            }
-            m_pool->detach_task(
-                [this, src, dst, schedule, &m_finishes]() mutable {
-                    schedule->run(src, dst, false);
-                    m_finishes.emplace(schedule);
-                },
-                127
-            );
-        }
-    };
-    for (auto&& [id, schedule] : m_schedules) {
-        schedule->m_prev_count =
-            schedule->m_tmp_prevs.size() + schedule->m_prev_schedules.size();
-        if (schedule->m_prev_count == 0) {
-            m_running++;
-            run_schedule(schedule);
-        }
-    }
-    while (m_running > 0) {
-        std::shared_ptr<Schedule> schedule = m_finishes.pop();
-        m_running--;
-        for (auto&& each : schedule->m_tmp_nexts) {
-            if (auto ptr = each.lock()) {
-                ptr->m_prev_count--;
-                if (ptr->m_prev_count == 0) {
-                    m_running++;
-                    run_schedule(ptr);
-                }
-            } else {
-                schedule->m_tmp_nexts.erase(each);
-            }
-        }
-        for (auto&& each : schedule->m_next_schedules) {
-            if (auto ptr = each.lock()) {
-                ptr->m_prev_count--;
-                if (ptr->m_prev_count == 0) {
-                    m_running++;
-                    run_schedule(ptr);
-                }
-            } else {
-                schedule->m_tmp_prevs.erase(each);
-            }
-        }
-    }
-    std::unique_ptr<BasicSystem<void>> update_profile =
-        std::make_unique<BasicSystem<void>>(
-            [&](ResMut<ScheduleProfiles> profiles) {
-                for (auto&& [id, schedule] : m_schedules) {
-                    auto&& profile    = profiles->profile(id);
-                    profile.time_avg  = schedule->m_avg_time;
-                    profile.time_last = schedule->m_last_time;
-                }
-            }
-        );
-    auto&& w2 = world<MainWorld>();
-    update_profile->run(&w2, &w2);
+    return std::nullopt;
 }
 
-EPIX_API void App::run() {
-    m_logger->info("Building App");
-    build_plugins();
-    auto&& startup_graph = *m_graphs.at(typeid(StartGraphT));
-    auto&& loop_graph    = *m_graphs.at(typeid(LoopGraphT));
-    auto&& exit_graph    = *m_graphs.at(typeid(ExitGraphT));
-    build(startup_graph);
-    build(loop_graph);
-    build(exit_graph);
-    const bool enable_loop  = *m_enable_loop;
-    const bool enable_tracy = *m_enable_tracy;
-    const bool frame_mark   = *m_tracy_frame_mark;
-    std::unique_ptr<BasicSystem<void>> update_profile =
-        std::make_unique<BasicSystem<void>>(
-            [&](ResMut<AppProfile> profile,
-                Local<std::optional<std::chrono::steady_clock::time_point>>
-                    last_time) {
-                if (!last_time->has_value()) {
-                    *last_time = std::chrono::steady_clock::now();
-                    return;
-                }
-                auto now = std::chrono::steady_clock::now();
-                auto delta =
-                    (double)
-                        std::chrono::duration_cast<std::chrono::nanoseconds>(
-                            now - last_time->value()
-                        )
-                            .count() /
-                    1000000.0;
-                float factor = 0.1;
-                profile->frame_time =
-                    profile->frame_time * (1 - factor) + delta * factor;
-                profile->fps = 1000.0 / profile->frame_time;
-                *last_time   = now;
-            }
-        );
-    std::unique_ptr<BasicSystem<void>> sync_info =
-        std::make_unique<BasicSystem<void>>([&](Res<AppInfo> info) {
-            *m_enable_loop      = info->enable_loop;
-            *m_enable_tracy     = info->enable_tracy;
-            *m_tracy_frame_mark = info->tracy_frame_mark;
-        });
-    // add Profile and util res to MainWorld
-    {
-        auto&& w = world<MainWorld>();
-        w.init_resource<AppProfile>();
-        w.insert_resource(AppInfo{
-            .enable_loop      = *m_enable_loop,
-            .enable_tracy     = *m_enable_tracy,
-            .tracy_frame_mark = *m_tracy_frame_mark,
-        });
-        w.emplace_resource<AppSystems>(*this);
-        w.init_resource<ScheduleProfiles>();
-        auto&& profile  = w.resource(typeid(AppProfile));
-        auto&& profiles = w.resource(typeid(ScheduleProfiles));
-        for (auto&& [id, w2] : m_worlds) {
-            if (w2.get() != &w) {
-                w2->add_resource(typeid(AppProfile), profile);
-                w2->add_resource(typeid(ScheduleProfiles), profiles);
-            }
+EPIX_API World& App::world(const WorldLabel& label) {
+    std::shared_lock lock(*m_mutex);
+    auto it = m_worlds.find(label);
+    if (it != m_worlds.end()) {
+        return *it->second;
+    }
+    throw std::runtime_error("World not found.");
+};
+EPIX_API World* App::get_world(const WorldLabel& label) {
+    std::shared_lock lock(*m_mutex);
+    auto it = m_worlds.find(label);
+    if (it != m_worlds.end()) {
+        return it->second.get();
+    }
+    return nullptr;
+};
+EPIX_API Executors& App::executors() {
+    std::shared_lock lock(*m_mutex);
+    if (m_executors) {
+        return *m_executors;
+    }
+    throw std::runtime_error("Executors not found.");
+};
+EPIX_API std::shared_ptr<Executors> App::get_executors() {
+    std::shared_lock lock(*m_mutex);
+    return m_executors;
+};
+EPIX_API App::executor_t& App::control_pool() {
+    std::shared_lock lock(*m_mutex);
+    if (m_control_pool) {
+        return *m_control_pool;
+    }
+    throw std::runtime_error("Control pool not found.");
+};
+EPIX_API std::shared_ptr<App::executor_t> App::get_control_pool() {
+    std::shared_lock lock(*m_mutex);
+    return m_control_pool;
+};
+EPIX_API Schedule& App::schedule(const ScheduleLabel& label) {
+    std::shared_lock lock(*m_mutex);
+    for (auto&& [schedules_label, group] : m_schedule_groups) {
+        if (group.schedules.contains(label)) {
+            return *group.schedules.at(label);
         }
     }
-    m_logger->info("Running App");
-    m_logger->debug("Running startup schedules");
-    run(startup_graph);
-    std::unique_ptr<BasicSystem<bool>> to_loop =
-        std::make_unique<BasicSystem<bool>>([&](EventReader<AppExit> read) {
-            return *m_enable_loop && read.empty();
-        });
-    m_logger->debug("Running loop schedules");
-    do {
-        if (*m_tracy_frame_mark) {
-            FrameMark;
+    throw std::runtime_error("Schedule not found.");
+};
+EPIX_API Schedule* App::get_schedule(const ScheduleLabel& label) {
+    std::shared_lock lock(*m_mutex);
+    for (auto&& [schedules_label, group] : m_schedule_groups) {
+        if (group.schedules.contains(label)) {
+            return group.schedules.at(label).get();
         }
-        run(startup_graph);
-        // update profile
-        auto&& w2 = get_world<MainWorld>();
-        update_profile->run(w2, w2);
-        run(loop_graph);
-        sync_info->run(w2, w2);
-    } while (to_loop->run(
-        m_worlds[typeid(MainWorld)].get(), m_worlds[typeid(MainWorld)].get()
-    ));
-    m_logger->info("Exiting App");
-    m_logger->debug("Running exit schedules");
-    run(exit_graph);
-    // remove AppProfile from MainWorld
-    auto&& w2 = world<MainWorld>();
-    w2.remove_resource<AppProfile>();
-    w2.remove_resource<AppInfo>();
-    m_logger->info("App terminated.");
-    *m_enable_loop      = enable_loop;
-    *m_enable_tracy     = enable_tracy;
-    *m_tracy_frame_mark = frame_mark;
+    }
+    return nullptr;
+};
+EPIX_API ScheduleGroup& App::schedule_group(const GroupLabel& label) {
+    std::shared_lock lock(*m_mutex);
+    auto it = m_schedule_groups.find(label);
+    if (it != m_schedule_groups.end()) {
+        return it->second;
+    }
+    throw std::runtime_error("Schedule group not found.");
+};
+EPIX_API ScheduleGroup* App::get_schedule_group(const GroupLabel& label) {
+    std::shared_lock lock(*m_mutex);
+    auto it = m_schedule_groups.find(label);
+    if (it != m_schedule_groups.end()) {
+        return &it->second;
+    }
+    return nullptr;
+};
+
+EPIX_API App& App::add_world(const WorldLabel& label) {
+    std::unique_lock lock(*m_mutex);
+    m_worlds.emplace(label, std::make_unique<World>());
+    return *this;
+};
+EPIX_API App& App::add_schedule_group(
+    const GroupLabel& label, ScheduleGroup&& group
+) {
+    std::unique_lock lock(*m_mutex);
+    m_schedule_groups.emplace(label, std::move(group));
+    return *this;
+};
+EPIX_API App& App::add_schedule(
+    const GroupLabel& label, ScheduleConfig&& config
+) {
+    if (find_belonged_group(config.label)) {
+        // error to be handled: schedule already exists
+        return *this;
+    }
+    std::unique_lock lock(*m_mutex);
+    if (!m_schedule_groups.contains(label)) {
+        m_schedule_groups.emplace(label, ScheduleGroup{});
+    }
+    auto&& group = m_schedule_groups.at(label);
+    if (config.schedule) {
+        group.schedules.emplace(
+            config.label,
+            std::make_unique<Schedule>(std::move(*config.schedule))
+        );
+    } else {
+        group.schedules.emplace(
+            config.label, std::make_unique<Schedule>(config.label)
+        );
+    }
+    group.schedules.at(config.label)->set_logger(m_logger);
+    group.schedule_src.emplace(config.label, config.src_world);
+    group.schedule_dst.emplace(config.label, config.dst_world);
+    group.schedule_nodes[config.label].depends  = config.depends;
+    group.schedule_nodes[config.label].succeeds = config.succeeds;
+    group.schedule_run_once.emplace(config.label, config.run_once);
+    for (auto& set_config : m_queued_all_sets) {
+        group.schedules.at(config.label)->configure_sets(set_config);
+    }
+    return *this;
+};
+EPIX_API App& App::add_schedule(
+    const GroupLabel& label, ScheduleConfig& config
+) {
+    add_schedule(label, std::move(config));
+    return *this;
+};
+EPIX_API App& App::schedule_sequence(
+    const ScheduleLabel& scheduleId, const ScheduleLabel& otherId
+) {
+    auto group1 = find_belonged_group(scheduleId);
+    auto group2 = find_belonged_group(otherId);
+    if (!group1 || !group2) {
+        // error to be handled: non of the provided schedules is found
+        return *this;
+    }
+    std::unique_lock lock(*m_mutex);
+    if (*group1 != *group2) {
+        // error to be handled: 2 schedules are not in the same group
+        return *this;
+    }
+    auto label = *group1;
+    if (auto&& it = m_schedule_groups.find(label);
+        it != m_schedule_groups.end()) {
+        bool found_any = false;
+        if (auto&& node_it = it->second.schedule_nodes.find(scheduleId);
+            node_it != it->second.schedule_nodes.end()) {
+            auto&& node = node_it->second;
+            node.succeeds.emplace(otherId);
+            found_any = true;
+        }
+        if (auto&& node_it = it->second.schedule_nodes.find(otherId);
+            node_it != it->second.schedule_nodes.end()) {
+            auto&& node = node_it->second;
+            node.depends.emplace(scheduleId);
+            found_any = true;
+        }
+    }
+    return *this;
+};
+
+EPIX_API App& App::schedule_set_src(
+    const ScheduleLabel& scheduleId, const WorldLabel& worldId
+) {
+    auto group_opt = find_belonged_group(scheduleId);
+    if (!group_opt) {
+        // error to be handled: schedule not found
+        return *this;
+    }
+    std::unique_lock lock(*m_mutex);
+    auto group_label               = *group_opt;
+    auto&& group                   = m_schedule_groups.at(group_label);
+    group.schedule_src[scheduleId] = worldId;
+    return *this;
+};
+EPIX_API App& App::schedule_set_dst(
+    const ScheduleLabel& scheduleId, const WorldLabel& worldId
+) {
+    auto group_opt = find_belonged_group(scheduleId);
+    if (!group_opt) {
+        // error to be handled: schedule not found
+        return *this;
+    }
+    std::unique_lock lock(*m_mutex);
+    auto group_label               = *group_opt;
+    auto&& group                   = m_schedule_groups.at(group_label);
+    group.schedule_dst[scheduleId] = worldId;
+    return *this;
+};
+
+EPIX_API App& App::add_systems(
+    const ScheduleInfo& label, SystemConfig&& config
+) {
+    std::shared_lock lock(*m_mutex);
+    auto group_opt = find_belonged_group(label);
+    if (!group_opt) {
+        m_queued_systems.emplace_back(label, std::move(config));
+        return *this;
+    }
+    for (auto&& transform : label.transforms) {
+        transform(config);
+    }
+    auto group_label = *group_opt;
+    auto&& group     = m_schedule_groups.at(group_label);
+    auto&& schedule  = group.schedules.at(label);
+    schedule->add_systems(std::move(config));
+    return *this;
+};
+EPIX_API App& App::add_systems(
+    const ScheduleInfo& label, SystemConfig& config
+) {
+    add_systems(label, std::move(config));
+    return *this;
+};
+EPIX_API App& App::configure_sets(
+    const ScheduleLabel& label, const SystemSetConfig& config
+) {
+    std::shared_lock lock(*m_mutex);
+    auto group_opt = find_belonged_group(label);
+    if (!group_opt) {
+        m_queued_sets.emplace_back(label, config);
+        return *this;
+    }
+    auto group_label = *group_opt;
+    auto&& group     = m_schedule_groups.at(group_label);
+    auto&& schedule  = group.schedules.at(label);
+    schedule->configure_sets(config);
+    return *this;
+};
+EPIX_API App& App::configure_sets(const SystemSetConfig& config) {
+    std::shared_lock lock(*m_mutex);
+    for (auto&& [schedules_label, group] : m_schedule_groups) {
+        for (auto&& [schedule_label, schedule] : group.schedules) {
+            schedule->configure_sets(config);
+        }
+    }
+    m_queued_all_sets.emplace_back(config);
+    return *this;
+}
+EPIX_API App& App::remove_system(
+    const ScheduleLabel& id, const SystemLabel& label
+) {
+    std::shared_lock lock(*m_mutex);
+    auto group_opt = find_belonged_group(id);
+    if (!group_opt) {
+        // error to be handled: schedule not found
+        return *this;
+    }
+    auto group_label = *group_opt;
+    auto&& group     = m_schedule_groups.at(group_label);
+    auto&& schedule  = group.schedules.at(id);
+    schedule->remove_system(label);
+    return *this;
+};
+EPIX_API App& App::remove_set(
+    const ScheduleLabel& id, const SystemSetLabel& label
+) {
+    std::shared_lock lock(*m_mutex);
+    auto group_opt = find_belonged_group(id);
+    if (!group_opt) {
+        // error to be handled: schedule not found
+        return *this;
+    }
+    auto group_label = *group_opt;
+    auto&& group     = m_schedule_groups.at(group_label);
+    auto&& schedule  = group.schedules.at(id);
+    schedule->remove_set(label);
+    return *this;
+};
+EPIX_API App& App::remove_set(const SystemSetLabel& label) {
+    std::shared_lock lock(*m_mutex);
+    for (auto&& [schedules_label, group] : m_schedule_groups) {
+        for (auto&& [schedule_label, schedule] : group.schedules) {
+            schedule->remove_set(label);
+        }
+    }
+    return *this;
+};
+
+EPIX_API App& App::add_resource(const UntypedRes& resource) {
+    if (auto* w = get_world(MainWorld)) {
+        w->add_resource(resource);
+    }
+    return *this;
+}
+
+EPIX_API void App::build() {
+    // build plugins
+    for (size_t i = 0; i < m_plugins.size(); ++i) {
+        auto plugin = m_plugins[i].second;
+        if (plugin) {
+            plugin->build(*this);
+        }
+    }
+    std::shared_lock lock(*m_mutex);
+    for (auto&& [label, plugin] : m_plugins) {
+        UntypedRes res = UntypedRes::create(
+            label, plugin, std::make_shared<std::shared_mutex>()
+        );
+        for (auto&& [wl, world] : m_worlds) {
+            world->add_resource(res);
+        }
+    }
+
+    // retry to add queued systems
+    for (auto&& [label, config] : m_queued_systems) {
+        add_systems(label, std::move(config));
+    }
+    // retry to add queued sets
+    for (auto&& [label, config] : m_queued_sets) {
+        configure_sets(label, config);
+    }
+
+    // build groups
+    for (auto&& [label, group] : m_schedule_groups) {
+        group.build();
+    }
+}
+
+EPIX_API void App::set_runner(std::shared_ptr<AppRunner> runner) {
+    std::unique_lock lock(*m_mutex);
+    m_runner = std::move(runner);
+}
+EPIX_API int App::run() {
+    logger()->info("Building app.");
+    build();
+    logger()->info("Running app.");
+    if (!m_runner) {
+        m_runner = std::make_unique<OnceRunner>();
+    }
+    return m_runner->run(*this);
+}
+EPIX_API int App::run_group(const GroupLabel& label) {
+    if (auto group = get_schedule_group(label)) {
+        group->build();
+        auto res = group->run(*this);
+        if (!res.has_value()) return -1;
+        return 0;
+    } else {
+        return -2;
+    }
+}
+
+EPIX_API void App::run_schedule(const ScheduleLabel& label) {
+    if (auto group_opt = find_belonged_group(label)) {
+        auto group_label = *group_opt;
+        auto&& group     = m_schedule_groups.at(group_label);
+        auto&& schedule  = group.schedules.at(label);
+        auto src_world   = group.schedule_src.at(label);
+        auto dst_world   = group.schedule_dst.at(label);
+        auto src         = get_world(src_world);
+        auto dst         = get_world(dst_world);
+        if (src && dst) {
+            ScheduleRunner runner(*schedule, group.schedule_run_once.at(label));
+            runner.set_worlds(*src, *dst);
+            runner.set_executors(m_executors);
+            auto result = runner.run();
+        }
+    }
 }

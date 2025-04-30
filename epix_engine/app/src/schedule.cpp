@@ -1,401 +1,446 @@
-#include "epix/app.h"
+#include <iostream>
+
+#include "epix/app/schedule.h"
 
 using namespace epix::app;
 
-EPIX_API Schedule::Schedule(ScheduleId id)
-    : m_id(id),
-      m_src_world(typeid(void)),
-      m_dst_world(typeid(void)),
-      m_run_once(false),
-      m_finishes(std::make_shared<
-                 epix::utils::async::ConQueue<std::shared_ptr<System>>>()) {
-    m_logger   = spdlog::default_logger()->clone(id.name());
-    m_op_mutex = std::make_unique<std::mutex>();
-}
-
-EPIX_API Schedule& Schedule::set_executor(
-    const std::shared_ptr<Executor>& executor
-) {
-    m_executor = executor;
-    return *this;
-}
-
-EPIX_API Schedule& Schedule::set_logger(
-    const std::shared_ptr<spdlog::logger>& logger
-) {
-    m_logger = logger->clone(m_id.name());
-    return *this;
-}
-
-EPIX_API Schedule& Schedule::add_system(SystemAddInfo&& info) {
-    if (m_running) {
-        std::unique_lock lock(*m_op_mutex);
-        m_cached_ops.emplace_back(1, static_cast<uint32_t>(m_adds.size()));
-        m_adds.emplace_back(std::move(info));
-        return *this;
-    }
-    for (size_t i = 0; i < info.m_systems.size(); i++) {
-        auto&& each = info.m_systems[i];
-        auto system = std::make_shared<System>(
-            each.name, each.index, std::move(each.system)
-        );
-        system->sets        = std::move(each.m_in_sets);
-        system->m_ptr_prevs = std::move(each.m_ptr_prevs);
-        system->m_ptr_nexts = std::move(each.m_ptr_nexts);
-        system->worker      = std::move(each.m_worker);
-        system->conditions  = std::move(each.conditions);
-        m_systems.emplace(each.index, system);
-    }
-    return *this;
-}
-EPIX_API Schedule& Schedule::remove_system(FuncIndex index) {
-    if (m_running) {
-        std::unique_lock lock(*m_op_mutex);
-        m_cached_ops.emplace_back(0, static_cast<uint32_t>(m_removes.size()));
-        m_removes.emplace_back(index);
-        return *this;
-    }
-    m_systems.erase(index);
-    return *this;
-}
-
-EPIX_API void Schedule::build() {
-    {
-        std::unique_lock lock(*m_op_mutex);
-        for (auto&& [op, id] : m_cached_ops) {
-            switch (op) {
-                case 0:
-                    m_systems.erase(m_removes[id]);
-                    break;
-                case 1:
-                    for (size_t i = 0; i < m_adds[id].m_systems.size(); i++) {
-                        auto&& each = m_adds[id].m_systems[i];
-                        auto system = std::make_shared<System>(
-                            each.name, each.index, std::move(each.system)
-                        );
-                        system->sets        = std::move(each.m_in_sets);
-                        system->m_ptr_prevs = std::move(each.m_ptr_prevs);
-                        system->m_ptr_nexts = std::move(each.m_ptr_nexts);
-                        system->worker      = std::move(each.m_worker);
-                        system->conditions  = std::move(each.conditions);
-                        if (m_systems.contains(each.index)) {
-                            m_logger->warn(
-                                "System {} already exists, replacing.",
-                                system->label
-                            );
-                        }
-                        m_systems.emplace(each.index, system);
-                    }
-                    break;
-                default:
-                    break;
-            }
-        }
-        m_removes.clear();
-        m_adds.clear();
-        m_cached_ops.clear();
-    }
-    for (auto&& [ptr, system] : m_systems) {
-        system->m_prevs.clear();
-        system->m_nexts.clear();
-    }
-    for (auto&& [ptr, system] : m_systems) {
-        for (auto&& each : system->m_ptr_prevs) {
-            if (auto it = m_systems.find(each); it != m_systems.end()) {
-                system->m_prevs.emplace(it->second);
-                it->second->m_nexts.emplace(system);
-            }
-        }
-        for (auto&& each : system->m_ptr_nexts) {
-            if (auto it = m_systems.find(each); it != m_systems.end()) {
-                system->m_nexts.emplace(it->second);
-                it->second->m_prevs.emplace(system);
-            }
-        }
-    }
-    for (auto&& [type, sets] : m_sets) {
-        std::vector<entt::dense_set<std::shared_ptr<System>>> tsets;
-        tsets.reserve(sets.size());
-        for (auto&& set : sets) {
-            auto& systems_in_set = tsets.emplace_back();
-            for (auto&& [ptr, system] : m_systems) {
-                if (std::find_if(
-                        system->sets.begin(), system->sets.end(),
-                        [&set](const auto& s) { return s == set; }
-                    ) != system->sets.end()) {
-                    systems_in_set.emplace(system);
-                }
-            }
-        }
-        for (size_t i = 0; i < tsets.size(); i++) {
-            for (size_t j = i + 1; j < tsets.size(); j++) {
-                for (auto& ptri : tsets[i]) {
-                    for (auto& ptrj : tsets[j]) {
-                        if (ptri->system->contrary_to(ptrj->system.get())) {
-                            ptri->m_nexts.emplace(ptrj);
-                            ptrj->m_prevs.emplace(ptri);
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-EPIX_API void Schedule::bake() {
-    for (auto&& [ptr, system] : m_systems) {
-        system->clear_tmp();
-    }
-    std::vector<std::shared_ptr<System>> systems;
-    systems.reserve(m_systems.size());
-    for (auto&& [ptr, system] : m_systems) {
-        systems.emplace_back(system);
-    }
-    std::sort(
-        systems.begin(), systems.end(),
-        [](const auto& lhs, const auto& rhs) {
-            return lhs->reach_time() < rhs->reach_time();
-        }
+EPIX_API Executors::Executors() {
+    // Default executor pool
+    pools.emplace(ExecutorLabel(), std::make_unique<executor_t>(4));
+    pools.emplace(
+        ExecutorLabel(ExecutorType::SingleThread),
+        std::make_unique<executor_t>(1)
     );
-    for (size_t i = 0; i < systems.size(); i++) {
-        for (size_t j = i + 1; j < systems.size(); j++) {
-            if (systems[i]->system->contrary_to(systems[j]->system.get())) {
-                systems[i]->m_tmp_nexts.emplace(systems[j]);
-                systems[j]->m_tmp_prevs.emplace(systems[i]);
-            }
-        }
+};
+
+EPIX_API Executors::executor_t* Executors::get_pool(const ExecutorLabel& label
+) noexcept {
+    auto it = pools.find(label);
+    if (it != pools.end()) {
+        return it->second.get();
     }
-}
-EPIX_API void Schedule::run(World* src, World* dst, bool enable_tracy) {
-    if (!m_cached_ops.empty()) {
-        m_logger->debug("Rebuilding Schedule.");
-        build();
+    return nullptr;
+};
+EPIX_API void Executors::add_pool(
+    const ExecutorLabel& label, size_t count
+) noexcept {
+    pools.emplace(label, std::make_unique<executor_t>(count));
+};
+
+EPIX_API void ScheduleCommandQueue::flush(Schedule& schedule) {
+    std::unique_lock lock(m_mutex);
+    size_t pointer = 0;
+    while (pointer < m_commands.size()) {
+        auto index         = m_commands[pointer++];
+        auto& command_data = m_registry[index];
+        auto* pcommand     = reinterpret_cast<void*>(&m_commands[pointer]);
+        command_data.apply(schedule, pcommand);
+        command_data.destruct(pcommand);
+        pointer += command_data.size;
     }
-    if (m_systems.empty()) {
-        m_avg_time *= 0.9;
-        m_last_time = 0.0;
-        return;
-    }
-    m_running       = true;
-    auto start      = std::chrono::high_resolution_clock::now();
-    size_t m_remain = m_systems.size();
-    size_t running  = 0;
-    if (enable_tracy) {
-        ZoneScopedN("Run Schedule");
-        auto name = std::format("Run Schedule {}", m_id.name());
-        ZoneName(name.c_str(), name.size());
-        {
-            ZoneScopedN("Baking Schedule");
-            bake();
-        }
-        for (auto&& [ptr, system] : m_systems) {
-            system->m_prev_count =
-                system->m_tmp_prevs.size() + system->m_prevs.size();
-            system->m_next_count =
-                system->m_tmp_nexts.size() + system->m_nexts.size();
-            if (system->m_prev_count == 0) {
-                running++;
-                run(system, src, dst, enable_tracy);
-            }
-        }
-        while (running > 0) {
-            auto&& system = m_finishes->pop();
-            running--;
-            m_remain--;
-            for (auto&& each : system->m_nexts) {
-                if (auto ptr = each.lock()) {
-                    ptr->m_prev_count--;
-                    if (ptr->m_prev_count == 0) {
-                        running++;
-                        run(ptr, src, dst, enable_tracy);
-                    }
-                } else {
-                    system->m_tmp_prevs.erase(each);
-                }
-            }
-            for (auto&& each : system->m_tmp_nexts) {
-                if (auto ptr = each.lock()) {
-                    ptr->m_prev_count--;
-                    if (ptr->m_prev_count == 0) {
-                        running++;
-                        run(ptr, src, dst, enable_tracy);
-                    }
-                } else {
-                    system->m_tmp_nexts.erase(each);
-                }
-            }
-        }
-        dst->m_command_queue.flush(*dst);
-    } else {
-        bake();
-        for (auto&& [ptr, system] : m_systems) {
-            system->m_prev_count =
-                system->m_tmp_prevs.size() + system->m_prevs.size();
-            system->m_next_count =
-                system->m_tmp_nexts.size() + system->m_nexts.size();
-            if (system->m_prev_count == 0) {
-                running++;
-                run(system, src, dst, enable_tracy);
-            }
-        }
-        while (running > 0) {
-            auto&& system = m_finishes->pop();
-            running--;
-            m_remain--;
-            for (auto&& each : system->m_nexts) {
-                if (auto ptr = each.lock()) {
-                    ptr->m_prev_count--;
-                    if (ptr->m_prev_count == 0) {
-                        running++;
-                        run(ptr, src, dst, enable_tracy);
-                    }
-                } else {
-                    system->m_tmp_prevs.erase(each);
-                }
-            }
-            for (auto&& each : system->m_tmp_nexts) {
-                if (auto ptr = each.lock()) {
-                    ptr->m_prev_count--;
-                    if (ptr->m_prev_count == 0) {
-                        running++;
-                        run(ptr, src, dst, enable_tracy);
-                    }
-                } else {
-                    system->m_tmp_nexts.erase(each);
-                }
-            }
-        }
-        dst->m_command_queue.flush(*dst);
-    }
-    if (m_remain != 0) {
-        m_logger->warn("Some systems are not finished.");
-    }
-    if (m_run_once) {
-        m_systems.clear();
-    }
-    auto end = std::chrono::high_resolution_clock::now();
-    auto delta =
-        (double
-        )std::chrono::duration_cast<std::chrono::nanoseconds>(end - start)
-            .count() /
-        1000000.0;
-    m_avg_time  = delta * 0.1 + m_avg_time * 0.9;
-    m_last_time = delta;
-    m_running   = false;
-}
-EPIX_API void Schedule::run(
-    std::shared_ptr<System> system, World* src, World* dst, bool enable_tracy
+    m_commands.clear();
+};
+
+EPIX_API void AddSystemsCommand::apply(Schedule& schedule) {
+    schedule.add_systems(config);
+};
+EPIX_API void ConfigureSetsCommand::apply(Schedule& schedule) {
+    schedule.configure_sets(config);
+};
+EPIX_API void RemoveSetCommand::apply(Schedule& schedule) {
+    schedule.remove_set(label);
+};
+EPIX_API void RemoveSystemCommand::apply(Schedule& schedule) {
+    schedule.remove_system(label);
+};
+
+EPIX_API Schedule::Schedule(const ScheduleLabel& label) : label(label) {}
+EPIX_API Schedule::Schedule(Schedule&& other)
+    : label(other.label),
+      systems(std::move(other.systems)),
+      system_sets(std::move(other.system_sets)),
+      newly_added_sets(std::move(other.newly_added_sets)) {
+    other.systems.clear();
+    other.system_sets.clear();
+    other.newly_added_sets.clear();
+};
+
+EPIX_API void Schedule::set_logger(const std::shared_ptr<spdlog::logger>& logger
 ) {
-    if (enable_tracy) {
-        ZoneScopedN("Detach System");
-        auto name = std::format("Detach System: {}", system->label);
-        ZoneName(name.c_str(), name.size());
-        auto&& pool = m_executor->get(system->worker);
-        if (!pool) {
-            system->run(src, dst, true);
-            m_finishes->emplace(system);
+    this->logger = logger->clone(std::format("schedule:{}", label.name()));
+    for (auto&& [label, system] : systems) {
+        system.logger = this->logger;
+    }
+};
+
+EPIX_API void Schedule::build() noexcept {
+    // This function completes the set dependency
+    for (auto&& label : newly_added_sets) {
+        auto& set = system_sets.at(label);
+        std::vector<SystemSetLabel> not_presents;
+        // add succeed on this set to the depend set
+        for (auto&& depend : set.depends) {
+            auto&& it = system_sets.find(depend);
+            if (it != system_sets.end()) {
+                it->second.succeeds.emplace(label);
+            } else {
+                not_presents.emplace_back(depend);
+            }
         }
-        pool->detach_task(
-            [this, src, dst, system]() mutable {
-                system->run(src, dst, true);
-                m_finishes->emplace(system);
-            },
-            127
-        );
+        for (auto&& not_present : not_presents) {
+            set.depends.erase(not_present);
+        }
+        not_presents.clear();
+        // add depend on this set to the succeed set
+        for (auto&& succeed : set.succeeds) {
+            auto&& it = system_sets.find(succeed);
+            if (it != system_sets.end()) {
+                it->second.depends.emplace(label);
+            } else {
+                not_presents.emplace_back(succeed);
+            }
+        }
+        for (auto&& not_present : not_presents) {
+            set.succeeds.erase(not_present);
+        }
+        not_presents.clear();
+        // remove not present in_sets from the in_sets
+        for (auto&& in_set : set.in_sets) {
+            auto&& it = system_sets.find(in_set);
+            if (it == system_sets.end()) {
+                not_presents.emplace_back(in_set);
+            }
+        }
+        for (auto&& not_present : not_presents) {
+            set.in_sets.erase(not_present);
+        }
+        not_presents.clear();
+    }
+    newly_added_sets.clear();
+};
+
+EPIX_API void Schedule::add_systems(SystemConfig&& config) {
+    // Try lock, if failed, that means the schedule is currently being run
+    if (system_sets_mutex.try_lock()) {
+        // Not running, add directly.
+        if (config.system && !systems.contains(config.label) &&
+            !system_sets.contains(config.label)) {
+            // Adding the system
+            {
+                auto&& it = systems
+                                .emplace(
+                                    config.label, System(
+                                                      config.label, config.name,
+                                                      std::move(config.system)
+                                                  )
+                                )
+                                .first;
+                it->second.conditions = std::move(config.conditions);
+                it->second.executor   = config.executor;
+                it->second.logger     = logger;
+            }
+            // Adding the system set that owns the system
+            {
+                auto&& it =
+                    system_sets.emplace(config.label, SystemSet{}).first;
+                std::swap(it->second.in_sets, config.in_sets);
+                std::swap(it->second.depends, config.depends);
+                std::swap(it->second.succeeds, config.succeeds);
+            }
+            newly_added_sets.emplace(config.label);
+        }
+        system_sets_mutex.unlock();
+        for (auto&& sub_config : config.sub_configs) {
+            add_systems(std::move(sub_config));
+        }
     } else {
-        auto&& pool = m_executor->get(system->worker);
-        if (!pool) {
-            system->run(src, dst, false);
-            m_finishes->emplace(system);
-        }
-        pool->detach_task(
-            [this, src, dst, system]() mutable {
-                system->run(src, dst, false);
-                m_finishes->emplace(system);
-            },
-            127
-        );
+        // Is running, add to the queue
+        command_queue.enqueue<AddSystemsCommand>(std::move(config));
     }
 }
-EPIX_API Schedule& Schedule::run_once(bool once) {
-    m_run_once = once;
-    return *this;
+EPIX_API void Schedule::add_systems(SystemConfig& config) {
+    add_systems(std::move(config));
 }
-EPIX_API double Schedule::get_avg_time() const { return m_avg_time; }
-EPIX_API void Schedule::clear_tmp() {
-    m_reach_time.reset();
-    m_tmp_prevs.clear();
-    m_tmp_nexts.clear();
+EPIX_API void Schedule::configure_sets(const SystemSetConfig& config) {
+    if (system_sets_mutex.try_lock()) {
+        if (config.label && !system_sets.contains(*config.label)) {
+            auto&& it = system_sets.emplace(*config.label, SystemSet{}).first;
+            it->second.in_sets  = config.in_sets;
+            it->second.depends  = config.depends;
+            it->second.succeeds = config.succeeds;
+            newly_added_sets.emplace(*config.label);
+        }
+        system_sets_mutex.unlock();
+        for (auto&& sub_config : config.sub_configs) {
+            configure_sets(std::move(sub_config));
+        }
+    } else {
+        command_queue.enqueue<ConfigureSetsCommand>(std::move(config));
+    }
+};
+EPIX_API void Schedule::remove_system(const SystemLabel& label) {
+    if (system_sets_mutex.try_lock()) {
+        // remove the system with the label
+        systems.erase(label);
+        // remove the system set with the label
+        system_sets.erase(label);
+        // remove the label from depends, succeeds and in_sets of all
+        // other system sets
+        for (auto&& [other_label, other_set] : system_sets) {
+            other_set.erase(label);
+        }
+        newly_added_sets.erase(label);
+        system_sets_mutex.unlock();
+    } else {
+        command_queue.enqueue<RemoveSystemCommand>(label);
+    }
+};
+EPIX_API void Schedule::remove_set(const SystemSetLabel& label) {
+    if (system_sets_mutex.try_lock()) {
+        // remove the system with the label, since if a system is not owned by a
+        // system set, it will never be run.
+        systems.erase(label);
+        // remove the system set with the label
+        system_sets.erase(label);
+        // remove the label from depends, succeeds and in_sets of all
+        // other system sets
+        for (auto&& [other_label, other_set] : system_sets) {
+            other_set.erase(label);
+        }
+        newly_added_sets.erase(label);
+        system_sets_mutex.unlock();
+    } else {
+        command_queue.enqueue<RemoveSetCommand>(label);
+    }
+};
+EPIX_API void Schedule::flush() noexcept { command_queue.flush(*this); };
+
+EPIX_API ScheduleRunner::ScheduleRunner(Schedule& schedule, bool run_once)
+    : schedule(schedule), run_once(run_once) {};
+
+EPIX_API void ScheduleRunner::set_executors(
+    const std::shared_ptr<Executors>& executors
+) noexcept {
+    std::unique_lock lock(schedule.system_sets_mutex);
+    this->executors = executors;
+};
+EPIX_API void ScheduleRunner::set_worlds(World& src, World& dst) noexcept {
+    std::unique_lock lock(schedule.system_sets_mutex);
+    this->src = &src;
+    this->dst = &dst;
+};
+
+EPIX_API std::expected<void, RunSystemError> ScheduleRunner::run_system(
+    const SystemLabel& label
+) {
+    // to be implemented
+
+    auto& system = schedule.systems.at(label);
+
+    systems_running.emplace(label);
+    if (executors) {
+        if (auto executor = executors->get_pool(system.executor)) {
+            executor->detach_task([this, &system]() {
+                system.run(*src, *dst);
+                just_finished_sets.emplace(system.label);
+            });
+            return {};
+        }
+        system.run(*src, *dst);
+        just_finished_sets.emplace(label);
+        return std::unexpected<RunSystemError>(
+            std::in_place, label, RunSystemError::Type::ExecutorNotFound
+        );
+    }
+    system.run(*src, *dst);
+    just_finished_sets.emplace(label);
+    return std::unexpected<RunSystemError>(
+        std::in_place, label, RunSystemError::Type::NoExecutorsProvided
+    );
+};
+
+EPIX_API void ScheduleRunner::enter_waiting_queue() {
+    bool new_entered = true;
+    while (new_entered) {
+        new_entered = false;
+        size_t size = wait_to_enter_queue.size();
+        for (size_t i = 0; i < size; i++) {
+            SystemSetLabel label = wait_to_enter_queue.front();
+            wait_to_enter_queue.pop_front();
+
+            // check if this set has all parents entered
+            bool parent_all_entered = true;
+            for (auto&& parent : schedule.system_sets[label].in_sets) {
+                if (!entered_sets.contains(parent)) {
+                    parent_all_entered = false;
+                    break;
+                }
+            }
+            if (parent_all_entered) {
+                // all parents entered, enter the set
+                entered_sets.emplace(label);
+                new_entered = true;
+                if (auto&& sys_it = schedule.systems.find(label);
+                    sys_it != schedule.systems.end()) {
+                    // this set also owns a system, push it to waiting queue
+                    waiting_systems.emplace_back(label);
+                }
+            } else {
+                // still not all parents entered, wait to enter
+                wait_to_enter_queue.emplace_back(label);
+            }
+        }
+    }
 }
-EPIX_API double Schedule::reach_time() {
-    if (m_reach_time.has_value()) return m_reach_time.value();
-    m_reach_time = 0.0;
-    for (auto&& each : m_prev_schedules) {
-        if (auto ptr = each.lock()) {
-            m_reach_time = std::max(
-                m_reach_time.value(), ptr->reach_time() + ptr->get_avg_time()
-            );
+
+EPIX_API void ScheduleRunner::try_run_waiting_systems() {
+    size_t size = waiting_systems.size();
+    for (size_t i = 0; i < size; i++) {
+        auto&& label = waiting_systems.front();
+        waiting_systems.pop_front();
+        auto&& sys                 = schedule.systems.at(label);
+        bool conflict_with_running = false;
+        for (auto&& running : systems_running) {
+            auto&& other_sys = schedule.systems.at(running);
+            if (sys.conflict_with(other_sys)) {
+                conflict_with_running = true;
+                break;
+            }
+        }
+        if (!conflict_with_running) {
+            run_system(label);
         } else {
-            m_prev_schedules.erase(each);
+            waiting_systems.emplace_back(label);
         }
     }
-    return m_avg_time;
 }
 
-EPIX_API ScheduleProfiles::ScheduleProfile& ScheduleProfiles::profile(
-    ScheduleId id
-) {
-    if (auto it = m_profiles.find(id); it != m_profiles.end()) {
-        return it->second;
-    } else {
-        m_profiles.emplace(id, ScheduleProfile{});
-        return m_profiles.at(id);
+EPIX_API std::expected<void, RunScheduleError> ScheduleRunner::run() {
+    // Locking systems and system sets to avoid adding or removing systems or
+    // system sets while running
+    schedule.logger->trace("Flushing command queue.");
+    schedule.flush();
+    schedule.logger->trace("Command queue flushed.");
+
+    std::unique_lock lock(schedule.system_sets_mutex);
+
+    if (!src || !dst) {
+        return std::unexpected(RunScheduleError{
+            schedule.label, RunScheduleError::Type::WorldsNotSet
+        });
     }
+
+    schedule.logger->trace("Building schedule.");
+    schedule.build();
+    schedule.logger->trace("Schedule built.");
+
+    schedule.logger->debug("Running schedule.");
+
+    for (auto&& [label, set] : schedule.system_sets) {
+        set_depends_count.emplace(label, set.depends.size());
+        if (set.depends.empty()) {
+            wait_to_enter_queue.emplace_back(label);
+        }
+        for (auto&& parent : set.in_sets) {
+            auto&& it = set_children_count.find(parent);
+            if (it == set_children_count.end()) {
+                set_children_count.emplace(parent, 0);
+            }
+            set_children_count.at(parent)++;
+        }
+    }
+    for (auto&& [label, system] : schedule.systems) {
+        auto&& it = set_children_count.find(label);
+        if (it == set_children_count.end()) {
+            set_children_count.emplace(label, 0);
+        }
+        set_children_count.at(label)++;
+    }
+
+    enter_waiting_queue();
+    try_run_waiting_systems();
+
+    // we check if the just finished sets is not empty or if there are still
+    // systems running, if so, we need to check if there are any finished sets.
+    // Cause only these 2 cases can ensure that just_finished_sets.pop() can
+    // return or return later.
+    while (!just_finished_sets.empty() || systems_running.size() > 0) {
+        auto finished_item = just_finished_sets.pop();
+        {
+            // finish the set owns the system if children count is 0
+            auto& child_count = set_children_count.at(finished_item);
+            if (schedule.systems.contains(finished_item)) {
+                child_count--;
+            }
+            if (child_count == 0) {
+                // all children are
+                entered_sets.erase(finished_item);
+                finished_sets.emplace(finished_item);
+            }
+        }
+        systems_running.erase(finished_item);
+        {
+            auto&& set = schedule.system_sets.at(finished_item);
+            // checking all succeeds of the finished system
+            for (auto&& succeed : set.succeeds) {
+                auto& depend_count = set_depends_count.at(succeed);
+                depend_count--;
+                if (depend_count == 0) {
+                    // all dependencies are finished, enter the set
+                    wait_to_enter_queue.emplace_back(succeed);
+                }
+            }
+
+            // checking all parents of the finished system
+            // note that parents are always entered before the child, so
+            // they just need to be finished if needed
+            for (auto&& parent : set.in_sets) {
+                auto& child_count = set_children_count.at(parent);
+                child_count--;
+                if (child_count == 0) {
+                    // all children are finished, finish the parent
+                    just_finished_sets.emplace(parent);
+                }
+            }
+        }
+        enter_waiting_queue();
+        try_run_waiting_systems();
+    }
+
+    if (run_once) {
+        // if run_once, clear all systems in the schedule
+        // and all sets that own systems
+        for (auto&& [label, set] : schedule.systems) {
+            // directly call remove_system to remove the system since the
+            // systems are locked, and this operation will be queued
+            schedule.remove_system(label);
+        }
+        // removals will be actually done in the next flush
+    }
+
+    src->command_queue().flush(*src);
+    dst->command_queue().flush(*dst);
+
+    schedule.logger->debug("Schedule finished.");
+
+    uint32_t remaining_sets =
+        schedule.system_sets.size() - finished_sets.size();
+    if (remaining_sets > 0) {
+        return std::unexpected(RunScheduleError{
+            schedule.label, RunScheduleError::Type::SetsRemaining,
+            remaining_sets
+        });
+    }
+    return {};
 }
 
-EPIX_API const ScheduleProfiles::ScheduleProfile& ScheduleProfiles::profile(
-    ScheduleId id
-) const {
-    if (auto it = m_profiles.find(id); it != m_profiles.end()) {
-        return it->second;
-    } else {
-        throw std::runtime_error(std::format("Schedule {} not found", id.name())
-        );
-    }
-}
-
-EPIX_API ScheduleProfiles::ScheduleProfile* ScheduleProfiles::get_profile(
-    ScheduleId id
-) {
-    if (auto it = m_profiles.find(id); it != m_profiles.end()) {
-        return &it->second;
-    } else {
-        m_profiles.emplace(id, ScheduleProfile{});
-        return &m_profiles.at(id);
-    }
-}
-
-EPIX_API const ScheduleProfiles::ScheduleProfile* ScheduleProfiles::get_profile(
-    ScheduleId id
-) const {
-    if (auto it = m_profiles.find(id); it != m_profiles.end()) {
-        return &it->second;
-    } else {
-        return nullptr;
-    }
-}
-
-EPIX_API void ScheduleProfiles::for_each(
-    const std::function<void(ScheduleId, ScheduleProfile&)>& func
-) {
-    for (auto&& [id, profile] : m_profiles) {
-        func(id, profile);
-    }
-}
-
-EPIX_API void ScheduleProfiles::for_each(
-    const std::function<void(ScheduleId, const ScheduleProfile&)>& func
-) const {
-    for (auto&& [id, profile] : m_profiles) {
-        func(id, profile);
-    }
+EPIX_API void ScheduleRunner::reset() noexcept {
+    wait_to_enter_queue.clear();
+    entered_sets.clear();
+    finished_sets.clear();
+    set_children_count.clear();
+    set_depends_count.clear();
+    systems_running.clear();
+    waiting_systems.clear();
+    while (auto&& it = just_finished_sets.try_pop()) {}
 }

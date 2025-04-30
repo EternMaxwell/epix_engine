@@ -8,15 +8,14 @@ namespace input {
 namespace systems {
 using namespace components;
 using namespace events;
-using namespace prelude;
 using namespace window::components;
 using namespace window::events;
 
 EPIX_API void create_input_for_window(
-    Command command,
+    Commands command,
     Query<
         Get<Entity, const Window>,
-        Without<ButtonInput<KeyCode>, ButtonInput<MouseButton>>> query
+        Filter<Without<ButtonInput<KeyCode>, ButtonInput<MouseButton>>>> query
 );
 EPIX_API void update_input(
     Query<

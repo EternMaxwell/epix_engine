@@ -2,7 +2,6 @@
 
 using namespace epix;
 using namespace epix::input;
-using namespace epix::prelude;
 using namespace epix::input::components;
 
 EPIX_API size_t KeyHash::operator()(const KeyCode& key) const {

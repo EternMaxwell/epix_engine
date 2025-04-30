@@ -29,6 +29,8 @@ add_subdirectory (libs/earcut.hpp)
 add_subdirectory (libs/tracy)
 add_subdirectory (libs/stb)
 
+add_subdirectory (libs/googletest)
+
 set(CMAKE_CXX_STANDARD 23)
 
 if (MSVC)

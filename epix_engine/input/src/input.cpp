@@ -1,25 +1,24 @@
-#include "epix/input.h"
-
 #include <spdlog/spdlog.h>
+
+#include "epix/input.h"
 
 using namespace epix;
 using namespace epix::input;
-using namespace epix::prelude;
 using namespace epix::input::systems;
 
 static auto logger = spdlog::default_logger()->clone("input");
 
 EPIX_API void systems::create_input_for_window(
-    Command command,
+    Commands command,
     Query<
         Get<Entity, const window::components::Window>,
-        Without<ButtonInput<KeyCode>, ButtonInput<MouseButton>>> query
+        Filter<Without<ButtonInput<KeyCode>, ButtonInput<MouseButton>>>> query
 ) {
     ZoneScopedN("input::create_input_for_window");
     for (auto [entity, window] : query.iter()) {
         spdlog::debug("create input for window {}.", window.m_title);
-        command.entity(entity).insert(ButtonInput<KeyCode>(entity));
-        command.entity(entity).insert(ButtonInput<MouseButton>(entity));
+        command.entity(entity).emplace(ButtonInput<KeyCode>(entity));
+        command.entity(entity).emplace(ButtonInput<MouseButton>(entity));
     }
 }
 
@@ -142,15 +141,15 @@ EPIX_API InputPlugin &InputPlugin::disable_output() {
 }
 
 EPIX_API void InputPlugin::build(App &app) {
-    app.add_event<events::KeyEvent>();
-    app.add_event<events::MouseButtonEvent>();
-    app.add_system(epix::Startup, create_input_for_window)
-        ->add_system(
+    app.add_events<events::KeyEvent>();
+    app.add_events<events::MouseButtonEvent>();
+    app.add_systems(epix::Startup, into(create_input_for_window))
+        .add_systems(
             epix::First, epix::into(create_input_for_window, update_input)
                              .after(window::systems::poll_events)
-                             .worker("single")
+                             .set_executor(ExecutorType::SingleThread)
         );
     if (enable_output_event) {
-        app.add_system(epix::PreUpdate, output_event);
+        app.add_systems(epix::PreUpdate, into(output_event));
     }
 }

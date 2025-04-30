@@ -31,3 +31,6 @@
 [submodule "libs/stb/src"]
 	path = libs/stb/src
 	url = https://github.com/nothings/stb.git
+[submodule "libs/googletest"]
+	path = libs/googletest
+	url = https://github.com/google/googletest.git

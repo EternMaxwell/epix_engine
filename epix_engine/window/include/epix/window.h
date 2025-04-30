@@ -8,7 +8,6 @@
 namespace epix {
 namespace window {
 using namespace components;
-using namespace prelude;
 
 enum class WindowStartUpSets {
     glfw_initialization,

@@ -8,7 +8,6 @@ namespace components {
 struct Window;
 }
 namespace events {
-using namespace prelude;
 using namespace components;
 struct AnyWindowClose {
     Entity window;

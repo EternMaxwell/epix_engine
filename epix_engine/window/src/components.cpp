@@ -1,7 +1,7 @@
 #include "epix/window/components.h"
 #include "epix/window/resources.h"
 
-using namespace epix::prelude;
+using namespace epix;
 using namespace epix::window;
 using namespace epix::window::components;
 using namespace epix::window::resources;

@@ -6,7 +6,6 @@
 namespace epix {
 namespace window {
 namespace components {
-using namespace prelude;
 
 struct PrimaryWindow {};
 

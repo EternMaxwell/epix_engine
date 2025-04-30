@@ -7,12 +7,10 @@ struct TestT {
 };
 
 struct CustomSystemParam {
-    Command cmd;
+    Commands cmd;
     Query<Get<TestT>> query;
 
-    static CustomSystemParam from_system_param(
-        Command cmd, Query<Get<TestT>> query
-    ) {
+    static CustomSystemParam from_param(Commands cmd, Query<Get<TestT>> query) {
         return CustomSystemParam{cmd, query};
     }
 };
@@ -21,9 +19,7 @@ struct CustomParam2 {
     CustomSystemParam param;
     ResMut<TestT> res;
 
-    static CustomParam2 from_system_param(
-        CustomSystemParam param, ResMut<TestT> res
-    ) {
+    static CustomParam2 from_param(CustomSystemParam param, ResMut<TestT> res) {
         return CustomParam2{param, std::move(res)};
     }
 };
@@ -32,7 +28,7 @@ void custom_system(CustomSystemParam param) {
     auto& cmd   = param.cmd;
     auto& query = param.query;
     cmd.spawn(TestT{42});
-    cmd.add_resource<TestT>(std::make_shared<TestT>(TestT{42}));
+    cmd.insert_resource(TestT{42});
     for (auto [test] : query.iter()) {
         test.value += 1;
     }
@@ -54,7 +50,7 @@ struct CustomParam3 {
     Extract<Query<Get<TestT>>> query;
     ResMut<TestT> res;
 
-    static CustomParam3 from_system_param(
+    static CustomParam3 from_param(
         Extract<Query<Get<TestT>>> query, ResMut<TestT> res
     ) {
         return CustomParam3{query, std::move(res)};
@@ -76,7 +72,7 @@ void custom_system3(Extract<Extract<CustomParam3>> param) {
 
 int main() {
     App app = App::create();
-    app.add_system(Startup, custom_system)
-        .add_system(Update, into(custom_system2, custom_system3).chain());
+    app.add_systems(Startup, into(custom_system))
+        .add_systems(Update, into(custom_system2, custom_system3).chain());
     app.run();
 }

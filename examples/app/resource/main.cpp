@@ -14,7 +14,7 @@ struct Resource3 {
     int data = 0;
 };
 
-void insert_resource(Command command) {
+void insert_resource(Commands command) {
     spdlog::info("Inserting resources...");
     command.init_resource<Resource>();
     command.insert_resource(Resource2{});
@@ -22,7 +22,9 @@ void insert_resource(Command command) {
 }
 
 void check_resource(
-    Res<Resource> res, Res<Resource2> res2, Res<Resource3> res3
+    std::optional<Res<Resource>> res,
+    std::optional<Res<Resource2>> res2,
+    std::optional<Res<Resource3>> res3
 ) {
     bool any_absent = false;
     if (!res) {
@@ -41,7 +43,7 @@ void check_resource(
         return;
     }
     spdlog::info(
-        "Resource data: {}, {}, {}", res->data, res2->data, res3->data
+        "Resource data: {}, {}, {}", (*res)->data, (*res2)->data, (*res3)->data
     );
 }
 
@@ -54,7 +56,7 @@ void modify_resource(
     res3->data += 3;
 }
 
-void remove_resource(Command command) {
+void remove_resource(Commands command) {
     spdlog::info("Removing resources...");
     command.remove_resource<Resource>();
     command.remove_resource<Resource2>();
@@ -75,20 +77,20 @@ int main() {
         app.init_resource<Resource>();
         app.insert_resource<Resource2>(Resource2{});
         app.emplace_resource<Resource3>(100);
-        app.add_system(Startup, into(check_resource, modify_resource).chain())
-            .add_system(Update, into(check_resource, remove_resource));
-        app.add_system(Exit, check_resource);
+        app.add_systems(Startup, into(check_resource, modify_resource).chain())
+            .add_systems(Update, into(check_resource, remove_resource));
+        app.add_systems(Exit, into(check_resource));
         app.run();
     }
     std::cout << "------------------------" << std::endl;
     {
         App app = App::create();
-        app.add_system(
+        app.add_systems(
                Startup,
                into(insert_resource, check_resource, modify_resource).chain()
         )
-            .add_system(Update, into(check_resource, remove_resource));
-        app.add_system(Exit, check_resource);
+            .add_systems(Update, into(check_resource, remove_resource));
+        app.add_systems(Exit, into(check_resource));
         app.run();
     }
 }

@@ -63,6 +63,10 @@ struct ConQueue {
         m_queue.pop_front();
         return std::move(value);
     }
+    bool empty() {
+        std::unique_lock lock(m_mutex);
+        return m_queue.empty();
+    }
 };
 template <std::movable T, typename Alloc = std::allocator<T>>
 struct Sender {

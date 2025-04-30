@@ -1,7 +1,7 @@
-#include "epix/window/systems.h"
-
 #include "epix/window.h"
 #include "epix/window/resources.h"
+#include "epix/window/systems.h"
+
 
 #ifndef GLFW_INCLUDE_VULKAN
 #define GLFW_INCLUDE_VULKAN
@@ -10,7 +10,7 @@
 
 using namespace epix::window::systems;
 using namespace epix::window;
-using namespace epix::prelude;
+using namespace epix;
 
 std::shared_ptr<spdlog::logger> logger =
     spdlog::default_logger()->clone("window");
@@ -21,12 +21,12 @@ EPIX_API void systems::init_glfw() {
     }
 }
 
-EPIX_API void systems::create_window_thread_pool(Command command) {
+EPIX_API void systems::create_window_thread_pool(Commands command) {
     command.emplace_resource<resources::WindowThreadPool>();
 }
 
 EPIX_API void systems::insert_primary_window(
-    Command command, ResMut<window::WindowPlugin> window_plugin
+    Commands command, ResMut<window::WindowPlugin> window_plugin
 ) {
     command.spawn(window_plugin->primary_desc(), PrimaryWindow{});
 }
@@ -45,7 +45,7 @@ void scroll_callback(GLFWwindow* window, double xoffset, double yoffset) {
 }
 
 EPIX_API void systems::create_window(
-    Command command,
+    Commands command,
     Query<Get<Entity, const WindowDescription>, Without<Window>> desc_query,
     ResMut<resources::WindowThreadPool> pool
 ) {
@@ -58,7 +58,7 @@ EPIX_API void systems::create_window(
         ).get();
         command.entity(entity).erase<WindowDescription>();
         if (window.has_value()) {
-            command.entity(entity).insert(std::move(window.value()));
+            command.entity(entity).emplace(std::move(window.value()));
             auto* ptr = new std::pair<Entity, resources::WindowThreadPool*>{
                 entity, &(*pool)
             };
@@ -92,20 +92,20 @@ EPIX_API void systems::update_window_state(
 }
 
 EPIX_API void systems::close_window(
-    Command command,
+    Commands command,
     EventReader<AnyWindowClose> any_close_event,
     Query<Get<Window>> query
 ) {
     ZoneScopedN("window::close_window");
     for (auto [entity] : any_close_event.read()) {
-        auto [window] = query.get(entity);
+        auto [window] = query.get(entity).value();
         window.destroy();
         command.entity(entity).despawn();
     }
 }
 
 EPIX_API void systems::primary_window_close(
-    Command command,
+    Commands command,
     Query<Get<Entity, Window>, With<PrimaryWindow>> query,
     EventWriter<AnyWindowClose> any_close_event
 ) {
@@ -118,7 +118,7 @@ EPIX_API void systems::primary_window_close(
 }
 
 EPIX_API void systems::window_close(
-    Command command,
+    Commands command,
     Query<Get<Entity, Window>, Without<PrimaryWindow>> query,
     EventWriter<AnyWindowClose> any_close_event
 ) {

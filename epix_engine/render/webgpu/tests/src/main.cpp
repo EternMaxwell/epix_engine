@@ -45,11 +45,11 @@ fn fs_main() -> @location(0) vec4f {
 }
 )";
 
-void insert_context(epix::Command cmd) { cmd.insert_resource(Context{}); }
+void insert_context(epix::Commands cmd) { cmd.insert_resource(Context{}); }
 
 void setup_context(
     epix::ResMut<Context> ctx,
-    Query<Get<window::Window>, With<window::PrimaryWindow>> window_query
+    Query<Get<window::Window>, Filter<With<window::PrimaryWindow>>> window_query
 ) {
     if (!window_query) return;
     auto [window] = window_query.single();
@@ -225,39 +225,38 @@ void cleanup_context(epix::ResMut<Context> ctx) {
 
 struct TestPlugin : epix::Plugin {
     void build(epix::App& app) override {
-        app.add_system(Startup, into(insert_context, setup_context).chain());
-        app.add_system(
+        app.add_systems(Startup, into(insert_context, setup_context).chain());
+        app.add_systems(
             Update,
-            into(
-                submit_test,
-                [](epix::Res<epix::AppProfile> profile,
-                   Local<std::optional<epix::utils::time::Timer>> timer,
-                   epix::Res<epix::app::ScheduleProfiles> profiles) {
-                    if (!timer->has_value()) {
-                        *timer = epix::utils::time::Timer::repeat(1);
-                    }
-                    if (!(**timer).tick()) {
-                        return;
-                    }
-                    spdlog::info("FrameTime: {:1.3f}ms", profile->frame_time);
-                    spdlog::info("FPS:       {:4.2f}", profile->fps);
-                    profiles->for_each([](auto&& id, auto&& profile) {
-                        spdlog::info(
-                            "Schedule {:<30}: average-> {:2.3f}ms",
-                            std::format("{}", id.name()), profile.time_avg
-                        );
-                    });
-                }
+            into(submit_test /* ,
+                  [](epix::Res<epix::AppProfile> profile,
+                     Local<std::optional<epix::utils::time::Timer>> timer,
+                     epix::Res<epix::app::ScheduleProfiles> profiles) {
+                      if (!timer->has_value()) {
+                          *timer = epix::utils::time::Timer::repeat(1);
+                      }
+                      if (!(**timer).tick()) {
+                          return;
+                      }
+                      spdlog::info("FrameTime: {:1.3f}ms", profile->frame_time);
+                      spdlog::info("FPS:       {:4.2f}", profile->fps);
+                      profiles->for_each([](auto&& id, auto&& profile) {
+                          spdlog::info(
+                              "Schedule {:<30}: average-> {:2.3f}ms",
+                              std::format("{}", id.name()), profile.time_avg
+                          );
+                      });
+                  } */
             )
         );
-        app.add_system(First, begin_frame);
-        app.add_system(Last, end_frame);
-        app.add_system(Exit, cleanup_context);
+        app.add_systems(First, into(begin_frame));
+        app.add_systems(Last, into(end_frame));
+        app.add_systems(Exit, into(cleanup_context));
     }
 };
 
 int main() {
-    epix::App app = epix::App::create2();
+    epix::App app = epix::App::create();
     app.add_plugin(epix::window::WindowPlugin{});
     app.get_plugin<epix::window::WindowPlugin>()
         ->primary_desc()
@@ -268,5 +267,5 @@ int main() {
         .set_vsync(false);
     app.add_plugin(epix::input::InputPlugin{}.enable_output());
     app.add_plugin(TestPlugin{});
-    app.disable_tracy().run();
+    app.run();
 }

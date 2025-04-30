@@ -410,9 +410,7 @@ struct Assets {
     }
 
     static void res_handle_events(epix::ResMut<Assets<T>> assets) {
-        if (assets) {
-            assets->handle_events();
-        }
+        assets->handle_events();
     }
 };
 }  // namespace epix::assets

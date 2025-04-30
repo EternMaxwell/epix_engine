@@ -5,7 +5,6 @@
 namespace epix {
 namespace window {
 namespace resources {
-using namespace prelude;
 using namespace components;
 
 struct WindowThreadPool : BS::thread_pool<BS::tp::none> {
