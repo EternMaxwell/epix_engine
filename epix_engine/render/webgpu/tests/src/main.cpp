@@ -270,5 +270,7 @@ int main() {
         .set_vsync(false);
     app.add_plugin(epix::input::InputPlugin{}.enable_output());
     app.add_plugin(TestPlugin{});
+    // app.logger()->set_level(spdlog::level::debug);
+    // app.set_logger(app.logger());
     app.run();
 }

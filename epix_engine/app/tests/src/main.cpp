@@ -129,7 +129,14 @@ int main() {
         into(into(system1).after(system2), system2)
             .in_set(Set1)
             .set_name(0, "system1"),
-        into(system3, system4).in_set(Set2)
+        into(
+            into(system3).run_if([](std::optional<Res<bool>> res) {
+                spdlog::warn("No Res<bool> found, system3 will not run");
+                return res.has_value();
+            }),
+            system4
+        )
+            .in_set(Set2)
     ));
     schedule.configure_sets(sets(Set2, Set1).chain());
     // schedule.build();

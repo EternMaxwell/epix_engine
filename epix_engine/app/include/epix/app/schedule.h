@@ -63,7 +63,6 @@ struct System {
     std::string name;
     ExecutorLabel executor;
     std::unique_ptr<BasicSystem<void>> system;
-    std::vector<std::unique_ptr<BasicSystem<bool>>> conditions;
 
     std::shared_ptr<spdlog::logger> logger;
 
@@ -93,16 +92,27 @@ struct System {
     System(System&&)                 = default;
     System& operator=(const System&) = delete;
     System& operator=(System&&)      = default;
-    EPIX_API bool conflict_with(System& other) noexcept;
+    EPIX_API bool conflict_with(const System& other) noexcept;
     EPIX_API void run(World& src, World& dst) noexcept;
     EPIX_API double get_time_avg() const noexcept { return time_avg; };
     EPIX_API double get_time_cost() const noexcept { return time_cost; };
+
+    friend struct SystemSet;
 };
 struct SystemSet {
+    std::vector<std::unique_ptr<BasicSystem<bool>>> conditions;
     entt::dense_set<SystemSetLabel> in_sets;
     entt::dense_set<SystemSetLabel> depends;
     entt::dense_set<SystemSetLabel> succeeds;
 
+    entt::dense_map<SystemLabel, bool>
+        conflicts;  // Store system labels that are created from function
+    entt::dense_map<SystemLabel, bool>
+        conflicts_dyn;  // Store system labels that are created from
+                        // unique_ptr<BasicSystem>
+    static constexpr size_t max_conflict_cache = 4096;
+
+    EPIX_API bool conflict_with(const System& system) noexcept;
     EPIX_API void erase(const SystemSetLabel& label) noexcept {
         in_sets.erase(label);
         depends.erase(label);
@@ -403,7 +413,10 @@ struct ScheduleRunner {
                               // doesn't entered yet. When checked that they
                               // have no non entered parents, they will be
                               // entered.
-    entt::dense_set<SystemSetLabel> entered_sets;   // sets that are entered
+    entt::dense_map<SystemSetLabel, bool>
+        entered_sets;  // sets that are entered, bool for if the conditions of
+                       // the set are met
+    bool new_entered = false;
     entt::dense_set<SystemSetLabel> finished_sets;  // themselves are done
     entt::dense_map<SystemSetLabel, size_t>
         set_children_count;  // remaining unfinished children count
@@ -416,9 +429,12 @@ struct ScheduleRunner {
         waiting_systems;  // the set owns the system has already been entered,
                           // but there exist systems that still running that
                           // conflict with it.
+    std::deque<std::pair<SystemSetLabel, bool>> waiting_sets;
+
     epix::utils::async::ConQueue<SystemSetLabel> just_finished_sets;
 
     EPIX_API void enter_waiting_queue();
+    EPIX_API void try_enter_waiting_sets();
     EPIX_API void try_run_waiting_systems();
 
    public:

@@ -13,7 +13,7 @@ EPIX_API System::System(
 )
     : System(label, label.name(), std::move(system)) {}
 
-EPIX_API bool System::conflict_with(System& other) noexcept {
+EPIX_API bool System::conflict_with(const System& other) noexcept {
     if (other.label.get_type() == typeid(void)) {
         auto&& it = conflicts_dyn.find(other.label);
         if (it != conflicts_dyn.end()) {
@@ -29,29 +29,29 @@ EPIX_API bool System::conflict_with(System& other) noexcept {
     if (system->conflict_with(*other.system)) {
         result = true;
     }
-    for (const auto& condition : conditions) {
-        if (result) break;
-        for (const auto& other_condition : other.conditions) {
-            if (condition->conflict_with(*other_condition)) {
-                result = true;
-                break;
-            }
-        }
-    }
-    for (const auto& condition : other.conditions) {
-        if (result) break;
-        if (system->conflict_with(*condition)) {
-            result = true;
-            break;
-        }
-    }
-    for (const auto& other_condition : other.conditions) {
-        if (result) break;
-        if (other.system->conflict_with(*other_condition)) {
-            result = true;
-            break;
-        }
-    }
+    // for (const auto& condition : conditions) {
+    //     if (result) break;
+    //     for (const auto& other_condition : other.conditions) {
+    //         if (condition->conflict_with(*other_condition)) {
+    //             result = true;
+    //             break;
+    //         }
+    //     }
+    // }
+    // for (const auto& condition : other.conditions) {
+    //     if (result) break;
+    //     if (system->conflict_with(*condition)) {
+    //         result = true;
+    //         break;
+    //     }
+    // }
+    // for (const auto& other_condition : other.conditions) {
+    //     if (result) break;
+    //     if (other.system->conflict_with(*other_condition)) {
+    //         result = true;
+    //         break;
+    //     }
+    // }
     if (other.label.get_type() == typeid(void)) {
         if (conflicts_dyn.size() >= max_conflict_cache) {
             // erase a random one
@@ -75,13 +75,7 @@ EPIX_API bool System::conflict_with(System& other) noexcept {
 EPIX_API void System::run(World& src, World& dst) noexcept {
     auto start = std::chrono::high_resolution_clock::now();
     try {
-        bool condition_pass = true;
-        for (auto&& condition : conditions) {
-            condition_pass &= condition->run(src, dst);
-        }
-        if (condition_pass) {
-            system->run(src, dst);
-        }
+        system->run(src, dst);
     } catch (const BadParamAccess& e) {
         logger->info("BadParamAccess at {}: {}", name, e.what());
     } catch (const std::exception& e) {

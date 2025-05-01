@@ -141,9 +141,8 @@ EPIX_API void Schedule::add_systems(SystemConfig&& config) {
                                                   )
                                 )
                                 .first;
-                it->second.conditions = std::move(config.conditions);
-                it->second.executor   = config.executor;
-                it->second.logger     = logger;
+                it->second.executor = config.executor;
+                it->second.logger   = logger;
             }
             // Adding the system set that owns the system
             {
@@ -152,6 +151,7 @@ EPIX_API void Schedule::add_systems(SystemConfig&& config) {
                 std::swap(it->second.in_sets, config.in_sets);
                 std::swap(it->second.depends, config.depends);
                 std::swap(it->second.succeeds, config.succeeds);
+                std::swap(it->second.conditions, config.conditions);
             }
             newly_added_sets.emplace(config.label);
         }
@@ -266,8 +266,7 @@ EPIX_API std::expected<void, RunSystemError> ScheduleRunner::run_system(
 };
 
 EPIX_API void ScheduleRunner::enter_waiting_queue() {
-    bool new_entered = true;
-    while (new_entered) {
+    do {
         new_entered = false;
         size_t size = wait_to_enter_queue.size();
         for (size_t i = 0; i < size; i++) {
@@ -276,25 +275,76 @@ EPIX_API void ScheduleRunner::enter_waiting_queue() {
 
             // check if this set has all parents entered
             bool parent_all_entered = true;
-            for (auto&& parent : schedule.system_sets[label].in_sets) {
-                if (!entered_sets.contains(parent)) {
+            bool parent_all_passed  = true;
+            for (auto&& parent : schedule.system_sets.at(label).in_sets) {
+                if (auto&& it = entered_sets.find(parent);
+                    it != entered_sets.end()) {
+                    // this parent has entered, check if it passed
+                    parent_all_passed &= it->second;
+                } else {
+                    // this parent has not entered yet
                     parent_all_entered = false;
                     break;
                 }
             }
             if (parent_all_entered) {
-                // all parents entered, enter the set
-                entered_sets.emplace(label);
-                new_entered = true;
-                if (auto&& sys_it = schedule.systems.find(label);
-                    sys_it != schedule.systems.end()) {
-                    // this set also owns a system, push it to waiting queue
-                    waiting_systems.emplace_back(label);
-                }
+                // all parents entered, try enter the set
+                waiting_sets.emplace_back(label, parent_all_passed);
+                // if (auto&& sys_it = schedule.systems.find(label);
+                //     sys_it != schedule.systems.end()) {
+                //     // this set also owns a system, push it to waiting queue
+                //     waiting_systems.emplace_back(label);
+                // }
             } else {
                 // still not all parents entered, wait to enter
                 wait_to_enter_queue.emplace_back(label);
             }
+        }
+        try_enter_waiting_sets();
+    } while (new_entered);
+}
+
+EPIX_API void ScheduleRunner::try_enter_waiting_sets() {
+    size_t size = waiting_sets.size();
+    for (size_t i = 0; i < size; i++) {
+        SystemSetLabel label = waiting_sets.front().first;
+        bool parent_pass     = waiting_sets.front().second;
+        waiting_sets.pop_front();
+        auto&& set                 = schedule.system_sets.at(label);
+        bool conflict_with_running = false;
+        for (auto&& running : systems_running) {
+            auto&& other = schedule.systems.at(running);
+            if (set.conflict_with(other)) {
+                conflict_with_running = true;
+                break;
+            }
+        }
+        if (!conflict_with_running) {
+            bool pass = parent_pass;
+            if (pass) {
+                for (auto&& condition : set.conditions) {
+                    if (!condition->run(*src, *dst)) {
+                        pass = false;
+                        break;
+                    }
+                }
+            }
+            entered_sets.emplace(label, pass);
+            new_entered = true;
+            if (auto&& sys_it = schedule.systems.find(label);
+                sys_it != schedule.systems.end()) {
+                // this set also owns a system, push it to waiting queue
+                if (pass) {
+                    waiting_systems.emplace_back(label);
+                } else {
+                    just_finished_sets.emplace(label);
+                }
+            } else if (!set_children_count.contains(label)) {
+                // have no children, push it to finished queue
+                just_finished_sets.emplace(label);
+            }
+        } else {
+            waiting_sets.emplace_back(label, parent_pass);
         }
     }
 }
@@ -373,13 +423,20 @@ EPIX_API std::expected<void, RunScheduleError> ScheduleRunner::run() {
     while (!just_finished_sets.empty() || systems_running.size() > 0) {
         auto finished_item = just_finished_sets.pop();
         {
-            // finish the set owns the system if children count is 0
-            auto& child_count = set_children_count.at(finished_item);
-            if (schedule.systems.contains(finished_item)) {
-                child_count--;
-            }
-            if (child_count == 0) {
-                // all children are
+            if (auto&& it = set_children_count.find(finished_item);
+                it != set_children_count.end()) {
+                auto& child_count = it->second;
+                if (schedule.systems.contains(finished_item)) {
+                    child_count--;
+                }
+                if (child_count == 0) {
+                    // all children are done
+                    entered_sets.erase(finished_item);
+                    finished_sets.emplace(finished_item);
+                }
+            } else {
+                // this set has no children, just remove it from the entered
+                // sets
                 entered_sets.erase(finished_item);
                 finished_sets.emplace(finished_item);
             }
@@ -432,6 +489,10 @@ EPIX_API std::expected<void, RunScheduleError> ScheduleRunner::run() {
     uint32_t remaining_sets =
         schedule.system_sets.size() - finished_sets.size();
     if (remaining_sets > 0) {
+        schedule.logger->warn(
+            "Schedule {} has {} sets remaining.", schedule.label.name(),
+            remaining_sets
+        );
         return std::unexpected(RunScheduleError{
             schedule.label, RunScheduleError::Type::SetsRemaining,
             remaining_sets
