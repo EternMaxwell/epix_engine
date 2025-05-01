@@ -59,7 +59,9 @@ void schedules_set_dst_world(App& app, WorldLabel label, Labels&&... labels) {
 
 EPIX_API App::App()
     : m_executors(std::make_shared<Executors>()),
-      m_control_pool(std::make_shared<executor_t>(2)),
+      m_control_pool(std::make_shared<executor_t>(
+          2, []() { BS::this_thread::set_os_thread_name("control"); }
+      )),
       m_mutex(std::make_unique<std::shared_mutex>()),
       m_logger(spdlog::default_logger()->clone("app")) {
     add_world(MainWorld);

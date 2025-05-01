@@ -6,11 +6,8 @@ using namespace epix::app;
 
 EPIX_API Executors::Executors() {
     // Default executor pool
-    pools.emplace(ExecutorLabel(), std::make_unique<executor_t>(4));
-    pools.emplace(
-        ExecutorLabel(ExecutorType::SingleThread),
-        std::make_unique<executor_t>(1)
-    );
+    add_pool(ExecutorLabel(), "default", 4);
+    add_pool(ExecutorLabel(ExecutorType::SingleThread), "single", 1);
 };
 
 EPIX_API Executors::executor_t* Executors::get_pool(const ExecutorLabel& label
@@ -24,7 +21,16 @@ EPIX_API Executors::executor_t* Executors::get_pool(const ExecutorLabel& label
 EPIX_API void Executors::add_pool(
     const ExecutorLabel& label, size_t count
 ) noexcept {
-    pools.emplace(label, std::make_unique<executor_t>(count));
+    pools.emplace(label, std::make_unique<executor_t>(count, [label]() {
+                      BS::this_thread::set_os_thread_name(label.name());
+                  }));
+};
+EPIX_API void Executors::add_pool(
+    const ExecutorLabel& label, const std::string& name, size_t count
+) noexcept {
+    pools.emplace(label, std::make_unique<executor_t>(count, [name]() {
+                      BS::this_thread::set_os_thread_name(name);
+                  }));
 };
 
 EPIX_API void ScheduleCommandQueue::flush(Schedule& schedule) {

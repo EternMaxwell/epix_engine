@@ -2,6 +2,7 @@
 
 #include <spdlog/spdlog.h>
 
+#define BS_THREAD_POOL_NATIVE_EXTENSIONS
 #include <BS_thread_pool.hpp>
 #include <expected>
 #include <queue>
@@ -52,6 +53,9 @@ struct Executors {
     EPIX_API Executors();
     EPIX_API executor_t* get_pool(const ExecutorLabel& label) noexcept;
     EPIX_API void add_pool(const ExecutorLabel& label, size_t count) noexcept;
+    EPIX_API void add_pool(
+        const ExecutorLabel& label, const std::string& name, size_t count
+    ) noexcept;
 };
 
 struct System {
