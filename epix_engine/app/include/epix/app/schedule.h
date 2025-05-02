@@ -9,6 +9,7 @@
 #include <random>
 
 #include "system.h"
+#include "tracy.h"
 
 namespace epix::app {
 struct SystemLabel : public Label {
@@ -402,49 +403,59 @@ struct RunScheduleError {
     };
 };
 struct ScheduleRunner {
+    struct TracySettings {
+        bool enabled = false;
+    };
+
    private:
+    TracySettings tracy_settings;
     Schedule& schedule;
     World* src;
     World* dst;
     bool run_once;
     std::shared_ptr<Executors> executors;
-    std::deque<SystemSetLabel>
-        wait_to_enter_queue;  // sets that have no remain dependencies, but
-                              // doesn't entered yet. When checked that they
-                              // have no non entered parents, they will be
-                              // entered.
-    entt::dense_map<SystemSetLabel, bool>
-        entered_sets;  // sets that are entered, bool for if the conditions of
-                       // the set are met
+    std::deque<uint32_t> wait_to_enter_queue;
     bool new_entered = false;
-    entt::dense_set<SystemSetLabel> finished_sets;  // themselves are done
-    entt::dense_map<SystemSetLabel, size_t>
-        set_children_count;  // remaining unfinished children count
-    entt::dense_map<SystemSetLabel, size_t>
-        set_depends_count;  // remaining unfinished dependencies count.
-    entt::dense_set<SystemLabel>
-        systems_running;  // a set of running systems, used for checking
-                          // conflicts and tracking count
-    std::deque<SystemLabel>
-        waiting_systems;  // the set owns the system has already been entered,
-                          // but there exist systems that still running that
-                          // conflict with it.
-    std::deque<std::pair<SystemSetLabel, bool>> waiting_sets;
+    entt::dense_set<uint32_t> systems_running;
+    std::deque<uint32_t> waiting_systems;
+    std::deque<std::pair<uint32_t, bool>> waiting_sets;
 
-    epix::utils::async::ConQueue<SystemSetLabel> just_finished_sets;
+    epix::utils::async::ConQueue<uint32_t> just_finished_sets;
+
+    struct SystemSetInfo {
+        SystemSetLabel label;
+        SystemSet* set;
+        System* system;
+        std::vector<uint32_t> parents;
+        std::vector<uint32_t> succeeds;
+
+        uint32_t depends_count;
+        uint32_t children_count;
+
+        bool entered;
+        bool passed;
+        bool finished;
+    };
+
+    std::vector<SystemSetInfo> system_set_infos;
+    entt::dense_map<SystemSetLabel, uint32_t> set_index_map;
 
     EPIX_API void enter_waiting_queue();
     EPIX_API void try_enter_waiting_sets();
     EPIX_API void try_run_waiting_systems();
 
+    EPIX_API void prepare_schedule();
+    EPIX_API void run_loop();
+    EPIX_API void finishing();
+    EPIX_API std::expected<void, RunScheduleError> run_internal();
+    EPIX_API std::expected<void, RunSystemError> run_system(uint32_t index);
+
    public:
+    EPIX_API TracySettings& get_tracy_settings() noexcept;
     EPIX_API ScheduleRunner(Schedule& schedule, bool run_once = false);
     EPIX_API void set_worlds(World& src, World& dst) noexcept;
     EPIX_API void set_executors(const std::shared_ptr<Executors>& executors
     ) noexcept;
-    EPIX_API std::expected<void, RunSystemError> run_system(
-        const SystemLabel& label
-    );
     EPIX_API std::expected<void, RunScheduleError> run();
     EPIX_API void reset() noexcept;
 };

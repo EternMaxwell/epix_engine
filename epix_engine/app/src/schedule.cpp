@@ -6,8 +6,8 @@ using namespace epix::app;
 
 EPIX_API Executors::Executors() {
     // Default executor pool
-    add_pool(ExecutorLabel(), "default", 4);
-    add_pool(ExecutorLabel(ExecutorType::SingleThread), "single", 1);
+    // add_pool(ExecutorLabel(), "default", 4);
+    // add_pool(ExecutorLabel(ExecutorType::SingleThread), "single", 1);
 };
 
 EPIX_API Executors::executor_t* Executors::get_pool(const ExecutorLabel& label
@@ -237,29 +237,38 @@ EPIX_API void ScheduleRunner::set_worlds(World& src, World& dst) noexcept {
 };
 
 EPIX_API std::expected<void, RunSystemError> ScheduleRunner::run_system(
-    const SystemLabel& label
+    uint32_t index
 ) {
     // to be implemented
 
-    auto& system = schedule.systems.at(label);
+    auto& system = *system_set_infos[index].system;
+    auto& label  = system.label;
 
-    systems_running.emplace(label);
+    systems_running.emplace(index);
     if (executors) {
         if (auto executor = executors->get_pool(system.executor)) {
-            executor->detach_task([this, &system]() {
-                system.run(*src, *dst);
-                just_finished_sets.emplace(system.label);
+            executor->detach_task([this, &system, index]() {
+                if (tracy_settings.enabled) {
+                    ZoneScopedN("Run system");
+                    auto name = std::format("Run System:{}", system.name);
+                    ZoneName(name.c_str(), name.size());
+                    system.run(*src, *dst);
+                    just_finished_sets.emplace(index);
+                } else {
+                    system.run(*src, *dst);
+                    just_finished_sets.emplace(index);
+                }
             });
             return {};
         }
         system.run(*src, *dst);
-        just_finished_sets.emplace(label);
+        just_finished_sets.emplace(index);
         return std::unexpected<RunSystemError>(
             std::in_place, label, RunSystemError::Type::ExecutorNotFound
         );
     }
     system.run(*src, *dst);
-    just_finished_sets.emplace(label);
+    just_finished_sets.emplace(index);
     return std::unexpected<RunSystemError>(
         std::in_place, label, RunSystemError::Type::NoExecutorsProvided
     );
@@ -270,34 +279,22 @@ EPIX_API void ScheduleRunner::enter_waiting_queue() {
         new_entered = false;
         size_t size = wait_to_enter_queue.size();
         for (size_t i = 0; i < size; i++) {
-            SystemSetLabel label = wait_to_enter_queue.front();
+            auto index = wait_to_enter_queue.front();
             wait_to_enter_queue.pop_front();
-
-            // check if this set has all parents entered
-            bool parent_all_entered = true;
-            bool parent_all_passed  = true;
-            for (auto&& parent : schedule.system_sets.at(label).in_sets) {
-                if (auto&& it = entered_sets.find(parent);
-                    it != entered_sets.end()) {
-                    // this parent has entered, check if it passed
-                    parent_all_passed &= it->second;
-                } else {
-                    // this parent has not entered yet
-                    parent_all_entered = false;
-                    break;
-                }
+            auto&& info         = system_set_infos[index];
+            bool parent_entered = true;
+            bool parent_passed  = true;
+            for (auto&& parent : info.parents) {
+                parent_entered &= system_set_infos[parent].entered;
+                if (!parent_entered) break;
+                parent_passed &= system_set_infos[parent].passed;
             }
-            if (parent_all_entered) {
+            if (parent_entered) {
                 // all parents entered, try enter the set
-                waiting_sets.emplace_back(label, parent_all_passed);
-                // if (auto&& sys_it = schedule.systems.find(label);
-                //     sys_it != schedule.systems.end()) {
-                //     // this set also owns a system, push it to waiting queue
-                //     waiting_systems.emplace_back(label);
-                // }
+                waiting_sets.emplace_back(index, parent_passed);
             } else {
                 // still not all parents entered, wait to enter
-                wait_to_enter_queue.emplace_back(label);
+                wait_to_enter_queue.emplace_back(index);
             }
         }
         try_enter_waiting_sets();
@@ -307,14 +304,14 @@ EPIX_API void ScheduleRunner::enter_waiting_queue() {
 EPIX_API void ScheduleRunner::try_enter_waiting_sets() {
     size_t size = waiting_sets.size();
     for (size_t i = 0; i < size; i++) {
-        SystemSetLabel label = waiting_sets.front().first;
-        bool parent_pass     = waiting_sets.front().second;
+        auto index       = waiting_sets.front().first;
+        bool parent_pass = waiting_sets.front().second;
         waiting_sets.pop_front();
-        auto&& set                 = schedule.system_sets.at(label);
+        auto& info                 = system_set_infos[index];
         bool conflict_with_running = false;
         for (auto&& running : systems_running) {
-            auto&& other = schedule.systems.at(running);
-            if (set.conflict_with(other)) {
+            auto& system = *system_set_infos[running].system;
+            if (info.set->conflict_with(system)) {
                 conflict_with_running = true;
                 break;
             }
@@ -322,29 +319,27 @@ EPIX_API void ScheduleRunner::try_enter_waiting_sets() {
         if (!conflict_with_running) {
             bool pass = parent_pass;
             if (pass) {
-                for (auto&& condition : set.conditions) {
+                for (auto&& condition : info.set->conditions) {
                     if (!condition->run(*src, *dst)) {
                         pass = false;
                         break;
                     }
                 }
             }
-            entered_sets.emplace(label, pass);
-            new_entered = true;
-            if (auto&& sys_it = schedule.systems.find(label);
-                sys_it != schedule.systems.end()) {
-                // this set also owns a system, push it to waiting queue
+            info.entered = true;
+            info.passed  = pass;
+            new_entered  = true;
+            if (info.system) {
                 if (pass) {
-                    waiting_systems.emplace_back(label);
+                    waiting_systems.emplace_back(index);
                 } else {
-                    just_finished_sets.emplace(label);
-                }
-            } else if (!set_children_count.contains(label)) {
-                // have no children, push it to finished queue
-                just_finished_sets.emplace(label);
+                    just_finished_sets.emplace(index);
+                };
+            } else if (info.children_count == 0) {
+                just_finished_sets.emplace(index);
             }
         } else {
-            waiting_sets.emplace_back(label, parent_pass);
+            waiting_sets.emplace_back(index, parent_pass);
         }
     }
 }
@@ -352,70 +347,70 @@ EPIX_API void ScheduleRunner::try_enter_waiting_sets() {
 EPIX_API void ScheduleRunner::try_run_waiting_systems() {
     size_t size = waiting_systems.size();
     for (size_t i = 0; i < size; i++) {
-        auto&& label = waiting_systems.front();
+        auto index = waiting_systems.front();
         waiting_systems.pop_front();
-        auto&& sys                 = schedule.systems.at(label);
+        auto& info                 = system_set_infos[index];
         bool conflict_with_running = false;
         for (auto&& running : systems_running) {
-            auto&& other_sys = schedule.systems.at(running);
-            if (sys.conflict_with(other_sys)) {
+            auto& system = *system_set_infos[running].system;
+            if (info.system->conflict_with(system)) {
                 conflict_with_running = true;
                 break;
             }
         }
         if (!conflict_with_running) {
-            run_system(label);
+            if (tracy_settings.enabled) {
+                ZoneScopedN("Run or detach system");
+                auto name =
+                    std::format("Run or detach System:{}", info.system->name);
+                ZoneName(name.c_str(), name.size());
+                run_system(index);
+            } else {
+                run_system(index);
+            }
         } else {
-            waiting_systems.emplace_back(label);
+            waiting_systems.emplace_back(index);
         }
     }
 }
 
-EPIX_API std::expected<void, RunScheduleError> ScheduleRunner::run() {
-    // Locking systems and system sets to avoid adding or removing systems or
-    // system sets while running
-    schedule.logger->trace("Flushing command queue.");
-    schedule.flush();
-    schedule.logger->trace("Command queue flushed.");
-
-    std::unique_lock lock(schedule.system_sets_mutex);
-
-    if (!src || !dst) {
-        return std::unexpected(RunScheduleError{
-            schedule.label, RunScheduleError::Type::WorldsNotSet
-        });
-    }
-
-    schedule.logger->trace("Building schedule.");
-    schedule.build();
-    schedule.logger->trace("Schedule built.");
-
-    schedule.logger->debug("Running schedule.");
-
+EPIX_API void ScheduleRunner::prepare_schedule() {
     for (auto&& [label, set] : schedule.system_sets) {
-        set_depends_count.emplace(label, set.depends.size());
-        if (set.depends.empty()) {
-            wait_to_enter_queue.emplace_back(label);
+        uint32_t index = (uint32_t)system_set_infos.size();
+        set_index_map.emplace(label, index);
+        auto& info = system_set_infos.emplace_back();
+        info.label = label;
+        info.set   = &set;
+        if (auto&& it = schedule.systems.find(label);
+            it != schedule.systems.end()) {
+            info.system = &it->second;
+        } else {
+            info.system = nullptr;
         }
+        info.parents.reserve(set.in_sets.size());
+        info.succeeds.reserve(set.succeeds.size());
+        info.depends_count = set.depends.size();
+        if (info.depends_count == 0) {
+            wait_to_enter_queue.emplace_back(index);
+        }
+        info.children_count = info.system ? 1 : 0;
+        info.entered        = false;
+        info.passed         = false;
+        info.finished       = false;
+    }
+    for (auto&& [label, set] : schedule.system_sets) {
+        auto& info = system_set_infos.at(set_index_map.at(label));
         for (auto&& parent : set.in_sets) {
-            auto&& it = set_children_count.find(parent);
-            if (it == set_children_count.end()) {
-                set_children_count.emplace(parent, 0);
-            }
-            set_children_count.at(parent)++;
+            auto index = set_index_map.at(parent);
+            info.parents.emplace_back(index);
+            system_set_infos[index].children_count++;
+        }
+        for (auto&& succeed : set.succeeds) {
+            info.succeeds.emplace_back(set_index_map.at(succeed));
         }
     }
-    for (auto&& [label, system] : schedule.systems) {
-        auto&& it = set_children_count.find(label);
-        if (it == set_children_count.end()) {
-            set_children_count.emplace(label, 0);
-        }
-        set_children_count.at(label)++;
-    }
-
-    enter_waiting_queue();
-    try_run_waiting_systems();
-
+}
+EPIX_API void ScheduleRunner::run_loop() {
     // we check if the just finished sets is not empty or if there are still
     // systems running, if so, we need to check if there are any finished sets.
     // Cause only these 2 cases can ensure that just_finished_sets.pop() can
@@ -423,42 +418,28 @@ EPIX_API std::expected<void, RunScheduleError> ScheduleRunner::run() {
     while (!just_finished_sets.empty() || systems_running.size() > 0) {
         auto finished_item = just_finished_sets.pop();
         {
-            if (auto&& it = set_children_count.find(finished_item);
-                it != set_children_count.end()) {
-                auto& child_count = it->second;
-                if (schedule.systems.contains(finished_item)) {
-                    child_count--;
-                }
-                if (child_count == 0) {
-                    // all children are done
-                    entered_sets.erase(finished_item);
-                    finished_sets.emplace(finished_item);
-                }
-            } else {
-                // this set has no children, just remove it from the entered
-                // sets
-                entered_sets.erase(finished_item);
-                finished_sets.emplace(finished_item);
+            auto& info = system_set_infos[finished_item];
+            if (info.system) {
+                info.children_count--;
+            }
+            if (info.children_count == 0) {
+                info.entered  = false;
+                info.finished = true;
             }
         }
         systems_running.erase(finished_item);
         {
-            auto&& set = schedule.system_sets.at(finished_item);
-            // checking all succeeds of the finished system
-            for (auto&& succeed : set.succeeds) {
-                auto& depend_count = set_depends_count.at(succeed);
-                depend_count--;
-                if (depend_count == 0) {
+            auto& info = system_set_infos[finished_item];
+            for (auto&& succeed : info.succeeds) {
+                system_set_infos[succeed].depends_count--;
+                if (system_set_infos[succeed].depends_count == 0) {
                     // all dependencies are finished, enter the set
                     wait_to_enter_queue.emplace_back(succeed);
                 }
             }
 
-            // checking all parents of the finished system
-            // note that parents are always entered before the child, so
-            // they just need to be finished if needed
-            for (auto&& parent : set.in_sets) {
-                auto& child_count = set_children_count.at(parent);
+            for (auto&& parent : info.parents) {
+                auto& child_count = system_set_infos[parent].children_count;
                 child_count--;
                 if (child_count == 0) {
                     // all children are finished, finish the parent
@@ -469,7 +450,9 @@ EPIX_API std::expected<void, RunScheduleError> ScheduleRunner::run() {
         enter_waiting_queue();
         try_run_waiting_systems();
     }
+}
 
+EPIX_API void ScheduleRunner::finishing() {
     if (run_once) {
         // if run_once, clear all systems in the schedule
         // and all sets that own systems
@@ -483,11 +466,71 @@ EPIX_API std::expected<void, RunScheduleError> ScheduleRunner::run() {
 
     src->command_queue().flush(*src);
     dst->command_queue().flush(*dst);
+}
+
+EPIX_API std::expected<void, RunScheduleError> ScheduleRunner::run_internal() {
+    // Locking systems and system sets to avoid adding or removing systems or
+    // system sets while running
+
+    schedule.logger->trace("Flushing command queue.");
+    if (tracy_settings.enabled) {
+        ZoneScopedN("Flush schedule command queue");
+        schedule.flush();
+    } else {
+        schedule.flush();
+    }
+    schedule.logger->trace("Command queue flushed.");
+
+    std::unique_lock lock(schedule.system_sets_mutex);
+
+    if (!src || !dst) {
+        return std::unexpected(RunScheduleError{
+            schedule.label, RunScheduleError::Type::WorldsNotSet
+        });
+    }
+
+    schedule.logger->trace("Building schedule.");
+    if (tracy_settings.enabled) {
+        ZoneScopedN("Build schedule if needed");
+        schedule.build();
+    } else {
+        schedule.build();
+    }
+    schedule.logger->trace("Schedule built.");
+
+    schedule.logger->debug("Running schedule.");
+
+    if (tracy_settings.enabled) {
+        ZoneScopedN("Prepare schedule for running");
+        prepare_schedule();
+    } else {
+        prepare_schedule();
+    }
+
+    enter_waiting_queue();
+    try_run_waiting_systems();
+
+    run_loop();
+
+    if (tracy_settings.enabled) {
+        ZoneScopedN("Finishing schedule");
+        finishing();
+    } else {
+        finishing();
+    }
 
     schedule.logger->debug("Schedule finished.");
 
-    uint32_t remaining_sets =
-        schedule.system_sets.size() - finished_sets.size();
+    uint32_t remaining_sets = 0;
+    for (auto&& info : system_set_infos) {
+        if (!info.finished) {
+            remaining_sets++;
+            schedule.logger->warn(
+                "    Schedule {} has set {} not finished.",
+                schedule.label.name(), info.label.name()
+            );
+        }
+    }
     if (remaining_sets > 0) {
         schedule.logger->warn(
             "Schedule {} has {} sets remaining.", schedule.label.name(),
@@ -501,13 +544,28 @@ EPIX_API std::expected<void, RunScheduleError> ScheduleRunner::run() {
     return {};
 }
 
+EPIX_API std::expected<void, RunScheduleError> ScheduleRunner::run() {
+    if (tracy_settings.enabled) {
+        ZoneScopedN("Run schedule");
+        auto name = std::format("Schedule:{}", schedule.label.name());
+        ZoneName(name.c_str(), name.size());
+        return run_internal();
+    } else {
+        return run_internal();
+    }
+}
+
 EPIX_API void ScheduleRunner::reset() noexcept {
     wait_to_enter_queue.clear();
-    entered_sets.clear();
-    finished_sets.clear();
-    set_children_count.clear();
-    set_depends_count.clear();
     systems_running.clear();
+    new_entered = false;
     waiting_systems.clear();
+    waiting_sets.clear();
+    system_set_infos.clear();
     while (auto&& it = just_finished_sets.try_pop()) {}
+}
+
+EPIX_API ScheduleRunner::TracySettings& ScheduleRunner::get_tracy_settings(
+) noexcept {
+    return tracy_settings;
 }

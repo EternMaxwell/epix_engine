@@ -1,9 +1,5 @@
 #pragma once
 
-#include <spdlog/spdlog.h>
-
-#include <tracy/Tracy.hpp>
-
 #include "schedule.h"
 
 namespace epix::app {
@@ -457,8 +453,27 @@ struct Plugin {
 struct AppRunner {
     virtual int run(App& app) = 0;
 };
+struct AppCreateInfo {
+    bool mark_frame            = true;
+    bool enable_tracy          = false;
+    uint32_t control_pool_size = 2;
+    uint32_t default_pool_size = 4;
+};
 struct App {
     using executor_t = BS::thread_pool<BS::tp::priority>;
+
+    struct TracySettings {
+       private:
+        entt::dense_map<ScheduleLabel, bool> schedules_enable_tracy;
+
+       public:
+        bool mark_frame   = true;
+        bool enable_tracy = false;
+        EPIX_API TracySettings& schedule_enable_tracy(
+            const ScheduleLabel& label, bool enable = true
+        );
+        EPIX_API bool schedule_enabled_tracy(const ScheduleLabel& label);
+    };
 
    private:
     // worlds
@@ -472,11 +487,16 @@ struct App {
     // runner, shared_ptr to automatic destruction
     std::shared_ptr<AppRunner> m_runner;
 
+    TracySettings m_tracy_settings;
+
+    // logger
     std::shared_ptr<spdlog::logger> m_logger;
 
+    // plugins
     std::vector<std::pair<std::type_index, std::shared_ptr<Plugin>>> m_plugins;
     entt::dense_set<std::type_index> m_built_plugins;
 
+    // queued systems and sets for deferred add
     std::vector<std::pair<ScheduleInfo, SystemConfig>> m_queued_systems;
     std::vector<std::pair<ScheduleLabel, SystemSetConfig>> m_queued_sets;
     std::vector<SystemSetConfig> m_queued_all_sets;
@@ -488,18 +508,21 @@ struct App {
     ) const noexcept;
 
    public:
-    EPIX_API App();
+    EPIX_API App(const AppCreateInfo& create_info);
     App(const App&)            = delete;
     App(App&&)                 = default;
     App& operator=(const App&) = delete;
     App& operator=(App&&)      = default;
 
-    EPIX_API static App create();
+    EPIX_API static App create(const AppCreateInfo& create_info = {});
 
     EPIX_API App& set_logger(std::shared_ptr<spdlog::logger> logger);
     EPIX_API std::shared_ptr<spdlog::logger> logger();
 
     // Access
+
+    EPIX_API TracySettings& tracy_settings();
+    EPIX_API const TracySettings& tracy_settings() const;
 
     EPIX_API World& world(const WorldLabel& label);
     EPIX_API World* get_world(const WorldLabel& label);

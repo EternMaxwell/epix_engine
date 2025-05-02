@@ -259,7 +259,9 @@ struct TestPlugin : epix::Plugin {
 };
 
 int main() {
-    epix::App app = epix::App::create();
+    epix::App app = epix::App::create(AppConfig{
+        .enable_tracy = true,
+    });
     app.add_plugin(epix::window::WindowPlugin{});
     app.get_plugin<epix::window::WindowPlugin>()
         ->primary_desc()

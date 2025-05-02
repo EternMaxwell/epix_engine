@@ -21,6 +21,8 @@ using app::World;
 using app::Schedule;
 
 using app::App;
+using app::AppCreateInfo;
+using AppConfig = app::AppCreateInfo;
 using app::AppExit;
 using app::AppRunner;
 using app::Plugin;

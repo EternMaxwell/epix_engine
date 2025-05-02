@@ -14,6 +14,9 @@ struct LoopRunner : public AppRunner {
     int run(App& app) override {
         do {
             app.run_group(LoopGroup);
+            if (app.tracy_settings().mark_frame) {
+                FrameMark;
+            }
         } while (!app.run_system(m_check_exit).value_or(true));
         app.logger()->clone("loop")->info("Received exit event.");
         app.run_group(ExitGroup);

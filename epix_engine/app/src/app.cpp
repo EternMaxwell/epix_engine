@@ -57,10 +57,11 @@ void schedules_set_dst_world(App& app, WorldLabel label, Labels&&... labels) {
     (app.schedule_set_dst(labels, label), ...);
 }
 
-EPIX_API App::App()
+EPIX_API App::App(const AppCreateInfo& create_info)
     : m_executors(std::make_shared<Executors>()),
       m_control_pool(std::make_shared<executor_t>(
-          2, []() { BS::this_thread::set_os_thread_name("control"); }
+          create_info.control_pool_size,
+          []() { BS::this_thread::set_os_thread_name("control"); }
       )),
       m_mutex(std::make_unique<std::shared_mutex>()),
       m_logger(spdlog::default_logger()->clone("app")) {
@@ -78,10 +79,18 @@ EPIX_API App::App()
         Update, PostUpdate, Last
     );
     schedule_sequence(PreExit, Exit, PostExit);
+
+    m_executors->add_pool(
+        ExecutorLabel(), "default", create_info.default_pool_size
+    );
+    m_executors->add_pool(ExecutorType::SingleThread, "single", 1);
+
+    m_tracy_settings.enable_tracy = create_info.enable_tracy;
+    m_tracy_settings.mark_frame   = create_info.mark_frame;
 }
 
-EPIX_API App App::create() {
-    App app;
+EPIX_API App App::create(const AppCreateInfo& create_info) {
+    App app(create_info);
     app.add_world(RenderWorld);
     add_schedules(
         app, LoopGroup, Prepare, PreRender, Render, PostRender, PreExtract,
@@ -465,6 +474,11 @@ EPIX_API int App::run_group(const GroupLabel& label) {
     }
 }
 
+EPIX_API App::TracySettings& App::tracy_settings() { return m_tracy_settings; };
+EPIX_API const App::TracySettings& App::tracy_settings() const {
+    return m_tracy_settings;
+};
+
 EPIX_API void App::run_schedule(const ScheduleLabel& label) {
     if (auto group_opt = find_belonged_group(label)) {
         auto group_label = *group_opt;
@@ -482,3 +496,21 @@ EPIX_API void App::run_schedule(const ScheduleLabel& label) {
         }
     }
 }
+
+EPIX_API App::TracySettings& App::TracySettings::schedule_enable_tracy(
+    const ScheduleLabel& label, bool enable
+) {
+    schedules_enable_tracy[label] = enable;
+    return *this;
+};
+EPIX_API bool App::TracySettings::schedule_enabled_tracy(
+    const ScheduleLabel& label
+) {
+    if (auto it = schedules_enable_tracy.find(label);
+        it != schedules_enable_tracy.end()) {
+        return it->second;
+    } else {
+        schedules_enable_tracy[label] = enable_tracy;
+        return enable_tracy;
+    }
+};
