@@ -337,7 +337,7 @@ struct ScheduleCommandQueue {
         using type = std::decay_t<T>;
         enqueue_internal<type>(std::forward<T>(command));
     };
-    EPIX_API void flush(Schedule& schedule);
+    EPIX_API bool flush(Schedule& schedule);
 };
 struct AddSystemsCommand {
     SystemConfig config;
@@ -367,8 +367,10 @@ struct Schedule {
     ScheduleCommandQueue command_queue;
 
    private:
-    EPIX_API void build() noexcept;
-    EPIX_API void flush() noexcept;
+    // true if rebuilt
+    EPIX_API bool build() noexcept;
+    // true if any command
+    EPIX_API bool flush() noexcept;
 
    public:
     EPIX_API Schedule(const ScheduleLabel& label);
@@ -409,11 +411,12 @@ struct ScheduleRunner {
 
    private:
     TracySettings tracy_settings;
-    Schedule& schedule;
+    Schedule* pschedule;
     World* src;
     World* dst;
     bool run_once;
     std::shared_ptr<Executors> executors;
+
     std::deque<uint32_t> wait_to_enter_queue;
     bool new_entered = false;
     entt::dense_set<uint32_t> systems_running;
@@ -444,7 +447,8 @@ struct ScheduleRunner {
     EPIX_API void try_enter_waiting_sets();
     EPIX_API void try_run_waiting_systems();
 
-    EPIX_API void prepare_schedule();
+    EPIX_API void prepare_runner();
+    EPIX_API void sync_schedule();
     EPIX_API void run_loop();
     EPIX_API void finishing();
     EPIX_API std::expected<void, RunScheduleError> run_internal();
@@ -453,6 +457,7 @@ struct ScheduleRunner {
    public:
     EPIX_API TracySettings& get_tracy_settings() noexcept;
     EPIX_API ScheduleRunner(Schedule& schedule, bool run_once = false);
+    EPIX_API void set_run_once(bool run_once) noexcept;
     EPIX_API void set_worlds(World& src, World& dst) noexcept;
     EPIX_API void set_executors(const std::shared_ptr<Executors>& executors
     ) noexcept;

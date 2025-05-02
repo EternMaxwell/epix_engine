@@ -5,6 +5,7 @@
 #include "app/entity.h"
 #include "app/hash_tool.h"
 #include "app/label.h"
+#include "app/profiler.h"
 #include "app/query.h"
 #include "app/res.h"
 #include "app/schedule.h"
@@ -22,6 +23,7 @@ using app::Schedule;
 
 using app::App;
 using app::AppCreateInfo;
+using app::AppProfiler;
 using AppConfig = app::AppCreateInfo;
 using app::AppExit;
 using app::AppRunner;

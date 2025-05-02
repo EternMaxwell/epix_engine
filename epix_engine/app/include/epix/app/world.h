@@ -201,6 +201,46 @@ struct World {
      * @return `UntypedRes` The untyped resource of the given type.
      */
     EPIX_API UntypedRes untyped_resource(const std::type_index& type) const;
+    template <typename T>
+    T& resource() {
+        std::shared_lock lock(m_data->resources_mutex);
+        auto it = m_data->resources.find(typeid(T));
+        if (it != m_data->resources.end()) {
+            return *std::static_pointer_cast<T>(it->second.get());
+        } else {
+            throw std::runtime_error("Resource not found.");
+        }
+    }
+    template <typename T>
+    const T& resource() const {
+        std::shared_lock lock(m_data->resources_mutex);
+        auto it = m_data->resources.find(typeid(T));
+        if (it != m_data->resources.end()) {
+            return *std::static_pointer_cast<T>(it->second.resource);
+        } else {
+            throw std::runtime_error("Resource not found.");
+        }
+    }
+    template <typename T>
+    T* get_resource() {
+        std::shared_lock lock(m_data->resources_mutex);
+        auto it = m_data->resources.find(typeid(T));
+        if (it != m_data->resources.end()) {
+            return std::static_pointer_cast<T>(it->second.resource).get();
+        } else {
+            return nullptr;
+        }
+    }
+    template <typename T>
+    const T* get_resource() const {
+        std::shared_lock lock(m_data->resources_mutex);
+        auto it = m_data->resources.find(typeid(T));
+        if (it != m_data->resources.end()) {
+            return std::static_pointer_cast<T>(it->second.resource).get();
+        } else {
+            return nullptr;
+        }
+    }
     /**
      * @brief Get the untyped resource of the given type.
      *

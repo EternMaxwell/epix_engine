@@ -51,23 +51,33 @@ EPIX_API std::expected<void, RunGroupError> ScheduleGroup::run(App& app) {
         if (!src_world || !dst_world) {
             return;
         }
+        ScheduleRunner* prunner;
+        if (auto it = schedule_runners.find(label);
+            it != schedule_runners.end()) {
+            prunner = it->second.get();
+        } else {
+            prunner = schedule_runners
+                          .emplace(
+                              label,
+                              std::make_unique<ScheduleRunner>(*schedule, false)
+                          )
+                          .first->second.get();
+        }
+        auto& runner = *prunner;
+        runner.set_run_once(schedule_run_once.at(label));
+        runner.get_tracy_settings().enabled =
+            app.tracy_settings().schedule_enabled_tracy(label);
+        runner.set_worlds(*src_world, *dst_world);
+        runner.set_executors(app.get_executors());
         if (auto executor = app.get_control_pool()) {
-            executor->detach_task([&, label, src_world, dst_world]() {
-                ScheduleRunner runner(*schedule, schedule_run_once.at(label));
-                runner.get_tracy_settings().enabled =
-                    app.tracy_settings().schedule_enabled_tracy(label);
-                runner.set_worlds(*src_world, *dst_world);
-                runner.set_executors(app.get_executors());
+            executor->detach_task([&, label]() {
                 auto result = runner.run();
+                runner.reset();
                 just_finished_schedules.emplace(label);
             });
         } else {
-            ScheduleRunner runner(*schedule, schedule_run_once.at(label));
-            runner.get_tracy_settings().enabled =
-                app.tracy_settings().schedule_enabled_tracy(label);
-            runner.set_worlds(*src_world, *dst_world);
-            runner.set_executors(app.get_executors());
             auto result = runner.run();
+            runner.reset();
             just_finished_schedules.emplace(schedule->label);
         }
     };

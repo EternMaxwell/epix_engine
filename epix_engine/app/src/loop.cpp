@@ -13,9 +13,20 @@ struct LoopRunner : public AppRunner {
           }) {}
     int run(App& app) override {
         do {
+            auto time_line1 = std::chrono::high_resolution_clock::now();
             app.run_group(LoopGroup);
             if (app.tracy_settings().mark_frame) {
                 FrameMark;
+            }
+            auto time_line2 = std::chrono::high_resolution_clock::now();
+            double time     = std::chrono::duration_cast<
+                                  std::chrono::duration<double, std::milli>>(
+                              time_line2 - time_line1
+            )
+                              .count();
+            if (auto app_profiler =
+                    app.world(MainWorld).get_resource<AppProfiler>()) {
+                app_profiler->push_time(time);
             }
         } while (!app.run_system(m_check_exit).value_or(true));
         app.logger()->clone("loop")->info("Received exit event.");

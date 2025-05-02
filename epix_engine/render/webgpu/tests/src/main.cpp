@@ -231,25 +231,32 @@ struct TestPlugin : epix::Plugin {
         app.add_systems(Startup, into(insert_context, setup_context).chain());
         app.add_systems(
             Update,
-            into(submit_test /* ,
-                  [](epix::Res<epix::AppProfile> profile,
-                     Local<std::optional<epix::utils::time::Timer>> timer,
-                     epix::Res<epix::app::ScheduleProfiles> profiles) {
-                      if (!timer->has_value()) {
-                          *timer = epix::utils::time::Timer::repeat(1);
-                      }
-                      if (!(**timer).tick()) {
-                          return;
-                      }
-                      spdlog::info("FrameTime: {:1.3f}ms", profile->frame_time);
-                      spdlog::info("FPS:       {:4.2f}", profile->fps);
-                      profiles->for_each([](auto&& id, auto&& profile) {
-                          spdlog::info(
-                              "Schedule {:<30}: average-> {:2.3f}ms",
-                              std::format("{}", id.name()), profile.time_avg
-                          );
-                      });
-                  } */
+            into(
+                submit_test,
+                [](epix::Res<epix::AppProfiler> profile,
+                   Local<std::optional<epix::utils::time::Timer>> timer) {
+                    if (!timer->has_value()) {
+                        *timer = epix::utils::time::Timer::repeat(1);
+                    }
+                    if (!(**timer).tick()) {
+                        return;
+                    }
+                    spdlog::info("FrameTime: {:1.3f}ms", profile->time_avg());
+                    spdlog::info(
+                        "FPS:       {:4.2f}", 1000.0 / profile->time_avg()
+                    );
+                    for (auto&& [label, each] : profile->schedule_profilers()) {
+                        spdlog::info(
+                            "Schedule {:<34}: flush-> {:2.3f}ms build-> "
+                            "{:2.3f}ms prepare-> {:2.3f}ms run-> {:2.3f}ms ; "
+                            "with {:3d} sets, {:3d} systems",
+                            label.name(), each.flush_time_avg(),
+                            each.build_time_avg(), each.prepare_time_avg(),
+                            each.run_time_avg(), each.set_count(),
+                            each.system_count()
+                        );
+                    }
+                }
             )
         );
         app.add_systems(First, into(begin_frame));
