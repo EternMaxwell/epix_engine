@@ -495,20 +495,7 @@ EPIX_API void App::run_schedule(const ScheduleLabel& label) {
         auto src         = get_world(src_world);
         auto dst         = get_world(dst_world);
         if (src && dst) {
-            ScheduleRunner* prunner = nullptr;
-            if (auto it = group.schedule_runners.find(label);
-                it != group.schedule_runners.end()) {
-                prunner = it->second.get();
-            } else {
-                prunner =
-                    group.schedule_runners
-                        .emplace(
-                            label,
-                            std::make_unique<ScheduleRunner>(*schedule, false)
-                        )
-                        .first->second.get();
-            }
-            auto& runner = *prunner;
+            auto& runner = schedule->runner();
             runner.set_run_once(group.schedule_run_once.at(label));
             runner.get_tracy_settings().enabled =
                 m_tracy_settings.schedule_enabled_tracy(label);

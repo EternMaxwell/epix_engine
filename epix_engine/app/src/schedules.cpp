@@ -51,19 +51,7 @@ EPIX_API std::expected<void, RunGroupError> ScheduleGroup::run(App& app) {
         if (!src_world || !dst_world) {
             return;
         }
-        ScheduleRunner* prunner;
-        if (auto it = schedule_runners.find(label);
-            it != schedule_runners.end()) {
-            prunner = it->second.get();
-        } else {
-            prunner = schedule_runners
-                          .emplace(
-                              label,
-                              std::make_unique<ScheduleRunner>(*schedule, false)
-                          )
-                          .first->second.get();
-        }
-        auto& runner = *prunner;
+        auto& runner = schedule->runner();
         runner.set_run_once(schedule_run_once.at(label));
         runner.get_tracy_settings().enabled =
             app.tracy_settings().schedule_enabled_tracy(label);

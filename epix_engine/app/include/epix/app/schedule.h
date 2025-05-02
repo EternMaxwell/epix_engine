@@ -355,6 +355,7 @@ struct RemoveSetCommand {
     SystemSetLabel label;
     EPIX_API void apply(Schedule& schedule);
 };
+struct ScheduleRunner;
 struct Schedule {
     ScheduleLabel label;
     entt::dense_map<SystemLabel, System> systems;
@@ -363,6 +364,8 @@ struct Schedule {
     std::mutex system_sets_mutex;
 
     std::shared_ptr<spdlog::logger> logger;
+
+    std::unique_ptr<ScheduleRunner> prunner;
 
     ScheduleCommandQueue command_queue;
 
@@ -383,6 +386,7 @@ struct Schedule {
     EPIX_API void configure_sets(const SystemSetConfig& config);
     EPIX_API void remove_system(const SystemLabel& label);
     EPIX_API void remove_set(const SystemSetLabel& label);
+    EPIX_API ScheduleRunner& runner() noexcept;
 
     friend struct ScheduleRunner;
 };
@@ -454,14 +458,17 @@ struct ScheduleRunner {
     EPIX_API std::expected<void, RunScheduleError> run_internal();
     EPIX_API std::expected<void, RunSystemError> run_system(uint32_t index);
 
+    EPIX_API ScheduleRunner(Schedule& schedule, bool run_once = false);
+
    public:
     EPIX_API TracySettings& get_tracy_settings() noexcept;
-    EPIX_API ScheduleRunner(Schedule& schedule, bool run_once = false);
     EPIX_API void set_run_once(bool run_once) noexcept;
     EPIX_API void set_worlds(World& src, World& dst) noexcept;
     EPIX_API void set_executors(const std::shared_ptr<Executors>& executors
     ) noexcept;
     EPIX_API std::expected<void, RunScheduleError> run();
     EPIX_API void reset() noexcept;
+
+    friend struct Schedule;
 };
 };  // namespace epix::app

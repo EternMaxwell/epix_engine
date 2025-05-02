@@ -318,8 +318,6 @@ struct ScheduleGroup {
         entt::dense_set<ScheduleLabel> succeeds;
     };
     entt::dense_map<ScheduleLabel, std::unique_ptr<Schedule>> schedules;
-    entt::dense_map<ScheduleLabel, std::unique_ptr<ScheduleRunner>>
-        schedule_runners;
     entt::dense_map<ScheduleLabel, WorldLabel> schedule_src;
     entt::dense_map<ScheduleLabel, WorldLabel> schedule_dst;
     entt::dense_map<ScheduleLabel, ScheduleNode> schedule_nodes;

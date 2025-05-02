@@ -62,7 +62,9 @@ EPIX_API void RemoveSystemCommand::apply(Schedule& schedule) {
     schedule.remove_system(label);
 };
 
-EPIX_API Schedule::Schedule(const ScheduleLabel& label) : label(label) {}
+EPIX_API Schedule::Schedule(const ScheduleLabel& label) : label(label) {
+    prunner = std::unique_ptr<ScheduleRunner>(new ScheduleRunner(*this));
+}
 EPIX_API Schedule::Schedule(Schedule&& other)
     : label(other.label),
       systems(std::move(other.systems)),
@@ -72,6 +74,7 @@ EPIX_API Schedule::Schedule(Schedule&& other)
     other.system_sets.clear();
     other.newly_added_sets.clear();
 };
+EPIX_API ScheduleRunner& Schedule::runner() noexcept { return *prunner; };
 
 EPIX_API void Schedule::set_logger(const std::shared_ptr<spdlog::logger>& logger
 ) {
