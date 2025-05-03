@@ -534,6 +534,9 @@ struct SystemParam<Extract<World>> : public SystemParam<World> {
         }
         return param.value();
     }
+    static void write_info(SystemParamInfo& src, SystemParamInfo& dst) {
+        SystemParam<World>::write_info(dst, src);
+    }
 };
 template <typename T>
 struct SystemParam<Extract<Extract<T>>> : public SystemParam<T> {
