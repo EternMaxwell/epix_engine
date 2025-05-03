@@ -31,6 +31,7 @@ struct LoopRunner : public AppRunner {
             }
         } while (!app.run_system(m_check_exit).value_or(true));
         app.logger()->clone("loop")->info("Received exit event.");
+        app.logger()->info("Exiting app.");
         app.run_group(ExitGroup);
         app.logger()->info("App terminated.");
         return 0;

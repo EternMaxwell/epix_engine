@@ -245,7 +245,7 @@ struct SystemSetConfig {
     EPIX_API SystemSetConfig& in_set_internal(const SystemSetLabel& label
     ) noexcept;
     template <typename... Args>
-    SystemConfig& run_if_internal(std::function<bool(Args...)> func) noexcept {
+    SystemSetConfig& run_if_internal(std::function<bool(Args...)> func) noexcept {
         conditions.emplace_back(func);
         for (auto&& sub_config : sub_configs) {
             sub_config.run_if_internal(func);

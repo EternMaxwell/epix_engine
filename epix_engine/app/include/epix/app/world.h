@@ -206,7 +206,7 @@ struct World {
         std::shared_lock lock(m_data->resources_mutex);
         auto it = m_data->resources.find(typeid(T));
         if (it != m_data->resources.end()) {
-            return *std::static_pointer_cast<T>(it->second.get());
+            return *std::static_pointer_cast<T>(it->second.resource);
         } else {
             throw std::runtime_error("Resource not found.");
         }
