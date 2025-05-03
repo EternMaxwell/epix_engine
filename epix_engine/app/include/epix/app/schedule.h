@@ -215,19 +215,24 @@ struct SystemSetConfig {
 
     template <typename... Args>
     SystemSetConfig& after(Args&&... args) noexcept {
-        (after(args), ...);
+        (after_internal(args), ...);
         return *this;
     };
     template <typename... Args>
     SystemSetConfig& before(Args&&... args) noexcept {
-        (before(args), ...);
+        (before_internal(args), ...);
         return *this;
     };
     template <typename... Args>
     SystemSetConfig& in_set(Args&&... args) noexcept {
-        (in_set(args), ...);
+        (in_set_internal(args), ...);
         return *this;
     };
+    template <typename... Funcs>
+    SystemSetConfig& run_if(Funcs&&... conds) noexcept {
+        (run_if_internal(conds), ...);
+        return *this;
+    }
     EPIX_API SystemSetConfig& chain() noexcept;
 
    private:
@@ -237,6 +242,14 @@ struct SystemSetConfig {
     ) noexcept;
     EPIX_API SystemSetConfig& in_set_internal(const SystemSetLabel& label
     ) noexcept;
+    template <typename... Args>
+    SystemConfig& run_if_internal(std::function<bool(Args...)> func) noexcept {
+        conditions.emplace_back(std::make_unique<BasicSystem<bool>>(func));
+        for (auto&& sub_config : sub_configs) {
+            sub_config.run_if_internal(func);
+        }
+        return *this;
+    };
     EPIX_API SystemSetConfig& after_config(SystemSetConfig&) noexcept;
 };
 template <typename Other>
