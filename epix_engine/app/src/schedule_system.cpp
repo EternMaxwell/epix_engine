@@ -73,12 +73,19 @@ EPIX_API void System::run(World& src, World& dst) noexcept {
     auto start = std::chrono::high_resolution_clock::now();
     try {
         system->run(src, dst);
+        if (recorded_exception_bad_param) {
+            logger->info("{} no longer throws BadParamAccess exception.", name);
+        }
+        recorded_exception_bad_param = false;
     } catch (const BadParamAccess& e) {
-        logger->info("BadParamAccess at {}: {}", name, e.what());
+        if (!recorded_exception_bad_param) {
+            logger->error("BadParamAccess at {}: {}", name, e.what());
+            recorded_exception_bad_param = true;
+        }
     } catch (const std::exception& e) {
-        logger->info("Exception at {}: {}", name, e.what());
+        logger->error("Exception at {}: {}", name, e.what());
     } catch (...) {
-        logger->info("Unknown exception at {}", name);
+        logger->error("Unknown exception at {}", name);
     }
     auto end = std::chrono::high_resolution_clock::now();
     auto delta =

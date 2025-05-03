@@ -68,6 +68,9 @@ struct System {
     std::shared_ptr<spdlog::logger> logger;
 
    private:
+    // if an exception is thrown in previous runs.
+    // will be reset to false after any successful run.
+    bool recorded_exception_bad_param = false;
     // Cache conflicts for performance
     entt::dense_map<SystemLabel, bool>
         conflicts;  // Store system labels that are created from function
@@ -245,7 +248,8 @@ struct SystemSetConfig {
     EPIX_API SystemSetConfig& in_set_internal(const SystemSetLabel& label
     ) noexcept;
     template <typename... Args>
-    SystemSetConfig& run_if_internal(std::function<bool(Args...)> func) noexcept {
+    SystemSetConfig& run_if_internal(std::function<bool(Args...)> func
+    ) noexcept {
         conditions.emplace_back(func);
         for (auto&& sub_config : sub_configs) {
             sub_config.run_if_internal(func);
