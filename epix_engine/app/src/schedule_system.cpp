@@ -25,10 +25,7 @@ EPIX_API bool System::conflict_with(const System& other) noexcept {
             return it->second;
         }
     }
-    bool result = false;
-    if (system->conflict_with(*other.system)) {
-        result = true;
-    }
+    bool result = system->conflict_with(*other.system);
     // for (const auto& condition : conditions) {
     //     if (result) break;
     //     for (const auto& other_condition : other.conditions) {

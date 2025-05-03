@@ -183,6 +183,9 @@ EPIX_API void Schedule::configure_sets(const SystemSetConfig& config) {
             it->second.in_sets  = config.in_sets;
             it->second.depends  = config.depends;
             it->second.succeeds = config.succeeds;
+            for (auto&& cond : config.conditions) {
+                it->second.conditions.emplace_back(cond);
+            }
             newly_added_sets.emplace(*config.label);
         }
         system_sets_mutex.unlock();
@@ -231,17 +234,15 @@ EPIX_API void Schedule::remove_set(const SystemSetLabel& label) {
 EPIX_API bool Schedule::flush() noexcept { return command_queue.flush(*this); };
 
 EPIX_API ScheduleRunner::ScheduleRunner(Schedule& schedule, bool run_once)
-    : pschedule(&schedule), run_once(run_once) {};
+    : schedule(schedule), run_once(run_once) {};
 
 EPIX_API void ScheduleRunner::set_executors(
     const std::shared_ptr<Executors>& executors
 ) noexcept {
-    auto& schedule = *pschedule;
     std::unique_lock lock(schedule.system_sets_mutex);
     this->executors = executors;
 };
 EPIX_API void ScheduleRunner::set_worlds(World& src, World& dst) noexcept {
-    auto& schedule = *pschedule;
     std::unique_lock lock(schedule.system_sets_mutex);
     this->src = &src;
     this->dst = &dst;
@@ -331,7 +332,7 @@ EPIX_API void ScheduleRunner::try_enter_waiting_sets() {
             bool pass = parent_pass;
             if (pass) {
                 for (auto&& condition : info.set->conditions) {
-                    if (!condition->run(*src, *dst)) {
+                    if (!condition.run(*src, *dst)) {
                         pass = false;
                         break;
                     }
@@ -386,8 +387,6 @@ EPIX_API void ScheduleRunner::try_run_waiting_systems() {
 }
 
 EPIX_API void ScheduleRunner::sync_schedule() {
-    auto& schedule = *pschedule;
-
     set_index_map.clear();
     system_set_infos.clear();
     set_index_map.reserve(schedule.system_sets.size());
@@ -430,8 +429,6 @@ EPIX_API void ScheduleRunner::sync_schedule() {
 }
 
 EPIX_API void ScheduleRunner::prepare_runner() {
-    auto& schedule = *pschedule;
-
     for (uint32_t index = 0; index < system_set_infos.size(); index++) {
         auto& info         = system_set_infos[index];
         info.depends_count = info.set->depends.size();
@@ -493,8 +490,6 @@ EPIX_API void ScheduleRunner::run_loop() {
 }
 
 EPIX_API void ScheduleRunner::finishing() {
-    auto& schedule = *pschedule;
-
     if (run_once) {
         // if run_once, clear all systems in the schedule
         // and all sets that own systems
@@ -511,8 +506,6 @@ EPIX_API void ScheduleRunner::finishing() {
 }
 
 EPIX_API std::expected<void, RunScheduleError> ScheduleRunner::run_internal() {
-    auto& schedule = *pschedule;
-
     // Locking systems and system sets to avoid adding or removing systems or
     // system sets while running
 
@@ -635,7 +628,6 @@ EPIX_API std::expected<void, RunScheduleError> ScheduleRunner::run_internal() {
 }
 
 EPIX_API std::expected<void, RunScheduleError> ScheduleRunner::run() {
-    auto& schedule = *pschedule;
     if (tracy_settings.enabled) {
         ZoneScopedN("Run schedule");
         auto name = std::format("Schedule:{}", schedule.label.name());

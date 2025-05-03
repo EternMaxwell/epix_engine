@@ -53,7 +53,7 @@ EPIX_API bool SystemSet::conflict_with(const System& system) noexcept {
     }
     bool result = false;
     for (auto&& condition : conditions) {
-        if (condition->conflict_with(*system.system)) {
+        if (condition.conflict_with(*system.system)) {
             result = true;
             break;
         }

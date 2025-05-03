@@ -101,7 +101,7 @@ struct System {
     friend struct SystemSet;
 };
 struct SystemSet {
-    std::vector<std::unique_ptr<BasicSystem<bool>>> conditions;
+    std::vector<BasicSystem<bool>> conditions;
     entt::dense_set<SystemSetLabel> in_sets;
     entt::dense_set<SystemSetLabel> depends;
     entt::dense_set<SystemSetLabel> succeeds;
@@ -125,7 +125,7 @@ struct SystemConfig {
     std::string name;
     ExecutorLabel executor;
     std::unique_ptr<BasicSystem<void>> system;
-    std::vector<std::unique_ptr<BasicSystem<bool>>> conditions;
+    std::vector<BasicSystem<bool>> conditions;
 
     entt::dense_set<SystemSetLabel> in_sets;
     entt::dense_set<SystemSetLabel> depends;
@@ -142,7 +142,7 @@ struct SystemConfig {
     EPIX_API SystemConfig& after_config(SystemConfig&) noexcept;
     template <typename... Args>
     SystemConfig& run_if_internal(std::function<bool(Args...)> func) noexcept {
-        conditions.emplace_back(std::make_unique<BasicSystem<bool>>(func));
+        conditions.emplace_back(func);
         for (auto&& sub_config : sub_configs) {
             sub_config.run_if_internal(func);
         }
@@ -211,6 +211,8 @@ struct SystemSetConfig {
     entt::dense_set<SystemSetLabel> depends;
     entt::dense_set<SystemSetLabel> succeeds;
 
+    std::vector<BasicSystem<bool>> conditions;
+
     std::vector<SystemSetConfig> sub_configs;
 
     template <typename... Args>
@@ -244,7 +246,7 @@ struct SystemSetConfig {
     ) noexcept;
     template <typename... Args>
     SystemConfig& run_if_internal(std::function<bool(Args...)> func) noexcept {
-        conditions.emplace_back(std::make_unique<BasicSystem<bool>>(func));
+        conditions.emplace_back(func);
         for (auto&& sub_config : sub_configs) {
             sub_config.run_if_internal(func);
         }
@@ -428,7 +430,7 @@ struct ScheduleRunner {
 
    private:
     TracySettings tracy_settings;
-    Schedule* pschedule;
+    Schedule& schedule;
     World* src;
     World* dst;
     bool run_once;

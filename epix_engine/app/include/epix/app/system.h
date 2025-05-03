@@ -25,10 +25,6 @@ struct BasicSystem {
     LocalData m_locals;
     SystemParamInfo m_src_info, m_dst_info;
 
-    double time_cost = 1.0;  // in milliseconds
-    double time_avg  = 1.0;  // in milliseconds
-    double factor    = 0.1;  // for time_avg
-
    public:
     template <typename... Args>
     BasicSystem(const std::function<Ret(Args...)>& func)
@@ -37,9 +33,7 @@ struct BasicSystem {
                   *src, *dst, sys->m_locals
               );
               return std::apply(func, param_resolver.resolve());
-          }),
-          time_cost(1.0),
-          time_avg(1.0) {
+          }) {
         SystemParam<std::tuple<std::decay_t<Args>...>>::write_info(
             m_src_info, m_dst_info
         );
@@ -51,9 +45,7 @@ struct BasicSystem {
                   *src, *dst, sys->m_locals
               );
               return std::apply(func, param_resolver.resolve());
-          }),
-          time_cost(1.0),
-          time_avg(1.0) {
+          }) {
         SystemParam<std::tuple<std::decay_t<Args>...>>::write_info(
             m_src_info, m_dst_info
         );
@@ -74,29 +66,7 @@ struct BasicSystem {
         return false;
     }
 
-    Ret run(World& src, World& dst) {
-        struct Timer {
-            std::chrono::high_resolution_clock::time_point start;
-            BasicSystem* sys;
-            Timer(BasicSystem* sys)
-                : start(std::chrono::high_resolution_clock::now()), sys(sys) {}
-            ~Timer() {
-                auto end = std::chrono::high_resolution_clock::now();
-                auto delta =
-                    std::chrono::duration_cast<
-                        std::chrono::duration<double, std::milli>>(end - start)
-                        .count();
-                sys->time_cost = delta;
-                sys->time_avg =
-                    sys->factor * delta + (1.0 - sys->factor) * sys->time_avg;
-            }
-        };
-        Timer timer(this);
-        return m_func(&src, &dst, this);
-    }
-
-    double get_time_cost() const { return time_cost; }
-    double get_time_avg() const { return time_avg; }
+    Ret run(World& src, World& dst) { return m_func(&src, &dst, this); }
 
     const SystemParamInfo& get_src_info() const { return m_src_info; }
     const SystemParamInfo& get_dst_info() const { return m_dst_info; }
