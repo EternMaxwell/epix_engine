@@ -410,7 +410,7 @@ EPIX_API void ScheduleRunner::sync_schedule() {
         // if (info.depends_count == 0) {
         //     wait_to_enter_queue.emplace_back(index);
         // }
-        // info.children_count = info.system ? 1 : 0;
+        info.cached_children_count = info.system ? 1 : 0;
         // info.entered        = false;
         // info.passed         = false;
         // info.finished       = false;
@@ -420,7 +420,7 @@ EPIX_API void ScheduleRunner::sync_schedule() {
         for (auto&& parent : set.in_sets) {
             auto index = set_index_map.at(parent);
             info.parents.emplace_back(index);
-            // system_set_infos[index].children_count++;
+            system_set_infos[index].cached_children_count++;
         }
         for (auto&& succeed : set.succeeds) {
             info.succeeds.emplace_back(set_index_map.at(succeed));
@@ -435,17 +435,17 @@ EPIX_API void ScheduleRunner::prepare_runner() {
         if (info.depends_count == 0) {
             wait_to_enter_queue.emplace_back(index);
         }
-        info.children_count = info.system ? 1 : 0;
+        info.children_count = info.cached_children_count;
         info.entered        = false;
         info.passed         = false;
         info.finished       = false;
     }
-    for (auto& info : system_set_infos) {
-        for (auto&& parent : info.parents) {
-            auto& child_count = system_set_infos[parent].children_count;
-            child_count++;
-        }
-    }
+    // for (auto& info : system_set_infos) {
+    //     for (auto&& parent : info.parents) {
+    //         auto& child_count = system_set_infos[parent].children_count;
+    //         child_count++;
+    //     }
+    // }
 }
 EPIX_API void ScheduleRunner::run_loop() {
     // we check if the just finished sets is not empty or if there are still

@@ -12,8 +12,8 @@ struct LoopRunner : public AppRunner {
               return false;
           }) {}
     int run(App& app) override {
+        auto time_line1 = std::chrono::high_resolution_clock::now();
         do {
-            auto time_line1 = std::chrono::high_resolution_clock::now();
             app.run_group(LoopGroup);
             if (app.tracy_settings().mark_frame) {
                 FrameMark;
@@ -24,6 +24,7 @@ struct LoopRunner : public AppRunner {
                               time_line2 - time_line1
             )
                               .count();
+            time_line1 = time_line2;
             if (auto app_profiler =
                     app.world(MainWorld).get_resource<AppProfiler>()) {
                 app_profiler->push_time(time);

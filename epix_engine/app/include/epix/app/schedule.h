@@ -453,6 +453,7 @@ struct ScheduleRunner {
 
         uint32_t depends_count;
         uint32_t children_count;
+        uint32_t cached_children_count;
 
         bool entered;
         bool passed;
