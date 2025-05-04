@@ -298,8 +298,8 @@ struct WorldLabel : public Label {
     template <typename T>
     WorldLabel(T t) : Label(t){};
     WorldLabel() noexcept : Label(MainWorld) {}
-    using Label::operator==;
-    using Label::operator!=;
+    // using Label::operator==;
+    // using Label::operator!=;
 };
 
 struct App;
@@ -331,8 +331,8 @@ struct ScheduleGroup {
 struct GroupLabel : public Label {
     template <typename T>
     GroupLabel(T t) : Label(t){};
-    using Label::operator==;
-    using Label::operator!=;
+    // using Label::operator==;
+    // using Label::operator!=;
 };
 
 struct ScheduleInfo : public ScheduleLabel {

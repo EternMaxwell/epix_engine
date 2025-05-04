@@ -16,8 +16,8 @@ struct SystemLabel : public Label {
     template <typename... Args>
     SystemLabel(void (*func)(Args...)) : Label(typeid(func), (size_t)func) {}
     SystemLabel() noexcept : Label(typeid(void), 0) {}
-    using Label::operator==;
-    using Label::operator!=;
+    // using Label::operator==;
+    // using Label::operator!=;
 };
 struct SystemSetLabel : public SystemLabel {
     template <typename T>
@@ -29,8 +29,8 @@ struct SystemSetLabel : public SystemLabel {
     }
     SystemSetLabel(const SystemLabel& label) : SystemLabel(label) {}
     using SystemLabel::SystemLabel;
-    using SystemLabel::operator==;
-    using SystemLabel::operator!=;
+    // using SystemLabel::operator==;
+    // using SystemLabel::operator!=;
 };
 enum class ExecutorType {
     SingleThread,
@@ -40,8 +40,8 @@ struct ExecutorLabel : public Label {
     template <typename T>
     ExecutorLabel(T t) : Label(t){};
     ExecutorLabel() noexcept : Label(ExecutorType::MultiThread) {}
-    using Label::operator==;
-    using Label::operator!=;
+    // using Label::operator==;
+    // using Label::operator!=;
 };
 
 struct Executors {

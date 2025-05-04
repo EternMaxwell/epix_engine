@@ -69,7 +69,7 @@ EPIX_API void Window::set_fullscreen() {
         glfwGetWindowUserPointer(m_handle)
     );
     auto&& [entity, pool] = *user_ptr;
-    auto ftr              = pool->submit_task([=]() {
+    auto ftr              = pool->submit_task([&]() {
         glfwSetWindowMonitor(
             m_handle, monitor, 0, 0, mode->width, mode->height,
             mode->refreshRate
@@ -89,7 +89,7 @@ EPIX_API void Window::fullscreen_off() {
     auto&& [entity, pool] = *user_ptr;
     m_size                = m_size_cache;
     m_pos                 = m_pos_cache;
-    auto ftr              = pool->submit_task([=]() {
+    auto ftr              = pool->submit_task([&]() {
         glfwSetWindowMonitor(
             m_handle, nullptr, m_pos.x, m_pos.y, m_size.width, m_size.height, 0
         );
