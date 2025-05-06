@@ -356,6 +356,14 @@ struct RenderGraph {
         return false;
     }
 
+    template <typename... Args>
+    void add_node_edges(Args&&... args) {
+        std::array<NodeLabel, sizeof...(args)> nodes{args...};
+        for (auto&& [node, next_node] : nodes | std::views::adjacent<2>) {
+            try_add_node_edge(node, next_node);
+        }
+    }
+
     bool try_add_node_edge(
         const NodeLabel& output_node, const NodeLabel& input_node
     ) {
@@ -588,7 +596,7 @@ struct RenderGraph {
                 }
             );
             to_input_edge_it != input_node->edges.input_edges().end()) {
-            if (should_exist) {
+            if (!should_exist) {
                 return false;
             }
         }
@@ -601,18 +609,13 @@ struct RenderGraph {
         return true;
     }
     bool has_edge(const Edge& edge) const {
-        auto iter_from = nodes.find(edge.input_node);
-        auto iter_to   = nodes.find(edge.output_node);
-        if (iter_from == nodes.end() || iter_to == nodes.end()) {
+        auto input_state  = get_node_state(edge.input_node);
+        auto output_state = get_node_state(edge.output_node);
+        if (!input_state || !output_state) {
             return false;
         }
-        auto& from_node = iter_from->second;
-        auto& to_node   = iter_to->second;
-        if (from_node.edges.has_output_edge(edge) &&
-            to_node.edges.has_input_edge(edge)) {
-            return true;
-        }
-        return false;
+        return input_state->edges.has_input_edge(edge) ||
+               output_state->edges.has_output_edge(edge);
     }
 
     NodeState* get_node_state(const NodeLabel& id) {
