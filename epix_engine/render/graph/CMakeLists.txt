@@ -11,3 +11,5 @@ target_include_directories(epix_render_graph PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/
 target_link_libraries(epix_render_graph PUBLIC epix::app)
 target_link_libraries(epix_render_graph PUBLIC epix::window)
 target_link_libraries(epix_render_graph PUBLIC epix::webgpu)
+
+add_subdirectory(tests)
