@@ -2,12 +2,13 @@
 
 #include <cstdint>
 #include <initializer_list>
+#include <ranges>
 #include <type_traits>
 
 namespace epix::util {
 
 template <typename T>
-class ArrayProxy {
+class ArrayProxy : public std::ranges::view_interface<ArrayProxy<T>> {
    public:
     constexpr ArrayProxy() noexcept : m_count(0), m_ptr(nullptr) {}
 
@@ -71,4 +72,4 @@ class ArrayProxy {
     uint32_t m_count;
     T const *m_ptr;
 };
-}  // namespace index
+}  // namespace epix::util
