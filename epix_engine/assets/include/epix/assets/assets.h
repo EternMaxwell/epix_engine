@@ -169,6 +169,30 @@ struct AssetStorage {
 };
 
 template <typename T>
+struct AssetEvent {
+    enum class Type {
+        Added,     // Asset added
+        Removed,   // Asset removed
+        Modified,  // Asset modified or replaced
+        Unused,    // All strong handles destroyed
+    } type;
+    AssetId<T> id;
+
+    static AssetEvent<T> added(const AssetId<T>& id) {
+        return {Type::Added, id};
+    }
+    static AssetEvent<T> removed(const AssetId<T>& id) {
+        return {Type::Removed, id};
+    }
+    static AssetEvent<T> modified(const AssetId<T>& id) {
+        return {Type::Modified, id};
+    }
+    static AssetEvent<T> unused(const AssetId<T>& id) {
+        return {Type::Unused, id};
+    }
+};
+
+template <typename T>
     requires std::move_constructible<T> && std::is_move_assignable_v<T>
 struct Assets {
    private:
@@ -178,6 +202,49 @@ struct Assets {
     entt::dense_map<uuids::uuid, T> m_mapped_assets;
     entt::dense_map<uuids::uuid, uint32_t> m_mapped_assets_ref;
     std::shared_ptr<spdlog::logger> m_logger;
+    std::vector<AssetEvent<T>> m_cached_events;
+
+    /**
+     * @brief Insert an asset at the given index.
+     *
+     * @return `std::optional<bool>` True if the asset was replaced, false if
+     * new value was inserted. `std::nullopt` if the index is invalid
+     * (generation mismatch or no asset slot at given index).
+     */
+    template <typename... Args>
+        requires std::constructible_from<T, Args...>
+    std::optional<bool> insert_index(const AssetIndex& index, Args&&... args) {
+        while (auto&& opt =
+                   m_handle_provider->index_allocator.reserved_receiver()
+                       .try_receive()) {
+            m_assets.resize_slots(opt->index);
+            m_references.resize(opt->index + 1, 0);
+        }
+        return m_assets.insert(index, std::forward<Args>(args)...);
+    }
+    /**
+     * @brief Insert an asset at the given uuid.
+     *
+     * @param id The uuid of the asset to insert.
+     * @param args The arguments to construct the asset.
+     * @return `bool` True if the asset was replaced, false if new value was
+     * inserted.
+     */
+    template <typename... Args>
+        requires std::constructible_from<T, Args...>
+    bool insert_uuid(const uuids::uuid& id, Args&&... args) {
+        if (contains(AssetId<T>(id))) {
+            m_logger->debug("Replacing asset at Uuid:{}", uuids::to_string(id));
+            auto& asset = m_mapped_assets.at(id);
+            asset.~T();
+            new (&asset) T(std::forward<Args>(args)...);
+            return true;
+        }
+        m_logger->debug("Inserting asset at Uuid:{}", uuids::to_string(id));
+        m_mapped_assets.emplace(id, std::forward<Args>(args)...);
+        m_mapped_assets_ref.emplace(id, 0);
+        return false;
+    }
 
    public:
     Assets() : m_handle_provider(std::make_shared<HandleProvider>(typeid(T))) {
@@ -255,51 +322,10 @@ struct Assets {
         return handle;
     }
 
-    /**
-     * @brief Insert an asset at the given index.
-     *
-     * @return `std::optional<bool>` True if the asset was replaced, false if
-     * new value was inserted. `std::nullopt` if the index is invalid
-     * (generation mismatch or no asset slot at given index).
-     */
-    template <typename... Args>
-        requires std::constructible_from<T, Args...>
-    std::optional<bool> insert_index(const AssetIndex& index, Args&&... args) {
-        while (auto&& opt =
-                   m_handle_provider->index_allocator.reserved_receiver()
-                       .try_receive()) {
-            m_assets.resize_slots(opt->index);
-            m_references.resize(opt->index + 1, 0);
-        }
-        return m_assets.insert(index, std::forward<Args>(args)...);
-    }
-    /**
-     * @brief Insert an asset at the given uuid.
-     *
-     * @param id The uuid of the asset to insert.
-     * @param args The arguments to construct the asset.
-     * @return `bool` True if the asset was replaced, false if new value was
-     * inserted.
-     */
-    template <typename... Args>
-        requires std::constructible_from<T, Args...>
-    bool insert_uuid(const uuids::uuid& id, Args&&... args) {
-        if (contains(AssetId<T>(id))) {
-            m_logger->debug("Replacing asset at Uuid:{}", uuids::to_string(id));
-            auto& asset = m_mapped_assets.at(id);
-            asset.~T();
-            new (&asset) T(std::forward<Args>(args)...);
-            return true;
-        }
-        m_logger->debug("Inserting asset at Uuid:{}", uuids::to_string(id));
-        m_mapped_assets.emplace(id, std::forward<Args>(args)...);
-        m_mapped_assets_ref.emplace(id, 0);
-        return false;
-    }
     template <typename... Args>
         requires std::constructible_from<T, Args...>
     std::optional<bool> insert(const AssetId<T>& id, Args&&... args) {
-        return std::visit(
+        auto res = std::visit(
             epix::util::visitor{
                 [this, &args...](const AssetIndex& index) {
                     return insert_index(index, std::forward<Args>(args)...);
@@ -310,6 +336,15 @@ struct Assets {
             },
             id
         );
+        if (res) {
+            if (res.value()) {
+                m_cached_events.emplace_back(AssetEvent<T>::modified(id));
+            } else {
+                m_cached_events.emplace_back(AssetEvent<T>::added(id));
+                m_cached_events.emplace_back(AssetEvent<T>::modified(id));
+            }
+        }
+        return res;
     }
 
     /**
@@ -394,7 +429,7 @@ struct Assets {
      * asset, or std::nullopt if the asset is not valid.
      */
     T* get_mut(const AssetId<T>& id) {
-        return std::visit(
+        auto res = std::visit(
             epix::util::visitor{
                 [this](const AssetIndex& index) { return m_assets.get(index); },
                 [this](const uuids::uuid& id) -> T* {
@@ -408,6 +443,10 @@ struct Assets {
             },
             id
         );
+        if (res) {
+            m_cached_events.emplace_back(AssetEvent<T>::modified(id));
+        }
+        return res;
     }
 
     /**
@@ -418,7 +457,7 @@ struct Assets {
      * @return `bool` True if the operation was successful, false otherwise.
      */
     bool remove(const AssetId<T>& id) {
-        return std::visit(
+        auto res = std::visit(
             epix::util::visitor{
                 [this, &id](const AssetIndex& index) {
                     if (contains(id)) {
@@ -450,6 +489,10 @@ struct Assets {
             },
             id
         );
+        if (res) {
+            m_cached_events.emplace_back(AssetEvent<T>::removed(id));
+        }
+        return res;
     }
 
     bool release_index(const AssetIndex& index) {
@@ -460,8 +503,14 @@ struct Assets {
         if (contains(AssetId<T>(index))) {
             m_references[index.index]--;
             if (m_references[index.index] == 0) {
+                m_cached_events.emplace_back(
+                    AssetEvent<T>::unused(AssetId<T>(index))
+                );
                 m_assets.remove_dereferenced(index);
                 m_handle_provider->index_allocator.release(index);
+                m_cached_events.emplace_back(
+                    AssetEvent<T>::removed(AssetId<T>(index))
+                );
                 return true;
             }
         }
@@ -476,8 +525,13 @@ struct Assets {
             auto& ref = m_mapped_assets_ref.at(id);
             ref--;
             if (ref == 0) {
+                m_cached_events.emplace_back(AssetEvent<T>::unused(AssetId<T>(id
+                )));
                 m_mapped_assets.erase(id);
                 m_mapped_assets_ref.erase(id);
+                m_cached_events.emplace_back(
+                    AssetEvent<T>::removed(AssetId<T>(id))
+                );
                 return true;
             }
         }
@@ -510,6 +564,8 @@ struct Assets {
                 "{}",
                 index.index, index.generation, m_references[index.index]
             );
+            m_cached_events.emplace_back(AssetEvent<T>::removed(AssetId<T>(index
+            )));
             return std::move(m_assets.pop(index));
         } else {
             return std::nullopt;
@@ -523,6 +579,7 @@ struct Assets {
             auto asset = std::move(m_mapped_assets.at(id));
             m_mapped_assets.erase(id);
             m_mapped_assets_ref.erase(id);
+            m_cached_events.emplace_back(AssetEvent<T>::removed(id));
             return std::move(asset);
         } else {
             return std::nullopt;
@@ -557,6 +614,14 @@ struct Assets {
 
     static void res_handle_events(epix::ResMut<Assets<T>> assets) {
         assets->handle_events();
+    }
+    static void asset_events(
+        epix::ResMut<Assets<T>> assets, epix::EventWriter<AssetEvent<T>> writer
+    ) {
+        for (auto&& event : assets->m_cached_events) {
+            writer.write(event);
+        }
+        assets->m_cached_events.clear();
     }
 };
 }  // namespace epix::assets
