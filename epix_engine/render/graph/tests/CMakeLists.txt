@@ -1,4 +1,5 @@
-
 add_executable(epix_render_graph_tests main.cpp)
-
 target_link_libraries(epix_render_graph_tests PRIVATE epix_render_graph)
+
+add_executable(epix_render_graph_runner_tests runner.cpp)
+target_link_libraries(epix_render_graph_runner_tests PRIVATE epix_render_graph)
