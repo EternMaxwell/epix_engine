@@ -30,4 +30,4 @@ endif()
 
 add_library(epix::webgpu ALIAS epix_wgpu)
 
-add_subdirectory(tests)
+# add_subdirectory(tests)

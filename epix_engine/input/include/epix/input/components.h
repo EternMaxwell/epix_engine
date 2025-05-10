@@ -1,13 +1,11 @@
 #pragma once
 
+#include <GLFW/glfw3.h>
 #include <epix/app.h>
 #include <epix/window.h>
 
 namespace epix {
 namespace input {
-namespace components {
-using namespace window::components;
-
 template <typename T>
 struct ButtonInput {};
 
@@ -148,8 +146,7 @@ struct ButtonInput<KeyCode> {
     EPIX_API bool just_released(KeyCode key) const;
     EPIX_API bool pressed(KeyCode key) const;
 
-    EPIX_API const entt::dense_set<KeyCode, KeyHash>& just_pressed_keys(
-    ) const;
+    EPIX_API const entt::dense_set<KeyCode, KeyHash>& just_pressed_keys() const;
     EPIX_API const entt::dense_set<KeyCode, KeyHash>& just_released_keys(
     ) const;
     EPIX_API const entt::dense_set<KeyCode, KeyHash>& pressed_keys() const;
@@ -242,6 +239,5 @@ struct ButtonInput<MouseButton> {
 EPIX_API void update_mouse_button_input(
     ButtonInput<MouseButton>& mouse_input, GLFWwindow* window
 );
-}  // namespace components
 }  // namespace input
 }  // namespace epix

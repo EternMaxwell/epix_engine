@@ -11,5 +11,6 @@ target_include_directories(epix_window PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/includ
 
 target_link_libraries(epix_window epix::app)
 target_link_libraries(epix_window glfw)
+target_link_libraries(epix_window epix::assets)
 
 add_library(epix::window ALIAS epix_window)

@@ -12,6 +12,7 @@ target_include_directories(epix_assets PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/includ
 target_link_libraries(epix_assets PUBLIC epix_common)
 target_link_libraries(epix_assets PUBLIC epix::app)
 target_link_libraries(epix_assets PUBLIC spdlog::spdlog)
+target_link_libraries(epix_assets PUBLIC stduuid)
 
 add_library(epix::assets ALIAS epix_assets)
 

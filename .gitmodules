@@ -34,3 +34,6 @@
 [submodule "libs/googletest"]
 	path = libs/googletest
 	url = https://github.com/google/googletest.git
+[submodule "libs/uuid"]
+	path = libs/uuid
+	url = https://github.com/mariusbancila/stduuid.git

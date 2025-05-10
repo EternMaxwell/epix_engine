@@ -2,7 +2,6 @@
 
 using namespace epix;
 using namespace epix::input;
-using namespace epix::input::components;
 
 EPIX_API size_t KeyHash::operator()(const KeyCode& key) const {
     return std::hash<int>()(static_cast<int>(key));
@@ -189,7 +188,7 @@ static std::vector<KeyCode> keyCodeAll = {
     KeyLast
 };
 
-EPIX_API void components::update_key_button_input(
+EPIX_API void input::update_key_button_input(
     ButtonInput<KeyCode>& key_input, GLFWwindow* window
 ) {
     key_input.m_just_pressed.clear();
@@ -279,7 +278,7 @@ static std::vector<MouseButton> mouseButtonAll = {
     MouseButtonLast, MouseButtonLeft, MouseButtonRight, MouseButtonMiddle
 };
 
-EPIX_API void components::update_mouse_button_input(
+EPIX_API void input::update_mouse_button_input(
     ButtonInput<MouseButton>& mouse_input, GLFWwindow* window
 ) {
     mouse_input.m_just_pressed.clear();

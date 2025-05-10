@@ -11,12 +11,12 @@ set(EPIX_WITH_SHARED OFF)
 add_subdirectory(common)
 add_subdirectory(utils/core)
 add_subdirectory(app)
+add_subdirectory(assets)
 add_subdirectory(window)
 add_subdirectory(input)
 # EPIX UTILS MODULES
 add_subdirectory(utils/grid)
 add_subdirectory(utils/time)
-add_subdirectory(assets)
 # EPIX RENDER MODULES
 add_subdirectory(render/webgpu)
 add_subdirectory(render/graph)
@@ -51,12 +51,14 @@ target_include_directories(epix_engine PUBLIC ${ENGINE_INCLUDES})
 # EPIX CORE LIBRARIES
 target_link_libraries (epix_engine PUBLIC epix_common)
 target_link_libraries (epix_engine PUBLIC epix::app)
+target_link_libraries (epix_engine PUBLIC epix::assets)
 target_link_libraries (epix_engine PUBLIC epix::window)
 target_link_libraries (epix_engine PUBLIC epix::input)
 # EPIX RENDER LIBRARIES
 target_link_libraries (epix_engine PUBLIC epix::webgpu)
 # EPIX UTILS LIBRARIES
 target_link_libraries (epix_engine PUBLIC epix::utils::grid)
+target_link_libraries (epix_engine PUBLIC epix::utils::time)
 # EPIX WORLD LIBRARIES
 target_link_libraries (epix_engine PUBLIC epix::world::sand)
 target_link_libraries (epix_engine PUBLIC epix::world::pixel_b2d)

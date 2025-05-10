@@ -4,13 +4,9 @@
 #include <epix/window.h>
 
 #include "input/components.h"
-#include "input/events.h"
-#include "input/systems.h"
 
 namespace epix {
 namespace input {
-using namespace systems;
-using namespace events;
 
 struct InputPlugin : Plugin {
     bool enable_output_event = false;

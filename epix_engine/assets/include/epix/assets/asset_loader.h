@@ -8,15 +8,14 @@
 namespace epix::assets {
 template <typename T>
 struct AssetLoader {
-    std::shared_ptr<HandleProvider<T>> m_handle_provider;
-    std::deque<std::pair<AssetIndex, std::string>> m_to_load;
-    Receiver<std::pair<AssetIndex, T>> m_loaded;
+    std::shared_ptr<HandleProvider> m_handle_provider;
+    std::deque<std::pair<AssetId<T>, std::string>> m_to_load;
+    Receiver<std::pair<AssetId<T>, T>> m_loaded;
 
     AssetLoader()
         : m_loaded(std::get<1>(
-              epix::utils::async::make_channel<std::pair<AssetIndex, T>>()
+              epix::utils::async::make_channel<std::pair<AssetId<T>, T>>()
           )) {
-        m_handle_provider = std::make_shared<HandleProvider<T>>();
     }
 
     static void get_handle_provider(
@@ -56,7 +55,7 @@ struct AssetLoader {
     static std::optional<T> load(const std::string& path, Args&&... args);
 
     Handle<T> reserve(const std::string& path) {
-        auto handle = m_handle_provider->reserve();
+        auto handle = m_handle_provider->reserve().typed<T>();
         m_to_load.emplace_back(handle, path);
         return handle;
     }

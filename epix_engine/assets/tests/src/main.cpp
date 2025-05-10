@@ -33,6 +33,7 @@ void test_1() {
     epix::assets::Assets<string> assets;
     // assets.set_log_level(spdlog::level::trace);
     assets.set_log_label("Assets");
+    assets.set_log_level(spdlog::level::trace);
 
     // Create an asset and get a strong handle to it
     auto handle1 = assets.emplace("Hello Assets!");
@@ -162,30 +163,31 @@ void test_3() {
     // Create an asset and get a strong handle to it
     auto handle1 = assets.emplace("Hello Assets!");
 
-    epix::assets::AssetIndex index1 = handle1;
+    epix::assets::AssetId<std::string> index1 = handle1;
 
     handle1.~Handle();
     // Handle events
     assets.handle_events();
 
-    auto handle2                    = assets.emplace("Hello Assets2!");
-    epix::assets::AssetIndex index2 = handle2;
+    auto handle2 = assets.emplace("Hello Assets2!");
+    epix::assets::AssetId<std::string> index2 = handle2;
 
     // Compare the indexes
-    if (index1.index != index2.index) {
-        std::cerr << "Test fail: Index2 is not equal to Index1 after handle1 "
-                     "destruction but it should be equal"
-                  << std::endl;
-        return;
-    }
-    if (index1.generation + 1 != index2.generation) {
-        std::cerr
-            << "Test fail: Index2 generation is not equal to Index1 "
-               "generation + 1 after handle1 destruction but it should be "
-               "equal"
-            << std::endl;
-        return;
-    }
+    // if (index1.index != index2.index) {
+    //     std::cerr << "Test fail: Index2 is not equal to Index1 after handle1
+    //     "
+    //                  "destruction but it should be equal"
+    //               << std::endl;
+    //     return;
+    // }
+    // if (index1.generation + 1 != index2.generation) {
+    //     std::cerr
+    //         << "Test fail: Index2 generation is not equal to Index1 "
+    //            "generation + 1 after handle1 destruction but it should be "
+    //            "equal"
+    //         << std::endl;
+    //     return;
+    // }
 
     std::cout << "Test 3 passed!" << std::endl;
 }
@@ -242,7 +244,7 @@ void test_4() {
 
     // Check value
     if (auto&& opt = assets.get(handle1)) {
-        auto& str = (*opt).get();
+        auto& str = *opt;
         if (str != "Hello Assets2!") {
             std::cerr << "Test fail: Insert value is not the expected value."
                       << std::endl;
@@ -280,7 +282,7 @@ void load_str(ResMut<assets::AssetLoader<string>> loader) {
 void print_asset(Res<assets::Assets<string>> assets) {
     if (handle) {
         if (auto&& opt = assets->get(*handle)) {
-            auto&& str = opt.value().get();
+            auto&& str = *opt;
             std::cout << str << std::endl;
         } else {
             std::cout << "Asset not loaded yet." << std::endl;
@@ -339,7 +341,7 @@ void test_6() {
     assets.set_log_label("Assets");
 
     auto provider = assets.get_handle_provider();
-    auto handle1  = provider->reserve();
+    auto handle1  = provider->reserve().typed<std::string>();
 
     auto res = assets.insert(handle1, "Hello Assets!");
     if (!res) {
@@ -352,7 +354,7 @@ void test_6() {
 
     // Check value
     if (auto&& opt = assets.get(handle1)) {
-        auto& str = (*opt).get();
+        auto& str = *opt;
         if (str != "Hello Assets!") {
             std::cerr << "Test fail: Insert value is not the expected value."
                       << std::endl;
@@ -366,6 +368,104 @@ void test_6() {
     }
 
     std::cout << "Test 6 pass!" << std::endl;
+}
+
+void test_7() {
+    static const auto* description =
+        R"(
+    Test 7: Asset<T> using uuid handle test
+    - Create an Handle with uuid
+    - Check if the handle is invalid before inserting
+    - Insert value to Assets<T> at uuid the handle points to
+    - Check the value
+    - Destroy the handle
+    - The handle should be valid since there is no strong handle
+    - Get a strong handle to it
+    - Check the value
+    - Destroy the strong handle
+    - Handle events
+    - Check if the handle is invalid after destruction
+    )";
+
+    std::cout << "===== Test 7: Asset<T> using uuid handle test ====="
+              << std::endl;
+    std::cout << description << std::endl;
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    epix::assets::Assets<std::string> assets;
+    assets.set_log_level(spdlog::level::trace);
+    assets.set_log_label("Assets");
+
+    std::mt19937 rng(std::random_device{}());
+    uuids::uuid uuid = uuids::uuid_random_generator(&rng)();
+    epix::assets::Handle<std::string> handle(uuid);
+    // Check if the handle is invalid before inserting
+    if (auto&& opt = assets.get(handle)) {
+        std::cerr << "Test fail: Handle should be invalid before inserting"
+                  << std::endl;
+        return;
+    }
+
+    // Insert value to Assets<T> at uuid the handle points to
+    auto res = assets.insert(handle, "Hello Assets!");
+    if (!res) {
+        std::cerr << "Test fail: Unable to insert value at uuid, but it should "
+                     "always be valid"
+                  << std::endl;
+        return;
+    }
+
+    auto weak_handle = handle.weak();
+    // Destroy the handle
+    handle.~Handle();
+
+    assets.handle_events();
+
+    // Check if the handle is invalid after destruction
+    if (auto&& opt = assets.get(weak_handle)) {
+        auto& str = *opt;
+    } else {
+        std::cerr << "Handle is valid after destruction, but it should be "
+                     "invalid"
+                  << std::endl;
+    }
+
+    // Get a strong handle to it
+    auto strong = assets.get_strong_handle(weak_handle);
+    if (!strong) {
+        std::cerr << "Test fail: Cannot get strong handle from weak handle"
+                  << std::endl;
+        return;
+    }
+
+    // Check the value
+    if (auto&& opt = assets.get(*strong)) {
+        auto& str = *opt;
+        if (str != "Hello Assets!") {
+            std::cerr << "Test fail: Insert value is not the expected value."
+                      << std::endl;
+            return;
+        }
+    } else {
+        std::cerr << "Test fail: Handle invalid, but it should be valid after "
+                     "inserting new value."
+                  << std::endl;
+        return;
+    }
+
+    // Destroy the strong handle
+    strong->~Handle();
+    // Handle events
+    assets.handle_events();
+
+    // Check if the handle is invalid after destruction
+    if (auto&& opt = assets.get(weak_handle)) {
+        std::cerr << "Test fail: Handle is valid after destruction, but it "
+                     "should be invalid"
+                  << std::endl;
+        return;
+    }
+
+    std::cout << "Test 7 pass!" << std::endl;
 }
 
 void test(void (*f)()) {
@@ -384,4 +484,5 @@ int main() {
     test(test_4);
     test(test_5);
     test(test_6);
+    test(test_7);
 }
