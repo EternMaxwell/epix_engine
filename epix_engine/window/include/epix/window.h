@@ -137,8 +137,8 @@ void sync_glfw_to_window(
 );
 GLFWwindow* create_window(Entity id, window::Window& window_desc) {
     GLFWwindow* window = glfwCreateWindow(
-        window_desc.width(), window_desc.height(), window_desc.title.c_str(),
-        nullptr, nullptr
+        window_desc.physical_size().first, window_desc.physical_size().second,
+        window_desc.title.c_str(), nullptr, nullptr
     );
     if (!window) {
         throw std::runtime_error("Failed to create GLFW window");
@@ -349,6 +349,7 @@ void sync_window_to_glfw(
             if (window_desc.mode == window::window::WindowMode::Windowed) {
                 // from fullscreen set back to windowed, this should use the
                 // position and sizes in cached_desc
+                auto [width, height] = cached_desc.physical_size();
                 int x, y;
                 if (cached_desc.position) {
                     x = cached_desc.position->x;
@@ -356,8 +357,8 @@ void sync_window_to_glfw(
                 } else {
                     GLFWmonitor* monitor    = glfwGetPrimaryMonitor();
                     const GLFWvidmode* mode = glfwGetVideoMode(monitor);
-                    x = mode->width / 2 - cached_desc.width() / 2;
-                    y = mode->height / 2 - cached_desc.height() / 2;
+                    x                       = mode->width / 2 - width / 2;
+                    y                       = mode->height / 2 - height / 2;
                 }
                 /**
                  * @brief make sure they are larger than 0 to avoid title bar
@@ -365,10 +366,7 @@ void sync_window_to_glfw(
                  */
                 x = std::max(0, x);
                 y = std::max(0, y);
-                glfwSetWindowMonitor(
-                    window, nullptr, x, y, cached_desc.width(),
-                    cached_desc.height(), 0
-                );
+                glfwSetWindowMonitor(window, nullptr, x, y, width, height, 0);
             } else if (window_desc.mode ==
                        window::window::WindowMode::BorderlessFullscreen) {
                 int count;
@@ -589,8 +587,9 @@ void sync_window_to_glfw(
                 } else {
                     GLFWmonitor* monitor    = glfwGetPrimaryMonitor();
                     const GLFWvidmode* mode = glfwGetVideoMode(monitor);
-                    x = mode->width / 2 - cached_desc.width() / 2;
-                    y = mode->height / 2 - cached_desc.height() / 2;
+                    x = mode->width / 2 - cached_desc.physical_size().first / 2;
+                    y = mode->height / 2 -
+                        cached_desc.physical_size().second / 2;
                 }
                 /**
                  * @brief make sure they are larger than 0 to avoid title bar
@@ -599,8 +598,8 @@ void sync_window_to_glfw(
                 x = std::max(0, x);
                 y = std::max(0, y);
                 glfwSetWindowMonitor(
-                    window, nullptr, x, y, cached_desc.width(),
-                    cached_desc.height(), 0
+                    window, nullptr, x, y, cached_desc.physical_size().first,
+                    cached_desc.physical_size().second, 0
                 );
             } else if (window_desc.mode ==
                        window::window::WindowMode::BorderlessFullscreen) {

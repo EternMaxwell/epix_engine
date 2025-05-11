@@ -14,7 +14,7 @@ int main() {
     Window cached_desc = window_desc;
     window_desc.title  = "Test Window";
 
-    window_desc.set_size(800, 600);
+    window_desc.set_size(800, 200);
     window_desc.opacity = 0.5f;
 
     auto window = create_window(epix::Entity{}, window_desc);
