@@ -59,6 +59,8 @@ struct Handle {
     Handle& operator=(const Handle& other) = default;
     Handle& operator=(Handle&& other)      = default;
 
+    bool operator==(const Handle& other) const { return ref == other.ref; }
+
     bool is_strong() const {
         return std::holds_alternative<std::shared_ptr<StrongHandle>>(ref);
     }
@@ -113,6 +115,10 @@ struct UntypedHandle {
     UntypedHandle(UntypedHandle&&)                 = default;
     UntypedHandle& operator=(const UntypedHandle&) = default;
     UntypedHandle& operator=(UntypedHandle&&)      = default;
+
+    bool operator==(const UntypedHandle& other) const {
+        return ref == other.ref;
+    }
 
     bool is_strong() const {
         return std::holds_alternative<std::shared_ptr<StrongHandle>>(ref);

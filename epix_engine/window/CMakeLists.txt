@@ -14,3 +14,5 @@ target_link_libraries(epix_window glfw)
 target_link_libraries(epix_window epix::assets)
 
 add_library(epix::window ALIAS epix_window)
+
+add_subdirectory(tests)
