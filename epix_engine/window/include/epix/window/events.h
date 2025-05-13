@@ -42,7 +42,7 @@ struct WindowDestroyed {
 struct CursorMoved {
     Entity window;
     std::pair<double, double> position;
-    std::optional<std::pair<double, double>> delta;
+    std::pair<double, double> delta;
 };
 struct CursorEntered {
     Entity window;
@@ -50,7 +50,7 @@ struct CursorEntered {
 };
 struct ReceivedCharacter {
     Entity window;
-    char character;
+    char32_t character;
 };
 struct WindowFocused {
     Entity window;
