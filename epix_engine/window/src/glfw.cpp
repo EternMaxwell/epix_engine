@@ -606,7 +606,7 @@ EPIX_API GLFWwindow* epix::glfw::create_window(
     glfwWindowHint(GLFW_FOCUSED, GLFW_FALSE);
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     glfwWindowHint(GLFW_AUTO_ICONIFY, GLFW_FALSE);
-    glfwWindowHint(GLFW_FOCUS_ON_SHOW, GLFW_FALSE);
+    // glfwWindowHint(GLFW_FOCUS_ON_SHOW, GLFW_FALSE);
     GLFWwindow* window = glfwCreateWindow(
         window_desc.physical_size().first, window_desc.physical_size().second,
         window_desc.title.c_str(), nullptr, nullptr
@@ -787,6 +787,22 @@ EPIX_API void GLFWPlugin::build(App& app) {
             Exit, into(destroy_windows)
                       .set_executor(epix::app::ExecutorType::SingleThread)
                       .set_name("destroy windows")
+        )
+        .add_systems(
+            PreUpdate,
+            into([](ResMut<window::Focus> focus, Local<window::Focus> last,
+                    ResMut<GLFWwindows> glfw_windows) {
+                if (focus->focus != last->focus) {
+                    if (auto it = glfw_windows->windows.find(*focus->focus);
+                        it != glfw_windows->windows.end()) {
+                        auto window = it->second;
+                        glfwFocusWindow(window);
+                    }
+                }
+                last->focus = focus->focus;
+            })
+                .set_executor(epix::app::ExecutorType::SingleThread)
+                .set_name("glfw focus")
         )
         .add_systems(
             PostExit, into([]() { glfwTerminate(); })
