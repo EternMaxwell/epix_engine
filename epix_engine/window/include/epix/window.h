@@ -3,6 +3,7 @@
 #include <GLFW/glfw3.h>
 
 #include "epix/app.h"
+#include "epix/input.h"
 #include "window/events.h"
 #include "window/system.h"
 #include "window/window.h"
@@ -11,7 +12,7 @@ namespace epix {
 namespace window {
 using window::Window;
 struct Focus {
-    std::optional<Entity> focus;
+    std::optional<Entity> focus = std::nullopt;
 
     EPIX_API std::optional<Entity>& operator*();
     EPIX_API const std::optional<Entity>& operator*() const;
@@ -27,6 +28,21 @@ struct WindowPlugin : public app::Plugin {
     bool close_when_requested    = true;
     EPIX_API void build(App& app) override;
 };
+
+EPIX_API void print_events(
+    EventReader<events::WindowResized> resized,
+    EventReader<events::WindowMoved> moved,
+    EventReader<events::WindowCreated> created,
+    EventReader<events::WindowClosed> closed,
+    EventReader<events::WindowCloseRequested> close_requested,
+    EventReader<events::WindowDestroyed> destroyed,
+    EventReader<events::CursorMoved> cursor_moved,
+    EventReader<events::CursorEntered> cursor_entered,
+    EventReader<events::FileDrop> file_drop,
+    EventReader<events::ReceivedCharacter> received_character,
+    EventReader<events::WindowFocused> window_focused,
+    Query<Get<window::Window>> windows
+);
 }  // namespace window
 namespace glfw {
 struct SetCustomCursor {
@@ -87,6 +103,11 @@ struct UserData {
     epix::utils::async::ConQueue<bool> focused;
     epix::utils::async::ConQueue<std::pair<int, int>> moved;
 };
+
+EPIX_API int map_key_to_glfw(input::KeyCode key);
+EPIX_API int map_mouse_button_to_glfw(input::MouseButton button);
+EPIX_API input::KeyCode map_glfw_key_to_input(int key);
+EPIX_API input::MouseButton map_glfw_mouse_button_to_input(int button);
 
 struct GLFWwindows {
     entt::dense_map<Entity, GLFWwindow*> windows;
@@ -153,7 +174,12 @@ struct GLFWPlugin : public app::Plugin {
         EventWriter<window::events::FileDrop>& file_drop,
         EventWriter<window::events::ReceivedCharacter>& received_character,
         EventWriter<window::events::WindowFocused>& window_focused,
-        EventWriter<window::events::WindowMoved>& window_moved
+        EventWriter<window::events::WindowMoved>& window_moved,
+        std::optional<EventWriter<input::events::KeyInput>>& key_input,
+        std::optional<EventWriter<input::events::MouseButtonInput>>&
+            mouse_button_input,
+        std::optional<EventWriter<input::events::MouseMove>>& mouse_move_input,
+        std::optional<EventWriter<input::events::MouseScroll>>& scroll_input
     );
     EPIX_API static void destroy_windows(
         Query<Get<Entity, window::window::Window>> windows,

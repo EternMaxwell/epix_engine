@@ -116,8 +116,9 @@ EPIX_API void epix::glfw::sync_window_to_glfw(
                 const GLFWvidmode* mode = glfwGetVideoMode(monitor);
                 position =
                     std::make_optional<std::pair<int, int>>(std::make_pair(
-                        mode->width / 2 - window_desc.width() / 2,
-                        mode->height / 2 - window_desc.height() / 2
+                        mode->width / 2 - window_desc.physical_size().first / 2,
+                        mode->height / 2 -
+                            window_desc.physical_size().second / 2
                     ));
             }
             glfwSetWindowPos(window, position->first, position->second);
@@ -199,13 +200,11 @@ EPIX_API void epix::glfw::sync_window_to_glfw(
                 window_desc.decorations ? GLFW_TRUE : GLFW_FALSE
             );
         }
-        if (cached_desc.focused != window_desc.focused) {
-            if (window_desc.focused) {
-                glfwFocusWindow(window);
+        if (cached_desc.iconified != window_desc.iconified) {
+            if (window_desc.iconified) {
+                glfwIconifyWindow(window);
             } else {
-                glfwSetWindowAttrib(
-                    window, GLFW_FOCUSED, GLFW_FALSE
-                );  // this is not working
+                glfwRestoreWindow(window);
             }
         }
         if (cached_desc.visible != window_desc.visible) {
@@ -237,13 +236,6 @@ EPIX_API void epix::glfw::sync_window_to_glfw(
         if (cached_desc.title != window_desc.title) {
             glfwSetWindowTitle(window, window_desc.title.c_str());
         }
-        if (cached_desc.iconified != window_desc.iconified) {
-            if (window_desc.iconified) {
-                glfwIconifyWindow(window);
-            } else {
-                glfwRestoreWindow(window);
-            }
-        }
         // internal state
         if (window_desc.internal.maximize_request) {
             auto maximize_request =
@@ -266,8 +258,16 @@ EPIX_API void epix::glfw::sync_window_to_glfw(
         if (window_desc.internal.cursor_position !=
             cached_desc.internal.cursor_position) {
             auto&& [_, x, y] = window_desc.cursor_position();
-            std::cout << "Set cursor position: " << x << ", " << y << std::endl;
             glfwSetCursorPos(window, x, y);
+        }
+        if (cached_desc.focused != window_desc.focused) {
+            if (window_desc.focused) {
+                glfwFocusWindow(window);
+            } else {
+                glfwSetWindowAttrib(
+                    window, GLFW_FOCUSED, GLFW_FALSE
+                );  // this is not working
+            }
         }
     } else {
         // force the glfw window to sync with the window_desc
@@ -414,8 +414,9 @@ EPIX_API void epix::glfw::sync_window_to_glfw(
                 const GLFWvidmode* mode = glfwGetVideoMode(monitor);
                 position =
                     std::make_optional<std::pair<int, int>>(std::make_pair(
-                        mode->width / 2 - window_desc.width() / 2,
-                        mode->height / 2 - window_desc.height() / 2
+                        mode->width / 2 - window_desc.physical_size().first / 2,
+                        mode->height / 2 -
+                            window_desc.physical_size().second / 2
                     ));
             }
             glfwSetWindowPos(window, position->first, position->second);
@@ -445,13 +446,11 @@ EPIX_API void epix::glfw::sync_window_to_glfw(
             );
         }
         {
-            // focused
-            if (window_desc.focused) {
-                glfwFocusWindow(window);
+            // iconified
+            if (window_desc.iconified) {
+                glfwIconifyWindow(window);
             } else {
-                glfwSetWindowAttrib(
-                    window, GLFW_FOCUSED, GLFW_FALSE
-                );  // this is not working
+                glfwRestoreWindow(window);
             }
         }
         {
@@ -483,11 +482,13 @@ EPIX_API void epix::glfw::sync_window_to_glfw(
             );
         }
         {
-            // iconified
-            if (window_desc.iconified) {
-                glfwIconifyWindow(window);
+            // focused
+            if (window_desc.focused) {
+                glfwFocusWindow(window);
             } else {
-                glfwRestoreWindow(window);
+                glfwSetWindowAttrib(
+                    window, GLFW_FOCUSED, GLFW_FALSE
+                );  // this is not working
             }
         }
     }
@@ -564,11 +565,10 @@ EPIX_API void epix::glfw::sync_glfw_to_window(
         }
         {
             // get focused
-            int focused = glfwGetWindowAttrib(window, GLFW_FOCUSED);
-            if (focused) {
-                window_desc.focused = true;
-            } else {
-                window_desc.focused = false;
+            bool focused =
+                glfwGetWindowAttrib(window, GLFW_FOCUSED) == GLFW_TRUE;
+            if (focused != window_desc.focused) {
+                window_desc.focused = focused;
             }
         }
         { window_desc.opacity = glfwGetWindowOpacity(window); }
@@ -602,6 +602,11 @@ EPIX_API void epix::glfw::sync_glfw_to_window(
 EPIX_API GLFWwindow* epix::glfw::create_window(
     Entity id, window::Window& window_desc
 ) {
+    glfwDefaultWindowHints();
+    glfwWindowHint(GLFW_FOCUSED, GLFW_FALSE);
+    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+    glfwWindowHint(GLFW_AUTO_ICONIFY, GLFW_FALSE);
+    glfwWindowHint(GLFW_FOCUS_ON_SHOW, GLFW_FALSE);
     GLFWwindow* window = glfwCreateWindow(
         window_desc.physical_size().first, window_desc.physical_size().second,
         window_desc.title.c_str(), nullptr, nullptr
@@ -838,7 +843,12 @@ EPIX_API void GLFWPlugin::send_cached_events(
     EventWriter<window::events::FileDrop>& file_drop,
     EventWriter<window::events::ReceivedCharacter>& received_character,
     EventWriter<window::events::WindowFocused>& window_focused,
-    EventWriter<window::events::WindowMoved>& window_moved
+    EventWriter<window::events::WindowMoved>& window_moved,
+    std::optional<EventWriter<input::events::KeyInput>>& key_input_event,
+    std::optional<EventWriter<input::events::MouseButtonInput>>&
+        mouse_button_input,
+    std::optional<EventWriter<input::events::MouseMove>>& mouse_move_input,
+    std::optional<EventWriter<input::events::MouseScroll>>& scroll_input
 ) {
     for (auto&& [id, window] : glfw_windows->windows) {
         auto* user_data =
@@ -866,6 +876,13 @@ EPIX_API void GLFWPlugin::send_cached_events(
         }
         while (auto key_input = user_data->key_input.try_pop()) {
             // send out
+            auto&& [key, scancode, action, mods] = *key_input;
+            auto pressed = action == GLFW_PRESS || action == GLFW_REPEAT;
+            auto repeat  = action == GLFW_REPEAT;
+            if (key_input_event)
+                key_input_event->write(input::events::KeyInput{
+                    map_glfw_key_to_input(key), scancode, pressed, repeat, id
+                });
         }
         while (auto cursor_pos = user_data->cursor_pos.try_pop()) {
             // send out
@@ -875,6 +892,10 @@ EPIX_API void GLFWPlugin::send_cached_events(
             cursor_moved.write(window::events::CursorMoved{
                 id, {new_x, new_y}, {new_x - old_x, new_y - old_y}
             });
+            if (mouse_move_input)
+                mouse_move_input->write(
+                    input::events::MouseMove{{new_x - old_x, new_y - old_y}}
+                );
         }
         while (auto cursor_enter = user_data->cursor_enter.try_pop()) {
             // send out
@@ -883,9 +904,20 @@ EPIX_API void GLFWPlugin::send_cached_events(
         }
         while (auto mouse_button = user_data->mouse_button.try_pop()) {
             // send out
+            auto&& [button, action, mods] = *mouse_button;
+            auto pressed                  = action == GLFW_PRESS;
+            if (mouse_button_input)
+                mouse_button_input->write(input::events::MouseButtonInput{
+                    map_glfw_mouse_button_to_input(button), pressed, id
+                });
         }
         while (auto scroll = user_data->scroll.try_pop()) {
             // send out
+            auto&& [xoffset, yoffset] = *scroll;
+            if (scroll_input)
+                scroll_input->write(
+                    input::events::MouseScroll{xoffset, yoffset, id}
+                );
         }
         while (auto paths_drop = user_data->drops.try_pop()) {
             // send out
@@ -921,15 +953,24 @@ EPIX_API void GLFWPlugin::destroy_windows(
     for (auto&& [id, window_desc] : windows.iter()) {
         still_alive.insert(id);
     }
+    std::vector<Entity> to_erase;
     for (auto&& [id, window] : std::views::all(glfw_windows->windows) |
                                    std::views::filter([&](auto&& tuple) {
                                        auto&& [id, _] = tuple;
                                        return !still_alive.contains(id);
                                    })) {
         window_closed.write(window::events::WindowClosed{id});
+        auto user_data =
+            static_cast<UserData*>(glfwGetWindowUserPointer(window));
+        if (user_data) {
+            delete user_data;
+        }
         glfwDestroyWindow(window);
-        glfw_windows->windows.erase(id);
+        to_erase.emplace_back(id);
         cached_windows->caches.erase(id);
         window_destroyed.write(window::events::WindowDestroyed{id});
+    }
+    for (auto&& id : to_erase) {
+        glfw_windows->windows.erase(id);
     }
 }
