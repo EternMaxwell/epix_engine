@@ -25,8 +25,8 @@ int main() {
     window_desc2.opacity = 0.7f;
 
     epix::App app = epix::App::create(epix::AppConfig{
-        .mark_frame   = false,
-        .enable_tracy = false,
+        // .mark_frame   = false,
+        .enable_tracy = true,
     });
 
     struct FrameCounter {

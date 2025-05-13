@@ -58,19 +58,26 @@ EPIX_API void WindowPlugin::build(epix::App& app) {
                         }
                     }
                     last->focus = focus->focus;
-                })
+                }).set_name("update focus for windows")
             );
         }
     }
 
     if (exit_condition == ExitCondition::OnAllClosed) {
-        app.add_systems(PostUpdate, into(exit_on_all_closed));
+        app.add_systems(
+            PostUpdate, into(exit_on_all_closed).set_name("exit on all closed")
+        );
     } else if (exit_condition == ExitCondition::OnPrimaryClosed) {
-        app.add_systems(PostUpdate, into(exit_on_primary_closed));
+        app.add_systems(
+            PostUpdate,
+            into(exit_on_primary_closed).set_name("exit on primary closed")
+        );
     }
 
     if (close_when_requested) {
-        app.add_systems(Update, into(close_requested));
+        app.add_systems(
+            Update, into(close_requested).set_name("close requested windows")
+        );
     }
 }
 

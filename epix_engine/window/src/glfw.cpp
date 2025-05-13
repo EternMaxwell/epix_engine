@@ -759,9 +759,11 @@ EPIX_API void GLFWPlugin::build(App& app) {
         .add_events<SetClipboardString>()
         .add_plugins(epix::LoopPlugin{})
         .add_systems(
-            First, into(Clipboard::set_text, Clipboard::update)
-                       .chain()
-                       .set_executor(epix::app::ExecutorType::SingleThread)
+            First,
+            into(Clipboard::set_text, Clipboard::update)
+                .chain()
+                .set_executor(epix::app::ExecutorType::SingleThread)
+                .set_names({"set clipboard string", "update clipboard string"})
         )
         .add_systems(
             First, into(
@@ -770,18 +772,26 @@ EPIX_API void GLFWPlugin::build(App& app) {
                    )
                        .chain()
                        .set_executor(epix::app::ExecutorType::SingleThread)
+                       .set_names(
+                           {"window changed", "glfw poll events",
+                            "send cached window events", "sync windows",
+                            "create windows"}
+                       )
         )
         .add_systems(
             Last, into(destroy_windows)
                       .set_executor(epix::app::ExecutorType::SingleThread)
+                      .set_name("destroy windows")
         )
         .add_systems(
             Exit, into(destroy_windows)
                       .set_executor(epix::app::ExecutorType::SingleThread)
+                      .set_name("destroy windows")
         )
         .add_systems(
-            PostExit, into([]() { glfwTerminate(); }
-                      ).set_executor(epix::app::ExecutorType::SingleThread)
+            PostExit, into([]() { glfwTerminate(); })
+                          .set_executor(epix::app::ExecutorType::SingleThread)
+                          .set_name("terminate glfw")
         );
 }
 EPIX_API void GLFWPlugin::create_windows(
