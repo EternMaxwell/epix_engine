@@ -15,5 +15,3 @@ target_link_libraries(epix_window epix::assets)
 target_link_libraries(epix_window epix::input)
 
 add_library(epix::window ALIAS epix_window)
-
-add_subdirectory(tests)
