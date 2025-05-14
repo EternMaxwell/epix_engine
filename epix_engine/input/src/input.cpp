@@ -4,152 +4,46 @@
 
 using namespace epix;
 using namespace epix::input;
-using namespace epix::input::systems;
 
-static auto logger = spdlog::default_logger()->clone("input");
+EPIX_API void InputPlugin::build(App& app) {
+    using namespace events;
+    app.add_events<KeyInput>()
+        .add_events<MouseButtonInput>()
+        .add_events<MouseMove>()
+        .add_events<MouseScroll>();
 
-EPIX_API void systems::create_input_for_window(
-    Commands command,
-    Query<
-        Get<Entity, const window::components::Window>,
-        Filter<Without<ButtonInput<KeyCode>, ButtonInput<MouseButton>>>> query
-) {
-    ZoneScopedN("input::create_input_for_window");
-    for (auto [entity, window] : query.iter()) {
-        spdlog::debug("create input for window {}.", window.m_title);
-        command.entity(entity).emplace(ButtonInput<KeyCode>(entity));
-        command.entity(entity).emplace(ButtonInput<MouseButton>(entity));
-    }
-}
-
-EPIX_API void systems::update_input(
-    Query<
-        Get<Entity,
-            ButtonInput<KeyCode>,
-            ButtonInput<MouseButton>,
-            const window::components::Window>> query,
-    // EventReader<events::KeyEvent> key_event_reader,
-    EventWriter<events::KeyEvent> key_event_writer,
-    // EventReader<events::MouseButtonEvent> mouse_button_event_reader,
-    EventWriter<events::MouseButtonEvent> mouse_button_event_writer
-) {
-    ZoneScopedN("input::update_input");
-    for (auto [entity, key_input, mouse_input, window] : query.iter()) {
-        if (window.get_handle() == nullptr) {
-            continue;
-        }
-        update_key_button_input(key_input, window.get_handle());
-        update_mouse_button_input(mouse_input, window.get_handle());
-    }
-    // key_event_reader.clear();
-    // mouse_button_event_reader.clear();
-    for (auto [entity, key_input, mouse_input, window] : query.iter()) {
-        for (auto key : key_input.just_pressed_keys()) {
-            key_event_writer.write(events::KeyEvent{
-                key, ButtonState::Pressed, key_input.key_name(key), entity
-            });
-        }
-        for (auto key : key_input.pressed_keys()) {
-            if (key_input.just_pressed_keys().find(key) ==
-                key_input.just_pressed_keys().end()) {
-                key_event_writer.write(events::KeyEvent{
-                    key, ButtonState::Repeat, key_input.key_name(key), entity
-                });
-            }
-        }
-        for (auto key : key_input.just_released_keys()) {
-            key_event_writer.write(events::KeyEvent{
-                key, ButtonState::Released, key_input.key_name(key), entity
-            });
-        }
-        for (auto button : mouse_input.just_pressed_buttons()) {
-            mouse_button_event_writer.write(
-                events::MouseButtonEvent{button, ButtonState::Pressed, entity}
-            );
-        }
-        for (auto button : mouse_input.pressed_buttons()) {
-            if (mouse_input.just_pressed_buttons().find(button) ==
-                mouse_input.just_pressed_buttons().end()) {
-                mouse_button_event_writer.write(events::MouseButtonEvent{
-                    button, ButtonState::Repeat, entity
-                });
-            }
-        }
-        for (auto button : mouse_input.just_released_buttons()) {
-            mouse_button_event_writer.write(
-                events::MouseButtonEvent{button, ButtonState::Released, entity}
-            );
-        }
-    }
-}
-
-EPIX_API void systems::output_event(
-    EventReader<epix::input::events::MouseScroll> scroll_events,
-    Query<Get<ButtonInput<KeyCode>, ButtonInput<MouseButton>, const Window>>
-        query,
-    EventReader<epix::input::events::CursorMove> cursor_move_events
-) {
-    ZoneScopedN("input::output_event");
-    for (auto event : scroll_events.read()) {
-        logger->info("scroll : {}", event.yoffset);
-    }
-    for (auto [key_input, mouse_input, window] : query.iter()) {
-        for (auto key : key_input.just_pressed_keys()) {
-            auto *key_name = key_input.key_name(key);
-            if (key_name == nullptr) {
-                logger->info("key {} just pressed", static_cast<int>(key));
-            } else {
-                logger->info("key {} just pressed", key_name);
-            }
-        }
-        for (auto key : key_input.just_released_keys()) {
-            auto *key_name = key_input.key_name(key);
-            if (key_name == nullptr) {
-                logger->info("key {} just released", static_cast<int>(key));
-            } else {
-                logger->info("key {} just released", key_name);
-            }
-        }
-        for (auto button : mouse_input.just_pressed_buttons()) {
-            logger->info(
-                "mouse button {} just pressed", static_cast<int>(button)
-            );
-        }
-        for (auto button : mouse_input.just_released_buttons()) {
-            logger->info(
-                "mouse button {} just released", static_cast<int>(button)
-            );
-        }
-        // if (window.get_cursor_move().has_value()) {
-        //     auto [x, y] = window.get_cursor_move().value();
-        //     spdlog::info("cursor move -from window : {}, {}", x, y);
-        // }
-    }
-    for (auto event : cursor_move_events.read()) {
-        logger->info("cursor move -from events : {}, {}", event.x, event.y);
-    }
-}
-
-EPIX_API InputPlugin &InputPlugin::enable_output() {
-    enable_output_event = true;
-    return *this;
-}
-
-EPIX_API InputPlugin &InputPlugin::disable_output() {
-    enable_output_event = false;
-    return *this;
-}
-
-EPIX_API void InputPlugin::build(App &app) {
-    app.add_events<events::KeyEvent>();
-    app.add_events<events::MouseButtonEvent>();
-    app.add_systems(epix::Startup, into(create_input_for_window))
+    app.init_resource<ButtonInput<KeyCode>>()
+        .init_resource<ButtonInput<MouseButton>>()
         .add_systems(
-            epix::First, epix::into(create_input_for_window, update_input)
-                             .after(window::systems::poll_events)
-                             .set_executor(ExecutorType::SingleThread)
+            PreUpdate, into(
+                           ButtonInput<KeyCode>::collect_events,
+                           ButtonInput<MouseButton>::collect_events
+                       )
+                           .set_name("collect input events")
         );
-    if (enable_output_event) {
-        app.add_systems(epix::PreUpdate, into(output_event));
+}
+
+EPIX_API void input::print_inputs(
+    EventReader<KeyInput> key_reader,
+    EventReader<MouseButtonInput> mouse_reader,
+    EventReader<MouseMove> mouse_move_reader,
+    EventReader<MouseScroll> mouse_scroll_reader
+) {
+    for (auto&& [key, scancode, pressed, repeat, window] : key_reader.read()) {
+        spdlog::info(
+            "Key: {}, Scancode: {}, Pressed: {}, Repeat: {}",
+            static_cast<int>(key), scancode, pressed, repeat
+        );
+    }
+    for (auto&& [button, pressed, window] : mouse_reader.read()) {
+        spdlog::info(
+            "Mouse Button: {}, Pressed: {}", static_cast<int>(button), pressed
+        );
+    }
+    for (auto&& [delta] : mouse_move_reader.read()) {
+        spdlog::info("Mouse Move: {}, {}", delta.first, delta.second);
+    }
+    for (auto&& [xoffset, yoffset, window] : mouse_scroll_reader.read()) {
+        spdlog::info("Mouse Scroll: {}, {}", xoffset, yoffset);
     }
 }

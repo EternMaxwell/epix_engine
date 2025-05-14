@@ -15,7 +15,6 @@ add_library(BSThreadPool INTERFACE)
 target_include_directories(BSThreadPool INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/libs/thread-pool/include)
 
 add_subdirectory (libs/entt)
-add_subdirectory (libs/glad)
 add_subdirectory (libs/glfw)
 add_subdirectory (libs/spdlog)
 add_subdirectory (libs/glm)
@@ -28,6 +27,7 @@ add_subdirectory (libs/box2d)
 add_subdirectory (libs/earcut.hpp)
 add_subdirectory (libs/tracy)
 add_subdirectory (libs/stb)
+add_subdirectory (libs/uuid)
 
 add_subdirectory (libs/googletest)
 

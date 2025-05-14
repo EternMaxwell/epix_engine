@@ -3,7 +3,7 @@
 using namespace epix::app;
 
 EPIX_API ScheduleConfig::ScheduleConfig(Schedule&& schedule)
-    : label(schedule.label),
+    : label(schedule.get_label()),
       schedule(std::move(schedule)),
       src_world(MainWorld),
       dst_world(MainWorld) {}
@@ -448,6 +448,22 @@ EPIX_API void App::build() {
     for (auto&& [label, group] : m_schedule_groups) {
         group.build();
     }
+
+    // collect all schedules and put their references in the resources
+    auto schedules_res = std::make_shared<Schedules>();
+    for (auto&& [label, group] : m_schedule_groups) {
+        for (auto&& [schedule_label, schedule] : group.schedules) {
+            schedules_res->emplace(schedule_label, schedule.get());
+        }
+    }
+    for (auto&& [label, world] : m_worlds) {
+        // clean up existing schedules resource
+        world->remove_resource(typeid(Schedules));
+        // create new schedules resource
+        world->add_resource(UntypedRes::create(
+            schedules_res, std::make_shared<std::shared_mutex>()
+        ));
+    }
 }
 
 EPIX_API void App::set_runner(std::shared_ptr<AppRunner> runner) {
@@ -524,3 +540,18 @@ EPIX_API bool App::TracySettings::schedule_enabled_tracy(
         return enable_tracy;
     }
 };
+
+EPIX_API Schedule* Schedules::get(const ScheduleLabel& label) {
+    auto it = find(label);
+    if (it != end()) {
+        return it->second;
+    }
+    return nullptr;
+};
+EPIX_API const Schedule* Schedules::get(const ScheduleLabel& label) const {
+    auto it = find(label);
+    if (it != end()) {
+        return it->second;
+    }
+    return nullptr;
+}

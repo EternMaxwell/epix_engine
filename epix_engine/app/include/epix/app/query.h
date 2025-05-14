@@ -1,5 +1,7 @@
 #pragma once
 
+#include <ranges>
+
 #include "world.h"
 
 namespace epix::app {
@@ -227,74 +229,6 @@ struct Query<Get<Gets...>, Filter<Filters...>> {
     using view_iterable = decltype(std::declval<view_type>().each());
     using view_iter     = decltype(std::declval<view_iterable>().begin());
 
-    struct iterable {
-        entt::registry& registry;
-        view_iterable m_iterable;
-
-        struct iterator {
-            entt::registry& registry;
-            view_iter iter;
-            view_iter end_iter;
-
-            iterator& operator++() {
-                if constexpr (Filter<Filters...>::need_check) {
-                    while (iter != end_iter) {
-                        auto item = *iter;
-                        ++iter;
-                        if (Filter<Filters...>::check(
-                                registry, std::get<0>(item)
-                            )) {
-                            return *this;
-                        }
-                    }
-                } else {
-                    ++iter;
-                }
-                return *this;
-            }
-            get_type operator*() {
-                auto item = *iter;
-                return get_type(GetAbs<Gets>::get_from_item(
-                    item, registry, std::get<0>(item)
-                )...);
-            }
-            bool operator!=(const iterator& other) const {
-                return iter != other.iter;
-            }
-            bool operator==(const iterator& other) const {
-                return iter == other.iter;
-            }
-            iterator(
-                entt::registry& registry,
-                view_iterable& iterable,
-                const view_iter& iter
-            )
-                : registry(registry), iter(iter), end_iter(iterable.end()) {}
-        };
-
-        iterable(entt::registry& registry, view_type& view)
-            : registry(registry), m_iterable(view.each()) {}
-
-        iterator begin() {
-            if constexpr (Filter<Filters...>::need_check) {
-                auto iter = m_iterable.begin();
-                while (iter != m_iterable.end()) {
-                    auto item = *iter;
-                    if (Filter<Filters...>::check(
-                            registry, std::get<0>(item)
-                        )) {
-                        return iterator(registry, m_iterable, iter);
-                    }
-                    ++iter;
-                }
-            }
-            return iterator(registry, m_iterable, m_iterable.begin());
-        }
-        iterator end() {
-            return iterator(registry, m_iterable, m_iterable.end());
-        }
-    };
-
    private:
     entt::registry* m_registry;
     view_type m_view;
@@ -305,18 +239,38 @@ struct Query<Get<Gets...>, Filter<Filters...>> {
           m_view(EnttViewBuilder<must_include, must_exclude>::build(*m_registry)
           ) {}
 
-    iterable iter() { return iterable(*m_registry, m_view); }
+    auto iter() {
+        if constexpr (Filter<Filters...>::need_check) {
+            return m_view.each() | std::views::filter([this](auto&& item) {
+                       return Filter<Filters...>::check(
+                           *m_registry, std::get<0>(item)
+                       );
+                   }) |
+                   std::views::transform([this](auto&& item) {
+                       return get_type(GetAbs<Gets>::get_from_item(
+                           item, *m_registry, std::get<0>(item)
+                       )...);
+                   });
+        } else {
+            return m_view.each() | std::views::transform([this](auto&& item) {
+                       return get_type(GetAbs<Gets>::get_from_item(
+                           item, *m_registry, std::get<0>(item)
+                       )...);
+                   });
+        }
+    }
+
     get_type single() {
-        iterable it = iter();
-        auto iter   = it.begin();
+        auto it   = iter();
+        auto iter = it.begin();
         if (iter != it.end()) {
             return *iter;
         }
         throw std::runtime_error("No entity found in query!");
     }
     std::optional<get_type> get_single() {
-        iterable it = iter();
-        auto iter   = it.begin();
+        auto it   = iter();
+        auto iter = it.begin();
         if (iter != it.end()) {
             return *iter;
         }
@@ -351,13 +305,12 @@ struct Query<Get<Gets...>, Filter<Filters...>> {
             std::apply(func, std::declval<get_type>());
         }
     void for_each(Func&& func) {
-        iterable it = iter();
-        for (get_type&& item : it) {
+        for (get_type&& item : iter()) {
             std::apply(func, item);
         }
     }
     bool empty() {
-        iterable it = iter();
+        auto it = iter();
         return it.begin() == it.end();
     }
     operator bool() { return !empty(); }

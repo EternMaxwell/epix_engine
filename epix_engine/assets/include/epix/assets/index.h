@@ -37,6 +37,11 @@ struct AssetIndex {
     AssetIndex& operator=(const AssetIndex&) = default;
     AssetIndex& operator=(AssetIndex&&)      = default;
 
+    bool operator==(const AssetIndex& other) const {
+        return index == other.index && generation == other.generation;
+    }
+    bool operator!=(const AssetIndex& other) const { return !(*this == other); }
+
     friend struct StrongHandle;
     template <typename T>
     friend struct Handle;
@@ -48,13 +53,18 @@ struct AssetIndexAllocator {
     std::atomic<uint32_t> m_next = 0;
     Sender<AssetIndex> m_free_indices_sender;
     Receiver<AssetIndex> m_free_indices_receiver;
+    Receiver<AssetIndex> m_reserved;
+    Sender<AssetIndex> m_reserved_sender;
 
    public:
     AssetIndexAllocator()
         : m_free_indices_receiver(
               std::get<1>(epix::utils::async::make_channel<AssetIndex>())
+          ),
+          m_reserved(std::get<1>(epix::utils::async::make_channel<AssetIndex>())
           ) {
         m_free_indices_sender = m_free_indices_receiver.create_sender();
+        m_reserved_sender     = m_reserved.create_sender();
     }
     AssetIndexAllocator(const AssetIndexAllocator&)            = delete;
     AssetIndexAllocator(AssetIndexAllocator&&)                 = delete;
@@ -63,12 +73,17 @@ struct AssetIndexAllocator {
 
     AssetIndex reserve() {
         if (auto index = m_free_indices_receiver.try_receive()) {
+            m_reserved_sender.send(
+                AssetIndex(index->index, index->generation + 1u)
+            );
             return AssetIndex(index->index, index->generation + 1);
         } else {
             uint32_t i = m_next.fetch_add(1, std::memory_order_relaxed);
+            m_reserved_sender.send(AssetIndex(i, 0));
             return AssetIndex(i, 0);
         }
     }
     void release(const AssetIndex& index) { m_free_indices_sender.send(index); }
+    Receiver<AssetIndex> reserved_receiver() { return m_reserved; }
 };
 }  // namespace epix::assets

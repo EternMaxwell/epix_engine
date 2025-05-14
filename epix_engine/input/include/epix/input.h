@@ -1,22 +1,22 @@
 #pragma once
 
 #include <epix/app.h>
-#include <epix/window.h>
 
-#include "input/components.h"
+#include "input/button.h"
+#include "input/enums.h"
 #include "input/events.h"
-#include "input/systems.h"
 
 namespace epix {
 namespace input {
-using namespace systems;
 using namespace events;
-
 struct InputPlugin : Plugin {
-    bool enable_output_event = false;
-    EPIX_API InputPlugin& enable_output();
-    EPIX_API InputPlugin& disable_output();
     EPIX_API void build(App& app) override;
 };
+EPIX_API void print_inputs(
+    EventReader<KeyInput> key_reader,
+    EventReader<MouseButtonInput> mouse_reader,
+    EventReader<MouseMove> mouse_move_reader,
+    EventReader<MouseScroll> mouse_scroll_reader
+);
 }  // namespace input
 }  // namespace epix

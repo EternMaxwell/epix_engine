@@ -1,28 +1,28 @@
 #pragma once
 
 #include <epix/app.h>
-#include <epix/window.h>
 
-#include "components.h"
+#include "enums.h"
 
-namespace epix {
-namespace input {
-namespace events {
-using namespace epix;
-using MouseScroll = window::events::MouseScroll;
-using CursorMove  = window::events::CursorMove;
-enum ButtonState { Pressed, Released, Repeat };
-struct KeyEvent {
-    components::KeyCode key;
-    ButtonState state;
-    const char* key_name;
+namespace epix::input::events {
+struct KeyInput {
+    KeyCode key;
+    int scancode;
+    bool pressed;
+    bool repeat;
     Entity window;
 };
-struct MouseButtonEvent {
-    components::MouseButton button;
-    ButtonState state;
+struct MouseButtonInput {
+    MouseButton button;
+    bool pressed;
     Entity window;
 };
-}  // namespace events
-}  // namespace input
-}  // namespace epix
+struct MouseMove {
+    std::pair<double, double> delta;
+};
+struct MouseScroll {
+    double xoffset;
+    double yoffset;
+    Entity window;
+};
+}  // namespace epix::input::events

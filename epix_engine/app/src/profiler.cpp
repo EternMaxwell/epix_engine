@@ -80,6 +80,7 @@ EPIX_API void AppProfiler::reset() {
     m_time_avg   = 0.0;
     m_empty_zone = 1.0;
     m_factor     = 0.1;
+    std::unique_lock lock(m_mutex);
     for (auto&& [label, profiler] : m_schedule_profilers) {
         profiler.reset();
     }
@@ -99,20 +100,24 @@ EPIX_API void AppProfiler::push_time(double time) {
 }
 EPIX_API const entt::dense_map<ScheduleLabel, ScheduleProfiler>&
 AppProfiler::schedule_profilers() const {
+    std::unique_lock lock(m_mutex);
     return m_schedule_profilers;
 }
 EPIX_API entt::dense_map<ScheduleLabel, ScheduleProfiler>&
 AppProfiler::schedule_profilers() {
+    std::unique_lock lock(m_mutex);
     return m_schedule_profilers;
 }
 EPIX_API ScheduleProfiler& AppProfiler::schedule_profiler(
     const ScheduleLabel& label
 ) {
+    std::unique_lock lock(m_mutex);
     return m_schedule_profilers[label];
 }
 EPIX_API ScheduleProfiler* AppProfiler::get_schedule_profiler(
     const ScheduleLabel& label
 ) {
+    std::unique_lock lock(m_mutex);
     auto it = m_schedule_profilers.find(label);
     if (it != m_schedule_profilers.end()) {
         return &it->second;
@@ -123,6 +128,7 @@ EPIX_API ScheduleProfiler* AppProfiler::get_schedule_profiler(
 EPIX_API const ScheduleProfiler* AppProfiler::get_schedule_profiler(
     const ScheduleLabel& label
 ) const {
+    std::unique_lock lock(m_mutex);
     auto it = m_schedule_profilers.find(label);
     if (it != m_schedule_profilers.end()) {
         return &it->second;

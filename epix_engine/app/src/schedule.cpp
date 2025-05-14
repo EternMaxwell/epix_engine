@@ -84,6 +84,8 @@ EPIX_API void Schedule::set_logger(const std::shared_ptr<spdlog::logger>& logger
     }
 };
 
+EPIX_API ScheduleLabel Schedule::get_label() const noexcept { return label; };
+
 EPIX_API bool Schedule::build() noexcept {
     // This function completes the set dependency
     if (newly_added_sets.empty()) {
@@ -136,7 +138,8 @@ EPIX_API bool Schedule::build() noexcept {
 
 EPIX_API void Schedule::add_systems(SystemConfig&& config) {
     // Try lock, if failed, that means the schedule is currently being run
-    if (system_sets_mutex.try_lock()) {
+    if (running_mutex.try_lock()) {
+        std::unique_lock lock(add_mutex);
         // Not running, add directly.
         if (config.system && !systems.contains(config.label) &&
             !system_sets.contains(config.label)) {
@@ -164,7 +167,8 @@ EPIX_API void Schedule::add_systems(SystemConfig&& config) {
             }
             newly_added_sets.emplace(config.label);
         }
-        system_sets_mutex.unlock();
+        running_mutex.unlock();
+        lock.unlock();
         for (auto&& sub_config : config.sub_configs) {
             add_systems(std::move(sub_config));
         }
@@ -177,7 +181,8 @@ EPIX_API void Schedule::add_systems(SystemConfig& config) {
     add_systems(std::move(config));
 }
 EPIX_API void Schedule::configure_sets(const SystemSetConfig& config) {
-    if (system_sets_mutex.try_lock()) {
+    if (running_mutex.try_lock()) {
+        std::unique_lock lock(add_mutex);
         if (config.label && !system_sets.contains(*config.label)) {
             auto&& it = system_sets.emplace(*config.label, SystemSet{}).first;
             it->second.in_sets  = config.in_sets;
@@ -188,7 +193,8 @@ EPIX_API void Schedule::configure_sets(const SystemSetConfig& config) {
             }
             newly_added_sets.emplace(*config.label);
         }
-        system_sets_mutex.unlock();
+        running_mutex.unlock();
+        lock.unlock();
         for (auto&& sub_config : config.sub_configs) {
             configure_sets(std::move(sub_config));
         }
@@ -197,7 +203,8 @@ EPIX_API void Schedule::configure_sets(const SystemSetConfig& config) {
     }
 };
 EPIX_API void Schedule::remove_system(const SystemLabel& label) {
-    if (system_sets_mutex.try_lock()) {
+    if (running_mutex.try_lock()) {
+        std::unique_lock lock(add_mutex);
         // remove the system with the label
         systems.erase(label);
         // remove the system set with the label
@@ -208,13 +215,14 @@ EPIX_API void Schedule::remove_system(const SystemLabel& label) {
             other_set.erase(label);
         }
         newly_added_sets.erase(label);
-        system_sets_mutex.unlock();
+        running_mutex.unlock();
     } else {
         command_queue.enqueue<RemoveSystemCommand>(label);
     }
 };
 EPIX_API void Schedule::remove_set(const SystemSetLabel& label) {
-    if (system_sets_mutex.try_lock()) {
+    if (running_mutex.try_lock()) {
+        std::unique_lock lock(add_mutex);
         // remove the system with the label, since if a system is not owned by a
         // system set, it will never be run.
         systems.erase(label);
@@ -226,10 +234,20 @@ EPIX_API void Schedule::remove_set(const SystemSetLabel& label) {
             other_set.erase(label);
         }
         newly_added_sets.erase(label);
-        system_sets_mutex.unlock();
+        running_mutex.unlock();
     } else {
         command_queue.enqueue<RemoveSetCommand>(label);
     }
+};
+EPIX_API bool Schedule::contains_system(const SystemLabel& label
+) const noexcept {
+    std::shared_lock lock(add_mutex);
+    return systems.contains(label);
+};
+EPIX_API bool Schedule::contains_set(const SystemSetLabel& label
+) const noexcept {
+    std::shared_lock lock(add_mutex);
+    return system_sets.contains(label);
 };
 EPIX_API bool Schedule::flush() noexcept { return command_queue.flush(*this); };
 
@@ -239,11 +257,11 @@ EPIX_API ScheduleRunner::ScheduleRunner(Schedule& schedule, bool run_once)
 EPIX_API void ScheduleRunner::set_executors(
     const std::shared_ptr<Executors>& executors
 ) noexcept {
-    std::unique_lock lock(schedule.system_sets_mutex);
+    std::unique_lock lock(schedule.running_mutex);
     this->executors = executors;
 };
 EPIX_API void ScheduleRunner::set_worlds(World& src, World& dst) noexcept {
-    std::unique_lock lock(schedule.system_sets_mutex);
+    std::unique_lock lock(schedule.running_mutex);
     this->src = &src;
     this->dst = &dst;
 };
@@ -411,6 +429,7 @@ EPIX_API void ScheduleRunner::sync_schedule() {
         //     wait_to_enter_queue.emplace_back(index);
         // }
         info.cached_children_count = info.system ? 1 : 0;
+        info.cached_depends_count  = set.depends.size();
         // info.entered        = false;
         // info.passed         = false;
         // info.finished       = false;
@@ -523,7 +542,7 @@ EPIX_API std::expected<void, RunScheduleError> ScheduleRunner::run_internal() {
 
     auto time_line2 = std::chrono::high_resolution_clock::now();
 
-    std::unique_lock lock(schedule.system_sets_mutex);
+    std::unique_lock lock(schedule.running_mutex);
 
     if (!src || !dst) {
         return std::unexpected(RunScheduleError{
@@ -548,21 +567,26 @@ EPIX_API std::expected<void, RunScheduleError> ScheduleRunner::run_internal() {
 
     if (tracy_settings.enabled) {
         ZoneScopedN("Prepare schedule for running");
-        if (rebuilt || system_set_infos.empty()) {
+        if (rebuilt ||
+            (system_set_infos.empty() && !schedule.system_sets.empty())) {
             sync_schedule();
         }
         prepare_runner();
     } else {
-        if (rebuilt || system_set_infos.empty()) {
+        if (rebuilt ||
+            (system_set_infos.empty() && !schedule.system_sets.empty())) {
+            std::cout << "Sync schedule: " << schedule.label.name()
+                      << std::endl;
             sync_schedule();
         }
         prepare_runner();
     }
 
     enter_waiting_queue();
-    try_run_waiting_systems();
 
     auto time_line5 = std::chrono::high_resolution_clock::now();
+
+    try_run_waiting_systems();
 
     run_loop();
 

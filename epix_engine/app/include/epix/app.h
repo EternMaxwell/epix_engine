@@ -20,6 +20,7 @@ using app::Label;
 using app::World;
 
 using app::Schedule;
+using app::Schedules;
 
 using app::App;
 using app::AppCreateInfo;

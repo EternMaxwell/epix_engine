@@ -5,8 +5,8 @@
 namespace epix::app {
 struct ScheduleProfiler {
    private:
-    size_t m_count = 0;
-    size_t m_set_count = 0;
+    size_t m_count        = 0;
+    size_t m_set_count    = 0;
     size_t m_system_count = 0;
 
     double m_run_time_last     = 0.0;
@@ -55,6 +55,7 @@ struct AppProfiler {
     double m_factor     = 0.1;
 
     entt::dense_map<ScheduleLabel, ScheduleProfiler> m_schedule_profilers;
+    mutable std::mutex m_mutex;
 
    public:
     EPIX_API void reset();

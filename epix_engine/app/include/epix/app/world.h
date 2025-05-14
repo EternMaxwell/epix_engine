@@ -64,6 +64,30 @@ struct World {
     entity_emplace_tuple(Entity entity, std::tuple<Args...>&& args, std::index_sequence<I...>) {
         (entity_emplace(entity, std::forward<Args>(std::get<I>(args))), ...);
     }
+    template <typename Ret, typename ResT>
+    std::optional<Ret> resource_scope_internal(
+        const std::function<Ret(ResT&)>& func
+    ) {
+        std::shared_lock lock(m_data->resources_mutex);
+        auto&& [res, l] = get_resource_locked<std::decay_t<ResT>>();
+        if (res) {
+            return func(*res);
+        } else {
+            return std::nullopt;
+        }
+    }
+    template <typename Ret, typename ResT>
+    std::optional<Ret> resource_scope_internal(
+        const std::function<Ret(const ResT&)>& func
+    ) const {
+        std::shared_lock lock(m_data->resources_mutex);
+        auto&& [res, l] = get_resource_locked<std::decay_t<ResT>>();
+        if (res) {
+            return func(*res);
+        } else {
+            return std::nullopt;
+        }
+    }
 
    public:
     EPIX_API World();
@@ -212,11 +236,38 @@ struct World {
         }
     }
     template <typename T>
+    std::pair<T&, std::unique_lock<std::shared_mutex>> resource_locked() {
+        std::shared_lock lock(m_data->resources_mutex);
+        auto it = m_data->resources.find(typeid(T));
+        if (it != m_data->resources.end()) {
+            return {
+                *std::static_pointer_cast<T>(it->second.resource),
+                std::unique_lock<std::shared_mutex>(*it->second.mutex)
+            };
+        } else {
+            throw std::runtime_error("Resource not found.");
+        }
+    }
+    template <typename T>
     const T& resource() const {
         std::shared_lock lock(m_data->resources_mutex);
         auto it = m_data->resources.find(typeid(T));
         if (it != m_data->resources.end()) {
             return *std::static_pointer_cast<T>(it->second.resource);
+        } else {
+            throw std::runtime_error("Resource not found.");
+        }
+    }
+    template <typename T>
+    std::pair<const T&, std::shared_lock<std::shared_mutex>> resource_locked(
+    ) const {
+        std::shared_lock lock(m_data->resources_mutex);
+        auto it = m_data->resources.find(typeid(T));
+        if (it != m_data->resources.end()) {
+            return {
+                *std::static_pointer_cast<T>(it->second.resource),
+                std::shared_lock<std::shared_mutex>(*it->second.mutex)
+            };
         } else {
             throw std::runtime_error("Resource not found.");
         }
@@ -232,6 +283,19 @@ struct World {
         }
     }
     template <typename T>
+    std::pair<T*, std::unique_lock<std::shared_mutex>> get_resource_locked() {
+        std::shared_lock lock(m_data->resources_mutex);
+        auto it = m_data->resources.find(typeid(T));
+        if (it != m_data->resources.end()) {
+            return {
+                std::static_pointer_cast<T>(it->second.resource).get(),
+                std::unique_lock<std::shared_mutex>(*it->second.mutex)
+            };
+        } else {
+            return {nullptr, {}};
+        }
+    }
+    template <typename T>
     const T* get_resource() const {
         std::shared_lock lock(m_data->resources_mutex);
         auto it = m_data->resources.find(typeid(T));
@@ -240,6 +304,29 @@ struct World {
         } else {
             return nullptr;
         }
+    }
+    template <typename T>
+    std::pair<const T*, std::shared_lock<std::shared_mutex>>
+    get_resource_locked() const {
+        std::shared_lock lock(m_data->resources_mutex);
+        auto it = m_data->resources.find(typeid(T));
+        if (it != m_data->resources.end()) {
+            return {
+                std::static_pointer_cast<T>(it->second.resource).get(),
+                std::shared_lock<std::shared_mutex>(*it->second.mutex)
+            };
+        } else {
+            return {nullptr, {}};
+        }
+    }
+
+    template <typename T>
+    auto resource_scope(T&& func) {
+        return resource_scope_internal(std::function(std::forward<T>(func)));
+    }
+    template <typename T>
+    auto resource_scope(T&& func) const {
+        return resource_scope_internal(std::function(std::forward<T>(func)));
     }
     /**
      * @brief Get the untyped resource of the given type.

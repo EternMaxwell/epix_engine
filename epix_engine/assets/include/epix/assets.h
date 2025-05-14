@@ -18,7 +18,12 @@ struct AssetPlugin : public epix::Plugin {
     AssetPlugin& register_asset() {
         m_assets_inserts.push_back([](epix::App& app) {
             app.init_resource<Assets<T>>();
-            app.add_systems(First, into(Assets<T>::res_handle_events));
+            app.add_events<AssetEvent<T>>();
+            app.add_systems(
+                First,
+                into(Assets<T>::res_handle_events, Assets<T>::asset_events)
+                    .chain()
+            );
         });
         return *this;
     }
