@@ -429,6 +429,7 @@ EPIX_API void ScheduleRunner::sync_schedule() {
         //     wait_to_enter_queue.emplace_back(index);
         // }
         info.cached_children_count = info.system ? 1 : 0;
+        info.cached_depends_count  = set.depends.size();
         // info.entered        = false;
         // info.passed         = false;
         // info.finished       = false;
@@ -566,21 +567,26 @@ EPIX_API std::expected<void, RunScheduleError> ScheduleRunner::run_internal() {
 
     if (tracy_settings.enabled) {
         ZoneScopedN("Prepare schedule for running");
-        if (rebuilt || system_set_infos.empty()) {
+        if (rebuilt ||
+            (system_set_infos.empty() && !schedule.system_sets.empty())) {
             sync_schedule();
         }
         prepare_runner();
     } else {
-        if (rebuilt || system_set_infos.empty()) {
+        if (rebuilt ||
+            (system_set_infos.empty() && !schedule.system_sets.empty())) {
+            std::cout << "Sync schedule: " << schedule.label.name()
+                      << std::endl;
             sync_schedule();
         }
         prepare_runner();
     }
 
     enter_waiting_queue();
-    try_run_waiting_systems();
 
     auto time_line5 = std::chrono::high_resolution_clock::now();
+
+    try_run_waiting_systems();
 
     run_loop();
 
