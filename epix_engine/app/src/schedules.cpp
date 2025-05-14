@@ -66,7 +66,7 @@ EPIX_API std::expected<void, RunGroupError> ScheduleGroup::run(App& app) {
         } else {
             auto result = runner.run();
             runner.reset();
-            just_finished_schedules.emplace(schedule->label);
+            just_finished_schedules.emplace(schedule->get_label());
         }
     };
     auto try_run_waiting = [&]() {

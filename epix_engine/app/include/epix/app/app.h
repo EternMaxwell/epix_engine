@@ -460,6 +460,10 @@ struct AppCreateInfo {
     uint32_t control_pool_size = 2;
     uint32_t default_pool_size = 4;
 };
+struct Schedules : public entt::dense_map<ScheduleLabel, Schedule*> {
+    EPIX_API Schedule* get(const ScheduleLabel& label);
+    EPIX_API const Schedule* get(const ScheduleLabel& label) const;
+};
 struct App {
     using executor_t = BS::thread_pool<BS::tp::priority>;
 
@@ -507,6 +511,14 @@ struct App {
     EPIX_API std::optional<GroupLabel> find_belonged_group(
         const ScheduleLabel& label
     ) const noexcept;
+    template <typename Ret, typename T>
+    App& plugin_scope_internal(const std::function<Ret(T&)>& func) {
+        auto plugin = get_plugin<std::decay_t<T>>();
+        if (plugin) {
+            func(*plugin);
+        }
+        return *this;
+    }
 
    public:
     EPIX_API App(const AppCreateInfo& create_info);
@@ -635,6 +647,11 @@ struct App {
             return std::static_pointer_cast<T>(it->second);
         }
         return nullptr;
+    }
+    template <typename T>
+    App& plugin_scope(T&& func) {
+        plugin_scope_internal(std::function(std::forward<T>(func)));
+        return *this;
     }
 
     EPIX_API App& configure_sets(

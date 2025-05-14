@@ -1,6 +1,8 @@
 #include "epix/input.h"
 #include "epix/window.h"
 
+void test_func() { std::cout << "Test function called!" << std::endl; }
+
 int main() {
     if (glfwInit() == GLFW_FALSE) {
         return -1;
@@ -34,41 +36,60 @@ int main() {
     };
 
     app.world(epix::app::MainWorld).spawn(window_desc2);
-    app.add_plugins(epix::window::WindowPlugin{});
-    app.get_plugin<epix::window::WindowPlugin>()->primary_window = window_desc;
-    app.get_plugin<epix::window::WindowPlugin>()->exit_condition =
-        epix::window::ExitCondition::OnAllClosed;
-    app.add_plugins(epix::glfw::GLFWPlugin{});
-    app.add_plugins(epix::input::InputPlugin{});
-    app.add_systems(
-        epix::Update,
-        epix::into(epix::input::print_inputs, epix::window::print_events)
-            .set_name("print inputs")
-    );
-    app.add_systems(
-        epix::Update,
-        epix::into([](epix::EventReader<epix::input::KeyInput> key_reader,
-                      epix::Query<epix::Get<epix::window::Window>> windows) {
-            for (auto&& [key, scancode, pressed, repeat, window] :
-                 key_reader.read()) {
-                if (pressed) {
-                    if (key == epix::input::KeyCode::KeyF11) {
-                        if (auto window_opt = windows.get(window)) {
-                            auto&& [window_desc] = *window_opt;
-                            if (window_desc.mode ==
-                                epix::window::window::WindowMode::Windowed) {
-                                window_desc.mode = epix::window::window::
-                                    WindowMode::Fullscreen;
-                            } else {
-                                window_desc.mode =
-                                    epix::window::window::WindowMode::Windowed;
+    app.add_plugins(epix::window::WindowPlugin{})
+        .plugin_scope([&](epix::window::WindowPlugin& plugin) {
+            plugin.exit_condition = epix::window::ExitCondition::OnAllClosed;
+            plugin.primary_window = window_desc;
+        })
+        .add_plugins(epix::glfw::GLFWPlugin{})
+        .add_plugins(epix::input::InputPlugin{})
+        .add_systems(
+            epix::Update,
+            epix::into(epix::input::print_inputs, epix::window::print_events)
+                .set_name("print inputs")
+        )
+        .add_systems(
+            epix::Update,
+            epix::into([](epix::EventReader<epix::input::KeyInput> key_reader,
+                          epix::Query<epix::Get<epix::window::Window>> windows,
+                          epix::ResMut<epix::Schedules> schedules) {
+                for (auto&& [key, scancode, pressed, repeat, window] :
+                     key_reader.read()) {
+                    if (pressed) {
+                        if (key == epix::input::KeyCode::KeyF11) {
+                            if (auto window_opt = windows.get(window)) {
+                                auto&& [window_desc] = *window_opt;
+                                if (window_desc.mode ==
+                                    epix::window::window::WindowMode::
+                                        Windowed) {
+                                    window_desc.mode = epix::window::window::
+                                        WindowMode::Fullscreen;
+                                } else {
+                                    window_desc.mode = epix::window::window::
+                                        WindowMode::Windowed;
+                                }
+                            }
+                        }
+                        if (key == epix::input::KeyCode::KeySpace) {
+                            if (auto schedule = schedules->get(epix::Update)) {
+                                static bool exist = false;
+                                if (!exist) {
+                                    exist = true;
+                                    schedule->add_systems(
+                                        epix::into(test_func).set_name(
+                                            "test function"
+                                        )
+                                    );
+                                } else {
+                                    schedule->remove_system(test_func);
+                                    exist = false;
+                                }
                             }
                         }
                     }
                 }
-            }
-        })
-    );
+            })
+        );
     // app.add_systems(
     //     epix::Update, epix::into([](epix::Local<FrameCounter> count) {
     //         std::cout << "Frame: " << count->count++ << std::endl;

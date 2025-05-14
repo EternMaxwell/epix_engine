@@ -376,11 +376,13 @@ struct RemoveSetCommand {
 };
 struct ScheduleRunner;
 struct Schedule {
+   private:
     ScheduleLabel label;
     entt::dense_map<SystemLabel, System> systems;
     entt::dense_map<SystemSetLabel, SystemSet> system_sets;
     entt::dense_set<SystemSetLabel> newly_added_sets;
-    std::mutex system_sets_mutex;
+    mutable std::shared_mutex add_mutex;
+    std::mutex running_mutex;
 
     std::shared_ptr<spdlog::logger> logger;
 
@@ -388,7 +390,6 @@ struct Schedule {
 
     ScheduleCommandQueue command_queue;
 
-   private:
     // true if rebuilt
     EPIX_API bool build() noexcept;
     // true if any command
@@ -400,11 +401,15 @@ struct Schedule {
 
     EPIX_API void set_logger(const std::shared_ptr<spdlog::logger>& logger);
 
+    EPIX_API ScheduleLabel get_label() const noexcept;
+
     EPIX_API void add_systems(SystemConfig&& config);
     EPIX_API void add_systems(SystemConfig& config);
     EPIX_API void configure_sets(const SystemSetConfig& config);
     EPIX_API void remove_system(const SystemLabel& label);
     EPIX_API void remove_set(const SystemSetLabel& label);
+    EPIX_API bool contains_system(const SystemLabel& label) const noexcept;
+    EPIX_API bool contains_set(const SystemSetLabel& label) const noexcept;
     EPIX_API ScheduleRunner& runner() noexcept;
 
     friend struct ScheduleRunner;
