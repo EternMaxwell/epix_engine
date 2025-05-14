@@ -19,6 +19,7 @@ add_subdirectory(utils/grid)
 add_subdirectory(utils/time)
 # EPIX RENDER MODULES
 add_subdirectory(render/webgpu)
+add_subdirectory(render/window)
 add_subdirectory(render/graph)
 # EPIX WORLD MODULES
 add_subdirectory(world/sand)
@@ -52,10 +53,11 @@ target_include_directories(epix_engine PUBLIC ${ENGINE_INCLUDES})
 target_link_libraries (epix_engine PUBLIC epix_common)
 target_link_libraries (epix_engine PUBLIC epix::app)
 target_link_libraries (epix_engine PUBLIC epix::assets)
-target_link_libraries (epix_engine PUBLIC epix::window)
 target_link_libraries (epix_engine PUBLIC epix::input)
+target_link_libraries (epix_engine PUBLIC epix::window)
 # EPIX RENDER LIBRARIES
 target_link_libraries (epix_engine PUBLIC epix::webgpu)
+target_link_libraries (epix_engine PUBLIC epix::render::window)
 # EPIX UTILS LIBRARIES
 target_link_libraries (epix_engine PUBLIC epix::utils::grid)
 target_link_libraries (epix_engine PUBLIC epix::utils::time)
