@@ -18,9 +18,7 @@ add_subdirectory(input)
 add_subdirectory(utils/grid)
 add_subdirectory(utils/time)
 # EPIX RENDER MODULES
-add_subdirectory(render/webgpu)
-add_subdirectory(render/window)
-add_subdirectory(render/graph)
+add_subdirectory(render)
 # EPIX WORLD MODULES
 add_subdirectory(world/sand)
 add_subdirectory(world/pixel_b2d)
