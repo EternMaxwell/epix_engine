@@ -55,7 +55,7 @@ struct GetAbs<Has<T>> {
     static get_type get_from_item(
         TupleT&& item, entt::registry& registry, Entity entity
     ) {
-        return registry.try_get<T>(entity);
+        return registry.all_of<T>(entity);
     }
 };
 
