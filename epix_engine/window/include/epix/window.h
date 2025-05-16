@@ -43,6 +43,31 @@ EPIX_API void print_events(
     EventReader<events::WindowFocused> window_focused,
     Query<Get<window::Window>> windows
 );
+
+using events::CursorEntered;
+using events::CursorMoved;
+using events::FileDrop;
+using events::ReceivedCharacter;
+using events::WindowClosed;
+using events::WindowCloseRequested;
+using events::WindowCreated;
+using events::WindowDestroyed;
+using events::WindowFocused;
+using events::WindowMoved;
+using events::WindowResized;
+
+using window::CompositeAlphaMode;
+using window::Cursor;
+using window::CursorIcon;
+using window::CursorMode;
+using window::PresentMode;
+using window::StandardCursor;
+using window::WindowFrameSize;
+using window::WindowLevel;
+using window::WindowMode;
+using window::WindowPosition;
+using window::WindowSize;
+using window::WindowSizeLimit;
 }  // namespace window
 namespace glfw {
 struct SetCustomCursor {

@@ -809,6 +809,7 @@ EPIX_API void GLFWPlugin::build(App& app) {
                           .set_executor(epix::app::ExecutorType::SingleThread)
                           .set_name("terminate glfw")
         );
+    app.submit_system(ExecutorType::SingleThread, create_windows).get();
 }
 EPIX_API void GLFWPlugin::create_windows(
     Query<Get<Entity, window::window::Window>> windows,

@@ -41,7 +41,7 @@ enum class PresentMode {
      */
     AutoVsync,
     /**
-     * @brief Chooses Mailbox -> Immediate -> Fifo based on driver support.
+     * @brief Chooses Immediate -> Mailbox -> Fifo based on driver support.
      */
     AutoNoVsync,
     Fifo,
@@ -92,6 +92,7 @@ struct WindowFrameSize {
     int bottom = 0;
 };
 enum class CompositeAlphaMode {
+    Auto,
     Opacity,
     PreMultiplied,
     PostMultiplied,
@@ -110,7 +111,7 @@ struct Window {
     int monitor                   = 0;
     WindowLevel window_level      = WindowLevel::Normal;  //
     std::string title             = "";                   //
-    CompositeAlphaMode alpha_mode = CompositeAlphaMode::Opacity;
+    CompositeAlphaMode alpha_mode = CompositeAlphaMode::Auto;
     float opacity                 = 1.0f;   //
     WindowSizeLimit size_limit    = {};     //
     bool resizable                = true;   //

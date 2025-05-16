@@ -746,7 +746,7 @@ struct App {
     };
     template <typename Func>
     std::expected<
-        typename decltype(std::function(std::declval<Func>()))::return_type,
+        typename decltype(std::function(std::declval<Func>()))::result_type,
         bool>
     run_system(
         Func&& func,
@@ -754,15 +754,35 @@ struct App {
         const WorldLabel& dst = MainWorld
     ) {
         using func_type   = decltype(std::function(func));
-        using return_type = typename func_type::return_type;
+        using return_type = typename func_type::result_type;
         BasicSystem<return_type> system(func);
         auto wsrc = get_world(src);
         auto wdst = get_world(dst);
         if (!wsrc || !wdst) {
             return std::unexpected(false);
         }
-        return system.run(*wsrc, *wdst);
+        if constexpr (std::is_same_v<return_type, void>) {
+            system.run(*wsrc, *wdst);
+            return {};
+        } else {
+            return system.run(*wsrc, *wdst);
+        }
     };
+    template <typename Func>
+    auto submit_system(
+        const app::ExecutorLabel& executor,
+        Func&& func,
+        const WorldLabel& src = MainWorld,
+        const WorldLabel& dst = MainWorld
+    ) -> std::future<decltype(run_system(std::declval<Func>(), src, dst))> {
+        auto exe = m_executors->get_pool(executor);
+        if (!exe) {
+            return {};
+        }
+        return exe->submit_task([&]() mutable {
+            return run_system(std::forward<Func>(func), src, dst);
+        });
+    }
 };
 
 struct AppExit {
