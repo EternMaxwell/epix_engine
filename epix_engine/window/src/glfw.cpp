@@ -812,6 +812,7 @@ EPIX_API void GLFWPlugin::build(App& app) {
     app.submit_system(ExecutorType::SingleThread, create_windows).get();
 }
 EPIX_API void GLFWPlugin::create_windows(
+    Commands commands,
     Query<Get<Entity, window::window::Window>> windows,
     ResMut<GLFWwindows> glfw_windows,
     ResMut<CachedWindows> cached_windows,
@@ -826,6 +827,7 @@ EPIX_API void GLFWPlugin::create_windows(
         window_created.write(window::events::WindowCreated{id});
         glfw_windows->windows.emplace(id, window);
         cached_windows->caches.emplace(id, window_desc);
+        commands.entity(id).emplace(window);
     }
 }
 EPIX_API void GLFWPlugin::window_changed(

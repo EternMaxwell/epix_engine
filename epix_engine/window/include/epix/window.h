@@ -171,6 +171,7 @@ struct Clipboard {
 struct GLFWPlugin : public app::Plugin {
     EPIX_API void build(App& app) override;
     EPIX_API static void create_windows(
+        Commands commands,
         Query<Get<Entity, window::window::Window>> windows,
         ResMut<GLFWwindows> glfw_windows,
         ResMut<CachedWindows> cached_windows,
