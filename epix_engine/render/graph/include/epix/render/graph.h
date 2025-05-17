@@ -216,8 +216,8 @@ struct Node {
 struct Edge {
     NodeLabel input_node;
     NodeLabel output_node;
-    uint32_t input_index  = -1;  // set to -1 if not used
-    uint32_t output_index = -1;  // set to -1 if not used
+    uint32_t input_index  = static_cast<uint32_t>(-1);  // set to -1 if not used
+    uint32_t output_index = static_cast<uint32_t>(-1);  // set to -1 if not used
 
     EPIX_API static Edge node_edge(
         const NodeLabel& output_node, const NodeLabel& input_node
