@@ -12,4 +12,6 @@ target_link_libraries(epix_render_graph PUBLIC epix::app)
 target_link_libraries(epix_render_graph PUBLIC epix::window)
 target_link_libraries(epix_render_graph PUBLIC epix::webgpu)
 
+add_library(epix::render::graph ALIAS epix_render_graph)
+
 add_subdirectory(tests)
