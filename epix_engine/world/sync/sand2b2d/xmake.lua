@@ -1,0 +1,8 @@
+target("epix-world-sync-sand2b2d")
+    set_kind("static")
+    add_includedirs("include", { public = true })
+    add_deps("epix-world-sand", "epix-app")
+    add_packages("box2d", { public = true })
+    add_files("src/*.cpp")
+    set_options("epix_config")
+target_end()

@@ -1,0 +1,7 @@
+target("epix-utils-time")
+    set_kind("static")
+    add_files("src/*.cpp")
+    add_includedirs("include", { public = true })
+    set_languages("cxx20")
+    add_deps("epix-common")
+target_end()

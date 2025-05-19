@@ -1,0 +1,8 @@
+target("epix-assets")
+    set_kind("static")
+    add_files("src/*.cpp")
+    add_includedirs("include", { public = true })
+    add_deps("epix-common", "epix-app")
+    set_options("epix_config")
+    add_packages("stduuid", { public = true })
+target_end()

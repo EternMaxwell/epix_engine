@@ -1,0 +1,7 @@
+target("epix-core-util")
+    set_kind("static")
+    add_files("src/*.cpp")
+    add_includedirs("include", { public = true })
+    add_deps("epix-common")
+    set_options("epix_config")
+target_end()

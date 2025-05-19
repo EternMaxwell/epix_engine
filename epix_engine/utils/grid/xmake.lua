@@ -1,0 +1,8 @@
+target("epix-utils-grid")
+    set_kind("static")
+    add_files("src/*.cpp")
+    add_includedirs("include", { public = true })
+    set_options("epix_config")
+    add_deps("epix-common", "epix-app")
+    add_packages("glm", "mapbox_earcut", { public = true })
+target_end()

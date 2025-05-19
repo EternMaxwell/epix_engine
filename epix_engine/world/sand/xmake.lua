@@ -1,0 +1,8 @@
+target("epix-world-sand")
+    set_kind("static")
+    add_includedirs("include", { public = true })
+    add_deps("epix-app", "epix-utils-grid")
+    add_packages("glm", { public = true })
+    add_files("src/*.cpp")
+    set_options("epix_config")
+target_end()

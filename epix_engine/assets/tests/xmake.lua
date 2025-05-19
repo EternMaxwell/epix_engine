@@ -1,0 +1,6 @@
+target("epix-assets-tests")
+    set_kind("binary")
+    add_files("src/*.cpp")
+    add_deps("epix-assets")
+    set_languages("cxx23")
+target_end()

@@ -1,0 +1,8 @@
+target("imgui")
+    set_kind("static")
+    add_files("src/*.cpp")
+    add_files("src/backends/imgui_impl_glfw.cpp")
+    add_files("src/backends/imgui_impl_wgpu.cpp")
+    add_defines("IMGUI_IMPL_WEBGPU_BACKEND_WGPU")
+    add_includedirs("include", { public = true })
+    add_packages("wgpu-native", "glfw")

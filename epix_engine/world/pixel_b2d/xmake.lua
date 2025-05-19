@@ -1,0 +1,8 @@
+target("epix-world-pixel_b2d")
+    set_kind("static")
+    add_includedirs("include", { public = true })
+    add_deps("epix-app", "epix-world-sand", "epix-utils-grid")
+    add_packages("box2d", "glm", "mapbox_earcut", { public = true })
+    add_files("src/*.cpp")
+    set_options("epix_config")
+target_end()

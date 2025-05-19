@@ -1,0 +1,18 @@
+target("epix-app-query")
+    set_kind("binary")
+    add_files("query/main.cpp")
+    set_languages("cxx23", { public = false })
+    add_deps("epix-app")
+
+target("epix-app-resource")
+    set_kind("binary")
+    add_files("resource/main.cpp")
+    set_languages("cxx23", { public = false })
+    add_deps("epix-app")
+
+target("epix-app-custom_parameter")
+    set_kind("binary")
+    add_files("custom_system_param/main.cpp")
+    set_languages("cxx23", { public = false })
+    add_deps("epix-app")
+target_end()

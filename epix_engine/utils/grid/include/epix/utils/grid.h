@@ -1,13 +1,12 @@
 #pragma once
 
-#include <spdlog/spdlog.h>
-
 #include <algorithm>
 #include <array>
 #include <concepts>
-#include <earcut.hpp>
 #include <format>
+#include <functional>
 #include <glm/glm.hpp>
+#include <mapbox/earcut.hpp>
 #include <numeric>
 #include <stack>
 #include <stdexcept>

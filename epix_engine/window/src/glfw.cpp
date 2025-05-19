@@ -48,6 +48,8 @@ EPIX_API void epix::glfw::sync_window_to_glfw(
                                     case window::window::StandardCursor::
                                         NotAllowed:
                                         return GLFW_NOT_ALLOWED_CURSOR;
+                                    default:
+                                        return GLFW_ARROW_CURSOR;
                                 }
                             }(cursor);
                             glfwSetCursor(
@@ -85,6 +87,8 @@ EPIX_API void epix::glfw::sync_window_to_glfw(
                                 return GLFW_CURSOR_CAPTURED;
                             case window::window::CursorMode::Disabled:
                                 return GLFW_CURSOR_DISABLED;
+                            default:
+                                return GLFW_CURSOR_NORMAL;
                         }
                     }(window_desc.cursor.mode);
                 glfwSetInputMode(window, GLFW_CURSOR, glfw_cursor_mode_enum_v);
@@ -227,6 +231,8 @@ EPIX_API void epix::glfw::sync_window_to_glfw(
                             return GLFW_TRUE;
                         case window::window::WindowLevel::AlwaysOnBottom:
                             return GLFW_FALSE;
+                        default:
+                            return GLFW_FALSE;
                     }
                 }(window_desc.window_level);
             glfwSetWindowAttrib(
@@ -299,6 +305,8 @@ EPIX_API void epix::glfw::sync_window_to_glfw(
                                     return GLFW_RESIZE_NESW_CURSOR;
                                 case window::window::StandardCursor::NotAllowed:
                                     return GLFW_NOT_ALLOWED_CURSOR;
+                                default:
+                                    return GLFW_ARROW_CURSOR;
                             }
                         }(cursor);
                         glfwSetCursor(
@@ -335,6 +343,8 @@ EPIX_API void epix::glfw::sync_window_to_glfw(
                             return GLFW_CURSOR_CAPTURED;
                         case window::window::CursorMode::Disabled:
                             return GLFW_CURSOR_DISABLED;
+                        default:
+                            return GLFW_CURSOR_NORMAL;
                     }
                 }(window_desc.cursor.mode);
             glfwSetInputMode(window, GLFW_CURSOR, glfw_cursor_mode_enum_v);
@@ -474,6 +484,8 @@ EPIX_API void epix::glfw::sync_window_to_glfw(
                         case window::window::WindowLevel::AlwaysOnTop:
                             return GLFW_TRUE;
                         case window::window::WindowLevel::AlwaysOnBottom:
+                            return GLFW_FALSE;
+                        default:
                             return GLFW_FALSE;
                     }
                 }(window_desc.window_level);

@@ -1,0 +1,27 @@
+includes("common/xmake.lua")
+includes("utils/core/xmake.lua")
+
+includes("app/xmake.lua")
+includes("input/xmake.lua")
+includes("assets/xmake.lua")
+includes("window/xmake.lua")
+
+includes("utils/time/xmake.lua")
+includes("utils/grid/xmake.lua")
+
+includes("world/sand/xmake.lua")
+includes("world/pixel_b2d/xmake.lua")
+includes("world/sync/sand2b2d/xmake.lua")
+includes("world/sync/b2d2sand/xmake.lua")
+
+target("epix_engine")
+    set_kind("static")
+    add_files("src/*.cpp")
+    add_includedirs("include", { public = true })
+    set_options("epix_config")
+    add_deps("epix-common", "epix-app", "epix-core-util")
+    add_deps("epix-input", "epix-assets", "epix-window")
+    add_deps("epix-utils-time", "epix-utils-grid")
+    add_deps("epix-world-sand", "epix-world-pixel_b2d")
+    add_deps("epix-world-sync-sand2b2d", "epix-world-sync-b2d2sand")
+target_end()

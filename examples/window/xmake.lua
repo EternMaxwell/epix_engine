@@ -1,0 +1,7 @@
+target("epix-window-example")
+    set_basename("epix_window_example")
+    set_kind("binary")
+    add_files("test.cpp")
+    add_deps("epix-window", "epix-utils-time")
+    set_languages("cxx23", { public = false })
+target_end()

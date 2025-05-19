@@ -1,0 +1,10 @@
+target("epix-app")
+    set_kind("static")
+    add_files("src/*.cpp")
+    add_includedirs("include", { public = true })
+    set_options("epix_config")
+    add_packages("spdlog", "thread-pool", "entt", "tracy", { public = true })
+    add_deps("epix-common", "epix-core-util")
+target_end()
+
+includes("tests/xmake.lua")

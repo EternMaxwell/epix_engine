@@ -1,0 +1,8 @@
+target("epix-world-sync-b2d2sand")
+    set_kind("static")
+    add_includedirs("include", { public = true })
+    add_deps("epix-world-sand", "epix-app", "epix-world-pixel_b2d")
+    add_packages("glm", { public = true })
+    add_files("src/*.cpp")
+    set_options("epix_config")
+target_end()
