@@ -3,7 +3,6 @@ add_cxflags("/utf-8")
 
 add_requires("wgpu-native v24.0.0+1")
 add_requires("glfw 3.4")
-add_requires("glfw3webgpu v1.2.0")
 add_requires("glm")
 add_requires("entt v3.15.0")
 add_requires("spdlog v1.14.1")
