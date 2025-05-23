@@ -7,23 +7,23 @@ list(APPEND ENGINE_INCLUDES ${CMAKE_CURRENT_SOURCE_DIR}/include)
 set(EPIX_ENABLE_TRACY ON)
 set(EPIX_WITH_SHARED OFF)
 
-# EPIX CORE MODULES
-add_subdirectory(common)
-add_subdirectory(utils/core)
-add_subdirectory(app)
-add_subdirectory(assets)
-add_subdirectory(window)
-add_subdirectory(input)
-# EPIX UTILS MODULES
-add_subdirectory(utils/grid)
-add_subdirectory(utils/time)
-# EPIX RENDER MODULES
-add_subdirectory(render)
-# EPIX WORLD MODULES
-add_subdirectory(world/sand)
-add_subdirectory(world/pixel_b2d)
-add_subdirectory(world/sync/sand2b2d)
-add_subdirectory(world/sync/b2d2sand)
+# # EPIX CORE MODULES
+# add_subdirectory(common)
+# add_subdirectory(utils/core)
+# add_subdirectory(app)
+# add_subdirectory(assets)
+# add_subdirectory(window)
+# add_subdirectory(input)
+# # EPIX UTILS MODULES
+# add_subdirectory(utils/grid)
+# add_subdirectory(utils/time)
+# # EPIX RENDER MODULES
+# add_subdirectory(render)
+# # EPIX WORLD MODULES
+# add_subdirectory(world/sand)
+# add_subdirectory(world/pixel_b2d)
+# add_subdirectory(world/sync/sand2b2d)
+# add_subdirectory(world/sync/b2d2sand)
 
 # BUILD STATIC
 add_library(epix_engine STATIC ${MODULE_SOURCES})
@@ -32,38 +32,35 @@ if(EPIX_ENABLE_TRACY)
 endif()
 # THIRD PARTY LIBRARIES
 target_include_directories(epix_engine PUBLIC ${ENGINE_INCLUDES})
-# target_include_directories(epix_engine PUBLIC ../libs/stb)
-# target_link_libraries (epix_engine PUBLIC glfw)
-# target_link_libraries (epix_engine PUBLIC OpenGL::GL)
-# target_link_libraries (epix_engine PUBLIC glad)
-# target_link_libraries (epix_engine PUBLIC Vulkan::Headers)
-# target_link_libraries (epix_engine PUBLIC volk)
-# target_link_libraries (epix_engine PUBLIC EnTT::EnTT)
-# target_link_libraries (epix_engine PUBLIC spdlog::spdlog)
-# target_link_libraries (epix_engine PUBLIC Boost::pfr)
-# target_link_libraries (epix_engine PUBLIC BSThreadPool)
-# target_link_libraries (epix_engine PUBLIC glm::glm)
-# target_link_libraries (epix_engine PUBLIC freetype)
-# target_link_libraries (epix_engine PUBLIC VulkanMemoryAllocator)
-# target_link_libraries (epix_engine PUBLIC earcut.hpp)
-# target_link_libraries (epix_engine PUBLIC TracyClient)
+target_link_libraries (epix_engine PUBLIC glfw)
+target_link_libraries (epix_engine PUBLIC EnTT::EnTT)
+target_link_libraries (epix_engine PUBLIC spdlog::spdlog)
+target_link_libraries (epix_engine PUBLIC BSThreadPool)
+target_link_libraries (epix_engine PUBLIC glm::glm)
+target_link_libraries (epix_engine PUBLIC freetype)
+target_link_libraries (epix_engine PUBLIC webgpu)
+target_link_libraries (epix_engine PUBLIC earcut.hpp)
+target_link_libraries (epix_engine PUBLIC TracyClient)
+target_link_libraries (epix_engine PUBLIC stduuid)
+target_link_libraries (epix_engine PUBLIC box2d)
+target_link_libraries (epix_engine PUBLIC stbimage)
 # EPIX CORE LIBRARIES
-target_link_libraries (epix_engine PUBLIC epix_common)
-target_link_libraries (epix_engine PUBLIC epix::app)
-target_link_libraries (epix_engine PUBLIC epix::assets)
-target_link_libraries (epix_engine PUBLIC epix::input)
-target_link_libraries (epix_engine PUBLIC epix::window)
-# EPIX RENDER LIBRARIES
-target_link_libraries (epix_engine PUBLIC epix::webgpu)
-target_link_libraries (epix_engine PUBLIC epix::render::window)
-# EPIX UTILS LIBRARIES
-target_link_libraries (epix_engine PUBLIC epix::utils::grid)
-target_link_libraries (epix_engine PUBLIC epix::utils::time)
-# EPIX WORLD LIBRARIES
-target_link_libraries (epix_engine PUBLIC epix::world::sand)
-target_link_libraries (epix_engine PUBLIC epix::world::pixel_b2d)
-target_link_libraries (epix_engine PUBLIC epix::world::sync::sand2b2d)
-target_link_libraries (epix_engine PUBLIC epix::world::sync::b2d2sand)
+# target_link_libraries (epix_engine PUBLIC epix_common)
+# target_link_libraries (epix_engine PUBLIC epix::app)
+# target_link_libraries (epix_engine PUBLIC epix::assets)
+# target_link_libraries (epix_engine PUBLIC epix::input)
+# target_link_libraries (epix_engine PUBLIC epix::window)
+# # EPIX RENDER LIBRARIES
+# target_link_libraries (epix_engine PUBLIC epix::webgpu)
+# target_link_libraries (epix_engine PUBLIC epix::render::window)
+# # EPIX UTILS LIBRARIES
+# target_link_libraries (epix_engine PUBLIC epix::utils::grid)
+# target_link_libraries (epix_engine PUBLIC epix::utils::time)
+# # EPIX WORLD LIBRARIES
+# target_link_libraries (epix_engine PUBLIC epix::world::sand)
+# target_link_libraries (epix_engine PUBLIC epix::world::pixel_b2d)
+# target_link_libraries (epix_engine PUBLIC epix::world::sync::sand2b2d)
+# target_link_libraries (epix_engine PUBLIC epix::world::sync::b2d2sand)
 # EPIX ALIAS LIBRARY
 add_library(epix ALIAS epix_engine)
 

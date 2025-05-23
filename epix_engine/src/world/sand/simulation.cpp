@@ -1706,7 +1706,7 @@ EPIX_API void Simulation::update_multithread(float delta) {
         for (auto&& [pos, chunk] : m_chunk_map) {
             if ((pos.x + xmod) % mod == 0 && (pos.y + ymod) % mod == 0) {
                 if (!chunk.should_update()) continue;
-                m_thread_pool->detach_task([=, &chunk]() {
+                m_thread_pool->detach_task([this, &chunk, pos, delta]() {
                     chunk.reset_updated();
                     // std::tuple<int, int, int> xbounds, ybounds;
                     // xbounds = {
