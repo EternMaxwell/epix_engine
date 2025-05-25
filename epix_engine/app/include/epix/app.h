@@ -19,8 +19,13 @@ using app::Label;
 
 using app::World;
 
+using app::MainWorld;
+using app::RenderWorld;
+
 using app::Schedule;
 using app::Schedules;
+
+using app::UntypedRes;
 
 using app::App;
 using app::AppCreateInfo;

@@ -1,4 +1,6 @@
 #include "epix/input.h"
+#include "epix/render.h"
+#include "epix/render/window.h"
 #include "epix/utils/time.h"
 #include "epix/window.h"
 
@@ -44,6 +46,7 @@ int main() {
         })
         .add_plugins(epix::glfw::GLFWPlugin{})
         .add_plugins(epix::input::InputPlugin{})
+        .add_plugins(epix::render::RenderPlugin{})
         .add_systems(
             epix::Update,
             epix::into(epix::input::print_inputs, epix::window::print_events)
@@ -118,7 +121,7 @@ int main() {
                         }
                     }
                 }
-            )
+            ).set_names({"toggle fullscreen", "print profiling info"})
         );
     // app.add_systems(
     //     epix::Update, epix::into([](epix::Local<FrameCounter> count) {

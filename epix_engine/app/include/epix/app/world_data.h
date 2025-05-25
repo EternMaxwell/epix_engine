@@ -49,16 +49,34 @@ struct UntypedRes {
     static UntypedRes create(
         const std::type_index& type,
         std::shared_ptr<void> resource,
-        std::shared_ptr<std::shared_mutex> mutex
+        std::shared_ptr<std::shared_mutex> mutex =
+            std::make_shared<std::shared_mutex>()
     ) {
         return UntypedRes{type, resource, mutex};
     }
     template <typename T>
     static UntypedRes create(
-        std::shared_ptr<T> resource, std::shared_ptr<std::shared_mutex> mutex
+        std::shared_ptr<T> resource,
+        std::shared_ptr<std::shared_mutex> mutex =
+            std::make_shared<std::shared_mutex>()
     ) {
         return UntypedRes{
             typeid(T), std::static_pointer_cast<void>(resource), mutex
+        };
+    }
+    template <typename T, typename... Args>
+    static UntypedRes emplace(Args&&... args) {
+        return UntypedRes{
+            typeid(T), std::make_shared<T>(std::forward<Args>(args)...),
+            std::make_shared<std::shared_mutex>()
+        };
+    }
+    template <typename T>
+    static UntypedRes emplace(T&& resource) {
+        using type = std::decay_t<T>;
+        return UntypedRes{
+            typeid(type), std::make_shared<type>(std::forward<T>(resource)),
+            std::make_shared<std::shared_mutex>()
         };
     }
 };

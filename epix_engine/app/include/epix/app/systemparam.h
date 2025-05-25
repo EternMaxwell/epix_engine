@@ -481,13 +481,15 @@ struct SystemParam<Extract<T>> : public SystemParam<T> {
     void complete(World& src, World& dst, LocalData& locals) {
         SystemParam<T>::complete(dst, src, locals);
         if (!param && SystemParam<T>::valid()) {
-            if constexpr (std::copyable<T>) {
+            if constexpr (std::copy_constructible<T>) {
                 param.emplace(SystemParam<T>::get());
-            } else if constexpr (std::movable<T>) {
+            } else if constexpr (std::move_constructible<T>) {
                 param.emplace(std::move(SystemParam<T>::get()));
             } else {
                 static_assert(
-                    false, "T is not copyable or movable, cannot extract"
+                    false,
+                    "T is not copy_constructible or move_constructible, cannot "
+                    "extract"
                 );
             }
         }
