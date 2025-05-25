@@ -58,15 +58,6 @@ EPIX_API void epix::render::window::extract_windows(
     Extract<Res<glfw::GLFWwindows>> glfw_windows,
     ResMut<WindowSurfaces> window_surfaces
 ) {
-    for (auto&& close : closed.read()) {
-        auto it = extracted_windows->windows.find(close.window);
-        if (it != extracted_windows->windows.end()) {
-            auto& window = it->second;
-            extracted_windows->windows.erase(it);
-        }
-        window_surfaces->remove(close.window);
-    }
-
     for (auto&& [entity, window, primary] : windows.iter()) {
         if (primary) {
             extracted_windows->primary = entity;
@@ -112,6 +103,15 @@ EPIX_API void epix::render::window::extract_windows(
         if (extracted_window.present_mode_changed) {
             extracted_window.present_mode = window.present_mode;
         }
+    }
+
+    for (auto&& close : closed.read()) {
+        auto it = extracted_windows->windows.find(close.window);
+        if (it != extracted_windows->windows.end()) {
+            auto& window = it->second;
+            extracted_windows->windows.erase(it);
+        }
+        window_surfaces->remove(close.window);
     }
 }
 EPIX_API void epix::render::window::create_surfaces(
