@@ -37,3 +37,9 @@
 [submodule "libs/uuid"]
 	path = libs/uuid
 	url = https://github.com/mariusbancila/stduuid.git
+[submodule "libs/vulkan-headers"]
+	path = libs/vulkan-headers
+	url = https://github.com/KhronosGroup/Vulkan-Headers.git
+[submodule "libs/volk"]
+	path = libs/volk
+	url = https://github.com/zeux/volk.git

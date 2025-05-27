@@ -43,6 +43,35 @@ EPIX_API void WindowRenderPlugin::build(epix::App& app) {
     );
     if (handle_present) {
         app.add_systems(
+            epix::Render,
+            epix::into([](Res<wgpu::Device> device, Res<wgpu::Queue> queue,
+                          Res<WindowSurfaces> surfaces,
+                          Res<ExtractedWindows> extracted_windows) {
+                auto encoder = device->createCommandEncoder();
+                for (auto&& [id, extracted_window] :
+                     extracted_windows->windows) {
+                    auto color_attachment = WGPURenderPassColorAttachment{
+                        .view       = extracted_window.swapchain_texture_view,
+                        .loadOp     = wgpu::LoadOp::Clear,
+                        .storeOp    = wgpu::StoreOp::Store,
+                        .clearValue = WGPUColor{0.0, 0.0, 0.0, 1.0},
+                    };
+                    auto pass =
+                        encoder.beginRenderPass(WGPURenderPassDescriptor{
+                            .colorAttachmentCount   = 1,
+                            .colorAttachments       = &color_attachment,
+                            .depthStencilAttachment = nullptr,
+                        });
+                    pass.end();
+                    pass.release();
+                }
+                auto command_buffer = encoder.finish();
+                queue->submit(command_buffer);
+            })
+                .before(present_windows)
+                .set_name("Clear surface textures")
+        );
+        app.add_systems(
             epix::PostRender,
             epix::into(present_windows).set_name("present windows")
         );
@@ -85,9 +114,11 @@ EPIX_API void epix::render::window::extract_windows(
         auto& extracted_window = extracted_windows->windows.at(entity);
         if (extracted_window.swapchain_texture_view) {
             extracted_window.swapchain_texture_view.release();
+            extracted_window.swapchain_texture_view = nullptr;
         }
         if (extracted_window.swapchain_texture.texture) {
             wgpu::Texture(extracted_window.swapchain_texture.texture).release();
+            extracted_window.swapchain_texture.texture = nullptr;
         }
 
         extracted_window.size_changed =
@@ -276,6 +307,7 @@ EPIX_API void epix::render::window::prepare_windows(
     Res<wgpu::Device> device,
     Res<wgpu::Adapter> adapter
 ) {
+    device->poll(false, nullptr);
     for (auto&& window :
          std::views::all(windows->windows) | std::views::values) {
         auto it = window_surfaces->surfaces.find(window.entity);
