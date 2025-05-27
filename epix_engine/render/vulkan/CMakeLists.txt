@@ -12,3 +12,5 @@ target_include_directories(epix_vulkan PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/includ
 target_link_libraries(epix_vulkan PUBLIC epix::app)
 target_link_libraries(epix_vulkan PUBLIC volk)
 target_link_libraries(epix_vulkan PUBLIC Vulkan-Headers)
+
+add_library(epix::vulkan ALIAS epix_vulkan)

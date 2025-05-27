@@ -16,6 +16,7 @@ target_include_directories(epix_render PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/includ
 target_link_libraries(epix_render PUBLIC epix::app)
 target_link_libraries(epix_render PUBLIC epix::window)
 target_link_libraries(epix_render PUBLIC epix::webgpu)
+target_link_libraries(epix_render PUBLIC epix::vulkan)
 target_link_libraries(epix_render PUBLIC epix::assets)
 target_link_libraries(epix_render PUBLIC epix::render::window)
 target_link_libraries(epix_render PUBLIC epix::render::graph)
