@@ -455,7 +455,7 @@ struct AppRunner {
     virtual int run(App& app) = 0;
 };
 struct AppCreateInfo {
-    bool mark_frame            = true;
+    bool mark_frame            = false;
     bool enable_tracy          = false;
     uint32_t control_pool_size = 2;
     uint32_t default_pool_size = 4;
