@@ -1,3 +1,3 @@
-#include "epix/render/vulkan.h"
+#include "epix/vulkan.h"
 
 VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE
