@@ -472,7 +472,7 @@ struct App {
         entt::dense_map<ScheduleLabel, bool> schedules_enable_tracy;
 
        public:
-        bool mark_frame   = true;
+        bool mark_frame   = false;
         bool enable_tracy = false;
         EPIX_API TracySettings& schedule_enable_tracy(
             const ScheduleLabel& label, bool enable = true

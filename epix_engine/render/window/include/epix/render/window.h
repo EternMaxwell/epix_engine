@@ -23,7 +23,7 @@ struct ExtractedWindow {
     bool present_mode_changed = false;
 
     EPIX_API void set_swapchain_texture(
-        vk::Device device, vk::Image image, vk::Format format
+        vk::ImageView view, vk::Image image, vk::Format format
     );
 };
 struct ExtractedWindows {
@@ -36,8 +36,9 @@ struct SurfaceData {
     vk::SurfaceKHR surface;
     vk::SwapchainKHR swapchain;
     vk::SwapchainCreateInfoKHR config;
+    std::vector<vk::ImageView> swapchain_image_views;
     std::vector<vk::Fence> swapchain_image_fences;
-    uint32_t fence_index = 0;
+    uint32_t fence_index         = 0;
     uint32_t current_image_index = 0;
 };
 struct WindowSurfaces {
@@ -61,7 +62,10 @@ EPIX_API void create_surfaces(
     ResMut<WindowSurfaces> window_surfaces,
     Res<vk::Instance> instance,
     Res<vk::PhysicalDevice> physical_device,
-    Res<vk::Device> device
+    Res<vk::Device> device,
+    Res<vk::Queue> queue,
+    Res<render::CommandPools> command_pools,
+    Local<vk::CommandBuffer> pcmd_buffer
 );
 
 EPIX_API void prepare_windows(

@@ -7,9 +7,10 @@ EPIX_API void epix::render::RenderPlugin::build(epix::App& app) {
     VULKAN_HPP_DEFAULT_DISPATCHER.init(vkGetInstanceProcAddr);
     // create webgpu render resources
     spdlog::info("Creating vulkan render resources");
-    auto validation_layers = std::array{
-        "VK_LAYER_KHRONOS_validation",
-    };
+    auto layers = std::vector<const char*>();
+    if (validation) {
+        layers.push_back("VK_LAYER_KHRONOS_validation");
+    }
     auto app_info = vk::ApplicationInfo()
                         .setPApplicationName("Epix")
                         .setPEngineName("Epix")
@@ -28,7 +29,7 @@ EPIX_API void epix::render::RenderPlugin::build(epix::App& app) {
     auto instance =
         vk::createInstance(vk::InstanceCreateInfo()
                                .setPApplicationInfo(&app_info)
-                               .setPEnabledLayerNames(validation_layers)
+                               .setPEnabledLayerNames(layers)
                                .setPEnabledExtensionNames(extensions));
     volkLoadInstance(instance);
     VULKAN_HPP_DEFAULT_DISPATCHER.init(instance);
