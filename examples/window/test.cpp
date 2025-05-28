@@ -22,18 +22,18 @@ int main() {
     window_desc.title = "Test Window";
 
     window_desc.set_size(800, 200);
-    window_desc.opacity = 0.5f;
+    window_desc.opacity      = 0.5f;
     window_desc.present_mode = PresentMode::Fifo;
 
     window_desc2.title = "Test Window 2";
 
     window_desc2.set_size(800, 400);
-    window_desc2.opacity = 0.7f;
+    window_desc2.opacity      = 0.7f;
     window_desc2.present_mode = PresentMode::Fifo;
 
     epix::App app = epix::App::create(epix::AppConfig{
-        // .mark_frame   = false,
-        .enable_tracy = true,
+        // .mark_frame = true,
+        // .enable_tracy = true,
     });
 
     struct FrameCounter {

@@ -10,6 +10,6 @@ endif()
 target_include_directories(epix_render_window PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(epix_render_window PUBLIC epix::app)
 target_link_libraries(epix_render_window PUBLIC epix::window)
-target_link_libraries(epix_render_window PUBLIC epix::webgpu)
+target_link_libraries(epix_render_window PUBLIC epix::vulkan)
 
 add_library(epix::render::window ALIAS epix_render_window)

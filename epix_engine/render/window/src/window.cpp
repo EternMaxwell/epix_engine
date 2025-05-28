@@ -3,28 +3,40 @@
 using namespace epix::render::window;
 
 EPIX_API void ExtractedWindow::set_swapchain_texture(
-    wgpu::SurfaceTexture texture
+    vk::Device device, vk::Image image, vk::Format format
 ) {
-    swapchain_texture = texture;
-    swapchain_texture_view =
-        wgpu::Texture(texture.texture)
-            .createView(WGPUTextureViewDescriptor{
-                .format          = swapchain_texture_format,
-                .dimension       = wgpu::TextureViewDimension::_2D,
-                .baseMipLevel    = 0,
-                .mipLevelCount   = 1,
-                .baseArrayLayer  = 0,
-                .arrayLayerCount = 1,
-                .aspect          = wgpu::TextureAspect::All,
-                .usage           = wgpu::TextureUsage::RenderAttachment,
-            });
+    swapchain_texture        = image;
+    swapchain_texture_format = format;
+    swapchain_texture_view   = device.createImageView(
+        vk::ImageViewCreateInfo()
+            .setImage(image)
+            .setFormat(format)
+            .setViewType(vk::ImageViewType::e2D)
+            .setSubresourceRange(
+                vk::ImageSubresourceRange()
+                    .setAspectMask(vk::ImageAspectFlagBits::eColor)
+                    .setBaseMipLevel(0)
+                    .setLevelCount(1)
+                    .setBaseArrayLayer(0)
+                    .setLayerCount(1)
+            )
+    );
 }
 
 EPIX_API void epix::render::window::WindowSurfaces::remove(const Entity& entity
 ) {
     auto it = surfaces.find(entity);
     if (it != surfaces.end()) {
-        it->second.surface.release();
+        auto& data = it->second;
+        if (data.swapchain) {
+            data.device.destroySwapchainKHR(data.swapchain);
+        }
+        if (data.surface) {
+            data.instance.destroySurfaceKHR(data.surface);
+        }
+        for (auto& fence : data.swapchain_image_fences) {
+            data.device.destroyFence(fence);
+        }
         surfaces.erase(it);
     }
 }
@@ -43,35 +55,6 @@ EPIX_API void WindowRenderPlugin::build(epix::App& app) {
     );
     if (handle_present) {
         app.add_systems(
-            epix::Render,
-            epix::into([](Res<wgpu::Device> device, Res<wgpu::Queue> queue,
-                          Res<WindowSurfaces> surfaces,
-                          Res<ExtractedWindows> extracted_windows) {
-                auto encoder = device->createCommandEncoder();
-                for (auto&& [id, extracted_window] :
-                     extracted_windows->windows) {
-                    auto color_attachment = WGPURenderPassColorAttachment{
-                        .view       = extracted_window.swapchain_texture_view,
-                        .loadOp     = wgpu::LoadOp::Clear,
-                        .storeOp    = wgpu::StoreOp::Store,
-                        .clearValue = WGPUColor{0.0, 0.0, 0.0, 1.0},
-                    };
-                    auto pass =
-                        encoder.beginRenderPass(WGPURenderPassDescriptor{
-                            .colorAttachmentCount   = 1,
-                            .colorAttachments       = &color_attachment,
-                            .depthStencilAttachment = nullptr,
-                        });
-                    pass.end();
-                    pass.release();
-                }
-                auto command_buffer = encoder.finish();
-                queue->submit(command_buffer);
-            })
-                .before(present_windows)
-                .set_name("Clear surface textures")
-        );
-        app.add_systems(
             epix::PostRender,
             epix::into(present_windows).set_name("present windows")
         );
@@ -80,6 +63,7 @@ EPIX_API void WindowRenderPlugin::build(epix::App& app) {
 
 EPIX_API void epix::render::window::extract_windows(
     ResMut<ExtractedWindows> extracted_windows,
+    Res<vk::Device> device,
     Extract<EventReader<epix::window::WindowClosed>> closed,
     Extract<Query<
         Get<Entity, epix::window::Window, Has<epix::window::PrimaryWindow>>>>
@@ -107,18 +91,15 @@ EPIX_API void epix::render::window::extract_windows(
                     .physical_height = new_height,
                     .present_mode    = window.present_mode,
                     .alpha_mode      = window.alpha_mode,
+                    .device          = *device,
                 }
             );
         }
 
         auto& extracted_window = extracted_windows->windows.at(entity);
         if (extracted_window.swapchain_texture_view) {
-            extracted_window.swapchain_texture_view.release();
+            device->destroyImageView(extracted_window.swapchain_texture_view);
             extracted_window.swapchain_texture_view = nullptr;
-        }
-        if (extracted_window.swapchain_texture.texture) {
-            wgpu::Texture(extracted_window.swapchain_texture.texture).release();
-            extracted_window.swapchain_texture.texture = nullptr;
         }
 
         extracted_window.size_changed =
@@ -148,155 +129,182 @@ EPIX_API void epix::render::window::extract_windows(
 EPIX_API void epix::render::window::create_surfaces(
     Res<ExtractedWindows> windows,
     ResMut<WindowSurfaces> window_surfaces,
-    Res<wgpu::Instance> instance,
-    Res<wgpu::Adapter> adapter,
-    Res<wgpu::Device> device
+    Res<vk::Instance> instance,
+    Res<vk::PhysicalDevice> physical_device,
+    Res<vk::Device> device
 ) {
     for (auto&& window :
          std::views::all(windows->windows) | std::views::values) {
-        auto match_present_mode = [](const wgpu::SurfaceCapabilities& caps,
-                                     epix::window::PresentMode present_mode) {
+        auto match_present_mode = [&](vk::SurfaceKHR surface,
+                                      epix::window::PresentMode present_mode) {
+            auto presentModes =
+                physical_device->getSurfacePresentModesKHR(surface);
             switch (present_mode) {
                 case epix::window::PresentMode::AutoNoVsync: {
                     // immediate
                     auto res = std::find_if(
-                        caps.presentModes,
-                        caps.presentModes + caps.presentModeCount,
+                        presentModes.begin(), presentModes.end(),
                         [](auto&& mode) {
-                            return mode == wgpu::PresentMode::Immediate;
+                            return mode == vk::PresentModeKHR::eImmediate;
                         }
                     );
-                    if (res != caps.presentModes + caps.presentModeCount) {
-                        return wgpu::PresentMode::Immediate;
+                    if (res != presentModes.end()) {
+                        return vk::PresentModeKHR::eImmediate;
                     }
                     // mailbox
                     res = std::find_if(
-                        caps.presentModes,
-                        caps.presentModes + caps.presentModeCount,
+                        presentModes.begin(), presentModes.end(),
                         [](auto&& mode) {
-                            return mode == wgpu::PresentMode::Mailbox;
+                            return mode == vk::PresentModeKHR::eMailbox;
                         }
                     );
-                    if (res != caps.presentModes + caps.presentModeCount) {
-                        return wgpu::PresentMode::Mailbox;
+                    if (res != presentModes.end()) {
+                        return vk::PresentModeKHR::eMailbox;
                     }
                     // fifo
                     res = std::find_if(
-                        caps.presentModes,
-                        caps.presentModes + caps.presentModeCount,
+                        presentModes.begin(), presentModes.end(),
                         [](auto&& mode) {
-                            return mode == wgpu::PresentMode::Fifo;
+                            return mode == vk::PresentModeKHR::eFifo;
                         }
                     );
-                    if (res != caps.presentModes + caps.presentModeCount) {
-                        return wgpu::PresentMode::Fifo;
+                    if (res != presentModes.end()) {
+                        return vk::PresentModeKHR::eFifo;
                     }
                 }
                 case epix::window::PresentMode::AutoVsync: {
                     // fifo relaxed
                     auto res = std::find_if(
-                        caps.presentModes,
-                        caps.presentModes + caps.presentModeCount,
+                        presentModes.begin(), presentModes.end(),
                         [](auto&& mode) {
-                            return mode == wgpu::PresentMode::FifoRelaxed;
+                            return mode == vk::PresentModeKHR::eFifoRelaxed;
                         }
                     );
-                    if (res != caps.presentModes + caps.presentModeCount) {
-                        return wgpu::PresentMode::FifoRelaxed;
+                    if (res != presentModes.end()) {
+                        return vk::PresentModeKHR::eFifoRelaxed;
                     }
                     // fifo
                     res = std::find_if(
-                        caps.presentModes,
-                        caps.presentModes + caps.presentModeCount,
+                        presentModes.begin(), presentModes.end(),
                         [](auto&& mode) {
-                            return mode == wgpu::PresentMode::Fifo;
+                            return mode == vk::PresentModeKHR::eFifo;
                         }
                     );
-                    if (res != caps.presentModes + caps.presentModeCount) {
-                        return wgpu::PresentMode::Fifo;
+                    if (res != presentModes.end()) {
+                        return vk::PresentModeKHR::eFifo;
                     }
                 }
                 case epix::window::PresentMode::Immediate: {
-                    return wgpu::PresentMode::Immediate;
+                    return vk::PresentModeKHR::eImmediate;
                 }
                 case epix::window::PresentMode::Mailbox: {
-                    return wgpu::PresentMode::Mailbox;
+                    return vk::PresentModeKHR::eMailbox;
                 }
                 case epix::window::PresentMode::Fifo: {
-                    return wgpu::PresentMode::Fifo;
+                    return vk::PresentModeKHR::eFifo;
                 }
                 case epix::window::PresentMode::FifoRelaxed: {
-                    return wgpu::PresentMode::FifoRelaxed;
+                    return vk::PresentModeKHR::eFifoRelaxed;
                 }
                 default: {
-                    return wgpu::PresentMode::Fifo;
+                    return vk::PresentModeKHR::eFifo;  // default to FIFO
                 }
             }
         };
         if (!window_surfaces->surfaces.contains(window.entity)) {
-            wgpu::Surface surface =
-                epix::webgpu::utils::create_surface(*instance, window.handle);
-            wgpu::SurfaceCapabilities caps;
-            surface.getCapabilities(*adapter, &caps);
-            auto formats = caps.formats;
+            vk::SurfaceKHR surface;
+            {
+                VkSurfaceKHR s;
+                if (glfwCreateWindowSurface(
+                        *instance, window.handle, nullptr, &s
+                    ) != VK_SUCCESS) {
+                    throw std::runtime_error("Failed to create window surface");
+                }
+                surface = s;
+            }
+            auto formats = physical_device->getSurfaceFormatsKHR(surface);
             auto format  = formats[0];
-            for (auto&& available :
-                 std::ranges::subrange(formats, formats + caps.formatCount)) {
-                if (available == wgpu::TextureFormat::BGRA8UnormSrgb ||
-                    available == wgpu::TextureFormat::RGBA8UnormSrgb) {
+            for (auto&& available : formats) {
+                // Prefer SRGB format if available
+                if (available.format == vk::Format::eB8G8R8A8Srgb &&
+                    available.colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear) {
                     format = available;
                     break;
                 }
             }
-            auto presentMode = match_present_mode(caps, window.present_mode);
+            auto presentMode = match_present_mode(surface, window.present_mode);
 
-            auto config = WGPUSurfaceConfiguration{
-                .device = *device,
-                .format = format,
-                .usage  = wgpu::TextureUsage::RenderAttachment,
-                .width  = static_cast<uint32_t>(window.physical_width),
-                .height = static_cast<uint32_t>(window.physical_height),
-                .alphaMode =
-                    [](epix::window::CompositeAlphaMode mode) {
-                        switch (mode) {
+            auto swapchain_create_info =
+                vk::SwapchainCreateInfoKHR()
+                    .setSurface(surface)
+                    .setMinImageCount(2)  // Double buffering
+                    .setImageFormat(format.format)
+                    .setImageColorSpace(format.colorSpace)
+                    .setImageExtent(vk::Extent2D(
+                        window.physical_width, window.physical_height
+                    ))
+                    .setImageArrayLayers(1)
+                    .setImageUsage(vk::ImageUsageFlagBits::eColorAttachment)
+                    .setPreTransform(vk::SurfaceTransformFlagBitsKHR::eIdentity)
+                    .setCompositeAlpha([&] {
+                        switch (window.alpha_mode) {
                             case epix::window::CompositeAlphaMode::Opacity:
-                                return wgpu::CompositeAlphaMode::Opaque;
+                                return vk::CompositeAlphaFlagBitsKHR::eOpaque;
                             case epix::window::CompositeAlphaMode::
                                 PreMultiplied:
-                                return wgpu::CompositeAlphaMode::Premultiplied;
+                                return vk::CompositeAlphaFlagBitsKHR::
+                                    ePreMultiplied;
                             case epix::window::CompositeAlphaMode::
                                 PostMultiplied:
-                                return wgpu::CompositeAlphaMode::
-                                    Unpremultiplied;
+                                return vk::CompositeAlphaFlagBitsKHR::
+                                    ePostMultiplied;
                             case epix::window::CompositeAlphaMode::Inherit:
-                                return wgpu::CompositeAlphaMode::Inherit;
+                                return vk::CompositeAlphaFlagBitsKHR::eInherit;
                             default:
-                                return wgpu::CompositeAlphaMode::Auto;
+                                return vk::CompositeAlphaFlagBitsKHR::eOpaque;
                         }
-                    }(window.alpha_mode),
-                .presentMode = presentMode,
-            };
+                    }())  // Opaque alpha
+                    .setPresentMode(presentMode)
+                    .setClipped(true);
 
-            surface.configure(config);
+            auto swapchain = device->createSwapchainKHR(swapchain_create_info);
+            auto actual_count = device->getSwapchainImagesKHR(swapchain).size();
+            swapchain_create_info.setMinImageCount(actual_count);
+            auto fences =
+                std::views::iota((size_t)0, actual_count) |
+                std::views::transform([&](auto&&) {
+                    return device->createFence(vk::FenceCreateInfo().setFlags(
+                        vk::FenceCreateFlagBits::eSignaled
+                    ));
+                }) |
+                std::ranges::to<std::vector>();
             window_surfaces->surfaces.emplace(
                 window.entity,
                 SurfaceData{
-                    .surface = surface,
-                    .config  = config,
+                    .device                 = *device,
+                    .instance               = *instance,
+                    .surface                = surface,
+                    .swapchain              = swapchain,
+                    .config                 = swapchain_create_info,
+                    .swapchain_image_fences = std::move(fences),
                 }
             );
         }
 
         if (window.size_changed || window.present_mode_changed) {
-            auto& surface        = window_surfaces->surfaces.at(window.entity);
-            surface.config.width = static_cast<uint32_t>(window.physical_width);
-            surface.config.height =
-                static_cast<uint32_t>(window.physical_height);
-            wgpu::SurfaceCapabilities caps;
-            surface.surface.getCapabilities(*adapter, &caps);
-            auto presentMode = match_present_mode(caps, window.present_mode);
+            auto& surface = window_surfaces->surfaces.at(window.entity);
+            surface.config.setImageExtent(
+                vk::Extent2D(window.physical_width, window.physical_height)
+            );
+            auto presentMode =
+                match_present_mode(surface.surface, window.present_mode);
             surface.config.presentMode = presentMode;
-            surface.surface.configure(surface.config);
+            surface.config.setOldSwapchain(surface.swapchain);
+            auto old          = surface.swapchain;
+            surface.swapchain = device->createSwapchainKHR(surface.config);
+            if (old) {
+                device->destroySwapchainKHR(old);
+            }
         }
     }
 }
@@ -304,76 +312,50 @@ EPIX_API void epix::render::window::create_surfaces(
 EPIX_API void epix::render::window::prepare_windows(
     ResMut<ExtractedWindows> windows,
     ResMut<WindowSurfaces> window_surfaces,
-    Res<wgpu::Device> device,
-    Res<wgpu::Adapter> adapter
+    Res<vk::Device> device,
+    Res<vk::PhysicalDevice> physical_device
 ) {
-    device->poll(false, nullptr);
     for (auto&& window :
          std::views::all(windows->windows) | std::views::values) {
         auto it = window_surfaces->surfaces.find(window.entity);
         if (it == window_surfaces->surfaces.end()) continue;
         auto& surface_data = it->second;
 
-        auto not_configured =
-            !window_surfaces->configured.contains(window.entity);
-        if (not_configured) {
-            window_surfaces->configured.insert(window.entity);
-        }
         auto& surface = surface_data.surface;
 
-        if (not_configured || window.size_changed ||
-            window.present_mode_changed) {
-            wgpu::SurfaceTexture texture;
-            surface.getCurrentTexture(&texture);
-            if (texture.status ==
-                    wgpu::SurfaceGetCurrentTextureStatus::SuccessOptimal ||
-                texture.status ==
-                    wgpu::SurfaceGetCurrentTextureStatus::SuccessSuboptimal) {
-                window.set_swapchain_texture(texture);
-            } else {
-                throw std::runtime_error(
-                    "Failed to get current texture for window"
-                );
-            }
+        auto res = device->acquireNextImageKHR(
+            surface_data.swapchain, UINT64_MAX, nullptr,
+            surface_data.swapchain_image_fences[surface_data.fence_index],
+            &surface_data.current_image_index
+        );
+        auto res2 = device->waitForFences(
+            surface_data.swapchain_image_fences[surface_data.fence_index], true,
+            UINT64_MAX
+        );
+        device->resetFences(
+            surface_data.swapchain_image_fences[surface_data.fence_index]
+        );
+        if (res == vk::Result::eSuccess || res == vk::Result::eSuboptimalKHR) {
+            auto image = device->getSwapchainImagesKHR(surface_data.swapchain
+            )[surface_data.current_image_index];
+            window.set_swapchain_texture(
+                *device, image, surface_data.config.imageFormat
+            );
         } else {
-            wgpu::SurfaceTexture texture;
-            surface.getCurrentTexture(&texture);
-            if (texture.status ==
-                wgpu::SurfaceGetCurrentTextureStatus::SuccessOptimal) {
-                window.set_swapchain_texture(texture);
-            } else if (texture.status ==
-                           wgpu::SurfaceGetCurrentTextureStatus::Outdated ||
-                       texture.status == wgpu::SurfaceGetCurrentTextureStatus::
-                                             SuccessSuboptimal) {
-                surface.configure(surface_data.config);
-                surface.getCurrentTexture(&texture);
-                if (texture.status ==
-                        wgpu::SurfaceGetCurrentTextureStatus::SuccessOptimal ||
-                    texture.status == wgpu::SurfaceGetCurrentTextureStatus::
-                                          SuccessSuboptimal) {
-                    window.set_swapchain_texture(texture);
-                } else {
-                    throw std::runtime_error(
-                        "Failed to get current texture for window"
-                    );
-                }
-            } else {
-                throw std::runtime_error(
-                    "Failed to get current texture for window"
-                );
-            }
+            throw std::runtime_error("Failed to get current texture for window"
+            );
         }
-
-        window.swapchain_texture_format = surface_data.config.format;
     }
 }
 
 EPIX_API void epix::render::window::present_windows(
-    ResMut<WindowSurfaces> window_surfaces
+    ResMut<WindowSurfaces> window_surfaces, Res<vk::Queue> queue
 ) {
     for (auto&& window :
          std::views::all(window_surfaces->surfaces) | std::views::values) {
-        auto& surface = window.surface;
-        surface.present();
+        auto res =
+            queue->presentKHR(vk::PresentInfoKHR()
+                                  .setSwapchains(window.swapchain)
+                                  .setImageIndices(window.current_image_index));
     }
 }
