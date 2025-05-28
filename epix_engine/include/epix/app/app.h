@@ -455,7 +455,7 @@ struct AppRunner {
     virtual int run(App& app) = 0;
 };
 struct AppCreateInfo {
-    bool mark_frame            = true;
+    bool mark_frame            = false;
     bool enable_tracy          = false;
     uint32_t control_pool_size = 2;
     uint32_t default_pool_size = 4;
@@ -472,7 +472,7 @@ struct App {
         entt::dense_map<ScheduleLabel, bool> schedules_enable_tracy;
 
        public:
-        bool mark_frame   = true;
+        bool mark_frame   = false;
         bool enable_tracy = false;
         EPIX_API TracySettings& schedule_enable_tracy(
             const ScheduleLabel& label, bool enable = true

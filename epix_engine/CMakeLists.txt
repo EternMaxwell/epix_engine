@@ -44,6 +44,8 @@ target_link_libraries (epix_engine PUBLIC TracyClient)
 target_link_libraries (epix_engine PUBLIC stduuid)
 target_link_libraries (epix_engine PUBLIC box2d)
 target_link_libraries (epix_engine PUBLIC stbimage)
+target_link_libraries (epix_engine PUBLIC volk)
+target_link_libraries (epix_engine PUBLIC Vulkan-Headers)
 # EPIX CORE LIBRARIES
 # target_link_libraries (epix_engine PUBLIC epix_common)
 # target_link_libraries (epix_engine PUBLIC epix::app)
