@@ -44,20 +44,26 @@ struct StrongHandle : NonCopyNonMove {
         }
     }
 };
+struct UntypedHandle;
 template <typename T>
 struct Handle {
    private:
     std::variant<std::shared_ptr<StrongHandle>, AssetId<T>> ref;
 
    public:
+    Handle() : ref(std::shared_ptr<StrongHandle>()) {}
     Handle(const std::shared_ptr<StrongHandle>& handle) : ref(handle) {}
     Handle(const AssetId<T>& id) : ref(id) {}
     Handle(const uuids::uuid& id) : ref(AssetId<T>(id)) {}
+    Handle(const UntypedHandle& handle);
+    Handle(UntypedHandle&& handle);
 
     Handle(const Handle& other)            = default;
     Handle(Handle&& other)                 = default;
     Handle& operator=(const Handle& other) = default;
     Handle& operator=(Handle&& other)      = default;
+    Handle& operator=(const UntypedHandle& other);
+    Handle& operator=(UntypedHandle&& other);
 
     bool operator==(const Handle& other) const { return ref == other.ref; }
 
@@ -184,7 +190,58 @@ struct UntypedHandle {
             ref
         );
     }
+
+    template <typename T>
+    friend struct Handle;
 };
+template <typename T>
+Handle<T>::Handle(const UntypedHandle& handle)
+    : ref(std::visit(
+          epix::util::visitor{
+              [](const std::shared_ptr<StrongHandle>& strong_handle) {
+                  return strong_handle;
+              },
+              [](const UntypedAssetId& id) { return id.typed<T>(); }
+          },
+          handle.ref
+      )) {}
+template <typename T>
+Handle<T>::Handle(UntypedHandle&& handle)
+    : ref(std::visit(
+          epix::util::visitor{
+              [](std::shared_ptr<StrongHandle>&& strong_handle) {
+                  return std::move(strong_handle);
+              },
+              [](UntypedAssetId&& id) { return std::move(id).typed<T>(); }
+          },
+          std::move(handle.ref)
+      )) {}
+template <typename T>
+Handle<T>& Handle<T>::operator=(const UntypedHandle& other) {
+    ref = std::visit(
+        epix::util::visitor{
+            [](const std::shared_ptr<StrongHandle>& strong_handle) {
+                return strong_handle;
+            },
+            [](const UntypedAssetId& id) { return id.typed<T>(); }
+        },
+        other.ref
+    );
+    return *this;
+}
+template <typename T>
+Handle<T>& Handle<T>::operator=(UntypedHandle&& other) {
+    ref = std::visit(
+        epix::util::visitor{
+            [](std::shared_ptr<StrongHandle>&& strong_handle) {
+                return std::move(strong_handle);
+            },
+            [](UntypedAssetId&& id) { return std::move(id).typed<T>(); }
+        },
+        std::move(other.ref)
+    );
+    return *this;
+}
 
 struct HandleProvider {
     AssetIndexAllocator index_allocator;
