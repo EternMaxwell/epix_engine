@@ -175,6 +175,7 @@ struct AssetEvent {
         Removed,   // Asset removed
         Modified,  // Asset modified or replaced
         Unused,    // All strong handles destroyed
+        Loaded,    // Asset loaded from disk or network
     } type;
     AssetId<T> id;
 
@@ -189,6 +190,9 @@ struct AssetEvent {
     }
     static AssetEvent<T> unused(const AssetId<T>& id) {
         return {Type::Unused, id};
+    }
+    static AssetEvent<T> loaded(const AssetId<T>& id) {
+        return {Type::Loaded, id};
     }
 };
 
