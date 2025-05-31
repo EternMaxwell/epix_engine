@@ -102,6 +102,7 @@ struct Receiver {
 
    public:
     Receiver(const std::shared_ptr<queue_type>& queue) : m_queue(queue) {}
+    Receiver()                           = default;
     Receiver(const Receiver&)            = default;
     Receiver(Receiver&&)                 = default;
     Receiver& operator=(const Receiver&) = default;
@@ -111,8 +112,18 @@ struct Receiver {
     operator bool() { return m_queue.operator bool(); }
     bool operator!() { return !m_queue; }
 
-    T receive() { return m_queue->pop(); }
-    std::optional<T> try_receive() { return m_queue->try_pop(); }
+    T receive() {
+        if (!m_queue) {
+            throw std::runtime_error("Receiver is not initialized.");
+        }
+        return m_queue->pop();
+    }
+    std::optional<T> try_receive() {
+        if (!m_queue) {
+            return std::nullopt;
+        }
+        return m_queue->try_pop();
+    }
     Sender<T, Alloc> create_sender() { return Sender<T, Alloc>(m_queue); }
 
     template <typename U, typename Alloc2>
