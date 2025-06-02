@@ -275,12 +275,81 @@ struct AssetLoaders {
         }
         return nullptr;
     }
+    std::vector<ErasedAssetLoader*> get_multi_by_type(
+        const std::type_index& type
+    ) {  // get all loaders of a specific type
+        if (auto it = type_to_loaders.find(type); it != type_to_loaders.end()) {
+            return it->second | std::views::transform([this](uint32_t index) {
+                       return get_by_index(index);
+                   }) |
+                   std::ranges::to<std::vector>();
+        }
+        return {};  // Return an empty vector if no loaders of that type exist
+    }
+    /**
+     * @brief Apply a function to each loader of a specific type. And stop
+     * iterating if the function returns true.
+     *
+     * @param type The type of the loaders to iterate over.
+     * @param func The function to apply to each loader. It should return true
+     * to
+     */
+    bool for_each_by_type(
+        const std::type_index& type,
+        const std::function<bool(ErasedAssetLoader&)>& func
+    ) {
+        auto it = type_to_loaders.find(type);
+        if (it != type_to_loaders.end()) {
+            for (uint32_t index : it->second) {
+                if (func(*get_by_index(index))) {
+                    return true;  // If the function returns true, stop
+                                  // iterating
+                }
+            }
+        }
+        return false;
+    }
     ErasedAssetLoader* get_by_extension(const std::string_view& ext) {
         auto it = ext_to_loaders.find(ext.data());
         if (it != ext_to_loaders.end() && !it->second.empty()) {
             return get_by_index(it->second[0]);
         }
         return nullptr;
+    }
+    std::vector<ErasedAssetLoader*> get_multi_by_extension(
+        const std::string_view& ext
+    ) {  // get all loaders of a specific extension
+        if (auto it = ext_to_loaders.find(ext.data());
+            it != ext_to_loaders.end()) {
+            return it->second | std::views::transform([this](uint32_t index) {
+                       return get_by_index(index);
+                   }) |
+                   std::ranges::to<std::vector>();
+        }
+        return {};  // Return an empty vector if no loaders of that extension
+                    // exist
+    }
+    /**
+     * @brief Apply a function to each loader of a specific extension. And stop
+     * iterating if the function returns true.
+     *
+     * @param ext The file extension to iterate over, without the leading dot.
+     * @param func The function to apply to each loader. It should return true
+     */
+    bool for_each_by_extension(
+        const std::string_view& ext,
+        const std::function<bool(ErasedAssetLoader&)>& func
+    ) {
+        auto it = ext_to_loaders.find(ext.data());
+        if (it != ext_to_loaders.end()) {
+            for (uint32_t index : it->second) {
+                if (func(*get_by_index(index))) {
+                    return true;  // If the function returns true, stop
+                                  // iterating
+                }
+            }
+        }
+        return false;
     }
     // get by path is a wrapper method for get_by_extension, but much easier to
     // use
@@ -297,8 +366,37 @@ struct AssetLoaders {
         }
         return nullptr;
     }
+    std::vector<ErasedAssetLoader*> get_multi_by_path(
+        const std::filesystem::path& path
+    ) {  // get all loaders by the file extension of the path
+        // the extension name should not include the dot
+        if (path.has_extension()) {
+            auto ext      = path.extension().string();
+            auto ext_view = std::string_view(ext);
+            if (ext.starts_with('.')) {
+                ext_view.remove_prefix(1);  // remove the leading dot
+            }
+            return get_multi_by_extension(ext_view);
+        }
+        return {};  // Return an empty vector if no loaders found
+    }
+    bool for_each_by_path(
+        const std::filesystem::path& path,
+        const std::function<bool(ErasedAssetLoader&)>& func
+    ) {  // get the loader by the file extension of the path
+        // the extension name should not include the dot
+        if (path.has_extension()) {
+            auto ext      = path.extension().string();
+            auto ext_view = std::string_view(ext);
+            if (ext.starts_with('.')) {
+                ext_view.remove_prefix(1);  // remove the leading dot
+            }
+            return for_each_by_extension(ext_view, func);
+        }
+        return false;
+    }
     template <AssetLoader T>
-    void push(const T&) {
+    uint32_t push(const T&) {
         using loader_info = LoaderInfo<T>;
         std::unique_ptr<ErasedAssetLoader> loader =
             std::make_unique<ErasedAssetLoaderImpl<T>>();
@@ -310,6 +408,7 @@ struct AssetLoaders {
         for (const char* e : ext) {
             ext_to_loaders[e].push_back(index);
         }
+        return index;  // Return the index of the newly added loader
     }
 };
 struct AssetLoadedEvent {
@@ -338,8 +437,8 @@ struct AssetServer {
      * @brief register an loader to the asset server.
      */
     template <AssetLoader T>
-    void register_loader(const T& t) {
-        asset_loaders.push(t);
+    uint32_t register_loader(const T& t) {
+        auto index  = asset_loaders.push(t);
         size_t size = pending_loads.size();
         while (size) {
             auto id = pending_loads.front();
@@ -347,6 +446,7 @@ struct AssetServer {
             load_internal(id);  // Try to load the pending asset
             --size;             // Decrease the size of pending loads
         }
+        return index;  // Return the index of the newly added loader
     }
     /**
      * @brief register an asset type to the asset server.
@@ -379,18 +479,14 @@ struct AssetServer {
             // found by extension, try to get by type, but this may cause errors
             // resulting in AssetLoadFailedEvent
             auto loader = asset_loaders.get_by_path(info.path);
-            if (!loader) {
-                // If no loader found by path, try to get by type
-                loader = asset_loaders.get_by_type(id.type);
-            }
             // check loader type
             if (loader && loader->asset_type() != id.type) {
                 // If the loader type does not match the asset type, we cannot
                 // use this loader
                 loader = nullptr;
             }
+            LoadContext context{*this, info.path};
             if (loader) {
-                LoadContext context{*this, info.path};
                 info.waiter = std::async(
                     std::launch::async,
                     [this, loader, id, context]() {
@@ -409,6 +505,41 @@ struct AssetServer {
                             event_sender.send(AssetLoadFailedEvent{id, e.what()}
                             );
                         }
+                    }
+                );
+            } else if (asset_loaders.get_by_type(id.type)) {
+                // There are loaders for the asset type, try them;
+                info.waiter = std::async(
+                    std::launch::async,
+                    [this, id, context,
+                     loaders = asset_loaders.get_multi_by_type(id.type)]() {
+                        std::vector<std::string> errors;
+                        for (auto& loader : loaders) {
+                            try {
+                                auto asset =
+                                    loader->load(context.path, context);
+                                if (asset.value) {
+                                    event_sender.send(
+                                        AssetLoadedEvent{id, std::move(asset)}
+                                    );
+                                    return;  // Successfully loaded, exit
+                                }
+                            } catch (const std::exception& e) {
+                                errors.emplace_back(e.what());
+                            }
+                        }
+                        std::string error_message =
+                            "Failed to load asset: " +
+                            std::accumulate(
+                                errors.begin(), errors.end(), std::string(),
+                                [index = 0](
+                                    const std::string& a, const std::string& b
+                                ) mutable {
+                                    return a + "\n" + "attempt " +
+                                           std::to_string(++index) + ": " + b;
+                                }
+                            );
+                        event_sender.send(id, std::move(error_message));
                     }
                 );
             } else {
