@@ -539,7 +539,9 @@ struct AssetServer {
                                            std::to_string(++index) + ": " + b;
                                 }
                             );
-                        event_sender.send(id, std::move(error_message));
+                        event_sender.send(
+                            AssetLoadFailedEvent{id, std::move(error_message)}
+                        );
                     }
                 );
             } else {
