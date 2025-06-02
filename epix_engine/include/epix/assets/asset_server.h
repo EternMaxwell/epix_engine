@@ -102,6 +102,9 @@ struct ErasedAssetLoaderImpl : ErasedAssetLoader {
                 std::move(asset)
             )};
         }
+        // this function does not catch exceptions, and the exceptions should be
+        // handled by the caller, most likely the AssetServer, to send the
+        // related event
     }
     std::vector<const char*> extensions() const override {
         return T::extensions() |
@@ -130,6 +133,8 @@ struct AssetInfos {
     entt::dense_map<UntypedAssetId, AssetInfo> infos;
     entt::dense_map<std::type_index, std::shared_ptr<HandleProvider>>
         handle_providers;
+
+    friend struct AssetServer;  // Allow AssetServer to access private members
 
    public:
     std::optional<AssetInfo> get_info(const UntypedAssetId& id) const {
@@ -277,6 +282,8 @@ struct AssetLoaders {
         }
         return nullptr;
     }
+    // get by path is a wrapper method for get_by_extension, but much easier to
+    // use
     ErasedAssetLoader* get_by_path(const std::filesystem::path& path
     ) {  // get the loader by the file extension of the path
         // the extension name should not include the dot
@@ -356,13 +363,33 @@ struct AssetServer {
         }
         asset_infos.handle_providers[type] = assets.get_handle_provider();
     }
+    std::optional<LoadState> get_state(const UntypedAssetId& id) const {
+        return asset_infos.get_info(id).transform([](const AssetInfo& info) {
+            return info.state;
+        });  // Return the state of the asset if it exists
+    }
     void load_internal(const UntypedAssetId& id) {
         if (auto opt = asset_infos.get_info(id);
             opt && (opt->state == LoadState::Pending ||
                     opt->state == LoadState::Failed)) {
             auto& info = *opt;
             info.state = LoadState::Loading;  // Set the state to Loading
-            if (auto loader = asset_loaders.get_by_type(id.type)) {
+            // get by ext first cause same type can have different loaders, we
+            // want it to be the most suitable loader for the asset if no loader
+            // found by extension, try to get by type, but this may cause errors
+            // resulting in AssetLoadFailedEvent
+            auto loader = asset_loaders.get_by_path(info.path);
+            if (!loader) {
+                // If no loader found by path, try to get by type
+                loader = asset_loaders.get_by_type(id.type);
+            }
+            // check loader type
+            if (loader && loader->asset_type() != id.type) {
+                // If the loader type does not match the asset type, we cannot
+                // use this loader
+                loader = nullptr;
+            }
+            if (loader) {
                 LoadContext context{*this, info.path};
                 info.waiter = std::async(
                     std::launch::async,

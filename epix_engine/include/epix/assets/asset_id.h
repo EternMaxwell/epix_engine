@@ -1,6 +1,9 @@
 #pragma once
 
+#include <epix/utils/core.h>
 #include <uuid.h>
+
+#include <typeindex>
 
 #include "index.h"
 
@@ -98,4 +101,9 @@ struct std::hash<epix::assets::AssetId<T>> {
             id
         );
     }
+};
+
+template <>
+struct std::hash<epix::assets::UntypedAssetId> {
+    EPIX_API size_t operator()(const epix::assets::UntypedAssetId& id) const;
 };
