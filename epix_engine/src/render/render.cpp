@@ -9,10 +9,12 @@ epix::render::RenderPlugin::enable_validation(bool enable) {
 }
 
 EPIX_API void epix::render::RenderPlugin::build(epix::App& app) {
+    #ifdef EPIX_USE_VOLK
     if (volkInitialize() != VK_SUCCESS) {
         throw std::runtime_error("Failed to initialize Vulkan loader");
     }
     VULKAN_HPP_DEFAULT_DISPATCHER.init(vkGetInstanceProcAddr);
+    #endif
     // create webgpu render resources
     spdlog::info("Creating vulkan render resources");
     auto layers = std::vector<const char*>();
@@ -43,8 +45,10 @@ EPIX_API void epix::render::RenderPlugin::build(epix::App& app) {
                                .setPApplicationInfo(&app_info)
                                .setPEnabledLayerNames(layers)
                                .setPEnabledExtensionNames(extensions));
+    #ifdef EPIX_USE_VOLK
     volkLoadInstance(instance);
     VULKAN_HPP_DEFAULT_DISPATCHER.init(instance);
+    #endif
     if (validation) {
         auto debug_utils_messenger_create_info =
             vk::DebugUtilsMessengerCreateInfoEXT()
@@ -137,8 +141,10 @@ EPIX_API void epix::render::RenderPlugin::build(epix::App& app) {
     // we only have one device if only one app exists and only this plugin
     // handles vulkan resources, so we can add these lines to improve
     // performance
+    #ifdef EPIX_USE_VOLK
     volkLoadDevice(device);
     VULKAN_HPP_DEFAULT_DISPATCHER.init(device);
+    #endif
     auto queue = device.getQueue(queue_family_index, 0);
     app.insert_resource(instance);
     app.insert_resource(physical_device);

@@ -6,6 +6,7 @@ list(APPEND ENGINE_INCLUDES ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
 set(EPIX_ENABLE_TRACY ON)
 set(EPIX_WITH_SHARED OFF)
+option(EPIX_USE_VOLK "Use Vulkan Loader" ON)
 
 # BUILD STATIC
 add_library(epix_engine STATIC ${MODULE_SOURCES})
@@ -39,6 +40,9 @@ if(EPIX_WITH_SHARED)
 
   if(EPIX_ENABLE_TRACY)
     target_compile_definitions(epix_engine_shared PRIVATE EPIX_ENABLE_TRACY)
+  endif()
+  if(EPIX_USE_VOLK)
+    target_compile_definitions(epix_engine_shared PUBLIC EPIX_USE_VOLK)
   endif()
 
   target_compile_definitions(epix_engine_shared PRIVATE EPIX_BUILD_SHARED)

@@ -1,11 +1,15 @@
 #pragma once
 
+#ifdef EPIX_USE_VOLK
 #define VK_NO_PROTOTYPES
 #define VULKAN_HPP_DISPATCH_LOADER_DYNAMIC 1
+#endif
 #include <vulkan/vulkan.hpp>
 // include vulkan before volk
 #include <epix/app.h>
+#ifdef EPIX_USE_VOLK
 #include <volk.h>
+#endif
 
 namespace epix::render {
 
