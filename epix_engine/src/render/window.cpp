@@ -303,14 +303,11 @@ EPIX_API void epix::render::window::create_surfaces(
             }
             auto actual_count = images.size();
             swapchain_create_info.setMinImageCount(actual_count);
-            auto fences =
-                std::views::iota((size_t)0, actual_count) |
-                std::views::transform([&](auto&&) {
-                    return device->createFence(vk::FenceCreateInfo().setFlags(
-                        vk::FenceCreateFlagBits::eSignaled
-                    ));
-                }) |
-                std::ranges::to<std::vector>();
+            auto fences = std::views::iota((size_t)0, actual_count) |
+                          std::views::transform([&](auto&&) {
+                              return device->createFence(vk::FenceCreateInfo());
+                          }) |
+                          std::ranges::to<std::vector>();
             window_surfaces->surfaces.emplace(
                 window.entity,
                 SurfaceData{
@@ -425,6 +422,7 @@ EPIX_API void epix::render::window::prepare_windows(
     Res<vk::Device> device,
     Res<vk::PhysicalDevice> physical_device
 ) {
+    std::vector<std::pair<Entity, std::string>> errors;
     for (auto&& window :
          std::views::all(windows->windows) | std::views::values) {
         auto it = window_surfaces->surfaces.find(window.entity);
@@ -433,31 +431,44 @@ EPIX_API void epix::render::window::prepare_windows(
 
         auto& surface = surface_data.surface;
 
-        auto res = device->acquireNextImageKHR(
-            surface_data.swapchain, UINT64_MAX, nullptr,
-            surface_data.swapchain_image_fences[surface_data.fence_index],
-            &surface_data.current_image_index
-        );
-        auto res2 = device->waitForFences(
-            surface_data.swapchain_image_fences[surface_data.fence_index], true,
-            UINT64_MAX
-        );
-        device->resetFences(
-            surface_data.swapchain_image_fences[surface_data.fence_index]
-        );
-        if (res == vk::Result::eSuccess || res == vk::Result::eSuboptimalKHR) {
-            auto image = device->getSwapchainImagesKHR(surface_data.swapchain
-            )[surface_data.current_image_index];
-            auto view =
-                surface_data
-                    .swapchain_image_views[surface_data.current_image_index];
-            window.set_swapchain_texture(
-                view, image, surface_data.config.imageFormat
+        try {
+            auto res = device->acquireNextImageKHR(
+                surface_data.swapchain, UINT64_MAX, nullptr,
+                surface_data.swapchain_image_fences[surface_data.fence_index],
+                &surface_data.current_image_index
             );
-        } else {
-            throw std::runtime_error("Failed to get current texture for window"
+            auto res2 = device->waitForFences(
+                surface_data.swapchain_image_fences[surface_data.fence_index],
+                true, UINT64_MAX
             );
+            device->resetFences(
+                surface_data.swapchain_image_fences[surface_data.fence_index]
+            );
+            if (res == vk::Result::eSuccess ||
+                res == vk::Result::eSuboptimalKHR) {
+                auto image =
+                    device->getSwapchainImagesKHR(surface_data.swapchain
+                    )[surface_data.current_image_index];
+                auto view = surface_data.swapchain_image_views
+                                [surface_data.current_image_index];
+                window.set_swapchain_texture(
+                    view, image, surface_data.config.imageFormat
+                );
+            } else {
+                errors.emplace_back(window.entity, vk::to_string(res));
+            }
+        } catch (const std::exception& e) {
+            errors.emplace_back(window.entity, e.what());
         }
+    }
+    if (!errors.empty()) {
+        std::string error_msg =
+            "Failed to acquire swapchain images for windows: ";
+        for (auto&& [entity, error] : errors) {
+            error_msg += "\n  Entity: " + std::to_string(entity.index()) +
+                         ", Error: " + error;
+        }
+        throw std::runtime_error(error_msg);
     }
 }
 
