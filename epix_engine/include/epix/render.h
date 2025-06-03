@@ -7,6 +7,7 @@
 namespace epix::render {
 struct RenderPlugin : public epix::Plugin {
     bool validation = false;
+    EPIX_API RenderPlugin& enable_validation(bool enable = true);
     EPIX_API void build(epix::App&) override;
 };
 }  // namespace epix::render
