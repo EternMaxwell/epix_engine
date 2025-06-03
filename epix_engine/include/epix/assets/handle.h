@@ -98,6 +98,7 @@ struct UntypedHandle {
     );
 
    public:
+    EPIX_API UntypedHandle();
     EPIX_API UntypedHandle(const std::shared_ptr<StrongHandle>& handle);
     EPIX_API UntypedHandle(const UntypedAssetId& id);
     template <typename T>

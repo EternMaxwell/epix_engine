@@ -468,7 +468,9 @@ struct AssetServer {
             return info.state;
         });  // Return the state of the asset if it exists
     }
-    void load_internal(const UntypedAssetId& id) {
+    void load_internal(
+        const UntypedAssetId& id, ErasedAssetLoader* loader = nullptr
+    ) {
         if (auto opt = asset_infos.get_info(id);
             opt && (opt->state == LoadState::Pending ||
                     opt->state == LoadState::Failed)) {
@@ -478,7 +480,16 @@ struct AssetServer {
             // want it to be the most suitable loader for the asset if no loader
             // found by extension, try to get by type, but this may cause errors
             // resulting in AssetLoadFailedEvent
-            auto loader = asset_loaders.get_by_path(info.path);
+            if (!loader) {
+                // If no loader is provided, try to get it by path
+                auto loaders = asset_loaders.get_multi_by_path(info.path);
+                for (auto& l : loaders) {
+                    if (l->asset_type() == id.type) {
+                        loader = l;
+                        break;
+                    }
+                }
+            }
             // check loader type
             if (loader && loader->asset_type() != id.type) {
                 // If the loader type does not match the asset type, we cannot
@@ -553,8 +564,28 @@ struct AssetServer {
         }
     }
     template <typename T>
-    Handle<T> load(const std::filesystem::path& path) {}
-    UntypedHandle load_untyped(const std::filesystem::path& path) {}
+    Handle<T> load(const std::filesystem::path& path) {
+        auto handle = asset_infos.get_or_create_handle<T>(path);
+        if (handle) {
+            auto& id = handle->id();
+            load_internal(id);  // Load the asset internally
+            return *handle;  // Return the handle if it was created successfully
+        }
+        return Handle<T>();  // Return an empty handle if creation failed
+    }
+    UntypedHandle load_untyped(const std::filesystem::path& path) {
+        auto loader =
+            asset_loaders.get_by_path(path);  // Get the loader by path
+        if (!loader)
+            return UntypedHandle();  // No loader found, return empty handle
+        auto type = loader->asset_type();  // Get the asset type from the loader
+        auto handle = asset_infos.get_or_create_handle_untyped(path, type);
+        if (!handle)
+            return UntypedHandle();  // No handle created, return empty handle
+        auto& id = handle->id();
+        load_internal(id, loader);  // Load the asset internally with the loader
+        return *handle;  // Return the handle if it was created successfully
+    }
 
    private:
     AssetInfos asset_infos;

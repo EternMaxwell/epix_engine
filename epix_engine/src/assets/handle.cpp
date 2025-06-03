@@ -17,6 +17,8 @@ EPIX_API StrongHandle::~StrongHandle() {
     event_sender.send(DestructionEvent{id});
 }
 
+EPIX_API UntypedHandle::UntypedHandle()
+    : ref(std::shared_ptr<StrongHandle>()) {}
 EPIX_API UntypedHandle::UntypedHandle(
     const std::variant<std::shared_ptr<StrongHandle>, UntypedAssetId>& ref
 )
