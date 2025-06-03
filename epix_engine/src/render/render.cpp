@@ -1,4 +1,12 @@
+#include <stacktrace>
+
 #include "epix/render.h"
+
+EPIX_API epix::render::RenderPlugin&
+epix::render::RenderPlugin::enable_validation(bool enable) {
+    validation = enable;
+    return *this;
+}
 
 EPIX_API void epix::render::RenderPlugin::build(epix::App& app) {
     if (volkInitialize() != VK_SUCCESS) {
@@ -24,6 +32,10 @@ EPIX_API void epix::render::RenderPlugin::build(epix::App& app) {
             );
         }
         std::vector<const char*> extension_names(exts, exts + count);
+        // if validation is enabled, add the debug utils extension
+        if (validation) {
+            extension_names.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+        }
         return extension_names;
     }();
     auto instance =
@@ -33,6 +45,57 @@ EPIX_API void epix::render::RenderPlugin::build(epix::App& app) {
                                .setPEnabledExtensionNames(extensions));
     volkLoadInstance(instance);
     VULKAN_HPP_DEFAULT_DISPATCHER.init(instance);
+    if (validation) {
+        auto debug_utils_messenger_create_info =
+            vk::DebugUtilsMessengerCreateInfoEXT()
+                .setMessageSeverity(
+                    vk::DebugUtilsMessageSeverityFlagBitsEXT::eVerbose |
+                    vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning |
+                    vk::DebugUtilsMessageSeverityFlagBitsEXT::eError
+                )
+                .setMessageType(
+                    vk::DebugUtilsMessageTypeFlagBitsEXT::eGeneral |
+                    vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation |
+                    vk::DebugUtilsMessageTypeFlagBitsEXT::ePerformance
+                )
+                .setPfnUserCallback(
+                    [](vk::DebugUtilsMessageSeverityFlagBitsEXT
+                           message_severity,
+                       vk::DebugUtilsMessageTypeFlagsEXT message_type,
+                       const vk::DebugUtilsMessengerCallbackDataEXT*
+                           p_callback_data,
+                       void* p_user_data) -> vk::Bool32 {
+                        static std::shared_ptr<spdlog::logger> logger =
+                            spdlog::default_logger()->clone("vulkan");
+                        if (message_severity >=
+                            vk::DebugUtilsMessageSeverityFlagBitsEXT::eError) {
+                            logger->error(
+                                "Vulkan: {}: {}\n    with stack trace:\n{}",
+                                vk::to_string(message_type),
+                                p_callback_data->pMessage,
+                                std::to_string(std::stacktrace::current())
+                            );
+                        } else if (message_severity >=
+                                   vk::DebugUtilsMessageSeverityFlagBitsEXT::
+                                       eWarning) {
+                            logger->warn(
+                                "Vulkan: {}: {}", vk::to_string(message_type),
+                                p_callback_data->pMessage
+                            );
+                        } else {
+                            logger->info(
+                                "Vulkan: {}: {}", vk::to_string(message_type),
+                                p_callback_data->pMessage
+                            );
+                        }
+                        return VK_FALSE;  // return false to continue processing
+                    }
+                );
+        auto debug_messenger = instance.createDebugUtilsMessengerEXT(
+            debug_utils_messenger_create_info
+        );
+        app.insert_resource(debug_messenger);
+    }
     auto physical_devices = instance.enumeratePhysicalDevices();
     if (physical_devices.empty()) {
         throw std::runtime_error("No Vulkan physical devices found");
@@ -98,10 +161,18 @@ EPIX_API void epix::render::RenderPlugin::build(epix::App& app) {
         epix::into([](Res<vk::Instance> instance,
                       Res<vk::PhysicalDevice> physical_device,
                       Res<vk::Device> device, Res<vk::Queue> queue,
+                      std::optional<Res<vk::DebugUtilsMessengerEXT>>
+                          debug_utils_messenger,
                       ResMut<epix::render::CommandPools> pools) {
             device->waitIdle();
             pools->destroy();
             device->destroy();
+            if (debug_utils_messenger) {
+                instance->destroyDebugUtilsMessengerEXT(
+                    **debug_utils_messenger, nullptr,
+                    VULKAN_HPP_DEFAULT_DISPATCHER
+                );
+            }
             instance->destroy();
             volkFinalize();
         }).set_name("Destroy Vulkan resources")
