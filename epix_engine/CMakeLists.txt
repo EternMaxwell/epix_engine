@@ -7,6 +7,7 @@ list(APPEND ENGINE_INCLUDES ${CMAKE_CURRENT_SOURCE_DIR}/include)
 set(EPIX_ENABLE_TRACY ON)
 set(EPIX_WITH_SHARED OFF)
 option(EPIX_USE_VOLK "Use Vulkan Loader" ON)
+set(EPIX_USE_VOLK ON)
 
 # BUILD STATIC
 add_library(epix_engine STATIC ${MODULE_SOURCES})
@@ -16,6 +17,16 @@ if(EPIX_ENABLE_TRACY)
 endif()
 
 # THIRD PARTY LIBRARIES
+
+target_link_libraries(epix_engine PUBLIC Vulkan-Headers)
+if(EPIX_USE_VOLK)
+  target_compile_definitions(epix_engine PUBLIC EPIX_USE_VOLK)
+  target_link_libraries(epix_engine PUBLIC volk)
+else()
+  find_package(Vulkan REQUIRED)
+  target_link_libraries(epix_engine PUBLIC Vulkan::Vulkan)
+endif()
+
 target_include_directories(epix_engine PUBLIC ${ENGINE_INCLUDES})
 target_link_libraries(epix_engine PUBLIC glfw)
 target_link_libraries(epix_engine PUBLIC EnTT::EnTT)
@@ -29,8 +40,6 @@ target_link_libraries(epix_engine PUBLIC TracyClient)
 target_link_libraries(epix_engine PUBLIC stduuid)
 target_link_libraries(epix_engine PUBLIC box2d)
 target_link_libraries(epix_engine PUBLIC stbimage)
-target_link_libraries(epix_engine PUBLIC volk)
-target_link_libraries(epix_engine PUBLIC Vulkan-Headers)
 
 add_library(epix ALIAS epix_engine)
 

@@ -9,12 +9,12 @@ epix::render::RenderPlugin::enable_validation(bool enable) {
 }
 
 EPIX_API void epix::render::RenderPlugin::build(epix::App& app) {
-    #ifdef EPIX_USE_VOLK
+#ifdef EPIX_USE_VOLK
     if (volkInitialize() != VK_SUCCESS) {
         throw std::runtime_error("Failed to initialize Vulkan loader");
     }
     VULKAN_HPP_DEFAULT_DISPATCHER.init(vkGetInstanceProcAddr);
-    #endif
+#endif
     // create webgpu render resources
     spdlog::info("Creating vulkan render resources");
     auto layers = std::vector<const char*>();
@@ -45,10 +45,10 @@ EPIX_API void epix::render::RenderPlugin::build(epix::App& app) {
                                .setPApplicationInfo(&app_info)
                                .setPEnabledLayerNames(layers)
                                .setPEnabledExtensionNames(extensions));
-    #ifdef EPIX_USE_VOLK
+#ifdef EPIX_USE_VOLK
     volkLoadInstance(instance);
     VULKAN_HPP_DEFAULT_DISPATCHER.init(instance);
-    #endif
+#endif
     if (validation) {
         auto debug_utils_messenger_create_info =
             vk::DebugUtilsMessengerCreateInfoEXT()
@@ -61,43 +61,60 @@ EPIX_API void epix::render::RenderPlugin::build(epix::App& app) {
                     vk::DebugUtilsMessageTypeFlagBitsEXT::eGeneral |
                     vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation |
                     vk::DebugUtilsMessageTypeFlagBitsEXT::ePerformance
-                )
-                .setPfnUserCallback(
-                    [](vk::DebugUtilsMessageSeverityFlagBitsEXT
-                           message_severity,
-                       vk::DebugUtilsMessageTypeFlagsEXT message_type,
-                       const vk::DebugUtilsMessengerCallbackDataEXT*
-                           p_callback_data,
-                       void* p_user_data) -> vk::Bool32 {
-                        static std::shared_ptr<spdlog::logger> logger =
-                            spdlog::default_logger()->clone("vulkan");
-                        if (message_severity >=
-                            vk::DebugUtilsMessageSeverityFlagBitsEXT::eError) {
-                            logger->error(
-                                "Vulkan: {}: {}\n    with stack trace:\n{}",
-                                vk::to_string(message_type),
-                                p_callback_data->pMessage,
-                                std::to_string(std::stacktrace::current())
-                            );
-                        } else if (message_severity >=
-                                   vk::DebugUtilsMessageSeverityFlagBitsEXT::
-                                       eWarning) {
-                            logger->warn(
-                                "Vulkan: {}: {}", vk::to_string(message_type),
-                                p_callback_data->pMessage
-                            );
-                        } else {
-                            logger->info(
-                                "Vulkan: {}: {}", vk::to_string(message_type),
-                                p_callback_data->pMessage
-                            );
-                        }
-                        return VK_FALSE;  // return false to continue processing
-                    }
                 );
-        auto debug_messenger = instance.createDebugUtilsMessengerEXT(
-            debug_utils_messenger_create_info
-        );
+        debug_utils_messenger_create_info.pfnUserCallback =
+            [](vk::DebugUtilsMessageSeverityFlagBitsEXT message_severity,
+               vk::DebugUtilsMessageTypeFlagsEXT message_type,
+               const vk::DebugUtilsMessengerCallbackDataEXT* p_callback_data,
+               void* p_user_data) -> vk::Bool32 {
+            static std::shared_ptr<spdlog::logger> logger =
+                spdlog::default_logger()->clone("vulkan");
+            if (message_severity >=
+                vk::DebugUtilsMessageSeverityFlagBitsEXT::eError) {
+                logger->error(
+                    "Vulkan: {}: {}\n    with stack trace:\n{}",
+                    vk::to_string(message_type), p_callback_data->pMessage,
+                    std::to_string(std::stacktrace::current())
+                );
+            } else if (message_severity >=
+                       vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning) {
+                logger->warn(
+                    "Vulkan: {}: {}", vk::to_string(message_type),
+                    p_callback_data->pMessage
+                );
+            } else {
+                logger->info(
+                    "Vulkan: {}: {}", vk::to_string(message_type),
+                    p_callback_data->pMessage
+                );
+            }
+            return VK_FALSE;  // return false to continue processing
+        };
+        auto func_create_debug_utils_messenger =
+            (PFN_vkCreateDebugUtilsMessengerEXT
+            )instance.getProcAddr("vkCreateDebugUtilsMessengerEXT");
+        vk::DebugUtilsMessengerEXT debug_messenger = [&]() {
+            if (!func_create_debug_utils_messenger) {
+                throw std::runtime_error(
+                    "Failed to get vkCreateDebugUtilsMessengerEXT function"
+                );
+            }
+            VkDebugUtilsMessengerEXT vk_debug_messenger;
+            auto result = func_create_debug_utils_messenger(
+                instance,
+                reinterpret_cast<const VkDebugUtilsMessengerCreateInfoEXT*>(
+                    &debug_utils_messenger_create_info
+                ),
+                nullptr, &vk_debug_messenger
+            );
+            if (result != VK_SUCCESS) {
+                throw std::runtime_error(
+                    "Failed to create debug utils messenger: " +
+                    vk::to_string(static_cast<vk::Result>(result))
+                );
+            }
+            return vk_debug_messenger;
+        }();
         app.insert_resource(debug_messenger);
     }
     auto physical_devices = instance.enumeratePhysicalDevices();
@@ -138,13 +155,13 @@ EPIX_API void epix::render::RenderPlugin::build(epix::App& app) {
                 .setPEnabledExtensionNames(device_extensions)
         );
     }();
-    // we only have one device if only one app exists and only this plugin
-    // handles vulkan resources, so we can add these lines to improve
-    // performance
-    #ifdef EPIX_USE_VOLK
+// we only have one device if only one app exists and only this plugin
+// handles vulkan resources, so we can add these lines to improve
+// performance
+#ifdef EPIX_USE_VOLK
     volkLoadDevice(device);
     VULKAN_HPP_DEFAULT_DISPATCHER.init(device);
-    #endif
+#endif
     auto queue = device.getQueue(queue_family_index, 0);
     app.insert_resource(instance);
     app.insert_resource(physical_device);
@@ -174,13 +191,19 @@ EPIX_API void epix::render::RenderPlugin::build(epix::App& app) {
             pools->destroy();
             device->destroy();
             if (debug_utils_messenger) {
-                instance->destroyDebugUtilsMessengerEXT(
-                    **debug_utils_messenger, nullptr,
-                    VULKAN_HPP_DEFAULT_DISPATCHER
-                );
+                auto destroy_func = (PFN_vkDestroyDebugUtilsMessengerEXT
+                )instance->getProcAddr("vkDestroyDebugUtilsMessengerEXT");
+                if (!destroy_func) {
+                    throw std::runtime_error(
+                        "Failed to get vkDestroyDebugUtilsMessengerEXT function"
+                    );
+                }
+                destroy_func(*instance, **debug_utils_messenger, nullptr);
             }
             instance->destroy();
+#ifdef EPIX_USE_VOLK
             volkFinalize();
+#endif
         }).set_name("Destroy Vulkan resources")
     );
 
