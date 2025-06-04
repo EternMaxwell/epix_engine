@@ -75,7 +75,7 @@ struct ErasedAssetLoader {
     virtual std::type_index loader_type() const = 0;
     virtual ErasedLoadedAsset load(
         const std::filesystem::path& path, LoadContext& context
-    )                                                   = 0;
+    ) const                                             = 0;
     virtual std::vector<const char*> extensions() const = 0;
 };
 template <AssetLoader T>
@@ -87,7 +87,7 @@ struct ErasedAssetLoaderImpl : ErasedAssetLoader {
     std::type_index loader_type() const override { return typeid(T); }
     ErasedLoadedAsset load(
         const std::filesystem::path& path, LoadContext& context
-    ) override {
+    ) const override {
         if constexpr (loader_info::return_ptr) {
             auto asset = T::load(path, context);
             if (asset) {
@@ -133,7 +133,7 @@ struct ErasedAssetLoaderFuncImpl : ErasedAssetLoader {
     std::type_index loader_type() const override { return typeid(Func); }
     ErasedLoadedAsset load(
         const std::filesystem::path& path, LoadContext& context
-    ) override {
+    ) const override {
         if constexpr (std::is_pointer_v<typename Func::asset_type>) {
             auto asset = func(path, context);
             if (asset) {
@@ -176,87 +176,18 @@ struct AssetInfos {
     friend struct AssetServer;  // Allow AssetServer to access private members
 
    public:
-    std::optional<AssetInfo> get_info(const UntypedAssetId& id) const {
-        if (auto it = infos.find(id); it != infos.end()) {
-            return it->second;
-        }
-        return std::nullopt;  // No info found for the given id
-    }
-    std::optional<UntypedHandle> get_or_create_handle_internal(
+    EPIX_API const AssetInfo* get_info(const UntypedAssetId& id) const;
+    EPIX_API AssetInfo* get_info(const UntypedAssetId& id);
+    EPIX_API std::optional<UntypedHandle> get_or_create_handle_internal(
         const std::filesystem::path& path,
         const std::optional<std::type_index>& type,
         bool force_new = false
-    ) {
-        auto&& ids = path_to_ids[path];
-        auto asset_type_opt =
-            type.or_else([&]() -> std::optional<std::type_index> {
-                // No type provided, get the first type from the ids
-                if (auto it = ids.begin(); it != ids.end()) {
-                    return it->first;  // Return the first type found
-                }
-                return std::nullopt;  // No types found
-            });
-        if (!asset_type_opt) {
-            return std::nullopt;  // No type found, cannot create handle
-        }
-        auto asset_type = *asset_type_opt;
-        if (auto it = ids.find(asset_type); it != ids.end()) {
-            auto& info = infos.at(it->second);
-            // Check if the handle is expired we create a new one
-            if (info.weak_handle.expired()) {
-                // If the weak handle is expired, we need to create a new handle
-                if (auto provider_it = handle_providers.find(asset_type);
-                    provider_it != handle_providers.end()) {
-                    // If a provider for the type exists, use it to create a new
-                    // handle
-                    auto& provider   = *provider_it->second;
-                    auto new_handle  = provider.reserve(true, path);
-                    info.weak_handle = new_handle;
-                    info.path        = path;
-                    // If it is loading, we keep the state as Loading,
-                    // otherwise we set it to Pending
-                    info.state = info.state == LoadState::Loading
-                                     ? LoadState::Loading
-                                     : LoadState::Pending;
-                    return new_handle;
-                }
-            } else if (!force_new) {
-                info.state = info.state == LoadState::Loading
-                                 ? LoadState::Loading
-                                 : LoadState::Pending;
-            }
-            return info.weak_handle.lock();  // Return the existing handle
-        } else {
-            // a new asset should be created.
-            if (auto provider_it = handle_providers.find(asset_type);
-                provider_it != handle_providers.end()) {
-                // If a provider for the type exists, use it to create a new
-                // handle
-                auto& provider  = *provider_it->second;
-                auto new_handle = provider.reserve(true, path);
-                auto id         = new_handle->id;
-                // Insert to path_to_ids
-                ids.emplace(asset_type, id);  // Insert the new id for the type
-                // Create a new AssetInfo and insert it
-                AssetInfo info;
-                info.weak_handle = new_handle;
-                info.path        = path;
-                info.state = LoadState::Pending;  // Initial state is Pending
-                infos.emplace(id, std::move(info));
-                return new_handle;
-            }
-        }
-        return std::nullopt;  // No handle created
-    }
-    std::optional<UntypedHandle> get_or_create_handle_untyped(
+    );
+    EPIX_API std::optional<UntypedHandle> get_or_create_handle_untyped(
         const std::filesystem::path& path,
         const std::type_index& type,
         bool force_new = false
-    ) {
-        return get_or_create_handle_internal(
-            path, type, force_new
-        );  // Call the internal function with the type
-    }
+    );
     template <typename T>
     std::optional<Handle<T>> get_or_create_handle(
         const std::filesystem::path& path, bool force_new = false
@@ -268,31 +199,7 @@ struct AssetInfos {
         }
         return std::nullopt;
     }
-    bool process_handle_destruction(const UntypedAssetId& id) {
-        if (auto it = infos.find(id); it != infos.end()) {
-            auto&& info = it->second;
-            if (info.weak_handle.expired()) {
-                // remove the id from the path_to_ids map
-                if (auto path_it = path_to_ids.find(info.path);
-                    path_it != path_to_ids.end()) {
-                    auto& ids = path_it->second;
-                    ids.erase(id.type);
-                    if (ids.empty()) {
-                        path_to_ids.erase(path_it);  // Remove empty paths
-                    }
-                }
-                // If the weak handle is expired, remove the asset info
-                infos.erase(it);
-                return true;  // Successfully processed the handle destruction
-            } else {
-                // This means that living handles are all destructed but a new
-                // handle for this asset is required from
-                // `get_or_create_handle_internal`.
-            }
-        }
-        return false;  // No action taken, either no info found or handle not
-                       // expired
-    }
+    EPIX_API bool process_handle_destruction(const UntypedAssetId& id);
 };
 struct AssetLoaders {
    private:
@@ -301,139 +208,26 @@ struct AssetLoaders {
     entt::dense_map<const char*, std::vector<uint32_t>> ext_to_loaders;
 
    public:
-    ErasedAssetLoader* get_by_index(uint32_t index) {
-        if (index < loaders.size()) {
-            return loaders[index].get();
-        }
-        return nullptr;
-    }
-    ErasedAssetLoader* get_by_type(const std::type_index& type) {
-        auto it = type_to_loaders.find(type);
-        if (it != type_to_loaders.end() && !it->second.empty()) {
-            return get_by_index(it->second[0]);
-        }
-        return nullptr;
-    }
-    std::vector<ErasedAssetLoader*> get_multi_by_type(
+    EPIX_API const ErasedAssetLoader* get_by_index(uint32_t index) const;
+    EPIX_API const ErasedAssetLoader* get_by_type(const std::type_index& type
+    ) const;
+    EPIX_API std::vector<const ErasedAssetLoader*> get_multi_by_type(
         const std::type_index& type
-    ) {  // get all loaders of a specific type
-        if (auto it = type_to_loaders.find(type); it != type_to_loaders.end()) {
-            return it->second | std::views::transform([this](uint32_t index) {
-                       return get_by_index(index);
-                   }) |
-                   std::ranges::to<std::vector>();
-        }
-        return {};  // Return an empty vector if no loaders of that type exist
-    }
-    /**
-     * @brief Apply a function to each loader of a specific type. And stop
-     * iterating if the function returns true.
-     *
-     * @param type The type of the loaders to iterate over.
-     * @param func The function to apply to each loader. It should return true
-     * to
-     */
-    bool for_each_by_type(
-        const std::type_index& type,
-        const std::function<bool(ErasedAssetLoader&)>& func
-    ) {
-        auto it = type_to_loaders.find(type);
-        if (it != type_to_loaders.end()) {
-            for (uint32_t index : it->second) {
-                if (func(*get_by_index(index))) {
-                    return true;  // If the function returns true, stop
-                                  // iterating
-                }
-            }
-        }
-        return false;
-    }
-    ErasedAssetLoader* get_by_extension(const std::string_view& ext) {
-        auto it = ext_to_loaders.find(ext.data());
-        if (it != ext_to_loaders.end() && !it->second.empty()) {
-            return get_by_index(it->second[0]);
-        }
-        return nullptr;
-    }
-    std::vector<ErasedAssetLoader*> get_multi_by_extension(
+    ) const;
+    EPIX_API const ErasedAssetLoader* get_by_extension(
         const std::string_view& ext
-    ) {  // get all loaders of a specific extension
-        if (auto it = ext_to_loaders.find(ext.data());
-            it != ext_to_loaders.end()) {
-            return it->second | std::views::transform([this](uint32_t index) {
-                       return get_by_index(index);
-                   }) |
-                   std::ranges::to<std::vector>();
-        }
-        return {};  // Return an empty vector if no loaders of that extension
-                    // exist
-    }
-    /**
-     * @brief Apply a function to each loader of a specific extension. And stop
-     * iterating if the function returns true.
-     *
-     * @param ext The file extension to iterate over, without the leading dot.
-     * @param func The function to apply to each loader. It should return true
-     */
-    bool for_each_by_extension(
-        const std::string_view& ext,
-        const std::function<bool(ErasedAssetLoader&)>& func
-    ) {
-        auto it = ext_to_loaders.find(ext.data());
-        if (it != ext_to_loaders.end()) {
-            for (uint32_t index : it->second) {
-                if (func(*get_by_index(index))) {
-                    return true;  // If the function returns true, stop
-                                  // iterating
-                }
-            }
-        }
-        return false;
-    }
+    ) const;
+    EPIX_API std::vector<const ErasedAssetLoader*> get_multi_by_extension(
+        const std::string_view& ext
+    ) const;
     // get by path is a wrapper method for get_by_extension, but much easier to
     // use
-    ErasedAssetLoader* get_by_path(const std::filesystem::path& path
-    ) {  // get the loader by the file extension of the path
-        // the extension name should not include the dot
-        if (path.has_extension()) {
-            auto ext      = path.extension().string();
-            auto ext_view = std::string_view(ext);
-            if (ext.starts_with('.')) {
-                ext_view.remove_prefix(1);  // remove the leading dot
-            }
-            return get_by_extension(ext_view);
-        }
-        return nullptr;
-    }
-    std::vector<ErasedAssetLoader*> get_multi_by_path(
+    EPIX_API const ErasedAssetLoader* get_by_path(
         const std::filesystem::path& path
-    ) {  // get all loaders by the file extension of the path
-        // the extension name should not include the dot
-        if (path.has_extension()) {
-            auto ext      = path.extension().string();
-            auto ext_view = std::string_view(ext);
-            if (ext.starts_with('.')) {
-                ext_view.remove_prefix(1);  // remove the leading dot
-            }
-            return get_multi_by_extension(ext_view);
-        }
-        return {};  // Return an empty vector if no loaders found
-    }
-    bool for_each_by_path(
-        const std::filesystem::path& path,
-        const std::function<bool(ErasedAssetLoader&)>& func
-    ) {  // get the loader by the file extension of the path
-        // the extension name should not include the dot
-        if (path.has_extension()) {
-            auto ext      = path.extension().string();
-            auto ext_view = std::string_view(ext);
-            if (ext.starts_with('.')) {
-                ext_view.remove_prefix(1);  // remove the leading dot
-            }
-            return for_each_by_extension(ext_view, func);
-        }
-        return false;
-    }
+    ) const;
+    EPIX_API std::vector<const ErasedAssetLoader*> get_multi_by_path(
+        const std::filesystem::path& path
+    ) const;
     template <AssetLoader T>
     uint32_t push(const T&) {
         using loader_info = LoaderInfo<T>;
@@ -463,10 +257,7 @@ using InternalAssetEvent = std::variant<
     AssetLoadFailedEvent  // asset failed to load
     >;
 struct AssetServer {
-    AssetServer() : asset_infos(), asset_loaders() {
-        std::tie(event_sender, event_receiver) =
-            epix::utils::async::make_channel<InternalAssetEvent>();
-    }
+    EPIX_API AssetServer();
     AssetServer(const AssetServer&)            = delete;
     AssetServer(AssetServer&&)                 = delete;
     AssetServer& operator=(const AssetServer&) = delete;
@@ -477,7 +268,8 @@ struct AssetServer {
      */
     template <AssetLoader T>
     uint32_t register_loader(const T& t) {
-        auto index  = asset_loaders.push(t);
+        auto index = asset_loaders.push(t);
+        std::scoped_lock lock(pending_mutex, info_mutex);
         size_t size = pending_loads.size();
         while (size) {
             auto id = pending_loads.front();
@@ -502,109 +294,13 @@ struct AssetServer {
         }
         asset_infos.handle_providers[type] = assets.get_handle_provider();
     }
-    std::optional<LoadState> get_state(const UntypedAssetId& id) const {
-        return asset_infos.get_info(id).transform([](const AssetInfo& info) {
-            return info.state;
-        });  // Return the state of the asset if it exists
-    }
-    void load_internal(
-        const UntypedAssetId& id, ErasedAssetLoader* loader = nullptr
-    ) {
-        if (auto opt = asset_infos.get_info(id);
-            opt && (opt->state == LoadState::Pending ||
-                    opt->state == LoadState::Failed)) {
-            auto& info = *opt;
-            info.state = LoadState::Loading;  // Set the state to Loading
-            // get by ext first cause same type can have different loaders, we
-            // want it to be the most suitable loader for the asset if no loader
-            // found by extension, try to get by type, but this may cause errors
-            // resulting in AssetLoadFailedEvent
-            if (!loader) {
-                // If no loader is provided, try to get it by path
-                auto loaders = asset_loaders.get_multi_by_path(info.path);
-                for (auto& l : loaders) {
-                    if (l->asset_type() == id.type) {
-                        loader = l;
-                        break;
-                    }
-                }
-            }
-            // check loader type
-            if (loader && loader->asset_type() != id.type) {
-                // If the loader type does not match the asset type, we cannot
-                // use this loader
-                loader = nullptr;
-            }
-            LoadContext context{*this, info.path};
-            if (loader) {
-                info.waiter = std::async(
-                    std::launch::async,
-                    [this, loader, id, context]() mutable {
-                        try {
-                            auto asset = loader->load(context.path, context);
-                            if (asset.value) {
-                                event_sender.send(
-                                    AssetLoadedEvent{id, std::move(asset)}
-                                );
-                            } else {
-                                event_sender.send(AssetLoadFailedEvent{
-                                    id, "Failed to load asset"
-                                });
-                            }
-                        } catch (const std::exception& e) {
-                            event_sender.send(AssetLoadFailedEvent{id, e.what()}
-                            );
-                        }
-                    }
-                );
-            } else if (asset_loaders.get_by_type(id.type)) {
-                // There are loaders for the asset type, try them;
-                info.waiter = std::async(
-                    std::launch::async,
-                    [this, id, context,
-                     loaders =
-                         asset_loaders.get_multi_by_type(id.type)]() mutable {
-                        std::vector<std::string> errors;
-                        for (auto& loader : loaders) {
-                            try {
-                                auto asset =
-                                    loader->load(context.path, context);
-                                if (asset.value) {
-                                    event_sender.send(
-                                        AssetLoadedEvent{id, std::move(asset)}
-                                    );
-                                    return;  // Successfully loaded, exit
-                                }
-                            } catch (const std::exception& e) {
-                                errors.emplace_back(e.what());
-                            }
-                        }
-                        std::string error_message =
-                            "Failed to load asset: " +
-                            std::accumulate(
-                                errors.begin(), errors.end(), std::string(),
-                                [index = 0](
-                                    const std::string& a, const std::string& b
-                                ) mutable {
-                                    return a + "\n" + "attempt " +
-                                           std::to_string(++index) + ": " + b;
-                                }
-                            );
-                        event_sender.send(
-                            AssetLoadFailedEvent{id, std::move(error_message)}
-                        );
-                    }
-                );
-            } else {
-                // No loader found for the asset type, we will keep it pending
-                // and try to load it later
-                pending_loads.push_back(id);
-                info.state = LoadState::Pending;  // Keep the state as Pending
-            }
-        }
-    }
+    EPIX_API std::optional<LoadState> get_state(const UntypedAssetId& id) const;
+    EPIX_API void load_internal(
+        const UntypedAssetId& id, const ErasedAssetLoader* loader = nullptr
+    ) const;
     template <typename T>
-    Handle<T> load(const std::filesystem::path& path) {
+    Handle<T> load(const std::filesystem::path& path) const {
+        std::scoped_lock lock(info_mutex, pending_mutex);
         auto handle = asset_infos.get_or_create_handle<T>(path);
         if (handle) {
             auto& id = handle->id();
@@ -613,28 +309,20 @@ struct AssetServer {
         }
         return Handle<T>();  // Return an empty handle if creation failed
     }
-    UntypedHandle load_untyped(const std::filesystem::path& path) {
-        auto loader =
-            asset_loaders.get_by_path(path);  // Get the loader by path
-        if (!loader)
-            return UntypedHandle();  // No loader found, return empty handle
-        auto type = loader->asset_type();  // Get the asset type from the loader
-        auto handle = asset_infos.get_or_create_handle_untyped(path, type);
-        if (!handle)
-            return UntypedHandle();  // No handle created, return empty handle
-        auto& id = handle->id();
-        load_internal(id, loader);  // Load the asset internally with the loader
-        return *handle;  // Return the handle if it was created successfully
-    }
+    EPIX_API UntypedHandle load_untyped(const std::filesystem::path& path
+    ) const;
 
    private:
-    AssetInfos asset_infos;
+    mutable AssetInfos asset_infos;
+    mutable std::mutex info_mutex;
     AssetLoaders asset_loaders;
     using EventSender   = epix::utils::async::Sender<InternalAssetEvent>;
     using EventReceiver = epix::utils::async::Receiver<InternalAssetEvent>;
     EventSender event_sender;
     EventReceiver event_receiver;
-    std::deque<UntypedAssetId> pending_loads;  // Assets that are pending to be
-                                               // loaded but no loaders found
+    mutable std::mutex pending_mutex;
+    mutable std::deque<UntypedAssetId>
+        pending_loads;  // Assets that are pending to be
+                        // loaded but no loaders found
 };
 }  // namespace epix::assets
