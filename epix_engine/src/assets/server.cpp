@@ -102,11 +102,12 @@ EPIX_API bool AssetInfos::process_handle_destruction(const UntypedAssetId& id) {
             }
             // If the weak handle is expired, remove the asset info
             infos.erase(it);
-            return true;  // Successfully processed the handle destruction
+            // Successfully processed the handle destruction
         } else {
             // This means that living handles are all destructed but a new
             // handle for this asset is required from
             // `get_or_create_handle_internal`.
+            return true;
         }
     }
     return false;  // No action taken, either no info found or handle not
@@ -298,7 +299,8 @@ EPIX_API void AssetServer::load_internal(
         }
     }
 }
-EPIX_API UntypedHandle AssetServer::load_untyped(const std::filesystem::path& path) const {
+EPIX_API UntypedHandle
+AssetServer::load_untyped(const std::filesystem::path& path) const {
     std::scoped_lock lock(info_mutex, pending_mutex);
     auto loader = asset_loaders.get_by_path(path);  // Get the loader by path
     if (!loader)
@@ -310,4 +312,12 @@ EPIX_API UntypedHandle AssetServer::load_untyped(const std::filesystem::path& pa
     auto& id = handle->id();
     load_internal(id, loader);  // Load the asset internally with the loader
     return *handle;  // Return the handle if it was created successfully
+}
+
+EPIX_API bool AssetServer::process_handle_destruction(const UntypedAssetId& id
+) const {
+    // only lock infos
+    std::unique_lock lock(info_mutex);
+    // call the process_handle_destruction method of AssetInfos
+    return asset_infos.process_handle_destruction(id);
 }

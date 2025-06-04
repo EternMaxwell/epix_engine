@@ -8,6 +8,7 @@
 #include "index.h"
 
 namespace epix::assets {
+struct AssetServer;
 template <typename T>
 struct Entry {
     std::optional<T> asset = std::nullopt;
@@ -599,26 +600,16 @@ struct Assets {
         );
     }
 
+    void handle_events_internal(AssetServer* asset_server = nullptr);
     /**
      * @brief Handle strong handle destruction events.
      */
-    void handle_events() {
-        m_logger->trace("Handling events");
-        while (auto&& opt =
-                   m_handle_provider->index_allocator.reserved_receiver()
-                       .try_receive()) {
-            m_assets.resize_slots(opt->index);
-        }
-        while (auto&& opt = m_handle_provider->event_receiver.try_receive()) {
-            auto&& [id] = *opt;
-            release(id.typed<T>());
-        }
-        m_logger->trace("Finished handling events");
+    static void handle_events(
+        epix::ResMut<Assets<T>> assets, epix::Res<AssetServer> asset_server
+    ) {
+        assets->handle_events_internal(asset_server.get());
     }
 
-    static void res_handle_events(epix::ResMut<Assets<T>> assets) {
-        assets->handle_events();
-    }
     static void asset_events(
         epix::ResMut<Assets<T>> assets, epix::EventWriter<AssetEvent<T>> writer
     ) {

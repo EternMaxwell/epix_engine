@@ -199,6 +199,15 @@ struct AssetInfos {
         }
         return std::nullopt;
     }
+    /**
+     * @brief Process handle destruction of asset with the given id.
+     *
+     * If this asset is re-referenced by another handle after all other handles
+     * has destructed, through load functions in AssetServer, this will return
+     * true, otherwise false.
+     *
+     * @param id The id of the asset to process.
+     */
     EPIX_API bool process_handle_destruction(const UntypedAssetId& id);
 };
 struct AssetLoaders {
@@ -311,6 +320,7 @@ struct AssetServer {
     }
     EPIX_API UntypedHandle load_untyped(const std::filesystem::path& path
     ) const;
+    EPIX_API bool process_handle_destruction(const UntypedAssetId& id) const;
 
    private:
     mutable AssetInfos asset_infos;
@@ -325,4 +335,24 @@ struct AssetServer {
         pending_loads;  // Assets that are pending to be
                         // loaded but no loaders found
 };
+
+template <typename T>
+    requires std::move_constructible<T> && std::is_move_assignable_v<T>
+void Assets<T>::handle_events_internal(AssetServer* asset_server) {
+    m_logger->trace("Handling events");
+    while (
+        auto&& opt =
+            m_handle_provider->index_allocator.reserved_receiver().try_receive()
+    ) {
+        m_assets.resize_slots(opt->index);
+    }
+    while (auto&& opt = m_handle_provider->event_receiver.try_receive()) {
+        auto id = (*opt).id.template typed<T>();
+        if (asset_server && asset_server->process_handle_destruction(id)) {
+            continue;
+        }
+        release(id);
+    }
+    m_logger->trace("Finished handling events");
+}
 }  // namespace epix::assets

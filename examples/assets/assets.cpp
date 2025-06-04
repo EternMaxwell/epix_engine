@@ -62,7 +62,7 @@ void test_1() {
     handle1.~Handle();
 
     // Handle events
-    assets.handle_events();
+    assets.handle_events_internal();
 
     // Check if the weak handle is still valid
     if (auto&& opt = assets.get(weak_handle1)) {
@@ -124,7 +124,7 @@ void test_2() {
     // Destructing 1
     handle1.~Handle();
     // Handle events
-    assets.handle_events();
+    assets.handle_events_internal();
 
     // Check if the asset is still valid
     if (auto&& opt = assets.get(handle2)) {
@@ -167,7 +167,7 @@ void test_3() {
 
     handle1.~Handle();
     // Handle events
-    assets.handle_events();
+    assets.handle_events_internal();
 
     auto handle2 = assets.emplace("Hello Assets2!");
     epix::assets::AssetIndex index2 =
