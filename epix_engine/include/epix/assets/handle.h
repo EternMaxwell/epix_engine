@@ -83,16 +83,17 @@ struct UntypedHandle {
     template <typename T>
     UntypedHandle(
         const std::variant<std::shared_ptr<StrongHandle>, AssetId<T>>& ref
-    )
-        : ref(std::visit(
-              epix::util::visitor{
-                  [](const std::shared_ptr<StrongHandle>& handle) {
-                      return handle;
-                  },
-                  [](const AssetId<T>& index) { return UntypedAssetId(index); }
-              },
-              ref
-          )) {}
+    ) {
+        std::visit(
+            epix::util::visitor{
+                [this](const std::shared_ptr<StrongHandle>& handle) {
+                    this->ref = handle;
+                },
+                [this](const AssetId<T>& id) { this->ref = UntypedAssetId(id); }
+            },
+            ref
+        );
+    }
     EPIX_API UntypedHandle(
         const std::variant<std::shared_ptr<StrongHandle>, UntypedAssetId>& ref
     );
@@ -143,35 +144,55 @@ struct UntypedHandle {
     friend struct Handle;
 };
 template <typename T>
-Handle<T>::Handle(const UntypedHandle& handle)
-    : ref(std::visit(
-          epix::util::visitor{
-              [](const std::shared_ptr<StrongHandle>& strong_handle) {
-                  return strong_handle;
-              },
-              [](const UntypedAssetId& id) { return id.typed<T>(); }
-          },
-          handle.ref
-      )) {}
+Handle<T>::Handle(const UntypedHandle& handle) {
+    if (typeid(T) != handle.type()) {
+        throw std::runtime_error(std::format(
+            "{} cannot be constructed from UntypedHandle of type {}",
+            typeid(T).name(), handle.type().name()
+        ));
+    }
+    std::visit(
+        epix::util::visitor{
+            [this](const std::shared_ptr<StrongHandle>& strong_handle) {
+                ref = strong_handle;
+            },
+            [this](const UntypedAssetId& id) { ref = id.typed<T>(); }
+        },
+        handle.ref
+    );
+}
 template <typename T>
-Handle<T>::Handle(UntypedHandle&& handle)
-    : ref(std::visit(
-          epix::util::visitor{
-              [](std::shared_ptr<StrongHandle>&& strong_handle) {
-                  return std::move(strong_handle);
-              },
-              [](UntypedAssetId&& id) { return std::move(id).typed<T>(); }
-          },
-          std::move(handle.ref)
-      )) {}
+Handle<T>::Handle(UntypedHandle&& handle) {
+    if (typeid(T) != handle.type()) {
+        throw std::runtime_error(std::format(
+            "{} cannot be constructed from UntypedHandle of type {}",
+            typeid(T).name(), handle.type().name()
+        ));
+    }
+    std::visit(
+        epix::util::visitor{
+            [this](std::shared_ptr<StrongHandle>&& strong_handle) {
+                ref = std::move(strong_handle);
+            },
+            [this](UntypedAssetId&& id) { ref = id.typed<T>(); }
+        },
+        std::move(handle.ref)
+    );
+}
 template <typename T>
 Handle<T>& Handle<T>::operator=(const UntypedHandle& other) {
-    ref = std::visit(
+    if (typeid(T) != other.type()) {
+        throw std::runtime_error(std::format(
+            "{} cannot be constructed from UntypedHandle of type {}",
+            typeid(T).name(), other.type().name()
+        ));
+    }
+    std::visit(
         epix::util::visitor{
-            [](const std::shared_ptr<StrongHandle>& strong_handle) {
-                return strong_handle;
+            [this](const std::shared_ptr<StrongHandle>& strong_handle) {
+                ref = strong_handle;
             },
-            [](const UntypedAssetId& id) { return id.typed<T>(); }
+            [this](const UntypedAssetId& id) { ref = id.typed<T>(); }
         },
         other.ref
     );
@@ -179,12 +200,18 @@ Handle<T>& Handle<T>::operator=(const UntypedHandle& other) {
 }
 template <typename T>
 Handle<T>& Handle<T>::operator=(UntypedHandle&& other) {
-    ref = std::visit(
+    if (typeid(T) != other.type()) {
+        throw std::runtime_error(std::format(
+            "{} cannot be constructed from UntypedHandle of type {}",
+            typeid(T).name(), other.type().name()
+        ));
+    }
+    std::visit(
         epix::util::visitor{
-            [](std::shared_ptr<StrongHandle>&& strong_handle) {
-                return std::move(strong_handle);
+            [this](std::shared_ptr<StrongHandle>&& strong_handle) {
+                ref = std::move(strong_handle);
             },
-            [](UntypedAssetId&& id) { return std::move(id).typed<T>(); }
+            [this](UntypedAssetId&& id) { ref = id.typed<T>(); }
         },
         std::move(other.ref)
     );
