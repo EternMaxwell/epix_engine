@@ -2,6 +2,7 @@
 
 #include <epix/app.h>
 
+#include <concepts>
 #include <filesystem>
 #include <ranges>
 
@@ -23,7 +24,8 @@ concept AssetLoader = requires(T t) {
     // a static load function which takes a path and a LoadContext
     {
         T::load(
-            std::declval<std::filesystem::path>(), std::declval<LoadContext>()
+            std::declval<const std::filesystem::path&>(),
+            std::declval<LoadContext&>()
         )
     };
 };
@@ -72,7 +74,7 @@ struct ErasedAssetLoader {
     virtual std::type_index asset_type() const  = 0;
     virtual std::type_index loader_type() const = 0;
     virtual ErasedLoadedAsset load(
-        const std::filesystem::path& path, const LoadContext& context
+        const std::filesystem::path& path, LoadContext& context
     )                                                   = 0;
     virtual std::vector<const char*> extensions() const = 0;
 };
@@ -84,7 +86,7 @@ struct ErasedAssetLoaderImpl : ErasedAssetLoader {
     }
     std::type_index loader_type() const override { return typeid(T); }
     ErasedLoadedAsset load(
-        const std::filesystem::path& path, const LoadContext& context
+        const std::filesystem::path& path, LoadContext& context
     ) override {
         if constexpr (loader_info::return_ptr) {
             auto asset = T::load(path, context);
@@ -111,6 +113,43 @@ struct ErasedAssetLoaderImpl : ErasedAssetLoader {
                std::views::transform([](const char* ext) { return ext; }) |
                std::ranges::to<std::vector>();
     }
+};
+template <typename Func>
+    requires std::invocable<Func, const std::filesystem::path&, LoadContext&>
+struct ErasedAssetLoaderFuncImpl : ErasedAssetLoader {
+    using asset_t = std::remove_pointer_t<
+        std::invoke_result_t<Func, const std::filesystem::path&, LoadContext&>>;
+    static constexpr bool return_ptr = std::is_pointer_v<
+        std::invoke_result_t<Func, const std::filesystem::path&, LoadContext&>>;
+    using FuncStorage = std::decay_t<Func>;
+    FuncStorage func;  // Store the function
+    std::vector<const char*> _extensions;
+    ErasedAssetLoaderFuncImpl(
+        Func&& func, epix::util::ArrayProxy<const char*> extensions
+    )
+        : func(std::forward<Func>(func)),
+          _extensions(extensions.begin(), extensions.end()) {}
+    std::type_index asset_type() const override { return typeid(asset_t); }
+    std::type_index loader_type() const override { return typeid(Func); }
+    ErasedLoadedAsset load(
+        const std::filesystem::path& path, LoadContext& context
+    ) override {
+        if constexpr (std::is_pointer_v<typename Func::asset_type>) {
+            auto asset = func(path, context);
+            if (asset) {
+                return ErasedLoadedAsset{std::make_unique<
+                    AssetContainerImpl<typename Func::asset_type>>(asset)};
+            } else {
+                return ErasedLoadedAsset{nullptr};
+            }
+        } else {
+            auto asset = func(path, context);
+            return ErasedLoadedAsset{
+                std::make_unique<AssetContainerImpl<asset_t>>(std::move(asset))
+            };
+        }
+    }
+    std::vector<const char*> extensions() const override { return _extensions; }
 };
 enum LoadState {
     Pending,  // Asset is pending to be loaded
@@ -500,7 +539,7 @@ struct AssetServer {
             if (loader) {
                 info.waiter = std::async(
                     std::launch::async,
-                    [this, loader, id, context]() {
+                    [this, loader, id, context]() mutable {
                         try {
                             auto asset = loader->load(context.path, context);
                             if (asset.value) {
@@ -523,7 +562,8 @@ struct AssetServer {
                 info.waiter = std::async(
                     std::launch::async,
                     [this, id, context,
-                     loaders = asset_loaders.get_multi_by_type(id.type)]() {
+                     loaders =
+                         asset_loaders.get_multi_by_type(id.type)]() mutable {
                         std::vector<std::string> errors;
                         for (auto& loader : loaders) {
                             try {
