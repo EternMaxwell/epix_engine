@@ -44,14 +44,15 @@ struct AssetContainer {
     virtual void insert(const UntypedAssetId& id, World& world) = 0;
 };
 template <typename T>
-struct AssetContainerImpl : T, AssetContainer {
+struct AssetContainerImpl : AssetContainer {
     using asset_type = T;
-    using T::T;  // inherit constructors
-    AssetContainerImpl(const T& asset) : T(asset) {}
-    AssetContainerImpl(T&& asset) : T(std::move(asset)) {}
+    T asset;
+    AssetContainerImpl(const T& asset) : asset(asset) {}
+    AssetContainerImpl(T&& asset) : asset(std::move(asset)) {}
+    ~AssetContainerImpl() override = default;
     std::type_index type() const override { return typeid(T); }
     void insert(const UntypedAssetId& id, World& world) override {
-        world.resource<Assets<T>>().insert(id.typed<T>(), std::move((T&)*this));
+        world.resource<Assets<T>>().insert(id.typed<T>(), std::move(asset));
         world.resource<epix::app::Events<AssetEvent<T>>>().push(
             AssetEvent<T>::loaded(id.typed<T>())
         );
@@ -107,10 +108,9 @@ struct ErasedAssetLoaderImpl : ErasedAssetLoader {
                 return ErasedLoadedAsset{nullptr};
             }
         } else {
-            auto asset = T::load(path, context);
             return ErasedLoadedAsset{std::make_unique<
                 AssetContainerImpl<typename loader_info::asset_type>>(
-                std::move(asset)
+                T::load(path, context)
             )};
         }
         // this function does not catch exceptions, and the exceptions should be
