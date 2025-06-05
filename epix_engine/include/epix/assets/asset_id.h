@@ -25,6 +25,26 @@ struct AssetId : public std::variant<AssetIndex, uuids::uuid> {
         }
     }
     bool operator==(const UntypedAssetId& other) const;
+
+    std::string to_string() const {
+        return std::format(
+            "AssetId<{}>({})", typeid(T).name(),
+            std::visit(
+                epix::util::visitor{
+                    [](const AssetIndex& index) {
+                        return std::format(
+                            "AssetIndex(index={}, generation={})", index.index,
+                            index.generation
+                        );
+                    },
+                    [](const uuids::uuid& id) {
+                        return std::format("UUID({})", uuids::to_string(id));
+                    }
+                },
+                *this
+            );
+        )
+    }
 };
 
 template <typename T>
@@ -41,9 +61,6 @@ struct UntypedAssetId {
     UntypedAssetId(const std::type_index& type, Args&&... args)
         : id(std::forward<Args>(args)...), type(type) {}
 
-    const AssetIndex& index() const { return std::get<AssetIndex>(id); }
-    const uuids::uuid& uuid() const { return std::get<uuids::uuid>(id); }
-
     template <typename T>
     AssetId<T> typed() const {
         return try_typed<T>().value();
@@ -56,14 +73,15 @@ struct UntypedAssetId {
         return std::make_optional<AssetId<T>>(id);
     }
 
-    bool operator==(const UntypedAssetId& other) const {
-        return id == other.id && type == other.type;
-    }
+    EPIX_API const AssetIndex& index() const;
+    EPIX_API const uuids::uuid& uuid() const;
+    EPIX_API bool operator==(const UntypedAssetId& other) const;
+    EPIX_API std::string to_string() const;
 };
 
 template <typename T>
 bool AssetId<T>::operator==(const UntypedAssetId& other) const {
-    return other == *this;
+    return other.id == *this && other.type == typeid(T);
 }
 
 struct InternalAssetId : std::variant<AssetIndex, uuids::uuid> {
@@ -107,3 +125,62 @@ template <>
 struct std::hash<epix::assets::UntypedAssetId> {
     EPIX_API size_t operator()(const epix::assets::UntypedAssetId& id) const;
 };
+
+// formatter support for AssetId and UntypedAssetId
+namespace std {
+template <typename T>
+struct formatter<epix::assets::AssetId<T>> {
+    template <typename ParseContext>
+    constexpr auto parse(ParseContext& ctx) {
+        return ctx.begin();
+    }
+
+    template <typename FormatContext>
+    auto format(const epix::assets::AssetId<T>& id, FormatContext& ctx) const {
+        return format_to(
+            ctx.out(), "AssetId<{}>({})", typeid(T).name(),
+            [&id]() -> std::string {
+                if (std::holds_alternative<epix::assets::AssetIndex>(id)) {
+                    auto& index = std::get<epix::assets::AssetIndex>(id);
+                    return std::format(
+                        "AssetIndex(index={}, generation={})", index.index,
+                        index.generation
+                    );
+                } else if (std::holds_alternative<uuids::uuid>(id)) {
+                    auto& uuid = std::get<uuids::uuid>(id);
+                    return std::format("UUID({})", uuids::to_string(uuid));
+                }
+                return "Invalid";
+            }()
+        );
+    }
+};
+template <>
+struct formatter<epix::assets::UntypedAssetId> {
+    template <typename ParseContext>
+    constexpr auto parse(ParseContext& ctx) {
+        return ctx.begin();
+    }
+
+    template <typename FormatContext>
+    auto format(const epix::assets::UntypedAssetId& id, FormatContext& ctx)
+        const {
+        return format_to(
+            ctx.out(), "UntypedAssetId<{}>({})", id.type.name(),
+            [&id]() -> std::string {
+                if (std::holds_alternative<epix::assets::AssetIndex>(id.id)) {
+                    auto& index = std::get<epix::assets::AssetIndex>(id.id);
+                    return std::format(
+                        "AssetIndex(index={}, generation={})", index.index,
+                        index.generation
+                    );
+                } else if (std::holds_alternative<uuids::uuid>(id.id)) {
+                    auto& uuid = std::get<uuids::uuid>(id.id);
+                    return std::format("UUID({})", uuids::to_string(uuid));
+                }
+                return "Invalid";
+            }()
+        );
+    }
+};
+}  // namespace std
