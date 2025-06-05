@@ -20,7 +20,7 @@ concept AssetLoader = requires(T t) {
     // need a static function which returns a viewable range of const char*
     // indicating the supported file extensions
     { T::extensions() } -> std::ranges::viewable_range;
-    { T::extensions().begin() } -> std::convertible_to<const char*>;
+    { *T::extensions().begin() } -> std::convertible_to<const char*>;
     // a static load function which takes a path and a LoadContext
     {
         T::load(
@@ -32,7 +32,8 @@ concept AssetLoader = requires(T t) {
 template <AssetLoader T>
 struct LoaderInfo {
     using load_return_type           = decltype(T::load(
-        std::declval<std::filesystem::path>(), std::declval<LoadContext>()
+        std::declval<const std::filesystem::path&>(),
+        std::declval<LoadContext&>()
     ));
     using asset_type                 = std::remove_pointer_t<load_return_type>;
     static constexpr bool return_ptr = std::is_pointer_v<load_return_type>;
@@ -46,9 +47,14 @@ template <typename T>
 struct AssetContainerImpl : T, AssetContainer {
     using asset_type = T;
     using T::T;  // inherit constructors
+    AssetContainerImpl(const T& asset) : T(asset) {}
+    AssetContainerImpl(T&& asset) : T(std::move(asset)) {}
     std::type_index type() const override { return typeid(T); }
     void insert(const UntypedAssetId& id, World& world) override {
         world.resource<Assets<T>>().insert(id.typed<T>(), std::move((T&)*this));
+        world.resource<epix::app::Events<AssetEvent<T>>>().push(
+            AssetEvent<T>::loaded(id.typed<T>())
+        );
     }
 };
 template <typename T>
@@ -64,6 +70,9 @@ struct AssetContainerImpl<T*> : AssetContainer {
     std::type_index type() const override { return typeid(T); }
     void insert(const UntypedAssetId& id, World& world) override {
         world.resource<Assets<T>>().insert(id.typed<T>(), std::move(*asset));
+        world.resource<epix::app::Events<AssetEvent<T>>>().push(
+            AssetEvent<T>::loaded(id.typed<T>())
+        );
     }
 };
 struct ErasedLoadedAsset {
@@ -214,7 +223,7 @@ struct AssetLoaders {
    private:
     std::vector<std::unique_ptr<ErasedAssetLoader>> loaders;
     entt::dense_map<std::type_index, std::vector<uint32_t>> type_to_loaders;
-    entt::dense_map<const char*, std::vector<uint32_t>> ext_to_loaders;
+    entt::dense_map<std::string, std::vector<uint32_t>> ext_to_loaders;
 
    public:
     EPIX_API const ErasedAssetLoader* get_by_index(uint32_t index) const;
@@ -242,7 +251,7 @@ struct AssetLoaders {
         using loader_info = LoaderInfo<T>;
         std::unique_ptr<ErasedAssetLoader> loader =
             std::make_unique<ErasedAssetLoaderImpl<T>>();
-        auto type      = loader->loader_type();
+        auto type      = loader->asset_type();
         auto ext       = loader->extensions();
         uint32_t index = static_cast<uint32_t>(loaders.size());
         loaders.emplace_back(std::move(loader));
@@ -312,7 +321,7 @@ struct AssetServer {
         std::scoped_lock lock(info_mutex, pending_mutex);
         auto handle = asset_infos.get_or_create_handle<T>(path);
         if (handle) {
-            auto& id = handle->id();
+            auto id = handle->id();
             load_internal(id);  // Load the asset internally
             return *handle;  // Return the handle if it was created successfully
         }
@@ -321,6 +330,9 @@ struct AssetServer {
     EPIX_API UntypedHandle load_untyped(const std::filesystem::path& path
     ) const;
     EPIX_API bool process_handle_destruction(const UntypedAssetId& id) const;
+    EPIX_API static void handle_events(
+        World& world, Res<AssetServer> asset_server
+    );
 
    private:
     mutable AssetInfos asset_infos;
@@ -338,7 +350,7 @@ struct AssetServer {
 
 template <typename T>
     requires std::move_constructible<T> && std::is_move_assignable_v<T>
-void Assets<T>::handle_events_internal(AssetServer* asset_server) {
+void Assets<T>::handle_events_internal(const AssetServer* asset_server) {
     m_logger->trace("Handling events");
     while (
         auto&& opt =

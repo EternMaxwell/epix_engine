@@ -126,7 +126,8 @@ EPIX_API const ErasedAssetLoader* AssetLoaders::get_by_type(
 ) const {
     auto it = type_to_loaders.find(type);
     if (it != type_to_loaders.end() && !it->second.empty()) {
-        return get_by_index(it->second[0]);
+        return get_by_index(it->second.back()
+        );  // Get the last loader of this type
     }
     return nullptr;
 }
@@ -146,7 +147,7 @@ EPIX_API const ErasedAssetLoader* AssetLoaders::get_by_extension(
 ) const {
     auto it = ext_to_loaders.find(ext.data());
     if (it != ext_to_loaders.end() && !it->second.empty()) {
-        return get_by_index(it->second[0]);
+        return get_by_index(it->second.back());
     }
     return nullptr;
 }
@@ -221,7 +222,7 @@ EPIX_API void AssetServer::load_internal(
         if (!loader) {
             // If no loader is provided, try to get it by path
             auto loaders = asset_loaders.get_multi_by_path(info.path);
-            for (auto& l : loaders) {
+            for (auto& l : loaders | std::views::reverse) {
                 if (l->asset_type() == id.type) {
                     loader = l;
                     break;
@@ -236,6 +237,11 @@ EPIX_API void AssetServer::load_internal(
         }
         LoadContext context{*this, info.path};
         if (loader) {
+            spdlog::trace(
+                "Loading asset {} of type {} with loader {} in trys of get by "
+                "path",
+                info.path.string(), id.type.name(), loader->loader_type().name()
+            );
             info.waiter = std::async(
                 std::launch::async,
                 [this, loader, id, context]() mutable {
@@ -263,6 +269,12 @@ EPIX_API void AssetServer::load_internal(
                  loaders = asset_loaders.get_multi_by_type(id.type)]() mutable {
                     std::vector<std::string> errors;
                     for (auto& loader : loaders) {
+                        spdlog::trace(
+                            "Attempting to load asset {} of type {} with "
+                            "loader {} in trys of get by type",
+                            context.path.string(), id.type.name(),
+                            loader->loader_type().name()
+                        );
                         try {
                             auto asset = loader->load(context.path, context);
                             if (asset.value) {
@@ -294,6 +306,10 @@ EPIX_API void AssetServer::load_internal(
         } else {
             // No loader found for the asset type, we will keep it pending
             // and try to load it later
+            spdlog::warn(
+                "No loader found for asset {} of type {}, keeping it pending",
+                info.path.string(), id.type.name()
+            );
             pending_loads.push_back(id);
             info.state = LoadState::Pending;  // Keep the state as Pending
         }
@@ -320,4 +336,27 @@ EPIX_API bool AssetServer::process_handle_destruction(const UntypedAssetId& id
     std::unique_lock lock(info_mutex);
     // call the process_handle_destruction method of AssetInfos
     return asset_infos.process_handle_destruction(id);
+}
+
+EPIX_API void AssetServer::handle_events(
+    World& world, Res<AssetServer> asset_server
+) {
+    // Process events from the event receiver
+    auto receiver = asset_server->event_receiver;
+    std::unique_lock lock(asset_server->info_mutex
+    );  // Lock the info mutex to ensure thread safety
+    while (auto event = receiver.try_receive()) {
+        if (std::holds_alternative<AssetLoadedEvent>(*event)) {
+            auto& loaded_event = std::get<AssetLoadedEvent>(*event);
+            loaded_event.asset.value->insert(
+                loaded_event.id, world
+            );  // Insert the loaded asset into the world
+        } else if (std::holds_alternative<AssetLoadFailedEvent>(*event)) {
+            auto& failed_event = std::get<AssetLoadFailedEvent>(*event);
+            auto& id           = failed_event.id;
+            if (auto info = asset_server->asset_infos.get_info(id)) {
+                info->state = LoadState::Failed;  // Set the state to Failed
+            }
+        }
+    }
 }

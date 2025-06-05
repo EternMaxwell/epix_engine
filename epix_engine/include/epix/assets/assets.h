@@ -195,6 +195,11 @@ struct AssetEvent {
     static AssetEvent<T> loaded(const AssetId<T>& id) {
         return {Type::Loaded, id};
     }
+    bool is_added() const { return type == Type::Added; }
+    bool is_removed() const { return type == Type::Removed; }
+    bool is_modified() const { return type == Type::Modified; }
+    bool is_unused() const { return type == Type::Unused; }
+    bool is_loaded() const { return type == Type::Loaded; }
 };
 
 template <typename T>
@@ -273,7 +278,7 @@ struct Assets {
      *
      * @return `std::shared_ptr<HandleProvider<T>>` The handle provider for this
      */
-    std::shared_ptr<HandleProvider> get_handle_provider() {
+    std::shared_ptr<HandleProvider> get_handle_provider() const {
         return m_handle_provider;
     }
 
@@ -600,7 +605,7 @@ struct Assets {
         );
     }
 
-    void handle_events_internal(AssetServer* asset_server = nullptr);
+    void handle_events_internal(const AssetServer* asset_server = nullptr);
     /**
      * @brief Handle strong handle destruction events.
      */
