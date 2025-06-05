@@ -215,20 +215,6 @@ EPIX_API void AssetServer::load_internal(
         (opt->state == LoadState::Pending || opt->state == LoadState::Failed)) {
         auto& info = *opt;
         info.state = LoadState::Loading;  // Set the state to Loading
-        // get by ext first cause same type can have different loaders, we
-        // want it to be the most suitable loader for the asset if no loader
-        // found by extension, try to get by type, but this may cause errors
-        // resulting in AssetLoadFailedEvent
-        if (!loader) {
-            // If no loader is provided, try to get it by path
-            auto loaders = asset_loaders.get_multi_by_path(info.path);
-            for (auto& l : loaders | std::views::reverse) {
-                if (l->asset_type() == id.type) {
-                    loader = l;
-                    break;
-                }
-            }
-        }
         // check loader type
         if (loader && loader->asset_type() != id.type) {
             // If the loader type does not match the asset type, we cannot
@@ -238,8 +224,8 @@ EPIX_API void AssetServer::load_internal(
         LoadContext context{*this, info.path};
         if (loader) {
             spdlog::trace(
-                "Loading asset {} of type {} with loader {} in trys of get by "
-                "path",
+                "Loading asset {} of type {} with loader {} in trys of given "
+                "loader",
                 info.path.string(), id.type.name(), loader->loader_type().name()
             );
             info.waiter = std::async(
@@ -252,13 +238,61 @@ EPIX_API void AssetServer::load_internal(
                                 AssetLoadedEvent{id, std::move(asset)}
                             );
                         } else {
-                            event_sender.send(
-                                AssetLoadFailedEvent{id, "Failed to load asset"}
-                            );
+                            event_sender.send(AssetLoadFailedEvent{
+                                id,
+                                "Failed to load asset. Loader returned no "
+                                "value."
+                            });
                         }
                     } catch (const std::exception& e) {
                         event_sender.send(AssetLoadFailedEvent{id, e.what()});
                     }
+                }
+            );
+        } else if (asset_loaders.get_by_path(info.path)) {
+            // There are loaders for the asset path, try them;
+            info.waiter = std::async(
+                std::launch::async,
+                [this, id, context,
+                 loaders =
+                     asset_loaders.get_multi_by_path(info.path)]() mutable {
+                    std::vector<std::string> errors;
+                    for (auto& loader : loaders | std::views::reverse) {
+                        spdlog::trace(
+                            "Attempting to load asset {} of type {} with "
+                            "loader {} in trys of get by path",
+                            context.path.string(), id.type.name(),
+                            loader->loader_type().name()
+                        );
+                        try {
+                            auto asset = loader->load(context.path, context);
+                            if (asset.value) {
+                                event_sender.send(
+                                    AssetLoadedEvent{id, std::move(asset)}
+                                );
+                                return;  // Successfully loaded, exit
+                            } else {
+                                errors.emplace_back("Loader returned no value."
+                                );
+                            }
+                        } catch (const std::exception& e) {
+                            errors.emplace_back(e.what());
+                        }
+                    }
+                    std::string error_message =
+                        "Failed to load asset: " +
+                        std::accumulate(
+                            errors.begin(), errors.end(), std::string(),
+                            [index = 0](
+                                const std::string& a, const std::string& b
+                            ) mutable {
+                                return a + "\n" + "\tattempt " +
+                                       std::to_string(++index) + ": " + b;
+                            }
+                        );
+                    event_sender.send(
+                        AssetLoadFailedEvent{id, std::move(error_message)}
+                    );
                 }
             );
         } else if (asset_loaders.get_by_type(id.type)) {
@@ -268,7 +302,7 @@ EPIX_API void AssetServer::load_internal(
                 [this, id, context,
                  loaders = asset_loaders.get_multi_by_type(id.type)]() mutable {
                     std::vector<std::string> errors;
-                    for (auto& loader : loaders) {
+                    for (auto& loader : loaders | std::views::reverse) {
                         spdlog::trace(
                             "Attempting to load asset {} of type {} with "
                             "loader {} in trys of get by type",
@@ -282,6 +316,9 @@ EPIX_API void AssetServer::load_internal(
                                     AssetLoadedEvent{id, std::move(asset)}
                                 );
                                 return;  // Successfully loaded, exit
+                            } else {
+                                errors.emplace_back("Loader returned no value."
+                                );
                             }
                         } catch (const std::exception& e) {
                             errors.emplace_back(e.what());
@@ -294,7 +331,7 @@ EPIX_API void AssetServer::load_internal(
                             [index = 0](
                                 const std::string& a, const std::string& b
                             ) mutable {
-                                return a + "\n" + "attempt " +
+                                return a + "\n" + "\tattempt " +
                                        std::to_string(++index) + ": " + b;
                             }
                         );
@@ -354,6 +391,10 @@ EPIX_API void AssetServer::handle_events(
         } else if (std::holds_alternative<AssetLoadFailedEvent>(*event)) {
             auto& failed_event = std::get<AssetLoadFailedEvent>(*event);
             auto& id           = failed_event.id;
+            spdlog::error(
+                "Failed to load asset {}: {}", id.to_string(),
+                failed_event.error
+            );
             if (auto info = asset_server->asset_infos.get_info(id)) {
                 info->state = LoadState::Failed;  // Set the state to Failed
             }

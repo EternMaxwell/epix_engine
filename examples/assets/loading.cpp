@@ -1,6 +1,7 @@
 #include <epix/app.h>
 #include <epix/assets.h>
 
+#include <fstream>
 #include <iostream>
 #include <string>
 
@@ -10,9 +11,15 @@ struct StringLoader {
     static std::string load(
         const std::filesystem::path& path, epix::assets::LoadContext& context
     ) {
-        // sleep for 1 second to simulate loading
-        std::this_thread::sleep_for(std::chrono::seconds(1));
-        return "Loaded content from " + path.string();
+        auto size = std::filesystem::file_size(path);
+        std::ifstream file(path);
+        if (!file) {
+            spdlog::error("Failed to open file: {}", path.string());
+            throw std::runtime_error("Failed to open file: " + path.string());
+        }
+        std::string content(size, '\0');
+        file.read(content.data(), size);
+        return content;
     }
 };
 
@@ -29,7 +36,7 @@ int main() {
                                  .count();
             if (seconds > 5.0) {
                 spdlog::info("Exiting app after 5 seconds.");
-                exit.write(AppExit{});
+                exit.write(AppExit{1});
             }
         })
     );
@@ -43,24 +50,17 @@ int main() {
                         handle1 = asset_server->load<std::string>("test.txt");
                     }));
     app.add_systems(
-        Update,
-        into(
-            [&](Res<assets::Assets<std::string>>& assets) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(200));
-                if (auto opt = assets->get(handle1)) {
-                    // spdlog::info("Asset loaded: {}", *opt);
-                } else {
-                    // spdlog::warn("Asset not loaded yet.");
-                }
-            },
-            [](EventReader<assets::AssetEvent<std::string>>& events) {
-                for (const auto& event : events.read()) {
-                    if (event.is_loaded()) {
-                        spdlog::info("Asset loaded: {}", event.id);
-                    }
+        Update, into([](EventReader<assets::AssetEvent<std::string>>& events,
+                        Res<assets::Assets<std::string>>& assets,
+                        EventWriter<AppExit>& exit) {
+            for (const auto& event : events.read()) {
+                if (event.is_loaded()) {
+                    spdlog::info("Asset loaded: {}", event.id);
+                    spdlog::info("Content: \n{}", *assets->get(event.id));
+                    exit.write(AppExit{0});
                 }
             }
-        )
+        })
     );
     app.run();
 }
