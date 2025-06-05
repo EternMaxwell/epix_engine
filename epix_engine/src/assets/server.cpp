@@ -249,15 +249,23 @@ EPIX_API void AssetServer::load_internal(
                     }
                 }
             );
-        } else if (asset_loaders.get_by_path(info.path)) {
+        } else if (auto loaders = asset_loaders.get_multi_by_path(info.path);
+                   !loaders.empty() &&
+                   std::ranges::any_of(
+                       loaders, [&id](const ErasedAssetLoader* l
+                                ) { return l->asset_type() == id.type; }
+                   )) {
             // There are loaders for the asset path, try them;
             info.waiter = std::async(
                 std::launch::async,
-                [this, id, context,
-                 loaders =
-                     asset_loaders.get_multi_by_path(info.path)]() mutable {
+                [this, id, context, loaders = std::move(loaders)]() mutable {
                     std::vector<std::string> errors;
-                    for (auto& loader : loaders | std::views::reverse) {
+                    for (auto& loader :
+                         loaders | std::views::reverse |
+                             std::views::filter([&id](const ErasedAssetLoader* l
+                                                ) {
+                                 return l->asset_type() == id.type;
+                             })) {
                         spdlog::trace(
                             "Attempting to load asset {} of type {} with "
                             "loader {} in trys of get by path",
@@ -295,12 +303,13 @@ EPIX_API void AssetServer::load_internal(
                     );
                 }
             );
-        } else if (asset_loaders.get_by_type(id.type)) {
+        } else if (auto loaders = asset_loaders.get_multi_by_type(id.type
+                   );  // Get loaders by type, if any exist
+                   !loaders.empty()) {
             // There are loaders for the asset type, try them;
             info.waiter = std::async(
                 std::launch::async,
-                [this, id, context,
-                 loaders = asset_loaders.get_multi_by_type(id.type)]() mutable {
+                [this, id, context, loaders = std::move(loaders)]() mutable {
                     std::vector<std::string> errors;
                     for (auto& loader : loaders | std::views::reverse) {
                         spdlog::trace(
