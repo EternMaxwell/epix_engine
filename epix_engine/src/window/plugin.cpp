@@ -185,11 +185,11 @@ EPIX_API void epix::window::print_events(
         if (window_t) {
             auto&& [window] = *window_t;
             spdlog::info(
-                "Window {} file drop {}", window.title, fmt::join(paths, ", ")
+                "Window {} file drop {}", window.title, std::views::all(paths)
             );
         } else {
             spdlog::info(
-                "Window {} file drop {}", id.index(), fmt::join(paths, ", ")
+                "Window {} file drop {}", id.index(), std::views::all(paths)
             );
         }
     }

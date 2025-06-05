@@ -42,8 +42,8 @@ struct AssetId : public std::variant<AssetIndex, uuids::uuid> {
                     }
                 },
                 *this
-            );
-        )
+            )
+        );
     }
 };
 

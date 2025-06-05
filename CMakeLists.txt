@@ -16,6 +16,7 @@ target_include_directories(BSThreadPool INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/li
 
 add_subdirectory (libs/entt)
 add_subdirectory (libs/glfw)
+set(SPDLOG_USE_STD_FORMAT ON)
 add_subdirectory (libs/spdlog)
 add_subdirectory (libs/glm)
 add_subdirectory (libs/freetype)
