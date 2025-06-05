@@ -22,6 +22,16 @@ struct StringLoader {
         return content;
     }
 };
+struct AnotherLoader {
+    static constexpr std::array<const char*, 1> exts = {"txt"};
+    static auto extensions() noexcept { return std::views::all(exts); }
+    static int load(
+        const std::filesystem::path& path, epix::assets::LoadContext& context
+    ) {
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+        return 42;  // Just a dummy implementation
+    }
+};
 
 int main() {
     using namespace epix;
@@ -40,25 +50,42 @@ int main() {
             }
         })
     );
-    app.add_plugins(
-        assets::AssetPlugin{}.register_asset<std::string>().register_loader(
-            StringLoader{}
-        )
-    );
+    app.add_plugins(assets::AssetPlugin{}
+                        .register_asset<std::string>()
+                        .register_loader(StringLoader{})
+                        .register_asset<int>()
+                        .register_loader(AnotherLoader{}));
     assets::Handle<std::string> handle1;
+    assets::Handle<int> handle2;
     app.add_systems(Startup, into([&](Res<assets::AssetServer>& asset_server) {
                         handle1 = asset_server->load<std::string>("test.txt");
+                        handle2 = asset_server->load<int>("test.txt");
                     }));
     app.add_systems(
-        Update, into([](EventReader<assets::AssetEvent<std::string>>& events,
-                        Res<assets::Assets<std::string>>& assets,
-                        EventWriter<AppExit>& exit) {
+        Update, into([str_loaded = false, int_loaded = false](
+                         EventReader<assets::AssetEvent<std::string>>& events,
+                         EventReader<assets::AssetEvent<int>>& int_events,
+                         Res<assets::Assets<std::string>>& assets,
+                         Res<assets::Assets<int>>& int_assets,
+                         EventWriter<AppExit>& exit
+                     ) mutable {
             for (const auto& event : events.read()) {
                 if (event.is_loaded()) {
+                    str_loaded = true;
                     spdlog::info("Asset loaded: {}", event.id);
                     spdlog::info("Content: \n{}", *assets->get(event.id));
-                    exit.write(AppExit{0});
                 }
+            }
+            for (const auto& event : int_events.read()) {
+                if (event.is_loaded()) {
+                    int_loaded = true;
+                    spdlog::info("Asset loaded: {}", event.id);
+                    spdlog::info("Content: {}", *int_assets->get(event.id));
+                }
+            }
+            if (str_loaded && int_loaded) {
+                spdlog::info("All assets loaded, exiting app.");
+                exit.write(AppExit{0});
             }
         })
     );
