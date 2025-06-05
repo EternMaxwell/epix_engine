@@ -1,5 +1,3 @@
-#include <iostream>
-
 #include "epix/app/profiler.h"
 #include "epix/app/schedule.h"
 
@@ -575,8 +573,6 @@ EPIX_API std::expected<void, RunScheduleError> ScheduleRunner::run_internal() {
     } else {
         if (rebuilt ||
             (system_set_infos.empty() && !schedule.system_sets.empty())) {
-            std::cout << "Sync schedule: " << schedule.label.name()
-                      << std::endl;
             sync_schedule();
         }
         prepare_runner();
