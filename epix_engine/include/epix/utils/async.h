@@ -73,7 +73,7 @@ struct Sender {
     using queue_type = ConQueue<T, Alloc>;
 
    private:
-    std::shared_ptr<queue_type> m_queue;
+    mutable std::shared_ptr<queue_type> m_queue;
 
    public:
     Sender(const std::shared_ptr<queue_type>& queue) : m_queue(queue) {}
@@ -88,7 +88,7 @@ struct Sender {
     bool operator!() { return !m_queue; }
 
     template <typename... Args>
-    void send(Args&&... args) {
+    void send(Args&&... args) const {
         if (!m_queue) return;
         m_queue->emplace(std::forward<Args>(args)...);
     }
@@ -102,6 +102,7 @@ struct Receiver {
 
    public:
     Receiver(const std::shared_ptr<queue_type>& queue) : m_queue(queue) {}
+    Receiver()                           = default;
     Receiver(const Receiver&)            = default;
     Receiver(Receiver&&)                 = default;
     Receiver& operator=(const Receiver&) = default;
@@ -111,9 +112,19 @@ struct Receiver {
     operator bool() { return m_queue.operator bool(); }
     bool operator!() { return !m_queue; }
 
-    T receive() { return m_queue->pop(); }
-    std::optional<T> try_receive() { return m_queue->try_pop(); }
-    Sender<T, Alloc> create_sender() { return Sender<T, Alloc>(m_queue); }
+    T receive() {
+        if (!m_queue) {
+            throw std::runtime_error("Receiver is not initialized.");
+        }
+        return m_queue->pop();
+    }
+    std::optional<T> try_receive() {
+        if (!m_queue) {
+            return std::nullopt;
+        }
+        return m_queue->try_pop();
+    }
+    Sender<T, Alloc> create_sender() const { return Sender<T, Alloc>(m_queue); }
 
     template <typename U, typename Alloc2>
     friend std::pair<Sender<U, Alloc2>, Receiver<U, Alloc2>> make_channel();

@@ -27,47 +27,41 @@ struct StrongHandle : NonCopyNonMove {
     std::optional<std::filesystem::path> path;
     bool loader_managed;
 
-    StrongHandle(
+    EPIX_API StrongHandle(
         const UntypedAssetId& id,
         const Sender<DestructionEvent>& event_sender,
         bool loader_managed                              = false,
         const std::optional<std::filesystem::path>& path = std::nullopt
-    )
-        : id(id),
-          event_sender(event_sender),
-          path(path),
-          loader_managed(loader_managed) {}
-
-    ~StrongHandle() {
-        if (event_sender) {
-            event_sender.send(id);
-        }
-    }
+    );
+    EPIX_API ~StrongHandle();
 };
+struct UntypedHandle;
 template <typename T>
 struct Handle {
    private:
     std::variant<std::shared_ptr<StrongHandle>, AssetId<T>> ref;
 
    public:
+    Handle() : ref(std::shared_ptr<StrongHandle>()) {}
     Handle(const std::shared_ptr<StrongHandle>& handle) : ref(handle) {}
     Handle(const AssetId<T>& id) : ref(id) {}
     Handle(const uuids::uuid& id) : ref(AssetId<T>(id)) {}
+    Handle(const UntypedHandle& handle);
+    Handle(UntypedHandle&& handle);
 
     Handle(const Handle& other)            = default;
     Handle(Handle&& other)                 = default;
     Handle& operator=(const Handle& other) = default;
     Handle& operator=(Handle&& other)      = default;
+    Handle& operator=(const UntypedHandle& other);
+    Handle& operator=(UntypedHandle&& other);
 
     bool operator==(const Handle& other) const { return ref == other.ref; }
-
     bool is_strong() const {
         return std::holds_alternative<std::shared_ptr<StrongHandle>>(ref);
     }
     bool is_weak() const { return std::holds_alternative<AssetId<T>>(ref); }
-
     Handle<T> weak() const { return id(); }
-
     AssetId<T> id() const {
         return std::visit(
             epix::util::visitor{
@@ -79,7 +73,6 @@ struct Handle {
             ref
         );
     }
-
     operator AssetId<T>() const { return id(); }
 };
 
@@ -90,24 +83,25 @@ struct UntypedHandle {
     template <typename T>
     UntypedHandle(
         const std::variant<std::shared_ptr<StrongHandle>, AssetId<T>>& ref
-    )
-        : ref(std::visit(
-              epix::util::visitor{
-                  [](const std::shared_ptr<StrongHandle>& handle) {
-                      return handle;
-                  },
-                  [](const AssetId<T>& index) { return UntypedAssetId(index); }
-              },
-              ref
-          )) {}
-    UntypedHandle(
+    ) {
+        std::visit(
+            epix::util::visitor{
+                [this](const std::shared_ptr<StrongHandle>& handle) {
+                    this->ref = handle;
+                },
+                [this](const AssetId<T>& id) { this->ref = UntypedAssetId(id); }
+            },
+            ref
+        );
+    }
+    EPIX_API UntypedHandle(
         const std::variant<std::shared_ptr<StrongHandle>, UntypedAssetId>& ref
-    )
-        : ref(ref) {}
+    );
 
    public:
-    UntypedHandle(const std::shared_ptr<StrongHandle>& handle) : ref(handle) {}
-    UntypedHandle(const UntypedAssetId& id) : ref(id) {}
+    EPIX_API UntypedHandle();
+    EPIX_API UntypedHandle(const std::shared_ptr<StrongHandle>& handle);
+    EPIX_API UntypedHandle(const UntypedAssetId& id);
     template <typename T>
     UntypedHandle(const Handle<T>& handle) : ref(handle.ref) {}
 
@@ -116,25 +110,13 @@ struct UntypedHandle {
     UntypedHandle& operator=(const UntypedHandle&) = default;
     UntypedHandle& operator=(UntypedHandle&&)      = default;
 
-    bool operator==(const UntypedHandle& other) const {
-        return ref == other.ref;
-    }
-
-    bool is_strong() const {
-        return std::holds_alternative<std::shared_ptr<StrongHandle>>(ref);
-    }
-    bool is_weak() const { return std::holds_alternative<UntypedAssetId>(ref); }
-    std::type_index type() const {
-        return std::visit(
-            epix::util::visitor{
-                [](const std::shared_ptr<StrongHandle>& handle) {
-                    return handle->id.type;
-                },
-                [](const UntypedAssetId& id) { return id.type; }
-            },
-            ref
-        );
-    }
+    EPIX_API bool operator==(const UntypedHandle& other) const;
+    EPIX_API bool is_strong() const;
+    EPIX_API bool is_weak() const;
+    EPIX_API std::type_index type() const;
+    EPIX_API const UntypedAssetId& id() const;
+    EPIX_API operator const UntypedAssetId&() const;
+    EPIX_API UntypedHandle weak() const;
 
     template <typename T>
     std::optional<Handle<T>> try_typed() const {
@@ -158,33 +140,83 @@ struct UntypedHandle {
         return try_typed<T>().value();
     }
 
-    const UntypedAssetId& id() const {
-        return std::visit(
-            epix::util::visitor{
-                [](const std::shared_ptr<StrongHandle>& handle
-                ) -> const UntypedAssetId& { return handle->id; },
-                [](const UntypedAssetId& id) -> const UntypedAssetId& {
-                    return id;
-                }
-            },
-            ref
-        );
-    }
-
-    operator const UntypedAssetId&() const { return id(); }
-
-    UntypedHandle weak() const {
-        return std::visit(
-            epix::util::visitor{
-                [](const std::shared_ptr<StrongHandle>& handle) {
-                    return handle->id;
-                },
-                [](const UntypedAssetId& id) { return id; }
-            },
-            ref
-        );
-    }
+    template <typename T>
+    friend struct Handle;
 };
+template <typename T>
+Handle<T>::Handle(const UntypedHandle& handle) {
+    if (typeid(T) != handle.type()) {
+        throw std::runtime_error(std::format(
+            "{} cannot be constructed from UntypedHandle of type {}",
+            typeid(T).name(), handle.type().name()
+        ));
+    }
+    std::visit(
+        epix::util::visitor{
+            [this](const std::shared_ptr<StrongHandle>& strong_handle) {
+                ref = strong_handle;
+            },
+            [this](const UntypedAssetId& id) { ref = id.typed<T>(); }
+        },
+        handle.ref
+    );
+}
+template <typename T>
+Handle<T>::Handle(UntypedHandle&& handle) {
+    if (typeid(T) != handle.type()) {
+        throw std::runtime_error(std::format(
+            "{} cannot be constructed from UntypedHandle of type {}",
+            typeid(T).name(), handle.type().name()
+        ));
+    }
+    std::visit(
+        epix::util::visitor{
+            [this](std::shared_ptr<StrongHandle>&& strong_handle) {
+                ref = std::move(strong_handle);
+            },
+            [this](UntypedAssetId&& id) { ref = id.typed<T>(); }
+        },
+        std::move(handle.ref)
+    );
+}
+template <typename T>
+Handle<T>& Handle<T>::operator=(const UntypedHandle& other) {
+    if (typeid(T) != other.type()) {
+        throw std::runtime_error(std::format(
+            "{} cannot be constructed from UntypedHandle of type {}",
+            typeid(T).name(), other.type().name()
+        ));
+    }
+    std::visit(
+        epix::util::visitor{
+            [this](const std::shared_ptr<StrongHandle>& strong_handle) {
+                ref = strong_handle;
+            },
+            [this](const UntypedAssetId& id) { ref = id.typed<T>(); }
+        },
+        other.ref
+    );
+    return *this;
+}
+template <typename T>
+Handle<T>& Handle<T>::operator=(UntypedHandle&& other) {
+    if (typeid(T) != other.type()) {
+        throw std::runtime_error(std::format(
+            "{} cannot be constructed from UntypedHandle of type {}",
+            typeid(T).name(), other.type().name()
+        ));
+    }
+    std::visit(
+        epix::util::visitor{
+            [this](std::shared_ptr<StrongHandle>&& strong_handle) {
+                ref = std::move(strong_handle);
+            },
+            [this](UntypedAssetId&& id) { ref = id.typed<T>(); }
+        },
+        std::move(other.ref)
+    );
+    return *this;
+}
 
 struct HandleProvider {
     AssetIndexAllocator index_allocator;
@@ -192,38 +224,20 @@ struct HandleProvider {
     Receiver<DestructionEvent> event_receiver;
     std::type_index type;
 
-    HandleProvider(const std::type_index& type)
-        : type(type),
-          event_receiver(
-              std::get<1>(epix::utils::async::make_channel<DestructionEvent>())
-          ) {
-        event_sender = event_receiver.create_sender();
-    }
+    EPIX_API HandleProvider(const std::type_index& type);
     HandleProvider(const HandleProvider&)            = delete;
     HandleProvider(HandleProvider&&)                 = delete;
     HandleProvider& operator=(const HandleProvider&) = delete;
     HandleProvider& operator=(HandleProvider&&)      = delete;
 
-    UntypedHandle reserve() {
-        auto index = index_allocator.reserve();
-        return std::make_shared<StrongHandle>(
-            UntypedAssetId(type, index), event_sender, false, std::nullopt
-        );
-    }
-    std::shared_ptr<StrongHandle> get_handle(
+    EPIX_API UntypedHandle reserve();
+    EPIX_API std::shared_ptr<StrongHandle> get_handle(
         const InternalAssetId& id,
         bool loader_managed,
         const std::optional<std::filesystem::path>& path
-    ) {
-        return std::make_shared<StrongHandle>(
-            id.untyped(type), event_sender, loader_managed, path
-        );
-    }
-    std::shared_ptr<StrongHandle> reserve(
+    );
+    EPIX_API std::shared_ptr<StrongHandle> reserve(
         bool loader_managed, const std::optional<std::filesystem::path>& path
-    ) {
-        auto index = index_allocator.reserve();
-        return get_handle(index, loader_managed, path);
-    }
+    );
 };
 }  // namespace epix::assets

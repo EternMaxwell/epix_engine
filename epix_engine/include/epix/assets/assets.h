@@ -8,6 +8,7 @@
 #include "index.h"
 
 namespace epix::assets {
+struct AssetServer;
 template <typename T>
 struct Entry {
     std::optional<T> asset = std::nullopt;
@@ -175,6 +176,7 @@ struct AssetEvent {
         Removed,   // Asset removed
         Modified,  // Asset modified or replaced
         Unused,    // All strong handles destroyed
+        Loaded,    // Asset loaded from disk or network
     } type;
     AssetId<T> id;
 
@@ -190,6 +192,14 @@ struct AssetEvent {
     static AssetEvent<T> unused(const AssetId<T>& id) {
         return {Type::Unused, id};
     }
+    static AssetEvent<T> loaded(const AssetId<T>& id) {
+        return {Type::Loaded, id};
+    }
+    bool is_added() const { return type == Type::Added; }
+    bool is_removed() const { return type == Type::Removed; }
+    bool is_modified() const { return type == Type::Modified; }
+    bool is_unused() const { return type == Type::Unused; }
+    bool is_loaded() const { return type == Type::Loaded; }
 };
 
 template <typename T>
@@ -268,7 +278,7 @@ struct Assets {
      *
      * @return `std::shared_ptr<HandleProvider<T>>` The handle provider for this
      */
-    std::shared_ptr<HandleProvider> get_handle_provider() {
+    std::shared_ptr<HandleProvider> get_handle_provider() const {
         return m_handle_provider;
     }
 
@@ -595,26 +605,16 @@ struct Assets {
         );
     }
 
+    void handle_events_internal(const AssetServer* asset_server = nullptr);
     /**
      * @brief Handle strong handle destruction events.
      */
-    void handle_events() {
-        m_logger->trace("Handling events");
-        while (auto&& opt =
-                   m_handle_provider->index_allocator.reserved_receiver()
-                       .try_receive()) {
-            m_assets.resize_slots(opt->index);
-        }
-        while (auto&& opt = m_handle_provider->event_receiver.try_receive()) {
-            auto&& [id] = *opt;
-            release(id.typed<T>());
-        }
-        m_logger->trace("Finished handling events");
+    static void handle_events(
+        epix::ResMut<Assets<T>> assets, epix::Res<AssetServer> asset_server
+    ) {
+        assets->handle_events_internal(asset_server.get());
     }
 
-    static void res_handle_events(epix::ResMut<Assets<T>> assets) {
-        assets->handle_events();
-    }
     static void asset_events(
         epix::ResMut<Assets<T>> assets, epix::EventWriter<AssetEvent<T>> writer
     ) {

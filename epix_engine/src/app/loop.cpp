@@ -3,15 +3,16 @@
 using namespace epix::app;
 
 struct LoopRunner : public AppRunner {
-    BasicSystem<bool> m_check_exit;
-    LoopRunner()
-        : m_check_exit([](EventReader<AppExit> exit) {
-              if (auto e = exit.read_one()) {
-                  return true;
-              }
-              return false;
-          }) {}
+    LoopRunner() = default;
     int run(App& app) override {
+        int code;
+        BasicSystem<bool> m_check_exit([&code](EventReader<AppExit> exit) {
+            if (auto e = exit.read_one()) {
+                code = e->code;
+                return true;
+            }
+            return false;
+        });
         auto time_line1 = std::chrono::high_resolution_clock::now();
         do {
             app.run_group(LoopGroup);
@@ -30,7 +31,9 @@ struct LoopRunner : public AppRunner {
                 app_profiler->push_time(time);
             }
         } while (!app.run_system(m_check_exit).value_or(true));
-        app.logger()->clone("loop")->info("Received exit event.");
+        app.logger()->clone("loop")->info(
+            "Received exit event : code = {}", code
+        );
         app.logger()->info("Exiting app.");
         app.run_group(ExitGroup);
         app.logger()->info("App terminated.");

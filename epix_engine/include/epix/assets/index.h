@@ -28,8 +28,7 @@ struct AssetIndex {
     uint32_t generation;
 
    protected:
-    AssetIndex(uint32_t index, uint32_t generation)
-        : index(index), generation(generation) {}
+    EPIX_API AssetIndex(uint32_t index, uint32_t generation);
 
    public:
     AssetIndex(const AssetIndex&)            = default;
@@ -37,10 +36,8 @@ struct AssetIndex {
     AssetIndex& operator=(const AssetIndex&) = default;
     AssetIndex& operator=(AssetIndex&&)      = default;
 
-    bool operator==(const AssetIndex& other) const {
-        return index == other.index && generation == other.generation;
-    }
-    bool operator!=(const AssetIndex& other) const { return !(*this == other); }
+    bool operator==(const AssetIndex& other) const;
+    bool operator!=(const AssetIndex& other) const;
 
     friend struct StrongHandle;
     template <typename T>
@@ -57,33 +54,14 @@ struct AssetIndexAllocator {
     Sender<AssetIndex> m_reserved_sender;
 
    public:
-    AssetIndexAllocator()
-        : m_free_indices_receiver(
-              std::get<1>(epix::utils::async::make_channel<AssetIndex>())
-          ),
-          m_reserved(std::get<1>(epix::utils::async::make_channel<AssetIndex>())
-          ) {
-        m_free_indices_sender = m_free_indices_receiver.create_sender();
-        m_reserved_sender     = m_reserved.create_sender();
-    }
+    EPIX_API AssetIndexAllocator();
     AssetIndexAllocator(const AssetIndexAllocator&)            = delete;
     AssetIndexAllocator(AssetIndexAllocator&&)                 = delete;
     AssetIndexAllocator& operator=(const AssetIndexAllocator&) = delete;
     AssetIndexAllocator& operator=(AssetIndexAllocator&&)      = delete;
 
-    AssetIndex reserve() {
-        if (auto index = m_free_indices_receiver.try_receive()) {
-            m_reserved_sender.send(
-                AssetIndex(index->index, index->generation + 1u)
-            );
-            return AssetIndex(index->index, index->generation + 1);
-        } else {
-            uint32_t i = m_next.fetch_add(1, std::memory_order_relaxed);
-            m_reserved_sender.send(AssetIndex(i, 0));
-            return AssetIndex(i, 0);
-        }
-    }
-    void release(const AssetIndex& index) { m_free_indices_sender.send(index); }
-    Receiver<AssetIndex> reserved_receiver() { return m_reserved; }
+    EPIX_API AssetIndex reserve();
+    EPIX_API void release(const AssetIndex& index);
+    EPIX_API Receiver<AssetIndex> reserved_receiver() const;
 };
 }  // namespace epix::assets

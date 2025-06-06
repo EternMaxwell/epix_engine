@@ -537,8 +537,8 @@ struct App {
     EPIX_API TracySettings& tracy_settings();
     EPIX_API const TracySettings& tracy_settings() const;
 
-    EPIX_API World& world(const WorldLabel& label);
-    EPIX_API World* get_world(const WorldLabel& label);
+    EPIX_API World& world(const WorldLabel& label = MainWorld);
+    EPIX_API World* get_world(const WorldLabel& label = MainWorld);
 
     EPIX_API Executors& executors();
     EPIX_API std::shared_ptr<Executors> get_executors();
