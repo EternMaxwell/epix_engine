@@ -1,5 +1,6 @@
 #include <epix/app.h>
 #include <epix/assets.h>
+#include <epix/image.h>
 
 #include <fstream>
 #include <iostream>
@@ -55,39 +56,58 @@ int main() {
                         .register_loader(StringLoader{})
                         .register_asset<int>()
                         .register_loader(AnotherLoader{}));
+    app.add_plugins(epix::image::ImagePlugin{});
     assets::Handle<std::string> handle1;
     assets::Handle<int> handle2;
+    assets::Handle<image::Image> image_handle;
     app.add_systems(Startup, into([&](Res<assets::AssetServer>& asset_server) {
                         handle1 = asset_server->load<std::string>("test.txt");
                         handle2 = asset_server->load<int>("test.txt");
+                        image_handle =
+                            asset_server->load<image::Image>("test.png");
                     }));
     app.add_systems(
-        Update, into([str_loaded = false, int_loaded = false](
-                         EventReader<assets::AssetEvent<std::string>>& events,
-                         EventReader<assets::AssetEvent<int>>& int_events,
-                         Res<assets::Assets<std::string>>& assets,
-                         Res<assets::Assets<int>>& int_assets,
-                         EventWriter<AppExit>& exit
-                     ) mutable {
-            for (const auto& event : events.read()) {
-                if (event.is_loaded()) {
-                    str_loaded = true;
-                    spdlog::info("Asset loaded: {}", event.id);
-                    spdlog::info("Content: \n{}", *assets->get(event.id));
+        Update,
+        into(
+            [str_loaded = false, int_loaded = false](
+                EventReader<assets::AssetEvent<std::string>>& events,
+                EventReader<assets::AssetEvent<int>>& int_events,
+                Res<assets::Assets<std::string>>& assets,
+                Res<assets::Assets<int>>& int_assets, EventWriter<AppExit>& exit
+            ) mutable {
+                for (const auto& event : events.read()) {
+                    if (event.is_loaded()) {
+                        str_loaded = true;
+                        spdlog::info("Asset loaded: {}", event.id);
+                        spdlog::info("Content: \n{}", *assets->get(event.id));
+                    }
+                }
+                for (const auto& event : int_events.read()) {
+                    if (event.is_loaded()) {
+                        int_loaded = true;
+                        spdlog::info("Asset loaded: {}", event.id);
+                        spdlog::info("Content: {}", *int_assets->get(event.id));
+                    }
+                }
+                if (str_loaded && int_loaded) {
+                    spdlog::info("All assets loaded, exiting app.");
+                    exit.write(AppExit{0});
+                }
+            },
+            [](EventReader<assets::AssetEvent<image::Image>>& image_events,
+               Res<assets::Assets<image::Image>>& images) {
+                for (const auto& event : image_events.read()) {
+                    if (event.is_loaded()) {
+                        spdlog::info("Image asset loaded: {}", event.id);
+                        const auto& img = *images->get(event.id);
+                        spdlog::info(
+                            "Image size: {}x{}", img.info.extent.width,
+                            img.info.extent.height
+                        );
+                    }
                 }
             }
-            for (const auto& event : int_events.read()) {
-                if (event.is_loaded()) {
-                    int_loaded = true;
-                    spdlog::info("Asset loaded: {}", event.id);
-                    spdlog::info("Content: {}", *int_assets->get(event.id));
-                }
-            }
-            if (str_loaded && int_loaded) {
-                spdlog::info("All assets loaded, exiting app.");
-                exit.write(AppExit{0});
-            }
-        })
+        )
     );
     app.run();
 }
