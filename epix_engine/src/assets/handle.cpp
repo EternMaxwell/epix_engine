@@ -28,6 +28,17 @@ EPIX_API UntypedHandle::UntypedHandle(
 )
     : ref(handle) {}
 EPIX_API UntypedHandle::UntypedHandle(const UntypedAssetId& id) : ref(id) {}
+EPIX_API UntypedHandle& UntypedHandle::operator=(
+    const std::shared_ptr<StrongHandle>& handle
+) {
+    ref = handle;
+    return *this;
+}
+EPIX_API UntypedHandle& UntypedHandle::operator=(const UntypedAssetId& id) {
+    ref = id;
+    return *this;
+}
+
 EPIX_API bool UntypedHandle::operator==(const UntypedHandle& other) const {
     return ref == other.ref;
 }

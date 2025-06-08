@@ -16,13 +16,8 @@ struct AssetId : public std::variant<AssetIndex, uuids::uuid> {
     static AssetId<T> invalid() { return AssetId<T>(INVALID_UUID); }
 
     bool operator==(const AssetId<T>& other) const {
-        if (std::holds_alternative<AssetIndex>(other)) {
-            return std::holds_alternative<AssetIndex>(*this) &&
-                   std::get<AssetIndex>(*this) == std::get<AssetIndex>(other);
-        } else if (std::holds_alternative<uuids::uuid>(other)) {
-            return std::holds_alternative<uuids::uuid>(*this) &&
-                   std::get<uuids::uuid>(*this) == std::get<uuids::uuid>(other);
-        }
+        return ((const std::variant<AssetIndex, uuids::uuid>&)*this) ==
+               ((const std::variant<AssetIndex, uuids::uuid>&)(other));
     }
     bool operator==(const UntypedAssetId& other) const;
 

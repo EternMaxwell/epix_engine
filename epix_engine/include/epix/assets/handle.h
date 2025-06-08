@@ -56,6 +56,16 @@ struct Handle {
     Handle& operator=(const UntypedHandle& other);
     Handle& operator=(UntypedHandle&& other);
 
+    Handle& operator=(const AssetId<T>& id) {
+        ref = id;
+        return *this;
+    }
+    Handle& operator=(const std::shared_ptr<StrongHandle>& handle) {
+        assert(handle->id.type() == typeid(T));
+        ref = handle;
+        return *this;
+    }
+
     bool operator==(const Handle& other) const { return ref == other.ref; }
     bool is_strong() const {
         return std::holds_alternative<std::shared_ptr<StrongHandle>>(ref);
@@ -109,6 +119,11 @@ struct UntypedHandle {
     UntypedHandle(UntypedHandle&&)                 = default;
     UntypedHandle& operator=(const UntypedHandle&) = default;
     UntypedHandle& operator=(UntypedHandle&&)      = default;
+
+    EPIX_API UntypedHandle& operator=(
+        const std::shared_ptr<StrongHandle>& handle
+    );
+    EPIX_API UntypedHandle& operator=(const UntypedAssetId& id);
 
     EPIX_API bool operator==(const UntypedHandle& other) const;
     EPIX_API bool is_strong() const;

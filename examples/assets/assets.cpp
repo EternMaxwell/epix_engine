@@ -59,7 +59,7 @@ void test_1() {
     }
 
     // Destroy strong handle1
-    handle1.~Handle();
+    handle1 = nullptr;
 
     // Handle events
     assets.handle_events_internal();
@@ -122,7 +122,7 @@ void test_2() {
     }
 
     // Destructing 1
-    handle1.~Handle();
+    handle1 = epix::assets::Handle<std::string>();
     // Handle events
     assets.handle_events_internal();
 
@@ -165,7 +165,7 @@ void test_3() {
     epix::assets::AssetIndex index1 =
         std::get<epix::assets::AssetIndex>(handle1.id());
 
-    handle1.~Handle();
+    handle1 = epix::assets::Handle<std::string>();
     // Handle events
     assets.handle_events_internal();
 
