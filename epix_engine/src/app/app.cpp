@@ -425,6 +425,13 @@ EPIX_API void App::build() {
             plugin->build(*this);
         }
     }
+    for (size_t i = 0; i < m_plugins.size(); ++i) {
+        auto plugin = m_plugins[i].second;
+        if (plugin) {
+            plugin->finish(*this);
+            m_built_plugins.insert(m_plugins[i].first);
+        }
+    }
     std::shared_lock lock(*m_mutex);
     for (auto&& [label, plugin] : m_plugins) {
         UntypedRes res = UntypedRes::create(

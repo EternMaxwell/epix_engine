@@ -11,7 +11,6 @@
 namespace epix::assets {
 struct AssetPlugin : public epix::Plugin {
     std::vector<std::function<void(epix::App&)>> m_assets_inserts;
-    std::vector<std::function<void(epix::App&)>> m_loader_inserts;
     std::shared_ptr<AssetServer> m_asset_server =
         std::make_shared<AssetServer>();
 
@@ -31,11 +30,12 @@ struct AssetPlugin : public epix::Plugin {
         return *this;
     }
     template <typename T>
-    AssetPlugin& register_loader(const T& t) {
+    AssetPlugin& register_loader(const T& t = T()) {
         m_asset_server->register_loader(t);
         return *this;
     }
 
     EPIX_API void build(epix::App& app) override;
+    EPIX_API void finish(epix::App& app) override;
 };
 }  // namespace epix::assets

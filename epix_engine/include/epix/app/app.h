@@ -449,6 +449,7 @@ struct ScheduleConfig {
 
 struct Plugin {
     virtual void build(App& app) = 0;
+    virtual void finish(App& app) {};
 };
 
 struct AppRunner {
@@ -630,8 +631,7 @@ struct App {
     }
     template <typename... Plugins>
     App& add_plugins(Plugins&&... plugins) {
-        (add_plugin<std::decay_t<Plugins>>(std::forward<Plugins>(plugins)),
-         ...);
+        (add_plugin(std::forward<Plugins>(plugins)), ...);
         return *this;
     }
     template <typename T>
