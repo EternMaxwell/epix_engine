@@ -31,12 +31,10 @@ struct LoopRunner : public AppRunner {
                 app_profiler->push_time(time);
             }
         } while (!app.run_system(m_check_exit).value_or(true));
-        app.logger()->clone("loop")->info(
-            "Received exit event : code = {}", code
-        );
-        app.logger()->info("Exiting app.");
+        spdlog::info("[loop] Received exit event : code = {}", code);
+        spdlog::info("[app] Exiting app.");
         app.run_group(ExitGroup);
-        app.logger()->info("App terminated.");
+        spdlog::info("[app] App terminated.");
         return 0;
     }
 };

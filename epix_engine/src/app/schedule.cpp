@@ -1,5 +1,6 @@
-#include "epix/app/profiler.h"
 #include "epix/app/schedule.h"
+
+#include "epix/app/profiler.h"
 
 using namespace epix::app;
 
@@ -74,14 +75,6 @@ EPIX_API Schedule::Schedule(Schedule&& other)
 };
 EPIX_API ScheduleRunner& Schedule::runner() noexcept { return *prunner; };
 
-EPIX_API void Schedule::set_logger(const std::shared_ptr<spdlog::logger>& logger
-) {
-    this->logger = logger->clone(std::format("schedule:{}", label.name()));
-    for (auto&& [label, system] : systems) {
-        system.logger = this->logger;
-    }
-};
-
 EPIX_API ScheduleLabel Schedule::get_label() const noexcept { return label; };
 
 EPIX_API bool Schedule::build() noexcept {
@@ -152,7 +145,6 @@ EPIX_API void Schedule::add_systems(SystemConfig&& config) {
                                 )
                                 .first;
                 it->second.executor = config.executor;
-                it->second.logger   = logger;
             }
             // Adding the system set that owns the system
             {
@@ -269,8 +261,9 @@ EPIX_API std::expected<void, RunSystemError> ScheduleRunner::run_system(
 ) {
     // to be implemented
 
-    auto& system = *system_set_infos[index].system;
-    auto& label  = system.label;
+    auto& system         = *system_set_infos[index].system;
+    auto& label          = system.label;
+    system.schedule_name = label_name;
 
     systems_running.emplace(index);
     if (executors) {
@@ -528,7 +521,28 @@ EPIX_API std::expected<void, RunScheduleError> ScheduleRunner::run_internal() {
 
     auto time_line1 = std::chrono::high_resolution_clock::now();
 
-    schedule.logger->trace("Flushing command queue.");
+    label_name = schedule.label.name();
+    {
+        // shorten the label name to avoid long log messages
+        while (label_name.size() > 10) {
+            // find the first " " or "::", and truncate the string
+            auto pos_space = label_name.find(' ');
+            auto pos_colon = label_name.find("::");
+            // the less one
+            size_t pos = std::min(pos_space, pos_colon);
+            if (pos == std::string::npos) {
+                // no space or "::" found, truncate the string
+                // we will not change the string any more
+                break;
+            } else {
+                // get the substr after the found position
+                label_name =
+                    label_name.substr(pos + (pos == pos_space ? 1 : 2));
+            }
+        }
+    }
+
+    spdlog::trace("Flushing command queue of schedule:{}", label_name);
     bool rebuilt;
     if (tracy_settings.enabled) {
         ZoneScopedN("Flush schedule command queue");
@@ -536,7 +550,7 @@ EPIX_API std::expected<void, RunScheduleError> ScheduleRunner::run_internal() {
     } else {
         rebuilt = schedule.flush();
     }
-    schedule.logger->trace("Command queue flushed.");
+    spdlog::trace("Command queue flushed, in schedule:{}", label_name);
 
     auto time_line2 = std::chrono::high_resolution_clock::now();
 
@@ -550,18 +564,18 @@ EPIX_API std::expected<void, RunScheduleError> ScheduleRunner::run_internal() {
 
     auto time_line3 = std::chrono::high_resolution_clock::now();
 
-    schedule.logger->trace("Building schedule.");
+    spdlog::trace("Building schedule:{}", label_name);
     if (tracy_settings.enabled) {
         ZoneScopedN("Build schedule if needed");
         schedule.build();
     } else {
         schedule.build();
     }
-    schedule.logger->trace("Schedule built.");
+    spdlog::trace("Built schedule:{}", label_name);
 
     auto time_line4 = std::chrono::high_resolution_clock::now();
 
-    schedule.logger->debug("Running schedule.");
+    spdlog::trace("Running schedule:{}", label_name);
 
     if (tracy_settings.enabled) {
         ZoneScopedN("Prepare schedule for running");
@@ -622,22 +636,22 @@ EPIX_API std::expected<void, RunScheduleError> ScheduleRunner::run_internal() {
         profiler.push_system_count(schedule.systems.size());
     }
 
-    schedule.logger->debug("Schedule finished.");
+    spdlog::trace("Finished running schedule:{}", label_name);
 
     uint32_t remaining_sets = 0;
     for (auto&& info : system_set_infos) {
         if (!info.finished) {
             remaining_sets++;
-            schedule.logger->warn(
-                "    Schedule {} has set {} not finished.",
-                schedule.label.name(), info.label.name()
+            spdlog::warn(
+                "\t{}:{} not finished.", info.system ? "System" : "Set",
+                info.label.name()
             );
         }
     }
     if (remaining_sets > 0) {
-        schedule.logger->warn(
-            "Schedule {} has {} sets remaining.", schedule.label.name(),
-            remaining_sets
+        spdlog::warn(
+            "{} sets/systems remaining, in schedule:{}(full name:{})",
+            remaining_sets, label_name, schedule.label.name()
         );
         return std::unexpected(RunScheduleError{
             schedule.label, RunScheduleError::Type::SetsRemaining,

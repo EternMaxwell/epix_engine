@@ -31,8 +31,6 @@ void test_1() {
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
     epix::assets::Assets<string> assets;
-    // assets.set_log_level(spdlog::level::trace);
-    assets.set_log_label("Assets");
 
     // Create an asset and get a strong handle to it
     auto handle1 = assets.emplace("Hello Assets!");
@@ -92,8 +90,6 @@ void test_2() {
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
     epix::assets::Assets<std::string> assets;
-    // assets.set_log_level(spdlog::level::trace);
-    assets.set_log_label("Assets");
 
     // Create an asset and get a strong handle to it
     auto handle1     = assets.emplace("Hello Assets!");
@@ -156,8 +152,6 @@ void test_3() {
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
     epix::assets::Assets<std::string> assets;
-    // assets.set_log_level(spdlog::level::trace);
-    assets.set_log_label("Assets");
 
     // Create an asset and get a strong handle to it
     auto handle1 = assets.emplace("Hello Assets!");
@@ -209,8 +203,6 @@ void test_4() {
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
     epix::assets::Assets<std::string> assets;
-    // assets.set_log_level(spdlog::level::trace);
-    assets.set_log_label("Assets");
 
     // Create an asset and get a strong handle to it
     auto handle1 = assets.emplace("Hello Assets!");
@@ -275,8 +267,6 @@ void test_5() {
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
     epix::assets::Assets<std::string> assets;
-    // assets.set_log_level(spdlog::level::trace);
-    assets.set_log_label("Assets");
 
     auto provider                             = assets.get_handle_provider();
     epix::assets::Handle<std::string> handle1 = provider->reserve();

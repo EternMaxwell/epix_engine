@@ -33,9 +33,9 @@ EPIX_API ScheduleConfig& ScheduleConfig::set_run_once() {
 struct OnceRunner : public AppRunner {
     int run(App& app) override {
         app.run_group(LoopGroup);
-        app.logger()->info("Exiting app.");
+        spdlog::info("[app] Exiting app.");
         app.run_group(ExitGroup);
-        app.logger()->info("App terminated.");
+        spdlog::info("[app] App terminated.");
         return 0;
     }
 };
@@ -63,8 +63,7 @@ EPIX_API App::App(const AppCreateInfo& create_info)
           create_info.control_pool_size,
           []() { BS::this_thread::set_os_thread_name("control"); }
       )),
-      m_mutex(std::make_unique<std::shared_mutex>()),
-      m_logger(spdlog::default_logger()->clone("app")) {
+      m_mutex(std::make_unique<std::shared_mutex>()) {
     add_world(MainWorld);
     add_schedule_group(LoopGroup);
     add_schedule_group(ExitGroup);
@@ -110,17 +109,6 @@ EPIX_API App App::create(const AppCreateInfo& create_info) {
     );
     return app;
 }
-
-EPIX_API App& App::set_logger(std::shared_ptr<spdlog::logger> logger) {
-    m_logger = logger->clone("app");
-    for (auto&& [label, group] : m_schedule_groups) {
-        for (auto&& [schedule_label, schedule] : group.schedules) {
-            schedule->set_logger(m_logger);
-        }
-    }
-    return *this;
-};
-EPIX_API std::shared_ptr<spdlog::logger> App::logger() { return m_logger; };
 
 EPIX_API std::optional<GroupLabel> App::find_belonged_group(
     const ScheduleLabel& label
@@ -241,7 +229,6 @@ EPIX_API App& App::add_schedule(
             config.label, std::make_unique<Schedule>(config.label)
         );
     }
-    group.schedules.at(config.label)->set_logger(m_logger);
     group.schedule_src.emplace(config.label, config.src_world);
     group.schedule_dst.emplace(config.label, config.dst_world);
     group.schedule_nodes[config.label].depends  = config.depends;
@@ -478,9 +465,9 @@ EPIX_API void App::set_runner(std::shared_ptr<AppRunner> runner) {
     m_runner = std::move(runner);
 }
 EPIX_API int App::run() {
-    logger()->info("Building app.");
+    spdlog::info("[app] Building app.");
     build();
-    logger()->info("Running app.");
+    spdlog::info("[app] Running app.");
     if (!m_runner) {
         m_runner = std::make_unique<OnceRunner>();
     }

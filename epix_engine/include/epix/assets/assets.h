@@ -211,7 +211,6 @@ struct Assets {
     std::shared_ptr<HandleProvider> m_handle_provider;
     entt::dense_map<uuids::uuid, T> m_mapped_assets;
     entt::dense_map<uuids::uuid, uint32_t> m_mapped_assets_ref;
-    std::shared_ptr<spdlog::logger> m_logger;
     std::vector<AssetEvent<T>> m_cached_events;
 
     /**
@@ -244,34 +243,30 @@ struct Assets {
         requires std::constructible_from<T, Args...>
     bool insert_uuid(const uuids::uuid& id, Args&&... args) {
         if (contains(AssetId<T>(id))) {
-            m_logger->debug("Replacing asset at Uuid:{}", uuids::to_string(id));
+            spdlog::debug(
+                "[{}] Replacing asset at Uuid:{}", typeid(*this).name(),
+                uuids::to_string(id)
+            );
             auto& asset = m_mapped_assets.at(id);
             asset.~T();
             new (&asset) T(std::forward<Args>(args)...);
             return true;
         }
-        m_logger->debug("Inserting asset at Uuid:{}", uuids::to_string(id));
+        spdlog::debug(
+            "[{}] Inserting asset at Uuid:{}", typeid(*this).name(),
+            uuids::to_string(id)
+        );
         m_mapped_assets.emplace(id, std::forward<Args>(args)...);
         m_mapped_assets_ref.emplace(id, 0);
         return false;
     }
 
    public:
-    Assets() : m_handle_provider(std::make_shared<HandleProvider>(typeid(T))) {
-        m_logger =
-            spdlog::default_logger()->clone(typeid(decltype(*this)).name());
-    }
+    Assets() : m_handle_provider(std::make_shared<HandleProvider>(typeid(T))) {}
     Assets(const Assets&)            = delete;
     Assets(Assets&&)                 = delete;
     Assets& operator=(const Assets&) = delete;
     Assets& operator=(Assets&&)      = delete;
-
-    void set_log_level(spdlog::level::level_enum level) {
-        m_logger->set_level(level);
-    }
-    void set_log_label(const std::string& label) {
-        m_logger = m_logger->clone(label);
-    }
 
     /**
      * @brief Get the handle provider for this assets collection.
@@ -296,14 +291,15 @@ struct Assets {
         std::visit(
             epix::util::visitor{
                 [this](const AssetIndex& index) {
-                    m_logger->debug(
-                        "Emplacing asset at {} with gen {}", index.index,
-                        index.generation
+                    spdlog::debug(
+                        "[{}] Emplacing asset at {} with gen {}",
+                        typeid(*this).name(), index.index, index.generation
                     );
                 },
                 [this](const uuids::uuid& id) {
-                    m_logger->debug(
-                        "Emplacing asset at Uuid:{}", uuids::to_string(id)
+                    spdlog::debug(
+                        "[{}] Emplacing asset at Uuid:{}", typeid(*this).name(),
+                        uuids::to_string(id)
                     );
                 }
             },
@@ -320,14 +316,16 @@ struct Assets {
             handle.id()
         );
         if (!res) {
-            m_logger->error(
-                "Unable to emplace new value at the index: index not valid(gen "
-                "mismatch or no asset slot at given index)"
+            spdlog::error(
+                "[{}] Unable to emplace new value at the index: index not "
+                "valid(gen "
+                "mismatch or no asset slot at given index)",
+                typeid(*this).name()
             );
         } else if (res.value()) {
-            m_logger->debug("Replacing asset");
+            spdlog::debug("[{}] Replaced asset", typeid(*this).name());
         } else {
-            m_logger->debug("Inserting asset");
+            spdlog::debug("[{}] Inserted asset", typeid(*this).name());
         }
         return handle;
     }
@@ -471,11 +469,10 @@ struct Assets {
             epix::util::visitor{
                 [this, &id](const AssetIndex& index) {
                     if (contains(id)) {
-                        m_logger->trace(
-                            "Force removing asset at {} with gen {}, current "
-                            "ref count is "
-                            "{}",
-                            index.index, index.generation,
+                        spdlog::debug(
+                            "[{}] Force removing asset at {} with gen {}, "
+                            "current ref count is {}",
+                            typeid(*this).name(), index.index, index.generation,
                             m_references[index.index]
                         );
                         return m_assets.remove(index);
@@ -485,9 +482,9 @@ struct Assets {
                 },
                 [this, &id](const uuids::uuid& uuid) {
                     if (contains(id)) {
-                        m_logger->trace(
-                            "Force removing asset at Uuid:{}",
-                            uuids::to_string(uuid)
+                        spdlog::debug(
+                            "[{}] Force removing asset at Uuid:{}",
+                            typeid(*this).name(), uuids::to_string(uuid)
                         );
                         m_mapped_assets.erase(uuid);
                         m_mapped_assets_ref.erase(uuid);
@@ -506,9 +503,10 @@ struct Assets {
     }
 
     bool release_index(const AssetIndex& index) {
-        m_logger->trace(
-            "Releasing asset at {} with gen {}, current ref count is {}",
-            index.index, index.generation, m_references[index.index]
+        spdlog::debug(
+            "[{}] Releasing asset at {} with gen {}, current ref count is {}",
+            typeid(*this).name(), index.index, index.generation,
+            m_references[index.index]
         );
         if (contains(AssetId<T>(index))) {
             m_references[index.index]--;
@@ -528,9 +526,10 @@ struct Assets {
     }
     bool release_uuid(const uuids::uuid& id) {
         if (contains(AssetId<T>(id))) {
-            m_logger->trace(
-                "Releasing asset at Uuid:{}, current ref count is {}",
-                uuids::to_string(id), m_mapped_assets_ref.at(id)
+            spdlog::debug(
+                "[{}] Releasing asset at Uuid:{}, current ref count is {}",
+                typeid(*this).name(), uuids::to_string(id),
+                m_mapped_assets_ref.at(id)
             );
             auto& ref = m_mapped_assets_ref.at(id);
             ref--;
@@ -569,10 +568,11 @@ struct Assets {
      */
     std::optional<T> pop_index(const AssetIndex& index) {
         if (contains(index)) {
-            m_logger->trace(
-                "Force popping asset at {} with gen {}, current ref count is "
-                "{}",
-                index.index, index.generation, m_references[index.index]
+            spdlog::debug(
+                "[{}] Force popping asset at {} with gen {}, current ref count "
+                "is {}",
+                typeid(*this).name(), index.index, index.generation,
+                m_references[index.index]
             );
             m_cached_events.emplace_back(AssetEvent<T>::removed(AssetId<T>(index
             )));
@@ -583,8 +583,9 @@ struct Assets {
     }
     std::optional<T> pop_uuid(const uuids::uuid& id) {
         if (contains(id)) {
-            m_logger->trace(
-                "Force popping asset at Uuid:{}", uuids::to_string(id)
+            spdlog::debug(
+                "[{}] Force popping asset at Uuid:{}", typeid(*this).name(),
+                uuids::to_string(id)
             );
             auto asset = std::move(m_mapped_assets.at(id));
             m_mapped_assets.erase(id);
