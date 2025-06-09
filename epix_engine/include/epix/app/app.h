@@ -494,9 +494,6 @@ struct App {
 
     TracySettings m_tracy_settings;
 
-    // logger
-    std::shared_ptr<spdlog::logger> m_logger;
-
     // plugins
     std::vector<std::pair<std::type_index, std::shared_ptr<Plugin>>> m_plugins;
     entt::dense_set<std::type_index> m_built_plugins;
@@ -528,9 +525,6 @@ struct App {
     App& operator=(App&&)      = default;
 
     EPIX_API static App create(const AppCreateInfo& create_info = {});
-
-    EPIX_API App& set_logger(std::shared_ptr<spdlog::logger> logger);
-    EPIX_API std::shared_ptr<spdlog::logger> logger();
 
     // Access
 

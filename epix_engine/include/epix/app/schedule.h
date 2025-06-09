@@ -62,10 +62,9 @@ struct Executors {
 struct System {
     SystemLabel label;
     std::string name;
+    std::string_view schedule_name;
     ExecutorLabel executor;
     std::unique_ptr<BasicSystem<void>> system;
-
-    std::shared_ptr<spdlog::logger> logger;
 
    private:
     // if an exception is thrown in previous runs.
@@ -198,7 +197,7 @@ SystemConfig into_single(Func&& func) {
         config.label.set_type(typeid(void));
         config.label.set_index((size_t)config.system.get());
     }
-    config.name = std::format("System:{:#016x}", config.label.get_index());
+    config.name = std::format("{:#016x}", config.label.get_index());
     return std::move(config);
 }
 template <typename... Args>
@@ -384,8 +383,6 @@ struct Schedule {
     mutable std::shared_mutex add_mutex;
     std::mutex running_mutex;
 
-    std::shared_ptr<spdlog::logger> logger;
-
     std::unique_ptr<ScheduleRunner> prunner;
 
     ScheduleCommandQueue command_queue;
@@ -398,8 +395,6 @@ struct Schedule {
    public:
     EPIX_API Schedule(const ScheduleLabel& label);
     EPIX_API Schedule(Schedule&&);
-
-    EPIX_API void set_logger(const std::shared_ptr<spdlog::logger>& logger);
 
     EPIX_API ScheduleLabel get_label() const noexcept;
 
@@ -444,6 +439,8 @@ struct ScheduleRunner {
     World* dst;
     bool run_once;
     std::shared_ptr<Executors> executors;
+
+    std::string label_name;
 
     std::deque<uint32_t> wait_to_enter_queue;
     bool new_entered = false;

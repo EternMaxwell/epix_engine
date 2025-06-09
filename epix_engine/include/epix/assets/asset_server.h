@@ -351,7 +351,7 @@ struct AssetServer {
 template <typename T>
     requires std::move_constructible<T> && std::is_move_assignable_v<T>
 void Assets<T>::handle_events_internal(const AssetServer* asset_server) {
-    m_logger->trace("Handling events");
+    spdlog::trace("[{}] Handling events", typeid(*this).name());
     while (
         auto&& opt =
             m_handle_provider->index_allocator.reserved_receiver().try_receive()
@@ -365,6 +365,6 @@ void Assets<T>::handle_events_internal(const AssetServer* asset_server) {
         }
         release(id);
     }
-    m_logger->trace("Finished handling events");
+    spdlog::trace("[{}] Finished handling events", typeid(*this).name());
 }
 }  // namespace epix::assets

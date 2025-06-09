@@ -74,18 +74,31 @@ EPIX_API void System::run(World& src, World& dst) noexcept {
     try {
         system->run(src, dst);
         if (recorded_exception_bad_param) {
-            logger->info("{} no longer throws BadParamAccess exception.", name);
+            spdlog::info(
+                "system:{} no longer throws BadParamAccess exception, in "
+                "schedule:{}",
+                name, schedule_name
+            );
         }
         recorded_exception_bad_param = false;
     } catch (const BadParamAccess& e) {
         if (!recorded_exception_bad_param) {
-            logger->error("BadParamAccess at {}: {}", name, e.what());
+            spdlog::error(
+                "BadParamAccess at system:{}:\n\t\t{}\n\tin schedule:{}", name,
+                e.what(), schedule_name
+            );
             recorded_exception_bad_param = true;
         }
     } catch (const std::exception& e) {
-        logger->error("Exception at {}: {}", name, e.what());
+        spdlog::error(
+            "Exception at system:{}:\n\t\t{}\n\tin schedule:{}", name, e.what(),
+            schedule_name
+        );
     } catch (...) {
-        logger->error("Unknown exception at {}", name);
+        spdlog::error(
+            "Unknown exception at system:{}, in schedule:{}", name,
+            schedule_name
+        );
     }
     auto end = std::chrono::high_resolution_clock::now();
     auto delta =
