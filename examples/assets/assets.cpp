@@ -220,7 +220,7 @@ void test_4() {
     }
 
     // Replacing value
-    std::optional<bool> res2 = assets.insert(handle1, "Hello Assets2!");
+    auto res2 = assets.insert(handle1, "Hello Assets2!");
     if (!res2) {
         std::cerr << "Test fail: Unable to insert new value at the index that "
                      "has been force removed: index not valid(gen mismatch or "
@@ -235,8 +235,8 @@ void test_4() {
     }
 
     // Check value
-    if (auto&& opt = assets.get(handle1)) {
-        auto& str = *opt;
+    if (auto&& opt = assets.try_get(handle1)) {
+        auto& str = **opt;
         if (str != "Hello Assets2!") {
             std::cerr << "Test fail: Insert value is not the expected value."
                       << std::endl;

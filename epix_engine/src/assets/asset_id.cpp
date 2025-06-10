@@ -23,7 +23,15 @@ EPIX_API size_t std::hash<epix::assets::UntypedAssetId>::operator()(
            (seed + 0x9e3779b9 + (seed << 6) + (seed >> 2));
 }
 
-EPIX_API const AssetIndex& UntypedAssetId::index() const { return std::get<AssetIndex>(id); }
+EPIX_API bool UntypedAssetId::is_uuid() const {
+    return std::holds_alternative<uuids::uuid>(id);
+}
+EPIX_API bool UntypedAssetId::is_index() const {
+    return std::holds_alternative<AssetIndex>(id);
+}
+EPIX_API const AssetIndex& UntypedAssetId::index() const {
+    return std::get<AssetIndex>(id);
+}
 EPIX_API const uuids::uuid& UntypedAssetId::uuid() const {
     return std::get<uuids::uuid>(id);
 }
@@ -47,5 +55,20 @@ EPIX_API std::string UntypedAssetId::to_string() const {
             },
             id
         )
+    );
+}
+EPIX_API std::string UntypedAssetId::to_string_short() const {
+    return std::visit(
+        epix::util::visitor{
+            [](const AssetIndex& index) {
+                return std::format(
+                    "AssetIndex({}, {})", index.index, index.generation
+                );
+            },
+            [](const uuids::uuid& id) {
+                return std::format("UUID({})", uuids::to_string(id));
+            }
+        },
+        id
     );
 }
