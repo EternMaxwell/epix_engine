@@ -352,8 +352,8 @@ struct packed_grid {
 
     size_t write_to(void* buffer, size_t size_field_stride = sizeof(int) * D)
         const {
-        std::memcpy(buffer, _size.data(), size_field_stride);
-        std::memcpy(
+        memcpy(buffer, _size.data(), size_field_stride);
+        memcpy(
             (uintptr_t)buffer + (sizeof(int) * D), _data.data(),
             sizeof(T) * _data.size()
         );
@@ -861,13 +861,13 @@ struct sparse_grid {
         void* buffer, size_t offset = 0, size_t stride = sizeof(T)
     ) const {
         if (stride == sizeof(T)) {
-            std::memcpy(
+            memcpy(
                 (uintptr_t)buffer + offset, _data.data(),
                 sizeof(T) * _data.size()
             );
         } else {
             for (int i = 0; i < _data.size(); i++) {
-                std::memcpy(
+                memcpy(
                     (uintptr_t)buffer + (offset + i * stride), &_data[i],
                     sizeof(T)
                 );
@@ -879,13 +879,13 @@ struct sparse_grid {
         void* buffer, size_t offset = 0, size_t stride = sizeof(int) * D
     ) const {
         if (stride == sizeof(int) * D) {
-            std::memcpy(
+            memcpy(
                 (uintptr_t)buffer + offset, _pos.data(),
                 sizeof(int) * D * _pos.size()
             );
         } else {
             for (int i = 0; i < _pos.size(); i++) {
-                std::memcpy(
+                memcpy(
                     (uintptr_t)buffer + (offset + i * stride), _pos[i].data(),
                     sizeof(int) * D
                 );

@@ -8,7 +8,7 @@ bool ImageView::operator==(const ImageView& other) const {
     return image.id() == other.image.id() && info == other.info;
 }
 
-size_t std::hash<ImageView>::operator()(const ImageView& image_view
+EPIX_API size_t std::hash<ImageView>::operator()(const ImageView& image_view
 ) const noexcept {
     size_t seed =
         std::hash<epix::assets::AssetId<Image>>{}(image_view.image.id());

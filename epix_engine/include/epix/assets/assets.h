@@ -420,7 +420,10 @@ struct Assets {
         requires std::constructible_from<T, Args...>
     Handle<T> emplace(Args&&... args) {
         Handle<T> handle = m_handle_provider->reserve().typed<T>();
-        spdlog::debug("[{}] Emplacing asset at {}", handle.id());
+        spdlog::debug(
+            "[{}] Emplacing asset at {}", typeid(*this).name(),
+            handle.id().to_string_short()
+        );
         auto res = insert(handle, std::forward<Args>(args)...);
         std::visit(
             epix::util::visitor{

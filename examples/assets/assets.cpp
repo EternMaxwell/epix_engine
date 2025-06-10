@@ -307,6 +307,8 @@ void test(void (*f)()) {
 int main() {
     using namespace epix::assets;
 
+    spdlog::set_level(spdlog::level::debug);
+
     std::cout << "===== Unit tests for Assets<T> =====" << std::endl;
     test(test_1);
     test(test_2);

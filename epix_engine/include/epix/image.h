@@ -44,7 +44,7 @@ struct StbImageLoader {
 };  // namespace epix::image
 
 template <>
-struct ::std::hash<epix::image::ImageView> {
+struct std::hash<epix::image::ImageView> {
     EPIX_API size_t operator()(const epix::image::ImageView& image_view
     ) const noexcept;
 };

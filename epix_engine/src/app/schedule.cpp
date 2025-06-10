@@ -1,6 +1,5 @@
-#include "epix/app/schedule.h"
-
 #include "epix/app/profiler.h"
+#include "epix/app/schedule.h"
 
 using namespace epix::app;
 
@@ -522,25 +521,6 @@ EPIX_API std::expected<void, RunScheduleError> ScheduleRunner::run_internal() {
     auto time_line1 = std::chrono::high_resolution_clock::now();
 
     label_name = schedule.label.name();
-    {
-        // shorten the label name to avoid long log messages
-        while (label_name.size() > 10) {
-            // find the first " " or "::", and truncate the string
-            auto pos_space = label_name.find(' ');
-            auto pos_colon = label_name.find("::");
-            // the less one
-            size_t pos = std::min(pos_space, pos_colon);
-            if (pos == std::string::npos) {
-                // no space or "::" found, truncate the string
-                // we will not change the string any more
-                break;
-            } else {
-                // get the substr after the found position
-                label_name =
-                    label_name.substr(pos + (pos == pos_space ? 1 : 2));
-            }
-        }
-    }
 
     spdlog::trace("Flushing command queue of schedule:{}", label_name);
     bool rebuilt;
