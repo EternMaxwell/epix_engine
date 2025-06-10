@@ -21,6 +21,9 @@ struct AssetId : public std::variant<AssetIndex, uuids::uuid> {
     }
     bool operator==(const UntypedAssetId& other) const;
 
+    bool is_uuid() const { return std::holds_alternative<uuids::uuid>(*this); }
+    bool is_index() const { return std::holds_alternative<AssetIndex>(*this); }
+
     std::string to_string() const {
         return std::format(
             "AssetId<{}>({})", typeid(T).name(),
@@ -38,6 +41,21 @@ struct AssetId : public std::variant<AssetIndex, uuids::uuid> {
                 },
                 *this
             )
+        );
+    }
+    std::string to_string_short() const {
+        return std::visit(
+            epix::util::visitor{
+                [](const AssetIndex& index) {
+                    return std::format(
+                        "AssetIndex({}, {})", index.index, index.generation
+                    );
+                },
+                [](const uuids::uuid& id) {
+                    return std::format("UUID({})", uuids::to_string(id));
+                }
+            },
+            *this
         );
     }
 };
@@ -68,10 +86,13 @@ struct UntypedAssetId {
         return std::make_optional<AssetId<T>>(id);
     }
 
+    EPIX_API bool is_uuid() const;
+    EPIX_API bool is_index() const;
     EPIX_API const AssetIndex& index() const;
     EPIX_API const uuids::uuid& uuid() const;
     EPIX_API bool operator==(const UntypedAssetId& other) const;
     EPIX_API std::string to_string() const;
+    EPIX_API std::string to_string_short() const;
 };
 
 template <typename T>
