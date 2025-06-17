@@ -5,7 +5,7 @@
 #include <algorithm>
 #include <array>
 #include <concepts>
-#include <earcut.hpp>
+#include <mapbox/earcut.hpp>
 #include <format>
 #include <glm/glm.hpp>
 #include <numeric>
