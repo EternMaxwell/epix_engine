@@ -5,6 +5,7 @@
 #include <deque>
 #include <mutex>
 #include <optional>
+#include <shared_mutex>
 
 namespace epix::utils::async {
 /**
@@ -135,4 +136,59 @@ std::pair<Sender<T, Alloc>, Receiver<T, Alloc>> make_channel() {
     auto queue = std::make_shared<ConQueue<T, Alloc>>();
     return {Sender<T, Alloc>(queue), Receiver<T, Alloc>(queue)};
 }
+
+template <typename T>
+struct RwLock {
+    struct ReadGuard
+        : public std::pair<std::shared_lock<std::shared_mutex>, const T*> {
+        using base_type =
+            std::pair<std::shared_lock<std::shared_mutex>, const T*>;
+        ReadGuard(std::shared_mutex& mutex, const T* ptr)
+            : base_type(std::shared_lock<std::shared_mutex>(mutex), ptr) {}
+        ReadGuard(const ReadGuard&)            = delete;
+        ReadGuard(ReadGuard&&)                 = default;
+        ReadGuard& operator=(const ReadGuard&) = delete;
+        ReadGuard& operator=(ReadGuard&&)      = default;
+
+        ~ReadGuard() = default;
+
+        const T& operator*() const { return *this->second; }
+        const T* operator->() const { return this->second; }
+    };
+    struct WriteGuard
+        : public std::pair<std::unique_lock<std::shared_mutex>, T*> {
+        using base_type = std::pair<std::unique_lock<std::shared_mutex>, T*>;
+        WriteGuard(std::shared_mutex& mutex, T* ptr)
+            : base_type(std::unique_lock<std::shared_mutex>(mutex), ptr) {}
+        WriteGuard(const WriteGuard&)            = delete;
+        WriteGuard(WriteGuard&&)                 = default;
+        WriteGuard& operator=(const WriteGuard&) = delete;
+        WriteGuard& operator=(WriteGuard&&)      = default;
+
+        ~WriteGuard() = default;
+
+        T& operator*() { return *this->second; }
+        T* operator->() { return this->second; }
+    };
+
+   private:
+    mutable std::shared_mutex m_mutex;
+    mutable T m_value;
+
+   public:
+    template <typename... Args>
+    RwLock(Args&&... args) : m_value(std::forward<Args>(args)...) {}
+    RwLock(const RwLock&)            = delete;
+    RwLock(RwLock&&)                 = delete;
+    RwLock& operator=(const RwLock&) = delete;
+    RwLock& operator=(RwLock&&)      = delete;
+
+    ~RwLock() = default;
+
+    ReadGuard read() const { return ReadGuard(m_mutex, &m_value); }
+    WriteGuard write() const { return WriteGuard(m_mutex, &m_value); }
+};
 }  // namespace epix::utils::async
+namespace epix::async {
+using namespace utils::async;
+}
