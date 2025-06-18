@@ -52,17 +52,22 @@ struct QueryItem<T> {
         return entity;
     }
 };
-template <epix::util::type_traits::specialization_of<QueryItem> T>
-    requires requires(T t) {
+
+template <typename T>
+concept ValidQueryItem =
+    epix::util::type_traits::specialization_of<T, QueryItem> && requires(T t) {
         typename T::check_type;
         typename T::get_type;
         epix::util::type_traits::specialization_of<
             typename T::check_type, std::tuple>;
-        T::get(
-            std::declval<typename T::check_type>(), std::declval<World&>(),
-            std::declval<const Entity&>()
-        );
-    }
+        {
+            T::get(
+                std::declval<typename T::check_type>(), std::declval<World&>(),
+                std::declval<const Entity&>()
+            )
+        } -> std::same_as<typename T::get_type>;
+    };
+template <ValidQueryItem T>
 struct QueryItemInfo {
     using check_type = typename T::check_type;
     // access type, if T did not has a access type, use std::tuple<>, otherwise
@@ -84,6 +89,7 @@ struct TupleCat {
 
 // Args should have a valid QueryItem<Args> implementation
 template <typename... Args>
+    requires(ValidQueryItem<QueryItem<Args>> && ...)
 struct Get;
 
 struct FilterBase {
@@ -213,6 +219,7 @@ struct EnttViewBuilder<std::tuple<TI...>, std::tuple<TO...>> {
 template <
     epix::util::type_traits::specialization_of<Get> G,
     typename F = Filter<>>
+    requires(epix::util::type_traits::specialization_of<F, Filter> || FilterItem<F>)
 struct Query;
 template <typename... Gets, typename F>
     requires(!epix::util::type_traits::specialization_of<F, Filter> && FilterItem<F>)
