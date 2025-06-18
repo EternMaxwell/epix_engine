@@ -44,6 +44,7 @@ struct Bundle {};
 template <typename T>
 concept is_bundle = requires(T t) {
     { t.unpack() } -> epix::util::type_traits::specialization_of<std::tuple>;
+    std::derived_from<T, Bundle>;
 };
 }  // namespace epix::app
 
