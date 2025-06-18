@@ -8,7 +8,7 @@
 namespace epix::app {
 struct Entity {
    private:
-    entt::entity id;
+    entt::entity id = entt::null;
 
    public:
     EPIX_API Entity(entt::entity id) noexcept;
