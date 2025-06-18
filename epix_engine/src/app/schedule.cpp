@@ -511,8 +511,8 @@ EPIX_API void ScheduleRunner::finishing() {
         // removals will be actually done in the next flush
     }
 
-    src->command_queue().flush(*src);
-    dst->command_queue().flush(*dst);
+    src->command_queue().apply(*src);
+    dst->command_queue().apply(*dst);
 }
 
 EPIX_API std::expected<void, RunScheduleError> ScheduleRunner::run_internal() {
