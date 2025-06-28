@@ -813,7 +813,7 @@ EPIX_API void GLFWPlugin::build(App& app) {
 }
 EPIX_API void GLFWPlugin::create_windows(
     Commands commands,
-    Query<Get<Entity, window::window::Window>> windows,
+    Query<Get<Entity, Mut<window::window::Window>>> windows,
     ResMut<GLFWwindows> glfw_windows,
     ResMut<CachedWindows> cached_windows,
     EventWriter<window::events::WindowCreated>& window_created
@@ -831,7 +831,7 @@ EPIX_API void GLFWPlugin::create_windows(
     }
 }
 EPIX_API void GLFWPlugin::window_changed(
-    Query<Get<Entity, window::window::Window>> windows,
+    Query<Get<Entity, Mut<window::window::Window>>> windows,
     ResMut<GLFWwindows> glfw_windows,
     ResMut<CachedWindows> cached_windows
 ) {
@@ -847,7 +847,7 @@ EPIX_API void GLFWPlugin::window_changed(
 }
 EPIX_API void GLFWPlugin::poll_events() { glfwPollEvents(); }
 EPIX_API void GLFWPlugin::sync_windows(
-    Query<Get<Entity, window::window::Window>> windows,
+    Query<Get<Entity, Mut<window::window::Window>>> windows,
     ResMut<GLFWwindows> glfw_windows,
     ResMut<CachedWindows> cached_windows
 ) {

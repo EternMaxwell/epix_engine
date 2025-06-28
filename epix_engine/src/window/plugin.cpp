@@ -24,15 +24,14 @@ EPIX_API void WindowPlugin::build(epix::App& app) {
     app.insert_resource<Focus>(Focus{std::nullopt});
 
     if (primary_window) {
-        auto window = app.world(epix::app::MainWorld)
-                          .spawn(primary_window.value(), PrimaryWindow{});
-        if (auto focus =
-                app.world(epix::app::MainWorld).get_resource<Focus>()) {
+        auto window = app.spawn(primary_window.value(), PrimaryWindow{});
+        if (auto focus = app.get_resource<Focus>()) {
             focus->focus = window;
             app.add_systems(
                 PreUpdate,
                 into([](ResMut<Focus> focus, Local<Focus> last,
-                        Query<Get<Entity, Window>> query, Local<int> frame) {
+                        Query<Get<Entity, Mut<Window>>> query,
+                        Local<int> frame) {
                     if (focus->focus !=
                         last->focus) {  // force the focused window to be the
                                         // one that is focused

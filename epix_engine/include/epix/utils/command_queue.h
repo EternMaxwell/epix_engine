@@ -98,42 +98,77 @@ struct CommandQueue {
     CommandQueue(CommandQueue&&)                 = delete;
     CommandQueue& operator=(const CommandQueue&) = delete;
     CommandQueue& operator=(CommandQueue&&)      = delete;
-    ~CommandQueue() {}
+    ~CommandQueue() { clear_internal(); }
 
-    void clear() {
-        std::lock_guard lock(m_mutex);
-        clear_internal();
-    }
+    void clear() { clear_internal(); }
     void clear_cache() {
-        std::lock_guard lock(m_mutex);
         clear_internal();
         m_command_map.clear();
         m_command_infos.clear();
     }
     template <AppliableCommand<Args...> T, typename... CommandArgs>
     std::expected<void, CommandQueueError> enqueue(CommandArgs&&... args) {
-        std::lock_guard lock(m_mutex);
         return enqueue_internal<T>(std::forward<CommandArgs>(args)...);
     }
     template <typename T>
         requires AppliableCommand<std::decay_t<T>, Args...>
     std::expected<void, CommandQueueError> enqueue(T&& command) {
-        std::lock_guard lock(m_mutex);
         return enqueue_internal<std::decay_t<T>>(std::forward<T>(command));
     }
 
-    void apply(Args... args) {
-        std::lock_guard lock(m_mutex);
-        size_t ptr = 0;
+    size_t apply(Args... args) {
+        size_t ptr           = 0;
+        size_t applied_count = 0;
         while (ptr < m_commands.size()) {
             index_t index = *reinterpret_cast<index_t*>(&m_commands[ptr]);
             ptr += sizeof(index_t);
             auto& info = m_command_infos[index];
             info.apply(&m_commands[ptr], std::forward<Args>(args)...);
+            applied_count++;
             info.destroy(&m_commands[ptr]);
             ptr += info.size;
         }
         m_commands.clear();
+        return applied_count;
+    }
+};
+template <typename... Args>
+struct AtomicCommandQueue {
+   private:
+    CommandQueue<Args...> m_queue;
+    std::mutex m_mutex;
+
+   public:
+    AtomicCommandQueue()                                     = default;
+    AtomicCommandQueue(const AtomicCommandQueue&)            = delete;
+    AtomicCommandQueue(AtomicCommandQueue&&)                 = delete;
+    AtomicCommandQueue& operator=(const AtomicCommandQueue&) = delete;
+    AtomicCommandQueue& operator=(AtomicCommandQueue&&)      = delete;
+    ~AtomicCommandQueue() { clear(); }
+
+    void clear() {
+        std::lock_guard lock(m_mutex);
+        m_queue.clear();
+    }
+    void clear_cache() {
+        std::lock_guard lock(m_mutex);
+        m_queue.clear_cache();
+    }
+    template <AppliableCommand<Args...> T, typename... CommandArgs>
+    std::expected<void, CommandQueueError> enqueue(CommandArgs&&... args) {
+        std::lock_guard lock(m_mutex);
+        return m_queue.template enqueue<T>(std::forward<CommandArgs>(args)...);
+    }
+    template <typename T>
+        requires AppliableCommand<std::decay_t<T>, Args...>
+    std::expected<void, CommandQueueError> enqueue(T&& command) {
+        std::lock_guard lock(m_mutex);
+        return m_queue.template enqueue(std::forward<T>(command));
+    }
+
+    size_t apply(Args... args) {
+        std::lock_guard lock(m_mutex);
+        return m_queue.apply(std::forward<Args>(args)...);
     }
 };
 }  // namespace epix::utils

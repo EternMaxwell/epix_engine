@@ -32,19 +32,20 @@ EPIX_API void epix::render::window::WindowSurfaces::remove(const Entity& entity
 }
 
 EPIX_API void WindowRenderPlugin::build(epix::App& app) {
-    auto& render_world = app.world(epix::app::RenderWorld);
-    render_world.insert_resource(ExtractedWindows{});
-    render_world.insert_resource(WindowSurfaces{});
-    app.add_systems(
-        epix::Extraction, epix::into(extract_windows, create_surfaces)
-                              .set_names({"extract windows", "create_surfaces"})
-                              .chain()
+    auto& render_app = app.sub_app(epix::Render);
+    render_app.insert_resource(ExtractedWindows{});
+    render_app.insert_resource(WindowSurfaces{});
+    render_app.add_systems(
+        epix::ExtractSchedule,
+        epix::into(extract_windows, create_surfaces)
+            .set_names({"extract windows", "create_surfaces"})
+            .chain()
     );
-    app.add_systems(
+    render_app.add_systems(
         epix::Prepare, epix::into(prepare_windows).set_name("prepare windows")
     );
     if (handle_present) {
-        app.add_systems(
+        render_app.add_systems(
             epix::PostRender,
             epix::into(present_windows).set_name("present windows")
         );

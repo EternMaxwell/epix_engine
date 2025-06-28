@@ -3,9 +3,15 @@
 #include <expected>
 
 #include "epix/utils/core.h"
+#include "label.h"
 #include "world_data.h"
 
 namespace epix::app {
+struct WorldLabel : public Label {
+    using Label::Label;
+    template <typename T>
+    WorldLabel(T t) : Label(t) {}
+};
 struct World;
 }  // namespace epix::app
 
@@ -49,10 +55,18 @@ concept is_bundle = requires(T t) {
 }  // namespace epix::app
 
 namespace epix::app {
+/**
+ * @brief World is where all the entities, components, and resources
+ * are managed.
+ *
+ * World is not thread-safe by itself. But the command queue is
+ * still thread-safe by itself.
+ */
 struct World {
    private:
-    std::unique_ptr<WorldData> m_data;
-    std::unique_ptr<CommandQueue> m_command_queue;
+    const WorldLabel m_label;
+    WorldData m_data;
+    CommandQueue m_command_queue;
 
     template <typename... Args>
     void entity_emplace_tuple(Entity entity, std::tuple<Args...>&& args) {
@@ -65,37 +79,13 @@ struct World {
     entity_emplace_tuple(Entity entity, std::tuple<Args...>&& args, std::index_sequence<I...>) {
         (entity_emplace(entity, std::forward<Args>(std::get<I>(args))), ...);
     }
-    template <typename Ret, typename ResT>
-    std::optional<Ret> resource_scope_internal(
-        const std::function<Ret(ResT&)>& func
-    ) {
-        std::shared_lock lock(m_data->resources_mutex);
-        auto&& [res, l] = get_resource_locked<std::decay_t<ResT>>();
-        if (res) {
-            return func(*res);
-        } else {
-            return std::nullopt;
-        }
-    }
-    template <typename Ret, typename ResT>
-    std::optional<Ret> resource_scope_internal(
-        const std::function<Ret(const ResT&)>& func
-    ) const {
-        std::shared_lock lock(m_data->resources_mutex);
-        auto&& [res, l] = get_resource_locked<std::decay_t<ResT>>();
-        if (res) {
-            return func(*res);
-        } else {
-            return std::nullopt;
-        }
-    }
 
    public:
-    EPIX_API World();
+    EPIX_API World(const WorldLabel& label);
     World(const World&)            = delete;
-    World(World&&)                 = default;
+    World(World&&)                 = delete;
     World& operator=(const World&) = delete;
-    World& operator=(World&&)      = default;
+    World& operator=(World&&)      = delete;
     ~World()                       = default;
 
     EPIX_API CommandQueue& command_queue();
@@ -118,33 +108,22 @@ struct World {
      */
     template <typename T>
     void init_resource() {
-        using type = std::decay_t<T>;
-        std::unique_lock lock(m_data->resources_mutex);
-        if (!m_data->resources.contains(typeid(type))) {
+        auto resources = m_data.resources.write();
+        using type     = std::decay_t<T>;
+        if (!resources->contains(typeid(type))) {
             if constexpr (FromWorld<type>) {
                 if constexpr (std::constructible_from<type, World&>) {
-                    m_data->resources.emplace(
-                        typeid(type), UntypedRes::create(
-                                          std::make_shared<type>(*this),
-                                          std::make_shared<std::shared_mutex>()
-                                      )
+                    resources->emplace(
+                        typeid(type), std::make_shared<type>(*this)
                     );
                 } else {
-                    m_data->resources.emplace(
+                    resources->emplace(
                         typeid(type),
-                        UntypedRes::create(
-                            std::make_shared<type>(type::from_world(*this)),
-                            std::make_shared<std::shared_mutex>()
-                        )
+                        std::make_shared<type>(type::from_world(*this))
                     );
                 }
             } else {
-                m_data->resources.emplace(
-                    typeid(type), UntypedRes::create(
-                                      std::make_shared<type>(),
-                                      std::make_shared<std::shared_mutex>()
-                                  )
-                );
+                resources->emplace(typeid(type), std::make_shared<type>());
             }
         }
     };
@@ -160,15 +139,28 @@ struct World {
      */
     template <typename T>
     void insert_resource(T&& res) {
-        using type = std::decay_t<T>;
-        std::unique_lock lock(m_data->resources_mutex);
-        if (!m_data->resources.contains(typeid(type))) {
-            m_data->resources.emplace(
-                typeid(type), UntypedRes::create(
-                                  std::make_shared<type>(std::forward<T>(res)),
-                                  std::make_shared<std::shared_mutex>()
-                              )
+        using type     = std::decay_t<T>;
+        auto resources = m_data.resources.write();
+        if (!resources->contains(typeid(type))) {
+            resources->emplace(
+                typeid(type), std::make_shared<type>(std::forward<T>(res))
             );
+        }
+    };
+    template <typename T>
+    void add_resource(std::shared_ptr<T>&& res) {
+        using type     = std::decay_t<T>;
+        auto resources = m_data.resources.write();
+        if (!resources->contains(typeid(type))) {
+            resources->emplace(typeid(type), std::move(res));
+        }
+    };
+    EPIX_API void add_resource(
+        std::type_index type, std::shared_ptr<void>&& res
+    ) {
+        auto resources = m_data.resources.write();
+        if (!resources->contains(type)) {
+            resources->emplace(type, std::move(res));
         }
     };
     /**
@@ -186,27 +178,15 @@ struct World {
      */
     template <typename T, typename... Args>
     void emplace_resource(Args&&... args) {
-        using type = std::decay_t<T>;
-        std::unique_lock lock(m_data->resources_mutex);
-        if (!m_data->resources.contains(typeid(type))) {
-            m_data->resources.emplace(
+        using type     = std::decay_t<T>;
+        auto resources = m_data.resources.write();
+        if (!resources->contains(typeid(type))) {
+            resources->emplace(
                 typeid(type),
-                UntypedRes::create(
-                    std::make_shared<type>(std::forward<Args>(args)...),
-                    std::make_shared<std::shared_mutex>()
-                )
+                std::make_shared<type>(std::forward<Args>(args)...)
             );
         }
     };
-    /**
-     * @brief Adding a resource to the world using UntypedRes.
-     *
-     * The untyped resource will be put at the given
-     * type_index(`UntypedRes::type`).
-     *
-     * @param res The untyped resource to be added.
-     */
-    EPIX_API void add_resource(const UntypedRes& res);
     /**
      * @brief Immediately remove a resource from the world of the given type.
      *
@@ -215,135 +195,42 @@ struct World {
      * @param type The type_index of the resource to be removed.
      */
     EPIX_API void remove_resource(const std::type_index& type);
-    /**
-     * @brief Get untyped resource of the given type.
-     *
-     * If the resource does not exist, this function will throw an exception.
-     *
-     * It is guaranteed that `UntypedRes::type` is the same as `type`
-     *
-     * @param type The type_index of the resource to be retrieved.
-     * @return `UntypedRes` The untyped resource of the given type.
-     */
-    EPIX_API UntypedRes untyped_resource(const std::type_index& type) const;
     template <typename T>
     T& resource() {
-        std::shared_lock lock(m_data->resources_mutex);
-        auto it = m_data->resources.find(typeid(T));
-        if (it != m_data->resources.end()) {
-            return *std::static_pointer_cast<T>(it->second.resource);
-        } else {
-            throw std::runtime_error("Resource not found.");
-        }
-    }
-    template <typename T>
-    std::pair<T&, std::unique_lock<std::shared_mutex>> resource_locked() {
-        std::shared_lock lock(m_data->resources_mutex);
-        auto it = m_data->resources.find(typeid(T));
-        if (it != m_data->resources.end()) {
-            return {
-                *std::static_pointer_cast<T>(it->second.resource),
-                std::unique_lock<std::shared_mutex>(*it->second.mutex)
-            };
+        auto resources = m_data.resources.read();
+        if (auto it = resources->find(typeid(T)); it != resources->end()) {
+            return *std::static_pointer_cast<T>(it->second);
         } else {
             throw std::runtime_error("Resource not found.");
         }
     }
     template <typename T>
     const T& resource() const {
-        std::shared_lock lock(m_data->resources_mutex);
-        auto it = m_data->resources.find(typeid(T));
-        if (it != m_data->resources.end()) {
-            return *std::static_pointer_cast<T>(it->second.resource);
-        } else {
-            throw std::runtime_error("Resource not found.");
-        }
-    }
-    template <typename T>
-    std::pair<const T&, std::shared_lock<std::shared_mutex>> resource_locked(
-    ) const {
-        std::shared_lock lock(m_data->resources_mutex);
-        auto it = m_data->resources.find(typeid(T));
-        if (it != m_data->resources.end()) {
-            return {
-                *std::static_pointer_cast<T>(it->second.resource),
-                std::shared_lock<std::shared_mutex>(*it->second.mutex)
-            };
+        auto resources = m_data.resources.read();
+        if (auto it = resources->find(typeid(T)); it != resources->end()) {
+            return *std::static_pointer_cast<T>(it->second);
         } else {
             throw std::runtime_error("Resource not found.");
         }
     }
     template <typename T>
     T* get_resource() {
-        std::shared_lock lock(m_data->resources_mutex);
-        auto it = m_data->resources.find(typeid(T));
-        if (it != m_data->resources.end()) {
-            return std::static_pointer_cast<T>(it->second.resource).get();
+        auto resources = m_data.resources.read();
+        if (auto it = resources->find(typeid(T)); it != resources->end()) {
+            return std::static_pointer_cast<T>(it->second).get();
         } else {
             return nullptr;
-        }
-    }
-    template <typename T>
-    std::pair<T*, std::unique_lock<std::shared_mutex>> get_resource_locked() {
-        std::shared_lock lock(m_data->resources_mutex);
-        auto it = m_data->resources.find(typeid(T));
-        if (it != m_data->resources.end()) {
-            return {
-                std::static_pointer_cast<T>(it->second.resource).get(),
-                std::unique_lock<std::shared_mutex>(*it->second.mutex)
-            };
-        } else {
-            return {nullptr, {}};
         }
     }
     template <typename T>
     const T* get_resource() const {
-        std::shared_lock lock(m_data->resources_mutex);
-        auto it = m_data->resources.find(typeid(T));
-        if (it != m_data->resources.end()) {
-            return std::static_pointer_cast<T>(it->second.resource).get();
+        auto resources = m_data.resources.read();
+        if (auto it = resources->find(typeid(T)); it != resources->end()) {
+            return std::static_pointer_cast<T>(it->second).get();
         } else {
             return nullptr;
         }
     }
-    template <typename T>
-    std::pair<const T*, std::shared_lock<std::shared_mutex>>
-    get_resource_locked() const {
-        std::shared_lock lock(m_data->resources_mutex);
-        auto it = m_data->resources.find(typeid(T));
-        if (it != m_data->resources.end()) {
-            return {
-                std::static_pointer_cast<T>(it->second.resource).get(),
-                std::shared_lock<std::shared_mutex>(*it->second.mutex)
-            };
-        } else {
-            return {nullptr, {}};
-        }
-    }
-
-    template <typename T>
-    auto resource_scope(T&& func) {
-        return resource_scope_internal(std::function(std::forward<T>(func)));
-    }
-    template <typename T>
-    auto resource_scope(T&& func) const {
-        return resource_scope_internal(std::function(std::forward<T>(func)));
-    }
-    /**
-     * @brief Get the untyped resource of the given type.
-     *
-     * If the resource does not exist, this function will return an empty
-     * optional.
-     *
-     * It is guaranteed that `UntypedRes::type` is the same as `type`
-     *
-     * @param type The type_index of the resource to be retrieved.
-     * @return `std::optional<UntypedRes>` The untyped resource of the given
-     * type.
-     */
-    EPIX_API std::optional<UntypedRes> get_untyped_resource(
-        const std::type_index& type
-    ) const;
     // entity component part
     /**
      * @brief Spawn an entity with the given components.
@@ -355,7 +242,7 @@ struct World {
      */
     template <typename... Args>
     Entity spawn(Args&&... args) {
-        Entity id = m_data->registry.create();
+        Entity id = m_data.registry.create();
         if constexpr (sizeof...(Args) > 0) {
             (entity_emplace<Args>(id, std::forward<Args>(args)), ...);
         }
@@ -386,14 +273,14 @@ struct World {
     template <typename T, typename... Args>
         requires std::constructible_from<std::decay_t<T>, Args...>
     void entity_emplace(Entity entity, Args&&... args) {
-        if (!m_data->registry.valid(entity)) return;
+        if (!m_data.registry.valid(entity)) return;
         using type = std::decay_t<T>;
         if constexpr (is_bundle<T>) {
             entity_emplace_tuple(
                 entity, T(std::forward<Args>(args)...).unpack()
             );
         } else {
-            m_data->registry.emplace_or_replace<std::decay_t<T>>(
+            m_data.registry.emplace_or_replace<std::decay_t<T>>(
                 entity, std::forward<Args>(args)...
             );
         }
@@ -407,12 +294,12 @@ struct World {
      */
     template <typename T>
     void entity_emplace(Entity entity, T&& obj) {
-        if (!m_data->registry.valid(entity)) return;
+        if (!m_data.registry.valid(entity)) return;
         using type = std::decay_t<T>;
         if constexpr (is_bundle<T>) {
             entity_emplace_tuple(entity, obj.unpack());
         } else {
-            m_data->registry.emplace_or_replace<type>(
+            m_data.registry.emplace_or_replace<type>(
                 entity, std::forward<T>(obj)
             );
         }
@@ -428,8 +315,8 @@ struct World {
      */
     template <typename... Args>
     void entity_erase(Entity entity) {
-        if (!m_data->registry.valid(entity)) return;
-        m_data->registry.remove<Args...>(entity);
+        if (!m_data.registry.valid(entity)) return;
+        m_data.registry.remove<Args...>(entity);
     }
     /**
      * @brief Check if the entity is valid.
@@ -442,18 +329,18 @@ struct World {
     T& entity_get(Entity entity) {
         auto* p = entity_try_get<T>(entity);
         if (!p) throw std::runtime_error("Entity does not have component");
-        return m_data->registry.get<T>(entity);
+        return m_data.registry.get<T>(entity);
     }
     template <typename T>
     T* entity_try_get(Entity entity) {
-        if (!m_data->registry.valid(entity)) return nullptr;
-        return m_data->registry.try_get<T>(entity);
+        if (!m_data.registry.valid(entity)) return nullptr;
+        return m_data.registry.try_get<T>(entity);
     }
     template <typename T, typename... Args>
     T& entity_get_or_emplace(Entity entity, Args&&... args) {
-        if (!m_data->registry.valid(entity))
+        if (!m_data.registry.valid(entity))
             throw std::runtime_error("Entity is not valid");
-        return m_data->registry.get_or_emplace<T>(
+        return m_data.registry.get_or_emplace<T>(
             entity, std::forward<Args>(args)...
         );
     }

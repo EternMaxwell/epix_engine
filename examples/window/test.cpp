@@ -22,13 +22,13 @@ int main() {
     window_desc.title = "Test Window";
 
     window_desc.set_size(800, 200);
-    window_desc.opacity      = 0.5f;
+    window_desc.opacity = 0.5f;
     // window_desc.present_mode = PresentMode::Fifo;
 
     window_desc2.title = "Test Window 2";
 
     window_desc2.set_size(800, 400);
-    window_desc2.opacity      = 0.7f;
+    window_desc2.opacity = 0.7f;
     // window_desc2.present_mode = PresentMode::Fifo;
 
     epix::App app = epix::App::create(epix::AppConfig{
@@ -40,7 +40,7 @@ int main() {
         int count = 0;
     };
 
-    app.world(epix::app::MainWorld).spawn(window_desc2);
+    app.spawn(window_desc2);
     app.add_plugins(epix::window::WindowPlugin{})
         .plugin_scope([&](epix::window::WindowPlugin& plugin) {
             plugin.exit_condition = epix::window::ExitCondition::OnAllClosed;
@@ -58,7 +58,7 @@ int main() {
             epix::Update,
             epix::into(
                 [](epix::EventReader<epix::input::KeyInput> key_reader,
-                   epix::Query<epix::Get<epix::window::Window>> windows,
+                   epix::Query<epix::Get<epix::Mut<epix::window::Window>>> windows,
                    epix::ResMut<epix::Schedules> schedules) {
                     for (auto&& [key, scancode, pressed, repeat, window] :
                          key_reader.read()) {

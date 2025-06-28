@@ -172,19 +172,19 @@ struct GLFWPlugin : public app::Plugin {
     EPIX_API void build(App& app) override;
     EPIX_API static void create_windows(
         Commands commands,
-        Query<Get<Entity, window::window::Window>> windows,
+        Query<Get<Entity, Mut<window::window::Window>>> windows,
         ResMut<GLFWwindows> glfw_windows,
         ResMut<CachedWindows> cached_windows,
         EventWriter<window::events::WindowCreated>& window_created
     );
     EPIX_API static void window_changed(
-        Query<Get<Entity, window::window::Window>> windows,
+        Query<Get<Entity, Mut<window::window::Window>>> windows,
         ResMut<GLFWwindows> glfw_windows,
         ResMut<CachedWindows> cached_windows
     );
     EPIX_API static void poll_events();
     EPIX_API static void sync_windows(
-        Query<Get<Entity, window::window::Window>> windows,
+        Query<Get<Entity, Mut<window::window::Window>>> windows,
         ResMut<GLFWwindows> glfw_windows,
         ResMut<CachedWindows> cached_windows
     );

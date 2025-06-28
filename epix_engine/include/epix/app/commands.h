@@ -1,5 +1,6 @@
 #pragma once
 
+#include "systemparam.h"
 #include "world.h"
 
 namespace epix::app {
@@ -101,8 +102,22 @@ struct Commands {
         using type = std::decay_t<T>;
         queue->enqueue<RemoveResourceCommand>(typeid(type));
     };
-    EPIX_API void add_resource(const UntypedRes& res) {
-        world->add_resource(res);
-    };
 };
+
+template <>
+struct SystemParam<Commands> {
+    using State = Commands;
+    State init(World& world, SystemMeta& meta) {
+        meta.access.commands = true;
+        return Commands(world);
+    }
+    bool update(State& state, World& world, const SystemMeta& meta) {
+        state = Commands(world);
+        return true;
+    }
+    Commands& get(State& state) { return state; }
+};
+static_assert(
+    ValidParam<Commands>, "Commands should be a valid parameter for SystemParam"
+);
 }  // namespace epix::app

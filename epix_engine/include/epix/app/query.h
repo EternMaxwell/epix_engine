@@ -4,6 +4,7 @@
 
 #include <ranges>
 
+#include "systemparam.h"
 #include "world.h"
 
 namespace epix::app {
@@ -11,9 +12,21 @@ template <typename T>
 struct Opt;
 template <typename T>
 struct Has;
+template <typename T>
+struct Mut;
 
 template <typename T>
 struct QueryItem {
+    using check_type  = std::tuple<const T>;
+    using access_type = std::tuple<const T>;
+    using get_type    = const T&;
+    template <typename TupleT>
+    static const T& get(TupleT&& item, World& world, const Entity& entity) {
+        return std::get<const T&>(item);
+    }
+};
+template <typename T>
+struct QueryItem<Mut<T>> {
     using check_type  = std::tuple<T>;
     using access_type = std::tuple<T>;
     using get_type    = T&;
@@ -24,6 +37,16 @@ struct QueryItem {
 };
 template <typename T>
 struct QueryItem<Opt<T>> {
+    using check_type  = std::tuple<>;
+    using access_type = std::tuple<const T>;
+    using get_type    = const T*;
+    template <typename TupleT>
+    static const T* get(TupleT&& item, World& world, const Entity& entity) {
+        return world.entity_try_get<T>(entity);
+    }
+};
+template <typename T>
+struct QueryItem<Opt<Mut<T>>> {
     using check_type  = std::tuple<>;
     using access_type = std::tuple<T>;
     using get_type    = T*;
@@ -327,5 +350,45 @@ struct Query<Get<Gets...>, Filter<Filters...>> {
         return it.begin() == it.end();
     }
     operator bool() { return !empty(); }
+};
+template <typename Q>
+    requires requires(Q t) {
+        typename Q::must_include;
+        typename Q::access_type;
+        typename Q::must_exclude;
+    } && epix::util::type_traits::specialization_of<Q, Query>
+struct SystemParam<Q> {
+    using State = Q;
+    State init(World& world, SystemMeta& meta) {
+        auto& qs = meta.access.queries.emplace_back();
+        [&]<size_t... I>(std::index_sequence<I...>) {
+            // if type is const, add to reads, otherwise add to writes
+            ((std::is_const_v<std::tuple_element_t<I, typename Q::access_type>>
+                  ? qs.component_reads.emplace(
+                        typeid(std::decay_t<std::tuple_element_t<
+                                   I, typename Q::access_type>>)
+                    )
+                  : qs.component_writes.emplace(
+                        typeid(std::decay_t<std::tuple_element_t<
+                                   I, typename Q::access_type>>)
+                    )),
+             ...);
+        }(std::make_index_sequence<
+            std::tuple_size<typename Q::access_type>::value>{});
+        [&]<size_t... I>(std::index_sequence<I...>) {
+            (qs.component_excludes.emplace(
+                 typeid(std::decay_t<
+                        std::tuple_element_t<I, typename Q::must_exclude>>)
+             ),
+             ...);
+        }(std::make_index_sequence<
+            std::tuple_size<typename Q::must_exclude>::value>{});
+        return Q(world);
+    }
+    bool update(State& state, World& world, const SystemMeta& meta) {
+        state = Q(world);
+        return true;
+    }
+    Q& get(State& state) { return state; }
 };
 }  // namespace epix::app
