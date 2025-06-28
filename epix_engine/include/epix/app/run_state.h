@@ -97,14 +97,16 @@ struct RunState {
             std::make_shared<std::promise<std::expected<ret, RunSystemError>>>(
             );
         auto ft       = prom->get_future();
-        auto try_call = [this, system, prom, pool, config]() mutable -> bool {
+        auto try_call = [this, system, prom = std::move(prom), pool,
+                         config]() mutable -> bool {
             for (auto&& sys : running_systems) {
                 if (SystemMeta::conflict(system->get_meta(), *sys)) {
                     return false;
                 }
             }
             running_systems.emplace(&system->get_meta());
-            pool->detach_task([this, system, prom, config]() mutable {
+            pool->detach_task([this, system, prom = std::move(prom),
+                               config]() mutable {
                 try {
                     if (config.on_start) config.on_start();
                     prom->set_value(system->run(*world));

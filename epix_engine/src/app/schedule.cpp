@@ -268,6 +268,9 @@ EPIX_API std::expected<void, RunScheduleError> Schedule::run_internal(
     std::deque<std::pair<uint32_t, bool>>
         waiting_sets;  // check done and should enter
     async::ConQueue<uint32_t> just_finished_sets;  // just finished sets
+    std::vector<std::expected<
+        std::future<std::expected<void, RunSystemError>>, EnqueueSystemError>>
+        futures(cache.system_set_infos.size());
     bool new_entered = false;
     size_t running   = 0;
 
@@ -288,6 +291,7 @@ EPIX_API std::expected<void, RunScheduleError> Schedule::run_internal(
             // detach system failed, mark as finished
             just_finished_sets.emplace(index);
         }
+        futures[index] = std::move(res);
     };
     auto enter_waiting = [&]() {
         size_t size = waiting_sets.size();
@@ -373,9 +377,65 @@ EPIX_API std::expected<void, RunScheduleError> Schedule::run_internal(
         uint32_t finished = just_finished_sets.pop();
         auto& info        = cache.system_set_infos[finished];
         {
+            auto& res = futures[finished];
+            if (!res) {
+                spdlog::error(
+                    "Enqueue system failed, no required executor found. "
+                    "System:{}, Executor:{}, Schedule:{}",
+                    info.label.name(), info.set->executor.name(),
+                    data->label.name()
+                );
+            } else if (auto& value = res.value(); value.valid()) {
+                auto sys_ret = value.get();
+                if (!sys_ret) {
+                    std::visit(
+                        epix::util::visitor{
+                            [&](const NotInitializedError& e) {
+                                spdlog::error(
+                                    "System not initialized. System:{}, "
+                                    "required arg states:{}",
+                                    info.label.name(), e.needed_state.name()
+                                );
+                            },
+                            [&](const UpdateStateFailedError& e) {
+                                spdlog::error(
+                                    "Update args states failed. System:{}, "
+                                    "failed args:{}",
+                                    info.label.name(),
+                                    std::views::all(e.failed_args) |
+                                        std::views::transform([](auto&& type) {
+                                            return type.name();
+                                        })
+                                );
+                            },
+                            [&](SystemExceptionError& e) {
+                                try {
+                                    std::rethrow_exception(e.exception);
+                                } catch (const std::exception& ex) {
+                                    spdlog::error(
+                                        "System exception. System:{}, "
+                                        "Exception:{}",
+                                        info.label.name(), ex.what()
+                                    );
+                                } catch (...) {
+                                    spdlog::error(
+                                        "System exception. System:{}, "
+                                        "Exception:unknown",
+                                        info.label.name()
+                                    );
+                                }
+                            },
+                            [](auto&&) {}
+                        },
+                        sys_ret.error()
+                    );
+                }
+            }
+        }
+        {
             if (info.set->system) {
                 info.children_count--;
-                running--;
+                if (info.passed) running--;
             }
             if (info.children_count == 0) {
                 info.entered  = false;

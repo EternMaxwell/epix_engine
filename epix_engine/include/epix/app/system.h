@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <memory>
+#include <variant>
 
 #include "systemparam.h"
 
