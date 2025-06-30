@@ -78,8 +78,6 @@ struct RunState {
     );
     EPIX_API ~RunState();
 
-    // Retry all waiting systems.
-    EPIX_API void try_waiting();
     EPIX_API void apply_commands();
     EPIX_API bool wait();
 
@@ -116,11 +114,17 @@ struct RunState {
                         SystemExceptionError{std::current_exception()}
                     ));
                 }
-                {
-                    std::unique_lock lock(m_system_mutex);
-                    running_systems.erase(&system->get_meta());
+                std::unique_lock lock(m_system_mutex);
+                running_systems.erase(&system->get_meta());
+                while (!waiting_system_callers.empty()) {
+                    auto& caller = waiting_system_callers.front();
+                    if (caller()) {
+                        waiting_system_callers.pop_front();
+                    } else {
+                        break;
+                        // break here to reserve the order of systems.
+                    }
                 }
-                this->try_waiting();
                 m_system_cv.notify_all();
             });
             return true;

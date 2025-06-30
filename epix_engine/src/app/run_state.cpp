@@ -13,21 +13,6 @@ EPIX_API RunState::RunState(
 }
 EPIX_API RunState::~RunState() { wait(); }
 
-EPIX_API void RunState::try_waiting() {
-    std::unique_lock lock(m_system_mutex);
-    while (!waiting_system_callers.empty()) {
-        auto& caller = waiting_system_callers.front();
-        if (caller()) {
-            waiting_system_callers.pop_front();
-        } else {
-            // failed to call, keep it in the queue
-            waiting_system_callers.emplace_back(std::move(caller));
-            waiting_system_callers.pop_front();
-            break;
-            // break here to reserve the order of systems.
-        }
-    }
-}
 EPIX_API void RunState::apply_commands() {
     run_system(
         m_apply_commands.get(), RunState::RunSystemConfig{
