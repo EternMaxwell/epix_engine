@@ -410,3 +410,10 @@ EPIX_API void AssetServer::handle_events(
         }
     }
 }
+
+EPIX_API AssetServer::~AssetServer() {
+    std::unique_lock lock(info_mutex);
+    for (const auto& [id, info] : asset_infos.infos) {
+        info.waiter.wait();  // Wait for all asset loading tasks to finish
+    }
+}

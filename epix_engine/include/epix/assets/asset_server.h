@@ -280,7 +280,7 @@ struct AssetServer {
     AssetServer(AssetServer&&)                 = delete;
     AssetServer& operator=(const AssetServer&) = delete;
     AssetServer& operator=(AssetServer&&)      = delete;
-    ~AssetServer()                             = default;
+    EPIX_API ~AssetServer();
     /**
      * @brief register an loader to the asset server.
      */
