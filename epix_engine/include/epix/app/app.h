@@ -46,9 +46,9 @@ struct AppData {
     async::RwLock<std::vector<ScheduleLabel>> main_schedule_order;
     async::RwLock<std::vector<ScheduleLabel>> exit_schedule_order;
     async::RwLock<
-        std::vector<std::pair<std::type_index, std::shared_ptr<Plugin>>>>
+        std::vector<std::pair<meta::type_index, std::shared_ptr<Plugin>>>>
         plugins;
-    async::RwLock<entt::dense_set<std::type_index>> built_plugins;
+    async::RwLock<entt::dense_set<meta::type_index>> built_plugins;
 
     async::RwLock<std::vector<std::pair<ScheduleLabel, SystemSetConfig>>>
         queued_sets;
@@ -135,14 +135,15 @@ struct App {
         if (std::find_if(
                 plugins.begin(), plugins.end(),
                 [](const auto& plugin) {
-                    return plugin.first == std::type_index(typeid(type));
+                    return plugin.first ==
+                           meta::type_index(meta::type_id<type>());
                 }
             ) != plugins.end()) {
             // plugin already exists, do nothing
             return *this;
         }
         plugins.emplace_back(
-            std::type_index(typeid(type)),
+            meta::type_index(meta::type_id<type>()),
             std::make_shared<type>(std::forward<Args>(args)...)
         );
         return *this;
@@ -155,14 +156,15 @@ struct App {
         if (std::find_if(
                 plugins.begin(), plugins.end(),
                 [](const auto& plugin) {
-                    return plugin.first == std::type_index(typeid(type));
+                    return plugin.first ==
+                           meta::type_index(meta::type_id<type>());
                 }
             ) != plugins.end()) {
             // plugin already exists, do nothing
             return *this;
         }
         plugins.emplace_back(
-            std::type_index(typeid(type)),
+            meta::type_index(meta::type_id<type>()),
             std::make_shared<type>(std::forward<T>(plugin))
         );
         return *this;
@@ -180,7 +182,7 @@ struct App {
         auto it       = std::find_if(
             plugins.begin(), plugins.end(),
             [](const auto& plugin) {
-                return plugin.first == std::type_index(typeid(T));
+                return plugin.first == meta::type_index(meta::type_id<T>());
             }
         );
         if (it != plugins.end()) {

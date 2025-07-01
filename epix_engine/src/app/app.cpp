@@ -282,9 +282,9 @@ EPIX_API void App::build() {
     {
         auto pplugins = m_data->plugins.write();
         auto& plugins = *pplugins;
-        for (auto&& [label, plugin] : plugins) {
+        for (auto&& [id, plugin] : plugins) {
             auto w = world();
-            w->add_resource(label, std::move(plugin));
+            w->add_resource(id, std::move(plugin));
         }
     }
 

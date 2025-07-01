@@ -110,20 +110,22 @@ struct World {
     void init_resource() {
         auto resources = m_data.resources.write();
         using type     = std::decay_t<T>;
-        if (!resources->contains(typeid(type))) {
+        if (!resources->contains(meta::type_id<type>())) {
             if constexpr (FromWorld<type>) {
                 if constexpr (std::constructible_from<type, World&>) {
                     resources->emplace(
-                        typeid(type), std::make_shared<type>(*this)
+                        meta::type_id<type>(), std::make_shared<type>(*this)
                     );
                 } else {
                     resources->emplace(
-                        typeid(type),
+                        meta::type_id<type>(),
                         std::make_shared<type>(type::from_world(*this))
                     );
                 }
             } else {
-                resources->emplace(typeid(type), std::make_shared<type>());
+                resources->emplace(
+                    meta::type_id<type>(), std::make_shared<type>()
+                );
             }
         }
     };
@@ -141,9 +143,10 @@ struct World {
     void insert_resource(T&& res) {
         using type     = std::decay_t<T>;
         auto resources = m_data.resources.write();
-        if (!resources->contains(typeid(type))) {
+        if (!resources->contains(meta::type_id<type>())) {
             resources->emplace(
-                typeid(type), std::make_shared<type>(std::forward<T>(res))
+                meta::type_id<type>(),
+                std::make_shared<type>(std::forward<T>(res))
             );
         }
     };
@@ -151,16 +154,16 @@ struct World {
     void add_resource(std::shared_ptr<T>&& res) {
         using type     = std::decay_t<T>;
         auto resources = m_data.resources.write();
-        if (!resources->contains(typeid(type))) {
-            resources->emplace(typeid(type), std::move(res));
+        if (!resources->contains(meta::type_id<type>())) {
+            resources->emplace(meta::type_id<type>(), std::move(res));
         }
     };
     EPIX_API void add_resource(
-        std::type_index type, std::shared_ptr<void>&& res
+        meta::type_index id, std::shared_ptr<void>&& res
     ) {
         auto resources = m_data.resources.write();
-        if (!resources->contains(type)) {
-            resources->emplace(type, std::move(res));
+        if (!resources->contains(id)) {
+            resources->emplace(id, std::move(res));
         }
     };
     /**
@@ -180,9 +183,9 @@ struct World {
     void emplace_resource(Args&&... args) {
         using type     = std::decay_t<T>;
         auto resources = m_data.resources.write();
-        if (!resources->contains(typeid(type))) {
+        if (!resources->contains(meta::type_id<type>())) {
             resources->emplace(
-                typeid(type),
+                meta::type_id<type>(),
                 std::make_shared<type>(std::forward<Args>(args)...)
             );
         }
@@ -194,11 +197,12 @@ struct World {
      *
      * @param type The type_index of the resource to be removed.
      */
-    EPIX_API void remove_resource(const std::type_index& type);
+    EPIX_API void remove_resource(const meta::type_index& type);
     template <typename T>
     T& resource() {
         auto resources = m_data.resources.read();
-        if (auto it = resources->find(typeid(T)); it != resources->end()) {
+        if (auto it = resources->find(meta::type_id<T>());
+            it != resources->end()) {
             return *std::static_pointer_cast<T>(it->second);
         } else {
             throw std::runtime_error("Resource not found.");
@@ -207,7 +211,8 @@ struct World {
     template <typename T>
     const T& resource() const {
         auto resources = m_data.resources.read();
-        if (auto it = resources->find(typeid(T)); it != resources->end()) {
+        if (auto it = resources->find(meta::type_id<T>());
+            it != resources->end()) {
             return *std::static_pointer_cast<T>(it->second);
         } else {
             throw std::runtime_error("Resource not found.");
@@ -216,7 +221,8 @@ struct World {
     template <typename T>
     T* get_resource() {
         auto resources = m_data.resources.read();
-        if (auto it = resources->find(typeid(T)); it != resources->end()) {
+        if (auto it = resources->find(meta::type_id<T>());
+            it != resources->end()) {
             return std::static_pointer_cast<T>(it->second).get();
         } else {
             return nullptr;
@@ -225,7 +231,8 @@ struct World {
     template <typename T>
     const T* get_resource() const {
         auto resources = m_data.resources.read();
-        if (auto it = resources->find(typeid(T)); it != resources->end()) {
+        if (auto it = resources->find(meta::type_id<T>());
+            it != resources->end()) {
             return std::static_pointer_cast<T>(it->second).get();
         } else {
             return nullptr;

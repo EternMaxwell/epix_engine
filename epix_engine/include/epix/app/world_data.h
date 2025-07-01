@@ -10,6 +10,7 @@
 
 #include "entity.h"
 #include "epix/common.h"
+#include "epix/meta/typeid.h"
 #include "epix/utils/command_queue.h"
 #include "hash_tool.h"
 
@@ -27,7 +28,7 @@ namespace epix::app {
 using CommandQueue = epix::utils::AtomicCommandQueue<World&>;
 struct WorldData {
     entt::registry registry;
-    async::RwLock<entt::dense_map<std::type_index, std::shared_ptr<void>>>
+    async::RwLock<entt::dense_map<meta::type_index, std::shared_ptr<void>>>
         resources;
 };
 }  // namespace epix::app

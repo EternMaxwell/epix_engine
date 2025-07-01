@@ -15,7 +15,7 @@ struct DespawnRecurseCommand {
     EPIX_API void apply(World& world);
 };
 struct RemoveResourceCommand {
-    std::type_index type;
+    meta::type_index type;
 
     EPIX_API void apply(World& world);
 };
@@ -100,7 +100,7 @@ struct Commands {
     template <typename T>
     void remove_resource() {
         using type = std::decay_t<T>;
-        queue->enqueue<RemoveResourceCommand>(typeid(type));
+        queue->enqueue<RemoveResourceCommand>(meta::type_id<type>());
     };
 };
 
