@@ -53,16 +53,19 @@ EPIX_API bool Schedule::build_sets() noexcept {
     auto psystem_sets       = data->system_sets.write();
     auto& system_sets_write = *psystem_sets;
     bool any                = false;
+    std::vector<SystemSetLabel> newly_added_list;
     while (auto newly_added = data->newly_added_sets.try_pop()) {
         auto it = system_sets_write.find(*newly_added);
         if (it == system_sets_write.end()) continue;
-
-        any         = true;
-        auto& set   = it->second;
-        auto& label = *newly_added;
+        auto& set = it->second;
         set.built_in_sets.clear();
         set.built_depends.clear();
         set.built_succeeds.clear();
+        newly_added_list.emplace_back(*newly_added);
+        any = true;
+    }
+    for (auto&& label : newly_added_list) {
+        auto& set = system_sets_write.at(label);
         // add succeed on this set to the depend set
         for (auto&& depend : set.depends) {
             auto&& it = system_sets_write.find(depend);

@@ -8,6 +8,9 @@ EPIX_API SystemSetConfig& SystemSetConfig::after_internal(
     if (!in_sets.contains(label) && !succeeds.contains(label)) {
         depends.emplace(label);
     }
+    for (auto&& sub_config : sub_configs) {
+        sub_config.after_internal(label);
+    }
     return *this;
 }
 EPIX_API SystemSetConfig& SystemSetConfig::before_internal(
@@ -16,6 +19,9 @@ EPIX_API SystemSetConfig& SystemSetConfig::before_internal(
     if (!in_sets.contains(label) && !depends.contains(label)) {
         succeeds.emplace(label);
     }
+    for (auto&& sub_config : sub_configs) {
+        sub_config.before_internal(label);
+    }
     return *this;
 }
 EPIX_API SystemSetConfig& SystemSetConfig::in_set_internal(
@@ -23,6 +29,9 @@ EPIX_API SystemSetConfig& SystemSetConfig::in_set_internal(
 ) noexcept {
     if (!depends.contains(label) && !succeeds.contains(label)) {
         in_sets.emplace(label);
+    }
+    for (auto&& sub_config : sub_configs) {
+        sub_config.in_set_internal(label);
     }
     return *this;
 }
