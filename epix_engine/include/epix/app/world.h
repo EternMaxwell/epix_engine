@@ -197,7 +197,14 @@ struct World {
      *
      * @param type The type_index of the resource to be removed.
      */
-    EPIX_API void remove_resource(const meta::type_index& type);
+    template <typename T = void>
+    void remove_resource(const meta::type_index& type = meta::type_id<T>()) {
+        if (type == meta::type_id<void>()) return;
+        auto resources = m_data.resources.write();
+        if (resources->contains(type)) {
+            resources->erase(type);
+        }
+    }
     template <typename T>
     T& resource() {
         auto resources = m_data.resources.read();
