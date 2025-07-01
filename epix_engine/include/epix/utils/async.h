@@ -151,10 +151,19 @@ struct RwLock {
             : base_type(std::move(lock), ptr) {}
 
        public:
-        ReadGuard(const ReadGuard&)            = delete;
-        ReadGuard(ReadGuard&&)                 = default;
+        ReadGuard(const ReadGuard&) = delete;
+        ReadGuard(ReadGuard&& other) noexcept : base_type(std::move(other)) {
+            other.second = nullptr;  // Prevent double deletion
+        }
         ReadGuard& operator=(const ReadGuard&) = delete;
-        ReadGuard& operator=(ReadGuard&&)      = default;
+        ReadGuard& operator=(ReadGuard&& other) noexcept {
+            if (this != &other) {
+                this->first  = std::move(other.first);
+                this->second = other.second;
+                other.second = nullptr;  // Prevent double deletion
+            }
+            return *this;
+        }
 
         ~ReadGuard() = default;
 
@@ -174,10 +183,19 @@ struct RwLock {
             : base_type(std::move(lock), ptr) {}
 
        public:
-        WriteGuard(const WriteGuard&)            = delete;
-        WriteGuard(WriteGuard&&)                 = default;
+        WriteGuard(const WriteGuard&) = delete;
+        WriteGuard(WriteGuard&& other) noexcept : base_type(std::move(other)) {
+            other.second = nullptr;  // Prevent double deletion
+        }
         WriteGuard& operator=(const WriteGuard&) = delete;
-        WriteGuard& operator=(WriteGuard&&)      = default;
+        WriteGuard& operator=(WriteGuard&& other) noexcept {
+            if (this != &other) {
+                this->first  = std::move(other.first);
+                this->second = other.second;
+                other.second = nullptr;  // Prevent double deletion
+            }
+            return *this;
+        }
 
         ~WriteGuard() = default;
 
