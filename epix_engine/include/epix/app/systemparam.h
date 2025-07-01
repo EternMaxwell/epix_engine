@@ -70,7 +70,15 @@ struct Extract<World> {
 };
 
 struct ExtractTarget {
-    async::RwLock<World>::WriteGuard world;
+   private:
+    World* m_world;
+
+    ExtractTarget(World& world) : m_world(&world) {}
+
+    friend struct App;
+
+   public:
+    World& get_world() { return *m_world; }
 };
 
 template <typename T>
@@ -146,11 +154,11 @@ struct SystemParam<Extract<T>> : public SystemParam<T> {
     using State =
         std::pair<std::optional<Extract<T>>, typename SystemParam<T>::State>;
     State init(World& world, SystemMeta& meta) {
-        auto& target = *world.get_resource<ExtractTarget>()->world;
+        auto& target = world.get_resource<ExtractTarget>()->get_world();
         return {std::nullopt, SystemParam<T>::init(target, meta)};
     }
     bool update(State& state, World& world, const SystemMeta& meta) {
-        auto& target = *world.get_resource<ExtractTarget>()->world;
+        auto& target = world.get_resource<ExtractTarget>()->get_world();
         bool inner   = SystemParam<T>::update(state.second, target, meta);
         if (inner) {
             state.first.emplace(SystemParam<T>::get(state.second));

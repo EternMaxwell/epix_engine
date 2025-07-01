@@ -323,9 +323,11 @@ EPIX_API std::future<void> App::extract(App& target) {
     return std::async(std::launch::async, [this, &target]() {
         auto target_world = target.world();
         auto source_world = this->world();
-        source_world->insert_resource(
-            ExtractTarget{.world = std::move(target_world)}
-        );
+        if (auto extract_target = source_world->get_resource<ExtractTarget>()) {
+            extract_target->m_world = &(*target_world);
+        } else {
+            source_world->insert_resource(ExtractTarget(*target_world));
+        }
         auto schedules     = m_data->schedules.write();
         auto extract_order = m_data->extract_schedule_order.read();
         for (auto&& label : *extract_order) {
@@ -337,13 +339,16 @@ EPIX_API std::future<void> App::extract(App& target) {
             schedule->run(run_state);
             run_state.apply_commands();
         }
-        // this function will return when RunState is able to destruct.
-        // e.g. all systems and schedules are done.
     });
 }
 EPIX_API std::future<void> App::update() {
     return std::async(std::launch::async, [this]() {
-        auto world        = this->world();
+        auto world = this->world();
+        if (auto extract_target = world->get_resource<ExtractTarget>()) {
+            extract_target->m_world = &(*world);
+        } else {
+            world->insert_resource(ExtractTarget(*world));
+        }
         auto schedules    = m_data->schedules.write();
         auto update_order = m_data->main_schedule_order.read();
         for (auto&& label : *update_order) {
@@ -360,7 +365,12 @@ EPIX_API std::future<void> App::update() {
 }
 EPIX_API std::future<void> App::exit() {
     return std::async(std::launch::async, [this]() {
-        auto world      = this->world();
+        auto world = this->world();
+        if (auto extract_target = world->get_resource<ExtractTarget>()) {
+            extract_target->m_world = &(*world);
+        } else {
+            world->insert_resource(ExtractTarget(*world));
+        }
         auto schedules  = m_data->schedules.write();
         auto exit_order = m_data->exit_schedule_order.read();
         for (auto&& label : *exit_order) {
