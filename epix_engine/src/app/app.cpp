@@ -328,6 +328,10 @@ EPIX_API std::future<void> App::extract(App& target) {
         } else {
             source_world->insert_resource(ExtractTarget(*target_world));
         }
+        auto reset_target = IntoSystem::into_system([](World& world) {
+            world.remove_resource<ExtractTarget>();
+        });
+        reset_target->initialize(*source_world);
         auto schedules     = m_data->schedules.write();
         auto extract_order = m_data->extract_schedule_order.read();
         for (auto&& label : *extract_order) {
@@ -339,6 +343,10 @@ EPIX_API std::future<void> App::extract(App& target) {
             schedule->run(run_state);
             run_state.apply_commands();
         }
+        run_state.run_system(
+            reset_target.get(),
+            RunState::RunSystemConfig{.executor = ExecutorType::SingleThread}
+        );
     });
 }
 EPIX_API std::future<void> App::update() {
@@ -349,6 +357,10 @@ EPIX_API std::future<void> App::update() {
         } else {
             world->insert_resource(ExtractTarget(*world));
         }
+        auto reset_target = IntoSystem::into_system([](World& world) {
+            world.remove_resource<ExtractTarget>();
+        });
+        reset_target->initialize(*world);
         auto schedules    = m_data->schedules.write();
         auto update_order = m_data->main_schedule_order.read();
         for (auto&& label : *update_order) {
@@ -361,6 +373,10 @@ EPIX_API std::future<void> App::update() {
             schedule->run(run_state);
             run_state.apply_commands();
         }
+        run_state.run_system(
+            reset_target.get(),
+            RunState::RunSystemConfig{.executor = ExecutorType::SingleThread}
+        );
     });
 }
 EPIX_API std::future<void> App::exit() {
@@ -371,6 +387,10 @@ EPIX_API std::future<void> App::exit() {
         } else {
             world->insert_resource(ExtractTarget(*world));
         }
+        auto reset_target = IntoSystem::into_system([](World& world) {
+            world.remove_resource<ExtractTarget>();
+        });
+        reset_target->initialize(*world);
         auto schedules  = m_data->schedules.write();
         auto exit_order = m_data->exit_schedule_order.read();
         for (auto&& label : *exit_order) {
@@ -383,6 +403,10 @@ EPIX_API std::future<void> App::exit() {
             schedule->run(run_state);
             run_state.apply_commands();
         }
+        run_state.run_system(
+            reset_target.get(),
+            RunState::RunSystemConfig{.executor = ExecutorType::SingleThread}
+        );
     });
 }
 
