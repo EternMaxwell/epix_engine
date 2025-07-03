@@ -43,11 +43,11 @@ EPIX_API int GLFWRunner::run(App& app) {
         });
     auto glfw_work_load = [&] {
         GLFWPlugin::poll_events();
+        app.run_system(toggle_window_mode_system.get());
         app.run_system(update_size_system.get());
         app.run_system(update_pos_system.get());
         app.run_system(create_windows_system.get());
         app.run_system(send_cached_events_system.get());
-        app.run_system(toggle_window_mode_system.get());
         app.run_system(update_window_states_system.get());
         app.run_system(destroy_windows_system.get());
         app.run_system(update_focus_system.get());
@@ -61,10 +61,19 @@ EPIX_API int GLFWRunner::run(App& app) {
         return -1;
     }
     glfw_work_load();
+    auto profiler  = app.get_resource<AppProfiler>();
+    auto last_time = std::chrono::steady_clock::now();
     while (true) {
         app.update().wait();
         glfw_work_load();
         exit_code = app.run_system(check_exit.get()).value_or(-1);
+        auto time = std::chrono::steady_clock::now();
+        double delta_time =
+            std::chrono::duration<double, std::milli>(time - last_time).count();
+        last_time = time;
+        if (profiler) {
+            profiler->push_time(delta_time);
+        }
         if (exit_code.has_value()) {
             // should exit app, remove all windows.
             app.run_system([](Commands& commands,
