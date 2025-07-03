@@ -25,6 +25,9 @@ using app::Schedule;
 using app::Schedules;
 
 using app::IntoSystem;
+using app::RunState;
+using app::RunSystemError;
+using RunSystemConfig = app::RunState::RunSystemConfig;
 
 using app::App;
 using app::AppCreateInfo;
