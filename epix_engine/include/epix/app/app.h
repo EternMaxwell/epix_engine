@@ -56,6 +56,8 @@ struct AppData {
     async::RwLock<std::vector<std::pair<ScheduleInfo, SystemSetConfig>>>
         queued_systems;
 
+    mutable async::RwLock<std::shared_ptr<RunState>> run_state;
+
     EPIX_API AppData(const AppLabel& world_label);
 };
 inline struct MainT {
@@ -103,6 +105,9 @@ struct App {
 
     EPIX_API App& sub_app(const AppLabel& label);
     EPIX_API App* get_sub_app(const AppLabel& label);
+
+    EPIX_API std::shared_ptr<RunState> run_state() const;
+    EPIX_API void reset_run_state() const;
 
     // Modify. These modifications modify App owned data. Need to lock to avoid
     // other threads access the data at the same time, which will result in
@@ -300,12 +305,17 @@ struct App {
     EPIX_API void set_runner(std::unique_ptr<AppRunner>&& runner);
     EPIX_API int run();
     template <typename Ret>
-    std::expected<Ret, RunSystemError> run_system(BasicSystem<Ret>& system) {
-        auto write = m_data->world.write();
-        if (!system.initialized()) {
-            system.initialize(*write);
+    std::expected<Ret, RunSystemError> run_system(BasicSystem<Ret>* system) {
+        if (!system) {
+            return std::unexpected(RunSystemError{SystemExceptionError{
+                std::make_exception_ptr(std::runtime_error("System is null"))
+            }});
         }
-        return system.run(*write);
+        auto write = world();
+        if (!system->initialized()) {
+            system->initialize(*write);
+        }
+        return system->run(*write);
     };
     template <typename Func>
     std::expected<
@@ -315,14 +325,14 @@ struct App {
         using func_type   = decltype(std::function(func));
         using return_type = typename func_type::result_type;
         auto system       = IntoSystem::into_system(std::forward<Func>(func));
-        auto write        = m_data->world.write();
+        auto write        = world();
         system->initialize(*write);
         return system->run(*write);
     };
     template <typename Func>
     auto submit_system(const app::ExecutorLabel& executor, Func&& func)
         -> std::future<decltype(run_system(std::declval<Func>()))> {
-        auto write  = m_data->world.write();
+        auto write  = world();
         auto system = IntoSystem::into_system(std::forward<Func>(func));
         system->initialize(*write);
         auto pool = m_executors->get_pool(executor);
