@@ -1,12 +1,36 @@
 #pragma once
 
-#include <GLFW/glfw3.h>
 #include <epix/assets.h>
 #include <epix/utils/core.h>
 
 #include <variant>
 
-namespace epix::window::window {
+namespace epix::window {
+enum PosType {
+    TopLeft,   // Top left corner of the current monitor
+    Centered,  // Centered on the current monitor
+    Relative,  // Relative to the parent window, top left aligned.
+};
+struct FrameSize {
+    int left   = 0;
+    int right  = 0;
+    int top    = 0;
+    int bottom = 0;
+};
+struct SizeLimits {
+    int min_width  = 160;
+    int min_height = 120;
+    int max_width  = -1;  // -1 means no limit
+    int max_height = -1;  // -1 means no limit
+
+    inline bool operator==(const SizeLimits& other) const {
+        return min_width == other.min_width && min_height == other.min_height &&
+               max_width == other.max_width && max_height == other.max_height;
+    }
+    inline bool operator!=(const SizeLimits& other) const {
+        return !(*this == other);
+    }
+};
 enum class StandardCursor {
     Arrow,
     IBeam,
@@ -29,11 +53,12 @@ struct CursorIcon : std::variant<StandardCursor, epix::assets::UntypedHandle> {
     using std::variant<StandardCursor, epix::assets::UntypedHandle>::variant;
     using std::variant<StandardCursor, epix::assets::UntypedHandle>::operator=;
 };
-struct Cursor {
-    CursorIcon icon = StandardCursor::Arrow;
-    CursorMode mode = CursorMode::Normal;
-
-    EPIX_API bool operator==(const Cursor& other) const;
+enum class CompositeAlphaMode {
+    Auto,
+    Opacity,
+    PreMultiplied,
+    PostMultiplied,
+    Inherit,
 };
 enum class PresentMode {
     /**
@@ -49,98 +74,83 @@ enum class PresentMode {
     Immediate,
     Mailbox,
 };
-enum class WindowMode {
-    Windowed,
-    BorderlessFullscreen,
-    Fullscreen,
-};
-struct WindowPosition {
-    int x, y;
-
-    EPIX_API bool operator==(const WindowPosition& other) const;
-};
-struct WindowSize {
-    // framebuffer size
-    int width  = 1280;
-    int height = 720;
-    // physical size
-    int physical_width  = 1280;
-    int physical_height = 720;
-};
-struct WindowSizeLimit {
-    int min_width  = 180;
-    int min_height = 120;
-    int max_width  = -1;
-    int max_height = -1;
-
-    EPIX_API bool operator==(const WindowSizeLimit& other) const;
-};
 enum class WindowLevel {
     AlwaysOnBottom,
     Normal,
     AlwaysOnTop,
 };
-struct InternalState {
-    std::optional<bool> maximize_request;
-    std::tuple<bool, double, double> cursor_position;
-    std::optional<bool> attention_request;
-};
-struct WindowFrameSize {
-    int left   = 0;
-    int right  = 0;
-    int top    = 0;
-    int bottom = 0;
-};
-enum class CompositeAlphaMode {
-    Auto,
-    Opacity,
-    PreMultiplied,
-    PostMultiplied,
-    Inherit,
+enum class WindowMode {
+    Windowed,
+    Fullscreen,
+    BorderlessFullscreen,
 };
 struct Window {
-   public:
-    std::optional<WindowPosition> position = std::nullopt;  // //
-    WindowFrameSize frame_size;                             //
-    WindowSize window_size = {};                            // //
-    InternalState internal;                                 // //
+    // type of position. controls how the position is interpreted.
+    // changing this value will change the final pos, and recalculate the
+    // position based on the current monitor and size.
+    PosType pos_type = PosType::Centered;
+    // position of the window, final pos is calculated based on the pos_type.
+    std::pair<int, int> pos = {0, 0};
+    // the actual pos on the screen, changing this is prior to `pos`.
+    // this is usually same as `pos` if type is `PosType::TopLeft` and `monitor`
+    // is 0. This is usually irrelevent to monitor index.
+    std::pair<int, int> final_pos = {0, 0};
 
-    Cursor cursor                 = {};                        //
-    PresentMode present_mode      = PresentMode::AutoNoVsync;  //
-    WindowMode mode               = WindowMode::Windowed;      //
-    int monitor                   = 0;
-    WindowLevel window_level      = WindowLevel::Normal;  //
-    std::string title             = "";                   //
-    CompositeAlphaMode alpha_mode = CompositeAlphaMode::Auto;
-    float opacity                 = 1.0f;   //
-    WindowSizeLimit size_limit    = {};     //
-    bool resizable                = true;   //
-    bool decorations              = true;   //
-    bool focused                  = false;  //
-    bool visible                  = true;   //
-    bool iconified                = false;  //
+    // size of the window.
+    std::pair<int, int> size = {1280, 720};
 
-    EPIX_API std::pair<int, int> get_position() const;
-    EPIX_API void set_position(int x, int y);
-    EPIX_API const WindowFrameSize& get_frame_size() const;
-    EPIX_API void set_maximized(bool maximized);
-    EPIX_API int width() const;
-    EPIX_API int height() const;
-    EPIX_API std::pair<int, int> size() const;
-    EPIX_API std::pair<int, int> physical_size() const;
-    EPIX_API void set_size(int width, int height);
-    /**
-     * @brief Get the cursor position
-     *
-     * @return `std::tuple<bool, double, double>` with the `bool` indicating
-     * whether cursor is in window, second and third the x and y position of the
-     * cursor relavant to top left corner of the window.
-     */
-    EPIX_API std::tuple<bool, double, double> cursor_position() const;
-    /**
-     * @brief Get cursor position normalized (scaled to (0, 1)).
-     */
-    EPIX_API std::pair<double, double> cursor_position_normalized() const;
-    EPIX_API void set_cursor_position(double x, double y);
+    // cursor position relevant to the window, do nothing in creation.
+    std::pair<double, double> cursor_pos = {0.0, 0.0};
+    // whether cursor is in the window, get only.
+    bool cursor_in_window = false;
+
+    // frame size of the window, get only.
+    FrameSize frame_size = {};
+
+    // size limits.
+    SizeLimits size_limits = {};
+
+    // whether window is resizable.
+    bool resizable = true;
+    // whether window is decorated with a title bar and borders.
+    bool decorations = true;
+    // whether window is visible on the screen.
+    bool visible = true;
+    // opacity of the window, 0.0 is fully transparent, 1.0 is fully opaque.
+    float opacity = 1.0f;
+
+    // whether window is focused.
+    bool focused = false;
+    // whether window is iconified (minimized).
+    bool iconified = false;
+    // whether window is maximized.
+    bool maximized = false;
+
+    // cursor icon, can be standard or custom image.
+    CursorIcon cursor_icon = StandardCursor::Arrow;
+    // cursor mode, controls how the cursor is displayed.
+    CursorMode cursor_mode = CursorMode::Normal;
+
+    // composite alpha mode, used in rendering.
+    CompositeAlphaMode composite_alpha_mode = CompositeAlphaMode::Auto;
+    // present mode, controls how the rendered image is presented.
+    PresentMode present_mode = PresentMode::AutoNoVsync;
+
+    // window level, controls the z-order of the window.
+    WindowLevel window_level = WindowLevel::Normal;
+    // window mode, controls fullscreen.
+    WindowMode window_mode = WindowMode::Windowed;
+    // monitor index to use for fullscreen windows.
+    int monitor = 0;
+
+    // title of the window, displayed in the title bar.
+    std::string title = "untitled";
+
+    // whether request for attention.
+    bool attention_request = false;
+
+    EPIX_API void request_attention(bool request = true);
 };
-}  // namespace epix::window::window
+
+struct PrimaryWindow {};
+}  // namespace epix::window

@@ -4,735 +4,6 @@ using namespace epix::glfw;
 using namespace epix;
 using namespace epix::window;
 
-EPIX_API void epix::glfw::sync_window_to_glfw(
-    Entity id,
-    window::Window& window_desc,
-    window::Window& cached_desc,
-    GLFWwindow* window
-) {
-    if (&window_desc != &cached_desc) {
-        // update the glfw window
-        if (cached_desc.cursor != window_desc.cursor) {
-            if (cached_desc.cursor.icon != window_desc.cursor.icon) {
-                std::visit(
-                    epix::util::visitor{
-                        [window](const window::window::StandardCursor& cursor) {
-                            auto glfw_cursor_enum_v = [](const window::window::
-                                                             StandardCursor&
-                                                                 cursor) {
-                                switch (cursor) {
-                                    case window::window::StandardCursor::Arrow:
-                                        return GLFW_ARROW_CURSOR;
-                                    case window::window::StandardCursor::IBeam:
-                                        return GLFW_IBEAM_CURSOR;
-                                    case window::window::StandardCursor::
-                                        Crosshair:
-                                        return GLFW_CROSSHAIR_CURSOR;
-                                    case window::window::StandardCursor::Hand:
-                                        return GLFW_POINTING_HAND_CURSOR;
-                                    case window::window::StandardCursor::
-                                        ResizeAll:
-                                        return GLFW_RESIZE_ALL_CURSOR;
-                                    case window::window::StandardCursor::
-                                        ResizeNS:
-                                        return GLFW_RESIZE_NS_CURSOR;
-                                    case window::window::StandardCursor::
-                                        ResizeEW:
-                                        return GLFW_RESIZE_EW_CURSOR;
-                                    case window::window::StandardCursor::
-                                        ResizeNWSE:
-                                        return GLFW_RESIZE_NWSE_CURSOR;
-                                    case window::window::StandardCursor::
-                                        ResizeNESW:
-                                        return GLFW_RESIZE_NESW_CURSOR;
-                                    case window::window::StandardCursor::
-                                        NotAllowed:
-                                        return GLFW_NOT_ALLOWED_CURSOR;
-                                }
-                            }(cursor);
-                            glfwSetCursor(
-                                window,
-                                glfwCreateStandardCursor(glfw_cursor_enum_v)
-                            );
-                        },
-                        [window, id](const assets::UntypedHandle& cursor) {
-                            auto* user_data = static_cast<UserData*>(
-                                glfwGetWindowUserPointer(window)
-                            );
-                            if (user_data) {
-                                user_data->set_custom_cursor.push_back(
-                                    SetCustomCursor{id, cursor}
-                                );
-                            } else {
-                                throw std::runtime_error(
-                                    "Failed to get user data from window"
-                                );
-                            }
-                        }
-                    },
-                    window_desc.cursor.icon
-                );
-            }
-            if (cached_desc.cursor.mode != window_desc.cursor.mode) {
-                auto glfw_cursor_mode_enum_v =
-                    [](const window::window::CursorMode& mode) {
-                        switch (mode) {
-                            case window::window::CursorMode::Normal:
-                                return GLFW_CURSOR_NORMAL;
-                            case window::window::CursorMode::Hidden:
-                                return GLFW_CURSOR_HIDDEN;
-                            case window::window::CursorMode::Captured:
-                                return GLFW_CURSOR_CAPTURED;
-                            case window::window::CursorMode::Disabled:
-                                return GLFW_CURSOR_DISABLED;
-                        }
-                    }(window_desc.cursor.mode);
-                glfwSetInputMode(window, GLFW_CURSOR, glfw_cursor_mode_enum_v);
-            }
-        }
-        if (window_desc.monitor != cached_desc.monitor) {
-            int count;
-            auto monitors = glfwGetMonitors(&count);
-            window_desc.monitor =
-                window_desc.monitor < count ? window_desc.monitor : 0;
-            cached_desc.mode = window::window::WindowMode::Windowed;
-        }
-        if (cached_desc.position != window_desc.position &&
-            window_desc.mode == window::window::WindowMode::Windowed) {
-            // position only make sense when windowed
-            std::optional<std::pair<int, int>> position =
-                window_desc.position.has_value()
-                    ? std::make_optional<std::pair<int, int>>(std::make_pair(
-                          window_desc.position->x, window_desc.position->y
-                      ))
-                    : std::nullopt;
-            if (!position) {
-                // centered to the monitor
-                int count;
-                auto monitors = glfwGetMonitors(&count);
-                window_desc.monitor =
-                    window_desc.monitor < count ? window_desc.monitor : 0;
-                GLFWmonitor* monitor    = monitors[window_desc.monitor];
-                const GLFWvidmode* mode = glfwGetVideoMode(monitor);
-                position =
-                    std::make_optional<std::pair<int, int>>(std::make_pair(
-                        mode->width / 2 - window_desc.physical_size().first / 2,
-                        mode->height / 2 -
-                            window_desc.physical_size().second / 2
-                    ));
-            }
-            glfwSetWindowPos(window, position->first, position->second);
-            window_desc.set_position(position->first, position->second);
-        }
-        if (cached_desc.physical_size() != window_desc.physical_size() &&
-            window_desc.mode != window::window::WindowMode::Windowed) {
-            // physical size only make sense when windowed
-            glfwSetWindowSize(
-                window, window_desc.physical_size().first,
-                window_desc.physical_size().second
-            );
-        }
-        if (cached_desc.mode != window_desc.mode) {
-            if (window_desc.mode == window::window::WindowMode::Windowed) {
-                // from fullscreen set back to windowed, this should use the
-                // position and sizes in cached_desc
-                auto [width, height] = cached_desc.physical_size();
-                int x, y;
-                if (cached_desc.position) {
-                    x = cached_desc.position->x;
-                    y = cached_desc.position->y;
-                } else {
-                    GLFWmonitor* monitor    = glfwGetPrimaryMonitor();
-                    const GLFWvidmode* mode = glfwGetVideoMode(monitor);
-                    x                       = mode->width / 2 - width / 2;
-                    y                       = mode->height / 2 - height / 2;
-                }
-                /**
-                 * @brief make sure they are larger than 0 to avoid title bar
-                 * from going out of the screen
-                 */
-                x = std::max(0, x);
-                y = std::max(0, y);
-                glfwSetWindowMonitor(window, nullptr, x, y, width, height, 0);
-            } else if (window_desc.mode ==
-                       window::window::WindowMode::BorderlessFullscreen) {
-                int count;
-                auto monitors = glfwGetMonitors(&count);
-                window_desc.monitor =
-                    window_desc.monitor < count ? window_desc.monitor : 0;
-                GLFWmonitor* monitor    = monitors[window_desc.monitor];
-                const GLFWvidmode* mode = glfwGetVideoMode(monitor);
-                glfwSetWindowMonitor(
-                    window, monitor, 0, 0, mode->width, mode->height,
-                    mode->refreshRate
-                );
-            } else if (window_desc.mode ==
-                       window::window::WindowMode::Fullscreen) {
-                int count;
-                auto monitors = glfwGetMonitors(&count);
-                window_desc.monitor =
-                    window_desc.monitor < count ? window_desc.monitor : 0;
-                GLFWmonitor* monitor    = monitors[window_desc.monitor];
-                const GLFWvidmode* mode = glfwGetVideoMode(monitor);
-                glfwSetWindowMonitor(
-                    window, monitor, 0, 0, mode->width, mode->height,
-                    mode->refreshRate
-                );
-            }
-        }
-        if (cached_desc.size_limit != window_desc.size_limit) {
-            glfwSetWindowSizeLimits(
-                window, window_desc.size_limit.min_width,
-                window_desc.size_limit.min_height,
-                window_desc.size_limit.max_width,
-                window_desc.size_limit.max_height
-            );
-        }
-        if (cached_desc.resizable != window_desc.resizable) {
-            glfwSetWindowAttrib(
-                window, GLFW_RESIZABLE,
-                window_desc.resizable ? GLFW_TRUE : GLFW_FALSE
-            );
-        }
-        if (cached_desc.decorations != window_desc.decorations) {
-            glfwSetWindowAttrib(
-                window, GLFW_DECORATED,
-                window_desc.decorations ? GLFW_TRUE : GLFW_FALSE
-            );
-        }
-        if (cached_desc.iconified != window_desc.iconified) {
-            if (window_desc.iconified) {
-                glfwIconifyWindow(window);
-            } else {
-                glfwRestoreWindow(window);
-            }
-        }
-        if (cached_desc.visible != window_desc.visible) {
-            if (window_desc.visible) {
-                glfwShowWindow(window);
-            } else {
-                glfwHideWindow(window);
-            }
-        }
-        if (cached_desc.opacity != window_desc.opacity) {
-            glfwSetWindowOpacity(window, window_desc.opacity);
-        }
-        if (cached_desc.window_level != window_desc.window_level) {
-            auto glfw_window_level_enum_v =
-                [](const window::window::WindowLevel& level) {
-                    switch (level) {
-                        case window::window::WindowLevel::Normal:
-                            return GLFW_FALSE;
-                        case window::window::WindowLevel::AlwaysOnTop:
-                            return GLFW_TRUE;
-                        case window::window::WindowLevel::AlwaysOnBottom:
-                            return GLFW_FALSE;
-                    }
-                }(window_desc.window_level);
-            glfwSetWindowAttrib(
-                window, GLFW_FLOATING, glfw_window_level_enum_v
-            );
-        }
-        if (cached_desc.title != window_desc.title) {
-            glfwSetWindowTitle(window, window_desc.title.c_str());
-        }
-        // internal state
-        if (window_desc.internal.maximize_request) {
-            auto maximize_request =
-                window_desc.internal.maximize_request.value();
-            window_desc.internal.maximize_request.reset();
-            if (maximize_request) {
-                glfwMaximizeWindow(window);
-            } else {
-                glfwRestoreWindow(window);
-            }
-        }
-        if (window_desc.internal.attention_request) {
-            auto attention_request =
-                window_desc.internal.attention_request.value();
-            window_desc.internal.attention_request.reset();
-            if (attention_request) {
-                glfwRequestWindowAttention(window);
-            }
-        }
-        if (window_desc.internal.cursor_position !=
-            cached_desc.internal.cursor_position) {
-            auto&& [_, x, y] = window_desc.cursor_position();
-            glfwSetCursorPos(window, x, y);
-        }
-        if (cached_desc.focused != window_desc.focused) {
-            if (window_desc.focused) {
-                glfwFocusWindow(window);
-            } else {
-                glfwSetWindowAttrib(
-                    window, GLFW_FOCUSED, GLFW_FALSE
-                );  // this is not working
-            }
-        }
-    } else {
-        // force the glfw window to sync with the window_desc
-        {
-            std::visit(
-                epix::util::visitor{
-                    [window](const window::window::StandardCursor& cursor) {
-                        auto glfw_cursor_enum_v = [](const window::window::
-                                                         StandardCursor& cursor
-                                                  ) {
-                            switch (cursor) {
-                                case window::window::StandardCursor::Arrow:
-                                    return GLFW_ARROW_CURSOR;
-                                case window::window::StandardCursor::IBeam:
-                                    return GLFW_IBEAM_CURSOR;
-                                case window::window::StandardCursor::Crosshair:
-                                    return GLFW_CROSSHAIR_CURSOR;
-                                case window::window::StandardCursor::Hand:
-                                    return GLFW_POINTING_HAND_CURSOR;
-                                case window::window::StandardCursor::ResizeAll:
-                                    return GLFW_RESIZE_ALL_CURSOR;
-                                case window::window::StandardCursor::ResizeNS:
-                                    return GLFW_RESIZE_NS_CURSOR;
-                                case window::window::StandardCursor::ResizeEW:
-                                    return GLFW_RESIZE_EW_CURSOR;
-                                case window::window::StandardCursor::ResizeNWSE:
-                                    return GLFW_RESIZE_NWSE_CURSOR;
-                                case window::window::StandardCursor::ResizeNESW:
-                                    return GLFW_RESIZE_NESW_CURSOR;
-                                case window::window::StandardCursor::NotAllowed:
-                                    return GLFW_NOT_ALLOWED_CURSOR;
-                            }
-                        }(cursor);
-                        glfwSetCursor(
-                            window, glfwCreateStandardCursor(glfw_cursor_enum_v)
-                        );
-                    },
-                    [window, id](const assets::UntypedHandle& cursor) {
-                        auto* user_data = static_cast<UserData*>(
-                            glfwGetWindowUserPointer(window)
-                        );
-                        if (user_data) {
-                            user_data->set_custom_cursor.push_back(
-                                SetCustomCursor{id, cursor}
-                            );
-                        } else {
-                            throw std::runtime_error(
-                                "Failed to get user data from window"
-                            );
-                        }
-                    }
-                },
-                window_desc.cursor.icon
-            );
-        }
-        {
-            auto glfw_cursor_mode_enum_v =
-                [](const window::window::CursorMode& mode) {
-                    switch (mode) {
-                        case window::window::CursorMode::Normal:
-                            return GLFW_CURSOR_NORMAL;
-                        case window::window::CursorMode::Hidden:
-                            return GLFW_CURSOR_HIDDEN;
-                        case window::window::CursorMode::Captured:
-                            return GLFW_CURSOR_CAPTURED;
-                        case window::window::CursorMode::Disabled:
-                            return GLFW_CURSOR_DISABLED;
-                    }
-                }(window_desc.cursor.mode);
-            glfwSetInputMode(window, GLFW_CURSOR, glfw_cursor_mode_enum_v);
-        }
-        {
-            int count;
-            auto monitors = glfwGetMonitors(&count);
-            window_desc.monitor =
-                window_desc.monitor < count ? window_desc.monitor : 0;
-            cached_desc.mode = window::window::WindowMode::Windowed;
-        }
-        {
-            if (window_desc.mode == window::window::WindowMode::Windowed) {
-                // from fullscreen set back to windowed, this should use the
-                // position and sizes in cached_desc
-                int x, y;
-                if (cached_desc.position) {
-                    x = cached_desc.position->x;
-                    y = cached_desc.position->y;
-                } else {
-                    GLFWmonitor* monitor    = glfwGetPrimaryMonitor();
-                    const GLFWvidmode* mode = glfwGetVideoMode(monitor);
-                    x = mode->width / 2 - cached_desc.physical_size().first / 2;
-                    y = mode->height / 2 -
-                        cached_desc.physical_size().second / 2;
-                }
-                /**
-                 * @brief make sure they are larger than 0 to avoid title bar
-                 * from going out of the screen
-                 */
-                x = std::max(0, x);
-                y = std::max(0, y);
-                glfwSetWindowMonitor(
-                    window, nullptr, x, y, cached_desc.physical_size().first,
-                    cached_desc.physical_size().second, 0
-                );
-            } else if (window_desc.mode ==
-                       window::window::WindowMode::BorderlessFullscreen) {
-                int count;
-                auto monitors = glfwGetMonitors(&count);
-                window_desc.monitor =
-                    window_desc.monitor < count ? window_desc.monitor : 0;
-                GLFWmonitor* monitor    = monitors[window_desc.monitor];
-                const GLFWvidmode* mode = glfwGetVideoMode(monitor);
-                glfwSetWindowMonitor(
-                    window, monitor, 0, 0, mode->width, mode->height,
-                    mode->refreshRate
-                );
-            } else if (window_desc.mode ==
-                       window::window::WindowMode::Fullscreen) {
-                int count;
-                auto monitors = glfwGetMonitors(&count);
-                window_desc.monitor =
-                    window_desc.monitor < count ? window_desc.monitor : 0;
-                GLFWmonitor* monitor    = monitors[window_desc.monitor];
-                const GLFWvidmode* mode = glfwGetVideoMode(monitor);
-                glfwSetWindowMonitor(
-                    window, monitor, 0, 0, mode->width, mode->height,
-                    mode->refreshRate
-                );
-            }
-        }
-        {
-            std::optional<std::pair<int, int>> position =
-                window_desc.position.has_value()
-                    ? std::make_optional<std::pair<int, int>>(std::make_pair(
-                          window_desc.position->x, window_desc.position->y
-                      ))
-                    : std::nullopt;
-            if (!position) {
-                // centered to the monitor
-                int count;
-                auto monitors = glfwGetMonitors(&count);
-                window_desc.monitor =
-                    window_desc.monitor < count ? window_desc.monitor : 0;
-                GLFWmonitor* monitor    = monitors[window_desc.monitor];
-                const GLFWvidmode* mode = glfwGetVideoMode(monitor);
-                position =
-                    std::make_optional<std::pair<int, int>>(std::make_pair(
-                        mode->width / 2 - window_desc.physical_size().first / 2,
-                        mode->height / 2 -
-                            window_desc.physical_size().second / 2
-                    ));
-            }
-            glfwSetWindowPos(window, position->first, position->second);
-            window_desc.set_position(position->first, position->second);
-        }
-        {
-            // size limit
-            glfwSetWindowSizeLimits(
-                window, window_desc.size_limit.min_width,
-                window_desc.size_limit.min_height,
-                window_desc.size_limit.max_width,
-                window_desc.size_limit.max_height
-            );
-        }
-        {
-            // resizable
-            glfwSetWindowAttrib(
-                window, GLFW_RESIZABLE,
-                window_desc.resizable ? GLFW_TRUE : GLFW_FALSE
-            );
-        }
-        {
-            // decorations
-            glfwSetWindowAttrib(
-                window, GLFW_DECORATED,
-                window_desc.decorations ? GLFW_TRUE : GLFW_FALSE
-            );
-        }
-        {
-            // iconified
-            if (window_desc.iconified) {
-                glfwIconifyWindow(window);
-            } else {
-                glfwRestoreWindow(window);
-            }
-        }
-        {
-            // visible
-            if (window_desc.visible) {
-                glfwShowWindow(window);
-            } else {
-                glfwHideWindow(window);
-            }
-        }
-        {
-            // opacity
-            glfwSetWindowOpacity(window, window_desc.opacity);
-        }
-        {
-            auto glfw_window_level_enum_v =
-                [](const window::window::WindowLevel& level) {
-                    switch (level) {
-                        case window::window::WindowLevel::Normal:
-                            return GLFW_FALSE;
-                        case window::window::WindowLevel::AlwaysOnTop:
-                            return GLFW_TRUE;
-                        case window::window::WindowLevel::AlwaysOnBottom:
-                            return GLFW_FALSE;
-                    }
-                }(window_desc.window_level);
-            glfwSetWindowAttrib(
-                window, GLFW_FLOATING, glfw_window_level_enum_v
-            );
-        }
-        {
-            // focused
-            if (window_desc.focused) {
-                glfwFocusWindow(window);
-            } else {
-                glfwSetWindowAttrib(
-                    window, GLFW_FOCUSED, GLFW_FALSE
-                );  // this is not working
-            }
-        }
-    }
-}
-
-EPIX_API void epix::glfw::sync_glfw_to_window(
-    Entity id,
-    window::Window& window_desc,
-    window::Window& cached_desc,
-    GLFWwindow* window
-) {
-    {
-        static entt::dense_map<Entity, std::pair<int, int>> fullscreen_size;
-        {
-            auto res = glfwGetWindowAttrib(window, GLFW_ICONIFIED) == GLFW_TRUE;
-            if (!res && res != window_desc.iconified &&
-                window_desc.mode != window::window::WindowMode::Windowed) {
-                auto it = fullscreen_size.find(id);
-                if (it != fullscreen_size.end()) {
-                    auto [width, height] = it->second;
-                    glfwSetWindowSize(window, width, height);
-                } else {
-                    glfwSetWindowSize(
-                        window, window_desc.physical_size().first,
-                        window_desc.physical_size().second
-                    );
-                }
-            }
-            if (res && res != window_desc.iconified &&
-                window_desc.mode != window::window::WindowMode::Windowed) {
-                fullscreen_size[id] = std::make_pair(
-                    window_desc.physical_size().first,
-                    window_desc.physical_size().second
-                );
-            }
-            window_desc.iconified = res;
-        }
-        // update the window_desc using glfw window
-        {
-            // get the window size
-            int width, height;
-            glfwGetWindowSize(window, &width, &height);
-            int framebuffer_width, framebuffer_height;
-            glfwGetFramebufferSize(
-                window, &framebuffer_width, &framebuffer_height
-            );
-            window_desc.window_size.physical_width  = width;
-            window_desc.window_size.physical_height = height;
-            window_desc.window_size.width           = framebuffer_width;
-            window_desc.window_size.height          = framebuffer_height;
-        }
-        {
-            // get the window position
-            int x, y;
-            glfwGetWindowPos(window, &x, &y);
-            window_desc.position =
-                std::make_optional<window::window::WindowPosition>(x, y);
-        }
-        {
-            int left, right, top, bottom;
-            glfwGetWindowFrameSize(window, &left, &top, &right, &bottom);
-            window_desc.frame_size.left   = left;
-            window_desc.frame_size.right  = right;
-            window_desc.frame_size.top    = top;
-            window_desc.frame_size.bottom = bottom;
-        }
-        {
-            // update internal
-            auto& [in, x, y] = window_desc.internal.cursor_position;
-            glfwGetCursorPos(window, &x, &y);
-            // check whether cursor is in window
-            auto [width, height] = window_desc.physical_size();
-            in = x >= 0 && x <= width && y >= 0 && y <= height;
-        }
-        {
-            // get focused
-            bool focused =
-                glfwGetWindowAttrib(window, GLFW_FOCUSED) == GLFW_TRUE;
-            if (focused != window_desc.focused) {
-                window_desc.focused = focused;
-            }
-        }
-        { window_desc.opacity = glfwGetWindowOpacity(window); }
-        // set cached to new window_desc value
-        cached_desc.cursor       = window_desc.cursor;
-        cached_desc.mode         = window_desc.mode;
-        cached_desc.monitor      = window_desc.monitor;
-        cached_desc.size_limit   = window_desc.size_limit;
-        cached_desc.resizable    = window_desc.resizable;
-        cached_desc.decorations  = window_desc.decorations;
-        cached_desc.focused      = window_desc.focused;
-        cached_desc.visible      = window_desc.visible;
-        cached_desc.opacity      = window_desc.opacity;
-        cached_desc.window_level = window_desc.window_level;
-        cached_desc.title        = window_desc.title;
-        cached_desc.internal     = window_desc.internal;
-        cached_desc.frame_size   = window_desc.frame_size;
-        cached_desc.iconified    = window_desc.iconified;
-        // size and position should be cached when window is fullscreen
-        // which means cached value should not be updated
-        if (window_desc.mode == window::window::WindowMode::Windowed) {
-            cached_desc.window_size = window_desc.window_size;
-            cached_desc.position    = window_desc.position;
-        }
-        if (!cached_desc.position) {
-            cached_desc.position = window_desc.position;
-        }
-    }
-}
-
-EPIX_API GLFWwindow* epix::glfw::create_window(
-    Entity id, window::Window& window_desc
-) {
-    glfwDefaultWindowHints();
-    glfwWindowHint(GLFW_FOCUSED, GLFW_FALSE);
-    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-    glfwWindowHint(GLFW_AUTO_ICONIFY, GLFW_FALSE);
-    // glfwWindowHint(GLFW_FOCUS_ON_SHOW, GLFW_FALSE);
-    GLFWwindow* window = glfwCreateWindow(
-        window_desc.physical_size().first, window_desc.physical_size().second,
-        window_desc.title.c_str(), nullptr, nullptr
-    );
-    if (!window) {
-        throw std::runtime_error("Failed to create GLFW window");
-    }
-    glfwSetWindowUserPointer(window, new UserData{});
-    sync_window_to_glfw(id, window_desc, window_desc, window);
-    sync_glfw_to_window(id, window_desc, window_desc, window);
-    // add callbacks
-    glfwSetWindowSizeCallback(
-        window,
-        [](GLFWwindow* window, int width, int height) {
-            auto* user_data =
-                static_cast<UserData*>(glfwGetWindowUserPointer(window));
-            if (user_data) {
-                user_data->resized.emplace(width, height);
-            } else {
-                throw std::runtime_error("Failed to get user data from window");
-            }
-        }
-    );
-    glfwSetKeyCallback(
-        window,
-        [](GLFWwindow* window, int key, int scancode, int action, int mods) {
-            auto* user_data =
-                static_cast<UserData*>(glfwGetWindowUserPointer(window));
-            if (user_data) {
-                user_data->key_input.emplace(key, scancode, action, mods);
-            } else {
-                throw std::runtime_error("Failed to get user data from window");
-            }
-        }
-    );
-    glfwSetCursorPosCallback(
-        window,
-        [](GLFWwindow* window, double x, double y) {
-            auto* user_data =
-                static_cast<UserData*>(glfwGetWindowUserPointer(window));
-            if (user_data) {
-                user_data->cursor_pos.emplace(x, y);
-            } else {
-                throw std::runtime_error("Failed to get user data from window");
-            }
-        }
-    );
-    glfwSetCursorEnterCallback(window, [](GLFWwindow* window, int entered) {
-        auto* user_data =
-            static_cast<UserData*>(glfwGetWindowUserPointer(window));
-        if (user_data) {
-            user_data->cursor_enter.emplace(entered == GLFW_TRUE);
-        } else {
-            throw std::runtime_error("Failed to get user data from window");
-        }
-    });
-    glfwSetMouseButtonCallback(
-        window,
-        [](GLFWwindow* window, int button, int action, int mods) {
-            auto* user_data =
-                static_cast<UserData*>(glfwGetWindowUserPointer(window));
-            if (user_data) {
-                user_data->mouse_button.emplace(button, action, mods);
-            } else {
-                throw std::runtime_error("Failed to get user data from window");
-            }
-        }
-    );
-    glfwSetScrollCallback(
-        window,
-        [](GLFWwindow* window, double xoffset, double yoffset) {
-            auto* user_data =
-                static_cast<UserData*>(glfwGetWindowUserPointer(window));
-            if (user_data) {
-                user_data->scroll.emplace(xoffset, yoffset);
-            } else {
-                throw std::runtime_error("Failed to get user data from window");
-            }
-        }
-    );
-    glfwSetDropCallback(
-        window,
-        [](GLFWwindow* window, int count, const char** paths) {
-            auto* user_data =
-                static_cast<UserData*>(glfwGetWindowUserPointer(window));
-            if (user_data) {
-                std::vector<std::string> path_vec;
-                for (int i = 0; i < count; ++i) {
-                    path_vec.emplace_back(paths[i]);
-                }
-                user_data->drops.emplace(std::move(path_vec));
-            } else {
-                throw std::runtime_error("Failed to get user data from window");
-            }
-        }
-    );
-    glfwSetCharCallback(window, [](GLFWwindow* window, unsigned int codepoint) {
-        auto* user_data =
-            static_cast<UserData*>(glfwGetWindowUserPointer(window));
-        if (user_data) {
-            user_data->received_character.emplace(codepoint);
-        } else {
-            throw std::runtime_error("Failed to get user data from window");
-        }
-    });
-    glfwSetWindowFocusCallback(window, [](GLFWwindow* window, int focused) {
-        auto* user_data =
-            static_cast<UserData*>(glfwGetWindowUserPointer(window));
-        if (user_data) {
-            user_data->focused.emplace(focused == GLFW_TRUE);
-        } else {
-            throw std::runtime_error("Failed to get user data from window");
-        }
-    });
-    glfwSetWindowPosCallback(window, [](GLFWwindow* window, int x, int y) {
-        auto* user_data =
-            static_cast<UserData*>(glfwGetWindowUserPointer(window));
-        if (user_data) {
-            user_data->moved.emplace(x, y);
-        } else {
-            throw std::runtime_error("Failed to get user data from window");
-        }
-    });
-    return window;
-}
-
 EPIX_API const std::string& Clipboard::get_text() const { return text; }
 EPIX_API void Clipboard::update(ResMut<Clipboard> clipboard) {
     const char* str = glfwGetClipboardString(nullptr);
@@ -747,123 +18,690 @@ EPIX_API void Clipboard::set_text(EventReader<SetClipboardString> events) {
         glfwSetClipboardString(nullptr, event.text.c_str());
     }
 }
+EPIX_API GLFWwindow* GLFWPlugin::create_window(Entity id, const Window& desc) {
+    glfwDefaultWindowHints();
+    glfwWindowHint(GLFW_FOCUSED, GLFW_TRUE);
+    glfwWindowHint(GLFW_AUTO_ICONIFY, GLFW_FALSE);
+    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 
-EPIX_API void GLFWPlugin::build(App& app) {
-    if (!glfwInit()) {
-        throw std::runtime_error("Failed to initialize GLFW");
+    auto [width, height] = desc.size;
+    auto window =
+        glfwCreateWindow(width, height, desc.title.c_str(), nullptr, nullptr);
+    if (!window) {
+        throw std::runtime_error("Failed to create GLFW window");
     }
-    app.insert_resource(Clipboard{})
-        .init_resource<GLFWwindows>()
-        .init_resource<CachedWindows>()
-        .add_events<SetCustomCursor>()
-        .add_events<SetClipboardString>()
-        .add_plugins(epix::LoopPlugin{})
-        .add_systems(
-            First,
-            into(Clipboard::set_text, Clipboard::update)
-                .chain()
-                .set_executor(epix::app::ExecutorType::SingleThread)
-                .set_names({"set clipboard string", "update clipboard string"})
-        )
-        .add_systems(
-            First, into(
-                       window_changed, poll_events, send_cached_events,
-                       sync_windows, create_windows
-                   )
-                       .chain()
-                       .set_executor(epix::app::ExecutorType::SingleThread)
-                       .set_names(
-                           {"window changed", "glfw poll events",
-                            "send cached window events", "sync windows",
-                            "create windows"}
-                       )
-        )
-        .add_systems(
-            Last, into(destroy_windows)
-                      .set_executor(epix::app::ExecutorType::SingleThread)
-                      .set_name("destroy windows")
-        )
-        .add_systems(
-            Exit, into(destroy_windows)
-                      .set_executor(epix::app::ExecutorType::SingleThread)
-                      .set_name("destroy windows")
-        )
-        .add_systems(
-            PreUpdate,
-            into([](ResMut<window::Focus> focus, Local<window::Focus> last,
-                    ResMut<GLFWwindows> glfw_windows) {
-                if (focus->focus != last->focus) {
-                    if (auto it = glfw_windows->windows.find(*focus->focus);
-                        it != glfw_windows->windows.end()) {
-                        auto window = it->second;
-                        glfwFocusWindow(window);
+    glfwSetWindowPos(window, desc.final_pos.first, desc.final_pos.second);
+    glfwSetWindowOpacity(window, desc.opacity);
+    glfwSetWindowSizeLimits(
+        window, desc.size_limits.min_width, desc.size_limits.min_height,
+        desc.size_limits.max_width, desc.size_limits.max_height
+    );
+    glfwSetWindowAttrib(
+        window, GLFW_RESIZABLE, desc.resizable ? GLFW_TRUE : GLFW_FALSE
+    );
+    glfwSetWindowAttrib(
+        window, GLFW_DECORATED, desc.decorations ? GLFW_TRUE : GLFW_FALSE
+    );
+    glfwSetWindowAttrib(
+        window, GLFW_VISIBLE, desc.visible ? GLFW_TRUE : GLFW_FALSE
+    );
+    glfwSetWindowAttrib(
+        window, GLFW_FOCUSED, desc.focused ? GLFW_TRUE : GLFW_FALSE
+    );
+    glfwSetWindowAttrib(
+        window, GLFW_ICONIFIED, desc.iconified ? GLFW_TRUE : GLFW_FALSE
+    );
+    glfwSetWindowAttrib(
+        window, GLFW_MAXIMIZED, desc.maximized ? GLFW_TRUE : GLFW_FALSE
+    );
+    glfwSetWindowAttrib(
+        window, GLFW_FLOATING,
+        desc.window_level == WindowLevel::AlwaysOnTop ? GLFW_TRUE : GLFW_FALSE
+    );
+
+    glfwSetWindowUserPointer(window, new UserData{});
+    // add callbacks
+    glfwSetWindowSizeCallback(
+        window,
+        [](GLFWwindow* window, int width, int height) {
+            auto* user_data =
+                static_cast<UserData*>(glfwGetWindowUserPointer(window));
+            if (user_data) {
+                user_data->resized.emplace(width, height);
+            }
+        }
+    );
+    glfwSetKeyCallback(
+        window,
+        [](GLFWwindow* window, int key, int scancode, int action, int mods) {
+            auto* user_data =
+                static_cast<UserData*>(glfwGetWindowUserPointer(window));
+            if (user_data) {
+                user_data->key_input.emplace(key, scancode, action, mods);
+            }
+        }
+    );
+    glfwSetCursorPosCallback(
+        window,
+        [](GLFWwindow* window, double x, double y) {
+            auto* user_data =
+                static_cast<UserData*>(glfwGetWindowUserPointer(window));
+            if (user_data) {
+                user_data->cursor_pos.emplace(x, y);
+            }
+        }
+    );
+    glfwSetCursorEnterCallback(window, [](GLFWwindow* window, int entered) {
+        auto* user_data =
+            static_cast<UserData*>(glfwGetWindowUserPointer(window));
+        if (user_data) {
+            user_data->cursor_enter.emplace(entered == GLFW_TRUE);
+        }
+    });
+    glfwSetMouseButtonCallback(
+        window,
+        [](GLFWwindow* window, int button, int action, int mods) {
+            auto* user_data =
+                static_cast<UserData*>(glfwGetWindowUserPointer(window));
+            if (user_data) {
+                user_data->mouse_button.emplace(button, action, mods);
+            }
+        }
+    );
+    glfwSetScrollCallback(
+        window,
+        [](GLFWwindow* window, double xoffset, double yoffset) {
+            auto* user_data =
+                static_cast<UserData*>(glfwGetWindowUserPointer(window));
+            if (user_data) {
+                user_data->scroll.emplace(xoffset, yoffset);
+            }
+        }
+    );
+    glfwSetDropCallback(
+        window,
+        [](GLFWwindow* window, int count, const char** paths) {
+            auto* user_data =
+                static_cast<UserData*>(glfwGetWindowUserPointer(window));
+            if (user_data) {
+                std::vector<std::string> path_vec;
+                for (int i = 0; i < count; ++i) {
+                    path_vec.emplace_back(paths[i]);
+                }
+                user_data->drops.emplace(std::move(path_vec));
+            }
+        }
+    );
+    glfwSetCharCallback(window, [](GLFWwindow* window, unsigned int codepoint) {
+        auto* user_data =
+            static_cast<UserData*>(glfwGetWindowUserPointer(window));
+        if (user_data) {
+            user_data->received_character.emplace(codepoint);
+        }
+    });
+    glfwSetWindowFocusCallback(window, [](GLFWwindow* window, int focused) {
+        auto* user_data =
+            static_cast<UserData*>(glfwGetWindowUserPointer(window));
+        if (user_data) {
+            user_data->focused.emplace(focused == GLFW_TRUE);
+        }
+    });
+    glfwSetWindowPosCallback(window, [](GLFWwindow* window, int x, int y) {
+        auto* user_data =
+            static_cast<UserData*>(glfwGetWindowUserPointer(window));
+        if (user_data) {
+            user_data->moved.emplace(x, y);
+        }
+    });
+    return window;
+}
+
+EPIX_API void GLFWPlugin::update_size(
+    Query<Get<Entity, Mut<window::Window>>>& windows,
+    ResMut<GLFWwindows>& glfw_windows
+) {
+    for (auto&& [id, desc] : windows.iter()) {
+        std::optional<std::tuple<GLFWwindow*, Window&>> stored = std::nullopt;
+        if (auto it = glfw_windows->find(id); it != glfw_windows->end()) {
+            stored.emplace(it->second.first, it->second.second);
+        } else {
+            continue;  // window not created yet
+        }
+        auto&& [window, cached] = *stored;
+        if (cached.size != desc.size) {
+            // size changed, update the window size
+            glfwSetWindowSize(window, desc.size.first, desc.size.second);
+        }
+        // read size from window, cause set might fail if window is fullscreen
+        int width, height;
+        glfwGetWindowSize(window, &width, &height);
+        desc.size   = {width, height};
+        cached.size = desc.size;
+    }
+}
+EPIX_API void GLFWPlugin::update_pos(
+    Commands commands,
+    Query<Get<Entity, Mut<window::Window>, Opt<Parent>>>& windows,
+    ResMut<GLFWwindows>& glfw_windows
+) {
+    /// For all windows in the query, if it has been cached(created), then if
+    /// the pos has been changed manually, e.g. different with cached, then
+    /// the new pos should be calculated with new final pos and new pos_type if
+    /// it is changed. If pos is changed, then recalculate the final pos
+    /// based on the pos_type. Otherwise if pos type changed, final pos should
+    /// remain the same and recalculate the pos based on the pos_type.
+    /// If it was not cached, then we use the relative pos to calculate the
+    /// final pos.
+    entt::dense_map<Entity, std::pair<int, int>> final_positions;
+    int monitor_count = 0;
+    auto monitors     = glfwGetMonitors(&monitor_count);
+    std::function<std::pair<int, int>(Entity)> calculate;
+    calculate = [&](Entity id) -> std::pair<int, int> {
+        if (final_positions.contains(id)) {
+            return final_positions.at(id);
+        }
+        auto&& [_, desc, parent] = windows.get(id);
+        std::optional<std::tuple<GLFWwindow*, Window&>> stored = std::nullopt;
+        if (auto it = glfw_windows->find(id); it != glfw_windows->end()) {
+            stored.emplace(it->second.first, it->second.second);
+        }
+        if (desc.monitor >= monitor_count || desc.monitor < 0) {
+            desc.monitor = 0;  // default to first monitor
+        }
+        if (parent && !windows.contains(parent->entity)) {
+            commands.entity(id).erase<Parent>();
+        }
+        std::optional<std::pair<int, int>> parent_pos =
+            (parent && windows.contains(parent->entity))
+                ? std::make_optional(calculate(parent->entity))
+                : std::optional<std::pair<int, int>>{};
+        auto* monitor    = monitors[desc.monitor];
+        auto* video_mode = glfwGetVideoMode(monitor);
+        int monitor_x, monitor_y;
+        glfwGetMonitorPos(monitor, &monitor_x, &monitor_y);
+
+        if (stored) {
+            auto&& [glfw_window, cached] = *stored;
+            if (cached.final_pos != desc.final_pos) {
+                // calculate the relevant pos based on pos_type
+                if (desc.pos_type == PosType::TopLeft) {
+                    desc.pos = {
+                        desc.final_pos.first - monitor_x,
+                        desc.final_pos.second - monitor_y
+                    };
+                }
+                if (desc.pos_type == PosType::Relative) {
+                    if (parent_pos) {
+                        desc.pos = {
+                            parent_pos->first + desc.pos.first,
+                            parent_pos->second + desc.pos.second
+                        };
+                    } else {
+                        desc.pos_type = PosType::Centered;
                     }
                 }
-                last->focus = focus->focus;
-            })
-                .set_executor(epix::app::ExecutorType::SingleThread)
-                .set_name("glfw focus")
-        )
-        .add_systems(
-            PostExit, into([]() { glfwTerminate(); })
-                          .set_executor(epix::app::ExecutorType::SingleThread)
-                          .set_name("terminate glfw")
-        );
-    app.submit_system(ExecutorType::SingleThread, create_windows).get();
+                if (desc.pos_type == PosType::Centered) {
+                    desc.pos = {
+                        desc.final_pos.first - monitor_x -
+                            (video_mode->width - desc.size.first) / 2,
+                        desc.final_pos.second - monitor_y -
+                            (video_mode->height - desc.size.second) / 2
+                    };
+                }
+            } else if (cached.pos != desc.pos) {
+                // recalculate final pos based on pos_type
+                if (desc.pos_type == PosType::TopLeft) {
+                    desc.final_pos = {
+                        desc.pos.first + monitor_x, desc.pos.second + monitor_y
+                    };
+                }
+                if (desc.pos_type == PosType::Relative) {
+                    if (parent_pos) {
+                        desc.final_pos = {
+                            parent_pos->first + desc.pos.first,
+                            parent_pos->second + desc.pos.second
+                        };
+                    } else {
+                        desc.pos_type = PosType::Centered;
+                        desc.pos      = {0, 0};
+                    }
+                }
+                if (desc.pos_type == PosType::Centered) {
+                    desc.final_pos = {
+                        desc.pos.first + monitor_x +
+                            (video_mode->width - desc.size.first) / 2,
+                        desc.pos.second + monitor_y +
+                            (video_mode->height - desc.size.second) / 2
+                    };
+                }
+            } else if (cached.pos_type != desc.pos_type) {
+                // recalculate pos based on pos_type
+                if (desc.pos_type == PosType::TopLeft) {
+                    desc.pos = {
+                        desc.final_pos.first - monitor_x,
+                        desc.final_pos.second - monitor_y
+                    };
+                }
+                if (desc.pos_type == PosType::Relative) {
+                    if (parent_pos) {
+                        desc.pos = {
+                            parent_pos->first + desc.pos.first,
+                            parent_pos->second + desc.pos.second
+                        };
+                    } else {
+                        desc.pos_type = PosType::Centered;
+                    }
+                }
+                if (desc.pos_type == PosType::Centered) {
+                    desc.pos = {
+                        desc.final_pos.first -
+                            (video_mode->width - desc.size.first) / 2,
+                        desc.final_pos.second -
+                            (video_mode->height - desc.size.second) / 2
+                    };
+                }
+            }
+            if (desc.final_pos != cached.final_pos || desc.pos != cached.pos ||
+                desc.pos_type != cached.pos_type) {
+                // set the new position to the glfw window
+                glfwSetWindowPos(
+                    glfw_window, desc.final_pos.first, desc.final_pos.second
+                );
+                cached.final_pos = desc.final_pos;
+                cached.pos       = desc.pos;
+                cached.pos_type  = desc.pos_type;
+            }
+            {
+                // read from glfw window, and guarantee that the ultimate
+                // position is correct.
+                glfwGetWindowPos(
+                    glfw_window, &desc.final_pos.first, &desc.final_pos.second
+                );
+                cached.final_pos = desc.final_pos;
+                // calculate the pos based on final_pos
+                const auto& final_pos = desc.final_pos;
+                std::pair<int, int> pos;
+                if (desc.pos_type == PosType::TopLeft) {
+                    pos = {
+                        final_pos.first - monitor_x,
+                        final_pos.second - monitor_y
+                    };
+                }
+                if (desc.pos_type == PosType::Relative) {
+                    if (parent_pos) {
+                        pos = {
+                            final_pos.first - parent_pos->first,
+                            final_pos.second - parent_pos->second
+                        };
+                    } else {
+                        desc.pos_type = PosType::Centered;
+                    }
+                }
+                if (desc.pos_type == PosType::Centered) {
+                    pos = {
+                        final_pos.first -
+                            (video_mode->width - desc.size.first) / 2,
+                        final_pos.second -
+                            (video_mode->height - desc.size.second) / 2
+                    };
+                }
+                if (pos == desc.pos) {
+                    // update the cached values
+                    cached.final_pos    = desc.final_pos;
+                    cached.pos          = desc.pos;
+                    cached.pos_type     = desc.pos_type;
+                    final_positions[id] = desc.final_pos;
+                    return desc.final_pos;
+                }
+                desc.pos         = pos;
+                cached.final_pos = desc.final_pos;
+                cached.pos       = desc.pos;
+                cached.pos_type  = desc.pos_type;
+                return desc.final_pos;
+            }
+        } else {
+            // not cached, this means this window has not been created yet.
+            if (desc.pos_type == PosType::TopLeft) {
+                desc.final_pos = {
+                    desc.pos.first + monitor_x, desc.pos.second + monitor_y
+                };
+            }
+            if (desc.pos_type == PosType::Relative) {
+                if (parent_pos) {
+                    desc.final_pos = {
+                        parent_pos->first + desc.pos.first,
+                        parent_pos->second + desc.pos.second
+                    };
+                } else {
+                    desc.pos_type = PosType::Centered;
+                    desc.pos      = {0, 0};
+                }
+            }
+            if (desc.pos_type == PosType::Centered) {
+                desc.final_pos = {
+                    desc.pos.first + monitor_x +
+                        (video_mode->width - desc.size.first) / 2,
+                    desc.pos.second + monitor_y +
+                        (video_mode->height - desc.size.second) / 2
+                };
+            }
+        }
+
+        final_positions[id] = desc.final_pos;
+        return desc.final_pos;
+    };
+    for (auto&& [id, desc, parent] : windows.iter()) {
+        calculate(id);
+    }
 }
+
 EPIX_API void GLFWPlugin::create_windows(
     Commands commands,
-    Query<Get<Entity, Mut<window::window::Window>>> windows,
+    Query<Get<Entity, Mut<window::Window>, Opt<Parent>, Opt<Children>>>&
+        windows,
     ResMut<GLFWwindows> glfw_windows,
-    ResMut<CachedWindows> cached_windows,
     EventWriter<window::events::WindowCreated>& window_created
 ) {
-    for (auto&& [id, window_desc] :
-         windows.iter() | std::views::filter([&](auto&& tuple) {
-             auto&& [id, _] = tuple;
-             return !glfw_windows->windows.contains(id);
-         })) {
-        auto window = create_window(id, window_desc);
+    for (auto&& [id, desc, parent, children] : windows.iter()) {
+        if (glfw_windows->contains(id)) {
+            continue;
+        }
+        auto* created = create_window(id, desc);
+        glfw_windows->emplace(id, std::make_pair(created, desc));
         window_created.write(window::events::WindowCreated{id});
-        glfw_windows->windows.emplace(id, window);
-        cached_windows->caches.emplace(id, window_desc);
-        commands.entity(id).emplace(window);
     }
 }
-EPIX_API void GLFWPlugin::window_changed(
-    Query<Get<Entity, Mut<window::window::Window>>> windows,
-    ResMut<GLFWwindows> glfw_windows,
-    ResMut<CachedWindows> cached_windows
+
+EPIX_API void GLFWPlugin::update_window_states(
+    Query<Get<Entity, Mut<window::Window>>>& windows,
+    ResMut<GLFWwindows>& glfw_windows,
+    EventWriter<glfw::SetCustomCursor>& set_custom_cursor
 ) {
-    for (auto&& [id, window_desc] :
-         windows.iter() | std::views::filter([&](auto&& tuple) {
-             auto&& [id, _] = tuple;
-             return glfw_windows->windows.contains(id);
-         })) {
-        auto window          = glfw_windows->windows[id];
-        auto&& cached_window = cached_windows->caches[id];
-        sync_window_to_glfw(id, window_desc, cached_window, window);
+    for (auto&& [id, desc] : windows.iter()) {
+        std::optional<std::tuple<GLFWwindow*, Window&>> stored = std::nullopt;
+        if (auto it = glfw_windows->find(id); it != glfw_windows->end()) {
+            stored.emplace(it->second.first, it->second.second);
+        } else {
+            continue;  // window not created yet
+        }
+        auto&& [window, cached] = *stored;
+
+        // resizable
+        if (cached.resizable != desc.resizable) {
+            glfwSetWindowAttrib(
+                window, GLFW_RESIZABLE, desc.resizable ? GLFW_TRUE : GLFW_FALSE
+            );
+            cached.resizable = desc.resizable;
+        }
+        // decorations
+        if (cached.decorations != desc.decorations) {
+            glfwSetWindowAttrib(
+                window, GLFW_DECORATED,
+                desc.decorations ? GLFW_TRUE : GLFW_FALSE
+            );
+            cached.decorations = desc.decorations;
+        }
+        // visible
+        if (cached.visible != desc.visible) {
+            glfwSetWindowAttrib(
+                window, GLFW_VISIBLE, desc.visible ? GLFW_TRUE : GLFW_FALSE
+            );
+            cached.visible = desc.visible;
+        }
+        // opacity
+        if (cached.opacity != desc.opacity) {
+            glfwSetWindowOpacity(window, desc.opacity);
+            cached.opacity = desc.opacity;
+        }
+        // size limits
+        if (cached.size_limits != desc.size_limits) {
+            glfwSetWindowSizeLimits(
+                window, desc.size_limits.min_width, desc.size_limits.min_height,
+                desc.size_limits.max_width, desc.size_limits.max_height
+            );
+            cached.size_limits = desc.size_limits;
+        }
+        // title
+        if (cached.title != desc.title) {
+            glfwSetWindowTitle(window, desc.title.c_str());
+            cached.title = desc.title;
+        }
+
+        // request attention
+        if (desc.attention_request) glfwRequestWindowAttention(window);
+        desc.attention_request   = false;
+        cached.attention_request = false;
+
+        // cursor mode
+        if (cached.cursor_mode != desc.cursor_mode) {
+            glfwSetInputMode(window, GLFW_CURSOR, [mode = desc.cursor_mode] {
+                switch (mode) {
+                    case CursorMode::Normal:
+                        return GLFW_CURSOR_NORMAL;
+                    case CursorMode::Hidden:
+                        return GLFW_CURSOR_HIDDEN;
+                    case CursorMode::Disabled:
+                        return GLFW_CURSOR_DISABLED;
+                    default:
+                        return GLFW_CURSOR_NORMAL;
+                }
+            }());
+            cached.cursor_mode = desc.cursor_mode;
+        }
+        // cursor icon
+        if (cached.cursor_icon != desc.cursor_icon) {
+            std::visit(
+                epix::util::visitor{
+                    [&](const StandardCursor& icon) {
+                        auto cursor = glfwCreateStandardCursor([icon] {
+                            switch (icon) {
+                                case StandardCursor::Arrow:
+                                    return GLFW_ARROW_CURSOR;
+                                case StandardCursor::IBeam:
+                                    return GLFW_IBEAM_CURSOR;
+                                case StandardCursor::Crosshair:
+                                    return GLFW_CROSSHAIR_CURSOR;
+                                case StandardCursor::Hand:
+                                    return GLFW_HAND_CURSOR;
+                                case StandardCursor::ResizeAll:
+                                    return GLFW_RESIZE_ALL_CURSOR;
+                                case StandardCursor::ResizeNS:
+                                    return GLFW_RESIZE_NS_CURSOR;
+                                case StandardCursor::ResizeEW:
+                                    return GLFW_RESIZE_EW_CURSOR;
+                                case StandardCursor::ResizeNWSE:
+                                    return GLFW_RESIZE_NWSE_CURSOR;
+                                case StandardCursor::ResizeNESW:
+                                    return GLFW_RESIZE_NESW_CURSOR;
+                                case StandardCursor::NotAllowed:
+                                    return GLFW_NOT_ALLOWED_CURSOR;
+                                default:
+                                    return GLFW_ARROW_CURSOR;  // default case
+                            }
+                        }());
+                        glfwSetCursor(window, cursor);
+                    },
+                    [&](const assets::UntypedHandle& handle) {
+                        set_custom_cursor.write(
+                            glfw::SetCustomCursor{id, handle}
+                        );
+                    }
+                },
+                desc.cursor_icon
+            );
+        }
+
+        // frame size
+        glfwGetWindowFrameSize(
+            window, &desc.frame_size.left, &desc.frame_size.top,
+            &desc.frame_size.right, &desc.frame_size.bottom
+        );
+        cached.frame_size = desc.frame_size;
+
+        // cursor position
+        if (cached.cursor_pos != desc.cursor_pos) {
+            glfwSetCursorPos(
+                window, desc.cursor_pos.first, desc.cursor_pos.second
+            );
+            cached.cursor_pos = desc.cursor_pos;
+        } else {
+            glfwGetCursorPos(
+                window, &desc.cursor_pos.first, &desc.cursor_pos.second
+            );
+            cached.cursor_pos = desc.cursor_pos;
+        }
+        // cursor in window
+        desc.cursor_in_window =
+            glfwGetWindowAttrib(window, GLFW_HOVERED) == GLFW_TRUE;
+        // maximized
+        if (cached.maximized != desc.maximized) {
+            if (desc.maximized) {
+                glfwMaximizeWindow(window);
+            } else {
+                glfwRestoreWindow(window);
+            }
+            cached.maximized = desc.maximized;
+        }
+        // iconified
+        if (cached.iconified != desc.iconified) {
+            if (desc.iconified) {
+                glfwIconifyWindow(window);
+            } else {
+                glfwRestoreWindow(window);
+            }
+            cached.iconified = desc.iconified;
+        }
+        desc.maximized =
+            glfwGetWindowAttrib(window, GLFW_MAXIMIZED) == GLFW_TRUE;
+        desc.iconified =
+            glfwGetWindowAttrib(window, GLFW_ICONIFIED) == GLFW_TRUE;
+        cached.maximized = desc.maximized;
+        cached.iconified = desc.iconified;
+        // window level
+        if (cached.window_level != desc.window_level) {
+            glfwSetWindowAttrib(
+                window, GLFW_FLOATING,
+                desc.window_level == WindowLevel::AlwaysOnTop ? GLFW_TRUE
+                                                              : GLFW_FALSE
+            );
+            cached.window_level = desc.window_level;
+        } else {
+            desc.window_level =
+                glfwGetWindowAttrib(window, GLFW_FLOATING) == GLFW_TRUE
+                    ? WindowLevel::AlwaysOnTop
+                    : WindowLevel::Normal;
+        }
+
+        // other none glfw handled properties
+        cached.composite_alpha_mode = desc.composite_alpha_mode;
+        cached.present_mode         = desc.present_mode;
+    }
+    // focused will be handled here, cause changing one window's focus will
+    // change the focus of all windows.
+    for (auto&& [id, desc] : windows.iter()) {
+        if (auto it = glfw_windows->find(id); it != glfw_windows->end()) {
+            auto&& [window, cached] = it->second;
+            if (cached.focused != desc.focused) {
+                glfwSetWindowAttrib(
+                    window, GLFW_FOCUSED, desc.focused ? GLFW_TRUE : GLFW_FALSE
+                );
+                cached.focused = desc.focused;
+            }
+        }
+    }
+    for (auto&& [id, desc] : windows.iter()) {
+        if (auto it = glfw_windows->find(id); it != glfw_windows->end()) {
+            auto&& [window, cached] = it->second;
+            // read focused state from glfw window
+            desc.focused =
+                glfwGetWindowAttrib(window, GLFW_FOCUSED) == GLFW_TRUE;
+            cached.focused = desc.focused;
+        }
     }
 }
+
+EPIX_API void GLFWPlugin::toggle_window_mode(
+    Query<Get<Entity, Mut<window::Window>>>& windows,
+    ResMut<GLFWwindows>& glfw_windows,
+    Local<entt::dense_map<Entity, CachedWindowPosSize>>& cached_window_sizes
+) {
+    for (auto&& [id, desc] : windows.iter()) {
+        std::optional<std::tuple<GLFWwindow*, Window&>> stored = std::nullopt;
+        if (auto it = glfw_windows->find(id); it != glfw_windows->end()) {
+            stored.emplace(it->second.first, it->second.second);
+        } else {
+            continue;  // window not created yet
+        }
+        auto&& [window, cached] = *stored;
+        if (desc.window_mode != cached.window_mode) {
+            if (desc.window_mode == WindowMode::Windowed) {
+                // switch from fullscreen or borderless to windowed mode
+                if (cached_window_sizes->contains(id)) {
+                    auto& cached_size = cached_window_sizes->at(id);
+                    glfwSetWindowMonitor(
+                        window, nullptr, cached_size.pos_x, cached_size.pos_y,
+                        cached_size.width, cached_size.height, 0
+                    );
+                    // remove cached size
+                    cached_window_sizes->erase(id);
+                } else {
+                    // fallback to default size
+                    glfwSetWindowMonitor(
+                        window, nullptr, 100, 100, 1280, 720, 0
+                    );
+                }
+            } else if (desc.window_mode == WindowMode::Fullscreen) {
+                // switch to fullscreen mode
+                int monitor_count = 0;
+                auto monitors     = glfwGetMonitors(&monitor_count);
+                if (desc.monitor >= monitor_count || desc.monitor < 0) {
+                    desc.monitor = 0;  // default to first monitor
+                }
+                auto* monitor    = monitors[desc.monitor];
+                auto* video_mode = glfwGetVideoMode(monitor);
+                glfwSetWindowMonitor(
+                    window, monitor, 0, 0, video_mode->width,
+                    video_mode->height, video_mode->refreshRate
+                );
+            } else if (desc.window_mode == WindowMode::BorderlessFullscreen) {
+                // switch to borderless mode
+                int monitor_count = 0;
+                auto monitors     = glfwGetMonitors(&monitor_count);
+                if (desc.monitor >= monitor_count || desc.monitor < 0) {
+                    desc.monitor = 0;  // default to first monitor
+                }
+                auto* monitor    = monitors[desc.monitor];
+                auto* video_mode = glfwGetVideoMode(monitor);
+                glfwSetWindowMonitor(
+                    window, monitor, 0, 0, video_mode->width,
+                    video_mode->height, video_mode->refreshRate
+                );
+            }
+        } else if (cached.monitor != desc.monitor &&
+                   desc.window_mode != WindowMode::Windowed) {
+            // monitor changed, fullscreen or borderless mode
+            // should set to the new monitor
+            int monitor_count = 0;
+            auto monitors     = glfwGetMonitors(&monitor_count);
+            if (desc.monitor >= monitor_count || desc.monitor < 0) {
+                desc.monitor = 0;  // default to first monitor
+            }
+            auto* monitor    = monitors[desc.monitor];
+            auto* video_mode = glfwGetVideoMode(monitor);
+            glfwSetWindowMonitor(
+                window, monitor, 0, 0, video_mode->width, video_mode->height,
+                video_mode->refreshRate
+            );
+        }
+        cached.window_mode = desc.window_mode;
+        // we wont change cached.monitor here cause it still needs to be
+        // used to calculate the final position of the window.
+    }
+}
+
 EPIX_API void GLFWPlugin::poll_events() { glfwPollEvents(); }
-EPIX_API void GLFWPlugin::sync_windows(
-    Query<Get<Entity, Mut<window::window::Window>>> windows,
-    ResMut<GLFWwindows> glfw_windows,
-    ResMut<CachedWindows> cached_windows
-) {
-    for (auto&& [id, window_desc] :
-         windows.iter() | std::views::filter([&](auto&& tuple) {
-             auto&& [id, _] = tuple;
-             return glfw_windows->windows.contains(id);
-         })) {
-        auto window          = glfw_windows->windows[id];
-        auto&& cached_window = cached_windows->caches[id];
-        sync_glfw_to_window(id, window_desc, cached_window, window);
-    }
-}
 EPIX_API void GLFWPlugin::send_cached_events(
     ResMut<GLFWwindows> glfw_windows,
-    ResMut<CachedWindows> cached_windows,
     EventWriter<SetCustomCursor>& set_custom_cursor,
     EventWriter<window::events::WindowResized>& window_resized,
     EventWriter<window::events::WindowCloseRequested>& window_close_requested,
@@ -879,7 +717,8 @@ EPIX_API void GLFWPlugin::send_cached_events(
     std::optional<EventWriter<input::events::MouseMove>>& mouse_move_input,
     std::optional<EventWriter<input::events::MouseScroll>>& scroll_input
 ) {
-    for (auto&& [id, window] : glfw_windows->windows) {
+    for (auto&& [id, pair] : *glfw_windows) {
+        auto&& [window, cached] = pair;
         auto* user_data =
             static_cast<UserData*>(glfwGetWindowUserPointer(window));
         if (!user_data) {
@@ -916,8 +755,7 @@ EPIX_API void GLFWPlugin::send_cached_events(
         while (auto cursor_pos = user_data->cursor_pos.try_pop()) {
             // send out
             auto [new_x, new_y] = *cursor_pos;
-            auto [in, old_x, old_y] =
-                cached_windows->caches[id].cursor_position();
+            auto [old_x, old_y] = cached.cursor_pos;
             cursor_moved.write(window::events::CursorMoved{
                 id, {new_x, new_y}, {new_x - old_x, new_y - old_y}
             });
@@ -972,9 +810,8 @@ EPIX_API void GLFWPlugin::send_cached_events(
     }
 }
 EPIX_API void GLFWPlugin::destroy_windows(
-    Query<Get<Entity, window::window::Window>> windows,
+    Query<Get<Entity, window::Window>> windows,
     ResMut<GLFWwindows> glfw_windows,
-    ResMut<CachedWindows> cached_windows,
     EventWriter<window::events::WindowClosed>& window_closed,
     EventWriter<window::events::WindowDestroyed>& window_destroyed
 ) {
@@ -983,11 +820,12 @@ EPIX_API void GLFWPlugin::destroy_windows(
         still_alive.insert(id);
     }
     std::vector<Entity> to_erase;
-    for (auto&& [id, window] : std::views::all(glfw_windows->windows) |
-                                   std::views::filter([&](auto&& tuple) {
-                                       auto&& [id, _] = tuple;
-                                       return !still_alive.contains(id);
-                                   })) {
+    for (auto&& [id, glfw_window] :
+         std::views::all(*glfw_windows) | std::views::filter([&](auto&& tuple) {
+             auto&& [id, _] = tuple;
+             return !still_alive.contains(id);
+         })) {
+        auto&& [window, cached] = glfw_window;
         window_closed.write(window::events::WindowClosed{id});
         auto user_data =
             static_cast<UserData*>(glfwGetWindowUserPointer(window));
@@ -996,10 +834,9 @@ EPIX_API void GLFWPlugin::destroy_windows(
         }
         glfwDestroyWindow(window);
         to_erase.emplace_back(id);
-        cached_windows->caches.erase(id);
         window_destroyed.write(window::events::WindowDestroyed{id});
     }
     for (auto&& id : to_erase) {
-        glfw_windows->windows.erase(id);
+        glfw_windows->erase(id);
     }
 }

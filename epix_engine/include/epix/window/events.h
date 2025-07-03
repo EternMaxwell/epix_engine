@@ -2,9 +2,7 @@
 
 #include <epix/app.h>
 
-namespace epix {
-namespace window {
-namespace events {
+namespace epix::window::events {
 /**
  * @brief This event is sent when the window is resized.
  */
@@ -64,6 +62,4 @@ struct WindowMoved {
     Entity window;
     std::pair<int, int> position;
 };
-}  // namespace events
-}  // namespace window
-}  // namespace epix
+}  // namespace epix::window::events
