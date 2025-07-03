@@ -109,15 +109,11 @@ int main() {
                         for (auto&& [label, profiler] :
                              profiler->schedule_profilers()) {
                             spdlog::info(
-                                "Schedule {:<40}: flush: {:9.5f}ms, build: "
-                                "{:9.5f}ms, "
-                                "prepare: {:9.5f}ms, run: {:9.5f}ms, with {:3} "
-                                "systems, {:3} sets",
-                                label.name(), profiler.flush_time_avg(),
-                                profiler.build_time_avg(),
-                                profiler.prepare_time_avg(),
-                                profiler.run_time_avg(),
-                                profiler.system_count(), profiler.set_count()
+                                "Schedule {:<40}: build: {:9.5f}ms, run: "
+                                "{:9.5f}ms, with {:3} systems, {:3} sets",
+                                label.name(), profiler->build_time_avg(),
+                                profiler->run_time_avg(),
+                                profiler->system_count(), profiler->set_count()
                             );
                         }
                     }
