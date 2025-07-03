@@ -16,7 +16,7 @@ struct LoopRunner : public AppRunner {
             });
         do {
             app.update().get();
-        } while (!app.run_system(*m_check_exit).value_or(true));
+        } while (!app.run_system(m_check_exit.get()).value_or(true));
         spdlog::info("[loop] Received exit event : code = {}", code);
         spdlog::info("[app] Exiting app.");
         app.exit().get();
