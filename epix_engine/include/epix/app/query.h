@@ -312,7 +312,7 @@ struct Query<Get<Gets...>, Filter<Filters...>> {
         }
         return std::nullopt;
     }
-    std::optional<get_type> get(Entity entity) {
+    std::optional<get_type> try_get(Entity entity) {
         if (m_view.contains(entity)) {
             if constexpr (Filter<Filters...>::need_check) {
                 if (Filter<Filters...>::check(*m_world, entity)) {
@@ -328,6 +328,7 @@ struct Query<Get<Gets...>, Filter<Filters...>> {
         }
         return std::nullopt;
     }
+    get_type get(Entity entity) { return try_get(entity).value(); }
     bool contains(Entity entity) {
         if constexpr (Filter<Filters...>::need_check) {
             return m_view.contains(entity) &&
