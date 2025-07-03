@@ -135,7 +135,9 @@ BasicSystemImpl(std::function<Ret(Args...)>&& func
 
 struct IntoSystem {
     template <typename T>
-    static auto* into_rawptr(T&& func) {
+    static auto into_rawptr(T&& func
+    ) -> BasicSystem<typename decltype(std::function(std::declval<T>())
+      )::result_type>* {
         std::function fn = std::forward<T>(func);
         using ft         = decltype(fn);
         using ret        = typename ft::result_type;
