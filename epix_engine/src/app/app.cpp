@@ -59,9 +59,11 @@ EPIX_API App App::create(const AppCreateInfo& create_info) {
 }
 
 EPIX_API epix::async::RwLock<World>::WriteGuard App::world() {
+    reset_run_state();
     return m_data->world.write();
 };
 EPIX_API epix::async::RwLock<World>::ReadGuard App::world() const {
+    reset_run_state();
     return m_data->world.read();
 }
 
@@ -98,6 +100,23 @@ EPIX_API App& App::add_sub_app(const AppLabel& label) {
     auto& sub       = write->emplace(label, App(label)).first->second;
     sub.m_executors = m_executors;
     return *this;
+};
+EPIX_API std::shared_ptr<RunState> App::run_state() const {
+    auto write = m_data->run_state.write();
+    if (*write) return *write;
+    // create a new RunState if not exists
+    auto world     = m_data->world.write();
+    auto executors = m_executors.get();
+    if (!executors) {
+        throw std::runtime_error("Executors not initialized.");
+    }
+    auto run_state = std::make_shared<RunState>(std::move(world), *executors);
+    *write         = run_state;
+    return run_state;
+};
+EPIX_API void App::reset_run_state() const {
+    auto write = m_data->run_state.write();
+    *write     = nullptr;
 };
 EPIX_API App& App::add_schedule(Schedule&& schedule) {
     Schedule* pschedule = nullptr;
@@ -321,92 +340,106 @@ EPIX_API void App::set_runner(std::unique_ptr<AppRunner>&& runner) {
 
 EPIX_API std::future<void> App::extract(App& target) {
     return std::async(std::launch::async, [this, &target]() {
-        auto target_world = target.world();
-        auto source_world = this->world();
-        if (auto extract_target = source_world->get_resource<ExtractTarget>()) {
-            extract_target->m_world = &(*target_world);
-        } else {
-            source_world->insert_resource(ExtractTarget(*target_world));
-        }
-        auto reset_target = IntoSystem::into_system([](World& world) {
-            world.remove_resource<ExtractTarget>();
-        });
-        reset_target->initialize(*source_world);
         auto schedules     = m_data->schedules.write();
         auto extract_order = m_data->extract_schedule_order.read();
-        for (auto&& label : *extract_order) {
-            schedules->at(label)->initialize_systems(*source_world);
+        auto reset_target  = IntoSystem::into_system([](World& world) {
+            world.remove_resource<ExtractTarget>();
+        });
+        {
+            this->reset_run_state();
+            target.reset_run_state();
+            auto target_world = target.world();
+            auto source_world = this->world();
+            if (auto extract_target =
+                    source_world->get_resource<ExtractTarget>()) {
+                extract_target->m_world = &(*target_world);
+            } else {
+                source_world->insert_resource(ExtractTarget(*target_world));
+            }
+            reset_target->initialize(*source_world);
+            for (auto&& label : *extract_order) {
+                schedules->at(label)->initialize_systems(*source_world);
+            }
         }
-        RunState run_state(std::move(source_world), *this->m_executors);
+        auto run_state = this->run_state();
         for (auto&& label : *extract_order) {
             auto& schedule = schedules->at(label);
-            schedule->run(run_state);
-            run_state.apply_commands();
+            schedule->run(*run_state);
+            run_state->apply_commands();
         }
-        run_state.run_system(
+        run_state->run_system(
             reset_target.get(),
             RunState::RunSystemConfig{.executor = ExecutorType::SingleThread}
         );
+        run_state->wait();
     });
 }
 EPIX_API std::future<void> App::update() {
     return std::async(std::launch::async, [this]() {
-        auto world = this->world();
-        if (auto extract_target = world->get_resource<ExtractTarget>()) {
-            extract_target->m_world = &(*world);
-        } else {
-            world->insert_resource(ExtractTarget(*world));
-        }
+        auto schedules    = m_data->schedules.write();
+        auto update_order = m_data->main_schedule_order.read();
         auto reset_target = IntoSystem::into_system([](World& world) {
             world.remove_resource<ExtractTarget>();
         });
-        reset_target->initialize(*world);
-        auto schedules    = m_data->schedules.write();
-        auto update_order = m_data->main_schedule_order.read();
+        {
+            this->reset_run_state();
+            auto world = this->world();
+            if (auto extract_target = world->get_resource<ExtractTarget>()) {
+                extract_target->m_world = &(*world);
+            } else {
+                world->insert_resource(ExtractTarget(*world));
+            }
+            reset_target->initialize(*world);
+            for (auto&& label : *update_order) {
+                auto& schedule = schedules->at(label);
+                schedule->initialize_systems(*world);
+            }
+        }
+        auto run_state = this->run_state();
         for (auto&& label : *update_order) {
             auto& schedule = schedules->at(label);
-            schedule->initialize_systems(*world);
+            schedule->run(*run_state);
+            run_state->apply_commands();
         }
-        RunState run_state(std::move(world), *this->m_executors);
-        for (auto&& label : *update_order) {
-            auto& schedule = schedules->at(label);
-            schedule->run(run_state);
-            run_state.apply_commands();
-        }
-        run_state.run_system(
+        run_state->run_system(
             reset_target.get(),
             RunState::RunSystemConfig{.executor = ExecutorType::SingleThread}
         );
+        run_state->wait();
     });
 }
 EPIX_API std::future<void> App::exit() {
     return std::async(std::launch::async, [this]() {
-        auto world = this->world();
-        if (auto extract_target = world->get_resource<ExtractTarget>()) {
-            extract_target->m_world = &(*world);
-        } else {
-            world->insert_resource(ExtractTarget(*world));
-        }
+        auto schedules    = m_data->schedules.write();
+        auto exit_order   = m_data->exit_schedule_order.read();
         auto reset_target = IntoSystem::into_system([](World& world) {
             world.remove_resource<ExtractTarget>();
         });
-        reset_target->initialize(*world);
-        auto schedules  = m_data->schedules.write();
-        auto exit_order = m_data->exit_schedule_order.read();
+        {
+            this->reset_run_state();
+            auto world = this->world();
+            if (auto extract_target = world->get_resource<ExtractTarget>()) {
+                extract_target->m_world = &(*world);
+            } else {
+                world->insert_resource(ExtractTarget(*world));
+            }
+            reset_target->initialize(*world);
+            for (auto&& label : *exit_order) {
+                auto& schedule = schedules->at(label);
+                schedule->initialize_systems(*world);
+            }
+        }
+        auto run_state = this->run_state();
         for (auto&& label : *exit_order) {
             auto& schedule = schedules->at(label);
-            schedule->initialize_systems(*world);
+            schedule->run(*run_state);
+            run_state->apply_commands();
         }
-        RunState run_state(std::move(world), *this->m_executors);
-        for (auto&& label : *exit_order) {
-            auto& schedule = schedules->at(label);
-            schedule->run(run_state);
-            run_state.apply_commands();
-        }
-        run_state.run_system(
+        run_state->run_system(
             reset_target.get(),
             RunState::RunSystemConfig{.executor = ExecutorType::SingleThread}
         );
+        run_state->wait();
     });
 }
 
