@@ -14,20 +14,19 @@ int main() {
 
     using namespace epix::window;
     using namespace epix::glfw;
-    using namespace epix::window::window;
 
     Window window_desc;
     Window window_desc2;
 
     window_desc.title = "Test Window";
 
-    window_desc.set_size(800, 200);
+    window_desc.size    = {800, 200};
     window_desc.opacity = 0.5f;
     // window_desc.present_mode = PresentMode::Fifo;
 
     window_desc2.title = "Test Window 2";
 
-    window_desc2.set_size(800, 400);
+    window_desc2.size    = {800, 400};
     window_desc2.opacity = 0.7f;
     // window_desc2.present_mode = PresentMode::Fifo;
 
@@ -58,22 +57,22 @@ int main() {
             epix::Update,
             epix::into(
                 [](epix::EventReader<epix::input::KeyInput> key_reader,
-                   epix::Query<epix::Get<epix::Mut<epix::window::Window>>> windows,
+                   epix::Query<epix::Get<epix::Mut<epix::window::Window>>>
+                       windows,
                    epix::ResMut<epix::Schedules> schedules) {
                     for (auto&& [key, scancode, pressed, repeat, window] :
                          key_reader.read()) {
                         if (pressed) {
                             if (key == epix::input::KeyCode::KeyF11) {
-                                if (auto window_opt = windows.get(window)) {
+                                if (auto window_opt = windows.try_get(window)) {
                                     auto&& [window_desc] = *window_opt;
-                                    if (window_desc.mode ==
-                                        epix::window::window::WindowMode::
-                                            Windowed) {
-                                        window_desc.mode = epix::window::
-                                            window::WindowMode::Fullscreen;
+                                    if (window_desc.window_mode ==
+                                        epix::window::WindowMode::Windowed) {
+                                        window_desc.window_mode = epix::window::
+                                            WindowMode::Fullscreen;
                                     } else {
-                                        window_desc.mode = epix::window::
-                                            window::WindowMode::Windowed;
+                                        window_desc.window_mode =
+                                            epix::window::WindowMode::Windowed;
                                     }
                                 }
                             }

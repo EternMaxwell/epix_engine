@@ -67,21 +67,21 @@ EPIX_API void epix::render::window::extract_windows(
             extracted_windows->primary = entity;
         }
 
-        auto [new_width, new_height] = window.physical_size();
+        auto [new_width, new_height] = window.size;
         new_width                    = std::max(new_width, 1);
         new_height                   = std::max(new_height, 1);
 
         if (!extracted_windows->windows.contains(entity) &&
-            glfw_windows->windows.contains(entity)) {
+            glfw_windows->contains(entity)) {
             extracted_windows->windows.emplace(
                 entity,
                 ExtractedWindow{
                     .entity          = entity,
-                    .handle          = glfw_windows->windows.at(entity),
+                    .handle          = glfw_windows->at(entity).first,
                     .physical_width  = new_width,
                     .physical_height = new_height,
                     .present_mode    = window.present_mode,
-                    .alpha_mode      = window.alpha_mode,
+                    .alpha_mode      = window.composite_alpha_mode,
                     .device          = *device,
                 }
             );
