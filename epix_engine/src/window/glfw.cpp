@@ -18,7 +18,7 @@ EPIX_API void Clipboard::set_text(EventReader<SetClipboardString> events) {
         glfwSetClipboardString(nullptr, event.text.c_str());
     }
 }
-EPIX_API GLFWwindow* GLFWPlugin::create_window(Entity id, const Window& desc) {
+EPIX_API GLFWwindow* GLFWPlugin::create_window(Entity id, Window& desc) {
     glfwDefaultWindowHints();
     glfwWindowHint(GLFW_FOCUSED, GLFW_TRUE);
     glfwWindowHint(GLFW_AUTO_ICONIFY, GLFW_FALSE);
@@ -31,6 +31,33 @@ EPIX_API GLFWwindow* GLFWPlugin::create_window(Entity id, const Window& desc) {
         throw std::runtime_error("Failed to create GLFW window");
     }
     glfwSetWindowPos(window, desc.final_pos.first, desc.final_pos.second);
+    // window mode
+    int monitor_count = 0;
+    auto monitors     = glfwGetMonitors(&monitor_count);
+    if (desc.monitor >= monitor_count || desc.monitor < 0) {
+        desc.monitor = 0;  // reset to default monitor
+    }
+    auto monitor    = monitors[desc.monitor];
+    auto video_mode = glfwGetVideoMode(monitor);
+    if (desc.window_mode == WindowMode::Windowed) {
+        // switch to windowed mode
+        glfwSetWindowMonitor(
+            window, nullptr, desc.final_pos.first, desc.final_pos.second,
+            desc.size.first, desc.size.second, 0
+        );
+    } else if (desc.window_mode == WindowMode::Fullscreen) {
+        // switch to fullscreen mode
+        glfwSetWindowMonitor(
+            window, monitor, 0, 0, video_mode->width, video_mode->height,
+            video_mode->refreshRate
+        );
+    } else if (desc.window_mode == WindowMode::BorderlessFullscreen) {
+        // switch to borderless mode
+        glfwSetWindowMonitor(
+            window, monitor, 0, 0, video_mode->width, video_mode->height,
+            video_mode->refreshRate
+        );
+    }
     glfwSetWindowOpacity(window, desc.opacity);
     glfwSetWindowSizeLimits(
         window, desc.size_limits.min_width, desc.size_limits.min_height,
@@ -407,6 +434,11 @@ EPIX_API void GLFWPlugin::create_windows(
             continue;
         }
         auto* created = create_window(id, desc);
+        Window cached = desc;
+        cached.cursor_icon =
+            StandardCursor::Arrow;  // this was not set when create.
+        cached.cursor_mode =
+            CursorMode::Normal;  // this was not set when create.
         glfw_windows->emplace(id, std::make_pair(created, desc));
         window_created.write(window::events::WindowCreated{id});
     }
@@ -630,6 +662,15 @@ EPIX_API void GLFWPlugin::toggle_window_mode(
         if (auto it = glfw_windows->find(id); it != glfw_windows->end()) {
             stored.emplace(it->second.first, it->second.second);
         } else {
+            // not created, but when created, it will automatically
+            // set the window mode based on the description. so we need to
+            // store the cached size now.
+            if (desc.window_mode != WindowMode::Windowed) {
+                (*cached_window_sizes)[id] = CachedWindowPosSize{
+                    desc.final_pos.first, desc.final_pos.second,
+                    desc.size.first, desc.size.second
+                };
+            }
             continue;  // window not created yet
         }
         auto&& [window, cached] = *stored;
@@ -663,6 +704,13 @@ EPIX_API void GLFWPlugin::toggle_window_mode(
                     window, monitor, 0, 0, video_mode->width,
                     video_mode->height, video_mode->refreshRate
                 );
+                cached_window_sizes->emplace(
+                    id,
+                    CachedWindowPosSize{
+                        desc.final_pos.first, desc.final_pos.second,
+                        desc.size.first, desc.size.second
+                    }
+                );
             } else if (desc.window_mode == WindowMode::BorderlessFullscreen) {
                 // switch to borderless mode
                 int monitor_count = 0;
@@ -675,6 +723,13 @@ EPIX_API void GLFWPlugin::toggle_window_mode(
                 glfwSetWindowMonitor(
                     window, monitor, 0, 0, video_mode->width,
                     video_mode->height, video_mode->refreshRate
+                );
+                cached_window_sizes->emplace(
+                    id,
+                    CachedWindowPosSize{
+                        desc.final_pos.first, desc.final_pos.second,
+                        desc.size.first, desc.size.second
+                    }
                 );
             }
         } else if (cached.monitor != desc.monitor &&
@@ -691,6 +746,13 @@ EPIX_API void GLFWPlugin::toggle_window_mode(
             glfwSetWindowMonitor(
                 window, monitor, 0, 0, video_mode->width, video_mode->height,
                 video_mode->refreshRate
+            );
+            cached_window_sizes->emplace(
+                id,
+                CachedWindowPosSize{
+                    desc.final_pos.first, desc.final_pos.second,
+                    desc.size.first, desc.size.second
+                }
             );
         }
         cached.window_mode = desc.window_mode;

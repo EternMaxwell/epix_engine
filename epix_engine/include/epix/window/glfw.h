@@ -98,7 +98,7 @@ struct GLFWRunner : public app::AppRunner {
 struct GLFWPlugin : public app::Plugin {
     EPIX_API void build(App& app) override;
     EPIX_API static GLFWwindow* create_window(
-        Entity id, const window::Window& window
+        Entity id, window::Window& window
     );
     EPIX_API static void update_size(
         Query<Get<Entity, Mut<window::Window>>>& windows,
