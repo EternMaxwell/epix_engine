@@ -126,12 +126,25 @@ template <typename T>
 struct SystemParam;
 
 template <typename T>
+concept WorldInitParam = requires(SystemParam<T> p) {
+    typename SystemParam<T>::State;
+    {
+        p.init(std::declval<World&>(), std::declval<SystemMeta&>())
+    } -> std::same_as<typename SystemParam<T>::State>;
+};
+template <typename T>
+concept EmptyInitParam = requires(SystemParam<T> p) {
+    typename SystemParam<T>::State;
+    {
+        p.init(std::declval<SystemMeta&>())
+    } -> std::same_as<typename SystemParam<T>::State>;
+};
+
+template <typename T>
 concept ValidParam =
     requires(SystemParam<T> p) {
         typename SystemParam<T>::State;
-        {
-            p.init(std::declval<World&>(), std::declval<SystemMeta&>())
-        } -> std::same_as<typename SystemParam<T>::State>;
+        WorldInitParam<T> || EmptyInitParam<T>;
         {
             p.update(
                 std::declval<typename SystemParam<T>::State&>(),
@@ -149,13 +162,46 @@ template <typename... Ts>
 static inline constexpr bool tuple_valid_param<std::tuple<Ts...>> =
     ((ValidParam<Ts> && ...));
 
+template <typename T>
+static inline constexpr bool tuple_empty_init_param = false;
+template <typename... Ts>
+static inline constexpr bool tuple_empty_init_param<std::tuple<Ts...>> =
+    ((EmptyInitParam<Ts> && ...));
+
 template <ValidParam T>
+    requires WorldInitParam<T>
 struct SystemParam<Extract<T>> : public SystemParam<T> {
     using State =
         std::pair<std::optional<Extract<T>>, typename SystemParam<T>::State>;
     State init(World& world, SystemMeta& meta) {
         auto& target = world.get_resource<ExtractTarget>()->get_world();
         return {std::nullopt, SystemParam<T>::init(target, meta)};
+    }
+    bool update(State& state, World& world, const SystemMeta& meta) {
+        auto& target = world.get_resource<ExtractTarget>()->get_world();
+        bool inner   = SystemParam<T>::update(state.second, target, meta);
+        if (inner) {
+            state.first.emplace(SystemParam<T>::get(state.second));
+        }
+        return state.first.has_value();
+    }
+    Extract<T>& get(State& state) {
+        if (!state.first.has_value()) {
+            throw std::runtime_error(
+                "Cannot create Extract<T> from SystemParam state: inner update "
+                "failed."
+            );
+        }
+        return state.first.value();
+    }
+};
+template <ValidParam T>
+    requires EmptyInitParam<T>
+struct SystemParam<Extract<T>> : public SystemParam<T> {
+    using State =
+        std::pair<std::optional<Extract<T>>, typename SystemParam<T>::State>;
+    State init(SystemMeta& meta) {
+        return {std::nullopt, SystemParam<T>::init(meta)};
     }
     bool update(State& state, World& world, const SystemMeta& meta) {
         auto& target = world.get_resource<ExtractTarget>()->get_world();
@@ -184,6 +230,11 @@ concept FromParam =
      std::
          same_as<typename from_param_traits<T>::return_type, std::optional<T>>);
 
+template <typename T>
+concept EmptyInitFromParam =
+    FromParam<T> &&
+    tuple_empty_init_param<typename from_param_traits<T>::decayed_args_tuple>;
+
 template <FromParam T>
 struct SystemParam<T> {
     using from_param_traits  = from_param_traits<T>;
@@ -205,9 +256,88 @@ struct SystemParam<T> {
         if constexpr (std::tuple_size_v<param_tuple> > 0) {
             return {
                 std::nullopt,
+                [&world, &meta]<size_t... I>(std::index_sequence<I...>) {
+                    auto state_at = [&]<size_t J>(std::integral_constant<
+                                                  size_t, J>) {
+                        using arg_t =
+                            std::decay_t<std::tuple_element_t<J, args_tuple>>;
+                        if constexpr (EmptyInitParam<arg_t>) {
+                            return SystemParam<arg_t>{}.init(meta);
+                        } else {
+                            return SystemParam<arg_t>{}.init(world, meta);
+                        }
+                    };
+                    return state_tuple(
+                        state_at(std::integral_constant<size_t, I>{})...
+                    );
+                }(std::make_index_sequence<std::tuple_size_v<param_tuple>>{})
+            };
+        } else {
+            return {std::nullopt, state_tuple{}};
+        }
+    }
+    bool update(State& state, World& world, const SystemMeta& meta) {
+        param_tuple inner_params;
+        bool inner = [&]<size_t... I>(std::index_sequence<I...>) -> bool {
+            return (
+                std::get<I>(inner_params)
+                    .update(std::get<I>(state.second), world, meta) &&
+                ...
+            );
+        }(std::make_index_sequence<std::tuple_size_v<param_tuple>>{});
+        auto& param = state.first;
+        if (inner) {
+            [&]<size_t... I>(std::index_sequence<I...>) {
+                if constexpr (std::same_as<from_return_type, T>) {
+                    param.emplace(
+                        T::from_param(std::get<I>(inner_params)
+                                          .get(std::get<I>(state.second))...)
+                    );
+                } else if constexpr (std::same_as<
+                                         from_return_type, std::optional<T>>) {
+                    param.swap(T::from_param(std::get<I>(inner_params)
+                                                 .get(std::get<I>(state.second)
+                                                 )...));
+                }
+            }(std::make_index_sequence<std::tuple_size_v<args_tuple>>{});
+        } else {
+            param.reset();
+        }
+        return param.has_value();
+    }
+    T& get(State& state) {
+        if (!state.first.has_value()) {
+            throw std::runtime_error(
+                "Cannot create T from SystemParam state: inner update failed."
+            );
+        }
+        return state.first.value();
+    }
+};
+template <EmptyInitFromParam T>
+struct SystemParam<T> {
+    using from_param_traits  = from_param_traits<T>;
+    using decayed_args_tuple = typename from_param_traits::decayed_args_tuple;
+    using from_return_type   = typename from_param_traits::return_type;
+    using args_tuple         = typename from_param_traits::args_tuple;
+    template <typename... Args>
+    static auto cast_to_param_tuple(std::tuple<Args...>& args
+    ) -> std::tuple<SystemParam<std::decay_t<Args>>...>;
+    template <typename... Args>
+    static auto cast_to_state_tuple(std::tuple<Args...>& args
+    ) -> std::tuple<typename SystemParam<std::decay_t<Args>>::State...>;
+    using param_tuple =
+        decltype(cast_to_param_tuple(std::declval<args_tuple&>()));
+    using state_tuple =
+        decltype(cast_to_state_tuple(std::declval<args_tuple&>()));
+    using State = std::pair<std::optional<T>, state_tuple>;
+    State init(SystemMeta& meta) {
+        if constexpr (std::tuple_size_v<param_tuple> > 0) {
+            return {
+                std::nullopt,
                 std::apply(
-                    [&world, &meta](auto&&... inner_param) {
-                        return state_tuple(inner_param.init(world, meta)...);
+                    [&meta](auto&&... inner_param) {
+                        return state_tuple(inner_param.init(meta)...);
                     },
                     param_tuple{}
                 )
@@ -265,6 +395,7 @@ struct SystemParam<std::optional<T>> : public SystemParam<T> {
 };
 
 template <typename T>
+    requires(FromWorld<T> || std::constructible_from<T, World&>)
 struct SystemParam<Local<T>> {
     using State = std::pair<T, Local<T>>;
     State init(World& world, SystemMeta& meta) {
@@ -272,14 +403,20 @@ struct SystemParam<Local<T>> {
             return {T(world), Local<T>(nullptr)};
         } else if constexpr (FromWorld<T>) {
             return {T::from_world(world), Local<T>(nullptr)};
-        } else {
-            static_assert(
-                std::is_default_constructible_v<T>,
-                "Local<T> requires T to be default constructible or FromWorld"
-            );
-            return {T(), Local<T>(nullptr)};
         }
     }
+    bool update(State& state, World& world, const SystemMeta& meta) {
+        return true;  // Local params do not need update
+    }
+    Local<T>& get(State& state) {
+        state.second = Local<T>(&state.first);
+        return state.second;
+    }
+};
+template <std::constructible_from<> T>
+struct SystemParam<Local<T>> {
+    using State = std::pair<T, Local<T>>;
+    State init(SystemMeta& meta) { return {T(), Local<T>(nullptr)}; }
     bool update(State& state, World& world, const SystemMeta& meta) {
         return true;  // Local params do not need update
     }
@@ -291,10 +428,10 @@ struct SystemParam<Local<T>> {
 template <>
 struct SystemParam<World> {
     using State = World*;
-    State init(World& world, SystemMeta& meta) {
+    State init(SystemMeta& meta) {
         meta.access.reads_all  = true;
         meta.access.writes_all = true;
-        return &world;
+        return nullptr;  // World param does not need init
     }
     bool update(State& state, World& world, const SystemMeta& meta) {
         state = &world;

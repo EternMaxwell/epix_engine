@@ -148,16 +148,18 @@ EPIX_API App& App::main_schedule_order(
     const ScheduleLabel& left, std::optional<ScheduleLabel> right
 ) {
     auto write = m_data->main_schedule_order.write();
-    if (write->empty()) {
-        write->emplace_back(left);
+    if (!right) {
+        write->insert(write->begin(), left);
     } else {
         // add right after left
         // if left not set, ignore
-        auto it = std::find(write->begin(), write->end(), left);
-        if (it != write->end()) {
-            if (right) {
-                write->insert(it + 1, *right);
-            }
+        if (auto it = std::find(write->begin(), write->end(), left);
+            it != write->end()) {
+            write->insert(it + 1, *right);
+        } else if (auto it =
+                       std::find(write->begin(), write->end(), right.value());
+                   it != write->end()) {
+            write->insert(it, left);
         }
     }
     return *this;
@@ -166,16 +168,18 @@ EPIX_API App& App::exit_schedule_order(
     const ScheduleLabel& left, std::optional<ScheduleLabel> right
 ) {
     auto write = m_data->exit_schedule_order.write();
-    if (write->empty()) {
-        write->emplace_back(left);
+    if (!right) {
+        write->insert(write->begin(), left);
     } else {
-        // add right after left
-        // if left not set, ignore
-        auto it = std::find(write->begin(), write->end(), left);
-        if (it != write->end()) {
-            if (right) {
-                write->insert(it + 1, *right);
-            }
+        if (auto it = std::find(write->begin(), write->end(), left);
+            it != write->end()) {
+            // add right after left
+            write->insert(it + 1, *right);
+        } else if (auto it =
+                       std::find(write->begin(), write->end(), right.value());
+                   it != write->end()) {
+            // add left before right
+            write->insert(it, left);
         }
     }
     return *this;
@@ -184,16 +188,18 @@ EPIX_API App& App::extract_schedule_order(
     const ScheduleLabel& left, std::optional<ScheduleLabel> right
 ) {
     auto write = m_data->extract_schedule_order.write();
-    if (write->empty()) {
-        write->emplace_back(left);
+    if (!right) {
+        write->insert(write->begin(), left);
     } else {
-        // add right after left
-        // if left not set, ignore
-        auto it = std::find(write->begin(), write->end(), left);
-        if (it != write->end()) {
-            if (right) {
-                write->insert(it + 1, *right);
-            }
+        if (auto it = std::find(write->begin(), write->end(), left);
+            it != write->end()) {
+            // add right after left
+            write->insert(it + 1, *right);
+        } else if (auto it =
+                       std::find(write->begin(), write->end(), right.value());
+                   it != write->end()) {
+            // add left before right
+            write->insert(it, left);
         }
     }
     return *this;
@@ -285,6 +291,10 @@ EPIX_API void App::build() {
     std::vector<Plugin*> to_build;
     size_t last_index = 0;
     do {
+        for (auto&& plugin : to_build) {
+            plugin->build(*this);
+        }
+        to_build.clear();
         {
             auto pplugins = m_data->plugins.write();
             auto& plugins = *pplugins;
@@ -293,10 +303,6 @@ EPIX_API void App::build() {
             }
             last_index = plugins.size();
         }
-        for (auto&& plugin : to_build) {
-            plugin->build(*this);
-        }
-        to_build.clear();
     } while (!to_build.empty());
     {
         auto pplugins = m_data->plugins.write();
@@ -447,6 +453,17 @@ EPIX_API int App::run() {
     spdlog::info("[app] Building app.");
     build();
     spdlog::info("[app] Running app.");
+    auto profiler = std::make_shared<AppProfiler>();
+    {
+        auto clone = profiler;
+        add_resource(std::move(clone));
+        // add to sub apps
+        auto sub_apps = m_sub_apps.write();
+        for (auto&& [label, sub_app] : *sub_apps) {
+            auto clone = profiler;
+            sub_app.add_resource(std::move(clone));
+        }
+    }
     auto write   = m_runner.write();
     auto& runner = *write;
     if (!runner) {

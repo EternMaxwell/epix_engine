@@ -3,6 +3,9 @@
 using namespace epix::app;
 
 EPIX_API bool SystemMeta::conflict(const SystemMeta& a, const SystemMeta& b) {
+    if (&a == &b) {
+        return true;
+    }
     if (a.world != b.world && a.extract_target != b.extract_target) {
         return false;
     }

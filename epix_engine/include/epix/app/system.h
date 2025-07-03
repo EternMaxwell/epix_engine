@@ -24,6 +24,7 @@ template <typename Ret>
 struct BasicSystem {
     using return_type                                            = Ret;
     virtual void initialize(World& world)                        = 0;
+    virtual void initialize()                                    = 0;
     virtual bool initialized() const noexcept                    = 0;
     virtual std::expected<Ret, RunSystemError> run(World& world) = 0;
     virtual const SystemMeta& get_meta() const                   = 0;
@@ -60,10 +61,31 @@ struct BasicSystemImpl : public BasicSystem<Ret> {
         return new BasicSystemImpl(m_func);
     }
 
+    void initialize() override {
+        meta.world          = nullptr;
+        meta.extract_target = nullptr;  // Default to no world
+        if constexpr (tuple_empty_init_param<
+                          std::tuple<std::decay_t<Args>...>>) {
+            // If all parameters are empty init, we can skip initialization
+            data.emplace(SystemParam<std::decay_t<Args>>{}.init(meta)...);
+        }
+    }
     void initialize(World& world) override {
         meta.world          = &world;
         meta.extract_target = &world;  // Default to the same world
-        data.emplace(SystemParam<std::decay_t<Args>>{}.init(world, meta)...);
+        [&]<size_t... I>(std::index_sequence<I...>) {
+            auto state_at = [&]<size_t U>(std::integral_constant<
+                                                    size_t, U>) {
+                using arg_t =
+                    std::decay_t<std::tuple_element_t<U, std::tuple<Args...>>>;
+                if constexpr (EmptyInitParam<arg_t>) {
+                    return SystemParam<arg_t>{}.init(meta);
+                } else {
+                    return SystemParam<arg_t>{}.init(world, meta);
+                }
+            };
+            data.emplace(state_at(std::integral_constant<size_t, I>{})...);
+        }(std::make_index_sequence<std::tuple_size_v<param_tuple>>{});
     }
     bool initialized() const noexcept override { return data.has_value(); }
     const SystemMeta& get_meta() const override { return meta; }

@@ -255,6 +255,7 @@ EPIX_API std::expected<void, RunScheduleError> Schedule::run_internal(
     RunState& run_state
 ) noexcept {
     Config run_config        = config;
+    auto time_line1          = std::chrono::steady_clock::now();
     bool should_update_cache = flush_cmd();
     should_update_cache |= build_sets();
     auto write = async::scoped_write(data->system_sets, *cache);
@@ -375,6 +376,8 @@ EPIX_API std::expected<void, RunScheduleError> Schedule::run_internal(
         info.children_count = info.cached_children_count;
     }
 
+    auto time_line2 = std::chrono::steady_clock::now();
+
     try_queued();
     while (!just_finished_sets.empty() || running > 0) {
         uint32_t finished = just_finished_sets.pop();
@@ -472,6 +475,34 @@ EPIX_API std::expected<void, RunScheduleError> Schedule::run_internal(
         }
     }
 
+    auto time_line3 = std::chrono::steady_clock::now();
+    double build_time =
+        std::chrono::duration<double, std::milli>(time_line2 - time_line1)
+            .count();
+    double run_time =
+        std::chrono::duration<double, std::milli>(time_line3 - time_line2)
+            .count();
+    auto update_profiler = IntoSystem::into_system(
+        [build_time, run_time, set_count = cache.system_set_infos.size(),
+         label = data->label](std::optional<ResMut<AppProfiler>>& profiler) {
+            if (profiler) {
+                auto& schedule_profiler = (*profiler)->schedule_profiler(label);
+                schedule_profiler.push_time(build_time, run_time);
+                schedule_profiler.push_set_count(set_count);
+            }
+        }
+    );
+    update_profiler->initialize();
+    auto final_wait =
+        run_state
+            .run_system(
+                update_profiler.get(),
+                RunState::RunSystemConfig{
+                    .on_finish = []() {}, .executor = ExecutorType::SingleThread
+                }
+            )
+            .value_or(std::future<std::expected<void, RunSystemError>>());
+
     uint32_t remaining_sets = 0;
     for (auto&& info : cache.system_set_infos) {
         if (!info.finished) {
@@ -490,6 +521,9 @@ EPIX_API std::expected<void, RunScheduleError> Schedule::run_internal(
         return std::unexpected(RunScheduleError{
             data->label, RunScheduleError::Type::SetsRemaining, remaining_sets
         });
+    }
+    if (final_wait.valid()) {
+        final_wait.get();
     }
     return {};
 }

@@ -64,9 +64,9 @@ struct ResMut {
 template <typename T>
 struct SystemParam<Res<T>> {
     using State = std::optional<Res<T>>;
-    State init(World& world, SystemMeta& meta) {
+    State init(SystemMeta& meta) {
         meta.access.resource_reads.emplace(typeid(std::decay_t<T>));
-        return Res<T>::from_world(world);
+        return std::nullopt;
     }
     bool update(State& state, World& world, const SystemMeta&) {
         state = Res<T>::from_world(world);
@@ -82,22 +82,22 @@ struct SystemParam<Res<T>> {
 template <typename T>
 struct SystemParam<std::optional<Res<T>>> {
     using State = std::optional<Res<T>>;
-    State init(World& world, SystemMeta& meta) {
+    State init(SystemMeta& meta) {
         meta.access.resource_reads.emplace(typeid(std::decay_t<T>));
-        return Res<T>::from_world(world);
+        return std::nullopt;
     }
     bool update(State& state, World& world, const SystemMeta&) {
         state = Res<T>::from_world(world);
-        return true;
+        return state.has_value();
     }
     std::optional<Res<T>>& get(State& state) { return state; }
 };
 template <typename T>
 struct SystemParam<ResMut<T>> {
     using State = std::optional<ResMut<T>>;
-    State init(World& world, SystemMeta& meta) {
+    State init(SystemMeta& meta) {
         meta.access.resource_writes.emplace(typeid(std::decay_t<T>));
-        return ResMut<T>::from_world(world);
+        return std::nullopt;
     }
     bool update(State& state, World& world, const SystemMeta&) {
         state = ResMut<T>::from_world(world);
@@ -113,12 +113,12 @@ struct SystemParam<ResMut<T>> {
 template <typename T>
 struct SystemParam<std::optional<ResMut<T>>> {
     using State = std::optional<ResMut<T>>;
-    State init(World& world, SystemMeta& meta) {
+    State init(SystemMeta& meta) {
         meta.access.resource_writes.emplace(typeid(std::decay_t<T>));
-        return ResMut<T>::from_world(world);
+        return std::nullopt;
     }
-    bool update(State& state, World&, const SystemMeta&) {
-        state = ResMut<T>::from_world(state->get().world);
+    bool update(State& state, World& world, const SystemMeta&) {
+        state = ResMut<T>::from_world(world);
         return true;
     }
     std::optional<ResMut<T>>& get(State& state) { return state; }

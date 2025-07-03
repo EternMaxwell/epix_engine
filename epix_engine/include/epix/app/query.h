@@ -359,8 +359,8 @@ template <typename Q>
         typename Q::must_exclude;
     } && epix::util::type_traits::specialization_of<Q, Query>
 struct SystemParam<Q> {
-    using State = Q;
-    State init(World& world, SystemMeta& meta) {
+    using State = std::optional<Q>;
+    State init(SystemMeta& meta) {
         auto& qs = meta.access.queries.emplace_back();
         [&]<size_t... I>(std::index_sequence<I...>) {
             // if type is const, add to reads, otherwise add to writes
@@ -384,12 +384,12 @@ struct SystemParam<Q> {
              ...);
         }(std::make_index_sequence<
             std::tuple_size<typename Q::must_exclude>::value>{});
-        return Q(world);
+        return std::nullopt;
     }
     bool update(State& state, World& world, const SystemMeta& meta) {
-        state = Q(world);
+        state.emplace(Q(world));
         return true;
     }
-    Q& get(State& state) { return state; }
+    Q& get(State& state) { return state.value(); }
 };
 }  // namespace epix::app
