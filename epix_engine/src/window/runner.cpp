@@ -62,8 +62,13 @@ EPIX_API int GLFWRunner::run(App& app) {
     glfw_work_load();
     auto profiler  = app.get_resource<AppProfiler>();
     auto last_time = std::chrono::steady_clock::now();
+    std::optional<std::future<void>> render_app_future;
     while (true) {
         app.update().wait();
+        if (render_app_future.has_value()) {
+            render_app_future->wait();
+            render_app_future.reset();
+        }
         if (app.config.enable_tracy) {
             ZoneScopedN("glfw work load");
             glfw_work_load();
@@ -96,8 +101,8 @@ EPIX_API int GLFWRunner::run(App& app) {
             break;
         }
         if (auto* render_app = app.get_sub_app(Render)) {
-            render_app->extract(app);
-            render_app->update();
+            render_app->extract(app).wait();
+            render_app_future = render_app->update();
         }
     }
     app.run_system(destroy_windows_system.get());
