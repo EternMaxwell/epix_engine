@@ -101,7 +101,7 @@ EPIX_API int GLFWRunner::run(App& app) {
             break;
         }
         if (auto* render_app = app.get_sub_app(Render)) {
-            render_app->extract(app).wait();
+            render_app->extract(app);
             render_app_future = render_app->update();
         }
     }

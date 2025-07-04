@@ -374,8 +374,10 @@ EPIX_API void App::set_runner(std::unique_ptr<AppRunner>&& runner) {
 }
 
 EPIX_API std::future<void> App::extract(App& target) {
-    return app_run_pool.submit_task([this, &target]() {
-        auto schedules     = m_data->schedules.write();
+    auto schedules = m_data->schedules.write();
+    return app_run_pool.submit_task([this, &target,
+                                     schedules =
+                                         std::move(schedules)]() mutable {
         auto extract_order = m_data->extract_schedule_order.read();
         auto reset_target  = IntoSystem::into_system([](World& world) {
             world.remove_resource<ExtractTarget>();
@@ -410,8 +412,9 @@ EPIX_API std::future<void> App::extract(App& target) {
     });
 }
 EPIX_API std::future<void> App::update() {
-    return app_run_pool.submit_task([this]() {
-        auto schedules    = m_data->schedules.write();
+    auto schedules = m_data->schedules.write();
+    return app_run_pool.submit_task([this, schedules =
+                                               std::move(schedules)]() mutable {
         auto update_order = m_data->main_schedule_order.read();
         auto reset_target = IntoSystem::into_system([](World& world) {
             world.remove_resource<ExtractTarget>();
@@ -444,8 +447,9 @@ EPIX_API std::future<void> App::update() {
     });
 }
 EPIX_API std::future<void> App::exit() {
-    return app_run_pool.submit_task([this]() {
-        auto schedules    = m_data->schedules.write();
+    auto schedules = m_data->schedules.write();
+    return app_run_pool.submit_task([this, schedules =
+                                               std::move(schedules)]() mutable {
         auto exit_order   = m_data->exit_schedule_order.read();
         auto reset_target = IntoSystem::into_system([](World& world) {
             world.remove_resource<ExtractTarget>();
