@@ -2,6 +2,22 @@
 
 using namespace epix::app;
 
+EPIX_API void EventSystem::build(App& app) {
+    app.add_systems(
+        Last, into([updates = std::move(updates)](World& world) {
+                  static BS::thread_pool<BS::tp::none> event_pool(16);
+                  for (auto&& sub_range : std::views::chunk(updates, 4)) {
+                      event_pool.detach_task([&world, sub_range]() {
+                          for (auto&& update : sub_range) {
+                              update(world);
+                          }
+                      });
+                  }
+                  event_pool.wait();
+              }).set_names({"update events"})
+    );
+}
+
 struct OnceRunner : public AppRunner {
     int run(App& app) override {
         app.update().get();
@@ -464,6 +480,7 @@ EPIX_API std::future<void> App::exit() {
 
 EPIX_API int App::run() {
     spdlog::info("[app] Building app.");
+    add_events<AppExit>();
     build();
     spdlog::info("[app] Running app.");
     auto profiler = std::make_shared<AppProfiler>();

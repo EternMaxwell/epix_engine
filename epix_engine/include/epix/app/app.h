@@ -62,6 +62,22 @@ struct AppData {
 };
 inline struct MainT {
 } Main;
+
+struct EventSystem : public Plugin {
+   private:
+    std::vector<void (*)(World&)> updates;
+
+   public:
+    template <typename T>
+    void register_event() {
+        updates.emplace_back([](World& world) {
+            if (auto events = world.get_resource<Events<T>>()) {
+                events->update();
+            }
+        });
+    }
+    EPIX_API void build(App& app) override;
+};
 struct App {
     using executor_t = BS::thread_pool<BS::tp::priority>;
 
@@ -81,9 +97,16 @@ struct App {
 
     template <typename Ret, typename T>
     App& plugin_scope_internal(const std::function<Ret(T&)>& func) {
-        auto plugin = get_plugin<std::decay_t<T>>();
-        if (plugin) {
-            func(*plugin);
+        auto pplugins = m_data->plugins.read();
+        auto& plugins = *pplugins;
+        auto it       = std::find_if(
+            plugins.begin(), plugins.end(),
+            [](const auto& plugin) {
+                return plugin.first == meta::type_index(meta::type_id<T>());
+            }
+        );
+        if (it != plugins.end()) {
+            func(*std::static_pointer_cast<T>(it->second));
         }
         return *this;
     }
@@ -272,10 +295,10 @@ struct App {
     template <typename T>
     App& add_events() {
         init_resource<Events<T>>();
-        add_systems(
-            Last, into([](ResMut<Events<T>> event) { event->update(); }
-                  ).set_name(std::format("update Event<{}>", typeid(T).name()))
-        );
+        add_plugin(EventSystem{});
+        plugin_scope([](EventSystem& event_system) {
+            event_system.register_event<T>();
+        });
         return *this;
     }
     template <typename T>
