@@ -259,12 +259,13 @@ EPIX_API std::expected<void, RunScheduleError> Schedule::run_internal(
     bool should_update_cache = flush_cmd();
     should_update_cache |= build_sets();
     auto write = async::scoped_write(data->system_sets, *cache);
-    auto&& [system_sets, cache0] = *write;
+    auto&& [system_sets, cache] = *write;
     if (should_update_cache) {
-        update_cache(system_sets, cache0);
+        update_cache(system_sets, cache);
     }
-    // rebind, fix bug of intellisense
-    ScheduleCache& cache = cache0;
+    if (cache.system_set_infos.empty()) {
+        return {};
+    }
 
     // run needed data
     std::deque<uint32_t>
@@ -279,7 +280,7 @@ EPIX_API std::expected<void, RunScheduleError> Schedule::run_internal(
     size_t running   = 0;
 
     // lambdas
-    auto run_system = [&](uint32_t index) {
+    auto run_system_internal = [&](uint32_t index) {
         auto& info  = cache.system_set_infos[index];
         auto& label = info.label;
         running++;
@@ -301,6 +302,16 @@ EPIX_API std::expected<void, RunScheduleError> Schedule::run_internal(
             just_finished_sets.emplace(index);
         }
         futures[index] = std::move(res);
+    };
+    auto run_system = [&](uint32_t index) {
+        if (run_config.enable_tracy) {
+            // Tracy profiling
+            ZoneScopedN("detach system");
+            run_system_internal(index);
+        } else {
+            // No Tracy profiling
+            run_system_internal(index);
+        }
     };
     auto enter_waiting = [&]() {
         size_t size = waiting_sets.size();
