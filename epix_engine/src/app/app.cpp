@@ -14,7 +14,7 @@ EPIX_API void EventSystem::build(App& app) {
                       });
                   }
                   event_pool.wait();
-              }).set_names({"update events"})
+              }).set_name("update events")
     );
 }
 
