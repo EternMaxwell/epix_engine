@@ -125,5 +125,7 @@ int main() {
     //         std::cout << "Frame: " << count->count++ << std::endl;
     //     })
     // );
+    app.config.mark_frame   = true;
+    app.config.enable_tracy = true;
     app.run();
 }

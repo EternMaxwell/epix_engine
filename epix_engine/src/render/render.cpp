@@ -84,6 +84,8 @@ EPIX_API void epix::render::RenderPlugin::build(epix::App& app) {
     app.add_sub_app(Render);
     auto& render_app = app.sub_app(Render);
     {
+        render_app.config.enable_tracy = app.config.enable_tracy;
+
         // schedules for render app
         render_app.add_schedule(epix::ExtractSchedule);
         render_app.add_schedule(epix::PreRender);

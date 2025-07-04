@@ -29,7 +29,20 @@ void add_run_once_schedules(App& app, Labels&&... labels) {
     (add(labels), ...);
 }
 
+static BS::thread_pool<BS::tp::none> app_run_pool(4, []() {
+    // set thread name
+    BS::this_thread::set_os_thread_name("app");
+});
+
 EPIX_API App::App(const AppLabel& label) : m_data(new AppData(label)) {}
+EPIX_API App::~App() {
+    if (m_data) {
+        // to wait for any other taskes to finish
+        // just wait for world.
+        app_run_pool.wait();
+        auto write_world = world();
+    }
+}
 
 EPIX_API App App::create(const AppCreateInfo& create_info) {
     App app(Main);
@@ -345,7 +358,7 @@ EPIX_API void App::set_runner(std::unique_ptr<AppRunner>&& runner) {
 }
 
 EPIX_API std::future<void> App::extract(App& target) {
-    return std::async(std::launch::async, [this, &target]() {
+    return app_run_pool.submit_task([this, &target]() {
         auto schedules     = m_data->schedules.write();
         auto extract_order = m_data->extract_schedule_order.read();
         auto reset_target  = IntoSystem::into_system([](World& world) {
@@ -369,9 +382,9 @@ EPIX_API std::future<void> App::extract(App& target) {
         }
         auto run_state = this->run_state();
         for (auto&& label : *extract_order) {
-            auto& schedule = schedules->at(label);
-            schedule->run(*run_state);
-            run_state->apply_commands();
+            auto& schedule                = schedules->at(label);
+            schedule->config.enable_tracy = config.enable_tracy;
+            schedule->run(*run_state).wait();
         }
         run_state->run_system(
             reset_target.get(),
@@ -381,7 +394,7 @@ EPIX_API std::future<void> App::extract(App& target) {
     });
 }
 EPIX_API std::future<void> App::update() {
-    return std::async(std::launch::async, [this]() {
+    return app_run_pool.submit_task([this]() {
         auto schedules    = m_data->schedules.write();
         auto update_order = m_data->main_schedule_order.read();
         auto reset_target = IntoSystem::into_system([](World& world) {
@@ -403,9 +416,9 @@ EPIX_API std::future<void> App::update() {
         }
         auto run_state = this->run_state();
         for (auto&& label : *update_order) {
-            auto& schedule = schedules->at(label);
-            schedule->run(*run_state);
-            run_state->apply_commands();
+            auto& schedule                = schedules->at(label);
+            schedule->config.enable_tracy = config.enable_tracy;
+            schedule->run(*run_state).wait();
         }
         run_state->run_system(
             reset_target.get(),
@@ -415,7 +428,7 @@ EPIX_API std::future<void> App::update() {
     });
 }
 EPIX_API std::future<void> App::exit() {
-    return std::async(std::launch::async, [this]() {
+    return app_run_pool.submit_task([this]() {
         auto schedules    = m_data->schedules.write();
         auto exit_order   = m_data->exit_schedule_order.read();
         auto reset_target = IntoSystem::into_system([](World& world) {
@@ -437,9 +450,9 @@ EPIX_API std::future<void> App::exit() {
         }
         auto run_state = this->run_state();
         for (auto&& label : *exit_order) {
-            auto& schedule = schedules->at(label);
-            schedule->run(*run_state);
-            run_state->apply_commands();
+            auto& schedule                = schedules->at(label);
+            schedule->config.enable_tracy = config.enable_tracy;
+            schedule->run(*run_state).wait();
         }
         run_state->run_system(
             reset_target.get(),

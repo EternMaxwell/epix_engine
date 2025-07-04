@@ -57,6 +57,8 @@ struct RunState {
         std::function<void()> on_finish = []() {};
         std::function<void()> on_start  = []() {};
         ExecutorLabel executor          = ExecutorType::MultiThread;
+        bool enable_tracy               = false;
+        std::optional<std::string> tracy_name;
     };
 
    private:
@@ -105,17 +107,30 @@ struct RunState {
             running_systems.emplace(&system->get_meta());
             pool->detach_task([this, system, prom = std::move(prom),
                                config]() mutable {
+                std::optional<std::expected<ret, RunSystemError>> result;
                 try {
                     if (config.on_start) config.on_start();
-                    prom->set_value(system->run(*world));
-                    if (config.on_finish) config.on_finish();
+                    if (config.enable_tracy) {
+                        ZoneScopedN("RunState run system.");
+                        if (config.tracy_name) {
+                            auto size = config.tracy_name->size();
+                            ZoneName(config.tracy_name->data(), size);
+                        }
+                        result.emplace(system->run(*world));
+                    } else {
+                        result.emplace(system->run(*world));
+                    }
                 } catch (...) {
-                    prom->set_value(std::unexpected(
+                    result.emplace(std::unexpected(
                         SystemExceptionError{std::current_exception()}
                     ));
                 }
                 std::unique_lock lock(m_system_mutex);
                 running_systems.erase(&system->get_meta());
+                prom->set_value(std::move(result.value()));
+                try {
+                    if (config.on_finish) config.on_finish();
+                } catch (...) {}
                 while (!waiting_system_callers.empty()) {
                     auto& caller = waiting_system_callers.front();
                     if (caller()) {

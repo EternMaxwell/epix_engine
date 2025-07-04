@@ -286,9 +286,14 @@ EPIX_API std::expected<void, RunScheduleError> Schedule::run_internal(
         auto res = run_state.run_system(
             info.set->system.get(),
             RunState::RunSystemConfig{
-                .on_finish = [&just_finished_sets,
+                .on_finish    = [&just_finished_sets,
                               index]() { just_finished_sets.emplace(index); },
-                .executor  = info.set->executor,
+                .executor     = info.set->executor,
+                .enable_tracy = run_config.enable_tracy,
+                .tracy_name =
+                    run_config.enable_tracy
+                        ? std::make_optional<std::string>(info.set->name)
+                        : std::optional<std::string>{}
             }
         );
         if (!res) {
@@ -528,12 +533,22 @@ EPIX_API std::expected<void, RunScheduleError> Schedule::run_internal(
     return {};
 }
 
+static BS::thread_pool<BS::tp::none> schedule_run_pool(4, []() {
+    // set thread name for profiling
+    BS::this_thread::set_os_thread_name("schedule");
+});
+
 EPIX_API std::future<std::expected<void, RunScheduleError>> Schedule::run(
     RunState& run_state
 ) noexcept {
-    return std::async(
-        std::launch::async,
+    return schedule_run_pool.submit_task(
         [this, &run_state]() -> std::expected<void, RunScheduleError> {
+            if (config.enable_tracy) {
+                ZoneScopedN("Run Schedule");
+                auto name = data->label.name();
+                ZoneName(name.data(), name.size());
+                return run_internal(run_state);
+            }
             return run_internal(run_state);
         }
     );

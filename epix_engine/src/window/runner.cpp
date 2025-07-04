@@ -41,7 +41,8 @@ EPIX_API int GLFWRunner::run(App& app) {
             }
             last->focus = focus->focus;
         });
-    auto glfw_work_load = [&] {
+    auto glfw_work_load_tracy = [&] {
+        ZoneScopedN("glfw_work_load");
         GLFWPlugin::poll_events();
         app.run_system(toggle_window_mode_system.get());
         app.run_system(update_size_system.get());
@@ -53,6 +54,23 @@ EPIX_API int GLFWRunner::run(App& app) {
         app.run_system(update_focus_system.get());
         app.run_system(clipboard_set_text_system.get());
         app.run_system(clipboard_update_system.get());
+    };
+    auto glfw_work_load = [&] {
+        if (app.config.enable_tracy) {
+            glfw_work_load_tracy();
+        } else {
+            GLFWPlugin::poll_events();
+            app.run_system(toggle_window_mode_system.get());
+            app.run_system(update_size_system.get());
+            app.run_system(update_pos_system.get());
+            app.run_system(create_windows_system.get());
+            app.run_system(send_cached_events_system.get());
+            app.run_system(update_window_states_system.get());
+            app.run_system(destroy_windows_system.get());
+            app.run_system(update_focus_system.get());
+            app.run_system(clipboard_set_text_system.get());
+            app.run_system(clipboard_update_system.get());
+        }
     };
     std::optional<int> exit_code;
     app.add_events<AppExit>();
@@ -66,6 +84,9 @@ EPIX_API int GLFWRunner::run(App& app) {
     while (true) {
         app.update().wait();
         glfw_work_load();
+        if (app.config.mark_frame) {
+            FrameMark;
+        }
         exit_code = app.run_system(check_exit.get()).value_or(-1);
         auto time = std::chrono::steady_clock::now();
         double delta_time =

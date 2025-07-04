@@ -94,6 +94,7 @@ struct App {
     App(App&&)                 = default;
     App& operator=(const App&) = delete;
     App& operator=(App&&)      = default;
+    EPIX_API ~App();
 
     EPIX_API static App create(const AppCreateInfo& create_info = {});
 
