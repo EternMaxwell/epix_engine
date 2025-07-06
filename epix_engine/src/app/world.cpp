@@ -9,6 +9,15 @@ EPIX_API bool World::entity_valid(Entity entity) {
     return m_data.registry.valid(entity);
 }
 
+EPIX_API void World::add_resource(
+    meta::type_index id, const std::shared_ptr<void>& res
+) {
+    auto resources = m_data.resources.write();
+    if (!resources->contains(id)) {
+        resources->emplace(id, res);
+    }
+};
+
 EPIX_API void World::despawn(Entity entity) {
     if (!m_data.registry.valid(entity)) return;
     m_data.registry.destroy(entity);

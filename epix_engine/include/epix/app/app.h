@@ -10,7 +10,7 @@ namespace epix::app {
 struct App;
 
 struct Plugin {
-    virtual void build(App& app) = 0;
+    virtual void build(App& app) {};
     virtual void finish(App& app) {};
 };
 
@@ -77,7 +77,7 @@ struct EventSystem : public Plugin {
             }
         });
     }
-    EPIX_API void build(App& app) override;
+    EPIX_API void finish(App& app) override;
 };
 struct App {
     using executor_t = BS::thread_pool<BS::tp::priority>;
@@ -262,9 +262,9 @@ struct App {
         return *this;
     };
     template <typename T>
-    App& add_resource(std::shared_ptr<T>&& res) {
+    App& add_resource(const std::shared_ptr<T>& res) {
         auto w = world();
-        w->add_resource(std::move(res));
+        w->add_resource(res);
         return *this;
     };
     template <typename T>

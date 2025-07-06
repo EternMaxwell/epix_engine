@@ -27,7 +27,6 @@ struct LoopRunner : public AppRunner {
 
 EPIX_API void LoopPlugin::build(App& app) {
     app.set_runner(std::make_unique<LoopRunner>());
-    app.add_events<AppExit>();
 }
 EPIX_API LoopPlugin& LoopPlugin::set_enabled(bool enabled) {
     m_loop_enabled = enabled;

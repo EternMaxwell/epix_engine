@@ -151,21 +151,16 @@ struct World {
         }
     };
     template <typename T>
-    void add_resource(std::shared_ptr<T>&& res) {
+    void add_resource(const std::shared_ptr<T>& res) {
         using type     = std::decay_t<T>;
         auto resources = m_data.resources.write();
         if (!resources->contains(meta::type_id<type>())) {
-            resources->emplace(meta::type_id<type>(), std::move(res));
+            resources->emplace(meta::type_id<type>(), res);
         }
     };
     EPIX_API void add_resource(
-        meta::type_index id, std::shared_ptr<void>&& res
-    ) {
-        auto resources = m_data.resources.write();
-        if (!resources->contains(id)) {
-            resources->emplace(id, std::move(res));
-        }
-    };
+        meta::type_index id, const std::shared_ptr<void>& res
+    );
     /**
      * @brief Insert a resource to the world using construct in place.
      *

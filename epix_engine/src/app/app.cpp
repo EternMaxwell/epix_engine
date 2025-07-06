@@ -2,7 +2,7 @@
 
 using namespace epix::app;
 
-EPIX_API void EventSystem::build(App& app) {
+EPIX_API void EventSystem::finish(App& app) {
     app.add_systems(
         Last, into([updates = std::move(updates)](World& world) {
                   static BS::thread_pool<BS::tp::none> event_pool(16);
@@ -337,8 +337,18 @@ EPIX_API void App::build() {
         auto pplugins = m_data->plugins.write();
         auto& plugins = *pplugins;
         for (auto&& [id, plugin] : plugins) {
+            to_build.push_back(plugin.get());
+        }
+    }
+    for (auto&& plugin : to_build) {
+        plugin->finish(*this);
+    }
+    {
+        auto pplugins = m_data->plugins.write();
+        auto& plugins = *pplugins;
+        for (auto&& [id, plugin] : plugins) {
             auto w = world();
-            w->add_resource(id, std::move(plugin));
+            w->add_resource(id, plugin);
         }
     }
 
@@ -383,8 +393,6 @@ EPIX_API std::future<void> App::extract(App& target) {
             world.remove_resource<ExtractTarget>();
         });
         {
-            this->reset_run_state();
-            target.reset_run_state();
             auto target_world = target.world();
             auto source_world = this->world();
             if (auto extract_target =
@@ -420,7 +428,6 @@ EPIX_API std::future<void> App::update() {
             world.remove_resource<ExtractTarget>();
         });
         {
-            this->reset_run_state();
             auto world = this->world();
             if (auto extract_target = world->get_resource<ExtractTarget>()) {
                 extract_target->m_world = &(*world);
@@ -455,7 +462,6 @@ EPIX_API std::future<void> App::exit() {
             world.remove_resource<ExtractTarget>();
         });
         {
-            this->reset_run_state();
             auto world = this->world();
             if (auto extract_target = world->get_resource<ExtractTarget>()) {
                 extract_target->m_world = &(*world);

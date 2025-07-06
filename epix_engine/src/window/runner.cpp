@@ -105,8 +105,10 @@ EPIX_API int GLFWRunner::run(App& app) {
             render_app_future = render_app->update();
         }
     }
+    spdlog::info("[app] Exiting app.");
     app.run_system(destroy_windows_system.get());
     glfwTerminate();
     app.exit();
+    spdlog::info("[app] App terminated.");
     return exit_code.value();
 }

@@ -61,7 +61,12 @@ struct Handle {
         return *this;
     }
     Handle& operator=(const std::shared_ptr<StrongHandle>& handle) {
-        assert(handle->id.type() == typeid(T));
+        if (handle->id.type != typeid(T)) {
+            throw std::runtime_error(std::format(
+                "Cannot assign StrongHandle of type {} to Handle of type {}",
+                handle->id.type.name(), typeid(T).name()
+            ));
+        }
         ref = handle;
         return *this;
     }
