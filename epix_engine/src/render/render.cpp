@@ -167,17 +167,33 @@ EPIX_API void epix::render::RenderPlugin::build(epix::App& app) {
     app.insert_resource(physical_device);
     app.insert_resource(device);
     app.insert_resource(queue);
-    auto& render_world = app.world(epix::app::RenderWorld);
-    render_world.insert_resource(instance);
-    render_world.insert_resource(physical_device);
-    render_world.insert_resource(device);
-    render_world.insert_resource(queue);
+    app.add_sub_app(Render);
+    auto& render_app = app.sub_app(Render);
+    {
+        render_app.config.enable_tracy = app.config.enable_tracy;
+
+        // schedules for render app
+        render_app.add_schedule(epix::ExtractSchedule);
+        render_app.add_schedule(epix::PreRender);
+        render_app.add_schedule(epix::Render);
+        render_app.add_schedule(epix::PostRender);
+
+        render_app.extract_schedule_order(epix::ExtractSchedule);
+        render_app.main_schedule_order(epix::PreRender);
+        render_app.main_schedule_order(epix::PreRender, epix::Render);
+        render_app.main_schedule_order(epix::Render, epix::PostRender);
+    }
+    render_app.insert_resource(instance);
+    render_app.insert_resource(physical_device);
+    render_app.insert_resource(device);
+    render_app.insert_resource(queue);
     // command pools resource should be across worlds, so use add_resource
-    auto pools = UntypedRes::create(
-        std::make_shared<epix::render::CommandPools>(device, queue_family_index)
+    app.emplace_resource<epix::render::CommandPools>(
+        device, queue_family_index
     );
-    app.add_resource(pools);
-    render_world.add_resource(pools);
+    render_app.emplace_resource<epix::render::CommandPools>(
+        device, queue_family_index
+    );
 
     app.add_systems(
         epix::PostExit,

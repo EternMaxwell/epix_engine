@@ -1,5 +1,7 @@
 #include "epix/app/commands.h"
 
+#include <spdlog/spdlog.h>
+
 using namespace epix::app;
 
 EPIX_API void DespawnCommand::apply(World& world) { world.despawn(entity); }

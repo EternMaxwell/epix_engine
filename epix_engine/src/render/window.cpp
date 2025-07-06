@@ -32,19 +32,20 @@ EPIX_API void epix::render::window::WindowSurfaces::remove(const Entity& entity
 }
 
 EPIX_API void WindowRenderPlugin::build(epix::App& app) {
-    auto& render_world = app.world(epix::app::RenderWorld);
-    render_world.insert_resource(ExtractedWindows{});
-    render_world.insert_resource(WindowSurfaces{});
-    app.add_systems(
-        epix::Extraction, epix::into(extract_windows, create_surfaces)
-                              .set_names({"extract windows", "create_surfaces"})
-                              .chain()
+    auto& render_app = app.sub_app(epix::Render);
+    render_app.insert_resource(ExtractedWindows{});
+    render_app.insert_resource(WindowSurfaces{});
+    render_app.add_systems(
+        epix::ExtractSchedule,
+        epix::into(extract_windows, create_surfaces)
+            .set_names({"extract windows", "create_surfaces"})
+            .chain()
     );
-    app.add_systems(
+    render_app.add_systems(
         epix::Prepare, epix::into(prepare_windows).set_name("prepare windows")
     );
     if (handle_present) {
-        app.add_systems(
+        render_app.add_systems(
             epix::PostRender,
             epix::into(present_windows).set_name("present windows")
         );
@@ -66,21 +67,21 @@ EPIX_API void epix::render::window::extract_windows(
             extracted_windows->primary = entity;
         }
 
-        auto [new_width, new_height] = window.physical_size();
+        auto [new_width, new_height] = window.size;
         new_width                    = std::max(new_width, 1);
         new_height                   = std::max(new_height, 1);
 
         if (!extracted_windows->windows.contains(entity) &&
-            glfw_windows->windows.contains(entity)) {
+            glfw_windows->contains(entity)) {
             extracted_windows->windows.emplace(
                 entity,
                 ExtractedWindow{
                     .entity          = entity,
-                    .handle          = glfw_windows->windows.at(entity),
+                    .handle          = glfw_windows->at(entity).first,
                     .physical_width  = new_width,
                     .physical_height = new_height,
                     .present_mode    = window.present_mode,
-                    .alpha_mode      = window.alpha_mode,
+                    .alpha_mode      = window.composite_alpha_mode,
                     .device          = *device,
                 }
             );

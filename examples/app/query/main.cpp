@@ -82,7 +82,7 @@ void check_entities(
 
 // Update systems
 void update_positions(
-    Query<Get<Position, const Velocity>> query,
+    Query<Get<Mut<Position>, const Velocity>> query,
     Local<std::optional<std::chrono::steady_clock::time_point>> timer
 ) {
     spdlog::info("Updating positions...");
@@ -147,7 +147,7 @@ void random_assign_vel(
 }
 
 void random_decrease_health(
-    Commands command, Query<Get<Entity, Health>> query
+    Commands command, Query<Get<Entity, Mut<Health>>> query
 ) {
     static thread_local std::mt19937 rng{std::random_device{}()};
     static thread_local std::uniform_int_distribution<int> dist(1, 100);
@@ -202,13 +202,14 @@ int main() {
     app.add_plugin(LoopPlugin{})
         .add_systems(Startup, into(spawn_entities, check_entities).chain())
         .add_systems(
-            Update,
-            into(into(
-                update_positions, random_assign_vel, despawn_to_far,
-                check_entities
-            )
-                .chain(),
-            into(assign_health, random_decrease_health))
+            Update, into(
+                        into(
+                            update_positions, random_assign_vel, despawn_to_far,
+                            check_entities
+                        )
+                            .chain(),
+                        into(assign_health, random_decrease_health)
+                    )
         )
         .add_systems(Update, into(quit));
     app.run();

@@ -8,9 +8,11 @@ struct TestT {
 
 struct CustomSystemParam {
     Commands cmd;
-    Query<Get<TestT>> query;
+    Query<Get<Mut<TestT>>> query;
 
-    static CustomSystemParam from_param(Commands cmd, Query<Get<TestT>> query) {
+    static CustomSystemParam from_param(
+        Commands cmd, Query<Get<Mut<TestT>>> query
+    ) {
         return CustomSystemParam{cmd, query};
     }
 };
@@ -47,11 +49,11 @@ void custom_system2(CustomParam2 param) {
 }
 
 struct CustomParam3 {
-    Extract<Query<Get<TestT>>> query;
+    Extract<Query<Get<Mut<TestT>>>> query;
     ResMut<TestT> res;
 
     static CustomParam3 from_param(
-        Extract<Query<Get<TestT>>> query, ResMut<TestT> res
+        Extract<Query<Get<Mut<TestT>>>> query, ResMut<TestT> res
     ) {
         return CustomParam3{query, std::move(res)};
     }

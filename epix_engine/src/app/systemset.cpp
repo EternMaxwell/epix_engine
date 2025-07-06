@@ -8,6 +8,9 @@ EPIX_API SystemSetConfig& SystemSetConfig::after_internal(
     if (!in_sets.contains(label) && !succeeds.contains(label)) {
         depends.emplace(label);
     }
+    for (auto&& sub_config : sub_configs) {
+        sub_config.after_internal(label);
+    }
     return *this;
 }
 EPIX_API SystemSetConfig& SystemSetConfig::before_internal(
@@ -16,6 +19,9 @@ EPIX_API SystemSetConfig& SystemSetConfig::before_internal(
     if (!in_sets.contains(label) && !depends.contains(label)) {
         succeeds.emplace(label);
     }
+    for (auto&& sub_config : sub_configs) {
+        sub_config.before_internal(label);
+    }
     return *this;
 }
 EPIX_API SystemSetConfig& SystemSetConfig::in_set_internal(
@@ -23,6 +29,9 @@ EPIX_API SystemSetConfig& SystemSetConfig::in_set_internal(
 ) noexcept {
     if (!depends.contains(label) && !succeeds.contains(label)) {
         in_sets.emplace(label);
+    }
+    for (auto&& sub_config : sub_configs) {
+        sub_config.in_set_internal(label);
     }
     return *this;
 }
@@ -42,7 +51,7 @@ EPIX_API SystemSetConfig& SystemSetConfig::chain() noexcept {
     }
     return *this;
 }
-EPIX_API bool SystemSet::conflict_with(const System& system) noexcept {
+EPIX_API bool SystemSet::conflict_with(const SystemSet& system) noexcept {
     auto& system_label = system.label;
     if (auto&& it = conflicts.find(system_label); it != conflicts.end()) {
         return it->second;
@@ -53,7 +62,9 @@ EPIX_API bool SystemSet::conflict_with(const System& system) noexcept {
     }
     bool result = false;
     for (auto&& condition : conditions) {
-        if (condition.conflict_with(*system.system)) {
+        if (SystemMeta::conflict(
+                condition->get_meta(), (*system.system).get_meta()
+            )) {
             result = true;
             break;
         }
@@ -67,11 +78,43 @@ EPIX_API bool SystemSet::conflict_with(const System& system) noexcept {
                 0, max_conflict_cache - 1
             );
             std::advance(it, dist(rng));
-            conflicts_dyn.erase(it);
+            conflicts_dyn.erase(it->first);
         }
         conflicts_dyn.emplace(system_label, result);
     } else {
         conflicts.emplace(system_label, result);
     }
     return false;
+}
+
+EPIX_API SystemSetConfig& SystemSetConfig::set_executor(
+    const ExecutorLabel& executor
+) noexcept {
+    this->executor = executor;
+    for (size_t i = 0; i < sub_configs.size(); i++) {
+        sub_configs[i].set_executor(executor);
+    }
+    return *this;
+}
+EPIX_API SystemSetConfig& SystemSetConfig::set_name(const std::string& name
+) noexcept {
+    this->name = name;
+    for (size_t i = 0; i < sub_configs.size(); i++) {
+        sub_configs[i].set_name(std::format("{}#{}", name, i));
+    }
+    return *this;
+}
+EPIX_API SystemSetConfig& SystemSetConfig::set_name(
+    size_t index, const std::string& name
+) noexcept {
+    sub_configs[index].set_name(name);
+    return *this;
+}
+EPIX_API SystemSetConfig& SystemSetConfig::set_names(
+    epix::util::ArrayProxy<std::string> names
+) noexcept {
+    for (size_t i = 0; i < sub_configs.size() && i < names.size(); i++) {
+        sub_configs[i].set_name(*(names.begin() + i));
+    }
+    return *this;
 }

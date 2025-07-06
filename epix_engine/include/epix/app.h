@@ -19,13 +19,15 @@ using app::Label;
 
 using app::World;
 
-using app::MainWorld;
-using app::RenderWorld;
+using app::Main;
 
 using app::Schedule;
 using app::Schedules;
 
-using app::UntypedRes;
+using app::IntoSystem;
+using app::RunState;
+using app::RunSystemError;
+using RunSystemConfig = app::RunState::RunSystemConfig;
 
 using app::App;
 using app::AppCreateInfo;
@@ -46,6 +48,7 @@ using app::ExecutorType;
 
 using app::Get;
 using app::Has;
+using app::Mut;
 using app::Opt;
 
 using app::Filter;
@@ -70,7 +73,7 @@ using app::Local;
 using app::LoopPlugin;
 
 using app::Exit;
-using app::Extraction;
+using app::ExtractSchedule;
 using app::First;
 using app::Last;
 using app::OnChange;

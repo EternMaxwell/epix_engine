@@ -4,7 +4,6 @@
 #include "window.h"
 
 namespace epix::window {
-struct PrimaryWindow {};
 EPIX_API void exit_on_all_closed(
     EventWriter<AppExit>& exit_writer,
     Local<entt::dense_set<Entity>> still_alive,

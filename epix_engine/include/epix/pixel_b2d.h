@@ -2,7 +2,7 @@
 
 #include <box2d/box2d.h>
 
-#include <earcut.hpp>
+#include <mapbox/earcut.hpp>
 #include <glm/glm.hpp>
 
 #include "epix/utils/grid.h"

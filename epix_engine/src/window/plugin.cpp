@@ -24,15 +24,14 @@ EPIX_API void WindowPlugin::build(epix::App& app) {
     app.insert_resource<Focus>(Focus{std::nullopt});
 
     if (primary_window) {
-        auto window = app.world(epix::app::MainWorld)
-                          .spawn(primary_window.value(), PrimaryWindow{});
-        if (auto focus =
-                app.world(epix::app::MainWorld).get_resource<Focus>()) {
+        auto window = app.spawn(primary_window.value(), PrimaryWindow{});
+        if (auto focus = app.get_resource<Focus>()) {
             focus->focus = window;
             app.add_systems(
                 PreUpdate,
                 into([](ResMut<Focus> focus, Local<Focus> last,
-                        Query<Get<Entity, Window>> query, Local<int> frame) {
+                        Query<Get<Entity, Mut<Window>>> query,
+                        Local<int> frame) {
                     if (focus->focus !=
                         last->focus) {  // force the focused window to be the
                                         // one that is focused
@@ -96,7 +95,7 @@ EPIX_API void epix::window::print_events(
     Query<Get<window::Window>> windows
 ) {
     for (auto&& [id, width, height] : resized.read()) {
-        auto&& window_t = windows.get(id);
+        auto&& window_t = windows.try_get(id);
         if (window_t) {
             auto&& [window] = *window_t;
             spdlog::info(
@@ -109,7 +108,7 @@ EPIX_API void epix::window::print_events(
         }
     }
     for (auto&& [id, move] : moved.read()) {
-        auto&& window_t = windows.get(id);
+        auto&& window_t = windows.try_get(id);
         auto&& [x, y]   = move;
         if (window_t) {
             auto&& [window] = *window_t;
@@ -119,7 +118,7 @@ EPIX_API void epix::window::print_events(
         }
     }
     for (auto&& [id] : created.read()) {
-        auto&& window_t = windows.get(id);
+        auto&& window_t = windows.try_get(id);
         if (window_t) {
             auto&& [window] = *window_t;
             spdlog::info("Window {} created", window.title);
@@ -128,7 +127,7 @@ EPIX_API void epix::window::print_events(
         }
     }
     for (auto&& [id] : closed.read()) {
-        auto&& window_t = windows.get(id);
+        auto&& window_t = windows.try_get(id);
         if (window_t) {
             auto&& [window] = *window_t;
             spdlog::info("Window {} closed", window.title);
@@ -137,7 +136,7 @@ EPIX_API void epix::window::print_events(
         }
     }
     for (auto&& [id] : close_requested.read()) {
-        auto&& window_t = windows.get(id);
+        auto&& window_t = windows.try_get(id);
         if (window_t) {
             auto&& [window] = *window_t;
             spdlog::info("Window {} close requested", window.title);
@@ -146,7 +145,7 @@ EPIX_API void epix::window::print_events(
         }
     }
     for (auto&& [id] : destroyed.read()) {
-        auto&& window_t = windows.get(id);
+        auto&& window_t = windows.try_get(id);
         if (window_t) {
             auto&& [window] = *window_t;
             spdlog::info("Window {} destroyed", window.title);
@@ -155,7 +154,7 @@ EPIX_API void epix::window::print_events(
         }
     }
     for (auto&& [id, pos, delta] : cursor_moved.read()) {
-        auto&& window_t = windows.get(id);
+        auto&& window_t = windows.try_get(id);
         auto&& [x, y]   = pos;
         auto&& [dx, dy] = delta;
         if (window_t) {
@@ -172,7 +171,7 @@ EPIX_API void epix::window::print_events(
         }
     }
     for (auto&& [id, enter] : cursor_entered.read()) {
-        auto&& window_t = windows.get(id);
+        auto&& window_t = windows.try_get(id);
         if (window_t) {
             auto&& [window] = *window_t;
             spdlog::info("Window {} cursor entered {}", window.title, enter);
@@ -181,7 +180,7 @@ EPIX_API void epix::window::print_events(
         }
     }
     for (auto&& [id, paths] : file_drop.read()) {
-        auto&& window_t = windows.get(id);
+        auto&& window_t = windows.try_get(id);
         if (window_t) {
             auto&& [window] = *window_t;
             spdlog::info(
@@ -194,7 +193,7 @@ EPIX_API void epix::window::print_events(
         }
     }
     for (auto&& [id, character] : received_character.read()) {
-        auto&& window_t = windows.get(id);
+        auto&& window_t = windows.try_get(id);
         uint32_t code   = character;
         if (window_t) {
             auto&& [window] = *window_t;
@@ -204,7 +203,7 @@ EPIX_API void epix::window::print_events(
         }
     }
     for (auto&& [id, focused] : window_focused.read()) {
-        auto&& window_t = windows.get(id);
+        auto&& window_t = windows.try_get(id);
         if (window_t) {
             auto&& [window] = *window_t;
             spdlog::info("Window {} focused {}", window.title, focused);
