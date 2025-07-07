@@ -411,14 +411,14 @@ EPIX_API std::expected<void, RunScheduleError> Schedule::run_internal(
                 if (!sys_ret) {
                     std::visit(
                         epix::util::visitor{
-                            [&](const NotInitializedError& e) {
+                            [&](NotInitializedError& e) {
                                 spdlog::error(
                                     "System not initialized. System:{}, "
                                     "required arg states:{}",
                                     info.label.name(), e.needed_state.name()
                                 );
                             },
-                            [&](const UpdateStateFailedError& e) {
+                            [&](UpdateStateFailedError& e) {
                                 spdlog::error(
                                     "Update args states failed. System:{}, "
                                     "failed args:{}",
@@ -446,7 +446,13 @@ EPIX_API std::expected<void, RunScheduleError> Schedule::run_internal(
                                     );
                                 }
                             },
-                            [](auto&&) {}
+                            [&](auto&&) {
+                                spdlog::error(
+                                    "Unknown error type in system return. "
+                                    "System:{}, Schedule:{}",
+                                    info.label.name(), data->label.name()
+                                );
+                            }
                         },
                         sys_ret.error()
                     );

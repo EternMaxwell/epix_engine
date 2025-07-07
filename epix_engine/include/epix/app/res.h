@@ -88,7 +88,7 @@ struct SystemParam<std::optional<Res<T>>> {
     }
     bool update(State& state, World& world, const SystemMeta&) {
         state = Res<T>::from_world(world);
-        return state.has_value();
+        return true;
     }
     std::optional<Res<T>>& get(State& state) { return state; }
 };

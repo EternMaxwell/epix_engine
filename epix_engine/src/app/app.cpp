@@ -412,6 +412,7 @@ EPIX_API std::future<void> App::extract(App& target) {
             schedule->config.enable_tracy = config.enable_tracy;
             schedule->run(*run_state).wait();
         }
+        run_state->apply_commands();
         run_state->run_system(
             reset_target.get(),
             RunState::RunSystemConfig{.executor = ExecutorType::SingleThread}
@@ -446,6 +447,7 @@ EPIX_API std::future<void> App::update() {
             schedule->config.enable_tracy = config.enable_tracy;
             schedule->run(*run_state).wait();
         }
+        run_state->apply_commands();
         run_state->run_system(
             reset_target.get(),
             RunState::RunSystemConfig{.executor = ExecutorType::SingleThread}
@@ -480,6 +482,7 @@ EPIX_API std::future<void> App::exit() {
             schedule->config.enable_tracy = config.enable_tracy;
             schedule->run(*run_state).wait();
         }
+        run_state->apply_commands();
         run_state->run_system(
             reset_target.get(),
             RunState::RunSystemConfig{.executor = ExecutorType::SingleThread}
