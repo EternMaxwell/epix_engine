@@ -7,7 +7,6 @@
 #include <optional>
 #include <tuple>
 #include <type_traits>
-#include <typeindex>
 #include <utility>
 
 #include "world.h"
@@ -103,13 +102,13 @@ struct Local {
 struct Access {
     bool commands = false;
     struct queries_t {
-        entt::dense_set<std::type_index> component_reads;
-        entt::dense_set<std::type_index> component_writes;
-        entt::dense_set<std::type_index> component_excludes;
+        entt::dense_set<meta::type_index> component_reads;
+        entt::dense_set<meta::type_index> component_writes;
+        entt::dense_set<meta::type_index> component_excludes;
     };
     std::vector<queries_t> queries;
-    entt::dense_set<std::type_index> resource_reads;
-    entt::dense_set<std::type_index> resource_writes;
+    entt::dense_set<meta::type_index> resource_reads;
+    entt::dense_set<meta::type_index> resource_writes;
     bool reads_all  = false;
     bool writes_all = false;
 };

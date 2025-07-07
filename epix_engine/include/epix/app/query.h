@@ -366,20 +366,20 @@ struct SystemParam<Q> {
             // if type is const, add to reads, otherwise add to writes
             ((std::is_const_v<std::tuple_element_t<I, typename Q::access_type>>
                   ? qs.component_reads.emplace(
-                        typeid(std::decay_t<std::tuple_element_t<
-                                   I, typename Q::access_type>>)
+                        meta::type_id<std::decay_t<
+                            std::tuple_element_t<I, typename Q::access_type>>>{}
                     )
                   : qs.component_writes.emplace(
-                        typeid(std::decay_t<std::tuple_element_t<
-                                   I, typename Q::access_type>>)
+                        meta::type_id<std::decay_t<
+                            std::tuple_element_t<I, typename Q::access_type>>>{}
                     )),
              ...);
         }(std::make_index_sequence<
             std::tuple_size<typename Q::access_type>::value>{});
         [&]<size_t... I>(std::index_sequence<I...>) {
             (qs.component_excludes.emplace(
-                 typeid(std::decay_t<
-                        std::tuple_element_t<I, typename Q::must_exclude>>)
+                 meta::type_id<std::decay_t<
+                     std::tuple_element_t<I, typename Q::must_exclude>>>{}
              ),
              ...);
         }(std::make_index_sequence<

@@ -19,14 +19,15 @@ namespace epix::app {
 struct SystemSetLabel : public Label {
     template <typename T>
     SystemSetLabel(T t) {
-        set_type(typeid(T));
+        set_type(meta::type_id<T>{});
         if constexpr (std::is_enum_v<T>) {
             set_index(static_cast<size_t>(t));
         }
     }
     template <typename... Args>
-    SystemSetLabel(void (*func)(Args...)) : Label(typeid(func), (size_t)func) {}
-    SystemSetLabel() noexcept : Label(typeid(void), 0) {}
+    SystemSetLabel(void (*func)(Args...))
+        : Label(meta::type_id<decltype(func)>{}, (size_t)func) {}
+    SystemSetLabel() noexcept : Label(meta::type_id<void>{}, 0) {}
     // using SystemLabel::operator==;
     // using SystemLabel::operator!=;
 };

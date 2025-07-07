@@ -6,7 +6,6 @@
 #include <memory>
 #include <optional>
 #include <shared_mutex>
-#include <typeindex>
 
 #include "entity.h"
 #include "epix/common.h"

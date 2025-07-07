@@ -65,7 +65,7 @@ template <typename T>
 struct SystemParam<Res<T>> {
     using State = std::optional<Res<T>>;
     State init(SystemMeta& meta) {
-        meta.access.resource_reads.emplace(typeid(std::decay_t<T>));
+        meta.access.resource_reads.emplace(meta::type_id<std::decay_t<T>>{});
         return std::nullopt;
     }
     bool update(State& state, World& world, const SystemMeta&) {
@@ -83,7 +83,7 @@ template <typename T>
 struct SystemParam<std::optional<Res<T>>> {
     using State = std::optional<Res<T>>;
     State init(SystemMeta& meta) {
-        meta.access.resource_reads.emplace(typeid(std::decay_t<T>));
+        meta.access.resource_reads.emplace(meta::type_id<std::decay_t<T>>{});
         return std::nullopt;
     }
     bool update(State& state, World& world, const SystemMeta&) {
@@ -96,7 +96,7 @@ template <typename T>
 struct SystemParam<ResMut<T>> {
     using State = std::optional<ResMut<T>>;
     State init(SystemMeta& meta) {
-        meta.access.resource_writes.emplace(typeid(std::decay_t<T>));
+        meta.access.resource_writes.emplace(meta::type_id<std::decay_t<T>>{});
         return std::nullopt;
     }
     bool update(State& state, World& world, const SystemMeta&) {
@@ -114,7 +114,7 @@ template <typename T>
 struct SystemParam<std::optional<ResMut<T>>> {
     using State = std::optional<ResMut<T>>;
     State init(SystemMeta& meta) {
-        meta.access.resource_writes.emplace(typeid(std::decay_t<T>));
+        meta.access.resource_writes.emplace(meta::type_id<std::decay_t<T>>{});
         return std::nullopt;
     }
     bool update(State& state, World& world, const SystemMeta&) {

@@ -69,7 +69,7 @@ EPIX_API bool SystemSet::conflict_with(const SystemSet& system) noexcept {
             break;
         }
     }
-    if (system_label.get_type() == typeid(void)) {
+    if (system_label.get_type() == meta::type_id<void>{}) {
         if (conflicts_dyn.size() >= max_conflict_cache) {
             // erase a random one
             auto it = conflicts_dyn.begin();
