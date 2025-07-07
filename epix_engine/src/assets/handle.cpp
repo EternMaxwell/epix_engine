@@ -39,6 +39,8 @@ EPIX_API UntypedHandle& UntypedHandle::operator=(const UntypedAssetId& id) {
     return *this;
 }
 
+EPIX_API void UntypedHandle::reset() { ref = std::shared_ptr<StrongHandle>(); }
+
 EPIX_API bool UntypedHandle::operator==(const UntypedHandle& other) const {
     return ref == other.ref;
 }
@@ -60,7 +62,7 @@ EPIX_API UntypedHandle UntypedHandle::weak() const {
         ref
     );
 }
-EPIX_API std::type_index UntypedHandle::type() const {
+EPIX_API epix::meta::type_index UntypedHandle::type() const {
     return std::visit(
         epix::util::visitor{
             [](const std::shared_ptr<StrongHandle>& handle) {
@@ -83,7 +85,7 @@ EPIX_API const UntypedAssetId& UntypedHandle::id() const {
 }
 EPIX_API UntypedHandle::operator const UntypedAssetId&() const { return id(); }
 
-EPIX_API HandleProvider::HandleProvider(const std::type_index& type)
+EPIX_API HandleProvider::HandleProvider(const epix::meta::type_index& type)
     : type(type) {
     std::tie(event_sender, event_receiver) =
         epix::utils::async::make_channel<DestructionEvent>();

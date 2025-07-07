@@ -308,7 +308,9 @@ struct Assets {
         return m_assets.insert(index, std::forward<Args>(args)...)
             .or_else(
                 [this](AssetError&& err) -> std::expected<bool, AssetError> {
-                    log_asset_error(err, typeid(*this).name(), "insert_index");
+                    log_asset_error(
+                        err, meta::type_id<Assets<T>>::name, "insert_index"
+                    );
                     return std::unexpected(std::move(err));
                 }
             );
@@ -340,7 +342,7 @@ struct Assets {
     bool release_index(const AssetIndex& index) {
         spdlog::debug(
             "[{}] Releasing asset at {} with gen {}, current ref count is {}",
-            typeid(*this).name(), index.index, index.generation,
+            meta::type_id<Assets<T>>::name, index.index, index.generation,
             m_references[index.index]
         );
         if (contains(AssetId<T>(index))) {
@@ -363,7 +365,7 @@ struct Assets {
         if (contains(AssetId<T>(id))) {
             spdlog::debug(
                 "[{}] Releasing asset at Uuid:{}, current ref count is {}",
-                typeid(*this).name(), uuids::to_string(id),
+                meta::type_id<Assets<T>>::name, uuids::to_string(id),
                 m_mapped_assets_ref.at(id)
             );
             auto& ref = m_mapped_assets_ref.at(id);
@@ -394,7 +396,9 @@ struct Assets {
     }
 
    public:
-    Assets() : m_handle_provider(std::make_shared<HandleProvider>(typeid(T))) {}
+    Assets()
+        : m_handle_provider(std::make_shared<HandleProvider>(meta::type_id<T>{})
+          ) {}
     Assets(const Assets&)            = delete;
     Assets(Assets&&)                 = delete;
     Assets& operator=(const Assets&) = delete;
@@ -421,7 +425,7 @@ struct Assets {
     Handle<T> emplace(Args&&... args) {
         Handle<T> handle = m_handle_provider->reserve().typed<T>();
         spdlog::debug(
-            "[{}] Emplacing asset at {}", typeid(*this).name(),
+            "[{}] Emplacing asset at {}", meta::type_id<Assets<T>>::name,
             handle.id().to_string_short()
         );
         auto res = insert(handle, std::forward<Args>(args)...);
@@ -459,15 +463,15 @@ struct Assets {
                 [this, &id](bool replace) -> std::expected<bool, AssetError> {
                     if (replace) {
                         spdlog::debug(
-                            "[{}] Replaced asset at {}", typeid(*this).name(),
-                            id.to_string_short()
+                            "[{}] Replaced asset at {}",
+                            meta::type_id<Assets<T>>::name, id.to_string_short()
                         );
                         m_cached_events.emplace_back(AssetEvent<T>::modified(id)
                         );
                     } else {
                         spdlog::debug(
-                            "[{}] Added asset at {}", typeid(*this).name(),
-                            id.to_string_short()
+                            "[{}] Added asset at {}",
+                            meta::type_id<Assets<T>>::name, id.to_string_short()
                         );
                         m_cached_events.emplace_back(AssetEvent<T>::added(id));
                         m_cached_events.emplace_back(AssetEvent<T>::modified(id)
@@ -631,7 +635,7 @@ struct Assets {
         )
             .and_then([this, &id](void) -> std::expected<void, AssetError> {
                 spdlog::debug(
-                    "[{}] Removed asset at {}", typeid(*this).name(),
+                    "[{}] Removed asset at {}", meta::type_id<Assets<T>>::name,
                     id.to_string_short()
                 );
                 m_cached_events.emplace_back(AssetEvent<T>::removed(id));
@@ -669,7 +673,7 @@ struct Assets {
         )
             .and_then([this, &id](T&& asset) -> std::expected<T, AssetError> {
                 spdlog::debug(
-                    "[{}] Popped asset at {}", typeid(*this).name(),
+                    "[{}] Popped asset at {}", meta::type_id<Assets<T>>::name,
                     id.to_string_short()
                 );
                 m_cached_events.emplace_back(AssetEvent<T>::removed(id));

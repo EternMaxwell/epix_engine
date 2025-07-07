@@ -40,7 +40,7 @@ struct LoaderInfo {
 };
 struct AssetContainer {
     virtual ~AssetContainer()                                   = default;
-    virtual std::type_index type() const                        = 0;
+    virtual meta::type_index type() const                       = 0;
     virtual void insert(const UntypedAssetId& id, World& world) = 0;
 };
 template <typename T>
@@ -50,7 +50,7 @@ struct AssetContainerImpl : AssetContainer {
     AssetContainerImpl(const T& asset) : asset(asset) {}
     AssetContainerImpl(T&& asset) : asset(std::move(asset)) {}
     ~AssetContainerImpl() override = default;
-    std::type_index type() const override { return typeid(T); }
+    meta::type_index type() const override { return meta::type_id<T>{}; }
     void insert(const UntypedAssetId& id, World& world) override {
         world.resource<Assets<T>>().insert(id.typed<T>(), std::move(asset));
         world.resource<epix::app::Events<AssetEvent<T>>>().push(
@@ -68,7 +68,7 @@ struct AssetContainerImpl<T*> : AssetContainer {
             delete asset;
         }
     }
-    std::type_index type() const override { return typeid(T); }
+    meta::type_index type() const override { return meta::type_id<T>{}; }
     void insert(const UntypedAssetId& id, World& world) override {
         world.resource<Assets<T>>().insert(id.typed<T>(), std::move(*asset));
         world.resource<epix::app::Events<AssetEvent<T>>>().push(
@@ -80,9 +80,9 @@ struct ErasedLoadedAsset {
     std::unique_ptr<AssetContainer> value;
 };
 struct ErasedAssetLoader {
-    virtual ~ErasedAssetLoader()                = default;
-    virtual std::type_index asset_type() const  = 0;
-    virtual std::type_index loader_type() const = 0;
+    virtual ~ErasedAssetLoader()                 = default;
+    virtual meta::type_index asset_type() const  = 0;
+    virtual meta::type_index loader_type() const = 0;
     virtual ErasedLoadedAsset load(
         const std::filesystem::path& path, LoadContext& context
     ) const                                             = 0;
@@ -91,10 +91,10 @@ struct ErasedAssetLoader {
 template <AssetLoader T>
 struct ErasedAssetLoaderImpl : ErasedAssetLoader {
     using loader_info = LoaderInfo<T>;
-    std::type_index asset_type() const override {
-        return typeid(typename loader_info::asset_type);
+    meta::type_index asset_type() const override {
+        return meta::type_id<typename loader_info::asset_type>{};
     }
-    std::type_index loader_type() const override { return typeid(T); }
+    meta::type_index loader_type() const override { return meta::type_id<T>{}; }
     ErasedLoadedAsset load(
         const std::filesystem::path& path, LoadContext& context
     ) const override {
@@ -138,8 +138,12 @@ struct ErasedAssetLoaderFuncImpl : ErasedAssetLoader {
     )
         : func(std::forward<Func>(func)),
           _extensions(extensions.begin(), extensions.end()) {}
-    std::type_index asset_type() const override { return typeid(asset_t); }
-    std::type_index loader_type() const override { return typeid(Func); }
+    meta::type_index asset_type() const override {
+        return meta::type_id<asset_t>{};
+    }
+    meta::type_index loader_type() const override {
+        return meta::type_id<Func>{};
+    }
     ErasedLoadedAsset load(
         const std::filesystem::path& path, LoadContext& context
     ) const override {
@@ -176,10 +180,10 @@ struct AssetInfos {
    private:
     entt::dense_map<
         std::filesystem::path,
-        entt::dense_map<std::type_index, UntypedAssetId>>
+        entt::dense_map<meta::type_index, UntypedAssetId>>
         path_to_ids;
     entt::dense_map<UntypedAssetId, AssetInfo> infos;
-    entt::dense_map<std::type_index, std::shared_ptr<HandleProvider>>
+    entt::dense_map<meta::type_index, std::shared_ptr<HandleProvider>>
         handle_providers;
 
     friend struct AssetServer;  // Allow AssetServer to access private members
@@ -189,22 +193,22 @@ struct AssetInfos {
     EPIX_API AssetInfo* get_info(const UntypedAssetId& id);
     EPIX_API std::optional<UntypedHandle> get_or_create_handle_internal(
         const std::filesystem::path& path,
-        const std::optional<std::type_index>& type,
+        const std::optional<meta::type_index>& type,
         bool force_new = false
     );
     EPIX_API std::optional<UntypedHandle> get_or_create_handle_untyped(
         const std::filesystem::path& path,
-        const std::type_index& type,
+        const meta::type_index& type,
         bool force_new = false
     );
     template <typename T>
     std::optional<Handle<T>> get_or_create_handle(
         const std::filesystem::path& path, bool force_new = false
     ) {
-        auto type   = std::type_index(typeid(T));
+        auto type   = meta::type_id<T>{};
         auto handle = get_or_create_handle_internal(path, type, force_new);
         if (handle) {
-            return handle->try_typed<T>();
+            return handle->template try_typed<T>();
         }
         return std::nullopt;
     }
@@ -222,15 +226,15 @@ struct AssetInfos {
 struct AssetLoaders {
    private:
     std::vector<std::unique_ptr<ErasedAssetLoader>> loaders;
-    entt::dense_map<std::type_index, std::vector<uint32_t>> type_to_loaders;
+    entt::dense_map<meta::type_index, std::vector<uint32_t>> type_to_loaders;
     entt::dense_map<std::string, std::vector<uint32_t>> ext_to_loaders;
 
    public:
     EPIX_API const ErasedAssetLoader* get_by_index(uint32_t index) const;
-    EPIX_API const ErasedAssetLoader* get_by_type(const std::type_index& type
+    EPIX_API const ErasedAssetLoader* get_by_type(const meta::type_index& type
     ) const;
     EPIX_API std::vector<const ErasedAssetLoader*> get_multi_by_type(
-        const std::type_index& type
+        const meta::type_index& type
     ) const;
     EPIX_API const ErasedAssetLoader* get_by_extension(
         const std::string_view& ext
@@ -306,7 +310,7 @@ struct AssetServer {
      */
     template <typename T>
     void register_assets(const Assets<T>& assets) {
-        auto type = std::type_index(typeid(T));
+        auto type = meta::type_id<T>{};
         if (asset_infos.handle_providers.contains(type)) {
             return;  // already registered
         }
@@ -351,7 +355,7 @@ struct AssetServer {
 template <typename T>
     requires std::move_constructible<T> && std::is_move_assignable_v<T>
 void Assets<T>::handle_events_internal(const AssetServer* asset_server) {
-    spdlog::trace("[{}] Handling events", typeid(*this).name());
+    spdlog::trace("[{}] Handling events", meta::type_id<T>::name);
     while (
         auto&& opt =
             m_handle_provider->index_allocator.reserved_receiver().try_receive()
@@ -365,6 +369,6 @@ void Assets<T>::handle_events_internal(const AssetServer* asset_server) {
         }
         release(id);
     }
-    spdlog::trace("[{}] Finished handling events", typeid(*this).name());
+    spdlog::trace("[{}] Finished handling events", meta::type_id<T>::name);
 }
 }  // namespace epix::assets

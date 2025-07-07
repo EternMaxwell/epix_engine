@@ -5,7 +5,6 @@
 
 #include <filesystem>
 #include <optional>
-#include <typeindex>
 
 #include "asset_id.h"
 #include "index.h"
@@ -61,15 +60,21 @@ struct Handle {
         return *this;
     }
     Handle& operator=(const std::shared_ptr<StrongHandle>& handle) {
-        if (handle->id.type != typeid(T)) {
+        if (!handle) {
+            // if nullptr is passed, reset the handle
+            ref = std::shared_ptr<StrongHandle>();
+            return *this;
+        }
+        if (handle->id.type != meta::type_id<T>{}) {
             throw std::runtime_error(std::format(
                 "Cannot assign StrongHandle of type {} to Handle of type {}",
-                handle->id.type.name(), typeid(T).name()
+                handle->id.type.name(), meta::type_id<T>::name
             ));
         }
         ref = handle;
         return *this;
     }
+    void reset() { ref = std::shared_ptr<StrongHandle>(); }
 
     bool operator==(const Handle& other) const { return ref == other.ref; }
     bool is_strong() const {
@@ -130,17 +135,19 @@ struct UntypedHandle {
     );
     EPIX_API UntypedHandle& operator=(const UntypedAssetId& id);
 
+    EPIX_API void reset();
+
     EPIX_API bool operator==(const UntypedHandle& other) const;
     EPIX_API bool is_strong() const;
     EPIX_API bool is_weak() const;
-    EPIX_API std::type_index type() const;
+    EPIX_API meta::type_index type() const;
     EPIX_API const UntypedAssetId& id() const;
     EPIX_API operator const UntypedAssetId&() const;
     EPIX_API UntypedHandle weak() const;
 
     template <typename T>
     std::optional<Handle<T>> try_typed() const {
-        if (type() != typeid(T)) {
+        if (type() != meta::type_id<T>{}) {
             return std::nullopt;
         }
         return std::visit(
@@ -165,10 +172,10 @@ struct UntypedHandle {
 };
 template <typename T>
 Handle<T>::Handle(const UntypedHandle& handle) {
-    if (typeid(T) != handle.type()) {
+    if (handle.type() != meta::type_id<T>{}) {
         throw std::runtime_error(std::format(
             "{} cannot be constructed from UntypedHandle of type {}",
-            typeid(T).name(), handle.type().name()
+            meta::type_id<T>::name, handle.type().name()
         ));
     }
     std::visit(
@@ -183,10 +190,10 @@ Handle<T>::Handle(const UntypedHandle& handle) {
 }
 template <typename T>
 Handle<T>::Handle(UntypedHandle&& handle) {
-    if (typeid(T) != handle.type()) {
+    if (handle.type() != meta::type_id<T>{}) {
         throw std::runtime_error(std::format(
             "{} cannot be constructed from UntypedHandle of type {}",
-            typeid(T).name(), handle.type().name()
+            meta::type_id<T>::name, handle.type().name()
         ));
     }
     std::visit(
@@ -201,10 +208,10 @@ Handle<T>::Handle(UntypedHandle&& handle) {
 }
 template <typename T>
 Handle<T>& Handle<T>::operator=(const UntypedHandle& other) {
-    if (typeid(T) != other.type()) {
+    if (other.type() != meta::type_id<T>{}) {
         throw std::runtime_error(std::format(
             "{} cannot be constructed from UntypedHandle of type {}",
-            typeid(T).name(), other.type().name()
+            meta::type_id<T>::name, other.type().name()
         ));
     }
     std::visit(
@@ -220,10 +227,10 @@ Handle<T>& Handle<T>::operator=(const UntypedHandle& other) {
 }
 template <typename T>
 Handle<T>& Handle<T>::operator=(UntypedHandle&& other) {
-    if (typeid(T) != other.type()) {
+    if (other.type() != meta::type_id<T>{}) {
         throw std::runtime_error(std::format(
             "{} cannot be constructed from UntypedHandle of type {}",
-            typeid(T).name(), other.type().name()
+            meta::type_id<T>::name, other.type().name()
         ));
     }
     std::visit(
@@ -242,9 +249,9 @@ struct HandleProvider {
     AssetIndexAllocator index_allocator;
     Sender<DestructionEvent> event_sender;
     Receiver<DestructionEvent> event_receiver;
-    std::type_index type;
+    meta::type_index type;
 
-    EPIX_API HandleProvider(const std::type_index& type);
+    EPIX_API HandleProvider(const meta::type_index& type);
     HandleProvider(const HandleProvider&)            = delete;
     HandleProvider(HandleProvider&&)                 = delete;
     HandleProvider& operator=(const HandleProvider&) = delete;

@@ -16,17 +16,18 @@ EPIX_API AssetInfo* AssetInfos::get_info(const UntypedAssetId& id) {
 }
 EPIX_API std::optional<UntypedHandle> AssetInfos::get_or_create_handle_internal(
     const std::filesystem::path& path,
-    const std::optional<std::type_index>& type,
+    const std::optional<epix::meta::type_index>& type,
     bool force_new
 ) {
-    auto&& ids          = path_to_ids[path];
-    auto asset_type_opt = type.or_else([&]() -> std::optional<std::type_index> {
-        // No type provided, get the first type from the ids
-        if (auto it = ids.begin(); it != ids.end()) {
-            return it->first;  // Return the first type found
-        }
-        return std::nullopt;  // No types found
-    });
+    auto&& ids = path_to_ids[path];
+    auto asset_type_opt =
+        type.or_else([&]() -> std::optional<epix::meta::type_index> {
+            // No type provided, get the first type from the ids
+            if (auto it = ids.begin(); it != ids.end()) {
+                return it->first;  // Return the first type found
+            }
+            return std::nullopt;  // No types found
+        });
     if (!asset_type_opt) {
         return std::nullopt;  // No type found, cannot create handle
     }
@@ -80,7 +81,7 @@ EPIX_API std::optional<UntypedHandle> AssetInfos::get_or_create_handle_internal(
 }
 EPIX_API std::optional<UntypedHandle> AssetInfos::get_or_create_handle_untyped(
     const std::filesystem::path& path,
-    const std::type_index& type,
+    const epix::meta::type_index& type,
     bool force_new
 ) {
     return get_or_create_handle_internal(
@@ -122,7 +123,7 @@ EPIX_API const ErasedAssetLoader* AssetLoaders::get_by_index(uint32_t index
     return nullptr;
 }
 EPIX_API const ErasedAssetLoader* AssetLoaders::get_by_type(
-    const std::type_index& type
+    const epix::meta::type_index& type
 ) const {
     auto it = type_to_loaders.find(type);
     if (it != type_to_loaders.end() && !it->second.empty()) {
@@ -132,7 +133,7 @@ EPIX_API const ErasedAssetLoader* AssetLoaders::get_by_type(
     return nullptr;
 }
 EPIX_API std::vector<const ErasedAssetLoader*> AssetLoaders::get_multi_by_type(
-    const std::type_index& type
+    const epix::meta::type_index& type
 ) const {  // get all loaders of a specific type
     if (auto it = type_to_loaders.find(type); it != type_to_loaders.end()) {
         return it->second | std::views::transform([this](uint32_t index) {

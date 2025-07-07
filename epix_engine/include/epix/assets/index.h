@@ -1,6 +1,7 @@
 #pragma once
 
 #include <epix/common.h>
+#include <epix/meta/typeid.h>
 #include <epix/utils/async.h>
 #include <spdlog/spdlog.h>
 

@@ -3,8 +3,6 @@
 #include <epix/utils/core.h>
 #include <uuid.h>
 
-#include <typeindex>
-
 #include "index.h"
 
 namespace epix::assets {
@@ -26,7 +24,7 @@ struct AssetId : public std::variant<AssetIndex, uuids::uuid> {
 
     std::string to_string() const {
         return std::format(
-            "AssetId<{}>({})", typeid(T).name(),
+            "AssetId<{}>({})", meta::type_id<T>::name,
             std::visit(
                 epix::util::visitor{
                     [](const AssetIndex& index) {
@@ -66,12 +64,12 @@ inline const uuids::uuid AssetId<T>::INVALID_UUID =
 
 struct UntypedAssetId {
     std::variant<AssetIndex, uuids::uuid> id;
-    std::type_index type;
+    meta::type_index type;
 
     template <typename T>
-    UntypedAssetId(const AssetId<T>& id) : id(id), type(typeid(T)) {}
+    UntypedAssetId(const AssetId<T>& id) : id(id), type(meta::type_id<T>{}) {}
     template <typename... Args>
-    UntypedAssetId(const std::type_index& type, Args&&... args)
+    UntypedAssetId(const meta::type_index& type, Args&&... args)
         : id(std::forward<Args>(args)...), type(type) {}
 
     template <typename T>
@@ -80,7 +78,7 @@ struct UntypedAssetId {
     }
     template <typename T>
     std::optional<AssetId<T>> try_typed() const {
-        if (type != typeid(T)) {
+        if (type != meta::type_id<T>{}) {
             return std::nullopt;
         }
         return std::make_optional<AssetId<T>>(id);
@@ -97,7 +95,7 @@ struct UntypedAssetId {
 
 template <typename T>
 bool AssetId<T>::operator==(const UntypedAssetId& other) const {
-    return other.id == *this && other.type == typeid(T);
+    return other.id == *this && other.type == meta::type_id<T>{};
 }
 
 struct InternalAssetId : std::variant<AssetIndex, uuids::uuid> {
@@ -108,7 +106,7 @@ struct InternalAssetId : std::variant<AssetIndex, uuids::uuid> {
     InternalAssetId(const UntypedAssetId& id)
         : std::variant<AssetIndex, uuids::uuid>(id.id) {}
 
-    UntypedAssetId untyped(const std::type_index& type) const {
+    UntypedAssetId untyped(const meta::type_index& type) const {
         return UntypedAssetId(type, *this);
     }
     template <typename T>
@@ -154,7 +152,7 @@ struct formatter<epix::assets::AssetId<T>> {
     template <typename FormatContext>
     auto format(const epix::assets::AssetId<T>& id, FormatContext& ctx) const {
         return format_to(
-            ctx.out(), "AssetId<{}>({})", typeid(T).name(),
+            ctx.out(), "AssetId<{}>({})", epix::meta::type_id<T>::name,
             [&id]() -> std::string {
                 if (std::holds_alternative<epix::assets::AssetIndex>(id)) {
                     auto& index = std::get<epix::assets::AssetIndex>(id);

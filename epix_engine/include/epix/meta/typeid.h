@@ -44,7 +44,10 @@ struct type_index {
     inline bool operator==(const type_index& other) const noexcept {
         return value == other.value;
     }
-    std::string_view name() const noexcept { return value; }
+    inline size_t hash_code() const noexcept {
+        return std::hash<std::string_view>()(value);
+    }
+    inline std::string_view name() const noexcept { return value; }
 };
 }  // namespace epix::meta
 
@@ -52,6 +55,6 @@ template <>
 struct std::hash<epix::meta::type_index> {
     inline size_t operator()(const epix::meta::type_index& index
     ) const noexcept {
-        return std::hash<std::string_view>()(index.value);
+        return index.hash_code();
     }
 };
