@@ -20,6 +20,11 @@ struct State {
    public:
     State() : m_state() {}
     State(T state) : m_state(state) {}
+    State(const State&)            = delete;
+    State(State&&)                 = default;
+    State& operator=(const State&) = delete;
+    State& operator=(State&&)      = default;
+    ~State()                       = default;
     operator T() const { return m_state; }
     bool operator==(T state) const { return m_state == state; }
     bool operator!=(T state) const { return m_state != state; }

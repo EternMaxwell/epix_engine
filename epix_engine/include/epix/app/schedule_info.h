@@ -25,14 +25,6 @@ inline struct PostUpdateT {
 } PostUpdate;
 inline struct LastT {
 } Last;
-inline struct PrepareT {
-} Prepare;
-inline struct PreRenderT {
-} PreRender;
-inline struct RenderT {
-} Render;
-inline struct PostRenderT {
-} PostRender;
 inline struct PreExitT {
 } PreExit;
 inline struct ExitT {
@@ -45,16 +37,15 @@ enum StateTransitionSet {
     Transit,
     Callback,
 };
-inline struct ExtractScheduleT {
-} ExtractSchedule;
 inline struct OnEnterT {
     template <typename T>
-    ScheduleInfo operator()(T&& state) {
+        requires std::is_enum_v<T>
+    ScheduleInfo operator()(T state) {
         ScheduleInfo info(StateTransition);
         info.transforms.emplace_back([state](SystemSetConfig& info) {
             info.run_if([state](Res<State<T>> cur, Res<NextState<T>> next) {
-                return ((cur == state) && cur->is_just_created()) ||
-                       ((cur != state) && (next == state));
+                return ((*cur == state) && cur->is_just_created()) ||
+                       ((*cur != state) && (*next == state));
             });
             info.in_set(StateTransitionSet::Callback);
         });
@@ -63,11 +54,12 @@ inline struct OnEnterT {
 } OnEnter;
 inline struct OnExitT {
     template <typename T>
-    ScheduleInfo operator()(T&& state) {
+        requires std::is_enum_v<T>
+    ScheduleInfo operator()(T state) {
         ScheduleInfo info(StateTransition);
         info.transforms.emplace_back([state](SystemSetConfig& info) {
             info.run_if([state](Res<State<T>> cur, Res<NextState<T>> next) {
-                return (cur == state) && (next != state);
+                return (*cur == state) && (*next != state);
             });
             info.in_set(StateTransitionSet::Callback);
         });
@@ -76,11 +68,11 @@ inline struct OnExitT {
 } OnExit;
 inline struct OnChangeT {
     template <typename T>
-    ScheduleInfo operator()(T&& state) {
+    ScheduleInfo operator()(T state = T{}) {
         ScheduleInfo info(StateTransition);
-        info.transforms.emplace_back([state](SystemSetConfig& info) {
+        info.transforms.emplace_back([](SystemSetConfig& info) {
             info.run_if([](Res<State<T>> cur, Res<NextState<T>> next) {
-                return cur != next;
+                return *cur != *next;
             });
             info.in_set(StateTransitionSet::Callback);
         });

@@ -1,17 +1,18 @@
+#include "epix/render/common.h"
 #include "epix/render/window.h"
 
 using namespace epix::render::window;
 
-EPIX_API void ExtractedWindow::set_swapchain_texture(
-    vk::ImageView view, vk::Image image, vk::Format format
-) {
+EPIX_API void ExtractedWindow::set_swapchain_texture(vk::ImageView view,
+                                                     vk::Image image,
+                                                     vk::Format format) {
     swapchain_texture        = image;
     swapchain_texture_format = format;
     swapchain_texture_view   = view;
 }
 
-EPIX_API void epix::render::window::WindowSurfaces::remove(const Entity& entity
-) {
+EPIX_API void epix::render::window::WindowSurfaces::remove(
+    const Entity& entity) {
     auto it = surfaces.find(entity);
     if (it != surfaces.end()) {
         auto& data = it->second;
@@ -32,23 +33,23 @@ EPIX_API void epix::render::window::WindowSurfaces::remove(const Entity& entity
 }
 
 EPIX_API void WindowRenderPlugin::build(epix::App& app) {
-    auto& render_app = app.sub_app(epix::Render);
+    auto& render_app = app.sub_app(epix::render::Render);
     render_app.insert_resource(ExtractedWindows{});
     render_app.insert_resource(WindowSurfaces{});
     render_app.add_systems(
-        epix::ExtractSchedule,
+        epix::render::ExtractSchedule,
         epix::into(extract_windows, create_surfaces)
             .set_names({"extract windows", "create_surfaces"})
-            .chain()
-    );
-    render_app.add_systems(
-        epix::Prepare, epix::into(prepare_windows).set_name("prepare windows")
-    );
+            .chain());
+    render_app.add_systems(epix::render::Render,
+                           epix::into(prepare_windows)
+                               .set_name("prepare windows")
+                               .in_set(epix::render::RenderSet::PostExtract));
     if (handle_present) {
-        render_app.add_systems(
-            epix::PostRender,
-            epix::into(present_windows).set_name("present windows")
-        );
+        render_app.add_systems(epix::render::Render,
+                               epix::into(present_windows)
+                                   .set_name("present windows")
+                                   .after(epix::render::RenderSet::Cleanup));
     }
 }
 
@@ -60,8 +61,7 @@ EPIX_API void epix::render::window::extract_windows(
         Get<Entity, epix::window::Window, Has<epix::window::PrimaryWindow>>>>
         windows,
     Extract<Res<glfw::GLFWwindows>> glfw_windows,
-    ResMut<WindowSurfaces> window_surfaces
-) {
+    ResMut<WindowSurfaces> window_surfaces) {
     for (auto&& [entity, window, primary] : windows.iter()) {
         if (primary) {
             extracted_windows->primary = entity;
@@ -74,17 +74,15 @@ EPIX_API void epix::render::window::extract_windows(
         if (!extracted_windows->windows.contains(entity) &&
             glfw_windows->contains(entity)) {
             extracted_windows->windows.emplace(
-                entity,
-                ExtractedWindow{
-                    .entity          = entity,
-                    .handle          = glfw_windows->at(entity).first,
-                    .physical_width  = new_width,
-                    .physical_height = new_height,
-                    .present_mode    = window.present_mode,
-                    .alpha_mode      = window.composite_alpha_mode,
-                    .device          = *device,
-                }
-            );
+                entity, ExtractedWindow{
+                            .entity          = entity,
+                            .handle          = glfw_windows->at(entity).first,
+                            .physical_width  = new_width,
+                            .physical_height = new_height,
+                            .present_mode    = window.present_mode,
+                            .alpha_mode      = window.composite_alpha_mode,
+                            .device          = *device,
+                        });
         }
 
         auto& extracted_window = extracted_windows->windows.at(entity);
@@ -124,22 +122,19 @@ EPIX_API void epix::render::window::create_surfaces(
     Res<vk::Device> device,
     Res<vk::Queue> queue,
     Res<CommandPools> command_pools,
-    Local<vk::CommandBuffer> pcmd_buffer
-) {
+    Local<vk::CommandBuffer> pcmd_buffer) {
     if (!*pcmd_buffer) {
         // If the command buffer is not provided, we allocate one
         *pcmd_buffer = device->allocateCommandBuffers(
             vk::CommandBufferAllocateInfo()
                 .setCommandPool(command_pools->get())
                 .setLevel(vk::CommandBufferLevel::ePrimary)
-                .setCommandBufferCount(1)
-        )[0];
+                .setCommandBufferCount(1))[0];
     }
     auto& cmd_buffer = *pcmd_buffer;
     cmd_buffer.reset();
     cmd_buffer.begin(vk::CommandBufferBeginInfo().setFlags(
-        vk::CommandBufferUsageFlagBits::eOneTimeSubmit
-    ));
+        vk::CommandBufferUsageFlagBits::eOneTimeSubmit));
     bool cmd_empty = true;
     for (auto&& window :
          std::views::all(windows->windows) | std::views::values) {
@@ -154,28 +149,25 @@ EPIX_API void epix::render::window::create_surfaces(
                         presentModes.begin(), presentModes.end(),
                         [](auto&& mode) {
                             return mode == vk::PresentModeKHR::eImmediate;
-                        }
-                    );
+                        });
                     if (res != presentModes.end()) {
                         return vk::PresentModeKHR::eImmediate;
                     }
                     // mailbox
-                    res = std::find_if(
-                        presentModes.begin(), presentModes.end(),
-                        [](auto&& mode) {
-                            return mode == vk::PresentModeKHR::eMailbox;
-                        }
-                    );
+                    res = std::find_if(presentModes.begin(), presentModes.end(),
+                                       [](auto&& mode) {
+                                           return mode ==
+                                                  vk::PresentModeKHR::eMailbox;
+                                       });
                     if (res != presentModes.end()) {
                         return vk::PresentModeKHR::eMailbox;
                     }
                     // fifo
-                    res = std::find_if(
-                        presentModes.begin(), presentModes.end(),
-                        [](auto&& mode) {
-                            return mode == vk::PresentModeKHR::eFifo;
-                        }
-                    );
+                    res = std::find_if(presentModes.begin(), presentModes.end(),
+                                       [](auto&& mode) {
+                                           return mode ==
+                                                  vk::PresentModeKHR::eFifo;
+                                       });
                     if (res != presentModes.end()) {
                         return vk::PresentModeKHR::eFifo;
                     }
@@ -186,18 +178,16 @@ EPIX_API void epix::render::window::create_surfaces(
                         presentModes.begin(), presentModes.end(),
                         [](auto&& mode) {
                             return mode == vk::PresentModeKHR::eFifoRelaxed;
-                        }
-                    );
+                        });
                     if (res != presentModes.end()) {
                         return vk::PresentModeKHR::eFifoRelaxed;
                     }
                     // fifo
-                    res = std::find_if(
-                        presentModes.begin(), presentModes.end(),
-                        [](auto&& mode) {
-                            return mode == vk::PresentModeKHR::eFifo;
-                        }
-                    );
+                    res = std::find_if(presentModes.begin(), presentModes.end(),
+                                       [](auto&& mode) {
+                                           return mode ==
+                                                  vk::PresentModeKHR::eFifo;
+                                       });
                     if (res != presentModes.end()) {
                         return vk::PresentModeKHR::eFifo;
                     }
@@ -223,9 +213,8 @@ EPIX_API void epix::render::window::create_surfaces(
             vk::SurfaceKHR surface;
             {
                 VkSurfaceKHR s;
-                if (glfwCreateWindowSurface(
-                        *instance, window.handle, nullptr, &s
-                    ) != VK_SUCCESS) {
+                if (glfwCreateWindowSurface(*instance, window.handle, nullptr,
+                                            &s) != VK_SUCCESS) {
                     throw std::runtime_error("Failed to create window surface");
                 }
                 surface = s;
@@ -248,9 +237,8 @@ EPIX_API void epix::render::window::create_surfaces(
                     .setMinImageCount(2)  // Double buffering
                     .setImageFormat(format.format)
                     .setImageColorSpace(format.colorSpace)
-                    .setImageExtent(vk::Extent2D(
-                        window.physical_width, window.physical_height
-                    ))
+                    .setImageExtent(vk::Extent2D(window.physical_width,
+                                                 window.physical_height))
                     .setImageArrayLayers(1)
                     .setImageUsage(vk::ImageUsageFlagBits::eColorAttachment)
                     .setPreTransform(vk::SurfaceTransformFlagBitsKHR::eIdentity)
@@ -282,8 +270,7 @@ EPIX_API void epix::render::window::create_surfaces(
                     vk::ImageMemoryBarrier()
                         .setSrcAccessMask(vk::AccessFlagBits::eNone)
                         .setDstAccessMask(
-                            vk::AccessFlagBits::eColorAttachmentWrite
-                        )
+                            vk::AccessFlagBits::eColorAttachmentWrite)
                         .setOldLayout(vk::ImageLayout::eUndefined)
                         .setNewLayout(vk::ImageLayout::ePresentSrcKHR)
                         .setImage(image)
@@ -293,13 +280,11 @@ EPIX_API void epix::render::window::create_surfaces(
                                 .setBaseMipLevel(0)
                                 .setLevelCount(1)
                                 .setBaseArrayLayer(0)
-                                .setLayerCount(1)
-                        );
+                                .setLayerCount(1));
                 cmd_buffer.pipelineBarrier(
                     vk::PipelineStageFlagBits::eTopOfPipe,
                     vk::PipelineStageFlagBits::eColorAttachmentOutput, {}, {},
-                    {}, barrier
-                );
+                    {}, barrier);
                 cmd_empty = false;
             }
             auto actual_count = images.size();
@@ -327,26 +312,21 @@ EPIX_API void epix::render::window::create_surfaces(
                                     .setSubresourceRange(
                                         vk::ImageSubresourceRange()
                                             .setAspectMask(
-                                                vk::ImageAspectFlagBits::eColor
-                                            )
+                                                vk::ImageAspectFlagBits::eColor)
                                             .setBaseMipLevel(0)
                                             .setLevelCount(1)
                                             .setBaseArrayLayer(0)
-                                            .setLayerCount(1)
-                                    )
-                            );
+                                            .setLayerCount(1)));
                         }) |
                         std::ranges::to<std::vector>(),
                     .swapchain_image_fences = std::move(fences),
-                }
-            );
+                });
         }
 
         if (window.size_changed || window.present_mode_changed) {
             auto& surface = window_surfaces->surfaces.at(window.entity);
             surface.config.setImageExtent(
-                vk::Extent2D(window.physical_width, window.physical_height)
-            );
+                vk::Extent2D(window.physical_width, window.physical_height));
             auto presentMode =
                 match_present_mode(surface.surface, window.present_mode);
             surface.config.presentMode = presentMode;
@@ -365,8 +345,7 @@ EPIX_API void epix::render::window::create_surfaces(
                     vk::ImageMemoryBarrier()
                         .setSrcAccessMask(vk::AccessFlagBits::eNone)
                         .setDstAccessMask(
-                            vk::AccessFlagBits::eColorAttachmentWrite
-                        )
+                            vk::AccessFlagBits::eColorAttachmentWrite)
                         .setOldLayout(vk::ImageLayout::eUndefined)
                         .setNewLayout(vk::ImageLayout::ePresentSrcKHR)
                         .setImage(image)
@@ -376,13 +355,11 @@ EPIX_API void epix::render::window::create_surfaces(
                                 .setBaseMipLevel(0)
                                 .setLevelCount(1)
                                 .setBaseArrayLayer(0)
-                                .setLayerCount(1)
-                        );
+                                .setLayerCount(1));
                 cmd_buffer.pipelineBarrier(
                     vk::PipelineStageFlagBits::eTopOfPipe,
                     vk::PipelineStageFlagBits::eColorAttachmentOutput, {}, {},
-                    {}, barrier
-                );
+                    {}, barrier);
                 cmd_empty = false;
             }
             surface.swapchain_image_views =
@@ -396,14 +373,11 @@ EPIX_API void epix::render::window::create_surfaces(
                             .setSubresourceRange(
                                 vk::ImageSubresourceRange()
                                     .setAspectMask(
-                                        vk::ImageAspectFlagBits::eColor
-                                    )
+                                        vk::ImageAspectFlagBits::eColor)
                                     .setBaseMipLevel(0)
                                     .setLevelCount(1)
                                     .setBaseArrayLayer(0)
-                                    .setLayerCount(1)
-                            )
-                    );
+                                    .setLayerCount(1)));
                 }) |
                 std::ranges::to<std::vector>();
         }
@@ -421,8 +395,7 @@ EPIX_API void epix::render::window::prepare_windows(
     ResMut<ExtractedWindows> windows,
     ResMut<WindowSurfaces> window_surfaces,
     Res<vk::Device> device,
-    Res<vk::PhysicalDevice> physical_device
-) {
+    Res<vk::PhysicalDevice> physical_device) {
     std::vector<std::pair<Entity, std::string>> errors;
     for (auto&& window :
          std::views::all(windows->windows) | std::views::values) {
@@ -436,25 +409,20 @@ EPIX_API void epix::render::window::prepare_windows(
             auto res = device->acquireNextImageKHR(
                 surface_data.swapchain, UINT64_MAX, nullptr,
                 surface_data.swapchain_image_fences[surface_data.fence_index],
-                &surface_data.current_image_index
-            );
+                &surface_data.current_image_index);
             auto res2 = device->waitForFences(
                 surface_data.swapchain_image_fences[surface_data.fence_index],
-                true, UINT64_MAX
-            );
+                true, UINT64_MAX);
             device->resetFences(
-                surface_data.swapchain_image_fences[surface_data.fence_index]
-            );
+                surface_data.swapchain_image_fences[surface_data.fence_index]);
             if (res == vk::Result::eSuccess ||
                 res == vk::Result::eSuboptimalKHR) {
-                auto image =
-                    device->getSwapchainImagesKHR(surface_data.swapchain
-                    )[surface_data.current_image_index];
+                auto image = device->getSwapchainImagesKHR(
+                    surface_data.swapchain)[surface_data.current_image_index];
                 auto view = surface_data.swapchain_image_views
                                 [surface_data.current_image_index];
-                window.set_swapchain_texture(
-                    view, image, surface_data.config.imageFormat
-                );
+                window.set_swapchain_texture(view, image,
+                                             surface_data.config.imageFormat);
             } else {
                 errors.emplace_back(window.entity, vk::to_string(res));
             }
@@ -474,8 +442,7 @@ EPIX_API void epix::render::window::prepare_windows(
 }
 
 EPIX_API void epix::render::window::present_windows(
-    ResMut<WindowSurfaces> window_surfaces, Res<vk::Queue> queue
-) {
+    ResMut<WindowSurfaces> window_surfaces, Res<vk::Queue> queue) {
     std::vector<vk::SwapchainKHR> swapchains;
     swapchains.reserve(window_surfaces->surfaces.size());
     std::vector<uint32_t> image_indices;

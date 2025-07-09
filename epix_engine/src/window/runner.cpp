@@ -1,3 +1,4 @@
+#include "epix/render/common.h"
 #include "epix/window.h"
 
 using namespace epix::glfw;
@@ -11,8 +12,7 @@ EPIX_API int GLFWRunner::run(App& app) {
                 return event.code;
             }
             return std::nullopt;
-        }
-    );
+        });
     auto create_windows_system =
         IntoSystem::into_system(GLFWPlugin::create_windows);
     auto update_size_system = IntoSystem::into_system(GLFWPlugin::update_size);
@@ -28,10 +28,9 @@ EPIX_API int GLFWRunner::run(App& app) {
     auto clipboard_set_text_system =
         IntoSystem::into_system(Clipboard::set_text);
     auto clipboard_update_system = IntoSystem::into_system(Clipboard::update);
-    auto update_focus_system =
-        IntoSystem::into_system([](ResMut<window::Focus> focus,
-                                   Local<window::Focus> last,
-                                   ResMut<GLFWwindows> glfw_windows) {
+    auto update_focus_system     = IntoSystem::into_system(
+        [](ResMut<window::Focus> focus, Local<window::Focus> last,
+           ResMut<GLFWwindows> glfw_windows) {
             if (focus->focus != last->focus) {
                 if (auto it = glfw_windows->find(*focus->focus);
                     it != glfw_windows->end()) {
@@ -88,19 +87,18 @@ EPIX_API int GLFWRunner::run(App& app) {
         }
         if (exit_code.has_value()) {
             // should exit app, remove all windows.
-            app.run_system([](Commands& commands,
-                              Query<Get<Entity, Mut<window::Window>>>& windows
-                           ) {
-                for (auto&& [id, window] : windows.iter()) {
-                    commands.entity(id).despawn();
-                }
-            });
-            app.run_system([](World& world) {
-                world.command_queue().apply(world);
-            });
+            app.run_system(
+                [](Commands& commands,
+                   Query<Get<Entity, Mut<window::Window>>>& windows) {
+                    for (auto&& [id, window] : windows.iter()) {
+                        commands.entity(id).despawn();
+                    }
+                });
+            app.run_system(
+                [](World& world) { world.command_queue().apply(world); });
             break;
         }
-        if (auto* render_app = app.get_sub_app(Render)) {
+        if (auto* render_app = app.get_sub_app(render::Render)) {
             render_app->extract(app);
             render_app_future = render_app->update();
         }

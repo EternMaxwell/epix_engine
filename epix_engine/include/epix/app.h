@@ -64,6 +64,9 @@ using app::EntityCommands;
 using app::Res;
 using app::ResMut;
 
+using app::NextState;
+using app::State;
+
 using app::EventReader;
 using app::EventWriter;
 
@@ -73,22 +76,18 @@ using app::Local;
 using app::LoopPlugin;
 
 using app::Exit;
-using app::ExtractSchedule;
+using app::PostExit;
+using app::PreExit;
+
 using app::First;
 using app::Last;
 using app::OnChange;
 using app::OnEnter;
 using app::OnExit;
-using app::PostExit;
-using app::PostRender;
 using app::PostStartup;
 using app::PostUpdate;
-using app::PreExit;
-using app::Prepare;
-using app::PreRender;
 using app::PreStartup;
 using app::PreUpdate;
-using app::Render;
 using app::Startup;
 using app::Update;
 

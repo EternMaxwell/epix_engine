@@ -101,11 +101,9 @@ struct App {
         auto pplugins = m_data->plugins.read();
         auto& plugins = *pplugins;
         auto it       = std::find_if(
-            plugins.begin(), plugins.end(),
-            [](const auto& plugin) {
+            plugins.begin(), plugins.end(), [](const auto& plugin) {
                 return plugin.first == meta::type_index(meta::type_id<T>());
-            }
-        );
+            });
         if (it != plugins.end()) {
             func(*std::static_pointer_cast<T>(it->second));
         }
@@ -143,16 +141,13 @@ struct App {
     EPIX_API App& add_schedule(const ScheduleLabel& label);
     EPIX_API App& main_schedule_order(
         const ScheduleLabel& left,
-        std::optional<ScheduleLabel> right = std::nullopt
-    );
+        std::optional<ScheduleLabel> right = std::nullopt);
     EPIX_API App& exit_schedule_order(
         const ScheduleLabel& left,
-        std::optional<ScheduleLabel> right = std::nullopt
-    );
+        std::optional<ScheduleLabel> right = std::nullopt);
     EPIX_API App& extract_schedule_order(
         const ScheduleLabel& left,
-        std::optional<ScheduleLabel> right = std::nullopt
-    );
+        std::optional<ScheduleLabel> right = std::nullopt);
 
     // Member modify. These modifications does not modify App owned data, but
     // needs valid references of App owned data.
@@ -162,20 +157,17 @@ struct App {
         using type    = std::decay_t<T>;
         auto pplugins = m_data->plugins.write();
         auto& plugins = *pplugins;
-        if (std::find_if(
-                plugins.begin(), plugins.end(),
-                [](const auto& plugin) {
-                    return plugin.first ==
-                           meta::type_index(meta::type_id<type>());
-                }
-            ) != plugins.end()) {
+        if (std::find_if(plugins.begin(), plugins.end(),
+                         [](const auto& plugin) {
+                             return plugin.first ==
+                                    meta::type_index(meta::type_id<type>());
+                         }) != plugins.end()) {
             // plugin already exists, do nothing
             return *this;
         }
         plugins.emplace_back(
             meta::type_index(meta::type_id<type>()),
-            std::make_shared<type>(std::forward<Args>(args)...)
-        );
+            std::make_shared<type>(std::forward<Args>(args)...));
         return *this;
     }
     template <typename T>
@@ -183,20 +175,16 @@ struct App {
         using type    = std::decay_t<T>;
         auto pplugins = m_data->plugins.write();
         auto& plugins = *pplugins;
-        if (std::find_if(
-                plugins.begin(), plugins.end(),
-                [](const auto& plugin) {
-                    return plugin.first ==
-                           meta::type_index(meta::type_id<type>());
-                }
-            ) != plugins.end()) {
+        if (std::find_if(plugins.begin(), plugins.end(),
+                         [](const auto& plugin) {
+                             return plugin.first ==
+                                    meta::type_index(meta::type_id<type>());
+                         }) != plugins.end()) {
             // plugin already exists, do nothing
             return *this;
         }
-        plugins.emplace_back(
-            meta::type_index(meta::type_id<type>()),
-            std::make_shared<type>(std::forward<T>(plugin))
-        );
+        plugins.emplace_back(meta::type_index(meta::type_id<type>()),
+                             std::make_shared<type>(std::forward<T>(plugin)));
         return *this;
     }
     template <typename... Plugins>
@@ -209,11 +197,9 @@ struct App {
         auto pplugins = m_data->plugins.read();
         auto& plugins = *pplugins;
         auto it       = std::find_if(
-            plugins.begin(), plugins.end(),
-            [](const auto& plugin) {
+            plugins.begin(), plugins.end(), [](const auto& plugin) {
                 return plugin.first == meta::type_index(meta::type_id<T>());
-            }
-        );
+            });
         if (it != plugins.end()) {
             return std::static_pointer_cast<T>(it->second);
         }
@@ -225,22 +211,17 @@ struct App {
         return *this;
     }
 
-    EPIX_API App& add_systems(
-        const ScheduleInfo& label, SystemSetConfig&& config
-    );
-    EPIX_API App& add_systems(
-        const ScheduleInfo& label, SystemSetConfig& config
-    );
-    EPIX_API App& configure_sets(
-        const ScheduleLabel& label, const SystemSetConfig& config
-    );
+    EPIX_API App& add_systems(const ScheduleInfo& label,
+                              SystemSetConfig&& config);
+    EPIX_API App& add_systems(const ScheduleInfo& label,
+                              SystemSetConfig& config);
+    EPIX_API App& configure_sets(const ScheduleLabel& label,
+                                 const SystemSetConfig& config);
     EPIX_API App& configure_sets(const SystemSetConfig& config);
-    EPIX_API App& remove_system(
-        const ScheduleLabel& id, const SystemSetLabel& label
-    );
-    EPIX_API App& remove_set(
-        const ScheduleLabel& id, const SystemSetLabel& label
-    );
+    EPIX_API App& remove_system(const ScheduleLabel& id,
+                                const SystemSetLabel& label);
+    EPIX_API App& remove_set(const ScheduleLabel& id,
+                             const SystemSetLabel& label);
     EPIX_API App& remove_set(const SystemSetLabel& label);
 
     template <typename T, typename... Args>
@@ -313,11 +294,10 @@ struct App {
         add_systems(
             StateTransition,
             into([](ResMut<State<type>> state, Res<NextState<type>> next) {
-                *state = *next;
+                *state = (*next).operator type();
             })
-                .set_label(std::format("update State<{}>", typeid(T).name()))
-                .in_set(StateTransitionSet::Transit)
-        );
+                .set_name(std::format("update State<{}>", typeid(T).name()))
+                .in_set(StateTransitionSet::Transit));
         return *this;
     };
 
@@ -331,9 +311,9 @@ struct App {
     template <typename Ret>
     std::expected<Ret, RunSystemError> run_system(BasicSystem<Ret>* system) {
         if (!system) {
-            return std::unexpected(RunSystemError{SystemExceptionError{
-                std::make_exception_ptr(std::runtime_error("System is null"))
-            }});
+            return std::unexpected(
+                RunSystemError{SystemExceptionError{std::make_exception_ptr(
+                    std::runtime_error("System is null"))}});
         }
         auto write = world();
         if (!system->initialized()) {

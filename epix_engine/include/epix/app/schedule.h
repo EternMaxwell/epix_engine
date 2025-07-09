@@ -57,9 +57,9 @@ struct SystemSet {
 
     EPIX_API bool conflict_with(const SystemSet& system) noexcept;
     EPIX_API void detach(const SystemSetLabel& label) noexcept {
-        in_sets.erase(label);
-        depends.erase(label);
-        succeeds.erase(label);
+        built_in_sets.erase(label);
+        built_depends.erase(label);
+        built_succeeds.erase(label);
     };
 };
 struct SystemSetConfig {
@@ -139,25 +139,26 @@ struct SystemSetConfig {
     }
     EPIX_API SystemSetConfig& set_executor(const ExecutorLabel& label) noexcept;
     EPIX_API SystemSetConfig& set_name(const std::string& name) noexcept;
-    EPIX_API SystemSetConfig& set_name(
-        size_t index, const std::string& name
-    ) noexcept;
+    EPIX_API SystemSetConfig& set_name(size_t index,
+                                       const std::string& name) noexcept;
     EPIX_API SystemSetConfig& set_names(
-        epix::util::ArrayProxy<std::string> names
-    ) noexcept;
+        epix::util::ArrayProxy<std::string> names) noexcept;
     EPIX_API SystemSetConfig& chain() noexcept;
 
    private:
-    EPIX_API SystemSetConfig& after_internal(const SystemSetLabel& label
-    ) noexcept;
-    EPIX_API SystemSetConfig& before_internal(const SystemSetLabel& label
-    ) noexcept;
-    EPIX_API SystemSetConfig& in_set_internal(const SystemSetLabel& label
-    ) noexcept;
-    template <typename... Args>
-    SystemSetConfig& run_if_internal(std::function<bool(Args...)> func
-    ) noexcept {
-        conditions.emplace_back(IntoSystem::into_system(func));
+    EPIX_API SystemSetConfig& after_internal(
+        const SystemSetLabel& label) noexcept;
+    EPIX_API SystemSetConfig& before_internal(
+        const SystemSetLabel& label) noexcept;
+    EPIX_API SystemSetConfig& in_set_internal(
+        const SystemSetLabel& label) noexcept;
+    template <typename Func>
+    SystemSetConfig& run_if_internal(Func&& func) noexcept {
+        if (label) {
+            std::unique_ptr<BasicSystem<bool>> cond =
+                IntoSystem::into_unique(std::forward<Func>(func));
+            conditions.emplace_back(std::move(cond));
+        }
         for (auto&& sub_config : sub_configs) {
             sub_config.run_if_internal(func);
         }
@@ -248,7 +249,7 @@ struct ScheduleRunner;
 struct ScheduleData {
     const ScheduleLabel label;
     async::RwLock<entt::dense_map<SystemSetLabel, SystemSet>> system_sets;
-    async::ConQueue<SystemSetLabel> newly_added_sets;
+    async::ConQueue<std::pair<SystemSetLabel, bool>> newly_modified_sets;
     ScheduleCommandQueue command_queue;
 
    public:
@@ -257,7 +258,6 @@ struct ScheduleData {
 // Struct for schedule cache. This is used to accelerate schedule runs.
 struct ScheduleCache {
     struct SystemSetInfo {
-        SystemSetLabel label;
         SystemSet* set;
         std::vector<uint32_t> parents;
         std::vector<uint32_t> succeeds;
@@ -306,14 +306,12 @@ struct Schedule {
 
     EPIX_API static void update_cache(
         entt::dense_map<SystemSetLabel, SystemSet>& system_sets,
-        ScheduleCache& cache
-    ) noexcept;
+        ScheduleCache& cache) noexcept;
     EPIX_API bool build_sets() noexcept;
     EPIX_API bool flush_cmd() noexcept;
 
     EPIX_API std::expected<void, RunScheduleError> run_internal(
-        RunState& run_state
-    ) noexcept;
+        RunState& run_state) noexcept;
 
    public:
     EPIX_API Schedule(const ScheduleLabel& label);
@@ -335,8 +333,7 @@ struct Schedule {
     EPIX_API bool contains_set(const SystemSetLabel& label) const noexcept;
 
     EPIX_API std::future<std::expected<void, RunScheduleError>> run(
-        RunState& run_state
-    ) noexcept;
+        RunState& run_state) noexcept;
 
     friend struct ScheduleRunner;
 };

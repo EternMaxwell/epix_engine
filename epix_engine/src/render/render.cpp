@@ -1,6 +1,7 @@
 #include <stacktrace>
 
 #include "epix/render.h"
+#include "epix/render/common.h"
 
 EPIX_API epix::render::RenderPlugin&
 epix::render::RenderPlugin::enable_validation(bool enable) {
@@ -30,8 +31,7 @@ EPIX_API void epix::render::RenderPlugin::build(epix::App& app) {
         auto exts      = glfwGetRequiredInstanceExtensions(&count);
         if (!exts) {
             throw std::runtime_error(
-                "Failed to get required instance extensions"
-            );
+                "Failed to get required instance extensions");
         }
         std::vector<const char*> extension_names(exts, exts + count);
         // if validation is enabled, add the debug utils extension
@@ -55,13 +55,11 @@ EPIX_API void epix::render::RenderPlugin::build(epix::App& app) {
                 .setMessageSeverity(
                     vk::DebugUtilsMessageSeverityFlagBitsEXT::eVerbose |
                     vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning |
-                    vk::DebugUtilsMessageSeverityFlagBitsEXT::eError
-                )
+                    vk::DebugUtilsMessageSeverityFlagBitsEXT::eError)
                 .setMessageType(
                     vk::DebugUtilsMessageTypeFlagBitsEXT::eGeneral |
                     vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation |
-                    vk::DebugUtilsMessageTypeFlagBitsEXT::ePerformance
-                );
+                    vk::DebugUtilsMessageTypeFlagBitsEXT::ePerformance);
         debug_utils_messenger_create_info.pfnUserCallback =
             [](vk::DebugUtilsMessageSeverityFlagBitsEXT message_severity,
                vk::DebugUtilsMessageTypeFlagsEXT message_type,
@@ -71,47 +69,38 @@ EPIX_API void epix::render::RenderPlugin::build(epix::App& app) {
                 spdlog::default_logger()->clone("vulkan");
             if (message_severity >=
                 vk::DebugUtilsMessageSeverityFlagBitsEXT::eError) {
-                logger->error(
-                    "Vulkan: {}: {}\n    with stack trace:\n{}",
-                    vk::to_string(message_type), p_callback_data->pMessage,
-                    std::to_string(std::stacktrace::current())
-                );
+                logger->error("Vulkan: {}: {}\n    with stack trace:\n{}",
+                              vk::to_string(message_type),
+                              p_callback_data->pMessage,
+                              std::to_string(std::stacktrace::current()));
             } else if (message_severity >=
                        vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning) {
-                logger->warn(
-                    "Vulkan: {}: {}", vk::to_string(message_type),
-                    p_callback_data->pMessage
-                );
+                logger->warn("Vulkan: {}: {}", vk::to_string(message_type),
+                             p_callback_data->pMessage);
             } else {
-                logger->info(
-                    "Vulkan: {}: {}", vk::to_string(message_type),
-                    p_callback_data->pMessage
-                );
+                logger->info("Vulkan: {}: {}", vk::to_string(message_type),
+                             p_callback_data->pMessage);
             }
             return VK_FALSE;  // return false to continue processing
         };
         auto func_create_debug_utils_messenger =
-            (PFN_vkCreateDebugUtilsMessengerEXT
-            )instance.getProcAddr("vkCreateDebugUtilsMessengerEXT");
+            (PFN_vkCreateDebugUtilsMessengerEXT)instance.getProcAddr(
+                "vkCreateDebugUtilsMessengerEXT");
         vk::DebugUtilsMessengerEXT debug_messenger = [&]() {
             if (!func_create_debug_utils_messenger) {
                 throw std::runtime_error(
-                    "Failed to get vkCreateDebugUtilsMessengerEXT function"
-                );
+                    "Failed to get vkCreateDebugUtilsMessengerEXT function");
             }
             VkDebugUtilsMessengerEXT vk_debug_messenger;
             auto result = func_create_debug_utils_messenger(
                 instance,
                 reinterpret_cast<const VkDebugUtilsMessengerCreateInfoEXT*>(
-                    &debug_utils_messenger_create_info
-                ),
-                nullptr, &vk_debug_messenger
-            );
+                    &debug_utils_messenger_create_info),
+                nullptr, &vk_debug_messenger);
             if (result != VK_SUCCESS) {
                 throw std::runtime_error(
                     "Failed to create debug utils messenger: " +
-                    vk::to_string(static_cast<vk::Result>(result))
-                );
+                    vk::to_string(static_cast<vk::Result>(result)));
             }
             return vk_debug_messenger;
         }();
@@ -133,8 +122,7 @@ EPIX_API void epix::render::RenderPlugin::build(epix::App& app) {
         }
         throw std::runtime_error(
             "No suitable queue family found: need both graphics and compute "
-            "support"
-        );
+            "support");
     }();
     auto device = [&] {
         std::array<float, 1> queue_priorities = {1.0f};
@@ -152,8 +140,7 @@ EPIX_API void epix::render::RenderPlugin::build(epix::App& app) {
         return physical_device.createDevice(
             vk::DeviceCreateInfo()
                 .setQueueCreateInfos(queue_create_infos)
-                .setPEnabledExtensionNames(device_extensions)
-        );
+                .setPEnabledExtensionNames(device_extensions));
     }();
 // we only have one device if only one app exists and only this plugin
 // handles vulkan resources, so we can add these lines to improve
@@ -173,27 +160,21 @@ EPIX_API void epix::render::RenderPlugin::build(epix::App& app) {
         render_app.config.enable_tracy = app.config.enable_tracy;
 
         // schedules for render app
-        render_app.add_schedule(epix::ExtractSchedule);
-        render_app.add_schedule(epix::PreRender);
-        render_app.add_schedule(epix::Render);
-        render_app.add_schedule(epix::PostRender);
+        render_app.add_schedule(epix::render::ExtractSchedule);
+        render_app.add_schedule(epix::render::Render.render_schedule());
 
-        render_app.extract_schedule_order(epix::ExtractSchedule);
-        render_app.main_schedule_order(epix::PreRender);
-        render_app.main_schedule_order(epix::PreRender, epix::Render);
-        render_app.main_schedule_order(epix::Render, epix::PostRender);
+        render_app.extract_schedule_order(epix::render::ExtractSchedule);
+        render_app.main_schedule_order(epix::render::Render);
     }
     render_app.insert_resource(instance);
     render_app.insert_resource(physical_device);
     render_app.insert_resource(device);
     render_app.insert_resource(queue);
     // command pools resource should be across worlds, so use add_resource
-    app.emplace_resource<epix::render::CommandPools>(
-        device, queue_family_index
-    );
-    render_app.emplace_resource<epix::render::CommandPools>(
-        device, queue_family_index
-    );
+    app.emplace_resource<epix::render::CommandPools>(device,
+                                                     queue_family_index);
+    render_app.emplace_resource<epix::render::CommandPools>(device,
+                                                            queue_family_index);
 
     app.add_systems(
         epix::PostExit,
@@ -207,12 +188,13 @@ EPIX_API void epix::render::RenderPlugin::build(epix::App& app) {
             pools->destroy();
             device->destroy();
             if (debug_utils_messenger) {
-                auto destroy_func = (PFN_vkDestroyDebugUtilsMessengerEXT
-                )instance->getProcAddr("vkDestroyDebugUtilsMessengerEXT");
+                auto destroy_func =
+                    (PFN_vkDestroyDebugUtilsMessengerEXT)instance->getProcAddr(
+                        "vkDestroyDebugUtilsMessengerEXT");
                 if (!destroy_func) {
                     throw std::runtime_error(
-                        "Failed to get vkDestroyDebugUtilsMessengerEXT function"
-                    );
+                        "Failed to get vkDestroyDebugUtilsMessengerEXT "
+                        "function");
                 }
                 destroy_func(*instance, **debug_utils_messenger, nullptr);
             }
@@ -220,8 +202,7 @@ EPIX_API void epix::render::RenderPlugin::build(epix::App& app) {
 #ifdef EPIX_USE_VOLK
             volkFinalize();
 #endif
-        }).set_name("Destroy Vulkan resources")
-    );
+        }).set_name("Destroy Vulkan resources"));
 
     app.add_plugins(epix::render::window::WindowRenderPlugin{});
 }

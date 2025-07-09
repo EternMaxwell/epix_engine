@@ -6,6 +6,11 @@
 
 void test_func() { std::cout << "Test function called!" << std::endl; }
 
+enum class TestFuncState {
+    On,
+    Off,
+};
+
 int main() {
     if (glfwInit() == GLFW_FALSE) {
         return -1;
@@ -40,6 +45,7 @@ int main() {
     };
 
     app.spawn(window_desc2);
+    app.insert_state(TestFuncState::Off);
     app.add_plugins(epix::window::WindowPlugin{})
         .plugin_scope([&](epix::window::WindowPlugin& plugin) {
             plugin.exit_condition = epix::window::ExitCondition::OnAllClosed;
@@ -48,11 +54,9 @@ int main() {
         .add_plugins(epix::glfw::GLFWPlugin{})
         .add_plugins(epix::input::InputPlugin{})
         .add_plugins(epix::render::RenderPlugin{})
-        .add_systems(
-            epix::Update,
-            epix::into(epix::input::print_inputs, epix::window::print_events)
-                .set_name("print inputs")
-        )
+        .add_systems(epix::Update, epix::into(epix::input::print_inputs,
+                                              epix::window::print_events)
+                                       .set_name("print inputs"))
         .add_systems(
             epix::Update,
             epix::into(
@@ -76,22 +80,21 @@ int main() {
                                     }
                                 }
                             }
-                            if (key == epix::input::KeyCode::KeySpace) {
-                                if (auto schedule =
-                                        schedules->get(epix::Update)) {
-                                    static bool exist = false;
-                                    if (!exist) {
-                                        exist = true;
-                                        schedule->add_systems(
-                                            epix::into(test_func).set_name(
-                                                "test function"
-                                            )
-                                        );
-                                    } else {
-                                        schedule->remove_system(test_func);
-                                        exist = false;
-                                    }
-                                }
+                        }
+                    }
+                },
+                [](epix::EventReader<epix::input::KeyInput> key_reader,
+                   epix::Query<epix::Get<epix::Mut<epix::window::Window>>>
+                       windows,
+                   epix::ResMut<epix::NextState<TestFuncState>> next_state) {
+                    for (auto&& [key, scancode, pressed, repeat, window] :
+                         key_reader.read()) {
+                        if (key == epix::input::KeyCode::KeySpace && pressed &&
+                            !repeat) {
+                            if (*next_state == TestFuncState::Off) {
+                                *next_state = TestFuncState::On;
+                            } else {
+                                *next_state = TestFuncState::Off;
                             }
                         }
                     }
@@ -102,10 +105,9 @@ int main() {
                         *timer = epix::utils::time::Timer::repeat(1.0);
                     }
                     if (timer->value().tick()) {
-                        spdlog::info(
-                            "Frame time: {:9.5f}ms; FPS: {:7.2f}",
-                            profiler->time_avg(), 1000.0 / profiler->time_avg()
-                        );
+                        spdlog::info("Frame time: {:9.5f}ms; FPS: {:7.2f}",
+                                     profiler->time_avg(),
+                                     1000.0 / profiler->time_avg());
                         for (auto&& [label, profiler] :
                              profiler->schedule_profilers()) {
                             spdlog::info(
@@ -113,13 +115,30 @@ int main() {
                                 "{:9.5f}ms, with {:3} systems, {:3} sets",
                                 label.name(), profiler->build_time_avg(),
                                 profiler->run_time_avg(),
-                                profiler->system_count(), profiler->set_count()
-                            );
+                                profiler->system_count(),
+                                profiler->set_count());
                         }
                     }
+                })
+                .set_names({"toggle fullscreen", "print profiling info"}))
+        .add_systems(
+            epix::OnEnter(TestFuncState::On),
+            epix::into([](epix::ResMut<epix::Schedules> schedules) {
+                spdlog::info("Test function enabled.");
+                // return;
+                if (auto schedule = schedules->get(epix::Update)) {
+                    schedule->add_systems(
+                        epix::into(test_func).set_name("test function"));
                 }
-            ).set_names({"toggle fullscreen", "print profiling info"})
-        );
+            }))
+        .add_systems(epix::OnEnter(TestFuncState::Off),
+                     epix::into([](epix::ResMut<epix::Schedules> schedules) {
+                         spdlog::info("Test function disabled.");
+                         //  return;
+                         if (auto schedule = schedules->get(epix::Update)) {
+                             schedule->remove_system(test_func);
+                         }
+                     }));
     // app.add_systems(
     //     epix::Update, epix::into([](epix::Local<FrameCounter> count) {
     //         std::cout << "Frame: " << count->count++ << std::endl;

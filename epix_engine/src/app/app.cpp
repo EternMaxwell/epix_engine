@@ -3,19 +3,18 @@
 using namespace epix::app;
 
 EPIX_API void EventSystem::finish(App& app) {
-    app.add_systems(
-        Last, into([updates = std::move(updates)](World& world) {
-                  static BS::thread_pool<BS::tp::none> event_pool(16);
-                  for (auto&& sub_range : std::views::chunk(updates, 4)) {
-                      event_pool.detach_task([&world, sub_range]() {
-                          for (auto&& update : sub_range) {
-                              update(world);
-                          }
-                      });
-                  }
-                  event_pool.wait();
-              }).set_name("update events")
-    );
+    app.add_systems(Last,
+                    into([updates = std::move(updates)](World& world) {
+                        static BS::thread_pool<BS::tp::none> event_pool(16);
+                        for (auto&& sub_range : std::views::chunk(updates, 4)) {
+                            event_pool.detach_task([&world, sub_range]() {
+                                for (auto&& update : sub_range) {
+                                    update(world);
+                                }
+                            });
+                        }
+                        event_pool.wait();
+                    }).set_name("update events"));
 }
 
 struct OnceRunner : public AppRunner {
@@ -62,28 +61,28 @@ EPIX_API App::~App() {
 
 EPIX_API App App::create(const AppCreateInfo& create_info) {
     App app(Main);
-    add_schedules(
-        app, First, PreUpdate, StateTransition, Update, PostUpdate, Last
-    );
+    add_schedules(app, First, PreUpdate, StateTransition, Update, PostUpdate,
+                  Last);
     add_run_once_schedules(app, PreStartup, Startup, PostStartup);
     add_schedules(app, PreExit, Exit, PostExit);
     {
         auto main_order = app.m_data->main_schedule_order.write();
-        main_order->insert(
-            main_order->end(),
-            {PreStartup, Startup, PostStartup, First, PreUpdate,
-             StateTransition, Update, PostUpdate, Last}
-        );
+        main_order->insert(main_order->end(),
+                           {PreStartup, Startup, PostStartup, First, PreUpdate,
+                            StateTransition, Update, PostUpdate, Last});
     }
+    app.schedule(StateTransition)
+        .configure_sets(
+            sets(StateTransitionSet::Callback, StateTransitionSet::Transit)
+                .chain());
     {
         auto exit_order = app.m_data->exit_schedule_order.write();
         exit_order->insert(exit_order->end(), {PreExit, Exit, PostExit});
     }
     app.m_executors = std::make_shared<Executors>();
     app.m_executors->add_pool(ExecutorType::SingleThread, "single", 1);
-    app.m_executors->add_pool(
-        ExecutorType::MultiThread, "multi", create_info.default_pool_size
-    );
+    app.m_executors->add_pool(ExecutorType::MultiThread, "multi",
+                              create_info.default_pool_size);
     return std::move(app);
 }
 
@@ -158,9 +157,8 @@ EPIX_API App& App::add_schedule(Schedule&& schedule) {
         }
         pschedule =
             write
-                ->emplace(
-                    label, std::make_unique<Schedule>(std::move(schedule))
-                )
+                ->emplace(label,
+                          std::make_unique<Schedule>(std::move(schedule)))
                 .first->second.get();
     }
     auto queued_all_sets = m_data->queued_all_sets.write();
@@ -173,74 +171,67 @@ EPIX_API App& App::add_schedule(const ScheduleLabel& label) {
     add_schedule(Schedule(label));
     return *this;
 };
-EPIX_API App& App::main_schedule_order(
-    const ScheduleLabel& left, std::optional<ScheduleLabel> right
-) {
+EPIX_API App& App::main_schedule_order(const ScheduleLabel& left,
+                                       std::optional<ScheduleLabel> right) {
     auto write = m_data->main_schedule_order.write();
     if (!right) {
         write->insert(write->begin(), left);
     } else {
-        // add right after left
-        // if left not set, ignore
-        if (auto it = std::find(write->begin(), write->end(), left);
-            it != write->end()) {
-            write->insert(it + 1, *right);
-        } else if (auto it =
-                       std::find(write->begin(), write->end(), right.value());
-                   it != write->end()) {
-            write->insert(it, left);
+        auto itl = std::find(write->begin(), write->end(), left);
+        auto itr = std::find(write->begin(), write->end(), right.value());
+        if (itl == write->end() && itr != write->end()) {
+            write->insert(itr, left);
+        } else if (itl != write->end() && itr == write->end()) {
+            // add right after left
+            write->insert(itl + 1, right.value());
         }
     }
     return *this;
 };
-EPIX_API App& App::exit_schedule_order(
-    const ScheduleLabel& left, std::optional<ScheduleLabel> right
-) {
+EPIX_API App& App::exit_schedule_order(const ScheduleLabel& left,
+                                       std::optional<ScheduleLabel> right) {
     auto write = m_data->exit_schedule_order.write();
     if (!right) {
         write->insert(write->begin(), left);
     } else {
-        if (auto it = std::find(write->begin(), write->end(), left);
-            it != write->end()) {
+        auto itl = std::find(write->begin(), write->end(), left);
+        auto itr = std::find(write->begin(), write->end(), right.value());
+        if (itl == write->end() && itr != write->end()) {
+            write->insert(itr, left);
+        } else if (itl != write->end() && itr == write->end()) {
             // add right after left
-            write->insert(it + 1, *right);
-        } else if (auto it =
-                       std::find(write->begin(), write->end(), right.value());
-                   it != write->end()) {
-            // add left before right
-            write->insert(it, left);
+            write->insert(itl + 1, right.value());
         }
     }
     return *this;
 };
-EPIX_API App& App::extract_schedule_order(
-    const ScheduleLabel& left, std::optional<ScheduleLabel> right
-) {
+EPIX_API App& App::extract_schedule_order(const ScheduleLabel& left,
+                                          std::optional<ScheduleLabel> right) {
     auto write = m_data->extract_schedule_order.write();
     if (!right) {
         write->insert(write->begin(), left);
     } else {
-        if (auto it = std::find(write->begin(), write->end(), left);
-            it != write->end()) {
+        auto itl = std::find(write->begin(), write->end(), left);
+        auto itr = std::find(write->begin(), write->end(), right.value());
+        if (itl == write->end() && itr != write->end()) {
+            write->insert(itr, left);
+        } else if (itl != write->end() && itr == write->end()) {
             // add right after left
-            write->insert(it + 1, *right);
-        } else if (auto it =
-                       std::find(write->begin(), write->end(), right.value());
-                   it != write->end()) {
-            // add left before right
-            write->insert(it, left);
+            write->insert(itl + 1, right.value());
         }
     }
     return *this;
 };
 
-EPIX_API App& App::add_systems(
-    const ScheduleInfo& info, SystemSetConfig&& config
-) {
+EPIX_API App& App::add_systems(const ScheduleInfo& info,
+                               SystemSetConfig&& config) {
     {
         auto write = m_data->schedules.write();
         if (write->contains(info)) {
             auto& schedule = write->at(info);
+            for (auto&& transform : info.transforms) {
+                transform(config);
+            }
             schedule->add_systems(std::move(config));
             return *this;
         }
@@ -249,15 +240,13 @@ EPIX_API App& App::add_systems(
     write->emplace_back(info, std::move(config));
     return *this;
 };
-EPIX_API App& App::add_systems(
-    const ScheduleInfo& label, SystemSetConfig& config
-) {
+EPIX_API App& App::add_systems(const ScheduleInfo& label,
+                               SystemSetConfig& config) {
     add_systems(label, std::move(config));
     return *this;
 };
-EPIX_API App& App::configure_sets(
-    const ScheduleLabel& label, const SystemSetConfig& config
-) {
+EPIX_API App& App::configure_sets(const ScheduleLabel& label,
+                                  const SystemSetConfig& config) {
     {
         auto write = m_data->schedules.write();
         if (write->contains(label)) {
@@ -281,9 +270,8 @@ EPIX_API App& App::configure_sets(const SystemSetConfig& config) {
     write->emplace_back(config);
     return *this;
 }
-EPIX_API App& App::remove_system(
-    const ScheduleLabel& id, const SystemSetLabel& label
-) {
+EPIX_API App& App::remove_system(const ScheduleLabel& id,
+                                 const SystemSetLabel& label) {
     auto write = m_data->schedules.write();
     if (write->contains(id)) {
         auto& schedule = write->at(id);
@@ -294,9 +282,8 @@ EPIX_API App& App::remove_system(
     }
     return *this;
 };
-EPIX_API App& App::remove_set(
-    const ScheduleLabel& id, const SystemSetLabel& label
-) {
+EPIX_API App& App::remove_set(const ScheduleLabel& id,
+                              const SystemSetLabel& label) {
     auto write = m_data->schedules.write();
     if (write->contains(id)) {
         auto& schedule = write->at(id);
@@ -385,49 +372,45 @@ EPIX_API void App::set_runner(std::unique_ptr<AppRunner>&& runner) {
 
 EPIX_API std::future<void> App::extract(App& target) {
     auto schedules = m_data->schedules.write();
-    return app_run_pool.submit_task([this, &target,
-                                     schedules =
-                                         std::move(schedules)]() mutable {
-        auto extract_order = m_data->extract_schedule_order.read();
-        auto reset_target  = IntoSystem::into_system([](World& world) {
-            world.remove_resource<ExtractTarget>();
-        });
-        {
-            auto target_world = target.world();
-            auto source_world = this->world();
-            if (auto extract_target =
-                    source_world->get_resource<ExtractTarget>()) {
-                extract_target->m_world = &(*target_world);
-            } else {
-                source_world->insert_resource(ExtractTarget(*target_world));
+    return app_run_pool.submit_task(
+        [this, &target, schedules = std::move(schedules)]() mutable {
+            auto extract_order = m_data->extract_schedule_order.read();
+            auto reset_target  = IntoSystem::into_system(
+                [](World& world) { world.remove_resource<ExtractTarget>(); });
+            {
+                auto target_world = target.world();
+                auto source_world = this->world();
+                if (auto extract_target =
+                        source_world->get_resource<ExtractTarget>()) {
+                    extract_target->m_world = &(*target_world);
+                } else {
+                    source_world->insert_resource(ExtractTarget(*target_world));
+                }
+                reset_target->initialize(*source_world);
+                for (auto&& label : *extract_order) {
+                    schedules->at(label)->initialize_systems(*source_world);
+                }
             }
-            reset_target->initialize(*source_world);
+            auto run_state = this->run_state();
             for (auto&& label : *extract_order) {
-                schedules->at(label)->initialize_systems(*source_world);
+                auto& schedule                = schedules->at(label);
+                schedule->config.enable_tracy = config.enable_tracy;
+                schedule->run(*run_state).wait();
             }
-        }
-        auto run_state = this->run_state();
-        for (auto&& label : *extract_order) {
-            auto& schedule                = schedules->at(label);
-            schedule->config.enable_tracy = config.enable_tracy;
-            schedule->run(*run_state).wait();
-        }
-        run_state->apply_commands();
-        run_state->run_system(
-            reset_target.get(),
-            RunState::RunSystemConfig{.executor = ExecutorType::SingleThread}
-        );
-        run_state->wait();
-    });
+            run_state->apply_commands();
+            run_state->run_system(reset_target.get(),
+                                  RunState::RunSystemConfig{
+                                      .executor = ExecutorType::SingleThread});
+            run_state->wait();
+        });
 }
 EPIX_API std::future<void> App::update() {
     auto schedules = m_data->schedules.write();
     return app_run_pool.submit_task([this, schedules =
                                                std::move(schedules)]() mutable {
         auto update_order = m_data->main_schedule_order.read();
-        auto reset_target = IntoSystem::into_system([](World& world) {
-            world.remove_resource<ExtractTarget>();
-        });
+        auto reset_target = IntoSystem::into_system(
+            [](World& world) { world.remove_resource<ExtractTarget>(); });
         {
             auto world = this->world();
             if (auto extract_target = world->get_resource<ExtractTarget>()) {
@@ -450,8 +433,7 @@ EPIX_API std::future<void> App::update() {
         run_state->apply_commands();
         run_state->run_system(
             reset_target.get(),
-            RunState::RunSystemConfig{.executor = ExecutorType::SingleThread}
-        );
+            RunState::RunSystemConfig{.executor = ExecutorType::SingleThread});
         run_state->wait();
     });
 }
@@ -460,9 +442,8 @@ EPIX_API std::future<void> App::exit() {
     return app_run_pool.submit_task([this, schedules =
                                                std::move(schedules)]() mutable {
         auto exit_order   = m_data->exit_schedule_order.read();
-        auto reset_target = IntoSystem::into_system([](World& world) {
-            world.remove_resource<ExtractTarget>();
-        });
+        auto reset_target = IntoSystem::into_system(
+            [](World& world) { world.remove_resource<ExtractTarget>(); });
         {
             auto world = this->world();
             if (auto extract_target = world->get_resource<ExtractTarget>()) {
@@ -485,8 +466,7 @@ EPIX_API std::future<void> App::exit() {
         run_state->apply_commands();
         run_state->run_system(
             reset_target.get(),
-            RunState::RunSystemConfig{.executor = ExecutorType::SingleThread}
-        );
+            RunState::RunSystemConfig{.executor = ExecutorType::SingleThread});
         run_state->wait();
     });
 }
