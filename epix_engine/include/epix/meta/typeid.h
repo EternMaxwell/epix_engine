@@ -17,14 +17,14 @@
 
 namespace epix::meta {
 template <typename T>
-constexpr std::string type_name() {
-    std::string pretty_function{EPIX_PRETTY_FUNCTION};
-    auto first = pretty_function.find_first_not_of(
-        ' ', pretty_function.find_first_of(EPIX_PRETTY_FUNCTION_PREFIX) + 1
-    );
-    auto last  = pretty_function.find_last_of(EPIX_PRETTY_FUNCTION_SUFFIX);
-    auto value = pretty_function.substr(first, last - first);
-    return value;
+constexpr const char* type_name() {
+    static std::string pretty_function{EPIX_PRETTY_FUNCTION};
+    static auto first = pretty_function.find_first_not_of(
+        ' ', pretty_function.find_first_of(EPIX_PRETTY_FUNCTION_PREFIX) + 1);
+    static auto last =
+        pretty_function.find_last_of(EPIX_PRETTY_FUNCTION_SUFFIX);
+    static auto value = pretty_function.substr(first, last - first);
+    return value.c_str();
 }
 
 template <typename T>
@@ -53,8 +53,8 @@ struct type_index {
 
 template <>
 struct std::hash<epix::meta::type_index> {
-    inline size_t operator()(const epix::meta::type_index& index
-    ) const noexcept {
+    inline size_t operator()(
+        const epix::meta::type_index& index) const noexcept {
         return index.hash_code();
     }
 };
