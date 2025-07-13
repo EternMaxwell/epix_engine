@@ -102,7 +102,7 @@ int main() {
                 [](epix::Res<epix::AppProfiler> profiler,
                    epix::Local<std::optional<epix::utils::time::Timer>> timer) {
                     if (!timer->has_value()) {
-                        *timer = epix::utils::time::Timer::repeat(1.0);
+                        *timer = epix::utils::time::Timer::repeat(0.5);
                     }
                     if (timer->value().tick()) {
                         spdlog::info("Frame time: {:9.5f}ms; FPS: {:7.2f}",
@@ -144,7 +144,7 @@ int main() {
     //         std::cout << "Frame: " << count->count++ << std::endl;
     //     })
     // );
-    app.config.mark_frame   = true;
-    app.config.enable_tracy = true;
+    // app.config.mark_frame   = true;
+    // app.config.enable_tracy = true;
     app.run();
 }
