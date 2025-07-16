@@ -12,6 +12,8 @@ struct App;
 struct Plugin {
     virtual void build(App& app) {};
     virtual void finish(App& app) {};
+    virtual void finalize(App& app) {};
+    virtual ~Plugin() = default;
 };
 
 struct AppRunner {
@@ -57,7 +59,7 @@ struct AppData {
     async::RwLock<std::vector<std::pair<ScheduleInfo, SystemSetConfig>>>
         queued_systems;
 
-    mutable async::RwLock<std::shared_ptr<RunState>> run_state;
+    mutable async::RwLock<std::optional<RunState>> run_state;
 
     EPIX_API AppData(const AppLabel& world_label);
 };
@@ -95,6 +97,10 @@ struct App {
     std::shared_ptr<Executors> m_executors;
     // runner, shared_ptr to automatic destruction
     async::RwLock<std::unique_ptr<AppRunner>> m_runner;
+    // // a write guard for world, used when building and setting up the app,
+    // // will be set to null when begin running and
+    // async::RwLock<std::optional<async::RwLock<World>::WriteGuard>>
+    //     m_world_write;
 
     template <typename Ret, typename T>
     App& plugin_scope_internal(const std::function<Ret(T&)>& func) {
@@ -129,7 +135,7 @@ struct App {
     EPIX_API App& sub_app(const AppLabel& label);
     EPIX_API App* get_sub_app(const AppLabel& label);
 
-    EPIX_API std::shared_ptr<RunState> run_state() const;
+    EPIX_API RunState run_state() const;
     EPIX_API void reset_run_state() const;
 
     // Modify. These modifications modify App owned data. Need to lock to avoid
@@ -246,6 +252,12 @@ struct App {
     App& add_resource(const std::shared_ptr<T>& res) {
         auto w = world();
         w->add_resource(res);
+        return *this;
+    };
+    template <typename T = void>
+    App& remove_resource(const meta::type_index& type = meta::type_id<T>()) {
+        auto w = world();
+        w->remove_resource(type);
         return *this;
     };
     template <typename T>

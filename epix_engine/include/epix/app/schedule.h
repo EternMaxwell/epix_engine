@@ -332,8 +332,10 @@ struct Schedule {
     EPIX_API bool contains_system(const SystemSetLabel& label) const noexcept;
     EPIX_API bool contains_set(const SystemSetLabel& label) const noexcept;
 
+    // This `run` call will dispatch the internal run task to another thread.
+    // So it needs to be provided a shared pointer to `RunState`.
     EPIX_API std::future<std::expected<void, RunScheduleError>> run(
-        RunState& run_state) noexcept;
+        RunState run_state) noexcept;
 
     friend struct ScheduleRunner;
 };

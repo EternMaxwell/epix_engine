@@ -129,22 +129,21 @@ EPIX_API App& App::add_sub_app(const AppLabel& label) {
     sub.m_executors = m_executors;
     return *this;
 };
-EPIX_API std::shared_ptr<RunState> App::run_state() const {
+EPIX_API RunState App::run_state() const {
     auto write = m_data->run_state.write();
-    if (*write) return *write;
+    if (*write) return write->value();
     // create a new RunState if not exists
     auto world     = m_data->world.write();
     auto executors = m_executors.get();
     if (!executors) {
         throw std::runtime_error("Executors not initialized.");
     }
-    auto run_state = std::make_shared<RunState>(std::move(world), *executors);
-    *write         = run_state;
-    return run_state;
+    write->emplace(std::move(world), *executors);
+    return write->value();
 };
 EPIX_API void App::reset_run_state() const {
     auto write = m_data->run_state.write();
-    *write     = nullptr;
+    write->reset();
 };
 EPIX_API App& App::add_schedule(Schedule&& schedule) {
     Schedule* pschedule = nullptr;
@@ -395,13 +394,13 @@ EPIX_API std::future<void> App::extract(App& target) {
             for (auto&& label : *extract_order) {
                 auto& schedule                = schedules->at(label);
                 schedule->config.enable_tracy = config.enable_tracy;
-                schedule->run(*run_state).wait();
+                schedule->run(run_state).wait();
             }
-            run_state->apply_commands();
-            run_state->run_system(reset_target.get(),
-                                  RunState::RunSystemConfig{
-                                      .executor = ExecutorType::SingleThread});
-            run_state->wait();
+            run_state.apply_commands();
+            run_state.run_system(reset_target.get(),
+                                 RunState::RunSystemConfig{
+                                     .executor = ExecutorType::SingleThread});
+            run_state.wait();
         });
 }
 EPIX_API std::future<void> App::update() {
@@ -428,13 +427,13 @@ EPIX_API std::future<void> App::update() {
         for (auto&& label : *update_order) {
             auto& schedule                = schedules->at(label);
             schedule->config.enable_tracy = config.enable_tracy;
-            schedule->run(*run_state).wait();
+            schedule->run(run_state).wait();
         }
-        run_state->apply_commands();
-        run_state->run_system(
+        run_state.apply_commands();
+        run_state.run_system(
             reset_target.get(),
             RunState::RunSystemConfig{.executor = ExecutorType::SingleThread});
-        run_state->wait();
+        run_state.wait();
     });
 }
 EPIX_API std::future<void> App::exit() {
@@ -461,13 +460,13 @@ EPIX_API std::future<void> App::exit() {
         for (auto&& label : *exit_order) {
             auto& schedule                = schedules->at(label);
             schedule->config.enable_tracy = config.enable_tracy;
-            schedule->run(*run_state).wait();
+            schedule->run(run_state).wait();
         }
-        run_state->apply_commands();
-        run_state->run_system(
+        run_state.apply_commands();
+        run_state.run_system(
             reset_target.get(),
             RunState::RunSystemConfig{.executor = ExecutorType::SingleThread});
-        run_state->wait();
+        run_state.wait();
     });
 }
 

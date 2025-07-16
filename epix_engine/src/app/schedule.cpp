@@ -548,9 +548,9 @@ static BS::thread_pool<BS::tp::none> schedule_run_pool(4, []() {
 });
 
 EPIX_API std::future<std::expected<void, RunScheduleError>> Schedule::run(
-    RunState& run_state) noexcept {
+    RunState run_state) noexcept {
     return schedule_run_pool.submit_task(
-        [this, &run_state]() -> std::expected<void, RunScheduleError> {
+        [this, run_state]() mutable -> std::expected<void, RunScheduleError> {
             if (config.enable_tracy) {
                 ZoneScopedN("Run Schedule");
                 auto name = data->label.name();

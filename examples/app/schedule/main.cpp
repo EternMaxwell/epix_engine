@@ -15,12 +15,10 @@ int main() {
     executors->add_pool(ExecutorType::MultiThread, "MainPool", 4);
     Schedule schedule(Main);
     schedule.add_systems(
-        into(
-            []() { std::cout << "System 1 running!" << std::endl; },
-            []() { std::cout << "System 2 running!" << std::endl; }
-        ).chain()
-    );
+        into([]() { std::cout << "System 1 running!" << std::endl; },
+             []() { std::cout << "System 2 running!" << std::endl; })
+            .chain());
     schedule.initialize_systems(*write);
-    app::RunState state(std::move(write), *executors);
-    schedule.run(state);
+    RunState run_state(world.write(), *executors);
+    schedule.run(run_state);
 }

@@ -46,3 +46,6 @@
 [submodule "libs/earcut"]
 	path = libs/earcut
 	url = https://github.com/mapbox/earcut.hpp.git
+[submodule "libs/nvrhi"]
+	path = libs/nvrhi
+	url = https://github.com/NVIDIA-RTX/NVRHI.git
