@@ -1,18 +1,19 @@
 #pragma once
 
 #ifdef EPIX_USE_VOLK
-#define VK_NO_PROTOTYPES
+#include <volk.h>
 #define VULKAN_HPP_DISPATCH_LOADER_DYNAMIC 1
 #endif
 #include <vulkan/vulkan.hpp>
 // include vulkan before volk
 #include <epix/app.h>
-#ifdef EPIX_USE_VOLK
-#include <volk.h>
-#endif
+#include <nvrhi/nvrhi.h>
+#include <nvrhi/vulkan.h>
+
+template <>
+inline constexpr bool epix::app::enable_mutable_res<nvrhi::DeviceHandle> = true;
 
 namespace epix::render {
-
 struct CommandPools {
    private:
     vk::Device device;

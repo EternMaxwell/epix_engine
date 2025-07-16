@@ -164,9 +164,8 @@ struct EventReader {
     EventReader& operator=(const EventReader&) = delete;
     EventReader& operator=(EventReader&&)      = delete;
 
-    static EventReader<T> from_param(
-        Local<EventPointer<T>>& pointer, Res<Events<T>>& events
-    ) {
+    static EventReader<T> from_param(Local<EventPointer<T>>& pointer,
+                                     Res<Events<T>>& events) {
         pointer->index = std::max(pointer->index, events->head());
         pointer->index = std::min(pointer->index, events->tail());
         return EventReader<T>(pointer, events);
@@ -178,12 +177,12 @@ struct EventReader {
      * @return `iterable` object that can be used to iterate through events.
      */
     auto read() {
-        iterable iter(m_pointer->index, m_events.get());
+        iterable iter(m_pointer->index, m_events);
         m_pointer->index = m_events->tail();
         return iter;
     }
     auto read_with_index() {
-        iterable_index iter(m_pointer->index, m_events.get());
+        iterable_index iter(m_pointer->index, m_events);
         m_pointer->index = m_events->tail();
         return iter;
     }

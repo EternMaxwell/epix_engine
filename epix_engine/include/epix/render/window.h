@@ -14,17 +14,10 @@ struct ExtractedWindow {
     epix::window::PresentMode present_mode;
     epix::window::CompositeAlphaMode alpha_mode;
 
-    vk::Device device;
-    vk::ImageView swapchain_texture_view;
-    vk::Image swapchain_texture;
-    vk::Format swapchain_texture_format;
+    nvrhi::TextureHandle swapchain_texture;
 
     bool size_changed         = false;
     bool present_mode_changed = false;
-
-    EPIX_API void set_swapchain_texture(
-        vk::ImageView view, vk::Image image, vk::Format format
-    );
 };
 struct ExtractedWindows {
     std::optional<Entity> primary;
@@ -34,9 +27,10 @@ struct SurfaceData {
     vk::Device device;
     vk::Instance instance;
     vk::SurfaceKHR surface;
+    nvrhi::Format image_format;
     vk::SwapchainKHR swapchain;
     vk::SwapchainCreateInfoKHR config;
-    std::vector<vk::ImageView> swapchain_image_views;
+    std::vector<nvrhi::TextureHandle> swapchain_images;
     std::vector<vk::Fence> swapchain_image_fences;
     uint32_t fence_index         = 0;
     uint32_t current_image_index = 0;
@@ -55,29 +49,25 @@ EPIX_API void extract_windows(
         Get<Entity, epix::window::Window, Has<epix::window::PrimaryWindow>>>>
         windows,
     Extract<Res<glfw::GLFWwindows>> glfw_windows,
-    ResMut<WindowSurfaces> window_surfaces
-);
-EPIX_API void create_surfaces(
-    Res<ExtractedWindows> windows,
-    ResMut<WindowSurfaces> window_surfaces,
-    Res<vk::Instance> instance,
-    Res<vk::PhysicalDevice> physical_device,
-    Res<vk::Device> device,
-    Res<vk::Queue> queue,
-    Res<render::CommandPools> command_pools,
-    Local<vk::CommandBuffer> pcmd_buffer
-);
+    ResMut<WindowSurfaces> window_surfaces);
+EPIX_API void create_surfaces(Res<ExtractedWindows> windows,
+                              ResMut<WindowSurfaces> window_surfaces,
+                              Res<vk::Instance> instance,
+                              Res<vk::PhysicalDevice> physical_device,
+                              Res<vk::Device> device,
+                              Res<vk::Queue> queue,
+                              Res<nvrhi::DeviceHandle> nvrhi_device,
+                              Res<render::CommandPools> command_pools,
+                              Local<vk::CommandBuffer> pcmd_buffer);
 
-EPIX_API void prepare_windows(
-    ResMut<ExtractedWindows> windows,
-    ResMut<WindowSurfaces> window_surfaces,
-    Res<vk::Device> device,
-    Res<vk::PhysicalDevice> physical_device
-);
+EPIX_API void prepare_windows(ResMut<ExtractedWindows> windows,
+                              ResMut<WindowSurfaces> window_surfaces,
+                              Res<vk::Device> device,
+                              Res<vk::PhysicalDevice> physical_device,
+                              Res<nvrhi::DeviceHandle> nvrhi_device);
 
-EPIX_API void present_windows(
-    ResMut<WindowSurfaces> window_surfaces, Res<vk::Queue> queue
-);
+EPIX_API void present_windows(ResMut<WindowSurfaces> window_surfaces,
+                              Res<vk::Queue> queue);
 
 struct WindowRenderPlugin : public epix::Plugin {
     bool handle_present = true;

@@ -315,6 +315,7 @@ struct App {
 
     // Run
     EPIX_API void build();
+    EPIX_API void finalize();
     EPIX_API std::future<void> extract(App& target);
     EPIX_API std::future<void> update();
     EPIX_API std::future<void> exit();

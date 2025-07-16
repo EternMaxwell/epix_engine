@@ -5,16 +5,20 @@
 
 namespace epix::app {
 template <typename T>
+constexpr bool enable_mutable_res = false;
+template <typename T>
 struct Res {
-    using type = std::decay_t<T>;
+    using type = std::conditional_t<enable_mutable_res<T>,
+                                    std::decay_t<T>,
+                                    std::add_const_t<std::decay_t<T>>>;
 
    private:
-    const T* resource;
+    type* resource;
 
-    Res(const T* res) : resource(res) {}
+    Res(type* res) : resource(res) {}
 
    public:
-    static std::optional<Res<T>> from_world(const World& world) noexcept {
+    static std::optional<Res<T>> from_world(World& world) noexcept {
         auto res = world.get_resource<T>();
         if (res) {
             return Res<T>(res);
@@ -27,9 +31,10 @@ struct Res {
     Res& operator=(const Res& other) = default;
     Res& operator=(Res&& other)      = default;
 
-    const T& operator*() const noexcept { return *resource; }
-    const T* operator->() const noexcept { return resource; }
-    const T* get() const noexcept { return resource; }
+    type& operator*() const noexcept { return *resource; }
+    type* operator->() const noexcept { return resource; }
+    type& get() const noexcept { return *resource; }
+    operator type*() const noexcept { return resource; }
 };
 template <typename T>
 struct ResMut {
@@ -56,7 +61,8 @@ struct ResMut {
 
     T& operator*() const noexcept { return *resource; }
     T* operator->() const noexcept { return resource; }
-    T* get() const noexcept { return resource; }
+    T& get() const noexcept { return *resource; }
+    operator T*() const noexcept { return resource; }
 
     operator Res<T>() const noexcept { return Res<T>(resource); }
 };
@@ -123,9 +129,8 @@ struct SystemParam<std::optional<ResMut<T>>> {
     }
     std::optional<ResMut<T>>& get(State& state) { return state; }
 };
-static_assert(
-    ValidParam<Res<int>> && ValidParam<std::optional<Res<int>>> &&
-        ValidParam<ResMut<int>> && ValidParam<std::optional<ResMut<int>>>,
-    "Res and ResMut should be valid parameters for systems."
-);
+static_assert(ValidParam<Res<int>> && ValidParam<std::optional<Res<int>>> &&
+                  ValidParam<ResMut<int>> &&
+                  ValidParam<std::optional<ResMut<int>>>,
+              "Res and ResMut should be valid parameters for systems.");
 }  // namespace epix::app

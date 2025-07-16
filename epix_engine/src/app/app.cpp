@@ -363,6 +363,14 @@ EPIX_API void App::build() {
     auto world = this->world();
     world->add_resource(std::move(schedules_res));
 }
+EPIX_API void App::finalize() {
+    // there won't be any more plugins added. So just loop over them.
+    auto pplugins = m_data->plugins.write();
+    auto& plugins = *pplugins;
+    for (auto&& [id, plugin] : plugins) {
+        plugin->finalize(*this);
+    }
+}
 
 EPIX_API void App::set_runner(std::unique_ptr<AppRunner>&& runner) {
     auto write = m_runner.write();
@@ -491,7 +499,9 @@ EPIX_API int App::run() {
     if (!runner) {
         runner = std::make_unique<OnceRunner>();
     }
-    return runner->run(*this);
+    auto res = runner->run(*this);
+    finalize();
+    return res;
 }
 
 EPIX_API Schedule* Schedules::get(const ScheduleLabel& label) {

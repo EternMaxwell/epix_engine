@@ -53,7 +53,7 @@ int main() {
         })
         .add_plugins(epix::glfw::GLFWPlugin{})
         .add_plugins(epix::input::InputPlugin{})
-        .add_plugins(epix::render::RenderPlugin{})
+        .add_plugins(epix::render::RenderPlugin{}.enable_validation())
         .add_systems(epix::Update, epix::into(epix::input::print_inputs,
                                               epix::window::print_events)
                                        .set_name("print inputs"))

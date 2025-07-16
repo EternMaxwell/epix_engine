@@ -62,15 +62,14 @@ struct AssetStorage {
             return std::unexpected(SlotEmpty{index.index});
         }
         if (m_storage[index.index]->generation != index.generation) {
-            return std::unexpected(GenMismatch{
-                index.index, m_storage[index.index]->generation,
-                index.generation
-            });
+            return std::unexpected(
+                GenMismatch{index.index, m_storage[index.index]->generation,
+                            index.generation});
         }
         return &m_storage[index.index].value();
     }
-    std::expected<const Entry<T>*, AssetError> get_entry(const AssetIndex& index
-    ) const {
+    std::expected<const Entry<T>*, AssetError> get_entry(
+        const AssetIndex& index) const {
         if (index.index >= m_storage.size()) {
             return std::unexpected(IndexOutOfBound{index.index});
         }
@@ -78,10 +77,9 @@ struct AssetStorage {
             return std::unexpected(SlotEmpty{index.index});
         }
         if (m_storage[index.index]->generation != index.generation) {
-            return std::unexpected(GenMismatch{
-                index.index, m_storage[index.index]->generation,
-                index.generation
-            });
+            return std::unexpected(
+                GenMismatch{index.index, m_storage[index.index]->generation,
+                            index.generation});
         }
         return &m_storage[index.index].value();
     }
@@ -98,9 +96,8 @@ struct AssetStorage {
      */
     template <typename... Args>
         requires std::constructible_from<T, Args...>
-    std::expected<bool, AssetError> insert(
-        const AssetIndex& index, Args&&... args
-    ) {
+    std::expected<bool, AssetError> insert(const AssetIndex& index,
+                                           Args&&... args) {
         if (index.index >= m_storage.size()) {
             return std::unexpected(IndexOutOfBound{index.index});
         }
@@ -108,10 +105,9 @@ struct AssetStorage {
             m_storage[index.index]             = Entry<T>();
             m_storage[index.index]->generation = index.generation;
         } else if (m_storage[index.index]->generation != index.generation) {
-            return std::unexpected(GenMismatch{
-                index.index, m_storage[index.index]->generation,
-                index.generation
-            });
+            return std::unexpected(
+                GenMismatch{index.index, m_storage[index.index]->generation,
+                            index.generation});
         }
         bool res = m_storage[index.index]->asset.has_value();
         m_storage[index.index]->asset.emplace(std::forward<Args>(args)...);
@@ -154,8 +150,7 @@ struct AssetStorage {
                 } else {
                     return std::unexpected(AssetNotPresent(index));
                 }
-            }
-        );
+            });
     }
 
     /**
@@ -177,8 +172,7 @@ struct AssetStorage {
                 } else {
                     return std::unexpected(AssetNotPresent(index));
                 }
-            }
-        );
+            });
     }
 
     /**
@@ -191,8 +185,8 @@ struct AssetStorage {
      * @param index The index to remove.
      * @return True if the asset was removed, false otherwise.
      */
-    std::expected<void, AssetError> remove_dereferenced(const AssetIndex& index
-    ) {
+    std::expected<void, AssetError> remove_dereferenced(
+        const AssetIndex& index) {
         return get_entry(index).and_then(
             [this, &index](Entry<T>* entry) -> std::expected<void, AssetError> {
                 if (entry->asset.has_value()) {
@@ -203,8 +197,7 @@ struct AssetStorage {
                 } else {
                     return std::unexpected(AssetNotPresent(index));
                 }
-            }
-        );
+            });
     }
 
     std::expected<T*, AssetError> try_get(const AssetIndex& index) {
@@ -215,21 +208,19 @@ struct AssetStorage {
                 } else {
                     return std::unexpected(AssetNotPresent(index));
                 }
-            }
-        );
+            });
     }
 
     std::expected<const T*, AssetError> try_get(const AssetIndex& index) const {
         return get_entry(index).and_then(
-            [&index](const Entry<T>* entry
-            ) -> std::expected<const T*, AssetError> {
+            [&index](
+                const Entry<T>* entry) -> std::expected<const T*, AssetError> {
                 if (entry->asset.has_value()) {
                     return &entry->asset.value();
                 } else {
                     return std::unexpected(AssetNotPresent(index));
                 }
-            }
-        );
+            });
     }
     T* get(const AssetIndex& index) { return try_get(index).value_or(nullptr); }
     const T* get(const AssetIndex& index) const {
@@ -270,11 +261,9 @@ struct AssetEvent {
     bool is_loaded() const { return type == Type::Loaded; }
 };
 
-EPIX_API void log_asset_error(
-    const AssetError& err,
-    const std::string& header,
-    const std::string_view& operation
-);
+EPIX_API void log_asset_error(const AssetError& err,
+                              const std::string& header,
+                              const std::string_view& operation);
 
 template <typename T>
     requires std::move_constructible<T> && std::is_move_assignable_v<T>
@@ -296,9 +285,8 @@ struct Assets {
      */
     template <typename... Args>
         requires std::constructible_from<T, Args...>
-    std::expected<bool, AssetError> insert_index(
-        const AssetIndex& index, Args&&... args
-    ) {
+    std::expected<bool, AssetError> insert_index(const AssetIndex& index,
+                                                 Args&&... args) {
         while (auto&& opt =
                    m_handle_provider->index_allocator.reserved_receiver()
                        .try_receive()) {
@@ -308,12 +296,10 @@ struct Assets {
         return m_assets.insert(index, std::forward<Args>(args)...)
             .or_else(
                 [this](AssetError&& err) -> std::expected<bool, AssetError> {
-                    log_asset_error(
-                        err, meta::type_id<Assets<T>>::name, "insert_index"
-                    );
+                    log_asset_error(err, meta::type_id<Assets<T>>::name,
+                                    "insert_index");
                     return std::unexpected(std::move(err));
-                }
-            );
+                });
     }
     /**
      * @brief Insert an asset at the given uuid.
@@ -325,9 +311,8 @@ struct Assets {
      */
     template <typename... Args>
         requires std::constructible_from<T, Args...>
-    std::expected<bool, AssetError> insert_uuid(
-        const uuids::uuid& id, Args&&... args
-    ) {
+    std::expected<bool, AssetError> insert_uuid(const uuids::uuid& id,
+                                                Args&&... args) {
         if (contains(AssetId<T>(id))) {
             auto& asset = m_mapped_assets.at(id);
             asset.~T();
@@ -343,19 +328,16 @@ struct Assets {
         spdlog::debug(
             "[{}] Releasing asset at {} with gen {}, current ref count is {}",
             meta::type_id<Assets<T>>::name, index.index, index.generation,
-            m_references[index.index]
-        );
+            m_references[index.index]);
         if (contains(AssetId<T>(index))) {
             m_references[index.index]--;
             if (m_references[index.index] == 0) {
                 m_cached_events.emplace_back(
-                    AssetEvent<T>::unused(AssetId<T>(index))
-                );
+                    AssetEvent<T>::unused(AssetId<T>(index)));
                 m_assets.remove_dereferenced(index);
                 m_handle_provider->index_allocator.release(index);
                 m_cached_events.emplace_back(
-                    AssetEvent<T>::removed(AssetId<T>(index))
-                );
+                    AssetEvent<T>::removed(AssetId<T>(index)));
                 return true;
             }
         }
@@ -366,39 +348,35 @@ struct Assets {
             spdlog::debug(
                 "[{}] Releasing asset at Uuid:{}, current ref count is {}",
                 meta::type_id<Assets<T>>::name, uuids::to_string(id),
-                m_mapped_assets_ref.at(id)
-            );
+                m_mapped_assets_ref.at(id));
             auto& ref = m_mapped_assets_ref.at(id);
             ref--;
             if (ref == 0) {
-                m_cached_events.emplace_back(AssetEvent<T>::unused(AssetId<T>(id
-                )));
+                m_cached_events.emplace_back(
+                    AssetEvent<T>::unused(AssetId<T>(id)));
                 m_mapped_assets.erase(id);
                 m_mapped_assets_ref.erase(id);
                 m_cached_events.emplace_back(
-                    AssetEvent<T>::removed(AssetId<T>(id))
-                );
+                    AssetEvent<T>::removed(AssetId<T>(id)));
                 return true;
             }
         }
         return false;
     }
     bool release(const AssetId<T>& id) {
-        return std::visit(
-            epix::util::visitor{
-                [this](const AssetIndex& index) {
-                    return release_index(index);
-                },
-                [this](const uuids::uuid& id) { return release_uuid(id); }
-            },
-            id
-        );
+        return std::visit(epix::util::visitor{[this](const AssetIndex& index) {
+                                                  return release_index(index);
+                                              },
+                                              [this](const uuids::uuid& id) {
+                                                  return release_uuid(id);
+                                              }},
+                          id);
     }
 
    public:
     Assets()
-        : m_handle_provider(std::make_shared<HandleProvider>(meta::type_id<T>{})
-          ) {}
+        : m_handle_provider(
+              std::make_shared<HandleProvider>(meta::type_id<T>{})) {}
     Assets(const Assets&)            = delete;
     Assets(Assets&&)                 = delete;
     Assets& operator=(const Assets&) = delete;
@@ -424,62 +402,48 @@ struct Assets {
         requires std::constructible_from<T, Args...>
     Handle<T> emplace(Args&&... args) {
         Handle<T> handle = m_handle_provider->reserve().typed<T>();
-        spdlog::debug(
-            "[{}] Emplacing asset at {}", meta::type_id<Assets<T>>::name,
-            handle.id().to_string_short()
-        );
+        spdlog::debug("[{}] Emplacing asset at {}",
+                      meta::type_id<Assets<T>>::name,
+                      handle.id().to_string_short());
         auto res = insert(handle, std::forward<Args>(args)...);
-        std::visit(
-            epix::util::visitor{
-                [this](const AssetIndex& index) {
-                    m_references[index.index]++;
-                },
-                [this](const auto& id) {}
-            },
-            handle.id()
-        );
+        std::visit(epix::util::visitor{[this](const AssetIndex& index) {
+                                           m_references[index.index]++;
+                                       },
+                                       [this](const auto& id) {}},
+                   handle.id());
         return handle;
     }
 
     template <typename... Args>
         requires std::constructible_from<T, Args...>
-    std::expected<bool, AssetError> insert(
-        const AssetId<T>& id, Args&&... args
-    ) {
+    std::expected<bool, AssetError> insert(const AssetId<T>& id,
+                                           Args&&... args) {
         return std::visit(
                    epix::util::visitor{
                        [this, &args...](const AssetIndex& index) mutable {
-                           return insert_index(
-                               index, std::forward<Args>(args)...
-                           );
+                           return insert_index(index,
+                                               std::forward<Args>(args)...);
                        },
                        [this, &args...](const uuids::uuid& id) mutable {
                            return insert_uuid(id, std::forward<Args>(args)...);
-                       }
-                   },
-                   id
-        )
-            .and_then(
-                [this, &id](bool replace) -> std::expected<bool, AssetError> {
-                    if (replace) {
-                        spdlog::debug(
-                            "[{}] Replaced asset at {}",
-                            meta::type_id<Assets<T>>::name, id.to_string_short()
-                        );
-                        m_cached_events.emplace_back(AssetEvent<T>::modified(id)
-                        );
-                    } else {
-                        spdlog::debug(
-                            "[{}] Added asset at {}",
-                            meta::type_id<Assets<T>>::name, id.to_string_short()
-                        );
-                        m_cached_events.emplace_back(AssetEvent<T>::added(id));
-                        m_cached_events.emplace_back(AssetEvent<T>::modified(id)
-                        );
-                    }
-                    return replace;
+                       }},
+                   id)
+            .and_then([this,
+                       &id](bool replace) -> std::expected<bool, AssetError> {
+                if (replace) {
+                    spdlog::debug("[{}] Replaced asset at {}",
+                                  meta::type_id<Assets<T>>::name,
+                                  id.to_string_short());
+                    m_cached_events.emplace_back(AssetEvent<T>::modified(id));
+                } else {
+                    spdlog::debug("[{}] Added asset at {}",
+                                  meta::type_id<Assets<T>>::name,
+                                  id.to_string_short());
+                    m_cached_events.emplace_back(AssetEvent<T>::added(id));
+                    m_cached_events.emplace_back(AssetEvent<T>::modified(id));
                 }
-            );
+                return replace;
+            });
     }
 
     /**
@@ -489,17 +453,14 @@ struct Assets {
      */
     bool contains(const AssetId<T>& id) const {
         return std::visit(
-            epix::util::visitor{
-                [this](const AssetIndex& index) {
-                    return m_assets.contains(index);
-                },
-                [this](const uuids::uuid& id) {
-                    return m_mapped_assets.contains(id) &&
-                           m_mapped_assets_ref.contains(id);
-                }
-            },
-            id
-        );
+            epix::util::visitor{[this](const AssetIndex& index) {
+                                    return m_assets.contains(index);
+                                },
+                                [this](const uuids::uuid& id) {
+                                    return m_mapped_assets.contains(id) &&
+                                           m_mapped_assets_ref.contains(id);
+                                }},
+            id);
     }
 
     /**
@@ -512,25 +473,20 @@ struct Assets {
      * @return `std::optional<Handle<T>>` The strong handle to the asset, or
      * std::nullopt if the asset is not valid.
      */
-    std::expected<Handle<T>, AssetError> get_strong_handle(const AssetId<T>& id
-    ) {
+    std::expected<Handle<T>, AssetError> get_strong_handle(
+        const AssetId<T>& id) {
         return try_get(id).and_then(
             [this,
              &id](const T* asset) -> std::expected<Handle<T>, AssetError> {
-                std::visit(
-                    epix::util::visitor{
-                        [this](const AssetIndex& index) {
-                            m_references[index.index]++;
-                        },
-                        [this](const uuids::uuid& id) {
-                            m_mapped_assets_ref.at(id)++;
-                        }
-                    },
-                    id
-                );
+                std::visit(epix::util::visitor{[this](const AssetIndex& index) {
+                                                   m_references[index.index]++;
+                                               },
+                                               [this](const uuids::uuid& id) {
+                                                   m_mapped_assets_ref.at(id)++;
+                                               }},
+                           id);
                 return m_handle_provider->get_handle(id, false, std::nullopt);
-            }
-        );
+            });
     }
 
     /**
@@ -548,22 +504,20 @@ struct Assets {
     }
     std::expected<const T*, AssetError> try_get(const AssetId<T>& id) const {
         return std::visit(
-            epix::util::visitor{
-                [this](const AssetIndex& index) {
-                    return m_assets.try_get(index);
-                },
-                [this](const uuids::uuid& id
-                ) -> std::expected<const T*, AssetError> {
-                    if (auto&& it = m_mapped_assets.find(id);
-                        it != m_mapped_assets.end()) {
-                        return &it->second;
-                    } else {
-                        return std::unexpected(AssetNotPresent(id));
-                    }
-                }
-            },
-            id
-        );
+            epix::util::visitor{[this](const AssetIndex& index) {
+                                    return m_assets.try_get(index);
+                                },
+                                [this](const uuids::uuid& id)
+                                    -> std::expected<const T*, AssetError> {
+                                    if (auto&& it = m_mapped_assets.find(id);
+                                        it != m_mapped_assets.end()) {
+                                        return &it->second;
+                                    } else {
+                                        return std::unexpected(
+                                            AssetNotPresent(id));
+                                    }
+                                }},
+            id);
     }
 
     /**
@@ -585,18 +539,16 @@ struct Assets {
                        [this](const AssetIndex& index) {
                            return m_assets.try_get(index);
                        },
-                       [this](const uuids::uuid& id
-                       ) -> std::expected<T*, AssetError> {
+                       [this](const uuids::uuid& id)
+                           -> std::expected<T*, AssetError> {
                            if (auto&& it = m_mapped_assets.find(id);
                                it != m_mapped_assets.end()) {
                                return &it->second;
                            } else {
                                return std::unexpected(AssetNotPresent(id));
                            }
-                       }
-                   },
-                   id
-        )
+                       }},
+                   id)
             .and_then([this, &id](T* asset) -> std::expected<T*, AssetError> {
                 if (asset) {
                     m_cached_events.emplace_back(AssetEvent<T>::modified(id));
@@ -616,28 +568,25 @@ struct Assets {
      */
     std::expected<void, AssetError> remove(const AssetId<T>& id) {
         return std::visit(
-                   epix::util::visitor{
-                       [this, &id](const AssetIndex& index) {
-                           return m_assets.remove(index);
-                       },
-                       [this, &id](const uuids::uuid& uuid
-                       ) -> std::expected<void, AssetError> {
-                           if (contains(id)) {
-                               m_mapped_assets.erase(uuid);
-                               m_mapped_assets_ref.erase(uuid);
-                               return {};
-                           } else {
-                               return std::unexpected(AssetNotPresent(uuid));
-                           }
-                       }
-                   },
-                   id
-        )
+                   epix::util::visitor{[this, &id](const AssetIndex& index) {
+                                           return m_assets.remove(index);
+                                       },
+                                       [this, &id](const uuids::uuid& uuid)
+                                           -> std::expected<void, AssetError> {
+                                           if (contains(id)) {
+                                               m_mapped_assets.erase(uuid);
+                                               m_mapped_assets_ref.erase(uuid);
+                                               return {};
+                                           } else {
+                                               return std::unexpected(
+                                                   AssetNotPresent(uuid));
+                                           }
+                                       }},
+                   id)
             .and_then([this, &id](void) -> std::expected<void, AssetError> {
-                spdlog::debug(
-                    "[{}] Removed asset at {}", meta::type_id<Assets<T>>::name,
-                    id.to_string_short()
-                );
+                spdlog::debug("[{}] Removed asset at {}",
+                              meta::type_id<Assets<T>>::name,
+                              id.to_string_short());
                 m_cached_events.emplace_back(AssetEvent<T>::removed(id));
                 return {};
             });
@@ -657,8 +606,8 @@ struct Assets {
                        [this](const AssetIndex& index) {
                            return m_assets.pop(index);
                        },
-                       [this](const uuids::uuid& id
-                       ) -> std::expected<T, AssetError> {
+                       [this](const uuids::uuid& id)
+                           -> std::expected<T, AssetError> {
                            if (contains(id)) {
                                auto asset = std::move(m_mapped_assets.at(id));
                                m_mapped_assets.erase(id);
@@ -667,15 +616,12 @@ struct Assets {
                            } else {
                                return std::unexpected(AssetNotPresent(id));
                            }
-                       }
-                   },
-                   id
-        )
+                       }},
+                   id)
             .and_then([this, &id](T&& asset) -> std::expected<T, AssetError> {
-                spdlog::debug(
-                    "[{}] Popped asset at {}", meta::type_id<Assets<T>>::name,
-                    id.to_string_short()
-                );
+                spdlog::debug("[{}] Popped asset at {}",
+                              meta::type_id<Assets<T>>::name,
+                              id.to_string_short());
                 m_cached_events.emplace_back(AssetEvent<T>::removed(id));
                 return std::move(asset);
             });
@@ -685,15 +631,13 @@ struct Assets {
     /**
      * @brief Handle strong handle destruction events.
      */
-    static void handle_events(
-        epix::ResMut<Assets<T>> assets, epix::Res<AssetServer> asset_server
-    ) {
-        assets->handle_events_internal(asset_server.get());
+    static void handle_events(epix::ResMut<Assets<T>> assets,
+                              epix::Res<AssetServer> asset_server) {
+        assets->handle_events_internal(asset_server);
     }
 
-    static void asset_events(
-        epix::ResMut<Assets<T>> assets, epix::EventWriter<AssetEvent<T>> writer
-    ) {
+    static void asset_events(epix::ResMut<Assets<T>> assets,
+                             epix::EventWriter<AssetEvent<T>> writer) {
         for (auto&& event : assets->m_cached_events) {
             writer.write(event);
         }

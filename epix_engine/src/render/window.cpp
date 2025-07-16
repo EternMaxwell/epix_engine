@@ -3,21 +3,12 @@
 
 using namespace epix::render::window;
 
-EPIX_API void ExtractedWindow::set_swapchain_texture(vk::ImageView view,
-                                                     vk::Image image,
-                                                     vk::Format format) {
-    swapchain_texture        = image;
-    swapchain_texture_format = format;
-    swapchain_texture_view   = view;
-}
-
 EPIX_API void epix::render::window::WindowSurfaces::remove(
     const Entity& entity) {
-    auto it = surfaces.find(entity);
-    if (it != surfaces.end()) {
+    if (auto it = surfaces.find(entity); it != surfaces.end()) {
         auto& data = it->second;
-        for (auto& view : data.swapchain_image_views) {
-            data.device.destroyImageView(view);
+        for (auto& image : data.swapchain_images) {
+            image = nullptr;
         }
         if (data.swapchain) {
             data.device.destroySwapchainKHR(data.swapchain);
@@ -81,13 +72,12 @@ EPIX_API void epix::render::window::extract_windows(
                             .physical_height = new_height,
                             .present_mode    = window.present_mode,
                             .alpha_mode      = window.composite_alpha_mode,
-                            .device          = *device,
                         });
         }
 
         auto& extracted_window = extracted_windows->windows.at(entity);
-        if (extracted_window.swapchain_texture_view) {
-            extracted_window.swapchain_texture_view = nullptr;
+        if (extracted_window.swapchain_texture) {
+            extracted_window.swapchain_texture = nullptr;
         }
 
         extracted_window.size_changed =
@@ -121,8 +111,75 @@ EPIX_API void epix::render::window::create_surfaces(
     Res<vk::PhysicalDevice> physical_device,
     Res<vk::Device> device,
     Res<vk::Queue> queue,
+    Res<nvrhi::DeviceHandle> nvrhi_device,
     Res<CommandPools> command_pools,
     Local<vk::CommandBuffer> pcmd_buffer) {
+    auto match_present_mode = [&](vk::SurfaceKHR surface,
+                                  epix::window::PresentMode present_mode) {
+        auto presentModes = physical_device->getSurfacePresentModesKHR(surface);
+        switch (present_mode) {
+            case epix::window::PresentMode::AutoNoVsync: {
+                // immediate
+                auto res = std::find_if(
+                    presentModes.begin(), presentModes.end(), [](auto&& mode) {
+                        return mode == vk::PresentModeKHR::eImmediate;
+                    });
+                if (res != presentModes.end()) {
+                    return vk::PresentModeKHR::eImmediate;
+                }
+                // mailbox
+                res = std::find_if(
+                    presentModes.begin(), presentModes.end(), [](auto&& mode) {
+                        return mode == vk::PresentModeKHR::eMailbox;
+                    });
+                if (res != presentModes.end()) {
+                    return vk::PresentModeKHR::eMailbox;
+                }
+                // fifo
+                res = std::find_if(presentModes.begin(), presentModes.end(),
+                                   [](auto&& mode) {
+                                       return mode == vk::PresentModeKHR::eFifo;
+                                   });
+                if (res != presentModes.end()) {
+                    return vk::PresentModeKHR::eFifo;
+                }
+            }
+            case epix::window::PresentMode::AutoVsync: {
+                // fifo relaxed
+                auto res = std::find_if(
+                    presentModes.begin(), presentModes.end(), [](auto&& mode) {
+                        return mode == vk::PresentModeKHR::eFifoRelaxed;
+                    });
+                if (res != presentModes.end()) {
+                    return vk::PresentModeKHR::eFifoRelaxed;
+                }
+                // fifo
+                res = std::find_if(presentModes.begin(), presentModes.end(),
+                                   [](auto&& mode) {
+                                       return mode == vk::PresentModeKHR::eFifo;
+                                   });
+                if (res != presentModes.end()) {
+                    return vk::PresentModeKHR::eFifo;
+                }
+            }
+            case epix::window::PresentMode::Immediate: {
+                return vk::PresentModeKHR::eImmediate;
+            }
+            case epix::window::PresentMode::Mailbox: {
+                return vk::PresentModeKHR::eMailbox;
+            }
+            case epix::window::PresentMode::Fifo: {
+                return vk::PresentModeKHR::eFifo;
+            }
+            case epix::window::PresentMode::FifoRelaxed: {
+                return vk::PresentModeKHR::eFifoRelaxed;
+            }
+            default: {
+                return vk::PresentModeKHR::eFifo;  // default to FIFO
+            }
+        }
+    };
+
     if (!*pcmd_buffer) {
         // If the command buffer is not provided, we allocate one
         *pcmd_buffer = device->allocateCommandBuffers(
@@ -138,77 +195,6 @@ EPIX_API void epix::render::window::create_surfaces(
     bool cmd_empty = true;
     for (auto&& window :
          std::views::all(windows->windows) | std::views::values) {
-        auto match_present_mode = [&](vk::SurfaceKHR surface,
-                                      epix::window::PresentMode present_mode) {
-            auto presentModes =
-                physical_device->getSurfacePresentModesKHR(surface);
-            switch (present_mode) {
-                case epix::window::PresentMode::AutoNoVsync: {
-                    // immediate
-                    auto res = std::find_if(
-                        presentModes.begin(), presentModes.end(),
-                        [](auto&& mode) {
-                            return mode == vk::PresentModeKHR::eImmediate;
-                        });
-                    if (res != presentModes.end()) {
-                        return vk::PresentModeKHR::eImmediate;
-                    }
-                    // mailbox
-                    res = std::find_if(presentModes.begin(), presentModes.end(),
-                                       [](auto&& mode) {
-                                           return mode ==
-                                                  vk::PresentModeKHR::eMailbox;
-                                       });
-                    if (res != presentModes.end()) {
-                        return vk::PresentModeKHR::eMailbox;
-                    }
-                    // fifo
-                    res = std::find_if(presentModes.begin(), presentModes.end(),
-                                       [](auto&& mode) {
-                                           return mode ==
-                                                  vk::PresentModeKHR::eFifo;
-                                       });
-                    if (res != presentModes.end()) {
-                        return vk::PresentModeKHR::eFifo;
-                    }
-                }
-                case epix::window::PresentMode::AutoVsync: {
-                    // fifo relaxed
-                    auto res = std::find_if(
-                        presentModes.begin(), presentModes.end(),
-                        [](auto&& mode) {
-                            return mode == vk::PresentModeKHR::eFifoRelaxed;
-                        });
-                    if (res != presentModes.end()) {
-                        return vk::PresentModeKHR::eFifoRelaxed;
-                    }
-                    // fifo
-                    res = std::find_if(presentModes.begin(), presentModes.end(),
-                                       [](auto&& mode) {
-                                           return mode ==
-                                                  vk::PresentModeKHR::eFifo;
-                                       });
-                    if (res != presentModes.end()) {
-                        return vk::PresentModeKHR::eFifo;
-                    }
-                }
-                case epix::window::PresentMode::Immediate: {
-                    return vk::PresentModeKHR::eImmediate;
-                }
-                case epix::window::PresentMode::Mailbox: {
-                    return vk::PresentModeKHR::eMailbox;
-                }
-                case epix::window::PresentMode::Fifo: {
-                    return vk::PresentModeKHR::eFifo;
-                }
-                case epix::window::PresentMode::FifoRelaxed: {
-                    return vk::PresentModeKHR::eFifoRelaxed;
-                }
-                default: {
-                    return vk::PresentModeKHR::eFifo;  // default to FIFO
-                }
-            }
-        };
         if (!window_surfaces->surfaces.contains(window.entity)) {
             vk::SurfaceKHR surface;
             {
@@ -221,11 +207,27 @@ EPIX_API void epix::render::window::create_surfaces(
             }
             auto formats = physical_device->getSurfaceFormatsKHR(surface);
             auto format  = formats[0];
-            for (auto&& available : formats) {
-                // Prefer SRGB format if available
-                if (available.format == vk::Format::eB8G8R8A8Srgb &&
-                    available.colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear) {
-                    format = available;
+
+            // desired formats in nvrhi
+            auto desired_formats = std::array{
+                nvrhi::Format::RGBA8_UNORM,
+                nvrhi::Format::BGRA8_UNORM,
+            };
+            nvrhi::Format found_format = nvrhi::Format::UNKNOWN;
+
+            for (auto&& desired : desired_formats) {
+                auto it = std::find_if(
+                    formats.begin(), formats.end(),
+                    [&](const vk::SurfaceFormatKHR& f) {
+                        return f.format ==
+                                   vk::Format(
+                                       nvrhi::vulkan::convertFormat(desired)) &&
+                               f.colorSpace ==
+                                   vk::ColorSpaceKHR::eSrgbNonlinear;
+                    });
+                if (it != formats.end()) {
+                    format       = *it;
+                    found_format = desired;
                     break;
                 }
             }
@@ -297,26 +299,28 @@ EPIX_API void epix::render::window::create_surfaces(
             window_surfaces->surfaces.emplace(
                 window.entity,
                 SurfaceData{
-                    .device    = *device,
-                    .instance  = *instance,
-                    .surface   = surface,
-                    .swapchain = swapchain,
-                    .config    = swapchain_create_info,
-                    .swapchain_image_views =
-                        images | std::views::transform([&](auto&& image) {
-                            return device->createImageView(
-                                vk::ImageViewCreateInfo()
-                                    .setImage(image)
-                                    .setFormat(format.format)
-                                    .setViewType(vk::ImageViewType::e2D)
-                                    .setSubresourceRange(
-                                        vk::ImageSubresourceRange()
-                                            .setAspectMask(
-                                                vk::ImageAspectFlagBits::eColor)
-                                            .setBaseMipLevel(0)
-                                            .setLevelCount(1)
-                                            .setBaseArrayLayer(0)
-                                            .setLayerCount(1)));
+                    .device       = *device,
+                    .instance     = *instance,
+                    .surface      = surface,
+                    .image_format = found_format,
+                    .swapchain    = swapchain,
+                    .config       = swapchain_create_info,
+                    .swapchain_images =
+                        images | std::views::transform([&](VkImage image) {
+                            auto desc =
+                                nvrhi::TextureDesc()
+                                    .setDimension(
+                                        nvrhi::TextureDimension::Texture2D)
+                                    .setFormat(found_format)
+                                    .setWidth(
+                                        swapchain_create_info.imageExtent.width)
+                                    .setHeight(swapchain_create_info.imageExtent
+                                                   .height)
+                                    .setIsRenderTarget(true)
+                                    .setDebugName("Swap Chain Image");
+                            return nvrhi_device.get()
+                                ->createHandleForNativeTexture(
+                                    nvrhi::ObjectTypes::VK_Image, image, desc);
                         }) |
                         std::ranges::to<std::vector>(),
                     .swapchain_image_fences = std::move(fences),
@@ -333,11 +337,11 @@ EPIX_API void epix::render::window::create_surfaces(
             surface.config.setOldSwapchain(surface.swapchain);
             auto old          = surface.swapchain;
             surface.swapchain = device->createSwapchainKHR(surface.config);
+            for (auto& image : surface.swapchain_images) {
+                image = nullptr;  // Clear old images
+            }
             if (old) {
                 device->destroySwapchainKHR(old);
-            }
-            for (auto& view : surface.swapchain_image_views) {
-                device->destroyImageView(view);
             }
             for (auto&& image :
                  device->getSwapchainImagesKHR(surface.swapchain)) {
@@ -362,22 +366,19 @@ EPIX_API void epix::render::window::create_surfaces(
                     {}, barrier);
                 cmd_empty = false;
             }
-            surface.swapchain_image_views =
+            surface.swapchain_images =
                 device->getSwapchainImagesKHR(surface.swapchain) |
-                std::views::transform([&](auto&& image) {
-                    return device->createImageView(
-                        vk::ImageViewCreateInfo()
-                            .setImage(image)
-                            .setFormat(surface.config.imageFormat)
-                            .setViewType(vk::ImageViewType::e2D)
-                            .setSubresourceRange(
-                                vk::ImageSubresourceRange()
-                                    .setAspectMask(
-                                        vk::ImageAspectFlagBits::eColor)
-                                    .setBaseMipLevel(0)
-                                    .setLevelCount(1)
-                                    .setBaseArrayLayer(0)
-                                    .setLayerCount(1)));
+                std::views::transform([&](VkImage image) {
+                    auto desc =
+                        nvrhi::TextureDesc()
+                            .setDimension(nvrhi::TextureDimension::Texture2D)
+                            .setFormat(surface.image_format)
+                            .setWidth(surface.config.imageExtent.width)
+                            .setHeight(surface.config.imageExtent.height)
+                            .setIsRenderTarget(true)
+                            .setDebugName("Swap Chain Image");
+                    return nvrhi_device.get()->createHandleForNativeTexture(
+                        nvrhi::ObjectTypes::VK_Image, image, desc);
                 }) |
                 std::ranges::to<std::vector>();
         }
@@ -395,7 +396,8 @@ EPIX_API void epix::render::window::prepare_windows(
     ResMut<ExtractedWindows> windows,
     ResMut<WindowSurfaces> window_surfaces,
     Res<vk::Device> device,
-    Res<vk::PhysicalDevice> physical_device) {
+    Res<vk::PhysicalDevice> physical_device,
+    Res<nvrhi::DeviceHandle> nvrhi_device) {
     std::vector<std::pair<Entity, std::string>> errors;
     for (auto&& window :
          std::views::all(windows->windows) | std::views::values) {
@@ -417,12 +419,9 @@ EPIX_API void epix::render::window::prepare_windows(
                 surface_data.swapchain_image_fences[surface_data.fence_index]);
             if (res == vk::Result::eSuccess ||
                 res == vk::Result::eSuboptimalKHR) {
-                auto image = device->getSwapchainImagesKHR(
-                    surface_data.swapchain)[surface_data.current_image_index];
-                auto view = surface_data.swapchain_image_views
-                                [surface_data.current_image_index];
-                window.set_swapchain_texture(view, image,
-                                             surface_data.config.imageFormat);
+                window.swapchain_texture =
+                    surface_data
+                        .swapchain_images[surface_data.current_image_index];
             } else {
                 errors.emplace_back(window.entity, vk::to_string(res));
             }
