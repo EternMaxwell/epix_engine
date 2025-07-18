@@ -196,39 +196,10 @@ EPIX_API void epix::render::RenderPlugin::build(epix::App& app) {
     render_app.insert_resource(queue);
     render_app.insert_resource(nvrhi_device);
     // command pools resource should be across worlds, so use add_resource
-    app.emplace_resource<epix::render::CommandPools>(device,
-                                                     queue_family_index);
-    render_app.emplace_resource<epix::render::CommandPools>(device,
-                                                            queue_family_index);
-
-    //     app.add_systems(
-    //         epix::PostExit,
-    //         epix::into([](Res<vk::Instance> instance,
-    //                       Res<vk::PhysicalDevice> physical_device,
-    //                       Res<vk::Device> device, Res<vk::Queue> queue,
-    //                       std::optional<Res<vk::DebugUtilsMessengerEXT>>
-    //                           debug_utils_messenger,
-    //                       ResMut<epix::render::CommandPools> pools) {
-    //             device->waitIdle();
-    //             pools->destroy();
-    //             device->destroy();
-    //             if (debug_utils_messenger) {
-    //                 auto destroy_func =
-    //                     (PFN_vkDestroyDebugUtilsMessengerEXT)instance->getProcAddr(
-    //                         "vkDestroyDebugUtilsMessengerEXT");
-    //                 if (!destroy_func) {
-    //                     throw std::runtime_error(
-    //                         "Failed to get vkDestroyDebugUtilsMessengerEXT "
-    //                         "function");
-    //                 }
-    //                 destroy_func(*instance, **debug_utils_messenger,
-    //                 nullptr);
-    //             }
-    //             instance->destroy();
-    // #ifdef EPIX_USE_VOLK
-    //             volkFinalize();
-    // #endif
-    //         }).set_name("Destroy Vulkan resources"));
+    auto pools = std::make_shared<epix::render::CommandPools>(
+        device, queue_family_index);
+    app.add_resource(pools);
+    render_app.add_resource(pools);
 
     app.add_plugins(epix::render::window::WindowRenderPlugin{});
 }
@@ -238,5 +209,26 @@ EPIX_API void epix::render::RenderPlugin::finalize(epix::App& app) {
     auto& render_app = app.sub_app(epix::render::Render);
     render_app.remove_resource<nvrhi::DeviceHandle>();
     app.remove_resource<nvrhi::DeviceHandle>();
+    app.run_system(
+        [](Res<vk::Instance> instance, Res<vk::PhysicalDevice> physical_device,
+           Res<vk::Device> device, ResMut<epix::render::CommandPools> pools,
+           std::optional<Res<vk::DebugUtilsMessengerEXT>>
+               debug_utils_messenger) {
+            device->waitIdle();
+            pools->destroy();
+            device->destroy();
+            if (debug_utils_messenger) {
+                auto destroy_func =
+                    (PFN_vkDestroyDebugUtilsMessengerEXT)instance->getProcAddr(
+                        "vkDestroyDebugUtilsMessengerEXT");
+                if (!destroy_func) {
+                    throw std::runtime_error(
+                        "Failed to get vkDestroyDebugUtilsMessengerEXT "
+                        "function");
+                }
+                destroy_func(*instance, **debug_utils_messenger, nullptr);
+            }
+            instance->destroy();
+        });
     volkFinalize();
 }
