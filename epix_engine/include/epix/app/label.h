@@ -16,6 +16,8 @@ struct Label {
     Label(U u) noexcept : m_type(meta::type_id<U>{}), m_index(0) {
         if constexpr (std::is_enum_v<U>) {
             m_index = static_cast<size_t>(u);
+        } else if constexpr (std::convertible_to<U, size_t>) {
+            m_index = static_cast<size_t>(u);
         }
     }
     EPIX_API Label(meta::type_index t, size_t i) noexcept;

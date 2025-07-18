@@ -3,3 +3,4 @@
 add_subdirectory(app)
 add_subdirectory(window)
 add_subdirectory(assets)
+add_subdirectory(render)

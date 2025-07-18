@@ -385,12 +385,12 @@ struct RenderGraph {
 };
 
 struct RenderGraphRunner {
-    EPIX_API bool run(const RenderGraph& graph,
+    EPIX_API static bool run(const RenderGraph& graph,
                       nvrhi::DeviceHandle device,
                       World& world,
                       std::function<void(nvrhi::CommandListHandle)> finalizer);
 
-    EPIX_API bool run_graph(const RenderGraph& graph,
+    EPIX_API static bool run_graph(const RenderGraph& graph,
                             std::optional<GraphLabel> sub_graph,
                             RenderContext& render_context,
                             epix::app::World& world,

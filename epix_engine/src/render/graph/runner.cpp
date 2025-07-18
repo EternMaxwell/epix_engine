@@ -17,7 +17,7 @@ EPIX_API bool RenderGraphRunner::run(
         return false;
     }
     // finalize the command encoder
-    finalizer(render_context.commands());
+    if (finalizer) finalizer(render_context.commands());
     // submit generated cmd buffers
     auto command_buffers = render_context.finish();
     auto commands =
@@ -27,7 +27,8 @@ EPIX_API bool RenderGraphRunner::run(
                 return cmd;
             }) |
         std::ranges::to<std::vector>();
-    device->executeCommandLists(commands.data(), commands.size());
+    if (commands.size())
+        device->executeCommandLists(commands.data(), commands.size());
     return true;
 }
 
@@ -38,6 +39,7 @@ EPIX_API bool RenderGraphRunner::run_graph(
     epix::app::World& world,
     epix::util::ArrayProxy<SlotValue> inputs,
     std::optional<epix::app::Entity> view_entity) {
+    // store all outputs of nodes in a map
     entt::dense_map<NodeLabel, std::vector<SlotValue>> node_outputs;
 
     spdlog::info("Running graph {}.", sub_graph ? sub_graph->name() : "main");
