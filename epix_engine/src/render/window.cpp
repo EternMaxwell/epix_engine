@@ -210,6 +210,8 @@ EPIX_API void epix::render::window::create_surfaces(
 
             // desired formats in nvrhi
             auto desired_formats = std::array{
+                nvrhi::Format::SBGRA8_UNORM,
+                nvrhi::Format::SRGBA8_UNORM,
                 nvrhi::Format::RGBA8_UNORM,
                 nvrhi::Format::BGRA8_UNORM,
             };

@@ -116,7 +116,7 @@ EPIX_API void epix::render::RenderPlugin::build(epix::App& app) {
     auto physical_device = physical_devices[0];
     // search for a queue family that supports both graphics and compute
     auto queue_families    = physical_device.getQueueFamilyProperties();
-    auto find_queue_family = [&](vk::QueueFlagBits flags) -> int {
+    auto find_queue_family = [&](vk::QueueFlags flags) -> int {
         for (int i = 0; i < queue_families.size(); ++i) {
             if (queue_families[i].queueFlags & flags) {
                 return i;
@@ -124,17 +124,16 @@ EPIX_API void epix::render::RenderPlugin::build(epix::App& app) {
         }
         return -1;  // not found
     };
-    int graphics_family_index = find_queue_family(vk::QueueFlagBits::eGraphics);
-    int transfer_family_index = find_queue_family(vk::QueueFlagBits::eTransfer);
-    int compute_family_index  = find_queue_family(vk::QueueFlagBits::eCompute);
-    auto device_extensions    = std::array{
+    int queue_family_index = find_queue_family(vk::QueueFlagBits::eGraphics |
+                                               vk::QueueFlagBits::eCompute |
+                                               vk::QueueFlagBits::eTransfer);
+    auto device_extensions = std::array{
         VK_KHR_SWAPCHAIN_EXTENSION_NAME,
     };
     auto device = [&] {
         std::array<float, 1> queue_priorities = {1.0f};
         auto queue_create_infos =
-            std::set<int>({graphics_family_index, transfer_family_index,
-                           compute_family_index}) |
+            std::set<int>({queue_family_index}) |
             std::views::filter([](int index) {
                 return index >= 0;  // only include valid indices
             }) |
@@ -159,24 +158,11 @@ EPIX_API void epix::render::RenderPlugin::build(epix::App& app) {
 
     nvrhi::DeviceHandle nvrhi_device =
         nvrhi::vulkan::createDevice(nvrhi::vulkan::DeviceDesc{
-            .instance       = instance,
-            .physicalDevice = physical_device,
-            .device         = device,
-            .graphicsQueue  = graphics_family_index >= 0
-                                  ? device.getQueue(graphics_family_index, 0)
-                                  : vk::Queue(),
-            .graphicsQueueIndex =
-                graphics_family_index >= 0 ? graphics_family_index : -1,
-            .transferQueue = transfer_family_index >= 0
-                                 ? device.getQueue(transfer_family_index, 0)
-                                 : vk::Queue(),
-            .transferQueueIndex =
-                transfer_family_index >= 0 ? transfer_family_index : -1,
-            .computeQueue = compute_family_index >= 0
-                                ? device.getQueue(compute_family_index, 0)
-                                : vk::Queue(),
-            .computeQueueIndex =
-                compute_family_index >= 0 ? compute_family_index : -1,
+            .instance              = instance,
+            .physicalDevice        = physical_device,
+            .device                = device,
+            .graphicsQueue         = device.getQueue(queue_family_index, 0),
+            .graphicsQueueIndex    = queue_family_index,
             .instanceExtensions    = extensions.data(),
             .numInstanceExtensions = extensions.size(),
             .deviceExtensions      = device_extensions.data(),
@@ -186,7 +172,7 @@ EPIX_API void epix::render::RenderPlugin::build(epix::App& app) {
         nvrhi_device = nvrhi::validation::createValidationLayer(nvrhi_device);
     }
 
-    auto queue = device.getQueue(graphics_family_index, 0);
+    auto queue = device.getQueue(queue_family_index, 0);
     app.insert_resource(instance);
     app.insert_resource(physical_device);
     app.insert_resource(device);
@@ -211,37 +197,38 @@ EPIX_API void epix::render::RenderPlugin::build(epix::App& app) {
     render_app.insert_resource(nvrhi_device);
     // command pools resource should be across worlds, so use add_resource
     app.emplace_resource<epix::render::CommandPools>(device,
-                                                     graphics_family_index);
-    render_app.emplace_resource<epix::render::CommandPools>(
-        device, graphics_family_index);
+                                                     queue_family_index);
+    render_app.emplace_resource<epix::render::CommandPools>(device,
+                                                            queue_family_index);
 
-//     app.add_systems(
-//         epix::PostExit,
-//         epix::into([](Res<vk::Instance> instance,
-//                       Res<vk::PhysicalDevice> physical_device,
-//                       Res<vk::Device> device, Res<vk::Queue> queue,
-//                       std::optional<Res<vk::DebugUtilsMessengerEXT>>
-//                           debug_utils_messenger,
-//                       ResMut<epix::render::CommandPools> pools) {
-//             device->waitIdle();
-//             pools->destroy();
-//             device->destroy();
-//             if (debug_utils_messenger) {
-//                 auto destroy_func =
-//                     (PFN_vkDestroyDebugUtilsMessengerEXT)instance->getProcAddr(
-//                         "vkDestroyDebugUtilsMessengerEXT");
-//                 if (!destroy_func) {
-//                     throw std::runtime_error(
-//                         "Failed to get vkDestroyDebugUtilsMessengerEXT "
-//                         "function");
-//                 }
-//                 destroy_func(*instance, **debug_utils_messenger, nullptr);
-//             }
-//             instance->destroy();
-// #ifdef EPIX_USE_VOLK
-//             volkFinalize();
-// #endif
-//         }).set_name("Destroy Vulkan resources"));
+    //     app.add_systems(
+    //         epix::PostExit,
+    //         epix::into([](Res<vk::Instance> instance,
+    //                       Res<vk::PhysicalDevice> physical_device,
+    //                       Res<vk::Device> device, Res<vk::Queue> queue,
+    //                       std::optional<Res<vk::DebugUtilsMessengerEXT>>
+    //                           debug_utils_messenger,
+    //                       ResMut<epix::render::CommandPools> pools) {
+    //             device->waitIdle();
+    //             pools->destroy();
+    //             device->destroy();
+    //             if (debug_utils_messenger) {
+    //                 auto destroy_func =
+    //                     (PFN_vkDestroyDebugUtilsMessengerEXT)instance->getProcAddr(
+    //                         "vkDestroyDebugUtilsMessengerEXT");
+    //                 if (!destroy_func) {
+    //                     throw std::runtime_error(
+    //                         "Failed to get vkDestroyDebugUtilsMessengerEXT "
+    //                         "function");
+    //                 }
+    //                 destroy_func(*instance, **debug_utils_messenger,
+    //                 nullptr);
+    //             }
+    //             instance->destroy();
+    // #ifdef EPIX_USE_VOLK
+    //             volkFinalize();
+    // #endif
+    //         }).set_name("Destroy Vulkan resources"));
 
     app.add_plugins(epix::render::window::WindowRenderPlugin{});
 }
