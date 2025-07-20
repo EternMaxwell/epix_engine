@@ -1,6 +1,8 @@
 #pragma once
 
 #include <epix/app.h>
+#include <epix/render/graph.h>
+#include <epix/render/pipeline.h>
 #include <epix/render/window.h>
 #include <epix/vulkan.h>
 
