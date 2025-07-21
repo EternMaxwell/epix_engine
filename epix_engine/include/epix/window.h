@@ -21,9 +21,9 @@ enum class ExitCondition {
     None,
 };
 struct WindowPlugin : public app::Plugin {
-    std::optional<Window> primary_window;
-    ExitCondition exit_condition = ExitCondition::OnPrimaryClosed;
-    bool close_when_requested    = true;
+    std::optional<Window> primary_window = Window{};
+    ExitCondition exit_condition         = ExitCondition::OnPrimaryClosed;
+    bool close_when_requested            = true;
     EPIX_API void build(App& app) override;
 };
 
@@ -39,8 +39,7 @@ EPIX_API void print_events(
     EventReader<events::FileDrop> file_drop,
     EventReader<events::ReceivedCharacter> received_character,
     EventReader<events::WindowFocused> window_focused,
-    Query<Get<window::Window>> windows
-);
+    Query<Get<window::Window>> windows);
 
 using events::CursorEntered;
 using events::CursorMoved;
