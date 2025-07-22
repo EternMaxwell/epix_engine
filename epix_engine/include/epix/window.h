@@ -20,11 +20,11 @@ enum class ExitCondition {
     OnPrimaryClosed,
     None,
 };
-struct WindowPlugin : public app::Plugin {
+struct WindowPlugin {
     std::optional<Window> primary_window = Window{};
     ExitCondition exit_condition         = ExitCondition::OnPrimaryClosed;
     bool close_when_requested            = true;
-    EPIX_API void build(App& app) override;
+    EPIX_API void build(App& app);
 };
 
 EPIX_API void print_events(

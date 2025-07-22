@@ -303,18 +303,18 @@ EPIX_API App& App::remove_set(const SystemSetLabel& label) {
 
 EPIX_API void App::build() {
     // build plugins
-    std::vector<Plugin*> to_build;
+    std::vector<PluginRef> to_build;
     size_t last_index = 0;
     do {
         for (auto&& plugin : to_build) {
-            plugin->build(*this);
+            plugin.build(*this);
         }
         to_build.clear();
         {
             auto pplugins = m_data->plugins.write();
             auto& plugins = *pplugins;
             for (size_t i = last_index; i < plugins.size(); ++i) {
-                to_build.push_back(plugins[i].second.get());
+                to_build.push_back(plugins[i].second.second);
             }
             last_index = plugins.size();
         }
@@ -323,18 +323,18 @@ EPIX_API void App::build() {
         auto pplugins = m_data->plugins.write();
         auto& plugins = *pplugins;
         for (auto&& [id, plugin] : plugins) {
-            to_build.push_back(plugin.get());
+            to_build.push_back(plugin.second);
         }
     }
     for (auto&& plugin : to_build) {
-        plugin->finish(*this);
+        plugin.finish(*this);
     }
     {
         auto pplugins = m_data->plugins.write();
         auto& plugins = *pplugins;
         for (auto&& [id, plugin] : plugins) {
             auto w = world();
-            w->add_resource(id, plugin);
+            w->add_resource(id, plugin.first);
         }
     }
 
@@ -368,7 +368,7 @@ EPIX_API void App::finalize() {
     auto pplugins = m_data->plugins.write();
     auto& plugins = *pplugins;
     for (auto&& [id, plugin] : plugins) {
-        plugin->finalize(*this);
+        plugin.second.finalize(*this);
     }
 }
 

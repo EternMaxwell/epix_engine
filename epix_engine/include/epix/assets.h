@@ -9,7 +9,7 @@
 #include "assets/index.h"
 
 namespace epix::assets {
-struct AssetPlugin : public epix::Plugin {
+struct AssetPlugin {
     std::vector<std::function<void(epix::App&)>> m_assets_inserts;
     std::shared_ptr<AssetServer> m_asset_server =
         std::make_shared<AssetServer>();
@@ -34,7 +34,7 @@ struct AssetPlugin : public epix::Plugin {
         return *this;
     }
 
-    EPIX_API void build(epix::App& app) override;
-    EPIX_API void finish(epix::App& app) override;
+    EPIX_API void build(epix::App& app) ;
+    EPIX_API void finish(epix::App& app);
 };
 }  // namespace epix::assets

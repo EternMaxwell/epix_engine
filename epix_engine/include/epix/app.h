@@ -35,7 +35,6 @@ using app::AppProfiler;
 using AppConfig = app::AppCreateInfo;
 using app::AppExit;
 using app::AppRunner;
-using app::Plugin;
 
 using app::into;
 using app::sets;

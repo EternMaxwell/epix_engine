@@ -95,8 +95,8 @@ struct CachedWindowPosSize {
 struct GLFWRunner : public app::AppRunner {
     EPIX_API int run(App& app) override;
 };
-struct GLFWPlugin : public app::Plugin {
-    EPIX_API void build(App& app) override;
+struct GLFWPlugin {
+    EPIX_API void build(App& app);
     EPIX_API static GLFWwindow* create_window(
         Entity id, window::Window& window
     );

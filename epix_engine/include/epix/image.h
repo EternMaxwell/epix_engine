@@ -28,8 +28,8 @@ struct ImageView {
     EPIX_API bool operator==(const ImageView& other) const;
 };
 
-struct ImagePlugin : Plugin {
-    EPIX_API void build(App& app) override;
+struct ImagePlugin {
+    EPIX_API void build(App& app);
 };
 
 struct StbImageLoader {

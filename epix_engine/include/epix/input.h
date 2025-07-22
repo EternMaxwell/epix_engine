@@ -9,8 +9,8 @@
 namespace epix {
 namespace input {
 using namespace events;
-struct InputPlugin : Plugin {
-    EPIX_API void build(App& app) override;
+struct InputPlugin {
+    EPIX_API void build(App& app);
 };
 EPIX_API void print_inputs(
     EventReader<KeyInput> key_reader,

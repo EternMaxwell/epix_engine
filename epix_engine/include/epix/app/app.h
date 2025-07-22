@@ -9,11 +9,68 @@
 namespace epix::app {
 struct App;
 
-struct Plugin {
-    virtual void build(App& app) {};
-    virtual void finish(App& app) {};
-    virtual void finalize(App& app) {};
-    virtual ~Plugin() = default;
+struct PluginRef {
+    template <typename T>
+    PluginRef(T* instance) : instance(instance), vtable(get_vtable<T>()) {}
+
+    void build(App& app) {
+        if (vtable->build) {
+            vtable->build(instance, app);
+        }
+    }
+    void finish(App& app) {
+        if (vtable->finish) {
+            vtable->finish(instance, app);
+        }
+    }
+    void finalize(App& app) {
+        if (vtable->finalize) {
+            vtable->finalize(instance, app);
+        }
+    }
+
+   private:
+    struct VTable {
+        void (*build)(void*, App&);
+        void (*finish)(void*, App&);
+        void (*finalize)(void*, App&);
+    };
+    using func_ptr = void (*)(void*, App&);
+    template <typename T>
+    VTable* get_vtable() {
+        static constexpr bool has_build =
+            requires(T t, App& app) { t.build(app); };
+        static constexpr bool has_finish =
+            requires(T t, App& app) { t.finish(app); };
+        static constexpr bool has_finalize =
+            requires(T t, App& app) { t.finalize(app); };
+        static constexpr bool callable = std::invocable<T, App&>;
+        static VTable vtable{
+            .build =
+                [](void* instance, App& app) {
+                    if constexpr (has_build) {
+                        static_cast<T*>(instance)->build(app);
+                    } else if constexpr (callable) {
+                        (*static_cast<T*>(instance))(app);
+                    }
+                },
+            .finish =
+                [](void* instance, App& app) {
+                    if constexpr (has_finish) {
+                        static_cast<T*>(instance)->finish(app);
+                    }
+                },
+            .finalize =
+                [](void* instance, App& app) {
+                    if constexpr (has_finalize) {
+                        static_cast<T*>(instance)->finalize(app);
+                    }
+                },
+        };
+        return &vtable;
+    }
+    void* instance = nullptr;
+    VTable* vtable = nullptr;
 };
 
 struct AppRunner {
@@ -49,7 +106,8 @@ struct AppData {
     async::RwLock<std::vector<ScheduleLabel>> main_schedule_order;
     async::RwLock<std::vector<ScheduleLabel>> exit_schedule_order;
     async::RwLock<
-        std::vector<std::pair<meta::type_index, std::shared_ptr<Plugin>>>>
+        std::vector<std::pair<meta::type_index,
+                              std::pair<std::shared_ptr<void>, PluginRef>>>>
         plugins;
     async::RwLock<entt::dense_set<meta::type_index>> built_plugins;
 
@@ -66,7 +124,7 @@ struct AppData {
 inline struct MainT {
 } Main;
 
-struct EventSystem : public Plugin {
+struct EventSystem {
    private:
     std::vector<void (*)(World&)> updates;
 
@@ -79,8 +137,9 @@ struct EventSystem : public Plugin {
             }
         });
     }
-    EPIX_API void finish(App& app) override;
+    EPIX_API void finish(App& app);
 };
+
 struct App {
     using executor_t = BS::thread_pool<BS::tp::priority>;
 
@@ -111,7 +170,7 @@ struct App {
                 return plugin.first == meta::type_index(meta::type_id<T>());
             });
         if (it != plugins.end()) {
-            func(*std::static_pointer_cast<T>(it->second));
+            func(*std::static_pointer_cast<T>(it->second.first));
         }
         return *this;
     }
@@ -160,7 +219,7 @@ struct App {
 
     template <typename T, typename... Args>
     App& add_plugin(Args&&... args) {
-        using type    = std::decay_t<T>;
+        using type    = T;
         auto pplugins = m_data->plugins.write();
         auto& plugins = *pplugins;
         if (std::find_if(plugins.begin(), plugins.end(),
@@ -171,9 +230,10 @@ struct App {
             // plugin already exists, do nothing
             return *this;
         }
-        plugins.emplace_back(
-            meta::type_index(meta::type_id<type>()),
-            std::make_shared<type>(std::forward<Args>(args)...));
+        type* instance = new type(std::forward<Args>(args)...);
+        plugins.emplace_back(meta::type_index(meta::type_id<type>()),
+                             std::make_pair(std::shared_ptr<void>(instance),
+                                            PluginRef(instance)));
         return *this;
     }
     template <typename T>
@@ -189,8 +249,10 @@ struct App {
             // plugin already exists, do nothing
             return *this;
         }
+        type* instance = new type(std::forward<T>(plugin));
         plugins.emplace_back(meta::type_index(meta::type_id<type>()),
-                             std::make_shared<type>(std::forward<T>(plugin)));
+                             std::make_pair(std::shared_ptr<void>(instance),
+                                            PluginRef(instance)));
         return *this;
     }
     template <typename... Plugins>
@@ -368,9 +430,9 @@ struct App {
 struct AppExit {
     int code = 0;
 };
-struct LoopPlugin : public Plugin {
+struct LoopPlugin {
     bool m_loop_enabled = true;
-    EPIX_API void build(App& app) override;
+    EPIX_API void build(App& app);
     EPIX_API LoopPlugin& set_enabled(bool enabled);
 };
 }  // namespace epix::app

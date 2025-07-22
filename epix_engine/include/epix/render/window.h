@@ -69,8 +69,8 @@ EPIX_API void prepare_windows(ResMut<ExtractedWindows> windows,
 EPIX_API void present_windows(ResMut<WindowSurfaces> window_surfaces,
                               Res<vk::Queue> queue);
 
-struct WindowRenderPlugin : public epix::Plugin {
+struct WindowRenderPlugin {
     bool handle_present = true;
-    EPIX_API void build(epix::App&) override;
+    EPIX_API void build(epix::App&);
 };
 }  // namespace epix::render::window
