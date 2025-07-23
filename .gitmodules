@@ -49,3 +49,6 @@
 [submodule "libs/nvrhi"]
 	path = libs/nvrhi
 	url = https://github.com/NVIDIA-RTX/NVRHI.git
+[submodule "libs/spirv-cross"]
+	path = libs/spirv-cross
+	url = https://github.com/KhronosGroup/SPIRV-Cross.git
