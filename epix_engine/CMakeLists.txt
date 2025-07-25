@@ -42,6 +42,7 @@ target_link_libraries(epix_engine PUBLIC box2d)
 target_link_libraries(epix_engine PUBLIC stbimage)
 target_link_libraries(epix_engine PUBLIC nvrhi)
 target_link_libraries(epix_engine PUBLIC nvrhi_vk)
+target_link_libraries(epix_engine PUBLIC spirv-cross-cpp)
 
 add_library(epix ALIAS epix_engine)
 
@@ -75,6 +76,7 @@ if(EPIX_WITH_SHARED)
   target_link_libraries(epix_engine PUBLIC Vulkan-Headers)
   target_link_libraries(epix_engine PUBLIC nvrhi)
   target_link_libraries(epix_engine PUBLIC nvrhi_vk)
+  target_link_libraries(epix_engine PUBLIC spirv-cross-cpp)
 
   set_target_properties(epix_engine_shared PROPERTIES OUTPUT_NAME epix)
 

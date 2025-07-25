@@ -37,6 +37,7 @@ set (NVRHI_WITH_DX12 OFF)
 set (NVRHI_WITH_DX11 OFF)
 set (NVRHI_WITH_VULKAN ON)
 add_subdirectory (libs/nvrhi)
+add_subdirectory (libs/spirv-cross)
 
 add_subdirectory (libs/googletest)
 
