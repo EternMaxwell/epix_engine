@@ -70,13 +70,13 @@ struct World {
 
     template <typename... Args>
     void entity_emplace_tuple(Entity entity, std::tuple<Args...>&& args) {
-        entity_emplace_tuple(
-            entity, std::move(args), std::index_sequence_for<Args...>()
-        );
+        entity_emplace_tuple(entity, std::move(args),
+                             std::index_sequence_for<Args...>());
     }
     template <typename... Args, size_t... I>
-    void
-    entity_emplace_tuple(Entity entity, std::tuple<Args...>&& args, std::index_sequence<I...>) {
+    void entity_emplace_tuple(Entity entity,
+                              std::tuple<Args...>&& args,
+                              std::index_sequence<I...>) {
         (entity_emplace(entity, std::forward<Args>(std::get<I>(args))), ...);
     }
 
@@ -108,25 +108,20 @@ struct World {
      */
     template <typename T>
     void init_resource() {
-        auto resources = m_data.resources.write();
-        using type     = std::decay_t<T>;
-        if (!resources->contains(meta::type_id<type>())) {
-            if constexpr (FromWorld<type>) {
-                if constexpr (std::constructible_from<type, World&>) {
-                    resources->emplace(
-                        meta::type_id<type>(), std::make_shared<type>(*this)
-                    );
-                } else {
-                    resources->emplace(
-                        meta::type_id<type>(),
-                        std::make_shared<type>(type::from_world(*this))
-                    );
-                }
+        using type = std::decay_t<T>;
+        std::shared_ptr<type> resource;
+        if constexpr (FromWorld<type>) {
+            if constexpr (std::constructible_from<type, World&>) {
+                resource = std::make_shared<type>(*this);
             } else {
-                resources->emplace(
-                    meta::type_id<type>(), std::make_shared<type>()
-                );
+                resource = std::make_shared<type>(type::from_world(*this));
             }
+        } else {
+            resource = std::make_shared<type>();
+        }
+        auto resources = m_data.resources.write();
+        if (!resources->contains(meta::type_id<type>())) {
+            resources->emplace(meta::type_id<type>(), resource);
         }
     };
     /**
@@ -144,10 +139,8 @@ struct World {
         using type     = std::decay_t<T>;
         auto resources = m_data.resources.write();
         if (!resources->contains(meta::type_id<type>())) {
-            resources->emplace(
-                meta::type_id<type>(),
-                std::make_shared<type>(std::forward<T>(res))
-            );
+            resources->emplace(meta::type_id<type>(),
+                               std::make_shared<type>(std::forward<T>(res)));
         }
     };
     template <typename T>
@@ -158,9 +151,8 @@ struct World {
             resources->emplace(meta::type_id<type>(), res);
         }
     };
-    EPIX_API void add_resource(
-        meta::type_index id, const std::shared_ptr<void>& res
-    );
+    EPIX_API void add_resource(meta::type_index id,
+                               const std::shared_ptr<void>& res);
     /**
      * @brief Insert a resource to the world using construct in place.
      *
@@ -181,8 +173,7 @@ struct World {
         if (!resources->contains(meta::type_id<type>())) {
             resources->emplace(
                 meta::type_id<type>(),
-                std::make_shared<type>(std::forward<Args>(args)...)
-            );
+                std::make_shared<type>(std::forward<Args>(args)...));
         }
     };
     /**
@@ -285,13 +276,11 @@ struct World {
         if (!m_data.registry.valid(entity)) return;
         using type = std::decay_t<T>;
         if constexpr (is_bundle<T>) {
-            entity_emplace_tuple(
-                entity, T(std::forward<Args>(args)...).unpack()
-            );
+            entity_emplace_tuple(entity,
+                                 T(std::forward<Args>(args)...).unpack());
         } else {
             m_data.registry.emplace_or_replace<std::decay_t<T>>(
-                entity, std::forward<Args>(args)...
-            );
+                entity, std::forward<Args>(args)...);
         }
     }
     /**
@@ -308,9 +297,8 @@ struct World {
         if constexpr (is_bundle<T>) {
             entity_emplace_tuple(entity, obj.unpack());
         } else {
-            m_data.registry.emplace_or_replace<type>(
-                entity, std::forward<T>(obj)
-            );
+            m_data.registry.emplace_or_replace<type>(entity,
+                                                     std::forward<T>(obj));
         }
     }
     /**
@@ -349,9 +337,8 @@ struct World {
     T& entity_get_or_emplace(Entity entity, Args&&... args) {
         if (!m_data.registry.valid(entity))
             throw std::runtime_error("Entity is not valid");
-        return m_data.registry.get_or_emplace<T>(
-            entity, std::forward<Args>(args)...
-        );
+        return m_data.registry.get_or_emplace<T>(entity,
+                                                 std::forward<Args>(args)...);
     }
 };
 }  // namespace epix::app
