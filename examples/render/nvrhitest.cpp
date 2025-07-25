@@ -71,10 +71,15 @@ struct TestPipeline {
             nvrhi::GraphicsPipelineDesc()
                 .setVertexShader(vertex_shader)
                 .setPixelShader(fragment_shader)
-                .setRenderState(nvrhi::RenderState().setDepthStencilState(
-                    nvrhi::DepthStencilState()
-                        .setDepthTestEnable(false)
-                        .setDepthWriteEnable(false)))
+                .setRenderState(
+                    nvrhi::RenderState()
+                        .setDepthStencilState(nvrhi::DepthStencilState()
+                                                  .setDepthTestEnable(false)
+                                                  .setDepthWriteEnable(false))
+                        .setRasterState(
+                            nvrhi::RasterState()
+                                .setCullMode(nvrhi::RasterCullMode::None)
+                                .setFrontCounterClockwise(true)))
                 .setInputLayout(input_layout);
     }
 };
