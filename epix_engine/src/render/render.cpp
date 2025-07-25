@@ -12,12 +12,29 @@ epix::render::RenderPlugin::enable_validation(bool enable) {
     return *this;
 }
 
+struct VolkHandler {
+    VolkHandler() {
+#ifdef EPIX_USE_VOLK
+        if (volkInitialize() != VK_SUCCESS) {
+            throw std::runtime_error("Failed to initialize Vulkan loader");
+        }
+        VULKAN_HPP_DEFAULT_DISPATCHER.init(vkGetInstanceProcAddr);
+#endif
+    }
+    ~VolkHandler() {
+#ifdef EPIX_USE_VOLK
+        volkFinalize();
+#endif
+    }
+};
+
+static std::optional<VolkHandler> volk_handler;
+
 EPIX_API void epix::render::RenderPlugin::build(epix::App& app) {
 #ifdef EPIX_USE_VOLK
-    if (volkInitialize() != VK_SUCCESS) {
-        throw std::runtime_error("Failed to initialize Vulkan loader");
+    if (!volk_handler) {
+        volk_handler.emplace();
     }
-    VULKAN_HPP_DEFAULT_DISPATCHER.init(vkGetInstanceProcAddr);
 #endif
     // create webgpu render resources
     spdlog::info("Creating vulkan render resources");
@@ -143,10 +160,13 @@ EPIX_API void epix::render::RenderPlugin::build(epix::App& app) {
                     .setQueuePriorities(queue_priorities);
             }) |
             std::ranges::to<std::vector>();
+        vk::PhysicalDeviceVulkan12Features features12;
+        features12.setTimelineSemaphore(true);
         return physical_device.createDevice(
             vk::DeviceCreateInfo()
                 .setQueueCreateInfos(queue_create_infos)
-                .setPEnabledExtensionNames(device_extensions));
+                .setPEnabledExtensionNames(device_extensions)
+                .setPNext(&features12));
     }();
 // we only have one device if only one app exists and only this plugin
 // handles vulkan resources, so we can add these lines to improve
@@ -207,28 +227,28 @@ EPIX_API void epix::render::RenderPlugin::build(epix::App& app) {
 EPIX_API void epix::render::RenderPlugin::finalize(epix::App& app) {
     // finalize the render app
     auto& render_app = app.sub_app(epix::render::Render);
-    render_app.remove_resource<nvrhi::DeviceHandle>();
-    app.remove_resource<nvrhi::DeviceHandle>();
-    app.run_system(
-        [](Res<vk::Instance> instance, Res<vk::PhysicalDevice> physical_device,
-           Res<vk::Device> device, ResMut<epix::render::CommandPools> pools,
-           std::optional<Res<vk::DebugUtilsMessengerEXT>>
-               debug_utils_messenger) {
-            device->waitIdle();
-            pools->destroy();
-            device->destroy();
-            if (debug_utils_messenger) {
-                auto destroy_func =
-                    (PFN_vkDestroyDebugUtilsMessengerEXT)instance->getProcAddr(
-                        "vkDestroyDebugUtilsMessengerEXT");
-                if (!destroy_func) {
-                    throw std::runtime_error(
-                        "Failed to get vkDestroyDebugUtilsMessengerEXT "
-                        "function");
-                }
-                destroy_func(*instance, **debug_utils_messenger, nullptr);
-            }
-            instance->destroy();
-        });
-    volkFinalize();
+    // render_app.remove_resource<nvrhi::DeviceHandle>();
+    // app.remove_resource<nvrhi::DeviceHandle>();
+    // app.run_system(
+    //     [](Res<vk::Instance> instance, Res<vk::PhysicalDevice>
+    //     physical_device,
+    //        Res<vk::Device> device, ResMut<epix::render::CommandPools> pools,
+    //        std::optional<Res<vk::DebugUtilsMessengerEXT>>
+    //            debug_utils_messenger) {
+    //         device->waitIdle();
+    //         pools->destroy();
+    //         device->destroy();
+    //         if (debug_utils_messenger) {
+    //             auto destroy_func =
+    //                 (PFN_vkDestroyDebugUtilsMessengerEXT)instance->getProcAddr(
+    //                     "vkDestroyDebugUtilsMessengerEXT");
+    //             if (!destroy_func) {
+    //                 throw std::runtime_error(
+    //                     "Failed to get vkDestroyDebugUtilsMessengerEXT "
+    //                     "function");
+    //             }
+    //             destroy_func(*instance, **debug_utils_messenger, nullptr);
+    //         }
+    //         instance->destroy();
+    //     });
 }
