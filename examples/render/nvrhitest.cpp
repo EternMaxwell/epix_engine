@@ -3,17 +3,76 @@
 #include <epix/render/pipeline.h>
 #include <epix/window.h>
 
+#include <spirv_cross/spirv_cross.hpp>
+
+namespace shader_codes {
+#include "shaders/shader.frag.h"
+#include "shaders/shader.vert.h"
+}  // namespace shader_codes
+
 using namespace epix;
 
+struct pos {
+    float x;
+    float y;
+};
+struct color {
+    float r;
+    float g;
+    float b;
+    float a;
+};
 struct PrimaryWindowId {
     Entity id;
 };
 struct TestPipeline {
-    nvrhi::GraphicsPipelineDesc descriptor() const {
-        return nvrhi::GraphicsPipelineDesc().setPrimType(
-            nvrhi::PrimitiveType::TriangleList);
+    nvrhi::ShaderHandle vertex_shader;
+    nvrhi::ShaderHandle fragment_shader;
+
+    nvrhi::InputLayoutHandle input_layout;
+    nvrhi::GraphicsPipelineDesc pipeline_desc;
+
+    TestPipeline(World& world) {
+        spdlog::info("Creating TestPipeline Resource");
+
+        auto& device = world.resource<nvrhi::DeviceHandle>();
+
+        vertex_shader = device->createShader(
+            nvrhi::ShaderDesc()
+                .setShaderType(nvrhi::ShaderType::Vertex)
+                .setDebugName("vertex_shader")
+                .setEntryName("main"),
+            shader_codes::vert_spv, sizeof(shader_codes::vert_spv));
+        fragment_shader = device->createShader(
+            nvrhi::ShaderDesc()
+                .setShaderType(nvrhi::ShaderType::Pixel)
+                .setDebugName("fragment_shader")
+                .setEntryName("main"),
+            shader_codes::frag_spv, sizeof(shader_codes::frag_spv));
+        auto attributes = std::array{
+            nvrhi::VertexAttributeDesc()
+                .setName("POSITION")
+                .setBufferIndex(0)
+                .setFormat(nvrhi::Format::RG32_FLOAT)
+                .setOffset(0)
+                .setElementStride(sizeof(pos)),
+            nvrhi::VertexAttributeDesc()
+                .setName("COLOR")
+                .setBufferIndex(1)
+                .setFormat(nvrhi::Format::RGBA32_FLOAT)
+                .setOffset(0)
+                .setElementStride(sizeof(color)),
+        };
+        input_layout  = device->createInputLayout(attributes.data(),
+                                                  attributes.size(), nullptr);
+        pipeline_desc = nvrhi::GraphicsPipelineDesc()
+                            .setVertexShader(vertex_shader)
+                            .setPixelShader(fragment_shader)
+                            .setInputLayout(input_layout);
     }
-    std::string_view key() const { return "TestPipeline"; }
+};
+struct Buffers {
+    nvrhi::BufferHandle vertex_buffer[2];
 };
 
 int main() {
@@ -46,6 +105,8 @@ int main() {
                 throw std::runtime_error(
                     "No primary window found in the query!");
             }).set_name("extract primary window id"));
+
+        render_app.init_resource<TestPipeline>();
     });
 
     app.run();
