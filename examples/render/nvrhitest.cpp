@@ -32,6 +32,8 @@ struct TestPipeline {
     nvrhi::InputLayoutHandle input_layout;
     nvrhi::GraphicsPipelineDesc pipeline_desc;
 
+    nvrhi::GraphicsPipelineHandle pipeline;
+
     TestPipeline(World& world) {
         spdlog::info("Creating TestPipeline Resource");
 
@@ -63,27 +65,73 @@ struct TestPipeline {
                 .setOffset(0)
                 .setElementStride(sizeof(color)),
         };
-        input_layout  = device->createInputLayout(attributes.data(),
-                                                  attributes.size(), nullptr);
-        pipeline_desc = nvrhi::GraphicsPipelineDesc()
-                            .setVertexShader(vertex_shader)
-                            .setPixelShader(fragment_shader)
-                            .setInputLayout(input_layout);
+        input_layout = device->createInputLayout(attributes.data(),
+                                                 attributes.size(), nullptr);
+        pipeline_desc =
+            nvrhi::GraphicsPipelineDesc()
+                .setVertexShader(vertex_shader)
+                .setPixelShader(fragment_shader)
+                .setRenderState(nvrhi::RenderState().setDepthStencilState(
+                    nvrhi::DepthStencilState()
+                        .setDepthTestEnable(false)
+                        .setDepthWriteEnable(false)))
+                .setInputLayout(input_layout);
     }
 };
 struct Buffers {
     nvrhi::BufferHandle vertex_buffer[2];
+    uint32_t vertex_count = 0;
+
+    Buffers(World& world) {
+        spdlog::info("Creating Buffers Resource");
+
+        auto& device = world.resource<nvrhi::DeviceHandle>();
+
+        vertex_buffer[0] = device->createBuffer(
+            nvrhi::BufferDesc()
+                .setDebugName("vertex_buffer_0")
+                .setByteSize(sizeof(pos) * 3)
+                .setIsVertexBuffer(true)
+                .setInitialState(nvrhi::ResourceStates::VertexBuffer)
+                .setKeepInitialState(true));
+        vertex_buffer[1] = device->createBuffer(
+            nvrhi::BufferDesc()
+                .setDebugName("vertex_buffer_1")
+                .setByteSize(sizeof(color) * 3)
+                .setIsVertexBuffer(true)
+                .setInitialState(nvrhi::ResourceStates::VertexBuffer)
+                .setKeepInitialState(true));
+
+        auto pos_data =
+            std::array{pos{0.0f, 0.5f}, pos{-0.5f, -0.5f}, pos{0.5f, -0.5f}};
+        auto color_data = std::array{color{1.0f, 0.0f, 0.0f, 1.0f},
+                                     color{0.0f, 1.0f, 0.0f, 1.0f},
+                                     color{0.0f, 0.0f, 1.0f, 1.0f}};
+
+        auto commandlist = device->createCommandList();
+        commandlist->open();
+        commandlist->writeBuffer(vertex_buffer[0], pos_data.data(),
+                                 sizeof(pos) * pos_data.size(), 0);
+        commandlist->writeBuffer(vertex_buffer[1], color_data.data(),
+                                 sizeof(color) * color_data.size(), 0);
+        commandlist->close();
+        device->executeCommandList(commandlist);
+
+        vertex_count = static_cast<uint32_t>(pos_data.size());
+    }
+};
+struct CurrentFramebuffer {
+    nvrhi::FramebufferHandle framebuffer;
 };
 
 int main() {
     App app = App::create();
     app.add_plugins(window::WindowPlugin{.primary_window = window::Window{
-                                             .opacity = 0.6f,
-                                             .title   = "nvrhi Test",
+                                             .title = "nvrhi Test",
                                          }});
     app.add_plugins(glfw::GLFWPlugin{});
     app.add_plugins(input::InputPlugin{});
-    app.add_plugins(render::RenderPlugin{}.enable_validation(false));
+    app.add_plugins(render::RenderPlugin{}.set_validation(1));
 
     app.add_plugins([](App& app) {
         auto& render_app = app.sub_app(render::Render);
@@ -105,8 +153,90 @@ int main() {
                 throw std::runtime_error(
                     "No primary window found in the query!");
             }).set_name("extract primary window id"));
+        render_app.add_systems(
+            render::Render,
+            into([](ResMut<CurrentFramebuffer> framebuffer,
+                    Res<PrimaryWindowId> primary_window_id,
+                    Res<nvrhi::DeviceHandle> nvrhi_device,
+                    Res<render::window::ExtractedWindows> windows) {
+                auto it = windows->windows.find(primary_window_id->id);
+                if (it == windows->windows.end()) {
+                    framebuffer->framebuffer = nullptr;
+                    throw std::runtime_error(
+                        "Primary window not found in extracted windows!");
+                }
+                auto& device             = nvrhi_device.get();
+                framebuffer->framebuffer = device->createFramebuffer(
+                    nvrhi::FramebufferDesc().addColorAttachment(
+                        it->second.swapchain_texture));
+            })
+                .in_set(render::RenderSet::ManageViews)
+                .set_name("create framebuffer"));
+        render_app.add_systems(
+            render::Render,
+            into([](Res<CurrentFramebuffer> framebuffer,
+                    ResMut<TestPipeline> pipeline,
+                    Res<nvrhi::DeviceHandle> nvrhi_device) {
+                auto& device = nvrhi_device.get();
+                if (!framebuffer->framebuffer) {
+                    throw std::runtime_error("Framebuffer not created!");
+                }
+                if (!pipeline->pipeline) {
+                    pipeline->pipeline = device->createGraphicsPipeline(
+                        pipeline->pipeline_desc, framebuffer->framebuffer);
+                }
+            })
+                .in_set(render::RenderSet::Prepare)
+                .set_name("create pipeline if not exists"));
+        render_app.add_systems(
+            render::Render,
+            into([](Res<CurrentFramebuffer> framebuffer,
+                    Res<TestPipeline> pipeline, Res<Buffers> buffers,
+                    Res<nvrhi::DeviceHandle> nvrhi_device) {
+                auto& device = nvrhi_device.get();
+                if (!framebuffer->framebuffer) {
+                    throw std::runtime_error("Framebuffer not created!");
+                }
+                if (!pipeline->pipeline) {
+                    throw std::runtime_error("Pipeline not created!");
+                }
+
+                auto commandlist = device->createCommandList();
+                commandlist->open();
+                commandlist->clearTextureFloat(
+                    framebuffer->framebuffer->getDesc()
+                        .colorAttachments[0]
+                        .texture,
+                    nvrhi::TextureSubresourceSet(), 0.0f);
+                commandlist->setGraphicsState(
+                    nvrhi::GraphicsState()
+                        .setFramebuffer(framebuffer->framebuffer)
+                        .setPipeline(pipeline->pipeline)
+                        .setViewport(
+                            nvrhi::ViewportState().addViewportAndScissorRect(
+                                framebuffer->framebuffer->getFramebufferInfo()
+                                    .getViewport()))
+                        .addVertexBuffer(
+                            nvrhi::VertexBufferBinding()
+                                .setBuffer(buffers->vertex_buffer[0])
+                                .setSlot(0)
+                                .setOffset(0))
+                        .addVertexBuffer(
+                            nvrhi::VertexBufferBinding()
+                                .setBuffer(buffers->vertex_buffer[1])
+                                .setSlot(1)
+                                .setOffset(0)));
+                commandlist->draw(nvrhi::DrawArguments().setVertexCount(
+                    buffers->vertex_count));
+                commandlist->close();
+                device->executeCommandList(commandlist);
+            })
+                .in_set(render::RenderSet::Render)
+                .set_name("render test pipeline"));
 
         render_app.init_resource<TestPipeline>();
+        render_app.init_resource<Buffers>();
+        render_app.init_resource<CurrentFramebuffer>();
     });
 
     app.run();

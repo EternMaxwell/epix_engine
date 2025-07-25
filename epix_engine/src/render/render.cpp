@@ -6,9 +6,9 @@
 #include "epix/render.h"
 #include "epix/render/common.h"
 
-EPIX_API epix::render::RenderPlugin&
-epix::render::RenderPlugin::enable_validation(bool enable) {
-    validation = enable;
+EPIX_API epix::render::RenderPlugin& epix::render::RenderPlugin::set_validation(
+    int level) {
+    validation = level;
     return *this;
 }
 
@@ -39,7 +39,7 @@ EPIX_API void epix::render::RenderPlugin::build(epix::App& app) {
     // create webgpu render resources
     spdlog::info("Creating vulkan render resources");
     auto layers = std::vector<const char*>();
-    if (validation) {
+    if (validation == 2) {
         layers.push_back("VK_LAYER_KHRONOS_validation");
     }
     auto app_info = vk::ApplicationInfo()
@@ -69,7 +69,7 @@ EPIX_API void epix::render::RenderPlugin::build(epix::App& app) {
     volkLoadInstance(instance);
     VULKAN_HPP_DEFAULT_DISPATCHER.init(instance);
 #endif
-    if (validation) {
+    if (validation == 2) {
         auto debug_utils_messenger_create_info =
             vk::DebugUtilsMessengerCreateInfoEXT()
                 .setMessageSeverity(
@@ -162,6 +162,9 @@ EPIX_API void epix::render::RenderPlugin::build(epix::App& app) {
             std::ranges::to<std::vector>();
         vk::PhysicalDeviceVulkan12Features features12;
         features12.setTimelineSemaphore(true);
+        vk::PhysicalDeviceVulkan13Features features13;
+        features13.setSynchronization2(true);
+        features12.setPNext(&features13);
         return physical_device.createDevice(
             vk::DeviceCreateInfo()
                 .setQueueCreateInfos(queue_create_infos)
@@ -176,8 +179,26 @@ EPIX_API void epix::render::RenderPlugin::build(epix::App& app) {
     VULKAN_HPP_DEFAULT_DISPATCHER.init(device);
 #endif
 
+    struct MsgCallback : public nvrhi::IMessageCallback {
+        void message(nvrhi::MessageSeverity severity,
+                     const char* message) override {
+            if (severity == nvrhi::MessageSeverity::Error ||
+                severity == nvrhi::MessageSeverity::Fatal) {
+                spdlog::error(
+                    "[nvrhi-vk] {}: {}\n with stack trace:\n {}",
+                    severity == nvrhi::MessageSeverity::Fatal ? "[fatal]" : "",
+                    message, std::to_string(std::stacktrace::current()));
+            } else if (severity == nvrhi::MessageSeverity::Warning) {
+                spdlog::warn("[nvrhi-vk]: {}", message);
+            } else if (severity == nvrhi::MessageSeverity::Info) {
+                spdlog::info("[nvrhi-vk]: {}", message);
+            }
+        }
+    };
+
     nvrhi::DeviceHandle nvrhi_device =
         nvrhi::vulkan::createDevice(nvrhi::vulkan::DeviceDesc{
+            .errorCB               = validation ? new MsgCallback() : nullptr,
             .instance              = instance,
             .physicalDevice        = physical_device,
             .device                = device,

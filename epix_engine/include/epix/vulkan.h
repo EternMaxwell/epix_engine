@@ -34,6 +34,7 @@ struct CommandPools {
    public:
     CommandPools(vk::Device device, uint32_t queue_family_index)
         : device(device), queue_family_index(queue_family_index) {}
+    vk::Device get_device() const { return device; }
     vk::CommandPool get() const {
         std::shared_lock lock(mutex);
         auto thread_id = std::this_thread::get_id();

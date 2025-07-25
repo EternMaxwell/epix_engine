@@ -66,8 +66,10 @@ EPIX_API void prepare_windows(ResMut<ExtractedWindows> windows,
                               Res<vk::PhysicalDevice> physical_device,
                               Res<nvrhi::DeviceHandle> nvrhi_device);
 
-EPIX_API void present_windows(ResMut<WindowSurfaces> window_surfaces,
-                              Res<vk::Queue> queue);
+EPIX_API void present_windows(Res<render::CommandPools> command_pools,
+                              ResMut<WindowSurfaces> window_surfaces,
+                              Res<vk::Queue> queue,
+                              Local<vk::CommandBuffer> pcmd_buffer);
 
 struct WindowRenderPlugin {
     bool handle_present = true;

@@ -353,7 +353,7 @@ EPIX_API void epix::render::window::create_surfaces(
                         .setDstAccessMask(
                             vk::AccessFlagBits::eColorAttachmentWrite)
                         .setOldLayout(vk::ImageLayout::eUndefined)
-                        .setNewLayout(vk::ImageLayout::ePresentSrcKHR)
+                        .setNewLayout(vk::ImageLayout::eColorAttachmentOptimal)
                         .setImage(image)
                         .setSubresourceRange(
                             vk::ImageSubresourceRange()
@@ -443,7 +443,23 @@ EPIX_API void epix::render::window::prepare_windows(
 }
 
 EPIX_API void epix::render::window::present_windows(
-    ResMut<WindowSurfaces> window_surfaces, Res<vk::Queue> queue) {
+    Res<render::CommandPools> command_pools,
+    ResMut<WindowSurfaces> window_surfaces,
+    Res<vk::Queue> queue,
+    Local<vk::CommandBuffer> pcmd_buffer) {
+    auto device = command_pools->get_device();
+    if (!*pcmd_buffer) {
+        // If the command buffer is not provided, we allocate one
+        *pcmd_buffer = device.allocateCommandBuffers(
+            vk::CommandBufferAllocateInfo()
+                .setCommandPool(command_pools->get())
+                .setLevel(vk::CommandBufferLevel::ePrimary)
+                .setCommandBufferCount(1))[0];
+    }
+    auto& cmd_buffer = *pcmd_buffer;
+    cmd_buffer.reset();
+    cmd_buffer.begin(vk::CommandBufferBeginInfo().setFlags(
+        vk::CommandBufferUsageFlagBits::eOneTimeSubmit));
     std::vector<vk::SwapchainKHR> swapchains;
     swapchains.reserve(window_surfaces->surfaces.size());
     std::vector<uint32_t> image_indices;
@@ -452,11 +468,34 @@ EPIX_API void epix::render::window::present_windows(
          std::views::all(window_surfaces->surfaces) | std::views::values) {
         swapchains.push_back(window.swapchain);
         image_indices.push_back(window.current_image_index);
+        cmd_buffer.pipelineBarrier(
+            vk::PipelineStageFlagBits::eColorAttachmentOutput,
+            vk::PipelineStageFlagBits::eBottomOfPipe, {}, {}, {},
+            vk::ImageMemoryBarrier()
+                .setSrcAccessMask(vk::AccessFlagBits::eColorAttachmentWrite)
+                .setDstAccessMask(vk::AccessFlagBits::eNone)
+                .setOldLayout(vk::ImageLayout::eColorAttachmentOptimal)
+                .setNewLayout(vk::ImageLayout::ePresentSrcKHR)
+                .setImage((VkImage)window
+                              .swapchain_images[window.current_image_index]
+                              ->getNativeObject(nvrhi::ObjectTypes::VK_Image))
+                .setSubresourceRange(
+                    vk::ImageSubresourceRange()
+                        .setAspectMask(vk::ImageAspectFlagBits::eColor)
+                        .setBaseMipLevel(0)
+                        .setLevelCount(1)
+                        .setBaseArrayLayer(0)
+                        .setLayerCount(1)));
     }
+    cmd_buffer.end();
     if (swapchains.empty()) {
         return;  // Nothing to present
     }
+    vk::Fence fence = device.createFence(vk::FenceCreateInfo());
+    queue->submit(vk::SubmitInfo().setCommandBuffers(cmd_buffer), fence);
     auto res = queue->presentKHR(vk::PresentInfoKHR()
                                      .setSwapchains(swapchains)
                                      .setImageIndices(image_indices));
+    res      = device.waitForFences(fence, true, UINT64_MAX);
+    device.destroyFence(fence);
 }
