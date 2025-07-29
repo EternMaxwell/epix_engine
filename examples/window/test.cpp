@@ -44,7 +44,14 @@ int main() {
         int count = 0;
     };
 
-    app.spawn(window_desc2);
+    Window window_desc3;
+    window_desc3.title    = "Test Window 3";
+    window_desc3.size     = {800, 600};
+    window_desc3.opacity  = 0.9f;
+    window_desc3.pos      = {100, 100};
+    window_desc3.pos_type = PosType::Relative;
+
+    app.spawn(window_desc2).with_child(window_desc3);
     app.insert_state(TestFuncState::Off);
     app.add_plugins(epix::window::WindowPlugin{})
         .plugin_scope([&](epix::window::WindowPlugin& plugin) {

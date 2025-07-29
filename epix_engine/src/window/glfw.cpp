@@ -188,13 +188,13 @@ EPIX_API void GLFWPlugin::update_pos(
         if (desc.monitor >= monitor_count || desc.monitor < 0) {
             desc.monitor = 0;  // default to first monitor
         }
-        if (parent && !windows.contains(parent->entity)) {
-            commands.entity(id).erase<Parent>();
+        std::optional<std::pair<int, int>> parent_pos;
+        if (parent) {
+            if (windows.contains(parent->entity))
+                parent_pos = calculate(parent->entity);
+            else
+                commands.entity(id).erase<Parent>();
         }
-        std::optional<std::pair<int, int>> parent_pos =
-            (parent && windows.contains(parent->entity))
-                ? std::make_optional(calculate(parent->entity))
-                : std::optional<std::pair<int, int>>{};
         auto* monitor    = monitors[desc.monitor];
         auto* video_mode = glfwGetVideoMode(monitor);
         int monitor_x, monitor_y;
@@ -267,6 +267,12 @@ EPIX_API void GLFWPlugin::update_pos(
                             (video_mode->height - desc.size.second) / 2};
                 }
             }
+            // if this window has a parent, we need to recalculate the final pos
+            // anyway
+            if (desc.pos_type == PosType::Relative && parent_pos) {
+                desc.final_pos = {parent_pos->first + desc.pos.first,
+                                  parent_pos->second + desc.pos.second};
+            }
             if (desc.final_pos != cached.final_pos || desc.pos != cached.pos ||
                 desc.pos_type != cached.pos_type) {
                 // set the new position to the glfw window
@@ -303,18 +309,11 @@ EPIX_API void GLFWPlugin::update_pos(
                            final_pos.second -
                                (video_mode->height - desc.size.second) / 2};
                 }
-                if (pos == desc.pos) {
-                    // update the cached values
-                    cached.final_pos    = desc.final_pos;
-                    cached.pos          = desc.pos;
-                    cached.pos_type     = desc.pos_type;
-                    final_positions[id] = desc.final_pos;
-                    return desc.final_pos;
-                }
-                desc.pos         = pos;
-                cached.final_pos = desc.final_pos;
-                cached.pos       = desc.pos;
-                cached.pos_type  = desc.pos_type;
+                desc.pos            = pos;
+                cached.final_pos    = desc.final_pos;
+                cached.pos          = desc.pos;
+                cached.pos_type     = desc.pos_type;
+                final_positions[id] = desc.final_pos;
                 return desc.final_pos;
             }
         } else {
@@ -339,10 +338,10 @@ EPIX_API void GLFWPlugin::update_pos(
                     desc.pos.second + monitor_y +
                         (video_mode->height - desc.size.second) / 2};
             }
-        }
 
-        final_positions[id] = desc.final_pos;
-        return desc.final_pos;
+            final_positions[id] = desc.final_pos;
+            return desc.final_pos;
+        }
     };
     for (auto&& [id, desc, parent] : windows.iter()) {
         calculate(id);
