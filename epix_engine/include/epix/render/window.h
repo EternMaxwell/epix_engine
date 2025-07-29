@@ -16,6 +16,7 @@ struct ExtractedWindow {
 
     nvrhi::TextureHandle swapchain_texture;
 
+    bool valid                = true;
     bool size_changed         = false;
     bool present_mode_changed = false;
 };

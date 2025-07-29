@@ -59,6 +59,7 @@ EPIX_API void epix::render::window::extract_windows(
         }
 
         auto [new_width, new_height] = window.size;
+        bool valid                   = new_width > 0 && new_height > 0;
         new_width                    = std::max(new_width, 1);
         new_height                   = std::max(new_height, 1);
 
@@ -83,6 +84,7 @@ EPIX_API void epix::render::window::extract_windows(
         extracted_window.size_changed =
             new_width != extracted_window.physical_width ||
             new_height != extracted_window.physical_height;
+        extracted_window.valid = valid;
         extracted_window.present_mode_changed =
             window.present_mode != extracted_window.present_mode;
 
@@ -333,6 +335,27 @@ EPIX_API void epix::render::window::create_surfaces(
             auto& surface = window_surfaces->surfaces.at(window.entity);
             surface.config.setImageExtent(
                 vk::Extent2D(window.physical_width, window.physical_height));
+            if (!window.valid) {
+                // If the size is invalid, clear all data, and create Offscreen
+                // textures
+                surface.swapchain_images.clear();
+                device->destroySwapchainKHR(surface.swapchain);
+                surface.swapchain = nullptr;
+                auto desc =
+                    nvrhi::TextureDesc()
+                        .setDimension(nvrhi::TextureDimension::Texture2D)
+                        .setFormat(surface.image_format)
+                        .setWidth(1)
+                        .setHeight(1)
+                        .setIsRenderTarget(true)
+                        .setDebugName("Swap Chain Image");
+                for (auto&& index :
+                     std::views::iota(0u, surface.config.minImageCount)) {
+                    surface.swapchain_images.push_back(
+                        nvrhi_device.get()->createTexture(desc));
+                }
+                continue;
+            }
             auto presentMode =
                 match_present_mode(surface.surface, window.present_mode);
             surface.config.presentMode = presentMode;
@@ -408,9 +431,20 @@ EPIX_API void epix::render::window::prepare_windows(
         auto& surface_data = it->second;
 
         auto& surface = surface_data.surface;
+        // if no swapchain provided, use offscreen texture
+        if (!surface_data.swapchain) {
+            surface_data.current_image_index =
+                (surface_data.fence_index + 1) %
+                surface_data.swapchain_images.size();
+            window.swapchain_texture =
+                surface_data.swapchain_images[surface_data.current_image_index];
+            continue;
+        }
 
         try {
-            auto res = device->acquireNextImageKHR(
+            std::exception_ptr exception_ptr;
+            vk::Result res;
+            res = device->acquireNextImageKHR(
                 surface_data.swapchain, UINT64_MAX, nullptr,
                 surface_data.swapchain_image_fences[surface_data.fence_index],
                 &surface_data.current_image_index);
@@ -419,13 +453,19 @@ EPIX_API void epix::render::window::prepare_windows(
                 true, UINT64_MAX);
             device->resetFences(
                 surface_data.swapchain_image_fences[surface_data.fence_index]);
+            surface_data.fence_index =
+                (surface_data.fence_index + 1) %
+                surface_data.swapchain_image_fences.size();
+            window.swapchain_texture =
+                surface_data.swapchain_images[surface_data.current_image_index];
             if (res == vk::Result::eSuccess ||
                 res == vk::Result::eSuboptimalKHR) {
-                window.swapchain_texture =
-                    surface_data
-                        .swapchain_images[surface_data.current_image_index];
             } else {
                 errors.emplace_back(window.entity, vk::to_string(res));
+            }
+            if (exception_ptr) {
+                // If an exception occurred, rethrow it
+                std::rethrow_exception(exception_ptr);
             }
         } catch (const std::exception& e) {
             errors.emplace_back(window.entity, e.what());
@@ -464,8 +504,11 @@ EPIX_API void epix::render::window::present_windows(
     swapchains.reserve(window_surfaces->surfaces.size());
     std::vector<uint32_t> image_indices;
     image_indices.reserve(window_surfaces->surfaces.size());
-    for (auto&& window :
-         std::views::all(window_surfaces->surfaces) | std::views::values) {
+    for (auto&& window : std::views::all(window_surfaces->surfaces) |
+                             std::views::values |
+                             std::views::filter([](const auto& surface) {
+                                 return surface.swapchain != nullptr;
+                             })) {
         swapchains.push_back(window.swapchain);
         image_indices.push_back(window.current_image_index);
         cmd_buffer.pipelineBarrier(
@@ -493,9 +536,22 @@ EPIX_API void epix::render::window::present_windows(
     }
     vk::Fence fence = device.createFence(vk::FenceCreateInfo());
     queue->submit(vk::SubmitInfo().setCommandBuffers(cmd_buffer), fence);
-    auto res = queue->presentKHR(vk::PresentInfoKHR()
-                                     .setSwapchains(swapchains)
-                                     .setImageIndices(image_indices));
-    res      = device.waitForFences(fence, true, UINT64_MAX);
+    std::exception_ptr exception_ptr;
+
+    // wrap the present call in a try-catch block so that the fence is still
+    // waited and destroyed even if an exception occurs
+    try {
+        auto res = queue->presentKHR(vk::PresentInfoKHR()
+                                         .setSwapchains(swapchains)
+                                         .setImageIndices(image_indices));
+    } catch (...) {
+        exception_ptr = std::current_exception();
+    }
+
+    auto res = device.waitForFences(fence, true, UINT64_MAX);
     device.destroyFence(fence);
+    if (exception_ptr) {
+        // If an exception occurred, rethrow it
+        std::rethrow_exception(exception_ptr);
+    }
 }
