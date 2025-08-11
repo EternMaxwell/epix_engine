@@ -145,10 +145,8 @@ concept ValidParam =
         typename SystemParam<T>::State;
         WorldInitParam<T> || EmptyInitParam<T>;
         {
-            p.update(
-                std::declval<typename SystemParam<T>::State&>(),
-                std::declval<World&>(), std::declval<const SystemMeta&>()
-            )
+            p.update(std::declval<typename SystemParam<T>::State&>(),
+                     std::declval<World&>(), std::declval<const SystemMeta&>())
         } -> std::same_as<bool>;
         {
             p.get(std::declval<typename SystemParam<T>::State&>())
@@ -188,8 +186,7 @@ struct SystemParam<Extract<T>> : public SystemParam<T> {
         if (!state.first.has_value()) {
             throw std::runtime_error(
                 "Cannot create Extract<T> from SystemParam state: inner update "
-                "failed."
-            );
+                "failed.");
         }
         return state.first.value();
     }
@@ -214,8 +211,7 @@ struct SystemParam<Extract<T>> : public SystemParam<T> {
         if (!state.first.has_value()) {
             throw std::runtime_error(
                 "Cannot create Extract<T> from SystemParam state: inner update "
-                "failed."
-            );
+                "failed.");
         }
         return state.first.value();
     }
@@ -226,8 +222,8 @@ concept FromParam =
     has_static_from_helper<T>::value &&
     tuple_valid_param<typename from_param_traits<T>::decayed_args_tuple> &&
     (std::same_as<typename from_param_traits<T>::return_type, T> ||
-     std::
-         same_as<typename from_param_traits<T>::return_type, std::optional<T>>);
+     std::same_as<typename from_param_traits<T>::return_type,
+                  std::optional<T>>);
 
 template <typename T>
 concept EmptyInitFromParam =
@@ -241,11 +237,11 @@ struct SystemParam<T> {
     using from_return_type   = typename from_param_traits::return_type;
     using args_tuple         = typename from_param_traits::args_tuple;
     template <typename... Args>
-    static auto cast_to_param_tuple(std::tuple<Args...>& args
-    ) -> std::tuple<SystemParam<std::decay_t<Args>>...>;
+    static auto cast_to_param_tuple(std::tuple<Args...>& args)
+        -> std::tuple<SystemParam<std::decay_t<Args>>...>;
     template <typename... Args>
-    static auto cast_to_state_tuple(std::tuple<Args...>& args
-    ) -> std::tuple<typename SystemParam<std::decay_t<Args>>::State...>;
+    static auto cast_to_state_tuple(std::tuple<Args...>& args)
+        -> std::tuple<typename SystemParam<std::decay_t<Args>>::State...>;
     using param_tuple =
         decltype(cast_to_param_tuple(std::declval<args_tuple&>()));
     using state_tuple =
@@ -256,8 +252,8 @@ struct SystemParam<T> {
             return {
                 std::nullopt,
                 [&world, &meta]<size_t... I>(std::index_sequence<I...>) {
-                    auto state_at = [&]<size_t J>(std::integral_constant<
-                                                  size_t, J>) {
+                    auto state_at = [&]<size_t J>(
+                                        std::integral_constant<size_t, J>) {
                         using arg_t =
                             std::decay_t<std::tuple_element_t<J, args_tuple>>;
                         if constexpr (EmptyInitParam<arg_t>) {
@@ -267,10 +263,8 @@ struct SystemParam<T> {
                         }
                     };
                     return state_tuple(
-                        state_at(std::integral_constant<size_t, I>{})...
-                    );
-                }(std::make_index_sequence<std::tuple_size_v<param_tuple>>{})
-            };
+                        state_at(std::integral_constant<size_t, I>{})...);
+                }(std::make_index_sequence<std::tuple_size_v<param_tuple>>{})};
         } else {
             return {std::nullopt, state_tuple{}};
         }
@@ -278,11 +272,9 @@ struct SystemParam<T> {
     bool update(State& state, World& world, const SystemMeta& meta) {
         param_tuple inner_params;
         bool inner = [&]<size_t... I>(std::index_sequence<I...>) -> bool {
-            return (
-                std::get<I>(inner_params)
-                    .update(std::get<I>(state.second), world, meta) &&
-                ...
-            );
+            return (std::get<I>(inner_params)
+                        .update(std::get<I>(state.second), world, meta) &&
+                    ...);
         }(std::make_index_sequence<std::tuple_size_v<param_tuple>>{});
         auto& param = state.first;
         if (inner) {
@@ -290,13 +282,12 @@ struct SystemParam<T> {
                 if constexpr (std::same_as<from_return_type, T>) {
                     param.emplace(
                         T::from_param(std::get<I>(inner_params)
-                                          .get(std::get<I>(state.second))...)
-                    );
-                } else if constexpr (std::same_as<
-                                         from_return_type, std::optional<T>>) {
-                    param.swap(T::from_param(std::get<I>(inner_params)
-                                                 .get(std::get<I>(state.second)
-                                                 )...));
+                                          .get(std::get<I>(state.second))...));
+                } else if constexpr (std::same_as<from_return_type,
+                                                  std::optional<T>>) {
+                    param.swap(
+                        T::from_param(std::get<I>(inner_params)
+                                          .get(std::get<I>(state.second))...));
                 }
             }(std::make_index_sequence<std::tuple_size_v<args_tuple>>{});
         } else {
@@ -307,8 +298,7 @@ struct SystemParam<T> {
     T& get(State& state) {
         if (!state.first.has_value()) {
             throw std::runtime_error(
-                "Cannot create T from SystemParam state: inner update failed."
-            );
+                "Cannot create T from SystemParam state: inner update failed.");
         }
         return state.first.value();
     }
@@ -320,11 +310,11 @@ struct SystemParam<T> {
     using from_return_type   = typename from_param_traits::return_type;
     using args_tuple         = typename from_param_traits::args_tuple;
     template <typename... Args>
-    static auto cast_to_param_tuple(std::tuple<Args...>& args
-    ) -> std::tuple<SystemParam<std::decay_t<Args>>...>;
+    static auto cast_to_param_tuple(std::tuple<Args...>& args)
+        -> std::tuple<SystemParam<std::decay_t<Args>>...>;
     template <typename... Args>
-    static auto cast_to_state_tuple(std::tuple<Args...>& args
-    ) -> std::tuple<typename SystemParam<std::decay_t<Args>>::State...>;
+    static auto cast_to_state_tuple(std::tuple<Args...>& args)
+        -> std::tuple<typename SystemParam<std::decay_t<Args>>::State...>;
     using param_tuple =
         decltype(cast_to_param_tuple(std::declval<args_tuple&>()));
     using state_tuple =
@@ -332,15 +322,12 @@ struct SystemParam<T> {
     using State = std::pair<std::optional<T>, state_tuple>;
     State init(SystemMeta& meta) {
         if constexpr (std::tuple_size_v<param_tuple> > 0) {
-            return {
-                std::nullopt,
-                std::apply(
-                    [&meta](auto&&... inner_param) {
-                        return state_tuple(inner_param.init(meta)...);
-                    },
-                    param_tuple{}
-                )
-            };
+            return {std::nullopt,
+                    std::apply(
+                        [&meta](auto&&... inner_param) {
+                            return state_tuple(inner_param.init(meta)...);
+                        },
+                        param_tuple{})};
         } else {
             return {std::nullopt, state_tuple{}};
         }
@@ -348,11 +335,9 @@ struct SystemParam<T> {
     bool update(State& state, World& world, const SystemMeta& meta) {
         param_tuple inner_params;
         bool inner = [&]<size_t... I>(std::index_sequence<I...>) -> bool {
-            return (
-                std::get<I>(inner_params)
-                    .update(std::get<I>(state.second), world, meta) &&
-                ...
-            );
+            return (std::get<I>(inner_params)
+                        .update(std::get<I>(state.second), world, meta) &&
+                    ...);
         }(std::make_index_sequence<std::tuple_size_v<param_tuple>>{});
         auto& param = state.first;
         if (inner) {
@@ -360,13 +345,12 @@ struct SystemParam<T> {
                 if constexpr (std::same_as<from_return_type, T>) {
                     param.emplace(
                         T::from_param(std::get<I>(inner_params)
-                                          .get(std::get<I>(state.second))...)
-                    );
-                } else if constexpr (std::same_as<
-                                         from_return_type, std::optional<T>>) {
-                    param.swap(T::from_param(std::get<I>(inner_params)
-                                                 .get(std::get<I>(state.second)
-                                                 )...));
+                                          .get(std::get<I>(state.second))...));
+                } else if constexpr (std::same_as<from_return_type,
+                                                  std::optional<T>>) {
+                    param.swap(
+                        T::from_param(std::get<I>(inner_params)
+                                          .get(std::get<I>(state.second))...));
                 }
             }(std::make_index_sequence<std::tuple_size_v<args_tuple>>{});
         } else {
@@ -377,8 +361,7 @@ struct SystemParam<T> {
     T& get(State& state) {
         if (!state.first.has_value()) {
             throw std::runtime_error(
-                "Cannot create T from SystemParam state: inner update failed."
-            );
+                "Cannot create T from SystemParam state: inner update failed.");
         }
         return state.first.value();
     }
@@ -443,8 +426,14 @@ struct SystemParam<World> {
         return *state;
     }
 };
-static_assert(
-    ValidParam<Local<int>>, "Local<int> should be a valid SystemParam type."
-);
+static_assert(ValidParam<Local<int>>,
+              "Local<int> should be a valid SystemParam type.");
 static_assert(ValidParam<World>, "World should be a valid SystemParam type.");
+
+template <ValidParam... Ts>
+struct ParamSet : std::tuple<Ts&...> {
+    static ParamSet from_param(Ts&... args) {
+        return ParamSet<Ts...>(args...);
+    }
+};
 }  // namespace epix::app

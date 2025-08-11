@@ -230,6 +230,13 @@ EPIX_API void epix::render::RenderPlugin::build(epix::App& app) {
 
         render_app.extract_schedule_order(epix::render::ExtractSchedule);
         render_app.main_schedule_order(epix::render::Render);
+
+        render_app.add_systems(Render,
+                               into([](Res<nvrhi::DeviceHandle> nvrhi_device) {
+                                   nvrhi_device.get()->runGarbageCollection();
+                               })
+                                   .set_name("nvrhi garbage collect")
+                                   .after(RenderSet::Cleanup));
     }
     render_app.insert_resource(instance);
     render_app.insert_resource(physical_device);
@@ -248,12 +255,6 @@ EPIX_API void epix::render::RenderPlugin::build(epix::App& app) {
 EPIX_API void epix::render::RenderPlugin::finalize(epix::App& app) {
     // finalize the render app
     auto& render_app = app.sub_app(epix::render::Render);
-    render_app.add_systems(Render,
-                           into([](Res<nvrhi::DeviceHandle> nvrhi_device) {
-                               nvrhi_device.get()->runGarbageCollection();
-                           })
-                               .set_name("nvrhi garbage collect")
-                               .after(RenderSet::Cleanup));
     // render_app.remove_resource<nvrhi::DeviceHandle>();
     // app.remove_resource<nvrhi::DeviceHandle>();
     // app.run_system(

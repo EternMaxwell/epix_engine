@@ -7,10 +7,11 @@
 
 namespace epix::assets {
 struct UntypedAssetId;
+inline constexpr uuids::uuid INVALID_UUID =
+    uuids::uuid::from_string("1038587c-0b8d-4f2e-8a3f-1a2b3c4d5e6f").value();
 
 template <typename T>
 struct AssetId : public std::variant<AssetIndex, uuids::uuid> {
-    static const uuids::uuid INVALID_UUID;
     static AssetId<T> invalid() { return AssetId<T>(INVALID_UUID); }
 
     bool operator==(const AssetId<T>& other) const {
@@ -25,42 +26,31 @@ struct AssetId : public std::variant<AssetIndex, uuids::uuid> {
     std::string to_string() const {
         return std::format(
             "AssetId<{}>({})", meta::type_id<T>::name,
-            std::visit(
-                epix::util::visitor{
-                    [](const AssetIndex& index) {
-                        return std::format(
-                            "AssetIndex(index={}, generation={})", index.index,
-                            index.generation
-                        );
-                    },
-                    [](const uuids::uuid& id) {
-                        return std::format("UUID({})", uuids::to_string(id));
-                    }
-                },
-                *this
-            )
-        );
+            std::visit(epix::util::visitor{
+                           [](const AssetIndex& index) {
+                               return std::format(
+                                   "AssetIndex(index={}, generation={})",
+                                   index.index, index.generation);
+                           },
+                           [](const uuids::uuid& id) {
+                               return std::format("UUID({})",
+                                                  uuids::to_string(id));
+                           }},
+                       *this));
     }
     std::string to_string_short() const {
         return std::visit(
             epix::util::visitor{
                 [](const AssetIndex& index) {
-                    return std::format(
-                        "AssetIndex({}, {})", index.index, index.generation
-                    );
+                    return std::format("AssetIndex({}, {})", index.index,
+                                       index.generation);
                 },
                 [](const uuids::uuid& id) {
                     return std::format("UUID({})", uuids::to_string(id));
-                }
-            },
-            *this
-        );
+                }},
+            *this);
     }
 };
-
-template <typename T>
-inline const uuids::uuid AssetId<T>::INVALID_UUID =
-    uuids::uuid::from_string("1038587c-0b8d-4f2e-8a3f-1a2b3c4d5e6f").value();
 
 struct UntypedAssetId {
     std::variant<AssetIndex, uuids::uuid> id;
@@ -71,6 +61,11 @@ struct UntypedAssetId {
     template <typename... Args>
     UntypedAssetId(const meta::type_index& type, Args&&... args)
         : id(std::forward<Args>(args)...), type(type) {}
+    template <typename T = void>
+    static UntypedAssetId invalid(
+        const meta::type_index& type = meta::type_id<T>{}) {
+        return UntypedAssetId(type, AssetId<T>::invalid());
+    }
 
     template <typename T>
     AssetId<T> typed() const {
@@ -123,15 +118,12 @@ struct std::hash<epix::assets::AssetId<T>> {
             epix::util::visitor{
                 [](const epix::assets::AssetIndex& index) {
                     return std::hash<uint64_t>()(
-                        *reinterpret_cast<const uint64_t*>(&index)
-                    );
+                        *reinterpret_cast<const uint64_t*>(&index));
                 },
                 [](const uuids::uuid& id) {
                     return std::hash<uuids::uuid>()(id);
-                }
-            },
-            id
-        );
+                }},
+            id);
     }
 };
 
@@ -156,17 +148,14 @@ struct formatter<epix::assets::AssetId<T>> {
             [&id]() -> std::string {
                 if (std::holds_alternative<epix::assets::AssetIndex>(id)) {
                     auto& index = std::get<epix::assets::AssetIndex>(id);
-                    return std::format(
-                        "AssetIndex(index={}, generation={})", index.index,
-                        index.generation
-                    );
+                    return std::format("AssetIndex(index={}, generation={})",
+                                       index.index, index.generation);
                 } else if (std::holds_alternative<uuids::uuid>(id)) {
                     auto& uuid = std::get<uuids::uuid>(id);
                     return std::format("UUID({})", uuids::to_string(uuid));
                 }
                 return "Invalid";
-            }()
-        );
+            }());
     }
 };
 template <>
@@ -177,24 +166,21 @@ struct formatter<epix::assets::UntypedAssetId> {
     }
 
     template <typename FormatContext>
-    auto format(const epix::assets::UntypedAssetId& id, FormatContext& ctx)
-        const {
+    auto format(const epix::assets::UntypedAssetId& id,
+                FormatContext& ctx) const {
         return format_to(
             ctx.out(), "UntypedAssetId<{}>({})", id.type.name(),
             [&id]() -> std::string {
                 if (std::holds_alternative<epix::assets::AssetIndex>(id.id)) {
                     auto& index = std::get<epix::assets::AssetIndex>(id.id);
-                    return std::format(
-                        "AssetIndex(index={}, generation={})", index.index,
-                        index.generation
-                    );
+                    return std::format("AssetIndex(index={}, generation={})",
+                                       index.index, index.generation);
                 } else if (std::holds_alternative<uuids::uuid>(id.id)) {
                     auto& uuid = std::get<uuids::uuid>(id.id);
                     return std::format("UUID({})", uuids::to_string(uuid));
                 }
                 return "Invalid";
-            }()
-        );
+            }());
     }
 };
 }  // namespace std

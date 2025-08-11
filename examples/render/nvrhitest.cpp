@@ -25,32 +25,24 @@ struct color {
 struct PrimaryWindowId {
     Entity id;
 };
+
+const std::string shader_path(__FILE__ "\\..\\shaders");
+struct TestPipelineShaders {
+    assets::Handle<render::Shader> vertex_shader;
+    assets::Handle<render::Shader> fragment_shader;
+};
+
 struct TestPipeline {
-    nvrhi::ShaderHandle vertex_shader;
-    nvrhi::ShaderHandle fragment_shader;
+   private:
+    render::RenderPipelineId id;
 
-    nvrhi::InputLayoutHandle input_layout;
-    nvrhi::GraphicsPipelineDesc pipeline_desc;
+   public:
+    TestPipeline(render::RenderPipelineId id) : id(id) {}
+    render::RenderPipelineId get_id() const { return id; }
 
-    nvrhi::GraphicsPipelineHandle pipeline;
-
-    TestPipeline(World& world) {
-        spdlog::info("Creating TestPipeline Resource");
-
-        auto& device = world.resource<nvrhi::DeviceHandle>();
-
-        vertex_shader = device->createShader(
-            nvrhi::ShaderDesc()
-                .setShaderType(nvrhi::ShaderType::Vertex)
-                .setDebugName("vertex_shader")
-                .setEntryName("main"),
-            shader_codes::vert_spv, sizeof(shader_codes::vert_spv));
-        fragment_shader = device->createShader(
-            nvrhi::ShaderDesc()
-                .setShaderType(nvrhi::ShaderType::Pixel)
-                .setDebugName("fragment_shader")
-                .setEntryName("main"),
-            shader_codes::frag_spv, sizeof(shader_codes::frag_spv));
+    static TestPipeline create(nvrhi::DeviceHandle device,
+                               TestPipelineShaders shaders,
+                               render::PipelineServer& pipeline_server) {
         auto attributes = std::array{
             nvrhi::VertexAttributeDesc()
                 .setName("POSITION")
@@ -65,22 +57,30 @@ struct TestPipeline {
                 .setOffset(0)
                 .setElementStride(sizeof(color)),
         };
-        input_layout = device->createInputLayout(attributes.data(),
-                                                 attributes.size(), nullptr);
-        pipeline_desc =
-            nvrhi::GraphicsPipelineDesc()
-                .setVertexShader(vertex_shader)
-                .setPixelShader(fragment_shader)
-                .setRenderState(
-                    nvrhi::RenderState()
-                        .setDepthStencilState(nvrhi::DepthStencilState()
-                                                  .setDepthTestEnable(false)
-                                                  .setDepthWriteEnable(false))
-                        .setRasterState(
-                            nvrhi::RasterState()
-                                .setCullMode(nvrhi::RasterCullMode::None)
-                                .setFrontCounterClockwise(true)))
-                .setInputLayout(input_layout);
+        auto input_layout = device->createInputLayout(
+            attributes.data(), attributes.size(), nullptr);
+        render::RenderPipelineDesc pipeline_desc;
+        pipeline_desc
+            .setRenderState(
+                nvrhi::RenderState()
+                    .setDepthStencilState(nvrhi::DepthStencilState()
+                                              .setDepthTestEnable(false)
+                                              .setDepthWriteEnable(false))
+                    .setRasterState(
+                        nvrhi::RasterState()
+                            .setCullMode(nvrhi::RasterCullMode::None)
+                            .setFrontCounterClockwise(true)))
+            .setInputLayout(input_layout);
+
+        pipeline_desc.vertexShader.shader      = shaders.vertex_shader;
+        pipeline_desc.vertexShader.debugName   = "vertex_shader";
+        pipeline_desc.vertexShader.entryName   = "main";
+        pipeline_desc.fragmentShader.shader    = shaders.fragment_shader;
+        pipeline_desc.fragmentShader.debugName = "fragment_shader";
+        pipeline_desc.fragmentShader.entryName = "main";
+
+        return TestPipeline(
+            pipeline_server.queue_render_pipeline(pipeline_desc));
     }
 };
 struct Buffers {
@@ -129,6 +129,10 @@ struct CurrentFramebuffer {
     nvrhi::FramebufferHandle framebuffer;
 };
 
+struct ShaderPluginTest {
+    assets::Handle<render::Shader> shader;
+};
+
 int main() {
     App app = App::create();
     app.add_plugins(window::WindowPlugin{.primary_window = window::Window{
@@ -137,10 +141,59 @@ int main() {
     app.add_plugins(glfw::GLFWPlugin{});
     app.add_plugins(input::InputPlugin{});
     app.add_plugins(render::RenderPlugin{}.set_validation(1));
+    app.add_plugins(assets::AssetPlugin{});
+    app.add_plugins(render::ShaderPlugin{});
+    app.add_plugins(render::PipelineServerPlugin{});
 
     app.add_plugins([](App& app) {
+        app.insert_resource(ShaderPluginTest{});
+        app.add_systems(
+            Startup,
+            into([](Commands cmd, Res<assets::AssetServer> asset_server) {
+                cmd.insert_resource(TestPipelineShaders{
+                    .vertex_shader = asset_server->load<render::Shader>(
+                        shader_path + "\\shader.vert.spv"),
+                    .fragment_shader = asset_server->load<render::Shader>(
+                        shader_path + "\\shader.frag.spv"),
+                });
+            }));
+        app.add_systems(
+            Update,
+            into([](EventReader<assets::AssetEvent<render::Shader>> events) {
+                for (const auto& event : events.read()) {
+                    if (event.is_loaded()) {
+                        spdlog::info("Shader {} loaded", event.id.to_string());
+                    } else if (event.is_removed()) {
+                        spdlog::info("Shader {} removed", event.id.to_string());
+                    }
+                }
+            }));
+
         auto& render_app = app.sub_app(render::Render);
         render_app.insert_resource(PrimaryWindowId{});
+        render_app.add_systems(
+            render::ExtractSchedule,
+            into([](Commands cmd, Extract<Res<TestPipelineShaders>> shaders,
+                    Res<nvrhi::DeviceHandle> nvrhi_device,
+                    std::optional<Res<TestPipeline>> pipeline,
+                    ResMut<render::PipelineServer> pipeline_server) {
+                if (pipeline) return;
+                cmd.insert_resource(TestPipeline{TestPipeline::create(
+                    nvrhi_device.get(), shaders.get(), pipeline_server.get())});
+            }).set_name("create test pipeline"));
+        // render_app.add_systems(
+        //     render::Render,
+        //     into([loaded =
+        //               false](Res<render::assets::RenderAssets<render::Shader>>
+        //                          shaders) mutable {
+        //         if (!loaded) {
+        //             for (const auto&& [id, shader] : shaders->iter()) {
+        //                 spdlog::info("Shader {} loaded: {}", id.to_string(),
+        //                              shader.view_code());
+        //                 loaded = true;
+        //             }
+        //         }
+        //     }));
         render_app.add_systems(
             render::ExtractSchedule,
             into([](ResMut<PrimaryWindowId> extracted_window_id,
@@ -177,33 +230,45 @@ int main() {
             })
                 .in_set(render::RenderSet::ManageViews)
                 .set_name("create framebuffer"));
-        render_app.add_systems(
-            render::Render,
-            into([](Res<CurrentFramebuffer> framebuffer,
-                    ResMut<TestPipeline> pipeline,
-                    Res<nvrhi::DeviceHandle> nvrhi_device) {
-                auto& device = nvrhi_device.get();
-                if (!framebuffer->framebuffer) {
-                    throw std::runtime_error("Framebuffer not created!");
-                }
-                if (!pipeline->pipeline) {
-                    pipeline->pipeline = device->createGraphicsPipeline(
-                        pipeline->pipeline_desc, framebuffer->framebuffer);
-                }
-            })
-                .in_set(render::RenderSet::Prepare)
-                .set_name("create pipeline if not exists"));
+        // render_app.add_systems(
+        //     render::Render,
+        //     into([](Res<CurrentFramebuffer> framebuffer,
+        //             ResMut<TestPipeline> pipeline,
+        //             Res<nvrhi::DeviceHandle> nvrhi_device) {
+        //         auto& device = nvrhi_device.get();
+        //         if (!framebuffer->framebuffer) {
+        //             throw std::runtime_error("Framebuffer not created!");
+        //         }
+        //         if (!pipeline->pipeline) {
+        //             pipeline->pipeline = device->createGraphicsPipeline(
+        //                 pipeline->pipeline_desc, framebuffer->framebuffer);
+        //         }
+        //     })
+        //         .in_set(render::RenderSet::Prepare)
+        //         .set_name("create pipeline if not exists"));
         render_app.add_systems(
             render::Render,
             into([](Res<CurrentFramebuffer> framebuffer,
                     Res<TestPipeline> pipeline, Res<Buffers> buffers,
-                    Res<nvrhi::DeviceHandle> nvrhi_device) {
+                    Res<nvrhi::DeviceHandle> nvrhi_device,
+                    ResMut<render::PipelineServer> pipeline_server) {
                 auto& device = nvrhi_device.get();
                 if (!framebuffer->framebuffer) {
                     throw std::runtime_error("Framebuffer not created!");
                 }
-                if (!pipeline->pipeline) {
-                    throw std::runtime_error("Pipeline not created!");
+
+                auto pipe = pipeline_server->get_render_pipeline(
+                    pipeline->get_id(), framebuffer->framebuffer);
+
+                if (!pipe) {
+                    // spdlog::warn("Pipeline not created!");
+                    return;
+                }
+                {
+                    auto& pip = *pipe;
+                    if (pip.specializedIndex == -1) {
+                        spdlog::error("Failed to specialize pipeline");
+                    }
                 }
 
                 auto commandlist = device->createCommandList();
@@ -216,7 +281,7 @@ int main() {
                 commandlist->setGraphicsState(
                     nvrhi::GraphicsState()
                         .setFramebuffer(framebuffer->framebuffer)
-                        .setPipeline(pipeline->pipeline)
+                        .setPipeline(pipe->handle)
                         .setViewport(
                             nvrhi::ViewportState().addViewportAndScissorRect(
                                 framebuffer->framebuffer->getFramebufferInfo()
@@ -239,7 +304,6 @@ int main() {
                 .in_set(render::RenderSet::Render)
                 .set_name("render test pipeline"));
 
-        render_app.init_resource<TestPipeline>();
         render_app.init_resource<Buffers>();
         render_app.init_resource<CurrentFramebuffer>();
     });

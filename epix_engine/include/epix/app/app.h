@@ -269,7 +269,7 @@ struct App {
                 return plugin.first == meta::type_index(meta::type_id<T>());
             });
         if (it != plugins.end()) {
-            return std::static_pointer_cast<T>(it->second);
+            return std::static_pointer_cast<T>(it->second.first);
         }
         return nullptr;
     }

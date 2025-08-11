@@ -406,10 +406,11 @@ EPIX_API std::expected<void, RunScheduleError> Schedule::run_internal(
             auto& res = futures[finished];
             if (!res) {
                 spdlog::error(
+                    "[{}] "
                     "Enqueue system failed, no required executor found. "
                     "System:{}, Executor:{}, Schedule:{}",
-                    info.set->name, info.set->executor.name(),
-                    data->label.name());
+                    data->label.name(), info.set->name,
+                    info.set->executor.name(), data->label.name());
             } else if (auto& value = res.value(); value.valid()) {
                 auto sys_ret = value.get();
                 if (!sys_ret) {
@@ -417,15 +418,18 @@ EPIX_API std::expected<void, RunScheduleError> Schedule::run_internal(
                         epix::util::visitor{
                             [&](NotInitializedError& e) {
                                 spdlog::error(
+                                    "[{}] "
                                     "System not initialized. System:{}, "
                                     "required arg states:{}",
-                                    info.set->name, e.needed_state.name());
+                                    data->label.name(), info.set->name,
+                                    e.needed_state.name());
                             },
                             [&](UpdateStateFailedError& e) {
                                 spdlog::error(
+                                    "[{}] "
                                     "Update args states failed. System:{}, "
                                     "failed args:{}",
-                                    info.set->name,
+                                    data->label.name(), info.set->name,
                                     std::views::all(e.failed_args) |
                                         std::views::transform([](auto&& type) {
                                             return type.name();
@@ -436,14 +440,17 @@ EPIX_API std::expected<void, RunScheduleError> Schedule::run_internal(
                                     std::rethrow_exception(e.exception);
                                 } catch (const std::exception& ex) {
                                     spdlog::error(
+                                        "[{}] "
                                         "System exception. System:{}, "
                                         "Exception:{}",
-                                        info.set->name, ex.what());
+                                        data->label.name(), info.set->name,
+                                        ex.what());
                                 } catch (...) {
                                     spdlog::error(
+                                        "[{}] "
                                         "System exception. System:{}, "
                                         "Exception:unknown",
-                                        info.set->name);
+                                        data->label.name(), info.set->name);
                                 }
                             },
                             [&](auto&&) {

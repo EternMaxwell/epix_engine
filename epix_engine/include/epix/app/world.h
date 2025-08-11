@@ -55,6 +55,20 @@ concept is_bundle = requires(T t) {
 }  // namespace epix::app
 
 namespace epix::app {
+struct EntityRef : public Entity {
+    World& world;
+
+    EntityRef(Entity entity, World& world) : Entity(entity), world(world) {}
+
+    template <typename T, typename... Args>
+    void emplace(Args&&... args);
+    template <typename T>
+    void emplace(T&& obj);
+    template <typename... Args>
+    void erase();
+    template <typename... Args>
+    EntityRef with_child(Args&&... args);
+};
 /**
  * @brief World is where all the entities, components, and resources
  * are managed.
@@ -241,13 +255,14 @@ struct World {
      * @return Entity The id of the spawned entity.
      */
     template <typename... Args>
-    Entity spawn(Args&&... args) {
+    EntityRef spawn(Args&&... args) {
         Entity id = m_data.registry.create();
         if constexpr (sizeof...(Args) > 0) {
             (entity_emplace<Args>(id, std::forward<Args>(args)), ...);
         }
-        return id;
+        return EntityRef(id, *this);
     }
+    EntityRef entity(Entity entity) { return EntityRef(entity, *this); }
     /**
      * @brief Immediately despawn an entity. This will remove all components and
      * remove the entity from the world.
@@ -341,4 +356,23 @@ struct World {
                                                  std::forward<Args>(args)...);
     }
 };
+
+template <typename T, typename... Args>
+void EntityRef::emplace(Args&&... args) {
+    world.entity_emplace<T>(*this, std::forward<Args>(args)...);
+}
+template <typename T>
+void EntityRef::emplace(T&& obj) {
+    world.entity_emplace<T>(*this, std::forward<T>(obj));
+}
+template <typename... Args>
+void EntityRef::erase() {
+    world.entity_erase<Args...>(*this);
+}
+template <typename... Args>
+EntityRef EntityRef::with_child(Args&&... args) {
+    auto new_entity = world.spawn(std::forward<Args>(args)..., Parent{*this});
+    world.entity_get_or_emplace<Children>(*this).entities.emplace(new_entity);
+    return new_entity;
+}
 }  // namespace epix::app
