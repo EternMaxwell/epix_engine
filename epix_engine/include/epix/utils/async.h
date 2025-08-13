@@ -10,6 +10,47 @@
 #include <type_traits>
 
 namespace epix::utils::async {
+template <typename T>
+struct Mutex {
+   private:
+    mutable std::mutex m_mutex;
+    union {
+        T m_value;
+    };
+
+   public:
+    template <typename... Args>
+    Mutex(Args&&... args) {
+        new (&m_value) T(std::forward<Args>(args)...);
+    }
+    Mutex(const T& value) { new (&m_value) T(value); }
+    Mutex(T&& value) { new (&m_value) T(std::move(value)); }
+    Mutex(const Mutex&) = delete;
+    Mutex(Mutex&& other) {
+        std::scoped_lock lock(m_mutex, other.m_mutex);
+        new (&m_value) T(std::move(other.m_value));
+    }
+    Mutex& operator=(const Mutex&) = delete;
+    Mutex& operator=(Mutex&& other) noexcept {
+        std::scoped_lock lock(m_mutex, other.m_mutex);
+        m_value = std::move(other.m_value);
+        return *this;
+    }
+    ~Mutex() {
+        std::lock_guard lock(m_mutex);
+        m_value.~T();
+    }
+    Mutex clone() const {
+        std::lock_guard lock(m_mutex);
+        return Mutex(m_value);
+    }
+
+    std::unique_lock<std::mutex> lock() const {
+        return std::unique_lock<std::mutex>(m_mutex);
+    }
+    T& get() { return m_value; }
+};
+
 /**
  * @brief A thread-safe queue implementation using std::deque and
  * std::shared_mutex.
@@ -234,14 +275,12 @@ struct RwLock {
     ~RwLock() = default;
 
     ReadGuard read() const {
-        return ReadGuard(
-            std::shared_lock<std::shared_mutex>(m_mutex), &m_value
-        );
+        return ReadGuard(std::shared_lock<std::shared_mutex>(m_mutex),
+                         &m_value);
     }
     WriteGuard write() const {
-        return WriteGuard(
-            std::unique_lock<std::shared_mutex>(m_mutex), &m_value
-        );
+        return WriteGuard(std::unique_lock<std::shared_mutex>(m_mutex),
+                          &m_value);
     }
     std::optional<ReadGuard> try_read() const {
         std::shared_lock<std::shared_mutex> lock(m_mutex, std::defer_lock);
@@ -314,9 +353,8 @@ struct MultiGuard<std::tuple<Vs...>, L> {
         return std::apply([](Vs*... vs) { return std::tie(*vs...); }, m_values);
     }
     std::tuple<const Vs&...> operator*() const& {
-        return std::apply(
-            [](const Vs*... vs) { return std::tie(*vs...); }, m_values
-        );
+        return std::apply([](const Vs*... vs) { return std::tie(*vs...); },
+                          m_values);
     }
 };
 
@@ -337,15 +375,13 @@ template <typename... Ts>
 auto scoped_write(const RwLock<Ts>&... lock) {
     MultiLock final_lock(lock.defer_write()...);
     return MultiGuard<std::tuple<Ts...>, decltype(final_lock)>(
-        std::make_tuple(&lock.m_value...), std::move(final_lock)
-    );
+        std::make_tuple(&lock.m_value...), std::move(final_lock));
 }
 template <typename... Ts>
 auto scoped_read(const RwLock<Ts>&... lock) {
     MultiLock final_lock(lock.defer_read()...);
     return MultiGuard<std::tuple<const Ts...>, decltype(final_lock)>(
-        std::make_tuple(&lock.m_value...), std::move(final_lock)
-    );
+        std::make_tuple(&lock.m_value...), std::move(final_lock));
 }
 }  // namespace epix::utils::async
 namespace epix::async {

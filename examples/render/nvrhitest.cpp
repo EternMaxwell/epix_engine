@@ -251,7 +251,7 @@ int main() {
             into([](Res<CurrentFramebuffer> framebuffer,
                     Res<TestPipeline> pipeline, Res<Buffers> buffers,
                     Res<nvrhi::DeviceHandle> nvrhi_device,
-                    ResMut<render::PipelineServer> pipeline_server) {
+                    Res<render::PipelineServer> pipeline_server) {
                 auto& device = nvrhi_device.get();
                 if (!framebuffer->framebuffer) {
                     throw std::runtime_error("Framebuffer not created!");
