@@ -4,66 +4,14 @@
 
 using namespace epix::image;
 
-bool ImageView::operator==(const ImageView& other) const {
-    return image.id() == other.image.id() && info == other.info;
-}
-
-EPIX_API size_t std::hash<ImageView>::operator()(const ImageView& image_view
-) const noexcept {
-    size_t seed =
-        std::hash<epix::assets::AssetId<Image>>{}(image_view.image.id());
-    // combine the hash with each field of the info
-    // flags
-    seed ^= std::hash<VkImageViewCreateFlags>{}((VkImageViewCreateFlags
-            )image_view.info.flags) +
-            0x9e3779b9 + (seed << 6) + (seed >> 2);
-    // image
-    seed ^= std::hash<VkImage>{}(image_view.info.image) + 0x9e3779b9 +
-            (seed << 6) + (seed >> 2);
-    // viewType
-    seed ^= std::hash<VkImageViewType>{}((VkImageViewType
-            )image_view.info.viewType) +
-            0x9e3779b9 + (seed << 6) + (seed >> 2);
-    // format
-    seed ^= std::hash<VkFormat>{}((VkFormat)image_view.info.format) +
-            0x9e3779b9 + (seed << 6) + (seed >> 2);
-    // components
-    seed ^= std::hash<VkComponentSwizzle>{}((VkComponentSwizzle
-            )image_view.info.components.r) +
-            0x9e3779b9 + (seed << 6) + (seed >> 2);
-    seed ^= std::hash<VkComponentSwizzle>{}((VkComponentSwizzle
-            )image_view.info.components.g) +
-            0x9e3779b9 + (seed << 6) + (seed >> 2);
-    seed ^= std::hash<VkComponentSwizzle>{}((VkComponentSwizzle
-            )image_view.info.components.b) +
-            0x9e3779b9 + (seed << 6) + (seed >> 2);
-    seed ^= std::hash<VkComponentSwizzle>{}((VkComponentSwizzle
-            )image_view.info.components.a) +
-            0x9e3779b9 + (seed << 6) + (seed >> 2);
-    // subresourceRange
-    seed ^= std::hash<VkImageAspectFlags>{}((VkImageAspectFlags
-            )image_view.info.subresourceRange.aspectMask) +
-            0x9e3779b9 + (seed << 6) + (seed >> 2);
-    seed ^=
-        std::hash<uint32_t>{}(image_view.info.subresourceRange.baseMipLevel) +
-        0x9e3779b9 + (seed << 6) + (seed >> 2);
-    seed ^= std::hash<uint32_t>{}(image_view.info.subresourceRange.levelCount) +
-            0x9e3779b9 + (seed << 6) + (seed >> 2);
-    seed ^=
-        std::hash<uint32_t>{}(image_view.info.subresourceRange.baseArrayLayer) +
-        0x9e3779b9 + (seed << 6) + (seed >> 2);
-    seed ^= std::hash<uint32_t>{}(image_view.info.subresourceRange.layerCount) +
-            0x9e3779b9 + (seed << 6) + (seed >> 2);
-    return seed;
-}
-
-EPIX_API const decltype(StbImageLoader::exts)& StbImageLoader::extensions(
-) noexcept {
+EPIX_API std::span<const char* const> StbImageLoader::extensions() noexcept {
+    static constexpr auto exts =
+        std::array{".png", ".jpg", ".jpeg", ".bmp", ".tga", ".hdr",
+                   ".pic", ".psd", ".gif",  ".ppm", ".pgm", ".pnm"};
     return exts;
 }
-EPIX_API Image StbImageLoader::load(
-    const std::filesystem::path& path, assets::LoadContext& context
-) {
+EPIX_API Image StbImageLoader::load(const std::filesystem::path& path,
+                                    assets::LoadContext& context) {
     Image image;
     int width, height, channels;
     auto path_str = path.string();
@@ -71,17 +19,9 @@ EPIX_API Image StbImageLoader::load(
     bool bit16    = stbi_is_16_bit(path_str.c_str());
 
     // default infos for stbi loaded images
-    image.info.imageType   = vk::ImageType::e2D;
-    image.info.mipLevels   = 1;
-    image.info.arrayLayers = 1;
-    image.info.samples     = vk::SampleCountFlagBits::e1;
-    image.info.tiling      = vk::ImageTiling::eOptimal;
-    image.info.usage =
-        vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferDst;
-    image.info.sharingMode           = vk::SharingMode::eExclusive;
-    image.info.initialLayout         = vk::ImageLayout::eUndefined;
-    image.info.queueFamilyIndexCount = 0;
-    image.info.pQueueFamilyIndices   = nullptr;
+    image.info.dimension        = nvrhi::TextureDimension::Texture2D;
+    image.info.initialState     = nvrhi::ResourceStates::ShaderResource;
+    image.info.keepInitialState = true;
 
     if (hdr) {
         // this is an HDR image, use float for storage
@@ -93,9 +33,9 @@ EPIX_API Image StbImageLoader::load(
         image.data.resize(width * height * 4 * sizeof(float));
         std::memcpy(image.data.data(), loaded, image.data.size());
         stbi_image_free(loaded);
-        image.info.format = vk::Format::eR32G32B32A32Sfloat;
+        image.info.format = nvrhi::Format::RGBA32_FLOAT;
     } else if (bit16) {
-        // this is a 16-bit image, use half-float for storage
+        // this is a 16-bit image, use uint16_t for storage
         auto loaded =
             stbi_load_16(path_str.c_str(), &width, &height, &channels, 4);
         if (!loaded) {
@@ -104,7 +44,7 @@ EPIX_API Image StbImageLoader::load(
         image.data.resize(width * height * 4 * sizeof(uint16_t));
         std::memcpy(image.data.data(), loaded, image.data.size());
         stbi_image_free(loaded);
-        image.info.format = vk::Format::eR16G16B16A16Sfloat;
+        image.info.format = nvrhi::Format::RGBA16_UINT;
     } else {
         // this is an 8-bit image, use uint8_t for storage
         auto loaded =
@@ -115,19 +55,45 @@ EPIX_API Image StbImageLoader::load(
         image.data.resize(width * height * 4);
         std::memcpy(image.data.data(), loaded, image.data.size());
         stbi_image_free(loaded);
-        image.info.format = vk::Format::eR8G8B8A8Srgb;
+        image.info.format = nvrhi::Format::RGBA8_UINT;
     }
 
     // size assigned here after all possible branches
-    image.info.extent = vk::Extent3D{
-        static_cast<uint32_t>(width), static_cast<uint32_t>(height), 1
-    };
+    image.info.width     = width;
+    image.info.height    = height;
+    image.info.depth     = 1;
+    image.info.arraySize = 1;
+    image.info.mipLevels = 1;
+
+    image.usage = render::assets::RenderAssetUsageBits::RENDER_WORLD;
 
     return std::move(image);
 }
+
+using namespace epix::render::assets;
 
 EPIX_API void ImagePlugin::build(epix::App& app) {
     app.plugin_scope([](epix::assets::AssetPlugin& asset_plugin) {
         asset_plugin.register_asset<Image>().register_loader<StbImageLoader>();
     });
+    app.add_plugins(ExtractAssetPlugin<Image>{});
+}
+
+using Param          = epix::render::assets::RenderAsset<Image>::Param;
+using ProcessedAsset = epix::render::assets::RenderAsset<Image>::ProcessedAsset;
+
+EPIX_API ProcessedAsset RenderAsset<Image>::process(Image&& asset,
+                                                    Param& param) {
+    auto&& [device]              = param.get();
+    nvrhi::TextureHandle texture = device.get()->createTexture(asset.info);
+    auto commandlist             = device.get()->createCommandList();
+    commandlist->open();
+    size_t rowPitch = asset.data.size() / asset.info.height;
+    commandlist->writeTexture(texture, 0, 0, asset.data.data(), rowPitch);
+    commandlist->close();
+    device.get()->executeCommandList(commandlist);
+    return texture;
+}
+EPIX_API RenderAssetUsage RenderAsset<Image>::usage(const Image& asset) {
+    return asset.usage;
 }

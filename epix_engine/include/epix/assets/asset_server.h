@@ -23,25 +23,24 @@ concept AssetLoader = requires(T t) {
     { *T::extensions().begin() } -> std::convertible_to<const char*>;
     // a static load function which takes a path and a LoadContext
     {
-        T::load(
-            std::declval<const std::filesystem::path&>(),
-            std::declval<LoadContext&>()
-        )
+        T::load(std::declval<const std::filesystem::path&>(),
+                std::declval<LoadContext&>())
     };
 };
 template <AssetLoader T>
 struct LoaderInfo {
-    using load_return_type           = decltype(T::load(
-        std::declval<const std::filesystem::path&>(),
-        std::declval<LoadContext&>()
-    ));
+    using load_return_type =
+        decltype(T::load(std::declval<const std::filesystem::path&>(),
+                         std::declval<LoadContext&>()));
     using asset_type                 = std::remove_pointer_t<load_return_type>;
     static constexpr bool return_ptr = std::is_pointer_v<load_return_type>;
 };
 struct AssetContainer {
-    virtual ~AssetContainer()                                   = default;
-    virtual meta::type_index type() const                       = 0;
-    virtual void insert(const UntypedAssetId& id, World& world) = 0;
+    virtual ~AssetContainer()                                      = default;
+    virtual meta::type_index type() const                          = 0;
+    virtual void insert(const UntypedAssetId& id,
+                        World& world,
+                        const std::function<void(void*)>& pre_mod) = 0;
 };
 template <typename T>
 struct AssetContainerImpl : AssetContainer {
@@ -51,11 +50,15 @@ struct AssetContainerImpl : AssetContainer {
     AssetContainerImpl(T&& asset) : asset(std::move(asset)) {}
     ~AssetContainerImpl() override = default;
     meta::type_index type() const override { return meta::type_id<T>{}; }
-    void insert(const UntypedAssetId& id, World& world) override {
+    void insert(const UntypedAssetId& id,
+                World& world,
+                const std::function<void(void*)>& pre_mod) override {
+        if (pre_mod) {
+            pre_mod(&asset);
+        }
         world.resource<Assets<T>>().insert(id.typed<T>(), std::move(asset));
         world.resource<epix::app::Events<AssetEvent<T>>>().push(
-            AssetEvent<T>::loaded(id.typed<T>())
-        );
+            AssetEvent<T>::loaded(id.typed<T>()));
     }
 };
 template <typename T>
@@ -69,24 +72,28 @@ struct AssetContainerImpl<T*> : AssetContainer {
         }
     }
     meta::type_index type() const override { return meta::type_id<T>{}; }
-    void insert(const UntypedAssetId& id, World& world) override {
+    void insert(const UntypedAssetId& id,
+                World& world,
+                const std::function<void(void*)>& pre_mod) override {
+        if (pre_mod) {
+            pre_mod(asset);
+        }
         world.resource<Assets<T>>().insert(id.typed<T>(), std::move(*asset));
+        asset = nullptr;  // Prevent double deletion
         world.resource<epix::app::Events<AssetEvent<T>>>().push(
-            AssetEvent<T>::loaded(id.typed<T>())
-        );
+            AssetEvent<T>::loaded(id.typed<T>()));
     }
 };
 struct ErasedLoadedAsset {
     std::unique_ptr<AssetContainer> value;
 };
 struct ErasedAssetLoader {
-    virtual ~ErasedAssetLoader()                 = default;
-    virtual meta::type_index asset_type() const  = 0;
-    virtual meta::type_index loader_type() const = 0;
-    virtual ErasedLoadedAsset load(
-        const std::filesystem::path& path, LoadContext& context
-    ) const                                             = 0;
-    virtual std::vector<const char*> extensions() const = 0;
+    virtual ~ErasedAssetLoader()                               = default;
+    virtual meta::type_index asset_type() const                = 0;
+    virtual meta::type_index loader_type() const               = 0;
+    virtual ErasedLoadedAsset load(const std::filesystem::path& path,
+                                   LoadContext& context) const = 0;
+    virtual std::vector<const char*> extensions() const        = 0;
 };
 template <AssetLoader T>
 struct ErasedAssetLoaderImpl : ErasedAssetLoader {
@@ -95,23 +102,21 @@ struct ErasedAssetLoaderImpl : ErasedAssetLoader {
         return meta::type_id<typename loader_info::asset_type>{};
     }
     meta::type_index loader_type() const override { return meta::type_id<T>{}; }
-    ErasedLoadedAsset load(
-        const std::filesystem::path& path, LoadContext& context
-    ) const override {
+    ErasedLoadedAsset load(const std::filesystem::path& path,
+                           LoadContext& context) const override {
         if constexpr (loader_info::return_ptr) {
             auto asset = T::load(path, context);
             if (asset) {
                 return ErasedLoadedAsset{std::make_unique<
-                    AssetContainerImpl<typename loader_info::asset_type>>(asset)
-                };
+                    AssetContainerImpl<typename loader_info::asset_type>>(
+                    asset)};
             } else {
                 return ErasedLoadedAsset{nullptr};
             }
         } else {
             return ErasedLoadedAsset{std::make_unique<
                 AssetContainerImpl<typename loader_info::asset_type>>(
-                T::load(path, context)
-            )};
+                T::load(path, context))};
         }
         // this function does not catch exceptions, and the exceptions should be
         // handled by the caller, most likely the AssetServer, to send the
@@ -133,9 +138,8 @@ struct ErasedAssetLoaderFuncImpl : ErasedAssetLoader {
     using FuncStorage = std::decay_t<Func>;
     FuncStorage func;  // Store the function
     std::vector<const char*> _extensions;
-    ErasedAssetLoaderFuncImpl(
-        Func&& func, epix::util::ArrayProxy<const char*> extensions
-    )
+    ErasedAssetLoaderFuncImpl(Func&& func,
+                              epix::util::ArrayProxy<const char*> extensions)
         : func(std::forward<Func>(func)),
           _extensions(extensions.begin(), extensions.end()) {}
     meta::type_index asset_type() const override {
@@ -144,9 +148,8 @@ struct ErasedAssetLoaderFuncImpl : ErasedAssetLoader {
     meta::type_index loader_type() const override {
         return meta::type_id<Func>{};
     }
-    ErasedLoadedAsset load(
-        const std::filesystem::path& path, LoadContext& context
-    ) const override {
+    ErasedLoadedAsset load(const std::filesystem::path& path,
+                           LoadContext& context) const override {
         if constexpr (std::is_pointer_v<typename Func::asset_type>) {
             auto asset = func(path, context);
             if (asset) {
@@ -158,8 +161,8 @@ struct ErasedAssetLoaderFuncImpl : ErasedAssetLoader {
         } else {
             auto asset = func(path, context);
             return ErasedLoadedAsset{
-                std::make_unique<AssetContainerImpl<asset_t>>(std::move(asset))
-            };
+                std::make_unique<AssetContainerImpl<asset_t>>(
+                    std::move(asset))};
         }
     }
     std::vector<const char*> extensions() const override { return _extensions; }
@@ -175,12 +178,12 @@ struct AssetInfo {
     std::filesystem::path path;
     LoadState state;
     std::shared_future<void> waiter;
+    std::function<void(void*)> on_loaded;
 };
 struct AssetInfos {
    private:
-    entt::dense_map<
-        std::filesystem::path,
-        entt::dense_map<meta::type_index, UntypedAssetId>>
+    entt::dense_map<std::filesystem::path,
+                    entt::dense_map<meta::type_index, UntypedAssetId>>
         path_to_ids;
     entt::dense_map<UntypedAssetId, AssetInfo> infos;
     entt::dense_map<meta::type_index, std::shared_ptr<HandleProvider>>
@@ -194,17 +197,14 @@ struct AssetInfos {
     EPIX_API std::optional<UntypedHandle> get_or_create_handle_internal(
         const std::filesystem::path& path,
         const std::optional<meta::type_index>& type,
-        bool force_new = false
-    );
+        bool force_new = false);
     EPIX_API std::optional<UntypedHandle> get_or_create_handle_untyped(
         const std::filesystem::path& path,
         const meta::type_index& type,
-        bool force_new = false
-    );
+        bool force_new = false);
     template <typename T>
     std::optional<Handle<T>> get_or_create_handle(
-        const std::filesystem::path& path, bool force_new = false
-    ) {
+        const std::filesystem::path& path, bool force_new = false) {
         auto type   = meta::type_id<T>{};
         auto handle = get_or_create_handle_internal(path, type, force_new);
         if (handle) {
@@ -231,25 +231,20 @@ struct AssetLoaders {
 
    public:
     EPIX_API const ErasedAssetLoader* get_by_index(uint32_t index) const;
-    EPIX_API const ErasedAssetLoader* get_by_type(const meta::type_index& type
-    ) const;
+    EPIX_API const ErasedAssetLoader* get_by_type(
+        const meta::type_index& type) const;
     EPIX_API std::vector<const ErasedAssetLoader*> get_multi_by_type(
-        const meta::type_index& type
-    ) const;
+        const meta::type_index& type) const;
     EPIX_API const ErasedAssetLoader* get_by_extension(
-        const std::string_view& ext
-    ) const;
+        const std::string_view& ext) const;
     EPIX_API std::vector<const ErasedAssetLoader*> get_multi_by_extension(
-        const std::string_view& ext
-    ) const;
+        const std::string_view& ext) const;
     // get by path is a wrapper method for get_by_extension, but much easier to
     // use
     EPIX_API const ErasedAssetLoader* get_by_path(
-        const std::filesystem::path& path
-    ) const;
+        const std::filesystem::path& path) const;
     EPIX_API std::vector<const ErasedAssetLoader*> get_multi_by_path(
-        const std::filesystem::path& path
-    ) const;
+        const std::filesystem::path& path) const;
     template <AssetLoader T>
     uint32_t push(const T&) {
         using loader_info = LoaderInfo<T>;
@@ -274,10 +269,10 @@ struct AssetLoadFailedEvent {
     UntypedAssetId id;  // the id of the asset that failed to load
     std::string error;  // the error message
 };
-using InternalAssetEvent = std::variant<
-    AssetLoadedEvent,     // asset was loaded successfully
-    AssetLoadFailedEvent  // asset failed to load
-    >;
+using InternalAssetEvent =
+    std::variant<AssetLoadedEvent,     // asset was loaded successfully
+                 AssetLoadFailedEvent  // asset failed to load
+                 >;
 struct AssetServer {
     EPIX_API AssetServer();
     AssetServer(const AssetServer&)            = delete;
@@ -318,8 +313,8 @@ struct AssetServer {
     }
     EPIX_API std::optional<LoadState> get_state(const UntypedAssetId& id) const;
     EPIX_API void load_internal(
-        const UntypedAssetId& id, const ErasedAssetLoader* loader = nullptr
-    ) const;
+        const UntypedAssetId& id,
+        const ErasedAssetLoader* loader = nullptr) const;
     template <typename T>
     Handle<T> load(const std::filesystem::path& path) const {
         std::scoped_lock lock(info_mutex, pending_mutex);
@@ -331,14 +326,80 @@ struct AssetServer {
         }
         return Handle<T>();  // Return an empty handle if creation failed
     }
-    EPIX_API UntypedHandle load_untyped(const std::filesystem::path& path
-    ) const;
+    template <typename T, typename PreMod>
+    Handle<T> load(const std::filesystem::path& path, PreMod&& pre_mod) const {
+        static_assert(std::is_invocable_v<PreMod, T&>);
+        auto handle = load<T>(path);
+        if (handle) {
+            std::unique_lock lock(info_mutex);
+            auto info = asset_infos.get_info(handle.id());
+            if (info) {
+                info->on_loaded =
+                    [pre_mod = std::forward<PreMod>(pre_mod)](void* asset_ptr) {
+                        pre_mod(*static_cast<T*>(asset_ptr));
+                    };
+            }
+        }
+        return handle;
+    }
+    EPIX_API UntypedHandle
+    load_untyped(const std::filesystem::path& path) const;
+    template <typename PreMod>
+    UntypedHandle load_untyped(const std::filesystem::path& path,
+                               PreMod&& pre_mod) const {
+        auto handle = load_untyped(path);
+        if (handle) {
+            std::unique_lock lock(info_mutex);
+            auto info = asset_infos.get_info(handle.id());
+            if (info) {
+                using arg_raw  = function_traits<PreMod>::first_arg_type;
+                using arg_type = std::remove_cvref_t<arg_raw>;
+                if (handle.type() == meta::type_id<arg_type>{}) {
+                    info->on_loaded = [pre_mod = std::forward<PreMod>(pre_mod)](
+                                          void* asset_ptr) {
+                        pre_mod(*static_cast<arg_type*>(asset_ptr));
+                    };
+                } else {
+                    spdlog::warn(
+                        "[asset-server] "
+                        "PreMod function argument type {} does not match "
+                        "asset type {}. Ignoring PreMod.",
+                        meta::type_id<arg_type>::name, handle.type().name());
+                }
+            }
+        }
+        return handle;
+    }
     EPIX_API bool process_handle_destruction(const UntypedAssetId& id) const;
-    EPIX_API static void handle_events(
-        World& world, Res<AssetServer> asset_server
-    );
+    EPIX_API static void handle_events(World& world,
+                                       Res<AssetServer> asset_server);
 
    private:
+    template <typename T>
+    struct function_traits;
+    // for functions and function pointers
+    template <typename Ret, typename... Args>
+    struct function_traits<Ret (*)(Args...)> {
+        static_assert(sizeof...(Args) == 1,
+                      "PreMod function must take exactly one argument.");
+        using first_arg_type = std::tuple_element_t<0, std::tuple<Args...>>;
+    };
+    template <typename Ret, typename... Args>
+    struct function_traits<Ret(Args...)> {
+        static_assert(sizeof...(Args) == 1,
+                      "PreMod function must take exactly one argument.");
+        using first_arg_type = std::tuple_element_t<0, std::tuple<Args...>>;
+    };
+    template <typename Ret, typename... Args>
+    struct function_traits<Ret (&)(Args...)> {
+        static_assert(sizeof...(Args) == 1,
+                      "PreMod function must take exactly one argument.");
+        using first_arg_type = std::tuple_element_t<0, std::tuple<Args...>>;
+    };
+    // for fake functions (std::function, lambdas, etc.)
+    template <typename T>
+    struct function_traits : function_traits<decltype(&T::operator())> {};
+
     mutable AssetInfos asset_infos;
     mutable std::mutex info_mutex;
     AssetLoaders asset_loaders;
@@ -356,10 +417,8 @@ template <typename T>
     requires std::move_constructible<T> && std::is_move_assignable_v<T>
 void Assets<T>::handle_events_internal(const AssetServer* asset_server) {
     spdlog::trace("[{}] Handling events", meta::type_id<T>::name);
-    while (
-        auto&& opt =
-            m_handle_provider->index_allocator.reserved_receiver().try_receive()
-    ) {
+    while (auto&& opt = m_handle_provider->index_allocator.reserved_receiver()
+                            .try_receive()) {
         m_assets.resize_slots(opt->index);
     }
     while (auto&& opt = m_handle_provider->event_receiver.try_receive()) {

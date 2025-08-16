@@ -391,7 +391,7 @@ struct SystemParam<Local<T>> {
         return true;  // Local params do not need update
     }
     Local<T>& get(State& state) {
-        state.second = Local<T>(&state.first);
+        state.second = Local<T>(std::addressof(state.first));
         return state.second;
     }
 };
@@ -403,7 +403,7 @@ struct SystemParam<Local<T>> {
         return true;  // Local params do not need update
     }
     Local<T>& get(State& state) {
-        state.second = Local<T>(&state.first);
+        state.second = Local<T>(std::addressof(state.first));
         return state.second;
     }
 };
@@ -432,8 +432,7 @@ static_assert(ValidParam<World>, "World should be a valid SystemParam type.");
 
 template <ValidParam... Ts>
 struct ParamSet : std::tuple<Ts&...> {
-    static ParamSet from_param(Ts&... args) {
-        return ParamSet<Ts...>(args...);
-    }
+    static ParamSet from_param(Ts&... args) { return ParamSet<Ts...>(args...); }
+    std::tuple<Ts&...>& get() { return *this; }
 };
 }  // namespace epix::app

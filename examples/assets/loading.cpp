@@ -9,9 +9,8 @@
 struct StringLoader {
     static constexpr std::array<const char*, 2> exts = {"txt", "log"};
     static auto extensions() noexcept { return exts; }
-    static std::string load(
-        const std::filesystem::path& path, epix::assets::LoadContext& context
-    ) {
+    static std::string load(const std::filesystem::path& path,
+                            epix::assets::LoadContext& context) {
         auto size = std::filesystem::file_size(path);
         std::ifstream file(path);
         if (!file) {
@@ -26,9 +25,8 @@ struct StringLoader {
 struct AnotherLoader {
     static constexpr std::array<const char*, 1> exts = {"txt"};
     static auto extensions() noexcept { return std::views::all(exts); }
-    static int load(
-        const std::filesystem::path& path, epix::assets::LoadContext& context
-    ) {
+    static int load(const std::filesystem::path& path,
+                    epix::assets::LoadContext& context) {
         std::this_thread::sleep_for(std::chrono::seconds(1));
         return 42;  // Just a dummy implementation
     }
@@ -49,8 +47,7 @@ int main() {
                 spdlog::info("Exiting app after 5 seconds.");
                 exit.write(AppExit{1});
             }
-        })
-    );
+        }));
     app.add_plugins(assets::AssetPlugin{}
                         .register_asset<std::string>()
                         .register_loader(StringLoader{})
@@ -73,8 +70,8 @@ int main() {
                 EventReader<assets::AssetEvent<std::string>>& events,
                 EventReader<assets::AssetEvent<int>>& int_events,
                 Res<assets::Assets<std::string>>& assets,
-                Res<assets::Assets<int>>& int_assets, EventWriter<AppExit>& exit
-            ) mutable {
+                Res<assets::Assets<int>>& int_assets,
+                EventWriter<AppExit>& exit) mutable {
                 for (const auto& event : events.read()) {
                     if (event.is_loaded()) {
                         str_loaded = true;
@@ -100,14 +97,10 @@ int main() {
                     if (event.is_loaded()) {
                         spdlog::info("Image asset loaded: {}", event.id);
                         const auto& img = *images->get(event.id);
-                        spdlog::info(
-                            "Image size: {}x{}", img.info.extent.width,
-                            img.info.extent.height
-                        );
+                        spdlog::info("Image size: {}x{}", img.info.width,
+                                     img.info.height);
                     }
                 }
-            }
-        )
-    );
+            }));
     app.run();
 }

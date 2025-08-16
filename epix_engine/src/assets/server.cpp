@@ -17,8 +17,7 @@ EPIX_API AssetInfo* AssetInfos::get_info(const UntypedAssetId& id) {
 EPIX_API std::optional<UntypedHandle> AssetInfos::get_or_create_handle_internal(
     const std::filesystem::path& path,
     const std::optional<epix::meta::type_index>& type,
-    bool force_new
-) {
+    bool force_new) {
     auto&& ids = path_to_ids[path];
     auto asset_type_opt =
         type.or_else([&]() -> std::optional<epix::meta::type_index> {
@@ -82,11 +81,9 @@ EPIX_API std::optional<UntypedHandle> AssetInfos::get_or_create_handle_internal(
 EPIX_API std::optional<UntypedHandle> AssetInfos::get_or_create_handle_untyped(
     const std::filesystem::path& path,
     const epix::meta::type_index& type,
-    bool force_new
-) {
+    bool force_new) {
     return get_or_create_handle_internal(
-        path, type, force_new
-    );  // Call the internal function with the type
+        path, type, force_new);  // Call the internal function with the type
 }
 EPIX_API bool AssetInfos::process_handle_destruction(const UntypedAssetId& id) {
     if (auto it = infos.find(id); it != infos.end()) {
@@ -115,26 +112,25 @@ EPIX_API bool AssetInfos::process_handle_destruction(const UntypedAssetId& id) {
                    // expired
 }
 
-EPIX_API const ErasedAssetLoader* AssetLoaders::get_by_index(uint32_t index
-) const {
+EPIX_API const ErasedAssetLoader* AssetLoaders::get_by_index(
+    uint32_t index) const {
     if (index < loaders.size()) {
         return loaders[index].get();
     }
     return nullptr;
 }
 EPIX_API const ErasedAssetLoader* AssetLoaders::get_by_type(
-    const epix::meta::type_index& type
-) const {
+    const epix::meta::type_index& type) const {
     auto it = type_to_loaders.find(type);
     if (it != type_to_loaders.end() && !it->second.empty()) {
-        return get_by_index(it->second.back()
-        );  // Get the last loader of this type
+        return get_by_index(
+            it->second.back());  // Get the last loader of this type
     }
     return nullptr;
 }
 EPIX_API std::vector<const ErasedAssetLoader*> AssetLoaders::get_multi_by_type(
-    const epix::meta::type_index& type
-) const {  // get all loaders of a specific type
+    const epix::meta::type_index& type)
+    const {  // get all loaders of a specific type
     if (auto it = type_to_loaders.find(type); it != type_to_loaders.end()) {
         return it->second | std::views::transform([this](uint32_t index) {
                    return get_by_index(index);
@@ -144,8 +140,7 @@ EPIX_API std::vector<const ErasedAssetLoader*> AssetLoaders::get_multi_by_type(
     return {};  // Return an empty vector if no loaders of that type exist
 }
 EPIX_API const ErasedAssetLoader* AssetLoaders::get_by_extension(
-    const std::string_view& ext
-) const {
+    const std::string_view& ext) const {
     auto it = ext_to_loaders.find(ext.data());
     if (it != ext_to_loaders.end() && !it->second.empty()) {
         return get_by_index(it->second.back());
@@ -153,8 +148,8 @@ EPIX_API const ErasedAssetLoader* AssetLoaders::get_by_extension(
     return nullptr;
 }
 EPIX_API std::vector<const ErasedAssetLoader*>
-AssetLoaders::get_multi_by_extension(const std::string_view& ext
-) const {  // get all loaders of a specific extension
+AssetLoaders::get_multi_by_extension(const std::string_view& ext)
+    const {  // get all loaders of a specific extension
     if (auto it = ext_to_loaders.find(ext.data()); it != ext_to_loaders.end()) {
         return it->second | std::views::transform([this](uint32_t index) {
                    return get_by_index(index);
@@ -167,8 +162,8 @@ AssetLoaders::get_multi_by_extension(const std::string_view& ext
 // get by path is a wrapper method for get_by_extension, but much easier to
 // use
 EPIX_API const ErasedAssetLoader* AssetLoaders::get_by_path(
-    const std::filesystem::path& path
-) const {  // get the loader by the file extension of the path
+    const std::filesystem::path& path)
+    const {  // get the loader by the file extension of the path
     // the extension name should not include the dot
     if (path.has_extension()) {
         auto ext      = path.extension().string();
@@ -181,8 +176,8 @@ EPIX_API const ErasedAssetLoader* AssetLoaders::get_by_path(
     return nullptr;
 }
 EPIX_API std::vector<const ErasedAssetLoader*> AssetLoaders::get_multi_by_path(
-    const std::filesystem::path& path
-) const {  // get all loaders by the file extension of the path
+    const std::filesystem::path& path)
+    const {  // get all loaders by the file extension of the path
     // the extension name should not include the dot
     if (path.has_extension()) {
         auto ext      = path.extension().string();
@@ -200,8 +195,7 @@ EPIX_API AssetServer::AssetServer() : asset_infos(), asset_loaders() {
         epix::utils::async::make_channel<InternalAssetEvent>();
 }
 EPIX_API std::optional<LoadState> AssetServer::get_state(
-    const UntypedAssetId& id
-) const {
+    const UntypedAssetId& id) const {
     std::unique_lock lock(info_mutex);
     if (auto info = asset_infos.get_info(id)) {
         return info->state;
@@ -209,8 +203,7 @@ EPIX_API std::optional<LoadState> AssetServer::get_state(
     return std::nullopt;
 }
 EPIX_API void AssetServer::load_internal(
-    const UntypedAssetId& id, const ErasedAssetLoader* loader
-) const {
+    const UntypedAssetId& id, const ErasedAssetLoader* loader) const {
     if (auto opt = asset_infos.get_info(id);
         opt &&
         (opt->state == LoadState::Pending || opt->state == LoadState::Failed)) {
@@ -227,35 +220,31 @@ EPIX_API void AssetServer::load_internal(
             spdlog::trace(
                 "Loading asset {} of type {} with loader {} in trys of given "
                 "loader",
-                info.path.string(), id.type.name(), loader->loader_type().name()
-            );
+                info.path.string(), id.type.name(),
+                loader->loader_type().name());
             info.waiter = std::async(
-                std::launch::async,
-                [this, loader, id, context]() mutable {
+                std::launch::async, [this, loader, id, context]() mutable {
                     try {
                         auto asset = loader->load(context.path, context);
                         if (asset.value) {
                             event_sender.send(
-                                AssetLoadedEvent{id, std::move(asset)}
-                            );
+                                AssetLoadedEvent{id, std::move(asset)});
                         } else {
                             event_sender.send(AssetLoadFailedEvent{
                                 id,
                                 "Failed to load asset. Loader returned no "
-                                "value."
-                            });
+                                "value."});
                         }
                     } catch (const std::exception& e) {
                         event_sender.send(AssetLoadFailedEvent{id, e.what()});
                     }
-                }
-            );
+                });
         } else if (auto loaders = asset_loaders.get_multi_by_path(info.path);
                    !loaders.empty() &&
-                   std::ranges::any_of(
-                       loaders, [&id](const ErasedAssetLoader* l
-                                ) { return l->asset_type() == id.type; }
-                   )) {
+                   std::ranges::any_of(loaders,
+                                       [&id](const ErasedAssetLoader* l) {
+                                           return l->asset_type() == id.type;
+                                       })) {
             // There are loaders for the asset path, try them;
             info.waiter = std::async(
                 std::launch::async,
@@ -263,26 +252,24 @@ EPIX_API void AssetServer::load_internal(
                     std::vector<std::string> errors;
                     for (auto& loader :
                          loaders | std::views::reverse |
-                             std::views::filter([&id](const ErasedAssetLoader* l
-                                                ) {
-                                 return l->asset_type() == id.type;
-                             })) {
+                             std::views::filter(
+                                 [&id](const ErasedAssetLoader* l) {
+                                     return l->asset_type() == id.type;
+                                 })) {
                         spdlog::trace(
                             "Attempting to load asset {} of type {} with "
                             "loader {} in trys of get by path",
                             context.path.string(), id.type.name(),
-                            loader->loader_type().name()
-                        );
+                            loader->loader_type().name());
                         try {
                             auto asset = loader->load(context.path, context);
                             if (asset.value) {
                                 event_sender.send(
-                                    AssetLoadedEvent{id, std::move(asset)}
-                                );
+                                    AssetLoadedEvent{id, std::move(asset)});
                                 return;  // Successfully loaded, exit
                             } else {
-                                errors.emplace_back("Loader returned no value."
-                                );
+                                errors.emplace_back(
+                                    "Loader returned no value.");
                             }
                         } catch (const std::exception& e) {
                             errors.emplace_back(e.what());
@@ -292,20 +279,16 @@ EPIX_API void AssetServer::load_internal(
                         "Failed to load asset: " +
                         std::accumulate(
                             errors.begin(), errors.end(), std::string(),
-                            [index = 0](
-                                const std::string& a, const std::string& b
-                            ) mutable {
+                            [index = 0](const std::string& a,
+                                        const std::string& b) mutable {
                                 return a + "\n" + "\tattempt " +
                                        std::to_string(++index) + ": " + b;
-                            }
-                        );
+                            });
                     event_sender.send(
-                        AssetLoadFailedEvent{id, std::move(error_message)}
-                    );
-                }
-            );
-        } else if (auto loaders = asset_loaders.get_multi_by_type(id.type
-                   );  // Get loaders by type, if any exist
+                        AssetLoadFailedEvent{id, std::move(error_message)});
+                });
+        } else if (auto loaders = asset_loaders.get_multi_by_type(
+                       id.type);  // Get loaders by type, if any exist
                    !loaders.empty()) {
             // There are loaders for the asset type, try them;
             info.waiter = std::async(
@@ -317,18 +300,16 @@ EPIX_API void AssetServer::load_internal(
                             "Attempting to load asset {} of type {} with "
                             "loader {} in trys of get by type",
                             context.path.string(), id.type.name(),
-                            loader->loader_type().name()
-                        );
+                            loader->loader_type().name());
                         try {
                             auto asset = loader->load(context.path, context);
                             if (asset.value) {
                                 event_sender.send(
-                                    AssetLoadedEvent{id, std::move(asset)}
-                                );
+                                    AssetLoadedEvent{id, std::move(asset)});
                                 return;  // Successfully loaded, exit
                             } else {
-                                errors.emplace_back("Loader returned no value."
-                                );
+                                errors.emplace_back(
+                                    "Loader returned no value.");
                             }
                         } catch (const std::exception& e) {
                             errors.emplace_back(e.what());
@@ -338,25 +319,20 @@ EPIX_API void AssetServer::load_internal(
                         "Failed to load asset: " +
                         std::accumulate(
                             errors.begin(), errors.end(), std::string(),
-                            [index = 0](
-                                const std::string& a, const std::string& b
-                            ) mutable {
+                            [index = 0](const std::string& a,
+                                        const std::string& b) mutable {
                                 return a + "\n" + "\tattempt " +
                                        std::to_string(++index) + ": " + b;
-                            }
-                        );
+                            });
                     event_sender.send(
-                        AssetLoadFailedEvent{id, std::move(error_message)}
-                    );
-                }
-            );
+                        AssetLoadFailedEvent{id, std::move(error_message)});
+                });
         } else {
             // No loader found for the asset type, we will keep it pending
             // and try to load it later
             spdlog::warn(
                 "No loader found for asset {} of type {}, keeping it pending",
-                info.path.string(), id.type.name()
-            );
+                info.path.string(), id.type.name());
             pending_loads.push_back(id);
             info.state = LoadState::Pending;  // Keep the state as Pending
         }
@@ -377,34 +353,33 @@ AssetServer::load_untyped(const std::filesystem::path& path) const {
     return *handle;  // Return the handle if it was created successfully
 }
 
-EPIX_API bool AssetServer::process_handle_destruction(const UntypedAssetId& id
-) const {
+EPIX_API bool AssetServer::process_handle_destruction(
+    const UntypedAssetId& id) const {
     // only lock infos
     std::unique_lock lock(info_mutex);
     // call the process_handle_destruction method of AssetInfos
     return asset_infos.process_handle_destruction(id);
 }
 
-EPIX_API void AssetServer::handle_events(
-    World& world, Res<AssetServer> asset_server
-) {
+EPIX_API void AssetServer::handle_events(World& world,
+                                         Res<AssetServer> asset_server) {
     // Process events from the event receiver
     auto receiver = asset_server->event_receiver;
-    std::unique_lock lock(asset_server->info_mutex
-    );  // Lock the info mutex to ensure thread safety
+    std::unique_lock lock(
+        asset_server
+            ->info_mutex);  // Lock the info mutex to ensure thread safety
     while (auto event = receiver.try_receive()) {
         if (std::holds_alternative<AssetLoadedEvent>(*event)) {
             auto& loaded_event = std::get<AssetLoadedEvent>(*event);
-            loaded_event.asset.value->insert(
-                loaded_event.id, world
-            );  // Insert the loaded asset into the world
+            auto info = asset_server->asset_infos.get_info(loaded_event.id);
+            // Insert the loaded asset into the world
+            loaded_event.asset.value->insert(loaded_event.id, world,
+                                             info->on_loaded);
         } else if (std::holds_alternative<AssetLoadFailedEvent>(*event)) {
             auto& failed_event = std::get<AssetLoadFailedEvent>(*event);
             auto& id           = failed_event.id;
-            spdlog::error(
-                "Failed to load asset {}: {}", id.to_string(),
-                failed_event.error
-            );
+            spdlog::error("Failed to load asset {}: {}", id.to_string(),
+                          failed_event.error);
             if (auto info = asset_server->asset_infos.get_info(id)) {
                 info->state = LoadState::Failed;  // Set the state to Failed
             }
