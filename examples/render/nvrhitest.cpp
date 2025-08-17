@@ -179,6 +179,7 @@ int main() {
                             0x00, 0x00, 0x00, 0xff,  // black
                             0xff, 0x00, 0xff, 0xff   // purple
                         }));
+                    image.flip_vertical();
                     assets->insert(image_handle, std::move(image));
                 }));
         app.add_systems(
