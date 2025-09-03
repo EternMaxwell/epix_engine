@@ -24,4 +24,23 @@ enum class RenderSet {
     Render,
     Cleanup,
 };
+
+template <typename ResT>
+struct ExtractResourcePlugin {
+    void build(App& app) {
+        if (auto render_app = app.get_sub_app(Render)) {
+            render_app->add_systems(ExtractSchedule,
+                                    into([](Commands& cmd, std::optional<ResMut<ResT>> render_res,
+                                            std::optional<Extract<Res<ResT>>> extracted_res) {
+                                        if (extracted_res) {
+                                            if (render_res) {
+                                                (*render_res).get() = **extracted_res;
+                                            } else {
+                                                cmd.insert_resource(**extracted_res);
+                                            }
+                                        }
+                                    }).set_name(std::format("extract resource<{}>", typeid(ResT).name())));
+        }
+    }
+};
 }  // namespace epix::render

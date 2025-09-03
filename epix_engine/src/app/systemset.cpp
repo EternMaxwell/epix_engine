@@ -2,9 +2,7 @@
 
 using namespace epix::app;
 
-EPIX_API SystemSetConfig& SystemSetConfig::after_internal(
-    const SystemSetLabel& label
-) noexcept {
+EPIX_API SystemSetConfig& SystemSetConfig::after_internal(const SystemSetLabel& label) noexcept {
     if (!in_sets.contains(label) && !succeeds.contains(label)) {
         depends.emplace(label);
     }
@@ -13,9 +11,7 @@ EPIX_API SystemSetConfig& SystemSetConfig::after_internal(
     }
     return *this;
 }
-EPIX_API SystemSetConfig& SystemSetConfig::before_internal(
-    const SystemSetLabel& label
-) noexcept {
+EPIX_API SystemSetConfig& SystemSetConfig::before_internal(const SystemSetLabel& label) noexcept {
     if (!in_sets.contains(label) && !depends.contains(label)) {
         succeeds.emplace(label);
     }
@@ -24,9 +20,7 @@ EPIX_API SystemSetConfig& SystemSetConfig::before_internal(
     }
     return *this;
 }
-EPIX_API SystemSetConfig& SystemSetConfig::in_set_internal(
-    const SystemSetLabel& label
-) noexcept {
+EPIX_API SystemSetConfig& SystemSetConfig::in_set_internal(const SystemSetLabel& label) noexcept {
     if (!depends.contains(label) && !succeeds.contains(label)) {
         in_sets.emplace(label);
     }
@@ -35,8 +29,7 @@ EPIX_API SystemSetConfig& SystemSetConfig::in_set_internal(
     }
     return *this;
 }
-EPIX_API SystemSetConfig& SystemSetConfig::after_config(SystemSetConfig& config
-) noexcept {
+EPIX_API SystemSetConfig& SystemSetConfig::after_config(SystemSetConfig& config) noexcept {
     if (label) {
         config.before_internal(*label);
     }
@@ -51,20 +44,43 @@ EPIX_API SystemSetConfig& SystemSetConfig::chain() noexcept {
     }
     return *this;
 }
+
+EPIX_API SystemSetConfig& SystemSetConfig::set_executor(const ExecutorLabel& executor) noexcept {
+    this->executor = executor;
+    for (size_t i = 0; i < sub_configs.size(); i++) {
+        sub_configs[i].set_executor(executor);
+    }
+    return *this;
+}
+EPIX_API SystemSetConfig& SystemSetConfig::set_name(const std::string& name) noexcept {
+    this->name = name;
+    for (size_t i = 0; i < sub_configs.size(); i++) {
+        sub_configs[i].set_name(std::format("{}#{}", name, i));
+    }
+    return *this;
+}
+EPIX_API SystemSetConfig& SystemSetConfig::set_name(size_t index, const std::string& name) noexcept {
+    sub_configs[index].set_name(name);
+    return *this;
+}
+EPIX_API SystemSetConfig& SystemSetConfig::set_names(epix::util::ArrayProxy<std::string> names) noexcept {
+    for (size_t i = 0; i < sub_configs.size() && i < names.size(); i++) {
+        sub_configs[i].set_name(*(names.begin() + i));
+    }
+    return *this;
+}
+
 EPIX_API bool SystemSet::conflict_with(const SystemSet& system) noexcept {
     auto& system_label = system.label;
     if (auto&& it = conflicts.find(system_label); it != conflicts.end()) {
         return it->second;
     }
-    if (auto&& it = conflicts_dyn.find(system_label);
-        it != conflicts_dyn.end()) {
+    if (auto&& it = conflicts_dyn.find(system_label); it != conflicts_dyn.end()) {
         return it->second;
     }
     bool result = false;
     for (auto&& condition : conditions) {
-        if (SystemMeta::conflict(
-                condition->get_meta(), (*system.system).get_meta()
-            )) {
+        if (SystemMeta::conflict(condition->get_meta(), (*system.system).get_meta())) {
             result = true;
             break;
         }
@@ -74,9 +90,7 @@ EPIX_API bool SystemSet::conflict_with(const SystemSet& system) noexcept {
             // erase a random one
             auto it = conflicts_dyn.begin();
             static thread_local std::mt19937 rng{};
-            static thread_local std::uniform_int_distribution<size_t> dist(
-                0, max_conflict_cache - 1
-            );
+            static thread_local std::uniform_int_distribution<size_t> dist(0, max_conflict_cache - 1);
             std::advance(it, dist(rng));
             conflicts_dyn.erase(it->first);
         }
@@ -86,35 +100,11 @@ EPIX_API bool SystemSet::conflict_with(const SystemSet& system) noexcept {
     }
     return false;
 }
-
-EPIX_API SystemSetConfig& SystemSetConfig::set_executor(
-    const ExecutorLabel& executor
-) noexcept {
-    this->executor = executor;
-    for (size_t i = 0; i < sub_configs.size(); i++) {
-        sub_configs[i].set_executor(executor);
-    }
-    return *this;
+EPIX_API void SystemSet::detach(const SystemSetLabel& label) noexcept {
+    built_in_sets.erase(label);
+    built_depends.erase(label);
+    built_succeeds.erase(label);
 }
-EPIX_API SystemSetConfig& SystemSetConfig::set_name(const std::string& name
-) noexcept {
-    this->name = name;
-    for (size_t i = 0; i < sub_configs.size(); i++) {
-        sub_configs[i].set_name(std::format("{}#{}", name, i));
-    }
-    return *this;
-}
-EPIX_API SystemSetConfig& SystemSetConfig::set_name(
-    size_t index, const std::string& name
-) noexcept {
-    sub_configs[index].set_name(name);
-    return *this;
-}
-EPIX_API SystemSetConfig& SystemSetConfig::set_names(
-    epix::util::ArrayProxy<std::string> names
-) noexcept {
-    for (size_t i = 0; i < sub_configs.size() && i < names.size(); i++) {
-        sub_configs[i].set_name(*(names.begin() + i));
-    }
-    return *this;
+EPIX_API bool SystemSet::empty() const noexcept {
+    return system == nullptr && conditions.empty() && in_sets.empty() && depends.empty() && succeeds.empty();
 }

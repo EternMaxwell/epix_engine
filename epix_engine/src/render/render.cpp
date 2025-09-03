@@ -6,8 +6,7 @@
 #include "epix/render.h"
 #include "epix/render/common.h"
 
-EPIX_API epix::render::RenderPlugin& epix::render::RenderPlugin::set_validation(
-    int level) {
+EPIX_API epix::render::RenderPlugin& epix::render::RenderPlugin::set_validation(int level) {
     validation = level;
     return *this;
 }
@@ -42,16 +41,13 @@ EPIX_API void epix::render::RenderPlugin::build(epix::App& app) {
     if (validation == 2) {
         layers.push_back("VK_LAYER_KHRONOS_validation");
     }
-    auto app_info = vk::ApplicationInfo()
-                        .setPApplicationName("Epix")
-                        .setPEngineName("Epix")
-                        .setApiVersion(VK_API_VERSION_1_3);
+    auto app_info =
+        vk::ApplicationInfo().setPApplicationName("Epix").setPEngineName("Epix").setApiVersion(VK_API_VERSION_1_3);
     auto extensions = [&] {
         uint32_t count = 0;
         auto exts      = glfwGetRequiredInstanceExtensions(&count);
         if (!exts) {
-            throw std::runtime_error(
-                "Failed to get required instance extensions");
+            throw std::runtime_error("Failed to get required instance extensions");
         }
         std::vector<const char*> extension_names(exts, exts + count);
         // if validation is enabled, add the debug utils extension
@@ -60,11 +56,9 @@ EPIX_API void epix::render::RenderPlugin::build(epix::App& app) {
         }
         return extension_names;
     }();
-    auto instance =
-        vk::createInstance(vk::InstanceCreateInfo()
-                               .setPApplicationInfo(&app_info)
-                               .setPEnabledLayerNames(layers)
-                               .setPEnabledExtensionNames(extensions));
+    auto instance = vk::createInstance(
+        vk::InstanceCreateInfo().setPApplicationInfo(&app_info).setPEnabledLayerNames(layers).setPEnabledExtensionNames(
+            extensions));
 #ifdef EPIX_USE_VOLK
     volkLoadInstance(instance);
     VULKAN_HPP_DEFAULT_DISPATCHER.init(instance);
@@ -72,55 +66,41 @@ EPIX_API void epix::render::RenderPlugin::build(epix::App& app) {
     if (validation == 2) {
         auto debug_utils_messenger_create_info =
             vk::DebugUtilsMessengerCreateInfoEXT()
-                .setMessageSeverity(
-                    vk::DebugUtilsMessageSeverityFlagBitsEXT::eVerbose |
-                    vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning |
-                    vk::DebugUtilsMessageSeverityFlagBitsEXT::eError)
-                .setMessageType(
-                    vk::DebugUtilsMessageTypeFlagBitsEXT::eGeneral |
-                    vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation |
-                    vk::DebugUtilsMessageTypeFlagBitsEXT::ePerformance);
+                .setMessageSeverity(vk::DebugUtilsMessageSeverityFlagBitsEXT::eVerbose |
+                                    vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning |
+                                    vk::DebugUtilsMessageSeverityFlagBitsEXT::eError)
+                .setMessageType(vk::DebugUtilsMessageTypeFlagBitsEXT::eGeneral |
+                                vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation |
+                                vk::DebugUtilsMessageTypeFlagBitsEXT::ePerformance);
         debug_utils_messenger_create_info.pfnUserCallback =
             [](vk::DebugUtilsMessageSeverityFlagBitsEXT message_severity,
                vk::DebugUtilsMessageTypeFlagsEXT message_type,
-               const vk::DebugUtilsMessengerCallbackDataEXT* p_callback_data,
-               void* p_user_data) -> vk::Bool32 {
-            static std::shared_ptr<spdlog::logger> logger =
-                spdlog::default_logger()->clone("vulkan");
-            if (message_severity >=
-                vk::DebugUtilsMessageSeverityFlagBitsEXT::eError) {
-                logger->error("Vulkan: {}: {}\n    with stack trace:\n{}",
-                              vk::to_string(message_type),
-                              p_callback_data->pMessage,
-                              std::to_string(std::stacktrace::current()));
-            } else if (message_severity >=
-                       vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning) {
-                logger->warn("Vulkan: {}: {}", vk::to_string(message_type),
-                             p_callback_data->pMessage);
+               const vk::DebugUtilsMessengerCallbackDataEXT* p_callback_data, void* p_user_data) -> vk::Bool32 {
+            static std::shared_ptr<spdlog::logger> logger = spdlog::default_logger()->clone("vulkan");
+            if (message_severity >= vk::DebugUtilsMessageSeverityFlagBitsEXT::eError) {
+                logger->error("Vulkan: {}: {}\n    with stack trace:\n{}", vk::to_string(message_type),
+                              p_callback_data->pMessage, std::to_string(std::stacktrace::current()));
+            } else if (message_severity >= vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning) {
+                logger->warn("Vulkan: {}: {}", vk::to_string(message_type), p_callback_data->pMessage);
             } else {
-                logger->info("Vulkan: {}: {}", vk::to_string(message_type),
-                             p_callback_data->pMessage);
+                logger->info("Vulkan: {}: {}", vk::to_string(message_type), p_callback_data->pMessage);
             }
             return VK_FALSE;  // return false to continue processing
         };
         auto func_create_debug_utils_messenger =
-            (PFN_vkCreateDebugUtilsMessengerEXT)instance.getProcAddr(
-                "vkCreateDebugUtilsMessengerEXT");
+            (PFN_vkCreateDebugUtilsMessengerEXT)instance.getProcAddr("vkCreateDebugUtilsMessengerEXT");
         vk::DebugUtilsMessengerEXT debug_messenger = [&]() {
             if (!func_create_debug_utils_messenger) {
-                throw std::runtime_error(
-                    "Failed to get vkCreateDebugUtilsMessengerEXT function");
+                throw std::runtime_error("Failed to get vkCreateDebugUtilsMessengerEXT function");
             }
             VkDebugUtilsMessengerEXT vk_debug_messenger;
             auto result = func_create_debug_utils_messenger(
                 instance,
-                reinterpret_cast<const VkDebugUtilsMessengerCreateInfoEXT*>(
-                    &debug_utils_messenger_create_info),
+                reinterpret_cast<const VkDebugUtilsMessengerCreateInfoEXT*>(&debug_utils_messenger_create_info),
                 nullptr, &vk_debug_messenger);
             if (result != VK_SUCCESS) {
-                throw std::runtime_error(
-                    "Failed to create debug utils messenger: " +
-                    vk::to_string(static_cast<vk::Result>(result)));
+                throw std::runtime_error("Failed to create debug utils messenger: " +
+                                         vk::to_string(static_cast<vk::Result>(result)));
             }
             return vk_debug_messenger;
         }();
@@ -141,23 +121,19 @@ EPIX_API void epix::render::RenderPlugin::build(epix::App& app) {
         }
         return -1;  // not found
     };
-    int queue_family_index = find_queue_family(vk::QueueFlagBits::eGraphics |
-                                               vk::QueueFlagBits::eCompute |
-                                               vk::QueueFlagBits::eTransfer);
+    int queue_family_index =
+        find_queue_family(vk::QueueFlagBits::eGraphics | vk::QueueFlagBits::eCompute | vk::QueueFlagBits::eTransfer);
     auto device_extensions = std::array{
         VK_KHR_SWAPCHAIN_EXTENSION_NAME,
     };
     auto device = [&] {
         std::array<float, 1> queue_priorities = {1.0f};
         auto queue_create_infos =
-            std::set<int>({queue_family_index}) |
-            std::views::filter([](int index) {
+            std::set<int>({queue_family_index}) | std::views::filter([](int index) {
                 return index >= 0;  // only include valid indices
             }) |
             std::views::transform([&](int index) {
-                return vk::DeviceQueueCreateInfo()
-                    .setQueueFamilyIndex(index)
-                    .setQueuePriorities(queue_priorities);
+                return vk::DeviceQueueCreateInfo().setQueueFamilyIndex(index).setQueuePriorities(queue_priorities);
             }) |
             std::ranges::to<std::vector>();
         vk::PhysicalDeviceVulkan12Features features12;
@@ -165,11 +141,10 @@ EPIX_API void epix::render::RenderPlugin::build(epix::App& app) {
         vk::PhysicalDeviceVulkan13Features features13;
         features13.setSynchronization2(true);
         features12.setPNext(&features13);
-        return physical_device.createDevice(
-            vk::DeviceCreateInfo()
-                .setQueueCreateInfos(queue_create_infos)
-                .setPEnabledExtensionNames(device_extensions)
-                .setPNext(&features12));
+        return physical_device.createDevice(vk::DeviceCreateInfo()
+                                                .setQueueCreateInfos(queue_create_infos)
+                                                .setPEnabledExtensionNames(device_extensions)
+                                                .setPNext(&features12));
     }();
 // we only have one device if only one app exists and only this plugin
 // handles vulkan resources, so we can add these lines to improve
@@ -180,14 +155,11 @@ EPIX_API void epix::render::RenderPlugin::build(epix::App& app) {
 #endif
 
     struct MsgCallback : public nvrhi::IMessageCallback {
-        void message(nvrhi::MessageSeverity severity,
-                     const char* message) override {
-            if (severity == nvrhi::MessageSeverity::Error ||
-                severity == nvrhi::MessageSeverity::Fatal) {
-                spdlog::error(
-                    "[nvrhi-vk] {}: {}\n with stack trace:\n {}",
-                    severity == nvrhi::MessageSeverity::Fatal ? "[fatal]" : "",
-                    message, std::to_string(std::stacktrace::current()));
+        void message(nvrhi::MessageSeverity severity, const char* message) override {
+            if (severity == nvrhi::MessageSeverity::Error || severity == nvrhi::MessageSeverity::Fatal) {
+                spdlog::error("[nvrhi-vk] {}: {}\n with stack trace:\n {}",
+                              severity == nvrhi::MessageSeverity::Fatal ? "[fatal]" : "", message,
+                              std::to_string(std::stacktrace::current()));
             } else if (severity == nvrhi::MessageSeverity::Warning) {
                 spdlog::warn("[nvrhi-vk]: {}", message);
             } else if (severity == nvrhi::MessageSeverity::Info) {
@@ -196,19 +168,18 @@ EPIX_API void epix::render::RenderPlugin::build(epix::App& app) {
         }
     };
 
-    nvrhi::DeviceHandle nvrhi_device =
-        nvrhi::vulkan::createDevice(nvrhi::vulkan::DeviceDesc{
-            .errorCB               = validation ? new MsgCallback() : nullptr,
-            .instance              = instance,
-            .physicalDevice        = physical_device,
-            .device                = device,
-            .graphicsQueue         = device.getQueue(queue_family_index, 0),
-            .graphicsQueueIndex    = queue_family_index,
-            .instanceExtensions    = extensions.data(),
-            .numInstanceExtensions = extensions.size(),
-            .deviceExtensions      = device_extensions.data(),
-            .numDeviceExtensions   = device_extensions.size(),
-        });
+    nvrhi::DeviceHandle nvrhi_device = nvrhi::vulkan::createDevice(nvrhi::vulkan::DeviceDesc{
+        .errorCB               = validation ? new MsgCallback() : nullptr,
+        .instance              = instance,
+        .physicalDevice        = physical_device,
+        .device                = device,
+        .graphicsQueue         = device.getQueue(queue_family_index, 0),
+        .graphicsQueueIndex    = queue_family_index,
+        .instanceExtensions    = extensions.data(),
+        .numInstanceExtensions = extensions.size(),
+        .deviceExtensions      = device_extensions.data(),
+        .numDeviceExtensions   = device_extensions.size(),
+    });
     if (validation) {
         nvrhi_device = nvrhi::validation::createValidationLayer(nvrhi_device);
     }
@@ -231,12 +202,11 @@ EPIX_API void epix::render::RenderPlugin::build(epix::App& app) {
         render_app.extract_schedule_order(epix::render::ExtractSchedule);
         render_app.main_schedule_order(epix::render::Render);
 
-        render_app.add_systems(Render,
-                               into([](Res<nvrhi::DeviceHandle> nvrhi_device) {
-                                   nvrhi_device.get()->runGarbageCollection();
-                               })
-                                   .set_name("nvrhi garbage collect")
-                                   .after(RenderSet::Cleanup));
+        render_app.add_systems(
+            Render, into([](Res<nvrhi::DeviceHandle> nvrhi_device) { nvrhi_device.get()->runGarbageCollection(); },
+                         [](World& world) { world.clear_entities(); })
+                        .set_names({"nvrhi garbage collect", "clear render entities"})
+                        .after(RenderSet::Cleanup));
     }
     render_app.insert_resource(instance);
     render_app.insert_resource(physical_device);
@@ -244,8 +214,7 @@ EPIX_API void epix::render::RenderPlugin::build(epix::App& app) {
     render_app.insert_resource(queue);
     render_app.insert_resource(nvrhi_device);
     // command pools resource should be across worlds, so use add_resource
-    auto pools = std::make_shared<epix::render::CommandPools>(
-        device, queue_family_index);
+    auto pools = std::make_shared<epix::render::CommandPools>(device, queue_family_index);
     app.add_resource(pools);
     render_app.add_resource(pools);
 

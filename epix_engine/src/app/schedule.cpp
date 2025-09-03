@@ -3,26 +3,17 @@
 
 using namespace epix::app;
 
-EPIX_API void AddSystemsCommand::apply(Schedule& schedule) {
-    schedule.add_systems(config);
-}
-EPIX_API void ConfigureSetsCommand::apply(Schedule& schedule) {
-    schedule.configure_sets(config);
-}
-EPIX_API void RemoveSetCommand::apply(Schedule& schedule) {
-    schedule.remove_set(label);
-}
-EPIX_API void RemoveSystemCommand::apply(Schedule& schedule) {
-    schedule.remove_system(label);
-}
+EPIX_API void AddSystemsCommand::apply(Schedule& schedule) { schedule.add_systems(config); }
+EPIX_API void ConfigureSetsCommand::apply(Schedule& schedule) { schedule.configure_sets(config); }
+EPIX_API void RemoveSetCommand::apply(Schedule& schedule) { schedule.remove_set(label); }
+EPIX_API void RemoveSystemCommand::apply(Schedule& schedule) { schedule.remove_system(label); }
 
 EPIX_API Schedule::Schedule(const ScheduleLabel& label) {
     data  = std::make_unique<ScheduleData>(label);
     cache = std::make_unique<async::RwLock<ScheduleCache>>();
 }
 
-EPIX_API ScheduleData::ScheduleData(const ScheduleLabel& label)
-    : label(label) {}
+EPIX_API ScheduleData::ScheduleData(const ScheduleLabel& label) : label(label) {}
 
 EPIX_API ScheduleLabel Schedule::label() const noexcept { return data->label; }
 
@@ -126,8 +117,7 @@ EPIX_API void Schedule::add_systems(SystemSetConfig&& config) {
         auto& system_sets = **pwrite;
         // Not running, add directly.
         if (config.system && config.label &&
-            !(system_sets.contains(*config.label) &&
-              system_sets[*config.label].system)) {
+            !(system_sets.contains(*config.label) && system_sets[*config.label].system)) {
             // Adding the system
             auto it = system_sets.find(*config.label);
             if (it == system_sets.end()) {
@@ -140,8 +130,13 @@ EPIX_API void Schedule::add_systems(SystemSetConfig&& config) {
             set.system     = std::move(config.system);
             set.conditions = std::move(config.conditions);
             set.in_sets    = std::move(config.in_sets);
-            set.depends    = std::move(config.depends);
-            set.succeeds   = std::move(config.succeeds);
+            for (auto&& in_set : set.in_sets) {
+                if (!system_sets.contains(in_set)) {
+                    system_sets.emplace(in_set, SystemSet{.label = in_set});
+                }
+            }
+            set.depends  = std::move(config.depends);
+            set.succeeds = std::move(config.succeeds);
             data->newly_modified_sets.emplace(*config.label, true);
         }
     } else {
@@ -153,19 +148,24 @@ EPIX_API void Schedule::add_systems(SystemSetConfig&& config) {
         add_systems(std::move(sub_config));
     }
 }
-EPIX_API void Schedule::add_systems(SystemSetConfig& config) {
-    add_systems(std::move(config));
-}
+EPIX_API void Schedule::add_systems(SystemSetConfig& config) { add_systems(std::move(config)); }
 EPIX_API void Schedule::configure_sets(const SystemSetConfig& config) {
     if (auto pwrite = data->system_sets.try_write()) {
         auto& system_sets = **pwrite;
-        if (config.label && !system_sets.contains(*config.label)) {
-            auto&& it = system_sets.emplace(*config.label, SystemSet{}).first;
-            it->second.in_sets  = config.in_sets;
-            it->second.depends  = config.depends;
-            it->second.succeeds = config.succeeds;
+        if (config.label && (!system_sets.contains(*config.label) || system_sets.at(*config.label).empty())) {
+            auto& set   = system_sets[*config.label];
+            set.label   = config.label;
+            set.name    = config.name;
+            set.in_sets = config.in_sets;
+            for (auto&& in_set : set.in_sets) {
+                if (!system_sets.contains(in_set)) {
+                    system_sets.emplace(in_set, SystemSet{.label = in_set});
+                }
+            }
+            set.depends  = config.depends;
+            set.succeeds = config.succeeds;
             for (auto&& cond : config.conditions) {
-                it->second.conditions.emplace_back(cond->clone_unique());
+                set.conditions.emplace_back(cond->clone_unique());
             }
             data->newly_modified_sets.emplace(*config.label, true);
         }
@@ -212,26 +212,21 @@ EPIX_API void Schedule::remove_set(const SystemSetLabel& label) {
         data->command_queue.enqueue<RemoveSetCommand>(label);
     }
 };
-EPIX_API bool Schedule::contains_system(
-    const SystemSetLabel& label) const noexcept {
+EPIX_API bool Schedule::contains_system(const SystemSetLabel& label) const noexcept {
     auto read = data->system_sets.read();
     if (auto it = read->find(label); it != read->end()) {
         return it->second.system != nullptr;
     }
     return false;
 };
-EPIX_API bool Schedule::contains_set(
-    const SystemSetLabel& label) const noexcept {
+EPIX_API bool Schedule::contains_set(const SystemSetLabel& label) const noexcept {
     auto read = data->system_sets.read();
     return read->contains(label);
 };
-EPIX_API bool Schedule::flush_cmd() noexcept {
-    return data->command_queue.apply(*this);
-};
+EPIX_API bool Schedule::flush_cmd() noexcept { return data->command_queue.apply(*this); };
 
-EPIX_API void Schedule::update_cache(
-    entt::dense_map<SystemSetLabel, SystemSet>& system_sets,
-    ScheduleCache& cache) noexcept {
+EPIX_API void Schedule::update_cache(entt::dense_map<SystemSetLabel, SystemSet>& system_sets,
+                                     ScheduleCache& cache) noexcept {
     // This function updates the cache of the schedule
     cache.set_index_map.clear();
     cache.system_set_infos.clear();
@@ -260,13 +255,12 @@ EPIX_API void Schedule::update_cache(
     }
 };
 
-EPIX_API std::expected<void, RunScheduleError> Schedule::run_internal(
-    RunState& run_state) noexcept {
+EPIX_API std::expected<void, RunScheduleError> Schedule::run_internal(RunState& run_state) noexcept {
     Config run_config        = config;
     auto time_line1          = std::chrono::steady_clock::now();
     bool should_update_cache = flush_cmd();
     should_update_cache |= build_sets();
-    auto write = async::scoped_write(data->system_sets, *cache);
+    auto write                  = async::scoped_write(data->system_sets, *cache);
     auto&& [system_sets, cache] = *write;
     if (should_update_cache) {
         update_cache(system_sets, cache);
@@ -276,14 +270,11 @@ EPIX_API std::expected<void, RunScheduleError> Schedule::run_internal(
     }
 
     // run needed data
-    std::deque<uint32_t>
-        queue_wait_to_enter;  // not entered set and was checking
-    std::deque<std::pair<uint32_t, bool>>
-        waiting_sets;  // check done and should enter
-    async::ConQueue<uint32_t> just_finished_sets;  // just finished sets
-    std::vector<std::expected<std::future<std::expected<void, RunSystemError>>,
-                              EnqueueSystemError>>
-        futures(cache.system_set_infos.size());
+    std::deque<uint32_t> queue_wait_to_enter;            // not entered set and was checking
+    std::deque<std::pair<uint32_t, bool>> waiting_sets;  // check done and should enter
+    async::ConQueue<uint32_t> just_finished_sets;        // just finished sets
+    std::vector<std::expected<std::future<std::expected<void, RunSystemError>>, EnqueueSystemError>> futures(
+        cache.system_set_infos.size());
     bool new_entered = false;
     size_t running   = 0;
 
@@ -294,14 +285,11 @@ EPIX_API std::expected<void, RunScheduleError> Schedule::run_internal(
         auto res = run_state.run_system(
             info.set->system.get(),
             RunState::RunSystemConfig{
-                .on_finish    = [&just_finished_sets,
-                              index]() { just_finished_sets.emplace(index); },
+                .on_finish    = [&just_finished_sets, index]() { just_finished_sets.emplace(index); },
                 .executor     = info.set->executor,
                 .enable_tracy = run_config.enable_tracy,
-                .tracy_name =
-                    run_config.enable_tracy
-                        ? std::make_optional<std::string>(info.set->name)
-                        : std::optional<std::string>{}});
+                .tracy_name   = run_config.enable_tracy ? std::make_optional<std::string>(info.set->name)
+                                                        : std::optional<std::string>{}});
         if (!res) {
             // detach system failed, mark as finished
             just_finished_sets.emplace(index);
@@ -333,12 +321,9 @@ EPIX_API std::expected<void, RunScheduleError> Schedule::run_internal(
                     just_finished_sets.emplace(index);
                 }
             }
-            if (auto res = run_state.try_run_multi(
-                    std::views::all(info.set->conditions) |
-                    std::views::transform(
-                        [](auto& cond) { return cond.get(); }))) {
-                bool pass = std::ranges::all_of(
-                    res.value(), [](auto&& r) { return r.value_or(false); });
+            if (auto res = run_state.try_run_multi(std::views::all(info.set->conditions) |
+                                                   std::views::transform([](auto& cond) { return cond.get(); }))) {
+                bool pass    = std::ranges::all_of(res.value(), [](auto&& r) { return r.value_or(false); });
                 info.entered = true;
                 info.passed  = pass;
                 new_entered  = true;
@@ -409,56 +394,50 @@ EPIX_API std::expected<void, RunScheduleError> Schedule::run_internal(
                     "[{}] "
                     "Enqueue system failed, no required executor found. "
                     "System:{}, Executor:{}, Schedule:{}",
-                    data->label.name(), info.set->name,
-                    info.set->executor.name(), data->label.name());
+                    data->label.name(), info.set->name, info.set->executor.name(), data->label.name());
             } else if (auto& value = res.value(); value.valid()) {
                 auto sys_ret = value.get();
                 if (!sys_ret) {
                     std::visit(
-                        epix::util::visitor{
-                            [&](NotInitializedError& e) {
-                                spdlog::error(
-                                    "[{}] "
-                                    "System not initialized. System:{}, "
-                                    "required arg states:{}",
-                                    data->label.name(), info.set->name,
-                                    e.needed_state.name());
-                            },
-                            [&](UpdateStateFailedError& e) {
-                                spdlog::error(
-                                    "[{}] "
-                                    "Update args states failed. System:{}, "
-                                    "failed args:{}",
-                                    data->label.name(), info.set->name,
-                                    std::views::all(e.failed_args) |
-                                        std::views::transform([](auto&& type) {
-                                            return type.name();
-                                        }));
-                            },
-                            [&](SystemExceptionError& e) {
-                                try {
-                                    std::rethrow_exception(e.exception);
-                                } catch (const std::exception& ex) {
-                                    spdlog::error(
-                                        "[{}] "
-                                        "System exception. System:{}, "
-                                        "Exception:{}",
-                                        data->label.name(), info.set->name,
-                                        ex.what());
-                                } catch (...) {
-                                    spdlog::error(
-                                        "[{}] "
-                                        "System exception. System:{}, "
-                                        "Exception:unknown",
-                                        data->label.name(), info.set->name);
-                                }
-                            },
-                            [&](auto&&) {
-                                spdlog::error(
-                                    "Unknown error type in system return. "
-                                    "System:{}, Schedule:{}",
-                                    info.set->name, data->label.name());
-                            }},
+                        epix::util::visitor{[&](NotInitializedError& e) {
+                                                spdlog::error(
+                                                    "[{}] "
+                                                    "System not initialized. System:{}, "
+                                                    "required arg states:{}",
+                                                    data->label.name(), info.set->name, e.needed_state.name());
+                                            },
+                                            [&](UpdateStateFailedError& e) {
+                                                spdlog::error(
+                                                    "[{}] "
+                                                    "Update args states failed. System:{}, "
+                                                    "failed args:{}",
+                                                    data->label.name(), info.set->name,
+                                                    std::views::all(e.failed_args) |
+                                                        std::views::transform([](auto&& type) { return type.name(); }));
+                                            },
+                                            [&](SystemExceptionError& e) {
+                                                try {
+                                                    std::rethrow_exception(e.exception);
+                                                } catch (const std::exception& ex) {
+                                                    spdlog::error(
+                                                        "[{}] "
+                                                        "System exception. System:{}, "
+                                                        "Exception:{}",
+                                                        data->label.name(), info.set->name, ex.what());
+                                                } catch (...) {
+                                                    spdlog::error(
+                                                        "[{}] "
+                                                        "System exception. System:{}, "
+                                                        "Exception:unknown",
+                                                        data->label.name(), info.set->name);
+                                                }
+                                            },
+                                            [&](auto&&) {
+                                                spdlog::error(
+                                                    "Unknown error type in system return. "
+                                                    "System:{}, Schedule:{}",
+                                                    info.set->name, data->label.name());
+                                            }},
                         sys_ret.error());
                 }
             }
@@ -500,29 +479,22 @@ EPIX_API std::expected<void, RunScheduleError> Schedule::run_internal(
         }
     }
 
-    auto time_line3 = std::chrono::steady_clock::now();
-    double build_time =
-        std::chrono::duration<double, std::milli>(time_line2 - time_line1)
-            .count();
-    double run_time =
-        std::chrono::duration<double, std::milli>(time_line3 - time_line2)
-            .count();
-    auto update_profiler = IntoSystem::into_system(
-        [build_time, run_time, set_count = cache.system_set_infos.size(),
-         label = data->label](std::optional<ResMut<AppProfiler>>& profiler) {
-            if (profiler) {
-                auto& schedule_profiler = (*profiler)->schedule_profiler(label);
-                schedule_profiler.push_time(build_time, run_time);
-                schedule_profiler.push_set_count(set_count);
-            }
-        });
+    auto time_line3      = std::chrono::steady_clock::now();
+    double build_time    = std::chrono::duration<double, std::milli>(time_line2 - time_line1).count();
+    double run_time      = std::chrono::duration<double, std::milli>(time_line3 - time_line2).count();
+    auto update_profiler = IntoSystem::into_system([build_time, run_time, set_count = cache.system_set_infos.size(),
+                                                    label = data->label](std::optional<ResMut<AppProfiler>>& profiler) {
+        if (profiler) {
+            auto& schedule_profiler = (*profiler)->schedule_profiler(label);
+            schedule_profiler.push_time(build_time, run_time);
+            schedule_profiler.push_set_count(set_count);
+        }
+    });
     update_profiler->initialize();
     auto final_wait =
         run_state
             .run_system(update_profiler.get(),
-                        RunState::RunSystemConfig{
-                            .on_finish = []() {},
-                            .executor  = ExecutorType::SingleThread})
+                        RunState::RunSystemConfig{.on_finish = []() {}, .executor = ExecutorType::SingleThread})
             .value_or(std::future<std::expected<void, RunSystemError>>());
 
     uint32_t remaining_sets = 0;
@@ -532,16 +504,13 @@ EPIX_API std::expected<void, RunScheduleError> Schedule::run_internal(
             spdlog::warn(
                 "\t{}:{} not finished. State: entered:{}, passed:{}, "
                 "finished:{}",
-                info.set->system ? "System" : "Set", info.set->name,
-                info.entered, info.passed, info.finished);
+                info.set->system ? "System" : "Set", info.set->name, info.entered, info.passed, info.finished);
         }
     }
     if (remaining_sets > 0) {
-        spdlog::warn("{} sets/systems remaining, in schedule:{}(full name:{})",
-                     remaining_sets, data->label.name(), data->label.name());
-        return std::unexpected(
-            RunScheduleError{data->label, RunScheduleError::Type::SetsRemaining,
-                             remaining_sets});
+        spdlog::warn("{} sets/systems remaining, in schedule:{}(full name:{})", remaining_sets, data->label.name(),
+                     data->label.name());
+        return std::unexpected(RunScheduleError{data->label, RunScheduleError::Type::SetsRemaining, remaining_sets});
     }
     if (final_wait.valid()) {
         final_wait.get();
@@ -554,16 +523,14 @@ static BS::thread_pool<BS::tp::none> schedule_run_pool(4, []() {
     BS::this_thread::set_os_thread_name("schedule");
 });
 
-EPIX_API std::future<std::expected<void, RunScheduleError>> Schedule::run(
-    RunState run_state) noexcept {
-    return schedule_run_pool.submit_task(
-        [this, run_state]() mutable -> std::expected<void, RunScheduleError> {
-            if (config.enable_tracy) {
-                ZoneScopedN("Run Schedule");
-                auto name = data->label.name();
-                ZoneName(name.data(), name.size());
-                return run_internal(run_state);
-            }
+EPIX_API std::future<std::expected<void, RunScheduleError>> Schedule::run(RunState run_state) noexcept {
+    return schedule_run_pool.submit_task([this, run_state]() mutable -> std::expected<void, RunScheduleError> {
+        if (config.enable_tracy) {
+            ZoneScopedN("Run Schedule");
+            auto name = data->label.name();
+            ZoneName(name.data(), name.size());
             return run_internal(run_state);
-        });
+        }
+        return run_internal(run_state);
+    });
 }

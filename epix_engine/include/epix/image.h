@@ -78,6 +78,22 @@ struct Image {
         image.usage = render::assets::RenderAssetUsageBits::MAIN_WORLD;
         return image;
     }
+    void flip_vertical() {
+        if (nvrhi::getFormatInfo(info.format).blockSize != 1) {
+            return;
+        }
+        size_t bytes_per_pixel =
+            nvrhi::getFormatInfo(info.format).bytesPerBlock;
+        size_t row_bytes = info.width * bytes_per_pixel;
+        std::vector<uint8_t> temp(row_bytes);
+        for (size_t row = 0; row < info.height / 2; row++) {
+            size_t top_start    = row * row_bytes;
+            size_t bottom_start = (info.height - row - 1) * row_bytes;
+            std::memcpy(temp.data(), &data[top_start], row_bytes);
+            std::memcpy(&data[top_start], &data[bottom_start], row_bytes);
+            std::memcpy(&data[bottom_start], temp.data(), row_bytes);
+        }
+    }
     template <typename T>
     std::expected<void, ImageDataError> set_data(size_t x,
                                                  size_t y,

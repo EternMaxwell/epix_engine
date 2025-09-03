@@ -25,8 +25,7 @@ struct SystemSetLabel : public Label {
         }
     }
     template <typename... Args>
-    SystemSetLabel(void (*func)(Args...))
-        : Label(meta::type_id<decltype(func)>{}, (size_t)func) {}
+    SystemSetLabel(void (*func)(Args...)) : Label(meta::type_id<decltype(func)>{}, (size_t)func) {}
     SystemSetLabel() noexcept : Label(meta::type_id<void>{}, 0) {}
     // using SystemLabel::operator==;
     // using SystemLabel::operator!=;
@@ -48,19 +47,14 @@ struct SystemSet {
     entt::dense_set<SystemSetLabel> built_depends;
     entt::dense_set<SystemSetLabel> built_succeeds;
 
-    entt::dense_map<SystemSetLabel, bool>
-        conflicts;  // Store system labels that are created from function
-    entt::dense_map<SystemSetLabel, bool>
-        conflicts_dyn;  // Store system labels that are created from
-                        // unique_ptr<BasicSystem>
+    entt::dense_map<SystemSetLabel, bool> conflicts;      // Store system labels that are created from function
+    entt::dense_map<SystemSetLabel, bool> conflicts_dyn;  // Store system labels that are created from
+                                                          // unique_ptr<BasicSystem>
     static constexpr size_t max_conflict_cache = 4096;
 
     EPIX_API bool conflict_with(const SystemSet& system) noexcept;
-    EPIX_API void detach(const SystemSetLabel& label) noexcept {
-        built_in_sets.erase(label);
-        built_depends.erase(label);
-        built_succeeds.erase(label);
-    };
+    EPIX_API void detach(const SystemSetLabel& label) noexcept;
+    EPIX_API bool empty() const noexcept;
 };
 struct SystemSetConfig {
     std::optional<SystemSetLabel> label;
@@ -139,24 +133,18 @@ struct SystemSetConfig {
     }
     EPIX_API SystemSetConfig& set_executor(const ExecutorLabel& label) noexcept;
     EPIX_API SystemSetConfig& set_name(const std::string& name) noexcept;
-    EPIX_API SystemSetConfig& set_name(size_t index,
-                                       const std::string& name) noexcept;
-    EPIX_API SystemSetConfig& set_names(
-        epix::util::ArrayProxy<std::string> names) noexcept;
+    EPIX_API SystemSetConfig& set_name(size_t index, const std::string& name) noexcept;
+    EPIX_API SystemSetConfig& set_names(epix::util::ArrayProxy<std::string> names) noexcept;
     EPIX_API SystemSetConfig& chain() noexcept;
 
    private:
-    EPIX_API SystemSetConfig& after_internal(
-        const SystemSetLabel& label) noexcept;
-    EPIX_API SystemSetConfig& before_internal(
-        const SystemSetLabel& label) noexcept;
-    EPIX_API SystemSetConfig& in_set_internal(
-        const SystemSetLabel& label) noexcept;
+    EPIX_API SystemSetConfig& after_internal(const SystemSetLabel& label) noexcept;
+    EPIX_API SystemSetConfig& before_internal(const SystemSetLabel& label) noexcept;
+    EPIX_API SystemSetConfig& in_set_internal(const SystemSetLabel& label) noexcept;
     template <typename Func>
     SystemSetConfig& run_if_internal(Func&& func) noexcept {
         if (label) {
-            std::unique_ptr<BasicSystem<bool>> cond =
-                IntoSystem::into_unique(std::forward<Func>(func));
+            std::unique_ptr<BasicSystem<bool>> cond = IntoSystem::into_unique(std::forward<Func>(func));
             conditions.emplace_back(std::move(cond));
         }
         for (auto&& sub_config : sub_configs) {
@@ -175,8 +163,7 @@ template <typename Func>
 SystemSetConfig into_single(Func&& func) {
     SystemSetConfig config;
     config.system = IntoSystem::into_system(std::forward<Func>(func));
-    if constexpr (std::is_function_v<
-                      std::remove_pointer_t<std::decay_t<Func>>>) {
+    if constexpr (std::is_function_v<std::remove_pointer_t<std::decay_t<Func>>>) {
         config.label = SystemSetLabel(func);
     } else {
         config.label.emplace();
@@ -191,8 +178,7 @@ SystemSetConfig into(Args&&... args) {
         return into_single(std::forward<Args>(args)...);
     }
     SystemSetConfig config;
-    (config.sub_configs.emplace_back(into_single(std::forward<Args>(args))),
-     ...);
+    (config.sub_configs.emplace_back(into_single(std::forward<Args>(args))), ...);
     return std::move(config);
 }
 template <typename Other>
@@ -204,6 +190,7 @@ template <typename T>
 SystemSetConfig sets_single(T&& t) {
     SystemSetConfig config;
     config.label = SystemSetLabel(t);
+    config.name  = std::format("{}-{:#x}", config.label->get_type().name(), config.label->get_index());
     return std::move(config);
 }
 template <typename... Args>
@@ -212,8 +199,7 @@ SystemSetConfig sets(Args... args) {
         return sets_single(std::forward<Args>(args)...);
     }
     SystemSetConfig config;
-    (config.sub_configs.emplace_back(sets_single(std::forward<Args>(args))),
-     ...);
+    (config.sub_configs.emplace_back(sets_single(std::forward<Args>(args))), ...);
     return std::move(config);
 }
 struct ScheduleLabel : public Label {
@@ -304,14 +290,12 @@ struct Schedule {
     std::unique_ptr<async::RwLock<ScheduleCache>> cache;
     World* last_world = nullptr;
 
-    EPIX_API static void update_cache(
-        entt::dense_map<SystemSetLabel, SystemSet>& system_sets,
-        ScheduleCache& cache) noexcept;
+    EPIX_API static void update_cache(entt::dense_map<SystemSetLabel, SystemSet>& system_sets,
+                                      ScheduleCache& cache) noexcept;
     EPIX_API bool build_sets() noexcept;
     EPIX_API bool flush_cmd() noexcept;
 
-    EPIX_API std::expected<void, RunScheduleError> run_internal(
-        RunState& run_state) noexcept;
+    EPIX_API std::expected<void, RunScheduleError> run_internal(RunState& run_state) noexcept;
 
    public:
     EPIX_API Schedule(const ScheduleLabel& label);
@@ -334,8 +318,7 @@ struct Schedule {
 
     // This `run` call will dispatch the internal run task to another thread.
     // So it needs to be provided a shared pointer to `RunState`.
-    EPIX_API std::future<std::expected<void, RunScheduleError>> run(
-        RunState run_state) noexcept;
+    EPIX_API std::future<std::expected<void, RunScheduleError>> run(RunState run_state) noexcept;
 
     friend struct ScheduleRunner;
 };
