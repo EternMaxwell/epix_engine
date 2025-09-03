@@ -31,7 +31,7 @@ struct ExtractResourcePlugin {
         if (auto render_app = app.get_sub_app(Render)) {
             render_app->add_systems(ExtractSchedule,
                                     into([](Commands& cmd, std::optional<ResMut<ResT>> render_res,
-                                            std::optional<Extract<Res<ResT>>> extracted_res) {
+                                            Extract<std::optional<Res<ResT>>> extracted_res) {
                                         if (extracted_res) {
                                             if (render_res) {
                                                 (*render_res).get() = **extracted_res;
