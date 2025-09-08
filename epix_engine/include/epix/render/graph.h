@@ -102,6 +102,11 @@ struct RunSubGraph {
     std::vector<SlotValue> inputs;
     std::optional<epix::app::Entity> view_entity;
 };
+
+/**
+ * @brief GraphContext provides the context for a node to run in the render graph.
+ * It is used to set outputs and get inputs, and to run sub-graphs.
+ */
 struct GraphContext {
    private:
     const RenderGraph& m_graph;
@@ -142,6 +147,9 @@ struct GraphContext {
 
     EPIX_API std::vector<RunSubGraph> finish();
 };
+/**
+ * @brief RenderContext, stores the nvrhi device and command list.
+ */
 struct RenderContext {
    private:
     nvrhi::DeviceHandle m_device;

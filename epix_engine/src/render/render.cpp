@@ -202,11 +202,14 @@ EPIX_API void epix::render::RenderPlugin::build(epix::App& app) {
         render_app.extract_schedule_order(epix::render::ExtractSchedule);
         render_app.main_schedule_order(epix::render::Render);
 
+        render_app.emplace_resource<graph::RenderGraph>();
+
         render_app.add_systems(
             Render, into([](Res<nvrhi::DeviceHandle> nvrhi_device) { nvrhi_device.get()->runGarbageCollection(); },
                          [](World& world) { world.clear_entities(); })
                         .set_names({"nvrhi garbage collect", "clear render entities"})
                         .after(RenderSet::Cleanup));
+        render_app.add_systems(Render, into(render_system).in_set(RenderSet::Render).set_names({"render system"}));
     }
     render_app.insert_resource(instance);
     render_app.insert_resource(physical_device);
@@ -219,6 +222,8 @@ EPIX_API void epix::render::RenderPlugin::build(epix::App& app) {
     render_app.add_resource(pools);
 
     app.add_plugins(epix::render::window::WindowRenderPlugin{});
+    app.add_plugins(epix::render::camera::CameraPlugin{});
+    app.add_plugins(epix::render::view::ViewPlugin{});
 }
 
 EPIX_API void epix::render::RenderPlugin::finalize(epix::App& app) {
@@ -248,4 +253,11 @@ EPIX_API void epix::render::RenderPlugin::finalize(epix::App& app) {
     //         }
     //         instance->destroy();
     //     });
+}
+
+EPIX_API void epix::render::render_system(World& world) {
+    auto&& graph  = world.resource<graph::RenderGraph>();
+    auto&& device = world.resource<nvrhi::DeviceHandle>();
+    graph.update(world);
+    graph::RenderGraphRunner::run(graph, device, world, {});
 }
