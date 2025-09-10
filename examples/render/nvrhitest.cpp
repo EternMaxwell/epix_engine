@@ -2,6 +2,7 @@
 #include <epix/image.h>
 #include <epix/render.h>
 #include <epix/render/pipeline.h>
+#include <epix/transform/plugin.h>
 #include <epix/window.h>
 
 #include <spirv_cross/spirv_cross.hpp>
@@ -132,6 +133,10 @@ struct ShaderPluginTest {
 assets::Handle<image::Image> image_handle =
     assets::AssetId<image::Image>(uuids::uuid::from_string("2e4fbfdf-da16-4546-96b0-f1a5e2fc35b8").value());
 
+enum class TestGraph {};
+inline struct TestGraphLabelT {
+} TestGraphLabel;
+
 int main() {
     App app = App::create();
     app.add_plugins(window::WindowPlugin{.primary_window = window::Window{
@@ -144,9 +149,11 @@ int main() {
     app.add_plugins(render::ShaderPlugin{});
     app.add_plugins(image::ImagePlugin{});
     app.add_plugins(render::PipelineServerPlugin{});
+    app.add_plugins(transform::TransformPlugin{});
 
     app.add_plugins([](App& app) {
         app.insert_resource(ShaderPluginTest{});
+        app.spawn(render::camera::CameraBundle::with_render_graph(TestGraphLabel));
         app.add_systems(
                Startup, into([](Commands cmd, Res<assets::AssetServer> asset_server) {
                    cmd.insert_resource(TestPipelineShaders{

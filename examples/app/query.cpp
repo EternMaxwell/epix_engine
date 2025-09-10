@@ -47,7 +47,7 @@ void spawn_entities(Commands command) {
     spdlog::info("Spawning entities...");
     for (int i = 0; i < 10; i++) {
         auto entity_cmd = command.spawn(
-            Bundle{.position = Position(0, 0), .health = Health(100)}
+            ::Bundle{.position = Position(0, 0), .health = Health(100)}
         );
         static thread_local std::mt19937 rng{std::random_device{}()};
         static thread_local std::uniform_real_distribution<float> dist(
