@@ -65,6 +65,7 @@ EPIX_API void OrthographicProjection::update(float width, float height) {
 
 EPIX_API void epix::render::camera::extract_cameras(
     Commands& cmd,
+    std::optional<Res<ClearColor>> global_clear_color,
     Extract<Query<Get<Camera, CameraRenderGraph, transform::GlobalTransform, view::VisibleEntities>>> cameras,
     Extract<Query<Get<Entity>, With<epix::window::PrimaryWindow, epix::window::Window>>> primary_window) {
     // extract camera entities to render world, this will spawn an related
@@ -89,7 +90,16 @@ EPIX_API void epix::render::camera::extract_cameras(
             .viewport      = camera.viewport,
             .render_graph  = graph,
             .order         = camera.order,
-            .clear_color   = camera.clear_color,
+            .clear_color   = [&]() -> std::optional<ClearColor> {
+                if (camera.clear_color.type == ClearColorConfig::Type::Global ||
+                    camera.clear_color.type == ClearColorConfig::Type::Default) {
+                    return global_clear_color.transform([](const Res<ClearColor>& color) { return *color; });
+                } else if (camera.clear_color.type == ClearColorConfig::Type::Custom) {
+                    return ClearColor(camera.clear_color.clear_color);
+                } else {
+                    return std::nullopt;
+                }
+            }(),
         });
         commands.emplace(view::ExtractedView{
             .projection      = camera.computed.projection,
@@ -102,12 +112,18 @@ EPIX_API void epix::render::camera::extract_cameras(
 }
 
 EPIX_API void CameraDriverNode::run(graph::GraphContext& graph, graph::RenderContext& render_ctx, app::World& world) {
-    Query<Get<Entity, ExtractedCamera>, With<view::ViewTarget>> cameras(world);
+    Query<Get<Entity, ExtractedCamera, view::ViewTarget>> cameras(world);
     auto&& windows = world.resource<epix::render::window::ExtractedWindows>();
-    for (auto&& [entity, camera] : cameras.iter()) {
+    for (auto&& [entity, camera, target] : cameras.iter()) {
+        if (camera.clear_color) {
+            auto&& commandlist = render_ctx.commands();
+            commandlist->clearTextureFloat(target.texture, nvrhi::TextureSubresourceSet(),
+                                           nvrhi::Color{camera.clear_color->r, camera.clear_color->g,
+                                                        camera.clear_color->b, camera.clear_color->a});
+        }
         if (!graph.run_sub_graph(camera.render_graph, {}, entity)) {
-            spdlog::warn("Failed to run camera render graph for entity {:#x}, with render graph label {}", entity.index(),
-                         camera.render_graph.name());
+            spdlog::warn("Failed to run camera render graph for entity {:#x}, with render graph label {}",
+                         entity.index(), camera.render_graph.name());
         }
     }
 }
@@ -116,6 +132,7 @@ EPIX_API void CameraPlugin::build(App& app) {
     app.add_plugins(CameraProjectionPlugin<Projection>{}, CameraProjectionPlugin<OrthographicProjection>{},
                     CameraProjectionPlugin<PerspectiveProjection>{}, ExtractResourcePlugin<ClearColor>{});
     if (auto sub_app = app.get_sub_app(Render)) {
+        sub_app->insert_resource(ClearColor{0.05f, 0.05f, 0.05f, 1.0f});
         sub_app->add_systems(ExtractSchedule, into(extract_cameras));
         if (auto render_graph = sub_app->get_resource<graph::RenderGraph>()) {
             render_graph->add_node(CameraDriverNodeLabel, CameraDriverNode{});

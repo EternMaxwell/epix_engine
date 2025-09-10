@@ -34,6 +34,11 @@ struct ComputedCameraValues {
     glm::uvec2 target_size;
     std::optional<glm::uvec2> old_viewport_size;
 };
+struct ClearColor : public glm::vec4 {
+    using glm::vec4::vec4;
+    ClearColor(const glm::vec4& v) : glm::vec4(v) {}
+    glm::vec4 to_vec4() const { return glm::vec4(*this); }
+};
 struct ClearColorConfig {
     enum class Type {
         None,    // don't clear
@@ -41,15 +46,12 @@ struct ClearColorConfig {
         Default = Global,
         Custom,  // use custom clear color
     } type = Type::Default;
-    glm::vec4 clear_color{0.0f, 0.0f, 0.0f, 1.0f};
+    ClearColor clear_color{0.0f, 0.0f, 0.0f, 1.0f};
 
     static ClearColorConfig none() { return ClearColorConfig{Type::None}; }
     static ClearColorConfig def() { return ClearColorConfig{Type::Default}; }
     static ClearColorConfig global() { return ClearColorConfig{Type::Global}; }
     static ClearColorConfig custom(const glm::vec4& color) { return ClearColorConfig{Type::Custom, color}; }
-};
-struct ClearColor : public glm::vec4 {
-    using glm::vec4::vec4;
 };
 struct Camera {
     /// @brief The camera's viewport within the render target.
@@ -402,11 +404,12 @@ struct ExtractedCamera {
     std::optional<Viewport> viewport;
     CameraRenderGraph render_graph;
     ptrdiff_t order;
-    ClearColorConfig clear_color;
+    std::optional<ClearColor> clear_color;
 };
 
 EPIX_API void extract_cameras(
     Commands& cmd,
+    std::optional<Res<ClearColor>> global_clear_color,
     Extract<Query<Get<Camera, CameraRenderGraph, transform::GlobalTransform, view::VisibleEntities>>> cameras,
     Extract<Query<Get<Entity>, With<epix::window::PrimaryWindow, epix::window::Window>>> primary_window);
 
