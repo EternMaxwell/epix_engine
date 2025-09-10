@@ -105,7 +105,10 @@ EPIX_API void CameraDriverNode::run(graph::GraphContext& graph, graph::RenderCon
     Query<Get<Entity, ExtractedCamera>, With<view::ViewTarget>> cameras(world);
     auto&& windows = world.resource<epix::render::window::ExtractedWindows>();
     for (auto&& [entity, camera] : cameras.iter()) {
-        graph.run_sub_graph(camera.render_graph, {}, entity);
+        if (!graph.run_sub_graph(camera.render_graph, {}, entity)) {
+            spdlog::warn("Failed to run camera render graph for entity {:#x}, with render graph label {}", entity.index(),
+                         camera.render_graph.name());
+        }
     }
 }
 
