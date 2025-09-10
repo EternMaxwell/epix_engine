@@ -160,5 +160,7 @@ EPIX_API bool RenderGraphRunner::run_graph(const RenderGraph& graph,
         }
     }
 
+    render_context.flush_encoder();  // flush the remaining commandlist. Or maybe just clearState?
+
     return true;
 }
