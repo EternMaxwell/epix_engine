@@ -43,6 +43,8 @@ using app::Children;
 using app::Entity;
 using app::Parent;
 
+using app::Bundle;
+
 using app::ParamSet;
 
 using app::ExecutorType;

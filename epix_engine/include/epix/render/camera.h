@@ -389,7 +389,9 @@ struct CameraProjectionPlugin {
     }
 };
 
-struct CameraRenderGraph : public graph::GraphLabel {};
+struct CameraRenderGraph : public graph::GraphLabel {
+    using graph::GraphLabel::GraphLabel;
+};
 
 struct ExtractedCamera {
     // this render target is a normalized one, which means if it is a WindowRef and is primary, the entity field will
@@ -418,4 +420,22 @@ inline struct CameraDriverNodeLabelT {
 struct CameraPlugin {
     EPIX_API void build(App& app);
 };
+struct CameraBundle : public Bundle {
+    Camera camera;
+    Projection projection;
+    CameraRenderGraph render_graph;
+    transform::Transform transform;
+    view::VisibleEntities visible;
+    std::tuple<Camera, Projection, CameraRenderGraph, transform::Transform, view::VisibleEntities> unpack() {
+        return {camera, projection, render_graph, transform, visible};
+    }
+
+    CameraBundle(const CameraRenderGraph& graph) : render_graph(graph) {}
+
+    static CameraBundle with_render_graph(const CameraRenderGraph& graph) {
+        CameraBundle bundle(graph);
+        return bundle;
+    }
+};
+static_assert(app::is_bundle<CameraBundle>);
 }  // namespace epix::render::camera
