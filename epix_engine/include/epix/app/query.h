@@ -108,7 +108,21 @@ struct TupleCat {
 // Args should have a valid QueryItem<Args> implementation
 template <typename... Args>
     requires(ValidQueryItem<QueryItem<Args>> && ...)
-struct Get;
+struct Get : std::tuple<typename QueryItemInfo<QueryItem<Args>>::get_type...> {
+    using base_type = std::tuple<typename QueryItemInfo<QueryItem<Args>>::get_type...>;
+
+    using base_type::base_type;
+    Get(const base_type& t) : base_type(t) {}
+    Get(base_type&& t) : base_type(std::move(t)) {}
+    Get(const Get& other)            = default;
+    Get(Get&& other)                 = default;
+    Get& operator=(const Get& other) = default;
+    Get& operator=(Get&& other)      = default;
+};
+
+template <typename... Args>
+    requires(ValidQueryItem<QueryItem<Args>> && ...)
+using QueryGet = Get<Args...>;
 
 struct FilterBase {
     using must_include = std::tuple<>;
@@ -166,7 +180,11 @@ struct Filter<T, Rest...> {
         }
     }();
     static bool check(World& world, Entity entity) {
-        return T::check(world, entity) && Filter<Rest...>::check(world, entity);
+        if constexpr (!need_check) {
+            return true;
+        } else {
+            return T::check(world, entity) && Filter<Rest...>::check(world, entity);
+        }
     }
 };
 
@@ -277,24 +295,14 @@ struct Query<Get<Gets...>, Filter<Filters...>> {
     }
     std::optional<get_type> try_get(Entity entity) {
         if (m_view.contains(entity)) {
-            if constexpr (Filter<Filters...>::need_check) {
-                if (Filter<Filters...>::check(*m_world, entity)) {
-                    return get_type(QueryItem<Gets>::get(m_view.get(entity), *m_world, entity)...);
-                }
-            } else {
+            if (Filter<Filters...>::check(*m_world, entity)) {
                 return get_type(QueryItem<Gets>::get(m_view.get(entity), *m_world, entity)...);
             }
         }
         return std::nullopt;
     }
     get_type get(Entity entity) { return try_get(entity).value(); }
-    bool contains(Entity entity) {
-        if constexpr (Filter<Filters...>::need_check) {
-            return m_view.contains(entity) && Filter<Filters...>::check(*m_world, entity);
-        } else {
-            return m_view.contains(entity);
-        }
-    }
+    bool contains(Entity entity) { return m_view.contains(entity) && Filter<Filters...>::check(*m_world, entity); }
     template <typename Func>
         requires requires(Func func) { std::apply(func, std::declval<get_type>()); }
     void for_each(Func&& func) {
