@@ -144,7 +144,7 @@ int main() {
                                          }});
     app.add_plugins(glfw::GLFWPlugin{});
     app.add_plugins(input::InputPlugin{});
-    app.add_plugins(render::RenderPlugin{}.set_validation(1));
+    app.add_plugins(render::RenderPlugin{}.set_validation(2));
     app.add_plugins(assets::AssetPlugin{});
     app.add_plugins(render::ShaderPlugin{});
     app.add_plugins(image::ImagePlugin{});
