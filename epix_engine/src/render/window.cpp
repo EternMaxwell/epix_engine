@@ -213,7 +213,7 @@ EPIX_API void epix::render::window::create_surfaces(Res<ExtractedWindows> window
                     .setImageColorSpace(format.colorSpace)
                     .setImageExtent(vk::Extent2D(window.physical_width, window.physical_height))
                     .setImageArrayLayers(1)
-                    .setImageUsage(vk::ImageUsageFlagBits::eColorAttachment)
+                    .setImageUsage(vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eTransferDst)
                     .setPreTransform(vk::SurfaceTransformFlagBitsKHR::eIdentity)
                     .setCompositeAlpha([&] {
                         switch (window.alpha_mode) {
