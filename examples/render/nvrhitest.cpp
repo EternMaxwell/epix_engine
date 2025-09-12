@@ -60,8 +60,8 @@ struct TestPipeline {
         auto input_layout = device->createInputLayout(attributes.data(), attributes.size(), nullptr);
         auto binding_layout =
             device->createBindingLayout(nvrhi::BindingLayoutDesc()
-                                            .addItem(nvrhi::BindingLayoutItem::Texture_SRV(0))
-                                            .addItem(nvrhi::BindingLayoutItem::Sampler(1))
+                                            .addItem(nvrhi::BindingLayoutItem::Texture_SRV(1))
+                                            .addItem(nvrhi::BindingLayoutItem::Sampler(0))
                                             .setBindingOffsets(nvrhi::VulkanBindingOffsets{0, 0, 0, 0})
                                             .setVisibility(nvrhi::ShaderType::All));
         render::RenderPipelineDesc pipeline_desc;
@@ -287,8 +287,8 @@ int main() {
 
                 auto bindingSet = device->createBindingSet(
                     nvrhi::BindingSetDesc()
-                        .addItem(nvrhi::BindingSetItem::Texture_SRV(0, textures->get(image_handle)))
-                        .addItem(nvrhi::BindingSetItem::Sampler(1, *sampler))
+                        .addItem(nvrhi::BindingSetItem::Texture_SRV(1, textures->get(image_handle)))
+                        .addItem(nvrhi::BindingSetItem::Sampler(0, *sampler))
                         .setTrackLiveness(true),
                     pipe->handle->getDesc().bindingLayouts[0]);
                 auto commandlist = device->createCommandList();
