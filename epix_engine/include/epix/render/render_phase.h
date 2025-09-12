@@ -16,6 +16,13 @@ struct DrawFunctionId {
     bool operator==(const DrawFunctionId&) const  = default;
     operator uint32_t() const { return id; }
 };
+struct DrawContext {
+    nvrhi::CommandListHandle commandlist;
+    nvrhi::FramebufferHandle framebuffer;
+
+    operator nvrhi::CommandListHandle() const { return commandlist; }
+    operator nvrhi::FramebufferHandle() const { return framebuffer; }
+};
 
 template <typename T>
 concept PhaseItem = requires(const T item) {
@@ -40,16 +47,17 @@ concept CachedRenderPipelinePhaseItem = PhaseItem<P> && requires(const P item) {
 };
 
 template <typename FuncT, typename P>
-concept Draw =
-    PhaseItem<P> && requires(FuncT func, World& world, nvrhi::CommandListHandle cmd, Entity entity, P& item) {
-        { func.prepare(world) };
-        { func.draw(world, cmd, entity, item) };
-    };
+concept Draw = PhaseItem<P> && requires(FuncT func, World& world, DrawContext ctx, Entity view, P& item) {
+    { func.prepare(world) };
+    // draw function, since DrawContext can be converted to nvrhi::CommandListHandle, the function can also be
+    // void draw(World&, nvrhi::CommandListHandle, Entity, P&)
+    { func.draw(world, ctx, view, item) };
+};
 
 template <PhaseItem P>
 struct DrawFunction {
     virtual void prepare(World& world) {}
-    virtual void draw(World& world, nvrhi::CommandListHandle cmd, Entity entity, P& item) = 0;
+    virtual void draw(World& world, DrawContext ctx, Entity view, P& item) = 0;
 
     virtual ~DrawFunction() = default;
 };
@@ -62,9 +70,7 @@ struct DrawFunctionImpl : DrawFunction<P> {
 
     void prepare(World& world) override { m_func.prepare(world); }
 
-    void draw(World& world, nvrhi::CommandListHandle cmd, Entity entity, P& item) override {
-        m_func.draw(world, cmd, entity, item);
-    }
+    void draw(World& world, DrawContext cmd, Entity view, P& item) override { m_func.draw(world, cmd, view, item); }
 
    private:
     Func m_func;
@@ -72,7 +78,7 @@ struct DrawFunctionImpl : DrawFunction<P> {
 
 template <PhaseItem P>
 struct EmptyDrawFunction : DrawFunction<P> {
-    void draw(World&, nvrhi::CommandListHandle, Entity, P&) override {}
+    void draw(World&, DrawContext, Entity, P&) override {}
 };
 
 template <PhaseItem P>
@@ -150,14 +156,9 @@ struct RenderPhase {
         return items | std::views::transform([this](const T& item) { return _item_entity(item); });
     }
 
-    void render(nvrhi::CommandListHandle cmd, World& world, Entity view) {
-        render_range(cmd, world, view, 0, items.size());
-    }
-    void render_range(nvrhi::CommandListHandle cmd,
-                      World& world,
-                      Entity view,
-                      size_t start = 0,
-                      size_t end   = std::numeric_limits<size_t>::max()) {
+    void render(DrawContext cmd, World& world, Entity view) { render_range(cmd, world, view, 0, items.size()); }
+    void render_range(
+        DrawContext cmd, World& world, Entity view, size_t start = 0, size_t end = std::numeric_limits<size_t>::max()) {
         end = std::min(end, items.size());
         if (start >= end) return;
 
@@ -205,9 +206,9 @@ struct member_function_pointer_traits<R (C::*)(Args...)> {
     using arg_types   = std::tuple<Args...>;
 };
 using RenderCommandResult = void;
-template <template <typename> typename RenderCommand, PhaseItem R>
+template <template <typename> typename RenderCommand, PhaseItem P>
 struct RenderCommandInfo {
-    using T           = RenderCommand<R>;
+    using T           = RenderCommand<P>;
     using traits      = member_function_pointer_traits<decltype(&T::render)>;
     using class_type  = typename traits::class_type;
     using return_type = typename traits::return_type;
@@ -219,15 +220,14 @@ struct RenderCommandInfo {
                       std::same_as<std::tuple_element_t<4, arg_types>, nvrhi::CommandListHandle>,
                   "The first parameter of render command must be const T&, and the last parameter must be "
                   "nvrhi::CommandListHandle.");
-    static_assert(epix::util::type_traits::is_specialization_of<epix::Item, std::tuple_element_t<1, arg_types>>,
+    static_assert(epix::util::type_traits::specialization_of<std::tuple_element_t<1, arg_types>, epix::Item>,
                   "The second parameter of render command must be of type epix::Item<>, for view entity data.");
     static_assert(std::tuple_element_t<1, arg_types>::readonly,
                   "The second parameter of render command must be of type epix::Item<> with readonly access.");
-    static_assert(epix::util::type_traits::is_specialization_of<std::optional, std::tuple_element_t<2, arg_types>>,
+    static_assert(epix::util::type_traits::specialization_of<std::tuple_element_t<2, arg_types>, std::optional>,
                   "The third parameter of render command must be of type std::optional<> for entity data.");
     static_assert(
-        epix::util::type_traits::is_specialization_of<epix::Item,
-                                                      typename std::tuple_element_t<2, arg_types>::value_type>,
+        epix::util::type_traits::specialization_of<typename std::tuple_element_t<2, arg_types>::value_type, epix::Item>,
         "The third parameter of render command must be of type std::optional<epix::Item<...>> for entity data.");
     static_assert(
         std::tuple_element_t<2, arg_types>::value_type::readonly,
@@ -239,21 +239,23 @@ struct RenderCommandInfo {
     using entity_item  = typename std::tuple_element_t<2, arg_types>::value_type;
     using system_param = std::remove_reference_t<std::tuple_element_t<3, arg_types>>;
 };
-template <template <typename> typename RenderCommand, typename R>
+template <template <typename> typename R, typename P>
 concept RenderCommand = requires {
-    requires PhaseItem<R>;
-    requires MaybeRenderCommand<RenderCommand<R>>;
-    typename RenderCommandInfo<RenderCommand, R>::class_type;
+    requires PhaseItem<P>;
+    requires MaybeRenderCommand<R<P>>;
+    requires std::is_default_constructible_v<R<P>>;
+    typename RenderCommandInfo<R, P>::class_type;
 };
 template <template <typename> typename R, PhaseItem P>
     requires RenderCommand<R, P>
 struct RenderCommandState {
-    using view_query_t   = Query<typename RenderCommandInfo<T>::view_item>;
-    using entity_query_t = Query<typename RenderCommandInfo<T>::entity_item>;
-    using system_param_t = typename app::SystemParam<typename RenderCommandInfo<T>::system_param>;
+    using view_query_t   = Query<typename RenderCommandInfo<R, P>::view_item>;
+    using entity_query_t = Query<typename RenderCommandInfo<R, P>::entity_item>;
+    using system_param_t = typename app::SystemParam<typename RenderCommandInfo<R, P>::system_param>;
     using param_state_t  = typename system_param_t::State;
 
    private:
+    using T = R<P>;
     union {
         view_query_t view_query;
         entity_query_t entity_query;
@@ -265,14 +267,13 @@ struct RenderCommandState {
     bool inited = false;
 
    public:
-    RenderCommandState(const T& command) : command(command) {}
-    RenderCommandState(T&& command) : command(std::move(command)) {}
+    RenderCommandState() : command() {}
     ~RenderCommandState() {
         if (inited) {
             // destruct old state
-            view_query.~Query<typename RenderCommandInfo<T>::view_item>();
-            entity_query.~Query<typename RenderCommandInfo<T>::entity_item>();
-            system_param.~SystemParam<typename RenderCommandInfo<T>::system_param>();
+            view_query.~Query<typename RenderCommandInfo<R, P>::view_item>();
+            entity_query.~Query<typename RenderCommandInfo<R, P>::entity_item>();
+            system_param.~SystemParam<typename RenderCommandInfo<R, P>::system_param>();
         }
         inited = false;
     }
@@ -291,14 +292,14 @@ struct RenderCommandState {
         system_param.update(system_param_state, world, meta);
         inited = true;
     }
-    void draw(World& world, nvrhi::CommandListHandle cmd, Entity entity, P& item) {
+    void draw(World& world, DrawContext ctx, Entity view, P& item) {
         if (!inited) {
             throw std::runtime_error("Render command state is not initialized.");
         }
-        auto view_data   = view_query.get(entity);
-        auto entity_data = entity_query.try_get(entity);
+        auto view_data   = view_query.get(view);
+        auto entity_data = entity_query.try_get(item.entity());
         auto& param      = system_param.get(system_param_state);
-        command.render(item, view_data, entity_data, param, cmd);
+        command.render(item, view_data, entity_data, param, ctx);
     }
 };
 
@@ -309,8 +310,38 @@ struct SetItemPipeline {
                 const Item<>&,
                 const std::optional<Item<>>&,
                 ParamSet<Res<render::PipelineServer>>& pipelines,
-                nvrhi::CommandListHandle cmd) {
+                DrawContext ctx) {
         auto&& [server] = pipelines.get();
+        server->get_render_pipeline(item.pipeline(), ctx.framebuffer).transform([&](RenderPipeline& pipeline) {
+            ctx.commandlist->setGraphicsState(nvrhi::GraphicsState().setPipeline(pipeline.handle));
+        });
     }
 };
+
+template <PhaseItem P, template <typename> typename... R>
+    requires((RenderCommand<R, P> && ...))
+struct RenderCommandSequence : DrawFunction<P> {
+   public:
+    RenderCommandSequence() : m_commands(RenderCommandState<R, P>()...) {}
+
+    void prepare(World& world) override {
+        [&]<size_t... I>(std::index_sequence<I...>) {
+            (std::get<I>(m_commands).prepare(world), ...);
+        }(std::index_sequence_for<R<P>...>{});
+    }
+
+    void draw(World& world, DrawContext cmd, Entity view, P& item) override {
+        [&]<size_t... I>(std::index_sequence<I...>) {
+            (std::get<I>(m_commands).draw(world, cmd, view, item), ...);
+        }(std::index_sequence_for<R<P>...>{});
+    }
+
+   private:
+    std::tuple<RenderCommandState<R, P>...> m_commands;
+};
+template <PhaseItem P, template <typename> typename... R>
+    requires(RenderCommand<R, P> && ...)
+void add_render_commands(DrawFunctions<P>& draw_functions) {
+    draw_functions.template add(RenderCommandSequence<P, R...>{});
+}
 }  // namespace epix::render::render_phase
