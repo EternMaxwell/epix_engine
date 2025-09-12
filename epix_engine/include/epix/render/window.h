@@ -46,9 +46,7 @@ EPIX_API void extract_windows(
     ResMut<ExtractedWindows> extracted_windows,
     Res<vk::Device> device,
     Extract<EventReader<epix::window::WindowClosed>> closed,
-    Extract<Query<
-        Get<Entity, epix::window::Window, Has<epix::window::PrimaryWindow>>>>
-        windows,
+    Extract<Query<Item<Entity, epix::window::Window, Has<epix::window::PrimaryWindow>>>> windows,
     Extract<Res<glfw::GLFWwindows>> glfw_windows,
     ResMut<WindowSurfaces> window_surfaces);
 EPIX_API void create_surfaces(Res<ExtractedWindows> windows,

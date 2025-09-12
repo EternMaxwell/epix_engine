@@ -4,7 +4,7 @@
 using namespace epix;
 using namespace epix::render::view;
 
-EPIX_API void render::view::prepare_view_target(Query<Get<Entity, camera::ExtractedCamera, ExtractedView>> views,
+EPIX_API void render::view::prepare_view_target(Query<Item<Entity, camera::ExtractedCamera, ExtractedView>> views,
                                                 Commands& cmd,
                                                 Res<window::ExtractedWindows> extracted_windows) {
     // Prepare the view target for each extracted camera view

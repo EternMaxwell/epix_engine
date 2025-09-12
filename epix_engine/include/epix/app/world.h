@@ -101,6 +101,7 @@ struct World {
 
     EPIX_API CommandQueue& command_queue();
     EPIX_API entt::registry& registry();
+    EPIX_API const entt::registry& registry() const;
 
     // resource part
     /**
@@ -326,7 +327,7 @@ struct World {
      * @param entity The entity to be checked.
      * @return true if the entity is valid, false otherwise.
      */
-    EPIX_API bool entity_valid(Entity entity);
+    EPIX_API bool entity_valid(Entity entity) const;
     template <typename T>
     T& entity_get(Entity entity) {
         auto* p = entity_try_get<T>(entity);
@@ -334,7 +335,18 @@ struct World {
         return m_data.registry.get<T>(entity);
     }
     template <typename T>
+    const T& entity_get(Entity entity) const {
+        auto* p = entity_try_get<T>(entity);
+        if (!p) throw std::runtime_error("Entity does not have component");
+        return m_data.registry.get<T>(entity);
+    }
+    template <typename T>
     T* entity_try_get(Entity entity) {
+        if (!m_data.registry.valid(entity)) return nullptr;
+        return m_data.registry.try_get<T>(entity);
+    }
+    template <typename T>
+    const T* entity_try_get(Entity entity) const {
         if (!m_data.registry.valid(entity)) return nullptr;
         return m_data.registry.try_get<T>(entity);
     }

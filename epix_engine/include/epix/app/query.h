@@ -16,37 +16,38 @@ template <typename T>
 struct Mut;
 
 template <typename T>
-struct QueryItem {
+struct QueryElement {
     using check_type  = std::tuple<const T>;
     using access_type = std::tuple<const T>;
     using get_type    = const T&;
     template <typename TupleT>
-    static const T& get(TupleT&& item, World& world, const Entity& entity) {
+    static const T& get(TupleT&& item, const World& world, const Entity& entity) {
         return std::get<const T&>(item);
     }
 };
 template <typename T>
-struct QueryItem<Mut<T>> {
-    using check_type  = std::tuple<T>;
-    using access_type = std::tuple<T>;
-    using get_type    = T&;
+struct QueryElement<Mut<T>> {
+    using check_type       = std::tuple<T>;
+    using access_type      = std::tuple<T>;
+    using get_type         = T&;
+    using readonly_element = T;
     template <typename TupleT>
     static T& get(TupleT&& item, World& world, const Entity& entity) {
         return std::get<T&>(item);
     }
 };
 template <typename T>
-struct QueryItem<Opt<T>> {
+struct QueryElement<Opt<T>> {
     using check_type  = std::tuple<>;
     using access_type = std::tuple<const T>;
     using get_type    = const T*;
     template <typename TupleT>
-    static const T* get(TupleT&& item, World& world, const Entity& entity) {
+    static const T* get(TupleT&& item, const World& world, const Entity& entity) {
         return world.entity_try_get<T>(entity);
     }
 };
 template <typename T>
-struct QueryItem<Opt<Mut<T>>> {
+struct QueryElement<Opt<Mut<T>>> {
     using check_type  = std::tuple<>;
     using access_type = std::tuple<T>;
     using get_type    = T*;
@@ -56,28 +57,28 @@ struct QueryItem<Opt<Mut<T>>> {
     }
 };
 template <typename T>
-struct QueryItem<Has<T>> {
+struct QueryElement<Has<T>> {
     using check_type  = std::tuple<>;
     using access_type = std::tuple<const T>;
     using get_type    = bool;
     template <typename TupleT>
-    static bool get(TupleT&& item, World& world, const Entity& entity) {
+    static bool get(TupleT&& item, const World& world, const Entity& entity) {
         return world.entity_valid(entity) && world.registry().all_of<T>(entity);
     }
 };
 template <typename T>
     requires std::same_as<Entity, std::remove_const_t<T>>
-struct QueryItem<T> {
+struct QueryElement<T> {
     using check_type = std::tuple<>;
     using get_type   = Entity;
     template <typename TupleT>
-    static Entity get(TupleT&& item, World& world, const Entity& entity) {
+    static Entity get(TupleT&& item, const World& world, const Entity& entity) {
         return entity;
     }
 };
 
 template <typename T>
-concept ValidQueryItem = epix::util::type_traits::specialization_of<T, QueryItem> && requires(T t) {
+concept ValidQueryElement = epix::util::type_traits::specialization_of<T, QueryElement> && requires(T t) {
     typename T::check_type;
     typename T::get_type;
     epix::util::type_traits::specialization_of<typename T::check_type, std::tuple>;
@@ -85,19 +86,51 @@ concept ValidQueryItem = epix::util::type_traits::specialization_of<T, QueryItem
         T::get(std::declval<typename T::check_type>(), std::declval<World&>(), std::declval<const Entity&>())
     } -> std::same_as<typename T::get_type>;
 };
-template <ValidQueryItem T>
-struct QueryItemInfo {
+template <ValidQueryElement T>
+struct QueryElementInfo;
+
+template <typename E>
+struct QueryElementInfo<QueryElement<E>> {
+    using T          = QueryElement<E>;
     using check_type = typename T::check_type;
     // access type, if T did not has a access type, use std::tuple<>, otherwise
     // use access_type
-    using access_type = typename std::decay_t<decltype([]() -> auto {
+    using access_type              = typename std::decay_t<decltype([]() -> auto {
         if constexpr (requires { typename T::access_type; }) {
             return std::optional<typename T::access_type>{};
         } else {
             return std::optional<std::tuple<>>{};
         }
     }())>::value_type;
-    using get_type    = typename T::get_type;
+    using get_type                 = typename T::get_type;
+    using readonly_element         = E;
+    static constexpr bool readonly = true;
+};
+template <template <typename> typename Element, typename E>
+struct QueryElementInfo<QueryElement<Element<E>>> {
+   private:
+    using T = QueryElement<Element<E>>;
+
+   public:
+    using check_type = typename T::check_type;
+    // access type, if T did not has a access type, use std::tuple<>, otherwise
+    // use access_type
+    using access_type              = typename std::decay_t<decltype([]() -> auto {
+        if constexpr (requires { typename T::access_type; }) {
+            return std::optional<typename T::access_type>{};
+        } else {
+            return std::optional<std::tuple<>>{};
+        }
+    }())>::value_type;
+    using get_type                 = typename T::get_type;
+    using readonly_element         = std::remove_pointer_t<typename std::decay_t<decltype([]() -> auto {
+        if constexpr (requires { typename T::readonly_element; }) {
+            return std::optional<typename T::readonly_element*>{};
+        } else {
+            return std::optional<Element<typename QueryElementInfo<QueryElement<E>>::readonly_element>*>{};
+        }
+    }())>::value_type>;
+    static constexpr bool readonly = std::same_as<T, readonly_element>;
 };
 
 template <typename... Tuples>
@@ -105,24 +138,33 @@ struct TupleCat {
     using type = decltype(std::tuple_cat(std::declval<Tuples>()...));
 };
 
-// Args should have a valid QueryItem<Args> implementation
+// Args should have a valid QueryElement<Args> implementation
 template <typename... Args>
-    requires(ValidQueryItem<QueryItem<Args>> && ...)
-struct Get : std::tuple<typename QueryItemInfo<QueryItem<Args>>::get_type...> {
-    using base_type = std::tuple<typename QueryItemInfo<QueryItem<Args>>::get_type...>;
+    requires(ValidQueryElement<QueryElement<Args>> && ...)
+struct Item : public std::tuple<typename QueryElementInfo<QueryElement<Args>>::get_type...> {
+    using base_type = std::tuple<typename QueryElementInfo<QueryElement<Args>>::get_type...>;
 
-    using base_type::base_type;
-    Get(const base_type& t) : base_type(t) {}
-    Get(base_type&& t) : base_type(std::move(t)) {}
-    Get(const Get& other)            = default;
-    Get(Get&& other)                 = default;
-    Get& operator=(const Get& other) = default;
-    Get& operator=(Get&& other)      = default;
+    static constexpr bool readonly = []() constexpr {
+        if constexpr (sizeof...(Args) == 0) {
+            return true;
+        } else {
+            // check if all access type is const or empty
+            return (QueryElementInfo<QueryElement<Args>>::readonly && ...);
+        }
+    }();
+    using readonly_item = Item<typename QueryElementInfo<QueryElement<Args>>::readonly_element...>;
+
+    Item(const base_type& t) : base_type(t) {}
+    Item(base_type&& t) : base_type(std::move(t)) {}
+    Item(const Item& other)            = default;
+    Item(Item&& other)                 = default;
+    Item& operator=(const Item& other) = default;
+    Item& operator=(Item&& other)      = default;
 };
 
 template <typename... Args>
-    requires(ValidQueryItem<QueryItem<Args>> && ...)
-using QueryGet = Get<Args...>;
+    requires(ValidQueryElement<QueryElement<Args>> && ...)
+using QueryGet = Item<Args...>;
 
 struct FilterBase {
     using must_include = std::tuple<>;
@@ -132,7 +174,7 @@ struct FilterBase {
 
 template <typename T>
 concept FilterItem = requires(T t) {
-    { T::check(std::declval<World&>(), std::declval<Entity>()) } -> std::same_as<bool>;
+    { T::check(std::declval<const World&>(), std::declval<Entity>()) } -> std::same_as<bool>;
     typename T::must_include;
     typename T::must_exclude;
     typename T::access_type;
@@ -143,20 +185,20 @@ template <typename... Args>
 struct With : FilterBase {
     using must_include = std::tuple<const Args...>;
     using access_type  = std::tuple<const Args...>;
-    static bool check(World& world, Entity entity) { return world.registry().all_of<Args...>(entity); }
+    static bool check(const World& world, Entity entity) { return world.registry().all_of<Args...>(entity); }
 };
 
 template <typename... Args>
 struct Without : FilterBase {
     using must_exclude = std::tuple<Args...>;
-    static bool check(World& world, Entity entity) { return !world.registry().any_of<Args...>(entity); }
+    static bool check(const World& world, Entity entity) { return !world.registry().any_of<Args...>(entity); }
 };
 
 template <typename... Args>
     requires(FilterItem<Args> && ...)
 struct Or : FilterBase {
     using access_type = typename TupleCat<typename Args::access_type...>::type;
-    static bool check(World& world, Entity entity) { return (Args::check(world, entity) || ...); }
+    static bool check(const World& world, Entity entity) { return (Args::check(world, entity) || ...); }
 };
 
 template <FilterItem... Args>
@@ -165,7 +207,7 @@ struct Filter;
 template <>
 struct Filter<> {
     static constexpr bool need_check = false;
-    static bool check(World& world, Entity entity) { return true; }
+    static bool check(const World& world, Entity entity) { return true; }
 };
 
 template <FilterItem T, typename... Rest>
@@ -179,7 +221,7 @@ struct Filter<T, Rest...> {
             return true;
         }
     }();
-    static bool check(World& world, Entity entity) {
+    static bool check(const World& world, Entity entity) {
         if constexpr (!need_check) {
             return true;
         } else {
@@ -197,11 +239,11 @@ struct QueryTypeBuilder<> {
     using access_type  = std::tuple<>;
 };
 template <typename... Args, typename... Rest>
-struct QueryTypeBuilder<Get<Args...>, Rest...> {
+struct QueryTypeBuilder<Item<Args...>, Rest...> {
     using must_include = typename TupleCat<typename QueryTypeBuilder<Rest...>::must_include,
-                                           typename QueryItemInfo<QueryItem<Args>>::check_type...>::type;
+                                           typename QueryElementInfo<QueryElement<Args>>::check_type...>::type;
     using access_type  = typename TupleCat<typename QueryTypeBuilder<Rest...>::access_type,
-                                           typename QueryItemInfo<QueryItem<Args>>::access_type...>::type;
+                                           typename QueryElementInfo<QueryElement<Args>>::access_type...>::type;
     using must_exclude = typename QueryTypeBuilder<Rest...>::must_exclude;
 };
 template <FilterItem T, typename... Rest>
@@ -232,34 +274,51 @@ template <typename TI, typename TO>
 struct EnttViewBuilder;
 template <typename... TI, typename... TO>
 struct EnttViewBuilder<std::tuple<TI...>, std::tuple<TO...>> {
-    using type = decltype(std::declval<entt::registry>().view<TI...>(entt::exclude<TO...>));
-    static type build(entt::registry& registry) { return registry.view<TI...>(entt::exclude<TO...>); }
+    static constexpr bool all_const = (std::is_const_v<std::remove_reference_t<TI>> && ...);
+    using reg_t                     = std::conditional_t<all_const, const entt::registry, entt::registry>;
+    using type                      = decltype(std::declval<reg_t>().template view<TI...>(entt::exclude<TO...>));
+    static type build(entt::registry& registry)
+        requires(!all_const)
+    {
+        return registry.template view<TI...>(entt::exclude<TO...>);
+    }
+    static type build(const entt::registry& registry)
+        requires(all_const)
+    {
+        return registry.template view<TI...>(entt::exclude<TO...>);
+    }
 };
 
-template <epix::util::type_traits::specialization_of<Get> G, typename F = Filter<>>
+template <epix::util::type_traits::specialization_of<Item> G, typename F = Filter<>>
     requires(epix::util::type_traits::specialization_of<F, Filter> || FilterItem<F>)
 struct Query;
 template <typename... Gets, typename F>
     requires(!epix::util::type_traits::specialization_of<F, Filter> && FilterItem<F>)
-struct Query<Get<Gets...>, F> : public Query<Get<Gets...>, Filter<F>> {};
+struct Query<Item<Gets...>, F> : public Query<Item<Gets...>, Filter<F>> {};
 template <typename... Gets, typename... Filters>
     requires(FilterItem<Filters> && ...)
-struct Query<Get<Gets...>, Filter<Filters...>> {
-    using must_include = typename QueryTypeBuilder<Get<Gets...>, Filters...>::must_include;
-    using access_type  = typename QueryTypeBuilder<Get<Gets...>, Filters...>::access_type;
-    using must_exclude = typename QueryTypeBuilder<Get<Gets...>, Filters...>::must_exclude;
-    using get_type     = std::tuple<typename QueryItemInfo<QueryItem<Gets>>::get_type...>;
+struct Query<Item<Gets...>, Filter<Filters...>> {
+    using must_include = typename QueryTypeBuilder<Item<Gets...>, Filters...>::must_include;
+    using access_type  = typename QueryTypeBuilder<Item<Gets...>, Filters...>::access_type;
+    using must_exclude = typename QueryTypeBuilder<Item<Gets...>, Filters...>::must_exclude;
+    using get_type     = std::tuple<typename QueryElementInfo<QueryElement<Gets>>::get_type...>;
 
     using view_type     = typename EnttViewBuilder<must_include, must_exclude>::type;
     using view_iterable = decltype(std::declval<view_type>().each());
     using view_iter     = decltype(std::declval<view_iterable>().begin());
 
+    using world_ptr = std::conditional_t<Item<Gets...>::readonly, const World*, World*>;
+
    private:
-    World* m_world;
+    world_ptr m_world;
     view_type m_view;
 
    public:
     Query(World& world)
+        requires(!Item<Gets...>::readonly)
+        : m_world(&world), m_view(EnttViewBuilder<must_include, must_exclude>::build(world.registry())) {}
+    Query(const World& world)
+        requires(Item<Gets...>::readonly)
         : m_world(&world), m_view(EnttViewBuilder<must_include, must_exclude>::build(world.registry())) {}
 
     auto iter() {
@@ -268,11 +327,11 @@ struct Query<Get<Gets...>, Filter<Filters...>> {
                        return Filter<Filters...>::check(*m_world, std::get<0>(item));
                    }) |
                    std::views::transform([this](auto&& item) {
-                       return get_type(QueryItem<Gets>::get(item, *m_world, std::get<0>(item))...);
+                       return get_type(QueryElement<Gets>::get(item, *m_world, std::get<0>(item))...);
                    });
         } else {
             return m_view.each() | std::views::transform([this](auto&& item) {
-                       return get_type(QueryItem<Gets>::get(item, *m_world, std::get<0>(item))...);
+                       return get_type(QueryElement<Gets>::get(item, *m_world, std::get<0>(item))...);
                    });
         }
     }
@@ -296,7 +355,7 @@ struct Query<Get<Gets...>, Filter<Filters...>> {
     std::optional<get_type> try_get(Entity entity) {
         if (m_view.contains(entity)) {
             if (Filter<Filters...>::check(*m_world, entity)) {
-                return get_type(QueryItem<Gets>::get(m_view.get(entity), *m_world, entity)...);
+                return get_type(QueryElement<Gets>::get(m_view.get(entity), *m_world, entity)...);
             }
         }
         return std::nullopt;
@@ -315,12 +374,15 @@ struct Query<Get<Gets...>, Filter<Filters...>> {
         return it.begin() == it.end();
     }
     operator bool() { return !empty(); }
+
+    static constexpr bool readonly = Item<Gets...>::readonly;
 };
 template <typename Q>
     requires requires(Q t) {
         typename Q::must_include;
         typename Q::access_type;
         typename Q::must_exclude;
+        { Q::readonly } -> std::convertible_to<bool>;
     } && epix::util::type_traits::specialization_of<Q, Query>
 struct SystemParam<Q> {
     using State = std::optional<Q>;
@@ -342,7 +404,15 @@ struct SystemParam<Q> {
         }(std::make_index_sequence<std::tuple_size<typename Q::must_exclude>::value>{});
         return std::nullopt;
     }
-    bool update(State& state, World& world, const SystemMeta& meta) {
+    bool update(State& state, World& world, const SystemMeta& meta)
+        requires(!Q::readonly)
+    {
+        state.emplace(Q(world));
+        return true;
+    }
+    bool update(State& state, const World& world, const SystemMeta& meta)
+        requires(Q::readonly)
+    {
         state.emplace(Q(world));
         return true;
     }

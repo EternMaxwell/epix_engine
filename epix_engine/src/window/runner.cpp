@@ -6,34 +6,25 @@ using namespace epix::window;
 using namespace epix;
 
 EPIX_API int GLFWRunner::run(App& app) {
-    auto check_exit = IntoSystem::into_system(
-        [](EventReader<AppExit>& exit_event) -> std::optional<int> {
-            for (auto event : exit_event.read()) {
-                return event.code;
-            }
-            return std::nullopt;
-        });
-    auto create_windows_system =
-        IntoSystem::into_system(GLFWPlugin::create_windows);
-    auto update_size_system = IntoSystem::into_system(GLFWPlugin::update_size);
-    auto update_pos_system  = IntoSystem::into_system(GLFWPlugin::update_pos);
-    auto toggle_window_mode_system =
-        IntoSystem::into_system(GLFWPlugin::toggle_window_mode);
-    auto update_window_states_system =
-        IntoSystem::into_system(GLFWPlugin::update_window_states);
-    auto destroy_windows_system =
-        IntoSystem::into_system(GLFWPlugin::destroy_windows);
-    auto send_cached_events_system =
-        IntoSystem::into_system(GLFWPlugin::send_cached_events);
-    auto clipboard_set_text_system =
-        IntoSystem::into_system(Clipboard::set_text);
-    auto clipboard_update_system = IntoSystem::into_system(Clipboard::update);
-    auto update_focus_system     = IntoSystem::into_system(
-        [](ResMut<window::Focus> focus, Local<window::Focus> last,
-           ResMut<GLFWwindows> glfw_windows) {
+    auto check_exit            = IntoSystem::into_system([](EventReader<AppExit>& exit_event) -> std::optional<int> {
+        for (auto event : exit_event.read()) {
+            return event.code;
+        }
+        return std::nullopt;
+    });
+    auto create_windows_system = IntoSystem::into_system(GLFWPlugin::create_windows);
+    auto update_size_system    = IntoSystem::into_system(GLFWPlugin::update_size);
+    auto update_pos_system     = IntoSystem::into_system(GLFWPlugin::update_pos);
+    auto toggle_window_mode_system   = IntoSystem::into_system(GLFWPlugin::toggle_window_mode);
+    auto update_window_states_system = IntoSystem::into_system(GLFWPlugin::update_window_states);
+    auto destroy_windows_system      = IntoSystem::into_system(GLFWPlugin::destroy_windows);
+    auto send_cached_events_system   = IntoSystem::into_system(GLFWPlugin::send_cached_events);
+    auto clipboard_set_text_system   = IntoSystem::into_system(Clipboard::set_text);
+    auto clipboard_update_system     = IntoSystem::into_system(Clipboard::update);
+    auto update_focus_system         = IntoSystem::into_system(
+        [](ResMut<window::Focus> focus, Local<window::Focus> last, ResMut<GLFWwindows> glfw_windows) {
             if (focus->focus != last->focus) {
-                if (auto it = glfw_windows->find(*focus->focus);
-                    it != glfw_windows->end()) {
+                if (auto it = glfw_windows->find(*focus->focus); it != glfw_windows->end()) {
                     auto window = it->second.first;
                     glfwFocusWindow(window);
                 }
@@ -77,25 +68,21 @@ EPIX_API int GLFWRunner::run(App& app) {
         if (app.config.mark_frame) {
             FrameMark;
         }
-        exit_code = app.run_system(check_exit.get()).value_or(-1);
-        auto time = std::chrono::steady_clock::now();
-        double delta_time =
-            std::chrono::duration<double, std::milli>(time - last_time).count();
-        last_time = time;
+        exit_code         = app.run_system(check_exit.get()).value_or(-1);
+        auto time         = std::chrono::steady_clock::now();
+        double delta_time = std::chrono::duration<double, std::milli>(time - last_time).count();
+        last_time         = time;
         if (profiler) {
             profiler->push_time(delta_time);
         }
         if (exit_code.has_value()) {
             // should exit app, remove all windows.
-            app.run_system(
-                [](Commands& commands,
-                   Query<Get<Entity, Mut<window::Window>>>& windows) {
-                    for (auto&& [id, window] : windows.iter()) {
-                        commands.entity(id).despawn();
-                    }
-                });
-            app.run_system(
-                [](World& world) { world.command_queue().apply(world); });
+            app.run_system([](Commands& commands, Query<Item<Entity, Mut<window::Window>>>& windows) {
+                for (auto&& [id, window] : windows.iter()) {
+                    commands.entity(id).despawn();
+                }
+            });
+            app.run_system([](World& world) { world.command_queue().apply(world); });
             break;
         }
         if (auto* render_app = app.get_sub_app(render::Render)) {

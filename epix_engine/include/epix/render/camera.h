@@ -303,9 +303,9 @@ enum class CameraUpdateSystems {
 
 template <CameraProjection ProjType>
 void camera_system(
-    Query<Get<Mut<Camera>, Mut<ProjType>>> query,   // camera and projection query
-    Query<Get<epix::window::Window>> window_query,  // window query
-    Query<Get<epix::window::Window>, With<epix::window::PrimaryWindow>> primary_window_query  // primary window query
+    Query<Item<Mut<Camera>, Mut<ProjType>>> query,   // camera and projection query
+    Query<Item<epix::window::Window>> window_query,  // window query
+    Query<Item<epix::window::Window>, With<epix::window::PrimaryWindow>> primary_window_query  // primary window query
 ) {
     for (auto&& [camera, proj] : query.iter()) {
         // in the body we want to update the stored target size,
@@ -410,8 +410,8 @@ struct ExtractedCamera {
 EPIX_API void extract_cameras(
     Commands& cmd,
     std::optional<Res<ClearColor>> global_clear_color,
-    Extract<Query<Get<Camera, CameraRenderGraph, transform::GlobalTransform, view::VisibleEntities>>> cameras,
-    Extract<Query<Get<Entity>, With<epix::window::PrimaryWindow, epix::window::Window>>> primary_window);
+    Extract<Query<Item<Camera, CameraRenderGraph, transform::GlobalTransform, view::VisibleEntities>>> cameras,
+    Extract<Query<Item<Entity>, With<epix::window::PrimaryWindow, epix::window::Window>>> primary_window);
 
 struct CameraDriverNode : graph::Node {
     EPIX_API void run(graph::GraphContext& graph, graph::RenderContext& render_ctx, app::World& world) override;

@@ -27,7 +27,7 @@ struct ViewPlugin {
     EPIX_API void build(App& app);
 };
 
-EPIX_API void prepare_view_target(Query<Get<Entity, camera::ExtractedCamera, ExtractedView>> views,
+EPIX_API void prepare_view_target(Query<Item<Entity, camera::ExtractedCamera, ExtractedView>> views,
                                   Commands& cmd,
                                   Res<window::ExtractedWindows> extracted_windows);
 }  // namespace epix::render::view

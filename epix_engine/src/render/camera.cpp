@@ -66,8 +66,8 @@ EPIX_API void OrthographicProjection::update(float width, float height) {
 EPIX_API void epix::render::camera::extract_cameras(
     Commands& cmd,
     std::optional<Res<ClearColor>> global_clear_color,
-    Extract<Query<Get<Camera, CameraRenderGraph, transform::GlobalTransform, view::VisibleEntities>>> cameras,
-    Extract<Query<Get<Entity>, With<epix::window::PrimaryWindow, epix::window::Window>>> primary_window) {
+    Extract<Query<Item<Camera, CameraRenderGraph, transform::GlobalTransform, view::VisibleEntities>>> cameras,
+    Extract<Query<Item<Entity>, With<epix::window::PrimaryWindow, epix::window::Window>>> primary_window) {
     // extract camera entities to render world, this will spawn an related
     // entity with ExtractedCamera, ExtractedView and other components.
 
@@ -112,7 +112,7 @@ EPIX_API void epix::render::camera::extract_cameras(
 }
 
 EPIX_API void CameraDriverNode::run(graph::GraphContext& graph, graph::RenderContext& render_ctx, app::World& world) {
-    Query<Get<Entity, ExtractedCamera, view::ViewTarget>> cameras(world);
+    Query<Item<Entity, ExtractedCamera, view::ViewTarget>> cameras(world);
     auto&& windows = world.resource<epix::render::window::ExtractedWindows>();
     for (auto&& [entity, camera, target] : cameras.iter()) {
         if (camera.clear_color) {

@@ -207,7 +207,7 @@ int main() {
         render_app.add_systems(
             render::ExtractSchedule,
             into([](ResMut<PrimaryWindowId> extracted_window_id,
-                    Extract<Query<Get<Entity>, With<window::PrimaryWindow, window::Window>>> windows) {
+                    Extract<Query<Item<Entity>, With<window::PrimaryWindow, window::Window>>> windows) {
                 for (auto&& [entity] : windows.iter()) {
                     extracted_window_id->id = entity;
                     static bool found       = false;

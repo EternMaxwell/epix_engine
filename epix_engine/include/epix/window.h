@@ -27,19 +27,18 @@ struct WindowPlugin {
     EPIX_API void build(App& app);
 };
 
-EPIX_API void print_events(
-    EventReader<events::WindowResized> resized,
-    EventReader<events::WindowMoved> moved,
-    EventReader<events::WindowCreated> created,
-    EventReader<events::WindowClosed> closed,
-    EventReader<events::WindowCloseRequested> close_requested,
-    EventReader<events::WindowDestroyed> destroyed,
-    EventReader<events::CursorMoved> cursor_moved,
-    EventReader<events::CursorEntered> cursor_entered,
-    EventReader<events::FileDrop> file_drop,
-    EventReader<events::ReceivedCharacter> received_character,
-    EventReader<events::WindowFocused> window_focused,
-    Query<Get<window::Window>> windows);
+EPIX_API void print_events(EventReader<events::WindowResized> resized,
+                           EventReader<events::WindowMoved> moved,
+                           EventReader<events::WindowCreated> created,
+                           EventReader<events::WindowClosed> closed,
+                           EventReader<events::WindowCloseRequested> close_requested,
+                           EventReader<events::WindowDestroyed> destroyed,
+                           EventReader<events::CursorMoved> cursor_moved,
+                           EventReader<events::CursorEntered> cursor_entered,
+                           EventReader<events::FileDrop> file_drop,
+                           EventReader<events::ReceivedCharacter> received_character,
+                           EventReader<events::WindowFocused> window_focused,
+                           Query<Item<window::Window>> windows);
 
 using events::CursorEntered;
 using events::CursorMoved;

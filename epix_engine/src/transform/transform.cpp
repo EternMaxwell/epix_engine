@@ -13,12 +13,12 @@ using namespace epix::transform;
 using namespace epix;
 
 void insert_global_transform(Commands& cmd,
-                             Query<Get<Entity>, Filter<With<Transform>, Without<GlobalTransform>>>& query) {
+                             Query<Item<Entity>, Filter<With<Transform>, Without<GlobalTransform>>>& query) {
     for (auto&& [entity] : query.iter()) {
         cmd.entity(entity).emplace(GlobalTransform{.matrix = glm::mat4(1.0f)});
     }
 }
-void calculate_global_transform(Query<Get<Entity, Transform, Opt<Parent>, Mut<GlobalTransform>>>& query) {
+void calculate_global_transform(Query<Item<Entity, Transform, Opt<Parent>, Mut<GlobalTransform>>>& query) {
     std::deque<std::tuple<const Transform&, const Parent&, GlobalTransform&>> toProcess;
     entt::dense_map<Entity, GlobalTransform*> globalTransforms;
     for (auto&& [entity, transform, parent, globalTransform] : query.iter()) {
