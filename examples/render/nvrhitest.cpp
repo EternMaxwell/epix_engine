@@ -32,6 +32,20 @@ struct TestPipelineShaders {
     assets::Handle<render::Shader> fragment_shader;
 };
 
+struct TestPhaseItem {
+    Entity id;
+    render::RenderPipelineId pipeline_id;
+    render::render_phase::DrawFunctionId draw_function_id;
+
+    Entity entity() const { return id; }
+    render::RenderPipelineId pipeline() const { return pipeline_id; }
+    render::render_phase::DrawFunctionId draw_function() const { return draw_function_id; }
+    float sort_key() const { return 0.0f; }
+};
+
+static_assert(render::render_phase::PhaseItem<TestPhaseItem>);
+static_assert(render::render_phase::CachedRenderPipelinePhaseItem<TestPhaseItem>);
+
 struct TestPipeline {
    private:
     render::RenderPipelineId id;
