@@ -271,6 +271,8 @@ EPIX_API void epix::render::window::create_surfaces(Res<ExtractedWindows> window
                                                                    .setFormat(found_format)
                                                                    .setWidth(swapchain_create_info.imageExtent.width)
                                                                    .setHeight(swapchain_create_info.imageExtent.height)
+                                                                   .setInitialState(nvrhi::ResourceStates::Present)
+                                                                   .setKeepInitialState(true)
                                                                    .setIsRenderTarget(true)
                                                                    .setDebugName("Swap Chain Image");
                                                            return nvrhi_device.get()->createHandleForNativeTexture(
@@ -295,6 +297,8 @@ EPIX_API void epix::render::window::create_surfaces(Res<ExtractedWindows> window
                                 .setFormat(surface.image_format)
                                 .setWidth(1)
                                 .setHeight(1)
+                                .setInitialState(nvrhi::ResourceStates::RenderTarget)
+                                .setKeepInitialState(true)
                                 .setIsRenderTarget(true)
                                 .setDebugName("Swap Chain Image");
                 for (auto&& index : std::views::iota(0u, surface.config.minImageCount)) {
@@ -337,6 +341,8 @@ EPIX_API void epix::render::window::create_surfaces(Res<ExtractedWindows> window
                                     .setFormat(surface.image_format)
                                     .setWidth(surface.config.imageExtent.width)
                                     .setHeight(surface.config.imageExtent.height)
+                                    .setInitialState(nvrhi::ResourceStates::Present)
+                                    .setKeepInitialState(true)
                                     .setIsRenderTarget(true)
                                     .setDebugName("Swap Chain Image");
                     return nvrhi_device.get()->createHandleForNativeTexture(nvrhi::ObjectTypes::VK_Image, image, desc);
@@ -359,6 +365,8 @@ EPIX_API void epix::render::window::prepare_windows(ResMut<ExtractedWindows> win
                                                     Res<vk::PhysicalDevice> physical_device,
                                                     Res<nvrhi::DeviceHandle> nvrhi_device) {
     std::vector<std::pair<Entity, std::string>> errors;
+    auto commandlist = nvrhi_device.get()->createCommandList();
+    commandlist->open();
     for (auto&& window : std::views::all(windows->windows) | std::views::values) {
         auto it = window_surfaces->surfaces.find(window.entity);
         if (it == window_surfaces->surfaces.end()) continue;
@@ -395,6 +403,7 @@ EPIX_API void epix::render::window::prepare_windows(ResMut<ExtractedWindows> win
             errors.emplace_back(window.entity, e.what());
         }
     }
+    commandlist->close();
     if (!errors.empty()) {
         std::string error_msg = "Failed to acquire swapchain images for windows: ";
         for (auto&& [entity, error] : errors) {
@@ -427,21 +436,21 @@ EPIX_API void epix::render::window::present_windows(Res<render::CommandPools> co
                              std::views::filter([](const auto& surface) { return surface.swapchain != nullptr; })) {
         swapchains.push_back(window.swapchain);
         image_indices.push_back(window.current_image_index);
-        cmd_buffer.pipelineBarrier(
-            vk::PipelineStageFlagBits::eColorAttachmentOutput, vk::PipelineStageFlagBits::eBottomOfPipe, {}, {}, {},
-            vk::ImageMemoryBarrier()
-                .setSrcAccessMask(vk::AccessFlagBits::eColorAttachmentWrite)
-                .setDstAccessMask(vk::AccessFlagBits::eNone)
-                .setOldLayout(vk::ImageLayout::eColorAttachmentOptimal)
-                .setNewLayout(vk::ImageLayout::ePresentSrcKHR)
-                .setImage((VkImage)window.swapchain_images[window.current_image_index]->getNativeObject(
-                    nvrhi::ObjectTypes::VK_Image))
-                .setSubresourceRange(vk::ImageSubresourceRange()
-                                         .setAspectMask(vk::ImageAspectFlagBits::eColor)
-                                         .setBaseMipLevel(0)
-                                         .setLevelCount(1)
-                                         .setBaseArrayLayer(0)
-                                         .setLayerCount(1)));
+        // cmd_buffer.pipelineBarrier(
+        //     vk::PipelineStageFlagBits::eColorAttachmentOutput, vk::PipelineStageFlagBits::eBottomOfPipe, {}, {}, {},
+        //     vk::ImageMemoryBarrier()
+        //         .setSrcAccessMask(vk::AccessFlagBits::eColorAttachmentWrite)
+        //         .setDstAccessMask(vk::AccessFlagBits::eNone)
+        //         .setOldLayout(vk::ImageLayout::eColorAttachmentOptimal)
+        //         .setNewLayout(vk::ImageLayout::ePresentSrcKHR)
+        //         .setImage((VkImage)window.swapchain_images[window.current_image_index]->getNativeObject(
+        //             nvrhi::ObjectTypes::VK_Image))
+        //         .setSubresourceRange(vk::ImageSubresourceRange()
+        //                                  .setAspectMask(vk::ImageAspectFlagBits::eColor)
+        //                                  .setBaseMipLevel(0)
+        //                                  .setLevelCount(1)
+        //                                  .setBaseArrayLayer(0)
+        //                                  .setLayerCount(1)));
     }
     cmd_buffer.end();
     if (swapchains.empty()) {

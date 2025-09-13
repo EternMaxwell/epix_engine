@@ -177,35 +177,29 @@ struct TestItemsNode : render::graph::Node {
         auto&& pipeline                      = world.resource<TestPipeline>();
         nvrhi::FramebufferHandle framebuffer = render_context.device()->createFramebuffer(
             nvrhi::FramebufferDesc().addColorAttachment(view_target.texture));
-        auto render_pipeline = pipelines.get_render_pipeline(pipeline.get_id(), framebuffer->getFramebufferInfo());
-        if (!render_pipeline.has_value()) {
-            spdlog::error("Render pipeline not ready yet.");
-            return;
-        }
         render_context.flush_encoder();
-        render_context.commands()->setGraphicsState(
-            nvrhi::GraphicsState()
-                .setFramebuffer(framebuffer)
-                .setPipeline(render_pipeline.value().handle)
-                .setViewport(camera.viewport
-                                 .transform([](const render::camera::Viewport& vp) {
-                                     nvrhi::Viewport viewport;
-                                     viewport.minX = static_cast<float>(vp.pos.x);
-                                     viewport.minY = static_cast<float>(vp.pos.y);
-                                     viewport.maxX = static_cast<float>(vp.pos.x + vp.size.x);
-                                     viewport.maxY = static_cast<float>(vp.pos.y + vp.size.y);
-                                     viewport.minZ = vp.depth_range.first;
-                                     viewport.maxZ = vp.depth_range.second;
-                                     return nvrhi::ViewportState().addViewportAndScissorRect(viewport);
-                                 })
-                                 .value_or(nvrhi::ViewportState().addViewportAndScissorRect(
-                                     nvrhi::Viewport(camera.viewport_size.x, camera.viewport_size.y))))
-                .addVertexBuffer(
-                    nvrhi::VertexBufferBinding().setBuffer(buffers.vertex_buffer[0]).setSlot(0).setOffset(0))
-                .addVertexBuffer(
-                    nvrhi::VertexBufferBinding().setBuffer(buffers.vertex_buffer[1]).setSlot(1).setOffset(0)));
+        auto state = nvrhi::GraphicsState()
+                         .setFramebuffer(framebuffer)
+                         .setViewport(camera.viewport
+                                          .transform([](const render::camera::Viewport& vp) {
+                                              nvrhi::Viewport viewport;
+                                              viewport.minX = static_cast<float>(vp.pos.x);
+                                              viewport.minY = static_cast<float>(vp.pos.y);
+                                              viewport.maxX = static_cast<float>(vp.pos.x + vp.size.x);
+                                              viewport.maxY = static_cast<float>(vp.pos.y + vp.size.y);
+                                              viewport.minZ = vp.depth_range.first;
+                                              viewport.maxZ = vp.depth_range.second;
+                                              return nvrhi::ViewportState().addViewportAndScissorRect(viewport);
+                                          })
+                                          .value_or(nvrhi::ViewportState().addViewportAndScissorRect(
+                                              nvrhi::Viewport(camera.viewport_size.x, camera.viewport_size.y))))
+                         .addVertexBuffer(
+                             nvrhi::VertexBufferBinding().setBuffer(buffers.vertex_buffer[0]).setSlot(0).setOffset(0))
+                         .addVertexBuffer(
+                             nvrhi::VertexBufferBinding().setBuffer(buffers.vertex_buffer[1]).setSlot(1).setOffset(0));
 
-        phase.render(render::render_phase::DrawContext{render_context.commands(), framebuffer}, world, view_entity);
+        auto draw_context = render::render_phase::DrawContext{render_context.commands(), state};
+        phase.render(draw_context, world, view_entity);
         render_context.flush_encoder();
     }
 };
@@ -233,11 +227,12 @@ struct BindingSetCommand {
                                                    .setTrackLiveness(true),
                                                binding_layout);
     }
-    void render(const T& item, Item<>, std::optional<Item<>>, ParamSet<>, render::render_phase::DrawContext ctx) {
+    void render(const T& item, Item<>, std::optional<Item<>>, ParamSet<>, render::render_phase::DrawContext& ctx) {
         if (!binding_set) {
             throw std::runtime_error("Binding set is not created");
         }
-        ctx.commandlist->setGraphicsState(nvrhi::GraphicsState().addBindingSet(binding_set));
+        ctx.graphics_state.bindings.resize(0);
+        ctx.commandlist->setGraphicsState(ctx.graphics_state.addBindingSet(binding_set));
     }
 };
 template <typename T = TestPhaseItem>
@@ -246,7 +241,7 @@ struct DrawCommand {
                 Item<>,
                 std::optional<Item<>>,
                 ParamSet<Res<Buffers>> bs,
-                render::render_phase::DrawContext ctx) {
+                render::render_phase::DrawContext& ctx) {
         auto&& [buffers] = bs.get();
         ctx.commandlist->draw(nvrhi::DrawArguments().setVertexCount(buffers->vertex_count));
     }

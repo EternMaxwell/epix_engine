@@ -18,10 +18,9 @@ struct DrawFunctionId {
 };
 struct DrawContext {
     nvrhi::CommandListHandle commandlist;
-    nvrhi::FramebufferHandle framebuffer;
+    nvrhi::GraphicsState graphics_state;
 
     operator nvrhi::CommandListHandle() const { return commandlist; }
-    operator nvrhi::FramebufferHandle() const { return framebuffer; }
 };
 
 template <typename T>
@@ -47,7 +46,7 @@ concept CachedRenderPipelinePhaseItem = PhaseItem<P> && requires(const P item) {
 };
 
 template <typename FuncT, typename P>
-concept Draw = PhaseItem<P> && requires(FuncT func, World& world, DrawContext ctx, Entity view, const P& item) {
+concept Draw = PhaseItem<P> && requires(FuncT func, World& world, DrawContext& ctx, Entity view, const P& item) {
     { func.prepare(world) };
     // draw function, since DrawContext can be converted to nvrhi::CommandListHandle, the function can also be
     // void draw(World&, nvrhi::CommandListHandle, Entity, P&)
@@ -57,7 +56,7 @@ concept Draw = PhaseItem<P> && requires(FuncT func, World& world, DrawContext ct
 template <PhaseItem P>
 struct DrawFunction {
     virtual void prepare(World& world) {}
-    virtual void draw(World& world, DrawContext ctx, Entity view, const P& item) = 0;
+    virtual void draw(World& world, DrawContext& ctx, Entity view, const P& item) = 0;
 
     virtual ~DrawFunction() = default;
 };
@@ -70,7 +69,7 @@ struct DrawFunctionImpl : DrawFunction<P> {
 
     void prepare(World& world) override { m_func.prepare(world); }
 
-    void draw(World& world, DrawContext cmd, Entity view, const P& item) override {
+    void draw(World& world, DrawContext& cmd, Entity view, const P& item) override {
         m_func.draw(world, cmd, view, item);
     }
 
@@ -161,9 +160,12 @@ struct RenderPhase {
         return items | std::views::transform([this](const T& item) { return _item_entity(item); });
     }
 
-    void render(DrawContext cmd, World& world, Entity view) { render_range(cmd, world, view, 0, items.size()); }
-    void render_range(
-        DrawContext cmd, World& world, Entity view, size_t start = 0, size_t end = std::numeric_limits<size_t>::max()) {
+    void render(DrawContext& cmd, World& world, Entity view) { render_range(cmd, world, view, 0, items.size()); }
+    void render_range(DrawContext& cmd,
+                      World& world,
+                      Entity view,
+                      size_t start = 0,
+                      size_t end   = std::numeric_limits<size_t>::max()) {
         end = std::min(end, items.size());
         if (start >= end) return;
 
@@ -234,7 +236,7 @@ struct RenderCommandInfo {
     using arg_4       = std::tuple_element_t<4, arg_types>;
     using decay_arg_4 = std::remove_cvref_t<arg_4>;
 
-    static_assert(std::convertible_to<const P&, arg_0> && std::convertible_to<DrawContext, arg_4>,
+    static_assert(std::convertible_to<const P&, arg_0> && std::convertible_to<DrawContext&, arg_4>,
                   "The first parameter of render command must be const T&, and the last parameter must be "
                   "nvrhi::CommandListHandle.");
     static_assert(epix::util::type_traits::specialization_of<decay_arg_1, epix::Item>,
@@ -318,7 +320,7 @@ struct RenderCommandState {
         }
         inited = true;
     }
-    void draw(World& world, DrawContext ctx, Entity view, const P& item) {
+    void draw(World& world, DrawContext& ctx, Entity view, const P& item) {
         if (!inited) {
             throw std::runtime_error("Render command state is not initialized.");
         }
@@ -336,12 +338,21 @@ struct SetItemPipeline {
                 const Item<>&,
                 const std::optional<Item<>>&,
                 ParamSet<Res<render::PipelineServer>>& pipelines,
-                DrawContext ctx) {
+                DrawContext& ctx) {
         auto&& [server] = pipelines.get();
-        server->get_render_pipeline(item.pipeline(), ctx.framebuffer->getFramebufferInfo())
+        if (!ctx.graphics_state.framebuffer) {
+            spdlog::error("No framebuffer bound in command list when setting pipeline for item {:#x}. Skipping.",
+                          item.entity().index());
+            return;
+        }
+        server->get_render_pipeline(item.pipeline(), ctx.graphics_state.framebuffer->getFramebufferInfo())
             .transform([&](auto&& pipeline) {
-                ctx.commandlist->setGraphicsState(nvrhi::GraphicsState().setPipeline(pipeline.handle));
+                ctx.graphics_state.setPipeline(pipeline.handle);
                 return true;  // must return a value since std::optional<void> is not allowed
+            })
+            .or_else([&]() -> std::optional<bool> {
+                spdlog::error("Failed to get pipeline for item {:#x}. Skipping.", item.entity().index());
+                return false;
             });
     }
 };
@@ -358,7 +369,7 @@ struct RenderCommandSequence : DrawFunction<P> {
         }(std::index_sequence_for<R<P>...>{});
     }
 
-    void draw(World& world, DrawContext cmd, Entity view, const P& item) override {
+    void draw(World& world, DrawContext& cmd, Entity view, const P& item) override {
         [&]<size_t... I>(std::index_sequence<I...>) {
             (std::get<I>(m_commands).draw(world, cmd, view, item), ...);
         }(std::index_sequence_for<R<P>...>{});
