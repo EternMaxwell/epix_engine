@@ -295,8 +295,41 @@ struct Query;
 template <typename... Gets, typename F>
     requires(!epix::util::type_traits::specialization_of<F, Filter> && FilterItem<F>)
 struct Query<Item<Gets...>, F> : public Query<Item<Gets...>, Filter<F>> {};
+template <typename F>
+    requires(epix::util::type_traits::specialization_of<F, Filter> || FilterItem<F>)
+struct Query<Item<>, F> {
+    using get_type      = std::tuple<>;
+    using world_ptr     = const World*;
+    using must_include  = std::tuple<>;
+    using access_type   = std::tuple<>;
+    using must_exclude  = std::tuple<>;
+    using view_type     = void;
+    using view_iterable = decltype(std::views::all(std::declval<std::array<std::tuple<>, 0>&>()));
+    using view_iter     = decltype(std::declval<view_iterable>().begin());
+
+   private:
+    world_ptr m_world;
+    std::array<std::tuple<>, 0> m_view;
+
+   public:
+    Query(const World& world) : m_world(&world) {}
+    auto iter() { return std::views::all(m_view); }
+    get_type single() { return m_view; }
+    std::optional<get_type> get_single() { return m_view; }
+    std::optional<get_type> try_get(Entity entity) { return m_view; }
+    get_type get(Entity entity) { return m_view; }
+    bool contains(Entity entity) { return false; }
+    template <typename Func>
+        requires requires(Func func) { std::apply(func, std::declval<get_type>()); }
+    void for_each(Func&& func) {
+        std::apply(func, m_view);
+    }
+    bool empty() { return false; }
+    operator bool() { return true; }
+    static constexpr bool readonly = true;
+};
 template <typename... Gets, typename... Filters>
-    requires(FilterItem<Filters> && ...)
+    requires((sizeof...(Gets) > 0) && (FilterItem<Filters> && ...))
 struct Query<Item<Gets...>, Filter<Filters...>> {
     using must_include = typename QueryTypeBuilder<Item<Gets...>, Filters...>::must_include;
     using access_type  = typename QueryTypeBuilder<Item<Gets...>, Filters...>::access_type;

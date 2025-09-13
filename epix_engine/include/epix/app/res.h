@@ -8,9 +8,7 @@ template <typename T>
 constexpr bool enable_mutable_res = false;
 template <typename T>
 struct Res {
-    using type = std::conditional_t<enable_mutable_res<T>,
-                                    std::decay_t<T>,
-                                    std::add_const_t<std::decay_t<T>>>;
+    using type = std::conditional_t<enable_mutable_res<T>, std::decay_t<T>, std::add_const_t<std::decay_t<T>>>;
 
    private:
     type* resource;
@@ -80,7 +78,8 @@ struct SystemParam<Res<T>> {
     }
     Res<T>& get(State& state) {
         if (!state.has_value()) {
-            throw std::runtime_error("Resource not found");
+            throw std::runtime_error(
+                std::format("Resource of type {} not found", meta::type_id<std::decay_t<T>>().name));
         }
         return *state;
     }
@@ -111,7 +110,8 @@ struct SystemParam<ResMut<T>> {
     }
     ResMut<T>& get(State& state) {
         if (!state.has_value()) {
-            throw std::runtime_error("Resource not found");
+            throw std::runtime_error(
+                std::format("Resource of type {} not found", meta::type_id<std::decay_t<T>>().name));
         }
         return *state;
     }
@@ -129,8 +129,7 @@ struct SystemParam<std::optional<ResMut<T>>> {
     }
     std::optional<ResMut<T>>& get(State& state) { return state; }
 };
-static_assert(ValidParam<Res<int>> && ValidParam<std::optional<Res<int>>> &&
-                  ValidParam<ResMut<int>> &&
+static_assert(ValidParam<Res<int>> && ValidParam<std::optional<Res<int>>> && ValidParam<ResMut<int>> &&
                   ValidParam<std::optional<ResMut<int>>>,
               "Res and ResMut should be valid parameters for systems.");
 }  // namespace epix::app

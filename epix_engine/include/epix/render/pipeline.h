@@ -27,12 +27,9 @@ struct RenderPipelineDesc : nvrhi::GraphicsPipelineDesc {
     EPIX_API RenderPipelineDesc& setVertexShader(ShaderInfo shader);
     EPIX_API RenderPipelineDesc& setFragmentShader(ShaderInfo shader);
     EPIX_API RenderPipelineDesc& setGeometryShader(ShaderInfo shader);
-    EPIX_API RenderPipelineDesc& setTessellationControlShader(
-        ShaderInfo shader);
-    EPIX_API RenderPipelineDesc& setTessellationEvaluationShader(
-        ShaderInfo shader);
-    EPIX_API RenderPipelineDesc& addBindingLayout(
-        const nvrhi::BindingLayoutDesc& layout);
+    EPIX_API RenderPipelineDesc& setTessellationControlShader(ShaderInfo shader);
+    EPIX_API RenderPipelineDesc& setTessellationEvaluationShader(ShaderInfo shader);
+    EPIX_API RenderPipelineDesc& addBindingLayout(const nvrhi::BindingLayoutDesc& layout);
 };
 struct ComputePipelineDesc : nvrhi::ComputePipelineDesc {
     using Base = nvrhi::ComputePipelineDesc;
@@ -41,8 +38,7 @@ struct ComputePipelineDesc : nvrhi::ComputePipelineDesc {
     std::vector<nvrhi::BindingLayoutDesc> bindingLayoutDescs;
 
     EPIX_API ComputePipelineDesc& setComputeShader(ShaderInfo shader);
-    EPIX_API ComputePipelineDesc& addBindingLayout(
-        const nvrhi::BindingLayoutDesc& layout);
+    EPIX_API ComputePipelineDesc& addBindingLayout(const nvrhi::BindingLayoutDesc& layout);
 };
 
 struct ComputePipelineId {
@@ -85,9 +81,7 @@ struct PipelineServer {
 
         RenderPipelineId _id;
 
-        mutable std::vector<
-            std::pair<nvrhi::FramebufferInfo, nvrhi::GraphicsPipelineHandle>>
-            specializedPipelines;
+        mutable std::vector<std::pair<nvrhi::FramebufferInfo, nvrhi::GraphicsPipelineHandle>> specializedPipelines;
 
         mutable std::mutex _mutex;
 
@@ -102,43 +96,32 @@ struct PipelineServer {
 
         EPIX_API RenderPipelineId id() const;
 
-        EPIX_API size_t specialize(nvrhi::FramebufferHandle framebuffer) const;
+        EPIX_API size_t specialize(const nvrhi::FramebufferInfo& info) const;
         EPIX_API nvrhi::GraphicsPipelineHandle get(size_t index) const;
-        EPIX_API std::tuple<size_t, nvrhi::GraphicsPipelineHandle> get(
-            nvrhi::FramebufferHandle framebuffer) const;
+        EPIX_API std::tuple<size_t, nvrhi::GraphicsPipelineHandle> get(const nvrhi::FramebufferInfo& info) const;
     };
 
     nvrhi::DeviceHandle device;
-    std::vector<std::variant<ComputePipeline,
-                             ComputePipelineDesc,
-                             std::pair<ComputePipelineDesc, PipelineError>>>
+    std::vector<std::variant<ComputePipeline, ComputePipelineDesc, std::pair<ComputePipelineDesc, PipelineError>>>
         computePipelines;
-    std::vector<std::variant<RenderPipelineCache,
-                             RenderPipelineDesc,
-                             std::pair<RenderPipelineDesc, PipelineError>>>
+    std::vector<std::variant<RenderPipelineCache, RenderPipelineDesc, std::pair<RenderPipelineDesc, PipelineError>>>
         renderPipelines;
 
-    std::deque<std::variant<RenderPipelineId, ComputePipelineId>>
-        queuedPipelines;
+    std::deque<std::variant<RenderPipelineId, ComputePipelineId>> queuedPipelines;
 
    public:
     EPIX_API PipelineServer(nvrhi::DeviceHandle device);
 
     EPIX_API static PipelineServer from_world(epix::World& world);
 
-    EPIX_API RenderPipelineId
-    queue_render_pipeline(const RenderPipelineDesc& desc);
-    EPIX_API ComputePipelineId
-    queue_compute_pipeline(const ComputePipelineDesc& desc);
+    EPIX_API RenderPipelineId queue_render_pipeline(const RenderPipelineDesc& desc);
+    EPIX_API ComputePipelineId queue_compute_pipeline(const ComputePipelineDesc& desc);
 
-    EPIX_API std::optional<RenderPipeline> get_render_pipeline(
-        RenderPipelineId id, nvrhi::FramebufferHandle framebuffer) const;
-    EPIX_API std::optional<ComputePipeline> get_compute_pipeline(
-        ComputePipelineId id) const;
+    EPIX_API std::optional<RenderPipeline> get_render_pipeline(RenderPipelineId id,
+                                                               const nvrhi::FramebufferInfo& info) const;
+    EPIX_API std::optional<ComputePipeline> get_compute_pipeline(ComputePipelineId id) const;
 
-    EPIX_API static void process_queued(
-        ResMut<PipelineServer> server,
-        Res<assets::RenderAssets<Shader>> shaders);
+    EPIX_API static void process_queued(ResMut<PipelineServer> server, Res<assets::RenderAssets<Shader>> shaders);
 };
 
 struct PipelineServerPlugin {

@@ -64,6 +64,7 @@ EPIX_API SystemSetConfig& SystemSetConfig::set_name(size_t index, const std::str
     return *this;
 }
 EPIX_API SystemSetConfig& SystemSetConfig::set_names(epix::util::ArrayProxy<std::string> names) noexcept {
+    this->name = names.size() > 0 ? *(names.begin()) : std::string{};
     for (size_t i = 0; i < sub_configs.size() && i < names.size(); i++) {
         sub_configs[i].set_name(*(names.begin() + i));
     }

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <expected>
+#include <format>
 
 #include "epix/utils/core.h"
 #include "label.h"
@@ -205,7 +206,7 @@ struct World {
         if (auto it = resources->find(meta::type_id<T>()); it != resources->end()) {
             return *std::static_pointer_cast<T>(it->second);
         } else {
-            throw std::runtime_error("Resource not found.");
+            throw std::runtime_error(std::format("Resource of type {} not found", meta::type_id<T>().name));
         }
     }
     template <typename T>
@@ -214,7 +215,7 @@ struct World {
         if (auto it = resources->find(meta::type_id<T>()); it != resources->end()) {
             return *std::static_pointer_cast<T>(it->second);
         } else {
-            throw std::runtime_error("Resource not found.");
+            throw std::runtime_error(std::format("Resource of type {} not found", meta::type_id<T>().name));
         }
     }
     template <typename T>

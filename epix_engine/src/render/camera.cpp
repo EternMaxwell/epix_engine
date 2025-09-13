@@ -133,7 +133,7 @@ EPIX_API void CameraPlugin::build(App& app) {
                     CameraProjectionPlugin<PerspectiveProjection>{}, ExtractResourcePlugin<ClearColor>{});
     if (auto sub_app = app.get_sub_app(Render)) {
         sub_app->insert_resource(ClearColor{0.05f, 0.05f, 0.05f, 1.0f});
-        sub_app->add_systems(ExtractSchedule, into(extract_cameras));
+        sub_app->add_systems(ExtractSchedule, into(extract_cameras).set_name("extract cameras"));
         if (auto render_graph = sub_app->get_resource<graph::RenderGraph>()) {
             render_graph->add_node(CameraDriverNodeLabel, CameraDriverNode{});
         }

@@ -26,8 +26,7 @@ concept RenderAssetImpl = requires(RenderAsset<T> asset) {
     typename RenderAsset<T>::Param;
     epix::app::ValidParam<typename RenderAsset<T>::Param>;
     {
-        asset.process(std::declval<T&&>(),
-                      std::declval<typename RenderAsset<T>::Param&>())
+        asset.process(std::declval<T&&>(), std::declval<typename RenderAsset<T>::Param&>())
     } -> std::same_as<typename RenderAsset<T>::ProcessedAsset>;
     { asset.usage(std::declval<const T&>()) } -> std::same_as<RenderAssetUsage>;
 };
@@ -37,19 +36,13 @@ struct RenderAssets {
     using Type = typename RenderAsset<T>::ProcessedAsset;
 
    public:
-    void insert(const epix::assets::AssetId<T>& id, Type&& asset) {
-        assets.emplace(id, std::move(asset));
-    }
+    void insert(const epix::assets::AssetId<T>& id, Type&& asset) { assets.emplace(id, std::move(asset)); }
     template <typename... Args>
     void emplace(const epix::assets::AssetId<T>& id, Args&&... args) {
         assets.emplace(id, std::forward<Args>(args)...);
     }
-    bool contains(const epix::assets::AssetId<T>& id) const {
-        return assets.contains(id);
-    }
-    bool remove(const epix::assets::AssetId<T>& id) {
-        return assets.erase(id) > 0;
-    }
+    bool contains(const epix::assets::AssetId<T>& id) const { return assets.contains(id); }
+    bool remove(const epix::assets::AssetId<T>& id) { return assets.erase(id) > 0; }
     Type& get(const epix::assets::AssetId<T>& id) {
         if (auto ptr = try_get(id)) {
             return *ptr;
@@ -64,13 +57,13 @@ struct RenderAssets {
     }
     Type* try_get(const epix::assets::AssetId<T>& id) {
         if (auto it = assets.find(id); it != assets.end()) {
-            return &it->second;
+            return std::addressof(it->second);
         }
         return nullptr;
     }
     const Type* try_get(const epix::assets::AssetId<T>& id) const {
         if (auto it = assets.find(id); it != assets.end()) {
-            return &it->second;
+            return std::addressof(it->second);
         }
         return nullptr;
     }
@@ -104,8 +97,7 @@ void extract_assets(Commands& commands,
     RenderAsset<T> render_asset_impl;
     std::vector<std::string> errors;
     for (const auto& id : changed_ids) {
-        if (auto asset = assets->get(id);
-            asset && render_asset_impl.usage(*asset) & RENDER_WORLD) {
+        if (auto asset = assets->get(id); asset && render_asset_impl.usage(*asset) & RENDER_WORLD) {
             if (render_asset_impl.usage(*asset) & MAIN_WORLD) {
                 // this asset is still used in main world, copy it
                 if constexpr (std::is_copy_constructible_v<T>) {
@@ -113,10 +105,10 @@ void extract_assets(Commands& commands,
                 } else {
                     // T is not copyable, so this asset is not allowed to
                     // be used both in main world and render world
-                    errors.emplace_back(std::format(
-                        "Asset [{}] is not copyable, as a render asset, it "
-                        "should not have a usage of MAIN_WORLD & RENDER_WORLD",
-                        id.to_string()));
+                    errors.emplace_back(
+                        std::format("Asset [{}] is not copyable, as a render asset, it "
+                                    "should not have a usage of MAIN_WORLD & RENDER_WORLD",
+                                    id.to_string()));
                 }
             } else {
                 // this asset is only used in render world, move it
@@ -126,16 +118,14 @@ void extract_assets(Commands& commands,
         }
     }
 
-    commands.insert_resource(CachedExtractedAssets<T>{
-        std::move(extracted_assets), std::move(removed)});
+    commands.insert_resource(CachedExtractedAssets<T>{std::move(extracted_assets), std::move(removed)});
 
     if (!errors.empty()) {
         std::stringstream ss;
         for (const auto& error : errors) {
             ss << "\t" << error << "\n";
         }
-        throw std::runtime_error(
-            "Errors occurred while extracting render assets:\n" + ss.str());
+        throw std::runtime_error("Errors occurred while extracting render assets:\n" + ss.str());
     }
 }
 
@@ -145,12 +135,10 @@ void process_render_assets(Commands& commands,
                            ResMut<RenderAssets<T>>& render_assets,
                            ResMut<CachedExtractedAssets<T>>& extracted_assets) {
     RenderAsset<T> render_asset_impl;
-    std::vector<std::pair<epix::assets::AssetId<T>, std::exception_ptr>>
-        exceptions;
+    std::vector<std::pair<epix::assets::AssetId<T>, std::exception_ptr>> exceptions;
     for (auto&& [id, asset] : extracted_assets->extracted_assets) {
         try {
-            render_assets->insert(
-                id, render_asset_impl.process(std::move(asset), param));
+            render_assets->insert(id, render_asset_impl.process(std::move(asset), param));
         } catch (...) {
             exceptions.emplace_back(id, std::current_exception());
         }
@@ -166,15 +154,12 @@ void process_render_assets(Commands& commands,
             try {
                 std::rethrow_exception(ex_ptr);
             } catch (const std::exception& e) {
-                ss << "\tError processing asset " << id.to_string() << ": "
-                   << e.what() << "\n";
+                ss << "\tError processing asset " << id.to_string() << ": " << e.what() << "\n";
             } catch (...) {
-                ss << "\tUnknown error processing asset " << id.to_string()
-                   << "\n";
+                ss << "\tUnknown error processing asset " << id.to_string() << "\n";
             }
         }
-        throw std::runtime_error(
-            "Errors occurred while processing render assets:\n" + ss.str());
+        throw std::runtime_error("Errors occurred while processing render assets:\n" + ss.str());
     }
 }
 
@@ -188,21 +173,15 @@ struct ExtractAssetPlugin {
     void build(App& app) {
         if (auto render_app = app.get_sub_app(Render)) {
             render_app->init_resource<RenderAssets<T>>();
-            render_app->configure_sets(
-                sets(ExtractAssetSet::Extract, ExtractAssetSet::Process)
-                    .chain());
-            render_app->add_systems(
-                ExtractSchedule,
-                into(extract_assets<T>)
-                    .in_set(ExtractAssetSet::Extract)
-                    .set_name(std::format("extract render asset<{}>",
-                                          typeid(T).name())));
-            render_app->add_systems(
-                ExtractSchedule,
-                into(process_render_assets<T>)
-                    .in_set(ExtractAssetSet::Process)
-                    .set_name(std::format("process render asset<{}>",
-                                          typeid(T).name())));
+            render_app->configure_sets(sets(ExtractAssetSet::Extract, ExtractAssetSet::Process).chain());
+            render_app->add_systems(ExtractSchedule,
+                                    into(extract_assets<T>)
+                                        .in_set(ExtractAssetSet::Extract)
+                                        .set_name(std::format("extract render asset<{}>", typeid(T).name())));
+            render_app->add_systems(ExtractSchedule,
+                                    into(process_render_assets<T>)
+                                        .in_set(ExtractAssetSet::Process)
+                                        .set_name(std::format("process render asset<{}>", typeid(T).name())));
         }
     }
 };
