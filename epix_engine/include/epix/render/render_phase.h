@@ -121,9 +121,12 @@ struct DrawFunctions {
     template <Draw<P> T, typename... Args>
         requires std::constructible_from<T, Args...>
     DrawFunctionId _add_function(Args&&... args) {
-        auto index                  = static_cast<uint32_t>(m_functions.size());
-        auto func                   = std::make_unique<DrawFunctionImpl<P, T>>(std::forward<Args>(args)...);
         epix::meta::type_index type = epix::meta::type_id<T>();
+        if (auto it = m_indices.find(type); it != m_indices.end()) {
+            return DrawFunctionId(it->second);
+        }
+        auto index = static_cast<uint32_t>(m_functions.size());
+        auto func  = std::make_unique<DrawFunctionImpl<P, T>>(std::forward<Args>(args)...);
         m_functions.emplace_back(std::move(func));
         m_indices.emplace(type, index);
         return DrawFunctionId(index);
@@ -341,7 +344,14 @@ struct RenderCommandSequence : DrawFunction<P> {
 };
 template <PhaseItem P, template <typename> typename... R>
     requires(RenderCommand<R, P> && ...)
-void add_render_commands(DrawFunctions<P>& draw_functions) {
-    draw_functions.template add(RenderCommandSequence<P, R...>{});
+DrawFunctionId get_or_add_render_commands(DrawFunctions<P>& draw_functions) {
+    return draw_functions.template get_id<RenderCommandSequence<P, R...>>().value_or(
+        draw_functions.template add<RenderCommandSequence<P, R...>>());
+}
+template <PhaseItem P, template <typename> typename... R>
+    requires(RenderCommand<R, P> && ...)
+DrawFunctionId add_render_commands(DrawFunctions<P>& draw_functions) {
+    // Or maybe handle duplicated adds here?
+    return draw_functions.template add(RenderCommandSequence<P, R...>{});
 }
 }  // namespace epix::render::render_phase
