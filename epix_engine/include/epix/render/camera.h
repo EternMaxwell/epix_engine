@@ -195,7 +195,7 @@ struct ScalingMode {
     }
 };
 struct OrthographicProjection {
-    float near_plane          = 0.0f;     // Near clipping plane
+    float near_plane          = -1000.0f;     // Near clipping plane
     float far_plane           = 1000.0f;  // Far clipping plane
     ScalingMode scaling_mode  = ScalingMode::window_size(1.0f);
     float scale               = 1.0f;                   // Additional scale factor

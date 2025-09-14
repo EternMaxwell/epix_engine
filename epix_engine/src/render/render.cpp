@@ -125,6 +125,7 @@ EPIX_API void epix::render::RenderPlugin::build(epix::App& app) {
         find_queue_family(vk::QueueFlagBits::eGraphics | vk::QueueFlagBits::eCompute | vk::QueueFlagBits::eTransfer);
     auto device_extensions = std::array{
         VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+        VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME,
     };
     auto device = [&] {
         std::array<float, 1> queue_priorities = {1.0f};
@@ -136,11 +137,14 @@ EPIX_API void epix::render::RenderPlugin::build(epix::App& app) {
                 return vk::DeviceQueueCreateInfo().setQueueFamilyIndex(index).setQueuePriorities(queue_priorities);
             }) |
             std::ranges::to<std::vector>();
+        vk::PhysicalDeviceDynamicRenderingFeatures dynamic_rendering_feature;
+        dynamic_rendering_feature.setDynamicRendering(true);
         vk::PhysicalDeviceVulkan12Features features12;
         features12.setTimelineSemaphore(true);
         vk::PhysicalDeviceVulkan13Features features13;
         features13.setSynchronization2(true);
         features12.setPNext(&features13);
+        features13.setPNext(&dynamic_rendering_feature);
         return physical_device.createDevice(vk::DeviceCreateInfo()
                                                 .setQueueCreateInfos(queue_create_infos)
                                                 .setPEnabledExtensionNames(device_extensions)

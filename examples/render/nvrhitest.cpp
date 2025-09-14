@@ -5,7 +5,10 @@
 #include <epix/transform/plugin.h>
 #include <epix/window.h>
 
+#define GLM_ENABLE_EXPERIMENTAL
+#include <glm/gtx/string_cast.hpp>
 #include <spirv_cross/spirv_cross.hpp>
+
 
 namespace shader_codes {
 #include "shaders/shader.frag.h"
@@ -74,11 +77,13 @@ struct TestPipeline {
                 .setElementStride(sizeof(uv)),
         };
         auto input_layout = device->createInputLayout(attributes.data(), attributes.size(), nullptr);
-        binding_layout    = device->createBindingLayout(nvrhi::BindingLayoutDesc()
-                                                            .addItem(nvrhi::BindingLayoutItem::Texture_SRV(1))
-                                                            .addItem(nvrhi::BindingLayoutItem::Sampler(0))
-                                                            .setBindingOffsets(nvrhi::VulkanBindingOffsets{0, 0, 0, 0})
-                                                            .setVisibility(nvrhi::ShaderType::All));
+        binding_layout =
+            device->createBindingLayout(nvrhi::BindingLayoutDesc()
+                                            .addItem(nvrhi::BindingLayoutItem::Texture_SRV(1))
+                                            .addItem(nvrhi::BindingLayoutItem::Sampler(0))
+                                            .addItem(nvrhi::BindingLayoutItem::PushConstants(0, 2 * sizeof(glm::mat4)))
+                                            .setBindingOffsets(nvrhi::VulkanBindingOffsets{0, 0, 0, 0})
+                                            .setVisibility(nvrhi::ShaderType::All));
         render::RenderPipelineDesc pipeline_desc;
         pipeline_desc
             .setRenderState(
@@ -122,8 +127,8 @@ struct Buffers {
                                                     .setInitialState(nvrhi::ResourceStates::VertexBuffer)
                                                     .setKeepInitialState(true));
 
-        auto pos_data = std::array{pos{-0.5f, -0.5f}, pos{0.5f, -0.5f}, pos{0.5f, 0.5f},
-                                   pos{-0.5f, -0.5f}, pos{-0.5f, 0.5f}, pos{0.5f, 0.5f}};
+        auto pos_data =
+            std::array{pos{-5.f, -5.f}, pos{5.f, -5.f}, pos{5.f, 5.f}, pos{-5.f, -5.f}, pos{-5.f, 5.f}, pos{5.f, 5.f}};
         auto uv_data =
             std::array{uv{0.0f, 0.0f}, uv{1.0f, 0.0f}, uv{1.0f, 1.0f}, uv{0.0f, 0.0f}, uv{0.0f, 1.0f}, uv{1.0f, 1.0f}};
 
@@ -221,11 +226,13 @@ struct BindingSetCommand {
             return;
         }
         auto& image = world.resource<render::assets::RenderAssets<image::Image>>().get(image_handle);
-        binding_set = device->createBindingSet(nvrhi::BindingSetDesc()
-                                                   .addItem(nvrhi::BindingSetItem::Texture_SRV(1, image))
-                                                   .addItem(nvrhi::BindingSetItem::Sampler(0, sampler))
-                                                   .setTrackLiveness(true),
-                                               binding_layout);
+        binding_set =
+            device->createBindingSet(nvrhi::BindingSetDesc()
+                                         .addItem(nvrhi::BindingSetItem::Texture_SRV(1, image))
+                                         .addItem(nvrhi::BindingSetItem::Sampler(0, sampler))
+                                         .addItem(nvrhi::BindingSetItem::PushConstants(0, 2 * sizeof(glm::mat4)))
+                                         .setTrackLiveness(true),
+                                     binding_layout);
     }
     void render(const T& item, Item<>, std::optional<Item<>>, ParamSet<>, render::render_phase::DrawContext& ctx) {
         if (!binding_set) {
@@ -233,6 +240,24 @@ struct BindingSetCommand {
         }
         ctx.graphics_state.bindings.resize(0);
         ctx.commandlist->setGraphicsState(ctx.graphics_state.addBindingSet(binding_set));
+    }
+};
+template <typename T = TestPhaseItem>
+struct PushConstant {
+    void render(const T& item,
+                Item<render::view::ExtractedView>& view,
+                std::optional<Item<>>,
+                ParamSet<>,
+                render::render_phase::DrawContext& ctx) {
+        // set push constant
+        auto&& [extracted_view] = view;
+        struct PushConstants {
+            glm::mat4 proj;
+            glm::mat4 view;
+        } pc;
+        pc.proj = extracted_view.projection;
+        pc.view = extracted_view.transform.matrix;
+        ctx.commandlist->setPushConstants(&pc, sizeof(PushConstants));
     }
 };
 template <typename T = TestPhaseItem>
@@ -259,7 +284,8 @@ void queue_render_phase(Query<Item<Entity>, With<render::camera::ExtractedCamera
             .pipeline_id = pipeline->get_id(),
             .draw_function_id =
                 render::render_phase::get_or_add_render_commands<TestPhaseItem, render::render_phase::SetItemPipeline,
-                                                                 BindingSetCommand, DrawCommand>(*draw_functions),
+                                                                 BindingSetCommand, PushConstant, DrawCommand>(
+                    *draw_functions),
         });
         cmd.entity(entity).emplace(std::move(phase));
     }
@@ -349,67 +375,6 @@ int main() {
             }));
         render_app.add_systems(render::Render,
                                into(queue_render_phase).in_set(render::RenderSet::Queue).set_name("queue test phase"));
-        // render_app.add_systems(
-        //     render::Render,
-        //     into([](Res<CurrentFramebuffer> framebuffer, Res<TestPipeline> pipeline, Res<Buffers> buffers,
-        //             Res<nvrhi::DeviceHandle> nvrhi_device, Res<render::assets::RenderAssets<image::Image>> textures,
-        //             Res<render::PipelineServer> pipeline_server, Local<nvrhi::SamplerHandle> sampler) {
-        //         auto& device = nvrhi_device.get();
-        //         if (!framebuffer->framebuffer) {
-        //             throw std::runtime_error("Framebuffer not created!");
-        //         }
-
-        //         auto pipe = pipeline_server->get_render_pipeline(pipeline->get_id(), framebuffer->framebuffer);
-
-        //         if (!pipe) {
-        //             // spdlog::warn("Pipeline not created!");
-        //             return;
-        //         }
-        //         {
-        //             auto& pip = *pipe;
-        //             if (pip.specializedIndex == -1) {
-        //                 spdlog::error("Failed to specialize pipeline");
-        //             }
-        //         }
-        //         {
-        //             if (!textures->try_get(image_handle)) {
-        //                 // spdlog::warn("Texture not loaded!");
-        //                 return;
-        //             }
-        //         }
-        //         {
-        //             if (!*sampler) {
-        //                 *sampler = device->createSampler(nvrhi::SamplerDesc().setAllFilters(false));
-        //             }
-        //         }
-
-        //         auto bindingSet = device->createBindingSet(
-        //             nvrhi::BindingSetDesc()
-        //                 .addItem(nvrhi::BindingSetItem::Texture_SRV(1, textures->get(image_handle)))
-        //                 .addItem(nvrhi::BindingSetItem::Sampler(0, *sampler))
-        //                 .setTrackLiveness(true),
-        //             pipe->handle->getDesc().bindingLayouts[0]);
-        //         auto commandlist = device->createCommandList();
-        //         commandlist->open();
-        //         commandlist->clearTextureFloat(framebuffer->framebuffer->getDesc().colorAttachments[0].texture,
-        //                                        nvrhi::TextureSubresourceSet(), 0.05f);
-        //         commandlist->setGraphicsState(
-        //             nvrhi::GraphicsState()
-        //                 .setFramebuffer(framebuffer->framebuffer)
-        //                 .setPipeline(pipe->handle)
-        //                 .setViewport(nvrhi::ViewportState().addViewportAndScissorRect(
-        //                     framebuffer->framebuffer->getFramebufferInfo().getViewport()))
-        //                 .addBindingSet(bindingSet)
-        //                 .addVertexBuffer(
-        //                     nvrhi::VertexBufferBinding().setBuffer(buffers->vertex_buffer[0]).setSlot(0).setOffset(0))
-        //                 .addVertexBuffer(
-        //                     nvrhi::VertexBufferBinding().setBuffer(buffers->vertex_buffer[1]).setSlot(1).setOffset(0)));
-        //         commandlist->draw(nvrhi::DrawArguments().setVertexCount(buffers->vertex_count));
-        //         commandlist->close();
-        //         device->executeCommandList(commandlist);
-        //     })
-        //         .in_set(render::RenderSet::Render)
-        //         .set_name("render test pipeline"));
 
         render_app.init_resource<Buffers>();
     });

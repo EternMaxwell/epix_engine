@@ -324,9 +324,9 @@ struct RenderCommandState {
         if (!inited) {
             throw std::runtime_error("Render command state is not initialized.");
         }
-        auto view_data   = view_query.get(view);
-        auto entity_data = entity_query.try_get(item.entity());
-        auto& param      = system_param.get(system_param_state);
+        typename RenderCommandInfo<R, P>::view_item view_data = view_query.get(view);
+        auto entity_data                                      = entity_query.try_get(item.entity());
+        auto& param                                           = system_param.get(system_param_state);
         command.render(item, view_data, entity_data, param, ctx);
     }
 };

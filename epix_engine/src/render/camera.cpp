@@ -58,9 +58,9 @@ EPIX_API void OrthographicProjection::update(float width, float height) {
             projection_height = height * horizontal / width;
         });
     rect.left   = -projection_width * viewport_origin.x * scale;
-    rect.right  = projection_width * (1.0f - viewport_origin.x) * scale + rect.left;
+    rect.right  = projection_width * scale + rect.left;
     rect.bottom = -projection_height * viewport_origin.y * scale;
-    rect.top    = projection_height * (1.0f - viewport_origin.y) * scale + rect.bottom;
+    rect.top    = projection_height * scale + rect.bottom;
 }
 
 EPIX_API void epix::render::camera::extract_cameras(

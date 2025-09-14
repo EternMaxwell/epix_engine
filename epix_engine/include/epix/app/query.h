@@ -452,3 +452,24 @@ struct SystemParam<Q> {
     Q& get(State& state) { return state.value(); }
 };
 }  // namespace epix::app
+
+// implement tuple interface for Item
+namespace std {
+template <size_t I, typename... Args>
+struct tuple_element<I, epix::app::Item<Args...>> {
+   private:
+    using item = epix::app::Item<Args...>;
+
+   public:
+    using type = std::tuple_element_t<I, typename item::base_type>;
+};
+template <typename... Args>
+struct tuple_size<epix::app::Item<Args...>> : std::integral_constant<size_t, sizeof...(Args)> {};
+
+// structured bindings support
+template <size_t I, typename... Args>
+    requires(I < sizeof...(Args))
+constexpr auto& get(epix::app::Item<Args...>& item) noexcept {
+    return std::get<I>((typename epix::app::Item<Args...>::base_type&)item);
+}
+}  // namespace std
