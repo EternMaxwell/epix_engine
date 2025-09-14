@@ -50,13 +50,13 @@ concept Draw = PhaseItem<P> && requires(FuncT func, World& world, DrawContext& c
     { func.prepare(world) };
     // draw function, since DrawContext can be converted to nvrhi::CommandListHandle, the function can also be
     // void draw(World&, nvrhi::CommandListHandle, Entity, P&)
-    { func.draw(world, ctx, view, item) };
+    { func.draw(world, ctx, view, item) } -> std::same_as<bool>;
 };
 
 template <PhaseItem P>
 struct DrawFunction {
     virtual void prepare(World& world) {}
-    virtual void draw(World& world, DrawContext& ctx, Entity view, const P& item) = 0;
+    virtual bool draw(World& world, DrawContext& ctx, Entity view, const P& item) = 0;
 
     virtual ~DrawFunction() = default;
 };
@@ -69,8 +69,8 @@ struct DrawFunctionImpl : DrawFunction<P> {
 
     void prepare(World& world) override { m_func.prepare(world); }
 
-    void draw(World& world, DrawContext& cmd, Entity view, const P& item) override {
-        m_func.draw(world, cmd, view, item);
+    bool draw(World& world, DrawContext& cmd, Entity view, const P& item) override {
+        return m_func.draw(world, cmd, view, item);
     }
 
    private:
@@ -79,7 +79,7 @@ struct DrawFunctionImpl : DrawFunction<P> {
 
 template <PhaseItem P>
 struct EmptyDrawFunction : DrawFunction<P> {
-    void draw(World&, DrawContext, Entity, const P&) override {}
+    bool draw(World&, DrawContext, Entity, const P&) override { return true; }
 };
 
 template <PhaseItem P>
@@ -212,7 +212,6 @@ struct member_function_pointer_traits<R (C::*)(Args...)> {
     using return_type = R;
     using arg_types   = std::tuple<Args...>;
 };
-using RenderCommandResult = void;
 template <template <typename> typename RenderCommand, PhaseItem P>
 struct RenderCommandInfo {
     using T                           = RenderCommand<P>;
@@ -222,7 +221,8 @@ struct RenderCommandInfo {
     using arg_types                   = typename traits::arg_types;
     static constexpr bool has_prepare = requires(T t, World& w) { t.prepare(w); };
 
-    static_assert(std::same_as<return_type, RenderCommandResult>, "Render command must return void");
+    static_assert(std::same_as<return_type, bool>,
+                  "Render command must return bool indicating the operation success or not.");
     static_assert(std::tuple_size_v<arg_types> == 5, "Render command must have exactly 5 parameters.");
 
     using arg_0       = std::tuple_element_t<0, arg_types>;
@@ -320,21 +320,21 @@ struct RenderCommandState {
         }
         inited = true;
     }
-    void draw(World& world, DrawContext& ctx, Entity view, const P& item) {
+    bool draw(World& world, DrawContext& ctx, Entity view, const P& item) {
         if (!inited) {
-            throw std::runtime_error("Render command state is not initialized.");
+            throw std::runtime_error("Render command state is not initialized. Call prepare() before draw().");
         }
         typename RenderCommandInfo<R, P>::view_item view_data = view_query.get(view);
         auto entity_data                                      = entity_query.try_get(item.entity());
         auto& param                                           = system_param.get(system_param_state);
-        command.render(item, view_data, entity_data, param, ctx);
+        return command.render(item, view_data, entity_data, param, ctx);
     }
 };
 
 template <PhaseItem P>
     requires CachedRenderPipelinePhaseItem<P>
 struct SetItemPipeline {
-    void render(const P& item,
+    bool render(const P& item,
                 const Item<>&,
                 const std::optional<Item<>>&,
                 ParamSet<Res<render::PipelineServer>>& pipelines,
@@ -343,9 +343,9 @@ struct SetItemPipeline {
         if (!ctx.graphics_state.framebuffer) {
             spdlog::error("No framebuffer bound in command list when setting pipeline for item {:#x}. Skipping.",
                           item.entity().index());
-            return;
+            return false;
         }
-        server->get_render_pipeline(item.pipeline(), ctx.graphics_state.framebuffer->getFramebufferInfo())
+        return server->get_render_pipeline(item.pipeline(), ctx.graphics_state.framebuffer->getFramebufferInfo())
             .transform([&](auto&& pipeline) {
                 ctx.graphics_state.setPipeline(pipeline.handle);
                 return true;  // must return a value since std::optional<void> is not allowed
@@ -353,7 +353,8 @@ struct SetItemPipeline {
             .or_else([&]() -> std::optional<bool> {
                 spdlog::error("Failed to get pipeline for item {:#x}. Skipping.", item.entity().index());
                 return false;
-            });
+            })
+            .value();
     }
 };
 
@@ -369,10 +370,16 @@ struct RenderCommandSequence : DrawFunction<P> {
         }(std::index_sequence_for<R<P>...>{});
     }
 
-    void draw(World& world, DrawContext& cmd, Entity view, const P& item) override {
-        [&]<size_t... I>(std::index_sequence<I...>) {
-            (std::get<I>(m_commands).draw(world, cmd, view, item), ...);
-        }(std::index_sequence_for<R<P>...>{});
+    bool draw(World& world, DrawContext& cmd, Entity view, const P& item) override {
+        return [&]<size_t I>(this auto&& self, std::integral_constant<size_t, I>) {
+            bool res = std::get<I>(m_commands).draw(world, cmd, view, item);
+            if (!res) return false;
+            if constexpr (I + 1 < sizeof...(R)) {
+                return self(std::integral_constant<size_t, I + 1>{});
+            } else {
+                return true;
+            }
+        }(std::integral_constant<size_t, 0>{});
     }
 
    private:

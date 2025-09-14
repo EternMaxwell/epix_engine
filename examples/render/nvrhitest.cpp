@@ -9,7 +9,6 @@
 #include <glm/gtx/string_cast.hpp>
 #include <spirv_cross/spirv_cross.hpp>
 
-
 namespace shader_codes {
 #include "shaders/shader.frag.h"
 #include "shaders/shader.vert.h"
@@ -234,17 +233,19 @@ struct BindingSetCommand {
                                          .setTrackLiveness(true),
                                      binding_layout);
     }
-    void render(const T& item, Item<>, std::optional<Item<>>, ParamSet<>, render::render_phase::DrawContext& ctx) {
+    bool render(const T& item, Item<>, std::optional<Item<>>, ParamSet<>, render::render_phase::DrawContext& ctx) {
         if (!binding_set) {
-            throw std::runtime_error("Binding set is not created");
+            spdlog::error("Binding set is not created for item {:#x}. Skipping.", item.entity().index());
+            return false;
         }
         ctx.graphics_state.bindings.resize(0);
         ctx.commandlist->setGraphicsState(ctx.graphics_state.addBindingSet(binding_set));
+        return true;
     }
 };
 template <typename T = TestPhaseItem>
 struct PushConstant {
-    void render(const T& item,
+    bool render(const T& item,
                 Item<render::view::ExtractedView>& view,
                 std::optional<Item<>>,
                 ParamSet<>,
@@ -258,17 +259,19 @@ struct PushConstant {
         pc.proj = extracted_view.projection;
         pc.view = extracted_view.transform.matrix;
         ctx.commandlist->setPushConstants(&pc, sizeof(PushConstants));
+        return true;
     }
 };
 template <typename T = TestPhaseItem>
 struct DrawCommand {
-    void render(const T& item,
+    bool render(const T& item,
                 Item<>,
                 std::optional<Item<>>,
                 ParamSet<Res<Buffers>> bs,
                 render::render_phase::DrawContext& ctx) {
         auto&& [buffers] = bs.get();
         ctx.commandlist->draw(nvrhi::DrawArguments().setVertexCount(buffers->vertex_count));
+        return true;
     }
 };
 inline struct TestGraphLabelT {
