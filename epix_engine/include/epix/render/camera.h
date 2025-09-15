@@ -195,8 +195,8 @@ struct ScalingMode {
     }
 };
 struct OrthographicProjection {
-    float near_plane          = -1000.0f;     // Near clipping plane
-    float far_plane           = 1000.0f;  // Far clipping plane
+    float near_plane          = -1000.0f;  // Near clipping plane
+    float far_plane           = 1000.0f;   // Far clipping plane
     ScalingMode scaling_mode  = ScalingMode::window_size(1.0f);
     float scale               = 1.0f;                   // Additional scale factor
     glm::vec2 viewport_origin = glm::vec2(0.5f, 0.5f);  // Viewport origin (0 to 1)
@@ -290,6 +290,35 @@ struct Projection {
     void update(float width, float height) {
         std::visit([width, height](auto& proj) { proj.update(width, height); }, projection);
     }
+
+    std::optional<OrthographicProjection*> as_orthographic() {
+        if (auto ptr = std::get_if<OrthographicProjection>(&projection)) {
+            return ptr;
+        } else {
+            return std::nullopt;
+        }
+    }
+    std::optional<const OrthographicProjection*> as_orthographic() const {
+        if (auto ptr = std::get_if<OrthographicProjection>(&projection)) {
+            return ptr;
+        } else {
+            return std::nullopt;
+        }
+    }
+    std::optional<PerspectiveProjection*> as_perspective() {
+        if (auto ptr = std::get_if<PerspectiveProjection>(&projection)) {
+            return ptr;
+        } else {
+            return std::nullopt;
+        }
+    }
+    std::optional<const PerspectiveProjection*> as_perspective() const {
+        if (auto ptr = std::get_if<PerspectiveProjection>(&projection)) {
+            return ptr;
+        } else {
+            return std::nullopt;
+        }
+    }
 };
 static_assert(CameraProjection<OrthographicProjection>);
 static_assert(CameraProjection<PerspectiveProjection>);
@@ -372,14 +401,14 @@ void camera_system(
                         return target_size;
                     }
                 });
-        if (new_viewport_size.has_value()) {
-            // update projection
-            proj.update((float)new_viewport_size->x, (float)new_viewport_size->y);
-        }
 
-        camera.computed.projection        = proj.get_projection_matrix();
         camera.computed.target_size       = target_size;
         camera.computed.old_viewport_size = viewport_size;
+
+        auto new_size = camera.get_viewport_size();
+        proj.update((float)new_size.x, (float)new_size.y);
+
+        camera.computed.projection = proj.get_projection_matrix();
     }
 }
 

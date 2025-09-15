@@ -257,7 +257,7 @@ struct PushConstant {
             glm::mat4 view;
         } pc;
         pc.proj = extracted_view.projection;
-        pc.view = extracted_view.transform.matrix;
+        pc.view = glm::inverse(extracted_view.transform.matrix);
         ctx.commandlist->setPushConstants(&pc, sizeof(PushConstants));
         return true;
     }
@@ -354,7 +354,41 @@ int main() {
                                     spdlog::info("Shader {} removed", event.id.to_string());
                                 }
                             }
-                        }));
+                        }))
+            .add_systems(
+                Update,
+                into([](Query<Item<render::camera::Camera, Mut<render::camera::Projection>, Mut<transform::Transform>>>
+                            camera,
+                        EventReader<input::MouseScroll> scroll_input,
+                        Res<input::ButtonInput<input::KeyCode>> key_states) {
+                    if (auto opt = camera.get_single(); opt.has_value()) {
+                        auto&& [cam, proj, trans] = *opt;
+                        if (key_states->pressed(input::KeyCode::KeySpace)) {
+                            trans.translation = glm::vec3(0, 0, 0);
+                            proj.as_orthographic().transform([&](render::camera::OrthographicProjection* ortho) {
+                                *ortho = render::camera::OrthographicProjection{};
+                                return true;
+                            });
+                            return;
+                        } else if (key_states->pressed(input::KeyCode::KeyW)) {
+                            trans.translation += glm::vec3(0, 0.1f, 0);
+                        } else if (key_states->pressed(input::KeyCode::KeyS)) {
+                            trans.translation -= glm::vec3(0, 0.1f, 0);
+                        } else if (key_states->pressed(input::KeyCode::KeyA)) {
+                            trans.translation -= glm::vec3(0.1f, 0, 0);
+                        } else if (key_states->pressed(input::KeyCode::KeyD)) {
+                            trans.translation += glm::vec3(0.1f, 0, 0);
+                        }
+                        proj.as_orthographic().transform([&](render::camera::OrthographicProjection* ortho) {
+                            for (const auto& e : scroll_input.read()) {
+                                float scale = std::exp(-static_cast<float>(e.yoffset) * 0.1f);
+                                ortho->scale *= scale;
+                            }
+                            // Key space reset
+                            return true;
+                        });
+                    }
+                }));
 
         auto& render_app = app.sub_app(render::Render);
         render_app.add_systems(
