@@ -157,10 +157,10 @@ enum class TestGraphNodes {
 };
 struct TestItemsNode : render::graph::Node {
     std::optional<Query<Item<render::camera::ExtractedCamera,
-                             Mut<render::render_phase::RenderPhase<TestPhaseItem>>,
+                             render::render_phase::RenderPhase<TestPhaseItem>,
                              render::view::ViewTarget>>>
         views;
-    void update(World& world) override {
+    void update(const World& world) override {
         // prepare draw functions
         auto& draw_functions = world.resource<render::render_phase::DrawFunctions<TestPhaseItem>>();
         draw_functions.prepare(world);
@@ -168,7 +168,7 @@ struct TestItemsNode : render::graph::Node {
     }
     void run(render::graph::GraphContext& graph_context,
              render::graph::RenderContext& render_context,
-             World& world) override {
+             const World& world) override {
         auto&& view_entity = graph_context.view_entity();
 
         auto opt = views.value().try_get(view_entity);

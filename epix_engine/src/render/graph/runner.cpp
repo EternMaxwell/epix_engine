@@ -5,7 +5,7 @@ using namespace epix::render;
 
 EPIX_API bool RenderGraphRunner::run(const RenderGraph& graph,
                                      nvrhi::DeviceHandle device,
-                                     World& world,
+                                     const World& world,
                                      std::function<void(nvrhi::CommandListHandle)> finalizer) {
     RenderContext render_context(device);
     auto res = run_graph(graph, std::nullopt, render_context, world, {}, std::nullopt);
@@ -28,7 +28,7 @@ EPIX_API bool RenderGraphRunner::run(const RenderGraph& graph,
 EPIX_API bool RenderGraphRunner::run_graph(const RenderGraph& graph,
                                            std::optional<GraphLabel> sub_graph,
                                            RenderContext& render_context,
-                                           epix::app::World& world,
+                                           const epix::app::World& world,
                                            epix::util::ArrayProxy<SlotValue> inputs,
                                            std::optional<epix::app::Entity> view_entity) {
     // store all outputs of nodes in a map

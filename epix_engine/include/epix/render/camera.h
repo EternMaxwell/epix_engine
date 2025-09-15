@@ -443,7 +443,7 @@ EPIX_API void extract_cameras(
     Extract<Query<Item<Entity>, With<epix::window::PrimaryWindow, epix::window::Window>>> primary_window);
 
 struct CameraDriverNode : graph::Node {
-    EPIX_API void run(graph::GraphContext& graph, graph::RenderContext& render_ctx, app::World& world) override;
+    EPIX_API void run(graph::GraphContext& graph, graph::RenderContext& render_ctx, const app::World& world) override;
 };
 
 inline struct CameraDriverNodeLabelT {

@@ -48,9 +48,10 @@ struct QueryElement<Opt<T>> {
 };
 template <typename T>
 struct QueryElement<Opt<Mut<T>>> {
-    using check_type  = std::tuple<>;
-    using access_type = std::tuple<T>;
-    using get_type    = T*;
+    using check_type       = std::tuple<>;
+    using access_type      = std::tuple<T>;
+    using get_type         = T*;
+    using readonly_element = Opt<T>;
     template <typename TupleT>
     static T* get(TupleT&& item, World& world, const Entity& entity) {
         return world.entity_try_get<T>(entity);
@@ -103,34 +104,19 @@ struct QueryElementInfo<QueryElement<E>> {
         }
     }())>::value_type;
     using get_type                 = typename T::get_type;
-    using readonly_element         = E;
-    static constexpr bool readonly = true;
-};
-template <template <typename> typename Element, typename E>
-struct QueryElementInfo<QueryElement<Element<E>>> {
-   private:
-    using T = QueryElement<Element<E>>;
-
-   public:
-    using check_type = typename T::check_type;
-    // access type, if T did not has a access type, use std::tuple<>, otherwise
-    // use access_type
-    using access_type              = typename std::decay_t<decltype([]() -> auto {
-        if constexpr (requires { typename T::access_type; }) {
-            return std::optional<typename T::access_type>{};
+    static constexpr bool readonly = requires(std::tuple<get_type> t, const World& world, const Entity& entity) {
+        { T::get(t, world, entity) } -> std::same_as<get_type>;
+    };
+    using readonly_element = std::remove_pointer_t<decltype([]() -> auto {
+        if constexpr (readonly) {
+            return (E*)nullptr;
         } else {
-            return std::optional<std::tuple<>>{};
+            static_assert(
+                requires { typename T::readonly_element; },
+                "QueryElement<T> that is not readonly must have a readonly_element type provided.");
+            return (typename QueryElement<E>::readonly_element*)nullptr;
         }
-    }())>::value_type;
-    using get_type                 = typename T::get_type;
-    using readonly_element         = std::remove_pointer_t<typename std::decay_t<decltype([]() -> auto {
-        if constexpr (requires { typename T::readonly_element; }) {
-            return std::optional<typename T::readonly_element*>{};
-        } else {
-            return std::optional<Element<typename QueryElementInfo<QueryElement<E>>::readonly_element>*>{};
-        }
-    }())>::value_type>;
-    static constexpr bool readonly = std::same_as<T, readonly_element>;
+    }())>;
 };
 
 template <typename... Tuples>

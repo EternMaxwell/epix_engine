@@ -111,7 +111,9 @@ EPIX_API void epix::render::camera::extract_cameras(
     }
 }
 
-EPIX_API void CameraDriverNode::run(graph::GraphContext& graph, graph::RenderContext& render_ctx, app::World& world) {
+EPIX_API void CameraDriverNode::run(graph::GraphContext& graph,
+                                    graph::RenderContext& render_ctx,
+                                    const app::World& world) {
     Query<Item<Entity, ExtractedCamera, view::ViewTarget>> cameras(world);
     auto&& windows = world.resource<epix::render::window::ExtractedWindows>();
     for (auto&& [entity, camera, target] : cameras.iter()) {

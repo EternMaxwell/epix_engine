@@ -158,8 +158,8 @@ struct RenderContext {
 struct Node {
     virtual std::vector<SlotInfo> inputs() { return {}; }
     virtual std::vector<SlotInfo> outputs() { return {}; }
-    virtual void update(epix::app::World&) {}
-    virtual void run(GraphContext&, RenderContext&, epix::app::World&) {}
+    virtual void update(const epix::app::World&) {}
+    virtual void run(GraphContext&, RenderContext&, const epix::app::World&) {}
 };
 /**
  * @brief An edge in the render graph.
@@ -246,10 +246,10 @@ struct GraphInputNode : public Node {
     EPIX_API GraphInputNode(epix::util::ArrayProxy<SlotInfo> inputs);
     EPIX_API std::vector<SlotInfo> inputs() override;
     EPIX_API std::vector<SlotInfo> outputs() override;
-    EPIX_API void run(GraphContext& graph, RenderContext& ctx, epix::app::World& world) override;
+    EPIX_API void run(GraphContext& graph, RenderContext& ctx, const epix::app::World& world) override;
 };
 struct EmptyNode : public Node {
-    void run(GraphContext& graph, RenderContext& ctx, epix::app::World& world) override {}
+    void run(GraphContext& graph, RenderContext& ctx, const epix::app::World& world) override {}
 };
 
 struct NodeNotPresent {
@@ -302,7 +302,7 @@ struct RenderGraph {
     entt::dense_map<NodeLabel, NodeState> nodes;
     entt::dense_map<GraphLabel, RenderGraph> sub_graphs;
 
-    EPIX_API void update(epix::app::World& world);
+    EPIX_API void update(const epix::app::World& world);
     EPIX_API bool set_input(epix::util::ArrayProxy<SlotInfo> inputs);
     EPIX_API const NodeState* get_input_node() const;
     EPIX_API const NodeState& input_node() const;
@@ -369,13 +369,13 @@ struct RenderGraph {
 struct RenderGraphRunner {
     EPIX_API static bool run(const RenderGraph& graph,
                              nvrhi::DeviceHandle device,
-                             World& world,
+                             const World& world,
                              std::function<void(nvrhi::CommandListHandle)> finalizer);
 
     EPIX_API static bool run_graph(const RenderGraph& graph,
                                    std::optional<GraphLabel> sub_graph,
                                    RenderContext& render_context,
-                                   epix::app::World& world,
+                                   const epix::app::World& world,
                                    epix::util::ArrayProxy<SlotValue> inputs,
                                    std::optional<epix::app::Entity> view_entity);
 };

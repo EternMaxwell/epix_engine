@@ -46,7 +46,7 @@ concept CachedRenderPipelinePhaseItem = PhaseItem<P> && requires(const P item) {
 };
 
 template <typename FuncT, typename P>
-concept Draw = PhaseItem<P> && requires(FuncT func, World& world, DrawContext& ctx, Entity view, const P& item) {
+concept Draw = PhaseItem<P> && requires(FuncT func, const World& world, DrawContext& ctx, Entity view, const P& item) {
     { func.prepare(world) };
     // draw function, since DrawContext can be converted to nvrhi::CommandListHandle, the function can also be
     // void draw(World&, nvrhi::CommandListHandle, Entity, P&)
@@ -55,8 +55,8 @@ concept Draw = PhaseItem<P> && requires(FuncT func, World& world, DrawContext& c
 
 template <PhaseItem P>
 struct DrawFunction {
-    virtual void prepare(World& world) {}
-    virtual bool draw(World& world, DrawContext& ctx, Entity view, const P& item) = 0;
+    virtual void prepare(const World& world) {}
+    virtual bool draw(const World& world, DrawContext& ctx, Entity view, const P& item) = 0;
 
     virtual ~DrawFunction() = default;
 };
@@ -67,9 +67,9 @@ struct DrawFunctionImpl : DrawFunction<P> {
     template <typename... Args>
     DrawFunctionImpl(Args&&... args) : m_func(std::forward<Args>(args)...) {}
 
-    void prepare(World& world) override { m_func.prepare(world); }
+    void prepare(const World& world) override { m_func.prepare(world); }
 
-    bool draw(World& world, DrawContext& cmd, Entity view, const P& item) override {
+    bool draw(const World& world, DrawContext& cmd, Entity view, const P& item) override {
         return m_func.draw(world, cmd, view, item);
     }
 
@@ -79,36 +79,39 @@ struct DrawFunctionImpl : DrawFunction<P> {
 
 template <PhaseItem P>
 struct EmptyDrawFunction : DrawFunction<P> {
-    bool draw(World&, DrawContext, Entity, const P&) override { return true; }
+    bool draw(const World&, DrawContext, Entity, const P&) override { return true; }
 };
 
 template <PhaseItem P>
 struct DrawFunctions {
    public:
-    void prepare(World& world) {
+    void prepare(const World& world) const {
+        std::unique_lock lock(m_mutex);
         for (auto&& func : m_functions) {
             func->prepare(world);
         }
     }
 
     template <Draw<P> T, typename... Args>
-    DrawFunctionId add(Args&&... args) {
+    DrawFunctionId add(Args&&... args) const {
         return _add_function<T>(std::forward<Args>(args)...);
     }
     template <typename Func>
         requires Draw<P, std::decay_t<Func>>
-    DrawFunctionId add(Func&& func) {
+    DrawFunctionId add(Func&& func) const {
         return _add_function<std::decay_t<Func>>(std::forward<Func>(func));
     }
 
-    DrawFunction<P>* get(DrawFunctionId id) {
+    DrawFunction<P>* get(DrawFunctionId id) const {
+        std::unique_lock lock(m_mutex);
         if (id.id >= m_functions.size()) {
             return nullptr;
         }
         return m_functions[id.id].get();
     }
     template <Draw<P> T = EmptyDrawFunction<P>>
-    std::optional<DrawFunctionId> get_id(const epix::meta::type_index& type = epix::meta::type_id<T>()) {
+    std::optional<DrawFunctionId> get_id(const epix::meta::type_index& type = epix::meta::type_id<T>()) const {
+        std::unique_lock lock(m_mutex);
         if (auto it = m_indices.find(type); it != m_indices.end()) {
             return DrawFunctionId(it->second);
         }
@@ -116,12 +119,14 @@ struct DrawFunctions {
     }
 
    private:
-    std::vector<std::unique_ptr<DrawFunction<P>>> m_functions;
-    entt::dense_map<epix::meta::type_index, uint32_t> m_indices;
+    mutable std::mutex m_mutex;
+    mutable std::vector<std::unique_ptr<DrawFunction<P>>> m_functions;
+    mutable entt::dense_map<epix::meta::type_index, uint32_t> m_indices;
 
     template <Draw<P> T, typename... Args>
         requires std::constructible_from<T, Args...>
-    DrawFunctionId _add_function(Args&&... args) {
+    DrawFunctionId _add_function(Args&&... args) const {
+        std::unique_lock lock(m_mutex);
         epix::meta::type_index type = epix::meta::type_id<T>();
         if (auto it = m_indices.find(type); it != m_indices.end()) {
             return DrawFunctionId(it->second);
@@ -160,12 +165,14 @@ struct RenderPhase {
         return items | std::views::transform([this](const T& item) { return _item_entity(item); });
     }
 
-    void render(DrawContext& cmd, World& world, Entity view) { render_range(cmd, world, view, 0, items.size()); }
+    void render(DrawContext& cmd, const World& world, Entity view) const {
+        render_range(cmd, world, view, 0, items.size());
+    }
     void render_range(DrawContext& cmd,
-                      World& world,
+                      const World& world,
                       Entity view,
                       size_t start = 0,
-                      size_t end   = std::numeric_limits<size_t>::max()) {
+                      size_t end   = std::numeric_limits<size_t>::max()) const {
         end = std::min(end, items.size());
         if (start >= end) return;
 
@@ -219,7 +226,7 @@ struct RenderCommandInfo {
     using class_type                  = typename traits::class_type;
     using return_type                 = typename traits::return_type;
     using arg_types                   = typename traits::arg_types;
-    static constexpr bool has_prepare = requires(T t, World& w) { t.prepare(w); };
+    static constexpr bool has_prepare = requires(T t, const World& w) { t.prepare(w); };
 
     static_assert(std::same_as<return_type, bool>,
                   "Render command must return bool indicating the operation success or not.");
@@ -296,7 +303,7 @@ struct RenderCommandState {
         }
         inited = false;
     }
-    void prepare(World& world) {
+    void prepare(const World& world) {
         if (inited) {
             // destruct old state
             view_query.~view_query_t();
@@ -320,7 +327,7 @@ struct RenderCommandState {
         }
         inited = true;
     }
-    bool draw(World& world, DrawContext& ctx, Entity view, const P& item) {
+    bool draw(const World& world, DrawContext& ctx, Entity view, const P& item) {
         if (!inited) {
             throw std::runtime_error("Render command state is not initialized. Call prepare() before draw().");
         }
@@ -364,13 +371,13 @@ struct RenderCommandSequence : DrawFunction<P> {
    public:
     RenderCommandSequence() : m_commands() {}
 
-    void prepare(World& world) override {
+    void prepare(const World& world) override {
         [&]<size_t... I>(std::index_sequence<I...>) {
             (std::get<I>(m_commands).prepare(world), ...);
         }(std::index_sequence_for<R<P>...>{});
     }
 
-    bool draw(World& world, DrawContext& cmd, Entity view, const P& item) override {
+    bool draw(const World& world, DrawContext& cmd, Entity view, const P& item) override {
         return [&]<size_t I>(this auto&& self, std::integral_constant<size_t, I>) {
             bool res = std::get<I>(m_commands).draw(world, cmd, view, item);
             if (!res) return false;

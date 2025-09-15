@@ -68,7 +68,7 @@ EPIX_API std::string GraphError::to_string() const {
     return graph::error_to_string(*this);
 }
 
-EPIX_API void RenderGraph::update(epix::World& world) {
+EPIX_API void RenderGraph::update(const epix::World& world) {
     for (auto&& [id, node] : nodes) {
         node.pnode->update(world);
     }

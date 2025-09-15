@@ -54,11 +54,11 @@ static_assert(render_phase::BatchedPhaseItem<Opaque2D>);
 static_assert(render_phase::CachedRenderPipelinePhaseItem<Opaque2D>);
 
 struct TransparentNode : graph::Node {
-    std::optional<Query<
-        Item<view::ExtractedView, view::ViewTarget, view::ViewDepth, Mut<render_phase::RenderPhase<Transparent2D>>>>>
+    std::optional<
+        Query<Item<view::ExtractedView, view::ViewTarget, view::ViewDepth, render_phase::RenderPhase<Transparent2D>>>>
         views;
-    void update(World& world) override { views.emplace(world); }
-    void run(graph::GraphContext& ctx, graph::RenderContext& render_ctx, World& world) override {
+    void update(const World& world) override { views.emplace(world); }
+    void run(graph::GraphContext& ctx, graph::RenderContext& render_ctx, const World& world) override {
         auto view_entity = ctx.view_entity();
         auto view_opt    = views->try_get(view_entity);
         if (!view_opt) return;
@@ -78,10 +78,10 @@ struct TransparentNode : graph::Node {
 };
 struct OpaqueNode : graph::Node {
     std::optional<
-        Query<Item<view::ExtractedView, view::ViewTarget, view::ViewDepth, Mut<render_phase::RenderPhase<Opaque2D>>>>>
+        Query<Item<view::ExtractedView, view::ViewTarget, view::ViewDepth, render_phase::RenderPhase<Opaque2D>>>>
         views;
-    void update(World& world) override { views.emplace(world); }
-    void run(graph::GraphContext& ctx, graph::RenderContext& render_ctx, World& world) override {
+    void update(const World& world) override { views.emplace(world); }
+    void run(graph::GraphContext& ctx, graph::RenderContext& render_ctx, const World& world) override {
         auto view_entity = ctx.view_entity();
         auto view_opt    = views->try_get(view_entity);
         if (!view_opt) return;
@@ -103,7 +103,7 @@ struct OpaqueNode : graph::Node {
 inline struct Core2dGraph {
     void add_to(graph::RenderGraph& g);
 } Core2d;
-void Core2dGraph::add_to(graph::RenderGraph& g) {
+inline void Core2dGraph::add_to(graph::RenderGraph& g) {
     graph::RenderGraph g2d;
     g2d.add_node(Core2dNodes::StartMainPass, graph::EmptyNode{});
     g2d.add_node(Core2dNodes::MainTransparentPass, TransparentNode{});
