@@ -39,11 +39,7 @@ struct SlotInfo {
 };
 struct SlotValue {
    private:
-    std::variant<epix::app::Entity,
-                 nvrhi::BufferHandle,
-                 nvrhi::TextureHandle,
-                 nvrhi::SamplerHandle>
-        value;
+    std::variant<epix::app::Entity, nvrhi::BufferHandle, nvrhi::TextureHandle, nvrhi::SamplerHandle> value;
 
    public:
     EPIX_API SlotValue(const epix::app::Entity& entity);
@@ -85,12 +81,9 @@ struct SlotInfos {
     EPIX_API bool empty() const;
     EPIX_API SlotInfo* get_slot(const SlotLabel& label);
     EPIX_API const SlotInfo* get_slot(const SlotLabel& label) const;
-    EPIX_API std::optional<uint32_t> get_slot_index(
-        const SlotLabel& label) const;
-    using iterable =
-        std::ranges::ref_view<std::vector<epix::render::graph::SlotInfo>>;
-    using const_iterable =
-        std::ranges::ref_view<const std::vector<epix::render::graph::SlotInfo>>;
+    EPIX_API std::optional<uint32_t> get_slot_index(const SlotLabel& label) const;
+    using iterable       = std::ranges::ref_view<std::vector<epix::render::graph::SlotInfo>>;
+    using const_iterable = std::ranges::ref_view<const std::vector<epix::render::graph::SlotInfo>>;
     EPIX_API iterable iter();
     EPIX_API const_iterable iter() const;
 };
@@ -125,14 +118,10 @@ struct GraphContext {
     EPIX_API const SlotInfos& input_info() const;
     EPIX_API const SlotInfos& output_info() const;
     EPIX_API const SlotValue* get_input(const SlotLabel& label) const;
-    EPIX_API std::optional<epix::app::Entity> get_input_entity(
-        const SlotLabel& label) const;
-    EPIX_API std::optional<nvrhi::BufferHandle> get_input_buffer(
-        const SlotLabel& label) const;
-    EPIX_API std::optional<nvrhi::TextureHandle> get_input_texture(
-        const SlotLabel& label) const;
-    EPIX_API std::optional<nvrhi::SamplerHandle> get_input_sampler(
-        const SlotLabel& label) const;
+    EPIX_API std::optional<epix::app::Entity> get_input_entity(const SlotLabel& label) const;
+    EPIX_API std::optional<nvrhi::BufferHandle> get_input_buffer(const SlotLabel& label) const;
+    EPIX_API std::optional<nvrhi::TextureHandle> get_input_texture(const SlotLabel& label) const;
+    EPIX_API std::optional<nvrhi::SamplerHandle> get_input_sampler(const SlotLabel& label) const;
 
     EPIX_API bool set_output(const SlotLabel& label, const SlotValue& value);
 
@@ -140,10 +129,9 @@ struct GraphContext {
     EPIX_API std::optional<epix::app::Entity> get_view_entity() const;
     EPIX_API void set_view_entity(epix::app::Entity entity);
 
-    EPIX_API bool run_sub_graph(
-        const GraphLabel& label,
-        epix::util::ArrayProxy<SlotValue> inputs,
-        std::optional<epix::app::Entity> view_entity = std::nullopt);
+    EPIX_API bool run_sub_graph(const GraphLabel& label,
+                                epix::util::ArrayProxy<SlotValue> inputs,
+                                std::optional<epix::app::Entity> view_entity = std::nullopt);
 
     EPIX_API std::vector<RunSubGraph> finish();
 };
@@ -161,10 +149,8 @@ struct RenderContext {
 
     EPIX_API nvrhi::DeviceHandle device() const;
     EPIX_API nvrhi::CommandListHandle commands();
-    EPIX_API nvrhi::CommandListHandle begin_render_pass(
-        const nvrhi::GraphicsState& state);
-    EPIX_API void add_command_list(
-        const nvrhi::CommandListHandle& command_list);
+    EPIX_API nvrhi::CommandListHandle begin_render_pass(const nvrhi::GraphicsState& state);
+    EPIX_API void add_command_list(const nvrhi::CommandListHandle& command_list);
     EPIX_API void flush_encoder();
     EPIX_API std::vector<nvrhi::CommandListHandle> finish();
 };
@@ -188,8 +174,7 @@ struct Edge {
     uint32_t input_index  = static_cast<uint32_t>(-1);  // set to -1 if not used
     uint32_t output_index = static_cast<uint32_t>(-1);  // set to -1 if not used
 
-    EPIX_API static Edge node_edge(const NodeLabel& output_node,
-                                   const NodeLabel& input_node);
+    EPIX_API static Edge node_edge(const NodeLabel& output_node, const NodeLabel& input_node);
     EPIX_API static Edge slot_edge(const NodeLabel& output_node,
                                    uint32_t output_index,
                                    const NodeLabel& input_node,
@@ -261,9 +246,10 @@ struct GraphInputNode : public Node {
     EPIX_API GraphInputNode(epix::util::ArrayProxy<SlotInfo> inputs);
     EPIX_API std::vector<SlotInfo> inputs() override;
     EPIX_API std::vector<SlotInfo> outputs() override;
-    EPIX_API void run(GraphContext& graph,
-                      RenderContext& ctx,
-                      epix::app::World& world) override;
+    EPIX_API void run(GraphContext& graph, RenderContext& ctx, epix::app::World& world) override;
+};
+struct EmptyNode : public Node {
+    void run(GraphContext& graph, RenderContext& ctx, epix::app::World& world) override {}
 };
 
 struct NodeNotPresent {
@@ -299,14 +285,8 @@ struct SlotTypeMismatch {
     SlotType output_type;
     SlotType input_type;
 };
-struct EdgeError : std::variant<EdgeNodesNotPresent,
-                                SlotNotPresent,
-                                InputSlotOccupied,
-                                SlotTypeMismatch> {
-    using std::variant<EdgeNodesNotPresent,
-                       SlotNotPresent,
-                       InputSlotOccupied,
-                       SlotTypeMismatch>::variant;
+struct EdgeError : std::variant<EdgeNodesNotPresent, SlotNotPresent, InputSlotOccupied, SlotTypeMismatch> {
+    using std::variant<EdgeNodesNotPresent, SlotNotPresent, InputSlotOccupied, SlotTypeMismatch>::variant;
 };
 struct SubGraphExists {
     GraphLabel id;
@@ -347,31 +327,27 @@ struct RenderGraph {
         }
     }
 
-    EPIX_API std::expected<void, GraphError> try_add_node_edge(
-        const NodeLabel& output_node, const NodeLabel& input_node);
+    EPIX_API std::expected<void, GraphError> try_add_node_edge(const NodeLabel& output_node,
+                                                               const NodeLabel& input_node);
 
-    EPIX_API void add_node_edge(const NodeLabel& output_node,
-                                const NodeLabel& input_node);
-    EPIX_API std::expected<void, GraphError> try_add_slot_edge(
-        const NodeLabel& output_node,
-        const SlotLabel& output_slot,
-        const NodeLabel& input_node,
-        const SlotLabel& input_slot);
+    EPIX_API void add_node_edge(const NodeLabel& output_node, const NodeLabel& input_node);
+    EPIX_API std::expected<void, GraphError> try_add_slot_edge(const NodeLabel& output_node,
+                                                               const SlotLabel& output_slot,
+                                                               const NodeLabel& input_node,
+                                                               const SlotLabel& input_slot);
     EPIX_API void add_slot_edge(const NodeLabel& output_node,
                                 const SlotLabel& output_slot,
                                 const NodeLabel& input_node,
                                 const SlotLabel& input_slot);
 
-    EPIX_API std::expected<void, GraphError> remove_slot_edge(
-        const NodeLabel& output_node,
-        const SlotLabel& output_slot,
-        const NodeLabel& input_node,
-        const SlotLabel& input_slot);
-    EPIX_API std::expected<void, GraphError> remove_node_edge(
-        const NodeLabel& output_node, const NodeLabel& input_node);
+    EPIX_API std::expected<void, GraphError> remove_slot_edge(const NodeLabel& output_node,
+                                                              const SlotLabel& output_slot,
+                                                              const NodeLabel& input_node,
+                                                              const SlotLabel& input_slot);
+    EPIX_API std::expected<void, GraphError> remove_node_edge(const NodeLabel& output_node,
+                                                              const NodeLabel& input_node);
 
-    EPIX_API std::expected<void, EdgeError> validate_edge(const Edge& edge,
-                                                          bool should_exist);
+    EPIX_API std::expected<void, EdgeError> validate_edge(const Edge& edge, bool should_exist);
     EPIX_API bool has_edge(const Edge& edge) const;
 
     EPIX_API NodeState* get_node_state(const NodeLabel& id);
@@ -379,30 +355,28 @@ struct RenderGraph {
     EPIX_API NodeState& node_state(const NodeLabel& id);
     EPIX_API const NodeState& node_state(const NodeLabel& id) const;
 
-    EPIX_API std::expected<void, GraphError> add_sub_graph(const GraphLabel& id,
-                                                           RenderGraph&& graph);
+    EPIX_API std::expected<void, GraphError> add_sub_graph(const GraphLabel& id, RenderGraph&& graph);
     EPIX_API RenderGraph* get_sub_graph(const GraphLabel& id);
     EPIX_API const RenderGraph* get_sub_graph(const GraphLabel& id) const;
     EPIX_API RenderGraph& sub_graph(const GraphLabel& id);
     EPIX_API const RenderGraph& sub_graph(const GraphLabel& id) const;
 
-    using nodes_iterable =
-        decltype((std::as_const(nodes) | std::views::values));
+    using nodes_iterable = decltype((std::as_const(nodes) | std::views::values));
 
     EPIX_API nodes_iterable iter_nodes() const;
 };
 
 struct RenderGraphRunner {
     EPIX_API static bool run(const RenderGraph& graph,
-                      nvrhi::DeviceHandle device,
-                      World& world,
-                      std::function<void(nvrhi::CommandListHandle)> finalizer);
+                             nvrhi::DeviceHandle device,
+                             World& world,
+                             std::function<void(nvrhi::CommandListHandle)> finalizer);
 
     EPIX_API static bool run_graph(const RenderGraph& graph,
-                            std::optional<GraphLabel> sub_graph,
-                            RenderContext& render_context,
-                            epix::app::World& world,
-                            epix::util::ArrayProxy<SlotValue> inputs,
-                            std::optional<epix::app::Entity> view_entity);
+                                   std::optional<GraphLabel> sub_graph,
+                                   RenderContext& render_context,
+                                   epix::app::World& world,
+                                   epix::util::ArrayProxy<SlotValue> inputs,
+                                   std::optional<epix::app::Entity> view_entity);
 };
 }  // namespace epix::render::graph

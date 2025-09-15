@@ -4,6 +4,7 @@
 #include <epix/render/assets.h>
 #include <epix/render/camera.h>
 #include <epix/render/common.h>
+#include <epix/render/core_graph/core_2d.h>
 #include <epix/render/graph.h>
 #include <epix/render/pipeline.h>
 #include <epix/render/render_phase.h>

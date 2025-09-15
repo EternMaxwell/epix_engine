@@ -36,7 +36,7 @@ concept PhaseItem = requires(const T item) {
 template <typename P>
 concept BatchedPhaseItem = PhaseItem<P> && requires(const P item) {
     // batch size/count for this item
-    { P::batch_size() } -> std::convertible_to<size_t>;
+    { item.batch_size() } -> std::convertible_to<size_t>;
 };
 
 template <typename P>
@@ -188,7 +188,7 @@ struct RenderPhase {
     DrawFunctionId _item_draw_function(const T& item) const { return item.draw_function(); }
     size_t _item_batch_size(const T& item) const {
         if constexpr (BatchedPhaseItem<T>) {
-            return T::batch_size();
+            return item.batch_size();
         } else {
             return 1;
         }
@@ -396,5 +396,12 @@ template <PhaseItem P, template <typename> typename... R>
 DrawFunctionId add_render_commands(DrawFunctions<P>& draw_functions) {
     // Or maybe handle duplicated adds here?
     return draw_functions.template add(RenderCommandSequence<P, R...>{});
+}
+
+template <PhaseItem P>
+void sort_phase_items(Query<Item<RenderPhase<P>>>& phases) {
+    for (auto&& [phase] : phases.iter()) {
+        phase.sort();
+    }
 }
 }  // namespace epix::render::render_phase
