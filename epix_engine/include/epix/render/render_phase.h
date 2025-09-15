@@ -307,7 +307,7 @@ struct RenderCommandState {
         new (&view_query) view_query_t(world);
         new (&entity_query) entity_query_t(world);
         new (&system_param) system_param_t();
-        new (&system_param_state) param_state_t([&] mutable {
+        new (&system_param_state) param_state_t([&] {
             if constexpr (std::invocable<decltype(&system_param_t::init), system_param_t&, app::SystemMeta&>) {
                 return system_param.init(meta);
             } else {
