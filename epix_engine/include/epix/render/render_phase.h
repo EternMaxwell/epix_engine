@@ -86,6 +86,7 @@ template <PhaseItem P>
 struct DrawFunctions {
    public:
     void prepare(const World& world) const {
+        auto&& [m_mutex, m_functions, m_indices] = *m_data;
         std::unique_lock lock(m_mutex);
         for (auto&& func : m_functions) {
             func->prepare(world);
@@ -103,6 +104,7 @@ struct DrawFunctions {
     }
 
     DrawFunction<P>* get(DrawFunctionId id) const {
+        auto&& [m_mutex, m_functions, m_indices] = *m_data;
         std::unique_lock lock(m_mutex);
         if (id.id >= m_functions.size()) {
             return nullptr;
@@ -111,6 +113,7 @@ struct DrawFunctions {
     }
     template <Draw<P> T = EmptyDrawFunction<P>>
     std::optional<DrawFunctionId> get_id(const epix::meta::type_index& type = epix::meta::type_id<T>()) const {
+        auto&& [m_mutex, m_functions, m_indices] = *m_data;
         std::unique_lock lock(m_mutex);
         if (auto it = m_indices.find(type); it != m_indices.end()) {
             return DrawFunctionId(it->second);
@@ -119,13 +122,15 @@ struct DrawFunctions {
     }
 
    private:
-    mutable std::mutex m_mutex;
-    mutable std::vector<std::unique_ptr<DrawFunction<P>>> m_functions;
-    mutable entt::dense_map<epix::meta::type_index, uint32_t> m_indices;
+    using data                   = std::tuple<std::mutex,
+                                              std::vector<std::unique_ptr<DrawFunction<P>>>,
+                                              entt::dense_map<epix::meta::type_index, uint32_t>>;
+    std::shared_ptr<data> m_data = std::make_shared<data>();
 
     template <Draw<P> T, typename... Args>
         requires std::constructible_from<T, Args...>
     DrawFunctionId _add_function(Args&&... args) const {
+        auto&& [m_mutex, m_functions, m_indices] = *m_data;
         std::unique_lock lock(m_mutex);
         epix::meta::type_index type = epix::meta::type_id<T>();
         if (auto it = m_indices.find(type); it != m_indices.end()) {
@@ -284,7 +289,11 @@ struct RenderCommandState {
     using T = R<P>;
     union {
         view_query_t view_query;
+    };
+    union {
         entity_query_t entity_query;
+    };
+    union {
         param_state_t system_param_state;
     };
     system_param_t system_param;
@@ -308,12 +317,11 @@ struct RenderCommandState {
             // destruct old state
             view_query.~view_query_t();
             entity_query.~entity_query_t();
-            system_param.~system_param_t();
+            system_param_state.~param_state_t();
         }
         // construct new state
         new (&view_query) view_query_t(world);
         new (&entity_query) entity_query_t(world);
-        new (&system_param) system_param_t();
         new (&system_param_state) param_state_t([&] {
             if constexpr (std::invocable<decltype(&system_param_t::init), system_param_t&, app::SystemMeta&>) {
                 return system_param.init(meta);

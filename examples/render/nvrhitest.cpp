@@ -211,9 +211,9 @@ template <typename T = TestPhaseItem>
 struct BindingSetCommand {
     nvrhi::BindingSetHandle binding_set;
     nvrhi::SamplerHandle sampler;
-    void prepare(World& world) {
+    void prepare(const World& world) {
         if (binding_set) return;
-        auto& device = world.resource<nvrhi::DeviceHandle>();
+        nvrhi::DeviceHandle device = world.resource<nvrhi::DeviceHandle>();
 
         // create sampler if not created
         if (!sampler) {

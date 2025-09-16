@@ -5,18 +5,25 @@
 
 namespace epix::app {
 template <typename T>
-constexpr bool enable_mutable_res = false;
+constexpr bool copy_res = false;
 template <typename T>
 struct Res {
-    using type = std::conditional_t<enable_mutable_res<T>, std::decay_t<T>, std::add_const_t<std::decay_t<T>>>;
+    using type      = std::conditional_t<copy_res<T>, std::decay_t<T>, const std::decay_t<T>*>;
+    using reference = std::conditional_t<copy_res<T>, std::decay_t<T>&, const std::decay_t<T>&>;
+    using pointer   = std::conditional_t<copy_res<T>, std::decay_t<T>*, const std::decay_t<T>*>;
 
    private:
-    type* resource;
+    mutable type resource;
 
-    Res(type* res) : resource(res) {}
+    Res(type res)
+        requires(!copy_res<T>)
+        : resource(res) {}
+    Res(const type* res)
+        requires(copy_res<T>)
+        : resource(*res) {}
 
    public:
-    static std::optional<Res<T>> from_world(World& world) noexcept {
+    static std::optional<Res<T>> from_world(const World& world) noexcept {
         auto res = world.get_resource<T>();
         if (res) {
             return Res<T>(res);
@@ -29,10 +36,34 @@ struct Res {
     Res& operator=(const Res& other) = default;
     Res& operator=(Res&& other)      = default;
 
-    type& operator*() const noexcept { return *resource; }
-    type* operator->() const noexcept { return resource; }
-    type& get() const noexcept { return *resource; }
-    operator type*() const noexcept { return resource; }
+    reference operator*() const noexcept {
+        if constexpr (copy_res<T>) {
+            return resource;
+        } else {
+            return *resource;
+        }
+    }
+    pointer operator->() const noexcept {
+        if constexpr (copy_res<T>) {
+            return &resource;
+        } else {
+            return resource;
+        }
+    }
+    reference get() const noexcept {
+        if constexpr (copy_res<T>) {
+            return resource;
+        } else {
+            return *resource;
+        }
+    }
+    operator pointer() const noexcept {
+        if constexpr (copy_res<T>) {
+            return std::addressof(resource);
+        } else {
+            return resource;
+        }
+    }
 };
 template <typename T>
 struct ResMut {
@@ -72,7 +103,7 @@ struct SystemParam<Res<T>> {
         meta.access.resource_reads.emplace(meta::type_id<std::decay_t<T>>{});
         return std::nullopt;
     }
-    bool update(State& state, World& world, const SystemMeta&) {
+    bool update(State& state, const World& world, const SystemMeta&) {
         state = Res<T>::from_world(world);
         return state.has_value();
     }
@@ -91,7 +122,7 @@ struct SystemParam<std::optional<Res<T>>> {
         meta.access.resource_reads.emplace(meta::type_id<std::decay_t<T>>{});
         return std::nullopt;
     }
-    bool update(State& state, World& world, const SystemMeta&) {
+    bool update(State& state, const World& world, const SystemMeta&) {
         state = Res<T>::from_world(world);
         return true;
     }

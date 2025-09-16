@@ -11,7 +11,7 @@
 #include <nvrhi/vulkan.h>
 
 template <>
-inline constexpr bool epix::app::enable_mutable_res<nvrhi::DeviceHandle> = true;
+inline constexpr bool epix::app::copy_res<nvrhi::DeviceHandle> = true;
 
 namespace epix::render {
 struct CommandPools {
@@ -42,10 +42,9 @@ struct CommandPools {
             return pools.at(thread_id);
         }
         lock.unlock();  // unlock before creating a new pool
-        auto create_info =
-            vk::CommandPoolCreateInfo()
-                .setQueueFamilyIndex(queue_family_index)
-                .setFlags(vk::CommandPoolCreateFlagBits::eResetCommandBuffer);
+        auto create_info = vk::CommandPoolCreateInfo()
+                               .setQueueFamilyIndex(queue_family_index)
+                               .setFlags(vk::CommandPoolCreateFlagBits::eResetCommandBuffer);
         vk::CommandPool pool = device.createCommandPool(create_info);
         std::unique_lock unique_lock(mutex);
         pools.emplace(thread_id, pool);
