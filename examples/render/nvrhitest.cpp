@@ -34,20 +34,6 @@ struct TestPipelineShaders {
     assets::Handle<render::Shader> fragment_shader;
 };
 
-struct TestPhaseItem {
-    Entity id;
-    render::RenderPipelineId pipeline_id;
-    render::render_phase::DrawFunctionId draw_function_id;
-
-    Entity entity() const { return id; }
-    render::RenderPipelineId pipeline() const { return pipeline_id; }
-    render::render_phase::DrawFunctionId draw_function() const { return draw_function_id; }
-    float sort_key() const { return 0.0f; }
-};
-
-static_assert(render::render_phase::PhaseItem<TestPhaseItem>);
-static_assert(render::render_phase::CachedRenderPipelinePhaseItem<TestPhaseItem>);
-
 nvrhi::BindingLayoutHandle binding_layout;
 
 struct TestPipeline {
@@ -152,62 +138,23 @@ struct ShaderPluginTest {
 assets::Handle<image::Image> image_handle =
     assets::AssetId<image::Image>(uuids::uuid::from_string("2e4fbfdf-da16-4546-96b0-f1a5e2fc35b8").value());
 
-enum class TestGraphNodes {
-    DrawTestItems,
-};
-struct TestItemsNode : render::graph::Node {
-    std::optional<Query<Item<render::camera::ExtractedCamera,
-                             render::render_phase::RenderPhase<TestPhaseItem>,
-                             render::view::ViewTarget>>>
-        views;
-    void update(const World& world) override {
-        // prepare draw functions
-        auto& draw_functions = world.resource<render::render_phase::DrawFunctions<TestPhaseItem>>();
-        draw_functions.prepare(world);
-        views.emplace(world);
-    }
-    void run(render::graph::GraphContext& graph_context,
-             render::graph::RenderContext& render_context,
-             const World& world) override {
-        auto&& view_entity = graph_context.view_entity();
-
-        auto opt = views.value().try_get(view_entity);
-        if (!opt.has_value()) {
-            return;
-        }
-        auto&& [camera, phase, view_target]  = *opt;
-        auto&& buffers                       = world.resource<Buffers>();
-        auto&& pipelines                     = world.resource<render::PipelineServer>();
-        auto&& pipeline                      = world.resource<TestPipeline>();
-        nvrhi::FramebufferHandle framebuffer = render_context.device()->createFramebuffer(
-            nvrhi::FramebufferDesc().addColorAttachment(view_target.texture));
-        render_context.flush_encoder();
-        auto state = nvrhi::GraphicsState()
-                         .setFramebuffer(framebuffer)
-                         .setViewport(camera.viewport
-                                          .transform([](const render::camera::Viewport& vp) {
-                                              nvrhi::Viewport viewport;
-                                              viewport.minX = static_cast<float>(vp.pos.x);
-                                              viewport.minY = static_cast<float>(vp.pos.y);
-                                              viewport.maxX = static_cast<float>(vp.pos.x + vp.size.x);
-                                              viewport.maxY = static_cast<float>(vp.pos.y + vp.size.y);
-                                              viewport.minZ = vp.depth_range.first;
-                                              viewport.maxZ = vp.depth_range.second;
-                                              return nvrhi::ViewportState().addViewportAndScissorRect(viewport);
-                                          })
-                                          .value_or(nvrhi::ViewportState().addViewportAndScissorRect(
-                                              nvrhi::Viewport(camera.viewport_size.x, camera.viewport_size.y))))
-                         .addVertexBuffer(
-                             nvrhi::VertexBufferBinding().setBuffer(buffers.vertex_buffer[0]).setSlot(0).setOffset(0))
-                         .addVertexBuffer(
-                             nvrhi::VertexBufferBinding().setBuffer(buffers.vertex_buffer[1]).setSlot(1).setOffset(0));
-
-        auto draw_context = render::render_phase::DrawContext{render_context.commands(), state};
-        phase.render(draw_context, world, view_entity);
-        render_context.flush_encoder();
+template <render::render_phase::PhaseItem T>
+struct AddVertexBuffer {
+    bool render(const T& item,
+                Item<>,
+                std::optional<Item<>>,
+                ParamSet<Res<Buffers>> bs,
+                render::render_phase::DrawContext& ctx) {
+        auto&& [buffers] = bs.get();
+        ctx.graphics_state.vertexBuffers.resize(0);
+        ctx.graphics_state.addVertexBuffer(
+            nvrhi::VertexBufferBinding().setBuffer(buffers->vertex_buffer[0]).setSlot(0).setOffset(0));
+        ctx.graphics_state.addVertexBuffer(
+            nvrhi::VertexBufferBinding().setBuffer(buffers->vertex_buffer[1]).setSlot(1).setOffset(0));
+        return true;
     }
 };
-template <typename T = TestPhaseItem>
+template <render::render_phase::PhaseItem T>
 struct BindingSetCommand {
     nvrhi::BindingSetHandle binding_set;
     nvrhi::SamplerHandle sampler;
@@ -243,7 +190,7 @@ struct BindingSetCommand {
         return true;
     }
 };
-template <typename T = TestPhaseItem>
+template <render::render_phase::PhaseItem T>
 struct PushConstant {
     bool render(const T& item,
                 Item<render::view::ExtractedView>& view,
@@ -262,7 +209,7 @@ struct PushConstant {
         return true;
     }
 };
-template <typename T = TestPhaseItem>
+template <render::render_phase::PhaseItem T>
 struct DrawCommand {
     bool render(const T& item,
                 Item<>,
@@ -274,40 +221,22 @@ struct DrawCommand {
         return true;
     }
 };
-inline struct TestGraphLabelT {
-} TestGraphLabel;
 void queue_render_phase(Query<Item<Entity>, With<render::camera::ExtractedCamera, render::view::ViewTarget>> views,
                         Commands cmd,
                         Res<TestPipeline> pipeline,
-                        ResMut<render::render_phase::DrawFunctions<TestPhaseItem>> draw_functions) {
+                        ResMut<render::render_phase::DrawFunctions<render::core_2d::Transparent2D>> draw_functions) {
     for (auto&& [entity] : views.iter()) {
-        render::render_phase::RenderPhase<TestPhaseItem> phase;
-        phase.add(TestPhaseItem{
+        render::render_phase::RenderPhase<render::core_2d::Transparent2D> phase;
+        phase.add(render::core_2d::Transparent2D{
             .id          = entity,
             .pipeline_id = pipeline->get_id(),
-            .draw_function_id =
-                render::render_phase::get_or_add_render_commands<TestPhaseItem, render::render_phase::SetItemPipeline,
-                                                                 BindingSetCommand, PushConstant, DrawCommand>(
-                    *draw_functions),
+            .draw_func   = render::render_phase::get_or_add_render_commands<
+                  render::core_2d::Transparent2D, AddVertexBuffer, render::render_phase::SetItemPipeline,
+                  BindingSetCommand, PushConstant, DrawCommand>(*draw_functions),
         });
         cmd.entity(entity).emplace(std::move(phase));
     }
 }
-struct TestGraph {
-    void build(App& app) {
-        if (auto render_app = app.get_sub_app(render::Render); render_app) {
-            // add test phase item and its draw function
-            render_app->insert_resource(render::render_phase::RenderPhase<TestPhaseItem>{});
-            render_app->insert_resource(render::render_phase::DrawFunctions<TestPhaseItem>{});
-
-            // add test graph
-            auto& graph = render_app->resource<render::graph::RenderGraph>();
-            graph.add_sub_graph(TestGraphLabel, render::graph::RenderGraph{});
-            auto& test_graph = graph.sub_graph(TestGraphLabel);
-            test_graph.add_node(TestGraphNodes::DrawTestItems, TestItemsNode{});
-        }
-    }
-};
 
 int main() {
     App app = App::create();
@@ -323,10 +252,11 @@ int main() {
     app.add_plugins(render::PipelineServerPlugin{});
     app.add_plugins(transform::TransformPlugin{});
 
-    app.add_plugins(TestGraph{});
+    app.add_plugins(render::core_2d::Core2dPlugin{});
+
     app.add_plugins([](App& app) {
         app.insert_resource(ShaderPluginTest{});
-        app.spawn(render::camera::CameraBundle::with_render_graph(TestGraphLabel));
+        app.spawn(render::core_2d::Camera2DBundle{});
         app.add_systems(
                Startup, into([](Commands cmd, Res<assets::AssetServer> asset_server) {
                    cmd.insert_resource(TestPipelineShaders{
