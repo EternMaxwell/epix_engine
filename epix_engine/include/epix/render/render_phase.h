@@ -200,7 +200,7 @@ struct RenderPhase {
     DrawFunctionId _item_draw_function(const T& item) const { return item.draw_function(); }
     size_t _item_batch_size(const T& item) const {
         if constexpr (BatchedPhaseItem<T>) {
-            return item.batch_size();
+            return std::max<size_t>(1, item.batch_size());
         } else {
             return 1;
         }
@@ -414,7 +414,7 @@ DrawFunctionId add_render_commands(DrawFunctions<P>& draw_functions) {
 }
 
 template <PhaseItem P>
-void sort_phase_items(Query<Item<RenderPhase<P>>>& phases) {
+void sort_phase_items(Query<Item<Mut<RenderPhase<P>>>>& phases) {
     for (auto&& [phase] : phases.iter()) {
         phase.sort();
     }
