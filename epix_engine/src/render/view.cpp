@@ -43,7 +43,7 @@ void render::view::create_view_depth(Query<Item<Entity, ExtractedView>> views,
         nvrhi::TextureDesc desc;
         desc.width            = size.x;
         desc.height           = size.y;
-        desc.format           = nvrhi::Format::R32_FLOAT;
+        desc.format           = nvrhi::Format::D32;
         desc.dimension        = nvrhi::TextureDimension::Texture2D;
         desc.isRenderTarget   = true;
         desc.debugName        = "ViewDepth";
