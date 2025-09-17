@@ -405,7 +405,29 @@ template <typename Q>
     } && epix::util::type_traits::specialization_of<Q, Query>
 struct SystemParam<Q> {
     using State = std::optional<Q>;
-    State init(SystemMeta& meta) {
+    State init(World& world, SystemMeta& meta)
+        requires(!Q::readonly)
+    {
+        auto& qs = meta.access.queries.emplace_back();
+        [&]<size_t... I>(std::index_sequence<I...>) {
+            // if type is const, add to reads, otherwise add to writes
+            ((std::is_const_v<std::tuple_element_t<I, typename Q::access_type>>
+                  ? qs.component_reads.emplace(
+                        meta::type_id<std::decay_t<std::tuple_element_t<I, typename Q::access_type>>>{})
+                  : qs.component_writes.emplace(
+                        meta::type_id<std::decay_t<std::tuple_element_t<I, typename Q::access_type>>>{})),
+             ...);
+        }(std::make_index_sequence<std::tuple_size<typename Q::access_type>::value>{});
+        [&]<size_t... I>(std::index_sequence<I...>) {
+            (qs.component_excludes.emplace(
+                 meta::type_id<std::decay_t<std::tuple_element_t<I, typename Q::must_exclude>>>{}),
+             ...);
+        }(std::make_index_sequence<std::tuple_size<typename Q::must_exclude>::value>{});
+        return Q(world);
+    }
+    State init(SystemMeta& meta)
+        requires(Q::readonly)
+    {
         auto& qs = meta.access.queries.emplace_back();
         [&]<size_t... I>(std::index_sequence<I...>) {
             // if type is const, add to reads, otherwise add to writes
