@@ -18,10 +18,6 @@ EPIX_API void Core2dGraph::add_to(graph::RenderGraph& g) {
 
 EPIX_API void Core2dPlugin::build(App& app) {
     if (auto render_app = app.get_sub_app(render::Render)) {
-        {
-            auto write = render_app->world();
-            auto& reg = write->registry();
-        }
         render_app->insert_resource(render_phase::DrawFunctions<Transparent2D>{});
         render_app->insert_resource(render_phase::DrawFunctions<Opaque2D>{});
         render_app->insert_resource(render_phase::DrawFunctions<UI2DItem>{});
