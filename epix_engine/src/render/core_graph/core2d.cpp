@@ -27,5 +27,21 @@ EPIX_API void Core2dPlugin::build(App& app) {
             Render, into(render_phase::sort_phase_items<Transparent2D>, render_phase::sort_phase_items<UI2DItem>)
                         .in_set(RenderSet::PhaseSort)
                         .set_names({"sort transparent 2d phase", "sort ui 2d phase"}));
+        render_app->add_systems(
+            Render,
+            into([](Commands& cmd, Query<Item<Entity, camera::ExtractedCamera>, With<view::ExtractedView>> views) {
+                // insert render phases for each view
+                for (auto&& [entity, camera] : views.iter()) {
+                    // only insert for 2d camera render graph
+                    if (camera.render_graph == camera::CameraRenderGraph(Core2d)) {
+                        auto entity_commands = cmd.entity(entity);
+                        entity_commands.emplace(render_phase::RenderPhase<Transparent2D>{});
+                        entity_commands.emplace(render_phase::RenderPhase<Opaque2D>{});
+                        entity_commands.emplace(render_phase::RenderPhase<UI2DItem>{});
+                    }
+                }
+            })
+                .in_set(RenderSet::ManageViews)
+                .set_name("insert 2d render phases"));
     }
 }

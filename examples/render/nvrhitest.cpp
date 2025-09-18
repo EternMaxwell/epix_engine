@@ -221,12 +221,11 @@ struct DrawCommand {
         return true;
     }
 };
-void queue_render_phase(Query<Item<Entity>, With<render::camera::ExtractedCamera, render::view::ViewTarget>> views,
-                        Commands cmd,
+void queue_render_phase(Query<Item<Entity, Mut<render::render_phase::RenderPhase<render::core_2d::Transparent2D>>>,
+                              With<render::camera::ExtractedCamera, render::view::ViewTarget>> views,
                         Res<TestPipeline> pipeline,
                         ResMut<render::render_phase::DrawFunctions<render::core_2d::Transparent2D>> draw_functions) {
-    for (auto&& [entity] : views.iter()) {
-        render::render_phase::RenderPhase<render::core_2d::Transparent2D> phase;
+    for (auto&& [entity, phase] : views.iter()) {
         phase.add(render::core_2d::Transparent2D{
             .id          = entity,
             .pipeline_id = pipeline->get_id(),
@@ -234,7 +233,6 @@ void queue_render_phase(Query<Item<Entity>, With<render::camera::ExtractedCamera
                   render::core_2d::Transparent2D, AddVertexBuffer, render::render_phase::SetItemPipeline,
                   BindingSetCommand, PushConstant, DrawCommand>(*draw_functions),
         });
-        cmd.entity(entity).emplace(std::move(phase));
     }
 }
 
