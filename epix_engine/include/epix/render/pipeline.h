@@ -22,14 +22,11 @@ struct RenderPipelineDesc : nvrhi::GraphicsPipelineDesc {
     ShaderInfo tessellationControlShader;
     ShaderInfo tessellationEvaluationShader;
 
-    std::vector<nvrhi::BindingLayoutDesc> bindingLayoutDescs;
-
     EPIX_API RenderPipelineDesc& setVertexShader(ShaderInfo shader);
     EPIX_API RenderPipelineDesc& setFragmentShader(ShaderInfo shader);
     EPIX_API RenderPipelineDesc& setGeometryShader(ShaderInfo shader);
     EPIX_API RenderPipelineDesc& setTessellationControlShader(ShaderInfo shader);
     EPIX_API RenderPipelineDesc& setTessellationEvaluationShader(ShaderInfo shader);
-    EPIX_API RenderPipelineDesc& addBindingLayout(const nvrhi::BindingLayoutDesc& layout);
 };
 struct ComputePipelineDesc : nvrhi::ComputePipelineDesc {
     using Base = nvrhi::ComputePipelineDesc;
@@ -44,6 +41,7 @@ struct ComputePipelineDesc : nvrhi::ComputePipelineDesc {
 struct ComputePipelineId {
     size_t id;
 
+    ComputePipelineId() : id(0) {}
     ComputePipelineId(size_t id) : id(id) {}
     auto operator<=>(const ComputePipelineId& other) const = default;
 
@@ -52,6 +50,7 @@ struct ComputePipelineId {
 struct RenderPipelineId {
     size_t id;
 
+    RenderPipelineId() : id(0) {}
     RenderPipelineId(size_t id) : id(id) {}
     auto operator<=>(const RenderPipelineId& other) const = default;
 

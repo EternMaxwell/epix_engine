@@ -388,6 +388,7 @@ static_assert(ValidParam<World>, "World should be a valid SystemParam type.");
 
 template <ValidParam... Ts>
 struct ParamSet : std::tuple<Ts&...> {
+    using std::tuple<Ts&...>::tuple;
     static ParamSet from_param(Ts&... args) { return ParamSet<Ts...>(args...); }
     std::tuple<Ts&...>& get() { return *this; }
 };

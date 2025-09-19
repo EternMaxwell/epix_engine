@@ -22,10 +22,6 @@ EPIX_API RenderPipelineDesc& RenderPipelineDesc::setTessellationEvaluationShader
     tessellationEvaluationShader = std::move(shader);
     return *this;
 }
-EPIX_API RenderPipelineDesc& RenderPipelineDesc::addBindingLayout(const nvrhi::BindingLayoutDesc& layout) {
-    bindingLayoutDescs.push_back(layout);
-    return *this;
-}
 
 EPIX_API ComputePipelineDesc& ComputePipelineDesc::setComputeShader(ShaderInfo shader) {
     computeShader = std::move(shader);
@@ -219,13 +215,13 @@ EPIX_API void PipelineServer::process_queued(ResMut<PipelineServer> server, Res<
                                    return;
                                }
                            }
-                           if (renderDesc.bindingLayouts.empty() && !renderDesc.bindingLayoutDescs.empty()) {
-                               renderDesc.bindingLayouts = renderDesc.bindingLayoutDescs |
-                                                           std::views::transform([&](auto&& desc) {
-                                                               return device->createBindingLayout(desc);
-                                                           }) |
-                                                           std::ranges::to<nvrhi::BindingLayoutVector>();
-                           }
+                        //    if (renderDesc.bindingLayouts.empty() && !renderDesc.bindingLayoutDescs.empty()) {
+                        //        renderDesc.bindingLayouts = renderDesc.bindingLayoutDescs |
+                        //                                    std::views::transform([&](auto&& desc) {
+                        //                                        return device->createBindingLayout(desc);
+                        //                                    }) |
+                        //                                    std::ranges::to<nvrhi::BindingLayoutVector>();
+                        //    }
                            server->renderPipelines[id] = RenderPipelineCache(device, id, renderDesc);
                        },
                        [&](const ComputePipelineId& id) {
