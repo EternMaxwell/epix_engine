@@ -6,12 +6,10 @@ using namespace epix::image;
 
 EPIX_API std::span<const char* const> StbImageLoader::extensions() noexcept {
     static constexpr auto exts =
-        std::array{".png", ".jpg", ".jpeg", ".bmp", ".tga", ".hdr",
-                   ".pic", ".psd", ".gif",  ".ppm", ".pgm", ".pnm"};
+        std::array{".png", ".jpg", ".jpeg", ".bmp", ".tga", ".hdr", ".pic", ".psd", ".gif", ".ppm", ".pgm", ".pnm"};
     return exts;
 }
-EPIX_API Image StbImageLoader::load(const std::filesystem::path& path,
-                                    assets::LoadContext& context) {
+EPIX_API Image StbImageLoader::load(const std::filesystem::path& path, assets::LoadContext& context) {
     Image image;
     int width, height, channels;
     auto path_str = path.string();
@@ -25,8 +23,7 @@ EPIX_API Image StbImageLoader::load(const std::filesystem::path& path,
 
     if (hdr) {
         // this is an HDR image, use float for storage
-        auto loaded =
-            stbi_loadf(path_str.c_str(), &width, &height, &channels, 4);
+        auto loaded = stbi_loadf(path_str.c_str(), &width, &height, &channels, 4);
         if (!loaded) {
             throw std::runtime_error("Fail to load HDR image: " + path_str);
         }
@@ -36,8 +33,7 @@ EPIX_API Image StbImageLoader::load(const std::filesystem::path& path,
         image.info.format = nvrhi::Format::RGBA32_FLOAT;
     } else if (bit16) {
         // this is a 16-bit image, use uint16_t for storage
-        auto loaded =
-            stbi_load_16(path_str.c_str(), &width, &height, &channels, 4);
+        auto loaded = stbi_load_16(path_str.c_str(), &width, &height, &channels, 4);
         if (!loaded) {
             throw std::runtime_error("Fail to load 16-bit image: " + path_str);
         }
@@ -47,8 +43,7 @@ EPIX_API Image StbImageLoader::load(const std::filesystem::path& path,
         image.info.format = nvrhi::Format::RGBA16_UINT;
     } else {
         // this is an 8-bit image, use uint8_t for storage
-        auto loaded =
-            stbi_load(path_str.c_str(), &width, &height, &channels, 4);
+        auto loaded = stbi_load(path_str.c_str(), &width, &height, &channels, 4);
         if (!loaded) {
             throw std::runtime_error("Fail to load 8-bit image: " + path_str);
         }
@@ -82,11 +77,11 @@ EPIX_API void ImagePlugin::build(epix::App& app) {
 using Param          = epix::render::assets::RenderAsset<Image>::Param;
 using ProcessedAsset = epix::render::assets::RenderAsset<Image>::ProcessedAsset;
 
-EPIX_API ProcessedAsset RenderAsset<Image>::process(Image&& asset,
-                                                    Param& param) {
+EPIX_API ProcessedAsset RenderAsset<Image>::process(Image&& asset, Param& param) {
     auto&& [device]              = param.get();
     nvrhi::TextureHandle texture = device.get()->createTexture(asset.info);
-    auto commandlist             = device.get()->createCommandList();
+    auto commandlist =
+        device.get()->createCommandList(nvrhi::CommandListParameters().setEnableImmediateExecution(false));
     commandlist->open();
     size_t rowPitch = asset.data.size() / asset.info.height;
     commandlist->writeTexture(texture, 0, 0, asset.data.data(), rowPitch);
@@ -94,6 +89,4 @@ EPIX_API ProcessedAsset RenderAsset<Image>::process(Image&& asset,
     device.get()->executeCommandList(commandlist);
     return texture;
 }
-EPIX_API RenderAssetUsage RenderAsset<Image>::usage(const Image& asset) {
-    return asset.usage;
-}
+EPIX_API RenderAssetUsage RenderAsset<Image>::usage(const Image& asset) { return asset.usage; }
