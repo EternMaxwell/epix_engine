@@ -11,20 +11,18 @@
 namespace epix::assets {
 struct AssetPlugin {
     std::vector<std::function<void(epix::App&)>> m_assets_inserts;
-    std::shared_ptr<AssetServer> m_asset_server =
-        std::make_shared<AssetServer>();
+    std::shared_ptr<AssetServer> m_asset_server = std::make_shared<AssetServer>();
 
     template <typename T>
     AssetPlugin& register_asset() {
         m_assets_inserts.push_back([](epix::App& app) {
             app.init_resource<Assets<T>>();
-            app.resource<AssetServer>().register_assets(app.resource<Assets<T>>(
-            ));
+            app.resource<AssetServer>().register_assets(app.resource<Assets<T>>());
             app.add_events<AssetEvent<T>>();
-            app.add_systems(
-                First,
-                into(Assets<T>::handle_events, Assets<T>::asset_events).chain()
-            );
+            app.add_systems(First, into(Assets<T>::handle_events, Assets<T>::asset_events)
+                                       .chain()
+                                       .set_names({std::format("handle {} asset events", typeid(T).name()),
+                                                   std::format("send {} asset events", typeid(T).name())}));
         });
         return *this;
     }
@@ -34,7 +32,7 @@ struct AssetPlugin {
         return *this;
     }
 
-    EPIX_API void build(epix::App& app) ;
+    EPIX_API void build(epix::App& app);
     EPIX_API void finish(epix::App& app);
 };
 }  // namespace epix::assets
