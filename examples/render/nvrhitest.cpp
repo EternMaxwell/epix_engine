@@ -237,7 +237,7 @@ void queue_render_phase(Query<Item<Entity, Mut<render::render_phase::RenderPhase
 }
 
 int main() {
-    App app = App::create();
+    App app = App::create(epix::AppConfig{});
     app.add_plugins(window::WindowPlugin{.primary_window = window::Window{
                                              .title = "nvrhi Test",
                                          }});
@@ -251,6 +251,8 @@ int main() {
     app.add_plugins(transform::TransformPlugin{});
 
     app.add_plugins(render::core_2d::Core2dPlugin{});
+
+    app.add_plugins(sprite::SpritePlugin{});
 
     app.add_plugins([](App& app) {
         app.insert_resource(ShaderPluginTest{});
@@ -316,7 +318,7 @@ int main() {
                             return true;
                         });
                     }
-                }));
+                }).set_name("camera control"));
 
         auto& render_app = app.sub_app(render::Render);
         render_app.add_systems(
@@ -326,18 +328,19 @@ int main() {
                 if (pipeline) return;
                 cmd.insert_resource(TestPipeline::create(nvrhi_device.get(), shaders.get(), pipeline_server.get()));
             }).set_name("create test pipeline"));
-        render_app.add_systems(
-            render::Render, into([loaded = false](Res<render::assets::RenderAssets<image::Image>> textures) mutable {
-                if (!loaded) {
-                    auto ptexture = textures->try_get(image_handle);
-                    if (ptexture) {
-                        auto& texture = *ptexture;
-                        spdlog::info("Image loaded: {}\n\t with size: {}x{}", image_handle.id().to_string(),
-                                     texture->getDesc().width, texture->getDesc().height);
-                    }
-                    loaded = true;
-                }
-            }));
+        render_app.add_systems(render::Render,
+                               into([loaded = false](Res<render::assets::RenderAssets<image::Image>> textures) mutable {
+                                   if (!loaded) {
+                                       auto ptexture = textures->try_get(image_handle);
+                                       if (ptexture) {
+                                           auto& texture = *ptexture;
+                                           spdlog::info("Image loaded: {}\n\t with size: {}x{}",
+                                                        image_handle.id().to_string(), texture->getDesc().width,
+                                                        texture->getDesc().height);
+                                       }
+                                       loaded = true;
+                                   }
+                               }).set_name("check image loaded"));
         render_app.add_systems(render::Render,
                                into(queue_render_phase).in_set(render::RenderSet::Queue).set_name("queue test phase"));
 

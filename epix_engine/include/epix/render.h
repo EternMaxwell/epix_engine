@@ -9,6 +9,7 @@
 #include <epix/render/pipeline.h>
 #include <epix/render/render_phase.h>
 #include <epix/render/shader.h>
+#include <epix/render/sprite/sprite.h>
 #include <epix/render/view.h>
 #include <epix/render/window.h>
 #include <epix/vulkan.h>
