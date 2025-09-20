@@ -186,6 +186,8 @@ EPIX_API void epix::render::RenderPlugin::build(epix::App& app) {
         nvrhi_device = nvrhi::validation::createValidationLayer(nvrhi_device);
     }
 
+    nvrhi_device = epix::render::create_async_device(nvrhi_device);
+
     auto queue = device.getQueue(queue_family_index, 0);
     app.insert_resource(instance);
     app.insert_resource(physical_device);
@@ -218,10 +220,6 @@ EPIX_API void epix::render::RenderPlugin::build(epix::App& app) {
     render_app.insert_resource(device);
     render_app.insert_resource(queue);
     render_app.insert_resource(nvrhi_device);
-    // command pools resource should be across worlds, so use add_resource
-    auto pools = std::make_shared<epix::render::CommandPools>(device, queue_family_index);
-    app.add_resource(pools);
-    render_app.add_resource(pools);
 
     app.add_plugins(epix::render::window::WindowRenderPlugin{});
     app.add_plugins(epix::render::camera::CameraPlugin{});
