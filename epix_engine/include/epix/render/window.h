@@ -56,8 +56,7 @@ EPIX_API void create_surfaces(Res<ExtractedWindows> windows,
                               Res<vk::Device> device,
                               Res<vk::Queue> queue,
                               Res<nvrhi::DeviceHandle> nvrhi_device,
-                              Res<render::CommandPools> command_pools,
-                              Local<vk::CommandBuffer> pcmd_buffer);
+                              Local<LocalCommandList> commandlist);
 
 EPIX_API void prepare_windows(ResMut<ExtractedWindows> windows,
                               ResMut<WindowSurfaces> window_surfaces,
@@ -65,10 +64,7 @@ EPIX_API void prepare_windows(ResMut<ExtractedWindows> windows,
                               Res<vk::PhysicalDevice> physical_device,
                               Res<nvrhi::DeviceHandle> nvrhi_device);
 
-EPIX_API void present_windows(Res<render::CommandPools> command_pools,
-                              ResMut<WindowSurfaces> window_surfaces,
-                              Res<vk::Queue> queue,
-                              Local<vk::CommandBuffer> pcmd_buffer);
+EPIX_API void present_windows(ResMut<WindowSurfaces> window_surfaces, Res<vk::Queue> queue);
 
 struct WindowRenderPlugin {
     bool handle_present = true;

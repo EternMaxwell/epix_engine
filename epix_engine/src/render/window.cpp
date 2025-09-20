@@ -102,8 +102,7 @@ EPIX_API void epix::render::window::create_surfaces(Res<ExtractedWindows> window
                                                     Res<vk::Device> device,
                                                     Res<vk::Queue> queue,
                                                     Res<nvrhi::DeviceHandle> nvrhi_device,
-                                                    Res<CommandPools> command_pools,
-                                                    Local<vk::CommandBuffer> pcmd_buffer) {
+                                                    Local<LocalCommandList> commandlist) {
     auto match_present_mode = [&](vk::SurfaceKHR surface, epix::window::PresentMode present_mode) {
         auto presentModes = physical_device->getSurfacePresentModesKHR(surface);
         switch (present_mode) {
@@ -159,16 +158,9 @@ EPIX_API void epix::render::window::create_surfaces(Res<ExtractedWindows> window
         }
     };
 
-    if (!*pcmd_buffer) {
-        // If the command buffer is not provided, we allocate one
-        *pcmd_buffer = device->allocateCommandBuffers(vk::CommandBufferAllocateInfo()
-                                                          .setCommandPool(command_pools->get())
-                                                          .setLevel(vk::CommandBufferLevel::ePrimary)
-                                                          .setCommandBufferCount(1))[0];
-    }
-    auto& cmd_buffer = *pcmd_buffer;
-    cmd_buffer.reset();
-    cmd_buffer.begin(vk::CommandBufferBeginInfo().setFlags(vk::CommandBufferUsageFlagBits::eOneTimeSubmit));
+    commandlist->handle->open();
+    vk::CommandBuffer cmd_buffer =
+        (VkCommandBuffer)commandlist->handle->getNativeObject(nvrhi::ObjectTypes::VK_CommandBuffer);
     bool cmd_empty = true;
     for (auto&& window : std::views::all(windows->windows) | std::views::values) {
         if (!window_surfaces->surfaces.contains(window.entity)) {
@@ -350,13 +342,9 @@ EPIX_API void epix::render::window::create_surfaces(Res<ExtractedWindows> window
                 std::ranges::to<std::vector>();
         }
     }
-    cmd_buffer.end();
-    if (!cmd_empty) {
-        auto fence = device->createFence(vk::FenceCreateInfo());
-        queue->submit(vk::SubmitInfo().setCommandBuffers(cmd_buffer), fence);
-        auto res = device->waitForFences(fence, true, UINT64_MAX);
-        device->destroyFence(fence);
-    }
+    commandlist->handle->close();
+    nvrhi_device.get()->executeCommandList(commandlist->handle);
+    commandlist.reset();
 }
 
 EPIX_API void epix::render::window::prepare_windows(ResMut<ExtractedWindows> windows,
@@ -365,8 +353,6 @@ EPIX_API void epix::render::window::prepare_windows(ResMut<ExtractedWindows> win
                                                     Res<vk::PhysicalDevice> physical_device,
                                                     Res<nvrhi::DeviceHandle> nvrhi_device) {
     std::vector<std::pair<Entity, std::string>> errors;
-    auto commandlist = nvrhi_device.get()->createCommandList();
-    commandlist->open();
     for (auto&& window : std::views::all(windows->windows) | std::views::values) {
         auto it = window_surfaces->surfaces.find(window.entity);
         if (it == window_surfaces->surfaces.end()) continue;
@@ -403,7 +389,6 @@ EPIX_API void epix::render::window::prepare_windows(ResMut<ExtractedWindows> win
             errors.emplace_back(window.entity, e.what());
         }
     }
-    commandlist->close();
     if (!errors.empty()) {
         std::string error_msg = "Failed to acquire swapchain images for windows: ";
         for (auto&& [entity, error] : errors) {
@@ -413,21 +398,7 @@ EPIX_API void epix::render::window::prepare_windows(ResMut<ExtractedWindows> win
     }
 }
 
-EPIX_API void epix::render::window::present_windows(Res<render::CommandPools> command_pools,
-                                                    ResMut<WindowSurfaces> window_surfaces,
-                                                    Res<vk::Queue> queue,
-                                                    Local<vk::CommandBuffer> pcmd_buffer) {
-    auto device = command_pools->get_device();
-    if (!*pcmd_buffer) {
-        // If the command buffer is not provided, we allocate one
-        *pcmd_buffer = device.allocateCommandBuffers(vk::CommandBufferAllocateInfo()
-                                                         .setCommandPool(command_pools->get())
-                                                         .setLevel(vk::CommandBufferLevel::ePrimary)
-                                                         .setCommandBufferCount(1))[0];
-    }
-    auto& cmd_buffer = *pcmd_buffer;
-    cmd_buffer.reset();
-    cmd_buffer.begin(vk::CommandBufferBeginInfo().setFlags(vk::CommandBufferUsageFlagBits::eOneTimeSubmit));
+EPIX_API void epix::render::window::present_windows(ResMut<WindowSurfaces> window_surfaces, Res<vk::Queue> queue) {
     std::vector<vk::SwapchainKHR> swapchains;
     swapchains.reserve(window_surfaces->surfaces.size());
     std::vector<uint32_t> image_indices;
@@ -436,28 +407,10 @@ EPIX_API void epix::render::window::present_windows(Res<render::CommandPools> co
                              std::views::filter([](const auto& surface) { return surface.swapchain != nullptr; })) {
         swapchains.push_back(window.swapchain);
         image_indices.push_back(window.current_image_index);
-        // cmd_buffer.pipelineBarrier(
-        //     vk::PipelineStageFlagBits::eColorAttachmentOutput, vk::PipelineStageFlagBits::eBottomOfPipe, {}, {}, {},
-        //     vk::ImageMemoryBarrier()
-        //         .setSrcAccessMask(vk::AccessFlagBits::eColorAttachmentWrite)
-        //         .setDstAccessMask(vk::AccessFlagBits::eNone)
-        //         .setOldLayout(vk::ImageLayout::eColorAttachmentOptimal)
-        //         .setNewLayout(vk::ImageLayout::ePresentSrcKHR)
-        //         .setImage((VkImage)window.swapchain_images[window.current_image_index]->getNativeObject(
-        //             nvrhi::ObjectTypes::VK_Image))
-        //         .setSubresourceRange(vk::ImageSubresourceRange()
-        //                                  .setAspectMask(vk::ImageAspectFlagBits::eColor)
-        //                                  .setBaseMipLevel(0)
-        //                                  .setLevelCount(1)
-        //                                  .setBaseArrayLayer(0)
-        //                                  .setLayerCount(1)));
     }
-    cmd_buffer.end();
     if (swapchains.empty()) {
         return;  // Nothing to present
     }
-    vk::Fence fence = device.createFence(vk::FenceCreateInfo());
-    queue->submit(vk::SubmitInfo().setCommandBuffers(cmd_buffer), fence);
     std::exception_ptr exception_ptr;
 
     // wrap the present call in a try-catch block so that the fence is still
@@ -468,8 +421,6 @@ EPIX_API void epix::render::window::present_windows(Res<render::CommandPools> co
         exception_ptr = std::current_exception();
     }
 
-    auto res = device.waitForFences(fence, true, UINT64_MAX);
-    device.destroyFence(fence);
     if (exception_ptr) {
         // If an exception occurred, rethrow it
         std::rethrow_exception(exception_ptr);
