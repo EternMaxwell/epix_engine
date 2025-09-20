@@ -84,20 +84,24 @@ struct ExtractTarget {
 template <typename T>
 struct Local {
    private:
-    T* m_ptr;
+    std::optional<T>* m_ptr;
 
    public:
-    Local(T* ptr) : m_ptr(ptr) {}
+    Local(std::optional<T>* ptr) : m_ptr(ptr) {}
     Local(const Local&)            = default;
     Local(Local&&)                 = default;
     Local& operator=(const Local&) = default;
     Local& operator=(Local&&)      = default;
     ~Local()                       = default;
 
-    T& operator*() { return *m_ptr; }
-    T* operator->() { return m_ptr; }
-    const T& operator*() const { return *m_ptr; }
-    const T* operator->() const { return m_ptr; }
+    T& operator*() { return **m_ptr; }
+    T* operator->() { return m_ptr->operator->(); }
+    T& get() { return **m_ptr; }
+    const T& operator*() const { return **m_ptr; }
+    const T* operator->() const { return m_ptr->operator->(); }
+    const T& get() const { return **m_ptr; }
+
+    void reset() { m_ptr->reset(); }
 };
 
 struct Access {
@@ -334,29 +338,47 @@ struct SystemParam<std::optional<T>> : public SystemParam<T> {
 };
 
 template <typename T>
-    requires(FromWorld<T> || std::constructible_from<T, World&>)
+    requires(FromWorld<T> || std::constructible_from<T, World&> || OptFromWorld<T>)
 struct SystemParam<Local<T>> {
-    using State = std::pair<T, Local<T>>;
+    using State = std::pair<std::optional<T>, Local<T>>;
     State init(World& world, SystemMeta& meta) {
         if constexpr (std::constructible_from<T, World&>) {
-            return {T(world), Local<T>(nullptr)};
+            return {std::optional<T>(world), Local<T>(nullptr)};
         } else if constexpr (FromWorld<T>) {
+            return {std::make_optional(T::from_world(world)), Local<T>(nullptr)};
+        } else if constexpr (OptFromWorld<T>) {
             return {T::from_world(world), Local<T>(nullptr)};
         }
     }
-    bool update(State& state, const World& world, const SystemMeta& meta) {
-        return true;  // Local params do not need update
+    bool update(State& state, World& world, const SystemMeta& meta) {
+        if (!state.first.has_value()) {
+            if constexpr (std::constructible_from<T, World&>) {
+                state.first.emplace(world);
+            } else if constexpr (FromWorld<T>) {
+                state.first.emplace(T::from_world(world));
+            } else if constexpr (OptFromWorld<T>) {
+                state.first = T::from_world(world);
+            }
+        }
+        return state.first.has_value();
     }
     Local<T>& get(State& state) {
+        if (!state.first.has_value()) {
+            throw std::runtime_error("Local<T> param is not initialized.");
+        }
         state.second = Local<T>(std::addressof(state.first));
         return state.second;
     }
 };
 template <std::constructible_from<> T>
+    requires(!FromWorld<T> && !OptFromWorld<T> && !std::constructible_from<T, World&>)
 struct SystemParam<Local<T>> {
-    using State = std::pair<T, Local<T>>;
+    using State = std::pair<std::optional<T>, Local<T>>;
     State init(SystemMeta& meta) { return {T(), Local<T>(nullptr)}; }
     bool update(State& state, const World& world, const SystemMeta& meta) {
+        if (!state.first.has_value()) {
+            state.first.emplace();
+        }
         return true;  // Local params do not need update
     }
     Local<T>& get(State& state) {
