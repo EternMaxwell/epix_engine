@@ -11,6 +11,13 @@ struct RenderT {
 };
 inline RenderT Render;
 
+/**
+ * @brief Render schedule system sets.
+ *
+ * PostExtract -> ManageViews -> Queue -> PhaseSort -> Prepare -> Render -> Cleanup
+ * PostExtract -> PrepareAssets -> Prepare
+ * Prepare: (PrepareResources -> PrepareFlush -> PrepareSets)
+ */
 enum class RenderSet {
     PostExtract,
     PrepareAssets,
