@@ -186,7 +186,7 @@ struct RenderPhase {
         for (size_t i = start; i < end; i += _item_batch_size(items[i])) {
             auto& item = items[i];
             if (auto draw_function = draw_functions.get(_item_draw_function(item)); draw_function) {
-                draw_function->draw(world, cmd, _item_entity(item), item);
+                draw_function->draw(world, cmd, view, item);
             } else {
                 spdlog::warn("Draw function {} not found for item {:#x}. Skipping.",
                              static_cast<uint32_t>(_item_draw_function(item)), _item_entity(item).index());
