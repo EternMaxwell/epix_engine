@@ -6,6 +6,12 @@
 
 #include <source_location>
 
+namespace epix::sprite::shaders {
+#include "shaders/shader.frag.h"
+#include "shaders/shader.vert.h"
+
+}  // namespace epix::sprite::shaders
+
 namespace epix::sprite {
 struct Sprite {
     glm::vec4 color{1.0f, 1.0f, 1.0f, 1.0f};
@@ -90,11 +96,13 @@ struct SpritePipeline {
                     .setName("Position")
                     .setFormat(nvrhi::Format::RG32_FLOAT)
                     .setOffset(0)
+                    .setElementStride(sizeof(glm::vec2))
                     .setBufferIndex(0),
                 nvrhi::VertexAttributeDesc()
                     .setName("TexCoord")
                     .setFormat(nvrhi::Format::RG32_FLOAT)
                     .setOffset(0)
+                    .setElementStride(sizeof(glm::vec2))
                     .setBufferIndex(1),
             };
             nvrhi::InputLayoutHandle input_layout =
@@ -105,6 +113,22 @@ struct SpritePipeline {
         } else {
             return std::nullopt;
         }
+    }
+};
+struct SpriteShadersPlugin {
+    void build(App& app) {
+        app.add_systems(Startup, into([](ResMut<assets::Assets<render::Shader>> shaders) {
+                                     shaders->insert(sprite_vertex_shader,
+                                                     render::Shader::spirv(std::vector<uint32_t>(
+                                                         sprite::shaders::sprite_vert,
+                                                         sprite::shaders::sprite_vert +
+                                                             sizeof(sprite::shaders::sprite_vert) / sizeof(uint32_t))));
+                                     shaders->insert(sprite_fragment_shader,
+                                                     render::Shader::spirv(std::vector<uint32_t>(
+                                                         sprite::shaders::sprite_frag,
+                                                         sprite::shaders::sprite_frag +
+                                                             sizeof(sprite::shaders::sprite_frag) / sizeof(uint32_t))));
+                                 }).set_name("insert sprite shaders"));
     }
 };
 
@@ -199,6 +223,7 @@ struct SpriteInstanceBuffer {
             while (new_size < data.size() * sizeof(SpriteInstanceData)) new_size <<= 1;
             buffer = device->createBuffer(nvrhi::BufferDesc()
                                               .setByteSize(new_size)
+                                              .setCanHaveRawViews(true)
                                               .setInitialState(nvrhi::ResourceStates::ShaderResource)
                                               .setKeepInitialState(true)
                                               .setDebugName("Sprite Instance Buffer"));
@@ -257,8 +282,8 @@ struct BindResourceCommand {
 
         // set the binding sets
         ctx.graphics_state.bindings.resize(0);
-        ctx.graphics_state.addBindingSet(sprite_batch.binding_set);
         ctx.graphics_state.addBindingSet(uniform_and_instance_set);
+        ctx.graphics_state.addBindingSet(sprite_batch.binding_set);
 
         // add vertex and index buffers
         ctx.graphics_state.vertexBuffers.resize(0);
@@ -286,10 +311,10 @@ struct DrawSpriteBatchCommand {
         }
         auto&& [sprite_batch] = *entity_item;
         ctx.commandlist->setGraphicsState(ctx.graphics_state);
-        ctx.commandlist->draw(nvrhi::DrawArguments()
-                                  .setInstanceCount(item.batch_size())
-                                  .setStartInstanceLocation(sprite_batch.instance_start)
-                                  .setVertexCount(6));
+        ctx.commandlist->drawIndexed(nvrhi::DrawArguments()
+                                         .setInstanceCount(item.batch_size())
+                                         .setStartInstanceLocation(sprite_batch.instance_start)
+                                         .setVertexCount(6));
 
         return true;
     }
@@ -477,13 +502,14 @@ inline void prepare_sprites(Query<Item<Mut<render::render_phase::RenderPhase<ren
     }
 
     // upload instance buffer
-    
+
     instance_buffer->upload(device.get());
 }
 
 struct SpritePlugin {
     void build(App& app) {
         app.add_plugins(DefaultSamplerPlugin{});
+        app.add_plugins(SpriteShadersPlugin{});
         if (auto render_app = app.get_sub_app(render::Render)) {
             render_app->init_resource<SpritePipeline>()
                 .init_resource<VertexBuffers>()
