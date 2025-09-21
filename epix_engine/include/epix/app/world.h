@@ -1,5 +1,7 @@
 #pragma once
 
+#include <spdlog/spdlog.h>
+
 #include <expected>
 #include <format>
 
@@ -128,6 +130,15 @@ struct World {
                 resource = std::make_shared<type>(*this);
             } else {
                 resource = std::make_shared<type>(type::from_world(*this));
+            }
+        } else if constexpr (OptFromWorld<type>) {
+            auto opt = type::from_world(*this);
+            if (opt) {
+                resource = std::make_shared<type>(std::move(*opt));
+            } else {
+                spdlog::error("Failed to create resource of type {} from world, from_world returned nullopt",
+                              meta::type_id<type>().name);
+                return;
             }
         } else {
             resource = std::make_shared<type>();
