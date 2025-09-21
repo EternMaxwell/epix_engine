@@ -257,6 +257,17 @@ int main() {
     app.add_plugins([](App& app) {
         app.insert_resource(ShaderPluginTest{});
         app.spawn(render::core_2d::Camera2DBundle{});
+        {
+            static thread_local std::random_device rd;
+            static thread_local std::mt19937 gen(rd());
+            static thread_local std::uniform_real_distribution<float> dis(-100.0f, 100.0f);
+            for (auto&& i : std::views::iota(0, 5000)) {
+                app.spawn(sprite::SpriteBundle{
+                    .transform = transform::Transform::from_xyz(dis(gen), dis(gen), 0.0f),
+                    .texture   = image_handle,
+                });
+            }
+        }
         app.add_systems(
                Startup, into([](Commands cmd, Res<assets::AssetServer> asset_server) {
                    cmd.insert_resource(TestPipelineShaders{
