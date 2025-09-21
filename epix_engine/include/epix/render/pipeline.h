@@ -41,7 +41,7 @@ struct ComputePipelineDesc : nvrhi::ComputePipelineDesc {
 struct ComputePipelineId {
     size_t id;
 
-    ComputePipelineId() : id(0) {}
+    ComputePipelineId() : id(std::numeric_limits<size_t>::max()) {}
     ComputePipelineId(size_t id) : id(id) {}
     auto operator<=>(const ComputePipelineId& other) const = default;
 
@@ -50,7 +50,7 @@ struct ComputePipelineId {
 struct RenderPipelineId {
     size_t id;
 
-    RenderPipelineId() : id(0) {}
+    RenderPipelineId() : id(std::numeric_limits<size_t>::max()) {}
     RenderPipelineId(size_t id) : id(id) {}
     auto operator<=>(const RenderPipelineId& other) const = default;
 
