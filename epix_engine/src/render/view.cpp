@@ -34,6 +34,9 @@ void render::view::create_view_depth(Query<Item<Entity, ExtractedView>> views,
                                      Res<nvrhi::DeviceHandle> device,
                                      ResMut<ViewDepthCache> depth_cache,
                                      Commands& cmd) {
+    auto commandlist =
+        device.get()->createCommandList(nvrhi::CommandListParameters().setEnableImmediateExecution(false));
+    commandlist->open();
     for (auto&& [entity, view] : views.iter()) {
         glm::uvec2 size = view.viewport_size;
         if (size.x == 0 || size.y == 0) {
@@ -54,8 +57,11 @@ void render::view::create_view_depth(Query<Item<Entity, ExtractedView>> views,
             spdlog::error("Failed to create depth texture for view with size {}x{}", size.x, size.y);
             continue;
         }
+        commandlist->clearDepthStencilTexture(texture, nvrhi::TextureSubresourceSet(), true, 1.0f, false, 0);
         cmd.entity(entity).emplace<view::ViewDepth>(texture);
     }
+    commandlist->close();
+    device.get()->executeCommandList(commandlist);
 }
 
 void clear_cache(ResMut<ViewDepthCache> depth_cache) { depth_cache->cache.clear(); }
