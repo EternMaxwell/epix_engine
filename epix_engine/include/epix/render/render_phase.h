@@ -349,6 +349,11 @@ struct RenderCommandState {
 template <PhaseItem P>
     requires CachedRenderPipelinePhaseItem<P>
 struct SetItemPipeline {
+    bool frame_buffer_error_logged = false;
+    bool prepare(const World&) {
+        frame_buffer_error_logged = false;
+        return true;
+    }
     bool render(const P& item,
                 const Item<>&,
                 const std::optional<Item<>>&,
@@ -356,8 +361,11 @@ struct SetItemPipeline {
                 DrawContext& ctx) {
         auto&& [server] = pipelines.get();
         if (!ctx.graphics_state.framebuffer) {
-            spdlog::error("No framebuffer bound in command list when setting pipeline for item {:#x}. Skipping.",
-                          item.entity().index());
+            if (!frame_buffer_error_logged) {
+                spdlog::error("No framebuffer bound in command list when setting pipeline for item {:#x}. Skipping.",
+                              item.entity().index());
+                frame_buffer_error_logged = true;
+            }
             return false;
         }
         return server->get_render_pipeline(item.pipeline(), ctx.graphics_state.framebuffer->getFramebufferInfo())

@@ -54,16 +54,16 @@ EPIX_API int GLFWRunner::run(App& app) {
     auto last_time = std::chrono::steady_clock::now();
     std::optional<std::future<void>> render_app_future;
     while (true) {
-        app.update().wait();
-        if (render_app_future.has_value()) {
-            render_app_future->wait();
-            render_app_future.reset();
-        }
         if (app.config.enable_tracy) {
             ZoneScopedN("glfw work load");
             glfw_work_load();
         } else {
             glfw_work_load();
+        }
+        app.update().wait();
+        if (render_app_future.has_value()) {
+            render_app_future->wait();
+            render_app_future.reset();
         }
         if (app.config.mark_frame) {
             FrameMark;
