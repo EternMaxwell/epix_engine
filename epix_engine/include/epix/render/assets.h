@@ -136,15 +136,16 @@ void process_render_assets(Commands& commands,
                            ResMut<CachedExtractedAssets<T>>& extracted_assets) {
     RenderAsset<T> render_asset_impl;
     std::vector<std::pair<epix::assets::AssetId<T>, std::exception_ptr>> exceptions;
+    for (const auto& id : extracted_assets->removed) {
+        render_assets->remove(id);
+    }
     for (auto&& [id, asset] : extracted_assets->extracted_assets) {
+        render_assets->remove(id);  // remove old version if exists
         try {
             render_assets->insert(id, render_asset_impl.process(std::move(asset), param));
         } catch (...) {
             exceptions.emplace_back(id, std::current_exception());
         }
-    }
-    for (const auto& id : extracted_assets->removed) {
-        render_assets->remove(id);
     }
     commands.remove_resource<CachedExtractedAssets<T>>();
     if (!exceptions.empty()) {

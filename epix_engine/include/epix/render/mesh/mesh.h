@@ -118,6 +118,8 @@ struct Mesh {
 
     std::optional<MeshIndicesInfo> indices;
 
+    render::assets::RenderAssetUsage usage = render::assets::RenderAssetUsageBits::RENDER_WORLD;
+
    public:
     size_t attribute_count() const { return attribute_name_to_slot.size(); }
     auto iter_attributes() const { return attribute_name_to_slot | std::views::all; }
@@ -365,6 +367,13 @@ struct Mesh {
         }
         return indices->template get_storage<T>();
     }
+
+    void cpu_only() { usage = render::assets::RenderAssetUsageBits::MAIN_WORLD; }
+    void gpu_only() { usage = render::assets::RenderAssetUsageBits::RENDER_WORLD; }
+    void cpu_and_gpu() {
+        usage = render::assets::RenderAssetUsageBits::MAIN_WORLD | render::assets::RenderAssetUsageBits::RENDER_WORLD;
+    }
+    render::assets::RenderAssetUsage get_usage() const { return usage; }
 };
 struct GPUMesh {
    private:
@@ -460,3 +469,16 @@ struct GPUMesh {
     nvrhi::BufferHandle get_index_buffer() const { return index_buffer; }
 };
 }  // namespace epix::mesh
+namespace epix {
+template <>
+struct render::assets::RenderAsset<mesh::Mesh> {
+    using ProcessedAsset = mesh::GPUMesh;
+    using Param          = ParamSet<Res<nvrhi::DeviceHandle>>;
+
+    ProcessedAsset process(const mesh::Mesh& asset, ParamSet<Res<nvrhi::DeviceHandle>>& params) {
+        auto&& [device] = params.get();
+        return mesh::GPUMesh::create(device.get(), asset);
+    }
+    RenderAssetUsage usage(const mesh::Mesh& asset) { return asset.get_usage(); }
+};
+}  // namespace epix
