@@ -43,19 +43,25 @@ void render::view::create_view_depth(Query<Item<Entity, ExtractedView>> views,
             continue;  // invalid size
         }
         // create new depth texture
-        nvrhi::TextureDesc desc;
-        desc.width            = size.x;
-        desc.height           = size.y;
-        desc.format           = nvrhi::Format::D32;
-        desc.dimension        = nvrhi::TextureDimension::Texture2D;
-        desc.isRenderTarget   = true;
-        desc.debugName        = "ViewDepth";
-        desc.initialState     = nvrhi::ResourceStates::DepthWrite;
-        desc.keepInitialState = true;  // keep initial state to avoid transition when used as read-only
-        auto texture          = device.get()->createTexture(desc);
-        if (!texture) {
-            spdlog::error("Failed to create depth texture for view with size {}x{}", size.x, size.y);
-            continue;
+        nvrhi::TextureHandle texture;
+        if (auto it = depth_cache->cache.find(size); it != depth_cache->cache.end()) {
+            texture = it->second;
+            depth_cache->cache.erase(it);
+        } else {
+            nvrhi::TextureDesc desc;
+            desc.width            = size.x;
+            desc.height           = size.y;
+            desc.format           = nvrhi::Format::D32;
+            desc.dimension        = nvrhi::TextureDimension::Texture2D;
+            desc.isRenderTarget   = true;
+            desc.debugName        = "ViewDepth";
+            desc.initialState     = nvrhi::ResourceStates::DepthWrite;
+            desc.keepInitialState = true;  // keep initial state to avoid transition when used as read-only
+            texture               = device.get()->createTexture(desc);
+            if (!texture) {
+                spdlog::error("Failed to create depth texture for view with size {}x{}", size.x, size.y);
+                continue;
+            }
         }
         commandlist->clearDepthStencilTexture(texture, nvrhi::TextureSubresourceSet(), true, 1.0f, false, 0);
         cmd.entity(entity).emplace<view::ViewDepth>(texture);
