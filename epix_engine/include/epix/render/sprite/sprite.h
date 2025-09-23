@@ -440,9 +440,12 @@ inline void prepare_sprites(Query<Item<Mut<render::render_phase::RenderPhase<ren
                             ResMut<VertexBuffers> vertex_buffers) {
     instance_buffer->clear();
 
+    entt::dense_map<nvrhi::TextureHandle, nvrhi::BindingSetHandle> binding_set_cache;
+
     for (auto&& [phase] : views.iter()) {
-        size_t batch_size                         = 0;
-        size_t batch_item                         = 0;
+        size_t batch_size = 0;
+        size_t batch_item = 0;
+        glm::vec2 image_size;
         assets::AssetId<image::Image> batch_image = assets::AssetId<image::Image>::invalid();
 
         for (auto&& [item_index, item] : phase.items | std::views::enumerate) {
@@ -454,7 +457,6 @@ inline void prepare_sprites(Query<Item<Mut<render::render_phase::RenderPhase<ren
 
             auto&& [batch_data, sprite] = batches.get(item.entity());
             bool batch_image_changed    = batch_image != sprite.texture;
-            glm::vec2 image_size;
 
             // batch image changed, start a new batch if possible
             if (batch_image_changed) {
@@ -463,12 +465,19 @@ inline void prepare_sprites(Query<Item<Mut<render::render_phase::RenderPhase<ren
                     batch_item                = item_index;
                     item.batch_count          = 0;
                     batch_data.instance_start = (uint32_t)instance_buffer->size();
-                    batch_data.binding_set    = device.get()->createBindingSet(
-                        nvrhi::BindingSetDesc()
-                            .addItem(nvrhi::BindingSetItem::Texture_SRV(0, *gpu_image))
-                            .addItem(nvrhi::BindingSetItem::Sampler(1, default_sampler->handle)),
-                        pipeline->image_layout);
-                    image_size = glm::vec2((*gpu_image)->getDesc().width, (*gpu_image)->getDesc().height);
+                    // check binding set cache
+                    if (auto it = binding_set_cache.find((*gpu_image)); it != binding_set_cache.end()) {
+                        batch_data.binding_set = it->second;
+                    } else {
+                        nvrhi::BindingSetDesc desc =
+                            nvrhi::BindingSetDesc()
+                                .addItem(nvrhi::BindingSetItem::Texture_SRV(0, *gpu_image))
+                                .addItem(nvrhi::BindingSetItem::Sampler(1, default_sampler->handle));
+                        batch_data.binding_set          = device.get()->createBindingSet(desc, pipeline->image_layout);
+                        binding_set_cache[(*gpu_image)] = batch_data.binding_set;
+                    }
+                    image_size  = glm::vec2((*gpu_image)->getDesc().width, (*gpu_image)->getDesc().height);
+                    batch_image = sprite.texture;
                 } else {
                     spdlog::warn(
                         "[sprite prepare] Sprite with id {} does not have a valid GPU image. Loading or failed to "
