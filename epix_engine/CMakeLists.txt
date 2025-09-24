@@ -82,3 +82,18 @@ if(EPIX_WITH_SHARED)
 
   add_library(epix_shared ALIAS epix_engine_shared)
 endif()
+
+function(epix_parse_options)
+  if(EPIX_ENABLE_TRACY)
+    target_compile_definitions(${ARGN} PRIVATE EPIX_ENABLE_TRACY)
+  endif()
+  if(EPIX_USE_VOLK)
+    target_compile_definitions(${ARGN} PUBLIC EPIX_USE_VOLK)
+  endif()
+  if(EPIX_WITH_SHARED)
+    target_compile_definitions(${ARGN} PUBLIC EPIX_SHARED)
+    target_compile_definitions(${ARGN} PRIVATE EPIX_BUILD_SHARED)
+  endif()
+endfunction()
+
+add_subdirectory(core)
