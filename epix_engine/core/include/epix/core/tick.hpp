@@ -1,0 +1,45 @@
+#pragma once
+
+#include <algorithm>
+#include <cstdint>
+#include <limits>
+
+#include "fwd.hpp"
+
+namespace epix::core {
+constexpr uint32_t CHECK_TICK_THRESHOLD = 518_400_000;
+constexpr uint32_t MAX_CHANGE_AGE       = std::numeric_limits<uint32_t>::max() - (2 * CHECK_TICK_THRESHOLD - 1);
+struct Tick {
+   private:
+    uint32_t tick;
+
+   public:
+    static constexpr Tick MAX = Tick(MAX_CHANGE_AGE);
+
+    constexpr Tick(uint32_t tick = 0) : tick(tick) {}
+
+    constexpr uint32_t get(this Tick self) const { return self.tick; }
+    constexpr void set(this Tick& self, uint32_t t) { self.tick = t; }
+    constexpr bool newer_than(this Tick self, Tick last_run, Tick this_run) const {
+        auto ticks_since_insert = std::min(this_run.relative_to(self).tick, MAX_CHANGE_AGE);
+        auto ticks_since_system = std::min(this_run.relative_to(last_run).tick, MAX_CHANGE_AGE);
+        return ticks_since_system > ticks_since_insert;
+    }
+    constexpr Tick relative_to(this Tick self, Tick other) const {
+        uint32_t diff = self.tick - other.tick;
+        return Tick(diff);
+    }
+    constexpr bool check_tick(this Tick& self, Tick tick) {
+        auto age = tick.relative_to(self);
+        if (age.tick > Tick::MAX.tick) {
+            self = tick.relative_to(Tick::MAX);
+            return true;
+        }
+        return false;
+    }
+};
+struct ComponentTicks {
+    Tick added;
+    Tick modified;
+};
+}  // namespace epix::core
