@@ -1,12 +1,11 @@
 #pragma once
 
 #include <mutex>
-#include <optional>
 #include <unordered_map>
 #include <vector>
 
+#include "../meta/typeindex.hpp"
 #include "fwd.hpp"
-#include "typeindex.hpp"
 
 namespace epix::core::type_system {
 struct TypeRegistry {

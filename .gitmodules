@@ -22,9 +22,6 @@
 [submodule "libs/thread-pool"]
 	path = libs/thread-pool
 	url = https://github.com/bshoshany/thread-pool.git
-[submodule "libs/webgpu"]
-	path = libs/webgpu
-	url = https://github.com/eliemichel/WebGPU-distribution.git
 [submodule "libs/imgui/src"]
 	path = libs/imgui/src
 	url = https://github.com/ocornut/imgui.git

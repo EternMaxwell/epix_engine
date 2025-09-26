@@ -1,6 +1,7 @@
 #pragma once
 
 #include <atomic>
+#include <cassert>
 #include <concepts>
 #include <optional>
 #include <ranges>
@@ -23,15 +24,16 @@ struct EntityLocation {
     uint32_t table_id     = 0;
     uint32_t table_idx    = 0;
 
-    static constexpr EntityLocation INVALID = {
-        std::numeric_limits<uint32_t>::max(), std::numeric_limits<uint32_t>::max(),
-        std::numeric_limits<uint32_t>::max(), std::numeric_limits<uint32_t>::max()};
+    static constexpr EntityLocation invalid() {
+        return {std::numeric_limits<uint32_t>::max(), std::numeric_limits<uint32_t>::max(),
+                std::numeric_limits<uint32_t>::max(), std::numeric_limits<uint32_t>::max()};
+    }
 };
 struct EntityMeta {
     uint32_t generation     = 0;
-    EntityLocation location = EntityLocation::INVALID;
+    EntityLocation location = EntityLocation::invalid();
 
-    static constexpr EntityMeta EMPTY = {0, EntityLocation::INVALID};
+    static constexpr EntityMeta empty() { return {0, EntityLocation::invalid()}; }
 };
 struct Entities {
    private:
@@ -118,7 +120,7 @@ struct Entities {
             return Entity::from_parts(index, meta[index].generation);
         } else {
             uint32_t index = static_cast<uint32_t>(meta.size());
-            meta.push_back(EntityMeta::EMPTY);
+            meta.push_back(EntityMeta::empty());
             return Entity::from_index(index);
         }
     }
@@ -141,7 +143,7 @@ struct Entities {
 
         meta.generation++;
         auto loc      = meta.location;
-        meta.location = EntityLocation::INVALID;
+        meta.location = EntityLocation::invalid();
 
         pending.push_back(entity.index);
         int64_t new_free_cursor = pending.size();
