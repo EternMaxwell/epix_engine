@@ -1,6 +1,9 @@
 #pragma once
 
+#include <memory>
+
 #include "../entities.hpp"
+#include "../type_system/type_registry.hpp"
 #include "dense.hpp"
 #include "fwd.hpp"
 #include "sparse_array.hpp"
@@ -164,6 +167,33 @@ struct SparseSets {
     SparseSet<size_t, std::shared_ptr<void>> sets;
 
    public:
-    
+    size_t size(this const SparseSets& self) { return self.sets.size(); }
+    bool empty(this const SparseSets& self) { return self.sets.empty(); }
+
+    auto iter(this const SparseSets& self) { return self.sets.iter(); }
+    auto iter_mut(this SparseSets& self) { return self.sets.iter_mut(); }
+
+    std::optional<const void*> get(this const SparseSets& self, size_t type_id) {
+        return self.sets.get(type_id).transform([](const std::shared_ptr<void>& ptr) -> void* { return ptr.get(); });
+    }
+    std::optional<void*> get_mut(this SparseSets& self, size_t type_id) {
+        return self.sets.get(type_id).transform([](const std::shared_ptr<void>& ptr) -> void* { return ptr.get(); });
+    }
+
+    template <typename T>
+    ComponentSparseSet<T>& get_or_insert(this SparseSets& self, const type_system::TypeRegistry& registry) {
+        size_t type_id = core::type_system::TypeRegistry().type_id<T>();
+        return self.sets.get_mut(type_id)
+            .and_then([](std::shared_ptr<void>& ptr) -> std::optional<std::reference_wrapper<ComponentSparseSet<T>>> {
+                return std::ref(std::static_pointer_cast<ComponentSparseSet<T>>(ptr).get());
+            })
+            .or_else([&]() -> std::optional<std::reference_wrapper<ComponentSparseSet<T>>> {
+                auto new_set = std::make_shared<ComponentSparseSet<T>>();
+                self.sets.emplace(type_id, new_set);
+                return std::ref(*new_set);
+            })
+            .value()
+            .get();
+    }
 };
 }  // namespace epix::core::storage

@@ -11,20 +11,20 @@
 namespace epix::core::type_system {
 struct TypeRegistry {
    private:
-    size_t nextId = 0;
-    std::unordered_map<const char*, size_t> types;
+    mutable size_t nextId = 0;
+    mutable std::unordered_map<const char*, size_t> types;
 
-    std::unordered_map<std::string_view, size_t> typeViews;
+    mutable std::unordered_map<std::string_view, size_t> typeViews;
 
-    std::vector<std::pair<const char*, size_t>> cache;
-    std::mutex mutex;
+    mutable std::vector<std::pair<const char*, size_t>> cache;
+    mutable std::mutex mutex;
 
    public:
     TypeRegistry()  = default;
     ~TypeRegistry() = default;
 
     template <typename T = void>
-    size_t type_id(const epix::core::meta::type_index& index = epix::core::meta::type_id<T>()) {
+    size_t type_id(const epix::core::meta::type_index& index = epix::core::meta::type_id<T>()) const {
         // If in types
         if (auto it = types.find(index.name().data()); it != types.end()) {
             // The desired path, no lock, should be fast.

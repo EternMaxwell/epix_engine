@@ -9,6 +9,8 @@ endif()
 
 project ("epix_engine.cmake" LANGUAGES CXX C)
 
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 #sub directories
 
 add_library(BSThreadPool INTERFACE)

@@ -2,14 +2,55 @@
 
 #include <cassert>
 #include <memory>
+#include <optional>
 #include <ranges>
 #include <span>
+#include <utility>
 #include <vector>
 
 #include "../tick.hpp"
 #include "fwd.hpp"
 
 namespace epix::core::storage {
+// struct UntypedVec {
+//    private:
+//     struct Accessors {
+//         std::unique_ptr<void, void (*)(void*)> (*clone)(const void*);
+//         void (*clear)(void*);
+//         void* (*data)(const void*, void**);
+//         size_t (*size)(const void*);
+//         void (*reserve)(void*, size_t);
+//         void (*swap_remove)(void*, size_t);
+//         void (*push_move)(void*, void*);
+//         void (*push_copy)(void*, const void*);
+//         void (*replace_move)(void*, size_t, void*);
+//         void (*replace_copy)(void*, size_t, const void*);
+//         void* (*get_mut)(void*, size_t);
+//         const void* (*get)(const void*, size_t);
+
+//         bool static_accessors;
+//     }* accessors = nullptr;
+
+//     std::unique_ptr<void, void (*)(void*)> data;
+
+//    public:
+//     ~UntypedVec() {
+//         // data is given the deleter. No need to do anything here.
+//         if (accessors && !accessors->static_accessors) {
+//             delete accessors;
+//         }
+//     }
+//     UntypedVec(size_t elem_size, size_t elem_align) {
+//         // in this case we use std::vector<std::byte> as the underlying storage
+//         data = std::unique_ptr<void, void (*)(void*)>(
+//             new std::vector<std::byte>(), [](void* ptr) { delete static_cast<std::vector<std::byte>*>(ptr); });
+//     }
+
+//     void clear(this UntypedVec& self) {
+//         assert(self.accessors != nullptr);
+//         self.accessors->clear(self.data.get());
+//     }
+// };
 template <typename T>
 struct Dense {
    private:
