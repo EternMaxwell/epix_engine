@@ -94,6 +94,99 @@ struct ComponentSparseSet {
     }
     void check_change_ticks(this ComponentSparseSet& self, Tick tick) { self.dense.check_change_ticks(tick); }
 };
+struct ComponentSparseSetInterface {
+   private:
+    struct Functor {
+        void (*clear)(void*);
+        size_t (*size)(const void*);
+        bool (*empty)(const void*);
+        void (*check_change_ticks)(void*, Tick);
+        bool (*remove)(void*, Entity);
+        bool (*contains)(const void*, Entity);
+        std::optional<const void*> (*get)(const void*, Entity);
+        std::optional<void*> (*get_mut)(void*, Entity);
+        std::optional<ComponentTicks> (*get_ticks)(const void*, Entity);
+        std::optional<std::reference_wrapper<const Tick>> (*get_added_tick)(const void*, Entity);
+        std::optional<std::reference_wrapper<const Tick>> (*get_modified_tick)(const void*, Entity);
+    }* functor;
+    std::unique_ptr<void, void (*)(void*)> data;
+
+    template <typename T>
+    Functor* get_functor() {
+        static Functor f = {
+            // clear
+            [](void* ptr) { static_cast<ComponentSparseSet<T>*>(ptr)->clear(); },
+            // size
+            [](const void* ptr) { return static_cast<const ComponentSparseSet<T>*>(ptr)->size(); },
+            // empty
+            [](const void* ptr) { return static_cast<const ComponentSparseSet<T>*>(ptr)->empty(); },
+            // check_change_ticks
+            [](void* ptr, Tick tick) { static_cast<ComponentSparseSet<T>*>(ptr)->check_change_ticks(tick); },
+            // remove
+            [](void* ptr, Entity entity) { return static_cast<ComponentSparseSet<T>*>(ptr)->remove(entity); },
+            // contains
+            [](const void* ptr, Entity entity) {
+                return static_cast<const ComponentSparseSet<T>*>(ptr)->contains(entity);
+            },
+            // get
+            [](const void* ptr, Entity entity) -> std::optional<const void*> {
+                return static_cast<const ComponentSparseSet<T>*>(ptr)->get(entity).transform(
+                    [](std::reference_wrapper<const T> ref) -> const void* { return &ref.get(); });
+            },
+            // get_mut
+            [](void* ptr, Entity entity) -> std::optional<void*> {
+                return static_cast<ComponentSparseSet<T>*>(ptr)->get_mut(entity).transform(
+                    [](std::reference_wrapper<T> ref) -> void* { return &ref.get(); });
+            },
+            // get_ticks
+            [](const void* ptr, Entity entity) {
+                return static_cast<const ComponentSparseSet<T>*>(ptr)->get_ticks(entity);
+            },
+            // get_added_tick
+            [](const void* ptr, Entity entity) {
+                return static_cast<const ComponentSparseSet<T>*>(ptr)->get_added_tick(entity);
+            },
+            // get_modified_tick
+            [](const void* ptr, Entity entity) {
+                return static_cast<const ComponentSparseSet<T>*>(ptr)->get_modified_tick(entity);
+            },
+        };
+        return &f;
+    }
+
+   public:
+    template <typename T>
+    ComponentSparseSetInterface() {
+        functor = get_functor<T>();
+        data    = std::unique_ptr<void, void (*)(void*)>(
+            new ComponentSparseSet<T>(), [](void* ptr) { delete static_cast<ComponentSparseSet<T>*>(ptr); });
+    }
+    template <typename T>
+    ComponentSparseSetInterface(ComponentSparseSet<T> set) {
+        functor = get_functor<T>();
+        data    = std::unique_ptr<void, void (*)(void*)>(new ComponentSparseSet<T>(std::move(set)), [](void* ptr) {
+            delete static_cast<ComponentSparseSet<T>*>(ptr);
+        });
+    }
+    void clear() { functor->clear(data.get()); }
+    size_t size() const { return functor->size(data.get()); }
+    bool empty() const { return functor->empty(data.get()); }
+    void check_change_ticks(Tick tick) { functor->check_change_ticks(data.get(), tick); }
+    bool remove(Entity entity) { return functor->remove(data.get(), entity); }
+    bool contains(Entity entity) const { return functor->contains(data.get(), entity); }
+    std::optional<const void*> get(Entity entity) const { return functor->get(data.get(), entity); }
+    std::optional<void*> get_mut(Entity entity) { return functor->get_mut(data.get(), entity); }
+    std::optional<ComponentTicks> get_ticks(Entity entity) const { return functor->get_ticks(data.get(), entity); }
+    std::optional<std::reference_wrapper<const Tick>> get_added_tick(Entity entity) const {
+        return functor->get_added_tick(data.get(), entity);
+    }
+    std::optional<std::reference_wrapper<const Tick>> get_modified_tick(Entity entity) const {
+        return functor->get_modified_tick(data.get(), entity);
+    }
+
+    const void* get_raw() const { return data.get(); }
+    void* get_raw_mut() { return data.get(); }
+};
 
 template <typename I, typename V>
 struct SparseSet {
@@ -170,7 +263,7 @@ struct SparseSet {
 struct SparseSets {
    private:
     std::shared_ptr<type_system::TypeRegistry> registry;
-    SparseSet<size_t, std::shared_ptr<void>> sets;
+    SparseSet<size_t, ComponentSparseSetInterface> sets;
 
    public:
     SparseSets(
@@ -183,38 +276,57 @@ struct SparseSets {
     auto iter(this const SparseSets& self) { return self.sets.iter(); }
     auto iter_mut(this SparseSets& self) { return self.sets.iter_mut(); }
 
-    std::optional<const void*> get(this const SparseSets& self, size_t type_id) {
-        return self.sets.get(type_id).transform([](const std::shared_ptr<void>& ptr) -> void* { return ptr.get(); });
+    std::optional<std::reference_wrapper<const ComponentSparseSetInterface>> get(this const SparseSets& self,
+                                                                                 size_t type_id) {
+        return self.sets.get(type_id);
     }
-    std::optional<void*> get_mut(this SparseSets& self, size_t type_id) {
-        return self.sets.get(type_id).transform([](const std::shared_ptr<void>& ptr) -> void* { return ptr.get(); });
+    std::optional<std::reference_wrapper<ComponentSparseSetInterface>> get_mut(this SparseSets& self, size_t type_id) {
+        return self.sets.get_mut(type_id);
     }
     template <typename T>
-    std::optional<std::reference_wrapper<const ComponentSparseSet<T>>> get(this const SparseSets& self) {
+    std::optional<std::reference_wrapper<const ComponentSparseSet<T>>> get_as(this SparseSets& self) {
         size_t type_id = self.registry->type_id<T>();
-        return self.sets.get(type_id).and_then(
-            [](const std::shared_ptr<void>& ptr) -> std::optional<std::reference_wrapper<const ComponentSparseSet<T>>> {
-                return std::cref(std::static_pointer_cast<ComponentSparseSet<T>>(ptr).get());
-            });
+        return self.sets.get_mut(type_id).transform([](std::reference_wrapper<const ComponentSparseSetInterface> ptr) {
+            return std::cref(*static_cast<const ComponentSparseSet<T>*>(ptr.get().get_raw()));
+        });
     }
-    void insert(this SparseSets& self, size_t type_id, std::shared_ptr<void> set) {
+    template <typename T>
+    std::optional<std::reference_wrapper<ComponentSparseSet<T>>> get_as_mut(this SparseSets& self) {
+        size_t type_id = self.registry->type_id<T>();
+        return self.sets.get_mut(type_id).transform([](std::reference_wrapper<ComponentSparseSetInterface> ptr) {
+            return std::ref(*static_cast<ComponentSparseSet<T>*>(ptr.get().get_raw_mut()));
+        });
+    }
+    void insert(this SparseSets& self, size_t type_id, ComponentSparseSetInterface set) {
         self.sets.emplace(type_id, std::move(set));
     }
-
     template <typename T>
-    ComponentSparseSet<T>& get_or_insert(this SparseSets& self) {
+    void insert(this SparseSets& self) {
         size_t type_id = self.registry->type_id<T>();
+        self.sets.emplace(type_id, ComponentSparseSetInterface(ComponentSparseSet<T>()));
+    }
+
+    ComponentSparseSetInterface& get_or_insert(this SparseSets& self, size_t type_id, ComponentSparseSetInterface set) {
         return self.sets.get_mut(type_id)
-            .and_then([](std::shared_ptr<void>& ptr) -> std::optional<std::reference_wrapper<ComponentSparseSet<T>>> {
-                return std::ref(std::static_pointer_cast<ComponentSparseSet<T>>(ptr).get());
-            })
-            .or_else([&]() -> std::optional<std::reference_wrapper<ComponentSparseSet<T>>> {
-                auto new_set = std::make_shared<ComponentSparseSet<T>>();
-                self.sets.emplace(type_id, new_set);
-                return std::ref(*new_set);
+            .or_else([&]() -> std::optional<std::reference_wrapper<ComponentSparseSetInterface>> {
+                self.insert(type_id, std::move(set));
+                return self.sets.get_mut(type_id);
             })
             .value()
             .get();
+    }
+    template <typename T>
+    ComponentSparseSet<T>& get_or_insert(this SparseSets& self) {
+        size_t type_id = self.registry->type_id<T>();
+        return *static_cast<ComponentSparseSet<T>*>(
+            self.get_or_insert(type_id, ComponentSparseSetInterface(ComponentSparseSet<T>())).get_raw_mut());
+    }
+
+    void clear(this SparseSets& self) { self.sets.clear(); }
+    void check_change_ticks(this SparseSets& self, Tick tick) {
+        for (auto&& [_, set] : self.sets.iter_mut()) {
+            set.check_change_ticks(tick);
+        }
     }
 };
 }  // namespace epix::core::storage
