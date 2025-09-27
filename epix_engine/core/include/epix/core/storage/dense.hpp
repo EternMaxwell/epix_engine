@@ -135,4 +135,154 @@ struct Dense {
         }
     }
 };
+struct DenseInterface {
+   private:
+    struct Functor {
+        void (*clear)(void*);
+        size_t (*len)(const void*);
+        void (*reserve)(void*, size_t);
+        void (*swap_remove)(void*, uint32_t);
+        void (*push_move)(void*, ComponentTicks, void*);
+        void (*push_copy)(void*, ComponentTicks, const void*);
+        void (*replace_move)(void*, uint32_t, Tick, void*);
+        void (*replace_copy)(void*, uint32_t, Tick, const void*);
+
+        std::span<const Tick> (*get_added_ticks)(const void*);
+        std::span<const Tick> (*get_modified_ticks)(const void*);
+        std::pair<const void*, const void*> (*data)(const void*);
+        std::optional<const void*> (*get_data)(const void*, uint32_t);
+        std::optional<void*> (*get_data_mut)(void*, uint32_t);
+        std::optional<std::reference_wrapper<const Tick>> (*get_added_tick)(const void*, uint32_t);
+        std::optional<std::reference_wrapper<const Tick>> (*get_modified_tick)(const void*, uint32_t);
+        std::optional<ComponentTicks> (*get_ticks)(const void*, uint32_t);
+        void (*check_change_ticks)(void*, Tick);
+    }* functor;
+    std::unique_ptr<void, void (*)(void*)> data;
+
+    template <typename T>
+    Functor* get_functor() {
+        static Functor f = {
+            .clear       = [](void* ptr) { static_cast<Dense<T>*>(ptr)->clear(); },
+            .len         = [](const void* ptr) { return static_cast<const Dense<T>*>(ptr)->len(); },
+            .reserve     = [](void* ptr, size_t new_cap) { static_cast<Dense<T>*>(ptr)->reserve(new_cap); },
+            .swap_remove = [](void* ptr, uint32_t index) { static_cast<Dense<T>*>(ptr)->swap_remove(index); },
+            .push_move =
+                [](void* ptr, Tick tick, void* value) {
+                    static_cast<Dense<T>*>(ptr)->push(ComponentTicks{tick, tick}, std::move(*static_cast<T*>(value)));
+                },
+            .push_copy =
+                [](void* ptr, Tick tick, const void* value) {
+                    static_cast<Dense<T>*>(ptr)->push(ComponentTicks{tick, tick}, *static_cast<const T*>(value));
+                },
+            .replace_move =
+                [](void* ptr, uint32_t index, Tick tick, void* value) {
+                    static_cast<Dense<T>*>(ptr)->replace(index, tick, std::move(*static_cast<T*>(value)));
+                },
+            .replace_copy =
+                [](void* ptr, uint32_t index, Tick tick, const void* value) {
+                    static_cast<Dense<T>*>(ptr)->replace(index, tick, *static_cast<const T*>(value));
+                },
+            .get_added_ticks = [](const void* ptr) { return static_cast<const Dense<T>*>(ptr)->get_added_ticks(); },
+            .get_modified_ticks =
+                [](const void* ptr) { return static_cast<const Dense<T>*>(ptr)->get_modified_ticks(); },
+            .data =
+                [](const void* ptr) {
+                    auto span = static_cast<const Dense<T>*>(ptr)->get_data();
+                    return std::pair<const void*, const void*>(span.data(), span.data() + span.size());
+                },
+            .get_data = [](const void* ptr, uint32_t index) -> std::optional<const void*> {
+                return static_cast<const Dense<T>*>(ptr)->get_data(index).transform(
+                    [](std::reference_wrapper<const T> ref) -> const void* { return &ref.get(); });
+            },
+            .get_data_mut = [](void* ptr, uint32_t index) -> std::optional<void*> {
+                return static_cast<Dense<T>*>(ptr)->get_data_mut(index).transform(
+                    [](std::reference_wrapper<T> ref) -> void* { return &ref.get(); });
+            },
+            .get_added_tick = [](const void* ptr,
+                                 uint32_t index) { return static_cast<const Dense<T>*>(ptr)->get_added_tick(index); },
+            .get_modified_tick =
+                [](const void* ptr, uint32_t index) {
+                    return static_cast<const Dense<T>*>(ptr)->get_modified_tick(index);
+                },
+            .get_ticks          = [](const void* ptr,
+                            uint32_t index) { return static_cast<const Dense<T>*>(ptr)->get_ticks(index); },
+            .check_change_ticks = [](void* ptr, Tick tick) { static_cast<Dense<T>*>(ptr)->check_change_ticks(tick); },
+        };
+        return &f;
+    }
+
+   public:
+    template <typename T>
+    DenseInterface(Dense<T> set = Dense<T>()) {
+        functor = get_functor<T>();
+        data    = std::unique_ptr<void, void (*)(void*)>(new Dense<T>(std::move(set)),
+                                                         [](void* ptr) { delete static_cast<Dense<T>*>(ptr); });
+    }
+    void clear(this DenseInterface& self) { self.functor->clear(self.data.get()); }
+    size_t len(this const DenseInterface& self) { return self.functor->len(self.data.get()); }
+    void reserve(this DenseInterface& self, size_t new_cap) { self.functor->reserve(self.data.get(), new_cap); }
+    void swap_remove(this DenseInterface& self, uint32_t index) { self.functor->swap_remove(self.data.get(), index); }
+
+    void push_move(this DenseInterface& self, ComponentTicks tick, void* value) {
+        self.functor->push_move(self.data.get(), tick, value);
+    }
+    void push_copy(this DenseInterface& self, ComponentTicks tick, const void* value) {
+        self.functor->push_copy(self.data.get(), tick, value);
+    }
+    void replace_move(this DenseInterface& self, uint32_t index, Tick tick, void* value) {
+        self.functor->replace_move(self.data.get(), index, tick, value);
+    }
+    void replace_copy(this DenseInterface& self, uint32_t index, Tick tick, const void* value) {
+        self.functor->replace_copy(self.data.get(), index, tick, value);
+    }
+
+    std::pair<const void*, const void*> get_data(this const DenseInterface& self) {
+        return self.functor->data(self.data.get());
+    }
+    template <typename T>
+    std::span<const T> get_data_as(this const DenseInterface& self) {
+        auto [data, end] = self.get_data();
+        size_t len       = (static_cast<const char*>(end) - static_cast<const char*>(data)) / sizeof(T);
+        return std::span(static_cast<const T*>(data), len);
+    }
+    std::span<const Tick> get_added_ticks(this const DenseInterface& self) {
+        return self.functor->get_added_ticks(self.data.get());
+    }
+    std::span<const Tick> get_modified_ticks(this const DenseInterface& self) {
+        return self.functor->get_modified_ticks(self.data.get());
+    }
+
+    std::optional<const void*> get_data(this const DenseInterface& self, uint32_t index) {
+        return self.functor->get_data(self.data.get(), index);
+    }
+    template <typename T>
+    std::optional<std::reference_wrapper<const T>> get_data_as(this const DenseInterface& self, uint32_t index) {
+        return self.get_data(index).transform(
+            [](const void* ptr) -> std::reference_wrapper<const T> { return std::cref(*static_cast<const T*>(ptr)); });
+    }
+    std::optional<void*> get_data_mut(this DenseInterface& self, uint32_t index) {
+        return self.functor->get_data_mut(self.data.get(), index);
+    }
+    template <typename T>
+    std::optional<std::reference_wrapper<T>> get_data_as_mut(this DenseInterface& self, uint32_t index) {
+        return self.get_data_mut(index).transform(
+            [](void* ptr) -> std::reference_wrapper<T> { return std::ref(*static_cast<T*>(ptr)); });
+    }
+    std::optional<std::reference_wrapper<const Tick>> get_added_tick(this const DenseInterface& self, uint32_t index) {
+        return self.functor->get_added_tick(self.data.get(), index);
+    }
+    std::optional<std::reference_wrapper<const Tick>> get_modified_tick(this const DenseInterface& self,
+                                                                        uint32_t index) {
+        return self.functor->get_modified_tick(self.data.get(), index);
+    }
+    std::optional<ComponentTicks> get_ticks(this const DenseInterface& self, uint32_t index) {
+        return self.functor->get_ticks(self.data.get(), index);
+    }
+    void check_change_ticks(this DenseInterface& self, Tick tick) {
+        self.functor->check_change_ticks(self.data.get(), tick);
+    }
+
+    const void* get_raw() const { return data.get(); }
+    void* get_raw_mut() { return data.get(); }
+};
 }  // namespace epix::core::storage
