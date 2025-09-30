@@ -1,9 +1,7 @@
 #pragma once
 
 #include <atomic>
-#include <csetjmp>
 #include <cstring>
-#include <memory>
 #include <type_traits>
 #include <unordered_map>
 #include <vector>
@@ -16,69 +14,65 @@ struct TypeInfo {
     std::string_view name;
     size_t size;
     size_t align;
-    bool movable;
-    void (*move)(void* dest, void* src);  // If movable but this is null, that means this type is trivially movable.
-    bool copyable;
-    void (*copy)(void* dest,
-                 const void* src);  // If copyable but this is null, that means this type is trivially copyable.
-    bool destructible;
-    void (*destroy)(void* ptr);              // If null, that means this type is trivially destructible.
-    void (*destroy_n)(void* ptr, size_t n);  // If null, that means this type is trivially destructible.
-    void (*uninitialized_move_n)(
-        void* src, size_t n, void* dest);  // If movable but this is null, that means this type is trivially movable.
-    void (*uninitialized_copy_n)(
-        const void* src,
-        size_t n,
-        void* dest);  // If copyable but this is null, that means this type is trivially copyable.
+
+    // Mandatory operations
+    void (*destroy)(void* ptr) noexcept;
+    void (*copy_construct)(void* dest, const void* src);
+    void (*move_construct)(void* dest, void* src);
+
+    // Cached traits
+    bool trivially_copyable;
+    bool trivially_destructible;
+    bool noexcept_move_constructible;
 
     template <typename T>
-    static TypeInfo make_info() {
-        return TypeInfo {
-            .name = epix::core::meta::type_id<T>{}.name(), .size = sizeof(T), .align = alignof(T),
-            .movable      = std::is_move_constructible_v<T>,
-            .move         = std::is_trivially_move_constructible<T>::value
-                                ? nullptr
-                                : (std::is_move_constructible_v<T>
-                                       ? [](void* dest, void* src) { new (dest) T(std::move(*static_cast<T*>(src))); }
-                                       : nullptr),
-            .copyable     = std::is_copy_constructible_v<T>,
-            .copy         = std::is_trivially_copy_constructible<T>::value
-                                ? nullptr
-                                : (std::is_copy_constructible_v<T>
-                                       ? [](void* dest, const void* src) { new (dest) T(*static_cast<const T*>(src)); }
-                                       : nullptr),
-            .destructible = std::is_destructible_v<T>,
-            .destroy      = std::is_trivially_destructible_v<T>
-                                ? nullptr
-                                : (std::is_destructible_v<T> ? [](void* ptr) { static_cast<T*>(ptr)->~T(); } : nullptr),
-            .destroy_n    = std::is_trivially_destructible_v<T>
-                                ? nullptr
-                                : [](void* ptr, size_t n) {
-                                      T* typed_ptr = static_cast<T*>(ptr);
-                                      for (size_t i = 0; i < n; i++) {
-                                          typed_ptr[i].~T();
-                                      }
-                                  },
-            .uninitialized_move_n = std::is_trivially_move_constructible<T>::value
-                                        ? nullptr
-                                        : [](void* src, size_t n, void* dest) {
-                                              T* src_t  = static_cast<T*>(src);
-                                              T* dest_t = static_cast<T*>(dest);
-                                              std::uninitialized_move_n(src_t, n, dest_t);
-                                          },
-            .uninitialized_copy_n = std::is_trivially_copy_constructible<T>::value
-                                        ? nullptr
-                                        : [](const void* src, size_t n, void* dest) {
-                                              const T* src_t = static_cast<const T*>(src);
-                                              T* dest_t     = static_cast<T*>(dest);
-                                              std::uninitialized_copy_n(src_t, n, dest_t);
-                                          },
-        };
-    }
+    static const TypeInfo* get_info();
 };
+
+// per-type implementations used by TypeInfo::get_info<T>()
+template <typename T>
+static void destroy_impl(void* p) noexcept {
+    if constexpr (!std::is_trivially_destructible_v<T>) {
+        static_cast<T*>(p)->~T();
+    }
+}
+
+template <typename T>
+static void copy_construct_impl(void* dest, const void* src) {
+    if constexpr (std::is_trivially_copyable_v<T>) {
+        std::memcpy(dest, src, sizeof(T));
+    } else {
+        new (dest) T(*static_cast<const T*>(src));
+    }
+}
+
+template <typename T>
+static void move_construct_impl(void* dest, void* src) {
+    if constexpr (std::is_trivially_copyable_v<T>) {
+        std::memcpy(dest, src, sizeof(T));
+    } else {
+        new (dest) T(std::move(*static_cast<T*>(src)));
+    }
+}
+
+template <typename T>
+const TypeInfo* TypeInfo::get_info() {
+    static TypeInfo ti = TypeInfo{
+        .name                        = epix::core::meta::type_id<T>().name(),
+        .size                        = sizeof(T),
+        .align                       = alignof(T),
+        .destroy                     = &destroy_impl<T>,
+        .copy_construct              = &copy_construct_impl<T>,
+        .move_construct              = &move_construct_impl<T>,
+        .trivially_copyable          = std::is_trivially_copyable_v<T>,
+        .trivially_destructible      = std::is_trivially_destructible_v<T>,
+        .noexcept_move_constructible = std::is_nothrow_move_constructible_v<T>,
+    };
+    return &ti;
+}
 struct TypeRegistry {
    private:
-    mutable std::vector<TypeInfo> typeInfos;
+    mutable std::vector<const TypeInfo*> typeInfos;
     mutable size_t nextId = 0;
     mutable std::unordered_map<const char*, size_t> types;
     mutable std::unordered_map<std::string_view, size_t> typeViews;
@@ -130,15 +124,15 @@ struct TypeRegistry {
                 id                         = nextId++;
                 typeViews[index.name()]    = id;
                 types[index.name().data()] = id;
-                typeInfos.push_back(TypeInfo::make_info<T>());
+                typeInfos.push_back(TypeInfo::get_info<T>());
             }
             unlock_write();
             return id;
         }
     }
-    TypeInfo type_info(size_t type_id) const {
+    const TypeInfo* type_info(size_t type_id) const {
         lock_read();
-        TypeInfo info = typeInfos[type_id];
+        const TypeInfo* info = typeInfos[type_id];
         unlock_read();
         return info;
     }
