@@ -360,7 +360,8 @@ class untyped_vector {
 
     void ensure_capacity_for_one() {
         if (size_ >= capacity_) {
-            size_t new_cap = capacity_ ? capacity_ * 2 : 1;
+            // growth factor: ~1.5x (use integer math, ensure progress for small caps)
+            size_t new_cap = capacity_ ? ((capacity_ * 3 + 1) / 2) : 1;
             reallocate(new_cap);
         }
     }

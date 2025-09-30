@@ -9,3 +9,8 @@ target_include_directories(epix_core PUBLIC ${MODULE_INCLUDES})
 add_executable(test_untypedvec tests/test_untypedvec.cpp)
 target_link_libraries(test_untypedvec PRIVATE epix_core)
 add_test(NAME test_untypedvec COMMAND test_untypedvec)
+
+# performance comparison test between untyped_vector and std::vector
+add_executable(test_untypedvec_perf tests/test_untypedvec_perf.cpp)
+target_link_libraries(test_untypedvec_perf PRIVATE epix_core)
+add_test(NAME test_untypedvec_perf COMMAND test_untypedvec_perf)
