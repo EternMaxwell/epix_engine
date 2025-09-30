@@ -1,8 +1,10 @@
 #pragma once
 
+#include <cstdint>
 #include <functional>
 #include <unordered_map>
 
+#include "entities.hpp"
 #include "fwd.hpp"
 
 namespace epix::core {
@@ -77,11 +79,10 @@ struct ComponentHooks {
         return false;
     }
 };
-/**
- * @brief A map containing required component type id and their depth in the requirement tree.
- *
- */
-using RequiredComponents = std::unordered_map<size_t, size_t>;
+struct RequiredComponent {
+    
+    uint16_t inheritance_depth = 0;
+};
 struct ComponentInfo {
    private:
     size_t id;
