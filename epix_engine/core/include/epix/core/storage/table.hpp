@@ -3,19 +3,17 @@
 #include <cstddef>
 #include <functional>
 #include <ranges>
-#include <tuple>
 #include <type_traits>
 #include <unordered_map>
 
 #include "dense.hpp"
 #include "fwd.hpp"
-#include "sparse_array.hpp"
 #include "sparse_set.hpp"
 
 namespace epix::core::storage {
 struct Table {
    private:
-    SparseSet<size_t, DenseInterface> _denses;
+    SparseSet<size_t, Dense> _denses;
     std::vector<Entity> _entities;
     friend struct Tables;
 
@@ -53,19 +51,20 @@ struct Table {
         }
     }
     struct MoveReturn {
-        size_t new_index;
-        std::optional<Entity> swapped_entity;
+        size_t new_index;                      // index in the target table
+        std::optional<Entity> swapped_entity;  // entity that was swapped in the source table, if any
     };
     MoveReturn move_to(this Table& self, size_t dense_index, Table& target) {
         size_t new_index = target._entities.size();
         for (auto&& [type_id, dense] : self._denses.iter_mut()) {
-            target._denses.get_mut(type_id).and_then([&](DenseInterface& target_dense) -> std::optional<bool> {
-                dense.get_data_mut(dense_index).and_then([&](void* value) -> std::optional<bool> {
+            target._denses.get_mut(type_id).and_then([&](Dense& target_dense) -> std::optional<bool> {
+                dense.get_mut(dense_index).and_then([&](void* value) -> std::optional<bool> {
                     target_dense.push_move({0, 0}, value);
                     return true;
                 });
                 return true;
             });
+            dense.swap_remove(dense_index);
         }
         bool is_last = dense_index == self._entities.size() - 1;
         std::swap(self._entities[dense_index], self._entities.back());
@@ -78,43 +77,40 @@ struct Table {
         }
     }
     std::optional<std::pair<const void*, const void*>> get_data_for(this const Table& self, size_t type_id) {
-        return self._denses.get(type_id).transform([](const DenseInterface& dense) { return dense.get_data(); });
+        return self._denses.get(type_id).transform([](const Dense& dense) { return dense.get_data(); });
     }
     template <typename T>
     std::optional<std::span<const T>> get_data_as_for(this const Table& self, size_t type_id) {
-        return self._denses.get(type_id).transform([](const DenseInterface& dense) { return dense.get_data_as<T>(); });
+        return self._denses.get(type_id).transform([](const Dense& dense) { return dense.get_data_as<T>(); });
     }
     std::optional<std::span<const Tick>> get_added_ticks_for(this const Table& self, size_t type_id) {
-        return self._denses.get(type_id).transform([](const DenseInterface& dense) { return dense.get_added_ticks(); });
+        return self._denses.get(type_id).transform([](const Dense& dense) { return dense.get_added_ticks(); });
     }
     std::optional<std::span<const Tick>> get_modified_ticks_for(this const Table& self, size_t type_id) {
-        return self._denses.get(type_id).transform(
-            [](const DenseInterface& dense) { return dense.get_modified_ticks(); });
+        return self._denses.get(type_id).transform([](const Dense& dense) { return dense.get_modified_ticks(); });
     }
     std::optional<const void*> get_data(this const Table& self, size_t type_id, uint32_t index) {
-        return self._denses.get(type_id).and_then([&](const DenseInterface& dense) { return dense.get_data(index); });
+        return self._denses.get(type_id).and_then([&](const Dense& dense) { return dense.get(index); });
     }
     std::optional<std::reference_wrapper<const Tick>> get_added_tick(this const Table& self,
                                                                      size_t type_id,
                                                                      uint32_t index) {
-        return self._denses.get(type_id).and_then(
-            [&](const DenseInterface& dense) { return dense.get_added_tick(index); });
+        return self._denses.get(type_id).and_then([&](const Dense& dense) { return dense.get_added_tick(index); });
     }
     std::optional<std::reference_wrapper<const Tick>> get_modified_tick(this const Table& self,
                                                                         size_t type_id,
                                                                         uint32_t index) {
-        return self._denses.get(type_id).and_then(
-            [&](const DenseInterface& dense) { return dense.get_modified_tick(index); });
+        return self._denses.get(type_id).and_then([&](const Dense& dense) { return dense.get_modified_tick(index); });
     }
     std::optional<ComponentTicks> get_ticks(this const Table& self, size_t type_id, uint32_t index) {
-        return self._denses.get(type_id).and_then([&](const DenseInterface& dense) { return dense.get_ticks(index); });
+        return self._denses.get(type_id).and_then([&](const Dense& dense) { return dense.get_ticks(index); });
     }
 
-    std::optional<std::reference_wrapper<const DenseInterface>> get_dense(this const Table& self, size_t type_id) {
-        return self._denses.get(type_id).transform([](const DenseInterface& dense) { return std::cref(dense); });
+    std::optional<std::reference_wrapper<const Dense>> get_dense(this const Table& self, size_t type_id) {
+        return self._denses.get(type_id).transform([](const Dense& dense) { return std::cref(dense); });
     }
-    std::optional<std::reference_wrapper<DenseInterface>> get_dense_mut(this Table& self, size_t type_id) {
-        return self._denses.get_mut(type_id).transform([](DenseInterface& dense) { return std::ref(dense); });
+    std::optional<std::reference_wrapper<Dense>> get_dense_mut(this Table& self, size_t type_id) {
+        return self._denses.get_mut(type_id).transform([](Dense& dense) { return std::ref(dense); });
     }
 };
 struct Tables {
@@ -163,8 +159,9 @@ struct Tables {
         std::vector<size_t> type_ids = {self._type_registry->type_id<Components>()...};
         size_t table_id              = self.get_table_id(type_ids).value_or([&]() {
             Table table;
-            (table._denses.emplace(self._type_registry->type_id<Components>(), DenseInterface(Dense<Components>())),
-             ...);
+            for (size_t type_id : type_ids) {
+                table._denses.emplace(type_id, Dense(self._type_registry->type_info(type_id)));
+            }
             self._tables.emplace_back(std::move(table));
             return self._tables.size() - 1;
         }());
