@@ -130,6 +130,10 @@ struct TypeRegistry {
             return id;
         }
     }
+    /**
+     * @brief Get TypeInfo by type id.
+     * Safety: The type id is get by this registry, so it must have been registered.
+     */
     const TypeInfo* type_info(size_t type_id) const {
         lock_read();
         const TypeInfo* info = typeInfos[type_id];
