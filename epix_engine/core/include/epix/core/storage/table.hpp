@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <cstddef>
 #include <functional>
 #include <ranges>
@@ -174,20 +175,26 @@ struct Tables {
         size_t table_id = self.get_id_or_insert(type_ids);
         return self._tables[table_id];
     }
-    std::optional<size_t> get_id(this const Tables& self, const std::vector<size_t>& type_ids) {
-        return self._table_id_registry.find(type_ids) != self._table_id_registry.end()
-                   ? std::optional(self._table_id_registry.at(type_ids))
-                   : std::nullopt;
+    std::optional<size_t> get_id(this const Tables& self, std::vector<size_t> type_ids) {
+        std::sort(type_ids.begin(), type_ids.end());
+        return self._table_id_registry.contains(type_ids) ? std::optional(self._table_id_registry.at(type_ids))
+                                                          : std::nullopt;
     }
-    size_t get_id_or_insert(this Tables& self, const std::vector<size_t>& type_ids) {
-        size_t table_id = self.get_id(type_ids).value_or([&]() {
-            Table table;
+    size_t get_id_or_insert(this Tables& self, std::vector<size_t> type_ids) {
+        std::sort(type_ids.begin(), type_ids.end());
+        size_t table_id;
+        if (auto it = self._table_id_registry.find(type_ids); it != self._table_id_registry.end()) {
+            table_id = it->second;
+        } else {
+            table_id = self._tables.size();
+            self._tables.emplace_back();
+            Table& table = self._tables.back();
             for (size_t type_id : type_ids) {
-                table._denses.emplace(type_id, Dense(self._type_registry->type_info(type_id)));
+                const type_system::TypeInfo* type_info = self._type_registry->type_info(type_id);
+                table._denses.emplace(type_id, Dense(type_info));
             }
-            self._tables.emplace_back(std::move(table));
-            return self._tables.size() - 1;
-        }());
+            self._table_id_registry.insert({type_ids, table_id});
+        }
         return table_id;
     }
 };
