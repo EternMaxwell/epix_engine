@@ -83,27 +83,33 @@ struct Table {
     std::optional<std::span<const T>> get_data_as_for(this const Table& self, size_t type_id) {
         return self._denses.get(type_id).transform([](const Dense& dense) { return dense.get_data_as<T>(); });
     }
-    std::optional<std::span<const Tick>> get_added_ticks_for(this const Table& self, size_t type_id) {
+    std::optional<std::span<Tick>> get_added_ticks_for(this const Table& self, size_t type_id) {
         return self._denses.get(type_id).transform([](const Dense& dense) { return dense.get_added_ticks(); });
     }
-    std::optional<std::span<const Tick>> get_modified_ticks_for(this const Table& self, size_t type_id) {
+    std::optional<std::span<Tick>> get_modified_ticks_for(this const Table& self, size_t type_id) {
         return self._denses.get(type_id).transform([](const Dense& dense) { return dense.get_modified_ticks(); });
     }
     std::optional<const void*> get_data(this const Table& self, size_t type_id, uint32_t index) {
         return self._denses.get(type_id).and_then([&](const Dense& dense) { return dense.get(index); });
     }
-    std::optional<std::reference_wrapper<const Tick>> get_added_tick(this const Table& self,
-                                                                     size_t type_id,
-                                                                     uint32_t index) {
+    std::optional<std::reference_wrapper<Tick>> get_added_tick(this const Table& self, size_t type_id, uint32_t index) {
         return self._denses.get(type_id).and_then([&](const Dense& dense) { return dense.get_added_tick(index); });
     }
-    std::optional<std::reference_wrapper<const Tick>> get_modified_tick(this const Table& self,
-                                                                        size_t type_id,
-                                                                        uint32_t index) {
+    std::optional<std::reference_wrapper<Tick>> get_modified_tick(this const Table& self,
+                                                                  size_t type_id,
+                                                                  uint32_t index) {
         return self._denses.get(type_id).and_then([&](const Dense& dense) { return dense.get_modified_tick(index); });
     }
     std::optional<ComponentTicks> get_ticks(this const Table& self, size_t type_id, uint32_t index) {
         return self._denses.get(type_id).and_then([&](const Dense& dense) { return dense.get_ticks(index); });
+    }
+    std::optional<TickRefs> get_tick_refs(this const Table& self, size_t type_id, uint32_t index) {
+        return self._denses.get(type_id).and_then([&](const Dense& dense) { return dense.get_tick_refs(index); });
+    }
+    void check_change_ticks(this Table& self, Tick tick) {
+        for (auto&& [_, dense] : self._denses.iter_mut()) {
+            dense.check_change_ticks(tick);
+        }
     }
 
     std::optional<std::reference_wrapper<const Dense>> get_dense(this const Table& self, size_t type_id) {
@@ -130,8 +136,21 @@ struct Tables {
     std::vector<Table> _tables;
 
    public:
+    explicit Tables(const std::shared_ptr<type_system::TypeRegistry>& registry) : _type_registry(registry) {}
     size_t table_count(this const Tables& self) { return self._tables.size(); }
     bool empty(this const Tables& self) { return self._tables.empty(); }
+    auto iter(this Tables& self) { return std::views::all(self._tables); }
+    void clear(this Tables& self) {
+        for (auto& table : self._tables) {
+            table._denses.clear();
+            table._entities.clear();
+        }
+    }
+    void check_change_ticks(this Tables& self, Tick tick) {
+        for (auto& table : self._tables) {
+            table.check_change_ticks(tick);
+        }
+    }
     std::optional<std::reference_wrapper<const Table>> get(this const Tables& self, size_t table_id) {
         if (table_id >= self._tables.size()) {
             return std::nullopt;
@@ -144,20 +163,24 @@ struct Tables {
         }
         return std::ref(self._tables[table_id]);
     }
-    std::optional<size_t> get_table_id(this const Tables& self, const std::vector<size_t>& type_ids) {
+    std::optional<std::reference_wrapper<const Table>> get(this const Tables& self,
+                                                           const std::vector<size_t>& type_ids) {
+        return self.get_id(type_ids).transform([&](size_t table_id) { return std::cref(self._tables[table_id]); });
+    }
+    std::optional<std::reference_wrapper<Table>> get_mut(this Tables& self, const std::vector<size_t>& type_ids) {
+        return self.get_id(type_ids).transform([&](size_t table_id) { return std::ref(self._tables[table_id]); });
+    }
+    Table& get_or_insert(this Tables& self, const std::vector<size_t>& type_ids) {
+        size_t table_id = self.get_id_or_insert(type_ids);
+        return self._tables[table_id];
+    }
+    std::optional<size_t> get_id(this const Tables& self, const std::vector<size_t>& type_ids) {
         return self._table_id_registry.find(type_ids) != self._table_id_registry.end()
                    ? std::optional(self._table_id_registry.at(type_ids))
                    : std::nullopt;
     }
-    template <typename... Components>
-    std::optional<size_t> get_table_id(this const Tables& self) {
-        std::vector<size_t> type_ids = {self._type_registry->type_id<Components>()...};
-        return self.get_table_id(type_ids);
-    }
-    template <typename... Components>
-    size_t get_table_id_or_insert(this Tables& self) {
-        std::vector<size_t> type_ids = {self._type_registry->type_id<Components>()...};
-        size_t table_id              = self.get_table_id(type_ids).value_or([&]() {
+    size_t get_id_or_insert(this Tables& self, const std::vector<size_t>& type_ids) {
+        size_t table_id = self.get_id(type_ids).value_or([&]() {
             Table table;
             for (size_t type_id : type_ids) {
                 table._denses.emplace(type_id, Dense(self._type_registry->type_info(type_id)));
