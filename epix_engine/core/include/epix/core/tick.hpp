@@ -40,4 +40,14 @@ struct ComponentTicks {
     Tick added;
     Tick modified;
 };
+struct TickRefs {
+   public:
+    explicit TickRefs(Tick* added, Tick* modified) : _added(added), _modified(modified) {}
+    Tick& added(this const TickRefs& self) { return *self._added; }
+    Tick& modified(this const TickRefs& self) { return *self._modified; }
+
+   private:
+    Tick* _added;
+    Tick* _modified;
+};
 }  // namespace epix::core
