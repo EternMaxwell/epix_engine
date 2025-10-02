@@ -1,7 +1,6 @@
 #pragma once
 
 #include <cassert>
-#include <memory>
 #include <optional>
 #include <ranges>
 #include <span>
@@ -9,15 +8,15 @@
 #include <vector>
 
 #include "../tick.hpp"
-#include "epix/core/storage/untypedvec.hpp"
 #include "fwd.hpp"
+#include "untypedvec.hpp"
 
 namespace epix::core::storage {
 struct Dense {
    private:
     untyped_vector values;
-    std::vector<Tick> added_ticks;
-    std::vector<Tick> modified_ticks;
+    mutable std::vector<Tick> added_ticks;
+    mutable std::vector<Tick> modified_ticks;
 
    public:
     explicit Dense(const epix::core::type_system::TypeInfo* desc, size_t reserve_cnt = 0) : values(desc, reserve_cnt) {
@@ -89,8 +88,8 @@ struct Dense {
     std::span<const T> get_data_as(this const Dense& self) {
         return self.values.cspan_as<T>();
     }
-    std::span<const Tick> get_added_ticks(this const Dense& self) { return std::span(self.added_ticks); }
-    std::span<const Tick> get_modified_ticks(this const Dense& self) { return std::span(self.modified_ticks); }
+    std::span<Tick> get_added_ticks(this const Dense& self) { return std::span(self.added_ticks); }
+    std::span<Tick> get_modified_ticks(this const Dense& self) { return std::span(self.modified_ticks); }
 
     std::optional<const void*> get(this const Dense& self, uint32_t index) {
         if (index < self.values.size()) {
@@ -118,13 +117,13 @@ struct Dense {
         }
         return std::nullopt;
     }
-    std::optional<std::reference_wrapper<const Tick>> get_added_tick(this const Dense& self, uint32_t index) {
+    std::optional<std::reference_wrapper<Tick>> get_added_tick(this const Dense& self, uint32_t index) {
         if (index < self.added_ticks.size()) {
             return self.added_ticks[index];
         }
         return std::nullopt;
     }
-    std::optional<std::reference_wrapper<const Tick>> get_modified_tick(this const Dense& self, uint32_t index) {
+    std::optional<std::reference_wrapper<Tick>> get_modified_tick(this const Dense& self, uint32_t index) {
         if (index < self.modified_ticks.size()) {
             return self.modified_ticks[index];
         }
@@ -133,6 +132,12 @@ struct Dense {
     std::optional<ComponentTicks> get_ticks(this const Dense& self, uint32_t index) {
         if (index < self.modified_ticks.size()) {
             return ComponentTicks{self.added_ticks[index], self.modified_ticks[index]};
+        }
+        return std::nullopt;
+    }
+    std::optional<TickRefs> get_tick_refs(this const Dense& self, uint32_t index) {
+        if (index < self.modified_ticks.size()) {
+            return TickRefs{&self.added_ticks[index], &self.modified_ticks[index]};
         }
         return std::nullopt;
     }
