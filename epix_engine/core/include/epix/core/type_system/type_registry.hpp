@@ -1,7 +1,9 @@
 #pragma once
 
-#include <atomic>
 #include <cstring>
+#include <mutex>
+#include <optional>
+#include <shared_mutex>
 #include <type_traits>
 #include <unordered_map>
 #include <vector>
@@ -77,27 +79,8 @@ struct TypeRegistry {
     mutable std::unordered_map<const char*, size_t> types;
     mutable std::unordered_map<std::string_view, size_t> typeViews;
 
-    mutable std::atomic<size_t> readers{0};
-    mutable std::atomic<int> state{0};  // 0: idle, 1: waiting write
-
-    void lock_read() const {
-        while (true) {
-            int expected_idle = 0;
-            if (state.compare_exchange_weak(expected_idle, 0)) {
-                readers.fetch_add(1);
-                break;
-            }
-        }
-    }
-    void unlock_read() const { readers.fetch_sub(1); }
-    void lock_write() const {
-        state.store(1);  // lock state, waiting to write.
-        size_t expected_readers = 0;
-        while (readers.compare_exchange_weak(expected_readers, 0)) {
-            expected_readers = 0;
-        }
-    }
-    void unlock_write() const { state.store(0); }
+    // Use a shared mutex for multiple concurrent readers and exclusive writers
+    mutable std::shared_mutex mutex_;
 
    public:
     TypeRegistry()  = default;
@@ -105,39 +88,47 @@ struct TypeRegistry {
 
     template <typename T = void>
     size_t type_id(const epix::core::meta::type_index& index = epix::core::meta::type_id<T>()) const {
-        // change state to reading
-        lock_read();
-        // If in types
-        if (auto it = types.find(index.name().data()); it != types.end()) {
-            size_t id = it->second;
-            unlock_read();
-            return id;
-        } else {
-            // Not in types, need write
-            unlock_read();
-            lock_write();
-            size_t id;
-            if (auto itv = typeViews.find(index.name()); itv != typeViews.end()) {
-                types[index.name().data()] = itv->second;
-                id                         = itv->second;
-            } else {
-                id                         = nextId++;
-                typeViews[index.name()]    = id;
-                types[index.name().data()] = id;
-                typeInfos.push_back(TypeInfo::get_info<T>());
+        // First try with a shared (reader) lock
+        {
+            std::shared_lock<std::shared_mutex> lock(mutex_);
+            if (auto it = types.find(index.name().data()); it != types.end()) {
+                return it->second;
             }
-            unlock_write();
-            return id;
         }
+
+        // Upgrade to exclusive lock to insert
+        std::unique_lock<std::shared_mutex> lock(mutex_);
+        // Check again in case another writer added it
+        if (auto it = types.find(index.name().data()); it != types.end()) {
+            return it->second;
+        }
+
+        size_t id;
+        if (auto itv = typeViews.find(index.name()); itv != typeViews.end()) {
+            types[index.name().data()] = itv->second;
+            id                         = itv->second;
+        } else {
+            id = nextId++;
+            typeViews.insert({index.name(), id});
+            types[index.name().data()] = id;
+            typeInfos.emplace_back(TypeInfo::get_info<T>());
+        }
+        return id;
+    }
+    std::optional<size_t> type_id(const std::string_view& name) const {
+        std::shared_lock<std::shared_mutex> lock(mutex_);
+        if (auto it = typeViews.find(name); it != typeViews.end()) {
+            return it->second;
+        }
+        return std::nullopt;
     }
     /**
      * @brief Get TypeInfo by type id.
      * Safety: The type id is get by this registry, so it must have been registered.
      */
     const TypeInfo* type_info(size_t type_id) const {
-        lock_read();
+        std::shared_lock<std::shared_mutex> lock(mutex_);
         const TypeInfo* info = typeInfos[type_id];
-        unlock_read();
         return info;
     }
 };
