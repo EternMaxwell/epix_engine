@@ -6,7 +6,6 @@
 #include "../entities.hpp"
 #include "../type_system/type_registry.hpp"
 #include "dense.hpp"
-#include "epix/core/type_system/type_registry.hpp"
 #include "fwd.hpp"
 #include "sparse_array.hpp"
 
@@ -184,9 +183,7 @@ struct SparseSets {
     SparseSet<size_t, ComponentSparseSet> sets;
 
    public:
-    SparseSets(
-        const std::shared_ptr<type_system::TypeRegistry>& registry = std::make_shared<type_system::TypeRegistry>())
-        : registry(registry) {}
+    SparseSets(const std::shared_ptr<type_system::TypeRegistry>& registry) : registry(registry) {}
 
     size_t size(this const SparseSets& self) { return self.sets.size(); }
     bool empty(this const SparseSets& self) { return self.sets.empty(); }
