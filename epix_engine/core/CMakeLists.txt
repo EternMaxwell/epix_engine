@@ -43,3 +43,7 @@ add_test(NAME test_table COMMAND test_table)
 add_executable(test_type_registry_mt tests/test_type_registry_mt.cpp)
 target_link_libraries(test_type_registry_mt PRIVATE epix_core)
 add_test(NAME test_type_registry_mt COMMAND test_type_registry_mt)
+
+add_executable(test_bundle tests/test_bundle.cpp)
+target_link_libraries(test_bundle PRIVATE epix_core)
+add_test(NAME test_bundle COMMAND test_bundle)
