@@ -14,7 +14,7 @@
 namespace epix::core::storage {
 struct Table {
    private:
-    SparseSet<size_t, Dense> _denses;
+    SparseSet<TypeId, Dense> _denses;
     std::vector<Entity> _entities;
     friend struct Tables;
 
@@ -122,10 +122,10 @@ struct Table {
 };
 struct Tables {
     struct VecHash {
-        size_t operator()(const std::vector<size_t>& vec) const {
+        size_t operator()(const std::vector<TypeId>& vec) const {
             size_t hash = 0;
-            for (size_t v : vec) {
-                hash ^= std::hash<size_t>()(v) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
+            for (TypeId v : vec) {
+                hash ^= std::hash<uint32_t>()(v) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
             }
             return hash;
         }
@@ -133,11 +133,15 @@ struct Tables {
 
    private:
     std::shared_ptr<type_system::TypeRegistry> _type_registry;
-    std::unordered_map<std::vector<size_t>, size_t, VecHash> _table_id_registry;
+    std::unordered_map<std::vector<TypeId>, TableId, VecHash> _table_id_registry;
     std::vector<Table> _tables;
 
    public:
-    explicit Tables(const std::shared_ptr<type_system::TypeRegistry>& registry) : _type_registry(registry) {}
+    explicit Tables(const std::shared_ptr<type_system::TypeRegistry>& registry) : _type_registry(registry) {
+        // empty table is always at index 0
+        _tables.emplace_back();
+        _table_id_registry.insert({{}, 0});
+    }
     size_t table_count(this const Tables& self) { return self._tables.size(); }
     bool empty(this const Tables& self) { return self._tables.empty(); }
     auto iter(this Tables& self) { return std::views::all(self._tables); }
@@ -165,24 +169,22 @@ struct Tables {
         return std::ref(self._tables[table_id]);
     }
     std::optional<std::reference_wrapper<const Table>> get(this const Tables& self,
-                                                           const std::vector<size_t>& type_ids) {
+                                                           const std::vector<TypeId>& type_ids) {
         return self.get_id(type_ids).transform([&](size_t table_id) { return std::cref(self._tables[table_id]); });
     }
-    std::optional<std::reference_wrapper<Table>> get_mut(this Tables& self, const std::vector<size_t>& type_ids) {
+    std::optional<std::reference_wrapper<Table>> get_mut(this Tables& self, const std::vector<TypeId>& type_ids) {
         return self.get_id(type_ids).transform([&](size_t table_id) { return std::ref(self._tables[table_id]); });
     }
-    Table& get_or_insert(this Tables& self, const std::vector<size_t>& type_ids) {
-        size_t table_id = self.get_id_or_insert(type_ids);
+    Table& get_or_insert(this Tables& self, const std::vector<TypeId>& type_ids) {
+        TableId table_id = self.get_id_or_insert(type_ids);
         return self._tables[table_id];
     }
-    std::optional<size_t> get_id(this const Tables& self, std::vector<size_t> type_ids) {
-        std::sort(type_ids.begin(), type_ids.end());
+    std::optional<TableId> get_id(this const Tables& self, const std::vector<TypeId>& type_ids) {
         return self._table_id_registry.contains(type_ids) ? std::optional(self._table_id_registry.at(type_ids))
                                                           : std::nullopt;
     }
-    size_t get_id_or_insert(this Tables& self, std::vector<size_t> type_ids) {
-        std::sort(type_ids.begin(), type_ids.end());
-        size_t table_id;
+    TableId get_id_or_insert(this Tables& self, const std::vector<TypeId>& type_ids) {
+        TableId table_id;
         if (auto it = self._table_id_registry.find(type_ids); it != self._table_id_registry.end()) {
             table_id = it->second;
         } else {

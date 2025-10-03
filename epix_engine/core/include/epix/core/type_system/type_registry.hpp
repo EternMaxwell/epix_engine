@@ -8,8 +8,10 @@
 #include <unordered_map>
 #include <vector>
 
+#include "../../api/macros.hpp"
 #include "../meta/typeindex.hpp"
 #include "fwd.hpp"
+
 
 namespace epix::core::type_system {
 struct TypeInfo {
@@ -72,6 +74,7 @@ const TypeInfo* TypeInfo::get_info() {
     };
     return &ti;
 }
+EPIX_MAKE_U64_WRAPPER(TypeId)
 struct TypeRegistry {
    private:
     mutable std::vector<const TypeInfo*> typeInfos;
@@ -87,7 +90,7 @@ struct TypeRegistry {
     ~TypeRegistry() = default;
 
     template <typename T = void>
-    size_t type_id(const epix::core::meta::type_index& index = epix::core::meta::type_id<T>()) const {
+    TypeId type_id(const epix::core::meta::type_index& index = epix::core::meta::type_id<T>()) const {
         // First try with a shared (reader) lock
         {
             std::shared_lock<std::shared_mutex> lock(mutex_);
@@ -115,7 +118,7 @@ struct TypeRegistry {
         }
         return id;
     }
-    std::optional<size_t> type_id(const std::string_view& name) const {
+    std::optional<TypeId> type_id(const std::string_view& name) const {
         std::shared_lock<std::shared_mutex> lock(mutex_);
         if (auto it = typeViews.find(name); it != typeViews.end()) {
             return it->second;
@@ -133,3 +136,7 @@ struct TypeRegistry {
     }
 };
 }  // namespace epix::core::type_system
+
+namespace epix::core {
+using TypeId = type_system::TypeId; // exposing TypeId in epix::core namespace
+};

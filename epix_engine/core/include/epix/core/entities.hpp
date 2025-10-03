@@ -3,10 +3,12 @@
 #include <atomic>
 #include <cassert>
 #include <concepts>
+#include <cstddef>
 #include <optional>
 #include <ranges>
 #include <vector>
 
+#include "../api/macros.hpp"
 #include "fwd.hpp"
 
 namespace epix::core {
@@ -18,11 +20,15 @@ struct Entity {
     static Entity from_index(uint32_t index) { return Entity{0, index}; }
     static Entity from_parts(uint32_t index, uint32_t generation) { return Entity{generation, index}; }
 };
+EPIX_MAKE_U32_WRAPPER(ArchetypeId)
+EPIX_MAKE_U32_WRAPPER(TableId)
+EPIX_MAKE_U32_WRAPPER(ArchetypeRow)
+EPIX_MAKE_U32_WRAPPER(TableRow)
 struct EntityLocation {
-    uint32_t archtype_id  = 0;
-    uint32_t archtype_idx = 0;
-    uint32_t table_id     = 0;
-    uint32_t table_idx    = 0;
+    ArchetypeId archtype_id  = 0;
+    ArchetypeRow archtype_idx = 0;
+    TableId table_id     = 0;
+    TableRow table_idx    = 0;
 
     static constexpr EntityLocation invalid() {
         return {std::numeric_limits<uint32_t>::max(), std::numeric_limits<uint32_t>::max(),
@@ -192,7 +198,7 @@ struct Entities {
     std::optional<EntityLocation> get(Entity entity) {
         if (entity.index >= meta.size()) return std::nullopt;
         auto& meta = this->meta[entity.index];
-        if (meta.generation != entity.generation || meta.location.archtype_id == std::numeric_limits<uint32_t>::max()) {
+        if (meta.generation != entity.generation || meta.location.archtype_id.get() == std::numeric_limits<uint32_t>::max()) {
             return std::nullopt;
         }
         return meta.location;
@@ -215,7 +221,7 @@ struct Entities {
         if (index >= meta.size()) {
             return false;
         }
-        if (meta[index].location.archtype_id == std::numeric_limits<uint32_t>::max()) {
+        if (meta[index].location.archtype_id.get() == std::numeric_limits<uint32_t>::max()) {
             meta[index].generation += generations;
             return true;
         }
