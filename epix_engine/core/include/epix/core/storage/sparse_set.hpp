@@ -113,7 +113,12 @@ struct SparseSet {
     SparseArray<I, I> _sparse;  // from index to dense index
 
    public:
-    SparseSet() = default;
+    SparseSet(size_t reserve_cnt = 0) {
+        if (reserve_cnt > 0) {
+            _dense.reserve(reserve_cnt);
+            _indices.reserve(reserve_cnt);
+        }
+    }
 
     void clear(this SparseSet& self) {
         self._dense.clear();
@@ -122,6 +127,10 @@ struct SparseSet {
     }
     size_t size(this const SparseSet& self) { return self._dense.size(); }
     bool empty(this const SparseSet& self) { return self.size() == 0; }
+    void reserve(this SparseSet& self, size_t new_cap) {
+        self._dense.reserve(new_cap);
+        self._indices.reserve(new_cap);
+    }
 
     template <typename... Args>
     void emplace(this SparseSet& self, I index, Args&&... args) {
