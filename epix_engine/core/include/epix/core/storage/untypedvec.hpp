@@ -352,6 +352,65 @@ class untyped_vector {
         reallocate(size_);
     }
 
+    // Mark the vector to have uninitialized elements up to new_size.
+    // If new_size < size(), destructs initialized elements in the tail.
+    void resize_uninitialized(size_t new_size) {
+        if (new_size == size_) return;
+        if (new_size < size_) {
+            // destroy constructed elements in tail
+            for (size_t i = new_size; i < size_; ++i) {
+                void* p = static_cast<char*>(data_) + i * desc_->size;
+                if (!desc_->trivially_destructible) desc_->destroy(p);
+            }
+            size_ = new_size;
+            return;
+        }
+
+        // expand
+        if (new_size > capacity_) reserve(new_size);
+        // note: intentionally do not construct new elements (unsafe)
+        size_ = new_size;
+    }
+    void append_uninitialized(size_t count) {
+        if (count == 0) return;
+        size_t new_size = size_ + count;
+        resize_uninitialized(new_size);
+    }
+
+    // Initialize a previously-uninitialized slot from a raw pointer
+    void initialize_from(size_t idx, const void* src) {
+        assert(idx < size_);
+        void* dst = static_cast<char*>(data_) + idx * desc_->size;
+        if (desc_->trivially_copyable) {
+            std::memcpy(dst, src, desc_->size);
+        } else {
+            desc_->copy_construct(dst, src);
+        }
+        (void)0;
+    }
+
+    // Initialize by move from raw pointer
+    void initialize_from_move(size_t idx, void* src) {
+        assert(idx < size_);
+        void* dst = static_cast<char*>(data_) + idx * desc_->size;
+        if (desc_->trivially_copyable) {
+            std::memcpy(dst, src, desc_->size);
+        } else if (desc_->noexcept_move_constructible) {
+            desc_->move_construct(dst, src);
+        } else {
+            desc_->copy_construct(dst, src);
+        }
+        (void)0;
+    }
+
+    // Initialize templated emplace
+    template <typename T, typename... Args>
+    void initialize_emplace(size_t idx, Args&&... args) {
+        assert(idx < size_);
+        void* dst = static_cast<char*>(data_) + idx * desc_->size;
+        new (dst) T(std::forward<Args>(args)...);
+    }
+
    private:
     const epix::core::type_system::TypeInfo* desc_;
     size_t size_;
