@@ -26,18 +26,28 @@ struct ComponentSparseSet {
     size_t size(this const ComponentSparseSet& self) { return self.dense.len(); }
     bool empty(this const ComponentSparseSet& self) { return self.size() == 0; }
 
-    template <typename... Args>
+    const epix::core::type_system::TypeInfo* type_info(this const ComponentSparseSet& self) {
+        return self.dense.type_info();
+    }
+
+    void alloc_uninitialized(this ComponentSparseSet& self, Entity entity) {
+        uint32_t dense_index = static_cast<uint32_t>(self.dense.len());
+        self.dense.resize_uninitialized(self.dense.len() + 1);
+        self.entities.push_back(entity.index);
+        self.sparse.insert(entity.index, dense_index);
+    }
+    template <typename T, typename... Args>
     void emplace(this ComponentSparseSet& self, Entity entity, Tick change_tick, Args&&... args) {
         self.sparse.get(entity.index)
             .and_then([&](uint32_t& dense_index) -> std::optional<bool> {
                 // Already exists, replace
-                self.dense.replace(dense_index, change_tick, std::forward<Args>(args)...);
+                self.dense.replace<T>(dense_index, change_tick, std::forward<Args>(args)...);
                 return true;
             })
             .or_else([&]() -> std::optional<bool> {
                 // Doesn't exist, insert
                 uint32_t dense_index = static_cast<uint32_t>(self.dense.len());
-                self.dense.push({change_tick, change_tick}, std::forward<Args>(args)...);
+                self.dense.push<T>({change_tick, change_tick}, std::forward<Args>(args)...);
                 self.entities.push_back(entity.index);
                 self.sparse.insert(entity.index, dense_index);
                 return std::nullopt;
@@ -72,14 +82,12 @@ struct ComponentSparseSet {
             return self.dense.get_ticks(dense_index);
         });
     }
-    std::optional<std::reference_wrapper<const Tick>> get_added_tick(this const ComponentSparseSet& self,
-                                                                     Entity entity) {
+    std::optional<std::reference_wrapper<Tick>> get_added_tick(this ComponentSparseSet& self, Entity entity) {
         return self.sparse.get(entity.index).and_then([&](uint32_t dense_index) {
             return self.dense.get_added_tick(dense_index);
         });
     }
-    std::optional<std::reference_wrapper<const Tick>> get_modified_tick(this const ComponentSparseSet& self,
-                                                                        Entity entity) {
+    std::optional<std::reference_wrapper<Tick>> get_modified_tick(this ComponentSparseSet& self, Entity entity) {
         return self.sparse.get(entity.index).and_then([&](uint32_t dense_index) {
             return self.dense.get_modified_tick(dense_index);
         });
@@ -133,7 +141,9 @@ struct SparseSet {
     }
 
     template <typename... Args>
-    void emplace(this SparseSet& self, I index, Args&&... args) {
+    void emplace(this SparseSet& self, I index, Args&&... args)
+    requires std::constructible_from<V, Args...>
+    {
         self._sparse.get(index)
             .and_then([&](std::reference_wrapper<const I> dense_index) -> std::optional<bool> {
                 self._dense[dense_index.get()] = V(std::forward<Args>(args)...);

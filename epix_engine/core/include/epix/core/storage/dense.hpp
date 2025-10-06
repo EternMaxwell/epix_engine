@@ -26,6 +26,8 @@ struct Dense {
         }
     }
 
+    const epix::core::type_system::TypeInfo* type_info(this const Dense& self) { return self.values.descriptor(); }
+
     void reserve(this Dense& self, size_t new_cap) {
         self.values.reserve(new_cap);
         self.added_ticks.reserve(new_cap);
@@ -78,6 +80,45 @@ struct Dense {
         self.values.push_back_from_move(src);
         self.added_ticks.emplace_back(ticks.added);
         self.modified_ticks.emplace_back(ticks.modified);
+    }
+
+    // Resize without initializing new element slots (unsafe — caller must initialize later)
+    void resize_uninitialized(this Dense& self, size_t new_size) {
+        size_t old = self.values.size();
+        self.values.resize_uninitialized(new_size);
+        // Ensure tick arrays match new size; default-construct new ticks
+        if (new_size > old) {
+            self.added_ticks.resize(new_size);
+            self.modified_ticks.resize(new_size);
+        } else {
+            self.added_ticks.resize(new_size);
+            self.modified_ticks.resize(new_size);
+        }
+    }
+
+    // Initialize a previously-uninitialized slot from raw pointer with ticks
+    void initialize_from(this Dense& self, uint32_t index, ComponentTicks ticks, const void* src) {
+        assert(index < self.values.size());
+        self.values.initialize_from(index, src);
+        self.added_ticks[index]    = ticks.added;
+        self.modified_ticks[index] = ticks.modified;
+    }
+
+    // Initialize by move from raw pointer with ticks
+    void initialize_from_move(this Dense& self, uint32_t index, ComponentTicks ticks, void* src) {
+        assert(index < self.values.size());
+        self.values.initialize_from_move(index, src);
+        self.added_ticks[index]    = ticks.added;
+        self.modified_ticks[index] = ticks.modified;
+    }
+
+    // Initialize templated emplace with ticks
+    template <typename T, typename... Args>
+    void initialize_emplace(this Dense& self, uint32_t index, ComponentTicks ticks, Args&&... args) {
+        assert(index < self.values.size());
+        self.values.initialize_emplace<T>(index, std::forward<Args>(args)...);
+        self.added_ticks[index]    = ticks.added;
+        self.modified_ticks[index] = ticks.modified;
     }
 
     std::pair<const void*, const void*> get_data(this const Dense& self) {

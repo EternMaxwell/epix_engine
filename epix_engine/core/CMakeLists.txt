@@ -47,3 +47,12 @@ add_test(NAME test_type_registry_mt COMMAND test_type_registry_mt)
 add_executable(test_bundle tests/test_bundle.cpp)
 target_link_libraries(test_bundle PRIVATE epix_core)
 add_test(NAME test_bundle COMMAND test_bundle)
+
+# new tests for archetype and bundle inserter
+add_executable(test_archetype tests/test_archetype.cpp)
+target_link_libraries(test_archetype PRIVATE epix_core)
+add_test(NAME test_archetype COMMAND test_archetype)
+
+add_executable(test_bundle_inserter tests/test_bundle_inserter.cpp)
+target_link_libraries(test_bundle_inserter PRIVATE epix_core)
+add_test(NAME test_bundle_inserter COMMAND test_bundle_inserter)

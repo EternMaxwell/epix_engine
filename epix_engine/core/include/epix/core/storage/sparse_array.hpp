@@ -41,7 +41,7 @@ struct SparseArray {
     void insert(this SparseArray& self, I index, Args&&... args) {
         size_t idx = static_cast<size_t>(index);
         if (idx >= self.values.size()) {
-            self.values.resize(idx + 1);
+            self.values.resize(idx + 1, std::nullopt);
         }
         self.values[idx].emplace(std::forward<Args>(args)...);
     }

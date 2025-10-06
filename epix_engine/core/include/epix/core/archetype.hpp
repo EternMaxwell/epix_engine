@@ -9,6 +9,7 @@
 
 #include "component.hpp"
 #include "entities.hpp"
+#include "storage/sparse_array.hpp"
 #include "storage/sparse_set.hpp"
 #include "type_system/type_registry.hpp"
 
@@ -43,7 +44,13 @@ struct ArchetypeComponentsEqual {
         return a.table_components == b.table_components && a.sparse_components == b.sparse_components;
     }
 };
-using ComponentIndex = std::unordered_map<TypeId, std::unordered_map<ArchetypeId, ArchetypeRecord>>;
+using ComponentIndex =
+    std::unordered_map<TypeId, std::unordered_map<ArchetypeId, ArchetypeRecord, std::hash<uint32_t>>>;
+
+enum class ComponentStatus {
+    Added,
+    Exists,
+};
 template <typename V, typename T>
 concept is_view_with_value_type = requires {
     std::ranges::view<V>;
@@ -53,6 +60,76 @@ concept is_view_with_value_type = requires {
 struct ArchetypeSwapRemoveResult {
     std::optional<Entity> swapped_entity;  // entity that was swapped in, if any
     TableRow table_row;                    // table row of the removed entity
+};
+struct ArchetypeAfterBundleInsert {
+   public:
+    ArchetypeAfterBundleInsert(ArchetypeId archetype_id,
+                               std::vector<TypeId> inserted,
+                               size_t added_len,
+                               std::vector<ComponentStatus> component_statuses,
+                               std::vector<RequiredComponentConstructor> required_components)
+        : archetype_id(archetype_id),
+          _inserted(std::move(inserted)),
+          _added_len(added_len),
+          _component_statuses(std::move(component_statuses)),
+          required_components(std::move(required_components)) {}
+
+    std::span<const TypeId> inserted() const { return _inserted; }
+    std::span<const TypeId> added() const { return inserted().subspan(0, _added_len); }
+    std::span<const TypeId> existing() const { return inserted().subspan(_added_len); }
+
+    auto iter_status() const { return std::views::all(_component_statuses); }
+
+    ArchetypeId archetype_id;
+    std::vector<RequiredComponentConstructor> required_components;
+
+   private:
+    std::vector<ComponentStatus> _component_statuses;  // status of each component in the bundle
+    std::vector<TypeId> _inserted;  // components that declared by the bundle, including existing components
+    size_t _added_len;              // Added components, including required components
+
+    friend struct ArchetypeEdges;
+};
+struct ArchetypeEdges {
+   public:
+    std::optional<ArchetypeId> get_archetype_after_bundle_insert(BundleId bundle_id) const {
+        return insert_bundle.get(bundle_id).transform(
+            [](const ArchetypeAfterBundleInsert& abi) { return abi.archetype_id; });
+    }
+    std::optional<std::reference_wrapper<const ArchetypeAfterBundleInsert>> get_archetype_after_bundle_insert_detail(
+        BundleId bundle_id) const {
+        return insert_bundle.get(bundle_id).transform(
+            [](const ArchetypeAfterBundleInsert& abi) { return std::cref(abi); });
+    }
+    std::optional<std::optional<ArchetypeId>> get_archetype_after_bundle_remove(BundleId bundle_id) const {
+        return remove_bundle.get(bundle_id).transform([](const std::optional<ArchetypeId>& abi) { return abi; });
+    }
+    std::optional<std::optional<ArchetypeId>> get_archetype_after_bundle_take(BundleId bundle_id) const {
+        return take_bundle.get(bundle_id).transform([](const std::optional<ArchetypeId>& abi) { return abi; });
+    }
+
+    void cache_archetype_after_bundle_insert(BundleId bundle_id,
+                                             ArchetypeId archetype_id,
+                                             std::vector<ComponentStatus> component_status,
+                                             std::vector<RequiredComponentConstructor> required_components,
+                                             std::vector<TypeId> added_components,
+                                             std::vector<TypeId> existing_components) {
+        size_t added_len = added_components.size();
+        added_components.insert_range(added_components.end(), existing_components);
+        insert_bundle.insert(bundle_id, archetype_id, std::move(added_components), added_len,
+                             std::move(component_status), std::move(required_components));
+    }
+    void cache_archetype_after_bundle_remove(BundleId bundle_id, std::optional<ArchetypeId> archetype_id) {
+        remove_bundle.insert(bundle_id, archetype_id);
+    }
+    void cache_archetype_after_bundle_take(BundleId bundle_id, std::optional<ArchetypeId> archetype_id) {
+        take_bundle.insert(bundle_id, archetype_id);
+    }
+
+   private:
+    storage::SparseArray<BundleId, ArchetypeAfterBundleInsert> insert_bundle;
+    storage::SparseArray<BundleId, std::optional<ArchetypeId>> remove_bundle;
+    storage::SparseArray<BundleId, std::optional<ArchetypeId>> take_bundle;
 };
 struct Archetype {
    public:
@@ -90,6 +167,8 @@ struct Archetype {
     auto entities() const { return std::views::all(_entities); }
     size_t size() const { return _entities.size(); }
     bool empty() const { return _entities.empty(); }
+    const ArchetypeEdges& edges() const { return _edges; }
+    ArchetypeEdges& edges_mut() { return _edges; }
     auto entities_with_location() const {
         return _entities | std::views::enumerate | std::views::transform([&](auto&& idae) {
                    auto&& [idx, ae] = idae;
@@ -118,7 +197,7 @@ struct Archetype {
     }
     void reserve(size_t new_cap) { _entities.reserve(new_cap); }
     ArchetypeSwapRemoveResult swap_remove(ArchetypeRow arch_idx) {
-        assert(arch_idx < _entities.size());
+        assert(arch_idx.get() < _entities.size());
         bool is_last                      = arch_idx.get() == _entities.size() - 1;
         Entity removed_entity             = _entities[arch_idx].entity;
         TableRow removed_entity_table_row = _entities[arch_idx].table_idx;
@@ -141,6 +220,7 @@ struct Archetype {
     Archetype() = default;
     ArchetypeId _archetype_id;
     TableId _table_id;
+    ArchetypeEdges _edges;
     std::vector<ArchetypeEntity> _entities;
     storage::SparseSet<TypeId, StorageType> _components;
 };
@@ -205,4 +285,6 @@ using ArchetypeRecord     = archetype::ArchetypeRecord;
 using ArchetypeComponents = archetype::ArchetypeComponents;
 using ComponentIndex      = archetype::ComponentIndex;
 using Archetype           = archetype::Archetype;
+using Archetypes          = archetype::Archetypes;
+using ComponentStatus     = archetype::ComponentStatus;
 }  // namespace epix::core

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <ranges>
 #include <type_traits>
@@ -56,20 +57,29 @@ struct Table {
         std::optional<Entity> swapped_entity;  // entity that was swapped in the source table, if any
     };
     MoveReturn move_to(this Table& self, size_t dense_index, Table& target) {
+        assert(dense_index < self._entities.size());
         size_t new_index = target._entities.size();
-        for (auto&& [type_id, dense] : self._denses.iter_mut()) {
+        target.allocate(self._entities[dense_index]);
+        // Iterate over target denses: if source has the type, move the value; otherwise
+        // reserve an uninitialized slot in target for the incoming entity.
+        for (auto&& [type_id, src_dense] : self._denses.iter_mut()) {
+            // if source has this Dense, move the value into target
             target._denses.get_mut(type_id).and_then([&](Dense& target_dense) -> std::optional<bool> {
-                dense.get_mut(dense_index).and_then([&](void* value) -> std::optional<bool> {
-                    target_dense.push_move({0, 0}, value);
+                src_dense.get_mut(dense_index).and_then([&](void* value) -> std::optional<bool> {
+                    target_dense.initialize_from_move(new_index, src_dense.get_ticks(dense_index).value(), value);
                     return true;
                 });
                 return true;
             });
-            dense.swap_remove(dense_index);
+            src_dense.swap_remove(dense_index);
+            // .or_else([&]() -> std::optional<bool> {
+            //     // source doesn't have this Dense, reserve uninitialized slot in target
+            //     target_dense.resize_uninitialized(new_index + 1);
+            //     return std::nullopt;
+            // });
         }
         bool is_last = dense_index == self._entities.size() - 1;
         std::swap(self._entities[dense_index], self._entities.back());
-        target._entities.push_back(self._entities.back());
         self._entities.pop_back();
         if (!is_last) {
             return {new_index, self._entities[dense_index]};
@@ -119,18 +129,27 @@ struct Table {
     std::optional<std::reference_wrapper<Dense>> get_dense_mut(this Table& self, size_t type_id) {
         return self._denses.get_mut(type_id).transform([](Dense& dense) { return std::ref(dense); });
     }
-};
-struct Tables {
-    struct VecHash {
-        size_t operator()(const std::vector<TypeId>& vec) const {
-            size_t hash = 0;
-            for (TypeId v : vec) {
-                hash ^= std::hash<uint32_t>()(v) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
-            }
-            return hash;
+    TableRow allocate(this Table& self, Entity entity) {
+        size_t row = self._entities.size();
+        self._entities.push_back(entity);
+        for (auto&& [_, dense] : self._denses.iter_mut()) {
+            dense.resize_uninitialized(row + 1);
         }
-    };
+        return static_cast<uint32_t>(row);
+    }
+};
 
+struct VecHash {
+    size_t operator()(const std::vector<TypeId>& vec) const {
+        size_t hash = 0;
+        for (TypeId v : vec) {
+            hash ^= std::hash<uint32_t>()(v) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
+        }
+        return hash;
+    }
+};
+
+struct Tables {
    private:
     std::shared_ptr<type_system::TypeRegistry> _type_registry;
     std::unordered_map<std::vector<TypeId>, TableId, VecHash> _table_id_registry;

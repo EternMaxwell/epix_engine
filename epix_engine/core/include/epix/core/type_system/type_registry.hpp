@@ -12,7 +12,6 @@
 #include "../meta/typeindex.hpp"
 #include "fwd.hpp"
 
-
 namespace epix::core::type_system {
 struct TypeInfo {
     std::string_view name;
@@ -138,5 +137,10 @@ struct TypeRegistry {
 }  // namespace epix::core::type_system
 
 namespace epix::core {
-using TypeId = type_system::TypeId; // exposing TypeId in epix::core namespace
+using TypeId      = type_system::TypeId;  // exposing TypeId in epix::core namespace
+};  // namespace epix::core
+
+template <>
+struct std::hash<epix::core::TypeId> {
+    size_t operator()(const epix::core::TypeId& k) const { return std::hash<uint64_t>()(k.get()); }
 };

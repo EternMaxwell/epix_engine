@@ -1,5 +1,6 @@
 #pragma once
 
+#include <memory>
 #include "fwd.hpp"
 #include "storage/fwd.hpp"
 #include "storage/resource.hpp"
@@ -12,6 +13,9 @@ struct Storage {
     storage::SparseSets sparse_sets;
     storage::Tables tables;
     storage::Resources resources;
+
+    Storage(const std::shared_ptr<type_system::TypeRegistry>& registry)
+        : sparse_sets(registry), tables(registry), resources(registry) {}
 
     void prepare_component(const ComponentInfo& info) {
         if (info.storage_type() == StorageType::SparseSet) {

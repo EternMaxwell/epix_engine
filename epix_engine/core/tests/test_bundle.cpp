@@ -39,16 +39,16 @@ struct M {
 
 template <typename T, typename... Args>
 void construct(void* ptr, Args&&... args) {
-    auto bundle = make_bundle<T>(std::forward_as_tuple(std::forward<Args>(args)...));
-    bundle.initialize_at(std::views::single(ptr));
+    auto bundle = make_init_bundle<T>(std::forward_as_tuple(std::forward<Args>(args)...));
+    bundle.write(std::views::single(ptr));
 }
 
 template <typename... T, typename... ArgTuples>
     requires(sizeof...(T) == sizeof...(ArgTuples))
 void construct_multi(auto&& ptr, ArgTuples&&... args) {
-    auto bundle = make_bundle<T...>(std::forward<ArgTuples>(args)...);
+    auto bundle = make_init_bundle<T...>(std::forward<ArgTuples>(args)...);
     std::this_thread::sleep_for(std::chrono::milliseconds(100));  // simulate work
-    bundle.initialize_at(ptr);
+    bundle.write(ptr);
 }
 
 int main() {
@@ -93,10 +93,10 @@ int main() {
 
     // --- move-only temporary args ---
     alignas(M) std::byte storage_m[sizeof(M)];
-    auto mb = make_bundle<M>(std::make_tuple(std::make_unique<int>(99)));
+    auto mb = make_init_bundle<M>(std::make_tuple(std::make_unique<int>(99)));
     std::array<void*, 1> ptrs_m{reinterpret_cast<void*>(&storage_m)};
     std::span<void*> mv(ptrs_m.data(), ptrs_m.size());
-    mb.initialize_at(mv);
+    mb.write(mv);
     M& m = *reinterpret_cast<M*>(&storage_m);
     assert(m.p && *m.p == 99);
     m.~M();

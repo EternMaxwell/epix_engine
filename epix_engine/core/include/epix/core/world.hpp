@@ -1,7 +1,9 @@
 #pragma once
 
+#include "component.hpp"
 #include "entities.hpp"
 #include "fwd.hpp"
+#include "storage.hpp"
 #include "type_system/type_registry.hpp"
 
 namespace epix::core {
@@ -10,7 +12,9 @@ namespace epix::core {
  */
 struct World {
     size_t id;
-    type_system::TypeRegistry type_registry;
+    std::shared_ptr<type_system::TypeRegistry> type_registry;
     Entities entities;
+    Components components;
+    Storage storage;
 };
 }  // namespace epix::core

@@ -3,6 +3,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <memory>
+#include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -15,7 +17,7 @@
 namespace epix::core {
 struct HookContext {
     Entity entity;
-    size_t component_id;
+    TypeId component_id;
 };
 struct ComponentHooks {
     std::function<void(World&, HookContext)> on_add;
@@ -84,13 +86,13 @@ struct ComponentHooks {
         return false;
     }
 };
+
+// function to construct the component for the target entity, the size_t is the component index inside table.
+using RequiredComponentConstructor =
+    std::shared_ptr<std::function<void(storage::Table&, storage::SparseSets&, Tick, TableRow, Entity)>>;
 struct RequiredComponent {
-    // function to construct the component for the target entity, the size_t is the component index inside table.
-    std::function<void(storage::Tables&, storage::SparseSets&, Tick, size_t, Entity)> constructor;
+    RequiredComponentConstructor constructor;
     uint16_t inheritance_depth = 0;
-};
-struct RequiredComponents {
-    std::unordered_map<size_t, RequiredComponent> components;
 };
 enum class StorageType : uint8_t {
     Table     = 0,  // default stored in tables
@@ -106,6 +108,55 @@ StorageType get_storage_type_for() {
         return StorageType::Table;
     }
 }
+struct RequiredComponents {
+    std::unordered_map<TypeId, RequiredComponent> components;
+
+    void register_dynamic(TypeId type_id, uint32_t inheritance_depth, RequiredComponentConstructor constructor) {
+        // replace if exists.
+        auto it = components.find(type_id);
+        if (it == components.end() || inheritance_depth < it->second.inheritance_depth) {
+            components[type_id] = RequiredComponent{.constructor       = std::move(constructor),
+                                                    .inheritance_depth = static_cast<uint16_t>(inheritance_depth)};
+        }
+    }
+    template <typename C, typename F>
+    void register_id(TypeId type_id, uint32_t inheritance_depth, F&& constructor)
+        requires std::invocable<F> && std::same_as<C, std::invoke_result_t<F>>
+    {
+        register_dynamic(type_id, inheritance_depth,
+                         RequiredComponentConstructor([ctor = std::forward<F>(constructor), type_id](
+                                                          storage::Table& table, storage::SparseSets& sparse_sets,
+                                                          Tick tick, TableRow row, Entity entity) {
+                             auto storage_type = get_storage_type_for<C>();
+                             if (storage_type == StorageType::Table) {
+                                 auto& dense = table.get_dense_mut(type_id).value().get();
+                                 if (row.get() < dense.len()) {
+                                     dense.resize_uninitialized(row.get() + 1);
+                                     dense.initialize_emplace<C>(row, {tick, tick}, ctor());
+                                 } else {
+                                     dense.replace<C>(row, tick, ctor());
+                                 }
+                             } else {
+                                 auto& sparse_set = sparse_sets.get_mut(type_id).value().get();
+                                 sparse_set.emplace<C>(entity, ctor());
+                             }
+                         }));
+    }
+    template <typename R>
+    void remove_range(R&& range)
+        requires std::ranges::view<R> && std::same_as<std::ranges::range_value_t<R>, TypeId>
+    {
+        for (auto&& type_id : range) {
+            components.erase(type_id);
+        }
+    }
+
+    void merge(const RequiredComponents& other) {
+        for (auto&& [idx, rc] : other.components) {
+            register_dynamic(idx, rc.inheritance_depth, rc.constructor);
+        }
+    }
+};
 struct ComponentDesc {
    private:
     const type_system::TypeInfo* _type_info;
@@ -128,22 +179,76 @@ struct ComponentDesc {
 };
 struct ComponentInfo {
    private:
-    size_t _id;
+    TypeId _id;
     ComponentDesc _desc;
     ComponentHooks _hooks;
     RequiredComponents _required_components;
-    std::unordered_set<size_t> _required_by;
+    std::unordered_set<TypeId> _required_by;
 
    public:
-    ComponentInfo(size_t id, const ComponentDesc& desc) : _id(id), _desc(desc) {}
+    ComponentInfo(TypeId id, const ComponentDesc& desc) : _id(id), _desc(desc) {}
 
-    size_t type_id() const { return _id; }
+    TypeId type_id() const { return _id; }
     const type_system::TypeInfo* type_info() const { return _desc.type_info(); }
     StorageType storage_type() const { return _desc.storage_type(); }
     const ComponentHooks& hooks() const { return _hooks; }
     const RequiredComponents& required_components() const { return _required_components; }
+
+    friend struct Components;
 };
-struct Components : public storage::SparseSet<size_t, ComponentInfo> {
-    using storage::SparseSet<size_t, ComponentInfo>::SparseSet;
+struct Components : public storage::SparseSet<TypeId, ComponentInfo> {
+    using storage::SparseSet<TypeId, ComponentInfo>::SparseSet;
+
+    template <typename F>
+    void register_required_component(TypeId requiree, TypeId required, F&& constructor)
+        requires std::invocable<F>
+    {
+        using C                   = std::invoke_result_t<F>;
+        auto& required_components = get_mut(requiree).value().get()._required_components;
+        if (required_components.components.contains(required)) return;
+        required_components.register_id<C>(required, 0, std::forward<F>(constructor));
+        auto& required_by = get_mut(required).value().get()._required_by;
+        required_by.insert(requiree);
+
+        RequiredComponents required_components_tmp;
+        auto inherited_requirements =
+            register_inherited_required_components(requiree, required, required_components_tmp);
+        required_components.merge(required_components_tmp);
+
+        required_by.insert_range(get(required).value().get()._required_by);
+        for (auto&& required_by_id : get(requiree).value().get()._required_by) {
+            auto& required_components = get_mut(required_by_id).value().get()._required_components;
+            auto&& depth =
+                get_mut(required_by_id).value().get()._required_components.components.at(requiree).inheritance_depth;
+            required_components.register_id<C>(requiree, depth + 1, std::forward<F>(constructor));
+            for (auto&& [type_id, req_comp] : inherited_requirements) {
+                required_components.register_dynamic(type_id, req_comp.inheritance_depth + depth + 1,
+                                                     req_comp.constructor);
+                get_mut(type_id).value().get()._required_by.insert(required_by_id);
+            }
+        }
+    }
+
+   private:
+    std::vector<std::pair<TypeId, RequiredComponent>> register_inherited_required_components(
+        TypeId requiree, TypeId required, RequiredComponents& required_components) {
+        auto& required_info = get_mut(required).value().get();
+        std::vector<std::pair<TypeId, RequiredComponent>> inherited_requirements =
+            required_info.required_components().components | std::views::transform([&](auto&& rc) {
+                auto&& [type_id, req_comp] = rc;
+                return std::pair(type_id,
+                                 RequiredComponent{
+                                     .constructor       = req_comp.constructor,
+                                     .inheritance_depth = static_cast<uint16_t>(req_comp.inheritance_depth + 1),
+                                 });
+            }) |
+            std::ranges::to<std::vector<std::pair<TypeId, RequiredComponent>>>();
+        for (auto&& [type_id, req_comp] : inherited_requirements) {
+            required_components.register_dynamic(type_id, req_comp.inheritance_depth, req_comp.constructor);
+            get_mut(type_id).value().get()._required_by.insert(requiree);
+        }
+
+        return inherited_requirements;
+    }
 };
 }  // namespace epix::core

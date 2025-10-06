@@ -24,11 +24,12 @@ EPIX_MAKE_U32_WRAPPER(ArchetypeId)
 EPIX_MAKE_U32_WRAPPER(TableId)
 EPIX_MAKE_U32_WRAPPER(ArchetypeRow)
 EPIX_MAKE_U32_WRAPPER(TableRow)
+EPIX_MAKE_U64_WRAPPER(BundleId)
 struct EntityLocation {
-    ArchetypeId archtype_id  = 0;
-    ArchetypeRow archtype_idx = 0;
-    TableId table_id     = 0;
-    TableRow table_idx    = 0;
+    ArchetypeId archetype_id   = 0;
+    ArchetypeRow archetype_idx = 0;
+    TableId table_id           = 0;
+    TableRow table_idx         = 0;
 
     static constexpr EntityLocation invalid() {
         return {std::numeric_limits<uint32_t>::max(), std::numeric_limits<uint32_t>::max(),
@@ -178,7 +179,7 @@ struct Entities {
      * Entities that are freed will return false.
      */
     bool contains(Entity entity) {
-        resolve_index(entity.index)
+        return resolve_index(entity.index)
             .transform([this, &entity](Entity e) { return e.generation == entity.generation; })
             .value_or(false);
     }
@@ -198,7 +199,8 @@ struct Entities {
     std::optional<EntityLocation> get(Entity entity) {
         if (entity.index >= meta.size()) return std::nullopt;
         auto& meta = this->meta[entity.index];
-        if (meta.generation != entity.generation || meta.location.archtype_id.get() == std::numeric_limits<uint32_t>::max()) {
+        if (meta.generation != entity.generation ||
+            meta.location.archetype_id.get() == std::numeric_limits<uint32_t>::max()) {
             return std::nullopt;
         }
         return meta.location;
@@ -221,7 +223,7 @@ struct Entities {
         if (index >= meta.size()) {
             return false;
         }
-        if (meta[index].location.archtype_id.get() == std::numeric_limits<uint32_t>::max()) {
+        if (meta[index].location.archetype_id.get() == std::numeric_limits<uint32_t>::max()) {
             meta[index].generation += generations;
             return true;
         }
@@ -286,7 +288,7 @@ struct Entities {
      * @brief Flushes all reserved entities to invalid state.
      */
     void flush_as_invalid() {
-        flush([](Entity, EntityLocation& loc) { loc.archtype_id = std::numeric_limits<uint32_t>::max(); });
+        flush([](Entity, EntityLocation& loc) { loc.archetype_id = std::numeric_limits<uint32_t>::max(); });
     }
 
     /**
@@ -322,3 +324,13 @@ struct Entities {
     bool empty() { return size() == 0; }
 };
 }  // namespace epix::core
+
+// Add hash for uint wrappers
+namespace std {
+template <>
+struct hash<epix::core::Entity> {
+    size_t operator()(epix::core::Entity e) const {
+        return std::hash<uint64_t>()(static_cast<uint64_t>(e.generation) << 32 | e.index);
+    }
+};
+}  // namespace std

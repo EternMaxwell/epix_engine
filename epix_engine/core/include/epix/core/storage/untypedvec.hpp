@@ -67,6 +67,8 @@ class untyped_vector {
     size_t capacity() const noexcept { return capacity_; }
     bool empty() const noexcept { return size_ == 0; }
 
+    const epix::core::type_system::TypeInfo* type_info() const noexcept { return desc_; }
+
     const epix::core::type_system::TypeInfo* descriptor() const noexcept { return desc_; }
 
     // raw pointer access (void*)
@@ -367,7 +369,7 @@ class untyped_vector {
         }
 
         // expand
-        if (new_size > capacity_) reserve(new_size);
+        if (new_size > capacity_) ensure_capacity_for(new_size - size_);
         // note: intentionally do not construct new elements (unsafe)
         size_ = new_size;
     }
@@ -421,6 +423,16 @@ class untyped_vector {
         if (size_ >= capacity_) {
             // growth factor: ~1.5x (use integer math, ensure progress for small caps)
             size_t new_cap = capacity_ ? ((capacity_ * 3 + 1) / 2) : 1;
+            reallocate(new_cap);
+        }
+    }
+    void ensure_capacity_for(size_t n) {
+        if (n == 0) return;
+        if (size_ + n > capacity_) {
+            size_t new_cap = capacity_;
+            while (new_cap < size_ + n) {
+                new_cap = new_cap ? ((new_cap * 3 + 1) / 2) : 1;
+            }
             reallocate(new_cap);
         }
     }
@@ -504,7 +516,9 @@ class checked_untyped_vector {
 
     // Owning constructor: create and own an untyped_vector internally.
     explicit checked_untyped_vector(const epix::core::type_system::TypeInfo* desc, size_t reserve_cnt = 0)
-        : owned_(std::make_unique<untyped_vector>(desc, reserve_cnt)), vec_(owned_.get()) {}
+        : owned_(std::make_unique<untyped_vector>(desc, reserve_cnt)) {
+        vec_ = owned_.get();
+    }
 
     size_t size() const noexcept { return vec_->size(); }
     size_t capacity() const noexcept { return vec_->capacity(); }

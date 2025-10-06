@@ -119,6 +119,8 @@ struct ResourceData {
 
 struct Resources {
    public:
+    Resources(std::shared_ptr<type_system::TypeRegistry> registry) : registry(std::move(registry)) {}
+
     size_t resource_count(this const Resources& self) { return self.resources.size(); }
     bool empty(this const Resources& self) { return self.resources.empty(); }
     auto iter(this Resources& self) { return self.resources.iter(); }

@@ -45,13 +45,10 @@ set(CMAKE_CXX_STANDARD 23)
 
 if (MSVC)
   add_compile_options(/bigobj)
-  add_compile_options(/wd4819)
 else ()
   add_compile_options(-Wa,-mbig-obj)
-  add_compile_options(-w)
   add_compile_options(-Wpointer-arith)
   add_compile_options(-fpch-preprocess)
-  add_compile_options(-Wno-invalid-token-paste)
 endif ()
 
 add_subdirectory (epix_engine)

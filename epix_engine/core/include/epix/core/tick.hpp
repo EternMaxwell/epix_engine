@@ -39,6 +39,10 @@ struct Tick {
 struct ComponentTicks {
     Tick added;
     Tick modified;
+
+    ComponentTicks() : added(0), modified(0) {}
+    ComponentTicks(Tick tick) : added(tick), modified(tick) {}
+    ComponentTicks(Tick added, Tick modified) : added(added), modified(modified) {}
 };
 struct TickRefs {
    public:
