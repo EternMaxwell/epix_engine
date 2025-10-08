@@ -85,7 +85,7 @@ int main() {
     std::uniform_real_distribution<double> val_d(0.0, 1000.0);
 
     // randomly add components by iterating entities in WorldCell
-    for (size_t idx = 0; idx < 10; ++idx) {
+    for (size_t idx = 0; idx < 2000; ++idx) {
         auto rmut = world.spawn();
         double p  = prob(rng);
         if (p < 0.4) {
@@ -127,7 +127,7 @@ int main() {
     }
 
     // verify and print subset
-    for (size_t idx = 0; idx < world.entities_mut().total_count(); ++idx) {
+    for (size_t idx = 0; idx < world.entities_mut().total_count() && idx < 100; ++idx) {
         auto opt = world.entities_mut().resolve_index(static_cast<uint32_t>(idx));
         if (!opt) continue;
         Entity e = opt.value();
@@ -142,9 +142,9 @@ int main() {
                      e.generation, e.index, r.location().archetype_id.get(), r.location().archetype_idx.get(),
                      r.location().table_id.get(), r.location().table_idx.get());
         std::println(std::cout, "\tT1: {}, T2: \'{}\', T3: {}, S1: \'{}\', S2: {}",
-                     a ? std::to_string(a->get().v) : "N/A", b ? b->get().s : "N/A",
-                     c ? std::to_string(c->get().d) : "N/A", s1 ? s1->get().x : "N/A",
-                     s2 ? std::to_string(s2->get().n) : "N/A");
+                     a ? std::to_string(a->get().v) : "-", b ? b->get().s : "-",
+                     c ? std::to_string(c->get().d) : "-", s1 ? s1->get().x : "-",
+                     s2 ? std::to_string(s2->get().n) : "-");
     }
 
     // basic consistency checks: all entity refs that claim to contain component should be able to retrieve it via
