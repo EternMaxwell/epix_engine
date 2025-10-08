@@ -12,7 +12,6 @@
 #include "archetype.hpp"
 #include "component.hpp"
 #include "entities.hpp"
-#include "epix/core/archetype.hpp"
 #include "fwd.hpp"
 #include "meta/typeid.hpp"
 #include "storage.hpp"
@@ -59,72 +58,6 @@ concept is_bundle = requires(B b) {
 
 using bundle::is_bundle;
 
-template <typename T>
-struct Bundle {};
-
-/**
- * @brief Detail of a bundle type.
- * The first template parameter is a tuple of the types that will explicitly added to the entity by this bundle.
- * The second template parameter is a tuple of tuples, each inner tuple contains the argument types for constructing
- * the corresponding type in the first tuple.
- *
- * @tparam Ts
- * @tparam Args
- */
-template <typename Ts, typename Args>
-struct InitializeBundle {
-    static_assert(false, "BundleDetail must be specialized for std::tuple types");
-};
-template <typename... Ts, typename... ArgTuples>
-    requires((bundle::specialization_of<std::tuple, ArgTuples> && ...) && (sizeof...(Ts) == sizeof...(ArgTuples)) &&
-             (bundle::constructible_from_tuple<Ts, ArgTuples> && ...))
-struct InitializeBundle<std::tuple<Ts...>, std::tuple<ArgTuples...>> {
-    // stores the args for constructing each component in Ts
-    using storage_type = std::tuple<ArgTuples...>;
-    storage_type args;
-
-    /**
-     * @brief Construct bundle types in place at the provided pointers.
-     * The stored argument values should have lifetimes that extend beyond this call.
-     * @param pointers
-     */
-    void write(bundle::is_void_ptr_view auto&& pointers) {
-        assert(std::ranges::size(pointers) == sizeof...(Ts));
-        auto&& ptr_it = std::ranges::begin(pointers);
-
-        [&]<size_t... Is>(std::index_sequence<Is...>) {
-            (
-                [&]<size_t I>(std::integral_constant<size_t, I>) {
-                    using T      = std::tuple_element_t<I, std::tuple<Ts...>>;
-                    using ATuple = std::tuple_element_t<I, storage_type>;
-                    if (T* ptr = static_cast<T*>(*ptr_it)) {
-                        []<size_t... Js>(std::index_sequence<Js...>, T* p, ATuple& atuple) {
-                            new (p) T(std::forward<std::tuple_element_t<Js, ATuple>>(
-                                std::get<Js>(atuple))...);  // construct T in place with args from atuple
-                        }(std::make_index_sequence<std::tuple_size_v<ATuple>>{}, ptr, std::get<I>(args));
-                    }
-                    ++ptr_it;
-                }(std::integral_constant<size_t, Is>{}),
-                ...);
-        }(std::make_index_sequence<sizeof...(Ts)>());
-    }
-
-    static auto type_ids(const type_system::TypeRegistry& registry) {
-        return std::array<type_system::TypeId, sizeof...(Ts)>{registry.type_id<Ts>()...};
-    }
-    static void register_components(const type_system::TypeRegistry& registry, Components& components) {
-        (components.emplace(registry.type_id<Ts>(),
-                            ComponentInfo(registry.type_id<Ts>(), ComponentDesc::from_type<Ts>())),
-         ...);
-    }
-};
-template <typename... Ts, typename... ArgTuples>
-    requires((bundle::specialization_of<std::tuple, ArgTuples> && ...) && (sizeof...(Ts) == sizeof...(ArgTuples)) &&
-             (bundle::constructible_from_tuple<Ts, ArgTuples> && ...))
-InitializeBundle<std::tuple<Ts...>, std::tuple<ArgTuples...>> make_init_bundle(ArgTuples&&... args) {
-    return InitializeBundle<std::tuple<Ts...>, std::tuple<ArgTuples...>>{
-        std::make_tuple(std::forward<ArgTuples>(args)...)};
-}
 struct BundleInfo {
    private:
     BundleId _id;
@@ -373,8 +306,8 @@ struct BundleInfo {
         std::vector<TypeId> next_table_components;
         std::vector<TypeId> next_sparse_components;
         TableId next_table_id;
-        auto& archetype = archetypes.get_mut(archetype_id).value().get();
         {
+            auto& archetype = archetypes.get_mut(archetype_id).value().get();
             std::unordered_set<TypeId> table_components_set =
                 archetype.table_components() | std::ranges::to<std::unordered_set<TypeId>>();
             std::unordered_set<TypeId> sparse_components_set =
@@ -406,6 +339,7 @@ struct BundleInfo {
         }
         ArchetypeId next_archetype_id =
             archetypes.get_id_or_insert(components, next_table_id, next_table_components, next_sparse_components).first;
+        auto& archetype = archetypes.get_mut(archetype_id).value().get();
         if (ignore_missing) {
             // remove
             archetype.edges_mut().cache_archetype_after_bundle_remove(_id, next_archetype_id);
@@ -518,206 +452,5 @@ struct Bundles {
     // Cache for optimizing single component bundles
     std::unordered_map<TypeId, BundleId> _dynamic_component_ids;
     std::unordered_map<BundleId, StorageType, std::hash<size_t>> _dynamic_component_storages;
-};
-
-struct BundleInserter {
-   public:
-    static BundleInserter create_with_id(Bundles& bundles,
-                                         Entities& entities,
-                                         archetype::Archetypes& archetypes,
-                                         Storage& storage,
-                                         Components& components,
-                                         const type_system::TypeRegistry& type_registry,
-                                         ArchetypeId archetype_id,
-                                         BundleId bundle_id,
-                                         Tick tick) {
-        auto&& bundle_info = bundles.get(bundle_id).value().get();
-        ArchetypeId new_archetype_id =
-            bundle_info.insert_bundle_into_archetype(archetypes, storage, components, archetype_id);
-        Archetype& archetype = archetypes.get_mut(archetype_id).value().get();
-        BundleInserter inserter;
-        inserter.bundles_       = &bundles;
-        inserter.entities_      = &entities;
-        inserter.archetypes_    = &archetypes;
-        inserter.storage_       = &storage;
-        inserter.components_    = &components;
-        inserter.type_registry_ = &type_registry;
-        inserter.archetype_after_insert_ =
-            &archetype.edges().get_archetype_after_bundle_insert_detail(bundle_id).value().get();
-        inserter.bundle_info_ = &bundle_info;
-        inserter.archetype_   = &archetype;
-        inserter.table_       = &storage.tables.get_mut(archetype.table_id()).value().get();
-        inserter.change_tick_ = tick;
-        return inserter;
-    }
-    template <bundle::is_bundle T>
-    static BundleInserter create(Bundles& bundles,
-                                 Entities& entities,
-                                 archetype::Archetypes& archetypes,
-                                 Storage& storage,
-                                 Components& components,
-                                 const type_system::TypeRegistry& type_registry,
-                                 ArchetypeId archetype_id,
-                                 Tick tick) {
-        BundleId bundle_id = bundles.register_info<T>(type_registry, components, storage);
-        return create_with_id(bundles, entities, archetypes, storage, components, type_registry, archetype_id,
-                              bundle_id, tick);
-    }
-
-    template <typename T>
-    EntityLocation insert(Entity entity, EntityLocation location, T&& bundle, bool replace_existing = true) const
-        requires bundle::is_bundle<std::decay_t<T>>
-    {
-        auto& bundle_info         = *bundle_info_;
-        auto& dest_archetype      = archetypes_->get_mut(archetype_after_insert_->archetype_id).value().get();
-        const bool same_archetype = (archetype_->id() == dest_archetype.id());
-        const bool same_table     = (archetype_->table_id() == dest_archetype.table_id());
-        if (same_archetype) {
-            // same archetype, just write components in place
-            bundle_info.write_components(*table_, storage_->sparse_sets, *type_registry_, *components_,
-                                         archetype_after_insert_->iter_status(),
-                                         archetype_after_insert_->required_components | std::views::all, entity,
-                                         location.table_idx, change_tick_, bundle, replace_existing);
-            // location not changed
-            return location;
-        } else if (same_table) {
-            // table not changed, but archetype changed due to sparse components
-            auto result = archetype_->swap_remove(location.archetype_idx);
-            if (result.swapped_entity) {
-                // swapped entity should update its location
-                auto swapped_entity            = result.swapped_entity.value();
-                auto swapped_location          = entities_->get(swapped_entity).value();
-                swapped_location.archetype_idx = location.archetype_idx;
-                entities_->set(swapped_entity.index, swapped_location);
-            }
-            auto new_location = dest_archetype.allocate(entity, result.table_row);
-            entities_->set(entity.index, new_location);
-            bundle_info.write_components(*table_, storage_->sparse_sets, *type_registry_, *components_,
-                                         archetype_after_insert_->iter_status(),
-                                         archetype_after_insert_->required_components | std::views::all, entity,
-                                         result.table_row, change_tick_, bundle, replace_existing);
-            return new_location;
-        } else {
-            auto& new_table = storage_->tables.get_mut(dest_archetype.table_id()).value().get();
-            auto& table     = *table_;
-            auto result     = archetype_->swap_remove(location.archetype_idx);
-            if (result.swapped_entity) {
-                // swapped entity should update its location
-                auto swapped_entity            = result.swapped_entity.value();
-                auto swapped_location          = entities_->get(swapped_entity).value();
-                swapped_location.archetype_idx = location.archetype_idx;
-                entities_->set(swapped_entity.index, swapped_location);
-            }
-            auto move_result  = table.move_to(result.table_row, new_table);
-            auto new_location = dest_archetype.allocate(entity, move_result.new_index);
-            entities_->set(entity.index, new_location);
-            if (move_result.swapped_entity) {
-                // swapped entity should update its location
-                auto swapped_entity        = move_result.swapped_entity.value();
-                auto swapped_location      = entities_->get(swapped_entity).value();
-                swapped_location.table_idx = result.table_row;
-                entities_->set(swapped_entity.index, swapped_location);
-                auto& swapped_archetype = archetypes_->get_mut(swapped_location.archetype_id).value().get();
-                swapped_archetype.set_entity_table_row(swapped_location.archetype_idx, swapped_location.table_idx);
-            }
-            bundle_info.write_components(new_table, storage_->sparse_sets, *type_registry_, *components_,
-                                         archetype_after_insert_->iter_status(),
-                                         archetype_after_insert_->required_components | std::views::all, entity,
-                                         move_result.new_index, change_tick_, bundle, replace_existing);
-            return new_location;
-        }
-    }
-
-   private:
-    Bundles* bundles_;
-    Entities* entities_;
-    archetype::Archetypes* archetypes_;
-    Storage* storage_;
-    Components* components_;
-    const type_system::TypeRegistry* type_registry_;
-    const archetype::ArchetypeAfterBundleInsert* archetype_after_insert_;
-    const BundleInfo* bundle_info_;
-    Archetype* archetype_;
-    storage::Table* table_;
-    Tick change_tick_;
-};
-
-// Bundle spawner for insert entities newly spawned (that is, not actually added to any archetype yet, otherwise will
-// adding a 'move from empty archetype to target archetype' operation)
-struct BundleSpawner {
-   public:
-    static BundleSpawner create_with_id(Bundles& bundles,
-                                        Entities& entities,
-                                        archetype::Archetypes& archetypes,
-                                        Storage& storage,
-                                        Components& components,
-                                        const type_system::TypeRegistry& type_registry,
-                                        BundleId bundle_id,
-                                        Tick tick) {
-        auto&& bundle_info = bundles.get(bundle_id).value().get();
-        ArchetypeId new_archetype_id =
-            bundle_info.insert_bundle_into_archetype(archetypes, storage, components, ArchetypeId(0));
-        Archetype& archetype = archetypes.get_mut(new_archetype_id).value().get();
-        BundleSpawner spawner;
-        spawner.bundles_       = &bundles;
-        spawner.entities_      = &entities;
-        spawner.archetypes_    = &archetypes;
-        spawner.storage_       = &storage;
-        spawner.components_    = &components;
-        spawner.type_registry_ = &type_registry;
-        spawner.bundle_info_   = &bundle_info;
-        spawner.archetype_     = &archetype;
-        spawner.table_         = &storage.tables.get_mut(archetype.table_id()).value().get();
-        spawner.change_tick_   = tick;
-        return spawner;
-    }
-    template <bundle::is_bundle T>
-    static BundleSpawner create(Bundles& bundles,
-                                Entities& entities,
-                                archetype::Archetypes& archetypes,
-                                Storage& storage,
-                                Components& components,
-                                const type_system::TypeRegistry& type_registry,
-                                Tick tick) {
-        BundleId bundle_id = bundles.register_info<T>(type_registry, components, storage);
-        return create_with_id(bundles, entities, archetypes, storage, components, type_registry, bundle_id, tick);
-    }
-
-    void reserve_storage(size_t additional) {
-        if (additional == 0) return;
-        auto& table     = *table_;
-        auto& archetype = *archetype_;
-        table.reserve(table.size() + additional);
-        archetype.reserve(archetype.size() + additional);
-    }
-    template <typename T>
-    EntityLocation spawn_non_exist(Entity entity, T&& bundle)
-        requires bundle::is_bundle<std::decay_t<T>>
-    {
-        auto& bundle_info = *bundle_info_;
-        auto& archetype   = *archetype_;
-        auto& table       = *table_;
-        TableRow row      = table.allocate(entity);
-        auto location     = archetype.allocate(entity, row);
-        entities_->set(entity.index, location);
-        auto spawn_bundle_status = std::views::repeat(ComponentStatus::Added) |
-                                   std::views::take(std::ranges::size(bundle_info.explicit_components()));
-        bundle_info.write_components(table, storage_->sparse_sets, *type_registry_, *components_, spawn_bundle_status,
-                                     bundle_info.required_component_constructors(), entity, row, change_tick_, bundle,
-                                     true);
-        return location;
-    }
-
-   private:
-    Bundles* bundles_;
-    Entities* entities_;
-    archetype::Archetypes* archetypes_;
-    Storage* storage_;
-    Components* components_;
-    const type_system::TypeRegistry* type_registry_;
-    const BundleInfo* bundle_info_;
-    Archetype* archetype_;
-    storage::Table* table_;
-    Tick change_tick_;
 };
 }  // namespace epix::core

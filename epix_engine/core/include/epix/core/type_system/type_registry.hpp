@@ -44,8 +44,11 @@ template <typename T>
 static void copy_construct_impl(void* dest, const void* src) {
     if constexpr (std::is_trivially_copyable_v<T>) {
         std::memcpy(dest, src, sizeof(T));
-    } else {
+    } else if constexpr (std::is_copy_constructible_v<T>) {
         new (dest) T(*static_cast<const T*>(src));
+    } else {
+        // Should not be called for non-copyable types. Terminate to avoid undefined behavior.
+        std::terminate();
     }
 }
 
@@ -53,20 +56,30 @@ template <typename T>
 static void move_construct_impl(void* dest, void* src) {
     if constexpr (std::is_trivially_copyable_v<T>) {
         std::memcpy(dest, src, sizeof(T));
-    } else {
+    } else if constexpr (std::is_nothrow_move_constructible_v<T> || std::is_move_constructible_v<T>) {
         new (dest) T(std::move(*static_cast<T*>(src)));
+    } else if constexpr (std::is_copy_constructible_v<T>) {
+        // Fallback to copy if move is not available but copy is
+        new (dest) T(*static_cast<const T*>(src));
+    } else {
+        // Should not be called for types that are neither movable nor copyable.
+        std::terminate();
     }
 }
 
 template <typename T>
 const TypeInfo* TypeInfo::get_info() {
     static TypeInfo ti = TypeInfo{
-        .name                        = epix::core::meta::type_id<T>().name(),
-        .size                        = sizeof(T),
-        .align                       = alignof(T),
-        .destroy                     = &destroy_impl<T>,
-        .copy_construct              = &copy_construct_impl<T>,
-        .move_construct              = &move_construct_impl<T>,
+        .name    = epix::core::meta::type_id<T>().name(),
+        .size    = sizeof(T),
+        .align   = alignof(T),
+        .destroy = &destroy_impl<T>,
+        .copy_construct =
+            (std::is_trivially_copyable_v<T> || std::is_copy_constructible_v<T>) ? &copy_construct_impl<T> : nullptr,
+        .move_construct =
+            (std::is_trivially_copyable_v<T> || std::is_move_constructible_v<T> || std::is_copy_constructible_v<T>)
+                ? &move_construct_impl<T>
+                : nullptr,
         .trivially_copyable          = std::is_trivially_copyable_v<T>,
         .trivially_destructible      = std::is_trivially_destructible_v<T>,
         .noexcept_move_constructible = std::is_nothrow_move_constructible_v<T>,
@@ -137,7 +150,7 @@ struct TypeRegistry {
 }  // namespace epix::core::type_system
 
 namespace epix::core {
-using TypeId      = type_system::TypeId;  // exposing TypeId in epix::core namespace
+using TypeId = type_system::TypeId;  // exposing TypeId in epix::core namespace
 };  // namespace epix::core
 
 template <>

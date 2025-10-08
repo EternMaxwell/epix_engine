@@ -56,3 +56,7 @@ add_test(NAME test_archetype COMMAND test_archetype)
 add_executable(test_bundle_inserter tests/test_bundle_inserter.cpp)
 target_link_libraries(test_bundle_inserter PRIVATE epix_core)
 add_test(NAME test_bundle_inserter COMMAND test_bundle_inserter)
+
+add_executable(test_entity_ref tests/test_entity_ref.cpp)
+target_link_libraries(test_entity_ref PRIVATE epix_core)
+add_test(NAME test_entity_ref COMMAND test_entity_ref)

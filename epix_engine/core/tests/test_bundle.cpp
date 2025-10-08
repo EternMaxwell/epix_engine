@@ -9,10 +9,9 @@
 #include <string_view>
 #include <thread>
 #include <tuple>
-#include <type_traits>
 #include <vector>
 
-#include "epix/core/bundle.hpp"
+#include "epix/core/bundleimpl.hpp"
 
 using namespace epix::core;
 

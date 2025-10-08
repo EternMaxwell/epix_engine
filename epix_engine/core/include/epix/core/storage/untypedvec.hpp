@@ -3,6 +3,7 @@
 #include <cassert>
 #include <cstddef>
 #include <cstring>
+#include <exception>
 #include <memory>
 #include <new>
 #include <ranges>
@@ -97,8 +98,10 @@ class untyped_vector {
         void* dest = static_cast<char*>(data_) + size_ * desc_->size;
         if (desc_->trivially_copyable) {
             std::memcpy(dest, std::addressof(v), desc_->size);
-        } else {
+        } else if (desc_->copy_construct) {
             desc_->copy_construct(dest, &v);
+        } else {
+            throw std::logic_error("type is not copy-constructible");
         }
         ++size_;
     }
@@ -110,8 +113,12 @@ class untyped_vector {
         // move from the provided object
         if (desc_->trivially_copyable) {
             std::memcpy(dest, std::addressof(v), desc_->size);
-        } else {
+        } else if (desc_->move_construct) {
             desc_->move_construct(dest, static_cast<void*>(std::addressof(v)));
+        } else if (desc_->copy_construct) {
+            desc_->copy_construct(dest, static_cast<const void*>(std::addressof(v)));
+        } else {
+            throw std::logic_error("type is neither movable nor copyable");
         }
         ++size_;
     }
@@ -224,8 +231,10 @@ class untyped_vector {
         void* dest = static_cast<char*>(data_) + size_ * desc_->size;
         if (desc_->trivially_copyable) {
             std::memcpy(dest, src, desc_->size);
-        } else {
+        } else if (desc_->copy_construct) {
             desc_->copy_construct(dest, src);
+        } else {
+            throw std::logic_error("type is not copy-constructible");
         }
         ++size_;
     }
@@ -235,8 +244,12 @@ class untyped_vector {
         void* dest = static_cast<char*>(data_) + size_ * desc_->size;
         if (desc_->trivially_copyable) {
             std::memcpy(dest, src, desc_->size);
-        } else {
+        } else if (desc_->move_construct) {
             desc_->move_construct(dest, src);
+        } else if (desc_->copy_construct) {
+            desc_->copy_construct(dest, src);
+        } else {
+            throw std::logic_error("type is neither movable nor copyable");
         }
         ++size_;
     }
@@ -247,13 +260,15 @@ class untyped_vector {
         void* dst = static_cast<char*>(data_) + idx * desc_->size;
         if (desc_->trivially_copyable) {
             std::memcpy(dst, src, desc_->size);
-        } else {
+        } else if (desc_->copy_construct) {
             // destroy existing object first (basic exception guarantee)
             if (!desc_->trivially_destructible) {
-                desc_->destroy(dst);
+                if (desc_->destroy) desc_->destroy(dst);
             }
             // copy-construct new object into dst
             desc_->copy_construct(dst, src);
+        } else {
+            throw std::logic_error("type is not copy-constructible");
         }
     }
 
@@ -263,18 +278,20 @@ class untyped_vector {
         void* dst = static_cast<char*>(data_) + idx * desc_->size;
         if (desc_->trivially_copyable) {
             std::memcpy(dst, src, desc_->size);
-        } else if (desc_->noexcept_move_constructible) {
+        } else if (desc_->move_construct) {
             // destroy existing then move-construct
             if (!desc_->trivially_destructible) {
-                desc_->destroy(dst);
+                if (desc_->destroy) desc_->destroy(dst);
             }
             desc_->move_construct(dst, src);
-        } else {
+        } else if (desc_->copy_construct) {
             // fallback to copy-construct (may throw)
             if (!desc_->trivially_destructible) {
-                desc_->destroy(dst);
+                if (desc_->destroy) desc_->destroy(dst);
             }
             desc_->copy_construct(dst, src);
+        } else {
+            throw std::logic_error("type is neither movable nor copyable");
         }
     }
 
@@ -283,7 +300,10 @@ class untyped_vector {
         --size_;
         void* ptr = static_cast<char*>(data_) + size_ * desc_->size;
         if (!desc_->trivially_destructible) {
-            desc_->destroy(ptr);
+            if (desc_->destroy)
+                desc_->destroy(ptr);
+            else
+                std::terminate();
         }
     }
 
@@ -292,7 +312,10 @@ class untyped_vector {
         if (!desc_->trivially_destructible) {
             for (size_t i = size_; i > 0; --i) {
                 void* p = static_cast<char*>(data_) + (i - 1) * desc_->size;
-                desc_->destroy(p);
+                if (desc_->destroy)
+                    desc_->destroy(p);
+                else
+                    std::terminate();
             }
         }
         size_ = 0;
@@ -317,17 +340,22 @@ class untyped_vector {
 
         // If destination holds a non-trivial object, destroy it first before overwrite.
         if (!desc_->trivially_destructible) {
-            desc_->destroy(dst);
+            if (desc_->destroy)
+                desc_->destroy(dst);
+            else
+                std::terminate();
         }
 
         if (desc_->trivially_copyable) {
             std::memcpy(dst, src, desc_->size);
-        } else if (desc_->noexcept_move_constructible) {
+        } else if (desc_->move_construct) {
             // move-construct into dst from src
             desc_->move_construct(dst, src);
-        } else {
+        } else if (desc_->copy_construct) {
             // fallback: copy-construct into dst (may throw)
             desc_->copy_construct(dst, src);
+        } else {
+            throw std::logic_error("type is neither movable nor copyable");
         }
 
         // destroy the source (last element) if needed
@@ -385,8 +413,10 @@ class untyped_vector {
         void* dst = static_cast<char*>(data_) + idx * desc_->size;
         if (desc_->trivially_copyable) {
             std::memcpy(dst, src, desc_->size);
-        } else {
+        } else if (desc_->copy_construct) {
             desc_->copy_construct(dst, src);
+        } else {
+            throw std::logic_error("type is not copy-constructible");
         }
         (void)0;
     }
@@ -397,10 +427,12 @@ class untyped_vector {
         void* dst = static_cast<char*>(data_) + idx * desc_->size;
         if (desc_->trivially_copyable) {
             std::memcpy(dst, src, desc_->size);
-        } else if (desc_->noexcept_move_constructible) {
+        } else if (desc_->move_construct) {
             desc_->move_construct(dst, src);
-        } else {
+        } else if (desc_->copy_construct) {
             desc_->copy_construct(dst, src);
+        } else {
+            throw std::logic_error("type is neither movable nor copyable");
         }
         (void)0;
     }
@@ -488,7 +520,10 @@ class untyped_vector {
         if (!desc_->trivially_destructible) {
             for (size_t j = 0; j < size_; ++j) {
                 void* p = static_cast<char*>(data_) + j * esz;
-                desc_->destroy(p);
+                if (desc_->destroy)
+                    desc_->destroy(p);
+                else
+                    throw std::logic_error("type is non-trivially-destructible but no destroy function provided");
             }
         }
         if (data_) ::operator delete(data_, static_cast<std::align_val_t>(desc_->align));

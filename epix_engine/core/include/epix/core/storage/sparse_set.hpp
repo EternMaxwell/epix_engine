@@ -92,6 +92,11 @@ struct ComponentSparseSet {
             return self.dense.get_modified_tick(dense_index);
         });
     }
+    std::optional<TickRefs> get_tick_refs(this const ComponentSparseSet& self, Entity entity) {
+        return self.sparse.get(entity.index).and_then([&](uint32_t dense_index) {
+            return self.dense.get_tick_refs(dense_index);
+        });
+    }
 
     bool remove(this ComponentSparseSet& self, Entity entity) {
         return self.sparse.remove(entity.index)
@@ -142,7 +147,7 @@ struct SparseSet {
 
     template <typename... Args>
     void emplace(this SparseSet& self, I index, Args&&... args)
-    requires std::constructible_from<V, Args...>
+        requires std::constructible_from<V, Args...>
     {
         self._sparse.get(index)
             .and_then([&](std::reference_wrapper<const I> dense_index) -> std::optional<bool> {

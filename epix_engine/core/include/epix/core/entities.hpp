@@ -178,7 +178,7 @@ struct Entities {
      *
      * Entities that are freed will return false.
      */
-    bool contains(Entity entity) {
+    bool contains(Entity entity) const {
         return resolve_index(entity.index)
             .transform([this, &entity](Entity e) { return e.generation == entity.generation; })
             .value_or(false);
@@ -196,7 +196,7 @@ struct Entities {
     /**
      * @brief Get the location of an entity. Will return std::nullopt for pending entities.
      */
-    std::optional<EntityLocation> get(Entity entity) {
+    std::optional<EntityLocation> get(Entity entity) const {
         if (entity.index >= meta.size()) return std::nullopt;
         auto& meta = this->meta[entity.index];
         if (meta.generation != entity.generation ||
@@ -236,7 +236,7 @@ struct Entities {
      *
      * Note that this function will return currently freed entities.
      */
-    std::optional<Entity> resolve_index(uint32_t index) {
+    std::optional<Entity> resolve_index(uint32_t index) const {
         if (index < meta.size()) {
             return Entity::from_parts(index, meta[index].generation);
         } else {
