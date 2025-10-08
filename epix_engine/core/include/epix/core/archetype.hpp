@@ -137,8 +137,8 @@ struct Archetype {
                             ComponentIndex& component_index,
                             ArchetypeId id,
                             TableId table_id,
-                            is_view_with_value_type<const TypeId> auto&& table_components,
-                            is_view_with_value_type<const TypeId> auto&& sparse_components) {
+                            std::vector<TypeId> table_components,
+                            std::vector<TypeId> sparse_components) {
         Archetype arch;
         arch._archetype_id = id;
         arch._table_id     = table_id;
@@ -233,6 +233,7 @@ struct Archetypes {
     Archetypes() {
         // default add an empty archetype at index 0
         archetypes.emplace_back(Archetype::empty(0));
+        by_components.insert({ArchetypeComponents{{}, {}}, 0});
     }
 
     size_t size() const { return archetypes.size(); }
@@ -257,18 +258,19 @@ struct Archetypes {
 
     std::pair<ArchetypeId, bool> get_id_or_insert(const Components& components,
                                                   TableId table_id,
-                                                  is_view_with_value_type<const TypeId> auto&& table_components,
-                                                  is_view_with_value_type<const TypeId> auto&& sparse_components) {
+                                                  std::vector<TypeId> table_components,
+                                                  std::vector<TypeId> sparse_components) {
         ArchetypeComponents archetype_components{
-            .table_components  = table_components | std::ranges::to<std::vector<TypeId>>(),
-            .sparse_components = sparse_components | std::ranges::to<std::vector<TypeId>>(),
+            .table_components  = std::move(table_components),
+            .sparse_components = std::move(sparse_components),
         };
         if (auto it = by_components.find(archetype_components); it != by_components.end()) {
             return {it->second, false};
         } else {
             ArchetypeId new_id = static_cast<ArchetypeId>(archetypes.size());
-            archetypes.emplace_back(
-                Archetype::create(components, by_component, new_id, table_id, table_components, sparse_components));
+            archetypes.emplace_back(Archetype::create(components, by_component, new_id, table_id,
+                                                      archetype_components.table_components,
+                                                      archetype_components.sparse_components));
             by_components.insert({archetype_components, new_id});
             return {new_id, true};
         }

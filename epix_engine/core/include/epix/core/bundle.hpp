@@ -166,9 +166,8 @@ struct BundleInfo {
             auto storage_type = components.get(type_id).value().get().storage_type();
             if (storage_type == StorageType::Table) {
                 storage::Dense& dense = table.get_dense_mut(type_id).value().get();
-                void* ptr             = dense.get_mut(row).value();
+                void* ptr             = dense.get_mut(row).value();  // resize uninitialized already called
                 if (status == ComponentStatus::Added) {
-                    dense.resize_uninitialized(row.get() + 1);  // in case the row was not previously allocated
                     pointers.push_back(ptr);
                     dense.get_added_tick(row).value().get()    = tick;
                     dense.get_modified_tick(row).value().get() = tick;
@@ -271,6 +270,7 @@ struct BundleInfo {
             if (new_table_components.empty()) {
                 new_table_id     = archetype.table_id();
                 table_components = archetype.table_components() | std::ranges::to<std::vector>();
+                std::sort(table_components.begin(), table_components.end());
             } else {
                 new_table_components.insert_range(new_table_components.end(), archetype.table_components());
                 std::sort(new_table_components.begin(), new_table_components.end());
@@ -281,8 +281,10 @@ struct BundleInfo {
             sparse_components.insert_range(sparse_components.end(), archetype.sparse_components());
             std::sort(sparse_components.begin(), sparse_components.end());
 
-            ArchetypeId new_archetype_id =
-                archetypes.get_id_or_insert(components, new_table_id, table_components, sparse_components).first;
+            ArchetypeId new_archetype_id = archetypes
+                                               .get_id_or_insert(components, new_table_id, std::move(table_components),
+                                                                 std::move(sparse_components))
+                                               .first;
 
             auto& archetype = archetypes.get_mut(archetype_id).value().get();
             archetype.edges_mut().cache_archetype_after_bundle_insert(_id, new_archetype_id, component_status,
@@ -330,15 +332,19 @@ struct BundleInfo {
             }
             next_table_components  = table_components_set | std::ranges::to<std::vector>();
             next_sparse_components = sparse_components_set | std::ranges::to<std::vector>();
+            std::sort(next_table_components.begin(), next_table_components.end());
+            std::sort(next_sparse_components.begin(), next_sparse_components.end());
             if (!table_changed) {
                 next_table_id = archetype.table_id();
             } else {
-                std::sort(next_table_components.begin(), next_table_components.end());
                 next_table_id = storage.tables.get_id_or_insert(next_table_components);
             }
         }
         ArchetypeId next_archetype_id =
-            archetypes.get_id_or_insert(components, next_table_id, next_table_components, next_sparse_components).first;
+            archetypes
+                .get_id_or_insert(components, next_table_id, std::move(next_table_components),
+                                  std::move(next_sparse_components))
+                .first;
         auto& archetype = archetypes.get_mut(archetype_id).value().get();
         if (ignore_missing) {
             // remove

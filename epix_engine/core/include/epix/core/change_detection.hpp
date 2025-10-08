@@ -7,7 +7,7 @@ struct Ticks {
     static Ticks from_ticks(const Tick& added, const Tick& modified, Tick last_run, Tick this_run) {
         return Ticks{&added, &modified, last_run, this_run};
     }
-    static Ticks from_refs(const TickRefs& refs, Tick last_run, Tick this_run) {
+    static Ticks from_refs(TickRefs refs, Tick last_run, Tick this_run) {
         return Ticks{&refs.added(), &refs.modified(), last_run, this_run};
     }
 
@@ -29,7 +29,7 @@ struct TicksMut {
     static TicksMut from_ticks(Tick& added, Tick& modified, Tick last_run, Tick this_run) {
         return TicksMut{&added, &modified, last_run, this_run};
     }
-    static TicksMut from_refs(TickRefs& refs, Tick last_run, Tick this_run) {
+    static TicksMut from_refs(TickRefs refs, Tick last_run, Tick this_run) {
         return TicksMut{&refs.added(), &refs.modified(), last_run, this_run};
     }
 

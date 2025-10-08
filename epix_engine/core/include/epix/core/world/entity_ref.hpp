@@ -65,16 +65,16 @@ struct EntityRef {
                 return world_->storage().tables.get(location_.table_id).and_then([&](const storage::Table& table) {
                     return table.get_dense(type_id).and_then([&](const storage::Dense& dense) {
                         return dense.get_as<T>(location_.table_idx).transform([&](const T& value) {
-                            return Ref<T>(value, Ticks::from_refs(dense.get_tick_refs(location_.table_idx).value(),
-                                                                  world_->last_change_tick(), world_->change_tick()));
+                            return Ref<T>(&value, Ticks::from_refs(dense.get_tick_refs(location_.table_idx).value(),
+                                                                   world_->last_change_tick(), world_->change_tick()));
                         });
                     });
                 });
             } else {
                 return world_->storage().sparse_sets.get(type_id).and_then([&](const storage::ComponentSparseSet& cs) {
                     return cs.get_as<T>(entity_).transform([&](const T& value) {
-                        return Ref<T>(value, Ticks::from_refs(cs.get_tick_refs(entity_).value(),
-                                                              world_->last_change_tick(), world_->change_tick()));
+                        return Ref<T>(&value, Ticks::from_refs(cs.get_tick_refs(entity_).value(),
+                                                               world_->last_change_tick(), world_->change_tick()));
                     });
                 });
             }
@@ -89,8 +89,9 @@ struct EntityRef {
                 return world_->storage_mut().tables.get_mut(location_.table_id).and_then([&](storage::Table& table) {
                     return table.get_dense_mut(type_id).and_then([&](storage::Dense& dense) {
                         return dense.get_as_mut<T>(location_.table_idx).transform([&](T& value) {
-                            return Mut<T>(value, Ticks::from_refs(dense.get_tick_refs(location_.table_idx).value(),
-                                                                  world_->last_change_tick(), world_->change_tick()));
+                            return Mut<T>(&value,
+                                          TicksMut::from_refs(dense.get_tick_refs(location_.table_idx).value(),
+                                                              world_->last_change_tick(), world_->change_tick()));
                         });
                     });
                 });
@@ -98,8 +99,9 @@ struct EntityRef {
                 return world_->storage_mut().sparse_sets.get_mut(type_id).and_then(
                     [&](storage::ComponentSparseSet& cs) {
                         return cs.get_as_mut<T>(entity_).transform([&](T& value) {
-                            return Mut<T>(value, Ticks::from_refs(cs.get_tick_refs(entity_).value(),
-                                                                  world_->last_change_tick(), world_->change_tick()));
+                            return Mut<T>(&value,
+                                          TicksMut::from_refs(cs.get_tick_refs(entity_).value(),
+                                                              world_->last_change_tick(), world_->change_tick()));
                         });
                     });
             }
@@ -166,6 +168,20 @@ struct EntityRefMut : public EntityRef {
     void insert_if_new(Ts&&... components) {
         // do not replace existing components
         insert_internal(make_init_bundle<std::decay_t<Ts>...>(std::forward<Ts>(components)...), false);
+    }
+    template <typename B>
+    void insert_bundle(B&& bundle)
+        requires(bundle::is_bundle<std::decay_t<B>>)
+    {
+        // replace existing components
+        insert_internal(std::forward<B>(bundle), true);
+    }
+    template <typename B>
+    void insert_bundle_if_new(B&& bundle)
+        requires(bundle::is_bundle<std::decay_t<B>>)
+    {
+        // do not replace existing components
+        insert_internal(std::forward<B>(bundle), false);
     }
     template <typename... Ts>
     void remove() {

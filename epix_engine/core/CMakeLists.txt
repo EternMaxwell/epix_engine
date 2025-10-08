@@ -48,6 +48,10 @@ add_executable(test_bundle tests/test_bundle.cpp)
 target_link_libraries(test_bundle PRIVATE epix_core)
 add_test(NAME test_bundle COMMAND test_bundle)
 
+add_executable(test_bundle_info tests/test_bundle_info.cpp)
+target_link_libraries(test_bundle_info PRIVATE epix_core)
+add_test(NAME test_bundle_info COMMAND test_bundle_info)
+
 # new tests for archetype and bundle inserter
 add_executable(test_archetype tests/test_archetype.cpp)
 target_link_libraries(test_archetype PRIVATE epix_core)
@@ -60,3 +64,7 @@ add_test(NAME test_bundle_inserter COMMAND test_bundle_inserter)
 add_executable(test_entity_ref tests/test_entity_ref.cpp)
 target_link_libraries(test_entity_ref PRIVATE epix_core)
 add_test(NAME test_entity_ref COMMAND test_entity_ref)
+
+add_executable(test_randomized_spawn tests/test_randomized_spawn.cpp)
+target_link_libraries(test_randomized_spawn PRIVATE epix_core)
+add_test(NAME test_randomized_spawn COMMAND test_randomized_spawn)
