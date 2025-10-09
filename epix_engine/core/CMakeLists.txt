@@ -65,6 +65,10 @@ add_executable(test_entity_ref tests/test_entity_ref.cpp)
 target_link_libraries(test_entity_ref PRIVATE epix_core)
 add_test(NAME test_entity_ref COMMAND test_entity_ref)
 
+add_executable(test_access tests/test_access.cpp)
+target_link_libraries(test_access PRIVATE epix_core)
+add_test(NAME test_access COMMAND test_access)
+
 add_executable(test_randomized_spawn tests/test_randomized_spawn.cpp)
 target_link_libraries(test_randomized_spawn PRIVATE epix_core)
 add_test(NAME test_randomized_spawn COMMAND test_randomized_spawn)

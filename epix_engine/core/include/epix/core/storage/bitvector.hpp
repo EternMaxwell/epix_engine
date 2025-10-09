@@ -361,13 +361,15 @@ class bit_vector {
         return *this;
     }
     bit_vector& bit_or_assign(const bit_vector& o) noexcept {
-        if (o.words_.size() > words_.size()) words_.resize(o.words_.size(), 0);
+        const size_type max_bits = std::max(bits_, o.bits_);
+        if (max_bits != bits_) resize(max_bits, false);
         for (size_type i = 0; i < o.words_.size(); ++i) words_[i] |= o.words_[i];
         trim_tail();
         return *this;
     }
     bit_vector& bit_xor_assign(const bit_vector& o) noexcept {
-        if (o.words_.size() > words_.size()) words_.resize(o.words_.size(), 0);
+        const size_type max_bits = std::max(bits_, o.bits_);
+        if (max_bits != bits_) resize(max_bits, false);
         for (size_type i = 0; i < o.words_.size(); ++i) words_[i] ^= o.words_[i];
         trim_tail();
         return *this;
