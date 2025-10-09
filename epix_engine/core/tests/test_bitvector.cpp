@@ -31,8 +31,10 @@ int main() {
     b.set_range(0, b.size());
     assert(b.count_ones() == b.size());
     assert(b.contains_all_in_range(0, b.size()));
-    b.reset();
+    b.reset_all();
     assert(b.count_ones() == 0);
+    // is_clear should be true after reset
+    assert(b.is_clear());
 
     // intersects, intersection view and intersect_count
     bit_vector a(130, false), c(130, false);
@@ -53,6 +55,16 @@ int main() {
     assert(*it == 5);
     ++it;
     assert(*it == 7);
+
+    // subset/superset/disjoint checks
+    assert(c.is_subset(a));
+    assert(a.is_superset(c));
+    assert(!a.is_subset(c));
+    assert(!c.is_superset(a));
+    bit_vector d(16, false), e(16, false);
+    d.set(1);
+    e.set(2);
+    assert(d.is_disjoint(e));
 
     // bit ops and assigns
     bit_vector x(16, false), y(16, false);

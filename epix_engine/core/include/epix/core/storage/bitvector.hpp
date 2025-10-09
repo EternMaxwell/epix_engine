@@ -46,6 +46,10 @@ class bit_vector {
         bits_ = bits;
         trim_tail();
     }
+    void clear() noexcept {
+        bits_ = 0;
+        words_.clear();
+    }
 
     // basic queries
     bool contains(size_type pos) const noexcept { return pos < bits_ && test(pos); }
@@ -129,11 +133,128 @@ class bit_vector {
                std::views::filter([this, &o](size_type i) { return test(i) && o.test(i); });
     }
 
+    // lazy view of indices where either bitvector has ones (union)
+    auto set_union(const bit_vector& o) const noexcept {
+        const size_type upper = std::max(bits_, o.bits_);
+        return std::views::iota((size_type)0, upper) |
+               std::views::filter([this, &o](size_type i) { return this->contains(i) || o.contains(i); });
+    }
+
+    // lazy view of indices present in this but not in o (difference)
+    auto difference(const bit_vector& o) const noexcept {
+        const size_type upper = bits_;
+        return std::views::iota((size_type)0, upper) |
+               std::views::filter([this, &o](size_type i) { return this->contains(i) && !o.contains(i); });
+    }
+
+    // lazy view of indices present in exactly one of the two bitvectors (symmetric difference / XOR)
+    auto symmetric_difference(const bit_vector& o) const noexcept {
+        const size_type upper = std::max(bits_, o.bits_);
+        return std::views::iota((size_type)0, upper) |
+               std::views::filter([this, &o](size_type i) { return this->contains(i) != o.contains(i); });
+    }
+
     size_type intersect_count(const bit_vector& o) const noexcept {
         const size_type min_words = std::min(words_.size(), o.words_.size());
         size_type c               = 0;
         for (size_type i = 0; i < min_words; ++i) c += static_cast<size_type>(std::popcount(words_[i] & o.words_[i]));
         return c;
+    }
+
+    // count of bits set in the union of this and o (up to max(bits_ , o.bits_))
+    size_type union_count(const bit_vector& o) const noexcept {
+        const size_type max_bits = std::max(bits_, o.bits_);
+        if (max_bits == 0) return 0;
+        const size_type nwords = words_for(max_bits);
+        size_type c            = 0;
+        for (size_type i = 0; i < nwords; ++i) {
+            const word_type wa = (i < words_.size()) ? words_[i] : word_type(0);
+            const word_type wb = (i < o.words_.size()) ? o.words_[i] : word_type(0);
+            word_type w        = wa | wb;
+            if (i + 1 == nwords) {
+                const size_type rem = max_bits % word_bits;
+                if (rem != 0) w &= ((word_type(1) << static_cast<unsigned>(rem)) - 1);
+            }
+            c += static_cast<size_type>(std::popcount(w));
+        }
+        return c;
+    }
+
+    // count of bits present in this but not in o (i.e. |this \ o|), limited to this->size()
+    size_type difference_count(const bit_vector& o) const noexcept {
+        const size_type nwords = words_for(bits_);
+        if (nwords == 0) return 0;
+        size_type c = 0;
+        for (size_type i = 0; i < nwords; ++i) {
+            const word_type wa = (i < words_.size()) ? words_[i] : word_type(0);
+            const word_type wb = (i < o.words_.size()) ? o.words_[i] : word_type(0);
+            word_type w        = wa & ~wb;
+            if (i + 1 == nwords) {
+                const size_type rem = bits_ % word_bits;
+                if (rem != 0) w &= ((word_type(1) << static_cast<unsigned>(rem)) - 1);
+            }
+            c += static_cast<size_type>(std::popcount(w));
+        }
+        return c;
+    }
+
+    // count of bits present in exactly one of the two bitvectors (symmetric difference / XOR)
+    size_type symmetric_difference_count(const bit_vector& o) const noexcept {
+        const size_type max_bits = std::max(bits_, o.bits_);
+        if (max_bits == 0) return 0;
+        const size_type nwords = words_for(max_bits);
+        size_type c            = 0;
+        for (size_type i = 0; i < nwords; ++i) {
+            const word_type wa = (i < words_.size()) ? words_[i] : word_type(0);
+            const word_type wb = (i < o.words_.size()) ? o.words_[i] : word_type(0);
+            word_type w        = wa ^ wb;
+            if (i + 1 == nwords) {
+                const size_type rem = max_bits % word_bits;
+                if (rem != 0) w &= ((word_type(1) << static_cast<unsigned>(rem)) - 1);
+            }
+            c += static_cast<size_type>(std::popcount(w));
+        }
+        return c;
+    }
+
+    // relation checks
+    bool is_disjoint(const bit_vector& o) const noexcept {
+        const size_type min_words = std::min(words_.size(), o.words_.size());
+        for (size_type i = 0; i < min_words; ++i)
+            if ((words_[i] & o.words_[i]) != 0) return false;
+        return true;
+    }
+
+    bool is_subset(const bit_vector& o) const noexcept {
+        // all bits set in this must also be set in o
+        const size_type na = words_.size();
+        const size_type nb = o.words_.size();
+        for (size_type i = 0; i < na; ++i) {
+            const word_type wa = words_[i];
+            const word_type wb = (i < nb) ? o.words_[i] : word_type(0);
+            if ((wa & ~wb) != 0) return false;
+        }
+        // also ensure any bits beyond na in this (there are none) handled
+        return true;
+    }
+
+    bool is_superset(const bit_vector& o) const noexcept { return o.is_subset(*this); }
+
+    bool is_clear() const noexcept {
+        for (auto w : words_)
+            if (w != 0) return false;
+        return true;
+    }
+
+    bool is_full() const noexcept {
+        if (bits_ == 0) return true;
+        const size_type full_words = bits_ / word_bits;
+        for (size_type i = 0; i < full_words; ++i)
+            if (words_[i] != ~word_type(0)) return false;
+        const size_type rem = bits_ % word_bits;
+        if (rem == 0) return true;
+        const word_type mask = (word_type(1) << static_cast<unsigned>(rem)) - 1;
+        return !words_.empty() && words_.back() == mask;
     }
 
     // lazy ranges for indices of set/unset bits (views referencing *this)
@@ -145,7 +266,13 @@ class bit_vector {
         return std::views::iota((size_type)0, bits_) | std::views::filter([this](size_type i) { return !test(i); });
     }
 
-    void reset() noexcept { std::fill(words_.begin(), words_.end(), word_type(0)); }
+    void reset(size_type pos) noexcept {
+        if (pos >= bits_) return;
+        const size_type wi = pos / word_bits;
+        const word_type m  = word_type(1) << static_cast<unsigned>(pos % word_bits);
+        words_[wi] &= ~m;
+    }
+    void reset_all() noexcept { std::fill(words_.begin(), words_.end(), word_type(0)); }
     void reset_range(size_type start, size_type end) noexcept {
         if (start >= end || start >= bits_) return;
         end              = std::min(end, bits_);
@@ -166,7 +293,10 @@ class bit_vector {
         const word_type m  = word_type(1) << static_cast<unsigned>(pos % word_bits);
         words_[wi] ^= m;
     }
-
+    void toggle_all() noexcept {
+        for (auto& w : words_) w = ~w;
+        trim_tail();
+    }
     void toggle_range(size_type start, size_type end) noexcept {
         if (start >= end) return;
         ensure_size_for_index(end - 1);
@@ -239,6 +369,22 @@ class bit_vector {
     bit_vector& bit_xor_assign(const bit_vector& o) noexcept {
         if (o.words_.size() > words_.size()) words_.resize(o.words_.size(), 0);
         for (size_type i = 0; i < o.words_.size(); ++i) words_[i] ^= o.words_[i];
+        trim_tail();
+        return *this;
+    }
+
+    // friendlier in-place names
+    bit_vector& intersect_with(const bit_vector& o) noexcept { return bit_and_assign(o); }
+    bit_vector& union_with(const bit_vector& o) noexcept { return bit_or_assign(o); }
+    bit_vector& symmetric_difference_with(const bit_vector& o) noexcept { return bit_xor_assign(o); }
+
+    // remove bits present in o from this (this = this \ o)
+    bit_vector& difference_with(const bit_vector& o) noexcept {
+        const size_type n = words_.size();
+        for (size_type i = 0; i < n; ++i) {
+            const word_type wb = (i < o.words_.size()) ? o.words_[i] : word_type(0);
+            words_[i] &= ~wb;
+        }
         trim_tail();
         return *this;
     }
