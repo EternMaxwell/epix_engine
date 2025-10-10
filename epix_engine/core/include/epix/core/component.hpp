@@ -99,7 +99,7 @@ enum class StorageType : uint8_t {
     SparseSet = 1,
 };
 template <typename T>
-StorageType get_storage_type_for() {
+consteval StorageType storage_for() {
     if constexpr (requires {
                       { T::storage_type() } -> std::same_as<StorageType>;
                   }) {
@@ -127,7 +127,7 @@ struct RequiredComponents {
                          RequiredComponentConstructor([ctor = std::forward<F>(constructor), type_id](
                                                           storage::Table& table, storage::SparseSets& sparse_sets,
                                                           Tick tick, TableRow row, Entity entity) {
-                             auto storage_type = get_storage_type_for<C>();
+                             auto storage_type = storage_for<C>();
                              if (storage_type == StorageType::Table) {
                                  auto& dense = table.get_dense_mut(type_id).value().get();
                                  if (row.get() < dense.len()) {
@@ -168,7 +168,7 @@ struct ComponentDesc {
    public:
     template <typename T>
     static ComponentDesc from_type() {
-        return ComponentDesc(type_system::TypeInfo::get_info<T>(), get_storage_type_for<T>());
+        return ComponentDesc(type_system::TypeInfo::get_info<T>(), storage_for<T>());
     }
     static ComponentDesc from_info(const type_system::TypeInfo* type_info, StorageType storage_type) {
         return ComponentDesc(type_info, storage_type);
@@ -197,8 +197,23 @@ struct ComponentInfo {
     friend struct Components;
 };
 struct Components : public storage::SparseSet<TypeId, ComponentInfo> {
-    using storage::SparseSet<TypeId, ComponentInfo>::SparseSet;
+   private:
+    std::shared_ptr<type_system::TypeRegistry> type_registry;
 
+   public:
+    Components(std::shared_ptr<type_system::TypeRegistry> type_registry)
+        : storage::SparseSet<TypeId, ComponentInfo>(), type_registry(std::move(type_registry)) {}
+    const type_system::TypeRegistry& registry() const { return *type_registry; }
+    template <typename T>
+    TypeId register_info() {
+        auto id = type_registry->type_id<T>();
+        if (!contains(id)) {
+            auto desc = ComponentDesc::from_type<T>();
+            auto info = ComponentInfo(id, desc);
+            info.hooks().update_from_component<T>();
+            insert(id, std::move(info));
+        }
+    }
     template <typename F>
     void register_required_component(TypeId requiree, TypeId required, F&& constructor)
         requires std::invocable<F>

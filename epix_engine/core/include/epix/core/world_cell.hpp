@@ -20,8 +20,9 @@ struct WorldCell {
     WorldCell(WorldId id,
               std::shared_ptr<type_system::TypeRegistry> type_registry = std::make_shared<type_system::TypeRegistry>())
         : _id(id),
-          _type_registry(std::move(type_registry)),
-          _storage(_type_registry),
+          _type_registry(type_registry),
+          _components(type_registry),
+          _storage(type_registry),
           _change_tick(std::make_unique<std::atomic<uint32_t>>(1)),
           _last_change_tick(0) {}
 
