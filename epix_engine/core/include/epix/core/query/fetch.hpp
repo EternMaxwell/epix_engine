@@ -286,15 +286,19 @@ struct WorldQuery<Ref<T>> {
         };
         TypeId component_id;
         bool is_sparse_set = false;
+        Ticks last_run;
+        Ticks this_run;
     };
     struct State {
         TypeId component_id;
         StorageType storage_type;
     };
-    static Fetch init_fetch(WorldCell& world, const State& state, Tick, Tick) {
+    static Fetch init_fetch(WorldCell& world, const State& state, Tick last_run, Tick this_run) {
         auto result = Fetch{.table_dense   = nullptr,
                             .component_id  = state.component_id,
-                            .is_sparse_set = state.storage_type == StorageType::SparseSet};
+                            .is_sparse_set = state.storage_type == StorageType::SparseSet,
+                            .last_run      = last_run,
+                            .this_run      = this_run};
         if (result.is_sparse_set) {
             result.sparse_set = world.storage().sparse_sets.get(state.component_id).value_or(nullptr);
         }
@@ -342,13 +346,15 @@ struct QueryData<Ref<T>> {
         if (fetch.is_sparse_set) {
             return fetch.sparse_set->template get_as<T>(entity)
                 .transform([&](const T& value) {
-                    return Ref<T>(&value, Ticks::from_refs(fetch.sparse_set->get_tick_refs(entity).value(), 0, 0));
+                    return Ref<T>(&value, Ticks::from_refs(fetch.sparse_set->get_tick_refs(entity).value(),
+                                                           fetch.last_run, fetch.this_run));
                 })
                 .value();
         } else {
             return fetch.table_dense->template get_as<T>(row)
                 .transform([&](const T& value) {
-                    return Ref<T>(&value, Ticks::from_refs(fetch.table_dense->get_tick_refs(row).value(), 0, 0));
+                    return Ref<T>(&value, Ticks::from_refs(fetch.table_dense->get_tick_refs(row).value(),
+                                                           fetch.last_run, fetch.this_run));
                 })
                 .value();
         }
@@ -367,15 +373,19 @@ struct WorldQuery<Mut<T>> {
         };
         TypeId component_id;
         bool is_sparse_set = false;
+        Tick last_run;
+        Tick this_run;
     };
     struct State {
         TypeId component_id;
         StorageType storage_type;
     };
-    static Fetch init_fetch(WorldCell& world, const State& state, Tick, Tick) {
+    static Fetch init_fetch(WorldCell& world, const State& state, Tick last_run, Tick this_run) {
         auto result = Fetch{.table_dense   = nullptr,
                             .component_id  = state.component_id,
-                            .is_sparse_set = state.storage_type == StorageType::SparseSet};
+                            .is_sparse_set = state.storage_type == StorageType::SparseSet,
+                            .last_run      = last_run,
+                            .this_run      = this_run};
         if (result.is_sparse_set) {
             result.sparse_set = world.storage_mut().sparse_sets.get_mut(state.component_id).value().get();
         }
@@ -425,13 +435,15 @@ struct QueryData<Mut<T>> {
         if (fetch.is_sparse_set) {
             return fetch.sparse_set->template get_as_mut<T>(entity)
                 .transform([&](T& value) {
-                    return Mut<T>(&value, TicksMut::from_refs(fetch.sparse_set->get_tick_refs(entity).value(), 0, 0));
+                    return Mut<T>(&value, TicksMut::from_refs(fetch.sparse_set->get_tick_refs(entity).value(),
+                                                              fetch.last_run, fetch.this_run));
                 })
                 .value();
         } else {
             return fetch.table_dense->template get_as_mut<T>(row)
                 .transform([&](T& value) {
-                    return Mut<T>(&value, TicksMut::from_refs(fetch.table_dense->get_tick_refs(row).value(), 0, 0));
+                    return Mut<T>(&value, TicksMut::from_refs(fetch.table_dense->get_tick_refs(row).value(),
+                                                              fetch.last_run, fetch.this_run));
                 })
                 .value();
         }
@@ -548,6 +560,47 @@ struct QueryData<Opt<T>> {
 };
 static_assert(valid_query_data<QueryData<Opt<int&>>>);
 static_assert(valid_query_data<QueryData<Opt<Mut<double>>>>);
+
+/**
+ * @brief Query item for checking existence of a component.
+ */
+template <typename T>
+    requires(!std::is_reference_v<T> && !std::is_const_v<T>)
+struct Has;
+
+template <typename T>
+    requires(!std::is_reference_v<T> && !std::is_const_v<T>)
+struct WorldQuery<Has<T>> {
+    using Fetch = bool;
+    using State = TypeId;
+    static Fetch init_fetch(WorldCell&, const State&, Tick, Tick) { return false; }
+    static void set_archetype(Fetch& fetch,
+                              const State& state,
+                              const archetype::Archetype& archetype,
+                              const storage::Table&) {
+        fetch = archetype.contains(state);
+    }
+    // static void set_table(Fetch& fetch, const State& state, const storage::Table& table) {
+    //     fetch = table.has_dense(state);
+    // }
+    static void set_access(State&, const FilteredAccess&) {}
+    static void update_access(const State& state, FilteredAccess& access) { access.access_mut().add_archetypal(state); }
+    static State init_state(WorldCell& world) { return world.type_registry().type_id<T>(); }
+    static std::optional<State> get_state(const Components& components) { return components.registry().type_id<T>(); }
+    static bool matches_archetype(const State& state, const archetype::Archetype& archetype) {
+        return true;  // always true, because it is just a marker
+    }
+};
+static_assert(valid_world_query<WorldQuery<Has<int>>>);
+
+template <typename T>
+    requires(!std::is_reference_v<T> && !std::is_const_v<T>)
+struct QueryData<Has<T>> {
+    using Item                            = bool;
+    using ReadOnly                        = Has<T>;
+    static inline constexpr bool readonly = true;
+    static Item fetch(WorldQuery<Has<T>>::Fetch& fetch, Entity, TableRow) { return fetch; }
+};
 
 static_assert(valid_world_query<WorldQuery<Item<int&, const float&, EntityRef, Entity, Ref<double>, Mut<char>>>>);
 }  // namespace epix::core::query
