@@ -19,14 +19,13 @@ struct EntityRef {
     EntityLocation location_;
     WorldCell* world_;
 
+    friend struct World;
+
+   public:
     EntityRef(Entity entity, WorldCell* world)
         : entity_(entity),
           world_(world),
           location_(world->entities().get(entity).value_or(EntityLocation::invalid())) {}
-
-    friend struct World;
-
-   public:
     void update_location() { location_ = world_->entities().get(entity_).value_or(EntityLocation::invalid()); }
     void assert_not_despawned() const {
         assert(location_.archetype_id != EntityLocation::invalid().archetype_id && "Entity has been despawned");
@@ -80,6 +79,43 @@ struct EntityRef {
             }
         });
     }
+    std::optional<ComponentTicks> get_ticks_by_id(TypeId type_id) const {
+        return world_->components().get(type_id).and_then(
+            [&](const ComponentInfo& info) -> std::optional<ComponentTicks> {
+                auto storage_type = info.storage_type();
+                if (storage_type == StorageType::Table) {
+                    return world_->storage().tables.get(location_.table_id).and_then([&](const storage::Table& table) {
+                        return table.get_dense(type_id).and_then(
+                            [&](const storage::Dense& dense) { return dense.get_ticks(location_.table_idx); });
+                    });
+                } else {
+                    return world_->storage().sparse_sets.get(type_id).and_then(
+                        [&](const storage::ComponentSparseSet& cs) { return cs.get_ticks(entity_); });
+                }
+            });
+    }
+    template <typename T>
+    std::optional<ComponentTicks> get_ticks() const {
+        return get_ticks_by_id(world_->type_registry().type_id<T>());
+    }
+};
+struct EntityRefMut : public EntityRef {
+   protected:
+    friend struct World;
+
+    template <typename T>
+    void insert_internal(T&& bundle, bool replace_existing)
+        requires(bundle::is_bundle<std::decay_t<T>>)
+    {
+        assert_not_despawned();
+        auto inserter = BundleInserter::create<std::decay_t<T>>(*world_, location_.archetype_id, world_->change_tick());
+        location_     = inserter.insert(entity_, location_, std::forward<T>(bundle), replace_existing);
+        world_->flush();
+        update_location();
+    }
+
+   public:
+    using EntityRef::EntityRef;
     template <typename T>
     std::optional<Mut<T>> get_mut() {
         TypeId type_id = world_->type_registry().type_id<T>();
@@ -107,44 +143,7 @@ struct EntityRef {
             }
         });
     }
-    std::optional<ComponentTicks> get_ticks_by_id(TypeId type_id) const {
-        return world_->components().get(type_id).and_then(
-            [&](const ComponentInfo& info) -> std::optional<ComponentTicks> {
-                auto storage_type = info.storage_type();
-                if (storage_type == StorageType::Table) {
-                    return world_->storage().tables.get(location_.table_id).and_then([&](const storage::Table& table) {
-                        return table.get_dense(type_id).and_then(
-                            [&](const storage::Dense& dense) { return dense.get_ticks(location_.table_idx); });
-                    });
-                } else {
-                    return world_->storage().sparse_sets.get(type_id).and_then(
-                        [&](const storage::ComponentSparseSet& cs) { return cs.get_ticks(entity_); });
-                }
-            });
-    }
-    template <typename T>
-    std::optional<ComponentTicks> get_ticks() const {
-        return get_ticks_by_id(world_->type_registry().type_id<T>());
-    }
-};
-struct EntityRefMut : public EntityRef {
-   protected:
-    using EntityRef::EntityRef;
 
-    friend struct World;
-
-    template <typename T>
-    void insert_internal(T&& bundle, bool replace_existing)
-        requires(bundle::is_bundle<std::decay_t<T>>)
-    {
-        assert_not_despawned();
-        auto inserter = BundleInserter::create<std::decay_t<T>>(*world_, location_.archetype_id, world_->change_tick());
-        location_     = inserter.insert(entity_, location_, std::forward<T>(bundle), replace_existing);
-        world_->flush();
-        update_location();
-    }
-
-   public:
     template <typename... Ts, typename... Args>
     void emplace(Args&&... args)
         requires(sizeof...(Args) == sizeof...(Ts))
