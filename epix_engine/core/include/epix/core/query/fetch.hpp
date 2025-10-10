@@ -601,6 +601,7 @@ struct QueryData<Has<T>> {
     static inline constexpr bool readonly = true;
     static Item fetch(WorldQuery<Has<T>>::Fetch& fetch, Entity, TableRow) { return fetch; }
 };
+static_assert(valid_query_data<QueryData<Has<int>>>);
 
 static_assert(valid_world_query<WorldQuery<Item<int&, const float&, EntityRef, Entity, Ref<double>, Mut<char>>>>);
 }  // namespace epix::core::query
