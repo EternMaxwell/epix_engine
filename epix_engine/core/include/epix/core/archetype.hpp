@@ -133,8 +133,7 @@ struct ArchetypeEdges {
 };
 struct Archetype {
    public:
-    static Archetype create(const Components& components,
-                            ComponentIndex& component_index,
+    static Archetype create(ComponentIndex& component_index,
                             ArchetypeId id,
                             TableId table_id,
                             std::vector<TypeId> table_components,
@@ -256,8 +255,7 @@ struct Archetypes {
     auto iter() const { return std::views::all(archetypes); }
     auto iter_mut() { return std::views::all(archetypes); }
 
-    std::pair<ArchetypeId, bool> get_id_or_insert(const Components& components,
-                                                  TableId table_id,
+    std::pair<ArchetypeId, bool> get_id_or_insert(TableId table_id,
                                                   std::vector<TypeId> table_components,
                                                   std::vector<TypeId> sparse_components) {
         ArchetypeComponents archetype_components{
@@ -268,7 +266,7 @@ struct Archetypes {
             return {it->second, false};
         } else {
             ArchetypeId new_id = static_cast<ArchetypeId>(archetypes.size());
-            archetypes.emplace_back(Archetype::create(components, by_component, new_id, table_id,
+            archetypes.emplace_back(Archetype::create(by_component, new_id, table_id,
                                                       archetype_components.table_components,
                                                       archetype_components.sparse_components));
             by_components.insert({archetype_components, new_id});

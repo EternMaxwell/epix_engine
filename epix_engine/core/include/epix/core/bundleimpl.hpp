@@ -55,9 +55,7 @@ struct InitializeBundle<std::tuple<Ts...>, std::tuple<ArgTuples...>> {
         return std::array<type_system::TypeId, sizeof...(Ts)>{registry.type_id<Ts>()...};
     }
     static void register_components(const type_system::TypeRegistry& registry, Components& components) {
-        (components.emplace(registry.type_id<Ts>(),
-                            ComponentInfo(registry.type_id<Ts>(), ComponentDesc::from_type<Ts>())),
-         ...);
+        (components.register_info<Ts>(), ...);
     }
 };
 template <typename... Ts, typename... ArgTuples>
@@ -78,9 +76,7 @@ struct RemoveBundle {
         return std::array<type_system::TypeId, sizeof...(Ts)>{registry.type_id<Ts>()...};
     }
     static void register_components(const type_system::TypeRegistry& registry, Components& components) {
-        (components.emplace(registry.type_id<Ts>(),
-                            ComponentInfo(registry.type_id<Ts>(), ComponentDesc::from_type<Ts>())),
-         ...);
+        (components.register_info<Ts>(), ...);
     }
 };
 

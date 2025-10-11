@@ -12,11 +12,31 @@
 #include "../meta/typeindex.hpp"
 #include "fwd.hpp"
 
+namespace epix::core {
+enum class StorageType : uint8_t {
+    Table     = 0,  // default stored in tables
+    SparseSet = 1,
+};
+template <typename T>
+struct sparse_component : std::false_type {};
+
+template <typename T>
+consteval StorageType storage_for() {
+    if constexpr (sparse_component<T>::value) {
+        return StorageType::SparseSet;
+    } else {
+        return StorageType::Table;
+    }
+}
+}  // namespace epix::core
+
 namespace epix::core::type_system {
 struct TypeInfo {
     std::string_view name;
     size_t size;
     size_t align;
+
+    StorageType storage_type;
 
     // Mandatory operations
     void (*destroy)(void* ptr) noexcept;
@@ -70,10 +90,11 @@ static void move_construct_impl(void* dest, void* src) {
 template <typename T>
 const TypeInfo* TypeInfo::get_info() {
     static TypeInfo ti = TypeInfo{
-        .name    = epix::core::meta::type_id<T>().name(),
-        .size    = sizeof(T),
-        .align   = alignof(T),
-        .destroy = &destroy_impl<T>,
+        .name         = epix::core::meta::type_id<T>().name(),
+        .size         = sizeof(T),
+        .align        = alignof(T),
+        .storage_type = storage_for<T>(),
+        .destroy      = &destroy_impl<T>,
         .copy_construct =
             (std::is_trivially_copyable_v<T> || std::is_copy_constructible_v<T>) ? &copy_construct_impl<T> : nullptr,
         .move_construct =
@@ -150,7 +171,9 @@ struct TypeRegistry {
 }  // namespace epix::core::type_system
 
 namespace epix::core {
-using TypeId = type_system::TypeId;  // exposing TypeId in epix::core namespace
+using TypeId       = type_system::TypeId;  // exposing TypeId in epix::core namespace
+using TypeInfo     = type_system::TypeInfo;
+using TypeRegistry = type_system::TypeRegistry;
 };  // namespace epix::core
 
 template <>

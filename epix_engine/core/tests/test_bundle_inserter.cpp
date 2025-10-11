@@ -9,7 +9,6 @@
 #include "epix/core/type_system/type_registry.hpp"
 #include "epix/core/world_cell.hpp"
 
-
 using namespace epix::core;
 using namespace epix::core::archetype;
 
@@ -39,8 +38,8 @@ int main() {
     // register component infos
     TypeId tx = registry->type_id<X>();
     TypeId ty = registry->type_id<Y>();
-    world.components_mut().emplace(tx, ComponentInfo(tx, ComponentDesc::from_type<X>()));
-    world.components_mut().emplace(ty, ComponentInfo(ty, ComponentDesc::from_type<Y>()));
+    world.components_mut().register_info<X>();
+    world.components_mut().register_info<Y>();
 
     // create a bundle type and register
     using MyBundle = InitializeBundle<std::tuple<X, Y>, std::tuple<std::tuple<int>, std::tuple<std::string_view>>>;
@@ -77,8 +76,10 @@ int main() {
         auto& table2 = world.storage_mut().tables.get_mut(loc.table_id).value().get();
         auto& x2     = table2.get_dense(registry->type_id<X>()).value().get().get_as<X>(loc.table_idx).value().get();
         auto& y2     = table2.get_dense(registry->type_id<Y>()).value().get().get_as<Y>(loc.table_idx).value().get();
-        auto& z2 = world.storage_mut().sparse_sets.get_mut(registry->type_id<Z>()).value().get().get_as<Z>(e).value().get();
-        auto& w2 = world.storage_mut().sparse_sets.get_mut(registry->type_id<W>()).value().get().get_as<W>(e).value().get();
+        auto& z2 =
+            world.storage_mut().sparse_sets.get_mut(registry->type_id<Z>()).value().get().get_as<Z>(e).value().get();
+        auto& w2 =
+            world.storage_mut().sparse_sets.get_mut(registry->type_id<W>()).value().get().get_as<W>(e).value().get();
         std::println(std::cout, "X.v = {}, Y.s = {}, Z.d = {}, W.s = {}", x2.v, y2.s, z2.d, w2.s);
         assert(x2.v == 11);
         assert(y2.s == "hi");

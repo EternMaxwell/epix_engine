@@ -94,20 +94,6 @@ struct RequiredComponent {
     RequiredComponentConstructor constructor;
     uint16_t inheritance_depth = 0;
 };
-enum class StorageType : uint8_t {
-    Table     = 0,  // default stored in tables
-    SparseSet = 1,
-};
-template <typename T>
-consteval StorageType storage_for() {
-    if constexpr (requires {
-                      { T::storage_type() } -> std::same_as<StorageType>;
-                  }) {
-        return T::storage_type();
-    } else {
-        return StorageType::Table;
-    }
-}
 struct RequiredComponents {
     std::unordered_map<TypeId, RequiredComponent> components;
 
@@ -157,42 +143,26 @@ struct RequiredComponents {
         }
     }
 };
-struct ComponentDesc {
-   private:
-    const type_system::TypeInfo* _type_info;
-    StorageType _storage_type;
-
-    ComponentDesc(const type_system::TypeInfo* type_info, StorageType storage_type)
-        : _type_info(type_info), _storage_type(storage_type) {}
-
-   public:
-    template <typename T>
-    static ComponentDesc from_type() {
-        return ComponentDesc(type_system::TypeInfo::get_info<T>(), storage_for<T>());
-    }
-    static ComponentDesc from_info(const type_system::TypeInfo* type_info, StorageType storage_type) {
-        return ComponentDesc(type_info, storage_type);
-    }
-
-    const type_system::TypeInfo* type_info() const { return _type_info; }
-    StorageType storage_type() const { return _storage_type; }
-};
 struct ComponentInfo {
    private:
     TypeId _id;
-    ComponentDesc _desc;
+    const TypeInfo* _info;
     ComponentHooks _hooks;
     RequiredComponents _required_components;
     std::unordered_set<TypeId> _required_by;
 
    public:
-    ComponentInfo(TypeId id, const ComponentDesc& desc) : _id(id), _desc(desc) {}
+    ComponentInfo(TypeId id, const TypeInfo* info) : _id(id), _info(info) {}
 
     TypeId type_id() const { return _id; }
-    const type_system::TypeInfo* type_info() const { return _desc.type_info(); }
-    StorageType storage_type() const { return _desc.storage_type(); }
+    const type_system::TypeInfo* type_info() const { return _info; }
+    StorageType storage_type() const { return _info->storage_type; }
     const ComponentHooks& hooks() const { return _hooks; }
     const RequiredComponents& required_components() const { return _required_components; }
+    template <typename T>
+    void update_hooks() {
+        _hooks.update_from_component<T>();
+    }
 
     friend struct Components;
 };
@@ -208,11 +178,11 @@ struct Components : public storage::SparseSet<TypeId, ComponentInfo> {
     TypeId register_info() {
         auto id = type_registry->type_id<T>();
         if (!contains(id)) {
-            auto desc = ComponentDesc::from_type<T>();
-            auto info = ComponentInfo(id, desc);
-            info.hooks().update_from_component<T>();
-            insert(id, std::move(info));
+            auto info = ComponentInfo(id, type_registry->type_info(id));
+            info.update_hooks<T>();
+            emplace(id, std::move(info));
         }
+        return id;
     }
     template <typename F>
     void register_required_component(TypeId requiree, TypeId required, F&& constructor)
