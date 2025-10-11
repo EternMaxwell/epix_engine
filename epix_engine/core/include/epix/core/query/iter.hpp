@@ -16,7 +16,7 @@ template <typename D, typename F>
     requires valid_query_data<QueryData<D>> && valid_query_filter<QueryFilter<F>>
 struct QueryIterCursor {
    public:
-    QueryIterCursor(WorldCell* world, const QueryState<D, F>* state, Tick last_run, Tick this_run)
+    QueryIterCursor(World* world, const QueryState<D, F>* state, Tick last_run, Tick this_run)
         : archetype_ids(state->matched_archetype_ids()),
           archetype_entities(),
           fetch(WorldQuery<D>::init_fetch(*world, state->fetch_state(), last_run, this_run)),
@@ -110,17 +110,17 @@ template <typename D, typename F>
     requires valid_query_data<QueryData<D>> && valid_query_filter<QueryFilter<F>>
 struct QueryIter : std::ranges::view_interface<QueryIter<D, F>> {
    public:
-    QueryIter(WorldCell* world, const QueryState<D, F>* state, Tick last_run, Tick this_run)
+    QueryIter(World* world, const QueryState<D, F>* state, Tick last_run, Tick this_run)
         : world(world), tables(&world->storage_mut().tables), archetypes(&world->archetypes()), state(state) {
         cursor.emplace(world, state, last_run, this_run);
     }
-    static QueryIter create_begin(WorldCell* world, const QueryState<D, F>* state, Tick last_run, Tick this_run) {
+    static QueryIter create_begin(World* world, const QueryState<D, F>* state, Tick last_run, Tick this_run) {
         QueryIter iter(world, state, last_run, this_run);
         // the iter's cursor is not initialized to the first valid element when constructed
         iter.cursor->next(*iter.tables, *iter.archetypes, *iter.state);
         return iter;
     }
-    static QueryIter create_end(WorldCell* world, const QueryState<D, F>* state) {
+    static QueryIter create_end(World* world, const QueryState<D, F>* state) {
         QueryIter iter(world, state, Tick(0), Tick(0));
         iter.cursor->to_end();
         return iter;
@@ -158,13 +158,13 @@ struct QueryIter : std::ranges::view_interface<QueryIter<D, F>> {
     QueryIter() = default;
 
    private:
-    QueryIter(WorldCell* world, const QueryState<D, F>* state, QueryIterCursor<D, F> cursor)
+    QueryIter(World* world, const QueryState<D, F>* state, QueryIterCursor<D, F> cursor)
         : world(world),
           tables(&world->storage_mut().tables),
           archetypes(&world->archetypes()),
           state(state),
           cursor(std::move(cursor)) {}
-    WorldCell* world;
+    World* world;
     storage::Tables* tables;
     const archetype::Archetypes* archetypes;
     const QueryState<D, F>* state;

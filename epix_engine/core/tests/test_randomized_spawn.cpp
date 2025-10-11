@@ -3,11 +3,10 @@
 #include <random>
 #include <tuple>
 
-#include "epix/core/bundle.hpp"
 #include "epix/core/bundleimpl.hpp"
 #include "epix/core/type_system/type_registry.hpp"
+#include "epix/core/world.hpp"
 #include "epix/core/world/entity_ref.hpp"
-#include "epix/core/world_cell.hpp"
 
 using namespace epix::core;
 using namespace epix::core::archetype;
@@ -38,45 +37,9 @@ struct epix::core::sparse_component<S1> : std::true_type {};
 template <>
 struct epix::core::sparse_component<S2> : std::true_type {};
 
-// small test World wrapper so we can create EntityRef / EntityRefMut
-namespace epix::core {
-struct World {
-    World(std::shared_ptr<type_system::TypeRegistry> registry) : wc(WorldId(1), std::move(registry)) {}
-    Components& components_mut() { return wc.components_mut(); }
-    Storage& storage_mut() { return wc.storage_mut(); }
-    Entities& entities_mut() { return wc.entities_mut(); }
-    archetype::Archetypes& archetypes_mut() { return wc.archetypes_mut(); }
-    Bundles& bundles_mut() { return wc.bundles_mut(); }
-    const type_system::TypeRegistry& type_registry() const { return wc.type_registry(); }
-    Tick change_tick() const { return wc.change_tick(); }
-    Tick last_change_tick() const { return wc.last_change_tick(); }
-    void flush() { wc.flush(); }
-
-    template <bundle::is_bundle T>
-    EntityRefMut spawn(T&& bundle) {
-        auto e       = wc.entities_mut().alloc();
-        auto spawner = BundleSpawner::create<T>(wc, change_tick());
-        spawner.reserve_storage(1);
-        spawner.spawn_non_exist(e, std::forward<T>(bundle));
-        return EntityRefMut(e, &wc);
-    }
-    EntityRefMut spawn() {
-        auto e = wc.entities_mut().reserve_entity();
-        wc.flush_entities();
-        return EntityRefMut(e, &wc);
-    }
-
-    std::optional<EntityRef> get_ref(Entity e) { return EntityRef(e, &wc); }
-    std::optional<EntityRefMut> get_mut_ref(Entity e) { return EntityRefMut(e, &wc); }
-
-   private:
-    WorldCell wc;
-};
-}  // namespace epix::core
-
 int main() {
     auto registry = std::make_shared<type_system::TypeRegistry>();
-    epix::core::World world(registry);
+    epix::core::World world(0, registry);
     std::ios::sync_with_stdio(false);
 
     // bundles will be registered automatically by BundleSpawner::create<T>(world, tick)
@@ -87,7 +50,7 @@ int main() {
     std::uniform_int_distribution<int> val_int(0, 1000);
     std::uniform_real_distribution<double> val_d(0.0, 1000.0);
 
-    // randomly add components by iterating entities in WorldCell
+    // randomly add components by iterating entities in World
     for (size_t idx = 0; idx < 2000; ++idx) {
         auto rmut = world.spawn();
         double p  = prob(rng);
@@ -135,7 +98,7 @@ int main() {
         if (!opt) continue;
         Entity e = opt.value();
         if (!world.entities_mut().contains(e)) continue;
-        auto r  = world.get_ref(e).value();
+        auto r  = world.get_entity(e).value();
         auto a  = r.get<T1>();
         auto b  = r.get<T2>();
         auto c  = r.get<T3>();
@@ -156,7 +119,7 @@ int main() {
         if (!opt) continue;
         Entity e = opt.value();
         if (!world.entities_mut().contains(e)) continue;
-        auto ref = world.get_ref(e).value();
+        auto ref = world.get_entity(e).value();
         if (ref.contains<T1>()) {
             auto mut = ref.get_ref<T1>();
             assert(mut.has_value());

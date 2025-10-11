@@ -7,7 +7,7 @@
 #include "../component.hpp"
 #include "../entities.hpp"
 #include "../storage.hpp"
-#include "../world_cell.hpp"
+#include "../world.hpp"
 
 namespace epix::core {
 /**
@@ -17,12 +17,12 @@ struct EntityRef {
    protected:
     Entity entity_;
     EntityLocation location_;
-    WorldCell* world_;
+    World* world_;
 
     friend struct World;
 
    public:
-    EntityRef(Entity entity, WorldCell* world)
+    EntityRef(Entity entity, World* world)
         : entity_(entity),
           world_(world),
           location_(world->entities().get(entity).value_or(EntityLocation::invalid())) {}
@@ -192,4 +192,39 @@ struct EntityRefMut : public EntityRef {
         // update_location();
     }
 };
+}  // namespace epix::core
+
+namespace epix::core {
+// impl for World::spawn
+template <typename... Ts, typename... Args>
+EntityRefMut World::spawn(Args&&... args)
+    requires(sizeof...(Args) == sizeof...(Ts))
+{
+    return spawn(make_init_bundle<Ts...>(std::forward<Args>(args)...));
+}
+template <typename T>
+EntityRefMut World::spawn(T&& bundle)
+    requires(bundle::is_bundle<std::remove_cvref_t<T>>)
+{
+    auto e       = _entities.alloc();
+    auto spawner = BundleSpawner::create<std::remove_cvref_t<T>>(*this, change_tick());
+    spawner.spawn_non_exist(e, std::forward<T>(bundle));
+    return EntityRefMut(e, this);
+}
+
+// impl for World::entity and entity_mut, get_entity and get_entity_mut
+inline std::optional<EntityRef> World::get_entity(Entity entity) {
+    if (auto loc = _entities.get(entity); loc.has_value() && loc.value() != EntityLocation::invalid()) {
+        return EntityRef(entity, this);
+    }
+    return std::nullopt;
+}
+inline std::optional<EntityRefMut> World::get_entity_mut(Entity entity) {
+    if (auto loc = _entities.get(entity); loc.has_value() && loc.value() != EntityLocation::invalid()) {
+        return EntityRefMut(entity, this);
+    }
+    return std::nullopt;
+}
+inline EntityRef World::entity(Entity entity) { return get_entity(entity).value(); }
+inline EntityRefMut World::entity_mut(Entity entity) { return get_entity_mut(entity).value(); }
 }  // namespace epix::core

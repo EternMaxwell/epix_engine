@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <memory>
+#include <type_traits>
 
 #include "bundle.hpp"
 #include "component.hpp"
@@ -15,10 +16,10 @@ EPIX_MAKE_U64_WRAPPER(WorldId)
 /**
  * @brief A ecs world that holds all entities and components, and also resources.
  */
-struct WorldCell {
+struct World {
    public:
-    WorldCell(WorldId id,
-              std::shared_ptr<type_system::TypeRegistry> type_registry = std::make_shared<type_system::TypeRegistry>())
+    World(WorldId id,
+          std::shared_ptr<type_system::TypeRegistry> type_registry = std::make_shared<type_system::TypeRegistry>())
         : _id(id),
           _type_registry(type_registry),
           _components(type_registry),
@@ -40,6 +41,23 @@ struct WorldCell {
     Bundles& bundles_mut() { return _bundles; }
     Tick change_tick() const { return _change_tick->load(std::memory_order_relaxed); }
     Tick last_change_tick() const { return _last_change_tick; }
+
+    template <typename... Ts, typename... Args>
+    EntityRefMut spawn(Args&&... args)
+        requires(sizeof...(Args) == sizeof...(Ts));
+    template <typename T>
+    EntityRefMut spawn(T&& bundle)
+        requires(bundle::is_bundle<std::remove_cvref_t<T>>);
+
+    template <typename D>
+    auto query();
+    template <typename D, typename F>
+    auto query_filtered();
+
+    EntityRef entity(Entity entity);
+    EntityRefMut entity_mut(Entity entity);
+    std::optional<EntityRef> get_entity(Entity entity);
+    std::optional<EntityRefMut> get_entity_mut(Entity entity);
 
     void flush_entities() {
         auto& empty_archetype = _archetypes.get_empty_mut();

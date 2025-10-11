@@ -5,7 +5,7 @@
 #include <cstddef>
 
 #include "../storage/bitvector.hpp"
-#include "../world_cell.hpp"
+#include "../world.hpp"
 #include "access.hpp"
 #include "fetch.hpp"
 #include "filter.hpp"
@@ -15,10 +15,10 @@ template <typename D, typename F = Filter<>>
     requires valid_query_data<QueryData<D>> && valid_query_filter<QueryFilter<F>>
 struct QueryState {
    public:
-    static QueryState create_uninit(WorldCell& world) {
+    static QueryState create_uninit(World& world) {
         return QueryState(world.id(), WorldQuery<D>::init_state(world), WorldQuery<F>::init_state(world));
     }
-    static std::optional<QueryState> create_from_const_uninit(const WorldCell& world) {
+    static std::optional<QueryState> create_from_const_uninit(const World& world) {
         auto fetch_state  = WorldQuery<D>::get_state(world.components());
         auto filter_state = WorldQuery<F>::get_state(world.components());
         if (fetch_state.has_value() && filter_state.has_value()) {
@@ -27,19 +27,19 @@ struct QueryState {
             return std::nullopt;
         }
     }
-    static QueryState create(WorldCell& world) {
+    static QueryState create(World& world) {
         auto state = create_uninit(world);
         state.update_archetypes(world);
         return state;
     }
-    static std::optional<QueryState> create_from_const(const WorldCell& world) {
+    static std::optional<QueryState> create_from_const(const World& world) {
         return create_from_const_uninit(world).transform([&world](auto&& state) {
             state.update_archetypes(world);
             return std::move(state);
         });
     }
 
-    void update_archetypes(const WorldCell& world) {
+    void update_archetypes(const World& world) {
         validate_world(world);
         if (_component_access.required().empty()) {
             std::span span = world.archetypes().archetypes;
@@ -104,9 +104,9 @@ struct QueryState {
         _component_access = std::move(access);
     }
 
-    void validate_world(const WorldCell& world) {
+    void validate_world(const World& world) {
         if (world.id() != _world_id) {
-            throw std::runtime_error("QueryState used with a different WorldCell than it was created for");
+            throw std::runtime_error("QueryState used with a different World than it was created for");
         }
     }
     bool new_archetype_internal(const Archetype& archetype) {

@@ -55,12 +55,12 @@ template <typename T>
 struct WorldQuery<With<T>> {
     struct Fetch {};
     using State = TypeId;
-    static Fetch init_fetch(WorldCell&, const State&, Tick, Tick) { return Fetch{}; }
+    static Fetch init_fetch(World&, const State&, Tick, Tick) { return Fetch{}; }
     static void set_archetype(Fetch&, const State&, const archetype::Archetype&, storage::Table&) {}
     // static void set_table(Fetch&, State&, const storage::Table&) {}
     static void set_access(State&, const FilteredAccess&) {}
     static void update_access(const State& state, FilteredAccess& access) { access.add_with(state); }
-    static State init_state(WorldCell& world) { return world.type_registry().type_id<T>(); }
+    static State init_state(World& world) { return world.type_registry().type_id<T>(); }
     static std::optional<State> get_state(const Components& components) { return components.registry().type_id<T>(); }
     static bool matches_component_set(const State& state, const std::function<bool(TypeId)>& contains_component) {
         return contains_component(state);
@@ -85,12 +85,12 @@ template <typename T>
 struct WorldQuery<Without<T>> {
     struct Fetch {};
     using State = TypeId;
-    static Fetch init_fetch(WorldCell&, const State&, Tick, Tick) { return Fetch{}; }
+    static Fetch init_fetch(World&, const State&, Tick, Tick) { return Fetch{}; }
     static void set_archetype(Fetch&, const State&, const archetype::Archetype&, storage::Table&) {}
     // static void set_table(Fetch&, State&, const storage::Table&) {}
     static void set_access(State&, const FilteredAccess&) {}
     static void update_access(const State& state, FilteredAccess& access) { access.add_without(state); }
-    static State init_state(WorldCell& world) { return world.type_registry().type_id<T>(); }
+    static State init_state(World& world) { return world.type_registry().type_id<T>(); }
     static std::optional<State> get_state(const Components& components) { return components.registry().type_id<T>(); }
     static bool matches_component_set(const State& state, const std::function<bool(TypeId)>& contains_component) {
         return !contains_component(state);
@@ -121,7 +121,7 @@ template <typename... Fs>
 struct WorldQuery<Or<Fs...>> {
     using Fetch = std::tuple<OrFetch<Fs>...>;
     using State = std::tuple<typename WorldQuery<Fs>::State...>;
-    static Fetch init_fetch(WorldCell& world, const State& state, Tick last_run, Tick this_run) {
+    static Fetch init_fetch(World& world, const State& state, Tick last_run, Tick this_run) {
         return [&]<std::size_t... Is>(std::index_sequence<Is...>) {
             return std::make_tuple(
                 OrFetch<Fs>{.fetch   = WorldQuery<Fs>::init_fetch(world, std::get<Is>(state), last_run, this_run),
@@ -176,7 +176,7 @@ struct WorldQuery<Or<Fs...>> {
         new_access.required_mut() = std::move(access.required());
         access                    = std::move(new_access);
     }
-    static State init_state(WorldCell& world) {
+    static State init_state(World& world) {
         return [&]<std::size_t... Is>(std::index_sequence<Is...>) {
             return std::make_tuple(WorldQuery<Fs>::init_state(world)...);
         }(std::index_sequence_for<Fs...>{});
@@ -235,7 +235,7 @@ struct WorldQuery<Added<T>> {
         TypeId component_id;
         StorageType storage_type;
     };
-    static Fetch init_fetch(WorldCell& world, const State& state, Tick last_run, Tick this_run) {
+    static Fetch init_fetch(World& world, const State& state, Tick last_run, Tick this_run) {
         Fetch fetch{.table_dense   = nullptr,
                     .component_id  = state.component_id,
                     .is_sparse_set = state.storage_type == StorageType::SparseSet,
@@ -270,7 +270,7 @@ struct WorldQuery<Added<T>> {
                "access.");
         access.add_component_read(state.component_id);
     }
-    static State init_state(WorldCell& world) {
+    static State init_state(World& world) {
         return State{.component_id = world.type_registry().type_id<T>(), .storage_type = storage_for<T>()};
     }
     static std::optional<State> get_state(const Components& components) {

@@ -31,6 +31,9 @@ struct EntityLocation {
     TableId table_id           = 0;
     TableRow table_idx         = 0;
 
+    bool operator==(const EntityLocation& other) const = default;
+    bool operator!=(const EntityLocation& other) const = default;
+
     static constexpr EntityLocation invalid() {
         return {std::numeric_limits<uint32_t>::max(), std::numeric_limits<uint32_t>::max(),
                 std::numeric_limits<uint32_t>::max(), std::numeric_limits<uint32_t>::max()};

@@ -2,7 +2,7 @@
 #include <iostream>
 
 #include "epix/core/query/state.hpp"
-#include "epix/core/world_cell.hpp"
+#include "epix/core/world.hpp"
 
 using namespace epix::core;
 using namespace epix::core::query;
@@ -13,7 +13,7 @@ struct X {
 
 int main() {
     auto registry = std::make_shared<type_system::TypeRegistry>();
-    WorldCell wc(WorldId(1), std::move(registry));
+    World wc(WorldId(1), std::move(registry));
 
     // QueryState::create_uninit should work even when no components are registered
     auto qs_uninit = QueryState<std::tuple<>>::create_uninit(wc);

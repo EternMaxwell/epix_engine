@@ -7,6 +7,10 @@ struct Entity;
 struct Entities;
 
 struct World;
+struct WorldCell;
+
+struct EntityRef;
+struct EntityRefMut;
 
 struct ComponentInfo;
 }  // namespace epix::core

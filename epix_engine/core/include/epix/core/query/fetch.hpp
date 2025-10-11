@@ -8,15 +8,14 @@
 #include <tuple>
 
 #include "../archetype.hpp"
+#include "../component.hpp"
 #include "../entities.hpp"
+#include "../fwd.hpp"
+#include "../storage/sparse_set.hpp"
 #include "../storage/table.hpp"
+#include "../world.hpp"
 #include "../world/entity_ref.hpp"
-#include "../world_cell.hpp"
 #include "access.hpp"
-#include "epix/core/archetype.hpp"
-#include "epix/core/component.hpp"
-#include "epix/core/fwd.hpp"
-#include "epix/core/storage/sparse_set.hpp"
 
 namespace epix::core::query {
 /**
@@ -32,7 +31,7 @@ concept valid_world_query = requires(Q q) {
     std::copyable<typename Q::Fetch>;
     std::movable<typename Q::State>;
     std::copyable<typename Q::State>;
-    requires requires(const Q::State& state, Q::State& state_mut, Q::Fetch& fetch, WorldCell& world, Tick tick,
+    requires requires(const Q::State& state, Q::State& state_mut, Q::Fetch& fetch, World& world, Tick tick,
                       const archetype::Archetype& archetype, storage::Table& table, const FilteredAccess& access,
                       FilteredAccess& access_mut, const Components& components,
                       const std::function<bool(TypeId)>& contains_component) {
@@ -59,8 +58,8 @@ template <typename... Ts>
 struct WorldQuery<std::tuple<Ts...>> {
     using Fetch = std::tuple<typename WorldQuery<Ts>::Fetch...>;
     using State = std::tuple<typename WorldQuery<Ts>::State...>;
-    static Fetch init_fetch(WorldCell& world, const State& state, Tick last_run, Tick this_run) {
-        return []<size_t... Is>(std::index_sequence<Is...>, WorldCell& world, const State& state, Tick last_run,
+    static Fetch init_fetch(World& world, const State& state, Tick last_run, Tick this_run) {
+        return []<size_t... Is>(std::index_sequence<Is...>, World& world, const State& state, Tick last_run,
                                 Tick this_run) {
             return std::make_tuple(WorldQuery<Ts>::init_fetch(world, std::get<Is>(state), last_run, this_run)...);
         }(std::index_sequence_for<Ts...>{}, world, state, last_run, this_run);
@@ -89,8 +88,8 @@ struct WorldQuery<std::tuple<Ts...>> {
             (WorldQuery<Ts>::update_access(std::get<Is>(state), access), ...);
         }(std::index_sequence_for<Ts...>{}, state, access);
     }
-    static State init_state(WorldCell& world) {
-        return []<size_t... Is>(std::index_sequence<Is...>, WorldCell& world) {
+    static State init_state(World& world) {
+        return []<size_t... Is>(std::index_sequence<Is...>, World& world) {
             return std::make_tuple(WorldQuery<Ts>::init_state(world)...);
         }(std::index_sequence_for<Ts...>{}, world);
     }
@@ -166,12 +165,12 @@ template <>
 struct WorldQuery<Entity> {
     struct Fetch {};
     using State = std::tuple<>;
-    static Fetch init_fetch(WorldCell&, const State&, Tick, Tick) { return Fetch{}; }
+    static Fetch init_fetch(World&, const State&, Tick, Tick) { return Fetch{}; }
     static void set_archetype(Fetch&, const State&, const archetype::Archetype&, storage::Table&) {}
     // static void set_table(Fetch&, State&, const storage::Table&) {}
     static void set_access(State&, const FilteredAccess&) {}
     static void update_access(const State&, FilteredAccess&) {}
-    static State init_state(WorldCell&) { return State{}; }
+    static State init_state(World&) { return State{}; }
     static std::optional<State> get_state(const Components&) { return State{}; }
     static bool matches_component_set(const State&, const std::function<bool(TypeId)>& contains_component) {
         return true;
@@ -194,12 +193,12 @@ struct WorldQuery<EntityLocation> {
         const Entities* entities = nullptr;
     };
     using State = std::tuple<>;
-    static Fetch init_fetch(WorldCell& world, const State&, Tick, Tick) { return Fetch{&world.entities()}; }
+    static Fetch init_fetch(World& world, const State&, Tick, Tick) { return Fetch{&world.entities()}; }
     static void set_archetype(Fetch&, const State&, const archetype::Archetype&, storage::Table&) {}
     // static void set_table(Fetch&, State&, const storage::Table&) {}
     static void set_access(State&, const FilteredAccess&) {}
     static void update_access(const State&, FilteredAccess&) {}
-    static State init_state(WorldCell&) { return State{}; }
+    static State init_state(World&) { return State{}; }
     static std::optional<State> get_state(const Components&) { return State{}; }
     static bool matches_component_set(const State&, const std::function<bool(TypeId)>& contains_component) {
         return true;
@@ -221,10 +220,10 @@ static_assert(valid_query_data<QueryData<EntityLocation>>);
 template <>
 struct WorldQuery<EntityRef> {
     struct Fetch {
-        WorldCell* world = nullptr;
+        World* world = nullptr;
     };
     using State = std::tuple<>;
-    static Fetch init_fetch(WorldCell& world, const State&, Tick, Tick) { return Fetch{&world}; }
+    static Fetch init_fetch(World& world, const State&, Tick, Tick) { return Fetch{&world}; }
     static void set_archetype(Fetch&, const State&, const archetype::Archetype&, storage::Table&) {}
     // static void set_table(Fetch&, State&, const storage::Table&) {}
     static void set_access(State&, const FilteredAccess&) {}
@@ -234,7 +233,7 @@ struct WorldQuery<EntityRef> {
                "access.");
         access.access_mut().read_all_components();
     }
-    static State init_state(WorldCell&) { return State{}; }
+    static State init_state(World&) { return State{}; }
     static std::optional<State> get_state(const Components&) { return State{}; }
     static bool matches_component_set(const State&, const std::function<bool(TypeId)>& contains_component) {
         return true;
@@ -256,10 +255,10 @@ static_assert(valid_query_data<QueryData<EntityRef>>);
 template <>
 struct WorldQuery<EntityRefMut> {
     struct Fetch {
-        WorldCell* world = nullptr;
+        World* world = nullptr;
     };
     using State = std::tuple<>;
-    static Fetch init_fetch(WorldCell& world, const State&, Tick, Tick) { return Fetch{&world}; }
+    static Fetch init_fetch(World& world, const State&, Tick, Tick) { return Fetch{&world}; }
     static void set_archetype(Fetch&, const State&, const archetype::Archetype&, storage::Table&) {}
     // static void set_table(Fetch&, State&, const storage::Table&) {}
     static void set_access(State&, const FilteredAccess&) {}
@@ -269,7 +268,7 @@ struct WorldQuery<EntityRefMut> {
                "shared access.");
         access.access_mut().write_all_components();
     }
-    static State init_state(WorldCell&) { return State{}; }
+    static State init_state(World&) { return State{}; }
     static std::optional<State> get_state(const Components&) { return State{}; }
     static bool matches_component_set(const State&, const std::function<bool(TypeId)>& contains_component) {
         return true;
@@ -295,12 +294,12 @@ struct WorldQuery<const archetype::Archetype&> {
         const archetype::Archetypes* archetypes = nullptr;
     };
     using State = std::tuple<>;
-    static Fetch init_fetch(WorldCell&, const State&, Tick, Tick) { return Fetch{}; }
+    static Fetch init_fetch(World&, const State&, Tick, Tick) { return Fetch{}; }
     static void set_archetype(Fetch&, const State&, const archetype::Archetype&, storage::Table&) {}
     // static void set_table(Fetch&, State&, const storage::Table&) {}
     static void set_access(State&, const FilteredAccess&) {}
     static void update_access(const State&, FilteredAccess&) {}
-    static State init_state(WorldCell&) { return State{}; }
+    static State init_state(World&) { return State{}; }
     static std::optional<State> get_state(const Components&) { return State{}; }
     static bool matches_component_set(const State&, const std::function<bool(TypeId)>& contains_component) {
         return true;
@@ -333,7 +332,7 @@ struct WorldQuery<Ref<T>> {
         Tick this_run;
     };
     using State = TypeId;
-    static Fetch init_fetch(WorldCell& world, const State& state, Tick last_run, Tick this_run) {
+    static Fetch init_fetch(World& world, const State& state, Tick last_run, Tick this_run) {
         auto result = Fetch{.table_dense   = nullptr,
                             .component_id  = state,
                             .is_sparse_set = storage_for<T>() == StorageType::SparseSet,
@@ -363,7 +362,7 @@ struct WorldQuery<Ref<T>> {
     // }
     static void set_access(State& state, const FilteredAccess& access) {}
     static void update_access(const State& state, FilteredAccess& access) { access.add_component_read(state); }
-    static State init_state(WorldCell& world) { return world.type_registry().type_id<T>(); }
+    static State init_state(World& world) { return world.type_registry().type_id<T>(); }
     static std::optional<State> get_state(const Components& components) {
         auto type_id = components.registry().type_id<T>();
         return components.get(type_id).transform([type_id](const ComponentInfo& info) { return type_id; });
@@ -414,7 +413,7 @@ struct WorldQuery<Mut<T>> {
         Tick this_run;
     };
     using State = TypeId;
-    static Fetch init_fetch(WorldCell& world, const State& state, Tick last_run, Tick this_run) {
+    static Fetch init_fetch(World& world, const State& state, Tick last_run, Tick this_run) {
         auto result = Fetch{.table_dense   = nullptr,
                             .component_id  = state,
                             .is_sparse_set = storage_for<T>() == StorageType::SparseSet,
@@ -445,7 +444,7 @@ struct WorldQuery<Mut<T>> {
     // }
     static void set_access(State& state, const FilteredAccess& access) {}
     static void update_access(const State& state, FilteredAccess& access) { access.add_component_write(state); }
-    static State init_state(WorldCell& world) {
+    static State init_state(World& world) {
         auto type_id = world.type_registry().type_id<T>();
         return type_id;
     }
@@ -534,7 +533,7 @@ struct WorldQuery<Opt<T>> {
         bool matches = false;
     };
     using State = typename WorldQuery<T>::State;
-    static Fetch init_fetch(WorldCell& world, const State& state, Tick last_run, Tick this_run) {
+    static Fetch init_fetch(World& world, const State& state, Tick last_run, Tick this_run) {
         return Fetch{.fetch = WorldQuery<T>::init_fetch(world, state, last_run, this_run), .matches = false};
     }
     static void set_archetype(Fetch& fetch,
@@ -559,7 +558,7 @@ struct WorldQuery<Opt<T>> {
         WorldQuery<T>::update_access(state, state_access);
         access.access_mut().merge(state_access.access());
     }
-    static State init_state(WorldCell& world) { return WorldQuery<T>::init_state(world); }
+    static State init_state(World& world) { return WorldQuery<T>::init_state(world); }
     static std::optional<State> get_state(const Components& components) { return WorldQuery<T>::get_state(components); }
     static bool matches_component_set(const State& state, const std::function<bool(TypeId)>& contains_component) {
         return true;  // always true, because it is optional
@@ -606,7 +605,7 @@ template <typename T>
 struct WorldQuery<Has<T>> {
     using Fetch = bool;
     using State = TypeId;
-    static Fetch init_fetch(WorldCell&, const State&, Tick, Tick) { return false; }
+    static Fetch init_fetch(World&, const State&, Tick, Tick) { return false; }
     static void set_archetype(Fetch& fetch,
                               const State& state,
                               const archetype::Archetype& archetype,
@@ -618,7 +617,7 @@ struct WorldQuery<Has<T>> {
     // }
     static void set_access(State&, const FilteredAccess&) {}
     static void update_access(const State& state, FilteredAccess& access) { access.access_mut().add_archetypal(state); }
-    static State init_state(WorldCell& world) { return world.type_registry().type_id<T>(); }
+    static State init_state(World& world) { return world.type_registry().type_id<T>(); }
     static std::optional<State> get_state(const Components& components) { return components.registry().type_id<T>(); }
     static bool matches_component_set(const State& state, const std::function<bool(TypeId)>& contains_component) {
         return true;  // always true, because it is just a marker

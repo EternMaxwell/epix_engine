@@ -1,7 +1,7 @@
 #pragma once
 
 #include "bundle.hpp"
-#include "world_cell.hpp"
+#include "world.hpp"
 
 namespace epix::core {
 /**
@@ -82,7 +82,7 @@ struct RemoveBundle {
 
 struct BundleInserter {
    public:
-    static BundleInserter create_with_id(WorldCell& world, ArchetypeId archetype_id, BundleId bundle_id, Tick tick) {
+    static BundleInserter create_with_id(World& world, ArchetypeId archetype_id, BundleId bundle_id, Tick tick) {
         auto& bundles      = world.bundles_mut();
         auto& components   = world.components_mut();
         auto& storage      = world.storage_mut();
@@ -102,7 +102,7 @@ struct BundleInserter {
         return inserter;
     }
     template <bundle::is_bundle T>
-    static BundleInserter create(WorldCell& world, ArchetypeId archetype_id, Tick tick) {
+    static BundleInserter create(World& world, ArchetypeId archetype_id, Tick tick) {
         auto& components = world.components();
         auto& bundles    = world.bundles_mut();
         BundleId bundle_id =
@@ -176,7 +176,7 @@ struct BundleInserter {
     }
 
    private:
-    WorldCell* world_ = nullptr;
+    World* world_ = nullptr;
     const archetype::ArchetypeAfterBundleInsert* archetype_after_insert_;
     const BundleInfo* bundle_info_;
     Archetype* archetype_;
@@ -188,7 +188,7 @@ struct BundleInserter {
 // adding a 'move from empty archetype to target archetype' operation)
 struct BundleSpawner {
    public:
-    static BundleSpawner create_with_id(WorldCell& world, BundleId bundle_id, Tick tick) {
+    static BundleSpawner create_with_id(World& world, BundleId bundle_id, Tick tick) {
         auto& bundles      = world.bundles_mut();
         auto& components   = world.components_mut();
         auto& storage      = world.storage_mut();
@@ -206,7 +206,7 @@ struct BundleSpawner {
         return spawner;
     }
     template <bundle::is_bundle T>
-    static BundleSpawner create(WorldCell& world, Tick tick) {
+    static BundleSpawner create(World& world, Tick tick) {
         auto& bundles = world.bundles_mut();
         BundleId bundle_id =
             bundles.register_info<T>(world.type_registry(), world.components_mut(), world.storage_mut());
@@ -240,7 +240,7 @@ struct BundleSpawner {
     }
 
    private:
-    WorldCell* world_ = nullptr;
+    World* world_ = nullptr;
     const BundleInfo* bundle_info_;
     Archetype* archetype_;
     storage::Table* table_;
@@ -248,7 +248,7 @@ struct BundleSpawner {
 };
 struct BundleRemover {
    public:
-    static BundleRemover create_with_id(WorldCell& world, ArchetypeId archetype_id, BundleId bundle_id, Tick tick) {
+    static BundleRemover create_with_id(World& world, ArchetypeId archetype_id, BundleId bundle_id, Tick tick) {
         auto& bundles      = world.bundles_mut();
         auto& components   = world.components_mut();
         auto& storage      = world.storage_mut();
@@ -271,7 +271,7 @@ struct BundleRemover {
         return remover;
     }
     template <bundle::is_bundle T>
-    static BundleRemover create(WorldCell& world, ArchetypeId archetype_id, Tick tick) {
+    static BundleRemover create(World& world, ArchetypeId archetype_id, Tick tick) {
         auto& bundles = world.bundles_mut();
         BundleId bundle_id =
             bundles.register_info<T>(world.type_registry(), world.components_mut(), world.storage_mut());
@@ -326,7 +326,7 @@ struct BundleRemover {
     }
 
    private:
-    WorldCell* world_ = nullptr;
+    World* world_ = nullptr;
     const BundleInfo* bundle_info_;
     Archetype* archetype_;
     Archetype* new_archetype_;

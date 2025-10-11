@@ -3,10 +3,8 @@
 
 #include "epix/core/bundle.hpp"
 #include "epix/core/bundleimpl.hpp"
-#include "epix/core/component.hpp"
-#include "epix/core/storage.hpp"
 #include "epix/core/type_system/type_registry.hpp"
-#include "epix/core/world_cell.hpp"
+#include "epix/core/world.hpp"
 
 using namespace epix::core;
 using namespace epix::core::archetype;
@@ -23,7 +21,7 @@ struct Z {
 
 int main() {
     auto registry = std::make_shared<type_system::TypeRegistry>();
-    WorldCell world(WorldId(1), registry);
+    World world(WorldId(1), registry);
 
     // Do NOT pre-register component infos; register_info will add them automatically.
     using MyBundle = InitializeBundle<std::tuple<X, Z>, std::tuple<std::tuple<int>, std::tuple<double>>>;
