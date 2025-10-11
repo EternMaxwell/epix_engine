@@ -5,6 +5,7 @@
 #include <concepts>
 #include <cstddef>
 #include <functional>
+#include <tuple>
 
 #include "../archetype.hpp"
 #include "../entities.hpp"
@@ -13,7 +14,9 @@
 #include "../world_cell.hpp"
 #include "access.hpp"
 #include "epix/core/archetype.hpp"
+#include "epix/core/component.hpp"
 #include "epix/core/fwd.hpp"
+#include "epix/core/storage/sparse_set.hpp"
 
 namespace epix::core::query {
 /**
@@ -26,9 +29,13 @@ template <typename Q>
 concept valid_world_query = requires(Q q) {
     typename Q::Fetch;
     typename Q::State;
+    std::copyable<typename Q::Fetch>;
+    std::movable<typename Q::State>;
+    std::copyable<typename Q::State>;
     requires requires(const Q::State& state, Q::State& state_mut, Q::Fetch& fetch, WorldCell& world, Tick tick,
-                      const archetype::Archetype& archetype, const storage::Table& table, const FilteredAccess& access,
-                      FilteredAccess& access_mut, const Components& components) {
+                      const archetype::Archetype& archetype, storage::Table& table, const FilteredAccess& access,
+                      FilteredAccess& access_mut, const Components& components,
+                      const std::function<bool(TypeId)>& contains_component) {
         { Q::init_fetch(world, state, tick, tick) } -> std::same_as<typename Q::Fetch>;
         { Q::set_archetype(fetch, state, archetype, table) } -> std::same_as<void>;
         // { Q::set_table(fetch, state, table) } -> std::same_as<void>;
@@ -36,7 +43,7 @@ concept valid_world_query = requires(Q q) {
         { Q::update_access(state, access_mut) } -> std::same_as<void>;
         { Q::init_state(world) } -> std::same_as<typename Q::State>;
         { Q::get_state(components) } -> std::same_as<std::optional<typename Q::State>>;
-        { Q::matches_archetype(state, archetype) } -> std::same_as<bool>;
+        { Q::matches_component_set(state, contains_component) } -> std::same_as<bool>;
     };
 };
 /**
@@ -49,7 +56,7 @@ struct Item;
 // Item itself is also a valid_world_query
 template <typename... Ts>
     requires(valid_world_query<WorldQuery<Ts>> && ...)
-struct WorldQuery<Item<Ts...>> {
+struct WorldQuery<std::tuple<Ts...>> {
     using Fetch = std::tuple<typename WorldQuery<Ts>::Fetch...>;
     using State = std::tuple<typename WorldQuery<Ts>::State...>;
     static Fetch init_fetch(WorldCell& world, const State& state, Tick last_run, Tick this_run) {
@@ -61,9 +68,9 @@ struct WorldQuery<Item<Ts...>> {
     static void set_archetype(Fetch& fetch,
                               const State& state,
                               const archetype::Archetype& archetype,
-                              const storage::Table& table) {
+                              storage::Table& table) {
         []<size_t... Is>(std::index_sequence<Is...>, Fetch& fetch, const State& state,
-                         const archetype::Archetype& archetype, const storage::Table& table) {
+                         const archetype::Archetype& archetype, storage::Table& table) {
             (WorldQuery<Ts>::set_archetype(std::get<Is>(fetch), std::get<Is>(state), archetype, table), ...);
         }(std::index_sequence_for<Ts...>{}, fetch, state, archetype, table);
     }
@@ -89,24 +96,47 @@ struct WorldQuery<Item<Ts...>> {
     }
     static std::optional<State> get_state(const Components& components) {
         return []<size_t... Is>(std::index_sequence<Is...>, const Components& components) -> std::optional<State> {
-            std::optional<std::tuple<typename WorldQuery<Ts>::State...>> result;
-            bool all_found = (true && ... && (WorldQuery<Ts>::get_state(components).has_value()));
+            std::tuple<std::optional<typename WorldQuery<Ts>::State>...> states{
+                WorldQuery<Ts>::get_state(components)...};
+            bool all_found = (true && ... && (std::get<Is>(states).has_value()));
             if (all_found) {
-                result = std::make_tuple(*(WorldQuery<Ts>::get_state(components))...);
+                return std::make_tuple(std::move(*std::get<Is>(states))...);
+            } else {
+                return std::nullopt;
             }
-            return result;
         }(std::index_sequence_for<Ts...>{}, components);
     }
-    static bool matches_archetype(const State& state, const archetype::Archetype& archetype) {
-        return []<size_t... Is>(std::index_sequence<Is...>, const State& state, const archetype::Archetype& archetype) {
-            return true && (WorldQuery<Ts>::matches_archetype(std::get<Is>(state), archetype) && ...);
-        }(std::index_sequence_for<Ts...>{}, state, archetype);
+    static bool matches_component_set(const State& state, const std::function<bool(TypeId)>& contains_component) {
+        return []<size_t... Is>(std::index_sequence<Is...>, const State& state,
+                                const std::function<bool(TypeId)>& contains_component) {
+            return true && (WorldQuery<Ts>::matches_component_set(std::get<Is>(state), contains_component) && ...);
+        }(std::index_sequence_for<Ts...>{}, state, contains_component);
     }
 };
+template <typename... Ts>
+    requires(valid_world_query<WorldQuery<Ts>> && ...)
+struct WorldQuery<Item<Ts...>> : WorldQuery<std::tuple<Ts...>> {};
 
 template <typename T>
     requires valid_world_query<WorldQuery<T>>
 struct QueryData;
+
+template <typename... Ts>
+    requires(valid_world_query<WorldQuery<Ts>> && ...)
+struct QueryData<std::tuple<Ts...>> {
+    using Item                            = std::tuple<typename QueryData<Ts>::Item...>;
+    using ReadOnly                        = std::tuple<typename QueryData<Ts>::ReadOnly...>;
+    static inline constexpr bool readonly = (QueryData<Ts>::readonly && ...);
+    static Item fetch(typename WorldQuery<std::tuple<Ts...>>::Fetch& fetch, Entity entity, TableRow row) {
+        return []<size_t... Is>(std::index_sequence<Is...>, typename WorldQuery<std::tuple<Ts...>>::Fetch& fetch,
+                                Entity entity, TableRow row) {
+            return Item(QueryData<Ts>::fetch(std::get<Is>(fetch), entity, row)...);
+        }(std::index_sequence_for<Ts...>{}, fetch, entity, row);
+    }
+};
+template <typename... Ts>
+    requires(valid_world_query<WorldQuery<Ts>> && ...)
+struct QueryData<Item<Ts...>> : QueryData<std::tuple<Ts...>> {};
 
 template <typename T>
 struct query_type;
@@ -123,6 +153,9 @@ concept valid_query_data =
         typename T::ReadOnly;
         { T::readonly } -> std::convertible_to<bool>;
         { T::fetch(fetch, entity, row) } -> std::same_as<typename T::Item>;
+        // State of its WorldQuery type should be convertible to its ReadOnly's WorldQuery State
+        std::constructible_from<const typename WorldQuery<typename T::ReadOnly>::State&,
+                                typename WorldQuery<typename query_type<T>::type>::State>;
     };
 
 template <typename T>
@@ -132,15 +165,17 @@ using QueryItem = typename QueryData<T>::Item;
 template <>
 struct WorldQuery<Entity> {
     struct Fetch {};
-    struct State {};
+    using State = std::tuple<>;
     static Fetch init_fetch(WorldCell&, const State&, Tick, Tick) { return Fetch{}; }
-    static void set_archetype(Fetch&, const State&, const archetype::Archetype&, const storage::Table&) {}
+    static void set_archetype(Fetch&, const State&, const archetype::Archetype&, storage::Table&) {}
     // static void set_table(Fetch&, State&, const storage::Table&) {}
     static void set_access(State&, const FilteredAccess&) {}
     static void update_access(const State&, FilteredAccess&) {}
     static State init_state(WorldCell&) { return State{}; }
     static std::optional<State> get_state(const Components&) { return State{}; }
-    static bool matches_archetype(const State&, const archetype::Archetype&) { return true; }
+    static bool matches_component_set(const State&, const std::function<bool(TypeId)>& contains_component) {
+        return true;
+    }
 };
 static_assert(valid_world_query<WorldQuery<Entity>>);
 template <>
@@ -158,15 +193,17 @@ struct WorldQuery<EntityLocation> {
     struct Fetch {
         const Entities* entities = nullptr;
     };
-    struct State {};
+    using State = std::tuple<>;
     static Fetch init_fetch(WorldCell& world, const State&, Tick, Tick) { return Fetch{&world.entities()}; }
-    static void set_archetype(Fetch&, const State&, const archetype::Archetype&, const storage::Table&) {}
+    static void set_archetype(Fetch&, const State&, const archetype::Archetype&, storage::Table&) {}
     // static void set_table(Fetch&, State&, const storage::Table&) {}
     static void set_access(State&, const FilteredAccess&) {}
     static void update_access(const State&, FilteredAccess&) {}
     static State init_state(WorldCell&) { return State{}; }
     static std::optional<State> get_state(const Components&) { return State{}; }
-    static bool matches_archetype(const State&, const archetype::Archetype&) { return true; }
+    static bool matches_component_set(const State&, const std::function<bool(TypeId)>& contains_component) {
+        return true;
+    }
 };
 static_assert(valid_world_query<WorldQuery<EntityLocation>>);
 template <>
@@ -186,9 +223,9 @@ struct WorldQuery<EntityRef> {
     struct Fetch {
         WorldCell* world = nullptr;
     };
-    struct State {};
+    using State = std::tuple<>;
     static Fetch init_fetch(WorldCell& world, const State&, Tick, Tick) { return Fetch{&world}; }
-    static void set_archetype(Fetch&, const State&, const archetype::Archetype&, const storage::Table&) {}
+    static void set_archetype(Fetch&, const State&, const archetype::Archetype&, storage::Table&) {}
     // static void set_table(Fetch&, State&, const storage::Table&) {}
     static void set_access(State&, const FilteredAccess&) {}
     static void update_access(const State&, FilteredAccess& access) {
@@ -199,7 +236,9 @@ struct WorldQuery<EntityRef> {
     }
     static State init_state(WorldCell&) { return State{}; }
     static std::optional<State> get_state(const Components&) { return State{}; }
-    static bool matches_archetype(const State&, const archetype::Archetype&) { return true; }
+    static bool matches_component_set(const State&, const std::function<bool(TypeId)>& contains_component) {
+        return true;
+    }
 };
 static_assert(valid_world_query<WorldQuery<EntityRef>>);
 template <>
@@ -219,9 +258,9 @@ struct WorldQuery<EntityRefMut> {
     struct Fetch {
         WorldCell* world = nullptr;
     };
-    struct State {};
+    using State = std::tuple<>;
     static Fetch init_fetch(WorldCell& world, const State&, Tick, Tick) { return Fetch{&world}; }
-    static void set_archetype(Fetch&, const State&, const archetype::Archetype&, const storage::Table&) {}
+    static void set_archetype(Fetch&, const State&, const archetype::Archetype&, storage::Table&) {}
     // static void set_table(Fetch&, State&, const storage::Table&) {}
     static void set_access(State&, const FilteredAccess&) {}
     static void update_access(const State&, FilteredAccess& access) {
@@ -232,7 +271,9 @@ struct WorldQuery<EntityRefMut> {
     }
     static State init_state(WorldCell&) { return State{}; }
     static std::optional<State> get_state(const Components&) { return State{}; }
-    static bool matches_archetype(const State&, const archetype::Archetype&) { return true; }
+    static bool matches_component_set(const State&, const std::function<bool(TypeId)>& contains_component) {
+        return true;
+    }
 };
 static_assert(valid_world_query<WorldQuery<EntityRefMut>>);
 template <>
@@ -253,15 +294,17 @@ struct WorldQuery<const archetype::Archetype&> {
         const Entities* entities                = nullptr;
         const archetype::Archetypes* archetypes = nullptr;
     };
-    struct State {};
+    using State = std::tuple<>;
     static Fetch init_fetch(WorldCell&, const State&, Tick, Tick) { return Fetch{}; }
-    static void set_archetype(Fetch&, const State&, const archetype::Archetype&, const storage::Table&) {}
+    static void set_archetype(Fetch&, const State&, const archetype::Archetype&, storage::Table&) {}
     // static void set_table(Fetch&, State&, const storage::Table&) {}
     static void set_access(State&, const FilteredAccess&) {}
     static void update_access(const State&, FilteredAccess&) {}
     static State init_state(WorldCell&) { return State{}; }
     static std::optional<State> get_state(const Components&) { return State{}; }
-    static bool matches_archetype(const State&, const archetype::Archetype&) { return true; }
+    static bool matches_component_set(const State&, const std::function<bool(TypeId)>& contains_component) {
+        return true;
+    }
 };
 static_assert(valid_world_query<WorldQuery<const archetype::Archetype&>>);
 template <>
@@ -286,21 +329,21 @@ struct WorldQuery<Ref<T>> {
         };
         TypeId component_id;
         bool is_sparse_set = false;
-        Ticks last_run;
-        Ticks this_run;
+        Tick last_run;
+        Tick this_run;
     };
-    struct State {
-        TypeId component_id;
-        StorageType storage_type;
-    };
+    using State = TypeId;
     static Fetch init_fetch(WorldCell& world, const State& state, Tick last_run, Tick this_run) {
         auto result = Fetch{.table_dense   = nullptr,
-                            .component_id  = state.component_id,
-                            .is_sparse_set = state.storage_type == StorageType::SparseSet,
+                            .component_id  = state,
+                            .is_sparse_set = storage_for<T>() == StorageType::SparseSet,
                             .last_run      = last_run,
                             .this_run      = this_run};
         if (result.is_sparse_set) {
-            result.sparse_set = world.storage().sparse_sets.get(state.component_id).value_or(nullptr);
+            result.sparse_set = world.storage()
+                                    .sparse_sets.get(state)
+                                    .transform([](const storage::ComponentSparseSet& ref) { return &ref; })
+                                    .value_or(nullptr);
         }
         return result;
     }
@@ -308,8 +351,8 @@ struct WorldQuery<Ref<T>> {
                               const State& state,
                               const archetype::Archetype& archetype,
                               const storage::Table& table) {
-        if (state.storage_type == StorageType::Table) {
-            fetch.table_dense   = &table.get_dense(state.component_id).value().get();
+        if (storage_for<T>() == StorageType::Table) {
+            fetch.table_dense   = &table.get_dense(state).value().get();
             fetch.is_sparse_set = false;
         }
     }
@@ -319,20 +362,14 @@ struct WorldQuery<Ref<T>> {
     //     }
     // }
     static void set_access(State& state, const FilteredAccess& access) {}
-    static void update_access(const State& state, FilteredAccess& access) {
-        access.add_component_read(state.component_id);
-    }
-    static State init_state(WorldCell& world) {
-        return State{.component_id = TypeId(typeid(T)), .storage_type = storage_for<T>()};
-    }
+    static void update_access(const State& state, FilteredAccess& access) { access.add_component_read(state); }
+    static State init_state(WorldCell& world) { return world.type_registry().type_id<T>(); }
     static std::optional<State> get_state(const Components& components) {
         auto type_id = components.registry().type_id<T>();
-        return components.get(type_id).transform([type_id](const ComponentInfo& info) {
-            return State{.component_id = type_id, .storage_type = info.storage_type()};
-        });
+        return components.get(type_id).transform([type_id](const ComponentInfo& info) { return type_id; });
     }
-    static bool matches_archetype(const State& state, const archetype::Archetype& archetype) {
-        return archetype.contains(state.component_id);
+    static bool matches_component_set(const State& state, const std::function<bool(TypeId)>& contains_component) {
+        return contains_component(state);
     }
 };
 static_assert(valid_world_query<WorldQuery<Ref<int>>>);
@@ -376,27 +413,27 @@ struct WorldQuery<Mut<T>> {
         Tick last_run;
         Tick this_run;
     };
-    struct State {
-        TypeId component_id;
-        StorageType storage_type;
-    };
+    using State = TypeId;
     static Fetch init_fetch(WorldCell& world, const State& state, Tick last_run, Tick this_run) {
         auto result = Fetch{.table_dense   = nullptr,
-                            .component_id  = state.component_id,
-                            .is_sparse_set = state.storage_type == StorageType::SparseSet,
+                            .component_id  = state,
+                            .is_sparse_set = storage_for<T>() == StorageType::SparseSet,
                             .last_run      = last_run,
                             .this_run      = this_run};
         if (result.is_sparse_set) {
-            result.sparse_set = world.storage_mut().sparse_sets.get_mut(state.component_id).value().get();
+            result.sparse_set = world.storage_mut()
+                                    .sparse_sets.get_mut(state)
+                                    .transform([](storage::ComponentSparseSet& ref) { return &ref; })
+                                    .value_or(nullptr);
         }
         return result;
     }
     static void set_archetype(Fetch& fetch,
                               const State& state,
                               const archetype::Archetype& archetype,
-                              const storage::Table& table) {
-        if (state.storage_type == StorageType::Table) {
-            fetch.table_dense   = &table.get_dense_mut(state.component_id).value().get();
+                              storage::Table& table) {
+        if (storage_for<T>() == StorageType::Table) {
+            fetch.table_dense   = &table.get_dense_mut(state).value().get();
             fetch.is_sparse_set = false;
         }
     }
@@ -407,21 +444,17 @@ struct WorldQuery<Mut<T>> {
     //     }
     // }
     static void set_access(State& state, const FilteredAccess& access) {}
-    static void update_access(const State& state, FilteredAccess& access) {
-        access.add_component_write(state.component_id);
-    }
+    static void update_access(const State& state, FilteredAccess& access) { access.add_component_write(state); }
     static State init_state(WorldCell& world) {
         auto type_id = world.type_registry().type_id<T>();
-        return State{.component_id = type_id, .storage_type = storage_for<T>()};
+        return type_id;
     }
     static std::optional<State> get_state(const Components& components) {
         auto type_id = components.registry().type_id<T>();
-        return components.get(type_id).transform([type_id](const ComponentInfo& info) {
-            return State{.component_id = type_id, .storage_type = info.storage_type()};
-        });
+        return components.get(type_id).transform([type_id](const ComponentInfo& info) { return type_id; });
     }
-    static bool matches_archetype(const State& state, const archetype::Archetype& archetype) {
-        return archetype.contains(state.component_id);
+    static bool matches_component_set(const State& state, const std::function<bool(TypeId)>& contains_component) {
+        return contains_component(state);
     }
 };
 static_assert(valid_world_query<WorldQuery<Mut<int>>>);
@@ -480,7 +513,7 @@ struct QueryData<T&> : QueryData<Mut<T>> {
     using ReadOnly                        = const T&;
     static inline constexpr bool readonly = false;
     static Item fetch(WorldQuery<T&>::Fetch& fetch, Entity entity, TableRow row) {
-        return QueryData<Mut<T>>::fetch(fetch, entity, row).get();
+        return QueryData<Mut<T>>::fetch(fetch, entity, row).get_mut();
     }
 };
 static_assert(valid_query_data<QueryData<int&>>);
@@ -507,8 +540,8 @@ struct WorldQuery<Opt<T>> {
     static void set_archetype(Fetch& fetch,
                               const State& state,
                               const archetype::Archetype& archetype,
-                              const storage::Table& table) {
-        fetch.matches = WorldQuery<T>::matches_archetype(state, archetype);
+                              storage::Table& table) {
+        fetch.matches = WorldQuery<T>::matches_component_set(state, [&](TypeId id) { return archetype.contains(id); });
         if (fetch.matches) {
             WorldQuery<T>::set_archetype(fetch.fetch, state, archetype, table);
         }
@@ -528,7 +561,7 @@ struct WorldQuery<Opt<T>> {
     }
     static State init_state(WorldCell& world) { return WorldQuery<T>::init_state(world); }
     static std::optional<State> get_state(const Components& components) { return WorldQuery<T>::get_state(components); }
-    static bool matches_archetype(const State& state, const archetype::Archetype& archetype) {
+    static bool matches_component_set(const State& state, const std::function<bool(TypeId)>& contains_component) {
         return true;  // always true, because it is optional
     }
 };
@@ -577,7 +610,7 @@ struct WorldQuery<Has<T>> {
     static void set_archetype(Fetch& fetch,
                               const State& state,
                               const archetype::Archetype& archetype,
-                              const storage::Table&) {
+                              storage::Table&) {
         fetch = archetype.contains(state);
     }
     // static void set_table(Fetch& fetch, const State& state, const storage::Table& table) {
@@ -587,7 +620,7 @@ struct WorldQuery<Has<T>> {
     static void update_access(const State& state, FilteredAccess& access) { access.access_mut().add_archetypal(state); }
     static State init_state(WorldCell& world) { return world.type_registry().type_id<T>(); }
     static std::optional<State> get_state(const Components& components) { return components.registry().type_id<T>(); }
-    static bool matches_archetype(const State& state, const archetype::Archetype& archetype) {
+    static bool matches_component_set(const State& state, const std::function<bool(TypeId)>& contains_component) {
         return true;  // always true, because it is just a marker
     }
 };
@@ -604,4 +637,5 @@ struct QueryData<Has<T>> {
 static_assert(valid_query_data<QueryData<Has<int>>>);
 
 static_assert(valid_world_query<WorldQuery<Item<int&, const float&, EntityRef, Entity, Ref<double>, Mut<char>>>>);
+static_assert(valid_query_data<QueryData<Item<int&, const float&, EntityRef, Entity, Ref<double>, Mut<char>>>>);
 }  // namespace epix::core::query
