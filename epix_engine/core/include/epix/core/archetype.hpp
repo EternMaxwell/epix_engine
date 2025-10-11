@@ -164,7 +164,7 @@ struct Archetype {
 
     ArchetypeId id() const { return _archetype_id; }
     TableId table_id() const { return _table_id; }
-    auto entities() const { return std::views::all(_entities); }
+    std::span<const ArchetypeEntity> entities() const { return _entities; }
     size_t size() const { return _entities.size(); }
     bool empty() const { return _entities.empty(); }
     const ArchetypeEdges& edges() const { return _edges; }
