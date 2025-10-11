@@ -72,3 +72,11 @@ add_test(NAME test_access COMMAND test_access)
 add_executable(test_randomized_spawn tests/test_randomized_spawn.cpp)
 target_link_libraries(test_randomized_spawn PRIVATE epix_core)
 add_test(NAME test_randomized_spawn COMMAND test_randomized_spawn)
+
+add_executable(test_query_state tests/test_query_state.cpp)
+target_link_libraries(test_query_state PRIVATE epix_core)
+add_test(NAME test_query_state COMMAND test_query_state)
+
+add_executable(test_query_iter tests/test_query_iter.cpp)
+target_link_libraries(test_query_iter PRIVATE epix_core)
+add_test(NAME test_query_iter COMMAND test_query_iter)
