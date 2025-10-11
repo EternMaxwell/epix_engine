@@ -142,9 +142,8 @@ int main() {
                      e.generation, e.index, r.location().archetype_id.get(), r.location().archetype_idx.get(),
                      r.location().table_id.get(), r.location().table_idx.get());
         std::println(std::cout, "\tT1: {}, T2: \'{}\', T3: {}, S1: \'{}\', S2: {}",
-                     a ? std::to_string(a->get().v) : "-", b ? b->get().s : "-",
-                     c ? std::to_string(c->get().d) : "-", s1 ? s1->get().x : "-",
-                     s2 ? std::to_string(s2->get().n) : "-");
+                     a ? std::to_string(a->get().v) : "-", b ? b->get().s : "-", c ? std::to_string(c->get().d) : "-",
+                     s1 ? s1->get().x : "-", s2 ? std::to_string(s2->get().n) : "-");
     }
 
     // basic consistency checks: all entity refs that claim to contain component should be able to retrieve it via
@@ -156,23 +155,23 @@ int main() {
         if (!world.entities_mut().contains(e)) continue;
         auto ref = world.get_ref(e).value();
         if (ref.contains<T1>()) {
-            auto mut = ref.get_mut<T1>();
+            auto mut = ref.get_ref<T1>();
             assert(mut.has_value());
         }
         if (ref.contains<T2>()) {
-            auto mut = ref.get_mut<T2>();
+            auto mut = ref.get_ref<T2>();
             assert(mut.has_value());
         }
         if (ref.contains<T3>()) {
-            auto mut = ref.get_mut<T3>();
+            auto mut = ref.get_ref<T3>();
             assert(mut.has_value());
         }
         if (ref.contains<S1>()) {
-            auto mut = ref.get_mut<S1>();
+            auto mut = ref.get_ref<S1>();
             assert(mut.has_value());
         }
         if (ref.contains<S2>()) {
-            auto mut = ref.get_mut<S2>();
+            auto mut = ref.get_ref<S2>();
             assert(mut.has_value());
         }
     }

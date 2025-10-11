@@ -12,7 +12,7 @@ using namespace epix::core::archetype;
 int main() {
     auto registry = std::make_shared<type_system::TypeRegistry>();
 
-    Components comps;
+    Components comps(registry);
     // register two simple component types via ComponentInfo
     TypeId tid_int = registry->type_id<int>();
     TypeId tid_str = registry->type_id<std::string>();
