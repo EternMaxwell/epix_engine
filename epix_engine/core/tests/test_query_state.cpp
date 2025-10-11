@@ -1,12 +1,7 @@
 #include <cassert>
 #include <iostream>
 
-#include "epix/core/component.hpp"
-#include "epix/core/entities.hpp"
-#include "epix/core/query/fetch.hpp"
-#include "epix/core/query/filter.hpp"
 #include "epix/core/query/state.hpp"
-#include "epix/core/storage.hpp"
 #include "epix/core/world_cell.hpp"
 
 using namespace epix::core;

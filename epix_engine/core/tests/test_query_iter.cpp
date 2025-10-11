@@ -4,12 +4,10 @@
 
 #include "epix/core/bundle.hpp"
 #include "epix/core/bundleimpl.hpp"
-#include "epix/core/component.hpp"
 #include "epix/core/entities.hpp"
 #include "epix/core/query/fetch.hpp"
 #include "epix/core/query/iter.hpp"
 #include "epix/core/query/state.hpp"
-#include "epix/core/storage.hpp"
 #include "epix/core/world_cell.hpp"
 
 using namespace epix::core;

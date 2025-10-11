@@ -9,7 +9,6 @@
 #include <unordered_map>
 
 #include "dense.hpp"
-#include "fwd.hpp"
 #include "sparse_set.hpp"
 
 namespace epix::core::storage {

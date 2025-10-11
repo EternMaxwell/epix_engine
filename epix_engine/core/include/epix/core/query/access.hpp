@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <ranges>
 
-#include "../component.hpp"
 #include "../storage/bitvector.hpp"
 #include "../type_system/type_registry.hpp"
 
