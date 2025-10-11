@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <ranges>
 
 #include "../component.hpp"
 #include "../storage/bitvector.hpp"
@@ -224,6 +225,10 @@ struct FilteredAccess {
 
     const Access& access() const { return _access; }
     Access& access_mut() { return _access; }
+    const storage::bit_vector& required() const { return _required; }
+    storage::bit_vector& required_mut() { return _required; }
+    auto filters() const { return std::views::all(_filters); }
+    auto filters_mut() { return std::views::all(_filters); }
 
     void add_required(TypeId type_id) { _required.set(type_id.get()); }
     void add_with(TypeId type_id) {
