@@ -25,15 +25,18 @@ struct T3 {
     T3(double dd = 0) : d(dd) {}
 };
 struct S1 {
-    static constexpr StorageType storage_type() { return StorageType::SparseSet; }
     std::string x;
     S1(std::string_view sv = "") : x(sv) {}
 };
 struct S2 {
-    static constexpr StorageType storage_type() { return StorageType::SparseSet; }
     int n;
     S2(int v = 0) : n(v) {}
 };
+
+template <>
+struct epix::core::sparse_component<S1> : std::true_type {};
+template <>
+struct epix::core::sparse_component<S2> : std::true_type {};
 
 // small test World wrapper so we can create EntityRef / EntityRefMut
 namespace epix::core {
