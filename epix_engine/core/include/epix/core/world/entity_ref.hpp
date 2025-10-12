@@ -1,5 +1,7 @@
 #pragma once
 
+#include <optional>
+
 #include "../archetype.hpp"
 #include "../bundle.hpp"
 #include "../bundleimpl.hpp"
@@ -184,12 +186,77 @@ struct EntityRefMut : public EntityRef {
     }
     template <typename... Ts>
     void remove() {
+        BundleId id = world_->bundles_mut().register_info<RemoveBundle<Ts...>>(
+            world_->type_registry(), world_->components_mut(), world_->storage_mut());
+        remove_bundle(id);
+    }
+    void remove_bundle(BundleId bundle_id) {
         assert_not_despawned();
-        auto remover =
-            BundleRemover::create<RemoveBundle<Ts...>>(*world_, location_.archetype_id, world_->change_tick());
-        location_ = remover.remove(entity_, location_);
-        // world_->flush();
-        // update_location();
+        auto remover = BundleRemover::create_with_id(*world_, location_.archetype_id, bundle_id, world_->change_tick());
+        location_    = remover.remove(entity_, location_);
+        world_->flush();
+        update_location();
+    }
+    bool remove_by_id(TypeId type_id) {
+        if (!archetype().contains(type_id)) return false;
+        auto bundle_id =
+            world_->bundles_mut().init_component_info(world_->storage_mut(), world_->components(), type_id);
+        remove_bundle(bundle_id);
+        return true;
+    }
+    void remove_by_ids(bundle::type_id_view auto&& type_ids) {
+        try {
+            auto bundle_id =
+                world_->bundles_mut().init_dynamic_info(world_->storage_mut(), world_->components(), type_ids);
+            remove_bundle(bundle_id);
+        } catch (const std::bad_optional_access&) {
+            return;  // some component not found, do nothing
+        }
+    }
+
+    void despawn() {
+        assert_not_despawned();
+        auto& entities = world_->entities_mut();
+        // auto loc       = entities.get(entity_).value();
+        // assert(loc == location_ && "Entity location changed unexpectedly");
+        auto& archetype = world_->archetypes_mut().get_mut(location_.archetype_id).value().get();
+        auto& table     = world_->storage_mut().tables.get_mut(archetype.table_id()).value().get();
+
+        // trigger on_remove for all components
+        world_->trigger_on_remove(archetype, entity_, archetype.components());
+        // trigger on_despawn for all components
+        world_->trigger_on_despawn(archetype, entity_, archetype.components());
+
+        location_ = world_->entities().get(entity_).value();  // in case it may be changed by on_remove
+        world_->entities_mut().free(entity_);
+
+        world_->flush_entities();  // flush is needed before calling free if new entities reserved.
+
+        auto result = archetype.swap_remove(location_.archetype_idx);
+        if (result.swapped_entity) {
+            // swapped entity should update its location
+            auto swapped_entity            = result.swapped_entity.value();
+            auto swapped_location          = entities.get(swapped_entity).value();
+            swapped_location.archetype_idx = location_.archetype_idx;
+            entities.set(swapped_entity.index, swapped_location);
+        }
+        auto table_result = table.swap_remove(result.table_row);
+        if (table_result) {
+            // swapped entity should update its location
+            auto swapped_entity        = table_result.value();
+            auto swapped_location      = entities.get(swapped_entity).value();
+            swapped_location.table_idx = result.table_row;
+            entities.set(swapped_entity.index, swapped_location);
+            auto& swapped_archetype = world_->archetypes_mut().get_mut(swapped_location.archetype_id).value().get();
+            swapped_archetype.set_entity_table_row(swapped_location.archetype_idx, swapped_location.table_idx);
+        }
+        for (auto&& type_id : archetype.sparse_components()) {
+            world_->storage_mut().sparse_sets.get_mut(type_id).and_then([&](storage::ComponentSparseSet& cs) {
+                cs.remove(entity_);
+                return std::optional<bool>(true);
+            });
+        }
+        world_->flush();
     }
 };
 }  // namespace epix::core
@@ -206,9 +273,11 @@ template <typename T>
 EntityRefMut World::spawn(T&& bundle)
     requires(bundle::is_bundle<std::remove_cvref_t<T>>)
 {
+    flush();  // needed for Entities::alloc.
     auto e       = _entities.alloc();
     auto spawner = BundleSpawner::create<std::remove_cvref_t<T>>(*this, change_tick());
     spawner.spawn_non_exist(e, std::forward<T>(bundle));
+    flush();  // flush to ensure no delayed operations.
     return EntityRefMut(e, this);
 }
 
