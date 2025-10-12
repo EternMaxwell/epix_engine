@@ -2,30 +2,16 @@
 
 #include <algorithm>
 
+#include "../world.hpp"
 #include "access.hpp"
 #include "epix/core/tick.hpp"
-#include "fetch.hpp"
+#include "fwd.hpp"
 
 namespace epix::core::query {
-template <typename WQ>
-struct QueryFilter;
-
 template <typename T>
 struct query_type<QueryFilter<T>> {
     using type = T;
 };
-
-template <typename T>
-concept valid_query_filter =
-    valid_world_query<WorldQuery<typename query_type<T>::type>> &&
-    requires(WorldQuery<typename query_type<T>::type>::Fetch& fetch, Entity entity, TableRow row) {
-        { T::archetypal } -> std::convertible_to<bool>;
-        { T::filter_fetch(fetch, entity, row) } -> std::same_as<bool>;
-    };
-
-template <typename... Fs>
-    requires((valid_query_filter<QueryFilter<Fs>> && ...))
-struct Filter;
 
 template <typename... Fs>
     requires((valid_query_filter<QueryFilter<Fs>> && ...))

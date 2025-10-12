@@ -8,6 +8,7 @@
 #include "component.hpp"
 #include "entities.hpp"
 #include "fwd.hpp"
+#include "query/fwd.hpp"
 #include "storage.hpp"
 #include "type_system/type_registry.hpp"
 
@@ -101,9 +102,11 @@ struct World {
     }
 
     template <typename D>
-    auto query();
+    query::QueryState<D, query::Filter<>> query()
+        requires(query::valid_query_data<query::QueryData<D>>);
     template <typename D, typename F>
-    auto query_filtered();
+    query::QueryState<D, F> query_filtered()
+        requires(query::valid_query_data<query::QueryData<D>> && query::valid_query_filter<query::QueryFilter<F>>);
 
     EntityRef entity(Entity entity);
     EntityRefMut entity_mut(Entity entity);

@@ -30,11 +30,11 @@ int main() {
     // Create QueryState for Ref<P>
     using QD = Item<Entity, Opt<Ref<std::string>>>;
     using QF = Filter<With<P>, Without<int>>;
-    auto qs  = QueryState<QD, QF>::create(wc);
+    auto qs  = wc.query_filtered<QD, QF>();
     std::println(std::cout, "P type_id: {}", wc.type_registry().type_id<P>().get());
 
     // Iterate using QueryIter
-    auto iter = QueryIter<QD, QF>::create_begin(&wc, &qs, wc.last_change_tick(), wc.change_tick());
+    auto iter = qs.create_iter(wc, wc.last_change_tick(), wc.change_tick());
 
     size_t count = 0;
     for (auto&& [entity, item] : iter) {

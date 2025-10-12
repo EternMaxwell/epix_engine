@@ -11,7 +11,7 @@
 #include "filter.hpp"
 
 namespace epix::core::query {
-template <typename D, typename F = Filter<>>
+template <typename D, typename F>
     requires valid_query_data<QueryData<D>> && valid_query_filter<QueryFilter<F>>
 struct QueryState {
    public:
@@ -37,6 +37,19 @@ struct QueryState {
             state.update_archetypes(world);
             return std::move(state);
         });
+    }
+
+    QueryIter<D, F> create_iter(World& world, Tick last_run, Tick this_run) {
+        validate_world(world);
+        return QueryIter<D, F>(&world, this, last_run, this_run);
+    }
+
+    bool contains_archetype(ArchetypeId id) const { return _matched_archetypes.contains(id); }
+    bool contains(const World& world, Entity entity) const {
+        return world.entities()
+            .get(entity)
+            .transform([&](const EntityLocation& info) { return contains_archetype(info.archetype_id); })
+            .value_or(false);
     }
 
     void update_archetypes(const World& world) {
@@ -145,3 +158,19 @@ struct QueryState {
     friend struct QueryIter;
 };
 }  // namespace epix::core::query
+
+// implements for World::query and World::query_filtered
+namespace epix::core {
+template <typename D, typename F>
+query::QueryState<D, F> World::query_filtered()
+    requires(query::valid_query_data<query::QueryData<D>> && query::valid_query_filter<query::QueryFilter<F>>)
+{
+    return query::QueryState<D, F>::create(*this);
+}
+template <typename D>
+query::QueryState<D, query::Filter<>> World::query()
+    requires(query::valid_query_data<query::QueryData<D>>)
+{
+    return query::QueryState<D, query::Filter<>>::create(*this);
+}
+}  // namespace epix::core

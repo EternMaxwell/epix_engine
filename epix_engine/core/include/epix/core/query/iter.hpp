@@ -6,12 +6,10 @@
 
 #include "../archetype.hpp"
 #include "../storage/table.hpp"
+#include "fwd.hpp"
 #include "state.hpp"
 
 namespace epix::core::query {
-template <typename D, typename F>
-    requires valid_query_data<QueryData<D>> && valid_query_filter<QueryFilter<F>>
-struct QueryIter;
 template <typename D, typename F>
     requires valid_query_data<QueryData<D>> && valid_query_filter<QueryFilter<F>>
 struct QueryIterCursor {
