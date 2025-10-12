@@ -121,9 +121,9 @@ struct ComponentSparseSet {
 template <typename I, typename V>
 struct SparseSet {
    private:
-    std::vector<V> _dense;      // actual data
-    std::vector<I> _indices;    // from dense index to index
-    SparseArray<I, I> _sparse;  // from index to dense index
+    std::vector<V> _dense;           // actual data
+    std::vector<I> _indices;         // from dense index to index
+    SparseArray<I, size_t> _sparse;  // from index to dense index
 
    public:
     SparseSet(size_t reserve_cnt = 0) {
@@ -150,8 +150,8 @@ struct SparseSet {
         requires std::constructible_from<V, Args...>
     {
         self._sparse.get(index)
-            .and_then([&](std::reference_wrapper<const I> dense_index) -> std::optional<bool> {
-                self._dense[dense_index.get()] = V(std::forward<Args>(args)...);
+            .and_then([&](size_t dense_index) -> std::optional<bool> {
+                self._dense[dense_index] = V(std::forward<Args>(args)...);
                 return true;
             })
             .or_else([&]() -> std::optional<bool> {
@@ -165,19 +165,20 @@ struct SparseSet {
     }
     bool contains(this const SparseSet& self, I index) { return self._sparse.contains(index); }
     std::optional<std::reference_wrapper<const V>> get(this const SparseSet& self, I index) {
-        return self._sparse.get(index).and_then([&](I dense_index) -> std::optional<std::reference_wrapper<const V>> {
-            return std::cref(self._dense[dense_index]);
-        });
+        return self._sparse.get(index).and_then(
+            [&](size_t dense_index) -> std::optional<std::reference_wrapper<const V>> {
+                return std::cref(self._dense[dense_index]);
+            });
     }
     std::optional<std::reference_wrapper<V>> get_mut(this SparseSet& self, I index) {
-        return self._sparse.get(index).and_then([&](I dense_index) -> std::optional<std::reference_wrapper<V>> {
+        return self._sparse.get(index).and_then([&](size_t dense_index) -> std::optional<std::reference_wrapper<V>> {
             return std::ref(self._dense[dense_index]);
         });
     }
 
     bool remove(this SparseSet& self, I index) {
         return self._sparse.remove(index)
-            .and_then([&](I dense_index) -> std::optional<bool> {
+            .and_then([&](size_t dense_index) -> std::optional<bool> {
                 // Swap remove from dense array and indices array
                 std::swap(self._dense[dense_index], self._dense.back());
                 std::swap(self._indices[dense_index], self._indices.back());
