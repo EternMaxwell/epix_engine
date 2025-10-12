@@ -412,6 +412,8 @@ struct Bundles {
                                                     return components.get(type_id).value().get().storage_type();
                                                 }) |
                                                 std::ranges::to<std::vector<StorageType>>();
+            BundleInfo info = BundleInfo::create("dynamic bundle", storage, components, component_ids, new_id);
+            _bundle_infos.emplace_back(std::move(info));
             _dynamic_bundle_storages.emplace(new_id, std::move(storages));
             _dynamic_bundle_ids.emplace(std::move(ids), new_id);
             return new_id;
@@ -422,7 +424,10 @@ struct Bundles {
         if (auto it = _dynamic_component_ids.find(type_id); it != _dynamic_component_ids.end()) {
             return it->second;
         } else {
-            BundleId new_id          = static_cast<BundleId>(_bundle_infos.size());
+            BundleId new_id = static_cast<BundleId>(_bundle_infos.size());
+            BundleInfo info =
+                BundleInfo::create("component bundle", storage, components, std::views::single(type_id), new_id);
+            _bundle_infos.emplace_back(std::move(info));
             StorageType storage_type = components.get(type_id).value().get().storage_type();
             _dynamic_component_storages.emplace(new_id, storage_type);
             _dynamic_component_ids.emplace(type_id, new_id);
