@@ -119,60 +119,78 @@ struct BundleInserter {
         auto& dest_archetype = world_->archetypes_mut().get_mut(archetype_after_insert_->archetype_id).value().get();
         const bool same_archetype = (archetype_->id() == dest_archetype.id());
         const bool same_table     = (archetype_->table_id() == dest_archetype.table_id());
-        if (same_archetype) {
-            // same archetype, just write components in place
-            bundle_info.write_components(*table_, world_->storage_mut().sparse_sets, world_->type_registry(),
-                                         world_->components(), archetype_after_insert_->iter_status(),
-                                         archetype_after_insert_->required_components | std::views::all, entity,
-                                         location.table_idx, change_tick_, bundle, replace_existing);
-            // location not changed
-            return location;
-        } else if (same_table) {
-            // table not changed, but archetype changed due to sparse components
-            auto result = archetype_->swap_remove(location.archetype_idx);
-            if (result.swapped_entity) {
-                // swapped entity should update its location
-                auto swapped_entity            = result.swapped_entity.value();
-                auto swapped_location          = world_->entities().get(swapped_entity).value();
-                swapped_location.archetype_idx = location.archetype_idx;
-                world_->entities_mut().set(swapped_entity.index, swapped_location);
-            }
-            auto new_location = dest_archetype.allocate(entity, result.table_row);
-            world_->entities_mut().set(entity.index, new_location);
-            bundle_info.write_components(*table_, world_->storage_mut().sparse_sets, world_->type_registry(),
-                                         world_->components(), archetype_after_insert_->iter_status(),
-                                         archetype_after_insert_->required_components | std::views::all, entity,
-                                         result.table_row, change_tick_, bundle, replace_existing);
-            return new_location;
-        } else {
-            auto& new_table = world_->storage_mut().tables.get_mut(dest_archetype.table_id()).value().get();
-            auto& table     = *table_;
-            auto result     = archetype_->swap_remove(location.archetype_idx);
-            if (result.swapped_entity) {
-                // swapped entity should update its location
-                auto swapped_entity            = result.swapped_entity.value();
-                auto swapped_location          = world_->entities().get(swapped_entity).value();
-                swapped_location.archetype_idx = location.archetype_idx;
-                world_->entities_mut().set(swapped_entity.index, swapped_location);
-            }
-            auto move_result  = table.move_to(result.table_row, new_table);
-            auto new_location = dest_archetype.allocate(entity, move_result.new_index);
-            world_->entities_mut().set(entity.index, new_location);
-            if (move_result.swapped_entity) {
-                // swapped entity should update its location
-                auto swapped_entity        = move_result.swapped_entity.value();
-                auto swapped_location      = world_->entities().get(swapped_entity).value();
-                swapped_location.table_idx = result.table_row;
-                world_->entities_mut().set(swapped_entity.index, swapped_location);
-                auto& swapped_archetype = world_->archetypes_mut().get_mut(swapped_location.archetype_id).value().get();
-                swapped_archetype.set_entity_table_row(swapped_location.archetype_idx, swapped_location.table_idx);
-            }
-            bundle_info.write_components(new_table, world_->storage_mut().sparse_sets, world_->type_registry(),
-                                         world_->components(), archetype_after_insert_->iter_status(),
-                                         archetype_after_insert_->required_components | std::views::all, entity,
-                                         move_result.new_index, change_tick_, bundle, replace_existing);
-            return new_location;
+
+        // trigger on_replace if replacing existing components in the bundle
+        if (replace_existing) {
+            world_->trigger_on_replace(*archetype_, entity, archetype_after_insert_->existing());
         }
+
+        auto new_location = [&] {
+            if (same_archetype) {
+                // same archetype, just write components in place
+                bundle_info.write_components(*table_, world_->storage_mut().sparse_sets, world_->type_registry(),
+                                             world_->components(), archetype_after_insert_->iter_status(),
+                                             archetype_after_insert_->required_components | std::views::all, entity,
+                                             location.table_idx, change_tick_, bundle, replace_existing);
+                // location not changed
+                return location;
+            } else if (same_table) {
+                // table not changed, but archetype changed due to sparse components
+                auto result = archetype_->swap_remove(location.archetype_idx);
+                if (result.swapped_entity) {
+                    // swapped entity should update its location
+                    auto swapped_entity            = result.swapped_entity.value();
+                    auto swapped_location          = world_->entities().get(swapped_entity).value();
+                    swapped_location.archetype_idx = location.archetype_idx;
+                    world_->entities_mut().set(swapped_entity.index, swapped_location);
+                }
+                auto new_location = dest_archetype.allocate(entity, result.table_row);
+                world_->entities_mut().set(entity.index, new_location);
+                bundle_info.write_components(*table_, world_->storage_mut().sparse_sets, world_->type_registry(),
+                                             world_->components(), archetype_after_insert_->iter_status(),
+                                             archetype_after_insert_->required_components | std::views::all, entity,
+                                             result.table_row, change_tick_, bundle, replace_existing);
+                return new_location;
+            } else {
+                auto& new_table = world_->storage_mut().tables.get_mut(dest_archetype.table_id()).value().get();
+                auto& table     = *table_;
+                auto result     = archetype_->swap_remove(location.archetype_idx);
+                if (result.swapped_entity) {
+                    // swapped entity should update its location
+                    auto swapped_entity            = result.swapped_entity.value();
+                    auto swapped_location          = world_->entities().get(swapped_entity).value();
+                    swapped_location.archetype_idx = location.archetype_idx;
+                    world_->entities_mut().set(swapped_entity.index, swapped_location);
+                }
+                auto move_result  = table.move_to(result.table_row, new_table);
+                auto new_location = dest_archetype.allocate(entity, move_result.new_index);
+                world_->entities_mut().set(entity.index, new_location);
+                if (move_result.swapped_entity) {
+                    // swapped entity should update its location
+                    auto swapped_entity        = move_result.swapped_entity.value();
+                    auto swapped_location      = world_->entities().get(swapped_entity).value();
+                    swapped_location.table_idx = result.table_row;
+                    world_->entities_mut().set(swapped_entity.index, swapped_location);
+                    auto& swapped_archetype =
+                        world_->archetypes_mut().get_mut(swapped_location.archetype_id).value().get();
+                    swapped_archetype.set_entity_table_row(swapped_location.archetype_idx, swapped_location.table_idx);
+                }
+                bundle_info.write_components(new_table, world_->storage_mut().sparse_sets, world_->type_registry(),
+                                             world_->components(), archetype_after_insert_->iter_status(),
+                                             archetype_after_insert_->required_components | std::views::all, entity,
+                                             move_result.new_index, change_tick_, bundle, replace_existing);
+                return new_location;
+            }
+        }();
+        // trigger on_add for newly added components in the bundle
+        world_->trigger_on_add(dest_archetype, entity, archetype_after_insert_->added());
+        // trigger on_insert for newly added components in the bundle and existing components if replaced
+        if (replace_existing) {
+            world_->trigger_on_insert(dest_archetype, entity, archetype_after_insert_->inserted());
+        } else {
+            world_->trigger_on_insert(dest_archetype, entity, archetype_after_insert_->added());
+        }
+        return new_location;
     }
 
    private:
@@ -236,6 +254,10 @@ struct BundleSpawner {
                                      world_->components(), spawn_bundle_status,
                                      bundle_info.required_component_constructors(), entity, row, change_tick_, bundle,
                                      true);
+        // trigger on_add for newly added components in the bundle
+        world_->trigger_on_add(archetype, entity, archetype.components());
+        // trigger on_insert for newly added components in the bundle
+        world_->trigger_on_insert(archetype, entity, archetype.components());
         return location;
     }
 
@@ -284,7 +306,11 @@ struct BundleRemover {
         auto& bundle_info    = *bundle_info_;
         auto& dest_archetype = *new_archetype_;
         auto& src_archetype  = *archetype_;
-        auto result          = src_archetype.swap_remove(location.archetype_idx);
+
+        // trigger on_remove for components in the bundle
+        world_->trigger_on_remove(src_archetype, entity, bundle_info.explicit_components());
+
+        auto result = src_archetype.swap_remove(location.archetype_idx);
         if (result.swapped_entity) {
             // swapped entity should update its location
             auto swapped_entity            = result.swapped_entity.value();

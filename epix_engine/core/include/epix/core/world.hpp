@@ -49,6 +49,57 @@ struct World {
     EntityRefMut spawn(T&& bundle)
         requires(bundle::is_bundle<std::remove_cvref_t<T>>);
 
+    void trigger_on_add(const Archetype& archetype, Entity entity, bundle::type_id_view auto&& targets) {
+        for (auto&& target : targets) {
+            _components.get(target).and_then([&](const ComponentInfo& info) -> std::optional<bool> {
+                if (info.hooks().on_add) {
+                    info.hooks().on_add(*this, HookContext{.entity = entity, .component_id = target});
+                }
+                return true;
+            });
+        }
+    }
+    void trigger_on_insert(const Archetype& archetype, Entity entity, bundle::type_id_view auto&& targets) {
+        for (auto&& target : targets) {
+            _components.get(target).and_then([&](const ComponentInfo& info) -> std::optional<bool> {
+                if (info.hooks().on_insert) {
+                    info.hooks().on_insert(*this, HookContext{.entity = entity, .component_id = target});
+                }
+                return true;
+            });
+        }
+    }
+    void trigger_on_replace(const Archetype& archetype, Entity entity, bundle::type_id_view auto&& targets) {
+        for (auto&& target : targets) {
+            _components.get(target).and_then([&](const ComponentInfo& info) -> std::optional<bool> {
+                if (info.hooks().on_replace) {
+                    info.hooks().on_replace(*this, HookContext{.entity = entity, .component_id = target});
+                }
+                return true;
+            });
+        }
+    }
+    void trigger_on_remove(const Archetype& archetype, Entity entity, bundle::type_id_view auto&& targets) {
+        for (auto&& target : targets) {
+            _components.get(target).and_then([&](const ComponentInfo& info) -> std::optional<bool> {
+                if (info.hooks().on_remove) {
+                    info.hooks().on_remove(*this, HookContext{.entity = entity, .component_id = target});
+                }
+                return true;
+            });
+        }
+    }
+    void trigger_on_despawn(const Archetype& archetype, Entity entity, bundle::type_id_view auto&& targets) {
+        for (auto&& target : targets) {
+            _components.get(target).and_then([&](const ComponentInfo& info) -> std::optional<bool> {
+                if (info.hooks().on_despawn) {
+                    info.hooks().on_despawn(*this, HookContext{.entity = entity, .component_id = target});
+                }
+                return true;
+            });
+        }
+    }
+
     template <typename D>
     auto query();
     template <typename D, typename F>
