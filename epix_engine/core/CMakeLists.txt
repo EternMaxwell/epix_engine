@@ -80,3 +80,7 @@ add_test(NAME test_query_state COMMAND test_query_state)
 add_executable(test_query_iter tests/test_query_iter.cpp)
 target_link_libraries(test_query_iter PRIVATE epix_core)
 add_test(NAME test_query_iter COMMAND test_query_iter)
+
+add_executable(test_component_hooks tests/test_component_hooks.cpp)
+target_link_libraries(test_component_hooks PRIVATE epix_core)
+add_test(NAME test_component_hooks COMMAND test_component_hooks)
