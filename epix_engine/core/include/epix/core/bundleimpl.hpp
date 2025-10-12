@@ -124,8 +124,9 @@ struct BundleInserter {
         if (replace_existing) {
             world_->trigger_on_replace(*archetype_, entity, archetype_after_insert_->existing());
         }
+        location = world_->entities().get(entity).value();  // in case it may be changed by on_replace
 
-        auto new_location = [&] {
+        location = [&] {
             if (same_archetype) {
                 // same archetype, just write components in place
                 bundle_info.write_components(*table_, world_->storage_mut().sparse_sets, world_->type_registry(),
@@ -190,7 +191,9 @@ struct BundleInserter {
         } else {
             world_->trigger_on_insert(dest_archetype, entity, archetype_after_insert_->added());
         }
-        return new_location;
+        location = world_->entities().get(entity).value();  // in case it may be changed by on_add or on_insert
+
+        return location;
     }
 
    private:
@@ -258,6 +261,8 @@ struct BundleSpawner {
         world_->trigger_on_add(archetype, entity, archetype.components());
         // trigger on_insert for newly added components in the bundle
         world_->trigger_on_insert(archetype, entity, archetype.components());
+
+        location = world_->entities().get(entity).value();  // in case it may be changed by on_add or on_insert
         return location;
     }
 
@@ -299,6 +304,11 @@ struct BundleRemover {
             bundles.register_info<T>(world.type_registry(), world.components_mut(), world.storage_mut());
         return create_with_id(world, archetype_id, bundle_id, tick);
     }
+    static BundleRemover create_with_type_id(World& world, ArchetypeId archetype_id, TypeId type_id, Tick tick) {
+        auto& bundles      = world.bundles_mut();
+        BundleId bundle_id = bundles.init_component_info(world.storage_mut(), world.components(), type_id);
+        return create_with_id(world, archetype_id, bundle_id, tick);
+    }
 
     EntityLocation remove(Entity entity, EntityLocation location) {
         assert(location.archetype_id == archetype_->id());
@@ -309,6 +319,8 @@ struct BundleRemover {
 
         // trigger on_remove for components in the bundle
         world_->trigger_on_remove(src_archetype, entity, bundle_info.explicit_components());
+
+        location = world_->entities().get(entity).value();  // in case it may be changed by on_remove
 
         auto result = src_archetype.swap_remove(location.archetype_idx);
         if (result.swapped_entity) {
