@@ -45,12 +45,6 @@ struct QueryState {
     }
 
     bool contains_archetype(ArchetypeId id) const { return _matched_archetypes.contains(id); }
-    bool contains(const World& world, Entity entity) const {
-        return world.entities()
-            .get(entity)
-            .transform([&](const EntityLocation& info) { return contains_archetype(info.archetype_id); })
-            .value_or(false);
-    }
 
     void update_archetypes(const World& world) {
         validate_world(world);

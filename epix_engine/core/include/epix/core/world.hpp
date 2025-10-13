@@ -44,10 +44,10 @@ struct World {
     Tick last_change_tick() const { return _last_change_tick; }
 
     template <typename... Ts, typename... Args>
-    EntityRefMut spawn(Args&&... args)
+    EntityWorldMut spawn(Args&&... args)
         requires(sizeof...(Args) == sizeof...(Ts));
     template <typename T>
-    EntityRefMut spawn(T&& bundle)
+    EntityWorldMut spawn(T&& bundle)
         requires(bundle::is_bundle<std::remove_cvref_t<T>>);
 
     void trigger_on_add(const Archetype& archetype, Entity entity, bundle::type_id_view auto&& targets) {
@@ -109,9 +109,9 @@ struct World {
         requires(query::valid_query_data<query::QueryData<D>> && query::valid_query_filter<query::QueryFilter<F>>);
 
     EntityRef entity(Entity entity);
-    EntityRefMut entity_mut(Entity entity);
+    EntityWorldMut entity_mut(Entity entity);
     std::optional<EntityRef> get_entity(Entity entity);
-    std::optional<EntityRefMut> get_entity_mut(Entity entity);
+    std::optional<EntityWorldMut> get_entity_mut(Entity entity);
 
     void flush_entities() {
         auto& empty_archetype = _archetypes.get_empty_mut();
@@ -132,5 +132,28 @@ struct World {
     Bundles _bundles;
     std::unique_ptr<std::atomic<uint32_t>> _change_tick;
     Tick _last_change_tick;
+};
+
+// A world wrapper that disallows structural changes, but allows mutable access to components.
+struct DeferredWorld {
+   public:
+    DeferredWorld(World& world) : world_(&world) {}
+    WorldId id() const { return world_->id(); }
+    const type_system::TypeRegistry& type_registry() const { return world_->type_registry(); }
+    const Components& components() const { return world_->components(); }
+    const Entities& entities() const { return world_->entities(); }
+    const Storage& storage() const { return world_->storage(); }
+    const Archetypes& archetypes() const { return world_->archetypes(); }
+    const Bundles& bundles() const { return world_->bundles(); }
+    Tick change_tick() const { return world_->change_tick(); }
+    Tick last_change_tick() const { return world_->last_change_tick(); }
+
+    EntityRef entity(Entity entity);
+    EntityRefMut entity_mut(Entity entity);
+    std::optional<EntityRef> get_entity(Entity entity);
+    std::optional<EntityRefMut> get_entity_mut(Entity entity);
+
+   private:
+    World* world_;
 };
 }  // namespace epix::core

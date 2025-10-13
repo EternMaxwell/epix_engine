@@ -19,12 +19,12 @@ struct EntityRef {
    protected:
     Entity entity_;
     EntityLocation location_;
-    World* world_;
+    const World* world_;
 
     friend struct World;
 
    public:
-    EntityRef(Entity entity, World* world)
+    EntityRef(Entity entity, const World* world)
         : entity_(entity),
           world_(world),
           location_(world->entities().get(entity).value_or(EntityLocation::invalid())) {}
@@ -104,20 +104,10 @@ struct EntityRef {
 struct EntityRefMut : public EntityRef {
    protected:
     friend struct World;
-
-    template <typename T>
-    void insert_internal(T&& bundle, bool replace_existing)
-        requires(bundle::is_bundle<std::decay_t<T>>)
-    {
-        assert_not_despawned();
-        auto inserter = BundleInserter::create<std::decay_t<T>>(*world_, location_.archetype_id, world_->change_tick());
-        location_     = inserter.insert(entity_, location_, std::forward<T>(bundle), replace_existing);
-        world_->flush();
-        update_location();
-    }
+    World* world_;
 
    public:
-    using EntityRef::EntityRef;
+    EntityRefMut(Entity entity, World* world) : EntityRef(entity, world), world_(world) {}
     template <typename T>
     std::optional<Mut<T>> get_mut() {
         TypeId type_id = world_->type_registry().type_id<T>();
@@ -145,43 +135,53 @@ struct EntityRefMut : public EntityRef {
             }
         });
     }
+};
 
+struct EntityWorldMut : public EntityRefMut {
+   public:
+    using EntityRefMut::EntityRefMut;
+
+    // 结构性变更方法
+    template <typename T>
+    void insert_internal(T&& bundle, bool replace_existing)
+        requires(bundle::is_bundle<std::decay_t<T>>)
+    {
+        assert_not_despawned();
+        auto inserter = BundleInserter::create<std::decay_t<T>>(*world_, location_.archetype_id, world_->change_tick());
+        location_     = inserter.insert(entity_, location_, std::forward<T>(bundle), replace_existing);
+        world_->flush();
+        update_location();
+    }
     template <typename... Ts, typename... Args>
     void emplace(Args&&... args)
         requires(sizeof...(Args) == sizeof...(Ts))
     {
-        // replace existing components
         insert_internal(make_init_bundle<Ts...>(std::forward<Args>(args)...), true);
     }
     template <typename... Ts, typename... Args>
     void emplace_if_new(Args&&... args)
         requires(sizeof...(Args) == sizeof...(Ts))
     {
-        // do not replace existing components
         insert_internal(make_init_bundle<Ts...>(std::forward<Args>(args)...), false);
     }
     template <typename... Ts>
     void insert(Ts&&... components) {
-        // replace existing components
         insert_internal(make_init_bundle<std::decay_t<Ts>...>(std::forward<Ts>(components)...), true);
     }
     template <typename... Ts>
     void insert_if_new(Ts&&... components) {
-        // do not replace existing components
         insert_internal(make_init_bundle<std::decay_t<Ts>...>(std::forward<Ts>(components)...), false);
     }
     template <typename B>
     void insert_bundle(B&& bundle)
         requires(bundle::is_bundle<std::decay_t<B>>)
     {
-        // replace existing components
         insert_internal(std::forward<B>(bundle), true);
     }
     template <typename B>
     void insert_bundle_if_new(B&& bundle)
         requires(bundle::is_bundle<std::decay_t<B>>)
     {
-        // do not replace existing components
         insert_internal(std::forward<B>(bundle), false);
     }
     template <typename... Ts>
@@ -213,28 +213,18 @@ struct EntityRefMut : public EntityRef {
             return;  // some component not found, do nothing
         }
     }
-
     void despawn() {
         assert_not_despawned();
-        auto& entities = world_->entities_mut();
-        // auto loc       = entities.get(entity_).value();
-        // assert(loc == location_ && "Entity location changed unexpectedly");
+        auto& entities  = world_->entities_mut();
         auto& archetype = world_->archetypes_mut().get_mut(location_.archetype_id).value().get();
         auto& table     = world_->storage_mut().tables.get_mut(archetype.table_id()).value().get();
-
-        // trigger on_remove for all components
         world_->trigger_on_remove(archetype, entity_, archetype.components());
-        // trigger on_despawn for all components
         world_->trigger_on_despawn(archetype, entity_, archetype.components());
-
-        location_ = world_->entities().get(entity_).value();  // in case it may be changed by on_remove
+        location_ = world_->entities().get(entity_).value();
         world_->entities_mut().free(entity_);
-
-        world_->flush_entities();  // flush is needed before calling free if new entities reserved.
-
+        world_->flush_entities();
         auto result = archetype.swap_remove(location_.archetype_idx);
         if (result.swapped_entity) {
-            // swapped entity should update its location
             auto swapped_entity            = result.swapped_entity.value();
             auto swapped_location          = entities.get(swapped_entity).value();
             swapped_location.archetype_idx = location_.archetype_idx;
@@ -242,7 +232,6 @@ struct EntityRefMut : public EntityRef {
         }
         auto table_result = table.swap_remove(result.table_row);
         if (table_result) {
-            // swapped entity should update its location
             auto swapped_entity        = table_result.value();
             auto swapped_location      = entities.get(swapped_entity).value();
             swapped_location.table_idx = result.table_row;
@@ -264,13 +253,13 @@ struct EntityRefMut : public EntityRef {
 namespace epix::core {
 // impl for World::spawn
 template <typename... Ts, typename... Args>
-EntityRefMut World::spawn(Args&&... args)
+EntityWorldMut World::spawn(Args&&... args)
     requires(sizeof...(Args) == sizeof...(Ts))
 {
     return spawn(make_init_bundle<Ts...>(std::forward<Args>(args)...));
 }
 template <typename T>
-EntityRefMut World::spawn(T&& bundle)
+EntityWorldMut World::spawn(T&& bundle)
     requires(bundle::is_bundle<std::remove_cvref_t<T>>)
 {
     flush();  // needed for Entities::alloc.
@@ -278,7 +267,7 @@ EntityRefMut World::spawn(T&& bundle)
     auto spawner = BundleSpawner::create<std::remove_cvref_t<T>>(*this, change_tick());
     spawner.spawn_non_exist(e, std::forward<T>(bundle));
     flush();  // flush to ensure no delayed operations.
-    return EntityRefMut(e, this);
+    return EntityWorldMut(e, this);
 }
 
 // impl for World::entity and entity_mut, get_entity and get_entity_mut
@@ -288,12 +277,12 @@ inline std::optional<EntityRef> World::get_entity(Entity entity) {
     }
     return std::nullopt;
 }
-inline std::optional<EntityRefMut> World::get_entity_mut(Entity entity) {
+inline std::optional<EntityWorldMut> World::get_entity_mut(Entity entity) {
     if (auto loc = _entities.get(entity); loc.has_value() && loc.value() != EntityLocation::invalid()) {
-        return EntityRefMut(entity, this);
+        return EntityWorldMut(entity, this);
     }
     return std::nullopt;
 }
 inline EntityRef World::entity(Entity entity) { return get_entity(entity).value(); }
-inline EntityRefMut World::entity_mut(Entity entity) { return get_entity_mut(entity).value(); }
+inline EntityWorldMut World::entity_mut(Entity entity) { return get_entity_mut(entity).value(); }
 }  // namespace epix::core
