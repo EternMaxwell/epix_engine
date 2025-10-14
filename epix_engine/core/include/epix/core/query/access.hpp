@@ -1,12 +1,27 @@
 #pragma once
 
 #include <algorithm>
+#include <format>
 #include <ranges>
 
 #include "../storage/bitvector.hpp"
 #include "../type_system/type_registry.hpp"
 
 namespace epix::core::query {
+struct AccessConflicts {
+    bool all = false;
+    storage::bit_vector ids;
+
+    void add(const AccessConflicts& other) {
+        all = all || other.all;
+        if (!all) ids.union_with(other.ids);
+    }
+    bool empty() const { return !all && ids.is_clear(); }
+    std::string to_string() const {
+        if (all) return "[<all>]";
+        return std::format("{}", ids.iter_ones());
+    }
+};
 struct Access {
    public:
     Access() = default;
@@ -192,6 +207,67 @@ struct Access {
         return is_component_compatible(other) && is_resource_compatible(other);
     }
 
+    AccessConflicts get_component_conflicts(const Access& other) const {
+        AccessConflicts ac{.all = false, .ids = {}};
+        for (auto&& [lhs_writes, rhs_reads_writes, lhs_writes_inverted, rhs_reads_writes_inverted] :
+             {std::tie(component_writes, other.component_read_writes, component_writes_inverted,
+                       other.component_read_writes_inverted),
+              std::tie(other.component_writes, component_read_writes, other.component_writes_inverted,
+                       component_read_writes_inverted)}) {
+            if (lhs_writes_inverted && rhs_reads_writes_inverted) {
+                ac.all = true;
+                return ac;
+            } else if (lhs_writes_inverted && !rhs_reads_writes_inverted) {
+                auto temp = rhs_reads_writes;
+                temp.difference_with(lhs_writes);
+                ac.ids.union_with(temp);
+            } else if (!lhs_writes_inverted && rhs_reads_writes_inverted) {
+                auto temp = lhs_writes;
+                temp.difference_with(rhs_reads_writes);
+                ac.ids.union_with(temp);
+            } else {
+                auto temp = lhs_writes;
+                temp.intersect_with(rhs_reads_writes);
+                ac.ids.union_with(temp);
+            }
+        }
+        return ac;
+    }
+    AccessConflicts get_conflicts(const Access& other) const {
+        auto ac = get_component_conflicts(other);
+        if (writes_all_resources) {
+            if (other.reads_all_resources) {
+                ac.all = true;
+                return ac;
+            }
+            ac.ids.union_with(other.resource_read_writes);
+        }
+        if (reads_all_resources) {
+            if (other.writes_all_resources) {
+                ac.all = true;
+                return ac;
+            }
+            ac.ids.union_with(other.resource_writes);
+        }
+        if (other.writes_all_resources) {
+            if (reads_all_resources) {
+                ac.all = true;
+                return ac;
+            }
+            ac.ids.union_with(resource_read_writes);
+        }
+        if (other.reads_all_resources) {
+            if (writes_all_resources) {
+                ac.all = true;
+                return ac;
+            }
+            ac.ids.union_with(resource_writes);
+        }
+        ac.ids.set_range(resource_writes.intersection(other.resource_read_writes), true);
+        ac.ids.set_range(other.resource_writes.intersection(resource_read_writes), true);
+        return ac;
+    }
+
    private:
     storage::bit_vector component_read_writes;
     storage::bit_vector component_writes;
@@ -281,6 +357,13 @@ struct FilteredAccess {
                });
     }
 
+    AccessConflicts get_conflicts(const FilteredAccess& other) const {
+        if (!is_compatible(other)) {
+            return _access.get_conflicts(other._access);
+        }
+        return AccessConflicts{.all = false, .ids = {}};
+    }
+
    private:
     Access _access;
     storage::bit_vector _required;
@@ -296,6 +379,26 @@ struct FilteredAccessSet {
             if (!lhs.is_compatible(rhs)) return false;
         }
         return true;
+    }
+    AccessConflicts get_conflicts(const FilteredAccessSet& other) const {
+        AccessConflicts conflicts;
+        if (!_combined_access.is_compatible(other._combined_access)) {
+            for (auto&& filtered : _filtered_access) {
+                for (auto&& other_filtered : other._filtered_access) {
+                    conflicts.add(filtered.get_conflicts(other_filtered));
+                }
+            }
+        }
+        return conflicts;
+    }
+    AccessConflicts get_conflicts(const FilteredAccess& other) const {
+        AccessConflicts conflicts;
+        if (!_combined_access.is_compatible(other.access())) {
+            for (auto&& filtered : _filtered_access) {
+                conflicts.add(filtered.get_conflicts(other));
+            }
+        }
+        return conflicts;
     }
     void add(FilteredAccess fa) {
         _combined_access.merge(fa.access());
