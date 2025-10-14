@@ -54,6 +54,7 @@ struct TicksMut {
         : added(added), modified(modified), last_run(last_run), this_run(this_run) {}
 };
 template <typename T>
+    requires(!std::is_reference_v<T> && !std::is_const_v<T>)
 struct Ref {
    private:
     const T* value;
@@ -72,6 +73,7 @@ struct Ref {
     Tick added_tick() const { return ticks.added_tick(); }
 };
 template <typename T>
+    requires(!std::is_reference_v<T> && !std::is_const_v<T>)
 struct Mut {
    private:
     T* value;
@@ -104,5 +106,18 @@ struct Mut {
     bool is_modified() const { return ticks.is_modified(); }
     Tick last_modified() const { return ticks.last_modified(); }
     Tick added_tick() const { return ticks.added_tick(); }
+};
+
+template <typename T>
+    requires(!std::is_reference_v<T> && !std::is_const_v<T>)
+struct Res : public Ref<T> {
+   public:
+    using Ref<T>::Ref;
+};
+template <typename T>
+    requires(!std::is_reference_v<T> && !std::is_const_v<T>)
+struct ResMut : public Mut<T> {
+   public:
+    using Mut<T>::Mut;
 };
 }  // namespace epix::core
