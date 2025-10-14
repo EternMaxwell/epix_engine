@@ -11,6 +11,7 @@
 #include "query/fwd.hpp"
 #include "storage.hpp"
 #include "type_system/type_registry.hpp"
+#include "world/from_world.hpp"
 
 namespace epix::core {
 EPIX_MAKE_U64_WRAPPER(WorldId)
