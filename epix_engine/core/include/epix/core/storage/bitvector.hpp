@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <bit>
 #include <cassert>
+#include <concepts>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -117,6 +118,12 @@ class bit_vector {
             const size_type b          = (w == wi_end) ? (end - word_start) : word_bits;
             words_[w] |= make_mask(a, b);
         }
+    }
+    template <typename R>
+    void set_range(R&& range, bool value = true) noexcept
+        requires std::ranges::input_range<R> && std::convertible_to<std::ranges::range_value_t<R>, size_type>
+    {
+        for (auto i : range) set(i, value);
     }
 
     bool intersect(const bit_vector& o) const noexcept {
