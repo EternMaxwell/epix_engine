@@ -3,9 +3,7 @@
 
 #include "epix/core/bundleimpl.hpp"
 #include "epix/core/entities.hpp"
-#include "epix/core/query/fetch.hpp"
-#include "epix/core/query/iter.hpp"
-#include "epix/core/query/state.hpp"
+#include "epix/core/query/query.hpp"
 #include "epix/core/world.hpp"
 
 using namespace epix::core;
@@ -28,16 +26,16 @@ int main() {
     wc.flush();
 
     // Create QueryState for Ref<P>
-    using QD = Item<Entity, Opt<Ref<std::string>>>;
+    using QD = Item<Entity, Opt<Mut<std::string>>>;
     using QF = Filter<With<P>, Without<int>>;
     auto qs  = wc.query_filtered<QD, QF>();
     std::println(std::cout, "P type_id: {}", wc.type_registry().type_id<P>().get());
 
     // Iterate using QueryIter
-    auto iter = qs.create_iter(wc, wc.last_change_tick(), wc.change_tick());
+    auto iter = qs.as_readonly().query_with_ticks(wc, wc.last_change_tick(), wc.change_tick());
 
     size_t count = 0;
-    for (auto&& [entity, item] : iter) {
+    for (auto&& [entity, item] : iter.iter()) {
         if (item) {
             std::println(std::cout, "Entity {} has string '{}'", entity.index, item.value().get());
         } else {
