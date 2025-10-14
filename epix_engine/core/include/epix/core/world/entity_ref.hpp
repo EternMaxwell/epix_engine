@@ -256,6 +256,11 @@ template <typename... Ts, typename... Args>
 EntityWorldMut World::spawn(Args&&... args)
     requires(sizeof...(Args) == sizeof...(Ts))
 {
+    if constexpr (sizeof...(Ts) == 0) {
+        auto e = _entities.reserve_entity();  // reserving, no flush needed.
+        flush();
+        return EntityWorldMut(e, this);
+    }
     return spawn(make_init_bundle<Ts...>(std::forward<Args>(args)...));
 }
 template <typename T>
