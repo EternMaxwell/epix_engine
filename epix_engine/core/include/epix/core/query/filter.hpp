@@ -2,9 +2,9 @@
 
 #include <algorithm>
 
+#include "../tick.hpp"
 #include "../world.hpp"
 #include "access.hpp"
-#include "epix/core/tick.hpp"
 #include "fwd.hpp"
 
 namespace epix::core::query {
