@@ -33,6 +33,7 @@ consteval StorageType storage_for() {
 namespace epix::core::type_system {
 struct TypeInfo {
     std::string_view name;
+    std::string_view short_name;
     size_t size;
     size_t align;
 
@@ -91,6 +92,7 @@ template <typename T>
 const TypeInfo* TypeInfo::get_info() {
     static TypeInfo ti = TypeInfo{
         .name         = epix::core::meta::type_id<T>().name(),
+        .short_name   = epix::core::meta::type_id<T>().short_name(),
         .size         = sizeof(T),
         .align        = alignof(T),
         .storage_type = storage_for<T>(),
@@ -166,6 +168,10 @@ struct TypeRegistry {
         std::shared_lock<std::shared_mutex> lock(mutex_);
         const TypeInfo* info = typeInfos[type_id];
         return info;
+    }
+    size_t count() const {
+        std::shared_lock<std::shared_mutex> lock(mutex_);
+        return typeInfos.size();
     }
 };
 }  // namespace epix::core::type_system

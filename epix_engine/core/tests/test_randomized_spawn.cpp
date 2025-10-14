@@ -76,6 +76,13 @@ int main() {
         }
     }
 
+    // type id and type names
+    std::println(std::cout, "type ids: {}",
+                 std::views::iota(0u, registry->count()) | std::views::transform([&](uint32_t i) {
+                     auto info = registry->type_info(i);
+                     return std::format("({}, {})", i, info->short_name);
+                 }));
+
     // check archetype and table counts
     std::println(std::cout, "Total entities: {}", world.entities_mut().total_count());
     std::println(std::cout, "Total archetypes: {}", world.archetypes_mut().size());
