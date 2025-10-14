@@ -78,4 +78,8 @@ struct QueryState;
 template <typename D, typename F>
     requires valid_query_data<QueryData<D>> && valid_query_filter<QueryFilter<F>>
 struct QueryIter;
+
+template <typename D, typename F = Filter<>>
+    requires(valid_query_data<QueryData<D>> && valid_query_filter<QueryFilter<F>>)
+struct Query;
 }  // namespace epix::core::query

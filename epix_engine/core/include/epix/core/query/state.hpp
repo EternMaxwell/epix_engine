@@ -1,7 +1,6 @@
 #pragma once
 
 #include <algorithm>
-#include <concepts>
 #include <cstddef>
 
 #include "../storage/bitvector.hpp"
@@ -39,7 +38,7 @@ struct QueryState {
         });
     }
 
-    QueryIter<D, F> create_iter(World& world, Tick last_run, Tick this_run) {
+    QueryIter<D, F> create_iter(World& world, Tick last_run, Tick this_run) const {
         validate_world(world);
         return QueryIter<D, F>(&world, this, last_run, this_run);
     }
@@ -83,19 +82,26 @@ struct QueryState {
 
     template <typename NewD, typename NewF>
         requires valid_query_data<QueryData<NewD>> && valid_query_filter<QueryFilter<NewF>> &&
+                 QueryData<NewD>::readonly /* &&
                  std::constructible_from<typename QueryData<NewD>::State, const typename QueryData<D>::State&> &&
-                 std::constructible_from<typename QueryFilter<NewF>::State, const typename QueryFilter<F>::State&>
-    QueryState<NewD, NewF> as_transmuted_state() const {
-        return QueryState<NewD, NewF>(_world_id, typename WorldQuery<NewD>::State(_fetch_state),
-                                      typename WorldQuery<NewF>::State(_filter_state));
+                 std::constructible_from<typename QueryFilter<NewF>::State, const typename QueryFilter<F>::State&> */
+                 && (sizeof(typename WorldQuery<NewD>::State) == sizeof(typename WorldQuery<D>::State)) &&
+                 (sizeof(typename WorldQuery<NewF>::State) == sizeof(typename WorldQuery<F>::State))
+    QueryState<NewD, NewF>& as_transmuted_state() const {
+        // This is unsafe if the new query data or filter's state cannot be reinterpreted from the old one's state.
+        return *reinterpret_cast<QueryState<NewD, NewF>*>(const_cast<QueryState<D, F>*>(this));
     }
-    QueryState<typename QueryData<D>::ReadOnly, F> as_readonly() const {
+    QueryState<typename QueryData<D>::ReadOnly, F>& as_readonly() const {
         return as_transmuted_state<typename QueryData<D>::ReadOnly, F>();
     }
 
     std::span<const ArchetypeId> matched_archetype_ids() const { return _matched_archetype_ids; }
     const WorldQuery<D>::State& fetch_state() const { return _fetch_state; }
     const WorldQuery<F>::State& filter_state() const { return _filter_state; }
+    const FilteredAccess& component_access() const { return _component_access; }
+    Query<D, F> query_with_ticks(World& world, Tick last_run, Tick this_run) {
+        return Query<D, F>(world, *this, last_run, this_run);
+    }
 
    private:
     QueryState(WorldId world_id, WorldQuery<D>::State fetch_state, WorldQuery<F>::State filter_state)
@@ -111,7 +117,7 @@ struct QueryState {
         _component_access = std::move(access);
     }
 
-    void validate_world(const World& world) {
+    void validate_world(const World& world) const {
         if (world.id() != _world_id) {
             throw std::runtime_error("QueryState used with a different World than it was created for");
         }
