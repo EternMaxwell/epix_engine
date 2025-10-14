@@ -174,11 +174,9 @@ static_assert(valid_query_data<QueryData<EntityLocation>>);
 // implements for EntityRef
 template <>
 struct WorldQuery<EntityRef> {
-    struct Fetch {
-        World* world = nullptr;
-    };
+    using Fetch = World*;
     using State = std::tuple<>;
-    static Fetch init_fetch(World& world, const State&, Tick, Tick) { return Fetch{&world}; }
+    static Fetch init_fetch(World& world, const State&, Tick, Tick) { return &world; }
     static void set_archetype(Fetch&, const State&, const archetype::Archetype&, storage::Table&) {}
     // static void set_table(Fetch&, State&, const storage::Table&) {}
     static void set_access(State&, const FilteredAccess&) {}
@@ -200,20 +198,16 @@ struct QueryData<EntityRef> {
     using Item                            = EntityRef;
     using ReadOnly                        = EntityRef;
     static inline constexpr bool readonly = true;
-    static Item fetch(WorldQuery<EntityRef>::Fetch& fetch, Entity entity, TableRow) {
-        return EntityRef(entity, fetch.world);
-    }
+    static Item fetch(WorldQuery<EntityRef>::Fetch& fetch, Entity entity, TableRow) { return EntityRef(entity, fetch); }
 };
 static_assert(valid_query_data<QueryData<EntityRef>>);
 
 // implements for EntityRefMut
 template <>
 struct WorldQuery<EntityRefMut> {
-    struct Fetch {
-        World* world = nullptr;
-    };
+    using Fetch = World*;
     using State = std::tuple<>;
-    static Fetch init_fetch(World& world, const State&, Tick, Tick) { return Fetch{&world}; }
+    static Fetch init_fetch(World& world, const State&, Tick, Tick) { return &world; }
     static void set_archetype(Fetch&, const State&, const archetype::Archetype&, storage::Table&) {}
     // static void set_table(Fetch&, State&, const storage::Table&) {}
     static void set_access(State&, const FilteredAccess&) {}
@@ -236,7 +230,7 @@ struct QueryData<EntityRefMut> {
     using ReadOnly                        = EntityRef;
     static inline constexpr bool readonly = false;
     static Item fetch(WorldQuery<EntityRefMut>::Fetch& fetch, Entity entity, TableRow) {
-        return EntityRefMut(entity, fetch.world);
+        return EntityRefMut(entity, fetch);
     }
 };
 static_assert(valid_query_data<QueryData<EntityRefMut>>);
@@ -318,10 +312,7 @@ struct WorldQuery<Ref<T>> {
     static void set_access(State& state, const FilteredAccess& access) {}
     static void update_access(const State& state, FilteredAccess& access) { access.add_component_read(state); }
     static State init_state(World& world) { return world.type_registry().type_id<T>(); }
-    static std::optional<State> get_state(const Components& components) {
-        auto type_id = components.registry().type_id<T>();
-        return components.get(type_id).transform([type_id](const ComponentInfo& info) { return type_id; });
-    }
+    static std::optional<State> get_state(const Components& components) { return components.registry().type_id<T>(); }
     static bool matches_component_set(const State& state, const std::function<bool(TypeId)>& contains_component) {
         return contains_component(state);
     }
@@ -399,14 +390,8 @@ struct WorldQuery<Mut<T>> {
     // }
     static void set_access(State& state, const FilteredAccess& access) {}
     static void update_access(const State& state, FilteredAccess& access) { access.add_component_write(state); }
-    static State init_state(World& world) {
-        auto type_id = world.type_registry().type_id<T>();
-        return type_id;
-    }
-    static std::optional<State> get_state(const Components& components) {
-        auto type_id = components.registry().type_id<T>();
-        return components.get(type_id).transform([type_id](const ComponentInfo& info) { return type_id; });
-    }
+    static State init_state(World& world) { return world.type_registry().type_id<T>(); }
+    static std::optional<State> get_state(const Components& components) { return components.registry().type_id<T>(); }
     static bool matches_component_set(const State& state, const std::function<bool(TypeId)>& contains_component) {
         return contains_component(state);
     }
@@ -478,7 +463,7 @@ static_assert(valid_query_data<QueryData<int&>>);
  */
 template <typename T>
     requires valid_world_query<WorldQuery<T>>
-struct Opt;
+struct Opt {};  // empty definition needed for tuple.
 
 template <typename T>
     requires valid_world_query<WorldQuery<T>>
@@ -546,6 +531,7 @@ struct QueryData<Opt<T>> {
     }
 };
 static_assert(valid_query_data<QueryData<Opt<int&>>>);
+static_assert(valid_query_data<QueryData<Opt<Ref<float>>>>);
 static_assert(valid_query_data<QueryData<Opt<Mut<double>>>>);
 
 /**
