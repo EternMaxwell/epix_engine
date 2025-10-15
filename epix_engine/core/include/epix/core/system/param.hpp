@@ -3,13 +3,14 @@
 #include <cstdint>
 #include <functional>
 #include <optional>
+#include <type_traits>
 #include <utility>
 
 #include "../archetype.hpp"
+#include "../query/access.hpp"
 #include "../query/query.hpp"
+#include "../storage/resource.hpp"
 #include "../world.hpp"
-#include "epix/core/query/access.hpp"
-#include "epix/core/storage/resource.hpp"
 
 namespace epix::core::system {
 template <typename T>
@@ -335,4 +336,90 @@ static_assert(valid_system_param<SystemParam<std::tuple<const World&,
                                                         std::optional<ResMut<float>>,
                                                         query::Query<int&, query::With<float>>,
                                                         Local<float>>>>);
+
+template <typename... Ts>
+    requires(valid_system_param<SystemParam<Ts>> && ...)
+struct ParamSet {
+   public:
+    using State = typename ParamSet<std::tuple<Ts...>>::State;
+
+    template <std::size_t I>
+    typename SystemParam<std::tuple_element_t<I, std::tuple<Ts...>>>::Item get(World& world, Tick tick) {
+        return std::get<I>(states_).get_param(std::get<I>(states_), meta_, *world_, tick);
+    }
+
+   private:
+    State states_;
+    World* world_;
+    SystemMeta meta_;
+    Tick change_tick_;
+
+    ParamSet(const State& states, World* world, const SystemMeta& meta, Tick change_tick)
+        : states_(states), world_(world), meta_(meta), change_tick_(change_tick) {}
+
+    friend struct SystemParam<ParamSet<Ts...>>;
+};
+template <typename... Ts>
+    requires(valid_system_param<SystemParam<Ts>> && ...)
+struct SystemParam<ParamSet<Ts...>> {
+    using State = typename SystemParam<std::tuple<Ts...>>::State;
+    using Item  = ParamSet<Ts...>;
+    static State init_state(World& world) { return State(SystemParam<Ts>::init_state(world)...); }
+    static void init_access(const State& state,
+                            SystemMeta& meta,
+                            query::FilteredAccessSet& access,
+                            const World& world) {
+        []<std::size_t... I>(const State& state, SystemMeta& meta, query::FilteredAccessSet& access, const World& world,
+                             std::index_sequence<I...>) {
+            (
+                []<size_t J>(const State& state, SystemMeta& meta, query::FilteredAccessSet& access, const World& world,
+                             std::integral_constant<size_t, J>) {
+                    query::FilteredAccessSet access_copy = access;
+                    SystemParam<std::tuple_element_t<J, std::tuple<Ts...>>>::init_access(std::get<J>(state), meta,
+                                                                                         access_copy, world);
+                }(state, meta, access, world, std::integral_constant<size_t, I>{}),
+                ...);
+        }(state, meta, access, world, std::index_sequence_for<Ts...>{});
+        []<std::size_t... I>(const State& state, SystemMeta& meta, query::FilteredAccessSet& access, const World& world,
+                             std::index_sequence<I...>) {
+            (
+                []<size_t J>(const State& state, SystemMeta& meta, query::FilteredAccessSet& access, const World& world,
+                             std::integral_constant<size_t, J>) {
+                    query::FilteredAccessSet new_access;
+                    SystemParam<std::tuple_element_t<J, std::tuple<Ts...>>>::init_access(std::get<J>(state), meta,
+                                                                                         new_access, world);
+                    access.extend(new_access);
+                }(state, meta, access, world, std::integral_constant<size_t, I>{}),
+                ...);
+        }(state, meta, access, world, std::index_sequence_for<Ts...>{});
+    }
+    static void new_archetype(State& state, const archetype::Archetype& archetype, SystemMeta& meta) {
+        []<std::size_t... I>(State& state, const archetype::Archetype& archetype, SystemMeta& meta,
+                             std::index_sequence<I...>) {
+            (SystemParam<std::tuple_element_t<I, std::tuple<Ts...>>>::new_archetype(std::get<I>(state), archetype,
+                                                                                    meta),
+             ...);
+        }(std::index_sequence_for<Ts...>{});
+    }
+    static void apply(State& state, World& world) {
+        []<std::size_t... I>(State& state, World& world, std::index_sequence<I...>) {
+            (SystemParam<std::tuple_element_t<I, std::tuple<Ts...>>>::apply(std::get<I>(state), world), ...);
+        }(std::index_sequence_for<Ts...>{});
+    }
+    static void queue(State& state, DeferredWorld deferred_world) {
+        []<std::size_t... I>(State& state, DeferredWorld deferred_world, std::index_sequence<I...>) {
+            (SystemParam<std::tuple_element_t<I, std::tuple<Ts...>>>::queue(std::get<I>(state), deferred_world), ...);
+        }(std::index_sequence_for<Ts...>{});
+    }
+    static bool validate_param(State& state, const SystemMeta& meta, World& world) {
+        return []<std::size_t... I>(State& state, const SystemMeta& meta, World& world, std::index_sequence<I...>) {
+            return (true && (SystemParam<std::tuple_element_t<I, std::tuple<Ts...>>>::validate_param(std::get<I>(state),
+                                                                                                     meta, world) &&
+                             ...));
+        }(std::index_sequence_for<Ts...>{}, state, meta, world);
+    }
+    static Item get_param(const State& state, const SystemMeta& meta, World& world, Tick tick) {
+        return Item(state, &world, meta, tick);
+    }
+};
 }  // namespace epix::core::system
