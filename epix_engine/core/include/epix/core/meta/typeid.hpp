@@ -36,7 +36,7 @@ static constexpr std::string shorten(std::string_view str) {
         result    = result.substr(0, left) + result.substr(last_colon + 2);
     }
     // remove all spaces
-    result.erase(std::remove_if(result.begin(), result.end(), [](char c) { return c == ' '; }), result.end());
+    // result.erase(std::remove_if(result.begin(), result.end(), [](char c) { return c == ' '; }), result.end());
     return result;
 }
 template <typename T>
