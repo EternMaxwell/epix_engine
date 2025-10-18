@@ -125,16 +125,16 @@ struct SystemParam<Res<T>> : ParamBase {
     static State init_state(World& world) { return world.type_registry().type_id<T>(); }
     static void init_access(const State& state, SystemMeta& meta, query::FilteredAccessSet& access, const World&) {
         if (access.combined_access().has_resource_write(state)) {
-            throw std::runtime_error(
+            throw std::runtime_error(std::format(
                 "Res<{}> in system [{}] has access conflicts with a previous ResMut<{}>. Consider removing this param.",
-                epix::core::meta::type_name<T>(), meta.name, state.get(), epix::core::meta::type_name<T>());
+                epix::core::meta::type_name<T>(), meta.name, state.get(), epix::core::meta::type_name<T>()));
         }
         access.add_unfiltered_resource_read(state);
     }
     static std::expected<void, ValidateParamError> validate_param(State& state, const SystemMeta&, World& world) {
         return world.storage()
             .resources.get(state)
-            .and_then([](const storage::ResourceData& res) -> std::expected<void, ValidateParamError> {
+            .transform([](const storage::ResourceData& res) -> std::expected<void, ValidateParamError> {
                 if (res.is_present()) return {};
                 return std::unexpected(ValidateParamError{
                     .param_type = epix::core::meta::type_id<Res<T>>(),
@@ -167,16 +167,16 @@ struct SystemParam<ResMut<T>> : ParamBase {
     static void init_access(const State& state, SystemMeta& meta, query::FilteredAccessSet& access, const World&) {
         if (access.combined_access().has_resource_read(state)) {
             throw std::runtime_error(
-                "ResMut<{}> in system [{}] has access conflicts with a previous Res<{}> or ResMut<{}>.",
-                epix::core::meta::type_name<T>(), meta.name, state.get(), epix::core::meta::type_name<T>(),
-                epix::core::meta::type_name<T>());
+                std::format("ResMut<{}> in system [{}] has access conflicts with a previous Res<{}> or ResMut<{}>.",
+                            epix::core::meta::type_name<T>(), meta.name, state.get(), epix::core::meta::type_name<T>(),
+                            epix::core::meta::type_name<T>()));
         }
         access.add_unfiltered_resource_write(state);
     }
     static std::expected<void, ValidateParamError> validate_param(State& state, const SystemMeta&, World& world) {
         return world.storage()
             .resources.get(state)
-            .and_then([](const storage::ResourceData& res) -> std::expected<void, ValidateParamError> {
+            .transform([](const storage::ResourceData& res) -> std::expected<void, ValidateParamError> {
                 if (res.is_present()) return {};
                 return std::unexpected(ValidateParamError{
                     .param_type = epix::core::meta::type_id<Res<T>>(),
@@ -368,7 +368,8 @@ struct SystemParam<std::tuple<T...>> {
             if constexpr (I >= sizeof...(T))
                 return {};
             else
-                return SystemParam<std::tuple_element_t<I, std::tuple<T...>>>::validate_param(state, meta, world)
+                return SystemParam<std::tuple_element_t<I, std::tuple<T...>>>::validate_param(std::get<I>(state), meta,
+                                                                                              world)
                     .and_then([&] { return self(state, meta, world, std::integral_constant<size_t, I + 1>{}); });
         }(state, meta, world, std::integral_constant<size_t, 0>{});
     }
