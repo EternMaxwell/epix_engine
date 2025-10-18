@@ -9,6 +9,7 @@
 #include "epix/core/world/entity_ref.hpp"
 
 using namespace epix::core;
+using namespace epix::core::bundle;
 
 // Simple components with static hooks that increment counters in the world via world->components_mut().
 struct C1 {

@@ -14,6 +14,7 @@
 #include "epix/core/bundleimpl.hpp"
 
 using namespace epix::core;
+using namespace epix::core::bundle;
 
 struct A {
     int x;

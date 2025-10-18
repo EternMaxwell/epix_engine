@@ -3,7 +3,7 @@
 #include "bundle.hpp"
 #include "world.hpp"
 
-namespace epix::core {
+namespace epix::core::bundle {
 /**
  * @brief Detail of a bundle type.
  * The first template parameter is a tuple of the types that will explicitly added to the entity by this bundle.
@@ -371,4 +371,4 @@ struct BundleRemover {
     storage::Table* table_;
     Tick change_tick_;
 };
-}  // namespace epix::core
+}  // namespace epix::core::bundle

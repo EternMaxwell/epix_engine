@@ -8,6 +8,7 @@
 
 using namespace epix::core;
 using namespace epix::core::query;
+using namespace epix::core::bundle;
 
 struct P {
     int a;

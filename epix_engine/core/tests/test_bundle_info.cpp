@@ -8,6 +8,7 @@
 
 using namespace epix::core;
 using namespace epix::core::archetype;
+using namespace epix::core::bundle;
 
 struct X {
     int v;

@@ -142,14 +142,14 @@ struct EntityWorldMut : public EntityRefMut {
    public:
     using EntityRefMut::EntityRefMut;
 
-    // 结构性变更方法
     template <typename T>
     void insert_internal(T&& bundle, bool replace_existing)
         requires(bundle::is_bundle<std::decay_t<T>>)
     {
         assert_not_despawned();
-        auto inserter = BundleInserter::create<std::decay_t<T>>(*world_, location_.archetype_id, world_->change_tick());
-        location_     = inserter.insert(entity_, location_, std::forward<T>(bundle), replace_existing);
+        auto inserter =
+            bundle::BundleInserter::create<std::decay_t<T>>(*world_, location_.archetype_id, world_->change_tick());
+        location_ = inserter.insert(entity_, location_, std::forward<T>(bundle), replace_existing);
         world_->flush();
         update_location();
     }
@@ -157,23 +157,25 @@ struct EntityWorldMut : public EntityRefMut {
     void emplace(Args&&... args)
         requires(sizeof...(Args) == sizeof...(Ts))
     {
-        insert_internal(make_init_bundle<Ts...>(std::forward<Args>(args)...), true);
+        insert_internal(bundle::make_init_bundle<Ts...>(std::forward<Args>(args)...), true);
     }
     template <typename... Ts, typename... Args>
     void emplace_if_new(Args&&... args)
         requires(sizeof...(Args) == sizeof...(Ts))
     {
-        insert_internal(make_init_bundle<Ts...>(std::forward<Args>(args)...), false);
+        insert_internal(bundle::make_init_bundle<Ts...>(std::forward<Args>(args)...), false);
     }
     template <typename... Ts>
     void insert(Ts&&... components) {
-        insert_internal(make_init_bundle<std::decay_t<Ts>...>(std::forward_as_tuple(std::forward<Ts>(components))...),
-                        true);
+        insert_internal(
+            bundle::make_init_bundle<std::decay_t<Ts>...>(std::forward_as_tuple(std::forward<Ts>(components))...),
+            true);
     }
     template <typename... Ts>
     void insert_if_new(Ts&&... components) {
-        insert_internal(make_init_bundle<std::decay_t<Ts>...>(std::forward_as_tuple(std::forward<Ts>(components))...),
-                        false);
+        insert_internal(
+            bundle::make_init_bundle<std::decay_t<Ts>...>(std::forward_as_tuple(std::forward<Ts>(components))...),
+            false);
     }
     template <typename B>
     void insert_bundle(B&& bundle)
@@ -189,14 +191,15 @@ struct EntityWorldMut : public EntityRefMut {
     }
     template <typename... Ts>
     void remove() {
-        BundleId id = world_->bundles_mut().register_info<RemoveBundle<Ts...>>(
+        BundleId id = world_->bundles_mut().register_info<bundle::RemoveBundle<Ts...>>(
             world_->type_registry(), world_->components_mut(), world_->storage_mut());
         remove_bundle(id);
     }
     void remove_bundle(BundleId bundle_id) {
         assert_not_despawned();
-        auto remover = BundleRemover::create_with_id(*world_, location_.archetype_id, bundle_id, world_->change_tick());
-        location_    = remover.remove(entity_, location_);
+        auto remover =
+            bundle::BundleRemover::create_with_id(*world_, location_.archetype_id, bundle_id, world_->change_tick());
+        location_ = remover.remove(entity_, location_);
         world_->flush();
         update_location();
     }
@@ -264,7 +267,7 @@ EntityWorldMut World::spawn(Args&&... args)
         flush();
         return EntityWorldMut(e, this);
     }
-    return spawn(make_init_bundle<Ts...>(std::forward<Args>(args)...));
+    return spawn(bundle::make_init_bundle<Ts...>(std::forward<Args>(args)...));
 }
 template <typename T>
 EntityWorldMut World::spawn(T&& bundle)
@@ -272,7 +275,7 @@ EntityWorldMut World::spawn(T&& bundle)
 {
     flush();  // needed for Entities::alloc.
     auto e       = _entities.alloc();
-    auto spawner = BundleSpawner::create<std::remove_cvref_t<T>>(*this, change_tick());
+    auto spawner = bundle::BundleSpawner::create<std::remove_cvref_t<T>>(*this, change_tick());
     spawner.spawn_non_exist(e, std::forward<T>(bundle));
     flush();  // flush to ensure no delayed operations.
     return EntityWorldMut(e, this);

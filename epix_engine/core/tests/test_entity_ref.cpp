@@ -21,6 +21,7 @@ inline std::array<type_system::TypeId, sizeof...(Ts)> make_type_id_array() {
 
 using namespace epix::core;
 using namespace epix::core::archetype;
+using namespace epix::core::bundle;
 
 struct A {
     int x;

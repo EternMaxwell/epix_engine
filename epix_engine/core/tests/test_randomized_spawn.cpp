@@ -10,6 +10,7 @@
 
 using namespace epix::core;
 using namespace epix::core::archetype;
+using namespace epix::core::bundle;
 
 struct T1 {
     int v;
