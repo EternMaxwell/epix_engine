@@ -84,3 +84,7 @@ add_test(NAME test_query_iter COMMAND test_query_iter)
 add_executable(test_component_hooks tests/test_component_hooks.cpp)
 target_link_libraries(test_component_hooks PRIVATE epix_core)
 add_test(NAME test_component_hooks COMMAND test_component_hooks)
+
+add_executable(test_system tests/test_system.cpp)
+target_link_libraries(test_system PRIVATE epix_core)
+add_test(NAME test_system COMMAND test_system)
