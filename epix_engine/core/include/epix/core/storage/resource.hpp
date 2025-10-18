@@ -4,7 +4,6 @@
 #include <memory>
 
 #include "../tick.hpp"
-#include "fwd.hpp"
 #include "sparse_set.hpp"
 #include "untypedvec.hpp"
 
@@ -100,6 +99,23 @@ struct ResourceData {
             self.added_tick.set(tick.get());
             self.modified_tick.set(tick.get());
         }
+    }
+
+    /**
+     * @brief Insert an uninitialized value into the resource data.
+     * This will remove the existing value if present, but won't change added tick.
+     *
+     * @param self
+     */
+    void insert_uninitialized(this ResourceData& self, Tick tick) {
+        if (self.is_present()) {
+            // This function is generally called before an inplace construction, so we destroy the existing value first
+            self.data.type_info()->destroy(self.data.data());
+        } else {
+            self.data.append_uninitialized(1);
+            self.added_tick.set(tick.get());
+        }
+        self.modified_tick.set(tick.get());
     }
 
     void remove(this ResourceData& self) { self.data.clear(); }
