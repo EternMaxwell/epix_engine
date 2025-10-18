@@ -1,7 +1,11 @@
 #pragma once
 
+#include <algorithm>
+#include <array>
+#include <ranges>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include "fwd.hpp"
 
@@ -31,9 +35,15 @@ static constexpr std::string shorten(std::string_view str) {
     while (true) {
         auto last_colon = result.rfind("::");
         if (last_colon == std::string::npos) break;
-        auto left = std::min(result.rfind('<', last_colon), result.rfind(',', last_colon));
-        left      = left == std::string::npos ? 0 : left + 1;
-        result    = result.substr(0, left) + result.substr(last_colon + 2);
+        constexpr std::array left_chars = std::array{
+            '<', '(', '[', ',', ' ',  // characters that can appear before a template argument
+        };
+        std::vector lefts = left_chars | std::views::transform([&](char c) { return result.rfind(c, last_colon); }) |
+                            std::views::filter([&](size_t pos) { return pos != std::string::npos; }) |
+                            std::ranges::to<std::vector>();
+        auto left_elem = std::ranges::max_element(lefts);
+        auto left      = (left_elem != lefts.end()) ? *left_elem + 1 : 0;
+        result         = result.substr(0, left) + result.substr(last_colon + 2);
     }
     // remove all spaces
     // result.erase(std::remove_if(result.begin(), result.end(), [](char c) { return c == ' '; }), result.end());
