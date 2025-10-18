@@ -13,6 +13,10 @@ template <typename T>
 concept is_static_from_world = requires(World& world) {
     { T::from_world(world) } -> std::same_as<T>;
 };
+template <typename T>
+concept is_nothrow_static_from_world = requires(World& world) {
+    { T::from_world(world) } noexcept -> std::same_as<T>;
+};
 // template <typename T>
 // concept is_optional_from_world = requires(World& world) {
 //     { T::from_world(world) } -> std::same_as<std::optional<T>>;
@@ -30,7 +34,7 @@ struct FromWorld {
     static inline constexpr bool is_noexcept =
         (default_construct && std::is_nothrow_default_constructible<T>::value) ||
         (construct_from_world && std::is_nothrow_constructible<T, World&>::value) ||
-        (static_from_world && noexcept(T::from_world(std::declval<World&>())));
+        (static_from_world && is_nothrow_static_from_world<T>);
 
     static T create(World& world) noexcept(is_noexcept) {
         if constexpr (std::is_default_constructible<T>::value) {

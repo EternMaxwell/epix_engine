@@ -3,6 +3,7 @@
 #include <atomic>
 #include <memory>
 #include <type_traits>
+#include <utility>
 
 #include "bundle.hpp"
 #include "component.hpp"
@@ -51,6 +52,29 @@ struct World {
     template <typename T>
     EntityWorldMut spawn(T&& bundle)
         requires(bundle::is_bundle<std::remove_cvref_t<T>>);
+
+    template <typename T, typename... Args>
+    void emplace_resource(Args&&... args) {
+        _storage.resources.initialize(_type_registry->type_id<T>());
+        _storage.resources.get_mut(_type_registry->type_id<T>())
+            .value()
+            .get()
+            .template emplace<T>(change_tick(), std::forward<Args>(args)...);
+    }
+    template <typename T>
+    void insert_resource(T&& value) {
+        using D = std::remove_cvref_t<T>;
+        emplace_resource<D>(std::forward<T>(value));
+    }
+    template <typename T>
+    void init_resource()
+        requires is_from_world<T>
+    {
+        _storage.resources.initialize(_type_registry->type_id<T>());
+        _storage.resources.get_mut(_type_registry->type_id<T>()).value().get().insert_uninitialized(change_tick());
+        FromWorld<T>::emplace(_storage.resources.get_mut(_type_registry->type_id<T>()).value().get().get_mut().value(),
+                              *this);
+    }
 
     void trigger_on_add(const Archetype& archetype, Entity entity, bundle::type_id_view auto&& targets) {
         for (auto&& target : targets) {
