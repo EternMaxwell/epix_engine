@@ -6,14 +6,32 @@
 namespace epix::core::meta {
 struct type_index {
    private:
-    std::string_view value;
-    size_t hash;
+    struct Internal {
+        std::string_view name;
+        std::string_view short_name;
+        size_t hash;
+    };
+
+    const Internal* inter;
+
+    template <typename T>
+    const Internal* get_internal() const {
+        static Internal internal = {type_id<T>::name(), type_id<T>::short_name(), type_id<T>::hash_code()};
+        return &internal;
+    }
 
    public:
     template <typename T>
-    type_index(type_id<T>) : value(type_id<T>::name()), hash(type_id<T>::hash_code()) {}
+    type_index(type_id<T>) : inter(get_internal<T>()) {}
+    type_index() : inter(nullptr) {}
 
-    std::string_view name() const noexcept { return value; }
-    size_t hash_code() const noexcept { return hash; }
+    bool operator==(const type_index& other) const noexcept {
+        return inter == other.inter || inter->name == other.inter->name;
+    }
+    bool operator!=(const type_index& other) const noexcept { return !(*this == other); }
+    std::string_view name() const noexcept { return inter->name; }
+    std::string_view short_name() const noexcept { return inter->short_name; }
+    size_t hash_code() const noexcept { return inter->hash; }
+    bool valid() const noexcept { return inter != nullptr; }
 };
 }  // namespace epix::core::meta
