@@ -1,6 +1,7 @@
 #pragma once
 
 #include <optional>
+#include <tuple>
 
 #include "../archetype.hpp"
 #include "../bundle.hpp"
@@ -166,11 +167,13 @@ struct EntityWorldMut : public EntityRefMut {
     }
     template <typename... Ts>
     void insert(Ts&&... components) {
-        insert_internal(make_init_bundle<std::decay_t<Ts>...>(std::forward<Ts>(components)...), true);
+        insert_internal(make_init_bundle<std::decay_t<Ts>...>(std::forward_as_tuple(std::forward<Ts>(components))...),
+                        true);
     }
     template <typename... Ts>
     void insert_if_new(Ts&&... components) {
-        insert_internal(make_init_bundle<std::decay_t<Ts>...>(std::forward<Ts>(components)...), false);
+        insert_internal(make_init_bundle<std::decay_t<Ts>...>(std::forward_as_tuple(std::forward<Ts>(components))...),
+                        false);
     }
     template <typename B>
     void insert_bundle(B&& bundle)
