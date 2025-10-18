@@ -1,12 +1,15 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
+#include <expected>
 #include <functional>
 #include <optional>
 #include <type_traits>
 #include <utility>
 
 #include "../archetype.hpp"
+#include "../meta/typeid.hpp"
 #include "../query/access.hpp"
 #include "../query/query.hpp"
 #include "../storage/resource.hpp"
@@ -20,6 +23,11 @@ struct param_type;
 template <typename T>
 struct param_type<SystemParam<T>> {
     using type = T;
+};
+
+struct ValidateParamError {
+    epix::core::meta::type_index param_type;
+    std::string message;  // An optional message, cause some error can be understood just with type name.
 };
 
 enum SystemFlagBits : uint8_t {
@@ -51,8 +59,10 @@ concept valid_system_param = requires(World& world, SystemMeta& meta, query::Fil
         { T::new_archetype(state_mut, archetype, meta) } -> std::same_as<void>;
         { T::apply(state_mut, world) } -> std::same_as<void>;
         { T::queue(state_mut, deferred_world) } -> std::same_as<void>;
-        { T::validate_param(state_mut, std::as_const(meta), world) } -> std::same_as<bool>;
-        { T::get_param(state, std::as_const(meta), world, tick) } -> std::same_as<typename T::Item>;
+        {
+            T::validate_param(state_mut, std::as_const(meta), world)
+        } -> std::same_as<std::expected<void, ValidateParamError>>;
+        { T::get_param(state_mut, std::as_const(meta), world, tick) } -> std::same_as<typename T::Item>;
     };
 };
 // A base struct to provide default implementation for some functions.
@@ -61,7 +71,7 @@ struct ParamBase {
     static void new_archetype(auto&, const archetype::Archetype&, SystemMeta&) {}
     static void apply(auto&, World&) {}
     static void queue(auto&, DeferredWorld) {}
-    static bool validate_param(auto&, const SystemMeta&, World&) { return true; }
+    static std::expected<void, ValidateParamError> validate_param(auto&, const SystemMeta&, World&) { return {}; }
 };
 
 template <typename D, typename F>
@@ -73,13 +83,13 @@ struct SystemParam<query::Query<D, F>> : ParamBase {
     static void init_access(const State& state, SystemMeta& meta, query::FilteredAccessSet& access, const World&) {
         query::AccessConflicts conflicts = access.get_conflicts(state.component_access());
         if (!conflicts.empty()) {
-            throw std::runtime_error(
+            throw std::runtime_error(std::format(
                 "Query<{}, {}> in system [{}] has access conflicts with previous params, with conflicts on ids: {}.",
-                epix::core::meta::type_name<D>(), meta.name, epix::core::meta::type_name<F>(), conflicts.to_string());
+                epix::core::meta::type_name<D>(), meta.name, epix::core::meta::type_name<F>(), conflicts.to_string()));
         }
         access.add(state.component_access());
     }
-    static Item get_param(const State& state, const SystemMeta& meta, World& world, Tick tick) {
+    static Item get_param(State& state, const SystemMeta& meta, World& world, Tick tick) {
         return state.query_with_ticks(world, meta.last_run, tick);
     }
 };
@@ -90,12 +100,19 @@ struct SystemParam<query::Single<D, F>> : SystemParam<query::Query<D, F>> {
     using Base  = SystemParam<query::Query<D, F>>;
     using State = typename Base::State;
     using Item  = query::Single<D, F>;
-    static Item get_param(const State& state, const SystemMeta& meta, World& world, Tick tick) {
+    static Item get_param(State& state, const SystemMeta& meta, World& world, Tick tick) {
         return query::Single<D, F>(Base::get_param(state, meta, world, tick).single().value());
     }
-    static bool validate_param(const State& state, const SystemMeta& meta, World& world) {
+    static std::expected<void, ValidateParamError> validate_param(const State& state,
+                                                                  const SystemMeta& meta,
+                                                                  World& world) {
         Query<D, F> query = Base::get_param(state, meta, world, world.change_tick());
-        return query.single().has_value();
+        if (!query.single().has_value()) {
+            return std::unexpected(ValidateParamError{
+                .param_type = epix::core::meta::type_id<query::Single<D, F>>(),
+                .message    = "Associated Query for Single system param is empty.",
+            });
+        }
     }
 };
 static_assert(valid_system_param<SystemParam<query::Single<int&, query::With<float>>>>);
@@ -114,13 +131,22 @@ struct SystemParam<Res<T>> : ParamBase {
         }
         access.add_unfiltered_resource_read(state);
     }
-    static bool validate_param(State& state, const SystemMeta&, World& world) {
+    static std::expected<void, ValidateParamError> validate_param(State& state, const SystemMeta&, World& world) {
         return world.storage()
             .resources.get(state)
-            .and_then([](const storage::ResourceData& res) { return res.is_present(); })
-            .value_or(false);
+            .and_then([](const storage::ResourceData& res) -> std::expected<void, ValidateParamError> {
+                if (res.is_present()) return {};
+                return std::unexpected(ValidateParamError{
+                    .param_type = epix::core::meta::type_id<Res<T>>(),
+                    .message    = "Res storage exists, value not present.",
+                });
+            })
+            .value_or(std::unexpected(ValidateParamError{
+                .param_type = epix::core::meta::type_id<Res<T>>(),
+                .message    = "Res storage do not exists.",
+            }));
     }
-    static Item get_param(const State& state, const SystemMeta& meta, World& world, Tick tick) {
+    static Item get_param(State& state, const SystemMeta& meta, World& world, Tick tick) {
         return world.storage()
             .resources.get(state)
             .and_then([&](const storage::ResourceData& res) {
@@ -147,13 +173,22 @@ struct SystemParam<ResMut<T>> : ParamBase {
         }
         access.add_unfiltered_resource_write(state);
     }
-    static bool validate_param(State& state, const SystemMeta&, World& world) {
+    static std::expected<void, ValidateParamError> validate_param(State& state, const SystemMeta&, World& world) {
         return world.storage()
             .resources.get(state)
-            .and_then([](const storage::ResourceData& res) { return res.is_present(); })
-            .value_or(false);
+            .and_then([](const storage::ResourceData& res) -> std::expected<void, ValidateParamError> {
+                if (res.is_present()) return {};
+                return std::unexpected(ValidateParamError{
+                    .param_type = epix::core::meta::type_id<Res<T>>(),
+                    .message    = "ResMut storage exists, value not present.",
+                });
+            })
+            .value_or(std::unexpected(ValidateParamError{
+                .param_type = epix::core::meta::type_id<Res<T>>(),
+                .message    = "ResMut storage do not exists.",
+            }));
     }
-    static Item get_param(const State& state, const SystemMeta& meta, World& world, Tick tick) {
+    static Item get_param(State& state, const SystemMeta& meta, World& world, Tick tick) {
         return world.storage()
             .resources.get(state)
             .and_then([&](storage::ResourceData& res) {
@@ -181,7 +216,7 @@ struct SystemParam<const World&> : ParamBase {
         }
         access.add(world_access);
     }
-    static Item get_param(const State&, const SystemMeta&, World& world, Tick) { return world; }
+    static Item get_param(State&, const SystemMeta&, World& world, Tick) { return world; }
 };
 template <>
 struct SystemParam<World&> : ParamBase {
@@ -198,7 +233,7 @@ struct SystemParam<World&> : ParamBase {
         }
         access.add(world_access);
     }
-    static Item get_param(const State&, const SystemMeta&, World& world, Tick) { return world; }
+    static Item get_param(State&, const SystemMeta&, World& world, Tick) { return world; }
 };
 static_assert(valid_system_param<SystemParam<World&>>);
 static_assert(valid_system_param<SystemParam<const World&>>);
@@ -218,7 +253,7 @@ struct SystemParam<DeferredWorld> : ParamBase {
         }
         access.write_all();
     }
-    static Item get_param(const State&, const SystemMeta&, World& world, Tick) { return DeferredWorld(world); }
+    static Item get_param(State&, const SystemMeta&, World& world, Tick) { return DeferredWorld(world); }
 };
 static_assert(valid_system_param<SystemParam<DeferredWorld>>);
 
@@ -248,9 +283,7 @@ struct SystemParam<Local<T>> : ParamBase {
     using State = T;
     using Item  = Local<T>;
     static State init_state(World& world) { return FromWorld<T>::create(world); }
-    static Item get_param(const State& state, const SystemMeta&, World&, Tick) {
-        return Local<T>(const_cast<T&>(state));
-    }
+    static Item get_param(State& state, const SystemMeta&, World&, Tick) { return Local<T>(const_cast<T&>(state)); }
 };
 static_assert(valid_system_param<SystemParam<Local<int>>>);
 
@@ -261,8 +294,12 @@ struct SystemParam<std::optional<T>> : SystemParam<T> {
     using State = typename Base::State;
     // It is currently useless to have optional param for reference types, since they will always be present like World&
     using Item = std::optional<typename Base::Item>;
-    static bool validate_param(const State& state, const SystemMeta& meta, World& world) { return true; }
-    static Item get_param(const State& state, const SystemMeta& meta, World& world, Tick tick) {
+    static std::expected<void, ValidateParamError> validate_param(const State& state,
+                                                                  const SystemMeta& meta,
+                                                                  World& world) {
+        return {};
+    }
+    static Item get_param(State& state, const SystemMeta& meta, World& world, Tick tick) {
         if (Base::validate_param(state, meta, world)) {
             return Base::get_param(state, meta, world, tick);
         } else {
@@ -276,8 +313,12 @@ struct SystemParam<std::optional<std::reference_wrapper<T>>> : SystemParam<T&> {
     using Base  = SystemParam<T&>;
     using State = typename Base::State;
     using Item  = std::optional<std::reference_wrapper<T>>;
-    static bool validate_param(const State& state, const SystemMeta& meta, World& world) { return true; }
-    static Item get_param(const State& state, const SystemMeta& meta, World& world, Tick tick) {
+    static std::expected<void, ValidateParamError> validate_param(const State& state,
+                                                                  const SystemMeta& meta,
+                                                                  World& world) {
+        return {};
+    }
+    static Item get_param(State& state, const SystemMeta& meta, World& world, Tick tick) {
         if (Base::validate_param(state, meta, world)) {
             return std::ref(Base::get_param(state, meta, world, tick));
         } else {
@@ -285,10 +326,11 @@ struct SystemParam<std::optional<std::reference_wrapper<T>>> : SystemParam<T&> {
         }
     }
 };
+static_assert(valid_system_param<SystemParam<std::optional<Res<int>>>>);
 
 template <typename... T>
-    requires((valid_system_param<SystemParam<T>> && ...))
 struct SystemParam<std::tuple<T...>> {
+    static_assert((valid_system_param<SystemParam<T>> && ...));
     using State = std::tuple<typename SystemParam<T>::State...>;
     using Item  = std::tuple<typename SystemParam<T>::Item...>;
     static State init_state(World& world) { return State(SystemParam<T>::init_state(world)...); }
@@ -301,33 +343,36 @@ struct SystemParam<std::tuple<T...>> {
             (SystemParam<std::tuple_element_t<I, std::tuple<T...>>>::init_access(std::get<I>(state), meta, access,
                                                                                  world),
              ...);
-        }(std::index_sequence_for<T...>{});
+        }(state, meta, access, world, std::index_sequence_for<T...>{});
     }
     static void new_archetype(State& state, const archetype::Archetype& archetype, SystemMeta& meta) {
         []<std::size_t... I>(State& state, const archetype::Archetype& archetype, SystemMeta& meta,
                              std::index_sequence<I...>) {
             (SystemParam<std::tuple_element_t<I, std::tuple<T...>>>::new_archetype(std::get<I>(state), archetype, meta),
              ...);
-        }(std::index_sequence_for<T...>{});
+        }(state, archetype, meta, std::index_sequence_for<T...>{});
     }
     static void apply(State& state, World& world) {
         []<std::size_t... I>(State& state, World& world, std::index_sequence<I...>) {
             (SystemParam<std::tuple_element_t<I, std::tuple<T...>>>::apply(std::get<I>(state), world), ...);
-        }(std::index_sequence_for<T...>{});
+        }(state, world, std::index_sequence_for<T...>{});
     }
     static void queue(State& state, DeferredWorld deferred_world) {
         []<std::size_t... I>(State& state, DeferredWorld deferred_world, std::index_sequence<I...>) {
             (SystemParam<std::tuple_element_t<I, std::tuple<T...>>>::queue(std::get<I>(state), deferred_world), ...);
-        }(std::index_sequence_for<T...>{});
+        }(state, deferred_world, std::index_sequence_for<T...>{});
     }
-    static bool validate_param(State& state, const SystemMeta& meta, World& world) {
-        return []<std::size_t... I>(State& state, const SystemMeta& meta, World& world, std::index_sequence<I...>) {
-            return (true && (SystemParam<std::tuple_element_t<I, std::tuple<T...>>>::validate_param(std::get<I>(state),
-                                                                                                    meta, world) &&
-                             ...));
-        }(std::index_sequence_for<T...>{}, state, meta, world);
+    static std::expected<void, ValidateParamError> validate_param(State& state, const SystemMeta& meta, World& world) {
+        return []<std::size_t I>(this auto&& self, State& state, const SystemMeta& meta, World& world,
+                                 std::integral_constant<size_t, I>) -> std::expected<void, ValidateParamError> {
+            if constexpr (I >= sizeof...(T))
+                return {};
+            else
+                return SystemParam<std::tuple_element_t<I, std::tuple<T...>>>::validate_param(state, meta, world)
+                    .and_then([&] { return self(state, meta, world, std::integral_constant<size_t, I + 1>{}); });
+        }(state, meta, world, std::integral_constant<size_t, 0>{});
     }
-    static Item get_param(const State& state, const SystemMeta& meta, World& world, Tick tick) {
+    static Item get_param(State& state, const SystemMeta& meta, World& world, Tick tick) {
         return Item(SystemParam<T>::get_param(std::get<typename SystemParam<T>::State>(state), meta, world, tick)...);
     }
 };
@@ -361,10 +406,10 @@ struct ParamSet {
 };
 template <typename... Ts>
     requires(valid_system_param<SystemParam<Ts>> && ...)
-struct SystemParam<ParamSet<Ts...>> {
-    using State = typename SystemParam<std::tuple<Ts...>>::State;
+struct SystemParam<ParamSet<Ts...>> : SystemParam<std::tuple<Ts...>> {
+    using Base  = SystemParam<std::tuple<Ts...>>;
+    using State = typename Base::State;
     using Item  = ParamSet<Ts...>;
-    static State init_state(World& world) { return State(SystemParam<Ts>::init_state(world)...); }
     static void init_access(const State& state,
                             SystemMeta& meta,
                             query::FilteredAccessSet& access,
@@ -393,32 +438,7 @@ struct SystemParam<ParamSet<Ts...>> {
                 ...);
         }(state, meta, access, world, std::index_sequence_for<Ts...>{});
     }
-    static void new_archetype(State& state, const archetype::Archetype& archetype, SystemMeta& meta) {
-        []<std::size_t... I>(State& state, const archetype::Archetype& archetype, SystemMeta& meta,
-                             std::index_sequence<I...>) {
-            (SystemParam<std::tuple_element_t<I, std::tuple<Ts...>>>::new_archetype(std::get<I>(state), archetype,
-                                                                                    meta),
-             ...);
-        }(std::index_sequence_for<Ts...>{});
-    }
-    static void apply(State& state, World& world) {
-        []<std::size_t... I>(State& state, World& world, std::index_sequence<I...>) {
-            (SystemParam<std::tuple_element_t<I, std::tuple<Ts...>>>::apply(std::get<I>(state), world), ...);
-        }(std::index_sequence_for<Ts...>{});
-    }
-    static void queue(State& state, DeferredWorld deferred_world) {
-        []<std::size_t... I>(State& state, DeferredWorld deferred_world, std::index_sequence<I...>) {
-            (SystemParam<std::tuple_element_t<I, std::tuple<Ts...>>>::queue(std::get<I>(state), deferred_world), ...);
-        }(std::index_sequence_for<Ts...>{});
-    }
-    static bool validate_param(State& state, const SystemMeta& meta, World& world) {
-        return []<std::size_t... I>(State& state, const SystemMeta& meta, World& world, std::index_sequence<I...>) {
-            return (true && (SystemParam<std::tuple_element_t<I, std::tuple<Ts...>>>::validate_param(std::get<I>(state),
-                                                                                                     meta, world) &&
-                             ...));
-        }(std::index_sequence_for<Ts...>{}, state, meta, world);
-    }
-    static Item get_param(const State& state, const SystemMeta& meta, World& world, Tick tick) {
+    static Item get_param(State& state, const SystemMeta& meta, World& world, Tick tick) {
         return Item(state, &world, meta, tick);
     }
 };

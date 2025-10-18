@@ -100,6 +100,7 @@ struct QueryState {
     const WorldQuery<F>::State& filter_state() const { return _filter_state; }
     const FilteredAccess& component_access() const { return _component_access; }
     Query<D, F> query_with_ticks(World& world, Tick last_run, Tick this_run) {
+        update_archetypes(world);
         return Query<D, F>(world, *this, last_run, this_run);
     }
 
