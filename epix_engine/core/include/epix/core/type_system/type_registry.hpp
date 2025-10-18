@@ -181,8 +181,3 @@ using TypeId       = type_system::TypeId;  // exposing TypeId in epix::core name
 using TypeInfo     = type_system::TypeInfo;
 using TypeRegistry = type_system::TypeRegistry;
 };  // namespace epix::core
-
-template <>
-struct std::hash<epix::core::TypeId> {
-    size_t operator()(const epix::core::TypeId& k) const { return std::hash<uint64_t>()(k.get()); }
-};
