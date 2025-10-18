@@ -1,13 +1,19 @@
 #pragma once
 
+#include <exception>
 #include <tuple>
 #include <type_traits>
+#include <variant>
 
 #include "func_traits.hpp"
 #include "input.hpp"
 #include "param.hpp"
 
 namespace epix::core::system {
+struct SystemException {
+    std::exception_ptr exception;
+};
+using RunSystemError = std::variant<ValidateParamError, SystemException>;
 template <typename In, typename Out>
 struct System {
     virtual std::string_view name() const                   = 0;
@@ -15,20 +21,21 @@ struct System {
     virtual SystemFlagBits flags() const                    = 0;
     bool is_exclusive() const { return (flags() & SystemFlagBits::EXCLUSIVE) != 0; }
     bool is_deferred() const { return (flags() & SystemFlagBits::DEFERRED) != 0; }
-    virtual std::optional<Out> run_internal(SystemInput<In>::Input input, World& world) = 0;
-    virtual bool validate_param(World& world)                                           = 0;
-    virtual void apply_deferred(World& world)                                           = 0;
-    virtual void queue_deferred(DeferredWorld deferred_world)                           = 0;
-    std::optional<Out> run(SystemInput<In>::Input input, World& world) {
-        if (!validate_param(world)) return std::nullopt;
-        return run_internal(std::move(input), world).and_then([&](Out&& out) -> std::optional<Out> {
-            apply_deferred(world);
-            return std::move(out);
-        });
+    virtual std::expected<Out, RunSystemError> run_internal(SystemInput<In>::Input input, World& world) = 0;
+    virtual std::expected<void, ValidateParamError> validate_param(World& world)                        = 0;
+    virtual void apply_deferred(World& world)                                                           = 0;
+    virtual void queue_deferred(DeferredWorld deferred_world)                                           = 0;
+    std::expected<Out, RunSystemError> run(SystemInput<In>::Input input, World& world) {
+        auto res = validate_param(world)
+                       .transform_error([](ValidateParamError&& err) -> RunSystemError { return std::move(err); })
+                       .and_then([&] { return run_internal(std::move(input), world); });
+        if (res.has_value()) apply_deferred(world);
+        return std::move(res);
     }
-    std::optional<Out> run_no_apply(SystemInput<In>::Input input, World& world) {
-        if (!validate_param(world)) return std::nullopt;
-        return run_internal(std::move(input), world);
+    std::expected<Out, RunSystemError> run_no_apply(SystemInput<In>::Input input, World& world) {
+        validate_param(world)
+            .transform_error([](ValidateParamError&& err) -> RunSystemError { return std::move(err); })
+            .and_then([&] { return run_internal(std::move(input), world); });
     }
     virtual query::FilteredAccessSet initialize(World& world) = 0;
     virtual void check_change_tick(Tick tick)                 = 0;
@@ -45,9 +52,10 @@ struct function_system_traits {
     static constexpr size_t arity = Traits::arity;
     using Output                  = typename Traits::return_type;
     // Input is the first argument of the function if it modules valid_system_input, otherwise it's std::tuple<>.
-    using Input                     = decltype(*([] {
+    using Input                     = std::remove_reference_t<decltype(*([] {
         if constexpr (arity == 0) {
-            return static_cast<void*>(nullptr);
+            // no arguments -> input is an empty tuple
+            return static_cast<std::tuple<>*>(nullptr);
         } else {
             using FirstArg = std::tuple_element_t<0, typename Traits::args_tuple>;
             if constexpr (valid_system_input<SystemInput<FirstArg>>) {
@@ -56,7 +64,7 @@ struct function_system_traits {
                 return static_cast<std::tuple<>*>(nullptr);
             }
         }
-    }()));
+    }()))>;
     static constexpr bool has_input = [] {
         // we are not just checking Input != std::tuple<>, because the input type may be just std::tuple<>.
         if constexpr (arity == 0) {
@@ -70,7 +78,7 @@ struct function_system_traits {
             }
         }
     }();
-    using ParamTuple = decltype(*([] {
+    using ParamTuple = std::remove_reference_t<decltype(*([] {
         if constexpr (has_input) {
             // has input, so params are from second argument to the last argument.
             return []<std::size_t... I>(std::index_sequence<I...>) {
@@ -79,7 +87,7 @@ struct function_system_traits {
         } else {
             return static_cast<typename Traits::args_tuple*>(nullptr);
         }
-    }()));
+    }()))>;
     // The storage type to store the function. function will be stored in pointers,
     // lambdas or other callables will be stored in their own type.
     using Storage = std::decay_t<F>;
@@ -91,7 +99,7 @@ template <typename F>
         typename function_system_traits<F>::Output;
         // no input will have Input = std::tuple<>, which is a valid_system_input.
         requires valid_system_input<SystemInput<typename function_system_traits<F>::Input>>;
-        requires valid_system_param<typename function_traits<F>::ParamTuple>;
+        requires valid_system_param<SystemParam<typename function_system_traits<F>::ParamTuple>>;
         { function_system_traits<F>::has_input } -> std::convertible_to<bool>;
     }
 struct FunctionSystem
@@ -106,10 +114,8 @@ struct FunctionSystem
     std::string_view name() const override { return meta_.name; }
     epix::core::meta::type_index type_index() const override { return type_index_; }
     SystemFlagBits flags() const override { return meta_.flags; }
-    bool validate_param(World& world) override {
-        return state_
-            .and_then([&](State& state) -> std::optional<bool> { return SParam::validate_param(state, meta_, world); })
-            .value_or(false);
+    std::expected<void, ValidateParamError> validate_param(World& world) override {
+        return SParam::validate_param(state_.value(), meta_, world);
     }
     void apply_deferred(World& world) override {
         state_.and_then([&](State& state) -> std::optional<bool> {
@@ -127,24 +133,48 @@ struct FunctionSystem
         query::FilteredAccessSet access;
         state_         = SParam::init_state(world);
         meta_.last_run = world.change_tick().relative_to(Tick::max());
-        SParam::init_access(state_, meta_, access, world);
+        SParam::init_access(*state_, meta_, access, world);
         return access;
     }
     void check_change_tick(Tick tick) override { meta_.last_run.check_tick(tick); }
     Tick get_last_run() const override { return meta_.last_run; }
 
-    std::optional<typename function_system_traits<F>::Output> run_internal(typename SInput::Input input,
-                                                                           World& world) override {
+    std::expected<typename function_system_traits<F>::Output, RunSystemError> run_internal(typename SInput::Input input,
+                                                                                           World& world) override {
+        struct TickSpan {
+            Tick* tick;
+            World* world;
+            ~TickSpan() { *tick = world->change_tick(); }
+        };
+        auto call = [](auto&& f,
+                       auto&& t) -> std::expected<typename function_system_traits<F>::Output, RunSystemError> {
+            try {
+                if constexpr (std::same_as<void, typename function_system_traits<F>::Output>) {
+                    std::apply(f, std::move(t));
+                    return {};
+                } else {
+                    return std::apply(f, std::move(t));
+                }
+            } catch (...) {
+                return std::unexpected(SystemException{
+                    .exception = std::current_exception(),
+                });
+            }
+        };
+        TickSpan span{
+            .tick  = &meta_.last_run,
+            .world = &world,
+        };
         if constexpr (function_system_traits<F>::has_input) {
-            return std::apply(func_, std::tuple_cat(std::forward_as_tuple(std::forward<typename SInput::Input>(input)),
-                                                    SParam::get_param(state_, meta_, world, world.change_tick())));
+            return call(func_, std::tuple_cat(std::forward_as_tuple(std::forward<typename SInput::Input>(input)),
+                                              SParam::get_param(*state_, meta_, world, world.change_tick())));
         } else {
-            return std::apply(func_, SParam::get_param(state_, meta_, world, world.change_tick()));
+            return call(func_, SParam::get_param(*state_, meta_, world, world.change_tick()));
         }
     }
 
-    FunctionSystem(F&& f) : func_(f) {}
-    FunctionSystem(const F& f) : func_(f) {}
+    FunctionSystem(F&& f) : func_(f), type_index_(epix::core::meta::type_id<Storage>()) {}
+    FunctionSystem(const F& f) : func_(f), type_index_(epix::core::meta::type_id<Storage>()) {}
 
    private:
     Storage func_;
@@ -159,7 +189,7 @@ template <typename F>
         typename function_system_traits<std::decay_t<F>>::Output;
         // no input will have Input = std::tuple<>, which is a valid_system_input.
         requires valid_system_input<SystemInput<typename function_system_traits<std::decay_t<F>>::Input>>;
-        requires valid_system_param<typename function_traits<std::decay_t<F>>::ParamTuple>;
+        requires valid_system_param<SystemParam<typename function_system_traits<std::decay_t<F>>::ParamTuple>>;
         { function_system_traits<std::decay_t<F>>::has_input } -> std::convertible_to<bool>;
     }
 System<typename function_system_traits<F>::Input, typename function_system_traits<F>::Output>* make_system(F&& func) {
