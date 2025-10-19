@@ -45,7 +45,8 @@ struct System {
     virtual void check_change_tick(Tick tick)                 = 0;
     virtual Tick get_last_run() const                         = 0;
     virtual std::vector<schedule::SystemSetLabel> default_sets() const { return {}; }
-    virtual ~System() = default;
+    virtual System* clone() const = 0;
+    virtual ~System()             = default;
 };
 template <typename In = std::tuple<>, typename Out = void>
 using SystemUnique = std::unique_ptr<System<In, Out>>;
@@ -110,6 +111,7 @@ struct FunctionSystem
     : public System<typename function_system_traits<F>::Input, typename function_system_traits<F>::Output> {
    public:
     // Storage type to store the orginal function. This is to handle function pointers and lambdas uniformly.
+    using Base    = System<typename function_system_traits<F>::Input, typename function_system_traits<F>::Output>;
     using Storage = typename function_system_traits<F>::Storage;
     using State   = typename SystemParam<typename function_system_traits<F>::ParamTuple>::State;
     using SInput  = SystemInput<typename function_system_traits<F>::Input>;
@@ -178,6 +180,8 @@ struct FunctionSystem
             return call(func_, SParam::get_param(*state_, meta_, world, world.change_tick()));
         }
     }
+
+    Base* clone() const override { return new FunctionSystem<F>(func_); }
 
     FunctionSystem(F&& f) : func_(f), type_index_(epix::core::meta::type_id<Storage>()) {
         meta_.name = epix::core::meta::type_id<std::remove_cvref_t<F>>().short_name();
