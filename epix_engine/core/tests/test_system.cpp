@@ -80,17 +80,6 @@ int main() {
     assert(res.value() == 123);
     assert(counter == 1);
 
-    // check type ids
-    std::println(std::cout, "type ids: C1: {}, C2: {}, C3: {}, resource1: {}",
-                 world.type_registry().type_id<C1>().get(), world.type_registry().type_id<C2>().get(),
-                 world.type_registry().type_id<C3>().get(), world.type_registry().type_id<resource1>().get());
-    using Bundle1 = bundle::InitializeBundle<std::tuple<C1, C2>, std::tuple<std::tuple<C1&&>, std::tuple<C2&&>>>;
-    using Bundle2 = bundle::InitializeBundle<std::tuple<C1, C3>, std::tuple<std::tuple<C1&&>, std::tuple<C3&&>>>;
-    using Bundle3 = bundle::InitializeBundle<std::tuple<C2, C3>, std::tuple<std::tuple<C2&&>, std::tuple<C3&&>>>;
-    std::println(std::cout, "Bundle ids: Bundle1: {}, Bundle2: {}, Bundle3: {}",
-                 world.type_registry().type_id<Bundle1>().get(), world.type_registry().type_id<Bundle2>().get(),
-                 world.type_registry().type_id<Bundle3>().get());
-
     std::cout << "test_system passed\n";
     delete sys;
     return 0;
