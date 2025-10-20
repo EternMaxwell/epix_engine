@@ -138,14 +138,22 @@ SetConfig single_set(F&& func)
 template <bool require_system = false, typename... Ts>
 SetConfig make_sets(Ts&&... ts) {
     if constexpr (sizeof...(Ts) == 1) {
-        return single_set(std::get<0>(std::forward_as_tuple(std::forward<Ts>(ts)...)));
+        return single_set<require_system>(std::get<0>(std::forward_as_tuple(std::forward<Ts>(ts)...)));
     } else {
         SetConfig config;
         config.sub_configs.reserve(sizeof...(Ts));
-        (config.sub_configs.push_back(make_sets(std::forward<Ts>(ts))), ...);
+        (config.sub_configs.push_back(make_sets<require_system>(std::forward<Ts>(ts))), ...);
         return config;
     }
 }
+struct ExecuteConfig {
+    bool apply_direct   = false;  // should call System::apply right after System::run or at the end of the schedule
+    bool queue_deferred = false;  // call System::queue for deferred systems instead of apply at the end
+
+    bool is_apply_direct() const { return apply_direct && !queue_deferred; }
+    bool is_queue_deferred() const { return queue_deferred; }
+    bool is_apply_end() const { return !apply_direct && !queue_deferred; }
+};
 struct Schedule {
    private:
     std::unordered_map<SystemSetLabel, std::shared_ptr<Node>> nodes;
@@ -375,7 +383,7 @@ struct Schedule {
             }
         }
     }
-    void execute(SystemDispatcher& dispatcher) {
+    void execute(SystemDispatcher& dispatcher, const ExecuteConfig& config = {}) {
         if (!cache) {
             auto prepare_result = prepare(
 // compile debug level macro controlled
@@ -422,6 +430,9 @@ struct Schedule {
                                        {
                                            .on_finish = [&, index]() { exec_state.finished_nodes.set(index); },
                                        });
+            if (config.is_apply_direct() && cached_node.node->system->is_deferred()) {
+                dispatcher.apply_deferred(*cached_node.node->system.get());
+            }
             exec_state.running_count++;
             exec_state.running_nodes.set(index);
         };
@@ -538,9 +549,20 @@ struct Schedule {
         } while (true);
 
         // end apply deferred
-        dispatcher.apply_deferred(
-            exec_state.finished_nodes.iter_ones() |
-            std::views::transform([&](size_t index) -> auto& { return *cache->nodes[index].node->system.get(); }));
+        if (config.is_apply_end()) {
+            dispatcher.apply_deferred(
+                exec_state.finished_nodes.iter_ones() |
+                std::views::transform([&](size_t index) -> auto& { return *cache->nodes[index].node->system.get(); }) |
+                std::views::filter([&](auto& system) { return system.is_deferred(); }));
+        } else if (config.is_queue_deferred()) {
+            dispatcher.world_scope([&](World& world) {
+                std::ranges::for_each(
+                    exec_state.finished_nodes.iter_ones() | std::views::transform([&](size_t index) -> auto& {
+                        return *cache->nodes[index].node->system.get();
+                    }) | std::views::filter([&](auto& system) { return system.is_deferred(); }),
+                    [&](auto& system) { system.queue_deferred(world); });
+            });
+        }
 
         if (exec_state.remaining_count > 0) {
             std::println(std::cerr, "Some systems are not executed, check for cycles in the graph.");
@@ -562,3 +584,14 @@ struct Schedule {
     }
 };
 }  // namespace epix::core::schedule
+
+namespace epix {
+template <typename... Ts>
+core::schedule::SetConfig into(Ts&&... ts) {
+    return core::schedule::make_sets<true>(std::forward<Ts>(ts)...);
+}
+template <typename... Ts>
+core::schedule::SetConfig sets(Ts&&... ts) {
+    return core::schedule::make_sets(std::forward<Ts>(ts)...);
+}
+}  // namespace epix
