@@ -257,11 +257,34 @@ struct Schedule {
         }
         return {};
     }
+    void initialize_systems(World& world, bool force = false) {
+        for (auto& [label, node] : nodes) {
+            if (node->system && (!node->system->initialized() || force)) {
+                node->system_access = node->system->initialize(world);
+            }
+            if (std::ranges::any_of(node->conditions, [](const auto& cond) { return cond && !cond->initialized(); }) ||
+                force) {
+                node->condition_access = query::FilteredAccessSet{};
+                for (auto& condition : node->conditions) {
+                    if (condition) node->condition_access.extend(condition->initialize(world));
+                }
+            }
+        }
+    }
     void execute(SystemDispatcher& dispatcher) {
         if (!cache) {
-            auto prepare_result = prepare(true);
+            auto prepare_result = prepare(
+// compile debug level macro controlled
+#ifdef NDEBUG
+                false
+#else
+                true
+#endif
+            );
             // we still execute even if there are errors, cause it won't crash, just some nodes won't run
         }
+
+        dispatcher.world_scope([this](World& world) { initialize_systems(world); });
 
         ExecutionState exec_state{
             .running_count       = 0,
@@ -279,6 +302,11 @@ struct Schedule {
             exec_state.wait_count[index]  = cached_node.depends.size() + cached_node.parents.size();
             exec_state.child_count[index] = cached_node.children.size() + (cached_node.node->system ? 1 : 0);
         }
+
+        // end apply deferred
+        dispatcher.apply_deferred(
+            exec_state.finished_nodes.iter_ones() |
+            std::views::transform([&](size_t index) -> auto& { return *cache->nodes[index].node->system.get(); }));
     }
 };
 }  // namespace epix::core::schedule
