@@ -101,6 +101,18 @@ struct ResourceData {
         }
     }
 
+    void replace(this ResourceData& self, Tick tick, untyped_vector vec) {
+        bool had_value     = self.is_present();
+        bool new_has_value = !vec.empty();
+        self.data          = std::move(vec);
+        if (had_value && new_has_value) {
+            self.modified_tick.set(tick.get());
+        } else if (!had_value && new_has_value) {
+            self.added_tick.set(tick.get());
+            self.modified_tick.set(tick.get());
+        }
+    }
+
     /**
      * @brief Insert an uninitialized value into the resource data.
      * This will remove the existing value if present, but won't change added tick.
@@ -149,11 +161,13 @@ struct Resources {
         return self.resources.get_mut(resource_id);
     }
 
-    void initialize(this Resources& self, size_t resource_id) {
+    bool initialize(this Resources& self, size_t resource_id) {
         if (!self.resources.contains(resource_id)) {
             const epix::core::type_system::TypeInfo* type_info = self.registry->type_info(resource_id);
             self.resources.emplace(resource_id, ResourceData(type_info));
+            return true;
         }
+        return false;
     }
 
     void check_change_ticks(this Resources& self, Tick tick) {
