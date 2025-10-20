@@ -89,3 +89,7 @@ add_test(NAME test_component_hooks COMMAND test_component_hooks)
 add_executable(test_system tests/test_system.cpp)
 target_link_libraries(test_system PRIVATE epix_core)
 add_test(NAME test_system COMMAND test_system)
+
+add_executable(test_schedule tests/test_schedule.cpp)
+target_link_libraries(test_schedule PRIVATE epix_core)
+add_test(NAME test_schedule COMMAND test_schedule)

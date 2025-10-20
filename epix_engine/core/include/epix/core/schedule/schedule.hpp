@@ -22,6 +22,8 @@ struct Edges {
     std::unordered_set<SystemSetLabel> children;
 };
 struct Node {
+    Node(const SystemSetLabel& label) : label(label) {}
+
     SystemSetLabel label;
     system::SystemUnique<> system;
     query::FilteredAccessSet system_access;
@@ -68,6 +70,9 @@ struct SchedulePrepareError {
     } type;
 };
 struct SetConfig {
+   public:
+    SetConfig() = default;
+
     SetConfig& after(const SystemSetLabel& label) {
         edges.depends.insert(label);
         std::ranges::for_each(sub_configs, [&](SetConfig& config) { config.after(label); });
@@ -83,9 +88,11 @@ struct SetConfig {
         std::ranges::for_each(sub_configs, [&](SetConfig& config) { config.in_set(label); });
         return *this;
     }
-    SetConfig& set_name(std::string_view name) {
+    SetConfig& set_name(std::string name) {
         if (system) system->set_name(name);
-        std::ranges::for_each(sub_configs, [&](SetConfig& config) { config.set_name(name); });
+        size_t index = 0;
+        std::ranges::for_each(sub_configs,
+                              [&](SetConfig& config) { config.set_name(std::format("{}#{}", name, index)); });
         return *this;
     }
     template <typename F>
@@ -112,26 +119,33 @@ struct SetConfig {
 
     std::vector<SetConfig> sub_configs;
 
-    SetConfig() = default;
-
     friend struct Schedule;
-    template <typename F>
-    friend SetConfig single_set(F&& func);
-    template <typename... Ts>
+    template <bool require_system, typename F>
+    friend SetConfig single_set(F&& func)
+        requires(!require_system || requires {
+            { system::make_system(std::forward<F>(func)) } -> std::same_as<system::System<std::tuple<>, void>*>;
+        } || std::same_as<std::decay_t<F>, SetConfig>);
+    template <bool, typename... Ts>
     friend SetConfig make_sets(Ts&&... ts);
 };
 template <bool require_system = false, typename F>
 SetConfig single_set(F&& func)
-    requires(!require_system || requires { system::make_system<std::tuple<>, void>(std::forward<F>(func)); } ||
-             std::same_as<std::decay_t<F>, SetConfig>)
+    requires(!require_system ||
+             requires {
+                 { system::make_system(std::forward<F>(func)) } -> std::same_as<system::System<std::tuple<>, void>*>;
+             } || std::same_as<std::decay_t<F>, SetConfig>)
 {
     if constexpr (std::same_as<std::decay_t<F>, SetConfig>) {
         return std::forward<F>(func);
     }
     SetConfig config;
-    config.label = SystemSetLabel(func);
-    if constexpr (requires { system::make_system<std::tuple<>, void>(std::forward<F>(func)); }) {
-        config.system = system::make_system<std::tuple<>, void>(std::forward<F>(func));
+    config.label.emplace(func);
+    if constexpr (requires {
+                      {
+                          system::make_system(std::forward<F>(func))
+                      } -> std::same_as<system::System<std::tuple<>, void>*>;
+                  }) {
+        config.system.reset(system::make_system(std::forward<F>(func)));
     }
     return config;
 }
@@ -162,8 +176,7 @@ struct Schedule {
     void add_config(SetConfig config, bool accept_system = true) {
         // create node
         if (config.label) {
-            auto node   = std::make_shared<Node>();
-            node->label = config.label;
+            auto node = std::make_shared<Node>(*config.label);
             if (accept_system && config.system) node->system = std::move(config.system);
             node->conditions = std::move(config.conditions);
             node->edges      = std::move(config.edges);
@@ -344,14 +357,17 @@ struct Schedule {
             }
             // for each node, if any pair of its parents has dependencies, report error
             for (size_t i = 0; i < schedule_cache.nodes.size(); i++) {
-                const auto& parents = schedule_cache.nodes[i].parents;
+                auto&& parents = reachable_parents[i].iter_ones();
                 std::vector<SystemSetLabel> conflict_parents;
                 for (auto&& [p1, p2] : std::views::cartesian_product(parents, parents)) {
                     if (p1 >= p2) continue;
-                    if (reachable_dependencies[schedule_cache.node_map.at(p1)].contains(
-                            schedule_cache.node_map.at(p2))) {
-                        conflict_parents.push_back(p1);
-                        conflict_parents.push_back(p2);
+                    if (reachable_dependencies[p1].contains(p2)) {
+                        conflict_parents.push_back(schedule_cache.nodes[p1].node->label);
+                        conflict_parents.push_back(schedule_cache.nodes[p2].node->label);
+                        break;
+                    } else if (reachable_dependencies[p2].contains(p1)) {
+                        conflict_parents.push_back(schedule_cache.nodes[p2].node->label);
+                        conflict_parents.push_back(schedule_cache.nodes[p1].node->label);
                         break;
                     }
                 }
@@ -360,7 +376,7 @@ struct Schedule {
                     associated_labels.push_back(schedule_cache.nodes[i].node->label);
                     return std::unexpected(SchedulePrepareError{
                         .associated_labels = associated_labels,
-                        .conflict_parents  = conflict_parents,
+                        .conflict_parents  = std::move(conflict_parents),
                         .type              = SchedulePrepareError::Type::ParentsWithDeps,
                     });
                 }
@@ -428,7 +444,7 @@ struct Schedule {
             CachedNode& cached_node = cache->nodes[index];
             dispatcher.dispatch_system(*cached_node.node->system.get(), {}, cached_node.node->system_access,
                                        {
-                                           .on_finish = [&, index]() { exec_state.finished_nodes.set(index); },
+                                           .on_finish = [&, index]() { exec_state.finished_queue.push(index); },
                                        });
             if (config.is_apply_direct() && cached_node.node->system->is_deferred()) {
                 dispatcher.apply_deferred(*cached_node.node->system.get());
@@ -464,18 +480,18 @@ struct Schedule {
             while (!ready_stack.empty()) {
                 size_t index = ready_stack.back();
                 ready_stack.pop_back();
-                exec_state.entered_nodes.set(index);
                 CachedNode& cached_node = cache->nodes[index];
                 bool cond_met           = exec_state.condition_met_nodes.contains(index);
                 if (cond_met) {
-                    bool cond_left = check_cond(index);
-                    if (cond_left) {
+                    bool cond_done = check_cond(index);
+                    if (!cond_done) {
                         // cannot test all conditions now, put back to pending
                         pending_ready.push_back(index);
                         continue;
                     }
                 }
                 cond_met = exec_state.condition_met_nodes.contains(index);
+                exec_state.entered_nodes.set(index);
                 if (cached_node.node->system) {
                     if (cond_met) {
                         dispatch_system(index);
@@ -550,18 +566,22 @@ struct Schedule {
 
         // end apply deferred
         if (config.is_apply_end()) {
-            dispatcher.apply_deferred(
-                exec_state.finished_nodes.iter_ones() |
-                std::views::transform([&](size_t index) -> auto& { return *cache->nodes[index].node->system.get(); }) |
-                std::views::filter([&](auto& system) { return system.is_deferred(); }));
+            dispatcher
+                .apply_deferred(exec_state.finished_nodes.iter_ones() |
+                                std::views::transform(
+                                    [&](size_t index) -> auto& { return *cache->nodes[index].node->system.get(); }) |
+                                std::views::filter([&](auto& system) { return system.is_deferred(); }))
+                .wait();
         } else if (config.is_queue_deferred()) {
-            dispatcher.world_scope([&](World& world) {
-                std::ranges::for_each(
-                    exec_state.finished_nodes.iter_ones() | std::views::transform([&](size_t index) -> auto& {
-                        return *cache->nodes[index].node->system.get();
-                    }) | std::views::filter([&](auto& system) { return system.is_deferred(); }),
-                    [&](auto& system) { system.queue_deferred(world); });
-            });
+            dispatcher
+                .world_scope([&](World& world) {
+                    std::ranges::for_each(
+                        exec_state.finished_nodes.iter_ones() | std::views::transform([&](size_t index) -> auto& {
+                            return *cache->nodes[index].node->system.get();
+                        }) | std::views::filter([&](auto& system) { return system.is_deferred(); }),
+                        [&](auto& system) { system.queue_deferred(world); });
+                })
+                .wait();
         }
 
         if (exec_state.remaining_count > 0) {

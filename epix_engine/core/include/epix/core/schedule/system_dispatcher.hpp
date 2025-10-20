@@ -4,6 +4,7 @@
 #include <condition_variable>
 #include <deque>
 #include <expected>
+#include <functional>
 #include <future>
 #include <mutex>
 #include <ranges>
@@ -32,8 +33,8 @@ struct smallvec : std::ranges::view_interface<smallvec> {
         } else {
             new (&large_array) std::vector<size_t>(std::move(other.large_array));
             other.large_array.~vector();
-            other.size_ = 0;
         }
+        other.size_ = 0;
     }
     smallvec& operator=(const smallvec& other) noexcept {
         if (this != &other) {
@@ -162,7 +163,7 @@ struct SystemDispatcher {
    private:
     std::vector<const query::FilteredAccessSet*> system_accesses;
     std::deque<size_t> free_indices;
-    std::deque<std::tuple<const query::FilteredAccessSet*, DispatchConfig, std::function<void(size_t)>>>
+    std::deque<std::tuple<const query::FilteredAccessSet*, DispatchConfig, std::move_only_function<void(size_t)>>>
         pending_systems;
     World* world = nullptr;
     std::recursive_mutex mutex_;
@@ -184,7 +185,7 @@ struct SystemDispatcher {
     void tick() {
         std::lock_guard lock(mutex_);
         while (!pending_systems.empty()) {
-            const auto& [access, config, func] = pending_systems.front();
+            auto&& [access, config, func] = pending_systems.front();
             // check for conflicts
             bool conflict = false;
             for (const auto& existing_access : system_accesses) {
@@ -197,7 +198,7 @@ struct SystemDispatcher {
             // can schedule
             size_t index           = get_index();
             system_accesses[index] = access;
-            thread_pool.detach_task([func = std::move(func), index] { return func(index); });
+            thread_pool.detach_task([func = std::move(func), index] mutable { return func(index); });
             pending_systems.pop_front();
         }
     }
@@ -246,13 +247,13 @@ struct SystemDispatcher {
         auto fut = task.get_future();
         {
             std::lock_guard lock(mutex_);
-            pending_systems.emplace_back(&access, config,
-                                         [task = std::move(task), on_finished = std::move(config.on_finish),
-                                          fut = std::move(fut), this](size_t index) mutable {
-                                             task();
-                                             finish(index);
-                                             if (on_finished) on_finished();
-                                         });
+            pending_systems.emplace_back(
+                &access, config,
+                [task = std::move(task), on_finished = std::move(config.on_finish), this](size_t index) mutable {
+                    task();
+                    finish(index);
+                    if (on_finished) on_finished();
+                });
         }
         tick();
         return fut;
@@ -272,11 +273,11 @@ struct SystemDispatcher {
         return sys.run_no_apply(std::move(input), *world);
     }
     template <typename In, typename Out>
-    std::future<void> apply_deferred(system::System<In, Out>& sys) {
+    std::future<std::expected<void, system::RunSystemError>> apply_deferred(system::System<In, Out>& sys) {
         return world_scope([&](World& world) { sys.apply_deferred(world); });
     }
     template <typename T>
-    std::future<void> apply_deferred(T&& range)
+    std::future<std::expected<void, system::RunSystemError>> apply_deferred(T&& range)
         requires std::ranges::viewable_range<T> && requires(std::ranges::range_reference_t<T> ref, World& world) {
             { ref.apply_deferred(world) } -> std::same_as<void>;
         }

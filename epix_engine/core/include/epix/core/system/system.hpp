@@ -20,7 +20,7 @@ using RunSystemError = std::variant<ValidateParamError, SystemException>;
 template <typename In, typename Out>
 struct System {
     virtual std::string_view name() const = 0;
-    virtual void set_name(std::string_view) {}
+    virtual void set_name(std::string) {}
     virtual epix::core::meta::type_index type_index() const = 0;
     virtual SystemFlagBits flags() const                    = 0;
     bool is_exclusive() const { return (flags() & SystemFlagBits::EXCLUSIVE) != 0; }
@@ -119,7 +119,7 @@ struct FunctionSystem
     using SParam  = SystemParam<typename function_system_traits<F>::ParamTuple>;
 
     std::string_view name() const override { return meta_.name; }
-    void set_name(std::string_view n) override { meta_.name = n; }
+    void set_name(std::string n) override { meta_.name = std::move(n); }
     epix::core::meta::type_index type_index() const override { return type_index_; }
     SystemFlagBits flags() const override { return meta_.flags; }
     std::expected<void, ValidateParamError> validate_param(World& world) override {
