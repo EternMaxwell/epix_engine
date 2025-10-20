@@ -49,7 +49,7 @@ struct Entities {
    private:
     std::vector<EntityMeta> meta;
     std::vector<uint32_t> pending;
-    std::atomic<int64_t> free_cursor = 0;
+    mutable std::atomic<int64_t> free_cursor = 0;
 
    public:
     /**
@@ -60,7 +60,7 @@ struct Entities {
      * @param count Number of entities to reserve.
      * @return A viewable range of reserved entities.
      */
-    auto reserve_entities(uint32_t count) {
+    auto reserve_entities(uint32_t count) const {
         int64_t range_end   = free_cursor.fetch_sub(count, std::memory_order_relaxed);
         int64_t range_start = range_end - count;
 
@@ -96,7 +96,7 @@ struct Entities {
      *
      * @return The reserved entity.
      */
-    Entity reserve_entity() {
+    Entity reserve_entity() const {
         int64_t n = free_cursor.fetch_sub(1, std::memory_order_relaxed);
         if (n > 0) {
             // from free list
@@ -299,13 +299,13 @@ struct Entities {
      *
      * Does not include entities that have been reserved but not yet allocated.
      */
-    size_t total_count() { return meta.size(); }
+    size_t total_count() const { return meta.size(); }
     /**
      * @brief Count of entities that are used.
      *
      * Including ones that are allocated and reserved but not those that are freed.
      */
-    size_t used_count() {
+    size_t used_count() const {
         int64_t size = meta.size();
         return size - free_cursor.load(std::memory_order_relaxed);
     }
@@ -314,17 +314,17 @@ struct Entities {
      *
      * This is the value that `total_count()` would return if `flush()` were called right now.
      */
-    size_t total_prospective_count() {
+    size_t total_prospective_count() const {
         return meta.size() + static_cast<size_t>(-std::min(free_cursor.load(std::memory_order_relaxed), int64_t{0}));
     }
     /**
      * @brief Count of currently allocated entities.
      */
-    size_t size() { return meta.size() - pending.size(); }
+    size_t size() const { return meta.size() - pending.size(); }
     /**
      * @brief Checks if any entity is currently active.
      */
-    bool empty() { return size() == 0; }
+    bool empty() const { return size() == 0; }
 };
 }  // namespace epix::core
 

@@ -14,6 +14,7 @@
 #include "../query/query.hpp"
 #include "../storage/resource.hpp"
 #include "../world.hpp"
+#include "../world/from_world.hpp"
 
 namespace epix::core::system {
 template <typename T>
@@ -48,6 +49,7 @@ concept valid_system_param = requires(World& world, SystemMeta& meta, query::Fil
     typename param_type<T>::type;
     // used to store data that persists across system runs
     typename T::State;
+    std::movable<typename T::State>;
     // the item type returned when accessing the param, the item returned may not be T itself, it may be reference.
     typename T::Item;
     std::same_as<typename param_type<T>::type, typename T::Item>;
@@ -57,8 +59,8 @@ concept valid_system_param = requires(World& world, SystemMeta& meta, query::Fil
                       Tick tick, const archetype::Archetype& archetype) {
         { T::init_access(state, meta, access, world) } -> std::same_as<void>;
         { T::new_archetype(state_mut, archetype, meta) } -> std::same_as<void>;
-        { T::apply(state_mut, world) } -> std::same_as<void>;
-        { T::queue(state_mut, deferred_world) } -> std::same_as<void>;
+        { T::apply(state_mut, std::as_const(meta), world) } -> std::same_as<void>;
+        { T::queue(state_mut, std::as_const(meta), deferred_world) } -> std::same_as<void>;
         {
             T::validate_param(state_mut, std::as_const(meta), world)
         } -> std::same_as<std::expected<void, ValidateParamError>>;
@@ -69,8 +71,8 @@ concept valid_system_param = requires(World& world, SystemMeta& meta, query::Fil
 struct ParamBase {
     static void init_access(const auto&, SystemMeta&, query::FilteredAccessSet&, const World&) {}
     static void new_archetype(auto&, const archetype::Archetype&, SystemMeta&) {}
-    static void apply(auto&, World&) {}
-    static void queue(auto&, DeferredWorld) {}
+    static void apply(auto&, const SystemMeta&, World&) {}
+    static void queue(auto&, const SystemMeta&, DeferredWorld) {}
     static std::expected<void, ValidateParamError> validate_param(auto&, const SystemMeta&, World&) { return {}; }
 };
 
@@ -352,15 +354,17 @@ struct SystemParam<std::tuple<T...>> {
              ...);
         }(state, archetype, meta, std::index_sequence_for<T...>{});
     }
-    static void apply(State& state, World& world) {
-        []<std::size_t... I>(State& state, World& world, std::index_sequence<I...>) {
-            (SystemParam<std::tuple_element_t<I, std::tuple<T...>>>::apply(std::get<I>(state), world), ...);
-        }(state, world, std::index_sequence_for<T...>{});
+    static void apply(State& state, const SystemMeta& meta, World& world) {
+        []<std::size_t... I>(State& state, const SystemMeta& meta, World& world, std::index_sequence<I...>) {
+            (SystemParam<std::tuple_element_t<I, std::tuple<T...>>>::apply(std::get<I>(state), meta, world), ...);
+        }(state, meta, world, std::index_sequence_for<T...>{});
     }
-    static void queue(State& state, DeferredWorld deferred_world) {
-        []<std::size_t... I>(State& state, DeferredWorld deferred_world, std::index_sequence<I...>) {
-            (SystemParam<std::tuple_element_t<I, std::tuple<T...>>>::queue(std::get<I>(state), deferred_world), ...);
-        }(state, deferred_world, std::index_sequence_for<T...>{});
+    static void queue(State& state, const SystemMeta& meta, DeferredWorld deferred_world) {
+        []<std::size_t... I>(State& state, const SystemMeta& meta, DeferredWorld deferred_world,
+                             std::index_sequence<I...>) {
+            (SystemParam<std::tuple_element_t<I, std::tuple<T...>>>::queue(std::get<I>(state), meta, deferred_world),
+             ...);
+        }(state, meta, deferred_world, std::index_sequence_for<T...>{});
     }
     static std::expected<void, ValidateParamError> validate_param(State& state, const SystemMeta& meta, World& world) {
         return []<std::size_t I>(this auto&& self, State& state, const SystemMeta& meta, World& world,
@@ -442,5 +446,60 @@ struct SystemParam<ParamSet<Ts...>> : SystemParam<std::tuple<Ts...>> {
     static Item get_param(State& state, const SystemMeta& meta, World& world, Tick tick) {
         return Item(state, &world, meta, tick);
     }
+};
+
+template <typename T>
+struct SystemBuffer;
+template <typename S>
+struct buffer_type;
+template <typename S>
+struct buffer_type<SystemBuffer<S>> {
+    using type = S;
+};
+template <typename T>
+concept valid_system_buffer = requires {
+    typename buffer_type<T>::type;
+    requires requires(typename buffer_type<T>::type& buffer, const SystemMeta& meta, World& world) {
+        { T::apply(buffer, meta, world) } -> std::same_as<void>;
+        { T::queue(buffer, meta, DeferredWorld(world)) } -> std::same_as<void>;
+    };
+};
+template <typename T>
+    requires valid_system_buffer<SystemBuffer<T>>
+struct Deferred {
+   public:
+    Deferred(T& buffer) : buffer_(std::addressof(buffer)) {}
+    T& get() { return *buffer_; }
+    T* operator->() { return buffer_; }
+    T& operator*() { return *buffer_; }
+
+   private:
+    T* buffer_;
+};
+template <typename F>
+    requires valid_system_buffer<SystemBuffer<F>> && is_from_world<F>
+struct SystemParam<Deferred<F>> : ParamBase {
+    using State = F;
+    using Item  = Deferred<F>;
+    static State init_state(World& world) { return FromWorld<F>::create(world); }
+    static void init_access(const State& state, SystemMeta& meta, query::FilteredAccessSet& access, const World&) {
+        meta.flags = (SystemFlagBits)(meta.flags | SystemFlagBits::DEFERRED);
+        // No access is added since deferred params do not access anything immediately.
+    }
+    static void apply(State& state, const SystemMeta& meta, World& world) {
+        SystemBuffer<F>::apply(state, meta, world);
+    }
+    static void queue(State& state, const SystemMeta& meta, DeferredWorld deferred_world) {
+        SystemBuffer<F>::queue(state, meta, deferred_world);
+    }
+    static Item get_param(State& state, const SystemMeta&, World&, Tick) { return Deferred<F>(state); }
+};
+
+template <>
+struct SystemParam<const Entities&> : ParamBase {
+    using State = std::tuple<>;
+    using Item  = const Entities&;
+    static State init_state(World&) { return {}; }
+    static Item get_param(State&, const SystemMeta&, World& world, Tick) { return world.entities(); }
 };
 }  // namespace epix::core::system

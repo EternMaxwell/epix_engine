@@ -127,13 +127,13 @@ struct FunctionSystem
     }
     void apply_deferred(World& world) override {
         state_.and_then([&](State& state) -> std::optional<bool> {
-            SParam::apply(state, world);
+            SParam::apply(state, meta_, world);
             return std::optional<bool>(true);
         });
     }
     void queue_deferred(DeferredWorld deferred_world) override {
         state_.and_then([&](State& state) -> std::optional<bool> {
-            SParam::queue(state, deferred_world);
+            SParam::queue(state, meta_, deferred_world);
             return std::optional<bool>(true);
         });
     }

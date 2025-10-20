@@ -219,6 +219,11 @@ struct EntityWorldMut : public EntityRefMut {
             return;  // some component not found, do nothing
         }
     }
+    void clear() {
+        assert_not_despawned();
+        auto& archetype = world_->archetypes_mut().get_mut(location_.archetype_id).value().get();
+        remove_by_ids(archetype.components());
+    }
     void despawn() {
         assert_not_despawned();
         auto& entities  = world_->entities_mut();

@@ -12,6 +12,7 @@
 #include "query/fwd.hpp"
 #include "storage.hpp"
 #include "type_system/type_registry.hpp"
+#include "world/command_queue.hpp"
 #include "world/from_world.hpp"
 
 namespace epix::core {
@@ -45,6 +46,7 @@ struct World {
     Tick change_tick() const { return _change_tick->load(std::memory_order_relaxed); }
     Tick increment_change_tick() { return Tick(_change_tick->fetch_add(1, std::memory_order_relaxed)); }
     Tick last_change_tick() const { return _last_change_tick; }
+    CommandQueue& command_queue() { return _command_queue; }
 
     template <typename... Ts, typename... Args>
     EntityWorldMut spawn(Args&&... args)
@@ -146,7 +148,11 @@ struct World {
             location = empty_archetype.allocate(entity, empty_table.allocate(entity));
         });
     }
-    void flush() { flush_entities(); }
+    void flush_commands() { _command_queue.apply(*this); }
+    void flush() {
+        flush_entities();
+        flush_commands();
+    }
 
    protected:
     WorldId _id;
@@ -156,6 +162,7 @@ struct World {
     Storage _storage;
     Archetypes _archetypes;
     Bundles _bundles;
+    CommandQueue _command_queue;
     std::unique_ptr<std::atomic<uint32_t>> _change_tick;
     Tick _last_change_tick;
 };
@@ -173,6 +180,7 @@ struct DeferredWorld {
     const Bundles& bundles() const { return world_->bundles(); }
     Tick change_tick() const { return world_->change_tick(); }
     Tick last_change_tick() const { return world_->last_change_tick(); }
+    CommandQueue& command_queue() { return world_->command_queue(); }
 
     EntityRef entity(Entity entity);
     EntityRefMut entity_mut(Entity entity);
