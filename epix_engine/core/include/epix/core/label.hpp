@@ -41,6 +41,7 @@ struct Label {
             *this = Label::from_type<T>();
         }
     }
+    Label() = default;
 
     epix::core::meta::type_index type_index() const { return type_index_; }
     uintptr_t extra() const { return extra_; }
@@ -49,7 +50,6 @@ struct Label {
     bool operator!=(const Label& other) const noexcept = default;
 
    protected:
-    Label() = default;
     epix::core::meta::type_index type_index_;
     uintptr_t extra_ = 0;
 };

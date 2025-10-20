@@ -35,6 +35,29 @@ struct smallvec : std::ranges::view_interface<smallvec> {
             other.size_ = 0;
         }
     }
+    smallvec& operator=(const smallvec& other) noexcept {
+        if (this != &other) {
+            if (is_small() && other.is_small()) {
+                std::copy(other.small_array, other.small_array + other.size_, small_array);
+            } else if (is_small() && !other.is_small()) {
+                new (&large_array) std::vector<size_t>(other.large_array);
+            } else if (!is_small() && other.is_small()) {
+                large_array.~vector();
+                std::copy(other.small_array, other.small_array + other.size_, small_array);
+            } else {
+                large_array = other.large_array;
+            }
+            size_ = other.size_;
+        }
+        return *this;
+    }
+    smallvec& operator=(smallvec&& other) noexcept {
+        if (this != &other) {
+            this->~smallvec();
+            new (this) smallvec(std::move(other));
+        }
+        return *this;
+    }
     ~smallvec() {
         if (!is_small()) {
             large_array.~vector();
@@ -141,12 +164,53 @@ struct SystemDispatcher {
     std::deque<size_t> free_indices;
     std::deque<std::tuple<const query::FilteredAccessSet*, DispatchConfig, std::function<void(size_t)>>>
         pending_systems;
-    async_queue finished_queue;
     World* world = nullptr;
-    std::mutex mutex_;
+    std::recursive_mutex mutex_;
     BS::thread_pool<BS::tp::none> thread_pool;
     system::SystemUnique<system::In<std::function<void(World&)>>> world_scope_system;
     query::FilteredAccessSet world_scope_access;
+
+    size_t get_index() {
+        if (!free_indices.empty()) {
+            size_t index = free_indices.front();
+            free_indices.pop_front();
+            return index;
+        } else {
+            size_t index = system_accesses.size();
+            system_accesses.push_back(nullptr);
+            return index;
+        }
+    }
+    void tick() {
+        std::lock_guard lock(mutex_);
+        while (!pending_systems.empty()) {
+            const auto& [access, config, func] = pending_systems.front();
+            // check for conflicts
+            bool conflict = false;
+            for (const auto& existing_access : system_accesses) {
+                if (existing_access && !access->is_compatible(*existing_access)) {
+                    conflict = true;
+                    break;
+                }
+            }
+            if (conflict) break;
+            // can schedule
+            size_t index           = get_index();
+            system_accesses[index] = access;
+            thread_pool.detach_task([func = std::move(func), index] { return func(index); });
+            pending_systems.pop_front();
+        }
+    }
+    void finish(size_t index) {
+        // collect finished system
+        {
+            std::lock_guard lock(mutex_);
+            const auto& access     = system_accesses[index];
+            system_accesses[index] = nullptr;
+            free_indices.push_back(index);
+        }
+        tick();
+    }
 
    public:
     SystemDispatcher(World& world_ref, size_t thread_count = std::clamp(std::thread::hardware_concurrency(), 2u, 8u))
@@ -165,49 +229,6 @@ struct SystemDispatcher {
         // just dispatch a world scope system to wait for all systems to finish.
         world_scope([](World& world) {}).wait();
     }
-    bool tick() {
-        // collect finished systems
-        std::unique_lock<std::mutex> lock(mutex_);
-        auto finished = finished_queue.try_pop();
-        if (finished.empty()) {
-            return false;
-        }
-        for (auto&& index : finished) {
-            const auto& access     = system_accesses[index];
-            system_accesses[index] = nullptr;
-            free_indices.push_back(index);
-        }
-        // check pending systems
-        auto get_index = [&]() -> size_t {
-            if (!free_indices.empty()) {
-                size_t index = free_indices.front();
-                free_indices.pop_front();
-                return index;
-            } else {
-                size_t index = system_accesses.size();
-                system_accesses.push_back(nullptr);
-                return index;
-            }
-        };
-        while (!pending_systems.empty()) {
-            const auto& [access, config, func] = pending_systems.front();
-            // check for conflicts
-            bool conflict = false;
-            for (const auto& existing_access : system_accesses) {
-                if (existing_access && !access->is_compatible(*existing_access)) {
-                    conflict = true;
-                    break;
-                }
-            }
-            if (conflict) break;
-            // can schedule
-            size_t index           = get_index();
-            system_accesses[index] = access;
-            thread_pool.detach_task([func = std::move(func), index] { return func(index); });
-            pending_systems.pop_front();
-        }
-        return true;
-    }
 
     std::future<std::expected<void, system::RunSystemError>> world_scope(std::invocable<World&> auto&& func) {
         return dispatch_system(*world_scope_system, std::function(func), world_scope_access);
@@ -223,22 +244,24 @@ struct SystemDispatcher {
                 return sys.run_no_apply(std::move(input), *world);
             });
         auto fut = task.get_future();
-        std::unique_lock<std::mutex> lock(mutex_);
-        pending_systems.emplace_back(&access, config,
-                                     [task = std::move(task), on_finished = std::move(config.on_finish),
-                                      fut = std::move(fut), this](size_t index) mutable {
-                                         task();
-                                         if (on_finished) on_finished();
-                                         finished_queue.push(index);
-                                         tick();  // tick whenever a system finishes
-                                     });
+        {
+            std::lock_guard lock(mutex_);
+            pending_systems.emplace_back(&access, config,
+                                         [task = std::move(task), on_finished = std::move(config.on_finish),
+                                          fut = std::move(fut), this](size_t index) mutable {
+                                             task();
+                                             finish(index);
+                                             if (on_finished) on_finished();
+                                         });
+        }
+        tick();
         return fut;
     }
     template <typename In, typename Out>
     std::optional<std::expected<Out, system::RunSystemError>> try_run_system(system::System<In, Out>& sys,
                                                                              system::SystemInput<In>::Input input,
                                                                              const query::FilteredAccessSet& access) {
-        std::unique_lock<std::mutex> lock(mutex_);
+        std::lock_guard lock(mutex_);
         // check for conflicts
         for (const auto& existing_access : system_accesses) {
             if (existing_access && !access.is_compatible(*existing_access)) {
