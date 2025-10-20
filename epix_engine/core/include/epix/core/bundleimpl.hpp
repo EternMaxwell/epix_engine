@@ -65,6 +65,12 @@ InitializeBundle<std::tuple<Ts...>, std::tuple<ArgTuples...>> make_init_bundle(A
     return InitializeBundle<std::tuple<Ts...>, std::tuple<ArgTuples...>>{
         std::make_tuple(std::forward<ArgTuples>(args)...)};
 }
+template <typename... Ts>
+InitializeBundle<std::tuple<std::decay_t<Ts>...>, std::tuple<std::tuple<std::decay_t<Ts>>...>> make_stored_init_bundle(
+    Ts&&... args) {
+    return InitializeBundle<std::tuple<std::decay_t<Ts>...>, std::tuple<std::tuple<std::decay_t<Ts>>...>>{
+        std::make_tuple(std::make_tuple(std::forward<Ts>(args))...)};
+}
 
 template <typename... Ts>
 struct RemoveBundle {
