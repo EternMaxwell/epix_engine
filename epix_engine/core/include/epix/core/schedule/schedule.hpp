@@ -7,6 +7,7 @@
 #include <numeric>
 #include <ostream>
 #include <ranges>
+#include <utility>
 
 #include "../system/system.hpp"
 #include "system_dispatcher.hpp"
@@ -121,8 +122,12 @@ struct SetConfig {
 };
 template <bool require_system = false, typename F>
 SetConfig single_set(F&& func)
-    requires(!require_system || requires { system::make_system<std::tuple<>, void>(std::forward<F>(func)); })
+    requires(!require_system || requires { system::make_system<std::tuple<>, void>(std::forward<F>(func)); } ||
+             std::same_as<std::decay_t<F>, SetConfig>)
 {
+    if constexpr (std::same_as<std::decay_t<F>, SetConfig>) {
+        return std::forward<F>(func);
+    }
     SetConfig config;
     config.label = SystemSetLabel(func);
     if constexpr (requires { system::make_system<std::tuple<>, void>(std::forward<F>(func)); }) {
@@ -133,7 +138,7 @@ SetConfig single_set(F&& func)
 template <bool require_system = false, typename... Ts>
 SetConfig make_sets(Ts&&... ts) {
     if constexpr (sizeof...(Ts) == 1) {
-        return single_set(std::get<1>(std::forward_as_tuple(std::forward<Ts>(ts)...)));
+        return single_set(std::get<0>(std::forward_as_tuple(std::forward<Ts>(ts)...)));
     } else {
         SetConfig config;
         config.sub_configs.reserve(sizeof...(Ts));
