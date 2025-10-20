@@ -42,6 +42,7 @@ struct System {
             .and_then([&] { return run_internal(std::move(input), world); });
     }
     virtual query::FilteredAccessSet initialize(World& world) = 0;
+    virtual bool initialized() const noexcept                 = 0;
     virtual void check_change_tick(Tick tick)                 = 0;
     virtual Tick get_last_run() const                         = 0;
     virtual std::vector<schedule::SystemSetLabel> default_sets() const { return {}; }
@@ -143,6 +144,7 @@ struct FunctionSystem
         SParam::init_access(*state_, meta_, access, world);
         return access;
     }
+    bool initialized() const noexcept override { return state_.has_value(); }
     void check_change_tick(Tick tick) override { meta_.last_run.check_tick(tick); }
     Tick get_last_run() const override { return meta_.last_run; }
     std::vector<schedule::SystemSetLabel> default_sets() const override { return {schedule::SystemSetLabel(func_)}; }
