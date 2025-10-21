@@ -1,6 +1,5 @@
 #pragma once
 
-#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -37,55 +36,12 @@ struct Table {
      * @param dense_index The dense index of the component to remove.
      * @return std::optional<Entity> The entity that is swapped into the removed component's place.
      */
-    std::optional<Entity> swap_remove(this Table& self, size_t dense_index) {
-        assert(dense_index < self._entities.size());
-        bool is_last = dense_index == self._entities.size() - 1;
-        for (auto&& [type_id, dense] : self._denses.iter_mut()) {
-            dense.swap_remove(dense_index);
-        }
-        std::swap(self._entities[dense_index], self._entities.back());
-        self._entities.pop_back();
-        if (!is_last) {
-            return self._entities[dense_index];
-        } else {
-            return std::nullopt;
-        }
-    }
+    std::optional<Entity> swap_remove(this Table& self, size_t dense_index);
     struct MoveReturn {
         size_t new_index;                      // index in the target table
         std::optional<Entity> swapped_entity;  // entity that was swapped in the source table, if any
     };
-    MoveReturn move_to(this Table& self, size_t dense_index, Table& target) {
-        assert(dense_index < self._entities.size());
-        size_t new_index = target._entities.size();
-        target.allocate(self._entities[dense_index]);
-        // Iterate over target denses: if source has the type, move the value; otherwise
-        // reserve an uninitialized slot in target for the incoming entity.
-        for (auto&& [type_id, src_dense] : self._denses.iter_mut()) {
-            // if source has this Dense, move the value into target
-            target._denses.get_mut(type_id).and_then([&](Dense& target_dense) -> std::optional<bool> {
-                src_dense.get_mut(dense_index).and_then([&](void* value) -> std::optional<bool> {
-                    target_dense.initialize_from_move(new_index, src_dense.get_ticks(dense_index).value(), value);
-                    return true;
-                });
-                return true;
-            });
-            src_dense.swap_remove(dense_index);
-            // .or_else([&]() -> std::optional<bool> {
-            //     // source doesn't have this Dense, reserve uninitialized slot in target
-            //     target_dense.resize_uninitialized(new_index + 1);
-            //     return std::nullopt;
-            // });
-        }
-        bool is_last = dense_index == self._entities.size() - 1;
-        std::swap(self._entities[dense_index], self._entities.back());
-        self._entities.pop_back();
-        if (!is_last) {
-            return {new_index, self._entities[dense_index]};
-        } else {
-            return {new_index, std::nullopt};
-        }
-    }
+    MoveReturn move_to(this Table& self, size_t dense_index, Table& target);
     std::optional<std::pair<const void*, const void*>> get_data_for(this const Table& self, size_t type_id) {
         return self._denses.get(type_id).transform([](const Dense& dense) { return dense.get_data(); });
     }
@@ -201,21 +157,6 @@ struct Tables {
         return self._table_id_registry.contains(type_ids) ? std::optional(self._table_id_registry.at(type_ids))
                                                           : std::nullopt;
     }
-    TableId get_id_or_insert(this Tables& self, const std::vector<TypeId>& type_ids) {
-        TableId table_id;
-        if (auto it = self._table_id_registry.find(type_ids); it != self._table_id_registry.end()) {
-            table_id = it->second;
-        } else {
-            table_id = self._tables.size();
-            self._tables.emplace_back();
-            Table& table = self._tables.back();
-            for (size_t type_id : type_ids) {
-                const type_system::TypeInfo* type_info = self._type_registry->type_info(type_id);
-                table._denses.emplace(type_id, Dense(type_info));
-            }
-            self._table_id_registry.insert({type_ids, table_id});
-        }
-        return table_id;
-    }
+    TableId get_id_or_insert(this Tables& self, const std::vector<TypeId>& type_ids);
 };
 }  // namespace epix::core::storage

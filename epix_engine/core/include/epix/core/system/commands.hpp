@@ -10,7 +10,11 @@
 namespace epix::core::system {
 template <>
 struct SystemBuffer<CommandQueue> {
-    static void apply(CommandQueue& buffer, const SystemMeta&, World& world) { buffer.apply(world); }
+    static void apply(CommandQueue& buffer, const SystemMeta&, World& world) {
+        world.flush_entities();
+        world.flush_commands();
+        buffer.apply(world);
+    }
     static void queue(CommandQueue& buffer, const SystemMeta&, DeferredWorld world) {
         world.command_queue().append(buffer);
     }
@@ -102,31 +106,33 @@ struct EntityCommands {
         requires(std::movable<std::decay_t<Ts>> && ...)
     {
         commands.queue([e = entity, comps = std::make_tuple(std::forward<Ts>(components)...)](World& world) mutable {
-            world.get_entity_mut(e).and_then([](EntityWorldMut& entity_world) -> std::optional<bool> {
-                [&]<size_t... Is>(std::index_sequence<Is...>) {
+            world.get_entity_mut(e).and_then([&](EntityWorldMut&& entity_world) mutable -> std::optional<bool> {
+                [&]<size_t... Is>(std::index_sequence<Is...>) mutable {
                     (entity_world.insert(std::move(std::get<Is>(comps))), ...);
                 }(std::make_index_sequence<sizeof...(Ts)>{});
                 return true;
             });
         });
+        return *this;
     }
     template <typename... Ts>
     EntityCommands& insert_if_new(Ts&&... components)
         requires(std::movable<std::decay_t<Ts>> && ...)
     {
         commands.queue([e = entity, comps = std::make_tuple(std::forward<Ts>(components)...)](World& world) mutable {
-            world.get_entity_mut(e).and_then([](EntityWorldMut& entity_world) -> std::optional<bool> {
-                [&]<size_t... Is>(std::index_sequence<Is...>) {
+            world.get_entity_mut(e).and_then([&](EntityWorldMut&& entity_world) mutable -> std::optional<bool> {
+                [&]<size_t... Is>(std::index_sequence<Is...>) mutable {
                     (entity_world.insert_if_new(std::move(std::get<Is>(comps))), ...);
                 }(std::make_index_sequence<sizeof...(Ts)>{});
                 return true;
             });
         });
+        return *this;
     }
     template <typename... Ts>
     EntityCommands& remove() {
         commands.queue([e = entity](World& world) {
-            world.get_entity_mut(e).and_then([](EntityWorldMut& entity_world) -> std::optional<bool> {
+            world.get_entity_mut(e).and_then([](EntityWorldMut&& entity_world) -> std::optional<bool> {
                 entity_world.remove<Ts...>();
                 return true;
             });
@@ -154,7 +160,7 @@ struct EntityCommands {
     template <std::invocable<EntityWorldMut&> F>
     EntityCommands& queue(F&& f) {
         commands.queue([e = entity, f = std::forward<F>(f)](World& world) mutable {
-            world.get_entity_mut(e).and_then([&](EntityWorldMut& entity_world) -> std::optional<bool> {
+            world.get_entity_mut(e).and_then([&](EntityWorldMut&& entity_world) -> std::optional<bool> {
                 f(entity_world);
                 return true;
             });
@@ -174,6 +180,18 @@ inline EntityCommands Commands::spawn_empty() {
     return EntityCommands{entity, *this};
 }
 inline EntityCommands Commands::entity(Entity entity) { return EntityCommands{entity, *this}; }
+template <typename... Ts>
+inline EntityCommands Commands::spawn(Ts&&... components)
+    requires(std::movable<std::decay_t<Ts>> && ...)
+{
+    if constexpr (sizeof...(Ts) == 0) {
+        return spawn_empty();
+    }
+    Entity entity = entities->reserve_entity();
+    EntityCommands cmd{entity, *this};
+    cmd.insert(std::forward<Ts>(components)...);
+    return cmd;
+}
 
 template <>
 struct SystemParam<Commands> : SystemParam<std::tuple<Deferred<CommandQueue>, const Entities&>> {

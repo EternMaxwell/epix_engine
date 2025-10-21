@@ -112,28 +112,14 @@ struct Entities {
      * @brief Check that we do not have pending work requiring `flush()`.
      *
      */
-    void verify_flush() { assert(!needs_flush() && "Entities need to be flushed before accessing meta or pending!"); }
+    void verify_flush();
 
     /**
      * @brief Allocate a Entity id directly.
      *
      * @return The allocated entity.
      */
-    Entity alloc() {
-        verify_flush();
-        uint32_t idx = static_cast<uint32_t>(meta.size());
-        if (!pending.empty()) {
-            uint32_t index = pending.back();
-            pending.pop_back();
-            int64_t new_free_cursor = pending.size();
-            free_cursor.store(new_free_cursor, std::memory_order_relaxed);
-            return Entity::from_parts(index, meta[index].generation);
-        } else {
-            uint32_t index = static_cast<uint32_t>(meta.size());
-            meta.push_back(EntityMeta::empty());
-            return Entity::from_index(index);
-        }
-    }
+    Entity alloc();
 
     /**
      * @brief Destroy an entity, allowing it to be reused.
@@ -143,77 +129,37 @@ struct Entities {
      * @param entity The entity to free.
      * @return std::optional<EntityLocation> The entity location if any.
      */
-    std::optional<EntityLocation> free(Entity entity) {
-        verify_flush();
-
-        auto& meta = this->meta[entity.index];
-        if (meta.generation != entity.generation) {
-            return std::nullopt;
-        }
-
-        meta.generation++;
-        auto loc      = meta.location;
-        meta.location = EntityLocation::invalid();
-
-        pending.push_back(entity.index);
-        int64_t new_free_cursor = pending.size();
-        free_cursor.store(new_free_cursor, std::memory_order_relaxed);
-        return loc;
-    }
+    std::optional<EntityLocation> free(Entity entity);
 
     /**
      * @brief Ensure at least `count` allocations can be made without reallocating.
      *
      * @param count
      */
-    void reserve(uint32_t count) {
-        verify_flush();
-
-        auto free_size    = free_cursor.load(std::memory_order_relaxed);
-        auto reserve_size = static_cast<int64_t>(count) - free_size;
-        if (reserve_size > 0) {
-            meta.reserve(meta.size() + reserve_size);
-        }
-    }
+    void reserve(uint32_t count);
 
     /**
      * @brief Returns true if contains the given entity.
      *
      * Entities that are freed will return false.
      */
-    bool contains(Entity entity) const {
-        return resolve_index(entity.index)
-            .transform([this, &entity](Entity e) { return e.generation == entity.generation; })
-            .value_or(false);
-    }
+    bool contains(Entity entity) const;
 
     /**
      * @brief Clear all entities, making the manager empty.
      */
-    void clear() {
-        meta.clear();
-        pending.clear();
-        free_cursor.store(0, std::memory_order_relaxed);
-    }
+    void clear();
 
     /**
      * @brief Get the location of an entity. Will return std::nullopt for pending entities.
      */
-    std::optional<EntityLocation> get(Entity entity) const {
-        if (entity.index >= meta.size()) return std::nullopt;
-        auto& meta = this->meta[entity.index];
-        if (meta.generation != entity.generation ||
-            meta.location.archetype_id.get() == std::numeric_limits<uint32_t>::max()) {
-            return std::nullopt;
-        }
-        return meta.location;
-    }
+    std::optional<EntityLocation> get(Entity entity) const;
 
     /**
      * @brief Updates the location of an entity. Must be called when moving the components of the entity around in
      * storage.
      */
-    void set(uint32_t index, EntityLocation location) { meta[index].location = location; }
+    void set(uint32_t index, EntityLocation location);
 
     /**
      * @brief Increments the `generation` of a freed entity by `generations`.
@@ -222,16 +168,7 @@ struct Entities {
      *
      * @return true if successful.
      */
-    bool reserve_generations(uint32_t index, uint32_t generations) {
-        if (index >= meta.size()) {
-            return false;
-        }
-        if (meta[index].location.archetype_id.get() == std::numeric_limits<uint32_t>::max()) {
-            meta[index].generation += generations;
-            return true;
-        }
-        return false;
-    }
+    bool reserve_generations(uint32_t index, uint32_t generations);
 
     /**
      * @brief Get the entity with the given index, if it exists. Returns std::nullopt if the index is out of range of
@@ -239,23 +176,9 @@ struct Entities {
      *
      * Note that this function will return currently freed entities.
      */
-    std::optional<Entity> resolve_index(uint32_t index) const {
-        if (index < meta.size()) {
-            return Entity::from_parts(index, meta[index].generation);
-        } else {
-            auto free = free_cursor.load(std::memory_order_relaxed);
-            if (free > 0) return std::nullopt;
-            if (index < meta.size() + static_cast<size_t>(-free)) {
-                return Entity::from_index(index);
-            } else {
-                return std::nullopt;
-            }
-        }
-    }
+    std::optional<Entity> resolve_index(uint32_t index) const;
 
-    bool needs_flush() const {
-        return free_cursor.load(std::memory_order_relaxed) != static_cast<int64_t>(pending.size());
-    }
+    bool needs_flush() const;
 
     /**
      * @brief Allocate space for entities previously reserved by `reserve_entities` or `reserve_entity`, then initialize
@@ -290,9 +213,7 @@ struct Entities {
     /**
      * @brief Flushes all reserved entities to invalid state.
      */
-    void flush_as_invalid() {
-        flush([](Entity, EntityLocation& loc) { loc.archetype_id = std::numeric_limits<uint32_t>::max(); });
-    }
+    void flush_as_invalid();
 
     /**
      * @brief Get the total number of entities that have ever been allocated. Including freed ones.
