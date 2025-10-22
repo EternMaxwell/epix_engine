@@ -2,6 +2,7 @@
 
 #include <concepts>
 #include <cstdint>
+#include <type_traits>
 
 #include "meta/typeindex.hpp"
 
@@ -24,6 +25,10 @@ struct Label {
     {
         return from_raw(epix::core::meta::type_id<T>(), static_cast<uintptr_t>(t));
     }
+    template <std::integral T>
+    static Label from_integral(T value) {
+        return from_raw(epix::core::meta::type_id<T>(), static_cast<uintptr_t>(value));
+    }
     template <typename T>
     static Label from_pointer(T* ptr) {
         return from_raw(epix::core::meta::type_id<T>(), (uintptr_t)(ptr));
@@ -37,6 +42,8 @@ struct Label {
             *this = Label::from_enum(t);
         } else if constexpr (std::is_pointer_v<T>) {
             *this = Label::from_pointer(t);
+        } else if constexpr (std::is_integral_v<T>) {
+            *this = Label::from_integral(t);
         } else {
             *this = Label::from_type<T>();
         }
@@ -56,13 +63,13 @@ struct Label {
 };  // namespace epix::core
 
 #ifndef EPIX_MAKE_LABEL
-#define EPIX_MAKE_LABEL(type)                                \
-    struct type : public ::epix::core::Label {               \
-       public:                                               \
-        template <typename T>                                \
-        type(T t)                                            \
-            requires(!std::is_same_v<std::decay_t<T>, type>) \
-            : Label(t) {}                                    \
+#define EPIX_MAKE_LABEL(type)                                                                     \
+    struct type : public ::epix::core::Label {                                                    \
+       public:                                                                                    \
+        template <typename T>                                                                     \
+        type(T t)                                                                                 \
+            requires(!std::is_same_v<std::decay_t<T>, type> && std::constructible_from<Label, T>) \
+            : Label(t) {}                                                                         \
     };
 #endif
 
