@@ -7,10 +7,12 @@
 #include <utility>
 
 #include "../system/system.hpp"
+#include "epix/core/label.hpp"
 #include "system_dispatcher.hpp"
 #include "system_set.hpp"
 
 namespace epix::core::schedule {
+EPIX_MAKE_LABEL(ScheduleLabel)
 struct Node;
 struct Edges {
     std::unordered_set<SystemSetLabel> depends;
@@ -102,13 +104,17 @@ struct SetConfig {
     }
     SetConfig& chain() {
         for (auto&& [c1, c2] : sub_configs | std::views::adjacent<2>) {
-            c1.before(c2.label);
-            std::ranges::for_each(c2.sub_configs, [&](SetConfig& config) { c1.before(config.label); });
+            c1.before(c2);
         }
         return *this;
     }
 
    private:
+    void before(const SetConfig& other) {
+        if (other.label) before(*other.label);
+        std::ranges::for_each(other.sub_configs, [&](const SetConfig& config) { before(config); });
+    }
+
     std::optional<SystemSetLabel> label;
     system::SystemUnique<> system;
     std::vector<system::SystemUnique<std::tuple<>, bool>> conditions;
@@ -167,6 +173,7 @@ struct ExecuteConfig {
 };
 struct Schedule {
    private:
+    ScheduleLabel _label;
     std::unordered_map<SystemSetLabel, std::shared_ptr<Node>> nodes;
     std::shared_ptr<ScheduleCache> cache;
 
@@ -185,7 +192,9 @@ struct Schedule {
     }
 
    public:
-    Schedule() = default;
+    Schedule(const ScheduleLabel& label) : _label(label) {}
+
+    ScheduleLabel label() const { return _label; }
 
     void add_systems(SetConfig&& config) { add_config(std::move(config), true); }
     void configure_sets(SetConfig&& config) { add_config(std::move(config), false); }
@@ -200,13 +209,13 @@ struct Schedule {
 };
 }  // namespace epix::core::schedule
 
-namespace epix {
+namespace epix::core {
 template <typename... Ts>
-core::schedule::SetConfig into(Ts&&... ts) {
-    return core::schedule::make_sets<true>(std::forward<Ts>(ts)...);
+schedule::SetConfig into(Ts&&... ts) {
+    return schedule::make_sets<true>(std::forward<Ts>(ts)...);
 }
 template <typename... Ts>
-core::schedule::SetConfig sets(Ts&&... ts) {
-    return core::schedule::make_sets(std::forward<Ts>(ts)...);
+schedule::SetConfig sets(Ts&&... ts) {
+    return schedule::make_sets(std::forward<Ts>(ts)...);
 }
-}  // namespace epix
+}  // namespace epix::core
