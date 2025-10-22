@@ -77,6 +77,43 @@ struct World {
         FromWorld<T>::emplace(_storage.resources.get_mut(_type_registry->type_id<T>()).value().get().get_mut().value(),
                               *this);
     }
+    template <typename T>
+    std::optional<std::reference_wrapper<const T>> get_resource() const {
+        return _storage.resources.get(_type_registry->type_id<T>())
+            .and_then([&](const storage::ResourceData& res) -> std::optional<std::reference_wrapper<const T>> {
+                return res.get_as<T>();
+            });
+    }
+    template <typename T>
+    std::optional<std::reference_wrapper<T>> get_resource_mut() {
+        return _storage.resources.get_mut(_type_registry->type_id<T>())
+            .and_then([&](storage::ResourceData& res) -> std::optional<std::reference_wrapper<T>> {
+                return res.get_as_mut<T>();
+            });
+    }
+    template <typename T>
+    const T& resource() const {
+        return get_resource<T>().value().get();
+    }
+    template <typename T>
+    T& resource_mut() {
+        return get_resource_mut<T>().value().get();
+    }
+
+    template <is_from_world T>
+    T& resource_or_init() {
+        return get_resource_mut<T>().value_or([&] {
+            init_resource<T>();
+            return std::ref(resource_mut<T>());
+        }());
+    }
+    template <typename T, typename... Args>
+    T& resource_or_emplace(Args&&... args) {
+        return get_resource_mut<T>().value_or([&] {
+            emplace_resource<T>(std::forward<Args>(args)...);
+            return std::ref(resource_mut<T>());
+        }());
+    }
 
     void trigger_on_add(const Archetype& archetype, Entity entity, bundle::type_id_view auto&& targets) {
         for (auto&& target : targets) {
