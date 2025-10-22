@@ -73,7 +73,7 @@ void query_system2(query::Query<query::Item<Entity, EntityLocation, const Comp2&
 int main() {
     World world(WorldId(1));
     {
-        Schedule sched;
+        Schedule sched(0);
 
         // Create three named lambdas and reuse them so the SystemSetLabel constructed
         // from the same callable type/value will match.
@@ -109,7 +109,7 @@ int main() {
         std::cout << "test_schedule (conflict) passed\n";
 
         // Non-conflicting case: D has parents E and F with no deps between them
-        Schedule sched2;
+        Schedule sched2(1);
         auto ef      = []() {};
         auto ff      = []() {};
         auto df      = []() {};
@@ -127,11 +127,11 @@ int main() {
     }
 
     // Now test execution
-    Schedule exec_sched;
+    Schedule exec_sched(0);
 
-    exec_sched.add_systems(epix::into(spawn_entities));
-    exec_sched.add_systems(epix::into(query_system1).after(spawn_entities));
-    exec_sched.add_systems(epix::into(query_system2).after(spawn_entities));
+    exec_sched.add_systems(epix::core::into(spawn_entities));
+    exec_sched.add_systems(epix::core::into(query_system1).after(spawn_entities));
+    exec_sched.add_systems(epix::core::into(query_system2).after(spawn_entities));
 
     auto pres = exec_sched.prepare(true);
     assert(pres.has_value());
