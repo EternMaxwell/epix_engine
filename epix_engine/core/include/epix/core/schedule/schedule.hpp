@@ -6,8 +6,8 @@
 #include <ranges>
 #include <utility>
 
+#include "../label.hpp"
 #include "../system/system.hpp"
-#include "epix/core/label.hpp"
 #include "system_dispatcher.hpp"
 #include "system_set.hpp"
 
