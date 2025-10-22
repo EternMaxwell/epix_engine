@@ -1,9 +1,5 @@
 #pragma once
 
-#include <vcruntime_typeinfo.h>
-
-#include <cstddef>
-
 #include "../world/command_queue.hpp"
 #include "param.hpp"
 
