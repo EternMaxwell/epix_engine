@@ -147,7 +147,15 @@ struct FunctionSystem
     bool initialized() const noexcept override { return state_.has_value(); }
     void check_change_tick(Tick tick) override { meta_.last_run.check_tick(tick); }
     Tick get_last_run() const override { return meta_.last_run; }
-    std::vector<schedule::SystemSetLabel> default_sets() const override { return {schedule::SystemSetLabel(func_)}; }
+    std::vector<schedule::SystemSetLabel> default_sets() const override {
+        if constexpr (std::constructible_from<schedule::SystemSetLabel, Storage>) {
+            return {schedule::SystemSetLabel(func_)};
+        } else {  // in this branch for lambdas and other callables
+            schedule::SystemSetLabel label;
+            label = Label::from_type<Storage>();
+            return {label};
+        }
+    }
 
     std::expected<typename function_system_traits<F>::Output, RunSystemError> run_internal(typename SInput::Input input,
                                                                                            World& world) override {

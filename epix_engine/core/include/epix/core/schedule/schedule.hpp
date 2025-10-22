@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <concepts>
 #include <cstddef>
 #include <expected>
 #include <ranges>
@@ -176,6 +177,7 @@ struct Schedule {
     ScheduleLabel _label;
     std::unordered_map<SystemSetLabel, std::shared_ptr<Node>> nodes;
     std::shared_ptr<ScheduleCache> cache;
+    ExecuteConfig _default_execute_config;
 
     void add_config(SetConfig config, bool accept_system = true) {
         // create node
@@ -193,6 +195,10 @@ struct Schedule {
 
    public:
     Schedule(const ScheduleLabel& label) : _label(label) {}
+    Schedule(const Schedule&)            = delete;
+    Schedule(Schedule&&)                 = default;
+    Schedule& operator=(const Schedule&) = delete;
+    Schedule& operator=(Schedule&&)      = default;
 
     ScheduleLabel label() const { return _label; }
 
@@ -201,12 +207,18 @@ struct Schedule {
     void add_systems(SetConfig& config) { add_config(std::move(config), true); }
     void configure_sets(SetConfig& config) { add_config(std::move(config), false); }
 
+    void set_default_execute_config(const ExecuteConfig& config) { _default_execute_config = config; }
+    const ExecuteConfig& default_execute_config() const { return _default_execute_config; }
+    ExecuteConfig& default_execute_config() { return _default_execute_config; }
+
     // prepare the schedule (validate and build cache), if check_error is true, will check for errors
     // otherwise the error will cause skipped nodes during execution
     std::expected<void, SchedulePrepareError> prepare(bool check_error = true);
     void initialize_systems(World& world, bool force = false);
-    void execute(SystemDispatcher& dispatcher, const ExecuteConfig& config = {});
+    void execute(SystemDispatcher& dispatcher) { execute(dispatcher, _default_execute_config); }
+    void execute(SystemDispatcher& dispatcher, ExecuteConfig config);
 };
+static_assert(std::constructible_from<Schedule, Schedule&&>);
 }  // namespace epix::core::schedule
 
 namespace epix::core {

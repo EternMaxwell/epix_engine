@@ -74,7 +74,8 @@ struct SystemDispatcher {
     std::deque<size_t> free_indices;
     std::deque<std::tuple<const query::FilteredAccessSet*, DispatchConfig, std::move_only_function<void(size_t)>>>
         pending_systems;
-    World* world = nullptr;
+    std::unique_ptr<World> world =
+        nullptr;  // keep ownership of world, so that during dispatch the access is thread-safe
     std::recursive_mutex mutex_;
     BS::thread_pool<BS::tp::none> thread_pool;
     system::SystemUnique<system::In<std::function<void(World&)>>> world_scope_system;
@@ -94,15 +95,29 @@ struct SystemDispatcher {
     void tick();
     void finish(size_t index);
 
+    void assert_world() {
+        if (!world) {
+            throw std::runtime_error("SystemDispatcher: world is null.");
+        }
+    }
+
    public:
-    SystemDispatcher(World& world_ref, size_t thread_count = std::clamp(std::thread::hardware_concurrency(), 2u, 8u))
-        : world(&world_ref),
+    SystemDispatcher(std::unique_ptr<World> world,
+                     size_t thread_count = std::clamp(std::thread::hardware_concurrency(), 2u, 8u))
+        : world(std::move(world)),
           thread_pool(thread_count),
           world_scope_system(system::make_system(
               [](system::In<std::function<void(World&)>> input, World& world) { input.get()(world); })) {
-        world_scope_access = world_scope_system->initialize(world_ref);
+        world_scope_access = world_scope_system->initialize(*this->world);
     }
     ~SystemDispatcher();
+    void wait() {
+        auto res = world_scope([](World& world) {}).get();
+    }
+    std::unique_ptr<World> release_world() {
+        std::lock_guard lock(mutex_);
+        return std::move(world);
+    }
 
     std::future<std::expected<void, system::RunSystemError>> world_scope(std::invocable<World&> auto&& func) {
         return dispatch_system(*world_scope_system, std::function(func), world_scope_access);
@@ -120,6 +135,7 @@ struct SystemDispatcher {
         auto fut = task.get_future();
         {
             std::lock_guard lock(mutex_);
+            assert_world();
             pending_systems.emplace_back(
                 &access, config,
                 [task = std::move(task), on_finished = std::move(config.on_finish), this](size_t index) mutable {
@@ -136,6 +152,7 @@ struct SystemDispatcher {
                                                                              system::SystemInput<In>::Input input,
                                                                              const query::FilteredAccessSet& access) {
         std::lock_guard lock(mutex_);
+        assert_world();
         // check for conflicts
         for (const auto& existing_access : system_accesses) {
             if (existing_access && !access.is_compatible(*existing_access)) {

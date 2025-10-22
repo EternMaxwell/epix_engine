@@ -36,7 +36,8 @@ struct Label {
 
     template <typename T>
     Label(T t)
-        requires(!std::is_same_v<std::decay_t<T>, Label>)
+        requires(!std::is_same_v<std::decay_t<T>, Label> && !std::derived_from<T, Label> &&
+                 (std::is_enum_v<T> || std::is_pointer_v<T> || std::is_integral_v<T> || std::is_empty_v<T>))
     {
         if constexpr (std::is_enum_v<T>) {
             *this = Label::from_enum(t);
@@ -44,7 +45,7 @@ struct Label {
             *this = Label::from_pointer(t);
         } else if constexpr (std::is_integral_v<T>) {
             *this = Label::from_integral(t);
-        } else {
+        } else if constexpr (std::is_empty_v<T>) {
             *this = Label::from_type<T>();
         }
     }
@@ -63,13 +64,15 @@ struct Label {
 };  // namespace epix::core
 
 #ifndef EPIX_MAKE_LABEL
-#define EPIX_MAKE_LABEL(type)                                                                     \
-    struct type : public ::epix::core::Label {                                                    \
-       public:                                                                                    \
-        template <typename T>                                                                     \
-        type(T t)                                                                                 \
-            requires(!std::is_same_v<std::decay_t<T>, type> && std::constructible_from<Label, T>) \
-            : Label(t) {}                                                                         \
+#define EPIX_MAKE_LABEL(type)                                                         \
+    struct type : public ::epix::core::Label {                                        \
+       public:                                                                        \
+        type() = default;                                                             \
+        template <typename T>                                                         \
+        type(T t)                                                                     \
+            requires(!std::is_same_v<std::decay_t<T>, type> && std::is_object_v<T> && \
+                     std::constructible_from<Label, T>)                               \
+            : Label(t) {}                                                             \
     };
 #endif
 

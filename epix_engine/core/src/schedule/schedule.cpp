@@ -214,7 +214,7 @@ void Schedule::initialize_systems(World& world, bool force) {
     }
 }
 
-void Schedule::execute(SystemDispatcher& dispatcher, const ExecuteConfig& config) {
+void Schedule::execute(SystemDispatcher& dispatcher, ExecuteConfig config) {
     if (!cache) {
         auto prepare_result = prepare(
 // compile debug level macro controlled
