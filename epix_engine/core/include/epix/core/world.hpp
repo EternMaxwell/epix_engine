@@ -1,6 +1,8 @@
 #pragma once
 
 #include <atomic>
+#include <cstddef>
+#include <expected>
 #include <memory>
 #include <type_traits>
 #include <utility>
@@ -11,6 +13,7 @@
 #include "fwd.hpp"
 #include "query/fwd.hpp"
 #include "storage.hpp"
+#include "system/func_traits.hpp"
 #include "type_system/type_registry.hpp"
 #include "world/command_queue.hpp"
 #include "world/from_world.hpp"
@@ -108,11 +111,40 @@ struct World {
         }());
     }
     template <typename T, typename... Args>
+        requires std::constructible_from<T, Args&&...>
     T& resource_or_emplace(Args&&... args) {
         return get_resource_mut<T>().value_or([&] {
             emplace_resource<T>(std::forward<Args>(args)...);
             return std::ref(resource_mut<T>());
         }());
+    }
+
+    template <typename F>
+        requires requires {
+            typename system::function_traits<F>::args_tuple;
+            typename system::function_traits<F>::return_type;
+            // first arg being World&, others being resources
+            requires std::same_as<World&, std::tuple_element_t<0, typename system::function_traits<F>::args_tuple>> ||
+                         std::same_as<const World&,
+                                      std::tuple_element_t<0, typename system::function_traits<F>::args_tuple>>;
+        }
+    std::expected<typename system::function_traits<F>::return_type, std::monostate> resource_scope(F&& func) {
+        using return_t   = typename system::function_traits<F>::return_type;
+        using args_tuple = typename system::function_traits<F>::args_tuple;
+        if constexpr (std::is_void_v<return_t>) {
+            std::apply(func,
+                       std::tuple_cat(std::forward_as_tuple(*this), [this]<size_t... I>(std::index_sequence<I...>) {
+                           return std::tuple<std::tuple_element_t<I + 1, args_tuple>...>{
+                               resource_mut<std::remove_cvref_t<std::tuple_element_t<I + 1, args_tuple>>>()...};
+                       }(std::make_index_sequence<std::tuple_size_v<args_tuple> - 1>())));
+            return {};
+        } else {
+            return std::apply(
+                func, std::tuple_cat(std::forward_as_tuple(*this), [this]<size_t... I>(std::index_sequence<I...>) {
+                    return std::tuple<std::tuple_element_t<I + 1, args_tuple>...>{
+                        resource_mut<std::remove_cvref_t<std::tuple_element_t<I + 1, args_tuple>>>()...};
+                }(std::make_index_sequence<std::tuple_size_v<args_tuple> - 1>())));
+        }
     }
 
     void trigger_on_add(const Archetype& archetype, Entity entity, bundle::type_id_view auto&& targets) {

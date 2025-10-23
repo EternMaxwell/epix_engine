@@ -127,7 +127,7 @@ void SystemDispatcher::tick() {
         // can schedule
         size_t index           = get_index();
         system_accesses[index] = access;
-        thread_pool.detach_task([func = std::move(func), index] mutable { return func(index); });
+        thread_pool->detach_task([func = std::move(func), index] mutable { return func(index); });
         pending_systems.pop_front();
     }
 }

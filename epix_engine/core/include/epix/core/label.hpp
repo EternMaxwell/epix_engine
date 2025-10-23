@@ -2,6 +2,7 @@
 
 #include <concepts>
 #include <cstdint>
+#include <format>
 #include <type_traits>
 
 #include "meta/typeindex.hpp"
@@ -53,6 +54,8 @@ struct Label {
 
     epix::core::meta::type_index type_index() const { return type_index_; }
     uintptr_t extra() const { return extra_; }
+
+    std::string to_string() const { return std::format("{}#{:x}", type_index_.short_name(), extra_); }
 
     bool operator==(const Label& other) const noexcept = default;
     bool operator!=(const Label& other) const noexcept = default;

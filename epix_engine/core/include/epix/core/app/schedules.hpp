@@ -49,7 +49,15 @@ struct Schedules {
         }
     }
 
-    bool remove_schedule(const schedule::ScheduleLabel& label) { return _schedules.erase(label) > 0; }
+    std::optional<schedule::Schedule> remove_schedule(const schedule::ScheduleLabel& label) {
+        auto it = _schedules.find(label);
+        if (it != _schedules.end()) {
+            schedule::Schedule schedule = std::move(it->second);
+            _schedules.erase(it);
+            return schedule;
+        }
+        return std::nullopt;
+    }
 
    private:
     // schedule is movable, no need to use pointer

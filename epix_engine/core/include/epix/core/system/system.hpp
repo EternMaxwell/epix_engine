@@ -221,4 +221,36 @@ System<typename function_system_traits<std::decay_t<F>>::Input,
 make_system(F&& func) {
     return new FunctionSystem<std::decay_t<F>>(std::forward<F>(func));
 }
+template <typename F>
+    requires requires {
+        typename function_system_traits<std::decay_t<F>>::Input;
+        typename function_system_traits<std::decay_t<F>>::Output;
+        // no input will have Input = std::tuple<>, which is a valid_system_input.
+        requires valid_system_input<SystemInput<typename function_system_traits<std::decay_t<F>>::Input>>;
+        requires valid_system_param<SystemParam<typename function_system_traits<std::decay_t<F>>::ParamTuple>>;
+        { function_system_traits<std::decay_t<F>>::has_input } -> std::convertible_to<bool>;
+    }
+std::unique_ptr<System<typename function_system_traits<std::decay_t<F>>::Input,
+                       typename function_system_traits<std::decay_t<F>>::Output>>
+make_system_unique(F&& func) {
+    return std::unique_ptr<System<typename function_system_traits<std::decay_t<F>>::Input,
+                                  typename function_system_traits<std::decay_t<F>>::Output>>(
+        make_system(std::forward<F>(func)));
+}
+template <typename F>
+    requires requires {
+        typename function_system_traits<std::decay_t<F>>::Input;
+        typename function_system_traits<std::decay_t<F>>::Output;
+        // no input will have Input = std::tuple<>, which is a valid_system_input.
+        requires valid_system_input<SystemInput<typename function_system_traits<std::decay_t<F>>::Input>>;
+        requires valid_system_param<SystemParam<typename function_system_traits<std::decay_t<F>>::ParamTuple>>;
+        { function_system_traits<std::decay_t<F>>::has_input } -> std::convertible_to<bool>;
+    }
+std::shared_ptr<System<typename function_system_traits<std::decay_t<F>>::Input,
+                       typename function_system_traits<std::decay_t<F>>::Output>>
+make_system_shared(F&& func) {
+    return std::shared_ptr<System<typename function_system_traits<std::decay_t<F>>::Input,
+                                  typename function_system_traits<std::decay_t<F>>::Output>>(
+        make_system(std::forward<F>(func)));
+}
 }  // namespace epix::core::system

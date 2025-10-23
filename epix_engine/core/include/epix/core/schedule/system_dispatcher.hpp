@@ -74,10 +74,11 @@ struct SystemDispatcher {
     std::deque<size_t> free_indices;
     std::deque<std::tuple<const query::FilteredAccessSet*, DispatchConfig, std::move_only_function<void(size_t)>>>
         pending_systems;
-    std::unique_ptr<World> world =
+    std::unique_ptr<World> world_own =
         nullptr;  // keep ownership of world, so that during dispatch the access is thread-safe
+    World* world;
     std::recursive_mutex mutex_;
-    BS::thread_pool<BS::tp::none> thread_pool;
+    BS::thread_pool<BS::tp::none>* thread_pool;
     system::SystemUnique<system::In<std::function<void(World&)>>> world_scope_system;
     query::FilteredAccessSet world_scope_access;
 
@@ -100,27 +101,46 @@ struct SystemDispatcher {
             throw std::runtime_error("SystemDispatcher: world is null.");
         }
     }
+    BS::thread_pool<BS::tp::none>& get_thread_pool(size_t thread_count) {
+        return world->resource_or_emplace<BS::thread_pool<BS::tp::none>>(thread_count);
+    }
 
    public:
     SystemDispatcher(std::unique_ptr<World> world,
                      size_t thread_count = std::clamp(std::thread::hardware_concurrency(), 2u, 8u))
-        : world(std::move(world)),
-          thread_pool(thread_count),
+        : world(world.get()),
+          world_own(std::move(world)),
           world_scope_system(system::make_system(
               [](system::In<std::function<void(World&)>> input, World& world) { input.get()(world); })) {
         world_scope_access = world_scope_system->initialize(*this->world);
+        thread_pool        = &get_thread_pool(thread_count);
+    }
+    SystemDispatcher(World& world, size_t thread_count = std::clamp(std::thread::hardware_concurrency(), 2u, 8u))
+        : world(&world),
+          world_scope_system(system::make_system(
+              [](system::In<std::function<void(World&)>> input, World& world) { input.get()(world); })) {
+        world_scope_access = world_scope_system->initialize(*this->world);
+        thread_pool        = &get_thread_pool(thread_count);
     }
     ~SystemDispatcher();
     void wait() {
         auto res = world_scope([](World& world) {}).get();
     }
+    /**
+     * @brief Release the world if owned. This will make further
+     *
+     * @return std::unique_ptr<World> The owned world, or nullptr if not owned.
+     */
     std::unique_ptr<World> release_world() {
         std::lock_guard lock(mutex_);
-        return std::move(world);
+        if (!world_own) return nullptr;
+        world = nullptr;
+        return std::move(world_own);
     }
 
-    std::future<std::expected<void, system::RunSystemError>> world_scope(std::invocable<World&> auto&& func) {
-        return dispatch_system(*world_scope_system, std::function(func), world_scope_access);
+    std::future<std::expected<void, system::RunSystemError>> world_scope(std::invocable<World&> auto&& func,
+                                                                         DispatchConfig config = {}) {
+        return dispatch_system(*world_scope_system, std::function(func), world_scope_access, std::move(config));
     }
     // Caller has to guarantee that the system and access pointers are valid during the execution
     template <typename In, typename Out>
@@ -140,8 +160,8 @@ struct SystemDispatcher {
                 &access, config,
                 [task = std::move(task), on_finished = std::move(config.on_finish), this](size_t index) mutable {
                     task();
-                    finish(index);
                     if (on_finished) on_finished();
+                    finish(index);
                 });
         }
         tick();
