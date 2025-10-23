@@ -6,9 +6,7 @@
 
 #include "app/app_sche.hpp"
 #include "app/schedules.hpp"
-#include "query/access.hpp"
 #include "schedule/schedule.hpp"
-#include "system/system.hpp"
 #include "world.hpp"
 
 namespace epix::core {
@@ -45,29 +43,48 @@ struct App {
         return *this;
     }
     App& add_systems(app::ScheduleInfo schedule, schedule::SetConfig&& config) {
-        schedules_scope([&](app::Schedules& schedules, World& world) mutable {
+        std::ranges::for_each(schedule.transforms, [&](auto&& transform) { transform(config); });
+        resource_scope([&](app::Schedules& schedules, World& world) mutable {
             schedules.schedule_or_insert((schedule::ScheduleLabel&)schedule).add_systems(std::move(config));
         });
         return *this;
     }
     App& configure_sets(app::ScheduleInfo schedule, schedule::SetConfig&& config) {
-        schedules_scope([&](app::Schedules& schedules, World& world) mutable {
+        std::ranges::for_each(schedule.transforms, [&](auto&& transform) { transform(config); });
+        resource_scope([&](app::Schedules& schedules, World& world) mutable {
             schedules.schedule_or_insert((schedule::ScheduleLabel&)schedule).configure_sets(std::move(config));
         });
         return *this;
     }
-
-    App& schedules_scope(const std::function<void(app::Schedules&, World&)>& func) {
+    app::Schedules& schedules() {
         std::lock_guard lock(_world_mutex);
-        auto res = world_mut().resource_scope([&](World& world, app::Schedules& schedules) { func(schedules, world); });
+        return world_mut().resource_or_init<app::Schedules>();
+    }
+    std::optional<std::reference_wrapper<app::Schedules>> get_schedules() {
+        std::lock_guard lock(_world_mutex);
+        return get_world_mut()
+            .transform([](auto&& w) { return std::make_optional(w); })
+            .value_or(std::nullopt)
+            .and_then([](World& world) { return world.get_resource_mut<app::Schedules>(); });
+    }
+
+    template <typename F>
+    App& resource_scope(F&& func) {
+        std::lock_guard lock(_world_mutex);
+        if (_world) _world->resource_scope(std::forward<F>(func));
         return *this;
     }
     App& schedule_scope(const schedule::ScheduleLabel& label,
-                        const std::function<void(schedule::Schedule&, World&)>& func) {
-        schedules_scope([&](app::Schedules& schedules, World& world) {
-            auto schedule_opt = schedules.get_schedule_mut(label);
-            if (schedule_opt) {
-                func(schedule_opt.value().get(), world);
+                        const std::function<void(schedule::Schedule&, World&)>& func,
+                        bool insert_if_missing = false) {
+        resource_scope([&](app::Schedules& schedules, World& world) {
+            if (insert_if_missing) {
+                func(schedules.schedule_or_insert(label), world);
+            } else {
+                schedules.get_schedule_mut(label).transform([&](schedule::Schedule& schedule) {
+                    func(schedule, world);
+                    return true;
+                });
             }
         });
         return *this;

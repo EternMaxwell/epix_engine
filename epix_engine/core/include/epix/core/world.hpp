@@ -33,6 +33,10 @@ struct World {
           _storage(type_registry),
           _change_tick(std::make_unique<std::atomic<uint32_t>>(1)),
           _last_change_tick(0) {}
+    World(const World&)            = delete;
+    World(World&&)                 = delete;
+    World& operator=(const World&) = delete;
+    World& operator=(World&&)      = delete;
 
     WorldId id() const { return _id; }
     const type_system::TypeRegistry& type_registry() const { return *_type_registry; }
@@ -119,32 +123,58 @@ struct World {
         }());
     }
 
+    /**
+     * @brief Invoke a function with resources from the world and return its result. The function's parameters must be
+     * resources in the world, or World& itself. If the resource does not exist, and if it satisfies is_from_world, it
+     * will be initialized. Otherwise, this functions will return std::unexpected.
+     *
+     * @tparam F The function type.
+     * @param func The function to invoke.
+     */
     template <typename F>
         requires requires {
             typename system::function_traits<F>::args_tuple;
             typename system::function_traits<F>::return_type;
-            // first arg being World&, others being resources
-            requires std::same_as<World&, std::tuple_element_t<0, typename system::function_traits<F>::args_tuple>> ||
-                         std::same_as<const World&,
-                                      std::tuple_element_t<0, typename system::function_traits<F>::args_tuple>>;
         }
     std::expected<typename system::function_traits<F>::return_type, std::monostate> resource_scope(F&& func) {
-        using return_t   = typename system::function_traits<F>::return_type;
-        using args_tuple = typename system::function_traits<F>::args_tuple;
-        if constexpr (std::is_void_v<return_t>) {
-            std::apply(func,
-                       std::tuple_cat(std::forward_as_tuple(*this), [this]<size_t... I>(std::index_sequence<I...>) {
-                           return std::tuple<std::tuple_element_t<I + 1, args_tuple>...>{
-                               resource_mut<std::remove_cvref_t<std::tuple_element_t<I + 1, args_tuple>>>()...};
-                       }(std::make_index_sequence<std::tuple_size_v<args_tuple> - 1>())));
-            return {};
-        } else {
-            return std::apply(
-                func, std::tuple_cat(std::forward_as_tuple(*this), [this]<size_t... I>(std::index_sequence<I...>) {
-                    return std::tuple<std::tuple_element_t<I + 1, args_tuple>...>{
-                        resource_mut<std::remove_cvref_t<std::tuple_element_t<I + 1, args_tuple>>>()...};
-                }(std::make_index_sequence<std::tuple_size_v<args_tuple> - 1>())));
-        }
+        using return_t                = typename system::function_traits<F>::return_type;
+        using args_tuple              = typename system::function_traits<F>::args_tuple;
+        auto try_get_or_init_resource = [this]<typename T>() -> std::optional<std::reference_wrapper<T>> {
+            if constexpr (std::same_as<World, T>) {
+                return std::ref(*this);
+            }
+            auto res = this->get_resource_mut<T>();
+            if (!res) {
+                if constexpr (is_from_world<T>) {
+                    res.emplace(std::ref(this->resource_or_init<T>()));
+                }
+            }
+            return res;
+        };
+        auto get_param = [&]<size_t... I>(std::index_sequence<I...>)
+            -> std::expected<std::tuple<std::tuple_element_t<I, args_tuple>...>, std::monostate> {
+            // for each argument, try to get or init the resource, if any call to try_get_or_init_resource fails, return
+            // std::nullopt
+            std::tuple<
+                std::optional<std::reference_wrapper<std::remove_reference_t<std::tuple_element_t<I, args_tuple>>>>...>
+                params = {
+                    try_get_or_init_resource
+                        .template operator()<std::remove_reference_t<std::tuple_element_t<I, args_tuple>>>()...
+                };
+            if (!(... && std::get<I>(params).has_value())) {
+                return std::unexpected(std::monostate{});
+            }
+            return std::tuple<std::tuple_element_t<I, args_tuple>...>{(std::get<I>(params).value().get())...};
+        };
+        return get_param(std::make_index_sequence<std::tuple_size_v<args_tuple>>())
+            .and_then([&](auto&& param_tuple) -> std::expected<return_t, std::monostate> {
+                if constexpr (std::is_void_v<return_t>) {
+                    std::apply(func, std::move(param_tuple));
+                    return {};
+                } else {
+                    return std::apply(func, std::move(param_tuple));
+                }
+            });
     }
 
     void trigger_on_add(const Archetype& archetype, Entity entity, bundle::type_id_view auto&& targets) {
