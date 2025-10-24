@@ -184,7 +184,7 @@ struct FunctionSystem
             .world = &world,
         };
         if constexpr (function_system_traits<F>::has_input) {
-            return call(func_, std::tuple_cat(std::forward_as_tuple(std::forward<typename SInput::Input>(input)),
+            return call(func_, std::tuple_cat(std::forward_as_tuple(SInput::wrap_input(std::move(input))),
                                               SParam::get_param(*state_, meta_, world, world.change_tick())));
         } else {
             return call(func_, SParam::get_param(*state_, meta_, world, world.change_tick()));
