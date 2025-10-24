@@ -6,8 +6,6 @@ namespace epix::core::app {
 template <typename T>
     requires std::is_enum_v<T>
 struct State {
-    friend struct App;
-
    protected:
     T m_state;
     State& operator=(T state) {
@@ -28,8 +26,6 @@ struct State {
     bool operator!=(T state) const { return m_state != state; }
 
     bool is_state(T state) const { return m_state == state; }
-
-    friend struct App;
 };
 template <typename T>
     requires std::is_enum_v<T>
