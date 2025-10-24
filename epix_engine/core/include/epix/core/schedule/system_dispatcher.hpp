@@ -79,7 +79,7 @@ struct SystemDispatcher {
     World* world;
     std::recursive_mutex mutex_;
     BS::thread_pool<BS::tp::none>* thread_pool;
-    system::SystemUnique<system::In<std::function<void(World&)>>> world_scope_system;
+    system::SystemUnique<system::In<std::move_only_function<void(World&)>>> world_scope_system;
     query::FilteredAccessSet world_scope_access;
 
     size_t get_index() {
@@ -114,14 +114,14 @@ struct SystemDispatcher {
         : world(world.get()),
           world_own(std::move(world)),
           world_scope_system(system::make_system(
-              [](system::In<std::function<void(World&)>> input, World& world) { input.get()(world); })) {
+              [](system::In<std::move_only_function<void(World&)>> input, World& world) { input.get()(world); })) {
         world_scope_access = world_scope_system->initialize(*this->world);
         thread_pool        = &get_thread_pool(thread_count);
     }
     SystemDispatcher(World& world, size_t thread_count = std::clamp(std::thread::hardware_concurrency(), 2u, 8u))
         : world(&world),
           world_scope_system(system::make_system(
-              [](system::In<std::function<void(World&)>> input, World& world) { input.get()(world); })) {
+              [](system::In<std::move_only_function<void(World&)>> input, World& world) { input.get()(world); })) {
         world_scope_access = world_scope_system->initialize(*this->world);
         thread_pool        = &get_thread_pool(thread_count);
     }
@@ -141,9 +141,23 @@ struct SystemDispatcher {
         return std::move(world_own);
     }
 
-    std::future<std::expected<void, system::RunSystemError>> world_scope(std::invocable<World&> auto&& func,
-                                                                         DispatchConfig config = {}) {
-        return dispatch_system(*world_scope_system, std::function(func), world_scope_access, std::move(config));
+    auto world_scope(std::invocable<World&> auto&& func, DispatchConfig config = {})
+        -> std::future<
+            std::expected<typename system::function_traits<decltype(func)>::return_type, system::RunSystemError>> {
+        std::packaged_task<std::expected<typename system::function_traits<decltype(func)>::return_type,
+                                         system::RunSystemError>(World&)>
+            task([func = std::forward<decltype(func)>(func)](World& world) mutable {
+                using return_t = typename system::function_traits<decltype(func)>::return_type;
+                if constexpr (std::is_void_v<return_t>) {
+                    func(world);
+                    return std::expected<return_t, system::RunSystemError>{};
+                } else {
+                    return std::expected<return_t, system::RunSystemError>{func(world)};
+                }
+            });
+        auto fut = task.get_future();
+        dispatch_system(*world_scope_system, std::move(task), world_scope_access, std::move(config));
+        return fut;
     }
     // Caller has to guarantee that the system and access pointers are valid during the execution
     template <typename In, typename Out>
