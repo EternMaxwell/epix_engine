@@ -131,6 +131,20 @@ struct ResourceData {
     }
 
     void remove(this ResourceData& self) { self.data.clear(); }
+    template <typename T>
+    std::optional<T> take(this ResourceData& self)
+        requires std::movable<T>
+    {
+        struct ClearSpan {
+            untyped_vector& vec;
+            ~ClearSpan() { vec.clear(); }
+        };
+        ClearSpan clear_span{self.data};
+        if (self.is_present()) {
+            return std::move(*self.get_as_mut<T>().value().get());
+        }
+        return std::nullopt;
+    }
 
     void check_change_ticks(this ResourceData& self, Tick tick) {
         if (self.is_present()) {

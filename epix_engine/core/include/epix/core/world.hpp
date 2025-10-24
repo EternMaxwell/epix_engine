@@ -84,6 +84,25 @@ struct World {
         FromWorld<T>::emplace(_storage.resources.get_mut(_type_registry->type_id<T>()).value().get().get_mut().value(),
                               *this);
     }
+    bool remove_resource(TypeId type_id) {
+        return _storage.resources.get_mut(type_id)
+            .and_then([](storage::ResourceData& res) {
+                res.remove();
+                return std::optional<bool>(true);
+            })
+            .value_or(false);
+    }
+    template <typename T>
+    bool remove_resource() {
+        return remove_resource(_type_registry->type_id<T>());
+    }
+    template <typename T>
+    std::optional<T> take_resource()
+        requires std::movable<T>
+    {
+        return _storage.resources.get_mut(_type_registry->type_id<T>())
+            .and_then([](storage::ResourceData& res) -> std::optional<T> { return res.take<T>(); });
+    }
     template <typename T>
     std::optional<std::reference_wrapper<const T>> get_resource() const {
         return _storage.resources.get(_type_registry->type_id<T>())
