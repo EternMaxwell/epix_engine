@@ -1,5 +1,6 @@
 #pragma once
 
+#include <concepts>
 #include <functional>
 #include <optional>
 #include <unordered_map>
@@ -12,7 +13,11 @@ namespace epix::core::app {
  */
 struct Schedules {
    public:
-    Schedules() = default;
+    Schedules()                            = default;
+    Schedules(const Schedules&)            = delete;
+    Schedules(Schedules&&)                 = default;
+    Schedules& operator=(const Schedules&) = delete;
+    Schedules& operator=(Schedules&&)      = default;
 
     std::optional<std::reference_wrapper<const schedule::Schedule>> get_schedule(
         const schedule::ScheduleLabel& label) const {
@@ -62,5 +67,8 @@ struct Schedules {
    private:
     // schedule is movable, no need to use pointer
     std::unordered_map<schedule::ScheduleLabel, schedule::Schedule> _schedules;
+
+    // weird, copy_constructible should fail, but it passes?
+    // static_assert(std::copy_constructible<std::unordered_map<schedule::ScheduleLabel, schedule::Schedule>>);
 };
 }  // namespace epix::core::app
