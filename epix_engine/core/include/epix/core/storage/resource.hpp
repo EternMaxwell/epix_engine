@@ -141,7 +141,7 @@ struct ResourceData {
         };
         ClearSpan clear_span{self.data};
         if (self.is_present()) {
-            return std::move(*self.get_as_mut<T>().value().get());
+            return std::move(self.get_as_mut<T>().value().get());
         }
         return std::nullopt;
     }
