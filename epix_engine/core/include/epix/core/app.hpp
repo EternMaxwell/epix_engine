@@ -6,15 +6,20 @@
 #include <list>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <unordered_map>
 #include <utility>
 
 #include "app/app_sche.hpp"
+#include "app/extract.hpp"
+#include "app/plugin.hpp"
 #include "app/schedules.hpp"
 #include "schedule/schedule.hpp"
 #include "world.hpp"
 
 namespace epix::core {
+using app::Extract;
+using app::ExtractedWorld;
 EPIX_MAKE_LABEL(AppLabel)
 struct WorldNotOwnedError {};
 struct ScheduleOrder {
@@ -97,7 +102,13 @@ struct App {
         : _label(label),
           _world(std::make_unique<World>(_world_ids->fetch_add(1))),
           _world_mutex(std::make_unique<std::recursive_mutex>()) {}
+    App(const App&)            = delete;
+    App(App&&)                 = default;
+    App& operator=(const App&) = delete;
+    App& operator=(App&&)      = default;
     ~App() { _dispatcher.reset(); }
+
+    static App create();
 
     // === App Info and sub-apps ===
 
@@ -140,6 +151,28 @@ struct App {
         world_mut().resource_scope(std::forward<F>(func));
         return *this;
     }
+    template <typename T>
+    std::optional<std::reference_wrapper<const T>> get_resource() const {
+        return get_world()
+            .transform([](auto&& ref) { return std::optional(ref); })
+            .value_or(std::nullopt)
+            .and_then([](const World& world) { return world.get_resource<T>(); });
+    }
+    template <typename T>
+    std::optional<std::reference_wrapper<T>> get_resource_mut() {
+        return get_world_mut()
+            .transform([](auto&& ref) { return std::optional(ref); })
+            .value_or(std::nullopt)
+            .and_then([](World& world) { return world.get_resource_mut<T>(); });
+    }
+    template <typename T>
+    const T& resource() const {
+        return get_resource<T>().value().get();
+    }
+    template <typename T>
+    T& resource_mut() {
+        return get_resource_mut<T>().value().get();
+    }
 
     // === Schedule Access ===
 
@@ -159,6 +192,41 @@ struct App {
     App& schedule_scope(const schedule::ScheduleLabel& label,
                         const std::function<void(schedule::Schedule&, World&)>& func,
                         bool insert_if_missing = false);
+
+    // === Plugin Management ===
+
+    template <typename T, typename... Args>
+    App& add_plugin(Args&&... args)
+        requires std::constructible_from<T, Args...>
+    {
+        resource_scope([&](app::Plugins& plugins) { plugins.add_plugin<T>(std::forward<Args>(args)...); });
+        return *this;
+    }
+    template <typename... Ts>
+    App& add_plugins(Ts&&... ts)
+        requires(std::constructible_from<std::decay_t<Ts>, Ts> && ...)
+    {
+        resource_scope([&](app::Plugins& plugins) { (plugins.add_plugin(std::forward<Ts>(ts)), ...); });
+        return *this;
+    }
+    template <typename T>
+    std::optional<std::reference_wrapper<T>> get_plugin_mut() {
+        return get_resource_mut<app::Plugins>().and_then(
+            [](app::Plugins& plugins) { return plugins.get_plugin_mut<T>(); });
+    }
+    template <typename T>
+    std::optional<std::reference_wrapper<const T>> get_plugin() const {
+        return get_resource<const app::Plugins>().and_then(
+            [](const app::Plugins& plugins) { return plugins.get_plugin<T>(); });
+    }
+    template <typename T>
+    const T& plugin() const {
+        return get_plugin<T>().value().get();
+    }
+    template <typename T>
+    T& plugin_mut() {
+        return get_plugin_mut<T>().value().get();
+    }
 
     // === System Dispatcher ===
 
@@ -183,6 +251,14 @@ struct App {
             .value_or([]() { return std::async(std::launch::deferred, []() { return false; }); }());
     }
 
+    bool has_extract() const { return static_cast<bool>(extract_fn); }
+    /// Extract data from another app into this app. will call the extract function set by set_extract_fn internally.
+    void extract(App& other);
+    void set_extract_fn(std::move_only_function<void(App&, World&)> fn) { extract_fn = std::move(fn); }
+    bool has_runner() const { return static_cast<bool>(runner); }
+    void set_runner(std::move_only_function<void(App&)> fn) { runner = std::move(fn); }
+    void run();
+
    private:
     std::unique_lock<std::recursive_mutex> lock_world() const {
         return std::unique_lock<std::recursive_mutex>(*_world_mutex);
@@ -195,6 +271,9 @@ struct App {
     std::shared_ptr<std::atomic<uint32_t>> _world_ids;
     std::unique_ptr<std::recursive_mutex> _world_mutex;
     std::unique_ptr<World> _world;
+
+    std::move_only_function<void(App&, World&)> extract_fn;
+    std::move_only_function<void(App&)> runner;
 
     std::weak_ptr<schedule::SystemDispatcher> _dispatcher;
 };

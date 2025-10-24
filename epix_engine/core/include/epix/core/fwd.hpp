@@ -14,4 +14,6 @@ struct EntityRefMut;
 struct EntityWorldMut;
 
 struct ComponentInfo;
+
+struct App;
 }  // namespace epix::core

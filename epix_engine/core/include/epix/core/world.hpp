@@ -305,6 +305,35 @@ struct DeferredWorld {
     std::optional<EntityRef> get_entity(Entity entity);
     std::optional<EntityRefMut> get_entity_mut(Entity entity);
 
+    template <typename T>
+    std::optional<std::reference_wrapper<const T>> get_resource() const {
+        return world_->get_resource<T>();
+    }
+    template <typename T>
+    std::optional<std::reference_wrapper<T>> get_resource_mut() {
+        return world_->get_resource_mut<T>();
+    }
+    template <typename T>
+    const T& resource() const {
+        return world_->resource<T>();
+    }
+    template <typename T>
+    T& resource_mut() {
+        return world_->resource_mut<T>();
+    }
+    template <typename D>
+    query::QueryState<D, query::Filter<>> query()
+        requires(query::valid_query_data<query::QueryData<D>>)
+    {
+        return world_->template query<D>();
+    }
+    template <typename D, typename F>
+    query::QueryState<D, F> query_filtered()
+        requires(query::valid_query_data<query::QueryData<D>> && query::valid_query_filter<query::QueryFilter<F>>)
+    {
+        return world_->template query_filtered<D, F>();
+    }
+
    private:
     World* world_;
 };

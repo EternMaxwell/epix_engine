@@ -1,6 +1,13 @@
 #include "epix/core/app.hpp"
+#include "epix/core/app/extract.hpp"
 
 namespace epix::core {
+
+App App::create() {
+    App app;
+    return std::move(app);
+}
+
 App& App::sub_app_or_insert(const AppLabel& label) {
     auto&& [it, inserted] = _sub_apps.emplace(label, nullptr);
     if (inserted) {
@@ -120,15 +127,18 @@ std::expected<std::shared_ptr<schedule::SystemDispatcher>, WorldNotOwnedError> A
     if (auto dispatcher = _dispatcher.lock()) {
         return dispatcher;
     } else if (_world) {
-        auto dispatcher = std::shared_ptr<schedule::SystemDispatcher>(new schedule::SystemDispatcher(std::move(_world)),
-                                                                      [this](schedule::SystemDispatcher* dispatcher) {
-                                                                          // retrieve world back since only the shared
-                                                                          // ptr have the ability to modify the ptr, it
-                                                                          // is safe not having extra synchronization
-                                                                          // here
-                                                                          this->_world = dispatcher->release_world();
-                                                                          delete dispatcher;
-                                                                      });
+        auto dispatcher = std::shared_ptr<schedule::SystemDispatcher>(
+            new schedule::SystemDispatcher(std::move(_world)), [this](schedule::SystemDispatcher* dispatcher) {
+                // retrieve world back since only the shared
+                // ptr have the ability to modify the ptr, it
+                // is safe not having extra synchronization
+                // here
+                {
+                    auto lock    = lock_world();
+                    this->_world = dispatcher->release_world();
+                }
+                delete dispatcher;
+            });
         _dispatcher = dispatcher;
         return dispatcher;
     }
@@ -181,5 +191,28 @@ bool App::update_local(std::shared_ptr<schedule::SystemDispatcher> dispatcher) {
             return true;
         })
         .value_or(false);
+}
+
+void App::extract(App& other) {
+    if (extract_fn) {
+        std::scoped_lock lock(*_world_mutex, *other._world_mutex);
+        auto world_ptr = std::move(other._world);
+        world_mut().insert_resource(ExtractedWorld{*world_ptr});
+        extract_fn(*this, *world_ptr);
+        world_mut().remove_resource<ExtractedWorld>();
+        other._world = std::move(world_ptr);
+    } else {
+        throw std::runtime_error("No extract function set for App.");
+    }
+}
+
+void App::run() {
+    resource_scope([&](app::Plugins& plugins) { plugins.finish_all(*this); });
+    if (runner) {
+        runner(*this);
+    } else {
+        throw std::runtime_error("No runner function set for App.");
+    }
+    resource_scope([&](app::Plugins& plugins) { plugins.finalize_all(*this); });
 }
 }  // namespace epix::core
