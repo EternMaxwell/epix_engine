@@ -1,5 +1,6 @@
 #pragma once
 
+#include <concepts>
 #include <cstring>
 #include <mutex>
 #include <optional>
@@ -65,7 +66,7 @@ template <typename T>
 static void copy_construct_impl(void* dest, const void* src) {
     if constexpr (std::is_trivially_copyable_v<T>) {
         std::memcpy(dest, src, sizeof(T));
-    } else if constexpr (std::is_copy_constructible_v<T>) {
+    } else if constexpr (std::copy_constructible<T>) {
         new (dest) T(*static_cast<const T*>(src));
     } else {
         // Should not be called for non-copyable types. Terminate to avoid undefined behavior.
@@ -77,9 +78,9 @@ template <typename T>
 static void move_construct_impl(void* dest, void* src) {
     if constexpr (std::is_trivially_copyable_v<T>) {
         std::memcpy(dest, src, sizeof(T));
-    } else if constexpr (std::is_nothrow_move_constructible_v<T> || std::is_move_constructible_v<T>) {
+    } else if constexpr (std::is_nothrow_move_constructible_v<T> || std::move_constructible<T>) {
         new (dest) T(std::move(*static_cast<T*>(src)));
-    } else if constexpr (std::is_copy_constructible_v<T>) {
+    } else if constexpr (std::copy_constructible<T>) {
         // Fallback to copy if move is not available but copy is
         new (dest) T(*static_cast<const T*>(src));
     } else {
@@ -98,11 +99,10 @@ const TypeInfo* TypeInfo::get_info() {
         .storage_type = storage_for<T>(),
         .destroy      = &destroy_impl<T>,
         .copy_construct =
-            (std::is_trivially_copyable_v<T> || std::is_copy_constructible_v<T>) ? &copy_construct_impl<T> : nullptr,
-        .move_construct =
-            (std::is_trivially_copyable_v<T> || std::is_move_constructible_v<T> || std::is_copy_constructible_v<T>)
-                ? &move_construct_impl<T>
-                : nullptr,
+            (std::is_trivially_copyable_v<T> || std::copy_constructible<T>) ? &copy_construct_impl<T> : nullptr,
+        .move_construct = (std::is_trivially_copyable_v<T> || std::move_constructible<T> || std::copy_constructible<T>)
+                              ? &move_construct_impl<T>
+                              : nullptr,
         .trivially_copyable          = std::is_trivially_copyable_v<T>,
         .trivially_destructible      = std::is_trivially_destructible_v<T>,
         .noexcept_move_constructible = std::is_nothrow_move_constructible_v<T>,
