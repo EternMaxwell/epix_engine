@@ -101,8 +101,11 @@ struct SystemDispatcher {
             throw std::runtime_error("SystemDispatcher: world is null.");
         }
     }
+    struct ThreadPoolWrapper : public BS::thread_pool<BS::tp::none> {
+        using BS::thread_pool<BS::tp::none>::thread_pool;
+    };
     BS::thread_pool<BS::tp::none>& get_thread_pool(size_t thread_count) {
-        return world->resource_or_emplace<BS::thread_pool<BS::tp::none>>(thread_count);
+        return world->resource_or_emplace<ThreadPoolWrapper>(thread_count);
     }
 
    public:
