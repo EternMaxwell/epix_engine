@@ -1,12 +1,12 @@
 #pragma once
 
 #include <memory>
+
+#include "component.hpp"
 #include "fwd.hpp"
-#include "storage/fwd.hpp"
 #include "storage/resource.hpp"
 #include "storage/sparse_set.hpp"
 #include "storage/table.hpp"
-#include "component.hpp"
 
 namespace epix::core {
 struct Storage {
@@ -23,4 +23,4 @@ struct Storage {
         }
     }
 };
-}
+}  // namespace epix::core

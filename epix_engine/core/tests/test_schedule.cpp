@@ -2,7 +2,6 @@
 #include <iostream>
 #include <ostream>
 #include <random>
-#include <thread>
 
 #include "epix/core/query/fetch.hpp"
 #include "epix/core/schedule/schedule.hpp"
