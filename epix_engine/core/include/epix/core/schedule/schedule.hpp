@@ -179,6 +179,7 @@ struct Schedule {
     std::shared_ptr<ScheduleCache> cache;
     ExecuteConfig _default_execute_config;
 
+    /// Add sets and systems in config to the schedule, replace if already exists
     void add_config(SetConfig config, bool accept_system = true) {
         // create node
         if (config.label) {
@@ -186,7 +187,12 @@ struct Schedule {
             if (accept_system && config.system) node->system = std::move(config.system);
             node->conditions = std::move(config.conditions);
             node->edges      = std::move(config.edges);
-            nodes.emplace(node->label, node);
+            if (auto it = nodes.find(*config.label); it != nodes.end()) {
+                // replace existing node
+                nodes.at(*config.label) = node;
+            } else {
+                nodes.emplace(*config.label, node);
+            }
         }
         std::ranges::for_each(config.sub_configs,
                               [&](SetConfig& sub_config) { add_config(std::move(sub_config), accept_system); });
@@ -202,10 +208,31 @@ struct Schedule {
 
     ScheduleLabel label() const { return _label; }
 
+    /// Check if the schedule contains a set with the given label.
+    bool contains_set(const SystemSetLabel& label) const { return nodes.contains(label); }
     void add_systems(SetConfig&& config) { add_config(std::move(config), true); }
     void configure_sets(SetConfig&& config) { add_config(std::move(config), false); }
     void add_systems(SetConfig& config) { add_config(std::move(config), true); }
     void configure_sets(SetConfig& config) { add_config(std::move(config), false); }
+    /// Remove the system associated with the set label. The set will remain.
+    bool remove_system(const SystemSetLabel& label) {
+        auto it = nodes.find(label);
+        if (it != nodes.end()) {
+            // remove the system, remain set
+            it->second->system.reset();
+            return true;
+        }
+        return false;
+    }
+    /// Remove the set and its associated system.
+    bool remove_set(const SystemSetLabel& label) {
+        auto it = nodes.find(label);
+        if (it != nodes.end()) {
+            nodes.erase(it);
+            return true;
+        }
+        return false;
+    }
 
     void set_default_execute_config(const ExecuteConfig& config) { _default_execute_config = config; }
     const ExecuteConfig& default_execute_config() const { return _default_execute_config; }
