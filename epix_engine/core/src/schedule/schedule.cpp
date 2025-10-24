@@ -415,6 +415,15 @@ void Schedule::execute(SystemDispatcher& dispatcher, ExecuteConfig config) {
                      exec_state.finished_nodes.iter_zeros() | std::views::transform(index_to_name),
                      exec_state.entered_nodes.iter_ones() | std::views::transform(index_to_name));
     }
+
+    if (config.run_once) {
+        // only remove sets in cached nodes cause newly added sets that are not in cache didn't run yet.
+        for (auto&& index : exec_state.finished_nodes.iter_ones()) {
+            CachedNode& cached_node = cache->nodes[index];
+            nodes.erase(cached_node.node->label);
+        }
+        this->cache.reset();  // invalidate cache
+    }
 }
 
 }  // namespace epix::core::schedule

@@ -167,6 +167,7 @@ SetConfig make_sets(Ts&&... ts) {
 struct ExecuteConfig {
     bool apply_direct   = false;  // should call System::apply right after System::run or at the end of the schedule
     bool queue_deferred = false;  // call System::queue for deferred systems instead of apply at the end
+    bool run_once       = false;  // systems in this schedule will only run once and be removed
 
     bool is_apply_direct() const { return apply_direct && !queue_deferred; }
     bool is_queue_deferred() const { return queue_deferred; }
