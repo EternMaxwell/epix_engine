@@ -35,3 +35,8 @@ struct type_index {
     bool valid() const noexcept { return inter != nullptr; }
 };
 }  // namespace epix::core::meta
+
+template <>
+struct std::hash<epix::core::meta::type_index> {
+    size_t operator()(const epix::core::meta::type_index& ti) const noexcept { return ti.hash_code(); }
+};
