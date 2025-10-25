@@ -144,5 +144,5 @@ void SystemDispatcher::finish(size_t index) {
 
 SystemDispatcher::~SystemDispatcher() {
     // dispatch a world scope system to wait for all systems to finish.
-    world_scope([](World& world) {}).wait();
+    if (world) world_scope([](World& world) {}).wait();
 }

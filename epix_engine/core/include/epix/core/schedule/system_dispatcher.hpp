@@ -115,6 +115,7 @@ struct SystemDispatcher {
           world_own(std::move(world)),
           world_scope_system(system::make_system(
               [](system::In<std::move_only_function<void(World&)>> input, World& world) { input.get()(world); })) {
+        this->world        = this->world_own.get();
         world_scope_access = world_scope_system->initialize(*this->world);
         thread_pool        = &get_thread_pool(thread_count);
     }
@@ -135,6 +136,7 @@ struct SystemDispatcher {
      * @return std::unique_ptr<World> The owned world, or nullptr if not owned.
      */
     std::unique_ptr<World> release_world() {
+        wait();
         std::lock_guard lock(mutex_);
         if (!world_own) return nullptr;
         world = nullptr;
