@@ -94,7 +94,11 @@ struct App {
     App(App&&)                 = default;
     App& operator=(const App&) = delete;
     App& operator=(App&&)      = default;
-    ~App() { _dispatcher.reset(); }
+    ~App() {
+        if (auto dispatcher = _dispatcher.lock()) {
+            _world = dispatcher->release_world();
+        }
+    }
 
     static App create();
 
