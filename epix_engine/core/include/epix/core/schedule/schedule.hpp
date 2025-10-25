@@ -241,10 +241,13 @@ struct Schedule {
     }
 
     void set_default_execute_config(const ExecuteConfig& config) { _default_execute_config = config; }
-    template <typename T>
-    T&& with_execute_config(this T&& self, const ExecuteConfig& config) {
-        self.set_default_execute_config(config);
-        return std::forward<T>(self);
+    Schedule&& with_execute_config(const ExecuteConfig& config) && {
+        set_default_execute_config(config);
+        return std::move(*this);
+    }
+    Schedule& with_execute_config(const ExecuteConfig& config) & {
+        set_default_execute_config(config);
+        return *this;
     }
     const ExecuteConfig& default_execute_config() const { return _default_execute_config; }
     ExecuteConfig& default_execute_config() { return _default_execute_config; }
