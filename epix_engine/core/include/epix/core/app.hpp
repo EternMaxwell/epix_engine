@@ -43,44 +43,32 @@ struct ScheduleOrder {
         requires std::ranges::range<Rng> && std::same_as<std::ranges::range_value_t<Rng>, schedule::ScheduleLabel>
     {
         auto existing = labels | std::ranges::to<std::unordered_set<schedule::ScheduleLabel>>();
-        // remove existing labels from new_labels from back to front to avoid invalidating indices
-        for (auto it = new_labels.end(); it != new_labels.begin();) {
-            --it;
-            if (existing.contains(*it)) {
-                new_labels.erase(it);
-            }
-        }
-        auto it = std::find(labels.begin(), labels.end(), after);
+        auto it       = std::find(labels.begin(), labels.end(), after);
         if (it != labels.end()) it++;
-        labels.insert_range(it, std::forward<Rng>(new_labels));
+        labels.insert_range(
+            it, std::forward<Rng>(new_labels) | std::views::filter([&](const schedule::ScheduleLabel& label) {
+                    return !existing.contains(label);
+                }));
     }
     template <typename Rng>
     void insert_range_end(Rng&& new_labels)
         requires std::ranges::range<Rng> && std::same_as<std::ranges::range_value_t<Rng>, schedule::ScheduleLabel>
     {
         auto existing = labels | std::ranges::to<std::unordered_set<schedule::ScheduleLabel>>();
-        // remove existing labels from new_labels from back to front to avoid invalidating indices
-        for (auto it = new_labels.end(); it != new_labels.begin();) {
-            --it;
-            if (existing.contains(*it)) {
-                new_labels.erase(it);
-            }
-        }
-        labels.insert_range(labels.end(), std::forward<Rng>(new_labels));
+        labels.insert_range(
+            labels.end(), std::forward<Rng>(new_labels) | std::views::filter([&](const schedule::ScheduleLabel& label) {
+                              return !existing.contains(label);
+                          }));
     }
     template <typename Rng>
     void insert_range_begin(Rng&& new_labels)
         requires std::ranges::range<Rng> && std::same_as<std::ranges::range_value_t<Rng>, schedule::ScheduleLabel>
     {
         auto existing = labels | std::ranges::to<std::unordered_set<schedule::ScheduleLabel>>();
-        // remove existing labels from new_labels from back to front to avoid invalidating indices
-        for (auto it = new_labels.end(); it != new_labels.begin();) {
-            --it;
-            if (existing.contains(*it)) {
-                new_labels.erase(it);
-            }
-        }
-        labels.insert_range(labels.begin(), std::forward<Rng>(new_labels));
+        labels.insert_range(labels.begin(), std::forward<Rng>(new_labels) |
+                                                std::views::filter([&](const schedule::ScheduleLabel& label) {
+                                                    return !existing.contains(label);
+                                                }));
     }
     /// Remove a label, return true if found and removed
     bool remove(const schedule::ScheduleLabel& label) {
@@ -201,7 +189,7 @@ struct App {
     App& add_plugin(Args&&... args)
         requires std::constructible_from<T, Args...>
     {
-        resource_scope([&](app::Plugins& plugins) { plugins.add_plugin<T>(std::forward<Args>(args)...); });
+        resource_scope([&](app::Plugins& plugins) { plugins.add_plugin<T>(*this, std::forward<Args>(args)...); });
         return *this;
     }
     /// Add multiple plugins to the app. The build function for each plugin will be called during addition. The finish
@@ -210,7 +198,7 @@ struct App {
     App& add_plugins(Ts&&... ts)
         requires(std::constructible_from<std::decay_t<Ts>, Ts> && ...)
     {
-        resource_scope([&](app::Plugins& plugins) { (plugins.add_plugin(std::forward<Ts>(ts)), ...); });
+        resource_scope([&](app::Plugins& plugins) { (plugins.add_plugin(*this, std::forward<Ts>(ts)), ...); });
         return *this;
     }
     /// Try get a mutable reference to a plugin of type T.
@@ -243,8 +231,63 @@ struct App {
     std::expected<std::shared_ptr<schedule::SystemDispatcher>, WorldNotOwnedError> get_system_dispatcher();
     /// Get the system dispatcher owning the world. Throws if failed.
     std::shared_ptr<schedule::SystemDispatcher> system_dispatcher() { return get_system_dispatcher().value(); }
-    /// Try run a schedule of label. Return true if the schedule was found and run, false otherwise.
-    bool run_schedule(const schedule::ScheduleLabel& label);
+    /// Try run schedule with label with the provided dispatcher. Return true if the schedule was found and run, false
+    /// otherwise.
+    bool run_schedule(const schedule::ScheduleLabel& label, std::shared_ptr<schedule::SystemDispatcher> dispatcher);
+    /// Try run schedule with label with the internal dispatcher. Return true if system dispatcher successfully obtained
+    /// and the schedule was found and run, false otherwise.
+    bool run_schedule(const schedule::ScheduleLabel& label) {
+        return get_system_dispatcher()
+            .transform([this, &label](std::shared_ptr<schedule::SystemDispatcher> dispatcher) {
+                return run_schedule(label, dispatcher);
+            })
+            .value_or(false);
+    }
+    /// Try run schedules with labels in the provided range and the provided dispatcher. Return true if system
+    /// dispatcher successfully obtained. For each schedule, log a warning if not found.
+    template <typename Rng>
+    void run_schedules_local(Rng&& labels, std::shared_ptr<schedule::SystemDispatcher> dispatcher)
+        requires std::ranges::range<Rng> && std::same_as<std::ranges::range_value_t<Rng>, schedule::ScheduleLabel>
+    {
+        std::ranges::for_each(labels, [&](const schedule::ScheduleLabel& label) {
+            if (!run_schedule(label, dispatcher)) {
+                spdlog::warn("Failed to run schedule '{}', schedule not found. Skip.", label.to_string());
+            }
+        });
+    }
+    template <typename Rng>
+    std::future<void> run_schedules(Rng&& labels, std::launch launch = std::launch::async)
+        requires std::ranges::range<Rng> && std::same_as<std::ranges::range_value_t<Rng>, schedule::ScheduleLabel>
+    {
+        return get_system_dispatcher()
+            .transform([this, launch, labels = std::forward<Rng>(labels)](
+                           std::shared_ptr<schedule::SystemDispatcher> dispatcher) mutable {
+                return std::async(launch, [this, dispatcher, labels = std::move(labels)]() mutable {
+                    run_schedules_local(std::move(labels), dispatcher);
+                });
+            })
+            .or_else([](auto&&) -> std::expected<std::future<void>, WorldNotOwnedError> {
+                return std::async(std::launch::deferred, []() {});
+            })
+            .value();
+    }
+    template <typename... Labels>
+    std::future<void> run_schedules(Labels&&... labels) {
+        constexpr bool explicit_launch =
+            std::same_as<std::launch, std::tuple_element_t<sizeof...(Labels) - 1, std::tuple<std::decay_t<Labels>...>>>;
+        auto launch = [&] {
+            if constexpr (explicit_launch) {
+                return std::get<sizeof...(Labels) - 1>(std::forward_as_tuple(std::forward<Labels>(labels)...));
+            } else {
+                return std::launch::async;
+            }
+        }();
+        auto array = [&]<std::size_t... I>(std::index_sequence<I...>) {
+            return std::array{
+                schedule::ScheduleLabel(std::forward<Labels>(std::get<I>(std::forward_as_tuple(labels...))))...};
+        }(std::make_index_sequence<(explicit_launch ? sizeof...(Labels) - 1 : sizeof...(Labels))>());
+        return run_schedules(std::move(array), launch);
+    }
     /// Update the app, e.g. run schedules according to schedule order with the provided dispatcher. Return false if no
     /// ScheduleOrder resource found.
     bool update_local(std::shared_ptr<schedule::SystemDispatcher> dispatcher);
@@ -256,7 +299,10 @@ struct App {
             .transform([this, launch](std::shared_ptr<schedule::SystemDispatcher> dispatcher) mutable {
                 return std::async(launch, [this, dispatcher]() { return update_local(dispatcher); });
             })
-            .value_or([]() { return std::async(std::launch::deferred, []() { return false; }); }());
+            .or_else([](auto&&) -> std::expected<std::future<bool>, WorldNotOwnedError> {
+                return std::async(std::launch::deferred, []() { return false; });
+            })
+            .value();
     }
 
     /// Check if the app has an extract function set.
