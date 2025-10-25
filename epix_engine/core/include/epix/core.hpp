@@ -103,6 +103,7 @@ using core::Res;
 using core::ResMut;
 
 using core::App;
+using core::Extract;
 }  // namespace prelude
 
 using namespace prelude;
