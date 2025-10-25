@@ -58,6 +58,7 @@ using system::Commands;
 using system::Deferred;
 using system::EntityCommands;
 using system::ParamSet;
+
 using system::RunSystemError;
 using system::System;
 using system::SystemException;
@@ -103,6 +104,7 @@ using core::Res;
 using core::ResMut;
 
 using core::App;
+using core::Extract;
 }  // namespace prelude
 
 using namespace prelude;
