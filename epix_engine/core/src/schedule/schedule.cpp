@@ -230,7 +230,7 @@ void Schedule::execute(SystemDispatcher& dispatcher, ExecuteConfig config) {
     }
 
     // ? should we initialize systems here? or let caller assure systems are initialized?
-    dispatcher.world_scope([this](World& world) { initialize_systems(world); });
+    dispatcher.world_scope([this](World& world) { initialize_systems(world); }).wait();
     std::shared_ptr cache = this->cache;  // keep a copy to avoid being invalidated during execution
 
     ExecutionState exec_state{
@@ -259,12 +259,17 @@ void Schedule::execute(SystemDispatcher& dispatcher, ExecuteConfig config) {
     auto dispatch_system = [&](size_t index) {
         // dispatch a system for execution
         CachedNode& cached_node = cache->nodes[index];
-        dispatcher.dispatch_system(*cached_node.node->system.get(), {}, cached_node.node->system_access,
+        if (config.is_apply_direct() && cached_node.node->system->is_deferred()) {
+            auto& system = *cached_node.node->system.get();
+            dispatcher.world_scope([&system](World& world) { auto res = system.run({}, world); },
                                    {
                                        .on_finish = [&, index]() { exec_state.finished_queue.push(index); },
                                    });
-        if (config.is_apply_direct() && cached_node.node->system->is_deferred()) {
-            dispatcher.apply_deferred(*cached_node.node->system.get());
+        } else {
+            dispatcher.dispatch_system(*cached_node.node->system.get(), {}, cached_node.node->system_access,
+                                       {
+                                           .on_finish = [&, index]() { exec_state.finished_queue.push(index); },
+                                       });
         }
         exec_state.running_count++;
         exec_state.running_nodes.set(index);
@@ -398,6 +403,8 @@ void Schedule::execute(SystemDispatcher& dispatcher, ExecuteConfig config) {
                     [&](auto& system) { system.queue_deferred(world); });
             })
             .wait();
+    } else {
+        dispatcher.wait();
     }
 
     if (exec_state.remaining_count > 0) {
