@@ -128,7 +128,12 @@ struct SystemDispatcher {
     }
     ~SystemDispatcher();
     void wait() {
-        auto res = world_scope([](World& world) {}).get();
+        auto res = [&] -> std::optional<std::future<std::expected<void, system::RunSystemError>>> {
+            std::lock_guard lock(mutex_);
+            if (!world) return std::nullopt;
+            return world_scope([](World& world) {});
+        }();
+        if (res) res->wait();
     }
     /**
      * @brief Release the world if owned. This will make further
@@ -202,8 +207,9 @@ struct SystemDispatcher {
         return sys.run_no_apply(std::move(input), *world);
     }
     template <typename In, typename Out>
-    std::future<std::expected<void, system::RunSystemError>> apply_deferred(system::System<In, Out>& sys) {
-        return world_scope([&](World& world) { sys.apply_deferred(world); });
+    std::future<std::expected<void, system::RunSystemError>> apply_deferred(system::System<In, Out>& sys,
+                                                                            DispatchConfig config = {}) {
+        return world_scope([&](World& world) { sys.apply_deferred(world); }, std::move(config));
     }
     template <typename T>
     std::future<std::expected<void, system::RunSystemError>> apply_deferred(T&& range)
