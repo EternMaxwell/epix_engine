@@ -75,4 +75,8 @@ inline struct OnChangeT {
         return info;
     }
 } OnChange;
+
+struct MainSchedulePlugin {
+    void build(App& app);
+};
 }  // namespace epix::core::app
