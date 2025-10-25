@@ -1,3 +1,4 @@
+#include "epix/core.hpp"
 #include "epix/core/app.hpp"
 
 using namespace epix;
@@ -6,8 +7,14 @@ using namespace epix::core::app;
 
 int main() {
     App app = App::create();
-    app.add_systems(Startup, into([]() { spdlog::info("Hello from Startup system!"); }))
-        .add_systems(Update, into([]() { spdlog::info("Hello from Update system!"); }))
+    app.add_systems(Startup, into([](Commands commands) {
+                        spdlog::info("Hello from Startup system!");
+                        commands.insert_resource(std::string("String Resource."));
+                    }))
+        .add_systems(Update, into([](std::optional<Res<std::string>> str_res) {
+                         spdlog::info("Hello from Update system!");
+                         spdlog::info("String Resource value: {}", *str_res.value());
+                     }))
         .add_systems(Exit, into([]() { spdlog::info("Goodbye from Exit system!"); }));
     app.set_runner([](App& app) {
         spdlog::info("[app] Calling update...");
