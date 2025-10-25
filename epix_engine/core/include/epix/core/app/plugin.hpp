@@ -82,23 +82,13 @@ struct Plugins {
     template <typename T, typename... Args>
         requires std::constructible_from<T, Args...>
     void add_plugin(App& app, Args&&... args) {
-        if (built) {
-            throw std::runtime_error("Cannot add new plugins after build.");
-        }
-        // add if not exists.
-        epix::meta::type_index type_id = epix::core::meta::type_id<T>();
-        if (_plugin_index.contains(type_id)) return;
-        size_t index              = _plugins.size();
-        PluginWrapper<T>* wrapper = new PluginWrapper<T>(std::forward<Args>(args)...);
-        _plugins.push_back(std::unique_ptr<PluginBase>(wrapper));
-        _plugin_index[type_id] = index;
-        wrapper->build(app);
+        add_plugin_internal<T>(app, std::forward<Args>(args)...);
     }
     template <typename T>
     void add_plugin(App& app, T&& plugin)
         requires std::constructible_from<std::decay_t<T>, T>
     {
-        add_plugin<std::decay_t<T>>(app, std::forward<T>(plugin));
+        add_plugin_internal<std::decay_t<T>>(app, std::forward<T>(plugin));
     }
     template <typename T>
     std::optional<std::reference_wrapper<T>> get_plugin_mut() {
@@ -138,6 +128,22 @@ struct Plugins {
     }
 
    private:
+    template <typename T, typename... Args>
+        requires std::constructible_from<T, Args...>
+    void add_plugin_internal(App& app, Args&&... args) {
+        if (built) {
+            throw std::runtime_error("Cannot add new plugins after build.");
+        }
+        // add if not exists.
+        epix::meta::type_index type_id = epix::core::meta::type_id<T>();
+        if (_plugin_index.contains(type_id)) return;
+        size_t index              = _plugins.size();
+        PluginWrapper<T>* wrapper = new PluginWrapper<T>(std::forward<Args>(args)...);
+        _plugins.push_back(std::unique_ptr<PluginBase>(wrapper));
+        _plugin_index[type_id] = index;
+        wrapper->build(app);
+    }
+
     bool built = false;
     std::vector<std::unique_ptr<PluginBase>> _plugins;
     std::unordered_map<epix::meta::type_index, size_t> _plugin_index;
