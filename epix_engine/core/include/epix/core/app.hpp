@@ -195,6 +195,8 @@ struct App {
 
     // === Plugin Management ===
 
+    /// Add a plugin to the app. The build function for the plugin will be called during addition. finish function of
+    /// the plugin will be called before running, and finalize function will be called after running.
     template <typename T, typename... Args>
     App& add_plugin(Args&&... args)
         requires std::constructible_from<T, Args...>
@@ -202,6 +204,8 @@ struct App {
         resource_scope([&](app::Plugins& plugins) { plugins.add_plugin<T>(std::forward<Args>(args)...); });
         return *this;
     }
+    /// Add multiple plugins to the app. The build function for each plugin will be called during addition. The finish
+    /// function of each plugin will be called before running, and the finalize function will be called after running.
     template <typename... Ts>
     App& add_plugins(Ts&&... ts)
         requires(std::constructible_from<std::decay_t<Ts>, Ts> && ...)
@@ -209,20 +213,24 @@ struct App {
         resource_scope([&](app::Plugins& plugins) { (plugins.add_plugin(std::forward<Ts>(ts)), ...); });
         return *this;
     }
+    /// Try get a mutable reference to a plugin of type T.
     template <typename T>
     std::optional<std::reference_wrapper<T>> get_plugin_mut() {
         return get_resource_mut<app::Plugins>().and_then(
             [](app::Plugins& plugins) { return plugins.get_plugin_mut<T>(); });
     }
+    /// Try get a const reference to a plugin of type T.
     template <typename T>
     std::optional<std::reference_wrapper<const T>> get_plugin() const {
         return get_resource<const app::Plugins>().and_then(
             [](const app::Plugins& plugins) { return plugins.get_plugin<T>(); });
     }
+    /// Get a const reference to a plugin of type T. Throws if not found.
     template <typename T>
     const T& plugin() const {
         return get_plugin<T>().value().get();
     }
+    /// Get a mutable reference to a plugin of type T. Throws if not found.
     template <typename T>
     T& plugin_mut() {
         return get_plugin_mut<T>().value().get();
@@ -251,12 +259,18 @@ struct App {
             .value_or([]() { return std::async(std::launch::deferred, []() { return false; }); }());
     }
 
+    /// Check if the app has an extract function set.
     bool has_extract() const { return static_cast<bool>(extract_fn); }
     /// Extract data from another app into this app. will call the extract function set by set_extract_fn internally.
     void extract(App& other);
+    /// Set the extract function for the app. First argument is this app, second argument is the world extracted from
+    /// the other app.
     void set_extract_fn(std::move_only_function<void(App&, World&)> fn) { extract_fn = std::move(fn); }
+    /// Check if the app has a runner function set.
     bool has_runner() const { return static_cast<bool>(runner); }
+    /// Set the runner function for the app. The function will be called when run() is called.
     void set_runner(std::move_only_function<void(App&)> fn) { runner = std::move(fn); }
+    /// Run the app. Or throw if no runner function set.
     void run();
 
    private:

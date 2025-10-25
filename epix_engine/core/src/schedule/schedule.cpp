@@ -1,3 +1,5 @@
+#include <spdlog/spdlog.h>
+
 #include <expected>
 #include <format>
 #include <functional>
@@ -399,10 +401,9 @@ void Schedule::execute(SystemDispatcher& dispatcher, ExecuteConfig config) {
     }
 
     if (exec_state.remaining_count > 0) {
-        std::println(std::cerr, "Some systems are not executed, check for cycles in the graph.");
         // print state
         ScheduleCache& task_cache = *cache;
-        std::println(std::cerr, "Execution state:");
+        spdlog::warn("Some systems are not executed, check for cycles in the graph. with Execution state:");
         auto index_to_name = [&](size_t index) -> std::string {
             auto& node = task_cache.nodes[index].node;
             if (node->system) {
@@ -411,17 +412,16 @@ void Schedule::execute(SystemDispatcher& dispatcher, ExecuteConfig config) {
                 return std::format("(set {})", node->label.type_index().short_name());
             }
         };
-        std::println(std::cerr, "\tRemaining: {}\tNot Exited: {}",
+        spdlog::warn("\tRemaining: {}\tNot Exited: {}",
                      exec_state.finished_nodes.iter_zeros() | std::views::transform(index_to_name),
                      exec_state.entered_nodes.iter_ones() | std::views::transform(index_to_name));
     }
 
     if (config.run_once) {
         // only remove sets in cached nodes cause newly added sets that are not in cache didn't run yet.
-        for (auto&& index : exec_state.finished_nodes.iter_ones()) {
-            CachedNode& cached_node = cache->nodes[index];
-            nodes.erase(cached_node.node->label);
-        }
+        std::ranges::for_each(exec_state.finished_nodes.iter_ones() |
+                                  std::views::transform([&](size_t index) { return cache->nodes[index].node->label; }),
+                              [&](const SystemSetLabel& label) { nodes.erase(label); });
         this->cache.reset();  // invalidate cache
     }
 }

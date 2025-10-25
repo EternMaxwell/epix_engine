@@ -73,41 +73,46 @@ struct SetConfig {
    public:
     SetConfig() = default;
 
-    SetConfig& after(const SystemSetLabel& label) {
-        edges.depends.insert(label);
-        std::ranges::for_each(sub_configs, [&](SetConfig& config) { config.after(label); });
-        return *this;
+    template <typename T>
+    T&& after(this T&& self, const SystemSetLabel& label) {
+        self.edges.depends.insert(label);
+        std::ranges::for_each(self.sub_configs, [&](SetConfig& config) { config.after(label); });
+        return std::forward<T>(self);
     }
-    SetConfig& before(const SystemSetLabel& label) {
-        edges.successors.insert(label);
-        std::ranges::for_each(sub_configs, [&](SetConfig& config) { config.before(label); });
-        return *this;
+    template <typename T>
+    T&& before(this T&& self, const SystemSetLabel& label) {
+        self.edges.successors.insert(label);
+        std::ranges::for_each(self.sub_configs, [&](SetConfig& config) { config.before(label); });
+        return std::forward<T>(self);
     }
-    SetConfig& in_set(const SystemSetLabel& label) {
-        edges.parents.insert(label);
-        std::ranges::for_each(sub_configs, [&](SetConfig& config) { config.in_set(label); });
-        return *this;
+    template <typename T>
+    T&& in_set(this T&& self, const SystemSetLabel& label) {
+        self.edges.parents.insert(label);
+        std::ranges::for_each(self.sub_configs, [&](SetConfig& config) { config.in_set(label); });
+        return std::forward<T>(self);
     }
-    SetConfig& set_name(std::string name) {
-        if (system) system->set_name(name);
+    template <typename T>
+    T&& set_name(this T&& self, std::string name) {
+        if (self.system) self.system->set_name(name);
         size_t index = 0;
-        std::ranges::for_each(sub_configs,
+        std::ranges::for_each(self.sub_configs,
                               [&](SetConfig& config) { config.set_name(std::format("{}#{}", name, index)); });
-        return *this;
+        return std::forward<T>(self);
     }
-    template <typename F>
-    SetConfig& run_if(F&& func)
+    template <typename T, typename F>
+    T&& run_if(this T&& self, F&& func)
         requires(requires { system::make_system<std::tuple<>, bool>(std::forward<F>(func)); })
     {
-        conditions.push_back(system::make_system<std::tuple<>, bool>(std::forward<F>(func)));
-        std::ranges::for_each(sub_configs, [&](SetConfig& config) { config.run_if(std::forward<F>(func)); });
-        return *this;
+        self.conditions.push_back(system::make_system<std::tuple<>, bool>(std::forward<F>(func)));
+        std::ranges::for_each(self.sub_configs, [&](SetConfig& config) { config.run_if(std::forward<F>(func)); });
+        return std::forward<T>(self);
     }
-    SetConfig& chain() {
-        for (auto&& [c1, c2] : sub_configs | std::views::adjacent<2>) {
+    template <typename T>
+    T&& chain(this T&& self) {
+        for (auto&& [c1, c2] : self.sub_configs | std::views::adjacent<2>) {
             c1.before(c2);
         }
-        return *this;
+        return std::forward<T>(self);
     }
 
    private:
@@ -236,6 +241,11 @@ struct Schedule {
     }
 
     void set_default_execute_config(const ExecuteConfig& config) { _default_execute_config = config; }
+    template <typename T>
+    T&& with_execute_config(this T&& self, const ExecuteConfig& config) {
+        self.set_default_execute_config(config);
+        return std::forward<T>(self);
+    }
     const ExecuteConfig& default_execute_config() const { return _default_execute_config; }
     ExecuteConfig& default_execute_config() { return _default_execute_config; }
 
