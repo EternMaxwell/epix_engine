@@ -1,4 +1,4 @@
-file(GLOB_RECURSE MODULE_SOURCES "src/*.c" "src/*.cpp")
+file(GLOB_RECURSE MODULE_SOURCES CONFIGURE_DEPENDS "src/*.c" "src/*.cpp")
 list(APPEND MODULE_INCLUDES ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
 add_library(epix_core STATIC ${MODULE_SOURCES})
