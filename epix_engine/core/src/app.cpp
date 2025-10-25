@@ -1,10 +1,17 @@
 #include "epix/core/app.hpp"
-#include "epix/core/app/extract.hpp"
+#include "epix/core/app/app_sche.hpp"
 
 namespace epix::core {
 
 App App::create() {
     App app;
+    app.add_plugins(app::MainSchedulePlugin{});
+    app.set_runner([](App& app) {
+        app.update().get();
+        spdlog::info("[app] Exiting app.");
+        app.run_schedules(app::PreExit, app::Exit, app::PostExit);
+        return 0;
+    });
     return std::move(app);
 }
 
@@ -145,35 +152,31 @@ std::expected<std::shared_ptr<schedule::SystemDispatcher>, WorldNotOwnedError> A
     return std::unexpected(WorldNotOwnedError{});
 }
 
-bool App::run_schedule(const schedule::ScheduleLabel& label) {
-    return get_system_dispatcher()
-        .transform([&](std::shared_ptr<schedule::SystemDispatcher> dispatcher) {
-            std::optional<schedule::Schedule> schedule;
-            dispatcher
-                ->world_scope([&](World& world) {
-                    schedule = world.get_resource_mut<app::Schedules>().and_then(
-                        [&](app::Schedules& schedules) { return schedules.remove_schedule(label); });
-                })
-                .wait();
-            if (schedule) {
-                schedule->execute(*dispatcher);
-                // push back the schedule
-                dispatcher
-                    ->world_scope([&](World& world) {
-                        auto& schedules = world.resource_mut<app::Schedules>();
-                        if (schedules.get_schedule(label)) {
-                            spdlog::warn(
-                                "Schedule '{}' was re-added while existing one running, old one will be "
-                                "overwritten!",
-                                label.to_string());
-                        }
-                        schedules.add_schedule(std::move(*schedule));
-                    })
-                    .wait();
-            }
-            return schedule.has_value();
+bool App::run_schedule(const schedule::ScheduleLabel& label, std::shared_ptr<schedule::SystemDispatcher> dispatcher) {
+    std::optional<schedule::Schedule> schedule;
+    dispatcher
+        ->world_scope([&](World& world) {
+            schedule = world.get_resource_mut<app::Schedules>().and_then(
+                [&](app::Schedules& schedules) { return schedules.remove_schedule(label); });
         })
-        .value_or(false);
+        .wait();
+    if (schedule) {
+        schedule->execute(*dispatcher);
+        // push back the schedule
+        dispatcher
+            ->world_scope([&](World& world) {
+                auto& schedules = world.resource_mut<app::Schedules>();
+                if (schedules.get_schedule(label)) {
+                    spdlog::warn(
+                        "Schedule '{}' was re-added while existing one running, old one will be "
+                        "overwritten!",
+                        label.to_string());
+                }
+                schedules.add_schedule(std::move(*schedule));
+            })
+            .wait();
+    }
+    return schedule.has_value();
 }
 
 bool App::update_local(std::shared_ptr<schedule::SystemDispatcher> dispatcher) {
@@ -207,12 +210,15 @@ void App::extract(App& other) {
 }
 
 void App::run() {
+    spdlog::info("[app] App building. - {}", _label.to_string());
     resource_scope([&](app::Plugins& plugins) { plugins.finish_all(*this); });
+    spdlog::info("[app] App running. - {}", _label.to_string());
     if (runner) {
         runner(*this);
     } else {
         throw std::runtime_error("No runner function set for App.");
     }
     resource_scope([&](app::Plugins& plugins) { plugins.finalize_all(*this); });
+    spdlog::info("[app] App terminated. - {}", _label.to_string());
 }
 }  // namespace epix::core
