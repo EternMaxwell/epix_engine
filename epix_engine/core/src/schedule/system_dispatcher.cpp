@@ -133,12 +133,10 @@ void SystemDispatcher::tick() {
 }
 void SystemDispatcher::finish(size_t index) {
     // collect finished system
-    {
-        std::lock_guard lock(mutex_);
-        const auto& access     = system_accesses[index];
-        system_accesses[index] = nullptr;
-        free_indices.push_back(index);
-    }
+    std::lock_guard lock(mutex_);
+    const auto& access     = system_accesses[index];
+    system_accesses[index] = nullptr;
+    free_indices.push_back(index);
     tick();
 }
 
