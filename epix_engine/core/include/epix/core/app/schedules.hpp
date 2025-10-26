@@ -18,17 +18,14 @@ struct Schedules {
     Schedules& operator=(const Schedules&) = delete;
     Schedules& operator=(Schedules&&)      = default;
 
+    /// Try get const reference to a schedule by its label.
     std::optional<std::reference_wrapper<const schedule::Schedule>> get_schedule(
-        const schedule::ScheduleLabel& label) const {
-        auto it = _schedules.find(label);
-        if (it != _schedules.end()) {
-            return it->second;
-        }
-        return std::nullopt;
-    }
+        const schedule::ScheduleLabel& label) const;
+    /// Get a const reference to a schedule by its label, throws if not found.
     const schedule::Schedule& schedule(const schedule::ScheduleLabel& label) const {
         return get_schedule(label).value();
     }
+    /// Try get mutable reference to a schedule by its label.
     std::optional<std::reference_wrapper<schedule::Schedule>> get_schedule_mut(const schedule::ScheduleLabel& label) {
         auto it = _schedules.find(label);
         if (it != _schedules.end()) {
@@ -36,32 +33,17 @@ struct Schedules {
         }
         return std::nullopt;
     }
+    /// Get a mutable reference to a schedule by its label, throws if not found.
     schedule::Schedule& schedule_mut(const schedule::ScheduleLabel& label) { return get_schedule_mut(label).value(); }
+    /// Get or insert a schedule by its label.
     schedule::Schedule& schedule_or_insert(schedule::Schedule&& schedule) {
-        auto&& [it, inserted] = _schedules.emplace(schedule.label(), std::move(schedule));
+        auto&& [it, inserted] = _schedules.try_emplace(schedule.label(), std::move(schedule));
         return it->second;
     }
-
-    // adds a new schedule, or replaces the existing one with the same label
-    schedule::Schedule& add_schedule(schedule::Schedule&& schedule) {
-        if (auto it = _schedules.find(schedule.label()); it != _schedules.end()) {
-            it->second = std::move(schedule);
-            return it->second;
-        } else {
-            auto&& [it2, inserted] = _schedules.emplace(schedule.label(), std::move(schedule));
-            return it2->second;
-        }
-    }
-
-    std::optional<schedule::Schedule> remove_schedule(const schedule::ScheduleLabel& label) {
-        auto it = _schedules.find(label);
-        if (it != _schedules.end()) {
-            schedule::Schedule schedule = std::move(it->second);
-            _schedules.erase(it);
-            return schedule;
-        }
-        return std::nullopt;
-    }
+    /// Add a new schedule, or replaces the existing one with the same label
+    schedule::Schedule& add_schedule(schedule::Schedule&& schedule);
+    /// Remove a schedule by its label, returns the removed schedule if found.
+    std::optional<schedule::Schedule> remove_schedule(const schedule::ScheduleLabel& label);
 
    private:
     // schedule is movable, no need to use pointer
