@@ -153,10 +153,12 @@ std::string_view mouse_button_name(MouseButton button);
 
 template <>
 struct std::hash<epix::input::KeyCode> {
-    size_t operator()(const epix::input::KeyCode& key) const;
+    size_t operator()(const epix::input::KeyCode& key) const { return std::hash<int>()(static_cast<int>(key)); }
 };
 
 template <>
 struct std::hash<epix::input::MouseButton> {
-    EPIX_API size_t operator()(const epix::input::MouseButton& button) const;
+    size_t operator()(const epix::input::MouseButton& button) const {
+        return std::hash<int>()(static_cast<int>(button));
+    }
 };

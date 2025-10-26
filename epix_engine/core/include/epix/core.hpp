@@ -111,6 +111,9 @@ using namespace prelude;
 using wrapper::int_base;
 }  // namespace epix::core
 
+namespace epix::prelude {
+using namespace core::prelude;
+}
 namespace epix {
 using namespace core::prelude;
 }

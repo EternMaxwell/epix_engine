@@ -73,13 +73,13 @@ struct Events {
     uint32_t tail() const { return m_tail; }
     T* get(uint32_t index) {
         if (index >= m_head && index < m_tail) {
-            return &m_events[index - m_head].first;
+            return &m_events[index - m_head];
         }
         return nullptr;
     }
     const T* get(uint32_t index) const {
         if (index >= m_head && index < m_tail) {
-            return &m_events[index - m_head].first;
+            return &m_events[index - m_head];
         }
         return nullptr;
     }
