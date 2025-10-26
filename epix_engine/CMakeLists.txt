@@ -95,3 +95,4 @@ function(epix_parse_options)
 endfunction()
 
 add_subdirectory(core)
+add_subdirectory(input)
