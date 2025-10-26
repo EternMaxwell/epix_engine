@@ -4,7 +4,7 @@
  * @file core.hpp
  * @brief Combined header for epix core module.
  */
-
+#include "api/macros.hpp"
 #include "core/app.hpp"
 #include "core/archetype.hpp"
 #include "core/change_detection.hpp"
@@ -108,6 +108,7 @@ using core::Extract;
 }  // namespace prelude
 
 using namespace prelude;
+using wrapper::int_base;
 }  // namespace epix::core
 
 namespace epix {
