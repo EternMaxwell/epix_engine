@@ -14,6 +14,7 @@
 #include "app/extract.hpp"
 #include "app/plugin.hpp"
 #include "app/schedules.hpp"
+#include "event/events.hpp"
 #include "schedule/schedule.hpp"
 #include "world.hpp"
 
@@ -226,6 +227,18 @@ struct App {
     template <typename T>
     T& plugin_mut() {
         return get_plugin_mut<T>().value().get();
+    }
+
+    // === Event Management ===
+    template <typename T>
+    App& add_event() {
+        world_scope([&](World& world) { world.init_resource<event::Events<T>>(); });
+        return *this;
+    }
+    template <typename... Ts>
+    App& add_events() {
+        (add_event<Ts>(), ...);
+        return *this;
     }
 
     // === System Dispatcher ===
