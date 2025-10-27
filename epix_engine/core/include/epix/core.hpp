@@ -6,6 +6,7 @@
  */
 #include "api/macros.hpp"
 #include "core/app.hpp"
+#include "core/app/app_sche.hpp"
 #include "core/archetype.hpp"
 #include "core/change_detection.hpp"
 #include "core/entities.hpp"
@@ -105,6 +106,22 @@ using core::ResMut;
 
 using core::App;
 using core::Extract;
+
+using app::Exit;
+using app::First;
+using app::Last;
+using app::OnChange;
+using app::OnEnter;
+using app::OnExit;
+using app::PostExit;
+using app::PostStartup;
+using app::PostUpdate;
+using app::PreExit;
+using app::PreStartup;
+using app::PreUpdate;
+using app::Startup;
+using app::StateTransition;
+using app::Update;
 }  // namespace prelude
 
 using namespace prelude;
