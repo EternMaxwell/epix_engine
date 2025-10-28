@@ -2,6 +2,14 @@
 
 using namespace epix::assets;
 
+StrongHandle::StrongHandle(const UntypedAssetId& id,
+                           const Sender<DestructionEvent>& event_sender,
+                           bool loader_managed,
+                           const std::optional<std::filesystem::path>& path)
+    : id(id), event_sender(event_sender), path(path), loader_managed(loader_managed) {}
+
+StrongHandle::~StrongHandle() { event_sender.send(DestructionEvent{id}); }
+
 HandleProvider::HandleProvider(const epix::meta::type_index& type) : type(type) {
     std::tie(event_sender, event_receiver) = epix::utils::async::make_channel<DestructionEvent>();
 }

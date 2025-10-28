@@ -16,12 +16,12 @@ struct AssetPlugin {
     AssetPlugin& register_asset() {
         m_assets_inserts.push_back([](epix::App& app) {
             app.world_mut().init_resource<Assets<T>>();
-            app.resource<AssetServer>().register_assets(app.resource<Assets<T>>());
+            app.resource_mut<AssetServer>().register_assets(app.resource<Assets<T>>());
             app.add_events<AssetEvent<T>>();
             app.add_systems(First, into(Assets<T>::handle_events, Assets<T>::asset_events)
                                        .chain()
-                                       .set_names({std::format("handle {} asset events", typeid(T).name()),
-                                                   std::format("send {} asset events", typeid(T).name())}));
+                                       .set_names(std::array{std::format("handle {} asset events", typeid(T).name()),
+                                                             std::format("send {} asset events", typeid(T).name())}));
         });
         return *this;
     }

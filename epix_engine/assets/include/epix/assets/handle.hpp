@@ -25,11 +25,11 @@ struct StrongHandle : NonCopyNonMove {
     std::optional<std::filesystem::path> path;
     bool loader_managed;
 
-    EPIX_API StrongHandle(const UntypedAssetId& id,
-                          const Sender<DestructionEvent>& event_sender,
-                          bool loader_managed                              = false,
-                          const std::optional<std::filesystem::path>& path = std::nullopt);
-    EPIX_API ~StrongHandle();
+    StrongHandle(const UntypedAssetId& id,
+                 const Sender<DestructionEvent>& event_sender,
+                 bool loader_managed                              = false,
+                 const std::optional<std::filesystem::path>& path = std::nullopt);
+    ~StrongHandle();
 };
 struct UntypedHandle;
 template <typename T>
@@ -58,13 +58,13 @@ struct Handle {
         return *this;
     }
     Handle& operator=(const std::shared_ptr<StrongHandle>& handle) {
-        assert(handle == nullptr || handle->id.type == meta::type_id<T>{});
+        assert(handle != nullptr || handle->id.type == meta::type_id<T>{});
         if (!handle) {
             throw std::runtime_error("Cannot assign null StrongHandle to Handle.");
         }
         if (handle->id.type != meta::type_id<T>{}) {
             throw std::runtime_error(std::format("Cannot assign StrongHandle of type {} to Handle of type {}",
-                                                 handle->id.type.short_name(), meta::type_id<T>::short_name));
+                                                 handle->id.type.short_name(), meta::type_id<T>::short_name()));
         }
         ref = handle;
         return *this;
@@ -107,7 +107,7 @@ struct UntypedHandle {
     UntypedHandle& operator=(UntypedHandle&&)      = default;
 
     UntypedHandle& operator=(const std::shared_ptr<StrongHandle>& handle) {
-        assert(handle == nullptr || handle->id.type == type());
+        assert(handle != nullptr || handle->id.type == type());
         if (!handle) {
             throw std::runtime_error("Cannot assign null StrongHandle to Handle.");
         } else if (handle->id.type != type()) {
@@ -157,7 +157,7 @@ struct UntypedHandle {
 };
 template <typename T>
 Handle<T>::Handle(const UntypedHandle& handle) {
-    if (handle.type() != meta::type_id<T>{} && handle) {
+    if (handle.type() != meta::type_id<T>{}) {
         throw std::runtime_error(std::format("{} cannot be constructed from UntypedHandle of type {}",
                                              meta::type_id<T>::short_name(), handle.type().short_name()));
     }
@@ -167,7 +167,7 @@ Handle<T>::Handle(const UntypedHandle& handle) {
 }
 template <typename T>
 Handle<T>::Handle(UntypedHandle&& handle) {
-    if (handle.type() != meta::type_id<T>{} && handle) {
+    if (handle.type() != meta::type_id<T>{}) {
         throw std::runtime_error(std::format("{} cannot be constructed from UntypedHandle of type {}",
                                              meta::type_id<T>::short_name(), handle.type().short_name()));
     }
@@ -177,7 +177,7 @@ Handle<T>::Handle(UntypedHandle&& handle) {
 }
 template <typename T>
 Handle<T>& Handle<T>::operator=(const UntypedHandle& other) {
-    if (other.type() != meta::type_id<T>{} && other) {
+    if (other.type() != meta::type_id<T>{}) {
         throw std::runtime_error(std::format("{} cannot be constructed from UntypedHandle of type {}",
                                              meta::type_id<T>::short_name(), other.type().short_name()));
     }
@@ -188,7 +188,7 @@ Handle<T>& Handle<T>::operator=(const UntypedHandle& other) {
 }
 template <typename T>
 Handle<T>& Handle<T>::operator=(UntypedHandle&& other) {
-    if (other.type() != meta::type_id<T>{} && other) {
+    if (other.type() != meta::type_id<T>{}) {
         throw std::runtime_error(std::format("{} cannot be constructed from UntypedHandle of type {}",
                                              meta::type_id<T>::short_name(), other.type().short_name()));
     }

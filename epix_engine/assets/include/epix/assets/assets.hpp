@@ -235,7 +235,7 @@ struct AssetEvent {
     bool is_loaded() const { return type == Type::Loaded; }
 };
 
-EPIX_API void log_asset_error(const AssetError& err, const std::string& header, const std::string_view& operation);
+void log_asset_error(const AssetError& err, const std::string_view& header, const std::string_view& operation);
 
 template <typename T>
     requires std::move_constructible<T> && std::is_move_assignable_v<T>
@@ -264,7 +264,7 @@ struct Assets {
         }
         return m_assets.insert(index, std::forward<Args>(args)...)
             .or_else([this](AssetError&& err) -> std::expected<bool, AssetError> {
-                log_asset_error(err, meta::type_id<Assets<T>>::name, "insert_index");
+                log_asset_error(err, meta::type_id<Assets<T>>::short_name(), "insert_index");
                 return std::unexpected(std::move(err));
             });
     }
@@ -291,8 +291,9 @@ struct Assets {
     }
 
     bool release_index(const AssetIndex& index) {
-        spdlog::debug("[{}] Releasing asset at {} with gen {}, current ref count is {}", meta::type_id<Assets<T>>::name,
-                      index.index(), index.generation(), m_references[index.index()]);
+        spdlog::debug("[{}] Releasing asset at {} with gen {}, current ref count is {}",
+                      meta::type_id<Assets<T>>::short_name(), index.index(), index.generation(),
+                      m_references[index.index()]);
         if (contains(AssetId<T>(index))) {
             m_references[index.index()]--;
             if (m_references[index.index()] == 0) {
@@ -307,8 +308,8 @@ struct Assets {
     }
     bool release_uuid(const uuids::uuid& id) {
         if (contains(AssetId<T>(id))) {
-            spdlog::debug("[{}] Releasing asset at Uuid:{}, current ref count is {}", meta::type_id<Assets<T>>::name,
-                          uuids::to_string(id), m_mapped_assets_ref.at(id));
+            spdlog::debug("[{}] Releasing asset at Uuid:{}, current ref count is {}",
+                          meta::type_id<Assets<T>>::short_name(), uuids::to_string(id), m_mapped_assets_ref.at(id));
             auto& ref = m_mapped_assets_ref.at(id);
             ref--;
             if (ref == 0) {
@@ -352,7 +353,8 @@ struct Assets {
         requires std::constructible_from<T, Args...>
     Handle<T> emplace(Args&&... args) {
         Handle<T> handle = m_handle_provider->reserve().typed<T>();
-        spdlog::debug("[{}] Emplacing asset at {}", meta::type_id<Assets<T>>::name, handle.id().to_string_short());
+        spdlog::debug("[{}] Emplacing asset at {}", meta::type_id<Assets<T>>::short_name(),
+                      handle.id().to_string_short());
         auto res = insert(handle, std::forward<Args>(args)...);
         std::visit(
             visitor{[this](const AssetIndex& index) { m_references[index.index()]++; }, [this](const auto& id) {}},
@@ -372,10 +374,12 @@ struct Assets {
                           id)
             .and_then([this, &id](bool replace) -> std::expected<bool, AssetError> {
                 if (replace) {
-                    spdlog::debug("[{}] Replaced asset at {}", meta::type_id<Assets<T>>::name, id.to_string_short());
+                    spdlog::debug("[{}] Replaced asset at {}", meta::type_id<Assets<T>>::short_name(),
+                                  id.to_string_short());
                     m_cached_events.emplace_back(AssetEvent<T>::modified(id));
                 } else {
-                    spdlog::debug("[{}] Added asset at {}", meta::type_id<Assets<T>>::name, id.to_string_short());
+                    spdlog::debug("[{}] Added asset at {}", meta::type_id<Assets<T>>::short_name(),
+                                  id.to_string_short());
                     m_cached_events.emplace_back(AssetEvent<T>::added(id));
                     m_cached_events.emplace_back(AssetEvent<T>::modified(id));
                 }
@@ -489,7 +493,7 @@ struct Assets {
                                   }},
                           id)
             .and_then([this, &id](void) -> std::expected<void, AssetError> {
-                spdlog::debug("[{}] Removed asset at {}", meta::type_id<Assets<T>>::name, id.to_string_short());
+                spdlog::debug("[{}] Removed asset at {}", meta::type_id<Assets<T>>::short_name(), id.to_string_short());
                 m_cached_events.emplace_back(AssetEvent<T>::removed(id));
                 return {};
             });
@@ -517,7 +521,7 @@ struct Assets {
                                   }},
                           id)
             .and_then([this, &id](T&& asset) -> std::expected<T, AssetError> {
-                spdlog::debug("[{}] Popped asset at {}", meta::type_id<Assets<T>>::name, id.to_string_short());
+                spdlog::debug("[{}] Popped asset at {}", meta::type_id<Assets<T>>::short_name(), id.to_string_short());
                 m_cached_events.emplace_back(AssetEvent<T>::removed(id));
                 return std::move(asset);
             });
@@ -528,7 +532,7 @@ struct Assets {
      * @brief Handle strong handle destruction events.
      */
     static void handle_events(epix::ResMut<Assets<T>> assets, epix::Res<AssetServer> asset_server) {
-        assets->handle_events_internal(asset_server);
+        assets->handle_events_internal(asset_server.ptr());
     }
 
     static void asset_events(epix::ResMut<Assets<T>> assets, epix::EventWriter<AssetEvent<T>> writer) {

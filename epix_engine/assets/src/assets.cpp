@@ -3,7 +3,7 @@
 using namespace epix::assets;
 
 void epix::assets::log_asset_error(const AssetError& error,
-                                   const std::string& header,
+                                   const std::string_view& header,
                                    const std::string_view& operation) {
     std::visit(visitor{[&header, &operation](const AssetNotPresent& e) {
                            spdlog::error("[{}:{}] Asset not present at {}", header, operation,
