@@ -20,9 +20,9 @@ int main() {
 
     // spawn a couple entities with P
     for (int i = 0; i < 5; ++i) {
-        wc.spawn(make_init_bundle<P>(std::forward_as_tuple(i)));
-        wc.spawn(make_init_bundle<std::string, P>(std::forward_as_tuple("entity"), std::forward_as_tuple(i)));
-        wc.spawn(make_init_bundle<int>(std::forward_as_tuple(i)));
+        wc.spawn(make_bundle<P>(std::forward_as_tuple(i)));
+        wc.spawn(make_bundle<std::string, P>(std::forward_as_tuple("entity"), std::forward_as_tuple(i)));
+        wc.spawn(make_bundle<int>(std::forward_as_tuple(i)));
     }
     wc.flush();
 

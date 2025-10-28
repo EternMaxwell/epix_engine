@@ -1,8 +1,7 @@
 #pragma once
 
-#include <epix/assets.h>
-#include <epix/utils/core.h>
-
+#include <epix/assets.hpp>
+#include <epix/core.hpp>
 #include <variant>
 
 namespace epix::window {
@@ -23,13 +22,11 @@ struct SizeLimits {
     int max_width  = -1;  // -1 means no limit
     int max_height = -1;  // -1 means no limit
 
-    inline bool operator==(const SizeLimits& other) const {
-        return min_width == other.min_width && min_height == other.min_height &&
-               max_width == other.max_width && max_height == other.max_height;
+    bool operator==(const SizeLimits& other) const {
+        return min_width == other.min_width && min_height == other.min_height && max_width == other.max_width &&
+               max_height == other.max_height;
     }
-    inline bool operator!=(const SizeLimits& other) const {
-        return !(*this == other);
-    }
+    bool operator!=(const SizeLimits& other) const { return !(*this == other); }
 };
 enum class StandardCursor {
     Arrow,
@@ -149,7 +146,7 @@ struct Window {
     // whether request for attention.
     bool attention_request = false;
 
-    EPIX_API void request_attention(bool request = true);
+    void request_attention(bool request = true) { attention_request = request; }
 };
 
 struct PrimaryWindow {};

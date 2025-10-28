@@ -72,17 +72,17 @@ int main() {
         bool add1 = coin(rng);
         bool add2 = coin(rng);
         if (add1 && add2) {
-            rmut.insert_bundle(make_init_bundle<C1, C2>(std::make_tuple(1), std::make_tuple(2.0f)));
+            rmut.insert_bundle(make_bundle<C1, C2>(std::make_tuple(1), std::make_tuple(2.0f)));
             expected_inserted_c1 += 1;
             expected_inserted_c2 += 1;
             expected_added_c1 += 1;
             expected_added_c2 += 1;
         } else if (add1) {
-            rmut.insert_bundle(make_init_bundle<C1>(std::make_tuple(1)));
+            rmut.insert_bundle(make_bundle<C1>(std::make_tuple(1)));
             expected_inserted_c1 += 1;
             expected_added_c1 += 1;
         } else if (add2) {
-            rmut.insert_bundle(make_init_bundle<C2>(std::make_tuple(2.0f)));
+            rmut.insert_bundle(make_bundle<C2>(std::make_tuple(2.0f)));
             expected_inserted_c2 += 1;
             expected_added_c2 += 1;
         }
@@ -98,17 +98,17 @@ int main() {
         bool replaced1 = mut.contains<C1>() && rep1;
         bool replaced2 = mut.contains<C2>() && rep2;
         if (replaced1 && replaced2) {
-            mut.insert_bundle(make_init_bundle<C1, C2>(std::make_tuple(3), std::make_tuple(4.0f)));
+            mut.insert_bundle(make_bundle<C1, C2>(std::make_tuple(3), std::make_tuple(4.0f)));
             expected_replaced_c1 += 1;
             expected_replaced_c2 += 1;
             expected_inserted_c1 += 1;
             expected_inserted_c2 += 1;
         } else if (replaced1) {
-            mut.insert_bundle(make_init_bundle<C1>(std::make_tuple(3)));
+            mut.insert_bundle(make_bundle<C1>(std::make_tuple(3)));
             expected_replaced_c1 += 1;
             expected_inserted_c1 += 1;
         } else if (replaced2) {
-            mut.insert_bundle(make_init_bundle<C2>(std::make_tuple(4.0f)));
+            mut.insert_bundle(make_bundle<C2>(std::make_tuple(4.0f)));
             expected_replaced_c2 += 1;
             expected_inserted_c2 += 1;
         }

@@ -55,11 +55,11 @@ struct World {
     Tick last_change_tick() const { return _last_change_tick; }
     CommandQueue& command_queue() { return _command_queue; }
 
-    template <typename... Ts, typename... Args>
+    template <typename... Args>
     EntityWorldMut spawn(Args&&... args)
-        requires(sizeof...(Args) == sizeof...(Ts));
+        requires(std::constructible_from<std::decay_t<Args>, Args> && ...);
     template <typename T>
-    EntityWorldMut spawn(T&& bundle)
+    EntityWorldMut spawn_bundle(T&& bundle)
         requires(bundle::is_bundle<std::remove_cvref_t<T>>);
 
     template <typename T, typename... Args>

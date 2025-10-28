@@ -60,16 +60,19 @@ struct InitializeBundle<std::tuple<Ts...>, std::tuple<ArgTuples...>> {
 };
 template <typename... Ts, typename... ArgTuples>
     requires((bundle::specialization_of<std::tuple, ArgTuples> && ...) && (sizeof...(Ts) == sizeof...(ArgTuples)) &&
-             (bundle::constructible_from_tuple<Ts, ArgTuples> && ...))
-InitializeBundle<std::tuple<Ts...>, std::tuple<ArgTuples...>> make_init_bundle(ArgTuples&&... args) {
+             (bundle::constructible_from_tuple<Ts, ArgTuples> && ...)) &&
+            (sizeof...(ArgTuples) > 0)
+InitializeBundle<std::tuple<Ts...>, std::tuple<ArgTuples...>> make_bundle(ArgTuples&&... args) {
+    auto forward_tuple = []<typename... Ts>(Ts&&... t) { return std::tuple<Ts...>(std::forward<Ts>(t)...); };
     return InitializeBundle<std::tuple<Ts...>, std::tuple<ArgTuples...>>{
-        std::make_tuple(std::forward<ArgTuples>(args)...)};
+        std::make_tuple(std::apply(forward_tuple, std::forward<ArgTuples>(args))...)};
 }
 template <typename... Ts>
-InitializeBundle<std::tuple<std::decay_t<Ts>...>, std::tuple<std::tuple<std::decay_t<Ts>>...>> make_stored_init_bundle(
+    requires(std::constructible_from<std::decay_t<Ts>, Ts> && ...)
+InitializeBundle<std::tuple<std::decay_t<Ts>...>, std::tuple<std::tuple<std::decay_t<Ts>>...>> make_bundle(
     Ts&&... args) {
-    return InitializeBundle<std::tuple<std::decay_t<Ts>...>, std::tuple<std::tuple<std::decay_t<Ts>>...>>{
-        std::make_tuple(std::make_tuple(std::forward<Ts>(args))...)};
+    return InitializeBundle<std::tuple<std::decay_t<Ts>...>, std::tuple<std::tuple<Ts>...>>{
+        std::make_tuple(std::tuple<Ts>(std::forward<Ts>(args))...)};
 }
 
 template <typename... Ts>

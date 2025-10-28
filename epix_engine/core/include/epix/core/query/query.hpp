@@ -19,13 +19,9 @@ struct Query {
             *world_, state_->template as_readonly<typename QueryData<D>::ReadOnly>(), last_run_, this_run_);
     }
 
-    QueryIter<D, F> iter() { return state_->create_iter(*world_, last_run_, this_run_); }
-    QueryIter<typename QueryData<D>::ReadOnly, F> citer() const {
-        return state_->template as_readonly<typename QueryData<D>::ReadOnly>().create_iter(*world_, last_run_,
-                                                                                           this_run_);
-    }
+    QueryIter<D, F> iter() const { return state_->create_iter(*world_, last_run_, this_run_); }
 
-    AddOptional<typename QueryData<D>::Item> get(Entity entity) {
+    typename AddOptional<typename QueryData<D>::Item>::type get(Entity entity) {
         return world_->entities().get(entity).and_then(
             [this, entity](EntityLocation location) -> AddOptional<typename QueryData<D>::Item> {
                 if (!state_->contains_archetype(location.archetype_id)) return std::nullopt;
@@ -40,17 +36,17 @@ struct Query {
                 return QueryData<D>::fetch(fetch, entity, location.table_idx);
             });
     }
-    AddOptional<typename QueryData<typename QueryData<D>::ReadOnly>::Item> get_ro(Entity entity) const {
+    typename AddOptional<typename QueryData<typename QueryData<D>::ReadOnly>::Item>::type get_ro(Entity entity) const {
         return as_readonly().get(entity);
     }
 
-    AddOptional<typename QueryData<D>::Item> single() {
+    typename AddOptional<typename QueryData<D>::Item>::type single() {
         QueryIter<D, F> iter = this->iter();
         bool has_value       = iter.next();
         if (!has_value) return std::nullopt;
         return *iter;
     }
-    AddOptional<typename QueryData<typename QueryData<D>::ReadOnly>::Item> single_ro() const {
+    typename AddOptional<typename QueryData<typename QueryData<D>::ReadOnly>::Item>::type single_ro() const {
         return as_readonly().single();
     }
 

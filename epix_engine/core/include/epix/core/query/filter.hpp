@@ -28,37 +28,41 @@ struct QueryFilter<Filter<Fs...>> {
     }
 };
 
-template <typename T>
+template <typename... Ts>
 struct With;
-template <typename T>
+template <typename... Ts>
 struct Without;
 template <typename... Fs>
 struct Or;
 
 // implements for With<T>
-template <typename T>
-    requires(!std::is_reference_v<T> && !std::is_const_v<T>)
-struct WorldQuery<With<T>> {
+template <typename... Ts>
+    requires((!std::is_reference_v<Ts> && !std::is_const_v<Ts>) && ...)
+struct WorldQuery<With<Ts...>> {
     struct Fetch {};
-    using State = TypeId;
+    using State = std::array<TypeId, sizeof...(Ts)>;
     static Fetch init_fetch(World&, const State&, Tick, Tick) { return Fetch{}; }
     static void set_archetype(Fetch&, const State&, const archetype::Archetype&, storage::Table&) {}
     // static void set_table(Fetch&, State&, const storage::Table&) {}
     static void set_access(State&, const FilteredAccess&) {}
-    static void update_access(const State& state, FilteredAccess& access) { access.add_with(state); }
-    static State init_state(World& world) { return world.type_registry().type_id<T>(); }
-    static std::optional<State> get_state(const Components& components) { return components.registry().type_id<T>(); }
+    static void update_access(const State& state, FilteredAccess& access) {
+        std::ranges::for_each(state, [&](TypeId id) { access.add_with(id); });
+    }
+    static State init_state(World& world) { return State{world.type_registry().type_id<Ts>()...}; }
+    static std::optional<State> get_state(const Components& components) {
+        return State{components.registry().type_id<Ts>()...};
+    }
     static bool matches_component_set(const State& state, const std::function<bool(TypeId)>& contains_component) {
-        return contains_component(state);
+        return std::ranges::all_of(state, contains_component);
     }
 };
 static_assert(valid_world_query<WorldQuery<With<int>>>);
 
-template <typename T>
-    requires(!std::is_reference_v<T> && !std::is_const_v<T>)
-struct QueryFilter<With<T>> {
+template <typename... Ts>
+    requires((!std::is_reference_v<Ts> && !std::is_const_v<Ts>) && ...)
+struct QueryFilter<With<Ts...>> {
     constexpr static inline bool archetypal = true;
-    static bool filter_fetch(WorldQuery<With<T>>::Fetch&, Entity, TableRow) {
+    static bool filter_fetch(WorldQuery<With<Ts...>>::Fetch&, Entity, TableRow) {
         // always true, because the filter is applied at archetype level. (e.g. access compatible)
         return true;
     }
@@ -66,29 +70,33 @@ struct QueryFilter<With<T>> {
 static_assert(valid_query_filter<QueryFilter<With<int>>>);
 
 // implements for Without<T>
-template <typename T>
-    requires(!std::is_reference_v<T> && !std::is_const_v<T>)
-struct WorldQuery<Without<T>> {
+template <typename... Ts>
+    requires((!std::is_reference_v<Ts> && !std::is_const_v<Ts>) && ...)
+struct WorldQuery<Without<Ts...>> {
     struct Fetch {};
-    using State = TypeId;
+    using State = std::array<TypeId, sizeof...(Ts)>;
     static Fetch init_fetch(World&, const State&, Tick, Tick) { return Fetch{}; }
     static void set_archetype(Fetch&, const State&, const archetype::Archetype&, storage::Table&) {}
     // static void set_table(Fetch&, State&, const storage::Table&) {}
     static void set_access(State&, const FilteredAccess&) {}
-    static void update_access(const State& state, FilteredAccess& access) { access.add_without(state); }
-    static State init_state(World& world) { return world.type_registry().type_id<T>(); }
-    static std::optional<State> get_state(const Components& components) { return components.registry().type_id<T>(); }
+    static void update_access(const State& state, FilteredAccess& access) {
+        std::ranges::for_each(state, [&](TypeId id) { access.add_without(id); });
+    }
+    static State init_state(World& world) { return State{world.type_registry().type_id<Ts>()...}; }
+    static std::optional<State> get_state(const Components& components) {
+        return State{components.registry().type_id<Ts>()...};
+    }
     static bool matches_component_set(const State& state, const std::function<bool(TypeId)>& contains_component) {
-        return !contains_component(state);
+        return std::ranges::none_of(state, contains_component);
     }
 };
 static_assert(valid_world_query<WorldQuery<Without<int>>>);
 
-template <typename T>
-    requires(!std::is_reference_v<T> && !std::is_const_v<T>)
-struct QueryFilter<Without<T>> {
+template <typename... Ts>
+    requires((!std::is_reference_v<Ts> && !std::is_const_v<Ts>) && ...)
+struct QueryFilter<Without<Ts...>> {
     constexpr static inline bool archetypal = true;
-    static bool filter_fetch(WorldQuery<Without<T>>::Fetch&, Entity, TableRow) {
+    static bool filter_fetch(WorldQuery<Without<Ts...>>::Fetch&, Entity, TableRow) {
         // always true, because the filter is applied at archetype level. (e.g. access compatible)
         return true;
     }

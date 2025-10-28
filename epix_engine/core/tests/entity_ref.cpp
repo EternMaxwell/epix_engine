@@ -58,7 +58,7 @@ int main() {
     // world.components_mut().emplace(td, ComponentInfo(td, ComponentDesc::from_type<D>()));
 
     // spawn an entity with A and B
-    auto e = world.spawn(make_init_bundle<A, B>(std::forward_as_tuple(5), std::forward_as_tuple("hello"))).id();
+    auto e = world.spawn(make_bundle<A, B>(std::forward_as_tuple(5), std::forward_as_tuple("hello"))).id();
 
     // read via EntityRef
     auto r  = world.get_entity(e).value();

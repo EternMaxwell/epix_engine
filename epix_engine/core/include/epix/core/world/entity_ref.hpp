@@ -157,25 +157,23 @@ struct EntityWorldMut : public EntityRefMut {
     void emplace(Args&&... args)
         requires(sizeof...(Args) == sizeof...(Ts))
     {
-        insert_internal(bundle::make_init_bundle<Ts...>(std::forward<Args>(args)...), true);
+        insert_internal(bundle::make_bundle<Ts...>(std::forward<Args>(args)...), true);
     }
     template <typename... Ts, typename... Args>
     void emplace_if_new(Args&&... args)
         requires(sizeof...(Args) == sizeof...(Ts))
     {
-        insert_internal(bundle::make_init_bundle<Ts...>(std::forward<Args>(args)...), false);
+        insert_internal(bundle::make_bundle<Ts...>(std::forward<Args>(args)...), false);
     }
     template <typename... Ts>
     void insert(Ts&&... components) {
         insert_internal(
-            bundle::make_init_bundle<std::decay_t<Ts>...>(std::forward_as_tuple(std::forward<Ts>(components))...),
-            true);
+            bundle::make_bundle<std::decay_t<Ts>...>(std::forward_as_tuple(std::forward<Ts>(components))...), true);
     }
     template <typename... Ts>
     void insert_if_new(Ts&&... components) {
         insert_internal(
-            bundle::make_init_bundle<std::decay_t<Ts>...>(std::forward_as_tuple(std::forward<Ts>(components))...),
-            false);
+            bundle::make_bundle<std::decay_t<Ts>...>(std::forward_as_tuple(std::forward<Ts>(components))...), false);
     }
     template <typename B>
     void insert_bundle(B&& bundle)
@@ -213,19 +211,14 @@ struct EntityWorldMut : public EntityRefMut {
 
 namespace epix::core {
 // impl for World::spawn
-template <typename... Ts, typename... Args>
+template <typename... Args>
 EntityWorldMut World::spawn(Args&&... args)
-    requires(sizeof...(Args) == sizeof...(Ts))
+    requires(std::constructible_from<std::decay_t<Args>, Args> && ...)
 {
-    if constexpr (sizeof...(Ts) == 0) {       // optimize for empty bundle
-        auto e = _entities.reserve_entity();  // reserving, no flush needed.
-        flush();
-        return EntityWorldMut(e, this);
-    }
-    return spawn(bundle::make_init_bundle<Ts...>(std::forward<Args>(args)...));
+    return spawn_bundle(bundle::make_bundle<std::decay_t<Args>...>(std::forward_as_tuple(std::forward<Args>(args))...));
 }
 template <typename T>
-EntityWorldMut World::spawn(T&& bundle)
+EntityWorldMut World::spawn_bundle(T&& bundle)
     requires(bundle::is_bundle<std::remove_cvref_t<T>>)
 {
     flush();  // needed for Entities::alloc.
