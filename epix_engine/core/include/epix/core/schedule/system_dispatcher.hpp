@@ -78,6 +78,8 @@ struct SystemDispatcher {
         nullptr;  // keep ownership of world, so that during dispatch the access is thread-safe
     World* world;
     std::recursive_mutex mutex_;
+    size_t running = 0;
+    std::condition_variable_any cv_;
     BS::thread_pool<BS::tp::none>* thread_pool;
     system::SystemUnique<system::In<std::move_only_function<void(World&)>>> world_scope_system;
     query::FilteredAccessSet world_scope_access;
@@ -128,25 +130,15 @@ struct SystemDispatcher {
     }
     ~SystemDispatcher();
     void wait() {
-        auto res = [&] -> std::optional<std::future<std::expected<void, system::RunSystemError>>> {
-            std::lock_guard lock(mutex_);
-            if (!world) return std::nullopt;
-            return world_scope([](World& world) {});
-        }();
-        if (res) res->wait();
+        std::unique_lock lock(mutex_);
+        if (world) cv_.wait(lock, [this] { return running == 0 && pending_systems.empty(); });
     }
     /**
      * @brief Release the world if owned. This will make further
      *
      * @return std::unique_ptr<World> The owned world, or nullptr if not owned.
      */
-    std::unique_ptr<World> release_world() {
-        wait();
-        std::lock_guard lock(mutex_);
-        if (!world_own) return nullptr;
-        world = nullptr;
-        return std::move(world_own);
-    }
+    std::unique_ptr<World> release_world();
 
     auto world_scope(std::invocable<World&> auto&& func, DispatchConfig config = {})
         -> std::future<
@@ -173,13 +165,12 @@ struct SystemDispatcher {
                                                                             const query::FilteredAccessSet& access,
                                                                             DispatchConfig config = {}) {
         std::packaged_task<std::expected<Out, system::RunSystemError>()> task(
-            [this, &sys, input = std::move(input), access]() mutable {
-                return sys.run_no_apply(std::move(input), *world);
-            });
+            [this, &sys, input = std::move(input)]() mutable { return sys.run_no_apply(std::move(input), *world); });
         auto fut = task.get_future();
         {
             std::lock_guard lock(mutex_);
             assert_world();
+            running++;
             pending_systems.emplace_back(
                 &access, config,
                 [task = std::move(task), on_finished = std::move(config.on_finish), this](size_t index) mutable {

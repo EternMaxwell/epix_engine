@@ -137,10 +137,20 @@ void SystemDispatcher::finish(size_t index) {
     const auto& access     = system_accesses[index];
     system_accesses[index] = nullptr;
     free_indices.push_back(index);
+    running--;
+    cv_.notify_all();
     tick();
 }
 
 SystemDispatcher::~SystemDispatcher() {
     // dispatch a world scope system to wait for all systems to finish.
     if (world) world_scope([](World& world) {}).wait();
+}
+
+std::unique_ptr<epix::core::World> SystemDispatcher::release_world() {
+    std::unique_lock lock(mutex_);
+    if (world) cv_.wait(lock, [this] { return running == 0 && pending_systems.empty(); });
+    if (!world_own) return nullptr;
+    world = nullptr;
+    return std::move(world_own);
 }
