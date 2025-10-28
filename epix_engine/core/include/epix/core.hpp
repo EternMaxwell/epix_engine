@@ -7,6 +7,7 @@
 #include "api/macros.hpp"
 #include "core/app.hpp"
 #include "core/app/app_sche.hpp"
+#include "core/app/loop.hpp"
 #include "core/archetype.hpp"
 #include "core/change_detection.hpp"
 #include "core/entities.hpp"
@@ -122,6 +123,12 @@ using app::PreUpdate;
 using app::Startup;
 using app::StateTransition;
 using app::Update;
+
+using app::AppExit;
+using app::LoopPlugin;
+
+using core::into;
+using core::sets;
 }  // namespace prelude
 
 using namespace prelude;
