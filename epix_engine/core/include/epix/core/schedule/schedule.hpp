@@ -92,11 +92,20 @@ struct SetConfig {
         return std::forward<T>(self);
     }
     template <typename T>
-    T&& set_name(this T&& self, std::string name) {
+    T&& set_name(this T&& self, std::string_view name) {
         if (self.system) self.system->set_name(name);
         size_t index = 0;
         std::ranges::for_each(self.sub_configs,
                               [&](SetConfig& config) { config.set_name(std::format("{}#{}", name, index)); });
+        return std::forward<T>(self);
+    }
+    template <typename T, typename Rng>
+    T&& set_names(this T&& self, Rng&& names)
+        requires std::ranges::range<Rng> && std::convertible_to<std::ranges::range_value_t<Rng>, std::string_view>
+    {
+        for (auto&& [config, name] : std::views::zip(self.sub_configs, names)) {
+            config.set_name(name);
+        }
         return std::forward<T>(self);
     }
     template <typename T, typename F>
@@ -132,23 +141,37 @@ struct SetConfig {
     template <bool require_system, typename F>
     friend SetConfig single_set(F&& func)
         requires(!require_system || requires {
-            { system::make_system(std::forward<F>(func)) } -> std::same_as<system::System<std::tuple<>, void>*>;
+            requires system::valid_function_system<F>;
+            requires std::same_as<typename system::function_system_traits<F>::Input, std::tuple<>>;
+            requires std::same_as<typename system::function_system_traits<F>::Output, void>;
         } || std::same_as<std::decay_t<F>, SetConfig>);
-    template <bool, typename... Ts>
-    friend SetConfig make_sets(Ts&&... ts);
+    template <bool require_system, typename... Ts>
+    friend SetConfig make_sets(Ts&&... ts)
+        requires(sizeof...(Ts) >= 1) &&
+                (... && (!require_system || requires {
+                     requires system::valid_function_system<Ts>;
+                     requires std::same_as<typename system::function_system_traits<Ts>::Input, std::tuple<>>;
+                     requires std::same_as<typename system::function_system_traits<Ts>::Output, void>;
+                 } || std::same_as<std::decay_t<Ts>, SetConfig>));
 };
-template <bool require_system = false, typename F>
+template <bool require_system, typename F>
 SetConfig single_set(F&& func)
     requires(!require_system ||
              requires {
-                 { system::make_system(std::forward<F>(func)) } -> std::same_as<system::System<std::tuple<>, void>*>;
+                 requires system::valid_function_system<F>;
+                 requires std::same_as<typename system::function_system_traits<F>::Input, std::tuple<>>;
+                 requires std::same_as<typename system::function_system_traits<F>::Output, void>;
              } || std::same_as<std::decay_t<F>, SetConfig>)
 {
     if constexpr (std::same_as<std::decay_t<F>, SetConfig>) {
         return std::forward<F>(func);
     }
     SetConfig config;
-    config.label.emplace(func);
+    if constexpr (std::constructible_from<SystemSetLabel, const F&>) {
+        config.label.emplace(func);
+    } else {
+        config.label = SystemSetLabel::from_type<std::decay_t<F>>();
+    }
     if constexpr (requires {
                       {
                           system::make_system(std::forward<F>(func))
@@ -159,7 +182,15 @@ SetConfig single_set(F&& func)
     return config;
 }
 template <bool require_system = false, typename... Ts>
-SetConfig make_sets(Ts&&... ts) {
+SetConfig make_sets(Ts&&... ts)
+    requires(sizeof...(Ts) >= 1) &&
+            (... && (!require_system ||
+                     requires {
+                         requires system::valid_function_system<Ts>;
+                         requires std::same_as<typename system::function_system_traits<Ts>::Input, std::tuple<>>;
+                         requires std::same_as<typename system::function_system_traits<Ts>::Output, void>;
+                     } || std::same_as<std::decay_t<Ts>, SetConfig>))
+{
     if constexpr (sizeof...(Ts) == 1) {
         return single_set<require_system>(std::get<0>(std::forward_as_tuple(std::forward<Ts>(ts)...)));
     } else {
@@ -264,11 +295,20 @@ static_assert(std::constructible_from<Schedule, Schedule&&>);
 
 namespace epix::core {
 template <typename... Ts>
-schedule::SetConfig into(Ts&&... ts) {
-    return schedule::make_sets<true>(std::forward<Ts>(ts)...);
+schedule::SetConfig into(Ts&&... ts)
+    requires(sizeof...(Ts) >= 1) &&
+            (... && (requires {
+                 requires system::valid_function_system<Ts>;
+                 requires std::same_as<typename system::function_system_traits<Ts>::Input, std::tuple<>>;
+                 requires std::same_as<typename system::function_system_traits<Ts>::Output, void>;
+             } || std::same_as<std::decay_t<Ts>, schedule::SetConfig>))
+{
+    return schedule::make_sets<true, Ts...>(std::forward<Ts>(ts)...);
 }
 template <typename... Ts>
-schedule::SetConfig sets(Ts&&... ts) {
-    return schedule::make_sets(std::forward<Ts>(ts)...);
+schedule::SetConfig sets(Ts&&... ts)
+    requires(sizeof...(Ts) >= 1)
+{
+    return schedule::make_sets<false, Ts...>(std::forward<Ts>(ts)...);
 }
 }  // namespace epix::core
