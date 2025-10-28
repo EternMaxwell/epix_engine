@@ -47,8 +47,8 @@ struct AssetContainerImpl : AssetContainer {
         if (pre_mod) {
             pre_mod(&asset);
         }
-        world.resource<Assets<T>>().insert(id.typed<T>(), std::move(asset));
-        world.resource<epix::core::Events<AssetEvent<T>>>().push(AssetEvent<T>::loaded(id.typed<T>()));
+        world.resource_mut<Assets<T>>().insert(id.typed<T>(), std::move(asset));
+        world.resource_mut<epix::core::Events<AssetEvent<T>>>().push(AssetEvent<T>::loaded(id.typed<T>()));
     }
 };
 template <typename T>
@@ -268,18 +268,17 @@ struct AssetServer {
     std::optional<LoadState> get_state(const UntypedAssetId& id) const;
     void load_internal(const UntypedAssetId& id, const ErasedAssetLoader* loader = nullptr) const;
     template <typename T>
-    Handle<T> load(const std::filesystem::path& path) const {
+    std::optional<Handle<T>> load(const std::filesystem::path& path) const {
         std::scoped_lock lock(info_mutex, pending_mutex);
         auto handle = asset_infos.get_or_create_handle<T>(path);
         if (handle) {
             auto id = handle->id();
             load_internal(id);  // Load the asset internally
-            return *handle;     // Return the handle if it was created successfully
         }
-        return Handle<T>();  // Return an empty handle if creation failed
+        return std::move(handle);
     }
     template <typename T, typename PreMod>
-    Handle<T> load(const std::filesystem::path& path, PreMod&& pre_mod) const {
+    std::optional<Handle<T>> load(const std::filesystem::path& path, PreMod&& pre_mod) const {
         static_assert(std::is_invocable_v<PreMod, T&>);
         auto handle = load<T>(path);
         if (handle) {
@@ -291,7 +290,7 @@ struct AssetServer {
                 };
             }
         }
-        return handle;
+        return std::move(handle);
     }
     std::optional<UntypedHandle> load_untyped(const std::filesystem::path& path) const;
     template <typename PreMod>
@@ -319,7 +318,7 @@ struct AssetServer {
         return handle;
     }
     bool process_handle_destruction(const UntypedAssetId& id) const;
-    static void handle_events(World& world, Res<AssetServer> asset_server);
+    static void handle_events(ParamSet<World&, Res<AssetServer>>);
 
    private:
     template <typename T>

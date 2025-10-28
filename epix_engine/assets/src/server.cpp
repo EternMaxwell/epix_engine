@@ -301,7 +301,8 @@ bool AssetServer::process_handle_destruction(const UntypedAssetId& id) const {
     return asset_infos.process_handle_destruction(id);
 }
 
-void AssetServer::handle_events(World& world, Res<AssetServer> asset_server) {
+void AssetServer::handle_events(ParamSet<World&, Res<AssetServer>> params) {
+    auto&& [world, asset_server] = params.get();
     // Process events from the event receiver
     auto receiver = asset_server->event_receiver;
     std::unique_lock lock(asset_server->info_mutex);  // Lock the info mutex to ensure thread safety
