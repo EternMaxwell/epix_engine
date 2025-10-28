@@ -191,8 +191,8 @@ struct SystemParam<ResMut<T>> : ParamBase {
             }));
     }
     static Item get_param(State& state, const SystemMeta& meta, World& world, Tick tick) {
-        return world.storage()
-            .resources.get(state)
+        return world.storage_mut()
+            .resources.get_mut(state)
             .and_then([&](storage::ResourceData& res) {
                 return res.get_as_mut<T>().transform([&](T& value) {
                     return ResMut<T>(&value, TicksMut::from_refs(res.get_tick_refs().value(), meta.last_run, tick));
@@ -331,6 +331,7 @@ struct SystemParam<std::optional<std::reference_wrapper<T>>> : SystemParam<T&> {
 static_assert(valid_system_param<SystemParam<std::optional<Res<int>>>>);
 
 template <typename... T>
+    requires(valid_system_param<SystemParam<T>> && ...)
 struct SystemParam<std::tuple<T...>> {
     static_assert((valid_system_param<SystemParam<T>> && ...));
     using State = std::tuple<typename SystemParam<T>::State...>;
@@ -378,7 +379,11 @@ struct SystemParam<std::tuple<T...>> {
         }(state, meta, world, std::integral_constant<size_t, 0>{});
     }
     static Item get_param(State& state, const SystemMeta& meta, World& world, Tick tick) {
-        return Item(SystemParam<T>::get_param(std::get<typename SystemParam<T>::State>(state), meta, world, tick)...);
+        return []<std::size_t... I>(State& state, const SystemMeta& meta, World& world, Tick tick,
+                                    std::index_sequence<I...>) {
+            return Item(SystemParam<std::tuple_element_t<I, std::tuple<T...>>>::get_param(std::get<I>(state), meta,
+                                                                                          world, tick)...);
+        }(state, meta, world, tick, std::index_sequence_for<T...>{});
     }
 };
 static_assert(valid_system_param<SystemParam<std::tuple<const World&,
@@ -391,20 +396,24 @@ template <typename... Ts>
     requires(valid_system_param<SystemParam<Ts>> && ...)
 struct ParamSet {
    public:
-    using State = typename ParamSet<std::tuple<Ts...>>::State;
+    using State = std::tuple<typename SystemParam<Ts>::State...>;
 
     template <std::size_t I>
-    typename SystemParam<std::tuple_element_t<I, std::tuple<Ts...>>>::Item get(World& world, Tick tick) {
-        return std::get<I>(states_).get_param(std::get<I>(states_), meta_, *world_, tick);
+    typename SystemParam<std::tuple<Ts...>>::Item get() {
+        return SystemParam<std::tuple_element_t<I, std::tuple<Ts...>>>::get_param(std::get<I>(states_), *meta_, *world_,
+                                                                                  change_tick_);
+    }
+    typename SystemParam<std::tuple<Ts...>>::Item get() {
+        return SystemParam<std::tuple<Ts...>>::get_param(*states_, *meta_, *world_, change_tick_);
     }
 
    private:
-    State states_;
+    State* states_;
     World* world_;
-    SystemMeta meta_;
+    const SystemMeta* meta_;
     Tick change_tick_;
 
-    ParamSet(const State& states, World* world, const SystemMeta& meta, Tick change_tick)
+    ParamSet(State* states, World* world, const SystemMeta* meta, Tick change_tick)
         : states_(states), world_(world), meta_(meta), change_tick_(change_tick) {}
 
     friend struct SystemParam<ParamSet<Ts...>>;
@@ -444,7 +453,7 @@ struct SystemParam<ParamSet<Ts...>> : SystemParam<std::tuple<Ts...>> {
         }(state, meta, access, world, std::index_sequence_for<Ts...>{});
     }
     static Item get_param(State& state, const SystemMeta& meta, World& world, Tick tick) {
-        return Item(state, &world, meta, tick);
+        return Item(&state, &world, &meta, tick);
     }
 };
 

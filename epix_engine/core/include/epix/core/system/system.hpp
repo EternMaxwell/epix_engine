@@ -20,7 +20,7 @@ using RunSystemError = std::variant<ValidateParamError, SystemException>;
 template <typename In, typename Out>
 struct System {
     virtual std::string_view name() const = 0;
-    virtual void set_name(std::string) {}
+    virtual void set_name(std::string_view) {}
     virtual epix::core::meta::type_index type_index() const = 0;
     virtual SystemFlagBits flags() const                    = 0;
     bool is_exclusive() const { return (flags() & SystemFlagBits::EXCLUSIVE) != 0; }
@@ -100,14 +100,17 @@ struct function_system_traits {
 };
 
 template <typename F>
-    requires requires {
-        typename function_system_traits<F>::Input;
-        typename function_system_traits<F>::Output;
-        // no input will have Input = std::tuple<>, which is a valid_system_input.
-        requires valid_system_input<SystemInput<typename function_system_traits<F>::Input>>;
-        requires valid_system_param<SystemParam<typename function_system_traits<F>::ParamTuple>>;
-        { function_system_traits<F>::has_input } -> std::convertible_to<bool>;
-    }
+concept valid_function_system = requires {
+    typename function_system_traits<F>::Storage;
+    typename function_system_traits<F>::Input;
+    typename function_system_traits<F>::Output;
+    // no input will have Input = std::tuple<>, which is a valid_system_input.
+    requires valid_system_input<SystemInput<typename function_system_traits<F>::Input>>;
+    requires valid_system_param<SystemParam<typename function_system_traits<F>::ParamTuple>>;
+    { function_system_traits<F>::has_input } -> std::convertible_to<bool>;
+};
+
+template <valid_function_system F>
 struct FunctionSystem
     : public System<typename function_system_traits<F>::Input, typename function_system_traits<F>::Output> {
    public:
@@ -119,7 +122,7 @@ struct FunctionSystem
     using SParam  = SystemParam<typename function_system_traits<F>::ParamTuple>;
 
     std::string_view name() const override { return meta_.name; }
-    void set_name(std::string n) override { meta_.name = std::move(n); }
+    void set_name(std::string_view n) override { meta_.name = std::string(n); }
     epix::core::meta::type_index type_index() const override { return type_index_; }
     SystemFlagBits flags() const override { return meta_.flags; }
     std::expected<void, ValidateParamError> validate_param(World& world) override {
@@ -193,11 +196,10 @@ struct FunctionSystem
 
     Base* clone() const override { return new FunctionSystem<F>(func_); }
 
-    FunctionSystem(F&& f) : func_(f), type_index_(epix::core::meta::type_id<Storage>()) {
-        meta_.name = epix::core::meta::type_id<std::remove_cvref_t<F>>().short_name();
-    }
-    FunctionSystem(const F& f) : func_(f), type_index_(epix::core::meta::type_id<Storage>()) {
-        meta_.name = epix::core::meta::type_id<std::remove_cvref_t<F>>().short_name();
+    template <typename U>
+        requires std::constructible_from<Storage, U>
+    explicit FunctionSystem(U&& func) : func_(std::forward<U>(func)), type_index_(meta::type_id<Storage>()) {
+        meta_.name = type_index_.short_name();
     }
 
    private:
@@ -207,50 +209,22 @@ struct FunctionSystem
     epix::core::meta::type_index type_index_;
 };
 
-template <typename F>
-    requires requires {
-        typename function_system_traits<std::decay_t<F>>::Input;
-        typename function_system_traits<std::decay_t<F>>::Output;
-        // no input will have Input = std::tuple<>, which is a valid_system_input.
-        requires valid_system_input<SystemInput<typename function_system_traits<std::decay_t<F>>::Input>>;
-        requires valid_system_param<SystemParam<typename function_system_traits<std::decay_t<F>>::ParamTuple>>;
-        { function_system_traits<std::decay_t<F>>::has_input } -> std::convertible_to<bool>;
-    }
-System<typename function_system_traits<std::decay_t<F>>::Input,
-       typename function_system_traits<std::decay_t<F>>::Output>*
-make_system(F&& func) {
-    return new FunctionSystem<std::decay_t<F>>(std::forward<F>(func));
+template <valid_function_system F>
+System<typename function_system_traits<F>::Input, typename function_system_traits<F>::Output>* make_system(F&& func) {
+    return new FunctionSystem<F>(std::forward<F>(func));
 }
-template <typename F>
-    requires requires {
-        typename function_system_traits<std::decay_t<F>>::Input;
-        typename function_system_traits<std::decay_t<F>>::Output;
-        // no input will have Input = std::tuple<>, which is a valid_system_input.
-        requires valid_system_input<SystemInput<typename function_system_traits<std::decay_t<F>>::Input>>;
-        requires valid_system_param<SystemParam<typename function_system_traits<std::decay_t<F>>::ParamTuple>>;
-        { function_system_traits<std::decay_t<F>>::has_input } -> std::convertible_to<bool>;
-    }
-std::unique_ptr<System<typename function_system_traits<std::decay_t<F>>::Input,
-                       typename function_system_traits<std::decay_t<F>>::Output>>
+template <valid_function_system F>
+std::unique_ptr<System<typename function_system_traits<F>::Input, typename function_system_traits<F>::Output>>
 make_system_unique(F&& func) {
-    return std::unique_ptr<System<typename function_system_traits<std::decay_t<F>>::Input,
-                                  typename function_system_traits<std::decay_t<F>>::Output>>(
+    return std::unique_ptr<
+        System<typename function_system_traits<F>::Input, typename function_system_traits<F>::Output>>(
         make_system(std::forward<F>(func)));
 }
-template <typename F>
-    requires requires {
-        typename function_system_traits<std::decay_t<F>>::Input;
-        typename function_system_traits<std::decay_t<F>>::Output;
-        // no input will have Input = std::tuple<>, which is a valid_system_input.
-        requires valid_system_input<SystemInput<typename function_system_traits<std::decay_t<F>>::Input>>;
-        requires valid_system_param<SystemParam<typename function_system_traits<std::decay_t<F>>::ParamTuple>>;
-        { function_system_traits<std::decay_t<F>>::has_input } -> std::convertible_to<bool>;
-    }
-std::shared_ptr<System<typename function_system_traits<std::decay_t<F>>::Input,
-                       typename function_system_traits<std::decay_t<F>>::Output>>
+template <valid_function_system F>
+std::shared_ptr<System<typename function_system_traits<F>::Input, typename function_system_traits<F>::Output>>
 make_system_shared(F&& func) {
-    return std::shared_ptr<System<typename function_system_traits<std::decay_t<F>>::Input,
-                                  typename function_system_traits<std::decay_t<F>>::Output>>(
+    return std::shared_ptr<
+        System<typename function_system_traits<F>::Input, typename function_system_traits<F>::Output>>(
         make_system(std::forward<F>(func)));
 }
 }  // namespace epix::core::system
