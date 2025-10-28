@@ -36,18 +36,19 @@ struct Label {
     }
 
     template <typename T>
-    Label(T t)
-        requires(!std::is_same_v<std::decay_t<T>, Label> && !std::derived_from<T, Label> &&
-                 (std::is_enum_v<T> || std::is_pointer_v<T> || std::is_integral_v<T> || std::is_empty_v<T>))
+    Label(T&& t)
+        requires(!std::is_same_v<std::decay_t<T>, Label> && !std::derived_from<std::decay_t<T>, Label> &&
+                 (std::is_enum_v<std::decay_t<T>> || std::is_pointer_v<std::decay_t<T>> ||
+                  std::is_integral_v<std::decay_t<T>> || std::is_empty_v<std::decay_t<T>>))
     {
-        if constexpr (std::is_enum_v<T>) {
+        if constexpr (std::is_enum_v<std::decay_t<T>>) {
             *this = Label::from_enum(t);
-        } else if constexpr (std::is_pointer_v<T>) {
+        } else if constexpr (std::is_pointer_v<std::decay_t<T>>) {
             *this = Label::from_pointer(t);
-        } else if constexpr (std::is_integral_v<T>) {
+        } else if constexpr (std::is_integral_v<std::decay_t<T>>) {
             *this = Label::from_integral(t);
-        } else if constexpr (std::is_empty_v<T>) {
-            *this = Label::from_type<T>();
+        } else if constexpr (std::is_empty_v<std::decay_t<T>>) {
+            *this = Label::from_type<std::decay_t<T>>();
         }
     }
     Label() = default;
