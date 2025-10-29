@@ -38,8 +38,20 @@ smallvec& smallvec::operator=(const smallvec& other) noexcept {
 }
 smallvec& smallvec::operator=(smallvec&& other) noexcept {
     if (this != &other) {
-        this->~smallvec();
-        new (this) smallvec(std::move(other));
+        if (other.is_small()) {
+            if (!is_small()) {
+                large_array.~vector();
+            }
+            std::copy(other.small_array, other.small_array + other.size_, small_array);
+        } else {
+            if (is_small()) {
+                new (&large_array) std::vector<size_t>(std::move(other.large_array));
+            } else {
+                large_array = std::move(other.large_array);
+            }
+        }
+        size_       = other.size_;
+        other.size_ = 0;
     }
     return *this;
 }
@@ -55,7 +67,9 @@ void smallvec::push_back(size_t value) {
             small_array[size_++] = value;
         } else {
             // move to large vector
-            new (&large_array) std::vector<size_t>(small_array, small_array + size_);
+            std::array<size_t, 4> temp;
+            std::copy(small_array, small_array + 4, temp.data());
+            new (&large_array) std::vector<size_t>(temp.begin(), temp.end());
             large_array.push_back(value);
             size_++;
         }
