@@ -219,6 +219,7 @@ struct EntityWorldMut : public EntityRefMut {
     }
     EntityWorldMut& then(std::invocable<EntityWorldMut&> auto&& func) {
         func(*this);
+        update_location();
         return *this;
     }
 };
