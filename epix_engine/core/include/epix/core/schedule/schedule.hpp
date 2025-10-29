@@ -108,11 +108,12 @@ struct SetConfig {
         }
         return std::forward<T>(self);
     }
-    template <typename T, typename F>
+    template <typename T, system::valid_function_system F>
     T&& run_if(this T&& self, F&& func)
-        requires(requires { system::make_system<std::tuple<>, bool>(std::forward<F>(func)); })
+        requires std::same_as<typename system::function_system_traits<F>::Input, std::tuple<>> &&
+                 std::same_as<typename system::function_system_traits<F>::Output, bool>
     {
-        self.conditions.push_back(system::make_system<std::tuple<>, bool>(std::forward<F>(func)));
+        self.conditions.push_back(system::make_system_unique(std::forward<F>(func)));
         std::ranges::for_each(self.sub_configs, [&](SetConfig& config) { config.run_if(std::forward<F>(func)); });
         return std::forward<T>(self);
     }

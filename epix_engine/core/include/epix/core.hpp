@@ -8,6 +8,7 @@
 #include "core/app.hpp"
 #include "core/app/app_sche.hpp"
 #include "core/app/loop.hpp"
+#include "core/app/state.hpp"
 #include "core/archetype.hpp"
 #include "core/change_detection.hpp"
 #include "core/entities.hpp"
@@ -81,6 +82,9 @@ using schedule::SystemSetLabel;
 using event::EventReader;
 using event::Events;
 using event::EventWriter;
+
+using app::NextState;
+using app::State;
 
 using core::CommandQueue;
 using core::DeferredWorld;

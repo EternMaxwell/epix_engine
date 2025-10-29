@@ -21,4 +21,13 @@ void input::log_inputs(EventReader<KeyInput> key_reader,
         spdlog::info("Mouse Scroll: {}, {}", xoffset, yoffset);
     }
 }
+
+void input::InputPlugin::build(App& app) {
+    app.add_events<KeyInput>().add_events<MouseButtonInput>().add_events<MouseMove>().add_events<MouseScroll>();
+
+    app.world_mut().init_resource<ButtonInput<KeyCode>>();
+    app.world_mut().init_resource<ButtonInput<MouseButton>>();
+    app.add_systems(PreUpdate, into(ButtonInput<KeyCode>::collect_events, ButtonInput<MouseButton>::collect_events)
+                                   .set_name("collect input events"));
+}
 }  // namespace epix

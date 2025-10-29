@@ -14,6 +14,7 @@
 #include "app/extract.hpp"
 #include "app/plugin.hpp"
 #include "app/schedules.hpp"
+#include "app/state.hpp"
 #include "event/events.hpp"
 #include "schedule/schedule.hpp"
 #include "world.hpp"
@@ -228,16 +229,66 @@ struct App {
     T& plugin_mut() {
         return get_plugin_mut<T>().value().get();
     }
+    /// Execute a function with exclusive access to a plugin of type T. Throws if not found.
+    template <typename F>
+    App& plugin_scope(F&& func) {
+        using arg_tuple = typename system::function_traits<std::decay_t<F>>::args_tuple;
+        resource_scope([&](app::Plugins& plugins) {
+            auto plugin_refs = [&]<std::size_t... I>(std::index_sequence<I...>) {
+                return std::make_tuple(plugins.get_plugin_mut<std::decay_t<std::tuple_element_t<I, arg_tuple>>>()...);
+            }(std::make_index_sequence<std::tuple_size_v<arg_tuple>>());
+            bool all_found = [&]<std::size_t... I>(std::index_sequence<I...>) {
+                return true && ([&]<std::size_t J>(std::integral_constant<std::size_t, J>) {
+                           bool found = std::get<J>(plugin_refs).has_value();
+                           if (!found) {
+                               spdlog::warn(
+                                   "Plugin of type '{}' not found in app '{}'",
+                                   epix::meta::type_id<std::decay_t<std::tuple_element_t<J, arg_tuple>>>().short_name(),
+                                   _label.to_string());
+                           }
+                           return found;
+                       }(std::integral_constant<std::size_t, I>{}) &&
+                                ...);
+            }(std::make_index_sequence<std::tuple_size_v<arg_tuple>>());
+            if (!all_found) return;
+            [&]<std::size_t... I>(std::index_sequence<I...>) {
+                func(std::get<I>(plugin_refs).value().get()...);
+            }(std::make_index_sequence<std::tuple_size_v<arg_tuple>>());
+        });
+        return *this;
+    }
 
     // === Event Management ===
+
+    /// Register an event type T in the app.
     template <typename T>
     App& add_event() {
         world_scope([&](World& world) { world.init_resource<event::Events<T>>(); });
         return *this;
     }
+    /// Register multiple event types in the app.
     template <typename... Ts>
     App& add_events() {
         (add_event<Ts>(), ...);
+        return *this;
+    }
+
+    // === State Management ===
+
+    template <typename T>
+    App& insert_state(const T& state) {
+        world_scope([&](World& world) {
+            world.insert_resource(app::State<T>(state));
+            world.insert_resource(app::NextState<T>(state));
+        });
+        return *this;
+    }
+    template <typename T>
+    App& init_state() {
+        world_scope([&](World& world) {
+            world.init_resource<app::State<T>>();
+            world.init_resource<app::NextState<T>>();
+        });
         return *this;
     }
 

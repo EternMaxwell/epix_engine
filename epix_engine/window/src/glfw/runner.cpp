@@ -32,11 +32,9 @@ void GLFWRunner::run(App& app) {
     auto clipboard_update_system     = make_system_unique(Clipboard::update);
 
     auto glfw_systems = std::array{
-        std::move(toggle_window_mode_system), std::move(update_size_system),
-        std::move(update_pos_system),         std::move(create_windows_system),
-        std::move(send_cached_events_system), std::move(update_window_states_system),
-        std::move(destroy_windows_system),    std::move(clipboard_set_text_system),
-        std::move(clipboard_update_system),
+        toggle_window_mode_system.get(), update_size_system.get(),        update_pos_system.get(),
+        create_windows_system.get(),     send_cached_events_system.get(), update_window_states_system.get(),
+        destroy_windows_system.get(),    clipboard_set_text_system.get(), clipboard_update_system.get(),
     };
     app.world_scope(
         [&](World& world) { std::ranges::for_each(glfw_systems, [&](auto& sys) { sys->initialize(world); }); });

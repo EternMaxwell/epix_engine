@@ -96,7 +96,6 @@ struct GLFWRunner {
 };
 struct GLFWPlugin {
     void build(App& app);
-    void finish(App& app);
     static GLFWwindow* create_window(Entity id, window::Window& window);
     static void update_size(Query<Item<Entity, Mut<window::Window>>> windows, ResMut<GLFWwindows> glfw_windows);
     static void update_pos(Commands commands,

@@ -53,7 +53,7 @@ struct smallvec : std::ranges::view_interface<smallvec> {
     };
     size_t size_ = 0;
 
-    bool is_small() const { return size_ < 4; }
+    bool is_small() const { return size_ <= 4; }
 };
 struct async_queue {
     mutable std::mutex mutex;

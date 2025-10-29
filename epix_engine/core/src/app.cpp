@@ -1,5 +1,6 @@
 #include "epix/core/app.hpp"
 #include "epix/core/app/app_sche.hpp"
+#include "epix/core/app/loop.hpp"
 
 namespace epix::core {
 
@@ -12,6 +13,7 @@ App App::create() {
         app.run_schedules(app::PreExit, app::Exit, app::PostExit);
         return 0;
     });
+    app.add_event<app::AppExit>();
     return std::move(app);
 }
 
