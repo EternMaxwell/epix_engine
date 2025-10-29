@@ -1,5 +1,7 @@
 #pragma once
 
+#include <variant>
+
 #include "bundle.hpp"
 #include "world.hpp"
 
@@ -19,7 +21,10 @@ struct InitializeBundle {
 };
 template <typename... Ts, typename... ArgTuples>
     requires((bundle::specialization_of<std::tuple, ArgTuples> && ...) && (sizeof...(Ts) == sizeof...(ArgTuples)) &&
-             (bundle::constructible_from_tuple<Ts, ArgTuples> && ...))
+             ((bundle::constructible_from_tuple<Ts, ArgTuples> ||
+               (std::same_as<Ts, std::monostate> && (std::tuple_size_v<ArgTuples> == 1) &&
+                bundle::is_bundle<std::tuple_element_t<0, ArgTuples>>)) &&
+              ...))
 struct InitializeBundle<std::tuple<Ts...>, std::tuple<ArgTuples...>> {
     // stores the args for constructing each component in Ts
     using storage_type = std::tuple<ArgTuples...>;
@@ -42,7 +47,8 @@ struct InitializeBundle<std::tuple<Ts...>, std::tuple<ArgTuples...>> {
                     // if ATuple has only one element and that element is same as T after decay, and element is bundle,
                     // then write as a bundle
                     if constexpr (std::tuple_size_v<ATuple> == 1 &&
-                                  std::same_as<T, std::decay_t<std::tuple_element_t<0, ATuple>>> &&
+                                  (std::same_as<T, std::decay_t<std::tuple_element_t<0, ATuple>>> ||
+                                   std::same_as<T, std::monostate>) &&
                                   bundle::is_bundle<std::tuple_element_t<0, ATuple>>) {
                         // write as a bundle
                         using BundleType = Bundle<std::tuple_element_t<0, ATuple>>;
