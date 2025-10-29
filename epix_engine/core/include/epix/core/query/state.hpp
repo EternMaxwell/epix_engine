@@ -53,27 +53,14 @@ struct QueryState {
                 new_archetype_internal(archetype);
             }
         } else {
-            std::optional<std::pair<TypeId, size_t>> smallest;
-            for (auto&& [id, potential] : world.archetypes().by_component) {
-                size_t size = potential.size();
-                smallest    = smallest
-                               .and_then([&](const auto& current) -> std::optional<std::pair<TypeId, size_t>> {
-                                   if (size < current.second) {
-                                       return std::make_pair(id, size);
-                                   } else {
-                                       return current;
-                                   }
-                               })
-                               .or_else([&]() -> std::optional<std::pair<TypeId, size_t>> {
-                                   return std::make_pair(id, size);
-                               });
-            }
-            if (smallest.has_value()) {
-                auto [type_id, _] = *smallest;
-                for (auto&& [id, _] : world.archetypes().by_component.at(type_id)) {
-                    if (id.get() >= _archetype_version) {
-                        new_archetype_internal(world.archetypes().get(id).value().get());
-                    }
+            auto&& [id, potential] =
+                std::ranges::min(_component_access.required().iter_ones() | std::views::transform([&](TypeId id) {
+                                     return std::make_pair(id, std::addressof(world.archetypes().by_component.at(id)));
+                                 }),
+                                 {}, [](auto&& pair) { return pair.second->size(); });
+            for (auto&& [id, _] : *potential) {
+                if (id.get() >= _archetype_version) {
+                    new_archetype_internal(world.archetypes().get(id).value().get());
                 }
             }
         }
@@ -139,10 +126,12 @@ struct QueryState {
         return false;
     }
     bool matches_component_set(const std::function<bool(TypeId)>& contains_component) const {
-        return std::ranges::any_of(_component_access.filters(), [&](const AccessFilters& filter) {
-            return std::ranges::all_of(filter.with.iter_ones(), contains_component) &&
-                   std::ranges::all_of(filter.without.iter_ones(), [&](TypeId id) { return !contains_component(id); });
-        });
+        return _component_access.filters().empty() ||
+               std::ranges::any_of(_component_access.filters(), [&](const AccessFilters& filter) {
+                   return std::ranges::all_of(filter.with.iter_ones(), contains_component) &&
+                          std::ranges::all_of(filter.without.iter_ones(),
+                                              [&](TypeId id) { return !contains_component(id); });
+               });
     }
 
    private:
