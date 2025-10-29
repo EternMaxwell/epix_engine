@@ -23,7 +23,7 @@ struct Query {
 
     typename AddOptional<typename QueryData<D>::Item>::type get(Entity entity) {
         return world_->entities().get(entity).and_then(
-            [this, entity](EntityLocation location) -> AddOptional<typename QueryData<D>::Item> {
+            [this, entity](EntityLocation location) -> typename AddOptional<typename QueryData<D>::Item>::type {
                 if (!state_->contains_archetype(location.archetype_id)) return std::nullopt;
                 auto& archetype = world_->archetypes().get(location.archetype_id).value().get();
                 auto fetch      = WorldQuery<D>::init_fetch(*world_, state_->fetch_state(), last_run_, this_run_);
