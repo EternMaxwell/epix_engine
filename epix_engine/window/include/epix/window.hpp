@@ -14,6 +14,7 @@ struct WindowPlugin {
     ExitCondition exit_condition         = ExitCondition::OnPrimaryClosed;
     bool close_when_requested            = true;
     void build(App& app);
+    void finish(App& app);
 };
 
 void log_events(EventReader<events::WindowResized> resized,

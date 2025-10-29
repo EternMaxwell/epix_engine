@@ -16,7 +16,8 @@ void WindowPlugin::build(epix::App& app) {
         .add_events<ReceivedCharacter>()
         .add_events<WindowFocused>()
         .add_events<FileDrop>();
-
+}
+void WindowPlugin::finish(epix::App& app) {
     if (primary_window) {
         auto window = app.world_mut().spawn(primary_window.value(), PrimaryWindow{});
     }
