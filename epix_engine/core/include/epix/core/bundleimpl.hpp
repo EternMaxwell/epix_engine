@@ -231,6 +231,7 @@ struct BundleInserter {
         // trigger on_replace if replacing existing components in the bundle
         if (replace_existing) {
             world_->trigger_on_replace(*archetype_, entity, archetype_after_insert_->existing());
+            world_->trigger_on_remove(*archetype_, entity, archetype_after_insert_->existing());
         }
         location = world_->entities().get(entity).value();  // in case it may be changed by on_replace
 

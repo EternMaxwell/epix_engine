@@ -30,8 +30,8 @@ void EntityWorldMut::despawn() {
     auto& entities  = world_->entities_mut();
     auto& archetype = world_->archetypes_mut().get_mut(location_.archetype_id).value().get();
     auto& table     = world_->storage_mut().tables.get_mut(archetype.table_id()).value().get();
-    world_->trigger_on_remove(archetype, entity_, archetype.components());
     world_->trigger_on_despawn(archetype, entity_, archetype.components());
+    world_->trigger_on_remove(archetype, entity_, archetype.components());
     location_ = world_->entities().get(entity_).value();
     world_->entities_mut().free(entity_);
     world_->flush_entities();
