@@ -1,5 +1,6 @@
 #pragma once
 
+#include "../hierarchy.hpp"
 #include "../world/command_queue.hpp"
 #include "param.hpp"
 
@@ -165,7 +166,14 @@ struct EntityCommands {
     }
     template <typename... Ts>
     EntityCommands spawn(Ts&&... components)
-        requires(std::movable<std::decay_t<Ts>> && ...);
+        requires(std::movable<std::decay_t<Ts>> && ...)
+    {
+        return commands.spawn(hierarchy::Parent{entity}, std::forward<Ts>(components)...);
+    }
+    EntityCommands& then(std::invocable<EntityCommands&> auto&& func) {
+        func(*this);
+        return *this;
+    }
 
    private:
     Entity entity;
@@ -183,10 +191,6 @@ inline EntityCommands Commands::spawn(Ts&&... components)
     if constexpr (sizeof...(Ts) == 0) {
         return spawn_empty();
     }
-    Entity entity = entities->reserve_entity();
-    EntityCommands cmd{entity, *this};
-    cmd.insert(std::forward<Ts>(components)...);
-    return cmd;
 }
 
 template <>
