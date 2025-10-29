@@ -54,10 +54,6 @@ void GLFWRunner::run(App& app) {
             [&](World& world) { std::ranges::for_each(glfw_systems, [&](auto& sys) { sys->run({}, world); }); });
     };
     std::optional<int> exit_code;
-    if (glfwInit() == GLFW_FALSE) {
-        spdlog::error("Failed to initialize GLFW");
-        return;
-    }
     glfw_work_load();
     // auto profiler  = app.get_resource<AppProfiler>();
     auto last_time = std::chrono::steady_clock::now();
