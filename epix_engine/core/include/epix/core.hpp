@@ -15,6 +15,7 @@
 #include "core/event/reader.hpp"
 #include "core/event/writer.hpp"
 #include "core/fwd.hpp"
+#include "core/hierarchy.hpp"
 #include "core/meta/typeid.hpp"
 #include "core/meta/typeindex.hpp"
 #include "core/query/fetch.hpp"
@@ -59,8 +60,8 @@ using type_system::TypeRegistry;
 using system::Commands;
 using system::Deferred;
 using system::EntityCommands;
-using system::ParamSet;
 using system::Local;
+using system::ParamSet;
 
 using system::RunSystemError;
 using system::System;
@@ -90,6 +91,9 @@ using core::Entity;
 using core::EntityRef;
 using core::EntityRefMut;
 using core::EntityWorldMut;
+
+using core::hierarchy::Children;
+using core::hierarchy::Parent;
 
 using core::ArchetypeId;
 using core::ArchetypeRow;
@@ -130,6 +134,10 @@ using app::LoopPlugin;
 
 using core::into;
 using core::sets;
+
+using core::system::make_system;
+using core::system::make_system_shared;
+using core::system::make_system_unique;
 }  // namespace prelude
 
 using namespace prelude;

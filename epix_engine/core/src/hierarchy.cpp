@@ -1,0 +1,58 @@
+#include "epix/core/hierarchy.hpp"
+#include "epix/core/world.hpp"
+#include "epix/core/world/entity_ref.hpp"
+
+namespace epix::core::hierarchy {
+
+void Parent::on_remove(World& world, HookContext ctx) {
+    auto&& this_entity = world.entity_mut(ctx.entity);
+    this_entity.get<Parent>().transform([&](const Parent& parent) {
+        return world.entity_mut(parent.entity)
+            .get_mut<Children>()
+            .transform([&](Children& children) {
+                children.entities.erase(ctx.entity);
+                return true;
+            })
+            .value_or(false);
+    });
+}
+
+void Parent::on_insert(World& world, HookContext ctx) {
+    auto&& this_entity = world.entity_mut(ctx.entity);
+    this_entity.get<Parent>().transform([&](const Parent& parent) {
+        return world.entity_mut(parent.entity)
+            .get_mut<Children>()
+            .or_else([&]() {
+                auto entity = world.entity_mut(parent.entity);
+                entity.insert_if_new(Children{});
+                return entity.get_mut<Children>();
+            })
+            .transform([&](Children& children) {
+                children.entities.insert(ctx.entity);
+                return true;
+            })
+            .value_or(false);
+    });
+}
+
+void Children::on_remove(World& world, HookContext ctx) {
+    auto&& this_entity = world.entity_mut(ctx.entity);
+    this_entity.get<Children>().transform([&](const Children& children) {
+        for (auto child_entity : children.entities) {
+            world.entity_mut(child_entity).remove<Parent>();
+        }
+        return true;
+    });
+}
+
+void Children::on_despawn(World& world, HookContext ctx) {
+    auto&& this_entity = world.entity_mut(ctx.entity);
+    this_entity.get<Children>().transform([&](const Children& children) {
+        for (auto child_entity : children.entities) {
+            world.entity_mut(child_entity).despawn();
+        }
+        return true;
+    });
+}
+
+}  // namespace epix::core::hierarchy

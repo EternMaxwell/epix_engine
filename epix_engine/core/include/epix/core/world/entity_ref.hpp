@@ -9,6 +9,7 @@
 #include "../change_detection.hpp"
 #include "../component.hpp"
 #include "../entities.hpp"
+#include "../hierarchy.hpp"
 #include "../storage.hpp"
 #include "../world.hpp"
 
@@ -206,6 +207,20 @@ struct EntityWorldMut : public EntityRefMut {
     }
     void clear();
     void despawn();
+    /// Spawn a new entity as a child of this entity and return a mutable reference to it
+    template <typename... Args>
+    EntityWorldMut spawn(Args&&... args)
+        requires((std::constructible_from<std::decay_t<Args>, Args> || bundle::is_bundle<Args>) && ...)
+    {
+        auto mut = world_->spawn(std::forward<Args>(args)...);
+        mut.insert(hierarchy::Parent{entity_});
+        update_location();
+        return mut;
+    }
+    EntityWorldMut& then(std::invocable<EntityWorldMut&> auto&& func) {
+        func(*this);
+        return *this;
+    }
 };
 }  // namespace epix::core
 
