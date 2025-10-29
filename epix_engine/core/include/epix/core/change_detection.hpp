@@ -67,6 +67,7 @@ struct Ref {
     const T& get() const { return *value; }
     const T* operator->() const { return value; }
     const T& operator*() const { return *value; }
+    operator const T&() const { return *value; }
     bool is_added() const { return ticks.is_added(); }
     bool is_modified() const { return ticks.is_modified(); }
     Tick last_modified() const { return ticks.last_modified(); }
@@ -102,6 +103,11 @@ struct Mut {
         ticks.set_modified();
         return *value;
     }
+    operator T&() {
+        ticks.set_modified();
+        return *value;
+    }
+    operator const T&() const { return *value; }
     bool is_added() const { return ticks.is_added(); }
     bool is_modified() const { return ticks.is_modified(); }
     Tick last_modified() const { return ticks.last_modified(); }
