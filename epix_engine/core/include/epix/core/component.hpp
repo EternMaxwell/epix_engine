@@ -18,6 +18,9 @@ struct HookContext {
     Entity entity;
     TypeId component_id;
 };
+/// Component Hooks struct for storing component lifecycle hooks
+/// the priority of the hooks if can be called at the same time is as follows:
+/// [on_despawn > on_replace > on_remove] and [on_add > on_insert]
 struct ComponentHooks {
     std::function<void(World&, HookContext)> on_add;
     std::function<void(World&, HookContext)> on_insert;
