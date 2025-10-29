@@ -40,7 +40,7 @@ struct M {
 template <typename T, typename... Args>
 void construct(void* ptr, Args&&... args) {
     auto bundle = make_bundle<T>(std::forward_as_tuple(std::forward<Args>(args)...));
-    bundle.write(std::views::single(ptr));
+    bundle.write(std::span<void*>{&ptr, 1});
 }
 
 template <typename... T, typename... ArgTuples>

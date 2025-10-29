@@ -30,32 +30,82 @@ struct InitializeBundle<std::tuple<Ts...>, std::tuple<ArgTuples...>> {
      * The stored argument values should have lifetimes that extend beyond this call.
      * @param pointers
      */
-    void write(bundle::is_void_ptr_view auto&& pointers) {
-        assert(std::ranges::size(pointers) == sizeof...(Ts));
-        auto&& ptr_it = std::ranges::begin(pointers);
+    size_t write(std::span<void*> pointers) {
+        assert(std::ranges::size(pointers) >= sizeof...(Ts));
+        std::span<void*> span = pointers;
 
         [&]<size_t... Is>(std::index_sequence<Is...>) {
             (
                 [&]<size_t I>(std::integral_constant<size_t, I>) {
                     using T      = std::tuple_element_t<I, std::tuple<Ts...>>;
                     using ATuple = std::tuple_element_t<I, storage_type>;
-                    if (T* ptr = static_cast<T*>(*ptr_it)) {
-                        []<size_t... Js>(std::index_sequence<Js...>, T* p, ATuple& atuple) {
-                            new (p) T(std::forward<std::tuple_element_t<Js, ATuple>>(
-                                std::get<Js>(atuple))...);  // construct T in place with args from atuple
-                        }(std::make_index_sequence<std::tuple_size_v<ATuple>>{}, ptr, std::get<I>(args));
+                    // if ATuple has only one element and that element is same as T after decay, and element is bundle,
+                    // then write as a bundle
+                    if constexpr (std::tuple_size_v<ATuple> == 1 &&
+                                  std::same_as<T, std::decay_t<std::tuple_element_t<0, ATuple>>> &&
+                                  bundle::is_bundle<std::tuple_element_t<0, ATuple>>) {
+                        // write as a bundle
+                        using BundleType = Bundle<std::tuple_element_t<0, ATuple>>;
+                        // write to sub range of pointers since a sub bundle might be also a bundle of multiple
+                        // components
+                        auto inserted = BundleType::write(
+                            std::forward<std::tuple_element_t<0, ATuple>>(std::get<0>(std::get<I>(args))), span);
+                        span = span.subspan(inserted);
+                    } else {
+                        if (T* ptr = static_cast<T*>(span[0])) {
+                            []<size_t... Js>(std::index_sequence<Js...>, T* p, ATuple& atuple) {
+                                new (p) T(std::forward<std::tuple_element_t<Js, ATuple>>(
+                                    std::get<Js>(atuple))...);  // construct T in place with args from atuple
+                            }(std::make_index_sequence<std::tuple_size_v<ATuple>>{}, ptr, std::get<I>(args));
+                        }
+                        span = span.subspan(1);
                     }
-                    ++ptr_it;
                 }(std::integral_constant<size_t, Is>{}),
                 ...);
         }(std::make_index_sequence<sizeof...(Ts)>());
+        return span.data() - pointers.data();
     }
 
     static auto type_ids(const type_system::TypeRegistry& registry) {
-        return std::array<type_system::TypeId, sizeof...(Ts)>{registry.type_id<Ts>()...};
+        std::vector<TypeId> ids;
+        ids.reserve(sizeof...(Ts));
+        [&]<size_t... Is>(std::index_sequence<Is...>) {
+            (
+                [&]<size_t I>(std::integral_constant<size_t, I>) {
+                    using T      = std::tuple_element_t<I, std::tuple<Ts...>>;
+                    using ATuple = std::tuple_element_t<I, storage_type>;
+                    if constexpr (std::tuple_size_v<ATuple> == 1 &&
+                                  std::same_as<T, std::decay_t<std::tuple_element_t<0, ATuple>>> &&
+                                  bundle::is_bundle<std::tuple_element_t<0, ATuple>>) {
+                        // bundle type
+                        using BundleType = Bundle<std::tuple_element_t<0, ATuple>>;
+                        ids.insert_range(ids.end(), BundleType::type_ids(registry));
+                    } else {
+                        ids.push_back(registry.type_id<T>());
+                    }
+                }(std::integral_constant<size_t, Is>{}),
+                ...);
+        }(std::make_index_sequence<sizeof...(Ts)>());
+        return std::move(ids);
     }
     static void register_components(const type_system::TypeRegistry& registry, Components& components) {
-        (components.register_info<Ts>(), ...);
+        [&]<size_t... Is>(std::index_sequence<Is...>) {
+            (
+                [&]<size_t I>(std::integral_constant<size_t, I>) {
+                    using T      = std::tuple_element_t<I, std::tuple<Ts...>>;
+                    using ATuple = std::tuple_element_t<I, storage_type>;
+                    if constexpr (std::tuple_size_v<ATuple> == 1 &&
+                                  std::same_as<T, std::decay_t<std::tuple_element_t<0, ATuple>>> &&
+                                  bundle::is_bundle<std::tuple_element_t<0, ATuple>>) {
+                        // bundle type
+                        using BundleType = Bundle<std::tuple_element_t<0, ATuple>>;
+                        BundleType::register_components(registry, components);
+                    } else {
+                        components.register_info<T>();
+                    }
+                }(std::integral_constant<size_t, Is>{}),
+                ...);
+        }(std::make_index_sequence<sizeof...(Ts)>());
     }
 };
 template <typename... Ts, typename... ArgTuples>
@@ -63,29 +113,72 @@ template <typename... Ts, typename... ArgTuples>
              (bundle::constructible_from_tuple<Ts, ArgTuples> && ...)) &&
             (sizeof...(ArgTuples) > 0)
 InitializeBundle<std::tuple<Ts...>, std::tuple<ArgTuples...>> make_bundle(ArgTuples&&... args) {
-    auto forward_tuple = []<typename... Ts>(Ts&&... t) { return std::tuple<Ts...>(std::forward<Ts>(t)...); };
     return InitializeBundle<std::tuple<Ts...>, std::tuple<ArgTuples...>>{
-        std::make_tuple(std::apply(forward_tuple, std::forward<ArgTuples>(args))...)};
+        std::make_tuple(std::forward<ArgTuples>(args)...)};
 }
 template <typename... Ts>
     requires(std::constructible_from<std::decay_t<Ts>, Ts> && ...)
-InitializeBundle<std::tuple<std::decay_t<Ts>...>, std::tuple<std::tuple<std::decay_t<Ts>>...>> make_bundle(
-    Ts&&... args) {
+InitializeBundle<std::tuple<std::decay_t<Ts>...>, std::tuple<std::tuple<Ts>...>> make_bundle(Ts&&... args) {
     return InitializeBundle<std::tuple<std::decay_t<Ts>...>, std::tuple<std::tuple<Ts>...>>{
         std::make_tuple(std::tuple<Ts>(std::forward<Ts>(args))...)};
 }
+template <typename T>
+    requires(bundle::specialization_of<InitializeBundle, std::decay_t<T>>)
+struct Bundle<T> {
+    static size_t write(T&& bundle, std::span<void*> pointers) { return bundle.write(pointers); }
+    static auto type_ids(const type_system::TypeRegistry& registry) { return std::decay_t<T>::type_ids(registry); }
+    static void register_components(const type_system::TypeRegistry& registry, Components& components) {
+        std::decay_t<T>::register_components(registry, components);
+    }
+};
 
 template <typename... Ts>
 struct RemoveBundle {
-    void write(bundle::is_void_ptr_view auto&& pointers) {
+    size_t write(std::span<void*> pointers) {
         // A bundle used for remove only.
-        return;
+        return 0;
     }
     static auto type_ids(const type_system::TypeRegistry& registry) {
-        return std::array<type_system::TypeId, sizeof...(Ts)>{registry.type_id<Ts>()...};
+        std::vector<TypeId> ids;
+        ids.reserve(sizeof...(Ts));
+        [&]<size_t... Is>(std::index_sequence<Is...>) {
+            (
+                [&]<size_t I>(std::integral_constant<size_t, I>) {
+                    using T = std::tuple_element_t<I, std::tuple<Ts...>>;
+                    if constexpr (bundle::is_bundle<T>) {
+                        using BundleType = Bundle<T>;
+                        ids.insert_range(ids.end(), BundleType::type_ids(registry));
+                    } else {
+                        ids.push_back(registry.type_id<T>());
+                    }
+                }(std::integral_constant<size_t, Is>{}),
+                ...);
+        }(std::make_index_sequence<sizeof...(Ts)>());
+        return std::move(ids);
     }
     static void register_components(const type_system::TypeRegistry& registry, Components& components) {
-        (components.register_info<Ts>(), ...);
+        [&]<size_t... Is>(std::index_sequence<Is...>) {
+            (
+                [&]<size_t I>(std::integral_constant<size_t, I>) {
+                    using T = std::tuple_element_t<I, std::tuple<Ts...>>;
+                    if constexpr (bundle::is_bundle<T>) {
+                        using BundleType = Bundle<T>;
+                        BundleType::register_components(registry, components);
+                    } else {
+                        components.register_info<T>();
+                    }
+                }(std::integral_constant<size_t, Is>{}),
+                ...);
+        }(std::make_index_sequence<sizeof...(Ts)>());
+    }
+};
+template <typename T>
+    requires(bundle::specialization_of<RemoveBundle, std::decay_t<T>>)
+struct Bundle<T> {
+    static size_t write(T&& bundle, std::span<void*> pointers) { return bundle.write(pointers); }
+    static auto type_ids(const type_system::TypeRegistry& registry) { return std::decay_t<T>::type_ids(registry); }
+    static void register_components(const type_system::TypeRegistry& registry, Components& components) {
+        std::decay_t<T>::register_components(registry, components);
     }
 };
 
@@ -119,10 +212,10 @@ struct BundleInserter {
         return create_with_id(world, archetype_id, bundle_id, tick);
     }
 
-    template <typename T>
-    EntityLocation insert(Entity entity, EntityLocation location, T&& bundle, bool replace_existing) const
-        requires bundle::is_bundle<std::decay_t<T>>
-    {
+    EntityLocation insert(Entity entity,
+                          EntityLocation location,
+                          is_bundle auto&& bundle,
+                          bool replace_existing) const {
         assert(location.archetype_id == archetype_->id());
         auto& bundle_info    = *bundle_info_;
         auto& dest_archetype = world_->archetypes_mut().get_mut(archetype_after_insert_->archetype_id).value().get();

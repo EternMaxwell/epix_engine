@@ -213,20 +213,20 @@ namespace epix::core {
 // impl for World::spawn
 template <typename... Args>
 EntityWorldMut World::spawn(Args&&... args)
-    requires(std::constructible_from<std::decay_t<Args>, Args> && ...)
+    requires((std::constructible_from<std::decay_t<Args>, Args> || bundle::is_bundle<Args>) && ...)
 {
+    auto spawn_bundle = [&]<typename T>(T&& bundle) {
+        flush();  // needed for Entities::alloc.
+        auto e       = _entities.alloc();
+        auto spawner = bundle::BundleSpawner::create<T&&>(*this, change_tick());
+        spawner.spawn_non_exist(e, std::forward<T>(bundle));
+        flush();  // flush to ensure no delayed operations.
+        return EntityWorldMut(e, this);
+    };
+    if constexpr (sizeof...(Args) == 1 && (bundle::is_bundle<Args> && ...)) {
+        return spawn_bundle(std::forward<Args>(args)...);
+    }
     return spawn_bundle(bundle::make_bundle<std::decay_t<Args>...>(std::forward_as_tuple(std::forward<Args>(args))...));
-}
-template <typename T>
-EntityWorldMut World::spawn_bundle(T&& bundle)
-    requires(bundle::is_bundle<std::remove_cvref_t<T>>)
-{
-    flush();  // needed for Entities::alloc.
-    auto e       = _entities.alloc();
-    auto spawner = bundle::BundleSpawner::create<std::remove_cvref_t<T>>(*this, change_tick());
-    spawner.spawn_non_exist(e, std::forward<T>(bundle));
-    flush();  // flush to ensure no delayed operations.
-    return EntityWorldMut(e, this);
 }
 
 // impl for World::entity and entity_mut, get_entity and get_entity_mut

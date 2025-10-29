@@ -57,23 +57,23 @@ int main() {
         double p  = prob(rng);
         if (p < 0.4) {
             // add T1 via bundle
-            rmut.insert_bundle(make_init_bundle<T1>(std::forward_as_tuple(val_int(rng))));
+            rmut.insert_bundle(make_bundle<T1>(std::forward_as_tuple(val_int(rng))));
         }
         p = prob(rng);
         if (p < 0.35) {
-            rmut.insert_bundle(make_init_bundle<T2>(std::forward_as_tuple(std::to_string(val_int(rng)))));
+            rmut.insert_bundle(make_bundle<T2>(std::forward_as_tuple(std::to_string(val_int(rng)))));
         }
         p = prob(rng);
         if (p < 0.25) {
-            rmut.insert_bundle(make_init_bundle<T3>(std::forward_as_tuple(val_d(rng))));
+            rmut.insert_bundle(make_bundle<T3>(std::forward_as_tuple(val_d(rng))));
         }
         p = prob(rng);
         if (p < 0.3) {
-            rmut.insert_bundle(make_init_bundle<S1>(std::forward_as_tuple(std::to_string(val_int(rng)))));
+            rmut.insert_bundle(make_bundle<S1>(std::forward_as_tuple(std::to_string(val_int(rng)))));
         }
         p = prob(rng);
         if (p < 0.2) {
-            rmut.insert_bundle(make_init_bundle<S2>(std::forward_as_tuple(val_int(rng))));
+            rmut.insert_bundle(make_bundle<S2>(std::forward_as_tuple(val_int(rng))));
         }
     }
 

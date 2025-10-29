@@ -57,10 +57,7 @@ struct World {
 
     template <typename... Args>
     EntityWorldMut spawn(Args&&... args)
-        requires(std::constructible_from<std::decay_t<Args>, Args> && ...);
-    template <typename T>
-    EntityWorldMut spawn_bundle(T&& bundle)
-        requires(bundle::is_bundle<std::remove_cvref_t<T>>);
+        requires((std::constructible_from<std::decay_t<Args>, Args> || bundle::is_bundle<Args>) && ...);
 
     template <typename T, typename... Args>
     void emplace_resource(Args&&... args) {

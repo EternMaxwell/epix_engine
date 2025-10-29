@@ -21,15 +21,18 @@ struct Y {
     Y(std::string_view sv) : s(sv) {}
 };
 struct Z {
-    static constexpr StorageType storage_type() { return StorageType::SparseSet; }
     double d;
     Z(double dd) : d(dd) {}
 };
 struct W {
-    static constexpr StorageType storage_type() { return StorageType::SparseSet; }
     std::string s;
     W(std::string_view sv) : s(sv) {}
 };
+
+template <>
+struct epix::core::sparse_component<Z> : std::true_type {};
+template <>
+struct epix::core::sparse_component<W> : std::true_type {};
 
 int main() {
     auto registry = std::make_shared<type_system::TypeRegistry>();
@@ -48,8 +51,7 @@ int main() {
     // reserve and spawn an entity
     Entity e = world.entities_mut().alloc();
     spawner.reserve_storage(1);
-    auto loc =
-        spawner.spawn_non_exist(e, make_bundle<X, Y>(std::forward_as_tuple(11), std::forward_as_tuple("hi")));
+    auto loc = spawner.spawn_non_exist(e, make_bundle<X, Y>(std::forward_as_tuple(11), std::forward_as_tuple("hi")));
     auto table_id_before = loc.table_id;
     std::println(std::cout, "entity : (gen {}, idx {}), loc: (arch {}, arch_idx {}, table {}, table_idx {})",
                  e.generation, e.index, loc.archetype_id.get(), loc.archetype_idx.get(), loc.table_id.get(),
@@ -67,8 +69,7 @@ int main() {
     auto inserter = BundleInserter::create<
         InitializeBundle<std::tuple<Z, W>, std::tuple<std::tuple<double>, std::tuple<std::string_view>>>>(
         world, loc.archetype_id, 123);
-    loc = inserter.insert(e, loc, make_bundle<Z, W>(std::forward_as_tuple(3.14), std::forward_as_tuple("hello")),
-                          true);
+    loc = inserter.insert(e, loc, make_bundle<Z, W>(std::forward_as_tuple(3.14), std::forward_as_tuple("hello")), true);
     std::println(std::cout, "after insert bundle, loc: (arch {}, arch_idx {}, table {}, table_idx {})",
                  loc.archetype_id.get(), loc.archetype_idx.get(), loc.table_id.get(), loc.table_idx.get());
     // check data
