@@ -260,9 +260,38 @@ struct App {
 
     // === Event Management ===
 
+    struct EventSystem {
+        struct Updates {
+            std::vector<void (*)(World&)> updates;
+        };
+        void build(App& app) { app.world_mut().init_resource<Updates>(); }
+        void finish(App& app) {
+            app.add_systems(app::Last, epix::core::into([](World& world) {
+                                for (auto&& update : world.resource_mut<Updates>().updates) {
+                                    update(world);
+                                }
+                            }));
+        }
+    };
+
     /// Register an event type T in the app.
     template <typename T>
     App& add_event() {
+        if (world().get_resource<event::Events<T>>()) return *this;
+        resource_scope([&](app::Plugins& plugins) {
+            plugins.get_plugin_mut<EventSystem>().or_else([&]() {
+                plugins.add_plugin(*this, EventSystem{});
+                return plugins.get_plugin_mut<EventSystem>();
+            });
+        });
+        resource_scope([](EventSystem::Updates& updates) {
+            updates.updates.emplace_back([](World& world) {
+                world.get_resource_mut<event::Events<T>>().transform([](event::Events<T>& events) {
+                    events.update();
+                    return true;
+                });
+            });
+        });
         world_scope([&](World& world) { world.init_resource<event::Events<T>>(); });
         return *this;
     }
