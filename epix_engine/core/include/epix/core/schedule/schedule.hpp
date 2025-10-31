@@ -48,9 +48,10 @@ struct ExecutionState {
     size_t running_count   = 0;
     size_t remaining_count = 0;
     storage::bit_vector ready_nodes;
-    storage::bit_vector running_nodes;
     storage::bit_vector finished_nodes;
     storage::bit_vector entered_nodes;
+    std::vector<storage::bit_vector> dependencies;
+    std::vector<storage::bit_vector> children;
     storage::bit_vector condition_met_nodes;
     std::vector<storage::bit_vector> untest_conditions;
     std::vector<size_t> wait_count;  // number of dependencies + parents not yet satisfied
