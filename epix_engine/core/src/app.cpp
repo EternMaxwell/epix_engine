@@ -4,15 +4,18 @@
 
 namespace epix::core {
 
+struct DefaultRunner : public AppRunner {
+    bool step(App& app) override {
+        app.update().get();
+        return false;
+    }
+    void exit(App& app) override { app.run_schedules(app::PreExit, app::Exit, app::PostExit); }
+};
+
 App App::create() {
     App app;
     app.add_plugins(app::MainSchedulePlugin{});
-    app.set_runner([](App& app) {
-        app.update().get();
-        spdlog::info("[app] Exiting app.");
-        app.run_schedules(app::PreExit, app::Exit, app::PostExit);
-        return 0;
-    });
+    app.set_runner(std::make_unique<DefaultRunner>());
     app.add_event<app::AppExit>();
     return std::move(app);
 }
@@ -215,11 +218,10 @@ void App::run() {
     spdlog::info("[app] App building. - {}", _label.to_string());
     resource_scope([&](app::Plugins& plugins) { plugins.finish_all(*this); });
     spdlog::info("[app] App running. - {}", _label.to_string());
-    if (runner) {
-        runner(*this);
-    } else {
-        throw std::runtime_error("No runner function set for App.");
-    }
+    if (!runner) throw std::runtime_error("No runner set for App.");
+    while (runner->step(*this)) {}
+    spdlog::info("[app] App exiting. - {}", _label.to_string());
+    runner->exit(*this);
     resource_scope([&](app::Plugins& plugins) { plugins.finalize_all(*this); });
     spdlog::info("[app] App terminated. - {}", _label.to_string());
 }

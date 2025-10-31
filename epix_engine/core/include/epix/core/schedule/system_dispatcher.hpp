@@ -66,13 +66,16 @@ struct async_queue {
     bool empty() const;
 };
 struct DispatchConfig {
-    std::function<void()> on_finish = nullptr;
+    std::optional<std::string_view> debug_name                  = std::nullopt;
+    bool enable_tracy                                           = false;
+    std::function<void()> on_finish                             = nullptr;
+    std::function<void(const system::RunSystemError&)> on_error = nullptr;
 };
 struct SystemDispatcher {
    private:
     std::vector<const query::FilteredAccessSet*> system_accesses;
     std::deque<size_t> free_indices;
-    std::deque<std::tuple<const query::FilteredAccessSet*, DispatchConfig, std::move_only_function<void(size_t)>>>
+    std::deque<std::tuple<const query::FilteredAccessSet*, DispatchConfig, std::move_only_function<void()>>>
         pending_systems;
     std::unique_ptr<World> world_own =
         nullptr;  // keep ownership of world, so that during dispatch the access is thread-safe
@@ -164,20 +167,26 @@ struct SystemDispatcher {
                                                                             system::SystemInput<In>::Input input,
                                                                             const query::FilteredAccessSet& access,
                                                                             DispatchConfig config = {}) {
+        if (!config.debug_name) config.debug_name = sys.name();
         std::packaged_task<std::expected<Out, system::RunSystemError>()> task(
-            [this, &sys, input = std::move(input)]() mutable { return sys.run_no_apply(std::move(input), *world); });
-        auto fut = task.get_future();
+            [this, &sys, input = std::move(input), error_handler = std::move(config.on_error)]() mutable {
+                if (!error_handler) {
+                    return sys.run_no_apply(std::move(input), *world);
+                } else {
+                    return sys.run_no_apply(std::move(input), *world)
+                        .transform_error([error_handler = std::move(error_handler)](system::RunSystemError&& err) {
+                            error_handler(err);
+                            return std::move(err);
+                        });
+                }
+            });
+        auto fut          = task.get_future();
+        auto untyped_task = std::move_only_function<void()>([task = std::move(task)]() mutable { task(); });
         {
             std::lock_guard lock(mutex_);
             assert_world();
             running++;
-            pending_systems.emplace_back(
-                &access, config,
-                [task = std::move(task), on_finished = std::move(config.on_finish), this](size_t index) mutable {
-                    task();
-                    if (on_finished) on_finished();
-                    finish(index);
-                });
+            pending_systems.emplace_back(&access, config, std::move(untyped_task));
         }
         tick();
         return fut;

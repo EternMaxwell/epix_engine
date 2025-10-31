@@ -115,6 +115,8 @@ using core::Res;
 using core::ResMut;
 
 using core::App;
+using core::AppLabel;
+using core::AppRunner;
 using core::Extract;
 
 using app::Exit;

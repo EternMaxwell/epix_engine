@@ -9,5 +9,5 @@ void GLFWPlugin::build(App& app) {
     }
     app.world_mut().insert_resource(Clipboard{});
     app.world_mut().init_resource<GLFWwindows>();
-    app.add_events<SetCustomCursor>().add_events<SetClipboardString>().set_runner(GLFWRunner{});
+    app.add_events<SetCustomCursor>().add_events<SetClipboardString>().set_runner(std::make_unique<GLFWRunner>(app));
 }

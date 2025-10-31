@@ -16,6 +16,7 @@
 #include "app/schedules.hpp"
 #include "app/state.hpp"
 #include "event/events.hpp"
+#include "fwd.hpp"
 #include "schedule/schedule.hpp"
 #include "world.hpp"
 
@@ -84,6 +85,11 @@ struct ScheduleOrder {
 
    private:
     std::list<schedule::ScheduleLabel> labels;
+};
+struct AppRunner {
+    virtual bool step(App& app) = 0;
+    virtual void exit(App& app) = 0;
+    virtual ~AppRunner()        = default;
 };
 struct App {
    public:
@@ -412,7 +418,7 @@ struct App {
     /// Check if the app has a runner function set.
     bool has_runner() const { return static_cast<bool>(runner); }
     /// Set the runner function for the app. The function will be called when run() is called.
-    void set_runner(std::move_only_function<void(App&)> fn) { runner = std::move(fn); }
+    void set_runner(std::unique_ptr<AppRunner> fn) { runner = std::move(fn); }
     /// Run the app. Or throw if no runner function set.
     void run();
 
@@ -430,7 +436,7 @@ struct App {
     std::unique_ptr<World> _world;
 
     std::move_only_function<void(App&, World&)> extract_fn;
-    std::move_only_function<void(App&)> runner;
+    std::unique_ptr<AppRunner> runner;
 
     std::weak_ptr<schedule::SystemDispatcher> _dispatcher;
 };

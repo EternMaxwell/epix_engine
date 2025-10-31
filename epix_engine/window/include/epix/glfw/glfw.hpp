@@ -2,6 +2,7 @@
 
 #include <GLFW/glfw3.h>
 
+#include "epix/core/system/system.hpp"
 #include "epix/input.hpp"
 #include "epix/window.hpp"
 
@@ -90,9 +91,18 @@ struct CachedWindowPosSize {
     int width  = 0;
     int height = 0;
 };
-struct GLFWRunner {
-    void run(App& app);
-    void operator()(App& app) { run(app); }
+struct GLFWRunner : public AppRunner {
+    std::unique_ptr<core::system::System<std::tuple<>, std::optional<int>>> check_exit;
+    std::unique_ptr<core::system::System<std::tuple<>, void>> remove_window;
+    core::query::FilteredAccessSet exit_access;
+    core::query::FilteredAccessSet remove_access;
+    std::unique_ptr<core::system::System<std::tuple<>, void>> create_windows_system, update_size_system,
+        update_pos_system, toggle_window_mode_system, update_window_states_system, destroy_windows_system,
+        send_cached_events_system, clipboard_set_text_system, clipboard_update_system;
+    std::optional<std::future<bool>> render_app_future;
+    GLFWRunner(App& app);
+    bool step(App& app) override;
+    void exit(App& app) override;
 };
 struct GLFWPlugin {
     void build(App& app);

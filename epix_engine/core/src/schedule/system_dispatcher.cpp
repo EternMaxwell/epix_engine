@@ -1,5 +1,9 @@
 #include "epix/core/schedule/system_dispatcher.hpp"
 
+#ifdef EPIX_ENABLE_TRACY
+#include <tracy/Tracy.hpp>
+#endif
+
 using namespace epix::core::schedule;
 
 // smallvec
@@ -138,10 +142,23 @@ void SystemDispatcher::tick() {
             }
         }
         if (conflict) break;
+        config.enable_tracy = true;
         // can schedule
         size_t index           = get_index();
         system_accesses[index] = access;
-        thread_pool->detach_task([func = std::move(func), index] mutable { return func(index); });
+        thread_pool->detach_task([this, func = std::move(func), index, config = std::move(config)] mutable {
+            if (!config.enable_tracy) {
+                func();
+            } else {
+                ZoneScopedN("Run dispatched system");
+                if (config.debug_name && config.debug_name->size() > 0) {
+                    ZoneName(config.debug_name->data(), config.debug_name->size());
+                }
+                func();
+            }
+            if (config.on_finish) config.on_finish();
+            finish(index);
+        });
         pending_systems.pop_front();
     }
 }

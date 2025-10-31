@@ -6,6 +6,10 @@ epix_parse_options(epix_core)
 target_include_directories(epix_core PUBLIC ${MODULE_INCLUDES})
 target_link_libraries(epix_core PUBLIC BSThreadPool)
 target_link_libraries(epix_core PUBLIC spdlog::spdlog)
+if (EPIX_ENABLE_TRACY)
+  target_compile_definitions(epix_core PRIVATE EPIX_ENABLE_TRACY)
+  target_link_libraries(epix_core PRIVATE TracyClient)
+endif()
 
 ## --- tests: auto-discover ---
 # Recursively find all .cpp test sources under tests/ and create an executable + ctest entry
