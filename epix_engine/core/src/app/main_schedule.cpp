@@ -18,7 +18,8 @@ void MainSchedulePlugin::build(App& app) {
         schedule::Schedule(app::Exit).with_execute_config({.run_once = true}),
         schedule::Schedule(app::PostExit).with_execute_config({.run_once = true}),
         schedule::Schedule(app::StateTransition).then([](schedule::Schedule& sche) {
-            sche.configure_sets(schedule::make_sets(app::StateTransitionSet::Callback, app::StateTransitionSet::Transit).chain());
+            sche.configure_sets(
+                schedule::make_sets(app::StateTransitionSet::Transit, app::StateTransitionSet::Callback).chain());
         }),
     };
     auto order = std::array{

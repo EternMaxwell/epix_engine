@@ -43,9 +43,8 @@ inline struct OnEnterT {
     ScheduleInfo operator()(T state) {
         ScheduleInfo info(StateTransition);
         info.transforms.emplace_back([state](schedule::SetConfig& info) {
-            info.run_if([state](Res<State<T>> cur, Res<NextState<T>> next) {
-                return ((*cur == state) && cur.is_added()) || ((*cur != state) && (*next == state));
-            });
+            info.run_if(
+                [state](Res<State<T>> cur) { return (*cur == state) && (cur.is_added() || cur.is_modified()); });
             info.in_set(StateTransitionSet::Callback);
         });
         return info;
@@ -57,8 +56,7 @@ inline struct OnExitT {
     ScheduleInfo operator()(T state) {
         ScheduleInfo info(StateTransition);
         info.transforms.emplace_back([state](schedule::SetConfig& info) {
-            info.run_if(
-                [state](Res<State<T>> cur, Res<NextState<T>> next) { return (*cur == state) && (*next != state); });
+            info.run_if([state](Res<State<T>> cur) { return (*cur != state) && !cur.is_added() && cur.is_modified(); });
             info.in_set(StateTransitionSet::Callback);
         });
         return info;
@@ -69,7 +67,7 @@ inline struct OnChangeT {
     ScheduleInfo operator()(T state = T{}) {
         ScheduleInfo info(StateTransition);
         info.transforms.emplace_back([](schedule::SetConfig& info) {
-            info.run_if([](Res<State<T>> cur, Res<NextState<T>> next) { return *cur != *next; });
+            info.run_if([](Res<State<T>> cur) { return cur.is_modified(); });
             info.in_set(StateTransitionSet::Callback);
         });
         return info;
