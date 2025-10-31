@@ -237,9 +237,10 @@ void Schedule::execute(SystemDispatcher& dispatcher, ExecuteConfig config) {
         .running_count       = 0,
         .remaining_count     = cache->nodes.size(),
         .ready_nodes         = storage::bit_vector(cache->nodes.size()),
-        .running_nodes       = storage::bit_vector(cache->nodes.size()),
         .finished_nodes      = storage::bit_vector(cache->nodes.size()),
         .entered_nodes       = storage::bit_vector(cache->nodes.size()),
+        .dependencies        = std::vector<storage::bit_vector>(cache->nodes.size()),
+        .children            = std::vector<storage::bit_vector>(cache->nodes.size()),
         .condition_met_nodes = storage::bit_vector(cache->nodes.size(), true),  // default all met
         .untest_conditions   = std::vector<storage::bit_vector>(cache->nodes.size()),
         .wait_count          = std::vector<size_t>(cache->nodes.size(), 0),
@@ -250,6 +251,8 @@ void Schedule::execute(SystemDispatcher& dispatcher, ExecuteConfig config) {
         exec_state.wait_count[index]  = cached_node.depends.size() + cached_node.parents.size();
         exec_state.child_count[index] = cached_node.children.size() + (cached_node.node->system ? 1 : 0);
         exec_state.untest_conditions[index].resize(cached_node.node->conditions.size(), true);
+        exec_state.dependencies[index].set_range(cached_node.depends, true);
+        exec_state.children[index].set_range(cached_node.children, true);
         if (exec_state.wait_count[index] == 0) {
             // no dependencies, can run immediately
             exec_state.ready_stack.push_back(index);
@@ -272,7 +275,6 @@ void Schedule::execute(SystemDispatcher& dispatcher, ExecuteConfig config) {
                                        });
         }
         exec_state.running_count++;
-        exec_state.running_nodes.set(index);
     };
     std::vector<size_t> pending_ready;  // ready nodes, but cannot test cause conditions' access conflict with
                                         // running systems in dispatcher
@@ -370,16 +372,18 @@ void Schedule::execute(SystemDispatcher& dispatcher, ExecuteConfig config) {
             exec_state.entered_nodes.reset(finished_index);
             exec_state.remaining_count--;
 
-            for (const auto& parent_index : cached_node.parents) {
-                exec_state.wait_count[parent_index]--;
-                if (exec_state.wait_count[parent_index] == 0) {
-                    exec_state.ready_stack.push_back(parent_index);
-                }
-            }
             for (const auto& successor_index : cached_node.successors) {
                 exec_state.wait_count[successor_index]--;
+                exec_state.dependencies[successor_index].reset(finished_index);
                 if (exec_state.wait_count[successor_index] == 0) {
                     exec_state.ready_stack.push_back(successor_index);
+                }
+            }
+            for (const auto& parent : cached_node.parents) {
+                exec_state.child_count[parent]--;
+                exec_state.children[parent].reset(finished_index);
+                if (exec_state.child_count[parent] == 0) {
+                    exec_state.finished_queue.push(parent);
                 }
             }
         }
@@ -388,19 +392,24 @@ void Schedule::execute(SystemDispatcher& dispatcher, ExecuteConfig config) {
     // end apply deferred
     if (config.is_apply_end()) {
         dispatcher
-            .apply_deferred(exec_state.finished_nodes.iter_ones() | std::views::transform([&](size_t index) -> auto& {
-                                return *cache->nodes[index].node->system.get();
-                            }) |
-                            std::views::filter([&](auto& system) { return system.is_deferred(); }))
+            .apply_deferred(
+                exec_state.finished_nodes.iter_ones() | std::views::filter([&](size_t index) {
+                    CachedNode& cached_node = cache->nodes[index];
+                    return (bool)cached_node.node->system;
+                }) |
+                std::views::transform([&](size_t index) -> auto& { return *cache->nodes[index].node->system.get(); }) |
+                std::views::filter([&](auto& system) { return system.is_deferred(); }))
             .wait();
     } else if (config.is_queue_deferred()) {
         dispatcher
             .world_scope([&](World& world) {
-                std::ranges::for_each(
-                    exec_state.finished_nodes.iter_ones() | std::views::transform([&](size_t index) -> auto& {
-                        return *cache->nodes[index].node->system.get();
-                    }) | std::views::filter([&](auto& system) { return system.is_deferred(); }),
-                    [&](auto& system) { system.queue_deferred(world); });
+                std::ranges::for_each(exec_state.finished_nodes.iter_ones() | std::views::filter([&](size_t index) {
+                                          CachedNode& cached_node = cache->nodes[index];
+                                          return (bool)cached_node.node->system;
+                                      }) | std::views::transform([&](size_t index) -> auto& {
+                                          return *cache->nodes[index].node->system.get();
+                                      }) | std::views::filter([&](auto& system) { return system.is_deferred(); }),
+                                      [&](auto& system) { system.queue_deferred(world); });
             })
             .wait();
     } else {
@@ -416,12 +425,20 @@ void Schedule::execute(SystemDispatcher& dispatcher, ExecuteConfig config) {
             if (node->system) {
                 return std::format("(system: {})", node->system->name());
             } else {
-                return std::format("(set {})", node->label.type_index().short_name());
+                return std::format("(set {}#{})", node->label.type_index().short_name(), node->label.extra());
             }
         };
-        spdlog::warn("\tRemaining: {}\tNot Exited: {}",
+        spdlog::warn("\tRemaining: {}\tNot Exited: {}, with remaining depends:{}\n\tand remaining children:{}",
                      exec_state.finished_nodes.iter_zeros() | std::views::transform(index_to_name),
-                     exec_state.entered_nodes.iter_ones() | std::views::transform(index_to_name));
+                     exec_state.entered_nodes.iter_ones() | std::views::transform(index_to_name),
+                     exec_state.finished_nodes.iter_zeros() | std::views::transform([&](size_t i) {
+                         return std::format(
+                             "\n\t{}", exec_state.dependencies[i].iter_ones() | std::views::transform(index_to_name));
+                     }),
+                     exec_state.finished_nodes.iter_zeros() | std::views::transform([&](size_t i) {
+                         return std::format("\n\t{}",
+                                            exec_state.children[i].iter_ones() | std::views::transform(index_to_name));
+                     }));
     }
 
     if (config.run_once) {
