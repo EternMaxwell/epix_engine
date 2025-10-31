@@ -20,7 +20,7 @@ struct WorldQuery<Filter<Fs...>> : WorldQuery<std::tuple<Fs...>> {};
 template <typename... Fs>
     requires((valid_query_filter<QueryFilter<Fs>> && ...))
 struct QueryFilter<Filter<Fs...>> {
-    constexpr static inline bool archetypal = true && (Fs::archetypal && ...);
+    constexpr static inline bool archetypal = true && (QueryFilter<Fs>::archetypal && ...);
     static bool filter_fetch(WorldQuery<Filter<Fs...>>::Fetch& fetch, Entity entity, TableRow row) {
         return [&]<std::size_t... Is>(std::index_sequence<Is...>) {
             return true && (QueryFilter<Fs>::filter_fetch(std::get<Is>(fetch), entity, row) && ...);

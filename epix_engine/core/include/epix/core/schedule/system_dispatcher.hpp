@@ -149,7 +149,8 @@ struct SystemDispatcher {
         std::packaged_task<std::expected<typename system::function_traits<decltype(func)>::return_type,
                                          system::RunSystemError>(World&)>
             task([func = std::forward<decltype(func)>(func)](World& world) mutable {
-                using return_t = typename system::function_traits<decltype(func)>::return_type;
+                using traits   = system::function_traits<decltype(func)>;
+                using return_t = typename traits::return_type;
                 if constexpr (std::is_void_v<return_t>) {
                     func(world);
                     return std::expected<return_t, system::RunSystemError>{};

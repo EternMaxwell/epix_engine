@@ -126,7 +126,7 @@ struct World {
     template <is_from_world T>
     T& resource_or_init() {
         return get_resource_mut<T>()
-            .or_else([&] -> std::optional<std::reference_wrapper<T>> {
+            .or_else([&]() -> std::optional<std::reference_wrapper<T>> {
                 init_resource<T>();
                 return std::ref(resource_mut<T>());
             })
@@ -136,7 +136,7 @@ struct World {
         requires std::constructible_from<T, Args&&...>
     T& resource_or_emplace(Args&&... args) {
         return get_resource_mut<T>()
-            .or_else([&] -> std::optional<std::reference_wrapper<T>> {
+            .or_else([&]() -> std::optional<std::reference_wrapper<T>> {
                 emplace_resource<T>(std::forward<Args>(args)...);
                 return std::ref(resource_mut<T>());
             })

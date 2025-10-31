@@ -97,8 +97,8 @@ struct QueryData<std::tuple<Ts...>> {
     using ReadOnly                        = std::tuple<typename QueryData<Ts>::ReadOnly...>;
     static inline constexpr bool readonly = (QueryData<Ts>::readonly && ...);
     static Item fetch(typename WorldQuery<std::tuple<Ts...>>::Fetch& fetch, Entity entity, TableRow row) {
-        return []<size_t... Is>(std::index_sequence<Is...>, typename WorldQuery<std::tuple<Ts...>>::Fetch& fetch,
-                                Entity entity, TableRow row) {
+        return [&]<size_t... Is>(std::index_sequence<Is...>, typename WorldQuery<std::tuple<Ts...>>::Fetch& fetch,
+                                 Entity entity, TableRow row) {
             return Item(QueryData<Ts>::fetch(std::get<Is>(fetch), entity, row)...);
         }(std::index_sequence_for<Ts...>{}, fetch, entity, row);
     }

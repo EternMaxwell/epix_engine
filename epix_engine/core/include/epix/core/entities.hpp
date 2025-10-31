@@ -203,7 +203,7 @@ struct Entities {
             n = 0;
         }
 
-        for (auto&& index : pending | std::views::take(n)) {
+        for (auto&& index : pending | std::views::drop(n)) {
             auto& meta = this->meta[index];
             fn(Entity::from_parts(index, meta.generation), meta.location);
         }

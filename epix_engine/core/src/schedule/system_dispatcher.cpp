@@ -142,18 +142,19 @@ void SystemDispatcher::tick() {
             }
         }
         if (conflict) break;
-        config.enable_tracy = true;
         // can schedule
         size_t index           = get_index();
         system_accesses[index] = access;
-        thread_pool->detach_task([this, func = std::move(func), index, config = std::move(config)] mutable {
+        thread_pool->detach_task([this, func = std::move(func), index, config = std::move(config)]() mutable {
             if (!config.enable_tracy) {
                 func();
             } else {
+#ifdef EPIX_ENABLE_TRACY
                 ZoneScopedN("Run dispatched system");
                 if (config.debug_name && config.debug_name->size() > 0) {
                     ZoneName(config.debug_name->data(), config.debug_name->size());
                 }
+#endif
                 func();
             }
             if (config.on_finish) config.on_finish();
