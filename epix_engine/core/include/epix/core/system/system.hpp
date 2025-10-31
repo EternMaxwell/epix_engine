@@ -53,6 +53,11 @@ template <typename In = std::tuple<>, typename Out = void>
 using SystemUnique = std::unique_ptr<System<In, Out>>;
 
 template <typename F>
+    requires requires {
+        typename function_traits<F>;
+        typename function_traits<F>::return_type;
+        typename function_traits<F>::args_tuple;
+    }
 struct function_system_traits {
     using Traits                  = function_traits<F>;
     static constexpr size_t arity = Traits::arity;
@@ -101,6 +106,7 @@ struct function_system_traits {
 
 template <typename F>
 concept valid_function_system = requires {
+    typename function_traits<F>;
     typename function_system_traits<F>::Storage;
     typename function_system_traits<F>::Input;
     typename function_system_traits<F>::Output;

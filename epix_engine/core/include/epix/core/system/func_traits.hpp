@@ -22,7 +22,9 @@ template <typename F>
     requires(requires { &F::operator(); })
 struct function_traits<F> : function_traits<decltype(&F::operator())> {};
 template <typename F>
+    requires requires { typename function_traits<F>; }
 struct function_traits<F&> : function_traits<F> {};
 template <typename F>
+    requires requires { typename function_traits<F>; }
 struct function_traits<F&&> : function_traits<F> {};
 }  // namespace epix::core::system
