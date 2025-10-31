@@ -273,10 +273,10 @@ struct App {
         void build(App& app) { app.world_mut().init_resource<Updates>(); }
         void finish(App& app) {
             app.add_systems(app::Last, epix::core::into([](World& world) {
-                                for (auto&& update : world.resource_mut<Updates>().updates) {
-                                    update(world);
-                                }
-                            }));
+                                           for (auto&& update : world.resource_mut<Updates>().updates) {
+                                               update(world);
+                                           }
+                                       }).set_name("update events"));
         }
     };
 
@@ -310,8 +310,53 @@ struct App {
 
     // === State Management ===
 
+    struct StateUpdater {
+        struct Updates {
+            Updates()               = default;
+            Updates(const Updates&) = delete;
+            Updates(Updates&&)      = default;
+            std::vector<std::unique_ptr<system::System<std::tuple<>, void>>> update_system;
+        };
+        std::unordered_set<epix::meta::type_index> registered_states;
+        void build(App& app) { app.world_mut().init_resource<Updates>(); }
+        void finish(App& app) {
+            app.add_systems(app::StateTransition,
+                            epix::core::into([](system::ParamSet<World&, ResMut<Updates>> params) {
+                                auto&& [world, updates] = params.get();
+                                for (auto&& sys : updates->update_system) {
+                                    auto res = sys->run({}, world);
+                                }
+                            })
+                                .set_name("update states")
+                                .in_set(app::StateTransitionSet::Transit));
+        }
+    };
+
     template <typename T>
-    App& insert_state(const T& state) {
+    App& insert_state(const T& state)
+        requires(std::is_enum_v<T>)
+    {
+        resource_scope([&](app::Plugins& plugins) {
+            plugins.get_plugin_mut<StateUpdater>()
+                .or_else([&]() {
+                    plugins.add_plugin(*this, StateUpdater{});
+                    return plugins.get_plugin_mut<StateUpdater>();
+                })
+                .transform([this](StateUpdater& updater) -> bool {
+                    auto type_idx = epix::meta::type_id<T>();
+                    if (updater.registered_states.contains(type_idx)) return false;
+                    updater.registered_states.insert(type_idx);
+                    auto update_system =
+                        system::make_system_unique([](Res<app::NextState<T>> next_state, ResMut<app::State<T>> state) {
+                            if (state.get() == (T)next_state.get()) return;
+                            state.get_mut() = (T)next_state.get();
+                        });
+                    update_system->initialize(world_mut());
+                    update_system->set_name("state updater for " + std::string(epix::meta::type_id<T>().short_name()));
+                    world_mut().resource_mut<StateUpdater::Updates>().update_system.push_back(std::move(update_system));
+                    return true;
+                });
+        });
         world_scope([&](World& world) {
             world.insert_resource(app::State<T>(state));
             world.insert_resource(app::NextState<T>(state));
@@ -319,11 +364,10 @@ struct App {
         return *this;
     }
     template <typename T>
-    App& init_state() {
-        world_scope([&](World& world) {
-            world.init_resource<app::State<T>>();
-            world.init_resource<app::NextState<T>>();
-        });
+    App& init_state()
+        requires(std::is_enum_v<T>)
+    {
+        insert_state(T{});
         return *this;
     }
 

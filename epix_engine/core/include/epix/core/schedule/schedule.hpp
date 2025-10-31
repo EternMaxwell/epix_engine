@@ -197,7 +197,7 @@ SetConfig make_sets(Ts&&... ts)
     } else {
         SetConfig config;
         config.sub_configs.reserve(sizeof...(Ts));
-        (config.sub_configs.push_back(make_sets<require_system>(std::forward<Ts>(ts))), ...);
+        (config.sub_configs.push_back(single_set<require_system>(std::forward<Ts>(ts))), ...);
         return config;
     }
 }
@@ -245,6 +245,17 @@ struct Schedule {
     Schedule& operator=(Schedule&&)      = default;
 
     ScheduleLabel label() const { return _label; }
+
+    template <std::invocable<Schedule&> F>
+    Schedule&& then(F&& func) && {
+        func(*this);
+        return std::move(*this);
+    }
+    template <std::invocable<Schedule&> F>
+    Schedule& then(F&& func) & {
+        func(*this);
+        return *this;
+    }
 
     /// Check if the schedule contains a set with the given label.
     bool contains_set(const SystemSetLabel& label) const { return nodes.contains(label); }

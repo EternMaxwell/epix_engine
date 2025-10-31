@@ -2,6 +2,8 @@
 
 #include <type_traits>
 
+#include "../fwd.hpp"
+
 namespace epix::core::app {
 template <typename T>
     requires std::is_enum_v<T>
@@ -12,6 +14,8 @@ struct State {
         m_state = state;
         return *this;
     }
+
+    friend struct epix::core::App;
 
    public:
     State() : m_state() {}

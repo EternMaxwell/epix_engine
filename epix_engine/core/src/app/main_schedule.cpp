@@ -1,5 +1,6 @@
 #include "epix/core/app.hpp"
 #include "epix/core/app/app_sche.hpp"
+#include "epix/core/app/state.hpp"
 #include "epix/core/schedule/schedule.hpp"
 
 namespace epix::core::app {
@@ -16,7 +17,9 @@ void MainSchedulePlugin::build(App& app) {
         schedule::Schedule(app::PreExit).with_execute_config({.run_once = true}),
         schedule::Schedule(app::Exit).with_execute_config({.run_once = true}),
         schedule::Schedule(app::PostExit).with_execute_config({.run_once = true}),
-        schedule::Schedule(app::StateTransition),
+        schedule::Schedule(app::StateTransition).then([](schedule::Schedule& sche) {
+            sche.configure_sets(schedule::make_sets(app::StateTransitionSet::Callback, app::StateTransitionSet::Transit).chain());
+        }),
     };
     auto order = std::array{
         schedule::ScheduleLabel(app::PreStartup),  schedule::ScheduleLabel(app::Startup),

@@ -19,7 +19,8 @@ struct function_traits<R (C::*)(Args...)> : function_traits<R(Args...)> {};
 template <typename C, typename R, typename... Args>
 struct function_traits<R (C::*)(Args...) const> : function_traits<R(Args...)> {};
 template <typename F>
-struct function_traits : function_traits<decltype(&F::operator())> {};
+    requires(requires { &F::operator(); })
+struct function_traits<F> : function_traits<decltype(&F::operator())> {};
 template <typename F>
 struct function_traits<F&> : function_traits<F> {};
 template <typename F>
