@@ -7,30 +7,17 @@
 
 namespace epix::core::app {
 template <typename T>
-struct Extract {
+    requires system::valid_system_param<system::SystemParam<T>>
+struct Extract : public T {
    public:
-    using type = T;
-
     template <typename... Args>
         requires std::constructible_from<T, Args...>
-    explicit Extract(Args&&... args) : value(std::forward<Args>(args)...) {}
+    explicit Extract(Args&&... args) : T(std::forward<Args>(args)...) {}
 
     Extract(const Extract&)            = default;
     Extract(Extract&&)                 = default;
     Extract& operator=(const Extract&) = default;
     Extract& operator=(Extract&&)      = default;
-
-    operator T&() { return value; }
-    operator const T&() const { return value; }
-    T& get() { return value; }
-    const T& get() const { return value; }
-    T& operator*() { return value; }
-    const T& operator*() const { return value; }
-    T* operator->() { return &value; }
-    const T* operator->() const { return &value; }
-
-   private:
-    T value;
 };
 
 struct ExtractedWorld {
