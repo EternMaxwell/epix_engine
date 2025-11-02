@@ -1,18 +1,7 @@
-#pragma once
+#include "epix/render/vulkan.hpp"
 
-#include <volk.h>
-#define VULKAN_HPP_DISPATCH_LOADER_DYNAMIC 1
-#include <vulkan/vulkan.hpp>
-// include vulkan before volk
-#include <epix/core.hpp>
-#include <nvrhi/nvrhi.h>
-#include <nvrhi/vulkan.h>
-
-template <>
-inline constexpr bool epix::core::copy_res<nvrhi::DeviceHandle> = true;
-
-namespace epix::render::async_device {
 using namespace nvrhi;
+
 class DeviceWrapper : public RefCounter<IDevice> {
    public:
     friend class CommandListWrapper;
@@ -228,19 +217,7 @@ class DeviceWrapper : public RefCounter<IDevice> {
     bool isAftermathEnabled() override { return m_Device->isAftermathEnabled(); }
     AftermathCrashDumpHelper& getAftermathCrashDumpHelper() override { return m_Device->getAftermathCrashDumpHelper(); }
 };
-}  // namespace epix::render::async_device
-namespace epix::render {
-struct LocalCommandList {
-    nvrhi::CommandListHandle handle;
-    static std::optional<LocalCommandList> from_world(World& world) {
-        if (auto device = world.get_resource<nvrhi::DeviceHandle>()) {
-            return LocalCommandList{.handle = (*device)->createCommandList(
-                                        nvrhi::CommandListParameters().setEnableImmediateExecution(false))};
-        }
-        return std::nullopt;
-    }
-};
-inline nvrhi::DeviceHandle create_async_device(nvrhi::DeviceHandle device) {
-    return nvrhi::DeviceHandle(new async_device::DeviceWrapper(device));
+
+nvrhi::DeviceHandle epix::render::create_async_device(nvrhi::DeviceHandle device) {
+    return nvrhi::DeviceHandle(new DeviceWrapper(device));
 }
-}  // namespace epix::render
