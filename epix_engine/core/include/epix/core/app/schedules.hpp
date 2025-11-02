@@ -45,6 +45,11 @@ struct Schedules {
     /// Remove a schedule by its label, returns the removed schedule if found.
     std::optional<schedule::Schedule> remove_schedule(const schedule::ScheduleLabel& label);
 
+    /// Iterate over all schedules with const access
+    auto iter() const { return std::views::all(_schedules); }
+    /// Iterate over all schedules with mutable access
+    auto iter_mut() { return std::views::all(_schedules); }
+
    private:
     // schedule is movable, no need to use pointer
     std::unordered_map<schedule::ScheduleLabel, schedule::Schedule> _schedules;

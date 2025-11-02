@@ -183,6 +183,9 @@ struct App {
     /// Configure sets in a schedule in the app. If the schedule does not exist, it will be created. If the sets exist,
     /// they will be replaced with the new configuration.
     App& configure_sets(app::ScheduleInfo schedule, schedule::SetConfig&& config);
+    /// Configure sets in all schedules in the app. If the sets exist in a schedule, they will be replaced with the new
+    /// configuration.
+    App& configure_sets(schedule::SetConfig&& config);
     app::Schedules& schedules();
     std::optional<std::reference_wrapper<app::Schedules>> get_schedules();
     ScheduleOrder& schedule_order();

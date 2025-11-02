@@ -91,6 +91,14 @@ App& App::configure_sets(app::ScheduleInfo schedule, schedule::SetConfig&& confi
     });
     return *this;
 }
+App& App::configure_sets(schedule::SetConfig&& config) {
+    resource_scope([&](app::Schedules& schedules, World& world) mutable {
+        for (auto&& [label, schedule] : schedules.iter_mut()) {
+            schedule.configure_sets(config);
+        }
+    });
+    return *this;
+}
 
 app::Schedules& App::schedules() {
     auto lock = lock_world();
