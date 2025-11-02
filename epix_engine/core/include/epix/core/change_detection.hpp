@@ -1,5 +1,7 @@
 #pragma once
 
+#include <concepts>
+
 #include "tick.hpp"
 
 namespace epix::core {
@@ -56,8 +58,12 @@ struct TicksMut {
 template <typename T>
 struct copy_ref : public std::false_type {};
 template <typename T>
-    requires(!std::is_reference_v<T> && !std::is_const_v<T>)
-struct Ref {
+concept refable = !std::is_reference_v<T> && !std::is_const_v<T>;
+template <refable T>
+struct Ref;
+template <refable T>
+    requires(!copy_ref<T>::value)
+struct Ref<T> {
    private:
     const T* value;
     Ticks ticks;
@@ -75,8 +81,32 @@ struct Ref {
     Tick last_modified() const { return ticks.last_modified(); }
     Tick added_tick() const { return ticks.added_tick(); }
 };
-template <typename T>
-    requires(!std::is_reference_v<T> && !std::is_const_v<T>)
+template <refable T>
+    requires(copy_ref<T>::value && std::copy_constructible<T>)
+struct Ref<T> {
+   private:
+    T value;
+    Ticks ticks;
+
+   public:
+    Ref(const T* value, Ticks ticks) : value(*value), ticks(ticks) {}
+
+    const T* ptr() const { return &value; }
+    T* ptr_mut() { return &value; }
+    const T& get() const { return value; }
+    T& get_mut() { return value; }
+    const T* operator->() const { return &value; }
+    T* operator->() { return &value; }
+    const T& operator*() const { return value; }
+    T& operator*() { return value; }
+    operator const T&() const { return value; }
+    operator T&() { return value; }
+    bool is_added() const { return ticks.is_added(); }
+    bool is_modified() const { return ticks.is_modified(); }
+    Tick last_modified() const { return ticks.last_modified(); }
+    Tick added_tick() const { return ticks.added_tick(); }
+};
+template <refable T>
 struct Mut {
    private:
     T* value;
@@ -116,14 +146,12 @@ struct Mut {
     Tick added_tick() const { return ticks.added_tick(); }
 };
 
-template <typename T>
-    requires(!std::is_reference_v<T> && !std::is_const_v<T>)
+template <refable T>
 struct Res : public Ref<T> {
    public:
     using Ref<T>::Ref;
 };
-template <typename T>
-    requires(!std::is_reference_v<T> && !std::is_const_v<T>)
+template <refable T>
 struct ResMut : public Mut<T> {
    public:
     using Mut<T>::Mut;
