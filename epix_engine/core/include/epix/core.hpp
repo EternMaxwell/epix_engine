@@ -43,6 +43,7 @@ using query::QueryState;
 using query::Single;
 
 using query::Added;
+using query::Filter;
 using query::Has;
 using query::Item;
 using query::Modified;
