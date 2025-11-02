@@ -54,6 +54,8 @@ struct TicksMut {
         : added(added), modified(modified), last_run(last_run), this_run(this_run) {}
 };
 template <typename T>
+struct copy_ref : public std::false_type {};
+template <typename T>
     requires(!std::is_reference_v<T> && !std::is_const_v<T>)
 struct Ref {
    private:
