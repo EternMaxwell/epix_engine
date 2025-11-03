@@ -1,12 +1,17 @@
 #include <spdlog/spdlog.h>
 
+#include <exception>
 #include <expected>
 #include <format>
 #include <functional>
 #include <ranges>
 #include <thread>
+#include <variant>
 
 #include "epix/core/schedule/schedule.hpp"
+#include "epix/core/schedule/system_dispatcher.hpp"
+#include "epix/core/system/param.hpp"
+#include "epix/core/system/system.hpp"
 
 namespace epix::core::schedule {
 
@@ -262,17 +267,34 @@ void Schedule::execute(SystemDispatcher& dispatcher, ExecuteConfig config) {
     auto dispatch_system = [&](size_t index) {
         // dispatch a system for execution
         CachedNode& cached_node = cache->nodes[index];
+        auto dispatch_config    = DispatchConfig{
+               .on_finish = [&, index]() { exec_state.finished_queue.push(index); },
+               .on_error =
+                [&, index](const system::RunSystemError& error) {
+                    if (std::holds_alternative<system::ValidateParamError>(error)) {
+                        auto&& param_error = std::get<system::ValidateParamError>(error);
+                        spdlog::error("[schedule] parameter validation error at system '{}', type: '{}', msg: {}",
+                                         cache->nodes[index].node->system->name(), param_error.param_type.short_name(), param_error.message);
+                    } else if (std::holds_alternative<system::SystemException>(error)) {
+                        auto&& expection = std::get<system::SystemException>(error);
+                        try {
+                            std::rethrow_exception(expection.exception);
+                        } catch (const std::exception& e) {
+                            spdlog::error("[schedule] system exception at system '{}', msg: {}",
+                                             cache->nodes[index].node->system->name(), e.what());
+                        } catch (...) {
+                            spdlog::error("[schedule] system exception at system '{}', msg: unknown",
+                                             cache->nodes[index].node->system->name());
+                        }
+                    }
+                },
+        };
         if (config.is_apply_direct() && cached_node.node->system->is_deferred()) {
             auto& system = *cached_node.node->system.get();
-            dispatcher.world_scope([&system](World& world) { auto res = system.run({}, world); },
-                                   {
-                                       .on_finish = [&, index]() { exec_state.finished_queue.push(index); },
-                                   });
+            dispatcher.world_scope([&system](World& world) { auto res = system.run({}, world); }, dispatch_config);
         } else {
             dispatcher.dispatch_system(*cached_node.node->system.get(), {}, cached_node.node->system_access,
-                                       {
-                                           .on_finish = [&, index]() { exec_state.finished_queue.push(index); },
-                                       });
+                                       dispatch_config);
         }
         exec_state.running_count++;
     };
