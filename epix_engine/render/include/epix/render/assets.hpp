@@ -81,9 +81,9 @@ struct CachedExtractedAssets {
 };
 
 template <RenderAssetImpl T>
-void extract_assets(Commands& commands,
-                    Extract<ResMut<epix::assets::Assets<T>>>& assets,
-                    Extract<EventReader<epix::assets::AssetEvent<T>>>& events) {
+void extract_assets(Commands commands,
+                    Extract<ResMut<epix::assets::Assets<T>>> assets,
+                    Extract<EventReader<epix::assets::AssetEvent<T>>> events) {
     std::vector<epix::assets::AssetId<T>> changed_ids;
     std::unordered_set<epix::assets::AssetId<T>> removed;
     for (const auto& event : events.read()) {
@@ -130,10 +130,10 @@ void extract_assets(Commands& commands,
 }
 
 template <RenderAssetImpl T>
-void process_render_assets(Commands& commands,
-                           typename RenderAsset<T>::Param& param,
-                           ResMut<RenderAssets<T>>& render_assets,
-                           ResMut<CachedExtractedAssets<T>>& extracted_assets) {
+void process_render_assets(Commands commands,
+                           typename RenderAsset<T>::Param param,
+                           ResMut<RenderAssets<T>> render_assets,
+                           ResMut<CachedExtractedAssets<T>> extracted_assets) {
     RenderAsset<T> render_asset_impl;
     std::vector<std::pair<epix::assets::AssetId<T>, std::exception_ptr>> exceptions;
     for (const auto& id : extracted_assets->removed) {

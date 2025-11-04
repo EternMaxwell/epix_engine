@@ -221,3 +221,14 @@ class DeviceWrapper : public RefCounter<IDevice> {
 nvrhi::DeviceHandle epix::render::create_async_device(nvrhi::DeviceHandle device) {
     return nvrhi::DeviceHandle(new DeviceWrapper(device));
 }
+
+epix::render::LocalCommandList epix::render::LocalCommandList::from_world(World& world) {
+    if (auto device = world.get_resource<nvrhi::DeviceHandle>()) {
+        auto handle = device.value().get();
+        return LocalCommandList{
+            .handle = handle->createCommandList(nvrhi::CommandListParameters{}.setEnableImmediateExecution(false)),
+        };
+    } else {
+        throw std::runtime_error("Failed to get nvrhi::DeviceHandle from world for LocalCommandList");
+    }
+}
