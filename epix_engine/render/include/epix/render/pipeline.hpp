@@ -129,6 +129,10 @@ struct PipelineServer {
 
    public:
     PipelineServer(nvrhi::DeviceHandle device);
+    PipelineServer(const PipelineServer&)            = delete;
+    PipelineServer& operator=(const PipelineServer&) = delete;
+    PipelineServer(PipelineServer&&)                 = default;
+    PipelineServer& operator=(PipelineServer&&)      = default;
 
     static PipelineServer from_world(epix::World& world);
 
