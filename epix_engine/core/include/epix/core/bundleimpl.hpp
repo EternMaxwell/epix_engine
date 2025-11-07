@@ -20,7 +20,7 @@ struct InitializeBundle {
     static_assert(false, "BundleDetail must be specialized for std::tuple types");
 };
 template <typename... Ts, typename... ArgTuples>
-    requires((bundle::specialization_of<std::tuple, ArgTuples> && ...) && (sizeof...(Ts) == sizeof...(ArgTuples)) &&
+    requires((bundle::specialization_of<ArgTuples, std::tuple> && ...) && (sizeof...(Ts) == sizeof...(ArgTuples)) &&
              ((bundle::constructible_from_tuple<Ts, ArgTuples> ||
                (std::same_as<Ts, std::monostate> && (std::tuple_size_v<ArgTuples> == 1) &&
                 bundle::is_bundle<std::tuple_element_t<0, ArgTuples>>)) &&
@@ -54,9 +54,8 @@ struct InitializeBundle<std::tuple<Ts...>, std::tuple<ArgTuples...>> {
                         using BundleType = Bundle<std::tuple_element_t<0, ATuple>>;
                         // write to sub range of pointers since a sub bundle might be also a bundle of multiple
                         // components
-                        auto inserted = BundleType::write(
-                            std::forward<std::tuple_element_t<0, ATuple>>(std::get<0>(std::get<I>(args))), span);
-                        span = span.subspan(inserted);
+                        auto inserted = BundleType::write(std::get<0>(std::get<I>(args)), span);
+                        span          = span.subspan(inserted);
                     } else {
                         if (T* ptr = static_cast<T*>(span[0])) {
                             []<size_t... Js>(std::index_sequence<Js...>, T* p, ATuple& atuple) {
@@ -115,7 +114,7 @@ struct InitializeBundle<std::tuple<Ts...>, std::tuple<ArgTuples...>> {
     }
 };
 template <typename... Ts, typename... ArgTuples>
-    requires((bundle::specialization_of<std::tuple, ArgTuples> && ...) && (sizeof...(Ts) == sizeof...(ArgTuples)) &&
+    requires((bundle::specialization_of<ArgTuples, std::tuple> && ...) && (sizeof...(Ts) == sizeof...(ArgTuples)) &&
              (bundle::constructible_from_tuple<Ts, ArgTuples> && ...)) &&
             (sizeof...(ArgTuples) > 0)
 InitializeBundle<std::tuple<Ts...>, std::tuple<ArgTuples...>> make_bundle(ArgTuples&&... args) {
@@ -129,9 +128,9 @@ InitializeBundle<std::tuple<std::decay_t<Ts>...>, std::tuple<std::tuple<Ts>...>>
         std::make_tuple(std::tuple<Ts>(std::forward<Ts>(args))...)};
 }
 template <typename T>
-    requires(bundle::specialization_of<InitializeBundle, std::decay_t<T>>)
+    requires(bundle::specialization_of<std::decay_t<T>, InitializeBundle>)
 struct Bundle<T> {
-    static size_t write(T&& bundle, std::span<void*> pointers) { return bundle.write(pointers); }
+    static size_t write(T& bundle, std::span<void*> pointers) { return bundle.write(pointers); }
     static auto type_ids(const type_system::TypeRegistry& registry) { return std::decay_t<T>::type_ids(registry); }
     static void register_components(const type_system::TypeRegistry& registry, Components& components) {
         std::decay_t<T>::register_components(registry, components);
@@ -179,9 +178,9 @@ struct RemoveBundle {
     }
 };
 template <typename T>
-    requires(bundle::specialization_of<RemoveBundle, std::decay_t<T>>)
+    requires(bundle::specialization_of<std::decay_t<T>, RemoveBundle>)
 struct Bundle<T> {
-    static size_t write(T&& bundle, std::span<void*> pointers) { return bundle.write(pointers); }
+    static size_t write(T& bundle, std::span<void*> pointers) { return bundle.write(pointers); }
     static auto type_ids(const type_system::TypeRegistry& registry) { return std::decay_t<T>::type_ids(registry); }
     static void register_components(const type_system::TypeRegistry& registry, Components& components) {
         std::decay_t<T>::register_components(registry, components);

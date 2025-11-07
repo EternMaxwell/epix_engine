@@ -20,12 +20,12 @@
 
 namespace epix::core {
 namespace bundle {
-template <template <typename...> typename Templated, typename T>
+template <typename T, template <typename...> typename Templated>
 struct is_specialization_of : std::false_type {};
 template <template <typename...> typename Templated, typename... Ts>
-struct is_specialization_of<Templated, Templated<Ts...>> : std::true_type {};
-template <template <typename...> typename Templated, typename T>
-concept specialization_of = is_specialization_of<Templated, T>::value;
+struct is_specialization_of<Templated<Ts...>, Templated> : std::true_type {};
+template <typename T, template <typename...> typename Templated>
+concept specialization_of = is_specialization_of<T, Templated>::value;
 template <typename V, typename T>
 struct is_constructible_from_tuple : std::false_type {};
 template <typename T, typename... Args>
@@ -50,12 +50,15 @@ concept type_id_view = requires(R r) {
     { std::same_as<std::ranges::range_value_t<R>, type_system::TypeId> };
 };
 template <typename B>
-concept is_bundle = requires(B&& b) {
+concept is_bundle = requires(B& b) {
     {
-        Bundle<B>::write(std::forward<B>(b), std::declval<std::span<void*>>())
+        Bundle<std::decay_t<B>>::write(b, std::declval<std::span<void*>>())
     } -> std::same_as<size_t>;  // return number of written components
-    { Bundle<B>::type_ids(std::declval<const type_system::TypeRegistry&>()) } -> type_id_view;
-    { Bundle<B>::register_components(std::declval<const type_system::TypeRegistry&>(), std::declval<Components&>()) };
+    { Bundle<std::decay_t<B>>::type_ids(std::declval<const type_system::TypeRegistry&>()) } -> type_id_view;
+    {
+        Bundle<std::decay_t<B>>::register_components(std::declval<const type_system::TypeRegistry&>(),
+                                                     std::declval<Components&>())
+    };
 };
 }  // namespace bundle
 
@@ -201,16 +204,17 @@ struct Bundles {
     }
     template <bundle::is_bundle T>
     BundleId register_info(const type_system::TypeRegistry& type_registry, Components& components, Storage& storage) {
-        auto type_id = type_registry.type_id<std::decay_t<T>>();
+        using type   = std::decay_t<T>;
+        auto type_id = type_registry.type_id<type>();
         if (auto it = _bundle_ids.find(type_id); it != _bundle_ids.end()) {
             // already registered
             return it->second;
         }
-        Bundle<T>::register_components(type_registry, components);
+        Bundle<type>::register_components(type_registry, components);
         BundleId new_id = static_cast<BundleId>(_bundle_infos.size());
         auto info =
-            BundleInfo::create(meta::type_id<T>().name(), storage, components,
-                               Bundle<T>::type_ids(type_registry) | std::ranges::to<std::vector<TypeId>>(), new_id);
+            BundleInfo::create(meta::type_id<type>().name(), storage, components,
+                               Bundle<type>::type_ids(type_registry) | std::ranges::to<std::vector<TypeId>>(), new_id);
         _bundle_infos.emplace_back(std::move(info));
         return new_id;
     }
@@ -218,12 +222,13 @@ struct Bundles {
     BundleId register_contributed_info(const type_system::TypeRegistry& type_registry,
                                        Components& components,
                                        Storage& storage) {
-        auto type_id = type_registry.type_id<std::decay_t<T>>();
+        using type   = std::decay_t<T>;
+        auto type_id = type_registry.type_id<type>();
         if (auto it = _contributed_bundle_ids.find(type_id); it != _contributed_bundle_ids.end()) {
             // already registered
             return it->second;
         }
-        BundleId explicit_id = register_info<T>(type_registry, components, storage);
+        BundleId explicit_id = register_info<type>(type_registry, components, storage);
         BundleId dyn_id      = init_dynamic_info(
             storage, components, _bundle_infos[explicit_id].all_components() | std::ranges::to<std::vector>());
         _contributed_bundle_ids.emplace(type_id, dyn_id);
