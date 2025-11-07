@@ -3,8 +3,10 @@
 #include <epix/core.hpp>
 
 // include volk after core.hpp, cause it will try to introduce macros that conflict with stl.
+#ifdef EPIX_USE_VOLK
 #include <volk.h>
 #define VULKAN_HPP_DISPATCH_LOADER_DYNAMIC 1
+#endif
 #include <vulkan/vulkan.hpp>
 // include vulkan before volk
 #include <nvrhi/nvrhi.h>

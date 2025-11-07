@@ -11,3 +11,21 @@
 #include "render/view.hpp"
 #include "render/vulkan.hpp"
 #include "render/window.hpp"
+
+namespace epix::render {
+struct RenderPlugin {
+    int validation = 0;
+    /**
+     * @brief Set the validation level for the render plugin.
+     * 0 - No validation
+     * 1 - Nvrhi validation
+     * 2 - Vulkan validation layers
+     * @param level the validation level to set
+     */
+    RenderPlugin& set_validation(int level = 0);
+    void build(epix::App&);
+    void finish(epix::App&);
+    void finalize(epix::App&);
+};
+void render_system(World& world);
+}  // namespace epix::render

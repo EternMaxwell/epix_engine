@@ -1,3 +1,4 @@
+#include "epix/render/graph.hpp"
 #include "epix/render/graph/node.hpp"
 
 namespace epix::render::graph {
@@ -45,6 +46,12 @@ const Edge* Edges::get_output_slot_edge(size_t index) const {
     auto iter = std::find_if(m_output_edges.begin(), m_output_edges.end(),
                              [index](const Edge& e) { return e.is_slot_edge() && e.output_index == index; });
     return iter != m_output_edges.end() ? &(*iter) : nullptr;
+}
+
+void GraphInputNode::run(GraphContext& graph, RenderContext&, World&) {
+    for (auto&& [index, value] : std::views::enumerate(graph.inputs())) {
+        graph.set_output((uint32_t)index, value);
+    }
 }
 
 }  // namespace epix::render::graph

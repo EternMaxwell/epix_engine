@@ -119,9 +119,9 @@ struct GraphInputNode : public Node {
     GraphInputNode(std::span<const SlotInfo> inputs) : m_inputs(inputs.begin(), inputs.end()) {}
     std::vector<SlotInfo> inputs() override { return m_inputs; }
     std::vector<SlotInfo> outputs() override { return m_inputs; }
-    void run(GraphContext& graph, RenderContext& ctx, World& world) override;
+    void run(GraphContext& graph, RenderContext&, World&) override;
 };
 struct EmptyNode : public Node {
-    void run(GraphContext& graph, RenderContext& ctx, World& world) override {}
+    void run(GraphContext&, RenderContext&, World&) override {}
 };
 }  // namespace epix::render::graph

@@ -1,5 +1,9 @@
 #include "epix/render/vulkan.hpp"
 
+#ifdef EPIX_USE_VOLK
+VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE
+#endif
+
 using namespace nvrhi;
 
 class DeviceWrapper : public RefCounter<IDevice> {
