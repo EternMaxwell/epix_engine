@@ -41,6 +41,8 @@ void RenderPlugin::build(epix::App& app) {
     app.add_plugins(epix::render::window::WindowRenderPlugin{});
     app.add_plugins(epix::render::camera::CameraPlugin{});
     app.add_plugins(epix::render::view::ViewPlugin{});
+    app.add_plugins(epix::render::ShaderPlugin{});
+    app.add_plugins(epix::render::PipelineServerPlugin{});
 }
 void RenderPlugin::finish(epix::App& app) {
     spdlog::info("[render] Creating vulkan resources.");
