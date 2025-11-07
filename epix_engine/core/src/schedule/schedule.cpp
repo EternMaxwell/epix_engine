@@ -274,7 +274,8 @@ void Schedule::execute(SystemDispatcher& dispatcher, ExecuteConfig config) {
                     if (std::holds_alternative<system::ValidateParamError>(error)) {
                         auto&& param_error = std::get<system::ValidateParamError>(error);
                         spdlog::error("[schedule] parameter validation error at system '{}', type: '{}', msg: {}",
-                                         cache->nodes[index].node->system->name(), param_error.param_type.short_name(), param_error.message);
+                                         cache->nodes[index].node->system->name(), param_error.param_type.short_name(),
+                                         param_error.message);
                     } else if (std::holds_alternative<system::SystemException>(error)) {
                         auto&& expection = std::get<system::SystemException>(error);
                         try {
@@ -435,7 +436,15 @@ void Schedule::execute(SystemDispatcher& dispatcher, ExecuteConfig config) {
             })
             .wait();
     } else {
-        dispatcher.wait();
+        std::vector<std::shared_ptr<Node>> to_apply;
+        to_apply.reserve(exec_state.finished_nodes.size());
+        std::ranges::for_each(exec_state.finished_nodes.iter_ones() | std::views::transform([&](size_t index) {
+                                  return cache->nodes[index].node;
+                              }) | std::views::filter([&](auto&& node) {
+                                  return ((bool)node->system) && node->system.get()->is_deferred();
+                              }),
+                              [&](auto&& node) { to_apply.push_back(node); });
+        this->pending_applies = std::move(to_apply);
     }
 
     if (exec_state.remaining_count > 0) {
@@ -469,6 +478,17 @@ void Schedule::execute(SystemDispatcher& dispatcher, ExecuteConfig config) {
                                   std::views::transform([&](size_t index) { return cache->nodes[index].node->label; }),
                               [&](const SystemSetLabel& label) { nodes.erase(label); });
         this->cache.reset();  // invalidate cache
+    }
+}
+
+void Schedule::apply_deferred(World& world) {
+    if (pending_applies) {
+        for (auto&& node : *pending_applies) {
+            if (node->system && node->system->is_deferred()) {
+                node->system->apply_deferred(world);
+            }
+        }
+        pending_applies.reset();
     }
 }
 

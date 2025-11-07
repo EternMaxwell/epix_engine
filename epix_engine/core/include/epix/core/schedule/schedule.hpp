@@ -203,13 +203,15 @@ SetConfig make_sets(Ts&&... ts)
     }
 }
 struct ExecuteConfig {
-    bool apply_direct   = false;  // should call System::apply right after System::run or at the end of the schedule
-    bool queue_deferred = false;  // call System::queue for deferred systems instead of apply at the end
-    bool run_once       = false;  // systems in this schedule will only run once and be removed
+    bool apply_direct    = false;  // should call System::apply right after System::run or at the end of the schedule
+    bool queue_deferred  = false;  // call System::queue for deferred systems instead of apply at the end
+    bool handle_deferred = true;   // whether to handle deferred systems in this schedule
+    bool run_once        = false;  // systems in this schedule will only run once and be removed
 
-    bool is_apply_direct() const { return apply_direct && !queue_deferred; }
-    bool is_queue_deferred() const { return queue_deferred; }
-    bool is_apply_end() const { return !apply_direct && !queue_deferred; }
+    bool is_defer_handled() const { return handle_deferred; }
+    bool is_apply_direct() const { return handle_deferred && apply_direct; }
+    bool is_queue_deferred() const { return handle_deferred && queue_deferred && !apply_direct; }
+    bool is_apply_end() const { return handle_deferred && !apply_direct && !queue_deferred; }
 };
 struct Schedule {
    private:
@@ -217,6 +219,8 @@ struct Schedule {
     std::unordered_map<SystemSetLabel, std::shared_ptr<Node>> nodes;
     std::shared_ptr<ScheduleCache> cache;
     ExecuteConfig _default_execute_config;
+
+    std::optional<std::vector<std::shared_ptr<Node>>> pending_applies;
 
     /// Add sets and systems in config to the schedule, replace if already exists
     void add_config(SetConfig config, bool accept_system = true) {
@@ -302,6 +306,7 @@ struct Schedule {
     void initialize_systems(World& world, bool force = false);
     void execute(SystemDispatcher& dispatcher) { execute(dispatcher, _default_execute_config); }
     void execute(SystemDispatcher& dispatcher, ExecuteConfig config);
+    void apply_deferred(World& world);
 };
 static_assert(std::constructible_from<Schedule, Schedule&&>);
 }  // namespace epix::core::schedule
