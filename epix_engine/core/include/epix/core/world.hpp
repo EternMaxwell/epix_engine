@@ -55,6 +55,14 @@ struct World {
     Tick last_change_tick() const { return _last_change_tick; }
     CommandQueue& command_queue() { return _command_queue; }
 
+    void clear_entities() {
+        _entities.clear();
+        _archetypes.clear_entities();
+        _storage.tables.clear();
+        _storage.sparse_sets.clear_entities();
+    }
+    void clear_resources() { _storage.resources.clear(); }
+
     template <typename... Args>
     EntityWorldMut spawn(Args&&... args)
         requires((std::constructible_from<std::decay_t<Args>, Args> || bundle::is_bundle<Args>) && ...);

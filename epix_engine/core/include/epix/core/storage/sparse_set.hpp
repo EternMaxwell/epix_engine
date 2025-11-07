@@ -240,7 +240,11 @@ struct SparseSets {
             .get();
     }
 
-    void clear(this SparseSets& self) { self.sets.clear(); }
+    void clear_entities(this SparseSets& self) {
+        for (auto&& [_, set] : self.sets.iter_mut()) {
+            set.clear();
+        }
+    }
     void check_change_ticks(this SparseSets& self, Tick tick) {
         for (auto&& [_, set] : self.sets.iter_mut()) {
             set.check_change_ticks(tick);

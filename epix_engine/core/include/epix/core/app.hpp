@@ -93,10 +93,11 @@ struct AppRunner {
 };
 struct App {
    public:
-    App(const AppLabel& label                             = AppLabel::from_type<App>(),
-        std::shared_ptr<std::atomic<uint32_t>> _world_ids = std::make_shared<std::atomic<uint32_t>>(0))
+    App(const AppLabel& label                            = AppLabel::from_type<App>(),
+        std::shared_ptr<std::atomic<uint32_t>> world_ids = std::make_shared<std::atomic<uint32_t>>(0))
         : _label(label),
-          _world(std::make_unique<World>(_world_ids->fetch_add(1))),
+          _world(std::make_unique<World>(world_ids->fetch_add(1))),
+          _world_ids(world_ids),
           _world_mutex(std::make_unique<std::recursive_mutex>()) {}
     App(const App&)            = delete;
     App(App&&)                 = default;
