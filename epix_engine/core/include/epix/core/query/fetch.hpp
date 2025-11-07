@@ -24,7 +24,9 @@ namespace epix::core::query {
  */
 template <typename... Ts>
     requires(valid_world_query<WorldQuery<Ts>> && ...)
-struct Item;
+struct Item : std::tuple<typename QueryData<Ts>::Item...> {
+    using type = std::tuple<Ts...>;
+};
 
 // Item itself is also a valid_world_query
 template <typename... Ts>
