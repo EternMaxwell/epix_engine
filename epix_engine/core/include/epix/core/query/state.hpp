@@ -53,14 +53,18 @@ struct QueryState {
                 new_archetype_internal(archetype);
             }
         } else {
-            auto&& [id, potential] =
-                std::ranges::min(_component_access.required().iter_ones() | std::views::transform([&](TypeId id) {
-                                     return std::make_pair(id, std::addressof(world.archetypes().by_component.at(id)));
-                                 }),
-                                 {}, [](auto&& pair) { return pair.second->size(); });
-            for (auto&& [id, _] : *potential) {
-                if (id.get() >= _archetype_version) {
-                    new_archetype_internal(world.archetypes().get(id).value().get());
+            auto rng = _component_access.required().iter_ones() |
+                       std::views::filter([&](TypeId id) { return world.archetypes().by_component.contains(id); }) |
+                       std::views::transform([&](TypeId id) {
+                           return std::make_pair(id, std::addressof(world.archetypes().by_component.at(id)));
+                       });
+            auto iter_min = std::ranges::min_element(rng, {}, [](auto&& pair) { return pair.second->size(); });
+            if (iter_min != rng.end()) {
+                auto&& [id, potential] = *iter_min;
+                for (auto&& [id, _] : *potential) {
+                    if (id.get() >= _archetype_version) {
+                        new_archetype_internal(world.archetypes().get(id).value().get());
+                    }
                 }
             }
         }
