@@ -120,14 +120,14 @@ Shader ShaderLoaderSPIRV::load(const std::filesystem::path& path, epix::assets::
 }
 
 void ShaderPlugin::build(epix::App& app) {
-    if (auto asset_plugin = app.get_plugin_mut<epix::assets::AssetPlugin>()) {
-        asset_plugin->get()
-            .register_asset<Shader>()
-            .register_loader<ShaderLoaderGLSL>()
-            .register_loader<ShaderLoaderHLSL>()
-            .register_loader<ShaderLoaderSPIRV>();
-    }
-    app.add_plugins(assets::ExtractAssetPlugin<Shader>{});
+    app.add_plugins(epix::assets::AssetPlugin{})
+        .plugin_scope([](epix::assets::AssetPlugin& asset_plugin) {
+            asset_plugin.register_asset<Shader>()
+                .register_loader<ShaderLoaderGLSL>()
+                .register_loader<ShaderLoaderHLSL>()
+                .register_loader<ShaderLoaderSPIRV>();
+        })
+        .add_plugins(assets::ExtractAssetPlugin<Shader>{});
 }
 
 Shader Shader::hlsl(std::string code) {
