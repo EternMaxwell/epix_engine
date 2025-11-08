@@ -1,3 +1,5 @@
+#include <spdlog/spdlog.h>
+
 #include "epix/core/app/schedules.hpp"
 
 namespace epix::core::app {
@@ -11,6 +13,7 @@ std::optional<std::reference_wrapper<const schedule::Schedule>> Schedules::get_s
 }
 schedule::Schedule& Schedules::add_schedule(schedule::Schedule&& schedule) {
     if (auto it = _schedules.find(schedule.label()); it != _schedules.end()) {
+        spdlog::warn("Schedule '{}' already exists, it will be overwritten!", schedule.label().to_string());
         it->second = std::move(schedule);
         return it->second;
     } else {
