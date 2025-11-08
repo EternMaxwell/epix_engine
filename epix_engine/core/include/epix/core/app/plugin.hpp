@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <concepts>
 #include <memory>
+#include <ratio>
 #include <stdexcept>
 #include <unordered_map>
 
@@ -11,10 +12,16 @@
 
 namespace epix::core::app {
 template <typename T>
-    requires requires(T t, App& app) {
-        { t.build(app) } -> std::same_as<void>;
-    } || std::invocable<T, App&>
+concept is_plugin = requires(T t, App& app) {
+    { t.build(app) } -> std::same_as<void>;
+} || requires(T t, App& app) {
+    { t.finish(app) } -> std::same_as<void>;
+} || std::invocable<T, App&>;
+template <is_plugin T>
 struct PluginTraits {
+    static constexpr bool has_build = requires(T t, App& app) {
+        { t.build(app) } -> std::same_as<void>;
+    };
     static constexpr bool has_finish = requires(T t, App& app) {
         { t.finish(app) } -> std::same_as<void>;
     };
@@ -26,7 +33,7 @@ struct PluginTraits {
     void build(T& instance, App& app) {
         if constexpr (callable) {
             instance(app);
-        } else {
+        } else if constexpr (has_build) {
             instance.build(app);
         }
     }
@@ -47,10 +54,7 @@ struct PluginBase {
     virtual void finish(App& app)   = 0;
     virtual void finalize(App& app) = 0;
 };
-template <typename T>
-    requires requires(T t, App& app) {
-        { t.build(app) } -> std::same_as<void>;
-    } || std::invocable<T, App&>
+template <is_plugin T>
 struct PluginWrapper : PluginBase {
    public:
     template <typename... Args>
@@ -80,13 +84,13 @@ struct Plugins {
     Plugins& operator=(Plugins&&)      = default;
 
     template <typename T, typename... Args>
-        requires std::constructible_from<T, Args...>
+        requires std::constructible_from<T, Args...> && is_plugin<T>
     void add_plugin(App& app, Args&&... args) {
         add_plugin_internal<T>(app, std::forward<Args>(args)...);
     }
     template <typename T>
     void add_plugin(App& app, T&& plugin)
-        requires std::constructible_from<std::decay_t<T>, T>
+        requires std::constructible_from<std::decay_t<T>, T> && is_plugin<std::decay_t<T>>
     {
         add_plugin_internal<std::decay_t<T>>(app, std::forward<T>(plugin));
     }
@@ -129,7 +133,7 @@ struct Plugins {
 
    private:
     template <typename T, typename... Args>
-        requires std::constructible_from<T, Args...>
+        requires std::constructible_from<T, Args...> && is_plugin<T>
     void add_plugin_internal(App& app, Args&&... args) {
         if (built) {
             throw std::runtime_error("Cannot add new plugins after build.");
