@@ -30,9 +30,8 @@ void WindowRenderPlugin::build(epix::App& app) {
     render_app.world_mut().insert_resource(WindowSurfaces{});
     render_app.add_systems(epix::render::ExtractSchedule,
                            epix::into(extract_windows).set_names(std::array{"extract windows"}));
-    render_app.add_systems(
-        epix::render::Render,
-        epix::into(create_surfaces).set_names(std::array{"create_surfaces"}).before(prepare_windows));
+    render_app.add_systems(epix::render::Render,
+                           epix::into(create_surfaces).set_name("create_surfaces").before(prepare_windows));
     render_app.add_systems(
         epix::render::Render,
         epix::into(prepare_windows).set_name("prepare windows").in_set(epix::render::RenderSet::ManageViews));

@@ -91,7 +91,10 @@ void view::ViewPlugin::build(App& app) {
                                                .after(window::prepare_windows)
                                                .in_set(RenderSet::ManageViews)
                                                .set_names(std::array{"prepare view targets", "create view depths"}));
-        sub_app->get().add_systems(Render, into(clear_cache).after(RenderSet::ManageViews));
-        sub_app->get().add_systems(Render, into(recycle_depth).after(RenderSet::Render).before(RenderSet::Cleanup));
+        sub_app->get().add_systems(Render,
+                                   into(clear_cache).after(RenderSet::ManageViews).set_name("clear view depth cache"));
+        sub_app->get().add_systems(
+            Render,
+            into(recycle_depth).after(RenderSet::Render).before(RenderSet::Cleanup).set_name("recycle view depths"));
     }
 }
