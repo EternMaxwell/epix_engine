@@ -51,7 +51,7 @@ struct SystemParam<app::Extract<T>> : SystemParam<T> {
         return Base::validate_param(state, meta, world.resource_mut<app::ExtractedWorld>().world);
     }
     static Item get_param(State& state, const SystemMeta& meta, World& world, Tick tick) {
-        return Item(Base::get_param(state, meta, world, tick));
+        return Item(Base::get_param(state, meta, world.resource_mut<app::ExtractedWorld>().world, tick));
     }
 };
 static_assert(valid_system_param<SystemParam<app::Extract<ResMut<int>>>>);
