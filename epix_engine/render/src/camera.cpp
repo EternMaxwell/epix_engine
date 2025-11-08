@@ -143,6 +143,7 @@ void CameraDriverNode::run(graph::GraphContext& graph, graph::RenderContext& ren
 void CameraPlugin::build(App& app) {
     app.add_plugins(CameraProjectionPlugin<Projection>{}, CameraProjectionPlugin<OrthographicProjection>{},
                     CameraProjectionPlugin<PerspectiveProjection>{}, ExtractResourcePlugin<ClearColor>{});
+    app.world_mut().insert_resource(ClearColor{0.05f, 0.05f, 0.05f, 1.0f});
     if (auto sub_app = app.get_sub_app_mut(Render)) {
         sub_app->get().world_mut().insert_resource(ClearColor{0.05f, 0.05f, 0.05f, 1.0f});
         sub_app->get().add_systems(ExtractSchedule, into(extract_cameras).set_name("extract cameras"));
