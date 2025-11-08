@@ -224,7 +224,7 @@ void PipelineServer::process_queued(ResMut<PipelineServer> server, Res<assets::R
     }
 }
 
-void PipelineServerPlugin::build(epix::App& app) {
+void PipelineServerPlugin::finish(epix::App& app) {
     if (auto renderApp = app.get_sub_app_mut(Render)) {
         renderApp->get().world_mut().init_resource<PipelineServer>();
         renderApp->get().add_systems(Render, into(PipelineServer::process_queued)

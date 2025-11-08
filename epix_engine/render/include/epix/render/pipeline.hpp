@@ -146,6 +146,6 @@ struct PipelineServer {
 };
 
 struct PipelineServerPlugin {
-    void build(epix::App& app);
+    void finish(epix::App& app);
 };
 }  // namespace epix::render
