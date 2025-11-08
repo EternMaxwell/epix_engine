@@ -15,6 +15,36 @@
 
 namespace epix::core::schedule {
 
+void Schedule::add_config(SetConfig config, bool accept_system) {
+    // create node
+    if (config.label) {
+        auto node = std::make_shared<Node>(*config.label);
+        if (accept_system && config.system) node->system = std::move(config.system);
+        node->conditions    = std::move(config.conditions);
+        node->edges         = std::move(config.edges);
+        bool contain_set    = contains_set(*config.label);
+        bool contain_system = contains_system(*config.label);
+        if (contain_system && accept_system) {
+            // fully replace.
+            nodes.at(*config.label) = node;
+        } else if (contain_set) {
+            // merge edges.
+            if (contain_system) {
+                std::swap(node, nodes.at(*config.label));
+            }
+            node->edges.merge(nodes.at(*config.label)->edges);
+            node->conditions.insert_range(node->conditions.end(),
+                                          std::move(nodes.at(*config.label)->conditions) | std::views::as_rvalue);
+            nodes.at(*config.label) = node;
+        } else {
+            nodes.emplace(*config.label, node);
+        }
+    }
+    std::ranges::for_each(config.sub_configs,
+                          [&](SetConfig& sub_config) { add_config(std::move(sub_config), accept_system); });
+    cache.reset();
+}
+
 std::expected<void, SchedulePrepareError> Schedule::prepare(bool check_error) {
     // complete edges.
     for (auto& [label, pnode] : nodes) {

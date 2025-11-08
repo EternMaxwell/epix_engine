@@ -203,7 +203,7 @@ struct App {
     /// the plugin will be called before running, and finalize function will be called after running.
     template <typename T, typename... Args>
     App& add_plugin(Args&&... args)
-        requires std::constructible_from<T, Args...>
+        requires std::constructible_from<T, Args...> && app::is_plugin<T>
     {
         resource_scope([&](app::Plugins& plugins) { plugins.add_plugin<T>(*this, std::forward<Args>(args)...); });
         return *this;
@@ -212,7 +212,7 @@ struct App {
     /// function of each plugin will be called before running, and the finalize function will be called after running.
     template <typename... Ts>
     App& add_plugins(Ts&&... ts)
-        requires(std::constructible_from<std::decay_t<Ts>, Ts> && ...)
+        requires((std::constructible_from<std::decay_t<Ts>, Ts> && app::is_plugin<std::decay_t<Ts>>) && ...)
     {
         resource_scope([&](app::Plugins& plugins) { (plugins.add_plugin(*this, std::forward<Ts>(ts)), ...); });
         return *this;

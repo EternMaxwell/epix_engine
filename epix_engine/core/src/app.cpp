@@ -2,6 +2,10 @@
 #include "epix/core/app/app_sche.hpp"
 #include "epix/core/app/loop.hpp"
 
+#ifdef EPIX_ENABLE_TRACY
+#include <tracy/Tracy.hpp>
+#endif
+
 namespace epix::core {
 
 struct DefaultRunner : public AppRunner {
@@ -94,7 +98,7 @@ App& App::configure_sets(app::ScheduleInfo schedule, schedule::SetConfig&& confi
 App& App::configure_sets(schedule::SetConfig&& config) {
     resource_scope([&](app::Schedules& schedules, World& world) mutable {
         for (auto&& [label, schedule] : schedules.iter_mut()) {
-            schedule.configure_sets(config);
+            schedule.configure_sets(config.clone());
         }
     });
     return *this;
@@ -227,7 +231,11 @@ void App::run() {
     resource_scope([&](app::Plugins& plugins) { plugins.finish_all(*this); });
     spdlog::info("[app] App running. - {}", _label.to_string());
     if (!runner) throw std::runtime_error("No runner set for App.");
-    while (runner->step(*this)) {}
+    while (runner->step(*this)) {
+#ifdef EPIX_ENABLE_TRACY
+        FrameMark;
+#endif
+    }
     spdlog::info("[app] App exiting. - {}", _label.to_string());
     runner->exit(*this);
     resource_scope([&](app::Plugins& plugins) { plugins.finalize_all(*this); });

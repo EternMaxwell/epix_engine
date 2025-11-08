@@ -20,6 +20,13 @@ struct Edges {
     std::unordered_set<SystemSetLabel> successors;
     std::unordered_set<SystemSetLabel> parents;
     std::unordered_set<SystemSetLabel> children;
+
+    void merge(Edges other) {
+        depends.insert_range(std::move(other.depends));
+        successors.insert_range(std::move(other.successors));
+        parents.insert_range(std::move(other.parents));
+        children.insert_range(std::move(other.children));
+    }
 };
 struct Node {
     Node(const SystemSetLabel& label) : label(label) {}
@@ -126,6 +133,22 @@ struct SetConfig {
         return std::forward<T>(self);
     }
 
+    SetConfig clone() const {
+        SetConfig config;
+        config.label = label;
+        if (system) config.system.reset(system->clone());
+        config.conditions.insert_range(
+            config.conditions.end(),
+            conditions | std::views::transform([](const system::SystemUnique<std::tuple<>, bool>& cond) {
+                return system::SystemUnique<std::tuple<>, bool>(cond->clone());
+            }));
+        config.edges = edges;
+        config.sub_configs.insert_range(
+            config.sub_configs.end(),
+            sub_configs | std::views::transform([](const SetConfig& sub_config) { return sub_config.clone(); }));
+        return std::move(config);
+    }
+
    private:
     void before(const SetConfig& other) {
         if (other.label) before(*other.label);
@@ -222,25 +245,10 @@ struct Schedule {
 
     std::optional<std::vector<std::shared_ptr<Node>>> pending_applies;
 
-    /// Add sets and systems in config to the schedule, replace if already exists
-    void add_config(SetConfig config, bool accept_system = true) {
-        // create node
-        if (config.label) {
-            auto node = std::make_shared<Node>(*config.label);
-            if (accept_system && config.system) node->system = std::move(config.system);
-            node->conditions = std::move(config.conditions);
-            node->edges      = std::move(config.edges);
-            if (auto it = nodes.find(*config.label); it != nodes.end()) {
-                // replace existing node
-                nodes.at(*config.label) = node;
-            } else {
-                nodes.emplace(*config.label, node);
-            }
-        }
-        std::ranges::for_each(config.sub_configs,
-                              [&](SetConfig& sub_config) { add_config(std::move(sub_config), accept_system); });
-        cache.reset();
-    }
+    /// Add sets and systems in config to the schedule. If accept_system is false, this only adds the configured edges
+    /// and conditions to the target node, and remain the existing config if any.
+    /// If accept_system is true, the config will be replaced if contains system, or merged if only contains set.
+    void add_config(SetConfig config, bool accept_system = true);
 
    public:
     Schedule(const ScheduleLabel& label) : _label(label) {}
@@ -264,7 +272,18 @@ struct Schedule {
 
     /// Check if the schedule contains a set with the given label.
     bool contains_set(const SystemSetLabel& label) const { return nodes.contains(label); }
+    /// Check if the schedule contains a set with the given label and has an associated system.
+    bool contains_system(const SystemSetLabel& label) const {
+        if (auto it = nodes.find(label); it != nodes.end()) {
+            return (bool)it->second->system;
+        }
+        return false;
+    }
+    /// Add systems and sets in config to the schedule. Old config will be replaced if contains system, or merged if
+    /// only contains set.
     void add_systems(SetConfig&& config) { add_config(std::move(config), true); }
+    /// Configure sets in config to the schedule. The existing systems will remain, existing edges and conditions will
+    /// be updated.
     void configure_sets(SetConfig&& config) { add_config(std::move(config), false); }
     void add_systems(SetConfig& config) { add_config(std::move(config), true); }
     void configure_sets(SetConfig& config) { add_config(std::move(config), false); }
