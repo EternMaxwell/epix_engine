@@ -81,7 +81,7 @@ struct CachedExtractedAssets {
 };
 
 template <RenderAssetImpl T>
-void extract_assets(Commands commands,
+void extract_assets(ResMut<CachedExtractedAssets<T>> cache,
                     Extract<ResMut<epix::assets::Assets<T>>> assets,
                     Extract<EventReader<epix::assets::AssetEvent<T>>> events) {
     std::vector<epix::assets::AssetId<T>> changed_ids;
@@ -118,7 +118,8 @@ void extract_assets(Commands commands,
         }
     }
 
-    commands.insert_resource(CachedExtractedAssets<T>{std::move(extracted_assets), std::move(removed)});
+    cache->extracted_assets = std::move(extracted_assets);
+    cache->removed          = std::move(removed);
 
     if (!errors.empty()) {
         std::stringstream ss;
@@ -130,8 +131,7 @@ void extract_assets(Commands commands,
 }
 
 template <RenderAssetImpl T>
-void process_render_assets(Commands commands,
-                           typename RenderAsset<T>::Param param,
+void process_render_assets(typename RenderAsset<T>::Param param,
                            ResMut<RenderAssets<T>> render_assets,
                            ResMut<CachedExtractedAssets<T>> extracted_assets) {
     RenderAsset<T> render_asset_impl;
@@ -147,7 +147,8 @@ void process_render_assets(Commands commands,
             exceptions.emplace_back(id, std::current_exception());
         }
     }
-    commands.remove_resource<CachedExtractedAssets<T>>();
+    extracted_assets->extracted_assets.clear();
+    extracted_assets->removed.clear();
     if (!exceptions.empty()) {
         // Handle exceptions
         std::stringstream ss;
@@ -174,6 +175,7 @@ struct ExtractAssetPlugin {
     void build(App& app) {
         if (auto render_app = app.get_sub_app_mut(Render)) {
             render_app->get().world_mut().init_resource<RenderAssets<T>>();
+            render_app->get().world_mut().init_resource<CachedExtractedAssets<T>>();
             render_app->get().configure_sets(sets(ExtractAssetSet::Extract, ExtractAssetSet::Process).chain());
             render_app->get().add_systems(
                 ExtractSchedule,
