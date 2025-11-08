@@ -44,5 +44,5 @@ using events::WindowResized;
 }  // namespace epix::window
 
 namespace epix::render {
-struct Render; // forward declare for render subapp.
+struct RenderT; // forward declare for render subapp.
 }

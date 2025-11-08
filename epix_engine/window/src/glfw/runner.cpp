@@ -52,8 +52,9 @@ bool GLFWRunner::step(App& app) {
     std::optional<int> exit_code;
     exit_code = app.system_dispatcher()->dispatch_system(*check_exit, {}, exit_access).get().value_or(-1);
     if (render_app_future) render_app_future->wait();
+    render_app_future.reset();
     if (exit_code.has_value()) return false;
-    if (auto render_app = app.get_sub_app_mut(core::AppLabel::from_type<render::Render>())) {
+    if (auto render_app = app.get_sub_app_mut(core::AppLabel::from_type<render::RenderT>())) {
         render_app.value().get().extract(app);
         render_app_future = render_app.value().get().update();
     }
