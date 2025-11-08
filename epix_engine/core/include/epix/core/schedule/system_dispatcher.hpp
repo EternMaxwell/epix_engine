@@ -110,7 +110,8 @@ struct SystemDispatcher {
         using BS::thread_pool<BS::tp::none>::thread_pool;
     };
     BS::thread_pool<BS::tp::none>& get_thread_pool(size_t thread_count) {
-        return world->resource_or_emplace<ThreadPoolWrapper>(thread_count);
+        return world->resource_or_emplace<ThreadPoolWrapper>(thread_count,
+                                                             []() { BS::this_thread::set_os_thread_name("system"); });
     }
 
    public:
