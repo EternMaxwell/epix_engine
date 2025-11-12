@@ -4,6 +4,7 @@ project(stbimage LANGUAGES CXX)
 
 file(GLOB MODULE_SOURCES
     "src/stb_vorbis.c"
+    "stb.c"
 )
 
 add_library(stbimage STATIC ${MODULE_SOURCES})

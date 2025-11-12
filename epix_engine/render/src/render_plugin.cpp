@@ -3,7 +3,6 @@
 #include <stacktrace>
 
 #include "epix/render.hpp"
-#include "epix/render/extract.hpp"
 
 using namespace epix;
 using namespace epix::render;
@@ -51,6 +50,8 @@ void RenderPlugin::build(epix::App& app) {
     app.add_plugins(epix::render::window::WindowRenderPlugin{});
     app.add_plugins(epix::render::camera::CameraPlugin{});
     app.add_plugins(epix::render::view::ViewPlugin{});
+    app.add_plugins(epix::image::ImagePlugin{});
+    app.add_plugins(epix::render::assets::ExtractAssetPlugin<epix::image::Image>{});
     app.add_plugins(epix::render::ShaderPlugin{});
     app.add_plugins(epix::render::PipelineServerPlugin{});
 }

@@ -4,6 +4,7 @@
 #include "render/camera.hpp"
 #include "render/extract.hpp"
 #include "render/graph.hpp"
+#include "render/image.hpp"
 #include "render/pipeline.hpp"
 #include "render/render_phase.hpp"
 #include "render/schedule.hpp"
