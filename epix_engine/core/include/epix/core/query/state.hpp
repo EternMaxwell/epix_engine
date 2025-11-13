@@ -94,6 +94,61 @@ struct QueryState {
         update_archetypes(world);
         return Query<D, F>(world, *this, last_run, this_run);
     }
+    Query<D, F> query(World& world) { return query_with_ticks(world, world.last_change_tick(), world.change_tick()); }
+    Query<D, F> query_manual_with_ticks(World& world, Tick last_run, Tick this_run) {
+        return Query<D, F>(world, *this, last_run, this_run);
+    }
+    Query<D, F> query_manual(World& world) {
+        return query_manual_with_ticks(world, world.last_change_tick(), world.change_tick());
+    }
+    QueryIter<D, F> iter_with_ticks(World& world, Tick last_run, Tick this_run) {
+        update_archetypes(world);
+        return create_iter(world, last_run, this_run);
+    }
+    QueryIter<D, F> iter(World& world) {
+        update_archetypes(world);
+        return create_iter(world, world.last_change_tick(), world.change_tick());
+    }
+    QueryIter<D, F> iter_manual_with_ticks(World& world, Tick last_run, Tick this_run) {
+        return create_iter(world, last_run, this_run);
+    }
+    QueryIter<D, F> iter_manual(World& world) {
+        return create_iter(world, world.last_change_tick(), world.change_tick());
+    }
+    typename AddOptional<typename QueryData<D>::Item>::type get_manual_with_ticks(World& world,
+                                                                                  Entity entity,
+                                                                                  Tick last_run,
+                                                                                  Tick this_run) {
+        update_archetypes(world);
+        return world.entities().get(entity).and_then(
+            [this, &world, entity, last_run, this_run](EntityLocation location) ->
+            typename AddOptional<typename QueryData<D>::Item>::type {
+                if (!contains_archetype(location.archetype_id)) return std::nullopt;
+                auto& archetype = world.archetypes().get(location.archetype_id).value().get();
+                auto fetch      = WorldQuery<D>::init_fetch(world, fetch_state(), last_run, this_run);
+                auto filter     = WorldQuery<F>::init_fetch(world, filter_state(), last_run, this_run);
+                auto& table     = world.storage_mut().tables.get_mut(archetype.table_id()).value().get();
+
+                WorldQuery<D>::set_archetype(fetch, fetch_state(), archetype, table);
+                WorldQuery<F>::set_archetype(filter, filter_state(), archetype, table);
+                if (!QueryFilter<F>::filter_fetch(filter, entity, location.table_idx)) return std::nullopt;
+                return QueryData<D>::fetch(fetch, entity, location.table_idx);
+            });
+    }
+    typename AddOptional<typename QueryData<D>::Item>::type get_with_ticks(World& world,
+                                                                           Entity entity,
+                                                                           Tick last_run,
+                                                                           Tick this_run) {
+        update_archetypes(world);
+        return get_manual_with_ticks(world, entity, last_run, this_run);
+    }
+    typename AddOptional<typename QueryData<D>::Item>::type get_manual(World& world, Entity entity) {
+        return get_manual_with_ticks(world, entity, world.last_change_tick(), world.change_tick());
+    }
+    typename AddOptional<typename QueryData<D>::Item>::type get(World& world, Entity entity) {
+        update_archetypes(world);
+        return get_manual_with_ticks(world, entity, world.last_change_tick(), world.change_tick());
+    }
 
    private:
     QueryState(WorldId world_id, WorldQuery<D>::State fetch_state, WorldQuery<F>::State filter_state)
