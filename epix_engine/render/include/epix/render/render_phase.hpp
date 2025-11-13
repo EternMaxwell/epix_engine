@@ -191,7 +191,7 @@ struct RenderPhase {
                 draw_function->draw(world, cmd, view, item);
             } else {
                 spdlog::warn("Draw function {} not found for item {:#x}. Skipping.",
-                             static_cast<uint32_t>(_item_draw_function(item)), _item_entity(item).index());
+                             static_cast<uint32_t>(_item_draw_function(item)), _item_entity(item).index);
             }
         }
     }
@@ -285,7 +285,8 @@ struct RenderCommandState {
     using view_query_t   = Query<typename RenderCommandInfo<R, P>::view_item>;
     using entity_query_t = Query<typename RenderCommandInfo<R, P>::entity_item>;
 
-    using param = core::system::SystemParam<core::system::ParamSet<view_query_t, entity_query_t, typename RenderCommandInfo<R, P>::system_param>>;
+    using param = core::system::SystemParam<
+        core::system::ParamSet<view_query_t, entity_query_t, typename RenderCommandInfo<R, P>::system_param>>;
     using state = typename param::State;
 
    private:
@@ -392,7 +393,7 @@ DrawFunctionId add_render_commands(DrawFunctions<P>& draw_functions) {
 }
 
 template <PhaseItem P>
-void sort_phase_items(Query<Item<Mut<RenderPhase<P>>>>& phases) {
+void sort_phase_items(Query<Item<RenderPhase<P>&>> phases) {
     for (auto&& [phase] : phases.iter()) {
         phase.sort();
     }

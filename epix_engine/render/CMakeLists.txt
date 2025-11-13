@@ -1,7 +1,7 @@
-file(GLOB_RECURSE MODULE_SOURCES CONFIGURE_DEPENDS "src/*.c" "src/*.cpp")
+file(GLOB_RECURSE RENDER_SOURCES CONFIGURE_DEPENDS "src/*.c" "src/*.cpp")
 list(APPEND MODULE_INCLUDES ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
-add_library(epix_render STATIC ${MODULE_SOURCES})
+add_library(epix_render STATIC ${RENDER_SOURCES})
 epix_parse_options(epix_render)
 target_include_directories(epix_render PUBLIC ${MODULE_INCLUDES})
 target_link_libraries(epix_render PUBLIC epix_core)
@@ -14,6 +14,14 @@ target_link_libraries(epix_render PUBLIC Vulkan-Headers)
 target_link_libraries(epix_render PUBLIC volk)
 target_link_libraries(epix_render PUBLIC nvrhi)
 target_link_libraries(epix_render PUBLIC nvrhi_vk)
+
+file(GLOB_RECURSE CORE_GRAPH_SOURCES CONFIGURE_DEPENDS "src/*.c" "src/*.cpp")
+
+add_library(epix_core_graph STATIC ${CORE_GRAPH_SOURCES})
+epix_parse_options(epix_core_graph)
+target_include_directories(epix_core_graph PUBLIC ${MODULE_INCLUDES})
+target_link_libraries(epix_core_graph PUBLIC epix_core)
+target_link_libraries(epix_core_graph PUBLIC epix_render)
 
 ## --- tests: auto-discover ---
 # Recursively find all .cpp test sources under tests/ and create an executable + ctest entry
@@ -28,5 +36,6 @@ foreach(TEST_SRC IN LISTS TEST_SOURCES)
 
 	add_executable(${TEST_NAME} "${TEST_SRC}")
 	target_link_libraries(${TEST_NAME} PRIVATE epix_render)
+	target_link_libraries(${TEST_NAME} PRIVATE epix_core_graph)
 	add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
 endforeach()
