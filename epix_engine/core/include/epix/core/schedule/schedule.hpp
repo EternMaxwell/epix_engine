@@ -48,6 +48,7 @@ struct CachedNode {
     std::vector<size_t> children;
 };
 struct ScheduleCache {
+    std::optional<Tick> last_change_tick;
     std::vector<CachedNode> nodes;
     std::unordered_map<SystemSetLabel, size_t> node_map;
 };

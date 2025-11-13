@@ -268,6 +268,23 @@ void Schedule::execute(SystemDispatcher& dispatcher, ExecuteConfig config) {
     dispatcher.world_scope([this](World& world) { initialize_systems(world); }).wait();
     std::shared_ptr cache = this->cache;  // keep a copy to avoid being invalidated during execution
 
+    {
+        Tick change_tick = dispatcher.change_tick();
+        if (!cache->last_change_tick.has_value() ||
+            change_tick.relative_to(cache->last_change_tick.value()).get() >= Tick::max().get()) {
+            cache->last_change_tick = change_tick;
+            // check change tick for all systems
+            for (auto& [label, node] : nodes) {
+                if (node->system) {
+                    node->system->check_change_tick(change_tick);
+                }
+                for (auto& condition : node->conditions) {
+                    condition->check_change_tick(change_tick);
+                }
+            }
+        }
+    }
+
     ExecutionState exec_state{
         .running_count       = 0,
         .remaining_count     = cache->nodes.size(),
