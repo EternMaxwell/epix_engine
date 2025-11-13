@@ -53,6 +53,16 @@ struct World {
     Tick change_tick() const { return _change_tick->load(std::memory_order_relaxed); }
     Tick increment_change_tick() { return Tick(_change_tick->fetch_add(1, std::memory_order_relaxed)); }
     Tick last_change_tick() const { return _last_change_tick; }
+    void check_change_tick() {
+        auto change_tick = this->change_tick();
+        if (change_tick.relative_to(_last_change_tick).get() < Tick::max().get()) {
+            return;
+        }
+        storage_mut().tables.check_change_ticks(change_tick);
+        storage_mut().sparse_sets.check_change_ticks(change_tick);
+        storage_mut().resources.check_change_ticks(change_tick);
+        _last_change_tick = change_tick;
+    }
     CommandQueue& command_queue() { return _command_queue; }
 
     void clear_entities() {
