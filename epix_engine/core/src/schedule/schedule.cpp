@@ -270,8 +270,8 @@ void Schedule::execute(SystemDispatcher& dispatcher, ExecuteConfig config) {
 
     {
         Tick change_tick = dispatcher.change_tick();
-        if (!cache->last_change_tick.has_value() ||
-            change_tick.relative_to(cache->last_change_tick.value()).get() >= Tick::max().get()) {
+        if (cache->last_change_tick) cache->last_change_tick = change_tick;
+        if (change_tick.relative_to(cache->last_change_tick.value()).get() >= Tick::max().get()) {
             cache->last_change_tick = change_tick;
             // check change tick for all systems
             for (auto& [label, node] : nodes) {
