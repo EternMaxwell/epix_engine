@@ -143,6 +143,10 @@ struct SystemDispatcher {
      * @return std::unique_ptr<World> The owned world, or nullptr if not owned.
      */
     std::unique_ptr<World> release_world();
+    Tick change_tick() {
+        assert_world();
+        return world->change_tick();
+    }
 
     auto world_scope(std::invocable<World&> auto&& func, DispatchConfig config = {})
         -> std::future<
