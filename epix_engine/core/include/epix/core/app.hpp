@@ -110,6 +110,10 @@ struct App {
     }
 
     static App create();
+    App& then(std::invocable<App&> auto&& func) {
+        func(*this);
+        return *this;
+    }
 
     // === App Info and sub-apps ===
 
@@ -462,7 +466,10 @@ struct App {
     void extract(App& other);
     /// Set the extract function for the app. First argument is this app, second argument is the world extracted from
     /// the other app.
-    void set_extract_fn(std::move_only_function<void(App&, World&)> fn) { extract_fn = std::move(fn); }
+    App& set_extract_fn(std::move_only_function<void(App&, World&)> fn) {
+        extract_fn = std::move(fn);
+        return *this;
+    }
     /// Check if the app has a runner function set.
     bool has_runner() const { return static_cast<bool>(runner); }
     /// Set the runner function for the app. The function will be called when run() is called.
