@@ -50,6 +50,12 @@ struct Schedules {
     /// Iterate over all schedules with mutable access
     auto iter_mut() { return std::views::all(_schedules); }
 
+    void check_change_tick(Tick tick) {
+        for (auto&& [_, schedule] : _schedules) {
+            schedule.check_change_tick(tick);
+        }
+    }
+
    private:
     // schedule is movable, no need to use pointer
     std::unordered_map<schedule::ScheduleLabel, schedule::Schedule> _schedules;

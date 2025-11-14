@@ -251,6 +251,18 @@ void Schedule::initialize_systems(World& world, bool force) {
     }
 }
 
+void Schedule::check_change_tick(Tick change_tick) {
+    // check change tick for all systems
+    for (auto& [label, node] : nodes) {
+        if (node->system) {
+            if (node->system->initialized()) node->system->check_change_tick(change_tick);
+        }
+        for (auto& condition : node->conditions) {
+            if (condition->initialized()) condition->check_change_tick(change_tick);
+        }
+    }
+}
+
 void Schedule::execute(SystemDispatcher& dispatcher, ExecuteConfig config) {
     if (!cache) {
         auto prepare_result = prepare(
@@ -267,23 +279,6 @@ void Schedule::execute(SystemDispatcher& dispatcher, ExecuteConfig config) {
     // ? should we initialize systems here? or let caller assure systems are initialized?
     dispatcher.world_scope([this](World& world) { initialize_systems(world); }).wait();
     std::shared_ptr cache = this->cache;  // keep a copy to avoid being invalidated during execution
-
-    {
-        Tick change_tick = dispatcher.change_tick();
-        if (cache->last_change_tick) cache->last_change_tick = change_tick;
-        if (change_tick.relative_to(cache->last_change_tick.value()).get() >= Tick::max().get()) {
-            cache->last_change_tick = change_tick;
-            // check change tick for all systems
-            for (auto& [label, node] : nodes) {
-                if (node->system) {
-                    node->system->check_change_tick(change_tick);
-                }
-                for (auto& condition : node->conditions) {
-                    condition->check_change_tick(change_tick);
-                }
-            }
-        }
-    }
 
     ExecutionState exec_state{
         .running_count       = 0,

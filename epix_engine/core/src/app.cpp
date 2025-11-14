@@ -232,6 +232,10 @@ void App::run() {
     spdlog::info("[app] App running. - {}", _label.to_string());
     if (!runner) throw std::runtime_error("No runner set for App.");
     while (runner->step(*this)) {
+        world_mut().check_change_tick([&](Tick tick) {
+            auto res =
+                world_mut().resource_scope([&](app::Schedules& schedules) { schedules.check_change_tick(tick); });
+        });
 #ifdef EPIX_ENABLE_TRACY
         FrameMark;
 #endif

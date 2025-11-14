@@ -48,7 +48,6 @@ struct CachedNode {
     std::vector<size_t> children;
 };
 struct ScheduleCache {
-    std::optional<Tick> last_change_tick;
     std::vector<CachedNode> nodes;
     std::unordered_map<SystemSetLabel, size_t> node_map;
 };
@@ -324,6 +323,7 @@ struct Schedule {
     // otherwise the error will cause skipped nodes during execution
     std::expected<void, SchedulePrepareError> prepare(bool check_error = true);
     void initialize_systems(World& world, bool force = false);
+    void check_change_tick(Tick tick);
     void execute(SystemDispatcher& dispatcher) { execute(dispatcher, _default_execute_config); }
     void execute(SystemDispatcher& dispatcher, ExecuteConfig config);
     void apply_deferred(World& world);
