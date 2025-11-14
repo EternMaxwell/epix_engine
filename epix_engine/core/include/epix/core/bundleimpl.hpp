@@ -51,7 +51,7 @@ struct InitializeBundle<std::tuple<Ts...>, std::tuple<ArgTuples...>> {
                                    std::same_as<T, std::monostate>) &&
                                   bundle::is_bundle<std::tuple_element_t<0, ATuple>>) {
                         // write as a bundle
-                        using BundleType = Bundle<std::tuple_element_t<0, ATuple>>;
+                        using BundleType = Bundle<std::decay_t<std::tuple_element_t<0, ATuple>>>;
                         // write to sub range of pointers since a sub bundle might be also a bundle of multiple
                         // components
                         auto inserted = BundleType::write(std::get<0>(std::get<I>(args)), span);
@@ -83,7 +83,7 @@ struct InitializeBundle<std::tuple<Ts...>, std::tuple<ArgTuples...>> {
                                   std::same_as<T, std::decay_t<std::tuple_element_t<0, ATuple>>> &&
                                   bundle::is_bundle<std::tuple_element_t<0, ATuple>>) {
                         // bundle type
-                        using BundleType = Bundle<std::tuple_element_t<0, ATuple>>;
+                        using BundleType = Bundle<std::decay_t<std::tuple_element_t<0, ATuple>>>;
                         ids.insert_range(ids.end(), BundleType::type_ids(registry));
                     } else {
                         ids.push_back(registry.type_id<T>());
@@ -103,7 +103,7 @@ struct InitializeBundle<std::tuple<Ts...>, std::tuple<ArgTuples...>> {
                                   std::same_as<T, std::decay_t<std::tuple_element_t<0, ATuple>>> &&
                                   bundle::is_bundle<std::tuple_element_t<0, ATuple>>) {
                         // bundle type
-                        using BundleType = Bundle<std::tuple_element_t<0, ATuple>>;
+                        using BundleType = Bundle<std::decay_t<std::tuple_element_t<0, ATuple>>>;
                         BundleType::register_components(registry, components);
                     } else {
                         components.register_info<T>();
@@ -128,12 +128,12 @@ InitializeBundle<std::tuple<std::decay_t<Ts>...>, std::tuple<std::tuple<Ts>...>>
         std::make_tuple(std::tuple<Ts>(std::forward<Ts>(args))...)};
 }
 template <typename T>
-    requires(bundle::specialization_of<std::decay_t<T>, InitializeBundle>)
+    requires(bundle::specialization_of<T, InitializeBundle>)
 struct Bundle<T> {
     static size_t write(T& bundle, std::span<void*> pointers) { return bundle.write(pointers); }
-    static auto type_ids(const type_system::TypeRegistry& registry) { return std::decay_t<T>::type_ids(registry); }
+    static auto type_ids(const type_system::TypeRegistry& registry) { return T::type_ids(registry); }
     static void register_components(const type_system::TypeRegistry& registry, Components& components) {
-        std::decay_t<T>::register_components(registry, components);
+        T::register_components(registry, components);
     }
 };
 
@@ -178,12 +178,12 @@ struct RemoveBundle {
     }
 };
 template <typename T>
-    requires(bundle::specialization_of<std::decay_t<T>, RemoveBundle>)
+    requires(bundle::specialization_of<T, RemoveBundle>)
 struct Bundle<T> {
     static size_t write(T& bundle, std::span<void*> pointers) { return bundle.write(pointers); }
-    static auto type_ids(const type_system::TypeRegistry& registry) { return std::decay_t<T>::type_ids(registry); }
+    static auto type_ids(const type_system::TypeRegistry& registry) { return T::type_ids(registry); }
     static void register_components(const type_system::TypeRegistry& registry, Components& components) {
-        std::decay_t<T>::register_components(registry, components);
+        T::register_components(registry, components);
     }
 };
 

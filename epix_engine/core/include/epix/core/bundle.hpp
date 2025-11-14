@@ -50,7 +50,7 @@ concept type_id_view = requires(R r) {
     { std::same_as<std::ranges::range_value_t<R>, type_system::TypeId> };
 };
 template <typename B>
-concept is_bundle = requires(B& b) {
+concept is_bundle = requires(std::decay_t<B>& b) {
     {
         Bundle<std::decay_t<B>>::write(b, std::declval<std::span<void*>>())
     } -> std::same_as<size_t>;  // return number of written components
@@ -120,13 +120,14 @@ struct BundleInfo {
                  std::same_as<std::ranges::range_value_t<T2>, RequiredComponentConstructor> &&
                  std::ranges::view<std::decay_t<T1>> && std::same_as<std::ranges::range_value_t<T1>, ComponentStatus>
     {
+        using BundleType = bundle::Bundle<std::decay_t<T3>>;
         // debug assert check whether bundle types match explicit component ids
-        assert(std::ranges::all_of(std::views::zip(bundle.type_ids(type_registry), explicit_components()),
+        assert(std::ranges::all_of(std::views::zip(BundleType::type_ids(type_registry), explicit_components()),
                                    [](auto&& pair) {
                                        auto&& [bundle_id, explicit_id] = pair;
                                        return bundle_id == explicit_id;
                                    }) &&
-               std::ranges::size(bundle.type_ids(type_registry)) == std::ranges::size(explicit_components()));
+               std::ranges::size(BundleType::type_ids(type_registry)) == std::ranges::size(explicit_components()));
         std::vector<void*> pointers;
         pointers.reserve(_explicit_components_count);
         for (auto&& [type_id, status] : std::views::zip(explicit_components(), component_statuses)) {
@@ -168,7 +169,7 @@ struct BundleInfo {
                 }
             }
         }
-        bundle::Bundle<T3&&>::write(std::forward<T3>(bundle), pointers);
+        bundle::Bundle<std::decay_t<T3>>::write(std::forward<T3>(bundle), pointers);
 
         for (auto&& rc : required_components) {
             (*rc)(table, sparse_sets, tick, row, entity);
