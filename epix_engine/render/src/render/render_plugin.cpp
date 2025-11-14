@@ -41,11 +41,13 @@ void RenderPlugin::build(epix::App& app) {
     // render_app.config.enable_tracy = app.config.enable_tracy;
 
     // schedules for render app
-    app.sub_app_mut(Render)
-        .add_schedule(epix::Schedule(epix::render::ExtractSchedule))
-        .add_schedule(epix::render::Render.render_schedule())
-        .set_extract_fn([](App& render_app, World& main_world) { render_app.run_schedule(ExtractSchedule); });
-    app.sub_app_mut(Render).schedule_order().insert_begin(epix::render::Render);
+    app.sub_app_mut(Render).then([](App& render_app) {
+        render_app.add_schedule(epix::Schedule(epix::render::ExtractSchedule))
+            .add_schedule(epix::render::Render.render_schedule())
+            .set_extract_fn([](App& render_app, World& main_world) { render_app.run_schedule(ExtractSchedule); });
+        render_app.schedule_order().insert_begin(epix::render::Render);
+        render_app.world_mut().emplace_resource<graph::RenderGraph>();
+    });
 
     app.add_plugins(epix::render::window::WindowRenderPlugin{});
     app.add_plugins(epix::render::camera::CameraPlugin{});
@@ -220,8 +222,6 @@ void RenderPlugin::finish(epix::App& app) {
     app.world_mut().insert_resource(nvrhi_device);
     auto& render_app = app.sub_app_mut(Render);
     {
-        render_app.world_mut().emplace_resource<graph::RenderGraph>();
-
         render_app.add_systems(
             Render, into([](Res<nvrhi::DeviceHandle> nvrhi_device) { nvrhi_device.get()->runGarbageCollection(); },
                          [](World& world) { world.clear_entities(); })
