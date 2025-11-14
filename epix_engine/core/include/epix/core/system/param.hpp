@@ -153,7 +153,8 @@ struct SystemParam<Res<T>> : ParamBase {
             .resources.get(state)
             .and_then([&](const storage::ResourceData& res) {
                 return res.get_as<T>().transform([&](const T& value) {
-                    return Res<T>(&value, Ticks::from_refs(res.get_tick_refs().value(), meta.last_run, tick));
+                    return Res<T>(std::addressof(value),
+                                  Ticks::from_refs(res.get_tick_refs().value(), meta.last_run, tick));
                 });
             })
             .value();
@@ -195,7 +196,8 @@ struct SystemParam<ResMut<T>> : ParamBase {
             .resources.get_mut(state)
             .and_then([&](storage::ResourceData& res) {
                 return res.get_as_mut<T>().transform([&](T& value) {
-                    return ResMut<T>(&value, TicksMut::from_refs(res.get_tick_refs().value(), meta.last_run, tick));
+                    return ResMut<T>(std::addressof(value),
+                                     TicksMut::from_refs(res.get_tick_refs().value(), meta.last_run, tick));
                 });
             })
             .value();
