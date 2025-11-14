@@ -91,12 +91,12 @@ struct Ref<T> {
    public:
     Ref(const T* value, Ticks ticks) : value(*value), ticks(ticks) {}
 
-    const T* ptr() const { return &value; }
-    T* ptr_mut() { return &value; }
+    const T* ptr() const { return std::addressof(value); }
+    T* ptr_mut() { return std::addressof(value); }
     const T& get() const { return value; }
     T& get_mut() { return value; }
-    const T* operator->() const { return &value; }
-    T* operator->() { return &value; }
+    const T* operator->() const { return std::addressof(value); }
+    T* operator->() { return std::addressof(value); }
     const T& operator*() const { return value; }
     T& operator*() { return value; }
     operator const T&() const { return value; }
