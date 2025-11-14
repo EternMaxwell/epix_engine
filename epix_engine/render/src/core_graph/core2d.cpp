@@ -1,5 +1,3 @@
-#include <memory>
-
 #include "epix/core_graph/core2d.hpp"
 
 using namespace epix;
