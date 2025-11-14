@@ -26,6 +26,11 @@ template <typename... Ts>
     requires(valid_world_query<WorldQuery<Ts>> && ...)
 struct Item : std::tuple<typename QueryData<Ts>::Item...> {
     using type = std::tuple<Ts...>;
+    using base = std::tuple<typename QueryData<Ts>::Item...>;
+    using base::base;
+    Item(const base& b) : base(b) {}
+    Item(base&& b) : base(std::move(b)) {}
+    std::tuple<typename QueryData<Ts>::Item...> operator*() { return *this; }
 };
 
 // Item itself is also a valid_world_query
