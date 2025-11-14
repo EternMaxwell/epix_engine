@@ -80,7 +80,7 @@ struct SystemDispatcher {
     std::unique_ptr<World> world_own =
         nullptr;  // keep ownership of world, so that during dispatch the access is thread-safe
     World* world;
-    std::recursive_mutex mutex_;
+    mutable std::recursive_mutex mutex_;
     size_t running = 0;
     std::condition_variable_any cv_;
     BS::thread_pool<BS::tp::none>* thread_pool;
@@ -101,7 +101,8 @@ struct SystemDispatcher {
     void tick();
     void finish(size_t index);
 
-    void assert_world() {
+    void assert_world() const {
+        std::lock_guard lock(mutex_);
         if (!world) {
             throw std::runtime_error("SystemDispatcher: world is null.");
         }
@@ -143,7 +144,7 @@ struct SystemDispatcher {
      * @return std::unique_ptr<World> The owned world, or nullptr if not owned.
      */
     std::unique_ptr<World> release_world();
-    Tick change_tick() {
+    Tick change_tick() const {
         assert_world();
         return world->change_tick();
     }
