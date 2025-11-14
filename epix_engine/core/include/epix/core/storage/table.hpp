@@ -30,6 +30,12 @@ struct Table {
         }
     }
     bool has_dense(this const Table& self, size_t type_id) { return self._denses.contains(type_id); }
+    void clear_entities(this Table& self) {
+        self._entities.clear();
+        for (auto&& [_, dense] : self._denses.iter_mut()) {
+            dense.clear();
+        }
+    }
     /**
      * @brief Removes the components at the given dense index, and swap the last component into its place.
      *
@@ -119,12 +125,7 @@ struct Tables {
     size_t table_count(this const Tables& self) { return self._tables.size(); }
     bool empty(this const Tables& self) { return self._tables.empty(); }
     auto iter(this Tables& self) { return std::views::all(self._tables); }
-    void clear(this Tables& self) {
-        for (auto& table : self._tables) {
-            table._denses.clear();
-            table._entities.clear();
-        }
-    }
+    void clear(this Tables& self) { std::ranges::for_each(self._tables, &Table::clear_entities); }
     void check_change_ticks(this Tables& self, Tick tick) {
         for (auto& table : self._tables) {
             table.check_change_ticks(tick);
