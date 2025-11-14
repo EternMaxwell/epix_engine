@@ -105,7 +105,7 @@ struct EntityCommands {
         commands.queue([e = entity, comps = std::make_tuple(std::forward<Ts>(components)...)](World& world) mutable {
             world.get_entity_mut(e).and_then([&](EntityWorldMut&& entity_world) mutable -> std::optional<bool> {
                 [&]<size_t... Is>(std::index_sequence<Is...>) mutable {
-                    (entity_world.insert(std::move(std::get<Is>(comps))), ...);
+                    entity_world.insert(std::move(std::get<Is>(comps))...);
                 }(std::make_index_sequence<sizeof...(Ts)>{});
                 return true;
             });
@@ -119,7 +119,7 @@ struct EntityCommands {
         commands.queue([e = entity, comps = std::make_tuple(std::forward<Ts>(components)...)](World& world) mutable {
             world.get_entity_mut(e).and_then([&](EntityWorldMut&& entity_world) mutable -> std::optional<bool> {
                 [&]<size_t... Is>(std::index_sequence<Is...>) mutable {
-                    (entity_world.insert_if_new(std::move(std::get<Is>(comps))), ...);
+                    entity_world.insert_if_new(std::move(std::get<Is>(comps))...);
                 }(std::make_index_sequence<sizeof...(Ts)>{});
                 return true;
             });
