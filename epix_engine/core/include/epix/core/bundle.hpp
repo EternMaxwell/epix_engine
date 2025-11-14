@@ -217,6 +217,7 @@ struct Bundles {
             BundleInfo::create(meta::type_id<type>().name(), storage, components,
                                Bundle<type>::type_ids(type_registry) | std::ranges::to<std::vector<TypeId>>(), new_id);
         _bundle_infos.emplace_back(std::move(info));
+        _bundle_ids.emplace(type_id, new_id);
         return new_id;
     }
     template <bundle::is_bundle T>
