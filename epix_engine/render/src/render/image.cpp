@@ -6,8 +6,8 @@ using namespace epix::image;
 using Param          = RenderAsset<Image>::Param;
 using ProcessedAsset = RenderAsset<Image>::ProcessedAsset;
 
-ProcessedAsset RenderAsset<Image>::process(Image&& asset, Param& param) {
-    auto&& device                = param.get();
+ProcessedAsset RenderAsset<Image>::process(Image&& asset, Param param) {
+    auto&& device                = param.get_mut();
     nvrhi::TextureHandle texture = device->createTexture(asset.get_desc());
     auto commandlist = device->createCommandList(nvrhi::CommandListParameters().setEnableImmediateExecution(false));
     commandlist->open();

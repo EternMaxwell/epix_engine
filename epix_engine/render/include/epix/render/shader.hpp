@@ -72,7 +72,7 @@ struct epix::render::assets::RenderAsset<Shader> {
     using Param          = ParamSet<>;
     using ProcessedAsset = Shader;
 
-    ProcessedAsset process(Shader&& asset, Param& param) {
+    ProcessedAsset process(Shader&& asset, Param param) {
         // Process the shader asset with the given parameters
         return asset;
     }
