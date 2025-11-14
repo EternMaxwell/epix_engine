@@ -37,28 +37,28 @@ struct FromWorld {
         (static_from_world && is_nothrow_static_from_world<T>);
 
     static T create(World& world) noexcept(is_noexcept) {
-        if constexpr (std::is_default_constructible<T>::value) {
-            return T{};
-        } else if constexpr (is_construct_from_world<T>) {
+        if constexpr (is_construct_from_world<T>) {
             return T(world);
         } else if constexpr (is_static_from_world<T>) {
             return T::from_world(world);
             // } else if constexpr (is_optional_from_world<T>) {
             //     return T::from_world(world).value();  // will throw if std::nullopt
+        } else if constexpr (std::is_default_constructible<T>::value) {
+            return T{};
         } else {
             static_assert(false, "Unreachable");
         }
     }
     static std::optional<T> try_create(World& world) noexcept {
         try {
-            if constexpr (std::is_default_constructible<T>::value) {
-                return T{};
-            } else if constexpr (is_construct_from_world<T>) {
+            if constexpr (is_construct_from_world<T>) {
                 return T(world);
             } else if constexpr (is_static_from_world<T>) {
                 return T::from_world(world);
                 // } else if constexpr (is_optional_from_world<T>) {
                 //     return T::from_world(world);
+            } else if constexpr (std::is_default_constructible<T>::value) {
+                return T{};
             } else {
                 static_assert(false, "Unreachable");
             }
@@ -67,9 +67,7 @@ struct FromWorld {
         }
     }
     static T* create_ptr(World& world) noexcept(is_noexcept) {
-        if constexpr (std::is_default_constructible<T>::value) {
-            return new T();
-        } else if constexpr (is_construct_from_world<T>) {
+        if constexpr (is_construct_from_world<T>) {
             return new T(world);
         } else if constexpr (is_static_from_world<T>) {
             return new T(T::from_world(world));
@@ -80,14 +78,14 @@ struct FromWorld {
             //     } else {
             //         return nullptr;
             //     }
+        } else if constexpr (std::is_default_constructible<T>::value) {
+            return new T();
         } else {
             static_assert(false, "Unreachable");
         }
     }
     static void emplace(void* dest, World& world) noexcept(is_noexcept) {
-        if constexpr (std::is_default_constructible<T>::value) {
-            new (dest) T();
-        } else if constexpr (is_construct_from_world<T>) {
+        if constexpr (is_construct_from_world<T>) {
             new (dest) T(world);
         } else if constexpr (is_static_from_world<T>) {
             new (dest) T(T::from_world(world));
@@ -99,6 +97,8 @@ struct FromWorld {
             //     } else {
             //         return false;
             //     }
+        } else if constexpr (std::is_default_constructible<T>::value) {
+            new (dest) T();
         } else {
             static_assert(false, "Unreachable");
         }
