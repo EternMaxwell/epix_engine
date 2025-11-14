@@ -48,7 +48,7 @@ concept CachedRenderPipelinePhaseItem = PhaseItem<P> && requires(const P item) {
 };
 
 template <typename FuncT, typename P>
-concept Draw = PhaseItem<P> && requires(FuncT func, const World& world, DrawContext& ctx, Entity view, const P& item) {
+concept Draw = PhaseItem<P> && requires(FuncT func, World& world, DrawContext& ctx, Entity view, const P& item) {
     { func.prepare(world) };
     // draw function, since DrawContext can be converted to nvrhi::CommandListHandle, the function can also be
     // void draw(World&, nvrhi::CommandListHandle, Entity, P&)
@@ -57,8 +57,8 @@ concept Draw = PhaseItem<P> && requires(FuncT func, const World& world, DrawCont
 
 template <PhaseItem P>
 struct DrawFunction {
-    virtual void prepare(const World& world) {}
-    virtual bool draw(const World& world, DrawContext& ctx, Entity view, const P& item) = 0;
+    virtual void prepare(World& world) {}
+    virtual bool draw(World& world, DrawContext& ctx, Entity view, const P& item) = 0;
 
     virtual ~DrawFunction() = default;
 };
@@ -69,9 +69,9 @@ struct DrawFunctionImpl : DrawFunction<P> {
     template <typename... Args>
     DrawFunctionImpl(Args&&... args) : m_func(std::forward<Args>(args)...) {}
 
-    void prepare(const World& world) override { m_func.prepare(world); }
+    void prepare(World& world) override { m_func.prepare(world); }
 
-    bool draw(const World& world, DrawContext& cmd, Entity view, const P& item) override {
+    bool draw(World& world, DrawContext& cmd, Entity view, const P& item) override {
         return m_func.draw(world, cmd, view, item);
     }
 
@@ -81,13 +81,13 @@ struct DrawFunctionImpl : DrawFunction<P> {
 
 template <PhaseItem P>
 struct EmptyDrawFunction : DrawFunction<P> {
-    bool draw(const World&, DrawContext, Entity, const P&) override { return true; }
+    bool draw(World&, DrawContext, Entity, const P&) override { return true; }
 };
 
 template <PhaseItem P>
 struct DrawFunctions {
    public:
-    void prepare(const World& world) const {
+    void prepare(World& world) const {
         auto&& [m_mutex, m_functions, m_indices] = *m_data;
         std::unique_lock lock(m_mutex);
         for (auto&& func : m_functions) {
@@ -172,11 +172,9 @@ struct RenderPhase {
         return items | std::views::transform([this](const T& item) { return _item_entity(item); });
     }
 
-    void render(DrawContext& cmd, const World& world, Entity view) const {
-        render_range(cmd, world, view, 0, items.size());
-    }
+    void render(DrawContext& cmd, World& world, Entity view) const { render_range(cmd, world, view, 0, items.size()); }
     void render_range(DrawContext& cmd,
-                      const World& world,
+                      World& world,
                       Entity view,
                       size_t start = 0,
                       size_t end   = std::numeric_limits<size_t>::max()) const {
@@ -233,7 +231,7 @@ struct RenderCommandInfo {
     using class_type                  = typename traits::class_type;
     using return_type                 = typename traits::return_type;
     using arg_types                   = typename traits::arg_types;
-    static constexpr bool has_prepare = requires(T t, const World& w) { t.prepare(w); };
+    static constexpr bool has_prepare = requires(T t, World& w) { t.prepare(w); };
 
     static_assert(std::same_as<return_type, bool>,
                   "Render command must return bool indicating the operation success or not.");
@@ -255,16 +253,17 @@ struct RenderCommandInfo {
                   "nvrhi::CommandListHandle.");
     static_assert(core::bundle::specialization_of<decay_arg_1, epix::Item>,
                   "The second parameter of render command must be of type epix::Item<>, for view entity data.");
-    static_assert(decay_arg_1::readonly,
-                  "The second parameter of render command must be of type epix::Item<> with readonly access.");
+    // static_assert(decay_arg_1::readonly,
+    //               "The second parameter of render command must be of type epix::Item<> with readonly access.");
     static_assert(core::bundle::specialization_of<decay_arg_2, std::optional>,
                   "The third parameter of render command must be of type std::optional<> for entity data.");
     static_assert(
         core::bundle::specialization_of<typename decay_arg_2::value_type, epix::Item>,
         "The third parameter of render command must be of type std::optional<epix::Item<...>> for entity data.");
-    static_assert(
-        decay_arg_2::value_type::readonly,
-        "The third parameter of render command must be of type std::optional<epix::Item<...>> with readonly access.");
+    // static_assert(
+    //     decay_arg_2::value_type::readonly,
+    //     "The third parameter of render command must be of type std::optional<epix::Item<...>> with readonly
+    //     access.");
     static_assert(epix::core::system::valid_system_param<epix::core::system::SystemParam<decay_arg_3>>,
                   "The fourth parameter of render command must be a valid system parameter.");
 
@@ -294,6 +293,7 @@ struct RenderCommandState {
     core::system::SystemMeta meta;
     core::query::FilteredAccessSet access;
     std::optional<state> param_state;
+    std::optional<typename param::Item> params;
     T command;
 
    public:
@@ -306,14 +306,14 @@ struct RenderCommandState {
         if constexpr (RenderCommandInfo<R, P>::has_prepare) {
             command.prepare(world);
         }
+        params = param::get_param(*param_state, meta, world, world.increment_change_tick());
     }
     bool draw(World& world, DrawContext& ctx, Entity view, const P& item) {
-        if (!param_state) {
+        if (!params) {
             throw std::runtime_error("Render command state is not initialized. Call prepare() before draw().");
         }
-        auto params = param::get_param(*param_state, meta, world, world.increment_change_tick());
-        auto&& [view_data, entity_data, param] = params;
-        return command.render(item, view_data, entity_data, param, ctx);
+        auto&& [view_data, entity_data, param] = params->get();
+        return command.render(item, view_data.get(view).value(), entity_data.get(item.entity()), param, ctx);
     }
 };
 
@@ -326,15 +326,15 @@ struct SetItemPipeline {
         return true;
     }
     bool render(const P& item,
-                const Item<>&,
-                const std::optional<Item<>>&,
+                Item<>,
+                std::optional<Item<>>,
                 ParamSet<Res<render::PipelineServer>>& pipelines,
                 DrawContext& ctx) {
         auto&& [server] = pipelines.get();
         if (!ctx.graphics_state.framebuffer) {
             if (!frame_buffer_error_logged) {
                 spdlog::error("No framebuffer bound in command list when setting pipeline for item {:#x}. Skipping.",
-                              item.entity().index());
+                              item.entity().index);
                 frame_buffer_error_logged = true;
             }
             return false;
@@ -345,7 +345,7 @@ struct SetItemPipeline {
                 return true;  // must return a value since std::optional<void> is not allowed
             })
             .or_else([&]() -> std::optional<bool> {
-                spdlog::error("Failed to get pipeline for item {:#x}. Skipping.", item.entity().index());
+                spdlog::error("Failed to get pipeline for item {:#x}. Skipping.", item.entity().index);
                 return false;
             })
             .value();
