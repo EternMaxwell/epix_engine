@@ -191,6 +191,8 @@ inline EntityCommands Commands::spawn(Ts&&... components)
     if constexpr (sizeof...(Ts) == 0) {
         return spawn_empty();
     }
+    Entity entity = entities->reserve_entity();
+    return EntityCommands{entity, *this}.insert(std::forward<Ts>(components)...);
 }
 
 template <>
