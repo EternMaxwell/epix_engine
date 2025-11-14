@@ -1,4 +1,4 @@
-file(GLOB_RECURSE RENDER_SOURCES CONFIGURE_DEPENDS "src/*.c" "src/*.cpp")
+file(GLOB_RECURSE RENDER_SOURCES CONFIGURE_DEPENDS "src/render/*.c" "src/render/*.cpp")
 list(APPEND MODULE_INCLUDES ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
 add_library(epix_render STATIC ${RENDER_SOURCES})
@@ -15,7 +15,7 @@ target_link_libraries(epix_render PUBLIC volk)
 target_link_libraries(epix_render PUBLIC nvrhi)
 target_link_libraries(epix_render PUBLIC nvrhi_vk)
 
-file(GLOB_RECURSE CORE_GRAPH_SOURCES CONFIGURE_DEPENDS "src/*.c" "src/*.cpp")
+file(GLOB_RECURSE CORE_GRAPH_SOURCES CONFIGURE_DEPENDS "src/core_graph/*.c" "src/core_graph/*.cpp")
 
 add_library(epix_core_graph STATIC ${CORE_GRAPH_SOURCES})
 epix_parse_options(epix_core_graph)
