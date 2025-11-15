@@ -26,13 +26,7 @@ struct Schedules {
         return get_schedule(label).value();
     }
     /// Try get mutable reference to a schedule by its label.
-    std::optional<std::reference_wrapper<schedule::Schedule>> get_schedule_mut(const schedule::ScheduleLabel& label) {
-        auto it = _schedules.find(label);
-        if (it != _schedules.end()) {
-            return it->second;
-        }
-        return std::nullopt;
-    }
+    std::optional<std::reference_wrapper<schedule::Schedule>> get_schedule_mut(const schedule::ScheduleLabel& label);
     /// Get a mutable reference to a schedule by its label, throws if not found.
     schedule::Schedule& schedule_mut(const schedule::ScheduleLabel& label) { return get_schedule_mut(label).value(); }
     /// Get or insert a schedule by its label.

@@ -11,6 +11,14 @@ std::optional<std::reference_wrapper<const schedule::Schedule>> Schedules::get_s
     }
     return std::nullopt;
 }
+std::optional<std::reference_wrapper<schedule::Schedule>> Schedules::get_schedule_mut(
+    const schedule::ScheduleLabel& label) {
+    auto it = _schedules.find(label);
+    if (it != _schedules.end()) {
+        return it->second;
+    }
+    return std::nullopt;
+}
 schedule::Schedule& Schedules::add_schedule(schedule::Schedule&& schedule) {
     if (auto it = _schedules.find(schedule.label()); it != _schedules.end()) {
         spdlog::warn("Schedule '{}' already exists, it will be overwritten!", schedule.label().to_string());
