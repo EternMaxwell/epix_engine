@@ -34,7 +34,15 @@ int main() {
                                                   }));
                         image.flip_vertical();
                         auto res2 = assets->insert(image_handle, std::move(image));
-                        cmd.spawn(sprite::SpriteBundle{.texture = image_handle});
+                        static thread_local std::random_device rd;
+                        static thread_local std::mt19937 gen(rd());
+                        static thread_local std::uniform_real_distribution<float> dis(-100.0f, 100.0f);
+                        for (auto&& i : std::views::iota(0, 5000)) {
+                            cmd.spawn(sprite::SpriteBundle{
+                                .transform = transform::Transform::from_xyz(dis(gen), dis(gen), 0.0f),
+                                .texture   = image_handle,
+                            });
+                        }
                     }));
 
     app.run();
