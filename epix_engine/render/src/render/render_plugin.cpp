@@ -2,7 +2,10 @@
 
 #include <stacktrace>
 
+#include "epix/core/app/schedules.hpp"
+#include "epix/core/schedule/schedule.hpp"
 #include "epix/render.hpp"
+#include "epix/render/extract.hpp"
 
 using namespace epix;
 using namespace epix::render;
@@ -42,7 +45,11 @@ void RenderPlugin::build(epix::App& app) {
 
     // schedules for render app
     app.sub_app_mut(Render).then([](App& render_app) {
-        render_app.add_schedule(epix::Schedule(epix::render::ExtractSchedule))
+        render_app
+            .add_schedule(epix::Schedule(epix::render::ExtractSchedule)
+                              .with_execute_config(core::schedule::ExecuteConfig{
+                                  .handle_deferred = false,
+                              }))
             .add_schedule(epix::render::Render.render_schedule())
             .set_extract_fn([](App& render_app, World& main_world) { render_app.run_schedule(ExtractSchedule); });
         render_app.schedule_order().insert_begin(epix::render::Render);
@@ -222,13 +229,20 @@ void RenderPlugin::finish(epix::App& app) {
     app.world_mut().insert_resource(nvrhi_device);
     auto& render_app = app.sub_app_mut(Render);
     {
-        render_app.add_systems(
-            Render, into([](Res<nvrhi::DeviceHandle> nvrhi_device) { nvrhi_device.get()->runGarbageCollection(); },
-                         [](World& world) { world.clear_entities(); })
-                        .set_names(std::array{"nvrhi garbage collect", "clear render entities"})
-                        .after(RenderSet::Cleanup));
-        render_app.add_systems(Render,
-                               into(render_system).in_set(RenderSet::Render).set_names(std::array{"render system"}));
+        render_app
+            .add_systems(Render,
+                         into([](Res<nvrhi::DeviceHandle> nvrhi_device) { nvrhi_device.get()->runGarbageCollection(); },
+                              [](World& world) { world.clear_entities(); })
+                             .set_names(std::array{"nvrhi garbage collect", "clear render entities"})
+                             .after(RenderSet::Cleanup))
+            .add_systems(Render, into(render_system).in_set(RenderSet::Render).set_names(std::array{"render system"}))
+            .add_systems(Render,
+                         into([](ParamSet<World&, ResMut<core::app::Schedules>> params) {
+                             auto&& [world, schedules] = params.get();
+                             schedules.get_mut().get_schedule_mut(ExtractSchedule).value().get().apply_deferred(world);
+                         })
+                             .in_set(RenderSet::PostExtract)
+                             .set_name("apply extract deferred"));
     }
     render_app.world_mut().insert_resource(instance);
     render_app.world_mut().insert_resource(physical_device);
