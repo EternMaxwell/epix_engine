@@ -102,6 +102,9 @@ std::expected<void, SchedulePrepareError> Schedule::prepare(bool check_error) {
             std::views::transform([&](const SystemSetLabel& label) { return schedule_cache.node_map.at(label); }) |
             std::ranges::to<std::vector<size_t>>();
     }
+    if (!check_error) {
+        return {};
+    }
     // check if cycles in dependencies
     {
         // time complexity: O(V + E)
@@ -277,7 +280,7 @@ void Schedule::execute(SystemDispatcher& dispatcher, ExecuteConfig config) {
     }
 
     // ? should we initialize systems here? or let caller assure systems are initialized?
-    dispatcher.world_scope([this](World& world) { initialize_systems(world); }).wait();
+    auto init_future      = dispatcher.world_scope([this](World& world) { initialize_systems(world); });
     std::shared_ptr cache = this->cache;  // keep a copy to avoid being invalidated during execution
 
     ExecutionState exec_state{
@@ -294,9 +297,11 @@ void Schedule::execute(SystemDispatcher& dispatcher, ExecuteConfig config) {
         .child_count         = std::vector<size_t>(cache->nodes.size(), 0),
     };
     // initialize cache value.
+    bool has_system = false;
     for (auto&& [index, cached_node] : cache->nodes | std::views::enumerate) {
         exec_state.wait_count[index]  = cached_node.depends.size() + cached_node.parents.size();
         exec_state.child_count[index] = cached_node.children.size() + (cached_node.node->system ? 1 : 0);
+        has_system |= (bool)cached_node.node->system;
         exec_state.untest_conditions[index].resize(cached_node.node->conditions.size(), true);
         exec_state.dependencies[index].set_range(cached_node.depends, true);
         exec_state.children[index].set_range(cached_node.children, true);
@@ -304,6 +309,11 @@ void Schedule::execute(SystemDispatcher& dispatcher, ExecuteConfig config) {
             // no dependencies, can run immediately
             exec_state.ready_stack.push_back(index);
         }
+    }
+    init_future.wait();
+    if (!has_system) {
+        // no systems to run
+        return;
     }
 
     auto dispatch_system = [&](size_t index) {
@@ -516,9 +526,12 @@ void Schedule::execute(SystemDispatcher& dispatcher, ExecuteConfig config) {
 
     if (config.run_once) {
         // only remove sets in cached nodes cause newly added sets that are not in cache didn't run yet.
-        std::ranges::for_each(exec_state.finished_nodes.iter_ones() |
-                                  std::views::transform([&](size_t index) { return cache->nodes[index].node->label; }),
-                              [&](const SystemSetLabel& label) { nodes.erase(label); });
+        // only remove sets with systems, cause sets may still needed by later added systems to define their deps.
+        std::ranges::for_each(
+            exec_state.finished_nodes.iter_ones() | std::views::transform([&](size_t index) {
+                return cache->nodes[index].node;
+            }) | std::views::filter([](const std::shared_ptr<Node>& node) { return (bool)node->system; }),
+            [&](const std::shared_ptr<Node>& node) { nodes.erase(node->label); });
         this->cache.reset();  // invalidate cache
     }
 }
