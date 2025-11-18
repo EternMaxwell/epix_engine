@@ -6,6 +6,7 @@
 #include "../entities.hpp"
 #include "../type_system/type_registry.hpp"
 #include "dense.hpp"
+#include "epix/core/meta/info.hpp"
 #include "fwd.hpp"
 #include "sparse_array.hpp"
 
@@ -16,7 +17,7 @@ struct ComponentSparseSet {
     std::vector<uint32_t> entities;          // from dense index to entity index
     SparseArray<uint32_t, uint32_t> sparse;  // from entity index to dense index
    public:
-    ComponentSparseSet(const type_system::TypeInfo* desc, size_t reserve_cnt = 0) : dense(desc, reserve_cnt) {}
+    ComponentSparseSet(const epix::core::meta::type_info* desc, size_t reserve_cnt = 0) : dense(desc, reserve_cnt) {}
 
     void clear(this ComponentSparseSet& self) {
         self.dense.clear();
@@ -26,9 +27,7 @@ struct ComponentSparseSet {
     size_t size(this const ComponentSparseSet& self) { return self.dense.len(); }
     bool empty(this const ComponentSparseSet& self) { return self.size() == 0; }
 
-    const epix::core::type_system::TypeInfo* type_info(this const ComponentSparseSet& self) {
-        return self.dense.type_info();
-    }
+    const epix::core::meta::type_info* type_info(this const ComponentSparseSet& self) { return self.dense.type_info(); }
 
     void alloc_uninitialized(this ComponentSparseSet& self, Entity entity) {
         uint32_t dense_index = static_cast<uint32_t>(self.dense.len());
@@ -226,14 +225,14 @@ struct SparseSets {
         self.sets.emplace(type_id, std::move(set));
     }
     void insert(this SparseSets& self, size_t type_id) {
-        self.sets.emplace(type_id, ComponentSparseSet(self.registry->type_info(type_id)));
+        self.sets.emplace(type_id, ComponentSparseSet(&self.registry->type_info(type_id)->type_index.type_info()));
     }
 
     ComponentSparseSet& get_or_insert(this SparseSets& self, size_t type_id) {
         // This function will not throw since the type id is get from the registry, so it should have been registered.
         return self.sets.get_mut(type_id)
             .or_else([&]() -> std::optional<std::reference_wrapper<ComponentSparseSet>> {
-                self.insert(type_id, ComponentSparseSet(self.registry->type_info(type_id)));
+                self.insert(type_id, ComponentSparseSet(&self.registry->type_info(type_id)->type_index.type_info()));
                 return self.sets.get_mut(type_id);
             })
             .value()

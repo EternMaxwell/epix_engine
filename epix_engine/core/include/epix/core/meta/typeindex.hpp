@@ -1,28 +1,22 @@
 #pragma once
 
 #include "fwd.hpp"
+#include "info.hpp"
 #include "typeid.hpp"
 
 namespace epix::core::meta {
 struct type_index {
    private:
-    struct Internal {
-        std::string_view name;
-        std::string_view short_name;
-        size_t hash;
-    };
-
-    const Internal* inter;
+    const type_info* inter;
 
     template <typename T>
-    const Internal* get_internal() const {
-        static Internal internal = {type_id<T>::name(), type_id<T>::short_name(), type_id<T>::hash_code()};
-        return &internal;
+    static const type_info* get_info() {
+        return type_info::of<T>();
     }
 
    public:
     template <typename T>
-    type_index(type_id<T>) : inter(get_internal<T>()) {}
+    type_index(type_id<T>) : inter(get_info<T>()) {}
     type_index() : inter(nullptr) {}
 
     bool operator==(const type_index& other) const noexcept {
@@ -32,6 +26,7 @@ struct type_index {
     std::string_view name() const noexcept { return inter->name; }
     std::string_view short_name() const noexcept { return inter->short_name; }
     size_t hash_code() const noexcept { return inter->hash; }
+    const type_info& type_info() const noexcept { return *inter; }
     bool valid() const noexcept { return inter != nullptr; }
 };
 }  // namespace epix::core::meta

@@ -5,13 +5,15 @@
 #include <cstring>
 #include <exception>
 #include <memory>
+#include <memory_resource>
 #include <new>
 #include <ranges>
 #include <span>
 #include <stdexcept>
 #include <utility>
 
-#include "../type_system/type_registry.hpp"
+#include "../meta/typeindex.hpp"
+#include "epix/core/meta/info.hpp"
 
 namespace epix::core::storage {
 
@@ -27,7 +29,7 @@ namespace epix::core::storage {
 //   to source objects and uses the descriptor's function pointers to manipulate them.
 class untyped_vector {
    public:
-    explicit untyped_vector(const epix::core::type_system::TypeInfo* desc, size_t reserve_cnt = 0)
+    explicit untyped_vector(const epix::core::meta::type_info* desc, size_t reserve_cnt = 0)
         : desc_(desc), size_(0), capacity_(0), data_(nullptr) {
         if (!desc_ || desc_->size == 0) throw std::invalid_argument("element size must be > 0");
         if (reserve_cnt) reserve(reserve_cnt);
@@ -53,6 +55,7 @@ class untyped_vector {
             clear();
             deallocate(data_);
             desc_           = other.desc_;
+            mem_res_        = other.mem_res_;
             data_           = other.data_;
             size_           = other.size_;
             capacity_       = other.capacity_;
@@ -68,9 +71,8 @@ class untyped_vector {
     size_t capacity() const noexcept { return capacity_; }
     bool empty() const noexcept { return size_ == 0; }
 
-    const epix::core::type_system::TypeInfo* type_info() const noexcept { return desc_; }
-
-    const epix::core::type_system::TypeInfo* descriptor() const noexcept { return desc_; }
+    const epix::core::meta::type_info* type_info() const noexcept { return desc_; }
+    const epix::core::meta::type_info* descriptor() const noexcept { return desc_; }
 
     // raw pointer access (void*)
     void* data() noexcept { return data_; }
@@ -218,9 +220,7 @@ class untyped_vector {
     void replace_emplace(size_t idx, Args&&... args) {
         assert(idx < size_);
         void* dst = static_cast<char*>(data_) + idx * desc_->size;
-        if (!desc_->trivially_destructible) {
-            desc_->destroy(dst);
-        }
+        desc_->destruct(dst);
         // placement-new the new object
         new (dst) T(std::forward<Args>(args)...);
     }
@@ -229,28 +229,14 @@ class untyped_vector {
     void push_back_from(const void* src) {
         ensure_capacity_for_one();
         void* dest = static_cast<char*>(data_) + size_ * desc_->size;
-        if (desc_->trivially_copyable) {
-            std::memcpy(dest, src, desc_->size);
-        } else if (desc_->copy_construct) {
-            desc_->copy_construct(dest, src);
-        } else {
-            throw std::logic_error("type is not copy-constructible");
-        }
+        desc_->copy_construct(dest, src);
         ++size_;
     }
 
     void push_back_from_move(void* src) {
         ensure_capacity_for_one();
         void* dest = static_cast<char*>(data_) + size_ * desc_->size;
-        if (desc_->trivially_copyable) {
-            std::memcpy(dest, src, desc_->size);
-        } else if (desc_->move_construct) {
-            desc_->move_construct(dest, src);
-        } else if (desc_->copy_construct) {
-            desc_->copy_construct(dest, src);
-        } else {
-            throw std::logic_error("type is neither movable nor copyable");
-        }
+        desc_->move_construct(dest, src);
         ++size_;
     }
 
@@ -258,53 +244,23 @@ class untyped_vector {
     void replace_from(size_t idx, const void* src) {
         assert(idx < size_);
         void* dst = static_cast<char*>(data_) + idx * desc_->size;
-        if (desc_->trivially_copyable) {
-            std::memcpy(dst, src, desc_->size);
-        } else if (desc_->copy_construct) {
-            // destroy existing object first (basic exception guarantee)
-            if (!desc_->trivially_destructible) {
-                if (desc_->destroy) desc_->destroy(dst);
-            }
-            // copy-construct new object into dst
-            desc_->copy_construct(dst, src);
-        } else {
-            throw std::logic_error("type is not copy-constructible");
-        }
+        desc_->destruct(dst);
+        desc_->copy_construct(dst, src);
     }
 
     // Replace the element at index by moving from raw pointer `src`.
     void replace_from_move(size_t idx, void* src) {
         assert(idx < size_);
         void* dst = static_cast<char*>(data_) + idx * desc_->size;
-        if (desc_->trivially_copyable) {
-            std::memcpy(dst, src, desc_->size);
-        } else if (desc_->move_construct) {
-            // destroy existing then move-construct
-            if (!desc_->trivially_destructible) {
-                if (desc_->destroy) desc_->destroy(dst);
-            }
-            desc_->move_construct(dst, src);
-        } else if (desc_->copy_construct) {
-            // fallback to copy-construct (may throw)
-            if (!desc_->trivially_destructible) {
-                if (desc_->destroy) desc_->destroy(dst);
-            }
-            desc_->copy_construct(dst, src);
-        } else {
-            throw std::logic_error("type is neither movable nor copyable");
-        }
+        desc_->destruct(dst);
+        desc_->move_construct(dst, src);
     }
 
     void pop_back() {
         if (size_ == 0) return;
         --size_;
         void* ptr = static_cast<char*>(data_) + size_ * desc_->size;
-        if (!desc_->trivially_destructible) {
-            if (desc_->destroy)
-                desc_->destroy(ptr);
-            else
-                std::terminate();
-        }
+        desc_->destruct(ptr);
     }
 
     void clear() noexcept {
@@ -312,10 +268,7 @@ class untyped_vector {
         if (!desc_->trivially_destructible) {
             for (size_t i = size_; i > 0; --i) {
                 void* p = static_cast<char*>(data_) + (i - 1) * desc_->size;
-                if (desc_->destroy)
-                    desc_->destroy(p);
-                else
-                    std::terminate();
+                desc_->destruct(p);
             }
         }
         size_ = 0;
@@ -339,29 +292,17 @@ class untyped_vector {
         void* src = static_cast<char*>(data_) + last_idx * desc_->size;
 
         // If destination holds a non-trivial object, destroy it first before overwrite.
-        if (!desc_->trivially_destructible) {
-            if (desc_->destroy)
-                desc_->destroy(dst);
-            else
-                std::terminate();
-        }
+        desc_->destruct(dst);
 
         if (desc_->trivially_copyable) {
             std::memcpy(dst, src, desc_->size);
-        } else if (desc_->move_construct) {
+        } else {
             // move-construct into dst from src
             desc_->move_construct(dst, src);
-        } else if (desc_->copy_construct) {
-            // fallback: copy-construct into dst (may throw)
-            desc_->copy_construct(dst, src);
-        } else {
-            throw std::logic_error("type is neither movable nor copyable");
         }
 
-        // destroy the source (last element) if needed
-        if (!desc_->trivially_destructible) {
-            desc_->destroy(src);
-        }
+        // destroy the source (last element)
+        desc_->destruct(src);
 
         --size_;
     }
@@ -388,9 +329,11 @@ class untyped_vector {
         if (new_size == size_) return;
         if (new_size < size_) {
             // destroy constructed elements in tail
-            for (size_t i = new_size; i < size_; ++i) {
-                void* p = static_cast<char*>(data_) + i * desc_->size;
-                if (!desc_->trivially_destructible) desc_->destroy(p);
+            if (!desc_->trivially_destructible) {
+                for (size_t i = new_size; i < size_; ++i) {
+                    void* p = static_cast<char*>(data_) + i * desc_->size;
+                    desc_->destruct(p);
+                }
             }
             size_ = new_size;
             return;
@@ -411,30 +354,14 @@ class untyped_vector {
     void initialize_from(size_t idx, const void* src) {
         assert(idx < size_);
         void* dst = static_cast<char*>(data_) + idx * desc_->size;
-        if (desc_->trivially_copyable) {
-            std::memcpy(dst, src, desc_->size);
-        } else if (desc_->copy_construct) {
-            desc_->copy_construct(dst, src);
-        } else {
-            throw std::logic_error("type is not copy-constructible");
-        }
-        (void)0;
+        desc_->copy_construct(dst, src);
     }
 
     // Initialize by move from raw pointer
     void initialize_from_move(size_t idx, void* src) {
         assert(idx < size_);
         void* dst = static_cast<char*>(data_) + idx * desc_->size;
-        if (desc_->trivially_copyable) {
-            std::memcpy(dst, src, desc_->size);
-        } else if (desc_->move_construct) {
-            desc_->move_construct(dst, src);
-        } else if (desc_->copy_construct) {
-            desc_->copy_construct(dst, src);
-        } else {
-            throw std::logic_error("type is neither movable nor copyable");
-        }
-        (void)0;
+        desc_->move_construct(dst, src);
     }
 
     // Initialize templated emplace
@@ -446,7 +373,8 @@ class untyped_vector {
     }
 
    private:
-    const epix::core::type_system::TypeInfo* desc_;
+    const epix::core::meta::type_info* desc_;
+    std::pmr::memory_resource* mem_res_ = std::pmr::get_default_resource();
     size_t size_;
     size_t capacity_;
     void* data_;
@@ -470,14 +398,13 @@ class untyped_vector {
     }
 
     // allocate raw bytes with proper alignment
-    static void* allocate(size_t bytes, size_t align) {
+    void* allocate(size_t bytes) {
         if (bytes == 0) return nullptr;
-        // operator new with alignment (C++17)
-        return ::operator new(bytes, static_cast<std::align_val_t>(align));
+        return mem_res_->allocate(bytes, desc_->align);
     }
     void deallocate(void* p) noexcept {
         if (!p) return;
-        ::operator delete(p, static_cast<std::align_val_t>(desc_->align));
+        mem_res_->deallocate(p, desc_->align);
     }
 
     void reallocate(size_t new_cap) {
@@ -487,7 +414,7 @@ class untyped_vector {
         // allocate new buffer
         void* new_data = nullptr;
         try {
-            new_data = ::operator new(needed, static_cast<std::align_val_t>(desc_->align));
+            new_data = allocate(needed);
         } catch (...) {
             throw;  // propagate
         }
@@ -498,21 +425,11 @@ class untyped_vector {
         } else {
             // move-construct existing elements into new storage
             size_t i = 0;
-            try {
-                for (; i < size_; ++i) {
-                    void* src  = static_cast<char*>(data_) + i * esz;
-                    void* dest = static_cast<char*>(new_data) + i * esz;
-                    // prefer move
-                    desc_->move_construct(dest, src);
-                }
-            } catch (...) {
-                // if failed during constructing new elements, destroy constructed ones
-                for (size_t j = 0; j < i; ++j) {
-                    void* p = static_cast<char*>(new_data) + j * esz;
-                    desc_->destroy(p);
-                }
-                ::operator delete(new_data, static_cast<std::align_val_t>(desc_->align));
-                throw;
+            for (; i < size_; ++i) {
+                void* src  = static_cast<char*>(data_) + i * esz;
+                void* dest = static_cast<char*>(new_data) + i * esz;
+                // prefer move
+                desc_->move_construct(dest, src);
             }
         }
 
@@ -520,22 +437,13 @@ class untyped_vector {
         if (!desc_->trivially_destructible) {
             for (size_t j = 0; j < size_; ++j) {
                 void* p = static_cast<char*>(data_) + j * esz;
-                if (desc_->destroy)
-                    desc_->destroy(p);
-                else
-                    throw std::logic_error("type is non-trivially-destructible but no destroy function provided");
+                desc_->destruct(p);
             }
         }
-        if (data_) ::operator delete(data_, static_cast<std::align_val_t>(desc_->align));
+        if (data_) deallocate(data_);
 
         data_     = new_data;
         capacity_ = new_cap;
-    }
-
-    template <typename T>
-    void ensure_type_matches() const noexcept(false) {
-        // removed: unchecked variant should not perform runtime checks for
-        // performance. Use checked_untyped_vector for safety.
     }
 };
 
@@ -550,7 +458,7 @@ class checked_untyped_vector {
     explicit checked_untyped_vector(untyped_vector& vec) noexcept : vec_(&vec) {}
 
     // Owning constructor: create and own an untyped_vector internally.
-    explicit checked_untyped_vector(const epix::core::type_system::TypeInfo* desc, size_t reserve_cnt = 0)
+    explicit checked_untyped_vector(const epix::core::meta::type_info* desc, size_t reserve_cnt = 0)
         : owned_(std::make_unique<untyped_vector>(desc, reserve_cnt)) {
         vec_ = owned_.get();
     }
@@ -559,7 +467,7 @@ class checked_untyped_vector {
     size_t capacity() const noexcept { return vec_->capacity(); }
     bool empty() const noexcept { return vec_->empty(); }
 
-    const epix::core::type_system::TypeInfo* descriptor() const noexcept { return vec_->descriptor(); }
+    const epix::core::meta::type_info* descriptor() const noexcept { return vec_->descriptor(); }
 
     void* data() noexcept { return vec_->data(); }
     const void* data() const noexcept { return vec_->data(); }

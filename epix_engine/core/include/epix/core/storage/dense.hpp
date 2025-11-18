@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "../tick.hpp"
+#include "epix/core/meta/info.hpp"
 #include "fwd.hpp"
 #include "untypedvec.hpp"
 
@@ -19,14 +20,14 @@ struct Dense {
     mutable std::vector<Tick> modified_ticks;
 
    public:
-    explicit Dense(const epix::core::type_system::TypeInfo* desc, size_t reserve_cnt = 0) : values(desc, reserve_cnt) {
+    explicit Dense(const epix::core::meta::type_info* desc, size_t reserve_cnt = 0) : values(desc, reserve_cnt) {
         if (reserve_cnt) {
             added_ticks.reserve(reserve_cnt);
             modified_ticks.reserve(reserve_cnt);
         }
     }
 
-    const epix::core::type_system::TypeInfo* type_info(this const Dense& self) { return self.values.descriptor(); }
+    const epix::core::meta::type_info* type_info(this const Dense& self) { return self.values.descriptor(); }
 
     void reserve(this Dense& self, size_t new_cap) {
         self.values.reserve(new_cap);

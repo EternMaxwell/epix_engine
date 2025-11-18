@@ -11,6 +11,7 @@
 
 #include "../../api/macros.hpp"
 #include "../meta/typeindex.hpp"
+#include "epix/core/meta/info.hpp"
 #include "fwd.hpp"
 
 namespace epix::core {
@@ -33,22 +34,8 @@ consteval StorageType storage_for() {
 
 namespace epix::core::type_system {
 struct TypeInfo {
-    std::string_view name;
-    std::string_view short_name;
-    size_t size;
-    size_t align;
-
+    epix::core::meta::type_index type_index;
     StorageType storage_type;
-
-    // Mandatory operations
-    void (*destroy)(void* ptr) noexcept;
-    void (*copy_construct)(void* dest, const void* src);
-    void (*move_construct)(void* dest, void* src);
-
-    // Cached traits
-    bool trivially_copyable;
-    bool trivially_destructible;
-    bool noexcept_move_constructible;
 
     template <typename T>
     static const TypeInfo* get_info();
@@ -92,20 +79,8 @@ static void move_construct_impl(void* dest, void* src) {
 template <typename T>
 const TypeInfo* TypeInfo::get_info() {
     static TypeInfo ti = TypeInfo{
-        .name         = epix::core::meta::type_id<T>().name(),
-        .short_name   = epix::core::meta::type_id<T>().short_name(),
-        .size         = sizeof(T),
-        .align        = alignof(T),
+        .type_index   = epix::core::meta::type_id<T>(),
         .storage_type = storage_for<T>(),
-        .destroy      = &destroy_impl<T>,
-        .copy_construct =
-            (std::is_trivially_copyable_v<T> || std::copy_constructible<T>) ? &copy_construct_impl<T> : nullptr,
-        .move_construct = (std::is_trivially_copyable_v<T> || std::move_constructible<T> || std::copy_constructible<T>)
-                              ? &move_construct_impl<T>
-                              : nullptr,
-        .trivially_copyable          = std::is_trivially_copyable_v<T>,
-        .trivially_destructible      = std::is_trivially_destructible_v<T>,
-        .noexcept_move_constructible = std::is_nothrow_move_constructible_v<T>,
     };
     return &ti;
 }
