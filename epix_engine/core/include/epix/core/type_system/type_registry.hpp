@@ -11,7 +11,6 @@
 
 #include "../../api/macros.hpp"
 #include "../meta/typeindex.hpp"
-#include "epix/core/meta/info.hpp"
 #include "fwd.hpp"
 
 namespace epix::core {
@@ -40,41 +39,6 @@ struct TypeInfo {
     template <typename T>
     static const TypeInfo* get_info();
 };
-
-// per-type implementations used by TypeInfo::get_info<T>()
-template <typename T>
-static void destroy_impl(void* p) noexcept {
-    if constexpr (!std::is_trivially_destructible_v<T>) {
-        static_cast<T*>(p)->~T();
-    }
-}
-
-template <typename T>
-static void copy_construct_impl(void* dest, const void* src) {
-    if constexpr (std::is_trivially_copyable_v<T>) {
-        std::memcpy(dest, src, sizeof(T));
-    } else if constexpr (std::copy_constructible<T>) {
-        new (dest) T(*static_cast<const T*>(src));
-    } else {
-        // Should not be called for non-copyable types. Terminate to avoid undefined behavior.
-        std::terminate();
-    }
-}
-
-template <typename T>
-static void move_construct_impl(void* dest, void* src) {
-    if constexpr (std::is_trivially_copyable_v<T>) {
-        std::memcpy(dest, src, sizeof(T));
-    } else if constexpr (std::is_nothrow_move_constructible_v<T> || std::move_constructible<T>) {
-        new (dest) T(std::move(*static_cast<T*>(src)));
-    } else if constexpr (std::copy_constructible<T>) {
-        // Fallback to copy if move is not available but copy is
-        new (dest) T(*static_cast<const T*>(src));
-    } else {
-        // Should not be called for types that are neither movable nor copyable.
-        std::terminate();
-    }
-}
 
 template <typename T>
 const TypeInfo* TypeInfo::get_info() {
