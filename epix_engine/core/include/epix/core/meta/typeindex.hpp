@@ -26,7 +26,7 @@ struct type_index {
     std::string_view name() const noexcept { return inter->name; }
     std::string_view short_name() const noexcept { return inter->short_name; }
     size_t hash_code() const noexcept { return inter->hash; }
-    const type_info& type_info() const noexcept { return *inter; }
+    const type_info* type_info() const noexcept { return inter; }
     bool valid() const noexcept { return inter != nullptr; }
 };
 }  // namespace epix::core::meta

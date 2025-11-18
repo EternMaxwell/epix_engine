@@ -21,9 +21,9 @@ struct type_info {
     size_t align;
 
     // Mandatory operations
-    void (*destruct)(void* ptr) noexcept;
-    void (*copy_construct)(void* dest, const void* src) noexcept;
-    void (*move_construct)(void* dest, void* src) noexcept;
+    void (*destruct)(void* ptr) noexcept                         = nullptr;
+    void (*copy_construct)(void* dest, const void* src) noexcept = nullptr;
+    void (*move_construct)(void* dest, void* src) noexcept       = nullptr;
 
     // Cached traits
     bool trivially_copyable;
@@ -62,6 +62,16 @@ struct type_info {
 
     template <typename T>
     static const type_info* of() {
+        if constexpr (requires { sizeof(T); }) {
+            return of1<T>();
+        } else {
+            return of2<T>();
+        }
+    }
+
+   private:
+    template <typename T>
+    static const type_info* of1() {
         static type_info ti = type_info{
             .name                        = meta::type_name<T>(),
             .short_name                  = meta::short_name<T>(),
@@ -75,6 +85,24 @@ struct type_info {
             .trivially_destructible      = std::is_trivially_destructible_v<T>,
             .noexcept_move_constructible = std::is_nothrow_move_constructible_v<T>,
             .noexcept_copy_constructible = std::is_nothrow_copy_constructible_v<T>,
+        };
+        return &ti;
+    }
+    template <typename T>
+    static const type_info* of2() {
+        static type_info ti = type_info{
+            .name                        = meta::type_name<T>(),
+            .short_name                  = meta::short_name<T>(),
+            .hash                        = std::hash<std::string_view>()(meta::type_name<T>()),
+            .size                        = 0,
+            .align                       = 0,
+            .destruct                    = nullptr,
+            .copy_construct              = nullptr,
+            .move_construct              = nullptr,
+            .trivially_copyable          = false,
+            .trivially_destructible      = false,
+            .noexcept_move_constructible = false,
+            .noexcept_copy_constructible = false,
         };
         return &ti;
     }

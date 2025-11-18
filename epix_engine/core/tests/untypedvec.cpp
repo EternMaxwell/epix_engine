@@ -5,7 +5,6 @@
 #include <vector>
 
 #include "epix/core/storage/untypedvec.hpp"
-#include "epix/core/type_system/type_registry.hpp"
 
 // Non-trivial helper type used for memory-safety tests
 struct Heavy {
@@ -42,10 +41,9 @@ std::atomic<int> Heavy::destructions{0};
 
 int main() {
     using namespace epix::core::storage;
-    using namespace epix::core::type_system;
 
     // Test with int
-    const TypeInfo* int_desc = TypeInfo::get_info<int>();
+    const auto* int_desc = epix::meta::type_info::of<int>();
     untyped_vector v_int(int_desc, 4);
     for (int i = 0; i < 10; ++i) {
         v_int.push_back_from(&i);
@@ -57,7 +55,7 @@ int main() {
     }
 
     // Test with std::string
-    const TypeInfo* str_desc = TypeInfo::get_info<std::string>();
+    const auto* str_desc = epix::meta::type_info::of<std::string>();
     untyped_vector v_str(str_desc, 2);
     std::string s1 = "hello";
     std::string s2 = "world";
@@ -94,7 +92,7 @@ int main() {
         Heavy::moves         = 0;
         Heavy::destructions  = 0;
 
-        const TypeInfo* heavy_desc = TypeInfo::get_info<Heavy>();
+        const auto* heavy_desc = epix::meta::type_info::of<Heavy>();
         untyped_vector v_heavy(heavy_desc, 1);
 
         // push a sequence of named Heavy objects to force multiple reallocations

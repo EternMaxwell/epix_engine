@@ -25,7 +25,7 @@ BundleInfo BundleInfo::create(std::string_view bundle_type_name,
                      });
         throw std::logic_error(std::format("bundle \"{}\" has duplicate component types {}", bundle_type_name,
                                            duped | std::views::transform([&](TypeId tid) {
-                                               return components.get(tid).value().get().type_info()->name;
+                                               return components.get(tid).value().get().type_info()->type_index.name();
                                            })));
     }
 

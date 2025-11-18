@@ -13,8 +13,8 @@ int main() {
     assert(id_int == reg.type_id<int>().get());
     assert(id_str == reg.type_id<std::string>().get());
 
-    const TypeInfo* ti_int = reg.type_info(id_int);
-    const TypeInfo* ti_str = reg.type_info(id_str);
+    const auto* ti_int = reg.type_info(id_int)->type_index.type_info();
+    const auto* ti_str = reg.type_info(id_str)->type_index.type_info();
     assert(ti_int->size == sizeof(int));
     assert(ti_str->size == sizeof(std::string));
     assert(ti_int->align == alignof(int));

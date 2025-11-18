@@ -39,7 +39,7 @@ struct Commands {
 
     template <typename T, typename... Args>
     Commands& emplace_resource(Args&&... args) {
-        storage::untyped_vector vec(type_system::TypeInfo::get_info<T>(), 1);
+        storage::untyped_vector vec(meta::type_info::of<T>(), 1);
         vec.emplace_back<T>(std::forward<Args>(args)...);
         replace_resource<T>(std::move(vec));
         return *this;
@@ -51,7 +51,7 @@ struct Commands {
     }
     template <typename T, typename... Args>
     Commands& try_emplace_resource(Args&&... args) {
-        storage::untyped_vector vec(type_system::TypeInfo::get_info<T>(), 1);
+        storage::untyped_vector vec(meta::type_info::of<T>(), 1);
         vec.emplace_back<T>(std::forward<Args>(args)...);
         replace_resource<T>(std::move(vec), false);
         return *this;

@@ -168,16 +168,16 @@ struct Resources {
     auto iter(this Resources& self) { return self.resources.iter(); }
     void clear(this Resources& self) { self.resources.clear(); }
 
-    std::optional<std::reference_wrapper<const ResourceData>> get(this const Resources& self, size_t resource_id) {
+    std::optional<std::reference_wrapper<const ResourceData>> get(this const Resources& self, TypeId resource_id) {
         return self.resources.get(resource_id);
     }
-    std::optional<std::reference_wrapper<ResourceData>> get_mut(this Resources& self, size_t resource_id) {
+    std::optional<std::reference_wrapper<ResourceData>> get_mut(this Resources& self, TypeId resource_id) {
         return self.resources.get_mut(resource_id);
     }
 
-    bool initialize(this Resources& self, size_t resource_id) {
+    bool initialize(this Resources& self, TypeId resource_id) {
         if (!self.resources.contains(resource_id)) {
-            const epix::core::type_system::TypeInfo* type_info = self.registry->type_info(resource_id);
+            const epix::core::meta::type_info* type_info = self.registry->type_info(resource_id)->type_index.type_info();
             self.resources.emplace(resource_id, ResourceData(type_info));
             return true;
         }

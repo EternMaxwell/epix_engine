@@ -2,15 +2,13 @@
 #include <iostream>
 #include <string>
 
+#include "epix/core/meta/info.hpp"
 #include "epix/core/storage/dense.hpp"
-#include "epix/core/type_system/type_registry.hpp"
 
 using namespace epix::core::storage;
-using namespace epix::core::type_system;
 
 int main() {
-    const TypeInfo* ti = TypeInfo::get_info<std::string>();
-    Dense d(ti, 2);
+    Dense d(epix::meta::type_info::of<std::string>(), 2);
     assert(d.len() == 0);
 
     d.push<std::string>({0, 0}, "a");

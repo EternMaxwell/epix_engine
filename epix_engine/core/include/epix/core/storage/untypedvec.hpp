@@ -3,17 +3,14 @@
 #include <cassert>
 #include <cstddef>
 #include <cstring>
-#include <exception>
 #include <memory>
 #include <memory_resource>
-#include <new>
 #include <ranges>
 #include <span>
 #include <stdexcept>
 #include <utility>
 
-#include "../meta/typeindex.hpp"
-#include "epix/core/meta/info.hpp"
+#include "../meta/info.hpp"
 
 namespace epix::core::storage {
 
@@ -98,13 +95,7 @@ class untyped_vector {
     void push_back_copy(const T& v) {
         ensure_capacity_for_one();
         void* dest = static_cast<char*>(data_) + size_ * desc_->size;
-        if (desc_->trivially_copyable) {
-            std::memcpy(dest, std::addressof(v), desc_->size);
-        } else if (desc_->copy_construct) {
-            desc_->copy_construct(dest, &v);
-        } else {
-            throw std::logic_error("type is not copy-constructible");
-        }
+        desc_->copy_construct(dest, static_cast<const void*>(std::addressof(v)));
         ++size_;
     }
 
@@ -112,16 +103,7 @@ class untyped_vector {
     void push_back_move(T&& v) {
         ensure_capacity_for_one();
         void* dest = static_cast<char*>(data_) + size_ * desc_->size;
-        // move from the provided object
-        if (desc_->trivially_copyable) {
-            std::memcpy(dest, std::addressof(v), desc_->size);
-        } else if (desc_->move_construct) {
-            desc_->move_construct(dest, static_cast<void*>(std::addressof(v)));
-        } else if (desc_->copy_construct) {
-            desc_->copy_construct(dest, static_cast<const void*>(std::addressof(v)));
-        } else {
-            throw std::logic_error("type is neither movable nor copyable");
-        }
+        desc_->move_construct(dest, static_cast<void*>(std::addressof(v)));
         ++size_;
     }
 

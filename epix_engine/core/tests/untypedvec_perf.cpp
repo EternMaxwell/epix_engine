@@ -3,11 +3,10 @@
 #include <string>
 #include <vector>
 
+#include "epix/core/meta/info.hpp"
 #include "epix/core/storage/untypedvec.hpp"
-#include "epix/core/type_system/type_registry.hpp"
 
 using namespace epix::core::storage;
-using namespace epix::core::type_system;
 
 struct HeavyPerf {
     std::string s;
@@ -24,7 +23,7 @@ static inline long long now_us() {
 }
 
 void bench_int(size_t N, size_t reps) {
-    const TypeInfo* int_desc = TypeInfo::get_info<int>();
+    const auto* int_desc = epix::meta::type_info::of<int>();
 
     long long best_untyped = LLONG_MAX;
     long long best_std     = LLONG_MAX;
@@ -61,7 +60,7 @@ void bench_int(size_t N, size_t reps) {
     long long best_sv_idx    = LLONG_MAX;
 
     // prepare data once
-    untyped_vector uv_read(TypeInfo::get_info<int>(), N);
+    untyped_vector uv_read(epix::meta::type_info::of<int>(), N);
     std::vector<int> sv_read;
     sv_read.reserve(N);
     for (size_t i = 0; i < N; ++i) {
@@ -96,14 +95,14 @@ void bench_int(size_t N, size_t reps) {
 }
 
 void bench_heavy(size_t N, size_t reps) {
-    const TypeInfo* heavy_desc = TypeInfo::get_info<HeavyPerf>();
+    const auto* heavy_desc = epix::meta::type_info::of<HeavyPerf>();
 
     long long best_untyped = LLONG_MAX;
     long long best_std     = LLONG_MAX;
 
     for (size_t r = 0; r < reps; ++r) {
         // untyped_vector using emplace_back
-        untyped_vector uv(heavy_desc, N);
+        untyped_vector uv(epix::meta::type_info::of<HeavyPerf>(), N);
         long long t0 = now_us();
         for (size_t i = 0; i < N; ++i) {
             uv.emplace_back<HeavyPerf>(std::to_string(i));
@@ -131,7 +130,7 @@ void bench_heavy(size_t N, size_t reps) {
     long long best_uv_get_as  = LLONG_MAX;
     long long best_sv_idx     = LLONG_MAX;
 
-    untyped_vector uv_read(TypeInfo::get_info<HeavyPerf>(), N);
+    untyped_vector uv_read(epix::meta::type_info::of<HeavyPerf>(), N);
     std::vector<HeavyPerf> sv_read;
     sv_read.reserve(N);
     for (size_t i = 0; i < N; ++i) {

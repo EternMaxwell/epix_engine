@@ -225,14 +225,14 @@ struct SparseSets {
         self.sets.emplace(type_id, std::move(set));
     }
     void insert(this SparseSets& self, size_t type_id) {
-        self.sets.emplace(type_id, ComponentSparseSet(&self.registry->type_info(type_id)->type_index.type_info()));
+        self.sets.emplace(type_id, ComponentSparseSet(self.registry->type_info(type_id)->type_index.type_info()));
     }
 
     ComponentSparseSet& get_or_insert(this SparseSets& self, size_t type_id) {
         // This function will not throw since the type id is get from the registry, so it should have been registered.
         return self.sets.get_mut(type_id)
             .or_else([&]() -> std::optional<std::reference_wrapper<ComponentSparseSet>> {
-                self.insert(type_id, ComponentSparseSet(&self.registry->type_info(type_id)->type_index.type_info()));
+                self.insert(type_id, ComponentSparseSet(self.registry->type_info(type_id)->type_index.type_info()));
                 return self.sets.get_mut(type_id);
             })
             .value()
