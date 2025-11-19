@@ -160,18 +160,11 @@ class untyped_vector {
 
     // Templated helpers when caller knows the static type T
     template <typename T>
-    void push_back(const T& v) {
-        ensure_capacity_for_one();
-        void* dest = static_cast<char*>(data_) + size_ * desc_->size;
-        desc_->copy_construct(dest, static_cast<const void*>(std::addressof(v)));
-        ++size_;
-    }
-
-    template <typename T>
     void push_back(T&& v) {
+        using type = std::decay_t<T>;
         ensure_capacity_for_one();
         void* dest = static_cast<char*>(data_) + size_ * desc_->size;
-        desc_->move_construct(dest, static_cast<void*>(std::addressof(v)));
+        new (dest) type(std::forward<T>(v));
         ++size_;
     }
 
@@ -185,20 +178,12 @@ class untyped_vector {
     }
 
     template <typename T>
-    void emplace_back(const T& value) {
-        ensure_capacity_for_one();
-        void* dest = static_cast<char*>(data_) + size_ * desc_->size;
-        // direct placement-new since we know T here
-        new (dest) T(value);
-        ++size_;
-    }
-
-    template <typename T>
     void emplace_back(T&& value) {
+        using type = std::decay_t<T>;
         ensure_capacity_for_one();
         void* dest = static_cast<char*>(data_) + size_ * desc_->size;
         // direct placement-new since we know T here
-        new (dest) T(std::forward<T>(value));
+        new (dest) type(std::forward<T>(value));
         ++size_;
     }
 
@@ -578,12 +563,6 @@ class checked_untyped_vector {
     }
 
     template <typename T>
-    void push_back(const T& v) {
-        check_type<T>();
-        vec_->push_back<T>(v);
-    }
-
-    template <typename T>
     void push_back(T&& v) {
         check_type<T>();
         vec_->push_back(std::forward<T>(v));
@@ -594,11 +573,7 @@ class checked_untyped_vector {
         check_type<T>();
         vec_->emplace_back<T>(std::forward<Args>(args)...);
     }
-    template <typename T>
-    void emplace_back(const T& value) {
-        check_type<T>();
-        vec_->emplace_back(value);
-    }
+
     template <typename T>
     void emplace_back(T&& value) {
         check_type<T>();
