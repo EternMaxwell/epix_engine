@@ -80,8 +80,8 @@ int main() {
     // type id and type names
     std::println(std::cout, "type ids: {}",
                  std::views::iota(0u, registry->count()) | std::views::transform([&](uint32_t i) {
-                     auto info = registry->type_info(i)->type_index.type_info();
-                     return std::format("({}, {})", i, info->short_name);
+                     auto&& info = registry->type_info(i)->type_index.type_info();
+                     return std::format("({}, {})", i, info.short_name);
                  }));
 
     // check archetype and table counts

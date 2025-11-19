@@ -56,7 +56,7 @@ TableId Tables::get_id_or_insert(this Tables& self, const std::vector<TypeId>& t
         self._tables.emplace_back();
         Table& table = self._tables.back();
         for (size_t type_id : type_ids) {
-            const meta::type_info* type_info = self._type_registry->type_info(type_id)->type_index.type_info();
+            const meta::type_info& type_info = self._type_registry->type_info(type_id)->type_index.type_info();
             table._denses.emplace(type_id, Dense(type_info));
         }
         self._table_id_registry.insert({type_ids, table_id});

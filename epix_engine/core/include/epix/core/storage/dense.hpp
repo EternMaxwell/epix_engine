@@ -20,14 +20,14 @@ struct Dense {
     mutable std::vector<Tick> modified_ticks;
 
    public:
-    explicit Dense(const epix::core::meta::type_info* desc, size_t reserve_cnt = 0) : values(desc, reserve_cnt) {
+    explicit Dense(const epix::core::meta::type_info& desc, size_t reserve_cnt = 0) : values(desc, reserve_cnt) {
         if (reserve_cnt) {
             added_ticks.reserve(reserve_cnt);
             modified_ticks.reserve(reserve_cnt);
         }
     }
 
-    const epix::core::meta::type_info* type_info(this const Dense& self) { return self.values.descriptor(); }
+    const epix::core::meta::type_info& type_info(this const Dense& self) { return self.values.type_info(); }
 
     void reserve(this Dense& self, size_t new_cap) {
         self.values.reserve(new_cap);
@@ -123,8 +123,8 @@ struct Dense {
     }
 
     std::pair<const void*, const void*> get_data(this const Dense& self) {
-        return {self.values.cdata(), reinterpret_cast<const char*>(self.values.cdata()) +
-                                         self.values.size() * self.values.descriptor()->size};
+        return {self.values.cdata(),
+                reinterpret_cast<const char*>(self.values.cdata()) + self.values.size() * self.values.type_info().size};
     }
     template <typename T>
     std::span<const T> get_data_as(this const Dense& self) {

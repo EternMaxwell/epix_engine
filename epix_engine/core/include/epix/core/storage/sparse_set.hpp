@@ -17,7 +17,7 @@ struct ComponentSparseSet {
     std::vector<uint32_t> entities;          // from dense index to entity index
     SparseArray<uint32_t, uint32_t> sparse;  // from entity index to dense index
    public:
-    ComponentSparseSet(const epix::core::meta::type_info* desc, size_t reserve_cnt = 0) : dense(desc, reserve_cnt) {}
+    ComponentSparseSet(const epix::core::meta::type_info& desc, size_t reserve_cnt = 0) : dense(desc, reserve_cnt) {}
 
     void clear(this ComponentSparseSet& self) {
         self.dense.clear();
@@ -27,7 +27,7 @@ struct ComponentSparseSet {
     size_t size(this const ComponentSparseSet& self) { return self.dense.len(); }
     bool empty(this const ComponentSparseSet& self) { return self.size() == 0; }
 
-    const epix::core::meta::type_info* type_info(this const ComponentSparseSet& self) { return self.dense.type_info(); }
+    const epix::core::meta::type_info& type_info(this const ComponentSparseSet& self) { return self.dense.type_info(); }
 
     void alloc_uninitialized(this ComponentSparseSet& self, Entity entity) {
         uint32_t dense_index = static_cast<uint32_t>(self.dense.len());

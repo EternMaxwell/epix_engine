@@ -26,8 +26,8 @@ namespace epix::core::storage {
 //   to source objects and uses the descriptor's function pointers to manipulate them.
 class untyped_vector {
    public:
-    explicit untyped_vector(const epix::core::meta::type_info* desc, size_t reserve_cnt = 0)
-        : desc_(desc), size_(0), capacity_(0), data_(nullptr) {
+    explicit untyped_vector(const epix::core::meta::type_info& desc, size_t reserve_cnt = 0)
+        : desc_(std::addressof(desc)), size_(0), capacity_(0), data_(nullptr) {
         if (!desc_ || desc_->size == 0) throw std::invalid_argument("element size must be > 0");
         if (reserve_cnt) reserve(reserve_cnt);
     }
@@ -37,11 +37,62 @@ class untyped_vector {
         deallocate(data_);
     }
 
-    untyped_vector(const untyped_vector&)            = delete;
-    untyped_vector& operator=(const untyped_vector&) = delete;
+    [[deprecated("untyped_vector copy is not recommended; use clone() instead")]]
+    untyped_vector(const untyped_vector& other)
+        : desc_(other.desc_), mem_res_(other.mem_res_), size_(0), capacity_(0), data_(nullptr) {
+        reserve(other.size_);
+        if (other.size_ > 0) {
+            // copy-construct elements
+            if (desc_->trivially_copyable) {
+                std::memcpy(data_, other.data_, other.size_ * desc_->size);
+            } else {
+                if (!desc_->copy_constructible) {
+                    throw std::runtime_error("Type is not copy-constructible");
+                }
+                for (size_t i = 0; i < other.size_; ++i) {
+                    desc_->copy_construct(static_cast<char*>(data_) + i * desc_->size,
+                                          static_cast<const char*>(other.data_) + i * desc_->size);
+                }
+            }
+            size_ = other.size_;
+        }
+    }
+
+    [[deprecated("untyped_vector copy is not recommended; use clone() instead")]]
+    untyped_vector& operator=(const untyped_vector& other) {
+        if (this == &other) return *this;
+        clear();
+        if (type_info() != other.type_info()) {
+            deallocate(data_);
+            desc_     = other.desc_;
+            data_     = nullptr;
+            capacity_ = 0;
+        }
+        if (other.size_ > 0) {
+            reserve(other.size_);
+            // copy-construct elements
+            if (desc_->trivially_copyable) {
+                std::memcpy(data_, other.data_, other.size_ * desc_->size);
+            } else {
+                if (!desc_->copy_constructible) {
+                    throw std::runtime_error("Type is not copy-constructible");
+                }
+                for (size_t i = 0; i < other.size_; ++i) {
+                    desc_->copy_construct(static_cast<char*>(data_) + i * desc_->size,
+                                          static_cast<const char*>(other.data_) + i * desc_->size);
+                }
+            }
+            size_ = other.size_;
+        }
+        return *this;
+    }
 
     untyped_vector(untyped_vector&& other) noexcept
-        : desc_(other.desc_), size_(other.size_), capacity_(other.capacity_), data_(other.data_) {
+        : desc_(other.desc_),
+          size_(other.size_),
+          capacity_(other.capacity_),
+          data_(other.data_),
+          mem_res_(other.mem_res_) {
         other.data_     = nullptr;
         other.size_     = 0;
         other.capacity_ = 0;
@@ -63,13 +114,30 @@ class untyped_vector {
         return *this;
     }
 
+    untyped_vector clone() const {
+        untyped_vector copy(*desc_, size_);
+        if (desc_->trivially_copyable) {
+            std::memcpy(copy.data_, data_, size_ * desc_->size);
+        } else {
+            if (!desc_->copy_constructible) {
+                throw std::runtime_error("Type is not copy-constructible");
+            }
+            for (size_t i = 0; i < size_; ++i) {
+                desc_->copy_construct(static_cast<char*>(copy.data_) + i * desc_->size,
+                                      static_cast<const char*>(data_) + i * desc_->size);
+            }
+        }
+        copy.size_ = size_;
+        return std::move(copy);
+    }
+
     // size/capacity
     size_t size() const noexcept { return size_; }
+    size_t max_size() const noexcept { return std::numeric_limits<size_t>::max() / desc_->size; }
     size_t capacity() const noexcept { return capacity_; }
     bool empty() const noexcept { return size_ == 0; }
 
-    const epix::core::meta::type_info* type_info() const noexcept { return desc_; }
-    const epix::core::meta::type_info* descriptor() const noexcept { return desc_; }
+    const epix::core::meta::type_info& type_info() const noexcept { return *desc_; }
 
     // raw pointer access (void*)
     void* data() noexcept { return data_; }
@@ -92,7 +160,7 @@ class untyped_vector {
 
     // Templated helpers when caller knows the static type T
     template <typename T>
-    void push_back_copy(const T& v) {
+    void push_back(const T& v) {
         ensure_capacity_for_one();
         void* dest = static_cast<char*>(data_) + size_ * desc_->size;
         desc_->copy_construct(dest, static_cast<const void*>(std::addressof(v)));
@@ -100,7 +168,7 @@ class untyped_vector {
     }
 
     template <typename T>
-    void push_back_move(T&& v) {
+    void push_back(T&& v) {
         ensure_capacity_for_one();
         void* dest = static_cast<char*>(data_) + size_ * desc_->size;
         desc_->move_construct(dest, static_cast<void*>(std::addressof(v)));
@@ -113,6 +181,24 @@ class untyped_vector {
         void* dest = static_cast<char*>(data_) + size_ * desc_->size;
         // direct placement-new since we know T here
         new (dest) T(std::forward<Args>(args)...);
+        ++size_;
+    }
+
+    template <typename T>
+    void emplace_back(const T& value) {
+        ensure_capacity_for_one();
+        void* dest = static_cast<char*>(data_) + size_ * desc_->size;
+        // direct placement-new since we know T here
+        new (dest) T(value);
+        ++size_;
+    }
+
+    template <typename T>
+    void emplace_back(T&& value) {
+        ensure_capacity_for_one();
+        void* dest = static_cast<char*>(data_) + size_ * desc_->size;
+        // direct placement-new since we know T here
+        new (dest) T(std::forward<T>(value));
         ++size_;
     }
 
@@ -440,7 +526,7 @@ class checked_untyped_vector {
     explicit checked_untyped_vector(untyped_vector& vec) noexcept : vec_(&vec) {}
 
     // Owning constructor: create and own an untyped_vector internally.
-    explicit checked_untyped_vector(const epix::core::meta::type_info* desc, size_t reserve_cnt = 0)
+    explicit checked_untyped_vector(const epix::core::meta::type_info& desc, size_t reserve_cnt = 0)
         : owned_(std::make_unique<untyped_vector>(desc, reserve_cnt)) {
         vec_ = owned_.get();
     }
@@ -449,7 +535,7 @@ class checked_untyped_vector {
     size_t capacity() const noexcept { return vec_->capacity(); }
     bool empty() const noexcept { return vec_->empty(); }
 
-    const epix::core::meta::type_info* descriptor() const noexcept { return vec_->descriptor(); }
+    const epix::core::meta::type_info& type_info() const noexcept { return vec_->type_info(); }
 
     void* data() noexcept { return vec_->data(); }
     const void* data() const noexcept { return vec_->data(); }
@@ -492,21 +578,31 @@ class checked_untyped_vector {
     }
 
     template <typename T>
-    void push_back_copy(const T& v) {
+    void push_back(const T& v) {
         check_type<T>();
-        vec_->push_back_copy<T>(v);
+        vec_->push_back<T>(v);
     }
 
     template <typename T>
-    void push_back_move(T&& v) {
+    void push_back(T&& v) {
         check_type<T>();
-        vec_->push_back_move<T>(std::forward<T>(v));
+        vec_->push_back(std::forward<T>(v));
     }
 
     template <typename T, typename... Args>
     void emplace_back(Args&&... args) {
         check_type<T>();
         vec_->emplace_back<T>(std::forward<Args>(args)...);
+    }
+    template <typename T>
+    void emplace_back(const T& value) {
+        check_type<T>();
+        vec_->emplace_back(value);
+    }
+    template <typename T>
+    void emplace_back(T&& value) {
+        check_type<T>();
+        vec_->emplace_back(std::forward<T>(value));
     }
 
     template <typename T>
@@ -598,11 +694,10 @@ class checked_untyped_vector {
 
     template <typename T>
     void check_type() const {
-        const auto* d = vec_->descriptor();
-        if (!d) throw std::logic_error("descriptor is null");
-        if (!d->name.empty() && d->name != epix::core::meta::type_id<T>().name())
+        const auto& d = vec_->type_info();
+        if (!d.name.empty() && d.name != epix::core::meta::type_id<T>().name())
             throw std::logic_error("type mismatch between descriptor and requested T");
-        if (d->size != sizeof(T) || d->align != alignof(T)) throw std::logic_error("type size or alignment mismatch");
+        if (d.size != sizeof(T) || d.align != alignof(T)) throw std::logic_error("type size or alignment mismatch");
     }
 };
 }  // namespace epix::core::storage

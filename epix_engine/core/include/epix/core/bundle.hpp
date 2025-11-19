@@ -141,7 +141,7 @@ struct BundleInfo {
                     dense.get_modified_tick(row).value().get() = tick;
                 } else if (replace_existing) {
                     // manually destroy existing component before replacing
-                    dense.type_info()->destruct(ptr);
+                    dense.type_info().destruct(ptr);
                     pointers.push_back(ptr);
                     dense.get_modified_tick(row).value().get() = tick;
                 } else {
@@ -160,7 +160,7 @@ struct BundleInfo {
                 } else if (replace_existing) {
                     // manually destroy existing component before replacing
                     void* ptr = sparse_set.get_mut(entity).value();
-                    sparse_set.type_info()->destruct(ptr);
+                    sparse_set.type_info().destruct(ptr);
                     pointers.push_back(ptr);
                     sparse_set.get_modified_tick(entity).value().get() = tick;
                 } else {

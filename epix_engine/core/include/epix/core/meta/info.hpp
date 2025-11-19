@@ -26,6 +26,8 @@ struct type_info {
     void (*move_construct)(void* dest, void* src) noexcept       = nullptr;
 
     // Cached traits
+    bool copy_constructible;
+    bool move_constructible;
     bool trivially_copyable;
     bool trivially_destructible;
     bool noexcept_move_constructible;
@@ -60,12 +62,16 @@ struct type_info {
         }
     }
 
+    bool operator==(const type_info& other) const noexcept {
+        return std::addressof(other) == this || other.name == name;
+    }
+
     template <typename T>
-    static const type_info* of() {
+    static const type_info& of() {
         if constexpr (requires { sizeof(T); }) {
-            return of1<T>();
+            return *of1<T>();
         } else {
-            return of2<T>();
+            return *of2<T>();
         }
     }
 
@@ -81,6 +87,8 @@ struct type_info {
             .destruct                    = destruct_impl<T>(),
             .copy_construct              = copy_construct_impl<T>(),
             .move_construct              = move_construct_impl<T>(),
+            .copy_constructible          = std::copy_constructible<T>,
+            .move_constructible          = std::move_constructible<T>,
             .trivially_copyable          = std::is_trivially_copyable_v<T>,
             .trivially_destructible      = std::is_trivially_destructible_v<T>,
             .noexcept_move_constructible = std::is_nothrow_move_constructible_v<T>,
@@ -99,6 +107,8 @@ struct type_info {
             .destruct                    = nullptr,
             .copy_construct              = nullptr,
             .move_construct              = nullptr,
+            .copy_constructible          = false,
+            .move_constructible          = false,
             .trivially_copyable          = false,
             .trivially_destructible      = false,
             .noexcept_move_constructible = false,

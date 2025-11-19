@@ -23,7 +23,7 @@ static inline long long now_us() {
 }
 
 void bench_int(size_t N, size_t reps) {
-    const auto* int_desc = epix::meta::type_info::of<int>();
+    const auto& int_desc = epix::meta::type_info::of<int>();
 
     long long best_untyped = LLONG_MAX;
     long long best_std     = LLONG_MAX;
@@ -95,7 +95,7 @@ void bench_int(size_t N, size_t reps) {
 }
 
 void bench_heavy(size_t N, size_t reps) {
-    const auto* heavy_desc = epix::meta::type_info::of<HeavyPerf>();
+    const auto& heavy_desc = epix::meta::type_info::of<HeavyPerf>();
 
     long long best_untyped = LLONG_MAX;
     long long best_std     = LLONG_MAX;

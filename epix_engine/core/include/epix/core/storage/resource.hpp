@@ -14,7 +14,7 @@ namespace epix::core::storage {
  */
 struct ResourceData {
    public:
-    ResourceData(const epix::core::meta::type_info* desc) : data(desc, 1), added_tick(0), modified_tick(0) {}
+    ResourceData(const epix::core::meta::type_info& desc) : data(desc, 1), added_tick(0), modified_tick(0) {}
 
     bool is_present(this const ResourceData& self) { return !self.data.empty(); }
     std::optional<const void*> get(this const ResourceData& self) {
@@ -122,7 +122,7 @@ struct ResourceData {
     void insert_uninitialized(this ResourceData& self, Tick tick) {
         if (self.is_present()) {
             // This function is generally called before an inplace construction, so we destroy the existing value first
-            self.data.type_info()->destruct(self.data.data());
+            self.data.type_info().destruct(self.data.data());
         } else {
             self.data.append_uninitialized(1);
             self.added_tick.set(tick.get());
@@ -177,7 +177,7 @@ struct Resources {
 
     bool initialize(this Resources& self, TypeId resource_id) {
         if (!self.resources.contains(resource_id)) {
-            const epix::core::meta::type_info* type_info = self.registry->type_info(resource_id)->type_index.type_info();
+            const epix::core::meta::type_info& type_info = self.registry->type_info(resource_id)->type_index.type_info();
             self.resources.emplace(resource_id, ResourceData(type_info));
             return true;
         }
