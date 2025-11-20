@@ -163,8 +163,8 @@ struct DefaultSamplerPlugin {
 
 void extract_sprites(
     Commands cmd,
-    Extract<Query<Item<Entity, const Sprite&, const transform::GlobalTransform&, const assets::Handle<image::Image>&>>>
-        sprites);
+    Extract<Query<Item<Entity, const Sprite&, const transform::GlobalTransform&, const assets::Handle<image::Image>&>,
+                  Without<render::CustomRendered>>> sprites);
 void queue_sprites(Query<Item<render::render_phase::RenderPhase<render::core_2d::Transparent2D>&>,
                          With<render::camera::ExtractedCamera, render::view::ViewTarget>> views,
                    Res<SpritePipeline> pipeline,

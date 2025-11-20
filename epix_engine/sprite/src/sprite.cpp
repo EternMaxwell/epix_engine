@@ -191,8 +191,8 @@ void DefaultSamplerPlugin::finish(App& app) {
 
 void sprite::extract_sprites(
     Commands cmd,
-    Extract<Query<Item<Entity, const Sprite&, const transform::GlobalTransform&, const assets::Handle<image::Image>&>>>
-        sprites) {
+    Extract<Query<Item<Entity, const Sprite&, const transform::GlobalTransform&, const assets::Handle<image::Image>&>,
+                  Without<render::CustomRendered>>> sprites) {
     for (auto&& [entity, sprite, transform, texture] : sprites.iter()) {
         cmd.spawn(
             ExtractedSprite{
@@ -292,8 +292,8 @@ void sprite::prepare_sprites(Query<Item<render::render_phase::RenderPhase<render
         assets::AssetId<image::Image> batch_image = assets::AssetId<image::Image>::invalid();
 
         for (auto&& [item_index, item] : phase.items | std::views::enumerate) {
-            if (!batches.contains(item.entity())) {
-                // not a sprite, reset batch image since this item cannot be batched sequentially and skip
+            if (!batches.contains(item.entity()) || item.pipeline() != pipeline->pipeline_id) {
+                // not a sprite drawn by standard render process, reset batch image and continue to trigger a new batch
                 batch_image = assets::AssetId<image::Image>::invalid();
                 continue;
             }
