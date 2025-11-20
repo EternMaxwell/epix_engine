@@ -20,4 +20,8 @@ struct ExtractResourcePlugin {
             into(extract_fn).set_name(std::format("extract resource '{}'", meta::type_id<T>().short_name())));
     }
 };
+/// A helper marker to tell that a entity has a custom rendering process instead of handled by the engine. This is only
+/// for standard rendering process. For non-standard rendering processes, user is expected to use other markers provided
+/// by those modules providing the rendering process.
+struct CustomRendered {};
 }  // namespace epix::render
