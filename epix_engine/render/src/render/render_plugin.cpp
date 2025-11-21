@@ -56,21 +56,12 @@ void RenderPlugin::build(epix::App& app) {
         render_app.world_mut().emplace_resource<graph::RenderGraph>();
     });
 
-    app.add_plugins(epix::render::window::WindowRenderPlugin{});
-    app.add_plugins(epix::render::camera::CameraPlugin{});
-    app.add_plugins(epix::render::view::ViewPlugin{});
-    app.add_plugins(epix::image::ImagePlugin{});
-    app.add_plugins(epix::render::assets::ExtractAssetPlugin<epix::image::Image>{});
-    app.add_plugins(epix::render::ShaderPlugin{});
-    app.add_plugins(epix::render::PipelineServerPlugin{});
-}
-void RenderPlugin::finish(epix::App& app) {
     spdlog::info("[render] Creating vulkan resources.");
 
-    auto latyers = std::vector<const char*>();
+    auto layers = std::vector<const char*>();
     if (validation == 2) {
         // validation 2: enable vulkan validation layers
-        latyers.push_back("VK_LAYER_KHRONOS_validation");
+        layers.push_back("VK_LAYER_KHRONOS_validation");
     }
 
     auto app_info =
@@ -88,10 +79,9 @@ void RenderPlugin::finish(epix::App& app) {
         }
         return extension_names;
     }();
-    auto instance = vk::createInstance(vk::InstanceCreateInfo()
-                                           .setPApplicationInfo(&app_info)
-                                           .setPEnabledLayerNames(latyers)
-                                           .setPEnabledExtensionNames(extensions));
+    auto instance = vk::createInstance(
+        vk::InstanceCreateInfo().setPApplicationInfo(&app_info).setPEnabledLayerNames(layers).setPEnabledExtensionNames(
+            extensions));
 #ifdef EPIX_USE_VOLK
     volkLoadInstance(instance);
     VULKAN_HPP_DEFAULT_DISPATCHER.init(instance);
@@ -249,5 +239,13 @@ void RenderPlugin::finish(epix::App& app) {
     render_app.world_mut().insert_resource(device);
     render_app.world_mut().insert_resource(queue);
     render_app.world_mut().insert_resource(nvrhi_device);
+
+    app.add_plugins(epix::render::window::WindowRenderPlugin{});
+    app.add_plugins(epix::render::camera::CameraPlugin{});
+    app.add_plugins(epix::render::view::ViewPlugin{});
+    app.add_plugins(epix::image::ImagePlugin{});
+    app.add_plugins(epix::render::assets::ExtractAssetPlugin<epix::image::Image>{});
+    app.add_plugins(epix::render::ShaderPlugin{});
+    app.add_plugins(epix::render::PipelineServerPlugin{});
 }
 void RenderPlugin::finalize(epix::App& app) { volk_handler.reset(); }
