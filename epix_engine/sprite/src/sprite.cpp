@@ -223,55 +223,6 @@ void sprite::queue_sprites(Query<Item<render::render_phase::RenderPhase<render::
     }
 }
 
-void sprite::create_uniform_for_view(
-    Commands cmd,
-    Query<Item<Entity, const render::view::ExtractedView&, const render::camera::ExtractedCamera&>> views,
-    ResMut<ViewUniformCache> uniform_cache,
-    Res<nvrhi::DeviceHandle> device) {
-    auto cmd_list = device.get()->createCommandList(nvrhi::CommandListParameters().setEnableImmediateExecution(false));
-    cmd_list->open();
-    for (auto&& [entity, view, camera] : views.iter()) {
-        if (camera.render_graph != render::camera::CameraRenderGraph(render::core_2d::Core2d)) {
-            continue;
-        }
-
-        // create a uniform buffer for the view
-        nvrhi::BufferHandle view_buffer;
-        if (uniform_cache->cache.empty()) {
-            view_buffer = device.get()->createBuffer(nvrhi::BufferDesc()
-                                                         .setByteSize(sizeof(glm::mat4) * 2)
-                                                         .setIsConstantBuffer(true)
-                                                         .setInitialState(nvrhi::ResourceStates::ConstantBuffer)
-                                                         .setKeepInitialState(true)
-                                                         .setDebugName("Sprite View Uniform"));
-        } else {
-            view_buffer = uniform_cache->cache.back().view_buffer;
-            uniform_cache->cache.pop_back();
-        }
-
-        // upload data
-        std::array<glm::mat4, 2> matrices = {
-            view.projection,
-            glm::inverse(view.transform.matrix),
-        };
-        cmd_list->writeBuffer(view_buffer, matrices.data(), sizeof(matrices));
-
-        // insert the uniform into the view entity
-        cmd.entity(entity).insert(ViewUniform{.view_buffer = view_buffer});
-    }
-    cmd_list->close();
-    // {
-    //     // print execute submit time
-    //     auto now = std::chrono::high_resolution_clock::now();
-    //     spdlog::info("[sprite] Submit view uniform upload at {}ms",
-    //                  std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count());
-    // }
-    device.get()->executeCommandList(cmd_list);
-
-    // clean up unused view uniforms
-    uniform_cache->cache.clear();
-}
-
 void sprite::prepare_sprites(Query<Item<render::render_phase::RenderPhase<render::core_2d::Transparent2D>&>,
                                    With<render::camera::ExtractedCamera, render::view::ExtractedView>> views,
                              Query<Item<SpriteBatch&, const ExtractedSprite&>> batches,
@@ -367,13 +318,10 @@ void SpritePlugin::finish(App& app) {
         render_app->get().world_mut().init_resource<SpritePipeline>();
         render_app->get().world_mut().init_resource<VertexBuffers>();
         render_app->get().world_mut().insert_resource(SpriteInstanceBuffer{});
-        render_app->get().world_mut().insert_resource(ViewUniformCache{});
         render_app->get()
             .add_systems(render::ExtractSchedule, into(extract_sprites).set_name("extract sprites"))
-            .add_systems(render::Render,
-                         into(into(queue_sprites).in_set(render::RenderSet::Queue),
-                              into(create_uniform_for_view).in_set(render::RenderSet::PrepareResources),
-                              into(prepare_sprites).in_set(render::RenderSet::Prepare))
-                             .set_names(std::array{"queue sprites", "create sprite view uniforms", "prepare sprites"}));
+            .add_systems(render::Render, into(into(queue_sprites).in_set(render::RenderSet::Queue),
+                                              into(prepare_sprites).in_set(render::RenderSet::Prepare))
+                                             .set_names(std::array{"queue sprites", "prepare sprites"}));
     }
 }

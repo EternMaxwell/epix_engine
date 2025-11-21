@@ -2,6 +2,7 @@
 
 #include <epix/transform.hpp>
 
+#include "nvrhi/nvrhi.h"
 #include "vulkan.hpp"
 #include "window.hpp"
 
@@ -46,4 +47,12 @@ void create_view_depth(Query<Item<Entity, const ExtractedView&>> views,
                        Res<nvrhi::DeviceHandle> device,
                        ResMut<ViewDepthCache> depth_cache,
                        Commands cmd);
+
+struct ViewUniform {
+    glm::mat4 projection;
+    glm::mat4 view;
+};
+struct UniformBuffer {
+    nvrhi::BufferHandle buffer;
+};
 }  // namespace epix::render::view

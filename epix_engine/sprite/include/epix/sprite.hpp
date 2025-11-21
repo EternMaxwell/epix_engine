@@ -32,13 +32,6 @@ struct SpritePipeline {
 struct SpriteShadersPlugin {
     void build(App& app);
 };
-
-struct ViewUniform {
-    nvrhi::BufferHandle view_buffer;
-};
-struct ViewUniformCache {
-    std::deque<ViewUniform> cache;
-};
 struct VertexBuffers {
     nvrhi::BufferHandle position_buffer;
     nvrhi::BufferHandle texcoord_buffer;
@@ -88,7 +81,7 @@ struct BindResourceCommand {
     void prepare(const World&) { uniform_set_cache.clear(); }
     bool render(
         const P& item,
-        Item<const ViewUniform&> view_item,
+        Item<const render::view::UniformBuffer&> view_item,
         std::optional<Item<const SpriteBatch&>> entity_item,
         ParamSet<Res<SpriteInstanceBuffer>, Res<nvrhi::DeviceHandle>, Res<SpritePipeline>, Res<VertexBuffers>> params,
         render::render_phase::DrawContext& ctx) {
@@ -101,15 +94,15 @@ struct BindResourceCommand {
         auto&& [sprite_batch] = **entity_item;
         nvrhi::BindingSetHandle uniform_and_instance_set;
         // get or create the binding set for the view uniform and instance buffer
-        if (auto it = uniform_set_cache.find(view_uniform.view_buffer); it != uniform_set_cache.end()) {
+        if (auto it = uniform_set_cache.find(view_uniform.buffer); it != uniform_set_cache.end()) {
             uniform_and_instance_set = it->second;
         } else {
             nvrhi::BindingSetDesc desc =
                 nvrhi::BindingSetDesc()
-                    .addItem(nvrhi::BindingSetItem::ConstantBuffer(0, view_uniform.view_buffer))
+                    .addItem(nvrhi::BindingSetItem::ConstantBuffer(0, view_uniform.buffer))
                     .addItem(nvrhi::BindingSetItem::RawBuffer_SRV(1, instance_buffer->handle()));
-            uniform_and_instance_set = device.get()->createBindingSet(desc, pipeline->uniform_layout);
-            uniform_set_cache[view_uniform.view_buffer] = uniform_and_instance_set;
+            uniform_and_instance_set               = device.get()->createBindingSet(desc, pipeline->uniform_layout);
+            uniform_set_cache[view_uniform.buffer] = uniform_and_instance_set;
         }
 
         // set the binding sets
@@ -170,11 +163,6 @@ void queue_sprites(Query<Item<render::render_phase::RenderPhase<render::core_2d:
                    Res<SpritePipeline> pipeline,
                    ResMut<render::render_phase::DrawFunctions<render::core_2d::Transparent2D>> draw_functions,
                    Query<Item<Entity, const ExtractedSprite&>> extracted_sprites);
-void create_uniform_for_view(
-    Commands cmd,
-    Query<Item<Entity, const render::view::ExtractedView&, const render::camera::ExtractedCamera&>> views,
-    ResMut<ViewUniformCache> uniform_cache,
-    Res<nvrhi::DeviceHandle> device);
 void prepare_sprites(Query<Item<render::render_phase::RenderPhase<render::core_2d::Transparent2D>&>,
                            With<render::camera::ExtractedCamera, render::view::ExtractedView>> views,
                      Query<Item<SpriteBatch&, const ExtractedSprite&>> batches,
