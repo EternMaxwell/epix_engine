@@ -42,6 +42,7 @@ struct World {
 
     WorldId id() const { return _id; }
     const type_system::TypeRegistry& type_registry() const { return *_type_registry; }
+    std::shared_ptr<type_system::TypeRegistry> type_registry_ptr() const { return _type_registry; }
     const Components& components() const { return _components; }
     Components& components_mut() { return _components; }
     const Entities& entities() const { return _entities; }

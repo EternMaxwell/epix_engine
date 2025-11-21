@@ -18,6 +18,7 @@
 #include "event/events.hpp"
 #include "fwd.hpp"
 #include "schedule/schedule.hpp"
+#include "type_system/type_registry.hpp"
 #include "world.hpp"
 
 namespace epix::core {
@@ -94,9 +95,10 @@ struct AppRunner {
 struct App {
    public:
     App(const AppLabel& label                            = AppLabel::from_type<App>(),
+        std::shared_ptr<TypeRegistry> type_registry      = std::make_shared<TypeRegistry>(),
         std::shared_ptr<std::atomic<uint32_t>> world_ids = std::make_shared<std::atomic<uint32_t>>(0))
         : _label(label),
-          _world(std::make_unique<World>(world_ids->fetch_add(1))),
+          _world(std::make_unique<World>(world_ids->fetch_add(1), type_registry)),
           _world_ids(world_ids),
           _world_mutex(std::make_unique<std::recursive_mutex>()) {}
     App(const App&)            = delete;

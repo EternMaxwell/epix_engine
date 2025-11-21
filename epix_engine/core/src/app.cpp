@@ -27,7 +27,7 @@ App App::create() {
 App& App::sub_app_or_insert(const AppLabel& label) {
     auto&& [it, inserted] = _sub_apps.emplace(label, nullptr);
     if (inserted) {
-        it->second = std::make_unique<App>(label, _world_ids);
+        it->second = std::make_unique<App>(label, world().type_registry_ptr(), _world_ids);
     }
     return *it->second;
 }
@@ -35,7 +35,7 @@ App& App::sub_app_or_insert(const AppLabel& label) {
 App& App::add_sub_app(const AppLabel& label) {
     auto&& [it, inserted] = _sub_apps.emplace(label, nullptr);
     if (inserted) {
-        it->second = std::make_unique<App>(label, _world_ids);
+        it->second = std::make_unique<App>(label, world().type_registry_ptr(), _world_ids);
     }
     return *this;
 }
