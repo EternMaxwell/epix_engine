@@ -25,7 +25,6 @@ struct RenderPlugin {
      */
     RenderPlugin& set_validation(int level = 0);
     void build(epix::App&);
-    void finish(epix::App&);
     void finalize(epix::App&);
 };
 void render_system(World& world);
