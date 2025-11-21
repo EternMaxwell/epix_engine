@@ -61,6 +61,8 @@ bool GLFWRunner::step(App& app) {
     return true;
 }
 void GLFWRunner::exit(App& app) {
+    if (render_app_future) render_app_future->wait();
+    render_app_future.reset();
     app.world_scope([&](World& world) {
         auto res = remove_window->run({}, world);
         res      = destroy_windows_system->run({}, world);
