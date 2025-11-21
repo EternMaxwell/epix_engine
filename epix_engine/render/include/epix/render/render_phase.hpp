@@ -5,7 +5,6 @@
 #include "epix/core/system/param.hpp"
 #include "graph.hpp"
 #include "pipeline.hpp"
-#include "view.hpp"
 
 namespace epix::render::render_phase {
 struct DrawFunctionId {

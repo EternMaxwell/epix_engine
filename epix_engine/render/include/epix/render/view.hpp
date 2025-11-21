@@ -3,6 +3,7 @@
 #include <epix/transform.hpp>
 
 #include "nvrhi/nvrhi.h"
+#include "render_phase.hpp"
 #include "vulkan.hpp"
 #include "window.hpp"
 
@@ -54,5 +55,44 @@ struct ViewUniform {
 };
 struct UniformBuffer {
     nvrhi::BufferHandle buffer;
+};
+struct ViewUniformBindingLayout {
+    nvrhi::BindingLayoutHandle layout;
+    ViewUniformBindingLayout(World& world) {
+        layout = world.resource<nvrhi::DeviceHandle>()->createBindingLayout(
+            nvrhi::BindingLayoutDesc()
+                .setVisibility(nvrhi::ShaderType::All)
+                .addItem(nvrhi::BindingLayoutItem::ConstantBuffer(0))
+                .setBindingOffsets(nvrhi::VulkanBindingOffsets{0, 0, 0, 0}));
+    }
+};
+template <size_t Slot>
+struct BindViewUniform {
+    template <render::render_phase::PhaseItem P>
+    struct Command {
+        std::unordered_map<nvrhi::BufferHandle, nvrhi::BindingSetHandle> uniform_set_cache;
+        void prepare(World&) { uniform_set_cache.clear(); }
+        bool render(const P&,
+                    Item<const UniformBuffer&> view_uniform,
+                    std::optional<Item<>> entity_item,
+                    ParamSet<Res<nvrhi::DeviceHandle>, Res<ViewUniformBindingLayout>> params,
+                    render::render_phase::DrawContext& ctx) {
+            auto&& [device, uniform_layout] = params.get();
+            auto&& [ub]                     = *view_uniform;
+            nvrhi::BufferHandle buffer      = ub.buffer;
+            nvrhi::BindingSetHandle binding_set;
+            if (auto it = uniform_set_cache.find(buffer); it != uniform_set_cache.end()) {
+                binding_set = it->second;
+            } else {
+                binding_set = device.get()->createBindingSet(
+                    nvrhi::BindingSetDesc().addItem(nvrhi::BindingSetItem::ConstantBuffer(0, buffer)),
+                    uniform_layout->layout);
+                uniform_set_cache.emplace(buffer, binding_set);
+            }
+            ctx.graphics_state.bindings.resize(Slot + 1);
+            ctx.graphics_state.bindings[Slot] = binding_set;
+            return true;
+        }
+    };
 };
 }  // namespace epix::render::view

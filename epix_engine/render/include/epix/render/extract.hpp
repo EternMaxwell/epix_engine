@@ -7,7 +7,8 @@ inline struct ExtractScheduleT {
 } ExtractSchedule;
 template <std::copyable T>
 struct ExtractResourcePlugin {
-    static void extract_fn(Commands cmd, std::optional<ResMut<T>> res, Extract<ResMut<T>> extract) {
+    static void extract_fn(Commands cmd, ParamSet<std::optional<ResMut<T>>, Extract<ResMut<T>>> resources) {
+        auto&& [res, extract] = resources.get();
         if (!res) {
             cmd.insert_resource(extract.get());
         } else if (extract.is_modified()) {
