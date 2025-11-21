@@ -2,19 +2,26 @@
 
 #include <epix/core.hpp>
 #include <epix/render/vulkan.hpp>
+#include <glm/glm.hpp>
+#include <limits>
 #include <map>
 #include <ranges>
+#include <type_traits>
 
 namespace epix::mesh {
 enum class MeshError {
+    /// Indicates no attribute at given slot.
     SlotNotFound,
+    /// Indicates attribute name does not match the current one at given slot.
     NameMismatch,
+    /// Indicates the type of provided data is incompatible with the attribute format. Or the format is compressed.
     TypeIncompatible,
+    /// Indicates the format(type) of stored attribute does not match the requested one.
     TypeMismatch,
 };
 struct MeshAttribute {
     std::string name;
-    size_t slot;
+    uint32_t slot;
     nvrhi::Format format;
 };
 struct MeshAttributeData {
@@ -56,9 +63,13 @@ struct Mesh {
         self.set_primitive_type(type);
         return std::forward<decltype(self)>(self);
     }
+    auto iter_attributes() const { return std::views::values(_attributes); }
+    auto iter_attributes_mut() { return std::views::values(_attributes); }
 
     /// Insert a new attribute with given data to the mesh or replace existing one regardless of type.
     template <std::ranges::viewable_range T>
+        requires(std::is_trivially_copyable_v<std::ranges::range_value_t<T>> &&
+                 std::is_trivially_destructible_v<std::ranges::range_value_t<T>>)
     std::expected<void, MeshError> insert_attribute(MeshAttribute attribute, T&& data) {
         using value_type = std::ranges::range_value_t<T>;
         if (nvrhi::getFormatInfo(attribute.format).bytesPerBlock != sizeof(value_type) ||
@@ -73,14 +84,20 @@ struct Mesh {
         auto [it, inserted] = _attributes.insert_or_assign(attribute.slot, std::move(attribute_data));
         return {};
     }
+    template <std::ranges::viewable_range T>
+        requires(std::is_trivially_copyable_v<std::ranges::range_value_t<T>> &&
+                 std::is_trivially_destructible_v<std::ranges::range_value_t<T>>)
     auto&& with_attribute(this auto&& self,
                           MeshAttribute attribute,
-                          std::ranges::viewable_range auto&& data,
+                          T&& data,
                           std::invocable<std::expected<void, MeshError>> auto&& callback) {
         callback(self.insert_attribute(attribute, std::forward<decltype(data)>(data)));
         return std::forward<decltype(self)>(self);
     }
-    auto&& with_attribute(this auto&& self, MeshAttribute attribute, std::ranges::viewable_range auto&& data) {
+    template <std::ranges::viewable_range T>
+        requires(std::is_trivially_copyable_v<std::ranges::range_value_t<T>> &&
+                 std::is_trivially_destructible_v<std::ranges::range_value_t<T>>)
+    auto&& with_attribute(this auto&& self, MeshAttribute attribute, T&& data) {
         self.insert_attribute(attribute, std::forward<decltype(data)>(data));
         return std::forward<decltype(self)>(self);
     }
@@ -162,6 +179,23 @@ struct Mesh {
         return std::forward<decltype(self)>(self);
     }
 
+    /// Count and return the vertex count of the mesh, indices are not considered.
+    size_t count_vertices() const {
+        if (_attributes.empty()) {
+            return 0;
+        }
+        size_t count = std::numeric_limits<size_t>::max();
+        for (auto&& [slot, attribute_data] : _attributes) {
+            size_t attribute_count = attribute_data.data.size();
+            if (attribute_count != count) {
+                spdlog::warn("Mesh::count_vertices(): attribute [{}:{}] has different count with previous ({} vs {})",
+                             slot, attribute_data.attribute.name, count, attribute_count);
+            }
+            count = std::min(count, attribute_count);
+        }
+        return count;
+    };
+
    private:
     nvrhi::PrimitiveType primitive_type;
     std::map<size_t, MeshAttributeData> _attributes;
@@ -175,7 +209,9 @@ inline const MeshAttribute Mesh::ATTRIBUTE_UV1{"uv1", 4, nvrhi::Format::RG32_FLO
 
 /// Make a circle mesh centered at (0,0,0) with given radius and segment count. segment count is the number of line
 /// segments used to approximate the circle, if not provided, it will be calculated based on radius.
-Mesh make_circle(float radius, std::optional<uint32_t> segment_count);
+Mesh make_circle(float radius,
+                 std::optional<glm::vec4> color        = std::nullopt,
+                 std::optional<uint32_t> segment_count = std::nullopt);
 /// Make a box mesh centered at (0,0,0) on the XY plane with given width and height.
-Mesh make_box2d(float width, float height);
+Mesh make_box2d(float width, float height, std::optional<glm::vec4> color = std::nullopt);
 }  // namespace epix::mesh
