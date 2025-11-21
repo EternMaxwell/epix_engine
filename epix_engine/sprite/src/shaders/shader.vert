@@ -16,7 +16,7 @@ struct Instance {
     vec4 color;
     vec4 pos_offset_scale;
 };
-layout(set = 0, binding = 1) buffer InstanceData {
+layout(set = 1, binding = 0) buffer InstanceData {
     Instance instances[];
 };
 

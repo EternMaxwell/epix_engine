@@ -1,5 +1,7 @@
 #include <epix/sprite.hpp>
 
+#include "nvrhi/nvrhi.h"
+
 namespace epix::sprite::shaders {
 #include "shaders/shader.frag.h"
 #include "shaders/shader.vert.h"
@@ -30,10 +32,10 @@ SpritePipeline SpritePipeline::from_world(World& world) {
         // a uniform buffer and a push constant for the transform
         pipeline.uniform_layout = device->createBindingLayout(
             nvrhi::BindingLayoutDesc()
-                .addItem(nvrhi::BindingLayoutItem::ConstantBuffer(0))
-                .addItem(nvrhi::BindingLayoutItem::RawBuffer_SRV(1))  // storage buffer for batched model matrices
+                .addItem(nvrhi::BindingLayoutItem::RawBuffer_SRV(0))  // storage buffer for batched model matrices
                 .setVisibility(nvrhi::ShaderType::Vertex)
                 .setBindingOffsets(nvrhi::VulkanBindingOffsets{0, 0, 0, 0}));
+        auto uniform_layout = world.resource<render::view::ViewUniformBindingLayout>().layout;
 
         render::RenderPipelineDesc pipeline_desc;
         pipeline_desc.setRenderState(
@@ -49,7 +51,9 @@ SpritePipeline SpritePipeline::from_world(World& world) {
                                                                           .setDestBlendAlpha(nvrhi::BlendFactor::Zero)))
                 .setRasterState(
                     nvrhi::RasterState().setCullMode(nvrhi::RasterCullMode::None).setFrontCounterClockwise(true)));
-        pipeline_desc.addBindingLayout(pipeline.uniform_layout).addBindingLayout(pipeline.image_layout);
+        pipeline_desc.addBindingLayout(uniform_layout)
+            .addBindingLayout(pipeline.uniform_layout)
+            .addBindingLayout(pipeline.image_layout);
         pipeline_desc.setVertexShader(render::ShaderInfo{
             .shader    = sprite_vertex_shader,
             .debugName = "SpriteVertex",
@@ -180,8 +184,9 @@ void DefaultSamplerPlugin::finish(App& app) {
         render_app->get().world_mut().insert_resource(DefaultSampler{});
         render_app->get().add_systems(
             render::ExtractSchedule,
-            into([](Res<nvrhi::DeviceHandle> device, ResMut<DefaultSampler> gpu_sampler,
-                    Extract<Res<DefaultSampler>> sampler) {
+            into([](Res<nvrhi::DeviceHandle> device,
+                    ParamSet<ResMut<DefaultSampler>, Extract<Res<DefaultSampler>>> samplers) {
+                auto&& [gpu_sampler, sampler] = samplers.get();
                 if (!gpu_sampler->handle || !desc_equal(gpu_sampler->handle->getDesc(), sampler->desc)) {
                     gpu_sampler->handle = device.get()->createSampler(sampler->desc);
                 }
@@ -216,8 +221,9 @@ void sprite::queue_sprites(Query<Item<render::render_phase::RenderPhase<render::
                 .depth       = sprite.transform.matrix[3][2],  // use the z position as depth
                 .pipeline_id = pipeline->pipeline_id,
                 .draw_func   = render::render_phase::get_or_add_render_commands<
-                      render::core_2d::Transparent2D, render::render_phase::SetItemPipeline, BindResourceCommand,
-                      DrawSpriteBatchCommand>(*draw_functions),
+                      render::core_2d::Transparent2D, render::render_phase::SetItemPipeline,
+                      render::view::BindViewUniform<0>::Command, BindResourceCommand, DrawSpriteBatchCommand>(
+                    *draw_functions),
             });
         }
     }

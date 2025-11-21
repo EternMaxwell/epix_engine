@@ -77,8 +77,8 @@ struct DefaultSampler {
 
 template <render::render_phase::PhaseItem P>
 struct BindResourceCommand {
-    std::unordered_map<nvrhi::BufferHandle, nvrhi::BindingSetHandle> uniform_set_cache;
-    void prepare(const World&) { uniform_set_cache.clear(); }
+    nvrhi::BindingSetHandle binding_set;
+    void prepare(const World&) { binding_set = nullptr; }
     bool render(
         const P& item,
         Item<const render::view::UniformBuffer&> view_item,
@@ -94,21 +94,16 @@ struct BindResourceCommand {
         auto&& [sprite_batch] = **entity_item;
         nvrhi::BindingSetHandle uniform_and_instance_set;
         // get or create the binding set for the view uniform and instance buffer
-        if (auto it = uniform_set_cache.find(view_uniform.buffer); it != uniform_set_cache.end()) {
-            uniform_and_instance_set = it->second;
-        } else {
-            nvrhi::BindingSetDesc desc =
-                nvrhi::BindingSetDesc()
-                    .addItem(nvrhi::BindingSetItem::ConstantBuffer(0, view_uniform.buffer))
-                    .addItem(nvrhi::BindingSetItem::RawBuffer_SRV(1, instance_buffer->handle()));
-            uniform_and_instance_set               = device.get()->createBindingSet(desc, pipeline->uniform_layout);
-            uniform_set_cache[view_uniform.buffer] = uniform_and_instance_set;
-        }
+        nvrhi::BindingSetDesc desc =
+            nvrhi::BindingSetDesc().addItem(nvrhi::BindingSetItem::RawBuffer_SRV(0, instance_buffer->handle()));
+        auto instance_set = device.get()->createBindingSet(desc, pipeline->uniform_layout);
 
         // set the binding sets
-        ctx.graphics_state.bindings.resize(0);
-        ctx.graphics_state.addBindingSet(uniform_and_instance_set);
-        ctx.graphics_state.addBindingSet(sprite_batch.binding_set);
+        ctx.graphics_state.bindings.resize(3);
+        ctx.graphics_state.bindings[1] = instance_set;  // does not add ref count
+        ctx.graphics_state.bindings[2] = sprite_batch.binding_set;
+
+        binding_set = instance_set;
 
         // add vertex and index buffers
         ctx.graphics_state.vertexBuffers.resize(0);
