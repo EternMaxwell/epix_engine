@@ -128,6 +128,7 @@ void create_uniform_for_view(
 
 void view::ViewPlugin::build(App& app) {
     if (auto sub_app = app.get_sub_app_mut(render::Render)) {
+        sub_app->get().world_mut().init_resource<ViewUniformBindingLayout>();
         sub_app->get().world_mut().insert_resource(ViewDepthCache{});
         sub_app->get().world_mut().insert_resource(ViewPluginImplUniformCache__{});
         sub_app->get().add_systems(Render, into(prepare_view_target, create_view_depth)
