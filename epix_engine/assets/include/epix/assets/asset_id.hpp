@@ -21,6 +21,15 @@ template <typename T>
 struct AssetId : public std::variant<AssetIndex, uuids::uuid> {
     static AssetId<T> invalid() { return AssetId<T>(INVALID_UUID); }
 
+    AssetId()                             = delete;
+    AssetId(const AssetId<T>&)            = default;
+    AssetId(AssetId<T>&&)                 = default;
+    AssetId& operator=(const AssetId<T>&) = default;
+    AssetId& operator=(AssetId<T>&&)      = default;
+    template <typename... Args>
+        requires std::constructible_from<std::variant<AssetIndex, uuids::uuid>, Args...>
+    AssetId(Args&&... args) : std::variant<AssetIndex, uuids::uuid>(std::forward<Args>(args)...) {}
+
     bool operator==(const AssetId<T>& other) const {
         return ((const std::variant<AssetIndex, uuids::uuid>&)*this) ==
                ((const std::variant<AssetIndex, uuids::uuid>&)(other));
