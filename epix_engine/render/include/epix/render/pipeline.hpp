@@ -136,6 +136,8 @@ struct PipelineServer {
 
     static PipelineServer from_world(epix::World& world);
 
+    nvrhi::DeviceHandle get_device() const { return device; }
+
     RenderPipelineId queue_render_pipeline(const RenderPipelineDesc& desc);
     ComputePipelineId queue_compute_pipeline(const ComputePipelineDesc& desc);
 
