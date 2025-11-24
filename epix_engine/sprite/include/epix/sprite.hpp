@@ -79,13 +79,12 @@ template <render::render_phase::PhaseItem P>
 struct BindResourceCommand {
     nvrhi::BindingSetHandle binding_set;
     void prepare(const World&) { binding_set = nullptr; }
-    bool render(
-        const P& item,
-        Item<const render::view::UniformBuffer&> view_item,
-        std::optional<Item<const SpriteBatch&>> entity_item,
-        ParamSet<Res<SpriteInstanceBuffer>, Res<nvrhi::DeviceHandle>, Res<SpritePipeline>, Res<VertexBuffers>> params,
-        render::render_phase::DrawContext& ctx) {
-        auto&& [instance_buffer, device, pipeline, vertex_buffers] = params.get();
+    bool render(const P& item,
+                Item<const render::view::UniformBuffer&> view_item,
+                std::optional<Item<const SpriteBatch&>> entity_item,
+                ParamSet<Res<SpriteInstanceBuffer>, Res<nvrhi::DeviceHandle>, Res<VertexBuffers>> params,
+                render::render_phase::DrawContext& ctx) {
+        auto&& [instance_buffer, device, vertex_buffers] = params.get();
         if (!entity_item) {
             spdlog::error("[sprite render] Entity {} has no SpriteBatch, skipping.", item.entity().index);
             return false;
@@ -96,7 +95,8 @@ struct BindResourceCommand {
         // get or create the binding set for the view uniform and instance buffer
         nvrhi::BindingSetDesc desc =
             nvrhi::BindingSetDesc().addItem(nvrhi::BindingSetItem::RawBuffer_SRV(0, instance_buffer->handle()));
-        auto instance_set = device.get()->createBindingSet(desc, pipeline->uniform_layout);
+        auto instance_set =
+            device.get()->createBindingSet(desc, ctx.graphics_state.pipeline->getDesc().bindingLayouts[1]);
 
         // set the binding sets
         ctx.graphics_state.bindings.resize(3);
