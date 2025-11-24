@@ -36,6 +36,12 @@ struct RenderAssets {
     using Type = typename RenderAsset<T>::ProcessedAsset;
 
    public:
+    RenderAssets()                               = default;
+    RenderAssets(const RenderAssets&)            = delete;
+    RenderAssets(RenderAssets&&)                 = default;
+    RenderAssets& operator=(const RenderAssets&) = delete;
+    RenderAssets& operator=(RenderAssets&&)      = default;
+
     void insert(const epix::assets::AssetId<T>& id, Type&& asset) { assets.emplace(id, std::move(asset)); }
     template <typename... Args>
     void emplace(const epix::assets::AssetId<T>& id, Args&&... args) {
@@ -78,6 +84,12 @@ template <RenderAssetImpl T>
 struct CachedExtractedAssets {
     std::vector<std::pair<epix::assets::AssetId<T>, T>> extracted_assets;
     std::unordered_set<epix::assets::AssetId<T>> removed;
+
+    CachedExtractedAssets()                                        = default;
+    CachedExtractedAssets(const CachedExtractedAssets&)            = delete;
+    CachedExtractedAssets(CachedExtractedAssets&&)                 = default;
+    CachedExtractedAssets& operator=(const CachedExtractedAssets&) = delete;
+    CachedExtractedAssets& operator=(CachedExtractedAssets&&)      = default;
 };
 
 template <RenderAssetImpl T>
@@ -97,7 +109,7 @@ void extract_assets(ResMut<CachedExtractedAssets<T>> cache,
     RenderAsset<T> render_asset_impl;
     std::vector<std::string> errors;
     for (const auto& id : changed_ids) {
-        if (auto asset = assets->get(id); asset && render_asset_impl.usage(*asset) & RENDER_WORLD) {
+        if (auto asset = assets->get_mut(id); asset && render_asset_impl.usage(*asset) & RENDER_WORLD) {
             if (render_asset_impl.usage(*asset) & MAIN_WORLD) {
                 // this asset is still used in main world, copy it
                 if constexpr (std::is_copy_constructible_v<T>) {
