@@ -10,6 +10,7 @@ GPUMesh GPUMesh::create_from_mesh(const Mesh& mesh, nvrhi::DeviceHandle device) 
 }
 void GPUMesh::update_from_mesh(const Mesh& mesh, nvrhi::DeviceHandle device) {
     _primitive_type     = mesh.get_primitive_type();
+    _attributes         = mesh.attribute_layout();
     size_t vertex_count = mesh.count_vertices();
     size_t total_bytes  = std::ranges::fold_left(mesh.iter_attributes(), size_t(0),
                                                  [vertex_count](size_t acc, const MeshAttributeData& attr_data) {

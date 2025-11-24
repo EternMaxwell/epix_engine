@@ -23,6 +23,44 @@ struct MeshAttribute {
     std::string name;
     uint32_t slot;
     nvrhi::Format format;
+
+    bool operator==(const MeshAttribute& other) const {
+        return name == other.name && slot == other.slot && format == other.format;
+    }
+};
+struct MeshAttributeLayout : std::map<uint32_t, MeshAttribute> {
+    bool contains_attribute(const MeshAttribute& attribute) const {
+        auto it = this->find(attribute.slot);
+        return it != this->end() && it->second == attribute;
+    }
+    std::optional<std::reference_wrapper<const MeshAttribute>> get_attribute(const MeshAttribute& attribute) const {
+        auto it = this->find(attribute.slot);
+        if (it != this->end() && it->second == attribute) {
+            return std::cref(it->second);
+        }
+        return std::nullopt;
+    }
+    std::optional<std::reference_wrapper<const MeshAttribute>> get_attribute(uint32_t slot) const {
+        auto it = this->find(slot);
+        if (it != this->end()) {
+            return std::cref(it->second);
+        }
+        return std::nullopt;
+    }
+    std::optional<std::reference_wrapper<MeshAttribute>> get_attribute_mut(const MeshAttribute& attribute) {
+        auto it = this->find(attribute.slot);
+        if (it != this->end() && it->second == attribute) {
+            return std::ref(it->second);
+        }
+        return std::nullopt;
+    }
+    std::optional<std::reference_wrapper<MeshAttribute>> get_attribute_mut(uint32_t slot) {
+        auto it = this->find(slot);
+        if (it != this->end()) {
+            return std::ref(it->second);
+        }
+        return std::nullopt;
+    }
 };
 struct MeshAttributeData {
     MeshAttribute attribute;
@@ -65,6 +103,8 @@ struct Mesh {
     }
     auto iter_attributes() const { return std::views::values(_attributes); }
     auto iter_attributes_mut() { return std::views::values(_attributes); }
+
+    MeshAttributeLayout attribute_layout() const;
 
     /// Insert a new attribute with given data to the mesh or replace existing one regardless of type.
     template <std::ranges::viewable_range T>
@@ -214,4 +254,8 @@ Mesh make_circle(float radius,
                  std::optional<uint32_t> segment_count = std::nullopt);
 /// Make a box mesh centered at (0,0,0) on the XY plane with given width and height.
 Mesh make_box2d(float width, float height, std::optional<glm::vec4> color = std::nullopt);
+
+struct MeshPlugin {
+    void build(epix::App& app);
+};
 }  // namespace epix::mesh

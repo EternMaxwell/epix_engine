@@ -1,7 +1,16 @@
+#include "epix/assets.hpp"
 #include "epix/mesh/mesh.hpp"
 
 using namespace epix;
 using namespace epix::mesh;
+
+MeshAttributeLayout Mesh::attribute_layout() const {
+    MeshAttributeLayout layout;
+    for (const auto& [slot, attribute_data] : _attributes) {
+        layout.insert_or_assign(slot, attribute_data.attribute);
+    }
+    return layout;
+}
 
 std::expected<std::reference_wrapper<const MeshAttributeData>, MeshError> Mesh::get_attribute(
     const MeshAttribute& attribute) const {
@@ -64,3 +73,5 @@ std::expected<MeshAttributeData, MeshError> Mesh::remove_attribute(size_t slot) 
     }
     return std::unexpected(MeshError::SlotNotFound);
 }
+
+void MeshPlugin::build(epix::App& app) { app.plugin_mut<assets::AssetPlugin>().register_asset<Mesh>(); }

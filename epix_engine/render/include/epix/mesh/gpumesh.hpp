@@ -11,6 +11,12 @@ struct GPUMesh {
     size_t vertex_count() const { return _vertex_count; }
     nvrhi::PrimitiveType primitive_type() const { return _primitive_type; }
     void bind_state(nvrhi::GraphicsState& state) const;
+    auto iter_attributes() const { return std::views::values(_attributes); }
+    bool contains_attribute(const MeshAttribute& attribute) const {
+        auto it = _attributes.find(attribute.slot);
+        return it != _attributes.end() && it->second == attribute;
+    }
+    const MeshAttributeLayout& attribute_layout() const { return _attributes; }
 
    private:
     GPUMesh()
@@ -27,6 +33,8 @@ struct GPUMesh {
         nvrhi::Format format;
         uint32_t offset;
     };
+
+    MeshAttributeLayout _attributes;
 
     nvrhi::PrimitiveType _primitive_type;
     nvrhi::BufferHandle _combined_buffer;
