@@ -18,6 +18,20 @@ struct ExtendOutOfBoundsError {};
 struct ImageDataError : std::variant<SizeMismatchError, CompressedImageNotSupported, ExtendOutOfBoundsError> {
     using variant::variant;
 };
+struct Rect {
+    size_t x = 0;
+    size_t y = 0;
+    union {
+        size_t z = 0;
+        size_t layer;
+    };
+    size_t width  = 0;
+    size_t height = 0;
+    union {
+        size_t depth = 1;
+        size_t layers;
+    };
+};
 struct Image {
    private:
     uint8_t main_world : 1   = 0;
@@ -33,8 +47,7 @@ struct Image {
 
     friend struct StbImageLoader;
 
-    std::expected<void, ImageDataError> set_data_internal(
-        size_t x, size_t y, size_t width, size_t height, const void* data, size_t data_size);
+    std::expected<void, ImageDataError> set_data_internal(Rect rect, const void* data, size_t data_size);
 
    public:
     const nvrhi::TextureDesc& get_desc() const { return info; }
@@ -49,11 +62,24 @@ struct Image {
     static Image rgba32float(uint32_t width, uint32_t height);
     static Image rgba32float_render(uint32_t width, uint32_t height);
     static Image rgba32float_main(uint32_t width, uint32_t height);
+    static std::optional<Image> with_desc(const nvrhi::TextureDesc& desc);
     void flip_vertical();
+    void* pixel_mut(size_t x, size_t y, size_t layer) {
+        size_t bytes_per_pixel = nvrhi::getFormatInfo(info.format).bytesPerBlock;
+        return &data[layer * info.width * info.height * bytes_per_pixel + y * info.width * bytes_per_pixel +
+                     x * bytes_per_pixel];
+    }
+    const void* pixel(size_t x, size_t y, size_t layer) const {
+        size_t bytes_per_pixel = nvrhi::getFormatInfo(info.format).bytesPerBlock;
+        return &data[layer * info.width * info.height * bytes_per_pixel + y * info.width * bytes_per_pixel +
+                     x * bytes_per_pixel];
+    }
+    std::expected<void, ImageDataError> write_data(Rect rect, const void* data, size_t data_size) {
+        return set_data_internal(rect, data, data_size);
+    }
     template <typename T>
-    std::expected<void, ImageDataError> set_data(
-        size_t x, size_t y, size_t width, size_t height, std::span<const T> data) {
-        return set_data_internal(x, y, width, height, data.data(), sizeof(T) * data.size());
+    std::expected<void, ImageDataError> set_data(Rect rect, std::span<const T> data) {
+        return set_data_internal(rect, data.data(), sizeof(T) * data.size());
     }
 };
 
