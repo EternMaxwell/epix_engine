@@ -16,19 +16,31 @@ namespace epix::mesh::shaders {
 #include "shaders/mesh_pos_uv0_color.vert.h"
 }  // namespace epix::mesh::shaders
 
-MeshPipeline::MeshPipeline(World& world) {
-    auto device     = world.resource<nvrhi::DeviceHandle>();
-    _view_layout    = world.resource<render::view::ViewUniformBindingLayout>().layout;
-    _mesh_layout    = device->createBindingLayout(nvrhi::BindingLayoutDesc()
-                                                      .addItem(nvrhi::BindingLayoutItem::ConstantBuffer(0))
-                                                      .setVisibility(nvrhi::ShaderType::Vertex)
-                                                      .setBindingOffsets(nvrhi::VulkanBindingOffsets{0, 0, 0, 0}));
-    _texture_layout = device->createBindingLayout(nvrhi::BindingLayoutDesc()
-                                                      .addItem(nvrhi::BindingLayoutItem::Texture_SRV(0))
-                                                      .addItem(nvrhi::BindingLayoutItem::Sampler(1))
-                                                      .setVisibility(nvrhi::ShaderType::Pixel)
-                                                      .setBindingOffsets(nvrhi::VulkanBindingOffsets{0, 0, 0, 0}));
-    auto& assets    = world.resource_mut<assets::Assets<render::Shader>>();
+void MeshPipelinePlugin::build(epix::App& app) {
+    auto& render_app = app.sub_app_mut(render::Render);
+    MeshPipeline pipeline;
+    auto device           = render_app.world().resource<nvrhi::DeviceHandle>();
+    pipeline._view_layout = app.world().resource<render::view::ViewUniformBindingLayout>().layout;
+    pipeline._mesh_layout =
+        device->createBindingLayout(nvrhi::BindingLayoutDesc()
+                                        .addItem(nvrhi::BindingLayoutItem::RawBuffer_SRV(0))
+                                        .setVisibility(nvrhi::ShaderType::Vertex)
+                                        .setBindingOffsets(nvrhi::VulkanBindingOffsets{0, 0, 0, 0}));
+    pipeline._texture_layout =
+        device->createBindingLayout(nvrhi::BindingLayoutDesc()
+                                        .addItem(nvrhi::BindingLayoutItem::Texture_SRV(0))
+                                        .addItem(nvrhi::BindingLayoutItem::Sampler(1))
+                                        .setVisibility(nvrhi::ShaderType::Pixel)
+                                        .setBindingOffsets(nvrhi::VulkanBindingOffsets{0, 0, 0, 0}));
+    pipeline._push_constant_layout =
+        device->createBindingLayout(nvrhi::BindingLayoutDesc()
+                                        .setVisibility(nvrhi::ShaderType::All)
+                                        .addItem(nvrhi::BindingLayoutItem::PushConstants(0, sizeof(glm::vec4))));
+    render_app.world_mut().insert_resource<MeshPipeline>(std::move(pipeline));
+}
+void MeshPipelinePlugin::finish(epix::App& app) {
+    auto& assets   = app.world_mut().resource_mut<assets::Assets<render::Shader>>();
+    auto& pipeline = app.sub_app_mut(render::Render).world_mut().resource_mut<MeshPipeline>();
 
     // Insert generated SPIR-V shaders into the engine's shader assets and
     // populate the pipeline-local shader maps so specialize() can look them up.
@@ -83,44 +95,57 @@ MeshPipeline::MeshPipeline(World& world) {
 
     // Populate the pipeline shader maps for flag -> asset id
     // Flags from render.hpp: pos=1, color=2, normal=4, uv0=8, uv1=16
-    vertex_shaders.emplace(static_cast<uint8_t>(PipelineFlag::pos), assets::AssetId<render::Shader>(mesh_pos_vert_id));
-    fragment_shaders.emplace(static_cast<uint8_t>(PipelineFlag::pos),
-                             assets::AssetId<render::Shader>(mesh_pos_frag_id));
+    pipeline.vertex_shaders.emplace(static_cast<uint8_t>(MeshPipeline::PipelineFlag::pos),
+                                    assets::AssetId<render::Shader>(mesh_pos_vert_id));
+    pipeline.fragment_shaders.emplace(static_cast<uint8_t>(MeshPipeline::PipelineFlag::pos),
+                                      assets::AssetId<render::Shader>(mesh_pos_frag_id));
 
-    vertex_shaders.emplace(static_cast<uint8_t>(PipelineFlag::pos | PipelineFlag::color),
-                           assets::AssetId<render::Shader>(mesh_pos_color_vert_id));
-    fragment_shaders.emplace(static_cast<uint8_t>(PipelineFlag::pos | PipelineFlag::color),
-                             assets::AssetId<render::Shader>(mesh_pos_color_frag_id));
+    pipeline.vertex_shaders.emplace(
+        static_cast<uint8_t>(MeshPipeline::PipelineFlag::pos | MeshPipeline::PipelineFlag::color),
+        assets::AssetId<render::Shader>(mesh_pos_color_vert_id));
+    pipeline.fragment_shaders.emplace(
+        static_cast<uint8_t>(MeshPipeline::PipelineFlag::pos | MeshPipeline::PipelineFlag::color),
+        assets::AssetId<render::Shader>(mesh_pos_color_frag_id));
 
-    vertex_shaders.emplace(static_cast<uint8_t>(PipelineFlag::pos | PipelineFlag::uv0),
-                           assets::AssetId<render::Shader>(mesh_pos_uv0_vert_id));
-    fragment_shaders.emplace(static_cast<uint8_t>(PipelineFlag::pos | PipelineFlag::uv0),
-                             assets::AssetId<render::Shader>(mesh_pos_uv0_frag_id));
+    pipeline.vertex_shaders.emplace(
+        static_cast<uint8_t>(MeshPipeline::PipelineFlag::pos | MeshPipeline::PipelineFlag::uv0),
+        assets::AssetId<render::Shader>(mesh_pos_uv0_vert_id));
+    pipeline.fragment_shaders.emplace(
+        static_cast<uint8_t>(MeshPipeline::PipelineFlag::pos | MeshPipeline::PipelineFlag::uv0),
+        assets::AssetId<render::Shader>(mesh_pos_uv0_frag_id));
 
-    vertex_shaders.emplace(static_cast<uint8_t>(PipelineFlag::pos | PipelineFlag::uv0 | PipelineFlag::color),
-                           assets::AssetId<render::Shader>(mesh_pos_uv0_color_vert_id));
-    fragment_shaders.emplace(static_cast<uint8_t>(PipelineFlag::pos | PipelineFlag::uv0 | PipelineFlag::color),
-                             assets::AssetId<render::Shader>(mesh_pos_uv0_color_frag_id));
+    pipeline.vertex_shaders.emplace(
+        static_cast<uint8_t>(MeshPipeline::PipelineFlag::pos | MeshPipeline::PipelineFlag::uv0 |
+                             MeshPipeline::PipelineFlag::color),
+        assets::AssetId<render::Shader>(mesh_pos_uv0_color_vert_id));
+    pipeline.fragment_shaders.emplace(
+        static_cast<uint8_t>(MeshPipeline::PipelineFlag::pos | MeshPipeline::PipelineFlag::uv0 |
+                             MeshPipeline::PipelineFlag::color),
+        assets::AssetId<render::Shader>(mesh_pos_uv0_color_frag_id));
 
-    vertex_shaders.emplace(static_cast<uint8_t>(PipelineFlag::pos | PipelineFlag::normal),
-                           assets::AssetId<render::Shader>(mesh_pos_normal_vert_id));
-    fragment_shaders.emplace(static_cast<uint8_t>(PipelineFlag::pos | PipelineFlag::normal),
-                             assets::AssetId<render::Shader>(mesh_pos_normal_frag_id));
+    pipeline.vertex_shaders.emplace(
+        static_cast<uint8_t>(MeshPipeline::PipelineFlag::pos | MeshPipeline::PipelineFlag::normal),
+        assets::AssetId<render::Shader>(mesh_pos_normal_vert_id));
+    pipeline.fragment_shaders.emplace(
+        static_cast<uint8_t>(MeshPipeline::PipelineFlag::pos | MeshPipeline::PipelineFlag::normal),
+        assets::AssetId<render::Shader>(mesh_pos_normal_frag_id));
 }
 
 std::optional<render::RenderPipelineId> MeshPipeline::specialize(render::PipelineServer& pipeline_server,
                                                                  const MeshAttributeLayout& mesh_layout) {
     size_t flag = 0;
-    if (mesh_layout.contains_attribute(Mesh::ATTRIBUTE_POSITION)) flag |= PipelineFlag::pos;
-    if (mesh_layout.contains_attribute(Mesh::ATTRIBUTE_COLOR)) flag |= PipelineFlag::color;
-    if (mesh_layout.contains_attribute(Mesh::ATTRIBUTE_NORMAL)) flag |= PipelineFlag::normal;
-    if (mesh_layout.contains_attribute(Mesh::ATTRIBUTE_UV0)) flag |= PipelineFlag::uv0;
-    if (mesh_layout.contains_attribute(Mesh::ATTRIBUTE_UV1)) flag |= PipelineFlag::uv1;
+    if (mesh_layout.contains_attribute(Mesh::ATTRIBUTE_POSITION)) flag |= MeshPipeline::PipelineFlag::pos;
+    if (mesh_layout.contains_attribute(Mesh::ATTRIBUTE_COLOR)) flag |= MeshPipeline::PipelineFlag::color;
+    if (mesh_layout.contains_attribute(Mesh::ATTRIBUTE_NORMAL)) flag |= MeshPipeline::PipelineFlag::normal;
+    if (mesh_layout.contains_attribute(Mesh::ATTRIBUTE_UV0)) flag |= MeshPipeline::PipelineFlag::uv0;
+    if (mesh_layout.contains_attribute(Mesh::ATTRIBUTE_UV1)) flag |= MeshPipeline::PipelineFlag::uv1;
+    size_t cache_flag = flag | (static_cast<size_t>(mesh_layout.primitive_type) << 8);
     if (auto cached_pipeline = _get_cached_pipeline(flag); cached_pipeline.has_value()) {
         return *cached_pipeline;
     }
 
     render::RenderPipelineDesc desc;
+    desc.setPrimType(mesh_layout.primitive_type);
     desc.setRenderState(
         nvrhi::RenderState()
             .setDepthStencilState(nvrhi::DepthStencilState().setDepthTestEnable(true).setDepthWriteEnable(true))
@@ -150,8 +175,7 @@ std::optional<render::RenderPipelineId> MeshPipeline::specialize(render::Pipelin
     desc.addBindingLayout(_mesh_layout);
     // if no color, add a push constant
     if (!mesh_layout.contains_attribute(Mesh::ATTRIBUTE_COLOR)) {
-        desc.addBindingLayout(pipeline_server.get_device()->createBindingLayout(
-            nvrhi::BindingLayoutDesc().addItem(nvrhi::BindingLayoutItem::PushConstants(0, sizeof(glm::vec4)))));
+        desc.addBindingLayout(_push_constant_layout);
     }
     if (mesh_layout.contains_attribute(Mesh::ATTRIBUTE_UV0)) {
         desc.addBindingLayout(_texture_layout);

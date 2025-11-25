@@ -11,7 +11,7 @@ Mesh mesh::make_circle(float radius, std::optional<glm::vec4> color, std::option
     auto segment_count_calculated = segment_count.value_or(
         static_cast<uint32_t>(std::clamp(static_cast<int>(radius * glm::two_pi<float>() / 0.1f), 12, 1024)));
     std::vector<glm::vec3> positions;
-    positions.reserve(segment_count_calculated + 1);
+    positions.reserve(segment_count_calculated + 2);
     positions.push_back(glm::vec3(0.0f, 0.0f, 0.0f));
     for (auto&& angle : std::views::iota(0u, segment_count_calculated) | std::views::transform([=](uint32_t i) {
                             return static_cast<float>(i) / static_cast<float>(segment_count_calculated) *
@@ -25,7 +25,7 @@ Mesh mesh::make_circle(float radius, std::optional<glm::vec4> color, std::option
                     .with_attribute(Mesh::ATTRIBUTE_POSITION, std::move(positions));
     color.and_then([&](const glm::vec4& c) -> std::optional<glm::vec4> {
         auto res = mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR,
-                                         std::views::repeat(c) | std::views::take(segment_count_calculated + 1));
+                                         std::views::repeat(c) | std::views::take(segment_count_calculated + 2));
         return std::nullopt;
     });
     return std::move(mesh);

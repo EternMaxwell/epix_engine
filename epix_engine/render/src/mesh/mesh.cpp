@@ -6,6 +6,7 @@ using namespace epix::mesh;
 
 MeshAttributeLayout Mesh::attribute_layout() const {
     MeshAttributeLayout layout;
+    layout.primitive_type = primitive_type;
     for (const auto& [slot, attribute_data] : _attributes) {
         layout.insert_or_assign(slot, attribute_data.attribute);
     }

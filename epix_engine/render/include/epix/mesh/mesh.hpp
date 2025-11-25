@@ -3,7 +3,6 @@
 #include <epix/core.hpp>
 #include <epix/render/vulkan.hpp>
 #include <glm/glm.hpp>
-#include <limits>
 #include <map>
 #include <ranges>
 #include <type_traits>
@@ -29,6 +28,7 @@ struct MeshAttribute {
     }
 };
 struct MeshAttributeLayout : std::map<uint32_t, MeshAttribute> {
+    nvrhi::PrimitiveType primitive_type;
     bool contains_attribute(const MeshAttribute& attribute) const {
         auto it = this->find(attribute.slot);
         return it != this->end() && it->second == attribute;
@@ -60,6 +60,16 @@ struct MeshAttributeLayout : std::map<uint32_t, MeshAttribute> {
             return std::ref(it->second);
         }
         return std::nullopt;
+    }
+    std::string to_string() const {
+        std::stringstream ss;
+        std::println(ss, "MeshAttributeLayout {{");
+        for (const auto& [slot, attribute] : *this) {
+            std::println(ss, "  Slot {}: Name='{}', Format={}", slot, attribute.name,
+                         nvrhi::getFormatInfo(attribute.format).name);
+        }
+        std::println(ss, "}}");
+        return ss.str();
     }
 };
 struct MeshAttributeData {
@@ -224,16 +234,16 @@ struct Mesh {
         if (_attributes.empty()) {
             return 0;
         }
-        size_t count = std::numeric_limits<size_t>::max();
+        std::optional<size_t> count;
         for (auto&& [slot, attribute_data] : _attributes) {
             size_t attribute_count = attribute_data.data.size();
-            if (attribute_count != count) {
+            if (count.has_value() && attribute_count != *count) {
                 spdlog::warn("Mesh::count_vertices(): attribute [{}:{}] has different count with previous ({} vs {})",
-                             slot, attribute_data.attribute.name, count, attribute_count);
+                             slot, attribute_data.attribute.name, *count, attribute_count);
             }
-            count = std::min(count, attribute_count);
+            count = count.has_value() ? std::min(*count, attribute_count) : attribute_count;
         }
-        return count;
+        return count.value_or(0);
     };
 
    private:

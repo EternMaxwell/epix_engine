@@ -26,7 +26,7 @@ void upload_mesh_uniforms(Res<nvrhi::DeviceHandle> device, ResMut<MeshUniforms> 
                                                                .setCanHaveRawViews(true)
                                                                .setInitialState(nvrhi::ResourceStates::ShaderResource)
                                                                .setKeepInitialState(true)
-                                                               .setDebugName("Mesh Uniform Buffer"));
+                                                               .setDebugName("Mesh Storage Buffer"));
     }
     auto cmd_list = device.get()->createCommandList(nvrhi::CommandListParameters().setEnableImmediateExecution(false));
     cmd_list->open();
@@ -36,13 +36,15 @@ void upload_mesh_uniforms(Res<nvrhi::DeviceHandle> device, ResMut<MeshUniforms> 
     device.get_mut()->executeCommandList(cmd_list);
 }
 void MeshRenderPlugin::build(epix::App& app) {
-    app.world_mut().init_resource<MeshPipeline>();
     app.add_plugins(render::assets::ExtractAssetPlugin<Mesh>{});
+    app.add_plugins(mesh::MeshPipelinePlugin{});
     auto& render_app = app.sub_app_mut(render::Render);
+    render_app.world_mut().init_resource<MeshUniforms>();
     render_app.add_systems(render::ExtractSchedule, into(extract_mesh2d).set_name("extract mesh2d"));
     render_app.add_systems(
         render::Render,
         into(upload_mesh_uniforms).set_name("upload mesh uniforms").in_set(render::RenderSet::PrepareResources));
     render_app.world_mut().init_resource<RenderMesh2dInstances>();
 }
+void MeshRenderPlugin::finish(epix::App& app) { app.world_mut().init_resource<MeshPipeline>(); }
 }  // namespace epix::mesh
