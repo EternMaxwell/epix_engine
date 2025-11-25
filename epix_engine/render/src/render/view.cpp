@@ -1,4 +1,5 @@
 #include "epix/render/camera.hpp"
+#include "epix/render/extract.hpp"
 #include "epix/render/schedule.hpp"
 #include "epix/render/view.hpp"
 
@@ -127,8 +128,10 @@ void create_uniform_for_view(
 }
 
 void view::ViewPlugin::build(App& app) {
+    ViewUniformBindingLayout view_uniform_binding_layout(app.world_mut());
+    app.world_mut().insert_resource(view_uniform_binding_layout);
     if (auto sub_app = app.get_sub_app_mut(render::Render)) {
-        sub_app->get().world_mut().init_resource<ViewUniformBindingLayout>();
+        sub_app->get().world_mut().insert_resource(view_uniform_binding_layout);
         sub_app->get().world_mut().insert_resource(ViewDepthCache{});
         sub_app->get().world_mut().insert_resource(ViewPluginImplUniformCache__{});
         sub_app->get().add_systems(Render, into(prepare_view_target, create_view_depth)

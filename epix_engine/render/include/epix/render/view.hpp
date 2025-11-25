@@ -57,14 +57,13 @@ struct UniformBuffer {
     nvrhi::BufferHandle buffer;
 };
 struct ViewUniformBindingLayout {
-    nvrhi::BindingLayoutHandle layout;
-    ViewUniformBindingLayout(World& world) {
-        layout = world.resource<nvrhi::DeviceHandle>()->createBindingLayout(
-            nvrhi::BindingLayoutDesc()
-                .setVisibility(nvrhi::ShaderType::All)
-                .addItem(nvrhi::BindingLayoutItem::ConstantBuffer(0))
-                .setBindingOffsets(nvrhi::VulkanBindingOffsets{0, 0, 0, 0}));
-    }
+    const nvrhi::BindingLayoutHandle layout;
+    ViewUniformBindingLayout(World& world)
+        : layout(world.resource<nvrhi::DeviceHandle>()->createBindingLayout(
+              nvrhi::BindingLayoutDesc()
+                  .setVisibility(nvrhi::ShaderType::All)
+                  .addItem(nvrhi::BindingLayoutItem::ConstantBuffer(0))
+                  .setBindingOffsets(nvrhi::VulkanBindingOffsets{0, 0, 0, 0}))) {}
 };
 template <size_t Slot>
 struct BindViewUniform {

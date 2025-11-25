@@ -77,6 +77,9 @@ std::optional<RenderPipeline> PipelineServer::get_render_pipeline(RenderPipeline
         if (std::holds_alternative<RenderPipelineCache>(pipeline)) {
             auto& cache             = std::get<RenderPipelineCache>(pipeline);
             size_t specializedIndex = cache.specialize(info);
+            if (specializedIndex == static_cast<size_t>(-1)) {
+                return std::nullopt;
+            }
             return RenderPipeline{id, specializedIndex, cache.get(specializedIndex)};
         }
     }

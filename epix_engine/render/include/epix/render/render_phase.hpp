@@ -350,6 +350,14 @@ struct SetItemPipeline {
             .value();
     }
 };
+template <PhaseItem P>
+struct SetGraphicsState {
+    void prepare(World&) {}
+    bool render(const P&, Item<>, std::optional<Item<>>, ParamSet<>, DrawContext& ctx) {
+        ctx.commandlist->setGraphicsState(ctx.graphics_state);
+        return true;
+    }
+};
 
 template <PhaseItem P, template <typename> typename... R>
     requires((RenderCommand<R, P> && ...))
