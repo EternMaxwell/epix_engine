@@ -31,6 +31,47 @@ struct Rect {
         size_t depth = 1;
         size_t layers;
     };
+
+    static Rect rect2d(size_t width, size_t height) {
+        return Rect{
+            .x      = 0,
+            .y      = 0,
+            .layer  = 0,
+            .width  = width,
+            .height = height,
+            .layers = 1,
+        };
+    }
+    static Rect rect2d(size_t x, size_t y, size_t width, size_t height) {
+        return Rect{
+            .x      = x,
+            .y      = y,
+            .layer  = 0,
+            .width  = width,
+            .height = height,
+            .layers = 1,
+        };
+    }
+    static Rect rect3d(size_t width, size_t height, size_t depth) {
+        return Rect{
+            .x      = 0,
+            .y      = 0,
+            .layer  = 0,
+            .width  = width,
+            .height = height,
+            .depth  = depth,
+        };
+    }
+    static Rect rect3d(size_t x, size_t y, size_t layer, size_t width, size_t height, size_t depth) {
+        return Rect{
+            .x      = x,
+            .y      = y,
+            .layer  = layer,
+            .width  = width,
+            .height = height,
+            .depth  = depth,
+        };
+    }
 };
 struct Image {
    private:
