@@ -11,11 +11,11 @@ layout(set = 0, binding = 0) uniform View {
 }
 viewUBO;
 
-layout(set = 1, binding = 0) uniform Mesh { mat4 model; }
-meshUBO;
+layout(set = 1, binding = 0, std430) buffer Mesh { mat4 model; }
+meshSSBO;
 
 void main() {
-    gl_Position = viewUBO.projection * viewUBO.view * meshUBO.model * vec4(inPosition, 1.0);
+    gl_Position = viewUBO.projection * viewUBO.view * meshSSBO.model * vec4(inPosition, 1.0);
     // Assume normals are in model space; transform by model (ignoring non-uniform scaling)
-    v_normal = mat3(meshUBO.model) * inNormal;
+    v_normal = mat3(meshSSBO.model) * inNormal;
 }

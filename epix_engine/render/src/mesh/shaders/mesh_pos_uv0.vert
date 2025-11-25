@@ -11,10 +11,10 @@ layout(set = 0, binding = 0) uniform View {
 }
 viewUBO;
 
-layout(set = 1, binding = 0) uniform Mesh { mat4 model; }
-meshUBO;
+layout(set = 1, binding = 0, std430) buffer Mesh { mat4 model; }
+meshSSBO;
 
 void main() {
-    gl_Position = viewUBO.projection * viewUBO.view * meshUBO.model * vec4(inPosition, 1.0);
+    gl_Position = viewUBO.projection * viewUBO.view * meshSSBO.model * vec4(inPosition, 1.0);
     v_uv        = inUV0;
 }
