@@ -6,6 +6,14 @@
 
 #include "index.hpp"
 
+namespace uuids {
+inline auto operator<=>(const uuids::uuid& lhs, const uuids::uuid& rhs) noexcept {
+    if (lhs == rhs) return std::strong_ordering::equal;
+    return lhs < rhs ? std::strong_ordering::less : std::strong_ordering::greater;
+}
+}  // namespace uuids
+static_assert(std::three_way_comparable<uuids::uuid>);
+
 namespace epix::assets {
 template <typename... Ts>
 struct visitor : public Ts... {
@@ -30,10 +38,8 @@ struct AssetId : public std::variant<AssetIndex, uuids::uuid> {
         requires std::constructible_from<std::variant<AssetIndex, uuids::uuid>, Args...>
     AssetId(Args&&... args) : std::variant<AssetIndex, uuids::uuid>(std::forward<Args>(args)...) {}
 
-    bool operator==(const AssetId<T>& other) const {
-        return ((const std::variant<AssetIndex, uuids::uuid>&)*this) ==
-               ((const std::variant<AssetIndex, uuids::uuid>&)(other));
-    }
+    auto operator<=>(const AssetId<T>& other) const = default;
+    bool operator==(const AssetId<T>& other) const  = default;
     bool operator==(const UntypedAssetId& other) const;
 
     bool is_uuid() const { return std::holds_alternative<uuids::uuid>(*this); }
@@ -59,8 +65,8 @@ struct AssetId : public std::variant<AssetIndex, uuids::uuid> {
 };
 
 struct UntypedAssetId {
-    std::variant<AssetIndex, uuids::uuid> id;
     meta::type_index type;
+    std::variant<AssetIndex, uuids::uuid> id;
 
     template <typename T>
     UntypedAssetId(const AssetId<T>& id) : id(id), type(meta::type_id<T>{}) {}
@@ -87,7 +93,12 @@ struct UntypedAssetId {
     bool is_index() const { return std::holds_alternative<AssetIndex>(id); }
     const AssetIndex& index() const { return std::get<AssetIndex>(id); }
     const uuids::uuid& uuid() const { return std::get<uuids::uuid>(id); }
-    bool operator==(const UntypedAssetId& other) const { return id == other.id && type == other.type; }
+    auto operator<=>(const UntypedAssetId& other) const = default;
+    bool operator==(const UntypedAssetId& other) const  = default;
+    template <typename T>
+    bool operator==(const AssetId<T>& other) const {
+        return other == *this;
+    }
     std::string to_string() const {
         return std::format(
             "UntypedAssetId<{}>({})", type.name(),
@@ -117,6 +128,9 @@ struct InternalAssetId : std::variant<AssetIndex, uuids::uuid> {
     template <typename T>
     InternalAssetId(const AssetId<T>& id) : std::variant<AssetIndex, uuids::uuid>(id) {}
     InternalAssetId(const UntypedAssetId& id) : std::variant<AssetIndex, uuids::uuid>(id.id) {}
+
+    auto operator<=>(const InternalAssetId& other) const = default;
+    bool operator==(const InternalAssetId& other) const  = default;
 
     UntypedAssetId untyped(const meta::type_index& type) const { return UntypedAssetId(type, *this); }
     template <typename T>

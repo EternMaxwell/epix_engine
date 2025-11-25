@@ -62,9 +62,8 @@ struct type_info {
         }
     }
 
-    bool operator==(const type_info& other) const noexcept {
-        return std::addressof(other) == this || other.name == name;
-    }
+    auto operator<=>(const type_info& other) const { return name <=> other.name; }
+    bool operator==(const type_info& other) const { return (name <=> other.name) == std::strong_ordering::equal; }
 
     template <typename T>
     static const type_info& of() {

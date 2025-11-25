@@ -32,8 +32,9 @@ struct AssetIndex {
     uint32_t index() const { return index_; }
     uint32_t generation() const { return generation_; }
 
-    bool operator==(const AssetIndex& other) const = default;
-    bool operator!=(const AssetIndex& other) const = default;
+    bool operator==(const AssetIndex& other) const                  = default;
+    bool operator!=(const AssetIndex& other) const                  = default;
+    std::strong_ordering operator<=>(const AssetIndex& other) const = default;
 
     friend struct StrongHandle;
     template <typename T>
