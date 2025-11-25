@@ -25,7 +25,7 @@ int main() {
     app.add_systems(Startup, into([](Commands cmd, ResMut<assets::Assets<image::Image>> assets) {
                         spdlog::info("Adding sprite");
                         auto image = image::Image::srgba8unorm_render(2, 2);
-                        auto res   = image.set_data(0, 0, 2, 2,
+                        auto res   = image.set_data(image::Rect::rect2d(0, 0, 2, 2),
                                                     std::span<const uint8_t>(std::vector<uint8_t>{
                                                       0xff, 0x00, 0xff, 0xff,  // purple
                                                       0x00, 0x00, 0x00, 0xff,  // black
