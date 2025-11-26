@@ -19,9 +19,24 @@ struct AssetPlugin {
     template <typename T>
     AssetPlugin& register_asset() {
         m_assets_inserts.push_back([](epix::App& app) {
+            if (app.world_mut().get_resource<Assets<T>>().has_value()) return;
             app.world_mut().init_resource<Assets<T>>();
             app.resource_mut<AssetServer>().register_assets(app.resource<Assets<T>>());
             app.add_events<AssetEvent<T>>();
+            app.add_systems(PostStartup,
+                            into(into(Assets<T>::handle_events).in_set(AssetSystems::HandleEvents),
+                                 into(Assets<T>::asset_events).in_set(AssetSystems::WriteEvents))
+                                .chain()
+                                .set_names(std::array{std::format("handle {} asset events", meta::type_id<T>::name()),
+                                                      std::format("send {} asset events", meta::type_id<T>::name())}));
+            app.add_systems(PreStartup,
+                            into(Assets<T>::asset_events)
+                                .in_set(AssetSystems::WriteEvents)
+                                .set_names(std::array{std::format("send {} asset events", meta::type_id<T>::name())}));
+            app.add_systems(First,
+                            into(Assets<T>::asset_events)
+                                .in_set(AssetSystems::WriteEvents)
+                                .set_names(std::array{std::format("send {} asset events", meta::type_id<T>::name())}));
             app.add_systems(Last,
                             into(into(Assets<T>::handle_events).in_set(AssetSystems::HandleEvents),
                                  into(Assets<T>::asset_events).in_set(AssetSystems::WriteEvents))
