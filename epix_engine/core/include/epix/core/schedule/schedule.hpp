@@ -104,13 +104,20 @@ struct SetConfig {
         if (self.system) self.system->set_name(name);
         size_t index = 0;
         std::ranges::for_each(self.sub_configs,
-                              [&](SetConfig& config) { config.set_name(std::format("{}#{}", name, index)); });
+                              [&](SetConfig& config) { config.set_name(std::format("{}#{}", name, index++)); });
         return std::forward<T>(self);
     }
     template <typename T, typename Rng>
     T&& set_names(this T&& self, Rng&& names)
         requires std::ranges::range<Rng> && std::convertible_to<std::ranges::range_value_t<Rng>, std::string_view>
     {
+        if (self.system) {
+            auto it = std::ranges::begin(names);
+            if (it != std::ranges::end(names)) {
+                self.system->set_name(*it);
+                ++it;
+            }
+        }
         for (auto&& [config, name] : std::views::zip(self.sub_configs, names)) {
             config.set_name(name);
         }
