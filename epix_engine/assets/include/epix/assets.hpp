@@ -7,6 +7,10 @@
 #include "assets/index.hpp"
 
 namespace epix::assets {
+enum class AssetSystems {
+    HandleEvents,
+    WriteEvents,
+};
 struct AssetPlugin {
    private:
     std::vector<std::function<void(epix::App&)>> m_assets_inserts;
@@ -18,10 +22,12 @@ struct AssetPlugin {
             app.world_mut().init_resource<Assets<T>>();
             app.resource_mut<AssetServer>().register_assets(app.resource<Assets<T>>());
             app.add_events<AssetEvent<T>>();
-            app.add_systems(First, into(Assets<T>::handle_events, Assets<T>::asset_events)
-                                       .chain()
-                                       .set_names(std::array{std::format("handle {} asset events", typeid(T).name()),
-                                                             std::format("send {} asset events", typeid(T).name())}));
+            app.add_systems(Last,
+                            into(into(Assets<T>::handle_events).in_set(AssetSystems::HandleEvents),
+                                 into(Assets<T>::asset_events).in_set(AssetSystems::WriteEvents))
+                                .chain()
+                                .set_names(std::array{std::format("handle {} asset events", meta::type_id<T>::name()),
+                                                      std::format("send {} asset events", meta::type_id<T>::name())}));
         });
         return *this;
     }
