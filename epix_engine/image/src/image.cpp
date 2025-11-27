@@ -66,6 +66,8 @@ std::optional<Image> Image::with_desc(const nvrhi::TextureDesc& desc) {
         return std::nullopt;
     }
     image.data.resize(desc.width * desc.height * desc.depth * desc.arraySize * pixel_size, 0);
+    image.main_world   = 1;
+    image.render_world = 1;
     return image;
 }
 
