@@ -46,6 +46,13 @@ void Schedule::add_config(SetConfig config, bool accept_system) {
 }
 
 std::expected<void, SchedulePrepareError> Schedule::prepare(bool check_error) {
+    // clear validated edges first
+    for (auto& [label, pnode] : nodes) {
+        pnode->validated_edges.children.clear();
+        pnode->validated_edges.parents.clear();
+        pnode->validated_edges.depends.clear();
+        pnode->validated_edges.successors.clear();
+    }
     // complete edges.
     for (auto& [label, pnode] : nodes) {
         auto& node = *pnode;
