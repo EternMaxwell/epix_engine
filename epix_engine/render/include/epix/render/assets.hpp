@@ -96,11 +96,11 @@ template <RenderAssetImpl T>
 void extract_assets(ResMut<CachedExtractedAssets<T>> cache,
                     Extract<ResMut<epix::assets::Assets<T>>> assets,
                     Extract<EventReader<epix::assets::AssetEvent<T>>> events) {
-    std::vector<epix::assets::AssetId<T>> changed_ids;
+    std::unordered_set<epix::assets::AssetId<T>> changed_ids;
     std::unordered_set<epix::assets::AssetId<T>> removed;
     for (const auto& event : events.read()) {
         if (event.is_added() || event.is_modified()) {
-            changed_ids.push_back(event.id);
+            changed_ids.insert(event.id);
         } else if (event.is_unused()) {
             removed.insert(event.id);
         }
@@ -109,7 +109,7 @@ void extract_assets(ResMut<CachedExtractedAssets<T>> cache,
     RenderAsset<T> render_asset_impl;
     std::vector<std::string> errors;
     for (const auto& id : changed_ids) {
-        if (auto asset = assets->get_mut(id); asset && render_asset_impl.usage(*asset) & RENDER_WORLD) {
+        if (auto asset = assets->get(id); asset && render_asset_impl.usage(*asset) & RENDER_WORLD) {
             if (render_asset_impl.usage(*asset) & MAIN_WORLD) {
                 // this asset is still used in main world, copy it
                 if constexpr (std::is_copy_constructible_v<T>) {
@@ -124,8 +124,7 @@ void extract_assets(ResMut<CachedExtractedAssets<T>> cache,
                 }
             } else {
                 // this asset is only used in render world, move it
-                extracted_assets.emplace_back(id, std::move(*asset));
-                assets->remove(id);
+                extracted_assets.emplace_back(id, std::move(assets->take(id).value()));
             }
         }
     }
