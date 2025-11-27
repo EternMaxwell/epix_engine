@@ -93,17 +93,17 @@ int main() {
                                 })
                                     .before(text::font::FontSystems::AddFontAtlasSet)
                                     .before(assets::AssetSystems::WriteEvents));
-    app.add_systems(Update, into([&](ResMut<text::font::FontAtlasSets> font_atlas_sets) {
-                                if (!font_handle) return;
-                                text::font::FontAtlasSet& atlas_set = font_atlas_sets->get_mut(*font_handle).value();
-                                text::font::FontAtlas& atlas =
-                                    atlas_set.get_or_insert(text::font::FontAtlasKey{32, false});
-                                for (auto c : std::string_view("Hello, Epix Engine!")) {
-                                    auto&& loc = atlas.get_char_atlas_loc(static_cast<char32_t>(c));
-                                    spdlog::info("Character '{}' at atlas loc x={}, y={}, layer={}, w={}, h={}", c,
-                                                 loc.x, loc.y, loc.layer, loc.width, loc.height);
-                                }
-                            }).run_if(run_once));
+    app.add_systems(Update,
+                    into([&](ResMut<text::font::FontAtlasSets> font_atlas_sets) {
+                        if (!font_handle) return;
+                        text::font::FontAtlasSet& atlas_set = font_atlas_sets->get_mut(*font_handle).value();
+                        text::font::FontAtlas& atlas = atlas_set.get_or_insert(text::font::FontAtlasKey{32, false});
+                        for (auto c : std::string_view("Hello, Epix Engine!")) {
+                            auto&& loc = atlas.get_glyph_atlas_loc(atlas.get_glyph_index(static_cast<char32_t>(c)));
+                            spdlog::info("Character '{}' at atlas loc x={}, y={}, layer={}, w={}, h={}", c, loc.x,
+                                         loc.y, loc.layer, loc.width, loc.height);
+                        }
+                    }).run_if(run_once));
     app.add_systems(Update, into([](EventReader<assets::AssetEvent<image::Image>> image_events, Commands cmd,
                                     ResMut<assets::Assets<image::Image>> images) {
                         for (auto&& id : image_events.read() | std::views::filter([](auto&& event) {

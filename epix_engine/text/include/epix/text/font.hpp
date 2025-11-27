@@ -94,7 +94,7 @@ struct FontAtlas {
             std::swap(image, new_image);
         }
         for (const auto& pending : pending_glyphs) {
-            auto it = atlas_locs.find(pending.codepoint);
+            auto it = atlas_locs.find(pending.glyph_index);
             if (it == atlas_locs.end()) {
                 continue;  // should not happen
             }
@@ -104,31 +104,34 @@ struct FontAtlas {
         }
         pending_glyphs.clear();
     }
+    uint32_t get_glyph_index(char32_t codepoint) {
+        return static_cast<uint32_t>(FT_Get_Char_Index(font_face, codepoint));
+    }
 
-    image::Rect get_char_atlas_loc(char32_t codepoint) {
-        auto it = atlas_locs.find(codepoint);
+    image::Rect get_glyph_atlas_loc(uint32_t glyph_index) {
+        auto it = atlas_locs.find(glyph_index);
         if (it != atlas_locs.end()) {
             return it->second;
         }
-        add_char(codepoint);
-        return atlas_locs.at(codepoint);
+        cache_glyph_index(glyph_index);
+        return atlas_locs.at(glyph_index);
     }
-    const Glyph& get_char_glyph(char32_t codepoint) {
-        auto it = glyphs.find(codepoint);
+    const Glyph& get_glyph(uint32_t glyph_index) {
+        auto it = glyphs.find(glyph_index);
         if (it != glyphs.end()) {
             return it->second;
         }
-        add_char(codepoint);
-        return glyphs.at(codepoint);
+        cache_glyph_index(glyph_index);
+        return glyphs.at(glyph_index);
     }
 
    private:
     FT_Face font_face;
     /// The image where the font glyphs are stored
     std::optional<assets::Handle<image::Image>> image;
-    /// Mapping from character code to its position in the atlas
-    std::unordered_map<char32_t, image::Rect> atlas_locs;
-    std::unordered_map<char32_t, Glyph> glyphs;
+    /// Mapping from glyph index to its position in the atlas
+    std::unordered_map<uint32_t, image::Rect> atlas_locs;
+    std::unordered_map<uint32_t, Glyph> glyphs;
     // Atlas physical size (pixels) and number of layers.
     // These should be set to the actual `image` dimensions when the atlas image is created.
     uint32_t atlas_width;
@@ -149,7 +152,7 @@ struct FontAtlas {
 
     // Pending glyph images, no loc and glyph info cause it should be stored in atlas_locs and glyphs once pending.
     struct PendingGlyph {
-        char32_t codepoint;
+        uint32_t glyph_index;
         std::unique_ptr<std::byte[]> bitmap_data;  // always 1 byte per pixel grey image
     };
     std::vector<PendingGlyph> pending_glyphs;
@@ -174,34 +177,38 @@ struct FontAtlas {
     // image size.
     std::expected<image::Rect, FontAtlasError> place_char_bitmap_size(uint32_t width, uint32_t height) {
         if (width == 0 || height == 0) {
-            // an 0 size glyph is allowed, for example space character
+            // a 0-size glyph is allowed (e.g. space); no pixels to place
             return image::Rect::rect3d(0, 0, 0, 0, 0, 1);
         }
+        // reserve 1 pixel padding to avoid bleeding between glyphs
+        constexpr uint32_t padding = 1;
+        const uint32_t padded_w    = width + padding;
+        const uint32_t padded_h    = height + padding;
         // Ensure we have at least one layer state
         if (layer_states.empty()) layer_states.emplace_back();
 
         // Try to fit in existing layers
         for (uint32_t layer = 0; layer < layer_states.size(); ++layer) {
             auto& st = layer_states[layer];
-            // if current row can fit
-            if (st.x + width <= atlas_width) {
-                // if height fits in remaining vertical space
-                if (st.y + std::max(st.row_height, height) <= atlas_height) {
+            // if current row can fit (use padded width)
+            if (st.x + padded_w <= atlas_width) {
+                // if padded height fits in remaining vertical space
+                if (st.y + std::max(st.row_height, padded_h) <= atlas_height) {
                     uint32_t placed_x = st.x;
                     uint32_t placed_y = st.y;
-                    st.x += width;  // advance cursor
-                    st.row_height = std::max(st.row_height, height);
+                    st.x += padded_w;  // advance cursor by padded width
+                    st.row_height = std::max(st.row_height, padded_h);
                     return image::Rect::rect3d(placed_x, placed_y, layer, width, height, 1);
                 }
             }
-            // try move to next row in this layer
-            if (st.y + st.row_height + height <= atlas_height) {
+            // try move to next row in this layer (use padded height)
+            if (st.y + st.row_height + padded_h <= atlas_height) {
                 st.x = 0;
                 st.y += st.row_height;
-                st.row_height     = height;
+                st.row_height     = padded_h;
                 uint32_t placed_x = st.x;
                 uint32_t placed_y = st.y;
-                st.x += width;
+                st.x += padded_w;
                 return image::Rect::rect3d(placed_x, placed_y, layer, width, height, 1);
             }
             // otherwise this layer is full; continue to next layer
@@ -222,12 +229,12 @@ struct FontAtlas {
         uint32_t new_layer = static_cast<uint32_t>(layer_states.size() - 1);
         auto& nst          = layer_states[new_layer];
         // Place at origin of new layer if fits
-        if (width <= atlas_width && height <= atlas_height) {
+        if (padded_w <= atlas_width && padded_h <= atlas_height) {
             uint32_t placed_x = 0;
             uint32_t placed_y = 0;
-            nst.x             = width;
+            nst.x             = padded_w;  // reserve padded width
             nst.y             = 0;
-            nst.row_height    = height;
+            nst.row_height    = padded_h;
             return image::Rect::rect3d(placed_x, placed_y, new_layer, width, height, 1);
         }
 
@@ -256,23 +263,21 @@ struct FontAtlas {
     }
 
     std::optional<std::tuple<Glyph, std::unique_ptr<std::byte[]>, std::pair<uint32_t, uint32_t>>> generate_glyph(
-        char32_t codepoint) {
+        uint32_t glyph_index) {
         FT_Set_Char_Size(font_face, font_size << 6, 0, 96, 96);
         // Load glyph
-        FT_UInt glyph_index = FT_Get_Char_Index(font_face, static_cast<FT_ULong>(codepoint));
         if (FT_Load_Glyph(font_face, glyph_index, FT_LOAD_RENDER)) {
-            spdlog::error("[font] Failed to load glyph for codepoint U+{:04X}", static_cast<uint32_t>(codepoint));
+            spdlog::error("[font] Failed to load glyph for index {}", glyph_index);
             return std::nullopt;  // failed to load glyph
         }
         FT_Glyph ft_glyph;
         if (FT_Get_Glyph(font_face->glyph, &ft_glyph)) {
-            spdlog::error("[font] Failed to get glyph for codepoint U+{:04X}", static_cast<uint32_t>(codepoint));
+            spdlog::error("[font] Failed to get glyph for index {}", glyph_index);
             return std::nullopt;  // failed to get glyph
         }
         // Convert to bitmap
         if (FT_Glyph_To_Bitmap(&ft_glyph, FT_RENDER_MODE_NORMAL, 0, 1)) {
-            spdlog::error("[font] Failed to convert glyph to bitmap for codepoint U+{:04X}",
-                          static_cast<uint32_t>(codepoint));
+            spdlog::error("[font] Failed to convert glyph to bitmap for index {}", glyph_index);
             return std::nullopt;  // failed to convert to bitmap
         }
 
@@ -295,20 +300,19 @@ struct FontAtlas {
         glyph.vertBearingX  = static_cast<float>(m.vertBearingX) / 64.0f;
         glyph.vertBearingY  = static_cast<float>(m.vertBearingY) / 64.0f;
         glyph.vertAdvance   = static_cast<float>(m.vertAdvance) / 64.0f;
-        glyphs[codepoint]   = glyph;
 
         return std::make_tuple(glyph, std::move(bitmap_data), std::make_pair(bitmap.width, bitmap.rows));
     }
 
     /// Add a character to the atlas, regardless of whether added before.
     /// This will load the glyph from the font face, render it to a bitmap and pend it for upload.
-    void add_char(char32_t codepoint) {
-        auto generated = generate_glyph(codepoint);
+    void cache_glyph_index(uint32_t glyph_index) {
+        auto generated = generate_glyph(glyph_index);
         if (!generated) {
             // failed to generate, will also fail in the future, add an empty glyph to avoid repeated attempts
-            atlas_locs[codepoint] = image::Rect::rect3d(0, 0, 0, 0, 0, 1);
+            atlas_locs[glyph_index] = image::Rect::rect3d(0, 0, 0, 0, 0, 1);
             Glyph empty_glyph{0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
-            glyphs[codepoint] = empty_glyph;
+            glyphs[glyph_index] = empty_glyph;
             return;
         }
         auto& [glyph, bitmap_data, size] = *generated;
@@ -317,23 +321,22 @@ struct FontAtlas {
         if (!place_res) {
             auto err = place_res.error();
             spdlog::error(
-                "[font] Failed to place glyph in atlas for codepoint U+{:04X}: code={}, glyph_size={}x{}, "
+                "[font] Failed to place glyph in atlas for glyph_index={}, glyph_size={}x{}, "
                 "atlas_size={}x{}, cause '{}'",
-                static_cast<uint32_t>(codepoint), static_cast<int>(err.code), err.glyph_width, err.glyph_height,
-                err.atlas_w, err.atlas_h,
+                glyph_index, static_cast<int>(err.code), err.glyph_width, err.glyph_height, err.atlas_w, err.atlas_h,
                 err.code == FontAtlasError::Code::AtlasFull
                     ? "atlas full"
                     : (err.code == FontAtlasError::Code::TooLargeForLayer ? "too large for layer" : "invalid size"));
             // will fail in the future, add an empty loc
-            atlas_locs[codepoint] = image::Rect::rect3d(0, 0, 0, 0, 0, 1);
-            glyphs[codepoint]     = glyph;
+            atlas_locs[glyph_index] = image::Rect::rect3d(0, 0, 0, 0, 0, 1);
+            glyphs[glyph_index]     = glyph;
             return;
         }
-        image::Rect loc       = place_res.value();
-        atlas_locs[codepoint] = loc;
-        glyphs[codepoint]     = glyph;
+        image::Rect loc         = place_res.value();
+        atlas_locs[glyph_index] = loc;
+        glyphs[glyph_index]     = glyph;
 
-        pending_glyphs.push_back(PendingGlyph{codepoint, std::move(bitmap_data)});
+        pending_glyphs.push_back(PendingGlyph{glyph_index, std::move(bitmap_data)});
     }
 };
 struct FontAtlasKey {
@@ -349,15 +352,6 @@ struct FontAtlasKeyHash {
         seed ^= std::hash<bool>{}(key.anti_aliased) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
         return seed;
     }
-};
-struct TextFont {
-    assets::Handle<Font> font;
-    float size               = 16.0f;
-    float line_height        = 1.2f;
-    bool relative_height : 1 = true;
-    bool anti_aliased : 1    = true;
-
-    operator FontAtlasKey() const { return FontAtlasKey{*reinterpret_cast<const uint32_t*>(&size), anti_aliased}; }
 };
 /// Map from Font detail to its FontAtlas, since same font face can still have different sizes/styles
 struct FontAtlasSet : private std::unordered_map<FontAtlasKey, FontAtlas, FontAtlasKeyHash> {
