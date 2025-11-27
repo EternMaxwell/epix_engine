@@ -172,10 +172,10 @@ struct FontAtlas {
     // x,y,layer,width,height,depth=1). This uses a simple row-based packing per-layer. If no existing layer has room, a
     // new layer is created. Note: callers must ensure `atlas_width`/`atlas_height`/`atlas_layers` reflect the real
     // image size.
-    std::expected<image::Rect, FontAtlasError> place_glyph_size(uint32_t width, uint32_t height) {
+    std::expected<image::Rect, FontAtlasError> place_char_bitmap_size(uint32_t width, uint32_t height) {
         if (width == 0 || height == 0) {
-            return std::unexpected(
-                FontAtlasError{FontAtlasError::Code::InvalidSize, width, height, atlas_width, atlas_height});
+            // an 0 size glyph is allowed, for example space character
+            return image::Rect::rect3d(0, 0, 0, 0, 0, 1);
         }
         // Ensure we have at least one layer state
         if (layer_states.empty()) layer_states.emplace_back();
@@ -236,15 +236,14 @@ struct FontAtlas {
     }
 
     image::Image make_atlas_image() {
-        return image::Image::with_desc(
-                   nvrhi::TextureDesc()
-                       .setWidth(atlas_width)
-                       .setHeight(atlas_height)
-                       .setArraySize(atlas_layers)
-                       .setFormat(nvrhi::Format::R8_UINT)
-                       .setDimension(nvrhi::TextureDimension::Texture2DArray)
-                       .setKeepInitialState(true)
-                       .setInitialState(nvrhi::ResourceStates::CopyDest | nvrhi::ResourceStates::ShaderResource))
+        return image::Image::with_desc(nvrhi::TextureDesc()
+                                           .setWidth(atlas_width)
+                                           .setHeight(atlas_height)
+                                           .setArraySize(atlas_layers)
+                                           .setFormat(nvrhi::Format::R8_UNORM)
+                                           .setDimension(nvrhi::TextureDimension::Texture2DArray)
+                                           .setKeepInitialState(true)
+                                           .setInitialState(nvrhi::ResourceStates::ShaderResource))
             .value();
     }
     // Add image to store this atlas to the assets if not already added.
@@ -314,7 +313,7 @@ struct FontAtlas {
         }
         auto& [glyph, bitmap_data, size] = *generated;
         // Place in atlas
-        auto place_res = place_glyph_size(size.first, size.second);
+        auto place_res = place_char_bitmap_size(size.first, size.second);
         if (!place_res) {
             auto err = place_res.error();
             spdlog::error(
@@ -448,24 +447,30 @@ struct FontPlugin {
                                    Res<FontLibrary> font_lib,
                                    EventReader<assets::AssetEvent<Font>> reader,
                                    Res<assets::Assets<Font>> fonts) {
+        std::unordered_set<assets::AssetId<Font>> to_remove;
+        std::unordered_set<assets::AssetId<Font>> modified;
         for (auto&& event : reader.read()) {
-            if (event.is_unused()) atlas_sets->erase(event.id);
-            if (event.is_added() || event.is_modified()) {
-                // create FT_Face for the font
-                auto&& font = fonts->get(event.id);
-                if (!font) continue;
-                FT_Face face;
-                if (FT_New_Memory_Face(font_lib->library, reinterpret_cast<const FT_Byte*>(font->data.get()),
-                                       static_cast<FT_Long>(font->size), 0, &face)) {
-                    spdlog::error("[font] Failed to create FreeType face for font asset id {}",
-                                  event.id.to_string_short());
-                    continue;
-                }
-                if (atlas_sets->contains(event.id)) {
-                    atlas_sets->erase(event.id);
-                }
-                atlas_sets->emplace(event.id, FontAtlasSet(face));
+            if (event.is_unused()) to_remove.insert(event.id);
+            if (event.is_added() || event.is_modified()) modified.insert(event.id);
+        }
+        for (const auto& id : to_remove) {
+            atlas_sets->erase(id);
+            modified.erase(id);
+        }
+        for (const auto& id : modified) {
+            // create FT_Face for the font
+            auto&& font = fonts->get(id);
+            if (!font) continue;
+            FT_Face face;
+            if (FT_New_Memory_Face(font_lib->library, reinterpret_cast<const FT_Byte*>(font->data.get()),
+                                   static_cast<FT_Long>(font->size), 0, &face)) {
+                spdlog::error("[font] Failed to create FreeType face for font asset id {}", id.to_string_short());
+                continue;
             }
+            if (atlas_sets->contains(id)) {
+                atlas_sets->erase(id);
+            }
+            atlas_sets->emplace(id, FontAtlasSet(face));
         }
     }
     void build(App& app) {
@@ -473,11 +478,13 @@ struct FontPlugin {
         app.world_mut().init_resource<FontLibrary>();
         app.world_mut().init_resource<FontAtlasSets>();
         // apply pending may modify images, and we want extract asset to react to this change immediately
-        app.configure_sets(sets(FontSystems::AddFontAtlasSet, FontSystems::ApplyPendingFontAtlasUpdates)
-                               .before(assets::AssetSystems::WriteEvents));
-        app.add_systems(PreStartup, into(add_font_atlas_set).in_set(FontSystems::AddFontAtlasSet));
-        app.add_systems(First, into(add_font_atlas_set).in_set(FontSystems::AddFontAtlasSet));
-        app.add_systems(Last, into(apply_pending_font_atlas_updates).in_set(FontSystems::ApplyPendingFontAtlasUpdates));
+        app.configure_sets(sets(FontSystems::AddFontAtlasSet, FontSystems::ApplyPendingFontAtlasUpdates));
+        app.add_systems(
+            First,
+            into(add_font_atlas_set).in_set(FontSystems::AddFontAtlasSet).after(assets::AssetSystems::WriteEvents));
+        app.add_systems(Last, into(apply_pending_font_atlas_updates)
+                                  .in_set(FontSystems::ApplyPendingFontAtlasUpdates)
+                                  .before(assets::AssetSystems::WriteEvents));
     }
 };
 }  // namespace epix::text::font
