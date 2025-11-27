@@ -151,16 +151,16 @@ struct Receiver {
     Receiver& operator=(Receiver&&)      = default;
     ~Receiver()                          = default;
 
-    operator bool() { return m_queue.operator bool(); }
-    bool operator!() { return !m_queue; }
+    operator bool() const { return m_queue.operator bool(); }
+    bool operator!() const { return !m_queue; }
 
-    T receive() {
+    T receive() const {
         if (!m_queue) {
             throw std::runtime_error("Receiver is not initialized.");
         }
         return m_queue->pop();
     }
-    std::optional<T> try_receive() {
+    std::optional<T> try_receive() const {
         if (!m_queue) {
             return std::nullopt;
         }

@@ -44,7 +44,7 @@ struct AssetIndex {
 
 struct AssetIndexAllocator {
    private:
-    std::atomic<uint32_t> m_next = 0;
+    mutable std::atomic<uint32_t> m_next = 0;
     Sender<AssetIndex> m_free_indices_sender;
     Receiver<AssetIndex> m_free_indices_receiver;
     Receiver<AssetIndex> m_reserved;
@@ -57,8 +57,8 @@ struct AssetIndexAllocator {
     AssetIndexAllocator& operator=(const AssetIndexAllocator&) = delete;
     AssetIndexAllocator& operator=(AssetIndexAllocator&&)      = delete;
 
-    AssetIndex reserve();
-    void release(const AssetIndex& index);
+    AssetIndex reserve() const;
+    void release(const AssetIndex& index) const;
     Receiver<AssetIndex> reserved_receiver() const;
 };
 }  // namespace epix::assets

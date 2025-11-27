@@ -210,10 +210,10 @@ struct HandleProvider {
     HandleProvider& operator=(const HandleProvider&) = delete;
     HandleProvider& operator=(HandleProvider&&)      = delete;
 
-    UntypedHandle reserve();
+    UntypedHandle reserve() const;
     std::shared_ptr<StrongHandle> get_handle(const InternalAssetId& id,
                                              bool loader_managed,
-                                             const std::optional<std::filesystem::path>& path);
-    std::shared_ptr<StrongHandle> reserve(bool loader_managed, const std::optional<std::filesystem::path>& path);
+                                             const std::optional<std::filesystem::path>& path) const;
+    std::shared_ptr<StrongHandle> reserve(bool loader_managed, const std::optional<std::filesystem::path>& path) const;
 };
 }  // namespace epix::assets
