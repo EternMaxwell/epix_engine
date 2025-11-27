@@ -15,8 +15,6 @@
 #include <memory>
 #include <unordered_map>
 
-#include "epix/assets/asset_server.hpp"
-
 namespace epix::text::font {
 struct Font {
     std::unique_ptr<std::byte[]> data;
@@ -123,6 +121,19 @@ struct FontAtlas {
         }
         cache_glyph_index(glyph_index);
         return glyphs.at(glyph_index);
+    }
+    uint32_t get_image_width() const { return atlas_width; }
+    uint32_t get_image_height() const { return atlas_height; }
+    uint32_t get_image_layers() const { return atlas_layers; }
+
+    std::array<float, 5> get_glyph_uv_rect(uint32_t glyph_index) {
+        auto loc = get_glyph_atlas_loc(glyph_index);
+        float u0 = static_cast<float>(loc.x) / static_cast<float>(atlas_width);
+        float v0 = static_cast<float>(loc.y) / static_cast<float>(atlas_height);
+        float u1 = static_cast<float>(loc.x + loc.width) / static_cast<float>(atlas_width);
+        float v1 = static_cast<float>(loc.y + loc.height) / static_cast<float>(atlas_height);
+        float layer = static_cast<float>(loc.layer);
+        return {u0, v0, u1, v1, layer};
     }
 
    private:
