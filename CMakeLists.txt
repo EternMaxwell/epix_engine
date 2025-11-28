@@ -38,6 +38,9 @@ set (NVRHI_WITH_DX11 OFF)
 set (NVRHI_WITH_VULKAN ON)
 add_subdirectory (libs/nvrhi)
 add_subdirectory (libs/spirv-cross)
+add_subdirectory (libs/utfcpp)
+set (HARFBUZZ_HAVE_FREETYPE ON)
+add_subdirectory (libs/harfbuzz)
 
 add_subdirectory (libs/googletest)
 
