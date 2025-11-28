@@ -52,3 +52,6 @@
 [submodule "libs/utfcpp"]
 	path = libs/utfcpp
 	url = https://github.com/nemtrif/utfcpp.git
+[submodule "libs/harfbuzz"]
+	path = libs/harfbuzz
+	url = https://github.com/harfbuzz/harfbuzz.git
