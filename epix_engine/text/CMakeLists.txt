@@ -9,7 +9,8 @@ target_link_libraries(epix_text PUBLIC epix_assets)
 target_link_libraries(epix_text PUBLIC epix_transform)
 target_link_libraries(epix_text PUBLIC epix_render)
 target_link_libraries(epix_text PUBLIC epix_core_graph)
-target_link_libraries(epix_text PUBLIC freetype)
+target_link_libraries(epix_text PRIVATE freetype)
+target_link_libraries(epix_text PRIVATE harfbuzz)
 
 ## --- tests: auto-discover ---
 # Recursively find all .cpp test sources under tests/ and create an executable + ctest entry
@@ -25,5 +26,6 @@ foreach(TEST_SRC IN LISTS TEST_SOURCES)
 	add_executable(${TEST_NAME} "${TEST_SRC}")
 	target_link_libraries(${TEST_NAME} PRIVATE epix_text)
 	target_link_libraries(${TEST_NAME} PRIVATE epix_sprite)
+	target_link_libraries(${TEST_NAME} PRIVATE epix_mesh)
 	add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
 endforeach()
