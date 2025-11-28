@@ -457,7 +457,7 @@ class untyped_vector {
     }
     void deallocate(void* p) noexcept {
         if (!p) return;
-        mem_res_->deallocate(p, desc_->align);
+        mem_res_->deallocate(p, capacity_ * desc_->size, desc_->align);
     }
 
     void reallocate(size_t new_cap) {
