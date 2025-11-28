@@ -1,6 +1,8 @@
+#include "epix/mesh/material.hpp"
 #include "epix/mesh/render.hpp"
 #include "epix/render/assets.hpp"
 #include "epix/render/extract.hpp"
+
 
 namespace epix::mesh {
 void extract_mesh2d(ResMut<RenderMesh2dInstances> render_meshes,
@@ -38,6 +40,7 @@ void upload_mesh_uniforms(Res<nvrhi::DeviceHandle> device, ResMut<MeshUniforms> 
 void MeshRenderPlugin::build(epix::App& app) {
     app.add_plugins(render::assets::ExtractAssetPlugin<Mesh>{});
     app.add_plugins(mesh::MeshPipelinePlugin{});
+    app.add_plugins(ColorMaterialPlugin{});
     auto& render_app = app.sub_app_mut(render::Render);
     render_app.world_mut().init_resource<MeshUniforms>();
     render_app.add_systems(render::ExtractSchedule, into(extract_mesh2d).set_name("extract mesh2d"));
