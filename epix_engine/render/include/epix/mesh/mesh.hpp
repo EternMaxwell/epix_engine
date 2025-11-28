@@ -33,6 +33,7 @@ struct MeshAttributeLayout : std::map<uint32_t, MeshAttribute> {
         auto it = this->find(attribute.slot);
         return it != this->end() && it->second == attribute;
     }
+    void add_attribute(const MeshAttribute& attribute) { this->insert_or_assign(attribute.slot, attribute); }
     std::optional<std::reference_wrapper<const MeshAttribute>> get_attribute(const MeshAttribute& attribute) const {
         auto it = this->find(attribute.slot);
         if (it != this->end() && it->second == attribute) {
@@ -198,7 +199,7 @@ struct Mesh {
             _indices->data.reserve(static_cast<size_t>(std::ranges::size(data)));
         }
         std::ranges::for_each(std::forward<T>(data),
-                              [&](auto&& v) { _indices->data.push_back(std::forward<decltype(v)>(v)); });
+                              [&](auto&& v) { _indices->data.emplace_back<V>(std::forward<decltype(v)>(v)); });
     }
     template <typename V = uint16_t, std::ranges::viewable_range T>
         requires std::convertible_to<std::ranges::range_value_t<T>, V> &&
