@@ -1,10 +1,11 @@
 #pragma once
 
 #include <epix/core_graph.hpp>
+#include <epix/image.hpp>
 #include <epix/render.hpp>
 
-#include "epix/mesh/render.hpp"
 #include "nvrhi/nvrhi.h"
+#include "render.hpp"
 
 namespace epix::mesh {
 template <typename T>
@@ -13,6 +14,10 @@ struct Material2d {};
 /// Adding this component to entity with Mesh2d means this mesh will be rendered using ColorMaterialPlugin.
 struct ColorMaterial {
     glm::vec4 color = glm::vec4(1.0f);
+};
+/// An image material used for rendering a mesh with a texture.
+struct ImageMaterial {
+    assets::Handle<image::Image> image;
 };
 /// A no material used for rendering a mesh with no material.
 /// Requires the mesh to have color attribute.
