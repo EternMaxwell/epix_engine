@@ -29,9 +29,10 @@ void GPUMesh::update_from_mesh(const Mesh& mesh, nvrhi::DeviceHandle device) {
                                                         .setInitialState(nvrhi::ResourceStates::VertexBuffer));
         }
         size_t offset = 0;
-        for (auto&& [attribute, data] : mesh.iter_attributes()) {
+        for (auto&& [slot, pack] : mesh.iter_attributes() | std::views::enumerate) {
+            auto&& [attribute, data] = pack;
             command_list->writeBuffer(_combined_buffer, data.cdata(), data.type_info().size * vertex_count, offset);
-            _attribute_bindings.push_back({attribute.slot, offset});
+            _attribute_bindings.push_back({(uint32_t)(slot), offset});
             offset += data.type_info().size * vertex_count;
         }
     }

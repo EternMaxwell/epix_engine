@@ -160,7 +160,7 @@ std::optional<render::RenderPipelineId> MeshPipeline::specialize(render::Pipelin
             .setRasterState(
                 nvrhi::RasterState().setCullMode(nvrhi::RasterCullMode::Back).setFrontCounterClockwise(true)));
     std::vector<nvrhi::VertexAttributeDesc> input_layouts;
-    for (auto&& [slot, attribute] : mesh_layout) {
+    for (auto&& [slot, attribute] : mesh_layout | std::views::values | std::views::enumerate) {
         input_layouts.push_back(nvrhi::VertexAttributeDesc()
                                     .setName("Position")
                                     .setFormat(attribute.format)
@@ -174,7 +174,8 @@ std::optional<render::RenderPipelineId> MeshPipeline::specialize(render::Pipelin
     desc.addBindingLayout(_view_layout);
     desc.addBindingLayout(_mesh_layout);
     // if no color, add a push constant
-    if (!mesh_layout.contains_attribute(Mesh::ATTRIBUTE_COLOR)) {
+    if (!mesh_layout.contains_attribute(Mesh::ATTRIBUTE_COLOR) &&
+        !mesh_layout.contains_attribute(Mesh::ATTRIBUTE_UV0) && !mesh_layout.contains_attribute(Mesh::ATTRIBUTE_UV1)) {
         desc.addBindingLayout(_push_constant_layout);
     }
     if (mesh_layout.contains_attribute(Mesh::ATTRIBUTE_UV0)) {
