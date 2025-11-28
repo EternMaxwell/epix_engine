@@ -37,7 +37,7 @@ struct AssetPlugin {
                             into(Assets<T>::asset_events)
                                 .in_set(AssetSystems::WriteEvents)
                                 .set_names(std::array{std::format("send {} asset events", meta::type_id<T>::name())}));
-            app.add_systems(Last,
+            app.add_systems(PostUpdate,
                             into(into(Assets<T>::handle_events).in_set(AssetSystems::HandleEvents),
                                  into(Assets<T>::asset_events).in_set(AssetSystems::WriteEvents))
                                 .chain()
