@@ -70,11 +70,6 @@ struct SpriteBatch {
     uint32_t instance_start;
 };
 
-struct DefaultSampler {
-    nvrhi::SamplerHandle handle;
-    nvrhi::SamplerDesc desc;
-};
-
 template <render::render_phase::PhaseItem P>
 struct BindResourceCommand {
     nvrhi::BindingSetHandle binding_set;
@@ -139,16 +134,6 @@ struct DrawSpriteBatchCommand {
     }
 };
 
-struct DefaultSamplerPlugin {
-    static bool desc_equal(const nvrhi::SamplerDesc& a, const nvrhi::SamplerDesc& b) {
-        return a.borderColor == b.borderColor && a.maxAnisotropy == b.maxAnisotropy && a.mipBias == b.mipBias &&
-               a.minFilter == b.minFilter && a.magFilter == b.magFilter && a.mipFilter == b.mipFilter &&
-               a.addressU == b.addressU && a.addressV == b.addressV && a.addressW == b.addressW &&
-               a.reductionType == b.reductionType;
-    }
-    void finish(App& app);
-};
-
 void extract_sprites(
     Commands cmd,
     Extract<Query<Item<Entity, const Sprite&, const transform::GlobalTransform&, const assets::Handle<image::Image>&>,
@@ -165,7 +150,7 @@ void prepare_sprites(Query<Item<render::render_phase::RenderPhase<render::core_2
                      ResMut<SpriteInstanceBuffer> instance_buffer,
                      Res<render::assets::RenderAssets<image::Image>> images,
                      Res<nvrhi::DeviceHandle> device,
-                     Res<DefaultSampler> default_sampler,
+                     Res<render::DefaultSampler> default_sampler,
                      ResMut<VertexBuffers> vertex_buffers);
 
 struct SpritePlugin {

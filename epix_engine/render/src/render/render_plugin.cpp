@@ -247,5 +247,6 @@ void RenderPlugin::build(epix::App& app) {
     app.add_plugins(epix::render::assets::ExtractAssetPlugin<epix::image::Image>{});
     app.add_plugins(epix::render::ShaderPlugin{});
     app.add_plugins(epix::render::PipelineServerPlugin{});
+    app.add_plugins(DefaultSamplerPlugin{});
 }
 void RenderPlugin::finalize(epix::App& app) { volk_handler.reset(); }

@@ -14,6 +14,13 @@
 #include "render/window.hpp"
 
 namespace epix::render {
+struct DefaultSampler {
+    nvrhi::SamplerHandle handle;
+    nvrhi::SamplerDesc desc;
+};
+struct DefaultSamplerPlugin {
+    void finish(App& app);
+};
 struct RenderPlugin {
     int validation = 0;
     /**

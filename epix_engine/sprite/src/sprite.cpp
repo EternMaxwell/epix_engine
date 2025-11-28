@@ -176,24 +176,6 @@ void SpriteInstanceBuffer::upload(nvrhi::DeviceHandle device) {
     device->executeCommandList(cmd_list);
 }
 
-void DefaultSamplerPlugin::finish(App& app) {
-    app.world_mut().insert_resource(DefaultSampler{
-        .desc = nvrhi::SamplerDesc().setMagFilter(false),
-    });
-    if (auto render_app = app.get_sub_app_mut(render::Render)) {
-        render_app->get().world_mut().insert_resource(DefaultSampler{});
-        render_app->get().add_systems(
-            render::ExtractSchedule,
-            into([](Res<nvrhi::DeviceHandle> device,
-                    ParamSet<ResMut<DefaultSampler>, Extract<Res<DefaultSampler>>> samplers) {
-                auto&& [gpu_sampler, sampler] = samplers.get();
-                if (!gpu_sampler->handle || !desc_equal(gpu_sampler->handle->getDesc(), sampler->desc)) {
-                    gpu_sampler->handle = device.get()->createSampler(sampler->desc);
-                }
-            }).set_name("extract and update default sampler"));
-    }
-}
-
 void sprite::extract_sprites(
     Commands cmd,
     Extract<Query<Item<Entity, const Sprite&, const transform::GlobalTransform&, const assets::Handle<image::Image>&>,
@@ -236,7 +218,7 @@ void sprite::prepare_sprites(Query<Item<render::render_phase::RenderPhase<render
                              ResMut<SpriteInstanceBuffer> instance_buffer,
                              Res<render::assets::RenderAssets<image::Image>> images,
                              Res<nvrhi::DeviceHandle> device,
-                             Res<DefaultSampler> default_sampler,
+                             Res<render::DefaultSampler> default_sampler,
                              ResMut<VertexBuffers> vertex_buffers) {
     instance_buffer->clear();
 
@@ -316,7 +298,6 @@ void sprite::prepare_sprites(Query<Item<render::render_phase::RenderPhase<render
 }
 
 void SpritePlugin::build(App& app) {
-    app.add_plugins(DefaultSamplerPlugin{});
     app.add_plugins(SpriteShadersPlugin{});
 }
 void SpritePlugin::finish(App& app) {
