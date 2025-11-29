@@ -53,7 +53,12 @@ struct SystemParam<app::Extract<T>> : SystemParam<T> {
         return Base::validate_param(state, meta, world.resource_mut<app::ExtractedWorld>().world);
     }
     static Item get_param(State& state, const SystemMeta& meta, World& world, Tick tick) {
-        return Item(Base::get_param(state, meta, world.resource_mut<app::ExtractedWorld>().world, tick));
+        // return Item(Base::get_param(state, meta, world.resource_mut<app::ExtractedWorld>().world, tick));
+        SystemMeta temp;
+        temp.flags            = meta.flags;
+        auto& extracted_world = world.resource_mut<app::ExtractedWorld>().world.get();
+        temp.last_run         = extracted_world.last_change_tick();
+        return Item(Base::get_param(state, temp, extracted_world, extracted_world.change_tick()));
     }
 };
 static_assert(valid_system_param<SystemParam<app::Extract<ResMut<int>>>>);
