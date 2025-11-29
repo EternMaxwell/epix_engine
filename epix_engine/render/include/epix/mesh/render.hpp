@@ -154,6 +154,7 @@ struct DrawMesh {
         auto&& [render_assets, render_meshes] = params.get();
         auto entity                           = item.entity();
         auto& gpu_mesh                        = render_assets->get(render_meshes->at(entity).mesh);
+        ctx.setGraphicsState();
         if (gpu_mesh.is_indexed()) {
             ctx.commandlist->drawIndexed(nvrhi::DrawArguments().setVertexCount(gpu_mesh.vertex_count()));
         } else {

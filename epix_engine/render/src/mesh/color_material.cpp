@@ -118,8 +118,7 @@ void queue_color_material_mesh_2d(Res<MeshColorMaterials> color_materials,
                 .draw_func   = render::render_phase::get_or_add_render_commands<
                       render::core_2d::Opaque2D, render::render_phase::SetItemPipeline,
                       render::view::BindViewUniform<0>::Command, mesh::BindMeshUniform<1>::Command, BindGpuMesh,
-                      BindColorPushConstants, render::render_phase::SetGraphicsState, PushColorMaterial, DrawMesh>(
-                    *draw_functions),
+                      PushColorMaterial, DrawMesh>(*draw_functions),
                 .batch_count = 1,
             });
         }
@@ -174,7 +173,7 @@ void queue_no_material_mesh_2d(Res<NoMaterialMeshes> no_material_meshes,
                 .draw_func   = render::render_phase::get_or_add_render_commands<
                       render::core_2d::Opaque2D, render::render_phase::SetItemPipeline,
                       render::view::BindViewUniform<0>::Command, mesh::BindMeshUniform<1>::Command, BindGpuMesh,
-                      render::render_phase::SetGraphicsState, DrawMesh>(*draw_functions),
+                      DrawMesh>(*draw_functions),
                 .batch_count = 1,
             });
         }
@@ -238,7 +237,7 @@ void queue_image_material_mesh_2d(Res<ImageMaterialMeshes> image_material_meshes
                 .draw_func   = render::render_phase::get_or_add_render_commands<
                       render::core_2d::Opaque2D, render::render_phase::SetItemPipeline,
                       render::view::BindViewUniform<0>::Command, mesh::BindMeshUniform<1>::Command, BindGpuMesh,
-                      BindImage, render::render_phase::SetGraphicsState, DrawMesh>(*draw_functions),
+                      BindImage, DrawMesh>(*draw_functions),
                 .batch_count = 1,
             });
         }

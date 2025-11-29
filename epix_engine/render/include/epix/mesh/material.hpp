@@ -24,7 +24,7 @@ struct ImageMaterial {
 struct NoMaterial {};
 struct MeshColorMaterials : std::unordered_map<Entity, ColorMaterial> {};
 template <render::render_phase::PhaseItem P>
-struct BindColorPushConstants {
+struct PushColorMaterial {
     nvrhi::BindingSetHandle binding_set;
     void prepare(World& world) {
         auto device         = world.resource<nvrhi::DeviceHandle>();
@@ -36,28 +36,18 @@ struct BindColorPushConstants {
     bool render(const P& item,
                 Item<> entity_item,
                 std::optional<Item<>> view_item,
-                ParamSet<> params,
+                ParamSet<Res<nvrhi::DeviceHandle>, Res<MeshColorMaterials>> params,
                 render::render_phase::DrawContext& ctx) {
         ctx.graphics_state.bindings.resize(3);
         ctx.graphics_state.bindings[2] = binding_set;
-        return true;
-    }
-};
-template <render::render_phase::PhaseItem P>
-struct PushColorMaterial {
-    void prepare(World&) {}
-    bool render(const P& item,
-                Item<> entity_item,
-                std::optional<Item<>> view_item,
-                ParamSet<Res<nvrhi::DeviceHandle>, Res<MeshColorMaterials>> params,
-                render::render_phase::DrawContext& ctx) {
+
         auto&& [device, color_materials] = params.get();
         auto entity                      = item.entity();
         if (!color_materials->contains(entity)) {
             return false;
         }
         auto&& color_material = color_materials->at(entity);
-        ctx.commandlist->setPushConstants(&color_material, sizeof(ColorMaterial));
+        ctx.setPushConstants(&color_material, sizeof(ColorMaterial));
         return true;
     }
 };
