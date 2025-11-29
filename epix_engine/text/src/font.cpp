@@ -169,7 +169,7 @@ std::optional<std::tuple<Glyph, std::unique_ptr<std::byte[]>, std::pair<uint32_t
     auto font_face = reinterpret_cast<FT_Face>(this->font_face);
     // convert size to 26.6 format
     uint32_t font_size = static_cast<uint32_t>(this->font_size * 64.0f);
-    FT_Set_Char_Size(font_face, font_size, 0, 96, 96);
+    FT_Set_Char_Size(font_face, font_size, 0, 0, 0);
     // Load glyph
     if (FT_Load_Glyph(font_face, glyph_index, FT_LOAD_RENDER)) {
         spdlog::error("[font] Failed to load glyph for index {}", glyph_index);

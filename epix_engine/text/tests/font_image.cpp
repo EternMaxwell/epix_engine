@@ -95,9 +95,10 @@ int main() {
                                     font_handle = fonts->emplace(std::move(font));
                                     cmd.spawn(text::TextBundle{.text{"Hello, Epix Engine!"},
                                                                .font{
-                                                                   .font        = *font_handle,
-                                                                   .size        = 48.0f,
-                                                                   .line_height = 1.6f,
+                                                                   .font            = *font_handle,
+                                                                   .size            = 48.0f,
+                                                                   .line_height     = 48.0f,
+                                                                   .relative_height = false,
                                                                },
                                                                .bounds{
                                                                    .width = 400.0f,

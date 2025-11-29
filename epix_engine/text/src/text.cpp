@@ -24,14 +24,17 @@ ShapedText shape_text(const Text& text,
     if (!face_ptr) return out;
     FT_Face ft_face = reinterpret_cast<FT_Face>(face_ptr);
     // Ensure FreeType face size matches requested font size so HarfBuzz positions are in pixels
-    FT_Set_Char_Size(ft_face, static_cast<FT_F26Dot6>(font.size * 64.0f), 0, 96, 96);
+    FT_Set_Char_Size(ft_face, static_cast<FT_F26Dot6>(font.size * 64.0f), 0, 0, 0);
     // Create an hb_font from the FT_Face.
     hb_font_t* hbfont = hb_ft_font_create(ft_face, nullptr);
     if (!hbfont) return out;
 
     // After setting char size, FreeType populates face->size->metrics. Use it
-    // to obtain an accurate line height in pixels (26.6 fixed point -> pixels).
+    // to obtain an accurate line height and ascender/descender in pixels (26.6 fixed point -> pixels).
     float ft_line_height = static_cast<float>(static_cast<double>(ft_face->size->metrics.height) / 64.0);
+    float ft_ascender    = static_cast<float>(static_cast<double>(ft_face->size->metrics.ascender) / 64.0);
+    // FreeType descender is negative; convert to positive distance below baseline
+    float ft_descender = -static_cast<float>(static_cast<double>(ft_face->size->metrics.descender) / 64.0);
     // Compute desired line height from TextFont: if `relative_height` is true, interpret
     // `line_height` as multiplier of font.size, otherwise treat it as absolute pixels.
     float desired_line_height = 0.0f;
@@ -53,7 +56,7 @@ ShapedText shape_text(const Text& text,
         unsigned int glyph_count       = 0;
         hb_glyph_info_t* infos         = hb_buffer_get_glyph_infos(buf, &glyph_count);
         hb_glyph_position_t* positions = hb_buffer_get_glyph_positions(buf, &glyph_count);
-        out.glyphs.reserve(glyph_count);
+        out.glyphs_.reserve(glyph_count);
         // Track pen positions to compute glyph extents including bearings (floating point)
         std::vector<float> pen_positions;
         pen_positions.reserve(glyph_count);
@@ -70,38 +73,47 @@ ShapedText shape_text(const Text& text,
             // ensure glyph present in atlas (will pend upload if missing)
             atlas.get_glyph_atlas_loc(gi.glyph_index);
 
-            out.glyphs.push_back(gi);
+            out.glyphs_.push_back(gi);
             pen_x += gi.x_advance;
         }
 
         // Compute accurate horizontal extents using glyph bearings (float)
-        float min_x  = std::numeric_limits<float>::infinity();
-        float max_x  = -std::numeric_limits<float>::infinity();
-        float ascent = 0.0f, descent = 0.0f;
-        for (size_t i = 0; i < out.glyphs.size(); ++i) {
-            const auto& g      = out.glyphs[i];
+        float min_x = std::numeric_limits<float>::infinity();
+        float max_x = -std::numeric_limits<float>::infinity();
+        // use FreeType face ascender/descender (already converted above)
+        float ascent  = ft_ascender;
+        float descent = ft_descender;
+        for (size_t i = 0; i < out.glyphs_.size(); ++i) {
+            const auto& g      = out.glyphs_[i];
             auto glyph_metrics = atlas.get_glyph(static_cast<uint32_t>(g.glyph_index));
             float pen          = pen_positions[i];
             float glyph_left   = pen + (g.x_offset + std::min(0.0f, glyph_metrics.horiBearingX));
             float glyph_right  = pen + (g.x_offset + glyph_metrics.horiBearingX + glyph_metrics.width);
             min_x              = std::min(min_x, glyph_left);
             max_x              = std::max(max_x, glyph_right);
-            ascent             = std::max(ascent, glyph_metrics.horiBearingY);
-            descent            = std::max(descent, glyph_metrics.height - glyph_metrics.horiBearingY);
+            // do not modify ascent/descent per-glyph here; use FreeType face ascender/descender
         }
-        if (out.glyphs.empty()) {
+        if (out.glyphs_.empty()) {
             min_x = 0.0f;
             max_x = 0.0f;
         }
-        float width_f = (min_x <= max_x) ? (max_x - min_x) : 0.0f;
-        float line_h  = std::max(final_line_height, ascent + descent);
-        out.width     = width_f;
-        out.height    = line_h;
+        // Allow user-specified final_line_height to be smaller than font ascender+descender
+        // so lines may overlap if requested.
+        float line_h = final_line_height;
+        out.left_    = min_x;
+        out.right_   = max_x;
+        out.ascent_  = ascent;
+        out.descent_ = -descent;
+        // top = first baseline + ascent, bottom = last baseline - descent (up-positive coords)
+        out.top_    = out.ascent_;
+        out.bottom_ = out.descent_;
 
-        // shift glyph x/y offsets so they are relative to block top-left (origin)
-        for (size_t i = 0; i < out.glyphs.size(); ++i) {
-            out.glyphs[i].x_offset = pen_positions[i] + out.glyphs[i].x_offset - min_x;
-            out.glyphs[i].y_offset = line_h - ascent + out.glyphs[i].y_offset;
+        // shift glyph x offsets so they are absolute pen positions; y_offsets are converted to up-positive below
+        for (size_t i = 0; i < out.glyphs_.size(); ++i) {
+            // keep glyph x_offset as the absolute pen position + HarfBuzz x_offset (not normalized to left bound)
+            out.glyphs_[i].x_offset = pen_positions[i] + out.glyphs_[i].x_offset;
+            // convert HarfBuzz y_offset into 'up-positive' convention (positive = upward)
+            out.glyphs_[i].y_offset = -out.glyphs_[i].y_offset;
         }
 
         hb_buffer_destroy(buf);
@@ -197,8 +209,9 @@ ShapedText shape_text(const Text& text,
             e.glyph_index = static_cast<uint32_t>(infos[gi].codepoint);
             e.cluster     = static_cast<uint32_t>(infos[gi].cluster);
             e.x_offset    = static_cast<int32_t>(std::lround(static_cast<double>(pos[gi].x_offset) / 64.0));
-            e.y_offset    = static_cast<int32_t>(std::lround(static_cast<double>(pos[gi].y_offset) / 64.0));
-            e.x_advance   = static_cast<int32_t>(std::lround(static_cast<double>(pos[gi].x_advance) / 64.0));
+            // Convert HarfBuzz y_offset to up-positive convention here
+            e.y_offset  = static_cast<int32_t>(-std::lround(static_cast<double>(pos[gi].y_offset) / 64.0));
+            e.x_advance = static_cast<int32_t>(std::lround(static_cast<double>(pos[gi].x_advance) / 64.0));
             token_width += e.x_advance;
             out_entries.push_back(e);
         }
@@ -315,20 +328,15 @@ ShapedText shape_text(const Text& text,
         lines.emplace_back(start, tidx);
     }
 
-    // Compute full block size (before applying height clipping)
+    // Use the requested line height for layout
     const float line_height = final_line_height;
-    std::vector<float> line_widths;
-    line_widths.reserve(lines.size());
-    float full_width_f = 0.0f;
-    for (auto& ln : lines) {
-        float lw = 0.0f;
-        for (size_t ti = ln.first; ti < ln.second; ++ti) lw += shaped_tokens[ti].width;
-        line_widths.push_back(lw);
-        if (lw > full_width_f) full_width_f = lw;
-    }
     // Compute per-line extents including bearings and overall ascent/descent
     std::vector<float> line_mins(lines.size(), 0.0f), line_maxs(lines.size(), 0.0f);
-    float global_ascent = 0.0f, global_descent = 0.0f;
+    std::vector<float> line_widths(lines.size());
+    float full_width = 0.0f;
+    // use FreeType face ascender/descender for global metrics (descender converted to positive distance above)
+    float global_ascent  = ft_ascender;
+    float global_descent = ft_descender;
     for (size_t li = 0; li < lines.size(); ++li) {
         auto [start, end] = lines[li];
         float pen         = 0.0f;
@@ -343,8 +351,6 @@ ShapedText shape_text(const Text& text,
                 float glyph_right  = pen + (e.x_offset + glyph_metrics.horiBearingX + glyph_metrics.width);
                 min_x              = std::min(min_x, glyph_left);
                 max_x              = std::max(max_x, glyph_right);
-                global_ascent      = std::max(global_ascent, glyph_metrics.horiBearingY);
-                global_descent     = std::max(global_descent, glyph_metrics.height - glyph_metrics.horiBearingY);
                 pen += e.x_advance;
             }
         }
@@ -356,13 +362,32 @@ ShapedText shape_text(const Text& text,
         line_maxs[li]   = max_x;
         float lw        = max_x - min_x;
         line_widths[li] = lw;
-        if (lw > full_width_f) full_width_f = lw;
+        if (lw > full_width) full_width = lw;
     }
-    float full_width  = full_width_f;
-    float line_h_i    = std::max(line_height, global_ascent + global_descent);
-    float full_height = static_cast<float>(lines.size()) * line_h_i;
-    out.width         = full_width;
-    out.height        = full_height;
+    // Use the requested line_height directly (do not enforce ascender+descender minimum).
+    float line_h_i = line_height;
+    // populate ShapedText bounds/internal metrics
+    // compute overall left/right from per-line mins/maxs
+    float overall_min = std::numeric_limits<float>::infinity();
+    float overall_max = -std::numeric_limits<float>::infinity();
+    for (size_t i = 0; i < line_mins.size(); ++i) {
+        overall_min = std::min(overall_min, line_mins[i]);
+        overall_max = std::max(overall_max, line_maxs[i]);
+    }
+    if (!std::isfinite(overall_min)) {
+        overall_min = 0.0f;
+        overall_max = 0.0f;
+    }
+    out.left_   = overall_min;
+    out.right_  = overall_max;
+    out.ascent_ = global_ascent;
+    // store descent_ as negative to match ShapedText semantics (descent_ < 0)
+    out.descent_ = -global_descent;
+    // first baseline is the y-origin; store top relative to ascent and bottom relative to last baseline
+    out.top_ = out.ascent_;
+    // bottom_ is the y coordinate of the last baseline plus descent, relative to the first baseline (up-positive)
+    float baseline_delta = static_cast<float>(lines.size() > 0 ? lines.size() - 1 : 0) * line_h_i;
+    out.bottom_          = -baseline_delta + out.descent_;
 
     // Enforce height bound: compute max lines allowed and clip visible lines only (size remains the full block size)
     if (bounds.height.has_value()) {
@@ -371,7 +396,9 @@ ShapedText shape_text(const Text& text,
     }
 
     // Build final GlyphInfo list applying justification per line
-    float pen_y = global_ascent;  // baseline offset from top (float)
+    // first baseline reference (baseline of the first line)
+    float first_baseline = global_ascent;
+    float pen_y          = first_baseline;  // baseline y coordinate (up-positive)
     for (size_t li = 0; li < lines.size(); ++li) {
         auto [start, end] = lines[li];
         // compute line width and count spaces for justification
@@ -393,8 +420,8 @@ ShapedText shape_text(const Text& text,
             start_x = (full_width - line_width);
 
         float extra_per_space = 0.0f;
-        if (layout.justify == Justify::Justified && li + 1 < lines.size() && spaces > 0 && full_width_f > line_width) {
-            extra_per_space = (full_width_f - line_width) / static_cast<float>(spaces);
+        if (layout.justify == Justify::Justified && li + 1 < lines.size() && spaces > 0 && full_width > line_width) {
+            extra_per_space = (full_width - line_width) / static_cast<float>(spaces);
         }
 
         float pen_x = start_x;
@@ -405,14 +432,18 @@ ShapedText shape_text(const Text& text,
                 out_g.glyph_index = ts.entries[gi].glyph_index;
                 out_g.cluster     = ts.entries[gi].cluster;
                 // position relative to block top-left: account for per-line min_x and start_x
-                float glyph_origin_x = pen_x + ts.entries[gi].x_offset;
-                out_g.x_offset       = glyph_origin_x - line_mins[li] + start_x;
-                out_g.y_offset       = pen_y + ts.entries[gi].y_offset;
-                out_g.x_advance      = ts.entries[gi].x_advance;
-                out_g.y_advance      = 0;
+                float glyph_origin_x =
+                    pen_x + ts.entries[gi].x_offset;  // includes start_x since pen_x starts at start_x
+                // keep glyph x_offset as the pen-origin + glyph x_offset (do not normalize by line min)
+                out_g.x_offset = glyph_origin_x;
+                // per-entry y_offset is already up-positive (we negated at shape time). Compute glyph y
+                // as baseline difference + per-entry offset.
+                out_g.y_offset  = (pen_y - first_baseline) + ts.entries[gi].y_offset;
+                out_g.x_advance = ts.entries[gi].x_advance;
+                out_g.y_advance = 0;
 
                 atlas.get_glyph_atlas_loc(out_g.glyph_index);
-                out.glyphs.push_back(out_g);
+                out.glyphs_.push_back(out_g);
                 pen_x += ts.entries[gi].x_advance;
             }
             // Add extra spacing for ASCII spaces contained in this token
@@ -423,7 +454,8 @@ ShapedText shape_text(const Text& text,
                 pen_x += static_cast<float>(trailing_spaces) * extra_per_space;
             }
         }
-        pen_y += line_h_i;
+        // move pen to next line baseline (downwards in layout => subtract in up-positive coords)
+        pen_y -= line_h_i;
     }
 
     hb_font_destroy(hbfont);

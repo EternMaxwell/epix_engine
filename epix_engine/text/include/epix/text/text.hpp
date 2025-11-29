@@ -28,12 +28,38 @@ struct GlyphInfo {
     float x_advance;
     float y_advance;
 };
+struct TextLayout;
+struct TextBounds;
 struct ShapedText {
-    std::vector<GlyphInfo> glyphs;
     // actual size of the shaped block (width, height) in pixels, before applying bounds clipping
-    float width  = 0.0f;
-    float height = 0.0f;
+    float line_height() const { return ascent_ - descent_; }
+    float width() const { return right_ - left_; }   // total width of the ShapedText block
+    float height() const { return top_ - bottom_; }  // total height of the ShapedText block
+    float left() const { return left_; }             // the left bound of the shaped text block
+    float right() const { return right_; }           // the right bound of the shaped text block
+    float top() const { return top_; }               // the top bound of the shaped text block
+    float bottom() const { return bottom_; }         // the bottom bound of the shaped text block
+    float ascent() const { return ascent_; }
+    float descent() const { return descent_; }
+    std::span<const GlyphInfo> glyphs() const { return std::span<const GlyphInfo>(glyphs_); }
+
+   private:
+    std::vector<GlyphInfo> glyphs_;
+    float left_    = 0.0f;
+    float right_   = 0.0f;
+    float top_     = 0.0f;
+    float bottom_  = 0.0f;
+    float ascent_  = 0.0f;
+    float descent_ = 0.0f;
+
+    friend ShapedText shape_text(const Text& text,
+                                 const TextFont& font,
+                                 const TextLayout& layout,
+                                 const TextBounds& bounds,
+                                 font::FontAtlas& atlas);
 };
+ShapedText shape_text(
+    const Text& text, const TextFont& font, const TextLayout& layout, const TextBounds& bounds, font::FontAtlas& atlas);
 enum class Justify {
     Left,
     Center,
@@ -63,11 +89,7 @@ struct TextBounds {
 struct TextMeasure {
     float width  = 0.0f;
     float height = 0.0f;
-
-    static TextMeasure from_shaped_text(const ShapedText& shaped_text, const TextFont& font, font::FontAtlas& atlas);
 };
-ShapedText shape_text(
-    const Text& text, const TextFont& font, const TextLayout& layout, const TextBounds& bounds, font::FontAtlas& atlas);
 
 struct TextBundle {
     Text text;
