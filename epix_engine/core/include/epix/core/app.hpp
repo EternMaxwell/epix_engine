@@ -451,16 +451,7 @@ struct App {
     /// Update the app, e.g. run schedules according to schedule order with the internal dispatcher.
     /// Return a future that will hold false if no ScheduleOrder resource found or no dispatcher available.
     /// Default launch policy is async.
-    std::future<bool> update(std::launch launch = std::launch::async) {
-        return get_system_dispatcher()
-            .transform([this, launch](std::shared_ptr<schedule::SystemDispatcher> dispatcher) mutable {
-                return std::async(launch, [this, dispatcher]() { return update_local(dispatcher); });
-            })
-            .or_else([](auto&&) -> std::expected<std::future<bool>, WorldNotOwnedError> {
-                return std::async(std::launch::deferred, []() { return false; });
-            })
-            .value();
-    }
+    std::future<bool> update(std::launch launch = std::launch::async);
 
     /// Check if the app has an extract function set.
     bool has_extract() const { return static_cast<bool>(extract_fn); }

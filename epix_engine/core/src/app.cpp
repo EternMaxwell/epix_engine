@@ -1,3 +1,5 @@
+#include <mutex>
+
 #include "epix/core/app.hpp"
 #include "epix/core/app/app_sche.hpp"
 #include "epix/core/app/loop.hpp"
@@ -212,6 +214,21 @@ bool App::update_local(std::shared_ptr<schedule::SystemDispatcher> dispatcher) {
         })
         .value_or(false);
 }
+std::future<bool> App::update(std::launch launch) {
+    auto res = get_world_mut().transform([](World& world) {
+        world.check_change_tick([&](Tick tick) {
+            auto res = world.resource_scope([&](app::Schedules& schedules) { schedules.check_change_tick(tick); });
+        });
+    });
+    return get_system_dispatcher()
+        .transform([this, launch](std::shared_ptr<schedule::SystemDispatcher> dispatcher) {
+            return std::async(launch, [this, dispatcher]() { return update_local(dispatcher); });
+        })
+        .or_else([](auto&&) -> std::expected<std::future<bool>, WorldNotOwnedError> {
+            return std::async(std::launch::deferred, []() { return false; });
+        })
+        .value();
+}
 
 void App::extract(App& other) {
     if (extract_fn) {
@@ -229,13 +246,15 @@ void App::extract(App& other) {
 void App::run() {
     spdlog::info("[app] App building. - {}", _label.to_string());
     resource_scope([&](app::Plugins& plugins) { plugins.finish_all(*this); });
+    resource_scope([](World& world, app::Schedules& schedules) {
+        for (auto&& [label, schedule] : schedules.iter_mut()) {
+            auto res = schedule.prepare(false);
+            schedule.initialize_systems(world);
+        }
+    });
     spdlog::info("[app] App running. - {}", _label.to_string());
     if (!runner) throw std::runtime_error("No runner set for App.");
     while (runner->step(*this)) {
-        world_mut().check_change_tick([&](Tick tick) {
-            auto res =
-                world_mut().resource_scope([&](app::Schedules& schedules) { schedules.check_change_tick(tick); });
-        });
 #ifdef EPIX_ENABLE_TRACY
         FrameMark;
 #endif
