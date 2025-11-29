@@ -21,6 +21,30 @@ struct DrawContext {
     nvrhi::CommandListHandle commandlist;
     nvrhi::GraphicsState graphics_state;
 
+    DrawContext(nvrhi::CommandListHandle cmd_list, const nvrhi::GraphicsState& gfx_state)
+        : commandlist(cmd_list), graphics_state(gfx_state) {}
+
+    bool setPushConstants(const void* data, size_t size) {
+        if (size > 128) return false;
+        if (!push_constants_ || push_constants_size_ < size) {
+            push_constants_.emplace();
+            push_constants_size_ = size;
+        }
+        std::memcpy(push_constants_->data(), data, size);
+        return true;
+    }
+
+    void setGraphicsState() {
+        commandlist->setGraphicsState(graphics_state);
+        if (push_constants_) {
+            commandlist->setPushConstants(push_constants_->data(), push_constants_size_);
+        }
+    }
+
+   private:
+    std::optional<std::array<std::byte, 128>> push_constants_;
+    size_t push_constants_size_ = 0;
+
     operator nvrhi::CommandListHandle() const { return commandlist; }
 };
 
@@ -348,14 +372,6 @@ struct SetItemPipeline {
                 return false;
             })
             .value();
-    }
-};
-template <PhaseItem P>
-struct SetGraphicsState {
-    void prepare(World&) {}
-    bool render(const P&, Item<>, std::optional<Item<>>, ParamSet<>, DrawContext& ctx) {
-        ctx.commandlist->setGraphicsState(ctx.graphics_state);
-        return true;
     }
 };
 
