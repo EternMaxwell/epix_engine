@@ -2,8 +2,19 @@ file(GLOB_RECURSE RENDER_SOURCES CONFIGURE_DEPENDS "src/render/*.c" "src/render/
 list(APPEND MODULE_INCLUDES ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
 add_library(epix_render STATIC ${RENDER_SOURCES})
+
+# Add C++20 module interface
+if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.28)
+  target_sources(epix_render
+    PUBLIC
+      FILE_SET CXX_MODULES FILES
+        src/epix_render.cppm
+  )
+endif()
+
 epix_parse_options(epix_render)
 target_include_directories(epix_render PUBLIC ${MODULE_INCLUDES})
+target_compile_features(epix_render PUBLIC cxx_std_23)
 target_link_libraries(epix_render PUBLIC epix_core)
 target_link_libraries(epix_render PUBLIC epix_window)
 target_link_libraries(epix_render PUBLIC epix_glfw)
@@ -18,8 +29,19 @@ target_link_libraries(epix_render PUBLIC nvrhi_vk)
 file(GLOB_RECURSE CORE_GRAPH_SOURCES CONFIGURE_DEPENDS "src/core_graph/*.c" "src/core_graph/*.cpp")
 
 add_library(epix_core_graph STATIC ${CORE_GRAPH_SOURCES})
+
+# Add C++20 module interface
+if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.28)
+  target_sources(epix_core_graph
+    PUBLIC
+      FILE_SET CXX_MODULES FILES
+        src/epix_core_graph.cppm
+  )
+endif()
+
 epix_parse_options(epix_core_graph)
 target_include_directories(epix_core_graph PUBLIC ${MODULE_INCLUDES})
+target_compile_features(epix_core_graph PUBLIC cxx_std_23)
 target_link_libraries(epix_core_graph PUBLIC epix_core)
 target_link_libraries(epix_core_graph PUBLIC epix_render)
 

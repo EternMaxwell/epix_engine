@@ -12,6 +12,17 @@ set(EPIX_USE_VOLK ON)
 # BUILD STATIC
 add_library(epix_engine STATIC ${MODULE_SOURCES})
 
+# Add C++20 unified root module
+if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.28)
+  target_sources(epix_engine
+    PUBLIC
+      FILE_SET CXX_MODULES FILES
+        src/epix.cppm
+  )
+endif()
+
+target_compile_features(epix_engine PUBLIC cxx_std_23)
+
 if(EPIX_ENABLE_TRACY)
   target_compile_definitions(epix_engine PRIVATE EPIX_ENABLE_TRACY)
 endif()
