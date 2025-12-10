@@ -1,10 +1,9 @@
 #pragma once
 
-#include <vcruntime_typeinfo.h>
-
 #include <cstddef>
 #include <functional>
 #include <tuple>
+#include <typeinfo>
 
 #include "../archetype.hpp"
 #include "../component.hpp"
