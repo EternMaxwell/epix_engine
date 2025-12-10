@@ -1,5 +1,12 @@
+#include <epix/module_config.hpp>
+
+#if EPIX_HAS_MODULES
+import epix.render;
+import "epix/render/graph.h";
+#else
 #include <epix/render.h>
 #include <epix/render/graph.h>
+#endif
 
 using namespace epix;
 using namespace epix::render;

@@ -1,4 +1,10 @@
+#include <epix/module_config.hpp>
+
+#if EPIX_HAS_MODULES
+import epix.app;
+#else
 #include <epix/app.h>
+#endif
 
 using namespace epix;
 

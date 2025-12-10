@@ -1,5 +1,12 @@
+#include <epix/module_config.hpp>
+
+#if EPIX_HAS_MODULES
+import epix.app;
+import epix.assets;
+#else
 #include <epix/app.h>
 #include <epix/assets.h>
+#endif
 
 #include <iostream>
 #include <string>

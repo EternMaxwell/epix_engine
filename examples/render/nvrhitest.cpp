@@ -1,9 +1,21 @@
+#include <epix/module_config.hpp>
+
+#if EPIX_HAS_MODULES
+import epix.app;
+import epix.image;
+import epix.render;
+import epix.transform;
+import epix.window;
+import "epix/render/pipeline.h";
+import "epix/transform/plugin.h";
+#else
 #include <epix/app.h>
 #include <epix/image.h>
 #include <epix/render.h>
 #include <epix/render/pipeline.h>
 #include <epix/transform/plugin.h>
 #include <epix/window.h>
+#endif
 
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/string_cast.hpp>
