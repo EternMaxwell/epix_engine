@@ -367,3 +367,8 @@ FodyWeavers.xsd
 
 # xmake
 build/
+
+# C++ Modules (C++20)
+*.pcm
+*.o
+*.ifc
