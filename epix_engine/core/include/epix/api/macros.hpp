@@ -1,29 +1,49 @@
 #pragma once
 
+// Include module compatibility header for feature test macros
+#include "module_compat.hpp"
+
 #if defined(_WIN32)
-#define EPIX_EXPORT __declspec(dllexport)
-#define EPIX_IMPORT __declspec(dllimport)
+#define EPIX_EXPORT_SYMBOL __declspec(dllexport)
+#define EPIX_IMPORT_SYMBOL __declspec(dllimport)
 #elif defined(__GNUC__) && __GNUC__ >= 4
-#define EPIX_EXPORT __attribute__((visibility("default")))
-#define EPIX_IMPORT __attribute__((visibility("default")))
+#define EPIX_EXPORT_SYMBOL __attribute__((visibility("default")))
+#define EPIX_IMPORT_SYMBOL __attribute__((visibility("default")))
 #else
-#define EPIX_EXPORT
-#define EPIX_IMPORT
+#define EPIX_EXPORT_SYMBOL
+#define EPIX_IMPORT_SYMBOL
+#endif
+
+// Legacy macros for backward compatibility
+#ifndef EPIX_EXPORT
+#define EPIX_EXPORT EPIX_EXPORT_SYMBOL
+#endif
+#ifndef EPIX_IMPORT
+#define EPIX_IMPORT EPIX_IMPORT_SYMBOL
 #endif
 
 #if defined(EPIX_BUILD_SHARED)
-#define EPIX_API EPIX_EXPORT
+#define EPIX_API EPIX_EXPORT_SYMBOL
 #elif defined(EPIX_DLL) || defined(EPIX_SHARED)
-#define EPIX_API EPIX_IMPORT
+#define EPIX_API EPIX_IMPORT_SYMBOL
 #else
 #define EPIX_API
 #endif
 
 #include <concepts>
 #include <cstdint>
+#include <functional>
 #include <utility>
 
-namespace epix::core::wrapper {
+EPIX_MODULE_EXPORT namespace epix::core::wrapper {
+/**
+ * @brief Base class for strongly-typed integer wrappers.
+ *
+ * Provides a type-safe wrapper around integral types to prevent
+ * implicit conversions between semantically different integer values.
+ *
+ * @tparam T The underlying integral type.
+ */
 template <typename T>
     requires std::is_integral_v<T>
 struct int_base {
@@ -31,8 +51,15 @@ struct int_base {
     using value_type = T;
 
     constexpr int_base(T v = 0) : value(v) {}
+    
+#if EPIX_HAS_DEDUCING_THIS
     constexpr T get(this int_base self) { return self.value; }
     constexpr void set(this int_base& self, T v) { self.value = v; }
+#else
+    constexpr T get() const { return value; }
+    constexpr void set(T v) { value = v; }
+#endif
+
     constexpr auto operator<=>(const int_base&) const = default;
     constexpr operator T() const { return value; }
     constexpr operator size_t()

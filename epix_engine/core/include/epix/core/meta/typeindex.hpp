@@ -1,9 +1,16 @@
 #pragma once
 
+#include "../../api/macros.hpp"
 #include "fwd.hpp"
 #include "typeid.hpp"
 
-namespace epix::core::meta {
+EPIX_MODULE_EXPORT namespace epix::core::meta {
+
+/**
+ * @brief Runtime type index for type comparison.
+ *
+ * Wraps a type_id to provide a runtime-comparable type identifier.
+ */
 struct type_index {
    private:
     struct Internal {
@@ -26,7 +33,7 @@ struct type_index {
     type_index() : inter(nullptr) {}
 
     bool operator==(const type_index& other) const noexcept {
-        return inter == other.inter || inter->name == other.inter->name;
+        return inter == other.inter || (inter && other.inter && inter->name == other.inter->name);
     }
     bool operator!=(const type_index& other) const noexcept { return !(*this == other); }
     std::string_view name() const noexcept { return inter->name; }

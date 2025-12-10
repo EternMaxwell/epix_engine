@@ -5,9 +5,20 @@
 #include <format>
 #include <type_traits>
 
+#include "../api/macros.hpp"
 #include "meta/typeindex.hpp"
 
-namespace epix::core {
+EPIX_MODULE_EXPORT namespace epix::core {
+
+/**
+ * @brief A type-erased label for identifying schedules, systems, and other named entities.
+ *
+ * Labels can be created from:
+ * - Types (using type_index)
+ * - Enums
+ * - Integers
+ * - Pointers
+ */
 struct Label {
    public:
     static Label from_raw(const epix::core::meta::type_index& type_index, uintptr_t extra = 0) {
@@ -65,7 +76,7 @@ struct Label {
     epix::core::meta::type_index type_index_;
     uintptr_t extra_ = 0;
 };
-};  // namespace epix::core
+}  // namespace epix::core
 
 #ifndef EPIX_MAKE_LABEL
 #define EPIX_MAKE_LABEL(type)                                                         \

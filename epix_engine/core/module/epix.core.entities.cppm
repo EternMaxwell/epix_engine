@@ -1,30 +1,78 @@
-#pragma once
+/**
+ * @file epix.core.entities.cppm
+ * @brief C++20 module interface for entity management in the ECS.
+ *
+ * This module provides the Entity type and Entities manager for creating,
+ * destroying, and tracking entities in the ECS world.
+ */
+module;
 
 #include <atomic>
 #include <cassert>
 #include <concepts>
 #include <cstddef>
+#include <cstdint>
+#include <limits>
 #include <optional>
 #include <ranges>
 #include <vector>
 
-#include "../api/macros.hpp"
-#include "fwd.hpp"
+export module epix.core.entities;
+export import epix.core.api;
 
-EPIX_MODULE_EXPORT namespace epix::core {
+export namespace epix::core {
+
+/**
+ * @brief A unique identifier for an entity in the ECS world.
+ *
+ * Entities are represented as a generation counter and an index.
+ * The generation ensures that reused indices can be distinguished
+ * from their previous occupants.
+ */
 struct Entity {
-    uint32_t generation = 0;
-    uint32_t index      = 0;
+    uint32_t generation = 0;  ///< Generation counter for reuse detection
+    uint32_t index      = 0;  ///< Index into the entity storage
 
     auto operator<=>(const Entity&) const = default;
+
+    /**
+     * @brief Create an entity from just an index (generation 0).
+     */
     static Entity from_index(uint32_t index) { return Entity{0, index}; }
+
+    /**
+     * @brief Create an entity from both parts.
+     */
     static Entity from_parts(uint32_t index, uint32_t generation) { return Entity{generation, index}; }
 };
-EPIX_MAKE_U32_WRAPPER(ArchetypeId)
-EPIX_MAKE_U32_WRAPPER(TableId)
-EPIX_MAKE_U32_WRAPPER(ArchetypeRow)
-EPIX_MAKE_U32_WRAPPER(TableRow)
-EPIX_MAKE_U64_WRAPPER(BundleId)
+
+// ID wrapper types for ECS indices
+struct ArchetypeId : public wrapper::int_base<uint32_t> {
+    using wrapper::int_base<uint32_t>::int_base;
+};
+
+struct TableId : public wrapper::int_base<uint32_t> {
+    using wrapper::int_base<uint32_t>::int_base;
+};
+
+struct ArchetypeRow : public wrapper::int_base<uint32_t> {
+    using wrapper::int_base<uint32_t>::int_base;
+};
+
+struct TableRow : public wrapper::int_base<uint32_t> {
+    using wrapper::int_base<uint32_t>::int_base;
+};
+
+struct BundleId : public wrapper::int_base<uint64_t> {
+    using wrapper::int_base<uint64_t>::int_base;
+};
+
+/**
+ * @brief Location of an entity within the ECS storage.
+ *
+ * Tracks which archetype and table an entity belongs to,
+ * and its position within those containers.
+ */
 struct EntityLocation {
     ArchetypeId archetype_id   = 0;
     ArchetypeRow archetype_idx = 0;
@@ -34,17 +82,31 @@ struct EntityLocation {
     bool operator==(const EntityLocation& other) const = default;
     bool operator!=(const EntityLocation& other) const = default;
 
+    /**
+     * @brief Create an invalid location sentinel.
+     */
     static constexpr EntityLocation invalid() {
         return {std::numeric_limits<uint32_t>::max(), std::numeric_limits<uint32_t>::max(),
                 std::numeric_limits<uint32_t>::max(), std::numeric_limits<uint32_t>::max()};
     }
 };
+
+/**
+ * @brief Metadata for a single entity.
+ */
 struct EntityMeta {
     uint32_t generation     = 0;
     EntityLocation location = EntityLocation::invalid();
 
     static constexpr EntityMeta empty() { return {0, EntityLocation::invalid()}; }
 };
+
+/**
+ * @brief Manager for entity allocation, deallocation, and location tracking.
+ *
+ * Supports concurrent entity reservation with lock-free operations,
+ * while mutations require exclusive access.
+ */
 struct Entities {
    private:
     std::vector<EntityMeta> meta;
@@ -55,7 +117,8 @@ struct Entities {
     /**
      * @brief Reserve entity IDs concurrently.
      *
-     * Storage for entity generation and location is lazily allocated by calling [`flush`](Entities::flush).
+     * Storage for entity generation and location is lazily allocated
+     * by calling flush().
      *
      * @param count Number of entities to reserve.
      * @return A viewable range of reserved entities.
@@ -63,29 +126,24 @@ struct Entities {
     auto reserve_entities(uint32_t count) const {
         int64_t range_end   = free_cursor.fetch_sub(count, std::memory_order_relaxed);
         int64_t range_start = range_end - count;
-
-        int64_t base = meta.size();
+        int64_t base        = meta.size();
 
         return std::views::iota(range_start, range_end) | std::views::transform([this, base](int64_t idx) {
                    if (idx < 0) {
-                       // This entity is newly allocated
                        return Entity::from_index(static_cast<uint32_t>(base - idx - 1));
                    } else {
                        return Entity::from_parts(pending[idx], meta[pending[idx]].generation);
                    }
                });
     }
+
     /**
      * @brief Reserve a single entity ID.
-     *
-     * This is same as calling `*reserve_entities(1).begin()`. But more efficient.
-     *
      * @return The reserved entity.
      */
     Entity reserve_entity() const {
         int64_t n = free_cursor.fetch_sub(1, std::memory_order_relaxed);
         if (n > 0) {
-            // from free list
             uint32_t idx = pending[n - 1];
             return Entity::from_parts(idx, meta[idx].generation);
         } else {
@@ -95,159 +153,135 @@ struct Entities {
     }
 
     /**
-     * @brief Check that we do not have pending work requiring `flush()`.
-     *
+     * @brief Verify that no pending work requires flush().
      */
-    void verify_flush();
+    void verify_flush() {
+        assert(!needs_flush() && "Entities need to be flushed before accessing meta or pending!");
+    }
 
     /**
-     * @brief Allocate a Entity id directly.
-     *
+     * @brief Allocate an entity ID directly.
      * @return The allocated entity.
      */
     Entity alloc();
 
     /**
      * @brief Destroy an entity, allowing it to be reused.
-     *
-     * Note: Must not be called when any reserved entities are awaiting `flush()`.
-     *
      * @param entity The entity to free.
-     * @return std::optional<EntityLocation> The entity location if any.
+     * @return The entity's location if it existed.
      */
     std::optional<EntityLocation> free(Entity entity);
 
     /**
-     * @brief Ensure at least `count` allocations can be made without reallocating.
-     *
-     * @param count
+     * @brief Ensure capacity for at least `count` allocations.
      */
     void reserve(uint32_t count);
 
     /**
-     * @brief Returns true if contains the given entity.
-     *
-     * Entities that are freed will return false.
+     * @brief Check if the entity exists and is valid.
      */
     bool contains(Entity entity) const;
 
     /**
-     * @brief Clear all entities, making the manager empty.
+     * @brief Clear all entities.
      */
     void clear();
 
     /**
-     * @brief Get the location of an entity. Will return std::nullopt for pending entities.
+     * @brief Get the location of an entity.
+     * @return The location if the entity is valid, nullopt otherwise.
      */
     std::optional<EntityLocation> get(Entity entity) const;
 
     /**
-     * @brief Updates the location of an entity. Must be called when moving the components of the entity around in
-     * storage.
+     * @brief Update the location of an entity.
      */
     void set(uint32_t index, EntityLocation location);
 
     /**
-     * @brief Increments the `generation` of a freed entity by `generations`.
-     *
-     * Does nothing if no entity with this `index` has been allocated yet.
-     *
-     * @return true if successful.
+     * @brief Increment the generation of a freed entity.
+     * @return True if successful.
      */
     bool reserve_generations(uint32_t index, uint32_t generations);
 
     /**
-     * @brief Get the entity with the given index, if it exists. Returns std::nullopt if the index is out of range of
-     * currently reserved entities.
-     *
-     * Note that this function will return currently freed entities.
+     * @brief Get the entity with the given index.
+     * @return The entity if the index is valid, nullopt otherwise.
      */
     std::optional<Entity> resolve_index(uint32_t index) const;
 
+    /**
+     * @brief Check if flush() is needed.
+     */
     bool needs_flush() const;
 
     /**
-     * @brief Allocate space for entities previously reserved by `reserve_entities` or `reserve_entity`, then initialize
-     * them using the provided function.
-     *
-     * @tparam Fn
-     * @param fn
+     * @brief Allocate space for reserved entities and initialize them.
+     * @tparam Fn Initializer function taking (Entity, EntityLocation&).
      */
     template <std::invocable<Entity, EntityLocation&> Fn>
     void flush(Fn&& fn) {
-        // set cursor to 0 if negative and get new cursor
         int64_t n = free_cursor.load(std::memory_order_relaxed);
         if (n < 0) {
             auto old_meta_len = meta.size();
             auto new_meta_len = old_meta_len + static_cast<size_t>(-n);
             meta.resize(new_meta_len);
-#if EPIX_HAS_VIEWS_ENUMERATE
-            for (auto&& [index, meta] : std::views::enumerate(meta) | std::views::drop(old_meta_len)) {
-                fn(Entity::from_parts(index, meta.generation), meta.location);
+            for (auto&& [index, m] : std::views::enumerate(meta) | std::views::drop(old_meta_len)) {
+                fn(Entity::from_parts(index, m.generation), m.location);
             }
-#else
-            size_t index = old_meta_len;
-            for (auto it = meta.begin() + old_meta_len; it != meta.end(); ++it, ++index) {
-                fn(Entity::from_parts(static_cast<uint32_t>(index), it->generation), it->location);
-            }
-#endif
-
             free_cursor.store(0, std::memory_order_relaxed);
             n = 0;
         }
 
         for (auto&& index : pending | std::views::drop(n)) {
-            auto& meta = this->meta[index];
-            fn(Entity::from_parts(index, meta.generation), meta.location);
+            auto& m = this->meta[index];
+            fn(Entity::from_parts(index, m.generation), m.location);
         }
         pending.resize(n);
-    };
+    }
 
     /**
-     * @brief Flushes all reserved entities to invalid state.
+     * @brief Flush all reserved entities to invalid state.
      */
     void flush_as_invalid();
 
     /**
-     * @brief Get the total number of entities that have ever been allocated. Including freed ones.
-     *
-     * Does not include entities that have been reserved but not yet allocated.
+     * @brief Get total count of ever-allocated entities.
      */
     size_t total_count() const { return meta.size(); }
+
     /**
-     * @brief Count of entities that are used.
-     *
-     * Including ones that are allocated and reserved but not those that are freed.
+     * @brief Count of entities in use (allocated + reserved).
      */
     size_t used_count() const {
         int64_t size = meta.size();
         return size - free_cursor.load(std::memory_order_relaxed);
     }
+
     /**
-     * @brief The count of all entities that have ever been allocated or reserved, including those that are freed.
-     *
-     * This is the value that `total_count()` would return if `flush()` were called right now.
+     * @brief Total prospective count after flush.
      */
     size_t total_prospective_count() const {
         return meta.size() + static_cast<size_t>(-std::min(free_cursor.load(std::memory_order_relaxed), int64_t{0}));
     }
+
     /**
-     * @brief Count of currently allocated entities.
+     * @brief Count of currently allocated (non-freed) entities.
      */
     size_t size() const { return meta.size() - pending.size(); }
+
     /**
-     * @brief Checks if any entity is currently active.
+     * @brief Check if no entities are active.
      */
     bool empty() const { return size() == 0; }
 };
+
 }  // namespace epix::core
 
-// Add hash for uint wrappers
-namespace std {
-template <>
-struct hash<epix::core::Entity> {
+// Hash specialization for Entity
+export template <>
+struct std::hash<epix::core::Entity> {
     size_t operator()(epix::core::Entity e) const {
         return std::hash<uint64_t>()(static_cast<uint64_t>(e.generation) << 32 | e.index);
     }
 };
-}  // namespace std
