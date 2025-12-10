@@ -42,14 +42,38 @@ add_subdirectory (libs/spirv-cross)
 add_subdirectory (libs/googletest)
 
 set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 
+# Enable C++20 modules support
+if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.28")
+  set(CMAKE_CXX_MODULE_STD 1)
+endif()
+
+# Compiler-specific flags for C++20 modules
 if (MSVC)
   add_compile_options(/bigobj)
-else ()
+  # MSVC C++20 modules support
+  add_compile_options(/experimental:module)
+  add_compile_options(/ifcOutput ${CMAKE_BINARY_DIR}/ifc/)
+else()
   add_compile_options(-Wa,-mbig-obj)
   add_compile_options(-Wpointer-arith)
   add_compile_options(-fpch-preprocess)
-endif ()
+  
+  # GCC/Clang C++20 modules support
+  if(CMAKE_CXX_COMPILER_ID MATCHES "GNU")
+    add_compile_options(-fmodules-ts)
+  elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    add_compile_options(-fmodules)
+    add_compile_options(-fbuiltin-module-map)
+    add_compile_options(-fimplicit-modules)
+    add_compile_options(-fimplicit-module-maps)
+  endif()
+endif()
+
+# C++23 feature detection helper
+add_compile_definitions(EPIX_HAS_CPP23=$<IF:$<VERSION_GREATER_EQUAL:${CMAKE_CXX_STANDARD},23>,1,0>)
 
 add_subdirectory (epix_engine)
 add_subdirectory (examples)
