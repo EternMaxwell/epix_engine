@@ -27,7 +27,7 @@ export namespace epix::core {
 
         static constexpr Tick max() { return Tick(MAX_CHANGE_AGE); }
 
-        constexpr uint32_t get(this Tick self) { return self.tick; }
+        [[nodiscard]] constexpr uint32_t get(this Tick self) { return self.tick; }
         constexpr void set(this Tick& self, uint32_t t) { self.tick = t; }
         
         constexpr bool newer_than(this Tick self, Tick last_run, Tick this_run) {

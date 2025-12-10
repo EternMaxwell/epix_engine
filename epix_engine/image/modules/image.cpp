@@ -162,7 +162,7 @@ Image StbImageLoader::load(const std::filesystem::path& path, epix::assets::Load
 
     image.render_world = 1;
 
-    return std::move(image);
+    return image;  // Compiler will apply move semantics automatically
 }
 
 void ImagePlugin::build(epix::App& app) {

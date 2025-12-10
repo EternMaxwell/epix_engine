@@ -210,9 +210,13 @@ export namespace epix::core::type_system {
         
         /**
          * Get TypeInfo for a registered type ID
+         * Safety: The type_id must be valid (obtained from this registry)
          */
         const TypeInfo* type_info(size_t type_id) const {
             std::shared_lock<std::shared_mutex> lock(mutex_);
+            if (type_id >= typeInfos.size()) {
+                return nullptr;  // Return nullptr for invalid type_id
+            }
             const TypeInfo* info = typeInfos[type_id];
             return info;
         }

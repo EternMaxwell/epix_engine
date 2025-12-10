@@ -43,8 +43,10 @@ export namespace epix::core::meta {
     
     /**
      * Shorten a fully-qualified type name by removing namespace prefixes
+     * Note: While declared constexpr, string operations may not be compile-time
+     * evaluable in all contexts. This is runtime-evaluated in practice.
      */
-    static constexpr std::string shorten(std::string_view str) {
+    static std::string shorten(std::string_view str) {
         std::string result = std::string(str);
         while (true) {
             auto last_colon = result.rfind("::");
@@ -64,9 +66,10 @@ export namespace epix::core::meta {
     
     /**
      * Get shortened type name
+     * Note: Runtime-evaluated despite static storage
      */
     template <typename T>
-    constexpr std::string_view short_name() {
+    std::string_view short_name() {
         static std::string name = shorten(type_name<T>());
         return name;
     }

@@ -33,10 +33,11 @@
     #define EPIX_HAS_MOVE_ONLY_FUNCTION 0
     // Fallback to std::function for older compilers
     #include <functional>
-    namespace std {
+    namespace epix::compat {
         template<typename Sig>
         using move_only_function = std::function<Sig>;
     }
+    // Note: User code should use epix::compat::move_only_function when fallback is needed
 #endif
 
 // Check for C++20 concepts
