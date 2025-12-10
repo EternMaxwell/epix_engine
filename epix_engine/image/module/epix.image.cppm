@@ -1,29 +1,62 @@
-#pragma once
+/**
+ * @file epix.image.cppm
+ * @brief C++20 module interface for image handling.
+ *
+ * This module provides image loading and manipulation functionality.
+ */
+module;
 
+#include <cstdint>
+#include <expected>
+#include <filesystem>
+#include <span>
+#include <variant>
+#include <vector>
+
+// Third-party headers
 #include <nvrhi/nvrhi.h>
 
-#include <epix/api/macros.hpp>
-#include <epix/assets.hpp>
-#include <epix/core.hpp>
+export module epix.image;
 
-EPIX_MODULE_EXPORT namespace epix {
-namespace image {
+export import epix.core;
+export import epix.assets;
+
+export namespace epix::image {
+
+/**
+ * @brief Error when image data size doesn't match expected size.
+ */
 struct SizeMismatchError {
     size_t expected_size;
     size_t given_size;
 };
+
+/**
+ * @brief Error when trying to manipulate compressed image data.
+ */
 struct CompressedImageNotSupported {
     nvrhi::Format image_format;
 };
+
+/**
+ * @brief Error when extending image data out of bounds.
+ */
 struct ExtendOutOfBoundsError {};
+
+/**
+ * @brief Image data error variant.
+ */
 struct ImageDataError : std::variant<SizeMismatchError, CompressedImageNotSupported, ExtendOutOfBoundsError> {
     using variant::variant;
 };
+
+/**
+ * @brief Image data container with format and dimension information.
+ */
 struct Image {
    private:
     uint8_t main_world : 1   = 0;
     uint8_t render_world : 1 = 0;
-    // The raw data of the image
     std::vector<uint8_t> data;
     nvrhi::TextureDesc info = nvrhi::TextureDesc()
                                   .setDepth(1)
@@ -31,11 +64,6 @@ struct Image {
                                   .setMipLevels(1)
                                   .setInitialState(nvrhi::ResourceStates::ShaderResource)
                                   .setKeepInitialState(true);
-
-    friend struct StbImageLoader;
-
-    std::expected<void, ImageDataError> set_data_internal(
-        size_t x, size_t y, size_t width, size_t height, const void* data, size_t data_size);
 
    public:
     const nvrhi::TextureDesc& get_desc() const { return info; }
@@ -50,29 +78,27 @@ struct Image {
     static Image rgba32float(uint32_t width, uint32_t height);
     static Image rgba32float_render(uint32_t width, uint32_t height);
     static Image rgba32float_main(uint32_t width, uint32_t height);
+
     void flip_vertical();
+
     template <typename T>
     std::expected<void, ImageDataError> set_data(
-        size_t x, size_t y, size_t width, size_t height, std::span<const T> data) {
-        return set_data_internal(x, y, width, height, data.data(), sizeof(T) * data.size());
-    }
+        size_t x, size_t y, size_t width, size_t height, std::span<const T> data);
 };
 
+/**
+ * @brief Plugin for image loading support.
+ */
 struct ImagePlugin {
-    void build(App& app);
+    void build(epix::core::App& app);
 };
 
+/**
+ * @brief STB-based image loader.
+ */
 struct StbImageLoader {
     static std::span<const char* const> extensions() noexcept;
-    static Image load(const std::filesystem::path& path, assets::LoadContext& context);
+    static Image load(const std::filesystem::path& path, epix::assets::LoadContext& context);
 };
-}  // namespace image
-// template <>
-// struct epix::render::assets::RenderAsset<image::Image> {
-//     using Param          = ParamSet<Res<nvrhi::DeviceHandle>>;
-//     using ProcessedAsset = nvrhi::TextureHandle;
 
-//     ProcessedAsset process(image::Image&& asset, Param& param);
-//     RenderAssetUsage usage(const image::Image& asset);
-// };
-}  // namespace epix
+}  // namespace epix::image

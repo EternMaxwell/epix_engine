@@ -1,5 +1,7 @@
 #pragma once
 
+#include <epix/api/macros.hpp>
+
 #include "render/assets.hpp"
 #include "render/camera.hpp"
 #include "render/extract.hpp"
@@ -13,7 +15,7 @@
 #include "render/vulkan.hpp"
 #include "render/window.hpp"
 
-namespace epix::render {
+EPIX_MODULE_EXPORT namespace epix::render {
 struct RenderPlugin {
     int validation = 0;
     /**

@@ -1,9 +1,11 @@
 #pragma once
 
+#include <epix/api/macros.hpp>
+
 #include "window/events.hpp"
 #include "window/window.hpp"
 
-namespace epix::window {
+EPIX_MODULE_EXPORT namespace epix::window {
 enum class ExitCondition {
     OnAllClosed,
     OnPrimaryClosed,

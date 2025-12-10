@@ -115,6 +115,21 @@
 #define EPIX_HAS_DEDUCING_THIS 0
 #endif
 
+// Helper macros for deducing this compatibility
+// When EPIX_HAS_DEDUCING_THIS is available, use the modern syntax
+// Otherwise, these can be defined differently or code can be conditionally compiled
+#if EPIX_HAS_DEDUCING_THIS
+#define EPIX_THIS_PARAM(type) this type
+#define EPIX_SELF self
+#define EPIX_SELF_DOT self.
+#else
+// For non-deducing-this compilers, functions need traditional declarations
+// This requires manual adjustment of each function signature
+#define EPIX_THIS_PARAM(type) // Empty, requires traditional declaration
+#define EPIX_SELF (*this)
+#define EPIX_SELF_DOT this->
+#endif
+
 // Fallback implementations for missing C++23 features
 namespace epix::compat {
 

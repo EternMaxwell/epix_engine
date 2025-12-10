@@ -6,7 +6,7 @@
 #include "input/enums.hpp"
 #include "input/events.hpp"
 
-namespace epix {
+EPIX_MODULE_EXPORT namespace epix {
 namespace input {
 using namespace events;
 struct InputPlugin {
@@ -19,7 +19,7 @@ void log_inputs(EventReader<KeyInput> key_reader,
 }  // namespace input
 }  // namespace epix
 
-namespace epix::input::prelude {
+EPIX_MODULE_EXPORT namespace epix::input::prelude {
 using input::ButtonInput;
 using input::InputPlugin;
 using input::KeyCode;

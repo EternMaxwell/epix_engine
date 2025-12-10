@@ -1,12 +1,13 @@
 #pragma once
 
+#include <epix/api/macros.hpp>
 #include "assets/asset_id.hpp"
 #include "assets/asset_server.hpp"
 #include "assets/assets.hpp"
 #include "assets/handle.hpp"
 #include "assets/index.hpp"
 
-namespace epix::assets {
+EPIX_MODULE_EXPORT namespace epix::assets {
 struct AssetPlugin {
    private:
     std::vector<std::function<void(epix::App&)>> m_assets_inserts;

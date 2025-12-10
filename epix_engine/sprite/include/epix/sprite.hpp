@@ -1,12 +1,13 @@
 #pragma once
 
+#include <epix/api/macros.hpp>
 #include <epix/assets.hpp>
 #include <epix/core_graph.hpp>
 #include <epix/image.hpp>
 #include <epix/render.hpp>
 #include <epix/transform.hpp>
 
-namespace epix::sprite {
+EPIX_MODULE_EXPORT namespace epix::sprite {
 struct Sprite {
     glm::vec4 color{1.0f, 1.0f, 1.0f, 1.0f};
     bool flip_x = false;
