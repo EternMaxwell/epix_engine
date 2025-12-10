@@ -164,7 +164,7 @@ This ensures compatibility with:
 To test the current module implementation:
 
 ```bash
-cd /home/runner/work/epix_engine/epix_engine
+cd <epix_engine_root>
 mkdir build && cd build
 
 # Configure with modules enabled

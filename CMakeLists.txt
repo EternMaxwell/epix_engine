@@ -72,8 +72,5 @@ else()
   endif()
 endif()
 
-# C++23 feature detection helper
-add_compile_definitions(EPIX_HAS_CPP23=$<IF:$<VERSION_GREATER_EQUAL:${CMAKE_CXX_STANDARD},23>,1,0>)
-
 add_subdirectory (epix_engine)
 add_subdirectory (examples)

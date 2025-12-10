@@ -81,10 +81,13 @@
 // Compiler-specific module import/export macros
 #if EPIX_HAS_MODULES
     #define EPIX_MODULE_EXPORT export
+    // When using modules, use: import epix.core;
     #define EPIX_MODULE_IMPORT import
 #else
     #define EPIX_MODULE_EXPORT
-    #define EPIX_MODULE_IMPORT #include
+    // When not using modules, users should use traditional #include
+    // This macro is mainly for documentation purposes
+    #define EPIX_MODULE_IMPORT_NOT_SUPPORTED
 #endif
 
 // Helper macro for conditional C++23 features
