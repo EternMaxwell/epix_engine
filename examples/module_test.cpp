@@ -20,7 +20,7 @@ int main() {
     auto& components = world.components();
     std::cout << "Components system initialized" << std::endl;
     
-    std::cout << "\n✅ epix_core module working correctly!" << std::endl;
+    std::cout << "\n[SUCCESS] epix_core module working correctly!" << std::endl;
     
     return 0;
 }
