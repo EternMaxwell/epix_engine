@@ -86,6 +86,9 @@ namespace epix::compat {
         }
         
         R operator()(Args... args) {
+            if (!ptr_) {
+                throw std::bad_function_call();
+            }
             return ptr_->invoke(std::forward<Args>(args)...);
         }
         
@@ -211,8 +214,16 @@ namespace epix::compat {
                 auto begin() { return iterator<false>(std::ranges::begin(base_), 0); }
                 auto begin() const { return iterator<true>(std::ranges::begin(base_), 0); }
                 
-                auto end() { return iterator<false>(std::ranges::end(base_), 0); }
-                auto end() const { return iterator<true>(std::ranges::end(base_), 0); }
+                auto end() { 
+                    auto end_iter = std::ranges::end(base_);
+                    auto size = std::ranges::distance(std::ranges::begin(base_), end_iter);
+                    return iterator<false>(end_iter, static_cast<std::size_t>(size)); 
+                }
+                auto end() const { 
+                    auto end_iter = std::ranges::end(base_);
+                    auto size = std::ranges::distance(std::ranges::begin(base_), end_iter);
+                    return iterator<true>(end_iter, static_cast<std::size_t>(size)); 
+                }
             };
         }
         
@@ -239,12 +250,18 @@ namespace epix::compat {
     auto insert_range(Container& container, typename Container::iterator pos, Range&& range)
         -> typename Container::iterator
     {
-        auto result = pos;
-        for (auto&& elem : range) {
-            result = container.insert(result, std::forward<decltype(elem)>(elem));
-            ++result;
+        // For containers with insert(iter, first, last), use that for efficiency
+        if constexpr (requires { container.insert(pos, std::ranges::begin(range), std::ranges::end(range)); }) {
+            return container.insert(pos, std::ranges::begin(range), std::ranges::end(range));
+        } else {
+            // Fallback for containers that don't support range insert
+            auto result = pos;
+            for (auto&& elem : range) {
+                result = container.insert(result, std::forward<decltype(elem)>(elem));
+                ++result;
+            }
+            return result;
         }
-        return result;
     }
 #endif
 
