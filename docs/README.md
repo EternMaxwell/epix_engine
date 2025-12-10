@@ -20,7 +20,7 @@ clang++ -std=c++20 --precompile -x c++-module test_module.cppm -o test_module.pc
 clang++ -std=c++20 -c test_module.pcm -o test_module.o
 
 # 3. Compile the main program
-clang++ -std=c++20 -fmodule-file=test_module=test_module.pcpm -c test_module_main.cpp -o main.o
+clang++ -std=c++20 -fmodule-file=test_module=test_module.pcm -c test_module_main.cpp -o main.o
 
 # 4. Link everything together
 clang++ test_module.o main.o -o test_program
