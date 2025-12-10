@@ -33,7 +33,9 @@ struct type_index {
     type_index() : inter(nullptr) {}
 
     bool operator==(const type_index& other) const noexcept {
-        return inter == other.inter || (inter && other.inter && inter->name == other.inter->name);
+        if (inter == other.inter) return true;
+        if (!inter || !other.inter) return false;
+        return inter->name == other.inter->name;
     }
     bool operator!=(const type_index& other) const noexcept { return !(*this == other); }
     std::string_view name() const noexcept { return inter->name; }

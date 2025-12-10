@@ -141,7 +141,7 @@ struct to_container_adaptor {
     auto operator()(Range&& range) const {
         using value_type = std::ranges::range_value_t<Range>;
         Container<value_type> result;
-        if constexpr (requires { result.reserve(std::ranges::size(range)); }) {
+        if constexpr (std::ranges::sized_range<Range> && requires { result.reserve(size_t{}); }) {
             result.reserve(std::ranges::size(range));
         }
         for (auto&& elem : range) {
@@ -176,8 +176,11 @@ public:
         std::size_t index_ = 0;
         
     public:
+        using iterator_category = std::forward_iterator_tag;
         using difference_type = std::ptrdiff_t;
         using value_type = std::pair<std::size_t, std::ranges::range_reference_t<Range>>;
+        using reference = value_type;
+        using pointer = void;
         
         iterator() = default;
         explicit iterator(std::ranges::iterator_t<Range> current, std::size_t index = 0)
@@ -198,6 +201,7 @@ public:
         }
         
         bool operator==(const iterator& other) const { return current_ == other.current_; }
+        bool operator!=(const iterator& other) const { return !(*this == other); }
         bool operator==(std::ranges::sentinel_t<Range> sent) const { return current_ == sent; }
     };
     
@@ -211,7 +215,7 @@ struct enumerate_fn {
         return enumerate_view(std::forward<Range>(range));
     }
 };
-}
+}  // namespace detail
 
 inline constexpr detail::enumerate_fn enumerate{};
 
@@ -223,17 +227,7 @@ auto operator|(Range&& range, detail::enumerate_fn fn) {
 
 }  // namespace epix::compat
 
-// Bring fallbacks into std namespace if needed (only in non-module mode)
-#if !EPIX_MODULES_ENABLED
-#if !EPIX_HAS_RANGES_TO
-namespace std::ranges {
-using epix::compat::to;
-}
-#endif
-
-#if !EPIX_HAS_VIEWS_ENUMERATE
-namespace std::views {
-using epix::compat::enumerate;
-}
-#endif
-#endif
+// Note: Adding to std namespace is technically undefined behavior per the C++ standard.
+// These aliases are provided for convenience but users should prefer using epix::compat
+// directly or waiting for proper compiler support.
+// For maximum safety, use epix::compat::to and epix::compat::enumerate directly.

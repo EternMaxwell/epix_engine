@@ -60,7 +60,7 @@ static constexpr std::string shorten(std::string_view str) {
         }
 #endif
         auto left_elem = std::ranges::max_element(lefts);
-        auto left      = (left_elem != lefts.end()) ? *left_elem + 1 : 0;
+        auto left      = (left_elem != lefts.end()) ? *left_elem + 1 : size_t{0};
         result         = result.substr(0, left) + result.substr(last_colon + 2);
     }
     return result;
