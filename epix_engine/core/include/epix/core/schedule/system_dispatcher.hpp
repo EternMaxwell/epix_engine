@@ -13,6 +13,7 @@
 #define BS_THREAD_POOL_NATIVE_EXTENSIONS
 #include <BS_thread_pool.hpp>
 
+#include "../../utils/cpp23_compat.hpp"
 #include "../query/access.hpp"
 #include "../system/system.hpp"
 
@@ -75,7 +76,7 @@ struct SystemDispatcher {
    private:
     std::vector<const query::FilteredAccessSet*> system_accesses;
     std::deque<size_t> free_indices;
-    std::deque<std::tuple<const query::FilteredAccessSet*, DispatchConfig, std::move_only_function<void()>>>
+    std::deque<std::tuple<const query::FilteredAccessSet*, DispatchConfig, epix::compat::move_only_function<void()>>>
         pending_systems;
     std::unique_ptr<World> world_own =
         nullptr;  // keep ownership of world, so that during dispatch the access is thread-safe
@@ -84,7 +85,7 @@ struct SystemDispatcher {
     size_t running = 0;
     std::condition_variable_any cv_;
     BS::thread_pool<BS::tp::none>* thread_pool;
-    system::SystemUnique<system::In<std::move_only_function<void(World&)>>> world_scope_system;
+    system::SystemUnique<system::In<epix::compat::move_only_function<void(World&)>>> world_scope_system;
     query::FilteredAccessSet world_scope_access;
 
     size_t get_index() {
@@ -121,7 +122,7 @@ struct SystemDispatcher {
         : world(world.get()),
           world_own(std::move(world)),
           world_scope_system(system::make_system(
-              [](system::In<std::move_only_function<void(World&)>> input, World& world) { input.get()(world); })) {
+              [](system::In<epix::compat::move_only_function<void(World&)>> input, World& world) { input.get()(world); })) {
         this->world        = this->world_own.get();
         world_scope_access = world_scope_system->initialize(*this->world);
         thread_pool        = &get_thread_pool(thread_count);
@@ -129,7 +130,7 @@ struct SystemDispatcher {
     SystemDispatcher(World& world, size_t thread_count = std::clamp(std::thread::hardware_concurrency(), 2u, 8u))
         : world(&world),
           world_scope_system(system::make_system(
-              [](system::In<std::move_only_function<void(World&)>> input, World& world) { input.get()(world); })) {
+              [](system::In<epix::compat::move_only_function<void(World&)>> input, World& world) { input.get()(world); })) {
         world_scope_access = world_scope_system->initialize(*this->world);
         thread_pool        = &get_thread_pool(thread_count);
     }
@@ -188,7 +189,7 @@ struct SystemDispatcher {
                 }
             });
         auto fut          = task.get_future();
-        auto untyped_task = std::move_only_function<void()>([task = std::move(task)]() mutable { task(); });
+        auto untyped_task = epix::compat::move_only_function<void()>([task = std::move(task)]() mutable { task(); });
         {
             std::lock_guard lock(mutex_);
             assert_world();

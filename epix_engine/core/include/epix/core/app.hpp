@@ -10,6 +10,7 @@
 #include <unordered_map>
 #include <utility>
 
+#include "../utils/cpp23_compat.hpp"
 #include "app/app_sche.hpp"
 #include "app/extract.hpp"
 #include "app/plugin.hpp"
@@ -466,7 +467,7 @@ struct App {
     void extract(App& other);
     /// Set the extract function for the app. First argument is this app, second argument is the world extracted from
     /// the other app.
-    App& set_extract_fn(std::move_only_function<void(App&, World&)> fn) {
+    App& set_extract_fn(epix::compat::move_only_function<void(App&, World&)> fn) {
         extract_fn = std::move(fn);
         return *this;
     }
@@ -490,7 +491,7 @@ struct App {
     std::unique_ptr<std::recursive_mutex> _world_mutex;
     std::unique_ptr<World> _world;
 
-    std::move_only_function<void(App&, World&)> extract_fn;
+    epix::compat::move_only_function<void(App&, World&)> extract_fn;
     std::unique_ptr<AppRunner> runner;
 
     std::weak_ptr<schedule::SystemDispatcher> _dispatcher;

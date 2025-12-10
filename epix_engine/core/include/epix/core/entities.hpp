@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "../api/macros.hpp"
+#include "../utils/cpp23_compat.hpp"
 #include "fwd.hpp"
 
 namespace epix::core {
@@ -195,7 +196,7 @@ struct Entities {
             auto old_meta_len = meta.size();
             auto new_meta_len = old_meta_len + static_cast<size_t>(-n);
             meta.resize(new_meta_len);
-            for (auto&& [index, meta] : std::views::enumerate(meta) | std::views::drop(old_meta_len)) {
+            for (auto&& [index, meta] : epix::compat::views::enumerate(meta) | std::views::drop(old_meta_len)) {
                 fn(Entity::from_parts(index, meta.generation), meta.location);
             }
 

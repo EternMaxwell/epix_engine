@@ -7,6 +7,7 @@
 #include <ranges>
 #include <unordered_map>
 
+#include "../utils/cpp23_compat.hpp"
 #include "component.hpp"
 #include "entities.hpp"
 #include "storage/sparse_array.hpp"
@@ -153,7 +154,7 @@ struct Archetype {
     const ArchetypeEdges& edges() const { return _edges; }
     ArchetypeEdges& edges_mut() { return _edges; }
     auto entities_with_location() const {
-        return _entities | std::views::enumerate | std::views::transform([&](auto&& idae) {
+        return _entities | epix::compat::views::enumerate | std::views::transform([&](auto&& idae) {
                    auto&& [idx, ae] = idae;
                    return std::pair{ae.entity,
                                     EntityLocation{_archetype_id, static_cast<uint32_t>(idx), _table_id, ae.table_idx}};
