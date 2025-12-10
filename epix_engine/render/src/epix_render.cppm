@@ -20,13 +20,13 @@ module;
 
 export module epix_render;
 
-// Re-export dependencies
-export import epix_core;
-export import epix_window;
-export import epix_glfw;
-export import epix_assets;
-export import epix_image;
-export import epix_transform;
+// Import dependencies (not re-exported)
+import epix_core;
+import epix_window;
+import epix_glfw;
+import epix_assets;
+import epix_image;
+import epix_transform;
 
 // Export render headers
 export {

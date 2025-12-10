@@ -14,10 +14,10 @@ module;
 
 export module epix_window;
 
-// Re-export dependencies
-export import epix_core;
-export import epix_input;
-export import epix_assets;
+// Import dependencies
+import epix_core;
+import epix_input;
+import epix_assets;
 
 // Export window headers
 export {

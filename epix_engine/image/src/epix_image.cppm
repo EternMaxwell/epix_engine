@@ -12,9 +12,9 @@ module;
 
 export module epix_image;
 
-// Re-export epix_core and epix_assets (dependencies)
-export import epix_core;
-export import epix_assets;
+// Import dependencies
+import epix_core;
+import epix_assets;
 
 // Export image headers
 export {

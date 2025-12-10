@@ -14,13 +14,13 @@ module;
 
 export module epix_sprite;
 
-// Re-export dependencies
-export import epix_core;
-export import epix_assets;
-export import epix_image;
-export import epix_transform;
-export import epix_render;
-export import epix_core_graph;
+// Import dependencies (full chain needed for sprite rendering)
+import epix_core;
+import epix_assets;
+import epix_image;
+import epix_transform;
+import epix_render;
+import epix_core_graph;
 
 // Export sprite headers
 export {

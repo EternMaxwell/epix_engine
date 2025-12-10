@@ -13,8 +13,8 @@ module;
 
 export module epix_core_graph;
 
-// Re-export render module
-export import epix_render;
+// Import dependencies (not re-exported to avoid circular deps)
+import epix_render;
 
 // Export core_graph headers
 export {

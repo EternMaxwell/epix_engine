@@ -1,7 +1,7 @@
-file(GLOB_RECURSE RENDER_SOURCES CONFIGURE_DEPENDS "src/*.c" "src/*.cpp")
+file(GLOB_RECURSE SPRITE_SOURCES CONFIGURE_DEPENDS "src/*.c" "src/*.cpp")
 list(APPEND MODULE_INCLUDES ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
-add_library(epix_sprite STATIC ${RENDER_SOURCES})
+add_library(epix_sprite STATIC ${SPRITE_SOURCES})
 
 # Add C++20 module interface
 if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.28)
