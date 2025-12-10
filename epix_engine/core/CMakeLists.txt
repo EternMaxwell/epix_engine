@@ -1,8 +1,24 @@
 file(GLOB_RECURSE MODULE_SOURCES CONFIGURE_DEPENDS "src/*.c" "src/*.cpp")
 list(APPEND MODULE_INCLUDES ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
+# Module interface files
+file(GLOB MODULE_INTERFACES "src/modules/*.cppm")
+
 add_library(epix_core STATIC ${MODULE_SOURCES})
 epix_parse_options(epix_core)
+
+# Add module interface files if they exist and modules are supported
+if(MODULE_INTERFACES AND CMAKE_VERSION VERSION_GREATER_EQUAL "3.28")
+    target_sources(epix_core
+        PUBLIC
+            FILE_SET CXX_MODULES FILES ${MODULE_INTERFACES}
+    )
+    # Enable module scanning
+    set_target_properties(epix_core PROPERTIES
+        CXX_SCAN_FOR_MODULES ON
+    )
+endif()
+
 target_include_directories(epix_core PUBLIC ${MODULE_INCLUDES})
 target_link_libraries(epix_core PUBLIC BSThreadPool)
 target_link_libraries(epix_core PUBLIC spdlog::spdlog)
