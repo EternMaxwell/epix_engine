@@ -11,6 +11,10 @@ project ("epix_engine.cmake" LANGUAGES CXX C)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# C++20 Modules support (experimental)
+option(EPIX_USE_MODULES "Enable C++20 module support (experimental)" OFF)
+option(EPIX_ENABLE_TRACY "Enable Tracy profiler support" OFF)
+
 #sub directories
 
 add_library(BSThreadPool INTERFACE)
@@ -42,6 +46,22 @@ add_subdirectory (libs/spirv-cross)
 add_subdirectory (libs/googletest)
 
 set(CMAKE_CXX_STANDARD 23)
+
+# C++20 Modules configuration
+if(EPIX_USE_MODULES)
+  message(STATUS "C++20 Modules support enabled (experimental)")
+  
+  # Check for CMake 3.28+ for modules support
+  if(CMAKE_VERSION VERSION_LESS 3.28)
+    message(WARNING "C++20 modules require CMake 3.28+. Disabling modules support.")
+    set(EPIX_USE_MODULES OFF)
+  endif()
+  
+  # Enable scan for module dependencies
+  if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.28)
+    set(CMAKE_CXX_SCAN_FOR_MODULES ON)
+  endif()
+endif()
 
 if (MSVC)
   add_compile_options(/bigobj)

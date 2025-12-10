@@ -1,3 +1,7 @@
+# ============================================================================
+# epix_render Library Configuration
+# ============================================================================
+
 file(GLOB_RECURSE RENDER_SOURCES CONFIGURE_DEPENDS "src/render/*.c" "src/render/*.cpp")
 list(APPEND MODULE_INCLUDES ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
@@ -14,6 +18,29 @@ target_link_libraries(epix_render PUBLIC Vulkan-Headers)
 target_link_libraries(epix_render PUBLIC volk)
 target_link_libraries(epix_render PUBLIC nvrhi)
 target_link_libraries(epix_render PUBLIC nvrhi_vk)
+
+# C++20 Modules support (experimental)
+if(EPIX_USE_MODULES)
+  file(GLOB_RECURSE RENDER_MODULE_FILES CONFIGURE_DEPENDS "module/*.cppm")
+  
+  add_library(epix_render_modules STATIC)
+  target_compile_definitions(epix_render_modules PUBLIC EPIX_USE_MODULES)
+  target_link_libraries(epix_render_modules PUBLIC epix_core_modules)
+  target_link_libraries(epix_render_modules PUBLIC epix_assets_modules)
+  target_link_libraries(epix_render_modules PUBLIC epix_image_modules)
+  target_link_libraries(epix_render_modules PUBLIC epix_transform_modules)
+  target_link_libraries(epix_render_modules PUBLIC nvrhi)
+  target_link_libraries(epix_render_modules PUBLIC nvrhi_vk)
+  
+  if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.28)
+    target_sources(epix_render_modules
+      PUBLIC
+        FILE_SET CXX_MODULES FILES ${RENDER_MODULE_FILES}
+    )
+  endif()
+  
+  target_link_libraries(epix_render_modules PRIVATE epix_render)
+endif()
 
 file(GLOB_RECURSE CORE_GRAPH_SOURCES CONFIGURE_DEPENDS "src/core_graph/*.c" "src/core_graph/*.cpp")
 

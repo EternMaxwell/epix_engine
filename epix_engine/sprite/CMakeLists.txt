@@ -1,3 +1,7 @@
+# ============================================================================
+# epix_sprite Library Configuration
+# ============================================================================
+
 file(GLOB_RECURSE RENDER_SOURCES CONFIGURE_DEPENDS "src/*.c" "src/*.cpp")
 list(APPEND MODULE_INCLUDES ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
@@ -10,6 +14,28 @@ target_link_libraries(epix_sprite PUBLIC epix_image)
 target_link_libraries(epix_sprite PUBLIC epix_transform)
 target_link_libraries(epix_sprite PUBLIC epix_render)
 target_link_libraries(epix_sprite PUBLIC epix_core_graph)
+
+# C++20 Modules support (experimental)
+if(EPIX_USE_MODULES)
+  file(GLOB_RECURSE SPRITE_MODULE_FILES CONFIGURE_DEPENDS "module/*.cppm")
+  
+  add_library(epix_sprite_modules STATIC)
+  target_compile_definitions(epix_sprite_modules PUBLIC EPIX_USE_MODULES)
+  target_link_libraries(epix_sprite_modules PUBLIC epix_core_modules)
+  target_link_libraries(epix_sprite_modules PUBLIC epix_assets_modules)
+  target_link_libraries(epix_sprite_modules PUBLIC epix_image_modules)
+  target_link_libraries(epix_sprite_modules PUBLIC epix_transform_modules)
+  target_link_libraries(epix_sprite_modules PUBLIC epix_render_modules)
+  
+  if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.28)
+    target_sources(epix_sprite_modules
+      PUBLIC
+        FILE_SET CXX_MODULES FILES ${SPRITE_MODULE_FILES}
+    )
+  endif()
+  
+  target_link_libraries(epix_sprite_modules PRIVATE epix_sprite)
+endif()
 
 ## --- tests: auto-discover ---
 # Recursively find all .cpp test sources under tests/ and create an executable + ctest entry

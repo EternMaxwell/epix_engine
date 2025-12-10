@@ -1,3 +1,7 @@
+# ============================================================================
+# epix_assets Library Configuration
+# ============================================================================
+
 file(GLOB_RECURSE MODULE_SOURCES CONFIGURE_DEPENDS "src/*.c" "src/*.cpp")
 list(APPEND MODULE_INCLUDES ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
@@ -6,6 +10,25 @@ epix_parse_options(epix_assets)
 target_include_directories(epix_assets PUBLIC ${MODULE_INCLUDES})
 target_link_libraries(epix_assets PUBLIC epix_core)
 target_link_libraries(epix_assets PUBLIC stduuid)
+
+# C++20 Modules support (experimental)
+if(EPIX_USE_MODULES)
+  file(GLOB_RECURSE ASSETS_MODULE_FILES CONFIGURE_DEPENDS "module/*.cppm")
+  
+  add_library(epix_assets_modules STATIC)
+  target_compile_definitions(epix_assets_modules PUBLIC EPIX_USE_MODULES)
+  target_link_libraries(epix_assets_modules PUBLIC epix_core_modules)
+  target_link_libraries(epix_assets_modules PUBLIC stduuid)
+  
+  if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.28)
+    target_sources(epix_assets_modules
+      PUBLIC
+        FILE_SET CXX_MODULES FILES ${ASSETS_MODULE_FILES}
+    )
+  endif()
+  
+  target_link_libraries(epix_assets_modules PRIVATE epix_assets)
+endif()
 
 # --- tests: auto-discover ---
 # Recursively find all .cpp test sources under tests/ and create an executable + ctest entry

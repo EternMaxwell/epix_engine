@@ -1,3 +1,7 @@
+# ============================================================================
+# epix_window Library Configuration
+# ============================================================================
+
 file(GLOB_RECURSE MODULE_SOURCES CONFIGURE_DEPENDS "src/window/*.c" "src/window/*.cpp")
 list(APPEND MODULE_INCLUDES ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
@@ -7,6 +11,26 @@ target_include_directories(epix_window PUBLIC ${MODULE_INCLUDES})
 target_link_libraries(epix_window PUBLIC epix_core)
 target_link_libraries(epix_window PUBLIC epix_input)
 target_link_libraries(epix_window PUBLIC epix_assets)
+
+# C++20 Modules support (experimental)
+if(EPIX_USE_MODULES)
+  file(GLOB_RECURSE WINDOW_MODULE_FILES CONFIGURE_DEPENDS "module/*.cppm")
+  
+  add_library(epix_window_modules STATIC)
+  target_compile_definitions(epix_window_modules PUBLIC EPIX_USE_MODULES)
+  target_link_libraries(epix_window_modules PUBLIC epix_core_modules)
+  target_link_libraries(epix_window_modules PUBLIC epix_input_modules)
+  target_link_libraries(epix_window_modules PUBLIC epix_assets_modules)
+  
+  if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.28)
+    target_sources(epix_window_modules
+      PUBLIC
+        FILE_SET CXX_MODULES FILES ${WINDOW_MODULE_FILES}
+    )
+  endif()
+  
+  target_link_libraries(epix_window_modules PRIVATE epix_window)
+endif()
 
 file(GLOB_RECURSE GLFW_SOURCES CONFIGURE_DEPENDS "src/glfw/*.c" "src/glfw/*.cpp")
 add_library(epix_glfw STATIC ${GLFW_SOURCES})
