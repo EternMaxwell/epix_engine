@@ -1,0 +1,96 @@
+# CMakeLists.txt for epix_core with C++20 modules support
+
+# Collect legacy source files
+file(GLOB_RECURSE MODULE_SOURCES_LEGACY CONFIGURE_DEPENDS "src/*.c" "src/*.cpp")
+list(APPEND MODULE_INCLUDES ${CMAKE_CURRENT_SOURCE_DIR}/include)
+
+# Collect C++20 module sources
+file(GLOB_RECURSE MODULE_INTERFACE_FILES CONFIGURE_DEPENDS "modules/*.cppm")
+file(GLOB_RECURSE MODULE_IMPL_FILES CONFIGURE_DEPENDS "modules/*.cpp")
+list(APPEND MODULE_SOURCES_MODULES ${MODULE_INTERFACE_FILES} ${MODULE_IMPL_FILES})
+
+# Determine whether to use modules or traditional headers
+option(EPIX_USE_MODULES "Use C++20 modules instead of traditional headers" ON)
+
+if(EPIX_USE_MODULES)
+    message(STATUS "Building epix_core with C++20 modules")
+    
+    # Build with C++20 modules
+    add_library(epix_core STATIC ${MODULE_SOURCES_MODULES})
+    
+    # Set C++23 standard
+    target_compile_features(epix_core PUBLIC cxx_std_23)
+    
+    # Enable modules based on compiler
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU")
+        target_compile_options(epix_core PUBLIC -fmodules-ts)
+        # GCC needs explicit module mapper file
+        set(CMAKE_CXX_MODULE_MAP "${CMAKE_CURRENT_BINARY_DIR}/module.map")
+    elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        target_compile_options(epix_core PUBLIC 
+            -fmodules 
+            -fbuiltin-module-map
+            -fimplicit-module-maps
+        )
+    elseif(MSVC)
+        target_compile_options(epix_core PUBLIC 
+            /experimental:module
+            /interface
+        )
+    endif()
+    
+    # Module interface files need special handling
+    set_source_files_properties(${MODULE_INTERFACE_FILES} PROPERTIES
+        LANGUAGE CXX
+    )
+    
+else()
+    message(STATUS "Building epix_core with traditional headers (legacy mode)")
+    
+    # Build with traditional headers
+    add_library(epix_core STATIC ${MODULE_SOURCES_LEGACY})
+    target_include_directories(epix_core PUBLIC ${MODULE_INCLUDES})
+endif()
+
+# Common configuration
+epix_parse_options(epix_core)
+
+# Link dependencies
+target_link_libraries(epix_core PUBLIC BSThreadPool)
+target_link_libraries(epix_core PUBLIC spdlog::spdlog)
+
+if(EPIX_ENABLE_TRACY)
+    target_compile_definitions(epix_core PRIVATE EPIX_ENABLE_TRACY)
+    target_link_libraries(epix_core PRIVATE TracyClient)
+endif()
+
+# For module builds, we still need include paths for third-party libraries
+if(EPIX_USE_MODULES)
+    target_include_directories(epix_core PRIVATE ${MODULE_INCLUDES})
+endif()
+
+# Auto-discover tests
+file(GLOB_RECURSE CORE_TEST_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/tests/*.cpp")
+foreach(TEST_SRC IN LISTS CORE_TEST_SOURCES)
+    file(RELATIVE_PATH TEST_REL "${CMAKE_CURRENT_SOURCE_DIR}/tests" "${TEST_SRC}")
+    string(CONCAT TEST_NAME "test_core_" "${TEST_REL}")
+    string(REPLACE "/" "_" TEST_NAME "${TEST_NAME}")
+    string(REPLACE "\\" "_" TEST_NAME "${TEST_NAME}")
+    string(REPLACE ".cpp" "" TEST_NAME "${TEST_NAME}")
+
+    add_executable(${TEST_NAME} "${TEST_SRC}")
+    target_link_libraries(${TEST_NAME} PRIVATE epix_core)
+    
+    if(EPIX_USE_MODULES)
+        # Tests using modules need module support
+        if(CMAKE_CXX_COMPILER_ID MATCHES "GNU")
+            target_compile_options(${TEST_NAME} PRIVATE -fmodules-ts)
+        elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+            target_compile_options(${TEST_NAME} PRIVATE -fmodules)
+        elseif(MSVC)
+            target_compile_options(${TEST_NAME} PRIVATE /experimental:module)
+        endif()
+    endif()
+    
+    add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
+endforeach()
