@@ -1,4 +1,8 @@
-file(GLOB_RECURSE MODULE_SOURCES CONFIGURE_DEPENDS "src/*.c" "src/*.cpp")
+# Module implementation files (pure C++20 modules - no headers)
+set(MODULE_SOURCES
+    src/epix_transform_impl.cpp
+)
+
 list(APPEND MODULE_INCLUDES ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
 add_library(epix_transform STATIC ${MODULE_SOURCES})
