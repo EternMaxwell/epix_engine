@@ -367,3 +367,11 @@ FodyWeavers.xsd
 
 # xmake
 build/
+
+# C++20 module cache files
+*.gcm
+*.pcm
+*.ifc
+**/CMakeFiles/**/*.gcm
+**/CMakeFiles/**/*.pcm
+**/CMakeFiles/**/*.ifc
