@@ -372,3 +372,6 @@ build/
 *.pcm
 *.o
 *.ifc
+
+# CodeQL
+_codeql_build_dir/

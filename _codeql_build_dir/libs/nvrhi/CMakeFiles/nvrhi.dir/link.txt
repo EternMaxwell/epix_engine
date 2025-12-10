@@ -1,2 +1,0 @@
-/usr/bin/ar qc libnvrhi.a "CMakeFiles/nvrhi.dir/src/common/format-info.cpp.o" CMakeFiles/nvrhi.dir/src/common/misc.cpp.o "CMakeFiles/nvrhi.dir/src/common/state-tracking.cpp.o" CMakeFiles/nvrhi.dir/src/common/utils.cpp.o CMakeFiles/nvrhi.dir/src/common/aftermath.cpp.o "CMakeFiles/nvrhi.dir/src/validation/validation-commandlist.cpp.o" "CMakeFiles/nvrhi.dir/src/validation/validation-device.cpp.o"
-/usr/bin/ranlib libnvrhi.a

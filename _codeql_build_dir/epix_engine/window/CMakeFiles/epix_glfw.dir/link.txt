@@ -1,2 +1,0 @@
-/usr/bin/ar qc libepix_glfw.a CMakeFiles/epix_glfw.dir/src/glfw/glfw.cpp.o CMakeFiles/epix_glfw.dir/src/glfw/input_map.cpp.o CMakeFiles/epix_glfw.dir/src/glfw/plugin.cpp.o CMakeFiles/epix_glfw.dir/src/glfw/runner.cpp.o
-/usr/bin/ranlib libepix_glfw.a

@@ -1,1 +1,0 @@
-/home/runner/work/epix_engine/.codeql-scratch/dbs/cpp/working/autobuild/bin/c++ -O3 -DNDEBUG -Wl,--dependency-file=CMakeFiles/test_core_dense.dir/link.d CMakeFiles/test_core_dense.dir/tests/dense.cpp.o -o test_core_dense  libepix_core.a ../../libs/spdlog/libspdlog.a

@@ -1,2 +1,0 @@
-/usr/bin/ar qc libepix_assets.a CMakeFiles/epix_assets.dir/src/assets.cpp.o CMakeFiles/epix_assets.dir/src/handle.cpp.o CMakeFiles/epix_assets.dir/src/index.cpp.o CMakeFiles/epix_assets.dir/src/plugin.cpp.o CMakeFiles/epix_assets.dir/src/server.cpp.o
-/usr/bin/ranlib libepix_assets.a

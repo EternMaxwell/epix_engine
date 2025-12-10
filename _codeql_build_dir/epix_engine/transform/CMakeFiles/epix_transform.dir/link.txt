@@ -1,2 +1,0 @@
-/usr/bin/ar qc libepix_transform.a CMakeFiles/epix_transform.dir/src/plugin.cpp.o
-/usr/bin/ranlib libepix_transform.a

@@ -1,2 +1,0 @@
-/usr/bin/ar qc libepix_sprite.a CMakeFiles/epix_sprite.dir/src/sprite.cpp.o
-/usr/bin/ranlib libepix_sprite.a

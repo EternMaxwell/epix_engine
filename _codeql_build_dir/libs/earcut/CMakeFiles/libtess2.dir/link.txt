@@ -1,2 +1,0 @@
-/usr/bin/ar qc liblibtess2.a CMakeFiles/libtess2.dir/test/comparison/libtess2/bucketalloc.c.o CMakeFiles/libtess2.dir/test/comparison/libtess2/dict.c.o CMakeFiles/libtess2.dir/test/comparison/libtess2/geom.c.o CMakeFiles/libtess2.dir/test/comparison/libtess2/mesh.c.o CMakeFiles/libtess2.dir/test/comparison/libtess2/priorityq.c.o CMakeFiles/libtess2.dir/test/comparison/libtess2/sweep.c.o CMakeFiles/libtess2.dir/test/comparison/libtess2/tess.c.o
-/usr/bin/ranlib liblibtess2.a

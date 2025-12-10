@@ -1,2 +1,0 @@
-/usr/bin/ar qc libstbimage.a CMakeFiles/stbimage.dir/src/stb_vorbis.c.o CMakeFiles/stbimage.dir/stb.c.o
-/usr/bin/ranlib libstbimage.a

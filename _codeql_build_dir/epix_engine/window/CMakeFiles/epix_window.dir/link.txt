@@ -1,2 +1,0 @@
-/usr/bin/ar qc libepix_window.a CMakeFiles/epix_window.dir/src/window/system.cpp.o CMakeFiles/epix_window.dir/src/window/window.cpp.o
-/usr/bin/ranlib libepix_window.a

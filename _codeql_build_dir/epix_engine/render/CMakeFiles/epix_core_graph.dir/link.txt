@@ -1,2 +1,0 @@
-/usr/bin/ar qc libepix_core_graph.a CMakeFiles/epix_core_graph.dir/src/core_graph/core2d.cpp.o CMakeFiles/epix_core_graph.dir/src/core_graph/plugin.cpp.o
-/usr/bin/ranlib libepix_core_graph.a

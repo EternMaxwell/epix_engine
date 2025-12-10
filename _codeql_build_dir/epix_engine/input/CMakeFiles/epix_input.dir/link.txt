@@ -1,2 +1,0 @@
-/usr/bin/ar qc libepix_input.a CMakeFiles/epix_input.dir/src/input.cpp.o CMakeFiles/epix_input.dir/src/input/button.cpp.o CMakeFiles/epix_input.dir/src/input/enums.cpp.o
-/usr/bin/ranlib libepix_input.a
