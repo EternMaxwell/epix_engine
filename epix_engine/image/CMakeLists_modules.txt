@@ -1,0 +1,48 @@
+# CMakeLists.txt for epix_image module with C++20 modules support
+
+# Collect traditional source files (for backwards compatibility during transition)
+file(GLOB_RECURSE MODULE_SOURCES_LEGACY CONFIGURE_DEPENDS "src/*.c" "src/*.cpp")
+list(APPEND MODULE_INCLUDES ${CMAKE_CURRENT_SOURCE_DIR}/include)
+
+# Collect C++20 module sources
+file(GLOB_RECURSE MODULE_SOURCES_MODULES CONFIGURE_DEPENDS "modules/*.cppm" "modules/*.cpp")
+
+# Determine whether to use modules or traditional headers
+option(EPIX_USE_MODULES "Use C++20 modules instead of traditional headers" ON)
+
+if(EPIX_USE_MODULES)
+    # Build with C++20 modules
+    add_library(epix_image STATIC ${MODULE_SOURCES_MODULES})
+    
+    # Set C++23 standard (modules require C++20 minimum, but we use C++23 features)
+    target_compile_features(epix_image PUBLIC cxx_std_23)
+    
+    # Enable modules
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU")
+        target_compile_options(epix_image PUBLIC -fmodules-ts)
+    elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        target_compile_options(epix_image PUBLIC -fmodules)
+    elseif(MSVC)
+        target_compile_options(epix_image PUBLIC /experimental:module)
+    endif()
+    
+else()
+    # Build with traditional headers (legacy mode)
+    add_library(epix_image STATIC ${MODULE_SOURCES_LEGACY})
+    target_include_directories(epix_image PUBLIC ${MODULE_INCLUDES})
+endif()
+
+# Common configuration
+epix_parse_options(epix_image)
+
+# Link dependencies
+target_link_libraries(epix_image PUBLIC epix_core)
+target_link_libraries(epix_image PUBLIC epix_assets)
+target_link_libraries(epix_image PUBLIC nvrhi)
+target_link_libraries(epix_image PRIVATE stbimage)
+
+# For module builds, we still need include paths for third-party libraries
+if(EPIX_USE_MODULES)
+    # Third-party libraries that don't have module interfaces yet
+    target_include_directories(epix_image PRIVATE ${MODULE_INCLUDES})
+endif()
