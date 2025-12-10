@@ -101,12 +101,21 @@ public:
     type_index() : inter(nullptr) {}
 
     bool operator==(const type_index& other) const noexcept {
+        if (!inter || !other.inter) {
+            return inter == other.inter;  // Both null or one null
+        }
         return inter == other.inter || inter->name == other.inter->name;
     }
     bool operator!=(const type_index& other) const noexcept { return !(*this == other); }
-    std::string_view name() const noexcept { return inter->name; }
-    std::string_view short_name() const noexcept { return inter->short_name; }
-    size_t hash_code() const noexcept { return inter->hash; }
+    std::string_view name() const noexcept { 
+        return inter ? inter->name : std::string_view(); 
+    }
+    std::string_view short_name() const noexcept { 
+        return inter ? inter->short_name : std::string_view(); 
+    }
+    size_t hash_code() const noexcept { 
+        return inter ? inter->hash : 0; 
+    }
     bool valid() const noexcept { return inter != nullptr; }
 };
 

@@ -253,10 +253,13 @@ public:
     
     /**
      * @brief Get TypeInfo by type id.
-     * Safety: The type id is get by this registry, so it must have been registered.
+     * Safety: The type id is obtained from this registry, so it must have been registered.
      */
     const TypeInfo* type_info(size_t type_id) const {
         std::shared_lock<std::shared_mutex> lock(mutex_);
+        if (type_id >= typeInfos.size()) {
+            return nullptr;  // Invalid type_id
+        }
         const TypeInfo* info = typeInfos[type_id];
         return info;
     }

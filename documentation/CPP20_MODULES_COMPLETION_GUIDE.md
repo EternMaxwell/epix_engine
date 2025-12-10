@@ -261,7 +261,7 @@ export module epix.core:partition;
 **Solution**: Use forward declarations in `:fwd` partition
 
 ### Issue: Macro not found
-**Solution**: Move macro to global module fragment
+**Solution**: Move macro to the global module fragment
 
 ### Issue: std::hash not specialized
 **Solution**: Export the specialization:
