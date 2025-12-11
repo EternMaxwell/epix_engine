@@ -60,7 +60,7 @@ export import :fwd;           // Forward declarations
 export import :meta;          // Type metadata system
 export import :tick;          // Change detection ticks
 
-// Core ECS partitions (to be implemented)
+// Core ECS partitions (fully implemented)
 export import :type_system;   // Type registry
 export import :storage;       // Component storage
 export import :archetype;     // Archetype management
@@ -74,6 +74,8 @@ export import :schedule;      // System scheduling
 export import :world;         // World abstraction
 export import :app;           // Application framework
 export import :hierarchy;     // Entity hierarchies
+export import :label;         // Labels
+export import :change_detection; // Change detection
 
 /**
  * Main epix::core namespace
@@ -99,55 +101,118 @@ export namespace epix::core {
         // From :api  
         using wrapper::int_base;
         
-        // The following will be uncommented as partitions are implemented:
+        // From :change_detection
+        using core::Ref;
+        using core::Mut;
+        using core::Res;
+        using core::ResMut;
         
-        // // From :type_system
-        // using type_system::TypeId;
-        // using type_system::TypeInfo;
-        // using type_system::TypeRegistry;
+        // From :type_system
+        using type_system::TypeId;
+        using type_system::TypeInfo;
+        using type_system::TypeRegistry;
         
-        // // From :entities
-        // using core::Entity;
-        // using core::Entities;
-        // using core::EntityRef;
-        // using core::EntityRefMut;
-        // using core::EntityWorldMut;
+        // From :entities
+        using core::Entity;
+        using core::Entities;
+        using core::EntityRef;
+        using core::EntityRefMut;
+        using core::EntityWorldMut;
+        using core::ArchetypeId;
+        using core::TableId;
+        using core::ArchetypeRow;
+        using core::TableRow;
+        using core::BundleId;
         
-        // // From :component
-        // using core::ComponentInfo;
+        // From :component
+        using core::ComponentInfo;
+        using core::ComponentHooks;
+        using core::HookContext;
         
-        // // From :world
-        // using core::World;
-        // using core::DeferredWorld;
+        // From :world
+        using core::World;
+        using core::DeferredWorld;
+        using core::WorldId;
         
-        // // From :query
-        // using query::Query;
-        // using query::QueryState;
-        // using query::Filter;
-        // using query::With;
-        // using query::Without;
+        // From :query
+        using query::Query;
+        using query::QueryState;
+        using query::Filter;
+        using query::With;
+        using query::Without;
+        using query::Or;
+        using query::Added;
+        using query::Modified;
+        using query::Has;
+        using query::Opt;
+        using query::Single;
+        using query::Item;
         
-        // // From :system
-        // using system::System;
-        // using system::SystemParam;
-        // using system::Commands;
+        // From :system
+        using system::System;
+        using system::SystemParam;
+        using system::Commands;
+        using system::EntityCommands;
+        using system::Local;
+        using system::ParamSet;
+        using system::RunSystemError;
+        using system::ValidateParamError;
+        using system::SystemException;
+        using system::SystemMeta;
         
-        // // From :event
-        // using event::Events;
-        // using event::EventReader;
-        // using event::EventWriter;
+        // From :event
+        using event::Events;
+        using event::EventReader;
+        using event::EventWriter;
         
-        // // From :schedule
-        // using schedule::Schedule;
+        // From :schedule
+        using schedule::Schedule;
+        using schedule::SystemSetLabel;
+        using schedule::ExecuteConfig;
+        using schedule::SetConfig;
         
-        // // From :app
-        // using core::App;
-        // using app::AppExit;
-        // using app::LoopPlugin;
+        // From :app
+        using core::App;
+        using app::AppExit;
+        using app::LoopPlugin;
+        using app::Plugin;
+        using app::AppRunner;
+        using app::Extract;
+        using app::AppLabel;
+        using app::First;
+        using app::Last;
+        using app::PreStartup;
+        using app::Startup;
+        using app::PostStartup;
+        using app::PreUpdate;
+        using app::Update;
+        using app::PostUpdate;
+        using app::PreExit;
+        using app::Exit;
+        using app::PostExit;
+        using app::State;
+        using app::NextState;
+        using app::OnEnter;
+        using app::OnExit;
+        using app::OnChange;
+        using app::StateTransition;
         
-        // // From :hierarchy
-        // using core::hierarchy::Parent;
-        // using core::hierarchy::Children;
+        // From :hierarchy
+        using hierarchy::Parent;
+        using hierarchy::Children;
+        
+        // From :label
+        using core::Label;
+        
+        // From :storage
+        using core::Storage;
+        
+        // From :archetype
+        using core::Archetype;
+        using core::Archetypes;
+        
+        // From :bundle
+        using core::Bundles;
     }
     
     // Make prelude available in epix::core
