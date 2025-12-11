@@ -1,0 +1,48 @@
+digraph epix_engine_modules {
+  rankdir=LR;
+  node [shape=box, style=rounded];
+
+  "assets" [label="assets\n(11 files)"];
+  "core" [label="core\n(72 files)"];
+  "image" [label="image\n(2 files)"];
+  "include" [label="include\n(69 files)"];
+  "input" [label="input\n(7 files)"];
+  "render" [label="render\n(39 files)"];
+  "sprite" [label="sprite\n(4 files)"];
+  "src" [label="src\n(64 files)"];
+  "transform" [label="transform\n(2 files)"];
+  "window" [label="window\n(12 files)"];
+
+  "assets" -> "core";
+  "assets" -> "include";
+  "assets" -> "render";
+  "core" -> "input";
+  "core" -> "render";
+  "core" -> "window";
+  "image" -> "assets";
+  "image" -> "core";
+  "image" -> "render";
+  "include" -> "core";
+  "include" -> "render";
+  "input" -> "core";
+  "input" -> "window";
+  "render" -> "assets";
+  "render" -> "core";
+  "render" -> "image";
+  "render" -> "include";
+  "render" -> "transform";
+  "render" -> "window";
+  "sprite" -> "assets";
+  "sprite" -> "image";
+  "sprite" -> "render";
+  "sprite" -> "src";
+  "sprite" -> "transform";
+  "src" -> "core";
+  "src" -> "include";
+  "src" -> "sprite";
+  "transform" -> "core";
+  "window" -> "assets";
+  "window" -> "core";
+  "window" -> "input";
+  "window" -> "render";
+}
