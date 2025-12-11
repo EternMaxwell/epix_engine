@@ -1,31 +1,24 @@
 /**
  * @file epix.render.cppm
- * @brief Render module for graphics rendering
+ * @brief Render module for graphics rendering via Vulkan/NVRHI
  */
 
 export module epix.render;
 
-// Standard library
-#include <array>
-#include <cstdint>
-#include <functional>
-#include <memory>
-#include <optional>
-#include <span>
-#include <string>
-#include <unordered_map>
-#include <utility>
-#include <vector>
-
-// Third-party
-#include <glm/glm.hpp>
-#include <nvrhi/nvrhi.h>
-
-// Module imports
 #include <epix/core.hpp>
 #include <epix/assets.hpp>
 #include <epix/window.hpp>
 #include <epix/transform.hpp>
+#include <glm/glm.hpp>
+#include <nvrhi/nvrhi.h>
+#include <nvrhi/vulkan.h>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <string>
+#include <unordered_map>
+#include <variant>
+#include <vector>
 
 export namespace epix::render {
     // Forward declarations
@@ -33,35 +26,29 @@ export namespace epix::render {
     struct RenderGraph;
     struct RenderNode;
     struct RenderSlot;
-    struct Pipeline;
     struct Shader;
     struct Material;
-    struct Mesh;
+    struct Pipeline;
     
-    // Camera component
+    // Render pipeline ID
+    EPIX_MAKE_U64_WRAPPER(RenderPipelineId)
+    
+    // Camera components
     struct Camera {
         float fov = 60.0f;
-        float near_plane = 0.1f;
-        float far_plane = 1000.0f;
+        float near = 0.1f;
+        float far = 1000.0f;
         
-        Camera() = default;
-        Camera(float fov, float near_z, float far_z) 
-            : fov(fov), near_plane(near_z), far_plane(far_z) {}
-        
-        glm::mat4 projection_matrix(float aspect_ratio) const;
+        glm::mat4 projection_matrix(float aspect) const;
     };
     
-    // Camera 2D
     struct Camera2D {
         float scale = 1.0f;
-        
-        Camera2D() = default;
-        explicit Camera2D(float s) : scale(s) {}
         
         glm::mat4 projection_matrix(float width, float height) const;
     };
     
-    // View uniform for shaders
+    // View data
     struct ViewUniform {
         glm::mat4 view;
         glm::mat4 projection;
@@ -69,44 +56,43 @@ export namespace epix::render {
         glm::vec3 camera_position;
     };
     
-    // Render phase labels
-    struct Transparent {};
-    struct Opaque {};
-    struct Shadow {};
-    struct PostProcess {};
-    
-    // Extracted view
     struct ExtractedView {
         ViewUniform uniform;
         epix::Entity entity;
     };
     
-    // Render context
-    struct RenderContext {
-        nvrhi::DeviceHandle device;
-        nvrhi::CommandListHandle command_list;
-        
-        RenderContext() = default;
-        RenderContext(nvrhi::DeviceHandle dev) : device(dev) {}
-    };
-    
-    // Render graph node
-    struct RenderNode {
-        std::string name;
-        std::function<void(RenderContext&)> execute;
-        std::vector<std::string> inputs;
-        std::vector<std::string> outputs;
-    };
-    
     // Render graph
-    struct RenderGraph {
-        std::vector<RenderNode> nodes;
-        std::unordered_map<std::string, nvrhi::TextureHandle> resources;
+    namespace graph {
+        struct RenderContext {
+            nvrhi::DeviceHandle device;
+            nvrhi::CommandListHandle command_list;
+        };
         
-        void add_node(RenderNode node);
-        void execute(RenderContext& context);
-        void clear();
-    };
+        struct RenderSlot {
+            std::string name;
+        };
+        
+        struct RenderNode {
+            std::string name;
+            std::function<void(RenderContext&)> run;
+            std::vector<std::string> inputs;
+            std::vector<std::string> outputs;
+        };
+        
+        struct RenderGraph {
+            std::vector<RenderNode> nodes;
+            std::unordered_map<std::string, nvrhi::TextureHandle> resources;
+            
+            void add_node(RenderNode node);
+            void execute(RenderContext& context);
+            void clear();
+        };
+    }  // namespace graph
+    
+    using RenderContext = graph::RenderContext;
+    using RenderGraph = graph::RenderGraph;
+    using RenderNode = graph::RenderNode;
+    using RenderSlot = graph::RenderSlot;
     
     // Shader asset
     struct Shader {
@@ -114,21 +100,13 @@ export namespace epix::render {
         nvrhi::ShaderHandle fragment;
         nvrhi::ShaderHandle compute;
         
-        Shader() = default;
-        
-        static Shader from_spirv(
-            std::span<const uint32_t> vertex_spirv,
-            std::span<const uint32_t> fragment_spirv
-        );
+        static epix::assets::Handle<Shader> from_spirv(/* params */);
     };
     
     // Material
     struct Material {
         epix::assets::Handle<Shader> shader;
         std::unordered_map<std::string, nvrhi::BindingSetHandle> bindings;
-        
-        Material() = default;
-        Material(epix::assets::Handle<Shader> shd) : shader(shd) {}
     };
     
     // Mesh vertex
@@ -139,50 +117,35 @@ export namespace epix::render {
         glm::vec4 color;
     };
     
-    // Mesh asset
+    // Mesh
     struct Mesh {
         std::vector<Vertex> vertices;
         std::vector<uint32_t> indices;
         nvrhi::BufferHandle vertex_buffer;
         nvrhi::BufferHandle index_buffer;
         
-        Mesh() = default;
-        
         void upload_to_gpu(nvrhi::DeviceHandle device);
     };
     
-    // Mesh component
-    struct MeshComponent {
-        epix::assets::Handle<Mesh> mesh;
-        epix::assets::Handle<Material> material;
-        
-        MeshComponent() = default;
-        MeshComponent(
-            epix::assets::Handle<Mesh> m,
-            epix::assets::Handle<Material> mat
-        ) : mesh(m), material(mat) {}
-    };
-    
-    // Pipeline descriptor
-    struct PipelineDescriptor {
+    // Pipeline
+    struct Pipeline {
+        nvrhi::GraphicsPipelineHandle handle;
         nvrhi::GraphicsPipelineDesc desc;
-        
-        PipelineDescriptor() = default;
     };
     
-    // Pipeline cache
     struct PipelineCache {
-        std::unordered_map<size_t, nvrhi::GraphicsPipelineHandle> pipelines;
+        std::unordered_map<size_t, nvrhi::GraphicsPipelineHandle> cache;
         
-        nvrhi::GraphicsPipelineHandle get_or_create(
-            nvrhi::DeviceHandle device,
-            const PipelineDescriptor& desc
-        );
+        nvrhi::GraphicsPipelineHandle get_or_create(/* params */);
     };
     
-    // Render schedule labels
-    struct ExtractSchedule {};
-    struct RenderSchedule {};
+    // Vulkan backend
+    struct VulkanBackend {
+        void* instance;
+        void* physical_device;
+        void* device;
+        void* queue;
+    };
     
     // Window render target
     struct WindowRenderTarget {
@@ -193,34 +156,37 @@ export namespace epix::render {
         void resize(nvrhi::DeviceHandle device, uint32_t width, uint32_t height);
     };
     
-    // Vulkan backend info
-    struct VulkanBackend {
-        void* instance; // VkInstance
-        void* physical_device; // VkPhysicalDevice
-        void* device; // VkDevice
-        void* queue; // VkQueue
-        
-        VulkanBackend() = default;
-    };
+    // Render phases
+    namespace render_phase {
+        struct PhaseItem;
+        struct DrawContext;
+        struct Transparent {};
+        struct Opaque {};
+        struct Shadow {};
+    }  // namespace render_phase
+    
+    // Schedule labels
+    struct ExtractSchedule {};
+    struct RenderSchedule {};
+    
+    // Extract functions
+    void extract_cameras(/* params */);
+    void extract_meshes(/* params */);
+    
+    // Render systems
+    void prepare_windows(/* params */);
+    void present_frames(/* params */);
     
     // Render plugin
     struct RenderPlugin {
         void build(epix::App& app);
     };
     
-    // Core 2D render graph
-    struct Core2DPlugin {
+}  // namespace epix::render
+
+// Core 2D graph
+export namespace epix::core_graph {
+    struct Core2D {
         void build(epix::App& app);
     };
-    
-    // Extract functions
-    void extract_cameras(/* params */);
-    void extract_meshes(/* params */);
-    void extract_sprites(/* params */);
-    
-    // Render systems
-    void prepare_windows(/* params */);
-    void render_2d(/* params */);
-    void render_3d(/* params */);
-    void present_frames(/* params */);
-}  // namespace epix::render
+}  // namespace epix::core_graph

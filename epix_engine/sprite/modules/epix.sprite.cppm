@@ -5,44 +5,100 @@
 
 export module epix.sprite;
 
-#include <glm/glm.hpp>
-
-// Module imports
 #include <epix/core.hpp>
+#include <epix/assets.hpp>
 #include <epix/image.hpp>
+#include <epix/render.hpp>
+#include <epix/transform.hpp>
+#include <glm/glm.hpp>
+#include <nvrhi/nvrhi.h>
+#include <deque>
+#include <optional>
+#include <unordered_map>
+#include <vector>
 
 export namespace epix::sprite {
     // Sprite component
     struct Sprite {
-        epix::image::Handle<epix::image::Image> image;
-        glm::vec4 color = glm::vec4(1.0f);
-        glm::vec2 custom_size = glm::vec2(0.0f); // 0 means use image size
-        glm::vec2 anchor = glm::vec2(0.5f); // Center anchor
-        
-        Sprite() = default;
-        Sprite(epix::image::Handle<epix::image::Image> img) : image(img) {}
+        glm::vec4 color{1.0f, 1.0f, 1.0f, 1.0f};
+        bool flip_x = false;
+        bool flip_y = false;
+        std::optional<glm::vec4> uv_rect;
+        std::optional<glm::vec2> size;
+        glm::vec2 anchor{0.f, 0.f};
     };
     
-    // Texture atlas
-    struct TextureAtlas {
-        epix::image::Handle<epix::image::Image> texture;
-        glm::vec2 size;
-        
-        TextureAtlas() = default;
-        TextureAtlas(epix::image::Handle<epix::image::Image> tex, glm::vec2 sz) 
-            : texture(tex), size(sz) {}
+    // Extracted sprite for rendering
+    struct ExtractedSprite {
+        Sprite sprite;
+        epix::transform::GlobalTransform transform;
+        epix::assets::AssetId<epix::image::Image> texture;
     };
     
-    // Sprite from atlas
-    struct TextureAtlasSprite {
-        size_t index = 0;
-        glm::vec4 color = glm::vec4(1.0f);
-        glm::vec2 custom_size = glm::vec2(0.0f);
-        glm::vec2 anchor = glm::vec2(0.5f);
+    // Sprite pipeline
+    struct SpritePipeline {
+        epix::render::RenderPipelineId pipeline_id;
+        nvrhi::BindingLayoutHandle image_layout;
+        nvrhi::BindingLayoutHandle uniform_layout;
+
+        static SpritePipeline from_world(epix::World& world);
     };
     
-    // Sprite plugin
-    struct SpritePlugin {
+    // View uniform
+    struct ViewUniform {
+        nvrhi::BufferHandle view_buffer;
+    };
+    
+    struct ViewUniformCache {
+        std::deque<ViewUniform> cache;
+    };
+    
+    // Vertex buffers
+    struct VertexBuffers {
+        nvrhi::BufferHandle position_buffer;
+        nvrhi::BufferHandle texcoord_buffer;
+        nvrhi::BufferHandle index_buffer;
+
+        static VertexBuffers from_world(epix::World& world);
+    };
+    
+    // Sprite instance data
+    struct SpriteInstanceData {
+        glm::mat4 model;
+        glm::vec4 uv_offset_scale;
+        glm::vec4 color;
+        glm::vec4 pos_offset_scale;
+    };
+    
+    struct SpriteInstanceBuffer {
+       private:
+        std::vector<SpriteInstanceData> data;
+        nvrhi::BufferHandle buffer;
+
+       public:
+        void clear();
+        size_t push(const SpriteInstanceData& instance);
+        size_t size() const;
+        nvrhi::BufferHandle handle() const;
+        void upload(nvrhi::DeviceHandle device, nvrhi::CommandListHandle cmd_list);
+        void upload(nvrhi::DeviceHandle device);
+    };
+    
+    // Sprite batch
+    struct SpriteBatch {
+        nvrhi::BindingSetHandle binding_set;
+        uint32_t instance_start;
+    };
+    
+    // Default sampler
+    struct DefaultSampler {
+        nvrhi::SamplerHandle handle;
+        nvrhi::SamplerDesc desc;
+    };
+    
+    // Sprite plugins
+    struct SpriteShadersPlugin {
         void build(epix::App& app);
     };
+    
 }  // namespace epix::sprite
