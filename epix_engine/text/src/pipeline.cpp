@@ -37,13 +37,13 @@ TextPipeline::TextPipeline(World& world) {
     auto input_layout =
         device->createInputLayout(input_attributes.data(), static_cast<uint32_t>(input_attributes.size()), nullptr);
 
-    auto text_layout =
-        device->createBindingLayout(nvrhi::BindingLayoutDesc()
-                                        .addItem(nvrhi::BindingLayoutItem::Texture_SRV(0))
-                                        .addItem(nvrhi::BindingLayoutItem::Sampler(1))
-                                        .addItem(nvrhi::BindingLayoutItem::PushConstants(2, sizeof(glm::mat4)))
-                                        .setVisibility(nvrhi::ShaderType::All)
-                                        .setBindingOffsets(nvrhi::VulkanBindingOffsets{0, 0, 0, 0}));
+    auto text_layout = device->createBindingLayout(
+        nvrhi::BindingLayoutDesc()
+            .addItem(nvrhi::BindingLayoutItem::Texture_SRV(0))
+            .addItem(nvrhi::BindingLayoutItem::Sampler(1))
+            .addItem(nvrhi::BindingLayoutItem::PushConstants(2, sizeof(glm::mat4) + sizeof(glm::vec4)))
+            .setVisibility(nvrhi::ShaderType::All)
+            .setBindingOffsets(nvrhi::VulkanBindingOffsets{0, 0, 0, 0}));
 
     render::RenderPipelineDesc desc;
     desc.setPrimType(nvrhi::PrimitiveType::TriangleList);

@@ -21,4 +21,5 @@ pushConstants;
 void main() {
     gl_Position = viewUBO.projection * viewUBO.view * pushConstants.model * vec4(inPosition, 1.0);
     v_uv        = inUV0;
+    v_color     = pushConstants.color;
 }

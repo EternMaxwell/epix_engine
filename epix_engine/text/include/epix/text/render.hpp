@@ -92,7 +92,7 @@ struct BindFontResources {
                                                image_layout);
             ctx.graphics_state.bindings.resize(2);
             ctx.graphics_state.bindings[1] = binding_set;
-            ctx.setPushConstants(&render_text.transform, sizeof(glm::mat4));
+            ctx.setPushConstants(&render_text.transform, sizeof(glm::mat4) + sizeof(glm::vec4));
             return true;
         }
     };
