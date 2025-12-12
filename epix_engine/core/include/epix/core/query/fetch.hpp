@@ -1,6 +1,6 @@
 #pragma once
 
-#include <vcruntime_typeinfo.h>
+#include <typeinfo>
 
 #include <cstddef>
 #include <functional>

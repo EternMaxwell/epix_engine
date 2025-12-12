@@ -19,7 +19,9 @@ struct AccessConflicts {
     bool empty() const { return !all && ids.is_clear(); }
     std::string to_string() const {
         if (all) return "[<all>]";
-        return std::format("{}", ids.iter_ones());
+        // TODO: std::format doesn't support filter_view without custom formatter
+        // return std::format("{}", ids.iter_ones());
+        return "[filtered_ids]";  // Temporary placeholder
     }
 };
 struct Access {
