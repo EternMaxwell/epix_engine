@@ -115,13 +115,23 @@ ArchetypeId BundleInfo::insert_bundle_into_archetype(archetype::Archetypes& arch
             table_components = archetype.table_components() | std::ranges::to<std::vector>();
             std::sort(table_components.begin(), table_components.end());
         } else {
+#ifdef __cpp_lib_containers_ranges
             new_table_components.insert_range(new_table_components.end(), archetype.table_components());
+#else
+            auto arch_table_comps = archetype.table_components();
+            new_table_components.insert(new_table_components.end(), arch_table_comps.begin(), arch_table_comps.end());
+#endif
             std::sort(new_table_components.begin(), new_table_components.end());
             new_table_id     = storage.tables.get_id_or_insert(new_table_components);
             table_components = std::move(new_table_components);
         }
         std::vector<TypeId> sparse_components = std::move(new_sparse_components);
+#ifdef __cpp_lib_containers_ranges
         sparse_components.insert_range(sparse_components.end(), archetype.sparse_components());
+#else
+        auto arch_sparse_comps = archetype.sparse_components();
+        sparse_components.insert(sparse_components.end(), arch_sparse_comps.begin(), arch_sparse_comps.end());
+#endif
         std::sort(sparse_components.begin(), sparse_components.end());
 
         ArchetypeId new_archetype_id =

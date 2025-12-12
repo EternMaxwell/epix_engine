@@ -22,10 +22,21 @@ struct Edges {
     std::unordered_set<SystemSetLabel> children;
 
     void merge(Edges other) {
+#ifdef __cpp_lib_containers_ranges
         depends.insert_range(std::move(other.depends));
         successors.insert_range(std::move(other.successors));
         parents.insert_range(std::move(other.parents));
         children.insert_range(std::move(other.children));
+#else
+        depends.insert(std::make_move_iterator(other.depends.begin()),
+                      std::make_move_iterator(other.depends.end()));
+        successors.insert(std::make_move_iterator(other.successors.begin()),
+                         std::make_move_iterator(other.successors.end()));
+        parents.insert(std::make_move_iterator(other.parents.begin()),
+                      std::make_move_iterator(other.parents.end()));
+        children.insert(std::make_move_iterator(other.children.begin()),
+                       std::make_move_iterator(other.children.end()));
+#endif
     }
 };
 struct Node {
@@ -137,15 +148,31 @@ struct SetConfig {
         SetConfig config;
         config.label = label;
         if (system) config.system.reset(system->clone());
+#ifdef __cpp_lib_containers_ranges
         config.conditions.insert_range(
             config.conditions.end(),
             conditions | std::views::transform([](const system::SystemUnique<std::tuple<>, bool>& cond) {
                 return system::SystemUnique<std::tuple<>, bool>(cond->clone());
             }));
+#else
+        auto transformed_conditions = conditions | std::views::transform([](const system::SystemUnique<std::tuple<>, bool>& cond) {
+                return system::SystemUnique<std::tuple<>, bool>(cond->clone());
+            });
+        config.conditions.insert(config.conditions.end(), 
+                                std::ranges::begin(transformed_conditions),
+                                std::ranges::end(transformed_conditions));
+#endif
         config.edges = edges;
+#ifdef __cpp_lib_containers_ranges
         config.sub_configs.insert_range(
             config.sub_configs.end(),
             sub_configs | std::views::transform([](const SetConfig& sub_config) { return sub_config.clone(); }));
+#else
+        auto transformed_sub_configs = sub_configs | std::views::transform([](const SetConfig& sub_config) { return sub_config.clone(); });
+        config.sub_configs.insert(config.sub_configs.end(),
+                                 std::ranges::begin(transformed_sub_configs),
+                                 std::ranges::end(transformed_sub_configs));
+#endif
         return std::move(config);
     }
 

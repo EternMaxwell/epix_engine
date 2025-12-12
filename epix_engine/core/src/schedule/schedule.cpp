@@ -33,8 +33,15 @@ void Schedule::add_config(SetConfig config, bool accept_system) {
                 std::swap(node, nodes.at(*config.label));
             }
             node->edges.merge(nodes.at(*config.label)->edges);
+#ifdef __cpp_lib_containers_ranges
             node->conditions.insert_range(node->conditions.end(),
                                           std::move(nodes.at(*config.label)->conditions) | std::views::as_rvalue);
+#else
+            auto moved_conditions = std::move(nodes.at(*config.label)->conditions) | std::views::as_rvalue;
+            node->conditions.insert(node->conditions.end(),
+                                   std::ranges::begin(moved_conditions),
+                                   std::ranges::end(moved_conditions));
+#endif
             nodes.at(*config.label) = node;
         } else {
             nodes.emplace(*config.label, node);
@@ -363,7 +370,11 @@ void Schedule::execute(SystemDispatcher& dispatcher, ExecuteConfig config) {
     auto enter_ready = [&]() {
         auto& ready_stack = exec_state.ready_stack;
         std::swap(pending_ready, ready_stack);
+#ifdef __cpp_lib_containers_ranges
         ready_stack.insert_range(ready_stack.end(), pending_ready);
+#else
+        ready_stack.insert(ready_stack.end(), pending_ready.begin(), pending_ready.end());
+#endif
         pending_ready.clear();
         while (!ready_stack.empty()) {
             size_t index = ready_stack.back();

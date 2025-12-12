@@ -48,30 +48,52 @@ struct ScheduleOrder {
         auto existing = labels | std::ranges::to<std::unordered_set<schedule::ScheduleLabel>>();
         auto it       = std::find(labels.begin(), labels.end(), after);
         if (it != labels.end()) it++;
+#ifdef __cpp_lib_containers_ranges
         labels.insert_range(
             it, std::forward<Rng>(new_labels) | std::views::filter([&](const schedule::ScheduleLabel& label) {
                     return !existing.contains(label);
                 }));
+#else
+        auto filtered = std::forward<Rng>(new_labels) | std::views::filter([&](const schedule::ScheduleLabel& label) {
+                    return !existing.contains(label);
+                });
+        labels.insert(it, std::ranges::begin(filtered), std::ranges::end(filtered));
+#endif
     }
     template <typename Rng>
     void insert_range_end(Rng&& new_labels)
         requires std::ranges::range<Rng> && std::same_as<std::ranges::range_value_t<Rng>, schedule::ScheduleLabel>
     {
         auto existing = labels | std::ranges::to<std::unordered_set<schedule::ScheduleLabel>>();
+#ifdef __cpp_lib_containers_ranges
         labels.insert_range(
             labels.end(), std::forward<Rng>(new_labels) | std::views::filter([&](const schedule::ScheduleLabel& label) {
                               return !existing.contains(label);
                           }));
+#else
+        auto filtered = std::forward<Rng>(new_labels) | std::views::filter([&](const schedule::ScheduleLabel& label) {
+                              return !existing.contains(label);
+                          });
+        labels.insert(labels.end(), std::ranges::begin(filtered), std::ranges::end(filtered));
+#endif
     }
     template <typename Rng>
     void insert_range_begin(Rng&& new_labels)
         requires std::ranges::range<Rng> && std::same_as<std::ranges::range_value_t<Rng>, schedule::ScheduleLabel>
     {
         auto existing = labels | std::ranges::to<std::unordered_set<schedule::ScheduleLabel>>();
+#ifdef __cpp_lib_containers_ranges
         labels.insert_range(labels.begin(), std::forward<Rng>(new_labels) |
                                                 std::views::filter([&](const schedule::ScheduleLabel& label) {
                                                     return !existing.contains(label);
                                                 }));
+#else
+        auto filtered = std::forward<Rng>(new_labels) |
+                                                std::views::filter([&](const schedule::ScheduleLabel& label) {
+                                                    return !existing.contains(label);
+                                                });
+        labels.insert(labels.begin(), std::ranges::begin(filtered), std::ranges::end(filtered));
+#endif
     }
     /// Remove a label, return true if found and removed
     bool remove(const schedule::ScheduleLabel& label) {
