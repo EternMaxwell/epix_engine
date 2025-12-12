@@ -9,6 +9,7 @@ target_link_libraries(epix_text PUBLIC epix_assets)
 target_link_libraries(epix_text PUBLIC epix_transform)
 target_link_libraries(epix_text PUBLIC epix_render)
 target_link_libraries(epix_text PUBLIC epix_core_graph)
+target_link_libraries(epix_text PUBLIC epix_mesh)
 target_link_libraries(epix_text PRIVATE freetype)
 target_link_libraries(epix_text PRIVATE harfbuzz)
 

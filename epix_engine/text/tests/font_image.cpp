@@ -9,6 +9,7 @@
 #include <string_view>
 
 #include "epix/mesh/render.hpp"
+#include "epix/window.hpp"
 #include "font_array.hpp"
 
 using namespace epix;
@@ -100,12 +101,20 @@ int main() {
                                                                    .line_height     = 48.0f,
                                                                    .relative_height = false,
                                                                },
-                                                               .bounds{
-                                                                   .width = 400.0f,
+                                                               .layout{
+                                                                   .justify = text::Justify::Center,
                                                                }});
                                 })
                                     .before(text::font::FontSystems::AddFontAtlasSet)
                                     .before(assets::AssetSystems::WriteEvents));
+    app.add_systems(
+        Update, into([](EventReader<window::WindowResized> resize_events, Query<Mut<text::TextBounds>> text_bounds) {
+            for (auto&& e : resize_events.read()) {
+                for (auto&& tb : text_bounds.iter()) {
+                    tb.get_mut().width = static_cast<float>(e.width) - 50.0f;
+                }
+            }
+        }));
     // app.add_systems(Update,
     //                 into([&](ResMut<text::font::FontAtlasSets> font_atlas_sets) {
     //                     if (!font_handle) return;

@@ -1,10 +1,9 @@
 #pragma once
 
-#include <algorithm>
+#include <spdlog/spdlog.h>
+
 #include <concepts>
 #include <memory>
-#include <ratio>
-#include <stdexcept>
 #include <unordered_map>
 
 #include "../fwd.hpp"
@@ -136,7 +135,9 @@ struct Plugins {
         requires std::constructible_from<T, Args...> && is_plugin<T>
     void add_plugin_internal(App& app, Args&&... args) {
         if (built) {
-            throw std::runtime_error("Cannot add new plugins after build.");
+            spdlog::error("Cannot add plugin after build phase. Plugin[type = {}] will be ignored.",
+                          meta::type_id<T>().name());
+            return;
         }
         // add if not exists.
         epix::meta::type_index type_id = epix::core::meta::type_id<T>();
@@ -145,7 +146,13 @@ struct Plugins {
         PluginWrapper<T>* wrapper = new PluginWrapper<T>(std::forward<Args>(args)...);
         _plugins.push_back(std::unique_ptr<PluginBase>(wrapper));
         _plugin_index[type_id] = index;
-        wrapper->build(app);
+        try {
+            wrapper->build(app);
+        } catch (const std::exception& e) {
+            spdlog::error("Error building plugin[type = {}]: {}", meta::type_id<T>().name(), e.what());
+        } catch (...) {
+            spdlog::error("Unknown error building plugin[type = {}]", meta::type_id<T>().name());
+        }
     }
 
     bool built = false;

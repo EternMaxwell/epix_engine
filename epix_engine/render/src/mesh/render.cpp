@@ -3,12 +3,12 @@
 #include "epix/render/assets.hpp"
 #include "epix/render/extract.hpp"
 
-
 namespace epix::mesh {
 void extract_mesh2d(ResMut<RenderMesh2dInstances> render_meshes,
                     ResMut<MeshUniforms> mesh_uniforms,
                     Extract<Query<Item<Entity, const transform::GlobalTransform&, const Mesh2d&>>> meshes) {
     mesh_uniforms->uniforms.clear();
+    render_meshes->clear();
     for (auto&& [entity, transform, mesh] : meshes.iter()) {
         render_meshes->emplace(entity, RenderMesh2d{
                                            .mesh           = mesh.handle.id(),

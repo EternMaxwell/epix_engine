@@ -256,6 +256,7 @@ void ColorMaterialPlugin::build(epix::App& app) {
                            into(queue_color_material_mesh_2d, queue_no_material_mesh_2d, queue_image_material_mesh_2d)
                                .set_names(std::array{"queue color material mesh 2d", "queue no material mesh 2d",
                                                      "queue image material mesh 2d"})
-                               .in_set(render::RenderSet::Queue));
+                               .in_set(render::RenderSet::Queue)
+                               .after(render::RenderSet::PrepareAssets));
 }
 }  // namespace epix::mesh
