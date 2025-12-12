@@ -23,10 +23,13 @@ BundleInfo BundleInfo::create(std::string_view bundle_type_name,
                              return false;
                          }
                      });
-        throw std::logic_error(std::format("bundle \"{}\" has duplicate component types {}", bundle_type_name,
-                                           duped | std::views::transform([&](TypeId tid) {
-                                               return components.get(tid).value().get().type_info()->name;
-                                           })));
+        // Build list of duplicate component names
+        std::string duped_names;
+        for (auto tid : duped) {
+            if (!duped_names.empty()) duped_names += ", ";
+            duped_names += components.get(tid).value().get().type_info()->name;
+        }
+        throw std::logic_error(std::format("bundle \"{}\" has duplicate component types {}", bundle_type_name, duped_names));
     }
 
     size_t explicit_count = std::ranges::size(component_ids);
