@@ -412,7 +412,7 @@ template <PhaseItem P, template <typename> typename... R>
     requires(RenderCommand<R, P> && ...)
 DrawFunctionId add_render_commands(DrawFunctions<P>& draw_functions) {
     // Or maybe handle duplicated adds here?
-    return draw_functions.template add(RenderCommandSequence<P, R...>{});
+    return draw_functions.template add<RenderCommandSequence<P, R...>>();
 }
 
 template <PhaseItem P>

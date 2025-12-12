@@ -60,39 +60,42 @@ struct RenderText {
     glm::vec4 color;
 };
 struct RenderTextInstances : std::unordered_map<Entity, RenderText> {};
-template <render::render_phase::PhaseItem P>
+template <std::derived_from<RenderTextInstances> res_t>
 struct BindFontResources {
-    nvrhi::BindingSetHandle binding_set;
-    void prepare(World&) { binding_set = nullptr; }
-    bool render(const P& item,
-                Item<>,
-                std::optional<Item<>>,
-                ParamSet<Res<nvrhi::DeviceHandle>,
-                         Res<render::assets::RenderAssets<image::Image>>,
-                         Res<render::DefaultSampler>,
-                         Res<RenderTextInstances>> params,
-                render::render_phase::DrawContext& ctx) {
-        auto&& [device, images, default_sampler, render_texts] = params.get();
-        auto image_layout = ctx.graphics_state.pipeline->getDesc().bindingLayouts[1];
-        auto entity       = item.entity();
-        auto it           = render_texts->find(entity);
-        if (it == render_texts->end()) {
-            spdlog::error("Entity {:#x} has no RenderText. Skipping.", entity.index);
-            return false;
+    template <render::render_phase::PhaseItem P>
+    struct Command {
+        nvrhi::BindingSetHandle binding_set;
+        void prepare(World&) { binding_set = nullptr; }
+        bool render(const P& item,
+                    Item<>,
+                    std::optional<Item<>>,
+                    ParamSet<Res<nvrhi::DeviceHandle>,
+                             Res<render::assets::RenderAssets<image::Image>>,
+                             Res<render::DefaultSampler>,
+                             Res<res_t>> params,
+                    render::render_phase::DrawContext& ctx) {
+            auto&& [device, images, default_sampler, render_texts] = params.get();
+            auto image_layout = ctx.graphics_state.pipeline->getDesc().bindingLayouts[1];
+            auto entity       = item.entity();
+            auto it           = render_texts->find(entity);
+            if (it == render_texts->end()) {
+                spdlog::error("Entity {:#x} has no RenderText. Skipping.", entity.index);
+                return false;
+            }
+            const RenderText& render_text = it->second;
+            auto* image                   = images->try_get(render_text.font_image);
+            if (!image) return false;
+            binding_set =
+                device.get()->createBindingSet(nvrhi::BindingSetDesc()
+                                                   .addItem(nvrhi::BindingSetItem::Texture_SRV(0, *image))
+                                                   .addItem(nvrhi::BindingSetItem::Sampler(1, default_sampler->handle)),
+                                               image_layout);
+            ctx.graphics_state.bindings.resize(2);
+            ctx.graphics_state.bindings[1] = binding_set;
+            ctx.setPushConstants(&render_text.transform, sizeof(glm::mat4));
+            return true;
         }
-        const RenderText& render_text = it->second;
-        auto* image                   = images->try_get(render_text.font_image);
-        if (!image) return false;
-        binding_set =
-            device.get()->createBindingSet(nvrhi::BindingSetDesc()
-                                               .addItem(nvrhi::BindingSetItem::Texture_SRV(0, *image))
-                                               .addItem(nvrhi::BindingSetItem::Sampler(1, default_sampler->handle)),
-                                           image_layout);
-        ctx.graphics_state.bindings.resize(2);
-        ctx.graphics_state.bindings[1] = binding_set;
-        ctx.setPushConstants(&render_text.transform, sizeof(glm::mat4));
-        return true;
-    }
+    };
 };
 template <std::derived_from<RenderTextInstances> res_t>
 struct DrawTextMesh {
@@ -136,4 +139,34 @@ struct TextRenderPlugin {
 struct Text2d {
     glm::vec2 offset = glm::vec2(0.0f);
 };
+
+struct Text2dBundle {
+    Text2d text2d;
+    transform::Transform transform;
+    TextColor color;
+};
 }  // namespace epix::text
+
+namespace epix::core::bundle {
+template <>
+struct Bundle<epix::text::Text2dBundle> {
+    static size_t write(epix::text::Text2dBundle& bundle, std::span<void*> dests) {
+        new (dests[0]) epix::text::Text2d(std::move(bundle.text2d));
+        new (dests[1]) epix::transform::Transform(std::move(bundle.transform));
+        new (dests[2]) epix::text::TextColor(std::move(bundle.color));
+        return 3;
+    }
+    static auto type_ids(const epix::TypeRegistry& registry) {
+        return std::array{
+            registry.type_id<epix::text::Text2d>(),
+            registry.type_id<epix::transform::Transform>(),
+            registry.type_id<epix::text::TextColor>(),
+        };
+    }
+    static void register_components(const epix::TypeRegistry&, epix::core::Components& components) {
+        components.register_info<epix::text::Text2d>();
+        components.register_info<epix::transform::Transform>();
+        components.register_info<epix::text::TextColor>();
+    }
+};
+}  // namespace epix::core::bundle

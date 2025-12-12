@@ -9,6 +9,9 @@
 #include <string_view>
 
 #include "epix/mesh/render.hpp"
+#include "epix/text/render.hpp"
+#include "epix/text/text.hpp"
+#include "epix/transform.hpp"
 #include "epix/window.hpp"
 #include "font_array.hpp"
 
@@ -70,7 +73,18 @@ struct CamControllPlugin {
     }
 };
 
-int main() {
+int main(int argc, char** argv) {
+    int render_validation = 0;
+
+    if (argc > 1) {
+        std::string_view arg1 = argv[1];
+        if (arg1 == "--render-validation=1") {
+            render_validation = 1;
+        } else if (arg1 == "--render-validation=2") {
+            render_validation = 2;
+        }
+    }
+
     App app = App::create();
     app.add_plugins(epix::window::WindowPlugin{})
         .add_plugins(epix::assets::AssetPlugin{})
@@ -78,12 +92,13 @@ int main() {
         .add_plugins(epix::glfw::GLFWPlugin{})
         .add_plugins(epix::transform::TransformPlugin{})
         .add_plugins(CamControllPlugin{})
-        .add_plugins(epix::render::RenderPlugin{}.set_validation(0))
+        .add_plugins(epix::render::RenderPlugin{}.set_validation(render_validation))
         .add_plugins(epix::mesh::MeshPlugin{})
         .add_plugins(epix::core_graph::CoreGraphPlugin{})
         .add_plugins(epix::mesh::MeshRenderPlugin{})
         .add_plugins(epix::sprite::SpritePlugin{})
-        .add_plugins(epix::text::TextPlugin{});
+        .add_plugins(epix::text::TextPlugin{})
+        .add_plugins(text::TextRenderPlugin{});
     app.add_systems(Update, into(input::log_inputs, window::log_events));
     app.world_mut().spawn(render::core_2d::Camera2DBundle{});
 
@@ -103,7 +118,8 @@ int main() {
                                                                },
                                                                .layout{
                                                                    .justify = text::Justify::Center,
-                                                               }});
+                                                               }},
+                                              text::Text2d{}, transform::Transform{}, text::TextColor{});
                                 })
                                     .before(text::font::FontSystems::AddFontAtlasSet)
                                     .before(assets::AssetSystems::WriteEvents));

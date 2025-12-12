@@ -13,10 +13,16 @@
 
 namespace epix::core {
 struct Entity {
-    uint32_t generation = 0;
-    uint32_t index      = 0;
+    union {
+        struct {
+            uint32_t generation = 0;
+            uint32_t index      = 0;
+        };
+        uint64_t uid;
+    };
 
-    auto operator<=>(const Entity&) const = default;
+    bool operator==(const Entity& other) const { return uid == other.uid; }
+    auto operator<=>(const Entity& other) const { return uid <=> other.uid; }
     static Entity from_index(uint32_t index) { return Entity{0, index}; }
     static Entity from_parts(uint32_t index, uint32_t generation) { return Entity{generation, index}; }
 };

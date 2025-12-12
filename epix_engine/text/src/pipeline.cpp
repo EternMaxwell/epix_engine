@@ -66,6 +66,9 @@ TextPipeline::TextPipeline(World& world) {
 
     desc.setVertexShader({.shader = vertex_shader, .debugName = "text_vertex_shader", .entryName = "main"});
     desc.setFragmentShader({.shader = fragment_shader, .debugName = "text_fragment_shader", .entryName = "main"});
+
+    auto& pipeline_server = world.resource_mut<render::PipelineServer>();
+    pipeline_id_          = pipeline_server.queue_render_pipeline(desc);
 }
 void TextPipelinePlugin::build(epix::App& app) {
     auto& render_app = app.sub_app_mut(render::Render);
