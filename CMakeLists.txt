@@ -55,4 +55,3 @@ else ()
 endif ()
 
 add_subdirectory (epix_engine)
-# add_subdirectory (examples)

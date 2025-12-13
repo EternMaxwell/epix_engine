@@ -1,5 +1,0 @@
-#include "epix/vulkan.h"
-
-#ifdef EPIX_USE_VOLK
-VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE
-#endif
