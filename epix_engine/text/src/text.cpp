@@ -100,20 +100,24 @@ ShapedText shape_text(const Text& text,
         // Allow user-specified final_line_height to be smaller than font ascender+descender
         // so lines may overlap if requested.
         float line_h = final_line_height;
-        out.left_    = min_x;
-        out.right_   = max_x;
-        out.ascent_  = ascent;
-        out.descent_ = -descent;
-        // top = first baseline + ascent, bottom = last baseline - descent (up-positive coords)
-        out.top_    = out.ascent_;
-        out.bottom_ = out.descent_;
+        // Single-line block height
+        float full_height = line_h;
+        out.left_         = min_x;
+        out.right_        = max_x;
+        out.ascent_       = ascent;
+        out.descent_      = -descent;
+        // With bottom-left origin, bottom is 0 and top is the full block height
+        out.top_    = full_height;
+        out.bottom_ = 0.0f;
 
-        // shift glyph x offsets so they are absolute pen positions; y_offsets are converted to up-positive below
+        // shift glyph x offsets so they are absolute pen positions; compute glyph y as baseline-from-bottom + per-entry
+        // offset
+        float baseline_y = full_height - ascent;  // first/only baseline measured from bottom
         for (size_t i = 0; i < out.glyphs_.size(); ++i) {
             // keep glyph x_offset as the absolute pen position + HarfBuzz x_offset (not normalized to left bound)
             out.glyphs_[i].x_offset = pen_positions[i] + out.glyphs_[i].x_offset;
-            // convert HarfBuzz y_offset into 'up-positive' convention (positive = upward)
-            out.glyphs_[i].y_offset = -out.glyphs_[i].y_offset;
+            // HarfBuzz y_offset was stored as raw value; convert to up-positive and add baseline-from-bottom
+            out.glyphs_[i].y_offset = baseline_y + (-out.glyphs_[i].y_offset);
         }
 
         hb_buffer_destroy(buf);
@@ -366,6 +370,8 @@ ShapedText shape_text(const Text& text,
     }
     // Use the requested line_height directly (do not enforce ascender+descender minimum).
     float line_h_i = line_height;
+    // full block height (may allow overlap if line_h_i is small)
+    float full_height = static_cast<float>(lines.size()) * line_h_i;
     // populate ShapedText bounds/internal metrics
     // compute overall left/right from per-line mins/maxs
     float overall_min = std::numeric_limits<float>::infinity();
@@ -383,11 +389,9 @@ ShapedText shape_text(const Text& text,
     out.ascent_ = global_ascent;
     // store descent_ as negative to match ShapedText semantics (descent_ < 0)
     out.descent_ = -global_descent;
-    // first baseline is the y-origin; store top relative to ascent and bottom relative to last baseline
-    out.top_ = out.ascent_;
-    // bottom_ is the y coordinate of the last baseline plus descent, relative to the first baseline (up-positive)
-    float baseline_delta = static_cast<float>(lines.size() > 0 ? lines.size() - 1 : 0) * line_h_i;
-    out.bottom_          = -baseline_delta + out.descent_;
+    // With bottom-left origin, bottom is 0 and top is full block height
+    out.top_    = full_height;
+    out.bottom_ = 0.0f;
 
     // Enforce height bound: compute max lines allowed and clip visible lines only (size remains the full block size)
     if (bounds.height.has_value()) {
@@ -396,9 +400,8 @@ ShapedText shape_text(const Text& text,
     }
 
     // Build final GlyphInfo list applying justification per line
-    // first baseline reference (baseline of the first line)
-    float first_baseline = global_ascent;
-    float pen_y          = first_baseline;  // baseline y coordinate (up-positive)
+    // first baseline measured from bottom: baseline is `full_height - global_ascent`
+    float first_baseline_from_bottom = full_height - global_ascent;
     for (size_t li = 0; li < lines.size(); ++li) {
         auto [start, end] = lines[li];
         // compute line width and count spaces for justification
@@ -437,10 +440,11 @@ ShapedText shape_text(const Text& text,
                 // keep glyph x_offset as the pen-origin + glyph x_offset (do not normalize by line min)
                 out_g.x_offset = glyph_origin_x;
                 // per-entry y_offset is already up-positive (we negated at shape time). Compute glyph y
-                // as baseline difference + per-entry offset.
-                out_g.y_offset  = (pen_y - first_baseline) + ts.entries[gi].y_offset;
-                out_g.x_advance = ts.entries[gi].x_advance;
-                out_g.y_advance = 0;
+                // as baseline-from-bottom + per-entry offset.
+                float baseline_y = first_baseline_from_bottom - static_cast<float>(li) * line_h_i;
+                out_g.y_offset   = baseline_y + ts.entries[gi].y_offset;
+                out_g.x_advance  = ts.entries[gi].x_advance;
+                out_g.y_advance  = 0;
 
                 atlas.get_glyph_atlas_loc(out_g.glyph_index);
                 out.glyphs_.push_back(out_g);
@@ -454,8 +458,7 @@ ShapedText shape_text(const Text& text,
                 pen_x += static_cast<float>(trailing_spaces) * extra_per_space;
             }
         }
-        // move pen to next line baseline (downwards in layout => subtract in up-positive coords)
-        pen_y -= line_h_i;
+        // next line handled by computing baseline_y from line index
     }
 
     hb_font_destroy(hbfont);
