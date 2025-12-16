@@ -20,6 +20,7 @@ target_sources(epix_engine
   PUBLIC
     FILE_SET CXX_MODULES FILES
       ${CMAKE_CURRENT_SOURCE_DIR}/src/modules/epix.transform.cppm
+      ${CMAKE_CURRENT_SOURCE_DIR}/src/modules/epix.core.cppm
 )
 
 if(EPIX_ENABLE_TRACY)
