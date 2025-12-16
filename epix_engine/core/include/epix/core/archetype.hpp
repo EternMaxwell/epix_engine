@@ -115,7 +115,11 @@ struct ArchetypeEdges {
                                              std::vector<TypeId> added_components,
                                              std::vector<TypeId> existing_components) {
         size_t added_len = added_components.size();
+#ifdef __cpp_lib_containers_ranges
         added_components.insert_range(added_components.end(), existing_components);
+#else
+        added_components.insert(added_components.end(), existing_components.begin(), existing_components.end());
+#endif
         insert_bundle.insert(bundle_id, archetype_id, std::move(added_components), added_len,
                              std::move(component_status), std::move(required_components));
     }

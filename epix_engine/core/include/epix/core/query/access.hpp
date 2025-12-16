@@ -19,7 +19,9 @@ struct AccessConflicts {
     bool empty() const { return !all && ids.is_clear(); }
     std::string to_string() const {
         if (all) return "[<all>]";
-        return std::format("{}", ids.iter_ones());
+        // TODO: std::format doesn't support filter_view without custom formatter
+        // return std::format("{}", ids.iter_ones());
+        return "[filtered_ids]";  // Temporary placeholder
     }
 };
 struct Access {
@@ -201,7 +203,13 @@ struct FilteredAccess {
     void add_resource_read(TypeId type_id) { _access.add_resource_read(type_id); }
     void add_resource_write(TypeId type_id) { _access.add_resource_write(type_id); }
 
-    void append_or(const FilteredAccess& other) { _filters.insert_range(_filters.end(), other._filters); }
+    void append_or(const FilteredAccess& other) {
+#ifdef __cpp_lib_containers_ranges
+        _filters.insert_range(_filters.end(), other._filters);
+#else
+        _filters.insert(_filters.end(), other._filters.begin(), other._filters.end());
+#endif
+    }
     void merge_access(const FilteredAccess& other) { _access.merge(other._access); }
 
     bool is_compatible(const FilteredAccess& other) const;
@@ -233,7 +241,13 @@ struct FilteredAccessSet {
     }
     void extend(FilteredAccessSet other) {
         _combined_access.merge(other._combined_access);
+#ifdef __cpp_lib_containers_ranges
         _filtered_access.insert_range(_filtered_access.end(), std::move(other._filtered_access));
+#else
+        _filtered_access.insert(_filtered_access.end(), 
+                               std::make_move_iterator(other._filtered_access.begin()),
+                               std::make_move_iterator(other._filtered_access.end()));
+#endif
     }
 
     void add_unfiltered_resource_read(TypeId type_id) {

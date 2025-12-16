@@ -84,7 +84,12 @@ struct InitializeBundle<std::tuple<Ts...>, std::tuple<ArgTuples...>> {
                                   bundle::is_bundle<std::tuple_element_t<0, ATuple>>) {
                         // bundle type
                         using BundleType = Bundle<std::decay_t<std::tuple_element_t<0, ATuple>>>;
+#ifdef __cpp_lib_containers_ranges
                         ids.insert_range(ids.end(), BundleType::type_ids(registry));
+#else
+                        auto bundle_ids = BundleType::type_ids(registry);
+                        ids.insert(ids.end(), bundle_ids.begin(), bundle_ids.end());
+#endif
                     } else {
                         ids.push_back(registry.type_id<T>());
                     }
@@ -152,7 +157,12 @@ struct RemoveBundle {
                     using T = std::tuple_element_t<I, std::tuple<Ts...>>;
                     if constexpr (bundle::is_bundle<T>) {
                         using BundleType = Bundle<T>;
+#ifdef __cpp_lib_containers_ranges
                         ids.insert_range(ids.end(), BundleType::type_ids(registry));
+#else
+                        auto bundle_ids = BundleType::type_ids(registry);
+                        ids.insert(ids.end(), bundle_ids.begin(), bundle_ids.end());
+#endif
                     } else {
                         ids.push_back(registry.type_id<T>());
                     }

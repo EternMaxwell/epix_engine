@@ -1,0 +1,256 @@
+-- The CXX compiler identification is GNU 13.3.0
+-- The C compiler identification is GNU 13.3.0
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /usr/bin/g++ - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: /usr/bin/gcc - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Success
+-- Found Threads: TRUE
+-- Could NOT find Doxygen (missing: DOXYGEN_EXECUTABLE) 
+-- Documentation generation requires Doxygen 1.9.8 or later
+-- Build spdlog: 1.14.1
+-- Build type: Release
+CMake Deprecation Warning at libs/glm/CMakeLists.txt:1 (cmake_minimum_required):
+  Compatibility with CMake < 3.10 will be removed from a future version of
+  CMake.
+
+  Update the VERSION argument <min> value.  Or, use the <min>...<max> syntax
+  to tell CMake that the project requires at least <min> but has been updated
+  to work with policies introduced by <max> or earlier.
+
+
+CMake Deprecation Warning at libs/glm/CMakeLists.txt:2 (cmake_policy):
+  Compatibility with CMake < 3.10 will be removed from a future version of
+  CMake.
+
+  Update the VERSION argument <min> value.  Or, use the <min>...<max> syntax
+  to tell CMake that the project requires at least <min> but has been updated
+  to work with policies introduced by <max> or earlier.
+
+
+-- GLM: Version 1.0.1
+-- GLM: Build with C++ features auto detection
+CMake Deprecation Warning at libs/freetype/CMakeLists.txt:113 (cmake_minimum_required):
+  Compatibility with CMake < 3.10 will be removed from a future version of
+  CMake.
+
+  Update the VERSION argument <min> value.  Or, use the <min>...<max> syntax
+  to tell CMake that the project requires at least <min> but has been updated
+  to work with policies introduced by <max> or earlier.
+
+
+-- Found PkgConfig: /usr/bin/pkg-config (found version "1.8.1")
+CMake Warning at libs/freetype/builds/cmake/FindHarfBuzz.cmake:99 (message):
+  Required version (2.0.0) is higher than found version ()
+Call Stack (most recent call first):
+  libs/freetype/CMakeLists.txt:258 (find_package)
+
+
+-- Found ZLIB: /usr/lib/x86_64-linux-gnu/libz.so (found version "1.3")
+-- Could NOT find PNG (missing: PNG_LIBRARY PNG_PNG_INCLUDE_DIR) 
+-- Could NOT find BZip2 (missing: BZIP2_LIBRARIES BZIP2_INCLUDE_DIR) 
+-- Checking for module 'bzip2'
+--   Package 'bzip2', required by 'virtual:world', not found
+-- Could NOT find BrotliDec (missing: BROTLIDEC_INCLUDE_DIRS BROTLIDEC_LIBRARIES) 
+-- Looking for unistd.h
+-- Looking for unistd.h - found
+-- Looking for fcntl.h
+-- Looking for fcntl.h - found
+-- CMake C compiler: GNU
+-- CMake C++ compiler: GNU
+-- CMake system name: Linux
+-- CMake host system processor: x86_64
+-- Box2D using Unix
+CMake Deprecation Warning at libs/earcut/CMakeLists.txt:1 (cmake_minimum_required):
+  Compatibility with CMake < 3.10 will be removed from a future version of
+  CMake.
+
+  Update the VERSION argument <min> value.  Or, use the <min>...<max> syntax
+  to tell CMake that the project requires at least <min> but has been updated
+  to work with policies introduced by <max> or earlier.
+
+
+CMake Warning (dev) at libs/earcut/CMakeLists.txt:4 (option):
+  Policy CMP0077 is not set: option() honors normal variables.  Run "cmake
+  --help-policy CMP0077" for policy details.  Use the cmake_policy command to
+  set the policy and suppress this warning.
+
+  For compatibility with older versions of CMake, option is clearing the
+  normal variable 'EARCUT_BUILD_TESTS'.
+This warning is for project developers.  Use -Wno-dev to suppress it.
+
+CMake Warning (dev) at libs/earcut/CMakeLists.txt:5 (option):
+  Policy CMP0077 is not set: option() honors normal variables.  Run "cmake
+  --help-policy CMP0077" for policy details.  Use the cmake_policy command to
+  set the policy and suppress this warning.
+
+  For compatibility with older versions of CMake, option is clearing the
+  normal variable 'EARCUT_BUILD_BENCH'.
+This warning is for project developers.  Use -Wno-dev to suppress it.
+
+CMake Warning (dev) at libs/earcut/CMakeLists.txt:6 (option):
+  Policy CMP0077 is not set: option() honors normal variables.  Run "cmake
+  --help-policy CMP0077" for policy details.  Use the cmake_policy command to
+  set the policy and suppress this warning.
+
+  For compatibility with older versions of CMake, option is clearing the
+  normal variable 'EARCUT_BUILD_VIZ'.
+This warning is for project developers.  Use -Wno-dev to suppress it.
+
+-- Performing Test HAVE_FLAG_SANITIZE_UNDEFINED
+-- Performing Test HAVE_FLAG_SANITIZE_UNDEFINED - Success
+Parsing public/common/TracyVersion.hpp file
+VERSION 0.11.1
+-- TRACY_ENABLE: ON
+-- TRACY_ON_DEMAND: OFF
+-- TRACY_CALLSTACK: OFF
+-- TRACY_NO_CALLSTACK: OFF
+-- TRACY_NO_CALLSTACK_INLINES: OFF
+-- TRACY_ONLY_LOCALHOST: OFF
+-- TRACY_NO_BROADCAST: OFF
+-- TRACY_ONLY_IPV4: OFF
+-- TRACY_NO_CODE_TRANSFER: OFF
+-- TRACY_NO_CONTEXT_SWITCH: OFF
+-- TRACY_NO_EXIT: OFF
+-- TRACY_NO_SAMPLING: OFF
+-- TRACY_NO_VERIFY: OFF
+-- TRACY_NO_VSYNC_CAPTURE: OFF
+-- TRACY_NO_FRAME_IMAGE: OFF
+-- TRACY_NO_SYSTEM_TRACING: OFF
+-- TRACY_PATCHABLE_NOPSLEDS: OFF
+-- TRACY_DELAYED_INIT: OFF
+-- TRACY_MANUAL_LIFETIME: OFF
+-- TRACY_FIBERS: OFF
+-- TRACY_NO_CRASH_HANDLER: OFF
+-- TRACY_TIMER_FALLBACK: OFF
+-- TRACY_LIBUNWIND_BACKTRACE: OFF
+-- TRACY_SYMBOL_OFFLINE_RESOLVE: OFF
+-- TRACY_LIBBACKTRACE_ELF_DYNLOAD_SUPPORT: OFF
+-- TRACY_VERBOSE: OFF
+-- TRACY_DEMANGLE: OFF
+CMake Deprecation Warning at libs/uuid/CMakeLists.txt:1 (cmake_minimum_required):
+  Compatibility with CMake < 3.10 will be removed from a future version of
+  CMake.
+
+  Update the VERSION argument <min> value.  Or, use the <min>...<max> syntax
+  to tell CMake that the project requires at least <min> but has been updated
+  to work with policies introduced by <max> or earlier.
+
+
+CMake Warning (dev) at libs/nvrhi/CMakeLists.txt:37 (option):
+  Policy CMP0077 is not set: option() honors normal variables.  Run "cmake
+  --help-policy CMP0077" for policy details.  Use the cmake_policy command to
+  set the policy and suppress this warning.
+
+  For compatibility with older versions of CMake, option is clearing the
+  normal variable 'NVRHI_WITH_VULKAN'.
+This warning is for project developers.  Use -Wno-dev to suppress it.
+
+-- SPIRV-Cross: Finding Git version for SPIRV-Cross.
+-- Found Git: /usr/bin/git (found version "2.52.0")
+-- SPIRV-Cross: Git hash: vulkan-sdk-1.4.309.0
+-- Found Python3: /usr/bin/python3.12 (found version "3.12.3") found components: Interpreter
+SPIRV-Cross:  Testing will be disabled for SPIRV-Cross. Could not find glslang or SPIRV-Tools build under external/. To enable testing, run ./checkout_glslang_spirv_tools.sh and ./build_glslang_spirv_tools.sh first.
+-- Configuring done (1.3s)
+-- Generating done (0.2s)
+-- Build files have been written to: /home/runner/work/epix_engine/epix_engine/build
+[  0%] Building CXX object libs/spdlog/CMakeFiles/spdlog.dir/src/spdlog.cpp.o
+[  0%] Building CXX object libs/glm/glm/CMakeFiles/glm.dir/detail/glm.cpp.o
+[  0%] Building C object libs/glfw/src/CMakeFiles/glfw.dir/context.c.o
+[  0%] Building C object libs/freetype/CMakeFiles/freetype.dir/src/autofit/autofit.c.o
+[  0%] Building C object libs/glfw/src/CMakeFiles/glfw.dir/init.c.o
+[  1%] Building C object libs/glfw/src/CMakeFiles/glfw.dir/input.c.o
+[  1%] Building C object libs/glfw/src/CMakeFiles/glfw.dir/monitor.c.o
+[  1%] Building C object libs/glfw/src/CMakeFiles/glfw.dir/platform.c.o
+[  1%] Building C object libs/glfw/src/CMakeFiles/glfw.dir/vulkan.c.o
+[  2%] Building C object libs/glfw/src/CMakeFiles/glfw.dir/window.c.o
+[  2%] Building C object libs/glfw/src/CMakeFiles/glfw.dir/egl_context.c.o
+[  2%] Building C object libs/glfw/src/CMakeFiles/glfw.dir/osmesa_context.c.o
+[  2%] Building C object libs/glfw/src/CMakeFiles/glfw.dir/null_init.c.o
+[  2%] Building C object libs/glfw/src/CMakeFiles/glfw.dir/null_monitor.c.o
+[  3%] Building C object libs/glfw/src/CMakeFiles/glfw.dir/null_window.c.o
+[  3%] Building C object libs/glfw/src/CMakeFiles/glfw.dir/null_joystick.c.o
+[  3%] Building C object libs/glfw/src/CMakeFiles/glfw.dir/posix_module.c.o
+[  3%] Building C object libs/glfw/src/CMakeFiles/glfw.dir/posix_time.c.o
+[  4%] Building C object libs/glfw/src/CMakeFiles/glfw.dir/posix_thread.c.o
+[  4%] Linking C static library libglfw3.a
+[  4%] Building C object libs/freetype/CMakeFiles/freetype.dir/src/base/ftbase.c.o
+[  5%] Building C object libs/freetype/CMakeFiles/freetype.dir/src/base/ftbbox.c.o
+[  5%] Building C object libs/freetype/CMakeFiles/freetype.dir/src/base/ftbdf.c.o
+[  5%] Building C object libs/freetype/CMakeFiles/freetype.dir/src/base/ftbitmap.c.o
+[  5%] Linking CXX static library libglm.a
+[  5%] Building C object libs/freetype/CMakeFiles/freetype.dir/src/base/ftcid.c.o
+[  6%] Building C object libs/freetype/CMakeFiles/freetype.dir/src/base/ftfstype.c.o
+[  6%] Building C object libs/freetype/CMakeFiles/freetype.dir/src/base/ftgasp.c.o
+[  6%] Building C object libs/freetype/CMakeFiles/freetype.dir/src/base/ftglyph.c.o
+[  6%] Building C object libs/freetype/CMakeFiles/freetype.dir/src/base/ftgxval.c.o
+[  7%] Building C object libs/freetype/CMakeFiles/freetype.dir/src/base/ftinit.c.o
+[  7%] Building C object libs/freetype/CMakeFiles/freetype.dir/src/base/ftmm.c.o
+[  7%] Building C object libs/freetype/CMakeFiles/freetype.dir/src/base/ftotval.c.o
+[  7%] Building C object libs/freetype/CMakeFiles/freetype.dir/src/base/ftpatent.c.o
+[  7%] Building C object libs/freetype/CMakeFiles/freetype.dir/src/base/ftpfr.c.o
+[  8%] Building C object libs/freetype/CMakeFiles/freetype.dir/src/base/ftstroke.c.o
+[  8%] Building C object libs/freetype/CMakeFiles/freetype.dir/src/base/ftsynth.c.o
+[  8%] Building C object libs/freetype/CMakeFiles/freetype.dir/src/base/fttype1.c.o
+[  8%] Building C object libs/freetype/CMakeFiles/freetype.dir/src/base/ftwinfnt.c.o
+[  9%] Building C object libs/freetype/CMakeFiles/freetype.dir/src/bdf/bdf.c.o
+[  9%] Built target glfw
+[  9%] Built target glm
+[  9%] Building C object libs/volk/CMakeFiles/volk.dir/volk.c.o
+[  9%] Building CXX object libs/imgui/CMakeFiles/imgui.dir/src/backends/imgui_impl_glfw.cpp.o
+In file included from /home/runner/work/epix_engine/epix_engine/libs/volk/volk.c:3:
+/home/runner/work/epix_engine/epix_engine/libs/volk/volk.h:29:25: fatal error: vulkan/vk_platform.h: No such file or directory
+   29 | #               include <vulkan/vk_platform.h>
+      |                         ^~~~~~~~~~~~~~~~~~~~~~
+compilation terminated.
+gmake[2]: *** [libs/volk/CMakeFiles/volk.dir/build.make:79: libs/volk/CMakeFiles/volk.dir/volk.c.o] Error 1
+gmake[1]: *** [CMakeFiles/Makefile2:1154: libs/volk/CMakeFiles/volk.dir/all] Error 2
+gmake[1]: *** Waiting for unfinished jobs....
+[ 10%] Building CXX object libs/imgui/CMakeFiles/imgui.dir/src/backends/imgui_impl_vulkan.cpp.o
+In file included from /home/runner/work/epix_engine/epix_engine/libs/imgui/src/backends/imgui_impl_glfw.cpp:102:
+/home/runner/work/epix_engine/epix_engine/libs/glfw/include/GLFW/glfw3.h:241:12: fatal error: GL/gl.h: No such file or directory
+  241 |   #include <GL/gl.h>
+      |            ^~~~~~~~~
+compilation terminated.
+gmake[2]: *** [libs/imgui/CMakeFiles/imgui.dir/build.make:79: libs/imgui/CMakeFiles/imgui.dir/src/backends/imgui_impl_glfw.cpp.o] Error 1
+gmake[2]: *** Waiting for unfinished jobs....
+[ 10%] Building CXX object libs/spdlog/CMakeFiles/spdlog.dir/src/stdout_sinks.cpp.o
+[ 10%] Building C object libs/freetype/CMakeFiles/freetype.dir/src/bzip2/ftbzip2.c.o
+[ 10%] Building C object libs/freetype/CMakeFiles/freetype.dir/src/cache/ftcache.c.o
+gmake[1]: *** [CMakeFiles/Makefile2:1186: libs/imgui/CMakeFiles/imgui.dir/all] Error 2
+[ 10%] Building C object libs/freetype/CMakeFiles/freetype.dir/src/cff/cff.c.o
+[ 11%] Building CXX object libs/spdlog/CMakeFiles/spdlog.dir/src/color_sinks.cpp.o
+[ 12%] Building C object libs/freetype/CMakeFiles/freetype.dir/src/cid/type1cid.c.o
+[ 12%] Building C object libs/freetype/CMakeFiles/freetype.dir/src/gzip/ftgzip.c.o
+[ 12%] Building CXX object libs/spdlog/CMakeFiles/spdlog.dir/src/file_sinks.cpp.o
+[ 12%] Building C object libs/freetype/CMakeFiles/freetype.dir/src/lzw/ftlzw.c.o
+[ 12%] Building CXX object libs/spdlog/CMakeFiles/spdlog.dir/src/async.cpp.o
+[ 12%] Building C object libs/freetype/CMakeFiles/freetype.dir/src/pcf/pcf.c.o
+[ 12%] Building C object libs/freetype/CMakeFiles/freetype.dir/src/pfr/pfr.c.o
+[ 13%] Building C object libs/freetype/CMakeFiles/freetype.dir/src/psaux/psaux.c.o
+[ 13%] Building C object libs/freetype/CMakeFiles/freetype.dir/src/pshinter/pshinter.c.o
+[ 13%] Building CXX object libs/spdlog/CMakeFiles/spdlog.dir/src/cfg.cpp.o
+[ 13%] Building C object libs/freetype/CMakeFiles/freetype.dir/src/psnames/psnames.c.o
+[ 13%] Building C object libs/freetype/CMakeFiles/freetype.dir/src/raster/raster.c.o
+[ 14%] Building C object libs/freetype/CMakeFiles/freetype.dir/src/sdf/sdf.c.o
+[ 14%] Building C object libs/freetype/CMakeFiles/freetype.dir/src/sfnt/sfnt.c.o
+[ 14%] Linking CXX static library libspdlog.a
+[ 14%] Built target spdlog
+[ 14%] Building C object libs/freetype/CMakeFiles/freetype.dir/src/smooth/smooth.c.o
+[ 14%] Building C object libs/freetype/CMakeFiles/freetype.dir/src/svg/svg.c.o
+[ 15%] Building C object libs/freetype/CMakeFiles/freetype.dir/src/truetype/truetype.c.o
+[ 15%] Building C object libs/freetype/CMakeFiles/freetype.dir/src/type1/type1.c.o
+[ 15%] Building C object libs/freetype/CMakeFiles/freetype.dir/src/type42/type42.c.o
+[ 15%] Building C object libs/freetype/CMakeFiles/freetype.dir/src/winfonts/winfnt.c.o
+[ 15%] Building C object libs/freetype/CMakeFiles/freetype.dir/builds/unix/ftsystem.c.o
+[ 16%] Building C object libs/freetype/CMakeFiles/freetype.dir/src/base/ftdebug.c.o
+[ 16%] Linking C static library libfreetype.a
+[ 16%] Built target freetype
+gmake: *** [Makefile:156: all] Error 2

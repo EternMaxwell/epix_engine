@@ -23,7 +23,13 @@ void CommandQueue::append(CommandQueue& other) {
     }
 
     // move metas
+#ifdef __cpp_lib_containers_ranges
     metas_.insert_range(metas_.end(), std::move(other.metas_));
+#else
+    metas_.insert(metas_.end(), 
+                  std::make_move_iterator(other.metas_.begin()),
+                  std::make_move_iterator(other.metas_.end()));
+#endif
 
     // reset other
     other.size_ = 0;

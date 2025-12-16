@@ -12,6 +12,17 @@ set(EPIX_USE_VOLK ON)
 # BUILD STATIC
 add_library(epix_engine STATIC ${MODULE_SOURCES})
 
+# Enable C++20 for module support
+target_compile_features(epix_engine PUBLIC cxx_std_20)
+
+# Add module interface files
+target_sources(epix_engine
+  PUBLIC
+    FILE_SET CXX_MODULES FILES
+      ${CMAKE_CURRENT_SOURCE_DIR}/src/modules/epix.transform.cppm
+      ${CMAKE_CURRENT_SOURCE_DIR}/src/modules/epix.core.cppm
+)
+
 if(EPIX_ENABLE_TRACY)
   target_compile_definitions(epix_engine PRIVATE EPIX_ENABLE_TRACY)
 endif()

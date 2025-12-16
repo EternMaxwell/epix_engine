@@ -1,0 +1,118 @@
+================================================================================
+INITIAL MODULE MIGRATION PLAN
+================================================================================
+
+Generated from discovery analysis of epix_engine/
+
+SUMMARY:
+  Total headers: 170
+  Total sources: 112
+  Total modules: 8
+  Include cycles detected: 20
+  Template-heavy files: 54
+
+MODULE RANKINGS (by suitability for pilot conversion):
+
+1. transform
+   Score: 61.3
+   Files: 2 (1 headers, 1 sources)
+   Dependencies: 1 outgoing, 3 incoming
+
+2. render
+   Score: 53.1
+   Files: 39 (20 headers, 19 sources)
+   Dependencies: 80 outgoing, 53 incoming
+
+3. core
+   Score: 52.4
+   Files: 72 (58 headers, 14 sources)
+   Dependencies: 49 outgoing, 73 incoming
+
+4. image
+   Score: 45.7
+   Files: 2 (1 headers, 1 sources)
+   Dependencies: 5 outgoing, 4 incoming
+
+5. window
+   Score: 34.1
+   Files: 12 (6 headers, 6 sources)
+   Dependencies: 20 outgoing, 24 incoming
+
+6. assets
+   Score: 31.3
+   Files: 11 (6 headers, 5 sources)
+   Dependencies: 9 outgoing, 18 incoming
+
+7. sprite
+   Score: 26.5
+   Files: 4 (3 headers, 1 sources)
+   Dependencies: 10 outgoing, 2 incoming
+
+8. input
+   Score: 25.5
+   Files: 7 (4 headers, 3 sources)
+   Dependencies: 9 outgoing, 8 incoming
+
+================================================================================
+RECOMMENDED PILOT MODULE: transform
+================================================================================
+
+RATIONALE:
+
+1. SIZE: Very small module (2 files total)
+   - 1 header(s)
+   - 1 source(s)
+
+2. DEPENDENCIES: Manageable (1 outgoing)
+   - Low coupling with other modules
+   - Can be isolated easily
+
+3. USAGE: Actually used (3 incoming references)
+   - Will demonstrate integration with rest of engine
+   - Can validate that module imports work correctly
+
+4. CONCEPTUAL CLARITY: Transform is a well-defined subsystem
+   - Clear API boundary
+   - Self-contained functionality
+
+5. RISK: Low
+   - Small blast radius if conversion fails
+   - Easy to revert if needed
+
+ALTERNATIVE CANDIDATES (in priority order):
+
+  sprite: 4 files, deps: 10 out / 2 in
+  image: 2 files, deps: 5 out / 4 in
+  input: 7 files, deps: 9 out / 8 in
+  assets: 11 files, deps: 9 out / 18 in
+
+================================================================================
+PILOT CONVERSION PLAN (if approved):
+================================================================================
+
+1. Create branch epix/modules/02-pilot-transform
+
+2. Create module interface file:
+   epix_engine/src/modules/epix.transform.cppm
+   - Export public API from transform headers
+   - Import necessary dependencies (std, third-party)
+
+3. Convert implementation:
+   - Update transform/*.cpp to use: module epix.transform;
+   - Replace header includes with module imports where applicable
+
+4. Archive original headers:
+   - Move epix_engine/transform/*.h to epix_engine/archived_headers/<timestamp>/
+
+5. Update CMake:
+   - Set target_compile_features(epix_engine PUBLIC cxx_std_20)
+   - Add module files to target_sources()
+   - Configure module compilation flags for GCC/Clang
+
+6. Build and test:
+   - Capture build logs
+   - Run examples that use transform
+   - Document any issues
+
+7. Create patch and draft PR
+   - STOP and wait for human review

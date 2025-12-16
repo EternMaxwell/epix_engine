@@ -33,8 +33,15 @@ void Schedule::add_config(SetConfig config, bool accept_system) {
                 std::swap(node, nodes.at(*config.label));
             }
             node->edges.merge(nodes.at(*config.label)->edges);
+#ifdef __cpp_lib_containers_ranges
             node->conditions.insert_range(node->conditions.end(),
                                           std::move(nodes.at(*config.label)->conditions) | std::views::as_rvalue);
+#else
+            auto moved_conditions = std::move(nodes.at(*config.label)->conditions) | std::views::as_rvalue;
+            node->conditions.insert(node->conditions.end(),
+                                   std::ranges::begin(moved_conditions),
+                                   std::ranges::end(moved_conditions));
+#endif
             nodes.at(*config.label) = node;
         } else {
             nodes.emplace(*config.label, node);
@@ -363,7 +370,11 @@ void Schedule::execute(SystemDispatcher& dispatcher, ExecuteConfig config) {
     auto enter_ready = [&]() {
         auto& ready_stack = exec_state.ready_stack;
         std::swap(pending_ready, ready_stack);
+#ifdef __cpp_lib_containers_ranges
         ready_stack.insert_range(ready_stack.end(), pending_ready);
+#else
+        ready_stack.insert(ready_stack.end(), pending_ready.begin(), pending_ready.end());
+#endif
         pending_ready.clear();
         while (!ready_stack.empty()) {
             size_t index = ready_stack.back();
@@ -501,17 +512,44 @@ void Schedule::execute(SystemDispatcher& dispatcher, ExecuteConfig config) {
                 return std::format("(set {}#{})", node->label.type_index().short_name(), node->label.extra());
             }
         };
+        
+        // Build formatted strings instead of using format with views
+        std::string remaining_str;
+        for (auto idx : exec_state.finished_nodes.iter_zeros()) {
+            if (!remaining_str.empty()) remaining_str += ", ";
+            remaining_str += index_to_name(idx);
+        }
+        
+        std::string not_exited_str;
+        for (auto idx : exec_state.entered_nodes.iter_ones()) {
+            if (!not_exited_str.empty()) not_exited_str += ", ";
+            not_exited_str += index_to_name(idx);
+        }
+        
+        std::string remaining_depends_str;
+        for (auto i : exec_state.finished_nodes.iter_zeros()) {
+            remaining_depends_str += "\n\t";
+            std::string deps;
+            for (auto dep : exec_state.dependencies[i].iter_ones()) {
+                if (!deps.empty()) deps += ", ";
+                deps += index_to_name(dep);
+            }
+            remaining_depends_str += deps;
+        }
+        
+        std::string remaining_children_str;
+        for (auto i : exec_state.finished_nodes.iter_zeros()) {
+            remaining_children_str += "\n\t";
+            std::string children;
+            for (auto child : exec_state.children[i].iter_ones()) {
+                if (!children.empty()) children += ", ";
+                children += index_to_name(child);
+            }
+            remaining_children_str += children;
+        }
+        
         spdlog::warn("\tRemaining: {}\tNot Exited: {}, with remaining depends:{}\n\tand remaining children:{}",
-                     exec_state.finished_nodes.iter_zeros() | std::views::transform(index_to_name),
-                     exec_state.entered_nodes.iter_ones() | std::views::transform(index_to_name),
-                     exec_state.finished_nodes.iter_zeros() | std::views::transform([&](size_t i) {
-                         return std::format(
-                             "\n\t{}", exec_state.dependencies[i].iter_ones() | std::views::transform(index_to_name));
-                     }),
-                     exec_state.finished_nodes.iter_zeros() | std::views::transform([&](size_t i) {
-                         return std::format("\n\t{}",
-                                            exec_state.children[i].iter_ones() | std::views::transform(index_to_name));
-                     }));
+                     remaining_str, not_exited_str, remaining_depends_str, remaining_children_str);
     }
 
     if (config.run_once) {

@@ -202,7 +202,12 @@ struct Components : public storage::SparseSet<TypeId, ComponentInfo> {
             register_inherited_required_components(requiree, required, required_components_tmp);
         required_components.merge(required_components_tmp);
 
+#ifdef __cpp_lib_containers_ranges
         required_by.insert_range(get(required).value().get()._required_by);
+#else
+        auto& source_required_by = get(required).value().get()._required_by;
+        required_by.insert(source_required_by.begin(), source_required_by.end());
+#endif
         for (auto&& required_by_id : get(requiree).value().get()._required_by) {
             auto& required_components = get_mut(required_by_id).value().get()._required_components;
             auto&& depth =
