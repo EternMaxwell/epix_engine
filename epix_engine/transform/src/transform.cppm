@@ -5,6 +5,7 @@ module;
 
 // Import third-party headers in global module fragment
 #include <epix/core.hpp>
+#include <epix/transform.hpp>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>

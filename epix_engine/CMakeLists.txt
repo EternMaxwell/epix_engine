@@ -31,20 +31,46 @@ function(epix_add_module_interface TARGET_NAME MODULE_NAME MODULE_FILE)
   # Add the module interface unit
   target_sources(${TARGET_NAME} PRIVATE ${MODULE_FILE})
   
-  # Set properties for module interface file
-  set_source_files_properties(${MODULE_FILE} PROPERTIES
-    LANGUAGE CXX
-  )
+  # Set compiler-specific properties for module interface file
+  if(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
+    # MSVC requires /interface flag for module interface units
+    set_source_files_properties(${MODULE_FILE} PROPERTIES
+      LANGUAGE CXX
+      COMPILE_FLAGS "/interface /std:c++20"
+    )
+  elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    # Clang requires -fmodules flag
+    set_source_files_properties(${MODULE_FILE} PROPERTIES
+      LANGUAGE CXX
+      COMPILE_FLAGS "-fmodules -std=c++20"
+    )
+  elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU")
+    # GCC requires -fmodules-ts flag
+    set_source_files_properties(${MODULE_FILE} PROPERTIES
+      LANGUAGE CXX
+      COMPILE_FLAGS "-fmodules-ts -std=c++20"
+    )
+  else()
+    set_source_files_properties(${MODULE_FILE} PROPERTIES LANGUAGE CXX)
+  endif()
   
   # Add partition interfaces if provided
   if(ARG_PARTITIONS)
     foreach(PARTITION ${ARG_PARTITIONS})
       target_sources(${TARGET_NAME} PRIVATE ${PARTITION})
-      set_source_files_properties(${PARTITION} PROPERTIES LANGUAGE CXX)
+      # Apply same compiler flags to partitions
+      if(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
+        set_source_files_properties(${PARTITION} PROPERTIES COMPILE_FLAGS "/interface /std:c++20")
+      elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        set_source_files_properties(${PARTITION} PROPERTIES COMPILE_FLAGS "-fmodules -std=c++20")
+      elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU")
+        set_source_files_properties(${PARTITION} PROPERTIES COMPILE_FLAGS "-fmodules-ts -std=c++20")
+      endif()
     endforeach()
   endif()
   
-  # Set compile definition to indicate modules are enabled
+  # Ensure target has module support enabled definition
+  # (Note: This is also called by epix_configure_module_target, but idempotent)
   target_compile_definitions(${TARGET_NAME} PUBLIC EPIX_MODULES_ENABLED)
 endfunction()
 
@@ -52,8 +78,7 @@ endfunction()
 # Usage: epix_configure_module_target(target_name)
 function(epix_configure_module_target TARGET_NAME)
   if(EPIX_ENABLE_MODULES)
-    # When modules are enabled, we still need to export headers for compatibility
-    # but we can skip some header processing
+    # When modules are enabled, set compile definition to indicate this
     target_compile_definitions(${TARGET_NAME} PUBLIC EPIX_MODULES_ENABLED)
   endif()
 endfunction()

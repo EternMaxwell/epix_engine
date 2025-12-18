@@ -31,7 +31,11 @@ export namespace epix::input {
     using ::epix::input::log_inputs;
 }
 
-// Make input available in epix namespace
+// Make input available in epix namespace (matching header behavior)
 export namespace epix {
-    using namespace input::prelude;
+    // Re-export prelude items to match header
+    using ::epix::input::prelude::ButtonInput;
+    using ::epix::input::prelude::InputPlugin;
+    using ::epix::input::prelude::KeyCode;
+    using ::epix::input::prelude::MouseButton;
 }
