@@ -118,6 +118,54 @@
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release"
             }
+        },
+        {
+            "name": "debug-msvc-modules",
+            "displayName": "x64 Debug MSVC with C++20 Modules",
+            "inherits": "debug-msvc",
+            "cacheVariables": {
+                "EPIX_ENABLE_MODULES": "ON"
+            }
+        },
+        {
+            "name": "release-msvc-modules",
+            "displayName": "x64 Release MSVC with C++20 Modules",
+            "inherits": "release-msvc",
+            "cacheVariables": {
+                "EPIX_ENABLE_MODULES": "ON"
+            }
+        },
+        {
+            "name": "debug-clang-modules",
+            "displayName": "x64 Debug Clang with C++20 Modules",
+            "inherits": "debug-clang",
+            "cacheVariables": {
+                "EPIX_ENABLE_MODULES": "ON"
+            }
+        },
+        {
+            "name": "release-clang-modules",
+            "displayName": "x64 Release Clang with C++20 Modules",
+            "inherits": "release-clang",
+            "cacheVariables": {
+                "EPIX_ENABLE_MODULES": "ON"
+            }
+        },
+        {
+            "name": "debug-gcc-modules",
+            "displayName": "x64 Debug GCC with C++20 Modules",
+            "inherits": "debug-gcc",
+            "cacheVariables": {
+                "EPIX_ENABLE_MODULES": "ON"
+            }
+        },
+        {
+            "name": "release-gcc-modules",
+            "displayName": "x64 Release GCC with C++20 Modules",
+            "inherits": "release-gcc",
+            "cacheVariables": {
+                "EPIX_ENABLE_MODULES": "ON"
+            }
         }
     ]
 }

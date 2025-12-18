@@ -46,6 +46,39 @@ add_subdirectory (libs/googletest)
 
 set(CMAKE_CXX_STANDARD 23)
 
+# --- C++20 Modules Support ---
+# Option to enable C++20 modules (default OFF for backward compatibility)
+option(EPIX_ENABLE_MODULES "Enable C++20 module interface units" OFF)
+
+if(EPIX_ENABLE_MODULES)
+  message(STATUS "C++20 modules enabled")
+  
+  # Ensure minimum C++20 for modules
+  if(CMAKE_CXX_STANDARD LESS 20)
+    set(CMAKE_CXX_STANDARD 20)
+  endif()
+  
+  # Detect compiler module support and set appropriate flags
+  if(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
+    # MSVC module support
+    set(EPIX_MODULE_EXTENSION ".ixx")
+    # Note: MSVC module flags are set per-file in epix_add_module_interface()
+  elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    # Clang module support (requires Clang 16+)
+    set(EPIX_MODULE_EXTENSION ".cppm")
+    # Note: Clang module flags are set per-file in epix_add_module_interface()
+  elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU")
+    # GCC module support (requires GCC 11+)
+    set(EPIX_MODULE_EXTENSION ".cppm")
+    # Note: GCC module flags are set per-file in epix_add_module_interface()
+  else()
+    message(WARNING "C++20 modules requested but compiler ${CMAKE_CXX_COMPILER_ID} support is unknown. Falling back to header-based build.")
+    set(EPIX_ENABLE_MODULES OFF)
+  endif()
+else()
+  message(STATUS "C++20 modules disabled (using traditional headers)")
+endif()
+
 if (MSVC)
   add_compile_options(/bigobj)
 else ()
