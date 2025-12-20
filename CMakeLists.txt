@@ -1,4 +1,4 @@
-﻿cmake_minimum_required (VERSION 3.21)
+﻿cmake_minimum_required (VERSION 3.28)
 
 if (POLICY CMP0141)
   cmake_policy(SET CMP0141 NEW)
@@ -45,13 +45,14 @@ add_subdirectory (libs/harfbuzz)
 add_subdirectory (libs/googletest)
 
 set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_CXX_SCAN_FOR_MODULES ON)
 
 if (MSVC)
   add_compile_options(/bigobj)
-else ()
-  add_compile_options(-Wa,-mbig-obj)
-  add_compile_options(-Wpointer-arith)
-  add_compile_options(-fpch-preprocess)
+elif (CLANG)
+  add_compile_options(-mbig-obj)
 endif ()
 
 add_subdirectory (epix_engine)

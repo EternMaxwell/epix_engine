@@ -12,10 +12,20 @@ function(epix_parse_options)
   if(EPIX_USE_VOLK)
     target_compile_definitions(${ARGN} PUBLIC EPIX_USE_VOLK)
   endif()
-  if(EPIX_WITH_SHARED)
-    target_compile_definitions(${ARGN} PUBLIC EPIX_SHARED)
-    target_compile_definitions(${ARGN} PRIVATE EPIX_BUILD_SHARED)
-  endif()
+endfunction()
+
+function(epix_add_module MODULE_NAME)
+    add_library(${MODULE_NAME} STATIC)
+    epix_parse_options(${MODULE_NAME})
+    target_include_directories(${MODULE_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+    file(GLOB_RECURSE MODULES CONFIGURE_DEPENDS "src/*.ixx" "src/*.cppm")
+    file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS "src/*.c" "src/*.cpp")
+    target_sources(${MODULE_NAME} 
+        PUBLIC FILE_SET cxx_modules TYPE CXX_MODULES FILES ${MODULES}
+    )
+    target_sources(${MODULE_NAME}
+        PRIVATE ${SOURCES}
+    )
 endfunction()
 
 add_subdirectory(core)
