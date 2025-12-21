@@ -29,7 +29,7 @@ consteval StorageType storage_for() {
         return StorageType::Table;
     }
 }
-export struct TypeId : epix::core::int_base<std::uint64_t> {
+export struct TypeId : core::int_base<std::uint64_t> {
     using int_base::int_base;
 };
 struct TypeInfo {
@@ -112,5 +112,7 @@ export struct TypeRegistry {
 }  // namespace core
 
 export namespace epix::core {
-using namespace core;
-}
+using ::core::sparse_component;
+using ::core::TypeId;
+using ::core::TypeRegistry;
+}  // namespace epix::core
