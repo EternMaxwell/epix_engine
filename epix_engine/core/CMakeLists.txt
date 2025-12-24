@@ -1,4 +1,4 @@
-epix_add_module(epix_core)
+﻿epix_add_module(epix_core)
 target_link_libraries(epix_core PUBLIC BSThreadPool)
 target_link_libraries(epix_core PUBLIC spdlog::spdlog)
 if (EPIX_ENABLE_TRACY)

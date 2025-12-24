@@ -1,4 +1,4 @@
-module;
+﻿module;
 
 export module epix.core:utils;
 

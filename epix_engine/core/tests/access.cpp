@@ -1,4 +1,4 @@
-// Comprehensive interface tests for Access, AccessFilters, FilteredAccess and FilteredAccessSet
+﻿// Comprehensive interface tests for Access, AccessFilters, FilteredAccess and FilteredAccessSet
 #include <cassert>
 #include <iostream>
 

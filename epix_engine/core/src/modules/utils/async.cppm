@@ -1,4 +1,4 @@
-module;
+﻿module;
 
 #include <condition_variable>
 #include <deque>

@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <epix/input.hpp>
 #include <epix/render.hpp>

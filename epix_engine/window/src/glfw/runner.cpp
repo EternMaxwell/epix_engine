@@ -1,4 +1,4 @@
-#include "epix/core.hpp"
+﻿#include "epix/core.hpp"
 #include "epix/glfw/glfw.hpp"
 #include "epix/window.hpp"
 

@@ -1,4 +1,4 @@
-#include <epix/assets.hpp>
+﻿#include <epix/assets.hpp>
 #include <epix/core.hpp>
 #include <epix/core_graph.hpp>
 #include <epix/image.hpp>

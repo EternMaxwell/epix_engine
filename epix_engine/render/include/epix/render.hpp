@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "render/assets.hpp"
 #include "render/camera.hpp"

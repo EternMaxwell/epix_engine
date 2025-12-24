@@ -1,4 +1,4 @@
-// Auto-generated header file from HachicroUndertaleBattleFontRegular-L3zlg.ttf
+﻿// Auto-generated header file from HachicroUndertaleBattleFontRegular-L3zlg.ttf
 // File size: 17812 bytes
 
 #ifndef FONT_DATA_ARRAY_H

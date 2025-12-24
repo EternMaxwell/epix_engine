@@ -1,4 +1,4 @@
-#include "epix/core/world/entity_ref.hpp"
+﻿#include "epix/core/world/entity_ref.hpp"
 
 namespace epix::core {
 

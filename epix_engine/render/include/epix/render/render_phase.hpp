@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "epix/core/bundle.hpp"
 #include "epix/core/query/access.hpp"

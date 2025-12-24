@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "../hierarchy.hpp"
 #include "../world/command_queue.hpp"

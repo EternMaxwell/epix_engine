@@ -1,4 +1,4 @@
-#include "epix/core.hpp"
+﻿#include "epix/core.hpp"
 #include "epix/core/app.hpp"
 
 using namespace epix;

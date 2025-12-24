@@ -1,4 +1,4 @@
-#include <cassert>
+﻿#include <cassert>
 #include <ranges>
 
 #include "epix/core/archetype.hpp"

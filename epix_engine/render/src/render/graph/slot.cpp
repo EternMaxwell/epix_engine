@@ -1,4 +1,4 @@
-#include "epix/render/graph/slot.hpp"
+﻿#include "epix/render/graph/slot.hpp"
 
 namespace epix::render::graph {
 std::string_view type_name(SlotType type) {

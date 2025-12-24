@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "func_traits.hpp"
 #include "param.hpp"

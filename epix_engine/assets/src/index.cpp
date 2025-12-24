@@ -1,4 +1,4 @@
-#include "epix/assets/index.hpp"
+﻿#include "epix/assets/index.hpp"
 
 using namespace epix::assets;
 

@@ -1,4 +1,4 @@
-// Combined multithreaded tests for TypeRegistry:
+﻿// Combined multithreaded tests for TypeRegistry:
 // 1) stability test: concurrent reads of already-registered types
 // 2) many-first-add test: concurrent first-time registrations of many compile-time types
 #include <atomic>

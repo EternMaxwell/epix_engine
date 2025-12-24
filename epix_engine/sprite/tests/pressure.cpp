@@ -1,4 +1,4 @@
-#include <epix/core.hpp>
+﻿#include <epix/core.hpp>
 #include <epix/image.hpp>
 #include <epix/render.hpp>
 #include <epix/sprite.hpp>

@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "assets/asset_id.hpp"
 #include "assets/asset_server.hpp"

@@ -1,4 +1,4 @@
-import sys
+﻿import sys
 import os
 
 def file_to_header(input_file, output_file, array_name):

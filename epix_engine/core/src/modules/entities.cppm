@@ -1,4 +1,4 @@
-module;
+﻿module;
 
 #include <atomic>
 #include <cstdint>
@@ -20,10 +20,10 @@ namespace core {
 export struct Entity {
     union {
         struct {
-            uint32_t generation = 0;
-            uint32_t index      = 0;
+            uint32_t generation;
+            uint32_t index;
         };
-        uint64_t uid;
+        uint64_t uid = 0;
     };
 
     bool operator==(const Entity& other) const { return uid == other.uid; }
@@ -31,11 +31,12 @@ export struct Entity {
     static Entity from_index(uint32_t index) { return Entity{0, index}; }
     static Entity from_parts(uint32_t index, uint32_t generation) { return Entity{generation, index}; }
 };
-EPIX_MAKE_INT_WRAPPER(ArchetypeId, std::uint32_t)
-EPIX_MAKE_INT_WRAPPER(TableId, std::uint32_t)
-EPIX_MAKE_INT_WRAPPER(ArchetypeRow, std::uint32_t)
-EPIX_MAKE_INT_WRAPPER(TableRow, std::uint32_t)
-EPIX_MAKE_INT_WRAPPER(BundleId, std::uint64_t)
+export EPIX_MAKE_INT_WRAPPER(ArchetypeId, std::uint32_t);
+export EPIX_MAKE_INT_WRAPPER(TableId, std::uint32_t);
+export EPIX_MAKE_INT_WRAPPER(ArchetypeRow, std::uint32_t);
+export EPIX_MAKE_INT_WRAPPER(TableRow, std::uint32_t);
+EPIX_MAKE_INT_WRAPPER(BundleId, std::uint64_t);
+
 struct EntityLocation {
     ArchetypeId archetype_id   = 0;
     ArchetypeRow archetype_idx = 0;

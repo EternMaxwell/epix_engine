@@ -1,4 +1,4 @@
-file(GLOB_RECURSE MODULE_SOURCES CONFIGURE_DEPENDS "src/window/*.c" "src/window/*.cpp")
+﻿file(GLOB_RECURSE MODULE_SOURCES CONFIGURE_DEPENDS "src/window/*.c" "src/window/*.cpp")
 list(APPEND MODULE_INCLUDES ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
 add_library(epix_window STATIC ${MODULE_SOURCES})

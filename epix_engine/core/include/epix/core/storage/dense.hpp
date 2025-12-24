@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <cassert>
 #include <optional>
@@ -83,7 +83,7 @@ struct Dense {
         self.modified_ticks.emplace_back(ticks.modified);
     }
 
-    // Resize without initializing new element slots (unsafe — caller must initialize later)
+    // Resize without initializing new element slots (unsafe 鈥?caller must initialize later)
     void resize_uninitialized(this Dense& self, size_t new_size) {
         size_t old = self.values.size();
         self.values.resize_uninitialized(new_size);

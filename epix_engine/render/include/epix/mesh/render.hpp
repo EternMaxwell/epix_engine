@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <epix/assets.hpp>
 #include <epix/render/assets.hpp>

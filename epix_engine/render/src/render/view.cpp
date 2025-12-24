@@ -1,4 +1,4 @@
-#include "epix/render/camera.hpp"
+﻿#include "epix/render/camera.hpp"
 #include "epix/render/extract.hpp"
 #include "epix/render/schedule.hpp"
 #include "epix/render/view.hpp"

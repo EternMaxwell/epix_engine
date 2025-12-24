@@ -1,4 +1,4 @@
-#include "epix/core.hpp"
+﻿#include "epix/core.hpp"
 #include "epix/render/schedule.hpp"
 
 namespace epix::render {

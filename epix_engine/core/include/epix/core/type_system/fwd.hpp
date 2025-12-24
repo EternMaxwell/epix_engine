@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 namespace epix::core::type_system {
 struct TypeRegistry;

@@ -1,5 +1,6 @@
-module;
+﻿module;
 
+#include <compare>
 #include <concepts>
 
 export module epix.core:utils.int_wrapper;

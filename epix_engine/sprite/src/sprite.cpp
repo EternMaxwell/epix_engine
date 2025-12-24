@@ -1,4 +1,4 @@
-#include <epix/sprite.hpp>
+﻿#include <epix/sprite.hpp>
 
 #include "nvrhi/nvrhi.h"
 

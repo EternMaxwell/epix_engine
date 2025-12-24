@@ -1,4 +1,4 @@
-#include "epix/input/button.hpp"
+﻿#include "epix/input/button.hpp"
 
 namespace epix::input {
 void ButtonInput<KeyCode>::collect_events(ResMut<ButtonInput<KeyCode>> input, EventReader<events::KeyInput> reader) {

@@ -1,4 +1,4 @@
-#include <epix/core.hpp>
+﻿#include <epix/core.hpp>
 #include <epix/glfw.hpp>
 #include <epix/input.hpp>
 #include <epix/render.hpp>

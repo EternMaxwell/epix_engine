@@ -1,4 +1,4 @@
-#include <cassert>
+﻿#include <cassert>
 #include <iostream>
 
 #include "epix/core/hierarchy.hpp"
@@ -87,7 +87,7 @@ int main() {
     // pick one child from set
     Entity child2 = *maybe_children->get().entities.begin();
     if (child2 == child1) {
-        // unlikely but handle: if it's child1, that's fine — but child1 had parent removed earlier.
+        // unlikely but handle: if it's child1, that's fine 鈥?but child1 had parent removed earlier.
     }
 
     // despawn the parent and ensure the child is despawned by the Children::on_despawn hook

@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <epix/render/vulkan.hpp>
 

@@ -1,4 +1,4 @@
-#include <nvrhi/validation.h>
+﻿#include <nvrhi/validation.h>
 
 #include <stacktrace>
 

@@ -1,4 +1,4 @@
-#include "epix/render/image.hpp"
+﻿#include "epix/render/image.hpp"
 
 using namespace epix::render::assets;
 using namespace epix::image;

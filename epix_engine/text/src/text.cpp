@@ -1,4 +1,4 @@
-#include <freetype/freetype.h>
+﻿#include <freetype/freetype.h>
 #include <hb-ft.h>
 #include <hb.h>
 

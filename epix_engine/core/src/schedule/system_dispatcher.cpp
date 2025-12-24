@@ -1,4 +1,4 @@
-#include "epix/core/schedule/system_dispatcher.hpp"
+﻿#include "epix/core/schedule/system_dispatcher.hpp"
 
 #ifdef EPIX_ENABLE_TRACY
 #include <tracy/Tracy.hpp>

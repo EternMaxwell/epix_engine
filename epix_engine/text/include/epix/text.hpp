@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "text/font.hpp"
 #include "text/render.hpp"

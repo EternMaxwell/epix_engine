@@ -1,4 +1,4 @@
-#include "epix/assets.hpp"
+﻿#include "epix/assets.hpp"
 #include "epix/mesh/mesh.hpp"
 
 using namespace epix;

@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "events.hpp"
 #include "window.hpp"

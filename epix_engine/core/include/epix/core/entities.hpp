@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <atomic>
 #include <cassert>
@@ -15,10 +15,10 @@ namespace epix::core {
 struct Entity {
     union {
         struct {
-            uint32_t generation = 0;
-            uint32_t index      = 0;
+            uint32_t generation;
+            uint32_t index;
         };
-        uint64_t uid;
+        uint64_t uid = 0;
     };
 
     bool operator==(const Entity& other) const { return uid == other.uid; }

@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "../vulkan.hpp"
 #include "fwd.hpp"
