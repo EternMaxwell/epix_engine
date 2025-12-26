@@ -28,7 +28,7 @@ constexpr std::string_view type_name() {
     static auto value = pretty_function.substr(first, last - first);
     return value;
 }
-static constexpr std::string shorten(std::string_view str) {
+constexpr std::string shorten(std::string_view str) {
     std::string result = std::string(str);
     while (true) {
         auto last_colon = result.rfind("::");

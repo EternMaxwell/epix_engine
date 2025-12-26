@@ -1,6 +1,7 @@
 ﻿module;
 
 #include <algorithm>
+#include <cassert>
 #include <concepts>
 #include <optional>
 #include <ranges>
@@ -19,7 +20,6 @@ import :storage;
 import :archetype;
 
 namespace core {
-namespace bundle {
 export template <typename T>
 struct Bundle {};
 
@@ -37,10 +37,6 @@ concept is_bundle = requires(std::decay_t<B>& b) {
     { Bundle<std::decay_t<B>>::type_ids(std::declval<const TypeRegistry&>()) } -> type_id_view;
     { Bundle<std::decay_t<B>>::register_components(std::declval<const TypeRegistry&>(), std::declval<Components&>()) };
 };
-}  // namespace bundle
-
-using bundle::Bundle;
-using bundle::is_bundle;
 
 struct BundleInfo {
    private:
@@ -97,7 +93,7 @@ struct BundleInfo {
                  std::same_as<std::ranges::range_value_t<T2>, RequiredComponentConstructor> &&
                  std::ranges::view<std::decay_t<T1>> && std::same_as<std::ranges::range_value_t<T1>, ComponentStatus>
     {
-        using BundleType = bundle::Bundle<std::decay_t<T3>>;
+        using BundleType = Bundle<std::decay_t<T3>>;
         // debug assert check whether bundle types match explicit component ids
         assert(std::ranges::all_of(std::views::zip(BundleType::type_ids(type_registry), explicit_components()),
                                    [](auto&& pair) {
@@ -146,7 +142,7 @@ struct BundleInfo {
                 }
             }
         }
-        bundle::Bundle<std::decay_t<T3>>::write(std::forward<T3>(bundle), pointers);
+        Bundle<std::decay_t<T3>>::write(std::forward<T3>(bundle), pointers);
 
         for (auto&& rc : required_components) {
             (*rc)(table, sparse_sets, tick, row, entity);
@@ -180,7 +176,7 @@ struct Bundles {
         }
         return std::nullopt;
     }
-    template <bundle::is_bundle T>
+    template <is_bundle T>
     BundleId register_info(const TypeRegistry& type_registry, Components& components, Storage& storage) {
         using type   = std::decay_t<T>;
         auto type_id = type_registry.type_id<type>();
@@ -197,7 +193,7 @@ struct Bundles {
         _bundle_ids.emplace(type_id, new_id);
         return new_id;
     }
-    template <bundle::is_bundle T>
+    template <is_bundle T>
     BundleId register_contributed_info(const TypeRegistry& type_registry, Components& components, Storage& storage) {
         using type   = std::decay_t<T>;
         auto type_id = type_registry.type_id<type>();

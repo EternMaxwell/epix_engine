@@ -5,7 +5,7 @@
 #include <ranges>
 #include <string>
 
-export module epix.core:query.access.interface;
+export module epix.core:query.access;
 
 import :utils;
 import :type_registry;

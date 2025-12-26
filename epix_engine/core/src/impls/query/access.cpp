@@ -2,12 +2,10 @@
 
 #include <algorithm>
 #include <ranges>
-#include <tuple>
-#include <vector>
 
-module epix.core:query.access.impl;
+module epix.core;
 
-import :query.access.interface;
+import :query.access;
 
 namespace core {
 void Access::merge(const Access& other) {

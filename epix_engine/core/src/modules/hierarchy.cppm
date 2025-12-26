@@ -2,7 +2,7 @@
 
 #include <unordered_set>
 
-export module epix.core:hierarchy.interface;
+export module epix.core:hierarchy;
 
 import :entities;
 import :world.decl;

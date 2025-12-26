@@ -13,13 +13,13 @@ import :ticks;
 import :world.interface;
 import :bundle.spec;
 import :storage;
-import :hierarchy.interface;
+import :hierarchy;
 
 namespace core {
 /**
  * @brief Read only reference to an entity in a World. Can get mutable components, but cannot do structural changes.
  */
-struct EntityRef {
+export struct EntityRef {
    protected:
     Entity entity_;
     EntityLocation location_;
@@ -105,7 +105,7 @@ struct EntityRef {
         return get_ticks_by_id(world_->type_registry().type_id<T>());
     }
 };
-struct EntityRefMut : public EntityRef {
+export struct EntityRefMut : public EntityRef {
    protected:
     friend struct World;
     World* world_;
@@ -139,13 +139,13 @@ struct EntityRefMut : public EntityRef {
     }
 };
 
-struct EntityWorldMut : public EntityRefMut {
+export struct EntityWorldMut : public EntityRefMut {
    public:
     using EntityRefMut::EntityRefMut;
 
     template <typename T>
     void insert_internal(T&& bundle, bool replace_existing)
-        requires(bundle::is_bundle<std::decay_t<T>>)
+        requires(is_bundle<std::decay_t<T>>)
     {
         assert_not_despawned();
         auto inserter = BundleInserter::create<std::decay_t<T>>(*world_, location_.archetype_id, world_->change_tick());
@@ -176,13 +176,13 @@ struct EntityWorldMut : public EntityRefMut {
     }
     template <typename B>
     void insert_bundle(B&& bundle)
-        requires(bundle::is_bundle<std::decay_t<B>>)
+        requires(is_bundle<std::decay_t<B>>)
     {
         insert_internal(std::forward<B>(bundle), true);
     }
     template <typename B>
     void insert_bundle_if_new(B&& bundle)
-        requires(bundle::is_bundle<std::decay_t<B>>)
+        requires(is_bundle<std::decay_t<B>>)
     {
         insert_internal(std::forward<B>(bundle), false);
     }
@@ -194,7 +194,7 @@ struct EntityWorldMut : public EntityRefMut {
     }
     void remove_bundle(BundleId bundle_id);
     bool remove_by_id(TypeId type_id);
-    void remove_by_ids(bundle::type_id_view auto&& type_ids) {
+    void remove_by_ids(type_id_view auto&& type_ids) {
         try {
             auto bundle_id = world_->bundles_mut().init_dynamic_info(world_->storage_mut(), world_->components(),
                                                                      type_ids | std::ranges::to<std::vector<TypeId>>());
@@ -208,7 +208,7 @@ struct EntityWorldMut : public EntityRefMut {
     /// Spawn a new entity as a child of this entity and return a mutable reference to it
     template <typename... Args>
     EntityWorldMut spawn(Args&&... args)
-        requires((std::constructible_from<std::decay_t<Args>, Args> || bundle::is_bundle<Args>) && ...)
+        requires((std::constructible_from<std::decay_t<Args>, Args> || is_bundle<Args>) && ...)
     {
         auto mut = world_->spawn(std::forward<Args>(args)...);
         mut.insert(Parent{entity_});

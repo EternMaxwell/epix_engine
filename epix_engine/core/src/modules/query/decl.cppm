@@ -22,7 +22,7 @@ struct QueryData;
 template <typename T>
 struct QueryFilter;
 
-struct FilteredAccess;
+export struct FilteredAccess;
 
 template <typename Q>
 concept world_query = requires(WorldQuery<Q> q) {
@@ -78,10 +78,13 @@ struct QueryIter;
 export template <query_data D, query_filter F = Filter<>>
 struct Query;
 
-export template <typename... Ts>
-struct With;
-export template <typename... Ts>
-struct Without;
-export template <typename... Fs>
-struct Or;
+template <typename T>
+struct AddOptional {
+    using type = std::optional<T>;
+};
+template <typename T>
+    requires(std::is_reference_v<T>)
+struct AddOptional<T> {
+    using type = std::optional<std::reference_wrapper<std::remove_reference_t<T>>>;
+};
 }  // namespace core

@@ -51,7 +51,7 @@ set(CMAKE_CXX_SCAN_FOR_MODULES ON)
 
 if (MSVC)
   add_compile_options(/bigobj)
-elif (CLANG)
+elseif (CLANG)
   add_compile_options(-mbig-obj)
 endif ()
 

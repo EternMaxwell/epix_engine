@@ -126,7 +126,7 @@ struct WorldId : ::core::int_base<std::uint64_t> {
 };
 
 // should make sure that all world impls inherit this does not include their own data members
-struct World {
+export struct World {
    public:
     World(WorldId id, std::shared_ptr<TypeRegistry> type_registry = std::make_shared<TypeRegistry>())
         : _id(id),
@@ -179,7 +179,7 @@ struct World {
 
     template <typename... Args>
     EntityWorldMut spawn(Args&&... args)
-        requires((std::constructible_from<std::decay_t<Args>, Args> || bundle::is_bundle<Args>) && ...);
+        requires((std::constructible_from<std::decay_t<Args>, Args> || is_bundle<Args>) && ...);
 
     template <typename T, typename... Args>
     void emplace_resource(Args&&... args) {
@@ -328,56 +328,51 @@ struct World {
             });
     }
 
-    void trigger_on_add(const Archetype& archetype, Entity entity, bundle::type_id_view auto&& targets) {
+    void trigger_on_add(const Archetype& archetype, Entity entity, type_id_view auto&& targets) {
         for (auto&& target : targets) {
             _components.get(target).and_then([&](const ComponentInfo& info) -> std::optional<bool> {
                 if (info.hooks().on_add) {
-                    info.hooks().on_add(*reinterpret_cast<World*>(this),
-                                        HookContext{.entity = entity, .component_id = target});
+                    info.hooks().on_add(*this, HookContext{.entity = entity, .component_id = target});
                 }
                 return true;
             });
         }
     }
-    void trigger_on_insert(const Archetype& archetype, Entity entity, bundle::type_id_view auto&& targets) {
+    void trigger_on_insert(const Archetype& archetype, Entity entity, type_id_view auto&& targets) {
         for (auto&& target : targets) {
             _components.get(target).and_then([&](const ComponentInfo& info) -> std::optional<bool> {
                 if (info.hooks().on_insert) {
-                    info.hooks().on_insert(*reinterpret_cast<World*>(this),
-                                           HookContext{.entity = entity, .component_id = target});
+                    info.hooks().on_insert(*this, HookContext{.entity = entity, .component_id = target});
                 }
                 return true;
             });
         }
     }
-    void trigger_on_replace(const Archetype& archetype, Entity entity, bundle::type_id_view auto&& targets) {
+    void trigger_on_replace(const Archetype& archetype, Entity entity, type_id_view auto&& targets) {
         for (auto&& target : targets) {
             _components.get(target).and_then([&](const ComponentInfo& info) -> std::optional<bool> {
                 if (info.hooks().on_replace) {
-                    info.hooks().on_replace(*reinterpret_cast<World*>(this),
-                                            HookContext{.entity = entity, .component_id = target});
+                    info.hooks().on_replace(*this, HookContext{.entity = entity, .component_id = target});
                 }
                 return true;
             });
         }
     }
-    void trigger_on_remove(const Archetype& archetype, Entity entity, bundle::type_id_view auto&& targets) {
+    void trigger_on_remove(const Archetype& archetype, Entity entity, type_id_view auto&& targets) {
         for (auto&& target : targets) {
             _components.get(target).and_then([&](const ComponentInfo& info) -> std::optional<bool> {
                 if (info.hooks().on_remove) {
-                    info.hooks().on_remove(*reinterpret_cast<World*>(this),
-                                           HookContext{.entity = entity, .component_id = target});
+                    info.hooks().on_remove(*this, HookContext{.entity = entity, .component_id = target});
                 }
                 return true;
             });
         }
     }
-    void trigger_on_despawn(const Archetype& archetype, Entity entity, bundle::type_id_view auto&& targets) {
+    void trigger_on_despawn(const Archetype& archetype, Entity entity, type_id_view auto&& targets) {
         for (auto&& target : targets) {
             _components.get(target).and_then([&](const ComponentInfo& info) -> std::optional<bool> {
                 if (info.hooks().on_despawn) {
-                    info.hooks().on_despawn(*reinterpret_cast<World*>(this),
-                                            HookContext{.entity = entity, .component_id = target});
+                    info.hooks().on_despawn(*this, HookContext{.entity = entity, .component_id = target});
                 }
                 return true;
             });
