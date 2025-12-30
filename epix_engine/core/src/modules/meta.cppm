@@ -1,11 +1,5 @@
 ﻿module;
 
-#include <array>
-#include <ranges>
-#include <string>
-#include <string_view>
-#include <vector>
-
 #if defined __clang__ || defined __GNUC__
 #define EPIX_PRETTY_FUNCTION __PRETTY_FUNCTION__
 #define EPIX_PRETTY_FUNCTION_PREFIX '='
@@ -15,6 +9,14 @@
 #define EPIX_PRETTY_FUNCTION_PREFIX '<'
 #define EPIX_PRETTY_FUNCTION_SUFFIX '>'
 #endif
+
+#include <algorithm>
+#include <concepts>
+#include <ranges>
+#include <string>
+#include <string_view>
+#include <type_traits>
+#include <vector>
 
 export module epix.meta;
 
@@ -37,7 +39,7 @@ constexpr std::string shorten(std::string_view str) {
             '<', '(', '[', ',', ' ',  // characters that can appear before a template argument
         };
         std::vector lefts = left_chars | std::views::transform([&](char c) { return result.rfind(c, last_colon); }) |
-                            std::views::filter([&](size_t pos) { return pos != std::string::npos; }) |
+                            std::views::filter([&](std::size_t pos) { return pos != std::string::npos; }) |
                             std::ranges::to<std::vector>();
         auto left_elem = std::ranges::max_element(lefts);
         auto left      = (left_elem != lefts.end()) ? *left_elem + 1 : 0;
@@ -59,10 +61,10 @@ export struct type_info {
 
     std::string_view name;
     std::string_view short_name;
-    size_t hash;
+    std::size_t hash;
 
-    size_t size;
-    size_t align;
+    std::size_t size;
+    std::size_t align;
 
     // Mandatory operations
     void (*destruct)(void* ptr) noexcept                         = nullptr;
@@ -165,13 +167,13 @@ struct type_id {
    public:
     static std::string_view name() { return type_info::of<T>().name; }
     static std::string_view short_name() { return type_info::of<T>().short_name; }
-    static size_t hash_code() { return type_info::of<T>().hash; }
+    static std::size_t hash_code() { return type_info::of<T>().hash; }
 };
 export struct type_index {
    public:
     template <typename T>
     type_index(type_id<T>) : inter(std::addressof(get_info<T>())) {}
-    type_index() : inter(nullptr) {}
+    type_index() : inter(std::addressof(get_info<void>())) {}
 
     auto operator<=>(const type_index& other) const noexcept {
         if (inter == other.inter) return std::strong_ordering::equal;
@@ -183,7 +185,7 @@ export struct type_index {
     bool operator==(const type_index& other) const noexcept { return (*this <=> other) == std::strong_ordering::equal; }
     std::string_view name() const noexcept { return inter->name; }
     std::string_view short_name() const noexcept { return inter->short_name; }
-    size_t hash_code() const noexcept { return inter->hash; }
+    std::size_t hash_code() const noexcept { return inter->hash; }
     const type_info& type_info() const noexcept { return *inter; }
     bool valid() const noexcept { return inter != nullptr; }
 
@@ -197,6 +199,7 @@ export struct type_index {
 };
 }  // namespace meta
 
-export namespace epix::meta {
-using namespace meta;
-}  // namespace epix::meta
+template <>
+struct std::hash<meta::type_index> {
+    std::size_t operator()(const meta::type_index& ti) const noexcept { return ti.hash_code(); }
+};

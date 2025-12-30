@@ -49,10 +49,10 @@ concept valid_system_param = requires(World& world, SystemMeta& meta, query::Fil
     typename param_type<T>::type;
     // used to store data that persists across system runs
     typename T::State;
-    std::movable<typename T::State>;
+    requires std::movable<typename T::State>;
     // the item type returned when accessing the param, the item returned may not be T itself, it may be reference.
     typename T::Item;
-    std::same_as<typename param_type<T>::type, typename T::Item>;
+    requires std::same_as<typename param_type<T>::type, typename T::Item>;
 
     { T::init_state(world) } -> std::same_as<typename T::State>;
     requires requires(const typename T::State& state, typename T::State& state_mut, DeferredWorld deferred_world,

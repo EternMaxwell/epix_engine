@@ -14,7 +14,7 @@ struct ButtonInput {};
 template <>
 struct ButtonInput<KeyCode> {
    public:
-    ButtonInput<KeyCode>() = default;
+    ButtonInput() = default;
 
     bool just_pressed(KeyCode key) const { return m_just_pressed.contains(key); }
     bool just_released(KeyCode key) const { return m_just_released.contains(key); }
@@ -49,7 +49,7 @@ struct ButtonInput<KeyCode> {
 template <>
 struct ButtonInput<MouseButton> {
    public:
-    ButtonInput<MouseButton>() = default;
+    ButtonInput() = default;
 
     bool just_pressed(MouseButton button) const { return m_just_pressed.contains(button); }
     bool just_released(MouseButton button) const { return m_just_released.contains(button); }

@@ -1,6 +1,8 @@
 ﻿module;
 
 #include <concepts>
+#include <cstddef>
+#include <functional>
 #include <vector>
 
 export module epix.core:world.commands;
@@ -56,7 +58,7 @@ struct CommandQueue {
     }
     ~CommandQueue() {
         if (commands_) {
-            size_t offset = 0;
+            std::size_t offset = 0;
             for (const CommandMeta* meta : metas_) {
                 meta->destructor(static_cast<char*>(commands_) + offset);
                 offset += meta->size;
@@ -76,7 +78,7 @@ struct CommandQueue {
             .move       = [](void* dest, void* src) { new (dest) type(std::move(*reinterpret_cast<type*>(src))); },
             .apply      = [](void* ptr, World& world) { Command<type>::apply(*reinterpret_cast<type*>(ptr), world); },
         };
-        size_t old_size = size_;
+        std::size_t old_size = size_;
         size_ += meta.size;
         assure_size(size_);
         new (static_cast<std::byte*>(commands_) + old_size) type(std::forward<T>(command));
@@ -87,18 +89,18 @@ struct CommandQueue {
 
    private:
     struct CommandMeta {
-        size_t size;
+        std::size_t size;
         void (*destructor)(void*);
         void (*move)(void*, void*);
         void (*apply)(void*, World&);
     };
 
-    void reallocate(size_t new_capacity);
-    void assure_size(size_t new_size);
+    void reallocate(std::size_t new_capacity);
+    void assure_size(std::size_t new_size);
 
-    void* commands_  = nullptr;
-    size_t capacity_ = 0;
-    size_t size_     = 0;
+    void* commands_       = nullptr;
+    std::size_t capacity_ = 0;
+    std::size_t size_     = 0;
     std::vector<const CommandMeta*> metas_;
 };
 }  // namespace core

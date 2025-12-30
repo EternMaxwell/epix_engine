@@ -1,12 +1,12 @@
 ﻿module;
 
 #include <cassert>
+#include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <ranges>
 #include <span>
-#include <utility>
-#include <vector>
 
 export module epix.core:storage.dense;
 
@@ -16,7 +16,7 @@ import :storage.untyped_vector;
 namespace core {
 struct Dense {
    public:
-    explicit Dense(const ::meta::type_info& desc, size_t reserve_cnt = 0) : values(desc, reserve_cnt) {
+    explicit Dense(const ::meta::type_info& desc, std::size_t reserve_cnt = 0) : values(desc, reserve_cnt) {
         if (reserve_cnt) {
             added_ticks.reserve(reserve_cnt);
             modified_ticks.reserve(reserve_cnt);
@@ -25,12 +25,12 @@ struct Dense {
 
     const ::meta::type_info& type_info(this const Dense& self) { return self.values.type_info(); }
 
-    void reserve(this Dense& self, size_t new_cap) {
+    void reserve(this Dense& self, std::size_t new_cap) {
         self.values.reserve(new_cap);
         self.added_ticks.reserve(new_cap);
         self.modified_ticks.reserve(new_cap);
     }
-    size_t len(this const Dense& self) { return self.values.size(); }
+    std::size_t len(this const Dense& self) { return self.values.size(); }
     void clear(this Dense& self) {
         self.values.clear();
         self.added_ticks.clear();
@@ -80,8 +80,8 @@ struct Dense {
     }
 
     // Resize without initializing new element slots (unsafe 鈥?caller must initialize later)
-    void resize_uninitialized(this Dense& self, size_t new_size) {
-        size_t old = self.values.size();
+    void resize_uninitialized(this Dense& self, std::size_t new_size) {
+        std::size_t old = self.values.size();
         self.values.resize_uninitialized(new_size);
         // Ensure tick arrays match new size; default-construct new ticks
         if (new_size > old) {

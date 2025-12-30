@@ -1,6 +1,27 @@
 ﻿module;
 
+#include <algorithm>
+#include <concepts>
+#include <cstddef>
+#include <cstdint>
+#include <functional>
+#include <iostream>
+#include <iterator>
+#include <limits>
+#include <map>
+#include <memory>
+#include <optional>
+#include <set>
+#include <span>
+#include <string>
+#include <tuple>
+#include <type_traits>
+#include <unordered_map>
 #include <unordered_set>
+#include <utility>
+#include <variant>
+#include <vector>
+
 
 export module epix.core:hierarchy;
 

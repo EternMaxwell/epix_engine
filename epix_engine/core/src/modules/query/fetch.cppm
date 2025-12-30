@@ -1,8 +1,10 @@
 ﻿module;
 
 #include <cassert>
+#include <functional>
 #include <optional>
 #include <tuple>
+#include <type_traits>
 
 export module epix.core:query.fetch;
 

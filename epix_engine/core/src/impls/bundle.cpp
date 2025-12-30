@@ -5,11 +5,14 @@
 #include <optional>
 #include <ranges>
 #include <stdexcept>
+#include <string_view>
 #include <unordered_set>
+#include <vector>
 
 module epix.core;
 
 import :bundle;
+import :entities;
 
 namespace core {
 BundleInfo BundleInfo::create(std::string_view bundle_type_name,

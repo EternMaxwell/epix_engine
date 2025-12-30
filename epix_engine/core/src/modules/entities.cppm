@@ -1,16 +1,16 @@
 ﻿module;
 
-#include <atomic>
-#include <cstdint>
-#include <limits>
-#include <optional>
-#include <ranges>
-#include <vector>
-
 #define EPIX_MAKE_INT_WRAPPER(name, type) \
     struct name : core::int_base<type> {  \
         using int_base::int_base;         \
     };
+
+#include <algorithm>
+#include <atomic>
+#include <cstdint>
+#include <limits>
+#include <ranges>
+#include <vector>
 
 export module epix.core:entities;
 
@@ -20,16 +20,16 @@ namespace core {
 export struct Entity {
     union {
         struct {
-            uint32_t generation;
-            uint32_t index;
+            std::uint32_t generation;
+            std::uint32_t index;
         };
-        uint64_t uid = 0;
+        std::uint64_t uid = 0;
     };
 
     bool operator==(const Entity& other) const { return uid == other.uid; }
     auto operator<=>(const Entity& other) const { return uid <=> other.uid; }
-    static Entity from_index(uint32_t index) { return Entity{0, index}; }
-    static Entity from_parts(uint32_t index, uint32_t generation) { return Entity{generation, index}; }
+    static Entity from_index(std::uint32_t index) { return Entity{0, index}; }
+    static Entity from_parts(std::uint32_t index, std::uint32_t generation) { return Entity{generation, index}; }
 };
 export EPIX_MAKE_INT_WRAPPER(ArchetypeId, std::uint32_t);
 export EPIX_MAKE_INT_WRAPPER(TableId, std::uint32_t);
@@ -37,7 +37,7 @@ export EPIX_MAKE_INT_WRAPPER(ArchetypeRow, std::uint32_t);
 export EPIX_MAKE_INT_WRAPPER(TableRow, std::uint32_t);
 EPIX_MAKE_INT_WRAPPER(BundleId, std::uint64_t);
 
-struct EntityLocation {
+export struct EntityLocation {
     ArchetypeId archetype_id   = 0;
     ArchetypeRow archetype_idx = 0;
     TableId table_id           = 0;
@@ -47,21 +47,21 @@ struct EntityLocation {
     bool operator!=(const EntityLocation& other) const = default;
 
     static constexpr EntityLocation invalid() {
-        return {std::numeric_limits<uint32_t>::max(), std::numeric_limits<uint32_t>::max(),
-                std::numeric_limits<uint32_t>::max(), std::numeric_limits<uint32_t>::max()};
+        return {std::numeric_limits<std::uint32_t>::max(), std::numeric_limits<std::uint32_t>::max(),
+                std::numeric_limits<std::uint32_t>::max(), std::numeric_limits<std::uint32_t>::max()};
     }
 };
 struct EntityMeta {
-    uint32_t generation     = 0;
-    EntityLocation location = EntityLocation::invalid();
+    std::uint32_t generation = 0;
+    EntityLocation location  = EntityLocation::invalid();
 
     static constexpr EntityMeta empty() { return {0, EntityLocation::invalid()}; }
 };
-struct Entities {
+export struct Entities {
    private:
     std::vector<EntityMeta> meta;
-    std::vector<uint32_t> pending;
-    mutable std::atomic<int64_t> free_cursor = 0;
+    std::vector<std::uint32_t> pending;
+    mutable std::atomic<std::int64_t> free_cursor = 0;
 
    public:
     /**
@@ -72,30 +72,31 @@ struct Entities {
      * @param count Number of entities to reserve.
      * @return A viewable range of reserved entities.
      */
-    auto reserve_entities(uint32_t count) const {
-        int64_t range_end   = free_cursor.fetch_sub(count, std::memory_order_relaxed);
-        int64_t range_start = range_end - count;
+    auto reserve_entities(std::uint32_t count) const {
+        std::int64_t range_end   = free_cursor.fetch_sub(count, std::memory_order_relaxed);
+        std::int64_t range_start = range_end - count;
 
-        int64_t base = meta.size();
+        std::int64_t base = meta.size();
 
         // The following code needs cpp26, for views::concat
 
-        // auto free_range = std::views::iota(std::max(range_start, int64_t{0}), std::max(range_end, int64_t{0})) |
-        //                   std::views::transform([this](int64_t idx) {
+        // auto free_range = std::views::iota(std::max(range_start, std::int64_t{0}), std::max(range_end,
+        // std::int64_t{0})) |
+        //                   std::views::transform([this](std::int64_t idx) {
         //                       return Entity::from_parts(pending[idx], meta[pending[idx]].generation);
         //                   });
-        // auto new_end   = base - std::min(range_start, int64_t{0});
-        // auto new_start = base - std::min(range_end, int64_t{0});
-        // auto new_range = std::views::iota(new_start, new_end) | std::views::transform([this](int64_t idx) {
-        //                      return Entity::from_index(static_cast<uint32_t>(idx));
+        // auto new_end   = base - std::min(range_start, std::int64_t{0});
+        // auto new_start = base - std::min(range_end, std::int64_t{0});
+        // auto new_range = std::views::iota(new_start, new_end) | std::views::transform([this](std::int64_t idx) {
+        //                      return Entity::from_index(static_cast<std::uint32_t>(idx));
         //                  });
 
         // return std::views::concat(free_range, new_range);
 
-        return std::views::iota(range_start, range_end) | std::views::transform([this, base](int64_t idx) {
+        return std::views::iota(range_start, range_end) | std::views::transform([this, base](std::int64_t idx) {
                    if (idx < 0) {
                        // This entity is newly allocated
-                       return Entity::from_index(static_cast<uint32_t>(base - idx - 1));
+                       return Entity::from_index(static_cast<std::uint32_t>(base - idx - 1));
                    } else {
                        return Entity::from_parts(pending[idx], meta[pending[idx]].generation);
                    }
@@ -109,13 +110,13 @@ struct Entities {
      * @return The reserved entity.
      */
     Entity reserve_entity() const {
-        int64_t n = free_cursor.fetch_sub(1, std::memory_order_relaxed);
+        std::int64_t n = free_cursor.fetch_sub(1, std::memory_order_relaxed);
         if (n > 0) {
             // from free list
-            uint32_t idx = pending[n - 1];
+            std::uint32_t idx = pending[n - 1];
             return Entity::from_parts(idx, meta[idx].generation);
         } else {
-            uint32_t idx = static_cast<uint32_t>(meta.size() - n);
+            std::uint32_t idx = static_cast<std::uint32_t>(meta.size() - n);
             return Entity::from_index(idx);
         }
     }
@@ -148,7 +149,7 @@ struct Entities {
      *
      * @param count
      */
-    void reserve(uint32_t count);
+    void reserve(std::uint32_t count);
 
     /**
      * @brief Returns true if contains the given entity.
@@ -171,7 +172,7 @@ struct Entities {
      * @brief Updates the location of an entity. Must be called when moving the components of the entity around in
      * storage.
      */
-    void set(uint32_t index, EntityLocation location);
+    void set(std::uint32_t index, EntityLocation location);
 
     /**
      * @brief Increments the `generation` of a freed entity by `generations`.
@@ -180,7 +181,7 @@ struct Entities {
      *
      * @return true if successful.
      */
-    bool reserve_generations(uint32_t index, uint32_t generations);
+    bool reserve_generations(std::uint32_t index, std::uint32_t generations);
 
     /**
      * @brief Get the entity with the given index, if it exists. Returns std::nullopt if the index is out of range of
@@ -188,7 +189,7 @@ struct Entities {
      *
      * Note that this function will return currently freed entities.
      */
-    std::optional<Entity> resolve_index(uint32_t index) const;
+    std::optional<Entity> resolve_index(std::uint32_t index) const;
 
     bool needs_flush() const;
 
@@ -202,10 +203,10 @@ struct Entities {
     template <std::invocable<Entity, EntityLocation&> Fn>
     void flush(Fn&& fn) {
         // set cursor to 0 if negative and get new cursor
-        int64_t n = free_cursor.load(std::memory_order_relaxed);
+        std::int64_t n = free_cursor.load(std::memory_order_relaxed);
         if (n < 0) {
             auto old_meta_len = meta.size();
-            auto new_meta_len = old_meta_len + static_cast<size_t>(-n);
+            auto new_meta_len = old_meta_len + static_cast<std::size_t>(-n);
             meta.resize(new_meta_len);
             for (auto&& [index, meta] : std::views::enumerate(meta) | std::views::drop(old_meta_len)) {
                 fn(Entity::from_parts(index, meta.generation), meta.location);
@@ -232,14 +233,14 @@ struct Entities {
      *
      * Does not include entities that have been reserved but not yet allocated.
      */
-    size_t total_count() const { return meta.size(); }
+    std::size_t total_count() const { return meta.size(); }
     /**
      * @brief Count of entities that are used.
      *
      * Including ones that are allocated and reserved but not those that are freed.
      */
-    size_t used_count() const {
-        int64_t size = meta.size();
+    std::size_t used_count() const {
+        std::int64_t size = meta.size();
         return size - free_cursor.load(std::memory_order_relaxed);
     }
     /**
@@ -247,13 +248,14 @@ struct Entities {
      *
      * This is the value that `total_count()` would return if `flush()` were called right now.
      */
-    size_t total_prospective_count() const {
-        return meta.size() + static_cast<size_t>(-std::min(free_cursor.load(std::memory_order_relaxed), int64_t{0}));
+    std::size_t total_prospective_count() const {
+        return meta.size() +
+               static_cast<std::size_t>(-std::min(free_cursor.load(std::memory_order_relaxed), std::int64_t{0}));
     }
     /**
      * @brief Count of currently allocated entities.
      */
-    size_t size() const { return meta.size() - pending.size(); }
+    std::size_t size() const { return meta.size() - pending.size(); }
     /**
      * @brief Checks if any entity is currently active.
      */
@@ -261,9 +263,7 @@ struct Entities {
 };
 }  // namespace core
 
-export template <>
-struct ::std::hash<::core::Entity> {
-    size_t operator()(::core::Entity e) const {
-        return std::hash<uint64_t>()(static_cast<uint64_t>(e.generation) << 32 | e.index);
-    }
+template <>
+struct std::hash<::core::Entity> {
+    std::size_t operator()(::core::Entity e) const { return std::hash<std::uint64_t>()(e.uid); }
 };

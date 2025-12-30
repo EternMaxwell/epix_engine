@@ -1,8 +1,7 @@
 ﻿module;
 
-#include <cstdint>
+#include <cstddef>
 #include <tuple>
-#include <type_traits>
 
 export module epix.traits:function;
 

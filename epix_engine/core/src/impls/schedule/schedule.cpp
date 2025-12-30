@@ -1,20 +1,20 @@
-﻿#include <spdlog/spdlog.h>
+﻿module;
 
-#include <exception>
+#include <spdlog/spdlog.h>
+
+#include <algorithm>
 #include <expected>
-#include <format>
 #include <functional>
 #include <ranges>
-#include <thread>
 #include <variant>
+#include <vector>
 
-#include "epix/core/schedule/schedule.hpp"
-#include "epix/core/schedule/system_dispatcher.hpp"
-#include "epix/core/system/param.hpp"
-#include "epix/core/system/system.hpp"
+module epix.core;
 
-namespace epix::core::schedule {
+import :schedule;
+import :labels;
 
+namespace core {
 void Schedule::add_config(SetConfig config, bool accept_system) {
     // create node
     if (config.label) {
@@ -183,11 +183,10 @@ std::expected<void, SchedulePrepareError> Schedule::prepare(bool check_error) {
     }
     // check if any nodes have parents with dependencies
     {
-        std::vector<storage::bit_vector> reachable_parents(schedule_cache.nodes.size(),
-                                                           storage::bit_vector(schedule_cache.nodes.size()));
-        std::vector<storage::bit_vector> reachable_dependencies(schedule_cache.nodes.size(),
-                                                                storage::bit_vector(schedule_cache.nodes.size()));
-        storage::bit_vector visited(schedule_cache.nodes.size());
+        std::vector<bit_vector> reachable_parents(schedule_cache.nodes.size(), bit_vector(schedule_cache.nodes.size()));
+        std::vector<bit_vector> reachable_dependencies(schedule_cache.nodes.size(),
+                                                       bit_vector(schedule_cache.nodes.size()));
+        bit_vector visited(schedule_cache.nodes.size());
         std::function<void(size_t)> dfs_parents = [&](size_t index) {
             if (visited.contains(index)) return;
             visited.set(index);
@@ -293,13 +292,13 @@ void Schedule::execute(SystemDispatcher& dispatcher, ExecuteConfig config) {
     ExecutionState exec_state{
         .running_count       = 0,
         .remaining_count     = cache->nodes.size(),
-        .ready_nodes         = storage::bit_vector(cache->nodes.size()),
-        .finished_nodes      = storage::bit_vector(cache->nodes.size()),
-        .entered_nodes       = storage::bit_vector(cache->nodes.size()),
-        .dependencies        = std::vector<storage::bit_vector>(cache->nodes.size()),
-        .children            = std::vector<storage::bit_vector>(cache->nodes.size()),
-        .condition_met_nodes = storage::bit_vector(cache->nodes.size(), true),  // default all met
-        .untest_conditions   = std::vector<storage::bit_vector>(cache->nodes.size()),
+        .ready_nodes         = bit_vector(cache->nodes.size()),
+        .finished_nodes      = bit_vector(cache->nodes.size()),
+        .entered_nodes       = bit_vector(cache->nodes.size()),
+        .dependencies        = std::vector<bit_vector>(cache->nodes.size()),
+        .children            = std::vector<bit_vector>(cache->nodes.size()),
+        .condition_met_nodes = bit_vector(cache->nodes.size(), true),  // default all met
+        .untest_conditions   = std::vector<bit_vector>(cache->nodes.size()),
         .wait_count          = std::vector<size_t>(cache->nodes.size(), 0),
         .child_count         = std::vector<size_t>(cache->nodes.size(), 0),
     };
@@ -329,14 +328,14 @@ void Schedule::execute(SystemDispatcher& dispatcher, ExecuteConfig config) {
         auto dispatch_config    = DispatchConfig{
                .on_finish = [&, index]() { exec_state.finished_queue.push(index); },
                .on_error =
-                [&, index](const system::RunSystemError& error) {
-                    if (std::holds_alternative<system::ValidateParamError>(error)) {
-                        auto&& param_error = std::get<system::ValidateParamError>(error);
+                [&, index](const RunSystemError& error) {
+                    if (std::holds_alternative<ValidateParamError>(error)) {
+                        auto&& param_error = std::get<ValidateParamError>(error);
                         spdlog::error("[schedule] parameter validation error at system '{}', type: '{}', msg: {}",
                                          cache->nodes[index].node->system->name(), param_error.param_type.short_name(),
                                          param_error.message);
-                    } else if (std::holds_alternative<system::SystemException>(error)) {
-                        auto&& expection = std::get<system::SystemException>(error);
+                    } else if (std::holds_alternative<SystemException>(error)) {
+                        auto&& expection = std::get<SystemException>(error);
                         try {
                             std::rethrow_exception(expection.exception);
                         } catch (const std::exception& e) {
@@ -554,4 +553,4 @@ void Schedule::apply_deferred(World& world) {
     }
 }
 
-}  // namespace epix::core::schedule
+}  // namespace core

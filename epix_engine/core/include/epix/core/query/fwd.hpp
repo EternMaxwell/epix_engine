@@ -25,9 +25,9 @@ template <typename Q>
 concept valid_world_query = requires(Q q) {
     typename Q::Fetch;
     typename Q::State;
-    std::copyable<typename Q::Fetch>;
-    std::movable<typename Q::State>;
-    std::copyable<typename Q::State>;
+    requires std::copyable<typename Q::Fetch>;
+    requires std::movable<typename Q::State>;
+    requires std::copyable<typename Q::State>;
     requires requires(const Q::State& state, Q::State& state_mut, Q::Fetch& fetch, World& world, Tick tick,
                       const archetype::Archetype& archetype, storage::Table& table, const FilteredAccess& access,
                       FilteredAccess& access_mut, const Components& components,
@@ -52,8 +52,8 @@ concept valid_query_data =
         { T::readonly } -> std::convertible_to<bool>;
         { T::fetch(fetch, entity, row) } -> std::same_as<typename T::Item>;
         // State of its WorldQuery type should be convertible to its ReadOnly's WorldQuery State
-        std::constructible_from<const typename WorldQuery<typename T::ReadOnly>::State&,
-                                typename WorldQuery<typename query_type<T>::type>::State>;
+        requires std::constructible_from<const typename WorldQuery<typename T::ReadOnly>::State&,
+                                         typename WorldQuery<typename query_type<T>::type>::State>;
     };
 
 template <typename T>

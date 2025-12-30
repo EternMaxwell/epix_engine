@@ -53,9 +53,9 @@ enum class ComponentStatus {
 };
 template <typename V, typename T>
 concept is_view_with_value_type = requires {
-    std::ranges::view<V>;
-    std::ranges::sized_range<V>;
-    std::same_as<std::ranges::range_value_t<V>, T>;
+    requires std::ranges::view<V>;
+    requires std::ranges::sized_range<V>;
+    requires std::same_as<std::ranges::range_value_t<V>, T>;
 };
 struct ArchetypeSwapRemoveResult {
     std::optional<Entity> swapped_entity;  // entity that was swapped in, if any

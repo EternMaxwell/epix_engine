@@ -1,17 +1,17 @@
 ﻿module;
 
 #include <cstddef>
-#include <cstdint>
+#include <utility>
 
 module epix.core;
 
 namespace core {
 void CommandQueue::append(CommandQueue& other) {
     assure_size(size_ + other.size_);
-    size_t old_size = size_;
+    std::size_t old_size = size_;
     size_ += other.size_;
     // move commands
-    size_t offset = 0;
+    std::size_t offset = 0;
     for (const CommandMeta* meta : other.metas_) {
         meta->move(static_cast<std::byte*>(commands_) + old_size + offset,
                    static_cast<std::byte*>(other.commands_) + offset);
@@ -33,7 +33,7 @@ void CommandQueue::append(CommandQueue& other) {
 }
 
 void CommandQueue::apply(World& world) {
-    size_t offset = 0;
+    std::size_t offset = 0;
     for (const CommandMeta* meta : metas_) {
         meta->apply(static_cast<std::byte*>(commands_) + offset, world);
         meta->destructor(static_cast<std::byte*>(commands_) + offset);
@@ -43,10 +43,10 @@ void CommandQueue::apply(World& world) {
     metas_.clear();
 }
 
-void CommandQueue::reallocate(size_t new_capacity) {
+void CommandQueue::reallocate(std::size_t new_capacity) {
     void* new_commands = operator new(new_capacity);
     if (commands_) {
-        size_t offset = 0;
+        std::size_t offset = 0;
         for (const CommandMeta* meta : metas_) {
             meta->move(static_cast<char*>(new_commands) + offset, static_cast<char*>(commands_) + offset);
             offset += meta->size;
@@ -63,9 +63,9 @@ void CommandQueue::reallocate(size_t new_capacity) {
     capacity_ = new_capacity;
 }
 
-void CommandQueue::assure_size(size_t new_size) {
+void CommandQueue::assure_size(std::size_t new_size) {
     if (new_size > capacity_) {
-        size_t new_capacity = capacity_ == 0 ? 64 : capacity_;
+        std::size_t new_capacity = capacity_ == 0 ? 64 : capacity_;
         while (new_capacity < new_size) {
             new_capacity *= 2;
         }

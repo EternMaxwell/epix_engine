@@ -1,10 +1,15 @@
 ﻿module;
 
+#include <algorithm>
 #include <cassert>
-#include <memory>
+#include <cstring>
+#include <limits>
 #include <memory_resource>
 #include <ranges>
+#include <span>
 #include <stdexcept>
+#include <type_traits>
+#include <utility>
 
 export module epix.core:storage.untyped_vector;
 
@@ -182,15 +187,14 @@ class untyped_vector {
     // Ranges-based iterator views over raw element pointers.
     // Non-const: yields void* to each element.
     auto iter() {
-        using namespace std::views;
-        return iota(size_t{0}, size()) |
-               transform([this](size_t i) { return static_cast<void*>(static_cast<char*>(data_) + i * desc_->size); });
+        return std::views::iota(size_t{0}, size()) | std::views::transform([this](size_t i) {
+                   return static_cast<void*>(static_cast<char*>(data_) + i * desc_->size);
+               });
     }
 
     // Const: yields const void* to each element.
     auto iter() const {
-        using namespace std::views;
-        return iota(size_t{0}, size()) | transform([this](size_t i) {
+        return std::views::iota(size_t{0}, size()) | std::views::transform([this](size_t i) {
                    return static_cast<const void*>(static_cast<const char*>(data_) + i * desc_->size);
                });
     }

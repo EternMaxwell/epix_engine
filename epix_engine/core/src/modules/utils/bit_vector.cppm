@@ -1,7 +1,9 @@
 ﻿module;
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <ranges>
 #include <vector>
 
@@ -10,7 +12,7 @@ export module epix.core:utils.bit_vector;
 namespace core {
 export class bit_vector {
    public:
-    using size_type                      = size_t;
+    using size_type                      = std::size_t;
     using word_type                      = std::uint64_t;
     static constexpr size_type word_bits = sizeof(word_type) * 8;
     static constexpr size_type npos      = static_cast<size_type>(-1);
@@ -259,11 +261,11 @@ export class bit_vector {
 
     // lazy ranges for indices of set/unset bits (views referencing *this)
     auto iter_ones() const noexcept {
-        return std::views::iota((size_type)0, bits_) | std::views::filter([this](size_type i) { return test(i); });
+        return std::views::iota((size_type)0, bits_) | std::views::filter(index_predicate<false>(this));
     }
 
     auto iter_zeros() const noexcept {
-        return std::views::iota((size_type)0, bits_) | std::views::filter([this](size_type i) { return !test(i); });
+        return std::views::iota((size_type)0, bits_) | std::views::filter(index_predicate<true>(this));
     }
 
     void reset(size_type pos) noexcept {
@@ -429,6 +431,13 @@ export class bit_vector {
     size_type bits_ = 0;
     std::vector<word_type> words_;
 
+    template <bool flip = false>
+    struct index_predicate {
+        const bit_vector* bv;
+        explicit index_predicate(const bit_vector* b) noexcept : bv(b) {}
+        bool operator()(std::size_t i) const noexcept { return bv->test(i) != flip; }
+    };
+
     static constexpr size_type words_for(size_type bits) noexcept {
         return bits == 0 ? 0 : ((bits + word_bits - 1) / word_bits);
     }
@@ -458,14 +467,14 @@ export class bit_vector {
 };
 }  // namespace core
 
-export template <>
-struct ::std::hash<::core::bit_vector> {
-    size_t operator()(::core::bit_vector const& bv) const noexcept {
+template <>
+struct std::hash<::core::bit_vector> {
+    std::size_t operator()(::core::bit_vector const& bv) const noexcept {
         using bv_t        = ::core::bit_vector;
         const auto& words = bv.words();
-        size_t h          = std::ranges::fold_left(words, bv.size(), [](size_t acc, auto w) noexcept {
+        std::size_t h     = std::ranges::fold_left(words, bv.size(), [](std::size_t acc, auto w) noexcept {
             return (acc * 0x9e3779b97f4a7c15ULL) ^
-                   static_cast<size_t>(w + 0x9e3779b97f4a7c15ULL + (acc << 6) + (acc >> 2));
+                   static_cast<std::size_t>(w + 0x9e3779b97f4a7c15ULL + (acc << 6) + (acc >> 2));
         });
         return h;
     }

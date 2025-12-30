@@ -1,9 +1,9 @@
 ﻿module;
 
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <shared_mutex>
-#include <string_view>
 #include <type_traits>
 #include <unordered_map>
 #include <vector>
@@ -37,14 +37,17 @@ struct TypeInfo {
     StorageType storage_type;
 
     template <typename T>
-    static const TypeInfo* get_info();
+    static const TypeInfo* get_info() {
+        static TypeInfo info{meta::type_id<T>(), storage_for<T>()};
+        return &info;
+    }
 };
 export struct TypeRegistry {
    private:
     mutable std::vector<const TypeInfo*> typeInfos;
-    mutable size_t nextId = 0;
-    mutable std::unordered_map<const char*, size_t> types;
-    mutable std::unordered_map<std::string_view, size_t> typeViews;
+    mutable std::size_t nextId = 0;
+    mutable std::unordered_map<const char*, std::size_t> types;
+    mutable std::unordered_map<std::string_view, std::size_t> typeViews;
 
     // Use a shared mutex for multiple concurrent readers and exclusive writers
     mutable std::shared_mutex mutex_;
@@ -70,7 +73,7 @@ export struct TypeRegistry {
             return it->second;
         }
 
-        size_t id;
+        std::size_t id;
         if (auto itv = typeViews.find(index.name()); itv != typeViews.end()) {
             types[index.name().data()] = itv->second;
             id                         = itv->second;
@@ -93,18 +96,18 @@ export struct TypeRegistry {
      * @brief Get TypeInfo by type id.
      * Safety: The type id is get by this registry, so it must have been registered.
      */
-    const meta::type_index type_index(size_t type_id) const {
+    const meta::type_index type_index(std::size_t type_id) const {
         std::shared_lock<std::shared_mutex> lock(mutex_);
         const TypeInfo* info = typeInfos[type_id];
         return info->type_index;
     }
-    const StorageType storage_type(size_t type_id) const {
+    const StorageType storage_type(std::size_t type_id) const {
         std::shared_lock<std::shared_mutex> lock(mutex_);
         const TypeInfo* info = typeInfos[type_id];
         return info->storage_type;
     }
 
-    size_t count() const {
+    std::size_t count() const {
         std::shared_lock<std::shared_mutex> lock(mutex_);
         return typeInfos.size();
     }

@@ -4,6 +4,7 @@
 #include <format>
 #include <ranges>
 #include <string>
+#include <vector>
 
 export module epix.core:query.access;
 

@@ -3,6 +3,7 @@
 #include <cassert>
 #include <optional>
 #include <ranges>
+#include <vector>
 
 module epix.core;
 

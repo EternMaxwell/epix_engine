@@ -1,0 +1,151 @@
+﻿module;
+
+#include <algorithm>
+#include <concepts>
+#include <cstddef>
+#include <cstdint>
+#include <functional>
+#include <iostream>
+#include <iterator>
+#include <limits>
+#include <map>
+#include <memory>
+#include <optional>
+#include <set>
+#include <span>
+#include <string>
+#include <tuple>
+#include <type_traits>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <variant>
+#include <vector>
+
+
+export module epix.core:system.input;
+
+namespace core {
+template <typename T>
+struct SystemInput;
+
+template <typename T>
+concept system_input = requires {
+    // The parameter type that is used as input in system.(particularly first argument of function systems)
+    typename SystemInput<T>::Param;
+    typename SystemInput<T>::Input;
+    {
+        SystemInput<T>::wrap_input(std::declval<typename SystemInput<T>::Input>())
+    } -> std::same_as<typename SystemInput<T>::Param>;
+};
+
+export template <typename T>
+    requires std::movable<T> || std::copyable<T>
+struct In {
+   public:
+    In() = default;
+    In(const T& value)
+        requires std::copyable<T>
+        : value(value) {}
+    In(T&& value)
+        requires std::movable<T>
+        : value(std::move(value)) {}
+
+    const T& get() const { return value; }
+    T& get() { return value; }  // since this does not consider change detection, no explicit `mut` is needed.
+    const T* operator->() const { return std::addressof(value); }
+    T* operator->() { return std::addressof(value); }
+    const T& operator*() const { return value; }
+    T& operator*() { return value; }
+    operator const T&() const { return value; }
+    operator T&() { return value; }
+
+   private:
+    T value;
+};
+export template <std::copyable T>
+struct InCopy : public In<T> {
+   public:
+    using In<T>::In;
+};
+export template <std::movable T>
+struct InMove : public In<T> {
+   public:
+    using In<T>::In;
+};
+export template <typename T>
+struct InRef {
+   public:
+    InRef(const T& value) : value(std::addressof(value)) {}
+
+    const T& get() const { return *value; }
+    const T* operator->() const { return value; }
+    const T& operator*() const { return *value; }
+    operator const T&() const { return *value; }
+
+   private:
+    const T* value;
+};
+export template <typename T>
+struct InMut {
+   public:
+    InMut(T& value) : value(std::addressof(value)) {}
+
+    T& get() { return *value; }
+    T* operator->() { return value; }
+    T& operator*() { return *value; }
+    operator T&() { return *value; }
+    const T& get() const { return *value; }
+    const T* operator->() const { return value; }
+    const T& operator*() const { return *value; }
+    operator const T&() const { return *value; }
+
+   private:
+    T* value;
+};
+
+template <typename T>
+    requires std::movable<T> || std::copyable<T>
+struct SystemInput<In<T>> {
+    using Param = In<T>;
+    using Input = T;
+    static Param wrap_input(Input input) { return Param(std::move(input)); }
+};
+template <typename T>
+    requires std::copyable<T>
+struct SystemInput<InCopy<T>> {
+    using Param = InCopy<T>;
+    using Input = const T&;
+    static Param wrap_input(Input input) { return Param(input); }
+};
+template <typename T>
+    requires std::movable<T>
+struct SystemInput<InMove<T>> {
+    using Param = InMove<T>;
+    using Input = T&&;
+    static Param wrap_input(Input input) { return Param(std::move(input)); }
+};
+template <typename T>
+struct SystemInput<InRef<T>> {
+    using Param = InRef<T>;
+    using Input = const T&;
+    static Param wrap_input(Input input) { return Param(input); }
+};
+template <typename T>
+struct SystemInput<InMut<T>> {
+    using Param = InMut<T>;
+    using Input = T&;
+    static Param wrap_input(Input input) { return Param(input); }
+};
+
+template <system_input... Ts>
+struct SystemInput<std::tuple<Ts...>> {
+    using Param = std::tuple<typename SystemInput<Ts>::Param...>;
+    using Input = std::tuple<typename SystemInput<Ts>::Input...>;
+    static Param wrap_input(Input input) {
+        return []<std::size_t... Is>(std::index_sequence<Is...>, Input input) {
+            return Param(SystemInput<Ts>::wrap_input(std::get<Is>(input))...);
+        }(std::index_sequence_for<Ts...>{}, std::move(input));
+    }
+};
+}  // namespace core

@@ -1,9 +1,11 @@
 ﻿module;
 
 #include <algorithm>
+#include <functional>
 #include <optional>
 #include <ranges>
 #include <stdexcept>
+#include <vector>
 
 export module epix.core:query.state;
 

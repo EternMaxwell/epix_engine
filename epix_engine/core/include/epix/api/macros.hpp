@@ -21,6 +21,7 @@
 
 #include <concepts>
 #include <cstdint>
+#include <string_view>
 #include <utility>
 
 namespace epix::core::wrapper {

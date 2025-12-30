@@ -1,10 +1,11 @@
 ﻿module;
 
+#include <concepts>
+#include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <ranges>
-#include <span>
 #include <unordered_map>
-#include <utility>
 #include <vector>
 
 export module epix.core:archetype;
@@ -20,20 +21,20 @@ struct ArchetypeEntity {
 };
 struct ArchetypeRecord {
     // index of the component in the archetype's table
-    std::optional<size_t> table_dense;
+    std::optional<std::size_t> table_dense;
 };
 struct ArchetypeComponents {
     std::vector<TypeId> table_components;
     std::vector<TypeId> sparse_components;
 };
 struct ArchetypeComponentsHash {
-    size_t operator()(const ArchetypeComponents& ac) const {
-        size_t hash = 0;
+    std::size_t operator()(const ArchetypeComponents& ac) const {
+        std::size_t hash = 0;
         for (auto type_id : ac.table_components) {
-            hash ^= std::hash<uint32_t>()(type_id) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
+            hash ^= std::hash<std::uint32_t>()(type_id) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
         }
         for (auto type_id : ac.sparse_components) {
-            hash ^= std::hash<uint32_t>()(type_id) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
+            hash ^= std::hash<std::uint32_t>()(type_id) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
         }
         return hash;
     }
@@ -44,7 +45,7 @@ struct ArchetypeComponentsEqual {
     }
 };
 using ComponentIndex =
-    std::unordered_map<TypeId, std::unordered_map<ArchetypeId, ArchetypeRecord, std::hash<uint32_t>>>;
+    std::unordered_map<TypeId, std::unordered_map<ArchetypeId, ArchetypeRecord, std::hash<std::uint32_t>>>;
 
 enum class ComponentStatus {
     Added,
@@ -52,9 +53,9 @@ enum class ComponentStatus {
 };
 template <typename V, typename T>
 concept is_view_with_value_type = requires {
-    std::ranges::view<V>;
-    std::ranges::sized_range<V>;
-    std::same_as<std::ranges::range_value_t<V>, T>;
+    requires std::ranges::view<V>;
+    requires std::ranges::sized_range<V>;
+    requires std::same_as<std::ranges::range_value_t<V>, T>;
 };
 struct ArchetypeSwapRemoveResult {
     std::optional<Entity> swapped_entity;  // entity that was swapped in, if any
@@ -64,7 +65,7 @@ struct ArchetypeAfterBundleInsert {
    public:
     ArchetypeAfterBundleInsert(ArchetypeId archetype_id,
                                std::vector<TypeId> inserted,
-                               size_t added_len,
+                               std::size_t added_len,
                                std::vector<ComponentStatus> component_statuses,
                                std::vector<RequiredComponentConstructor> required_components)
         : archetype_id(archetype_id),
@@ -85,7 +86,7 @@ struct ArchetypeAfterBundleInsert {
    private:
     std::vector<ComponentStatus> _component_statuses;  // status of each component in the bundle
     std::vector<TypeId> _inserted;  // components that declared by the bundle, including existing components
-    size_t _added_len;              // Added components, including required components
+    std::size_t _added_len;         // Added components, including required components
 
     friend struct ArchetypeEdges;
 };
@@ -113,7 +114,7 @@ struct ArchetypeEdges {
                                              std::vector<RequiredComponentConstructor> required_components,
                                              std::vector<TypeId> added_components,
                                              std::vector<TypeId> existing_components) {
-        size_t added_len = added_components.size();
+        std::size_t added_len = added_components.size();
         added_components.insert_range(added_components.end(), existing_components);
         insert_bundle.insert(bundle_id, archetype_id, std::move(added_components), added_len,
                              std::move(component_status), std::move(required_components));
@@ -147,30 +148,40 @@ struct Archetype {
     ArchetypeId id() const { return _archetype_id; }
     TableId table_id() const { return _table_id; }
     std::span<const ArchetypeEntity> entities() const { return _entities; }
-    size_t size() const { return _entities.size(); }
+    std::size_t size() const { return _entities.size(); }
     bool empty() const { return _entities.empty(); }
     const ArchetypeEdges& edges() const { return _edges; }
     ArchetypeEdges& edges_mut() { return _edges; }
     auto entities_with_location() const {
-        return _entities | std::views::enumerate |
-               std::views::transform([this](auto&& idae) -> std::pair<Entity, EntityLocation> {
-                   auto&& [idx, ae] = idae;
+        return std::views::iota(0u, static_cast<unsigned>(_entities.size())) |
+               std::views::transform([this](unsigned idx) -> std::pair<Entity, EntityLocation> {
+                   const auto& ae = _entities[idx];
                    return std::pair<Entity, EntityLocation>{
-                       ae.entity, EntityLocation{_archetype_id, static_cast<uint32_t>(idx), _table_id, ae.table_idx}};
+                       ae.entity,
+                       EntityLocation{_archetype_id, static_cast<std::uint32_t>(idx), _table_id, ae.table_idx}};
                });
     }
+    struct IsTablePredicate {
+        template <typename Pair>
+        bool operator()(Pair const& pair) const noexcept {
+            return std::get<1>(pair) == StorageType::Table;
+        }
+    };
+    struct IsSparsePredicate {
+        template <typename Pair>
+        bool operator()(Pair const& pair) const noexcept {
+            return std::get<1>(pair) == StorageType::SparseSet;
+        }
+    };
+
     auto table_components() const {
-        return _components.iter() |
-               std::views::filter([](auto&& pair) { return std::get<1>(pair) == StorageType::Table; }) |
-               std::views::keys;
+        return _components.iter() | std::views::filter(IsTablePredicate{}) | std::views::keys;
     }
     auto sparse_components() const {
-        return _components.iter() |
-               std::views::filter([](auto&& pair) { return std::get<1>(pair) == StorageType::SparseSet; }) |
-               std::views::keys;
+        return _components.iter() | std::views::filter(IsSparsePredicate{}) | std::views::keys;
     }
     auto components() const { return _components.indices(); }
-    size_t component_count() const { return _components.size(); }
+    std::size_t component_count() const { return _components.size(); }
     TableRow entity_table_row(ArchetypeRow arch_idx) const { return _entities[arch_idx].table_idx; }
     void set_entity_table_row(ArchetypeRow arch_idx, TableRow table_idx) { _entities[arch_idx].table_idx = table_idx; }
     EntityLocation allocate(Entity entity, TableRow table_idx) {
@@ -178,7 +189,7 @@ struct Archetype {
         _entities.push_back({entity, table_idx});
         return {this->_archetype_id, arch_idx, this->_table_id, table_idx};
     }
-    void reserve(size_t new_cap) { _entities.reserve(new_cap); }
+    void reserve(std::size_t new_cap) { _entities.reserve(new_cap); }
     ArchetypeSwapRemoveResult swap_remove(ArchetypeRow arch_idx);
     bool contains(TypeId type_id) const { return _components.contains(type_id); }
     std::optional<StorageType> get_storage_type(TypeId type_id) const {
@@ -207,7 +218,7 @@ struct Archetypes {
         by_components.insert({ArchetypeComponents{{}, {}}, 0});
     }
 
-    size_t size() const { return archetypes.size(); }
+    std::size_t size() const { return archetypes.size(); }
 
     const Archetype& get_empty() const { return archetypes[0]; }
     Archetype& get_empty_mut() { return archetypes[0]; }

@@ -1,6 +1,7 @@
 ﻿module;
 
 #include <cassert>
+#include <concepts>
 #include <functional>
 #include <optional>
 #include <ranges>

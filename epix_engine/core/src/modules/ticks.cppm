@@ -1,7 +1,27 @@
 ﻿module;
 
+#include <algorithm>
 #include <concepts>
+#include <cstddef>
+#include <cstdint>
+#include <functional>
+#include <iostream>
+#include <iterator>
+#include <limits>
+#include <map>
+#include <memory>
+#include <optional>
+#include <set>
+#include <span>
+#include <string>
+#include <tuple>
 #include <type_traits>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <variant>
+#include <vector>
+
 
 export module epix.core:ticks;
 
@@ -58,105 +78,107 @@ struct TicksMut {
     TicksMut(Tick* added, Tick* modified, Tick last_run, Tick this_run)
         : added(added), modified(modified), last_run(last_run), this_run(this_run) {}
 };
-template <typename T>
+export template <typename T>
 struct copy_ref : public std::false_type {};
 template <typename T>
 concept refable = !std::is_reference_v<T> && !std::is_const_v<T>;
-export template <refable T>
-struct Ref;
-export template <refable T>
-    requires(!copy_ref<T>::value)
-struct Ref<T> {
-   private:
-    const T* value;
-    Ticks ticks;
+export {
+    template <refable T>
+    struct Ref;
+    template <refable T>
+        requires(!copy_ref<T>::value)
+    struct Ref<T> {
+       private:
+        const T* value;
+        Ticks ticks;
 
-   public:
-    Ref(const T* value, Ticks ticks) : value(value), ticks(ticks) {}
+       public:
+        Ref(const T* value, Ticks ticks) : value(value), ticks(ticks) {}
 
-    const T* ptr() const { return value; }
-    const T& get() const { return *value; }
-    const T* operator->() const { return value; }
-    const T& operator*() const { return *value; }
-    operator const T&() const { return *value; }
-    bool is_added() const { return ticks.is_added(); }
-    bool is_modified() const { return ticks.is_modified(); }
-    Tick last_modified() const { return ticks.last_modified(); }
-    Tick added_tick() const { return ticks.added_tick(); }
-};
-export template <refable T>
-    requires(copy_ref<T>::value && std::copy_constructible<T>)
-struct Ref<T> {
-   private:
-    T value;
-    Ticks ticks;
+        const T* ptr() const { return value; }
+        const T& get() const { return *value; }
+        const T* operator->() const { return value; }
+        const T& operator*() const { return *value; }
+        operator const T&() const { return *value; }
+        bool is_added() const { return ticks.is_added(); }
+        bool is_modified() const { return ticks.is_modified(); }
+        Tick last_modified() const { return ticks.last_modified(); }
+        Tick added_tick() const { return ticks.added_tick(); }
+    };
+    template <refable T>
+        requires(copy_ref<T>::value && std::copy_constructible<T>)
+    struct Ref<T> {
+       private:
+        T value;
+        Ticks ticks;
 
-   public:
-    Ref(const T* value, Ticks ticks) : value(*value), ticks(ticks) {}
+       public:
+        Ref(const T* value, Ticks ticks) : value(*value), ticks(ticks) {}
 
-    const T* ptr() const { return std::addressof(value); }
-    T* ptr_mut() { return std::addressof(value); }
-    const T& get() const { return value; }
-    T& get_mut() { return value; }
-    const T* operator->() const { return std::addressof(value); }
-    T* operator->() { return std::addressof(value); }
-    const T& operator*() const { return value; }
-    T& operator*() { return value; }
-    operator const T&() const { return value; }
-    operator T&() { return value; }
-    bool is_added() const { return ticks.is_added(); }
-    bool is_modified() const { return ticks.is_modified(); }
-    Tick last_modified() const { return ticks.last_modified(); }
-    Tick added_tick() const { return ticks.added_tick(); }
-};
-export template <refable T>
-struct Mut {
-   private:
-    T* value;
-    TicksMut ticks;
+        const T* ptr() const { return std::addressof(value); }
+        T* ptr_mut() { return std::addressof(value); }
+        const T& get() const { return value; }
+        T& get_mut() { return value; }
+        const T* operator->() const { return std::addressof(value); }
+        T* operator->() { return std::addressof(value); }
+        const T& operator*() const { return value; }
+        T& operator*() { return value; }
+        operator const T&() const { return value; }
+        operator T&() { return value; }
+        bool is_added() const { return ticks.is_added(); }
+        bool is_modified() const { return ticks.is_modified(); }
+        Tick last_modified() const { return ticks.last_modified(); }
+        Tick added_tick() const { return ticks.added_tick(); }
+    };
+    template <refable T>
+    struct Mut {
+       private:
+        T* value;
+        TicksMut ticks;
 
-   public:
-    Mut(T* value, TicksMut ticks) : value(value), ticks(ticks) {}
+       public:
+        Mut(T* value, TicksMut ticks) : value(value), ticks(ticks) {}
 
-    const T* ptr() const { return value; }
-    T* ptr_mut() {
-        ticks.set_modified();
-        return value;
-    }
-    const T& get() const { return *value; }
-    T& get_mut() {
-        ticks.set_modified();
-        return *value;
-    }
-    const T* operator->() const { return value; }
-    T* operator->() {
-        ticks.set_modified();
-        return value;
-    }
-    const T& operator*() const { return *value; }
-    T& operator*() {
-        ticks.set_modified();
-        return *value;
-    }
-    operator T&() {
-        ticks.set_modified();
-        return *value;
-    }
-    operator const T&() const { return *value; }
-    bool is_added() const { return ticks.is_added(); }
-    bool is_modified() const { return ticks.is_modified(); }
-    Tick last_modified() const { return ticks.last_modified(); }
-    Tick added_tick() const { return ticks.added_tick(); }
-};
+        const T* ptr() const { return value; }
+        T* ptr_mut() {
+            ticks.set_modified();
+            return value;
+        }
+        const T& get() const { return *value; }
+        T& get_mut() {
+            ticks.set_modified();
+            return *value;
+        }
+        const T* operator->() const { return value; }
+        T* operator->() {
+            ticks.set_modified();
+            return value;
+        }
+        const T& operator*() const { return *value; }
+        T& operator*() {
+            ticks.set_modified();
+            return *value;
+        }
+        operator T&() {
+            ticks.set_modified();
+            return *value;
+        }
+        operator const T&() const { return *value; }
+        bool is_added() const { return ticks.is_added(); }
+        bool is_modified() const { return ticks.is_modified(); }
+        Tick last_modified() const { return ticks.last_modified(); }
+        Tick added_tick() const { return ticks.added_tick(); }
+    };
 
-export template <refable T>
-struct Res : public Ref<T> {
-   public:
-    using Ref<T>::Ref;
-};
-export template <refable T>
-struct ResMut : public Mut<T> {
-   public:
-    using Mut<T>::Mut;
-};
+    template <refable T>
+    struct Res : public Ref<T> {
+       public:
+        using Ref<T>::Ref;
+    };
+    template <refable T>
+    struct ResMut : public Mut<T> {
+       public:
+        using Mut<T>::Mut;
+    };
+}
 }  // namespace core

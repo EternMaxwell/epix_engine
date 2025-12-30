@@ -1,5 +1,6 @@
 ﻿module;
 
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -23,14 +24,14 @@ struct ComponentSparseSet {
     std::vector<std::uint32_t> entities;               // from dense index to entity index
     SparseArray<std::uint32_t, std::uint32_t> sparse;  // from entity index to dense index
    public:
-    ComponentSparseSet(const ::meta::type_info& desc, size_t reserve_cnt = 0) : dense(desc, reserve_cnt) {}
+    ComponentSparseSet(const ::meta::type_info& desc, std::size_t reserve_cnt = 0) : dense(desc, reserve_cnt) {}
 
     void clear(this ComponentSparseSet& self) {
         self.dense.clear();
         self.entities.clear();
         self.sparse.clear();
     }
-    size_t size(this const ComponentSparseSet& self) { return self.dense.len(); }
+    std::size_t size(this const ComponentSparseSet& self) { return self.dense.len(); }
     bool empty(this const ComponentSparseSet& self) { return self.size() == 0; }
 
     const ::meta::type_info& type_info(this const ComponentSparseSet& self) { return self.dense.type_info(); }
@@ -126,12 +127,12 @@ struct ComponentSparseSet {
 template <typename I, typename V>
 struct SparseSet {
    private:
-    std::vector<V> _dense;           // actual data
-    std::vector<I> _indices;         // from dense index to index
-    SparseArray<I, size_t> _sparse;  // from index to dense index
+    std::vector<V> _dense;                // actual data
+    std::vector<I> _indices;              // from dense index to index
+    SparseArray<I, std::size_t> _sparse;  // from index to dense index
 
    public:
-    SparseSet(size_t reserve_cnt = 0) {
+    SparseSet(std::size_t reserve_cnt = 0) {
         if (reserve_cnt > 0) {
             _dense.reserve(reserve_cnt);
             _indices.reserve(reserve_cnt);
@@ -143,9 +144,9 @@ struct SparseSet {
         self._indices.clear();
         self._sparse.clear();
     }
-    size_t size(this const SparseSet& self) { return self._dense.size(); }
+    std::size_t size(this const SparseSet& self) { return self._dense.size(); }
     bool empty(this const SparseSet& self) { return self.size() == 0; }
-    void reserve(this SparseSet& self, size_t new_cap) {
+    void reserve(this SparseSet& self, std::size_t new_cap) {
         self._dense.reserve(new_cap);
         self._indices.reserve(new_cap);
     }
@@ -155,7 +156,7 @@ struct SparseSet {
         requires std::constructible_from<V, Args...>
     {
         self._sparse.get(index)
-            .and_then([&](size_t dense_index) -> std::optional<bool> {
+            .and_then([&](std::size_t dense_index) -> std::optional<bool> {
                 self._dense[dense_index] = V(std::forward<Args>(args)...);
                 return true;
             })
@@ -171,19 +172,20 @@ struct SparseSet {
     bool contains(this const SparseSet& self, I index) { return self._sparse.contains(index); }
     std::optional<std::reference_wrapper<const V>> get(this const SparseSet& self, I index) {
         return self._sparse.get(index).and_then(
-            [&](size_t dense_index) -> std::optional<std::reference_wrapper<const V>> {
+            [&](std::size_t dense_index) -> std::optional<std::reference_wrapper<const V>> {
                 return std::cref(self._dense[dense_index]);
             });
     }
     std::optional<std::reference_wrapper<V>> get_mut(this SparseSet& self, I index) {
-        return self._sparse.get(index).and_then([&](size_t dense_index) -> std::optional<std::reference_wrapper<V>> {
-            return std::ref(self._dense[dense_index]);
-        });
+        return self._sparse.get(index).and_then(
+            [&](std::size_t dense_index) -> std::optional<std::reference_wrapper<V>> {
+                return std::ref(self._dense[dense_index]);
+            });
     }
 
     bool remove(this SparseSet& self, I index) {
         return self._sparse.remove(index)
-            .and_then([&](size_t dense_index) -> std::optional<bool> {
+            .and_then([&](std::size_t dense_index) -> std::optional<bool> {
                 // Swap remove from dense array and indices array
                 std::swap(self._dense[dense_index], self._dense.back());
                 std::swap(self._indices[dense_index], self._indices.back());
@@ -210,31 +212,32 @@ struct SparseSet {
 struct SparseSets {
    private:
     std::shared_ptr<TypeRegistry> registry;
-    SparseSet<size_t, ComponentSparseSet> sets;
+    SparseSet<std::size_t, ComponentSparseSet> sets;
 
    public:
     SparseSets(const std::shared_ptr<TypeRegistry>& registry) : registry(registry) {}
 
-    size_t size(this const SparseSets& self) { return self.sets.size(); }
+    std::size_t size(this const SparseSets& self) { return self.sets.size(); }
     bool empty(this const SparseSets& self) { return self.sets.empty(); }
 
     auto iter(this const SparseSets& self) { return self.sets.iter(); }
     auto iter_mut(this SparseSets& self) { return self.sets.iter_mut(); }
 
-    std::optional<std::reference_wrapper<const ComponentSparseSet>> get(this const SparseSets& self, size_t type_id) {
+    std::optional<std::reference_wrapper<const ComponentSparseSet>> get(this const SparseSets& self,
+                                                                        std::size_t type_id) {
         return self.sets.get(type_id);
     }
-    std::optional<std::reference_wrapper<ComponentSparseSet>> get_mut(this SparseSets& self, size_t type_id) {
+    std::optional<std::reference_wrapper<ComponentSparseSet>> get_mut(this SparseSets& self, std::size_t type_id) {
         return self.sets.get_mut(type_id);
     }
-    void insert(this SparseSets& self, size_t type_id, ComponentSparseSet set) {
+    void insert(this SparseSets& self, std::size_t type_id, ComponentSparseSet set) {
         self.sets.emplace(type_id, std::move(set));
     }
-    void insert(this SparseSets& self, size_t type_id) {
+    void insert(this SparseSets& self, std::size_t type_id) {
         self.sets.emplace(type_id, ComponentSparseSet(self.registry->type_index(type_id).type_info()));
     }
 
-    ComponentSparseSet& get_or_insert(this SparseSets& self, size_t type_id) {
+    ComponentSparseSet& get_or_insert(this SparseSets& self, std::size_t type_id) {
         // This function will not throw since the type id is get from the registry, so it should have been registered.
         return self.sets.get_mut(type_id)
             .or_else([&]() -> std::optional<std::reference_wrapper<ComponentSparseSet>> {

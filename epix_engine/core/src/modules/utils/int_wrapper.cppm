@@ -1,7 +1,27 @@
 ﻿module;
 
-#include <compare>
+#include <algorithm>
 #include <concepts>
+#include <cstddef>
+#include <cstdint>
+#include <functional>
+#include <iostream>
+#include <iterator>
+#include <limits>
+#include <map>
+#include <memory>
+#include <optional>
+#include <set>
+#include <span>
+#include <string>
+#include <tuple>
+#include <type_traits>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <variant>
+#include <vector>
+
 
 export module epix.core:utils.int_wrapper;
 
@@ -18,10 +38,10 @@ struct int_base {
     constexpr bool operator==(const int_base& other) const noexcept = default;
     constexpr auto operator<=>(const int_base&) const noexcept      = default;
     constexpr operator T(this const int_base self) noexcept { return self.value; }
-    constexpr operator size_t(this const int_base self) noexcept
-        requires(!std::same_as<T, size_t>)
+    constexpr operator std::size_t(this const int_base self) noexcept
+        requires(!std::same_as<T, std::size_t>)
     {
-        return static_cast<size_t>(self.value);
+        return static_cast<std::size_t>(self.value);
     }
 
    protected:
@@ -30,14 +50,14 @@ struct int_base {
 }  // namespace core
 
 export template <std::integral T>
-struct ::std::hash<::core::int_base<T>> {
-    size_t operator()(const ::core::int_base<T>& v) const { return std::hash<T>()(v.get()); }
+struct std::hash<::core::int_base<T>> {
+    std::size_t operator()(const ::core::int_base<T>& v) const { return std::hash<T>()(v.get()); }
 };
 export template <typename T>
     requires requires {
         typename T::value_type;
         requires std::derived_from<T, ::core::int_base<typename T::value_type>>;
     }
-struct ::std::hash<T> {
-    size_t operator()(const T& v) const { return std::hash<::core::int_base<typename T::value_type>>()(v); }
+struct std::hash<T> {
+    std::size_t operator()(const T& v) const { return std::hash<::core::int_base<typename T::value_type>>()(v); }
 };

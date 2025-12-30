@@ -20,11 +20,11 @@ using RenderAssetUsage = std::underlying_type_t<RenderAssetUsageBits>;
 
 template <typename T>
 concept RenderAssetImpl = requires(RenderAsset<T> asset) {
-    std::constructible_from<RenderAsset<T>>;
+    requires std::constructible_from<RenderAsset<T>>;
     std::is_empty_v<RenderAsset<T>>;
     typename RenderAsset<T>::ProcessedAsset;
     typename RenderAsset<T>::Param;
-    core::system::valid_system_param<core::system::SystemParam<typename RenderAsset<T>::Param>>;
+    requires core::system::valid_system_param<core::system::SystemParam<typename RenderAsset<T>::Param>>;
     {
         asset.process(std::declval<T&&>(), std::declval<typename RenderAsset<T>::Param&>())
     } -> std::same_as<typename RenderAsset<T>::ProcessedAsset>;

@@ -1,16 +1,34 @@
 ﻿module;
 
+#include <algorithm>
 #include <concepts>
+#include <cstddef>
 #include <cstdint>
-#include <format>
+#include <functional>
+#include <iostream>
+#include <iterator>
+#include <limits>
+#include <map>
+#include <memory>
+#include <optional>
+#include <set>
+#include <span>
 #include <string>
+#include <tuple>
+#include <type_traits>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <variant>
+#include <vector>
+
 
 export module epix.core:label;
 
 import epix.meta;
 
 namespace core {
-struct Label {
+export struct Label {
    public:
     static Label from_raw(const meta::type_index& type_index, std::uintptr_t extra = 0) {
         Label label;
@@ -69,29 +87,18 @@ struct Label {
 };
 };  // namespace core
 
-#ifndef EPIX_MAKE_LABEL
-#define EPIX_MAKE_LABEL(type)                                                         \
-    struct type : public ::epix::core::Label {                                        \
-       public:                                                                        \
-        type() = default;                                                             \
-        template <typename T>                                                         \
-        type(T t)                                                                     \
-            requires(!std::is_same_v<std::decay_t<T>, type> && std::is_object_v<T> && \
-                     std::constructible_from<Label, T>)                               \
-            : Label(t) {}                                                             \
-    };
-#endif
-
 // hash for Label
-export template <>
-struct ::std::hash<::core::Label> {
-    size_t operator()(const ::core::Label& label) const noexcept {
-        size_t hash = std::hash<size_t>()(label.type_index().hash_code());
-        hash ^= std::hash<size_t>()(label.extra()) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
+template <>
+struct std::hash<::core::Label> {
+    std::size_t operator()(const ::core::Label& label) const noexcept {
+        std::size_t hash = std::hash<std::size_t>()(label.type_index().hash_code());
+        hash ^= std::hash<std::size_t>()(label.extra()) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
         return hash;
     }
 };
-export template <std::derived_from<::core::Label> T>
-struct ::std::hash<T> {
-    size_t operator()(const T& label) const noexcept { return std::hash<::core::Label>()(label); }
+template <std::derived_from<::core::Label> T>
+struct std::hash<T> {
+    std::size_t operator()(const T& label) const noexcept {
+        return std::hash<::core::Label>()(static_cast<const ::core::Label&>(label));
+    }
 };

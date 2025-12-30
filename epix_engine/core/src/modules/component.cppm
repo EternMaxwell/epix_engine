@@ -1,9 +1,11 @@
 ﻿module;
 
 #include <concepts>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <ranges>
+#include <unordered_map>
 #include <unordered_set>
 
 export module epix.core:component;
@@ -95,21 +97,21 @@ struct ComponentHooks {
 using RequiredComponentConstructor = std::shared_ptr<std::function<void(Table&, SparseSets&, Tick, TableRow, Entity)>>;
 struct RequiredComponent {
     RequiredComponentConstructor constructor;
-    uint16_t inheritance_depth = 0;
+    std::uint16_t inheritance_depth = 0;
 };
 struct RequiredComponents {
     std::unordered_map<TypeId, RequiredComponent> components;
 
-    void register_dynamic(TypeId type_id, uint32_t inheritance_depth, RequiredComponentConstructor constructor) {
+    void register_dynamic(TypeId type_id, std::uint32_t inheritance_depth, RequiredComponentConstructor constructor) {
         // replace if exists.
         auto it = components.find(type_id);
         if (it == components.end() || inheritance_depth < it->second.inheritance_depth) {
             components[type_id] = RequiredComponent{.constructor       = std::move(constructor),
-                                                    .inheritance_depth = static_cast<uint16_t>(inheritance_depth)};
+                                                    .inheritance_depth = static_cast<std::uint16_t>(inheritance_depth)};
         }
     }
     template <typename C, typename F>
-    void register_id(TypeId type_id, uint32_t inheritance_depth, F&& constructor)
+    void register_id(TypeId type_id, std::uint32_t inheritance_depth, F&& constructor)
         requires std::invocable<F> && std::same_as<C, std::invoke_result_t<F>>
     {
         register_dynamic(type_id, inheritance_depth,
@@ -250,7 +252,7 @@ struct Components : public SparseSet<TypeId, ComponentInfo> {
                 return std::pair(type_id,
                                  RequiredComponent{
                                      .constructor       = req_comp.constructor,
-                                     .inheritance_depth = static_cast<uint16_t>(req_comp.inheritance_depth + 1),
+                                     .inheritance_depth = static_cast<std::uint16_t>(req_comp.inheritance_depth + 1),
                                  });
             }) |
             std::ranges::to<std::vector<std::pair<TypeId, RequiredComponent>>>();

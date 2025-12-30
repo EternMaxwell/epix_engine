@@ -1,14 +1,14 @@
 ﻿module;
 
-#include <algorithm>
 #include <cassert>
 #include <concepts>
+#include <functional>
 #include <optional>
 #include <ranges>
 #include <span>
-#include <tuple>
 #include <type_traits>
 #include <unordered_map>
+#include <vector>
 
 export module epix.core:bundle.interface;
 

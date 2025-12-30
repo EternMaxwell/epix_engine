@@ -2,11 +2,10 @@
 
 #include <spdlog/spdlog.h>
 
-#include <cstdint>
+#include <concepts>
 #include <expected>
-#include <memory>
+#include <functional>
 #include <optional>
-#include <variant>
 
 export module epix.core:world.interface;
 
@@ -413,5 +412,52 @@ export struct World {
     CommandQueue _command_queue;
     std::unique_ptr<std::atomic<uint32_t>> _change_tick;
     Tick _last_change_tick;
+};
+struct DeferredWorld {
+   public:
+    DeferredWorld(World& world) : world_(&world) {}
+    WorldId id() const { return world_->id(); }
+    const TypeRegistry& type_registry() const { return world_->type_registry(); }
+    const Components& components() const { return world_->components(); }
+    const Entities& entities() const { return world_->entities(); }
+    const Storage& storage() const { return world_->storage(); }
+    const Archetypes& archetypes() const { return world_->archetypes(); }
+    const Bundles& bundles() const { return world_->bundles(); }
+    Tick change_tick() const { return world_->change_tick(); }
+    Tick last_change_tick() const { return world_->last_change_tick(); }
+    CommandQueue& command_queue() { return world_->command_queue(); }
+
+    EntityRef entity(Entity entity);
+    EntityRefMut entity_mut(Entity entity);
+    std::optional<EntityRef> get_entity(Entity entity);
+    std::optional<EntityRefMut> get_entity_mut(Entity entity);
+
+    template <typename T>
+    std::optional<std::reference_wrapper<const T>> get_resource() const {
+        return world_->get_resource<T>();
+    }
+    template <typename T>
+    std::optional<std::reference_wrapper<T>> get_resource_mut() {
+        return world_->get_resource_mut<T>();
+    }
+    template <typename T>
+    const T& resource() const {
+        return world_->resource<T>();
+    }
+    template <typename T>
+    T& resource_mut() {
+        return world_->resource_mut<T>();
+    }
+    template <query_data D>
+    QueryState<D, Filter<>> query() {
+        return world_->template query<D>();
+    }
+    template <query_data D, query_filter F>
+    QueryState<D, F> query_filtered() {
+        return world_->template query_filtered<D, F>();
+    }
+
+   private:
+    World* world_;
 };
 }  // namespace core

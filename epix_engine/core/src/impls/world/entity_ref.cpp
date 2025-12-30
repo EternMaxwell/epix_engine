@@ -1,11 +1,12 @@
 ﻿module;
 
-#include <cassert>
-#include <ranges>
+#include <optional>
 
 module epix.core;
 
+import :entities;
 import :world.entity_ref;
+import :world.interface;
 
 namespace core {
 void EntityWorldMut::remove_bundle(BundleId bundle_id) {
@@ -65,4 +66,19 @@ void EntityWorldMut::despawn() {
     world_->flush();
 }
 
+// impl for World::entity and entity_mut, get_entity and get_entity_mut
+std::optional<EntityRef> World::get_entity(Entity entity) {
+    if (auto loc = _entities.get(entity); loc.has_value() && loc.value() != EntityLocation::invalid()) {
+        return EntityRef(entity, this);
+    }
+    return std::nullopt;
+}
+std::optional<EntityWorldMut> World::get_entity_mut(Entity entity) {
+    if (auto loc = _entities.get(entity); loc.has_value() && loc.value() != EntityLocation::invalid()) {
+        return EntityWorldMut(entity, this);
+    }
+    return std::nullopt;
+}
+EntityRef World::entity(Entity entity) { return get_entity(entity).value(); }
+EntityWorldMut World::entity_mut(Entity entity) { return get_entity_mut(entity).value(); }
 }  // namespace core

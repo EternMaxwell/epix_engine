@@ -80,9 +80,9 @@ int main() {
         auto bf = []() {};
         auto cf = []() {};
 
-        SetConfig sa = make_sets(af);
-        SetConfig sb = make_sets(bf);
-        SetConfig sc = make_sets(cf);
+        SetConfig sa = sets(af);
+        SetConfig sb = sets(bf);
+        SetConfig sc = sets(cf);
 
         sa.set_name("A");
         sb.set_name("B");
@@ -112,9 +112,9 @@ int main() {
         auto ef      = []() {};
         auto ff      = []() {};
         auto df      = []() {};
-        SetConfig se = make_sets(ef);
-        SetConfig sf = make_sets(ff);
-        SetConfig sd = make_sets(df);
+        SetConfig se = sets(ef);
+        SetConfig sf = sets(ff);
+        SetConfig sd = sets(df);
         sd.in_set(ef);
         sd.in_set(ff);
         sched2.configure_sets(std::move(se));

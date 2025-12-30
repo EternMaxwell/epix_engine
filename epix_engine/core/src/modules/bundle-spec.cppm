@@ -6,7 +6,6 @@
 #include <span>
 #include <stdexcept>
 #include <tuple>
-#include <type_traits>
 #include <variant>
 #include <vector>
 

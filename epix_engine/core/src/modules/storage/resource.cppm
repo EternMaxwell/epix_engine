@@ -1,8 +1,27 @@
 ﻿module;
 
+#include <algorithm>
 #include <concepts>
+#include <cstddef>
+#include <cstdint>
+#include <functional>
+#include <iostream>
+#include <iterator>
+#include <limits>
+#include <map>
 #include <memory>
 #include <optional>
+#include <set>
+#include <span>
+#include <string>
+#include <tuple>
+#include <type_traits>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <variant>
+#include <vector>
+
 
 export module epix.core:storage.resource;
 
@@ -164,7 +183,7 @@ struct Resources {
    public:
     Resources(std::shared_ptr<TypeRegistry> registry) : registry(std::move(registry)) {}
 
-    size_t resource_count(this const Resources& self) { return self.resources.size(); }
+    std::size_t resource_count(this const Resources& self) { return self.resources.size(); }
     bool empty(this const Resources& self) { return self.resources.empty(); }
     auto iter(this Resources& self) { return self.resources.iter(); }
     void clear(this Resources& self) { self.resources.clear(); }
@@ -193,6 +212,6 @@ struct Resources {
 
    private:
     std::shared_ptr<TypeRegistry> registry;
-    SparseSet<size_t, ResourceData> resources;
+    SparseSet<std::size_t, ResourceData> resources;
 };
 }  // namespace core
