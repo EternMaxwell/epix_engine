@@ -3,6 +3,7 @@
 option(EPIX_ENABLE_TRACY "Enable tracy profiling" OFF)
 option(EPIX_USE_VOLK "Use Vulkan Loader" ON)
 option(EPIX_ENABLE_TEST "Enable epix test" ON)
+option(EPIX_CXX_MODULE "Enable C++20 modules" OFF)
 option(EPIX_IMPORT_STD "Enable C++ import std" ON)
 
 # set(EPIX_ENABLE_TEST OFF)
@@ -12,6 +13,7 @@ message(STATUS "EPIX options:")
 message(STATUS "  EPIX_ENABLE_TRACY (optional): ${EPIX_ENABLE_TRACY}")
 message(STATUS "  EPIX_USE_VOLK     (optional): ${EPIX_USE_VOLK}")
 message(STATUS "  EPIX_ENABLE_TEST  (optional): ${EPIX_ENABLE_TEST}")
+message(STATUS "  EPIX_CXX_MODULE   (optional): ${EPIX_CXX_MODULE}")
 message(STATUS "  EPIX_IMPORT_STD   (optional): ${EPIX_IMPORT_STD}")
 
 function(epix_parse_options)
@@ -21,7 +23,7 @@ function(epix_parse_options)
   if(EPIX_USE_VOLK)
     target_compile_definitions(${ARGN} PUBLIC EPIX_USE_VOLK)
   endif()
-  if (EPIX_IMPORT_STD)
+  if (EPIX_IMPORT_STD AND EPIX_CXX_MODULE)
     target_compile_definitions(${ARGN} PUBLIC EPIX_IMPORT_STD)
   endif()
   if(EPIX_ENABLE_TEST)
@@ -31,17 +33,19 @@ function(epix_parse_options)
 endfunction()
 
 function(epix_add_module MODULE_NAME)
-    add_library(${MODULE_NAME} STATIC)
-    epix_parse_options(${MODULE_NAME})
-    target_include_directories(${MODULE_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
-    file(GLOB_RECURSE MODULES CONFIGURE_DEPENDS "src/*.ixx" "src/*.cppm")
-    file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS "src/*.c" "src/*.cpp")
+  add_library(${MODULE_NAME} STATIC)
+  epix_parse_options(${MODULE_NAME})
+  target_include_directories(${MODULE_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+  file(GLOB_RECURSE MODULES CONFIGURE_DEPENDS "src/*.ixx" "src/*.cppm")
+  file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS "src/*.c" "src/*.cpp")
+  if (EPIX_CXX_MODULE)
     target_sources(${MODULE_NAME} 
-        PUBLIC FILE_SET cxx_modules TYPE CXX_MODULES FILES ${MODULES}
+      PUBLIC FILE_SET cxx_modules TYPE CXX_MODULES FILES ${MODULES}
     )
-    target_sources(${MODULE_NAME}
-        PRIVATE ${SOURCES}
-    )
+  endif()
+  target_sources(${MODULE_NAME}
+    PRIVATE ${SOURCES}
+  )
 endfunction()
 
 add_subdirectory(core)
