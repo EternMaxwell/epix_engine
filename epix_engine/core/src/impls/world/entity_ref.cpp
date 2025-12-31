@@ -1,8 +1,8 @@
 ﻿module;
 
-#include <optional>
-
 module epix.core;
+
+import std;
 
 import :entities;
 import :world.entity_ref;

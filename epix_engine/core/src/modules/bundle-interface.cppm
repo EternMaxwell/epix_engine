@@ -1,19 +1,13 @@
 ﻿module;
 
 #include <cassert>
-#include <concepts>
-#include <functional>
-#include <optional>
-#include <ranges>
-#include <span>
-#include <type_traits>
-#include <unordered_map>
-#include <vector>
 
 export module epix.core:bundle.interface;
 
+import std;
 import epix.traits;
 
+import :utils;
 import :type_registry;
 import :component;
 import :storage;
@@ -33,7 +27,7 @@ template <typename B>
 concept is_bundle = requires(std::decay_t<B>& b) {
     {
         Bundle<std::decay_t<B>>::write(b, std::declval<std::span<void*>>())
-    } -> std::same_as<size_t>;  // return number of written components
+    } -> std::same_as<std::size_t>;  // return number of written components
     { Bundle<std::decay_t<B>>::type_ids(std::declval<const TypeRegistry&>()) } -> type_id_view;
     { Bundle<std::decay_t<B>>::register_components(std::declval<const TypeRegistry&>(), std::declval<Components&>()) };
 };
@@ -44,12 +38,12 @@ struct BundleInfo {
     std::vector<TypeId> _component_ids;  // explicit components followed by required components, explicit order matches
                                          // bundle write order
     std::vector<RequiredComponentConstructor> _required_components;
-    size_t _explicit_components_count;
+    std::size_t _explicit_components_count;
 
     BundleInfo(BundleId id,
                std::vector<TypeId> component_ids,
                std::vector<RequiredComponentConstructor> required_components,
-               size_t explicit_components_count)
+               std::size_t explicit_components_count)
         : _id(id),
           _component_ids(std::move(component_ids)),
           _required_components(std::move(required_components)),
@@ -161,7 +155,7 @@ struct BundleInfo {
 };
 struct Bundles {
    public:
-    size_t size() const { return _bundle_infos.size(); }
+    std::size_t size() const { return _bundle_infos.size(); }
     bool empty() const { return _bundle_infos.empty(); }
     auto iter() const { return std::views::all(_bundle_infos); }
     std::optional<std::reference_wrapper<const BundleInfo>> get(BundleId id) const {
@@ -233,10 +227,10 @@ struct Bundles {
     std::unordered_map<TypeId, BundleId> _contributed_bundle_ids;
 
     std::unordered_map<std::vector<TypeId>, BundleId, VecHash> _dynamic_bundle_ids;
-    std::unordered_map<BundleId, std::vector<StorageType>, std::hash<size_t>> _dynamic_bundle_storages;
+    std::unordered_map<BundleId, std::vector<StorageType>, std::hash<std::size_t>> _dynamic_bundle_storages;
 
     // Cache for optimizing single component bundles
     std::unordered_map<TypeId, BundleId> _dynamic_component_ids;
-    std::unordered_map<BundleId, StorageType, std::hash<size_t>> _dynamic_component_storages;
+    std::unordered_map<BundleId, StorageType, std::hash<std::size_t>> _dynamic_component_storages;
 };
 }  // namespace core

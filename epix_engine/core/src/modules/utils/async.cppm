@@ -1,11 +1,8 @@
 ﻿module;
 
-#include <condition_variable>
-#include <deque>
-#include <mutex>
-#include <optional>
-
 export module epix.core:utils.async;
+
+import std;
 
 namespace core {
 /**

@@ -10,15 +10,9 @@
 #define EPIX_PRETTY_FUNCTION_SUFFIX '>'
 #endif
 
-#include <algorithm>
-#include <concepts>
-#include <ranges>
-#include <string>
-#include <string_view>
-#include <type_traits>
-#include <vector>
-
 export module epix.meta;
+
+import std;
 
 namespace meta {
 template <typename T>

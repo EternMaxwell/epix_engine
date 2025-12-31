@@ -1,14 +1,10 @@
 ﻿module;
 
 #include <cassert>
-#include <cstddef>
-#include <cstdint>
-#include <functional>
-#include <optional>
-#include <ranges>
-#include <span>
 
 export module epix.core:storage.dense;
+
+import std;
 
 import :tick;
 import :storage.untyped_vector;

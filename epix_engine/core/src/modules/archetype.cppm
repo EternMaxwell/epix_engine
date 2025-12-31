@@ -1,14 +1,8 @@
 ﻿module;
 
-#include <concepts>
-#include <cstddef>
-#include <cstdint>
-#include <optional>
-#include <ranges>
-#include <unordered_map>
-#include <vector>
-
 export module epix.core:archetype;
+
+import std;
 
 import :entities;
 import :type_registry;

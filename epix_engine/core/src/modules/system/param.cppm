@@ -1,14 +1,8 @@
 ﻿module;
 
-#include <concepts>
-#include <expected>
-#include <format>
-#include <optional>
-#include <stdexcept>
-#include <string>
-#include <utility>
-
 export module epix.core:system.param;
+
+import std;
 import epix.meta;
 
 import :query;
@@ -359,14 +353,14 @@ struct SystemParam<std::tuple<T...>> {
     }
     static std::expected<void, ValidateParamError> validate_param(State& state, const SystemMeta& meta, World& world) {
         return []<std::size_t I>(this auto&& self, State& state, const SystemMeta& meta, World& world,
-                                 std::integral_constant<size_t, I>) -> std::expected<void, ValidateParamError> {
+                                 std::integral_constant<std::size_t, I>) -> std::expected<void, ValidateParamError> {
             if constexpr (I >= sizeof...(T))
                 return {};
             else
                 return SystemParam<std::tuple_element_t<I, std::tuple<T...>>>::validate_param(std::get<I>(state), meta,
                                                                                               world)
-                    .and_then([&] { return self(state, meta, world, std::integral_constant<size_t, I + 1>{}); });
-        }(state, meta, world, std::integral_constant<size_t, 0>{});
+                    .and_then([&] { return self(state, meta, world, std::integral_constant<std::size_t, I + 1>{}); });
+        }(state, meta, world, std::integral_constant<std::size_t, 0>{});
     }
     static Item get_param(State& state, const SystemMeta& meta, World& world, Tick tick) {
         return []<std::size_t... I>(State& state, const SystemMeta& meta, World& world, Tick tick,
@@ -414,24 +408,24 @@ struct SystemParam<ParamSet<Ts...>> : SystemParam<std::tuple<Ts...>> {
         []<std::size_t... I>(const State& state, SystemMeta& meta, FilteredAccessSet& access, const World& world,
                              std::index_sequence<I...>) {
             (
-                []<size_t J>(const State& state, SystemMeta& meta, FilteredAccessSet& access, const World& world,
-                             std::integral_constant<size_t, J>) {
+                []<std::size_t J>(const State& state, SystemMeta& meta, FilteredAccessSet& access, const World& world,
+                                  std::integral_constant<std::size_t, J>) {
                     FilteredAccessSet access_copy = access;
                     SystemParam<std::tuple_element_t<J, std::tuple<Ts...>>>::init_access(std::get<J>(state), meta,
                                                                                          access_copy, world);
-                }(state, meta, access, world, std::integral_constant<size_t, I>{}),
+                }(state, meta, access, world, std::integral_constant<std::size_t, I>{}),
                 ...);
         }(state, meta, access, world, std::index_sequence_for<Ts...>{});
         []<std::size_t... I>(const State& state, SystemMeta& meta, FilteredAccessSet& access, const World& world,
                              std::index_sequence<I...>) {
             (
-                []<size_t J>(const State& state, SystemMeta& meta, FilteredAccessSet& access, const World& world,
-                             std::integral_constant<size_t, J>) {
+                []<std::size_t J>(const State& state, SystemMeta& meta, FilteredAccessSet& access, const World& world,
+                                  std::integral_constant<std::size_t, J>) {
                     FilteredAccessSet new_access;
                     SystemParam<std::tuple_element_t<J, std::tuple<Ts...>>>::init_access(std::get<J>(state), meta,
                                                                                          new_access, world);
                     access.extend(new_access);
-                }(state, meta, access, world, std::integral_constant<size_t, I>{}),
+                }(state, meta, access, world, std::integral_constant<std::size_t, I>{}),
                 ...);
         }(state, meta, access, world, std::index_sequence_for<Ts...>{});
     }

@@ -1,15 +1,8 @@
 ﻿module;
 
-#include <algorithm>
-#include <format>
-#include <optional>
-#include <ranges>
-#include <stdexcept>
-#include <string_view>
-#include <unordered_set>
-#include <vector>
-
 module epix.core;
+
+import std;
 
 import :bundle;
 import :entities;

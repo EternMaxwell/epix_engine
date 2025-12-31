@@ -1,13 +1,8 @@
 ﻿module;
 
-#include <concepts>
-#include <expected>
-#include <format>
-#include <functional>
-#include <stdexcept>
-
 export module epix.core:app.extract;
 
+import std;
 import epix.meta;
 
 import :world;

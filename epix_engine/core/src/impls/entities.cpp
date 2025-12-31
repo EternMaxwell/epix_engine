@@ -1,12 +1,10 @@
 ﻿module;
 
-#include <atomic>
 #include <cassert>
-#include <cstdint>
-#include <optional>
-#include <vector>
 
 module epix.core;
+
+import std;
 
 import :entities;
 

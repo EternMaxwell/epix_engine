@@ -1,10 +1,8 @@
 ﻿module;
 
-#include <algorithm>
-#include <array>
-#include <ranges>
-
 module epix.core;
+
+import std;
 
 import :app.main_schedule;
 import :labels;

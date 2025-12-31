@@ -1,11 +1,8 @@
 ﻿module;
 
-#include <concepts>
-#include <cstddef>
-#include <functional>
-#include <vector>
-
 export module epix.core:world.commands;
+
+import std;
 
 import :world.decl;
 

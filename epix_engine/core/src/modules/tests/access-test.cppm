@@ -4,13 +4,13 @@
 #include <gtest/gtest.h>
 #endif
 
-#include <cstddef>
-#include <print>
-
 export module epix.core:query.access.test;
+
+import std;
 
 import :query.access;
 
+#ifdef EPIX_ENABLE_TEST
 export inline struct instance_ptr_print {
     instance_ptr_print() {
         std::println("GTest instance ptr: {}", reinterpret_cast<std::uintptr_t>(::testing::UnitTest::GetInstance()));
@@ -20,7 +20,6 @@ export inline struct instance_ptr_print {
     }
 } inst;
 
-#ifdef EPIX_ENABLE_TEST
 TEST(core_test, access) {
     using namespace core;
     // IDs (constructed directly from integers)

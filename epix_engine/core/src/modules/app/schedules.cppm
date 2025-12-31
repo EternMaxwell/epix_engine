@@ -1,11 +1,8 @@
 ﻿module;
 
-#include <functional>
-#include <optional>
-#include <ranges>
-#include <unordered_map>
-
 export module epix.core:app.schedules;
+
+import std;
 
 import :schedule;
 

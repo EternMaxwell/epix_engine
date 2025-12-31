@@ -1,34 +1,11 @@
 ﻿module;
 
-#include <algorithm>
-#include <concepts>
-#include <cstddef>
-#include <cstdint>
-#include <functional>
-#include <iostream>
-#include <iterator>
-#include <limits>
-#include <map>
-#include <memory>
-#include <optional>
-#include <set>
-#include <span>
-#include <string>
-#include <tuple>
-#include <type_traits>
-#include <unordered_map>
-#include <unordered_set>
-#include <utility>
-#include <variant>
-#include <vector>
-
-
 export module epix.core:query.filter;
+
+import std;
 
 import :query.decl;
 import :query.access;
-// import :query.fetch;
-
 import :world.interface;
 
 namespace core {
@@ -141,28 +118,28 @@ struct WorldQuery<Or<Fs...>> {
     static void set_archetype(Fetch& fetch, const State& state, const Archetype& archetype, Table& table) {
         [&]<std::size_t... Is>(std::index_sequence<Is...>) {
             (
-                [&]<size_t I>(std::integral_constant<size_t, I>) {
+                [&]<std::size_t I>(std::integral_constant<std::size_t, I>) {
                     using F                    = std::tuple_element_t<I, std::tuple<Fs...>>;
                     std::get<I>(fetch).matches = WorldQuery<F>::matches_component_set(
                         std::get<I>(state), [&](TypeId id) { return archetype.contains(id); });
                     if (std::get<I>(fetch).matches) {
                         WorldQuery<F>::set_archetype(std::get<I>(fetch).fetch, std::get<I>(state), archetype, table);
                     }
-                }(std::integral_constant<size_t, Is>{}),
+                }(std::integral_constant<std::size_t, Is>{}),
                 ...);
         }(std::index_sequence_for<Fs...>{});
     }
     // static void set_table(Fetch& fetch, State& state, const Table& table) {
     //     [&]<std::size_t... Is>(std::index_sequence<Is...>) {
     //         (
-    //             [&]<size_t I>(std::integral_constant<size_t, I>) {
+    //             [&]<std::size_t I>(std::integral_constant<std::size_t, I>) {
     //                 using F = std::tuple_element_t<I, std::tuple<Fs...>>;
     //                 std::get<I>(fetch).matches = WorldQuery<F>::matches_component_set(
     //                     std::get<I>(state), [&](TypeId id) { return table.has_dense(id); });
     //                 if (std::get<I>(fetch).matches) {
     //                     WorldQuery<F>::set_table(std::get<I>(fetch).fetch, std::get<I>(state), table);
     //                 }
-    //             }(std::integral_constant<size_t, I>{}),
+    //             }(std::integral_constant<std::size_t, I>{}),
     //             ...);
     //     }(std::index_sequence_for<Fs...>{});
     // }
@@ -171,13 +148,13 @@ struct WorldQuery<Or<Fs...>> {
         FilteredAccess new_access = FilteredAccess::matches_nothing();
         [&]<std::size_t... Is>(std::index_sequence<Is...>) {
             (
-                [&]<size_t I>(std::integral_constant<size_t, I>) {
+                [&]<std::size_t I>(std::integral_constant<std::size_t, I>) {
                     using F                     = std::tuple_element_t<I, std::tuple<Fs...>>;
                     FilteredAccess intermediate = access;
                     WorldQuery<F>::update_access(std::get<I>(state), intermediate);
                     new_access.access_mut().merge(intermediate.access());
                     new_access.append_or(intermediate);
-                }(std::integral_constant<size_t, Is>{}),
+                }(std::integral_constant<std::size_t, Is>{}),
                 ...);
         }(std::index_sequence_for<Fs...>{});
         new_access.required_mut() = std::move(access.required());

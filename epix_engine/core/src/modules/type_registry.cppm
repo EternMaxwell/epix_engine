@@ -1,16 +1,10 @@
 ﻿module;
 
-#include <cstddef>
-#include <cstdint>
-#include <optional>
-#include <shared_mutex>
-#include <type_traits>
-#include <unordered_map>
-#include <vector>
-
 export module epix.core:type_registry;
 
+import std;
 import epix.meta;
+
 import :utils;
 
 namespace core {
@@ -113,9 +107,3 @@ export struct TypeRegistry {
     }
 };
 }  // namespace core
-
-export namespace epix::core {
-using ::core::sparse_component;
-using ::core::TypeId;
-using ::core::TypeRegistry;
-}  // namespace epix::core

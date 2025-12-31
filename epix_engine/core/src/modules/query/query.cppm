@@ -1,8 +1,8 @@
 ﻿module;
 
-#include <optional>
-
 export module epix.core:query;
+
+import std;
 
 export import :query.decl;
 export import :query.access;

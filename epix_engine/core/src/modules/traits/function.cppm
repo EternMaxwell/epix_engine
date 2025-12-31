@@ -1,9 +1,8 @@
 ﻿module;
 
-#include <cstddef>
-#include <tuple>
-
 export module epix.traits:function;
+
+import std;
 
 export {
     template <typename F>

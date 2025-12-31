@@ -1,15 +1,8 @@
 ﻿module;
 
-#include <cstddef>
-#include <cstdint>
-#include <functional>
-#include <memory>
-#include <optional>
-#include <ranges>
-#include <span>
-#include <vector>
-
 export module epix.core:storage.sparse_set;
+
+import std;
 
 import :entities;
 import :tick;

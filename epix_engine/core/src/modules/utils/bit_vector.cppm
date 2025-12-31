@@ -1,13 +1,8 @@
 ﻿module;
 
-#include <algorithm>
-#include <cstddef>
-#include <cstdint>
-#include <functional>
-#include <ranges>
-#include <vector>
-
 export module epix.core:utils.bit_vector;
+
+import std;
 
 namespace core {
 export class bit_vector {

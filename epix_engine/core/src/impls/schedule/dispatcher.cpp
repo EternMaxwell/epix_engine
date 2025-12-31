@@ -4,12 +4,9 @@
 #include <tracy/Tracy.hpp>
 #endif
 
-#include <cstddef>
-#include <mutex>
-#include <vector>
-
 module epix.core;
 
+import std;
 import BS.thread_pool;
 
 import :schedule.dispatcher;

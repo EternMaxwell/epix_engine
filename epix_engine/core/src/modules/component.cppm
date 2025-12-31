@@ -1,14 +1,8 @@
 ﻿module;
 
-#include <concepts>
-#include <cstdint>
-#include <functional>
-#include <memory>
-#include <ranges>
-#include <unordered_map>
-#include <unordered_set>
-
 export module epix.core:component;
+
+import std;
 
 import :entities;
 import :world.decl;

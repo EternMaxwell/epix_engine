@@ -1,15 +1,8 @@
 ﻿module;
 
-#include <exception>
-#include <expected>
-#include <memory>
-#include <optional>
-#include <string>
-#include <string_view>
-#include <variant>
-#include <vector>
-
 export module epix.core:system;
+
+import std;
 
 import :label;
 import :labels;

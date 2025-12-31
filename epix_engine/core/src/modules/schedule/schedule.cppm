@@ -1,20 +1,11 @@
 ﻿module;
 
-#include <algorithm>
-#include <expected>
-#include <format>
-#include <memory>
-#include <ranges>
-#include <tuple>
-#include <unordered_map>
-#include <unordered_set>
-#include <vector>
-
 export module epix.core:schedule;
 
-export import :schedule.dispatcher;
-
+import std;
 import BS.thread_pool;
+
+export import :schedule.dispatcher;
 
 import :label;
 import :labels;

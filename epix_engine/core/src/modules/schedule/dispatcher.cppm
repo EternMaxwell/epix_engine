@@ -1,16 +1,8 @@
 ﻿module;
 
-#include <condition_variable>
-#include <deque>
-#include <expected>
-#include <functional>
-#include <future>
-#include <mutex>
-#include <optional>
-#include <ranges>
-
 export module epix.core:schedule.dispatcher;
 
+import std;
 import epix.traits;
 import BS.thread_pool;
 

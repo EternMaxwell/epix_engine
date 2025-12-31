@@ -5,14 +5,9 @@
         using int_base::int_base;         \
     };
 
-#include <algorithm>
-#include <atomic>
-#include <cstdint>
-#include <limits>
-#include <ranges>
-#include <vector>
-
 export module epix.core:entities;
+
+import std;
 
 import :utils;
 

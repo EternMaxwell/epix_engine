@@ -1,16 +1,8 @@
 ﻿module;
 
-#include <algorithm>
-#include <cstddef>
-#include <cstdint>
-#include <memory>
-#include <optional>
-#include <ranges>
-#include <span>
-#include <unordered_map>
-#include <vector>
-
 export module epix.core:storage.table;
+
+import std;
 
 import :storage.sparse_set;
 import :storage.dense;

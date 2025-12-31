@@ -7,6 +7,12 @@ if (POLICY CMP0141)
   endif()
 endif()
 
+set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_MODULE_STD ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_CXX_SCAN_FOR_MODULES ON)
+
 message(STATUS "CMake version: ${CMAKE_VERSION}")
 
 if (CMAKE_VERSION VERSION_LESS "3.30")
@@ -67,12 +73,6 @@ set (HARFBUZZ_HAVE_FREETYPE ON)
 add_subdirectory (libs/harfbuzz)
 
 add_subdirectory (libs/googletest)
-
-set(CMAKE_CXX_STANDARD 23)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_MODULE_STD ON)
-set(CMAKE_CXX_EXTENSIONS OFF)
-set(CMAKE_CXX_SCAN_FOR_MODULES ON)
 
 add_library(BSThreadPool STATIC)
 target_include_directories(BSThreadPool PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/libs/thread-pool/include)

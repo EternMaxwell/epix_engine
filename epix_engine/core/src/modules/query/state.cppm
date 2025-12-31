@@ -1,13 +1,8 @@
 ﻿module;
 
-#include <algorithm>
-#include <functional>
-#include <optional>
-#include <ranges>
-#include <stdexcept>
-#include <vector>
-
 export module epix.core:query.state;
+
+import std;
 
 import :query.decl;
 import :query.access;
@@ -197,7 +192,7 @@ struct QueryState {
 
    private:
     WorldId _world_id;
-    size_t _archetype_version;
+    std::size_t _archetype_version;
     bit_vector _matched_archetypes;
     FilteredAccess _component_access;
     std::vector<ArchetypeId> _matched_archetype_ids;

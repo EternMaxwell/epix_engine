@@ -4,17 +4,11 @@
 #include <tracy/Tracy.hpp>
 #endif
 
-#include <spdlog/spdlog.h>
-
-#include <algorithm>
-#include <expected>
-#include <functional>
-#include <future>
-#include <optional>
-#include <ranges>
+// #include <spdlog/spdlog.h>
 
 module epix.core;
 
+import std;
 import epix.meta;
 
 import :app;
@@ -199,10 +193,10 @@ bool App::run_schedule(const ScheduleLabel& label, std::shared_ptr<SystemDispatc
             ->world_scope([&](World& world) {
                 auto& schedules = world.resource_mut<Schedules>();
                 if (schedules.get_schedule(label)) {
-                    spdlog::warn(
-                        "Schedule '{}' was re-added while existing one running, old one will be "
-                        "overwritten!",
-                        label.to_string());
+                    std::println(std::cerr,
+                                 "Schedule '{}' was re-added while existing one running, old one will be "
+                                 "overwritten!",
+                                 label.to_string());
                 }
                 schedules.add_schedule(std::move(*schedule));
             })
@@ -218,7 +212,7 @@ bool App::update_local(std::shared_ptr<SystemDispatcher> dispatcher) {
         .transform([this, dispatcher](ScheduleOrder&& order) {
             std::ranges::for_each(order.iter(), [&](const ScheduleLabel& label) {
                 if (!run_schedule(label)) {
-                    spdlog::warn("Failed to run schedule '{}', schedule not found.", label.to_string());
+                    std::println(std::cerr, "Failed to run schedule '{}', schedule not found.", label.to_string());
                 }
             });
             // push back the order
@@ -257,7 +251,7 @@ void App::extract(App& other) {
 }
 
 void App::run() {
-    spdlog::info("[app] App building. - {}", _label.to_string());
+    std::println(std::cout, "[app] App building. - {}", _label.to_string());
     resource_scope([&](Plugins& plugins) { plugins.finish_all(*this); });
     resource_scope([](World& world, Schedules& schedules) {
         for (auto&& [label, schedule] : schedules.iter_mut()) {
@@ -265,16 +259,16 @@ void App::run() {
             schedule.initialize_systems(world);
         }
     });
-    spdlog::info("[app] App running. - {}", _label.to_string());
+    std::println(std::cout, "[app] App running. - {}", _label.to_string());
     if (!runner) throw std::runtime_error("No runner set for App.");
     while (runner->step(*this)) {
 #ifdef EPIX_ENABLE_TRACY
         FrameMark;
 #endif
     }
-    spdlog::info("[app] App exiting. - {}", _label.to_string());
+    std::println(std::cout, "[app] App exiting. - {}", _label.to_string());
     runner->exit(*this);
     resource_scope([&](Plugins& plugins) { plugins.finalize_all(*this); });
-    spdlog::info("[app] App terminated. - {}", _label.to_string());
+    std::println(std::cout, "[app] App terminated. - {}", _label.to_string());
 }
 }  // namespace core

@@ -1,13 +1,10 @@
 ﻿module;
 
-#include <spdlog/spdlog.h>
-
-#include <concepts>
-#include <expected>
-#include <functional>
-#include <optional>
+// #include <spdlog/spdlog.h>
 
 export module epix.core:world.interface;
+
+import std;
 
 import :utils;
 import :type_registry;
@@ -132,7 +129,7 @@ export struct World {
           _type_registry(type_registry),
           _components(type_registry),
           _storage(type_registry),
-          _change_tick(std::make_unique<std::atomic<uint32_t>>(1)),
+          _change_tick(std::make_unique<std::atomic<std::uint32_t>>(1)),
           _last_change_tick(0) {}
     World(const World&)            = delete;
     World(World&&)                 = delete;
@@ -203,12 +200,12 @@ export struct World {
             FromWorld<T>::emplace(
                 _storage.resources.get_mut(_type_registry->type_id<T>()).value().get().get_mut().value(), *this);
         } catch (const std::exception& e) {
-            spdlog::error("[app] Failed to initialize resource of type {}: {}", meta::type_id<T>::short_name(),
-                          e.what());
+            std::println(std::cerr, "[app] Failed to initialize resource of type {}: {}",
+                         meta::type_id<T>::short_name(), e.what());
             _storage.resources.get_mut(_type_registry->type_id<T>()).value().get().remove();
         } catch (...) {
-            spdlog::error("[app] Failed to initialize resource of type {}: unknown error",
-                          meta::type_id<T>::short_name());
+            std::println(std::cerr, "[app] Failed to initialize resource of type {}: unknown error",
+                         meta::type_id<T>::short_name());
             _storage.resources.get_mut(_type_registry->type_id<T>()).value().get().remove();
         }
     }
@@ -301,7 +298,7 @@ export struct World {
             }
             return res;
         };
-        auto get_param = [&]<size_t... I>(std::index_sequence<I...>)
+        auto get_param = [&]<std::size_t... I>(std::index_sequence<I...>)
             -> std::expected<std::tuple<std::tuple_element_t<I, args_tuple>...>, std::monostate> {
             // for each argument, try to get or init the resource, if any call to try_get_or_init_resource fails,
             // return std::nullopt
@@ -410,7 +407,7 @@ export struct World {
     Archetypes _archetypes;
     Bundles _bundles;
     CommandQueue _command_queue;
-    std::unique_ptr<std::atomic<uint32_t>> _change_tick;
+    std::unique_ptr<std::atomic<std::uint32_t>> _change_tick;
     Tick _last_change_tick;
 };
 struct DeferredWorld {

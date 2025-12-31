@@ -1,9 +1,8 @@
 ﻿module;
 
-#include <cstddef>
-#include <utility>
-
 module epix.core;
+
+import std;
 
 namespace core {
 void CommandQueue::append(CommandQueue& other) {

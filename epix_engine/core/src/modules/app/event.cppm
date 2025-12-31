@@ -1,15 +1,8 @@
 ﻿module;
 
-#include <algorithm>
-#include <concepts>
-#include <cstdint>
-#include <deque>
-#include <functional>
-#include <optional>
-#include <ranges>
-#include <tuple>
-
 export module epix.core:app.event;
+
+import std;
 
 import :system;
 import :ticks;

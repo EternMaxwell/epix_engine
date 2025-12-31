@@ -1,24 +1,16 @@
 ﻿module;
 
-#include <algorithm>
 #include <cassert>
-#include <cstring>
-#include <limits>
-#include <memory_resource>
-#include <ranges>
-#include <span>
-#include <stdexcept>
-#include <type_traits>
-#include <utility>
 
 export module epix.core:storage.untyped_vector;
 
+import std;
 import epix.meta;
 
 namespace core {
 class untyped_vector {
    public:
-    explicit untyped_vector(const ::meta::type_info& desc, size_t reserve_cnt = 0)
+    explicit untyped_vector(const ::meta::type_info& desc, std::size_t reserve_cnt = 0)
         : desc_(std::addressof(desc)), size_(0), capacity_(0), data_(nullptr) {
         if (!desc_ || desc_->size == 0) throw std::invalid_argument("element size must be > 0");
         if (reserve_cnt) reserve(reserve_cnt);
@@ -41,7 +33,7 @@ class untyped_vector {
                 if (!desc_->copy_constructible) {
                     throw std::runtime_error("Type is not copy-constructible");
                 }
-                for (size_t i = 0; i < other.size_; ++i) {
+                for (std::size_t i = 0; i < other.size_; ++i) {
                     desc_->copy_construct(static_cast<char*>(data_) + i * desc_->size,
                                           static_cast<const char*>(other.data_) + i * desc_->size);
                 }
@@ -69,7 +61,7 @@ class untyped_vector {
                 if (!desc_->copy_constructible) {
                     throw std::runtime_error("Type is not copy-constructible");
                 }
-                for (size_t i = 0; i < other.size_; ++i) {
+                for (std::size_t i = 0; i < other.size_; ++i) {
                     desc_->copy_construct(static_cast<char*>(data_) + i * desc_->size,
                                           static_cast<const char*>(other.data_) + i * desc_->size);
                 }
@@ -114,7 +106,7 @@ class untyped_vector {
             if (!desc_->copy_constructible) {
                 throw std::runtime_error("Type is not copy-constructible");
             }
-            for (size_t i = 0; i < size_; ++i) {
+            for (std::size_t i = 0; i < size_; ++i) {
                 desc_->copy_construct(static_cast<char*>(copy.data_) + i * desc_->size,
                                       static_cast<const char*>(data_) + i * desc_->size);
             }
@@ -124,9 +116,9 @@ class untyped_vector {
     }
 
     // size/capacity
-    size_t size() const noexcept { return size_; }
-    size_t max_size() const noexcept { return std::numeric_limits<size_t>::max() / desc_->size; }
-    size_t capacity() const noexcept { return capacity_; }
+    std::size_t size() const noexcept { return size_; }
+    std::size_t max_size() const noexcept { return std::numeric_limits<std::size_t>::max() / desc_->size; }
+    std::size_t capacity() const noexcept { return capacity_; }
     bool empty() const noexcept { return size_ == 0; }
 
     const ::meta::type_info& type_info() const noexcept { return *desc_; }
@@ -137,18 +129,18 @@ class untyped_vector {
     const void* cdata() const noexcept { return data(); }
 
     // index access as raw pointer. Caller must cast to appropriate type.
-    void* get(size_t idx) {
+    void* get(std::size_t idx) {
         assert(idx < size_);
         return static_cast<char*>(data_) + idx * desc_->size;
     }
 
-    const void* get(size_t idx) const {
+    const void* get(std::size_t idx) const {
         assert(idx < size_);
         return static_cast<const char*>(data_) + idx * desc_->size;
     }
 
     // explicit const getter alias: non-templated raw-pointer const getter
-    const void* cget(size_t idx) const noexcept { return get(idx); }
+    const void* cget(std::size_t idx) const noexcept { return get(idx); }
 
     // Templated helpers when caller knows the static type T
     template <typename T>
@@ -187,14 +179,14 @@ class untyped_vector {
     // Ranges-based iterator views over raw element pointers.
     // Non-const: yields void* to each element.
     auto iter() {
-        return std::views::iota(size_t{0}, size()) | std::views::transform([this](size_t i) {
+        return std::views::iota(std::size_t{0}, size()) | std::views::transform([this](std::size_t i) {
                    return static_cast<void*>(static_cast<char*>(data_) + i * desc_->size);
                });
     }
 
     // Const: yields const void* to each element.
     auto iter() const {
-        return std::views::iota(size_t{0}, size()) | std::views::transform([this](size_t i) {
+        return std::views::iota(std::size_t{0}, size()) | std::views::transform([this](std::size_t i) {
                    return static_cast<const void*>(static_cast<const char*>(data_) + i * desc_->size);
                });
     }
@@ -227,20 +219,20 @@ class untyped_vector {
     // Typed element accessors -------------------------------------------------
     // Returns a reference to the element at `idx` interpreted as `T`.
     template <typename T>
-    T& get_as(size_t idx) {
+    T& get_as(std::size_t idx) {
         assert(idx < size_);
         return *reinterpret_cast<T*>(get(idx));
     }
 
     template <typename T>
-    const T& get_as(size_t idx) const {
+    const T& get_as(std::size_t idx) const {
         assert(idx < size_);
         return *reinterpret_cast<const T*>(get(idx));
     }
 
     // typed const getter
     template <typename T>
-    const T& cget_as(size_t idx) const {
+    const T& cget_as(std::size_t idx) const {
         return get_as<T>(idx);
     }
 
@@ -248,12 +240,12 @@ class untyped_vector {
     // Basic exception guarantee: if construction throws the element may be in an
     // unspecified but valid state (consistent with other operations here).
     template <typename T>
-    void replace(size_t idx, const T& src) {
+    void replace(std::size_t idx, const T& src) {
         replace_from(idx, static_cast<const void*>(std::addressof(src)));
     }
 
     template <typename T>
-    void replace_move(size_t idx, T&& src) {
+    void replace_move(std::size_t idx, T&& src) {
         replace_from_move(idx, static_cast<void*>(std::addressof(src)));
     }
 
@@ -261,7 +253,7 @@ class untyped_vector {
     // Basic exception guarantee: if construction throws, the element may be
     // in an unspecified but valid state (we destroy before constructing).
     template <typename T, typename... Args>
-    void replace_emplace(size_t idx, Args&&... args) {
+    void replace_emplace(std::size_t idx, Args&&... args) {
         assert(idx < size_);
         void* dst = static_cast<char*>(data_) + idx * desc_->size;
         desc_->destruct(dst);
@@ -285,7 +277,7 @@ class untyped_vector {
     }
 
     // Replace the element at index with a copy from raw pointer `src`.
-    void replace_from(size_t idx, const void* src) {
+    void replace_from(std::size_t idx, const void* src) {
         assert(idx < size_);
         void* dst = static_cast<char*>(data_) + idx * desc_->size;
         desc_->destruct(dst);
@@ -293,7 +285,7 @@ class untyped_vector {
     }
 
     // Replace the element at index by moving from raw pointer `src`.
-    void replace_from_move(size_t idx, void* src) {
+    void replace_from_move(std::size_t idx, void* src) {
         assert(idx < size_);
         void* dst = static_cast<char*>(data_) + idx * desc_->size;
         desc_->destruct(dst);
@@ -310,7 +302,7 @@ class untyped_vector {
     void clear() noexcept {
         // destroy elements in reverse order
         if (!desc_->trivially_destructible) {
-            for (size_t i = size_; i > 0; --i) {
+            for (std::size_t i = size_; i > 0; --i) {
                 void* p = static_cast<char*>(data_) + (i - 1) * desc_->size;
                 desc_->destruct(p);
             }
@@ -323,10 +315,10 @@ class untyped_vector {
     // Exception safety: if the type is trivially copyable or noexcept-move-constructible,
     // this operation is noexcept. Otherwise it provides the basic exception guarantee
     // (an exception may leave the vector in a valid but unspecified state).
-    void swap_remove(size_t idx) {
+    void swap_remove(std::size_t idx) {
         assert(idx < size_);
         if (size_ == 0) return;
-        size_t last_idx = size_ - 1;
+        std::size_t last_idx = size_ - 1;
         if (idx == last_idx) {
             pop_back();
             return;
@@ -351,7 +343,7 @@ class untyped_vector {
         --size_;
     }
 
-    void reserve(size_t new_cap) {
+    void reserve(std::size_t new_cap) {
         if (new_cap <= capacity_) return;
         reallocate(new_cap);
     }
@@ -369,12 +361,12 @@ class untyped_vector {
 
     // Mark the vector to have uninitialized elements up to new_size.
     // If new_size < size(), destructs initialized elements in the tail.
-    void resize_uninitialized(size_t new_size) {
+    void resize_uninitialized(std::size_t new_size) {
         if (new_size == size_) return;
         if (new_size < size_) {
             // destroy constructed elements in tail
             if (!desc_->trivially_destructible) {
-                for (size_t i = new_size; i < size_; ++i) {
+                for (std::size_t i = new_size; i < size_; ++i) {
                     void* p = static_cast<char*>(data_) + i * desc_->size;
                     desc_->destruct(p);
                 }
@@ -388,21 +380,21 @@ class untyped_vector {
         // note: intentionally do not construct new elements (unsafe)
         size_ = new_size;
     }
-    void append_uninitialized(size_t count) {
+    void append_uninitialized(std::size_t count) {
         if (count == 0) return;
-        size_t new_size = size_ + count;
+        std::size_t new_size = size_ + count;
         resize_uninitialized(new_size);
     }
 
     // Initialize a previously-uninitialized slot from a raw pointer
-    void initialize_from(size_t idx, const void* src) {
+    void initialize_from(std::size_t idx, const void* src) {
         assert(idx < size_);
         void* dst = static_cast<char*>(data_) + idx * desc_->size;
         desc_->copy_construct(dst, src);
     }
 
     // Initialize by move from raw pointer
-    void initialize_from_move(size_t idx, void* src) {
+    void initialize_from_move(std::size_t idx, void* src) {
         assert(idx < size_);
         void* dst = static_cast<char*>(data_) + idx * desc_->size;
         desc_->move_construct(dst, src);
@@ -410,7 +402,7 @@ class untyped_vector {
 
     // Initialize templated emplace
     template <typename T, typename... Args>
-    void initialize_emplace(size_t idx, Args&&... args) {
+    void initialize_emplace(std::size_t idx, Args&&... args) {
         assert(idx < size_);
         void* dst = static_cast<char*>(data_) + idx * desc_->size;
         new (dst) T(std::forward<Args>(args)...);
@@ -419,21 +411,21 @@ class untyped_vector {
    private:
     const ::meta::type_info* desc_;
     std::pmr::memory_resource* mem_res_ = std::pmr::get_default_resource();
-    size_t size_;
-    size_t capacity_;
+    std::size_t size_;
+    std::size_t capacity_;
     void* data_;
 
     void ensure_capacity_for_one() {
         if (size_ >= capacity_) {
             // growth factor: ~1.5x (use integer math, ensure progress for small caps)
-            size_t new_cap = capacity_ ? ((capacity_ * 3 + 1) / 2) : 1;
+            std::size_t new_cap = capacity_ ? ((capacity_ * 3 + 1) / 2) : 1;
             reallocate(new_cap);
         }
     }
-    void ensure_capacity_for(size_t n) {
+    void ensure_capacity_for(std::size_t n) {
         if (n == 0) return;
         if (size_ + n > capacity_) {
-            size_t new_cap = capacity_;
+            std::size_t new_cap = capacity_;
             while (new_cap < size_ + n) {
                 new_cap = new_cap ? ((new_cap * 3 + 1) / 2) : 1;
             }
@@ -442,7 +434,7 @@ class untyped_vector {
     }
 
     // allocate raw bytes with proper alignment
-    void* allocate(size_t bytes) {
+    void* allocate(std::size_t bytes) {
         if (bytes == 0) return nullptr;
         return mem_res_->allocate(bytes, desc_->align);
     }
@@ -451,10 +443,10 @@ class untyped_vector {
         mem_res_->deallocate(p, capacity_ * desc_->size, desc_->align);
     }
 
-    void reallocate(size_t new_cap) {
+    void reallocate(std::size_t new_cap) {
         assert(new_cap > 0);
-        size_t esz    = desc_->size;
-        size_t needed = new_cap * esz;
+        std::size_t esz    = desc_->size;
+        std::size_t needed = new_cap * esz;
         // allocate new buffer
         void* new_data = nullptr;
         try {
@@ -468,7 +460,7 @@ class untyped_vector {
             std::memcpy(new_data, data_, size_ * esz);
         } else {
             // move-construct existing elements into new storage
-            size_t i = 0;
+            std::size_t i = 0;
             for (; i < size_; ++i) {
                 void* src  = static_cast<char*>(data_) + i * esz;
                 void* dest = static_cast<char*>(new_data) + i * esz;
@@ -479,7 +471,7 @@ class untyped_vector {
 
         // destroy old elements and free old storage
         if (!desc_->trivially_destructible) {
-            for (size_t j = 0; j < size_; ++j) {
+            for (std::size_t j = 0; j < size_; ++j) {
                 void* p = static_cast<char*>(data_) + j * esz;
                 desc_->destruct(p);
             }

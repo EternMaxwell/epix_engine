@@ -1,11 +1,8 @@
 ﻿module;
 
-#include <algorithm>
-#include <ranges>
-#include <tuple>
-#include <vector>
-
 module epix.core;
+
+import std;
 
 import :query.access;
 

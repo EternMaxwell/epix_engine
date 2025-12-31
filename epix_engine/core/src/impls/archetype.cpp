@@ -1,11 +1,10 @@
 ﻿module;
 
 #include <cassert>
-#include <optional>
-#include <ranges>
-#include <vector>
 
 module epix.core;
+
+import std;
 
 import :archetype;
 

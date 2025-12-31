@@ -1,12 +1,8 @@
 ﻿module;
 
-#include <numeric>
-#include <optional>
-#include <ranges>
-#include <span>
-#include <stdexcept>
-
 export module epix.core:query.iter;
+
+import std;
 
 import :query.decl;
 import :query.state;
@@ -88,10 +84,10 @@ struct QueryIterCursor {
         return true;
     }
     bool end() const { return archetype_ids.empty() && !current(); }
-    size_t max_remaining(const Archetypes& archetypes) const {
+    std::size_t max_remaining(const Archetypes& archetypes) const {
         return std::accumulate(
-                   archetype_ids.begin(), archetype_ids.end(), size_t(0),
-                   [&](size_t acc, ArchetypeId id) { return acc + archetypes.get(id).value().get().size(); }) -
+                   archetype_ids.begin(), archetype_ids.end(), std::size_t(0),
+                   [&](std::size_t acc, ArchetypeId id) { return acc + archetypes.get(id).value().get().size(); }) -
                current_idx;
     }
 
@@ -105,7 +101,7 @@ struct QueryIterCursor {
     std::span<const ArchetypeEntity> archetype_entities;
     WorldQuery<D>::Fetch fetch;
     WorldQuery<F>::Fetch filter;
-    size_t current_idx;  // index in current archetype_entities
+    std::size_t current_idx;  // index in current archetype_entities
 
     friend struct QueryIter<D, F>;
 };

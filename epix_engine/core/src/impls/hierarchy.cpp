@@ -1,9 +1,8 @@
 ﻿module;
 
-#include <optional>
-#include <unordered_set>
-
 module epix.core;
+
+import std;
 
 import :hierarchy;
 import :world;

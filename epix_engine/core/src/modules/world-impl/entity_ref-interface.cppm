@@ -1,12 +1,10 @@
 ﻿module;
 
 #include <cassert>
-#include <concepts>
-#include <functional>
-#include <optional>
-#include <ranges>
 
 export module epix.core:world.entity_ref;
+
+import std;
 
 import :world.entity_ref.decl;
 import :entities;

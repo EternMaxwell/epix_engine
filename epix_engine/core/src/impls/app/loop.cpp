@@ -1,8 +1,8 @@
 ﻿module;
 
-#include <memory>
-
 module epix.core;
+
+import std;
 
 import :app.loop;
 import :app.main_schedule;
