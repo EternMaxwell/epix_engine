@@ -1,6 +1,6 @@
 ﻿module;
 
-// #include <spdlog/spdlog.h>
+#include <spdlog/spdlog.h>
 
 export module epix.core:app.plugin;
 
@@ -135,8 +135,8 @@ struct Plugins {
         requires std::constructible_from<T, Args...> && is_plugin<T>
     void add_plugin_internal(App& app, Args&&... args) {
         if (built) {
-            std::println(std::cerr, "Cannot add plugin after build phase. Plugin[type = {}] will be ignored.",
-                         meta::type_id<T>().name());
+            spdlog::error("Cannot add plugin after build phase. Plugin[type = {}] will be ignored.",
+                          meta::type_id<T>::name());
             return;
         }
         // add if not exists.
@@ -149,9 +149,9 @@ struct Plugins {
         try {
             wrapper->build(app);
         } catch (const std::exception& e) {
-            std::println(std::cerr, "Error building plugin[type = {}]: {}", meta::type_id<T>().name(), e.what());
+            spdlog::error("Error building plugin[type = {}]: {}", meta::type_id<T>::name(), e.what());
         } catch (...) {
-            std::println(std::cerr, "Unknown error building plugin[type = {}]", meta::type_id<T>().name());
+            spdlog::error("Unknown error building plugin[type = {}]", meta::type_id<T>::name());
         }
     }
 

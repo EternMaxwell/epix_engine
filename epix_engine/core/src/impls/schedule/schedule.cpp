@@ -1,6 +1,6 @@
 ﻿module;
 
-// #include <spdlog/spdlog.h>
+#include <spdlog/spdlog.h>
 
 module epix.core;
 
@@ -326,20 +326,19 @@ void Schedule::execute(SystemDispatcher& dispatcher, ExecuteConfig config) {
                 [&, index](const RunSystemError& error) {
                     if (std::holds_alternative<ValidateParamError>(error)) {
                         auto&& param_error = std::get<ValidateParamError>(error);
-                        std::println(std::cerr,
-                                        "[schedule] parameter validation error at system '{}', type: '{}', msg: {}",
-                                        cache->nodes[index].node->system->name(), param_error.param_type.short_name(),
-                                        param_error.message);
+                        spdlog::error("[schedule] parameter validation error at system '{}', type: '{}', msg: {}",
+                                         cache->nodes[index].node->system->name(), param_error.param_type.short_name(),
+                                         param_error.message);
                     } else if (std::holds_alternative<SystemException>(error)) {
                         auto&& expection = std::get<SystemException>(error);
                         try {
                             std::rethrow_exception(expection.exception);
                         } catch (const std::exception& e) {
-                            std::println(std::cerr, "[schedule] system exception at system '{}', msg: {}",
-                                            cache->nodes[index].node->system->name(), e.what());
+                            spdlog::error("[schedule] system exception at system '{}', msg: {}",
+                                             cache->nodes[index].node->system->name(), e.what());
                         } catch (...) {
-                            std::println(std::cerr, "[schedule] system exception at system '{}', msg: unknown",
-                                            cache->nodes[index].node->system->name());
+                            spdlog::error("[schedule] system exception at system '{}', msg: unknown",
+                                             cache->nodes[index].node->system->name());
                         }
                     }
                 },
@@ -504,7 +503,7 @@ void Schedule::execute(SystemDispatcher& dispatcher, ExecuteConfig config) {
     if (exec_state.remaining_count > 0) {
         // print state
         ScheduleCache& task_cache = *cache;
-        std::println(std::cerr, "Some systems are not executed, check for cycles in the graph. with Execution state:");
+        spdlog::error("Some systems are not executed, check for cycles in the graph. with Execution state:");
         auto index_to_name = [&](size_t index) -> std::string {
             auto& node = task_cache.nodes[index].node;
             if (node->system) {
@@ -513,17 +512,17 @@ void Schedule::execute(SystemDispatcher& dispatcher, ExecuteConfig config) {
                 return std::format("(set {}#{})", node->label.type_index().short_name(), node->label.extra());
             }
         };
-        std::println(
-            std::cerr, "\tRemaining: {}\tNot Exited: {}, with remaining depends:{}\n\tand remaining children:{}",
-            exec_state.finished_nodes.iter_zeros() | std::views::transform(index_to_name),
-            exec_state.entered_nodes.iter_ones() | std::views::transform(index_to_name),
-            exec_state.finished_nodes.iter_zeros() | std::views::transform([&](size_t i) {
-                return std::format("\n\t{}",
-                                   exec_state.dependencies[i].iter_ones() | std::views::transform(index_to_name));
-            }),
-            exec_state.finished_nodes.iter_zeros() | std::views::transform([&](size_t i) {
-                return std::format("\n\t{}", exec_state.children[i].iter_ones() | std::views::transform(index_to_name));
-            }));
+        spdlog::error("\tRemaining: {}\tNot Exited: {}, with remaining depends:{}\n\tand remaining children:{}",
+                      exec_state.finished_nodes.iter_zeros() | std::views::transform(index_to_name),
+                      exec_state.entered_nodes.iter_ones() | std::views::transform(index_to_name),
+                      exec_state.finished_nodes.iter_zeros() | std::views::transform([&](size_t i) {
+                          return std::format(
+                              "\n\t{}", exec_state.dependencies[i].iter_ones() | std::views::transform(index_to_name));
+                      }),
+                      exec_state.finished_nodes.iter_zeros() | std::views::transform([&](size_t i) {
+                          return std::format("\n\t{}",
+                                             exec_state.children[i].iter_ones() | std::views::transform(index_to_name));
+                      }));
     }
 
     if (config.run_once) {

@@ -1,6 +1,6 @@
 ﻿module;
 
-// #include <spdlog/spdlog.h>
+#include <spdlog/spdlog.h>
 
 export module epix.core:world.interface;
 
@@ -200,11 +200,11 @@ export struct World {
             FromWorld<T>::emplace(
                 _storage.resources.get_mut(_type_registry->type_id<T>()).value().get().get_mut().value(), *this);
         } catch (const std::exception& e) {
-            std::println(std::cerr, "[app] Failed to initialize resource of type {}: {}",
+            spdlog::error("[app] Failed to initialize resource of type {}: {}",
                          meta::type_id<T>::short_name(), e.what());
             _storage.resources.get_mut(_type_registry->type_id<T>()).value().get().remove();
         } catch (...) {
-            std::println(std::cerr, "[app] Failed to initialize resource of type {}: unknown error",
+            spdlog::error("[app] Failed to initialize resource of type {}: unknown error",
                          meta::type_id<T>::short_name());
             _storage.resources.get_mut(_type_registry->type_id<T>()).value().get().remove();
         }

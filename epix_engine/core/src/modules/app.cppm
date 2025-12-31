@@ -1,6 +1,6 @@
 ﻿module;
 
-// #include <spdlog/spdlog.h>
+#include <spdlog/spdlog.h>
 
 export module epix.core:app;
 
@@ -249,9 +249,9 @@ struct App {
                 return true && ([&]<std::size_t J>(std::integral_constant<std::size_t, J>) {
                            bool found = std::get<J>(plugin_refs).has_value();
                            if (!found) {
-                               std::println(
-                                   std::cerr, "Plugin of type '{}' not found in app '{}'",
-                                   meta::type_id<std::decay_t<std::tuple_element_t<J, arg_tuple>>>().short_name(),
+                               spdlog::error(
+                                   "Plugin of type '{}' not found in app '{}'",
+                                   meta::type_id<std::decay_t<std::tuple_element_t<J, arg_tuple>>>::short_name(),
                                    _label.to_string());
                            }
                            return found;
@@ -398,7 +398,7 @@ struct App {
     {
         std::ranges::for_each(labels, [&](const ScheduleLabel& label) {
             if (!run_schedule(label, dispatcher)) {
-                std::println(std::cerr, "Failed to run schedule '{}', schedule not found. Skip.", label.to_string());
+                spdlog::warn("Failed to run schedule '{}', schedule not found. Skip.", label.to_string());
             }
         });
     }

@@ -1,6 +1,6 @@
 ﻿module;
 
-// #include <spdlog/spdlog.h>
+#include <spdlog/spdlog.h>
 
 module epix.core;
 
@@ -24,7 +24,7 @@ std::optional<std::reference_wrapper<Schedule>> Schedules::get_schedule_mut(cons
 }
 Schedule& Schedules::add_schedule(Schedule&& schedule) {
     if (auto it = _schedules.find(schedule.label()); it != _schedules.end()) {
-        std::println(std::cerr, "Schedule '{}' already exists, it will be overwritten!", schedule.label().to_string());
+        spdlog::warn("Schedule '{}' already exists, it will be overwritten!", schedule.label().to_string());
         it->second = std::move(schedule);
         return it->second;
     } else {
