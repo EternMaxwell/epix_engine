@@ -28,11 +28,11 @@ struct int_base {
 };
 }  // namespace core
 
-template <std::integral T>
+export template <std::integral T>
 struct std::hash<::core::int_base<T>> {
     std::size_t operator()(const ::core::int_base<T>& v) const { return std::hash<T>()(v.get()); }
 };
-template <typename T>
+export template <typename T>
     requires requires {
         typename T::value_type;
         requires std::derived_from<T, ::core::int_base<typename T::value_type>>;

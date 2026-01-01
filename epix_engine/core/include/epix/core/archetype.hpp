@@ -153,11 +153,19 @@ struct Archetype {
     const ArchetypeEdges& edges() const { return _edges; }
     ArchetypeEdges& edges_mut() { return _edges; }
     auto entities_with_location() const {
+#ifdef __cpp_lib_ranges_enumerate
         return _entities | std::views::enumerate | std::views::transform([&](auto&& idae) {
                    auto&& [idx, ae] = idae;
                    return std::pair{ae.entity,
                                     EntityLocation{_archetype_id, static_cast<uint32_t>(idx), _table_id, ae.table_idx}};
                });
+#else
+        return std::views::iota(size_t{0}, _entities.size()) | std::views::transform([this](size_t idx) {
+                   const auto& ae = _entities[idx];
+                   return std::pair{ae.entity,
+                                    EntityLocation{_archetype_id, static_cast<uint32_t>(idx), _table_id, ae.table_idx}};
+               });
+#endif
     }
     auto table_components() const {
         return _components.iter() |

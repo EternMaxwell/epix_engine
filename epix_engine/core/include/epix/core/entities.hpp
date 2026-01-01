@@ -202,9 +202,16 @@ struct Entities {
             auto old_meta_len = meta.size();
             auto new_meta_len = old_meta_len + static_cast<size_t>(-n);
             meta.resize(new_meta_len);
+#ifdef __cpp_lib_ranges_enumerate
             for (auto&& [index, meta] : std::views::enumerate(meta) | std::views::drop(old_meta_len)) {
                 fn(Entity::from_parts(index, meta.generation), meta.location);
             }
+#else
+            for (size_t index = old_meta_len; index < new_meta_len; ++index) {
+                auto& meta = this->meta[index];
+                fn(Entity::from_parts(static_cast<uint32_t>(index), meta.generation), meta.location);
+            }
+#endif
 
             free_cursor.store(0, std::memory_order_relaxed);
             n = 0;

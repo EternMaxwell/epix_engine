@@ -58,7 +58,7 @@ struct World {
     Tick change_tick() const { return _change_tick->load(std::memory_order_relaxed); }
     Tick increment_change_tick() { return Tick(_change_tick->fetch_add(1, std::memory_order_relaxed)); }
     Tick last_change_tick() const { return _last_change_tick; }
-    void check_change_tick(std::move_only_function<void(Tick)> additional_checks) {
+    void check_change_tick(std::invocable<Tick> auto&& additional_checks) {
         auto change_tick = this->change_tick();
         if (change_tick.relative_to(_last_change_tick).get() < epix::core::CHECK_TICK_THRESHOLD) {
             return;

@@ -86,7 +86,12 @@ ArchetypeId BundleInfo::insert_bundle_into_archetype(archetype::Archetypes& arch
         }
     }
 
+#ifdef __cpp_lib_ranges_enumerate
     for (auto&& [index, type_id] : required_components() | std::views::enumerate) {
+#else
+    size_t index = 0;
+    for (auto&& type_id : required_components()) {
+#endif
         if (archetype.contains(type_id)) {
             // already exists
             continue;
@@ -99,6 +104,9 @@ ArchetypeId BundleInfo::insert_bundle_into_archetype(archetype::Archetypes& arch
         } else {
             new_sparse_components.push_back(type_id);
         }
+#ifndef __cpp_lib_ranges_enumerate
+        ++index;
+#endif
     }
 
     if (new_table_components.empty() && new_sparse_components.empty()) {

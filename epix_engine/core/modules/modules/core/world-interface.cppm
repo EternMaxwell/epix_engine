@@ -152,7 +152,7 @@ export struct World {
     Tick change_tick() const { return _change_tick->load(std::memory_order_relaxed); }
     Tick increment_change_tick() { return Tick(_change_tick->fetch_add(1, std::memory_order_relaxed)); }
     Tick last_change_tick() const { return _last_change_tick; }
-    void check_change_tick(std::move_only_function<void(Tick)> additional_checks) {
+    void check_change_tick(std::invocable<Tick> auto&& additional_checks) {
         auto change_tick = this->change_tick();
         if (change_tick.relative_to(_last_change_tick).get() < ::core::CHECK_TICK_THRESHOLD) {
             return;
@@ -200,12 +200,12 @@ export struct World {
             FromWorld<T>::emplace(
                 _storage.resources.get_mut(_type_registry->type_id<T>()).value().get().get_mut().value(), *this);
         } catch (const std::exception& e) {
-            spdlog::error("[app] Failed to initialize resource of type {}: {}",
-                         meta::type_id<T>::short_name(), e.what());
+            spdlog::error("[app] Failed to initialize resource of type {}: {}", meta::type_id<T>::short_name(),
+                          e.what());
             _storage.resources.get_mut(_type_registry->type_id<T>()).value().get().remove();
         } catch (...) {
             spdlog::error("[app] Failed to initialize resource of type {}: unknown error",
-                         meta::type_id<T>::short_name());
+                          meta::type_id<T>::short_name());
             _storage.resources.get_mut(_type_registry->type_id<T>()).value().get().remove();
         }
     }

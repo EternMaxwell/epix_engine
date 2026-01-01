@@ -17,10 +17,18 @@ Archetype Archetype::create(ComponentIndex& component_index,
     auto table_size    = std::ranges::size(table_components);
     auto sparse_size   = std::ranges::size(sparse_components);
     arch._components.reserve(table_size + sparse_size);
+#ifdef __cpp_lib_ranges_enumerate
     for (auto&& [idx, type_id] : table_components | std::views::enumerate) {
         arch._components.emplace(type_id, StorageType::Table);
         component_index[type_id][id] = ArchetypeRecord{static_cast<size_t>(idx)};
     }
+#else
+    for (size_t idx = 0; idx < table_size; ++idx) {
+        TypeId type_id = table_components[idx];
+        arch._components.emplace(type_id, StorageType::Table);
+        component_index[type_id][id] = ArchetypeRecord{idx};
+    }
+#endif
     for (auto&& type_id : sparse_components) {
         arch._components.emplace(type_id, StorageType::SparseSet);
         component_index[type_id][id] = ArchetypeRecord{std::nullopt};

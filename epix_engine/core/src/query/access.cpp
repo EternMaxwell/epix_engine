@@ -147,6 +147,7 @@ void FilteredAccess::merge(const FilteredAccess& other) {
     _access.merge(other._access);
     _required.union_with(other._required);
     std::vector<AccessFilters> old_filters = std::move(_filters);
+#ifdef __cpp_lib_ranges_cartesian_product
     for (auto&& [lhs, rhs] : std::views::cartesian_product(old_filters, other._filters)) {
         if (!lhs.ruled_out(rhs)) {
             AccessFilters af = lhs;
@@ -155,6 +156,18 @@ void FilteredAccess::merge(const FilteredAccess& other) {
             _filters.emplace_back(std::move(af));
         }
     }
+#else
+    for (const auto& lhs : old_filters) {
+        for (const auto& rhs : other._filters) {
+            if (!lhs.ruled_out(rhs)) {
+                AccessFilters af = lhs;
+                af.with.union_with(rhs.with);
+                af.without.union_with(rhs.without);
+                _filters.emplace_back(std::move(af));
+            }
+        }
+    }
+#endif
 }
 
 AccessConflicts FilteredAccess::get_conflicts(const FilteredAccess& other) const {
@@ -166,9 +179,17 @@ AccessConflicts FilteredAccess::get_conflicts(const FilteredAccess& other) const
 
 bool FilteredAccessSet::is_compatible(const FilteredAccessSet& other) const {
     if (_combined_access.is_compatible(other._combined_access)) return true;
+#ifdef __cpp_lib_ranges_cartesian_product
     for (auto&& [lhs, rhs] : std::views::cartesian_product(_filtered_access, other._filtered_access)) {
         if (!lhs.is_compatible(rhs)) return false;
     }
+#else
+    for (const auto& lhs : _filtered_access) {
+        for (const auto& rhs : other._filtered_access) {
+            if (!lhs.is_compatible(rhs)) return false;
+        }
+    }
+#endif
     return true;
 }
 

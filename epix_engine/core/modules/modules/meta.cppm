@@ -16,12 +16,15 @@ import std;
 
 namespace meta {
 template <typename T>
+constexpr const char* pretty_function() {
+    return EPIX_PRETTY_FUNCTION;
+}
+template <typename T>
 constexpr std::string_view type_name() {
-    static std::string pretty_function{EPIX_PRETTY_FUNCTION};
-    static auto first =
-        pretty_function.find_first_not_of(' ', pretty_function.find_first_of(EPIX_PRETTY_FUNCTION_PREFIX) + 1);
-    static auto last  = pretty_function.find_last_of(EPIX_PRETTY_FUNCTION_SUFFIX);
-    static auto value = pretty_function.substr(first, last - first);
+    std::string_view full_name = pretty_function<T>();
+    auto first = full_name.find_first_not_of(' ', full_name.find_first_of(EPIX_PRETTY_FUNCTION_PREFIX) + 1);
+    auto last  = full_name.find_last_of(EPIX_PRETTY_FUNCTION_SUFFIX);
+    auto value = full_name.substr(first, last - first);
     return value;
 }
 constexpr std::string shorten(std::string_view str) {

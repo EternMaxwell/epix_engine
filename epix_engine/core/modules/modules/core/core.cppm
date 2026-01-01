@@ -21,5 +21,5 @@ export import :schedule;
 export import :app;
 
 #ifdef EPIX_ENABLE_TEST
-export import :query.access.test;
+export import :tests;
 #endif
