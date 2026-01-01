@@ -3,9 +3,10 @@
 option(EPIX_ENABLE_TRACY "Enable tracy profiling" OFF)
 option(EPIX_USE_VOLK "Use Vulkan Loader" ON)
 option(EPIX_ENABLE_TEST "Enable epix test" ON)
-option(EPIX_CXX_MODULE "Enable C++20 modules" OFF)
+option(EPIX_CXX_MODULE "Enable C++20 modules" ON)
 option(EPIX_IMPORT_STD "Enable C++ import std" ON)
 
+set(EPIX_CXX_MODULE ON)
 # set(EPIX_ENABLE_TEST OFF)
 
 # Print option statuses
@@ -36,11 +37,13 @@ function(epix_add_module MODULE_NAME)
   add_library(${MODULE_NAME} STATIC)
   epix_parse_options(${MODULE_NAME})
   target_include_directories(${MODULE_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
-  file(GLOB_RECURSE MODULES CONFIGURE_DEPENDS "src/*.ixx" "src/*.cppm")
+  file(GLOB_RECURSE MODULES CONFIGURE_DEPENDS "modules/*.ixx" "modules/*.cppm")
+  file(GLOB_RECURSE MODULE_SOURCES CONFIGURE_DEPENDS "modules/*.cpp")
   file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS "src/*.c" "src/*.cpp")
   if (EPIX_CXX_MODULE)
     target_sources(${MODULE_NAME} 
       PUBLIC FILE_SET cxx_modules TYPE CXX_MODULES FILES ${MODULES}
+      PRIVATE ${MODULE_SOURCES}
     )
   endif()
   target_sources(${MODULE_NAME}
