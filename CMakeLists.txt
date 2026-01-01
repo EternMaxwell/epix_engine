@@ -83,9 +83,9 @@ target_compile_definitions(BSThreadPool PRIVATE BS_THREAD_POOL_NATIVE_EXTENSIONS
 
 if (MSVC)
   add_compile_options(/bigobj)
-elseif (CLANG)
-  add_compile_options(-mbig-obj)
-elseif (GNUC)
+elseif (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+  add_compile_options(-Wa,-mbig-obj)
+elseif (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
   add_compile_options(-Wa,-mbig-obj)
 endif ()
 
