@@ -258,7 +258,40 @@ export struct Entities {
 };
 }  // namespace core
 
+namespace std {
 template <>
-struct std::hash<::core::Entity> {
+struct hash<::core::Entity> {
     std::size_t operator()(::core::Entity e) const { return std::hash<std::uint64_t>()(e.uid); }
 };
+// temporary. currently partial specializations are errornous in modules in most compilers
+template <>
+struct hash<::core::ArchetypeId> {
+    std::size_t operator()(const ::core::ArchetypeId& id) const noexcept {
+        return std::hash<::core::int_base<std::uint32_t>>()(id);
+    }
+};
+template <>
+struct hash<::core::TableId> {
+    std::size_t operator()(const ::core::TableId& id) const noexcept {
+        return std::hash<::core::int_base<std::uint32_t>>()(id);
+    }
+};
+template <>
+struct hash<::core::BundleId> {
+    std::size_t operator()(const ::core::BundleId& id) const noexcept {
+        return std::hash<::core::int_base<std::uint64_t>>()(id);
+    }
+};
+template <>
+struct hash<::core::ArchetypeRow> {
+    std::size_t operator()(const ::core::ArchetypeRow& id) const noexcept {
+        return std::hash<::core::int_base<std::uint32_t>>()(id);
+    }
+};
+template <>
+struct hash<::core::TableRow> {
+    std::size_t operator()(const ::core::TableRow& id) const noexcept {
+        return std::hash<::core::int_base<std::uint32_t>>()(id);
+    }
+};
+}  // namespace std

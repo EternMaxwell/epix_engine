@@ -25,10 +25,18 @@ export EPIX_MAKE_LABEL(ScheduleLabel);
 export EPIX_MAKE_LABEL(AppLabel);
 }  // namespace core
 
-// Explicit std::hash specialization for AppLabel to avoid MSVC instantiation bug
-// namespace std {
-// template <>
-// struct hash<::core::AppLabel> {
-//     size_t operator()(const ::core::AppLabel& label) const noexcept { return std::hash<::core::Label>()(label); }
-// };
-// }  // namespace std
+// Temporary. Partial specializations are errornous in modules in most compilers currently
+namespace std {
+template <>
+struct hash<::core::AppLabel> {
+    size_t operator()(const ::core::AppLabel& label) const noexcept { return std::hash<::core::Label>()(label); }
+};
+template <>
+struct hash<::core::ScheduleLabel> {
+    size_t operator()(const ::core::ScheduleLabel& label) const noexcept { return std::hash<::core::Label>()(label); }
+};
+template <>
+struct hash<::core::SystemSetLabel> {
+    size_t operator()(const ::core::SystemSetLabel& label) const noexcept { return std::hash<::core::Label>()(label); }
+};
+}  // namespace std
