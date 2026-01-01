@@ -11,7 +11,7 @@ import std;
 import :query.access;
 
 #ifdef EPIX_ENABLE_TEST
-export inline struct instance_ptr_print {
+export struct instance_ptr_print {
     instance_ptr_print() {
         std::println("GTest instance ptr: {}", reinterpret_cast<std::uintptr_t>(::testing::UnitTest::GetInstance()));
     }
