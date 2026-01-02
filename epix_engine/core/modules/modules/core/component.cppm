@@ -258,4 +258,7 @@ struct Components : public SparseSet<TypeId, ComponentInfo> {
         return inherited_requirements;
     }
 };
+
+const Components& world_components(const World& world);
+Components& world_components_mut(World& world);
 }  // namespace core

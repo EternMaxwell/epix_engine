@@ -10,6 +10,7 @@ import std;
 
 using namespace core;
 
+namespace {
 std::vector<std::string> actions;
 
 struct TestRunner : public AppRunner {
@@ -29,6 +30,7 @@ struct TestRunner : public AppRunner {
         app.run_schedules(PreExit, Exit, PostExit).get();
     }
 };
+}  // namespace
 
 TEST(core, app_main) {
     auto level = spdlog::get_level();

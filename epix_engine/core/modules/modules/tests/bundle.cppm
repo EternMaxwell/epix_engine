@@ -10,6 +10,7 @@ import :bundle;
 
 using namespace core;
 
+namespace {
 struct A {
     int x;
     A(int v) : x(v) {}
@@ -44,6 +45,7 @@ void construct_multi(auto&& ptr, ArgTuples&&... args) {
     std::this_thread::sleep_for(std::chrono::milliseconds(100));  // simulate work
     bundle.write(ptr);
 }
+}  // namespace
 
 TEST(core, bundle) {
     alignas(A) std::byte storage_a[sizeof(A)];

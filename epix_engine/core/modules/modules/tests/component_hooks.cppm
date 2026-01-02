@@ -10,6 +10,7 @@ import :world;
 
 using namespace core;
 
+namespace {
 struct C1 {
     int v;
     C1(int x) : v(x) {}
@@ -38,6 +39,7 @@ struct C2 {
     static void on_replace(World& w, HookContext ctx) { ++replaced; }
     static void on_despawn(World& w, HookContext ctx) { ++despawned; }
 };
+}  // namespace
 
 TEST(core, component_hooks) {
     auto registry = std::make_shared<TypeRegistry>();
@@ -99,15 +101,19 @@ TEST(core, component_hooks) {
             mut.insert_bundle(make_bundle<C1, C2>(std::make_tuple(3), std::make_tuple(4.0f)));
             expected_replaced_c1 += 1;
             expected_replaced_c2 += 1;
+            expected_removed_c1 += 1;
+            expected_removed_c2 += 1;
             expected_inserted_c1 += 1;
             expected_inserted_c2 += 1;
         } else if (replaced1) {
             mut.insert_bundle(make_bundle<C1>(std::make_tuple(3)));
             expected_replaced_c1 += 1;
+            expected_removed_c1 += 1;
             expected_inserted_c1 += 1;
         } else if (replaced2) {
             mut.insert_bundle(make_bundle<C2>(std::make_tuple(4.0f)));
             expected_replaced_c2 += 1;
+            expected_removed_c2 += 1;
             expected_inserted_c2 += 1;
         }
     }
@@ -161,14 +167,14 @@ TEST(core, component_hooks) {
     //              C2::replaced, C2::added, C2::despawned);
 
     // Compare hook counters
-    EXPECT_EQ(C1::inserted ,expected_inserted_c1);
-    EXPECT_EQ(C1::removed ,expected_removed_c1);
-    EXPECT_EQ(C2::inserted ,expected_inserted_c2);
-    EXPECT_EQ(C2::removed ,expected_removed_c2);
-    EXPECT_EQ(C1::replaced ,expected_replaced_c1);
-    EXPECT_EQ(C2::replaced ,expected_replaced_c2);
-    EXPECT_EQ(C1::added ,expected_added_c1);
-    EXPECT_EQ(C2::added ,expected_added_c2);
-    EXPECT_EQ(C1::despawned ,expected_despawned_c1);
-    EXPECT_EQ(C2::despawned ,expected_despawned_c2);
+    EXPECT_EQ(C1::inserted, expected_inserted_c1);
+    EXPECT_EQ(C1::removed, expected_removed_c1);
+    EXPECT_EQ(C2::inserted, expected_inserted_c2);
+    EXPECT_EQ(C2::removed, expected_removed_c2);
+    EXPECT_EQ(C1::replaced, expected_replaced_c1);
+    EXPECT_EQ(C2::replaced, expected_replaced_c2);
+    EXPECT_EQ(C1::added, expected_added_c1);
+    EXPECT_EQ(C2::added, expected_added_c2);
+    EXPECT_EQ(C1::despawned, expected_despawned_c1);
+    EXPECT_EQ(C2::despawned, expected_despawned_c2);
 }

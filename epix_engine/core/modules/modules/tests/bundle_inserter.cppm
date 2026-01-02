@@ -6,20 +6,31 @@ export module epix.core:tests.bundle_inserter;
 
 import std;
 import :bundle;
-
-import :tests.bundle_info;
+import :world;
 
 using namespace core;
 
+namespace {
 struct Y {
     std::string s;
     Y(std::string_view sv) : s(sv) {}
+};
+struct X {
+    int v;
+    X(int vv) : v(vv) {}
+};
+struct Z {
+    double d;
+    Z(double dd) : d(dd) {}
 };
 struct W {
     std::string s;
     W(std::string_view sv) : s(sv) {}
 };
+}  // namespace
 
+template <>
+struct core::sparse_component<Z> : std::true_type {};
 template <>
 struct core::sparse_component<W> : std::true_type {};
 

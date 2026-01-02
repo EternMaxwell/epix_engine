@@ -6,9 +6,11 @@ export module epix.core:tests.bundle_info;
 
 import std;
 import :bundle;
+import :world;
 
 using namespace core;
 
+namespace {
 struct X {
     int v;
     X(int vv) : v(vv) {}
@@ -17,6 +19,7 @@ struct Z {
     double d;
     Z(double dd) : d(dd) {}
 };
+}  // namespace
 template <>
 struct core::sparse_component<Z> : std::true_type {};
 

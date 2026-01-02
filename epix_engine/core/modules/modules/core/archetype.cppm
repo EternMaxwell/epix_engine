@@ -3,12 +3,18 @@
 export module epix.core:archetype;
 
 import std;
+import epix.traits;
 
+import :utils;
 import :entities;
 import :type_registry;
 import :component;
+import :world.decl;
 
 namespace core {
+template <typename R>
+concept type_id_view = std::ranges::sized_range<R> && view_of_value<R, TypeId>;
+
 struct ArchetypeEntity {
     Entity entity;
     TableRow table_idx;
@@ -241,4 +247,58 @@ struct Archetypes {
         }
     }
 };
+
+const Archetypes& world_archetypes(const World& world);
+Archetypes& world_archetypes_mut(World& world);
+
+void world_trigger_on_add(World& world, const Archetype& archetype, Entity entity, type_id_view auto&& targets) {
+    for (auto&& target : targets) {
+        world_components(world).get(target).and_then([&](const ComponentInfo& info) -> std::optional<bool> {
+            if (info.hooks().on_add) {
+                info.hooks().on_add(world, HookContext{.entity = entity, .component_id = target});
+            }
+            return true;
+        });
+    }
+}
+void world_trigger_on_insert(World& world, const Archetype& archetype, Entity entity, type_id_view auto&& targets) {
+    for (auto&& target : targets) {
+        world_components(world).get(target).and_then([&](const ComponentInfo& info) -> std::optional<bool> {
+            if (info.hooks().on_insert) {
+                info.hooks().on_insert(world, HookContext{.entity = entity, .component_id = target});
+            }
+            return true;
+        });
+    }
+}
+void world_trigger_on_replace(World& world, const Archetype& archetype, Entity entity, type_id_view auto&& targets) {
+    for (auto&& target : targets) {
+        world_components(world).get(target).and_then([&](const ComponentInfo& info) -> std::optional<bool> {
+            if (info.hooks().on_replace) {
+                info.hooks().on_replace(world, HookContext{.entity = entity, .component_id = target});
+            }
+            return true;
+        });
+    }
+}
+void world_trigger_on_remove(World& world, const Archetype& archetype, Entity entity, type_id_view auto&& targets) {
+    for (auto&& target : targets) {
+        world_components(world).get(target).and_then([&](const ComponentInfo& info) -> std::optional<bool> {
+            if (info.hooks().on_remove) {
+                info.hooks().on_remove(world, HookContext{.entity = entity, .component_id = target});
+            }
+            return true;
+        });
+    }
+}
+void world_trigger_on_despawn(World& world, const Archetype& archetype, Entity entity, type_id_view auto&& targets) {
+    for (auto&& target : targets) {
+        world_components(world).get(target).and_then([&](const ComponentInfo& info) -> std::optional<bool> {
+            if (info.hooks().on_despawn) {
+                info.hooks().on_despawn(world, HookContext{.entity = entity, .component_id = target});
+            }
+            return true;
+        });
+    }
+}
 }  // namespace core

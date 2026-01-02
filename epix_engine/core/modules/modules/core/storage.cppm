@@ -29,4 +29,7 @@ struct Storage {
         }
     }
 };
+
+const Storage& world_storage(const World& world);
+Storage& world_storage_mut(World& world);
 }  // namespace core

@@ -20,9 +20,6 @@ struct Bundle {};
 template <typename R>
 concept is_void_ptr_view = std::ranges::sized_range<R> && view_of_value<R, void*>;
 
-template <typename R>
-concept type_id_view = std::ranges::sized_range<R> && view_of_value<R, TypeId>;
-
 template <typename B>
 concept is_bundle = requires(std::decay_t<B>& b) {
     {
@@ -233,4 +230,7 @@ struct Bundles {
     std::unordered_map<TypeId, BundleId> _dynamic_component_ids;
     std::unordered_map<BundleId, StorageType, std::hash<std::size_t>> _dynamic_component_storages;
 };
+
+const Bundles& world_bundles(const World& world);
+Bundles& world_bundles_mut(World& world);
 }  // namespace core
