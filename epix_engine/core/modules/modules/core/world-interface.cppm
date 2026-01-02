@@ -117,7 +117,7 @@ struct FromWorld {
     }
 };
 
-struct WorldId : ::core::int_base<std::uint64_t> {
+export struct WorldId : ::core::int_base<std::uint64_t> {
     using int_base::int_base;
 };
 

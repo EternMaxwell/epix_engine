@@ -7,7 +7,7 @@ import std;
 import :world.interface;
 import :world.entity_ref;
 
-export namespace core {
+namespace core {
 template <typename... Args>
 EntityWorldMut World::spawn(Args&&... args)
     requires((std::constructible_from<std::decay_t<Args>, Args> || is_bundle<Args>) && ...)
