@@ -64,17 +64,17 @@ export struct type_info {
     std::size_t align;
 
     // Mandatory operations
-    void (*destruct)(void* ptr) noexcept                         = nullptr;
-    void (*copy_construct)(void* dest, const void* src) noexcept = nullptr;
-    void (*move_construct)(void* dest, void* src) noexcept       = nullptr;
+    destruct_fn destruct             = nullptr;
+    copy_construct_fn copy_construct = nullptr;
+    move_construct_fn move_construct = nullptr;
 
     // Cached traits
-    bool copy_constructible;
-    bool move_constructible;
-    bool trivially_copyable;
-    bool trivially_destructible;
-    bool noexcept_move_constructible;
-    bool noexcept_copy_constructible;
+    bool copy_constructible : 1;
+    bool move_constructible : 1;
+    bool trivially_copyable : 1;
+    bool trivially_destructible : 1;
+    bool noexcept_move_constructible : 1;
+    bool noexcept_copy_constructible : 1;
 
     template <typename T>
     static destruct_fn destruct_impl() {
@@ -111,52 +111,56 @@ export struct type_info {
     template <typename T>
     static const type_info& of() {
         if constexpr (requires { sizeof(T); }) {
-            return *of1<T>();
+            static const type_info ti = of1<T>();
+            return ti;
         } else {
-            return *of2<T>();
+            static const type_info ti = of2<T>();
+            return ti;
         }
     }
 
    private:
+    type_info() = default;
+
     template <typename T>
-    static const type_info* of1() {
-        static type_info ti = type_info{
-            .name                        = type_name<T>(),
-            .short_name                  = meta::short_name<T>(),
-            .hash                        = std::hash<std::string_view>()(type_name<T>()),
-            .size                        = sizeof(T),
-            .align                       = alignof(T),
-            .destruct                    = destruct_impl<T>(),
-            .copy_construct              = copy_construct_impl<T>(),
-            .move_construct              = move_construct_impl<T>(),
-            .copy_constructible          = std::copy_constructible<T>,
-            .move_constructible          = std::move_constructible<T>,
-            .trivially_copyable          = std::is_trivially_copyable_v<T>,
-            .trivially_destructible      = std::is_trivially_destructible_v<T>,
-            .noexcept_move_constructible = std::is_nothrow_move_constructible_v<T>,
-            .noexcept_copy_constructible = std::is_nothrow_copy_constructible_v<T>,
-        };
-        return &ti;
+    static type_info of1() {
+        type_info ti{};
+        ti.name                        = type_name<T>();
+        ti.short_name                  = meta::short_name<T>();
+        ti.hash                        = std::hash<std::string_view>()(type_name<T>());
+        ti.size                        = sizeof(T);
+        ti.align                       = alignof(T);
+        ti.destruct                    = destruct_impl<T>();
+        ti.copy_construct              = copy_construct_impl<T>();
+        ti.move_construct              = move_construct_impl<T>();
+        ti.copy_constructible          = std::copy_constructible<T>;
+        ti.move_constructible          = std::move_constructible<T>;
+        ti.trivially_copyable          = std::is_trivially_copyable_v<T>;
+        ti.trivially_destructible      = std::is_trivially_destructible_v<T>;
+        ti.noexcept_move_constructible = std::is_nothrow_move_constructible_v<T>;
+        ti.noexcept_copy_constructible = std::is_nothrow_copy_constructible_v<T>;
+
+        return ti;
     }
     template <typename T>
-    static const type_info* of2() {
-        static type_info ti = type_info{
-            .name                        = type_name<T>(),
-            .short_name                  = meta::short_name<T>(),
-            .hash                        = std::hash<std::string_view>()(type_name<T>()),
-            .size                        = 0,
-            .align                       = 0,
-            .destruct                    = nullptr,
-            .copy_construct              = nullptr,
-            .move_construct              = nullptr,
-            .copy_constructible          = false,
-            .move_constructible          = false,
-            .trivially_copyable          = false,
-            .trivially_destructible      = false,
-            .noexcept_move_constructible = false,
-            .noexcept_copy_constructible = false,
-        };
-        return &ti;
+    static type_info of2() {
+        type_info ti{};
+        ti.name                        = type_name<T>();
+        ti.short_name                  = meta::short_name<T>();
+        ti.hash                        = std::hash<std::string_view>()(type_name<T>());
+        ti.size                        = 0;
+        ti.align                       = 0;
+        ti.destruct                    = nullptr;
+        ti.copy_construct              = nullptr;
+        ti.move_construct              = nullptr;
+        ti.copy_constructible          = false;
+        ti.move_constructible          = false;
+        ti.trivially_copyable          = false;
+        ti.trivially_destructible      = false;
+        ti.noexcept_move_constructible = false;
+        ti.noexcept_copy_constructible = false;
+
+        return ti;
     }
 };
 export template <typename T>
@@ -165,12 +169,13 @@ struct type_id {
     static std::string_view name() { return type_info::of<T>().name; }
     static std::string_view short_name() { return type_info::of<T>().short_name; }
     static std::size_t hash_code() { return type_info::of<T>().hash; }
+    static const type_info& type_info() { return type_info::of<T>(); }
 };
 export struct type_index {
    public:
     template <typename T>
-    type_index(type_id<T>) : inter(std::addressof(get_info<T>())) {}
-    type_index() : inter(std::addressof(get_info<void>())) {}
+    type_index(type_id<T> id) : inter(std::addressof(id.type_info())) {}
+    type_index() : inter(std::addressof(type_info::of<void>())) {}
 
     auto operator<=>(const type_index& other) const noexcept {
         if (inter == other.inter) return std::strong_ordering::equal;
