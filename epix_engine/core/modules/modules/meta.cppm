@@ -51,11 +51,37 @@ constexpr std::string_view short_name() {
     static std::string name = shorten(type_name<T>());
     return name;
 }
-export struct type_info {
-    using destruct_fn       = void (*)(void* ptr) noexcept;
-    using copy_construct_fn = void (*)(void* dest, const void* src) noexcept;
-    using move_construct_fn = void (*)(void* dest, void* src) noexcept;
 
+using destruct_fn       = void (*)(void* ptr) noexcept;
+using copy_construct_fn = void (*)(void* dest, const void* src) noexcept;
+using move_construct_fn = void (*)(void* dest, void* src) noexcept;
+
+template <typename T>
+static destruct_fn destruct_impl() {
+    if constexpr (std::destructible<T>) {
+        return [](void* p) noexcept { static_cast<T*>(p)->~T(); };
+    } else {
+        return [](void* p) noexcept { std::abort(); };
+    }
+}
+template <typename T>
+static copy_construct_fn copy_construct_impl() {
+    if constexpr (std::copy_constructible<T>) {
+        return [](void* dest, const void* src) noexcept { new (dest) T(*static_cast<const T*>(src)); };
+    } else {
+        return [](void* dest, const void* src) noexcept { std::abort(); };
+    }
+}
+template <typename T>
+static move_construct_fn move_construct_impl() {
+    if constexpr (std::move_constructible<T>) {
+        return [](void* dest, void* src) noexcept { new (dest) T(std::move(*static_cast<T*>(src))); };
+    } else {
+        return [](void* dest, void* src) noexcept { std::abort(); };
+    }
+}
+
+export struct type_info {
     std::string_view name;
     std::string_view short_name;
     std::size_t hash;
@@ -63,12 +89,10 @@ export struct type_info {
     std::size_t size;
     std::size_t align;
 
-    // Mandatory operations
     destruct_fn destruct             = nullptr;
     copy_construct_fn copy_construct = nullptr;
     move_construct_fn move_construct = nullptr;
 
-    // Cached traits
     bool copy_constructible : 1;
     bool move_constructible : 1;
     bool trivially_copyable : 1;
@@ -76,37 +100,8 @@ export struct type_info {
     bool noexcept_move_constructible : 1;
     bool noexcept_copy_constructible : 1;
 
-    template <typename T>
-    static destruct_fn destruct_impl() {
-        if constexpr (!std::is_trivially_destructible_v<T>) {
-            return [](void* p) noexcept { static_cast<T*>(p)->~T(); };
-        } else if constexpr (std::is_destructible_v<T>) {
-            return [](void* p) noexcept {
-                // no-op for trivially destructible types
-            };
-        } else {
-            return [](void* p) noexcept { std::abort(); };
-        }
-    }
-    template <typename T>
-    static copy_construct_fn copy_construct_impl() {
-        if constexpr (std::copy_constructible<T>) {
-            return [](void* dest, const void* src) noexcept { new (dest) T(*static_cast<const T*>(src)); };
-        } else {
-            return [](void* dest, const void* src) noexcept { std::abort(); };
-        }
-    }
-    template <typename T>
-    static move_construct_fn move_construct_impl() {
-        if constexpr (std::move_constructible<T>) {
-            return [](void* dest, void* src) noexcept { new (dest) T(std::move(*static_cast<T*>(src))); };
-        } else {
-            return [](void* dest, void* src) noexcept { std::abort(); };
-        }
-    }
-
     auto operator<=>(const type_info& other) const { return name <=> other.name; }
-    bool operator==(const type_info& other) const { return (name <=> other.name) == std::strong_ordering::equal; }
+    bool operator==(const type_info& other) const { return name == other.name; }
 
     template <typename T>
     static const type_info& of() {
@@ -163,6 +158,7 @@ export struct type_info {
         return ti;
     }
 };
+
 export template <typename T>
 struct type_id {
    public:
