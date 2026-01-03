@@ -42,7 +42,7 @@ template <typename... T, typename... ArgTuples>
     requires(sizeof...(T) == sizeof...(ArgTuples))
 void construct_multi(auto&& ptr, ArgTuples&&... args) {
     auto bundle = make_bundle<T...>(std::forward<ArgTuples>(args)...);
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));  // simulate work
+    // std::this_thread::sleep_for(std::chrono::milliseconds(100));  // simulate work
     bundle.write(ptr);
 }
 }  // namespace
