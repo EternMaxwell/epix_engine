@@ -8,8 +8,9 @@ import std;
 
 import :query.decl;
 import :query.access;
-
-import :world.interface;
+import :storage;
+import :component;
+import :world.decl;
 import :world.entity_ref;
 
 namespace core {
@@ -136,7 +137,7 @@ struct WorldQuery<EntityLocation> {
         const Entities* entities = nullptr;
     };
     using State = std::tuple<>;
-    static Fetch init_fetch(World& world, const State&, Tick, Tick) { return Fetch{&world.entities()}; }
+    static Fetch init_fetch(World& world, const State&, Tick, Tick) { return Fetch{&world_entities(world)}; }
     static void set_archetype(Fetch&, const State&, const Archetype&, Table&) {}
     // static void set_table(Fetch&, State&, const Table&) {}
     static void set_access(State&, const FilteredAccess&) {}
@@ -276,7 +277,7 @@ struct WorldQuery<Ref<T>> {
                             .last_run      = last_run,
                             .this_run      = this_run};
         if (result.is_sparse_set) {
-            result.sparse_set = world.storage()
+            result.sparse_set = world_storage(world)
                                     .sparse_sets.get(state)
                                     .transform([](const ComponentSparseSet& ref) { return &ref; })
                                     .value_or(nullptr);
@@ -296,7 +297,7 @@ struct WorldQuery<Ref<T>> {
     // }
     static void set_access(State& state, const FilteredAccess& access) {}
     static void update_access(const State& state, FilteredAccess& access) { access.add_component_read(state); }
-    static State init_state(World& world) { return world.type_registry().type_id<T>(); }
+    static State init_state(World& world) { return world_type_registry(world).type_id<T>(); }
     static std::optional<State> get_state(const Components& components) { return components.registry().type_id<T>(); }
     static bool matches_component_set(const State& state, const std::function<bool(TypeId)>& contains_component) {
         return contains_component(state);
@@ -351,7 +352,7 @@ struct WorldQuery<Mut<T>> {
                             .last_run      = last_run,
                             .this_run      = this_run};
         if (result.is_sparse_set) {
-            result.sparse_set = world.storage_mut()
+            result.sparse_set = world_storage_mut(world)
                                     .sparse_sets.get_mut(state)
                                     .transform([](ComponentSparseSet& ref) { return &ref; })
                                     .value_or(nullptr);
@@ -372,7 +373,7 @@ struct WorldQuery<Mut<T>> {
     // }
     static void set_access(State& state, const FilteredAccess& access) {}
     static void update_access(const State& state, FilteredAccess& access) { access.add_component_write(state); }
-    static State init_state(World& world) { return world.type_registry().type_id<T>(); }
+    static State init_state(World& world) { return world_type_registry(world).type_id<T>(); }
     static std::optional<State> get_state(const Components& components) { return components.registry().type_id<T>(); }
     static bool matches_component_set(const State& state, const std::function<bool(TypeId)>& contains_component) {
         return contains_component(state);
@@ -521,7 +522,7 @@ struct WorldQuery<Has<T>> {
     // }
     static void set_access(State&, const FilteredAccess&) {}
     static void update_access(const State& state, FilteredAccess& access) { access.access_mut().add_archetypal(state); }
-    static State init_state(World& world) { return world.type_registry().type_id<T>(); }
+    static State init_state(World& world) { return world_type_registry(world).type_id<T>(); }
     static std::optional<State> get_state(const Components& components) { return components.registry().type_id<T>(); }
     static bool matches_component_set(const State& state, const std::function<bool(TypeId)>& contains_component) {
         return true;  // always true, because it is just a marker

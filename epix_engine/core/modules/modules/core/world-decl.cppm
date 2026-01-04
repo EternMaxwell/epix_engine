@@ -4,6 +4,7 @@ export module epix.core:world.decl;
 
 import std;
 
+import :utils;
 import :tick;
 import :type_registry;
 import :entities;
@@ -12,6 +13,11 @@ namespace core {
 export struct World;
 export struct DeferredWorld;
 
+export struct WorldId : ::core::int_base<std::uint64_t> {
+    using int_base::int_base;
+};
+
+WorldId world_id(const World& world);
 const TypeRegistry& world_type_registry(const World& world);
 std::shared_ptr<TypeRegistry> world_type_registry_ptr(const World& world);
 const Entities& world_entities(const World& world);

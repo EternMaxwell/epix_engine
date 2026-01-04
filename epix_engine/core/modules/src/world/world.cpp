@@ -4,6 +4,7 @@ import :world;
 
 using namespace core;
 
+WorldId core::world_id(const World& world) { return world.id(); }
 const TypeRegistry& core::world_type_registry(const World& world) { return world.type_registry(); }
 std::shared_ptr<TypeRegistry> core::world_type_registry_ptr(const World& world) { return world.type_registry_ptr(); }
 const Components& core::world_components(const World& world) { return world.components(); }

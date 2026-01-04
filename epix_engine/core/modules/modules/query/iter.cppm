@@ -8,11 +8,11 @@ import :query.decl;
 import :query.state;
 import :query.fetch;
 import :query.filter;
-
-import :world.interface;
+import :storage;
+import :world.decl;
 
 namespace core {
-template <query_data D, query_filter F>
+export template <query_data D, query_filter F>
 struct QueryIterCursor {
    public:
     QueryIterCursor(World* world, const QueryState<D, F>* state, Tick last_run, Tick this_run)
@@ -109,7 +109,7 @@ export template <query_data D, query_filter F>
 struct QueryIter : std::ranges::view_interface<QueryIter<D, F>> {
    public:
     QueryIter(World* world, const QueryState<D, F>* state, Tick last_run, Tick this_run)
-        : world(world), tables(&world->storage_mut().tables), archetypes(&world->archetypes()), state(state) {
+        : world(world), tables(&world_storage_mut(*world).tables), archetypes(&world_archetypes(*world)), state(state) {
         cursor.emplace(world, state, last_run, this_run);
     }
     static QueryIter create_begin(World* world, const QueryState<D, F>* state, Tick last_run, Tick this_run) {
@@ -160,8 +160,8 @@ struct QueryIter : std::ranges::view_interface<QueryIter<D, F>> {
    private:
     QueryIter(World* world, const QueryState<D, F>* state, QueryIterCursor<D, F> cursor)
         : world(world),
-          tables(&world->storage_mut().tables),
-          archetypes(&world->archetypes()),
+          tables(&world_storage_mut(*world).tables),
+          archetypes(&world_archetypes(*world)),
           state(state),
           cursor(std::move(cursor)) {}
     World* world;
@@ -173,7 +173,7 @@ struct QueryIter : std::ranges::view_interface<QueryIter<D, F>> {
 };
 }  // namespace core
 
-template <core::query_data D, core::query_filter F>
+export template <core::query_data D, core::query_filter F>
 struct std::iterator_traits<core::QueryIter<D, F>> {
     using iterator_category = std::input_iterator_tag;
     using value_type        = core::QueryData<D>::Item;

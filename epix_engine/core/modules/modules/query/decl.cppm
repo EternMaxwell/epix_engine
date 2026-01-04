@@ -67,9 +67,6 @@ export template <typename... Fs>
     requires((query_filter<Fs> && ...))
 struct Filter;
 
-template <query_data D, query_filter F = Filter<>>
-struct QueryState;
-
 export template <query_data D, query_filter F>
 struct QueryIter;
 

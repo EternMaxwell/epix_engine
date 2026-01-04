@@ -11,12 +11,11 @@ import :type_registry;
 import :component;
 import :entities;
 import :storage;
-import :bundle.interface;
-import :bundle.spec;
+import :bundle;
 import :world.entity_ref.decl;
 import :world.decl;
 import :world.commands;
-import :query.decl;
+import :query;
 
 namespace core {
 
@@ -116,10 +115,6 @@ struct FromWorld {
             static_assert(false, "Unreachable");
         }
     }
-};
-
-export struct WorldId : ::core::int_base<std::uint64_t> {
-    using int_base::int_base;
 };
 
 // should make sure that all world impls inherit this does not include their own data members
@@ -391,9 +386,13 @@ export struct World {
     }
 
     template <query_data D>
-    QueryState<D, Filter<>> query();
+    QueryState<D, Filter<>> query() {
+        return QueryState<D, Filter<>>::create(*this);
+    }
     template <query_data D, query_filter F>
-    QueryState<D, F> query_filtered();
+    QueryState<D, F> query_filtered() {
+        return QueryState<D, F>::create(*this);
+    }
 
     EntityRef entity(Entity entity);
     EntityWorldMut entity_mut(Entity entity);

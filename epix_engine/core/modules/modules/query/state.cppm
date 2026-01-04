@@ -6,20 +6,22 @@ import std;
 
 import :query.decl;
 import :query.access;
-import :world.interface;
+import :world.decl;
+import :storage;
+import :component;
 
 namespace core {
-template <query_data D, query_filter F>
+export template <query_data D, query_filter F = Filter<>>
 struct QueryState {
    public:
     static QueryState create_uninit(World& world) {
-        return QueryState(world.id(), WorldQuery<D>::init_state(world), WorldQuery<F>::init_state(world));
+        return QueryState(world_id(world), WorldQuery<D>::init_state(world), WorldQuery<F>::init_state(world));
     }
     static std::optional<QueryState> create_from_const_uninit(const World& world) {
-        auto fetch_state  = WorldQuery<D>::get_state(world.components());
-        auto filter_state = WorldQuery<F>::get_state(world.components());
+        auto fetch_state  = WorldQuery<D>::get_state(world_components(world));
+        auto filter_state = WorldQuery<F>::get_state(world_components(world));
         if (fetch_state.has_value() && filter_state.has_value()) {
-            return QueryState(world.id(), std::move(*fetch_state), std::move(*filter_state));
+            return QueryState(world_id(world), std::move(*fetch_state), std::move(*filter_state));
         } else {
             return std::nullopt;
         }
@@ -46,27 +48,28 @@ struct QueryState {
     void update_archetypes(const World& world) {
         validate_world(world);
         if (_component_access.required().empty()) {
-            std::span span = world.archetypes().archetypes;
+            std::span span = world_archetypes(world).archetypes;
             for (auto&& archetype : span.subspan(_archetype_version)) {
                 new_archetype_internal(archetype);
             }
         } else {
-            auto rng = _component_access.required().iter_ones() |
-                       std::views::filter([&](TypeId id) { return world.archetypes().by_component.contains(id); }) |
-                       std::views::transform([&](TypeId id) {
-                           return std::make_pair(id, std::addressof(world.archetypes().by_component.at(id)));
-                       });
+            auto rng =
+                _component_access.required().iter_ones() |
+                std::views::filter([&](TypeId id) { return world_archetypes(world).by_component.contains(id); }) |
+                std::views::transform([&](TypeId id) {
+                    return std::make_pair(id, std::addressof(world_archetypes(world).by_component.at(id)));
+                });
             auto iter_min = std::ranges::min_element(rng, {}, [](auto&& pair) { return pair.second->size(); });
             if (iter_min != rng.end()) {
                 auto&& [id, potential] = *iter_min;
                 for (auto&& [id, _] : *potential) {
                     if (id.get() >= _archetype_version) {
-                        new_archetype_internal(world.archetypes().get(id).value().get());
+                        new_archetype_internal(world_archetypes(world).get(id).value().get());
                     }
                 }
             }
         }
-        _archetype_version = world.archetypes().size();
+        _archetype_version = world_archetypes(world).size();
     }
 
     template <query_data NewD, query_filter NewF>
@@ -91,12 +94,14 @@ struct QueryState {
         update_archetypes(world);
         return Query<D, F>(world, *this, last_run, this_run);
     }
-    Query<D, F> query(World& world) { return query_with_ticks(world, world.last_change_tick(), world.change_tick()); }
+    Query<D, F> query(World& world) {
+        return query_with_ticks(world, world_last_change_tick(world), world_change_tick(world));
+    }
     Query<D, F> query_manual_with_ticks(World& world, Tick last_run, Tick this_run) {
         return Query<D, F>(world, *this, last_run, this_run);
     }
     Query<D, F> query_manual(World& world) {
-        return query_manual_with_ticks(world, world.last_change_tick(), world.change_tick());
+        return query_manual_with_ticks(world, world_last_change_tick(world), world_change_tick(world));
     }
     QueryIter<D, F> iter_with_ticks(World& world, Tick last_run, Tick this_run) {
         update_archetypes(world);
@@ -104,27 +109,27 @@ struct QueryState {
     }
     QueryIter<D, F> iter(World& world) {
         update_archetypes(world);
-        return create_iter(world, world.last_change_tick(), world.change_tick());
+        return create_iter(world, world_last_change_tick(world), world_change_tick(world));
     }
     QueryIter<D, F> iter_manual_with_ticks(World& world, Tick last_run, Tick this_run) {
         return create_iter(world, last_run, this_run);
     }
     QueryIter<D, F> iter_manual(World& world) {
-        return create_iter(world, world.last_change_tick(), world.change_tick());
+        return create_iter(world, world_last_change_tick(world), world_change_tick(world));
     }
     typename AddOptional<typename QueryData<D>::Item>::type get_manual_with_ticks(World& world,
                                                                                   Entity entity,
                                                                                   Tick last_run,
                                                                                   Tick this_run) {
         update_archetypes(world);
-        return world.entities().get(entity).and_then(
+        return world_entities(world).get(entity).and_then(
             [this, &world, entity, last_run, this_run](EntityLocation location) ->
             typename AddOptional<typename QueryData<D>::Item>::type {
                 if (!contains_archetype(location.archetype_id)) return std::nullopt;
-                auto& archetype = world.archetypes().get(location.archetype_id).value().get();
+                auto& archetype = world_archetypes(world).get(location.archetype_id).value().get();
                 auto fetch      = WorldQuery<D>::init_fetch(world, fetch_state(), last_run, this_run);
                 auto filter     = WorldQuery<F>::init_fetch(world, filter_state(), last_run, this_run);
-                auto& table     = world.storage_mut().tables.get_mut(archetype.table_id()).value().get();
+                auto& table     = world_storage_mut(world).tables.get_mut(archetype.table_id()).value().get();
 
                 WorldQuery<D>::set_archetype(fetch, fetch_state(), archetype, table);
                 WorldQuery<F>::set_archetype(filter, filter_state(), archetype, table);
@@ -140,11 +145,11 @@ struct QueryState {
         return get_manual_with_ticks(world, entity, last_run, this_run);
     }
     typename AddOptional<typename QueryData<D>::Item>::type get_manual(World& world, Entity entity) {
-        return get_manual_with_ticks(world, entity, world.last_change_tick(), world.change_tick());
+        return get_manual_with_ticks(world, entity, world_last_change_tick(world), world_change_tick(world));
     }
     typename AddOptional<typename QueryData<D>::Item>::type get(World& world, Entity entity) {
         update_archetypes(world);
-        return get_manual_with_ticks(world, entity, world.last_change_tick(), world.change_tick());
+        return get_manual_with_ticks(world, entity, world_last_change_tick(world), world_change_tick(world));
     }
 
    private:
@@ -162,7 +167,7 @@ struct QueryState {
     }
 
     void validate_world(const World& world) const {
-        if (world.id() != _world_id) {
+        if (world_id(world) != _world_id) {
             throw std::runtime_error("QueryState used with a different World than it was created for");
         }
     }

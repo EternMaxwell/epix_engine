@@ -6,7 +6,9 @@ import std;
 
 import :query.decl;
 import :query.access;
-import :world.interface;
+import :world.decl;
+import :component;
+import :storage;
 
 namespace core {
 template <query_filter... Fs>
@@ -42,7 +44,7 @@ struct WorldQuery<With<Ts...>> {
     static void update_access(const State& state, FilteredAccess& access) {
         std::ranges::for_each(state, [&](TypeId id) { access.add_with(id); });
     }
-    static State init_state(World& world) { return State{world.type_registry().type_id<Ts>()...}; }
+    static State init_state(World& world) { return State{world_type_registry(world).type_id<Ts>()...}; }
     static std::optional<State> get_state(const Components& components) {
         return State{components.registry().type_id<Ts>()...};
     }
@@ -76,7 +78,7 @@ struct WorldQuery<Without<Ts...>> {
     static void update_access(const State& state, FilteredAccess& access) {
         std::ranges::for_each(state, [&](TypeId id) { access.add_without(id); });
     }
-    static State init_state(World& world) { return State{world.type_registry().type_id<Ts>()...}; }
+    static State init_state(World& world) { return State{world_type_registry(world).type_id<Ts>()...}; }
     static std::optional<State> get_state(const Components& components) {
         return State{components.registry().type_id<Ts>()...};
     }
@@ -225,7 +227,7 @@ struct WorldQuery<Added<T>> {
                     .last_run      = last_run,
                     .this_run      = this_run};
         if (fetch.is_sparse_set) {
-            fetch.sparse_set = world.storage()
+            fetch.sparse_set = world_storage(world)
                                    .sparse_sets.get(state.component_id)
                                    .transform([](auto& ref) { return &ref.get(); })
                                    .value_or(nullptr);
@@ -251,7 +253,7 @@ struct WorldQuery<Added<T>> {
         access.add_component_read(state.component_id);
     }
     static State init_state(World& world) {
-        return State{.component_id = world.type_registry().type_id<T>(), .storage_type = storage_for<T>()};
+        return State{.component_id = world_type_registry(world).type_id<T>(), .storage_type = storage_for<T>()};
     }
     static std::optional<State> get_state(const Components& components) {
         auto type_id = components.registry().type_id<T>();
