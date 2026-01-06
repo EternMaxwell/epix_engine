@@ -19,6 +19,7 @@ import :tests.hierarchy;
 import :tests.query_iter;
 import :tests.query_state;
 import :tests.random_spawn;
+import :tests.schedule;
 
 [[nodiscard]] std::vector<core::tests::ForceBase> core::tests::force_link_tests() {
     using namespace core;
@@ -27,6 +28,6 @@ import :tests.random_spawn;
         {core_bitvector_Test{}},   {core_bundle_info_Test{}},     {core_bundle_inserter_Test{}},
         {core_bundle_Test{}},      {core_component_hooks_Test{}}, {core_dense_Test{}},
         {core_entity_ref_Test{}},  {core_hierarchy_Test{}},       {core_query_iter_Test{}},
-        {core_query_state_Test{}}, {core_random_spawn_Test{}},
+        {core_query_state_Test{}}, {core_random_spawn_Test{}},    {core_schedule_Test{}},
     };
 }
