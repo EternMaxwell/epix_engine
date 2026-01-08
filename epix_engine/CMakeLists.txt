@@ -52,7 +52,7 @@ function(epix_add_module MODULE_NAME)
 endfunction()
 
 add_subdirectory(core)
-# add_subdirectory(input)
+add_subdirectory(input)
 # add_subdirectory(assets)
 # add_subdirectory(window)
 # add_subdirectory(transform)
