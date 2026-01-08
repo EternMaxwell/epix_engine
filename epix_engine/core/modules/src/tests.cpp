@@ -20,14 +20,22 @@ import :tests.query_iter;
 import :tests.query_state;
 import :tests.random_spawn;
 import :tests.schedule;
+import :tests.sparse_array;
+import :tests.sparse_set;
+import :tests.system;
+import :tests.table;
+import :tests.type_registry;
+import :tests.untyped_vec;
 
 [[nodiscard]] std::vector<core::tests::ForceBase> core::tests::force_link_tests() {
     using namespace core;
     return {
-        {core_access_Test{}},      {core_app_main_Test{}},        {core_archetype_Test{}},
-        {core_bitvector_Test{}},   {core_bundle_info_Test{}},     {core_bundle_inserter_Test{}},
-        {core_bundle_Test{}},      {core_component_hooks_Test{}}, {core_dense_Test{}},
-        {core_entity_ref_Test{}},  {core_hierarchy_Test{}},       {core_query_iter_Test{}},
-        {core_query_state_Test{}}, {core_random_spawn_Test{}},    {core_schedule_Test{}},
+        {core_access_Test{}},       {core_app_main_Test{}},        {core_archetype_Test{}},
+        {core_bitvector_Test{}},    {core_bundle_info_Test{}},     {core_bundle_inserter_Test{}},
+        {core_bundle_Test{}},       {core_component_hooks_Test{}}, {core_dense_Test{}},
+        {core_entity_ref_Test{}},   {core_hierarchy_Test{}},       {core_query_iter_Test{}},
+        {core_query_state_Test{}},  {core_random_spawn_Test{}},    {core_schedule_Test{}},
+        {core_sparse_array_Test{}}, {core_sparse_set_Test{}},      {core_system_Test{}},
+        {core_table_Test{}},        {core_type_registry_Test{}},   {core_untyped_vector_Test{}},
     };
 }
