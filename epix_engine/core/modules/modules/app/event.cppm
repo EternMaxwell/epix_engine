@@ -9,7 +9,7 @@ import :ticks;
 import :world;
 
 namespace core {
-template <std::movable T>
+export template <std::movable T>
 struct Events {
    private:
     std::deque<T> m_events;  // event lifetime pair

@@ -374,7 +374,7 @@ static_assert(
     system_param<
         std::tuple<const World&, Res<int>, std::optional<ResMut<float>>, Query<int&, With<float>>, Local<float>>>);
 
-template <system_param... Ts>
+export template <system_param... Ts>
 struct ParamSet {
    public:
     using State = std::tuple<typename SystemParam<Ts>::State...>;
