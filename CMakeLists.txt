@@ -46,7 +46,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 #sub directories
 
-# add_subdirectory (libs/glfw)
+add_subdirectory (libs/glfw)
 set (SPDLOG_USE_STD_FORMAT ON)
 add_subdirectory (libs/spdlog)
 # add_subdirectory (libs/glm)
