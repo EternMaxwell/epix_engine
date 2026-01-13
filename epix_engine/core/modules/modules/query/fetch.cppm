@@ -444,7 +444,7 @@ static_assert(query_data<int&>);
  * @brief Optional fetch, returns std::optional<Ref<T>> for Opt<Ref<T>>, std::optional<Mut<T>> for Opt<Mut<T>>, const T*
  * for Opt<const T&>, T* for Opt<T&>.
  */
-template <world_query T>
+export template <world_query T>
 struct Opt {};  // empty definition needed for tuple.
 
 template <world_query T>
