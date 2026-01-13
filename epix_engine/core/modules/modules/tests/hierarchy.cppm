@@ -30,7 +30,7 @@ TEST(core, hierarchy) {
     auto maybe_children = parent_ref.get<Children>();
     ASSERT_TRUE(maybe_children.has_value()) << "parent missing Children after spawn via entity ref";
     const auto& children = maybe_children->get();
-    EXPECT_NE(children.entities.find(child1), children.entities.end())
+    EXPECT_NE(children.entities().find(child1), children.entities().end())
         << "child1 not found in parent's Children after entity spawn";
 
     // now remove Parent from child1 and ensure parent's Children no longer contains it
@@ -41,7 +41,7 @@ TEST(core, hierarchy) {
 
     // check parent children
     maybe_children = parent_ref.get<Children>();
-    EXPECT_EQ(children.entities.find(child1), children.entities.end())
+    EXPECT_EQ(children.entities().find(child1), children.entities().end())
         << "child1 still present in parent's Children after removing Parent from child1";
 
     // spawn a child via CommandQueue (deferred command style)
@@ -62,10 +62,10 @@ TEST(core, hierarchy) {
     ASSERT_TRUE(maybe_children.has_value()) << "parent missing Children after spawn via command";
 
     // there should exist at least one child now (child1 was removed earlier)
-    EXPECT_FALSE(maybe_children->get().entities.empty()) << "no children present after command spawn";
+    EXPECT_FALSE(maybe_children->get().entities().empty()) << "no children present after command spawn";
 
     // pick one child from set
-    Entity child2 = *maybe_children->get().entities.begin();
+    Entity child2 = *maybe_children->get().entities().begin();
     EXPECT_NE(child2, child1) << "child2 is same as child1, expected different entity";
 
     // despawn the parent and ensure the child is despawned by the Children::on_despawn hook
