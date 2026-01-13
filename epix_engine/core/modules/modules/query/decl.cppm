@@ -13,12 +13,12 @@ namespace core {
 /**
  * @brief For types that can be used as a element of query item, e.g. template argument of Item.
  */
-template <typename T>
-struct WorldQuery;
-template <typename T>
-struct QueryData;
-template <typename T>
-struct QueryFilter;
+export template <typename T>
+struct WorldQuery {};
+export template <typename T>
+struct QueryData {};
+export template <typename T>
+struct QueryFilter {};
 
 export struct FilteredAccess;
 

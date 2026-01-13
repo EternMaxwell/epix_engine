@@ -250,7 +250,7 @@ struct SystemParam<DeferredWorld> : ParamBase {
 };
 static_assert(system_param<DeferredWorld>);
 
-template <typename T>
+export template <typename T>
     requires(!std::is_reference_v<T> && !std::is_const_v<T>)
 struct Local {
    public:
