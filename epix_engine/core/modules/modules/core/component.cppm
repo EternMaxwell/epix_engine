@@ -18,7 +18,7 @@ struct HookContext {
 };
 /// Component Hooks struct for storing component lifecycle hooks
 /// the priority of the hooks if can be called at the same time is as follows:
-/// [on_despawn > on_replace > on_remove > removed] and [added > on_add > on_insert]
+/// [on_despawn > on_replace > on_remove > removed > added > on_add > on_insert]
 struct ComponentHooks {
     std::function<void(World&, HookContext)> on_add;
     std::function<void(World&, HookContext)> on_insert;
