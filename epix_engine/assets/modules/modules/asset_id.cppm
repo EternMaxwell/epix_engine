@@ -17,11 +17,11 @@ auto operator<=>(const uuids::uuid& lhs, const uuids::uuid& rhs) noexcept {
 static_assert(std::three_way_comparable<uuids::uuid>);
 
 namespace assets {
-template <typename... Ts>
+export template <typename... Ts>
 struct visitor : public Ts... {
     using Ts::operator()...;
 };
-template <typename... Ts>
+export template <typename... Ts>
 visitor(Ts...) -> visitor<Ts...>;
 
 export struct UntypedAssetId;
