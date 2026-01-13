@@ -10,7 +10,7 @@ namespace core {
 /**
  * @brief A collection of schedules, used as resource in World.
  */
-struct Schedules {
+export struct Schedules {
    public:
     Schedules()                            = default;
     Schedules(const Schedules&)            = delete;
