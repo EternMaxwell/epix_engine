@@ -22,7 +22,7 @@ namespace core {
  * @tparam Alloc The allocator type used for memory management. Defaults to
  * std::allocator<T>.
  */
-template <typename T, typename Alloc = std::allocator<T>>
+export template <typename T, typename Alloc = std::allocator<T>>
 struct ConQueue {
     using value_type     = T;
     using container_type = std::deque<T>;
