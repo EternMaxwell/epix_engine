@@ -55,17 +55,10 @@ struct BundleInfo {
         BundleId id);
 
     BundleId id() const { return _id; }
-    std::span<const TypeId> explicit_components() const {
-        return std::span<const TypeId>(_component_ids.data(), _explicit_components_count);
-    }
-    std::span<const TypeId> required_components() const {
-        return std::span<const TypeId>(_component_ids.data() + _explicit_components_count,
-                                       _component_ids.size() - _explicit_components_count);
-    }
-    std::span<const TypeId> all_components() const { return _component_ids; }
-    std::span<const RequiredComponentConstructor> required_component_constructors() const {
-        return _required_components;
-    }
+    auto explicit_components() const { return _component_ids | std::views::take(_explicit_components_count); }
+    auto required_components() const { return _component_ids | std::views::drop(_explicit_components_count); }
+    auto all_components() const { return _component_ids | std::views::all; }
+    auto required_component_constructors() const { return _required_components | std::views::all; }
 
     template <typename T1, typename T2, is_bundle T3>
     void write_components(

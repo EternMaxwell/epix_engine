@@ -74,9 +74,9 @@ struct ArchetypeAfterBundleInsert {
           _component_statuses(std::move(component_statuses)),
           required_components(std::move(required_components)) {}
 
-    std::span<const TypeId> inserted() const { return _inserted; }
-    std::span<const TypeId> added() const { return inserted().subspan(0, _added_len); }
-    std::span<const TypeId> existing() const { return inserted().subspan(_added_len); }
+    auto inserted() const { return _inserted | std::views::all; }
+    auto added() const { return _inserted | std::views::take(_added_len); }
+    auto existing() const { return _inserted | std::views::drop(_added_len); }
 
     auto iter_status() const { return std::views::all(_component_statuses); }
 
@@ -180,7 +180,7 @@ struct Archetype {
     auto sparse_components() const {
         return _components.iter() | std::views::filter(IsSparsePredicate{}) | std::views::keys;
     }
-    auto components() const { return _components.indices(); }
+    auto components() const { return _components.indices() | std::views::all; }
     std::size_t component_count() const { return _components.size(); }
     TableRow entity_table_row(ArchetypeRow arch_idx) const { return _entities[arch_idx].table_idx; }
     void set_entity_table_row(ArchetypeRow arch_idx, TableRow table_idx) { _entities[arch_idx].table_idx = table_idx; }
