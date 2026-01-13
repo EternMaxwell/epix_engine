@@ -111,7 +111,5 @@ export struct TypeRegistry {
 // temporary. currently partial specializations are errornous in modules in most compilers
 template <>
 struct std::hash<core::TypeId> {
-    std::size_t operator()(const core::TypeId& typeId) const noexcept {
-        return std::hash<core::int_base<std::uint64_t>>()(typeId);
-    }
+    std::size_t operator()(const core::TypeId& typeId) const noexcept { return std::hash<std::uint64_t>()(typeId); }
 };
