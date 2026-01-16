@@ -6,45 +6,46 @@
 
 module epix.image;
 
+import epix.assets;
 import std;
 
 using namespace image;
 
 const FormatInfo& image::getFormatInfo(Format fmt) {
+    static FormatInfo info1{1, 1, false, false};
+    static FormatInfo info2{2, 1, false, false};
+    static FormatInfo info3{3, 1, false, false};
+    static FormatInfo info4{4, 1, false, false};
+    static FormatInfo info5{1, 2, false, true};
+    static FormatInfo info6{3, 2, false, true};
+    static FormatInfo info7{4, 2, false, true};
+    static FormatInfo info8{1, 4, true, false};
+    static FormatInfo info9{3, 4, true, false};
+    static FormatInfo info10{4, 4, true, false};
+    static FormatInfo info0{0, 0, false, false};
     switch (fmt) {
         case Format::Grey8:
-            static FormatInfo info{1, 1, false, false};
-            return info;
+            return info1;
         case Format::GreyAlpha8:
-            static FormatInfo info{2, 1, false, false};
-            return info;
+            return info2;
         case Format::RGB8:
-            static FormatInfo info{3, 1, false, false};
-            return info;
+            return info3;
         case Format::RGBA8:
-            static FormatInfo info{4, 1, false, false};
-            return info;
+            return info4;
         case Format::Grey16:
-            static FormatInfo info{1, 2, false, true};
-            return info;
+            return info5;
         case Format::RGB16:
-            static FormatInfo info{3, 2, false, true};
-            return info;
+            return info6;
         case Format::RGBA16:
-            static FormatInfo info{4, 2, false, true};
-            return info;
+            return info7;
         case Format::Grey32F:
-            static FormatInfo info{1, 4, true, false};
-            return info;
+            return info8;
         case Format::RGB32F:
-            static FormatInfo info{3, 4, true, false};
-            return info;
+            return info9;
         case Format::RGBA32F:
-            static FormatInfo info{4, 4, true, false};
-            return info;
+            return info10;
         default:
-            static FormatInfo info{0, 0, false, false};
-            return info;
+            return info0;
     }
 }
 
@@ -63,7 +64,7 @@ std::expected<std::array<float, 4>, ImageSampleError> Image::sample(std::uint32_
 
     const std::byte* pixelPtr = data.data() + (y * m_width + x) * inf.pixelSize();
 
-    for (std::uint32_t c = 0; c < inf.channels && c < N; c++) {
+    for (std::uint32_t c = 0; c < inf.channels; c++) {
         float value = 0.0f;
         if (inf.isFloat) {
             if (inf.bytesPerChannel == 4) {
@@ -71,13 +72,13 @@ std::expected<std::array<float, 4>, ImageSampleError> Image::sample(std::uint32_
             }
         } else if (inf.is16Bit) {
             if (inf.bytesPerChannel == 2) {
-                uint16_t raw = *reinterpret_cast<const uint16_t*>(pixelPtr + c * inf.bytesPerChannel);
-                value        = static_cast<float>(raw) / 65535.0f;
+                std::uint16_t raw = *reinterpret_cast<const std::uint16_t*>(pixelPtr + c * inf.bytesPerChannel);
+                value             = static_cast<float>(raw) / 65535.0f;
             }
         } else {
             if (inf.bytesPerChannel == 1) {
-                uint8_t raw = *reinterpret_cast<const uint8_t*>(pixelPtr + c * inf.bytesPerChannel);
-                value       = static_cast<float>(raw) / 255.0f;
+                std::uint8_t raw = *reinterpret_cast<const std::uint8_t*>(pixelPtr + c * inf.bytesPerChannel);
+                value            = static_cast<float>(raw) / 255.0f;
             }
         }
         result[c] = value;
@@ -99,28 +100,29 @@ std::expected<void, ImageWriteError> Image::write(std::uint32_t x, std::uint32_t
             }
         } else if (inf.is16Bit) {
             if (inf.bytesPerChannel == 2) {
-                uint16_t raw = static_cast<uint16_t>(std::clamp(value * 65535.0f, 0.0f, 65535.0f));
-                *reinterpret_cast<uint16_t*>(pixelPtr + c * inf.bytesPerChannel) = raw;
+                std::uint16_t raw = static_cast<std::uint16_t>(std::clamp(value * 65535.0f, 0.0f, 65535.0f));
+                *reinterpret_cast<std::uint16_t*>(pixelPtr + c * inf.bytesPerChannel) = raw;
             }
         } else {
             if (inf.bytesPerChannel == 1) {
-                uint8_t raw = static_cast<uint8_t>(std::clamp(value * 255.0f, 0.0f, 255.0f));
-                *reinterpret_cast<uint8_t*>(pixelPtr + c * inf.bytesPerChannel) = raw;
+                std::uint8_t raw = static_cast<std::uint8_t>(std::clamp(value * 255.0f, 0.0f, 255.0f));
+                *reinterpret_cast<std::uint8_t*>(pixelPtr + c * inf.bytesPerChannel) = raw;
             }
         }
     }
     return {};
 }
-std::expected<Image, ImageLoadError> Image::load(const std::string& path) {
+std::expected<Image, ImageLoadError> Image::load(const std::filesystem::path& path) {
     if (!std::filesystem::exists(path)) {
         return std::unexpected(ImageLoadError::FileNotFound);
     }
+    auto path_str = path.string();
 
     int w, h, channels;
 
     // Try to detect if it's HDR
-    if (stbi_is_hdr(path.c_str())) {
-        float* pixels = stbi_loadf(path.c_str(), &w, &h, &channels, 0);
+    if (stbi_is_hdr(path_str.c_str())) {
+        float* pixels = stbi_loadf(path_str.c_str(), &w, &h, &channels, 0);
         if (!pixels) return std::unexpected(ImageLoadError::LoadFailed);
 
         Format fmt = (channels == 4) ? Format::RGBA32F : (channels == 3) ? Format::RGB32F : Format::Grey32F;
@@ -130,11 +132,11 @@ std::expected<Image, ImageLoadError> Image::load(const std::string& path) {
         std::memcpy(buffer.data(), pixels, byteSize);
         stbi_image_free(pixels);
 
-        return Image::create(w, h, fmt, buffer);
+        return Image::create(w, h, fmt, buffer).value();
     }
     // Check for 16-bit (load_16 usually used for png/psd)
-    else if (stbi_is_16_bit(path.c_str())) {
-        unsigned short* pixels = stbi_load_16(path.c_str(), &w, &h, &channels, 0);
+    else if (stbi_is_16_bit(path_str.c_str())) {
+        unsigned short* pixels = stbi_load_16(path_str.c_str(), &w, &h, &channels, 0);
         if (!pixels) return std::unexpected(ImageLoadError::LoadFailed);
 
         Format fmt = (channels == 4) ? Format::RGBA16 : (channels == 3) ? Format::RGB16 : Format::Grey16;
@@ -144,11 +146,11 @@ std::expected<Image, ImageLoadError> Image::load(const std::string& path) {
         std::memcpy(buffer.data(), pixels, byteSize);
         stbi_image_free(pixels);
 
-        return Image::create(w, h, fmt, buffer);
+        return Image::create(w, h, fmt, buffer).value();
     }
     // Standard 8-bit
     else {
-        stbi_uc* pixels = stbi_load(path.c_str(), &w, &h, &channels, 0);
+        stbi_uc* pixels = stbi_load(path_str.c_str(), &w, &h, &channels, 0);
         if (!pixels) return std::unexpected(ImageLoadError::LoadFailed);
 
         Format fmt = (channels == 4)   ? Format::RGBA8
@@ -161,21 +163,22 @@ std::expected<Image, ImageLoadError> Image::load(const std::string& path) {
         std::memcpy(buffer.data(), pixels, byteSize);
         stbi_image_free(pixels);
 
-        return Image::create(w, h, fmt, buffer);
+        return Image::create(w, h, fmt, buffer).value();
     }
 }
 
-std::expected<void, ImageSaveError> Image::save(const std::string& path, const Image& image) {
+std::expected<void, ImageSaveError> Image::save(const std::filesystem::path& path, const Image& image) {
     const FormatInfo& inf = image.format_info();
-    std::string ext       = std::filesystem::path(path).extension().string();
+    std::string ext       = path.extension().string();
+    auto path_str         = path.string();
     // simple lower case conversion
-    std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+    std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return std::tolower(c); });
 
     bool success = false;
 
     if (inf.isFloat) {
         // Save HDR
-        success = stbi_write_hdr(path.c_str(), image.m_width, image.m_height, inf.channels, image.raw<float>());
+        success = stbi_write_hdr(path_str.c_str(), image.m_width, image.m_height, inf.channels, image.raw<float>());
     } else {
         // For 8-bit or 16-bit (Note: stb_write mostly supports 8-bit, basic PNG for 16)
         // If it is 16 bit, we must convert to 8 bit for JPG/BMP/TGA, or use specific PNG func
@@ -190,12 +193,13 @@ std::expected<void, ImageSaveError> Image::save(const std::string& path, const I
         }
 
         if (ext == ".png") {
-            success = stbi_write_png(path.c_str(), image.m_width, image.m_height, inf.channels, image.data.data(),
+            success = stbi_write_png(path_str.c_str(), image.m_width, image.m_height, inf.channels, image.data.data(),
                                      image.m_width * inf.pixelSize());
         } else if (ext == ".jpg" || ext == ".jpeg") {
-            success = stbi_write_jpg(path.c_str(), image.m_width, image.m_height, inf.channels, image.data.data(), 90);
+            success =
+                stbi_write_jpg(path_str.c_str(), image.m_width, image.m_height, inf.channels, image.data.data(), 90);
         } else if (ext == ".bmp") {
-            success = stbi_write_bmp(path.c_str(), image.m_width, image.m_height, inf.channels, image.data.data());
+            success = stbi_write_bmp(path_str.c_str(), image.m_width, image.m_height, inf.channels, image.data.data());
         }
     }
 
@@ -203,10 +207,10 @@ std::expected<void, ImageSaveError> Image::save(const std::string& path, const I
     return std::expected<void, ImageSaveError>{};
 }
 Image Image::convert(Format targetFmt) const {
-    if (targetFmt == m_format) return Image::create(m_width, m_height, m_format, data);
+    if (targetFmt == m_format) return Image::create(m_width, m_height, m_format, data).value();
 
-    FormatInfo srcInfo = info();
-    FormatInfo dstInfo = getFormatInfo(targetFmt);
+    const FormatInfo& srcInfo = format_info();
+    const FormatInfo& dstInfo = getFormatInfo(targetFmt);
 
     // Handle strict requirement: At least to RGBA8 and RGB8
     // We use a simplified approach: promote to float, rearrange channels, demote to target.
@@ -232,9 +236,9 @@ Image Image::convert(Format targetFmt) const {
                 if (srcInfo.channels == 2) a = p[1];
             }
         } else if (srcInfo.is16Bit) {
-            const uint16_t* p = raw<uint16_t>() + i * srcInfo.channels;
-            auto norm         = [](uint16_t v) { return v / 65535.0f; };
-            r                 = norm(p[0]);
+            const std::uint16_t* p = raw<std::uint16_t>() + i * srcInfo.channels;
+            auto norm              = [](std::uint16_t v) { return v / 65535.0f; };
+            r                      = norm(p[0]);
             if (srcInfo.channels <= 2) {
                 g = r;
                 b = r;
@@ -245,9 +249,9 @@ Image Image::convert(Format targetFmt) const {
                 if (srcInfo.channels == 4) a = norm(p[3]);
             }
         } else {  // 8 bit
-            const uint8_t* p = data.data() + i * srcInfo.channels;
-            auto norm        = [](uint8_t v) { return v / 255.0f; };
-            r                = norm(p[0]);
+            const std::uint8_t* p = raw<std::uint8_t>() + i * srcInfo.channels;
+            auto norm             = [](std::uint8_t v) { return v / 255.0f; };
+            r                     = norm(p[0]);
             if (srcInfo.channels <= 2) {
                 g = r;
                 b = r;
@@ -267,16 +271,16 @@ Image Image::convert(Format targetFmt) const {
             if (dstInfo.channels >= 3) p[2] = b;
             if (dstInfo.channels == 4) p[3] = a;
         } else if (dstInfo.is16Bit) {
-            uint16_t* p = result.raw<uint16_t>() + i * dstInfo.channels;
-            auto denorm = [](float v) { return static_cast<uint16_t>(std::clamp(v, 0.0f, 1.0f) * 65535.0f); };
-            p[0]        = denorm(r);
+            std::uint16_t* p = result.raw<std::uint16_t>() + i * dstInfo.channels;
+            auto denorm      = [](float v) { return static_cast<std::uint16_t>(std::clamp(v, 0.0f, 1.0f) * 65535.0f); };
+            p[0]             = denorm(r);
             if (dstInfo.channels >= 2) p[1] = (dstInfo.channels == 2) ? denorm(a) : denorm(g);
             if (dstInfo.channels >= 3) p[2] = denorm(b);
             if (dstInfo.channels == 4) p[3] = denorm(a);
         } else {  // 8 bit
-            uint8_t* p  = result.data.data() + i * dstInfo.channels;
-            auto denorm = [](float v) { return static_cast<uint8_t>(std::clamp(v, 0.0f, 1.0f) * 255.0f); };
-            p[0]        = denorm(r);
+            std::uint8_t* p = result.raw<std::uint8_t>() + i * dstInfo.channels;
+            auto denorm     = [](float v) { return static_cast<std::uint8_t>(std::clamp(v, 0.0f, 1.0f) * 255.0f); };
+            p[0]            = denorm(r);
             if (dstInfo.channels >= 2) p[1] = (dstInfo.channels == 2) ? denorm(a) : denorm(g);
             if (dstInfo.channels >= 3) p[2] = denorm(b);
             if (dstInfo.channels == 4) p[3] = denorm(a);
@@ -286,7 +290,7 @@ Image Image::convert(Format targetFmt) const {
     return result;
 }
 Image Image::resize(std::uint32_t newW, std::uint32_t newH) const {
-    auto& inf = info();
+    auto& inf = format_info();
 
     Image result = Image::create(newW, newH, m_format);
 
@@ -302,10 +306,10 @@ Image Image::resize(std::uint32_t newW, std::uint32_t newH) const {
 Image Image::blur(std::uint32_t radius) const {
     // For simplicity, convert to float for processing, then convert back
     // unless it's already float.
-    bool needsConvert = !info().isFloat;
-    Image work        = needsConvert ? this->convert(info().channels == 4 ? Format::RGBA32F : Format::RGB32F) : *this;
+    bool needsConvert = !format_info().isFloat;
+    Image work = needsConvert ? this->convert(format_info().channels == 4 ? Format::RGBA32F : Format::RGB32F) : *this;
 
-    auto& inf    = work.info();
+    auto& inf    = work.format_info();
     Image temp   = Image::create(work.width(), work.height(), work.format());
     Image result = Image::create(work.width(), work.height(), work.format());
 
@@ -321,20 +325,20 @@ Image Image::blur(std::uint32_t radius) const {
     }
     for (float& k : kernel) k /= sum;
 
-    int w          = work.width();
-    int h          = work.height();
-    int c          = inf.channels;
-    float* srcData = work.raw<float>();
-    float* tmpData = temp.raw<float>();
-    float* dstData = result.raw<float>();
+    std::uint32_t w = work.width();
+    std::uint32_t h = work.height();
+    std::uint32_t c = inf.channels;
+    float* srcData  = work.raw<float>();
+    float* tmpData  = temp.raw<float>();
+    float* dstData  = result.raw<float>();
 
     // Horizontal Pass
-    for (int y = 0; y < h; ++y) {
-        for (int x = 0; x < w; ++x) {
-            for (int ch = 0; ch < c; ++ch) {
+    for (std::uint32_t y = 0; y < h; ++y) {
+        for (std::uint32_t x = 0; x < w; ++x) {
+            for (std::uint32_t ch = 0; ch < c; ++ch) {
                 float val = 0.0f;
-                for (int k = 0; k < size; ++k) {
-                    int ix = std::clamp(x + k - radius, 0, w - 1);
+                for (std::uint32_t k = 0; k < size; ++k) {
+                    std::uint32_t ix = std::clamp(x + k - radius, 0u, w - 1);
                     val += srcData[(y * w + ix) * c + ch] * kernel[k];
                 }
                 tmpData[(y * w + x) * c + ch] = val;
@@ -343,12 +347,12 @@ Image Image::blur(std::uint32_t radius) const {
     }
 
     // Vertical Pass
-    for (int y = 0; y < h; ++y) {
-        for (int x = 0; x < w; ++x) {
-            for (int ch = 0; ch < c; ++ch) {
+    for (std::uint32_t y = 0; y < h; ++y) {
+        for (std::uint32_t x = 0; x < w; ++x) {
+            for (std::uint32_t ch = 0; ch < c; ++ch) {
                 float val = 0.0f;
-                for (int k = 0; k < size; ++k) {
-                    int iy = std::clamp(y + k - radius, 0, h - 1);
+                for (std::uint32_t k = 0; k < size; ++k) {
+                    std::uint32_t iy = std::clamp(y + k - radius, 0u, h - 1);
                     val += tmpData[(iy * w + x) * c + ch] * kernel[k];
                 }
                 dstData[(y * w + x) * c + ch] = val;
@@ -360,4 +364,23 @@ Image Image::blur(std::uint32_t radius) const {
         return result.convert(m_format);
     }
     return result;
+}
+
+std::span<const char* const> ImageLoader::extensions() noexcept {
+    static constexpr auto exts =
+        std::array{".png", ".jpg", ".jpeg", ".bmp", ".tga", ".hdr", ".pic", ".psd", ".gif", ".ppm", ".pgm", ".pnm"};
+    return exts;
+}
+Image ImageLoader::load(const std::filesystem::path& path, assets::LoadContext& context) {
+    auto res = Image::load(path);
+    if (!res) {
+        throw std::runtime_error("Failed to load image: " + path.string());
+    }
+    return std::move(*res);
+}
+
+void ImagePlugin::build(core::App& app) {
+    app.add_plugins(assets::AssetPlugin{});
+    app.plugin_scope(
+        [](assets::AssetPlugin& asset_plugin) { asset_plugin.register_asset<Image>().register_loader<ImageLoader>(); });
 }

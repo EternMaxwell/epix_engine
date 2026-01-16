@@ -6,6 +6,8 @@
 
 export module epix.image;
 
+import epix.core;
+import epix.assets;
 import std;
 
 export namespace image {
@@ -42,6 +44,12 @@ enum class ImageSaveError { SaveFailed };
 enum class ImageSampleError { OutOfBounds };
 enum class ImageWriteError { OutOfBounds, DataSizeMismatch };
 
+template <typename T>
+struct span_type {
+    using span = decltype(std::span(std::declval<T>()));
+    using type = typename span::value_type;
+};
+
 // Requirement 2: Image Struct
 export class Image {
    private:
@@ -68,20 +76,23 @@ export class Image {
     static Image create(std::uint32_t w, std::uint32_t h, Format fmt);
     template <typename T>
         requires requires(T&& t) {
-            std::span span = std::span(std::forward<T>(t));
-            requires std::is_trivially_copyable<decltype(span)::value_type>::value;
+            { std::span(std::forward<T>(t)) };
+            requires std::is_trivially_copyable_v<typename span_type<T>::type>;
         }
     static std::optional<Image> create(std::uint32_t w, std::uint32_t h, Format fmt, T&& initData);
 
     // Loader and Saver
-    static std::expected<Image, ImageLoadError> load(const std::string& path);
-    static std::expected<void, ImageSaveError> save(const std::string& path, const Image& image);
+    static std::expected<Image, ImageLoadError> load(const std::filesystem::path& path);
+    static std::expected<void, ImageSaveError> save(const std::filesystem::path& path, const Image& image);
 
     // Getters
     std::uint32_t width() const { return m_width; }
     std::uint32_t height() const { return m_height; }
     Format format() const { return m_format; }
     const FormatInfo& format_info() const { return getFormatInfo(m_format); }
+
+    // views
+    std::span<const std::byte> raw_view() const { return std::as_bytes(std::span(data)); }
 
     // sample and write
     /**
@@ -94,8 +105,8 @@ export class Image {
      */
     template <typename T>
         requires requires(T&& t) {
-            std::span span = std::span(std::forward<T>(t));
-            requires std::is_trivially_copyable<decltype(span)::value_type>::value;
+            { std::span(std::forward<T>(t)) };
+            requires std::is_trivially_copyable_v<typename span_type<T>::type>;
         }
     std::expected<void, ImageWriteError> write_raw(std::uint32_t x, std::uint32_t y, T&& data);
     /**
@@ -117,10 +128,19 @@ export class Image {
      */
     Image blur(std::uint32_t radius) const;
 };
+
+export struct ImageLoader {
+    static std::span<const char* const> extensions() noexcept;
+    static Image load(const std::filesystem::path& path, assets::LoadContext& context);
+};
+export struct ImagePlugin {
+    void build(core::App& app);
+};
+
 template <typename T>
     requires requires(T&& t) {
-        std::span span = std::span(std::forward<T>(t));
-        requires std::is_trivially_copyable<decltype(span)::value_type>::value;
+        { std::span(std::forward<T>(t)) };
+        requires std::is_trivially_copyable_v<typename span_type<T>::type>;
     }
 static std::optional<Image> Image::create(std::uint32_t w, std::uint32_t h, Format fmt, T&& initData) {
     std::optional<Image> img;
@@ -134,8 +154,8 @@ static std::optional<Image> Image::create(std::uint32_t w, std::uint32_t h, Form
 }
 template <typename T>
     requires requires(T&& t) {
-        std::span span = std::span(std::forward<T>(t));
-        requires std::is_trivially_copyable<decltype(span)::value_type>::value;
+        { std::span(std::forward<T>(t)) };
+        requires std::is_trivially_copyable_v<typename span_type<T>::type>;
     }
 std::expected<void, ImageWriteError> Image::write_raw(std::uint32_t x, std::uint32_t y, T&& data) {
     const FormatInfo& inf = format_info();
