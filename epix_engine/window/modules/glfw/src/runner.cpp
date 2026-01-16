@@ -56,10 +56,13 @@ bool GLFWRunner::step(App& app) {
     if (render_app_future) render_app_future->wait();
     render_app_future.reset();
     if (exit_code.has_value()) return false;
-    if (auto render_app = app.get_sub_app_mut(core::AppLabel::from_type<render::RenderT>())) {
-        render_app.value().get().extract(app);
-        render_app_future = render_app.value().get().update();
-    }
+    render_app_future = render_app_label.and_then([&](const core::AppLabel& label) -> std::optional<std::future<bool>> {
+        if (auto render_app = app.get_sub_app_mut(label)) {
+            render_app.value().get().extract(app);
+            return render_app.value().get().update();
+        }
+        return std::nullopt;
+    });
     return true;
 }
 void GLFWRunner::exit(App& app) {

@@ -97,6 +97,15 @@ struct CachedWindowPosSize {
     int height = 0;
 };
 struct GLFWRunner : public AppRunner {
+   public:
+    GLFWRunner(App& app);
+    bool step(App& app) override;
+    void exit(App& app) override;
+
+    void set_render_app(const core::AppLabel& label) { render_app_label = label; }
+    void reset_render_app() { render_app_label = std::nullopt; }
+
+   private:
     std::unique_ptr<core::System<std::tuple<>, std::optional<int>>> check_exit;
     std::unique_ptr<core::System<std::tuple<>, void>> remove_window;
     core::FilteredAccessSet exit_access;
@@ -105,9 +114,7 @@ struct GLFWRunner : public AppRunner {
         toggle_window_mode_system, update_window_states_system, destroy_windows_system, send_cached_events_system,
         clipboard_set_text_system, clipboard_update_system;
     std::optional<std::future<bool>> render_app_future;
-    GLFWRunner(App& app);
-    bool step(App& app) override;
-    void exit(App& app) override;
+    std::optional<core::AppLabel> render_app_label;
 };
 export struct GLFWPlugin {
     void build(App& app);

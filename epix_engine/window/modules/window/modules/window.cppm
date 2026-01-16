@@ -31,7 +31,3 @@ void log_events(core::EventReader<WindowResized> resized,
                 core::EventReader<WindowFocused> window_focused,
                 core::Query<core::Item<const Window&>> windows);
 }  // namespace window
-
-namespace render {
-export struct RenderT; // forward declare for render subapp.
-}
