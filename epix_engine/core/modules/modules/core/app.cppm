@@ -464,14 +464,12 @@ struct App {
         requires requires {
             typename function_traits<F>::return_type;
             typename function_traits<F>::args_tuple;
-            requires std::tuple_size_v<typename function_traits<F>::args_tuple> == 1;
+            requires(std::tuple_size_v<typename function_traits<F>::args_tuple> == 1);
             requires std::derived_from<std::decay_t<std::tuple_element_t<0, typename function_traits<F>::args_tuple>>,
                                        AppRunner>;
-            requires std::invocable<
-                F,
-                std::add_reference_t<std::decay_t<std::tuple_element_t<0, typename function_traits<F>::args_tuple>>>>;
+            requires std::invocable<F, std::decay_t<std::tuple_element_t<0, typename function_traits<F>::args_tuple>>&>;
         }
-    std::optional<function_traits<F>::return_type> runner_scope(F&& func) {
+    std::optional<typename function_traits<F>::return_type> runner_scope(F&& func) {
         if (!runner) return std::nullopt;
         using RunnerType = std::decay_t<std::tuple_element_t<0, typename function_traits<F>::args_tuple>>;
         auto* runner     = dynamic_cast<RunnerType*>(this->runner.get());
