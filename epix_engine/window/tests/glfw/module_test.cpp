@@ -2,7 +2,7 @@
 
 import epix.core;
 import epix.window;
-import epix.glfw;
+import epix.glfw.core;
 import epix.input;
 
 void test_func() { std::cout << "Test function called!" << std::endl; }

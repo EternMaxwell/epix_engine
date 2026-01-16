@@ -2,7 +2,7 @@
 
 #include <GLFW/glfw3.h>
 
-export module epix.glfw;
+export module epix.glfw.core;
 
 import epix.core;
 import epix.input;

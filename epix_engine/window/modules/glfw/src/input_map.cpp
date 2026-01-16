@@ -2,7 +2,7 @@
 
 #include <GLFW/glfw3.h>
 
-module epix.glfw;
+module epix.glfw.core;
 
 int glfw::map_key_to_glfw(input::KeyCode key) {
     switch (key) {

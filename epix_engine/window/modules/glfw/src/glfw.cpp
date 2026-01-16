@@ -2,7 +2,7 @@
 
 #include <GLFW/glfw3.h>
 
-module epix.glfw;
+module epix.glfw.core;
 
 using namespace glfw;
 using namespace window;
