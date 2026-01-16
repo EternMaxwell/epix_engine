@@ -456,6 +456,33 @@ struct App {
     bool has_runner() const { return static_cast<bool>(runner); }
     /// Set the runner function for the app. The function will be called when run() is called.
     void set_runner(std::unique_ptr<AppRunner> fn) { runner = std::move(fn); }
+    /// Pop the current runner
+    std::unique_ptr<AppRunner> pop_runner() {
+        return std::move(runner);  // runner should be nullptr after move
+    }
+    template <typename F>
+        requires requires {
+            typename function_traits<F>::return_type;
+            typename function_traits<F>::args_tuple;
+            requires std::tuple_size_v<typename function_traits<F>::args_tuple> == 1;
+            requires std::derived_from<std::decay_t<std::tuple_element_t<0, typename function_traits<F>::args_tuple>>,
+                                       AppRunner>;
+            requires std::invocable<
+                F,
+                std::add_reference_t<std::decay_t<std::tuple_element_t<0, typename function_traits<F>::args_tuple>>>>;
+        }
+    std::optional<function_traits<F>::return_type> runner_scope(F&& func) {
+        if (!runner) return std::nullopt;
+        using RunnerType = std::decay_t<std::tuple_element_t<0, typename function_traits<F>::args_tuple>>;
+        auto* runner     = dynamic_cast<RunnerType*>(this->runner.get());
+        if (!runner) return std::nullopt;
+        if constexpr (std::is_void_v<typename function_traits<F>::return_type>) {
+            func(*runner);
+            return {};
+        } else {
+            return func(*runner);
+        }
+    }
     /// Run the app. Or throw if no runner function set.
     void run();
 
