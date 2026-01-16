@@ -2,6 +2,7 @@
 
 import epix.core;
 import epix.assets;
+import epix.image;
 import std;
 
 export namespace window {
@@ -46,9 +47,19 @@ enum class CursorMode {
     Captured,
     Disabled,
 };
-struct CursorIcon : std::variant<StandardCursor, assets::UntypedHandle> {
-    using std::variant<StandardCursor, assets::UntypedHandle>::variant;
-    using std::variant<StandardCursor, assets::UntypedHandle>::operator=;
+struct CustomCursor {
+    assets::Handle<image::Image> image;
+    std::uint32_t hot_x = 0;
+    std::uint32_t hot_y = 0;
+
+    bool operator==(const CustomCursor& other) const {
+        return image == other.image && hot_x == other.hot_x && hot_y == other.hot_y;
+    }
+    bool operator!=(const CustomCursor& other) const { return !(*this == other); }
+};
+struct CursorIcon : std::variant<StandardCursor, CustomCursor> {
+    using std::variant<StandardCursor, CustomCursor>::variant;
+    using std::variant<StandardCursor, CustomCursor>::operator=;
 };
 enum class CompositeAlphaMode {
     Auto,
@@ -122,6 +133,9 @@ struct Window {
     bool iconified = false;
     // whether window is maximized.
     bool maximized = false;
+
+    // window icon, as image.
+    std::optional<assets::Handle<image::Image>> icon;
 
     // cursor icon, can be standard or custom image.
     CursorIcon cursor_icon = StandardCursor::Arrow;

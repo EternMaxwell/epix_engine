@@ -2,12 +2,14 @@
 target_link_libraries(epix_window PUBLIC epix_core)
 target_link_libraries(epix_window PUBLIC epix_input)
 target_link_libraries(epix_window PUBLIC epix_assets)
+target_link_libraries(epix_window PUBLIC epix_image)
 
 epix_add_module_subdir(epix_glfw glfw)
 target_link_libraries(epix_glfw PUBLIC epix_core)
 target_link_libraries(epix_glfw PUBLIC epix_window)
 target_link_libraries(epix_glfw PUBLIC epix_input)
 target_link_libraries(epix_glfw PUBLIC epix_assets)
+target_link_libraries(epix_glfw PUBLIC epix_image)
 target_link_libraries(epix_glfw PUBLIC glfw)
 
 ## --- tests: auto-discover ---

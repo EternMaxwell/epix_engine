@@ -306,14 +306,15 @@ void GLFWPlugin::create_windows(Commands commands,
         Window cached      = desc;
         cached.cursor_icon = StandardCursor::Arrow;  // this was not set when create.
         cached.cursor_mode = CursorMode::Normal;     // this was not set when create.
-        glfw_windows->emplace(id, std::make_pair(created, desc));
+        cached.icon        = std::nullopt;           // this was not set when create.
+        glfw_windows->emplace(id, std::make_pair(created, cached));
         window_created.write(WindowCreated{id});
     }
 }
 
 void GLFWPlugin::update_window_states(Query<Item<Entity, Mut<Window>>> windows,
-                                      ResMut<GLFWwindows> glfw_windows,
-                                      EventWriter<glfw::SetCustomCursor> set_custom_cursor) {
+                                      Res<assets::Assets<image::Image>> images,
+                                      ResMut<GLFWwindows> glfw_windows) {
     for (auto&& [id, mdesc] : windows.iter()) {
         auto& desc                                             = mdesc.get_mut();
         std::optional<std::tuple<GLFWwindow*, Window&>> stored = std::nullopt;
@@ -407,11 +408,52 @@ void GLFWPlugin::update_window_states(Query<Item<Entity, Mut<Window>>> windows,
                                                }
                                            }());
                                            glfwSetCursor(window, cursor);
+                                           cached.cursor_icon = desc.cursor_icon;
                                        },
-                                       [&](const assets::UntypedHandle& handle) {
-                                           set_custom_cursor.write(glfw::SetCustomCursor{id, handle});
+                                       [&](const CustomCursor& handle) {
+                                           images->get(handle.image).transform([&](const image::Image& img) {
+                                               auto expected_format = image::Format::RGBA8;
+                                               std::optional<image::Image> converted_img;
+                                               if (img.format() != expected_format) {
+                                                   converted_img = img.convert(expected_format);
+                                               }
+                                               auto& image = converted_img.has_value() ? *converted_img : img;
+                                               auto view   = image.raw_view();
+                                               GLFWimage glfw_img;
+                                               glfw_img.width  = image.width();
+                                               glfw_img.height = image.height();
+                                               glfw_img.pixels = const_cast<unsigned char*>(
+                                                   reinterpret_cast<const unsigned char*>(view.data()));
+                                               auto cursor = glfwCreateCursor(&glfw_img, handle.hot_x, handle.hot_y);
+                                               cached.cursor_icon = desc.cursor_icon;
+                                               return std::cref(img);
+                                           });
                                        }},
                        desc.cursor_icon);
+        }
+        if (cached.icon != desc.icon) {
+            if (desc.icon.has_value()) {
+                images->get(desc.icon.value()).transform([&](const image::Image& img) {
+                    auto expected_format = image::Format::RGBA8;
+                    std::optional<image::Image> converted_img;
+                    if (img.format() != expected_format) {
+                        converted_img = img.convert(expected_format);
+                    }
+                    auto& image = converted_img.has_value() ? *converted_img : img;
+                    GLFWimage glfw_img;
+                    glfw_img.width  = image.width();
+                    glfw_img.height = image.height();
+                    auto view       = image.raw_view();
+                    glfw_img.pixels = const_cast<unsigned char*>(reinterpret_cast<const unsigned char*>(view.data()));
+                    glfwSetWindowIcon(window, 1, &glfw_img);
+                    cached.icon = desc.icon;
+                    return std::cref(img);
+                });
+            } else {
+                // reset to default icon
+                glfwSetWindowIcon(window, 0, nullptr);
+                cached.icon = desc.icon;
+            }
         }
 
         // frame size
@@ -569,7 +611,6 @@ void GLFWPlugin::toggle_window_mode(Query<Item<Entity, Mut<Window>>> windows,
 
 void GLFWPlugin::poll_events() { glfwPollEvents(); }
 void GLFWPlugin::send_cached_events(ResMut<GLFWwindows> glfw_windows,
-                                    EventWriter<SetCustomCursor> set_custom_cursor,
                                     EventWriter<window::WindowResized> window_resized,
                                     EventWriter<window::WindowCloseRequested> window_close_requested,
                                     EventWriter<window::CursorMoved> cursor_moved,
@@ -588,11 +629,6 @@ void GLFWPlugin::send_cached_events(ResMut<GLFWwindows> glfw_windows,
         if (!user_data) {
             throw std::runtime_error("Failed to get user data from window");
         }
-        for (auto&& custom_cursor : user_data->set_custom_cursor) {
-            // send out
-            set_custom_cursor.write(custom_cursor);
-        }
-        user_data->set_custom_cursor.clear();
         while (auto new_size = user_data->resized.try_pop()) {
             // send out
             window_resized.write(WindowResized{id, new_size->width, new_size->height});

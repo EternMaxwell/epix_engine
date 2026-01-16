@@ -8,14 +8,11 @@ import epix.core;
 import epix.input;
 import epix.window;
 import epix.assets;
+import epix.image;
 
 using namespace core;
 
 namespace glfw {
-struct SetCustomCursor {
-    Entity window;
-    assets::UntypedHandle image;
-};
 struct PresentModeChange {
     Entity window;
     window::PresentMode present_mode;
@@ -58,7 +55,6 @@ export struct ReceivedCharacter {
  * This will include cached events for later update the event queue in app.
  */
 struct UserData {
-    std::vector<SetCustomCursor> set_custom_cursor;
     ConQueue<Resized> resized;
     ConQueue<KeyInput> key_input;
     ConQueue<CursorPos> cursor_pos;
@@ -128,14 +124,13 @@ export struct GLFWPlugin {
                                ResMut<GLFWwindows> glfw_windows,
                                EventWriter<window::WindowCreated> window_created);
     static void update_window_states(Query<Item<Entity, Mut<window::Window>>> windows,
-                                     ResMut<GLFWwindows> glfw_windows,
-                                     EventWriter<glfw::SetCustomCursor> set_custom_cursor);
+                                     Res<assets::Assets<image::Image>> images,
+                                     ResMut<GLFWwindows> glfw_windows);
     static void toggle_window_mode(Query<Item<Entity, Mut<window::Window>>> windows,
                                    ResMut<GLFWwindows> glfw_windows,
                                    Local<std::unordered_map<Entity, CachedWindowPosSize>> cached_window_sizes);
     static void poll_events();
     static void send_cached_events(ResMut<GLFWwindows> glfw_windows,
-                                   EventWriter<SetCustomCursor> set_custom_cursor,
                                    EventWriter<window::WindowResized> window_resized,
                                    EventWriter<window::WindowCloseRequested> window_close_requested,
                                    EventWriter<window::CursorMoved> cursor_moved,
