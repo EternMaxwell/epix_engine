@@ -53,20 +53,23 @@ if (EPX_WGPU_USE_MODULE AND EPIX_CXX_MODULE)
             PUBLIC FILE_SET cxx_modules TYPE CXX_MODULES FILES
                 "${WEBGPU_GENERATED_MODULE}"
         )
+        
+        target_include_directories(webgpu_wrapper PUBLIC
+            ${WEBGPU_GENERATED_DIR}
+        )
+        
+        target_link_libraries(webgpu_wrapper PUBLIC wgpu_native)
+        
+        message(STATUS "WebGPU module target created: webgpu_wrapper")
+        message(STATUS "  Module file: ${WEBGPU_GENERATED_MODULE}")
+    else()
+        message(WARNING "WebGPU module file not found, falling back to header-only mode")
+        # Fall back to header-only
+        target_include_directories(webgpu_wrapper PUBLIC
+            ${WEBGPU_GENERATED_DIR}
+        )
+        target_link_libraries(webgpu_wrapper PUBLIC wgpu_native)
     endif()
-    
-    target_include_directories(webgpu_wrapper PUBLIC
-        ${WEBGPU_GENERATED_DIR}
-    )
-    
-    target_link_libraries(webgpu_wrapper PUBLIC wgpu_native)
-    
-    # Set module properties for MSVC
-    if (MSVC)
-        target_compile_options(webgpu_wrapper PUBLIC /interface)
-    endif()
-    
-    message(STATUS "WebGPU module target created: webgpu_wrapper")
 else()
     # Create header-only interface target
     add_library(webgpu_wrapper INTERFACE)

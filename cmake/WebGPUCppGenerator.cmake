@@ -135,10 +135,17 @@ function(generate_webgpu_wrapper)
     # If module generation is requested, create a .cppm file
     if (GEN_GENERATE_MODULE)
         set(OUTPUT_MODULE "${GEN_OUTPUT_DIR}/${GEN_MODULE_NAME}.cppm")
+        set(MODULE_TEMPLATE "${CMAKE_CURRENT_LIST_DIR}/templates/webgpu.module.template.cppm")
         
-        # For now, create a simple module wrapper around the header
-        # This is a basic implementation that can be enhanced later
-        file(WRITE "${OUTPUT_MODULE}"
+        # Check if custom template exists, otherwise use basic wrapper
+        if (EXISTS "${MODULE_TEMPLATE}")
+            # Copy and configure the template
+            file(READ "${MODULE_TEMPLATE}" MODULE_CONTENT)
+            file(WRITE "${OUTPUT_MODULE}" "${MODULE_CONTENT}")
+            message(STATUS "Generated module from template: ${OUTPUT_MODULE}")
+        else()
+            # Fallback: create a simple module wrapper around the header
+            file(WRITE "${OUTPUT_MODULE}"
 "// Generated C++20 module interface for WebGPU
 // This wraps the WebGPU-Cpp header as a module
 
@@ -153,7 +160,9 @@ export namespace wgpu {
     using namespace ::wgpu;
 }
 ")
-        message(STATUS "Generated: ${OUTPUT_MODULE}")
+            message(STATUS "Generated basic module: ${OUTPUT_MODULE}")
+        endif()
+        
         set(WEBGPU_GENERATED_MODULE "${OUTPUT_MODULE}" PARENT_SCOPE)
     endif()
 endfunction()

@@ -101,3 +101,11 @@ elseif (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
 endif ()
 
 add_subdirectory (epix_engine)
+
+# Add examples if WebGPU is enabled
+if (EPX_USE_WEBGPU)
+  option(EPX_BUILD_EXAMPLES "Build WebGPU examples" ON)
+  if (EPX_BUILD_EXAMPLES)
+    add_subdirectory(examples/webgpu_simple)
+  endif()
+endif()
