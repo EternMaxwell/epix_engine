@@ -12,7 +12,7 @@ import :query;
 import :ticks;
 
 namespace core {
-template <system_param T>
+export template <system_param T>
 struct Extract : public T {
    public:
     template <typename... Args>
