@@ -256,11 +256,13 @@ export class bit_vector {
 
     // lazy ranges for indices of set/unset bits (views referencing *this)
     auto iter_ones() const noexcept {
-        return std::views::iota((size_type)0, bits_) | std::views::filter(index_predicate<false>(this));
+        return std::views::iota((size_type)0, bits_) |
+               std::views::filter([this](size_type i) { return this->test(i); });
     }
 
     auto iter_zeros() const noexcept {
-        return std::views::iota((size_type)0, bits_) | std::views::filter(index_predicate<true>(this));
+        return std::views::iota((size_type)0, bits_) |
+               std::views::filter([this](size_type i) { return !this->test(i); });
     }
 
     void reset(size_type pos) noexcept {
@@ -425,13 +427,6 @@ export class bit_vector {
    private:
     size_type bits_ = 0;
     std::vector<word_type> words_;
-
-    template <bool flip = false>
-    struct index_predicate {
-        const bit_vector* bv;
-        explicit index_predicate(const bit_vector* b) noexcept : bv(b) {}
-        bool operator()(std::size_t i) const noexcept { return bv->test(i) != flip; }
-    };
 
     static constexpr size_type words_for(size_type bits) noexcept {
         return bits == 0 ? 0 : ((bits + word_bits - 1) / word_bits);
