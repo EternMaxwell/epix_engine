@@ -102,6 +102,11 @@ endif ()
 
 add_subdirectory (epix_engine)
 
+# Add WebGPU tests if enabled
+if (EPX_USE_WEBGPU)
+  add_subdirectory(tests/webgpu)
+endif()
+
 # Add examples if WebGPU is enabled
 if (EPX_USE_WEBGPU)
   option(EPX_BUILD_EXAMPLES "Build WebGPU examples" ON)
