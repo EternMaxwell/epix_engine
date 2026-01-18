@@ -7,11 +7,12 @@ This guide covers building epix_engine with the WebGPU rendering backend and C++
 ### Required
 - CMake 3.30 or later (for C++20 module support)
 - C++23 compatible compiler:
-  - MSVC 2022 (17.5+) on Windows
-  - GCC 13+ on Linux
-  - Clang 16+ (experimental module support)
+  - **MSVC 2022 (17.5+) on Windows** - Recommended for full module support
+  - **GCC 13+** on Linux - Note: Module scanning support is limited; use header mode
+  - **Clang 16+** - Experimental module support
 - Python 3.10+ (for WebGPU wrapper generation)
 - Git (for submodule management)
+- **Ninja build system** (required for C++20 modules)
 
 ### Platform-Specific
 - **Windows**: Visual Studio 2022 with C++ workload
@@ -157,15 +158,25 @@ cmake --build . --config Release
 - Install development packages:
   ```bash
   # Ubuntu/Debian
-  sudo apt install build-essential cmake python3 libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev
+  sudo apt install build-essential cmake python3 ninja-build libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev
   
   # Fedora
-  sudo dnf install gcc-c++ cmake python3 libX11-devel libXrandr-devel libXinerama-devel libXcursor-devel libXi-devel
+  sudo dnf install gcc-c++ cmake python3 ninja-build libX11-devel libXrandr-devel libXinerama-devel libXcursor-devel libXi-devel
+  ```
+
+- **Important**: GCC module scanning support is experimental. Use Ninja generator:
+  ```bash
+  cmake .. -G Ninja -DEPX_USE_WEBGPU=ON -DGLFW_BUILD_WAYLAND=OFF
+  ```
+
+- **Note**: If you encounter module compilation errors with GCC, you can use header-only mode:
+  ```bash
+  cmake .. -G Ninja -DEPX_USE_WEBGPU=ON -DEPX_WGPU_USE_MODULE=OFF -DGLFW_BUILD_WAYLAND=OFF
   ```
 
 - Disable Wayland if you encounter issues:
   ```bash
-  cmake .. -DEPX_USE_WEBGPU=ON -DGLFW_BUILD_WAYLAND=OFF
+  cmake .. -G Ninja -DEPX_USE_WEBGPU=ON -DGLFW_BUILD_WAYLAND=OFF
   ```
 
 ### macOS
@@ -182,6 +193,20 @@ cmake --build . --config Release
   ```
 
 ## Troubleshooting
+
+### "Compiler does not provide a way to discover import graph dependencies" (GCC)
+
+GCC's C++20 module scanning support is still experimental. Solutions:
+
+1. **Use MSVC on Windows** (recommended for full module support)
+2. **Use header-only mode** with GCC:
+   ```bash
+   cmake .. -G Ninja -DEPX_USE_WEBGPU=ON -DEPX_WGPU_USE_MODULE=OFF
+   ```
+3. **Disable engine module support** (if only using WebGPU headers):
+   ```bash
+   cmake .. -G Ninja -DEPX_USE_WEBGPU=ON -DEPIX_CXX_MODULE=OFF
+   ```
 
 ### "Python3 not found"
 
@@ -248,6 +273,21 @@ cmake .. -DEPX_USE_WEBGPU=ON -DEPX_WGPU_USE_MODULE=OFF
 ```
 
 This uses header-only mode without C++20 modules.
+
+### Testing WebGPU Generation Only
+
+To verify WebGPU setup without building the entire engine:
+
+```bash
+# Configure and generate WebGPU wrappers
+cmake .. -G Ninja -DEPX_USE_WEBGPU=ON -DGLFW_BUILD_WAYLAND=OFF
+
+# Check generated files
+ls -la build/generated/webgpu/
+# Should show: webgpu.hpp, webgpu-raii.hpp, webgpu.cppm
+```
+
+The WebGPU wrapper generation happens during CMake configuration, so you can verify the infrastructure works without completing the full build.
 
 ### Custom WebGPU-Cpp Repository
 
