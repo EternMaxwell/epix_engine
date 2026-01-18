@@ -13,10 +13,6 @@ import epix.image;
 using namespace core;
 
 namespace glfw {
-struct PresentModeChange {
-    Entity window;
-    window::PresentMode present_mode;
-};
 struct Resized {
     int width;
     int height;
@@ -92,7 +88,7 @@ struct CachedWindowPosSize {
     int width  = 0;
     int height = 0;
 };
-struct GLFWRunner : public AppRunner {
+export struct GLFWRunner : public AppRunner {
    public:
     GLFWRunner(App& app);
     bool step(App& app) override;
