@@ -44,6 +44,12 @@ project ("epix_engine.cmake" LANGUAGES CXX C)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# WebGPU integration
+option(EPX_USE_WEBGPU "Enable WebGPU backend" ON)
+if (EPX_USE_WEBGPU)
+  include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/WebGPU.cmake)
+endif()
+
 #sub directories
 
 add_subdirectory (libs/glfw)
@@ -112,3 +118,16 @@ elseif (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
 endif ()
 
 add_subdirectory (epix_engine)
+
+# Add WebGPU tests if enabled
+if (EPX_USE_WEBGPU)
+  add_subdirectory(tests/webgpu)
+endif()
+
+# Add examples if WebGPU is enabled
+if (EPX_USE_WEBGPU)
+  option(EPX_BUILD_EXAMPLES "Build WebGPU examples" ON)
+  if (EPX_BUILD_EXAMPLES)
+    add_subdirectory(examples/webgpu_simple)
+  endif()
+endif()
