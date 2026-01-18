@@ -44,6 +44,12 @@ project ("epix_engine.cmake" LANGUAGES CXX C)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# WebGPU integration
+option(EPX_USE_WEBGPU "Enable WebGPU backend" ON)
+if (EPX_USE_WEBGPU)
+  include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/WebGPU.cmake)
+endif()
+
 #sub directories
 
 add_subdirectory (libs/glfw)
