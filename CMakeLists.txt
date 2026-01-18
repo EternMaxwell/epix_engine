@@ -57,7 +57,7 @@ target_sources(glm
 )
 # add_subdirectory (libs/freetype)
 add_subdirectory (libs/vulkan-headers)
-# add_subdirectory (libs/volk)
+add_subdirectory (libs/volk)
 # add_subdirectory (libs/imgui)
 # add_subdirectory (libs/box2d)
 set (EARCUT_BUILD_TESTS OFF)
@@ -75,6 +75,23 @@ add_subdirectory (libs/nvrhi)
 # add_subdirectory (libs/utfcpp)
 set (HARFBUZZ_HAVE_FREETYPE ON)
 # add_subdirectory (libs/harfbuzz)
+
+# vulkan hpp cppmodule setup from vulkanhpp repo
+set(VULKAN_HEADER_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/libs/vulkan-headers/include")
+add_library( VulkanHppModule )
+target_sources( VulkanHppModule PRIVATE
+  FILE_SET CXX_MODULES
+  FILES ${VULKAN_HEADER_INCLUDE_DIR}/vulkan/vulkan.cppm
+)
+target_sources( VulkanHppModule PRIVATE 
+  ${CMAKE_CURRENT_SOURCE_DIR}/libs/others/vulkan_dispatcher.cpp
+)
+target_compile_definitions( VulkanHppModule PRIVATE
+  VULKAN_HPP_DISPATCH_LOADER_DYNAMIC=1
+  VULKAN_HPP_NO_EXCEPTIONS
+  VULKAN_HPP_USE_STD_EXPECTED
+)
+target_link_libraries( VulkanHppModule PUBLIC Vulkan-Headers )
 
 add_subdirectory (libs/googletest)
 
