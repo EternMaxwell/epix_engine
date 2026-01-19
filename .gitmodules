@@ -55,6 +55,6 @@
 [submodule "libs/harfbuzz"]
 	path = libs/harfbuzz
 	url = https://github.com/harfbuzz/harfbuzz.git
-[submodule "libs/webgpu"]
-	path = libs/webgpu
-	url = https://github.com/EternMaxwell/WebGPU-distribution.git
+[submodule "libs/webgpu-cpp"]
+	path = libs/webgpu-cpp
+	url = https://github.com/EternMaxwell/WebGPU-Cpp.git
