@@ -9,6 +9,7 @@ target_link_libraries(epix_render PUBLIC Vulkan-Headers)
 target_link_libraries(epix_render PUBLIC volk)
 target_link_libraries(epix_render PUBLIC nvrhi)
 target_link_libraries(epix_render PUBLIC nvrhi_vk)
+target_link_libraries(epix_render PUBLIC webgpu)
 
 epix_add_module_subdir(epix_core_graph core_graph)
 target_link_libraries(epix_core_graph PUBLIC epix_core)

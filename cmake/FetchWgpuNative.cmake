@@ -5,33 +5,33 @@ include(FetchContent)
 include(${CMAKE_CURRENT_LIST_DIR}/utils.cmake)
 
 # Set default version if not specified
-if (NOT DEFINED EPX_WGPU_NATIVE_VERSION)
-    set(EPX_WGPU_NATIVE_VERSION "v24.0.3.1" CACHE STRING "Version of wgpu-native to fetch")
+if (NOT DEFINED EPIX_WGPU_NATIVE_VERSION)
+    set(EPIX_WGPU_NATIVE_VERSION "v27.0.4.0" CACHE STRING "Version of wgpu-native to fetch")
 endif()
 
 # Set binary mirror
-if (NOT DEFINED EPX_WGPU_BINARY_MIRROR)
-    set(EPX_WGPU_BINARY_MIRROR "https://github.com/gfx-rs/wgpu-native" CACHE STRING "Mirror for wgpu-native binaries")
+if (NOT DEFINED EPIX_WGPU_BINARY_MIRROR)
+    set(EPIX_WGPU_BINARY_MIRROR "https://github.com/gfx-rs/wgpu-native" CACHE STRING "Mirror for wgpu-native binaries")
 endif()
 
 # Check if we should use shared or static linking
-if (NOT DEFINED EPX_WGPU_LINK_TYPE)
-    set(EPX_WGPU_LINK_TYPE "SHARED" CACHE STRING "Link type for wgpu-native (SHARED or STATIC)")
+if (NOT DEFINED EPIX_WGPU_LINK_TYPE)
+    set(EPIX_WGPU_LINK_TYPE "SHARED" CACHE STRING "Link type for wgpu-native (SHARED or STATIC)")
 endif()
 
-set_property(CACHE EPX_WGPU_LINK_TYPE PROPERTY STRINGS SHARED STATIC)
+set_property(CACHE EPIX_WGPU_LINK_TYPE PROPERTY STRINGS SHARED STATIC)
 
 # Detect system architecture
 detect_system_architecture()
 
 # Determine if we're using shared library
 set(USE_SHARED_LIB)
-if (EPX_WGPU_LINK_TYPE STREQUAL "SHARED")
+if (EPIX_WGPU_LINK_TYPE STREQUAL "SHARED")
     set(USE_SHARED_LIB TRUE)
-elseif (EPX_WGPU_LINK_TYPE STREQUAL "STATIC")
+elseif (EPIX_WGPU_LINK_TYPE STREQUAL "STATIC")
     set(USE_SHARED_LIB FALSE)
 else()
-    message(FATAL_ERROR "Link type '${EPX_WGPU_LINK_TYPE}' is not valid. Possible values are SHARED and STATIC.")
+    message(FATAL_ERROR "Link type '${EPIX_WGPU_LINK_TYPE}' is not valid. Possible values are SHARED and STATIC.")
 endif()
 
 # Build URL to fetch
@@ -72,7 +72,7 @@ if (URL_COMPILER)
 else()
     set(URL_NAME "wgpu-${URL_OS}-${URL_ARCH}-${URL_CONFIG}")
 endif()
-set(URL "${EPX_WGPU_BINARY_MIRROR}/releases/download/${EPX_WGPU_NATIVE_VERSION}/${URL_NAME}.zip")
+set(URL "${EPIX_WGPU_BINARY_MIRROR}/releases/download/${EPIX_WGPU_NATIVE_VERSION}/${URL_NAME}.zip")
 
 string(TOLOWER "${URL_NAME}" FC_NAME)
 

@@ -1,29 +1,17 @@
-# WebGPU integration for epix_engine
-# This file sets up WebGPU with optional C++20 module support
+option(EPIX_WGPU_GENERATE_ON_CONFIGURE "Generate WebGPU wrapper during CMake configure (vs build time)" ON)
 
-# Options
-option(EPX_WGPU_USE_MODULE "Generate and use C++20 module for WebGPU" ON)
-option(EPX_WGPU_GENERATE_ON_CONFIGURE "Generate WebGPU wrapper during CMake configure (vs build time)" ON)
-option(EPX_USE_WEBGPU_DISTRIBUTION "Use webgpu-distribution patterns for fetching" ON)
+set(EPIX_WGPU_NATIVE_VERSION "v27.0.4.0" CACHE STRING "Version of wgpu-native to fetch")
+set(EPIX_WGPU_LINK_TYPE "STATIC" CACHE STRING "Link type for wgpu-native (SHARED or STATIC)")
 
-set(EPX_WGPU_NATIVE_VERSION "v24.0.3.1" CACHE STRING "Version of wgpu-native to fetch")
-set(EPX_WGPU_LINK_TYPE "SHARED" CACHE STRING "Link type for wgpu-native (SHARED or STATIC)")
-set(EPX_WGPU_MODULE_NAME "webgpu" CACHE STRING "Name of the generated C++20 module")
-
-# Include utility functions
 include(${CMAKE_CURRENT_LIST_DIR}/utils.cmake)
-
-# Fetch wgpu-native binaries
 include(${CMAKE_CURRENT_LIST_DIR}/FetchWgpuNative.cmake)
-
-# Fetch WebGPU-Cpp generator
-include(${CMAKE_CURRENT_LIST_DIR}/WebGPUCppGenerator.cmake)
+include(${CMAKE_CURRENT_LIST_DIR}/webgpu_gen_module.cmake)
 
 # Set output directory for generated files
 set(WEBGPU_GENERATED_DIR "${CMAKE_BINARY_DIR}/generated/webgpu")
 
 # Generate WebGPU wrapper
-if (EPX_WGPU_GENERATE_ON_CONFIGURE AND WEBGPU_CPP_GENERATOR_AVAILABLE)
+if (EPIX_WGPU_GENERATE_ON_CONFIGURE AND WEBGPU_CPP_GENERATOR_AVAILABLE)
     # Get header files from wgpu-native
     set(WEBGPU_HEADERS
         "${WGPU_NATIVE_DIR}/include/webgpu/webgpu.h"
@@ -38,50 +26,14 @@ if (EPX_WGPU_GENERATE_ON_CONFIGURE AND WEBGPU_CPP_GENERATOR_AVAILABLE)
     generate_webgpu_wrapper(
         OUTPUT_DIR ${WEBGPU_GENERATED_DIR}
         HEADER_FILES ${WEBGPU_HEADERS}
-        GENERATE_MODULE ${EPX_WGPU_USE_MODULE}
-        MODULE_NAME ${EPX_WGPU_MODULE_NAME}
     )
 endif()
 
 # Create WebGPU wrapper target
-if (EPX_WGPU_USE_MODULE AND EPIX_CXX_MODULE)
-    # Create module target
-    add_library(webgpu_wrapper STATIC)
-    
-    if (EXISTS "${WEBGPU_GENERATED_MODULE}")
-        target_sources(webgpu_wrapper
-            PUBLIC FILE_SET cxx_modules TYPE CXX_MODULES FILES
-                "${WEBGPU_GENERATED_MODULE}"
-        )
-        
-        target_include_directories(webgpu_wrapper PUBLIC
-            ${WEBGPU_GENERATED_DIR}
-        )
-        
-        target_link_libraries(webgpu_wrapper PUBLIC wgpu_native)
-        
-        message(STATUS "WebGPU module target created: webgpu_wrapper")
-        message(STATUS "  Module file: ${WEBGPU_GENERATED_MODULE}")
-    else()
-        message(WARNING "WebGPU module file not found, falling back to header-only mode")
-        # Fall back to header-only
-        target_include_directories(webgpu_wrapper PUBLIC
-            ${WEBGPU_GENERATED_DIR}
-        )
-        target_link_libraries(webgpu_wrapper PUBLIC wgpu_native)
-    endif()
-else()
-    # Create header-only interface target
-    add_library(webgpu_wrapper INTERFACE)
-    
-    target_include_directories(webgpu_wrapper INTERFACE
-        ${WEBGPU_GENERATED_DIR}
-    )
-    
-    target_link_libraries(webgpu_wrapper INTERFACE wgpu_native)
-    
-    message(STATUS "WebGPU header-only target created: webgpu_wrapper")
-endif()
-
-# Export variables
-set(WEBGPU_WRAPPER_TARGET webgpu_wrapper CACHE INTERNAL "WebGPU wrapper target name")
+add_library(webgpu STATIC)
+target_sources(webgpu
+    PUBLIC FILE_SET cxx_modules TYPE CXX_MODULES FILES
+        "${CMAKE_CURRENT_SOURCE_DIR}/cmake/webgpu/webgpu.cppm"
+)
+target_link_libraries(webgpu PUBLIC wgpu_native)
+message(STATUS "WebGPU module target created: webgpu")

@@ -11,7 +11,6 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_MODULE_STD ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
-set(CMAKE_CXX_SCAN_FOR_MODULES ON)
 
 message(STATUS "CMake version: ${CMAKE_VERSION}")
 
@@ -44,23 +43,10 @@ project ("epix_engine.cmake" LANGUAGES CXX C)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# WebGPU integration
-option(EPX_USE_WEBGPU "Enable WebGPU backend" ON)
-if (EPX_USE_WEBGPU)
-  include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/WebGPU.cmake)
-endif()
-
 #sub directories
-
 add_subdirectory (libs/glfw)
 set (SPDLOG_USE_STD_FORMAT ON)
 add_subdirectory (libs/spdlog)
-set (GLM_ENABLE_CXX_20 ON)
-add_subdirectory (libs/glm)
-target_sources(glm
-  PUBLIC FILE_SET cxx_modules TYPE CXX_MODULES FILES
-    "${CMAKE_CURRENT_SOURCE_DIR}/libs/glm/glm/glm.cppm"
-)
 # add_subdirectory (libs/freetype)
 add_subdirectory (libs/vulkan-headers)
 add_subdirectory (libs/volk)
@@ -81,6 +67,19 @@ add_subdirectory (libs/nvrhi)
 # add_subdirectory (libs/utfcpp)
 set (HARFBUZZ_HAVE_FREETYPE ON)
 # add_subdirectory (libs/harfbuzz)
+add_subdirectory (libs/googletest)
+
+set(CMAKE_CXX_SCAN_FOR_MODULES ON)
+
+# WebGPU integration
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/WebGPU.cmake)
+
+set (GLM_ENABLE_CXX_20 ON)
+add_subdirectory (libs/glm)
+target_sources(glm
+  PUBLIC FILE_SET cxx_modules TYPE CXX_MODULES FILES
+    "${CMAKE_CURRENT_SOURCE_DIR}/libs/glm/glm/glm.cppm"
+)
 
 # vulkan hpp cppmodule setup from vulkanhpp repo
 set(VULKAN_HEADER_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/libs/vulkan-headers/include")
@@ -99,8 +98,6 @@ target_compile_definitions( VulkanHppModule PRIVATE
 )
 target_link_libraries( VulkanHppModule PUBLIC Vulkan-Headers )
 
-add_subdirectory (libs/googletest)
-
 add_library(BSThreadPool STATIC)
 target_include_directories(BSThreadPool PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/libs/thread-pool/include)
 file(GLOB_RECURSE BSTHREADPOOL_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/libs/thread-pool/modules/*.cppm")
@@ -118,16 +115,3 @@ elseif (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
 endif ()
 
 add_subdirectory (epix_engine)
-
-# Add WebGPU tests if enabled
-if (EPX_USE_WEBGPU)
-  add_subdirectory(tests/webgpu)
-endif()
-
-# Add examples if WebGPU is enabled
-if (EPX_USE_WEBGPU)
-  option(EPX_BUILD_EXAMPLES "Build WebGPU examples" ON)
-  if (EPX_BUILD_EXAMPLES)
-    add_subdirectory(examples/webgpu_simple)
-  endif()
-endif()
