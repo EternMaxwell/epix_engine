@@ -31,7 +31,7 @@ struct SystemMeta {
     bool is_deferred() const { return (SystemFlagBits::DEFERRED & flags) != (SystemFlagBits)0; }
 };
 
-template <typename T>
+export template <typename T>
 concept system_param = requires(World& world, SystemMeta& meta, FilteredAccessSet& access) {
     // used to store data that persists across system runs
     typename SystemParam<T>::State;

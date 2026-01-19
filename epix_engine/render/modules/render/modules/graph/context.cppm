@@ -18,7 +18,7 @@ struct RunSubGraph {
  * @brief GraphContext provides the context for a node to run in the render graph.
  * It is used to set outputs and get inputs, and to run sub-graphs.
  */
-struct GraphContext {
+export struct GraphContext {
    private:
     const RenderGraph& m_graph;
     const NodeState& m_node_state;
@@ -83,7 +83,7 @@ struct GraphContext {
 /**
  * @brief RenderContext, stores the nvrhi device and command list.
  */
-struct RenderContext {
+export struct RenderContext {
    private:
     wgpu::Device m_device;
     std::optional<wgpu::CommandEncoder> m_command_encoder;

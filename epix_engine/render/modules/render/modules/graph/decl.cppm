@@ -1,6 +1,7 @@
 ﻿export module epix.render:graph.decl;
 
 import epix.core;
+import std;
 
 #ifndef EPIX_MAKE_LABEL
 #define EPIX_MAKE_LABEL(type)                                                         \
@@ -18,12 +19,25 @@ import epix.core;
 using namespace core;
 
 namespace render::graph {
-EPIX_MAKE_LABEL(NodeLabel)
-EPIX_MAKE_LABEL(GraphLabel)
-struct Node;
+export EPIX_MAKE_LABEL(NodeLabel);
+export EPIX_MAKE_LABEL(GraphLabel);
+export struct Node;
 struct NodeState;
-struct RenderGraph;
-struct GraphContext;
-struct RenderContext;
+export struct RenderGraph;
+export struct GraphContext;
+export struct RenderContext;
 struct RunSubGraph;
 }  // namespace render::graph
+
+template <>
+struct std::hash<render::graph::NodeLabel> {
+    std::size_t operator()(const render::graph::NodeLabel& label) const noexcept {
+        return std::hash<core::Label>()(label);
+    }
+};
+template <>
+struct std::hash<render::graph::GraphLabel> {
+    std::size_t operator()(const render::graph::GraphLabel& label) const noexcept {
+        return std::hash<core::Label>()(label);
+    }
+};

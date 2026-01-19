@@ -4,8 +4,12 @@ import epix.assets;
 import epix.core;
 import std;
 
-namespace render {
+import :extract;
+
+using namespace core;
 using namespace assets;
+
+namespace render {
 
 export template <typename T>
 struct RenderAsset;
@@ -19,10 +23,10 @@ export using RenderAssetUsage = std::underlying_type_t<RenderAssetUsageBits>;
 template <typename T>
 concept RenderAssetImpl = requires(RenderAsset<T> asset) {
     requires std::constructible_from<RenderAsset<T>>;
-    std::is_empty_v<RenderAsset<T>>;
+    requires std::is_empty_v<RenderAsset<T>>;
     typename RenderAsset<T>::ProcessedAsset;
     typename RenderAsset<T>::Param;
-    requires core::system::valid_system_param<core::system::SystemParam<typename RenderAsset<T>::Param>>;
+    requires core::system_param<typename RenderAsset<T>::Param>;
     {
         asset.process(std::declval<T&&>(), std::declval<typename RenderAsset<T>::Param&>())
     } -> std::same_as<typename RenderAsset<T>::ProcessedAsset>;
@@ -40,32 +44,32 @@ struct RenderAssets {
     RenderAssets& operator=(const RenderAssets&) = delete;
     RenderAssets& operator=(RenderAssets&&)      = default;
 
-    void insert(const epix::assets::AssetId<T>& id, Type&& asset) { assets.emplace(id, std::move(asset)); }
+    void insert(const assets::AssetId<T>& id, Type&& asset) { assets.emplace(id, std::move(asset)); }
     template <typename... Args>
-    void emplace(const epix::assets::AssetId<T>& id, Args&&... args) {
+    void emplace(const assets::AssetId<T>& id, Args&&... args) {
         assets.emplace(id, std::forward<Args>(args)...);
     }
-    bool contains(const epix::assets::AssetId<T>& id) const { return assets.contains(id); }
-    bool remove(const epix::assets::AssetId<T>& id) { return assets.erase(id) > 0; }
-    Type& get(const epix::assets::AssetId<T>& id) {
+    bool contains(const assets::AssetId<T>& id) const { return assets.contains(id); }
+    bool remove(const assets::AssetId<T>& id) { return assets.erase(id) > 0; }
+    Type& get(const assets::AssetId<T>& id) {
         if (auto ptr = try_get(id)) {
             return *ptr;
         }
         throw std::runtime_error("Render asset not found: " + id.to_string());
     }
-    const Type& get(const epix::assets::AssetId<T>& id) const {
+    const Type& get(const assets::AssetId<T>& id) const {
         if (auto ptr = try_get(id)) {
             return *ptr;
         }
         throw std::runtime_error("Render asset not found: " + id.to_string());
     }
-    Type* try_get(const epix::assets::AssetId<T>& id) {
+    Type* try_get(const assets::AssetId<T>& id) {
         if (auto it = assets.find(id); it != assets.end()) {
             return std::addressof(it->second);
         }
         return nullptr;
     }
-    const Type* try_get(const epix::assets::AssetId<T>& id) const {
+    const Type* try_get(const assets::AssetId<T>& id) const {
         if (auto it = assets.find(id); it != assets.end()) {
             return std::addressof(it->second);
         }
@@ -75,13 +79,13 @@ struct RenderAssets {
     auto iter() const { return std::views::all(assets); }
 
    private:
-    std::unordered_map<epix::assets::AssetId<T>, Type> assets;
+    std::unordered_map<assets::AssetId<T>, Type> assets;
 };
 
 template <RenderAssetImpl T>
 struct CachedExtractedAssets {
-    std::vector<std::pair<epix::assets::AssetId<T>, T>> extracted_assets;
-    std::unordered_set<epix::assets::AssetId<T>> removed;
+    std::vector<std::pair<assets::AssetId<T>, T>> extracted_assets;
+    std::unordered_set<assets::AssetId<T>> removed;
 
     CachedExtractedAssets()                                        = default;
     CachedExtractedAssets(const CachedExtractedAssets&)            = delete;
@@ -92,10 +96,10 @@ struct CachedExtractedAssets {
 
 template <RenderAssetImpl T>
 void extract_assets(ResMut<CachedExtractedAssets<T>> cache,
-                    Extract<ResMut<epix::assets::Assets<T>>> assets,
-                    Extract<EventReader<epix::assets::AssetEvent<T>>> events) {
-    std::unordered_set<epix::assets::AssetId<T>> changed_ids;
-    std::unordered_set<epix::assets::AssetId<T>> removed;
+                    Extract<ResMut<assets::Assets<T>>> assets,
+                    Extract<EventReader<assets::AssetEvent<T>>> events) {
+    std::unordered_set<assets::AssetId<T>> changed_ids;
+    std::unordered_set<assets::AssetId<T>> removed;
     for (const auto& event : events.read()) {
         if (event.is_added() || event.is_modified()) {
             changed_ids.insert(event.id);
@@ -103,7 +107,7 @@ void extract_assets(ResMut<CachedExtractedAssets<T>> cache,
             removed.insert(event.id);
         }
     }
-    std::vector<std::pair<epix::assets::AssetId<T>, T>> extracted_assets;
+    std::vector<std::pair<assets::AssetId<T>, T>> extracted_assets;
     RenderAsset<T> render_asset_impl;
     std::vector<std::string> errors;
     for (const auto& id : changed_ids) {
@@ -144,7 +148,7 @@ void process_render_assets(typename RenderAsset<T>::Param param,
                            ResMut<RenderAssets<T>> render_assets,
                            ResMut<CachedExtractedAssets<T>> extracted_assets) {
     RenderAsset<T> render_asset_impl;
-    std::vector<std::pair<epix::assets::AssetId<T>, std::exception_ptr>> exceptions;
+    std::vector<std::pair<assets::AssetId<T>, std::exception_ptr>> exceptions;
     for (const auto& id : extracted_assets->removed) {
         render_assets->remove(id);
     }
@@ -190,13 +194,13 @@ struct ExtractAssetPlugin {
                 ExtractSchedule,
                 into(extract_assets<T>)
                     .in_set(ExtractAssetSet::Extract)
-                    .set_name(std::format("extract render asset<{}>", epix::meta::type_id<T>().short_name())));
+                    .set_name(std::format("extract render asset<{}>", meta::type_id<T>().short_name())));
             render_app->get().add_systems(
                 ExtractSchedule,
                 into(process_render_assets<T>)
                     .in_set(ExtractAssetSet::Process)
-                    .set_name(std::format("process render asset<{}>", epix::meta::type_id<T>().short_name())));
+                    .set_name(std::format("process render asset<{}>", meta::type_id<T>().short_name())));
         }
     }
 };
-};  // namespace epix::render::assets
+};  // namespace render
