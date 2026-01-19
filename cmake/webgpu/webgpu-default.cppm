@@ -4,109 +4,179 @@ wgpu-native currently does not provide its own init macros, so we implement them
 */
 
 // Methods of StringView
-void StringView::setDefault() {}
+StringView& StringView::setDefault() {
+	*this = WGPUStringView WGPU_STRING_VIEW_INIT;
+	return *this;
+}
 
 // Methods of ChainedStruct
-void ChainedStruct::setDefault() {}
+ChainedStruct& ChainedStruct::setDefault() {
+	*this = WGPUChainedStruct {};
+	return *this;
+}
 
 // Methods of ChainedStructOut
-void ChainedStructOut::setDefault() {}
+ChainedStructOut& ChainedStructOut::setDefault() {
+	*this = WGPUChainedStructOut {};
+	return *this;
+}
 
 // Methods of BufferMapCallbackInfo
-void BufferMapCallbackInfo::setDefault() {}
+BufferMapCallbackInfo& BufferMapCallbackInfo::setDefault() {
+	*this = WGPUBufferMapCallbackInfo {};
+	return *this;
+}
 
 // Methods of CompilationInfoCallbackInfo
-void CompilationInfoCallbackInfo::setDefault() {}
+CompilationInfoCallbackInfo& CompilationInfoCallbackInfo::setDefault() {
+	*this = WGPUCompilationInfoCallbackInfo {};
+	return *this;
+}
 
 // Methods of CreateComputePipelineAsyncCallbackInfo
-void CreateComputePipelineAsyncCallbackInfo::setDefault() {}
+CreateComputePipelineAsyncCallbackInfo& CreateComputePipelineAsyncCallbackInfo::setDefault() {
+	*this = WGPUCreateComputePipelineAsyncCallbackInfo {};
+	return *this;
+}
 
 // Methods of CreateRenderPipelineAsyncCallbackInfo
-void CreateRenderPipelineAsyncCallbackInfo::setDefault() {}
+CreateRenderPipelineAsyncCallbackInfo& CreateRenderPipelineAsyncCallbackInfo::setDefault() {
+	*this = WGPUCreateRenderPipelineAsyncCallbackInfo {};
+	return *this;
+}
 
 // Methods of DeviceLostCallbackInfo
-void DeviceLostCallbackInfo::setDefault() {}
+DeviceLostCallbackInfo& DeviceLostCallbackInfo::setDefault() {
+	*this = WGPUDeviceLostCallbackInfo {};
+	return *this;
+}
 
 // Methods of PopErrorScopeCallbackInfo
-void PopErrorScopeCallbackInfo::setDefault() {}
+PopErrorScopeCallbackInfo& PopErrorScopeCallbackInfo::setDefault() {
+	*this = WGPUPopErrorScopeCallbackInfo {};
+	return *this;
+}
 
 // Methods of QueueWorkDoneCallbackInfo
-void QueueWorkDoneCallbackInfo::setDefault() {}
+QueueWorkDoneCallbackInfo& QueueWorkDoneCallbackInfo::setDefault() {
+	*this = WGPUQueueWorkDoneCallbackInfo {};
+	return *this;
+}
 
 // Methods of RequestAdapterCallbackInfo
-void RequestAdapterCallbackInfo::setDefault() {}
+RequestAdapterCallbackInfo& RequestAdapterCallbackInfo::setDefault() {
+	*this = WGPURequestAdapterCallbackInfo {};
+	return *this;
+}
 
 // Methods of RequestDeviceCallbackInfo
-void RequestDeviceCallbackInfo::setDefault() {}
+RequestDeviceCallbackInfo& RequestDeviceCallbackInfo::setDefault() {
+	*this = WGPURequestDeviceCallbackInfo {};
+	return *this;
+}
 
 // Methods of UncapturedErrorCallbackInfo
-void UncapturedErrorCallbackInfo::setDefault() {}
+UncapturedErrorCallbackInfo& UncapturedErrorCallbackInfo::setDefault() {
+	*this = WGPUUncapturedErrorCallbackInfo {};
+	return *this;
+}
 
 // Methods of AdapterInfo
-void AdapterInfo::setDefault() {
+AdapterInfo& AdapterInfo::setDefault() {
     backendType = BackendType::Undefined;
     ((StringView*)&vendor)->setDefault();
     ((StringView*)&architecture)->setDefault();
     ((StringView*)&device)->setDefault();
     ((StringView*)&description)->setDefault();
+	return *this;
 }
-void AdapterInfo::freeMembers() { return wgpuAdapterInfoFreeMembers(*this); }
 
 // Methods of BindGroupEntry
-void BindGroupEntry::setDefault() { offset = 0; }
+BindGroupEntry& BindGroupEntry::setDefault() {
+	offset = 0;
+	return *this;
+}
 
 // Methods of BlendComponent
-void BlendComponent::setDefault() {
+BlendComponent& BlendComponent::setDefault() {
     operation = BlendOperation::Add;
     srcFactor = BlendFactor::One;
     dstFactor = BlendFactor::Zero;
+	return *this;
 }
 
 // Methods of BufferBindingLayout
-void BufferBindingLayout::setDefault() {
+BufferBindingLayout& BufferBindingLayout::setDefault() {
     type             = BufferBindingType::Uniform;
     hasDynamicOffset = false;
     minBindingSize   = 0;
+	return *this;
 }
 
 // Methods of BufferDescriptor
-void BufferDescriptor::setDefault() {
+BufferDescriptor& BufferDescriptor::setDefault() {
     mappedAtCreation = false;
     ((StringView*)&label)->setDefault();
+	return *this;
 }
 
 // Methods of Color
-void Color::setDefault() {}
+Color& Color::setDefault() {
+	*this = WGPUColor {};
+	return *this;
+}
 
 // Methods of CommandBufferDescriptor
-void CommandBufferDescriptor::setDefault() { ((StringView*)&label)->setDefault(); }
+CommandBufferDescriptor& CommandBufferDescriptor::setDefault() {
+	((StringView*)&label)->setDefault();
+	return *this;
+}
 
 // Methods of CommandEncoderDescriptor
-void CommandEncoderDescriptor::setDefault() { ((StringView*)&label)->setDefault(); }
+CommandEncoderDescriptor& CommandEncoderDescriptor::setDefault() {
+	((StringView*)&label)->setDefault();
+	return *this;
+}
 
 // Methods of CompilationMessage
-void CompilationMessage::setDefault() { ((StringView*)&message)->setDefault(); }
+CompilationMessage& CompilationMessage::setDefault() {
+	((StringView*)&message)->setDefault();
+	return *this;
+}
 
 // Methods of ComputePassTimestampWrites
-void ComputePassTimestampWrites::setDefault() {}
+ComputePassTimestampWrites& ComputePassTimestampWrites::setDefault() {
+	*this = WGPUComputePassTimestampWrites {};
+	return *this;
+}
 
 // Methods of ConstantEntry
-void ConstantEntry::setDefault() { ((StringView*)&key)->setDefault(); }
+ConstantEntry& ConstantEntry::setDefault() {
+	((StringView*)&key)->setDefault();
+	return *this;
+}
 
 // Methods of Extent3D
-void Extent3D::setDefault() {
+Extent3D& Extent3D::setDefault() {
     height             = 1;
     depthOrArrayLayers = 1;
+	return *this;
 }
 
 // Methods of Future
-void Future::setDefault() {}
+Future& Future::setDefault() {
+	*this = WGPUFuture {};
+	return *this;
+}
 
 // Methods of InstanceCapabilities
-void InstanceCapabilities::setDefault() {}
+InstanceCapabilities& InstanceCapabilities::setDefault() {
+	*this = WGPUInstanceCapabilities {};
+	return *this;
+}
 
 // Methods of Limits
-void Limits::setDefault() {
+Limits& Limits::setDefault() {
     maxTextureDimension1D                     = WGPU_LIMIT_U32_UNDEFINED;
     maxTextureDimension2D                     = WGPU_LIMIT_U32_UNDEFINED;
     maxTextureDimension3D                     = WGPU_LIMIT_U32_UNDEFINED;
@@ -138,54 +208,71 @@ void Limits::setDefault() {
     maxComputeWorkgroupSizeY                  = WGPU_LIMIT_U32_UNDEFINED;
     maxComputeWorkgroupSizeZ                  = WGPU_LIMIT_U32_UNDEFINED;
     maxComputeWorkgroupsPerDimension          = WGPU_LIMIT_U32_UNDEFINED;
+	return *this;
 }
 
 // Methods of MultisampleState
-void MultisampleState::setDefault() {
+MultisampleState& MultisampleState::setDefault() {
     count                  = 1;
     mask                   = 0xFFFFFFFF;
     alphaToCoverageEnabled = false;
+	return *this;
 }
 
 // Methods of Origin3D
-void Origin3D::setDefault() {
+Origin3D& Origin3D::setDefault() {
     x = 0;
     y = 0;
     z = 0;
+	return *this;
 }
 
 // Methods of PipelineLayoutDescriptor
-void PipelineLayoutDescriptor::setDefault() { ((StringView*)&label)->setDefault(); }
+PipelineLayoutDescriptor& PipelineLayoutDescriptor::setDefault() {
+	((StringView*)&label)->setDefault();
+	return *this;
+}
 
 // Methods of PrimitiveState
-void PrimitiveState::setDefault() {
+PrimitiveState& PrimitiveState::setDefault() {
     topology         = PrimitiveTopology::TriangleList;
     stripIndexFormat = IndexFormat::Undefined;
     frontFace        = FrontFace::CCW;
     cullMode         = CullMode::None;
     unclippedDepth   = false;
+	return *this;
 }
 
 // Methods of QuerySetDescriptor
-void QuerySetDescriptor::setDefault() { ((StringView*)&label)->setDefault(); }
+QuerySetDescriptor& QuerySetDescriptor::setDefault() {
+	((StringView*)&label)->setDefault();
+	return *this;
+}
 
 // Methods of QueueDescriptor
-void QueueDescriptor::setDefault() { ((StringView*)&label)->setDefault(); }
+QueueDescriptor& QueueDescriptor::setDefault() {
+	((StringView*)&label)->setDefault();
+	return *this;
+}
 
 // Methods of RenderBundleDescriptor
-void RenderBundleDescriptor::setDefault() { ((StringView*)&label)->setDefault(); }
+RenderBundleDescriptor& RenderBundleDescriptor::setDefault() {
+	((StringView*)&label)->setDefault();
+	return *this;
+}
 
 // Methods of RenderBundleEncoderDescriptor
-void RenderBundleEncoderDescriptor::setDefault() {
+RenderBundleEncoderDescriptor& RenderBundleEncoderDescriptor::setDefault() {
     depthStencilFormat = TextureFormat::Undefined;
     depthReadOnly      = false;
     stencilReadOnly    = false;
     sampleCount        = 1;
     ((StringView*)&label)->setDefault();
+	return *this;
 }
 
 // Methods of RenderPassDepthStencilAttachment
-void RenderPassDepthStencilAttachment::setDefault() {
+RenderPassDepthStencilAttachment& RenderPassDepthStencilAttachment::setDefault() {
     depthLoadOp       = LoadOp::Undefined;
     depthStoreOp      = StoreOp::Undefined;
     depthReadOnly     = false;
@@ -193,31 +280,40 @@ void RenderPassDepthStencilAttachment::setDefault() {
     stencilStoreOp    = StoreOp::Undefined;
     stencilClearValue = 0;
     stencilReadOnly   = false;
+	return *this;
 }
 
 // Methods of RenderPassMaxDrawCount
-void RenderPassMaxDrawCount::setDefault() {
+RenderPassMaxDrawCount& RenderPassMaxDrawCount::setDefault() {
     maxDrawCount = 50000000;
     ((ChainedStruct*)&chain)->setDefault();
     chain.sType = SType::RenderPassMaxDrawCount;
     chain.next  = nullptr;
+	return *this;
 }
 
 // Methods of RenderPassTimestampWrites
-void RenderPassTimestampWrites::setDefault() {}
+RenderPassTimestampWrites& RenderPassTimestampWrites::setDefault() {
+	*this = WGPURenderPassTimestampWrites {};
+	return *this;
+}
 
 // Methods of RequestAdapterOptions
-void RequestAdapterOptions::setDefault() {
+RequestAdapterOptions& RequestAdapterOptions::setDefault() {
     powerPreference      = PowerPreference::Undefined;
     forceFallbackAdapter = false;
     backendType          = BackendType::Undefined;
+	return *this;
 }
 
 // Methods of SamplerBindingLayout
-void SamplerBindingLayout::setDefault() { type = SamplerBindingType::Filtering; }
+SamplerBindingLayout& SamplerBindingLayout::setDefault() {
+	type = SamplerBindingType::Filtering;
+	return *this;
+}
 
 // Methods of SamplerDescriptor
-void SamplerDescriptor::setDefault() {
+SamplerDescriptor& SamplerDescriptor::setDefault() {
     addressModeU = AddressMode::ClampToEdge;
     addressModeV = AddressMode::ClampToEdge;
     addressModeW = AddressMode::ClampToEdge;
@@ -228,135 +324,173 @@ void SamplerDescriptor::setDefault() {
     lodMaxClamp  = 32;
     compare      = CompareFunction::Undefined;
     ((StringView*)&label)->setDefault();
+	return *this;
 }
 
 // Methods of ShaderModuleDescriptor
-void ShaderModuleDescriptor::setDefault() { ((StringView*)&label)->setDefault(); }
+ShaderModuleDescriptor& ShaderModuleDescriptor::setDefault() {
+	((StringView*)&label)->setDefault();
+	return *this;
+}
 
 // Methods of ShaderSourceSPIRV
-void ShaderSourceSPIRV::setDefault() {
+ShaderSourceSPIRV& ShaderSourceSPIRV::setDefault() {
     ((ChainedStruct*)&chain)->setDefault();
     chain.sType = SType::ShaderSourceSPIRV;
     chain.next  = nullptr;
+	return *this;
 }
 
 // Methods of ShaderSourceWGSL
-void ShaderSourceWGSL::setDefault() {
+ShaderSourceWGSL& ShaderSourceWGSL::setDefault() {
     ((ChainedStruct*)&chain)->setDefault();
     ((StringView*)&code)->setDefault();
     chain.sType = SType::ShaderSourceWGSL;
     chain.next  = nullptr;
+	return *this;
 }
 
 // Methods of StencilFaceState
-void StencilFaceState::setDefault() {
+StencilFaceState& StencilFaceState::setDefault() {
     compare     = CompareFunction::Always;
     failOp      = StencilOperation::Keep;
     depthFailOp = StencilOperation::Keep;
     passOp      = StencilOperation::Keep;
+	return *this;
 }
 
 // Methods of StorageTextureBindingLayout
-void StorageTextureBindingLayout::setDefault() {
+StorageTextureBindingLayout& StorageTextureBindingLayout::setDefault() {
     access        = StorageTextureAccess::WriteOnly;
     format        = TextureFormat::Undefined;
     viewDimension = TextureViewDimension::_2D;
+	return *this;
 }
 
 // Methods of SupportedFeatures
-void SupportedFeatures::setDefault() {}
-void SupportedFeatures::freeMembers() { return wgpuSupportedFeaturesFreeMembers(*this); }
+SupportedFeatures& SupportedFeatures::setDefault() {
+	*this = WGPUSupportedFeatures {};
+	return *this;
+}
 
 // Methods of SupportedWGSLLanguageFeatures
-void SupportedWGSLLanguageFeatures::setDefault() {}
-void SupportedWGSLLanguageFeatures::freeMembers() { return wgpuSupportedWGSLLanguageFeaturesFreeMembers(*this); }
+SupportedWGSLLanguageFeatures& SupportedWGSLLanguageFeatures::setDefault() {
+	*this = WGPUSupportedWGSLLanguageFeatures {};
+	return *this;
+}
 
 // Methods of SurfaceCapabilities
-void SurfaceCapabilities::setDefault() {}
-void SurfaceCapabilities::freeMembers() { return wgpuSurfaceCapabilitiesFreeMembers(*this); }
+SurfaceCapabilities& SurfaceCapabilities::setDefault() {
+	*this = WGPUSurfaceCapabilities {};
+	return *this;
+}
 
 // Methods of SurfaceConfiguration
-void SurfaceConfiguration::setDefault() {
+SurfaceConfiguration& SurfaceConfiguration::setDefault() {
     format      = TextureFormat::Undefined;
     presentMode = PresentMode::Undefined;
+	return *this;
 }
 
 // Methods of SurfaceDescriptor
-void SurfaceDescriptor::setDefault() { ((StringView*)&label)->setDefault(); }
+SurfaceDescriptor& SurfaceDescriptor::setDefault() {
+	((StringView*)&label)->setDefault();
+	return *this;
+}
 
 // Methods of SurfaceSourceAndroidNativeWindow
-void SurfaceSourceAndroidNativeWindow::setDefault() {
+SurfaceSourceAndroidNativeWindow& SurfaceSourceAndroidNativeWindow::setDefault() {
     ((ChainedStruct*)&chain)->setDefault();
     chain.sType = SType::SurfaceSourceAndroidNativeWindow;
     chain.next  = nullptr;
+	return *this;
 }
 
 // Methods of SurfaceSourceMetalLayer
-void SurfaceSourceMetalLayer::setDefault() {
+SurfaceSourceMetalLayer& SurfaceSourceMetalLayer::setDefault() {
     ((ChainedStruct*)&chain)->setDefault();
     chain.sType = SType::SurfaceSourceMetalLayer;
     chain.next  = nullptr;
+	return *this;
 }
 
 // Methods of SurfaceSourceWaylandSurface
-void SurfaceSourceWaylandSurface::setDefault() {
+SurfaceSourceWaylandSurface& SurfaceSourceWaylandSurface::setDefault() {
     ((ChainedStruct*)&chain)->setDefault();
     chain.sType = SType::SurfaceSourceWaylandSurface;
     chain.next  = nullptr;
+	return *this;
 }
 
 // Methods of SurfaceSourceWindowsHWND
-void SurfaceSourceWindowsHWND::setDefault() {
+SurfaceSourceWindowsHWND& SurfaceSourceWindowsHWND::setDefault() {
     ((ChainedStruct*)&chain)->setDefault();
     chain.sType = SType::SurfaceSourceWindowsHWND;
     chain.next  = nullptr;
+	return *this;
 }
 
 // Methods of SurfaceSourceXCBWindow
-void SurfaceSourceXCBWindow::setDefault() {
+SurfaceSourceXCBWindow& SurfaceSourceXCBWindow::setDefault() {
     ((ChainedStruct*)&chain)->setDefault();
     chain.sType = SType::SurfaceSourceXCBWindow;
     chain.next  = nullptr;
+	return *this;
 }
 
 // Methods of SurfaceSourceXlibWindow
-void SurfaceSourceXlibWindow::setDefault() {
+SurfaceSourceXlibWindow& SurfaceSourceXlibWindow::setDefault() {
     ((ChainedStruct*)&chain)->setDefault();
     chain.sType = SType::SurfaceSourceXlibWindow;
     chain.next  = nullptr;
+	return *this;
 }
 
 // Methods of SurfaceTexture
-void SurfaceTexture::setDefault() {}
+SurfaceTexture& SurfaceTexture::setDefault() {
+	*this = WGPUSurfaceTexture {};
+	return *this;
+}
 
 // Methods of TexelCopyBufferLayout
-void TexelCopyBufferLayout::setDefault() {}
+TexelCopyBufferLayout& TexelCopyBufferLayout::setDefault() {
+	*this = WGPUTexelCopyBufferLayout {};
+	return *this;
+}
 
 // Methods of TextureBindingLayout
-void TextureBindingLayout::setDefault() {
+TextureBindingLayout& TextureBindingLayout::setDefault() {
     sampleType    = TextureSampleType::Float;
     viewDimension = TextureViewDimension::_2D;
     multisampled  = false;
+	return *this;
 }
 
 // Methods of TextureViewDescriptor
-void TextureViewDescriptor::setDefault() {
+TextureViewDescriptor& TextureViewDescriptor::setDefault() {
     format         = TextureFormat::Undefined;
     dimension      = TextureViewDimension::Undefined;
     baseMipLevel   = 0;
     baseArrayLayer = 0;
     aspect         = TextureAspect::All;
     ((StringView*)&label)->setDefault();
+	return *this;
 }
 
 // Methods of VertexAttribute
-void VertexAttribute::setDefault() {}
+VertexAttribute& VertexAttribute::setDefault() {
+	*this = WGPUVertexAttribute {};
+	return *this;
+}
 
 // Methods of BindGroupDescriptor
-void BindGroupDescriptor::setDefault() { ((StringView*)&label)->setDefault(); }
+BindGroupDescriptor& BindGroupDescriptor::setDefault() {
+	((StringView*)&label)->setDefault();
+	return *this;
+}
 
 // Methods of BindGroupLayoutEntry
-void BindGroupLayoutEntry::setDefault() {
+BindGroupLayoutEntry& BindGroupLayoutEntry::setDefault() {
     ((BufferBindingLayout*)&buffer)->setDefault();
     ((SamplerBindingLayout*)&sampler)->setDefault();
     ((TextureBindingLayout*)&texture)->setDefault();
@@ -365,22 +499,30 @@ void BindGroupLayoutEntry::setDefault() {
     sampler.type          = SamplerBindingType::Undefined;
     storageTexture.access = StorageTextureAccess::Undefined;
     texture.sampleType    = TextureSampleType::Undefined;
+	return *this;
 }
 
 // Methods of BlendState
-void BlendState::setDefault() {
+BlendState& BlendState::setDefault() {
     ((BlendComponent*)&color)->setDefault();
     ((BlendComponent*)&alpha)->setDefault();
+	return *this;
 }
 
 // Methods of CompilationInfo
-void CompilationInfo::setDefault() {}
+CompilationInfo& CompilationInfo::setDefault() {
+	*this = WGPUCompilationInfo {};
+	return *this;
+}
 
 // Methods of ComputePassDescriptor
-void ComputePassDescriptor::setDefault() { ((StringView*)&label)->setDefault(); }
+ComputePassDescriptor& ComputePassDescriptor::setDefault() {
+	*this = WGPUComputePassDescriptor {};
+	return *this;
+}
 
 // Methods of DepthStencilState
-void DepthStencilState::setDefault() {
+DepthStencilState& DepthStencilState::setDefault() {
     format              = TextureFormat::Undefined;
     depthWriteEnabled   = OptionalBool::Undefined;
     depthCompare        = CompareFunction::Undefined;
@@ -391,132 +533,191 @@ void DepthStencilState::setDefault() {
     depthBiasClamp      = 0;
     ((StencilFaceState*)&stencilFront)->setDefault();
     ((StencilFaceState*)&stencilBack)->setDefault();
+	return *this;
 }
 
 // Methods of DeviceDescriptor
-void DeviceDescriptor::setDefault() {
+DeviceDescriptor& DeviceDescriptor::setDefault() {
     ((StringView*)&label)->setDefault();
     ((QueueDescriptor*)&defaultQueue)->setDefault();
     ((DeviceLostCallbackInfo*)&deviceLostCallbackInfo)->setDefault();
     ((UncapturedErrorCallbackInfo*)&uncapturedErrorCallbackInfo)->setDefault();
+	return *this;
 }
 
 // Methods of FutureWaitInfo
-void FutureWaitInfo::setDefault() { ((Future*)&future)->setDefault(); }
+FutureWaitInfo& FutureWaitInfo::setDefault() {
+	((Future*)&future)->setDefault();
+	return *this;
+}
 
 // Methods of InstanceDescriptor
-void InstanceDescriptor::setDefault() { ((InstanceCapabilities*)&features)->setDefault(); }
+InstanceDescriptor& InstanceDescriptor::setDefault() {
+	((InstanceCapabilities*)&features)->setDefault();
+	return *this;
+}
 
 // Methods of ProgrammableStageDescriptor
-void ProgrammableStageDescriptor::setDefault() { ((StringView*)&entryPoint)->setDefault(); }
+ProgrammableStageDescriptor& ProgrammableStageDescriptor::setDefault() {
+	((StringView*)&entryPoint)->setDefault();
+	return *this;
+}
 
 // Methods of RenderPassColorAttachment
-void RenderPassColorAttachment::setDefault() {
+RenderPassColorAttachment& RenderPassColorAttachment::setDefault() {
     loadOp  = LoadOp::Undefined;
     storeOp = StoreOp::Undefined;
     ((Color*)&clearValue)->setDefault();
+	return *this;
 }
 
 // Methods of TexelCopyBufferInfo
-void TexelCopyBufferInfo::setDefault() { ((TexelCopyBufferLayout*)&layout)->setDefault(); }
+TexelCopyBufferInfo& TexelCopyBufferInfo::setDefault() {
+	((TexelCopyBufferLayout*)&layout)->setDefault();
+	return *this;
+}
 
 // Methods of TexelCopyTextureInfo
-void TexelCopyTextureInfo::setDefault() {
+TexelCopyTextureInfo& TexelCopyTextureInfo::setDefault() {
     mipLevel = 0;
     aspect   = TextureAspect::All;
     ((Origin3D*)&origin)->setDefault();
+	return *this;
 }
 
 // Methods of TextureDescriptor
-void TextureDescriptor::setDefault() {
+TextureDescriptor& TextureDescriptor::setDefault() {
     dimension     = TextureDimension::_2D;
     format        = TextureFormat::Undefined;
     mipLevelCount = 1;
     sampleCount   = 1;
     ((StringView*)&label)->setDefault();
     ((Extent3D*)&size)->setDefault();
+	return *this;
 }
 
 // Methods of VertexBufferLayout
-void VertexBufferLayout::setDefault() { stepMode = VertexStepMode::Vertex; }
+VertexBufferLayout& VertexBufferLayout::setDefault() {
+	stepMode = VertexStepMode::Vertex;
+	return *this;
+}
 
 // Methods of BindGroupLayoutDescriptor
-void BindGroupLayoutDescriptor::setDefault() { ((StringView*)&label)->setDefault(); }
+BindGroupLayoutDescriptor& BindGroupLayoutDescriptor::setDefault() {
+	((StringView*)&label)->setDefault();
+	return *this;
+}
 
 // Methods of ColorTargetState
-void ColorTargetState::setDefault() { format = TextureFormat::Undefined; }
+ColorTargetState& ColorTargetState::setDefault() {
+	format = TextureFormat::Undefined;
+	return *this;
+}
 
 // Methods of ComputePipelineDescriptor
-void ComputePipelineDescriptor::setDefault() {
+ComputePipelineDescriptor& ComputePipelineDescriptor::setDefault() {
     ((StringView*)&label)->setDefault();
     ((ProgrammableStageDescriptor*)&compute)->setDefault();
+	return *this;
 }
 
 // Methods of RenderPassDescriptor
-void RenderPassDescriptor::setDefault() { ((StringView*)&label)->setDefault(); }
+RenderPassDescriptor& RenderPassDescriptor::setDefault() {
+	((StringView*)&label)->setDefault();
+	return *this;
+}
 
 // Methods of VertexState
-void VertexState::setDefault() { ((StringView*)&entryPoint)->setDefault(); }
+VertexState& VertexState::setDefault() {
+	((StringView*)&entryPoint)->setDefault();
+	return *this;
+}
 
 // Methods of FragmentState
-void FragmentState::setDefault() { ((StringView*)&entryPoint)->setDefault(); }
+FragmentState& FragmentState::setDefault() {
+	((StringView*)&entryPoint)->setDefault();
+	return *this;
+}
 
 // Methods of RenderPipelineDescriptor
-void RenderPipelineDescriptor::setDefault() {
+RenderPipelineDescriptor& RenderPipelineDescriptor::setDefault() {
     ((StringView*)&label)->setDefault();
     ((VertexState*)&vertex)->setDefault();
     ((PrimitiveState*)&primitive)->setDefault();
     ((MultisampleState*)&multisample)->setDefault();
+	return *this;
 }
 
 // Methods of InstanceExtras
-void InstanceExtras::setDefault() {
+InstanceExtras& InstanceExtras::setDefault() {
     dx12ShaderCompiler = Dx12Compiler::Undefined;
     ((ChainedStruct*)&chain)->setDefault();
     ((StringView*)&dxcPath)->setDefault();
     chain.sType = (WGPUSType)NativeSType::InstanceExtras;
     chain.next  = nullptr;
+	return *this;
 }
 
 // Methods of DeviceExtras
-void DeviceExtras::setDefault() {
+DeviceExtras& DeviceExtras::setDefault() {
     ((ChainedStruct*)&chain)->setDefault();
     ((StringView*)&tracePath)->setDefault();
     chain.sType = (WGPUSType)NativeSType::DeviceExtras;
     chain.next  = nullptr;
+	return *this;
 }
 
 // Methods of NativeLimits
-void NativeLimits::setDefault() {
+NativeLimits& NativeLimits::setDefault() {
     ((ChainedStructOut*)&chain)->setDefault();
     chain.sType = (WGPUSType)NativeSType::NativeLimits;
     chain.next  = nullptr;
+	return *this;
 }
 
 // Methods of PushConstantRange
-void PushConstantRange::setDefault() {}
+PushConstantRange& PushConstantRange::setDefault() {
+	*this = WGPUPushConstantRange {};
+	return *this;
+}
 
 // Methods of PipelineLayoutExtras
-void PipelineLayoutExtras::setDefault() {
+PipelineLayoutExtras& PipelineLayoutExtras::setDefault() {
     ((ChainedStruct*)&chain)->setDefault();
     chain.sType = (WGPUSType)NativeSType::PipelineLayoutExtras;
     chain.next  = nullptr;
+	return *this;
 }
 
 // Methods of ShaderDefine
-void ShaderDefine::setDefault() {
+ShaderDefine& ShaderDefine::setDefault() {
     ((StringView*)&name)->setDefault();
     ((StringView*)&value)->setDefault();
+	return *this;
+}
+
+// Methods of ShaderSourceGLSL
+ShaderSourceGLSL& ShaderSourceGLSL::setDefault() {
+	*this = WGPUShaderSourceGLSL {};
+	chain.sType = (WGPUSType)NativeSType::ShaderSourceGLSL;
+	chain.next = nullptr;
+	return *this;
 }
 
 // Methods of ShaderModuleDescriptorSpirV
-void ShaderModuleDescriptorSpirV::setDefault() { ((StringView*)&label)->setDefault(); }
+ShaderModuleDescriptorSpirV& ShaderModuleDescriptorSpirV::setDefault() {
+	((StringView*)&label)->setDefault();
+	return *this;
+}
 
 // Methods of RegistryReport
-void RegistryReport::setDefault() {}
+RegistryReport& RegistryReport::setDefault() {
+	*this = WGPURegistryReport {};
+	return *this;
+}
 
 // Methods of HubReport
-void HubReport::setDefault() {
+HubReport& HubReport::setDefault() {
     ((RegistryReport*)&adapters)->setDefault();
     ((RegistryReport*)&devices)->setDefault();
     ((RegistryReport*)&queues)->setDefault();
@@ -534,41 +735,66 @@ void HubReport::setDefault() {
     ((RegistryReport*)&textures)->setDefault();
     ((RegistryReport*)&textureViews)->setDefault();
     ((RegistryReport*)&samplers)->setDefault();
+	return *this;
 }
 
 // Methods of GlobalReport
-void GlobalReport::setDefault() {
+GlobalReport& GlobalReport::setDefault() {
     ((RegistryReport*)&surfaces)->setDefault();
     ((HubReport*)&hub)->setDefault();
+	return *this;
 }
 
 // Methods of InstanceEnumerateAdapterOptions
-void InstanceEnumerateAdapterOptions::setDefault() {}
+InstanceEnumerateAdapterOptions& InstanceEnumerateAdapterOptions::setDefault() {
+	*this = WGPUInstanceEnumerateAdapterOptions {};
+	return *this;
+}
 
 // Methods of BindGroupEntryExtras
-void BindGroupEntryExtras::setDefault() {
+BindGroupEntryExtras& BindGroupEntryExtras::setDefault() {
     ((ChainedStruct*)&chain)->setDefault();
     chain.sType = (WGPUSType)NativeSType::BindGroupEntryExtras;
     chain.next  = nullptr;
+	return *this;
 }
 
 // Methods of BindGroupLayoutEntryExtras
-void BindGroupLayoutEntryExtras::setDefault() {
+BindGroupLayoutEntryExtras& BindGroupLayoutEntryExtras::setDefault() {
     ((ChainedStruct*)&chain)->setDefault();
     chain.sType = (WGPUSType)NativeSType::BindGroupLayoutEntryExtras;
     chain.next  = nullptr;
+	return *this;
 }
 
 // Methods of QuerySetDescriptorExtras
-void QuerySetDescriptorExtras::setDefault() {
+QuerySetDescriptorExtras& QuerySetDescriptorExtras::setDefault() {
     ((ChainedStruct*)&chain)->setDefault();
     chain.sType = (WGPUSType)NativeSType::QuerySetDescriptorExtras;
     chain.next  = nullptr;
+	return *this;
 }
 
 // Methods of SurfaceConfigurationExtras
-void SurfaceConfigurationExtras::setDefault() {
+SurfaceConfigurationExtras& SurfaceConfigurationExtras::setDefault() {
     ((ChainedStruct*)&chain)->setDefault();
     chain.sType = (WGPUSType)NativeSType::SurfaceConfigurationExtras;
     chain.next  = nullptr;
+	return *this;
+}
+
+// Methods of SurfaceSourceSwapChainPanel
+SurfaceSourceSwapChainPanel& SurfaceSourceSwapChainPanel::setDefault() {
+	*this = WGPUSurfaceSourceSwapChainPanel {};
+	chain.sType = (WGPUSType)NativeSType::SurfaceSourceSwapChainPanel;
+	chain.next = nullptr;
+	return *this;
+}
+
+// Methods of PrimitiveStateExtras
+PrimitiveStateExtras& PrimitiveStateExtras::setDefault() {
+	*this = WGPUPrimitiveStateExtras {};
+	chain.sType = (WGPUSType)NativeSType::PrimitiveStateExtras;
+	chain.next = nullptr;
+	return *this;
 }
