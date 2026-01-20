@@ -23,7 +23,7 @@ bool RenderGraphRunner::run(const RenderGraph& graph,
     if (finalizer) finalizer(render_context.command_encoder());
     // submit generated cmd buffers
     auto command_buffers = render_context.finish();
-    if (command_buffers.size()) queue.submit(command_buffers.size(), command_buffers.data());
+    if (command_buffers.size()) queue.submit(command_buffers);
     return true;
 }
 
@@ -38,10 +38,9 @@ bool RenderGraphRunner::run_graph(const RenderGraph& graph,
 
     spdlog::debug("Running graph {}.", sub_graph ? sub_graph->type_index().short_name() : "main");
 
-    auto node_queue = graph.iter_nodes() |
-                      std::views::filter([](const NodeState& node) { return node.inputs.empty(); }) |
-                      std::views::transform([](const NodeState& node) { return std::cref(node); }) |
-                      std::ranges::to<std::deque<std::reference_wrapper<const NodeState>>>();
+    auto node_queue =
+        graph.iter_nodes() | std::views::filter([](const NodeState& node) { return node.inputs.empty(); }) |
+        std::views::transform([](const NodeState& node) { return std::cref(node); }) | std::ranges::to<std::deque>();
 
     if (auto input_node = graph.get_input_node()) {
         std::vector<SlotValue> input_values;
