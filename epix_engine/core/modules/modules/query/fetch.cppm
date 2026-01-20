@@ -504,7 +504,7 @@ static_assert(query_data<Opt<Mut<double>>>);
 /**
  * @brief Query item for checking existence of a component.
  */
-template <typename T>
+export template <typename T>
     requires(!std::is_reference_v<T> && !std::is_const_v<T>)
 struct Has;
 
