@@ -56,6 +56,8 @@ concept query_data = world_query<T> && requires(WorldQuery<T>::Fetch& fetch, Ent
     requires std::constructible_from<const typename WorldQuery<typename QueryData<T>::ReadOnly>::State&,
                                      typename WorldQuery<T>::State>;
 };
+template <typename T>
+concept readonly_query_data = query_data<T> && QueryData<T>::readonly;
 
 template <typename T>
 concept query_filter = world_query<T> && requires(WorldQuery<T>::Fetch& fetch, Entity entity, TableRow row) {
