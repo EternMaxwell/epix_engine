@@ -53,7 +53,7 @@ function(generate_webgpu_wrapper)
     set(OUTPUT_FILE "${GEN_OUTPUT_DIR}/webgpu.cppm")
     
     # Select appropriate template
-    set(TEMPLATE_FILE "${CMAKE_CURRENT_SOURCE_DIR}/cmake/templates/webgpu.template.cppm")
+    set(TEMPLATE_FILE "${CMAKE_CURRENT_SOURCE_DIR}/libs/webgpu-cpp/webgpu.template.cppm")
 
     message(STATUS "Generating WebGPU C++ wrapper...")
     message(STATUS "  Headers: ${GEN_HEADER_FILES}")

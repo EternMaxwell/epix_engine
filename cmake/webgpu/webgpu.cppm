@@ -1,12 +1,81 @@
 module;
 
+#define WGPUBufferUsage_None WGPUBufferUsage_None_Internal
+#define WGPUBufferUsage_MapRead WGPUBufferUsage_MapRead_Internal
+#define WGPUBufferUsage_MapWrite WGPUBufferUsage_MapWrite_Internal
+#define WGPUBufferUsage_CopySrc WGPUBufferUsage_CopySrc_Internal
+#define WGPUBufferUsage_CopyDst WGPUBufferUsage_CopyDst_Internal
+#define WGPUBufferUsage_Index WGPUBufferUsage_Index_Internal
+#define WGPUBufferUsage_Vertex WGPUBufferUsage_Vertex_Internal
+#define WGPUBufferUsage_Uniform WGPUBufferUsage_Uniform_Internal
+#define WGPUBufferUsage_Storage WGPUBufferUsage_Storage_Internal
+#define WGPUBufferUsage_Indirect WGPUBufferUsage_Indirect_Internal
+#define WGPUBufferUsage_QueryResolve WGPUBufferUsage_QueryResolve_Internal
+#define WGPUColorWriteMask_None WGPUColorWriteMask_None_Internal
+#define WGPUColorWriteMask_Red WGPUColorWriteMask_Red_Internal
+#define WGPUColorWriteMask_Green WGPUColorWriteMask_Green_Internal
+#define WGPUColorWriteMask_Blue WGPUColorWriteMask_Blue_Internal
+#define WGPUColorWriteMask_Alpha WGPUColorWriteMask_Alpha_Internal
+#define WGPUColorWriteMask_All WGPUColorWriteMask_All_Internal
+#define WGPUMapMode_None WGPUMapMode_None_Internal
+#define WGPUMapMode_Read WGPUMapMode_Read_Internal
+#define WGPUMapMode_Write WGPUMapMode_Write_Internal
+#define WGPUShaderStage_None WGPUShaderStage_None_Internal
+#define WGPUShaderStage_Vertex WGPUShaderStage_Vertex_Internal
+#define WGPUShaderStage_Fragment WGPUShaderStage_Fragment_Internal
+#define WGPUShaderStage_Compute WGPUShaderStage_Compute_Internal
+#define WGPUTextureUsage_None WGPUTextureUsage_None_Internal
+#define WGPUTextureUsage_CopySrc WGPUTextureUsage_CopySrc_Internal
+#define WGPUTextureUsage_CopyDst WGPUTextureUsage_CopyDst_Internal
+#define WGPUTextureUsage_TextureBinding WGPUTextureUsage_TextureBinding_Internal
+#define WGPUTextureUsage_StorageBinding WGPUTextureUsage_StorageBinding_Internal
+#define WGPUTextureUsage_RenderAttachment WGPUTextureUsage_RenderAttachment_Internal
+#define WGPUInstanceBackend_All WGPUInstanceBackend_All_Internal
+#define WGPUInstanceBackend_Force32 WGPUInstanceBackend_Force32_Internal
+#define WGPUInstanceFlag_Default WGPUInstanceFlag_Default_Internal
+#define WGPUInstanceFlag_Force32 WGPUInstanceFlag_Force32_Internal
 #include <webgpu/webgpu.h>
 #include <webgpu/wgpu.h>
+#undef WGPUBufferUsage_None
+#undef WGPUBufferUsage_MapRead
+#undef WGPUBufferUsage_MapWrite
+#undef WGPUBufferUsage_CopySrc
+#undef WGPUBufferUsage_CopyDst
+#undef WGPUBufferUsage_Index
+#undef WGPUBufferUsage_Vertex
+#undef WGPUBufferUsage_Uniform
+#undef WGPUBufferUsage_Storage
+#undef WGPUBufferUsage_Indirect
+#undef WGPUBufferUsage_QueryResolve
+#undef WGPUColorWriteMask_None
+#undef WGPUColorWriteMask_Red
+#undef WGPUColorWriteMask_Green
+#undef WGPUColorWriteMask_Blue
+#undef WGPUColorWriteMask_Alpha
+#undef WGPUColorWriteMask_All
+#undef WGPUMapMode_None
+#undef WGPUMapMode_Read
+#undef WGPUMapMode_Write
+#undef WGPUShaderStage_None
+#undef WGPUShaderStage_Vertex
+#undef WGPUShaderStage_Fragment
+#undef WGPUShaderStage_Compute
+#undef WGPUTextureUsage_None
+#undef WGPUTextureUsage_CopySrc
+#undef WGPUTextureUsage_CopyDst
+#undef WGPUTextureUsage_TextureBinding
+#undef WGPUTextureUsage_StorageBinding
+#undef WGPUTextureUsage_RenderAttachment
+#undef WGPUInstanceBackend_All
+#undef WGPUInstanceBackend_Force32
+#undef WGPUInstanceFlag_Default
+#undef WGPUInstanceFlag_Force32
 
 #include <iostream>
 #include <vector>
 #include <functional>
 #include <cassert>
+#include <concepts>
 #include <cmath>
 #include <memory>
 #include <string_view>
@@ -35,6 +104,987 @@ module;
 #endif
 
 export module webgpu;
+
+export using ::WGPUAdapter;
+export using ::WGPUBindGroup;
+export using ::WGPUBindGroupLayout;
+export using ::WGPUBuffer;
+export using ::WGPUCommandBuffer;
+export using ::WGPUCommandEncoder;
+export using ::WGPUComputePassEncoder;
+export using ::WGPUComputePipeline;
+export using ::WGPUDevice;
+export using ::WGPUInstance;
+export using ::WGPUPipelineLayout;
+export using ::WGPUQuerySet;
+export using ::WGPUQueue;
+export using ::WGPURenderBundle;
+export using ::WGPURenderBundleEncoder;
+export using ::WGPURenderPassEncoder;
+export using ::WGPURenderPipeline;
+export using ::WGPUSampler;
+export using ::WGPUShaderModule;
+export using ::WGPUSurface;
+export using ::WGPUTexture;
+export using ::WGPUTextureView;
+export using ::WGPUStringView;
+export using ::WGPUChainedStruct;
+export using ::WGPUChainedStructOut;
+export using ::WGPUBufferMapCallbackInfo;
+export using ::WGPUCompilationInfoCallbackInfo;
+export using ::WGPUCreateComputePipelineAsyncCallbackInfo;
+export using ::WGPUCreateRenderPipelineAsyncCallbackInfo;
+export using ::WGPUDeviceLostCallbackInfo;
+export using ::WGPUPopErrorScopeCallbackInfo;
+export using ::WGPUQueueWorkDoneCallbackInfo;
+export using ::WGPURequestAdapterCallbackInfo;
+export using ::WGPURequestDeviceCallbackInfo;
+export using ::WGPUUncapturedErrorCallbackInfo;
+export using ::WGPUAdapterInfo;
+export using ::WGPUBindGroupEntry;
+export using ::WGPUBlendComponent;
+export using ::WGPUBufferBindingLayout;
+export using ::WGPUBufferDescriptor;
+export using ::WGPUColor;
+export using ::WGPUCommandBufferDescriptor;
+export using ::WGPUCommandEncoderDescriptor;
+export using ::WGPUCompilationMessage;
+export using ::WGPUComputePassTimestampWrites;
+export using ::WGPUConstantEntry;
+export using ::WGPUExtent3D;
+export using ::WGPUFuture;
+export using ::WGPUInstanceCapabilities;
+export using ::WGPULimits;
+export using ::WGPUMultisampleState;
+export using ::WGPUOrigin3D;
+export using ::WGPUPipelineLayoutDescriptor;
+export using ::WGPUPrimitiveState;
+export using ::WGPUQuerySetDescriptor;
+export using ::WGPUQueueDescriptor;
+export using ::WGPURenderBundleDescriptor;
+export using ::WGPURenderBundleEncoderDescriptor;
+export using ::WGPURenderPassDepthStencilAttachment;
+export using ::WGPURenderPassMaxDrawCount;
+export using ::WGPURenderPassTimestampWrites;
+export using ::WGPURequestAdapterOptions;
+export using ::WGPUSamplerBindingLayout;
+export using ::WGPUSamplerDescriptor;
+export using ::WGPUShaderModuleDescriptor;
+export using ::WGPUShaderSourceSPIRV;
+export using ::WGPUShaderSourceWGSL;
+export using ::WGPUStencilFaceState;
+export using ::WGPUStorageTextureBindingLayout;
+export using ::WGPUSupportedFeatures;
+export using ::WGPUSupportedWGSLLanguageFeatures;
+export using ::WGPUSurfaceCapabilities;
+export using ::WGPUSurfaceConfiguration;
+export using ::WGPUSurfaceDescriptor;
+export using ::WGPUSurfaceSourceAndroidNativeWindow;
+export using ::WGPUSurfaceSourceMetalLayer;
+export using ::WGPUSurfaceSourceWaylandSurface;
+export using ::WGPUSurfaceSourceWindowsHWND;
+export using ::WGPUSurfaceSourceXCBWindow;
+export using ::WGPUSurfaceSourceXlibWindow;
+export using ::WGPUSurfaceTexture;
+export using ::WGPUTexelCopyBufferLayout;
+export using ::WGPUTextureBindingLayout;
+export using ::WGPUTextureViewDescriptor;
+export using ::WGPUVertexAttribute;
+export using ::WGPUBindGroupDescriptor;
+export using ::WGPUBindGroupLayoutEntry;
+export using ::WGPUBlendState;
+export using ::WGPUCompilationInfo;
+export using ::WGPUComputePassDescriptor;
+export using ::WGPUDepthStencilState;
+export using ::WGPUDeviceDescriptor;
+export using ::WGPUFutureWaitInfo;
+export using ::WGPUInstanceDescriptor;
+export using ::WGPUProgrammableStageDescriptor;
+export using ::WGPURenderPassColorAttachment;
+export using ::WGPUTexelCopyBufferInfo;
+export using ::WGPUTexelCopyTextureInfo;
+export using ::WGPUTextureDescriptor;
+export using ::WGPUVertexBufferLayout;
+export using ::WGPUBindGroupLayoutDescriptor;
+export using ::WGPUColorTargetState;
+export using ::WGPUComputePipelineDescriptor;
+export using ::WGPURenderPassDescriptor;
+export using ::WGPUVertexState;
+export using ::WGPUFragmentState;
+export using ::WGPURenderPipelineDescriptor;
+export using ::WGPUInstanceExtras;
+export using ::WGPUDeviceExtras;
+export using ::WGPUNativeLimits;
+export using ::WGPUPushConstantRange;
+export using ::WGPUPipelineLayoutExtras;
+export using ::WGPUShaderDefine;
+export using ::WGPUShaderSourceGLSL;
+export using ::WGPUShaderModuleDescriptorSpirV;
+export using ::WGPURegistryReport;
+export using ::WGPUHubReport;
+export using ::WGPUGlobalReport;
+export using ::WGPUInstanceEnumerateAdapterOptions;
+export using ::WGPUBindGroupEntryExtras;
+export using ::WGPUBindGroupLayoutEntryExtras;
+export using ::WGPUQuerySetDescriptorExtras;
+export using ::WGPUSurfaceConfigurationExtras;
+export using ::WGPUSurfaceSourceSwapChainPanel;
+export using ::WGPUPrimitiveStateExtras;
+export using ::WGPUAdapterType;
+export using ::WGPUAdapterType_DiscreteGPU;
+export using ::WGPUAdapterType_IntegratedGPU;
+export using ::WGPUAdapterType_CPU;
+export using ::WGPUAdapterType_Unknown;
+export using ::WGPUAdapterType_Force32;
+export using ::WGPUAddressMode;
+export using ::WGPUAddressMode_Undefined;
+export using ::WGPUAddressMode_ClampToEdge;
+export using ::WGPUAddressMode_Repeat;
+export using ::WGPUAddressMode_MirrorRepeat;
+export using ::WGPUAddressMode_Force32;
+export using ::WGPUBackendType;
+export using ::WGPUBackendType_Undefined;
+export using ::WGPUBackendType_Null;
+export using ::WGPUBackendType_WebGPU;
+export using ::WGPUBackendType_D3D11;
+export using ::WGPUBackendType_D3D12;
+export using ::WGPUBackendType_Metal;
+export using ::WGPUBackendType_Vulkan;
+export using ::WGPUBackendType_OpenGL;
+export using ::WGPUBackendType_OpenGLES;
+export using ::WGPUBackendType_Force32;
+export using ::WGPUBlendFactor;
+export using ::WGPUBlendFactor_Undefined;
+export using ::WGPUBlendFactor_Zero;
+export using ::WGPUBlendFactor_One;
+export using ::WGPUBlendFactor_Src;
+export using ::WGPUBlendFactor_OneMinusSrc;
+export using ::WGPUBlendFactor_SrcAlpha;
+export using ::WGPUBlendFactor_OneMinusSrcAlpha;
+export using ::WGPUBlendFactor_Dst;
+export using ::WGPUBlendFactor_OneMinusDst;
+export using ::WGPUBlendFactor_DstAlpha;
+export using ::WGPUBlendFactor_OneMinusDstAlpha;
+export using ::WGPUBlendFactor_SrcAlphaSaturated;
+export using ::WGPUBlendFactor_Constant;
+export using ::WGPUBlendFactor_OneMinusConstant;
+export using ::WGPUBlendFactor_Src1;
+export using ::WGPUBlendFactor_OneMinusSrc1;
+export using ::WGPUBlendFactor_Src1Alpha;
+export using ::WGPUBlendFactor_OneMinusSrc1Alpha;
+export using ::WGPUBlendFactor_Force32;
+export using ::WGPUBlendOperation;
+export using ::WGPUBlendOperation_Undefined;
+export using ::WGPUBlendOperation_Add;
+export using ::WGPUBlendOperation_Subtract;
+export using ::WGPUBlendOperation_ReverseSubtract;
+export using ::WGPUBlendOperation_Min;
+export using ::WGPUBlendOperation_Max;
+export using ::WGPUBlendOperation_Force32;
+export using ::WGPUBufferBindingType;
+export using ::WGPUBufferBindingType_BindingNotUsed;
+export using ::WGPUBufferBindingType_Undefined;
+export using ::WGPUBufferBindingType_Uniform;
+export using ::WGPUBufferBindingType_Storage;
+export using ::WGPUBufferBindingType_ReadOnlyStorage;
+export using ::WGPUBufferBindingType_Force32;
+export using ::WGPUBufferMapState;
+export using ::WGPUBufferMapState_Unmapped;
+export using ::WGPUBufferMapState_Pending;
+export using ::WGPUBufferMapState_Mapped;
+export using ::WGPUBufferMapState_Force32;
+export using ::WGPUCallbackMode;
+export using ::WGPUCallbackMode_WaitAnyOnly;
+export using ::WGPUCallbackMode_AllowProcessEvents;
+export using ::WGPUCallbackMode_AllowSpontaneous;
+export using ::WGPUCallbackMode_Force32;
+export using ::WGPUCompareFunction;
+export using ::WGPUCompareFunction_Undefined;
+export using ::WGPUCompareFunction_Never;
+export using ::WGPUCompareFunction_Less;
+export using ::WGPUCompareFunction_Equal;
+export using ::WGPUCompareFunction_LessEqual;
+export using ::WGPUCompareFunction_Greater;
+export using ::WGPUCompareFunction_NotEqual;
+export using ::WGPUCompareFunction_GreaterEqual;
+export using ::WGPUCompareFunction_Always;
+export using ::WGPUCompareFunction_Force32;
+export using ::WGPUCompilationInfoRequestStatus;
+export using ::WGPUCompilationInfoRequestStatus_Success;
+export using ::WGPUCompilationInfoRequestStatus_InstanceDropped;
+export using ::WGPUCompilationInfoRequestStatus_Error;
+export using ::WGPUCompilationInfoRequestStatus_Unknown;
+export using ::WGPUCompilationInfoRequestStatus_Force32;
+export using ::WGPUCompilationMessageType;
+export using ::WGPUCompilationMessageType_Error;
+export using ::WGPUCompilationMessageType_Warning;
+export using ::WGPUCompilationMessageType_Info;
+export using ::WGPUCompilationMessageType_Force32;
+export using ::WGPUCompositeAlphaMode;
+export using ::WGPUCompositeAlphaMode_Auto;
+export using ::WGPUCompositeAlphaMode_Opaque;
+export using ::WGPUCompositeAlphaMode_Premultiplied;
+export using ::WGPUCompositeAlphaMode_Unpremultiplied;
+export using ::WGPUCompositeAlphaMode_Inherit;
+export using ::WGPUCompositeAlphaMode_Force32;
+export using ::WGPUCreatePipelineAsyncStatus;
+export using ::WGPUCreatePipelineAsyncStatus_Success;
+export using ::WGPUCreatePipelineAsyncStatus_InstanceDropped;
+export using ::WGPUCreatePipelineAsyncStatus_ValidationError;
+export using ::WGPUCreatePipelineAsyncStatus_InternalError;
+export using ::WGPUCreatePipelineAsyncStatus_Unknown;
+export using ::WGPUCreatePipelineAsyncStatus_Force32;
+export using ::WGPUCullMode;
+export using ::WGPUCullMode_Undefined;
+export using ::WGPUCullMode_None;
+export using ::WGPUCullMode_Front;
+export using ::WGPUCullMode_Back;
+export using ::WGPUCullMode_Force32;
+export using ::WGPUDeviceLostReason;
+export using ::WGPUDeviceLostReason_Unknown;
+export using ::WGPUDeviceLostReason_Destroyed;
+export using ::WGPUDeviceLostReason_InstanceDropped;
+export using ::WGPUDeviceLostReason_FailedCreation;
+export using ::WGPUDeviceLostReason_Force32;
+export using ::WGPUErrorFilter;
+export using ::WGPUErrorFilter_Validation;
+export using ::WGPUErrorFilter_OutOfMemory;
+export using ::WGPUErrorFilter_Internal;
+export using ::WGPUErrorFilter_Force32;
+export using ::WGPUErrorType;
+export using ::WGPUErrorType_NoError;
+export using ::WGPUErrorType_Validation;
+export using ::WGPUErrorType_OutOfMemory;
+export using ::WGPUErrorType_Internal;
+export using ::WGPUErrorType_Unknown;
+export using ::WGPUErrorType_Force32;
+export using ::WGPUFeatureLevel;
+export using ::WGPUFeatureLevel_Compatibility;
+export using ::WGPUFeatureLevel_Core;
+export using ::WGPUFeatureLevel_Force32;
+export using ::WGPUFeatureName;
+export using ::WGPUFeatureName_Undefined;
+export using ::WGPUFeatureName_DepthClipControl;
+export using ::WGPUFeatureName_Depth32FloatStencil8;
+export using ::WGPUFeatureName_TimestampQuery;
+export using ::WGPUFeatureName_TextureCompressionBC;
+export using ::WGPUFeatureName_TextureCompressionBCSliced3D;
+export using ::WGPUFeatureName_TextureCompressionETC2;
+export using ::WGPUFeatureName_TextureCompressionASTC;
+export using ::WGPUFeatureName_TextureCompressionASTCSliced3D;
+export using ::WGPUFeatureName_IndirectFirstInstance;
+export using ::WGPUFeatureName_ShaderF16;
+export using ::WGPUFeatureName_RG11B10UfloatRenderable;
+export using ::WGPUFeatureName_BGRA8UnormStorage;
+export using ::WGPUFeatureName_Float32Filterable;
+export using ::WGPUFeatureName_Float32Blendable;
+export using ::WGPUFeatureName_ClipDistances;
+export using ::WGPUFeatureName_DualSourceBlending;
+export using ::WGPUFeatureName_Force32;
+export using ::WGPUFilterMode;
+export using ::WGPUFilterMode_Undefined;
+export using ::WGPUFilterMode_Nearest;
+export using ::WGPUFilterMode_Linear;
+export using ::WGPUFilterMode_Force32;
+export using ::WGPUFrontFace;
+export using ::WGPUFrontFace_Undefined;
+export using ::WGPUFrontFace_CCW;
+export using ::WGPUFrontFace_CW;
+export using ::WGPUFrontFace_Force32;
+export using ::WGPUIndexFormat;
+export using ::WGPUIndexFormat_Undefined;
+export using ::WGPUIndexFormat_Uint16;
+export using ::WGPUIndexFormat_Uint32;
+export using ::WGPUIndexFormat_Force32;
+export using ::WGPULoadOp;
+export using ::WGPULoadOp_Undefined;
+export using ::WGPULoadOp_Load;
+export using ::WGPULoadOp_Clear;
+export using ::WGPULoadOp_Force32;
+export using ::WGPUMapAsyncStatus;
+export using ::WGPUMapAsyncStatus_Success;
+export using ::WGPUMapAsyncStatus_InstanceDropped;
+export using ::WGPUMapAsyncStatus_Error;
+export using ::WGPUMapAsyncStatus_Aborted;
+export using ::WGPUMapAsyncStatus_Unknown;
+export using ::WGPUMapAsyncStatus_Force32;
+export using ::WGPUMipmapFilterMode;
+export using ::WGPUMipmapFilterMode_Undefined;
+export using ::WGPUMipmapFilterMode_Nearest;
+export using ::WGPUMipmapFilterMode_Linear;
+export using ::WGPUMipmapFilterMode_Force32;
+export using ::WGPUOptionalBool;
+export using ::WGPUOptionalBool_False;
+export using ::WGPUOptionalBool_True;
+export using ::WGPUOptionalBool_Undefined;
+export using ::WGPUOptionalBool_Force32;
+export using ::WGPUPopErrorScopeStatus;
+export using ::WGPUPopErrorScopeStatus_Success;
+export using ::WGPUPopErrorScopeStatus_InstanceDropped;
+export using ::WGPUPopErrorScopeStatus_EmptyStack;
+export using ::WGPUPopErrorScopeStatus_Force32;
+export using ::WGPUPowerPreference;
+export using ::WGPUPowerPreference_Undefined;
+export using ::WGPUPowerPreference_LowPower;
+export using ::WGPUPowerPreference_HighPerformance;
+export using ::WGPUPowerPreference_Force32;
+export using ::WGPUPresentMode;
+export using ::WGPUPresentMode_Undefined;
+export using ::WGPUPresentMode_Fifo;
+export using ::WGPUPresentMode_FifoRelaxed;
+export using ::WGPUPresentMode_Immediate;
+export using ::WGPUPresentMode_Mailbox;
+export using ::WGPUPresentMode_Force32;
+export using ::WGPUPrimitiveTopology;
+export using ::WGPUPrimitiveTopology_Undefined;
+export using ::WGPUPrimitiveTopology_PointList;
+export using ::WGPUPrimitiveTopology_LineList;
+export using ::WGPUPrimitiveTopology_LineStrip;
+export using ::WGPUPrimitiveTopology_TriangleList;
+export using ::WGPUPrimitiveTopology_TriangleStrip;
+export using ::WGPUPrimitiveTopology_Force32;
+export using ::WGPUQueryType;
+export using ::WGPUQueryType_Occlusion;
+export using ::WGPUQueryType_Timestamp;
+export using ::WGPUQueryType_Force32;
+export using ::WGPUQueueWorkDoneStatus;
+export using ::WGPUQueueWorkDoneStatus_Success;
+export using ::WGPUQueueWorkDoneStatus_InstanceDropped;
+export using ::WGPUQueueWorkDoneStatus_Error;
+export using ::WGPUQueueWorkDoneStatus_Unknown;
+export using ::WGPUQueueWorkDoneStatus_Force32;
+export using ::WGPURequestAdapterStatus;
+export using ::WGPURequestAdapterStatus_Success;
+export using ::WGPURequestAdapterStatus_InstanceDropped;
+export using ::WGPURequestAdapterStatus_Unavailable;
+export using ::WGPURequestAdapterStatus_Error;
+export using ::WGPURequestAdapterStatus_Unknown;
+export using ::WGPURequestAdapterStatus_Force32;
+export using ::WGPURequestDeviceStatus;
+export using ::WGPURequestDeviceStatus_Success;
+export using ::WGPURequestDeviceStatus_InstanceDropped;
+export using ::WGPURequestDeviceStatus_Error;
+export using ::WGPURequestDeviceStatus_Unknown;
+export using ::WGPURequestDeviceStatus_Force32;
+export using ::WGPUSType;
+export using ::WGPUSType_ShaderSourceSPIRV;
+export using ::WGPUSType_ShaderSourceWGSL;
+export using ::WGPUSType_RenderPassMaxDrawCount;
+export using ::WGPUSType_SurfaceSourceMetalLayer;
+export using ::WGPUSType_SurfaceSourceWindowsHWND;
+export using ::WGPUSType_SurfaceSourceXlibWindow;
+export using ::WGPUSType_SurfaceSourceWaylandSurface;
+export using ::WGPUSType_SurfaceSourceAndroidNativeWindow;
+export using ::WGPUSType_SurfaceSourceXCBWindow;
+export using ::WGPUSType_Force32;
+export using ::WGPUSamplerBindingType;
+export using ::WGPUSamplerBindingType_BindingNotUsed;
+export using ::WGPUSamplerBindingType_Undefined;
+export using ::WGPUSamplerBindingType_Filtering;
+export using ::WGPUSamplerBindingType_NonFiltering;
+export using ::WGPUSamplerBindingType_Comparison;
+export using ::WGPUSamplerBindingType_Force32;
+export using ::WGPUStatus;
+export using ::WGPUStatus_Success;
+export using ::WGPUStatus_Error;
+export using ::WGPUStatus_Force32;
+export using ::WGPUStencilOperation;
+export using ::WGPUStencilOperation_Undefined;
+export using ::WGPUStencilOperation_Keep;
+export using ::WGPUStencilOperation_Zero;
+export using ::WGPUStencilOperation_Replace;
+export using ::WGPUStencilOperation_Invert;
+export using ::WGPUStencilOperation_IncrementClamp;
+export using ::WGPUStencilOperation_DecrementClamp;
+export using ::WGPUStencilOperation_IncrementWrap;
+export using ::WGPUStencilOperation_DecrementWrap;
+export using ::WGPUStencilOperation_Force32;
+export using ::WGPUStorageTextureAccess;
+export using ::WGPUStorageTextureAccess_BindingNotUsed;
+export using ::WGPUStorageTextureAccess_Undefined;
+export using ::WGPUStorageTextureAccess_WriteOnly;
+export using ::WGPUStorageTextureAccess_ReadOnly;
+export using ::WGPUStorageTextureAccess_ReadWrite;
+export using ::WGPUStorageTextureAccess_Force32;
+export using ::WGPUStoreOp;
+export using ::WGPUStoreOp_Undefined;
+export using ::WGPUStoreOp_Store;
+export using ::WGPUStoreOp_Discard;
+export using ::WGPUStoreOp_Force32;
+export using ::WGPUSurfaceGetCurrentTextureStatus;
+export using ::WGPUSurfaceGetCurrentTextureStatus_SuccessOptimal;
+export using ::WGPUSurfaceGetCurrentTextureStatus_SuccessSuboptimal;
+export using ::WGPUSurfaceGetCurrentTextureStatus_Timeout;
+export using ::WGPUSurfaceGetCurrentTextureStatus_Outdated;
+export using ::WGPUSurfaceGetCurrentTextureStatus_Lost;
+export using ::WGPUSurfaceGetCurrentTextureStatus_OutOfMemory;
+export using ::WGPUSurfaceGetCurrentTextureStatus_DeviceLost;
+export using ::WGPUSurfaceGetCurrentTextureStatus_Error;
+export using ::WGPUSurfaceGetCurrentTextureStatus_Force32;
+export using ::WGPUTextureAspect;
+export using ::WGPUTextureAspect_Undefined;
+export using ::WGPUTextureAspect_All;
+export using ::WGPUTextureAspect_StencilOnly;
+export using ::WGPUTextureAspect_DepthOnly;
+export using ::WGPUTextureAspect_Force32;
+export using ::WGPUTextureDimension;
+export using ::WGPUTextureDimension_Undefined;
+export using ::WGPUTextureDimension_1D;
+export using ::WGPUTextureDimension_2D;
+export using ::WGPUTextureDimension_3D;
+export using ::WGPUTextureDimension_Force32;
+export using ::WGPUTextureFormat;
+export using ::WGPUTextureFormat_Undefined;
+export using ::WGPUTextureFormat_R8Unorm;
+export using ::WGPUTextureFormat_R8Snorm;
+export using ::WGPUTextureFormat_R8Uint;
+export using ::WGPUTextureFormat_R8Sint;
+export using ::WGPUTextureFormat_R16Uint;
+export using ::WGPUTextureFormat_R16Sint;
+export using ::WGPUTextureFormat_R16Float;
+export using ::WGPUTextureFormat_RG8Unorm;
+export using ::WGPUTextureFormat_RG8Snorm;
+export using ::WGPUTextureFormat_RG8Uint;
+export using ::WGPUTextureFormat_RG8Sint;
+export using ::WGPUTextureFormat_R32Float;
+export using ::WGPUTextureFormat_R32Uint;
+export using ::WGPUTextureFormat_R32Sint;
+export using ::WGPUTextureFormat_RG16Uint;
+export using ::WGPUTextureFormat_RG16Sint;
+export using ::WGPUTextureFormat_RG16Float;
+export using ::WGPUTextureFormat_RGBA8Unorm;
+export using ::WGPUTextureFormat_RGBA8UnormSrgb;
+export using ::WGPUTextureFormat_RGBA8Snorm;
+export using ::WGPUTextureFormat_RGBA8Uint;
+export using ::WGPUTextureFormat_RGBA8Sint;
+export using ::WGPUTextureFormat_BGRA8Unorm;
+export using ::WGPUTextureFormat_BGRA8UnormSrgb;
+export using ::WGPUTextureFormat_RGB10A2Uint;
+export using ::WGPUTextureFormat_RGB10A2Unorm;
+export using ::WGPUTextureFormat_RG11B10Ufloat;
+export using ::WGPUTextureFormat_RGB9E5Ufloat;
+export using ::WGPUTextureFormat_RG32Float;
+export using ::WGPUTextureFormat_RG32Uint;
+export using ::WGPUTextureFormat_RG32Sint;
+export using ::WGPUTextureFormat_RGBA16Uint;
+export using ::WGPUTextureFormat_RGBA16Sint;
+export using ::WGPUTextureFormat_RGBA16Float;
+export using ::WGPUTextureFormat_RGBA32Float;
+export using ::WGPUTextureFormat_RGBA32Uint;
+export using ::WGPUTextureFormat_RGBA32Sint;
+export using ::WGPUTextureFormat_Stencil8;
+export using ::WGPUTextureFormat_Depth16Unorm;
+export using ::WGPUTextureFormat_Depth24Plus;
+export using ::WGPUTextureFormat_Depth24PlusStencil8;
+export using ::WGPUTextureFormat_Depth32Float;
+export using ::WGPUTextureFormat_Depth32FloatStencil8;
+export using ::WGPUTextureFormat_BC1RGBAUnorm;
+export using ::WGPUTextureFormat_BC1RGBAUnormSrgb;
+export using ::WGPUTextureFormat_BC2RGBAUnorm;
+export using ::WGPUTextureFormat_BC2RGBAUnormSrgb;
+export using ::WGPUTextureFormat_BC3RGBAUnorm;
+export using ::WGPUTextureFormat_BC3RGBAUnormSrgb;
+export using ::WGPUTextureFormat_BC4RUnorm;
+export using ::WGPUTextureFormat_BC4RSnorm;
+export using ::WGPUTextureFormat_BC5RGUnorm;
+export using ::WGPUTextureFormat_BC5RGSnorm;
+export using ::WGPUTextureFormat_BC6HRGBUfloat;
+export using ::WGPUTextureFormat_BC6HRGBFloat;
+export using ::WGPUTextureFormat_BC7RGBAUnorm;
+export using ::WGPUTextureFormat_BC7RGBAUnormSrgb;
+export using ::WGPUTextureFormat_ETC2RGB8Unorm;
+export using ::WGPUTextureFormat_ETC2RGB8UnormSrgb;
+export using ::WGPUTextureFormat_ETC2RGB8A1Unorm;
+export using ::WGPUTextureFormat_ETC2RGB8A1UnormSrgb;
+export using ::WGPUTextureFormat_ETC2RGBA8Unorm;
+export using ::WGPUTextureFormat_ETC2RGBA8UnormSrgb;
+export using ::WGPUTextureFormat_EACR11Unorm;
+export using ::WGPUTextureFormat_EACR11Snorm;
+export using ::WGPUTextureFormat_EACRG11Unorm;
+export using ::WGPUTextureFormat_EACRG11Snorm;
+export using ::WGPUTextureFormat_ASTC4x4Unorm;
+export using ::WGPUTextureFormat_ASTC4x4UnormSrgb;
+export using ::WGPUTextureFormat_ASTC5x4Unorm;
+export using ::WGPUTextureFormat_ASTC5x4UnormSrgb;
+export using ::WGPUTextureFormat_ASTC5x5Unorm;
+export using ::WGPUTextureFormat_ASTC5x5UnormSrgb;
+export using ::WGPUTextureFormat_ASTC6x5Unorm;
+export using ::WGPUTextureFormat_ASTC6x5UnormSrgb;
+export using ::WGPUTextureFormat_ASTC6x6Unorm;
+export using ::WGPUTextureFormat_ASTC6x6UnormSrgb;
+export using ::WGPUTextureFormat_ASTC8x5Unorm;
+export using ::WGPUTextureFormat_ASTC8x5UnormSrgb;
+export using ::WGPUTextureFormat_ASTC8x6Unorm;
+export using ::WGPUTextureFormat_ASTC8x6UnormSrgb;
+export using ::WGPUTextureFormat_ASTC8x8Unorm;
+export using ::WGPUTextureFormat_ASTC8x8UnormSrgb;
+export using ::WGPUTextureFormat_ASTC10x5Unorm;
+export using ::WGPUTextureFormat_ASTC10x5UnormSrgb;
+export using ::WGPUTextureFormat_ASTC10x6Unorm;
+export using ::WGPUTextureFormat_ASTC10x6UnormSrgb;
+export using ::WGPUTextureFormat_ASTC10x8Unorm;
+export using ::WGPUTextureFormat_ASTC10x8UnormSrgb;
+export using ::WGPUTextureFormat_ASTC10x10Unorm;
+export using ::WGPUTextureFormat_ASTC10x10UnormSrgb;
+export using ::WGPUTextureFormat_ASTC12x10Unorm;
+export using ::WGPUTextureFormat_ASTC12x10UnormSrgb;
+export using ::WGPUTextureFormat_ASTC12x12Unorm;
+export using ::WGPUTextureFormat_ASTC12x12UnormSrgb;
+export using ::WGPUTextureFormat_Force32;
+export using ::WGPUTextureSampleType;
+export using ::WGPUTextureSampleType_BindingNotUsed;
+export using ::WGPUTextureSampleType_Undefined;
+export using ::WGPUTextureSampleType_Float;
+export using ::WGPUTextureSampleType_UnfilterableFloat;
+export using ::WGPUTextureSampleType_Depth;
+export using ::WGPUTextureSampleType_Sint;
+export using ::WGPUTextureSampleType_Uint;
+export using ::WGPUTextureSampleType_Force32;
+export using ::WGPUTextureViewDimension;
+export using ::WGPUTextureViewDimension_Undefined;
+export using ::WGPUTextureViewDimension_1D;
+export using ::WGPUTextureViewDimension_2D;
+export using ::WGPUTextureViewDimension_2DArray;
+export using ::WGPUTextureViewDimension_Cube;
+export using ::WGPUTextureViewDimension_CubeArray;
+export using ::WGPUTextureViewDimension_3D;
+export using ::WGPUTextureViewDimension_Force32;
+export using ::WGPUVertexFormat;
+export using ::WGPUVertexFormat_Uint8;
+export using ::WGPUVertexFormat_Uint8x2;
+export using ::WGPUVertexFormat_Uint8x4;
+export using ::WGPUVertexFormat_Sint8;
+export using ::WGPUVertexFormat_Sint8x2;
+export using ::WGPUVertexFormat_Sint8x4;
+export using ::WGPUVertexFormat_Unorm8;
+export using ::WGPUVertexFormat_Unorm8x2;
+export using ::WGPUVertexFormat_Unorm8x4;
+export using ::WGPUVertexFormat_Snorm8;
+export using ::WGPUVertexFormat_Snorm8x2;
+export using ::WGPUVertexFormat_Snorm8x4;
+export using ::WGPUVertexFormat_Uint16;
+export using ::WGPUVertexFormat_Uint16x2;
+export using ::WGPUVertexFormat_Uint16x4;
+export using ::WGPUVertexFormat_Sint16;
+export using ::WGPUVertexFormat_Sint16x2;
+export using ::WGPUVertexFormat_Sint16x4;
+export using ::WGPUVertexFormat_Unorm16;
+export using ::WGPUVertexFormat_Unorm16x2;
+export using ::WGPUVertexFormat_Unorm16x4;
+export using ::WGPUVertexFormat_Snorm16;
+export using ::WGPUVertexFormat_Snorm16x2;
+export using ::WGPUVertexFormat_Snorm16x4;
+export using ::WGPUVertexFormat_Float16;
+export using ::WGPUVertexFormat_Float16x2;
+export using ::WGPUVertexFormat_Float16x4;
+export using ::WGPUVertexFormat_Float32;
+export using ::WGPUVertexFormat_Float32x2;
+export using ::WGPUVertexFormat_Float32x3;
+export using ::WGPUVertexFormat_Float32x4;
+export using ::WGPUVertexFormat_Uint32;
+export using ::WGPUVertexFormat_Uint32x2;
+export using ::WGPUVertexFormat_Uint32x3;
+export using ::WGPUVertexFormat_Uint32x4;
+export using ::WGPUVertexFormat_Sint32;
+export using ::WGPUVertexFormat_Sint32x2;
+export using ::WGPUVertexFormat_Sint32x3;
+export using ::WGPUVertexFormat_Sint32x4;
+export using ::WGPUVertexFormat_Unorm10_10_10_2;
+export using ::WGPUVertexFormat_Unorm8x4BGRA;
+export using ::WGPUVertexFormat_Force32;
+export using ::WGPUVertexStepMode;
+export using ::WGPUVertexStepMode_VertexBufferNotUsed;
+export using ::WGPUVertexStepMode_Undefined;
+export using ::WGPUVertexStepMode_Vertex;
+export using ::WGPUVertexStepMode_Instance;
+export using ::WGPUVertexStepMode_Force32;
+export using ::WGPUWGSLLanguageFeatureName;
+export using ::WGPUWGSLLanguageFeatureName_ReadonlyAndReadwriteStorageTextures;
+export using ::WGPUWGSLLanguageFeatureName_Packed4x8IntegerDotProduct;
+export using ::WGPUWGSLLanguageFeatureName_UnrestrictedPointerParameters;
+export using ::WGPUWGSLLanguageFeatureName_PointerCompositeAccess;
+export using ::WGPUWGSLLanguageFeatureName_Force32;
+export using ::WGPUWaitStatus;
+export using ::WGPUWaitStatus_Success;
+export using ::WGPUWaitStatus_TimedOut;
+export using ::WGPUWaitStatus_UnsupportedTimeout;
+export using ::WGPUWaitStatus_UnsupportedCount;
+export using ::WGPUWaitStatus_UnsupportedMixedSources;
+export using ::WGPUWaitStatus_Force32;
+export using ::WGPUBufferUsage;
+export constexpr auto WGPUBufferUsage_None = ::WGPUBufferUsage_None_Internal;
+export constexpr auto WGPUBufferUsage_MapRead = ::WGPUBufferUsage_MapRead_Internal;
+export constexpr auto WGPUBufferUsage_MapWrite = ::WGPUBufferUsage_MapWrite_Internal;
+export constexpr auto WGPUBufferUsage_CopySrc = ::WGPUBufferUsage_CopySrc_Internal;
+export constexpr auto WGPUBufferUsage_CopyDst = ::WGPUBufferUsage_CopyDst_Internal;
+export constexpr auto WGPUBufferUsage_Index = ::WGPUBufferUsage_Index_Internal;
+export constexpr auto WGPUBufferUsage_Vertex = ::WGPUBufferUsage_Vertex_Internal;
+export constexpr auto WGPUBufferUsage_Uniform = ::WGPUBufferUsage_Uniform_Internal;
+export constexpr auto WGPUBufferUsage_Storage = ::WGPUBufferUsage_Storage_Internal;
+export constexpr auto WGPUBufferUsage_Indirect = ::WGPUBufferUsage_Indirect_Internal;
+export constexpr auto WGPUBufferUsage_QueryResolve = ::WGPUBufferUsage_QueryResolve_Internal;
+export using ::WGPUColorWriteMask;
+export constexpr auto WGPUColorWriteMask_None = ::WGPUColorWriteMask_None_Internal;
+export constexpr auto WGPUColorWriteMask_Red = ::WGPUColorWriteMask_Red_Internal;
+export constexpr auto WGPUColorWriteMask_Green = ::WGPUColorWriteMask_Green_Internal;
+export constexpr auto WGPUColorWriteMask_Blue = ::WGPUColorWriteMask_Blue_Internal;
+export constexpr auto WGPUColorWriteMask_Alpha = ::WGPUColorWriteMask_Alpha_Internal;
+export constexpr auto WGPUColorWriteMask_All = ::WGPUColorWriteMask_All_Internal;
+export using ::WGPUMapMode;
+export constexpr auto WGPUMapMode_None = ::WGPUMapMode_None_Internal;
+export constexpr auto WGPUMapMode_Read = ::WGPUMapMode_Read_Internal;
+export constexpr auto WGPUMapMode_Write = ::WGPUMapMode_Write_Internal;
+export using ::WGPUShaderStage;
+export constexpr auto WGPUShaderStage_None = ::WGPUShaderStage_None_Internal;
+export constexpr auto WGPUShaderStage_Vertex = ::WGPUShaderStage_Vertex_Internal;
+export constexpr auto WGPUShaderStage_Fragment = ::WGPUShaderStage_Fragment_Internal;
+export constexpr auto WGPUShaderStage_Compute = ::WGPUShaderStage_Compute_Internal;
+export using ::WGPUTextureUsage;
+export constexpr auto WGPUTextureUsage_None = ::WGPUTextureUsage_None_Internal;
+export constexpr auto WGPUTextureUsage_CopySrc = ::WGPUTextureUsage_CopySrc_Internal;
+export constexpr auto WGPUTextureUsage_CopyDst = ::WGPUTextureUsage_CopyDst_Internal;
+export constexpr auto WGPUTextureUsage_TextureBinding = ::WGPUTextureUsage_TextureBinding_Internal;
+export constexpr auto WGPUTextureUsage_StorageBinding = ::WGPUTextureUsage_StorageBinding_Internal;
+export constexpr auto WGPUTextureUsage_RenderAttachment = ::WGPUTextureUsage_RenderAttachment_Internal;
+export using ::WGPUNativeSType;
+export using ::WGPUSType_DeviceExtras;
+export using ::WGPUSType_NativeLimits;
+export using ::WGPUSType_PipelineLayoutExtras;
+export using ::WGPUSType_ShaderSourceGLSL;
+export using ::WGPUSType_InstanceExtras;
+export using ::WGPUSType_BindGroupEntryExtras;
+export using ::WGPUSType_BindGroupLayoutEntryExtras;
+export using ::WGPUSType_QuerySetDescriptorExtras;
+export using ::WGPUSType_SurfaceConfigurationExtras;
+export using ::WGPUSType_SurfaceSourceSwapChainPanel;
+export using ::WGPUSType_PrimitiveStateExtras;
+export using ::WGPUNativeSType_Force32;
+export using ::WGPUNativeFeature;
+export using ::WGPUNativeFeature_PushConstants;
+export using ::WGPUNativeFeature_TextureAdapterSpecificFormatFeatures;
+export using ::WGPUNativeFeature_MultiDrawIndirectCount;
+export using ::WGPUNativeFeature_VertexWritableStorage;
+export using ::WGPUNativeFeature_TextureBindingArray;
+export using ::WGPUNativeFeature_SampledTextureAndStorageBufferArrayNonUniformIndexing;
+export using ::WGPUNativeFeature_PipelineStatisticsQuery;
+export using ::WGPUNativeFeature_StorageResourceBindingArray;
+export using ::WGPUNativeFeature_PartiallyBoundBindingArray;
+export using ::WGPUNativeFeature_TextureFormat16bitNorm;
+export using ::WGPUNativeFeature_TextureCompressionAstcHdr;
+export using ::WGPUNativeFeature_MappablePrimaryBuffers;
+export using ::WGPUNativeFeature_BufferBindingArray;
+export using ::WGPUNativeFeature_UniformBufferAndStorageTextureArrayNonUniformIndexing;
+export using ::WGPUNativeFeature_PolygonModeLine;
+export using ::WGPUNativeFeature_PolygonModePoint;
+export using ::WGPUNativeFeature_ConservativeRasterization;
+export using ::WGPUNativeFeature_SpirvShaderPassthrough;
+export using ::WGPUNativeFeature_VertexAttribute64bit;
+export using ::WGPUNativeFeature_TextureFormatNv12;
+export using ::WGPUNativeFeature_RayQuery;
+export using ::WGPUNativeFeature_ShaderF64;
+export using ::WGPUNativeFeature_ShaderI16;
+export using ::WGPUNativeFeature_ShaderPrimitiveIndex;
+export using ::WGPUNativeFeature_ShaderEarlyDepthTest;
+export using ::WGPUNativeFeature_Subgroup;
+export using ::WGPUNativeFeature_SubgroupVertex;
+export using ::WGPUNativeFeature_SubgroupBarrier;
+export using ::WGPUNativeFeature_TimestampQueryInsideEncoders;
+export using ::WGPUNativeFeature_TimestampQueryInsidePasses;
+export using ::WGPUNativeFeature_ShaderInt64;
+export using ::WGPUNativeFeature_Force32;
+export using ::WGPULogLevel;
+export using ::WGPULogLevel_Off;
+export using ::WGPULogLevel_Error;
+export using ::WGPULogLevel_Warn;
+export using ::WGPULogLevel_Info;
+export using ::WGPULogLevel_Debug;
+export using ::WGPULogLevel_Trace;
+export using ::WGPULogLevel_Force32;
+export using ::WGPUInstanceBackend;
+export constexpr auto WGPUInstanceBackend_All = ::WGPUInstanceBackend_All_Internal;
+export constexpr auto WGPUInstanceBackend_Force32 = ::WGPUInstanceBackend_Force32_Internal;
+export using ::WGPUInstanceFlag;
+export constexpr auto WGPUInstanceFlag_Default = ::WGPUInstanceFlag_Default_Internal;
+export constexpr auto WGPUInstanceFlag_Force32 = ::WGPUInstanceFlag_Force32_Internal;
+export using ::WGPUDx12Compiler;
+export using ::WGPUDx12Compiler_Undefined;
+export using ::WGPUDx12Compiler_Fxc;
+export using ::WGPUDx12Compiler_Dxc;
+export using ::WGPUDx12Compiler_Force32;
+export using ::WGPUGles3MinorVersion;
+export using ::WGPUGles3MinorVersion_Automatic;
+export using ::WGPUGles3MinorVersion_Version0;
+export using ::WGPUGles3MinorVersion_Version1;
+export using ::WGPUGles3MinorVersion_Version2;
+export using ::WGPUGles3MinorVersion_Force32;
+export using ::WGPUPipelineStatisticName;
+export using ::WGPUPipelineStatisticName_VertexShaderInvocations;
+export using ::WGPUPipelineStatisticName_ClipperInvocations;
+export using ::WGPUPipelineStatisticName_ClipperPrimitivesOut;
+export using ::WGPUPipelineStatisticName_FragmentShaderInvocations;
+export using ::WGPUPipelineStatisticName_ComputeShaderInvocations;
+export using ::WGPUPipelineStatisticName_Force32;
+export using ::WGPUNativeQueryType;
+export using ::WGPUNativeQueryType_PipelineStatistics;
+export using ::WGPUNativeQueryType_Force32;
+export using ::WGPUDxcMaxShaderModel;
+export using ::WGPUDxcMaxShaderModel_V6_0;
+export using ::WGPUDxcMaxShaderModel_V6_1;
+export using ::WGPUDxcMaxShaderModel_V6_2;
+export using ::WGPUDxcMaxShaderModel_V6_3;
+export using ::WGPUDxcMaxShaderModel_V6_4;
+export using ::WGPUDxcMaxShaderModel_V6_5;
+export using ::WGPUDxcMaxShaderModel_V6_6;
+export using ::WGPUDxcMaxShaderModel_V6_7;
+export using ::WGPUDxcMaxShaderModel_Force32;
+export using ::WGPUGLFenceBehaviour;
+export using ::WGPUGLFenceBehaviour_Normal;
+export using ::WGPUGLFenceBehaviour_AutoFinish;
+export using ::WGPUGLFenceBehaviour_Force32;
+export using ::WGPUDx12SwapchainKind;
+export using ::WGPUDx12SwapchainKind_Undefined;
+export using ::WGPUDx12SwapchainKind_DxgiFromHwnd;
+export using ::WGPUDx12SwapchainKind_DxgiFromVisual;
+export using ::WGPUDx12SwapchainKind_Force32;
+export using ::WGPUPolygonMode;
+export using ::WGPUPolygonMode_Fill;
+export using ::WGPUPolygonMode_Line;
+export using ::WGPUPolygonMode_Point;
+export using ::WGPUNativeTextureFormat;
+export using ::WGPUNativeTextureFormat_R16Unorm;
+export using ::WGPUNativeTextureFormat_R16Snorm;
+export using ::WGPUNativeTextureFormat_Rg16Unorm;
+export using ::WGPUNativeTextureFormat_Rg16Snorm;
+export using ::WGPUNativeTextureFormat_Rgba16Unorm;
+export using ::WGPUNativeTextureFormat_Rgba16Snorm;
+export using ::WGPUNativeTextureFormat_NV12;
+export using ::WGPUNativeTextureFormat_P010;
+export using ::wgpuCreateInstance;
+export using ::wgpuGetInstanceCapabilities;
+export using ::wgpuGetProcAddress;
+export using ::wgpuAdapterGetFeatures;
+export using ::wgpuAdapterGetInfo;
+export using ::wgpuAdapterGetLimits;
+export using ::wgpuAdapterHasFeature;
+export using ::wgpuAdapterRequestDevice;
+export using ::wgpuAdapterAddRef;
+export using ::wgpuAdapterRelease;
+export using ::wgpuAdapterInfoFreeMembers;
+export using ::wgpuBindGroupSetLabel;
+export using ::wgpuBindGroupAddRef;
+export using ::wgpuBindGroupRelease;
+export using ::wgpuBindGroupLayoutSetLabel;
+export using ::wgpuBindGroupLayoutAddRef;
+export using ::wgpuBindGroupLayoutRelease;
+export using ::wgpuBufferDestroy;
+export using ::wgpuBufferGetConstMappedRange;
+export using ::wgpuBufferGetMapState;
+export using ::wgpuBufferGetMappedRange;
+export using ::wgpuBufferGetSize;
+export using ::wgpuBufferGetUsage;
+export using ::wgpuBufferMapAsync;
+export using ::wgpuBufferSetLabel;
+export using ::wgpuBufferUnmap;
+export using ::wgpuBufferAddRef;
+export using ::wgpuBufferRelease;
+export using ::wgpuCommandBufferSetLabel;
+export using ::wgpuCommandBufferAddRef;
+export using ::wgpuCommandBufferRelease;
+export using ::wgpuCommandEncoderBeginComputePass;
+export using ::wgpuCommandEncoderBeginRenderPass;
+export using ::wgpuCommandEncoderClearBuffer;
+export using ::wgpuCommandEncoderCopyBufferToBuffer;
+export using ::wgpuCommandEncoderCopyBufferToTexture;
+export using ::wgpuCommandEncoderCopyTextureToBuffer;
+export using ::wgpuCommandEncoderCopyTextureToTexture;
+export using ::wgpuCommandEncoderFinish;
+export using ::wgpuCommandEncoderInsertDebugMarker;
+export using ::wgpuCommandEncoderPopDebugGroup;
+export using ::wgpuCommandEncoderPushDebugGroup;
+export using ::wgpuCommandEncoderResolveQuerySet;
+export using ::wgpuCommandEncoderSetLabel;
+export using ::wgpuCommandEncoderWriteTimestamp;
+export using ::wgpuCommandEncoderAddRef;
+export using ::wgpuCommandEncoderRelease;
+export using ::wgpuComputePassEncoderDispatchWorkgroups;
+export using ::wgpuComputePassEncoderDispatchWorkgroupsIndirect;
+export using ::wgpuComputePassEncoderEnd;
+export using ::wgpuComputePassEncoderInsertDebugMarker;
+export using ::wgpuComputePassEncoderPopDebugGroup;
+export using ::wgpuComputePassEncoderPushDebugGroup;
+export using ::wgpuComputePassEncoderSetBindGroup;
+export using ::wgpuComputePassEncoderSetLabel;
+export using ::wgpuComputePassEncoderSetPipeline;
+export using ::wgpuComputePassEncoderAddRef;
+export using ::wgpuComputePassEncoderRelease;
+export using ::wgpuComputePipelineGetBindGroupLayout;
+export using ::wgpuComputePipelineSetLabel;
+export using ::wgpuComputePipelineAddRef;
+export using ::wgpuComputePipelineRelease;
+export using ::wgpuDeviceCreateBindGroup;
+export using ::wgpuDeviceCreateBindGroupLayout;
+export using ::wgpuDeviceCreateBuffer;
+export using ::wgpuDeviceCreateCommandEncoder;
+export using ::wgpuDeviceCreateComputePipeline;
+export using ::wgpuDeviceCreateComputePipelineAsync;
+export using ::wgpuDeviceCreatePipelineLayout;
+export using ::wgpuDeviceCreateQuerySet;
+export using ::wgpuDeviceCreateRenderBundleEncoder;
+export using ::wgpuDeviceCreateRenderPipeline;
+export using ::wgpuDeviceCreateRenderPipelineAsync;
+export using ::wgpuDeviceCreateSampler;
+export using ::wgpuDeviceCreateShaderModule;
+export using ::wgpuDeviceCreateTexture;
+export using ::wgpuDeviceDestroy;
+export using ::wgpuDeviceGetAdapterInfo;
+export using ::wgpuDeviceGetFeatures;
+export using ::wgpuDeviceGetLimits;
+export using ::wgpuDeviceGetLostFuture;
+export using ::wgpuDeviceGetQueue;
+export using ::wgpuDeviceHasFeature;
+export using ::wgpuDevicePopErrorScope;
+export using ::wgpuDevicePushErrorScope;
+export using ::wgpuDeviceSetLabel;
+export using ::wgpuDeviceAddRef;
+export using ::wgpuDeviceRelease;
+export using ::wgpuInstanceCreateSurface;
+export using ::wgpuInstanceGetWGSLLanguageFeatures;
+export using ::wgpuInstanceHasWGSLLanguageFeature;
+export using ::wgpuInstanceProcessEvents;
+export using ::wgpuInstanceRequestAdapter;
+export using ::wgpuInstanceWaitAny;
+export using ::wgpuInstanceAddRef;
+export using ::wgpuInstanceRelease;
+export using ::wgpuPipelineLayoutSetLabel;
+export using ::wgpuPipelineLayoutAddRef;
+export using ::wgpuPipelineLayoutRelease;
+export using ::wgpuQuerySetDestroy;
+export using ::wgpuQuerySetGetCount;
+export using ::wgpuQuerySetGetType;
+export using ::wgpuQuerySetSetLabel;
+export using ::wgpuQuerySetAddRef;
+export using ::wgpuQuerySetRelease;
+export using ::wgpuQueueOnSubmittedWorkDone;
+export using ::wgpuQueueSetLabel;
+export using ::wgpuQueueSubmit;
+export using ::wgpuQueueWriteBuffer;
+export using ::wgpuQueueWriteTexture;
+export using ::wgpuQueueAddRef;
+export using ::wgpuQueueRelease;
+export using ::wgpuRenderBundleSetLabel;
+export using ::wgpuRenderBundleAddRef;
+export using ::wgpuRenderBundleRelease;
+export using ::wgpuRenderBundleEncoderDraw;
+export using ::wgpuRenderBundleEncoderDrawIndexed;
+export using ::wgpuRenderBundleEncoderDrawIndexedIndirect;
+export using ::wgpuRenderBundleEncoderDrawIndirect;
+export using ::wgpuRenderBundleEncoderFinish;
+export using ::wgpuRenderBundleEncoderInsertDebugMarker;
+export using ::wgpuRenderBundleEncoderPopDebugGroup;
+export using ::wgpuRenderBundleEncoderPushDebugGroup;
+export using ::wgpuRenderBundleEncoderSetBindGroup;
+export using ::wgpuRenderBundleEncoderSetIndexBuffer;
+export using ::wgpuRenderBundleEncoderSetLabel;
+export using ::wgpuRenderBundleEncoderSetPipeline;
+export using ::wgpuRenderBundleEncoderSetVertexBuffer;
+export using ::wgpuRenderBundleEncoderAddRef;
+export using ::wgpuRenderBundleEncoderRelease;
+export using ::wgpuRenderPassEncoderBeginOcclusionQuery;
+export using ::wgpuRenderPassEncoderDraw;
+export using ::wgpuRenderPassEncoderDrawIndexed;
+export using ::wgpuRenderPassEncoderDrawIndexedIndirect;
+export using ::wgpuRenderPassEncoderDrawIndirect;
+export using ::wgpuRenderPassEncoderEnd;
+export using ::wgpuRenderPassEncoderEndOcclusionQuery;
+export using ::wgpuRenderPassEncoderExecuteBundles;
+export using ::wgpuRenderPassEncoderInsertDebugMarker;
+export using ::wgpuRenderPassEncoderPopDebugGroup;
+export using ::wgpuRenderPassEncoderPushDebugGroup;
+export using ::wgpuRenderPassEncoderSetBindGroup;
+export using ::wgpuRenderPassEncoderSetBlendConstant;
+export using ::wgpuRenderPassEncoderSetIndexBuffer;
+export using ::wgpuRenderPassEncoderSetLabel;
+export using ::wgpuRenderPassEncoderSetPipeline;
+export using ::wgpuRenderPassEncoderSetScissorRect;
+export using ::wgpuRenderPassEncoderSetStencilReference;
+export using ::wgpuRenderPassEncoderSetVertexBuffer;
+export using ::wgpuRenderPassEncoderSetViewport;
+export using ::wgpuRenderPassEncoderAddRef;
+export using ::wgpuRenderPassEncoderRelease;
+export using ::wgpuRenderPipelineGetBindGroupLayout;
+export using ::wgpuRenderPipelineSetLabel;
+export using ::wgpuRenderPipelineAddRef;
+export using ::wgpuRenderPipelineRelease;
+export using ::wgpuSamplerSetLabel;
+export using ::wgpuSamplerAddRef;
+export using ::wgpuSamplerRelease;
+export using ::wgpuShaderModuleGetCompilationInfo;
+export using ::wgpuShaderModuleSetLabel;
+export using ::wgpuShaderModuleAddRef;
+export using ::wgpuShaderModuleRelease;
+export using ::wgpuSupportedFeaturesFreeMembers;
+export using ::wgpuSupportedWGSLLanguageFeaturesFreeMembers;
+export using ::wgpuSurfaceConfigure;
+export using ::wgpuSurfaceGetCapabilities;
+export using ::wgpuSurfaceGetCurrentTexture;
+export using ::wgpuSurfacePresent;
+export using ::wgpuSurfaceSetLabel;
+export using ::wgpuSurfaceUnconfigure;
+export using ::wgpuSurfaceAddRef;
+export using ::wgpuSurfaceRelease;
+export using ::wgpuSurfaceCapabilitiesFreeMembers;
+export using ::wgpuTextureCreateView;
+export using ::wgpuTextureDestroy;
+export using ::wgpuTextureGetDepthOrArrayLayers;
+export using ::wgpuTextureGetDimension;
+export using ::wgpuTextureGetFormat;
+export using ::wgpuTextureGetHeight;
+export using ::wgpuTextureGetMipLevelCount;
+export using ::wgpuTextureGetSampleCount;
+export using ::wgpuTextureGetUsage;
+export using ::wgpuTextureGetWidth;
+export using ::wgpuTextureSetLabel;
+export using ::wgpuTextureAddRef;
+export using ::wgpuTextureRelease;
+export using ::wgpuTextureViewSetLabel;
+export using ::wgpuTextureViewAddRef;
+export using ::wgpuTextureViewRelease;
+export using ::wgpuGenerateReport;
+export using ::wgpuInstanceEnumerateAdapters;
+export using ::wgpuQueueSubmitForIndex;
+export using ::wgpuQueueGetTimestampPeriod;
+export using ::wgpuDevicePoll;
+export using ::wgpuDeviceCreateShaderModuleSpirV;
+export using ::wgpuSetLogCallback;
+export using ::wgpuSetLogLevel;
+export using ::wgpuGetVersion;
+export using ::wgpuRenderPassEncoderSetPushConstants;
+export using ::wgpuComputePassEncoderSetPushConstants;
+export using ::wgpuRenderBundleEncoderSetPushConstants;
+export using ::wgpuRenderPassEncoderMultiDrawIndirect;
+export using ::wgpuRenderPassEncoderMultiDrawIndexedIndirect;
+export using ::wgpuRenderPassEncoderMultiDrawIndirectCount;
+export using ::wgpuRenderPassEncoderMultiDrawIndexedIndirectCount;
+export using ::wgpuComputePassEncoderBeginPipelineStatisticsQuery;
+export using ::wgpuComputePassEncoderEndPipelineStatisticsQuery;
+export using ::wgpuRenderPassEncoderBeginPipelineStatisticsQuery;
+export using ::wgpuRenderPassEncoderEndPipelineStatisticsQuery;
+export using ::wgpuComputePassEncoderWriteTimestamp;
+export using ::wgpuRenderPassEncoderWriteTimestamp;
+export using ::WGPUBufferMapCallback;
+export using ::WGPUCompilationInfoCallback;
+export using ::WGPUCreateComputePipelineAsyncCallback;
+export using ::WGPUCreateRenderPipelineAsyncCallback;
+export using ::WGPUDeviceLostCallback;
+export using ::WGPUPopErrorScopeCallback;
+export using ::WGPUQueueWorkDoneCallback;
+export using ::WGPURequestAdapterCallback;
+export using ::WGPURequestDeviceCallback;
+export using ::WGPUUncapturedErrorCallback;
+export using ::WGPULogCallback;
+export using ::WGPUFlags;
+export using ::WGPUBool;
+export using ::WGPUSubmissionIndex;
 
 /**
  * A namespace providing a more C++ idiomatic API to WebGPU.
@@ -91,28 +1141,32 @@ private: \
 public:
 
 #define DESCRIPTOR(Type) \
-struct Type : public WGPU ## Type { \
+struct Type { \
 public: \
 	typedef Type S; /* S == Self */ \
 	typedef WGPU ## Type W; /* W == WGPU Type */ \
-	Type() : W() { setDefault(); nextInChain = nullptr; } \
-	Type(const W &other) : W(other) { nextInChain = nullptr; } \
-	Type(const DefaultFlag &) : W() { setDefault(); } \
+	Type() { setDefault(); nextInChain = nullptr; } \
+	Type(const W &other) { reinterpret_cast<W&>(*this) = other; nextInChain = nullptr; } \
+	Type(const DefaultFlag &) { setDefault(); } \
 	Type& operator=(const DefaultFlag &) { setDefault(); return *this; } \
+	operator W&() { return reinterpret_cast<W&>(*this); } \
+	operator const W&() const { return reinterpret_cast<const W&>(*this); } \
 	friend auto operator<<(std::ostream &stream, const S&) -> std::ostream & { \
 		return stream << "<wgpu::" << #Type << ">"; \
 	} \
 public:
 
 #define STRUCT_NO_OSTREAM(Type) \
-struct Type : public WGPU ## Type { \
+struct Type { \
 public: \
 	typedef Type S; /* S == Self */ \
 	typedef WGPU ## Type W; /* W == WGPU Type */ \
-	Type() : W() { setDefault(); } \
-	Type(const W &other) : W(other) {} \
-	Type(const DefaultFlag &) : W() { setDefault(); } \
+	Type() { setDefault(); } \
+	Type(const W &other) { reinterpret_cast<W&>(*this) = other; } \
+	Type(const DefaultFlag &) { setDefault(); } \
 	Type& operator=(const DefaultFlag &) { setDefault(); return *this; } \
+	operator W&() { return reinterpret_cast<W&>(*this); } \
+	operator const W&() const { return reinterpret_cast<const W&>(*this); } \
 public:
 
 #define STRUCT(Type) \
@@ -677,44 +1731,44 @@ ENUM(WaitStatus)
 	ENUM_ENTRY(Force32, WGPUWaitStatus_Force32)
 END
 ENUM(BufferUsage)
-	ENUM_ENTRY(None, 0x0000000000000000)
-	ENUM_ENTRY(MapRead, 0x0000000000000001)
-	ENUM_ENTRY(MapWrite, 0x0000000000000002)
-	ENUM_ENTRY(CopySrc, 0x0000000000000004)
-	ENUM_ENTRY(CopyDst, 0x0000000000000008)
-	ENUM_ENTRY(Index, 0x0000000000000010)
-	ENUM_ENTRY(Vertex, 0x0000000000000020)
-	ENUM_ENTRY(Uniform, 0x0000000000000040)
-	ENUM_ENTRY(Storage, 0x0000000000000080)
-	ENUM_ENTRY(Indirect, 0x0000000000000100)
-	ENUM_ENTRY(QueryResolve, 0x0000000000000200)
+	ENUM_ENTRY(None, WGPUBufferUsage_None)
+	ENUM_ENTRY(MapRead, WGPUBufferUsage_MapRead)
+	ENUM_ENTRY(MapWrite, WGPUBufferUsage_MapWrite)
+	ENUM_ENTRY(CopySrc, WGPUBufferUsage_CopySrc)
+	ENUM_ENTRY(CopyDst, WGPUBufferUsage_CopyDst)
+	ENUM_ENTRY(Index, WGPUBufferUsage_Index)
+	ENUM_ENTRY(Vertex, WGPUBufferUsage_Vertex)
+	ENUM_ENTRY(Uniform, WGPUBufferUsage_Uniform)
+	ENUM_ENTRY(Storage, WGPUBufferUsage_Storage)
+	ENUM_ENTRY(Indirect, WGPUBufferUsage_Indirect)
+	ENUM_ENTRY(QueryResolve, WGPUBufferUsage_QueryResolve)
 END
 ENUM(ColorWriteMask)
-	ENUM_ENTRY(None, 0x0000000000000000)
-	ENUM_ENTRY(Red, 0x0000000000000001)
-	ENUM_ENTRY(Green, 0x0000000000000002)
-	ENUM_ENTRY(Blue, 0x0000000000000004)
-	ENUM_ENTRY(Alpha, 0x0000000000000008)
-	ENUM_ENTRY(All, 0x000000000000000F)
+	ENUM_ENTRY(None, WGPUColorWriteMask_None)
+	ENUM_ENTRY(Red, WGPUColorWriteMask_Red)
+	ENUM_ENTRY(Green, WGPUColorWriteMask_Green)
+	ENUM_ENTRY(Blue, WGPUColorWriteMask_Blue)
+	ENUM_ENTRY(Alpha, WGPUColorWriteMask_Alpha)
+	ENUM_ENTRY(All, WGPUColorWriteMask_All)
 END
 ENUM(MapMode)
-	ENUM_ENTRY(None, 0x0000000000000000)
-	ENUM_ENTRY(Read, 0x0000000000000001)
-	ENUM_ENTRY(Write, 0x0000000000000002)
+	ENUM_ENTRY(None, WGPUMapMode_None)
+	ENUM_ENTRY(Read, WGPUMapMode_Read)
+	ENUM_ENTRY(Write, WGPUMapMode_Write)
 END
 ENUM(ShaderStage)
-	ENUM_ENTRY(None, 0x0000000000000000)
-	ENUM_ENTRY(Vertex, 0x0000000000000001)
-	ENUM_ENTRY(Fragment, 0x0000000000000002)
-	ENUM_ENTRY(Compute, 0x0000000000000004)
+	ENUM_ENTRY(None, WGPUShaderStage_None)
+	ENUM_ENTRY(Vertex, WGPUShaderStage_Vertex)
+	ENUM_ENTRY(Fragment, WGPUShaderStage_Fragment)
+	ENUM_ENTRY(Compute, WGPUShaderStage_Compute)
 END
 ENUM(TextureUsage)
-	ENUM_ENTRY(None, 0x0000000000000000)
-	ENUM_ENTRY(CopySrc, 0x0000000000000001)
-	ENUM_ENTRY(CopyDst, 0x0000000000000002)
-	ENUM_ENTRY(TextureBinding, 0x0000000000000004)
-	ENUM_ENTRY(StorageBinding, 0x0000000000000008)
-	ENUM_ENTRY(RenderAttachment, 0x0000000000000010)
+	ENUM_ENTRY(None, WGPUTextureUsage_None)
+	ENUM_ENTRY(CopySrc, WGPUTextureUsage_CopySrc)
+	ENUM_ENTRY(CopyDst, WGPUTextureUsage_CopyDst)
+	ENUM_ENTRY(TextureBinding, WGPUTextureUsage_TextureBinding)
+	ENUM_ENTRY(StorageBinding, WGPUTextureUsage_StorageBinding)
+	ENUM_ENTRY(RenderAttachment, WGPUTextureUsage_RenderAttachment)
 END
 ENUM(NativeSType)
 	ENUM_ENTRY(DeviceExtras, WGPUSType_DeviceExtras)
@@ -774,12 +1828,12 @@ ENUM(LogLevel)
 	ENUM_ENTRY(Force32, WGPULogLevel_Force32)
 END
 ENUM(InstanceBackend)
-	ENUM_ENTRY(All, 0x00000000)
-	ENUM_ENTRY(Force32, 0x7FFFFFFF)
+	ENUM_ENTRY(All, WGPUInstanceBackend_All)
+	ENUM_ENTRY(Force32, WGPUInstanceBackend_Force32)
 END
 ENUM(InstanceFlag)
-	ENUM_ENTRY(Default, 0x00000000)
-	ENUM_ENTRY(Force32, 0x7FFFFFFF)
+	ENUM_ENTRY(Default, WGPUInstanceFlag_Default)
+	ENUM_ENTRY(Force32, WGPUInstanceFlag_Force32)
 END
 ENUM(Dx12Compiler)
 	ENUM_ENTRY(Undefined, WGPUDx12Compiler_Undefined)
@@ -844,7 +1898,110 @@ ENUM(NativeTextureFormat)
 	ENUM_ENTRY(P010, WGPUNativeTextureFormat_P010)
 END
 
-// Handles forward declarations
+// Forward declarations
+struct StringView;
+struct ChainedStruct;
+struct ChainedStructOut;
+struct BlendComponent;
+struct Color;
+struct ComputePassTimestampWrites;
+struct Extent3D;
+struct Future;
+struct Origin3D;
+struct RenderPassDepthStencilAttachment;
+struct RenderPassMaxDrawCount;
+struct RenderPassTimestampWrites;
+struct ShaderSourceSPIRV;
+struct ShaderSourceWGSL;
+struct StencilFaceState;
+struct SupportedFeatures;
+struct SupportedWGSLLanguageFeatures;
+struct SurfaceSourceAndroidNativeWindow;
+struct SurfaceSourceMetalLayer;
+struct SurfaceSourceWaylandSurface;
+struct SurfaceSourceWindowsHWND;
+struct SurfaceSourceXCBWindow;
+struct SurfaceSourceXlibWindow;
+struct TexelCopyBufferLayout;
+struct VertexAttribute;
+struct BlendState;
+struct FutureWaitInfo;
+struct TexelCopyBufferInfo;
+struct TexelCopyTextureInfo;
+struct VertexBufferLayout;
+struct InstanceExtras;
+struct DeviceExtras;
+struct NativeLimits;
+struct PushConstantRange;
+struct PipelineLayoutExtras;
+struct ShaderDefine;
+struct ShaderSourceGLSL;
+struct ShaderModuleDescriptorSpirV;
+struct RegistryReport;
+struct HubReport;
+struct GlobalReport;
+struct BindGroupEntryExtras;
+struct BindGroupLayoutEntryExtras;
+struct QuerySetDescriptorExtras;
+struct SurfaceConfigurationExtras;
+struct SurfaceSourceSwapChainPanel;
+struct PrimitiveStateExtras;
+struct BufferMapCallbackInfo;
+struct CompilationInfoCallbackInfo;
+struct CreateComputePipelineAsyncCallbackInfo;
+struct CreateRenderPipelineAsyncCallbackInfo;
+struct DeviceLostCallbackInfo;
+struct PopErrorScopeCallbackInfo;
+struct QueueWorkDoneCallbackInfo;
+struct RequestAdapterCallbackInfo;
+struct RequestDeviceCallbackInfo;
+struct UncapturedErrorCallbackInfo;
+struct AdapterInfo;
+struct BindGroupEntry;
+struct BufferBindingLayout;
+struct BufferDescriptor;
+struct CommandBufferDescriptor;
+struct CommandEncoderDescriptor;
+struct CompilationMessage;
+struct ConstantEntry;
+struct InstanceCapabilities;
+struct Limits;
+struct MultisampleState;
+struct PipelineLayoutDescriptor;
+struct PrimitiveState;
+struct QuerySetDescriptor;
+struct QueueDescriptor;
+struct RenderBundleDescriptor;
+struct RenderBundleEncoderDescriptor;
+struct RequestAdapterOptions;
+struct SamplerBindingLayout;
+struct SamplerDescriptor;
+struct ShaderModuleDescriptor;
+struct StorageTextureBindingLayout;
+struct SurfaceCapabilities;
+struct SurfaceConfiguration;
+struct SurfaceDescriptor;
+struct SurfaceTexture;
+struct TextureBindingLayout;
+struct TextureViewDescriptor;
+struct BindGroupDescriptor;
+struct BindGroupLayoutEntry;
+struct CompilationInfo;
+struct ComputePassDescriptor;
+struct DepthStencilState;
+struct DeviceDescriptor;
+struct InstanceDescriptor;
+struct ProgrammableStageDescriptor;
+struct RenderPassColorAttachment;
+struct TextureDescriptor;
+struct BindGroupLayoutDescriptor;
+struct ColorTargetState;
+struct ComputePipelineDescriptor;
+struct RenderPassDescriptor;
+struct VertexState;
+struct FragmentState;
+struct RenderPipelineDescriptor;
+struct InstanceEnumerateAdapterOptions;
 class Adapter;
 class BindGroup;
 class BindGroupLayout;
@@ -868,945 +2025,18 @@ class Surface;
 class Texture;
 class TextureView;
 
-// Structs
-STRUCT_NO_OSTREAM(StringView)
-	StringView& setDefault();
-	StringView& setData(const char * data);
-	StringView& setLength(size_t length);
-	StringView(const std::string_view& cpp) : WGPUStringView{ cpp.data(), cpp.length() } {}
-	operator std::string_view() const;
-	friend auto operator<<(std::ostream& stream, const S& self) -> std::ostream& {
-		return stream << std::string_view(self);
-	}
-END
-
-STRUCT(ChainedStruct)
-	ChainedStruct& setDefault();
-	ChainedStruct& setNext(const struct WGPUChainedStruct * next);
-	ChainedStruct& setSType(SType sType);
-END
-
-STRUCT(ChainedStructOut)
-	ChainedStructOut& setDefault();
-	ChainedStructOut& setNext(struct WGPUChainedStructOut * next);
-	ChainedStructOut& setSType(SType sType);
-END
-
-STRUCT(BlendComponent)
-	BlendComponent& setDefault();
-	BlendComponent& setOperation(BlendOperation operation);
-	BlendComponent& setSrcFactor(BlendFactor srcFactor);
-	BlendComponent& setDstFactor(BlendFactor dstFactor);
-END
-
-STRUCT(Color)
-	Color& setDefault();
-	Color& setR(double r);
-	Color& setG(double g);
-	Color& setB(double b);
-	Color& setA(double a);
-	Color(double r, double g, double b, double a) : WGPUColor{ r, g, b, a } {}
-END
-
-STRUCT(ComputePassTimestampWrites)
-	ComputePassTimestampWrites& setDefault();
-	ComputePassTimestampWrites& setQuerySet(QuerySet querySet);
-	ComputePassTimestampWrites& setBeginningOfPassWriteIndex(uint32_t beginningOfPassWriteIndex);
-	ComputePassTimestampWrites& setEndOfPassWriteIndex(uint32_t endOfPassWriteIndex);
-END
-
-STRUCT(Extent3D)
-	Extent3D& setDefault();
-	Extent3D& setWidth(uint32_t width);
-	Extent3D& setHeight(uint32_t height);
-	Extent3D& setDepthOrArrayLayers(uint32_t depthOrArrayLayers);
-	Extent3D(uint32_t width, uint32_t height, uint32_t depthOrArrayLayers) : WGPUExtent3D{ width, height, depthOrArrayLayers } {}
-END
-
-STRUCT(Future)
-	Future& setDefault();
-	Future& setId(uint64_t id);
-END
-
-STRUCT(Origin3D)
-	Origin3D& setDefault();
-	Origin3D& setX(uint32_t x);
-	Origin3D& setY(uint32_t y);
-	Origin3D& setZ(uint32_t z);
-	Origin3D(uint32_t x, uint32_t y, uint32_t z) : WGPUOrigin3D{ x, y, z } {}
-END
-
-STRUCT(RenderPassDepthStencilAttachment)
-	RenderPassDepthStencilAttachment& setDefault();
-	RenderPassDepthStencilAttachment& setView(TextureView view);
-	RenderPassDepthStencilAttachment& setDepthLoadOp(LoadOp depthLoadOp);
-	RenderPassDepthStencilAttachment& setDepthStoreOp(StoreOp depthStoreOp);
-	RenderPassDepthStencilAttachment& setDepthClearValue(float depthClearValue);
-	RenderPassDepthStencilAttachment& setDepthReadOnly(WGPUBool depthReadOnly);
-	RenderPassDepthStencilAttachment& setStencilLoadOp(LoadOp stencilLoadOp);
-	RenderPassDepthStencilAttachment& setStencilStoreOp(StoreOp stencilStoreOp);
-	RenderPassDepthStencilAttachment& setStencilClearValue(uint32_t stencilClearValue);
-	RenderPassDepthStencilAttachment& setStencilReadOnly(WGPUBool stencilReadOnly);
-END
-
-STRUCT(RenderPassMaxDrawCount)
-	RenderPassMaxDrawCount& setDefault();
-	RenderPassMaxDrawCount& setMaxDrawCount(uint64_t maxDrawCount);
-END
-
-STRUCT(RenderPassTimestampWrites)
-	RenderPassTimestampWrites& setDefault();
-	RenderPassTimestampWrites& setQuerySet(QuerySet querySet);
-	RenderPassTimestampWrites& setBeginningOfPassWriteIndex(uint32_t beginningOfPassWriteIndex);
-	RenderPassTimestampWrites& setEndOfPassWriteIndex(uint32_t endOfPassWriteIndex);
-END
-
-STRUCT(ShaderSourceSPIRV)
-	ShaderSourceSPIRV& setDefault();
-	ShaderSourceSPIRV& setCodeSize(uint32_t codeSize);
-	ShaderSourceSPIRV& setCode(const uint32_t * code);
-END
-
-STRUCT(ShaderSourceWGSL)
-	ShaderSourceWGSL& setDefault();
-	ShaderSourceWGSL& setCode(StringView code);
-END
-
-STRUCT(StencilFaceState)
-	StencilFaceState& setDefault();
-	StencilFaceState& setCompare(CompareFunction compare);
-	StencilFaceState& setFailOp(StencilOperation failOp);
-	StencilFaceState& setDepthFailOp(StencilOperation depthFailOp);
-	StencilFaceState& setPassOp(StencilOperation passOp);
-END
-
-STRUCT(SupportedFeatures)
-	SupportedFeatures& setDefault();
-	SupportedFeatures& setFeatures(uint32_t featureCount, const FeatureName * features);
-	SupportedFeatures& setFeatures(const std::vector<FeatureName>& features);
-	SupportedFeatures& setFeatures(const std::span<const FeatureName>& features);
-	void freeMembers();
-END
-
-STRUCT(SupportedWGSLLanguageFeatures)
-	SupportedWGSLLanguageFeatures& setDefault();
-	SupportedWGSLLanguageFeatures& setFeatures(uint32_t featureCount, const WGSLLanguageFeatureName * features);
-	SupportedWGSLLanguageFeatures& setFeatures(const std::vector<WGSLLanguageFeatureName>& features);
-	SupportedWGSLLanguageFeatures& setFeatures(const std::span<const WGSLLanguageFeatureName>& features);
-	void freeMembers();
-END
-
-STRUCT(SurfaceSourceAndroidNativeWindow)
-	SurfaceSourceAndroidNativeWindow& setDefault();
-	SurfaceSourceAndroidNativeWindow& setWindow(void * window);
-END
-
-STRUCT(SurfaceSourceMetalLayer)
-	SurfaceSourceMetalLayer& setDefault();
-	SurfaceSourceMetalLayer& setLayer(void * layer);
-END
-
-STRUCT(SurfaceSourceWaylandSurface)
-	SurfaceSourceWaylandSurface& setDefault();
-	SurfaceSourceWaylandSurface& setDisplay(void * display);
-	SurfaceSourceWaylandSurface& setSurface(void * surface);
-END
-
-STRUCT(SurfaceSourceWindowsHWND)
-	SurfaceSourceWindowsHWND& setDefault();
-	SurfaceSourceWindowsHWND& setHinstance(void * hinstance);
-	SurfaceSourceWindowsHWND& setHwnd(void * hwnd);
-END
-
-STRUCT(SurfaceSourceXCBWindow)
-	SurfaceSourceXCBWindow& setDefault();
-	SurfaceSourceXCBWindow& setConnection(void * connection);
-	SurfaceSourceXCBWindow& setWindow(uint32_t window);
-END
-
-STRUCT(SurfaceSourceXlibWindow)
-	SurfaceSourceXlibWindow& setDefault();
-	SurfaceSourceXlibWindow& setDisplay(void * display);
-	SurfaceSourceXlibWindow& setWindow(uint64_t window);
-END
-
-STRUCT(TexelCopyBufferLayout)
-	TexelCopyBufferLayout& setDefault();
-	TexelCopyBufferLayout& setOffset(uint64_t offset);
-	TexelCopyBufferLayout& setBytesPerRow(uint32_t bytesPerRow);
-	TexelCopyBufferLayout& setRowsPerImage(uint32_t rowsPerImage);
-END
-
-STRUCT(VertexAttribute)
-	VertexAttribute& setDefault();
-	VertexAttribute& setFormat(VertexFormat format);
-	VertexAttribute& setOffset(uint64_t offset);
-	VertexAttribute& setShaderLocation(uint32_t shaderLocation);
-END
-
-STRUCT(BlendState)
-	BlendState& setDefault();
-	BlendState& setColor(BlendComponent color);
-	BlendState& setAlpha(BlendComponent alpha);
-END
-
-STRUCT(FutureWaitInfo)
-	FutureWaitInfo& setDefault();
-	FutureWaitInfo& setFuture(Future future);
-	FutureWaitInfo& setCompleted(WGPUBool completed);
-END
-
-STRUCT(TexelCopyBufferInfo)
-	TexelCopyBufferInfo& setDefault();
-	TexelCopyBufferInfo& setLayout(TexelCopyBufferLayout layout);
-	TexelCopyBufferInfo& setBuffer(Buffer buffer);
-END
-
-STRUCT(TexelCopyTextureInfo)
-	TexelCopyTextureInfo& setDefault();
-	TexelCopyTextureInfo& setTexture(Texture texture);
-	TexelCopyTextureInfo& setMipLevel(uint32_t mipLevel);
-	TexelCopyTextureInfo& setOrigin(Origin3D origin);
-	TexelCopyTextureInfo& setAspect(TextureAspect aspect);
-END
-
-STRUCT(VertexBufferLayout)
-	VertexBufferLayout& setDefault();
-	VertexBufferLayout& setStepMode(VertexStepMode stepMode);
-	VertexBufferLayout& setArrayStride(uint64_t arrayStride);
-	VertexBufferLayout& setAttributes(uint32_t attributeCount, const VertexAttribute * attributes);
-	VertexBufferLayout& setAttributes(const std::vector<VertexAttribute>& attributes);
-	VertexBufferLayout& setAttributes(const std::span<const VertexAttribute>& attributes);
-END
-
-STRUCT(InstanceExtras)
-	InstanceExtras& setDefault();
-	InstanceExtras& setBackends(InstanceBackend backends);
-	InstanceExtras& setFlags(InstanceFlag flags);
-	InstanceExtras& setDx12ShaderCompiler(Dx12Compiler dx12ShaderCompiler);
-	InstanceExtras& setGles3MinorVersion(Gles3MinorVersion gles3MinorVersion);
-	InstanceExtras& setGlFenceBehaviour(GLFenceBehaviour glFenceBehaviour);
-	InstanceExtras& setDxcPath(StringView dxcPath);
-	InstanceExtras& setDxcMaxShaderModel(DxcMaxShaderModel dxcMaxShaderModel);
-	InstanceExtras& setDx12PresentationSystem(Dx12SwapchainKind dx12PresentationSystem);
-	InstanceExtras& setBudgetForDeviceCreation(const uint8_t * budgetForDeviceCreation);
-	InstanceExtras& setBudgetForDeviceLoss(const uint8_t * budgetForDeviceLoss);
-END
-
-STRUCT(DeviceExtras)
-	DeviceExtras& setDefault();
-	DeviceExtras& setTracePath(StringView tracePath);
-END
-
-STRUCT(NativeLimits)
-	NativeLimits& setDefault();
-	NativeLimits& setMaxPushConstantSize(uint32_t maxPushConstantSize);
-	NativeLimits& setMaxNonSamplerBindings(uint32_t maxNonSamplerBindings);
-END
-
-STRUCT(PushConstantRange)
-	PushConstantRange& setDefault();
-	PushConstantRange& setStages(ShaderStage stages);
-	PushConstantRange& setStart(uint32_t start);
-	PushConstantRange& setEnd(uint32_t end);
-END
-
-STRUCT(PipelineLayoutExtras)
-	PipelineLayoutExtras& setDefault();
-	PipelineLayoutExtras& setPushConstantRanges(uint32_t pushConstantRangeCount, const PushConstantRange * pushConstantRanges);
-	PipelineLayoutExtras& setPushConstantRanges(const std::vector<PushConstantRange>& pushConstantRanges);
-	PipelineLayoutExtras& setPushConstantRanges(const std::span<const PushConstantRange>& pushConstantRanges);
-END
-
-STRUCT(ShaderDefine)
-	ShaderDefine& setDefault();
-	ShaderDefine& setName(StringView name);
-	ShaderDefine& setValue(StringView value);
-END
-
-STRUCT(ShaderSourceGLSL)
-	ShaderSourceGLSL& setDefault();
-	ShaderSourceGLSL& setStage(ShaderStage stage);
-	ShaderSourceGLSL& setCode(StringView code);
-	ShaderSourceGLSL& setDefines(uint32_t defineCount, ShaderDefine * defines);
-	ShaderSourceGLSL& setDefines(std::vector<ShaderDefine>& defines);
-	ShaderSourceGLSL& setDefines(const std::span<ShaderDefine>& defines);
-END
-
-STRUCT(ShaderModuleDescriptorSpirV)
-	ShaderModuleDescriptorSpirV& setDefault();
-	ShaderModuleDescriptorSpirV& setLabel(StringView label);
-	ShaderModuleDescriptorSpirV& setSourceSize(uint32_t sourceSize);
-	ShaderModuleDescriptorSpirV& setSource(const uint32_t * source);
-END
-
-STRUCT(RegistryReport)
-	RegistryReport& setDefault();
-	RegistryReport& setNumAllocated(size_t numAllocated);
-	RegistryReport& setNumKeptFromUser(size_t numKeptFromUser);
-	RegistryReport& setNumReleasedFromUser(size_t numReleasedFromUser);
-	RegistryReport& setElementSize(size_t elementSize);
-END
-
-STRUCT(HubReport)
-	HubReport& setDefault();
-	HubReport& setAdapters(RegistryReport adapters);
-	HubReport& setDevices(RegistryReport devices);
-	HubReport& setQueues(RegistryReport queues);
-	HubReport& setPipelineLayouts(RegistryReport pipelineLayouts);
-	HubReport& setShaderModules(RegistryReport shaderModules);
-	HubReport& setBindGroupLayouts(RegistryReport bindGroupLayouts);
-	HubReport& setBindGroups(RegistryReport bindGroups);
-	HubReport& setCommandBuffers(RegistryReport commandBuffers);
-	HubReport& setRenderBundles(RegistryReport renderBundles);
-	HubReport& setRenderPipelines(RegistryReport renderPipelines);
-	HubReport& setComputePipelines(RegistryReport computePipelines);
-	HubReport& setPipelineCaches(RegistryReport pipelineCaches);
-	HubReport& setQuerySets(RegistryReport querySets);
-	HubReport& setBuffers(RegistryReport buffers);
-	HubReport& setTextures(RegistryReport textures);
-	HubReport& setTextureViews(RegistryReport textureViews);
-	HubReport& setSamplers(RegistryReport samplers);
-END
-
-STRUCT(GlobalReport)
-	GlobalReport& setDefault();
-	GlobalReport& setSurfaces(RegistryReport surfaces);
-	GlobalReport& setHub(HubReport hub);
-END
-
-STRUCT(BindGroupEntryExtras)
-	BindGroupEntryExtras& setDefault();
-	BindGroupEntryExtras& setBuffers(uint32_t bufferCount, const Buffer * buffers);
-	BindGroupEntryExtras& setBuffers(const std::vector<Buffer>& buffers);
-	BindGroupEntryExtras& setBuffers(const std::span<const Buffer>& buffers);
-	BindGroupEntryExtras& setSamplers(uint32_t samplerCount, const Sampler * samplers);
-	BindGroupEntryExtras& setSamplers(const std::vector<Sampler>& samplers);
-	BindGroupEntryExtras& setSamplers(const std::span<const Sampler>& samplers);
-	BindGroupEntryExtras& setTextureViews(uint32_t textureViewCount, const TextureView * textureViews);
-	BindGroupEntryExtras& setTextureViews(const std::vector<TextureView>& textureViews);
-	BindGroupEntryExtras& setTextureViews(const std::span<const TextureView>& textureViews);
-END
-
-STRUCT(BindGroupLayoutEntryExtras)
-	BindGroupLayoutEntryExtras& setDefault();
-	BindGroupLayoutEntryExtras& setCount(uint32_t count);
-END
-
-STRUCT(QuerySetDescriptorExtras)
-	QuerySetDescriptorExtras& setDefault();
-	QuerySetDescriptorExtras& setPipelineStatistics(uint32_t pipelineStatisticCount, const PipelineStatisticName * pipelineStatistics);
-	QuerySetDescriptorExtras& setPipelineStatistics(const std::vector<PipelineStatisticName>& pipelineStatistics);
-	QuerySetDescriptorExtras& setPipelineStatistics(const std::span<const PipelineStatisticName>& pipelineStatistics);
-END
-
-STRUCT(SurfaceConfigurationExtras)
-	SurfaceConfigurationExtras& setDefault();
-	SurfaceConfigurationExtras& setDesiredMaximumFrameLatency(uint32_t desiredMaximumFrameLatency);
-END
-
-STRUCT(SurfaceSourceSwapChainPanel)
-	SurfaceSourceSwapChainPanel& setDefault();
-	SurfaceSourceSwapChainPanel& setPanelNative(void * panelNative);
-END
-
-STRUCT(PrimitiveStateExtras)
-	PrimitiveStateExtras& setDefault();
-	PrimitiveStateExtras& setPolygonMode(PolygonMode polygonMode);
-	PrimitiveStateExtras& setConservative(WGPUBool conservative);
-END
-
-
-// Descriptors
-DESCRIPTOR(BufferMapCallbackInfo)
-	BufferMapCallbackInfo& setDefault();
-	BufferMapCallbackInfo& setNextInChain(const ChainedStruct * nextInChain);
-	BufferMapCallbackInfo& setMode(CallbackMode mode);
-	BufferMapCallbackInfo& setCallback(WGPUBufferMapCallback callback);
-	BufferMapCallbackInfo& setUserdata1(void * userdata1);
-	BufferMapCallbackInfo& setUserdata2(void * userdata2);
-END
-
-DESCRIPTOR(CompilationInfoCallbackInfo)
-	CompilationInfoCallbackInfo& setDefault();
-	CompilationInfoCallbackInfo& setNextInChain(const ChainedStruct * nextInChain);
-	CompilationInfoCallbackInfo& setMode(CallbackMode mode);
-	CompilationInfoCallbackInfo& setCallback(WGPUCompilationInfoCallback callback);
-	CompilationInfoCallbackInfo& setUserdata1(void * userdata1);
-	CompilationInfoCallbackInfo& setUserdata2(void * userdata2);
-END
-
-DESCRIPTOR(CreateComputePipelineAsyncCallbackInfo)
-	CreateComputePipelineAsyncCallbackInfo& setDefault();
-	CreateComputePipelineAsyncCallbackInfo& setNextInChain(const ChainedStruct * nextInChain);
-	CreateComputePipelineAsyncCallbackInfo& setMode(CallbackMode mode);
-	CreateComputePipelineAsyncCallbackInfo& setCallback(WGPUCreateComputePipelineAsyncCallback callback);
-	CreateComputePipelineAsyncCallbackInfo& setUserdata1(void * userdata1);
-	CreateComputePipelineAsyncCallbackInfo& setUserdata2(void * userdata2);
-END
-
-DESCRIPTOR(CreateRenderPipelineAsyncCallbackInfo)
-	CreateRenderPipelineAsyncCallbackInfo& setDefault();
-	CreateRenderPipelineAsyncCallbackInfo& setNextInChain(const ChainedStruct * nextInChain);
-	CreateRenderPipelineAsyncCallbackInfo& setMode(CallbackMode mode);
-	CreateRenderPipelineAsyncCallbackInfo& setCallback(WGPUCreateRenderPipelineAsyncCallback callback);
-	CreateRenderPipelineAsyncCallbackInfo& setUserdata1(void * userdata1);
-	CreateRenderPipelineAsyncCallbackInfo& setUserdata2(void * userdata2);
-END
-
-DESCRIPTOR(DeviceLostCallbackInfo)
-	DeviceLostCallbackInfo& setDefault();
-	DeviceLostCallbackInfo& setNextInChain(const ChainedStruct * nextInChain);
-	DeviceLostCallbackInfo& setMode(CallbackMode mode);
-	DeviceLostCallbackInfo& setCallback(WGPUDeviceLostCallback callback);
-	DeviceLostCallbackInfo& setUserdata1(void * userdata1);
-	DeviceLostCallbackInfo& setUserdata2(void * userdata2);
-END
-
-DESCRIPTOR(PopErrorScopeCallbackInfo)
-	PopErrorScopeCallbackInfo& setDefault();
-	PopErrorScopeCallbackInfo& setNextInChain(const ChainedStruct * nextInChain);
-	PopErrorScopeCallbackInfo& setMode(CallbackMode mode);
-	PopErrorScopeCallbackInfo& setCallback(WGPUPopErrorScopeCallback callback);
-	PopErrorScopeCallbackInfo& setUserdata1(void * userdata1);
-	PopErrorScopeCallbackInfo& setUserdata2(void * userdata2);
-END
-
-DESCRIPTOR(QueueWorkDoneCallbackInfo)
-	QueueWorkDoneCallbackInfo& setDefault();
-	QueueWorkDoneCallbackInfo& setNextInChain(const ChainedStruct * nextInChain);
-	QueueWorkDoneCallbackInfo& setMode(CallbackMode mode);
-	QueueWorkDoneCallbackInfo& setCallback(WGPUQueueWorkDoneCallback callback);
-	QueueWorkDoneCallbackInfo& setUserdata1(void * userdata1);
-	QueueWorkDoneCallbackInfo& setUserdata2(void * userdata2);
-END
-
-DESCRIPTOR(RequestAdapterCallbackInfo)
-	RequestAdapterCallbackInfo& setDefault();
-	RequestAdapterCallbackInfo& setNextInChain(const ChainedStruct * nextInChain);
-	RequestAdapterCallbackInfo& setMode(CallbackMode mode);
-	RequestAdapterCallbackInfo& setCallback(WGPURequestAdapterCallback callback);
-	RequestAdapterCallbackInfo& setUserdata1(void * userdata1);
-	RequestAdapterCallbackInfo& setUserdata2(void * userdata2);
-END
-
-DESCRIPTOR(RequestDeviceCallbackInfo)
-	RequestDeviceCallbackInfo& setDefault();
-	RequestDeviceCallbackInfo& setNextInChain(const ChainedStruct * nextInChain);
-	RequestDeviceCallbackInfo& setMode(CallbackMode mode);
-	RequestDeviceCallbackInfo& setCallback(WGPURequestDeviceCallback callback);
-	RequestDeviceCallbackInfo& setUserdata1(void * userdata1);
-	RequestDeviceCallbackInfo& setUserdata2(void * userdata2);
-END
-
-DESCRIPTOR(UncapturedErrorCallbackInfo)
-	UncapturedErrorCallbackInfo& setDefault();
-	UncapturedErrorCallbackInfo& setNextInChain(const ChainedStruct * nextInChain);
-	UncapturedErrorCallbackInfo& setCallback(WGPUUncapturedErrorCallback callback);
-	UncapturedErrorCallbackInfo& setUserdata1(void * userdata1);
-	UncapturedErrorCallbackInfo& setUserdata2(void * userdata2);
-END
-
-DESCRIPTOR(AdapterInfo)
-	AdapterInfo& setDefault();
-	AdapterInfo& setNextInChain(ChainedStructOut * nextInChain);
-	AdapterInfo& setVendor(StringView vendor);
-	AdapterInfo& setArchitecture(StringView architecture);
-	AdapterInfo& setDevice(StringView device);
-	AdapterInfo& setDescription(StringView description);
-	AdapterInfo& setBackendType(BackendType backendType);
-	AdapterInfo& setAdapterType(AdapterType adapterType);
-	AdapterInfo& setVendorID(uint32_t vendorID);
-	AdapterInfo& setDeviceID(uint32_t deviceID);
-	void freeMembers();
-END
-
-DESCRIPTOR(BindGroupEntry)
-	BindGroupEntry& setDefault();
-	BindGroupEntry& setNextInChain(const ChainedStruct * nextInChain);
-	BindGroupEntry& setBinding(uint32_t binding);
-	BindGroupEntry& setBuffer(Buffer buffer);
-	BindGroupEntry& setOffset(uint64_t offset);
-	BindGroupEntry& setSize(uint64_t size);
-	BindGroupEntry& setSampler(Sampler sampler);
-	BindGroupEntry& setTextureView(TextureView textureView);
-END
-
-DESCRIPTOR(BufferBindingLayout)
-	BufferBindingLayout& setDefault();
-	BufferBindingLayout& setNextInChain(const ChainedStruct * nextInChain);
-	BufferBindingLayout& setType(BufferBindingType type);
-	BufferBindingLayout& setHasDynamicOffset(WGPUBool hasDynamicOffset);
-	BufferBindingLayout& setMinBindingSize(uint64_t minBindingSize);
-END
-
-DESCRIPTOR(BufferDescriptor)
-	BufferDescriptor& setDefault();
-	BufferDescriptor& setNextInChain(const ChainedStruct * nextInChain);
-	BufferDescriptor& setLabel(StringView label);
-	BufferDescriptor& setUsage(BufferUsage usage);
-	BufferDescriptor& setSize(uint64_t size);
-	BufferDescriptor& setMappedAtCreation(WGPUBool mappedAtCreation);
-END
-
-DESCRIPTOR(CommandBufferDescriptor)
-	CommandBufferDescriptor& setDefault();
-	CommandBufferDescriptor& setNextInChain(const ChainedStruct * nextInChain);
-	CommandBufferDescriptor& setLabel(StringView label);
-END
-
-DESCRIPTOR(CommandEncoderDescriptor)
-	CommandEncoderDescriptor& setDefault();
-	CommandEncoderDescriptor& setNextInChain(const ChainedStruct * nextInChain);
-	CommandEncoderDescriptor& setLabel(StringView label);
-END
-
-DESCRIPTOR(CompilationMessage)
-	CompilationMessage& setDefault();
-	CompilationMessage& setNextInChain(const ChainedStruct * nextInChain);
-	CompilationMessage& setMessage(StringView message);
-	CompilationMessage& setType(CompilationMessageType type);
-	CompilationMessage& setLineNum(uint64_t lineNum);
-	CompilationMessage& setLinePos(uint64_t linePos);
-	CompilationMessage& setOffset(uint64_t offset);
-	CompilationMessage& setLength(uint64_t length);
-END
-
-DESCRIPTOR(ConstantEntry)
-	ConstantEntry& setDefault();
-	ConstantEntry& setNextInChain(const ChainedStruct * nextInChain);
-	ConstantEntry& setKey(StringView key);
-	ConstantEntry& setValue(double value);
-END
-
-DESCRIPTOR(InstanceCapabilities)
-	InstanceCapabilities& setDefault();
-	InstanceCapabilities& setNextInChain(ChainedStructOut * nextInChain);
-	InstanceCapabilities& setTimedWaitAnyEnable(WGPUBool timedWaitAnyEnable);
-	InstanceCapabilities& setTimedWaitAnyMaxCount(size_t timedWaitAnyMaxCount);
-END
-
-DESCRIPTOR(Limits)
-	Limits& setDefault();
-	Limits& setNextInChain(ChainedStructOut * nextInChain);
-	Limits& setMaxTextureDimension1D(uint32_t maxTextureDimension1D);
-	Limits& setMaxTextureDimension2D(uint32_t maxTextureDimension2D);
-	Limits& setMaxTextureDimension3D(uint32_t maxTextureDimension3D);
-	Limits& setMaxTextureArrayLayers(uint32_t maxTextureArrayLayers);
-	Limits& setMaxBindGroups(uint32_t maxBindGroups);
-	Limits& setMaxBindGroupsPlusVertexBuffers(uint32_t maxBindGroupsPlusVertexBuffers);
-	Limits& setMaxBindingsPerBindGroup(uint32_t maxBindingsPerBindGroup);
-	Limits& setMaxDynamicUniformBuffersPerPipelineLayout(uint32_t maxDynamicUniformBuffersPerPipelineLayout);
-	Limits& setMaxDynamicStorageBuffersPerPipelineLayout(uint32_t maxDynamicStorageBuffersPerPipelineLayout);
-	Limits& setMaxSampledTexturesPerShaderStage(uint32_t maxSampledTexturesPerShaderStage);
-	Limits& setMaxSamplersPerShaderStage(uint32_t maxSamplersPerShaderStage);
-	Limits& setMaxStorageBuffersPerShaderStage(uint32_t maxStorageBuffersPerShaderStage);
-	Limits& setMaxStorageTexturesPerShaderStage(uint32_t maxStorageTexturesPerShaderStage);
-	Limits& setMaxUniformBuffersPerShaderStage(uint32_t maxUniformBuffersPerShaderStage);
-	Limits& setMaxUniformBufferBindingSize(uint64_t maxUniformBufferBindingSize);
-	Limits& setMaxStorageBufferBindingSize(uint64_t maxStorageBufferBindingSize);
-	Limits& setMinUniformBufferOffsetAlignment(uint32_t minUniformBufferOffsetAlignment);
-	Limits& setMinStorageBufferOffsetAlignment(uint32_t minStorageBufferOffsetAlignment);
-	Limits& setMaxVertexBuffers(uint32_t maxVertexBuffers);
-	Limits& setMaxBufferSize(uint64_t maxBufferSize);
-	Limits& setMaxVertexAttributes(uint32_t maxVertexAttributes);
-	Limits& setMaxVertexBufferArrayStride(uint32_t maxVertexBufferArrayStride);
-	Limits& setMaxInterStageShaderVariables(uint32_t maxInterStageShaderVariables);
-	Limits& setMaxColorAttachments(uint32_t maxColorAttachments);
-	Limits& setMaxColorAttachmentBytesPerSample(uint32_t maxColorAttachmentBytesPerSample);
-	Limits& setMaxComputeWorkgroupStorageSize(uint32_t maxComputeWorkgroupStorageSize);
-	Limits& setMaxComputeInvocationsPerWorkgroup(uint32_t maxComputeInvocationsPerWorkgroup);
-	Limits& setMaxComputeWorkgroupSizeX(uint32_t maxComputeWorkgroupSizeX);
-	Limits& setMaxComputeWorkgroupSizeY(uint32_t maxComputeWorkgroupSizeY);
-	Limits& setMaxComputeWorkgroupSizeZ(uint32_t maxComputeWorkgroupSizeZ);
-	Limits& setMaxComputeWorkgroupsPerDimension(uint32_t maxComputeWorkgroupsPerDimension);
-END
-
-DESCRIPTOR(MultisampleState)
-	MultisampleState& setDefault();
-	MultisampleState& setNextInChain(const ChainedStruct * nextInChain);
-	MultisampleState& setCount(uint32_t count);
-	MultisampleState& setMask(uint32_t mask);
-	MultisampleState& setAlphaToCoverageEnabled(WGPUBool alphaToCoverageEnabled);
-END
-
-DESCRIPTOR(PipelineLayoutDescriptor)
-	PipelineLayoutDescriptor& setDefault();
-	PipelineLayoutDescriptor& setNextInChain(const ChainedStruct * nextInChain);
-	PipelineLayoutDescriptor& setLabel(StringView label);
-	PipelineLayoutDescriptor& setBindGroupLayouts(uint32_t bindGroupLayoutCount, const BindGroupLayout * bindGroupLayouts);
-	PipelineLayoutDescriptor& setBindGroupLayouts(const std::vector<BindGroupLayout>& bindGroupLayouts);
-	PipelineLayoutDescriptor& setBindGroupLayouts(const std::span<const BindGroupLayout>& bindGroupLayouts);
-END
-
-DESCRIPTOR(PrimitiveState)
-	PrimitiveState& setDefault();
-	PrimitiveState& setNextInChain(const ChainedStruct * nextInChain);
-	PrimitiveState& setTopology(PrimitiveTopology topology);
-	PrimitiveState& setStripIndexFormat(IndexFormat stripIndexFormat);
-	PrimitiveState& setFrontFace(FrontFace frontFace);
-	PrimitiveState& setCullMode(CullMode cullMode);
-	PrimitiveState& setUnclippedDepth(WGPUBool unclippedDepth);
-END
-
-DESCRIPTOR(QuerySetDescriptor)
-	QuerySetDescriptor& setDefault();
-	QuerySetDescriptor& setNextInChain(const ChainedStruct * nextInChain);
-	QuerySetDescriptor& setLabel(StringView label);
-	QuerySetDescriptor& setType(QueryType type);
-	QuerySetDescriptor& setCount(uint32_t count);
-END
-
-DESCRIPTOR(QueueDescriptor)
-	QueueDescriptor& setDefault();
-	QueueDescriptor& setNextInChain(const ChainedStruct * nextInChain);
-	QueueDescriptor& setLabel(StringView label);
-END
-
-DESCRIPTOR(RenderBundleDescriptor)
-	RenderBundleDescriptor& setDefault();
-	RenderBundleDescriptor& setNextInChain(const ChainedStruct * nextInChain);
-	RenderBundleDescriptor& setLabel(StringView label);
-END
-
-DESCRIPTOR(RenderBundleEncoderDescriptor)
-	RenderBundleEncoderDescriptor& setDefault();
-	RenderBundleEncoderDescriptor& setNextInChain(const ChainedStruct * nextInChain);
-	RenderBundleEncoderDescriptor& setLabel(StringView label);
-	RenderBundleEncoderDescriptor& setColorFormats(uint32_t colorFormatCount, const TextureFormat * colorFormats);
-	RenderBundleEncoderDescriptor& setColorFormats(const std::vector<TextureFormat>& colorFormats);
-	RenderBundleEncoderDescriptor& setColorFormats(const std::span<const TextureFormat>& colorFormats);
-	RenderBundleEncoderDescriptor& setDepthStencilFormat(TextureFormat depthStencilFormat);
-	RenderBundleEncoderDescriptor& setDepthReadOnly(WGPUBool depthReadOnly);
-	RenderBundleEncoderDescriptor& setStencilReadOnly(WGPUBool stencilReadOnly);
-	RenderBundleEncoderDescriptor& setSampleCount(uint32_t sampleCount);
-END
-
-DESCRIPTOR(RequestAdapterOptions)
-	RequestAdapterOptions& setDefault();
-	RequestAdapterOptions& setNextInChain(const ChainedStruct * nextInChain);
-	RequestAdapterOptions& setFeatureLevel(FeatureLevel featureLevel);
-	RequestAdapterOptions& setPowerPreference(PowerPreference powerPreference);
-	RequestAdapterOptions& setForceFallbackAdapter(WGPUBool forceFallbackAdapter);
-	RequestAdapterOptions& setBackendType(BackendType backendType);
-	RequestAdapterOptions& setCompatibleSurface(Surface compatibleSurface);
-END
-
-DESCRIPTOR(SamplerBindingLayout)
-	SamplerBindingLayout& setDefault();
-	SamplerBindingLayout& setNextInChain(const ChainedStruct * nextInChain);
-	SamplerBindingLayout& setType(SamplerBindingType type);
-END
-
-DESCRIPTOR(SamplerDescriptor)
-	SamplerDescriptor& setDefault();
-	SamplerDescriptor& setNextInChain(const ChainedStruct * nextInChain);
-	SamplerDescriptor& setLabel(StringView label);
-	SamplerDescriptor& setAddressModeU(AddressMode addressModeU);
-	SamplerDescriptor& setAddressModeV(AddressMode addressModeV);
-	SamplerDescriptor& setAddressModeW(AddressMode addressModeW);
-	SamplerDescriptor& setMagFilter(FilterMode magFilter);
-	SamplerDescriptor& setMinFilter(FilterMode minFilter);
-	SamplerDescriptor& setMipmapFilter(MipmapFilterMode mipmapFilter);
-	SamplerDescriptor& setLodMinClamp(float lodMinClamp);
-	SamplerDescriptor& setLodMaxClamp(float lodMaxClamp);
-	SamplerDescriptor& setCompare(CompareFunction compare);
-	SamplerDescriptor& setMaxAnisotropy(uint16_t maxAnisotropy);
-END
-
-DESCRIPTOR(ShaderModuleDescriptor)
-	ShaderModuleDescriptor& setDefault();
-	ShaderModuleDescriptor& setNextInChain(const ChainedStruct * nextInChain);
-	ShaderModuleDescriptor& setLabel(StringView label);
-END
-
-DESCRIPTOR(StorageTextureBindingLayout)
-	StorageTextureBindingLayout& setDefault();
-	StorageTextureBindingLayout& setNextInChain(const ChainedStruct * nextInChain);
-	StorageTextureBindingLayout& setAccess(StorageTextureAccess access);
-	StorageTextureBindingLayout& setFormat(TextureFormat format);
-	StorageTextureBindingLayout& setViewDimension(TextureViewDimension viewDimension);
-END
-
-DESCRIPTOR(SurfaceCapabilities)
-	SurfaceCapabilities& setDefault();
-	SurfaceCapabilities& setNextInChain(ChainedStructOut * nextInChain);
-	SurfaceCapabilities& setUsages(TextureUsage usages);
-	SurfaceCapabilities& setFormats(uint32_t formatCount, const TextureFormat * formats);
-	SurfaceCapabilities& setFormats(const std::vector<TextureFormat>& formats);
-	SurfaceCapabilities& setFormats(const std::span<const TextureFormat>& formats);
-	SurfaceCapabilities& setPresentModes(uint32_t presentModeCount, const PresentMode * presentModes);
-	SurfaceCapabilities& setPresentModes(const std::vector<PresentMode>& presentModes);
-	SurfaceCapabilities& setPresentModes(const std::span<const PresentMode>& presentModes);
-	SurfaceCapabilities& setAlphaModes(uint32_t alphaModeCount, const CompositeAlphaMode * alphaModes);
-	SurfaceCapabilities& setAlphaModes(const std::vector<CompositeAlphaMode>& alphaModes);
-	SurfaceCapabilities& setAlphaModes(const std::span<const CompositeAlphaMode>& alphaModes);
-	void freeMembers();
-END
-
-DESCRIPTOR(SurfaceConfiguration)
-	SurfaceConfiguration& setDefault();
-	SurfaceConfiguration& setNextInChain(const ChainedStruct * nextInChain);
-	SurfaceConfiguration& setDevice(Device device);
-	SurfaceConfiguration& setFormat(TextureFormat format);
-	SurfaceConfiguration& setUsage(TextureUsage usage);
-	SurfaceConfiguration& setWidth(uint32_t width);
-	SurfaceConfiguration& setHeight(uint32_t height);
-	SurfaceConfiguration& setViewFormats(uint32_t viewFormatCount, const TextureFormat * viewFormats);
-	SurfaceConfiguration& setViewFormats(const std::vector<TextureFormat>& viewFormats);
-	SurfaceConfiguration& setViewFormats(const std::span<const TextureFormat>& viewFormats);
-	SurfaceConfiguration& setAlphaMode(CompositeAlphaMode alphaMode);
-	SurfaceConfiguration& setPresentMode(PresentMode presentMode);
-END
-
-DESCRIPTOR(SurfaceDescriptor)
-	SurfaceDescriptor& setDefault();
-	SurfaceDescriptor& setNextInChain(const ChainedStruct * nextInChain);
-	SurfaceDescriptor& setLabel(StringView label);
-END
-
-DESCRIPTOR(SurfaceTexture)
-	SurfaceTexture& setDefault();
-	SurfaceTexture& setNextInChain(ChainedStructOut * nextInChain);
-	SurfaceTexture& setTexture(Texture texture);
-	SurfaceTexture& setStatus(SurfaceGetCurrentTextureStatus status);
-END
-
-DESCRIPTOR(TextureBindingLayout)
-	TextureBindingLayout& setDefault();
-	TextureBindingLayout& setNextInChain(const ChainedStruct * nextInChain);
-	TextureBindingLayout& setSampleType(TextureSampleType sampleType);
-	TextureBindingLayout& setViewDimension(TextureViewDimension viewDimension);
-	TextureBindingLayout& setMultisampled(WGPUBool multisampled);
-END
-
-DESCRIPTOR(TextureViewDescriptor)
-	TextureViewDescriptor& setDefault();
-	TextureViewDescriptor& setNextInChain(const ChainedStruct * nextInChain);
-	TextureViewDescriptor& setLabel(StringView label);
-	TextureViewDescriptor& setFormat(TextureFormat format);
-	TextureViewDescriptor& setDimension(TextureViewDimension dimension);
-	TextureViewDescriptor& setBaseMipLevel(uint32_t baseMipLevel);
-	TextureViewDescriptor& setBaseArrayLayer(uint32_t baseArrayLayer);
-	TextureViewDescriptor& setAspect(TextureAspect aspect);
-	TextureViewDescriptor& setUsage(TextureUsage usage);
-	TextureViewDescriptor& setMipLevelCount(uint32_t mipLevelCount);
-	TextureViewDescriptor& setArrayLayerCount(uint32_t arrayLayerCount);
-END
-
-DESCRIPTOR(BindGroupDescriptor)
-	BindGroupDescriptor& setDefault();
-	BindGroupDescriptor& setNextInChain(const ChainedStruct * nextInChain);
-	BindGroupDescriptor& setLabel(StringView label);
-	BindGroupDescriptor& setLayout(BindGroupLayout layout);
-	BindGroupDescriptor& setEntries(uint32_t entryCount, const BindGroupEntry * entries);
-	BindGroupDescriptor& setEntries(const std::vector<BindGroupEntry>& entries);
-	BindGroupDescriptor& setEntries(const std::span<const BindGroupEntry>& entries);
-END
-
-DESCRIPTOR(BindGroupLayoutEntry)
-	BindGroupLayoutEntry& setDefault();
-	BindGroupLayoutEntry& setNextInChain(const ChainedStruct * nextInChain);
-	BindGroupLayoutEntry& setBinding(uint32_t binding);
-	BindGroupLayoutEntry& setVisibility(ShaderStage visibility);
-	BindGroupLayoutEntry& setBuffer(BufferBindingLayout buffer);
-	BindGroupLayoutEntry& setSampler(SamplerBindingLayout sampler);
-	BindGroupLayoutEntry& setTexture(TextureBindingLayout texture);
-	BindGroupLayoutEntry& setStorageTexture(StorageTextureBindingLayout storageTexture);
-END
-
-DESCRIPTOR(CompilationInfo)
-	CompilationInfo& setDefault();
-	CompilationInfo& setNextInChain(const ChainedStruct * nextInChain);
-	CompilationInfo& setMessages(uint32_t messageCount, const CompilationMessage * messages);
-	CompilationInfo& setMessages(const std::vector<CompilationMessage>& messages);
-	CompilationInfo& setMessages(const std::span<const CompilationMessage>& messages);
-END
-
-DESCRIPTOR(ComputePassDescriptor)
-	ComputePassDescriptor& setDefault();
-	ComputePassDescriptor& setNextInChain(const ChainedStruct * nextInChain);
-	ComputePassDescriptor& setLabel(StringView label);
-	ComputePassDescriptor& setTimestampWrites(const ComputePassTimestampWrites * timestampWrites);
-END
-
-DESCRIPTOR(DepthStencilState)
-	DepthStencilState& setDefault();
-	DepthStencilState& setNextInChain(const ChainedStruct * nextInChain);
-	DepthStencilState& setFormat(TextureFormat format);
-	DepthStencilState& setDepthWriteEnabled(OptionalBool depthWriteEnabled);
-	DepthStencilState& setDepthCompare(CompareFunction depthCompare);
-	DepthStencilState& setStencilFront(StencilFaceState stencilFront);
-	DepthStencilState& setStencilBack(StencilFaceState stencilBack);
-	DepthStencilState& setStencilReadMask(uint32_t stencilReadMask);
-	DepthStencilState& setStencilWriteMask(uint32_t stencilWriteMask);
-	DepthStencilState& setDepthBias(int32_t depthBias);
-	DepthStencilState& setDepthBiasSlopeScale(float depthBiasSlopeScale);
-	DepthStencilState& setDepthBiasClamp(float depthBiasClamp);
-END
-
-DESCRIPTOR(DeviceDescriptor)
-	DeviceDescriptor& setDefault();
-	DeviceDescriptor& setNextInChain(const ChainedStruct * nextInChain);
-	DeviceDescriptor& setLabel(StringView label);
-	DeviceDescriptor& setRequiredFeatures(uint32_t requiredFeatureCount, const FeatureName * requiredFeatures);
-	DeviceDescriptor& setRequiredFeatures(const std::vector<FeatureName>& requiredFeatures);
-	DeviceDescriptor& setRequiredFeatures(const std::span<const FeatureName>& requiredFeatures);
-	DeviceDescriptor& setRequiredLimits(const Limits * requiredLimits);
-	DeviceDescriptor& setDefaultQueue(QueueDescriptor defaultQueue);
-	DeviceDescriptor& setDeviceLostCallbackInfo(DeviceLostCallbackInfo deviceLostCallbackInfo);
-	DeviceDescriptor& setUncapturedErrorCallbackInfo(UncapturedErrorCallbackInfo uncapturedErrorCallbackInfo);
-END
-
-DESCRIPTOR(InstanceDescriptor)
-	InstanceDescriptor& setDefault();
-	InstanceDescriptor& setNextInChain(const ChainedStruct * nextInChain);
-	InstanceDescriptor& setFeatures(InstanceCapabilities features);
-END
-
-DESCRIPTOR(ProgrammableStageDescriptor)
-	ProgrammableStageDescriptor& setDefault();
-	ProgrammableStageDescriptor& setNextInChain(const ChainedStruct * nextInChain);
-	ProgrammableStageDescriptor& setModule(ShaderModule module);
-	ProgrammableStageDescriptor& setEntryPoint(StringView entryPoint);
-	ProgrammableStageDescriptor& setConstants(uint32_t constantCount, const ConstantEntry * constants);
-	ProgrammableStageDescriptor& setConstants(const std::vector<ConstantEntry>& constants);
-	ProgrammableStageDescriptor& setConstants(const std::span<const ConstantEntry>& constants);
-END
-
-DESCRIPTOR(RenderPassColorAttachment)
-	RenderPassColorAttachment& setDefault();
-	RenderPassColorAttachment& setNextInChain(const ChainedStruct * nextInChain);
-	RenderPassColorAttachment& setView(TextureView view);
-	RenderPassColorAttachment& setDepthSlice(uint32_t depthSlice);
-	RenderPassColorAttachment& setResolveTarget(TextureView resolveTarget);
-	RenderPassColorAttachment& setLoadOp(LoadOp loadOp);
-	RenderPassColorAttachment& setStoreOp(StoreOp storeOp);
-	RenderPassColorAttachment& setClearValue(Color clearValue);
-END
-
-DESCRIPTOR(TextureDescriptor)
-	TextureDescriptor& setDefault();
-	TextureDescriptor& setNextInChain(const ChainedStruct * nextInChain);
-	TextureDescriptor& setLabel(StringView label);
-	TextureDescriptor& setUsage(TextureUsage usage);
-	TextureDescriptor& setDimension(TextureDimension dimension);
-	TextureDescriptor& setSize(Extent3D size);
-	TextureDescriptor& setFormat(TextureFormat format);
-	TextureDescriptor& setViewFormats(uint32_t viewFormatCount, const TextureFormat * viewFormats);
-	TextureDescriptor& setViewFormats(const std::vector<TextureFormat>& viewFormats);
-	TextureDescriptor& setViewFormats(const std::span<const TextureFormat>& viewFormats);
-	TextureDescriptor& setMipLevelCount(uint32_t mipLevelCount);
-	TextureDescriptor& setSampleCount(uint32_t sampleCount);
-END
-
-DESCRIPTOR(BindGroupLayoutDescriptor)
-	BindGroupLayoutDescriptor& setDefault();
-	BindGroupLayoutDescriptor& setNextInChain(const ChainedStruct * nextInChain);
-	BindGroupLayoutDescriptor& setLabel(StringView label);
-	BindGroupLayoutDescriptor& setEntries(uint32_t entryCount, const BindGroupLayoutEntry * entries);
-	BindGroupLayoutDescriptor& setEntries(const std::vector<BindGroupLayoutEntry>& entries);
-	BindGroupLayoutDescriptor& setEntries(const std::span<const BindGroupLayoutEntry>& entries);
-END
-
-DESCRIPTOR(ColorTargetState)
-	ColorTargetState& setDefault();
-	ColorTargetState& setNextInChain(const ChainedStruct * nextInChain);
-	ColorTargetState& setFormat(TextureFormat format);
-	ColorTargetState& setBlend(const BlendState * blend);
-	ColorTargetState& setWriteMask(ColorWriteMask writeMask);
-END
-
-DESCRIPTOR(ComputePipelineDescriptor)
-	ComputePipelineDescriptor& setDefault();
-	ComputePipelineDescriptor& setNextInChain(const ChainedStruct * nextInChain);
-	ComputePipelineDescriptor& setLabel(StringView label);
-	ComputePipelineDescriptor& setLayout(PipelineLayout layout);
-	ComputePipelineDescriptor& setCompute(ProgrammableStageDescriptor compute);
-END
-
-DESCRIPTOR(RenderPassDescriptor)
-	RenderPassDescriptor& setDefault();
-	RenderPassDescriptor& setNextInChain(const ChainedStruct * nextInChain);
-	RenderPassDescriptor& setLabel(StringView label);
-	RenderPassDescriptor& setColorAttachments(uint32_t colorAttachmentCount, const RenderPassColorAttachment * colorAttachments);
-	RenderPassDescriptor& setColorAttachments(const std::vector<RenderPassColorAttachment>& colorAttachments);
-	RenderPassDescriptor& setColorAttachments(const std::span<const RenderPassColorAttachment>& colorAttachments);
-	RenderPassDescriptor& setDepthStencilAttachment(const RenderPassDepthStencilAttachment * depthStencilAttachment);
-	RenderPassDescriptor& setOcclusionQuerySet(QuerySet occlusionQuerySet);
-	RenderPassDescriptor& setTimestampWrites(const RenderPassTimestampWrites * timestampWrites);
-END
-
-DESCRIPTOR(VertexState)
-	VertexState& setDefault();
-	VertexState& setNextInChain(const ChainedStruct * nextInChain);
-	VertexState& setModule(ShaderModule module);
-	VertexState& setEntryPoint(StringView entryPoint);
-	VertexState& setConstants(uint32_t constantCount, const ConstantEntry * constants);
-	VertexState& setConstants(const std::vector<ConstantEntry>& constants);
-	VertexState& setConstants(const std::span<const ConstantEntry>& constants);
-	VertexState& setBuffers(uint32_t bufferCount, const VertexBufferLayout * buffers);
-	VertexState& setBuffers(const std::vector<VertexBufferLayout>& buffers);
-	VertexState& setBuffers(const std::span<const VertexBufferLayout>& buffers);
-END
-
-DESCRIPTOR(FragmentState)
-	FragmentState& setDefault();
-	FragmentState& setNextInChain(const ChainedStruct * nextInChain);
-	FragmentState& setModule(ShaderModule module);
-	FragmentState& setEntryPoint(StringView entryPoint);
-	FragmentState& setConstants(uint32_t constantCount, const ConstantEntry * constants);
-	FragmentState& setConstants(const std::vector<ConstantEntry>& constants);
-	FragmentState& setConstants(const std::span<const ConstantEntry>& constants);
-	FragmentState& setTargets(uint32_t targetCount, const ColorTargetState * targets);
-	FragmentState& setTargets(const std::vector<ColorTargetState>& targets);
-	FragmentState& setTargets(const std::span<const ColorTargetState>& targets);
-END
-
-DESCRIPTOR(RenderPipelineDescriptor)
-	RenderPipelineDescriptor& setDefault();
-	RenderPipelineDescriptor& setNextInChain(const ChainedStruct * nextInChain);
-	RenderPipelineDescriptor& setLabel(StringView label);
-	RenderPipelineDescriptor& setLayout(PipelineLayout layout);
-	RenderPipelineDescriptor& setVertex(VertexState vertex);
-	RenderPipelineDescriptor& setPrimitive(PrimitiveState primitive);
-	RenderPipelineDescriptor& setDepthStencil(const DepthStencilState * depthStencil);
-	RenderPipelineDescriptor& setMultisample(MultisampleState multisample);
-	RenderPipelineDescriptor& setFragment(const FragmentState * fragment);
-END
-
-DESCRIPTOR(InstanceEnumerateAdapterOptions)
-	InstanceEnumerateAdapterOptions& setDefault();
-	InstanceEnumerateAdapterOptions& setNextInChain(const ChainedStruct * nextInChain);
-	InstanceEnumerateAdapterOptions& setBackends(InstanceBackend backends);
-END
-
-
-// Callback types
-using BufferMapCallback = std::function<void(MapAsyncStatus status, StringView message, void* userdata1)>;
-using CompilationInfoCallback = std::function<void(CompilationInfoRequestStatus status, const CompilationInfo& compilationInfo, void* userdata1)>;
-using CreateComputePipelineAsyncCallback = std::function<void(CreatePipelineAsyncStatus status, ComputePipeline pipeline, StringView message, void* userdata1)>;
-using CreateRenderPipelineAsyncCallback = std::function<void(CreatePipelineAsyncStatus status, RenderPipeline pipeline, StringView message, void* userdata1)>;
-using DeviceLostCallback = std::function<void(Device const * device, DeviceLostReason reason, StringView message, void* userdata1)>;
-using PopErrorScopeCallback = std::function<void(PopErrorScopeStatus status, ErrorType type, StringView message, void* userdata1)>;
-using QueueWorkDoneCallback = std::function<void(QueueWorkDoneStatus status, void* userdata1)>;
-using RequestAdapterCallback = std::function<void(RequestAdapterStatus status, Adapter adapter, StringView message, void* userdata1)>;
-using RequestDeviceCallback = std::function<void(RequestDeviceStatus status, Device device, StringView message, void* userdata1)>;
-using UncapturedErrorCallback = std::function<void(Device const * device, ErrorType type, StringView message, void* userdata1)>;
-using LogCallback = std::function<void(LogLevel level, StringView message)>;
-
 // RAII Handles
 HANDLE(Adapter)
-	void getFeatures(SupportedFeatures * features) const;
-	Status getInfo(AdapterInfo * info) const;
-	Status getLimits(Limits * limits) const;
+	void getFeatures(SupportedFeatures& features) const;
+	Status getInfo(AdapterInfo& info) const;
+	Status getLimits(Limits& limits) const;
 	Bool hasFeature(FeatureName feature) const;
-	template<typename Lambda>
+	template<std::invocable<RequestDeviceStatus, Device, StringView> Lambda>
 	Future requestDevice(const DeviceDescriptor& descriptor, CallbackMode callbackMode, const Lambda& callback) const {
 		auto* lambda = new Lambda(callback);
 		auto cCallback = [](WGPURequestDeviceStatus status, WGPUDevice device, WGPUStringView message, void* userdata1, void*) -> void {
 			std::unique_ptr<Lambda> lambda(reinterpret_cast<Lambda*>(userdata1));
-			(*lambda)(static_cast<RequestDeviceStatus>(status), device, message);
+			(*lambda)(static_cast<RequestDeviceStatus>(status), device, *reinterpret_cast<StringView *>(&message));
 		};
 		WGPURequestDeviceCallbackInfo callbackInfo = {
 			/* nextInChain = */ nullptr,
@@ -1815,7 +2045,7 @@ HANDLE(Adapter)
 			/* userdata1 = */ (void*)lambda,
 			/* userdata2 = */ nullptr,
 		};
-		return wgpuAdapterRequestDevice(m_raw, &descriptor, callbackInfo);
+		return wgpuAdapterRequestDevice(m_raw, reinterpret_cast<const WGPUDeviceDescriptor *>(&descriptor), *reinterpret_cast<WGPURequestDeviceCallbackInfo *>(&callbackInfo));
 	}
 	void addRef() const;
 	void release() const;
@@ -1841,12 +2071,12 @@ HANDLE(Buffer)
 	void * getMappedRange(size_t offset, size_t size) const;
 	uint64_t getSize() const;
 	BufferUsage getUsage() const;
-	template<typename Lambda>
+	template<std::invocable<MapAsyncStatus, StringView> Lambda>
 	Future mapAsync(MapMode mode, size_t offset, size_t size, CallbackMode callbackMode, const Lambda& callback) const {
 		auto* lambda = new Lambda(callback);
 		auto cCallback = [](WGPUMapAsyncStatus status, WGPUStringView message, void* userdata1, void*) -> void {
 			std::unique_ptr<Lambda> lambda(reinterpret_cast<Lambda*>(userdata1));
-			(*lambda)(static_cast<MapAsyncStatus>(status), message);
+			(*lambda)(static_cast<MapAsyncStatus>(status), *reinterpret_cast<StringView *>(&message));
 		};
 		WGPUBufferMapCallbackInfo callbackInfo = {
 			/* nextInChain = */ nullptr,
@@ -1855,7 +2085,7 @@ HANDLE(Buffer)
 			/* userdata1 = */ (void*)lambda,
 			/* userdata2 = */ nullptr,
 		};
-		return wgpuBufferMapAsync(m_raw, static_cast<WGPUMapMode>(mode), offset, size, callbackInfo);
+		return wgpuBufferMapAsync(m_raw, static_cast<WGPUMapMode>(mode), offset, size, *reinterpret_cast<WGPUBufferMapCallbackInfo *>(&callbackInfo));
 	}
 	void setLabel(StringView label) const;
 	void unmap() const;
@@ -1871,7 +2101,6 @@ END
 
 HANDLE(CommandEncoder)
 	ComputePassEncoder beginComputePass(const ComputePassDescriptor& descriptor) const;
-	ComputePassEncoder beginComputePass() const;
 	RenderPassEncoder beginRenderPass(const RenderPassDescriptor& descriptor) const;
 	void clearBuffer(Buffer buffer, uint64_t offset, uint64_t size) const;
 	void copyBufferToBuffer(Buffer source, uint64_t sourceOffset, Buffer destination, uint64_t destinationOffset, uint64_t size) const;
@@ -1879,7 +2108,6 @@ HANDLE(CommandEncoder)
 	void copyTextureToBuffer(const TexelCopyTextureInfo& source, const TexelCopyBufferInfo& destination, const Extent3D& copySize) const;
 	void copyTextureToTexture(const TexelCopyTextureInfo& source, const TexelCopyTextureInfo& destination, const Extent3D& copySize) const;
 	CommandBuffer finish(const CommandBufferDescriptor& descriptor) const;
-	CommandBuffer finish() const;
 	void insertDebugMarker(StringView markerLabel) const;
 	void popDebugGroup() const;
 	void pushDebugGroup(StringView groupLabel) const;
@@ -1923,14 +2151,13 @@ HANDLE(Device)
 	BindGroupLayout createBindGroupLayout(const BindGroupLayoutDescriptor& descriptor) const;
 	Buffer createBuffer(const BufferDescriptor& descriptor) const;
 	CommandEncoder createCommandEncoder(const CommandEncoderDescriptor& descriptor) const;
-	CommandEncoder createCommandEncoder() const;
 	ComputePipeline createComputePipeline(const ComputePipelineDescriptor& descriptor) const;
-	template<typename Lambda>
+	template<std::invocable<CreatePipelineAsyncStatus, ComputePipeline, StringView> Lambda>
 	Future createComputePipelineAsync(const ComputePipelineDescriptor& descriptor, CallbackMode callbackMode, const Lambda& callback) const {
 		auto* lambda = new Lambda(callback);
 		auto cCallback = [](WGPUCreatePipelineAsyncStatus status, WGPUComputePipeline pipeline, WGPUStringView message, void* userdata1, void*) -> void {
 			std::unique_ptr<Lambda> lambda(reinterpret_cast<Lambda*>(userdata1));
-			(*lambda)(static_cast<CreatePipelineAsyncStatus>(status), pipeline, message);
+			(*lambda)(static_cast<CreatePipelineAsyncStatus>(status), pipeline, *reinterpret_cast<StringView *>(&message));
 		};
 		WGPUCreateComputePipelineAsyncCallbackInfo callbackInfo = {
 			/* nextInChain = */ nullptr,
@@ -1939,18 +2166,18 @@ HANDLE(Device)
 			/* userdata1 = */ (void*)lambda,
 			/* userdata2 = */ nullptr,
 		};
-		return wgpuDeviceCreateComputePipelineAsync(m_raw, &descriptor, callbackInfo);
+		return wgpuDeviceCreateComputePipelineAsync(m_raw, reinterpret_cast<const WGPUComputePipelineDescriptor *>(&descriptor), *reinterpret_cast<WGPUCreateComputePipelineAsyncCallbackInfo *>(&callbackInfo));
 	}
 	PipelineLayout createPipelineLayout(const PipelineLayoutDescriptor& descriptor) const;
 	QuerySet createQuerySet(const QuerySetDescriptor& descriptor) const;
 	RenderBundleEncoder createRenderBundleEncoder(const RenderBundleEncoderDescriptor& descriptor) const;
 	RenderPipeline createRenderPipeline(const RenderPipelineDescriptor& descriptor) const;
-	template<typename Lambda>
+	template<std::invocable<CreatePipelineAsyncStatus, RenderPipeline, StringView> Lambda>
 	Future createRenderPipelineAsync(const RenderPipelineDescriptor& descriptor, CallbackMode callbackMode, const Lambda& callback) const {
 		auto* lambda = new Lambda(callback);
 		auto cCallback = [](WGPUCreatePipelineAsyncStatus status, WGPURenderPipeline pipeline, WGPUStringView message, void* userdata1, void*) -> void {
 			std::unique_ptr<Lambda> lambda(reinterpret_cast<Lambda*>(userdata1));
-			(*lambda)(static_cast<CreatePipelineAsyncStatus>(status), pipeline, message);
+			(*lambda)(static_cast<CreatePipelineAsyncStatus>(status), pipeline, *reinterpret_cast<StringView *>(&message));
 		};
 		WGPUCreateRenderPipelineAsyncCallbackInfo callbackInfo = {
 			/* nextInChain = */ nullptr,
@@ -1959,24 +2186,23 @@ HANDLE(Device)
 			/* userdata1 = */ (void*)lambda,
 			/* userdata2 = */ nullptr,
 		};
-		return wgpuDeviceCreateRenderPipelineAsync(m_raw, &descriptor, callbackInfo);
+		return wgpuDeviceCreateRenderPipelineAsync(m_raw, reinterpret_cast<const WGPURenderPipelineDescriptor *>(&descriptor), *reinterpret_cast<WGPUCreateRenderPipelineAsyncCallbackInfo *>(&callbackInfo));
 	}
 	Sampler createSampler(const SamplerDescriptor& descriptor) const;
-	Sampler createSampler() const;
 	ShaderModule createShaderModule(const ShaderModuleDescriptor& descriptor) const;
 	Texture createTexture(const TextureDescriptor& descriptor) const;
 	void destroy() const;
 	AdapterInfo getAdapterInfo() const;
-	void getFeatures(SupportedFeatures * features) const;
-	Status getLimits(Limits * limits) const;
+	void getFeatures(SupportedFeatures& features) const;
+	Status getLimits(Limits& limits) const;
 	Queue getQueue() const;
 	Bool hasFeature(FeatureName feature) const;
-	template<typename Lambda>
+	template<std::invocable<PopErrorScopeStatus, ErrorType, StringView> Lambda>
 	Future popErrorScope(CallbackMode callbackMode, const Lambda& callback) const {
 		auto* lambda = new Lambda(callback);
 		auto cCallback = [](WGPUPopErrorScopeStatus status, WGPUErrorType type, WGPUStringView message, void* userdata1, void*) -> void {
 			std::unique_ptr<Lambda> lambda(reinterpret_cast<Lambda*>(userdata1));
-			(*lambda)(static_cast<PopErrorScopeStatus>(status), static_cast<ErrorType>(type), message);
+			(*lambda)(static_cast<PopErrorScopeStatus>(status), static_cast<ErrorType>(type), *reinterpret_cast<StringView *>(&message));
 		};
 		WGPUPopErrorScopeCallbackInfo callbackInfo = {
 			/* nextInChain = */ nullptr,
@@ -1985,7 +2211,7 @@ HANDLE(Device)
 			/* userdata1 = */ (void*)lambda,
 			/* userdata2 = */ nullptr,
 		};
-		return wgpuDevicePopErrorScope(m_raw, callbackInfo);
+		return wgpuDevicePopErrorScope(m_raw, *reinterpret_cast<WGPUPopErrorScopeCallbackInfo *>(&callbackInfo));
 	}
 	void pushErrorScope(ErrorFilter filter) const;
 	void setLabel(StringView label) const;
@@ -1997,15 +2223,15 @@ END
 
 HANDLE(Instance)
 	Surface createSurface(const SurfaceDescriptor& descriptor) const;
-	Status getWGSLLanguageFeatures(SupportedWGSLLanguageFeatures * features) const;
+	Status getWGSLLanguageFeatures(SupportedWGSLLanguageFeatures& features) const;
 	Bool hasWGSLLanguageFeature(WGSLLanguageFeatureName feature) const;
 	void processEvents() const;
-	template<typename Lambda>
+	template<std::invocable<RequestAdapterStatus, Adapter, StringView> Lambda>
 	Future requestAdapter(const RequestAdapterOptions& options, CallbackMode callbackMode, const Lambda& callback) const {
 		auto* lambda = new Lambda(callback);
 		auto cCallback = [](WGPURequestAdapterStatus status, WGPUAdapter adapter, WGPUStringView message, void* userdata1, void*) -> void {
 			std::unique_ptr<Lambda> lambda(reinterpret_cast<Lambda*>(userdata1));
-			(*lambda)(static_cast<RequestAdapterStatus>(status), adapter, message);
+			(*lambda)(static_cast<RequestAdapterStatus>(status), adapter, *reinterpret_cast<StringView *>(&message));
 		};
 		WGPURequestAdapterCallbackInfo callbackInfo = {
 			/* nextInChain = */ nullptr,
@@ -2014,9 +2240,9 @@ HANDLE(Instance)
 			/* userdata1 = */ (void*)lambda,
 			/* userdata2 = */ nullptr,
 		};
-		return wgpuInstanceRequestAdapter(m_raw, &options, callbackInfo);
+		return wgpuInstanceRequestAdapter(m_raw, reinterpret_cast<const WGPURequestAdapterOptions *>(&options), *reinterpret_cast<WGPURequestAdapterCallbackInfo *>(&callbackInfo));
 	}
-	WaitStatus waitAny(size_t futureCount, FutureWaitInfo * futures, uint64_t timeoutNS) const;
+	WaitStatus waitAny(size_t futureCount, FutureWaitInfo& futures, uint64_t timeoutNS) const;
 	void addRef() const;
 	void release() const;
 	size_t enumerateAdapters(const InstanceEnumerateAdapterOptions& options, Adapter * adapters) const;
@@ -2039,7 +2265,7 @@ HANDLE(QuerySet)
 END
 
 HANDLE(Queue)
-	template<typename Lambda>
+	template<std::invocable<QueueWorkDoneStatus> Lambda>
 	Future onSubmittedWorkDone(CallbackMode callbackMode, const Lambda& callback) const {
 		auto* lambda = new Lambda(callback);
 		auto cCallback = [](WGPUQueueWorkDoneStatus status, void* userdata1, void*) -> void {
@@ -2053,21 +2279,21 @@ HANDLE(Queue)
 			/* userdata1 = */ (void*)lambda,
 			/* userdata2 = */ nullptr,
 		};
-		return wgpuQueueOnSubmittedWorkDone(m_raw, callbackInfo);
+		return wgpuQueueOnSubmittedWorkDone(m_raw, *reinterpret_cast<WGPUQueueWorkDoneCallbackInfo *>(&callbackInfo));
 	}
 	void setLabel(StringView label) const;
 	void submit(size_t commandCount, CommandBuffer const * commands) const;
-	void submit(const std::vector<WGPUCommandBuffer>& commands) const;
-	void submit(const std::span<const WGPUCommandBuffer>& commands) const;
-	void submit(const WGPUCommandBuffer& commands) const;
+	void submit(const std::vector<CommandBuffer>& commands) const;
+	void submit(const std::span<const CommandBuffer>& commands) const;
+	void submit(const CommandBuffer& commands) const;
 	void writeBuffer(Buffer buffer, uint64_t bufferOffset, void const * data, size_t size) const;
 	void writeTexture(const TexelCopyTextureInfo& destination, void const * data, size_t dataSize, const TexelCopyBufferLayout& dataLayout, const Extent3D& writeSize) const;
 	void addRef() const;
 	void release() const;
 	SubmissionIndex submitForIndex(size_t commandCount, CommandBuffer const * commands) const;
-	SubmissionIndex submitForIndex(const std::vector<WGPUCommandBuffer>& commands) const;
-	SubmissionIndex submitForIndex(const std::span<const WGPUCommandBuffer>& commands) const;
-	SubmissionIndex submitForIndex(const WGPUCommandBuffer& commands) const;
+	SubmissionIndex submitForIndex(const std::vector<CommandBuffer>& commands) const;
+	SubmissionIndex submitForIndex(const std::span<const CommandBuffer>& commands) const;
+	SubmissionIndex submitForIndex(const CommandBuffer& commands) const;
 	float getTimestampPeriod() const;
 END
 
@@ -2083,7 +2309,6 @@ HANDLE(RenderBundleEncoder)
 	void drawIndexedIndirect(Buffer indirectBuffer, uint64_t indirectOffset) const;
 	void drawIndirect(Buffer indirectBuffer, uint64_t indirectOffset) const;
 	RenderBundle finish(const RenderBundleDescriptor& descriptor) const;
-	RenderBundle finish() const;
 	void insertDebugMarker(StringView markerLabel) const;
 	void popDebugGroup() const;
 	void pushDebugGroup(StringView groupLabel) const;
@@ -2109,9 +2334,9 @@ HANDLE(RenderPassEncoder)
 	void end() const;
 	void endOcclusionQuery() const;
 	void executeBundles(size_t bundleCount, RenderBundle const * bundles) const;
-	void executeBundles(const std::vector<WGPURenderBundle>& bundles) const;
-	void executeBundles(const std::span<const WGPURenderBundle>& bundles) const;
-	void executeBundles(const WGPURenderBundle& bundles) const;
+	void executeBundles(const std::vector<RenderBundle>& bundles) const;
+	void executeBundles(const std::span<const RenderBundle>& bundles) const;
+	void executeBundles(const RenderBundle& bundles) const;
 	void insertDebugMarker(StringView markerLabel) const;
 	void popDebugGroup() const;
 	void pushDebugGroup(StringView groupLabel) const;
@@ -2153,12 +2378,12 @@ HANDLE(Sampler)
 END
 
 HANDLE(ShaderModule)
-	template<typename Lambda>
+	template<std::invocable<CompilationInfoRequestStatus, const CompilationInfo&> Lambda>
 	Future getCompilationInfo(CallbackMode callbackMode, const Lambda& callback) const {
 		auto* lambda = new Lambda(callback);
 		auto cCallback = [](WGPUCompilationInfoRequestStatus status, struct WGPUCompilationInfo const * compilationInfo, void* userdata1, void*) -> void {
 			std::unique_ptr<Lambda> lambda(reinterpret_cast<Lambda*>(userdata1));
-			(*lambda)(static_cast<CompilationInfoRequestStatus>(status), *reinterpret_cast<CompilationInfo const *>(compilationInfo));
+			(*lambda)(static_cast<CompilationInfoRequestStatus>(status), *reinterpret_cast<const CompilationInfo*>(compilationInfo));
 		};
 		WGPUCompilationInfoCallbackInfo callbackInfo = {
 			/* nextInChain = */ nullptr,
@@ -2167,7 +2392,7 @@ HANDLE(ShaderModule)
 			/* userdata1 = */ (void*)lambda,
 			/* userdata2 = */ nullptr,
 		};
-		return wgpuShaderModuleGetCompilationInfo(m_raw, callbackInfo);
+		return wgpuShaderModuleGetCompilationInfo(m_raw, *reinterpret_cast<WGPUCompilationInfoCallbackInfo *>(&callbackInfo));
 	}
 	void setLabel(StringView label) const;
 	void addRef() const;
@@ -2176,8 +2401,8 @@ END
 
 HANDLE(Surface)
 	void configure(const SurfaceConfiguration& config) const;
-	Status getCapabilities(Adapter adapter, SurfaceCapabilities * capabilities) const;
-	void getCurrentTexture(SurfaceTexture * surfaceTexture) const;
+	Status getCapabilities(Adapter adapter, SurfaceCapabilities& capabilities) const;
+	void getCurrentTexture(SurfaceTexture& surfaceTexture) const;
 	Status present() const;
 	void setLabel(StringView label) const;
 	void unconfigure() const;
@@ -2187,7 +2412,6 @@ END
 
 HANDLE(Texture)
 	TextureView createView(const TextureViewDescriptor& descriptor) const;
-	TextureView createView() const;
 	void destroy() const;
 	uint32_t getDepthOrArrayLayers() const;
 	TextureDimension getDimension() const;
@@ -2209,24 +2433,1427 @@ HANDLE(TextureView)
 END
 
 
+// Structs
+STRUCT_NO_OSTREAM(StringView)
+	const char * data;
+	size_t length;
+	StringView& setDefault();
+	StringView& setData(const char * data);
+	StringView& setLength(size_t length);
+	StringView(const std::string_view& cpp) : data(cpp.data()), length(cpp.length()) {}
+	operator std::string_view() const;
+	friend auto operator<<(std::ostream& stream, const S& self) -> std::ostream& {
+		return stream << std::string_view(self);
+	}
+END
+
+STRUCT(ChainedStruct)
+	const struct WGPUChainedStruct * next;
+	SType sType;
+	ChainedStruct& setDefault();
+	ChainedStruct& setNext(const struct WGPUChainedStruct * next);
+	ChainedStruct& setSType(SType sType);
+END
+
+STRUCT(ChainedStructOut)
+	struct WGPUChainedStructOut * next;
+	SType sType;
+	ChainedStructOut& setDefault();
+	ChainedStructOut& setNext(struct WGPUChainedStructOut * next);
+	ChainedStructOut& setSType(SType sType);
+END
+
+STRUCT(BlendComponent)
+	BlendOperation operation;
+	BlendFactor srcFactor;
+	BlendFactor dstFactor;
+	BlendComponent& setDefault();
+	BlendComponent& setOperation(BlendOperation operation);
+	BlendComponent& setSrcFactor(BlendFactor srcFactor);
+	BlendComponent& setDstFactor(BlendFactor dstFactor);
+END
+
+STRUCT(Color)
+	double r;
+	double g;
+	double b;
+	double a;
+	Color& setDefault();
+	Color& setR(double r);
+	Color& setG(double g);
+	Color& setB(double b);
+	Color& setA(double a);
+	Color(double r, double g, double b, double a) : r(r), g(g), b(b), a(a) {}
+END
+
+STRUCT(ComputePassTimestampWrites)
+	QuerySet querySet;
+	uint32_t beginningOfPassWriteIndex;
+	uint32_t endOfPassWriteIndex;
+	ComputePassTimestampWrites& setDefault();
+	ComputePassTimestampWrites& setQuerySet(QuerySet querySet);
+	ComputePassTimestampWrites& setBeginningOfPassWriteIndex(uint32_t beginningOfPassWriteIndex);
+	ComputePassTimestampWrites& setEndOfPassWriteIndex(uint32_t endOfPassWriteIndex);
+END
+
+STRUCT(Extent3D)
+	uint32_t width;
+	uint32_t height;
+	uint32_t depthOrArrayLayers;
+	Extent3D& setDefault();
+	Extent3D& setWidth(uint32_t width);
+	Extent3D& setHeight(uint32_t height);
+	Extent3D& setDepthOrArrayLayers(uint32_t depthOrArrayLayers);
+	Extent3D(uint32_t width, uint32_t height, uint32_t depthOrArrayLayers) : width(width), height(height), depthOrArrayLayers(depthOrArrayLayers) {}
+END
+
+STRUCT(Future)
+	uint64_t id;
+	Future& setDefault();
+	Future& setId(uint64_t id);
+END
+
+STRUCT(Origin3D)
+	uint32_t x;
+	uint32_t y;
+	uint32_t z;
+	Origin3D& setDefault();
+	Origin3D& setX(uint32_t x);
+	Origin3D& setY(uint32_t y);
+	Origin3D& setZ(uint32_t z);
+	Origin3D(uint32_t x, uint32_t y, uint32_t z) : x(x), y(y), z(z) {}
+END
+
+STRUCT(RenderPassDepthStencilAttachment)
+	TextureView view;
+	LoadOp depthLoadOp;
+	StoreOp depthStoreOp;
+	float depthClearValue;
+	WGPUBool depthReadOnly;
+	LoadOp stencilLoadOp;
+	StoreOp stencilStoreOp;
+	uint32_t stencilClearValue;
+	WGPUBool stencilReadOnly;
+	RenderPassDepthStencilAttachment& setDefault();
+	RenderPassDepthStencilAttachment& setView(TextureView view);
+	RenderPassDepthStencilAttachment& setDepthLoadOp(LoadOp depthLoadOp);
+	RenderPassDepthStencilAttachment& setDepthStoreOp(StoreOp depthStoreOp);
+	RenderPassDepthStencilAttachment& setDepthClearValue(float depthClearValue);
+	RenderPassDepthStencilAttachment& setDepthReadOnly(WGPUBool depthReadOnly);
+	RenderPassDepthStencilAttachment& setStencilLoadOp(LoadOp stencilLoadOp);
+	RenderPassDepthStencilAttachment& setStencilStoreOp(StoreOp stencilStoreOp);
+	RenderPassDepthStencilAttachment& setStencilClearValue(uint32_t stencilClearValue);
+	RenderPassDepthStencilAttachment& setStencilReadOnly(WGPUBool stencilReadOnly);
+END
+
+STRUCT(RenderPassMaxDrawCount)
+	ChainedStruct chain;
+	uint64_t maxDrawCount;
+	RenderPassMaxDrawCount& setDefault();
+	RenderPassMaxDrawCount& setMaxDrawCount(uint64_t maxDrawCount);
+END
+
+STRUCT(RenderPassTimestampWrites)
+	QuerySet querySet;
+	uint32_t beginningOfPassWriteIndex;
+	uint32_t endOfPassWriteIndex;
+	RenderPassTimestampWrites& setDefault();
+	RenderPassTimestampWrites& setQuerySet(QuerySet querySet);
+	RenderPassTimestampWrites& setBeginningOfPassWriteIndex(uint32_t beginningOfPassWriteIndex);
+	RenderPassTimestampWrites& setEndOfPassWriteIndex(uint32_t endOfPassWriteIndex);
+END
+
+STRUCT(ShaderSourceSPIRV)
+	ChainedStruct chain;
+	uint32_t codeSize;
+	const uint32_t * code;
+	ShaderSourceSPIRV& setDefault();
+	ShaderSourceSPIRV& setCodeSize(uint32_t codeSize);
+	ShaderSourceSPIRV& setCode(const uint32_t * code);
+END
+
+STRUCT(ShaderSourceWGSL)
+	ChainedStruct chain;
+	StringView code;
+	ShaderSourceWGSL& setDefault();
+	ShaderSourceWGSL& setCode(StringView code);
+END
+
+STRUCT(StencilFaceState)
+	CompareFunction compare;
+	StencilOperation failOp;
+	StencilOperation depthFailOp;
+	StencilOperation passOp;
+	StencilFaceState& setDefault();
+	StencilFaceState& setCompare(CompareFunction compare);
+	StencilFaceState& setFailOp(StencilOperation failOp);
+	StencilFaceState& setDepthFailOp(StencilOperation depthFailOp);
+	StencilFaceState& setPassOp(StencilOperation passOp);
+END
+
+STRUCT(SupportedFeatures)
+	size_t featureCount;
+	const FeatureName * features;
+	SupportedFeatures& setDefault();
+	SupportedFeatures& setFeatures(size_t featureCount, const FeatureName * features);
+	SupportedFeatures& setFeatures(const std::vector<FeatureName>& features);
+	SupportedFeatures& setFeatures(const std::span<const FeatureName>& features);
+	void freeMembers();
+END
+
+STRUCT(SupportedWGSLLanguageFeatures)
+	size_t featureCount;
+	const WGSLLanguageFeatureName * features;
+	SupportedWGSLLanguageFeatures& setDefault();
+	SupportedWGSLLanguageFeatures& setFeatures(size_t featureCount, const WGSLLanguageFeatureName * features);
+	SupportedWGSLLanguageFeatures& setFeatures(const std::vector<WGSLLanguageFeatureName>& features);
+	SupportedWGSLLanguageFeatures& setFeatures(const std::span<const WGSLLanguageFeatureName>& features);
+	void freeMembers();
+END
+
+STRUCT(SurfaceSourceAndroidNativeWindow)
+	ChainedStruct chain;
+	void * window;
+	SurfaceSourceAndroidNativeWindow& setDefault();
+	SurfaceSourceAndroidNativeWindow& setWindow(void * window);
+END
+
+STRUCT(SurfaceSourceMetalLayer)
+	ChainedStruct chain;
+	void * layer;
+	SurfaceSourceMetalLayer& setDefault();
+	SurfaceSourceMetalLayer& setLayer(void * layer);
+END
+
+STRUCT(SurfaceSourceWaylandSurface)
+	ChainedStruct chain;
+	void * display;
+	void * surface;
+	SurfaceSourceWaylandSurface& setDefault();
+	SurfaceSourceWaylandSurface& setDisplay(void * display);
+	SurfaceSourceWaylandSurface& setSurface(void * surface);
+END
+
+STRUCT(SurfaceSourceWindowsHWND)
+	ChainedStruct chain;
+	void * hinstance;
+	void * hwnd;
+	SurfaceSourceWindowsHWND& setDefault();
+	SurfaceSourceWindowsHWND& setHinstance(void * hinstance);
+	SurfaceSourceWindowsHWND& setHwnd(void * hwnd);
+END
+
+STRUCT(SurfaceSourceXCBWindow)
+	ChainedStruct chain;
+	void * connection;
+	uint32_t window;
+	SurfaceSourceXCBWindow& setDefault();
+	SurfaceSourceXCBWindow& setConnection(void * connection);
+	SurfaceSourceXCBWindow& setWindow(uint32_t window);
+END
+
+STRUCT(SurfaceSourceXlibWindow)
+	ChainedStruct chain;
+	void * display;
+	uint64_t window;
+	SurfaceSourceXlibWindow& setDefault();
+	SurfaceSourceXlibWindow& setDisplay(void * display);
+	SurfaceSourceXlibWindow& setWindow(uint64_t window);
+END
+
+STRUCT(TexelCopyBufferLayout)
+	uint64_t offset;
+	uint32_t bytesPerRow;
+	uint32_t rowsPerImage;
+	TexelCopyBufferLayout& setDefault();
+	TexelCopyBufferLayout& setOffset(uint64_t offset);
+	TexelCopyBufferLayout& setBytesPerRow(uint32_t bytesPerRow);
+	TexelCopyBufferLayout& setRowsPerImage(uint32_t rowsPerImage);
+END
+
+STRUCT(VertexAttribute)
+	VertexFormat format;
+	uint64_t offset;
+	uint32_t shaderLocation;
+	VertexAttribute& setDefault();
+	VertexAttribute& setFormat(VertexFormat format);
+	VertexAttribute& setOffset(uint64_t offset);
+	VertexAttribute& setShaderLocation(uint32_t shaderLocation);
+END
+
+STRUCT(BlendState)
+	BlendComponent color;
+	BlendComponent alpha;
+	BlendState& setDefault();
+	BlendState& setColor(BlendComponent color);
+	BlendState& setAlpha(BlendComponent alpha);
+END
+
+STRUCT(FutureWaitInfo)
+	Future future;
+	WGPUBool completed;
+	FutureWaitInfo& setDefault();
+	FutureWaitInfo& setFuture(Future future);
+	FutureWaitInfo& setCompleted(WGPUBool completed);
+END
+
+STRUCT(TexelCopyBufferInfo)
+	TexelCopyBufferLayout layout;
+	Buffer buffer;
+	TexelCopyBufferInfo& setDefault();
+	TexelCopyBufferInfo& setLayout(TexelCopyBufferLayout layout);
+	TexelCopyBufferInfo& setBuffer(Buffer buffer);
+END
+
+STRUCT(TexelCopyTextureInfo)
+	Texture texture;
+	uint32_t mipLevel;
+	Origin3D origin;
+	TextureAspect aspect;
+	TexelCopyTextureInfo& setDefault();
+	TexelCopyTextureInfo& setTexture(Texture texture);
+	TexelCopyTextureInfo& setMipLevel(uint32_t mipLevel);
+	TexelCopyTextureInfo& setOrigin(Origin3D origin);
+	TexelCopyTextureInfo& setAspect(TextureAspect aspect);
+END
+
+STRUCT(VertexBufferLayout)
+	VertexStepMode stepMode;
+	uint64_t arrayStride;
+	size_t attributeCount;
+	const VertexAttribute * attributes;
+	VertexBufferLayout& setDefault();
+	VertexBufferLayout& setStepMode(VertexStepMode stepMode);
+	VertexBufferLayout& setArrayStride(uint64_t arrayStride);
+	VertexBufferLayout& setAttributes(size_t attributeCount, const VertexAttribute * attributes);
+	VertexBufferLayout& setAttributes(const std::vector<VertexAttribute>& attributes);
+	VertexBufferLayout& setAttributes(const std::span<const VertexAttribute>& attributes);
+END
+
+STRUCT(InstanceExtras)
+	ChainedStruct chain;
+	InstanceBackend backends;
+	InstanceFlag flags;
+	Dx12Compiler dx12ShaderCompiler;
+	Gles3MinorVersion gles3MinorVersion;
+	GLFenceBehaviour glFenceBehaviour;
+	StringView dxcPath;
+	DxcMaxShaderModel dxcMaxShaderModel;
+	Dx12SwapchainKind dx12PresentationSystem;
+	const uint8_t * budgetForDeviceCreation;
+	const uint8_t * budgetForDeviceLoss;
+	InstanceExtras& setDefault();
+	InstanceExtras& setBackends(InstanceBackend backends);
+	InstanceExtras& setFlags(InstanceFlag flags);
+	InstanceExtras& setDx12ShaderCompiler(Dx12Compiler dx12ShaderCompiler);
+	InstanceExtras& setGles3MinorVersion(Gles3MinorVersion gles3MinorVersion);
+	InstanceExtras& setGlFenceBehaviour(GLFenceBehaviour glFenceBehaviour);
+	InstanceExtras& setDxcPath(StringView dxcPath);
+	InstanceExtras& setDxcMaxShaderModel(DxcMaxShaderModel dxcMaxShaderModel);
+	InstanceExtras& setDx12PresentationSystem(Dx12SwapchainKind dx12PresentationSystem);
+	InstanceExtras& setBudgetForDeviceCreation(const uint8_t * budgetForDeviceCreation);
+	InstanceExtras& setBudgetForDeviceLoss(const uint8_t * budgetForDeviceLoss);
+END
+
+STRUCT(DeviceExtras)
+	ChainedStruct chain;
+	StringView tracePath;
+	DeviceExtras& setDefault();
+	DeviceExtras& setTracePath(StringView tracePath);
+END
+
+STRUCT(NativeLimits)
+	ChainedStructOut chain;
+	uint32_t maxPushConstantSize;
+	uint32_t maxNonSamplerBindings;
+	NativeLimits& setDefault();
+	NativeLimits& setMaxPushConstantSize(uint32_t maxPushConstantSize);
+	NativeLimits& setMaxNonSamplerBindings(uint32_t maxNonSamplerBindings);
+END
+
+STRUCT(PushConstantRange)
+	ShaderStage stages;
+	uint32_t start;
+	uint32_t end;
+	PushConstantRange& setDefault();
+	PushConstantRange& setStages(ShaderStage stages);
+	PushConstantRange& setStart(uint32_t start);
+	PushConstantRange& setEnd(uint32_t end);
+END
+
+STRUCT(PipelineLayoutExtras)
+	ChainedStruct chain;
+	size_t pushConstantRangeCount;
+	const PushConstantRange * pushConstantRanges;
+	PipelineLayoutExtras& setDefault();
+	PipelineLayoutExtras& setPushConstantRanges(size_t pushConstantRangeCount, const PushConstantRange * pushConstantRanges);
+	PipelineLayoutExtras& setPushConstantRanges(const std::vector<PushConstantRange>& pushConstantRanges);
+	PipelineLayoutExtras& setPushConstantRanges(const std::span<const PushConstantRange>& pushConstantRanges);
+END
+
+STRUCT(ShaderDefine)
+	StringView name;
+	StringView value;
+	ShaderDefine& setDefault();
+	ShaderDefine& setName(StringView name);
+	ShaderDefine& setValue(StringView value);
+END
+
+STRUCT(ShaderSourceGLSL)
+	ChainedStruct chain;
+	ShaderStage stage;
+	StringView code;
+	uint32_t defineCount;
+	ShaderDefine * defines;
+	ShaderSourceGLSL& setDefault();
+	ShaderSourceGLSL& setStage(ShaderStage stage);
+	ShaderSourceGLSL& setCode(StringView code);
+	ShaderSourceGLSL& setDefines(uint32_t defineCount, ShaderDefine * defines);
+	ShaderSourceGLSL& setDefines(std::vector<ShaderDefine>& defines);
+	ShaderSourceGLSL& setDefines(const std::span<ShaderDefine>& defines);
+END
+
+STRUCT(ShaderModuleDescriptorSpirV)
+	StringView label;
+	uint32_t sourceSize;
+	const uint32_t * source;
+	ShaderModuleDescriptorSpirV& setDefault();
+	ShaderModuleDescriptorSpirV& setLabel(StringView label);
+	ShaderModuleDescriptorSpirV& setSourceSize(uint32_t sourceSize);
+	ShaderModuleDescriptorSpirV& setSource(const uint32_t * source);
+END
+
+STRUCT(RegistryReport)
+	size_t numAllocated;
+	size_t numKeptFromUser;
+	size_t numReleasedFromUser;
+	size_t elementSize;
+	RegistryReport& setDefault();
+	RegistryReport& setNumAllocated(size_t numAllocated);
+	RegistryReport& setNumKeptFromUser(size_t numKeptFromUser);
+	RegistryReport& setNumReleasedFromUser(size_t numReleasedFromUser);
+	RegistryReport& setElementSize(size_t elementSize);
+END
+
+STRUCT(HubReport)
+	RegistryReport adapters;
+	RegistryReport devices;
+	RegistryReport queues;
+	RegistryReport pipelineLayouts;
+	RegistryReport shaderModules;
+	RegistryReport bindGroupLayouts;
+	RegistryReport bindGroups;
+	RegistryReport commandBuffers;
+	RegistryReport renderBundles;
+	RegistryReport renderPipelines;
+	RegistryReport computePipelines;
+	RegistryReport pipelineCaches;
+	RegistryReport querySets;
+	RegistryReport buffers;
+	RegistryReport textures;
+	RegistryReport textureViews;
+	RegistryReport samplers;
+	HubReport& setDefault();
+	HubReport& setAdapters(RegistryReport adapters);
+	HubReport& setDevices(RegistryReport devices);
+	HubReport& setQueues(RegistryReport queues);
+	HubReport& setPipelineLayouts(RegistryReport pipelineLayouts);
+	HubReport& setShaderModules(RegistryReport shaderModules);
+	HubReport& setBindGroupLayouts(RegistryReport bindGroupLayouts);
+	HubReport& setBindGroups(RegistryReport bindGroups);
+	HubReport& setCommandBuffers(RegistryReport commandBuffers);
+	HubReport& setRenderBundles(RegistryReport renderBundles);
+	HubReport& setRenderPipelines(RegistryReport renderPipelines);
+	HubReport& setComputePipelines(RegistryReport computePipelines);
+	HubReport& setPipelineCaches(RegistryReport pipelineCaches);
+	HubReport& setQuerySets(RegistryReport querySets);
+	HubReport& setBuffers(RegistryReport buffers);
+	HubReport& setTextures(RegistryReport textures);
+	HubReport& setTextureViews(RegistryReport textureViews);
+	HubReport& setSamplers(RegistryReport samplers);
+END
+
+STRUCT(GlobalReport)
+	RegistryReport surfaces;
+	HubReport hub;
+	GlobalReport& setDefault();
+	GlobalReport& setSurfaces(RegistryReport surfaces);
+	GlobalReport& setHub(HubReport hub);
+END
+
+STRUCT(BindGroupEntryExtras)
+	ChainedStruct chain;
+	const Buffer * buffers;
+	size_t bufferCount;
+	const Sampler * samplers;
+	size_t samplerCount;
+	const TextureView * textureViews;
+	size_t textureViewCount;
+	BindGroupEntryExtras& setDefault();
+	BindGroupEntryExtras& setBuffers(size_t bufferCount, const Buffer * buffers);
+	BindGroupEntryExtras& setBuffers(const std::vector<Buffer>& buffers);
+	BindGroupEntryExtras& setBuffers(const std::span<const Buffer>& buffers);
+	BindGroupEntryExtras& setSamplers(size_t samplerCount, const Sampler * samplers);
+	BindGroupEntryExtras& setSamplers(const std::vector<Sampler>& samplers);
+	BindGroupEntryExtras& setSamplers(const std::span<const Sampler>& samplers);
+	BindGroupEntryExtras& setTextureViews(size_t textureViewCount, const TextureView * textureViews);
+	BindGroupEntryExtras& setTextureViews(const std::vector<TextureView>& textureViews);
+	BindGroupEntryExtras& setTextureViews(const std::span<const TextureView>& textureViews);
+END
+
+STRUCT(BindGroupLayoutEntryExtras)
+	ChainedStruct chain;
+	uint32_t count;
+	BindGroupLayoutEntryExtras& setDefault();
+	BindGroupLayoutEntryExtras& setCount(uint32_t count);
+END
+
+STRUCT(QuerySetDescriptorExtras)
+	ChainedStruct chain;
+	const PipelineStatisticName * pipelineStatistics;
+	size_t pipelineStatisticCount;
+	QuerySetDescriptorExtras& setDefault();
+	QuerySetDescriptorExtras& setPipelineStatistics(size_t pipelineStatisticCount, const PipelineStatisticName * pipelineStatistics);
+	QuerySetDescriptorExtras& setPipelineStatistics(const std::vector<PipelineStatisticName>& pipelineStatistics);
+	QuerySetDescriptorExtras& setPipelineStatistics(const std::span<const PipelineStatisticName>& pipelineStatistics);
+END
+
+STRUCT(SurfaceConfigurationExtras)
+	ChainedStruct chain;
+	uint32_t desiredMaximumFrameLatency;
+	SurfaceConfigurationExtras& setDefault();
+	SurfaceConfigurationExtras& setDesiredMaximumFrameLatency(uint32_t desiredMaximumFrameLatency);
+END
+
+STRUCT(SurfaceSourceSwapChainPanel)
+	ChainedStruct chain;
+	void * panelNative;
+	SurfaceSourceSwapChainPanel& setDefault();
+	SurfaceSourceSwapChainPanel& setPanelNative(void * panelNative);
+END
+
+STRUCT(PrimitiveStateExtras)
+	ChainedStruct chain;
+	PolygonMode polygonMode;
+	WGPUBool conservative;
+	PrimitiveStateExtras& setDefault();
+	PrimitiveStateExtras& setPolygonMode(PolygonMode polygonMode);
+	PrimitiveStateExtras& setConservative(WGPUBool conservative);
+END
+
+
+// Descriptors
+DESCRIPTOR(BufferMapCallbackInfo)
+	const ChainedStruct * nextInChain;
+	CallbackMode mode;
+	WGPUBufferMapCallback callback;
+	void * userdata1;
+	void * userdata2;
+	BufferMapCallbackInfo& setDefault();
+	BufferMapCallbackInfo& setNextInChain(const ChainedStruct * nextInChain);
+	BufferMapCallbackInfo& setMode(CallbackMode mode);
+	BufferMapCallbackInfo& setCallback(WGPUBufferMapCallback callback);
+	BufferMapCallbackInfo& setUserdata1(void * userdata1);
+	BufferMapCallbackInfo& setUserdata2(void * userdata2);
+END
+
+DESCRIPTOR(CompilationInfoCallbackInfo)
+	const ChainedStruct * nextInChain;
+	CallbackMode mode;
+	WGPUCompilationInfoCallback callback;
+	void * userdata1;
+	void * userdata2;
+	CompilationInfoCallbackInfo& setDefault();
+	CompilationInfoCallbackInfo& setNextInChain(const ChainedStruct * nextInChain);
+	CompilationInfoCallbackInfo& setMode(CallbackMode mode);
+	CompilationInfoCallbackInfo& setCallback(WGPUCompilationInfoCallback callback);
+	CompilationInfoCallbackInfo& setUserdata1(void * userdata1);
+	CompilationInfoCallbackInfo& setUserdata2(void * userdata2);
+END
+
+DESCRIPTOR(CreateComputePipelineAsyncCallbackInfo)
+	const ChainedStruct * nextInChain;
+	CallbackMode mode;
+	WGPUCreateComputePipelineAsyncCallback callback;
+	void * userdata1;
+	void * userdata2;
+	CreateComputePipelineAsyncCallbackInfo& setDefault();
+	CreateComputePipelineAsyncCallbackInfo& setNextInChain(const ChainedStruct * nextInChain);
+	CreateComputePipelineAsyncCallbackInfo& setMode(CallbackMode mode);
+	CreateComputePipelineAsyncCallbackInfo& setCallback(WGPUCreateComputePipelineAsyncCallback callback);
+	CreateComputePipelineAsyncCallbackInfo& setUserdata1(void * userdata1);
+	CreateComputePipelineAsyncCallbackInfo& setUserdata2(void * userdata2);
+END
+
+DESCRIPTOR(CreateRenderPipelineAsyncCallbackInfo)
+	const ChainedStruct * nextInChain;
+	CallbackMode mode;
+	WGPUCreateRenderPipelineAsyncCallback callback;
+	void * userdata1;
+	void * userdata2;
+	CreateRenderPipelineAsyncCallbackInfo& setDefault();
+	CreateRenderPipelineAsyncCallbackInfo& setNextInChain(const ChainedStruct * nextInChain);
+	CreateRenderPipelineAsyncCallbackInfo& setMode(CallbackMode mode);
+	CreateRenderPipelineAsyncCallbackInfo& setCallback(WGPUCreateRenderPipelineAsyncCallback callback);
+	CreateRenderPipelineAsyncCallbackInfo& setUserdata1(void * userdata1);
+	CreateRenderPipelineAsyncCallbackInfo& setUserdata2(void * userdata2);
+END
+
+DESCRIPTOR(DeviceLostCallbackInfo)
+	const ChainedStruct * nextInChain;
+	CallbackMode mode;
+	WGPUDeviceLostCallback callback;
+	void * userdata1;
+	void * userdata2;
+	DeviceLostCallbackInfo& setDefault();
+	DeviceLostCallbackInfo& setNextInChain(const ChainedStruct * nextInChain);
+	DeviceLostCallbackInfo& setMode(CallbackMode mode);
+	DeviceLostCallbackInfo& setCallback(WGPUDeviceLostCallback callback);
+	DeviceLostCallbackInfo& setUserdata1(void * userdata1);
+	DeviceLostCallbackInfo& setUserdata2(void * userdata2);
+END
+
+DESCRIPTOR(PopErrorScopeCallbackInfo)
+	const ChainedStruct * nextInChain;
+	CallbackMode mode;
+	WGPUPopErrorScopeCallback callback;
+	void * userdata1;
+	void * userdata2;
+	PopErrorScopeCallbackInfo& setDefault();
+	PopErrorScopeCallbackInfo& setNextInChain(const ChainedStruct * nextInChain);
+	PopErrorScopeCallbackInfo& setMode(CallbackMode mode);
+	PopErrorScopeCallbackInfo& setCallback(WGPUPopErrorScopeCallback callback);
+	PopErrorScopeCallbackInfo& setUserdata1(void * userdata1);
+	PopErrorScopeCallbackInfo& setUserdata2(void * userdata2);
+END
+
+DESCRIPTOR(QueueWorkDoneCallbackInfo)
+	const ChainedStruct * nextInChain;
+	CallbackMode mode;
+	WGPUQueueWorkDoneCallback callback;
+	void * userdata1;
+	void * userdata2;
+	QueueWorkDoneCallbackInfo& setDefault();
+	QueueWorkDoneCallbackInfo& setNextInChain(const ChainedStruct * nextInChain);
+	QueueWorkDoneCallbackInfo& setMode(CallbackMode mode);
+	QueueWorkDoneCallbackInfo& setCallback(WGPUQueueWorkDoneCallback callback);
+	QueueWorkDoneCallbackInfo& setUserdata1(void * userdata1);
+	QueueWorkDoneCallbackInfo& setUserdata2(void * userdata2);
+END
+
+DESCRIPTOR(RequestAdapterCallbackInfo)
+	const ChainedStruct * nextInChain;
+	CallbackMode mode;
+	WGPURequestAdapterCallback callback;
+	void * userdata1;
+	void * userdata2;
+	RequestAdapterCallbackInfo& setDefault();
+	RequestAdapterCallbackInfo& setNextInChain(const ChainedStruct * nextInChain);
+	RequestAdapterCallbackInfo& setMode(CallbackMode mode);
+	RequestAdapterCallbackInfo& setCallback(WGPURequestAdapterCallback callback);
+	RequestAdapterCallbackInfo& setUserdata1(void * userdata1);
+	RequestAdapterCallbackInfo& setUserdata2(void * userdata2);
+END
+
+DESCRIPTOR(RequestDeviceCallbackInfo)
+	const ChainedStruct * nextInChain;
+	CallbackMode mode;
+	WGPURequestDeviceCallback callback;
+	void * userdata1;
+	void * userdata2;
+	RequestDeviceCallbackInfo& setDefault();
+	RequestDeviceCallbackInfo& setNextInChain(const ChainedStruct * nextInChain);
+	RequestDeviceCallbackInfo& setMode(CallbackMode mode);
+	RequestDeviceCallbackInfo& setCallback(WGPURequestDeviceCallback callback);
+	RequestDeviceCallbackInfo& setUserdata1(void * userdata1);
+	RequestDeviceCallbackInfo& setUserdata2(void * userdata2);
+END
+
+DESCRIPTOR(UncapturedErrorCallbackInfo)
+	const ChainedStruct * nextInChain;
+	WGPUUncapturedErrorCallback callback;
+	void * userdata1;
+	void * userdata2;
+	UncapturedErrorCallbackInfo& setDefault();
+	UncapturedErrorCallbackInfo& setNextInChain(const ChainedStruct * nextInChain);
+	UncapturedErrorCallbackInfo& setCallback(WGPUUncapturedErrorCallback callback);
+	UncapturedErrorCallbackInfo& setUserdata1(void * userdata1);
+	UncapturedErrorCallbackInfo& setUserdata2(void * userdata2);
+END
+
+DESCRIPTOR(AdapterInfo)
+	ChainedStructOut * nextInChain;
+	StringView vendor;
+	StringView architecture;
+	StringView device;
+	StringView description;
+	BackendType backendType;
+	AdapterType adapterType;
+	uint32_t vendorID;
+	uint32_t deviceID;
+	AdapterInfo& setDefault();
+	AdapterInfo& setNextInChain(ChainedStructOut * nextInChain);
+	AdapterInfo& setVendor(StringView vendor);
+	AdapterInfo& setArchitecture(StringView architecture);
+	AdapterInfo& setDevice(StringView device);
+	AdapterInfo& setDescription(StringView description);
+	AdapterInfo& setBackendType(BackendType backendType);
+	AdapterInfo& setAdapterType(AdapterType adapterType);
+	AdapterInfo& setVendorID(uint32_t vendorID);
+	AdapterInfo& setDeviceID(uint32_t deviceID);
+	void freeMembers();
+END
+
+DESCRIPTOR(BindGroupEntry)
+	const ChainedStruct * nextInChain;
+	uint32_t binding;
+	Buffer buffer;
+	uint64_t offset;
+	uint64_t size;
+	Sampler sampler;
+	TextureView textureView;
+	BindGroupEntry& setDefault();
+	BindGroupEntry& setNextInChain(const ChainedStruct * nextInChain);
+	BindGroupEntry& setBinding(uint32_t binding);
+	BindGroupEntry& setBuffer(Buffer buffer);
+	BindGroupEntry& setOffset(uint64_t offset);
+	BindGroupEntry& setSize(uint64_t size);
+	BindGroupEntry& setSampler(Sampler sampler);
+	BindGroupEntry& setTextureView(TextureView textureView);
+END
+
+DESCRIPTOR(BufferBindingLayout)
+	const ChainedStruct * nextInChain;
+	BufferBindingType type;
+	WGPUBool hasDynamicOffset;
+	uint64_t minBindingSize;
+	BufferBindingLayout& setDefault();
+	BufferBindingLayout& setNextInChain(const ChainedStruct * nextInChain);
+	BufferBindingLayout& setType(BufferBindingType type);
+	BufferBindingLayout& setHasDynamicOffset(WGPUBool hasDynamicOffset);
+	BufferBindingLayout& setMinBindingSize(uint64_t minBindingSize);
+END
+
+DESCRIPTOR(BufferDescriptor)
+	const ChainedStruct * nextInChain;
+	StringView label;
+	BufferUsage usage;
+	uint64_t size;
+	WGPUBool mappedAtCreation;
+	BufferDescriptor& setDefault();
+	BufferDescriptor& setNextInChain(const ChainedStruct * nextInChain);
+	BufferDescriptor& setLabel(StringView label);
+	BufferDescriptor& setUsage(BufferUsage usage);
+	BufferDescriptor& setSize(uint64_t size);
+	BufferDescriptor& setMappedAtCreation(WGPUBool mappedAtCreation);
+END
+
+DESCRIPTOR(CommandBufferDescriptor)
+	const ChainedStruct * nextInChain;
+	StringView label;
+	CommandBufferDescriptor& setDefault();
+	CommandBufferDescriptor& setNextInChain(const ChainedStruct * nextInChain);
+	CommandBufferDescriptor& setLabel(StringView label);
+END
+
+DESCRIPTOR(CommandEncoderDescriptor)
+	const ChainedStruct * nextInChain;
+	StringView label;
+	CommandEncoderDescriptor& setDefault();
+	CommandEncoderDescriptor& setNextInChain(const ChainedStruct * nextInChain);
+	CommandEncoderDescriptor& setLabel(StringView label);
+END
+
+DESCRIPTOR(CompilationMessage)
+	const ChainedStruct * nextInChain;
+	StringView message;
+	CompilationMessageType type;
+	uint64_t lineNum;
+	uint64_t linePos;
+	uint64_t offset;
+	uint64_t length;
+	CompilationMessage& setDefault();
+	CompilationMessage& setNextInChain(const ChainedStruct * nextInChain);
+	CompilationMessage& setMessage(StringView message);
+	CompilationMessage& setType(CompilationMessageType type);
+	CompilationMessage& setLineNum(uint64_t lineNum);
+	CompilationMessage& setLinePos(uint64_t linePos);
+	CompilationMessage& setOffset(uint64_t offset);
+	CompilationMessage& setLength(uint64_t length);
+END
+
+DESCRIPTOR(ConstantEntry)
+	const ChainedStruct * nextInChain;
+	StringView key;
+	double value;
+	ConstantEntry& setDefault();
+	ConstantEntry& setNextInChain(const ChainedStruct * nextInChain);
+	ConstantEntry& setKey(StringView key);
+	ConstantEntry& setValue(double value);
+END
+
+DESCRIPTOR(InstanceCapabilities)
+	ChainedStructOut * nextInChain;
+	WGPUBool timedWaitAnyEnable;
+	size_t timedWaitAnyMaxCount;
+	InstanceCapabilities& setDefault();
+	InstanceCapabilities& setNextInChain(ChainedStructOut * nextInChain);
+	InstanceCapabilities& setTimedWaitAnyEnable(WGPUBool timedWaitAnyEnable);
+	InstanceCapabilities& setTimedWaitAnyMaxCount(size_t timedWaitAnyMaxCount);
+END
+
+DESCRIPTOR(Limits)
+	ChainedStructOut * nextInChain;
+	uint32_t maxTextureDimension1D;
+	uint32_t maxTextureDimension2D;
+	uint32_t maxTextureDimension3D;
+	uint32_t maxTextureArrayLayers;
+	uint32_t maxBindGroups;
+	uint32_t maxBindGroupsPlusVertexBuffers;
+	uint32_t maxBindingsPerBindGroup;
+	uint32_t maxDynamicUniformBuffersPerPipelineLayout;
+	uint32_t maxDynamicStorageBuffersPerPipelineLayout;
+	uint32_t maxSampledTexturesPerShaderStage;
+	uint32_t maxSamplersPerShaderStage;
+	uint32_t maxStorageBuffersPerShaderStage;
+	uint32_t maxStorageTexturesPerShaderStage;
+	uint32_t maxUniformBuffersPerShaderStage;
+	uint64_t maxUniformBufferBindingSize;
+	uint64_t maxStorageBufferBindingSize;
+	uint32_t minUniformBufferOffsetAlignment;
+	uint32_t minStorageBufferOffsetAlignment;
+	uint32_t maxVertexBuffers;
+	uint64_t maxBufferSize;
+	uint32_t maxVertexAttributes;
+	uint32_t maxVertexBufferArrayStride;
+	uint32_t maxInterStageShaderVariables;
+	uint32_t maxColorAttachments;
+	uint32_t maxColorAttachmentBytesPerSample;
+	uint32_t maxComputeWorkgroupStorageSize;
+	uint32_t maxComputeInvocationsPerWorkgroup;
+	uint32_t maxComputeWorkgroupSizeX;
+	uint32_t maxComputeWorkgroupSizeY;
+	uint32_t maxComputeWorkgroupSizeZ;
+	uint32_t maxComputeWorkgroupsPerDimension;
+	Limits& setDefault();
+	Limits& setNextInChain(ChainedStructOut * nextInChain);
+	Limits& setMaxTextureDimension1D(uint32_t maxTextureDimension1D);
+	Limits& setMaxTextureDimension2D(uint32_t maxTextureDimension2D);
+	Limits& setMaxTextureDimension3D(uint32_t maxTextureDimension3D);
+	Limits& setMaxTextureArrayLayers(uint32_t maxTextureArrayLayers);
+	Limits& setMaxBindGroups(uint32_t maxBindGroups);
+	Limits& setMaxBindGroupsPlusVertexBuffers(uint32_t maxBindGroupsPlusVertexBuffers);
+	Limits& setMaxBindingsPerBindGroup(uint32_t maxBindingsPerBindGroup);
+	Limits& setMaxDynamicUniformBuffersPerPipelineLayout(uint32_t maxDynamicUniformBuffersPerPipelineLayout);
+	Limits& setMaxDynamicStorageBuffersPerPipelineLayout(uint32_t maxDynamicStorageBuffersPerPipelineLayout);
+	Limits& setMaxSampledTexturesPerShaderStage(uint32_t maxSampledTexturesPerShaderStage);
+	Limits& setMaxSamplersPerShaderStage(uint32_t maxSamplersPerShaderStage);
+	Limits& setMaxStorageBuffersPerShaderStage(uint32_t maxStorageBuffersPerShaderStage);
+	Limits& setMaxStorageTexturesPerShaderStage(uint32_t maxStorageTexturesPerShaderStage);
+	Limits& setMaxUniformBuffersPerShaderStage(uint32_t maxUniformBuffersPerShaderStage);
+	Limits& setMaxUniformBufferBindingSize(uint64_t maxUniformBufferBindingSize);
+	Limits& setMaxStorageBufferBindingSize(uint64_t maxStorageBufferBindingSize);
+	Limits& setMinUniformBufferOffsetAlignment(uint32_t minUniformBufferOffsetAlignment);
+	Limits& setMinStorageBufferOffsetAlignment(uint32_t minStorageBufferOffsetAlignment);
+	Limits& setMaxVertexBuffers(uint32_t maxVertexBuffers);
+	Limits& setMaxBufferSize(uint64_t maxBufferSize);
+	Limits& setMaxVertexAttributes(uint32_t maxVertexAttributes);
+	Limits& setMaxVertexBufferArrayStride(uint32_t maxVertexBufferArrayStride);
+	Limits& setMaxInterStageShaderVariables(uint32_t maxInterStageShaderVariables);
+	Limits& setMaxColorAttachments(uint32_t maxColorAttachments);
+	Limits& setMaxColorAttachmentBytesPerSample(uint32_t maxColorAttachmentBytesPerSample);
+	Limits& setMaxComputeWorkgroupStorageSize(uint32_t maxComputeWorkgroupStorageSize);
+	Limits& setMaxComputeInvocationsPerWorkgroup(uint32_t maxComputeInvocationsPerWorkgroup);
+	Limits& setMaxComputeWorkgroupSizeX(uint32_t maxComputeWorkgroupSizeX);
+	Limits& setMaxComputeWorkgroupSizeY(uint32_t maxComputeWorkgroupSizeY);
+	Limits& setMaxComputeWorkgroupSizeZ(uint32_t maxComputeWorkgroupSizeZ);
+	Limits& setMaxComputeWorkgroupsPerDimension(uint32_t maxComputeWorkgroupsPerDimension);
+END
+
+DESCRIPTOR(MultisampleState)
+	const ChainedStruct * nextInChain;
+	uint32_t count;
+	uint32_t mask;
+	WGPUBool alphaToCoverageEnabled;
+	MultisampleState& setDefault();
+	MultisampleState& setNextInChain(const ChainedStruct * nextInChain);
+	MultisampleState& setCount(uint32_t count);
+	MultisampleState& setMask(uint32_t mask);
+	MultisampleState& setAlphaToCoverageEnabled(WGPUBool alphaToCoverageEnabled);
+END
+
+DESCRIPTOR(PipelineLayoutDescriptor)
+	const ChainedStruct * nextInChain;
+	StringView label;
+	size_t bindGroupLayoutCount;
+	const BindGroupLayout * bindGroupLayouts;
+	PipelineLayoutDescriptor& setDefault();
+	PipelineLayoutDescriptor& setNextInChain(const ChainedStruct * nextInChain);
+	PipelineLayoutDescriptor& setLabel(StringView label);
+	PipelineLayoutDescriptor& setBindGroupLayouts(size_t bindGroupLayoutCount, const BindGroupLayout * bindGroupLayouts);
+	PipelineLayoutDescriptor& setBindGroupLayouts(const std::vector<BindGroupLayout>& bindGroupLayouts);
+	PipelineLayoutDescriptor& setBindGroupLayouts(const std::span<const BindGroupLayout>& bindGroupLayouts);
+END
+
+DESCRIPTOR(PrimitiveState)
+	const ChainedStruct * nextInChain;
+	PrimitiveTopology topology;
+	IndexFormat stripIndexFormat;
+	FrontFace frontFace;
+	CullMode cullMode;
+	WGPUBool unclippedDepth;
+	PrimitiveState& setDefault();
+	PrimitiveState& setNextInChain(const ChainedStruct * nextInChain);
+	PrimitiveState& setTopology(PrimitiveTopology topology);
+	PrimitiveState& setStripIndexFormat(IndexFormat stripIndexFormat);
+	PrimitiveState& setFrontFace(FrontFace frontFace);
+	PrimitiveState& setCullMode(CullMode cullMode);
+	PrimitiveState& setUnclippedDepth(WGPUBool unclippedDepth);
+END
+
+DESCRIPTOR(QuerySetDescriptor)
+	const ChainedStruct * nextInChain;
+	StringView label;
+	QueryType type;
+	uint32_t count;
+	QuerySetDescriptor& setDefault();
+	QuerySetDescriptor& setNextInChain(const ChainedStruct * nextInChain);
+	QuerySetDescriptor& setLabel(StringView label);
+	QuerySetDescriptor& setType(QueryType type);
+	QuerySetDescriptor& setCount(uint32_t count);
+END
+
+DESCRIPTOR(QueueDescriptor)
+	const ChainedStruct * nextInChain;
+	StringView label;
+	QueueDescriptor& setDefault();
+	QueueDescriptor& setNextInChain(const ChainedStruct * nextInChain);
+	QueueDescriptor& setLabel(StringView label);
+END
+
+DESCRIPTOR(RenderBundleDescriptor)
+	const ChainedStruct * nextInChain;
+	StringView label;
+	RenderBundleDescriptor& setDefault();
+	RenderBundleDescriptor& setNextInChain(const ChainedStruct * nextInChain);
+	RenderBundleDescriptor& setLabel(StringView label);
+END
+
+DESCRIPTOR(RenderBundleEncoderDescriptor)
+	const ChainedStruct * nextInChain;
+	StringView label;
+	size_t colorFormatCount;
+	const TextureFormat * colorFormats;
+	TextureFormat depthStencilFormat;
+	uint32_t sampleCount;
+	WGPUBool depthReadOnly;
+	WGPUBool stencilReadOnly;
+	RenderBundleEncoderDescriptor& setDefault();
+	RenderBundleEncoderDescriptor& setNextInChain(const ChainedStruct * nextInChain);
+	RenderBundleEncoderDescriptor& setLabel(StringView label);
+	RenderBundleEncoderDescriptor& setColorFormats(size_t colorFormatCount, const TextureFormat * colorFormats);
+	RenderBundleEncoderDescriptor& setColorFormats(const std::vector<TextureFormat>& colorFormats);
+	RenderBundleEncoderDescriptor& setColorFormats(const std::span<const TextureFormat>& colorFormats);
+	RenderBundleEncoderDescriptor& setDepthStencilFormat(TextureFormat depthStencilFormat);
+	RenderBundleEncoderDescriptor& setSampleCount(uint32_t sampleCount);
+	RenderBundleEncoderDescriptor& setDepthReadOnly(WGPUBool depthReadOnly);
+	RenderBundleEncoderDescriptor& setStencilReadOnly(WGPUBool stencilReadOnly);
+END
+
+DESCRIPTOR(RequestAdapterOptions)
+	const ChainedStruct * nextInChain;
+	FeatureLevel featureLevel;
+	PowerPreference powerPreference;
+	WGPUBool forceFallbackAdapter;
+	BackendType backendType;
+	Surface compatibleSurface;
+	RequestAdapterOptions& setDefault();
+	RequestAdapterOptions& setNextInChain(const ChainedStruct * nextInChain);
+	RequestAdapterOptions& setFeatureLevel(FeatureLevel featureLevel);
+	RequestAdapterOptions& setPowerPreference(PowerPreference powerPreference);
+	RequestAdapterOptions& setForceFallbackAdapter(WGPUBool forceFallbackAdapter);
+	RequestAdapterOptions& setBackendType(BackendType backendType);
+	RequestAdapterOptions& setCompatibleSurface(Surface compatibleSurface);
+END
+
+DESCRIPTOR(SamplerBindingLayout)
+	const ChainedStruct * nextInChain;
+	SamplerBindingType type;
+	SamplerBindingLayout& setDefault();
+	SamplerBindingLayout& setNextInChain(const ChainedStruct * nextInChain);
+	SamplerBindingLayout& setType(SamplerBindingType type);
+END
+
+DESCRIPTOR(SamplerDescriptor)
+	const ChainedStruct * nextInChain;
+	StringView label;
+	AddressMode addressModeU;
+	AddressMode addressModeV;
+	AddressMode addressModeW;
+	FilterMode magFilter;
+	FilterMode minFilter;
+	MipmapFilterMode mipmapFilter;
+	float lodMinClamp;
+	float lodMaxClamp;
+	CompareFunction compare;
+	uint16_t maxAnisotropy;
+	SamplerDescriptor& setDefault();
+	SamplerDescriptor& setNextInChain(const ChainedStruct * nextInChain);
+	SamplerDescriptor& setLabel(StringView label);
+	SamplerDescriptor& setAddressModeU(AddressMode addressModeU);
+	SamplerDescriptor& setAddressModeV(AddressMode addressModeV);
+	SamplerDescriptor& setAddressModeW(AddressMode addressModeW);
+	SamplerDescriptor& setMagFilter(FilterMode magFilter);
+	SamplerDescriptor& setMinFilter(FilterMode minFilter);
+	SamplerDescriptor& setMipmapFilter(MipmapFilterMode mipmapFilter);
+	SamplerDescriptor& setLodMinClamp(float lodMinClamp);
+	SamplerDescriptor& setLodMaxClamp(float lodMaxClamp);
+	SamplerDescriptor& setCompare(CompareFunction compare);
+	SamplerDescriptor& setMaxAnisotropy(uint16_t maxAnisotropy);
+END
+
+DESCRIPTOR(ShaderModuleDescriptor)
+	const ChainedStruct * nextInChain;
+	StringView label;
+	ShaderModuleDescriptor& setDefault();
+	ShaderModuleDescriptor& setNextInChain(const ChainedStruct * nextInChain);
+	ShaderModuleDescriptor& setLabel(StringView label);
+END
+
+DESCRIPTOR(StorageTextureBindingLayout)
+	const ChainedStruct * nextInChain;
+	StorageTextureAccess access;
+	TextureFormat format;
+	TextureViewDimension viewDimension;
+	StorageTextureBindingLayout& setDefault();
+	StorageTextureBindingLayout& setNextInChain(const ChainedStruct * nextInChain);
+	StorageTextureBindingLayout& setAccess(StorageTextureAccess access);
+	StorageTextureBindingLayout& setFormat(TextureFormat format);
+	StorageTextureBindingLayout& setViewDimension(TextureViewDimension viewDimension);
+END
+
+DESCRIPTOR(SurfaceCapabilities)
+	ChainedStructOut * nextInChain;
+	TextureUsage usages;
+	size_t formatCount;
+	const TextureFormat * formats;
+	size_t presentModeCount;
+	const PresentMode * presentModes;
+	size_t alphaModeCount;
+	const CompositeAlphaMode * alphaModes;
+	SurfaceCapabilities& setDefault();
+	SurfaceCapabilities& setNextInChain(ChainedStructOut * nextInChain);
+	SurfaceCapabilities& setUsages(TextureUsage usages);
+	SurfaceCapabilities& setFormats(size_t formatCount, const TextureFormat * formats);
+	SurfaceCapabilities& setFormats(const std::vector<TextureFormat>& formats);
+	SurfaceCapabilities& setFormats(const std::span<const TextureFormat>& formats);
+	SurfaceCapabilities& setPresentModes(size_t presentModeCount, const PresentMode * presentModes);
+	SurfaceCapabilities& setPresentModes(const std::vector<PresentMode>& presentModes);
+	SurfaceCapabilities& setPresentModes(const std::span<const PresentMode>& presentModes);
+	SurfaceCapabilities& setAlphaModes(size_t alphaModeCount, const CompositeAlphaMode * alphaModes);
+	SurfaceCapabilities& setAlphaModes(const std::vector<CompositeAlphaMode>& alphaModes);
+	SurfaceCapabilities& setAlphaModes(const std::span<const CompositeAlphaMode>& alphaModes);
+	void freeMembers();
+END
+
+DESCRIPTOR(SurfaceConfiguration)
+	const ChainedStruct * nextInChain;
+	Device device;
+	TextureFormat format;
+	TextureUsage usage;
+	uint32_t width;
+	uint32_t height;
+	size_t viewFormatCount;
+	const TextureFormat * viewFormats;
+	CompositeAlphaMode alphaMode;
+	PresentMode presentMode;
+	SurfaceConfiguration& setDefault();
+	SurfaceConfiguration& setNextInChain(const ChainedStruct * nextInChain);
+	SurfaceConfiguration& setDevice(Device device);
+	SurfaceConfiguration& setFormat(TextureFormat format);
+	SurfaceConfiguration& setUsage(TextureUsage usage);
+	SurfaceConfiguration& setWidth(uint32_t width);
+	SurfaceConfiguration& setHeight(uint32_t height);
+	SurfaceConfiguration& setViewFormats(size_t viewFormatCount, const TextureFormat * viewFormats);
+	SurfaceConfiguration& setViewFormats(const std::vector<TextureFormat>& viewFormats);
+	SurfaceConfiguration& setViewFormats(const std::span<const TextureFormat>& viewFormats);
+	SurfaceConfiguration& setAlphaMode(CompositeAlphaMode alphaMode);
+	SurfaceConfiguration& setPresentMode(PresentMode presentMode);
+END
+
+DESCRIPTOR(SurfaceDescriptor)
+	const ChainedStruct * nextInChain;
+	StringView label;
+	SurfaceDescriptor& setDefault();
+	SurfaceDescriptor& setNextInChain(const ChainedStruct * nextInChain);
+	SurfaceDescriptor& setLabel(StringView label);
+END
+
+DESCRIPTOR(SurfaceTexture)
+	ChainedStructOut * nextInChain;
+	Texture texture;
+	SurfaceGetCurrentTextureStatus status;
+	SurfaceTexture& setDefault();
+	SurfaceTexture& setNextInChain(ChainedStructOut * nextInChain);
+	SurfaceTexture& setTexture(Texture texture);
+	SurfaceTexture& setStatus(SurfaceGetCurrentTextureStatus status);
+END
+
+DESCRIPTOR(TextureBindingLayout)
+	const ChainedStruct * nextInChain;
+	TextureSampleType sampleType;
+	TextureViewDimension viewDimension;
+	WGPUBool multisampled;
+	TextureBindingLayout& setDefault();
+	TextureBindingLayout& setNextInChain(const ChainedStruct * nextInChain);
+	TextureBindingLayout& setSampleType(TextureSampleType sampleType);
+	TextureBindingLayout& setViewDimension(TextureViewDimension viewDimension);
+	TextureBindingLayout& setMultisampled(WGPUBool multisampled);
+END
+
+DESCRIPTOR(TextureViewDescriptor)
+	const ChainedStruct * nextInChain;
+	StringView label;
+	TextureFormat format;
+	TextureViewDimension dimension;
+	uint32_t baseMipLevel;
+	uint32_t mipLevelCount;
+	uint32_t baseArrayLayer;
+	uint32_t arrayLayerCount;
+	TextureAspect aspect;
+	TextureUsage usage;
+	TextureViewDescriptor& setDefault();
+	TextureViewDescriptor& setNextInChain(const ChainedStruct * nextInChain);
+	TextureViewDescriptor& setLabel(StringView label);
+	TextureViewDescriptor& setFormat(TextureFormat format);
+	TextureViewDescriptor& setDimension(TextureViewDimension dimension);
+	TextureViewDescriptor& setBaseMipLevel(uint32_t baseMipLevel);
+	TextureViewDescriptor& setMipLevelCount(uint32_t mipLevelCount);
+	TextureViewDescriptor& setBaseArrayLayer(uint32_t baseArrayLayer);
+	TextureViewDescriptor& setArrayLayerCount(uint32_t arrayLayerCount);
+	TextureViewDescriptor& setAspect(TextureAspect aspect);
+	TextureViewDescriptor& setUsage(TextureUsage usage);
+END
+
+DESCRIPTOR(BindGroupDescriptor)
+	const ChainedStruct * nextInChain;
+	StringView label;
+	BindGroupLayout layout;
+	size_t entryCount;
+	const BindGroupEntry * entries;
+	BindGroupDescriptor& setDefault();
+	BindGroupDescriptor& setNextInChain(const ChainedStruct * nextInChain);
+	BindGroupDescriptor& setLabel(StringView label);
+	BindGroupDescriptor& setLayout(BindGroupLayout layout);
+	BindGroupDescriptor& setEntries(size_t entryCount, const BindGroupEntry * entries);
+	BindGroupDescriptor& setEntries(const std::vector<BindGroupEntry>& entries);
+	BindGroupDescriptor& setEntries(const std::span<const BindGroupEntry>& entries);
+END
+
+DESCRIPTOR(BindGroupLayoutEntry)
+	const ChainedStruct * nextInChain;
+	uint32_t binding;
+	ShaderStage visibility;
+	BufferBindingLayout buffer;
+	SamplerBindingLayout sampler;
+	TextureBindingLayout texture;
+	StorageTextureBindingLayout storageTexture;
+	BindGroupLayoutEntry& setDefault();
+	BindGroupLayoutEntry& setNextInChain(const ChainedStruct * nextInChain);
+	BindGroupLayoutEntry& setBinding(uint32_t binding);
+	BindGroupLayoutEntry& setVisibility(ShaderStage visibility);
+	BindGroupLayoutEntry& setBuffer(BufferBindingLayout buffer);
+	BindGroupLayoutEntry& setSampler(SamplerBindingLayout sampler);
+	BindGroupLayoutEntry& setTexture(TextureBindingLayout texture);
+	BindGroupLayoutEntry& setStorageTexture(StorageTextureBindingLayout storageTexture);
+END
+
+DESCRIPTOR(CompilationInfo)
+	const ChainedStruct * nextInChain;
+	size_t messageCount;
+	const CompilationMessage * messages;
+	CompilationInfo& setDefault();
+	CompilationInfo& setNextInChain(const ChainedStruct * nextInChain);
+	CompilationInfo& setMessages(size_t messageCount, const CompilationMessage * messages);
+	CompilationInfo& setMessages(const std::vector<CompilationMessage>& messages);
+	CompilationInfo& setMessages(const std::span<const CompilationMessage>& messages);
+END
+
+DESCRIPTOR(ComputePassDescriptor)
+	const ChainedStruct * nextInChain;
+	StringView label;
+	const ComputePassTimestampWrites * timestampWrites;
+	ComputePassDescriptor& setDefault();
+	ComputePassDescriptor& setNextInChain(const ChainedStruct * nextInChain);
+	ComputePassDescriptor& setLabel(StringView label);
+	ComputePassDescriptor& setTimestampWrites(const ComputePassTimestampWrites * timestampWrites);
+END
+
+DESCRIPTOR(DepthStencilState)
+	const ChainedStruct * nextInChain;
+	TextureFormat format;
+	OptionalBool depthWriteEnabled;
+	CompareFunction depthCompare;
+	StencilFaceState stencilFront;
+	StencilFaceState stencilBack;
+	uint32_t stencilReadMask;
+	uint32_t stencilWriteMask;
+	int32_t depthBias;
+	float depthBiasSlopeScale;
+	float depthBiasClamp;
+	DepthStencilState& setDefault();
+	DepthStencilState& setNextInChain(const ChainedStruct * nextInChain);
+	DepthStencilState& setFormat(TextureFormat format);
+	DepthStencilState& setDepthWriteEnabled(OptionalBool depthWriteEnabled);
+	DepthStencilState& setDepthCompare(CompareFunction depthCompare);
+	DepthStencilState& setStencilFront(StencilFaceState stencilFront);
+	DepthStencilState& setStencilBack(StencilFaceState stencilBack);
+	DepthStencilState& setStencilReadMask(uint32_t stencilReadMask);
+	DepthStencilState& setStencilWriteMask(uint32_t stencilWriteMask);
+	DepthStencilState& setDepthBias(int32_t depthBias);
+	DepthStencilState& setDepthBiasSlopeScale(float depthBiasSlopeScale);
+	DepthStencilState& setDepthBiasClamp(float depthBiasClamp);
+END
+
+DESCRIPTOR(DeviceDescriptor)
+	const ChainedStruct * nextInChain;
+	StringView label;
+	size_t requiredFeatureCount;
+	const FeatureName * requiredFeatures;
+	const Limits * requiredLimits;
+	QueueDescriptor defaultQueue;
+	DeviceLostCallbackInfo deviceLostCallbackInfo;
+	UncapturedErrorCallbackInfo uncapturedErrorCallbackInfo;
+	DeviceDescriptor& setDefault();
+	DeviceDescriptor& setNextInChain(const ChainedStruct * nextInChain);
+	DeviceDescriptor& setLabel(StringView label);
+	DeviceDescriptor& setRequiredFeatures(size_t requiredFeatureCount, const FeatureName * requiredFeatures);
+	DeviceDescriptor& setRequiredFeatures(const std::vector<FeatureName>& requiredFeatures);
+	DeviceDescriptor& setRequiredFeatures(const std::span<const FeatureName>& requiredFeatures);
+	DeviceDescriptor& setRequiredLimits(const Limits * requiredLimits);
+	DeviceDescriptor& setDefaultQueue(QueueDescriptor defaultQueue);
+	DeviceDescriptor& setDeviceLostCallbackInfo(DeviceLostCallbackInfo deviceLostCallbackInfo);
+	DeviceDescriptor& setUncapturedErrorCallbackInfo(UncapturedErrorCallbackInfo uncapturedErrorCallbackInfo);
+END
+
+DESCRIPTOR(InstanceDescriptor)
+	const ChainedStruct * nextInChain;
+	InstanceCapabilities features;
+	InstanceDescriptor& setDefault();
+	InstanceDescriptor& setNextInChain(const ChainedStruct * nextInChain);
+	InstanceDescriptor& setFeatures(InstanceCapabilities features);
+END
+
+DESCRIPTOR(ProgrammableStageDescriptor)
+	const ChainedStruct * nextInChain;
+	ShaderModule module;
+	StringView entryPoint;
+	size_t constantCount;
+	const ConstantEntry * constants;
+	ProgrammableStageDescriptor& setDefault();
+	ProgrammableStageDescriptor& setNextInChain(const ChainedStruct * nextInChain);
+	ProgrammableStageDescriptor& setModule(ShaderModule module);
+	ProgrammableStageDescriptor& setEntryPoint(StringView entryPoint);
+	ProgrammableStageDescriptor& setConstants(size_t constantCount, const ConstantEntry * constants);
+	ProgrammableStageDescriptor& setConstants(const std::vector<ConstantEntry>& constants);
+	ProgrammableStageDescriptor& setConstants(const std::span<const ConstantEntry>& constants);
+END
+
+DESCRIPTOR(RenderPassColorAttachment)
+	const ChainedStruct * nextInChain;
+	TextureView view;
+	uint32_t depthSlice;
+	TextureView resolveTarget;
+	LoadOp loadOp;
+	StoreOp storeOp;
+	Color clearValue;
+	RenderPassColorAttachment& setDefault();
+	RenderPassColorAttachment& setNextInChain(const ChainedStruct * nextInChain);
+	RenderPassColorAttachment& setView(TextureView view);
+	RenderPassColorAttachment& setDepthSlice(uint32_t depthSlice);
+	RenderPassColorAttachment& setResolveTarget(TextureView resolveTarget);
+	RenderPassColorAttachment& setLoadOp(LoadOp loadOp);
+	RenderPassColorAttachment& setStoreOp(StoreOp storeOp);
+	RenderPassColorAttachment& setClearValue(Color clearValue);
+END
+
+DESCRIPTOR(TextureDescriptor)
+	const ChainedStruct * nextInChain;
+	StringView label;
+	TextureUsage usage;
+	TextureDimension dimension;
+	Extent3D size;
+	TextureFormat format;
+	uint32_t mipLevelCount;
+	uint32_t sampleCount;
+	size_t viewFormatCount;
+	const TextureFormat * viewFormats;
+	TextureDescriptor& setDefault();
+	TextureDescriptor& setNextInChain(const ChainedStruct * nextInChain);
+	TextureDescriptor& setLabel(StringView label);
+	TextureDescriptor& setUsage(TextureUsage usage);
+	TextureDescriptor& setDimension(TextureDimension dimension);
+	TextureDescriptor& setSize(Extent3D size);
+	TextureDescriptor& setFormat(TextureFormat format);
+	TextureDescriptor& setMipLevelCount(uint32_t mipLevelCount);
+	TextureDescriptor& setSampleCount(uint32_t sampleCount);
+	TextureDescriptor& setViewFormats(size_t viewFormatCount, const TextureFormat * viewFormats);
+	TextureDescriptor& setViewFormats(const std::vector<TextureFormat>& viewFormats);
+	TextureDescriptor& setViewFormats(const std::span<const TextureFormat>& viewFormats);
+END
+
+DESCRIPTOR(BindGroupLayoutDescriptor)
+	const ChainedStruct * nextInChain;
+	StringView label;
+	size_t entryCount;
+	const BindGroupLayoutEntry * entries;
+	BindGroupLayoutDescriptor& setDefault();
+	BindGroupLayoutDescriptor& setNextInChain(const ChainedStruct * nextInChain);
+	BindGroupLayoutDescriptor& setLabel(StringView label);
+	BindGroupLayoutDescriptor& setEntries(size_t entryCount, const BindGroupLayoutEntry * entries);
+	BindGroupLayoutDescriptor& setEntries(const std::vector<BindGroupLayoutEntry>& entries);
+	BindGroupLayoutDescriptor& setEntries(const std::span<const BindGroupLayoutEntry>& entries);
+END
+
+DESCRIPTOR(ColorTargetState)
+	const ChainedStruct * nextInChain;
+	TextureFormat format;
+	const BlendState * blend;
+	ColorWriteMask writeMask;
+	ColorTargetState& setDefault();
+	ColorTargetState& setNextInChain(const ChainedStruct * nextInChain);
+	ColorTargetState& setFormat(TextureFormat format);
+	ColorTargetState& setBlend(const BlendState * blend);
+	ColorTargetState& setWriteMask(ColorWriteMask writeMask);
+END
+
+DESCRIPTOR(ComputePipelineDescriptor)
+	const ChainedStruct * nextInChain;
+	StringView label;
+	PipelineLayout layout;
+	ProgrammableStageDescriptor compute;
+	ComputePipelineDescriptor& setDefault();
+	ComputePipelineDescriptor& setNextInChain(const ChainedStruct * nextInChain);
+	ComputePipelineDescriptor& setLabel(StringView label);
+	ComputePipelineDescriptor& setLayout(PipelineLayout layout);
+	ComputePipelineDescriptor& setCompute(ProgrammableStageDescriptor compute);
+END
+
+DESCRIPTOR(RenderPassDescriptor)
+	const ChainedStruct * nextInChain;
+	StringView label;
+	size_t colorAttachmentCount;
+	const RenderPassColorAttachment * colorAttachments;
+	const RenderPassDepthStencilAttachment * depthStencilAttachment;
+	QuerySet occlusionQuerySet;
+	const RenderPassTimestampWrites * timestampWrites;
+	RenderPassDescriptor& setDefault();
+	RenderPassDescriptor& setNextInChain(const ChainedStruct * nextInChain);
+	RenderPassDescriptor& setLabel(StringView label);
+	RenderPassDescriptor& setColorAttachments(size_t colorAttachmentCount, const RenderPassColorAttachment * colorAttachments);
+	RenderPassDescriptor& setColorAttachments(const std::vector<RenderPassColorAttachment>& colorAttachments);
+	RenderPassDescriptor& setColorAttachments(const std::span<const RenderPassColorAttachment>& colorAttachments);
+	RenderPassDescriptor& setDepthStencilAttachment(const RenderPassDepthStencilAttachment * depthStencilAttachment);
+	RenderPassDescriptor& setOcclusionQuerySet(QuerySet occlusionQuerySet);
+	RenderPassDescriptor& setTimestampWrites(const RenderPassTimestampWrites * timestampWrites);
+END
+
+DESCRIPTOR(VertexState)
+	const ChainedStruct * nextInChain;
+	ShaderModule module;
+	StringView entryPoint;
+	size_t constantCount;
+	const ConstantEntry * constants;
+	size_t bufferCount;
+	const VertexBufferLayout * buffers;
+	VertexState& setDefault();
+	VertexState& setNextInChain(const ChainedStruct * nextInChain);
+	VertexState& setModule(ShaderModule module);
+	VertexState& setEntryPoint(StringView entryPoint);
+	VertexState& setConstants(size_t constantCount, const ConstantEntry * constants);
+	VertexState& setConstants(const std::vector<ConstantEntry>& constants);
+	VertexState& setConstants(const std::span<const ConstantEntry>& constants);
+	VertexState& setBuffers(size_t bufferCount, const VertexBufferLayout * buffers);
+	VertexState& setBuffers(const std::vector<VertexBufferLayout>& buffers);
+	VertexState& setBuffers(const std::span<const VertexBufferLayout>& buffers);
+END
+
+DESCRIPTOR(FragmentState)
+	const ChainedStruct * nextInChain;
+	ShaderModule module;
+	StringView entryPoint;
+	size_t constantCount;
+	const ConstantEntry * constants;
+	size_t targetCount;
+	const ColorTargetState * targets;
+	FragmentState& setDefault();
+	FragmentState& setNextInChain(const ChainedStruct * nextInChain);
+	FragmentState& setModule(ShaderModule module);
+	FragmentState& setEntryPoint(StringView entryPoint);
+	FragmentState& setConstants(size_t constantCount, const ConstantEntry * constants);
+	FragmentState& setConstants(const std::vector<ConstantEntry>& constants);
+	FragmentState& setConstants(const std::span<const ConstantEntry>& constants);
+	FragmentState& setTargets(size_t targetCount, const ColorTargetState * targets);
+	FragmentState& setTargets(const std::vector<ColorTargetState>& targets);
+	FragmentState& setTargets(const std::span<const ColorTargetState>& targets);
+END
+
+DESCRIPTOR(RenderPipelineDescriptor)
+	const ChainedStruct * nextInChain;
+	StringView label;
+	PipelineLayout layout;
+	VertexState vertex;
+	PrimitiveState primitive;
+	const DepthStencilState * depthStencil;
+	MultisampleState multisample;
+	const FragmentState * fragment;
+	RenderPipelineDescriptor& setDefault();
+	RenderPipelineDescriptor& setNextInChain(const ChainedStruct * nextInChain);
+	RenderPipelineDescriptor& setLabel(StringView label);
+	RenderPipelineDescriptor& setLayout(PipelineLayout layout);
+	RenderPipelineDescriptor& setVertex(VertexState vertex);
+	RenderPipelineDescriptor& setPrimitive(PrimitiveState primitive);
+	RenderPipelineDescriptor& setDepthStencil(const DepthStencilState * depthStencil);
+	RenderPipelineDescriptor& setMultisample(MultisampleState multisample);
+	RenderPipelineDescriptor& setFragment(const FragmentState * fragment);
+END
+
+DESCRIPTOR(InstanceEnumerateAdapterOptions)
+	const ChainedStruct * nextInChain;
+	InstanceBackend backends;
+	InstanceEnumerateAdapterOptions& setDefault();
+	InstanceEnumerateAdapterOptions& setNextInChain(const ChainedStruct * nextInChain);
+	InstanceEnumerateAdapterOptions& setBackends(InstanceBackend backends);
+END
+
+
+// Callback types
+using CompilationInfoCallback = WGPUCompilationInfoCallback;
+using BufferMapCallback = WGPUBufferMapCallback;
+using DeviceLostCallback = WGPUDeviceLostCallback;
+using RequestDeviceCallback = WGPURequestDeviceCallback;
+using PopErrorScopeCallback = WGPUPopErrorScopeCallback;
+using RequestAdapterCallback = WGPURequestAdapterCallback;
+using UncapturedErrorCallback = WGPUUncapturedErrorCallback;
+using CreateRenderPipelineAsyncCallback = WGPUCreateRenderPipelineAsyncCallback;
+using CreateComputePipelineAsyncCallback = WGPUCreateComputePipelineAsyncCallback;
+using LogCallback = WGPULogCallback;
+using QueueWorkDoneCallback = WGPUQueueWorkDoneCallback;
+
 // Non-member procedures
 
 
-Instance createInstance();
-Instance createInstance(const InstanceDescriptor& descriptor);
-
-}
+export Instance createInstance();
+export Instance createInstance(const InstanceDescriptor& descriptor);
 
 // Implementations
-
-namespace wgpu {
 
 Instance createInstance() {
 	return wgpuCreateInstance(nullptr);
 }
 
 Instance createInstance(const InstanceDescriptor& descriptor) {
-	return wgpuCreateInstance(&descriptor);
+	return wgpuCreateInstance(reinterpret_cast<const WGPUInstanceDescriptor*>(&descriptor));
 }
 
 StringView::operator std::string_view() const {
@@ -3051,7 +4678,7 @@ ChainedStruct& ChainedStruct::setNext(const struct WGPUChainedStruct * next) {
 	return *this;
 }
 ChainedStruct& ChainedStruct::setSType(SType sType) {
-	this->sType = static_cast<WGPUSType>(sType);
+	this->sType = sType;
 	return *this;
 }
 
@@ -3062,18 +4689,18 @@ ChainedStructOut& ChainedStructOut::setNext(struct WGPUChainedStructOut * next) 
 	return *this;
 }
 ChainedStructOut& ChainedStructOut::setSType(SType sType) {
-	this->sType = static_cast<WGPUSType>(sType);
+	this->sType = sType;
 	return *this;
 }
 
 
 // Methods of BufferMapCallbackInfo
 BufferMapCallbackInfo& BufferMapCallbackInfo::setNextInChain(const ChainedStruct * nextInChain) {
-	this->nextInChain = reinterpret_cast<WGPUChainedStruct const *>(nextInChain);
+	this->nextInChain = nextInChain;
 	return *this;
 }
 BufferMapCallbackInfo& BufferMapCallbackInfo::setMode(CallbackMode mode) {
-	this->mode = static_cast<WGPUCallbackMode>(mode);
+	this->mode = mode;
 	return *this;
 }
 BufferMapCallbackInfo& BufferMapCallbackInfo::setCallback(WGPUBufferMapCallback callback) {
@@ -3092,11 +4719,11 @@ BufferMapCallbackInfo& BufferMapCallbackInfo::setUserdata2(void * userdata2) {
 
 // Methods of CompilationInfoCallbackInfo
 CompilationInfoCallbackInfo& CompilationInfoCallbackInfo::setNextInChain(const ChainedStruct * nextInChain) {
-	this->nextInChain = reinterpret_cast<WGPUChainedStruct const *>(nextInChain);
+	this->nextInChain = nextInChain;
 	return *this;
 }
 CompilationInfoCallbackInfo& CompilationInfoCallbackInfo::setMode(CallbackMode mode) {
-	this->mode = static_cast<WGPUCallbackMode>(mode);
+	this->mode = mode;
 	return *this;
 }
 CompilationInfoCallbackInfo& CompilationInfoCallbackInfo::setCallback(WGPUCompilationInfoCallback callback) {
@@ -3115,11 +4742,11 @@ CompilationInfoCallbackInfo& CompilationInfoCallbackInfo::setUserdata2(void * us
 
 // Methods of CreateComputePipelineAsyncCallbackInfo
 CreateComputePipelineAsyncCallbackInfo& CreateComputePipelineAsyncCallbackInfo::setNextInChain(const ChainedStruct * nextInChain) {
-	this->nextInChain = reinterpret_cast<WGPUChainedStruct const *>(nextInChain);
+	this->nextInChain = nextInChain;
 	return *this;
 }
 CreateComputePipelineAsyncCallbackInfo& CreateComputePipelineAsyncCallbackInfo::setMode(CallbackMode mode) {
-	this->mode = static_cast<WGPUCallbackMode>(mode);
+	this->mode = mode;
 	return *this;
 }
 CreateComputePipelineAsyncCallbackInfo& CreateComputePipelineAsyncCallbackInfo::setCallback(WGPUCreateComputePipelineAsyncCallback callback) {
@@ -3138,11 +4765,11 @@ CreateComputePipelineAsyncCallbackInfo& CreateComputePipelineAsyncCallbackInfo::
 
 // Methods of CreateRenderPipelineAsyncCallbackInfo
 CreateRenderPipelineAsyncCallbackInfo& CreateRenderPipelineAsyncCallbackInfo::setNextInChain(const ChainedStruct * nextInChain) {
-	this->nextInChain = reinterpret_cast<WGPUChainedStruct const *>(nextInChain);
+	this->nextInChain = nextInChain;
 	return *this;
 }
 CreateRenderPipelineAsyncCallbackInfo& CreateRenderPipelineAsyncCallbackInfo::setMode(CallbackMode mode) {
-	this->mode = static_cast<WGPUCallbackMode>(mode);
+	this->mode = mode;
 	return *this;
 }
 CreateRenderPipelineAsyncCallbackInfo& CreateRenderPipelineAsyncCallbackInfo::setCallback(WGPUCreateRenderPipelineAsyncCallback callback) {
@@ -3161,11 +4788,11 @@ CreateRenderPipelineAsyncCallbackInfo& CreateRenderPipelineAsyncCallbackInfo::se
 
 // Methods of DeviceLostCallbackInfo
 DeviceLostCallbackInfo& DeviceLostCallbackInfo::setNextInChain(const ChainedStruct * nextInChain) {
-	this->nextInChain = reinterpret_cast<WGPUChainedStruct const *>(nextInChain);
+	this->nextInChain = nextInChain;
 	return *this;
 }
 DeviceLostCallbackInfo& DeviceLostCallbackInfo::setMode(CallbackMode mode) {
-	this->mode = static_cast<WGPUCallbackMode>(mode);
+	this->mode = mode;
 	return *this;
 }
 DeviceLostCallbackInfo& DeviceLostCallbackInfo::setCallback(WGPUDeviceLostCallback callback) {
@@ -3184,11 +4811,11 @@ DeviceLostCallbackInfo& DeviceLostCallbackInfo::setUserdata2(void * userdata2) {
 
 // Methods of PopErrorScopeCallbackInfo
 PopErrorScopeCallbackInfo& PopErrorScopeCallbackInfo::setNextInChain(const ChainedStruct * nextInChain) {
-	this->nextInChain = reinterpret_cast<WGPUChainedStruct const *>(nextInChain);
+	this->nextInChain = nextInChain;
 	return *this;
 }
 PopErrorScopeCallbackInfo& PopErrorScopeCallbackInfo::setMode(CallbackMode mode) {
-	this->mode = static_cast<WGPUCallbackMode>(mode);
+	this->mode = mode;
 	return *this;
 }
 PopErrorScopeCallbackInfo& PopErrorScopeCallbackInfo::setCallback(WGPUPopErrorScopeCallback callback) {
@@ -3207,11 +4834,11 @@ PopErrorScopeCallbackInfo& PopErrorScopeCallbackInfo::setUserdata2(void * userda
 
 // Methods of QueueWorkDoneCallbackInfo
 QueueWorkDoneCallbackInfo& QueueWorkDoneCallbackInfo::setNextInChain(const ChainedStruct * nextInChain) {
-	this->nextInChain = reinterpret_cast<WGPUChainedStruct const *>(nextInChain);
+	this->nextInChain = nextInChain;
 	return *this;
 }
 QueueWorkDoneCallbackInfo& QueueWorkDoneCallbackInfo::setMode(CallbackMode mode) {
-	this->mode = static_cast<WGPUCallbackMode>(mode);
+	this->mode = mode;
 	return *this;
 }
 QueueWorkDoneCallbackInfo& QueueWorkDoneCallbackInfo::setCallback(WGPUQueueWorkDoneCallback callback) {
@@ -3230,11 +4857,11 @@ QueueWorkDoneCallbackInfo& QueueWorkDoneCallbackInfo::setUserdata2(void * userda
 
 // Methods of RequestAdapterCallbackInfo
 RequestAdapterCallbackInfo& RequestAdapterCallbackInfo::setNextInChain(const ChainedStruct * nextInChain) {
-	this->nextInChain = reinterpret_cast<WGPUChainedStruct const *>(nextInChain);
+	this->nextInChain = nextInChain;
 	return *this;
 }
 RequestAdapterCallbackInfo& RequestAdapterCallbackInfo::setMode(CallbackMode mode) {
-	this->mode = static_cast<WGPUCallbackMode>(mode);
+	this->mode = mode;
 	return *this;
 }
 RequestAdapterCallbackInfo& RequestAdapterCallbackInfo::setCallback(WGPURequestAdapterCallback callback) {
@@ -3253,11 +4880,11 @@ RequestAdapterCallbackInfo& RequestAdapterCallbackInfo::setUserdata2(void * user
 
 // Methods of RequestDeviceCallbackInfo
 RequestDeviceCallbackInfo& RequestDeviceCallbackInfo::setNextInChain(const ChainedStruct * nextInChain) {
-	this->nextInChain = reinterpret_cast<WGPUChainedStruct const *>(nextInChain);
+	this->nextInChain = nextInChain;
 	return *this;
 }
 RequestDeviceCallbackInfo& RequestDeviceCallbackInfo::setMode(CallbackMode mode) {
-	this->mode = static_cast<WGPUCallbackMode>(mode);
+	this->mode = mode;
 	return *this;
 }
 RequestDeviceCallbackInfo& RequestDeviceCallbackInfo::setCallback(WGPURequestDeviceCallback callback) {
@@ -3276,7 +4903,7 @@ RequestDeviceCallbackInfo& RequestDeviceCallbackInfo::setUserdata2(void * userda
 
 // Methods of UncapturedErrorCallbackInfo
 UncapturedErrorCallbackInfo& UncapturedErrorCallbackInfo::setNextInChain(const ChainedStruct * nextInChain) {
-	this->nextInChain = reinterpret_cast<WGPUChainedStruct const *>(nextInChain);
+	this->nextInChain = nextInChain;
 	return *this;
 }
 UncapturedErrorCallbackInfo& UncapturedErrorCallbackInfo::setCallback(WGPUUncapturedErrorCallback callback) {
@@ -3295,7 +4922,7 @@ UncapturedErrorCallbackInfo& UncapturedErrorCallbackInfo::setUserdata2(void * us
 
 // Methods of AdapterInfo
 AdapterInfo& AdapterInfo::setNextInChain(ChainedStructOut * nextInChain) {
-	this->nextInChain = reinterpret_cast<WGPUChainedStructOut *>(nextInChain);
+	this->nextInChain = nextInChain;
 	return *this;
 }
 AdapterInfo& AdapterInfo::setVendor(StringView vendor) {
@@ -3315,11 +4942,11 @@ AdapterInfo& AdapterInfo::setDescription(StringView description) {
 	return *this;
 }
 AdapterInfo& AdapterInfo::setBackendType(BackendType backendType) {
-	this->backendType = static_cast<WGPUBackendType>(backendType);
+	this->backendType = backendType;
 	return *this;
 }
 AdapterInfo& AdapterInfo::setAdapterType(AdapterType adapterType) {
-	this->adapterType = static_cast<WGPUAdapterType>(adapterType);
+	this->adapterType = adapterType;
 	return *this;
 }
 AdapterInfo& AdapterInfo::setVendorID(uint32_t vendorID) {
@@ -3337,7 +4964,7 @@ void AdapterInfo::freeMembers() {
 
 // Methods of BindGroupEntry
 BindGroupEntry& BindGroupEntry::setNextInChain(const ChainedStruct * nextInChain) {
-	this->nextInChain = reinterpret_cast<WGPUChainedStruct const *>(nextInChain);
+	this->nextInChain = nextInChain;
 	return *this;
 }
 BindGroupEntry& BindGroupEntry::setBinding(uint32_t binding) {
@@ -3368,26 +4995,26 @@ BindGroupEntry& BindGroupEntry::setTextureView(TextureView textureView) {
 
 // Methods of BlendComponent
 BlendComponent& BlendComponent::setOperation(BlendOperation operation) {
-	this->operation = static_cast<WGPUBlendOperation>(operation);
+	this->operation = operation;
 	return *this;
 }
 BlendComponent& BlendComponent::setSrcFactor(BlendFactor srcFactor) {
-	this->srcFactor = static_cast<WGPUBlendFactor>(srcFactor);
+	this->srcFactor = srcFactor;
 	return *this;
 }
 BlendComponent& BlendComponent::setDstFactor(BlendFactor dstFactor) {
-	this->dstFactor = static_cast<WGPUBlendFactor>(dstFactor);
+	this->dstFactor = dstFactor;
 	return *this;
 }
 
 
 // Methods of BufferBindingLayout
 BufferBindingLayout& BufferBindingLayout::setNextInChain(const ChainedStruct * nextInChain) {
-	this->nextInChain = reinterpret_cast<WGPUChainedStruct const *>(nextInChain);
+	this->nextInChain = nextInChain;
 	return *this;
 }
 BufferBindingLayout& BufferBindingLayout::setType(BufferBindingType type) {
-	this->type = static_cast<WGPUBufferBindingType>(type);
+	this->type = type;
 	return *this;
 }
 BufferBindingLayout& BufferBindingLayout::setHasDynamicOffset(WGPUBool hasDynamicOffset) {
@@ -3402,7 +5029,7 @@ BufferBindingLayout& BufferBindingLayout::setMinBindingSize(uint64_t minBindingS
 
 // Methods of BufferDescriptor
 BufferDescriptor& BufferDescriptor::setNextInChain(const ChainedStruct * nextInChain) {
-	this->nextInChain = reinterpret_cast<WGPUChainedStruct const *>(nextInChain);
+	this->nextInChain = nextInChain;
 	return *this;
 }
 BufferDescriptor& BufferDescriptor::setLabel(StringView label) {
@@ -3410,7 +5037,7 @@ BufferDescriptor& BufferDescriptor::setLabel(StringView label) {
 	return *this;
 }
 BufferDescriptor& BufferDescriptor::setUsage(BufferUsage usage) {
-	this->usage = static_cast<WGPUBufferUsage>(usage);
+	this->usage = usage;
 	return *this;
 }
 BufferDescriptor& BufferDescriptor::setSize(uint64_t size) {
@@ -3444,7 +5071,7 @@ Color& Color::setA(double a) {
 
 // Methods of CommandBufferDescriptor
 CommandBufferDescriptor& CommandBufferDescriptor::setNextInChain(const ChainedStruct * nextInChain) {
-	this->nextInChain = reinterpret_cast<WGPUChainedStruct const *>(nextInChain);
+	this->nextInChain = nextInChain;
 	return *this;
 }
 CommandBufferDescriptor& CommandBufferDescriptor::setLabel(StringView label) {
@@ -3455,7 +5082,7 @@ CommandBufferDescriptor& CommandBufferDescriptor::setLabel(StringView label) {
 
 // Methods of CommandEncoderDescriptor
 CommandEncoderDescriptor& CommandEncoderDescriptor::setNextInChain(const ChainedStruct * nextInChain) {
-	this->nextInChain = reinterpret_cast<WGPUChainedStruct const *>(nextInChain);
+	this->nextInChain = nextInChain;
 	return *this;
 }
 CommandEncoderDescriptor& CommandEncoderDescriptor::setLabel(StringView label) {
@@ -3466,7 +5093,7 @@ CommandEncoderDescriptor& CommandEncoderDescriptor::setLabel(StringView label) {
 
 // Methods of CompilationMessage
 CompilationMessage& CompilationMessage::setNextInChain(const ChainedStruct * nextInChain) {
-	this->nextInChain = reinterpret_cast<WGPUChainedStruct const *>(nextInChain);
+	this->nextInChain = nextInChain;
 	return *this;
 }
 CompilationMessage& CompilationMessage::setMessage(StringView message) {
@@ -3474,7 +5101,7 @@ CompilationMessage& CompilationMessage::setMessage(StringView message) {
 	return *this;
 }
 CompilationMessage& CompilationMessage::setType(CompilationMessageType type) {
-	this->type = static_cast<WGPUCompilationMessageType>(type);
+	this->type = type;
 	return *this;
 }
 CompilationMessage& CompilationMessage::setLineNum(uint64_t lineNum) {
@@ -3512,7 +5139,7 @@ ComputePassTimestampWrites& ComputePassTimestampWrites::setEndOfPassWriteIndex(u
 
 // Methods of ConstantEntry
 ConstantEntry& ConstantEntry::setNextInChain(const ChainedStruct * nextInChain) {
-	this->nextInChain = reinterpret_cast<WGPUChainedStruct const *>(nextInChain);
+	this->nextInChain = nextInChain;
 	return *this;
 }
 ConstantEntry& ConstantEntry::setKey(StringView key) {
@@ -3549,7 +5176,7 @@ Future& Future::setId(uint64_t id) {
 
 // Methods of InstanceCapabilities
 InstanceCapabilities& InstanceCapabilities::setNextInChain(ChainedStructOut * nextInChain) {
-	this->nextInChain = reinterpret_cast<WGPUChainedStructOut *>(nextInChain);
+	this->nextInChain = nextInChain;
 	return *this;
 }
 InstanceCapabilities& InstanceCapabilities::setTimedWaitAnyEnable(WGPUBool timedWaitAnyEnable) {
@@ -3564,7 +5191,7 @@ InstanceCapabilities& InstanceCapabilities::setTimedWaitAnyMaxCount(size_t timed
 
 // Methods of Limits
 Limits& Limits::setNextInChain(ChainedStructOut * nextInChain) {
-	this->nextInChain = reinterpret_cast<WGPUChainedStructOut *>(nextInChain);
+	this->nextInChain = nextInChain;
 	return *this;
 }
 Limits& Limits::setMaxTextureDimension1D(uint32_t maxTextureDimension1D) {
@@ -3695,7 +5322,7 @@ Limits& Limits::setMaxComputeWorkgroupsPerDimension(uint32_t maxComputeWorkgroup
 
 // Methods of MultisampleState
 MultisampleState& MultisampleState::setNextInChain(const ChainedStruct * nextInChain) {
-	this->nextInChain = reinterpret_cast<WGPUChainedStruct const *>(nextInChain);
+	this->nextInChain = nextInChain;
 	return *this;
 }
 MultisampleState& MultisampleState::setCount(uint32_t count) {
@@ -3729,49 +5356,49 @@ Origin3D& Origin3D::setZ(uint32_t z) {
 
 // Methods of PipelineLayoutDescriptor
 PipelineLayoutDescriptor& PipelineLayoutDescriptor::setNextInChain(const ChainedStruct * nextInChain) {
-	this->nextInChain = reinterpret_cast<WGPUChainedStruct const *>(nextInChain);
+	this->nextInChain = nextInChain;
 	return *this;
 }
 PipelineLayoutDescriptor& PipelineLayoutDescriptor::setLabel(StringView label) {
 	this->label = label;
 	return *this;
 }
-PipelineLayoutDescriptor& PipelineLayoutDescriptor::setBindGroupLayouts(uint32_t bindGroupLayoutCount, const BindGroupLayout * bindGroupLayouts) {
+PipelineLayoutDescriptor& PipelineLayoutDescriptor::setBindGroupLayouts(size_t bindGroupLayoutCount, const BindGroupLayout * bindGroupLayouts) {
 	this->bindGroupLayoutCount = bindGroupLayoutCount;
-	this->bindGroupLayouts = reinterpret_cast<WGPUBindGroupLayout const *>(bindGroupLayouts);
+	this->bindGroupLayouts = bindGroupLayouts;
 	return *this;
 }
 PipelineLayoutDescriptor& PipelineLayoutDescriptor::setBindGroupLayouts(const std::vector<BindGroupLayout>& bindGroupLayouts) {
-	this->bindGroupLayoutCount = static_cast<uint32_t>(bindGroupLayouts.size());
-	this->bindGroupLayouts = reinterpret_cast<WGPUBindGroupLayout const *>(bindGroupLayouts.data());
+	this->bindGroupLayoutCount = static_cast<size_t>(bindGroupLayouts.size());
+	this->bindGroupLayouts = reinterpret_cast<const BindGroupLayout *>(bindGroupLayouts.data());
 	return *this;
 }
 PipelineLayoutDescriptor& PipelineLayoutDescriptor::setBindGroupLayouts(const std::span<const BindGroupLayout>& bindGroupLayouts) {
-	this->bindGroupLayoutCount = static_cast<uint32_t>(bindGroupLayouts.size());
-	this->bindGroupLayouts = reinterpret_cast<WGPUBindGroupLayout const *>(bindGroupLayouts.data());
+	this->bindGroupLayoutCount = static_cast<size_t>(bindGroupLayouts.size());
+	this->bindGroupLayouts = reinterpret_cast<const BindGroupLayout *>(bindGroupLayouts.data());
 	return *this;
 }
 
 
 // Methods of PrimitiveState
 PrimitiveState& PrimitiveState::setNextInChain(const ChainedStruct * nextInChain) {
-	this->nextInChain = reinterpret_cast<WGPUChainedStruct const *>(nextInChain);
+	this->nextInChain = nextInChain;
 	return *this;
 }
 PrimitiveState& PrimitiveState::setTopology(PrimitiveTopology topology) {
-	this->topology = static_cast<WGPUPrimitiveTopology>(topology);
+	this->topology = topology;
 	return *this;
 }
 PrimitiveState& PrimitiveState::setStripIndexFormat(IndexFormat stripIndexFormat) {
-	this->stripIndexFormat = static_cast<WGPUIndexFormat>(stripIndexFormat);
+	this->stripIndexFormat = stripIndexFormat;
 	return *this;
 }
 PrimitiveState& PrimitiveState::setFrontFace(FrontFace frontFace) {
-	this->frontFace = static_cast<WGPUFrontFace>(frontFace);
+	this->frontFace = frontFace;
 	return *this;
 }
 PrimitiveState& PrimitiveState::setCullMode(CullMode cullMode) {
-	this->cullMode = static_cast<WGPUCullMode>(cullMode);
+	this->cullMode = cullMode;
 	return *this;
 }
 PrimitiveState& PrimitiveState::setUnclippedDepth(WGPUBool unclippedDepth) {
@@ -3782,7 +5409,7 @@ PrimitiveState& PrimitiveState::setUnclippedDepth(WGPUBool unclippedDepth) {
 
 // Methods of QuerySetDescriptor
 QuerySetDescriptor& QuerySetDescriptor::setNextInChain(const ChainedStruct * nextInChain) {
-	this->nextInChain = reinterpret_cast<WGPUChainedStruct const *>(nextInChain);
+	this->nextInChain = nextInChain;
 	return *this;
 }
 QuerySetDescriptor& QuerySetDescriptor::setLabel(StringView label) {
@@ -3790,7 +5417,7 @@ QuerySetDescriptor& QuerySetDescriptor::setLabel(StringView label) {
 	return *this;
 }
 QuerySetDescriptor& QuerySetDescriptor::setType(QueryType type) {
-	this->type = static_cast<WGPUQueryType>(type);
+	this->type = type;
 	return *this;
 }
 QuerySetDescriptor& QuerySetDescriptor::setCount(uint32_t count) {
@@ -3801,7 +5428,7 @@ QuerySetDescriptor& QuerySetDescriptor::setCount(uint32_t count) {
 
 // Methods of QueueDescriptor
 QueueDescriptor& QueueDescriptor::setNextInChain(const ChainedStruct * nextInChain) {
-	this->nextInChain = reinterpret_cast<WGPUChainedStruct const *>(nextInChain);
+	this->nextInChain = nextInChain;
 	return *this;
 }
 QueueDescriptor& QueueDescriptor::setLabel(StringView label) {
@@ -3812,7 +5439,7 @@ QueueDescriptor& QueueDescriptor::setLabel(StringView label) {
 
 // Methods of RenderBundleDescriptor
 RenderBundleDescriptor& RenderBundleDescriptor::setNextInChain(const ChainedStruct * nextInChain) {
-	this->nextInChain = reinterpret_cast<WGPUChainedStruct const *>(nextInChain);
+	this->nextInChain = nextInChain;
 	return *this;
 }
 RenderBundleDescriptor& RenderBundleDescriptor::setLabel(StringView label) {
@@ -3823,30 +5450,34 @@ RenderBundleDescriptor& RenderBundleDescriptor::setLabel(StringView label) {
 
 // Methods of RenderBundleEncoderDescriptor
 RenderBundleEncoderDescriptor& RenderBundleEncoderDescriptor::setNextInChain(const ChainedStruct * nextInChain) {
-	this->nextInChain = reinterpret_cast<WGPUChainedStruct const *>(nextInChain);
+	this->nextInChain = nextInChain;
 	return *this;
 }
 RenderBundleEncoderDescriptor& RenderBundleEncoderDescriptor::setLabel(StringView label) {
 	this->label = label;
 	return *this;
 }
-RenderBundleEncoderDescriptor& RenderBundleEncoderDescriptor::setColorFormats(uint32_t colorFormatCount, const TextureFormat * colorFormats) {
+RenderBundleEncoderDescriptor& RenderBundleEncoderDescriptor::setColorFormats(size_t colorFormatCount, const TextureFormat * colorFormats) {
 	this->colorFormatCount = colorFormatCount;
-	this->colorFormats = reinterpret_cast<WGPUTextureFormat const *>(colorFormats);
+	this->colorFormats = colorFormats;
 	return *this;
 }
 RenderBundleEncoderDescriptor& RenderBundleEncoderDescriptor::setColorFormats(const std::vector<TextureFormat>& colorFormats) {
-	this->colorFormatCount = static_cast<uint32_t>(colorFormats.size());
-	this->colorFormats = reinterpret_cast<WGPUTextureFormat const *>(colorFormats.data());
+	this->colorFormatCount = static_cast<size_t>(colorFormats.size());
+	this->colorFormats = reinterpret_cast<const TextureFormat *>(colorFormats.data());
 	return *this;
 }
 RenderBundleEncoderDescriptor& RenderBundleEncoderDescriptor::setColorFormats(const std::span<const TextureFormat>& colorFormats) {
-	this->colorFormatCount = static_cast<uint32_t>(colorFormats.size());
-	this->colorFormats = reinterpret_cast<WGPUTextureFormat const *>(colorFormats.data());
+	this->colorFormatCount = static_cast<size_t>(colorFormats.size());
+	this->colorFormats = reinterpret_cast<const TextureFormat *>(colorFormats.data());
 	return *this;
 }
 RenderBundleEncoderDescriptor& RenderBundleEncoderDescriptor::setDepthStencilFormat(TextureFormat depthStencilFormat) {
-	this->depthStencilFormat = static_cast<WGPUTextureFormat>(depthStencilFormat);
+	this->depthStencilFormat = depthStencilFormat;
+	return *this;
+}
+RenderBundleEncoderDescriptor& RenderBundleEncoderDescriptor::setSampleCount(uint32_t sampleCount) {
+	this->sampleCount = sampleCount;
 	return *this;
 }
 RenderBundleEncoderDescriptor& RenderBundleEncoderDescriptor::setDepthReadOnly(WGPUBool depthReadOnly) {
@@ -3857,10 +5488,6 @@ RenderBundleEncoderDescriptor& RenderBundleEncoderDescriptor::setStencilReadOnly
 	this->stencilReadOnly = stencilReadOnly;
 	return *this;
 }
-RenderBundleEncoderDescriptor& RenderBundleEncoderDescriptor::setSampleCount(uint32_t sampleCount) {
-	this->sampleCount = sampleCount;
-	return *this;
-}
 
 
 // Methods of RenderPassDepthStencilAttachment
@@ -3869,11 +5496,11 @@ RenderPassDepthStencilAttachment& RenderPassDepthStencilAttachment::setView(Text
 	return *this;
 }
 RenderPassDepthStencilAttachment& RenderPassDepthStencilAttachment::setDepthLoadOp(LoadOp depthLoadOp) {
-	this->depthLoadOp = static_cast<WGPULoadOp>(depthLoadOp);
+	this->depthLoadOp = depthLoadOp;
 	return *this;
 }
 RenderPassDepthStencilAttachment& RenderPassDepthStencilAttachment::setDepthStoreOp(StoreOp depthStoreOp) {
-	this->depthStoreOp = static_cast<WGPUStoreOp>(depthStoreOp);
+	this->depthStoreOp = depthStoreOp;
 	return *this;
 }
 RenderPassDepthStencilAttachment& RenderPassDepthStencilAttachment::setDepthClearValue(float depthClearValue) {
@@ -3885,11 +5512,11 @@ RenderPassDepthStencilAttachment& RenderPassDepthStencilAttachment::setDepthRead
 	return *this;
 }
 RenderPassDepthStencilAttachment& RenderPassDepthStencilAttachment::setStencilLoadOp(LoadOp stencilLoadOp) {
-	this->stencilLoadOp = static_cast<WGPULoadOp>(stencilLoadOp);
+	this->stencilLoadOp = stencilLoadOp;
 	return *this;
 }
 RenderPassDepthStencilAttachment& RenderPassDepthStencilAttachment::setStencilStoreOp(StoreOp stencilStoreOp) {
-	this->stencilStoreOp = static_cast<WGPUStoreOp>(stencilStoreOp);
+	this->stencilStoreOp = stencilStoreOp;
 	return *this;
 }
 RenderPassDepthStencilAttachment& RenderPassDepthStencilAttachment::setStencilClearValue(uint32_t stencilClearValue) {
@@ -3926,15 +5553,15 @@ RenderPassTimestampWrites& RenderPassTimestampWrites::setEndOfPassWriteIndex(uin
 
 // Methods of RequestAdapterOptions
 RequestAdapterOptions& RequestAdapterOptions::setNextInChain(const ChainedStruct * nextInChain) {
-	this->nextInChain = reinterpret_cast<WGPUChainedStruct const *>(nextInChain);
+	this->nextInChain = nextInChain;
 	return *this;
 }
 RequestAdapterOptions& RequestAdapterOptions::setFeatureLevel(FeatureLevel featureLevel) {
-	this->featureLevel = static_cast<WGPUFeatureLevel>(featureLevel);
+	this->featureLevel = featureLevel;
 	return *this;
 }
 RequestAdapterOptions& RequestAdapterOptions::setPowerPreference(PowerPreference powerPreference) {
-	this->powerPreference = static_cast<WGPUPowerPreference>(powerPreference);
+	this->powerPreference = powerPreference;
 	return *this;
 }
 RequestAdapterOptions& RequestAdapterOptions::setForceFallbackAdapter(WGPUBool forceFallbackAdapter) {
@@ -3942,7 +5569,7 @@ RequestAdapterOptions& RequestAdapterOptions::setForceFallbackAdapter(WGPUBool f
 	return *this;
 }
 RequestAdapterOptions& RequestAdapterOptions::setBackendType(BackendType backendType) {
-	this->backendType = static_cast<WGPUBackendType>(backendType);
+	this->backendType = backendType;
 	return *this;
 }
 RequestAdapterOptions& RequestAdapterOptions::setCompatibleSurface(Surface compatibleSurface) {
@@ -3953,18 +5580,18 @@ RequestAdapterOptions& RequestAdapterOptions::setCompatibleSurface(Surface compa
 
 // Methods of SamplerBindingLayout
 SamplerBindingLayout& SamplerBindingLayout::setNextInChain(const ChainedStruct * nextInChain) {
-	this->nextInChain = reinterpret_cast<WGPUChainedStruct const *>(nextInChain);
+	this->nextInChain = nextInChain;
 	return *this;
 }
 SamplerBindingLayout& SamplerBindingLayout::setType(SamplerBindingType type) {
-	this->type = static_cast<WGPUSamplerBindingType>(type);
+	this->type = type;
 	return *this;
 }
 
 
 // Methods of SamplerDescriptor
 SamplerDescriptor& SamplerDescriptor::setNextInChain(const ChainedStruct * nextInChain) {
-	this->nextInChain = reinterpret_cast<WGPUChainedStruct const *>(nextInChain);
+	this->nextInChain = nextInChain;
 	return *this;
 }
 SamplerDescriptor& SamplerDescriptor::setLabel(StringView label) {
@@ -3972,27 +5599,27 @@ SamplerDescriptor& SamplerDescriptor::setLabel(StringView label) {
 	return *this;
 }
 SamplerDescriptor& SamplerDescriptor::setAddressModeU(AddressMode addressModeU) {
-	this->addressModeU = static_cast<WGPUAddressMode>(addressModeU);
+	this->addressModeU = addressModeU;
 	return *this;
 }
 SamplerDescriptor& SamplerDescriptor::setAddressModeV(AddressMode addressModeV) {
-	this->addressModeV = static_cast<WGPUAddressMode>(addressModeV);
+	this->addressModeV = addressModeV;
 	return *this;
 }
 SamplerDescriptor& SamplerDescriptor::setAddressModeW(AddressMode addressModeW) {
-	this->addressModeW = static_cast<WGPUAddressMode>(addressModeW);
+	this->addressModeW = addressModeW;
 	return *this;
 }
 SamplerDescriptor& SamplerDescriptor::setMagFilter(FilterMode magFilter) {
-	this->magFilter = static_cast<WGPUFilterMode>(magFilter);
+	this->magFilter = magFilter;
 	return *this;
 }
 SamplerDescriptor& SamplerDescriptor::setMinFilter(FilterMode minFilter) {
-	this->minFilter = static_cast<WGPUFilterMode>(minFilter);
+	this->minFilter = minFilter;
 	return *this;
 }
 SamplerDescriptor& SamplerDescriptor::setMipmapFilter(MipmapFilterMode mipmapFilter) {
-	this->mipmapFilter = static_cast<WGPUMipmapFilterMode>(mipmapFilter);
+	this->mipmapFilter = mipmapFilter;
 	return *this;
 }
 SamplerDescriptor& SamplerDescriptor::setLodMinClamp(float lodMinClamp) {
@@ -4004,7 +5631,7 @@ SamplerDescriptor& SamplerDescriptor::setLodMaxClamp(float lodMaxClamp) {
 	return *this;
 }
 SamplerDescriptor& SamplerDescriptor::setCompare(CompareFunction compare) {
-	this->compare = static_cast<WGPUCompareFunction>(compare);
+	this->compare = compare;
 	return *this;
 }
 SamplerDescriptor& SamplerDescriptor::setMaxAnisotropy(uint16_t maxAnisotropy) {
@@ -4015,7 +5642,7 @@ SamplerDescriptor& SamplerDescriptor::setMaxAnisotropy(uint16_t maxAnisotropy) {
 
 // Methods of ShaderModuleDescriptor
 ShaderModuleDescriptor& ShaderModuleDescriptor::setNextInChain(const ChainedStruct * nextInChain) {
-	this->nextInChain = reinterpret_cast<WGPUChainedStruct const *>(nextInChain);
+	this->nextInChain = nextInChain;
 	return *this;
 }
 ShaderModuleDescriptor& ShaderModuleDescriptor::setLabel(StringView label) {
@@ -4044,56 +5671,56 @@ ShaderSourceWGSL& ShaderSourceWGSL::setCode(StringView code) {
 
 // Methods of StencilFaceState
 StencilFaceState& StencilFaceState::setCompare(CompareFunction compare) {
-	this->compare = static_cast<WGPUCompareFunction>(compare);
+	this->compare = compare;
 	return *this;
 }
 StencilFaceState& StencilFaceState::setFailOp(StencilOperation failOp) {
-	this->failOp = static_cast<WGPUStencilOperation>(failOp);
+	this->failOp = failOp;
 	return *this;
 }
 StencilFaceState& StencilFaceState::setDepthFailOp(StencilOperation depthFailOp) {
-	this->depthFailOp = static_cast<WGPUStencilOperation>(depthFailOp);
+	this->depthFailOp = depthFailOp;
 	return *this;
 }
 StencilFaceState& StencilFaceState::setPassOp(StencilOperation passOp) {
-	this->passOp = static_cast<WGPUStencilOperation>(passOp);
+	this->passOp = passOp;
 	return *this;
 }
 
 
 // Methods of StorageTextureBindingLayout
 StorageTextureBindingLayout& StorageTextureBindingLayout::setNextInChain(const ChainedStruct * nextInChain) {
-	this->nextInChain = reinterpret_cast<WGPUChainedStruct const *>(nextInChain);
+	this->nextInChain = nextInChain;
 	return *this;
 }
 StorageTextureBindingLayout& StorageTextureBindingLayout::setAccess(StorageTextureAccess access) {
-	this->access = static_cast<WGPUStorageTextureAccess>(access);
+	this->access = access;
 	return *this;
 }
 StorageTextureBindingLayout& StorageTextureBindingLayout::setFormat(TextureFormat format) {
-	this->format = static_cast<WGPUTextureFormat>(format);
+	this->format = format;
 	return *this;
 }
 StorageTextureBindingLayout& StorageTextureBindingLayout::setViewDimension(TextureViewDimension viewDimension) {
-	this->viewDimension = static_cast<WGPUTextureViewDimension>(viewDimension);
+	this->viewDimension = viewDimension;
 	return *this;
 }
 
 
 // Methods of SupportedFeatures
-SupportedFeatures& SupportedFeatures::setFeatures(uint32_t featureCount, const FeatureName * features) {
+SupportedFeatures& SupportedFeatures::setFeatures(size_t featureCount, const FeatureName * features) {
 	this->featureCount = featureCount;
-	this->features = reinterpret_cast<WGPUFeatureName const *>(features);
+	this->features = features;
 	return *this;
 }
 SupportedFeatures& SupportedFeatures::setFeatures(const std::vector<FeatureName>& features) {
-	this->featureCount = static_cast<uint32_t>(features.size());
-	this->features = reinterpret_cast<WGPUFeatureName const *>(features.data());
+	this->featureCount = static_cast<size_t>(features.size());
+	this->features = reinterpret_cast<const FeatureName *>(features.data());
 	return *this;
 }
 SupportedFeatures& SupportedFeatures::setFeatures(const std::span<const FeatureName>& features) {
-	this->featureCount = static_cast<uint32_t>(features.size());
-	this->features = reinterpret_cast<WGPUFeatureName const *>(features.data());
+	this->featureCount = static_cast<size_t>(features.size());
+	this->features = reinterpret_cast<const FeatureName *>(features.data());
 	return *this;
 }
 void SupportedFeatures::freeMembers() {
@@ -4102,19 +5729,19 @@ void SupportedFeatures::freeMembers() {
 
 
 // Methods of SupportedWGSLLanguageFeatures
-SupportedWGSLLanguageFeatures& SupportedWGSLLanguageFeatures::setFeatures(uint32_t featureCount, const WGSLLanguageFeatureName * features) {
+SupportedWGSLLanguageFeatures& SupportedWGSLLanguageFeatures::setFeatures(size_t featureCount, const WGSLLanguageFeatureName * features) {
 	this->featureCount = featureCount;
-	this->features = reinterpret_cast<WGPUWGSLLanguageFeatureName const *>(features);
+	this->features = features;
 	return *this;
 }
 SupportedWGSLLanguageFeatures& SupportedWGSLLanguageFeatures::setFeatures(const std::vector<WGSLLanguageFeatureName>& features) {
-	this->featureCount = static_cast<uint32_t>(features.size());
-	this->features = reinterpret_cast<WGPUWGSLLanguageFeatureName const *>(features.data());
+	this->featureCount = static_cast<size_t>(features.size());
+	this->features = reinterpret_cast<const WGSLLanguageFeatureName *>(features.data());
 	return *this;
 }
 SupportedWGSLLanguageFeatures& SupportedWGSLLanguageFeatures::setFeatures(const std::span<const WGSLLanguageFeatureName>& features) {
-	this->featureCount = static_cast<uint32_t>(features.size());
-	this->features = reinterpret_cast<WGPUWGSLLanguageFeatureName const *>(features.data());
+	this->featureCount = static_cast<size_t>(features.size());
+	this->features = reinterpret_cast<const WGSLLanguageFeatureName *>(features.data());
 	return *this;
 }
 void SupportedWGSLLanguageFeatures::freeMembers() {
@@ -4124,56 +5751,56 @@ void SupportedWGSLLanguageFeatures::freeMembers() {
 
 // Methods of SurfaceCapabilities
 SurfaceCapabilities& SurfaceCapabilities::setNextInChain(ChainedStructOut * nextInChain) {
-	this->nextInChain = reinterpret_cast<WGPUChainedStructOut *>(nextInChain);
+	this->nextInChain = nextInChain;
 	return *this;
 }
 SurfaceCapabilities& SurfaceCapabilities::setUsages(TextureUsage usages) {
-	this->usages = static_cast<WGPUTextureUsage>(usages);
+	this->usages = usages;
 	return *this;
 }
-SurfaceCapabilities& SurfaceCapabilities::setFormats(uint32_t formatCount, const TextureFormat * formats) {
+SurfaceCapabilities& SurfaceCapabilities::setFormats(size_t formatCount, const TextureFormat * formats) {
 	this->formatCount = formatCount;
-	this->formats = reinterpret_cast<WGPUTextureFormat const *>(formats);
+	this->formats = formats;
 	return *this;
 }
 SurfaceCapabilities& SurfaceCapabilities::setFormats(const std::vector<TextureFormat>& formats) {
-	this->formatCount = static_cast<uint32_t>(formats.size());
-	this->formats = reinterpret_cast<WGPUTextureFormat const *>(formats.data());
+	this->formatCount = static_cast<size_t>(formats.size());
+	this->formats = reinterpret_cast<const TextureFormat *>(formats.data());
 	return *this;
 }
 SurfaceCapabilities& SurfaceCapabilities::setFormats(const std::span<const TextureFormat>& formats) {
-	this->formatCount = static_cast<uint32_t>(formats.size());
-	this->formats = reinterpret_cast<WGPUTextureFormat const *>(formats.data());
+	this->formatCount = static_cast<size_t>(formats.size());
+	this->formats = reinterpret_cast<const TextureFormat *>(formats.data());
 	return *this;
 }
-SurfaceCapabilities& SurfaceCapabilities::setPresentModes(uint32_t presentModeCount, const PresentMode * presentModes) {
+SurfaceCapabilities& SurfaceCapabilities::setPresentModes(size_t presentModeCount, const PresentMode * presentModes) {
 	this->presentModeCount = presentModeCount;
-	this->presentModes = reinterpret_cast<WGPUPresentMode const *>(presentModes);
+	this->presentModes = presentModes;
 	return *this;
 }
 SurfaceCapabilities& SurfaceCapabilities::setPresentModes(const std::vector<PresentMode>& presentModes) {
-	this->presentModeCount = static_cast<uint32_t>(presentModes.size());
-	this->presentModes = reinterpret_cast<WGPUPresentMode const *>(presentModes.data());
+	this->presentModeCount = static_cast<size_t>(presentModes.size());
+	this->presentModes = reinterpret_cast<const PresentMode *>(presentModes.data());
 	return *this;
 }
 SurfaceCapabilities& SurfaceCapabilities::setPresentModes(const std::span<const PresentMode>& presentModes) {
-	this->presentModeCount = static_cast<uint32_t>(presentModes.size());
-	this->presentModes = reinterpret_cast<WGPUPresentMode const *>(presentModes.data());
+	this->presentModeCount = static_cast<size_t>(presentModes.size());
+	this->presentModes = reinterpret_cast<const PresentMode *>(presentModes.data());
 	return *this;
 }
-SurfaceCapabilities& SurfaceCapabilities::setAlphaModes(uint32_t alphaModeCount, const CompositeAlphaMode * alphaModes) {
+SurfaceCapabilities& SurfaceCapabilities::setAlphaModes(size_t alphaModeCount, const CompositeAlphaMode * alphaModes) {
 	this->alphaModeCount = alphaModeCount;
-	this->alphaModes = reinterpret_cast<WGPUCompositeAlphaMode const *>(alphaModes);
+	this->alphaModes = alphaModes;
 	return *this;
 }
 SurfaceCapabilities& SurfaceCapabilities::setAlphaModes(const std::vector<CompositeAlphaMode>& alphaModes) {
-	this->alphaModeCount = static_cast<uint32_t>(alphaModes.size());
-	this->alphaModes = reinterpret_cast<WGPUCompositeAlphaMode const *>(alphaModes.data());
+	this->alphaModeCount = static_cast<size_t>(alphaModes.size());
+	this->alphaModes = reinterpret_cast<const CompositeAlphaMode *>(alphaModes.data());
 	return *this;
 }
 SurfaceCapabilities& SurfaceCapabilities::setAlphaModes(const std::span<const CompositeAlphaMode>& alphaModes) {
-	this->alphaModeCount = static_cast<uint32_t>(alphaModes.size());
-	this->alphaModes = reinterpret_cast<WGPUCompositeAlphaMode const *>(alphaModes.data());
+	this->alphaModeCount = static_cast<size_t>(alphaModes.size());
+	this->alphaModes = reinterpret_cast<const CompositeAlphaMode *>(alphaModes.data());
 	return *this;
 }
 void SurfaceCapabilities::freeMembers() {
@@ -4183,7 +5810,7 @@ void SurfaceCapabilities::freeMembers() {
 
 // Methods of SurfaceConfiguration
 SurfaceConfiguration& SurfaceConfiguration::setNextInChain(const ChainedStruct * nextInChain) {
-	this->nextInChain = reinterpret_cast<WGPUChainedStruct const *>(nextInChain);
+	this->nextInChain = nextInChain;
 	return *this;
 }
 SurfaceConfiguration& SurfaceConfiguration::setDevice(Device device) {
@@ -4191,11 +5818,11 @@ SurfaceConfiguration& SurfaceConfiguration::setDevice(Device device) {
 	return *this;
 }
 SurfaceConfiguration& SurfaceConfiguration::setFormat(TextureFormat format) {
-	this->format = static_cast<WGPUTextureFormat>(format);
+	this->format = format;
 	return *this;
 }
 SurfaceConfiguration& SurfaceConfiguration::setUsage(TextureUsage usage) {
-	this->usage = static_cast<WGPUTextureUsage>(usage);
+	this->usage = usage;
 	return *this;
 }
 SurfaceConfiguration& SurfaceConfiguration::setWidth(uint32_t width) {
@@ -4206,34 +5833,34 @@ SurfaceConfiguration& SurfaceConfiguration::setHeight(uint32_t height) {
 	this->height = height;
 	return *this;
 }
-SurfaceConfiguration& SurfaceConfiguration::setViewFormats(uint32_t viewFormatCount, const TextureFormat * viewFormats) {
+SurfaceConfiguration& SurfaceConfiguration::setViewFormats(size_t viewFormatCount, const TextureFormat * viewFormats) {
 	this->viewFormatCount = viewFormatCount;
-	this->viewFormats = reinterpret_cast<WGPUTextureFormat const *>(viewFormats);
+	this->viewFormats = viewFormats;
 	return *this;
 }
 SurfaceConfiguration& SurfaceConfiguration::setViewFormats(const std::vector<TextureFormat>& viewFormats) {
-	this->viewFormatCount = static_cast<uint32_t>(viewFormats.size());
-	this->viewFormats = reinterpret_cast<WGPUTextureFormat const *>(viewFormats.data());
+	this->viewFormatCount = static_cast<size_t>(viewFormats.size());
+	this->viewFormats = reinterpret_cast<const TextureFormat *>(viewFormats.data());
 	return *this;
 }
 SurfaceConfiguration& SurfaceConfiguration::setViewFormats(const std::span<const TextureFormat>& viewFormats) {
-	this->viewFormatCount = static_cast<uint32_t>(viewFormats.size());
-	this->viewFormats = reinterpret_cast<WGPUTextureFormat const *>(viewFormats.data());
+	this->viewFormatCount = static_cast<size_t>(viewFormats.size());
+	this->viewFormats = reinterpret_cast<const TextureFormat *>(viewFormats.data());
 	return *this;
 }
 SurfaceConfiguration& SurfaceConfiguration::setAlphaMode(CompositeAlphaMode alphaMode) {
-	this->alphaMode = static_cast<WGPUCompositeAlphaMode>(alphaMode);
+	this->alphaMode = alphaMode;
 	return *this;
 }
 SurfaceConfiguration& SurfaceConfiguration::setPresentMode(PresentMode presentMode) {
-	this->presentMode = static_cast<WGPUPresentMode>(presentMode);
+	this->presentMode = presentMode;
 	return *this;
 }
 
 
 // Methods of SurfaceDescriptor
 SurfaceDescriptor& SurfaceDescriptor::setNextInChain(const ChainedStruct * nextInChain) {
-	this->nextInChain = reinterpret_cast<WGPUChainedStruct const *>(nextInChain);
+	this->nextInChain = nextInChain;
 	return *this;
 }
 SurfaceDescriptor& SurfaceDescriptor::setLabel(StringView label) {
@@ -4302,7 +5929,7 @@ SurfaceSourceXlibWindow& SurfaceSourceXlibWindow::setWindow(uint64_t window) {
 
 // Methods of SurfaceTexture
 SurfaceTexture& SurfaceTexture::setNextInChain(ChainedStructOut * nextInChain) {
-	this->nextInChain = reinterpret_cast<WGPUChainedStructOut *>(nextInChain);
+	this->nextInChain = nextInChain;
 	return *this;
 }
 SurfaceTexture& SurfaceTexture::setTexture(Texture texture) {
@@ -4310,7 +5937,7 @@ SurfaceTexture& SurfaceTexture::setTexture(Texture texture) {
 	return *this;
 }
 SurfaceTexture& SurfaceTexture::setStatus(SurfaceGetCurrentTextureStatus status) {
-	this->status = static_cast<WGPUSurfaceGetCurrentTextureStatus>(status);
+	this->status = status;
 	return *this;
 }
 
@@ -4332,15 +5959,15 @@ TexelCopyBufferLayout& TexelCopyBufferLayout::setRowsPerImage(uint32_t rowsPerIm
 
 // Methods of TextureBindingLayout
 TextureBindingLayout& TextureBindingLayout::setNextInChain(const ChainedStruct * nextInChain) {
-	this->nextInChain = reinterpret_cast<WGPUChainedStruct const *>(nextInChain);
+	this->nextInChain = nextInChain;
 	return *this;
 }
 TextureBindingLayout& TextureBindingLayout::setSampleType(TextureSampleType sampleType) {
-	this->sampleType = static_cast<WGPUTextureSampleType>(sampleType);
+	this->sampleType = sampleType;
 	return *this;
 }
 TextureBindingLayout& TextureBindingLayout::setViewDimension(TextureViewDimension viewDimension) {
-	this->viewDimension = static_cast<WGPUTextureViewDimension>(viewDimension);
+	this->viewDimension = viewDimension;
 	return *this;
 }
 TextureBindingLayout& TextureBindingLayout::setMultisampled(WGPUBool multisampled) {
@@ -4351,7 +5978,7 @@ TextureBindingLayout& TextureBindingLayout::setMultisampled(WGPUBool multisample
 
 // Methods of TextureViewDescriptor
 TextureViewDescriptor& TextureViewDescriptor::setNextInChain(const ChainedStruct * nextInChain) {
-	this->nextInChain = reinterpret_cast<WGPUChainedStruct const *>(nextInChain);
+	this->nextInChain = nextInChain;
 	return *this;
 }
 TextureViewDescriptor& TextureViewDescriptor::setLabel(StringView label) {
@@ -4359,42 +5986,42 @@ TextureViewDescriptor& TextureViewDescriptor::setLabel(StringView label) {
 	return *this;
 }
 TextureViewDescriptor& TextureViewDescriptor::setFormat(TextureFormat format) {
-	this->format = static_cast<WGPUTextureFormat>(format);
+	this->format = format;
 	return *this;
 }
 TextureViewDescriptor& TextureViewDescriptor::setDimension(TextureViewDimension dimension) {
-	this->dimension = static_cast<WGPUTextureViewDimension>(dimension);
+	this->dimension = dimension;
 	return *this;
 }
 TextureViewDescriptor& TextureViewDescriptor::setBaseMipLevel(uint32_t baseMipLevel) {
 	this->baseMipLevel = baseMipLevel;
 	return *this;
 }
-TextureViewDescriptor& TextureViewDescriptor::setBaseArrayLayer(uint32_t baseArrayLayer) {
-	this->baseArrayLayer = baseArrayLayer;
-	return *this;
-}
-TextureViewDescriptor& TextureViewDescriptor::setAspect(TextureAspect aspect) {
-	this->aspect = static_cast<WGPUTextureAspect>(aspect);
-	return *this;
-}
-TextureViewDescriptor& TextureViewDescriptor::setUsage(TextureUsage usage) {
-	this->usage = static_cast<WGPUTextureUsage>(usage);
-	return *this;
-}
 TextureViewDescriptor& TextureViewDescriptor::setMipLevelCount(uint32_t mipLevelCount) {
 	this->mipLevelCount = mipLevelCount;
+	return *this;
+}
+TextureViewDescriptor& TextureViewDescriptor::setBaseArrayLayer(uint32_t baseArrayLayer) {
+	this->baseArrayLayer = baseArrayLayer;
 	return *this;
 }
 TextureViewDescriptor& TextureViewDescriptor::setArrayLayerCount(uint32_t arrayLayerCount) {
 	this->arrayLayerCount = arrayLayerCount;
 	return *this;
 }
+TextureViewDescriptor& TextureViewDescriptor::setAspect(TextureAspect aspect) {
+	this->aspect = aspect;
+	return *this;
+}
+TextureViewDescriptor& TextureViewDescriptor::setUsage(TextureUsage usage) {
+	this->usage = usage;
+	return *this;
+}
 
 
 // Methods of VertexAttribute
 VertexAttribute& VertexAttribute::setFormat(VertexFormat format) {
-	this->format = static_cast<WGPUVertexFormat>(format);
+	this->format = format;
 	return *this;
 }
 VertexAttribute& VertexAttribute::setOffset(uint64_t offset) {
@@ -4409,7 +6036,7 @@ VertexAttribute& VertexAttribute::setShaderLocation(uint32_t shaderLocation) {
 
 // Methods of BindGroupDescriptor
 BindGroupDescriptor& BindGroupDescriptor::setNextInChain(const ChainedStruct * nextInChain) {
-	this->nextInChain = reinterpret_cast<WGPUChainedStruct const *>(nextInChain);
+	this->nextInChain = nextInChain;
 	return *this;
 }
 BindGroupDescriptor& BindGroupDescriptor::setLabel(StringView label) {
@@ -4420,26 +6047,26 @@ BindGroupDescriptor& BindGroupDescriptor::setLayout(BindGroupLayout layout) {
 	this->layout = layout;
 	return *this;
 }
-BindGroupDescriptor& BindGroupDescriptor::setEntries(uint32_t entryCount, const BindGroupEntry * entries) {
+BindGroupDescriptor& BindGroupDescriptor::setEntries(size_t entryCount, const BindGroupEntry * entries) {
 	this->entryCount = entryCount;
-	this->entries = reinterpret_cast<WGPUBindGroupEntry const *>(entries);
+	this->entries = entries;
 	return *this;
 }
 BindGroupDescriptor& BindGroupDescriptor::setEntries(const std::vector<BindGroupEntry>& entries) {
-	this->entryCount = static_cast<uint32_t>(entries.size());
-	this->entries = reinterpret_cast<WGPUBindGroupEntry const *>(entries.data());
+	this->entryCount = static_cast<size_t>(entries.size());
+	this->entries = reinterpret_cast<const BindGroupEntry *>(entries.data());
 	return *this;
 }
 BindGroupDescriptor& BindGroupDescriptor::setEntries(const std::span<const BindGroupEntry>& entries) {
-	this->entryCount = static_cast<uint32_t>(entries.size());
-	this->entries = reinterpret_cast<WGPUBindGroupEntry const *>(entries.data());
+	this->entryCount = static_cast<size_t>(entries.size());
+	this->entries = reinterpret_cast<const BindGroupEntry *>(entries.data());
 	return *this;
 }
 
 
 // Methods of BindGroupLayoutEntry
 BindGroupLayoutEntry& BindGroupLayoutEntry::setNextInChain(const ChainedStruct * nextInChain) {
-	this->nextInChain = reinterpret_cast<WGPUChainedStruct const *>(nextInChain);
+	this->nextInChain = nextInChain;
 	return *this;
 }
 BindGroupLayoutEntry& BindGroupLayoutEntry::setBinding(uint32_t binding) {
@@ -4447,7 +6074,7 @@ BindGroupLayoutEntry& BindGroupLayoutEntry::setBinding(uint32_t binding) {
 	return *this;
 }
 BindGroupLayoutEntry& BindGroupLayoutEntry::setVisibility(ShaderStage visibility) {
-	this->visibility = static_cast<WGPUShaderStage>(visibility);
+	this->visibility = visibility;
 	return *this;
 }
 BindGroupLayoutEntry& BindGroupLayoutEntry::setBuffer(BufferBindingLayout buffer) {
@@ -4481,29 +6108,29 @@ BlendState& BlendState::setAlpha(BlendComponent alpha) {
 
 // Methods of CompilationInfo
 CompilationInfo& CompilationInfo::setNextInChain(const ChainedStruct * nextInChain) {
-	this->nextInChain = reinterpret_cast<WGPUChainedStruct const *>(nextInChain);
+	this->nextInChain = nextInChain;
 	return *this;
 }
-CompilationInfo& CompilationInfo::setMessages(uint32_t messageCount, const CompilationMessage * messages) {
+CompilationInfo& CompilationInfo::setMessages(size_t messageCount, const CompilationMessage * messages) {
 	this->messageCount = messageCount;
-	this->messages = reinterpret_cast<WGPUCompilationMessage const *>(messages);
+	this->messages = messages;
 	return *this;
 }
 CompilationInfo& CompilationInfo::setMessages(const std::vector<CompilationMessage>& messages) {
-	this->messageCount = static_cast<uint32_t>(messages.size());
-	this->messages = reinterpret_cast<WGPUCompilationMessage const *>(messages.data());
+	this->messageCount = static_cast<size_t>(messages.size());
+	this->messages = reinterpret_cast<const CompilationMessage *>(messages.data());
 	return *this;
 }
 CompilationInfo& CompilationInfo::setMessages(const std::span<const CompilationMessage>& messages) {
-	this->messageCount = static_cast<uint32_t>(messages.size());
-	this->messages = reinterpret_cast<WGPUCompilationMessage const *>(messages.data());
+	this->messageCount = static_cast<size_t>(messages.size());
+	this->messages = reinterpret_cast<const CompilationMessage *>(messages.data());
 	return *this;
 }
 
 
 // Methods of ComputePassDescriptor
 ComputePassDescriptor& ComputePassDescriptor::setNextInChain(const ChainedStruct * nextInChain) {
-	this->nextInChain = reinterpret_cast<WGPUChainedStruct const *>(nextInChain);
+	this->nextInChain = nextInChain;
 	return *this;
 }
 ComputePassDescriptor& ComputePassDescriptor::setLabel(StringView label) {
@@ -4511,26 +6138,26 @@ ComputePassDescriptor& ComputePassDescriptor::setLabel(StringView label) {
 	return *this;
 }
 ComputePassDescriptor& ComputePassDescriptor::setTimestampWrites(const ComputePassTimestampWrites * timestampWrites) {
-	this->timestampWrites = reinterpret_cast<WGPU_NULLABLE WGPUComputePassTimestampWrites const *>(timestampWrites);
+	this->timestampWrites = timestampWrites;
 	return *this;
 }
 
 
 // Methods of DepthStencilState
 DepthStencilState& DepthStencilState::setNextInChain(const ChainedStruct * nextInChain) {
-	this->nextInChain = reinterpret_cast<WGPUChainedStruct const *>(nextInChain);
+	this->nextInChain = nextInChain;
 	return *this;
 }
 DepthStencilState& DepthStencilState::setFormat(TextureFormat format) {
-	this->format = static_cast<WGPUTextureFormat>(format);
+	this->format = format;
 	return *this;
 }
 DepthStencilState& DepthStencilState::setDepthWriteEnabled(OptionalBool depthWriteEnabled) {
-	this->depthWriteEnabled = static_cast<WGPUOptionalBool>(depthWriteEnabled);
+	this->depthWriteEnabled = depthWriteEnabled;
 	return *this;
 }
 DepthStencilState& DepthStencilState::setDepthCompare(CompareFunction depthCompare) {
-	this->depthCompare = static_cast<WGPUCompareFunction>(depthCompare);
+	this->depthCompare = depthCompare;
 	return *this;
 }
 DepthStencilState& DepthStencilState::setStencilFront(StencilFaceState stencilFront) {
@@ -4565,30 +6192,30 @@ DepthStencilState& DepthStencilState::setDepthBiasClamp(float depthBiasClamp) {
 
 // Methods of DeviceDescriptor
 DeviceDescriptor& DeviceDescriptor::setNextInChain(const ChainedStruct * nextInChain) {
-	this->nextInChain = reinterpret_cast<WGPUChainedStruct const *>(nextInChain);
+	this->nextInChain = nextInChain;
 	return *this;
 }
 DeviceDescriptor& DeviceDescriptor::setLabel(StringView label) {
 	this->label = label;
 	return *this;
 }
-DeviceDescriptor& DeviceDescriptor::setRequiredFeatures(uint32_t requiredFeatureCount, const FeatureName * requiredFeatures) {
+DeviceDescriptor& DeviceDescriptor::setRequiredFeatures(size_t requiredFeatureCount, const FeatureName * requiredFeatures) {
 	this->requiredFeatureCount = requiredFeatureCount;
-	this->requiredFeatures = reinterpret_cast<WGPUFeatureName const *>(requiredFeatures);
+	this->requiredFeatures = requiredFeatures;
 	return *this;
 }
 DeviceDescriptor& DeviceDescriptor::setRequiredFeatures(const std::vector<FeatureName>& requiredFeatures) {
-	this->requiredFeatureCount = static_cast<uint32_t>(requiredFeatures.size());
-	this->requiredFeatures = reinterpret_cast<WGPUFeatureName const *>(requiredFeatures.data());
+	this->requiredFeatureCount = static_cast<size_t>(requiredFeatures.size());
+	this->requiredFeatures = reinterpret_cast<const FeatureName *>(requiredFeatures.data());
 	return *this;
 }
 DeviceDescriptor& DeviceDescriptor::setRequiredFeatures(const std::span<const FeatureName>& requiredFeatures) {
-	this->requiredFeatureCount = static_cast<uint32_t>(requiredFeatures.size());
-	this->requiredFeatures = reinterpret_cast<WGPUFeatureName const *>(requiredFeatures.data());
+	this->requiredFeatureCount = static_cast<size_t>(requiredFeatures.size());
+	this->requiredFeatures = reinterpret_cast<const FeatureName *>(requiredFeatures.data());
 	return *this;
 }
 DeviceDescriptor& DeviceDescriptor::setRequiredLimits(const Limits * requiredLimits) {
-	this->requiredLimits = reinterpret_cast<WGPU_NULLABLE WGPULimits const *>(requiredLimits);
+	this->requiredLimits = requiredLimits;
 	return *this;
 }
 DeviceDescriptor& DeviceDescriptor::setDefaultQueue(QueueDescriptor defaultQueue) {
@@ -4618,7 +6245,7 @@ FutureWaitInfo& FutureWaitInfo::setCompleted(WGPUBool completed) {
 
 // Methods of InstanceDescriptor
 InstanceDescriptor& InstanceDescriptor::setNextInChain(const ChainedStruct * nextInChain) {
-	this->nextInChain = reinterpret_cast<WGPUChainedStruct const *>(nextInChain);
+	this->nextInChain = nextInChain;
 	return *this;
 }
 InstanceDescriptor& InstanceDescriptor::setFeatures(InstanceCapabilities features) {
@@ -4629,7 +6256,7 @@ InstanceDescriptor& InstanceDescriptor::setFeatures(InstanceCapabilities feature
 
 // Methods of ProgrammableStageDescriptor
 ProgrammableStageDescriptor& ProgrammableStageDescriptor::setNextInChain(const ChainedStruct * nextInChain) {
-	this->nextInChain = reinterpret_cast<WGPUChainedStruct const *>(nextInChain);
+	this->nextInChain = nextInChain;
 	return *this;
 }
 ProgrammableStageDescriptor& ProgrammableStageDescriptor::setModule(ShaderModule module) {
@@ -4640,26 +6267,26 @@ ProgrammableStageDescriptor& ProgrammableStageDescriptor::setEntryPoint(StringVi
 	this->entryPoint = entryPoint;
 	return *this;
 }
-ProgrammableStageDescriptor& ProgrammableStageDescriptor::setConstants(uint32_t constantCount, const ConstantEntry * constants) {
+ProgrammableStageDescriptor& ProgrammableStageDescriptor::setConstants(size_t constantCount, const ConstantEntry * constants) {
 	this->constantCount = constantCount;
-	this->constants = reinterpret_cast<WGPUConstantEntry const *>(constants);
+	this->constants = constants;
 	return *this;
 }
 ProgrammableStageDescriptor& ProgrammableStageDescriptor::setConstants(const std::vector<ConstantEntry>& constants) {
-	this->constantCount = static_cast<uint32_t>(constants.size());
-	this->constants = reinterpret_cast<WGPUConstantEntry const *>(constants.data());
+	this->constantCount = static_cast<size_t>(constants.size());
+	this->constants = reinterpret_cast<const ConstantEntry *>(constants.data());
 	return *this;
 }
 ProgrammableStageDescriptor& ProgrammableStageDescriptor::setConstants(const std::span<const ConstantEntry>& constants) {
-	this->constantCount = static_cast<uint32_t>(constants.size());
-	this->constants = reinterpret_cast<WGPUConstantEntry const *>(constants.data());
+	this->constantCount = static_cast<size_t>(constants.size());
+	this->constants = reinterpret_cast<const ConstantEntry *>(constants.data());
 	return *this;
 }
 
 
 // Methods of RenderPassColorAttachment
 RenderPassColorAttachment& RenderPassColorAttachment::setNextInChain(const ChainedStruct * nextInChain) {
-	this->nextInChain = reinterpret_cast<WGPUChainedStruct const *>(nextInChain);
+	this->nextInChain = nextInChain;
 	return *this;
 }
 RenderPassColorAttachment& RenderPassColorAttachment::setView(TextureView view) {
@@ -4675,11 +6302,11 @@ RenderPassColorAttachment& RenderPassColorAttachment::setResolveTarget(TextureVi
 	return *this;
 }
 RenderPassColorAttachment& RenderPassColorAttachment::setLoadOp(LoadOp loadOp) {
-	this->loadOp = static_cast<WGPULoadOp>(loadOp);
+	this->loadOp = loadOp;
 	return *this;
 }
 RenderPassColorAttachment& RenderPassColorAttachment::setStoreOp(StoreOp storeOp) {
-	this->storeOp = static_cast<WGPUStoreOp>(storeOp);
+	this->storeOp = storeOp;
 	return *this;
 }
 RenderPassColorAttachment& RenderPassColorAttachment::setClearValue(Color clearValue) {
@@ -4713,14 +6340,14 @@ TexelCopyTextureInfo& TexelCopyTextureInfo::setOrigin(Origin3D origin) {
 	return *this;
 }
 TexelCopyTextureInfo& TexelCopyTextureInfo::setAspect(TextureAspect aspect) {
-	this->aspect = static_cast<WGPUTextureAspect>(aspect);
+	this->aspect = aspect;
 	return *this;
 }
 
 
 // Methods of TextureDescriptor
 TextureDescriptor& TextureDescriptor::setNextInChain(const ChainedStruct * nextInChain) {
-	this->nextInChain = reinterpret_cast<WGPUChainedStruct const *>(nextInChain);
+	this->nextInChain = nextInChain;
 	return *this;
 }
 TextureDescriptor& TextureDescriptor::setLabel(StringView label) {
@@ -4728,11 +6355,11 @@ TextureDescriptor& TextureDescriptor::setLabel(StringView label) {
 	return *this;
 }
 TextureDescriptor& TextureDescriptor::setUsage(TextureUsage usage) {
-	this->usage = static_cast<WGPUTextureUsage>(usage);
+	this->usage = usage;
 	return *this;
 }
 TextureDescriptor& TextureDescriptor::setDimension(TextureDimension dimension) {
-	this->dimension = static_cast<WGPUTextureDimension>(dimension);
+	this->dimension = dimension;
 	return *this;
 }
 TextureDescriptor& TextureDescriptor::setSize(Extent3D size) {
@@ -4740,22 +6367,7 @@ TextureDescriptor& TextureDescriptor::setSize(Extent3D size) {
 	return *this;
 }
 TextureDescriptor& TextureDescriptor::setFormat(TextureFormat format) {
-	this->format = static_cast<WGPUTextureFormat>(format);
-	return *this;
-}
-TextureDescriptor& TextureDescriptor::setViewFormats(uint32_t viewFormatCount, const TextureFormat * viewFormats) {
-	this->viewFormatCount = viewFormatCount;
-	this->viewFormats = reinterpret_cast<WGPUTextureFormat const *>(viewFormats);
-	return *this;
-}
-TextureDescriptor& TextureDescriptor::setViewFormats(const std::vector<TextureFormat>& viewFormats) {
-	this->viewFormatCount = static_cast<uint32_t>(viewFormats.size());
-	this->viewFormats = reinterpret_cast<WGPUTextureFormat const *>(viewFormats.data());
-	return *this;
-}
-TextureDescriptor& TextureDescriptor::setViewFormats(const std::span<const TextureFormat>& viewFormats) {
-	this->viewFormatCount = static_cast<uint32_t>(viewFormats.size());
-	this->viewFormats = reinterpret_cast<WGPUTextureFormat const *>(viewFormats.data());
+	this->format = format;
 	return *this;
 }
 TextureDescriptor& TextureDescriptor::setMipLevelCount(uint32_t mipLevelCount) {
@@ -4766,82 +6378,97 @@ TextureDescriptor& TextureDescriptor::setSampleCount(uint32_t sampleCount) {
 	this->sampleCount = sampleCount;
 	return *this;
 }
+TextureDescriptor& TextureDescriptor::setViewFormats(size_t viewFormatCount, const TextureFormat * viewFormats) {
+	this->viewFormatCount = viewFormatCount;
+	this->viewFormats = viewFormats;
+	return *this;
+}
+TextureDescriptor& TextureDescriptor::setViewFormats(const std::vector<TextureFormat>& viewFormats) {
+	this->viewFormatCount = static_cast<size_t>(viewFormats.size());
+	this->viewFormats = reinterpret_cast<const TextureFormat *>(viewFormats.data());
+	return *this;
+}
+TextureDescriptor& TextureDescriptor::setViewFormats(const std::span<const TextureFormat>& viewFormats) {
+	this->viewFormatCount = static_cast<size_t>(viewFormats.size());
+	this->viewFormats = reinterpret_cast<const TextureFormat *>(viewFormats.data());
+	return *this;
+}
 
 
 // Methods of VertexBufferLayout
 VertexBufferLayout& VertexBufferLayout::setStepMode(VertexStepMode stepMode) {
-	this->stepMode = static_cast<WGPUVertexStepMode>(stepMode);
+	this->stepMode = stepMode;
 	return *this;
 }
 VertexBufferLayout& VertexBufferLayout::setArrayStride(uint64_t arrayStride) {
 	this->arrayStride = arrayStride;
 	return *this;
 }
-VertexBufferLayout& VertexBufferLayout::setAttributes(uint32_t attributeCount, const VertexAttribute * attributes) {
+VertexBufferLayout& VertexBufferLayout::setAttributes(size_t attributeCount, const VertexAttribute * attributes) {
 	this->attributeCount = attributeCount;
-	this->attributes = reinterpret_cast<WGPUVertexAttribute const *>(attributes);
+	this->attributes = attributes;
 	return *this;
 }
 VertexBufferLayout& VertexBufferLayout::setAttributes(const std::vector<VertexAttribute>& attributes) {
-	this->attributeCount = static_cast<uint32_t>(attributes.size());
-	this->attributes = reinterpret_cast<WGPUVertexAttribute const *>(attributes.data());
+	this->attributeCount = static_cast<size_t>(attributes.size());
+	this->attributes = reinterpret_cast<const VertexAttribute *>(attributes.data());
 	return *this;
 }
 VertexBufferLayout& VertexBufferLayout::setAttributes(const std::span<const VertexAttribute>& attributes) {
-	this->attributeCount = static_cast<uint32_t>(attributes.size());
-	this->attributes = reinterpret_cast<WGPUVertexAttribute const *>(attributes.data());
+	this->attributeCount = static_cast<size_t>(attributes.size());
+	this->attributes = reinterpret_cast<const VertexAttribute *>(attributes.data());
 	return *this;
 }
 
 
 // Methods of BindGroupLayoutDescriptor
 BindGroupLayoutDescriptor& BindGroupLayoutDescriptor::setNextInChain(const ChainedStruct * nextInChain) {
-	this->nextInChain = reinterpret_cast<WGPUChainedStruct const *>(nextInChain);
+	this->nextInChain = nextInChain;
 	return *this;
 }
 BindGroupLayoutDescriptor& BindGroupLayoutDescriptor::setLabel(StringView label) {
 	this->label = label;
 	return *this;
 }
-BindGroupLayoutDescriptor& BindGroupLayoutDescriptor::setEntries(uint32_t entryCount, const BindGroupLayoutEntry * entries) {
+BindGroupLayoutDescriptor& BindGroupLayoutDescriptor::setEntries(size_t entryCount, const BindGroupLayoutEntry * entries) {
 	this->entryCount = entryCount;
-	this->entries = reinterpret_cast<WGPUBindGroupLayoutEntry const *>(entries);
+	this->entries = entries;
 	return *this;
 }
 BindGroupLayoutDescriptor& BindGroupLayoutDescriptor::setEntries(const std::vector<BindGroupLayoutEntry>& entries) {
-	this->entryCount = static_cast<uint32_t>(entries.size());
-	this->entries = reinterpret_cast<WGPUBindGroupLayoutEntry const *>(entries.data());
+	this->entryCount = static_cast<size_t>(entries.size());
+	this->entries = reinterpret_cast<const BindGroupLayoutEntry *>(entries.data());
 	return *this;
 }
 BindGroupLayoutDescriptor& BindGroupLayoutDescriptor::setEntries(const std::span<const BindGroupLayoutEntry>& entries) {
-	this->entryCount = static_cast<uint32_t>(entries.size());
-	this->entries = reinterpret_cast<WGPUBindGroupLayoutEntry const *>(entries.data());
+	this->entryCount = static_cast<size_t>(entries.size());
+	this->entries = reinterpret_cast<const BindGroupLayoutEntry *>(entries.data());
 	return *this;
 }
 
 
 // Methods of ColorTargetState
 ColorTargetState& ColorTargetState::setNextInChain(const ChainedStruct * nextInChain) {
-	this->nextInChain = reinterpret_cast<WGPUChainedStruct const *>(nextInChain);
+	this->nextInChain = nextInChain;
 	return *this;
 }
 ColorTargetState& ColorTargetState::setFormat(TextureFormat format) {
-	this->format = static_cast<WGPUTextureFormat>(format);
+	this->format = format;
 	return *this;
 }
 ColorTargetState& ColorTargetState::setBlend(const BlendState * blend) {
-	this->blend = reinterpret_cast<WGPU_NULLABLE WGPUBlendState const *>(blend);
+	this->blend = blend;
 	return *this;
 }
 ColorTargetState& ColorTargetState::setWriteMask(ColorWriteMask writeMask) {
-	this->writeMask = static_cast<WGPUColorWriteMask>(writeMask);
+	this->writeMask = writeMask;
 	return *this;
 }
 
 
 // Methods of ComputePipelineDescriptor
 ComputePipelineDescriptor& ComputePipelineDescriptor::setNextInChain(const ChainedStruct * nextInChain) {
-	this->nextInChain = reinterpret_cast<WGPUChainedStruct const *>(nextInChain);
+	this->nextInChain = nextInChain;
 	return *this;
 }
 ComputePipelineDescriptor& ComputePipelineDescriptor::setLabel(StringView label) {
@@ -4860,30 +6487,30 @@ ComputePipelineDescriptor& ComputePipelineDescriptor::setCompute(ProgrammableSta
 
 // Methods of RenderPassDescriptor
 RenderPassDescriptor& RenderPassDescriptor::setNextInChain(const ChainedStruct * nextInChain) {
-	this->nextInChain = reinterpret_cast<WGPUChainedStruct const *>(nextInChain);
+	this->nextInChain = nextInChain;
 	return *this;
 }
 RenderPassDescriptor& RenderPassDescriptor::setLabel(StringView label) {
 	this->label = label;
 	return *this;
 }
-RenderPassDescriptor& RenderPassDescriptor::setColorAttachments(uint32_t colorAttachmentCount, const RenderPassColorAttachment * colorAttachments) {
+RenderPassDescriptor& RenderPassDescriptor::setColorAttachments(size_t colorAttachmentCount, const RenderPassColorAttachment * colorAttachments) {
 	this->colorAttachmentCount = colorAttachmentCount;
-	this->colorAttachments = reinterpret_cast<WGPURenderPassColorAttachment const *>(colorAttachments);
+	this->colorAttachments = colorAttachments;
 	return *this;
 }
 RenderPassDescriptor& RenderPassDescriptor::setColorAttachments(const std::vector<RenderPassColorAttachment>& colorAttachments) {
-	this->colorAttachmentCount = static_cast<uint32_t>(colorAttachments.size());
-	this->colorAttachments = reinterpret_cast<WGPURenderPassColorAttachment const *>(colorAttachments.data());
+	this->colorAttachmentCount = static_cast<size_t>(colorAttachments.size());
+	this->colorAttachments = reinterpret_cast<const RenderPassColorAttachment *>(colorAttachments.data());
 	return *this;
 }
 RenderPassDescriptor& RenderPassDescriptor::setColorAttachments(const std::span<const RenderPassColorAttachment>& colorAttachments) {
-	this->colorAttachmentCount = static_cast<uint32_t>(colorAttachments.size());
-	this->colorAttachments = reinterpret_cast<WGPURenderPassColorAttachment const *>(colorAttachments.data());
+	this->colorAttachmentCount = static_cast<size_t>(colorAttachments.size());
+	this->colorAttachments = reinterpret_cast<const RenderPassColorAttachment *>(colorAttachments.data());
 	return *this;
 }
 RenderPassDescriptor& RenderPassDescriptor::setDepthStencilAttachment(const RenderPassDepthStencilAttachment * depthStencilAttachment) {
-	this->depthStencilAttachment = reinterpret_cast<WGPU_NULLABLE WGPURenderPassDepthStencilAttachment const *>(depthStencilAttachment);
+	this->depthStencilAttachment = depthStencilAttachment;
 	return *this;
 }
 RenderPassDescriptor& RenderPassDescriptor::setOcclusionQuerySet(QuerySet occlusionQuerySet) {
@@ -4891,14 +6518,14 @@ RenderPassDescriptor& RenderPassDescriptor::setOcclusionQuerySet(QuerySet occlus
 	return *this;
 }
 RenderPassDescriptor& RenderPassDescriptor::setTimestampWrites(const RenderPassTimestampWrites * timestampWrites) {
-	this->timestampWrites = reinterpret_cast<WGPU_NULLABLE WGPURenderPassTimestampWrites const *>(timestampWrites);
+	this->timestampWrites = timestampWrites;
 	return *this;
 }
 
 
 // Methods of VertexState
 VertexState& VertexState::setNextInChain(const ChainedStruct * nextInChain) {
-	this->nextInChain = reinterpret_cast<WGPUChainedStruct const *>(nextInChain);
+	this->nextInChain = nextInChain;
 	return *this;
 }
 VertexState& VertexState::setModule(ShaderModule module) {
@@ -4909,41 +6536,41 @@ VertexState& VertexState::setEntryPoint(StringView entryPoint) {
 	this->entryPoint = entryPoint;
 	return *this;
 }
-VertexState& VertexState::setConstants(uint32_t constantCount, const ConstantEntry * constants) {
+VertexState& VertexState::setConstants(size_t constantCount, const ConstantEntry * constants) {
 	this->constantCount = constantCount;
-	this->constants = reinterpret_cast<WGPUConstantEntry const *>(constants);
+	this->constants = constants;
 	return *this;
 }
 VertexState& VertexState::setConstants(const std::vector<ConstantEntry>& constants) {
-	this->constantCount = static_cast<uint32_t>(constants.size());
-	this->constants = reinterpret_cast<WGPUConstantEntry const *>(constants.data());
+	this->constantCount = static_cast<size_t>(constants.size());
+	this->constants = reinterpret_cast<const ConstantEntry *>(constants.data());
 	return *this;
 }
 VertexState& VertexState::setConstants(const std::span<const ConstantEntry>& constants) {
-	this->constantCount = static_cast<uint32_t>(constants.size());
-	this->constants = reinterpret_cast<WGPUConstantEntry const *>(constants.data());
+	this->constantCount = static_cast<size_t>(constants.size());
+	this->constants = reinterpret_cast<const ConstantEntry *>(constants.data());
 	return *this;
 }
-VertexState& VertexState::setBuffers(uint32_t bufferCount, const VertexBufferLayout * buffers) {
+VertexState& VertexState::setBuffers(size_t bufferCount, const VertexBufferLayout * buffers) {
 	this->bufferCount = bufferCount;
-	this->buffers = reinterpret_cast<WGPUVertexBufferLayout const *>(buffers);
+	this->buffers = buffers;
 	return *this;
 }
 VertexState& VertexState::setBuffers(const std::vector<VertexBufferLayout>& buffers) {
-	this->bufferCount = static_cast<uint32_t>(buffers.size());
-	this->buffers = reinterpret_cast<WGPUVertexBufferLayout const *>(buffers.data());
+	this->bufferCount = static_cast<size_t>(buffers.size());
+	this->buffers = reinterpret_cast<const VertexBufferLayout *>(buffers.data());
 	return *this;
 }
 VertexState& VertexState::setBuffers(const std::span<const VertexBufferLayout>& buffers) {
-	this->bufferCount = static_cast<uint32_t>(buffers.size());
-	this->buffers = reinterpret_cast<WGPUVertexBufferLayout const *>(buffers.data());
+	this->bufferCount = static_cast<size_t>(buffers.size());
+	this->buffers = reinterpret_cast<const VertexBufferLayout *>(buffers.data());
 	return *this;
 }
 
 
 // Methods of FragmentState
 FragmentState& FragmentState::setNextInChain(const ChainedStruct * nextInChain) {
-	this->nextInChain = reinterpret_cast<WGPUChainedStruct const *>(nextInChain);
+	this->nextInChain = nextInChain;
 	return *this;
 }
 FragmentState& FragmentState::setModule(ShaderModule module) {
@@ -4954,41 +6581,41 @@ FragmentState& FragmentState::setEntryPoint(StringView entryPoint) {
 	this->entryPoint = entryPoint;
 	return *this;
 }
-FragmentState& FragmentState::setConstants(uint32_t constantCount, const ConstantEntry * constants) {
+FragmentState& FragmentState::setConstants(size_t constantCount, const ConstantEntry * constants) {
 	this->constantCount = constantCount;
-	this->constants = reinterpret_cast<WGPUConstantEntry const *>(constants);
+	this->constants = constants;
 	return *this;
 }
 FragmentState& FragmentState::setConstants(const std::vector<ConstantEntry>& constants) {
-	this->constantCount = static_cast<uint32_t>(constants.size());
-	this->constants = reinterpret_cast<WGPUConstantEntry const *>(constants.data());
+	this->constantCount = static_cast<size_t>(constants.size());
+	this->constants = reinterpret_cast<const ConstantEntry *>(constants.data());
 	return *this;
 }
 FragmentState& FragmentState::setConstants(const std::span<const ConstantEntry>& constants) {
-	this->constantCount = static_cast<uint32_t>(constants.size());
-	this->constants = reinterpret_cast<WGPUConstantEntry const *>(constants.data());
+	this->constantCount = static_cast<size_t>(constants.size());
+	this->constants = reinterpret_cast<const ConstantEntry *>(constants.data());
 	return *this;
 }
-FragmentState& FragmentState::setTargets(uint32_t targetCount, const ColorTargetState * targets) {
+FragmentState& FragmentState::setTargets(size_t targetCount, const ColorTargetState * targets) {
 	this->targetCount = targetCount;
-	this->targets = reinterpret_cast<WGPUColorTargetState const *>(targets);
+	this->targets = targets;
 	return *this;
 }
 FragmentState& FragmentState::setTargets(const std::vector<ColorTargetState>& targets) {
-	this->targetCount = static_cast<uint32_t>(targets.size());
-	this->targets = reinterpret_cast<WGPUColorTargetState const *>(targets.data());
+	this->targetCount = static_cast<size_t>(targets.size());
+	this->targets = reinterpret_cast<const ColorTargetState *>(targets.data());
 	return *this;
 }
 FragmentState& FragmentState::setTargets(const std::span<const ColorTargetState>& targets) {
-	this->targetCount = static_cast<uint32_t>(targets.size());
-	this->targets = reinterpret_cast<WGPUColorTargetState const *>(targets.data());
+	this->targetCount = static_cast<size_t>(targets.size());
+	this->targets = reinterpret_cast<const ColorTargetState *>(targets.data());
 	return *this;
 }
 
 
 // Methods of RenderPipelineDescriptor
 RenderPipelineDescriptor& RenderPipelineDescriptor::setNextInChain(const ChainedStruct * nextInChain) {
-	this->nextInChain = reinterpret_cast<WGPUChainedStruct const *>(nextInChain);
+	this->nextInChain = nextInChain;
 	return *this;
 }
 RenderPipelineDescriptor& RenderPipelineDescriptor::setLabel(StringView label) {
@@ -5008,7 +6635,7 @@ RenderPipelineDescriptor& RenderPipelineDescriptor::setPrimitive(PrimitiveState 
 	return *this;
 }
 RenderPipelineDescriptor& RenderPipelineDescriptor::setDepthStencil(const DepthStencilState * depthStencil) {
-	this->depthStencil = reinterpret_cast<WGPU_NULLABLE WGPUDepthStencilState const *>(depthStencil);
+	this->depthStencil = depthStencil;
 	return *this;
 }
 RenderPipelineDescriptor& RenderPipelineDescriptor::setMultisample(MultisampleState multisample) {
@@ -5016,30 +6643,30 @@ RenderPipelineDescriptor& RenderPipelineDescriptor::setMultisample(MultisampleSt
 	return *this;
 }
 RenderPipelineDescriptor& RenderPipelineDescriptor::setFragment(const FragmentState * fragment) {
-	this->fragment = reinterpret_cast<WGPU_NULLABLE WGPUFragmentState const *>(fragment);
+	this->fragment = fragment;
 	return *this;
 }
 
 
 // Methods of InstanceExtras
 InstanceExtras& InstanceExtras::setBackends(InstanceBackend backends) {
-	this->backends = static_cast<WGPUInstanceBackend>(backends);
+	this->backends = backends;
 	return *this;
 }
 InstanceExtras& InstanceExtras::setFlags(InstanceFlag flags) {
-	this->flags = static_cast<WGPUInstanceFlag>(flags);
+	this->flags = flags;
 	return *this;
 }
 InstanceExtras& InstanceExtras::setDx12ShaderCompiler(Dx12Compiler dx12ShaderCompiler) {
-	this->dx12ShaderCompiler = static_cast<WGPUDx12Compiler>(dx12ShaderCompiler);
+	this->dx12ShaderCompiler = dx12ShaderCompiler;
 	return *this;
 }
 InstanceExtras& InstanceExtras::setGles3MinorVersion(Gles3MinorVersion gles3MinorVersion) {
-	this->gles3MinorVersion = static_cast<WGPUGles3MinorVersion>(gles3MinorVersion);
+	this->gles3MinorVersion = gles3MinorVersion;
 	return *this;
 }
 InstanceExtras& InstanceExtras::setGlFenceBehaviour(GLFenceBehaviour glFenceBehaviour) {
-	this->glFenceBehaviour = static_cast<WGPUGLFenceBehaviour>(glFenceBehaviour);
+	this->glFenceBehaviour = glFenceBehaviour;
 	return *this;
 }
 InstanceExtras& InstanceExtras::setDxcPath(StringView dxcPath) {
@@ -5047,11 +6674,11 @@ InstanceExtras& InstanceExtras::setDxcPath(StringView dxcPath) {
 	return *this;
 }
 InstanceExtras& InstanceExtras::setDxcMaxShaderModel(DxcMaxShaderModel dxcMaxShaderModel) {
-	this->dxcMaxShaderModel = static_cast<WGPUDxcMaxShaderModel>(dxcMaxShaderModel);
+	this->dxcMaxShaderModel = dxcMaxShaderModel;
 	return *this;
 }
 InstanceExtras& InstanceExtras::setDx12PresentationSystem(Dx12SwapchainKind dx12PresentationSystem) {
-	this->dx12PresentationSystem = static_cast<WGPUDx12SwapchainKind>(dx12PresentationSystem);
+	this->dx12PresentationSystem = dx12PresentationSystem;
 	return *this;
 }
 InstanceExtras& InstanceExtras::setBudgetForDeviceCreation(const uint8_t * budgetForDeviceCreation) {
@@ -5084,7 +6711,7 @@ NativeLimits& NativeLimits::setMaxNonSamplerBindings(uint32_t maxNonSamplerBindi
 
 // Methods of PushConstantRange
 PushConstantRange& PushConstantRange::setStages(ShaderStage stages) {
-	this->stages = static_cast<WGPUShaderStage>(stages);
+	this->stages = stages;
 	return *this;
 }
 PushConstantRange& PushConstantRange::setStart(uint32_t start) {
@@ -5098,19 +6725,19 @@ PushConstantRange& PushConstantRange::setEnd(uint32_t end) {
 
 
 // Methods of PipelineLayoutExtras
-PipelineLayoutExtras& PipelineLayoutExtras::setPushConstantRanges(uint32_t pushConstantRangeCount, const PushConstantRange * pushConstantRanges) {
+PipelineLayoutExtras& PipelineLayoutExtras::setPushConstantRanges(size_t pushConstantRangeCount, const PushConstantRange * pushConstantRanges) {
 	this->pushConstantRangeCount = pushConstantRangeCount;
-	this->pushConstantRanges = reinterpret_cast<WGPUPushConstantRange const *>(pushConstantRanges);
+	this->pushConstantRanges = pushConstantRanges;
 	return *this;
 }
 PipelineLayoutExtras& PipelineLayoutExtras::setPushConstantRanges(const std::vector<PushConstantRange>& pushConstantRanges) {
-	this->pushConstantRangeCount = static_cast<uint32_t>(pushConstantRanges.size());
-	this->pushConstantRanges = reinterpret_cast<WGPUPushConstantRange const *>(pushConstantRanges.data());
+	this->pushConstantRangeCount = static_cast<size_t>(pushConstantRanges.size());
+	this->pushConstantRanges = reinterpret_cast<const PushConstantRange *>(pushConstantRanges.data());
 	return *this;
 }
 PipelineLayoutExtras& PipelineLayoutExtras::setPushConstantRanges(const std::span<const PushConstantRange>& pushConstantRanges) {
-	this->pushConstantRangeCount = static_cast<uint32_t>(pushConstantRanges.size());
-	this->pushConstantRanges = reinterpret_cast<WGPUPushConstantRange const *>(pushConstantRanges.data());
+	this->pushConstantRangeCount = static_cast<size_t>(pushConstantRanges.size());
+	this->pushConstantRanges = reinterpret_cast<const PushConstantRange *>(pushConstantRanges.data());
 	return *this;
 }
 
@@ -5128,7 +6755,7 @@ ShaderDefine& ShaderDefine::setValue(StringView value) {
 
 // Methods of ShaderSourceGLSL
 ShaderSourceGLSL& ShaderSourceGLSL::setStage(ShaderStage stage) {
-	this->stage = static_cast<WGPUShaderStage>(stage);
+	this->stage = stage;
 	return *this;
 }
 ShaderSourceGLSL& ShaderSourceGLSL::setCode(StringView code) {
@@ -5137,17 +6764,17 @@ ShaderSourceGLSL& ShaderSourceGLSL::setCode(StringView code) {
 }
 ShaderSourceGLSL& ShaderSourceGLSL::setDefines(uint32_t defineCount, ShaderDefine * defines) {
 	this->defineCount = defineCount;
-	this->defines = reinterpret_cast<WGPUShaderDefine *>(defines);
+	this->defines = defines;
 	return *this;
 }
 ShaderSourceGLSL& ShaderSourceGLSL::setDefines(std::vector<ShaderDefine>& defines) {
 	this->defineCount = static_cast<uint32_t>(defines.size());
-	this->defines = reinterpret_cast<WGPUShaderDefine *>(defines.data());
+	this->defines = reinterpret_cast<ShaderDefine *>(defines.data());
 	return *this;
 }
 ShaderSourceGLSL& ShaderSourceGLSL::setDefines(const std::span<ShaderDefine>& defines) {
 	this->defineCount = static_cast<uint32_t>(defines.size());
-	this->defines = reinterpret_cast<WGPUShaderDefine *>(defines.data());
+	this->defines = reinterpret_cast<ShaderDefine *>(defines.data());
 	return *this;
 }
 
@@ -5270,59 +6897,59 @@ GlobalReport& GlobalReport::setHub(HubReport hub) {
 
 // Methods of InstanceEnumerateAdapterOptions
 InstanceEnumerateAdapterOptions& InstanceEnumerateAdapterOptions::setNextInChain(const ChainedStruct * nextInChain) {
-	this->nextInChain = reinterpret_cast<WGPUChainedStruct const *>(nextInChain);
+	this->nextInChain = nextInChain;
 	return *this;
 }
 InstanceEnumerateAdapterOptions& InstanceEnumerateAdapterOptions::setBackends(InstanceBackend backends) {
-	this->backends = static_cast<WGPUInstanceBackend>(backends);
+	this->backends = backends;
 	return *this;
 }
 
 
 // Methods of BindGroupEntryExtras
-BindGroupEntryExtras& BindGroupEntryExtras::setBuffers(uint32_t bufferCount, const Buffer * buffers) {
+BindGroupEntryExtras& BindGroupEntryExtras::setBuffers(size_t bufferCount, const Buffer * buffers) {
 	this->bufferCount = bufferCount;
-	this->buffers = reinterpret_cast<WGPUBuffer const *>(buffers);
+	this->buffers = buffers;
 	return *this;
 }
 BindGroupEntryExtras& BindGroupEntryExtras::setBuffers(const std::vector<Buffer>& buffers) {
-	this->bufferCount = static_cast<uint32_t>(buffers.size());
-	this->buffers = reinterpret_cast<WGPUBuffer const *>(buffers.data());
+	this->bufferCount = static_cast<size_t>(buffers.size());
+	this->buffers = reinterpret_cast<const Buffer *>(buffers.data());
 	return *this;
 }
 BindGroupEntryExtras& BindGroupEntryExtras::setBuffers(const std::span<const Buffer>& buffers) {
-	this->bufferCount = static_cast<uint32_t>(buffers.size());
-	this->buffers = reinterpret_cast<WGPUBuffer const *>(buffers.data());
+	this->bufferCount = static_cast<size_t>(buffers.size());
+	this->buffers = reinterpret_cast<const Buffer *>(buffers.data());
 	return *this;
 }
-BindGroupEntryExtras& BindGroupEntryExtras::setSamplers(uint32_t samplerCount, const Sampler * samplers) {
+BindGroupEntryExtras& BindGroupEntryExtras::setSamplers(size_t samplerCount, const Sampler * samplers) {
 	this->samplerCount = samplerCount;
-	this->samplers = reinterpret_cast<WGPUSampler const *>(samplers);
+	this->samplers = samplers;
 	return *this;
 }
 BindGroupEntryExtras& BindGroupEntryExtras::setSamplers(const std::vector<Sampler>& samplers) {
-	this->samplerCount = static_cast<uint32_t>(samplers.size());
-	this->samplers = reinterpret_cast<WGPUSampler const *>(samplers.data());
+	this->samplerCount = static_cast<size_t>(samplers.size());
+	this->samplers = reinterpret_cast<const Sampler *>(samplers.data());
 	return *this;
 }
 BindGroupEntryExtras& BindGroupEntryExtras::setSamplers(const std::span<const Sampler>& samplers) {
-	this->samplerCount = static_cast<uint32_t>(samplers.size());
-	this->samplers = reinterpret_cast<WGPUSampler const *>(samplers.data());
+	this->samplerCount = static_cast<size_t>(samplers.size());
+	this->samplers = reinterpret_cast<const Sampler *>(samplers.data());
 	return *this;
 }
-BindGroupEntryExtras& BindGroupEntryExtras::setTextureViews(uint32_t textureViewCount, const TextureView * textureViews) {
+BindGroupEntryExtras& BindGroupEntryExtras::setTextureViews(size_t textureViewCount, const TextureView * textureViews) {
 	this->textureViewCount = textureViewCount;
-	this->textureViews = reinterpret_cast<WGPUTextureView const *>(textureViews);
+	this->textureViews = textureViews;
 	return *this;
 }
 BindGroupEntryExtras& BindGroupEntryExtras::setTextureViews(const std::vector<TextureView>& textureViews) {
-	this->textureViewCount = static_cast<uint32_t>(textureViews.size());
-	this->textureViews = reinterpret_cast<WGPUTextureView const *>(textureViews.data());
+	this->textureViewCount = static_cast<size_t>(textureViews.size());
+	this->textureViews = reinterpret_cast<const TextureView *>(textureViews.data());
 	return *this;
 }
 BindGroupEntryExtras& BindGroupEntryExtras::setTextureViews(const std::span<const TextureView>& textureViews) {
-	this->textureViewCount = static_cast<uint32_t>(textureViews.size());
-	this->textureViews = reinterpret_cast<WGPUTextureView const *>(textureViews.data());
+	this->textureViewCount = static_cast<size_t>(textureViews.size());
+	this->textureViews = reinterpret_cast<const TextureView *>(textureViews.data());
 	return *this;
 }
 
@@ -5335,19 +6962,19 @@ BindGroupLayoutEntryExtras& BindGroupLayoutEntryExtras::setCount(uint32_t count)
 
 
 // Methods of QuerySetDescriptorExtras
-QuerySetDescriptorExtras& QuerySetDescriptorExtras::setPipelineStatistics(uint32_t pipelineStatisticCount, const PipelineStatisticName * pipelineStatistics) {
+QuerySetDescriptorExtras& QuerySetDescriptorExtras::setPipelineStatistics(size_t pipelineStatisticCount, const PipelineStatisticName * pipelineStatistics) {
 	this->pipelineStatisticCount = pipelineStatisticCount;
-	this->pipelineStatistics = reinterpret_cast<WGPUPipelineStatisticName const *>(pipelineStatistics);
+	this->pipelineStatistics = pipelineStatistics;
 	return *this;
 }
 QuerySetDescriptorExtras& QuerySetDescriptorExtras::setPipelineStatistics(const std::vector<PipelineStatisticName>& pipelineStatistics) {
-	this->pipelineStatisticCount = static_cast<uint32_t>(pipelineStatistics.size());
-	this->pipelineStatistics = reinterpret_cast<WGPUPipelineStatisticName const *>(pipelineStatistics.data());
+	this->pipelineStatisticCount = static_cast<size_t>(pipelineStatistics.size());
+	this->pipelineStatistics = reinterpret_cast<const PipelineStatisticName *>(pipelineStatistics.data());
 	return *this;
 }
 QuerySetDescriptorExtras& QuerySetDescriptorExtras::setPipelineStatistics(const std::span<const PipelineStatisticName>& pipelineStatistics) {
-	this->pipelineStatisticCount = static_cast<uint32_t>(pipelineStatistics.size());
-	this->pipelineStatistics = reinterpret_cast<WGPUPipelineStatisticName const *>(pipelineStatistics.data());
+	this->pipelineStatisticCount = static_cast<size_t>(pipelineStatistics.size());
+	this->pipelineStatistics = reinterpret_cast<const PipelineStatisticName *>(pipelineStatistics.data());
 	return *this;
 }
 
@@ -5368,7 +6995,7 @@ SurfaceSourceSwapChainPanel& SurfaceSourceSwapChainPanel::setPanelNative(void * 
 
 // Methods of PrimitiveStateExtras
 PrimitiveStateExtras& PrimitiveStateExtras::setPolygonMode(PolygonMode polygonMode) {
-	this->polygonMode = static_cast<WGPUPolygonMode>(polygonMode);
+	this->polygonMode = polygonMode;
 	return *this;
 }
 PrimitiveStateExtras& PrimitiveStateExtras::setConservative(WGPUBool conservative) {
@@ -5378,14 +7005,14 @@ PrimitiveStateExtras& PrimitiveStateExtras::setConservative(WGPUBool conservativ
 
 
 // Methods of Adapter
-void Adapter::getFeatures(SupportedFeatures * features) const {
-	return wgpuAdapterGetFeatures(m_raw, features);
+void Adapter::getFeatures(SupportedFeatures& features) const {
+	return wgpuAdapterGetFeatures(m_raw, reinterpret_cast<WGPUSupportedFeatures *>(&features));
 }
-Status Adapter::getInfo(AdapterInfo * info) const {
-	return static_cast<Status>(wgpuAdapterGetInfo(m_raw, info));
+Status Adapter::getInfo(AdapterInfo& info) const {
+	return static_cast<Status>(wgpuAdapterGetInfo(m_raw, reinterpret_cast<WGPUAdapterInfo *>(&info)));
 }
-Status Adapter::getLimits(Limits * limits) const {
-	return static_cast<Status>(wgpuAdapterGetLimits(m_raw, limits));
+Status Adapter::getLimits(Limits& limits) const {
+	return static_cast<Status>(wgpuAdapterGetLimits(m_raw, reinterpret_cast<WGPULimits *>(&limits)));
 }
 Bool Adapter::hasFeature(FeatureName feature) const {
 	return wgpuAdapterHasFeature(m_raw, static_cast<WGPUFeatureName>(feature));
@@ -5400,7 +7027,7 @@ void Adapter::release() const {
 
 // Methods of BindGroup
 void BindGroup::setLabel(StringView label) const {
-	return wgpuBindGroupSetLabel(m_raw, label);
+	return wgpuBindGroupSetLabel(m_raw, *reinterpret_cast<WGPUStringView *>(&label));
 }
 void BindGroup::addRef() const {
 	return wgpuBindGroupAddRef(m_raw);
@@ -5412,7 +7039,7 @@ void BindGroup::release() const {
 
 // Methods of BindGroupLayout
 void BindGroupLayout::setLabel(StringView label) const {
-	return wgpuBindGroupLayoutSetLabel(m_raw, label);
+	return wgpuBindGroupLayoutSetLabel(m_raw, *reinterpret_cast<WGPUStringView *>(&label));
 }
 void BindGroupLayout::addRef() const {
 	return wgpuBindGroupLayoutAddRef(m_raw);
@@ -5442,7 +7069,7 @@ BufferUsage Buffer::getUsage() const {
 	return static_cast<BufferUsage>(wgpuBufferGetUsage(m_raw));
 }
 void Buffer::setLabel(StringView label) const {
-	return wgpuBufferSetLabel(m_raw, label);
+	return wgpuBufferSetLabel(m_raw, *reinterpret_cast<WGPUStringView *>(&label));
 }
 void Buffer::unmap() const {
 	return wgpuBufferUnmap(m_raw);
@@ -5457,7 +7084,7 @@ void Buffer::release() const {
 
 // Methods of CommandBuffer
 void CommandBuffer::setLabel(StringView label) const {
-	return wgpuCommandBufferSetLabel(m_raw, label);
+	return wgpuCommandBufferSetLabel(m_raw, *reinterpret_cast<WGPUStringView *>(&label));
 }
 void CommandBuffer::addRef() const {
 	return wgpuCommandBufferAddRef(m_raw);
@@ -5469,13 +7096,10 @@ void CommandBuffer::release() const {
 
 // Methods of CommandEncoder
 ComputePassEncoder CommandEncoder::beginComputePass(const ComputePassDescriptor& descriptor) const {
-	return wgpuCommandEncoderBeginComputePass(m_raw, &descriptor);
-}
-ComputePassEncoder CommandEncoder::beginComputePass() const {
-	return wgpuCommandEncoderBeginComputePass(m_raw, nullptr);
+	return wgpuCommandEncoderBeginComputePass(m_raw, reinterpret_cast<const WGPUComputePassDescriptor *>(&descriptor));
 }
 RenderPassEncoder CommandEncoder::beginRenderPass(const RenderPassDescriptor& descriptor) const {
-	return wgpuCommandEncoderBeginRenderPass(m_raw, &descriptor);
+	return wgpuCommandEncoderBeginRenderPass(m_raw, reinterpret_cast<const WGPURenderPassDescriptor *>(&descriptor));
 }
 void CommandEncoder::clearBuffer(Buffer buffer, uint64_t offset, uint64_t size) const {
 	return wgpuCommandEncoderClearBuffer(m_raw, buffer, offset, size);
@@ -5484,34 +7108,31 @@ void CommandEncoder::copyBufferToBuffer(Buffer source, uint64_t sourceOffset, Bu
 	return wgpuCommandEncoderCopyBufferToBuffer(m_raw, source, sourceOffset, destination, destinationOffset, size);
 }
 void CommandEncoder::copyBufferToTexture(const TexelCopyBufferInfo& source, const TexelCopyTextureInfo& destination, const Extent3D& copySize) const {
-	return wgpuCommandEncoderCopyBufferToTexture(m_raw, &source, &destination, &copySize);
+	return wgpuCommandEncoderCopyBufferToTexture(m_raw, reinterpret_cast<const WGPUTexelCopyBufferInfo *>(&source), reinterpret_cast<const WGPUTexelCopyTextureInfo *>(&destination), reinterpret_cast<const WGPUExtent3D *>(&copySize));
 }
 void CommandEncoder::copyTextureToBuffer(const TexelCopyTextureInfo& source, const TexelCopyBufferInfo& destination, const Extent3D& copySize) const {
-	return wgpuCommandEncoderCopyTextureToBuffer(m_raw, &source, &destination, &copySize);
+	return wgpuCommandEncoderCopyTextureToBuffer(m_raw, reinterpret_cast<const WGPUTexelCopyTextureInfo *>(&source), reinterpret_cast<const WGPUTexelCopyBufferInfo *>(&destination), reinterpret_cast<const WGPUExtent3D *>(&copySize));
 }
 void CommandEncoder::copyTextureToTexture(const TexelCopyTextureInfo& source, const TexelCopyTextureInfo& destination, const Extent3D& copySize) const {
-	return wgpuCommandEncoderCopyTextureToTexture(m_raw, &source, &destination, &copySize);
+	return wgpuCommandEncoderCopyTextureToTexture(m_raw, reinterpret_cast<const WGPUTexelCopyTextureInfo *>(&source), reinterpret_cast<const WGPUTexelCopyTextureInfo *>(&destination), reinterpret_cast<const WGPUExtent3D *>(&copySize));
 }
 CommandBuffer CommandEncoder::finish(const CommandBufferDescriptor& descriptor) const {
-	return wgpuCommandEncoderFinish(m_raw, &descriptor);
-}
-CommandBuffer CommandEncoder::finish() const {
-	return wgpuCommandEncoderFinish(m_raw, nullptr);
+	return wgpuCommandEncoderFinish(m_raw, reinterpret_cast<const WGPUCommandBufferDescriptor *>(&descriptor));
 }
 void CommandEncoder::insertDebugMarker(StringView markerLabel) const {
-	return wgpuCommandEncoderInsertDebugMarker(m_raw, markerLabel);
+	return wgpuCommandEncoderInsertDebugMarker(m_raw, *reinterpret_cast<WGPUStringView *>(&markerLabel));
 }
 void CommandEncoder::popDebugGroup() const {
 	return wgpuCommandEncoderPopDebugGroup(m_raw);
 }
 void CommandEncoder::pushDebugGroup(StringView groupLabel) const {
-	return wgpuCommandEncoderPushDebugGroup(m_raw, groupLabel);
+	return wgpuCommandEncoderPushDebugGroup(m_raw, *reinterpret_cast<WGPUStringView *>(&groupLabel));
 }
 void CommandEncoder::resolveQuerySet(QuerySet querySet, uint32_t firstQuery, uint32_t queryCount, Buffer destination, uint64_t destinationOffset) const {
 	return wgpuCommandEncoderResolveQuerySet(m_raw, querySet, firstQuery, queryCount, destination, destinationOffset);
 }
 void CommandEncoder::setLabel(StringView label) const {
-	return wgpuCommandEncoderSetLabel(m_raw, label);
+	return wgpuCommandEncoderSetLabel(m_raw, *reinterpret_cast<WGPUStringView *>(&label));
 }
 void CommandEncoder::writeTimestamp(QuerySet querySet, uint32_t queryIndex) const {
 	return wgpuCommandEncoderWriteTimestamp(m_raw, querySet, queryIndex);
@@ -5535,28 +7156,28 @@ void ComputePassEncoder::end() const {
 	return wgpuComputePassEncoderEnd(m_raw);
 }
 void ComputePassEncoder::insertDebugMarker(StringView markerLabel) const {
-	return wgpuComputePassEncoderInsertDebugMarker(m_raw, markerLabel);
+	return wgpuComputePassEncoderInsertDebugMarker(m_raw, *reinterpret_cast<WGPUStringView *>(&markerLabel));
 }
 void ComputePassEncoder::popDebugGroup() const {
 	return wgpuComputePassEncoderPopDebugGroup(m_raw);
 }
 void ComputePassEncoder::pushDebugGroup(StringView groupLabel) const {
-	return wgpuComputePassEncoderPushDebugGroup(m_raw, groupLabel);
+	return wgpuComputePassEncoderPushDebugGroup(m_raw, *reinterpret_cast<WGPUStringView *>(&groupLabel));
 }
 void ComputePassEncoder::setBindGroup(uint32_t groupIndex, BindGroup group, size_t dynamicOffsetCount, uint32_t const * dynamicOffsets) const {
 	return wgpuComputePassEncoderSetBindGroup(m_raw, groupIndex, group, dynamicOffsetCount, dynamicOffsets);
 }
 void ComputePassEncoder::setBindGroup(uint32_t groupIndex, BindGroup group, const std::vector<uint32_t>& dynamicOffsets) const {
-	return wgpuComputePassEncoderSetBindGroup(m_raw, groupIndex, group, static_cast<size_t>(dynamicOffsets.size()), dynamicOffsets.data());
+	return wgpuComputePassEncoderSetBindGroup(m_raw, groupIndex, group, static_cast<size_t>(dynamicOffsets.size()), reinterpret_cast<const uint32_t *>(dynamicOffsets.data()));
 }
 void ComputePassEncoder::setBindGroup(uint32_t groupIndex, BindGroup group, const std::span<const uint32_t>& dynamicOffsets) const {
-	return wgpuComputePassEncoderSetBindGroup(m_raw, groupIndex, group, static_cast<size_t>(dynamicOffsets.size()), dynamicOffsets.data());
+	return wgpuComputePassEncoderSetBindGroup(m_raw, groupIndex, group, static_cast<size_t>(dynamicOffsets.size()), reinterpret_cast<const uint32_t *>(dynamicOffsets.data()));
 }
 void ComputePassEncoder::setBindGroup(uint32_t groupIndex, BindGroup group, const uint32_t& dynamicOffsets) const {
-	return wgpuComputePassEncoderSetBindGroup(m_raw, groupIndex, group, 1, &dynamicOffsets);
+	return wgpuComputePassEncoderSetBindGroup(m_raw, groupIndex, group, 1, reinterpret_cast<const uint32_t *>(&dynamicOffsets));
 }
 void ComputePassEncoder::setLabel(StringView label) const {
-	return wgpuComputePassEncoderSetLabel(m_raw, label);
+	return wgpuComputePassEncoderSetLabel(m_raw, *reinterpret_cast<WGPUStringView *>(&label));
 }
 void ComputePassEncoder::setPipeline(ComputePipeline pipeline) const {
 	return wgpuComputePassEncoderSetPipeline(m_raw, pipeline);
@@ -5586,7 +7207,7 @@ BindGroupLayout ComputePipeline::getBindGroupLayout(uint32_t groupIndex) const {
 	return wgpuComputePipelineGetBindGroupLayout(m_raw, groupIndex);
 }
 void ComputePipeline::setLabel(StringView label) const {
-	return wgpuComputePipelineSetLabel(m_raw, label);
+	return wgpuComputePipelineSetLabel(m_raw, *reinterpret_cast<WGPUStringView *>(&label));
 }
 void ComputePipeline::addRef() const {
 	return wgpuComputePipelineAddRef(m_raw);
@@ -5598,46 +7219,40 @@ void ComputePipeline::release() const {
 
 // Methods of Device
 BindGroup Device::createBindGroup(const BindGroupDescriptor& descriptor) const {
-	return wgpuDeviceCreateBindGroup(m_raw, &descriptor);
+	return wgpuDeviceCreateBindGroup(m_raw, reinterpret_cast<const WGPUBindGroupDescriptor *>(&descriptor));
 }
 BindGroupLayout Device::createBindGroupLayout(const BindGroupLayoutDescriptor& descriptor) const {
-	return wgpuDeviceCreateBindGroupLayout(m_raw, &descriptor);
+	return wgpuDeviceCreateBindGroupLayout(m_raw, reinterpret_cast<const WGPUBindGroupLayoutDescriptor *>(&descriptor));
 }
 Buffer Device::createBuffer(const BufferDescriptor& descriptor) const {
-	return wgpuDeviceCreateBuffer(m_raw, &descriptor);
+	return wgpuDeviceCreateBuffer(m_raw, reinterpret_cast<const WGPUBufferDescriptor *>(&descriptor));
 }
 CommandEncoder Device::createCommandEncoder(const CommandEncoderDescriptor& descriptor) const {
-	return wgpuDeviceCreateCommandEncoder(m_raw, &descriptor);
-}
-CommandEncoder Device::createCommandEncoder() const {
-	return wgpuDeviceCreateCommandEncoder(m_raw, nullptr);
+	return wgpuDeviceCreateCommandEncoder(m_raw, reinterpret_cast<const WGPUCommandEncoderDescriptor *>(&descriptor));
 }
 ComputePipeline Device::createComputePipeline(const ComputePipelineDescriptor& descriptor) const {
-	return wgpuDeviceCreateComputePipeline(m_raw, &descriptor);
+	return wgpuDeviceCreateComputePipeline(m_raw, reinterpret_cast<const WGPUComputePipelineDescriptor *>(&descriptor));
 }
 PipelineLayout Device::createPipelineLayout(const PipelineLayoutDescriptor& descriptor) const {
-	return wgpuDeviceCreatePipelineLayout(m_raw, &descriptor);
+	return wgpuDeviceCreatePipelineLayout(m_raw, reinterpret_cast<const WGPUPipelineLayoutDescriptor *>(&descriptor));
 }
 QuerySet Device::createQuerySet(const QuerySetDescriptor& descriptor) const {
-	return wgpuDeviceCreateQuerySet(m_raw, &descriptor);
+	return wgpuDeviceCreateQuerySet(m_raw, reinterpret_cast<const WGPUQuerySetDescriptor *>(&descriptor));
 }
 RenderBundleEncoder Device::createRenderBundleEncoder(const RenderBundleEncoderDescriptor& descriptor) const {
-	return wgpuDeviceCreateRenderBundleEncoder(m_raw, &descriptor);
+	return wgpuDeviceCreateRenderBundleEncoder(m_raw, reinterpret_cast<const WGPURenderBundleEncoderDescriptor *>(&descriptor));
 }
 RenderPipeline Device::createRenderPipeline(const RenderPipelineDescriptor& descriptor) const {
-	return wgpuDeviceCreateRenderPipeline(m_raw, &descriptor);
+	return wgpuDeviceCreateRenderPipeline(m_raw, reinterpret_cast<const WGPURenderPipelineDescriptor *>(&descriptor));
 }
 Sampler Device::createSampler(const SamplerDescriptor& descriptor) const {
-	return wgpuDeviceCreateSampler(m_raw, &descriptor);
-}
-Sampler Device::createSampler() const {
-	return wgpuDeviceCreateSampler(m_raw, nullptr);
+	return wgpuDeviceCreateSampler(m_raw, reinterpret_cast<const WGPUSamplerDescriptor *>(&descriptor));
 }
 ShaderModule Device::createShaderModule(const ShaderModuleDescriptor& descriptor) const {
-	return wgpuDeviceCreateShaderModule(m_raw, &descriptor);
+	return wgpuDeviceCreateShaderModule(m_raw, reinterpret_cast<const WGPUShaderModuleDescriptor *>(&descriptor));
 }
 Texture Device::createTexture(const TextureDescriptor& descriptor) const {
-	return wgpuDeviceCreateTexture(m_raw, &descriptor);
+	return wgpuDeviceCreateTexture(m_raw, reinterpret_cast<const WGPUTextureDescriptor *>(&descriptor));
 }
 void Device::destroy() const {
 	return wgpuDeviceDestroy(m_raw);
@@ -5645,11 +7260,11 @@ void Device::destroy() const {
 AdapterInfo Device::getAdapterInfo() const {
 	return wgpuDeviceGetAdapterInfo(m_raw);
 }
-void Device::getFeatures(SupportedFeatures * features) const {
-	return wgpuDeviceGetFeatures(m_raw, features);
+void Device::getFeatures(SupportedFeatures& features) const {
+	return wgpuDeviceGetFeatures(m_raw, reinterpret_cast<WGPUSupportedFeatures *>(&features));
 }
-Status Device::getLimits(Limits * limits) const {
-	return static_cast<Status>(wgpuDeviceGetLimits(m_raw, limits));
+Status Device::getLimits(Limits& limits) const {
+	return static_cast<Status>(wgpuDeviceGetLimits(m_raw, reinterpret_cast<WGPULimits *>(&limits)));
 }
 Queue Device::getQueue() const {
 	return wgpuDeviceGetQueue(m_raw);
@@ -5661,7 +7276,7 @@ void Device::pushErrorScope(ErrorFilter filter) const {
 	return wgpuDevicePushErrorScope(m_raw, static_cast<WGPUErrorFilter>(filter));
 }
 void Device::setLabel(StringView label) const {
-	return wgpuDeviceSetLabel(m_raw, label);
+	return wgpuDeviceSetLabel(m_raw, *reinterpret_cast<WGPUStringView *>(&label));
 }
 void Device::addRef() const {
 	return wgpuDeviceAddRef(m_raw);
@@ -5673,16 +7288,16 @@ Bool Device::poll(Bool wait, SubmissionIndex const * submissionIndex) const {
 	return wgpuDevicePoll(m_raw, wait, submissionIndex);
 }
 ShaderModule Device::createShaderModuleSpirV(const ShaderModuleDescriptorSpirV& descriptor) const {
-	return wgpuDeviceCreateShaderModuleSpirV(m_raw, &descriptor);
+	return wgpuDeviceCreateShaderModuleSpirV(m_raw, reinterpret_cast<const WGPUShaderModuleDescriptorSpirV *>(&descriptor));
 }
 
 
 // Methods of Instance
 Surface Instance::createSurface(const SurfaceDescriptor& descriptor) const {
-	return wgpuInstanceCreateSurface(m_raw, &descriptor);
+	return wgpuInstanceCreateSurface(m_raw, reinterpret_cast<const WGPUSurfaceDescriptor *>(&descriptor));
 }
-Status Instance::getWGSLLanguageFeatures(SupportedWGSLLanguageFeatures * features) const {
-	return static_cast<Status>(wgpuInstanceGetWGSLLanguageFeatures(m_raw, features));
+Status Instance::getWGSLLanguageFeatures(SupportedWGSLLanguageFeatures& features) const {
+	return static_cast<Status>(wgpuInstanceGetWGSLLanguageFeatures(m_raw, reinterpret_cast<WGPUSupportedWGSLLanguageFeatures *>(&features)));
 }
 Bool Instance::hasWGSLLanguageFeature(WGSLLanguageFeatureName feature) const {
 	return wgpuInstanceHasWGSLLanguageFeature(m_raw, static_cast<WGPUWGSLLanguageFeatureName>(feature));
@@ -5690,8 +7305,8 @@ Bool Instance::hasWGSLLanguageFeature(WGSLLanguageFeatureName feature) const {
 void Instance::processEvents() const {
 	return wgpuInstanceProcessEvents(m_raw);
 }
-WaitStatus Instance::waitAny(size_t futureCount, FutureWaitInfo * futures, uint64_t timeoutNS) const {
-	return static_cast<WaitStatus>(wgpuInstanceWaitAny(m_raw, futureCount, futures, timeoutNS));
+WaitStatus Instance::waitAny(size_t futureCount, FutureWaitInfo& futures, uint64_t timeoutNS) const {
+	return static_cast<WaitStatus>(wgpuInstanceWaitAny(m_raw, futureCount, reinterpret_cast<WGPUFutureWaitInfo *>(&futures), timeoutNS));
 }
 void Instance::addRef() const {
 	return wgpuInstanceAddRef(m_raw);
@@ -5700,13 +7315,13 @@ void Instance::release() const {
 	return wgpuInstanceRelease(m_raw);
 }
 size_t Instance::enumerateAdapters(const InstanceEnumerateAdapterOptions& options, Adapter * adapters) const {
-	return wgpuInstanceEnumerateAdapters(m_raw, &options, reinterpret_cast<WGPUAdapter *>(adapters));
+	return wgpuInstanceEnumerateAdapters(m_raw, reinterpret_cast<const WGPUInstanceEnumerateAdapterOptions *>(&options), reinterpret_cast<WGPUAdapter *>(adapters));
 }
 
 
 // Methods of PipelineLayout
 void PipelineLayout::setLabel(StringView label) const {
-	return wgpuPipelineLayoutSetLabel(m_raw, label);
+	return wgpuPipelineLayoutSetLabel(m_raw, *reinterpret_cast<WGPUStringView *>(&label));
 }
 void PipelineLayout::addRef() const {
 	return wgpuPipelineLayoutAddRef(m_raw);
@@ -5727,7 +7342,7 @@ QueryType QuerySet::getType() const {
 	return static_cast<QueryType>(wgpuQuerySetGetType(m_raw));
 }
 void QuerySet::setLabel(StringView label) const {
-	return wgpuQuerySetSetLabel(m_raw, label);
+	return wgpuQuerySetSetLabel(m_raw, *reinterpret_cast<WGPUStringView *>(&label));
 }
 void QuerySet::addRef() const {
 	return wgpuQuerySetAddRef(m_raw);
@@ -5739,25 +7354,25 @@ void QuerySet::release() const {
 
 // Methods of Queue
 void Queue::setLabel(StringView label) const {
-	return wgpuQueueSetLabel(m_raw, label);
+	return wgpuQueueSetLabel(m_raw, *reinterpret_cast<WGPUStringView *>(&label));
 }
 void Queue::submit(size_t commandCount, CommandBuffer const * commands) const {
 	return wgpuQueueSubmit(m_raw, commandCount, reinterpret_cast<WGPUCommandBuffer const *>(commands));
 }
-void Queue::submit(const std::vector<WGPUCommandBuffer>& commands) const {
-	return wgpuQueueSubmit(m_raw, static_cast<size_t>(commands.size()), commands.data());
+void Queue::submit(const std::vector<CommandBuffer>& commands) const {
+	return wgpuQueueSubmit(m_raw, static_cast<size_t>(commands.size()), reinterpret_cast<const WGPUCommandBuffer *>(commands.data()));
 }
-void Queue::submit(const std::span<const WGPUCommandBuffer>& commands) const {
-	return wgpuQueueSubmit(m_raw, static_cast<size_t>(commands.size()), commands.data());
+void Queue::submit(const std::span<const CommandBuffer>& commands) const {
+	return wgpuQueueSubmit(m_raw, static_cast<size_t>(commands.size()), reinterpret_cast<const WGPUCommandBuffer *>(commands.data()));
 }
-void Queue::submit(const WGPUCommandBuffer& commands) const {
-	return wgpuQueueSubmit(m_raw, 1, &commands);
+void Queue::submit(const CommandBuffer& commands) const {
+	return wgpuQueueSubmit(m_raw, 1, reinterpret_cast<const WGPUCommandBuffer *>(&commands));
 }
 void Queue::writeBuffer(Buffer buffer, uint64_t bufferOffset, void const * data, size_t size) const {
 	return wgpuQueueWriteBuffer(m_raw, buffer, bufferOffset, data, size);
 }
 void Queue::writeTexture(const TexelCopyTextureInfo& destination, void const * data, size_t dataSize, const TexelCopyBufferLayout& dataLayout, const Extent3D& writeSize) const {
-	return wgpuQueueWriteTexture(m_raw, &destination, data, dataSize, &dataLayout, &writeSize);
+	return wgpuQueueWriteTexture(m_raw, reinterpret_cast<const WGPUTexelCopyTextureInfo *>(&destination), data, dataSize, reinterpret_cast<const WGPUTexelCopyBufferLayout *>(&dataLayout), reinterpret_cast<const WGPUExtent3D *>(&writeSize));
 }
 void Queue::addRef() const {
 	return wgpuQueueAddRef(m_raw);
@@ -5768,14 +7383,14 @@ void Queue::release() const {
 SubmissionIndex Queue::submitForIndex(size_t commandCount, CommandBuffer const * commands) const {
 	return wgpuQueueSubmitForIndex(m_raw, commandCount, reinterpret_cast<WGPUCommandBuffer const *>(commands));
 }
-SubmissionIndex Queue::submitForIndex(const std::vector<WGPUCommandBuffer>& commands) const {
-	return wgpuQueueSubmitForIndex(m_raw, static_cast<size_t>(commands.size()), commands.data());
+SubmissionIndex Queue::submitForIndex(const std::vector<CommandBuffer>& commands) const {
+	return wgpuQueueSubmitForIndex(m_raw, static_cast<size_t>(commands.size()), reinterpret_cast<const WGPUCommandBuffer *>(commands.data()));
 }
-SubmissionIndex Queue::submitForIndex(const std::span<const WGPUCommandBuffer>& commands) const {
-	return wgpuQueueSubmitForIndex(m_raw, static_cast<size_t>(commands.size()), commands.data());
+SubmissionIndex Queue::submitForIndex(const std::span<const CommandBuffer>& commands) const {
+	return wgpuQueueSubmitForIndex(m_raw, static_cast<size_t>(commands.size()), reinterpret_cast<const WGPUCommandBuffer *>(commands.data()));
 }
-SubmissionIndex Queue::submitForIndex(const WGPUCommandBuffer& commands) const {
-	return wgpuQueueSubmitForIndex(m_raw, 1, &commands);
+SubmissionIndex Queue::submitForIndex(const CommandBuffer& commands) const {
+	return wgpuQueueSubmitForIndex(m_raw, 1, reinterpret_cast<const WGPUCommandBuffer *>(&commands));
 }
 float Queue::getTimestampPeriod() const {
 	return wgpuQueueGetTimestampPeriod(m_raw);
@@ -5784,7 +7399,7 @@ float Queue::getTimestampPeriod() const {
 
 // Methods of RenderBundle
 void RenderBundle::setLabel(StringView label) const {
-	return wgpuRenderBundleSetLabel(m_raw, label);
+	return wgpuRenderBundleSetLabel(m_raw, *reinterpret_cast<WGPUStringView *>(&label));
 }
 void RenderBundle::addRef() const {
 	return wgpuRenderBundleAddRef(m_raw);
@@ -5808,37 +7423,34 @@ void RenderBundleEncoder::drawIndirect(Buffer indirectBuffer, uint64_t indirectO
 	return wgpuRenderBundleEncoderDrawIndirect(m_raw, indirectBuffer, indirectOffset);
 }
 RenderBundle RenderBundleEncoder::finish(const RenderBundleDescriptor& descriptor) const {
-	return wgpuRenderBundleEncoderFinish(m_raw, &descriptor);
-}
-RenderBundle RenderBundleEncoder::finish() const {
-	return wgpuRenderBundleEncoderFinish(m_raw, nullptr);
+	return wgpuRenderBundleEncoderFinish(m_raw, reinterpret_cast<const WGPURenderBundleDescriptor *>(&descriptor));
 }
 void RenderBundleEncoder::insertDebugMarker(StringView markerLabel) const {
-	return wgpuRenderBundleEncoderInsertDebugMarker(m_raw, markerLabel);
+	return wgpuRenderBundleEncoderInsertDebugMarker(m_raw, *reinterpret_cast<WGPUStringView *>(&markerLabel));
 }
 void RenderBundleEncoder::popDebugGroup() const {
 	return wgpuRenderBundleEncoderPopDebugGroup(m_raw);
 }
 void RenderBundleEncoder::pushDebugGroup(StringView groupLabel) const {
-	return wgpuRenderBundleEncoderPushDebugGroup(m_raw, groupLabel);
+	return wgpuRenderBundleEncoderPushDebugGroup(m_raw, *reinterpret_cast<WGPUStringView *>(&groupLabel));
 }
 void RenderBundleEncoder::setBindGroup(uint32_t groupIndex, BindGroup group, size_t dynamicOffsetCount, uint32_t const * dynamicOffsets) const {
 	return wgpuRenderBundleEncoderSetBindGroup(m_raw, groupIndex, group, dynamicOffsetCount, dynamicOffsets);
 }
 void RenderBundleEncoder::setBindGroup(uint32_t groupIndex, BindGroup group, const std::vector<uint32_t>& dynamicOffsets) const {
-	return wgpuRenderBundleEncoderSetBindGroup(m_raw, groupIndex, group, static_cast<size_t>(dynamicOffsets.size()), dynamicOffsets.data());
+	return wgpuRenderBundleEncoderSetBindGroup(m_raw, groupIndex, group, static_cast<size_t>(dynamicOffsets.size()), reinterpret_cast<const uint32_t *>(dynamicOffsets.data()));
 }
 void RenderBundleEncoder::setBindGroup(uint32_t groupIndex, BindGroup group, const std::span<const uint32_t>& dynamicOffsets) const {
-	return wgpuRenderBundleEncoderSetBindGroup(m_raw, groupIndex, group, static_cast<size_t>(dynamicOffsets.size()), dynamicOffsets.data());
+	return wgpuRenderBundleEncoderSetBindGroup(m_raw, groupIndex, group, static_cast<size_t>(dynamicOffsets.size()), reinterpret_cast<const uint32_t *>(dynamicOffsets.data()));
 }
 void RenderBundleEncoder::setBindGroup(uint32_t groupIndex, BindGroup group, const uint32_t& dynamicOffsets) const {
-	return wgpuRenderBundleEncoderSetBindGroup(m_raw, groupIndex, group, 1, &dynamicOffsets);
+	return wgpuRenderBundleEncoderSetBindGroup(m_raw, groupIndex, group, 1, reinterpret_cast<const uint32_t *>(&dynamicOffsets));
 }
 void RenderBundleEncoder::setIndexBuffer(Buffer buffer, IndexFormat format, uint64_t offset, uint64_t size) const {
 	return wgpuRenderBundleEncoderSetIndexBuffer(m_raw, buffer, static_cast<WGPUIndexFormat>(format), offset, size);
 }
 void RenderBundleEncoder::setLabel(StringView label) const {
-	return wgpuRenderBundleEncoderSetLabel(m_raw, label);
+	return wgpuRenderBundleEncoderSetLabel(m_raw, *reinterpret_cast<WGPUStringView *>(&label));
 }
 void RenderBundleEncoder::setPipeline(RenderPipeline pipeline) const {
 	return wgpuRenderBundleEncoderSetPipeline(m_raw, pipeline);
@@ -5882,44 +7494,44 @@ void RenderPassEncoder::endOcclusionQuery() const {
 void RenderPassEncoder::executeBundles(size_t bundleCount, RenderBundle const * bundles) const {
 	return wgpuRenderPassEncoderExecuteBundles(m_raw, bundleCount, reinterpret_cast<WGPURenderBundle const *>(bundles));
 }
-void RenderPassEncoder::executeBundles(const std::vector<WGPURenderBundle>& bundles) const {
-	return wgpuRenderPassEncoderExecuteBundles(m_raw, static_cast<size_t>(bundles.size()), bundles.data());
+void RenderPassEncoder::executeBundles(const std::vector<RenderBundle>& bundles) const {
+	return wgpuRenderPassEncoderExecuteBundles(m_raw, static_cast<size_t>(bundles.size()), reinterpret_cast<const WGPURenderBundle *>(bundles.data()));
 }
-void RenderPassEncoder::executeBundles(const std::span<const WGPURenderBundle>& bundles) const {
-	return wgpuRenderPassEncoderExecuteBundles(m_raw, static_cast<size_t>(bundles.size()), bundles.data());
+void RenderPassEncoder::executeBundles(const std::span<const RenderBundle>& bundles) const {
+	return wgpuRenderPassEncoderExecuteBundles(m_raw, static_cast<size_t>(bundles.size()), reinterpret_cast<const WGPURenderBundle *>(bundles.data()));
 }
-void RenderPassEncoder::executeBundles(const WGPURenderBundle& bundles) const {
-	return wgpuRenderPassEncoderExecuteBundles(m_raw, 1, &bundles);
+void RenderPassEncoder::executeBundles(const RenderBundle& bundles) const {
+	return wgpuRenderPassEncoderExecuteBundles(m_raw, 1, reinterpret_cast<const WGPURenderBundle *>(&bundles));
 }
 void RenderPassEncoder::insertDebugMarker(StringView markerLabel) const {
-	return wgpuRenderPassEncoderInsertDebugMarker(m_raw, markerLabel);
+	return wgpuRenderPassEncoderInsertDebugMarker(m_raw, *reinterpret_cast<WGPUStringView *>(&markerLabel));
 }
 void RenderPassEncoder::popDebugGroup() const {
 	return wgpuRenderPassEncoderPopDebugGroup(m_raw);
 }
 void RenderPassEncoder::pushDebugGroup(StringView groupLabel) const {
-	return wgpuRenderPassEncoderPushDebugGroup(m_raw, groupLabel);
+	return wgpuRenderPassEncoderPushDebugGroup(m_raw, *reinterpret_cast<WGPUStringView *>(&groupLabel));
 }
 void RenderPassEncoder::setBindGroup(uint32_t groupIndex, BindGroup group, size_t dynamicOffsetCount, uint32_t const * dynamicOffsets) const {
 	return wgpuRenderPassEncoderSetBindGroup(m_raw, groupIndex, group, dynamicOffsetCount, dynamicOffsets);
 }
 void RenderPassEncoder::setBindGroup(uint32_t groupIndex, BindGroup group, const std::vector<uint32_t>& dynamicOffsets) const {
-	return wgpuRenderPassEncoderSetBindGroup(m_raw, groupIndex, group, static_cast<size_t>(dynamicOffsets.size()), dynamicOffsets.data());
+	return wgpuRenderPassEncoderSetBindGroup(m_raw, groupIndex, group, static_cast<size_t>(dynamicOffsets.size()), reinterpret_cast<const uint32_t *>(dynamicOffsets.data()));
 }
 void RenderPassEncoder::setBindGroup(uint32_t groupIndex, BindGroup group, const std::span<const uint32_t>& dynamicOffsets) const {
-	return wgpuRenderPassEncoderSetBindGroup(m_raw, groupIndex, group, static_cast<size_t>(dynamicOffsets.size()), dynamicOffsets.data());
+	return wgpuRenderPassEncoderSetBindGroup(m_raw, groupIndex, group, static_cast<size_t>(dynamicOffsets.size()), reinterpret_cast<const uint32_t *>(dynamicOffsets.data()));
 }
 void RenderPassEncoder::setBindGroup(uint32_t groupIndex, BindGroup group, const uint32_t& dynamicOffsets) const {
-	return wgpuRenderPassEncoderSetBindGroup(m_raw, groupIndex, group, 1, &dynamicOffsets);
+	return wgpuRenderPassEncoderSetBindGroup(m_raw, groupIndex, group, 1, reinterpret_cast<const uint32_t *>(&dynamicOffsets));
 }
 void RenderPassEncoder::setBlendConstant(const Color& color) const {
-	return wgpuRenderPassEncoderSetBlendConstant(m_raw, &color);
+	return wgpuRenderPassEncoderSetBlendConstant(m_raw, reinterpret_cast<const WGPUColor *>(&color));
 }
 void RenderPassEncoder::setIndexBuffer(Buffer buffer, IndexFormat format, uint64_t offset, uint64_t size) const {
 	return wgpuRenderPassEncoderSetIndexBuffer(m_raw, buffer, static_cast<WGPUIndexFormat>(format), offset, size);
 }
 void RenderPassEncoder::setLabel(StringView label) const {
-	return wgpuRenderPassEncoderSetLabel(m_raw, label);
+	return wgpuRenderPassEncoderSetLabel(m_raw, *reinterpret_cast<WGPUStringView *>(&label));
 }
 void RenderPassEncoder::setPipeline(RenderPipeline pipeline) const {
 	return wgpuRenderPassEncoderSetPipeline(m_raw, pipeline);
@@ -5973,7 +7585,7 @@ BindGroupLayout RenderPipeline::getBindGroupLayout(uint32_t groupIndex) const {
 	return wgpuRenderPipelineGetBindGroupLayout(m_raw, groupIndex);
 }
 void RenderPipeline::setLabel(StringView label) const {
-	return wgpuRenderPipelineSetLabel(m_raw, label);
+	return wgpuRenderPipelineSetLabel(m_raw, *reinterpret_cast<WGPUStringView *>(&label));
 }
 void RenderPipeline::addRef() const {
 	return wgpuRenderPipelineAddRef(m_raw);
@@ -5985,7 +7597,7 @@ void RenderPipeline::release() const {
 
 // Methods of Sampler
 void Sampler::setLabel(StringView label) const {
-	return wgpuSamplerSetLabel(m_raw, label);
+	return wgpuSamplerSetLabel(m_raw, *reinterpret_cast<WGPUStringView *>(&label));
 }
 void Sampler::addRef() const {
 	return wgpuSamplerAddRef(m_raw);
@@ -5997,7 +7609,7 @@ void Sampler::release() const {
 
 // Methods of ShaderModule
 void ShaderModule::setLabel(StringView label) const {
-	return wgpuShaderModuleSetLabel(m_raw, label);
+	return wgpuShaderModuleSetLabel(m_raw, *reinterpret_cast<WGPUStringView *>(&label));
 }
 void ShaderModule::addRef() const {
 	return wgpuShaderModuleAddRef(m_raw);
@@ -6009,19 +7621,19 @@ void ShaderModule::release() const {
 
 // Methods of Surface
 void Surface::configure(const SurfaceConfiguration& config) const {
-	return wgpuSurfaceConfigure(m_raw, &config);
+	return wgpuSurfaceConfigure(m_raw, reinterpret_cast<const WGPUSurfaceConfiguration *>(&config));
 }
-Status Surface::getCapabilities(Adapter adapter, SurfaceCapabilities * capabilities) const {
-	return static_cast<Status>(wgpuSurfaceGetCapabilities(m_raw, adapter, capabilities));
+Status Surface::getCapabilities(Adapter adapter, SurfaceCapabilities& capabilities) const {
+	return static_cast<Status>(wgpuSurfaceGetCapabilities(m_raw, adapter, reinterpret_cast<WGPUSurfaceCapabilities *>(&capabilities)));
 }
-void Surface::getCurrentTexture(SurfaceTexture * surfaceTexture) const {
-	return wgpuSurfaceGetCurrentTexture(m_raw, surfaceTexture);
+void Surface::getCurrentTexture(SurfaceTexture& surfaceTexture) const {
+	return wgpuSurfaceGetCurrentTexture(m_raw, reinterpret_cast<WGPUSurfaceTexture *>(&surfaceTexture));
 }
 Status Surface::present() const {
 	return static_cast<Status>(wgpuSurfacePresent(m_raw));
 }
 void Surface::setLabel(StringView label) const {
-	return wgpuSurfaceSetLabel(m_raw, label);
+	return wgpuSurfaceSetLabel(m_raw, *reinterpret_cast<WGPUStringView *>(&label));
 }
 void Surface::unconfigure() const {
 	return wgpuSurfaceUnconfigure(m_raw);
@@ -6036,10 +7648,7 @@ void Surface::release() const {
 
 // Methods of Texture
 TextureView Texture::createView(const TextureViewDescriptor& descriptor) const {
-	return wgpuTextureCreateView(m_raw, &descriptor);
-}
-TextureView Texture::createView() const {
-	return wgpuTextureCreateView(m_raw, nullptr);
+	return wgpuTextureCreateView(m_raw, reinterpret_cast<const WGPUTextureViewDescriptor *>(&descriptor));
 }
 void Texture::destroy() const {
 	return wgpuTextureDestroy(m_raw);
@@ -6069,7 +7678,7 @@ uint32_t Texture::getWidth() const {
 	return wgpuTextureGetWidth(m_raw);
 }
 void Texture::setLabel(StringView label) const {
-	return wgpuTextureSetLabel(m_raw, label);
+	return wgpuTextureSetLabel(m_raw, *reinterpret_cast<WGPUStringView *>(&label));
 }
 void Texture::addRef() const {
 	return wgpuTextureAddRef(m_raw);
@@ -6081,7 +7690,7 @@ void Texture::release() const {
 
 // Methods of TextureView
 void TextureView::setLabel(StringView label) const {
-	return wgpuTextureViewSetLabel(m_raw, label);
+	return wgpuTextureViewSetLabel(m_raw, *reinterpret_cast<WGPUStringView *>(&label));
 }
 void TextureView::addRef() const {
 	return wgpuTextureViewAddRef(m_raw);
@@ -6120,7 +7729,7 @@ Adapter Instance::requestAdapter(const RequestAdapterOptions& options) {
 		context.requestEnded = true;
 	};
 	callbackInfo.mode = CallbackMode::AllowSpontaneous;
-	wgpuInstanceRequestAdapter(*this, &options, callbackInfo);
+	wgpuInstanceRequestAdapter(*this, reinterpret_cast<const WGPURequestAdapterOptions*>(&options), callbackInfo);
 
 #if __EMSCRIPTEN__
 	while (!context.requestEnded) {
@@ -6159,7 +7768,7 @@ Device Adapter::requestDevice(const DeviceDescriptor& descriptor) {
 		context.requestEnded = true;
 	};
 	callbackInfo.mode = CallbackMode::AllowSpontaneous;
-	wgpuAdapterRequestDevice(*this, &descriptor, callbackInfo);
+	wgpuAdapterRequestDevice(*this, reinterpret_cast<const WGPUDeviceDescriptor*>(&descriptor), callbackInfo);
 
 #if __EMSCRIPTEN__
 	while (!context.requestEnded) {
