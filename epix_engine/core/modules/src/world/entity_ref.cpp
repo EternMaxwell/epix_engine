@@ -67,7 +67,7 @@ void EntityWorldMut::despawn() {
 }
 
 // impl for World::entity and entity_mut, get_entity and get_entity_mut
-std::optional<EntityRef> World::get_entity(Entity entity) {
+std::optional<EntityRef> World::get_entity(Entity entity) const {
     if (auto loc = _entities.get(entity); loc.has_value() && loc.value() != EntityLocation::invalid()) {
         return EntityRef(entity, this);
     }
@@ -79,6 +79,6 @@ std::optional<EntityWorldMut> World::get_entity_mut(Entity entity) {
     }
     return std::nullopt;
 }
-EntityRef World::entity(Entity entity) { return get_entity(entity).value(); }
+EntityRef World::entity(Entity entity) const { return get_entity(entity).value(); }
 EntityWorldMut World::entity_mut(Entity entity) { return get_entity_mut(entity).value(); }
 }  // namespace core
