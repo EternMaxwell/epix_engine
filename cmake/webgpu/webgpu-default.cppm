@@ -1,8 +1,3 @@
-/**
-File for save setDefault implementations of WebGPU C++ types for wgpu-native.
-wgpu-native currently does not provide its own init macros, so we implement them here.
-*/
-
 // Methods of StringView
 StringView& StringView::setDefault() {
 	*this = WGPUStringView WGPU_STRING_VIEW_INIT;
@@ -653,7 +648,7 @@ InstanceExtras& InstanceExtras::setDefault() {
     dx12ShaderCompiler = Dx12Compiler::Undefined;
     ((ChainedStruct*)&chain)->setDefault();
     ((StringView*)&dxcPath)->setDefault();
-    chain.sType = (WGPUSType)NativeSType::InstanceExtras;
+    chain.sType = static_cast<SType>(NativeSType::InstanceExtras);
     chain.next  = nullptr;
 	return *this;
 }
@@ -662,7 +657,7 @@ InstanceExtras& InstanceExtras::setDefault() {
 DeviceExtras& DeviceExtras::setDefault() {
     ((ChainedStruct*)&chain)->setDefault();
     ((StringView*)&tracePath)->setDefault();
-    chain.sType = (WGPUSType)NativeSType::DeviceExtras;
+    chain.sType = static_cast<SType>(NativeSType::DeviceExtras);
     chain.next  = nullptr;
 	return *this;
 }
@@ -670,7 +665,7 @@ DeviceExtras& DeviceExtras::setDefault() {
 // Methods of NativeLimits
 NativeLimits& NativeLimits::setDefault() {
     ((ChainedStructOut*)&chain)->setDefault();
-    chain.sType = (WGPUSType)NativeSType::NativeLimits;
+    chain.sType = static_cast<SType>(NativeSType::NativeLimits);
     chain.next  = nullptr;
 	return *this;
 }
@@ -684,7 +679,7 @@ PushConstantRange& PushConstantRange::setDefault() {
 // Methods of PipelineLayoutExtras
 PipelineLayoutExtras& PipelineLayoutExtras::setDefault() {
     ((ChainedStruct*)&chain)->setDefault();
-    chain.sType = (WGPUSType)NativeSType::PipelineLayoutExtras;
+    chain.sType = static_cast<SType>(NativeSType::PipelineLayoutExtras);
     chain.next  = nullptr;
 	return *this;
 }
@@ -699,7 +694,7 @@ ShaderDefine& ShaderDefine::setDefault() {
 // Methods of ShaderSourceGLSL
 ShaderSourceGLSL& ShaderSourceGLSL::setDefault() {
 	*this = WGPUShaderSourceGLSL {};
-	chain.sType = (WGPUSType)NativeSType::ShaderSourceGLSL;
+	chain.sType = static_cast<SType>(NativeSType::ShaderSourceGLSL);
 	chain.next = nullptr;
 	return *this;
 }
@@ -754,7 +749,7 @@ InstanceEnumerateAdapterOptions& InstanceEnumerateAdapterOptions::setDefault() {
 // Methods of BindGroupEntryExtras
 BindGroupEntryExtras& BindGroupEntryExtras::setDefault() {
     ((ChainedStruct*)&chain)->setDefault();
-    chain.sType = (WGPUSType)NativeSType::BindGroupEntryExtras;
+    chain.sType = static_cast<SType>(NativeSType::BindGroupEntryExtras);
     chain.next  = nullptr;
 	return *this;
 }
@@ -762,7 +757,7 @@ BindGroupEntryExtras& BindGroupEntryExtras::setDefault() {
 // Methods of BindGroupLayoutEntryExtras
 BindGroupLayoutEntryExtras& BindGroupLayoutEntryExtras::setDefault() {
     ((ChainedStruct*)&chain)->setDefault();
-    chain.sType = (WGPUSType)NativeSType::BindGroupLayoutEntryExtras;
+    chain.sType = static_cast<SType>(NativeSType::BindGroupLayoutEntryExtras);
     chain.next  = nullptr;
 	return *this;
 }
@@ -770,7 +765,7 @@ BindGroupLayoutEntryExtras& BindGroupLayoutEntryExtras::setDefault() {
 // Methods of QuerySetDescriptorExtras
 QuerySetDescriptorExtras& QuerySetDescriptorExtras::setDefault() {
     ((ChainedStruct*)&chain)->setDefault();
-    chain.sType = (WGPUSType)NativeSType::QuerySetDescriptorExtras;
+    chain.sType = static_cast<SType>(NativeSType::QuerySetDescriptorExtras);
     chain.next  = nullptr;
 	return *this;
 }
@@ -778,7 +773,7 @@ QuerySetDescriptorExtras& QuerySetDescriptorExtras::setDefault() {
 // Methods of SurfaceConfigurationExtras
 SurfaceConfigurationExtras& SurfaceConfigurationExtras::setDefault() {
     ((ChainedStruct*)&chain)->setDefault();
-    chain.sType = (WGPUSType)NativeSType::SurfaceConfigurationExtras;
+    chain.sType = static_cast<SType>(NativeSType::SurfaceConfigurationExtras);
     chain.next  = nullptr;
 	return *this;
 }
@@ -786,7 +781,7 @@ SurfaceConfigurationExtras& SurfaceConfigurationExtras::setDefault() {
 // Methods of SurfaceSourceSwapChainPanel
 SurfaceSourceSwapChainPanel& SurfaceSourceSwapChainPanel::setDefault() {
 	*this = WGPUSurfaceSourceSwapChainPanel {};
-	chain.sType = (WGPUSType)NativeSType::SurfaceSourceSwapChainPanel;
+	chain.sType = static_cast<SType>(NativeSType::SurfaceSourceSwapChainPanel);
 	chain.next = nullptr;
 	return *this;
 }
@@ -794,7 +789,7 @@ SurfaceSourceSwapChainPanel& SurfaceSourceSwapChainPanel::setDefault() {
 // Methods of PrimitiveStateExtras
 PrimitiveStateExtras& PrimitiveStateExtras::setDefault() {
 	*this = WGPUPrimitiveStateExtras {};
-	chain.sType = (WGPUSType)NativeSType::PrimitiveStateExtras;
+	chain.sType = static_cast<SType>(NativeSType::PrimitiveStateExtras);
 	chain.next = nullptr;
 	return *this;
 }

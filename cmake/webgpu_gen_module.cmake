@@ -67,6 +67,7 @@ function(generate_webgpu_wrapper)
             -t "${TEMPLATE_FILE}"
             -o "${OUTPUT_FILE}"
             --use-init-macros
+            --use-raw-namespace
         WORKING_DIRECTORY ${WEBGPU_CPP_GENERATOR_DIR}
         RESULT_VARIABLE GEN_RESULT
         OUTPUT_VARIABLE GEN_OUTPUT

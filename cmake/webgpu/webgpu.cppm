@@ -71,6 +71,11 @@ module;
 #undef WGPUInstanceFlag_Default
 #undef WGPUInstanceFlag_Force32
 
+#define WEBGPU_CPP_USE_RAW_NAMESPACE
+
+#define WEBGPU_CPP_NAMESPACE wgpu
+
+
 #include <iostream>
 #include <vector>
 #include <functional>
@@ -1086,13 +1091,16 @@ export using ::WGPUFlags;
 export using ::WGPUBool;
 export using ::WGPUSubmissionIndex;
 
-/**
- * A namespace providing a more C++ idiomatic API to WebGPU.
- */
-export namespace wgpu {
+export
+#ifdef WEBGPU_CPP_NAMESPACE
+namespace WEBGPU_CPP_NAMESPACE
+#endif
+{
 
 struct DefaultFlag {};
 constexpr DefaultFlag Default;
+
+}
 
 #define HANDLE(Type) \
 class Type { \
@@ -1101,31 +1109,6 @@ public: \
 	typedef WGPU ## Type W; \
 	constexpr Type() : m_raw(nullptr) {} \
 	constexpr Type(const W& w) : m_raw(w) {} \
-	Type(const Type& other) : m_raw(other.m_raw) { \
-		if (m_raw) wgpu ## Type ## AddRef(m_raw); \
-	} \
-	Type(Type&& other) noexcept : m_raw(other.m_raw) { \
-		other.m_raw = nullptr; \
-	} \
-	Type& operator=(const Type& other) { \
-		if (this != &other) { \
-			if (m_raw) wgpu ## Type ## Release(m_raw); \
-			m_raw = other.m_raw; \
-			if (m_raw) wgpu ## Type ## AddRef(m_raw); \
-		} \
-		return *this; \
-	} \
-	Type& operator=(Type&& other) noexcept { \
-		if (this != &other) { \
-			if (m_raw) wgpu ## Type ## Release(m_raw); \
-			m_raw = other.m_raw; \
-			other.m_raw = nullptr; \
-		} \
-		return *this; \
-	} \
-	~Type() { \
-		if (m_raw) wgpu ## Type ## Release(m_raw); \
-	} \
 	operator W&() { return m_raw; } \
 	operator const W&() const { return m_raw; } \
 	operator bool() const { return m_raw != nullptr; } \
@@ -1139,6 +1122,63 @@ public: \
 private: \
 	W m_raw; \
 public:
+
+#define HANDLE_RAII(Type, Template) \
+class Type : public Template { \
+public: \
+	typedef Template H; \
+    using H::H; \
+	Type(const H& handle) : H(handle) {} \
+	Type& operator=(const H& handle) { \
+		H& h = *this; \
+		if (h) h.release(); \
+		h = handle; \
+		return *this; \
+	} \
+	Type& operator=(std::nullptr_t) { \
+		H& h = *this; \
+		if (h) h.release(); \
+		h = nullptr; \
+		return *this; \
+	} \
+	Type(const Type& other) { \
+		H& h = *this; \
+		if (h) h.release(); \
+		h = other; \
+		h.addRef(); \
+	} \
+	Type& operator=(const Type& other) { \
+		H& h = *this; \
+		if (h) h.release(); \
+		h = other; \
+		h.addRef(); \
+		return *this; \
+	} \
+	Type(Type&& other) noexcept { \
+		H& h = *this; \
+		if (h) h.release(); \
+		h = other; \
+		other = nullptr; \
+	} \
+	Type& operator=(Type&& other) noexcept { \
+		H& h = *this; \
+		if (h) h.release(); \
+		h = other; \
+		other = nullptr; \
+		return *this; \
+	} \
+	~Type() { \
+		H& h = *this; \
+		if (h) h.release(); \
+		h = nullptr; \
+	} \
+	operator typename H::W() const { return (H&)(*this); } \
+	operator bool() const { return (H&)(*this); } \
+	bool operator==(const Type& other) const { return (H&)(*this) == (H&)(other); } \
+	bool operator!=(const Type& other) const { return (H&)(*this) != (H&)(other); } \
+	bool operator==(const typename H::W& other) const { return (H&)(*this) == other; } \
+	bool operator!=(const typename H::W& other) const { return (H&)(*this) != other; } \
+};
 
 #define DESCRIPTOR(Type) \
 struct Type { \
@@ -1193,712 +1233,1414 @@ public: \
 
 
 
+export {
+
 // Other type aliases
+namespace wgpu {
 using Flags = uint64_t;
 using Bool = uint32_t;
 using SubmissionIndex = uint64_t;
+} // namespace wgpu
+
 
 // Enumerations
-ENUM(AdapterType)
-	ENUM_ENTRY(DiscreteGPU, WGPUAdapterType_DiscreteGPU)
-	ENUM_ENTRY(IntegratedGPU, WGPUAdapterType_IntegratedGPU)
-	ENUM_ENTRY(CPU, WGPUAdapterType_CPU)
-	ENUM_ENTRY(Unknown, WGPUAdapterType_Unknown)
-	ENUM_ENTRY(Force32, WGPUAdapterType_Force32)
-END
-ENUM(AddressMode)
-	ENUM_ENTRY(Undefined, WGPUAddressMode_Undefined)
-	ENUM_ENTRY(ClampToEdge, WGPUAddressMode_ClampToEdge)
-	ENUM_ENTRY(Repeat, WGPUAddressMode_Repeat)
-	ENUM_ENTRY(MirrorRepeat, WGPUAddressMode_MirrorRepeat)
-	ENUM_ENTRY(Force32, WGPUAddressMode_Force32)
-END
-ENUM(BackendType)
-	ENUM_ENTRY(Undefined, WGPUBackendType_Undefined)
-	ENUM_ENTRY(Null, WGPUBackendType_Null)
-	ENUM_ENTRY(WebGPU, WGPUBackendType_WebGPU)
-	ENUM_ENTRY(D3D11, WGPUBackendType_D3D11)
-	ENUM_ENTRY(D3D12, WGPUBackendType_D3D12)
-	ENUM_ENTRY(Metal, WGPUBackendType_Metal)
-	ENUM_ENTRY(Vulkan, WGPUBackendType_Vulkan)
-	ENUM_ENTRY(OpenGL, WGPUBackendType_OpenGL)
-	ENUM_ENTRY(OpenGLES, WGPUBackendType_OpenGLES)
-	ENUM_ENTRY(Force32, WGPUBackendType_Force32)
-END
-ENUM(BlendFactor)
-	ENUM_ENTRY(Undefined, WGPUBlendFactor_Undefined)
-	ENUM_ENTRY(Zero, WGPUBlendFactor_Zero)
-	ENUM_ENTRY(One, WGPUBlendFactor_One)
-	ENUM_ENTRY(Src, WGPUBlendFactor_Src)
-	ENUM_ENTRY(OneMinusSrc, WGPUBlendFactor_OneMinusSrc)
-	ENUM_ENTRY(SrcAlpha, WGPUBlendFactor_SrcAlpha)
-	ENUM_ENTRY(OneMinusSrcAlpha, WGPUBlendFactor_OneMinusSrcAlpha)
-	ENUM_ENTRY(Dst, WGPUBlendFactor_Dst)
-	ENUM_ENTRY(OneMinusDst, WGPUBlendFactor_OneMinusDst)
-	ENUM_ENTRY(DstAlpha, WGPUBlendFactor_DstAlpha)
-	ENUM_ENTRY(OneMinusDstAlpha, WGPUBlendFactor_OneMinusDstAlpha)
-	ENUM_ENTRY(SrcAlphaSaturated, WGPUBlendFactor_SrcAlphaSaturated)
-	ENUM_ENTRY(Constant, WGPUBlendFactor_Constant)
-	ENUM_ENTRY(OneMinusConstant, WGPUBlendFactor_OneMinusConstant)
-	ENUM_ENTRY(Src1, WGPUBlendFactor_Src1)
-	ENUM_ENTRY(OneMinusSrc1, WGPUBlendFactor_OneMinusSrc1)
-	ENUM_ENTRY(Src1Alpha, WGPUBlendFactor_Src1Alpha)
-	ENUM_ENTRY(OneMinusSrc1Alpha, WGPUBlendFactor_OneMinusSrc1Alpha)
-	ENUM_ENTRY(Force32, WGPUBlendFactor_Force32)
-END
-ENUM(BlendOperation)
-	ENUM_ENTRY(Undefined, WGPUBlendOperation_Undefined)
-	ENUM_ENTRY(Add, WGPUBlendOperation_Add)
-	ENUM_ENTRY(Subtract, WGPUBlendOperation_Subtract)
-	ENUM_ENTRY(ReverseSubtract, WGPUBlendOperation_ReverseSubtract)
-	ENUM_ENTRY(Min, WGPUBlendOperation_Min)
-	ENUM_ENTRY(Max, WGPUBlendOperation_Max)
-	ENUM_ENTRY(Force32, WGPUBlendOperation_Force32)
-END
-ENUM(BufferBindingType)
-	ENUM_ENTRY(BindingNotUsed, WGPUBufferBindingType_BindingNotUsed)
-	ENUM_ENTRY(Undefined, WGPUBufferBindingType_Undefined)
-	ENUM_ENTRY(Uniform, WGPUBufferBindingType_Uniform)
-	ENUM_ENTRY(Storage, WGPUBufferBindingType_Storage)
-	ENUM_ENTRY(ReadOnlyStorage, WGPUBufferBindingType_ReadOnlyStorage)
-	ENUM_ENTRY(Force32, WGPUBufferBindingType_Force32)
-END
-ENUM(BufferMapState)
-	ENUM_ENTRY(Unmapped, WGPUBufferMapState_Unmapped)
-	ENUM_ENTRY(Pending, WGPUBufferMapState_Pending)
-	ENUM_ENTRY(Mapped, WGPUBufferMapState_Mapped)
-	ENUM_ENTRY(Force32, WGPUBufferMapState_Force32)
-END
-ENUM(CallbackMode)
-	ENUM_ENTRY(WaitAnyOnly, WGPUCallbackMode_WaitAnyOnly)
-	ENUM_ENTRY(AllowProcessEvents, WGPUCallbackMode_AllowProcessEvents)
-	ENUM_ENTRY(AllowSpontaneous, WGPUCallbackMode_AllowSpontaneous)
-	ENUM_ENTRY(Force32, WGPUCallbackMode_Force32)
-END
-ENUM(CompareFunction)
-	ENUM_ENTRY(Undefined, WGPUCompareFunction_Undefined)
-	ENUM_ENTRY(Never, WGPUCompareFunction_Never)
-	ENUM_ENTRY(Less, WGPUCompareFunction_Less)
-	ENUM_ENTRY(Equal, WGPUCompareFunction_Equal)
-	ENUM_ENTRY(LessEqual, WGPUCompareFunction_LessEqual)
-	ENUM_ENTRY(Greater, WGPUCompareFunction_Greater)
-	ENUM_ENTRY(NotEqual, WGPUCompareFunction_NotEqual)
-	ENUM_ENTRY(GreaterEqual, WGPUCompareFunction_GreaterEqual)
-	ENUM_ENTRY(Always, WGPUCompareFunction_Always)
-	ENUM_ENTRY(Force32, WGPUCompareFunction_Force32)
-END
-ENUM(CompilationInfoRequestStatus)
-	ENUM_ENTRY(Success, WGPUCompilationInfoRequestStatus_Success)
-	ENUM_ENTRY(InstanceDropped, WGPUCompilationInfoRequestStatus_InstanceDropped)
-	ENUM_ENTRY(Error, WGPUCompilationInfoRequestStatus_Error)
-	ENUM_ENTRY(Unknown, WGPUCompilationInfoRequestStatus_Unknown)
-	ENUM_ENTRY(Force32, WGPUCompilationInfoRequestStatus_Force32)
-END
-ENUM(CompilationMessageType)
-	ENUM_ENTRY(Error, WGPUCompilationMessageType_Error)
-	ENUM_ENTRY(Warning, WGPUCompilationMessageType_Warning)
-	ENUM_ENTRY(Info, WGPUCompilationMessageType_Info)
-	ENUM_ENTRY(Force32, WGPUCompilationMessageType_Force32)
-END
-ENUM(CompositeAlphaMode)
-	ENUM_ENTRY(Auto, WGPUCompositeAlphaMode_Auto)
-	ENUM_ENTRY(Opaque, WGPUCompositeAlphaMode_Opaque)
-	ENUM_ENTRY(Premultiplied, WGPUCompositeAlphaMode_Premultiplied)
-	ENUM_ENTRY(Unpremultiplied, WGPUCompositeAlphaMode_Unpremultiplied)
-	ENUM_ENTRY(Inherit, WGPUCompositeAlphaMode_Inherit)
-	ENUM_ENTRY(Force32, WGPUCompositeAlphaMode_Force32)
-END
-ENUM(CreatePipelineAsyncStatus)
-	ENUM_ENTRY(Success, WGPUCreatePipelineAsyncStatus_Success)
-	ENUM_ENTRY(InstanceDropped, WGPUCreatePipelineAsyncStatus_InstanceDropped)
-	ENUM_ENTRY(ValidationError, WGPUCreatePipelineAsyncStatus_ValidationError)
-	ENUM_ENTRY(InternalError, WGPUCreatePipelineAsyncStatus_InternalError)
-	ENUM_ENTRY(Unknown, WGPUCreatePipelineAsyncStatus_Unknown)
-	ENUM_ENTRY(Force32, WGPUCreatePipelineAsyncStatus_Force32)
-END
-ENUM(CullMode)
-	ENUM_ENTRY(Undefined, WGPUCullMode_Undefined)
-	ENUM_ENTRY(None, WGPUCullMode_None)
-	ENUM_ENTRY(Front, WGPUCullMode_Front)
-	ENUM_ENTRY(Back, WGPUCullMode_Back)
-	ENUM_ENTRY(Force32, WGPUCullMode_Force32)
-END
-ENUM(DeviceLostReason)
-	ENUM_ENTRY(Unknown, WGPUDeviceLostReason_Unknown)
-	ENUM_ENTRY(Destroyed, WGPUDeviceLostReason_Destroyed)
-	ENUM_ENTRY(InstanceDropped, WGPUDeviceLostReason_InstanceDropped)
-	ENUM_ENTRY(FailedCreation, WGPUDeviceLostReason_FailedCreation)
-	ENUM_ENTRY(Force32, WGPUDeviceLostReason_Force32)
-END
-ENUM(ErrorFilter)
-	ENUM_ENTRY(Validation, WGPUErrorFilter_Validation)
-	ENUM_ENTRY(OutOfMemory, WGPUErrorFilter_OutOfMemory)
-	ENUM_ENTRY(Internal, WGPUErrorFilter_Internal)
-	ENUM_ENTRY(Force32, WGPUErrorFilter_Force32)
-END
-ENUM(ErrorType)
-	ENUM_ENTRY(NoError, WGPUErrorType_NoError)
-	ENUM_ENTRY(Validation, WGPUErrorType_Validation)
-	ENUM_ENTRY(OutOfMemory, WGPUErrorType_OutOfMemory)
-	ENUM_ENTRY(Internal, WGPUErrorType_Internal)
-	ENUM_ENTRY(Unknown, WGPUErrorType_Unknown)
-	ENUM_ENTRY(Force32, WGPUErrorType_Force32)
-END
-ENUM(FeatureLevel)
-	ENUM_ENTRY(Compatibility, WGPUFeatureLevel_Compatibility)
-	ENUM_ENTRY(Core, WGPUFeatureLevel_Core)
-	ENUM_ENTRY(Force32, WGPUFeatureLevel_Force32)
-END
-ENUM(FeatureName)
-	ENUM_ENTRY(Undefined, WGPUFeatureName_Undefined)
-	ENUM_ENTRY(DepthClipControl, WGPUFeatureName_DepthClipControl)
-	ENUM_ENTRY(Depth32FloatStencil8, WGPUFeatureName_Depth32FloatStencil8)
-	ENUM_ENTRY(TimestampQuery, WGPUFeatureName_TimestampQuery)
-	ENUM_ENTRY(TextureCompressionBC, WGPUFeatureName_TextureCompressionBC)
-	ENUM_ENTRY(TextureCompressionBCSliced3D, WGPUFeatureName_TextureCompressionBCSliced3D)
-	ENUM_ENTRY(TextureCompressionETC2, WGPUFeatureName_TextureCompressionETC2)
-	ENUM_ENTRY(TextureCompressionASTC, WGPUFeatureName_TextureCompressionASTC)
-	ENUM_ENTRY(TextureCompressionASTCSliced3D, WGPUFeatureName_TextureCompressionASTCSliced3D)
-	ENUM_ENTRY(IndirectFirstInstance, WGPUFeatureName_IndirectFirstInstance)
-	ENUM_ENTRY(ShaderF16, WGPUFeatureName_ShaderF16)
-	ENUM_ENTRY(RG11B10UfloatRenderable, WGPUFeatureName_RG11B10UfloatRenderable)
-	ENUM_ENTRY(BGRA8UnormStorage, WGPUFeatureName_BGRA8UnormStorage)
-	ENUM_ENTRY(Float32Filterable, WGPUFeatureName_Float32Filterable)
-	ENUM_ENTRY(Float32Blendable, WGPUFeatureName_Float32Blendable)
-	ENUM_ENTRY(ClipDistances, WGPUFeatureName_ClipDistances)
-	ENUM_ENTRY(DualSourceBlending, WGPUFeatureName_DualSourceBlending)
-	ENUM_ENTRY(Force32, WGPUFeatureName_Force32)
-END
-ENUM(FilterMode)
-	ENUM_ENTRY(Undefined, WGPUFilterMode_Undefined)
-	ENUM_ENTRY(Nearest, WGPUFilterMode_Nearest)
-	ENUM_ENTRY(Linear, WGPUFilterMode_Linear)
-	ENUM_ENTRY(Force32, WGPUFilterMode_Force32)
-END
-ENUM(FrontFace)
-	ENUM_ENTRY(Undefined, WGPUFrontFace_Undefined)
-	ENUM_ENTRY(CCW, WGPUFrontFace_CCW)
-	ENUM_ENTRY(CW, WGPUFrontFace_CW)
-	ENUM_ENTRY(Force32, WGPUFrontFace_Force32)
-END
-ENUM(IndexFormat)
-	ENUM_ENTRY(Undefined, WGPUIndexFormat_Undefined)
-	ENUM_ENTRY(Uint16, WGPUIndexFormat_Uint16)
-	ENUM_ENTRY(Uint32, WGPUIndexFormat_Uint32)
-	ENUM_ENTRY(Force32, WGPUIndexFormat_Force32)
-END
-ENUM(LoadOp)
-	ENUM_ENTRY(Undefined, WGPULoadOp_Undefined)
-	ENUM_ENTRY(Load, WGPULoadOp_Load)
-	ENUM_ENTRY(Clear, WGPULoadOp_Clear)
-	ENUM_ENTRY(Force32, WGPULoadOp_Force32)
-END
-ENUM(MapAsyncStatus)
-	ENUM_ENTRY(Success, WGPUMapAsyncStatus_Success)
-	ENUM_ENTRY(InstanceDropped, WGPUMapAsyncStatus_InstanceDropped)
-	ENUM_ENTRY(Error, WGPUMapAsyncStatus_Error)
-	ENUM_ENTRY(Aborted, WGPUMapAsyncStatus_Aborted)
-	ENUM_ENTRY(Unknown, WGPUMapAsyncStatus_Unknown)
-	ENUM_ENTRY(Force32, WGPUMapAsyncStatus_Force32)
-END
-ENUM(MipmapFilterMode)
-	ENUM_ENTRY(Undefined, WGPUMipmapFilterMode_Undefined)
-	ENUM_ENTRY(Nearest, WGPUMipmapFilterMode_Nearest)
-	ENUM_ENTRY(Linear, WGPUMipmapFilterMode_Linear)
-	ENUM_ENTRY(Force32, WGPUMipmapFilterMode_Force32)
-END
-ENUM(OptionalBool)
-	ENUM_ENTRY(False, WGPUOptionalBool_False)
-	ENUM_ENTRY(True, WGPUOptionalBool_True)
-	ENUM_ENTRY(Undefined, WGPUOptionalBool_Undefined)
-	ENUM_ENTRY(Force32, WGPUOptionalBool_Force32)
-END
-ENUM(PopErrorScopeStatus)
-	ENUM_ENTRY(Success, WGPUPopErrorScopeStatus_Success)
-	ENUM_ENTRY(InstanceDropped, WGPUPopErrorScopeStatus_InstanceDropped)
-	ENUM_ENTRY(EmptyStack, WGPUPopErrorScopeStatus_EmptyStack)
-	ENUM_ENTRY(Force32, WGPUPopErrorScopeStatus_Force32)
-END
-ENUM(PowerPreference)
-	ENUM_ENTRY(Undefined, WGPUPowerPreference_Undefined)
-	ENUM_ENTRY(LowPower, WGPUPowerPreference_LowPower)
-	ENUM_ENTRY(HighPerformance, WGPUPowerPreference_HighPerformance)
-	ENUM_ENTRY(Force32, WGPUPowerPreference_Force32)
-END
-ENUM(PresentMode)
-	ENUM_ENTRY(Undefined, WGPUPresentMode_Undefined)
-	ENUM_ENTRY(Fifo, WGPUPresentMode_Fifo)
-	ENUM_ENTRY(FifoRelaxed, WGPUPresentMode_FifoRelaxed)
-	ENUM_ENTRY(Immediate, WGPUPresentMode_Immediate)
-	ENUM_ENTRY(Mailbox, WGPUPresentMode_Mailbox)
-	ENUM_ENTRY(Force32, WGPUPresentMode_Force32)
-END
-ENUM(PrimitiveTopology)
-	ENUM_ENTRY(Undefined, WGPUPrimitiveTopology_Undefined)
-	ENUM_ENTRY(PointList, WGPUPrimitiveTopology_PointList)
-	ENUM_ENTRY(LineList, WGPUPrimitiveTopology_LineList)
-	ENUM_ENTRY(LineStrip, WGPUPrimitiveTopology_LineStrip)
-	ENUM_ENTRY(TriangleList, WGPUPrimitiveTopology_TriangleList)
-	ENUM_ENTRY(TriangleStrip, WGPUPrimitiveTopology_TriangleStrip)
-	ENUM_ENTRY(Force32, WGPUPrimitiveTopology_Force32)
-END
-ENUM(QueryType)
-	ENUM_ENTRY(Occlusion, WGPUQueryType_Occlusion)
-	ENUM_ENTRY(Timestamp, WGPUQueryType_Timestamp)
-	ENUM_ENTRY(Force32, WGPUQueryType_Force32)
-END
-ENUM(QueueWorkDoneStatus)
-	ENUM_ENTRY(Success, WGPUQueueWorkDoneStatus_Success)
-	ENUM_ENTRY(InstanceDropped, WGPUQueueWorkDoneStatus_InstanceDropped)
-	ENUM_ENTRY(Error, WGPUQueueWorkDoneStatus_Error)
-	ENUM_ENTRY(Unknown, WGPUQueueWorkDoneStatus_Unknown)
-	ENUM_ENTRY(Force32, WGPUQueueWorkDoneStatus_Force32)
-END
-ENUM(RequestAdapterStatus)
-	ENUM_ENTRY(Success, WGPURequestAdapterStatus_Success)
-	ENUM_ENTRY(InstanceDropped, WGPURequestAdapterStatus_InstanceDropped)
-	ENUM_ENTRY(Unavailable, WGPURequestAdapterStatus_Unavailable)
-	ENUM_ENTRY(Error, WGPURequestAdapterStatus_Error)
-	ENUM_ENTRY(Unknown, WGPURequestAdapterStatus_Unknown)
-	ENUM_ENTRY(Force32, WGPURequestAdapterStatus_Force32)
-END
-ENUM(RequestDeviceStatus)
-	ENUM_ENTRY(Success, WGPURequestDeviceStatus_Success)
-	ENUM_ENTRY(InstanceDropped, WGPURequestDeviceStatus_InstanceDropped)
-	ENUM_ENTRY(Error, WGPURequestDeviceStatus_Error)
-	ENUM_ENTRY(Unknown, WGPURequestDeviceStatus_Unknown)
-	ENUM_ENTRY(Force32, WGPURequestDeviceStatus_Force32)
-END
-ENUM(SType)
-	ENUM_ENTRY(ShaderSourceSPIRV, WGPUSType_ShaderSourceSPIRV)
-	ENUM_ENTRY(ShaderSourceWGSL, WGPUSType_ShaderSourceWGSL)
-	ENUM_ENTRY(RenderPassMaxDrawCount, WGPUSType_RenderPassMaxDrawCount)
-	ENUM_ENTRY(SurfaceSourceMetalLayer, WGPUSType_SurfaceSourceMetalLayer)
-	ENUM_ENTRY(SurfaceSourceWindowsHWND, WGPUSType_SurfaceSourceWindowsHWND)
-	ENUM_ENTRY(SurfaceSourceXlibWindow, WGPUSType_SurfaceSourceXlibWindow)
-	ENUM_ENTRY(SurfaceSourceWaylandSurface, WGPUSType_SurfaceSourceWaylandSurface)
-	ENUM_ENTRY(SurfaceSourceAndroidNativeWindow, WGPUSType_SurfaceSourceAndroidNativeWindow)
-	ENUM_ENTRY(SurfaceSourceXCBWindow, WGPUSType_SurfaceSourceXCBWindow)
-	ENUM_ENTRY(Force32, WGPUSType_Force32)
-END
-ENUM(SamplerBindingType)
-	ENUM_ENTRY(BindingNotUsed, WGPUSamplerBindingType_BindingNotUsed)
-	ENUM_ENTRY(Undefined, WGPUSamplerBindingType_Undefined)
-	ENUM_ENTRY(Filtering, WGPUSamplerBindingType_Filtering)
-	ENUM_ENTRY(NonFiltering, WGPUSamplerBindingType_NonFiltering)
-	ENUM_ENTRY(Comparison, WGPUSamplerBindingType_Comparison)
-	ENUM_ENTRY(Force32, WGPUSamplerBindingType_Force32)
-END
-ENUM(Status)
-	ENUM_ENTRY(Success, WGPUStatus_Success)
-	ENUM_ENTRY(Error, WGPUStatus_Error)
-	ENUM_ENTRY(Force32, WGPUStatus_Force32)
-END
-ENUM(StencilOperation)
-	ENUM_ENTRY(Undefined, WGPUStencilOperation_Undefined)
-	ENUM_ENTRY(Keep, WGPUStencilOperation_Keep)
-	ENUM_ENTRY(Zero, WGPUStencilOperation_Zero)
-	ENUM_ENTRY(Replace, WGPUStencilOperation_Replace)
-	ENUM_ENTRY(Invert, WGPUStencilOperation_Invert)
-	ENUM_ENTRY(IncrementClamp, WGPUStencilOperation_IncrementClamp)
-	ENUM_ENTRY(DecrementClamp, WGPUStencilOperation_DecrementClamp)
-	ENUM_ENTRY(IncrementWrap, WGPUStencilOperation_IncrementWrap)
-	ENUM_ENTRY(DecrementWrap, WGPUStencilOperation_DecrementWrap)
-	ENUM_ENTRY(Force32, WGPUStencilOperation_Force32)
-END
-ENUM(StorageTextureAccess)
-	ENUM_ENTRY(BindingNotUsed, WGPUStorageTextureAccess_BindingNotUsed)
-	ENUM_ENTRY(Undefined, WGPUStorageTextureAccess_Undefined)
-	ENUM_ENTRY(WriteOnly, WGPUStorageTextureAccess_WriteOnly)
-	ENUM_ENTRY(ReadOnly, WGPUStorageTextureAccess_ReadOnly)
-	ENUM_ENTRY(ReadWrite, WGPUStorageTextureAccess_ReadWrite)
-	ENUM_ENTRY(Force32, WGPUStorageTextureAccess_Force32)
-END
-ENUM(StoreOp)
-	ENUM_ENTRY(Undefined, WGPUStoreOp_Undefined)
-	ENUM_ENTRY(Store, WGPUStoreOp_Store)
-	ENUM_ENTRY(Discard, WGPUStoreOp_Discard)
-	ENUM_ENTRY(Force32, WGPUStoreOp_Force32)
-END
-ENUM(SurfaceGetCurrentTextureStatus)
-	ENUM_ENTRY(SuccessOptimal, WGPUSurfaceGetCurrentTextureStatus_SuccessOptimal)
-	ENUM_ENTRY(SuccessSuboptimal, WGPUSurfaceGetCurrentTextureStatus_SuccessSuboptimal)
-	ENUM_ENTRY(Timeout, WGPUSurfaceGetCurrentTextureStatus_Timeout)
-	ENUM_ENTRY(Outdated, WGPUSurfaceGetCurrentTextureStatus_Outdated)
-	ENUM_ENTRY(Lost, WGPUSurfaceGetCurrentTextureStatus_Lost)
-	ENUM_ENTRY(OutOfMemory, WGPUSurfaceGetCurrentTextureStatus_OutOfMemory)
-	ENUM_ENTRY(DeviceLost, WGPUSurfaceGetCurrentTextureStatus_DeviceLost)
-	ENUM_ENTRY(Error, WGPUSurfaceGetCurrentTextureStatus_Error)
-	ENUM_ENTRY(Force32, WGPUSurfaceGetCurrentTextureStatus_Force32)
-END
-ENUM(TextureAspect)
-	ENUM_ENTRY(Undefined, WGPUTextureAspect_Undefined)
-	ENUM_ENTRY(All, WGPUTextureAspect_All)
-	ENUM_ENTRY(StencilOnly, WGPUTextureAspect_StencilOnly)
-	ENUM_ENTRY(DepthOnly, WGPUTextureAspect_DepthOnly)
-	ENUM_ENTRY(Force32, WGPUTextureAspect_Force32)
-END
-ENUM(TextureDimension)
-	ENUM_ENTRY(Undefined, WGPUTextureDimension_Undefined)
-	ENUM_ENTRY(_1D, WGPUTextureDimension_1D)
-	ENUM_ENTRY(_2D, WGPUTextureDimension_2D)
-	ENUM_ENTRY(_3D, WGPUTextureDimension_3D)
-	ENUM_ENTRY(Force32, WGPUTextureDimension_Force32)
-END
-ENUM(TextureFormat)
-	ENUM_ENTRY(Undefined, WGPUTextureFormat_Undefined)
-	ENUM_ENTRY(R8Unorm, WGPUTextureFormat_R8Unorm)
-	ENUM_ENTRY(R8Snorm, WGPUTextureFormat_R8Snorm)
-	ENUM_ENTRY(R8Uint, WGPUTextureFormat_R8Uint)
-	ENUM_ENTRY(R8Sint, WGPUTextureFormat_R8Sint)
-	ENUM_ENTRY(R16Uint, WGPUTextureFormat_R16Uint)
-	ENUM_ENTRY(R16Sint, WGPUTextureFormat_R16Sint)
-	ENUM_ENTRY(R16Float, WGPUTextureFormat_R16Float)
-	ENUM_ENTRY(RG8Unorm, WGPUTextureFormat_RG8Unorm)
-	ENUM_ENTRY(RG8Snorm, WGPUTextureFormat_RG8Snorm)
-	ENUM_ENTRY(RG8Uint, WGPUTextureFormat_RG8Uint)
-	ENUM_ENTRY(RG8Sint, WGPUTextureFormat_RG8Sint)
-	ENUM_ENTRY(R32Float, WGPUTextureFormat_R32Float)
-	ENUM_ENTRY(R32Uint, WGPUTextureFormat_R32Uint)
-	ENUM_ENTRY(R32Sint, WGPUTextureFormat_R32Sint)
-	ENUM_ENTRY(RG16Uint, WGPUTextureFormat_RG16Uint)
-	ENUM_ENTRY(RG16Sint, WGPUTextureFormat_RG16Sint)
-	ENUM_ENTRY(RG16Float, WGPUTextureFormat_RG16Float)
-	ENUM_ENTRY(RGBA8Unorm, WGPUTextureFormat_RGBA8Unorm)
-	ENUM_ENTRY(RGBA8UnormSrgb, WGPUTextureFormat_RGBA8UnormSrgb)
-	ENUM_ENTRY(RGBA8Snorm, WGPUTextureFormat_RGBA8Snorm)
-	ENUM_ENTRY(RGBA8Uint, WGPUTextureFormat_RGBA8Uint)
-	ENUM_ENTRY(RGBA8Sint, WGPUTextureFormat_RGBA8Sint)
-	ENUM_ENTRY(BGRA8Unorm, WGPUTextureFormat_BGRA8Unorm)
-	ENUM_ENTRY(BGRA8UnormSrgb, WGPUTextureFormat_BGRA8UnormSrgb)
-	ENUM_ENTRY(RGB10A2Uint, WGPUTextureFormat_RGB10A2Uint)
-	ENUM_ENTRY(RGB10A2Unorm, WGPUTextureFormat_RGB10A2Unorm)
-	ENUM_ENTRY(RG11B10Ufloat, WGPUTextureFormat_RG11B10Ufloat)
-	ENUM_ENTRY(RGB9E5Ufloat, WGPUTextureFormat_RGB9E5Ufloat)
-	ENUM_ENTRY(RG32Float, WGPUTextureFormat_RG32Float)
-	ENUM_ENTRY(RG32Uint, WGPUTextureFormat_RG32Uint)
-	ENUM_ENTRY(RG32Sint, WGPUTextureFormat_RG32Sint)
-	ENUM_ENTRY(RGBA16Uint, WGPUTextureFormat_RGBA16Uint)
-	ENUM_ENTRY(RGBA16Sint, WGPUTextureFormat_RGBA16Sint)
-	ENUM_ENTRY(RGBA16Float, WGPUTextureFormat_RGBA16Float)
-	ENUM_ENTRY(RGBA32Float, WGPUTextureFormat_RGBA32Float)
-	ENUM_ENTRY(RGBA32Uint, WGPUTextureFormat_RGBA32Uint)
-	ENUM_ENTRY(RGBA32Sint, WGPUTextureFormat_RGBA32Sint)
-	ENUM_ENTRY(Stencil8, WGPUTextureFormat_Stencil8)
-	ENUM_ENTRY(Depth16Unorm, WGPUTextureFormat_Depth16Unorm)
-	ENUM_ENTRY(Depth24Plus, WGPUTextureFormat_Depth24Plus)
-	ENUM_ENTRY(Depth24PlusStencil8, WGPUTextureFormat_Depth24PlusStencil8)
-	ENUM_ENTRY(Depth32Float, WGPUTextureFormat_Depth32Float)
-	ENUM_ENTRY(Depth32FloatStencil8, WGPUTextureFormat_Depth32FloatStencil8)
-	ENUM_ENTRY(BC1RGBAUnorm, WGPUTextureFormat_BC1RGBAUnorm)
-	ENUM_ENTRY(BC1RGBAUnormSrgb, WGPUTextureFormat_BC1RGBAUnormSrgb)
-	ENUM_ENTRY(BC2RGBAUnorm, WGPUTextureFormat_BC2RGBAUnorm)
-	ENUM_ENTRY(BC2RGBAUnormSrgb, WGPUTextureFormat_BC2RGBAUnormSrgb)
-	ENUM_ENTRY(BC3RGBAUnorm, WGPUTextureFormat_BC3RGBAUnorm)
-	ENUM_ENTRY(BC3RGBAUnormSrgb, WGPUTextureFormat_BC3RGBAUnormSrgb)
-	ENUM_ENTRY(BC4RUnorm, WGPUTextureFormat_BC4RUnorm)
-	ENUM_ENTRY(BC4RSnorm, WGPUTextureFormat_BC4RSnorm)
-	ENUM_ENTRY(BC5RGUnorm, WGPUTextureFormat_BC5RGUnorm)
-	ENUM_ENTRY(BC5RGSnorm, WGPUTextureFormat_BC5RGSnorm)
-	ENUM_ENTRY(BC6HRGBUfloat, WGPUTextureFormat_BC6HRGBUfloat)
-	ENUM_ENTRY(BC6HRGBFloat, WGPUTextureFormat_BC6HRGBFloat)
-	ENUM_ENTRY(BC7RGBAUnorm, WGPUTextureFormat_BC7RGBAUnorm)
-	ENUM_ENTRY(BC7RGBAUnormSrgb, WGPUTextureFormat_BC7RGBAUnormSrgb)
-	ENUM_ENTRY(ETC2RGB8Unorm, WGPUTextureFormat_ETC2RGB8Unorm)
-	ENUM_ENTRY(ETC2RGB8UnormSrgb, WGPUTextureFormat_ETC2RGB8UnormSrgb)
-	ENUM_ENTRY(ETC2RGB8A1Unorm, WGPUTextureFormat_ETC2RGB8A1Unorm)
-	ENUM_ENTRY(ETC2RGB8A1UnormSrgb, WGPUTextureFormat_ETC2RGB8A1UnormSrgb)
-	ENUM_ENTRY(ETC2RGBA8Unorm, WGPUTextureFormat_ETC2RGBA8Unorm)
-	ENUM_ENTRY(ETC2RGBA8UnormSrgb, WGPUTextureFormat_ETC2RGBA8UnormSrgb)
-	ENUM_ENTRY(EACR11Unorm, WGPUTextureFormat_EACR11Unorm)
-	ENUM_ENTRY(EACR11Snorm, WGPUTextureFormat_EACR11Snorm)
-	ENUM_ENTRY(EACRG11Unorm, WGPUTextureFormat_EACRG11Unorm)
-	ENUM_ENTRY(EACRG11Snorm, WGPUTextureFormat_EACRG11Snorm)
-	ENUM_ENTRY(ASTC4x4Unorm, WGPUTextureFormat_ASTC4x4Unorm)
-	ENUM_ENTRY(ASTC4x4UnormSrgb, WGPUTextureFormat_ASTC4x4UnormSrgb)
-	ENUM_ENTRY(ASTC5x4Unorm, WGPUTextureFormat_ASTC5x4Unorm)
-	ENUM_ENTRY(ASTC5x4UnormSrgb, WGPUTextureFormat_ASTC5x4UnormSrgb)
-	ENUM_ENTRY(ASTC5x5Unorm, WGPUTextureFormat_ASTC5x5Unorm)
-	ENUM_ENTRY(ASTC5x5UnormSrgb, WGPUTextureFormat_ASTC5x5UnormSrgb)
-	ENUM_ENTRY(ASTC6x5Unorm, WGPUTextureFormat_ASTC6x5Unorm)
-	ENUM_ENTRY(ASTC6x5UnormSrgb, WGPUTextureFormat_ASTC6x5UnormSrgb)
-	ENUM_ENTRY(ASTC6x6Unorm, WGPUTextureFormat_ASTC6x6Unorm)
-	ENUM_ENTRY(ASTC6x6UnormSrgb, WGPUTextureFormat_ASTC6x6UnormSrgb)
-	ENUM_ENTRY(ASTC8x5Unorm, WGPUTextureFormat_ASTC8x5Unorm)
-	ENUM_ENTRY(ASTC8x5UnormSrgb, WGPUTextureFormat_ASTC8x5UnormSrgb)
-	ENUM_ENTRY(ASTC8x6Unorm, WGPUTextureFormat_ASTC8x6Unorm)
-	ENUM_ENTRY(ASTC8x6UnormSrgb, WGPUTextureFormat_ASTC8x6UnormSrgb)
-	ENUM_ENTRY(ASTC8x8Unorm, WGPUTextureFormat_ASTC8x8Unorm)
-	ENUM_ENTRY(ASTC8x8UnormSrgb, WGPUTextureFormat_ASTC8x8UnormSrgb)
-	ENUM_ENTRY(ASTC10x5Unorm, WGPUTextureFormat_ASTC10x5Unorm)
-	ENUM_ENTRY(ASTC10x5UnormSrgb, WGPUTextureFormat_ASTC10x5UnormSrgb)
-	ENUM_ENTRY(ASTC10x6Unorm, WGPUTextureFormat_ASTC10x6Unorm)
-	ENUM_ENTRY(ASTC10x6UnormSrgb, WGPUTextureFormat_ASTC10x6UnormSrgb)
-	ENUM_ENTRY(ASTC10x8Unorm, WGPUTextureFormat_ASTC10x8Unorm)
-	ENUM_ENTRY(ASTC10x8UnormSrgb, WGPUTextureFormat_ASTC10x8UnormSrgb)
-	ENUM_ENTRY(ASTC10x10Unorm, WGPUTextureFormat_ASTC10x10Unorm)
-	ENUM_ENTRY(ASTC10x10UnormSrgb, WGPUTextureFormat_ASTC10x10UnormSrgb)
-	ENUM_ENTRY(ASTC12x10Unorm, WGPUTextureFormat_ASTC12x10Unorm)
-	ENUM_ENTRY(ASTC12x10UnormSrgb, WGPUTextureFormat_ASTC12x10UnormSrgb)
-	ENUM_ENTRY(ASTC12x12Unorm, WGPUTextureFormat_ASTC12x12Unorm)
-	ENUM_ENTRY(ASTC12x12UnormSrgb, WGPUTextureFormat_ASTC12x12UnormSrgb)
-	ENUM_ENTRY(Force32, WGPUTextureFormat_Force32)
-END
-ENUM(TextureSampleType)
-	ENUM_ENTRY(BindingNotUsed, WGPUTextureSampleType_BindingNotUsed)
-	ENUM_ENTRY(Undefined, WGPUTextureSampleType_Undefined)
-	ENUM_ENTRY(Float, WGPUTextureSampleType_Float)
-	ENUM_ENTRY(UnfilterableFloat, WGPUTextureSampleType_UnfilterableFloat)
-	ENUM_ENTRY(Depth, WGPUTextureSampleType_Depth)
-	ENUM_ENTRY(Sint, WGPUTextureSampleType_Sint)
-	ENUM_ENTRY(Uint, WGPUTextureSampleType_Uint)
-	ENUM_ENTRY(Force32, WGPUTextureSampleType_Force32)
-END
-ENUM(TextureViewDimension)
-	ENUM_ENTRY(Undefined, WGPUTextureViewDimension_Undefined)
-	ENUM_ENTRY(_1D, WGPUTextureViewDimension_1D)
-	ENUM_ENTRY(_2D, WGPUTextureViewDimension_2D)
-	ENUM_ENTRY(_2DArray, WGPUTextureViewDimension_2DArray)
-	ENUM_ENTRY(Cube, WGPUTextureViewDimension_Cube)
-	ENUM_ENTRY(CubeArray, WGPUTextureViewDimension_CubeArray)
-	ENUM_ENTRY(_3D, WGPUTextureViewDimension_3D)
-	ENUM_ENTRY(Force32, WGPUTextureViewDimension_Force32)
-END
-ENUM(VertexFormat)
-	ENUM_ENTRY(Uint8, WGPUVertexFormat_Uint8)
-	ENUM_ENTRY(Uint8x2, WGPUVertexFormat_Uint8x2)
-	ENUM_ENTRY(Uint8x4, WGPUVertexFormat_Uint8x4)
-	ENUM_ENTRY(Sint8, WGPUVertexFormat_Sint8)
-	ENUM_ENTRY(Sint8x2, WGPUVertexFormat_Sint8x2)
-	ENUM_ENTRY(Sint8x4, WGPUVertexFormat_Sint8x4)
-	ENUM_ENTRY(Unorm8, WGPUVertexFormat_Unorm8)
-	ENUM_ENTRY(Unorm8x2, WGPUVertexFormat_Unorm8x2)
-	ENUM_ENTRY(Unorm8x4, WGPUVertexFormat_Unorm8x4)
-	ENUM_ENTRY(Snorm8, WGPUVertexFormat_Snorm8)
-	ENUM_ENTRY(Snorm8x2, WGPUVertexFormat_Snorm8x2)
-	ENUM_ENTRY(Snorm8x4, WGPUVertexFormat_Snorm8x4)
-	ENUM_ENTRY(Uint16, WGPUVertexFormat_Uint16)
-	ENUM_ENTRY(Uint16x2, WGPUVertexFormat_Uint16x2)
-	ENUM_ENTRY(Uint16x4, WGPUVertexFormat_Uint16x4)
-	ENUM_ENTRY(Sint16, WGPUVertexFormat_Sint16)
-	ENUM_ENTRY(Sint16x2, WGPUVertexFormat_Sint16x2)
-	ENUM_ENTRY(Sint16x4, WGPUVertexFormat_Sint16x4)
-	ENUM_ENTRY(Unorm16, WGPUVertexFormat_Unorm16)
-	ENUM_ENTRY(Unorm16x2, WGPUVertexFormat_Unorm16x2)
-	ENUM_ENTRY(Unorm16x4, WGPUVertexFormat_Unorm16x4)
-	ENUM_ENTRY(Snorm16, WGPUVertexFormat_Snorm16)
-	ENUM_ENTRY(Snorm16x2, WGPUVertexFormat_Snorm16x2)
-	ENUM_ENTRY(Snorm16x4, WGPUVertexFormat_Snorm16x4)
-	ENUM_ENTRY(Float16, WGPUVertexFormat_Float16)
-	ENUM_ENTRY(Float16x2, WGPUVertexFormat_Float16x2)
-	ENUM_ENTRY(Float16x4, WGPUVertexFormat_Float16x4)
-	ENUM_ENTRY(Float32, WGPUVertexFormat_Float32)
-	ENUM_ENTRY(Float32x2, WGPUVertexFormat_Float32x2)
-	ENUM_ENTRY(Float32x3, WGPUVertexFormat_Float32x3)
-	ENUM_ENTRY(Float32x4, WGPUVertexFormat_Float32x4)
-	ENUM_ENTRY(Uint32, WGPUVertexFormat_Uint32)
-	ENUM_ENTRY(Uint32x2, WGPUVertexFormat_Uint32x2)
-	ENUM_ENTRY(Uint32x3, WGPUVertexFormat_Uint32x3)
-	ENUM_ENTRY(Uint32x4, WGPUVertexFormat_Uint32x4)
-	ENUM_ENTRY(Sint32, WGPUVertexFormat_Sint32)
-	ENUM_ENTRY(Sint32x2, WGPUVertexFormat_Sint32x2)
-	ENUM_ENTRY(Sint32x3, WGPUVertexFormat_Sint32x3)
-	ENUM_ENTRY(Sint32x4, WGPUVertexFormat_Sint32x4)
-	ENUM_ENTRY(Unorm10_10_10_2, WGPUVertexFormat_Unorm10_10_10_2)
-	ENUM_ENTRY(Unorm8x4BGRA, WGPUVertexFormat_Unorm8x4BGRA)
-	ENUM_ENTRY(Force32, WGPUVertexFormat_Force32)
-END
-ENUM(VertexStepMode)
-	ENUM_ENTRY(VertexBufferNotUsed, WGPUVertexStepMode_VertexBufferNotUsed)
-	ENUM_ENTRY(Undefined, WGPUVertexStepMode_Undefined)
-	ENUM_ENTRY(Vertex, WGPUVertexStepMode_Vertex)
-	ENUM_ENTRY(Instance, WGPUVertexStepMode_Instance)
-	ENUM_ENTRY(Force32, WGPUVertexStepMode_Force32)
-END
-ENUM(WGSLLanguageFeatureName)
-	ENUM_ENTRY(ReadonlyAndReadwriteStorageTextures, WGPUWGSLLanguageFeatureName_ReadonlyAndReadwriteStorageTextures)
-	ENUM_ENTRY(Packed4x8IntegerDotProduct, WGPUWGSLLanguageFeatureName_Packed4x8IntegerDotProduct)
-	ENUM_ENTRY(UnrestrictedPointerParameters, WGPUWGSLLanguageFeatureName_UnrestrictedPointerParameters)
-	ENUM_ENTRY(PointerCompositeAccess, WGPUWGSLLanguageFeatureName_PointerCompositeAccess)
-	ENUM_ENTRY(Force32, WGPUWGSLLanguageFeatureName_Force32)
-END
-ENUM(WaitStatus)
-	ENUM_ENTRY(Success, WGPUWaitStatus_Success)
-	ENUM_ENTRY(TimedOut, WGPUWaitStatus_TimedOut)
-	ENUM_ENTRY(UnsupportedTimeout, WGPUWaitStatus_UnsupportedTimeout)
-	ENUM_ENTRY(UnsupportedCount, WGPUWaitStatus_UnsupportedCount)
-	ENUM_ENTRY(UnsupportedMixedSources, WGPUWaitStatus_UnsupportedMixedSources)
-	ENUM_ENTRY(Force32, WGPUWaitStatus_Force32)
-END
-ENUM(BufferUsage)
-	ENUM_ENTRY(None, WGPUBufferUsage_None)
-	ENUM_ENTRY(MapRead, WGPUBufferUsage_MapRead)
-	ENUM_ENTRY(MapWrite, WGPUBufferUsage_MapWrite)
-	ENUM_ENTRY(CopySrc, WGPUBufferUsage_CopySrc)
-	ENUM_ENTRY(CopyDst, WGPUBufferUsage_CopyDst)
-	ENUM_ENTRY(Index, WGPUBufferUsage_Index)
-	ENUM_ENTRY(Vertex, WGPUBufferUsage_Vertex)
-	ENUM_ENTRY(Uniform, WGPUBufferUsage_Uniform)
-	ENUM_ENTRY(Storage, WGPUBufferUsage_Storage)
-	ENUM_ENTRY(Indirect, WGPUBufferUsage_Indirect)
-	ENUM_ENTRY(QueryResolve, WGPUBufferUsage_QueryResolve)
-END
-ENUM(ColorWriteMask)
-	ENUM_ENTRY(None, WGPUColorWriteMask_None)
-	ENUM_ENTRY(Red, WGPUColorWriteMask_Red)
-	ENUM_ENTRY(Green, WGPUColorWriteMask_Green)
-	ENUM_ENTRY(Blue, WGPUColorWriteMask_Blue)
-	ENUM_ENTRY(Alpha, WGPUColorWriteMask_Alpha)
-	ENUM_ENTRY(All, WGPUColorWriteMask_All)
-END
-ENUM(MapMode)
-	ENUM_ENTRY(None, WGPUMapMode_None)
-	ENUM_ENTRY(Read, WGPUMapMode_Read)
-	ENUM_ENTRY(Write, WGPUMapMode_Write)
-END
-ENUM(ShaderStage)
-	ENUM_ENTRY(None, WGPUShaderStage_None)
-	ENUM_ENTRY(Vertex, WGPUShaderStage_Vertex)
-	ENUM_ENTRY(Fragment, WGPUShaderStage_Fragment)
-	ENUM_ENTRY(Compute, WGPUShaderStage_Compute)
-END
-ENUM(TextureUsage)
-	ENUM_ENTRY(None, WGPUTextureUsage_None)
-	ENUM_ENTRY(CopySrc, WGPUTextureUsage_CopySrc)
-	ENUM_ENTRY(CopyDst, WGPUTextureUsage_CopyDst)
-	ENUM_ENTRY(TextureBinding, WGPUTextureUsage_TextureBinding)
-	ENUM_ENTRY(StorageBinding, WGPUTextureUsage_StorageBinding)
-	ENUM_ENTRY(RenderAttachment, WGPUTextureUsage_RenderAttachment)
-END
-ENUM(NativeSType)
-	ENUM_ENTRY(DeviceExtras, WGPUSType_DeviceExtras)
-	ENUM_ENTRY(NativeLimits, WGPUSType_NativeLimits)
-	ENUM_ENTRY(PipelineLayoutExtras, WGPUSType_PipelineLayoutExtras)
-	ENUM_ENTRY(ShaderSourceGLSL, WGPUSType_ShaderSourceGLSL)
-	ENUM_ENTRY(InstanceExtras, WGPUSType_InstanceExtras)
-	ENUM_ENTRY(BindGroupEntryExtras, WGPUSType_BindGroupEntryExtras)
-	ENUM_ENTRY(BindGroupLayoutEntryExtras, WGPUSType_BindGroupLayoutEntryExtras)
-	ENUM_ENTRY(QuerySetDescriptorExtras, WGPUSType_QuerySetDescriptorExtras)
-	ENUM_ENTRY(SurfaceConfigurationExtras, WGPUSType_SurfaceConfigurationExtras)
-	ENUM_ENTRY(SurfaceSourceSwapChainPanel, WGPUSType_SurfaceSourceSwapChainPanel)
-	ENUM_ENTRY(PrimitiveStateExtras, WGPUSType_PrimitiveStateExtras)
-	ENUM_ENTRY(Force32, WGPUNativeSType_Force32)
-END
-ENUM(NativeFeature)
-	ENUM_ENTRY(PushConstants, WGPUNativeFeature_PushConstants)
-	ENUM_ENTRY(TextureAdapterSpecificFormatFeatures, WGPUNativeFeature_TextureAdapterSpecificFormatFeatures)
-	ENUM_ENTRY(MultiDrawIndirectCount, WGPUNativeFeature_MultiDrawIndirectCount)
-	ENUM_ENTRY(VertexWritableStorage, WGPUNativeFeature_VertexWritableStorage)
-	ENUM_ENTRY(TextureBindingArray, WGPUNativeFeature_TextureBindingArray)
-	ENUM_ENTRY(SampledTextureAndStorageBufferArrayNonUniformIndexing, WGPUNativeFeature_SampledTextureAndStorageBufferArrayNonUniformIndexing)
-	ENUM_ENTRY(PipelineStatisticsQuery, WGPUNativeFeature_PipelineStatisticsQuery)
-	ENUM_ENTRY(StorageResourceBindingArray, WGPUNativeFeature_StorageResourceBindingArray)
-	ENUM_ENTRY(PartiallyBoundBindingArray, WGPUNativeFeature_PartiallyBoundBindingArray)
-	ENUM_ENTRY(TextureFormat16bitNorm, WGPUNativeFeature_TextureFormat16bitNorm)
-	ENUM_ENTRY(TextureCompressionAstcHdr, WGPUNativeFeature_TextureCompressionAstcHdr)
-	ENUM_ENTRY(MappablePrimaryBuffers, WGPUNativeFeature_MappablePrimaryBuffers)
-	ENUM_ENTRY(BufferBindingArray, WGPUNativeFeature_BufferBindingArray)
-	ENUM_ENTRY(UniformBufferAndStorageTextureArrayNonUniformIndexing, WGPUNativeFeature_UniformBufferAndStorageTextureArrayNonUniformIndexing)
-	ENUM_ENTRY(PolygonModeLine, WGPUNativeFeature_PolygonModeLine)
-	ENUM_ENTRY(PolygonModePoint, WGPUNativeFeature_PolygonModePoint)
-	ENUM_ENTRY(ConservativeRasterization, WGPUNativeFeature_ConservativeRasterization)
-	ENUM_ENTRY(SpirvShaderPassthrough, WGPUNativeFeature_SpirvShaderPassthrough)
-	ENUM_ENTRY(VertexAttribute64bit, WGPUNativeFeature_VertexAttribute64bit)
-	ENUM_ENTRY(TextureFormatNv12, WGPUNativeFeature_TextureFormatNv12)
-	ENUM_ENTRY(RayQuery, WGPUNativeFeature_RayQuery)
-	ENUM_ENTRY(ShaderF64, WGPUNativeFeature_ShaderF64)
-	ENUM_ENTRY(ShaderI16, WGPUNativeFeature_ShaderI16)
-	ENUM_ENTRY(ShaderPrimitiveIndex, WGPUNativeFeature_ShaderPrimitiveIndex)
-	ENUM_ENTRY(ShaderEarlyDepthTest, WGPUNativeFeature_ShaderEarlyDepthTest)
-	ENUM_ENTRY(Subgroup, WGPUNativeFeature_Subgroup)
-	ENUM_ENTRY(SubgroupVertex, WGPUNativeFeature_SubgroupVertex)
-	ENUM_ENTRY(SubgroupBarrier, WGPUNativeFeature_SubgroupBarrier)
-	ENUM_ENTRY(TimestampQueryInsideEncoders, WGPUNativeFeature_TimestampQueryInsideEncoders)
-	ENUM_ENTRY(TimestampQueryInsidePasses, WGPUNativeFeature_TimestampQueryInsidePasses)
-	ENUM_ENTRY(ShaderInt64, WGPUNativeFeature_ShaderInt64)
-	ENUM_ENTRY(Force32, WGPUNativeFeature_Force32)
-END
-ENUM(LogLevel)
-	ENUM_ENTRY(Off, WGPULogLevel_Off)
-	ENUM_ENTRY(Error, WGPULogLevel_Error)
-	ENUM_ENTRY(Warn, WGPULogLevel_Warn)
-	ENUM_ENTRY(Info, WGPULogLevel_Info)
-	ENUM_ENTRY(Debug, WGPULogLevel_Debug)
-	ENUM_ENTRY(Trace, WGPULogLevel_Trace)
-	ENUM_ENTRY(Force32, WGPULogLevel_Force32)
-END
-ENUM(InstanceBackend)
-	ENUM_ENTRY(All, WGPUInstanceBackend_All)
-	ENUM_ENTRY(Force32, WGPUInstanceBackend_Force32)
-END
-ENUM(InstanceFlag)
-	ENUM_ENTRY(Default, WGPUInstanceFlag_Default)
-	ENUM_ENTRY(Force32, WGPUInstanceFlag_Force32)
-END
-ENUM(Dx12Compiler)
-	ENUM_ENTRY(Undefined, WGPUDx12Compiler_Undefined)
-	ENUM_ENTRY(Fxc, WGPUDx12Compiler_Fxc)
-	ENUM_ENTRY(Dxc, WGPUDx12Compiler_Dxc)
-	ENUM_ENTRY(Force32, WGPUDx12Compiler_Force32)
-END
-ENUM(Gles3MinorVersion)
-	ENUM_ENTRY(Automatic, WGPUGles3MinorVersion_Automatic)
-	ENUM_ENTRY(Version0, WGPUGles3MinorVersion_Version0)
-	ENUM_ENTRY(Version1, WGPUGles3MinorVersion_Version1)
-	ENUM_ENTRY(Version2, WGPUGles3MinorVersion_Version2)
-	ENUM_ENTRY(Force32, WGPUGles3MinorVersion_Force32)
-END
-ENUM(PipelineStatisticName)
-	ENUM_ENTRY(VertexShaderInvocations, WGPUPipelineStatisticName_VertexShaderInvocations)
-	ENUM_ENTRY(ClipperInvocations, WGPUPipelineStatisticName_ClipperInvocations)
-	ENUM_ENTRY(ClipperPrimitivesOut, WGPUPipelineStatisticName_ClipperPrimitivesOut)
-	ENUM_ENTRY(FragmentShaderInvocations, WGPUPipelineStatisticName_FragmentShaderInvocations)
-	ENUM_ENTRY(ComputeShaderInvocations, WGPUPipelineStatisticName_ComputeShaderInvocations)
-	ENUM_ENTRY(Force32, WGPUPipelineStatisticName_Force32)
-END
-ENUM(NativeQueryType)
-	ENUM_ENTRY(PipelineStatistics, WGPUNativeQueryType_PipelineStatistics)
-	ENUM_ENTRY(Force32, WGPUNativeQueryType_Force32)
-END
-ENUM(DxcMaxShaderModel)
-	ENUM_ENTRY(V6_0, WGPUDxcMaxShaderModel_V6_0)
-	ENUM_ENTRY(V6_1, WGPUDxcMaxShaderModel_V6_1)
-	ENUM_ENTRY(V6_2, WGPUDxcMaxShaderModel_V6_2)
-	ENUM_ENTRY(V6_3, WGPUDxcMaxShaderModel_V6_3)
-	ENUM_ENTRY(V6_4, WGPUDxcMaxShaderModel_V6_4)
-	ENUM_ENTRY(V6_5, WGPUDxcMaxShaderModel_V6_5)
-	ENUM_ENTRY(V6_6, WGPUDxcMaxShaderModel_V6_6)
-	ENUM_ENTRY(V6_7, WGPUDxcMaxShaderModel_V6_7)
-	ENUM_ENTRY(Force32, WGPUDxcMaxShaderModel_Force32)
-END
-ENUM(GLFenceBehaviour)
-	ENUM_ENTRY(Normal, WGPUGLFenceBehaviour_Normal)
-	ENUM_ENTRY(AutoFinish, WGPUGLFenceBehaviour_AutoFinish)
-	ENUM_ENTRY(Force32, WGPUGLFenceBehaviour_Force32)
-END
-ENUM(Dx12SwapchainKind)
-	ENUM_ENTRY(Undefined, WGPUDx12SwapchainKind_Undefined)
-	ENUM_ENTRY(DxgiFromHwnd, WGPUDx12SwapchainKind_DxgiFromHwnd)
-	ENUM_ENTRY(DxgiFromVisual, WGPUDx12SwapchainKind_DxgiFromVisual)
-	ENUM_ENTRY(Force32, WGPUDx12SwapchainKind_Force32)
-END
-ENUM(PolygonMode)
-	ENUM_ENTRY(Fill, WGPUPolygonMode_Fill)
-	ENUM_ENTRY(Line, WGPUPolygonMode_Line)
-	ENUM_ENTRY(Point, WGPUPolygonMode_Point)
-END
-ENUM(NativeTextureFormat)
-	ENUM_ENTRY(R16Unorm, WGPUNativeTextureFormat_R16Unorm)
-	ENUM_ENTRY(R16Snorm, WGPUNativeTextureFormat_R16Snorm)
-	ENUM_ENTRY(Rg16Unorm, WGPUNativeTextureFormat_Rg16Unorm)
-	ENUM_ENTRY(Rg16Snorm, WGPUNativeTextureFormat_Rg16Snorm)
-	ENUM_ENTRY(Rgba16Unorm, WGPUNativeTextureFormat_Rgba16Unorm)
-	ENUM_ENTRY(Rgba16Snorm, WGPUNativeTextureFormat_Rgba16Snorm)
-	ENUM_ENTRY(NV12, WGPUNativeTextureFormat_NV12)
-	ENUM_ENTRY(P010, WGPUNativeTextureFormat_P010)
-END
+namespace wgpu {
+enum class AdapterType: int {
+	DiscreteGPU = WGPUAdapterType_DiscreteGPU,
+	IntegratedGPU = WGPUAdapterType_IntegratedGPU,
+	CPU = WGPUAdapterType_CPU,
+	Unknown = WGPUAdapterType_Unknown,
+	Force32 = WGPUAdapterType_Force32,
+};
+
+inline constexpr bool operator==(AdapterType a, WGPUAdapterType b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator==(WGPUAdapterType a, AdapterType b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator!=(AdapterType a, WGPUAdapterType b) { return !(a == b); }
+inline constexpr bool operator!=(WGPUAdapterType a, AdapterType b) { return !(a == b); }
+
+inline constexpr AdapterType operator|(AdapterType a, AdapterType b) { return static_cast<AdapterType>(static_cast<int>(a) | static_cast<int>(b)); }
+inline constexpr AdapterType operator&(AdapterType a, AdapterType b) { return static_cast<AdapterType>(static_cast<int>(a) & static_cast<int>(b)); }
+
+enum class AddressMode: int {
+	Undefined = WGPUAddressMode_Undefined,
+	ClampToEdge = WGPUAddressMode_ClampToEdge,
+	Repeat = WGPUAddressMode_Repeat,
+	MirrorRepeat = WGPUAddressMode_MirrorRepeat,
+	Force32 = WGPUAddressMode_Force32,
+};
+
+inline constexpr bool operator==(AddressMode a, WGPUAddressMode b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator==(WGPUAddressMode a, AddressMode b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator!=(AddressMode a, WGPUAddressMode b) { return !(a == b); }
+inline constexpr bool operator!=(WGPUAddressMode a, AddressMode b) { return !(a == b); }
+
+inline constexpr AddressMode operator|(AddressMode a, AddressMode b) { return static_cast<AddressMode>(static_cast<int>(a) | static_cast<int>(b)); }
+inline constexpr AddressMode operator&(AddressMode a, AddressMode b) { return static_cast<AddressMode>(static_cast<int>(a) & static_cast<int>(b)); }
+
+enum class BackendType: int {
+	Undefined = WGPUBackendType_Undefined,
+	Null = WGPUBackendType_Null,
+	WebGPU = WGPUBackendType_WebGPU,
+	D3D11 = WGPUBackendType_D3D11,
+	D3D12 = WGPUBackendType_D3D12,
+	Metal = WGPUBackendType_Metal,
+	Vulkan = WGPUBackendType_Vulkan,
+	OpenGL = WGPUBackendType_OpenGL,
+	OpenGLES = WGPUBackendType_OpenGLES,
+	Force32 = WGPUBackendType_Force32,
+};
+
+inline constexpr bool operator==(BackendType a, WGPUBackendType b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator==(WGPUBackendType a, BackendType b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator!=(BackendType a, WGPUBackendType b) { return !(a == b); }
+inline constexpr bool operator!=(WGPUBackendType a, BackendType b) { return !(a == b); }
+
+inline constexpr BackendType operator|(BackendType a, BackendType b) { return static_cast<BackendType>(static_cast<int>(a) | static_cast<int>(b)); }
+inline constexpr BackendType operator&(BackendType a, BackendType b) { return static_cast<BackendType>(static_cast<int>(a) & static_cast<int>(b)); }
+
+enum class BlendFactor: int {
+	Undefined = WGPUBlendFactor_Undefined,
+	Zero = WGPUBlendFactor_Zero,
+	One = WGPUBlendFactor_One,
+	Src = WGPUBlendFactor_Src,
+	OneMinusSrc = WGPUBlendFactor_OneMinusSrc,
+	SrcAlpha = WGPUBlendFactor_SrcAlpha,
+	OneMinusSrcAlpha = WGPUBlendFactor_OneMinusSrcAlpha,
+	Dst = WGPUBlendFactor_Dst,
+	OneMinusDst = WGPUBlendFactor_OneMinusDst,
+	DstAlpha = WGPUBlendFactor_DstAlpha,
+	OneMinusDstAlpha = WGPUBlendFactor_OneMinusDstAlpha,
+	SrcAlphaSaturated = WGPUBlendFactor_SrcAlphaSaturated,
+	Constant = WGPUBlendFactor_Constant,
+	OneMinusConstant = WGPUBlendFactor_OneMinusConstant,
+	Src1 = WGPUBlendFactor_Src1,
+	OneMinusSrc1 = WGPUBlendFactor_OneMinusSrc1,
+	Src1Alpha = WGPUBlendFactor_Src1Alpha,
+	OneMinusSrc1Alpha = WGPUBlendFactor_OneMinusSrc1Alpha,
+	Force32 = WGPUBlendFactor_Force32,
+};
+
+inline constexpr bool operator==(BlendFactor a, WGPUBlendFactor b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator==(WGPUBlendFactor a, BlendFactor b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator!=(BlendFactor a, WGPUBlendFactor b) { return !(a == b); }
+inline constexpr bool operator!=(WGPUBlendFactor a, BlendFactor b) { return !(a == b); }
+
+inline constexpr BlendFactor operator|(BlendFactor a, BlendFactor b) { return static_cast<BlendFactor>(static_cast<int>(a) | static_cast<int>(b)); }
+inline constexpr BlendFactor operator&(BlendFactor a, BlendFactor b) { return static_cast<BlendFactor>(static_cast<int>(a) & static_cast<int>(b)); }
+
+enum class BlendOperation: int {
+	Undefined = WGPUBlendOperation_Undefined,
+	Add = WGPUBlendOperation_Add,
+	Subtract = WGPUBlendOperation_Subtract,
+	ReverseSubtract = WGPUBlendOperation_ReverseSubtract,
+	Min = WGPUBlendOperation_Min,
+	Max = WGPUBlendOperation_Max,
+	Force32 = WGPUBlendOperation_Force32,
+};
+
+inline constexpr bool operator==(BlendOperation a, WGPUBlendOperation b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator==(WGPUBlendOperation a, BlendOperation b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator!=(BlendOperation a, WGPUBlendOperation b) { return !(a == b); }
+inline constexpr bool operator!=(WGPUBlendOperation a, BlendOperation b) { return !(a == b); }
+
+inline constexpr BlendOperation operator|(BlendOperation a, BlendOperation b) { return static_cast<BlendOperation>(static_cast<int>(a) | static_cast<int>(b)); }
+inline constexpr BlendOperation operator&(BlendOperation a, BlendOperation b) { return static_cast<BlendOperation>(static_cast<int>(a) & static_cast<int>(b)); }
+
+enum class BufferBindingType: int {
+	BindingNotUsed = WGPUBufferBindingType_BindingNotUsed,
+	Undefined = WGPUBufferBindingType_Undefined,
+	Uniform = WGPUBufferBindingType_Uniform,
+	Storage = WGPUBufferBindingType_Storage,
+	ReadOnlyStorage = WGPUBufferBindingType_ReadOnlyStorage,
+	Force32 = WGPUBufferBindingType_Force32,
+};
+
+inline constexpr bool operator==(BufferBindingType a, WGPUBufferBindingType b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator==(WGPUBufferBindingType a, BufferBindingType b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator!=(BufferBindingType a, WGPUBufferBindingType b) { return !(a == b); }
+inline constexpr bool operator!=(WGPUBufferBindingType a, BufferBindingType b) { return !(a == b); }
+
+inline constexpr BufferBindingType operator|(BufferBindingType a, BufferBindingType b) { return static_cast<BufferBindingType>(static_cast<int>(a) | static_cast<int>(b)); }
+inline constexpr BufferBindingType operator&(BufferBindingType a, BufferBindingType b) { return static_cast<BufferBindingType>(static_cast<int>(a) & static_cast<int>(b)); }
+
+enum class BufferMapState: int {
+	Unmapped = WGPUBufferMapState_Unmapped,
+	Pending = WGPUBufferMapState_Pending,
+	Mapped = WGPUBufferMapState_Mapped,
+	Force32 = WGPUBufferMapState_Force32,
+};
+
+inline constexpr bool operator==(BufferMapState a, WGPUBufferMapState b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator==(WGPUBufferMapState a, BufferMapState b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator!=(BufferMapState a, WGPUBufferMapState b) { return !(a == b); }
+inline constexpr bool operator!=(WGPUBufferMapState a, BufferMapState b) { return !(a == b); }
+
+inline constexpr BufferMapState operator|(BufferMapState a, BufferMapState b) { return static_cast<BufferMapState>(static_cast<int>(a) | static_cast<int>(b)); }
+inline constexpr BufferMapState operator&(BufferMapState a, BufferMapState b) { return static_cast<BufferMapState>(static_cast<int>(a) & static_cast<int>(b)); }
+
+enum class CallbackMode: int {
+	WaitAnyOnly = WGPUCallbackMode_WaitAnyOnly,
+	AllowProcessEvents = WGPUCallbackMode_AllowProcessEvents,
+	AllowSpontaneous = WGPUCallbackMode_AllowSpontaneous,
+	Force32 = WGPUCallbackMode_Force32,
+};
+
+inline constexpr bool operator==(CallbackMode a, WGPUCallbackMode b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator==(WGPUCallbackMode a, CallbackMode b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator!=(CallbackMode a, WGPUCallbackMode b) { return !(a == b); }
+inline constexpr bool operator!=(WGPUCallbackMode a, CallbackMode b) { return !(a == b); }
+
+inline constexpr CallbackMode operator|(CallbackMode a, CallbackMode b) { return static_cast<CallbackMode>(static_cast<int>(a) | static_cast<int>(b)); }
+inline constexpr CallbackMode operator&(CallbackMode a, CallbackMode b) { return static_cast<CallbackMode>(static_cast<int>(a) & static_cast<int>(b)); }
+
+enum class CompareFunction: int {
+	Undefined = WGPUCompareFunction_Undefined,
+	Never = WGPUCompareFunction_Never,
+	Less = WGPUCompareFunction_Less,
+	Equal = WGPUCompareFunction_Equal,
+	LessEqual = WGPUCompareFunction_LessEqual,
+	Greater = WGPUCompareFunction_Greater,
+	NotEqual = WGPUCompareFunction_NotEqual,
+	GreaterEqual = WGPUCompareFunction_GreaterEqual,
+	Always = WGPUCompareFunction_Always,
+	Force32 = WGPUCompareFunction_Force32,
+};
+
+inline constexpr bool operator==(CompareFunction a, WGPUCompareFunction b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator==(WGPUCompareFunction a, CompareFunction b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator!=(CompareFunction a, WGPUCompareFunction b) { return !(a == b); }
+inline constexpr bool operator!=(WGPUCompareFunction a, CompareFunction b) { return !(a == b); }
+
+inline constexpr CompareFunction operator|(CompareFunction a, CompareFunction b) { return static_cast<CompareFunction>(static_cast<int>(a) | static_cast<int>(b)); }
+inline constexpr CompareFunction operator&(CompareFunction a, CompareFunction b) { return static_cast<CompareFunction>(static_cast<int>(a) & static_cast<int>(b)); }
+
+enum class CompilationInfoRequestStatus: int {
+	Success = WGPUCompilationInfoRequestStatus_Success,
+	InstanceDropped = WGPUCompilationInfoRequestStatus_InstanceDropped,
+	Error = WGPUCompilationInfoRequestStatus_Error,
+	Unknown = WGPUCompilationInfoRequestStatus_Unknown,
+	Force32 = WGPUCompilationInfoRequestStatus_Force32,
+};
+
+inline constexpr bool operator==(CompilationInfoRequestStatus a, WGPUCompilationInfoRequestStatus b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator==(WGPUCompilationInfoRequestStatus a, CompilationInfoRequestStatus b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator!=(CompilationInfoRequestStatus a, WGPUCompilationInfoRequestStatus b) { return !(a == b); }
+inline constexpr bool operator!=(WGPUCompilationInfoRequestStatus a, CompilationInfoRequestStatus b) { return !(a == b); }
+
+inline constexpr CompilationInfoRequestStatus operator|(CompilationInfoRequestStatus a, CompilationInfoRequestStatus b) { return static_cast<CompilationInfoRequestStatus>(static_cast<int>(a) | static_cast<int>(b)); }
+inline constexpr CompilationInfoRequestStatus operator&(CompilationInfoRequestStatus a, CompilationInfoRequestStatus b) { return static_cast<CompilationInfoRequestStatus>(static_cast<int>(a) & static_cast<int>(b)); }
+
+enum class CompilationMessageType: int {
+	Error = WGPUCompilationMessageType_Error,
+	Warning = WGPUCompilationMessageType_Warning,
+	Info = WGPUCompilationMessageType_Info,
+	Force32 = WGPUCompilationMessageType_Force32,
+};
+
+inline constexpr bool operator==(CompilationMessageType a, WGPUCompilationMessageType b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator==(WGPUCompilationMessageType a, CompilationMessageType b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator!=(CompilationMessageType a, WGPUCompilationMessageType b) { return !(a == b); }
+inline constexpr bool operator!=(WGPUCompilationMessageType a, CompilationMessageType b) { return !(a == b); }
+
+inline constexpr CompilationMessageType operator|(CompilationMessageType a, CompilationMessageType b) { return static_cast<CompilationMessageType>(static_cast<int>(a) | static_cast<int>(b)); }
+inline constexpr CompilationMessageType operator&(CompilationMessageType a, CompilationMessageType b) { return static_cast<CompilationMessageType>(static_cast<int>(a) & static_cast<int>(b)); }
+
+enum class CompositeAlphaMode: int {
+	Auto = WGPUCompositeAlphaMode_Auto,
+	Opaque = WGPUCompositeAlphaMode_Opaque,
+	Premultiplied = WGPUCompositeAlphaMode_Premultiplied,
+	Unpremultiplied = WGPUCompositeAlphaMode_Unpremultiplied,
+	Inherit = WGPUCompositeAlphaMode_Inherit,
+	Force32 = WGPUCompositeAlphaMode_Force32,
+};
+
+inline constexpr bool operator==(CompositeAlphaMode a, WGPUCompositeAlphaMode b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator==(WGPUCompositeAlphaMode a, CompositeAlphaMode b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator!=(CompositeAlphaMode a, WGPUCompositeAlphaMode b) { return !(a == b); }
+inline constexpr bool operator!=(WGPUCompositeAlphaMode a, CompositeAlphaMode b) { return !(a == b); }
+
+inline constexpr CompositeAlphaMode operator|(CompositeAlphaMode a, CompositeAlphaMode b) { return static_cast<CompositeAlphaMode>(static_cast<int>(a) | static_cast<int>(b)); }
+inline constexpr CompositeAlphaMode operator&(CompositeAlphaMode a, CompositeAlphaMode b) { return static_cast<CompositeAlphaMode>(static_cast<int>(a) & static_cast<int>(b)); }
+
+enum class CreatePipelineAsyncStatus: int {
+	Success = WGPUCreatePipelineAsyncStatus_Success,
+	InstanceDropped = WGPUCreatePipelineAsyncStatus_InstanceDropped,
+	ValidationError = WGPUCreatePipelineAsyncStatus_ValidationError,
+	InternalError = WGPUCreatePipelineAsyncStatus_InternalError,
+	Unknown = WGPUCreatePipelineAsyncStatus_Unknown,
+	Force32 = WGPUCreatePipelineAsyncStatus_Force32,
+};
+
+inline constexpr bool operator==(CreatePipelineAsyncStatus a, WGPUCreatePipelineAsyncStatus b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator==(WGPUCreatePipelineAsyncStatus a, CreatePipelineAsyncStatus b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator!=(CreatePipelineAsyncStatus a, WGPUCreatePipelineAsyncStatus b) { return !(a == b); }
+inline constexpr bool operator!=(WGPUCreatePipelineAsyncStatus a, CreatePipelineAsyncStatus b) { return !(a == b); }
+
+inline constexpr CreatePipelineAsyncStatus operator|(CreatePipelineAsyncStatus a, CreatePipelineAsyncStatus b) { return static_cast<CreatePipelineAsyncStatus>(static_cast<int>(a) | static_cast<int>(b)); }
+inline constexpr CreatePipelineAsyncStatus operator&(CreatePipelineAsyncStatus a, CreatePipelineAsyncStatus b) { return static_cast<CreatePipelineAsyncStatus>(static_cast<int>(a) & static_cast<int>(b)); }
+
+enum class CullMode: int {
+	Undefined = WGPUCullMode_Undefined,
+	None = WGPUCullMode_None,
+	Front = WGPUCullMode_Front,
+	Back = WGPUCullMode_Back,
+	Force32 = WGPUCullMode_Force32,
+};
+
+inline constexpr bool operator==(CullMode a, WGPUCullMode b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator==(WGPUCullMode a, CullMode b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator!=(CullMode a, WGPUCullMode b) { return !(a == b); }
+inline constexpr bool operator!=(WGPUCullMode a, CullMode b) { return !(a == b); }
+
+inline constexpr CullMode operator|(CullMode a, CullMode b) { return static_cast<CullMode>(static_cast<int>(a) | static_cast<int>(b)); }
+inline constexpr CullMode operator&(CullMode a, CullMode b) { return static_cast<CullMode>(static_cast<int>(a) & static_cast<int>(b)); }
+
+enum class DeviceLostReason: int {
+	Unknown = WGPUDeviceLostReason_Unknown,
+	Destroyed = WGPUDeviceLostReason_Destroyed,
+	InstanceDropped = WGPUDeviceLostReason_InstanceDropped,
+	FailedCreation = WGPUDeviceLostReason_FailedCreation,
+	Force32 = WGPUDeviceLostReason_Force32,
+};
+
+inline constexpr bool operator==(DeviceLostReason a, WGPUDeviceLostReason b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator==(WGPUDeviceLostReason a, DeviceLostReason b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator!=(DeviceLostReason a, WGPUDeviceLostReason b) { return !(a == b); }
+inline constexpr bool operator!=(WGPUDeviceLostReason a, DeviceLostReason b) { return !(a == b); }
+
+inline constexpr DeviceLostReason operator|(DeviceLostReason a, DeviceLostReason b) { return static_cast<DeviceLostReason>(static_cast<int>(a) | static_cast<int>(b)); }
+inline constexpr DeviceLostReason operator&(DeviceLostReason a, DeviceLostReason b) { return static_cast<DeviceLostReason>(static_cast<int>(a) & static_cast<int>(b)); }
+
+enum class ErrorFilter: int {
+	Validation = WGPUErrorFilter_Validation,
+	OutOfMemory = WGPUErrorFilter_OutOfMemory,
+	Internal = WGPUErrorFilter_Internal,
+	Force32 = WGPUErrorFilter_Force32,
+};
+
+inline constexpr bool operator==(ErrorFilter a, WGPUErrorFilter b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator==(WGPUErrorFilter a, ErrorFilter b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator!=(ErrorFilter a, WGPUErrorFilter b) { return !(a == b); }
+inline constexpr bool operator!=(WGPUErrorFilter a, ErrorFilter b) { return !(a == b); }
+
+inline constexpr ErrorFilter operator|(ErrorFilter a, ErrorFilter b) { return static_cast<ErrorFilter>(static_cast<int>(a) | static_cast<int>(b)); }
+inline constexpr ErrorFilter operator&(ErrorFilter a, ErrorFilter b) { return static_cast<ErrorFilter>(static_cast<int>(a) & static_cast<int>(b)); }
+
+enum class ErrorType: int {
+	NoError = WGPUErrorType_NoError,
+	Validation = WGPUErrorType_Validation,
+	OutOfMemory = WGPUErrorType_OutOfMemory,
+	Internal = WGPUErrorType_Internal,
+	Unknown = WGPUErrorType_Unknown,
+	Force32 = WGPUErrorType_Force32,
+};
+
+inline constexpr bool operator==(ErrorType a, WGPUErrorType b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator==(WGPUErrorType a, ErrorType b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator!=(ErrorType a, WGPUErrorType b) { return !(a == b); }
+inline constexpr bool operator!=(WGPUErrorType a, ErrorType b) { return !(a == b); }
+
+inline constexpr ErrorType operator|(ErrorType a, ErrorType b) { return static_cast<ErrorType>(static_cast<int>(a) | static_cast<int>(b)); }
+inline constexpr ErrorType operator&(ErrorType a, ErrorType b) { return static_cast<ErrorType>(static_cast<int>(a) & static_cast<int>(b)); }
+
+enum class FeatureLevel: int {
+	Compatibility = WGPUFeatureLevel_Compatibility,
+	Core = WGPUFeatureLevel_Core,
+	Force32 = WGPUFeatureLevel_Force32,
+};
+
+inline constexpr bool operator==(FeatureLevel a, WGPUFeatureLevel b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator==(WGPUFeatureLevel a, FeatureLevel b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator!=(FeatureLevel a, WGPUFeatureLevel b) { return !(a == b); }
+inline constexpr bool operator!=(WGPUFeatureLevel a, FeatureLevel b) { return !(a == b); }
+
+inline constexpr FeatureLevel operator|(FeatureLevel a, FeatureLevel b) { return static_cast<FeatureLevel>(static_cast<int>(a) | static_cast<int>(b)); }
+inline constexpr FeatureLevel operator&(FeatureLevel a, FeatureLevel b) { return static_cast<FeatureLevel>(static_cast<int>(a) & static_cast<int>(b)); }
+
+enum class FeatureName: int {
+	Undefined = WGPUFeatureName_Undefined,
+	DepthClipControl = WGPUFeatureName_DepthClipControl,
+	Depth32FloatStencil8 = WGPUFeatureName_Depth32FloatStencil8,
+	TimestampQuery = WGPUFeatureName_TimestampQuery,
+	TextureCompressionBC = WGPUFeatureName_TextureCompressionBC,
+	TextureCompressionBCSliced3D = WGPUFeatureName_TextureCompressionBCSliced3D,
+	TextureCompressionETC2 = WGPUFeatureName_TextureCompressionETC2,
+	TextureCompressionASTC = WGPUFeatureName_TextureCompressionASTC,
+	TextureCompressionASTCSliced3D = WGPUFeatureName_TextureCompressionASTCSliced3D,
+	IndirectFirstInstance = WGPUFeatureName_IndirectFirstInstance,
+	ShaderF16 = WGPUFeatureName_ShaderF16,
+	RG11B10UfloatRenderable = WGPUFeatureName_RG11B10UfloatRenderable,
+	BGRA8UnormStorage = WGPUFeatureName_BGRA8UnormStorage,
+	Float32Filterable = WGPUFeatureName_Float32Filterable,
+	Float32Blendable = WGPUFeatureName_Float32Blendable,
+	ClipDistances = WGPUFeatureName_ClipDistances,
+	DualSourceBlending = WGPUFeatureName_DualSourceBlending,
+	Force32 = WGPUFeatureName_Force32,
+};
+
+inline constexpr bool operator==(FeatureName a, WGPUFeatureName b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator==(WGPUFeatureName a, FeatureName b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator!=(FeatureName a, WGPUFeatureName b) { return !(a == b); }
+inline constexpr bool operator!=(WGPUFeatureName a, FeatureName b) { return !(a == b); }
+
+inline constexpr FeatureName operator|(FeatureName a, FeatureName b) { return static_cast<FeatureName>(static_cast<int>(a) | static_cast<int>(b)); }
+inline constexpr FeatureName operator&(FeatureName a, FeatureName b) { return static_cast<FeatureName>(static_cast<int>(a) & static_cast<int>(b)); }
+
+enum class FilterMode: int {
+	Undefined = WGPUFilterMode_Undefined,
+	Nearest = WGPUFilterMode_Nearest,
+	Linear = WGPUFilterMode_Linear,
+	Force32 = WGPUFilterMode_Force32,
+};
+
+inline constexpr bool operator==(FilterMode a, WGPUFilterMode b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator==(WGPUFilterMode a, FilterMode b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator!=(FilterMode a, WGPUFilterMode b) { return !(a == b); }
+inline constexpr bool operator!=(WGPUFilterMode a, FilterMode b) { return !(a == b); }
+
+inline constexpr FilterMode operator|(FilterMode a, FilterMode b) { return static_cast<FilterMode>(static_cast<int>(a) | static_cast<int>(b)); }
+inline constexpr FilterMode operator&(FilterMode a, FilterMode b) { return static_cast<FilterMode>(static_cast<int>(a) & static_cast<int>(b)); }
+
+enum class FrontFace: int {
+	Undefined = WGPUFrontFace_Undefined,
+	CCW = WGPUFrontFace_CCW,
+	CW = WGPUFrontFace_CW,
+	Force32 = WGPUFrontFace_Force32,
+};
+
+inline constexpr bool operator==(FrontFace a, WGPUFrontFace b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator==(WGPUFrontFace a, FrontFace b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator!=(FrontFace a, WGPUFrontFace b) { return !(a == b); }
+inline constexpr bool operator!=(WGPUFrontFace a, FrontFace b) { return !(a == b); }
+
+inline constexpr FrontFace operator|(FrontFace a, FrontFace b) { return static_cast<FrontFace>(static_cast<int>(a) | static_cast<int>(b)); }
+inline constexpr FrontFace operator&(FrontFace a, FrontFace b) { return static_cast<FrontFace>(static_cast<int>(a) & static_cast<int>(b)); }
+
+enum class IndexFormat: int {
+	Undefined = WGPUIndexFormat_Undefined,
+	Uint16 = WGPUIndexFormat_Uint16,
+	Uint32 = WGPUIndexFormat_Uint32,
+	Force32 = WGPUIndexFormat_Force32,
+};
+
+inline constexpr bool operator==(IndexFormat a, WGPUIndexFormat b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator==(WGPUIndexFormat a, IndexFormat b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator!=(IndexFormat a, WGPUIndexFormat b) { return !(a == b); }
+inline constexpr bool operator!=(WGPUIndexFormat a, IndexFormat b) { return !(a == b); }
+
+inline constexpr IndexFormat operator|(IndexFormat a, IndexFormat b) { return static_cast<IndexFormat>(static_cast<int>(a) | static_cast<int>(b)); }
+inline constexpr IndexFormat operator&(IndexFormat a, IndexFormat b) { return static_cast<IndexFormat>(static_cast<int>(a) & static_cast<int>(b)); }
+
+enum class LoadOp: int {
+	Undefined = WGPULoadOp_Undefined,
+	Load = WGPULoadOp_Load,
+	Clear = WGPULoadOp_Clear,
+	Force32 = WGPULoadOp_Force32,
+};
+
+inline constexpr bool operator==(LoadOp a, WGPULoadOp b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator==(WGPULoadOp a, LoadOp b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator!=(LoadOp a, WGPULoadOp b) { return !(a == b); }
+inline constexpr bool operator!=(WGPULoadOp a, LoadOp b) { return !(a == b); }
+
+inline constexpr LoadOp operator|(LoadOp a, LoadOp b) { return static_cast<LoadOp>(static_cast<int>(a) | static_cast<int>(b)); }
+inline constexpr LoadOp operator&(LoadOp a, LoadOp b) { return static_cast<LoadOp>(static_cast<int>(a) & static_cast<int>(b)); }
+
+enum class MapAsyncStatus: int {
+	Success = WGPUMapAsyncStatus_Success,
+	InstanceDropped = WGPUMapAsyncStatus_InstanceDropped,
+	Error = WGPUMapAsyncStatus_Error,
+	Aborted = WGPUMapAsyncStatus_Aborted,
+	Unknown = WGPUMapAsyncStatus_Unknown,
+	Force32 = WGPUMapAsyncStatus_Force32,
+};
+
+inline constexpr bool operator==(MapAsyncStatus a, WGPUMapAsyncStatus b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator==(WGPUMapAsyncStatus a, MapAsyncStatus b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator!=(MapAsyncStatus a, WGPUMapAsyncStatus b) { return !(a == b); }
+inline constexpr bool operator!=(WGPUMapAsyncStatus a, MapAsyncStatus b) { return !(a == b); }
+
+inline constexpr MapAsyncStatus operator|(MapAsyncStatus a, MapAsyncStatus b) { return static_cast<MapAsyncStatus>(static_cast<int>(a) | static_cast<int>(b)); }
+inline constexpr MapAsyncStatus operator&(MapAsyncStatus a, MapAsyncStatus b) { return static_cast<MapAsyncStatus>(static_cast<int>(a) & static_cast<int>(b)); }
+
+enum class MipmapFilterMode: int {
+	Undefined = WGPUMipmapFilterMode_Undefined,
+	Nearest = WGPUMipmapFilterMode_Nearest,
+	Linear = WGPUMipmapFilterMode_Linear,
+	Force32 = WGPUMipmapFilterMode_Force32,
+};
+
+inline constexpr bool operator==(MipmapFilterMode a, WGPUMipmapFilterMode b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator==(WGPUMipmapFilterMode a, MipmapFilterMode b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator!=(MipmapFilterMode a, WGPUMipmapFilterMode b) { return !(a == b); }
+inline constexpr bool operator!=(WGPUMipmapFilterMode a, MipmapFilterMode b) { return !(a == b); }
+
+inline constexpr MipmapFilterMode operator|(MipmapFilterMode a, MipmapFilterMode b) { return static_cast<MipmapFilterMode>(static_cast<int>(a) | static_cast<int>(b)); }
+inline constexpr MipmapFilterMode operator&(MipmapFilterMode a, MipmapFilterMode b) { return static_cast<MipmapFilterMode>(static_cast<int>(a) & static_cast<int>(b)); }
+
+enum class OptionalBool: int {
+	False = WGPUOptionalBool_False,
+	True = WGPUOptionalBool_True,
+	Undefined = WGPUOptionalBool_Undefined,
+	Force32 = WGPUOptionalBool_Force32,
+};
+
+inline constexpr bool operator==(OptionalBool a, WGPUOptionalBool b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator==(WGPUOptionalBool a, OptionalBool b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator!=(OptionalBool a, WGPUOptionalBool b) { return !(a == b); }
+inline constexpr bool operator!=(WGPUOptionalBool a, OptionalBool b) { return !(a == b); }
+
+inline constexpr OptionalBool operator|(OptionalBool a, OptionalBool b) { return static_cast<OptionalBool>(static_cast<int>(a) | static_cast<int>(b)); }
+inline constexpr OptionalBool operator&(OptionalBool a, OptionalBool b) { return static_cast<OptionalBool>(static_cast<int>(a) & static_cast<int>(b)); }
+
+enum class PopErrorScopeStatus: int {
+	Success = WGPUPopErrorScopeStatus_Success,
+	InstanceDropped = WGPUPopErrorScopeStatus_InstanceDropped,
+	EmptyStack = WGPUPopErrorScopeStatus_EmptyStack,
+	Force32 = WGPUPopErrorScopeStatus_Force32,
+};
+
+inline constexpr bool operator==(PopErrorScopeStatus a, WGPUPopErrorScopeStatus b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator==(WGPUPopErrorScopeStatus a, PopErrorScopeStatus b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator!=(PopErrorScopeStatus a, WGPUPopErrorScopeStatus b) { return !(a == b); }
+inline constexpr bool operator!=(WGPUPopErrorScopeStatus a, PopErrorScopeStatus b) { return !(a == b); }
+
+inline constexpr PopErrorScopeStatus operator|(PopErrorScopeStatus a, PopErrorScopeStatus b) { return static_cast<PopErrorScopeStatus>(static_cast<int>(a) | static_cast<int>(b)); }
+inline constexpr PopErrorScopeStatus operator&(PopErrorScopeStatus a, PopErrorScopeStatus b) { return static_cast<PopErrorScopeStatus>(static_cast<int>(a) & static_cast<int>(b)); }
+
+enum class PowerPreference: int {
+	Undefined = WGPUPowerPreference_Undefined,
+	LowPower = WGPUPowerPreference_LowPower,
+	HighPerformance = WGPUPowerPreference_HighPerformance,
+	Force32 = WGPUPowerPreference_Force32,
+};
+
+inline constexpr bool operator==(PowerPreference a, WGPUPowerPreference b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator==(WGPUPowerPreference a, PowerPreference b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator!=(PowerPreference a, WGPUPowerPreference b) { return !(a == b); }
+inline constexpr bool operator!=(WGPUPowerPreference a, PowerPreference b) { return !(a == b); }
+
+inline constexpr PowerPreference operator|(PowerPreference a, PowerPreference b) { return static_cast<PowerPreference>(static_cast<int>(a) | static_cast<int>(b)); }
+inline constexpr PowerPreference operator&(PowerPreference a, PowerPreference b) { return static_cast<PowerPreference>(static_cast<int>(a) & static_cast<int>(b)); }
+
+enum class PresentMode: int {
+	Undefined = WGPUPresentMode_Undefined,
+	Fifo = WGPUPresentMode_Fifo,
+	FifoRelaxed = WGPUPresentMode_FifoRelaxed,
+	Immediate = WGPUPresentMode_Immediate,
+	Mailbox = WGPUPresentMode_Mailbox,
+	Force32 = WGPUPresentMode_Force32,
+};
+
+inline constexpr bool operator==(PresentMode a, WGPUPresentMode b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator==(WGPUPresentMode a, PresentMode b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator!=(PresentMode a, WGPUPresentMode b) { return !(a == b); }
+inline constexpr bool operator!=(WGPUPresentMode a, PresentMode b) { return !(a == b); }
+
+inline constexpr PresentMode operator|(PresentMode a, PresentMode b) { return static_cast<PresentMode>(static_cast<int>(a) | static_cast<int>(b)); }
+inline constexpr PresentMode operator&(PresentMode a, PresentMode b) { return static_cast<PresentMode>(static_cast<int>(a) & static_cast<int>(b)); }
+
+enum class PrimitiveTopology: int {
+	Undefined = WGPUPrimitiveTopology_Undefined,
+	PointList = WGPUPrimitiveTopology_PointList,
+	LineList = WGPUPrimitiveTopology_LineList,
+	LineStrip = WGPUPrimitiveTopology_LineStrip,
+	TriangleList = WGPUPrimitiveTopology_TriangleList,
+	TriangleStrip = WGPUPrimitiveTopology_TriangleStrip,
+	Force32 = WGPUPrimitiveTopology_Force32,
+};
+
+inline constexpr bool operator==(PrimitiveTopology a, WGPUPrimitiveTopology b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator==(WGPUPrimitiveTopology a, PrimitiveTopology b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator!=(PrimitiveTopology a, WGPUPrimitiveTopology b) { return !(a == b); }
+inline constexpr bool operator!=(WGPUPrimitiveTopology a, PrimitiveTopology b) { return !(a == b); }
+
+inline constexpr PrimitiveTopology operator|(PrimitiveTopology a, PrimitiveTopology b) { return static_cast<PrimitiveTopology>(static_cast<int>(a) | static_cast<int>(b)); }
+inline constexpr PrimitiveTopology operator&(PrimitiveTopology a, PrimitiveTopology b) { return static_cast<PrimitiveTopology>(static_cast<int>(a) & static_cast<int>(b)); }
+
+enum class QueryType: int {
+	Occlusion = WGPUQueryType_Occlusion,
+	Timestamp = WGPUQueryType_Timestamp,
+	Force32 = WGPUQueryType_Force32,
+};
+
+inline constexpr bool operator==(QueryType a, WGPUQueryType b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator==(WGPUQueryType a, QueryType b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator!=(QueryType a, WGPUQueryType b) { return !(a == b); }
+inline constexpr bool operator!=(WGPUQueryType a, QueryType b) { return !(a == b); }
+
+inline constexpr QueryType operator|(QueryType a, QueryType b) { return static_cast<QueryType>(static_cast<int>(a) | static_cast<int>(b)); }
+inline constexpr QueryType operator&(QueryType a, QueryType b) { return static_cast<QueryType>(static_cast<int>(a) & static_cast<int>(b)); }
+
+enum class QueueWorkDoneStatus: int {
+	Success = WGPUQueueWorkDoneStatus_Success,
+	InstanceDropped = WGPUQueueWorkDoneStatus_InstanceDropped,
+	Error = WGPUQueueWorkDoneStatus_Error,
+	Unknown = WGPUQueueWorkDoneStatus_Unknown,
+	Force32 = WGPUQueueWorkDoneStatus_Force32,
+};
+
+inline constexpr bool operator==(QueueWorkDoneStatus a, WGPUQueueWorkDoneStatus b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator==(WGPUQueueWorkDoneStatus a, QueueWorkDoneStatus b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator!=(QueueWorkDoneStatus a, WGPUQueueWorkDoneStatus b) { return !(a == b); }
+inline constexpr bool operator!=(WGPUQueueWorkDoneStatus a, QueueWorkDoneStatus b) { return !(a == b); }
+
+inline constexpr QueueWorkDoneStatus operator|(QueueWorkDoneStatus a, QueueWorkDoneStatus b) { return static_cast<QueueWorkDoneStatus>(static_cast<int>(a) | static_cast<int>(b)); }
+inline constexpr QueueWorkDoneStatus operator&(QueueWorkDoneStatus a, QueueWorkDoneStatus b) { return static_cast<QueueWorkDoneStatus>(static_cast<int>(a) & static_cast<int>(b)); }
+
+enum class RequestAdapterStatus: int {
+	Success = WGPURequestAdapterStatus_Success,
+	InstanceDropped = WGPURequestAdapterStatus_InstanceDropped,
+	Unavailable = WGPURequestAdapterStatus_Unavailable,
+	Error = WGPURequestAdapterStatus_Error,
+	Unknown = WGPURequestAdapterStatus_Unknown,
+	Force32 = WGPURequestAdapterStatus_Force32,
+};
+
+inline constexpr bool operator==(RequestAdapterStatus a, WGPURequestAdapterStatus b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator==(WGPURequestAdapterStatus a, RequestAdapterStatus b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator!=(RequestAdapterStatus a, WGPURequestAdapterStatus b) { return !(a == b); }
+inline constexpr bool operator!=(WGPURequestAdapterStatus a, RequestAdapterStatus b) { return !(a == b); }
+
+inline constexpr RequestAdapterStatus operator|(RequestAdapterStatus a, RequestAdapterStatus b) { return static_cast<RequestAdapterStatus>(static_cast<int>(a) | static_cast<int>(b)); }
+inline constexpr RequestAdapterStatus operator&(RequestAdapterStatus a, RequestAdapterStatus b) { return static_cast<RequestAdapterStatus>(static_cast<int>(a) & static_cast<int>(b)); }
+
+enum class RequestDeviceStatus: int {
+	Success = WGPURequestDeviceStatus_Success,
+	InstanceDropped = WGPURequestDeviceStatus_InstanceDropped,
+	Error = WGPURequestDeviceStatus_Error,
+	Unknown = WGPURequestDeviceStatus_Unknown,
+	Force32 = WGPURequestDeviceStatus_Force32,
+};
+
+inline constexpr bool operator==(RequestDeviceStatus a, WGPURequestDeviceStatus b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator==(WGPURequestDeviceStatus a, RequestDeviceStatus b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator!=(RequestDeviceStatus a, WGPURequestDeviceStatus b) { return !(a == b); }
+inline constexpr bool operator!=(WGPURequestDeviceStatus a, RequestDeviceStatus b) { return !(a == b); }
+
+inline constexpr RequestDeviceStatus operator|(RequestDeviceStatus a, RequestDeviceStatus b) { return static_cast<RequestDeviceStatus>(static_cast<int>(a) | static_cast<int>(b)); }
+inline constexpr RequestDeviceStatus operator&(RequestDeviceStatus a, RequestDeviceStatus b) { return static_cast<RequestDeviceStatus>(static_cast<int>(a) & static_cast<int>(b)); }
+
+enum class SType: int {
+	ShaderSourceSPIRV = WGPUSType_ShaderSourceSPIRV,
+	ShaderSourceWGSL = WGPUSType_ShaderSourceWGSL,
+	RenderPassMaxDrawCount = WGPUSType_RenderPassMaxDrawCount,
+	SurfaceSourceMetalLayer = WGPUSType_SurfaceSourceMetalLayer,
+	SurfaceSourceWindowsHWND = WGPUSType_SurfaceSourceWindowsHWND,
+	SurfaceSourceXlibWindow = WGPUSType_SurfaceSourceXlibWindow,
+	SurfaceSourceWaylandSurface = WGPUSType_SurfaceSourceWaylandSurface,
+	SurfaceSourceAndroidNativeWindow = WGPUSType_SurfaceSourceAndroidNativeWindow,
+	SurfaceSourceXCBWindow = WGPUSType_SurfaceSourceXCBWindow,
+	Force32 = WGPUSType_Force32,
+};
+
+inline constexpr bool operator==(SType a, WGPUSType b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator==(WGPUSType a, SType b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator!=(SType a, WGPUSType b) { return !(a == b); }
+inline constexpr bool operator!=(WGPUSType a, SType b) { return !(a == b); }
+
+inline constexpr SType operator|(SType a, SType b) { return static_cast<SType>(static_cast<int>(a) | static_cast<int>(b)); }
+inline constexpr SType operator&(SType a, SType b) { return static_cast<SType>(static_cast<int>(a) & static_cast<int>(b)); }
+
+enum class SamplerBindingType: int {
+	BindingNotUsed = WGPUSamplerBindingType_BindingNotUsed,
+	Undefined = WGPUSamplerBindingType_Undefined,
+	Filtering = WGPUSamplerBindingType_Filtering,
+	NonFiltering = WGPUSamplerBindingType_NonFiltering,
+	Comparison = WGPUSamplerBindingType_Comparison,
+	Force32 = WGPUSamplerBindingType_Force32,
+};
+
+inline constexpr bool operator==(SamplerBindingType a, WGPUSamplerBindingType b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator==(WGPUSamplerBindingType a, SamplerBindingType b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator!=(SamplerBindingType a, WGPUSamplerBindingType b) { return !(a == b); }
+inline constexpr bool operator!=(WGPUSamplerBindingType a, SamplerBindingType b) { return !(a == b); }
+
+inline constexpr SamplerBindingType operator|(SamplerBindingType a, SamplerBindingType b) { return static_cast<SamplerBindingType>(static_cast<int>(a) | static_cast<int>(b)); }
+inline constexpr SamplerBindingType operator&(SamplerBindingType a, SamplerBindingType b) { return static_cast<SamplerBindingType>(static_cast<int>(a) & static_cast<int>(b)); }
+
+enum class Status: int {
+	Success = WGPUStatus_Success,
+	Error = WGPUStatus_Error,
+	Force32 = WGPUStatus_Force32,
+};
+
+inline constexpr bool operator==(Status a, WGPUStatus b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator==(WGPUStatus a, Status b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator!=(Status a, WGPUStatus b) { return !(a == b); }
+inline constexpr bool operator!=(WGPUStatus a, Status b) { return !(a == b); }
+
+inline constexpr Status operator|(Status a, Status b) { return static_cast<Status>(static_cast<int>(a) | static_cast<int>(b)); }
+inline constexpr Status operator&(Status a, Status b) { return static_cast<Status>(static_cast<int>(a) & static_cast<int>(b)); }
+
+enum class StencilOperation: int {
+	Undefined = WGPUStencilOperation_Undefined,
+	Keep = WGPUStencilOperation_Keep,
+	Zero = WGPUStencilOperation_Zero,
+	Replace = WGPUStencilOperation_Replace,
+	Invert = WGPUStencilOperation_Invert,
+	IncrementClamp = WGPUStencilOperation_IncrementClamp,
+	DecrementClamp = WGPUStencilOperation_DecrementClamp,
+	IncrementWrap = WGPUStencilOperation_IncrementWrap,
+	DecrementWrap = WGPUStencilOperation_DecrementWrap,
+	Force32 = WGPUStencilOperation_Force32,
+};
+
+inline constexpr bool operator==(StencilOperation a, WGPUStencilOperation b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator==(WGPUStencilOperation a, StencilOperation b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator!=(StencilOperation a, WGPUStencilOperation b) { return !(a == b); }
+inline constexpr bool operator!=(WGPUStencilOperation a, StencilOperation b) { return !(a == b); }
+
+inline constexpr StencilOperation operator|(StencilOperation a, StencilOperation b) { return static_cast<StencilOperation>(static_cast<int>(a) | static_cast<int>(b)); }
+inline constexpr StencilOperation operator&(StencilOperation a, StencilOperation b) { return static_cast<StencilOperation>(static_cast<int>(a) & static_cast<int>(b)); }
+
+enum class StorageTextureAccess: int {
+	BindingNotUsed = WGPUStorageTextureAccess_BindingNotUsed,
+	Undefined = WGPUStorageTextureAccess_Undefined,
+	WriteOnly = WGPUStorageTextureAccess_WriteOnly,
+	ReadOnly = WGPUStorageTextureAccess_ReadOnly,
+	ReadWrite = WGPUStorageTextureAccess_ReadWrite,
+	Force32 = WGPUStorageTextureAccess_Force32,
+};
+
+inline constexpr bool operator==(StorageTextureAccess a, WGPUStorageTextureAccess b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator==(WGPUStorageTextureAccess a, StorageTextureAccess b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator!=(StorageTextureAccess a, WGPUStorageTextureAccess b) { return !(a == b); }
+inline constexpr bool operator!=(WGPUStorageTextureAccess a, StorageTextureAccess b) { return !(a == b); }
+
+inline constexpr StorageTextureAccess operator|(StorageTextureAccess a, StorageTextureAccess b) { return static_cast<StorageTextureAccess>(static_cast<int>(a) | static_cast<int>(b)); }
+inline constexpr StorageTextureAccess operator&(StorageTextureAccess a, StorageTextureAccess b) { return static_cast<StorageTextureAccess>(static_cast<int>(a) & static_cast<int>(b)); }
+
+enum class StoreOp: int {
+	Undefined = WGPUStoreOp_Undefined,
+	Store = WGPUStoreOp_Store,
+	Discard = WGPUStoreOp_Discard,
+	Force32 = WGPUStoreOp_Force32,
+};
+
+inline constexpr bool operator==(StoreOp a, WGPUStoreOp b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator==(WGPUStoreOp a, StoreOp b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator!=(StoreOp a, WGPUStoreOp b) { return !(a == b); }
+inline constexpr bool operator!=(WGPUStoreOp a, StoreOp b) { return !(a == b); }
+
+inline constexpr StoreOp operator|(StoreOp a, StoreOp b) { return static_cast<StoreOp>(static_cast<int>(a) | static_cast<int>(b)); }
+inline constexpr StoreOp operator&(StoreOp a, StoreOp b) { return static_cast<StoreOp>(static_cast<int>(a) & static_cast<int>(b)); }
+
+enum class SurfaceGetCurrentTextureStatus: int {
+	SuccessOptimal = WGPUSurfaceGetCurrentTextureStatus_SuccessOptimal,
+	SuccessSuboptimal = WGPUSurfaceGetCurrentTextureStatus_SuccessSuboptimal,
+	Timeout = WGPUSurfaceGetCurrentTextureStatus_Timeout,
+	Outdated = WGPUSurfaceGetCurrentTextureStatus_Outdated,
+	Lost = WGPUSurfaceGetCurrentTextureStatus_Lost,
+	OutOfMemory = WGPUSurfaceGetCurrentTextureStatus_OutOfMemory,
+	DeviceLost = WGPUSurfaceGetCurrentTextureStatus_DeviceLost,
+	Error = WGPUSurfaceGetCurrentTextureStatus_Error,
+	Force32 = WGPUSurfaceGetCurrentTextureStatus_Force32,
+};
+
+inline constexpr bool operator==(SurfaceGetCurrentTextureStatus a, WGPUSurfaceGetCurrentTextureStatus b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator==(WGPUSurfaceGetCurrentTextureStatus a, SurfaceGetCurrentTextureStatus b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator!=(SurfaceGetCurrentTextureStatus a, WGPUSurfaceGetCurrentTextureStatus b) { return !(a == b); }
+inline constexpr bool operator!=(WGPUSurfaceGetCurrentTextureStatus a, SurfaceGetCurrentTextureStatus b) { return !(a == b); }
+
+inline constexpr SurfaceGetCurrentTextureStatus operator|(SurfaceGetCurrentTextureStatus a, SurfaceGetCurrentTextureStatus b) { return static_cast<SurfaceGetCurrentTextureStatus>(static_cast<int>(a) | static_cast<int>(b)); }
+inline constexpr SurfaceGetCurrentTextureStatus operator&(SurfaceGetCurrentTextureStatus a, SurfaceGetCurrentTextureStatus b) { return static_cast<SurfaceGetCurrentTextureStatus>(static_cast<int>(a) & static_cast<int>(b)); }
+
+enum class TextureAspect: int {
+	Undefined = WGPUTextureAspect_Undefined,
+	All = WGPUTextureAspect_All,
+	StencilOnly = WGPUTextureAspect_StencilOnly,
+	DepthOnly = WGPUTextureAspect_DepthOnly,
+	Force32 = WGPUTextureAspect_Force32,
+};
+
+inline constexpr bool operator==(TextureAspect a, WGPUTextureAspect b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator==(WGPUTextureAspect a, TextureAspect b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator!=(TextureAspect a, WGPUTextureAspect b) { return !(a == b); }
+inline constexpr bool operator!=(WGPUTextureAspect a, TextureAspect b) { return !(a == b); }
+
+inline constexpr TextureAspect operator|(TextureAspect a, TextureAspect b) { return static_cast<TextureAspect>(static_cast<int>(a) | static_cast<int>(b)); }
+inline constexpr TextureAspect operator&(TextureAspect a, TextureAspect b) { return static_cast<TextureAspect>(static_cast<int>(a) & static_cast<int>(b)); }
+
+enum class TextureDimension: int {
+	Undefined = WGPUTextureDimension_Undefined,
+	_1D = WGPUTextureDimension_1D,
+	_2D = WGPUTextureDimension_2D,
+	_3D = WGPUTextureDimension_3D,
+	Force32 = WGPUTextureDimension_Force32,
+};
+
+inline constexpr bool operator==(TextureDimension a, WGPUTextureDimension b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator==(WGPUTextureDimension a, TextureDimension b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator!=(TextureDimension a, WGPUTextureDimension b) { return !(a == b); }
+inline constexpr bool operator!=(WGPUTextureDimension a, TextureDimension b) { return !(a == b); }
+
+inline constexpr TextureDimension operator|(TextureDimension a, TextureDimension b) { return static_cast<TextureDimension>(static_cast<int>(a) | static_cast<int>(b)); }
+inline constexpr TextureDimension operator&(TextureDimension a, TextureDimension b) { return static_cast<TextureDimension>(static_cast<int>(a) & static_cast<int>(b)); }
+
+enum class TextureFormat: int {
+	Undefined = WGPUTextureFormat_Undefined,
+	R8Unorm = WGPUTextureFormat_R8Unorm,
+	R8Snorm = WGPUTextureFormat_R8Snorm,
+	R8Uint = WGPUTextureFormat_R8Uint,
+	R8Sint = WGPUTextureFormat_R8Sint,
+	R16Uint = WGPUTextureFormat_R16Uint,
+	R16Sint = WGPUTextureFormat_R16Sint,
+	R16Float = WGPUTextureFormat_R16Float,
+	RG8Unorm = WGPUTextureFormat_RG8Unorm,
+	RG8Snorm = WGPUTextureFormat_RG8Snorm,
+	RG8Uint = WGPUTextureFormat_RG8Uint,
+	RG8Sint = WGPUTextureFormat_RG8Sint,
+	R32Float = WGPUTextureFormat_R32Float,
+	R32Uint = WGPUTextureFormat_R32Uint,
+	R32Sint = WGPUTextureFormat_R32Sint,
+	RG16Uint = WGPUTextureFormat_RG16Uint,
+	RG16Sint = WGPUTextureFormat_RG16Sint,
+	RG16Float = WGPUTextureFormat_RG16Float,
+	RGBA8Unorm = WGPUTextureFormat_RGBA8Unorm,
+	RGBA8UnormSrgb = WGPUTextureFormat_RGBA8UnormSrgb,
+	RGBA8Snorm = WGPUTextureFormat_RGBA8Snorm,
+	RGBA8Uint = WGPUTextureFormat_RGBA8Uint,
+	RGBA8Sint = WGPUTextureFormat_RGBA8Sint,
+	BGRA8Unorm = WGPUTextureFormat_BGRA8Unorm,
+	BGRA8UnormSrgb = WGPUTextureFormat_BGRA8UnormSrgb,
+	RGB10A2Uint = WGPUTextureFormat_RGB10A2Uint,
+	RGB10A2Unorm = WGPUTextureFormat_RGB10A2Unorm,
+	RG11B10Ufloat = WGPUTextureFormat_RG11B10Ufloat,
+	RGB9E5Ufloat = WGPUTextureFormat_RGB9E5Ufloat,
+	RG32Float = WGPUTextureFormat_RG32Float,
+	RG32Uint = WGPUTextureFormat_RG32Uint,
+	RG32Sint = WGPUTextureFormat_RG32Sint,
+	RGBA16Uint = WGPUTextureFormat_RGBA16Uint,
+	RGBA16Sint = WGPUTextureFormat_RGBA16Sint,
+	RGBA16Float = WGPUTextureFormat_RGBA16Float,
+	RGBA32Float = WGPUTextureFormat_RGBA32Float,
+	RGBA32Uint = WGPUTextureFormat_RGBA32Uint,
+	RGBA32Sint = WGPUTextureFormat_RGBA32Sint,
+	Stencil8 = WGPUTextureFormat_Stencil8,
+	Depth16Unorm = WGPUTextureFormat_Depth16Unorm,
+	Depth24Plus = WGPUTextureFormat_Depth24Plus,
+	Depth24PlusStencil8 = WGPUTextureFormat_Depth24PlusStencil8,
+	Depth32Float = WGPUTextureFormat_Depth32Float,
+	Depth32FloatStencil8 = WGPUTextureFormat_Depth32FloatStencil8,
+	BC1RGBAUnorm = WGPUTextureFormat_BC1RGBAUnorm,
+	BC1RGBAUnormSrgb = WGPUTextureFormat_BC1RGBAUnormSrgb,
+	BC2RGBAUnorm = WGPUTextureFormat_BC2RGBAUnorm,
+	BC2RGBAUnormSrgb = WGPUTextureFormat_BC2RGBAUnormSrgb,
+	BC3RGBAUnorm = WGPUTextureFormat_BC3RGBAUnorm,
+	BC3RGBAUnormSrgb = WGPUTextureFormat_BC3RGBAUnormSrgb,
+	BC4RUnorm = WGPUTextureFormat_BC4RUnorm,
+	BC4RSnorm = WGPUTextureFormat_BC4RSnorm,
+	BC5RGUnorm = WGPUTextureFormat_BC5RGUnorm,
+	BC5RGSnorm = WGPUTextureFormat_BC5RGSnorm,
+	BC6HRGBUfloat = WGPUTextureFormat_BC6HRGBUfloat,
+	BC6HRGBFloat = WGPUTextureFormat_BC6HRGBFloat,
+	BC7RGBAUnorm = WGPUTextureFormat_BC7RGBAUnorm,
+	BC7RGBAUnormSrgb = WGPUTextureFormat_BC7RGBAUnormSrgb,
+	ETC2RGB8Unorm = WGPUTextureFormat_ETC2RGB8Unorm,
+	ETC2RGB8UnormSrgb = WGPUTextureFormat_ETC2RGB8UnormSrgb,
+	ETC2RGB8A1Unorm = WGPUTextureFormat_ETC2RGB8A1Unorm,
+	ETC2RGB8A1UnormSrgb = WGPUTextureFormat_ETC2RGB8A1UnormSrgb,
+	ETC2RGBA8Unorm = WGPUTextureFormat_ETC2RGBA8Unorm,
+	ETC2RGBA8UnormSrgb = WGPUTextureFormat_ETC2RGBA8UnormSrgb,
+	EACR11Unorm = WGPUTextureFormat_EACR11Unorm,
+	EACR11Snorm = WGPUTextureFormat_EACR11Snorm,
+	EACRG11Unorm = WGPUTextureFormat_EACRG11Unorm,
+	EACRG11Snorm = WGPUTextureFormat_EACRG11Snorm,
+	ASTC4x4Unorm = WGPUTextureFormat_ASTC4x4Unorm,
+	ASTC4x4UnormSrgb = WGPUTextureFormat_ASTC4x4UnormSrgb,
+	ASTC5x4Unorm = WGPUTextureFormat_ASTC5x4Unorm,
+	ASTC5x4UnormSrgb = WGPUTextureFormat_ASTC5x4UnormSrgb,
+	ASTC5x5Unorm = WGPUTextureFormat_ASTC5x5Unorm,
+	ASTC5x5UnormSrgb = WGPUTextureFormat_ASTC5x5UnormSrgb,
+	ASTC6x5Unorm = WGPUTextureFormat_ASTC6x5Unorm,
+	ASTC6x5UnormSrgb = WGPUTextureFormat_ASTC6x5UnormSrgb,
+	ASTC6x6Unorm = WGPUTextureFormat_ASTC6x6Unorm,
+	ASTC6x6UnormSrgb = WGPUTextureFormat_ASTC6x6UnormSrgb,
+	ASTC8x5Unorm = WGPUTextureFormat_ASTC8x5Unorm,
+	ASTC8x5UnormSrgb = WGPUTextureFormat_ASTC8x5UnormSrgb,
+	ASTC8x6Unorm = WGPUTextureFormat_ASTC8x6Unorm,
+	ASTC8x6UnormSrgb = WGPUTextureFormat_ASTC8x6UnormSrgb,
+	ASTC8x8Unorm = WGPUTextureFormat_ASTC8x8Unorm,
+	ASTC8x8UnormSrgb = WGPUTextureFormat_ASTC8x8UnormSrgb,
+	ASTC10x5Unorm = WGPUTextureFormat_ASTC10x5Unorm,
+	ASTC10x5UnormSrgb = WGPUTextureFormat_ASTC10x5UnormSrgb,
+	ASTC10x6Unorm = WGPUTextureFormat_ASTC10x6Unorm,
+	ASTC10x6UnormSrgb = WGPUTextureFormat_ASTC10x6UnormSrgb,
+	ASTC10x8Unorm = WGPUTextureFormat_ASTC10x8Unorm,
+	ASTC10x8UnormSrgb = WGPUTextureFormat_ASTC10x8UnormSrgb,
+	ASTC10x10Unorm = WGPUTextureFormat_ASTC10x10Unorm,
+	ASTC10x10UnormSrgb = WGPUTextureFormat_ASTC10x10UnormSrgb,
+	ASTC12x10Unorm = WGPUTextureFormat_ASTC12x10Unorm,
+	ASTC12x10UnormSrgb = WGPUTextureFormat_ASTC12x10UnormSrgb,
+	ASTC12x12Unorm = WGPUTextureFormat_ASTC12x12Unorm,
+	ASTC12x12UnormSrgb = WGPUTextureFormat_ASTC12x12UnormSrgb,
+	Force32 = WGPUTextureFormat_Force32,
+};
+
+inline constexpr bool operator==(TextureFormat a, WGPUTextureFormat b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator==(WGPUTextureFormat a, TextureFormat b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator!=(TextureFormat a, WGPUTextureFormat b) { return !(a == b); }
+inline constexpr bool operator!=(WGPUTextureFormat a, TextureFormat b) { return !(a == b); }
+
+inline constexpr TextureFormat operator|(TextureFormat a, TextureFormat b) { return static_cast<TextureFormat>(static_cast<int>(a) | static_cast<int>(b)); }
+inline constexpr TextureFormat operator&(TextureFormat a, TextureFormat b) { return static_cast<TextureFormat>(static_cast<int>(a) & static_cast<int>(b)); }
+
+enum class TextureSampleType: int {
+	BindingNotUsed = WGPUTextureSampleType_BindingNotUsed,
+	Undefined = WGPUTextureSampleType_Undefined,
+	Float = WGPUTextureSampleType_Float,
+	UnfilterableFloat = WGPUTextureSampleType_UnfilterableFloat,
+	Depth = WGPUTextureSampleType_Depth,
+	Sint = WGPUTextureSampleType_Sint,
+	Uint = WGPUTextureSampleType_Uint,
+	Force32 = WGPUTextureSampleType_Force32,
+};
+
+inline constexpr bool operator==(TextureSampleType a, WGPUTextureSampleType b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator==(WGPUTextureSampleType a, TextureSampleType b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator!=(TextureSampleType a, WGPUTextureSampleType b) { return !(a == b); }
+inline constexpr bool operator!=(WGPUTextureSampleType a, TextureSampleType b) { return !(a == b); }
+
+inline constexpr TextureSampleType operator|(TextureSampleType a, TextureSampleType b) { return static_cast<TextureSampleType>(static_cast<int>(a) | static_cast<int>(b)); }
+inline constexpr TextureSampleType operator&(TextureSampleType a, TextureSampleType b) { return static_cast<TextureSampleType>(static_cast<int>(a) & static_cast<int>(b)); }
+
+enum class TextureViewDimension: int {
+	Undefined = WGPUTextureViewDimension_Undefined,
+	_1D = WGPUTextureViewDimension_1D,
+	_2D = WGPUTextureViewDimension_2D,
+	_2DArray = WGPUTextureViewDimension_2DArray,
+	Cube = WGPUTextureViewDimension_Cube,
+	CubeArray = WGPUTextureViewDimension_CubeArray,
+	_3D = WGPUTextureViewDimension_3D,
+	Force32 = WGPUTextureViewDimension_Force32,
+};
+
+inline constexpr bool operator==(TextureViewDimension a, WGPUTextureViewDimension b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator==(WGPUTextureViewDimension a, TextureViewDimension b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator!=(TextureViewDimension a, WGPUTextureViewDimension b) { return !(a == b); }
+inline constexpr bool operator!=(WGPUTextureViewDimension a, TextureViewDimension b) { return !(a == b); }
+
+inline constexpr TextureViewDimension operator|(TextureViewDimension a, TextureViewDimension b) { return static_cast<TextureViewDimension>(static_cast<int>(a) | static_cast<int>(b)); }
+inline constexpr TextureViewDimension operator&(TextureViewDimension a, TextureViewDimension b) { return static_cast<TextureViewDimension>(static_cast<int>(a) & static_cast<int>(b)); }
+
+enum class VertexFormat: int {
+	Uint8 = WGPUVertexFormat_Uint8,
+	Uint8x2 = WGPUVertexFormat_Uint8x2,
+	Uint8x4 = WGPUVertexFormat_Uint8x4,
+	Sint8 = WGPUVertexFormat_Sint8,
+	Sint8x2 = WGPUVertexFormat_Sint8x2,
+	Sint8x4 = WGPUVertexFormat_Sint8x4,
+	Unorm8 = WGPUVertexFormat_Unorm8,
+	Unorm8x2 = WGPUVertexFormat_Unorm8x2,
+	Unorm8x4 = WGPUVertexFormat_Unorm8x4,
+	Snorm8 = WGPUVertexFormat_Snorm8,
+	Snorm8x2 = WGPUVertexFormat_Snorm8x2,
+	Snorm8x4 = WGPUVertexFormat_Snorm8x4,
+	Uint16 = WGPUVertexFormat_Uint16,
+	Uint16x2 = WGPUVertexFormat_Uint16x2,
+	Uint16x4 = WGPUVertexFormat_Uint16x4,
+	Sint16 = WGPUVertexFormat_Sint16,
+	Sint16x2 = WGPUVertexFormat_Sint16x2,
+	Sint16x4 = WGPUVertexFormat_Sint16x4,
+	Unorm16 = WGPUVertexFormat_Unorm16,
+	Unorm16x2 = WGPUVertexFormat_Unorm16x2,
+	Unorm16x4 = WGPUVertexFormat_Unorm16x4,
+	Snorm16 = WGPUVertexFormat_Snorm16,
+	Snorm16x2 = WGPUVertexFormat_Snorm16x2,
+	Snorm16x4 = WGPUVertexFormat_Snorm16x4,
+	Float16 = WGPUVertexFormat_Float16,
+	Float16x2 = WGPUVertexFormat_Float16x2,
+	Float16x4 = WGPUVertexFormat_Float16x4,
+	Float32 = WGPUVertexFormat_Float32,
+	Float32x2 = WGPUVertexFormat_Float32x2,
+	Float32x3 = WGPUVertexFormat_Float32x3,
+	Float32x4 = WGPUVertexFormat_Float32x4,
+	Uint32 = WGPUVertexFormat_Uint32,
+	Uint32x2 = WGPUVertexFormat_Uint32x2,
+	Uint32x3 = WGPUVertexFormat_Uint32x3,
+	Uint32x4 = WGPUVertexFormat_Uint32x4,
+	Sint32 = WGPUVertexFormat_Sint32,
+	Sint32x2 = WGPUVertexFormat_Sint32x2,
+	Sint32x3 = WGPUVertexFormat_Sint32x3,
+	Sint32x4 = WGPUVertexFormat_Sint32x4,
+	Unorm10_10_10_2 = WGPUVertexFormat_Unorm10_10_10_2,
+	Unorm8x4BGRA = WGPUVertexFormat_Unorm8x4BGRA,
+	Force32 = WGPUVertexFormat_Force32,
+};
+
+inline constexpr bool operator==(VertexFormat a, WGPUVertexFormat b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator==(WGPUVertexFormat a, VertexFormat b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator!=(VertexFormat a, WGPUVertexFormat b) { return !(a == b); }
+inline constexpr bool operator!=(WGPUVertexFormat a, VertexFormat b) { return !(a == b); }
+
+inline constexpr VertexFormat operator|(VertexFormat a, VertexFormat b) { return static_cast<VertexFormat>(static_cast<int>(a) | static_cast<int>(b)); }
+inline constexpr VertexFormat operator&(VertexFormat a, VertexFormat b) { return static_cast<VertexFormat>(static_cast<int>(a) & static_cast<int>(b)); }
+
+enum class VertexStepMode: int {
+	VertexBufferNotUsed = WGPUVertexStepMode_VertexBufferNotUsed,
+	Undefined = WGPUVertexStepMode_Undefined,
+	Vertex = WGPUVertexStepMode_Vertex,
+	Instance = WGPUVertexStepMode_Instance,
+	Force32 = WGPUVertexStepMode_Force32,
+};
+
+inline constexpr bool operator==(VertexStepMode a, WGPUVertexStepMode b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator==(WGPUVertexStepMode a, VertexStepMode b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator!=(VertexStepMode a, WGPUVertexStepMode b) { return !(a == b); }
+inline constexpr bool operator!=(WGPUVertexStepMode a, VertexStepMode b) { return !(a == b); }
+
+inline constexpr VertexStepMode operator|(VertexStepMode a, VertexStepMode b) { return static_cast<VertexStepMode>(static_cast<int>(a) | static_cast<int>(b)); }
+inline constexpr VertexStepMode operator&(VertexStepMode a, VertexStepMode b) { return static_cast<VertexStepMode>(static_cast<int>(a) & static_cast<int>(b)); }
+
+enum class WGSLLanguageFeatureName: int {
+	ReadonlyAndReadwriteStorageTextures = WGPUWGSLLanguageFeatureName_ReadonlyAndReadwriteStorageTextures,
+	Packed4x8IntegerDotProduct = WGPUWGSLLanguageFeatureName_Packed4x8IntegerDotProduct,
+	UnrestrictedPointerParameters = WGPUWGSLLanguageFeatureName_UnrestrictedPointerParameters,
+	PointerCompositeAccess = WGPUWGSLLanguageFeatureName_PointerCompositeAccess,
+	Force32 = WGPUWGSLLanguageFeatureName_Force32,
+};
+
+inline constexpr bool operator==(WGSLLanguageFeatureName a, WGPUWGSLLanguageFeatureName b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator==(WGPUWGSLLanguageFeatureName a, WGSLLanguageFeatureName b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator!=(WGSLLanguageFeatureName a, WGPUWGSLLanguageFeatureName b) { return !(a == b); }
+inline constexpr bool operator!=(WGPUWGSLLanguageFeatureName a, WGSLLanguageFeatureName b) { return !(a == b); }
+
+inline constexpr WGSLLanguageFeatureName operator|(WGSLLanguageFeatureName a, WGSLLanguageFeatureName b) { return static_cast<WGSLLanguageFeatureName>(static_cast<int>(a) | static_cast<int>(b)); }
+inline constexpr WGSLLanguageFeatureName operator&(WGSLLanguageFeatureName a, WGSLLanguageFeatureName b) { return static_cast<WGSLLanguageFeatureName>(static_cast<int>(a) & static_cast<int>(b)); }
+
+enum class WaitStatus: int {
+	Success = WGPUWaitStatus_Success,
+	TimedOut = WGPUWaitStatus_TimedOut,
+	UnsupportedTimeout = WGPUWaitStatus_UnsupportedTimeout,
+	UnsupportedCount = WGPUWaitStatus_UnsupportedCount,
+	UnsupportedMixedSources = WGPUWaitStatus_UnsupportedMixedSources,
+	Force32 = WGPUWaitStatus_Force32,
+};
+
+inline constexpr bool operator==(WaitStatus a, WGPUWaitStatus b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator==(WGPUWaitStatus a, WaitStatus b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator!=(WaitStatus a, WGPUWaitStatus b) { return !(a == b); }
+inline constexpr bool operator!=(WGPUWaitStatus a, WaitStatus b) { return !(a == b); }
+
+inline constexpr WaitStatus operator|(WaitStatus a, WaitStatus b) { return static_cast<WaitStatus>(static_cast<int>(a) | static_cast<int>(b)); }
+inline constexpr WaitStatus operator&(WaitStatus a, WaitStatus b) { return static_cast<WaitStatus>(static_cast<int>(a) & static_cast<int>(b)); }
+
+enum class BufferUsage: int {
+	None = WGPUBufferUsage_None,
+	MapRead = WGPUBufferUsage_MapRead,
+	MapWrite = WGPUBufferUsage_MapWrite,
+	CopySrc = WGPUBufferUsage_CopySrc,
+	CopyDst = WGPUBufferUsage_CopyDst,
+	Index = WGPUBufferUsage_Index,
+	Vertex = WGPUBufferUsage_Vertex,
+	Uniform = WGPUBufferUsage_Uniform,
+	Storage = WGPUBufferUsage_Storage,
+	Indirect = WGPUBufferUsage_Indirect,
+	QueryResolve = WGPUBufferUsage_QueryResolve,
+};
+
+inline constexpr bool operator==(BufferUsage a, WGPUBufferUsage b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator==(WGPUBufferUsage a, BufferUsage b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator!=(BufferUsage a, WGPUBufferUsage b) { return !(a == b); }
+inline constexpr bool operator!=(WGPUBufferUsage a, BufferUsage b) { return !(a == b); }
+
+inline constexpr BufferUsage operator|(BufferUsage a, BufferUsage b) { return static_cast<BufferUsage>(static_cast<int>(a) | static_cast<int>(b)); }
+inline constexpr BufferUsage operator&(BufferUsage a, BufferUsage b) { return static_cast<BufferUsage>(static_cast<int>(a) & static_cast<int>(b)); }
+
+enum class ColorWriteMask: int {
+	None = WGPUColorWriteMask_None,
+	Red = WGPUColorWriteMask_Red,
+	Green = WGPUColorWriteMask_Green,
+	Blue = WGPUColorWriteMask_Blue,
+	Alpha = WGPUColorWriteMask_Alpha,
+	All = WGPUColorWriteMask_All,
+};
+
+inline constexpr bool operator==(ColorWriteMask a, WGPUColorWriteMask b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator==(WGPUColorWriteMask a, ColorWriteMask b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator!=(ColorWriteMask a, WGPUColorWriteMask b) { return !(a == b); }
+inline constexpr bool operator!=(WGPUColorWriteMask a, ColorWriteMask b) { return !(a == b); }
+
+inline constexpr ColorWriteMask operator|(ColorWriteMask a, ColorWriteMask b) { return static_cast<ColorWriteMask>(static_cast<int>(a) | static_cast<int>(b)); }
+inline constexpr ColorWriteMask operator&(ColorWriteMask a, ColorWriteMask b) { return static_cast<ColorWriteMask>(static_cast<int>(a) & static_cast<int>(b)); }
+
+enum class MapMode: int {
+	None = WGPUMapMode_None,
+	Read = WGPUMapMode_Read,
+	Write = WGPUMapMode_Write,
+};
+
+inline constexpr bool operator==(MapMode a, WGPUMapMode b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator==(WGPUMapMode a, MapMode b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator!=(MapMode a, WGPUMapMode b) { return !(a == b); }
+inline constexpr bool operator!=(WGPUMapMode a, MapMode b) { return !(a == b); }
+
+inline constexpr MapMode operator|(MapMode a, MapMode b) { return static_cast<MapMode>(static_cast<int>(a) | static_cast<int>(b)); }
+inline constexpr MapMode operator&(MapMode a, MapMode b) { return static_cast<MapMode>(static_cast<int>(a) & static_cast<int>(b)); }
+
+enum class ShaderStage: int {
+	None = WGPUShaderStage_None,
+	Vertex = WGPUShaderStage_Vertex,
+	Fragment = WGPUShaderStage_Fragment,
+	Compute = WGPUShaderStage_Compute,
+};
+
+inline constexpr bool operator==(ShaderStage a, WGPUShaderStage b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator==(WGPUShaderStage a, ShaderStage b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator!=(ShaderStage a, WGPUShaderStage b) { return !(a == b); }
+inline constexpr bool operator!=(WGPUShaderStage a, ShaderStage b) { return !(a == b); }
+
+inline constexpr ShaderStage operator|(ShaderStage a, ShaderStage b) { return static_cast<ShaderStage>(static_cast<int>(a) | static_cast<int>(b)); }
+inline constexpr ShaderStage operator&(ShaderStage a, ShaderStage b) { return static_cast<ShaderStage>(static_cast<int>(a) & static_cast<int>(b)); }
+
+enum class TextureUsage: int {
+	None = WGPUTextureUsage_None,
+	CopySrc = WGPUTextureUsage_CopySrc,
+	CopyDst = WGPUTextureUsage_CopyDst,
+	TextureBinding = WGPUTextureUsage_TextureBinding,
+	StorageBinding = WGPUTextureUsage_StorageBinding,
+	RenderAttachment = WGPUTextureUsage_RenderAttachment,
+};
+
+inline constexpr bool operator==(TextureUsage a, WGPUTextureUsage b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator==(WGPUTextureUsage a, TextureUsage b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator!=(TextureUsage a, WGPUTextureUsage b) { return !(a == b); }
+inline constexpr bool operator!=(WGPUTextureUsage a, TextureUsage b) { return !(a == b); }
+
+inline constexpr TextureUsage operator|(TextureUsage a, TextureUsage b) { return static_cast<TextureUsage>(static_cast<int>(a) | static_cast<int>(b)); }
+inline constexpr TextureUsage operator&(TextureUsage a, TextureUsage b) { return static_cast<TextureUsage>(static_cast<int>(a) & static_cast<int>(b)); }
+
+enum class NativeSType: int {
+	DeviceExtras = WGPUSType_DeviceExtras,
+	NativeLimits = WGPUSType_NativeLimits,
+	PipelineLayoutExtras = WGPUSType_PipelineLayoutExtras,
+	ShaderSourceGLSL = WGPUSType_ShaderSourceGLSL,
+	InstanceExtras = WGPUSType_InstanceExtras,
+	BindGroupEntryExtras = WGPUSType_BindGroupEntryExtras,
+	BindGroupLayoutEntryExtras = WGPUSType_BindGroupLayoutEntryExtras,
+	QuerySetDescriptorExtras = WGPUSType_QuerySetDescriptorExtras,
+	SurfaceConfigurationExtras = WGPUSType_SurfaceConfigurationExtras,
+	SurfaceSourceSwapChainPanel = WGPUSType_SurfaceSourceSwapChainPanel,
+	PrimitiveStateExtras = WGPUSType_PrimitiveStateExtras,
+	Force32 = WGPUNativeSType_Force32,
+};
+
+inline constexpr bool operator==(NativeSType a, WGPUNativeSType b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator==(WGPUNativeSType a, NativeSType b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator!=(NativeSType a, WGPUNativeSType b) { return !(a == b); }
+inline constexpr bool operator!=(WGPUNativeSType a, NativeSType b) { return !(a == b); }
+
+inline constexpr NativeSType operator|(NativeSType a, NativeSType b) { return static_cast<NativeSType>(static_cast<int>(a) | static_cast<int>(b)); }
+inline constexpr NativeSType operator&(NativeSType a, NativeSType b) { return static_cast<NativeSType>(static_cast<int>(a) & static_cast<int>(b)); }
+
+enum class NativeFeature: int {
+	PushConstants = WGPUNativeFeature_PushConstants,
+	TextureAdapterSpecificFormatFeatures = WGPUNativeFeature_TextureAdapterSpecificFormatFeatures,
+	MultiDrawIndirectCount = WGPUNativeFeature_MultiDrawIndirectCount,
+	VertexWritableStorage = WGPUNativeFeature_VertexWritableStorage,
+	TextureBindingArray = WGPUNativeFeature_TextureBindingArray,
+	SampledTextureAndStorageBufferArrayNonUniformIndexing = WGPUNativeFeature_SampledTextureAndStorageBufferArrayNonUniformIndexing,
+	PipelineStatisticsQuery = WGPUNativeFeature_PipelineStatisticsQuery,
+	StorageResourceBindingArray = WGPUNativeFeature_StorageResourceBindingArray,
+	PartiallyBoundBindingArray = WGPUNativeFeature_PartiallyBoundBindingArray,
+	TextureFormat16bitNorm = WGPUNativeFeature_TextureFormat16bitNorm,
+	TextureCompressionAstcHdr = WGPUNativeFeature_TextureCompressionAstcHdr,
+	MappablePrimaryBuffers = WGPUNativeFeature_MappablePrimaryBuffers,
+	BufferBindingArray = WGPUNativeFeature_BufferBindingArray,
+	UniformBufferAndStorageTextureArrayNonUniformIndexing = WGPUNativeFeature_UniformBufferAndStorageTextureArrayNonUniformIndexing,
+	PolygonModeLine = WGPUNativeFeature_PolygonModeLine,
+	PolygonModePoint = WGPUNativeFeature_PolygonModePoint,
+	ConservativeRasterization = WGPUNativeFeature_ConservativeRasterization,
+	SpirvShaderPassthrough = WGPUNativeFeature_SpirvShaderPassthrough,
+	VertexAttribute64bit = WGPUNativeFeature_VertexAttribute64bit,
+	TextureFormatNv12 = WGPUNativeFeature_TextureFormatNv12,
+	RayQuery = WGPUNativeFeature_RayQuery,
+	ShaderF64 = WGPUNativeFeature_ShaderF64,
+	ShaderI16 = WGPUNativeFeature_ShaderI16,
+	ShaderPrimitiveIndex = WGPUNativeFeature_ShaderPrimitiveIndex,
+	ShaderEarlyDepthTest = WGPUNativeFeature_ShaderEarlyDepthTest,
+	Subgroup = WGPUNativeFeature_Subgroup,
+	SubgroupVertex = WGPUNativeFeature_SubgroupVertex,
+	SubgroupBarrier = WGPUNativeFeature_SubgroupBarrier,
+	TimestampQueryInsideEncoders = WGPUNativeFeature_TimestampQueryInsideEncoders,
+	TimestampQueryInsidePasses = WGPUNativeFeature_TimestampQueryInsidePasses,
+	ShaderInt64 = WGPUNativeFeature_ShaderInt64,
+	Force32 = WGPUNativeFeature_Force32,
+};
+
+inline constexpr bool operator==(NativeFeature a, WGPUNativeFeature b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator==(WGPUNativeFeature a, NativeFeature b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator!=(NativeFeature a, WGPUNativeFeature b) { return !(a == b); }
+inline constexpr bool operator!=(WGPUNativeFeature a, NativeFeature b) { return !(a == b); }
+
+inline constexpr NativeFeature operator|(NativeFeature a, NativeFeature b) { return static_cast<NativeFeature>(static_cast<int>(a) | static_cast<int>(b)); }
+inline constexpr NativeFeature operator&(NativeFeature a, NativeFeature b) { return static_cast<NativeFeature>(static_cast<int>(a) & static_cast<int>(b)); }
+
+enum class LogLevel: int {
+	Off = WGPULogLevel_Off,
+	Error = WGPULogLevel_Error,
+	Warn = WGPULogLevel_Warn,
+	Info = WGPULogLevel_Info,
+	Debug = WGPULogLevel_Debug,
+	Trace = WGPULogLevel_Trace,
+	Force32 = WGPULogLevel_Force32,
+};
+
+inline constexpr bool operator==(LogLevel a, WGPULogLevel b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator==(WGPULogLevel a, LogLevel b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator!=(LogLevel a, WGPULogLevel b) { return !(a == b); }
+inline constexpr bool operator!=(WGPULogLevel a, LogLevel b) { return !(a == b); }
+
+inline constexpr LogLevel operator|(LogLevel a, LogLevel b) { return static_cast<LogLevel>(static_cast<int>(a) | static_cast<int>(b)); }
+inline constexpr LogLevel operator&(LogLevel a, LogLevel b) { return static_cast<LogLevel>(static_cast<int>(a) & static_cast<int>(b)); }
+
+enum class InstanceBackend: int {
+	All = WGPUInstanceBackend_All,
+	Force32 = WGPUInstanceBackend_Force32,
+};
+
+inline constexpr bool operator==(InstanceBackend a, WGPUInstanceBackend b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator==(WGPUInstanceBackend a, InstanceBackend b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator!=(InstanceBackend a, WGPUInstanceBackend b) { return !(a == b); }
+inline constexpr bool operator!=(WGPUInstanceBackend a, InstanceBackend b) { return !(a == b); }
+
+inline constexpr InstanceBackend operator|(InstanceBackend a, InstanceBackend b) { return static_cast<InstanceBackend>(static_cast<int>(a) | static_cast<int>(b)); }
+inline constexpr InstanceBackend operator&(InstanceBackend a, InstanceBackend b) { return static_cast<InstanceBackend>(static_cast<int>(a) & static_cast<int>(b)); }
+
+enum class InstanceFlag: int {
+	Default = WGPUInstanceFlag_Default,
+	Force32 = WGPUInstanceFlag_Force32,
+};
+
+inline constexpr bool operator==(InstanceFlag a, WGPUInstanceFlag b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator==(WGPUInstanceFlag a, InstanceFlag b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator!=(InstanceFlag a, WGPUInstanceFlag b) { return !(a == b); }
+inline constexpr bool operator!=(WGPUInstanceFlag a, InstanceFlag b) { return !(a == b); }
+
+inline constexpr InstanceFlag operator|(InstanceFlag a, InstanceFlag b) { return static_cast<InstanceFlag>(static_cast<int>(a) | static_cast<int>(b)); }
+inline constexpr InstanceFlag operator&(InstanceFlag a, InstanceFlag b) { return static_cast<InstanceFlag>(static_cast<int>(a) & static_cast<int>(b)); }
+
+enum class Dx12Compiler: int {
+	Undefined = WGPUDx12Compiler_Undefined,
+	Fxc = WGPUDx12Compiler_Fxc,
+	Dxc = WGPUDx12Compiler_Dxc,
+	Force32 = WGPUDx12Compiler_Force32,
+};
+
+inline constexpr bool operator==(Dx12Compiler a, WGPUDx12Compiler b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator==(WGPUDx12Compiler a, Dx12Compiler b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator!=(Dx12Compiler a, WGPUDx12Compiler b) { return !(a == b); }
+inline constexpr bool operator!=(WGPUDx12Compiler a, Dx12Compiler b) { return !(a == b); }
+
+inline constexpr Dx12Compiler operator|(Dx12Compiler a, Dx12Compiler b) { return static_cast<Dx12Compiler>(static_cast<int>(a) | static_cast<int>(b)); }
+inline constexpr Dx12Compiler operator&(Dx12Compiler a, Dx12Compiler b) { return static_cast<Dx12Compiler>(static_cast<int>(a) & static_cast<int>(b)); }
+
+enum class Gles3MinorVersion: int {
+	Automatic = WGPUGles3MinorVersion_Automatic,
+	Version0 = WGPUGles3MinorVersion_Version0,
+	Version1 = WGPUGles3MinorVersion_Version1,
+	Version2 = WGPUGles3MinorVersion_Version2,
+	Force32 = WGPUGles3MinorVersion_Force32,
+};
+
+inline constexpr bool operator==(Gles3MinorVersion a, WGPUGles3MinorVersion b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator==(WGPUGles3MinorVersion a, Gles3MinorVersion b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator!=(Gles3MinorVersion a, WGPUGles3MinorVersion b) { return !(a == b); }
+inline constexpr bool operator!=(WGPUGles3MinorVersion a, Gles3MinorVersion b) { return !(a == b); }
+
+inline constexpr Gles3MinorVersion operator|(Gles3MinorVersion a, Gles3MinorVersion b) { return static_cast<Gles3MinorVersion>(static_cast<int>(a) | static_cast<int>(b)); }
+inline constexpr Gles3MinorVersion operator&(Gles3MinorVersion a, Gles3MinorVersion b) { return static_cast<Gles3MinorVersion>(static_cast<int>(a) & static_cast<int>(b)); }
+
+enum class PipelineStatisticName: int {
+	VertexShaderInvocations = WGPUPipelineStatisticName_VertexShaderInvocations,
+	ClipperInvocations = WGPUPipelineStatisticName_ClipperInvocations,
+	ClipperPrimitivesOut = WGPUPipelineStatisticName_ClipperPrimitivesOut,
+	FragmentShaderInvocations = WGPUPipelineStatisticName_FragmentShaderInvocations,
+	ComputeShaderInvocations = WGPUPipelineStatisticName_ComputeShaderInvocations,
+	Force32 = WGPUPipelineStatisticName_Force32,
+};
+
+inline constexpr bool operator==(PipelineStatisticName a, WGPUPipelineStatisticName b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator==(WGPUPipelineStatisticName a, PipelineStatisticName b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator!=(PipelineStatisticName a, WGPUPipelineStatisticName b) { return !(a == b); }
+inline constexpr bool operator!=(WGPUPipelineStatisticName a, PipelineStatisticName b) { return !(a == b); }
+
+inline constexpr PipelineStatisticName operator|(PipelineStatisticName a, PipelineStatisticName b) { return static_cast<PipelineStatisticName>(static_cast<int>(a) | static_cast<int>(b)); }
+inline constexpr PipelineStatisticName operator&(PipelineStatisticName a, PipelineStatisticName b) { return static_cast<PipelineStatisticName>(static_cast<int>(a) & static_cast<int>(b)); }
+
+enum class NativeQueryType: int {
+	PipelineStatistics = WGPUNativeQueryType_PipelineStatistics,
+	Force32 = WGPUNativeQueryType_Force32,
+};
+
+inline constexpr bool operator==(NativeQueryType a, WGPUNativeQueryType b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator==(WGPUNativeQueryType a, NativeQueryType b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator!=(NativeQueryType a, WGPUNativeQueryType b) { return !(a == b); }
+inline constexpr bool operator!=(WGPUNativeQueryType a, NativeQueryType b) { return !(a == b); }
+
+inline constexpr NativeQueryType operator|(NativeQueryType a, NativeQueryType b) { return static_cast<NativeQueryType>(static_cast<int>(a) | static_cast<int>(b)); }
+inline constexpr NativeQueryType operator&(NativeQueryType a, NativeQueryType b) { return static_cast<NativeQueryType>(static_cast<int>(a) & static_cast<int>(b)); }
+
+enum class DxcMaxShaderModel: int {
+	V6_0 = WGPUDxcMaxShaderModel_V6_0,
+	V6_1 = WGPUDxcMaxShaderModel_V6_1,
+	V6_2 = WGPUDxcMaxShaderModel_V6_2,
+	V6_3 = WGPUDxcMaxShaderModel_V6_3,
+	V6_4 = WGPUDxcMaxShaderModel_V6_4,
+	V6_5 = WGPUDxcMaxShaderModel_V6_5,
+	V6_6 = WGPUDxcMaxShaderModel_V6_6,
+	V6_7 = WGPUDxcMaxShaderModel_V6_7,
+	Force32 = WGPUDxcMaxShaderModel_Force32,
+};
+
+inline constexpr bool operator==(DxcMaxShaderModel a, WGPUDxcMaxShaderModel b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator==(WGPUDxcMaxShaderModel a, DxcMaxShaderModel b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator!=(DxcMaxShaderModel a, WGPUDxcMaxShaderModel b) { return !(a == b); }
+inline constexpr bool operator!=(WGPUDxcMaxShaderModel a, DxcMaxShaderModel b) { return !(a == b); }
+
+inline constexpr DxcMaxShaderModel operator|(DxcMaxShaderModel a, DxcMaxShaderModel b) { return static_cast<DxcMaxShaderModel>(static_cast<int>(a) | static_cast<int>(b)); }
+inline constexpr DxcMaxShaderModel operator&(DxcMaxShaderModel a, DxcMaxShaderModel b) { return static_cast<DxcMaxShaderModel>(static_cast<int>(a) & static_cast<int>(b)); }
+
+enum class GLFenceBehaviour: int {
+	Normal = WGPUGLFenceBehaviour_Normal,
+	AutoFinish = WGPUGLFenceBehaviour_AutoFinish,
+	Force32 = WGPUGLFenceBehaviour_Force32,
+};
+
+inline constexpr bool operator==(GLFenceBehaviour a, WGPUGLFenceBehaviour b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator==(WGPUGLFenceBehaviour a, GLFenceBehaviour b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator!=(GLFenceBehaviour a, WGPUGLFenceBehaviour b) { return !(a == b); }
+inline constexpr bool operator!=(WGPUGLFenceBehaviour a, GLFenceBehaviour b) { return !(a == b); }
+
+inline constexpr GLFenceBehaviour operator|(GLFenceBehaviour a, GLFenceBehaviour b) { return static_cast<GLFenceBehaviour>(static_cast<int>(a) | static_cast<int>(b)); }
+inline constexpr GLFenceBehaviour operator&(GLFenceBehaviour a, GLFenceBehaviour b) { return static_cast<GLFenceBehaviour>(static_cast<int>(a) & static_cast<int>(b)); }
+
+enum class Dx12SwapchainKind: int {
+	Undefined = WGPUDx12SwapchainKind_Undefined,
+	DxgiFromHwnd = WGPUDx12SwapchainKind_DxgiFromHwnd,
+	DxgiFromVisual = WGPUDx12SwapchainKind_DxgiFromVisual,
+	Force32 = WGPUDx12SwapchainKind_Force32,
+};
+
+inline constexpr bool operator==(Dx12SwapchainKind a, WGPUDx12SwapchainKind b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator==(WGPUDx12SwapchainKind a, Dx12SwapchainKind b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator!=(Dx12SwapchainKind a, WGPUDx12SwapchainKind b) { return !(a == b); }
+inline constexpr bool operator!=(WGPUDx12SwapchainKind a, Dx12SwapchainKind b) { return !(a == b); }
+
+inline constexpr Dx12SwapchainKind operator|(Dx12SwapchainKind a, Dx12SwapchainKind b) { return static_cast<Dx12SwapchainKind>(static_cast<int>(a) | static_cast<int>(b)); }
+inline constexpr Dx12SwapchainKind operator&(Dx12SwapchainKind a, Dx12SwapchainKind b) { return static_cast<Dx12SwapchainKind>(static_cast<int>(a) & static_cast<int>(b)); }
+
+enum class PolygonMode: int {
+	Fill = WGPUPolygonMode_Fill,
+	Line = WGPUPolygonMode_Line,
+	Point = WGPUPolygonMode_Point,
+};
+
+inline constexpr bool operator==(PolygonMode a, WGPUPolygonMode b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator==(WGPUPolygonMode a, PolygonMode b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator!=(PolygonMode a, WGPUPolygonMode b) { return !(a == b); }
+inline constexpr bool operator!=(WGPUPolygonMode a, PolygonMode b) { return !(a == b); }
+
+inline constexpr PolygonMode operator|(PolygonMode a, PolygonMode b) { return static_cast<PolygonMode>(static_cast<int>(a) | static_cast<int>(b)); }
+inline constexpr PolygonMode operator&(PolygonMode a, PolygonMode b) { return static_cast<PolygonMode>(static_cast<int>(a) & static_cast<int>(b)); }
+
+enum class NativeTextureFormat: int {
+	R16Unorm = WGPUNativeTextureFormat_R16Unorm,
+	R16Snorm = WGPUNativeTextureFormat_R16Snorm,
+	Rg16Unorm = WGPUNativeTextureFormat_Rg16Unorm,
+	Rg16Snorm = WGPUNativeTextureFormat_Rg16Snorm,
+	Rgba16Unorm = WGPUNativeTextureFormat_Rgba16Unorm,
+	Rgba16Snorm = WGPUNativeTextureFormat_Rgba16Snorm,
+	NV12 = WGPUNativeTextureFormat_NV12,
+	P010 = WGPUNativeTextureFormat_P010,
+};
+
+inline constexpr bool operator==(NativeTextureFormat a, WGPUNativeTextureFormat b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator==(WGPUNativeTextureFormat a, NativeTextureFormat b) { return static_cast<int>(a) == static_cast<int>(b); }
+inline constexpr bool operator!=(NativeTextureFormat a, WGPUNativeTextureFormat b) { return !(a == b); }
+inline constexpr bool operator!=(WGPUNativeTextureFormat a, NativeTextureFormat b) { return !(a == b); }
+
+inline constexpr NativeTextureFormat operator|(NativeTextureFormat a, NativeTextureFormat b) { return static_cast<NativeTextureFormat>(static_cast<int>(a) | static_cast<int>(b)); }
+inline constexpr NativeTextureFormat operator&(NativeTextureFormat a, NativeTextureFormat b) { return static_cast<NativeTextureFormat>(static_cast<int>(a) & static_cast<int>(b)); }
+
+} // namespace wgpu
+
+namespace wgpu {
+std::string_view to_string(AdapterType v);
+std::string_view to_string(AddressMode v);
+std::string_view to_string(BackendType v);
+std::string_view to_string(BlendFactor v);
+std::string_view to_string(BlendOperation v);
+std::string_view to_string(BufferBindingType v);
+std::string_view to_string(BufferMapState v);
+std::string_view to_string(CallbackMode v);
+std::string_view to_string(CompareFunction v);
+std::string_view to_string(CompilationInfoRequestStatus v);
+std::string_view to_string(CompilationMessageType v);
+std::string_view to_string(CompositeAlphaMode v);
+std::string_view to_string(CreatePipelineAsyncStatus v);
+std::string_view to_string(CullMode v);
+std::string_view to_string(DeviceLostReason v);
+std::string_view to_string(ErrorFilter v);
+std::string_view to_string(ErrorType v);
+std::string_view to_string(FeatureLevel v);
+std::string_view to_string(FeatureName v);
+std::string_view to_string(FilterMode v);
+std::string_view to_string(FrontFace v);
+std::string_view to_string(IndexFormat v);
+std::string_view to_string(LoadOp v);
+std::string_view to_string(MapAsyncStatus v);
+std::string_view to_string(MipmapFilterMode v);
+std::string_view to_string(OptionalBool v);
+std::string_view to_string(PopErrorScopeStatus v);
+std::string_view to_string(PowerPreference v);
+std::string_view to_string(PresentMode v);
+std::string_view to_string(PrimitiveTopology v);
+std::string_view to_string(QueryType v);
+std::string_view to_string(QueueWorkDoneStatus v);
+std::string_view to_string(RequestAdapterStatus v);
+std::string_view to_string(RequestDeviceStatus v);
+std::string_view to_string(SType v);
+std::string_view to_string(SamplerBindingType v);
+std::string_view to_string(Status v);
+std::string_view to_string(StencilOperation v);
+std::string_view to_string(StorageTextureAccess v);
+std::string_view to_string(StoreOp v);
+std::string_view to_string(SurfaceGetCurrentTextureStatus v);
+std::string_view to_string(TextureAspect v);
+std::string_view to_string(TextureDimension v);
+std::string_view to_string(TextureFormat v);
+std::string_view to_string(TextureSampleType v);
+std::string_view to_string(TextureViewDimension v);
+std::string_view to_string(VertexFormat v);
+std::string_view to_string(VertexStepMode v);
+std::string_view to_string(WGSLLanguageFeatureName v);
+std::string_view to_string(WaitStatus v);
+std::string_view to_string(BufferUsage v);
+std::string_view to_string(ColorWriteMask v);
+std::string_view to_string(MapMode v);
+std::string_view to_string(ShaderStage v);
+std::string_view to_string(TextureUsage v);
+std::string_view to_string(NativeSType v);
+std::string_view to_string(NativeFeature v);
+std::string_view to_string(LogLevel v);
+std::string_view to_string(InstanceBackend v);
+std::string_view to_string(InstanceFlag v);
+std::string_view to_string(Dx12Compiler v);
+std::string_view to_string(Gles3MinorVersion v);
+std::string_view to_string(PipelineStatisticName v);
+std::string_view to_string(NativeQueryType v);
+std::string_view to_string(DxcMaxShaderModel v);
+std::string_view to_string(GLFenceBehaviour v);
+std::string_view to_string(Dx12SwapchainKind v);
+std::string_view to_string(PolygonMode v);
+std::string_view to_string(NativeTextureFormat v);
+} // namespace wgpu
+
 
 // Forward declarations
+namespace wgpu {
 struct StringView;
 struct ChainedStruct;
 struct ChainedStructOut;
@@ -1946,6 +2688,9 @@ struct QuerySetDescriptorExtras;
 struct SurfaceConfigurationExtras;
 struct SurfaceSourceSwapChainPanel;
 struct PrimitiveStateExtras;
+} // namespace wgpu
+
+namespace wgpu {
 struct BufferMapCallbackInfo;
 struct CompilationInfoCallbackInfo;
 struct CreateComputePipelineAsyncCallbackInfo;
@@ -2002,6 +2747,9 @@ struct VertexState;
 struct FragmentState;
 struct RenderPipelineDescriptor;
 struct InstanceEnumerateAdapterOptions;
+} // namespace wgpu
+
+namespace wgpu {
 class Adapter;
 class BindGroup;
 class BindGroupLayout;
@@ -2024,29 +2772,44 @@ class ShaderModule;
 class Surface;
 class Texture;
 class TextureView;
+namespace raw {
+class Adapter;
+class BindGroup;
+class BindGroupLayout;
+class Buffer;
+class CommandBuffer;
+class CommandEncoder;
+class ComputePassEncoder;
+class ComputePipeline;
+class Device;
+class Instance;
+class PipelineLayout;
+class QuerySet;
+class Queue;
+class RenderBundle;
+class RenderBundleEncoder;
+class RenderPassEncoder;
+class RenderPipeline;
+class Sampler;
+class ShaderModule;
+class Surface;
+class Texture;
+class TextureView;
+}
 
-// RAII Handles
+} // namespace wgpu
+
+
+// Handles
+namespace wgpu {
+namespace raw {
 HANDLE(Adapter)
 	void getFeatures(SupportedFeatures& features) const;
 	Status getInfo(AdapterInfo& info) const;
 	Status getLimits(Limits& limits) const;
 	Bool hasFeature(FeatureName feature) const;
-	template<std::invocable<RequestDeviceStatus, Device, StringView> Lambda>
-	Future requestDevice(const DeviceDescriptor& descriptor, CallbackMode callbackMode, const Lambda& callback) const {
-		auto* lambda = new Lambda(callback);
-		auto cCallback = [](WGPURequestDeviceStatus status, WGPUDevice device, WGPUStringView message, void* userdata1, void*) -> void {
-			std::unique_ptr<Lambda> lambda(reinterpret_cast<Lambda*>(userdata1));
-			(*lambda)(static_cast<RequestDeviceStatus>(status), device, *reinterpret_cast<StringView *>(&message));
-		};
-		WGPURequestDeviceCallbackInfo callbackInfo = {
-			/* nextInChain = */ nullptr,
-			/* mode = */ callbackMode,
-			/* callback = */ cCallback,
-			/* userdata1 = */ (void*)lambda,
-			/* userdata2 = */ nullptr,
-		};
-		return wgpuAdapterRequestDevice(m_raw, reinterpret_cast<const WGPUDeviceDescriptor *>(&descriptor), *reinterpret_cast<WGPURequestDeviceCallbackInfo *>(&callbackInfo));
-	}
+	template<std::invocable<RequestDeviceStatus, raw::Device, StringView> Lambda>
+	Future requestDevice(const DeviceDescriptor& descriptor, CallbackMode callbackMode, const Lambda& callback) const;
 	void addRef() const;
 	void release() const;
 	Device requestDevice(const DeviceDescriptor& descriptor);
@@ -2072,21 +2835,7 @@ HANDLE(Buffer)
 	uint64_t getSize() const;
 	BufferUsage getUsage() const;
 	template<std::invocable<MapAsyncStatus, StringView> Lambda>
-	Future mapAsync(MapMode mode, size_t offset, size_t size, CallbackMode callbackMode, const Lambda& callback) const {
-		auto* lambda = new Lambda(callback);
-		auto cCallback = [](WGPUMapAsyncStatus status, WGPUStringView message, void* userdata1, void*) -> void {
-			std::unique_ptr<Lambda> lambda(reinterpret_cast<Lambda*>(userdata1));
-			(*lambda)(static_cast<MapAsyncStatus>(status), *reinterpret_cast<StringView *>(&message));
-		};
-		WGPUBufferMapCallbackInfo callbackInfo = {
-			/* nextInChain = */ nullptr,
-			/* mode = */ callbackMode,
-			/* callback = */ cCallback,
-			/* userdata1 = */ (void*)lambda,
-			/* userdata2 = */ nullptr,
-		};
-		return wgpuBufferMapAsync(m_raw, static_cast<WGPUMapMode>(mode), offset, size, *reinterpret_cast<WGPUBufferMapCallbackInfo *>(&callbackInfo));
-	}
+	Future mapAsync(MapMode mode, size_t offset, size_t size, CallbackMode callbackMode, const Lambda& callback) const;
 	void setLabel(StringView label) const;
 	void unmap() const;
 	void addRef() const;
@@ -2100,148 +2849,92 @@ HANDLE(CommandBuffer)
 END
 
 HANDLE(CommandEncoder)
-	ComputePassEncoder beginComputePass(const ComputePassDescriptor& descriptor) const;
-	RenderPassEncoder beginRenderPass(const RenderPassDescriptor& descriptor) const;
-	void clearBuffer(Buffer buffer, uint64_t offset, uint64_t size) const;
-	void copyBufferToBuffer(Buffer source, uint64_t sourceOffset, Buffer destination, uint64_t destinationOffset, uint64_t size) const;
+	raw::ComputePassEncoder beginComputePass(const ComputePassDescriptor& descriptor) const;
+	raw::RenderPassEncoder beginRenderPass(const RenderPassDescriptor& descriptor) const;
+	void clearBuffer(raw::Buffer buffer, uint64_t offset, uint64_t size) const;
+	void copyBufferToBuffer(raw::Buffer source, uint64_t sourceOffset, raw::Buffer destination, uint64_t destinationOffset, uint64_t size) const;
 	void copyBufferToTexture(const TexelCopyBufferInfo& source, const TexelCopyTextureInfo& destination, const Extent3D& copySize) const;
 	void copyTextureToBuffer(const TexelCopyTextureInfo& source, const TexelCopyBufferInfo& destination, const Extent3D& copySize) const;
 	void copyTextureToTexture(const TexelCopyTextureInfo& source, const TexelCopyTextureInfo& destination, const Extent3D& copySize) const;
-	CommandBuffer finish(const CommandBufferDescriptor& descriptor) const;
+	raw::CommandBuffer finish(const CommandBufferDescriptor& descriptor) const;
 	void insertDebugMarker(StringView markerLabel) const;
 	void popDebugGroup() const;
 	void pushDebugGroup(StringView groupLabel) const;
-	void resolveQuerySet(QuerySet querySet, uint32_t firstQuery, uint32_t queryCount, Buffer destination, uint64_t destinationOffset) const;
+	void resolveQuerySet(raw::QuerySet querySet, uint32_t firstQuery, uint32_t queryCount, raw::Buffer destination, uint64_t destinationOffset) const;
 	void setLabel(StringView label) const;
-	void writeTimestamp(QuerySet querySet, uint32_t queryIndex) const;
+	void writeTimestamp(raw::QuerySet querySet, uint32_t queryIndex) const;
 	void addRef() const;
 	void release() const;
 END
 
 HANDLE(ComputePassEncoder)
 	void dispatchWorkgroups(uint32_t workgroupCountX, uint32_t workgroupCountY, uint32_t workgroupCountZ) const;
-	void dispatchWorkgroupsIndirect(Buffer indirectBuffer, uint64_t indirectOffset) const;
+	void dispatchWorkgroupsIndirect(raw::Buffer indirectBuffer, uint64_t indirectOffset) const;
 	void end() const;
 	void insertDebugMarker(StringView markerLabel) const;
 	void popDebugGroup() const;
 	void pushDebugGroup(StringView groupLabel) const;
-	void setBindGroup(uint32_t groupIndex, BindGroup group, size_t dynamicOffsetCount, uint32_t const * dynamicOffsets) const;
-	void setBindGroup(uint32_t groupIndex, BindGroup group, const std::vector<uint32_t>& dynamicOffsets) const;
-	void setBindGroup(uint32_t groupIndex, BindGroup group, const std::span<const uint32_t>& dynamicOffsets) const;
-	void setBindGroup(uint32_t groupIndex, BindGroup group, const uint32_t& dynamicOffsets) const;
+	void setBindGroup(uint32_t groupIndex, raw::BindGroup group, size_t dynamicOffsetCount, uint32_t const * dynamicOffsets) const;
+	void setBindGroup(uint32_t groupIndex, raw::BindGroup group, const std::vector<uint32_t>& dynamicOffsets) const;
+	void setBindGroup(uint32_t groupIndex, raw::BindGroup group, const std::span<const uint32_t>& dynamicOffsets) const;
+	void setBindGroup(uint32_t groupIndex, raw::BindGroup group, const uint32_t& dynamicOffsets) const;
 	void setLabel(StringView label) const;
-	void setPipeline(ComputePipeline pipeline) const;
+	void setPipeline(raw::ComputePipeline pipeline) const;
 	void addRef() const;
 	void release() const;
 	void setPushConstants(uint32_t offset, uint32_t sizeBytes, void const * data) const;
-	void beginPipelineStatisticsQuery(QuerySet querySet, uint32_t queryIndex) const;
+	void beginPipelineStatisticsQuery(raw::QuerySet querySet, uint32_t queryIndex) const;
 	void endPipelineStatisticsQuery() const;
-	void writeTimestamp(QuerySet querySet, uint32_t queryIndex) const;
+	void writeTimestamp(raw::QuerySet querySet, uint32_t queryIndex) const;
 END
 
 HANDLE(ComputePipeline)
-	BindGroupLayout getBindGroupLayout(uint32_t groupIndex) const;
+	raw::BindGroupLayout getBindGroupLayout(uint32_t groupIndex) const;
 	void setLabel(StringView label) const;
 	void addRef() const;
 	void release() const;
 END
 
 HANDLE(Device)
-	BindGroup createBindGroup(const BindGroupDescriptor& descriptor) const;
-	BindGroupLayout createBindGroupLayout(const BindGroupLayoutDescriptor& descriptor) const;
-	Buffer createBuffer(const BufferDescriptor& descriptor) const;
-	CommandEncoder createCommandEncoder(const CommandEncoderDescriptor& descriptor) const;
-	ComputePipeline createComputePipeline(const ComputePipelineDescriptor& descriptor) const;
-	template<std::invocable<CreatePipelineAsyncStatus, ComputePipeline, StringView> Lambda>
-	Future createComputePipelineAsync(const ComputePipelineDescriptor& descriptor, CallbackMode callbackMode, const Lambda& callback) const {
-		auto* lambda = new Lambda(callback);
-		auto cCallback = [](WGPUCreatePipelineAsyncStatus status, WGPUComputePipeline pipeline, WGPUStringView message, void* userdata1, void*) -> void {
-			std::unique_ptr<Lambda> lambda(reinterpret_cast<Lambda*>(userdata1));
-			(*lambda)(static_cast<CreatePipelineAsyncStatus>(status), pipeline, *reinterpret_cast<StringView *>(&message));
-		};
-		WGPUCreateComputePipelineAsyncCallbackInfo callbackInfo = {
-			/* nextInChain = */ nullptr,
-			/* mode = */ callbackMode,
-			/* callback = */ cCallback,
-			/* userdata1 = */ (void*)lambda,
-			/* userdata2 = */ nullptr,
-		};
-		return wgpuDeviceCreateComputePipelineAsync(m_raw, reinterpret_cast<const WGPUComputePipelineDescriptor *>(&descriptor), *reinterpret_cast<WGPUCreateComputePipelineAsyncCallbackInfo *>(&callbackInfo));
-	}
-	PipelineLayout createPipelineLayout(const PipelineLayoutDescriptor& descriptor) const;
-	QuerySet createQuerySet(const QuerySetDescriptor& descriptor) const;
-	RenderBundleEncoder createRenderBundleEncoder(const RenderBundleEncoderDescriptor& descriptor) const;
-	RenderPipeline createRenderPipeline(const RenderPipelineDescriptor& descriptor) const;
-	template<std::invocable<CreatePipelineAsyncStatus, RenderPipeline, StringView> Lambda>
-	Future createRenderPipelineAsync(const RenderPipelineDescriptor& descriptor, CallbackMode callbackMode, const Lambda& callback) const {
-		auto* lambda = new Lambda(callback);
-		auto cCallback = [](WGPUCreatePipelineAsyncStatus status, WGPURenderPipeline pipeline, WGPUStringView message, void* userdata1, void*) -> void {
-			std::unique_ptr<Lambda> lambda(reinterpret_cast<Lambda*>(userdata1));
-			(*lambda)(static_cast<CreatePipelineAsyncStatus>(status), pipeline, *reinterpret_cast<StringView *>(&message));
-		};
-		WGPUCreateRenderPipelineAsyncCallbackInfo callbackInfo = {
-			/* nextInChain = */ nullptr,
-			/* mode = */ callbackMode,
-			/* callback = */ cCallback,
-			/* userdata1 = */ (void*)lambda,
-			/* userdata2 = */ nullptr,
-		};
-		return wgpuDeviceCreateRenderPipelineAsync(m_raw, reinterpret_cast<const WGPURenderPipelineDescriptor *>(&descriptor), *reinterpret_cast<WGPUCreateRenderPipelineAsyncCallbackInfo *>(&callbackInfo));
-	}
-	Sampler createSampler(const SamplerDescriptor& descriptor) const;
-	ShaderModule createShaderModule(const ShaderModuleDescriptor& descriptor) const;
-	Texture createTexture(const TextureDescriptor& descriptor) const;
+	raw::BindGroup createBindGroup(const BindGroupDescriptor& descriptor) const;
+	raw::BindGroupLayout createBindGroupLayout(const BindGroupLayoutDescriptor& descriptor) const;
+	raw::Buffer createBuffer(const BufferDescriptor& descriptor) const;
+	raw::CommandEncoder createCommandEncoder(const CommandEncoderDescriptor& descriptor) const;
+	raw::ComputePipeline createComputePipeline(const ComputePipelineDescriptor& descriptor) const;
+	template<std::invocable<CreatePipelineAsyncStatus, raw::ComputePipeline, StringView> Lambda>
+	Future createComputePipelineAsync(const ComputePipelineDescriptor& descriptor, CallbackMode callbackMode, const Lambda& callback) const;
+	raw::PipelineLayout createPipelineLayout(const PipelineLayoutDescriptor& descriptor) const;
+	raw::QuerySet createQuerySet(const QuerySetDescriptor& descriptor) const;
+	raw::RenderBundleEncoder createRenderBundleEncoder(const RenderBundleEncoderDescriptor& descriptor) const;
+	raw::RenderPipeline createRenderPipeline(const RenderPipelineDescriptor& descriptor) const;
+	template<std::invocable<CreatePipelineAsyncStatus, raw::RenderPipeline, StringView> Lambda>
+	Future createRenderPipelineAsync(const RenderPipelineDescriptor& descriptor, CallbackMode callbackMode, const Lambda& callback) const;
+	raw::Sampler createSampler(const SamplerDescriptor& descriptor) const;
+	raw::ShaderModule createShaderModule(const ShaderModuleDescriptor& descriptor) const;
+	raw::Texture createTexture(const TextureDescriptor& descriptor) const;
 	void destroy() const;
 	AdapterInfo getAdapterInfo() const;
 	void getFeatures(SupportedFeatures& features) const;
 	Status getLimits(Limits& limits) const;
-	Queue getQueue() const;
+	raw::Queue getQueue() const;
 	Bool hasFeature(FeatureName feature) const;
 	template<std::invocable<PopErrorScopeStatus, ErrorType, StringView> Lambda>
-	Future popErrorScope(CallbackMode callbackMode, const Lambda& callback) const {
-		auto* lambda = new Lambda(callback);
-		auto cCallback = [](WGPUPopErrorScopeStatus status, WGPUErrorType type, WGPUStringView message, void* userdata1, void*) -> void {
-			std::unique_ptr<Lambda> lambda(reinterpret_cast<Lambda*>(userdata1));
-			(*lambda)(static_cast<PopErrorScopeStatus>(status), static_cast<ErrorType>(type), *reinterpret_cast<StringView *>(&message));
-		};
-		WGPUPopErrorScopeCallbackInfo callbackInfo = {
-			/* nextInChain = */ nullptr,
-			/* mode = */ callbackMode,
-			/* callback = */ cCallback,
-			/* userdata1 = */ (void*)lambda,
-			/* userdata2 = */ nullptr,
-		};
-		return wgpuDevicePopErrorScope(m_raw, *reinterpret_cast<WGPUPopErrorScopeCallbackInfo *>(&callbackInfo));
-	}
+	Future popErrorScope(CallbackMode callbackMode, const Lambda& callback) const;
 	void pushErrorScope(ErrorFilter filter) const;
 	void setLabel(StringView label) const;
 	void addRef() const;
 	void release() const;
 	Bool poll(Bool wait, SubmissionIndex const * submissionIndex) const;
-	ShaderModule createShaderModuleSpirV(const ShaderModuleDescriptorSpirV& descriptor) const;
+	raw::ShaderModule createShaderModuleSpirV(const ShaderModuleDescriptorSpirV& descriptor) const;
 END
 
 HANDLE(Instance)
-	Surface createSurface(const SurfaceDescriptor& descriptor) const;
+	raw::Surface createSurface(const SurfaceDescriptor& descriptor) const;
 	Status getWGSLLanguageFeatures(SupportedWGSLLanguageFeatures& features) const;
 	Bool hasWGSLLanguageFeature(WGSLLanguageFeatureName feature) const;
 	void processEvents() const;
-	template<std::invocable<RequestAdapterStatus, Adapter, StringView> Lambda>
-	Future requestAdapter(const RequestAdapterOptions& options, CallbackMode callbackMode, const Lambda& callback) const {
-		auto* lambda = new Lambda(callback);
-		auto cCallback = [](WGPURequestAdapterStatus status, WGPUAdapter adapter, WGPUStringView message, void* userdata1, void*) -> void {
-			std::unique_ptr<Lambda> lambda(reinterpret_cast<Lambda*>(userdata1));
-			(*lambda)(static_cast<RequestAdapterStatus>(status), adapter, *reinterpret_cast<StringView *>(&message));
-		};
-		WGPURequestAdapterCallbackInfo callbackInfo = {
-			/* nextInChain = */ nullptr,
-			/* mode = */ callbackMode,
-			/* callback = */ cCallback,
-			/* userdata1 = */ (void*)lambda,
-			/* userdata2 = */ nullptr,
-		};
-		return wgpuInstanceRequestAdapter(m_raw, reinterpret_cast<const WGPURequestAdapterOptions *>(&options), *reinterpret_cast<WGPURequestAdapterCallbackInfo *>(&callbackInfo));
-	}
+	template<std::invocable<RequestAdapterStatus, raw::Adapter, StringView> Lambda>
+	Future requestAdapter(const RequestAdapterOptions& options, CallbackMode callbackMode, const Lambda& callback) const;
 	WaitStatus waitAny(size_t futureCount, FutureWaitInfo& futures, uint64_t timeoutNS) const;
 	void addRef() const;
 	void release() const;
@@ -2266,27 +2959,16 @@ END
 
 HANDLE(Queue)
 	template<std::invocable<QueueWorkDoneStatus> Lambda>
-	Future onSubmittedWorkDone(CallbackMode callbackMode, const Lambda& callback) const {
-		auto* lambda = new Lambda(callback);
-		auto cCallback = [](WGPUQueueWorkDoneStatus status, void* userdata1, void*) -> void {
-			std::unique_ptr<Lambda> lambda(reinterpret_cast<Lambda*>(userdata1));
-			(*lambda)(static_cast<QueueWorkDoneStatus>(status));
-		};
-		WGPUQueueWorkDoneCallbackInfo callbackInfo = {
-			/* nextInChain = */ nullptr,
-			/* mode = */ callbackMode,
-			/* callback = */ cCallback,
-			/* userdata1 = */ (void*)lambda,
-			/* userdata2 = */ nullptr,
-		};
-		return wgpuQueueOnSubmittedWorkDone(m_raw, *reinterpret_cast<WGPUQueueWorkDoneCallbackInfo *>(&callbackInfo));
-	}
+	Future onSubmittedWorkDone(CallbackMode callbackMode, const Lambda& callback) const;
 	void setLabel(StringView label) const;
 	void submit(size_t commandCount, CommandBuffer const * commands) const;
 	void submit(const std::vector<CommandBuffer>& commands) const;
 	void submit(const std::span<const CommandBuffer>& commands) const;
 	void submit(const CommandBuffer& commands) const;
-	void writeBuffer(Buffer buffer, uint64_t bufferOffset, void const * data, size_t size) const;
+	void submit(const std::vector<wgpu::CommandBuffer>& commands) const;
+	void submit(const std::span<const wgpu::CommandBuffer>& commands) const;
+	void submit(const wgpu::CommandBuffer& commands) const;
+	void writeBuffer(raw::Buffer buffer, uint64_t bufferOffset, void const * data, size_t size) const;
 	void writeTexture(const TexelCopyTextureInfo& destination, void const * data, size_t dataSize, const TexelCopyBufferLayout& dataLayout, const Extent3D& writeSize) const;
 	void addRef() const;
 	void release() const;
@@ -2294,6 +2976,9 @@ HANDLE(Queue)
 	SubmissionIndex submitForIndex(const std::vector<CommandBuffer>& commands) const;
 	SubmissionIndex submitForIndex(const std::span<const CommandBuffer>& commands) const;
 	SubmissionIndex submitForIndex(const CommandBuffer& commands) const;
+	SubmissionIndex submitForIndex(const std::vector<wgpu::CommandBuffer>& commands) const;
+	SubmissionIndex submitForIndex(const std::span<const wgpu::CommandBuffer>& commands) const;
+	SubmissionIndex submitForIndex(const wgpu::CommandBuffer& commands) const;
 	float getTimestampPeriod() const;
 END
 
@@ -2306,20 +2991,20 @@ END
 HANDLE(RenderBundleEncoder)
 	void draw(uint32_t vertexCount, uint32_t instanceCount, uint32_t firstVertex, uint32_t firstInstance) const;
 	void drawIndexed(uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex, int32_t baseVertex, uint32_t firstInstance) const;
-	void drawIndexedIndirect(Buffer indirectBuffer, uint64_t indirectOffset) const;
-	void drawIndirect(Buffer indirectBuffer, uint64_t indirectOffset) const;
-	RenderBundle finish(const RenderBundleDescriptor& descriptor) const;
+	void drawIndexedIndirect(raw::Buffer indirectBuffer, uint64_t indirectOffset) const;
+	void drawIndirect(raw::Buffer indirectBuffer, uint64_t indirectOffset) const;
+	raw::RenderBundle finish(const RenderBundleDescriptor& descriptor) const;
 	void insertDebugMarker(StringView markerLabel) const;
 	void popDebugGroup() const;
 	void pushDebugGroup(StringView groupLabel) const;
-	void setBindGroup(uint32_t groupIndex, BindGroup group, size_t dynamicOffsetCount, uint32_t const * dynamicOffsets) const;
-	void setBindGroup(uint32_t groupIndex, BindGroup group, const std::vector<uint32_t>& dynamicOffsets) const;
-	void setBindGroup(uint32_t groupIndex, BindGroup group, const std::span<const uint32_t>& dynamicOffsets) const;
-	void setBindGroup(uint32_t groupIndex, BindGroup group, const uint32_t& dynamicOffsets) const;
-	void setIndexBuffer(Buffer buffer, IndexFormat format, uint64_t offset, uint64_t size) const;
+	void setBindGroup(uint32_t groupIndex, raw::BindGroup group, size_t dynamicOffsetCount, uint32_t const * dynamicOffsets) const;
+	void setBindGroup(uint32_t groupIndex, raw::BindGroup group, const std::vector<uint32_t>& dynamicOffsets) const;
+	void setBindGroup(uint32_t groupIndex, raw::BindGroup group, const std::span<const uint32_t>& dynamicOffsets) const;
+	void setBindGroup(uint32_t groupIndex, raw::BindGroup group, const uint32_t& dynamicOffsets) const;
+	void setIndexBuffer(raw::Buffer buffer, IndexFormat format, uint64_t offset, uint64_t size) const;
 	void setLabel(StringView label) const;
-	void setPipeline(RenderPipeline pipeline) const;
-	void setVertexBuffer(uint32_t slot, Buffer buffer, uint64_t offset, uint64_t size) const;
+	void setPipeline(raw::RenderPipeline pipeline) const;
+	void setVertexBuffer(uint32_t slot, raw::Buffer buffer, uint64_t offset, uint64_t size) const;
 	void addRef() const;
 	void release() const;
 	void setPushConstants(ShaderStage stages, uint32_t offset, uint32_t sizeBytes, void const * data) const;
@@ -2329,43 +3014,46 @@ HANDLE(RenderPassEncoder)
 	void beginOcclusionQuery(uint32_t queryIndex) const;
 	void draw(uint32_t vertexCount, uint32_t instanceCount, uint32_t firstVertex, uint32_t firstInstance) const;
 	void drawIndexed(uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex, int32_t baseVertex, uint32_t firstInstance) const;
-	void drawIndexedIndirect(Buffer indirectBuffer, uint64_t indirectOffset) const;
-	void drawIndirect(Buffer indirectBuffer, uint64_t indirectOffset) const;
+	void drawIndexedIndirect(raw::Buffer indirectBuffer, uint64_t indirectOffset) const;
+	void drawIndirect(raw::Buffer indirectBuffer, uint64_t indirectOffset) const;
 	void end() const;
 	void endOcclusionQuery() const;
 	void executeBundles(size_t bundleCount, RenderBundle const * bundles) const;
 	void executeBundles(const std::vector<RenderBundle>& bundles) const;
 	void executeBundles(const std::span<const RenderBundle>& bundles) const;
 	void executeBundles(const RenderBundle& bundles) const;
+	void executeBundles(const std::vector<wgpu::RenderBundle>& bundles) const;
+	void executeBundles(const std::span<const wgpu::RenderBundle>& bundles) const;
+	void executeBundles(const wgpu::RenderBundle& bundles) const;
 	void insertDebugMarker(StringView markerLabel) const;
 	void popDebugGroup() const;
 	void pushDebugGroup(StringView groupLabel) const;
-	void setBindGroup(uint32_t groupIndex, BindGroup group, size_t dynamicOffsetCount, uint32_t const * dynamicOffsets) const;
-	void setBindGroup(uint32_t groupIndex, BindGroup group, const std::vector<uint32_t>& dynamicOffsets) const;
-	void setBindGroup(uint32_t groupIndex, BindGroup group, const std::span<const uint32_t>& dynamicOffsets) const;
-	void setBindGroup(uint32_t groupIndex, BindGroup group, const uint32_t& dynamicOffsets) const;
+	void setBindGroup(uint32_t groupIndex, raw::BindGroup group, size_t dynamicOffsetCount, uint32_t const * dynamicOffsets) const;
+	void setBindGroup(uint32_t groupIndex, raw::BindGroup group, const std::vector<uint32_t>& dynamicOffsets) const;
+	void setBindGroup(uint32_t groupIndex, raw::BindGroup group, const std::span<const uint32_t>& dynamicOffsets) const;
+	void setBindGroup(uint32_t groupIndex, raw::BindGroup group, const uint32_t& dynamicOffsets) const;
 	void setBlendConstant(const Color& color) const;
-	void setIndexBuffer(Buffer buffer, IndexFormat format, uint64_t offset, uint64_t size) const;
+	void setIndexBuffer(raw::Buffer buffer, IndexFormat format, uint64_t offset, uint64_t size) const;
 	void setLabel(StringView label) const;
-	void setPipeline(RenderPipeline pipeline) const;
+	void setPipeline(raw::RenderPipeline pipeline) const;
 	void setScissorRect(uint32_t x, uint32_t y, uint32_t width, uint32_t height) const;
 	void setStencilReference(uint32_t reference) const;
-	void setVertexBuffer(uint32_t slot, Buffer buffer, uint64_t offset, uint64_t size) const;
+	void setVertexBuffer(uint32_t slot, raw::Buffer buffer, uint64_t offset, uint64_t size) const;
 	void setViewport(float x, float y, float width, float height, float minDepth, float maxDepth) const;
 	void addRef() const;
 	void release() const;
 	void setPushConstants(ShaderStage stages, uint32_t offset, uint32_t sizeBytes, void const * data) const;
-	void multiDrawIndirect(Buffer buffer, uint64_t offset, uint32_t count) const;
-	void multiDrawIndexedIndirect(Buffer buffer, uint64_t offset, uint32_t count) const;
-	void multiDrawIndirectCount(Buffer buffer, uint64_t offset, Buffer count_buffer, uint64_t count_buffer_offset, uint32_t max_count) const;
-	void multiDrawIndexedIndirectCount(Buffer buffer, uint64_t offset, Buffer count_buffer, uint64_t count_buffer_offset, uint32_t max_count) const;
-	void beginPipelineStatisticsQuery(QuerySet querySet, uint32_t queryIndex) const;
+	void multiDrawIndirect(raw::Buffer buffer, uint64_t offset, uint32_t count) const;
+	void multiDrawIndexedIndirect(raw::Buffer buffer, uint64_t offset, uint32_t count) const;
+	void multiDrawIndirectCount(raw::Buffer buffer, uint64_t offset, raw::Buffer count_buffer, uint64_t count_buffer_offset, uint32_t max_count) const;
+	void multiDrawIndexedIndirectCount(raw::Buffer buffer, uint64_t offset, raw::Buffer count_buffer, uint64_t count_buffer_offset, uint32_t max_count) const;
+	void beginPipelineStatisticsQuery(raw::QuerySet querySet, uint32_t queryIndex) const;
 	void endPipelineStatisticsQuery() const;
-	void writeTimestamp(QuerySet querySet, uint32_t queryIndex) const;
+	void writeTimestamp(raw::QuerySet querySet, uint32_t queryIndex) const;
 END
 
 HANDLE(RenderPipeline)
-	BindGroupLayout getBindGroupLayout(uint32_t groupIndex) const;
+	raw::BindGroupLayout getBindGroupLayout(uint32_t groupIndex) const;
 	void setLabel(StringView label) const;
 	void addRef() const;
 	void release() const;
@@ -2379,21 +3067,7 @@ END
 
 HANDLE(ShaderModule)
 	template<std::invocable<CompilationInfoRequestStatus, const CompilationInfo&> Lambda>
-	Future getCompilationInfo(CallbackMode callbackMode, const Lambda& callback) const {
-		auto* lambda = new Lambda(callback);
-		auto cCallback = [](WGPUCompilationInfoRequestStatus status, struct WGPUCompilationInfo const * compilationInfo, void* userdata1, void*) -> void {
-			std::unique_ptr<Lambda> lambda(reinterpret_cast<Lambda*>(userdata1));
-			(*lambda)(static_cast<CompilationInfoRequestStatus>(status), *reinterpret_cast<const CompilationInfo*>(compilationInfo));
-		};
-		WGPUCompilationInfoCallbackInfo callbackInfo = {
-			/* nextInChain = */ nullptr,
-			/* mode = */ callbackMode,
-			/* callback = */ cCallback,
-			/* userdata1 = */ (void*)lambda,
-			/* userdata2 = */ nullptr,
-		};
-		return wgpuShaderModuleGetCompilationInfo(m_raw, *reinterpret_cast<WGPUCompilationInfoCallbackInfo *>(&callbackInfo));
-	}
+	Future getCompilationInfo(CallbackMode callbackMode, const Lambda& callback) const;
 	void setLabel(StringView label) const;
 	void addRef() const;
 	void release() const;
@@ -2401,7 +3075,7 @@ END
 
 HANDLE(Surface)
 	void configure(const SurfaceConfiguration& config) const;
-	Status getCapabilities(Adapter adapter, SurfaceCapabilities& capabilities) const;
+	Status getCapabilities(raw::Adapter adapter, SurfaceCapabilities& capabilities) const;
 	void getCurrentTexture(SurfaceTexture& surfaceTexture) const;
 	Status present() const;
 	void setLabel(StringView label) const;
@@ -2411,7 +3085,7 @@ HANDLE(Surface)
 END
 
 HANDLE(Texture)
-	TextureView createView(const TextureViewDescriptor& descriptor) const;
+	raw::TextureView createView(const TextureViewDescriptor& descriptor) const;
 	void destroy() const;
 	uint32_t getDepthOrArrayLayers() const;
 	TextureDimension getDimension() const;
@@ -2432,8 +3106,40 @@ HANDLE(TextureView)
 	void release() const;
 END
 
+}
+
+} // namespace wgpu
+
+
+// RAII handles
+namespace wgpu {
+HANDLE_RAII(Adapter, raw::Adapter);
+HANDLE_RAII(BindGroup, raw::BindGroup);
+HANDLE_RAII(BindGroupLayout, raw::BindGroupLayout);
+HANDLE_RAII(Buffer, raw::Buffer);
+HANDLE_RAII(CommandBuffer, raw::CommandBuffer);
+HANDLE_RAII(CommandEncoder, raw::CommandEncoder);
+HANDLE_RAII(ComputePassEncoder, raw::ComputePassEncoder);
+HANDLE_RAII(ComputePipeline, raw::ComputePipeline);
+HANDLE_RAII(Device, raw::Device);
+HANDLE_RAII(Instance, raw::Instance);
+HANDLE_RAII(PipelineLayout, raw::PipelineLayout);
+HANDLE_RAII(QuerySet, raw::QuerySet);
+HANDLE_RAII(Queue, raw::Queue);
+HANDLE_RAII(RenderBundle, raw::RenderBundle);
+HANDLE_RAII(RenderBundleEncoder, raw::RenderBundleEncoder);
+HANDLE_RAII(RenderPassEncoder, raw::RenderPassEncoder);
+HANDLE_RAII(RenderPipeline, raw::RenderPipeline);
+HANDLE_RAII(Sampler, raw::Sampler);
+HANDLE_RAII(ShaderModule, raw::ShaderModule);
+HANDLE_RAII(Surface, raw::Surface);
+HANDLE_RAII(Texture, raw::Texture);
+HANDLE_RAII(TextureView, raw::TextureView);
+} // namespace wgpu
+
 
 // Structs
+namespace wgpu {
 STRUCT_NO_OSTREAM(StringView)
 	const char * data;
 	size_t length;
@@ -2441,6 +3147,7 @@ STRUCT_NO_OSTREAM(StringView)
 	StringView& setData(const char * data);
 	StringView& setLength(size_t length);
 	StringView(const std::string_view& cpp) : data(cpp.data()), length(cpp.length()) {}
+	StringView(const char* cstr) : data(cstr), length(WGPU_STRLEN) {}
 	operator std::string_view() const;
 	friend auto operator<<(std::ostream& stream, const S& self) -> std::ostream& {
 		return stream << std::string_view(self);
@@ -2487,11 +3194,11 @@ STRUCT(Color)
 END
 
 STRUCT(ComputePassTimestampWrites)
-	QuerySet querySet;
+	raw::QuerySet querySet;
 	uint32_t beginningOfPassWriteIndex;
 	uint32_t endOfPassWriteIndex;
 	ComputePassTimestampWrites& setDefault();
-	ComputePassTimestampWrites& setQuerySet(QuerySet querySet);
+	ComputePassTimestampWrites& setQuerySet(raw::QuerySet querySet);
 	ComputePassTimestampWrites& setBeginningOfPassWriteIndex(uint32_t beginningOfPassWriteIndex);
 	ComputePassTimestampWrites& setEndOfPassWriteIndex(uint32_t endOfPassWriteIndex);
 END
@@ -2525,7 +3232,7 @@ STRUCT(Origin3D)
 END
 
 STRUCT(RenderPassDepthStencilAttachment)
-	TextureView view;
+	raw::TextureView view;
 	LoadOp depthLoadOp;
 	StoreOp depthStoreOp;
 	float depthClearValue;
@@ -2535,7 +3242,7 @@ STRUCT(RenderPassDepthStencilAttachment)
 	uint32_t stencilClearValue;
 	WGPUBool stencilReadOnly;
 	RenderPassDepthStencilAttachment& setDefault();
-	RenderPassDepthStencilAttachment& setView(TextureView view);
+	RenderPassDepthStencilAttachment& setView(raw::TextureView view);
 	RenderPassDepthStencilAttachment& setDepthLoadOp(LoadOp depthLoadOp);
 	RenderPassDepthStencilAttachment& setDepthStoreOp(StoreOp depthStoreOp);
 	RenderPassDepthStencilAttachment& setDepthClearValue(float depthClearValue);
@@ -2554,11 +3261,11 @@ STRUCT(RenderPassMaxDrawCount)
 END
 
 STRUCT(RenderPassTimestampWrites)
-	QuerySet querySet;
+	raw::QuerySet querySet;
 	uint32_t beginningOfPassWriteIndex;
 	uint32_t endOfPassWriteIndex;
 	RenderPassTimestampWrites& setDefault();
-	RenderPassTimestampWrites& setQuerySet(QuerySet querySet);
+	RenderPassTimestampWrites& setQuerySet(raw::QuerySet querySet);
 	RenderPassTimestampWrites& setBeginningOfPassWriteIndex(uint32_t beginningOfPassWriteIndex);
 	RenderPassTimestampWrites& setEndOfPassWriteIndex(uint32_t endOfPassWriteIndex);
 END
@@ -2699,19 +3406,19 @@ END
 
 STRUCT(TexelCopyBufferInfo)
 	TexelCopyBufferLayout layout;
-	Buffer buffer;
+	raw::Buffer buffer;
 	TexelCopyBufferInfo& setDefault();
 	TexelCopyBufferInfo& setLayout(TexelCopyBufferLayout layout);
-	TexelCopyBufferInfo& setBuffer(Buffer buffer);
+	TexelCopyBufferInfo& setBuffer(raw::Buffer buffer);
 END
 
 STRUCT(TexelCopyTextureInfo)
-	Texture texture;
+	raw::Texture texture;
 	uint32_t mipLevel;
 	Origin3D origin;
 	TextureAspect aspect;
 	TexelCopyTextureInfo& setDefault();
-	TexelCopyTextureInfo& setTexture(Texture texture);
+	TexelCopyTextureInfo& setTexture(raw::Texture texture);
 	TexelCopyTextureInfo& setMipLevel(uint32_t mipLevel);
 	TexelCopyTextureInfo& setOrigin(Origin3D origin);
 	TexelCopyTextureInfo& setAspect(TextureAspect aspect);
@@ -2883,20 +3590,26 @@ END
 
 STRUCT(BindGroupEntryExtras)
 	ChainedStruct chain;
-	const Buffer * buffers;
+	const raw::Buffer * buffers;
 	size_t bufferCount;
-	const Sampler * samplers;
+	const raw::Sampler * samplers;
 	size_t samplerCount;
-	const TextureView * textureViews;
+	const raw::TextureView * textureViews;
 	size_t textureViewCount;
 	BindGroupEntryExtras& setDefault();
-	BindGroupEntryExtras& setBuffers(size_t bufferCount, const Buffer * buffers);
+	BindGroupEntryExtras& setBuffers(size_t bufferCount, const raw::Buffer * buffers);
+	BindGroupEntryExtras& setBuffers(const std::vector<raw::Buffer>& buffers);
+	BindGroupEntryExtras& setBuffers(const std::span<const raw::Buffer>& buffers);
 	BindGroupEntryExtras& setBuffers(const std::vector<Buffer>& buffers);
 	BindGroupEntryExtras& setBuffers(const std::span<const Buffer>& buffers);
-	BindGroupEntryExtras& setSamplers(size_t samplerCount, const Sampler * samplers);
+	BindGroupEntryExtras& setSamplers(size_t samplerCount, const raw::Sampler * samplers);
+	BindGroupEntryExtras& setSamplers(const std::vector<raw::Sampler>& samplers);
+	BindGroupEntryExtras& setSamplers(const std::span<const raw::Sampler>& samplers);
 	BindGroupEntryExtras& setSamplers(const std::vector<Sampler>& samplers);
 	BindGroupEntryExtras& setSamplers(const std::span<const Sampler>& samplers);
-	BindGroupEntryExtras& setTextureViews(size_t textureViewCount, const TextureView * textureViews);
+	BindGroupEntryExtras& setTextureViews(size_t textureViewCount, const raw::TextureView * textureViews);
+	BindGroupEntryExtras& setTextureViews(const std::vector<raw::TextureView>& textureViews);
+	BindGroupEntryExtras& setTextureViews(const std::span<const raw::TextureView>& textureViews);
 	BindGroupEntryExtras& setTextureViews(const std::vector<TextureView>& textureViews);
 	BindGroupEntryExtras& setTextureViews(const std::span<const TextureView>& textureViews);
 END
@@ -2941,8 +3654,11 @@ STRUCT(PrimitiveStateExtras)
 	PrimitiveStateExtras& setConservative(WGPUBool conservative);
 END
 
+} // namespace wgpu
+
 
 // Descriptors
+namespace wgpu {
 DESCRIPTOR(BufferMapCallbackInfo)
 	const ChainedStruct * nextInChain;
 	CallbackMode mode;
@@ -3107,19 +3823,19 @@ END
 DESCRIPTOR(BindGroupEntry)
 	const ChainedStruct * nextInChain;
 	uint32_t binding;
-	Buffer buffer;
+	raw::Buffer buffer;
 	uint64_t offset;
 	uint64_t size;
-	Sampler sampler;
-	TextureView textureView;
+	raw::Sampler sampler;
+	raw::TextureView textureView;
 	BindGroupEntry& setDefault();
 	BindGroupEntry& setNextInChain(const ChainedStruct * nextInChain);
 	BindGroupEntry& setBinding(uint32_t binding);
-	BindGroupEntry& setBuffer(Buffer buffer);
+	BindGroupEntry& setBuffer(raw::Buffer buffer);
 	BindGroupEntry& setOffset(uint64_t offset);
 	BindGroupEntry& setSize(uint64_t size);
-	BindGroupEntry& setSampler(Sampler sampler);
-	BindGroupEntry& setTextureView(TextureView textureView);
+	BindGroupEntry& setSampler(raw::Sampler sampler);
+	BindGroupEntry& setTextureView(raw::TextureView textureView);
 END
 
 DESCRIPTOR(BufferBindingLayout)
@@ -3286,11 +4002,13 @@ DESCRIPTOR(PipelineLayoutDescriptor)
 	const ChainedStruct * nextInChain;
 	StringView label;
 	size_t bindGroupLayoutCount;
-	const BindGroupLayout * bindGroupLayouts;
+	const raw::BindGroupLayout * bindGroupLayouts;
 	PipelineLayoutDescriptor& setDefault();
 	PipelineLayoutDescriptor& setNextInChain(const ChainedStruct * nextInChain);
 	PipelineLayoutDescriptor& setLabel(StringView label);
-	PipelineLayoutDescriptor& setBindGroupLayouts(size_t bindGroupLayoutCount, const BindGroupLayout * bindGroupLayouts);
+	PipelineLayoutDescriptor& setBindGroupLayouts(size_t bindGroupLayoutCount, const raw::BindGroupLayout * bindGroupLayouts);
+	PipelineLayoutDescriptor& setBindGroupLayouts(const std::vector<raw::BindGroupLayout>& bindGroupLayouts);
+	PipelineLayoutDescriptor& setBindGroupLayouts(const std::span<const raw::BindGroupLayout>& bindGroupLayouts);
 	PipelineLayoutDescriptor& setBindGroupLayouts(const std::vector<BindGroupLayout>& bindGroupLayouts);
 	PipelineLayoutDescriptor& setBindGroupLayouts(const std::span<const BindGroupLayout>& bindGroupLayouts);
 END
@@ -3366,14 +4084,14 @@ DESCRIPTOR(RequestAdapterOptions)
 	PowerPreference powerPreference;
 	WGPUBool forceFallbackAdapter;
 	BackendType backendType;
-	Surface compatibleSurface;
+	raw::Surface compatibleSurface;
 	RequestAdapterOptions& setDefault();
 	RequestAdapterOptions& setNextInChain(const ChainedStruct * nextInChain);
 	RequestAdapterOptions& setFeatureLevel(FeatureLevel featureLevel);
 	RequestAdapterOptions& setPowerPreference(PowerPreference powerPreference);
 	RequestAdapterOptions& setForceFallbackAdapter(WGPUBool forceFallbackAdapter);
 	RequestAdapterOptions& setBackendType(BackendType backendType);
-	RequestAdapterOptions& setCompatibleSurface(Surface compatibleSurface);
+	RequestAdapterOptions& setCompatibleSurface(raw::Surface compatibleSurface);
 END
 
 DESCRIPTOR(SamplerBindingLayout)
@@ -3458,7 +4176,7 @@ END
 
 DESCRIPTOR(SurfaceConfiguration)
 	const ChainedStruct * nextInChain;
-	Device device;
+	raw::Device device;
 	TextureFormat format;
 	TextureUsage usage;
 	uint32_t width;
@@ -3469,7 +4187,7 @@ DESCRIPTOR(SurfaceConfiguration)
 	PresentMode presentMode;
 	SurfaceConfiguration& setDefault();
 	SurfaceConfiguration& setNextInChain(const ChainedStruct * nextInChain);
-	SurfaceConfiguration& setDevice(Device device);
+	SurfaceConfiguration& setDevice(raw::Device device);
 	SurfaceConfiguration& setFormat(TextureFormat format);
 	SurfaceConfiguration& setUsage(TextureUsage usage);
 	SurfaceConfiguration& setWidth(uint32_t width);
@@ -3491,11 +4209,11 @@ END
 
 DESCRIPTOR(SurfaceTexture)
 	ChainedStructOut * nextInChain;
-	Texture texture;
+	raw::Texture texture;
 	SurfaceGetCurrentTextureStatus status;
 	SurfaceTexture& setDefault();
 	SurfaceTexture& setNextInChain(ChainedStructOut * nextInChain);
-	SurfaceTexture& setTexture(Texture texture);
+	SurfaceTexture& setTexture(raw::Texture texture);
 	SurfaceTexture& setStatus(SurfaceGetCurrentTextureStatus status);
 END
 
@@ -3538,13 +4256,13 @@ END
 DESCRIPTOR(BindGroupDescriptor)
 	const ChainedStruct * nextInChain;
 	StringView label;
-	BindGroupLayout layout;
+	raw::BindGroupLayout layout;
 	size_t entryCount;
 	const BindGroupEntry * entries;
 	BindGroupDescriptor& setDefault();
 	BindGroupDescriptor& setNextInChain(const ChainedStruct * nextInChain);
 	BindGroupDescriptor& setLabel(StringView label);
-	BindGroupDescriptor& setLayout(BindGroupLayout layout);
+	BindGroupDescriptor& setLayout(raw::BindGroupLayout layout);
 	BindGroupDescriptor& setEntries(size_t entryCount, const BindGroupEntry * entries);
 	BindGroupDescriptor& setEntries(const std::vector<BindGroupEntry>& entries);
 	BindGroupDescriptor& setEntries(const std::span<const BindGroupEntry>& entries);
@@ -3646,13 +4364,13 @@ END
 
 DESCRIPTOR(ProgrammableStageDescriptor)
 	const ChainedStruct * nextInChain;
-	ShaderModule module;
+	raw::ShaderModule module;
 	StringView entryPoint;
 	size_t constantCount;
 	const ConstantEntry * constants;
 	ProgrammableStageDescriptor& setDefault();
 	ProgrammableStageDescriptor& setNextInChain(const ChainedStruct * nextInChain);
-	ProgrammableStageDescriptor& setModule(ShaderModule module);
+	ProgrammableStageDescriptor& setModule(raw::ShaderModule module);
 	ProgrammableStageDescriptor& setEntryPoint(StringView entryPoint);
 	ProgrammableStageDescriptor& setConstants(size_t constantCount, const ConstantEntry * constants);
 	ProgrammableStageDescriptor& setConstants(const std::vector<ConstantEntry>& constants);
@@ -3661,17 +4379,17 @@ END
 
 DESCRIPTOR(RenderPassColorAttachment)
 	const ChainedStruct * nextInChain;
-	TextureView view;
+	raw::TextureView view;
 	uint32_t depthSlice;
-	TextureView resolveTarget;
+	raw::TextureView resolveTarget;
 	LoadOp loadOp;
 	StoreOp storeOp;
 	Color clearValue;
 	RenderPassColorAttachment& setDefault();
 	RenderPassColorAttachment& setNextInChain(const ChainedStruct * nextInChain);
-	RenderPassColorAttachment& setView(TextureView view);
+	RenderPassColorAttachment& setView(raw::TextureView view);
 	RenderPassColorAttachment& setDepthSlice(uint32_t depthSlice);
-	RenderPassColorAttachment& setResolveTarget(TextureView resolveTarget);
+	RenderPassColorAttachment& setResolveTarget(raw::TextureView resolveTarget);
 	RenderPassColorAttachment& setLoadOp(LoadOp loadOp);
 	RenderPassColorAttachment& setStoreOp(StoreOp storeOp);
 	RenderPassColorAttachment& setClearValue(Color clearValue);
@@ -3730,12 +4448,12 @@ END
 DESCRIPTOR(ComputePipelineDescriptor)
 	const ChainedStruct * nextInChain;
 	StringView label;
-	PipelineLayout layout;
+	raw::PipelineLayout layout;
 	ProgrammableStageDescriptor compute;
 	ComputePipelineDescriptor& setDefault();
 	ComputePipelineDescriptor& setNextInChain(const ChainedStruct * nextInChain);
 	ComputePipelineDescriptor& setLabel(StringView label);
-	ComputePipelineDescriptor& setLayout(PipelineLayout layout);
+	ComputePipelineDescriptor& setLayout(raw::PipelineLayout layout);
 	ComputePipelineDescriptor& setCompute(ProgrammableStageDescriptor compute);
 END
 
@@ -3745,7 +4463,7 @@ DESCRIPTOR(RenderPassDescriptor)
 	size_t colorAttachmentCount;
 	const RenderPassColorAttachment * colorAttachments;
 	const RenderPassDepthStencilAttachment * depthStencilAttachment;
-	QuerySet occlusionQuerySet;
+	raw::QuerySet occlusionQuerySet;
 	const RenderPassTimestampWrites * timestampWrites;
 	RenderPassDescriptor& setDefault();
 	RenderPassDescriptor& setNextInChain(const ChainedStruct * nextInChain);
@@ -3754,13 +4472,13 @@ DESCRIPTOR(RenderPassDescriptor)
 	RenderPassDescriptor& setColorAttachments(const std::vector<RenderPassColorAttachment>& colorAttachments);
 	RenderPassDescriptor& setColorAttachments(const std::span<const RenderPassColorAttachment>& colorAttachments);
 	RenderPassDescriptor& setDepthStencilAttachment(const RenderPassDepthStencilAttachment * depthStencilAttachment);
-	RenderPassDescriptor& setOcclusionQuerySet(QuerySet occlusionQuerySet);
+	RenderPassDescriptor& setOcclusionQuerySet(raw::QuerySet occlusionQuerySet);
 	RenderPassDescriptor& setTimestampWrites(const RenderPassTimestampWrites * timestampWrites);
 END
 
 DESCRIPTOR(VertexState)
 	const ChainedStruct * nextInChain;
-	ShaderModule module;
+	raw::ShaderModule module;
 	StringView entryPoint;
 	size_t constantCount;
 	const ConstantEntry * constants;
@@ -3768,7 +4486,7 @@ DESCRIPTOR(VertexState)
 	const VertexBufferLayout * buffers;
 	VertexState& setDefault();
 	VertexState& setNextInChain(const ChainedStruct * nextInChain);
-	VertexState& setModule(ShaderModule module);
+	VertexState& setModule(raw::ShaderModule module);
 	VertexState& setEntryPoint(StringView entryPoint);
 	VertexState& setConstants(size_t constantCount, const ConstantEntry * constants);
 	VertexState& setConstants(const std::vector<ConstantEntry>& constants);
@@ -3780,7 +4498,7 @@ END
 
 DESCRIPTOR(FragmentState)
 	const ChainedStruct * nextInChain;
-	ShaderModule module;
+	raw::ShaderModule module;
 	StringView entryPoint;
 	size_t constantCount;
 	const ConstantEntry * constants;
@@ -3788,7 +4506,7 @@ DESCRIPTOR(FragmentState)
 	const ColorTargetState * targets;
 	FragmentState& setDefault();
 	FragmentState& setNextInChain(const ChainedStruct * nextInChain);
-	FragmentState& setModule(ShaderModule module);
+	FragmentState& setModule(raw::ShaderModule module);
 	FragmentState& setEntryPoint(StringView entryPoint);
 	FragmentState& setConstants(size_t constantCount, const ConstantEntry * constants);
 	FragmentState& setConstants(const std::vector<ConstantEntry>& constants);
@@ -3801,7 +4519,7 @@ END
 DESCRIPTOR(RenderPipelineDescriptor)
 	const ChainedStruct * nextInChain;
 	StringView label;
-	PipelineLayout layout;
+	raw::PipelineLayout layout;
 	VertexState vertex;
 	PrimitiveState primitive;
 	const DepthStencilState * depthStencil;
@@ -3810,7 +4528,7 @@ DESCRIPTOR(RenderPipelineDescriptor)
 	RenderPipelineDescriptor& setDefault();
 	RenderPipelineDescriptor& setNextInChain(const ChainedStruct * nextInChain);
 	RenderPipelineDescriptor& setLabel(StringView label);
-	RenderPipelineDescriptor& setLayout(PipelineLayout layout);
+	RenderPipelineDescriptor& setLayout(raw::PipelineLayout layout);
 	RenderPipelineDescriptor& setVertex(VertexState vertex);
 	RenderPipelineDescriptor& setPrimitive(PrimitiveState primitive);
 	RenderPipelineDescriptor& setDepthStencil(const DepthStencilState * depthStencil);
@@ -3826,45 +4544,51 @@ DESCRIPTOR(InstanceEnumerateAdapterOptions)
 	InstanceEnumerateAdapterOptions& setBackends(InstanceBackend backends);
 END
 
+} // namespace wgpu
+
 
 // Callback types
-using CompilationInfoCallback = WGPUCompilationInfoCallback;
-using BufferMapCallback = WGPUBufferMapCallback;
-using DeviceLostCallback = WGPUDeviceLostCallback;
-using RequestDeviceCallback = WGPURequestDeviceCallback;
-using PopErrorScopeCallback = WGPUPopErrorScopeCallback;
-using RequestAdapterCallback = WGPURequestAdapterCallback;
+namespace wgpu {
 using UncapturedErrorCallback = WGPUUncapturedErrorCallback;
 using CreateRenderPipelineAsyncCallback = WGPUCreateRenderPipelineAsyncCallback;
-using CreateComputePipelineAsyncCallback = WGPUCreateComputePipelineAsyncCallback;
 using LogCallback = WGPULogCallback;
+using CreateComputePipelineAsyncCallback = WGPUCreateComputePipelineAsyncCallback;
+using PopErrorScopeCallback = WGPUPopErrorScopeCallback;
+using DeviceLostCallback = WGPUDeviceLostCallback;
+using RequestAdapterCallback = WGPURequestAdapterCallback;
+using CompilationInfoCallback = WGPUCompilationInfoCallback;
+using RequestDeviceCallback = WGPURequestDeviceCallback;
 using QueueWorkDoneCallback = WGPUQueueWorkDoneCallback;
+using BufferMapCallback = WGPUBufferMapCallback;
+} // namespace wgpu
+
 
 // Non-member procedures
+namespace wgpu {
+
+} // namespace wgpu
 
 
-export Instance createInstance();
-export Instance createInstance(const InstanceDescriptor& descriptor);
+#ifdef WEBGPU_CPP_NAMESPACE
+namespace WEBGPU_CPP_NAMESPACE
+#endif
+{
+using InstanceHandle = 
+#ifdef WEBGPU_CPP_USE_RAW_NAMESPACE
+raw::Instance;
+#else
+Instance;
+#endif
+
+InstanceHandle createInstance();
+InstanceHandle createInstance(const InstanceDescriptor& descriptor);
+}
+
+}
+
 
 // Implementations
-
-Instance createInstance() {
-	return wgpuCreateInstance(nullptr);
-}
-
-Instance createInstance(const InstanceDescriptor& descriptor) {
-	return wgpuCreateInstance(reinterpret_cast<const WGPUInstanceDescriptor*>(&descriptor));
-}
-
-StringView::operator std::string_view() const {
-	return
-		length == WGPU_STRLEN
-		? std::string_view(data)
-		: std::string_view(data, length);
-}
-
-// RAII Implementations
-
+namespace wgpu {
 // Methods of StringView
 StringView& StringView::setDefault() {
 	*this = WGPUStringView WGPU_STRING_VIEW_INIT;
@@ -4515,7 +5239,7 @@ InstanceExtras& InstanceExtras::setDefault() {
     dx12ShaderCompiler = Dx12Compiler::Undefined;
     ((ChainedStruct*)&chain)->setDefault();
     ((StringView*)&dxcPath)->setDefault();
-    chain.sType = (WGPUSType)NativeSType::InstanceExtras;
+    chain.sType = static_cast<SType>(NativeSType::InstanceExtras);
     chain.next  = nullptr;
 	return *this;
 }
@@ -4524,7 +5248,7 @@ InstanceExtras& InstanceExtras::setDefault() {
 DeviceExtras& DeviceExtras::setDefault() {
     ((ChainedStruct*)&chain)->setDefault();
     ((StringView*)&tracePath)->setDefault();
-    chain.sType = (WGPUSType)NativeSType::DeviceExtras;
+    chain.sType = static_cast<SType>(NativeSType::DeviceExtras);
     chain.next  = nullptr;
 	return *this;
 }
@@ -4532,7 +5256,7 @@ DeviceExtras& DeviceExtras::setDefault() {
 // Methods of NativeLimits
 NativeLimits& NativeLimits::setDefault() {
     ((ChainedStructOut*)&chain)->setDefault();
-    chain.sType = (WGPUSType)NativeSType::NativeLimits;
+    chain.sType = static_cast<SType>(NativeSType::NativeLimits);
     chain.next  = nullptr;
 	return *this;
 }
@@ -4546,7 +5270,7 @@ PushConstantRange& PushConstantRange::setDefault() {
 // Methods of PipelineLayoutExtras
 PipelineLayoutExtras& PipelineLayoutExtras::setDefault() {
     ((ChainedStruct*)&chain)->setDefault();
-    chain.sType = (WGPUSType)NativeSType::PipelineLayoutExtras;
+    chain.sType = static_cast<SType>(NativeSType::PipelineLayoutExtras);
     chain.next  = nullptr;
 	return *this;
 }
@@ -4561,7 +5285,7 @@ ShaderDefine& ShaderDefine::setDefault() {
 // Methods of ShaderSourceGLSL
 ShaderSourceGLSL& ShaderSourceGLSL::setDefault() {
 	*this = WGPUShaderSourceGLSL {};
-	chain.sType = (WGPUSType)NativeSType::ShaderSourceGLSL;
+	chain.sType = static_cast<SType>(NativeSType::ShaderSourceGLSL);
 	chain.next = nullptr;
 	return *this;
 }
@@ -4616,7 +5340,7 @@ InstanceEnumerateAdapterOptions& InstanceEnumerateAdapterOptions::setDefault() {
 // Methods of BindGroupEntryExtras
 BindGroupEntryExtras& BindGroupEntryExtras::setDefault() {
     ((ChainedStruct*)&chain)->setDefault();
-    chain.sType = (WGPUSType)NativeSType::BindGroupEntryExtras;
+    chain.sType = static_cast<SType>(NativeSType::BindGroupEntryExtras);
     chain.next  = nullptr;
 	return *this;
 }
@@ -4624,7 +5348,7 @@ BindGroupEntryExtras& BindGroupEntryExtras::setDefault() {
 // Methods of BindGroupLayoutEntryExtras
 BindGroupLayoutEntryExtras& BindGroupLayoutEntryExtras::setDefault() {
     ((ChainedStruct*)&chain)->setDefault();
-    chain.sType = (WGPUSType)NativeSType::BindGroupLayoutEntryExtras;
+    chain.sType = static_cast<SType>(NativeSType::BindGroupLayoutEntryExtras);
     chain.next  = nullptr;
 	return *this;
 }
@@ -4632,7 +5356,7 @@ BindGroupLayoutEntryExtras& BindGroupLayoutEntryExtras::setDefault() {
 // Methods of QuerySetDescriptorExtras
 QuerySetDescriptorExtras& QuerySetDescriptorExtras::setDefault() {
     ((ChainedStruct*)&chain)->setDefault();
-    chain.sType = (WGPUSType)NativeSType::QuerySetDescriptorExtras;
+    chain.sType = static_cast<SType>(NativeSType::QuerySetDescriptorExtras);
     chain.next  = nullptr;
 	return *this;
 }
@@ -4640,7 +5364,7 @@ QuerySetDescriptorExtras& QuerySetDescriptorExtras::setDefault() {
 // Methods of SurfaceConfigurationExtras
 SurfaceConfigurationExtras& SurfaceConfigurationExtras::setDefault() {
     ((ChainedStruct*)&chain)->setDefault();
-    chain.sType = (WGPUSType)NativeSType::SurfaceConfigurationExtras;
+    chain.sType = static_cast<SType>(NativeSType::SurfaceConfigurationExtras);
     chain.next  = nullptr;
 	return *this;
 }
@@ -4648,7 +5372,7 @@ SurfaceConfigurationExtras& SurfaceConfigurationExtras::setDefault() {
 // Methods of SurfaceSourceSwapChainPanel
 SurfaceSourceSwapChainPanel& SurfaceSourceSwapChainPanel::setDefault() {
 	*this = WGPUSurfaceSourceSwapChainPanel {};
-	chain.sType = (WGPUSType)NativeSType::SurfaceSourceSwapChainPanel;
+	chain.sType = static_cast<SType>(NativeSType::SurfaceSourceSwapChainPanel);
 	chain.next = nullptr;
 	return *this;
 }
@@ -4656,11 +5380,14 @@ SurfaceSourceSwapChainPanel& SurfaceSourceSwapChainPanel::setDefault() {
 // Methods of PrimitiveStateExtras
 PrimitiveStateExtras& PrimitiveStateExtras::setDefault() {
 	*this = WGPUPrimitiveStateExtras {};
-	chain.sType = (WGPUSType)NativeSType::PrimitiveStateExtras;
+	chain.sType = static_cast<SType>(NativeSType::PrimitiveStateExtras);
 	chain.next = nullptr;
 	return *this;
 }
 
+} // namespace wgpu
+
+namespace wgpu {
 // Methods of StringView
 StringView& StringView::setData(const char * data) {
 	this->data = data;
@@ -4971,7 +5698,7 @@ BindGroupEntry& BindGroupEntry::setBinding(uint32_t binding) {
 	this->binding = binding;
 	return *this;
 }
-BindGroupEntry& BindGroupEntry::setBuffer(Buffer buffer) {
+BindGroupEntry& BindGroupEntry::setBuffer(raw::Buffer buffer) {
 	this->buffer = buffer;
 	return *this;
 }
@@ -4983,11 +5710,11 @@ BindGroupEntry& BindGroupEntry::setSize(uint64_t size) {
 	this->size = size;
 	return *this;
 }
-BindGroupEntry& BindGroupEntry::setSampler(Sampler sampler) {
+BindGroupEntry& BindGroupEntry::setSampler(raw::Sampler sampler) {
 	this->sampler = sampler;
 	return *this;
 }
-BindGroupEntry& BindGroupEntry::setTextureView(TextureView textureView) {
+BindGroupEntry& BindGroupEntry::setTextureView(raw::TextureView textureView) {
 	this->textureView = textureView;
 	return *this;
 }
@@ -5123,7 +5850,7 @@ CompilationMessage& CompilationMessage::setLength(uint64_t length) {
 
 
 // Methods of ComputePassTimestampWrites
-ComputePassTimestampWrites& ComputePassTimestampWrites::setQuerySet(QuerySet querySet) {
+ComputePassTimestampWrites& ComputePassTimestampWrites::setQuerySet(raw::QuerySet querySet) {
 	this->querySet = querySet;
 	return *this;
 }
@@ -5363,19 +6090,29 @@ PipelineLayoutDescriptor& PipelineLayoutDescriptor::setLabel(StringView label) {
 	this->label = label;
 	return *this;
 }
-PipelineLayoutDescriptor& PipelineLayoutDescriptor::setBindGroupLayouts(size_t bindGroupLayoutCount, const BindGroupLayout * bindGroupLayouts) {
+PipelineLayoutDescriptor& PipelineLayoutDescriptor::setBindGroupLayouts(size_t bindGroupLayoutCount, const raw::BindGroupLayout * bindGroupLayouts) {
 	this->bindGroupLayoutCount = bindGroupLayoutCount;
 	this->bindGroupLayouts = bindGroupLayouts;
 	return *this;
 }
+PipelineLayoutDescriptor& PipelineLayoutDescriptor::setBindGroupLayouts(const std::vector<raw::BindGroupLayout>& bindGroupLayouts) {
+	this->bindGroupLayoutCount = static_cast<size_t>(bindGroupLayouts.size());
+	this->bindGroupLayouts = reinterpret_cast<const raw::BindGroupLayout *>(bindGroupLayouts.data());
+	return *this;
+}
+PipelineLayoutDescriptor& PipelineLayoutDescriptor::setBindGroupLayouts(const std::span<const raw::BindGroupLayout>& bindGroupLayouts) {
+	this->bindGroupLayoutCount = static_cast<size_t>(bindGroupLayouts.size());
+	this->bindGroupLayouts = reinterpret_cast<const raw::BindGroupLayout *>(bindGroupLayouts.data());
+	return *this;
+}
 PipelineLayoutDescriptor& PipelineLayoutDescriptor::setBindGroupLayouts(const std::vector<BindGroupLayout>& bindGroupLayouts) {
 	this->bindGroupLayoutCount = static_cast<size_t>(bindGroupLayouts.size());
-	this->bindGroupLayouts = reinterpret_cast<const BindGroupLayout *>(bindGroupLayouts.data());
+	this->bindGroupLayouts = reinterpret_cast<const raw::BindGroupLayout *>(bindGroupLayouts.data());
 	return *this;
 }
 PipelineLayoutDescriptor& PipelineLayoutDescriptor::setBindGroupLayouts(const std::span<const BindGroupLayout>& bindGroupLayouts) {
 	this->bindGroupLayoutCount = static_cast<size_t>(bindGroupLayouts.size());
-	this->bindGroupLayouts = reinterpret_cast<const BindGroupLayout *>(bindGroupLayouts.data());
+	this->bindGroupLayouts = reinterpret_cast<const raw::BindGroupLayout *>(bindGroupLayouts.data());
 	return *this;
 }
 
@@ -5491,7 +6228,7 @@ RenderBundleEncoderDescriptor& RenderBundleEncoderDescriptor::setStencilReadOnly
 
 
 // Methods of RenderPassDepthStencilAttachment
-RenderPassDepthStencilAttachment& RenderPassDepthStencilAttachment::setView(TextureView view) {
+RenderPassDepthStencilAttachment& RenderPassDepthStencilAttachment::setView(raw::TextureView view) {
 	this->view = view;
 	return *this;
 }
@@ -5537,7 +6274,7 @@ RenderPassMaxDrawCount& RenderPassMaxDrawCount::setMaxDrawCount(uint64_t maxDraw
 
 
 // Methods of RenderPassTimestampWrites
-RenderPassTimestampWrites& RenderPassTimestampWrites::setQuerySet(QuerySet querySet) {
+RenderPassTimestampWrites& RenderPassTimestampWrites::setQuerySet(raw::QuerySet querySet) {
 	this->querySet = querySet;
 	return *this;
 }
@@ -5572,7 +6309,7 @@ RequestAdapterOptions& RequestAdapterOptions::setBackendType(BackendType backend
 	this->backendType = backendType;
 	return *this;
 }
-RequestAdapterOptions& RequestAdapterOptions::setCompatibleSurface(Surface compatibleSurface) {
+RequestAdapterOptions& RequestAdapterOptions::setCompatibleSurface(raw::Surface compatibleSurface) {
 	this->compatibleSurface = compatibleSurface;
 	return *this;
 }
@@ -5813,7 +6550,7 @@ SurfaceConfiguration& SurfaceConfiguration::setNextInChain(const ChainedStruct *
 	this->nextInChain = nextInChain;
 	return *this;
 }
-SurfaceConfiguration& SurfaceConfiguration::setDevice(Device device) {
+SurfaceConfiguration& SurfaceConfiguration::setDevice(raw::Device device) {
 	this->device = device;
 	return *this;
 }
@@ -5932,7 +6669,7 @@ SurfaceTexture& SurfaceTexture::setNextInChain(ChainedStructOut * nextInChain) {
 	this->nextInChain = nextInChain;
 	return *this;
 }
-SurfaceTexture& SurfaceTexture::setTexture(Texture texture) {
+SurfaceTexture& SurfaceTexture::setTexture(raw::Texture texture) {
 	this->texture = texture;
 	return *this;
 }
@@ -6043,7 +6780,7 @@ BindGroupDescriptor& BindGroupDescriptor::setLabel(StringView label) {
 	this->label = label;
 	return *this;
 }
-BindGroupDescriptor& BindGroupDescriptor::setLayout(BindGroupLayout layout) {
+BindGroupDescriptor& BindGroupDescriptor::setLayout(raw::BindGroupLayout layout) {
 	this->layout = layout;
 	return *this;
 }
@@ -6259,7 +6996,7 @@ ProgrammableStageDescriptor& ProgrammableStageDescriptor::setNextInChain(const C
 	this->nextInChain = nextInChain;
 	return *this;
 }
-ProgrammableStageDescriptor& ProgrammableStageDescriptor::setModule(ShaderModule module) {
+ProgrammableStageDescriptor& ProgrammableStageDescriptor::setModule(raw::ShaderModule module) {
 	this->module = module;
 	return *this;
 }
@@ -6289,7 +7026,7 @@ RenderPassColorAttachment& RenderPassColorAttachment::setNextInChain(const Chain
 	this->nextInChain = nextInChain;
 	return *this;
 }
-RenderPassColorAttachment& RenderPassColorAttachment::setView(TextureView view) {
+RenderPassColorAttachment& RenderPassColorAttachment::setView(raw::TextureView view) {
 	this->view = view;
 	return *this;
 }
@@ -6297,7 +7034,7 @@ RenderPassColorAttachment& RenderPassColorAttachment::setDepthSlice(uint32_t dep
 	this->depthSlice = depthSlice;
 	return *this;
 }
-RenderPassColorAttachment& RenderPassColorAttachment::setResolveTarget(TextureView resolveTarget) {
+RenderPassColorAttachment& RenderPassColorAttachment::setResolveTarget(raw::TextureView resolveTarget) {
 	this->resolveTarget = resolveTarget;
 	return *this;
 }
@@ -6320,14 +7057,14 @@ TexelCopyBufferInfo& TexelCopyBufferInfo::setLayout(TexelCopyBufferLayout layout
 	this->layout = layout;
 	return *this;
 }
-TexelCopyBufferInfo& TexelCopyBufferInfo::setBuffer(Buffer buffer) {
+TexelCopyBufferInfo& TexelCopyBufferInfo::setBuffer(raw::Buffer buffer) {
 	this->buffer = buffer;
 	return *this;
 }
 
 
 // Methods of TexelCopyTextureInfo
-TexelCopyTextureInfo& TexelCopyTextureInfo::setTexture(Texture texture) {
+TexelCopyTextureInfo& TexelCopyTextureInfo::setTexture(raw::Texture texture) {
 	this->texture = texture;
 	return *this;
 }
@@ -6475,7 +7212,7 @@ ComputePipelineDescriptor& ComputePipelineDescriptor::setLabel(StringView label)
 	this->label = label;
 	return *this;
 }
-ComputePipelineDescriptor& ComputePipelineDescriptor::setLayout(PipelineLayout layout) {
+ComputePipelineDescriptor& ComputePipelineDescriptor::setLayout(raw::PipelineLayout layout) {
 	this->layout = layout;
 	return *this;
 }
@@ -6513,7 +7250,7 @@ RenderPassDescriptor& RenderPassDescriptor::setDepthStencilAttachment(const Rend
 	this->depthStencilAttachment = depthStencilAttachment;
 	return *this;
 }
-RenderPassDescriptor& RenderPassDescriptor::setOcclusionQuerySet(QuerySet occlusionQuerySet) {
+RenderPassDescriptor& RenderPassDescriptor::setOcclusionQuerySet(raw::QuerySet occlusionQuerySet) {
 	this->occlusionQuerySet = occlusionQuerySet;
 	return *this;
 }
@@ -6528,7 +7265,7 @@ VertexState& VertexState::setNextInChain(const ChainedStruct * nextInChain) {
 	this->nextInChain = nextInChain;
 	return *this;
 }
-VertexState& VertexState::setModule(ShaderModule module) {
+VertexState& VertexState::setModule(raw::ShaderModule module) {
 	this->module = module;
 	return *this;
 }
@@ -6573,7 +7310,7 @@ FragmentState& FragmentState::setNextInChain(const ChainedStruct * nextInChain) 
 	this->nextInChain = nextInChain;
 	return *this;
 }
-FragmentState& FragmentState::setModule(ShaderModule module) {
+FragmentState& FragmentState::setModule(raw::ShaderModule module) {
 	this->module = module;
 	return *this;
 }
@@ -6622,7 +7359,7 @@ RenderPipelineDescriptor& RenderPipelineDescriptor::setLabel(StringView label) {
 	this->label = label;
 	return *this;
 }
-RenderPipelineDescriptor& RenderPipelineDescriptor::setLayout(PipelineLayout layout) {
+RenderPipelineDescriptor& RenderPipelineDescriptor::setLayout(raw::PipelineLayout layout) {
 	this->layout = layout;
 	return *this;
 }
@@ -6907,49 +7644,79 @@ InstanceEnumerateAdapterOptions& InstanceEnumerateAdapterOptions::setBackends(In
 
 
 // Methods of BindGroupEntryExtras
-BindGroupEntryExtras& BindGroupEntryExtras::setBuffers(size_t bufferCount, const Buffer * buffers) {
+BindGroupEntryExtras& BindGroupEntryExtras::setBuffers(size_t bufferCount, const raw::Buffer * buffers) {
 	this->bufferCount = bufferCount;
 	this->buffers = buffers;
 	return *this;
 }
+BindGroupEntryExtras& BindGroupEntryExtras::setBuffers(const std::vector<raw::Buffer>& buffers) {
+	this->bufferCount = static_cast<size_t>(buffers.size());
+	this->buffers = reinterpret_cast<const raw::Buffer *>(buffers.data());
+	return *this;
+}
+BindGroupEntryExtras& BindGroupEntryExtras::setBuffers(const std::span<const raw::Buffer>& buffers) {
+	this->bufferCount = static_cast<size_t>(buffers.size());
+	this->buffers = reinterpret_cast<const raw::Buffer *>(buffers.data());
+	return *this;
+}
 BindGroupEntryExtras& BindGroupEntryExtras::setBuffers(const std::vector<Buffer>& buffers) {
 	this->bufferCount = static_cast<size_t>(buffers.size());
-	this->buffers = reinterpret_cast<const Buffer *>(buffers.data());
+	this->buffers = reinterpret_cast<const raw::Buffer *>(buffers.data());
 	return *this;
 }
 BindGroupEntryExtras& BindGroupEntryExtras::setBuffers(const std::span<const Buffer>& buffers) {
 	this->bufferCount = static_cast<size_t>(buffers.size());
-	this->buffers = reinterpret_cast<const Buffer *>(buffers.data());
+	this->buffers = reinterpret_cast<const raw::Buffer *>(buffers.data());
 	return *this;
 }
-BindGroupEntryExtras& BindGroupEntryExtras::setSamplers(size_t samplerCount, const Sampler * samplers) {
+BindGroupEntryExtras& BindGroupEntryExtras::setSamplers(size_t samplerCount, const raw::Sampler * samplers) {
 	this->samplerCount = samplerCount;
 	this->samplers = samplers;
 	return *this;
 }
+BindGroupEntryExtras& BindGroupEntryExtras::setSamplers(const std::vector<raw::Sampler>& samplers) {
+	this->samplerCount = static_cast<size_t>(samplers.size());
+	this->samplers = reinterpret_cast<const raw::Sampler *>(samplers.data());
+	return *this;
+}
+BindGroupEntryExtras& BindGroupEntryExtras::setSamplers(const std::span<const raw::Sampler>& samplers) {
+	this->samplerCount = static_cast<size_t>(samplers.size());
+	this->samplers = reinterpret_cast<const raw::Sampler *>(samplers.data());
+	return *this;
+}
 BindGroupEntryExtras& BindGroupEntryExtras::setSamplers(const std::vector<Sampler>& samplers) {
 	this->samplerCount = static_cast<size_t>(samplers.size());
-	this->samplers = reinterpret_cast<const Sampler *>(samplers.data());
+	this->samplers = reinterpret_cast<const raw::Sampler *>(samplers.data());
 	return *this;
 }
 BindGroupEntryExtras& BindGroupEntryExtras::setSamplers(const std::span<const Sampler>& samplers) {
 	this->samplerCount = static_cast<size_t>(samplers.size());
-	this->samplers = reinterpret_cast<const Sampler *>(samplers.data());
+	this->samplers = reinterpret_cast<const raw::Sampler *>(samplers.data());
 	return *this;
 }
-BindGroupEntryExtras& BindGroupEntryExtras::setTextureViews(size_t textureViewCount, const TextureView * textureViews) {
+BindGroupEntryExtras& BindGroupEntryExtras::setTextureViews(size_t textureViewCount, const raw::TextureView * textureViews) {
 	this->textureViewCount = textureViewCount;
 	this->textureViews = textureViews;
 	return *this;
 }
+BindGroupEntryExtras& BindGroupEntryExtras::setTextureViews(const std::vector<raw::TextureView>& textureViews) {
+	this->textureViewCount = static_cast<size_t>(textureViews.size());
+	this->textureViews = reinterpret_cast<const raw::TextureView *>(textureViews.data());
+	return *this;
+}
+BindGroupEntryExtras& BindGroupEntryExtras::setTextureViews(const std::span<const raw::TextureView>& textureViews) {
+	this->textureViewCount = static_cast<size_t>(textureViews.size());
+	this->textureViews = reinterpret_cast<const raw::TextureView *>(textureViews.data());
+	return *this;
+}
 BindGroupEntryExtras& BindGroupEntryExtras::setTextureViews(const std::vector<TextureView>& textureViews) {
 	this->textureViewCount = static_cast<size_t>(textureViews.size());
-	this->textureViews = reinterpret_cast<const TextureView *>(textureViews.data());
+	this->textureViews = reinterpret_cast<const raw::TextureView *>(textureViews.data());
 	return *this;
 }
 BindGroupEntryExtras& BindGroupEntryExtras::setTextureViews(const std::span<const TextureView>& textureViews) {
 	this->textureViewCount = static_cast<size_t>(textureViews.size());
-	this->textureViews = reinterpret_cast<const TextureView *>(textureViews.data());
+	this->textureViews = reinterpret_cast<const raw::TextureView *>(textureViews.data());
 	return *this;
 }
 
@@ -7004,6 +7771,10 @@ PrimitiveStateExtras& PrimitiveStateExtras::setConservative(WGPUBool conservativ
 }
 
 
+} // namespace wgpu
+
+namespace wgpu {
+namespace raw {
 // Methods of Adapter
 void Adapter::getFeatures(SupportedFeatures& features) const {
 	return wgpuAdapterGetFeatures(m_raw, reinterpret_cast<WGPUSupportedFeatures *>(&features));
@@ -7095,16 +7866,16 @@ void CommandBuffer::release() const {
 
 
 // Methods of CommandEncoder
-ComputePassEncoder CommandEncoder::beginComputePass(const ComputePassDescriptor& descriptor) const {
+raw::ComputePassEncoder CommandEncoder::beginComputePass(const ComputePassDescriptor& descriptor) const {
 	return wgpuCommandEncoderBeginComputePass(m_raw, reinterpret_cast<const WGPUComputePassDescriptor *>(&descriptor));
 }
-RenderPassEncoder CommandEncoder::beginRenderPass(const RenderPassDescriptor& descriptor) const {
+raw::RenderPassEncoder CommandEncoder::beginRenderPass(const RenderPassDescriptor& descriptor) const {
 	return wgpuCommandEncoderBeginRenderPass(m_raw, reinterpret_cast<const WGPURenderPassDescriptor *>(&descriptor));
 }
-void CommandEncoder::clearBuffer(Buffer buffer, uint64_t offset, uint64_t size) const {
+void CommandEncoder::clearBuffer(raw::Buffer buffer, uint64_t offset, uint64_t size) const {
 	return wgpuCommandEncoderClearBuffer(m_raw, buffer, offset, size);
 }
-void CommandEncoder::copyBufferToBuffer(Buffer source, uint64_t sourceOffset, Buffer destination, uint64_t destinationOffset, uint64_t size) const {
+void CommandEncoder::copyBufferToBuffer(raw::Buffer source, uint64_t sourceOffset, raw::Buffer destination, uint64_t destinationOffset, uint64_t size) const {
 	return wgpuCommandEncoderCopyBufferToBuffer(m_raw, source, sourceOffset, destination, destinationOffset, size);
 }
 void CommandEncoder::copyBufferToTexture(const TexelCopyBufferInfo& source, const TexelCopyTextureInfo& destination, const Extent3D& copySize) const {
@@ -7116,7 +7887,7 @@ void CommandEncoder::copyTextureToBuffer(const TexelCopyTextureInfo& source, con
 void CommandEncoder::copyTextureToTexture(const TexelCopyTextureInfo& source, const TexelCopyTextureInfo& destination, const Extent3D& copySize) const {
 	return wgpuCommandEncoderCopyTextureToTexture(m_raw, reinterpret_cast<const WGPUTexelCopyTextureInfo *>(&source), reinterpret_cast<const WGPUTexelCopyTextureInfo *>(&destination), reinterpret_cast<const WGPUExtent3D *>(&copySize));
 }
-CommandBuffer CommandEncoder::finish(const CommandBufferDescriptor& descriptor) const {
+raw::CommandBuffer CommandEncoder::finish(const CommandBufferDescriptor& descriptor) const {
 	return wgpuCommandEncoderFinish(m_raw, reinterpret_cast<const WGPUCommandBufferDescriptor *>(&descriptor));
 }
 void CommandEncoder::insertDebugMarker(StringView markerLabel) const {
@@ -7128,13 +7899,13 @@ void CommandEncoder::popDebugGroup() const {
 void CommandEncoder::pushDebugGroup(StringView groupLabel) const {
 	return wgpuCommandEncoderPushDebugGroup(m_raw, *reinterpret_cast<WGPUStringView *>(&groupLabel));
 }
-void CommandEncoder::resolveQuerySet(QuerySet querySet, uint32_t firstQuery, uint32_t queryCount, Buffer destination, uint64_t destinationOffset) const {
+void CommandEncoder::resolveQuerySet(raw::QuerySet querySet, uint32_t firstQuery, uint32_t queryCount, raw::Buffer destination, uint64_t destinationOffset) const {
 	return wgpuCommandEncoderResolveQuerySet(m_raw, querySet, firstQuery, queryCount, destination, destinationOffset);
 }
 void CommandEncoder::setLabel(StringView label) const {
 	return wgpuCommandEncoderSetLabel(m_raw, *reinterpret_cast<WGPUStringView *>(&label));
 }
-void CommandEncoder::writeTimestamp(QuerySet querySet, uint32_t queryIndex) const {
+void CommandEncoder::writeTimestamp(raw::QuerySet querySet, uint32_t queryIndex) const {
 	return wgpuCommandEncoderWriteTimestamp(m_raw, querySet, queryIndex);
 }
 void CommandEncoder::addRef() const {
@@ -7149,7 +7920,7 @@ void CommandEncoder::release() const {
 void ComputePassEncoder::dispatchWorkgroups(uint32_t workgroupCountX, uint32_t workgroupCountY, uint32_t workgroupCountZ) const {
 	return wgpuComputePassEncoderDispatchWorkgroups(m_raw, workgroupCountX, workgroupCountY, workgroupCountZ);
 }
-void ComputePassEncoder::dispatchWorkgroupsIndirect(Buffer indirectBuffer, uint64_t indirectOffset) const {
+void ComputePassEncoder::dispatchWorkgroupsIndirect(raw::Buffer indirectBuffer, uint64_t indirectOffset) const {
 	return wgpuComputePassEncoderDispatchWorkgroupsIndirect(m_raw, indirectBuffer, indirectOffset);
 }
 void ComputePassEncoder::end() const {
@@ -7164,22 +7935,22 @@ void ComputePassEncoder::popDebugGroup() const {
 void ComputePassEncoder::pushDebugGroup(StringView groupLabel) const {
 	return wgpuComputePassEncoderPushDebugGroup(m_raw, *reinterpret_cast<WGPUStringView *>(&groupLabel));
 }
-void ComputePassEncoder::setBindGroup(uint32_t groupIndex, BindGroup group, size_t dynamicOffsetCount, uint32_t const * dynamicOffsets) const {
+void ComputePassEncoder::setBindGroup(uint32_t groupIndex, raw::BindGroup group, size_t dynamicOffsetCount, uint32_t const * dynamicOffsets) const {
 	return wgpuComputePassEncoderSetBindGroup(m_raw, groupIndex, group, dynamicOffsetCount, dynamicOffsets);
 }
-void ComputePassEncoder::setBindGroup(uint32_t groupIndex, BindGroup group, const std::vector<uint32_t>& dynamicOffsets) const {
+void ComputePassEncoder::setBindGroup(uint32_t groupIndex, raw::BindGroup group, const std::vector<uint32_t>& dynamicOffsets) const {
 	return wgpuComputePassEncoderSetBindGroup(m_raw, groupIndex, group, static_cast<size_t>(dynamicOffsets.size()), reinterpret_cast<const uint32_t *>(dynamicOffsets.data()));
 }
-void ComputePassEncoder::setBindGroup(uint32_t groupIndex, BindGroup group, const std::span<const uint32_t>& dynamicOffsets) const {
+void ComputePassEncoder::setBindGroup(uint32_t groupIndex, raw::BindGroup group, const std::span<const uint32_t>& dynamicOffsets) const {
 	return wgpuComputePassEncoderSetBindGroup(m_raw, groupIndex, group, static_cast<size_t>(dynamicOffsets.size()), reinterpret_cast<const uint32_t *>(dynamicOffsets.data()));
 }
-void ComputePassEncoder::setBindGroup(uint32_t groupIndex, BindGroup group, const uint32_t& dynamicOffsets) const {
+void ComputePassEncoder::setBindGroup(uint32_t groupIndex, raw::BindGroup group, const uint32_t& dynamicOffsets) const {
 	return wgpuComputePassEncoderSetBindGroup(m_raw, groupIndex, group, 1, reinterpret_cast<const uint32_t *>(&dynamicOffsets));
 }
 void ComputePassEncoder::setLabel(StringView label) const {
 	return wgpuComputePassEncoderSetLabel(m_raw, *reinterpret_cast<WGPUStringView *>(&label));
 }
-void ComputePassEncoder::setPipeline(ComputePipeline pipeline) const {
+void ComputePassEncoder::setPipeline(raw::ComputePipeline pipeline) const {
 	return wgpuComputePassEncoderSetPipeline(m_raw, pipeline);
 }
 void ComputePassEncoder::addRef() const {
@@ -7191,19 +7962,19 @@ void ComputePassEncoder::release() const {
 void ComputePassEncoder::setPushConstants(uint32_t offset, uint32_t sizeBytes, void const * data) const {
 	return wgpuComputePassEncoderSetPushConstants(m_raw, offset, sizeBytes, data);
 }
-void ComputePassEncoder::beginPipelineStatisticsQuery(QuerySet querySet, uint32_t queryIndex) const {
+void ComputePassEncoder::beginPipelineStatisticsQuery(raw::QuerySet querySet, uint32_t queryIndex) const {
 	return wgpuComputePassEncoderBeginPipelineStatisticsQuery(m_raw, querySet, queryIndex);
 }
 void ComputePassEncoder::endPipelineStatisticsQuery() const {
 	return wgpuComputePassEncoderEndPipelineStatisticsQuery(m_raw);
 }
-void ComputePassEncoder::writeTimestamp(QuerySet querySet, uint32_t queryIndex) const {
+void ComputePassEncoder::writeTimestamp(raw::QuerySet querySet, uint32_t queryIndex) const {
 	return wgpuComputePassEncoderWriteTimestamp(m_raw, querySet, queryIndex);
 }
 
 
 // Methods of ComputePipeline
-BindGroupLayout ComputePipeline::getBindGroupLayout(uint32_t groupIndex) const {
+raw::BindGroupLayout ComputePipeline::getBindGroupLayout(uint32_t groupIndex) const {
 	return wgpuComputePipelineGetBindGroupLayout(m_raw, groupIndex);
 }
 void ComputePipeline::setLabel(StringView label) const {
@@ -7218,40 +7989,40 @@ void ComputePipeline::release() const {
 
 
 // Methods of Device
-BindGroup Device::createBindGroup(const BindGroupDescriptor& descriptor) const {
+raw::BindGroup Device::createBindGroup(const BindGroupDescriptor& descriptor) const {
 	return wgpuDeviceCreateBindGroup(m_raw, reinterpret_cast<const WGPUBindGroupDescriptor *>(&descriptor));
 }
-BindGroupLayout Device::createBindGroupLayout(const BindGroupLayoutDescriptor& descriptor) const {
+raw::BindGroupLayout Device::createBindGroupLayout(const BindGroupLayoutDescriptor& descriptor) const {
 	return wgpuDeviceCreateBindGroupLayout(m_raw, reinterpret_cast<const WGPUBindGroupLayoutDescriptor *>(&descriptor));
 }
-Buffer Device::createBuffer(const BufferDescriptor& descriptor) const {
+raw::Buffer Device::createBuffer(const BufferDescriptor& descriptor) const {
 	return wgpuDeviceCreateBuffer(m_raw, reinterpret_cast<const WGPUBufferDescriptor *>(&descriptor));
 }
-CommandEncoder Device::createCommandEncoder(const CommandEncoderDescriptor& descriptor) const {
+raw::CommandEncoder Device::createCommandEncoder(const CommandEncoderDescriptor& descriptor) const {
 	return wgpuDeviceCreateCommandEncoder(m_raw, reinterpret_cast<const WGPUCommandEncoderDescriptor *>(&descriptor));
 }
-ComputePipeline Device::createComputePipeline(const ComputePipelineDescriptor& descriptor) const {
+raw::ComputePipeline Device::createComputePipeline(const ComputePipelineDescriptor& descriptor) const {
 	return wgpuDeviceCreateComputePipeline(m_raw, reinterpret_cast<const WGPUComputePipelineDescriptor *>(&descriptor));
 }
-PipelineLayout Device::createPipelineLayout(const PipelineLayoutDescriptor& descriptor) const {
+raw::PipelineLayout Device::createPipelineLayout(const PipelineLayoutDescriptor& descriptor) const {
 	return wgpuDeviceCreatePipelineLayout(m_raw, reinterpret_cast<const WGPUPipelineLayoutDescriptor *>(&descriptor));
 }
-QuerySet Device::createQuerySet(const QuerySetDescriptor& descriptor) const {
+raw::QuerySet Device::createQuerySet(const QuerySetDescriptor& descriptor) const {
 	return wgpuDeviceCreateQuerySet(m_raw, reinterpret_cast<const WGPUQuerySetDescriptor *>(&descriptor));
 }
-RenderBundleEncoder Device::createRenderBundleEncoder(const RenderBundleEncoderDescriptor& descriptor) const {
+raw::RenderBundleEncoder Device::createRenderBundleEncoder(const RenderBundleEncoderDescriptor& descriptor) const {
 	return wgpuDeviceCreateRenderBundleEncoder(m_raw, reinterpret_cast<const WGPURenderBundleEncoderDescriptor *>(&descriptor));
 }
-RenderPipeline Device::createRenderPipeline(const RenderPipelineDescriptor& descriptor) const {
+raw::RenderPipeline Device::createRenderPipeline(const RenderPipelineDescriptor& descriptor) const {
 	return wgpuDeviceCreateRenderPipeline(m_raw, reinterpret_cast<const WGPURenderPipelineDescriptor *>(&descriptor));
 }
-Sampler Device::createSampler(const SamplerDescriptor& descriptor) const {
+raw::Sampler Device::createSampler(const SamplerDescriptor& descriptor) const {
 	return wgpuDeviceCreateSampler(m_raw, reinterpret_cast<const WGPUSamplerDescriptor *>(&descriptor));
 }
-ShaderModule Device::createShaderModule(const ShaderModuleDescriptor& descriptor) const {
+raw::ShaderModule Device::createShaderModule(const ShaderModuleDescriptor& descriptor) const {
 	return wgpuDeviceCreateShaderModule(m_raw, reinterpret_cast<const WGPUShaderModuleDescriptor *>(&descriptor));
 }
-Texture Device::createTexture(const TextureDescriptor& descriptor) const {
+raw::Texture Device::createTexture(const TextureDescriptor& descriptor) const {
 	return wgpuDeviceCreateTexture(m_raw, reinterpret_cast<const WGPUTextureDescriptor *>(&descriptor));
 }
 void Device::destroy() const {
@@ -7266,7 +8037,7 @@ void Device::getFeatures(SupportedFeatures& features) const {
 Status Device::getLimits(Limits& limits) const {
 	return static_cast<Status>(wgpuDeviceGetLimits(m_raw, reinterpret_cast<WGPULimits *>(&limits)));
 }
-Queue Device::getQueue() const {
+raw::Queue Device::getQueue() const {
 	return wgpuDeviceGetQueue(m_raw);
 }
 Bool Device::hasFeature(FeatureName feature) const {
@@ -7287,13 +8058,13 @@ void Device::release() const {
 Bool Device::poll(Bool wait, SubmissionIndex const * submissionIndex) const {
 	return wgpuDevicePoll(m_raw, wait, submissionIndex);
 }
-ShaderModule Device::createShaderModuleSpirV(const ShaderModuleDescriptorSpirV& descriptor) const {
+raw::ShaderModule Device::createShaderModuleSpirV(const ShaderModuleDescriptorSpirV& descriptor) const {
 	return wgpuDeviceCreateShaderModuleSpirV(m_raw, reinterpret_cast<const WGPUShaderModuleDescriptorSpirV *>(&descriptor));
 }
 
 
 // Methods of Instance
-Surface Instance::createSurface(const SurfaceDescriptor& descriptor) const {
+raw::Surface Instance::createSurface(const SurfaceDescriptor& descriptor) const {
 	return wgpuInstanceCreateSurface(m_raw, reinterpret_cast<const WGPUSurfaceDescriptor *>(&descriptor));
 }
 Status Instance::getWGSLLanguageFeatures(SupportedWGSLLanguageFeatures& features) const {
@@ -7368,7 +8139,16 @@ void Queue::submit(const std::span<const CommandBuffer>& commands) const {
 void Queue::submit(const CommandBuffer& commands) const {
 	return wgpuQueueSubmit(m_raw, 1, reinterpret_cast<const WGPUCommandBuffer *>(&commands));
 }
-void Queue::writeBuffer(Buffer buffer, uint64_t bufferOffset, void const * data, size_t size) const {
+void Queue::submit(const std::vector<wgpu::CommandBuffer>& commands) const {
+	return wgpuQueueSubmit(m_raw, static_cast<size_t>(commands.size()), reinterpret_cast<const WGPUCommandBuffer *>(commands.data()));
+}
+void Queue::submit(const std::span<const wgpu::CommandBuffer>& commands) const {
+	return wgpuQueueSubmit(m_raw, static_cast<size_t>(commands.size()), reinterpret_cast<const WGPUCommandBuffer *>(commands.data()));
+}
+void Queue::submit(const wgpu::CommandBuffer& commands) const {
+	return wgpuQueueSubmit(m_raw, 1, reinterpret_cast<const WGPUCommandBuffer *>(&commands));
+}
+void Queue::writeBuffer(raw::Buffer buffer, uint64_t bufferOffset, void const * data, size_t size) const {
 	return wgpuQueueWriteBuffer(m_raw, buffer, bufferOffset, data, size);
 }
 void Queue::writeTexture(const TexelCopyTextureInfo& destination, void const * data, size_t dataSize, const TexelCopyBufferLayout& dataLayout, const Extent3D& writeSize) const {
@@ -7390,6 +8170,15 @@ SubmissionIndex Queue::submitForIndex(const std::span<const CommandBuffer>& comm
 	return wgpuQueueSubmitForIndex(m_raw, static_cast<size_t>(commands.size()), reinterpret_cast<const WGPUCommandBuffer *>(commands.data()));
 }
 SubmissionIndex Queue::submitForIndex(const CommandBuffer& commands) const {
+	return wgpuQueueSubmitForIndex(m_raw, 1, reinterpret_cast<const WGPUCommandBuffer *>(&commands));
+}
+SubmissionIndex Queue::submitForIndex(const std::vector<wgpu::CommandBuffer>& commands) const {
+	return wgpuQueueSubmitForIndex(m_raw, static_cast<size_t>(commands.size()), reinterpret_cast<const WGPUCommandBuffer *>(commands.data()));
+}
+SubmissionIndex Queue::submitForIndex(const std::span<const wgpu::CommandBuffer>& commands) const {
+	return wgpuQueueSubmitForIndex(m_raw, static_cast<size_t>(commands.size()), reinterpret_cast<const WGPUCommandBuffer *>(commands.data()));
+}
+SubmissionIndex Queue::submitForIndex(const wgpu::CommandBuffer& commands) const {
 	return wgpuQueueSubmitForIndex(m_raw, 1, reinterpret_cast<const WGPUCommandBuffer *>(&commands));
 }
 float Queue::getTimestampPeriod() const {
@@ -7416,13 +8205,13 @@ void RenderBundleEncoder::draw(uint32_t vertexCount, uint32_t instanceCount, uin
 void RenderBundleEncoder::drawIndexed(uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex, int32_t baseVertex, uint32_t firstInstance) const {
 	return wgpuRenderBundleEncoderDrawIndexed(m_raw, indexCount, instanceCount, firstIndex, baseVertex, firstInstance);
 }
-void RenderBundleEncoder::drawIndexedIndirect(Buffer indirectBuffer, uint64_t indirectOffset) const {
+void RenderBundleEncoder::drawIndexedIndirect(raw::Buffer indirectBuffer, uint64_t indirectOffset) const {
 	return wgpuRenderBundleEncoderDrawIndexedIndirect(m_raw, indirectBuffer, indirectOffset);
 }
-void RenderBundleEncoder::drawIndirect(Buffer indirectBuffer, uint64_t indirectOffset) const {
+void RenderBundleEncoder::drawIndirect(raw::Buffer indirectBuffer, uint64_t indirectOffset) const {
 	return wgpuRenderBundleEncoderDrawIndirect(m_raw, indirectBuffer, indirectOffset);
 }
-RenderBundle RenderBundleEncoder::finish(const RenderBundleDescriptor& descriptor) const {
+raw::RenderBundle RenderBundleEncoder::finish(const RenderBundleDescriptor& descriptor) const {
 	return wgpuRenderBundleEncoderFinish(m_raw, reinterpret_cast<const WGPURenderBundleDescriptor *>(&descriptor));
 }
 void RenderBundleEncoder::insertDebugMarker(StringView markerLabel) const {
@@ -7434,28 +8223,28 @@ void RenderBundleEncoder::popDebugGroup() const {
 void RenderBundleEncoder::pushDebugGroup(StringView groupLabel) const {
 	return wgpuRenderBundleEncoderPushDebugGroup(m_raw, *reinterpret_cast<WGPUStringView *>(&groupLabel));
 }
-void RenderBundleEncoder::setBindGroup(uint32_t groupIndex, BindGroup group, size_t dynamicOffsetCount, uint32_t const * dynamicOffsets) const {
+void RenderBundleEncoder::setBindGroup(uint32_t groupIndex, raw::BindGroup group, size_t dynamicOffsetCount, uint32_t const * dynamicOffsets) const {
 	return wgpuRenderBundleEncoderSetBindGroup(m_raw, groupIndex, group, dynamicOffsetCount, dynamicOffsets);
 }
-void RenderBundleEncoder::setBindGroup(uint32_t groupIndex, BindGroup group, const std::vector<uint32_t>& dynamicOffsets) const {
+void RenderBundleEncoder::setBindGroup(uint32_t groupIndex, raw::BindGroup group, const std::vector<uint32_t>& dynamicOffsets) const {
 	return wgpuRenderBundleEncoderSetBindGroup(m_raw, groupIndex, group, static_cast<size_t>(dynamicOffsets.size()), reinterpret_cast<const uint32_t *>(dynamicOffsets.data()));
 }
-void RenderBundleEncoder::setBindGroup(uint32_t groupIndex, BindGroup group, const std::span<const uint32_t>& dynamicOffsets) const {
+void RenderBundleEncoder::setBindGroup(uint32_t groupIndex, raw::BindGroup group, const std::span<const uint32_t>& dynamicOffsets) const {
 	return wgpuRenderBundleEncoderSetBindGroup(m_raw, groupIndex, group, static_cast<size_t>(dynamicOffsets.size()), reinterpret_cast<const uint32_t *>(dynamicOffsets.data()));
 }
-void RenderBundleEncoder::setBindGroup(uint32_t groupIndex, BindGroup group, const uint32_t& dynamicOffsets) const {
+void RenderBundleEncoder::setBindGroup(uint32_t groupIndex, raw::BindGroup group, const uint32_t& dynamicOffsets) const {
 	return wgpuRenderBundleEncoderSetBindGroup(m_raw, groupIndex, group, 1, reinterpret_cast<const uint32_t *>(&dynamicOffsets));
 }
-void RenderBundleEncoder::setIndexBuffer(Buffer buffer, IndexFormat format, uint64_t offset, uint64_t size) const {
+void RenderBundleEncoder::setIndexBuffer(raw::Buffer buffer, IndexFormat format, uint64_t offset, uint64_t size) const {
 	return wgpuRenderBundleEncoderSetIndexBuffer(m_raw, buffer, static_cast<WGPUIndexFormat>(format), offset, size);
 }
 void RenderBundleEncoder::setLabel(StringView label) const {
 	return wgpuRenderBundleEncoderSetLabel(m_raw, *reinterpret_cast<WGPUStringView *>(&label));
 }
-void RenderBundleEncoder::setPipeline(RenderPipeline pipeline) const {
+void RenderBundleEncoder::setPipeline(raw::RenderPipeline pipeline) const {
 	return wgpuRenderBundleEncoderSetPipeline(m_raw, pipeline);
 }
-void RenderBundleEncoder::setVertexBuffer(uint32_t slot, Buffer buffer, uint64_t offset, uint64_t size) const {
+void RenderBundleEncoder::setVertexBuffer(uint32_t slot, raw::Buffer buffer, uint64_t offset, uint64_t size) const {
 	return wgpuRenderBundleEncoderSetVertexBuffer(m_raw, slot, buffer, offset, size);
 }
 void RenderBundleEncoder::addRef() const {
@@ -7479,10 +8268,10 @@ void RenderPassEncoder::draw(uint32_t vertexCount, uint32_t instanceCount, uint3
 void RenderPassEncoder::drawIndexed(uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex, int32_t baseVertex, uint32_t firstInstance) const {
 	return wgpuRenderPassEncoderDrawIndexed(m_raw, indexCount, instanceCount, firstIndex, baseVertex, firstInstance);
 }
-void RenderPassEncoder::drawIndexedIndirect(Buffer indirectBuffer, uint64_t indirectOffset) const {
+void RenderPassEncoder::drawIndexedIndirect(raw::Buffer indirectBuffer, uint64_t indirectOffset) const {
 	return wgpuRenderPassEncoderDrawIndexedIndirect(m_raw, indirectBuffer, indirectOffset);
 }
-void RenderPassEncoder::drawIndirect(Buffer indirectBuffer, uint64_t indirectOffset) const {
+void RenderPassEncoder::drawIndirect(raw::Buffer indirectBuffer, uint64_t indirectOffset) const {
 	return wgpuRenderPassEncoderDrawIndirect(m_raw, indirectBuffer, indirectOffset);
 }
 void RenderPassEncoder::end() const {
@@ -7503,6 +8292,15 @@ void RenderPassEncoder::executeBundles(const std::span<const RenderBundle>& bund
 void RenderPassEncoder::executeBundles(const RenderBundle& bundles) const {
 	return wgpuRenderPassEncoderExecuteBundles(m_raw, 1, reinterpret_cast<const WGPURenderBundle *>(&bundles));
 }
+void RenderPassEncoder::executeBundles(const std::vector<wgpu::RenderBundle>& bundles) const {
+	return wgpuRenderPassEncoderExecuteBundles(m_raw, static_cast<size_t>(bundles.size()), reinterpret_cast<const WGPURenderBundle *>(bundles.data()));
+}
+void RenderPassEncoder::executeBundles(const std::span<const wgpu::RenderBundle>& bundles) const {
+	return wgpuRenderPassEncoderExecuteBundles(m_raw, static_cast<size_t>(bundles.size()), reinterpret_cast<const WGPURenderBundle *>(bundles.data()));
+}
+void RenderPassEncoder::executeBundles(const wgpu::RenderBundle& bundles) const {
+	return wgpuRenderPassEncoderExecuteBundles(m_raw, 1, reinterpret_cast<const WGPURenderBundle *>(&bundles));
+}
 void RenderPassEncoder::insertDebugMarker(StringView markerLabel) const {
 	return wgpuRenderPassEncoderInsertDebugMarker(m_raw, *reinterpret_cast<WGPUStringView *>(&markerLabel));
 }
@@ -7512,28 +8310,28 @@ void RenderPassEncoder::popDebugGroup() const {
 void RenderPassEncoder::pushDebugGroup(StringView groupLabel) const {
 	return wgpuRenderPassEncoderPushDebugGroup(m_raw, *reinterpret_cast<WGPUStringView *>(&groupLabel));
 }
-void RenderPassEncoder::setBindGroup(uint32_t groupIndex, BindGroup group, size_t dynamicOffsetCount, uint32_t const * dynamicOffsets) const {
+void RenderPassEncoder::setBindGroup(uint32_t groupIndex, raw::BindGroup group, size_t dynamicOffsetCount, uint32_t const * dynamicOffsets) const {
 	return wgpuRenderPassEncoderSetBindGroup(m_raw, groupIndex, group, dynamicOffsetCount, dynamicOffsets);
 }
-void RenderPassEncoder::setBindGroup(uint32_t groupIndex, BindGroup group, const std::vector<uint32_t>& dynamicOffsets) const {
+void RenderPassEncoder::setBindGroup(uint32_t groupIndex, raw::BindGroup group, const std::vector<uint32_t>& dynamicOffsets) const {
 	return wgpuRenderPassEncoderSetBindGroup(m_raw, groupIndex, group, static_cast<size_t>(dynamicOffsets.size()), reinterpret_cast<const uint32_t *>(dynamicOffsets.data()));
 }
-void RenderPassEncoder::setBindGroup(uint32_t groupIndex, BindGroup group, const std::span<const uint32_t>& dynamicOffsets) const {
+void RenderPassEncoder::setBindGroup(uint32_t groupIndex, raw::BindGroup group, const std::span<const uint32_t>& dynamicOffsets) const {
 	return wgpuRenderPassEncoderSetBindGroup(m_raw, groupIndex, group, static_cast<size_t>(dynamicOffsets.size()), reinterpret_cast<const uint32_t *>(dynamicOffsets.data()));
 }
-void RenderPassEncoder::setBindGroup(uint32_t groupIndex, BindGroup group, const uint32_t& dynamicOffsets) const {
+void RenderPassEncoder::setBindGroup(uint32_t groupIndex, raw::BindGroup group, const uint32_t& dynamicOffsets) const {
 	return wgpuRenderPassEncoderSetBindGroup(m_raw, groupIndex, group, 1, reinterpret_cast<const uint32_t *>(&dynamicOffsets));
 }
 void RenderPassEncoder::setBlendConstant(const Color& color) const {
 	return wgpuRenderPassEncoderSetBlendConstant(m_raw, reinterpret_cast<const WGPUColor *>(&color));
 }
-void RenderPassEncoder::setIndexBuffer(Buffer buffer, IndexFormat format, uint64_t offset, uint64_t size) const {
+void RenderPassEncoder::setIndexBuffer(raw::Buffer buffer, IndexFormat format, uint64_t offset, uint64_t size) const {
 	return wgpuRenderPassEncoderSetIndexBuffer(m_raw, buffer, static_cast<WGPUIndexFormat>(format), offset, size);
 }
 void RenderPassEncoder::setLabel(StringView label) const {
 	return wgpuRenderPassEncoderSetLabel(m_raw, *reinterpret_cast<WGPUStringView *>(&label));
 }
-void RenderPassEncoder::setPipeline(RenderPipeline pipeline) const {
+void RenderPassEncoder::setPipeline(raw::RenderPipeline pipeline) const {
 	return wgpuRenderPassEncoderSetPipeline(m_raw, pipeline);
 }
 void RenderPassEncoder::setScissorRect(uint32_t x, uint32_t y, uint32_t width, uint32_t height) const {
@@ -7542,7 +8340,7 @@ void RenderPassEncoder::setScissorRect(uint32_t x, uint32_t y, uint32_t width, u
 void RenderPassEncoder::setStencilReference(uint32_t reference) const {
 	return wgpuRenderPassEncoderSetStencilReference(m_raw, reference);
 }
-void RenderPassEncoder::setVertexBuffer(uint32_t slot, Buffer buffer, uint64_t offset, uint64_t size) const {
+void RenderPassEncoder::setVertexBuffer(uint32_t slot, raw::Buffer buffer, uint64_t offset, uint64_t size) const {
 	return wgpuRenderPassEncoderSetVertexBuffer(m_raw, slot, buffer, offset, size);
 }
 void RenderPassEncoder::setViewport(float x, float y, float width, float height, float minDepth, float maxDepth) const {
@@ -7557,31 +8355,31 @@ void RenderPassEncoder::release() const {
 void RenderPassEncoder::setPushConstants(ShaderStage stages, uint32_t offset, uint32_t sizeBytes, void const * data) const {
 	return wgpuRenderPassEncoderSetPushConstants(m_raw, static_cast<WGPUShaderStage>(stages), offset, sizeBytes, data);
 }
-void RenderPassEncoder::multiDrawIndirect(Buffer buffer, uint64_t offset, uint32_t count) const {
+void RenderPassEncoder::multiDrawIndirect(raw::Buffer buffer, uint64_t offset, uint32_t count) const {
 	return wgpuRenderPassEncoderMultiDrawIndirect(m_raw, buffer, offset, count);
 }
-void RenderPassEncoder::multiDrawIndexedIndirect(Buffer buffer, uint64_t offset, uint32_t count) const {
+void RenderPassEncoder::multiDrawIndexedIndirect(raw::Buffer buffer, uint64_t offset, uint32_t count) const {
 	return wgpuRenderPassEncoderMultiDrawIndexedIndirect(m_raw, buffer, offset, count);
 }
-void RenderPassEncoder::multiDrawIndirectCount(Buffer buffer, uint64_t offset, Buffer count_buffer, uint64_t count_buffer_offset, uint32_t max_count) const {
+void RenderPassEncoder::multiDrawIndirectCount(raw::Buffer buffer, uint64_t offset, raw::Buffer count_buffer, uint64_t count_buffer_offset, uint32_t max_count) const {
 	return wgpuRenderPassEncoderMultiDrawIndirectCount(m_raw, buffer, offset, count_buffer, count_buffer_offset, max_count);
 }
-void RenderPassEncoder::multiDrawIndexedIndirectCount(Buffer buffer, uint64_t offset, Buffer count_buffer, uint64_t count_buffer_offset, uint32_t max_count) const {
+void RenderPassEncoder::multiDrawIndexedIndirectCount(raw::Buffer buffer, uint64_t offset, raw::Buffer count_buffer, uint64_t count_buffer_offset, uint32_t max_count) const {
 	return wgpuRenderPassEncoderMultiDrawIndexedIndirectCount(m_raw, buffer, offset, count_buffer, count_buffer_offset, max_count);
 }
-void RenderPassEncoder::beginPipelineStatisticsQuery(QuerySet querySet, uint32_t queryIndex) const {
+void RenderPassEncoder::beginPipelineStatisticsQuery(raw::QuerySet querySet, uint32_t queryIndex) const {
 	return wgpuRenderPassEncoderBeginPipelineStatisticsQuery(m_raw, querySet, queryIndex);
 }
 void RenderPassEncoder::endPipelineStatisticsQuery() const {
 	return wgpuRenderPassEncoderEndPipelineStatisticsQuery(m_raw);
 }
-void RenderPassEncoder::writeTimestamp(QuerySet querySet, uint32_t queryIndex) const {
+void RenderPassEncoder::writeTimestamp(raw::QuerySet querySet, uint32_t queryIndex) const {
 	return wgpuRenderPassEncoderWriteTimestamp(m_raw, querySet, queryIndex);
 }
 
 
 // Methods of RenderPipeline
-BindGroupLayout RenderPipeline::getBindGroupLayout(uint32_t groupIndex) const {
+raw::BindGroupLayout RenderPipeline::getBindGroupLayout(uint32_t groupIndex) const {
 	return wgpuRenderPipelineGetBindGroupLayout(m_raw, groupIndex);
 }
 void RenderPipeline::setLabel(StringView label) const {
@@ -7623,7 +8421,7 @@ void ShaderModule::release() const {
 void Surface::configure(const SurfaceConfiguration& config) const {
 	return wgpuSurfaceConfigure(m_raw, reinterpret_cast<const WGPUSurfaceConfiguration *>(&config));
 }
-Status Surface::getCapabilities(Adapter adapter, SurfaceCapabilities& capabilities) const {
+Status Surface::getCapabilities(raw::Adapter adapter, SurfaceCapabilities& capabilities) const {
 	return static_cast<Status>(wgpuSurfaceGetCapabilities(m_raw, adapter, reinterpret_cast<WGPUSurfaceCapabilities *>(&capabilities)));
 }
 void Surface::getCurrentTexture(SurfaceTexture& surfaceTexture) const {
@@ -7647,7 +8445,7 @@ void Surface::release() const {
 
 
 // Methods of Texture
-TextureView Texture::createView(const TextureViewDescriptor& descriptor) const {
+raw::TextureView Texture::createView(const TextureViewDescriptor& descriptor) const {
 	return wgpuTextureCreateView(m_raw, reinterpret_cast<const WGPUTextureViewDescriptor *>(&descriptor));
 }
 void Texture::destroy() const {
@@ -7700,8 +8498,1176 @@ void TextureView::release() const {
 }
 
 
+}
+
+} // namespace wgpu
+
+namespace wgpu {
+std::string_view to_string(AdapterType v) {
+    switch (v) {
+    case AdapterType::DiscreteGPU: return "wgpu::AdapterType::DiscreteGPU";
+    case AdapterType::IntegratedGPU: return "wgpu::AdapterType::IntegratedGPU";
+    case AdapterType::CPU: return "wgpu::AdapterType::CPU";
+    case AdapterType::Unknown: return "wgpu::AdapterType::Unknown";
+    case AdapterType::Force32: return "wgpu::AdapterType::Force32";
+    default: return "Unknown";
+    }
+}
+
+std::string_view to_string(AddressMode v) {
+    switch (v) {
+    case AddressMode::Undefined: return "wgpu::AddressMode::Undefined";
+    case AddressMode::ClampToEdge: return "wgpu::AddressMode::ClampToEdge";
+    case AddressMode::Repeat: return "wgpu::AddressMode::Repeat";
+    case AddressMode::MirrorRepeat: return "wgpu::AddressMode::MirrorRepeat";
+    case AddressMode::Force32: return "wgpu::AddressMode::Force32";
+    default: return "Unknown";
+    }
+}
+
+std::string_view to_string(BackendType v) {
+    switch (v) {
+    case BackendType::Undefined: return "wgpu::BackendType::Undefined";
+    case BackendType::Null: return "wgpu::BackendType::Null";
+    case BackendType::WebGPU: return "wgpu::BackendType::WebGPU";
+    case BackendType::D3D11: return "wgpu::BackendType::D3D11";
+    case BackendType::D3D12: return "wgpu::BackendType::D3D12";
+    case BackendType::Metal: return "wgpu::BackendType::Metal";
+    case BackendType::Vulkan: return "wgpu::BackendType::Vulkan";
+    case BackendType::OpenGL: return "wgpu::BackendType::OpenGL";
+    case BackendType::OpenGLES: return "wgpu::BackendType::OpenGLES";
+    case BackendType::Force32: return "wgpu::BackendType::Force32";
+    default: return "Unknown";
+    }
+}
+
+std::string_view to_string(BlendFactor v) {
+    switch (v) {
+    case BlendFactor::Undefined: return "wgpu::BlendFactor::Undefined";
+    case BlendFactor::Zero: return "wgpu::BlendFactor::Zero";
+    case BlendFactor::One: return "wgpu::BlendFactor::One";
+    case BlendFactor::Src: return "wgpu::BlendFactor::Src";
+    case BlendFactor::OneMinusSrc: return "wgpu::BlendFactor::OneMinusSrc";
+    case BlendFactor::SrcAlpha: return "wgpu::BlendFactor::SrcAlpha";
+    case BlendFactor::OneMinusSrcAlpha: return "wgpu::BlendFactor::OneMinusSrcAlpha";
+    case BlendFactor::Dst: return "wgpu::BlendFactor::Dst";
+    case BlendFactor::OneMinusDst: return "wgpu::BlendFactor::OneMinusDst";
+    case BlendFactor::DstAlpha: return "wgpu::BlendFactor::DstAlpha";
+    case BlendFactor::OneMinusDstAlpha: return "wgpu::BlendFactor::OneMinusDstAlpha";
+    case BlendFactor::SrcAlphaSaturated: return "wgpu::BlendFactor::SrcAlphaSaturated";
+    case BlendFactor::Constant: return "wgpu::BlendFactor::Constant";
+    case BlendFactor::OneMinusConstant: return "wgpu::BlendFactor::OneMinusConstant";
+    case BlendFactor::Src1: return "wgpu::BlendFactor::Src1";
+    case BlendFactor::OneMinusSrc1: return "wgpu::BlendFactor::OneMinusSrc1";
+    case BlendFactor::Src1Alpha: return "wgpu::BlendFactor::Src1Alpha";
+    case BlendFactor::OneMinusSrc1Alpha: return "wgpu::BlendFactor::OneMinusSrc1Alpha";
+    case BlendFactor::Force32: return "wgpu::BlendFactor::Force32";
+    default: return "Unknown";
+    }
+}
+
+std::string_view to_string(BlendOperation v) {
+    switch (v) {
+    case BlendOperation::Undefined: return "wgpu::BlendOperation::Undefined";
+    case BlendOperation::Add: return "wgpu::BlendOperation::Add";
+    case BlendOperation::Subtract: return "wgpu::BlendOperation::Subtract";
+    case BlendOperation::ReverseSubtract: return "wgpu::BlendOperation::ReverseSubtract";
+    case BlendOperation::Min: return "wgpu::BlendOperation::Min";
+    case BlendOperation::Max: return "wgpu::BlendOperation::Max";
+    case BlendOperation::Force32: return "wgpu::BlendOperation::Force32";
+    default: return "Unknown";
+    }
+}
+
+std::string_view to_string(BufferBindingType v) {
+    switch (v) {
+    case BufferBindingType::BindingNotUsed: return "wgpu::BufferBindingType::BindingNotUsed";
+    case BufferBindingType::Undefined: return "wgpu::BufferBindingType::Undefined";
+    case BufferBindingType::Uniform: return "wgpu::BufferBindingType::Uniform";
+    case BufferBindingType::Storage: return "wgpu::BufferBindingType::Storage";
+    case BufferBindingType::ReadOnlyStorage: return "wgpu::BufferBindingType::ReadOnlyStorage";
+    case BufferBindingType::Force32: return "wgpu::BufferBindingType::Force32";
+    default: return "Unknown";
+    }
+}
+
+std::string_view to_string(BufferMapState v) {
+    switch (v) {
+    case BufferMapState::Unmapped: return "wgpu::BufferMapState::Unmapped";
+    case BufferMapState::Pending: return "wgpu::BufferMapState::Pending";
+    case BufferMapState::Mapped: return "wgpu::BufferMapState::Mapped";
+    case BufferMapState::Force32: return "wgpu::BufferMapState::Force32";
+    default: return "Unknown";
+    }
+}
+
+std::string_view to_string(CallbackMode v) {
+    switch (v) {
+    case CallbackMode::WaitAnyOnly: return "wgpu::CallbackMode::WaitAnyOnly";
+    case CallbackMode::AllowProcessEvents: return "wgpu::CallbackMode::AllowProcessEvents";
+    case CallbackMode::AllowSpontaneous: return "wgpu::CallbackMode::AllowSpontaneous";
+    case CallbackMode::Force32: return "wgpu::CallbackMode::Force32";
+    default: return "Unknown";
+    }
+}
+
+std::string_view to_string(CompareFunction v) {
+    switch (v) {
+    case CompareFunction::Undefined: return "wgpu::CompareFunction::Undefined";
+    case CompareFunction::Never: return "wgpu::CompareFunction::Never";
+    case CompareFunction::Less: return "wgpu::CompareFunction::Less";
+    case CompareFunction::Equal: return "wgpu::CompareFunction::Equal";
+    case CompareFunction::LessEqual: return "wgpu::CompareFunction::LessEqual";
+    case CompareFunction::Greater: return "wgpu::CompareFunction::Greater";
+    case CompareFunction::NotEqual: return "wgpu::CompareFunction::NotEqual";
+    case CompareFunction::GreaterEqual: return "wgpu::CompareFunction::GreaterEqual";
+    case CompareFunction::Always: return "wgpu::CompareFunction::Always";
+    case CompareFunction::Force32: return "wgpu::CompareFunction::Force32";
+    default: return "Unknown";
+    }
+}
+
+std::string_view to_string(CompilationInfoRequestStatus v) {
+    switch (v) {
+    case CompilationInfoRequestStatus::Success: return "wgpu::CompilationInfoRequestStatus::Success";
+    case CompilationInfoRequestStatus::InstanceDropped: return "wgpu::CompilationInfoRequestStatus::InstanceDropped";
+    case CompilationInfoRequestStatus::Error: return "wgpu::CompilationInfoRequestStatus::Error";
+    case CompilationInfoRequestStatus::Unknown: return "wgpu::CompilationInfoRequestStatus::Unknown";
+    case CompilationInfoRequestStatus::Force32: return "wgpu::CompilationInfoRequestStatus::Force32";
+    default: return "Unknown";
+    }
+}
+
+std::string_view to_string(CompilationMessageType v) {
+    switch (v) {
+    case CompilationMessageType::Error: return "wgpu::CompilationMessageType::Error";
+    case CompilationMessageType::Warning: return "wgpu::CompilationMessageType::Warning";
+    case CompilationMessageType::Info: return "wgpu::CompilationMessageType::Info";
+    case CompilationMessageType::Force32: return "wgpu::CompilationMessageType::Force32";
+    default: return "Unknown";
+    }
+}
+
+std::string_view to_string(CompositeAlphaMode v) {
+    switch (v) {
+    case CompositeAlphaMode::Auto: return "wgpu::CompositeAlphaMode::Auto";
+    case CompositeAlphaMode::Opaque: return "wgpu::CompositeAlphaMode::Opaque";
+    case CompositeAlphaMode::Premultiplied: return "wgpu::CompositeAlphaMode::Premultiplied";
+    case CompositeAlphaMode::Unpremultiplied: return "wgpu::CompositeAlphaMode::Unpremultiplied";
+    case CompositeAlphaMode::Inherit: return "wgpu::CompositeAlphaMode::Inherit";
+    case CompositeAlphaMode::Force32: return "wgpu::CompositeAlphaMode::Force32";
+    default: return "Unknown";
+    }
+}
+
+std::string_view to_string(CreatePipelineAsyncStatus v) {
+    switch (v) {
+    case CreatePipelineAsyncStatus::Success: return "wgpu::CreatePipelineAsyncStatus::Success";
+    case CreatePipelineAsyncStatus::InstanceDropped: return "wgpu::CreatePipelineAsyncStatus::InstanceDropped";
+    case CreatePipelineAsyncStatus::ValidationError: return "wgpu::CreatePipelineAsyncStatus::ValidationError";
+    case CreatePipelineAsyncStatus::InternalError: return "wgpu::CreatePipelineAsyncStatus::InternalError";
+    case CreatePipelineAsyncStatus::Unknown: return "wgpu::CreatePipelineAsyncStatus::Unknown";
+    case CreatePipelineAsyncStatus::Force32: return "wgpu::CreatePipelineAsyncStatus::Force32";
+    default: return "Unknown";
+    }
+}
+
+std::string_view to_string(CullMode v) {
+    switch (v) {
+    case CullMode::Undefined: return "wgpu::CullMode::Undefined";
+    case CullMode::None: return "wgpu::CullMode::None";
+    case CullMode::Front: return "wgpu::CullMode::Front";
+    case CullMode::Back: return "wgpu::CullMode::Back";
+    case CullMode::Force32: return "wgpu::CullMode::Force32";
+    default: return "Unknown";
+    }
+}
+
+std::string_view to_string(DeviceLostReason v) {
+    switch (v) {
+    case DeviceLostReason::Unknown: return "wgpu::DeviceLostReason::Unknown";
+    case DeviceLostReason::Destroyed: return "wgpu::DeviceLostReason::Destroyed";
+    case DeviceLostReason::InstanceDropped: return "wgpu::DeviceLostReason::InstanceDropped";
+    case DeviceLostReason::FailedCreation: return "wgpu::DeviceLostReason::FailedCreation";
+    case DeviceLostReason::Force32: return "wgpu::DeviceLostReason::Force32";
+    default: return "Unknown";
+    }
+}
+
+std::string_view to_string(ErrorFilter v) {
+    switch (v) {
+    case ErrorFilter::Validation: return "wgpu::ErrorFilter::Validation";
+    case ErrorFilter::OutOfMemory: return "wgpu::ErrorFilter::OutOfMemory";
+    case ErrorFilter::Internal: return "wgpu::ErrorFilter::Internal";
+    case ErrorFilter::Force32: return "wgpu::ErrorFilter::Force32";
+    default: return "Unknown";
+    }
+}
+
+std::string_view to_string(ErrorType v) {
+    switch (v) {
+    case ErrorType::NoError: return "wgpu::ErrorType::NoError";
+    case ErrorType::Validation: return "wgpu::ErrorType::Validation";
+    case ErrorType::OutOfMemory: return "wgpu::ErrorType::OutOfMemory";
+    case ErrorType::Internal: return "wgpu::ErrorType::Internal";
+    case ErrorType::Unknown: return "wgpu::ErrorType::Unknown";
+    case ErrorType::Force32: return "wgpu::ErrorType::Force32";
+    default: return "Unknown";
+    }
+}
+
+std::string_view to_string(FeatureLevel v) {
+    switch (v) {
+    case FeatureLevel::Compatibility: return "wgpu::FeatureLevel::Compatibility";
+    case FeatureLevel::Core: return "wgpu::FeatureLevel::Core";
+    case FeatureLevel::Force32: return "wgpu::FeatureLevel::Force32";
+    default: return "Unknown";
+    }
+}
+
+std::string_view to_string(FeatureName v) {
+    switch (v) {
+    case FeatureName::Undefined: return "wgpu::FeatureName::Undefined";
+    case FeatureName::DepthClipControl: return "wgpu::FeatureName::DepthClipControl";
+    case FeatureName::Depth32FloatStencil8: return "wgpu::FeatureName::Depth32FloatStencil8";
+    case FeatureName::TimestampQuery: return "wgpu::FeatureName::TimestampQuery";
+    case FeatureName::TextureCompressionBC: return "wgpu::FeatureName::TextureCompressionBC";
+    case FeatureName::TextureCompressionBCSliced3D: return "wgpu::FeatureName::TextureCompressionBCSliced3D";
+    case FeatureName::TextureCompressionETC2: return "wgpu::FeatureName::TextureCompressionETC2";
+    case FeatureName::TextureCompressionASTC: return "wgpu::FeatureName::TextureCompressionASTC";
+    case FeatureName::TextureCompressionASTCSliced3D: return "wgpu::FeatureName::TextureCompressionASTCSliced3D";
+    case FeatureName::IndirectFirstInstance: return "wgpu::FeatureName::IndirectFirstInstance";
+    case FeatureName::ShaderF16: return "wgpu::FeatureName::ShaderF16";
+    case FeatureName::RG11B10UfloatRenderable: return "wgpu::FeatureName::RG11B10UfloatRenderable";
+    case FeatureName::BGRA8UnormStorage: return "wgpu::FeatureName::BGRA8UnormStorage";
+    case FeatureName::Float32Filterable: return "wgpu::FeatureName::Float32Filterable";
+    case FeatureName::Float32Blendable: return "wgpu::FeatureName::Float32Blendable";
+    case FeatureName::ClipDistances: return "wgpu::FeatureName::ClipDistances";
+    case FeatureName::DualSourceBlending: return "wgpu::FeatureName::DualSourceBlending";
+    case FeatureName::Force32: return "wgpu::FeatureName::Force32";
+    default: return "Unknown";
+    }
+}
+
+std::string_view to_string(FilterMode v) {
+    switch (v) {
+    case FilterMode::Undefined: return "wgpu::FilterMode::Undefined";
+    case FilterMode::Nearest: return "wgpu::FilterMode::Nearest";
+    case FilterMode::Linear: return "wgpu::FilterMode::Linear";
+    case FilterMode::Force32: return "wgpu::FilterMode::Force32";
+    default: return "Unknown";
+    }
+}
+
+std::string_view to_string(FrontFace v) {
+    switch (v) {
+    case FrontFace::Undefined: return "wgpu::FrontFace::Undefined";
+    case FrontFace::CCW: return "wgpu::FrontFace::CCW";
+    case FrontFace::CW: return "wgpu::FrontFace::CW";
+    case FrontFace::Force32: return "wgpu::FrontFace::Force32";
+    default: return "Unknown";
+    }
+}
+
+std::string_view to_string(IndexFormat v) {
+    switch (v) {
+    case IndexFormat::Undefined: return "wgpu::IndexFormat::Undefined";
+    case IndexFormat::Uint16: return "wgpu::IndexFormat::Uint16";
+    case IndexFormat::Uint32: return "wgpu::IndexFormat::Uint32";
+    case IndexFormat::Force32: return "wgpu::IndexFormat::Force32";
+    default: return "Unknown";
+    }
+}
+
+std::string_view to_string(LoadOp v) {
+    switch (v) {
+    case LoadOp::Undefined: return "wgpu::LoadOp::Undefined";
+    case LoadOp::Load: return "wgpu::LoadOp::Load";
+    case LoadOp::Clear: return "wgpu::LoadOp::Clear";
+    case LoadOp::Force32: return "wgpu::LoadOp::Force32";
+    default: return "Unknown";
+    }
+}
+
+std::string_view to_string(MapAsyncStatus v) {
+    switch (v) {
+    case MapAsyncStatus::Success: return "wgpu::MapAsyncStatus::Success";
+    case MapAsyncStatus::InstanceDropped: return "wgpu::MapAsyncStatus::InstanceDropped";
+    case MapAsyncStatus::Error: return "wgpu::MapAsyncStatus::Error";
+    case MapAsyncStatus::Aborted: return "wgpu::MapAsyncStatus::Aborted";
+    case MapAsyncStatus::Unknown: return "wgpu::MapAsyncStatus::Unknown";
+    case MapAsyncStatus::Force32: return "wgpu::MapAsyncStatus::Force32";
+    default: return "Unknown";
+    }
+}
+
+std::string_view to_string(MipmapFilterMode v) {
+    switch (v) {
+    case MipmapFilterMode::Undefined: return "wgpu::MipmapFilterMode::Undefined";
+    case MipmapFilterMode::Nearest: return "wgpu::MipmapFilterMode::Nearest";
+    case MipmapFilterMode::Linear: return "wgpu::MipmapFilterMode::Linear";
+    case MipmapFilterMode::Force32: return "wgpu::MipmapFilterMode::Force32";
+    default: return "Unknown";
+    }
+}
+
+std::string_view to_string(OptionalBool v) {
+    switch (v) {
+    case OptionalBool::False: return "wgpu::OptionalBool::False";
+    case OptionalBool::True: return "wgpu::OptionalBool::True";
+    case OptionalBool::Undefined: return "wgpu::OptionalBool::Undefined";
+    case OptionalBool::Force32: return "wgpu::OptionalBool::Force32";
+    default: return "Unknown";
+    }
+}
+
+std::string_view to_string(PopErrorScopeStatus v) {
+    switch (v) {
+    case PopErrorScopeStatus::Success: return "wgpu::PopErrorScopeStatus::Success";
+    case PopErrorScopeStatus::InstanceDropped: return "wgpu::PopErrorScopeStatus::InstanceDropped";
+    case PopErrorScopeStatus::EmptyStack: return "wgpu::PopErrorScopeStatus::EmptyStack";
+    case PopErrorScopeStatus::Force32: return "wgpu::PopErrorScopeStatus::Force32";
+    default: return "Unknown";
+    }
+}
+
+std::string_view to_string(PowerPreference v) {
+    switch (v) {
+    case PowerPreference::Undefined: return "wgpu::PowerPreference::Undefined";
+    case PowerPreference::LowPower: return "wgpu::PowerPreference::LowPower";
+    case PowerPreference::HighPerformance: return "wgpu::PowerPreference::HighPerformance";
+    case PowerPreference::Force32: return "wgpu::PowerPreference::Force32";
+    default: return "Unknown";
+    }
+}
+
+std::string_view to_string(PresentMode v) {
+    switch (v) {
+    case PresentMode::Undefined: return "wgpu::PresentMode::Undefined";
+    case PresentMode::Fifo: return "wgpu::PresentMode::Fifo";
+    case PresentMode::FifoRelaxed: return "wgpu::PresentMode::FifoRelaxed";
+    case PresentMode::Immediate: return "wgpu::PresentMode::Immediate";
+    case PresentMode::Mailbox: return "wgpu::PresentMode::Mailbox";
+    case PresentMode::Force32: return "wgpu::PresentMode::Force32";
+    default: return "Unknown";
+    }
+}
+
+std::string_view to_string(PrimitiveTopology v) {
+    switch (v) {
+    case PrimitiveTopology::Undefined: return "wgpu::PrimitiveTopology::Undefined";
+    case PrimitiveTopology::PointList: return "wgpu::PrimitiveTopology::PointList";
+    case PrimitiveTopology::LineList: return "wgpu::PrimitiveTopology::LineList";
+    case PrimitiveTopology::LineStrip: return "wgpu::PrimitiveTopology::LineStrip";
+    case PrimitiveTopology::TriangleList: return "wgpu::PrimitiveTopology::TriangleList";
+    case PrimitiveTopology::TriangleStrip: return "wgpu::PrimitiveTopology::TriangleStrip";
+    case PrimitiveTopology::Force32: return "wgpu::PrimitiveTopology::Force32";
+    default: return "Unknown";
+    }
+}
+
+std::string_view to_string(QueryType v) {
+    switch (v) {
+    case QueryType::Occlusion: return "wgpu::QueryType::Occlusion";
+    case QueryType::Timestamp: return "wgpu::QueryType::Timestamp";
+    case QueryType::Force32: return "wgpu::QueryType::Force32";
+    default: return "Unknown";
+    }
+}
+
+std::string_view to_string(QueueWorkDoneStatus v) {
+    switch (v) {
+    case QueueWorkDoneStatus::Success: return "wgpu::QueueWorkDoneStatus::Success";
+    case QueueWorkDoneStatus::InstanceDropped: return "wgpu::QueueWorkDoneStatus::InstanceDropped";
+    case QueueWorkDoneStatus::Error: return "wgpu::QueueWorkDoneStatus::Error";
+    case QueueWorkDoneStatus::Unknown: return "wgpu::QueueWorkDoneStatus::Unknown";
+    case QueueWorkDoneStatus::Force32: return "wgpu::QueueWorkDoneStatus::Force32";
+    default: return "Unknown";
+    }
+}
+
+std::string_view to_string(RequestAdapterStatus v) {
+    switch (v) {
+    case RequestAdapterStatus::Success: return "wgpu::RequestAdapterStatus::Success";
+    case RequestAdapterStatus::InstanceDropped: return "wgpu::RequestAdapterStatus::InstanceDropped";
+    case RequestAdapterStatus::Unavailable: return "wgpu::RequestAdapterStatus::Unavailable";
+    case RequestAdapterStatus::Error: return "wgpu::RequestAdapterStatus::Error";
+    case RequestAdapterStatus::Unknown: return "wgpu::RequestAdapterStatus::Unknown";
+    case RequestAdapterStatus::Force32: return "wgpu::RequestAdapterStatus::Force32";
+    default: return "Unknown";
+    }
+}
+
+std::string_view to_string(RequestDeviceStatus v) {
+    switch (v) {
+    case RequestDeviceStatus::Success: return "wgpu::RequestDeviceStatus::Success";
+    case RequestDeviceStatus::InstanceDropped: return "wgpu::RequestDeviceStatus::InstanceDropped";
+    case RequestDeviceStatus::Error: return "wgpu::RequestDeviceStatus::Error";
+    case RequestDeviceStatus::Unknown: return "wgpu::RequestDeviceStatus::Unknown";
+    case RequestDeviceStatus::Force32: return "wgpu::RequestDeviceStatus::Force32";
+    default: return "Unknown";
+    }
+}
+
+std::string_view to_string(SType v) {
+    switch (v) {
+    case SType::ShaderSourceSPIRV: return "wgpu::SType::ShaderSourceSPIRV";
+    case SType::ShaderSourceWGSL: return "wgpu::SType::ShaderSourceWGSL";
+    case SType::RenderPassMaxDrawCount: return "wgpu::SType::RenderPassMaxDrawCount";
+    case SType::SurfaceSourceMetalLayer: return "wgpu::SType::SurfaceSourceMetalLayer";
+    case SType::SurfaceSourceWindowsHWND: return "wgpu::SType::SurfaceSourceWindowsHWND";
+    case SType::SurfaceSourceXlibWindow: return "wgpu::SType::SurfaceSourceXlibWindow";
+    case SType::SurfaceSourceWaylandSurface: return "wgpu::SType::SurfaceSourceWaylandSurface";
+    case SType::SurfaceSourceAndroidNativeWindow: return "wgpu::SType::SurfaceSourceAndroidNativeWindow";
+    case SType::SurfaceSourceXCBWindow: return "wgpu::SType::SurfaceSourceXCBWindow";
+    case SType::Force32: return "wgpu::SType::Force32";
+    default: return "Unknown";
+    }
+}
+
+std::string_view to_string(SamplerBindingType v) {
+    switch (v) {
+    case SamplerBindingType::BindingNotUsed: return "wgpu::SamplerBindingType::BindingNotUsed";
+    case SamplerBindingType::Undefined: return "wgpu::SamplerBindingType::Undefined";
+    case SamplerBindingType::Filtering: return "wgpu::SamplerBindingType::Filtering";
+    case SamplerBindingType::NonFiltering: return "wgpu::SamplerBindingType::NonFiltering";
+    case SamplerBindingType::Comparison: return "wgpu::SamplerBindingType::Comparison";
+    case SamplerBindingType::Force32: return "wgpu::SamplerBindingType::Force32";
+    default: return "Unknown";
+    }
+}
+
+std::string_view to_string(Status v) {
+    switch (v) {
+    case Status::Success: return "wgpu::Status::Success";
+    case Status::Error: return "wgpu::Status::Error";
+    case Status::Force32: return "wgpu::Status::Force32";
+    default: return "Unknown";
+    }
+}
+
+std::string_view to_string(StencilOperation v) {
+    switch (v) {
+    case StencilOperation::Undefined: return "wgpu::StencilOperation::Undefined";
+    case StencilOperation::Keep: return "wgpu::StencilOperation::Keep";
+    case StencilOperation::Zero: return "wgpu::StencilOperation::Zero";
+    case StencilOperation::Replace: return "wgpu::StencilOperation::Replace";
+    case StencilOperation::Invert: return "wgpu::StencilOperation::Invert";
+    case StencilOperation::IncrementClamp: return "wgpu::StencilOperation::IncrementClamp";
+    case StencilOperation::DecrementClamp: return "wgpu::StencilOperation::DecrementClamp";
+    case StencilOperation::IncrementWrap: return "wgpu::StencilOperation::IncrementWrap";
+    case StencilOperation::DecrementWrap: return "wgpu::StencilOperation::DecrementWrap";
+    case StencilOperation::Force32: return "wgpu::StencilOperation::Force32";
+    default: return "Unknown";
+    }
+}
+
+std::string_view to_string(StorageTextureAccess v) {
+    switch (v) {
+    case StorageTextureAccess::BindingNotUsed: return "wgpu::StorageTextureAccess::BindingNotUsed";
+    case StorageTextureAccess::Undefined: return "wgpu::StorageTextureAccess::Undefined";
+    case StorageTextureAccess::WriteOnly: return "wgpu::StorageTextureAccess::WriteOnly";
+    case StorageTextureAccess::ReadOnly: return "wgpu::StorageTextureAccess::ReadOnly";
+    case StorageTextureAccess::ReadWrite: return "wgpu::StorageTextureAccess::ReadWrite";
+    case StorageTextureAccess::Force32: return "wgpu::StorageTextureAccess::Force32";
+    default: return "Unknown";
+    }
+}
+
+std::string_view to_string(StoreOp v) {
+    switch (v) {
+    case StoreOp::Undefined: return "wgpu::StoreOp::Undefined";
+    case StoreOp::Store: return "wgpu::StoreOp::Store";
+    case StoreOp::Discard: return "wgpu::StoreOp::Discard";
+    case StoreOp::Force32: return "wgpu::StoreOp::Force32";
+    default: return "Unknown";
+    }
+}
+
+std::string_view to_string(SurfaceGetCurrentTextureStatus v) {
+    switch (v) {
+    case SurfaceGetCurrentTextureStatus::SuccessOptimal: return "wgpu::SurfaceGetCurrentTextureStatus::SuccessOptimal";
+    case SurfaceGetCurrentTextureStatus::SuccessSuboptimal: return "wgpu::SurfaceGetCurrentTextureStatus::SuccessSuboptimal";
+    case SurfaceGetCurrentTextureStatus::Timeout: return "wgpu::SurfaceGetCurrentTextureStatus::Timeout";
+    case SurfaceGetCurrentTextureStatus::Outdated: return "wgpu::SurfaceGetCurrentTextureStatus::Outdated";
+    case SurfaceGetCurrentTextureStatus::Lost: return "wgpu::SurfaceGetCurrentTextureStatus::Lost";
+    case SurfaceGetCurrentTextureStatus::OutOfMemory: return "wgpu::SurfaceGetCurrentTextureStatus::OutOfMemory";
+    case SurfaceGetCurrentTextureStatus::DeviceLost: return "wgpu::SurfaceGetCurrentTextureStatus::DeviceLost";
+    case SurfaceGetCurrentTextureStatus::Error: return "wgpu::SurfaceGetCurrentTextureStatus::Error";
+    case SurfaceGetCurrentTextureStatus::Force32: return "wgpu::SurfaceGetCurrentTextureStatus::Force32";
+    default: return "Unknown";
+    }
+}
+
+std::string_view to_string(TextureAspect v) {
+    switch (v) {
+    case TextureAspect::Undefined: return "wgpu::TextureAspect::Undefined";
+    case TextureAspect::All: return "wgpu::TextureAspect::All";
+    case TextureAspect::StencilOnly: return "wgpu::TextureAspect::StencilOnly";
+    case TextureAspect::DepthOnly: return "wgpu::TextureAspect::DepthOnly";
+    case TextureAspect::Force32: return "wgpu::TextureAspect::Force32";
+    default: return "Unknown";
+    }
+}
+
+std::string_view to_string(TextureDimension v) {
+    switch (v) {
+    case TextureDimension::Undefined: return "wgpu::TextureDimension::Undefined";
+    case TextureDimension::_1D: return "wgpu::TextureDimension::_1D";
+    case TextureDimension::_2D: return "wgpu::TextureDimension::_2D";
+    case TextureDimension::_3D: return "wgpu::TextureDimension::_3D";
+    case TextureDimension::Force32: return "wgpu::TextureDimension::Force32";
+    default: return "Unknown";
+    }
+}
+
+std::string_view to_string(TextureFormat v) {
+    switch (v) {
+    case TextureFormat::Undefined: return "wgpu::TextureFormat::Undefined";
+    case TextureFormat::R8Unorm: return "wgpu::TextureFormat::R8Unorm";
+    case TextureFormat::R8Snorm: return "wgpu::TextureFormat::R8Snorm";
+    case TextureFormat::R8Uint: return "wgpu::TextureFormat::R8Uint";
+    case TextureFormat::R8Sint: return "wgpu::TextureFormat::R8Sint";
+    case TextureFormat::R16Uint: return "wgpu::TextureFormat::R16Uint";
+    case TextureFormat::R16Sint: return "wgpu::TextureFormat::R16Sint";
+    case TextureFormat::R16Float: return "wgpu::TextureFormat::R16Float";
+    case TextureFormat::RG8Unorm: return "wgpu::TextureFormat::RG8Unorm";
+    case TextureFormat::RG8Snorm: return "wgpu::TextureFormat::RG8Snorm";
+    case TextureFormat::RG8Uint: return "wgpu::TextureFormat::RG8Uint";
+    case TextureFormat::RG8Sint: return "wgpu::TextureFormat::RG8Sint";
+    case TextureFormat::R32Float: return "wgpu::TextureFormat::R32Float";
+    case TextureFormat::R32Uint: return "wgpu::TextureFormat::R32Uint";
+    case TextureFormat::R32Sint: return "wgpu::TextureFormat::R32Sint";
+    case TextureFormat::RG16Uint: return "wgpu::TextureFormat::RG16Uint";
+    case TextureFormat::RG16Sint: return "wgpu::TextureFormat::RG16Sint";
+    case TextureFormat::RG16Float: return "wgpu::TextureFormat::RG16Float";
+    case TextureFormat::RGBA8Unorm: return "wgpu::TextureFormat::RGBA8Unorm";
+    case TextureFormat::RGBA8UnormSrgb: return "wgpu::TextureFormat::RGBA8UnormSrgb";
+    case TextureFormat::RGBA8Snorm: return "wgpu::TextureFormat::RGBA8Snorm";
+    case TextureFormat::RGBA8Uint: return "wgpu::TextureFormat::RGBA8Uint";
+    case TextureFormat::RGBA8Sint: return "wgpu::TextureFormat::RGBA8Sint";
+    case TextureFormat::BGRA8Unorm: return "wgpu::TextureFormat::BGRA8Unorm";
+    case TextureFormat::BGRA8UnormSrgb: return "wgpu::TextureFormat::BGRA8UnormSrgb";
+    case TextureFormat::RGB10A2Uint: return "wgpu::TextureFormat::RGB10A2Uint";
+    case TextureFormat::RGB10A2Unorm: return "wgpu::TextureFormat::RGB10A2Unorm";
+    case TextureFormat::RG11B10Ufloat: return "wgpu::TextureFormat::RG11B10Ufloat";
+    case TextureFormat::RGB9E5Ufloat: return "wgpu::TextureFormat::RGB9E5Ufloat";
+    case TextureFormat::RG32Float: return "wgpu::TextureFormat::RG32Float";
+    case TextureFormat::RG32Uint: return "wgpu::TextureFormat::RG32Uint";
+    case TextureFormat::RG32Sint: return "wgpu::TextureFormat::RG32Sint";
+    case TextureFormat::RGBA16Uint: return "wgpu::TextureFormat::RGBA16Uint";
+    case TextureFormat::RGBA16Sint: return "wgpu::TextureFormat::RGBA16Sint";
+    case TextureFormat::RGBA16Float: return "wgpu::TextureFormat::RGBA16Float";
+    case TextureFormat::RGBA32Float: return "wgpu::TextureFormat::RGBA32Float";
+    case TextureFormat::RGBA32Uint: return "wgpu::TextureFormat::RGBA32Uint";
+    case TextureFormat::RGBA32Sint: return "wgpu::TextureFormat::RGBA32Sint";
+    case TextureFormat::Stencil8: return "wgpu::TextureFormat::Stencil8";
+    case TextureFormat::Depth16Unorm: return "wgpu::TextureFormat::Depth16Unorm";
+    case TextureFormat::Depth24Plus: return "wgpu::TextureFormat::Depth24Plus";
+    case TextureFormat::Depth24PlusStencil8: return "wgpu::TextureFormat::Depth24PlusStencil8";
+    case TextureFormat::Depth32Float: return "wgpu::TextureFormat::Depth32Float";
+    case TextureFormat::Depth32FloatStencil8: return "wgpu::TextureFormat::Depth32FloatStencil8";
+    case TextureFormat::BC1RGBAUnorm: return "wgpu::TextureFormat::BC1RGBAUnorm";
+    case TextureFormat::BC1RGBAUnormSrgb: return "wgpu::TextureFormat::BC1RGBAUnormSrgb";
+    case TextureFormat::BC2RGBAUnorm: return "wgpu::TextureFormat::BC2RGBAUnorm";
+    case TextureFormat::BC2RGBAUnormSrgb: return "wgpu::TextureFormat::BC2RGBAUnormSrgb";
+    case TextureFormat::BC3RGBAUnorm: return "wgpu::TextureFormat::BC3RGBAUnorm";
+    case TextureFormat::BC3RGBAUnormSrgb: return "wgpu::TextureFormat::BC3RGBAUnormSrgb";
+    case TextureFormat::BC4RUnorm: return "wgpu::TextureFormat::BC4RUnorm";
+    case TextureFormat::BC4RSnorm: return "wgpu::TextureFormat::BC4RSnorm";
+    case TextureFormat::BC5RGUnorm: return "wgpu::TextureFormat::BC5RGUnorm";
+    case TextureFormat::BC5RGSnorm: return "wgpu::TextureFormat::BC5RGSnorm";
+    case TextureFormat::BC6HRGBUfloat: return "wgpu::TextureFormat::BC6HRGBUfloat";
+    case TextureFormat::BC6HRGBFloat: return "wgpu::TextureFormat::BC6HRGBFloat";
+    case TextureFormat::BC7RGBAUnorm: return "wgpu::TextureFormat::BC7RGBAUnorm";
+    case TextureFormat::BC7RGBAUnormSrgb: return "wgpu::TextureFormat::BC7RGBAUnormSrgb";
+    case TextureFormat::ETC2RGB8Unorm: return "wgpu::TextureFormat::ETC2RGB8Unorm";
+    case TextureFormat::ETC2RGB8UnormSrgb: return "wgpu::TextureFormat::ETC2RGB8UnormSrgb";
+    case TextureFormat::ETC2RGB8A1Unorm: return "wgpu::TextureFormat::ETC2RGB8A1Unorm";
+    case TextureFormat::ETC2RGB8A1UnormSrgb: return "wgpu::TextureFormat::ETC2RGB8A1UnormSrgb";
+    case TextureFormat::ETC2RGBA8Unorm: return "wgpu::TextureFormat::ETC2RGBA8Unorm";
+    case TextureFormat::ETC2RGBA8UnormSrgb: return "wgpu::TextureFormat::ETC2RGBA8UnormSrgb";
+    case TextureFormat::EACR11Unorm: return "wgpu::TextureFormat::EACR11Unorm";
+    case TextureFormat::EACR11Snorm: return "wgpu::TextureFormat::EACR11Snorm";
+    case TextureFormat::EACRG11Unorm: return "wgpu::TextureFormat::EACRG11Unorm";
+    case TextureFormat::EACRG11Snorm: return "wgpu::TextureFormat::EACRG11Snorm";
+    case TextureFormat::ASTC4x4Unorm: return "wgpu::TextureFormat::ASTC4x4Unorm";
+    case TextureFormat::ASTC4x4UnormSrgb: return "wgpu::TextureFormat::ASTC4x4UnormSrgb";
+    case TextureFormat::ASTC5x4Unorm: return "wgpu::TextureFormat::ASTC5x4Unorm";
+    case TextureFormat::ASTC5x4UnormSrgb: return "wgpu::TextureFormat::ASTC5x4UnormSrgb";
+    case TextureFormat::ASTC5x5Unorm: return "wgpu::TextureFormat::ASTC5x5Unorm";
+    case TextureFormat::ASTC5x5UnormSrgb: return "wgpu::TextureFormat::ASTC5x5UnormSrgb";
+    case TextureFormat::ASTC6x5Unorm: return "wgpu::TextureFormat::ASTC6x5Unorm";
+    case TextureFormat::ASTC6x5UnormSrgb: return "wgpu::TextureFormat::ASTC6x5UnormSrgb";
+    case TextureFormat::ASTC6x6Unorm: return "wgpu::TextureFormat::ASTC6x6Unorm";
+    case TextureFormat::ASTC6x6UnormSrgb: return "wgpu::TextureFormat::ASTC6x6UnormSrgb";
+    case TextureFormat::ASTC8x5Unorm: return "wgpu::TextureFormat::ASTC8x5Unorm";
+    case TextureFormat::ASTC8x5UnormSrgb: return "wgpu::TextureFormat::ASTC8x5UnormSrgb";
+    case TextureFormat::ASTC8x6Unorm: return "wgpu::TextureFormat::ASTC8x6Unorm";
+    case TextureFormat::ASTC8x6UnormSrgb: return "wgpu::TextureFormat::ASTC8x6UnormSrgb";
+    case TextureFormat::ASTC8x8Unorm: return "wgpu::TextureFormat::ASTC8x8Unorm";
+    case TextureFormat::ASTC8x8UnormSrgb: return "wgpu::TextureFormat::ASTC8x8UnormSrgb";
+    case TextureFormat::ASTC10x5Unorm: return "wgpu::TextureFormat::ASTC10x5Unorm";
+    case TextureFormat::ASTC10x5UnormSrgb: return "wgpu::TextureFormat::ASTC10x5UnormSrgb";
+    case TextureFormat::ASTC10x6Unorm: return "wgpu::TextureFormat::ASTC10x6Unorm";
+    case TextureFormat::ASTC10x6UnormSrgb: return "wgpu::TextureFormat::ASTC10x6UnormSrgb";
+    case TextureFormat::ASTC10x8Unorm: return "wgpu::TextureFormat::ASTC10x8Unorm";
+    case TextureFormat::ASTC10x8UnormSrgb: return "wgpu::TextureFormat::ASTC10x8UnormSrgb";
+    case TextureFormat::ASTC10x10Unorm: return "wgpu::TextureFormat::ASTC10x10Unorm";
+    case TextureFormat::ASTC10x10UnormSrgb: return "wgpu::TextureFormat::ASTC10x10UnormSrgb";
+    case TextureFormat::ASTC12x10Unorm: return "wgpu::TextureFormat::ASTC12x10Unorm";
+    case TextureFormat::ASTC12x10UnormSrgb: return "wgpu::TextureFormat::ASTC12x10UnormSrgb";
+    case TextureFormat::ASTC12x12Unorm: return "wgpu::TextureFormat::ASTC12x12Unorm";
+    case TextureFormat::ASTC12x12UnormSrgb: return "wgpu::TextureFormat::ASTC12x12UnormSrgb";
+    case TextureFormat::Force32: return "wgpu::TextureFormat::Force32";
+    default: return "Unknown";
+    }
+}
+
+std::string_view to_string(TextureSampleType v) {
+    switch (v) {
+    case TextureSampleType::BindingNotUsed: return "wgpu::TextureSampleType::BindingNotUsed";
+    case TextureSampleType::Undefined: return "wgpu::TextureSampleType::Undefined";
+    case TextureSampleType::Float: return "wgpu::TextureSampleType::Float";
+    case TextureSampleType::UnfilterableFloat: return "wgpu::TextureSampleType::UnfilterableFloat";
+    case TextureSampleType::Depth: return "wgpu::TextureSampleType::Depth";
+    case TextureSampleType::Sint: return "wgpu::TextureSampleType::Sint";
+    case TextureSampleType::Uint: return "wgpu::TextureSampleType::Uint";
+    case TextureSampleType::Force32: return "wgpu::TextureSampleType::Force32";
+    default: return "Unknown";
+    }
+}
+
+std::string_view to_string(TextureViewDimension v) {
+    switch (v) {
+    case TextureViewDimension::Undefined: return "wgpu::TextureViewDimension::Undefined";
+    case TextureViewDimension::_1D: return "wgpu::TextureViewDimension::_1D";
+    case TextureViewDimension::_2D: return "wgpu::TextureViewDimension::_2D";
+    case TextureViewDimension::_2DArray: return "wgpu::TextureViewDimension::_2DArray";
+    case TextureViewDimension::Cube: return "wgpu::TextureViewDimension::Cube";
+    case TextureViewDimension::CubeArray: return "wgpu::TextureViewDimension::CubeArray";
+    case TextureViewDimension::_3D: return "wgpu::TextureViewDimension::_3D";
+    case TextureViewDimension::Force32: return "wgpu::TextureViewDimension::Force32";
+    default: return "Unknown";
+    }
+}
+
+std::string_view to_string(VertexFormat v) {
+    switch (v) {
+    case VertexFormat::Uint8: return "wgpu::VertexFormat::Uint8";
+    case VertexFormat::Uint8x2: return "wgpu::VertexFormat::Uint8x2";
+    case VertexFormat::Uint8x4: return "wgpu::VertexFormat::Uint8x4";
+    case VertexFormat::Sint8: return "wgpu::VertexFormat::Sint8";
+    case VertexFormat::Sint8x2: return "wgpu::VertexFormat::Sint8x2";
+    case VertexFormat::Sint8x4: return "wgpu::VertexFormat::Sint8x4";
+    case VertexFormat::Unorm8: return "wgpu::VertexFormat::Unorm8";
+    case VertexFormat::Unorm8x2: return "wgpu::VertexFormat::Unorm8x2";
+    case VertexFormat::Unorm8x4: return "wgpu::VertexFormat::Unorm8x4";
+    case VertexFormat::Snorm8: return "wgpu::VertexFormat::Snorm8";
+    case VertexFormat::Snorm8x2: return "wgpu::VertexFormat::Snorm8x2";
+    case VertexFormat::Snorm8x4: return "wgpu::VertexFormat::Snorm8x4";
+    case VertexFormat::Uint16: return "wgpu::VertexFormat::Uint16";
+    case VertexFormat::Uint16x2: return "wgpu::VertexFormat::Uint16x2";
+    case VertexFormat::Uint16x4: return "wgpu::VertexFormat::Uint16x4";
+    case VertexFormat::Sint16: return "wgpu::VertexFormat::Sint16";
+    case VertexFormat::Sint16x2: return "wgpu::VertexFormat::Sint16x2";
+    case VertexFormat::Sint16x4: return "wgpu::VertexFormat::Sint16x4";
+    case VertexFormat::Unorm16: return "wgpu::VertexFormat::Unorm16";
+    case VertexFormat::Unorm16x2: return "wgpu::VertexFormat::Unorm16x2";
+    case VertexFormat::Unorm16x4: return "wgpu::VertexFormat::Unorm16x4";
+    case VertexFormat::Snorm16: return "wgpu::VertexFormat::Snorm16";
+    case VertexFormat::Snorm16x2: return "wgpu::VertexFormat::Snorm16x2";
+    case VertexFormat::Snorm16x4: return "wgpu::VertexFormat::Snorm16x4";
+    case VertexFormat::Float16: return "wgpu::VertexFormat::Float16";
+    case VertexFormat::Float16x2: return "wgpu::VertexFormat::Float16x2";
+    case VertexFormat::Float16x4: return "wgpu::VertexFormat::Float16x4";
+    case VertexFormat::Float32: return "wgpu::VertexFormat::Float32";
+    case VertexFormat::Float32x2: return "wgpu::VertexFormat::Float32x2";
+    case VertexFormat::Float32x3: return "wgpu::VertexFormat::Float32x3";
+    case VertexFormat::Float32x4: return "wgpu::VertexFormat::Float32x4";
+    case VertexFormat::Uint32: return "wgpu::VertexFormat::Uint32";
+    case VertexFormat::Uint32x2: return "wgpu::VertexFormat::Uint32x2";
+    case VertexFormat::Uint32x3: return "wgpu::VertexFormat::Uint32x3";
+    case VertexFormat::Uint32x4: return "wgpu::VertexFormat::Uint32x4";
+    case VertexFormat::Sint32: return "wgpu::VertexFormat::Sint32";
+    case VertexFormat::Sint32x2: return "wgpu::VertexFormat::Sint32x2";
+    case VertexFormat::Sint32x3: return "wgpu::VertexFormat::Sint32x3";
+    case VertexFormat::Sint32x4: return "wgpu::VertexFormat::Sint32x4";
+    case VertexFormat::Unorm10_10_10_2: return "wgpu::VertexFormat::Unorm10_10_10_2";
+    case VertexFormat::Unorm8x4BGRA: return "wgpu::VertexFormat::Unorm8x4BGRA";
+    case VertexFormat::Force32: return "wgpu::VertexFormat::Force32";
+    default: return "Unknown";
+    }
+}
+
+std::string_view to_string(VertexStepMode v) {
+    switch (v) {
+    case VertexStepMode::VertexBufferNotUsed: return "wgpu::VertexStepMode::VertexBufferNotUsed";
+    case VertexStepMode::Undefined: return "wgpu::VertexStepMode::Undefined";
+    case VertexStepMode::Vertex: return "wgpu::VertexStepMode::Vertex";
+    case VertexStepMode::Instance: return "wgpu::VertexStepMode::Instance";
+    case VertexStepMode::Force32: return "wgpu::VertexStepMode::Force32";
+    default: return "Unknown";
+    }
+}
+
+std::string_view to_string(WGSLLanguageFeatureName v) {
+    switch (v) {
+    case WGSLLanguageFeatureName::ReadonlyAndReadwriteStorageTextures: return "wgpu::WGSLLanguageFeatureName::ReadonlyAndReadwriteStorageTextures";
+    case WGSLLanguageFeatureName::Packed4x8IntegerDotProduct: return "wgpu::WGSLLanguageFeatureName::Packed4x8IntegerDotProduct";
+    case WGSLLanguageFeatureName::UnrestrictedPointerParameters: return "wgpu::WGSLLanguageFeatureName::UnrestrictedPointerParameters";
+    case WGSLLanguageFeatureName::PointerCompositeAccess: return "wgpu::WGSLLanguageFeatureName::PointerCompositeAccess";
+    case WGSLLanguageFeatureName::Force32: return "wgpu::WGSLLanguageFeatureName::Force32";
+    default: return "Unknown";
+    }
+}
+
+std::string_view to_string(WaitStatus v) {
+    switch (v) {
+    case WaitStatus::Success: return "wgpu::WaitStatus::Success";
+    case WaitStatus::TimedOut: return "wgpu::WaitStatus::TimedOut";
+    case WaitStatus::UnsupportedTimeout: return "wgpu::WaitStatus::UnsupportedTimeout";
+    case WaitStatus::UnsupportedCount: return "wgpu::WaitStatus::UnsupportedCount";
+    case WaitStatus::UnsupportedMixedSources: return "wgpu::WaitStatus::UnsupportedMixedSources";
+    case WaitStatus::Force32: return "wgpu::WaitStatus::Force32";
+    default: return "Unknown";
+    }
+}
+
+std::string_view to_string(BufferUsage v) {
+    switch (v) {
+    case BufferUsage::None: return "wgpu::BufferUsage::None";
+    case BufferUsage::MapRead: return "wgpu::BufferUsage::MapRead";
+    case BufferUsage::MapWrite: return "wgpu::BufferUsage::MapWrite";
+    case BufferUsage::CopySrc: return "wgpu::BufferUsage::CopySrc";
+    case BufferUsage::CopyDst: return "wgpu::BufferUsage::CopyDst";
+    case BufferUsage::Index: return "wgpu::BufferUsage::Index";
+    case BufferUsage::Vertex: return "wgpu::BufferUsage::Vertex";
+    case BufferUsage::Uniform: return "wgpu::BufferUsage::Uniform";
+    case BufferUsage::Storage: return "wgpu::BufferUsage::Storage";
+    case BufferUsage::Indirect: return "wgpu::BufferUsage::Indirect";
+    case BufferUsage::QueryResolve: return "wgpu::BufferUsage::QueryResolve";
+    default: return "Unknown";
+    }
+}
+
+std::string_view to_string(ColorWriteMask v) {
+    switch (v) {
+    case ColorWriteMask::None: return "wgpu::ColorWriteMask::None";
+    case ColorWriteMask::Red: return "wgpu::ColorWriteMask::Red";
+    case ColorWriteMask::Green: return "wgpu::ColorWriteMask::Green";
+    case ColorWriteMask::Blue: return "wgpu::ColorWriteMask::Blue";
+    case ColorWriteMask::Alpha: return "wgpu::ColorWriteMask::Alpha";
+    case ColorWriteMask::All: return "wgpu::ColorWriteMask::All";
+    default: return "Unknown";
+    }
+}
+
+std::string_view to_string(MapMode v) {
+    switch (v) {
+    case MapMode::None: return "wgpu::MapMode::None";
+    case MapMode::Read: return "wgpu::MapMode::Read";
+    case MapMode::Write: return "wgpu::MapMode::Write";
+    default: return "Unknown";
+    }
+}
+
+std::string_view to_string(ShaderStage v) {
+    switch (v) {
+    case ShaderStage::None: return "wgpu::ShaderStage::None";
+    case ShaderStage::Vertex: return "wgpu::ShaderStage::Vertex";
+    case ShaderStage::Fragment: return "wgpu::ShaderStage::Fragment";
+    case ShaderStage::Compute: return "wgpu::ShaderStage::Compute";
+    default: return "Unknown";
+    }
+}
+
+std::string_view to_string(TextureUsage v) {
+    switch (v) {
+    case TextureUsage::None: return "wgpu::TextureUsage::None";
+    case TextureUsage::CopySrc: return "wgpu::TextureUsage::CopySrc";
+    case TextureUsage::CopyDst: return "wgpu::TextureUsage::CopyDst";
+    case TextureUsage::TextureBinding: return "wgpu::TextureUsage::TextureBinding";
+    case TextureUsage::StorageBinding: return "wgpu::TextureUsage::StorageBinding";
+    case TextureUsage::RenderAttachment: return "wgpu::TextureUsage::RenderAttachment";
+    default: return "Unknown";
+    }
+}
+
+std::string_view to_string(NativeSType v) {
+    switch (v) {
+    case NativeSType::DeviceExtras: return "wgpu::NativeSType::DeviceExtras";
+    case NativeSType::NativeLimits: return "wgpu::NativeSType::NativeLimits";
+    case NativeSType::PipelineLayoutExtras: return "wgpu::NativeSType::PipelineLayoutExtras";
+    case NativeSType::ShaderSourceGLSL: return "wgpu::NativeSType::ShaderSourceGLSL";
+    case NativeSType::InstanceExtras: return "wgpu::NativeSType::InstanceExtras";
+    case NativeSType::BindGroupEntryExtras: return "wgpu::NativeSType::BindGroupEntryExtras";
+    case NativeSType::BindGroupLayoutEntryExtras: return "wgpu::NativeSType::BindGroupLayoutEntryExtras";
+    case NativeSType::QuerySetDescriptorExtras: return "wgpu::NativeSType::QuerySetDescriptorExtras";
+    case NativeSType::SurfaceConfigurationExtras: return "wgpu::NativeSType::SurfaceConfigurationExtras";
+    case NativeSType::SurfaceSourceSwapChainPanel: return "wgpu::NativeSType::SurfaceSourceSwapChainPanel";
+    case NativeSType::PrimitiveStateExtras: return "wgpu::NativeSType::PrimitiveStateExtras";
+    case NativeSType::Force32: return "wgpu::NativeSType::Force32";
+    default: return "Unknown";
+    }
+}
+
+std::string_view to_string(NativeFeature v) {
+    switch (v) {
+    case NativeFeature::PushConstants: return "wgpu::NativeFeature::PushConstants";
+    case NativeFeature::TextureAdapterSpecificFormatFeatures: return "wgpu::NativeFeature::TextureAdapterSpecificFormatFeatures";
+    case NativeFeature::MultiDrawIndirectCount: return "wgpu::NativeFeature::MultiDrawIndirectCount";
+    case NativeFeature::VertexWritableStorage: return "wgpu::NativeFeature::VertexWritableStorage";
+    case NativeFeature::TextureBindingArray: return "wgpu::NativeFeature::TextureBindingArray";
+    case NativeFeature::SampledTextureAndStorageBufferArrayNonUniformIndexing: return "wgpu::NativeFeature::SampledTextureAndStorageBufferArrayNonUniformIndexing";
+    case NativeFeature::PipelineStatisticsQuery: return "wgpu::NativeFeature::PipelineStatisticsQuery";
+    case NativeFeature::StorageResourceBindingArray: return "wgpu::NativeFeature::StorageResourceBindingArray";
+    case NativeFeature::PartiallyBoundBindingArray: return "wgpu::NativeFeature::PartiallyBoundBindingArray";
+    case NativeFeature::TextureFormat16bitNorm: return "wgpu::NativeFeature::TextureFormat16bitNorm";
+    case NativeFeature::TextureCompressionAstcHdr: return "wgpu::NativeFeature::TextureCompressionAstcHdr";
+    case NativeFeature::MappablePrimaryBuffers: return "wgpu::NativeFeature::MappablePrimaryBuffers";
+    case NativeFeature::BufferBindingArray: return "wgpu::NativeFeature::BufferBindingArray";
+    case NativeFeature::UniformBufferAndStorageTextureArrayNonUniformIndexing: return "wgpu::NativeFeature::UniformBufferAndStorageTextureArrayNonUniformIndexing";
+    case NativeFeature::PolygonModeLine: return "wgpu::NativeFeature::PolygonModeLine";
+    case NativeFeature::PolygonModePoint: return "wgpu::NativeFeature::PolygonModePoint";
+    case NativeFeature::ConservativeRasterization: return "wgpu::NativeFeature::ConservativeRasterization";
+    case NativeFeature::SpirvShaderPassthrough: return "wgpu::NativeFeature::SpirvShaderPassthrough";
+    case NativeFeature::VertexAttribute64bit: return "wgpu::NativeFeature::VertexAttribute64bit";
+    case NativeFeature::TextureFormatNv12: return "wgpu::NativeFeature::TextureFormatNv12";
+    case NativeFeature::RayQuery: return "wgpu::NativeFeature::RayQuery";
+    case NativeFeature::ShaderF64: return "wgpu::NativeFeature::ShaderF64";
+    case NativeFeature::ShaderI16: return "wgpu::NativeFeature::ShaderI16";
+    case NativeFeature::ShaderPrimitiveIndex: return "wgpu::NativeFeature::ShaderPrimitiveIndex";
+    case NativeFeature::ShaderEarlyDepthTest: return "wgpu::NativeFeature::ShaderEarlyDepthTest";
+    case NativeFeature::Subgroup: return "wgpu::NativeFeature::Subgroup";
+    case NativeFeature::SubgroupVertex: return "wgpu::NativeFeature::SubgroupVertex";
+    case NativeFeature::SubgroupBarrier: return "wgpu::NativeFeature::SubgroupBarrier";
+    case NativeFeature::TimestampQueryInsideEncoders: return "wgpu::NativeFeature::TimestampQueryInsideEncoders";
+    case NativeFeature::TimestampQueryInsidePasses: return "wgpu::NativeFeature::TimestampQueryInsidePasses";
+    case NativeFeature::ShaderInt64: return "wgpu::NativeFeature::ShaderInt64";
+    case NativeFeature::Force32: return "wgpu::NativeFeature::Force32";
+    default: return "Unknown";
+    }
+}
+
+std::string_view to_string(LogLevel v) {
+    switch (v) {
+    case LogLevel::Off: return "wgpu::LogLevel::Off";
+    case LogLevel::Error: return "wgpu::LogLevel::Error";
+    case LogLevel::Warn: return "wgpu::LogLevel::Warn";
+    case LogLevel::Info: return "wgpu::LogLevel::Info";
+    case LogLevel::Debug: return "wgpu::LogLevel::Debug";
+    case LogLevel::Trace: return "wgpu::LogLevel::Trace";
+    case LogLevel::Force32: return "wgpu::LogLevel::Force32";
+    default: return "Unknown";
+    }
+}
+
+std::string_view to_string(InstanceBackend v) {
+    switch (v) {
+    case InstanceBackend::All: return "wgpu::InstanceBackend::All";
+    case InstanceBackend::Force32: return "wgpu::InstanceBackend::Force32";
+    default: return "Unknown";
+    }
+}
+
+std::string_view to_string(InstanceFlag v) {
+    switch (v) {
+    case InstanceFlag::Default: return "wgpu::InstanceFlag::Default";
+    case InstanceFlag::Force32: return "wgpu::InstanceFlag::Force32";
+    default: return "Unknown";
+    }
+}
+
+std::string_view to_string(Dx12Compiler v) {
+    switch (v) {
+    case Dx12Compiler::Undefined: return "wgpu::Dx12Compiler::Undefined";
+    case Dx12Compiler::Fxc: return "wgpu::Dx12Compiler::Fxc";
+    case Dx12Compiler::Dxc: return "wgpu::Dx12Compiler::Dxc";
+    case Dx12Compiler::Force32: return "wgpu::Dx12Compiler::Force32";
+    default: return "Unknown";
+    }
+}
+
+std::string_view to_string(Gles3MinorVersion v) {
+    switch (v) {
+    case Gles3MinorVersion::Automatic: return "wgpu::Gles3MinorVersion::Automatic";
+    case Gles3MinorVersion::Version0: return "wgpu::Gles3MinorVersion::Version0";
+    case Gles3MinorVersion::Version1: return "wgpu::Gles3MinorVersion::Version1";
+    case Gles3MinorVersion::Version2: return "wgpu::Gles3MinorVersion::Version2";
+    case Gles3MinorVersion::Force32: return "wgpu::Gles3MinorVersion::Force32";
+    default: return "Unknown";
+    }
+}
+
+std::string_view to_string(PipelineStatisticName v) {
+    switch (v) {
+    case PipelineStatisticName::VertexShaderInvocations: return "wgpu::PipelineStatisticName::VertexShaderInvocations";
+    case PipelineStatisticName::ClipperInvocations: return "wgpu::PipelineStatisticName::ClipperInvocations";
+    case PipelineStatisticName::ClipperPrimitivesOut: return "wgpu::PipelineStatisticName::ClipperPrimitivesOut";
+    case PipelineStatisticName::FragmentShaderInvocations: return "wgpu::PipelineStatisticName::FragmentShaderInvocations";
+    case PipelineStatisticName::ComputeShaderInvocations: return "wgpu::PipelineStatisticName::ComputeShaderInvocations";
+    case PipelineStatisticName::Force32: return "wgpu::PipelineStatisticName::Force32";
+    default: return "Unknown";
+    }
+}
+
+std::string_view to_string(NativeQueryType v) {
+    switch (v) {
+    case NativeQueryType::PipelineStatistics: return "wgpu::NativeQueryType::PipelineStatistics";
+    case NativeQueryType::Force32: return "wgpu::NativeQueryType::Force32";
+    default: return "Unknown";
+    }
+}
+
+std::string_view to_string(DxcMaxShaderModel v) {
+    switch (v) {
+    case DxcMaxShaderModel::V6_0: return "wgpu::DxcMaxShaderModel::V6_0";
+    case DxcMaxShaderModel::V6_1: return "wgpu::DxcMaxShaderModel::V6_1";
+    case DxcMaxShaderModel::V6_2: return "wgpu::DxcMaxShaderModel::V6_2";
+    case DxcMaxShaderModel::V6_3: return "wgpu::DxcMaxShaderModel::V6_3";
+    case DxcMaxShaderModel::V6_4: return "wgpu::DxcMaxShaderModel::V6_4";
+    case DxcMaxShaderModel::V6_5: return "wgpu::DxcMaxShaderModel::V6_5";
+    case DxcMaxShaderModel::V6_6: return "wgpu::DxcMaxShaderModel::V6_6";
+    case DxcMaxShaderModel::V6_7: return "wgpu::DxcMaxShaderModel::V6_7";
+    case DxcMaxShaderModel::Force32: return "wgpu::DxcMaxShaderModel::Force32";
+    default: return "Unknown";
+    }
+}
+
+std::string_view to_string(GLFenceBehaviour v) {
+    switch (v) {
+    case GLFenceBehaviour::Normal: return "wgpu::GLFenceBehaviour::Normal";
+    case GLFenceBehaviour::AutoFinish: return "wgpu::GLFenceBehaviour::AutoFinish";
+    case GLFenceBehaviour::Force32: return "wgpu::GLFenceBehaviour::Force32";
+    default: return "Unknown";
+    }
+}
+
+std::string_view to_string(Dx12SwapchainKind v) {
+    switch (v) {
+    case Dx12SwapchainKind::Undefined: return "wgpu::Dx12SwapchainKind::Undefined";
+    case Dx12SwapchainKind::DxgiFromHwnd: return "wgpu::Dx12SwapchainKind::DxgiFromHwnd";
+    case Dx12SwapchainKind::DxgiFromVisual: return "wgpu::Dx12SwapchainKind::DxgiFromVisual";
+    case Dx12SwapchainKind::Force32: return "wgpu::Dx12SwapchainKind::Force32";
+    default: return "Unknown";
+    }
+}
+
+std::string_view to_string(PolygonMode v) {
+    switch (v) {
+    case PolygonMode::Fill: return "wgpu::PolygonMode::Fill";
+    case PolygonMode::Line: return "wgpu::PolygonMode::Line";
+    case PolygonMode::Point: return "wgpu::PolygonMode::Point";
+    default: return "Unknown";
+    }
+}
+
+std::string_view to_string(NativeTextureFormat v) {
+    switch (v) {
+    case NativeTextureFormat::R16Unorm: return "wgpu::NativeTextureFormat::R16Unorm";
+    case NativeTextureFormat::R16Snorm: return "wgpu::NativeTextureFormat::R16Snorm";
+    case NativeTextureFormat::Rg16Unorm: return "wgpu::NativeTextureFormat::Rg16Unorm";
+    case NativeTextureFormat::Rg16Snorm: return "wgpu::NativeTextureFormat::Rg16Snorm";
+    case NativeTextureFormat::Rgba16Unorm: return "wgpu::NativeTextureFormat::Rgba16Unorm";
+    case NativeTextureFormat::Rgba16Snorm: return "wgpu::NativeTextureFormat::Rgba16Snorm";
+    case NativeTextureFormat::NV12: return "wgpu::NativeTextureFormat::NV12";
+    case NativeTextureFormat::P010: return "wgpu::NativeTextureFormat::P010";
+    default: return "Unknown";
+    }
+}
+
+} // namespace wgpu
+
+
+// Template methods of handles
+namespace wgpu {
+namespace raw {
+// Template methods of Adapter
+template<std::invocable<RequestDeviceStatus, raw::Device, StringView> Lambda>
+Future Adapter::requestDevice(const DeviceDescriptor& descriptor, CallbackMode callbackMode, const Lambda& callback) const {
+	auto* lambda = new Lambda(callback);
+	auto cCallback = [](WGPURequestDeviceStatus status, WGPUDevice device, WGPUStringView message, void* userdata1, void*) -> void {
+		std::unique_ptr<Lambda> lambda(reinterpret_cast<Lambda*>(userdata1));
+		(*lambda)(static_cast<RequestDeviceStatus>(status), device, *reinterpret_cast<StringView *>(&message));
+	};
+	WGPURequestDeviceCallbackInfo callbackInfo = {
+		/* nextInChain = */ nullptr,
+		/* mode = */ callbackMode,
+		/* callback = */ cCallback,
+		/* userdata1 = */ (void*)lambda,
+		/* userdata2 = */ nullptr,
+	};
+	return wgpuAdapterRequestDevice(m_raw, reinterpret_cast<const WGPUDeviceDescriptor *>(&descriptor), *reinterpret_cast<WGPURequestDeviceCallbackInfo *>(&callbackInfo));
+}
+
+
+// Template methods of Buffer
+template<std::invocable<MapAsyncStatus, StringView> Lambda>
+Future Buffer::mapAsync(MapMode mode, size_t offset, size_t size, CallbackMode callbackMode, const Lambda& callback) const {
+	auto* lambda = new Lambda(callback);
+	auto cCallback = [](WGPUMapAsyncStatus status, WGPUStringView message, void* userdata1, void*) -> void {
+		std::unique_ptr<Lambda> lambda(reinterpret_cast<Lambda*>(userdata1));
+		(*lambda)(static_cast<MapAsyncStatus>(status), *reinterpret_cast<StringView *>(&message));
+	};
+	WGPUBufferMapCallbackInfo callbackInfo = {
+		/* nextInChain = */ nullptr,
+		/* mode = */ callbackMode,
+		/* callback = */ cCallback,
+		/* userdata1 = */ (void*)lambda,
+		/* userdata2 = */ nullptr,
+	};
+	return wgpuBufferMapAsync(m_raw, static_cast<WGPUMapMode>(mode), offset, size, *reinterpret_cast<WGPUBufferMapCallbackInfo *>(&callbackInfo));
+}
+
+
+// Template methods of Device
+template<std::invocable<CreatePipelineAsyncStatus, raw::ComputePipeline, StringView> Lambda>
+Future Device::createComputePipelineAsync(const ComputePipelineDescriptor& descriptor, CallbackMode callbackMode, const Lambda& callback) const {
+	auto* lambda = new Lambda(callback);
+	auto cCallback = [](WGPUCreatePipelineAsyncStatus status, WGPUComputePipeline pipeline, WGPUStringView message, void* userdata1, void*) -> void {
+		std::unique_ptr<Lambda> lambda(reinterpret_cast<Lambda*>(userdata1));
+		(*lambda)(static_cast<CreatePipelineAsyncStatus>(status), pipeline, *reinterpret_cast<StringView *>(&message));
+	};
+	WGPUCreateComputePipelineAsyncCallbackInfo callbackInfo = {
+		/* nextInChain = */ nullptr,
+		/* mode = */ callbackMode,
+		/* callback = */ cCallback,
+		/* userdata1 = */ (void*)lambda,
+		/* userdata2 = */ nullptr,
+	};
+	return wgpuDeviceCreateComputePipelineAsync(m_raw, reinterpret_cast<const WGPUComputePipelineDescriptor *>(&descriptor), *reinterpret_cast<WGPUCreateComputePipelineAsyncCallbackInfo *>(&callbackInfo));
+}
+template<std::invocable<CreatePipelineAsyncStatus, raw::RenderPipeline, StringView> Lambda>
+Future Device::createRenderPipelineAsync(const RenderPipelineDescriptor& descriptor, CallbackMode callbackMode, const Lambda& callback) const {
+	auto* lambda = new Lambda(callback);
+	auto cCallback = [](WGPUCreatePipelineAsyncStatus status, WGPURenderPipeline pipeline, WGPUStringView message, void* userdata1, void*) -> void {
+		std::unique_ptr<Lambda> lambda(reinterpret_cast<Lambda*>(userdata1));
+		(*lambda)(static_cast<CreatePipelineAsyncStatus>(status), pipeline, *reinterpret_cast<StringView *>(&message));
+	};
+	WGPUCreateRenderPipelineAsyncCallbackInfo callbackInfo = {
+		/* nextInChain = */ nullptr,
+		/* mode = */ callbackMode,
+		/* callback = */ cCallback,
+		/* userdata1 = */ (void*)lambda,
+		/* userdata2 = */ nullptr,
+	};
+	return wgpuDeviceCreateRenderPipelineAsync(m_raw, reinterpret_cast<const WGPURenderPipelineDescriptor *>(&descriptor), *reinterpret_cast<WGPUCreateRenderPipelineAsyncCallbackInfo *>(&callbackInfo));
+}
+template<std::invocable<PopErrorScopeStatus, ErrorType, StringView> Lambda>
+Future Device::popErrorScope(CallbackMode callbackMode, const Lambda& callback) const {
+	auto* lambda = new Lambda(callback);
+	auto cCallback = [](WGPUPopErrorScopeStatus status, WGPUErrorType type, WGPUStringView message, void* userdata1, void*) -> void {
+		std::unique_ptr<Lambda> lambda(reinterpret_cast<Lambda*>(userdata1));
+		(*lambda)(static_cast<PopErrorScopeStatus>(status), static_cast<ErrorType>(type), *reinterpret_cast<StringView *>(&message));
+	};
+	WGPUPopErrorScopeCallbackInfo callbackInfo = {
+		/* nextInChain = */ nullptr,
+		/* mode = */ callbackMode,
+		/* callback = */ cCallback,
+		/* userdata1 = */ (void*)lambda,
+		/* userdata2 = */ nullptr,
+	};
+	return wgpuDevicePopErrorScope(m_raw, *reinterpret_cast<WGPUPopErrorScopeCallbackInfo *>(&callbackInfo));
+}
+
+
+// Template methods of Instance
+template<std::invocable<RequestAdapterStatus, raw::Adapter, StringView> Lambda>
+Future Instance::requestAdapter(const RequestAdapterOptions& options, CallbackMode callbackMode, const Lambda& callback) const {
+	auto* lambda = new Lambda(callback);
+	auto cCallback = [](WGPURequestAdapterStatus status, WGPUAdapter adapter, WGPUStringView message, void* userdata1, void*) -> void {
+		std::unique_ptr<Lambda> lambda(reinterpret_cast<Lambda*>(userdata1));
+		(*lambda)(static_cast<RequestAdapterStatus>(status), adapter, *reinterpret_cast<StringView *>(&message));
+	};
+	WGPURequestAdapterCallbackInfo callbackInfo = {
+		/* nextInChain = */ nullptr,
+		/* mode = */ callbackMode,
+		/* callback = */ cCallback,
+		/* userdata1 = */ (void*)lambda,
+		/* userdata2 = */ nullptr,
+	};
+	return wgpuInstanceRequestAdapter(m_raw, reinterpret_cast<const WGPURequestAdapterOptions *>(&options), *reinterpret_cast<WGPURequestAdapterCallbackInfo *>(&callbackInfo));
+}
+
+
+// Template methods of Queue
+template<std::invocable<QueueWorkDoneStatus> Lambda>
+Future Queue::onSubmittedWorkDone(CallbackMode callbackMode, const Lambda& callback) const {
+	auto* lambda = new Lambda(callback);
+	auto cCallback = [](WGPUQueueWorkDoneStatus status, void* userdata1, void*) -> void {
+		std::unique_ptr<Lambda> lambda(reinterpret_cast<Lambda*>(userdata1));
+		(*lambda)(static_cast<QueueWorkDoneStatus>(status));
+	};
+	WGPUQueueWorkDoneCallbackInfo callbackInfo = {
+		/* nextInChain = */ nullptr,
+		/* mode = */ callbackMode,
+		/* callback = */ cCallback,
+		/* userdata1 = */ (void*)lambda,
+		/* userdata2 = */ nullptr,
+	};
+	return wgpuQueueOnSubmittedWorkDone(m_raw, *reinterpret_cast<WGPUQueueWorkDoneCallbackInfo *>(&callbackInfo));
+}
+
+
+// Template methods of ShaderModule
+template<std::invocable<CompilationInfoRequestStatus, const CompilationInfo&> Lambda>
+Future ShaderModule::getCompilationInfo(CallbackMode callbackMode, const Lambda& callback) const {
+	auto* lambda = new Lambda(callback);
+	auto cCallback = [](WGPUCompilationInfoRequestStatus status, struct WGPUCompilationInfo const * compilationInfo, void* userdata1, void*) -> void {
+		std::unique_ptr<Lambda> lambda(reinterpret_cast<Lambda*>(userdata1));
+		(*lambda)(static_cast<CompilationInfoRequestStatus>(status), *reinterpret_cast<const CompilationInfo*>(compilationInfo));
+	};
+	WGPUCompilationInfoCallbackInfo callbackInfo = {
+		/* nextInChain = */ nullptr,
+		/* mode = */ callbackMode,
+		/* callback = */ cCallback,
+		/* userdata1 = */ (void*)lambda,
+		/* userdata2 = */ nullptr,
+	};
+	return wgpuShaderModuleGetCompilationInfo(m_raw, *reinterpret_cast<WGPUCompilationInfoCallbackInfo *>(&callbackInfo));
+}
+
+
+}
+
+} // namespace wgpu
+
+namespace wgpu {
+
+} // namespace wgpu
+
 
 // Extra implementations
+#ifdef WEBGPU_CPP_NAMESPACE
+namespace WEBGPU_CPP_NAMESPACE
+#endif
+{
+StringView::operator std::string_view() const {
+	return
+		length == WGPU_STRLEN
+		? std::string_view(data)
+		: std::string_view(data, length);
+}
+
+InstanceHandle createInstance() {
+	return wgpuCreateInstance(nullptr);
+}
+
+InstanceHandle createInstance(const InstanceDescriptor& descriptor) {
+	return wgpuCreateInstance(reinterpret_cast<const WGPUInstanceDescriptor*>(&descriptor));
+}
+
+}
+
+#ifdef WEBGPU_CPP_NAMESPACE
+namespace WEBGPU_CPP_NAMESPACE
+#endif
+{
+#ifdef WEBGPU_CPP_USE_RAW_NAMESPACE
+namespace raw 
+#endif
+{
 Adapter Instance::requestAdapter(const RequestAdapterOptions& options) {
 	struct Context {
 		Adapter adapter = nullptr;
@@ -7779,11 +9745,18 @@ Device Adapter::requestDevice(const DeviceDescriptor& descriptor) {
 	assert(context.requestEnded);
 	return context.device;
 }
+}
+}
 
 #undef HANDLE
+#undef STRUCT
+#undef STRUCT_NO_OSTREAM
+#undef HANDLE_RAII
 #undef DESCRIPTOR
 #undef ENUM
 #undef ENUM_ENTRY
 #undef END
 
-} // namespace wgpu
+#undef WEBGPU_CPP_USE_RAW_NAMESPACE
+
+#undef WEBGPU_CPP_NAMESPACE
