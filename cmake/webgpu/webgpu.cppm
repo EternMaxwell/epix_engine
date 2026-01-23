@@ -1127,7 +1127,8 @@ public:
 class Type : public Template { \
 public: \
 	typedef Template H; \
-    using H::H; \
+	Type() : H() {} \
+	Type(const typename H::W& w) : H(w) {} \
 	Type(const H& handle) : H(handle) {} \
 	Type& operator=(const H& handle) { \
 		H& h = *this; \
@@ -1172,7 +1173,8 @@ public: \
 		if (h) h.release(); \
 		h = nullptr; \
 	} \
-	operator typename H::W() const { return (H&)(*this); } \
+	operator typename H::W&() { return (H&)(*this); } \
+	operator const typename H::W&() const { return (H&)(*this); } \
 	operator bool() const { return (H&)(*this); } \
 	bool operator==(const Type& other) const { return (H&)(*this) == (H&)(other); } \
 	bool operator!=(const Type& other) const { return (H&)(*this) != (H&)(other); } \
