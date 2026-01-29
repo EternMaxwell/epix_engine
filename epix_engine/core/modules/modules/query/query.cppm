@@ -26,13 +26,13 @@ struct Query {
     QueryIter<D, F> iter() const { return state_->create_iter(*world_, last_run_, this_run_); }
 
     typename AddOptional<typename QueryData<D>::Item>::type get(Entity entity) {
-        return world_->entities().get(entity).and_then(
+        return world_entities(*world_).get(entity).and_then(
             [this, entity](EntityLocation location) -> typename AddOptional<typename QueryData<D>::Item>::type {
                 if (!state_->contains_archetype(location.archetype_id)) return std::nullopt;
-                auto& archetype = world_->archetypes().get(location.archetype_id).value().get();
+                auto& archetype = world_archetypes(*world_).get(location.archetype_id).value().get();
                 auto fetch      = WorldQuery<D>::init_fetch(*world_, state_->fetch_state(), last_run_, this_run_);
                 auto filter     = WorldQuery<F>::init_fetch(*world_, state_->filter_state(), last_run_, this_run_);
-                auto& table     = world_->storage_mut().tables.get_mut(archetype.table_id()).value().get();
+                auto& table     = world_storage_mut(*world_).tables.get_mut(archetype.table_id()).value().get();
 
                 WorldQuery<D>::set_archetype(fetch, state_->fetch_state(), archetype, table);
                 WorldQuery<F>::set_archetype(filter, state_->filter_state(), archetype, table);
@@ -55,13 +55,13 @@ struct Query {
     }
 
     bool contains(Entity entity) const {
-        return world_->entities()
+        return world_entities(*world_)
             .get(entity)
             .transform([this, entity](EntityLocation location) -> bool {
                 if (!state_->contains_archetype(location.archetype_id)) return false;
-                auto& archetype = world_->archetypes().get(location.archetype_id).value().get();
+                auto& archetype = world_archetypes(*world_).get(location.archetype_id).value().get();
                 auto filter     = WorldQuery<F>::init_fetch(*world_, state_->filter_state(), last_run_, this_run_);
-                auto& table     = world_->storage_mut().tables.get_mut(archetype.table_id()).value().get();
+                auto& table     = world_storage_mut(*world_).tables.get_mut(archetype.table_id()).value().get();
 
                 WorldQuery<F>::set_archetype(filter, state_->filter_state(), archetype, table);
                 return QueryFilter<F>::filter_fetch(filter, entity, location.table_idx);
