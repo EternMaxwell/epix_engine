@@ -10,10 +10,10 @@ import :world.interface;
 import :world.entity_ref;
 
 namespace core {
-template <typename T>
+export template <typename T>
 struct SystemParam;
 
-struct ValidateParamError {
+export struct ValidateParamError {
     meta::type_index param_type;
     std::string message;  // An optional message, cause some error can be understood just with type name.
 };
@@ -22,7 +22,7 @@ enum SystemFlagBits : std::uint8_t {
     EXCLUSIVE = 1 << 0,  // system requires exclusive access to the world
     DEFERRED  = 1 << 1,  // system has deferred commands.
 };
-struct SystemMeta {
+export struct SystemMeta {
     std::string name;
     SystemFlagBits flags = (SystemFlagBits)0;
     Tick last_run        = 0;
@@ -57,7 +57,7 @@ concept system_param = requires(World& world, SystemMeta& meta, FilteredAccessSe
 };
 
 // A base struct to provide default implementation for some functions.
-struct ParamBase {
+export struct ParamBase {
     static void init_access(const auto&, SystemMeta&, FilteredAccessSet&, const World&) {}
     static void new_archetype(auto&, const Archetype&, SystemMeta&) {}
     static void apply(auto&, const SystemMeta&, World&) {}

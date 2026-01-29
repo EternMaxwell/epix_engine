@@ -9,8 +9,8 @@ import std;
 import :id;
 
 namespace assets {
-using core::Sender;
 using core::Receiver;
+using core::Sender;
 struct DestructionEvent {
     InternalAssetId id;
 };
@@ -218,4 +218,4 @@ struct HandleProvider {
                                              const std::optional<std::filesystem::path>& path) const;
     std::shared_ptr<StrongHandle> reserve(bool loader_managed, const std::optional<std::filesystem::path>& path) const;
 };
-}  // namespace epix::assets
+}  // namespace assets

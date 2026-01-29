@@ -143,33 +143,23 @@ struct InternalAssetId : std::variant<AssetIndex, uuids::uuid> {
 };
 }  // namespace assets
 
-export template <typename T>
-struct std::hash<assets::AssetId<T>> {
+export namespace std {
+template <typename T>
+struct hash<assets::AssetId<T>> {
     std::size_t operator()(const assets::AssetId<T>& id) const {
-        return std::visit(
-            assets::visitor{[](const assets::AssetIndex& index) {
-                                return std::hash<uint64_t>()((static_cast<uint64_t>(index.index()) << 32) |
-                                                             static_cast<uint64_t>(index.generation()));
-                            },
-                            [](const uuids::uuid& id) { return std::hash<uuids::uuid>()(id); }},
-            id);
+        return std::visit([]<typename U>(const U& index) { return std::hash<U>()(index); }, id);
     }
 };
 
-export template <>
-struct std::hash<assets::UntypedAssetId> {
+template <>
+struct hash<assets::UntypedAssetId> {
     std::size_t operator()(const assets::UntypedAssetId& id) const {
         std::size_t type_hash = std::hash<meta::type_index>()(id.type);
-        std::size_t id_hash =
-            std::visit(assets::visitor{[](const assets::AssetIndex& index) {
-                                           return std::hash<uint64_t>()((static_cast<uint64_t>(index.index()) << 32) |
-                                                                        static_cast<uint64_t>(index.generation()));
-                                       },
-                                       [](const uuids::uuid& id) { return std::hash<uuids::uuid>()(id); }},
-                       id.id);
+        std::size_t id_hash   = std::visit([]<typename T>(const T& index) { return std::hash<T>()(index); }, id.id);
         return type_hash ^ (id_hash + 0x9e3779b9 + (type_hash << 6) + (type_hash >> 2));
     }
 };
+}  // namespace std
 
 // formatter support for AssetId and UntypedAssetId
 export namespace std {

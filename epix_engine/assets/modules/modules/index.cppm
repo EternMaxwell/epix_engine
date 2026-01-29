@@ -61,3 +61,13 @@ struct AssetIndexAllocator {
     Receiver<AssetIndex> reserved_receiver() const;
 };
 }  // namespace assets
+
+namespace std {
+template <>
+struct hash<assets::AssetIndex> {
+    std::size_t operator()(const assets::AssetIndex& index) const {
+        return std::hash<uint64_t>()((static_cast<uint64_t>(index.index()) << 32) |
+                                     static_cast<uint64_t>(index.generation()));
+    }
+};
+}  // namespace std

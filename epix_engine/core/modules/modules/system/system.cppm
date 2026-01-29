@@ -13,10 +13,10 @@ export import :system.from_param;
 export import :system.commands;
 
 namespace core {
-struct SystemException {
+export struct SystemException {
     std::exception_ptr exception;
 };
-using RunSystemError = std::variant<ValidateParamError, SystemException>;
+export using RunSystemError = std::variant<ValidateParamError, SystemException>;
 export template <typename In, typename Out>
 struct System {
     virtual std::string_view name() const = 0;
