@@ -14,12 +14,12 @@ template <size_t N>
 struct CTType {
     char pad[N % 16 + 1];
 };
+}  // namespace
 
 template <size_t... Is>
 void register_all_impl(TypeRegistry* registry, size_t* out, std::index_sequence<Is...>) {
     ((out[Is] = registry->type_id<CTType<Is>>()), ...);
 }
-}  // namespace
 
 TEST(core, type_registry) {
     constexpr size_t TYPE_COUNT = 64;  // number of distinct compile-time types
