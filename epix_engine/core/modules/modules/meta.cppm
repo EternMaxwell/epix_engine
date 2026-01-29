@@ -57,27 +57,27 @@ using copy_construct_fn = void (*)(void* dest, const void* src) noexcept;
 using move_construct_fn = void (*)(void* dest, void* src) noexcept;
 
 template <typename T>
-static destruct_fn destruct_impl() {
+void destruct_impl(void* p) noexcept {
     if constexpr (std::destructible<T>) {
-        return [](void* p) noexcept { static_cast<T*>(p)->~T(); };
+        static_cast<T*>(p)->~T();
     } else {
-        return [](void* p) noexcept { std::abort(); };
+        std::abort();
     }
 }
 template <typename T>
-static copy_construct_fn copy_construct_impl() {
+void copy_construct_impl(void* dest, const void* src) noexcept {
     if constexpr (std::copy_constructible<T>) {
-        return [](void* dest, const void* src) noexcept { new (dest) T(*static_cast<const T*>(src)); };
+        new (dest) T(*static_cast<const T*>(src));
     } else {
-        return [](void* dest, const void* src) noexcept { std::abort(); };
+        std::abort();
     }
 }
 template <typename T>
-static move_construct_fn move_construct_impl() {
+void move_construct_impl(void* dest, void* src) noexcept {
     if constexpr (std::move_constructible<T>) {
-        return [](void* dest, void* src) noexcept { new (dest) T(std::move(*static_cast<T*>(src))); };
+        new (dest) T(std::move(*static_cast<T*>(src)));
     } else {
-        return [](void* dest, void* src) noexcept { std::abort(); };
+        std::abort();
     }
 }
 
@@ -125,9 +125,9 @@ export struct type_info {
         ti.hash                        = std::hash<std::string_view>()(type_name<T>());
         ti.size                        = sizeof(T);
         ti.align                       = alignof(T);
-        ti.destruct                    = destruct_impl<T>();
-        ti.copy_construct              = copy_construct_impl<T>();
-        ti.move_construct              = move_construct_impl<T>();
+        ti.destruct                    = destruct_impl<T>;
+        ti.copy_construct              = copy_construct_impl<T>;
+        ti.move_construct              = move_construct_impl<T>;
         ti.copy_constructible          = std::copy_constructible<T>;
         ti.move_constructible          = std::move_constructible<T>;
         ti.trivially_copyable          = std::is_trivially_copyable_v<T>;
