@@ -58,3 +58,6 @@
 [submodule "libs/webgpu-cpp"]
 	path = libs/webgpu-cpp
 	url = https://github.com/EternMaxwell/WebGPU-Cpp.git
+[submodule "libs/webgpu-wrapper"]
+	path = libs/webgpu-wrapper
+	url = https://github.com/EternMaxwell/webgpu-cpp-wrapper.git

@@ -1,6 +1,6 @@
 # Fetch and configure WebGPU-Cpp generator
 
-set(WEBGPU_CPP_GENERATOR_DIR "${CMAKE_CURRENT_SOURCE_DIR}/libs/webgpu-cpp" CACHE INTERNAL "Path to WebGPU-Cpp generator")
+set(WEBGPU_CPP_GENERATOR_DIR "${CMAKE_CURRENT_SOURCE_DIR}/libs/webgpu-wrapper" CACHE INTERNAL "Path to WebGPU-Cpp generator")
 set(WEBGPU_CPP_GENERATOR_SCRIPT "${WEBGPU_CPP_GENERATOR_DIR}/generate.py" CACHE INTERNAL "Path to generator script")
 
 # Check if Python is available
@@ -46,14 +46,14 @@ function(generate_webgpu_wrapper)
     # Build header URL arguments
     set(HEADER_ARGS "")
     foreach(HEADER ${GEN_HEADER_FILES})
-        list(APPEND HEADER_ARGS "-u" "${HEADER}")
+        list(APPEND HEADER_ARGS "-i" "${HEADER}")
     endforeach()
 
     # Generate regular header
     set(OUTPUT_FILE "${GEN_OUTPUT_DIR}/webgpu.cppm")
     
     # Select appropriate template
-    set(TEMPLATE_FILE "${CMAKE_CURRENT_SOURCE_DIR}/libs/webgpu-cpp/webgpu.template.cppm")
+    set(TEMPLATE_FILE "${CMAKE_CURRENT_SOURCE_DIR}/libs/webgpu-wrapper/webgpu.template.cppm")
 
     message(STATUS "Generating WebGPU C++ wrapper...")
     message(STATUS "  Headers: ${GEN_HEADER_FILES}")
@@ -66,8 +66,7 @@ function(generate_webgpu_wrapper)
             ${HEADER_ARGS}
             -t "${TEMPLATE_FILE}"
             -o "${OUTPUT_FILE}"
-            --use-init-macros
-            --use-raw-namespace
+            --use-raii
         WORKING_DIRECTORY ${WEBGPU_CPP_GENERATOR_DIR}
         RESULT_VARIABLE GEN_RESULT
         OUTPUT_VARIABLE GEN_OUTPUT
