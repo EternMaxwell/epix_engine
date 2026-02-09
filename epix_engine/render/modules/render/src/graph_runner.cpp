@@ -13,7 +13,7 @@ bool RenderGraphRunner::run(const RenderGraph& graph,
                             const wgpu::Queue& queue,
                             World& world,
                             std::function<void(const wgpu::CommandEncoder&)> finalizer) {
-    RenderContext render_context(device);
+    RenderContext render_context(device.clone());
     auto res = run_graph(graph, std::nullopt, render_context, world, {}, std::nullopt);
     if (!res) {
         spdlog::warn("Failed to run graph {}.", graph.get_input_node()->get().label.type_index().short_name());

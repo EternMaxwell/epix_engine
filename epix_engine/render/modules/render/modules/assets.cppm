@@ -28,7 +28,7 @@ concept RenderAssetImpl = requires(RenderAsset<T> asset) {
     typename RenderAsset<T>::Param;
     requires core::system_param<typename RenderAsset<T>::Param>;
     {
-        asset.process(std::declval<T&&>(), std::declval<typename RenderAsset<T>::Param&>())
+        asset.process(std::declval<T &&>(), std::declval<typename RenderAsset<T>::Param&>())
     } -> std::same_as<typename RenderAsset<T>::ProcessedAsset>;
     { asset.usage(std::declval<const T&>()) } -> std::same_as<RenderAssetUsage>;
 };
@@ -190,17 +190,15 @@ struct ExtractAssetPlugin {
             render_app->get().world_mut().init_resource<RenderAssets<T>>();
             render_app->get().world_mut().init_resource<CachedExtractedAssets<T>>();
             render_app->get().configure_sets(sets(ExtractAssetSet::Extract, ExtractAssetSet::Process).chain());
-            render_app->get().add_systems(
-                ExtractSchedule,
-                into(extract_assets<T>)
-                    .in_set(ExtractAssetSet::Extract)
-                    .set_name(std::format("extract render asset<{}>", meta::type_id<T>().short_name())));
-            render_app->get().add_systems(
-                ExtractSchedule,
-                into(process_render_assets<T>)
-                    .in_set(ExtractAssetSet::Process)
-                    .set_name(std::format("process render asset<{}>", meta::type_id<T>().short_name())));
+            render_app->get().add_systems(ExtractSchedule, into(extract_assets<T>)
+                                                               .in_set(ExtractAssetSet::Extract)
+                                                               .set_name(std::format("extract render asset<{}>",
+                                                                                     meta::type_id<T>().short_name())));
+            render_app->get().add_systems(ExtractSchedule, into(process_render_assets<T>)
+                                                               .in_set(ExtractAssetSet::Process)
+                                                               .set_name(std::format("process render asset<{}>",
+                                                                                     meta::type_id<T>().short_name())));
         }
     }
 };
-};  // namespace render
+}  // namespace render

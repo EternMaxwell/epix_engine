@@ -6,7 +6,7 @@ namespace render {
 struct RenderT {
     static core::Schedule render_schedule();
 };
-export RenderT Render;
+export constexpr RenderT Render;
 
 /**
  * @brief Render schedule system sets.

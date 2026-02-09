@@ -93,3 +93,9 @@ struct RenderGraphRunner {
                           std::optional<Entity> view_entity);
 };
 }  // namespace render::graph
+
+export namespace render {
+using graph::GraphContext;
+using graph::RenderContext;
+using graph::RenderGraph;
+}  // namespace render

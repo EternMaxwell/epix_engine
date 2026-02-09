@@ -5,7 +5,7 @@ export module epix.core:utils.int_wrapper;
 import std;
 
 namespace core {
-template <std::integral T>
+export template <std::integral T>
 struct int_base {
    public:
     using value_type = T;
@@ -28,11 +28,11 @@ struct int_base {
 };
 }  // namespace core
 
-export template <std::integral T>
+template <std::integral T>
 struct std::hash<::core::int_base<T>> {
     std::size_t operator()(const ::core::int_base<T>& v) const { return std::hash<T>()(v.get()); }
 };
-export template <typename T>
+template <typename T>
     requires requires {
         typename T::value_type;
         requires std::derived_from<T, ::core::int_base<typename T::value_type>>;

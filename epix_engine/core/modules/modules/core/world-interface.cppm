@@ -188,6 +188,7 @@ export struct World {
     }
 
     template <typename T, typename... Args>
+        requires std::constructible_from<T, Args&&...>
     void emplace_resource(Args&&... args) {
         _storage.resources.initialize(_type_registry->type_id<T>());
         _storage.resources.get_mut(_type_registry->type_id<T>())
@@ -196,6 +197,7 @@ export struct World {
             .template emplace<T>(change_tick(), std::forward<Args>(args)...);
     }
     template <typename T>
+        requires std::constructible_from<std::remove_cvref_t<T>, T>
     void insert_resource(T&& value) {
         using D = std::remove_cvref_t<T>;
         emplace_resource<D>(std::forward<T>(value));

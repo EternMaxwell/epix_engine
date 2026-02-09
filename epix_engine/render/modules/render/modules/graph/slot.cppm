@@ -21,13 +21,35 @@ export struct SlotInfo {
 };
 export struct SlotValue {
    private:
-    std::variant<Entity, wgpu::Buffer, wgpu::TextureView, wgpu::Sampler> value;
+    using variant_t = std::variant<Entity, wgpu::Buffer, wgpu::TextureView, wgpu::Sampler>;
+    variant_t value;
 
    public:
+    SlotValue(const SlotValue& other) {
+        value = std::visit(assets::visitor{
+                               [](const Entity& e) -> variant_t { return Entity(e); },
+                               [](const wgpu::Buffer& b) -> variant_t { return b.clone(); },
+                               [](const wgpu::TextureView& t) -> variant_t { return t.clone(); },
+                               [](const wgpu::Sampler& s) -> variant_t { return s.clone(); },
+                           },
+                           other.value);
+    }
+    SlotValue& operator=(const SlotValue& other) {
+        value = std::visit(assets::visitor{
+                               [](const Entity& e) -> variant_t { return Entity(e); },
+                               [](const wgpu::Buffer& b) -> variant_t { return b.clone(); },
+                               [](const wgpu::TextureView& t) -> variant_t { return t.clone(); },
+                               [](const wgpu::Sampler& s) -> variant_t { return s.clone(); },
+                           },
+                           other.value);
+        return *this;
+    }
+    SlotValue(SlotValue&&)            = default;
+    SlotValue& operator=(SlotValue&&) = default;
     SlotValue(const Entity& entity) : value(entity) {}
-    SlotValue(const wgpu::Buffer& buffer) : value(buffer) {}
-    SlotValue(const wgpu::TextureView& texture) : value(texture) {}
-    SlotValue(const wgpu::Sampler& sampler) : value(sampler) {}
+    SlotValue(const wgpu::Buffer& buffer) : value(buffer.clone()) {}
+    SlotValue(const wgpu::TextureView& texture) : value(texture.clone()) {}
+    SlotValue(const wgpu::Sampler& sampler) : value(sampler.clone()) {}
     SlotType type() const {
         return std::visit(assets::visitor{
                               [](const Entity&) { return SlotType::Entity; },
@@ -45,17 +67,19 @@ export struct SlotValue {
         return std::get_if<Entity>(&value) ? std::optional<Entity>{*std::get_if<Entity>(&value)} : std::nullopt;
     }
     std::optional<wgpu::Buffer> buffer() const {
-        return std::get_if<wgpu::Buffer>(&value) ? std::optional<wgpu::Buffer>{*std::get_if<wgpu::Buffer>(&value)}
-                                                 : std::nullopt;
+        return std::get_if<wgpu::Buffer>(&value)
+                   ? std::optional<wgpu::Buffer>{std::get_if<wgpu::Buffer>(&value)->clone()}
+                   : std::nullopt;
     }
     std::optional<wgpu::TextureView> texture() const {
         return std::get_if<wgpu::TextureView>(&value)
-                   ? std::optional<wgpu::TextureView>{*std::get_if<wgpu::TextureView>(&value)}
+                   ? std::optional<wgpu::TextureView>{std::get_if<wgpu::TextureView>(&value)->clone()}
                    : std::nullopt;
     }
     std::optional<wgpu::Sampler> sampler() const {
-        return std::get_if<wgpu::Sampler>(&value) ? std::optional<wgpu::Sampler>{*std::get_if<wgpu::Sampler>(&value)}
-                                                  : std::nullopt;
+        return std::get_if<wgpu::Sampler>(&value)
+                   ? std::optional<wgpu::Sampler>{std::get_if<wgpu::Sampler>(&value)->clone()}
+                   : std::nullopt;
     }
 };
 export struct SlotLabel {

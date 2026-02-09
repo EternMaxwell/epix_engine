@@ -58,12 +58,12 @@ export struct GraphContext {
         return value ? value->sampler() : std::nullopt;
     }
 
-    bool set_output(const SlotLabel& label, const SlotValue& value) {
+    bool set_output(const SlotLabel& label, SlotValue value) {
         auto index = m_node_state.outputs.get_slot_index(label);
         auto info  = m_node_state.outputs.get_slot(label);
         if (index && info) {
             if (info->get().type == value.type()) {
-                m_outputs[*index].emplace(value);
+                m_outputs[*index].emplace(std::move(value));
                 return true;
             }
         }
@@ -95,7 +95,7 @@ export struct RenderContext {
     const wgpu::Device& device() const { return m_device; }
     wgpu::CommandEncoder& command_encoder() {
         if (!m_command_encoder) {
-            m_command_encoder = m_device.createCommandEncoder(wgpu::CommandEncoderDescriptor(wgpu::Default));
+            m_command_encoder = m_device.createCommandEncoder();
         }
         return *m_command_encoder;
     }
@@ -105,7 +105,7 @@ export struct RenderContext {
     void add_command_buffer(wgpu::CommandBuffer buffer) { m_queued_commands.emplace_back(std::move(buffer)); }
     void flush_encoder() {
         if (m_command_encoder) {
-            m_queued_commands.emplace_back(m_command_encoder->finish());
+            m_queued_commands.emplace_back(m_command_encoder->finish({}));
             m_command_encoder.reset();
         }
     }
