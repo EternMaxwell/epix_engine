@@ -33,7 +33,7 @@ endif()
 add_library(webgpu STATIC)
 target_sources(webgpu
     PUBLIC FILE_SET cxx_modules TYPE CXX_MODULES FILES
-        "${CMAKE_CURRENT_SOURCE_DIR}/cmake/webgpu/webgpu.cppm"
+        "${WEBGPU_GENERATED_DIR}/webgpu.cppm"
 )
 target_link_libraries(webgpu PUBLIC wgpu_native)
 message(STATUS "WebGPU module target created: webgpu")

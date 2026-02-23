@@ -61,21 +61,30 @@ function(generate_webgpu_wrapper)
     message(STATUS "  Template: ${TEMPLATE_FILE}")
 
     # Generate main wrapper
-    execute_process(
+    # execute_process(
+    #     COMMAND ${Python3_EXECUTABLE} ${WEBGPU_CPP_GENERATOR_SCRIPT}
+    #         ${HEADER_ARGS}
+    #         -t "${TEMPLATE_FILE}"
+    #         -o "${OUTPUT_FILE}"
+    #         --use-raii
+    #         --indexed-handle all
+    #     WORKING_DIRECTORY ${WEBGPU_CPP_GENERATOR_DIR}
+    #     RESULT_VARIABLE GEN_RESULT
+    #     OUTPUT_VARIABLE GEN_OUTPUT
+    #     ERROR_VARIABLE GEN_ERROR
+    # )
+    add_custom_command(
+        OUTPUT ${OUTPUT_FILE}
         COMMAND ${Python3_EXECUTABLE} ${WEBGPU_CPP_GENERATOR_SCRIPT}
             ${HEADER_ARGS}
             -t "${TEMPLATE_FILE}"
             -o "${OUTPUT_FILE}"
             --use-raii
+            --indexed-handle BindGroupLayout
+        DEPENDS ${GEN_HEADER_FILES} ${TEMPLATE_FILE} ${WEBGPU_CPP_GENERATOR_SCRIPT}
         WORKING_DIRECTORY ${WEBGPU_CPP_GENERATOR_DIR}
-        RESULT_VARIABLE GEN_RESULT
-        OUTPUT_VARIABLE GEN_OUTPUT
-        ERROR_VARIABLE GEN_ERROR
+        COMMENT "Generating WebGPU C++ wrapper..."
     )
-
-    if (NOT GEN_RESULT EQUAL 0)
-        message(FATAL_ERROR "Failed to generate WebGPU wrapper:\n${GEN_ERROR}")
-    endif()
 
     message(STATUS "Generated: ${OUTPUT_FILE}")
 
