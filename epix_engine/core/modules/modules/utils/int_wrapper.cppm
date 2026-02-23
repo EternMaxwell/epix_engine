@@ -1,10 +1,10 @@
 ﻿module;
 
-export module epix.core:utils.int_wrapper;
+export module epix.utils:int_wrapper;
 
 import std;
 
-namespace core {
+namespace utils {
 export template <std::integral T>
 struct int_base {
    public:
@@ -26,17 +26,17 @@ struct int_base {
    protected:
     T value;
 };
-}  // namespace core
+}  // namespace utils
 
 template <std::integral T>
-struct std::hash<::core::int_base<T>> {
-    std::size_t operator()(const ::core::int_base<T>& v) const { return std::hash<T>()(v.get()); }
+struct std::hash<::utils::int_base<T>> {
+    std::size_t operator()(const ::utils::int_base<T>& v) const { return std::hash<T>()(v.get()); }
 };
 template <typename T>
     requires requires {
         typename T::value_type;
-        requires std::derived_from<T, ::core::int_base<typename T::value_type>>;
+        requires std::derived_from<T, ::utils::int_base<typename T::value_type>>;
     }
 struct std::hash<T> {
-    std::size_t operator()(const T& v) const { return std::hash<::core::int_base<typename T::value_type>>()(v); }
+    std::size_t operator()(const T& v) const { return std::hash<::utils::int_base<typename T::value_type>>()(v); }
 };

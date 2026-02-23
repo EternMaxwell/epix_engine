@@ -1,10 +1,10 @@
 ﻿module;
 
-export module epix.core:utils.bit_vector;
+export module epix.utils:bit_vector;
 
 import std;
 
-namespace core {
+namespace utils {
 export class bit_vector {
    public:
     using size_type                      = std::size_t;
@@ -455,12 +455,12 @@ export class bit_vector {
         resize(pos + 1, false);
     }
 };
-}  // namespace core
+}  // namespace utils
 
 template <>
-struct std::hash<::core::bit_vector> {
-    std::size_t operator()(::core::bit_vector const& bv) const noexcept {
-        using bv_t        = ::core::bit_vector;
+struct std::hash<::utils::bit_vector> {
+    std::size_t operator()(::utils::bit_vector const& bv) const noexcept {
+        using bv_t        = ::utils::bit_vector;
         const auto& words = bv.words();
         std::size_t h     = std::ranges::fold_left(words, bv.size(), [](std::size_t acc, auto w) noexcept {
             return (acc * 0x9e3779b97f4a7c15ULL) ^

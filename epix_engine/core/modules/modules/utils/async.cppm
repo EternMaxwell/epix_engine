@@ -1,10 +1,10 @@
 ﻿module;
 
-export module epix.core:utils.async;
+export module epix.utils:async;
 
 import std;
 
-namespace core {
+namespace utils {
 /**
  * @brief A thread-safe queue implementation using std::deque and
  * std::shared_mutex.
@@ -133,4 +133,66 @@ std::pair<Sender<T, Alloc>, Receiver<T, Alloc>> make_channel() {
     auto queue = std::make_shared<ConQueue<T, Alloc>>();
     return {Sender<T, Alloc>(queue), Receiver<T, Alloc>(queue)};
 }
+export template <typename T>
+struct Mutex {
+    struct Guard {
+       private:
+        std::unique_lock<std::mutex> const lock;
+
+       public:
+        T& ref;
+
+        Guard(std::mutex& mtx, T& val) : lock(mtx), ref(val) {}
+        Guard(const Guard&)            = delete;
+        Guard(Guard&&)                 = default;
+        Guard& operator=(const Guard&) = delete;
+        Guard& operator=(Guard&&)      = delete;
+
+        T* operator->() { return &ref; }
+        T& operator*() { return ref; }
+        const T* operator->() const { return &ref; }
+        const T& operator*() const { return ref; }
+        operator T&() { return ref; }
+        operator const T&() const { return ref; }
+    };
+
+   private:
+    mutable std::mutex m_mutex;
+    union {
+        mutable T m_value;
+    };
+
+   public:
+    template <typename... Args>
+    Mutex(Args&&... args) requires std::constructible_from<T, Args...>{
+        new (&m_value) T(std::forward<Args>(args)...);
+    }
+    Mutex(const Mutex&) = delete;
+    Mutex(Mutex&& other)
+        requires std::move_constructible<T>
+    {
+        std::scoped_lock lock(m_mutex, other.m_mutex);
+        new (&m_value) T(std::move(other.m_value));
+    }
+    Mutex& operator=(const Mutex&) = delete;
+    Mutex& operator=(Mutex&& other)
+        requires std::is_move_assignable<T>::value
+    {
+        std::scoped_lock lock(m_mutex, other.m_mutex);
+        m_value = std::move(other.m_value);
+        return *this;
+    }
+    ~Mutex() {
+        std::lock_guard lock(m_mutex);
+        m_value.~T();
+    }
+    Mutex clone() const
+        requires std::copy_constructible<T>
+    {
+        std::lock_guard lock(m_mutex);
+        return Mutex(m_value);
+    }
+
+    Guard lock() const { return Guard(m_mutex, m_value); }
+};
 }  // namespace core
