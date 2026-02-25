@@ -56,24 +56,44 @@ std::expected<void, SchedulePrepareError> Schedule::prepare(bool check_error) {
             if (auto it = nodes.find(dep_label); it != nodes.end()) {
                 node.validated_edges.depends.insert(dep_label);
                 it->second->validated_edges.successors.insert(label);
+            } else {
+                spdlog::warn(
+                    "[app] Schedule [{}]: system set [{}] depends on [{}] which is not in the schedule, ignore this "
+                    "dependency.",
+                    this->label().to_string(), label.to_string(), dep_label.to_string());
             }
         }
         for (const auto& succ_label : node.edges.successors) {
             if (auto it = nodes.find(succ_label); it != nodes.end()) {
                 node.validated_edges.successors.insert(succ_label);
                 it->second->validated_edges.depends.insert(label);
+            } else {
+                spdlog::warn(
+                    "[app] Schedule [{}]: system set [{}] is a dependency of [{}] which is not in the schedule, ignore "
+                    "this dependency.",
+                    this->label().to_string(), label.to_string(), succ_label.to_string());
             }
         }
         for (const auto& parent_label : node.edges.parents) {
             if (auto it = nodes.find(parent_label); it != nodes.end()) {
                 node.validated_edges.parents.insert(parent_label);
                 it->second->validated_edges.children.insert(label);
+            } else {
+                spdlog::warn(
+                    "[app] Schedule [{}]: system set [{}] is a child of [{}] which is not in the schedule, ignore this "
+                    "hierarchy.",
+                    this->label().to_string(), label.to_string(), parent_label.to_string());
             }
         }
         for (const auto& child_label : node.edges.children) {
             if (auto it = nodes.find(child_label); it != nodes.end()) {
                 node.validated_edges.children.insert(child_label);
                 it->second->validated_edges.parents.insert(label);
+            } else {
+                spdlog::warn(
+                    "[app] Schedule [{}]: system set [{}] is a parent of [{}] which is not in the schedule, ignore "
+                    "this hierarchy.",
+                    this->label().to_string(), label.to_string(), child_label.to_string());
             }
         }
     }
@@ -321,24 +341,24 @@ void Schedule::execute(SystemDispatcher& dispatcher, ExecuteConfig config) {
         // dispatch a system for execution
         CachedNode& cached_node = cache->nodes[index];
         auto dispatch_config    = DispatchConfig{
-               .on_finish = [&, index]() { exec_state.finished_queue.push(index); },
-               .on_error =
+            .on_finish = [&, index]() { exec_state.finished_queue.push(index); },
+            .on_error =
                 [&, index](const RunSystemError& error) {
                     if (std::holds_alternative<ValidateParamError>(error)) {
                         auto&& param_error = std::get<ValidateParamError>(error);
                         spdlog::error("[schedule] parameter validation error at system '{}', type: '{}', msg: {}",
-                                         cache->nodes[index].node->system->name(), param_error.param_type.short_name(),
-                                         param_error.message);
+                                      cache->nodes[index].node->system->name(), param_error.param_type.short_name(),
+                                      param_error.message);
                     } else if (std::holds_alternative<SystemException>(error)) {
                         auto&& expection = std::get<SystemException>(error);
                         try {
                             std::rethrow_exception(expection.exception);
                         } catch (const std::exception& e) {
                             spdlog::error("[schedule] system exception at system '{}', msg: {}",
-                                             cache->nodes[index].node->system->name(), e.what());
+                                          cache->nodes[index].node->system->name(), e.what());
                         } catch (...) {
                             spdlog::error("[schedule] system exception at system '{}', msg: unknown",
-                                             cache->nodes[index].node->system->name());
+                                          cache->nodes[index].node->system->name());
                         }
                     }
                 },
