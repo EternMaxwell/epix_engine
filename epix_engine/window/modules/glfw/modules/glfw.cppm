@@ -97,6 +97,10 @@ export struct GLFWRunner : public AppRunner {
     void set_render_app(const core::AppLabel& label) { render_app_label = label; }
     void reset_render_app() { render_app_label = std::nullopt; }
 
+    void append_system(std::unique_ptr<core::System<std::tuple<>, void>> system) {
+        extra_systems.push_back(std::move(system));
+    }
+
    private:
     std::unique_ptr<core::System<std::tuple<>, std::optional<int>>> check_exit;
     std::unique_ptr<core::System<std::tuple<>, void>> remove_window;
@@ -105,6 +109,7 @@ export struct GLFWRunner : public AppRunner {
     std::unique_ptr<core::System<std::tuple<>, void>> create_windows_system, update_size_system, update_pos_system,
         toggle_window_mode_system, update_window_states_system, destroy_windows_system, send_cached_events_system,
         clipboard_set_text_system, clipboard_update_system;
+    std::vector<std::unique_ptr<core::System<std::tuple<>, void>>> extra_systems;
     std::optional<std::future<bool>> render_app_future;
     std::optional<core::AppLabel> render_app_label;
 };
