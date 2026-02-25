@@ -15,8 +15,8 @@ export template <typename T>
 struct RenderAsset;
 
 export enum RenderAssetUsageBits : std::uint8_t {
-    MAIN_WORLD   = 1 << 0,  // used in main world(e.g. for cpu access)
-    RENDER_WORLD = 1 << 1,  // used for rendering(e.g. for gpu access)
+    MainWorld   = 1 << 0,  // used in main world(e.g. for cpu access)
+    RenderWorld = 1 << 1,  // used for rendering(e.g. for gpu access)
 };
 export using RenderAssetUsage = std::underlying_type_t<RenderAssetUsageBits>;
 
@@ -28,7 +28,7 @@ concept RenderAssetImpl = requires(RenderAsset<T> asset) {
     typename RenderAsset<T>::Param;
     requires core::system_param<typename RenderAsset<T>::Param>;
     {
-        asset.process(std::declval<T &&>(), std::declval<typename RenderAsset<T>::Param&>())
+        asset.process(std::declval<T&&>(), std::declval<typename RenderAsset<T>::Param&>())
     } -> std::same_as<typename RenderAsset<T>::ProcessedAsset>;
     { asset.usage(std::declval<const T&>()) } -> std::same_as<RenderAssetUsage>;
 };
@@ -111,8 +111,8 @@ void extract_assets(ResMut<CachedExtractedAssets<T>> cache,
     RenderAsset<T> render_asset_impl;
     std::vector<std::string> errors;
     for (const auto& id : changed_ids) {
-        if (auto asset = assets->get(id); asset && render_asset_impl.usage(*asset) & RENDER_WORLD) {
-            if (render_asset_impl.usage(*asset) & MAIN_WORLD) {
+        if (auto asset = assets->get(id); asset && render_asset_impl.usage(*asset) & RenderWorld) {
+            if (render_asset_impl.usage(*asset) & MainWorld) {
                 // this asset is still used in main world, copy it
                 if constexpr (std::is_copy_constructible_v<T>) {
                     extracted_assets.emplace_back(id, *asset);
@@ -121,7 +121,7 @@ void extract_assets(ResMut<CachedExtractedAssets<T>> cache,
                     // be used both in main world and render world
                     errors.emplace_back(
                         std::format("Asset [{}] is not copyable, as a render asset, it "
-                                    "should not have a usage of MAIN_WORLD & RENDER_WORLD",
+                                    "should not have a usage of MainWorld & RenderWorld",
                                     id.to_string()));
                 }
             } else {
