@@ -9,9 +9,13 @@ using namespace core;
 using namespace window;
 
 namespace render::window {
-struct ExtractedWindow {
+/**
+ * @brief A component for window entity, to tell how its surface should be created, cause the backend is unknown.
+ */
+export using SurfaceCreation = std::function<wgpu::Surface(const wgpu::Instance&)>;
+export struct ExtractedWindow {
     Entity entity;
-    std::function<wgpu::Surface(const wgpu::Instance&)> create_surface;
+    SurfaceCreation create_surface;
     int physical_width;
     int physical_height;
     PresentMode present_mode;
@@ -23,8 +27,6 @@ struct ExtractedWindow {
 
     bool size_changed         = false;
     bool present_mode_changed = false;
-
-    static ExtractedWindow from_window(const Entity& entity, const Window& window);
 };
 struct ExtractedWindows {
     ExtractedWindows()                                   = default;
@@ -61,14 +63,13 @@ struct WindowSurfaces {
 };
 
 /**
- * @brief System for updating extracted windows from actual windows.
- * This system does not count for newly created windows, they should be extracted by window backend systems.
- * Exported so it can be used as `SystemSetLabel` for configuring system dependencies.
+ * @brief System for extracting windows.
  */
-export void update_extracted(ResMut<ExtractedWindows> extracted_windows,
-                             Extract<Query<Item<Entity, const Window&, Has<PrimaryWindow>>>> windows,
-                             ResMut<WindowSurfaces> window_surfaces,
-                             Extract<EventReader<WindowClosed>> closed);
+export void extract_windows(
+    ResMut<ExtractedWindows> extracted_windows,
+    Extract<Query<Item<Entity, const Window&, const SurfaceCreation&, Has<PrimaryWindow>>>> windows,
+    ResMut<WindowSurfaces> window_surfaces,
+    Extract<EventReader<WindowClosed>> closed);
 /**
  * @brief System for making swapchain texture and texture view available.
  */
@@ -84,7 +85,7 @@ void create_surfaces(Res<ExtractedWindows> windows,
 
 void present_windows(ResMut<WindowSurfaces> window_surfaces, ResMut<ExtractedWindows> windows);
 
-struct WindowRenderPlugin {
+export struct WindowRenderPlugin {
     bool handle_present = true;
     void build(App&);
 };

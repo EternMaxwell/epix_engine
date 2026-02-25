@@ -6,16 +6,6 @@ using namespace render::window;
 using namespace window;
 using namespace core;
 
-ExtractedWindow ExtractedWindow::from_window(const Entity& entity, const Window& window) {
-    ExtractedWindow extracted;
-    extracted.entity          = entity;
-    extracted.physical_width  = window.size.first;
-    extracted.physical_height = window.size.second;
-    extracted.present_mode    = window.present_mode;
-    extracted.alpha_mode      = window.composite_alpha_mode;
-    return extracted;
-}
-
 void render::window::WindowSurfaces::remove(const Entity& entity) {
     surfaces.erase(entity);
     configured_windows.erase(entity);
@@ -25,6 +15,7 @@ void WindowRenderPlugin::build(App& app) {
     auto& render_app = app.sub_app_mut(render::Render);
     render_app.world_mut().insert_resource(ExtractedWindows{});
     render_app.world_mut().insert_resource(WindowSurfaces{});
+    render_app.add_systems(ExtractSchedule, into(extract_windows).set_name("extract windows"));
     render_app.add_systems(render::Render, into(create_surfaces).set_name("create_surfaces").before(prepare_windows));
     render_app.add_systems(render::Render,
                            into(prepare_windows).set_name("prepare windows").in_set(render::RenderSet::ManageViews));
@@ -34,12 +25,13 @@ void WindowRenderPlugin::build(App& app) {
     }
 }
 
-void update_extracted(ResMut<ExtractedWindows> extracted_windows,
-                      Extract<Query<Item<Entity, const Window&, Has<PrimaryWindow>>>> windows,
-                      ResMut<WindowSurfaces> window_surfaces,
-                      Extract<EventReader<WindowClosed>> closed) {
+void render::window::extract_windows(
+    ResMut<ExtractedWindows> extracted_windows,
+    Extract<Query<Item<Entity, const Window&, const SurfaceCreation&, Has<PrimaryWindow>>>> windows,
+    ResMut<WindowSurfaces> window_surfaces,
+    Extract<EventReader<WindowClosed>> closed) {
     // Update existing windows and add new ones
-    for (auto&& [entity, window, primary] : windows.iter()) {
+    for (auto&& [entity, window, surface_fn, primary] : windows.iter()) {
         auto it = extracted_windows->windows.find(entity);
         if (it != extracted_windows->windows.end()) {
             // Update existing window
@@ -53,6 +45,16 @@ void update_extracted(ResMut<ExtractedWindows> extracted_windows,
                 extracted.present_mode         = window.present_mode;
                 extracted.present_mode_changed = true;
             }
+        } else {
+            // Not extracted, extract.
+            extracted_windows->windows.emplace(entity, ExtractedWindow{
+                                                           .entity          = entity,
+                                                           .create_surface  = surface_fn,
+                                                           .physical_width  = window.size.first,
+                                                           .physical_height = window.size.second,
+                                                           .present_mode    = window.present_mode,
+                                                           .alpha_mode      = window.composite_alpha_mode,
+                                                       });
         }
     }
 
