@@ -42,20 +42,20 @@ void RenderPlugin::build(App& app) {
     });
 
     wgpu::Instance instance = wgpu::createInstance();
-    auto& anonymous_surface = app.world().resource<AnonymousSurface>();
-    if (!anonymous_surface.create_surface) {
-        throw std::runtime_error(
-            "AnonymousSurface resource must have a valid create_surface function before building RenderPlugin");
-    }
-    wgpu::Surface surface = anonymous_surface.create_surface(instance);
-    wgpu::Adapter adapter = instance.requestAdapter(
+    wgpu::Surface surface   = app.world()
+                                  .get_resource<AnonymousSurface>()
+                                  .transform([&](const AnonymousSurface& anonymous_surface) -> wgpu::Surface {
+                                    return anonymous_surface.create_surface(instance);
+                                  })
+                                  .value_or(wgpu::Surface{});
+    wgpu::Adapter adapter   = instance.requestAdapter(
         wgpu::RequestAdapterOptions().setCompatibleSurface(surface).setBackendType(wgpu::BackendType::eVulkan));
     surface = nullptr;  // release the temporary surface
     app.world_mut().remove_resource<AnonymousSurface>();
     if (!adapter) {
         throw std::runtime_error("Failed to request WebGPU adapter");
     }
-    wgpu::Device device = adapter.requestDevice(
+    wgpu::DeviceDescriptor deviceDesc =
         wgpu::DeviceDescriptor()
             .setLabel("Render Device")
             .setDefaultQueue(wgpu::QueueDescriptor().setLabel("Render Queue"))
@@ -68,12 +68,15 @@ void RenderPlugin::build(App& app) {
                 [](wgpu::Device const& device, wgpu::ErrorType type, wgpu::StringView message) {
                     std::stacktrace stack = std::stacktrace::current();
                     spdlog::error("WebGPU Uncaptured error: {}, with stack:\n{}", std::string_view(message), stack);
-                })));
-    wgpu::Queue queue = device.getQueue();
+                }));
+    wgpu::Device device = adapter.requestDevice(deviceDesc);
+    wgpu::Queue queue   = device.getQueue();
     app.world_mut().insert_resource(instance.clone());
     app.world_mut().insert_resource(adapter.clone());
     app.world_mut().insert_resource(device.clone());
     app.world_mut().insert_resource(queue.clone());
+    // keep the device descriptor to make the callbacks alive.
+    app.world_mut().insert_resource(std::move(deviceDesc));
 
     app.sub_app_mut(Render).then([&](App& render_app) {
         render_app.world_mut().insert_resource(instance.clone());
@@ -94,5 +97,10 @@ void RenderPlugin::build(App& app) {
                              .in_set(RenderSet::PostExtract)
                              .set_name("apply extract deferred"));
     });
+
+    app.add_plugins(render::window::WindowRenderPlugin{});
+    app.add_plugins(image::ImagePlugin{});
+    app.add_plugins(render::ExtractAssetPlugin<image::Image>{});
+    app.add_plugins(render::ShaderPlugin{});
 }
 void RenderPlugin::finalize(App& app) {}
