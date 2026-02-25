@@ -1,10 +1,4 @@
-﻿module;
-
-#include <stb_image.h>
-#include <stb_image_resize2.h>
-#include <stb_image_write.h>
-
-export module epix.image;
+﻿export module epix.image;
 
 import epix.core;
 import epix.assets;
@@ -12,7 +6,7 @@ import std;
 
 export namespace image {
 
-// Requirement 3: Enum Format (8bit, 16bit, Float)
+// Enum Format (8bit, 16bit, Float)
 enum class Format {
     Unknown = 0,
     Grey8,       // 1 channel, 8-bit
@@ -27,7 +21,7 @@ enum class Format {
     RGBA32F      // 4 channels, float
 };
 
-// Requirement 3: Format Info Class
+// Format Info Class
 struct FormatInfo {
     std::uint32_t channels;
     std::uint32_t bytesPerChannel;
@@ -50,13 +44,20 @@ struct span_type {
     using type = typename span::value_type;
 };
 
-// Requirement 2: Image Struct
+enum ImageUsage : std::uint8_t {
+    Main   = 0x1,
+    Render = 0x2,
+    Both   = Main | Render,
+};
+
+// Image Struct
 export class Image {
    private:
-    // Requirement 8: Format/Size constant after construct
+    // Format/Size constant after construct
     std::uint32_t m_width;
     std::uint32_t m_height;
     Format m_format;
+    ImageUsage m_usage = ImageUsage::Both;
 
     std::vector<std::byte> data;
 
@@ -90,6 +91,8 @@ export class Image {
     std::uint32_t height() const { return m_height; }
     Format format() const { return m_format; }
     const FormatInfo& format_info() const { return getFormatInfo(m_format); }
+    ImageUsage usage() const { return m_usage; }
+    void set_usage(ImageUsage usage) { m_usage = usage; }
 
     // views
     std::span<const std::byte> raw_view() const { return std::as_bytes(std::span(data)); }
@@ -168,3 +171,10 @@ std::expected<void, ImageWriteError> Image::write_raw(std::uint32_t x, std::uint
     return {};
 }
 }  // namespace image
+
+template <>
+struct std::hash<assets::AssetId<image::Image>> {
+    std::size_t operator()(const assets::AssetId<image::Image>& id) const {
+        return std::visit([]<typename U>(const U& index) { return std::hash<U>()(index); }, id);
+    }
+};

@@ -212,8 +212,7 @@ Image Image::convert(Format targetFmt) const {
     const FormatInfo& srcInfo = format_info();
     const FormatInfo& dstInfo = getFormatInfo(targetFmt);
 
-    // Handle strict requirement: At least to RGBA8 and RGB8
-    // We use a simplified approach: promote to float, rearrange channels, demote to target.
+    // promote to float, rearrange channels, demote to target.
     // A more optimized version would have switch-cases for specific conversions.
 
     Image result   = Image::create(m_width, m_height, targetFmt);
@@ -376,7 +375,23 @@ Image ImageLoader::load(const std::filesystem::path& path, assets::LoadContext& 
     if (!res) {
         throw std::runtime_error("Failed to load image: " + path.string());
     }
-    return std::move(*res);
+    auto image = std::move(*res);
+    // three channel images not supported in webgpu, convert to 4
+    switch (image.format()) {
+        case Format::RGB8:
+            image = image.convert(Format::RGBA8);
+            break;
+        case Format::RGB16:
+            image = image.convert(Format::RGBA16);
+            break;
+        case Format::RGB32F:
+            image = image.convert(Format::RGBA32F);
+            break;
+        default:
+            break;
+    }
+    image.set_usage(ImageUsage::Render);  // default to render usage, can be changed later
+    return image;
 }
 
 void ImagePlugin::build(core::App& app) {
