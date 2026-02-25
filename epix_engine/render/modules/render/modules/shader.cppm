@@ -8,7 +8,6 @@ import std;
 import :assets;
 
 namespace render {
-
 /**
  * @brief A cpu side shader representation.
  *
@@ -51,11 +50,6 @@ export struct ShaderSource {
 export struct Shader {
     std::filesystem::path path;
     ShaderSource source;
-    std::vector<wgpu::ConstantEntry> constant_entries;
-
-    void add_constant_entry(std::string_view key, double value) {
-        constant_entries.push_back(wgpu::ConstantEntry().setKey(key).setValue(value));
-    }
 };
 export struct ShaderLoaderWGSL {
     static std::span<const char* const> extensions();
@@ -65,26 +59,6 @@ export struct ShaderLoaderSPIRV {
     static std::span<const char* const> extensions();
     static Shader load(const std::filesystem::path& path, assets::LoadContext& context);
 };
-
-template <>
-struct render::RenderAsset<Shader> {
-    // nvrhi's shader module is created with its type specified, unlike
-    // vulkan. So we won't do anything on the asset, just pass it through.
-    using Param          = ParamSet<>;
-    using ProcessedAsset = Shader;
-
-    ProcessedAsset process(Shader&& asset, Param param) {
-        // Process the shader asset with the given parameters
-        return asset;
-    }
-    RenderAssetUsage usage(const Shader& asset) const {
-        // Shaders are always used in the render world.
-        return RenderAssetUsageBits::RENDER_WORLD;
-    }
-};
-
-static_assert(core::system_param<RenderAsset<Shader>::Param>,
-              "RenderAsset<Shader>::Param should be a valid parameter type");
 
 export struct ShaderPlugin {
     void build(App& app);
