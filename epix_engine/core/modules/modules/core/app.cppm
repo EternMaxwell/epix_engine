@@ -460,6 +460,10 @@ struct App {
     std::unique_ptr<AppRunner> pop_runner() {
         return std::move(runner);  // runner should be nullptr after move
     }
+    enum class RunnerError {
+        RunnerNotSet,
+        RunnerMismatch,  // The runner exists but does not match the expected type
+    };
     template <typename F>
         requires requires {
             typename function_traits<F>::return_type;
@@ -469,11 +473,11 @@ struct App {
                                        AppRunner>;
             requires std::invocable<F, std::decay_t<std::tuple_element_t<0, typename function_traits<F>::args_tuple>>&>;
         }
-    std::optional<typename function_traits<F>::return_type> runner_scope(F&& func) {
-        if (!runner) return std::nullopt;
+    std::expected<typename function_traits<F>::return_type, RunnerError> runner_scope(F&& func) {
+        if (!runner) return std::unexpected(RunnerError::RunnerNotSet);
         using RunnerType = std::decay_t<std::tuple_element_t<0, typename function_traits<F>::args_tuple>>;
         auto* runner     = dynamic_cast<RunnerType*>(this->runner.get());
-        if (!runner) return std::nullopt;
+        if (!runner) return std::unexpected(RunnerError::RunnerMismatch);
         if constexpr (std::is_void_v<typename function_traits<F>::return_type>) {
             func(*runner);
             return {};
