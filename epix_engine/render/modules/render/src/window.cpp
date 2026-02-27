@@ -77,6 +77,10 @@ void render::window::prepare_windows(ResMut<ExtractedWindows> windows,
     for (auto&& window : std::views::all(windows->windows) | std::views::values) {
         auto it = window_surfaces->surfaces.find(window.entity);
         if (it == window_surfaces->surfaces.end()) continue;
+
+        window.size_changed         = false;
+        window.present_mode_changed = false;
+
         auto& surface_data = it->second;
 
         auto& surface = surface_data.surface;
@@ -101,7 +105,11 @@ void render::window::prepare_windows(ResMut<ExtractedWindows> windows,
                         break;
                     }
                     default: {
-                        errors.emplace_back(window.entity, "Failed to acquire swapchain image after reconfiguration");
+                        window.swapchain_texture_view = nullptr;
+                        window.swapchain_texture      = {};
+                        errors.emplace_back(window.entity,
+                                            "Failed to acquire swapchain image after reconfiguration: " +
+                                                std::string(wgpu::to_string(window.swapchain_texture.status)));
                         break;
                     }
                 }
@@ -109,6 +117,8 @@ void render::window::prepare_windows(ResMut<ExtractedWindows> windows,
             }
             // case wgpu::SurfaceGetCurrentTextureStatus::eTimeout:
             default: {
+                window.swapchain_texture_view = nullptr;
+                window.swapchain_texture      = {};
                 errors.emplace_back(window.entity, "Error acquiring swapchain image: " +
                                                        std::string(wgpu::to_string(window.swapchain_texture.status)));
                 break;
@@ -256,9 +266,12 @@ void render::window::create_surfaces(Res<ExtractedWindows> windows,
 
 void render::window::present_windows(ResMut<WindowSurfaces> window_surfaces, ResMut<ExtractedWindows> windows) {
     for (auto&& [entity, surface_data] : window_surfaces->surfaces) {
-        auto& window                  = windows->windows.at(entity);
+        auto& window = windows->windows.at(entity);
+        if (window.swapchain_texture.status == wgpu::SurfaceGetCurrentTextureStatus::eSuccessOptimal ||
+            window.swapchain_texture.status == wgpu::SurfaceGetCurrentTextureStatus::eSuccessSuboptimal) {
+            surface_data.surface.present();
+        }
         window.swapchain_texture_view = nullptr;
         window.swapchain_texture      = {};
-        surface_data.surface.present();
     }
 }
