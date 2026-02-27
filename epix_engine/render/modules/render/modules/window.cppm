@@ -28,7 +28,7 @@ export struct ExtractedWindow {
     bool size_changed         = false;
     bool present_mode_changed = false;
 };
-struct ExtractedWindows {
+export struct ExtractedWindows {
     ExtractedWindows()                                   = default;
     ExtractedWindows(const ExtractedWindows&)            = delete;
     ExtractedWindows& operator=(const ExtractedWindows&) = delete;

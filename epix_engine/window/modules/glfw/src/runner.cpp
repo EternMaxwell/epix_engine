@@ -88,6 +88,7 @@ bool GLFWRunner::step(App& app) {
             });
         }
         for (auto&& sys : extra_systems) {
+            if (!sys->initialized()) sys->initialize(world);
             sys->run({}, world).transform_error([&](const RunSystemError& error) {
                 std::visit(
                     visitor{

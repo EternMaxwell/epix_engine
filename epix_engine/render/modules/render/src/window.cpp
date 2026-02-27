@@ -84,22 +84,19 @@ void render::window::prepare_windows(ResMut<ExtractedWindows> windows,
 
         surface.getCurrentTexture(&window.swapchain_texture);
         switch (window.swapchain_texture.status) {
+            case wgpu::SurfaceGetCurrentTextureStatus::eSuccessSuboptimal:
             case wgpu::SurfaceGetCurrentTextureStatus::eSuccessOptimal: {
-                window.swapchain_texture_view =
-                    window.swapchain_texture.texture.createView(wgpu::TextureViewDescriptor{});
+                window.swapchain_texture_view   = window.swapchain_texture.texture.createView();
                 window.swapchain_texture_format = surface_data.config.format;
                 break;
             }
-            case wgpu::SurfaceGetCurrentTextureStatus::eSuccessSuboptimal:
-            case wgpu::SurfaceGetCurrentTextureStatus::eTimeout:
             case wgpu::SurfaceGetCurrentTextureStatus::eOutdated: {
                 surface.configure(surface_data.config);
                 surface.getCurrentTexture(&window.swapchain_texture);
                 switch (window.swapchain_texture.status) {
                     case wgpu::SurfaceGetCurrentTextureStatus::eSuccessSuboptimal:
                     case wgpu::SurfaceGetCurrentTextureStatus::eSuccessOptimal: {
-                        window.swapchain_texture_view =
-                            window.swapchain_texture.texture.createView(wgpu::TextureViewDescriptor{});
+                        window.swapchain_texture_view   = window.swapchain_texture.texture.createView();
                         window.swapchain_texture_format = surface_data.config.format;
                         break;
                     }
@@ -110,8 +107,10 @@ void render::window::prepare_windows(ResMut<ExtractedWindows> windows,
                 }
                 break;
             }
+            // case wgpu::SurfaceGetCurrentTextureStatus::eTimeout:
             default: {
-                errors.emplace_back(window.entity, "Unknown error acquiring swapchain image");
+                errors.emplace_back(window.entity, "Error acquiring swapchain image: " +
+                                                       std::string(wgpu::to_string(window.swapchain_texture.status)));
                 break;
             }
         }
@@ -150,6 +149,7 @@ void render::window::create_surfaces(Res<ExtractedWindows> windows,
                 throw std::runtime_error("No suitable surface format found");
             }
             auto config = wgpu::SurfaceConfiguration()
+                              .setDevice(*device)
                               .setUsage(wgpu::TextureUsage::eRenderAttachment)
                               .setFormat(format)
                               .setWidth(window.physical_width)
@@ -258,6 +258,7 @@ void render::window::present_windows(ResMut<WindowSurfaces> window_surfaces, Res
     for (auto&& [entity, surface_data] : window_surfaces->surfaces) {
         auto& window                  = windows->windows.at(entity);
         window.swapchain_texture_view = nullptr;
+        window.swapchain_texture      = {};
         surface_data.surface.present();
     }
 }

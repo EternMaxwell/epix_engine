@@ -6,6 +6,8 @@
 
 #include <spdlog/spdlog.h>
 
+#include <stacktrace>
+
 module epix.core;
 
 import std;
@@ -172,7 +174,7 @@ std::expected<std::shared_ptr<SystemDispatcher>, WorldNotOwnedError> App::get_sy
                                                                 }
                                                                 delete dispatcher;
                                                             });
-        _dispatcher = dispatcher;
+        _dispatcher     = dispatcher;
         return dispatcher;
     }
     return std::unexpected(WorldNotOwnedError{});
@@ -250,7 +252,25 @@ void App::extract(App& other) {
     }
 }
 
+void handle_terminate() {
+    std::stacktrace stack                = std::stacktrace::current();
+    std::exception_ptr current_exception = std::current_exception();
+    if (current_exception) {
+        try {
+            std::rethrow_exception(current_exception);
+        } catch (const std::exception& e) {
+            spdlog::error("Unhandled exception: {}, with stack:\n{}", e.what(), stack);
+        } catch (...) {
+            spdlog::error("Unhandled unknown exception with stack:\n{}", stack);
+        }
+    } else {
+        spdlog::error("Terminated without exception, with stack:\n{}", stack);
+    }
+    std::exit(1);
+}
+
 void App::run() {
+    auto prev_terminate = std::set_terminate(handle_terminate);
     spdlog::info("[app] App building. - {}", _label.to_string());
     resource_scope([&](Plugins& plugins) { plugins.finish_all(*this); });
     resource_scope([](World& world, Schedules& schedules) {
@@ -270,5 +290,6 @@ void App::run() {
     runner->exit(*this);
     resource_scope([&](Plugins& plugins) { plugins.finalize_all(*this); });
     spdlog::info("[app] App terminated. - {}", _label.to_string());
+    std::set_terminate(prev_terminate);
 }
 }  // namespace core

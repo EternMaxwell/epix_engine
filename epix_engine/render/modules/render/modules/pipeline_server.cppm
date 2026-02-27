@@ -73,6 +73,8 @@ export struct PipelineServer {
    public:
     PipelineServer(const PipelineServer&)            = delete;
     PipelineServer& operator=(const PipelineServer&) = delete;
+    PipelineServer(PipelineServer&&)                 = default;
+    PipelineServer& operator=(PipelineServer&&)      = default;
 
     PipelineServer(wgpu::Device device);
 

@@ -7,3 +7,7 @@ export struct GlfwRenderPlugin {
     void build(core::App& app);
 };
 }  // namespace glfw::render
+
+namespace glfw {
+export using render::GlfwRenderPlugin;
+}

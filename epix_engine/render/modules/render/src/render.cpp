@@ -83,12 +83,15 @@ void RenderPlugin::build(App& app) {
         render_app.world_mut().insert_resource(adapter.clone());
         render_app.world_mut().insert_resource(device.clone());
         render_app.world_mut().insert_resource(queue.clone());
-        render_app
+        render_app.world_mut().insert_resource(PipelineServer(device.clone()));
+        render_app.add_systems(ExtractSchedule, into(PipelineServer::extract_shaders).set_name("extract shaders"))
             .add_systems(Render, into([](Res<wgpu::Device> device) { device->poll(false); },
                                       [](World& world) { world.clear_entities(); })
                                      .set_names(std::array{"device poll", "clear render entities"})
                                      .after(RenderSet::Cleanup))
-            .add_systems(Render, into(render_system).in_set(RenderSet::Render).set_names(std::array{"render system"}))
+            .add_systems(Render, into(PipelineServer::process_pipeline_system, render_system)
+                                     .in_set(RenderSet::Render)
+                                     .set_names(std::array{"process pipeline", "render system"}))
             .add_systems(Render,
                          into([](ParamSet<World&, ResMut<core::Schedules>> params) {
                              auto&& [world, schedules] = params.get();
