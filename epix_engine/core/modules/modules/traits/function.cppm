@@ -16,9 +16,13 @@ export {
     template <typename R, typename... Args>
     struct function_traits<R (*)(Args...)> : function_traits<R(Args...)> {};
     template <typename C, typename R, typename... Args>
-    struct function_traits<R (C::*)(Args...)> : function_traits<R(Args...)> {};
+    struct function_traits<R (C::*)(Args...)> : function_traits<R(Args...)> {
+        using class_type = C;
+    };
     template <typename C, typename R, typename... Args>
-    struct function_traits<R (C::*)(Args...) const> : function_traits<R(Args...)> {};
+    struct function_traits<R (C::*)(Args...) const> : function_traits<R(Args...)> {
+        using class_type = const C;
+    };
     template <typename F>
         requires(requires { &F::operator(); })
     struct function_traits<F> : function_traits<decltype(&F::operator())> {};
