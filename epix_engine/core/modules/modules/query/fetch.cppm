@@ -133,11 +133,9 @@ static_assert(query_data<Entity>);
 // implements for EntityLocation
 template <>
 struct WorldQuery<EntityLocation> {
-    struct Fetch {
-        const Entities* entities = nullptr;
-    };
+    using Fetch = const Entities*;
     using State = std::tuple<>;
-    static Fetch init_fetch(World& world, const State&, Tick, Tick) { return Fetch{&world_entities(world)}; }
+    static Fetch init_fetch(World& world, const State&, Tick, Tick) { return &world_entities(world); }
     static void set_archetype(Fetch&, const State&, const Archetype&, Table&) {}
     // static void set_table(Fetch&, State&, const Table&) {}
     static void set_access(State&, const FilteredAccess&) {}
@@ -155,7 +153,7 @@ struct QueryData<EntityLocation> {
     using ReadOnly                        = EntityLocation;
     static inline constexpr bool readonly = true;
     static Item fetch(WorldQuery<EntityLocation>::Fetch& fetch, Entity entity, TableRow) {
-        return fetch.entities->get(entity).value();
+        return fetch->get(entity).value();
     }
 };
 static_assert(query_data<EntityLocation>);

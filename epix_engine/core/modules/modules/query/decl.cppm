@@ -46,22 +46,22 @@ concept world_query = requires(WorldQuery<Q> q) {
     };
 };
 
-template <typename T>
+export template <typename T>
 concept query_data = world_query<T> && requires(WorldQuery<T>::Fetch& fetch, Entity entity, TableRow row) {
-    typename QueryData<T>::Item;  // the return type from fetch.
+    typename QueryData<T>::Item;  // the return type from fetch. most of the time should be T
     typename QueryData<T>::ReadOnly;
-    { QueryData<T>::readonly } -> std::convertible_to<bool>;
+    typename std::bool_constant<QueryData<T>::readonly>;
     { QueryData<T>::fetch(fetch, entity, row) } -> std::same_as<typename QueryData<T>::Item>;
     // State of its WorldQuery type should be convertible to its ReadOnly's WorldQuery State
     requires std::constructible_from<const typename WorldQuery<typename QueryData<T>::ReadOnly>::State&,
                                      typename WorldQuery<T>::State>;
 };
-template <typename T>
+export template <typename T>
 concept readonly_query_data = query_data<T> && QueryData<T>::readonly;
 
-template <typename T>
+export template <typename T>
 concept query_filter = world_query<T> && requires(WorldQuery<T>::Fetch& fetch, Entity entity, TableRow row) {
-    { QueryFilter<T>::archetypal } -> std::convertible_to<bool>;
+    typename std::bool_constant<QueryFilter<T>::archetypal>;
     { QueryFilter<T>::filter_fetch(fetch, entity, row) } -> std::same_as<bool>;
 };
 
