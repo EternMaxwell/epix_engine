@@ -39,11 +39,12 @@ concept system_param = requires(World& world, SystemMeta& meta, FilteredAccessSe
     // the item type returned when accessing the param, the item returned may not be T itself, it may be reference.
     typename SystemParam<T>::Item;
     requires std::same_as<T, typename SystemParam<T>::Item>;
+    typename std::bool_constant<SystemParam<T>::readonly>;
 
     { SystemParam<T>::init_state(world) } -> std::same_as<typename SystemParam<T>::State>;
     requires requires(const typename SystemParam<T>::State& state, typename SystemParam<T>::State& state_mut,
                       DeferredWorld deferred_world, Tick tick, const Archetype& archetype) {
-        { SystemParam<T>::init_access(state, meta, access, world) } -> std::same_as<void>;
+        { SystemParam<T>::init_access(state, meta, access, std::as_const(world)) } -> std::same_as<void>;
         { SystemParam<T>::new_archetype(state_mut, archetype, meta) } -> std::same_as<void>;
         { SystemParam<T>::apply(state_mut, std::as_const(meta), world) } -> std::same_as<void>;
         { SystemParam<T>::queue(state_mut, std::as_const(meta), deferred_world) } -> std::same_as<void>;
@@ -54,6 +55,24 @@ concept system_param = requires(World& world, SystemMeta& meta, FilteredAccessSe
             SystemParam<T>::get_param(state_mut, std::as_const(meta), world, tick)
         } -> std::same_as<typename SystemParam<T>::Item>;
     };
+};
+
+export template <typename T>
+concept readonly_system_param = system_param<T> && SystemParam<T>::readonly;
+
+export template <readonly_system_param T>
+struct ROSystemParam : SystemParam<T> {
+    using State = typename SystemParam<T>::State;
+    using Item  = typename SystemParam<T>::Item;
+    // validate and get function will accept const World& and const_cast to base.
+    static std::expected<void, ValidateParamError> validate_param(State& state,
+                                                                  const SystemMeta& meta,
+                                                                  const World& world) {
+        return SystemParam<T>::validate_param(state, meta, const_cast<World&>(world));
+    }
+    static Item get_param(State& state, const SystemMeta& meta, const World& world, Tick tick) {
+        return SystemParam<T>::get_param(state, meta, const_cast<World&>(world), tick);
+    }
 };
 
 // A base struct to provide default implementation for some functions.
@@ -67,8 +86,9 @@ export struct ParamBase {
 
 template <query_data D, query_filter F>
 struct SystemParam<Query<D, F>> : ParamBase {
-    using State = QueryState<D, F>;
-    using Item  = Query<D, F>;
+    using State                    = QueryState<D, F>;
+    using Item                     = Query<D, F>;
+    static constexpr bool readonly = readonly_query_data<D>;
     static State init_state(World& world) { return QueryState<D, F>::create(world); }
     static void init_access(const State& state, SystemMeta& meta, FilteredAccessSet& access, const World&) {
         AccessConflicts conflicts = access.get_conflicts(state.component_access());
@@ -87,9 +107,10 @@ static_assert(system_param<Query<int&, With<float>>>);
 
 template <query_data D, query_filter F>
 struct SystemParam<Single<D, F>> : SystemParam<Query<D, F>> {
-    using Base  = SystemParam<Query<D, F>>;
-    using State = typename Base::State;
-    using Item  = Single<D, F>;
+    using Base                     = SystemParam<Query<D, F>>;
+    using State                    = typename Base::State;
+    using Item                     = Single<D, F>;
+    static constexpr bool readonly = Base::readonly;
     static Item get_param(State& state, const SystemMeta& meta, World& world, Tick tick) {
         return Single<D, F>(Base::get_param(state, meta, world, tick).single().value());
     }
@@ -110,8 +131,9 @@ static_assert(system_param<Single<int&, With<float>>>);
 template <typename T>
     requires(!std::is_reference_v<T> && !std::is_const_v<T>)
 struct SystemParam<Res<T>> : ParamBase {
-    using State = TypeId;
-    using Item  = Res<T>;
+    using State                    = TypeId;
+    using Item                     = Res<T>;
+    static constexpr bool readonly = true;
     static State init_state(World& world) { return world.type_registry().type_id<T>(); }
     static void init_access(const State& state, SystemMeta& meta, FilteredAccessSet& access, const World&) {
         if (access.combined_access().has_resource_write(state)) {
@@ -153,8 +175,9 @@ static_assert(system_param<Res<int>>);
 template <typename T>
     requires(!std::is_reference_v<T> && !std::is_const_v<T>)
 struct SystemParam<ResMut<T>> : ParamBase {
-    using State = TypeId;
-    using Item  = ResMut<T>;
+    using State                    = TypeId;
+    using Item                     = ResMut<T>;
+    static constexpr bool readonly = false;
     static State init_state(World& world) { return world.type_registry().type_id<T>(); }
     static void init_access(const State& state, SystemMeta& meta, FilteredAccessSet& access, const World&) {
         if (access.combined_access().has_resource_read(state)) {
@@ -196,8 +219,9 @@ static_assert(system_param<ResMut<int>>);
 
 template <>
 struct SystemParam<const World&> : ParamBase {
-    using State = std::tuple<>;
-    using Item  = const World&;
+    using State                    = std::tuple<>;
+    using Item                     = const World&;
+    static constexpr bool readonly = true;
     static State init_state(World&) { return {}; }
     static void init_access(const State&, SystemMeta& meta, FilteredAccessSet& access, const World&) {
         FilteredAccess world_access = FilteredAccess::matches_everything();
@@ -213,8 +237,9 @@ struct SystemParam<const World&> : ParamBase {
 };
 template <>
 struct SystemParam<World&> : ParamBase {
-    using State = std::tuple<>;
-    using Item  = World&;
+    using State                    = std::tuple<>;
+    using Item                     = World&;
+    static constexpr bool readonly = false;
     static State init_state(World&) { return {}; }
     static void init_access(const State&, SystemMeta& meta, FilteredAccessSet& access, const World&) {
         FilteredAccess world_access = FilteredAccess::matches_everything();
@@ -233,8 +258,9 @@ static_assert(system_param<const World&>);
 
 template <>
 struct SystemParam<DeferredWorld> : ParamBase {
-    using State = std::tuple<>;
-    using Item  = DeferredWorld;
+    using State                    = std::tuple<>;
+    using Item                     = DeferredWorld;
+    static constexpr bool readonly = false;
     static State init_state(World&) { return {}; }
     static void init_access(const State&, SystemMeta& meta, FilteredAccessSet& access, const World&) {
         meta.flags = (SystemFlagBits)(meta.flags | SystemFlagBits::DEFERRED);
@@ -273,8 +299,9 @@ struct Local {
 template <typename T>
     requires(!std::is_reference_v<T> && !std::is_const_v<T> && is_from_world<T>)
 struct SystemParam<Local<T>> : ParamBase {
-    using State = T;
-    using Item  = Local<T>;
+    using State                    = T;
+    using Item                     = Local<T>;
+    static constexpr bool readonly = true;
     static State init_state(World& world) { return FromWorld<T>::create(world); }
     static Item get_param(State& state, const SystemMeta&, World&, Tick) { return Local<T>(const_cast<T&>(state)); }
 };
@@ -285,7 +312,8 @@ struct SystemParam<std::optional<T>> : SystemParam<T> {
     using Base  = SystemParam<T>;
     using State = typename Base::State;
     // It is currently useless to have optional param for reference types, since they will always be present like World&
-    using Item = std::optional<typename Base::Item>;
+    using Item                     = std::optional<typename Base::Item>;
+    static constexpr bool readonly = Base::readonly;
     static std::expected<void, ValidateParamError> validate_param(const State& state,
                                                                   const SystemMeta& meta,
                                                                   World& world) {
@@ -302,9 +330,10 @@ struct SystemParam<std::optional<T>> : SystemParam<T> {
 template <typename T>
     requires system_param<T&>
 struct SystemParam<std::optional<std::reference_wrapper<T>>> : SystemParam<T&> {
-    using Base  = SystemParam<T&>;
-    using State = typename Base::State;
-    using Item  = std::optional<std::reference_wrapper<T>>;
+    using Base                     = SystemParam<T&>;
+    using State                    = typename Base::State;
+    using Item                     = std::optional<std::reference_wrapper<T>>;
+    static constexpr bool readonly = Base::readonly;
     static std::expected<void, ValidateParamError> validate_param(const State& state,
                                                                   const SystemMeta& meta,
                                                                   World& world) {
@@ -322,8 +351,9 @@ static_assert(system_param<std::optional<Res<int>>>);
 
 template <system_param... T>
 struct SystemParam<std::tuple<T...>> {
-    using State = std::tuple<typename SystemParam<T>::State...>;
-    using Item  = std::tuple<typename SystemParam<T>::Item...>;
+    using State                    = std::tuple<typename SystemParam<T>::State...>;
+    using Item                     = std::tuple<typename SystemParam<T>::Item...>;
+    static constexpr bool readonly = (SystemParam<T>::readonly && ...);
     static State init_state(World& world) { return State(SystemParam<T>::init_state(world)...); }
     static void init_access(const State& state, SystemMeta& meta, FilteredAccessSet& access, const World& world) {
         []<std::size_t... I>(const State& state, SystemMeta& meta, FilteredAccessSet& access, const World& world,
@@ -401,9 +431,10 @@ struct ParamSet {
 };
 template <system_param... Ts>
 struct SystemParam<ParamSet<Ts...>> : SystemParam<std::tuple<Ts...>> {
-    using Base  = SystemParam<std::tuple<Ts...>>;
-    using State = typename Base::State;
-    using Item  = ParamSet<Ts...>;
+    using Base                     = SystemParam<std::tuple<Ts...>>;
+    using State                    = typename Base::State;
+    using Item                     = ParamSet<Ts...>;
+    static constexpr bool readonly = Base::readonly;
     static void init_access(const State& state, SystemMeta& meta, FilteredAccessSet& access, const World& world) {
         []<std::size_t... I>(const State& state, SystemMeta& meta, FilteredAccessSet& access, const World& world,
                              std::index_sequence<I...>) {
@@ -460,8 +491,9 @@ struct Deferred {
 template <system_buffer F>
     requires is_from_world<F>
 struct SystemParam<Deferred<F>> : ParamBase {
-    using State = F;
-    using Item  = Deferred<F>;
+    using State                    = F;
+    using Item                     = Deferred<F>;
+    static constexpr bool readonly = true;
     static State init_state(World& world) { return FromWorld<F>::create(world); }
     static void init_access(const State& state, SystemMeta& meta, FilteredAccessSet& access, const World&) {
         meta.flags = (SystemFlagBits)(meta.flags | SystemFlagBits::DEFERRED);
@@ -478,8 +510,9 @@ struct SystemParam<Deferred<F>> : ParamBase {
 
 template <>
 struct SystemParam<const Entities&> : ParamBase {
-    using State = std::tuple<>;
-    using Item  = const Entities&;
+    using State                    = std::tuple<>;
+    using Item                     = const Entities&;
+    static constexpr bool readonly = true;
     static State init_state(World&) { return {}; }
     static Item get_param(State&, const SystemMeta&, World& world, Tick) { return world.entities(); }
 };
