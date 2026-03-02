@@ -37,8 +37,8 @@ int main() {
         .add_plugins(glfw::GLFWPlugin{})
         .add_plugins(glfw::GlfwRenderPlugin{})
         .add_plugins(render::RenderPlugin{});
-    auto& render_app = app.sub_app_mut(render::Render);
-    render_app.add_systems(render::Render, into(test_system).set_name("test system").in_set(render::RenderSet::Render));
+    // auto& render_app = app.sub_app_mut(render::Render);
+    // render_app.add_systems(render::Render, into(test_system).set_name("test system").in_set(render::RenderSet::Render));
 
     app.run();
 }

@@ -1,6 +1,6 @@
 ﻿export module epix.transform;
 
-import glm;
+export import glm;
 import epix.core;
 
 export namespace transform {

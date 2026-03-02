@@ -48,9 +48,11 @@ void RenderPlugin::build(App& app) {
                                     return anonymous_surface.create_surface(instance);
                                   })
                                   .value_or(wgpu::Surface{});
-    wgpu::Adapter adapter   = instance.requestAdapter(
-        wgpu::RequestAdapterOptions().setCompatibleSurface(surface).setBackendType(wgpu::BackendType::eVulkan));
-    surface = nullptr;  // release the temporary surface
+    wgpu::Adapter adapter   = instance.requestAdapter(wgpu::RequestAdapterOptions()
+                                                          .setCompatibleSurface(surface)
+                                                          .setPowerPreference(wgpu::PowerPreference::eHighPerformance)
+                                                          .setBackendType(wgpu::BackendType::eVulkan));
+    surface                 = nullptr;  // release the temporary surface
     app.world_mut().remove_resource<AnonymousSurface>();
     if (!adapter) {
         throw std::runtime_error("Failed to request WebGPU adapter");
