@@ -164,7 +164,9 @@ struct Mutex {
 
    public:
     template <typename... Args>
-    Mutex(Args&&... args) requires std::constructible_from<T, Args...>{
+    Mutex(Args&&... args)
+        requires std::constructible_from<T, Args...>
+    {
         new (&m_value) T(std::forward<Args>(args)...);
     }
     Mutex(const Mutex&) = delete;
@@ -193,6 +195,12 @@ struct Mutex {
         return Mutex(m_value);
     }
 
+    template <std::invocable<T&> Func>
+    auto with_lock(Func&& func) const -> std::invoke_result_t<Func, T&> {
+        std::lock_guard lock(m_mutex);
+        return func(m_value);
+    }
+
     Guard lock() const { return Guard(m_mutex, m_value); }
 };
-}  // namespace core
+}  // namespace utils
