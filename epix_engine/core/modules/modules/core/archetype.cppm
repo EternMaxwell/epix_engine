@@ -131,7 +131,7 @@ struct ArchetypeEdges {
     SparseArray<BundleId, std::optional<ArchetypeId>> remove_bundle;
     SparseArray<BundleId, std::optional<ArchetypeId>> take_bundle;
 };
-struct Archetype {
+export struct Archetype {
    public:
     static Archetype create(ComponentIndex& component_index,
                             ArchetypeId id,
@@ -206,7 +206,7 @@ struct Archetype {
     std::vector<ArchetypeEntity> _entities;
     SparseSet<TypeId, StorageType> _components;
 };
-struct Archetypes {
+export struct Archetypes {
     std::vector<Archetype> archetypes;
     std::unordered_map<ArchetypeComponents, ArchetypeId, ArchetypeComponentsHash, ArchetypeComponentsEqual>
         by_components;
