@@ -140,6 +140,7 @@ struct QueryIter : std::ranges::view_interface<QueryIter<D, F>> {
     QueryData<D>::Item operator*() { return cursor->retrieve(); }
     bool next() { return cursor->next(*tables, *archetypes, *state); }
     bool current() const { return cursor->current(); }
+    std::size_t max_remaining() const { return cursor->max_remaining(*archetypes); }
     QueryIter& operator++() {
         cursor->next(*tables, *archetypes, *state);
         return *this;
