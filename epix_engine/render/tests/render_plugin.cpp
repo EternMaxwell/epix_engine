@@ -29,6 +29,9 @@ void test_system(Res<render::window::ExtractedWindows> windows, Res<wgpu::Device
     queue->submit(buffer);
 }
 
+constexpr struct Test {
+} test_graph;
+
 int main() {
     App app = App::create();
 
@@ -37,8 +40,15 @@ int main() {
         .add_plugins(glfw::GLFWPlugin{})
         .add_plugins(glfw::GlfwRenderPlugin{})
         .add_plugins(render::RenderPlugin{});
+    app.add_systems(Startup, into([](Commands cmd, Query<Entity, With<window::PrimaryWindow>> primary_window) {
+                        primary_window.single().transform([&](Entity id) {
+                            cmd.entity(id).insert(render::camera::CameraBundle::with_render_graph(test_graph));
+                            return id;
+                        });
+                    }));
     // auto& render_app = app.sub_app_mut(render::Render);
-    // render_app.add_systems(render::Render, into(test_system).set_name("test system").in_set(render::RenderSet::Render));
+    // render_app.add_systems(render::Render, into(test_system).set_name("test
+    // system").in_set(render::RenderSet::Render));
 
     app.run();
 }

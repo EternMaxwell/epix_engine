@@ -72,11 +72,14 @@ void RenderPlugin::build(App& app) {
                     spdlog::error("WebGPU Uncaptured error: {}, with stack:\n{}", std::string_view(message), stack);
                 }));
     wgpu::Device device = adapter.requestDevice(deviceDesc);
-    wgpu::Queue queue   = device.getQueue();
+    wgpu::Limits limits;
+    device.getLimits(&limits);
+    wgpu::Queue queue = device.getQueue();
     app.world_mut().insert_resource(instance.clone());
     app.world_mut().insert_resource(adapter.clone());
     app.world_mut().insert_resource(device.clone());
     app.world_mut().insert_resource(queue.clone());
+    app.world_mut().insert_resource(limits);
     // keep the device descriptor to make the callbacks alive.
     app.world_mut().insert_resource(std::move(deviceDesc));
 
@@ -85,6 +88,7 @@ void RenderPlugin::build(App& app) {
         render_app.world_mut().insert_resource(adapter.clone());
         render_app.world_mut().insert_resource(device.clone());
         render_app.world_mut().insert_resource(queue.clone());
+        render_app.world_mut().insert_resource(limits);
         render_app.world_mut().insert_resource(PipelineServer(device.clone()));
         render_app.add_systems(ExtractSchedule, into(PipelineServer::extract_shaders).set_name("extract shaders"))
             .add_systems(Render, into([](Res<wgpu::Device> device) { device->poll(false); },
@@ -107,5 +111,7 @@ void RenderPlugin::build(App& app) {
     app.add_plugins(image::ImagePlugin{});
     app.add_plugins(render::ExtractAssetPlugin<image::Image>{});
     app.add_plugins(render::ShaderPlugin{});
+    app.add_plugins(render::camera::CameraPlugin{});
+    app.add_plugins(render::view::ViewPlugin{});
 }
 void RenderPlugin::finalize(App& app) {}

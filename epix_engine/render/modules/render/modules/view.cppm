@@ -13,16 +13,16 @@ import :render_phase;
 using namespace core;
 
 namespace render::camera {
-struct Viewport {
+export struct Viewport {
     glm::uvec2 pos;
     glm::uvec2 size;
     std::pair<float, float> depth_range{0.0f, 1.0f};
 };
-struct WindowRef {
+export struct WindowRef {
     bool primary = true;
     Entity window_entity;  // Used if primary is false
 };
-struct RenderTarget : std::variant<wgpu::Texture, WindowRef> {
+export struct RenderTarget : std::variant<wgpu::Texture, WindowRef> {
     using std::variant<wgpu::Texture, WindowRef>::variant;
     static RenderTarget from_texture(wgpu::Texture texture) { return RenderTarget(std::move(texture)); }
     static RenderTarget from_primary() { return RenderTarget(WindowRef{true}); }
@@ -34,12 +34,12 @@ struct ComputedCameraValues {
     glm::uvec2 target_size;
     std::optional<glm::uvec2> old_viewport_size;
 };
-struct ClearColor : public glm::vec4 {
+export struct ClearColor : public glm::vec4 {
     using glm::vec4::vec4;
     ClearColor(const glm::vec4& v) : glm::vec4(v) {}
     glm::vec4 to_vec4() const { return glm::vec4(*this); }
 };
-struct ClearColorConfig {
+export struct ClearColorConfig {
     enum class Type {
         None,    // don't clear
         Global,  // use world's clear color resource
@@ -53,7 +53,7 @@ struct ClearColorConfig {
     static ClearColorConfig global() { return ClearColorConfig{Type::Global}; }
     static ClearColorConfig custom(const glm::vec4& color) { return ClearColorConfig{Type::Custom, color}; }
 };
-struct Camera {
+export struct Camera {
     /// @brief The camera's viewport within the render target.
     std::optional<Viewport> viewport;
     /// @brief Cameras with higher order are rendered on top of cameras with
@@ -75,7 +75,7 @@ struct Camera {
         return viewport.transform([](const Viewport& vp) { return vp.pos; }).value_or(glm::uvec2(0, 0));
     }
 };
-struct ScalingMode {
+export struct ScalingMode {
    private:
     enum class Mode {
         Fixed,
@@ -194,7 +194,7 @@ struct ScalingMode {
         return *this;
     }
 };
-struct OrthographicProjection {
+export struct OrthographicProjection {
     float near_plane          = -1000.0f;  // Near clipping plane
     float far_plane           = 1000.0f;   // Far clipping plane
     ScalingMode scaling_mode  = ScalingMode::window_size(1.0f);
@@ -213,7 +213,7 @@ struct OrthographicProjection {
     void set_far(float far_plane) { this->far_plane = far_plane; }
     void set_near(float near_plane) { this->near_plane = near_plane; }
     glm::mat4 get_projection_matrix() const {
-        return glm::orthoLH(rect.left, rect.right, rect.bottom, rect.top, near_plane, far_plane);
+        return glm::gtc::orthoLH(rect.left, rect.right, rect.bottom, rect.top, near_plane, far_plane);
     }
     std::array<glm::vec3, 8> get_frustum_corners() const {
         return {glm::vec3(rect.left, rect.bottom, near_plane), glm::vec3(rect.right, rect.bottom, near_plane),
@@ -222,7 +222,7 @@ struct OrthographicProjection {
                 glm::vec3(rect.right, rect.top, far_plane),    glm::vec3(rect.left, rect.top, far_plane)};
     }
 };
-struct PerspectiveProjection {
+export struct PerspectiveProjection {
     float fov          = glm::radians(45.0f);  // Field of view in radians
     float aspect_ratio = 1.0f;                 // Aspect ratio (width / height)
     float near_plane   = 0.1f;                 // Near clipping plane
@@ -233,7 +233,9 @@ struct PerspectiveProjection {
     float get_near() const { return near_plane; }
     void set_far(float far_plane) { this->far_plane = far_plane; }
     void set_near(float near_plane) { this->near_plane = near_plane; }
-    glm::mat4 get_projection_matrix() const { return glm::perspectiveLH(fov, aspect_ratio, near_plane, far_plane); }
+    glm::mat4 get_projection_matrix() const {
+        return glm::gtc::perspectiveLH(fov, aspect_ratio, near_plane, far_plane);
+    }
     std::array<glm::vec3, 8> get_frustum_corners() const {
         float tan_half_fov = glm::tan(fov / 2.0f);
         float near_height  = near_plane * tan_half_fov;
@@ -258,7 +260,7 @@ concept CameraProjection = requires(T t) {
     { t.update(std::declval<float>(), std::declval<float>()) };
 };
 
-struct Projection {
+export struct Projection {
     std::variant<OrthographicProjection, PerspectiveProjection> projection;
 
     Projection() : projection(OrthographicProjection{}) {}
@@ -326,15 +328,15 @@ static_assert(CameraProjection<Projection>);
 
 // --- Camera Systems --- //
 
-enum class CameraUpdateSystems {
+export enum class CameraUpdateSystems {
     CameraUpdateSystem = 0,
 };
 
 template <CameraProjection ProjType>
 void camera_system(
-    Query<Item<Mut<Camera>, Mut<ProjType>>> query,                                        // camera and projection query
-    Query<Item<const window::Window&>> window_query,                                      // window query
-    Query<Item<const window::Window&>, With<window::PrimaryWindow>> primary_window_query  // primary window query
+    Query<Item<Mut<Camera>, Mut<ProjType>>> query,      // camera and projection query
+    Query<Item<const ::window::Window&>> window_query,  // window query
+    Query<Item<const ::window::Window&>, With<::window::PrimaryWindow>> primary_window_query  // primary window query
 ) {
     for (auto&& [camera, proj] : query.iter()) {
         // in the body we want to update the stored target size,
@@ -412,7 +414,7 @@ void camera_system(
     }
 }
 
-template <CameraProjection ProjType>
+export template <CameraProjection ProjType>
 struct CameraProjectionPlugin {
     void build(App& app) {
         app.add_systems(PostUpdate, into(camera_system<ProjType>).in_set(CameraUpdateSystems::CameraUpdateSystem));
@@ -420,11 +422,11 @@ struct CameraProjectionPlugin {
     }
 };
 
-struct CameraRenderGraph : public graph::GraphLabel {
+export struct CameraRenderGraph : public graph::GraphLabel {
     using graph::GraphLabel::GraphLabel;
 };
 
-struct ExtractedCamera {
+export struct ExtractedCamera {
     // this render target is a normalized one, which means if it is a WindowRef and is primary, the entity field will
     // point to the actual primary window entity.
     RenderTarget render_target;
@@ -437,31 +439,38 @@ struct ExtractedCamera {
 };
 }  // namespace render::camera
 namespace render::view {
-struct ExtractedView {
+export struct ExtractedView {
     glm::mat4 projection;
     transform::GlobalTransform transform;
     glm::uvec2 viewport_size;
     glm::uvec2 viewport_origin;
 };
-struct VisibleEntities {
+export struct VisibleEntities {
     std::vector<Entity> entities;
 };
-struct ViewTarget {
+export struct ViewTarget {
     wgpu::TextureView texture_view;
 };
-struct ViewDepth {
+export struct ViewDepth {
+    wgpu::Texture texture;
     wgpu::TextureView depth_view;
 };
-struct UVec2Hash {
+export struct UVec2Hash {
     std::size_t operator()(const glm::uvec2& v) const noexcept {
-        return std::hash<size_t>()(static_cast<size_t>(v.x) << 32 | static_cast<size_t>(v.y));
+        std::size_t h = (static_cast<std::size_t>(v.x) << 32) | v.y;
+        h ^= h >> 33;
+        h *= 0xff51afd7ed558ccdULL;
+        h ^= h >> 33;
+        h *= 0xc4ceb9fe1a85ec53ULL;
+        h ^= h >> 33;
+        return h;
     }
 };
-struct ViewDepthCache {
+export struct ViewDepthCache {
     std::unordered_map<glm::uvec2, wgpu::Texture, UVec2Hash> cache;
 };
 
-struct ViewPlugin {
+export struct ViewPlugin {
     void build(App& app);
 };
 
@@ -470,76 +479,68 @@ void prepare_view_target(Query<Item<Entity, const camera::ExtractedCamera&, cons
                          Res<window::ExtractedWindows> extracted_windows);
 void create_view_depth(Query<Item<Entity, const ExtractedView&>> views,
                        Res<wgpu::Device> device,
+                       Res<wgpu::Queue> queue,
                        ResMut<ViewDepthCache> depth_cache,
                        Commands cmd);
 
-struct ViewUniform {
+export struct ViewUniform {
     glm::mat4 projection;
     glm::mat4 view;
 };
 struct UniformBuffer {
     wgpu::Buffer buffer;
 };
+export struct ViewBindGroup {
+    wgpu::BindGroup bind_group;
+};
 struct ViewUniformBindingLayout {
     wgpu::BindGroupLayout layout;
     ViewUniformBindingLayout(World& world)
-        : layout(
-              world.resource<wgpu::Device>()->createBindingLayout(wgpu::BindingLayoutDescriptor().setEntries(std::array{
+        : layout(world.resource<wgpu::Device>().createBindGroupLayout(
+              wgpu::BindGroupLayoutDescriptor().setEntries(std::array{
                   wgpu::BindGroupLayoutEntry()
-                      .setVisibility(wgpu::ShaderState::Vertex | wgpu::ShaderState::Fragment)
+                      .setVisibility(wgpu::ShaderStage::eVertex | wgpu::ShaderStage::eFragment)
                       .setBinding(0)
                       .setBuffer(wgpu::BufferBindingLayout()
-                                     .setType(wgpu::BufferBindingType::Uniform)
+                                     .setType(wgpu::BufferBindingType::eUniform)
                                      .setHasDynamicOffset(false)
                                      .setMinBindingSize(sizeof(ViewUniform))),
               }))) {}
 };
-template <size_t Slot>
+export template <size_t Slot>
 struct BindViewUniform {
-    template <render::render_phase::PhaseItem P>
+    template <render::phase::PhaseItem P>
     struct Command {
-        std::unordered_map<wgpu::Buffer, wgpu::BindingSet> uniform_set_cache;
+        std::unordered_map<wgpu::raw::Buffer, wgpu::BindGroup> uniform_set_cache;
         void prepare(World&) { uniform_set_cache.clear(); }
         bool render(const P&,
                     Item<const UniformBuffer&> view_uniform,
                     std::optional<Item<>> entity_item,
                     ParamSet<Res<wgpu::Device>, Res<ViewUniformBindingLayout>> params,
-                    render::render_phase::DrawContext& ctx) {
+                    const wgpu::RenderPassEncoder& encoder) {
             auto&& [device, uniform_layout] = params.get();
             auto&& [ub]                     = *view_uniform;
-            nvrhi::BufferHandle buffer      = ub.buffer;
-            nvrhi::BindingSetHandle binding_set;
-            if (auto it = uniform_set_cache.find(buffer); it != uniform_set_cache.end()) {
-                binding_set = it->second;
-            } else {
-                binding_set = device.get()->createBindingSet(
-                    nvrhi::BindingSetDesc().addItem(nvrhi::BindingSetItem::ConstantBuffer(0, buffer)),
-                    uniform_layout->layout);
-                uniform_set_cache.emplace(buffer, binding_set);
-            }
-            ctx.graphics_state.bindings.resize(Slot + 1);
-            ctx.graphics_state.bindings[Slot] = binding_set;
             return true;
         }
     };
 };
 }  // namespace render::view
 namespace render::camera {
-void extract_cameras(
+export void extract_cameras(
     Commands cmd,
-    std::optional<Res<ClearColor>> global_clear_color,
+    Res<ClearColor> global_clear_color,
     Extract<Query<
         Item<const Camera&, const CameraRenderGraph&, const transform::GlobalTransform&, const view::VisibleEntities&>>>
         cameras,
-    Extract<Query<Item<Entity>, With<window::PrimaryWindow, window::Window>>> primary_window);
+    Extract<Query<Entity, With<::window::PrimaryWindow, ::window::Window>>> primary_window);
 
-inline constexpr struct CameraDriverNodeLabelT {
+export inline constexpr struct CameraDriverNodeLabelT {
 } CameraDriverNodeLabel;
 
 struct CameraPlugin {
     void build(App& app);
 };
-struct CameraBundle {
+export struct CameraBundle {
     Camera camera;
     Projection projection;
     CameraRenderGraph render_graph;

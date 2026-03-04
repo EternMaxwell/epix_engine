@@ -14,6 +14,8 @@ export import :shader;
 export import :shader_cache;
 export import :pipeline;
 export import :pipeline_server;
+export import :render_phase;
+export import :view;
 
 namespace render {
 /**
