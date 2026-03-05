@@ -395,13 +395,13 @@ export struct World {
     QueryState<D, F> query_filtered() {
         return QueryState<D, F>::create(*this);
     }
-    template <readonly_query_data D>
-    QueryState<D, Filter<>> query() const {
-        return QueryState<D, Filter<>>::create(*const_cast<World*>(this));
+    template <query_data D>
+    std::optional<QueryState<D, Filter<>>> try_query() const {
+        return QueryState<D, Filter<>>::create_from_const(*this);
     }
-    template <readonly_query_data D, query_filter F>
-    QueryState<D, F> query_filtered() const {
-        return QueryState<D, F>::create(*const_cast<World*>(this));
+    template <query_data D, query_filter F>
+    std::optional<QueryState<D, F>> try_query_filtered() const {
+        return QueryState<D, F>::create_from_const(*this);
     }
 
     EntityRef entity(Entity entity) const;

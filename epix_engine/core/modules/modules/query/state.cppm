@@ -42,6 +42,11 @@ struct QueryState {
         validate_world(world);
         return QueryIter<D, F>(&world, this, last_run, this_run);
     }
+    QueryIter<D, F> create_iter(const World& world, Tick last_run, Tick this_run) const
+        requires readonly_query_data<D>
+    {
+        return create_iter(const_cast<World&>(world), last_run, this_run);
+    }
 
     bool contains_archetype(ArchetypeId id) const { return _matched_archetypes.contains(id); }
 
@@ -148,6 +153,74 @@ struct QueryState {
         return get_manual_with_ticks(world, entity, world_last_change_tick(world), world_change_tick(world));
     }
     typename AddOptional<typename QueryData<D>::Item>::type get(World& world, Entity entity) {
+        update_archetypes(world);
+        return get_manual_with_ticks(world, entity, world_last_change_tick(world), world_change_tick(world));
+    }
+    Query<D, F> query_with_ticks(const World& world, Tick last_run, Tick this_run)
+        requires readonly_query_data<D>
+    {
+        return query_with_ticks(const_cast<World&>(world), last_run, this_run);
+    }
+    Query<D, F> query(const World& world)
+        requires readonly_query_data<D>
+    {
+        return query(const_cast<World&>(world));
+    }
+    Query<D, F> query_manual_with_ticks(const World& world, Tick last_run, Tick this_run)
+        requires readonly_query_data<D>
+    {
+        return query_manual_with_ticks(const_cast<World&>(world), last_run, this_run);
+    }
+    Query<D, F> query_manual(const World& world)
+        requires readonly_query_data<D>
+    {
+        return query_manual(const_cast<World&>(world));
+    }
+    QueryIter<D, F> iter_with_ticks(const World& world, Tick last_run, Tick this_run)
+        requires readonly_query_data<D>
+    {
+        return iter_with_ticks(const_cast<World&>(world), last_run, this_run);
+    }
+    QueryIter<D, F> iter(const World& world)
+        requires readonly_query_data<D>
+    {
+        return iter(const_cast<World&>(world));
+    }
+    QueryIter<D, F> iter_manual_with_ticks(const World& world, Tick last_run, Tick this_run)
+        requires readonly_query_data<D>
+    {
+        return iter_manual_with_ticks(const_cast<World&>(world), last_run, this_run);
+    }
+    QueryIter<D, F> iter_manual(const World& world)
+        requires readonly_query_data<D>
+    {
+        return iter_manual(const_cast<World&>(world));
+    }
+    typename AddOptional<typename QueryData<D>::Item>::type get_manual_with_ticks(const World& world,
+                                                                                  Entity entity,
+                                                                                  Tick last_run,
+                                                                                  Tick this_run)
+        requires readonly_query_data<D>
+    {
+        return get_manual_with_ticks(const_cast<World&>(world), entity, last_run, this_run);
+    }
+    typename AddOptional<typename QueryData<D>::Item>::type get_with_ticks(const World& world,
+                                                                           Entity entity,
+                                                                           Tick last_run,
+                                                                           Tick this_run)
+        requires readonly_query_data<D>
+    {
+        update_archetypes(world);
+        return get_manual_with_ticks(world, entity, last_run, this_run);
+    }
+    typename AddOptional<typename QueryData<D>::Item>::type get_manual(const World& world, Entity entity)
+        requires readonly_query_data<D>
+    {
+        return get_manual_with_ticks(world, entity, world_last_change_tick(world), world_change_tick(world));
+    }
+    typename AddOptional<typename QueryData<D>::Item>::type get(const World& world, Entity entity)
+        requires readonly_query_data<D>
+    {
         update_archetypes(world);
         return get_manual_with_ticks(world, entity, world_last_change_tick(world), world_change_tick(world));
     }
