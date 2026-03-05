@@ -1,5 +1,7 @@
 ﻿module;
 
+#include <cassert>
+
 export module epix.core:component;
 
 import std;
@@ -12,19 +14,21 @@ import :storage.sparse_set;
 import :storage.table;
 
 namespace core {
-struct HookContext {
+export struct HookContext {
     Entity entity;
     TypeId component_id;
 };
 /// Component Hooks struct for storing component lifecycle hooks
 /// the priority of the hooks if can be called at the same time is as follows:
 /// [on_despawn > on_replace > on_remove > removed > added > on_add > on_insert]
-struct ComponentHooks {
-    std::function<void(World&, HookContext)> on_add;
-    std::function<void(World&, HookContext)> on_insert;
-    std::function<void(World&, HookContext)> on_replace;
-    std::function<void(World&, HookContext)> on_remove;
-    std::function<void(World&, HookContext)> on_despawn;
+export struct ComponentHooks {
+    using HookFunc = void (*)(World&, HookContext);
+
+    HookFunc on_add     = nullptr;
+    HookFunc on_insert  = nullptr;
+    HookFunc on_replace = nullptr;
+    HookFunc on_remove  = nullptr;
+    HookFunc on_despawn = nullptr;
 
     template <typename T>
     ComponentHooks& update_from_component() {
@@ -45,42 +49,37 @@ struct ComponentHooks {
         }
         return *this;
     }
-    template <std::invocable<World&, HookContext> F>
-    bool try_on_add(F&& f) {
+    bool try_on_add(HookFunc func) {
         if (on_add) {
-            on_add = std::forward<F>(f);
+            on_add = func;
             return true;
         }
         return false;
     }
-    template <std::invocable<World&, HookContext> F>
-    bool try_on_insert(F&& f) {
+    bool try_on_insert(HookFunc func) {
         if (on_insert) {
-            on_insert = std::forward<F>(f);
+            on_insert = func;
             return true;
         }
         return false;
     }
-    template <std::invocable<World&, HookContext> F>
-    bool try_on_replace(F&& f) {
+    bool try_on_replace(HookFunc func) {
         if (on_replace) {
-            on_replace = std::forward<F>(f);
+            on_replace = func;
             return true;
         }
         return false;
     }
-    template <std::invocable<World&, HookContext> F>
-    bool try_on_remove(F&& f) {
+    bool try_on_remove(HookFunc func) {
         if (on_remove) {
-            on_remove = std::forward<F>(f);
+            on_remove = func;
             return true;
         }
         return false;
     }
-    template <std::invocable<World&, HookContext> F>
-    bool try_on_despawn(F&& f) {
+    bool try_on_despawn(HookFunc func) {
         if (on_despawn) {
-            on_despawn = std::forward<F>(f);
+            on_despawn = func;
             return true;
         }
         return false;
@@ -167,7 +166,7 @@ struct ComponentInfo {
 
     friend struct Components;
 };
-struct Components : public SparseSet<TypeId, ComponentInfo> {
+export struct Components : public SparseSet<TypeId, ComponentInfo> {
    private:
     std::shared_ptr<TypeRegistry> type_registry;
 
@@ -207,10 +206,18 @@ struct Components : public SparseSet<TypeId, ComponentInfo> {
         });
     }
     template <typename F>
-    void register_required_component(TypeId requiree, TypeId required, F&& constructor)
-        requires std::invocable<F>
+    void register_required(TypeId requiree, F&& constructor)
+        requires std::invocable<F> && std::is_object_v<std::invoke_result_t<F>>
     {
-        using C                   = std::invoke_result_t<F>;
+        auto required = registry().type_id<std::invoke_result_t<F>>();
+        register_required_by_id(requiree, required, std::forward<F>(constructor));
+    }
+    template <typename F>
+    void register_required_by_id(TypeId requiree, TypeId required, F&& constructor)
+        requires std::invocable<F> && std::is_object_v<std::invoke_result_t<F>>
+    {
+        using C = std::invoke_result_t<F>;
+        assert(required == registry().type_id<C>() && "required type must match the constructor return type");
         auto& required_components = get_mut(requiree).value().get()._required_components;
         if (required_components.components.contains(required)) return;
         required_components.register_id<C>(required, 0, std::forward<F>(constructor));
@@ -228,6 +235,33 @@ struct Components : public SparseSet<TypeId, ComponentInfo> {
             auto&& depth =
                 get_mut(required_by_id).value().get()._required_components.components.at(requiree).inheritance_depth;
             required_components.register_id<C>(requiree, depth + 1, std::forward<F>(constructor));
+            for (auto&& [type_id, req_comp] : inherited_requirements) {
+                required_components.register_dynamic(type_id, req_comp.inheritance_depth + depth + 1,
+                                                     req_comp.constructor);
+                get_mut(type_id).value().get()._required_by.insert(required_by_id);
+            }
+        }
+    }
+    void register_required_dyn(
+        TypeId requiree, TypeId required, RequiredComponentConstructor constructor
+    ) {
+        auto& required_components = get_mut(requiree).value().get()._required_components;
+        if (required_components.components.contains(required)) return;
+        required_components.register_dynamic(required, 0, std::move(constructor));
+        auto& required_by = get_mut(required).value().get()._required_by;
+        required_by.insert(requiree);
+
+        RequiredComponents required_components_tmp;
+        auto inherited_requirements =
+            register_inherited_required_components(requiree, required, required_components_tmp);
+        required_components.merge(required_components_tmp);
+
+        required_by.insert_range(get(required).value().get()._required_by);
+        for (auto&& required_by_id : get(requiree).value().get()._required_by) {
+            auto& required_components = get_mut(required_by_id).value().get()._required_components;
+            auto&& depth =
+                get_mut(required_by_id).value().get()._required_components.components.at(requiree).inheritance_depth;
+            required_components.register_dynamic(requiree, depth + 1, constructor);
             for (auto&& [type_id, req_comp] : inherited_requirements) {
                 required_components.register_dynamic(type_id, req_comp.inheritance_depth + depth + 1,
                                                      req_comp.constructor);
