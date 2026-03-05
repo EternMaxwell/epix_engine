@@ -9,11 +9,11 @@ import epix.core;
 using namespace core;
 
 namespace render::graph {
-struct Node {
+export struct Node {
     virtual std::vector<SlotInfo> inputs() { return {}; }
     virtual std::vector<SlotInfo> outputs() { return {}; }
-    virtual void update(World&) {}
-    virtual void run(GraphContext&, RenderContext&, World&) {}
+    virtual void update(const World&) {}
+    virtual void run(GraphContext&, RenderContext&, const World&) {}
 };
 /**
  * @brief An edge in the render graph.
@@ -67,7 +67,7 @@ struct Edges {
     const Edge* get_input_slot_edge(size_t index) const;
     const Edge* get_output_slot_edge(size_t index) const;
 };
-struct NodeState {
+export struct NodeState {
     NodeLabel label;
     SlotInfos inputs;
     SlotInfos outputs;
@@ -122,9 +122,9 @@ export struct GraphInputNode : public Node {
     GraphInputNode(std::vector<SlotInfo> inputs) : m_inputs(std::move(inputs)) {}
     std::vector<SlotInfo> inputs() override { return m_inputs; }
     std::vector<SlotInfo> outputs() override { return m_inputs; }
-    void run(GraphContext& graph, RenderContext&, World&) override;
+    void run(GraphContext& graph, RenderContext&, const World&) override;
 };
 export struct EmptyNode : public Node {
-    void run(GraphContext&, RenderContext&, World&) override {}
+    void run(GraphContext&, RenderContext&, const World&) override {}
 };
 }  // namespace render::graph

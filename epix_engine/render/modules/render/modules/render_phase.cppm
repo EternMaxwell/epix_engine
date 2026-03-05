@@ -129,9 +129,11 @@ struct EmptyDrawFunction : DrawFunction<P> {
 
 template <PhaseItem P>
 struct DrawFunctionsInternal {
+   private:
     std::vector<std::unique_ptr<DrawFunction<P>>> m_functions;
     std::unordered_map<meta::type_index, uint32_t> m_indices;
 
+   public:
     void prepare(const World& world) {
         for (auto&& func : m_functions) {
             func->prepare(world);
@@ -186,9 +188,7 @@ struct DrawFunctions {
     void prepare(const World& world) const {
         auto&& [m_mutex, m_functions] = *m_data;
         std::unique_lock lock(m_mutex);
-        for (auto&& func : m_functions) {
-            func->prepare(world);
-        }
+        m_functions.prepare(world);
     }
     template <Draw<P> T, typename... Args>
         requires std::constructible_from<T, Args...>
@@ -214,10 +214,7 @@ struct DrawFunctions {
     std::optional<std::reference_wrapper<DrawFunction<P>>> get(DrawFunctionId id) const {
         auto&& [m_mutex, m_functions] = *m_data;
         std::shared_lock lock(m_mutex);
-        if (id.get() >= m_functions.size()) {
-            return std::nullopt;
-        }
-        return std::ref(static_cast<DrawFunction<P>&>(*m_functions[id.get()]));
+        return m_functions.get(id);
     }
 
    private:
@@ -232,6 +229,14 @@ struct RenderPhase {
 
     std::vector<T> items;
 
+    std::size_t batch_size(const T& item) const {
+        if constexpr (BatchedPhaseItem<T>) {
+            return std::max<size_t>(1, item.batch_size());
+        } else {
+            return 1;
+        }
+    }
+
    public:
     void add(const T& item) { items.push_back(item); }
     void add(T&& item) { items.push_back(std::move(item)); }
@@ -243,31 +248,31 @@ struct RenderPhase {
         }
     }
     auto iter_entities() const { return items | std::views::transform(T::entity); }
-    void render(const wgpu::RenderPassEncoder& cmd, World& world, Entity view) const {
+    void render(const wgpu::RenderPassEncoder& cmd, const World& world, Entity view) const {
         render_range(cmd, world, view, 0, items.size());
     }
     void render_range(const wgpu::RenderPassEncoder& cmd,
                       const World& world,
                       Entity view,
                       std::size_t start = 0,
-                      std::size_t end   = std::numeric_limits<size_t>::max()) const {
+                      std::size_t end   = std::numeric_limits<std::size_t>::max()) const {
         end = std::min(end, items.size());
         if (start >= end) return;
 
         auto&& draw_functions = world.resource<DrawFunctions<T>>();
         draw_functions.prepare(world);
-        for (size_t i = start; i < end; i += batch_size(items[i])) {
+        for (std::size_t i = start; i < end; i += batch_size(items[i])) {
             auto& item = items[i];
             if (auto draw_function = draw_functions.get(item.draw_function()); draw_function) {
-                auto result = draw_function->draw(world, cmd, view, item);
+                auto result = draw_function->get().draw(world, cmd, view, item);
                 if (!result) {
                     spdlog::error("[render] Draw function {} failed for item {:#x}. Error: {}.",
-                                  static_cast<uint32_t>(item.draw_function()), item.entity().index,
+                                  static_cast<std::uint32_t>(item.draw_function()), item.entity().index,
                                   to_str(result.error()));
                 }
             } else {
                 spdlog::error("[render] Draw function {} not found for item {:#x}.",
-                              static_cast<uint32_t>(item.draw_function()), item.entity().index);
+                              static_cast<std::uint32_t>(item.draw_function()), item.entity().index);
             }
         }
     }
@@ -389,5 +394,12 @@ export template <PhaseItem P, template <typename> typename... R>
 DrawFunctionId app_add_render_commands(core::App& app) {
     auto& draw_functions = app.world_mut().resource_mut<DrawFunctions<P>>();
     return draw_functions.template add<RenderCommandSequence<P, R...>>(app.world_mut());
+}
+
+export template <PhaseItem P>
+void sort_phase_items(Query<Item<RenderPhase<P>&>> phases) {
+    for (auto&& [phase] : phases.iter()) {
+        phase.sort();
+    }
 }
 }  // namespace render::phase

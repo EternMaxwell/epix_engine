@@ -49,7 +49,7 @@ const Edge* Edges::get_output_slot_edge(size_t index) const {
     return iter != m_output_edges.end() ? &(*iter) : nullptr;
 }
 
-void GraphInputNode::run(GraphContext& graph, RenderContext&, World&) {
+void GraphInputNode::run(GraphContext& graph, RenderContext&, const World&) {
     for (auto&& [index, value] : std::views::enumerate(graph.inputs())) {
         graph.set_output((uint32_t)index, value);
     }

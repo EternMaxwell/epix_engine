@@ -287,14 +287,14 @@ void render::camera::extract_cameras(
 }
 
 struct CameraDriverNode : graph::Node {
-    void run(graph::GraphContext& graph, graph::RenderContext& render_ctx, World& world) override;
+    void run(graph::GraphContext& graph, graph::RenderContext& render_ctx, const World& world) override;
 };
-void CameraDriverNode::run(graph::GraphContext& graph, graph::RenderContext& render_ctx, World& world) {
-    auto cameras   = world.query<Item<Entity, const ExtractedCamera&, const view::ViewTarget&>>();
+void CameraDriverNode::run(graph::GraphContext& graph, graph::RenderContext& render_ctx, const World& world) {
+    auto cameras = world.try_query<Item<Entity, const ExtractedCamera&, const view::ViewTarget&>>();
+    if (!cameras) return;
     auto&& windows = world.resource<render::window::ExtractedWindows>();
     auto encoder   = render_ctx.command_encoder();
-    for (auto&& [entity, camera, target] :
-         cameras.query_with_ticks(world, world.last_change_tick(), world.change_tick()).iter()) {
+    for (auto&& [entity, camera, target] : cameras->query(world).iter()) {
         if (camera.clear_color) {
             auto render_pass = encoder.beginRenderPass(wgpu::RenderPassDescriptor().setColorAttachments(std::array{
                 wgpu::RenderPassColorAttachment()
