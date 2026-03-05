@@ -5,6 +5,7 @@
 import epix.core;
 import epix.input;
 import epix.window;
+import epix.transform;
 import epix.render;
 import epix.glfw.core;
 import epix.glfw.render;
@@ -12,22 +13,6 @@ import epix.glfw.render;
 import std;
 
 using namespace core;
-
-void test_system(Res<render::window::ExtractedWindows> windows, Res<wgpu::Device> device, Res<wgpu::Queue> queue) {
-    auto encoder = device->createCommandEncoder();
-    for (auto&& [entity, window] : windows->windows) {
-        auto render_pass = encoder.beginRenderPass(
-            wgpu::RenderPassDescriptor().setColorAttachments(std::array{wgpu::RenderPassColorAttachment()
-                                                                            .setView(window.swapchain_texture_view)
-                                                                            .setLoadOp(wgpu::LoadOp::eClear)
-                                                                            .setClearValue({0.3f, 0.3f, 0.3f, 1.0f})
-                                                                            .setStoreOp(wgpu::StoreOp::eStore)
-                                                                            .setDepthSlice(~0u)}));
-        render_pass.end();
-    }
-    auto buffer = encoder.finish();
-    queue->submit(buffer);
-}
 
 constexpr struct Test {
 } test_graph;
@@ -39,13 +24,10 @@ int main() {
         .add_plugins(input::InputPlugin{})
         .add_plugins(glfw::GLFWPlugin{})
         .add_plugins(glfw::GlfwRenderPlugin{})
+        .add_plugins(transform::TransformPlugin{})
         .add_plugins(render::RenderPlugin{});
-    app.add_systems(Startup, into([](Commands cmd, Query<Entity, With<window::PrimaryWindow>> primary_window) {
-                        primary_window.single().transform([&](Entity id) {
-                            cmd.entity(id).insert(render::camera::CameraBundle::with_render_graph(test_graph));
-                            return id;
-                        });
-                    }));
+    app.add_systems(Startup,
+                    into([](Commands cmd) { cmd.spawn(render::camera::CameraBundle::with_render_graph(test_graph)); }));
     // auto& render_app = app.sub_app_mut(render::Render);
     // render_app.add_systems(render::Render, into(test_system).set_name("test
     // system").in_set(render::RenderSet::Render));

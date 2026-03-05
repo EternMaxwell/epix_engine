@@ -60,6 +60,8 @@ void view::create_view_depth(Query<Item<Entity, const ExtractedView&>> views,
                 .setFormat(wgpu::TextureFormat::eDepth32Float)
                 .setUsage(wgpu::TextureUsage::eRenderAttachment | wgpu::TextureUsage::eCopySrc)
                 .setDimension(wgpu::TextureDimension::e2D)
+                .setSampleCount(1)
+                .setMipLevelCount(1)
                 .setLabel("ViewDepth");
             texture = device.get().createTexture(desc);
             if (!texture) {
@@ -299,9 +301,11 @@ void CameraDriverNode::run(graph::GraphContext& graph, graph::RenderContext& ren
                     .setView(target.texture_view)
                     .setLoadOp(wgpu::LoadOp::eClear)
                     .setStoreOp(wgpu::StoreOp::eStore)
+                    .setDepthSlice(~0u)
                     .setClearValue(wgpu::Color(camera.clear_color->r, camera.clear_color->g, camera.clear_color->b,
                                                camera.clear_color->a)),
             }));
+            render_pass.end();
         }
         if (!graph.run_sub_graph(camera.render_graph, {}, entity)) {
             spdlog::warn("Failed to run camera render graph for entity {:#x}, with render graph label {}", entity.index,
@@ -317,16 +321,7 @@ void CameraPlugin::build(App& app) {
     app.world_mut().insert_resource(ClearColor{0.05f, 0.05f, 0.05f, 1.0f});
     if (auto sub_app = app.get_sub_app_mut(Render)) {
         sub_app->get().world_mut().insert_resource(ClearColor{0.05f, 0.05f, 0.05f, 1.0f});
-        sub_app->get()
-            .add_systems(ExtractSchedule,
-                         into([](ResMut<ClearColor> clear_color, Extract<Res<ClearColor>> extracted_clear_color) {
-                             if (extracted_clear_color.is_modified()) {
-                                 clear_color.get_mut() = *extracted_clear_color;
-                             }
-                         })
-                             .before(extract_cameras)
-                             .set_name("extract clear color"))
-            .add_systems(ExtractSchedule, into(extract_cameras).set_name("extract cameras"));
+        sub_app->get().add_systems(ExtractSchedule, into(extract_cameras).set_name("extract cameras"));
         if (auto render_graph = sub_app->get().get_resource_mut<graph::RenderGraph>()) {
             render_graph->get().add_node(CameraDriverNodeLabel, CameraDriverNode{});
         }
