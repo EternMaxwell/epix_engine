@@ -555,3 +555,32 @@ export struct CameraBundle {
     }
 };
 }  // namespace render::camera
+
+template <>
+struct core::Bundle<render::camera::CameraBundle> {
+    static size_t write(render::camera::CameraBundle& bundle, std::span<void*> target) {
+        new (target[0]) render::camera::Camera(std::move(bundle.camera));
+        new (target[1]) render::camera::Projection(std::move(bundle.projection));
+        new (target[2]) render::camera::CameraRenderGraph(std::move(bundle.render_graph));
+        new (target[3]) transform::Transform(std::move(bundle.transform));
+        new (target[4]) render::view::VisibleEntities(std::move(bundle.visible));
+        return 5;
+    }
+    static auto type_ids(const core::TypeRegistry& registry) {
+        return std::array{
+            registry.type_id<render::camera::Camera>(),
+            registry.type_id<render::camera::Projection>(),
+            registry.type_id<render::camera::CameraRenderGraph>(),
+            registry.type_id<transform::Transform>(),
+            registry.type_id<render::view::VisibleEntities>(),
+        };
+    }
+    static void register_components(const core::TypeRegistry& registry, core::Components& components) {
+        components.register_info<render::camera::Camera>();
+        components.register_info<render::camera::Projection>();
+        components.register_info<render::camera::CameraRenderGraph>();
+        components.register_info<transform::Transform>();
+        components.register_info<render::view::VisibleEntities>();
+    }
+};
+static_assert(core::is_bundle<render::camera::CameraBundle>);
