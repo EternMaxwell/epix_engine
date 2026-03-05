@@ -301,7 +301,15 @@ void Schedule::execute(SystemDispatcher& dispatcher, ExecuteConfig config) {
     }
 
     // ? should we initialize systems here? or let caller assure systems are initialized?
-    auto init_future      = dispatcher.world_scope([this](World& world) { initialize_systems(world); });
+    auto init_future      = dispatcher.world_scope([this](World& world) {
+        try {
+            initialize_systems(world);
+        } catch (const std::exception& e) {
+            spdlog::error("[schedule] exception during system initialization: {}", e.what());
+        } catch (...) {
+            spdlog::error("[schedule] unknown exception during system initialization.");
+        }
+    });
     std::shared_ptr cache = this->cache;  // keep a copy to avoid being invalidated during execution
 
     ExecutionState exec_state{
