@@ -20,7 +20,7 @@ struct Bundle {};
 template <typename R>
 concept is_void_ptr_view = std::ranges::sized_range<R> && view_of_value<R, void*>;
 
-template <typename B>
+export template <typename B>
 concept is_bundle = requires(std::decay_t<B>& b) {
     {
         Bundle<std::decay_t<B>>::write(b, std::declval<std::span<void*>>())
