@@ -114,6 +114,16 @@ export struct EntityCommands {
         });
         return *this;
     }
+    template <is_bundle T>
+    EntityCommands& insert_bundle(T&& bundle) {
+        commands.queue([e = entity, bundle = std::forward<T>(bundle)](World& world) mutable {
+            world.get_entity_mut(e).and_then([&](EntityWorldMut&& entity_world) mutable -> std::optional<bool> {
+                entity_world.insert_bundle(std::move(bundle));
+                return true;
+            });
+        });
+        return *this;
+    }
     template <typename... Ts>
     EntityCommands& insert_if_new(Ts&&... components)
         requires(std::movable<std::decay_t<Ts>> && ...)
@@ -123,6 +133,16 @@ export struct EntityCommands {
                 [&]<size_t... Is>(std::index_sequence<Is...>) mutable {
                     entity_world.insert_if_new(std::move(std::get<Is>(comps))...);
                 }(std::make_index_sequence<sizeof...(Ts)>{});
+                return true;
+            });
+        });
+        return *this;
+    }
+    template <is_bundle T>
+    EntityCommands& insert_bundle_if_new(T&& bundle) {
+        commands.queue([e = entity, bundle = std::forward<T>(bundle)](World& world) mutable {
+            world.get_entity_mut(e).and_then([&](EntityWorldMut&& entity_world) mutable -> std::optional<bool> {
+                entity_world.insert_bundle_if_new(std::move(bundle));
                 return true;
             });
         });
@@ -176,6 +196,7 @@ export struct EntityCommands {
         func(*this);
         return *this;
     }
+    Entity id() const { return entity; }
 
    private:
     Entity entity;
