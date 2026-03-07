@@ -157,7 +157,7 @@ void glfw::render::GLFWRenderPlugin::build(App& app) {
             for (auto&& [id] : windows.iter()) {
                 auto it = glfw_windows->find(id);
                 if (it == glfw_windows->end()) continue;
-                GLFWwindow* glfw_window = it->second.first;
+                GLFWwindow* glfw_window = it->second;
                 if (!glfw_window) continue;
                 commands.entity(id).insert(SurfaceCreation([glfw_window](const wgpu::Instance& instance) {
                     return glfwGetWGPUSurface(instance, glfw_window);

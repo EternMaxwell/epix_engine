@@ -333,10 +333,10 @@ export enum class CameraUpdateSystems {
 };
 
 template <CameraProjection ProjType>
-void camera_system(
-    Query<Item<Mut<Camera>, Mut<ProjType>>> query,      // camera and projection query
-    Query<Item<const ::window::Window&>> window_query,  // window query
-    Query<Item<const ::window::Window&>, With<::window::PrimaryWindow>> primary_window_query  // primary window query
+void camera_system(Query<Item<Mut<Camera>, Mut<ProjType>>> query,            // camera and projection query
+                   Query<Item<const ::window::CachedWindow&>> window_query,  // window query
+                   Query<Item<const ::window::CachedWindow&>, With<::window::PrimaryWindow>>
+                       primary_window_query  // primary window query
 ) {
     for (auto&& [camera, proj] : query.iter()) {
         // in the body we want to update the stored target size,

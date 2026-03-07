@@ -165,3 +165,8 @@ struct Window {
 
 struct PrimaryWindow {};
 }  // namespace window
+
+namespace window {
+struct CachedWindowMut : Window {};                 // component for caching window state.
+export using CachedWindow = const CachedWindowMut;  // user can only access cached window as const.
+}  // namespace window

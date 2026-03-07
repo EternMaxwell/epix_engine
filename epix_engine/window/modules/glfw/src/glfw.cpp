@@ -112,16 +112,15 @@ GLFWwindow* GLFWPlugin::create_window(Entity id, Window& desc) {
     return window;
 }
 
-void GLFWPlugin::update_size(Query<Item<Entity, Mut<Window>>> windows, ResMut<GLFWwindows> glfw_windows) {
-    for (auto&& [id, mdesc] : windows.iter()) {
-        auto& desc                                             = mdesc.get_mut();
-        std::optional<std::tuple<GLFWwindow*, Window&>> stored = std::nullopt;
-        if (auto it = glfw_windows->find(id); it != glfw_windows->end()) {
-            stored.emplace(it->second.first, it->second.second);
-        } else {
+void GLFWPlugin::update_size(Query<Item<Entity, Mut<Window>, const CachedWindow&>> windows,
+                             ResMut<GLFWwindows> glfw_windows) {
+    for (auto&& [id, mdesc, cached_window] : windows.iter()) {
+        auto& desc = mdesc.get_mut();
+        if (auto it = glfw_windows->find(id); it == glfw_windows->end()) {
             continue;  // window not created yet
         }
-        auto&& [window, cached] = *stored;
+        auto* window = glfw_windows->at(id);
+        auto& cached = *const_cast<Window*>(reinterpret_cast<const Window*>(&cached_window));
         if (cached.size != desc.size) {
             // size changed, update the window size
             glfwSetWindowSize(window, desc.size.first, desc.size.second);
@@ -134,7 +133,7 @@ void GLFWPlugin::update_size(Query<Item<Entity, Mut<Window>>> windows, ResMut<GL
     }
 }
 void GLFWPlugin::update_pos(Commands commands,
-                            Query<Item<Entity, Mut<Window>, Opt<const Parent&>>> windows,
+                            Query<Item<Entity, Mut<Window>, Opt<const CachedWindow&>, Opt<const Parent&>>> windows,
                             ResMut<GLFWwindows> glfw_windows) {
     /// For all windows in the query, if it has been cached(created), then if
     /// the pos has been changed manually, e.g. different with cached, then
@@ -152,12 +151,12 @@ void GLFWPlugin::update_pos(Commands commands,
         if (final_positions.contains(id)) {
             return final_positions.at(id);
         }
-        auto [_, mdesc, rparent]                               = windows.get(id).value();
-        auto* parent                                           = rparent.has_value() ? &rparent.value().get() : nullptr;
-        auto& desc                                             = mdesc.get_mut();
-        std::optional<std::tuple<GLFWwindow*, Window&>> stored = std::nullopt;
+        auto [_, mdesc, cached_window, rparent] = windows.get(id).value();
+        auto* parent                            = rparent.has_value() ? &rparent.value().get() : nullptr;
+        auto& desc                              = mdesc.get_mut();
+        GLFWwindow* glfw_window                 = nullptr;
         if (auto it = glfw_windows->find(id); it != glfw_windows->end()) {
-            stored.emplace(it->second.first, it->second.second);
+            glfw_window = it->second;
         }
         if (desc.monitor >= monitor_count || desc.monitor < 0) {
             desc.monitor = 0;  // default to first monitor
@@ -174,8 +173,8 @@ void GLFWPlugin::update_pos(Commands commands,
         int monitor_x, monitor_y;
         glfwGetMonitorPos(monitor, &monitor_x, &monitor_y);
 
-        if (stored) {
-            auto&& [glfw_window, cached] = *stored;
+        if (glfw_window != nullptr) {
+            auto& cached = *const_cast<Window*>(reinterpret_cast<const Window*>(&cached_window->get()));
             if (cached.final_pos != desc.final_pos) {
                 // calculate the relevant pos based on pos_type
                 if (desc.pos_type == PosType::TopLeft) {
@@ -289,12 +288,12 @@ void GLFWPlugin::update_pos(Commands commands,
             return desc.final_pos;
         }
     };
-    for (auto&& [id, desc, parent] : windows.iter()) {
+    for (auto&& [id, desc, cached_window, parent] : windows.iter()) {
         calculate(id);
     }
 }
 
-void GLFWPlugin::create_windows(Commands commands,
+void GLFWPlugin::create_windows(Commands cmd,
                                 Query<Item<Entity, Mut<Window>, Opt<Ref<Parent>>, Opt<Ref<Children>>>> windows,
                                 ResMut<GLFWwindows> glfw_windows,
                                 EventWriter<WindowCreated> window_created) {
@@ -302,28 +301,23 @@ void GLFWPlugin::create_windows(Commands commands,
         if (glfw_windows->contains(id)) {
             continue;
         }
-        auto* created      = create_window(id, desc);
-        Window cached      = desc;
-        cached.cursor_icon = StandardCursor::Arrow;  // this was not set when create.
-        cached.cursor_mode = CursorMode::Normal;     // this was not set when create.
-        cached.icon        = std::nullopt;           // this was not set when create.
-        glfw_windows->emplace(id, std::make_pair(created, cached));
+        auto* created = create_window(id, desc);
+        glfw_windows->emplace(id, created);
         window_created.write(WindowCreated{id});
+        cmd.entity(id).insert(CachedWindow{desc});
     }
 }
 
-void GLFWPlugin::update_window_states(Query<Item<Entity, Mut<Window>>> windows,
+void GLFWPlugin::update_window_states(Query<Item<Entity, Mut<Window>, const CachedWindow&>> windows,
                                       Res<assets::Assets<image::Image>> images,
                                       ResMut<GLFWwindows> glfw_windows) {
-    for (auto&& [id, mdesc] : windows.iter()) {
-        auto& desc                                             = mdesc.get_mut();
-        std::optional<std::tuple<GLFWwindow*, Window&>> stored = std::nullopt;
-        if (auto it = glfw_windows->find(id); it != glfw_windows->end()) {
-            stored.emplace(it->second.first, it->second.second);
-        } else {
+    for (auto&& [id, mdesc, cached_window] : windows.iter()) {
+        auto& desc = mdesc.get_mut();
+        if (auto it = glfw_windows->find(id); it == glfw_windows->end()) {
             continue;  // window not created yet
         }
-        auto&& [window, cached] = *stored;
+        auto* window = glfw_windows->at(id);
+        auto& cached = *const_cast<Window*>(reinterpret_cast<const Window*>(&cached_window));
 
         // resizable
         if (cached.resizable != desc.resizable) {
@@ -425,6 +419,7 @@ void GLFWPlugin::update_window_states(Query<Item<Entity, Mut<Window>>> windows,
                                                glfw_img.pixels = const_cast<unsigned char*>(
                                                    reinterpret_cast<const unsigned char*>(view.data()));
                                                auto cursor = glfwCreateCursor(&glfw_img, handle.hot_x, handle.hot_y);
+                                               glfwSetCursor(window, cursor);
                                                cached.cursor_icon = desc.cursor_icon;
                                                return std::cref(img);
                                            });
@@ -470,7 +465,8 @@ void GLFWPlugin::update_window_states(Query<Item<Entity, Mut<Window>>> windows,
             cached.cursor_pos = desc.cursor_pos;
         }
         // cursor in window
-        desc.cursor_in_window = glfwGetWindowAttrib(window, GLFW_HOVERED) == GLFW_TRUE;
+        desc.cursor_in_window   = glfwGetWindowAttrib(window, GLFW_HOVERED) == GLFW_TRUE;
+        cached.cursor_in_window = desc.cursor_in_window;
         // maximized
         if (cached.maximized != desc.maximized) {
             if (desc.maximized) {
@@ -499,8 +495,9 @@ void GLFWPlugin::update_window_states(Query<Item<Entity, Mut<Window>>> windows,
                                 desc.window_level == WindowLevel::AlwaysOnTop ? GLFW_TRUE : GLFW_FALSE);
             cached.window_level = desc.window_level;
         } else {
-            desc.window_level = glfwGetWindowAttrib(window, GLFW_FLOATING) == GLFW_TRUE ? WindowLevel::AlwaysOnTop
-                                                                                        : WindowLevel::Normal;
+            desc.window_level   = glfwGetWindowAttrib(window, GLFW_FLOATING) == GLFW_TRUE ? WindowLevel::AlwaysOnTop
+                                                                                          : WindowLevel::Normal;
+            cached.window_level = desc.window_level;
         }
 
         // other none glfw handled properties
@@ -509,20 +506,22 @@ void GLFWPlugin::update_window_states(Query<Item<Entity, Mut<Window>>> windows,
     }
     // focused will be handled here, cause changing one window's focus will
     // change the focus of all windows.
-    for (auto&& [id, mdesc] : windows.iter()) {
-        auto& desc = mdesc.get();
+    for (auto&& [id, mdesc, cached_window] : windows.iter()) {
+        auto& desc   = mdesc.get();
+        auto& cached = *const_cast<Window*>(reinterpret_cast<const Window*>(&cached_window));
         if (auto it = glfw_windows->find(id); it != glfw_windows->end()) {
-            auto&& [window, cached] = it->second;
+            auto* window = it->second;
             if (cached.focused != desc.focused) {
                 glfwSetWindowAttrib(window, GLFW_FOCUSED, desc.focused ? GLFW_TRUE : GLFW_FALSE);
                 cached.focused = desc.focused;
             }
         }
     }
-    for (auto&& [id, mdesc] : windows.iter()) {
-        auto& desc = mdesc.get_mut();
+    for (auto&& [id, mdesc, cached_window] : windows.iter()) {
+        auto& desc   = mdesc.get_mut();
+        auto& cached = *const_cast<Window*>(reinterpret_cast<const Window*>(&cached_window));
         if (auto it = glfw_windows->find(id); it != glfw_windows->end()) {
-            auto&& [window, cached] = it->second;
+            auto* window = it->second;
             // read focused state from glfw window
             desc.focused   = glfwGetWindowAttrib(window, GLFW_FOCUSED) == GLFW_TRUE;
             cached.focused = desc.focused;
@@ -530,15 +529,12 @@ void GLFWPlugin::update_window_states(Query<Item<Entity, Mut<Window>>> windows,
     }
 }
 
-void GLFWPlugin::toggle_window_mode(Query<Item<Entity, Mut<Window>>> windows,
+void GLFWPlugin::toggle_window_mode(Query<Item<Entity, Mut<Window>, const CachedWindow&>> windows,
                                     ResMut<GLFWwindows> glfw_windows,
                                     Local<std::unordered_map<Entity, CachedWindowPosSize>> cached_window_sizes) {
-    for (auto&& [id, mdesc] : windows.iter()) {
-        auto& desc                                             = mdesc.get_mut();
-        std::optional<std::tuple<GLFWwindow*, Window&>> stored = std::nullopt;
-        if (auto it = glfw_windows->find(id); it != glfw_windows->end()) {
-            stored.emplace(it->second.first, it->second.second);
-        } else {
+    for (auto&& [id, mdesc, cached_window] : windows.iter()) {
+        auto& desc = mdesc.get_mut();
+        if (auto it = glfw_windows->find(id); it == glfw_windows->end()) {
             // not created, but when created, it will automatically
             // set the window mode based on the description. so we need to
             // store the cached size now.
@@ -548,7 +544,8 @@ void GLFWPlugin::toggle_window_mode(Query<Item<Entity, Mut<Window>>> windows,
             }
             continue;  // window not created yet
         }
-        auto&& [window, cached] = *stored;
+        auto* window = glfw_windows->at(id);
+        auto& cached = *const_cast<Window*>(reinterpret_cast<const Window*>(&cached_window));
         if (desc.window_mode != cached.window_mode) {
             if (desc.window_mode == WindowMode::Windowed) {
                 // switch from fullscreen or borderless to windowed mode
@@ -610,7 +607,8 @@ void GLFWPlugin::toggle_window_mode(Query<Item<Entity, Mut<Window>>> windows,
 }
 
 void GLFWPlugin::poll_events() { glfwPollEvents(); }
-void GLFWPlugin::send_cached_events(ResMut<GLFWwindows> glfw_windows,
+void GLFWPlugin::send_cached_events(Query<Item<const CachedWindow&>> cached_windows,
+                                    ResMut<GLFWwindows> glfw_windows,
                                     EventWriter<window::WindowResized> window_resized,
                                     EventWriter<window::WindowCloseRequested> window_close_requested,
                                     EventWriter<window::CursorMoved> cursor_moved,
@@ -623,9 +621,8 @@ void GLFWPlugin::send_cached_events(ResMut<GLFWwindows> glfw_windows,
                                     std::optional<EventWriter<input::MouseButtonInput>> mouse_button_input,
                                     std::optional<EventWriter<input::MouseMove>> mouse_move_input,
                                     std::optional<EventWriter<input::MouseScroll>> scroll_input) {
-    for (auto&& [id, pair] : *glfw_windows) {
-        auto&& [window, cached] = pair;
-        auto* user_data         = static_cast<UserData*>(glfwGetWindowUserPointer(window));
+    for (auto&& [id, window] : *glfw_windows) {
+        auto* user_data = static_cast<UserData*>(glfwGetWindowUserPointer(window));
         if (!user_data) {
             throw std::runtime_error("Failed to get user data from window");
         }
@@ -645,13 +642,6 @@ void GLFWPlugin::send_cached_events(ResMut<GLFWwindows> glfw_windows,
             auto repeat                          = action == GLFW_REPEAT;
             if (key_input_event)
                 key_input_event->write(input::KeyInput{map_glfw_key_to_input(key), scancode, pressed, repeat, id});
-        }
-        while (auto cursor_pos = user_data->cursor_pos.try_pop()) {
-            // send out
-            auto [new_x, new_y] = *cursor_pos;
-            auto [old_x, old_y] = cached.cursor_pos;
-            cursor_moved.write(CursorMoved{id, {new_x, new_y}, {new_x - old_x, new_y - old_y}});
-            if (mouse_move_input) mouse_move_input->write(input::MouseMove{{new_x - old_x, new_y - old_y}});
         }
         while (auto cursor_enter = user_data->cursor_enter.try_pop()) {
             // send out
@@ -689,6 +679,17 @@ void GLFWPlugin::send_cached_events(ResMut<GLFWwindows> glfw_windows,
             auto&& [x, y] = *moved;
             window_moved.write(WindowMoved{id, {x, y}});
         }
+        auto cache_opt = cached_windows.get(id);
+        if (!cache_opt.has_value()) continue;
+        auto&& [cached_window] = cached_windows.get(id).value();
+        const auto& cached     = *reinterpret_cast<const Window*>(&cached_window);
+        while (auto cursor_pos = user_data->cursor_pos.try_pop()) {
+            // send out
+            auto [new_x, new_y] = *cursor_pos;
+            auto [old_x, old_y] = cached.cursor_pos;
+            cursor_moved.write(CursorMoved{id, {new_x, new_y}, {new_x - old_x, new_y - old_y}});
+            if (mouse_move_input) mouse_move_input->write(input::MouseMove{{new_x - old_x, new_y - old_y}});
+        }
     }
 }
 void GLFWPlugin::destroy_windows(Query<Item<Entity, const Window&>> windows,
@@ -704,7 +705,7 @@ void GLFWPlugin::destroy_windows(Query<Item<Entity, const Window&>> windows,
                                         auto&& [id, _] = tuple;
                                         return !still_alive.contains(id);
                                     })) {
-        auto&& [window, cached] = glfw_window;
+        auto* window = glfw_window;
         window_closed.write(WindowClosed{id});
         auto user_data = static_cast<UserData*>(glfwGetWindowUserPointer(window));
         if (user_data) {

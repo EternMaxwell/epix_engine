@@ -67,8 +67,7 @@ int map_key_to_glfw(input::KeyCode key);
 int map_mouse_button_to_glfw(input::MouseButton button);
 input::KeyCode map_glfw_key_to_input(int key);
 input::MouseButton map_glfw_mouse_button_to_input(int button);
-
-export struct GLFWwindows : public std::unordered_map<Entity, std::pair<GLFWwindow*, window::Window>> {};
+export struct GLFWwindows : public std::unordered_map<Entity, GLFWwindow*> {};
 
 export struct SetClipboardString {
     std::string text;
@@ -116,22 +115,25 @@ export struct GLFWRunner : public AppRunner {
 export struct GLFWPlugin {
     void build(App& app);
 
-    static void update_size(Query<Item<Entity, Mut<window::Window>>> windows, ResMut<GLFWwindows> glfw_windows);
-    static void update_pos(Commands commands,
-                           Query<Item<Entity, Mut<window::Window>, Opt<const Parent&>>> windows,
-                           ResMut<GLFWwindows> glfw_windows);
-    static void create_windows(Commands commands,
+    static void update_size(Query<Item<Entity, Mut<window::Window>, const window::CachedWindow&>> windows,
+                            ResMut<GLFWwindows> glfw_windows);
+    static void update_pos(
+        Commands commands,
+        Query<Item<Entity, Mut<window::Window>, Opt<const window::CachedWindow&>, Opt<const Parent&>>> windows,
+        ResMut<GLFWwindows> glfw_windows);
+    static void create_windows(Commands cmd,
                                Query<Item<Entity, Mut<window::Window>, Opt<Ref<Parent>>, Opt<Ref<Children>>>> windows,
                                ResMut<GLFWwindows> glfw_windows,
                                EventWriter<window::WindowCreated> window_created);
-    static void update_window_states(Query<Item<Entity, Mut<window::Window>>> windows,
+    static void update_window_states(Query<Item<Entity, Mut<window::Window>, const window::CachedWindow&>> windows,
                                      Res<assets::Assets<image::Image>> images,
                                      ResMut<GLFWwindows> glfw_windows);
-    static void toggle_window_mode(Query<Item<Entity, Mut<window::Window>>> windows,
+    static void toggle_window_mode(Query<Item<Entity, Mut<window::Window>, const window::CachedWindow&>> windows,
                                    ResMut<GLFWwindows> glfw_windows,
                                    Local<std::unordered_map<Entity, CachedWindowPosSize>> cached_window_sizes);
     static void poll_events();
-    static void send_cached_events(ResMut<GLFWwindows> glfw_windows,
+    static void send_cached_events(Query<Item<const window::CachedWindow&>> cached_windows,
+                                   ResMut<GLFWwindows> glfw_windows,
                                    EventWriter<window::WindowResized> window_resized,
                                    EventWriter<window::WindowCloseRequested> window_close_requested,
                                    EventWriter<window::CursorMoved> cursor_moved,
