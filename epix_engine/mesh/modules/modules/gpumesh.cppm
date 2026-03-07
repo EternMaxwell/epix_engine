@@ -5,6 +5,7 @@ export module epix.mesh:gpumesh;
 import :mesh;
 
 import epix.render;
+import std;
 import webgpu;
 
 namespace mesh {
@@ -63,3 +64,12 @@ struct render::RenderAsset<mesh::Mesh> {
 
     render::RenderAssetUsage usage(const mesh::Mesh& mesh) { return render::RenderAssetUsageBits::RenderWorld; }
 };
+
+export namespace std {
+template <>
+struct hash<assets::AssetId<mesh::Mesh>> {
+    std::size_t operator()(const assets::AssetId<mesh::Mesh>& id) const {
+        return std::visit([]<typename T>(const T& value) { return std::hash<T>()(value); }, id);
+    }
+};
+}  // namespace std

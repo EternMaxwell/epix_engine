@@ -5,11 +5,13 @@ using namespace mesh;
 GPUMesh GPUMesh::create_from_mesh(const Mesh& mesh, const wgpu::Device& device) {
     GPUMesh gpu_mesh;
     gpu_mesh.update_from_mesh(mesh, device);
-    return std::move(gpu_mesh);
+    return gpu_mesh;
 }
 void GPUMesh::update_from_mesh(const Mesh& mesh, const wgpu::Device& device) {
-    _primitive_type     = mesh.get_primitive_type();
-    _attributes         = mesh.attribute_layout();
+    _primitive_type = mesh.get_primitive_type();
+    _attributes     = mesh.attribute_layout();
+    _attribute_bindings.clear();
+    _index_binding.reset();
     size_t vertex_count = mesh.count_vertices();
     size_t total_bytes  = std::ranges::fold_left(mesh.iter_attributes(), size_t(0),
                                                  [vertex_count](size_t acc, const MeshAttributeData& attr_data) {
@@ -25,11 +27,11 @@ void GPUMesh::update_from_mesh(const Mesh& mesh, const wgpu::Device& device) {
                                         .setUsage(wgpu::BufferUsage::eVertex | wgpu::BufferUsage::eCopyDst));
         }
         size_t offset = 0;
-        for (auto&& [slot, pack] : mesh.iter_attributes() | std::views::enumerate) {
-            auto&& [attribute, data] = pack;
+        for (auto&& attribute_data : mesh.iter_attributes()) {
+            auto&& [attribute, data] = attribute_data;
             auto byte_size           = data.type_info().size * vertex_count;
             queue.writeBuffer(_combined_buffer, offset, data.cdata(), byte_size);
-            _attribute_bindings.push_back({(uint32_t)(slot), offset, byte_size});
+            _attribute_bindings.push_back({attribute.slot, offset, byte_size});
             offset += byte_size;
         }
     }
@@ -46,9 +48,8 @@ void GPUMesh::update_from_mesh(const Mesh& mesh, const wgpu::Device& device) {
             IndexBindingInfo{indices.is_u16() ? wgpu::IndexFormat::eUint16 : wgpu::IndexFormat::eUint32, 0, byte_size};
         return true;
     });
-    _vertex_count = mesh.get_indices()
-                        .transform([](const MeshIndices& indices) { return indices.data.size(); })
-                        .value_or(vertex_count);
+    _vertex_count =
+        mesh.get_indices().transform([](const MeshIndices& indices) { return indices.size(); }).value_or(vertex_count);
 }
 void GPUMesh::bind_to(const wgpu::RenderPassEncoder& encoder) const {
     std::ranges::for_each(_attribute_bindings, [&](const VertexBindingInfo& binding) {

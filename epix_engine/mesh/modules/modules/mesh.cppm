@@ -10,6 +10,20 @@ import epix.core;
 import glm;
 
 namespace mesh {
+constexpr std::size_t vertex_format_size(wgpu::VertexFormat format) {
+    switch (format) {
+        case wgpu::VertexFormat::eFloat32:
+            return sizeof(float);
+        case wgpu::VertexFormat::eFloat32x2:
+            return sizeof(float) * 2;
+        case wgpu::VertexFormat::eFloat32x3:
+            return sizeof(float) * 3;
+        case wgpu::VertexFormat::eFloat32x4:
+            return sizeof(float) * 4;
+        default:
+            return 0;
+    }
+}
 export enum class MeshError {
     /// Indicates no attribute at given slot.
     SlotNotFound,
@@ -30,7 +44,14 @@ export struct MeshAttribute {
     }
 };
 export struct MeshAttributeLayout : std::map<std::uint32_t, MeshAttribute> {
-    wgpu::PrimitiveTopology primitive_type;
+    wgpu::PrimitiveTopology primitive_type = wgpu::PrimitiveTopology::eTriangleList;
+
+    bool operator==(const MeshAttributeLayout& other) const {
+        return primitive_type == other.primitive_type &&
+               static_cast<const std::map<std::uint32_t, MeshAttribute>&>(*this) ==
+                   static_cast<const std::map<std::uint32_t, MeshAttribute>&>(other);
+    }
+
     bool contains_attribute(const MeshAttribute& attribute) const {
         auto it = this->find(attribute.slot);
         return it != this->end() && it->second == attribute;
@@ -66,7 +87,7 @@ export struct MeshAttributeLayout : std::map<std::uint32_t, MeshAttribute> {
     }
     std::string to_string() const {
         std::stringstream ss;
-        std::println(ss, "MeshAttributeLayout {{");
+        std::println(ss, "MeshAttributeLayout {{ primitive_type = {}", wgpu::to_string(primitive_type));
         for (const auto& [slot, attribute] : *this) {
             std::println(ss, "  Slot {}: Name='{}', Format={}", slot, attribute.name,
                          wgpu::to_string(attribute.format));
@@ -75,9 +96,12 @@ export struct MeshAttributeLayout : std::map<std::uint32_t, MeshAttribute> {
         return ss.str();
     }
 };
-struct MeshAttributeData {
+export struct MeshAttributeData {
     MeshAttribute attribute;
     core::untyped_vector data;
+
+    std::size_t size() const { return data.size(); }
+    bool empty() const { return data.empty(); }
 };
 export struct MeshIndices {
    public:
@@ -88,6 +112,8 @@ export struct MeshIndices {
     bool is_u32() const { return data.type_info() == meta::type_info::of<std::uint32_t>(); }
     std::span<const std::uint16_t> as_u16() const { return data.cspan_as<std::uint16_t>(); }
     std::span<const std::uint32_t> as_u32() const { return data.cspan_as<std::uint32_t>(); }
+    std::size_t size() const { return data.size(); }
+    bool empty() const { return data.empty(); }
 
    public:
     core::untyped_vector data;
@@ -127,6 +153,9 @@ export struct Mesh {
                  std::is_trivially_destructible_v<std::ranges::range_value_t<T>>)
     std::expected<void, MeshError> insert_attribute(MeshAttribute attribute, T&& data) {
         using value_type = std::ranges::range_value_t<T>;
+        if (vertex_format_size(attribute.format) != sizeof(value_type)) {
+            return std::unexpected(MeshError::TypeIncompatible);
+        }
         MeshAttributeData attribute_data{
             .attribute = attribute,
             .data = std::ranges::to<core::untyped_vector>(std::forward<T>(data), meta::type_info::of<value_type>()),
@@ -258,6 +287,11 @@ export Mesh make_circle(float radius,
                         std::optional<std::uint32_t> segment_count = std::nullopt);
 /// Make a box mesh centered at (0,0,0) on the XY plane with given width and height.
 export Mesh make_box2d(float width, float height, std::optional<glm::vec4> color = std::nullopt);
+/// Make a box mesh centered at (0,0,0) on the XY plane with uv coordinates.
+export Mesh make_box2d_uv(float width,
+                          float height,
+                          glm::vec4 uv_rect                     = glm::vec4(0.0f, 0.0f, 1.0f, 1.0f),
+                          std::optional<glm::vec4> vertex_color = std::nullopt);
 
 export struct MeshPlugin {
     void build(core::App& app);
