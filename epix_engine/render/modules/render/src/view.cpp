@@ -29,12 +29,26 @@ void view::prepare_view_target(Query<Item<Entity, const camera::ExtractedCamera&
                     }
                 }},
             camera.render_target);
+        std::optional<wgpu::TextureFormat> target_format = std::visit(
+            assets::visitor{
+                [&](const wgpu::Texture& tex) -> std::optional<wgpu::TextureFormat> { return tex.getFormat(); },
+                [&](const camera::WindowRef& win_ref) -> std::optional<wgpu::TextureFormat> {
+                    auto&& id = win_ref.window_entity;
+                    if (auto it = extracted_windows->windows.find(id); it != extracted_windows->windows.end()) {
+                        return it->second.swapchain_texture_format;
+                    }
+                    return std::nullopt;
+                }},
+            camera.render_target);
         if (!target_texture.has_value() || !target_texture.value()) {
             // invalid target texture, handle error;
             // no need to remove the entity, it will just be missing ViewTarget.
             continue;
         }
-        cmd.entity(entity).insert(view::ViewTarget{target_texture.value()});
+        if (!target_format.has_value()) {
+            continue;
+        }
+        cmd.entity(entity).insert(view::ViewTarget{target_texture.value(), *target_format});
     }
 }
 

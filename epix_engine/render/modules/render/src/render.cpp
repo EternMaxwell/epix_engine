@@ -96,6 +96,7 @@ void RenderPlugin::build(App& app) {
                                      .set_names(std::array{"device poll", "clear render entities"})
                                      .after(RenderSet::Cleanup))
             .add_systems(Render, into(PipelineServer::process_pipeline_system, render_system)
+                                     .chain()
                                      .in_set(RenderSet::Render)
                                      .set_names(std::array{"process pipeline", "render system"}))
             .add_systems(Render,

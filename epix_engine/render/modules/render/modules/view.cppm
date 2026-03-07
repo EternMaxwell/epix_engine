@@ -418,7 +418,6 @@ export template <CameraProjection ProjType>
 struct CameraProjectionPlugin {
     void build(App& app) {
         app.add_systems(PostUpdate, into(camera_system<ProjType>).in_set(CameraUpdateSystems::CameraUpdateSystem));
-        app.add_systems(PostStartup, into(camera_system<ProjType>).in_set(CameraUpdateSystems::CameraUpdateSystem));
     }
 };
 
@@ -450,6 +449,7 @@ export struct VisibleEntities {
 };
 export struct ViewTarget {
     wgpu::TextureView texture_view;
+    wgpu::TextureFormat format;
 };
 export struct ViewDepth {
     wgpu::Texture texture;
@@ -493,7 +493,7 @@ struct UniformBuffer {
 export struct ViewBindGroup {
     wgpu::BindGroup bind_group;
 };
-struct ViewUniformBindingLayout {
+export struct ViewUniformBindingLayout {
     wgpu::BindGroupLayout layout;
     ViewUniformBindingLayout(World& world)
         : layout(world.resource<wgpu::Device>().createBindGroupLayout(

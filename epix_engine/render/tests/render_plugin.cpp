@@ -23,7 +23,7 @@ int main() {
     app.add_plugins(window::WindowPlugin{})
         .add_plugins(input::InputPlugin{})
         .add_plugins(glfw::GLFWPlugin{})
-        .add_plugins(glfw::GlfwRenderPlugin{})
+        .add_plugins(glfw::GLFWRenderPlugin{})
         .add_plugins(transform::TransformPlugin{})
         .add_plugins(render::RenderPlugin{});
     app.add_systems(Startup,
