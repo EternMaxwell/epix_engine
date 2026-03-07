@@ -3,11 +3,11 @@
 import epix.core;
 
 namespace glfw::render {
-export struct GlfwRenderPlugin {
+export struct GLFWRenderPlugin {
     void build(core::App& app);
 };
 }  // namespace glfw::render
 
 namespace glfw {
-export using render::GlfwRenderPlugin;
+export using render::GLFWRenderPlugin;
 }

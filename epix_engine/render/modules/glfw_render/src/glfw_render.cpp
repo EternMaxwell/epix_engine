@@ -150,7 +150,7 @@ using namespace core;
 
 using render::window::SurfaceCreation;
 
-void glfw::render::GlfwRenderPlugin::build(App& app) {
+void glfw::render::GLFWRenderPlugin::build(App& app) {
     auto system = make_system_unique(
         [](Commands commands, Query<Item<Entity>, Filter<With<window::Window>, Without<SurfaceCreation>>> windows,
            ResMut<GLFWwindows> glfw_windows) {
