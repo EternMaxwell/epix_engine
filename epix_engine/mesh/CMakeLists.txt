@@ -1,0 +1,4 @@
+﻿epix_add_module(epix_mesh)
+target_link_libraries(epix_mesh PUBLIC epix_core)
+target_link_libraries(epix_mesh PUBLIC epix_render)
+target_link_libraries(epix_mesh PUBLIC webgpu)
