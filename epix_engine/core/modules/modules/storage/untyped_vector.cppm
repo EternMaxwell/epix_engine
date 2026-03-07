@@ -8,7 +8,7 @@ import std;
 import epix.meta;
 
 namespace core {
-class untyped_vector {
+export class untyped_vector {
    public:
     explicit untyped_vector(const ::meta::type_info& desc, std::size_t reserve_cnt = 0)
         : desc_(std::addressof(desc)), size_(0), capacity_(0), data_(nullptr) {
