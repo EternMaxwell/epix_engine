@@ -207,56 +207,77 @@ void PipelineServer::process_pipeline(CachedPipeline& cached_pipeline, CachedPip
             }),
         };
     };
-    std::visit(
-        utils::visitor{
-            [&](PipelineStateQueued) {
-                std::visit(utils::visitor{create_render_pipeline, create_compute_pipeline}, cached_pipeline.descriptor);
-            },
-            [&](PipelineStateCreating& creating_state) {
-                if (creating_state.wait_for(std::chrono::seconds(0)) != std::future_status::timeout) {
-                    auto result = creating_state.get();
-                    if (result) {
-                        cached_pipeline.state = std::move(result.value());
-                    } else {
-                        cached_pipeline.state = result.error();
-                    }
+    auto pipeline_name         = std::visit(utils::visitor{
+                                                [](const RenderPipelineDescriptor& desc) { return desc.label; },
+                                                [](const ComputePipelineDescriptor& desc) { return desc.label; },
+                                            },
+                                            cached_pipeline.descriptor);
+    auto handle_pipeline_error = [&](const PipelineServerError& error) {
+        if (auto pipeline_error = std::get_if<PipelineError>(&error)) {
+            switch (*pipeline_error) {
+                case PipelineError::CreationFailure: {
+                    spdlog::error("Failed to create pipeline. Id: {}, name: {}", id.get(), pipeline_name);
+                    waiting_pipelines.insert(id);
+                    break;
                 }
-            },
-            [&](const PipelineServerError& error) {
-                auto pipeline_name = std::visit(utils::visitor{
-                                                    [](const RenderPipelineDescriptor& desc) { return desc.label; },
-                                                    [](const ComputePipelineDescriptor& desc) { return desc.label; },
-                                                },
-                                                cached_pipeline.descriptor);
-                std::visit(utils::visitor{
-                               [&](PipelineError error) {
-                                   switch (error) {
-                                       case PipelineError::CreationFailure: {
-                                           spdlog::error("Failed to create pipeline. Id: {}, name: {}", id.get(),
-                                                         pipeline_name);
-                                           waiting_pipelines.insert(id);
-                                           break;
-                                       }
-                                   }
-                               },
-                               [&](ShaderCacheError error) {
-                                   switch (error) {
-                                       case ShaderCacheError::NotLoaded:
-                                           // Not loaded yet, retry
-                                           cached_pipeline.state = PipelineStateQueued{};
-                                           break;
-                                       case ShaderCacheError::ModuleCreationFailure:
-                                           spdlog::error("Failed to create shader module. Pipeline Id: {}, name: {}",
-                                                         id.get(), pipeline_name);
-                                           break;
-                                   }
-                               },
-                           },
-                           error);
-            },
-            [&](auto&) {},
-        },
-        cached_pipeline.state);
+            }
+            return;
+        }
+
+        if (auto shader_error = std::get_if<ShaderCacheError>(&error)) {
+            switch (*shader_error) {
+                case ShaderCacheError::NotLoaded:
+                    // Not loaded yet, retry
+                    cached_pipeline.state = PipelineStateQueued{};
+                    break;
+                case ShaderCacheError::ModuleCreationFailure:
+                    spdlog::error("Failed to create shader module. Pipeline Id: {}, name: {}", id.get(), pipeline_name);
+                    break;
+            }
+        }
+    };
+
+    if (std::holds_alternative<PipelineStateQueued>(cached_pipeline.state)) {
+        std::visit(utils::visitor{create_render_pipeline, create_compute_pipeline}, cached_pipeline.descriptor);
+    }
+
+    if (auto* creating_state = std::get_if<PipelineStateCreating>(&cached_pipeline.state)) {
+        if (creating_state->wait_for(std::chrono::seconds(0)) != std::future_status::timeout) {
+            auto result = creating_state->get();
+            if (result) {
+                cached_pipeline.state = std::move(result.value());
+                return;
+            }
+            cached_pipeline.state = result.error();
+        }
+    }
+
+    if (auto* error = std::get_if<PipelineServerError>(&cached_pipeline.state)) {
+        if (auto pipeline_error = std::get_if<PipelineError>(error)) {
+            switch (*pipeline_error) {
+                case PipelineError::CreationFailure: {
+                    spdlog::error("Failed to create pipeline. Id: {}, name: {}", id.get(), pipeline_name);
+                    waiting_pipelines.insert(id);
+                    break;
+                }
+            }
+            return;
+        }
+
+        if (auto shader_error = std::get_if<ShaderCacheError>(error)) {
+            switch (*shader_error) {
+                case ShaderCacheError::NotLoaded:
+                    // Not loaded yet, retry
+                    break;
+                case ShaderCacheError::ModuleCreationFailure:
+                    spdlog::error("Failed to create shader module. Pipeline Id: {}, name: {}", id.get(), pipeline_name);
+                    return;
+                    break;
+            }
+        }
+    }
+
+    waiting_pipelines.insert(id);
 }
 void PipelineServer::process_pipeline_system(ResMut<PipelineServer> pipeline_server) {
     pipeline_server->process_queue();
