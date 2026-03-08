@@ -197,32 +197,6 @@ const assets::AssetId<render::Shader> kMeshColorFragmentShaderId(
 const assets::AssetId<render::Shader> kMeshTexturedFragmentShaderId(
     uuids::uuid::from_string("77d59064-22e7-42b1-a09c-c885320f4678").value());
 
-struct ExtractedMesh2d {
-    Entity source_entity;
-    assets::AssetId<Mesh> mesh;
-    glm::mat4 model;
-    glm::vec4 color;
-    float depth;
-    MeshAlphaMode2d alpha_mode;
-    std::optional<assets::AssetId<image::Image>> texture;
-};
-
-struct MeshBatch {
-    std::optional<wgpu::BindGroup> texture_bind_group;
-    std::uint32_t instance_start = 0;
-};
-
-struct MeshInstanceData {
-    glm::mat4 model;
-    glm::vec4 color;
-};
-
-struct MeshInstanceBuffer {
-    wgpu::Buffer buffer;
-    wgpu::BindGroup bind_group;
-    std::vector<MeshInstanceData> instances;
-};
-
 enum class MeshShaderVariant : std::uint8_t {
     SolidColor,
     VertexColor,
@@ -439,12 +413,21 @@ struct Mesh2dPipelineCache {
     }
 };
 
+struct OpaqueMesh2dDrawFunction {
+    render::phase::DrawFunctionId value;
+};
+
+struct TransparentMesh2dDrawFunction {
+    render::phase::DrawFunctionId value;
+};
+
 struct MeshOpaqueBatchKey {
     std::uint64_t pipeline_id;
-    std::size_t mesh_hash;
-    std::size_t texture_hash;
+    assets::AssetId<Mesh> mesh_id;
+    std::optional<assets::AssetId<image::Image>> texture_id;
 
-    std::strong_ordering operator<=>(const MeshOpaqueBatchKey&) const = default;
+    std::strong_ordering operator<=>(const MeshOpaqueBatchKey& other) const = default;
+    bool operator==(const MeshOpaqueBatchKey&) const                        = default;
 };
 
 void insert_mesh_shaders(assets::Assets<render::Shader>& shaders) {
@@ -488,22 +471,25 @@ void extract_meshes_2d(Commands cmd,
                 .value_or(material.transform([](const MeshMaterial2d& value) { return value.alpha_mode; })
                               .value_or(MeshAlphaMode2d::Opaque));
 
-        cmd.spawn(ExtractedMesh2d{
-            .source_entity = entity,
-            .mesh          = mesh_handle.handle.id(),
-            .model         = transform.matrix,
-            .color         = color,
-            .depth         = transform.matrix[3][2],
-            .alpha_mode    = alpha_mode,
-            .texture = texture_material.transform([](const MeshTextureMaterial2d& value) { return value.image.id(); }),
-        }, MeshBatch{});
+        cmd.spawn(
+            ExtractedMesh2d{
+                .source_entity = entity,
+                .mesh          = mesh_handle.handle.id(),
+                .model         = transform.matrix,
+                .color         = color,
+                .depth         = transform.matrix[3][2],
+                .alpha_mode    = alpha_mode,
+                .texture =
+                    texture_material.transform([](const MeshTextureMaterial2d& value) { return value.image.id(); }),
+            },
+            MeshBatch{});
     }
 }
 
 void ensure_mesh_instance_buffer(MeshInstanceBuffer& instance_buffer,
-                                  const Mesh2dPipelineCache& pipeline_cache,
-                                  const wgpu::Device& device,
-                                  std::size_t required_bytes) {
+                                 const Mesh2dPipelineCache& pipeline_cache,
+                                 const wgpu::Device& device,
+                                 std::size_t required_bytes) {
     if (required_bytes == 0) {
         return;
     }
@@ -537,17 +523,16 @@ struct MeshBatchKey {
     bool operator==(const MeshBatchKey&) const = default;
 };
 
-void prepare_mesh_instances(
-    Query<Item<render::phase::RenderPhase<core_graph::core_2d::Opaque2D>&>,
-          With<render::camera::ExtractedCamera, render::view::ExtractedView>> opaque_views,
-    Query<Item<render::phase::RenderPhase<core_graph::core_2d::Transparent2D>&>,
-          With<render::camera::ExtractedCamera, render::view::ExtractedView>> transparent_views,
-    Query<Item<MeshBatch&, const ExtractedMesh2d&>> meshes,
-    Res<render::RenderAssets<image::Image>> images,
-    Res<wgpu::Device> device,
-    Res<wgpu::Queue> queue,
-    Res<Mesh2dPipelineCache> pipeline_cache,
-    ResMut<MeshInstanceBuffer> instance_buffer) {
+void prepare_mesh_instances(Query<Item<render::phase::RenderPhase<core_graph::core_2d::Opaque2D>&>,
+                                  With<render::camera::ExtractedCamera, render::view::ExtractedView>> opaque_views,
+                            Query<Item<render::phase::RenderPhase<core_graph::core_2d::Transparent2D>&>,
+                                  With<render::camera::ExtractedCamera, render::view::ExtractedView>> transparent_views,
+                            Query<Item<MeshBatch&, const ExtractedMesh2d&>> meshes,
+                            Res<render::RenderAssets<image::Image>> images,
+                            Res<wgpu::Device> device,
+                            Res<wgpu::Queue> queue,
+                            Res<Mesh2dPipelineCache> pipeline_cache,
+                            ResMut<MeshInstanceBuffer> instance_buffer) {
     instance_buffer->instances.clear();
     std::unordered_map<assets::AssetId<image::Image>, wgpu::BindGroup> texture_bind_group_cache;
 
@@ -556,8 +541,8 @@ void prepare_mesh_instances(
         std::size_t batch_head = std::numeric_limits<std::size_t>::max();
 
         for (std::size_t item_index = 0; item_index < phase.items.size(); ++item_index) {
-            auto& item      = phase.items[item_index];
-            auto mesh_item  = meshes.get(item.entity());
+            auto& item     = phase.items[item_index];
+            auto mesh_item = meshes.get(item.entity());
             if (!mesh_item) {
                 current_key.reset();
                 batch_head = std::numeric_limits<std::size_t>::max();
@@ -621,134 +606,15 @@ void prepare_mesh_instances(
     }
 }
 
-template <typename PhaseItem>
-struct Mesh2dDrawFunction : render::phase::DrawFunction<PhaseItem> {
-    std::optional<QueryState<Item<const render::view::ViewBindGroup&>, Filter<>>> view_query;
-    std::optional<QueryState<Item<const MeshBatch&, const ExtractedMesh2d&>, Filter<>>> mesh_query;
-
-    void prepare(const World& world) override {
-        if (!view_query) {
-            view_query = world.try_query<Item<const render::view::ViewBindGroup&>>();
-        } else {
-            view_query->update_archetypes(world);
-        }
-        if (!mesh_query) {
-            mesh_query = world.try_query<Item<const MeshBatch&, const ExtractedMesh2d&>>();
-        } else {
-            mesh_query->update_archetypes(world);
-        }
-    }
-
-    std::expected<void, render::phase::DrawError> draw(const World& world,
-                                                       const wgpu::RenderPassEncoder& encoder,
-                                                       Entity view,
-                                                       const PhaseItem& item) override {
-        if (!view_query || !mesh_query) {
-            auto message = std::format(
-                "[mesh] Mesh2dDrawFunction is not prepared before draw. view_query initialized: {}, mesh_query "
-                "initialized: {}, item entity: {:#x}, view entity: {:#x}.",
-                view_query.has_value(), mesh_query.has_value(), item.entity().index, view.index);
-            spdlog::error("{}", message);
-            return std::unexpected(render::phase::DrawError::invalid_view_query(std::move(message)));
-        }
-
-        auto view_item = view_query->query_with_ticks(world, world.last_change_tick(), world.change_tick()).get(view);
-        if (!view_item) {
-            auto message =
-                std::format("[mesh] View entity {:#x} is missing ViewBindGroup while drawing mesh entity {:#x}.",
-                            view.index, item.entity().index);
-            spdlog::error("{}", message);
-            return std::unexpected(render::phase::DrawError::view_entity_missing(std::move(message)));
-        }
-
-        auto mesh_item =
-            mesh_query->query_with_ticks(world, world.last_change_tick(), world.change_tick()).get(item.entity());
-        if (!mesh_item) {
-            auto message =
-                std::format("[mesh] Mesh entity {:#x} is missing MeshBatch or ExtractedMesh2d during draw.",
-                            item.entity().index);
-            spdlog::error("{}", message);
-            return std::unexpected(render::phase::DrawError::invalid_entity_query(std::move(message)));
-        }
-
-        auto&& [view_bind_group]           = *view_item;
-        auto&& [mesh_batch, extracted_mesh] = *mesh_item;
-        auto pipeline = world.resource<render::PipelineServer>().get_render_pipeline(item.pipeline());
-        if (!pipeline) {
-            if (const auto* err = std::get_if<render::PipelineServerError>(&pipeline.error())) {
-                auto detail = std::visit(
-                    [](auto e) -> std::string_view {
-                        using T = std::decay_t<decltype(e)>;
-                        if constexpr (std::is_same_v<T, render::PipelineError>) return "PipelineError::CreationFailure";
-                        else if (e == render::ShaderCacheError::NotLoaded) return "ShaderCacheError::NotLoaded";
-                        else return "ShaderCacheError::ModuleCreationFailure";
-                    },
-                    *err);
-                auto message = std::format("[mesh] Pipeline {} for mesh entity {:#x} failed: {}.",
-                                           item.pipeline().get(), item.entity().index, detail);
-                spdlog::error("{}", message);
-                return std::unexpected(render::phase::DrawError::render_command_failure(std::move(message)));
-            }
-            return std::unexpected(render::phase::DrawError::render_command_failure());
-        }
-
-        auto* gpu_mesh = world.resource<render::RenderAssets<Mesh>>().try_get(extracted_mesh.mesh);
-        if (!gpu_mesh) {
-            auto message =
-                std::format("[mesh] GPU mesh {} for entity {:#x} is missing from RenderAssets<Mesh> at draw time.",
-                            extracted_mesh.mesh.to_string_short(), item.entity().index);
-            spdlog::error("{}", message);
-            return std::unexpected(render::phase::DrawError::render_command_failure(std::move(message)));
-        }
-
-        auto& instances = world.resource<MeshInstanceBuffer>();
-        if (!instances.bind_group) {
-            auto message = std::format("[mesh] Mesh instance buffer bind group is not ready for entity {:#x}.",
-                                       item.entity().index);
-            spdlog::error("{}", message);
-            return std::unexpected(render::phase::DrawError::render_command_failure(std::move(message)));
-        }
-
-        if (extracted_mesh.texture && !mesh_batch.texture_bind_group) {
-            auto message =
-                std::format("[mesh] Entity {:#x} requires texture {} but MeshBatch has no texture bind group.",
-                            item.entity().index, extracted_mesh.texture->to_string_short());
-            spdlog::error("{}", message);
-            return std::unexpected(render::phase::DrawError::render_command_failure(std::move(message)));
-        }
-
-        auto batch_size = static_cast<std::uint32_t>(item.batch_size());
-        encoder.setPipeline(pipeline->get().pipeline());
-        encoder.setBindGroup(0, view_bind_group.bind_group, std::span<const std::uint32_t>{});
-        encoder.setBindGroup(1, instances.bind_group, std::span<const std::uint32_t>{});
-        if (mesh_batch.texture_bind_group) {
-            encoder.setBindGroup(2, *mesh_batch.texture_bind_group, std::span<const std::uint32_t>{});
-        }
-        gpu_mesh->bind_to(encoder);
-        if (gpu_mesh->is_indexed()) {
-            encoder.drawIndexed(static_cast<std::uint32_t>(gpu_mesh->vertex_count()), batch_size, 0, 0,
-                                mesh_batch.instance_start);
-        } else {
-            encoder.draw(static_cast<std::uint32_t>(gpu_mesh->vertex_count()), batch_size, 0,
-                         mesh_batch.instance_start);
-        }
-        return {};
-    }
-};
-
 void queue_meshes_2d_opaque(
     Query<Item<render::phase::RenderPhase<core_graph::core_2d::Opaque2D>&, const render::view::ViewTarget&>,
           With<render::camera::ExtractedCamera>> views,
     Query<Item<Entity, const ExtractedMesh2d&>> meshes,
     Res<render::RenderAssets<Mesh>> gpu_meshes,
     Res<render::RenderAssets<image::Image>> images,
+    Res<OpaqueMesh2dDrawFunction> draw_function_id,
     ResMut<Mesh2dPipelineCache> pipeline_cache,
-    ResMut<render::PipelineServer> pipeline_server,
-    ResMut<render::phase::DrawFunctions<core_graph::core_2d::Opaque2D>> draw_functions) {
-    auto draw_function_id =
-        draw_functions->template get_id<Mesh2dDrawFunction<core_graph::core_2d::Opaque2D>>().value_or(
-            draw_functions->template add<Mesh2dDrawFunction<core_graph::core_2d::Opaque2D>>());
-
+    ResMut<render::PipelineServer> pipeline_server) {
     for (auto&& [phase, target] : views.iter()) {
         for (auto&& [entity, extracted_mesh] : meshes.iter()) {
             if (extracted_mesh.alpha_mode != MeshAlphaMode2d::Opaque) {
@@ -779,14 +645,12 @@ void queue_meshes_2d_opaque(
             phase.add(core_graph::core_2d::Opaque2D{
                 .id          = entity,
                 .pipeline_id = *pipeline_id,
-                .draw_func   = draw_function_id,
+                .draw_func   = draw_function_id->value,
                 .batch_count = 1,
                 .batch_key   = render::phase::OpaqueSortKey(MeshOpaqueBatchKey{
-                    .pipeline_id  = pipeline_id->get(),
-                    .mesh_hash    = std::hash<assets::AssetId<Mesh>>()(extracted_mesh.mesh),
-                    .texture_hash = extracted_mesh.texture
-                                        ? std::hash<assets::AssetId<image::Image>>()(*extracted_mesh.texture)
-                                        : 0,
+                    .pipeline_id = pipeline_id->get(),
+                    .mesh_id     = extracted_mesh.mesh,
+                    .texture_id  = extracted_mesh.texture,
                 }),
             });
         }
@@ -799,13 +663,9 @@ void queue_meshes_2d_transparent(
     Query<Item<Entity, const ExtractedMesh2d&>> meshes,
     Res<render::RenderAssets<Mesh>> gpu_meshes,
     Res<render::RenderAssets<image::Image>> images,
+    Res<TransparentMesh2dDrawFunction> draw_function_id,
     ResMut<Mesh2dPipelineCache> pipeline_cache,
-    ResMut<render::PipelineServer> pipeline_server,
-    ResMut<render::phase::DrawFunctions<core_graph::core_2d::Transparent2D>> draw_functions) {
-    auto draw_function_id =
-        draw_functions->template get_id<Mesh2dDrawFunction<core_graph::core_2d::Transparent2D>>().value_or(
-            draw_functions->template add<Mesh2dDrawFunction<core_graph::core_2d::Transparent2D>>());
-
+    ResMut<render::PipelineServer> pipeline_server) {
     for (auto&& [phase, target] : views.iter()) {
         for (auto&& [entity, extracted_mesh] : meshes.iter()) {
             if (extracted_mesh.alpha_mode != MeshAlphaMode2d::Blend) {
@@ -837,7 +697,7 @@ void queue_meshes_2d_transparent(
                 .id          = entity,
                 .depth       = extracted_mesh.depth,
                 .pipeline_id = *pipeline_id,
-                .draw_func   = draw_function_id,
+                .draw_func   = draw_function_id->value,
                 .batch_count = 1,
             });
         }
@@ -876,9 +736,19 @@ void MeshRenderPlugin::finish(core::App& app) {
     if (!world.get_resource<Mesh2dPipelineCache>()) {
         world.init_resource<Mesh2dPipelineCache>();
     }
+    auto& render_subapp = render_app->get();
+    world.insert_resource(OpaqueMesh2dDrawFunction{
+        .value = render::phase::app_add_render_commands<
+            core_graph::core_2d::Opaque2D, render::phase::SetItemPipeline, render::view::BindViewUniform<0>::Command,
+            mesh::BindMesh2dInstances<1>::Command, mesh::BindMesh2dTexture<2>::Command, mesh::DrawMesh2dBatch>(
+            render_subapp)});
+    world.insert_resource(TransparentMesh2dDrawFunction{
+        .value = render::phase::app_add_render_commands<
+            core_graph::core_2d::Transparent2D, render::phase::SetItemPipeline,
+            render::view::BindViewUniform<0>::Command, mesh::BindMesh2dInstances<1>::Command,
+            mesh::BindMesh2dTexture<2>::Command, mesh::DrawMesh2dBatch>(render_subapp)});
 
-    render_app->get()
-        .add_systems(render::ExtractSchedule, into(extract_meshes_2d).set_name("extract mesh2d"))
+    render_subapp.add_systems(render::ExtractSchedule, into(extract_meshes_2d).set_name("extract mesh2d"))
         .add_systems(render::Render, into(queue_meshes_2d_opaque, queue_meshes_2d_transparent)
                                          .in_set(render::RenderSet::Queue)
                                          .set_names(std::array{"queue opaque mesh2d", "queue transparent mesh2d"}))

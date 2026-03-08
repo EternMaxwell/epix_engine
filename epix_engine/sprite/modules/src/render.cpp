@@ -78,77 +78,6 @@ const assets::AssetId<render::Shader> kSpriteVertexShaderId(
 const assets::AssetId<render::Shader> kSpriteFragmentShaderId(
     uuids::uuid::from_string("63e69646-4b35-4eb8-b095-78ef59bd3ea3").value());
 
-struct ExtractedSprite {
-    Entity source_entity;
-    Sprite sprite;
-    glm::mat4 model;
-    float depth;
-    assets::AssetId<image::Image> texture;
-    glm::vec2 image_size;
-};
-
-struct SpriteBatch {
-    wgpu::BindGroup texture_bind_group;
-    std::uint32_t instance_start = 0;
-};
-
-struct SpriteInstanceData {
-    glm::mat4 model;
-    glm::vec4 uv_offset_scale;
-    glm::vec4 color;
-    glm::vec4 pos_offset_scale;
-};
-
-struct SpriteGeometryBuffers {
-    wgpu::Buffer position_buffer;
-    wgpu::Buffer uv_buffer;
-    wgpu::Buffer index_buffer;
-    std::uint32_t index_count = 0;
-
-    explicit SpriteGeometryBuffers(World& world) {
-        auto& device = world.resource<wgpu::Device>();
-        auto& queue  = world.resource<wgpu::Queue>();
-
-        constexpr std::array quad_positions = {
-            glm::vec2(-0.5f, -0.5f),
-            glm::vec2(0.5f, -0.5f),
-            glm::vec2(0.5f, 0.5f),
-            glm::vec2(-0.5f, 0.5f),
-        };
-        constexpr std::array quad_uvs = {
-            glm::vec2(0.0f, 0.0f),
-            glm::vec2(1.0f, 0.0f),
-            glm::vec2(1.0f, 1.0f),
-            glm::vec2(0.0f, 1.0f),
-        };
-        constexpr std::array<std::uint16_t, 6> quad_indices = {0, 1, 2, 2, 3, 0};
-
-        position_buffer = device.createBuffer(wgpu::BufferDescriptor()
-                                                  .setLabel("SpriteQuadPositions")
-                                                  .setSize(sizeof(quad_positions))
-                                                  .setUsage(wgpu::BufferUsage::eVertex | wgpu::BufferUsage::eCopyDst));
-        uv_buffer       = device.createBuffer(wgpu::BufferDescriptor()
-                                                  .setLabel("SpriteQuadUvs")
-                                                  .setSize(sizeof(quad_uvs))
-                                                  .setUsage(wgpu::BufferUsage::eVertex | wgpu::BufferUsage::eCopyDst));
-        index_buffer    = device.createBuffer(wgpu::BufferDescriptor()
-                                                  .setLabel("SpriteQuadIndices")
-                                                  .setSize(sizeof(quad_indices))
-                                                  .setUsage(wgpu::BufferUsage::eIndex | wgpu::BufferUsage::eCopyDst));
-
-        queue.writeBuffer(position_buffer, 0, quad_positions.data(), sizeof(quad_positions));
-        queue.writeBuffer(uv_buffer, 0, quad_uvs.data(), sizeof(quad_uvs));
-        queue.writeBuffer(index_buffer, 0, quad_indices.data(), sizeof(quad_indices));
-        index_count = static_cast<std::uint32_t>(quad_indices.size());
-    }
-};
-
-struct SpriteInstanceBuffer {
-    wgpu::Buffer buffer;
-    wgpu::BindGroup bind_group;
-    std::vector<SpriteInstanceData> instances;
-};
-
 struct SpritePipelineCache {
     wgpu::BindGroupLayout view_layout;
     wgpu::BindGroupLayout instance_layout;
@@ -250,6 +179,10 @@ struct SpritePipelineCache {
         pipelines.emplace(key, pipeline_id);
         return pipeline_id;
     }
+};
+
+struct TransparentSpriteDrawFunction {
+    render::phase::DrawFunctionId value;
 };
 
 void insert_sprite_shaders(assets::Assets<render::Shader>& shaders) {
@@ -371,101 +304,15 @@ void extract_sprites(
     }
 }
 
-template <typename PhaseItem>
-struct SpriteDrawFunction : render::phase::DrawFunction<PhaseItem> {
-    std::optional<QueryState<Item<const render::view::ViewBindGroup&>, Filter<>>> view_query;
-    std::optional<QueryState<Item<const SpriteBatch&>, Filter<>>> sprite_query;
-
-    void prepare(const World& world) override {
-        if (!view_query) {
-            view_query = world.try_query<Item<const render::view::ViewBindGroup&>>();
-        } else {
-            view_query->update_archetypes(world);
-        }
-        if (!sprite_query) {
-            sprite_query = world.try_query<Item<const SpriteBatch&>>();
-        } else {
-            sprite_query->update_archetypes(world);
-        }
-    }
-
-    std::expected<void, render::phase::DrawError> draw(const World& world,
-                                                       const wgpu::RenderPassEncoder& encoder,
-                                                       Entity view,
-                                                       const PhaseItem& item) override {
-        if (!view_query || !sprite_query) {
-            return std::unexpected(render::phase::DrawError::render_command_failure(
-                "[sprite] SpriteDrawFunction was used before prepare finished."));
-        }
-
-        auto view_item = view_query->query_with_ticks(world, world.last_change_tick(), world.change_tick()).get(view);
-        if (!view_item) {
-            return std::unexpected(render::phase::DrawError::view_entity_missing(
-                std::format("[sprite] View entity {:#x} is missing ViewBindGroup while drawing sprite entity {:#x}.",
-                            view.index, item.entity().index)));
-        }
-
-        auto sprite_item =
-            sprite_query->query_with_ticks(world, world.last_change_tick(), world.change_tick()).get(item.entity());
-        if (!sprite_item) {
-            return std::unexpected(render::phase::DrawError::invalid_entity_query(
-                std::format("[sprite] Sprite batch entity {:#x} is missing SpriteBatch.", item.entity().index)));
-        }
-
-        auto pipeline = world.resource<render::PipelineServer>().get_render_pipeline(item.pipeline());
-        if (!pipeline) {
-            if (const auto* err = std::get_if<render::PipelineServerError>(&pipeline.error())) {
-                auto detail = std::visit(
-                    [](auto e) -> std::string_view {
-                        using T = std::decay_t<decltype(e)>;
-                        if constexpr (std::is_same_v<T, render::PipelineError>) return "PipelineError::CreationFailure";
-                        else if (e == render::ShaderCacheError::NotLoaded) return "ShaderCacheError::NotLoaded";
-                        else return "ShaderCacheError::ModuleCreationFailure";
-                    },
-                    *err);
-                return std::unexpected(render::phase::DrawError::render_command_failure(
-                    std::format("[sprite] Pipeline {} for sprite entity {:#x} failed: {}.", item.pipeline().get(),
-                                item.entity().index, detail)));
-            }
-            return std::unexpected(render::phase::DrawError::render_command_failure());
-        }
-
-        auto&& [view_bind_group] = *view_item;
-        auto&& [sprite_batch]    = *sprite_item;
-        auto& geometry           = world.resource<SpriteGeometryBuffers>();
-        auto& instances          = world.resource<SpriteInstanceBuffer>();
-
-        if (!sprite_batch.texture_bind_group || !instances.bind_group) {
-            return std::unexpected(render::phase::DrawError::render_command_failure(
-                std::format("[sprite] Sprite entity {:#x} is missing prepared bind groups.", item.entity().index)));
-        }
-
-        encoder.setPipeline(pipeline->get().pipeline());
-        encoder.setBindGroup(0, view_bind_group.bind_group, std::span<const std::uint32_t>{});
-        encoder.setBindGroup(1, instances.bind_group, std::span<const std::uint32_t>{});
-        encoder.setBindGroup(2, sprite_batch.texture_bind_group, std::span<const std::uint32_t>{});
-        encoder.setVertexBuffer(0, geometry.position_buffer, 0, geometry.position_buffer.getSize());
-        encoder.setVertexBuffer(1, geometry.uv_buffer, 0, geometry.uv_buffer.getSize());
-        encoder.setIndexBuffer(geometry.index_buffer, wgpu::IndexFormat::eUint16, 0, geometry.index_buffer.getSize());
-        encoder.drawIndexed(geometry.index_count, static_cast<std::uint32_t>(item.batch_size()), 0, 0,
-                            sprite_batch.instance_start);
-        return {};
-    }
-};
-
 void queue_sprites_2d(Query<Item<render::phase::RenderPhase<core_graph::core_2d::Transparent2D>&,
                                  const render::view::ExtractedView&,
                                  const render::view::ViewTarget&>,
                             With<render::camera::ExtractedCamera>> views,
                       Query<Item<Entity, const ExtractedSprite&>> sprites,
                       Res<render::RenderAssets<image::Image>> images,
+                      Res<TransparentSpriteDrawFunction> draw_function_id,
                       ResMut<SpritePipelineCache> pipeline_cache,
-                      ResMut<render::PipelineServer> pipeline_server,
-                      ResMut<render::phase::DrawFunctions<core_graph::core_2d::Transparent2D>> draw_functions) {
-    auto draw_function_id =
-        draw_functions->template get_id<SpriteDrawFunction<core_graph::core_2d::Transparent2D>>().value_or(
-            draw_functions->template add<SpriteDrawFunction<core_graph::core_2d::Transparent2D>>());
-
+                      ResMut<render::PipelineServer> pipeline_server) {
     for (auto&& [phase, view, target] : views.iter()) {
         auto pipeline_id = pipeline_cache->specialize(*pipeline_server, target.format);
         if (!pipeline_id) {
@@ -486,7 +333,7 @@ void queue_sprites_2d(Query<Item<render::phase::RenderPhase<core_graph::core_2d:
                 .id          = entity,
                 .depth       = sprite.depth,
                 .pipeline_id = *pipeline_id,
-                .draw_func   = draw_function_id,
+                .draw_func   = draw_function_id->value,
                 .batch_count = 1,
             });
         }
@@ -584,9 +431,14 @@ void SpritePlugin::finish(core::App& app) {
     if (!world.get_resource<SpritePipelineCache>()) {
         world.insert_resource(SpritePipelineCache(world));
     }
+    auto& render_subapp = render_app->get();
+    world.insert_resource(TransparentSpriteDrawFunction{
+        .value = render::phase::app_add_render_commands<
+            core_graph::core_2d::Transparent2D, render::phase::SetItemPipeline,
+            render::view::BindViewUniform<0>::Command, sprite::BindSpriteInstances<1>::Command,
+            sprite::BindSpriteTexture<2>::Command, sprite::DrawSpriteBatch>(render_subapp)});
 
-    render_app->get()
-        .add_systems(render::ExtractSchedule, into(extract_sprites).set_name("extract sprites"))
+    render_subapp.add_systems(render::ExtractSchedule, into(extract_sprites).set_name("extract sprites"))
         .add_systems(render::Render, into(queue_sprites_2d).in_set(render::RenderSet::Queue).set_name("queue sprites"))
         .add_systems(render::Render, into(prepare_sprite_batches)
                                          .in_set(render::RenderSet::PrepareResources)
