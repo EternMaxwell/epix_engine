@@ -8,7 +8,7 @@ import std;
 import epix.meta;
 import :index;
 
-namespace uuids {
+export namespace uuids {
 auto operator<=>(const uuids::uuid& lhs, const uuids::uuid& rhs) noexcept {
     if (lhs == rhs) return std::strong_ordering::equal;
     return lhs < rhs ? std::strong_ordering::less : std::strong_ordering::greater;
