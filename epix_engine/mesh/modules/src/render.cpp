@@ -269,6 +269,7 @@ constexpr const char* alpha_mode_name(MeshAlphaMode2d alpha_mode) {
 }
 
 struct Mesh2dPipelineCache {
+    wgpu::BindGroupLayout view_layout;
     wgpu::BindGroupLayout mesh_layout;
     wgpu::BindGroupLayout texture_layout;
     assets::Handle<render::Shader> solid_vertex_shader{kMeshSolidVertexShaderId};
@@ -279,8 +280,9 @@ struct Mesh2dPipelineCache {
     assets::Handle<render::Shader> textured_fragment_shader{kMeshTexturedFragmentShaderId};
     std::unordered_map<Mesh2dPipelineKey, render::CachedPipelineId, Mesh2dPipelineKeyHash> pipelines;
 
-    explicit Mesh2dPipelineCache(const wgpu::Device& device)
-        : mesh_layout(device.createBindGroupLayout(
+    explicit Mesh2dPipelineCache(World& world)
+        : view_layout(world.resource<render::view::ViewUniformBindingLayout>().layout),
+          mesh_layout(world.resource<wgpu::Device>().createBindGroupLayout(
               wgpu::BindGroupLayoutDescriptor()
                   .setLabel("Mesh2dUniformLayout")
                   .setEntries(std::array{
@@ -292,7 +294,7 @@ struct Mesh2dPipelineCache {
                                          .setHasDynamicOffset(false)
                                          .setMinBindingSize(sizeof(MeshUniform))),
                   }))),
-          texture_layout(device.createBindGroupLayout(
+          texture_layout(world.resource<wgpu::Device>().createBindGroupLayout(
               wgpu::BindGroupLayoutDescriptor()
                   .setLabel("Mesh2dTextureLayout")
                   .setEntries(std::array{
@@ -312,7 +314,6 @@ struct Mesh2dPipelineCache {
     std::optional<render::CachedPipelineId> specialize(render::PipelineServer& pipeline_server,
                                                        const MeshAttributeLayout& layout,
                                                        wgpu::TextureFormat color_format,
-                                                       wgpu::BindGroupLayout view_layout,
                                                        MeshAlphaMode2d alpha_mode,
                                                        bool textured) {
         if (!layout.get_attribute(Mesh::ATTRIBUTE_POSITION)) {
@@ -348,20 +349,19 @@ struct Mesh2dPipelineCache {
             return it->second;
         }
 
-        std::vector<wgpu::VertexBufferLayout> vertex_buffers;
-        vertex_buffers.reserve(layout.size());
-        for (const auto& [slot, attribute] : layout) {
-            (void)slot;
-            vertex_buffers.push_back(wgpu::VertexBufferLayout()
-                                         .setArrayStride(vertex_format_size(attribute.format))
-                                         .setStepMode(wgpu::VertexStepMode::eVertex)
-                                         .setAttributes(std::array{
-                                             wgpu::VertexAttribute()
-                                                 .setShaderLocation(attribute.slot)
-                                                 .setFormat(attribute.format)
-                                                 .setOffset(0),
-                                         }));
-        }
+        std::vector<wgpu::VertexBufferLayout> vertex_buffers =
+            layout | std::views::values | std::views::transform([](const MeshAttribute& attribute) {
+                return wgpu::VertexBufferLayout()
+                    .setArrayStride(vertex_format_size(attribute.format))
+                    .setStepMode(wgpu::VertexStepMode::eVertex)
+                    .setAttributes(std::array{
+                        wgpu::VertexAttribute()
+                            .setShaderLocation(attribute.slot)
+                            .setFormat(attribute.format)
+                            .setOffset(0),
+                    });
+            }) |
+            std::ranges::to<std::vector>();
 
         render::VertexState vertex_state{
             .shader = [&]() -> assets::Handle<render::Shader> {
@@ -660,7 +660,6 @@ void queue_meshes_2d_opaque(
     Res<render::RenderAssets<Mesh>> gpu_meshes,
     Res<render::RenderAssets<image::Image>> images,
     ResMut<Mesh2dPipelineCache> pipeline_cache,
-    Res<render::view::ViewUniformBindingLayout> view_layout,
     ResMut<render::PipelineServer> pipeline_server,
     ResMut<render::phase::DrawFunctions<core_graph::core_2d::Opaque2D>> draw_functions) {
     auto draw_function_id =
@@ -685,9 +684,9 @@ void queue_meshes_2d_opaque(
                 continue;
             }
 
-            auto pipeline_id = pipeline_cache->specialize(*pipeline_server, gpu_mesh->attribute_layout(), target.format,
-                                                          view_layout->layout, extracted_mesh.alpha_mode,
-                                                          extracted_mesh.texture.has_value());
+            auto pipeline_id =
+                pipeline_cache->specialize(*pipeline_server, gpu_mesh->attribute_layout(), target.format,
+                                           extracted_mesh.alpha_mode, extracted_mesh.texture.has_value());
             if (!pipeline_id) {
                 spdlog::warn("[mesh] Skip opaque mesh entity {:#x}: failed to specialize pipeline for layout:\n{}",
                              entity.index, gpu_mesh->attribute_layout().to_string());
@@ -711,7 +710,6 @@ void queue_meshes_2d_transparent(
     Res<render::RenderAssets<Mesh>> gpu_meshes,
     Res<render::RenderAssets<image::Image>> images,
     ResMut<Mesh2dPipelineCache> pipeline_cache,
-    Res<render::view::ViewUniformBindingLayout> view_layout,
     ResMut<render::PipelineServer> pipeline_server,
     ResMut<render::phase::DrawFunctions<core_graph::core_2d::Transparent2D>> draw_functions) {
     auto draw_function_id =
@@ -736,9 +734,9 @@ void queue_meshes_2d_transparent(
                 continue;
             }
 
-            auto pipeline_id = pipeline_cache->specialize(*pipeline_server, gpu_mesh->attribute_layout(), target.format,
-                                                          view_layout->layout, extracted_mesh.alpha_mode,
-                                                          extracted_mesh.texture.has_value());
+            auto pipeline_id =
+                pipeline_cache->specialize(*pipeline_server, gpu_mesh->attribute_layout(), target.format,
+                                           extracted_mesh.alpha_mode, extracted_mesh.texture.has_value());
             if (!pipeline_id) {
                 spdlog::warn("[mesh] Skip transparent mesh entity {:#x}: failed to specialize pipeline for layout:\n{}",
                              entity.index, gpu_mesh->attribute_layout().to_string());
@@ -786,7 +784,7 @@ void MeshRenderPlugin::finish(core::App& app) {
         world.insert_resource(MeshUniformBuffer{});
     }
     if (!world.get_resource<Mesh2dPipelineCache>()) {
-        world.insert_resource(Mesh2dPipelineCache(world.resource<wgpu::Device>()));
+        world.init_resource<Mesh2dPipelineCache>();
     }
 
     render_app->get()
