@@ -31,9 +31,11 @@ void Core2dPlugin::build(App& app) {
         render_app.world_mut().insert_resource(phase::DrawFunctions<UI2DItem>{});
         Core2d.add_to(render_app.resource_mut<graph::RenderGraph>());
 
-        render_app.add_systems(Render, into(phase::sort_phase_items<Transparent2D>, phase::sort_phase_items<UI2DItem>)
+        render_app.add_systems(Render, into(phase::sort_phase_items<Transparent2D>, phase::sort_phase_items<UI2DItem>,
+                                            phase::sort_phase_items<Opaque2D>)
                                            .in_set(RenderSet::PhaseSort)
-                                           .set_names(std::array{"sort transparent 2d phase", "sort ui 2d phase"}));
+                                           .set_names(std::array{"sort transparent 2d phase", "sort ui 2d phase",
+                                                                 "sort opaque 2d phase"}));
         render_app.add_systems(
             Render, into([](Commands cmd,
                             Query<Item<Entity, const camera::ExtractedCamera&>, With<view::ExtractedView>> views) {
