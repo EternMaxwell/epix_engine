@@ -54,11 +54,11 @@ export using Pipeline           = std::variant<RenderPipeline, ComputePipeline>;
 export enum PipelineError {
     CreationFailure,
 };
+export using PipelineServerError = std::variant<PipelineError, ShaderCacheError>;
 export struct GetPipelineNotReady {};   // pipeline is still queued or being compiled
 export struct GetPipelineInvalidId {};  // id is out of range
 // Failed carries the underlying PipelineServerError with its details
 export using GetPipelineError = std::variant<GetPipelineNotReady, GetPipelineInvalidId, PipelineServerError>;
-export using PipelineServerError = std::variant<PipelineError, ShaderCacheError>;
 export struct PipelineStateQueued {};
 export using PipelineStateCreating = std::future<std::expected<Pipeline, PipelineServerError>>;
 export using CachedPipelineState =
