@@ -64,7 +64,7 @@ auto PipelineServer::get_compute_pipeline_descriptor(CachedPipelineId id) const
 auto PipelineServer::get_render_pipeline(CachedPipelineId id) const
     -> std::expected<std::reference_wrapper<const RenderPipeline>, GetPipelineError> {
     if (pipelines.size() <= id.get()) {
-        return std::unexpected(GetPipelineError::InvalidId);
+        return std::unexpected(GetPipelineInvalidId{});
     }
     const auto& state = pipelines[id].state;
     if (std::holds_alternative<Pipeline>(state)) {
@@ -72,17 +72,17 @@ auto PipelineServer::get_render_pipeline(CachedPipelineId id) const
         if (std::holds_alternative<RenderPipeline>(pipeline)) {
             return std::cref(std::get<RenderPipeline>(pipeline));
         }
-        return std::unexpected(GetPipelineError::Failed);  // wrong pipeline type
+        return std::unexpected(PipelineServerError{PipelineError::CreationFailure});  // wrong pipeline type
     }
     if (std::holds_alternative<PipelineServerError>(state)) {
-        return std::unexpected(GetPipelineError::Failed);
+        return std::unexpected(std::get<PipelineServerError>(state));
     }
-    return std::unexpected(GetPipelineError::NotReady);
+    return std::unexpected(GetPipelineNotReady{});
 }
 auto PipelineServer::get_compute_pipeline(CachedPipelineId id) const
     -> std::expected<std::reference_wrapper<const ComputePipeline>, GetPipelineError> {
     if (pipelines.size() <= id.get()) {
-        return std::unexpected(GetPipelineError::InvalidId);
+        return std::unexpected(GetPipelineInvalidId{});
     }
     const auto& state = pipelines[id].state;
     if (std::holds_alternative<Pipeline>(state)) {
@@ -90,12 +90,12 @@ auto PipelineServer::get_compute_pipeline(CachedPipelineId id) const
         if (std::holds_alternative<ComputePipeline>(pipeline)) {
             return std::cref(std::get<ComputePipeline>(pipeline));
         }
-        return std::unexpected(GetPipelineError::Failed);
+        return std::unexpected(PipelineServerError{PipelineError::CreationFailure});
     }
     if (std::holds_alternative<PipelineServerError>(state)) {
-        return std::unexpected(GetPipelineError::Failed);
+        return std::unexpected(std::get<PipelineServerError>(state));
     }
-    return std::unexpected(GetPipelineError::NotReady);
+    return std::unexpected(GetPipelineNotReady{});
 }
 CachedPipelineId PipelineServer::queue_render_pipeline(RenderPipelineDescriptor descriptor) const {
     auto new_pipelines  = this->new_pipelines.lock();

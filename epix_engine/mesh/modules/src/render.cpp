@@ -675,10 +675,17 @@ struct Mesh2dDrawFunction : render::phase::DrawFunction<PhaseItem> {
         auto&& [mesh_batch, extracted_mesh] = *mesh_item;
         auto pipeline = world.resource<render::PipelineServer>().get_render_pipeline(item.pipeline());
         if (!pipeline) {
-            if (pipeline.error() != render::GetPipelineError::NotReady) {
-                auto message =
-                    std::format("[mesh] Pipeline {} for mesh entity {:#x} failed to create.",
-                                item.pipeline().get(), item.entity().index);
+            if (const auto* err = std::get_if<render::PipelineServerError>(&pipeline.error())) {
+                auto detail = std::visit(
+                    [](auto e) -> std::string_view {
+                        using T = std::decay_t<decltype(e)>;
+                        if constexpr (std::is_same_v<T, render::PipelineError>) return "PipelineError::CreationFailure";
+                        else if (e == render::ShaderCacheError::NotLoaded) return "ShaderCacheError::NotLoaded";
+                        else return "ShaderCacheError::ModuleCreationFailure";
+                    },
+                    *err);
+                auto message = std::format("[mesh] Pipeline {} for mesh entity {:#x} failed: {}.",
+                                           item.pipeline().get(), item.entity().index, detail);
                 spdlog::error("{}", message);
                 return std::unexpected(render::phase::DrawError::render_command_failure(std::move(message)));
             }

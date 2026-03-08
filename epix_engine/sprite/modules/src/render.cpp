@@ -414,10 +414,18 @@ struct SpriteDrawFunction : render::phase::DrawFunction<PhaseItem> {
 
         auto pipeline = world.resource<render::PipelineServer>().get_render_pipeline(item.pipeline());
         if (!pipeline) {
-            if (pipeline.error() != render::GetPipelineError::NotReady) {
+            if (const auto* err = std::get_if<render::PipelineServerError>(&pipeline.error())) {
+                auto detail = std::visit(
+                    [](auto e) -> std::string_view {
+                        using T = std::decay_t<decltype(e)>;
+                        if constexpr (std::is_same_v<T, render::PipelineError>) return "PipelineError::CreationFailure";
+                        else if (e == render::ShaderCacheError::NotLoaded) return "ShaderCacheError::NotLoaded";
+                        else return "ShaderCacheError::ModuleCreationFailure";
+                    },
+                    *err);
                 return std::unexpected(render::phase::DrawError::render_command_failure(
-                    std::format("[sprite] Pipeline {} for sprite entity {:#x} failed to create.", item.pipeline().get(),
-                                item.entity().index)));
+                    std::format("[sprite] Pipeline {} for sprite entity {:#x} failed: {}.", item.pipeline().get(),
+                                item.entity().index, detail)));
             }
             return std::unexpected(render::phase::DrawError::render_command_failure());
         }
