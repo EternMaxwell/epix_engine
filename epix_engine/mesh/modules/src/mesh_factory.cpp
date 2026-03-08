@@ -10,8 +10,9 @@ import glm;
 using namespace mesh;
 
 Mesh mesh::make_circle(float radius, std::optional<glm::vec4> color, std::optional<std::uint32_t> segment_count) {
-    auto segments = segment_count.value_or(
-        static_cast<std::uint32_t>(std::clamp(static_cast<int>(radius * glm::two_pi<float>() / 0.1f), 12, 1024)));
+    auto segments = segment_count.transform([](std::uint32_t count) { return std::clamp(count, 12u, 1024u); })
+                        .value_or(static_cast<std::uint32_t>(
+                            std::clamp(static_cast<int>(radius * glm::two_pi<float>() / 0.1f), 12, 1024)));
 
     std::vector<glm::vec3> positions;
     std::vector<std::uint32_t> indices;

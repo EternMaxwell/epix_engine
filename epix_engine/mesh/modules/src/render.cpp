@@ -95,7 +95,7 @@ struct MeshUniform {
 
 struct VertexInput {
     @location(0) position : vec3<f32>,
-    @location(2) uv : vec2<f32>,
+    @location(3) uv : vec2<f32>,
 };
 
 struct VertexOutput {
@@ -131,7 +131,7 @@ struct MeshUniform {
 struct VertexInput {
     @location(0) position : vec3<f32>,
     @location(1) color : vec4<f32>,
-    @location(2) uv : vec2<f32>,
+    @location(3) uv : vec2<f32>,
 };
 
 struct VertexOutput {
@@ -349,42 +349,18 @@ struct Mesh2dPipelineCache {
         }
 
         std::vector<wgpu::VertexBufferLayout> vertex_buffers;
-        std::size_t buffer_count = 1;
-        if (has_color) {
-            buffer_count = std::max<std::size_t>(buffer_count, Mesh::ATTRIBUTE_COLOR.slot + 1);
-        }
-        if (textured) {
-            buffer_count = std::max<std::size_t>(buffer_count, Mesh::ATTRIBUTE_UV0.slot + 1);
-        }
-        vertex_buffers.resize(buffer_count);
-        vertex_buffers[Mesh::ATTRIBUTE_POSITION.slot] = wgpu::VertexBufferLayout()
-                                                            .setArrayStride(sizeof(glm::vec3))
-                                                            .setStepMode(wgpu::VertexStepMode::eVertex)
-                                                            .setAttributes(std::array{
-                                                                wgpu::VertexAttribute()
-                                                                    .setShaderLocation(0)
-                                                                    .setFormat(Mesh::ATTRIBUTE_POSITION.format)
-                                                                    .setOffset(0),
-                                                            });
-        if (has_color) {
-            vertex_buffers[Mesh::ATTRIBUTE_COLOR.slot] = wgpu::VertexBufferLayout()
-                                                             .setArrayStride(sizeof(glm::vec4))
-                                                             .setStepMode(wgpu::VertexStepMode::eVertex)
-                                                             .setAttributes(std::array{
-                                                                 wgpu::VertexAttribute()
-                                                                     .setShaderLocation(1)
-                                                                     .setFormat(Mesh::ATTRIBUTE_COLOR.format)
-                                                                     .setOffset(0),
-                                                             });
-        }
-        if (textured) {
-            vertex_buffers[Mesh::ATTRIBUTE_UV0.slot] =
-                wgpu::VertexBufferLayout()
-                    .setArrayStride(sizeof(glm::vec2))
-                    .setStepMode(wgpu::VertexStepMode::eVertex)
-                    .setAttributes(std::array{
-                        wgpu::VertexAttribute().setShaderLocation(2).setFormat(Mesh::ATTRIBUTE_UV0.format).setOffset(0),
-                    });
+        vertex_buffers.reserve(layout.size());
+        for (const auto& [slot, attribute] : layout) {
+            (void)slot;
+            vertex_buffers.push_back(wgpu::VertexBufferLayout()
+                                         .setArrayStride(vertex_format_size(attribute.format))
+                                         .setStepMode(wgpu::VertexStepMode::eVertex)
+                                         .setAttributes(std::array{
+                                             wgpu::VertexAttribute()
+                                                 .setShaderLocation(attribute.slot)
+                                                 .setFormat(attribute.format)
+                                                 .setOffset(0),
+                                         }));
         }
 
         render::VertexState vertex_state{

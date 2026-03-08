@@ -32,7 +32,7 @@ export struct GPUMesh {
           _vertex_count(0) {}
 
     struct VertexBindingInfo {
-        std::uint32_t slot;
+        std::uint32_t shader_location;
         std::size_t offset;
         std::size_t size;
     };

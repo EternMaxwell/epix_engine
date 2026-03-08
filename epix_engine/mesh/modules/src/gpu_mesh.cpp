@@ -52,9 +52,10 @@ void GPUMesh::update_from_mesh(const Mesh& mesh, const wgpu::Device& device) {
         mesh.get_indices().transform([](const MeshIndices& indices) { return indices.size(); }).value_or(vertex_count);
 }
 void GPUMesh::bind_to(const wgpu::RenderPassEncoder& encoder) const {
-    std::ranges::for_each(_attribute_bindings, [&](const VertexBindingInfo& binding) {
-        encoder.setVertexBuffer(binding.slot, _combined_buffer, binding.offset, binding.size);
-    });
+    for (std::uint32_t buffer_index = 0; buffer_index < _attribute_bindings.size(); ++buffer_index) {
+        auto&& binding = _attribute_bindings[buffer_index];
+        encoder.setVertexBuffer(buffer_index, _combined_buffer, binding.offset, binding.size);
+    }
     if (is_indexed()) {
         encoder.setIndexBuffer(_index_buffer, _index_binding->format, _index_binding->offset, _index_binding->size);
     }

@@ -9,6 +9,7 @@ import epix.core_graph;
 import epix.mesh;
 import epix.transform;
 import epix.input;
+import epix.image;
 
 namespace {
 mesh::Mesh make_gradient_quad(float width, float height) {
@@ -38,15 +39,23 @@ mesh::Mesh make_gradient_quad(float width, float height) {
 
 struct MeshRenderingVisualTestPlugin {
     void finish(core::App& app) {
-        auto& world       = app.world_mut();
-        auto& mesh_assets = world.resource_mut<assets::Assets<mesh::Mesh>>();
+        auto& world        = app.world_mut();
+        auto& mesh_assets  = world.resource_mut<assets::Assets<mesh::Mesh>>();
+        auto& image_assets = world.resource_mut<assets::Assets<image::Image>>();
 
         world.spawn(core_graph::core_2d::Camera2DBundle{});
+
+        std::vector<std::uint8_t> texture_data = {
+            255, 50, 50, 255, 50, 255, 50, 255, 50, 50, 255, 255, 255, 255, 50, 255,
+        };
+        auto texture_image  = image::Image::create(2, 2, image::Format::RGBA8, texture_data).value();
+        auto texture_handle = image_assets.emplace(std::move(texture_image));
 
         auto solid_box          = mesh_assets.emplace(mesh::make_box2d(180.0f, 120.0f));
         auto gradient_quad      = mesh_assets.emplace(make_gradient_quad(180.0f, 180.0f));
         auto transparent_circle = mesh_assets.emplace(mesh::make_circle(78.0f, std::nullopt, 64));
         auto transparent_box    = mesh_assets.emplace(mesh::make_box2d(160.0f, 160.0f));
+        auto textured_box       = mesh_assets.emplace(mesh::make_box2d_uv(160.0f, 160.0f));
 
         world.spawn(mesh::Mesh2d{solid_box}, mesh::MeshMaterial2d{.color = glm::vec4(0.95f, 0.31f, 0.20f, 1.0f)},
                     transform::Transform{
@@ -74,6 +83,16 @@ struct MeshRenderingVisualTestPlugin {
                     },
                     transform::Transform{
                         .translation = glm::vec3(300.0f, -18.0f, 0.0f),
+                    });
+
+        world.spawn(mesh::Mesh2d{textured_box},
+                    mesh::MeshTextureMaterial2d{
+                        .image      = texture_handle,
+                        .color      = glm::vec4(1.0f),
+                        .alpha_mode = mesh::MeshAlphaMode2d::Opaque,
+                    },
+                    transform::Transform{
+                        .translation = glm::vec3(-120.0f, -220.0f, 0.0f),
                     });
     }
 };
