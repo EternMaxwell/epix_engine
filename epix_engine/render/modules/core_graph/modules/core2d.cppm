@@ -48,9 +48,10 @@ export struct Opaque2D {
     CachedPipelineId pipeline_id;
     phase::DrawFunctionId draw_func;
     size_t batch_count;
+    phase::OpaqueSortKey batch_key;
 
     Entity entity() const { return id; }
-    float sort_key() const { return 0.0f; }  // just return 0 since there is no need to sort opaque items by z order
+    const phase::OpaqueSortKey& sort_key() const { return batch_key; }
     phase::DrawFunctionId draw_function() const { return draw_func; }
     CachedPipelineId pipeline() const { return pipeline_id; }
     size_t batch_size() const { return batch_count; }
@@ -81,13 +82,13 @@ struct Node2D : graph::Node {
     void update(const World& world) override {
         if (!views) {
             views = world.try_query<Item<const view::ExtractedView&, const view::ViewTarget&, const view::ViewDepth&,
-                                     const phase::RenderPhase<P>&>>();
+                                         const phase::RenderPhase<P>&>>();
         } else {
             views->update_archetypes(world);
         }
     }
     void run(graph::GraphContext& ctx, graph::RenderContext& render_ctx, const World& world) override {
-        if (!views) return; // likely be components of the query not all got registered, just skip running for now
+        if (!views) return;  // likely be components of the query not all got registered, just skip running for now
         auto view_entity = ctx.view_entity();
         auto view_opt = views->query_with_ticks(world, world.last_change_tick(), world.change_tick()).get(view_entity);
         if (!view_opt) return;

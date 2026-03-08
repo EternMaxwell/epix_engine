@@ -439,6 +439,14 @@ struct Mesh2dPipelineCache {
     }
 };
 
+struct MeshOpaqueBatchKey {
+    std::uint64_t pipeline_id;
+    std::size_t mesh_hash;
+    std::size_t texture_hash;
+
+    std::strong_ordering operator<=>(const MeshOpaqueBatchKey&) const = default;
+};
+
 void insert_mesh_shaders(assets::Assets<render::Shader>& shaders) {
     [[maybe_unused]] auto solid_vertex = shaders.insert(
         kMeshSolidVertexShaderId, render::Shader{std::filesystem::path("internal://mesh/solid_vertex.wgsl"),
@@ -731,16 +739,7 @@ void queue_meshes_2d_opaque(
         draw_functions->template get_id<Mesh2dDrawFunction<core_graph::core_2d::Opaque2D>>().value_or(
             draw_functions->template add<Mesh2dDrawFunction<core_graph::core_2d::Opaque2D>>());
 
-    struct OpaqueCandidate {
-        Entity entity;
-        render::CachedPipelineId pipeline_id;
-        std::size_t mesh_hash;
-        std::size_t texture_hash;
-    };
-
     for (auto&& [phase, target] : views.iter()) {
-        std::vector<OpaqueCandidate> candidates;
-
         for (auto&& [entity, extracted_mesh] : meshes.iter()) {
             if (extracted_mesh.alpha_mode != MeshAlphaMode2d::Opaque) {
                 continue;
@@ -767,26 +766,18 @@ void queue_meshes_2d_opaque(
                 continue;
             }
 
-            std::size_t mesh_hash    = std::hash<assets::AssetId<Mesh>>()(extracted_mesh.mesh);
-            std::size_t texture_hash = extracted_mesh.texture
-                                           ? std::hash<assets::AssetId<image::Image>>()(*extracted_mesh.texture)
-                                           : 0;
-            candidates.push_back({entity, *pipeline_id, mesh_hash, texture_hash});
-        }
-
-        // Sort by (pipeline, mesh, texture) so batchable items are adjacent
-        std::stable_sort(candidates.begin(), candidates.end(), [](const OpaqueCandidate& a, const OpaqueCandidate& b) {
-            if (a.pipeline_id.get() != b.pipeline_id.get()) return a.pipeline_id.get() < b.pipeline_id.get();
-            if (a.mesh_hash != b.mesh_hash) return a.mesh_hash < b.mesh_hash;
-            return a.texture_hash < b.texture_hash;
-        });
-
-        for (auto& c : candidates) {
             phase.add(core_graph::core_2d::Opaque2D{
-                .id          = c.entity,
-                .pipeline_id = c.pipeline_id,
+                .id          = entity,
+                .pipeline_id = *pipeline_id,
                 .draw_func   = draw_function_id,
                 .batch_count = 1,
+                .batch_key   = render::phase::OpaqueSortKey(MeshOpaqueBatchKey{
+                    .pipeline_id  = pipeline_id->get(),
+                    .mesh_hash    = std::hash<assets::AssetId<Mesh>>()(extracted_mesh.mesh),
+                    .texture_hash = extracted_mesh.texture
+                                        ? std::hash<assets::AssetId<image::Image>>()(*extracted_mesh.texture)
+                                        : 0,
+                }),
             });
         }
     }

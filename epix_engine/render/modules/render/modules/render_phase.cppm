@@ -22,6 +22,56 @@ export struct DrawFunctionId : core::int_base<uint32_t> {
     bool operator==(const DrawFunctionId&) const  = default;
 };
 
+/**
+ * @brief Type-erased sort key for opaque phase items.
+ *
+ * Wraps any value type that satisfies `std::three_way_comparable<T, std::strong_ordering>`.
+ * When comparing two keys, the type (via typeid) is compared first to establish a stable
+ * total order across heterogeneous key types; values are then compared within the same type.
+ * This allows different render subsystems to attach custom batch keys to Opaque2D items.
+ */
+export struct OpaqueSortKey {
+   private:
+    struct Concept {
+        virtual std::strong_ordering compare(const Concept& other) const = 0;
+        virtual const std::type_info& type() const                       = 0;
+        virtual ~Concept()                                               = default;
+    };
+
+    template <typename T>
+    struct Model : Concept {
+        T value;
+        explicit Model(T v) : value(std::move(v)) {}
+        const std::type_info& type() const override { return typeid(T); }
+        std::strong_ordering compare(const Concept& other) const override {
+            return value <=> static_cast<const Model<T>&>(other).value;
+        }
+    };
+
+    std::shared_ptr<const Concept> impl;
+
+   public:
+    OpaqueSortKey() = default;
+
+    template <typename T>
+        requires std::three_way_comparable<T, std::strong_ordering>
+    explicit OpaqueSortKey(T value) : impl(std::make_shared<Model<T>>(std::move(value))) {}
+
+    std::strong_ordering operator<=>(const OpaqueSortKey& other) const {
+        if (!impl && !other.impl) return std::strong_ordering::equal;
+        if (!impl) return std::strong_ordering::less;
+        if (!other.impl) return std::strong_ordering::greater;
+
+        const std::type_info& ta = impl->type();
+        const std::type_info& tb = other.impl->type();
+        if (ta != tb) {
+            return ta.before(tb) ? std::strong_ordering::less : std::strong_ordering::greater;
+        }
+        return impl->compare(*other.impl);
+    }
+    bool operator==(const OpaqueSortKey& other) const { return (*this <=> other) == std::strong_ordering::equal; }
+};
+
 export template <typename T>
 concept PhaseItem = requires(const T item) {
     // the entity associated with this item
