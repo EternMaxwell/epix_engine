@@ -34,7 +34,7 @@ wgpu::TextureFormat format_cast(image::Format format) {
 }
 
 GPUImage render::RenderAsset<image::Image>::process(image::Image&& asset, Param param) {
-    auto& [device, queue] = param;
+    auto& [device, queue, default_sampler] = param;
     wgpu::TextureDescriptor desc;
     desc.setUsage(wgpu::TextureUsage::eCopyDst | wgpu::TextureUsage::eTextureBinding)
         .setDimension(wgpu::TextureDimension::e2D)
@@ -50,8 +50,7 @@ GPUImage render::RenderAsset<image::Image>::process(image::Image&& asset, Param 
     GPUImage gpu_image;
     gpu_image.texture = device->createTexture(desc);
     gpu_image.view    = gpu_image.texture.createView();
-    gpu_image.sampler = device->createSampler(
-        wgpu::SamplerDescriptor().setMinFilter(wgpu::FilterMode::eLinear).setMagFilter(wgpu::FilterMode::eLinear));
+    gpu_image.sampler = default_sampler->sampler;
 
     auto view = asset.raw_view();
 

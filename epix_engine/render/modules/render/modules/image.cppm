@@ -9,6 +9,9 @@ import epix.assets;
 import webgpu;
 
 namespace render {
+export struct DefaultImageSampler {
+    wgpu::Sampler sampler;
+};
 export struct GPUImage {
     wgpu::Texture texture;
     wgpu::TextureView view;
@@ -18,7 +21,7 @@ export struct GPUImage {
 
 template <>
 struct render::RenderAsset<image::Image> {
-    using Param          = std::tuple<Res<wgpu::Device>, Res<wgpu::Queue>>;
+    using Param          = std::tuple<Res<wgpu::Device>, Res<wgpu::Queue>, Res<render::DefaultImageSampler>>;
     using ProcessedAsset = GPUImage;
 
     ProcessedAsset process(image::Image&& asset, Param param);

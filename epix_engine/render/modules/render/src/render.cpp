@@ -80,6 +80,20 @@ void RenderPlugin::build(App& app) {
     app.world_mut().insert_resource(device.clone());
     app.world_mut().insert_resource(queue.clone());
     app.world_mut().insert_resource(limits);
+    wgpu::Sampler default_sampler = device.createSampler(wgpu::SamplerDescriptor()
+                                                             .setLabel("DefaultImageSampler")
+                                                             .setAddressModeU(wgpu::AddressMode::eClampToEdge)
+                                                             .setAddressModeV(wgpu::AddressMode::eClampToEdge)
+                                                             .setAddressModeW(wgpu::AddressMode::eClampToEdge)
+                                                             .setMinFilter(wgpu::FilterMode::eLinear)
+                                                             .setMagFilter(wgpu::FilterMode::eLinear)
+                                                             .setMipmapFilter(wgpu::MipmapFilterMode::eNearest)
+                                                             .setLodMinClamp(0.0f)
+                                                             .setLodMaxClamp(0.0f)
+                                                             .setMaxAnisotropy(1));
+    app.world_mut().insert_resource(render::DefaultImageSampler{
+        .sampler = default_sampler,
+    });
     // keep the device descriptor to make the callbacks alive.
     app.world_mut().insert_resource(std::move(deviceDesc));
 
@@ -89,6 +103,9 @@ void RenderPlugin::build(App& app) {
         render_app.world_mut().insert_resource(device.clone());
         render_app.world_mut().insert_resource(queue.clone());
         render_app.world_mut().insert_resource(limits);
+        render_app.world_mut().insert_resource(render::DefaultImageSampler{
+            .sampler = default_sampler,
+        });
         render_app.world_mut().insert_resource(PipelineServer(device.clone()));
         render_app.add_systems(ExtractSchedule, into(PipelineServer::extract_shaders).set_name("extract shaders"))
             .add_systems(Render, into([](Res<wgpu::Device> device) { device->poll(false); },
