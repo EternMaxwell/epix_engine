@@ -77,20 +77,13 @@ struct MeshBatchingTestPlugin {
 
         constexpr int kCount = 3000;  // 1000 of each shape
 
+        const std::array shape_handles = {box_handle, circle_handle, tri_handle};
+
         for (int i = 0; i < kCount; ++i) {
             glm::vec4 color(color_dist(rng), color_dist(rng), color_dist(rng), 1.0f);
             glm::vec3 translation(pos_dist(rng), pos_dist(rng), 0.0f);
 
-            assets::Handle<mesh::Mesh> handle;
-            if (i % 3 == 0) {
-                handle = box_handle;
-            } else if (i % 3 == 1) {
-                handle = circle_handle;
-            } else {
-                handle = tri_handle;
-            }
-
-            world.spawn(mesh::Mesh2d{handle},
+            world.spawn(mesh::Mesh2d{shape_handles[i % 3]},
                         mesh::MeshMaterial2d{.color = color, .alpha_mode = mesh::MeshAlphaMode2d::Opaque},
                         transform::Transform{.translation = translation});
         }
