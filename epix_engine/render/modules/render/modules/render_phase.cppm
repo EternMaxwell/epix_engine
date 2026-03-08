@@ -26,15 +26,15 @@ export struct DrawFunctionId : core::int_base<uint32_t> {
  * @brief Type-erased sort key for opaque phase items.
  *
  * Wraps any value type that satisfies `std::three_way_comparable<T, std::strong_ordering>`.
- * When comparing two keys, the type (via typeid) is compared first to establish a stable
+ * When comparing two keys, typeid on the polymorphic Concept is used to establish a stable
  * total order across heterogeneous key types; values are then compared within the same type.
  * This allows different render subsystems to attach custom batch keys to Opaque2D items.
+ * Move-only (backed by unique_ptr).
  */
 export struct OpaqueSortKey {
    private:
     struct Concept {
         virtual std::strong_ordering compare(const Concept& other) const = 0;
-        virtual const std::type_info& type() const                       = 0;
         virtual ~Concept()                                               = default;
     };
 
@@ -42,28 +42,32 @@ export struct OpaqueSortKey {
     struct Model : Concept {
         T value;
         explicit Model(T v) : value(std::move(v)) {}
-        const std::type_info& type() const override { return typeid(T); }
         std::strong_ordering compare(const Concept& other) const override {
             return value <=> static_cast<const Model<T>&>(other).value;
         }
     };
 
-    std::shared_ptr<const Concept> impl;
+    std::unique_ptr<Concept> impl;
 
    public:
-    OpaqueSortKey() = default;
+    OpaqueSortKey()                              = default;
+    OpaqueSortKey(OpaqueSortKey&&)               = default;
+    OpaqueSortKey& operator=(OpaqueSortKey&&)    = default;
+    OpaqueSortKey(const OpaqueSortKey&)          = delete;
+    OpaqueSortKey& operator=(const OpaqueSortKey&) = delete;
 
     template <typename T>
         requires std::three_way_comparable<T, std::strong_ordering>
-    explicit OpaqueSortKey(T value) : impl(std::make_shared<Model<T>>(std::move(value))) {}
+    explicit OpaqueSortKey(T value) : impl(std::make_unique<Model<T>>(std::move(value))) {}
 
     std::strong_ordering operator<=>(const OpaqueSortKey& other) const {
         if (!impl && !other.impl) return std::strong_ordering::equal;
         if (!impl) return std::strong_ordering::less;
         if (!other.impl) return std::strong_ordering::greater;
 
-        const std::type_info& ta = impl->type();
-        const std::type_info& tb = other.impl->type();
+        // typeid on the polymorphic object gives the concrete Model<T> type — no extra virtual needed
+        const std::type_info& ta = typeid(*impl);
+        const std::type_info& tb = typeid(*other.impl);
         if (ta != tb) {
             return ta.before(tb) ? std::strong_ordering::less : std::strong_ordering::greater;
         }
