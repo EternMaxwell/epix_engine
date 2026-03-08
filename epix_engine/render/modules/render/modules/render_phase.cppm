@@ -100,6 +100,7 @@ concept CachedRenderPipelinePhaseItem = PhaseItem<P> && requires(const P item) {
 
 export struct DrawError {
     enum class ErrorType {
+        Skip,
         RenderCommandFailure,
         InvalidViewQuery,
         InvalidEntityQuery,
@@ -107,6 +108,9 @@ export struct DrawError {
     } type;
     std::string message;
 
+    static DrawError skip(std::string message = {}) {
+        return DrawError{.type = ErrorType::Skip, .message = std::move(message)};
+    }
     static DrawError render_command_failure(std::string message = {}) {
         return DrawError{.type = ErrorType::RenderCommandFailure, .message = std::move(message)};
     }
@@ -123,6 +127,8 @@ export struct DrawError {
 
 std::string_view to_str(DrawError error) {
     switch (error.type) {
+        case DrawError::ErrorType::Skip:
+            return "Skipped";
         case DrawError::ErrorType::RenderCommandFailure:
             return "Render command execution failed";
         case DrawError::ErrorType::InvalidViewQuery:
@@ -326,10 +332,20 @@ struct RenderPhase {
             auto& item = items[i];
             if (auto draw_function = draw_functions.get(item.draw_function()); draw_function) {
                 auto result = draw_function->get().draw(world, cmd, view, item);
-                if (!result && !result.error().message.empty()) {
-                    spdlog::error("[render] Draw function {} failed for item {:#x}. Error: {}.",
-                                  static_cast<std::uint32_t>(item.draw_function()), item.entity().index,
-                                  to_str(result.error()));
+                if (!result) {
+                    auto&& error = result.error();
+                    if (error.type == DrawError::ErrorType::Skip) {
+                        continue;
+                    }
+                    if (!error.message.empty()) {
+                        spdlog::error("[render] Draw function {} failed for item {:#x}. Error: {}.",
+                                      static_cast<std::uint32_t>(item.draw_function()), item.entity().index,
+                                      error.message);
+                    } else {
+                        spdlog::error("[render] Draw function {} failed for item {:#x}. Error: {}.",
+                                      static_cast<std::uint32_t>(item.draw_function()), item.entity().index,
+                                      to_str(error));
+                    }
                 }
             } else {
                 spdlog::error("[render] Draw function {} not found for item {:#x}.",
@@ -345,7 +361,11 @@ export struct RenderCommandError {
     } type;
     std::string message;
 };
+
 template <template <typename> typename R, typename P>
+using render_command_traits = function_traits<decltype(&R<P>::render)>;
+
+export template <template <typename> typename R, typename P>
 concept RenderCommand = requires {
     requires PhaseItem<P>;
     requires std::is_member_function_pointer_v<decltype(&R<P>::render)>;
@@ -354,40 +374,43 @@ concept RenderCommand = requires {
     };
     requires std::constructible_from<R<P>>;
     requires std::movable<R<P>>;
-    requires function_traits<decltype(&R<P>::render)>::arity == 5;
-    requires std::same_as<std::expected<void, RenderCommandError>,
-                          typename function_traits<decltype(&R<P>::render)>::return_type>;
-    requires std::same_as<const P&, std::tuple_element_t<0, function_traits<decltype(&R<P>::render)>::args_tuple>>;
-    requires core::query_data<std::tuple_element_t<1, function_traits<decltype(&R<P>::render)>::args_tuple>>;
-    requires specialization_of<std::tuple_element_t<2, function_traits<decltype(&R<P>::render)>::args_tuple>,
+    requires render_command_traits<R, P>::arity == 5;
+    requires std::same_as<std::expected<void, RenderCommandError>, typename render_command_traits<R, P>::return_type>;
+    requires std::same_as<const P&, std::tuple_element_t<0, typename render_command_traits<R, P>::args_tuple>>;
+    requires core::query_data<std::tuple_element_t<1, typename render_command_traits<R, P>::args_tuple>>;
+    requires specialization_of<std::tuple_element_t<2, typename render_command_traits<R, P>::args_tuple>,
                                std::optional>;
     requires core::query_data<
-        typename std::tuple_element_t<2, function_traits<decltype(&R<P>::render)>::args_tuple>::value_type>;
-    requires core::system_param<typename std::tuple_element_t<3, function_traits<decltype(&R<P>::render)>::args_tuple>>;
+        typename std::tuple_element_t<2, typename render_command_traits<R, P>::args_tuple>::value_type>;
+    requires core::system_param<typename std::tuple_element_t<3, typename render_command_traits<R, P>::args_tuple>>;
     requires std::convertible_to<const wgpu::RenderPassEncoder&,
-                                 std::tuple_element_t<4, function_traits<decltype(&R<P>::render)>::args_tuple>>;
+                                 std::tuple_element_t<4, typename render_command_traits<R, P>::args_tuple>>;
 };
 
 template <template <typename> typename R, PhaseItem P>
     requires RenderCommand<R, P>
 struct RenderCommandState {
-    using command_type      = R<P>;
-    using func_traits       = function_traits<decltype(&command_type::render)>;
-    using view_query_data   = std::tuple_element_t<1, typename func_traits::args_tuple>;
-    using entity_query_data = typename std::tuple_element_t<2, typename func_traits::args_tuple>::value_type;
-    using system_param      = std::tuple_element_t<3, typename func_traits::args_tuple>;
+    using command_type       = R<P>;
+    using func_traits        = render_command_traits<R, P>;
+    using view_query_data    = std::tuple_element_t<1, typename func_traits::args_tuple>;
+    using entity_query_data  = typename std::tuple_element_t<2, typename func_traits::args_tuple>::value_type;
+    using view_query_param   = core::Query<view_query_data>;
+    using entity_query_param = core::Query<entity_query_data>;
+    using system_param       = std::tuple_element_t<3, typename func_traits::args_tuple>;
 
    private:
-    using combined_param = core::ROSystemParam<core::ParamSet<view_query_data, entity_query_data, system_param>>;
+    using combined_param = core::ROSystemParam<core::ParamSet<view_query_param, entity_query_param, system_param>>;
     using combined_state = typename combined_param::State;
     using combined_item  = typename combined_param::Item;
 
    public:
-    RenderCommandState(World& world) : command(), param_state(combined_param::init_state(world)) {
-        combined_param::init_access(param_state, meta, access, world);
+    explicit RenderCommandState(World& world) {
+        param_state = combined_param::init_state(world);
+        combined_param::init_access(*param_state, meta, access, world);
     }
+
     void prepare(const World& world) {
-        params = combined_param::get_param(param_state, meta, world, world.change_tick());
+        params = combined_param::get_param(*param_state, meta, world, world.change_tick());
         command.prepare(world);
     }
     std::expected<void, DrawError> draw(const World& world,
@@ -397,16 +420,21 @@ struct RenderCommandState {
         if (!params) {
             throw std::runtime_error("Failed to get system parameters for render command.");
         }
-        auto&& [view_query, entity_query, system_param] = *params;
+        auto&& [view_query, entity_query, system_param] = params->get();
         auto view_query_result                          = view_query.get(view);
         if (!view_query_result) return std::unexpected(DrawError::invalid_view_query());
         auto entity_query_result = entity_query.get(item.entity());
-        if (!entity_query_result) return std::unexpected(DrawError::invalid_entity_query());
-        auto result = command.render(world, ctx, view, item, *view_query_result, *entity_query_result, system_param);
+        auto result              = command.render(item, *view_query_result, entity_query_result, system_param, ctx);
         if (!result) {
-            auto msg =
-                std::format("Render command {} failed for item {:#x}. Error: {}.",
-                            meta::type_id<command_type>::short_name(), item.entity().index, result.error().message);
+            if (result.error().type == RenderCommandError::Type::Skip) {
+                return std::unexpected(DrawError::skip(std::move(result.error().message)));
+            }
+            auto msg = result.error().message.empty()
+                           ? std::format("Render command {} failed for item {:#x}.",
+                                         meta::type_id<command_type>::short_name(), item.entity().index)
+                           : std::format("Render command {} failed for item {:#x}. Error: {}.",
+                                         meta::type_id<command_type>::short_name(), item.entity().index,
+                                         result.error().message);
             return std::unexpected(DrawError::render_command_failure(std::move(msg)));
         }
         return {};
@@ -415,15 +443,73 @@ struct RenderCommandState {
    private:
     core::SystemMeta meta;
     core::FilteredAccessSet access;
-    combined_state param_state;
+    std::optional<combined_state> param_state;
     std::optional<combined_item> params;
     command_type command;
+};
+
+export template <CachedRenderPipelinePhaseItem P>
+struct SetItemPipeline {
+    void prepare(const World&) {}
+
+    std::expected<void, RenderCommandError> render(const P& item,
+                                                   Item<>,
+                                                   std::optional<Item<>>,
+                                                   ParamSet<Res<PipelineServer>> params,
+                                                   const wgpu::RenderPassEncoder& encoder) {
+        auto&& [pipeline_server] = params.get();
+        auto pipeline            = pipeline_server->get_render_pipeline(item.pipeline());
+        if (!pipeline) {
+            if (std::holds_alternative<GetPipelineNotReady>(pipeline.error())) {
+                return std::unexpected(RenderCommandError{
+                    .type    = RenderCommandError::Type::Skip,
+                    .message = std::format("Render pipeline {} is not ready for item {:#x}.", item.pipeline().get(),
+                                           item.entity().index),
+                });
+            }
+            auto detail = std::visit(
+                []<typename T>(const T& error) -> std::string {
+                    using error_t = std::decay_t<T>;
+                    if constexpr (std::is_same_v<error_t, GetPipelineNotReady>) {
+                        return "pipeline not ready";
+                    } else if constexpr (std::is_same_v<error_t, GetPipelineInvalidId>) {
+                        return "invalid pipeline id";
+                    } else {
+                        return std::visit(
+                            []<typename Inner>(const Inner& inner) -> std::string {
+                                using inner_t = std::decay_t<Inner>;
+                                if constexpr (std::is_same_v<inner_t, PipelineError>) {
+                                    return "pipeline creation failure";
+                                } else if constexpr (std::is_same_v<inner_t, ShaderCacheError>) {
+                                    return inner == ShaderCacheError::NotLoaded ? "shader not loaded"
+                                                                                : "shader module creation failure";
+                                } else {
+                                    return "unknown pipeline server error";
+                                }
+                            },
+                            error);
+                    }
+                },
+                pipeline.error());
+            return std::unexpected(RenderCommandError{
+                .type    = RenderCommandError::Type::Failure,
+                .message = std::format("Failed to resolve render pipeline {} for item {:#x}: {}.",
+                                       item.pipeline().get(), item.entity().index, detail),
+            });
+        }
+
+        encoder.setPipeline(pipeline->get().pipeline());
+        return {};
+    }
 };
 template <PhaseItem P, template <typename> typename... R>
     requires(RenderCommand<R, P> && ...)
 struct RenderCommandSequence {
    public:
-    RenderCommandSequence(World& world) : m_commands(std::make_tuple(RenderCommandState<R, P>(world)...)) {}
+    explicit RenderCommandSequence(World& world)
+        : m_commands([&]<size_t... I>(std::index_sequence<I...>) {
+              return std::tuple<RenderCommandState<R, P>...>{((void)I, RenderCommandState<R, P>(world))...};
+          }(std::index_sequence_for<R<P>...>{})) {}
 
     void prepare(const World& world) {
         [&]<size_t... I>(std::index_sequence<I...>) {
@@ -453,8 +539,9 @@ struct RenderCommandSequence {
 export template <PhaseItem P, template <typename> typename... R>
     requires(RenderCommand<R, P> && ...)
 DrawFunctionId app_add_render_commands(core::App& app) {
-    auto& draw_functions = app.world_mut().resource_mut<DrawFunctions<P>>();
-    return draw_functions.template add<RenderCommandSequence<P, R...>>(app.world_mut());
+    auto& world          = app.world_mut();
+    auto& draw_functions = world.resource_mut<DrawFunctions<P>>();
+    return draw_functions.template add<RenderCommandSequence<P, R...>>(world);
 }
 
 export template <PhaseItem P>

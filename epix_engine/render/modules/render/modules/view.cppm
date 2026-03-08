@@ -511,16 +511,15 @@ export template <size_t Slot>
 struct BindViewUniform {
     template <render::phase::PhaseItem P>
     struct Command {
-        std::unordered_map<wgpu::raw::Buffer, wgpu::BindGroup> uniform_set_cache;
-        void prepare(World&) { uniform_set_cache.clear(); }
-        bool render(const P&,
-                    Item<const UniformBuffer&> view_uniform,
-                    std::optional<Item<>> entity_item,
-                    ParamSet<Res<wgpu::Device>, Res<ViewUniformBindingLayout>> params,
-                    const wgpu::RenderPassEncoder& encoder) {
-            auto&& [device, uniform_layout] = params.get();
-            auto&& [ub]                     = *view_uniform;
-            return true;
+        void prepare(const World&) {}
+
+        std::expected<void, render::phase::RenderCommandError> render(const P&,
+                                                                      Item<const ViewBindGroup&> view_bind_group,
+                                                                      std::optional<Item<>> entity_item,
+                                                                      ParamSet<>,
+                                                                      const wgpu::RenderPassEncoder& encoder) {
+            encoder.setBindGroup(Slot, std::get<0>(*view_bind_group).bind_group, std::span<const std::uint32_t>{});
+            return {};
         }
     };
 };
