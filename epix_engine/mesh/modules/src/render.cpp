@@ -26,10 +26,11 @@ struct MeshUniform {
 };
 
 @group(0) @binding(0) var<uniform> view_uniform : ViewUniform;
-@group(1) @binding(0) var<uniform> mesh_uniform : MeshUniform;
+@group(1) @binding(0) var<storage, read> mesh_instances : array<MeshUniform>;
 
 struct VertexInput {
     @location(0) position : vec3<f32>,
+    @builtin(instance_index) instance_index : u32,
 };
 
 struct VertexOutput {
@@ -39,9 +40,10 @@ struct VertexOutput {
 
 @vertex
 fn main(input : VertexInput) -> VertexOutput {
+    let mesh = mesh_instances[input.instance_index];
     var output : VertexOutput;
-    output.position = view_uniform.projection * view_uniform.view * mesh_uniform.model * vec4<f32>(input.position, 1.0);
-    output.color = mesh_uniform.color;
+    output.position = view_uniform.projection * view_uniform.view * mesh.model * vec4<f32>(input.position, 1.0);
+    output.color = mesh.color;
     return output;
 }
 )";
@@ -58,11 +60,12 @@ struct MeshUniform {
 };
 
 @group(0) @binding(0) var<uniform> view_uniform : ViewUniform;
-@group(1) @binding(0) var<uniform> mesh_uniform : MeshUniform;
+@group(1) @binding(0) var<storage, read> mesh_instances : array<MeshUniform>;
 
 struct VertexInput {
     @location(0) position : vec3<f32>,
     @location(1) color : vec4<f32>,
+    @builtin(instance_index) instance_index : u32,
 };
 
 struct VertexOutput {
@@ -72,9 +75,10 @@ struct VertexOutput {
 
 @vertex
 fn main(input : VertexInput) -> VertexOutput {
+    let mesh = mesh_instances[input.instance_index];
     var output : VertexOutput;
-    output.position = view_uniform.projection * view_uniform.view * mesh_uniform.model * vec4<f32>(input.position, 1.0);
-    output.color = input.color * mesh_uniform.color;
+    output.position = view_uniform.projection * view_uniform.view * mesh.model * vec4<f32>(input.position, 1.0);
+    output.color = input.color * mesh.color;
     return output;
 }
 )";
@@ -91,11 +95,12 @@ struct MeshUniform {
 };
 
 @group(0) @binding(0) var<uniform> view_uniform : ViewUniform;
-@group(1) @binding(0) var<uniform> mesh_uniform : MeshUniform;
+@group(1) @binding(0) var<storage, read> mesh_instances : array<MeshUniform>;
 
 struct VertexInput {
     @location(0) position : vec3<f32>,
     @location(3) uv : vec2<f32>,
+    @builtin(instance_index) instance_index : u32,
 };
 
 struct VertexOutput {
@@ -106,9 +111,10 @@ struct VertexOutput {
 
 @vertex
 fn main(input : VertexInput) -> VertexOutput {
+    let mesh = mesh_instances[input.instance_index];
     var output : VertexOutput;
-    output.position = view_uniform.projection * view_uniform.view * mesh_uniform.model * vec4<f32>(input.position, 1.0);
-    output.color = mesh_uniform.color;
+    output.position = view_uniform.projection * view_uniform.view * mesh.model * vec4<f32>(input.position, 1.0);
+    output.color = mesh.color;
     output.uv = input.uv;
     return output;
 }
@@ -126,12 +132,13 @@ struct MeshUniform {
 };
 
 @group(0) @binding(0) var<uniform> view_uniform : ViewUniform;
-@group(1) @binding(0) var<uniform> mesh_uniform : MeshUniform;
+@group(1) @binding(0) var<storage, read> mesh_instances : array<MeshUniform>;
 
 struct VertexInput {
     @location(0) position : vec3<f32>,
     @location(1) color : vec4<f32>,
     @location(3) uv : vec2<f32>,
+    @builtin(instance_index) instance_index : u32,
 };
 
 struct VertexOutput {
@@ -142,9 +149,10 @@ struct VertexOutput {
 
 @vertex
 fn main(input : VertexInput) -> VertexOutput {
+    let mesh = mesh_instances[input.instance_index];
     var output : VertexOutput;
-    output.position = view_uniform.projection * view_uniform.view * mesh_uniform.model * vec4<f32>(input.position, 1.0);
-    output.color = input.color * mesh_uniform.color;
+    output.position = view_uniform.projection * view_uniform.view * mesh.model * vec4<f32>(input.position, 1.0);
+    output.color = input.color * mesh.color;
     output.uv = input.uv;
     return output;
 }
@@ -199,18 +207,20 @@ struct ExtractedMesh2d {
     std::optional<assets::AssetId<image::Image>> texture;
 };
 
-struct PreparedMesh2d {
-    wgpu::BindGroup bind_group;
+struct MeshBatch {
     std::optional<wgpu::BindGroup> texture_bind_group;
+    std::uint32_t instance_start = 0;
 };
 
-struct MeshUniform {
+struct MeshInstanceData {
     glm::mat4 model;
     glm::vec4 color;
 };
 
-struct MeshUniformBuffer {
+struct MeshInstanceBuffer {
     wgpu::Buffer buffer;
+    wgpu::BindGroup bind_group;
+    std::vector<MeshInstanceData> instances;
 };
 
 enum class MeshShaderVariant : std::uint8_t {
@@ -284,15 +294,15 @@ struct Mesh2dPipelineCache {
         : view_layout(world.resource<render::view::ViewUniformBindingLayout>().layout),
           mesh_layout(world.resource<wgpu::Device>().createBindGroupLayout(
               wgpu::BindGroupLayoutDescriptor()
-                  .setLabel("Mesh2dUniformLayout")
+                  .setLabel("Mesh2dInstanceLayout")
                   .setEntries(std::array{
                       wgpu::BindGroupLayoutEntry()
                           .setBinding(0)
-                          .setVisibility(wgpu::ShaderStage::eVertex | wgpu::ShaderStage::eFragment)
+                          .setVisibility(wgpu::ShaderStage::eVertex)
                           .setBuffer(wgpu::BufferBindingLayout()
-                                         .setType(wgpu::BufferBindingType::eUniform)
+                                         .setType(wgpu::BufferBindingType::eReadOnlyStorage)
                                          .setHasDynamicOffset(false)
-                                         .setMinBindingSize(sizeof(MeshUniform))),
+                                         .setMinBindingSize(sizeof(MeshInstanceData))),
                   }))),
           texture_layout(world.resource<wgpu::Device>().createBindGroupLayout(
               wgpu::BindGroupLayoutDescriptor()
@@ -429,8 +439,6 @@ struct Mesh2dPipelineCache {
     }
 };
 
-std::size_t aligned_offset(std::size_t index, std::size_t stride) { return index * stride; }
-
 void insert_mesh_shaders(assets::Assets<render::Shader>& shaders) {
     [[maybe_unused]] auto solid_vertex = shaders.insert(
         kMeshSolidVertexShaderId, render::Shader{std::filesystem::path("internal://mesh/solid_vertex.wgsl"),
@@ -480,89 +488,135 @@ void extract_meshes_2d(Commands cmd,
             .depth         = transform.matrix[3][2],
             .alpha_mode    = alpha_mode,
             .texture = texture_material.transform([](const MeshTextureMaterial2d& value) { return value.image.id(); }),
-        });
+        }, MeshBatch{});
     }
 }
 
-void prepare_mesh_uniforms(Commands cmd,
-                           Query<Item<Entity, const ExtractedMesh2d&>> meshes,
-                           Res<wgpu::Device> device,
-                           Res<wgpu::Queue> queue,
-                           Res<wgpu::Limits> limits,
-                           Res<Mesh2dPipelineCache> pipeline_cache,
-                           Res<render::RenderAssets<image::Image>> images,
-                           ResMut<MeshUniformBuffer> uniform_buffer) {
-    auto mesh_count = meshes.iter().max_remaining();
-    if (mesh_count == 0) {
+void ensure_mesh_instance_buffer(MeshInstanceBuffer& instance_buffer,
+                                  const Mesh2dPipelineCache& pipeline_cache,
+                                  const wgpu::Device& device,
+                                  std::size_t required_bytes) {
+    if (required_bytes == 0) {
         return;
     }
 
-    const std::size_t uniform_size = sizeof(MeshUniform);
-    const std::size_t alignment    = std::max<std::size_t>(uniform_size, limits->minUniformBufferOffsetAlignment);
-    const std::size_t stride       = ((uniform_size + alignment - 1) / alignment) * alignment;
-    std::vector<std::uint8_t> upload_data(mesh_count * stride);
-
-    if (!uniform_buffer->buffer || uniform_buffer->buffer.getSize() < upload_data.size()) {
-        uniform_buffer->buffer =
-            device->createBuffer(wgpu::BufferDescriptor()
-                                     .setLabel("Mesh2dUniformBuffer")
-                                     .setSize(upload_data.size())
-                                     .setUsage(wgpu::BufferUsage::eUniform | wgpu::BufferUsage::eCopyDst));
-        if (!uniform_buffer->buffer) {
-            spdlog::error("[mesh] Failed to create mesh uniform buffer with size {} bytes.", upload_data.size());
-            return;
-        }
+    std::size_t current_size = instance_buffer.buffer ? instance_buffer.buffer.getSize() : 0;
+    if (required_bytes > current_size) {
+        std::size_t buffer_size = std::bit_ceil(required_bytes);
+        instance_buffer.buffer =
+            device.createBuffer(wgpu::BufferDescriptor()
+                                    .setLabel("Mesh2dInstanceBuffer")
+                                    .setSize(buffer_size)
+                                    .setUsage(wgpu::BufferUsage::eStorage | wgpu::BufferUsage::eCopyDst));
+        instance_buffer.bind_group = device.createBindGroup(wgpu::BindGroupDescriptor()
+                                                                .setLabel("Mesh2dInstanceBindGroup")
+                                                                .setLayout(pipeline_cache.mesh_layout)
+                                                                .setEntries(std::array{
+                                                                    wgpu::BindGroupEntry()
+                                                                        .setBinding(0)
+                                                                        .setBuffer(instance_buffer.buffer)
+                                                                        .setOffset(0)
+                                                                        .setSize(buffer_size),
+                                                                }));
     }
+}
 
-    std::size_t index = 0;
-    for (auto&& [entity, mesh] : meshes.iter()) {
-        MeshUniform uniform{.model = mesh.model, .color = mesh.color};
-        auto offset = aligned_offset(index, stride);
-        std::memcpy(upload_data.data() + offset, &uniform, sizeof(uniform));
+struct MeshBatchKey {
+    render::CachedPipelineId pipeline_id;
+    assets::AssetId<Mesh> mesh_id;
+    std::optional<assets::AssetId<image::Image>> texture_id;
 
-        auto bind_group = device->createBindGroup(wgpu::BindGroupDescriptor()
-                                                      .setLabel("Mesh2dUniformBindGroup")
-                                                      .setLayout(pipeline_cache->mesh_layout)
-                                                      .setEntries(std::array{
-                                                          wgpu::BindGroupEntry()
-                                                              .setBinding(0)
-                                                              .setBuffer(uniform_buffer->buffer)
-                                                              .setOffset(offset)
-                                                              .setSize(sizeof(MeshUniform)),
-                                                      }));
+    bool operator==(const MeshBatchKey&) const = default;
+};
 
-        std::optional<wgpu::BindGroup> texture_bind_group;
-        if (mesh.texture) {
-            if (auto gpu_image = images->try_get(*mesh.texture); gpu_image) {
-                texture_bind_group = device->createBindGroup(
-                    wgpu::BindGroupDescriptor()
-                        .setLabel("Mesh2dTextureBindGroup")
-                        .setLayout(pipeline_cache->texture_layout)
-                        .setEntries(std::array{
-                            wgpu::BindGroupEntry().setBinding(0).setSampler(gpu_image->sampler),
-                            wgpu::BindGroupEntry().setBinding(1).setTextureView(gpu_image->view),
-                        }));
-            } else {
-                spdlog::warn(
-                    "[mesh] Entity {:#x} references texture {} for mesh rendering, but the GPU image is not ready yet.",
-                    mesh.source_entity.index, mesh.texture->to_string_short());
+void prepare_mesh_instances(
+    Query<Item<render::phase::RenderPhase<core_graph::core_2d::Opaque2D>&>,
+          With<render::camera::ExtractedCamera, render::view::ExtractedView>> opaque_views,
+    Query<Item<render::phase::RenderPhase<core_graph::core_2d::Transparent2D>&>,
+          With<render::camera::ExtractedCamera, render::view::ExtractedView>> transparent_views,
+    Query<Item<MeshBatch&, const ExtractedMesh2d&>> meshes,
+    Res<render::RenderAssets<image::Image>> images,
+    Res<wgpu::Device> device,
+    Res<wgpu::Queue> queue,
+    Res<Mesh2dPipelineCache> pipeline_cache,
+    ResMut<MeshInstanceBuffer> instance_buffer) {
+    instance_buffer->instances.clear();
+    std::unordered_map<assets::AssetId<image::Image>, wgpu::BindGroup> texture_bind_group_cache;
+
+    auto process_phase = [&](auto& phase) {
+        std::optional<MeshBatchKey> current_key;
+        std::size_t batch_head = std::numeric_limits<std::size_t>::max();
+
+        for (std::size_t item_index = 0; item_index < phase.items.size(); ++item_index) {
+            auto& item      = phase.items[item_index];
+            auto mesh_item  = meshes.get(item.entity());
+            if (!mesh_item) {
+                current_key.reset();
+                batch_head = std::numeric_limits<std::size_t>::max();
+                continue;
             }
-        }
 
-        cmd.entity(entity).insert(PreparedMesh2d{
-            .bind_group         = std::move(bind_group),
-            .texture_bind_group = std::move(texture_bind_group),
-        });
-        ++index;
+            auto&& [batch, extracted] = *mesh_item;
+
+            MeshBatchKey key{
+                .pipeline_id = item.pipeline(),
+                .mesh_id     = extracted.mesh,
+                .texture_id  = extracted.texture,
+            };
+
+            if (!current_key || *current_key != key) {
+                batch_head                          = item_index;
+                phase.items[batch_head].batch_count = 0;
+                batch.instance_start                = static_cast<std::uint32_t>(instance_buffer->instances.size());
+
+                if (extracted.texture) {
+                    if (auto it = texture_bind_group_cache.find(*extracted.texture);
+                        it != texture_bind_group_cache.end()) {
+                        batch.texture_bind_group = it->second;
+                    } else if (auto gpu_image = images->try_get(*extracted.texture); gpu_image) {
+                        auto tg = device->createBindGroup(
+                            wgpu::BindGroupDescriptor()
+                                .setLabel("Mesh2dTextureBindGroup")
+                                .setLayout(pipeline_cache->texture_layout)
+                                .setEntries(std::array{
+                                    wgpu::BindGroupEntry().setBinding(0).setSampler(gpu_image->sampler),
+                                    wgpu::BindGroupEntry().setBinding(1).setTextureView(gpu_image->view),
+                                }));
+                        texture_bind_group_cache.emplace(*extracted.texture, tg);
+                        batch.texture_bind_group = std::move(tg);
+                    } else {
+                        batch.texture_bind_group.reset();
+                    }
+                } else {
+                    batch.texture_bind_group.reset();
+                }
+
+                current_key = key;
+            }
+
+            instance_buffer->instances.push_back({extracted.model, extracted.color});
+            phase.items[batch_head].batch_count++;
+        }
+    };
+
+    for (auto&& [phase] : opaque_views.iter()) {
+        process_phase(phase);
+    }
+    for (auto&& [phase] : transparent_views.iter()) {
+        process_phase(phase);
     }
 
-    queue->writeBuffer(uniform_buffer->buffer, 0, upload_data.data(), upload_data.size());
+    auto required_bytes = instance_buffer->instances.size() * sizeof(MeshInstanceData);
+    ensure_mesh_instance_buffer(*instance_buffer, *pipeline_cache, *device, required_bytes);
+    if (required_bytes != 0) {
+        queue->writeBuffer(instance_buffer->buffer, 0, instance_buffer->instances.data(), required_bytes);
+    }
 }
 
 template <typename PhaseItem>
 struct Mesh2dDrawFunction : render::phase::DrawFunction<PhaseItem> {
     std::optional<QueryState<Item<const render::view::ViewBindGroup&>, Filter<>>> view_query;
-    std::optional<QueryState<Item<const PreparedMesh2d&, const ExtractedMesh2d&>, Filter<>>> mesh_query;
+    std::optional<QueryState<Item<const MeshBatch&, const ExtractedMesh2d&>, Filter<>>> mesh_query;
 
     void prepare(const World& world) override {
         if (!view_query) {
@@ -571,7 +625,7 @@ struct Mesh2dDrawFunction : render::phase::DrawFunction<PhaseItem> {
             view_query->update_archetypes(world);
         }
         if (!mesh_query) {
-            mesh_query = world.try_query<Item<const PreparedMesh2d&, const ExtractedMesh2d&>>();
+            mesh_query = world.try_query<Item<const MeshBatch&, const ExtractedMesh2d&>>();
         } else {
             mesh_query->update_archetypes(world);
         }
@@ -603,14 +657,14 @@ struct Mesh2dDrawFunction : render::phase::DrawFunction<PhaseItem> {
             mesh_query->query_with_ticks(world, world.last_change_tick(), world.change_tick()).get(item.entity());
         if (!mesh_item) {
             auto message =
-                std::format("[mesh] Mesh entity {:#x} is missing PreparedMesh2d or ExtractedMesh2d during draw.",
+                std::format("[mesh] Mesh entity {:#x} is missing MeshBatch or ExtractedMesh2d during draw.",
                             item.entity().index);
             spdlog::error("{}", message);
             return std::unexpected(render::phase::DrawError::invalid_entity_query(std::move(message)));
         }
 
-        auto&& [view_bind_group]               = *view_item;
-        auto&& [prepared_mesh, extracted_mesh] = *mesh_item;
+        auto&& [view_bind_group]           = *view_item;
+        auto&& [mesh_batch, extracted_mesh] = *mesh_item;
         auto pipeline = world.resource<render::PipelineServer>().get_render_pipeline(item.pipeline());
         if (!pipeline) {
             auto message =
@@ -629,25 +683,36 @@ struct Mesh2dDrawFunction : render::phase::DrawFunction<PhaseItem> {
             return std::unexpected(render::phase::DrawError::render_command_failure(std::move(message)));
         }
 
-        if (extracted_mesh.texture && !prepared_mesh.texture_bind_group) {
+        auto& instances = world.resource<MeshInstanceBuffer>();
+        if (!instances.bind_group) {
+            auto message = std::format("[mesh] Mesh instance buffer bind group is not ready for entity {:#x}.",
+                                       item.entity().index);
+            spdlog::error("{}", message);
+            return std::unexpected(render::phase::DrawError::render_command_failure(std::move(message)));
+        }
+
+        if (extracted_mesh.texture && !mesh_batch.texture_bind_group) {
             auto message =
-                std::format("[mesh] Entity {:#x} requires texture {} but PreparedMesh2d has no texture bind group.",
+                std::format("[mesh] Entity {:#x} requires texture {} but MeshBatch has no texture bind group.",
                             item.entity().index, extracted_mesh.texture->to_string_short());
             spdlog::error("{}", message);
             return std::unexpected(render::phase::DrawError::render_command_failure(std::move(message)));
         }
 
+        auto batch_size = static_cast<std::uint32_t>(item.batch_size());
         encoder.setPipeline(pipeline->get().pipeline());
         encoder.setBindGroup(0, view_bind_group.bind_group, std::span<const std::uint32_t>{});
-        encoder.setBindGroup(1, prepared_mesh.bind_group, std::span<const std::uint32_t>{});
-        if (prepared_mesh.texture_bind_group) {
-            encoder.setBindGroup(2, *prepared_mesh.texture_bind_group, std::span<const std::uint32_t>{});
+        encoder.setBindGroup(1, instances.bind_group, std::span<const std::uint32_t>{});
+        if (mesh_batch.texture_bind_group) {
+            encoder.setBindGroup(2, *mesh_batch.texture_bind_group, std::span<const std::uint32_t>{});
         }
         gpu_mesh->bind_to(encoder);
         if (gpu_mesh->is_indexed()) {
-            encoder.drawIndexed(static_cast<std::uint32_t>(gpu_mesh->vertex_count()), 1, 0, 0, 0);
+            encoder.drawIndexed(static_cast<std::uint32_t>(gpu_mesh->vertex_count()), batch_size, 0, 0,
+                                mesh_batch.instance_start);
         } else {
-            encoder.draw(static_cast<std::uint32_t>(gpu_mesh->vertex_count()), 1, 0, 0);
+            encoder.draw(static_cast<std::uint32_t>(gpu_mesh->vertex_count()), batch_size, 0,
+                         mesh_batch.instance_start);
         }
         return {};
     }
@@ -666,7 +731,16 @@ void queue_meshes_2d_opaque(
         draw_functions->template get_id<Mesh2dDrawFunction<core_graph::core_2d::Opaque2D>>().value_or(
             draw_functions->template add<Mesh2dDrawFunction<core_graph::core_2d::Opaque2D>>());
 
+    struct OpaqueCandidate {
+        Entity entity;
+        render::CachedPipelineId pipeline_id;
+        std::size_t mesh_hash;
+        std::size_t texture_hash;
+    };
+
     for (auto&& [phase, target] : views.iter()) {
+        std::vector<OpaqueCandidate> candidates;
+
         for (auto&& [entity, extracted_mesh] : meshes.iter()) {
             if (extracted_mesh.alpha_mode != MeshAlphaMode2d::Opaque) {
                 continue;
@@ -693,9 +767,24 @@ void queue_meshes_2d_opaque(
                 continue;
             }
 
+            std::size_t mesh_hash    = std::hash<assets::AssetId<Mesh>>()(extracted_mesh.mesh);
+            std::size_t texture_hash = extracted_mesh.texture
+                                           ? std::hash<assets::AssetId<image::Image>>()(*extracted_mesh.texture)
+                                           : 0;
+            candidates.push_back({entity, *pipeline_id, mesh_hash, texture_hash});
+        }
+
+        // Sort by (pipeline, mesh, texture) so batchable items are adjacent
+        std::stable_sort(candidates.begin(), candidates.end(), [](const OpaqueCandidate& a, const OpaqueCandidate& b) {
+            if (a.pipeline_id.get() != b.pipeline_id.get()) return a.pipeline_id.get() < b.pipeline_id.get();
+            if (a.mesh_hash != b.mesh_hash) return a.mesh_hash < b.mesh_hash;
+            return a.texture_hash < b.texture_hash;
+        });
+
+        for (auto& c : candidates) {
             phase.add(core_graph::core_2d::Opaque2D{
-                .id          = entity,
-                .pipeline_id = *pipeline_id,
+                .id          = c.entity,
+                .pipeline_id = c.pipeline_id,
                 .draw_func   = draw_function_id,
                 .batch_count = 1,
             });
@@ -780,8 +869,8 @@ void MeshRenderPlugin::finish(core::App& app) {
     }
 
     auto& world = render_app->get().world_mut();
-    if (!world.get_resource<MeshUniformBuffer>()) {
-        world.insert_resource(MeshUniformBuffer{});
+    if (!world.get_resource<MeshInstanceBuffer>()) {
+        world.insert_resource(MeshInstanceBuffer{});
     }
     if (!world.get_resource<Mesh2dPipelineCache>()) {
         world.init_resource<Mesh2dPipelineCache>();
@@ -792,7 +881,7 @@ void MeshRenderPlugin::finish(core::App& app) {
         .add_systems(render::Render, into(queue_meshes_2d_opaque, queue_meshes_2d_transparent)
                                          .in_set(render::RenderSet::Queue)
                                          .set_names(std::array{"queue opaque mesh2d", "queue transparent mesh2d"}))
-        .add_systems(render::Render, into(prepare_mesh_uniforms)
+        .add_systems(render::Render, into(prepare_mesh_instances)
                                          .in_set(render::RenderSet::PrepareResources)
-                                         .set_name("prepare mesh2d uniforms"));
+                                         .set_name("prepare mesh2d instances"));
 }
