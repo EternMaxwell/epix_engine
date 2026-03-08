@@ -675,11 +675,14 @@ struct Mesh2dDrawFunction : render::phase::DrawFunction<PhaseItem> {
         auto&& [mesh_batch, extracted_mesh] = *mesh_item;
         auto pipeline = world.resource<render::PipelineServer>().get_render_pipeline(item.pipeline());
         if (!pipeline) {
-            auto message =
-                std::format("[mesh] Cached pipeline {} for mesh entity {:#x} is missing or not ready at draw time.",
-                            item.pipeline().get(), item.entity().index);
-            spdlog::error("{}", message);
-            return std::unexpected(render::phase::DrawError::render_command_failure(std::move(message)));
+            if (pipeline.error() != render::GetPipelineError::NotReady) {
+                auto message =
+                    std::format("[mesh] Pipeline {} for mesh entity {:#x} failed to create.",
+                                item.pipeline().get(), item.entity().index);
+                spdlog::error("{}", message);
+                return std::unexpected(render::phase::DrawError::render_command_failure(std::move(message)));
+            }
+            return std::unexpected(render::phase::DrawError::render_command_failure());
         }
 
         auto* gpu_mesh = world.resource<render::RenderAssets<Mesh>>().try_get(extracted_mesh.mesh);

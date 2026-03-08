@@ -54,6 +54,11 @@ export using Pipeline           = std::variant<RenderPipeline, ComputePipeline>;
 export enum PipelineError {
     CreationFailure,
 };
+export enum class GetPipelineError {
+    NotReady,   // pipeline is still queued or being compiled
+    Failed,     // pipeline or shader creation failed (PipelineServerError stored internally)
+    InvalidId,  // id is out of range
+};
 export using PipelineServerError = std::variant<PipelineError, ShaderCacheError>;
 export struct PipelineStateQueued {};
 export using PipelineStateCreating = std::future<std::expected<Pipeline, PipelineServerError>>;
@@ -84,9 +89,10 @@ export struct PipelineServer {
         -> std::optional<std::reference_wrapper<const RenderPipelineDescriptor>>;
     auto get_compute_pipeline_descriptor(CachedPipelineId id) const
         -> std::optional<std::reference_wrapper<const ComputePipelineDescriptor>>;
-    auto get_render_pipeline(CachedPipelineId id) const -> std::optional<std::reference_wrapper<const RenderPipeline>>;
+    auto get_render_pipeline(CachedPipelineId id) const
+        -> std::expected<std::reference_wrapper<const RenderPipeline>, GetPipelineError>;
     auto get_compute_pipeline(CachedPipelineId id) const
-        -> std::optional<std::reference_wrapper<const ComputePipeline>>;
+        -> std::expected<std::reference_wrapper<const ComputePipeline>, GetPipelineError>;
     CachedPipelineId queue_render_pipeline(RenderPipelineDescriptor descriptor) const;
     CachedPipelineId queue_compute_pipeline(ComputePipelineDescriptor descriptor) const;
 

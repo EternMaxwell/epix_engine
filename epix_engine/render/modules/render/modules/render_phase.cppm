@@ -50,10 +50,10 @@ export struct OpaqueSortKey {
     std::unique_ptr<Concept> impl;
 
    public:
-    OpaqueSortKey()                              = default;
-    OpaqueSortKey(OpaqueSortKey&&)               = default;
-    OpaqueSortKey& operator=(OpaqueSortKey&&)    = default;
-    OpaqueSortKey(const OpaqueSortKey&)          = delete;
+    OpaqueSortKey()                                = default;
+    OpaqueSortKey(OpaqueSortKey&&)                 = default;
+    OpaqueSortKey& operator=(OpaqueSortKey&&)      = default;
+    OpaqueSortKey(const OpaqueSortKey&)            = delete;
     OpaqueSortKey& operator=(const OpaqueSortKey&) = delete;
 
     template <typename T>
@@ -279,6 +279,13 @@ struct DrawFunctions {
 export template <PhaseItem T>
 struct RenderPhase {
    public:
+    RenderPhase()                              = default;
+    RenderPhase(const RenderPhase&)            = delete;
+    RenderPhase(RenderPhase&&)                 = default;
+    RenderPhase& operator=(const RenderPhase&) = delete;
+    RenderPhase& operator=(RenderPhase&&)      = default;
+
+   public:
     using SortKey = decltype(std::declval<const T>().sort_key());
 
     std::vector<T> items;
@@ -319,7 +326,7 @@ struct RenderPhase {
             auto& item = items[i];
             if (auto draw_function = draw_functions.get(item.draw_function()); draw_function) {
                 auto result = draw_function->get().draw(world, cmd, view, item);
-                if (!result) {
+                if (!result && !result.error().message.empty()) {
                     spdlog::error("[render] Draw function {} failed for item {:#x}. Error: {}.",
                                   static_cast<std::uint32_t>(item.draw_function()), item.entity().index,
                                   to_str(result.error()));

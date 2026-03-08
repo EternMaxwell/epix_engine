@@ -414,9 +414,12 @@ struct SpriteDrawFunction : render::phase::DrawFunction<PhaseItem> {
 
         auto pipeline = world.resource<render::PipelineServer>().get_render_pipeline(item.pipeline());
         if (!pipeline) {
-            return std::unexpected(render::phase::DrawError::render_command_failure(
-                std::format("[sprite] Cached pipeline {} is not ready for sprite entity {:#x}.", item.pipeline().get(),
-                            item.entity().index)));
+            if (pipeline.error() != render::GetPipelineError::NotReady) {
+                return std::unexpected(render::phase::DrawError::render_command_failure(
+                    std::format("[sprite] Pipeline {} for sprite entity {:#x} failed to create.", item.pipeline().get(),
+                                item.entity().index)));
+            }
+            return std::unexpected(render::phase::DrawError::render_command_failure());
         }
 
         auto&& [view_bind_group] = *view_item;
