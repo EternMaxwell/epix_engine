@@ -48,7 +48,7 @@ struct MeshRenderingVisualTestPlugin {
         std::vector<std::uint8_t> texture_data = {
             255, 50, 50, 255, 50, 255, 50, 255, 50, 50, 255, 255, 255, 255, 50, 255,
         };
-        auto texture_image  = image::Image::create(2, 2, image::Format::RGBA8, texture_data).value();
+        auto texture_image  = image::Image::create2d(2, 2, image::Format::RGBA8, texture_data).value();
         auto texture_handle = image_assets.emplace(std::move(texture_image));
 
         auto solid_box          = mesh_assets.emplace(mesh::make_box2d(180.0f, 120.0f));
