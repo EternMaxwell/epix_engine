@@ -350,13 +350,52 @@ bool SFMLRunner::step(App& app) {
                     return error;
                 });
         }
+        for (auto&& sys : extra_systems) {
+            if (!sys->initialized()) sys->initialize(world);
+            sys->run({}, world)
+                .transform([&]() { sys->apply_deferred(world); })
+                .transform_error([&](const RunSystemError& error) {
+                    std::visit(visitor{[&](const ValidateParamError& validate_error) {
+                                           spdlog::error(
+                                               "SFML extra system [{}] parameter validation error: type: {}, msg: {}",
+                                               sys->name(), validate_error.param_type.short_name(),
+                                               validate_error.message);
+                                       },
+                                       [&](const SystemException& sys_exception) {
+                                           try {
+                                               if (sys_exception.exception)
+                                                   std::rethrow_exception(sys_exception.exception);
+                                           } catch (const std::exception& e) {
+                                               spdlog::error("SFML extra system [{}] exception during run: {}",
+                                                             sys->name(), e.what());
+                                           } catch (...) {
+                                               spdlog::error("SFML extra system [{}] unknown exception during run.",
+                                                             sys->name());
+                                           }
+                                       }},
+                               error);
+                    return error;
+                });
+        }
     });
     app.update().wait();
     auto exit_code = app.system_dispatcher()->dispatch_system(*check_exit, {}, exit_access).get().value_or(-1);
+    if (render_app_future) render_app_future->wait();
+    render_app_future.reset();
+    if (exit_code.has_value()) return false;
+    render_app_future = render_app_label.and_then([&](const core::AppLabel& label) -> std::optional<std::future<bool>> {
+        if (auto render_app = app.get_sub_app_mut(label)) {
+            render_app.value().get().extract(app);
+            return render_app.value().get().update();
+        }
+        return std::nullopt;
+    });
     return !exit_code.has_value();
 }
 
 void SFMLRunner::exit(App& app) {
+    if (render_app_future) render_app_future->wait();
+    render_app_future.reset();
     app.world_scope([&](World& world) {
         auto res = remove_window->run({}, world);
         res      = destroy_windows_system->run({}, world);
