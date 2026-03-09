@@ -133,10 +133,10 @@ ShapedText text::shape_text(const Text& text,
         out.right_   = max_x;
         out.ascent_  = ft_ascender;
         out.descent_ = -ft_descender;
-        out.top_     = final_line_height;
-        out.bottom_  = 0.0f;
+        out.top_     = 0.0f;
+        out.bottom_  = -final_line_height;
 
-        float baseline_y = final_line_height - ft_ascender;
+        float baseline_y = -ft_ascender;
         for (std::size_t index = 0; index < out.glyphs_.size(); ++index) {
             out.glyphs_[index].x_offset = pen_positions[index] + out.glyphs_[index].x_offset;
             out.glyphs_[index].y_offset = baseline_y + (-out.glyphs_[index].y_offset);
@@ -355,17 +355,9 @@ ShapedText text::shape_text(const Text& text,
     out.right_   = line_maxs.empty() ? 0.0f : *std::ranges::max_element(line_maxs);
     out.ascent_  = ft_ascender;
     out.descent_ = -ft_descender;
-    out.top_     = static_cast<float>(lines.size()) * final_line_height;
-    out.bottom_  = 0.0f;
+    out.top_     = 0.0f;
+    out.bottom_  = -static_cast<float>(lines.size()) * final_line_height;
 
-    if (bounds.height.has_value()) {
-        int max_lines = static_cast<int>(std::floor(*bounds.height / final_line_height));
-        if (max_lines < static_cast<int>(lines.size())) {
-            lines.resize(std::max(0, max_lines));
-        }
-    }
-
-    float first_baseline_from_bottom = out.top_ - ft_ascender;
     for (std::size_t line_index = 0; line_index < lines.size(); ++line_index) {
         auto [begin, end] = lines[line_index];
         int spaces        = 0;
@@ -391,7 +383,8 @@ ShapedText text::shape_text(const Text& text,
             extra_per_space = (full_width - width) / static_cast<float>(spaces);
         }
 
-        float pen_x = start_x;
+        float pen_x      = start_x;
+        float baseline_y = -ft_ascender - static_cast<float>(line_index) * final_line_height;
         for (std::size_t index = begin; index < end; ++index) {
             for (const auto& entry : shaped_tokens[index].entries) {
                 atlas.get_glyph_atlas_loc(entry.glyph_index);
@@ -399,10 +392,9 @@ ShapedText text::shape_text(const Text& text,
                     .glyph_index = entry.glyph_index,
                     .cluster     = entry.cluster,
                     .x_offset    = pen_x + static_cast<float>(entry.x_offset),
-                    .y_offset    = first_baseline_from_bottom - static_cast<float>(line_index) * final_line_height +
-                                static_cast<float>(entry.y_offset),
-                    .x_advance = static_cast<float>(entry.x_advance),
-                    .y_advance = 0.0f,
+                    .y_offset    = baseline_y + static_cast<float>(entry.y_offset),
+                    .x_advance   = static_cast<float>(entry.x_advance),
+                    .y_advance   = 0.0f,
                 });
                 pen_x += static_cast<float>(entry.x_advance);
             }
