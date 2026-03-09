@@ -186,11 +186,13 @@ struct TransparentSpriteDrawFunction {
 };
 
 void insert_sprite_shaders(assets::Assets<render::Shader>& shaders) {
+    auto vertex_path             = std::filesystem::path("internal://sprite/sprite_vertex.wgsl");
+    auto fragment_path           = std::filesystem::path("internal://sprite/sprite_fragment.wgsl");
     [[maybe_unused]] auto vertex = shaders.insert(
-        kSpriteVertexShaderId, render::Shader{std::filesystem::path("internal://sprite/sprite_vertex.wgsl"),
+        kSpriteVertexShaderId, render::Shader{vertex_path, vertex_path.string(),
                                               render::ShaderSource::wgsl(std::string(kSpriteVertexShader))});
     [[maybe_unused]] auto fragment = shaders.insert(
-        kSpriteFragmentShaderId, render::Shader{std::filesystem::path("internal://sprite/sprite_fragment.wgsl"),
+        kSpriteFragmentShaderId, render::Shader{fragment_path, fragment_path.string(),
                                                 render::ShaderSource::wgsl(std::string(kSpriteFragmentShader))});
 }
 
