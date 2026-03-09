@@ -1,21 +1,19 @@
-﻿#include <epix/assets.hpp>
-#include <epix/core.hpp>
-#include <epix/core_graph.hpp>
-#include <epix/image.hpp>
-#include <epix/input.hpp>
-#include <epix/render.hpp>
-#include <epix/sprite.hpp>
-#include <epix/text.hpp>
-#include <string_view>
+﻿import std;
+import epix.assets;
+import epix.core;
+import epix.core_graph;
+import epix.input;
+import epix.mesh;
+import epix.render;
+import epix.sprite;
+import epix.text;
+import epix.transform;
+import epix.window;
+import epix.glfw.core;
+import epix.glfw.render;
+import glm;
 
-#include "epix/mesh/render.hpp"
-#include "epix/text/render.hpp"
-#include "epix/text/text.hpp"
-#include "epix/transform.hpp"
-#include "epix/window.hpp"
 #include "font_array.hpp"
-
-using namespace epix;
 
 auto run_once = [run = false]() mutable {
     if (!run) {
@@ -26,41 +24,41 @@ auto run_once = [run = false]() mutable {
 };
 
 struct CamControllPlugin {
-    void build(epix::App& app) {
+    void build(core::App& app) {
         app.add_systems(
-            epix::Update,
-            epix::into([](epix::Query<epix::Item<const epix::render::camera::Camera&, epix::render::camera::Projection&,
-                                                 epix::transform::Transform&>> camera,
-                          epix::EventReader<epix::input::MouseScroll> scroll_input,
-                          epix::Res<epix::input::ButtonInput<epix::input::KeyCode>> key_states) {
+            core::Update,
+            core::into([](core::Query<core::Item<const render::camera::Camera&, render::camera::Projection&,
+                                                 transform::Transform&>> camera,
+                          core::EventReader<input::MouseScroll> scroll_input,
+                          core::Res<input::ButtonInput<input::KeyCode>> key_states) {
                 if (auto opt = camera.single(); opt.has_value()) {
                     auto&& [cam, proj, trans] = *opt;
-                    if (key_states->pressed(epix::input::KeyCode::KeySpace)) {
+                    if (key_states->pressed(input::KeyCode::KeySpace)) {
                         trans.translation = glm::vec3(0, 0, 0);
-                        proj.as_orthographic().transform([&](epix::render::camera::OrthographicProjection* ortho) {
-                            *ortho = epix::render::camera::OrthographicProjection{};
+                        proj.as_orthographic().transform([&](render::camera::OrthographicProjection* ortho) {
+                            *ortho = render::camera::OrthographicProjection{};
                             return true;
                         });
                         return;
                     }
                     glm::vec3 delta(0.0f);
-                    if (key_states->pressed(epix::input::KeyCode::KeyW)) {
+                    if (key_states->pressed(input::KeyCode::KeyW)) {
                         delta += glm::vec3(0, 0.1f, 0);
                     }
-                    if (key_states->pressed(epix::input::KeyCode::KeyS)) {
+                    if (key_states->pressed(input::KeyCode::KeyS)) {
                         delta -= glm::vec3(0, 0.1f, 0);
                     }
-                    if (key_states->pressed(epix::input::KeyCode::KeyA)) {
+                    if (key_states->pressed(input::KeyCode::KeyA)) {
                         delta -= glm::vec3(0.1f, 0, 0);
                     }
-                    if (key_states->pressed(epix::input::KeyCode::KeyD)) {
+                    if (key_states->pressed(input::KeyCode::KeyD)) {
                         delta += glm::vec3(0.1f, 0, 0);
                     }
                     if (glm::length(delta) > 0.0f) {
                         delta = glm::normalize(delta) * 0.1f;
                         trans.translation += delta;
                     }
-                    proj.as_orthographic().transform([&](epix::render::camera::OrthographicProjection* ortho) {
+                    proj.as_orthographic().transform([&](render::camera::OrthographicProjection* ortho) {
                         for (const auto& e : scroll_input.read()) {
                             float scale = std::exp(-static_cast<float>(e.yoffset) * 0.1f);
                             ortho->scale *= scale;
@@ -85,52 +83,50 @@ int main(int argc, char** argv) {
         }
     }
 
-    App app = App::create();
-    app.add_plugins(epix::window::WindowPlugin{})
-        .add_plugins(epix::assets::AssetPlugin{})
-        .add_plugins(epix::input::InputPlugin{})
-        .add_plugins(epix::glfw::GLFWPlugin{})
-        .add_plugins(epix::transform::TransformPlugin{})
+    core::App app = core::App::create();
+    app.add_plugins(window::WindowPlugin{})
+        .add_plugins(input::InputPlugin{})
+        .add_plugins(glfw::GLFWPlugin{})
+        .add_plugins(glfw::GLFWRenderPlugin{})
+        .add_plugins(transform::TransformPlugin{})
         .add_plugins(CamControllPlugin{})
-        .add_plugins(epix::render::RenderPlugin{}.set_validation(render_validation))
-        .add_plugins(epix::mesh::MeshPlugin{})
-        .add_plugins(epix::core_graph::CoreGraphPlugin{})
-        .add_plugins(epix::mesh::MeshRenderPlugin{})
-        .add_plugins(epix::sprite::SpritePlugin{})
-        .add_plugins(epix::text::TextPlugin{})
+        .add_plugins(render::RenderPlugin{}.set_validation(render_validation))
+        .add_plugins(core_graph::CoreGraphPlugin{})
+        .add_plugins(mesh::MeshRenderPlugin{})
+        .add_plugins(sprite::SpritePlugin{})
+        .add_plugins(text::TextPlugin{})
         .add_plugins(text::TextRenderPlugin{});
-    app.add_systems(Update, into(input::log_inputs, window::log_events));
-    app.world_mut().spawn(render::core_2d::Camera2DBundle{});
+    app.add_systems(core::Update, core::into(input::log_inputs, window::log_events));
+    app.world_mut().spawn(core_graph::core_2d::Camera2DBundle{});
 
     std::optional<assets::Handle<text::font::Font>> font_handle;
 
-    app.add_systems(PreStartup, into([&](Commands cmd, ResMut<assets::Assets<text::font::Font>> fonts) {
-                                    text::font::Font font{std::make_unique<std::byte[]>(font_data_array_size),
-                                                          font_data_array_size};
-                                    std::memcpy(font.data.get(), font_data_array, font_data_array_size);
-                                    font_handle = fonts->emplace(std::move(font));
-                                    cmd.spawn(text::TextBundle{.text{"Hello, Epix Engine!"},
-                                                               .font{
-                                                                   .font            = *font_handle,
-                                                                   .size            = 48.0f,
-                                                                   .line_height     = 48.0f,
-                                                                   .relative_height = false,
-                                                               },
-                                                               .layout{
-                                                                   .justify = text::Justify::Center,
-                                                               }},
-                                              text::Text2d{}, transform::Transform{}, text::TextColor{});
-                                })
-                                    .before(text::font::FontSystems::AddFontAtlasSet)
-                                    .before(assets::AssetSystems::WriteEvents));
-    app.add_systems(
-        Update, into([](EventReader<window::WindowResized> resize_events, Query<Mut<text::TextBounds>> text_bounds) {
-            for (auto&& e : resize_events.read()) {
-                for (auto&& tb : text_bounds.iter()) {
-                    tb.get_mut().width = static_cast<float>(e.width) - 50.0f;
-                }
-            }
-        }));
+    app.add_systems(core::PreStartup,
+                    core::into([&](core::Commands cmd, core::ResMut<assets::Assets<text::font::Font>> fonts) {
+                        text::font::Font font{std::make_unique<std::byte[]>(font_data_array_size),
+                                              font_data_array_size};
+                        std::memcpy(font.data.get(), font_data_array, font_data_array_size);
+                        font_handle = fonts->emplace(std::move(font));
+                        cmd.spawn(text::TextBundle{.text{"Hello, Epix Engine!"},
+                                                   .font{
+                                                       .font            = *font_handle,
+                                                       .size            = 48.0f,
+                                                       .line_height     = 48.0f,
+                                                       .relative_height = false,
+                                                   },
+                                                   .layout{.justify = text::Justify::Center}},
+                                  text::Text2d{}, transform::Transform{}, text::TextColor{});
+                    })
+                        .before(text::font::FontSystems::AddFontAtlasSet)
+                        .before(assets::AssetSystems::WriteEvents));
+    app.add_systems(core::Update, core::into([](core::EventReader<window::WindowResized> resize_events,
+                                                core::Query<core::Mut<text::TextBounds>> text_bounds) {
+                        for (auto&& e : resize_events.read()) {
+                            for (auto&& tb : text_bounds.iter()) {
+                                tb.get_mut().width = static_cast<float>(e.width) - 50.0f;
+                            }
+                        }
+                    }));
     // app.add_systems(Update,
     //                 into([&](ResMut<text::font::FontAtlasSets> font_atlas_sets) {
     //                     if (!font_handle) return;
