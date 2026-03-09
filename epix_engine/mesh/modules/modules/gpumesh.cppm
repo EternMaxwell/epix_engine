@@ -57,10 +57,11 @@ export struct GPUMesh {
 template <>
 struct render::RenderAsset<mesh::Mesh> {
     using ProcessedAsset = mesh::GPUMesh;
-    using Param          = core::Res<wgpu::Device>;
+    using Param          = core::ParamSet<core::Res<wgpu::Device>, core::Res<wgpu::Limits>>;
 
-    ProcessedAsset process(const mesh::Mesh& mesh, Param device) {
-        return ProcessedAsset::create_from_mesh(mesh, *device);
+    ProcessedAsset process(const mesh::Mesh& mesh, Param params) {
+        auto&& [device, limits] = params.get();
+        return ProcessedAsset::create_from_mesh(mesh, *device, *limits);
     }
 
     render::RenderAssetUsage usage(const mesh::Mesh& mesh) { return render::RenderAssetUsageBits::RenderWorld; }
