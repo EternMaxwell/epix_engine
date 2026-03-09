@@ -61,3 +61,6 @@
 [submodule "libs/webgpu-wrapper"]
 	path = libs/webgpu-wrapper
 	url = https://github.com/EternMaxwell/webgpu-cpp-wrapper.git
+[submodule "libs/sfml"]
+	path = libs/sfml
+	url = https://github.com/SFML/SFML.git
