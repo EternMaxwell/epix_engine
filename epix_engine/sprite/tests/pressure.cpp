@@ -23,7 +23,7 @@ struct SpritePressureVisualTestPlugin {
         std::vector<std::uint8_t> texture_data = {
             255, 0, 255, 255, 0, 0, 0, 255, 0, 0, 0, 255, 255, 0, 255, 255,
         };
-        auto texture = image::Image::create(2, 2, image::Format::RGBA8, texture_data).value();
+        auto texture = image::Image::create2d(2, 2, image::Format::RGBA8, texture_data).value();
         auto handle  = images.emplace(std::move(texture));
 
         std::mt19937 generator(42);
