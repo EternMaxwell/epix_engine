@@ -108,6 +108,11 @@ struct QueryIterCursor {
 export template <query_data D, query_filter F>
 struct QueryIter : std::ranges::view_interface<QueryIter<D, F>> {
    public:
+    using iterator_concept  = std::input_iterator_tag;
+    using iterator_category = std::input_iterator_tag;
+    using value_type        = std::remove_cvref_t<typename QueryData<D>::Item>;
+    using difference_type   = std::ptrdiff_t;
+
     QueryIter(World* world, const QueryState<D, F>* state, Tick last_run, Tick this_run)
         : world(world), tables(&world_storage_mut(*world).tables), archetypes(&world_archetypes(*world)), state(state) {
         cursor.emplace(world, state, last_run, this_run);
@@ -174,12 +179,6 @@ struct QueryIter : std::ranges::view_interface<QueryIter<D, F>> {
 };
 }  // namespace core
 
-export template <core::query_data D, core::query_filter F>
-struct std::iterator_traits<core::QueryIter<D, F>> {
-    using iterator_category = std::input_iterator_tag;
-    using value_type        = core::QueryData<D>::Item;
-    using difference_type   = std::ptrdiff_t;
-};
 template <core::query_data D, core::query_filter F>
 constexpr bool ::std::ranges::enable_view<core::QueryIter<D, F>> = true;
 

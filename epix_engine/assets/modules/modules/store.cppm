@@ -215,7 +215,7 @@ struct AssetStorage {
             });
     }
     std::optional<std::reference_wrapper<T>> get_mut(const AssetIndex& index) {
-        auto res = try_get(index);
+        auto res = try_get_mut(index);
         return res.has_value() ? std::make_optional<std::reference_wrapper<T>>(res.value()) : std::nullopt;
     }
     std::optional<std::reference_wrapper<const T>> get(const AssetIndex& index) const {
@@ -464,10 +464,13 @@ struct Assets {
      * @return `std::optional<std::reference_wrapper<T>>` A reference to the
      * asset, or std::nullopt if the asset is not valid.
      */
-    std::optional<std::reference_wrapper<T>> get_mut(const AssetId<T>& id) { return try_get_mut(id).value_or(nullptr); }
+    std::optional<std::reference_wrapper<T>> get_mut(const AssetId<T>& id) {
+        auto res = try_get_mut(id);
+        return res.has_value() ? std::make_optional<std::reference_wrapper<T>>(res.value()) : std::nullopt;
+    }
     std::expected<std::reference_wrapper<T>, AssetError> try_get_mut(const AssetId<T>& id) {
         return std::visit(
-                   visitor{[this](const AssetIndex& index) { return m_assets.try_get(index); },
+                   visitor{[this](const AssetIndex& index) { return m_assets.try_get_mut(index); },
                            [this](const uuids::uuid& id) -> std::expected<std::reference_wrapper<T>, AssetError> {
                                if (auto&& it = m_mapped_assets.find(id); it != m_mapped_assets.end()) {
                                    return std::ref(it->second);
@@ -476,9 +479,9 @@ struct Assets {
                                }
                            }},
                    id)
-            .transform([this, &id](T& asset) {
+            .transform([this, &id](std::reference_wrapper<T> asset) {
                 m_cached_events.emplace_back(AssetEvent<T>::modified(id));
-                return std::ref(asset);
+                return asset;
             });
     }
 
