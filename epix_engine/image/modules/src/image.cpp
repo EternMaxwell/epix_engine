@@ -11,6 +11,68 @@ import std;
 
 using namespace image;
 
+namespace {
+Image create_like(const Image& image, Format format) {
+    switch (image.type()) {
+        case ImageType::e1D: {
+            auto result = Image::create1d(image.width(), format);
+            result.set_usage(image.usage());
+            return result;
+        }
+        case ImageType::e2D: {
+            auto result = Image::create2d(image.width(), image.height(), format);
+            result.set_usage(image.usage());
+            return result;
+        }
+        case ImageType::e2DArray: {
+            auto result = Image::create2d_array(image.width(), image.height(), image.layers(), format);
+            result.set_usage(image.usage());
+            return result;
+        }
+        case ImageType::e3D: {
+            auto result = Image::create3d(image.width(), image.height(), image.depth(), format);
+            result.set_usage(image.usage());
+            return result;
+        }
+        default: {
+            auto result = Image::create2d(image.width(), image.height(), format);
+            result.set_usage(image.usage());
+            return result;
+        }
+    }
+}
+
+Image create_resized_like(const Image& image, std::uint32_t width, std::uint32_t height, Format format) {
+    switch (image.type()) {
+        case ImageType::e1D: {
+            auto result = Image::create1d(width, format);
+            result.set_usage(image.usage());
+            return result;
+        }
+        case ImageType::e2D: {
+            auto result = Image::create2d(width, height, format);
+            result.set_usage(image.usage());
+            return result;
+        }
+        case ImageType::e2DArray: {
+            auto result = Image::create2d_array(width, height, image.layers(), format);
+            result.set_usage(image.usage());
+            return result;
+        }
+        case ImageType::e3D: {
+            auto result = Image::create3d(width, height, image.depth(), format);
+            result.set_usage(image.usage());
+            return result;
+        }
+        default: {
+            auto result = Image::create2d(width, height, format);
+            result.set_usage(image.usage());
+            return result;
+        }
+    }
+}
+}  // namespace
+
 const FormatInfo& image::getFormatInfo(Format fmt) {
     static FormatInfo info1{1, 1, false, false};
     static FormatInfo info2{2, 1, false, false};
@@ -49,20 +111,83 @@ const FormatInfo& image::getFormatInfo(Format fmt) {
     }
 }
 
-Image Image::create(std::uint32_t w, std::uint32_t h, Format fmt) {
+Image Image::create(ImageType type, std::uint32_t w, std::uint32_t h, std::uint32_t depth_or_layers, Format fmt) {
+    switch (type) {
+        case ImageType::e1D:
+            return create1d(w, fmt);
+        case ImageType::e2D:
+            return create2d(w, h, fmt);
+        case ImageType::e2DArray:
+            return create2d_array(w, h, depth_or_layers, fmt);
+        case ImageType::e3D:
+            return create3d(w, h, depth_or_layers, fmt);
+        default:
+            return create2d(w, h, fmt);
+    }
+}
+
+Image Image::create1d(std::uint32_t w, Format fmt) {
     Image img;
-    img.m_width  = w;
-    img.m_height = h;
-    img.m_format = fmt;
-    img.data.resize(w * h * getFormatInfo(fmt).pixelSize(), std::byte(0));
+    img.m_width           = w;
+    img.m_height          = 1;
+    img.m_depth_or_layers = 1;
+    img.m_type            = ImageType::e1D;
+    img.m_format          = fmt;
+    img.data.resize(static_cast<std::size_t>(w) * getFormatInfo(fmt).pixelSize(), std::byte(0));
     return img;
 }
+
+Image Image::create2d(std::uint32_t w, std::uint32_t h, Format fmt) {
+    Image img;
+    img.m_width           = w;
+    img.m_height          = h;
+    img.m_depth_or_layers = 1;
+    img.m_type            = ImageType::e2D;
+    img.m_format          = fmt;
+    img.data.resize(static_cast<std::size_t>(w) * h * getFormatInfo(fmt).pixelSize(), std::byte(0));
+    return img;
+}
+
+Image Image::create2d_array(std::uint32_t w, std::uint32_t h, std::uint32_t layers, Format fmt) {
+    Image img;
+    img.m_width           = w;
+    img.m_height          = h;
+    img.m_depth_or_layers = std::max(layers, 1u);
+    img.m_type            = ImageType::e2DArray;
+    img.m_format          = fmt;
+    img.data.resize(static_cast<std::size_t>(w) * h * img.m_depth_or_layers * getFormatInfo(fmt).pixelSize(),
+                    std::byte(0));
+    return img;
+}
+
+Image Image::create3d(std::uint32_t w, std::uint32_t h, std::uint32_t depth, Format fmt) {
+    Image img;
+    img.m_width           = w;
+    img.m_height          = h;
+    img.m_depth_or_layers = std::max(depth, 1u);
+    img.m_type            = ImageType::e3D;
+    img.m_format          = fmt;
+    img.data.resize(static_cast<std::size_t>(w) * h * img.m_depth_or_layers * getFormatInfo(fmt).pixelSize(),
+                    std::byte(0));
+    return img;
+}
+
+std::expected<std::array<float, 4>, ImageSampleError> Image::sample(std::uint32_t x) const { return sample(x, 0, 0); }
+
 std::expected<std::array<float, 4>, ImageSampleError> Image::sample(std::uint32_t x, std::uint32_t y) const {
+    return sample(x, y, 0);
+}
+
+std::expected<std::array<float, 4>, ImageSampleError> Image::sample(std::uint32_t x,
+                                                                    std::uint32_t y,
+                                                                    std::uint32_t z) const {
     const FormatInfo& inf = format_info();
     std::array<float, 4> result{0};
-    if (x >= m_width || y >= m_height) return std::unexpected(ImageSampleError::OutOfBounds);
+    if (x >= m_width || y >= m_height || z >= m_depth_or_layers) return std::unexpected(ImageSampleError::OutOfBounds);
 
-    const std::byte* pixelPtr = data.data() + (y * m_width + x) * inf.pixelSize();
+    auto slice_stride = static_cast<std::size_t>(m_width) * m_height * inf.pixelSize();
+    const std::byte* pixelPtr =
+        data.data() + z * slice_stride + (static_cast<std::size_t>(y) * m_width + x) * inf.pixelSize();
 
     for (std::uint32_t c = 0; c < inf.channels; c++) {
         float value = 0.0f;
@@ -85,12 +210,26 @@ std::expected<std::array<float, 4>, ImageSampleError> Image::sample(std::uint32_
     }
     return result;
 }
+
+std::expected<void, ImageWriteError> Image::write(std::uint32_t x, std::span<const float> values) {
+    return write(x, 0, 0, values);
+}
+
 std::expected<void, ImageWriteError> Image::write(std::uint32_t x, std::uint32_t y, std::span<const float> values) {
+    return write(x, y, 0, values);
+}
+
+std::expected<void, ImageWriteError> Image::write(std::uint32_t x,
+                                                  std::uint32_t y,
+                                                  std::uint32_t z,
+                                                  std::span<const float> values) {
     const FormatInfo& inf = format_info();
-    if (x >= m_width || y >= m_height) return std::unexpected(ImageWriteError::OutOfBounds);
+    if (x >= m_width || y >= m_height || z >= m_depth_or_layers) return std::unexpected(ImageWriteError::OutOfBounds);
     if (values.size() < inf.channels) return std::unexpected(ImageWriteError::DataSizeMismatch);
 
-    std::byte* pixelPtr = data.data() + (y * m_width + x) * inf.pixelSize();
+    auto slice_stride = static_cast<std::size_t>(m_width) * m_height * inf.pixelSize();
+    std::byte* pixelPtr =
+        data.data() + z * slice_stride + (static_cast<std::size_t>(y) * m_width + x) * inf.pixelSize();
 
     for (std::uint32_t c = 0; c < inf.channels; c++) {
         float value = values[c];
@@ -132,7 +271,7 @@ std::expected<Image, ImageLoadError> Image::load(const std::filesystem::path& pa
         std::memcpy(buffer.data(), pixels, byteSize);
         stbi_image_free(pixels);
 
-        return Image::create(w, h, fmt, buffer).value();
+        return Image::create2d(w, h, fmt, buffer).value();
     }
     // Check for 16-bit (load_16 usually used for png/psd)
     else if (stbi_is_16_bit(path_str.c_str())) {
@@ -146,7 +285,7 @@ std::expected<Image, ImageLoadError> Image::load(const std::filesystem::path& pa
         std::memcpy(buffer.data(), pixels, byteSize);
         stbi_image_free(pixels);
 
-        return Image::create(w, h, fmt, buffer).value();
+        return Image::create2d(w, h, fmt, buffer).value();
     }
     // Standard 8-bit
     else {
@@ -163,11 +302,15 @@ std::expected<Image, ImageLoadError> Image::load(const std::filesystem::path& pa
         std::memcpy(buffer.data(), pixels, byteSize);
         stbi_image_free(pixels);
 
-        return Image::create(w, h, fmt, buffer).value();
+        return Image::create2d(w, h, fmt, buffer).value();
     }
 }
 
 std::expected<void, ImageSaveError> Image::save(const std::filesystem::path& path, const Image& image) {
+    if (image.type() == ImageType::e2DArray || image.type() == ImageType::e3D) {
+        return std::unexpected(ImageSaveError::SaveFailed);
+    }
+
     const FormatInfo& inf = image.format_info();
     std::string ext       = path.extension().string();
     auto path_str         = path.string();
@@ -207,7 +350,11 @@ std::expected<void, ImageSaveError> Image::save(const std::filesystem::path& pat
     return std::expected<void, ImageSaveError>{};
 }
 Image Image::convert(Format targetFmt) const {
-    if (targetFmt == m_format) return Image::create(m_width, m_height, m_format, data).value();
+    if (targetFmt == m_format) {
+        auto result = create_like(*this, m_format);
+        std::memcpy(result.data.data(), data.data(), data.size());
+        return result;
+    }
 
     const FormatInfo& srcInfo = format_info();
     const FormatInfo& dstInfo = getFormatInfo(targetFmt);
@@ -215,10 +362,10 @@ Image Image::convert(Format targetFmt) const {
     // promote to float, rearrange channels, demote to target.
     // A more optimized version would have switch-cases for specific conversions.
 
-    Image result   = Image::create(m_width, m_height, targetFmt);
-    int pixelCount = m_width * m_height;
+    Image result     = create_like(*this, targetFmt);
+    auto pixel_count = static_cast<std::size_t>(m_width) * m_height * m_depth_or_layers;
 
-    for (int i = 0; i < pixelCount; ++i) {
+    for (std::size_t i = 0; i < pixel_count; ++i) {
         float r = 0, g = 0, b = 0, a = 1.0f;
 
         // 1. Read Source into normalized float (0.0 - 1.0)
@@ -289,16 +436,22 @@ Image Image::convert(Format targetFmt) const {
     return result;
 }
 Image Image::resize(std::uint32_t newW, std::uint32_t newH) const {
-    auto& inf = format_info();
+    auto& inf          = format_info();
+    auto target_height = m_type == ImageType::e1D ? 1u : newH;
 
-    Image result = Image::create(newW, newH, m_format);
+    Image result = create_resized_like(*this, newW, target_height, m_format);
 
     stbir_datatype type = inf.isFloat ? STBIR_TYPE_FLOAT : (inf.is16Bit ? STBIR_TYPE_UINT16 : STBIR_TYPE_UINT8);
 
-    // STB Resize 2 API
-    stbir_resize(data.data(), m_width, m_height, 0, result.data.data(), newW, newH, 0,
-                 static_cast<stbir_pixel_layout>(inf.channels),  // works because enum matches channel count mostly
-                 type, STBIR_EDGE_CLAMP, STBIR_FILTER_DEFAULT);
+    auto src_slice_stride = static_cast<std::size_t>(m_width) * m_height * inf.pixelSize();
+    auto dst_slice_stride = static_cast<std::size_t>(newW) * target_height * inf.pixelSize();
+
+    for (std::uint32_t z = 0; z < m_depth_or_layers; ++z) {
+        stbir_resize(data.data() + z * src_slice_stride, m_width, m_height, 0,
+                     result.data.data() + z * dst_slice_stride, newW, target_height, 0,
+                     static_cast<stbir_pixel_layout>(inf.channels),  // works because enum matches channel count mostly
+                     type, STBIR_EDGE_CLAMP, STBIR_FILTER_DEFAULT);
+    }
 
     return result;
 }
@@ -309,8 +462,8 @@ Image Image::blur(std::uint32_t radius) const {
     Image work = needsConvert ? this->convert(format_info().channels == 4 ? Format::RGBA32F : Format::RGB32F) : *this;
 
     auto& inf    = work.format_info();
-    Image temp   = Image::create(work.width(), work.height(), work.format());
-    Image result = Image::create(work.width(), work.height(), work.format());
+    Image temp   = create_like(work, work.format());
+    Image result = create_like(work, work.format());
 
     // Generate Kernel
     int size = radius * 2 + 1;
@@ -324,37 +477,44 @@ Image Image::blur(std::uint32_t radius) const {
     }
     for (float& k : kernel) k /= sum;
 
-    std::uint32_t w = work.width();
-    std::uint32_t h = work.height();
-    std::uint32_t c = inf.channels;
-    float* srcData  = work.raw<float>();
-    float* tmpData  = temp.raw<float>();
-    float* dstData  = result.raw<float>();
+    std::uint32_t w   = work.width();
+    std::uint32_t h   = work.height();
+    std::uint32_t c   = inf.channels;
+    float* srcData    = work.raw<float>();
+    float* tmpData    = temp.raw<float>();
+    float* dstData    = result.raw<float>();
+    auto slice_texels = static_cast<std::size_t>(w) * h * c;
 
     // Horizontal Pass
-    for (std::uint32_t y = 0; y < h; ++y) {
-        for (std::uint32_t x = 0; x < w; ++x) {
-            for (std::uint32_t ch = 0; ch < c; ++ch) {
-                float val = 0.0f;
-                for (std::uint32_t k = 0; k < size; ++k) {
-                    std::uint32_t ix = std::clamp(x + k - radius, 0u, w - 1);
-                    val += srcData[(y * w + ix) * c + ch] * kernel[k];
+    for (std::uint32_t z = 0; z < work.depth_or_layers(); ++z) {
+        auto base = static_cast<std::size_t>(z) * slice_texels;
+        for (std::uint32_t y = 0; y < h; ++y) {
+            for (std::uint32_t x = 0; x < w; ++x) {
+                for (std::uint32_t ch = 0; ch < c; ++ch) {
+                    float val = 0.0f;
+                    for (std::uint32_t k = 0; k < size; ++k) {
+                        std::uint32_t ix = std::clamp(x + k - radius, 0u, w - 1);
+                        val += srcData[base + (static_cast<std::size_t>(y) * w + ix) * c + ch] * kernel[k];
+                    }
+                    tmpData[base + (static_cast<std::size_t>(y) * w + x) * c + ch] = val;
                 }
-                tmpData[(y * w + x) * c + ch] = val;
             }
         }
     }
 
     // Vertical Pass
-    for (std::uint32_t y = 0; y < h; ++y) {
-        for (std::uint32_t x = 0; x < w; ++x) {
-            for (std::uint32_t ch = 0; ch < c; ++ch) {
-                float val = 0.0f;
-                for (std::uint32_t k = 0; k < size; ++k) {
-                    std::uint32_t iy = std::clamp(y + k - radius, 0u, h - 1);
-                    val += tmpData[(iy * w + x) * c + ch] * kernel[k];
+    for (std::uint32_t z = 0; z < work.depth_or_layers(); ++z) {
+        auto base = static_cast<std::size_t>(z) * slice_texels;
+        for (std::uint32_t y = 0; y < h; ++y) {
+            for (std::uint32_t x = 0; x < w; ++x) {
+                for (std::uint32_t ch = 0; ch < c; ++ch) {
+                    float val = 0.0f;
+                    for (std::uint32_t k = 0; k < size; ++k) {
+                        std::uint32_t iy = std::clamp(y + k - radius, 0u, h - 1);
+                        val += tmpData[base + (static_cast<std::size_t>(iy) * w + x) * c + ch] * kernel[k];
+                    }
+                    dstData[base + (static_cast<std::size_t>(y) * w + x) * c + ch] = val;
                 }
-                dstData[(y * w + x) * c + ch] = val;
             }
         }
     }

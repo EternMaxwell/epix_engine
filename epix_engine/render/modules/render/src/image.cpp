@@ -33,13 +33,42 @@ wgpu::TextureFormat format_cast(image::Format format) {
     }
 }
 
+wgpu::TextureDimension dimension_cast(image::ImageType type) {
+    switch (type) {
+        case image::ImageType::e1D:
+            return wgpu::TextureDimension::e1D;
+        case image::ImageType::e2D:
+        case image::ImageType::e2DArray:
+            return wgpu::TextureDimension::e2D;
+        case image::ImageType::e3D:
+            return wgpu::TextureDimension::e3D;
+        default:
+            return wgpu::TextureDimension::e2D;
+    }
+}
+
+wgpu::TextureViewDimension view_dimension_cast(image::ImageType type) {
+    switch (type) {
+        case image::ImageType::e1D:
+            return wgpu::TextureViewDimension::e1D;
+        case image::ImageType::e2D:
+            return wgpu::TextureViewDimension::e2D;
+        case image::ImageType::e2DArray:
+            return wgpu::TextureViewDimension::e2DArray;
+        case image::ImageType::e3D:
+            return wgpu::TextureViewDimension::e3D;
+        default:
+            return wgpu::TextureViewDimension::e2D;
+    }
+}
+
 GPUImage render::RenderAsset<image::Image>::process(image::Image&& asset, Param param) {
     auto& [device, queue, default_sampler] = param;
     wgpu::TextureDescriptor desc;
     desc.setUsage(wgpu::TextureUsage::eCopyDst | wgpu::TextureUsage::eTextureBinding)
-        .setDimension(wgpu::TextureDimension::e2D)
+        .setDimension(dimension_cast(asset.type()))
         .setFormat(format_cast(asset.format()))
-        .setSize({asset.width(), asset.height(), 1})
+        .setSize({asset.width(), asset.height(), asset.depth_or_layers()})
         .setMipLevelCount(1)
         .setSampleCount(1);
 
@@ -49,7 +78,14 @@ GPUImage render::RenderAsset<image::Image>::process(image::Image&& asset, Param 
 
     GPUImage gpu_image;
     gpu_image.texture = device->createTexture(desc);
-    gpu_image.view    = gpu_image.texture.createView();
+    auto view_desc    = wgpu::TextureViewDescriptor()
+                            .setDimension(view_dimension_cast(asset.type()))
+                            .setMipLevelCount(1)
+                            .setBaseMipLevel(0)
+                            .setFormat(desc.format)
+                            .setBaseArrayLayer(0)
+                            .setArrayLayerCount(asset.layers());
+    gpu_image.view    = gpu_image.texture.createView(view_desc);
     gpu_image.sampler = default_sampler->sampler;
 
     auto view = asset.raw_view();
@@ -62,7 +98,7 @@ GPUImage render::RenderAsset<image::Image>::process(image::Image&& asset, Param 
                         wgpu::TexelCopyBufferLayout()
                             .setBytesPerRow(asset.width() * asset.format_info().pixelSize())
                             .setRowsPerImage(asset.height()),
-                        wgpu::Extent3D{asset.width(), asset.height(), 1});
+                        wgpu::Extent3D{asset.width(), asset.height(), asset.depth_or_layers()});
 
     return gpu_image;
 }

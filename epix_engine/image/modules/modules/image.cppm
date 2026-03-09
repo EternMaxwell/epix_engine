@@ -50,14 +50,23 @@ enum ImageUsage : std::uint8_t {
     Both   = Main | Render,
 };
 
+export enum class ImageType {
+    e1D,
+    e2D,
+    e2DArray,
+    e3D,
+};
+
 // Image Struct
 export class Image {
    private:
     // Format/Size constant after construct
-    std::uint32_t m_width;
-    std::uint32_t m_height;
-    Format m_format;
-    ImageUsage m_usage = ImageUsage::Both;
+    std::uint32_t m_width           = 1;
+    std::uint32_t m_height          = 1;
+    std::uint32_t m_depth_or_layers = 1;
+    ImageType m_type                = ImageType::e2D;
+    Format m_format                 = Format::Unknown;
+    ImageUsage m_usage              = ImageUsage::Both;
 
     std::vector<std::byte> data;
 
@@ -74,13 +83,44 @@ export class Image {
 
    public:
     // Constructors
-    static Image create(std::uint32_t w, std::uint32_t h, Format fmt);
+    static Image create(ImageType type, std::uint32_t w, std::uint32_t h, std::uint32_t depth_or_layers, Format fmt);
+    static Image create1d(std::uint32_t w, Format fmt);
+    static Image create2d(std::uint32_t w, std::uint32_t h, Format fmt);
+    static Image create2d_array(std::uint32_t w, std::uint32_t h, std::uint32_t layers, Format fmt);
+    static Image create3d(std::uint32_t w, std::uint32_t h, std::uint32_t depth, Format fmt);
     template <typename T>
         requires requires(T&& t) {
             { std::span(std::forward<T>(t)) };
             requires std::is_trivially_copyable_v<typename span_type<T>::type>;
         }
-    static std::optional<Image> create(std::uint32_t w, std::uint32_t h, Format fmt, T&& initData);
+    static std::optional<Image> create(
+        ImageType type, std::uint32_t w, std::uint32_t h, std::uint32_t depth_or_layers, Format fmt, T&& initData);
+    template <typename T>
+        requires requires(T&& t) {
+            { std::span(std::forward<T>(t)) };
+            requires std::is_trivially_copyable_v<typename span_type<T>::type>;
+        }
+    static std::optional<Image> create1d(std::uint32_t w, Format fmt, T&& initData);
+    template <typename T>
+        requires requires(T&& t) {
+            { std::span(std::forward<T>(t)) };
+            requires std::is_trivially_copyable_v<typename span_type<T>::type>;
+        }
+    static std::optional<Image> create2d(std::uint32_t w, std::uint32_t h, Format fmt, T&& initData);
+    template <typename T>
+        requires requires(T&& t) {
+            { std::span(std::forward<T>(t)) };
+            requires std::is_trivially_copyable_v<typename span_type<T>::type>;
+        }
+    static std::optional<Image> create2d_array(
+        std::uint32_t w, std::uint32_t h, std::uint32_t layers, Format fmt, T&& initData);
+    template <typename T>
+        requires requires(T&& t) {
+            { std::span(std::forward<T>(t)) };
+            requires std::is_trivially_copyable_v<typename span_type<T>::type>;
+        }
+    static std::optional<Image> create3d(
+        std::uint32_t w, std::uint32_t h, std::uint32_t depth, Format fmt, T&& initData);
 
     // Loader and Saver
     static std::expected<Image, ImageLoadError> load(const std::filesystem::path& path);
@@ -89,6 +129,10 @@ export class Image {
     // Getters
     std::uint32_t width() const { return m_width; }
     std::uint32_t height() const { return m_height; }
+    std::uint32_t depth_or_layers() const { return m_depth_or_layers; }
+    std::uint32_t depth() const { return m_type == ImageType::e3D ? m_depth_or_layers : 1; }
+    std::uint32_t layers() const { return m_type == ImageType::e2DArray ? m_depth_or_layers : 1; }
+    ImageType type() const { return m_type; }
     Format format() const { return m_format; }
     const FormatInfo& format_info() const { return getFormatInfo(m_format); }
     ImageUsage usage() const { return m_usage; }
@@ -102,7 +146,11 @@ export class Image {
      * @brief Sample a pixel at (x, y), returning an array of 4 floats, each representing a channel. Missing channels
      * are set to 0.
      */
+    std::expected<std::array<float, 4>, ImageSampleError> sample(std::uint32_t x) const;
     std::expected<std::array<float, 4>, ImageSampleError> sample(std::uint32_t x, std::uint32_t y) const;
+    std::expected<std::array<float, 4>, ImageSampleError> sample(std::uint32_t x,
+                                                                 std::uint32_t y,
+                                                                 std::uint32_t z) const;
     /**
      * @brief Write pixel data at (x, y). The data size must match the pixel size of the image format.
      */
@@ -111,11 +159,28 @@ export class Image {
             { std::span(std::forward<T>(t)) };
             requires std::is_trivially_copyable_v<typename span_type<T>::type>;
         }
+    std::expected<void, ImageWriteError> write_raw(std::uint32_t x, T&& data);
+    template <typename T>
+        requires requires(T&& t) {
+            { std::span(std::forward<T>(t)) };
+            requires std::is_trivially_copyable_v<typename span_type<T>::type>;
+        }
     std::expected<void, ImageWriteError> write_raw(std::uint32_t x, std::uint32_t y, T&& data);
+    template <typename T>
+        requires requires(T&& t) {
+            { std::span(std::forward<T>(t)) };
+            requires std::is_trivially_copyable_v<typename span_type<T>::type>;
+        }
+    std::expected<void, ImageWriteError> write_raw(std::uint32_t x, std::uint32_t y, std::uint32_t z, T&& data);
     /**
      * @brief Write pixel data at (x, y). The values are normalized floats (0.0 - 1.0) for each channel, unless hdr.
      */
+    std::expected<void, ImageWriteError> write(std::uint32_t x, std::span<const float> values);
     std::expected<void, ImageWriteError> write(std::uint32_t x, std::uint32_t y, std::span<const float> values);
+    std::expected<void, ImageWriteError> write(std::uint32_t x,
+                                               std::uint32_t y,
+                                               std::uint32_t z,
+                                               std::span<const float> values);
 
     // processing
     /**
@@ -145,14 +210,15 @@ template <typename T>
         { std::span(std::forward<T>(t)) };
         requires std::is_trivially_copyable_v<typename span_type<T>::type>;
     }
-static std::optional<Image> Image::create(std::uint32_t w, std::uint32_t h, Format fmt, T&& initData) {
+static std::optional<Image> Image::create(
+    ImageType type, std::uint32_t w, std::uint32_t h, std::uint32_t depth_or_layers, Format fmt, T&& initData) {
     std::optional<Image> img;
     auto& info               = getFormatInfo(fmt);
-    std::size_t expectedSize = w * h * info.pixelSize();
-    auto data                = std::as_bytes(std::span(std::forward<T>(initData)));
-    if (data.size() != expectedSize) return img;
-    img.emplace(create(w, h, fmt));
-    std::memcpy(img->data.data(), data.data(), expectedSize);
+    std::size_t expectedSize = static_cast<std::size_t>(w) * h * depth_or_layers * info.pixelSize();
+    auto init_bytes          = std::as_bytes(std::span(std::forward<T>(initData)));
+    if (init_bytes.size() != expectedSize) return img;
+    img.emplace(create(type, w, h, depth_or_layers, fmt));
+    std::memcpy(img->data.data(), init_bytes.data(), expectedSize);
     return img;
 }
 template <typename T>
@@ -160,14 +226,94 @@ template <typename T>
         { std::span(std::forward<T>(t)) };
         requires std::is_trivially_copyable_v<typename span_type<T>::type>;
     }
+static std::optional<Image> Image::create1d(std::uint32_t w, Format fmt, T&& initData) {
+    std::optional<Image> img;
+    auto& info               = getFormatInfo(fmt);
+    std::size_t expectedSize = static_cast<std::size_t>(w) * info.pixelSize();
+    auto init_bytes          = std::as_bytes(std::span(std::forward<T>(initData)));
+    if (init_bytes.size() != expectedSize) return img;
+    img.emplace(create1d(w, fmt));
+    std::memcpy(img->data.data(), init_bytes.data(), expectedSize);
+    return img;
+}
+template <typename T>
+    requires requires(T&& t) {
+        { std::span(std::forward<T>(t)) };
+        requires std::is_trivially_copyable_v<typename span_type<T>::type>;
+    }
+static std::optional<Image> Image::create2d(std::uint32_t w, std::uint32_t h, Format fmt, T&& initData) {
+    std::optional<Image> img;
+    auto& info               = getFormatInfo(fmt);
+    std::size_t expectedSize = static_cast<std::size_t>(w) * h * info.pixelSize();
+    auto init_bytes          = std::as_bytes(std::span(std::forward<T>(initData)));
+    if (init_bytes.size() != expectedSize) return img;
+    img.emplace(create2d(w, h, fmt));
+    std::memcpy(img->data.data(), init_bytes.data(), expectedSize);
+    return img;
+}
+template <typename T>
+    requires requires(T&& t) {
+        { std::span(std::forward<T>(t)) };
+        requires std::is_trivially_copyable_v<typename span_type<T>::type>;
+    }
+static std::optional<Image> Image::create2d_array(
+    std::uint32_t w, std::uint32_t h, std::uint32_t layers, Format fmt, T&& initData) {
+    std::optional<Image> img;
+    auto& info               = getFormatInfo(fmt);
+    std::size_t expectedSize = static_cast<std::size_t>(w) * h * layers * info.pixelSize();
+    auto init_bytes          = std::as_bytes(std::span(std::forward<T>(initData)));
+    if (init_bytes.size() != expectedSize) return img;
+    img.emplace(create2d_array(w, h, layers, fmt));
+    std::memcpy(img->data.data(), init_bytes.data(), expectedSize);
+    return img;
+}
+template <typename T>
+    requires requires(T&& t) {
+        { std::span(std::forward<T>(t)) };
+        requires std::is_trivially_copyable_v<typename span_type<T>::type>;
+    }
+static std::optional<Image> Image::create3d(
+    std::uint32_t w, std::uint32_t h, std::uint32_t depth, Format fmt, T&& initData) {
+    std::optional<Image> img;
+    auto& info               = getFormatInfo(fmt);
+    std::size_t expectedSize = static_cast<std::size_t>(w) * h * std::max(depth, 1u) * info.pixelSize();
+    auto init_bytes          = std::as_bytes(std::span(std::forward<T>(initData)));
+    if (init_bytes.size() != expectedSize) return img;
+    img.emplace(create3d(w, h, depth, fmt));
+    std::memcpy(img->data.data(), init_bytes.data(), expectedSize);
+    return img;
+}
+template <typename T>
+    requires requires(T&& t) {
+        { std::span(std::forward<T>(t)) };
+        requires std::is_trivially_copyable_v<typename span_type<T>::type>;
+    }
+std::expected<void, ImageWriteError> Image::write_raw(std::uint32_t x, T&& data) {
+    return write_raw(x, 0, 0, std::forward<T>(data));
+}
+template <typename T>
+    requires requires(T&& t) {
+        { std::span(std::forward<T>(t)) };
+        requires std::is_trivially_copyable_v<typename span_type<T>::type>;
+    }
 std::expected<void, ImageWriteError> Image::write_raw(std::uint32_t x, std::uint32_t y, T&& data) {
+    return write_raw(x, y, 0, std::forward<T>(data));
+}
+template <typename T>
+    requires requires(T&& t) {
+        { std::span(std::forward<T>(t)) };
+        requires std::is_trivially_copyable_v<typename span_type<T>::type>;
+    }
+std::expected<void, ImageWriteError> Image::write_raw(std::uint32_t x, std::uint32_t y, std::uint32_t z, T&& data) {
     const FormatInfo& inf = format_info();
-    auto span             = std::as_bytes(std::span(std::forward<T>(data)));
-    if (x >= m_width || y >= m_height) return std::unexpected(ImageWriteError::OutOfBounds);
-    if (span.size() != inf.pixelSize()) return std::unexpected(ImageWriteError::DataSizeMismatch);
+    auto bytes            = std::as_bytes(std::span(std::forward<T>(data)));
+    if (x >= m_width || y >= m_height || z >= m_depth_or_layers) return std::unexpected(ImageWriteError::OutOfBounds);
+    if (bytes.size() != inf.pixelSize()) return std::unexpected(ImageWriteError::DataSizeMismatch);
 
-    std::byte* pixelPtr = data.data() + (y * m_width + x) * inf.pixelSize();
-    std::memcpy(pixelPtr, span.data(), inf.pixelSize());
+    auto slice_stride = static_cast<std::size_t>(m_width) * m_height * inf.pixelSize();
+    std::byte* pixelPtr =
+        this->data.data() + z * slice_stride + (static_cast<std::size_t>(y) * m_width + x) * inf.pixelSize();
+    std::memcpy(pixelPtr, bytes.data(), inf.pixelSize());
     return {};
 }
 }  // namespace image
