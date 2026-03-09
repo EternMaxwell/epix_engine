@@ -33,7 +33,7 @@ export struct LayoutCache {
     {
         LayoutCacheKey key = layouts | std::views::transform([](const auto& layout) { return layout.id(); }) |
                              std::ranges::to<std::vector>();
-        auto it            = cache.find(key);
+        auto it = cache.find(key);
         if (it != cache.end()) {
             return it->second;
         }

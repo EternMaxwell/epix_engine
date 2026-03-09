@@ -55,4 +55,4 @@ void GraphInputNode::run(GraphContext& graph, RenderContext&, const World&) {
     }
 }
 
-}  // namespace epix::render::graph
+}  // namespace render::graph

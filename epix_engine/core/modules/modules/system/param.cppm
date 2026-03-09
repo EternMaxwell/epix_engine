@@ -137,9 +137,10 @@ struct SystemParam<Res<T>> : ParamBase {
     static State init_state(World& world) { return world.type_registry().type_id<T>(); }
     static void init_access(const State& state, SystemMeta& meta, FilteredAccessSet& access, const World&) {
         if (access.combined_access().has_resource_write(state)) {
-            throw std::runtime_error(std::format(
-                "Res<{}> in system [{}] has access conflicts of id {} with a previous ResMut<{}>. Consider removing this param.",
-                meta::type_id<T>().name(), meta.name, state.get(), meta::type_id<T>().name()));
+            throw std::runtime_error(
+                std::format("Res<{}> in system [{}] has access conflicts of id {} with a previous ResMut<{}>. Consider "
+                            "removing this param.",
+                            meta::type_id<T>().name(), meta.name, state.get(), meta::type_id<T>().name()));
         }
         access.add_unfiltered_resource_read(state);
     }
@@ -181,10 +182,10 @@ struct SystemParam<ResMut<T>> : ParamBase {
     static State init_state(World& world) { return world.type_registry().type_id<T>(); }
     static void init_access(const State& state, SystemMeta& meta, FilteredAccessSet& access, const World&) {
         if (access.combined_access().has_resource_read(state)) {
-            throw std::runtime_error(
-                std::format("ResMut<{}> in system [{}] has access conflicts of id {} with a previous Res<{}> or ResMut<{}>.",
-                            meta::type_id<T>().name(), meta.name, state.get(), meta::type_id<T>().name(),
-                            meta::type_id<T>().name()));
+            throw std::runtime_error(std::format(
+                "ResMut<{}> in system [{}] has access conflicts of id {} with a previous Res<{}> or ResMut<{}>.",
+                meta::type_id<T>().name(), meta.name, state.get(), meta::type_id<T>().name(),
+                meta::type_id<T>().name()));
         }
         access.add_unfiltered_resource_write(state);
     }

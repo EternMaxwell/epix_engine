@@ -101,9 +101,9 @@ struct Node2D : graph::Node {
                                                     .setLoadOp(wgpu::LoadOp::eLoad)
                                                     .setStoreOp(wgpu::StoreOp::eStore)})
                 .setDepthStencilAttachment(wgpu::RenderPassDepthStencilAttachment()
-                                               .setView(depth.depth_view)
-                                               .setDepthLoadOp(wgpu::LoadOp::eLoad)
-                                               .setDepthStoreOp(wgpu::StoreOp::eStore)));
+                                                                    .setView(depth.depth_view)
+                                                                    .setDepthLoadOp(wgpu::LoadOp::eLoad)
+                                                                    .setDepthStoreOp(wgpu::StoreOp::eStore)));
         phase.render(render_pass, world, view_entity);
         render_pass.end();
         render_ctx.flush_encoder();

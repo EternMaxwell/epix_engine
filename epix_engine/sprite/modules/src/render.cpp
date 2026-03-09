@@ -160,19 +160,19 @@ struct SpritePipelineCache {
                                       .setBlend(wgpu::BlendState().setColor(color_blend).setAlpha(alpha_blend)));
 
         render::RenderPipelineDescriptor pipeline_desc{
-            .label         = std::format("sprite-{}", wgpu::to_string(color_format)),
-            .layouts       = std::vector<wgpu::BindGroupLayout>{view_layout, instance_layout, texture_layout},
-            .vertex        = std::move(vertex_state),
-            .primitive     = wgpu::PrimitiveState()
-                                 .setTopology(wgpu::PrimitiveTopology::eTriangleList)
-                                 .setFrontFace(wgpu::FrontFace::eCCW)
-                                 .setCullMode(wgpu::CullMode::eNone),
+            .label     = std::format("sprite-{}", wgpu::to_string(color_format)),
+            .layouts   = std::vector<wgpu::BindGroupLayout>{view_layout, instance_layout, texture_layout},
+            .vertex    = std::move(vertex_state),
+            .primitive = wgpu::PrimitiveState()
+                             .setTopology(wgpu::PrimitiveTopology::eTriangleList)
+                             .setFrontFace(wgpu::FrontFace::eCCW)
+                             .setCullMode(wgpu::CullMode::eNone),
             .depth_stencil = wgpu::DepthStencilState()
                                  .setFormat(wgpu::TextureFormat::eDepth32Float)
                                  .setDepthWriteEnabled(wgpu::OptionalBool::eFalse)
                                  .setDepthCompare(wgpu::CompareFunction::eLessEqual),
-            .multisample   = wgpu::MultisampleState().setCount(1).setMask(~0u).setAlphaToCoverageEnabled(false),
-            .fragment      = std::move(fragment_state),
+            .multisample = wgpu::MultisampleState().setCount(1).setMask(~0u).setAlphaToCoverageEnabled(false),
+            .fragment    = std::move(fragment_state),
         };
 
         auto pipeline_id = pipeline_server.queue_render_pipeline(std::move(pipeline_desc));

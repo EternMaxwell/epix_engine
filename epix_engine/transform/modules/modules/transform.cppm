@@ -140,4 +140,4 @@ enum class TransformSets {
 struct TransformPlugin {
     void build(core::App& app);
 };
-}  // namespace epix::transform
+}  // namespace transform

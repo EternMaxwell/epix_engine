@@ -349,24 +349,24 @@ void Schedule::execute(SystemDispatcher& dispatcher, ExecuteConfig config) {
         // dispatch a system for execution
         CachedNode& cached_node = cache->nodes[index];
         auto dispatch_config    = DispatchConfig{
-            .on_finish = [&, index]() { exec_state.finished_queue.push(index); },
-            .on_error =
+               .on_finish = [&, index]() { exec_state.finished_queue.push(index); },
+               .on_error =
                 [&, index](const RunSystemError& error) {
                     if (std::holds_alternative<ValidateParamError>(error)) {
                         auto&& param_error = std::get<ValidateParamError>(error);
                         spdlog::error("[schedule] parameter validation error at system '{}', type: '{}', msg: {}",
-                                      cache->nodes[index].node->system->name(), param_error.param_type.short_name(),
-                                      param_error.message);
+                                         cache->nodes[index].node->system->name(), param_error.param_type.short_name(),
+                                         param_error.message);
                     } else if (std::holds_alternative<SystemException>(error)) {
                         auto&& expection = std::get<SystemException>(error);
                         try {
                             std::rethrow_exception(expection.exception);
                         } catch (const std::exception& e) {
                             spdlog::error("[schedule] system exception at system '{}', msg: {}",
-                                          cache->nodes[index].node->system->name(), e.what());
+                                             cache->nodes[index].node->system->name(), e.what());
                         } catch (...) {
                             spdlog::error("[schedule] system exception at system '{}', msg: unknown",
-                                          cache->nodes[index].node->system->name());
+                                             cache->nodes[index].node->system->name());
                         }
                     }
                 },

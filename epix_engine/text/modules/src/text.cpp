@@ -400,9 +400,9 @@ ShapedText text::shape_text(const Text& text,
                     .cluster     = entry.cluster,
                     .x_offset    = pen_x + static_cast<float>(entry.x_offset),
                     .y_offset    = first_baseline_from_bottom - static_cast<float>(line_index) * final_line_height +
-                                   static_cast<float>(entry.y_offset),
-                    .x_advance   = static_cast<float>(entry.x_advance),
-                    .y_advance   = 0.0f,
+                                static_cast<float>(entry.y_offset),
+                    .x_advance = static_cast<float>(entry.x_advance),
+                    .y_advance = 0.0f,
                 });
                 pen_x += static_cast<float>(entry.x_advance);
             }

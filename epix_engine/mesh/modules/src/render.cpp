@@ -654,9 +654,9 @@ void queue_meshes_2d_opaque(
                 .draw_func   = draw_function_id->value,
                 .batch_count = 1,
                 .batch_key   = render::phase::OpaqueSortKey(MeshOpaqueBatchKey{
-                    .pipeline_id = pipeline_id->get(),
-                    .mesh_id     = extracted_mesh.mesh,
-                    .texture_id  = extracted_mesh.texture,
+                      .pipeline_id = pipeline_id->get(),
+                      .mesh_id     = extracted_mesh.mesh,
+                      .texture_id  = extracted_mesh.texture,
                 }),
             });
         }

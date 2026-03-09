@@ -70,7 +70,7 @@ void GPUMesh::update_from_mesh(const Mesh& mesh, const wgpu::Device& device, con
                                                     auto byte_size  = attr_data.data.type_info().size * vertex_count;
                                                     auto write_size = align_up(byte_size, kBufferWriteAlignment);
                                                     return align_up(acc, kBufferWriteAlignment) + write_size;
-                                                 });
+                                                });
     auto queue          = device.getQueue();
     if (total_bytes != 0) {
         if (total_bytes > (_combined_buffer ? _combined_buffer.getSize() : 0)) {

@@ -11,4 +11,4 @@ export using utils::Receiver;
 export using utils::bit_vector;
 export using utils::int_base;
 export using utils::make_channel;
-}
+}  // namespace core

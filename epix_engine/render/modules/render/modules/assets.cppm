@@ -28,7 +28,7 @@ concept RenderAssetImpl = requires(RenderAsset<T> asset) {
     typename RenderAsset<T>::Param;
     requires core::system_param<typename RenderAsset<T>::Param>;
     {
-        asset.process(std::declval<T&&>(), std::declval<typename RenderAsset<T>::Param&>())
+        asset.process(std::declval<T &&>(), std::declval<typename RenderAsset<T>::Param&>())
     } -> std::same_as<typename RenderAsset<T>::ProcessedAsset>;
     { asset.usage(std::declval<const T&>()) } -> std::same_as<RenderAssetUsage>;
 };

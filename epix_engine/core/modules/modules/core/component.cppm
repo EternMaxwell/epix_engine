@@ -242,9 +242,7 @@ export struct Components : public SparseSet<TypeId, ComponentInfo> {
             }
         }
     }
-    void register_required_dyn(
-        TypeId requiree, TypeId required, RequiredComponentConstructor constructor
-    ) {
+    void register_required_dyn(TypeId requiree, TypeId required, RequiredComponentConstructor constructor) {
         auto& required_components = get_mut(requiree).value().get()._required_components;
         if (required_components.components.contains(required)) return;
         required_components.register_dynamic(required, 0, std::move(constructor));
