@@ -16,7 +16,6 @@ option(EPIX_USE_VOLK "Use Vulkan Loader" ON)
 option(EPIX_ENABLE_TEST "Enable epix test" ON)
 option(EPIX_CXX_MODULE "Enable C++20 modules" ON)
 option(EPIX_IMPORT_STD "Enable C++ import std" ON)
-option(EPIX_ENABLE_SFML "Enable SFML window backend" OFF)
 
 set(EPIX_IMPORT_STD ON) # Currently having issue with clang with msvc
 
@@ -59,9 +58,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 #sub directories
 add_subdirectory (libs/glfw)
-if (EPIX_ENABLE_SFML)
-  add_subdirectory (libs/sfml)
-endif()
+add_subdirectory (libs/sfml)
 set (SPDLOG_USE_STD_FORMAT ON)
 add_subdirectory (libs/spdlog)
 set (FT_DISABLE_HARFBUZZ ON)
@@ -125,6 +122,5 @@ message(STATUS "  EPIX_USE_VOLK     (optional): ${EPIX_USE_VOLK}")
 message(STATUS "  EPIX_ENABLE_TEST  (optional): ${EPIX_ENABLE_TEST}")
 message(STATUS "  EPIX_CXX_MODULE   (optional): ${EPIX_CXX_MODULE}")
 message(STATUS "  EPIX_IMPORT_STD   (optional): ${EPIX_IMPORT_STD}")
-message(STATUS "  EPIX_ENABLE_SFML  (optional): ${EPIX_ENABLE_SFML}")
 
 add_subdirectory (epix_engine)
