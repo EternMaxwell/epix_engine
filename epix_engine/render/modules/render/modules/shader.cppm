@@ -49,6 +49,7 @@ export struct ShaderSource {
 };
 export struct Shader {
     std::filesystem::path path;
+    std::string label;
     ShaderSource source;
 };
 export struct ShaderLoaderWGSL {

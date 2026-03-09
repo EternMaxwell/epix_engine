@@ -24,7 +24,7 @@ export enum ShaderCacheError {
     ModuleCreationFailure,
 };
 export struct ShaderCache {
-    using load_func = std::optional<wgpu::ShaderModule> (*)(const wgpu::Device& device, const ShaderSource& source);
+    using load_func = std::optional<wgpu::ShaderModule> (*)(const wgpu::Device& device, const Shader& shader);
 
    private:
     std::unordered_map<assets::AssetId<Shader>, ShaderData> data;

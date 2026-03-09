@@ -19,7 +19,7 @@ Shader ShaderLoaderWGSL::load(const std::filesystem::path& path, assets::LoadCon
     }
     std::stringstream buffer;
     buffer << file.rdbuf();
-    return Shader{path, ShaderSource::wgsl(buffer.str())};
+    return Shader{path, path.string(), ShaderSource::wgsl(buffer.str())};
 }
 
 std::span<const char* const> ShaderLoaderSPIRV::extensions() {
@@ -37,7 +37,7 @@ Shader ShaderLoaderSPIRV::load(const std::filesystem::path& path, assets::LoadCo
     code.resize(static_cast<size_t>(size) / sizeof(uint32_t));
     file.seekg(0, std::ios::beg);
     file.read(reinterpret_cast<char*>(code.data()), size);
-    return Shader{path, ShaderSource::spirv(std::move(code))};
+    return Shader{path, path.string(), ShaderSource::spirv(std::move(code))};
 }
 
 void ShaderPlugin::build(App& app) {

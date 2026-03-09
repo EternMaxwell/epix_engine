@@ -7,13 +7,17 @@ module epix.render;
 import :pipeline_server;
 
 namespace render {
-std::optional<wgpu::ShaderModule> load_module(const wgpu::Device& device, const ShaderSource& source) {
+std::optional<wgpu::ShaderModule> load_module(const wgpu::Device& device, const Shader& shader) {
+    const auto& source = shader.source;
     if (source.is_wgsl()) {
         auto wgsl_code = source.get_wgsl();
         if (!wgsl_code) {
             return std::nullopt;
         }
         wgpu::ShaderModuleDescriptor desc;
+        if (!shader.label.empty()) {
+            desc.setLabel(wgpu::StringView(std::string_view(shader.label)));
+        }
         desc.setNextInChain(wgpu::ShaderSourceWGSL().setCode(*wgsl_code));
         return device.createShaderModule(desc);
     } else if (source.is_spirv()) {
@@ -22,6 +26,9 @@ std::optional<wgpu::ShaderModule> load_module(const wgpu::Device& device, const 
             return std::nullopt;
         }
         wgpu::ShaderModuleDescriptor desc;
+        if (!shader.label.empty()) {
+            desc.setLabel(wgpu::StringView(std::string_view(shader.label)));
+        }
         desc.setNextInChain(wgpu::ShaderSourceSPIRV().setCode(spirv_code->data()).setCodeSize(spirv_code->size()));
         return device.createShaderModule(desc);
     }

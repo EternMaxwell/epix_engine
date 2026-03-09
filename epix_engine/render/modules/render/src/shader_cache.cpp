@@ -15,7 +15,7 @@ auto ShaderCache::get(const wgpu::Device& device, CachedPipelineId pipeline, ass
         return std::unexpected(ShaderCacheError::NotLoaded);
     }
     const Shader& shader                     = shader_it->second;
-    std::optional<wgpu::ShaderModule> module = load_module(device, shader.source);
+    std::optional<wgpu::ShaderModule> module = load_module(device, shader);
     if (!module) {
         return std::unexpected(ShaderCacheError::ModuleCreationFailure);
     }
@@ -27,7 +27,7 @@ auto ShaderCache::clear(assets::AssetId<Shader> id) -> std::vector<CachedPipelin
     auto it                 = data.find(id);
     if (it != data.end()) {
         affected_pipelines.append_range(it->second.pipelines);
-        it->second.pipelines.clear();
+        data.erase(it);
     }
     return affected_pipelines;
 }
