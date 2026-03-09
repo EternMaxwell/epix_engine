@@ -58,6 +58,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 #sub directories
 add_subdirectory (libs/glfw)
+add_subdirectory (libs/sfml)
 set (SPDLOG_USE_STD_FORMAT ON)
 add_subdirectory (libs/spdlog)
 set (FT_DISABLE_HARFBUZZ ON)
