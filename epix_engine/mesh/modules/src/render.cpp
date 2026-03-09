@@ -431,27 +431,33 @@ struct MeshOpaqueBatchKey {
 };
 
 void insert_mesh_shaders(assets::Assets<render::Shader>& shaders) {
+    auto solid_vertex_path             = std::filesystem::path("internal://mesh/solid_vertex.wgsl");
+    auto vertex_color_path             = std::filesystem::path("internal://mesh/vertex_color_vertex.wgsl");
+    auto textured_vertex_path          = std::filesystem::path("internal://mesh/textured_vertex.wgsl");
+    auto textured_vertex_color_path    = std::filesystem::path("internal://mesh/textured_vertex_color_vertex.wgsl");
+    auto color_fragment_path           = std::filesystem::path("internal://mesh/color_fragment.wgsl");
+    auto textured_fragment_path        = std::filesystem::path("internal://mesh/textured_fragment.wgsl");
     [[maybe_unused]] auto solid_vertex = shaders.insert(
-        kMeshSolidVertexShaderId, render::Shader{std::filesystem::path("internal://mesh/solid_vertex.wgsl"),
+        kMeshSolidVertexShaderId, render::Shader{solid_vertex_path, solid_vertex_path.string(),
                                                  render::ShaderSource::wgsl(std::string(kMeshSolidVertexShader))});
     [[maybe_unused]] auto vertex_color_vertex =
         shaders.insert(kMeshVertexColorShaderId,
-                       render::Shader{std::filesystem::path("internal://mesh/vertex_color_vertex.wgsl"),
+                       render::Shader{vertex_color_path, vertex_color_path.string(),
                                       render::ShaderSource::wgsl(std::string(kMeshVertexColorVertexShader))});
     [[maybe_unused]] auto textured_vertex =
         shaders.insert(kMeshTexturedVertexShaderId,
-                       render::Shader{std::filesystem::path("internal://mesh/textured_vertex.wgsl"),
+                       render::Shader{textured_vertex_path, textured_vertex_path.string(),
                                       render::ShaderSource::wgsl(std::string(kMeshTexturedVertexShader))});
     [[maybe_unused]] auto textured_vertex_color =
         shaders.insert(kMeshTexturedVertexColorShaderId,
-                       render::Shader{std::filesystem::path("internal://mesh/textured_vertex_color_vertex.wgsl"),
+                       render::Shader{textured_vertex_color_path, textured_vertex_color_path.string(),
                                       render::ShaderSource::wgsl(std::string(kMeshTexturedVertexColorVertexShader))});
     [[maybe_unused]] auto color_fragment = shaders.insert(
-        kMeshColorFragmentShaderId, render::Shader{std::filesystem::path("internal://mesh/color_fragment.wgsl"),
+        kMeshColorFragmentShaderId, render::Shader{color_fragment_path, color_fragment_path.string(),
                                                    render::ShaderSource::wgsl(std::string(kMeshColorFragmentShader))});
     [[maybe_unused]] auto textured_fragment =
         shaders.insert(kMeshTexturedFragmentShaderId,
-                       render::Shader{std::filesystem::path("internal://mesh/textured_fragment.wgsl"),
+                       render::Shader{textured_fragment_path, textured_fragment_path.string(),
                                       render::ShaderSource::wgsl(std::string(kMeshTexturedFragmentShader))});
 }
 

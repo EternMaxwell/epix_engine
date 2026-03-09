@@ -12,7 +12,8 @@ namespace mesh {
 export struct GPUMesh {
    public:
     static GPUMesh create_from_mesh(const Mesh& mesh, const wgpu::Device& device);
-    void update_from_mesh(const Mesh& mesh, const wgpu::Device& device);
+    static GPUMesh create_from_mesh(const Mesh& mesh, const wgpu::Device& device, const wgpu::Limits& limits);
+    void update_from_mesh(const Mesh& mesh, const wgpu::Device& device, const wgpu::Limits& limits);
     bool is_indexed() const { return _index_binding.has_value(); }
     std::size_t vertex_count() const { return _vertex_count; }
     wgpu::PrimitiveTopology primitive_type() const { return _primitive_type; }
