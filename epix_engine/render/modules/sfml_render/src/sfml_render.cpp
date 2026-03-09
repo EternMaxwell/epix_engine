@@ -3,8 +3,33 @@ module;
 #include <SFML/Window.hpp>
 #include <webgpu/webgpu.h>
 
-#if defined(_WIN32)
+#define WGPU_TARGET_MACOS 1
+#define WGPU_TARGET_LINUX_X11 2
+#define WGPU_TARGET_WINDOWS 3
+#define WGPU_TARGET_LINUX_WAYLAND 4
+#define WGPU_TARGET_EMSCRIPTEN 5
+
+#if defined(__EMSCRIPTEN__)
+#define WGPU_TARGET WGPU_TARGET_EMSCRIPTEN
+#elif defined(_WIN32)
+#define WGPU_TARGET WGPU_TARGET_WINDOWS
+#elif defined(__APPLE__)
+#define WGPU_TARGET WGPU_TARGET_MACOS
+#elif defined(EPIX_SFML_WAYLAND)
+#define WGPU_TARGET WGPU_TARGET_LINUX_WAYLAND
+#else
+#define WGPU_TARGET WGPU_TARGET_LINUX_X11
+#endif
+
+#if WGPU_TARGET == WGPU_TARGET_WINDOWS
 #include <windows.h>
+#elif WGPU_TARGET == WGPU_TARGET_MACOS
+#include <Cocoa/Cocoa.h>
+#include <QuartzCore/CAMetalLayer.h>
+#elif WGPU_TARGET == WGPU_TARGET_LINUX_X11
+#include <X11/Xlib.h>
+#elif WGPU_TARGET == WGPU_TARGET_LINUX_WAYLAND
+#include <wayland-client.h>
 #endif
 
 module epix.sfml.render;
@@ -21,7 +46,7 @@ using render::window::SurfaceCreation;
 
 namespace {
 WGPUSurface sfmlGetWGPUSurfaceRaw(WGPUInstance instance, sf::Window* window) {
-#if defined(_WIN32)
+#if WGPU_TARGET == WGPU_TARGET_WINDOWS
     HWND hwnd           = static_cast<HWND>(window->getNativeHandle());
     HINSTANCE hinstance = GetModuleHandle(NULL);
 
@@ -36,8 +61,71 @@ WGPUSurface sfmlGetWGPUSurfaceRaw(WGPUInstance instance, sf::Window* window) {
     surfaceDescriptor.label       = {NULL, WGPU_STRLEN};
 
     return wgpuInstanceCreateSurface(instance, &surfaceDescriptor);
+#elif WGPU_TARGET == WGPU_TARGET_MACOS
+    id metal_layer      = [CAMetalLayer layer];
+    NSWindow* ns_window = static_cast<NSWindow*>(window->getNativeHandle());
+    [ns_window.contentView setWantsLayer:YES];
+    [ns_window.contentView setLayer:metal_layer];
+
+    WGPUSurfaceSourceMetalLayer fromMetalLayer;
+    fromMetalLayer.chain.next  = NULL;
+    fromMetalLayer.chain.sType = WGPUSType_SurfaceSourceMetalLayer;
+    fromMetalLayer.layer       = metal_layer;
+
+    WGPUSurfaceDescriptor surfaceDescriptor;
+    surfaceDescriptor.nextInChain = &fromMetalLayer.chain;
+    surfaceDescriptor.label       = {NULL, WGPU_STRLEN};
+
+    return wgpuInstanceCreateSurface(instance, &surfaceDescriptor);
+#elif WGPU_TARGET == WGPU_TARGET_LINUX_X11
+    static Display* display = XOpenDisplay(nullptr);
+    if (!display) {
+        throw std::runtime_error("Failed to open X11 display for SFMLRenderPlugin");
+    }
+    ::Window x11_window = static_cast<::Window>(window->getNativeHandle());
+
+    WGPUSurfaceSourceXlibWindow fromXlibWindow;
+    fromXlibWindow.chain.next  = NULL;
+    fromXlibWindow.chain.sType = WGPUSType_SurfaceSourceXlibWindow;
+    fromXlibWindow.display     = display;
+    fromXlibWindow.window      = x11_window;
+
+    WGPUSurfaceDescriptor surfaceDescriptor;
+    surfaceDescriptor.nextInChain = &fromXlibWindow.chain;
+    surfaceDescriptor.label       = {NULL, WGPU_STRLEN};
+
+    return wgpuInstanceCreateSurface(instance, &surfaceDescriptor);
+#elif WGPU_TARGET == WGPU_TARGET_LINUX_WAYLAND
+    static wl_display* display = wl_display_connect(nullptr);
+    if (!display) {
+        throw std::runtime_error("Failed to connect Wayland display for SFMLRenderPlugin");
+    }
+    wl_surface* surface = static_cast<wl_surface*>(window->getNativeHandle());
+
+    WGPUSurfaceSourceWaylandSurface fromWaylandSurface;
+    fromWaylandSurface.chain.next  = NULL;
+    fromWaylandSurface.chain.sType = WGPUSType_SurfaceSourceWaylandSurface;
+    fromWaylandSurface.display     = display;
+    fromWaylandSurface.surface     = surface;
+
+    WGPUSurfaceDescriptor surfaceDescriptor;
+    surfaceDescriptor.nextInChain = &fromWaylandSurface.chain;
+    surfaceDescriptor.label       = {NULL, WGPU_STRLEN};
+
+    return wgpuInstanceCreateSurface(instance, &surfaceDescriptor);
+#elif WGPU_TARGET == WGPU_TARGET_EMSCRIPTEN
+    WGPUSurfaceSourceCanvasHTMLSelector fromCanvasHTMLSelector;
+    fromCanvasHTMLSelector.chain.next  = NULL;
+    fromCanvasHTMLSelector.chain.sType = WGPUSType_SurfaceSourceCanvasHTMLSelector;
+    fromCanvasHTMLSelector.selector    = "canvas";
+
+    WGPUSurfaceDescriptor surfaceDescriptor;
+    surfaceDescriptor.nextInChain = &fromCanvasHTMLSelector.chain;
+    surfaceDescriptor.label       = {NULL, WGPU_STRLEN};
+
+    return wgpuInstanceCreateSurface(instance, &surfaceDescriptor);
 #else
-    throw std::runtime_error("SFMLRenderPlugin surface creation is currently implemented for Windows only");
+#error "Unsupported WGPU_TARGET"
 #endif
 }
 
