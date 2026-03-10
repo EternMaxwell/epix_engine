@@ -17,16 +17,23 @@ target_link_libraries(epix_glfw_render PUBLIC epix_glfw)
 target_link_libraries(epix_glfw_render PUBLIC epix_render)
 target_link_libraries(epix_glfw_render PUBLIC webgpu)
 
+epix_add_module_subdir(epix_sfml_render sfml_render)
+target_link_libraries(epix_sfml_render PUBLIC epix_core)
+target_link_libraries(epix_sfml_render PUBLIC epix_window)
+target_link_libraries(epix_sfml_render PUBLIC epix_sfml)
+target_link_libraries(epix_sfml_render PUBLIC epix_render)
+target_link_libraries(epix_sfml_render PUBLIC SFML::Window)
+target_link_libraries(epix_sfml_render PUBLIC webgpu)
+
 epix_add_module_subdir(epix_core_graph core_graph)
 target_link_libraries(epix_core_graph PUBLIC epix_core)
 target_link_libraries(epix_core_graph PUBLIC epix_transform)
 target_link_libraries(epix_core_graph PUBLIC epix_render)
 
 # --- tests: auto-discover ---
-# Recursively find all .cpp test sources under tests/ and create an executable + ctest entry
-file(GLOB_RECURSE TEST_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/tests/*.cpp")
-foreach(TEST_SRC IN LISTS TEST_SOURCES)
-	# create a unique target name based on relative path: replace separators and strip extension
+# GLFW render tests (top-level .cpp files in tests/)
+file(GLOB GLFW_TEST_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/tests/*.cpp")
+foreach(TEST_SRC IN LISTS GLFW_TEST_SOURCES)
 	file(RELATIVE_PATH TEST_REL "${CMAKE_CURRENT_SOURCE_DIR}/tests" "${TEST_SRC}")
 	string(CONCAT TEST_NAME "test_render_" "${TEST_REL}")
 	string(REPLACE "/" "_" TEST_NAME "${TEST_NAME}")
@@ -35,5 +42,19 @@ foreach(TEST_SRC IN LISTS TEST_SOURCES)
 
 	add_executable(${TEST_NAME} "${TEST_SRC}")
 	target_link_libraries(${TEST_NAME} PRIVATE epix_render epix_glfw_render epix_core_graph)
+	add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
+endforeach()
+
+# SFML render tests
+file(GLOB_RECURSE SFML_TEST_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/tests/sfml/*.cpp")
+foreach(TEST_SRC IN LISTS SFML_TEST_SOURCES)
+	file(RELATIVE_PATH TEST_REL "${CMAKE_CURRENT_SOURCE_DIR}/tests" "${TEST_SRC}")
+	string(CONCAT TEST_NAME "test_render_" "${TEST_REL}")
+	string(REPLACE "/" "_" TEST_NAME "${TEST_NAME}")
+	string(REPLACE "\\" "_" TEST_NAME "${TEST_NAME}")
+	string(REPLACE ".cpp" "" TEST_NAME "${TEST_NAME}")
+
+	add_executable(${TEST_NAME} "${TEST_SRC}")
+	target_link_libraries(${TEST_NAME} PRIVATE epix_render epix_sfml_render epix_core_graph)
 	add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
 endforeach()
