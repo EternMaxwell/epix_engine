@@ -12,20 +12,6 @@ target_link_libraries(epix_glfw PUBLIC epix_assets)
 target_link_libraries(epix_glfw PUBLIC epix_image)
 target_link_libraries(epix_glfw PUBLIC glfw)
 
-epix_add_module_subdir(epix_sfml sfml)
-target_link_libraries(epix_sfml PUBLIC epix_core)
-target_link_libraries(epix_sfml PUBLIC epix_window)
-target_link_libraries(epix_sfml PUBLIC epix_input)
-target_link_libraries(epix_sfml PUBLIC epix_assets)
-target_link_libraries(epix_sfml PUBLIC epix_image)
-if (TARGET SFML::Window)
-    target_link_libraries(epix_sfml PUBLIC SFML::Window SFML::System)
-elseif(TARGET sfml-window)
-    target_link_libraries(epix_sfml PUBLIC sfml-window sfml-system)
-else()
-    message(FATAL_ERROR "No SFML window target was found")
-endif()
-
 ## --- tests: auto-discover ---
 # Recursively find all .cpp test sources under tests/ and create an executable + ctest entry
 file(GLOB_RECURSE CORE_TEST_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/tests/glfw/*.cpp")

@@ -17,21 +17,10 @@ target_link_libraries(epix_glfw_render PUBLIC epix_glfw)
 target_link_libraries(epix_glfw_render PUBLIC epix_render)
 target_link_libraries(epix_glfw_render PUBLIC webgpu)
 
-epix_add_module_subdir(epix_sfml_render sfml_render)
-target_link_libraries(epix_sfml_render PUBLIC epix_core)
-target_link_libraries(epix_sfml_render PUBLIC epix_window)
-target_link_libraries(epix_sfml_render PUBLIC epix_sfml)
-target_link_libraries(epix_sfml_render PUBLIC epix_render)
-target_link_libraries(epix_sfml_render PUBLIC webgpu)
-
 epix_add_module_subdir(epix_core_graph core_graph)
 target_link_libraries(epix_core_graph PUBLIC epix_core)
 target_link_libraries(epix_core_graph PUBLIC epix_transform)
 target_link_libraries(epix_core_graph PUBLIC epix_render)
-
-# epix_add_module_subdir(epix_mesh mesh)
-# target_link_libraries(epix_mesh PUBLIC epix_core)
-# target_link_libraries(epix_mesh PUBLIC epix_render)
 
 # --- tests: auto-discover ---
 # Recursively find all .cpp test sources under tests/ and create an executable + ctest entry

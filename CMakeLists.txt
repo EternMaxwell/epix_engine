@@ -58,7 +58,26 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 #sub directories
 add_subdirectory (libs/glfw)
-add_subdirectory (libs/sfml)
+
+block()
+  set(CMAKE_POLICY_DEFAULT_CMP0077 NEW)
+  set(BUILD_SHARED_LIBS OFF)
+  set(SFML_BUILD_WINDOW ON)
+  set(SFML_BUILD_GRAPHICS OFF)
+  set(SFML_BUILD_AUDIO OFF)
+  set(SFML_BUILD_NETWORK OFF)
+  set(SFML_BUILD_EXAMPLES OFF)
+  set(SFML_BUILD_TEST_SUITE OFF)
+  set(SFML_BUILD_DOC OFF)
+  set(SFML_USE_SYSTEM_DEPS OFF)
+
+  if (NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/libs/sfml/CMakeLists.txt")
+    message(FATAL_ERROR "SFML submodule is missing at libs/sfml. Run: git submodule update --init --recursive libs/sfml")
+  endif()
+
+  add_subdirectory (libs/sfml)
+endblock()
+
 set (SPDLOG_USE_STD_FORMAT ON)
 add_subdirectory (libs/spdlog)
 set (FT_DISABLE_HARFBUZZ ON)
