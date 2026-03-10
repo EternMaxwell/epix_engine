@@ -10,28 +10,12 @@ module epix.text;
 
 import epix.image;
 import epix.mesh;
+import webgpu;
 import std;
 
 using namespace text::font;
 
 namespace {
-constexpr std::uint32_t kFontAtlasMaxDimension = 8192;
-constexpr std::uint32_t kFontAtlasMaxLayers    = 256;
-
-std::uint32_t next_power_of_two_clamped(std::uint32_t value, std::uint32_t min_value, std::uint32_t max_value) {
-    value = std::clamp(value, min_value, max_value);
-    return std::bit_ceil(value);
-}
-
-std::pair<std::uint32_t, std::uint32_t> initial_font_atlas_extent(float font_size) {
-    auto clamped_size = std::max(1.0f, font_size);
-    auto atlas_width  = next_power_of_two_clamped(static_cast<std::uint32_t>(std::ceil(clamped_size * 16.0f)), 1024u,
-                                                  kFontAtlasMaxDimension);
-    auto atlas_height =
-        next_power_of_two_clamped(static_cast<std::uint32_t>(std::ceil(clamped_size * 8.0f)), 512u, 2048u);
-    return {atlas_width, atlas_height};
-}
-
 void apply_pending_font_atlas_updates(core::ResMut<FontAtlasSets> atlas_sets,
                                       core::ResMut<assets::Assets<image::Image>> images);
 void add_font_atlas_set(core::ResMut<FontAtlasSets> atlas_sets,
@@ -187,7 +171,7 @@ std::expected<AtlasRect, FontAtlas::FontAtlasError> FontAtlas::place_char_bitmap
         }
     }
 
-    if (atlas_layers < kFontAtlasMaxLayers) {
+    if (atlas_layers < max_texture_array_layers) {
         auto layer = atlas_layers;
         ++atlas_layers;
         layer_states.push_back(LayerState{.x = padded_w, .y = 0, .row_height = padded_h});
@@ -198,9 +182,9 @@ std::expected<AtlasRect, FontAtlas::FontAtlasError> FontAtlas::place_char_bitmap
 }
 
 image::Image FontAtlas::make_atlas_image() {
-    auto image = image::Image::create2d_array(atlas_width, atlas_height, atlas_layers, image::Format::RGBA8);
-    image.set_usage(image::ImageUsage::Render);
-    return image;
+    auto img = image::Image::create2d_array(atlas_width, atlas_height, atlas_layers, image::Format::RGBA8);
+    img.set_usage(image::ImageUsage::Render);
+    return img;
 }
 
 bool FontAtlas::add_image_if_missing(assets::Assets<image::Image>& assets) {
@@ -304,9 +288,13 @@ FontAtlas& FontAtlasSet::get_or_insert(const FontAtlasKey& key) {
     if (auto it = storage.find(key); it != storage.end()) {
         return it->second;
     }
-    auto [atlas_width, atlas_height] = initial_font_atlas_extent(key.size);
-    auto [it, inserted] =
-        storage.emplace(key, FontAtlas(font_face, atlas_width, atlas_height, key.size, key.anti_aliased));
+    auto clamped_size = std::max(1.0f, key.size);
+    auto atlas_width  = std::bit_ceil(
+        std::clamp(static_cast<std::uint32_t>(std::ceil(clamped_size * 16.0f)), 1024u, max_texture_dimension_2d));
+    auto atlas_height   = std::bit_ceil(std::clamp(static_cast<std::uint32_t>(std::ceil(clamped_size * 8.0f)), 512u,
+                                                   std::min(2048u, max_texture_dimension_2d)));
+    auto [it, inserted] = storage.emplace(
+        key, FontAtlas(font_face, atlas_width, atlas_height, key.size, key.anti_aliased, max_texture_array_layers));
     return it->second;
 }
 
@@ -328,6 +316,17 @@ std::optional<std::reference_wrapper<const FontAtlasSet>> FontAtlasSets::get(
 bool FontAtlasSets::contains(const assets::AssetId<Font>& font_id) const { return storage.contains(font_id); }
 
 void FontAtlasSets::erase(const assets::AssetId<Font>& font_id) { storage.erase(font_id); }
+
+void FontAtlasSets::add(const assets::AssetId<Font>& font_id, void* face) {
+    storage.emplace(font_id, FontAtlasSet(face, max_texture_dimension_2d, max_texture_array_layers));
+}
+
+FontAtlasSets::FontAtlasSets(core::World& world) {
+    if (auto limits = world.get_resource<wgpu::Limits>(); limits) {
+        max_texture_dimension_2d = limits->get().maxTextureDimension2D;
+        max_texture_array_layers = limits->get().maxTextureArrayLayers;
+    }
+}
 
 namespace {
 void apply_pending_font_atlas_updates(core::ResMut<FontAtlasSets> atlas_sets,
@@ -377,7 +376,7 @@ void add_font_atlas_set(core::ResMut<FontAtlasSets> atlas_sets,
         if (atlas_sets->contains(id)) {
             atlas_sets->erase(id);
         }
-        atlas_sets->emplace(id, FontAtlasSet(face));
+        atlas_sets->add(id, face);
     }
 }
 }  // namespace

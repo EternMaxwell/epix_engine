@@ -317,7 +317,6 @@ ShapedText text::shape_text(const Text& text,
             }
 
             if (shaped.force_break) {
-                ++token_index;
                 break;
             }
         }

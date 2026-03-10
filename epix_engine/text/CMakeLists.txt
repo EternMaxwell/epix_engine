@@ -6,6 +6,7 @@ target_link_libraries(epix_text PUBLIC epix_transform)
 target_link_libraries(epix_text PUBLIC epix_mesh)
 target_link_libraries(epix_text PRIVATE freetype)
 target_link_libraries(epix_text PRIVATE harfbuzz)
+target_link_libraries(epix_text PRIVATE webgpu)
 
 if (EPIX_ENABLE_TEST)
 file(GLOB_RECURSE TEXT_TEST_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/tests/*.cpp")

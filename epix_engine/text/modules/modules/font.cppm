@@ -70,20 +70,9 @@ export struct Glyph {
 };
 
 export struct FontAtlas {
+    friend struct FontAtlasSet;
+
    public:
-    FontAtlas(void* face,
-              std::uint32_t atlas_width,
-              std::uint32_t atlas_height,
-              float font_size,
-              bool font_antialiased,
-              std::uint32_t atlas_layers = 1)
-        : font_face(face),
-          atlas_width(atlas_width),
-          atlas_height(atlas_height),
-          atlas_layers(atlas_layers),
-          font_size(font_size),
-          font_antialiased(font_antialiased),
-          layer_states(atlas_layers) {}
     FontAtlas(const FontAtlas&)            = delete;
     FontAtlas(FontAtlas&&)                 = default;
     FontAtlas& operator=(const FontAtlas&) = delete;
@@ -111,6 +100,7 @@ export struct FontAtlas {
     std::uint32_t atlas_width;
     std::uint32_t atlas_height;
     std::uint32_t atlas_layers;
+    std::uint32_t max_texture_array_layers;
 
     float font_size;
     bool font_antialiased;
@@ -141,10 +131,27 @@ export struct FontAtlas {
         std::uint32_t atlas_h      = 0;
     };
 
+    FontAtlas(void* face,
+              std::uint32_t atlas_width,
+              std::uint32_t atlas_height,
+              float font_size,
+              bool font_antialiased,
+              std::uint32_t max_texture_array_layers,
+              std::uint32_t atlas_layers = 1)
+        : font_face(face),
+          atlas_width(atlas_width),
+          atlas_height(atlas_height),
+          atlas_layers(atlas_layers),
+          max_texture_array_layers(max_texture_array_layers),
+          font_size(font_size),
+          font_antialiased(font_antialiased),
+          layer_states(atlas_layers) {}
+
     std::expected<AtlasRect, FontAtlasError> place_char_bitmap_size(std::uint32_t width, std::uint32_t height);
 
-    image::Image make_atlas_image();
     bool add_image_if_missing(assets::Assets<image::Image>& assets);
+
+    image::Image make_atlas_image();
 
     std::optional<std::tuple<Glyph, std::unique_ptr<std::byte[]>, std::pair<std::uint32_t, std::uint32_t>>>
     generate_glyph(std::uint32_t glyph_index);
@@ -169,7 +176,15 @@ export struct FontAtlasKeyHash {
 };
 
 export struct FontAtlasSet {
-    FontAtlasSet(void* face) : font_face(face) {}
+    friend struct FontAtlasSets;
+
+   public:
+    FontAtlasSet(void* face,
+                 std::uint32_t max_texture_dimension_2d = 8192,
+                 std::uint32_t max_texture_array_layers = 256)
+        : font_face(face),
+          max_texture_dimension_2d(max_texture_dimension_2d),
+          max_texture_array_layers(max_texture_array_layers) {}
     FontAtlasSet(const FontAtlasSet&)            = delete;
     FontAtlasSet(FontAtlasSet&&)                 = default;
     FontAtlasSet& operator=(const FontAtlasSet&) = delete;
@@ -183,27 +198,32 @@ export struct FontAtlasSet {
 
    private:
     void* font_face = nullptr;
+    std::uint32_t max_texture_dimension_2d;
+    std::uint32_t max_texture_array_layers;
     std::unordered_map<FontAtlasKey, FontAtlas, FontAtlasKeyHash> storage;
 };
 
 export struct FontAtlasSets {
-    FontAtlasSets()                                = default;
+    FontAtlasSets(core::World& world);
     FontAtlasSets(const FontAtlasSets&)            = delete;
     FontAtlasSets(FontAtlasSets&&)                 = default;
     FontAtlasSets& operator=(const FontAtlasSets&) = delete;
     FontAtlasSets& operator=(FontAtlasSets&&)      = default;
 
+    std::uint32_t get_max_texture_dimension_2d() const { return max_texture_dimension_2d; }
+    std::uint32_t get_max_texture_array_layers() const { return max_texture_array_layers; }
+
     std::optional<std::reference_wrapper<FontAtlasSet>> get_mut(const assets::AssetId<Font>& font_id);
     std::optional<std::reference_wrapper<const FontAtlasSet>> get(const assets::AssetId<Font>& font_id) const;
     bool contains(const assets::AssetId<Font>& font_id) const;
     void erase(const assets::AssetId<Font>& font_id);
-    auto emplace(const assets::AssetId<Font>& font_id, FontAtlasSet&& set) {
-        return storage.emplace(font_id, std::move(set));
-    }
+    void add(const assets::AssetId<Font>& font_id, void* face);
     auto iter() const { return std::views::all(storage); }
     auto iter_mut() { return std::views::all(storage); }
 
    private:
+    std::uint32_t max_texture_dimension_2d = 8192;
+    std::uint32_t max_texture_array_layers = 256;
     std::unordered_map<assets::AssetId<Font>, FontAtlasSet> storage;
 };
 

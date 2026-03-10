@@ -10,14 +10,15 @@
 
 #include "font_array.hpp"
 
-
 import epix.assets;
 import epix.text;
 
 namespace {
 class FontFaceFixture {
    public:
-    FontFaceFixture() {
+    text::font::FontAtlasSet atlas_set_;
+
+    FontFaceFixture() : atlas_set_(nullptr) {
         if (FT_Init_FreeType(&library_) != FT_Err_Ok) {
             throw std::runtime_error("Failed to initialize FreeType.");
         }
@@ -30,6 +31,7 @@ class FontFaceFixture {
             FT_Err_Ok) {
             throw std::runtime_error("Failed to create FreeType memory face.");
         }
+        atlas_set_ = text::font::FontAtlasSet(face_);
     }
 
     ~FontFaceFixture() {
@@ -44,8 +46,8 @@ class FontFaceFixture {
     FontFaceFixture(const FontFaceFixture&)            = delete;
     FontFaceFixture& operator=(const FontFaceFixture&) = delete;
 
-    text::font::FontAtlas make_atlas(float font_size, bool anti_aliased = true) const {
-        return text::font::FontAtlas(face_, 1024, 1024, font_size, anti_aliased);
+    text::font::FontAtlas& get_atlas(float font_size, bool anti_aliased = true) {
+        return atlas_set_.get_or_insert({.size = font_size, .anti_aliased = anti_aliased});
     }
 
    private:
@@ -60,7 +62,7 @@ TEST(ShapeText, UsesTopLeftOriginAndConfiguredLineHeight) {
     constexpr float font_size   = 48.0f;
     constexpr float line_height = 64.0f;
 
-    auto atlas = fixture.make_atlas(font_size);
+    auto& atlas = fixture.get_atlas(font_size);
     text::TextFont font{
         .font            = assets::Handle<text::font::Font>(assets::AssetId<text::font::Font>::invalid()),
         .size            = font_size,
