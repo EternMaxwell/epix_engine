@@ -101,24 +101,76 @@ int main(int argc, char** argv) {
 
     std::optional<assets::Handle<text::font::Font>> font_handle;
 
-    app.add_systems(core::PreStartup,
-                    core::into([&](core::Commands cmd, core::ResMut<assets::Assets<text::font::Font>> fonts) {
-                        text::font::Font font{std::make_unique<std::byte[]>(font_data_array_size),
-                                              font_data_array_size};
-                        std::memcpy(font.data.get(), font_data_array, font_data_array_size);
-                        font_handle = fonts->emplace(std::move(font));
-                        cmd.spawn(text::TextBundle{.text{"Hello, Epix Engine!"},
-                                                   .font{
-                                                       .font            = *font_handle,
-                                                       .size            = 48.0f,
-                                                       .line_height     = 48.0f,
-                                                       .relative_height = false,
-                                                   },
-                                                   .layout{.justify = text::Justify::Center}},
-                                  text::Text2d{}, transform::Transform{}, text::TextColor{});
-                    })
-                        .before(text::font::FontSystems::AddFontAtlasSet)
-                        .before(assets::AssetSystems::WriteEvents));
+    app.add_systems(
+        core::PreStartup,
+        core::into([&](core::Commands cmd, core::ResMut<assets::Assets<text::font::Font>> fonts) {
+            text::font::Font font{std::make_unique<std::byte[]>(font_data_array_size), font_data_array_size};
+            std::memcpy(font.data.get(), font_data_array, font_data_array_size);
+            font_handle = fonts->emplace(std::move(font));
+            cmd.spawn(text::TextBundle{.text{"Hello, Epix Engine!"},
+                                       .font{
+                                           .font            = *font_handle,
+                                           .size            = 48.0f,
+                                           .line_height     = 48.0f,
+                                           .relative_height = false,
+                                       },
+                                       .layout{.justify = text::Justify::Center}},
+                      text::Text2d{},
+                      transform::Transform{
+                          .translation = glm::vec3(0.0f, 400.0f, 0.0f),
+                      },
+                      text::TextColor{});
+            cmd.spawn(text::TextBundle{.text{"Hhagio4ejhioawjgoijhewaiopgjoeipwajoi930y2598016758904321"},
+                                       .font{
+                                           .font            = *font_handle,
+                                           .size            = 48.0f,
+                                           .line_height     = 48.0f,
+                                           .relative_height = false,
+                                       },
+                                       .layout{
+                                           .justify   = text::Justify::Center,
+                                           .wrap_mode = text::TextWrap::CharWrap,
+                                       }},
+                      text::Text2d{},
+                      transform::Transform{
+                          .translation = glm::vec3(0.0f, 200.0f, 0.0f),
+                      },
+                      text::TextColor{});
+            cmd.spawn(text::TextBundle{.text{"Hhagio4ejhioawjgoijhe waiopgj oeipw ajoi930y2 598016 75890 4321"},
+                                       .font{
+                                           .font            = *font_handle,
+                                           .size            = 48.0f,
+                                           .line_height     = 48.0f,
+                                           .relative_height = false,
+                                       },
+                                       .layout{
+                                           .justify   = text::Justify::Center,
+                                           .wrap_mode = text::TextWrap::WordOrCharWrap,
+                                       }},
+                      text::Text2d{},
+                      transform::Transform{
+                          .translation = glm::vec3(0.0f, 0.0f, 0.0f),
+                      },
+                      text::TextColor{});
+            cmd.spawn(text::TextBundle{.text{"Hhagio4ejhioawjgoijhe waiopgj oeipw ajoi930y2 598016 75890 4321"},
+                                       .font{
+                                           .font            = *font_handle,
+                                           .size            = 48.0f,
+                                           .line_height     = 48.0f,
+                                           .relative_height = false,
+                                       },
+                                       .layout{
+                                           .justify   = text::Justify::Center,
+                                           .wrap_mode = text::TextWrap::NoWrap,
+                                       }},
+                      text::Text2d{},
+                      transform::Transform{
+                          .translation = glm::vec3(0.0f, -200.0f, 0.0f),
+                      },
+                      text::TextColor{});
+        })
+            .before(text::font::FontSystems::AddFontAtlasSet)
+            .before(assets::AssetSystems::WriteEvents));
     app.add_systems(core::Update, core::into([](core::EventReader<window::WindowResized> resize_events,
                                                 core::Query<core::Mut<text::TextBounds>> text_bounds) {
                         for (auto&& e : resize_events.read()) {
