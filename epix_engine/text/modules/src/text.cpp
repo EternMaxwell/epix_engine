@@ -252,6 +252,36 @@ ShapedText text::shape_text(const Text& text,
 
     float max_width_f = bounds.width.value_or(std::numeric_limits<float>::infinity());
     int max_width     = std::isinf(max_width_f) ? INT_MAX : static_cast<int>(std::floor(max_width_f));
+
+    bool always_char_split   = layout.wrap_mode == TextWrap::CharWrap;
+    bool fallback_char_split = layout.wrap_mode == TextWrap::WordOrCharWrap;
+
+    // Split shaped_tokens[idx] so that at most `available` width of glyphs stays
+    // in the original entry; excess glyphs move to a new entry at idx+1.
+    // Always takes at least one glyph. Returns the width kept in the original.
+    auto split_token = [&](std::size_t idx, int available) -> int {
+        auto& tk         = shaped_tokens[idx];
+        int acc          = 0;
+        std::size_t take = 0;
+        while (take < tk.entries.size() && acc + tk.entries[take].x_advance <= available) {
+            acc += tk.entries[take].x_advance;
+            ++take;
+        }
+        if (take == 0) {
+            take = 1;
+            acc  = tk.entries[0].x_advance;
+        }
+        if (take < tk.entries.size()) {
+            TokenShape leftover{.width = 0, .force_break = false};
+            leftover.entries.assign(tk.entries.begin() + take, tk.entries.end());
+            for (const auto& e : leftover.entries) leftover.width += e.x_advance;
+            tk.entries.resize(take);
+            tk.width = acc;
+            shaped_tokens.insert(shaped_tokens.begin() + idx + 1, std::move(leftover));
+        }
+        return acc;
+    };
+
     std::vector<std::pair<std::size_t, std::size_t>> lines;
     std::size_t token_index = 0;
     while (token_index < shaped_tokens.size()) {
@@ -272,47 +302,33 @@ ShapedText text::shape_text(const Text& text,
             }
 
             int new_width = line_width + shaped.width;
-            if (first_on_line) {
-                line_width = new_width;
-                ++token_index;
+            if (new_width <= max_width) {
+                // Token fits on the current line.
+                line_width    = new_width;
                 first_on_line = false;
-            } else if (new_width <= max_width) {
-                line_width = new_width;
                 ++token_index;
-            } else if (shaped.width > max_width &&
-                       (layout.wrap_mode == TextWrap::CharWrap || layout.wrap_mode == TextWrap::WordOrCharWrap)) {
-                int available = max_width - line_width;
-                if (available <= 0) {
+            } else if (first_on_line) {
+                bool should_split = always_char_split || (fallback_char_split && shaped.width > max_width);
+                if (should_split) {
+                    // split_token invalidates `shaped`; use return value only.
+                    line_width = split_token(token_index, max_width);
+                    ++token_index;
                     break;
                 }
-                int acc          = 0;
-                std::size_t take = 0;
-                while (take < shaped.entries.size() && acc + shaped.entries[take].x_advance <= available) {
-                    acc += shaped.entries[take].x_advance;
-                    ++take;
-                }
-                if (take == 0) {
-                    if (line_width == 0) {
-                        take = 1;
-                        acc  = shaped.entries[0].x_advance;
-                    } else {
-                        break;
+                // Must accept at least one token per line even if it overflows.
+                line_width    = new_width;
+                first_on_line = false;
+                ++token_index;
+            } else {
+                // Not first on line and doesn't fit.
+                bool should_split = always_char_split || (fallback_char_split && shaped.width > max_width);
+                if (should_split) {
+                    int available = max_width - line_width;
+                    if (available > 0) {
+                        line_width += split_token(token_index, available);
+                        ++token_index;
                     }
                 }
-
-                TokenShape leftover{.width = 0, .force_break = false};
-                leftover.entries.reserve(shaped.entries.size() - take);
-                for (std::size_t index = take; index < shaped.entries.size(); ++index) {
-                    leftover.entries.push_back(shaped.entries[index]);
-                    leftover.width += shaped.entries[index].x_advance;
-                }
-                shaped.entries.resize(take);
-                shaped.width = acc;
-                shaped_tokens.insert(shaped_tokens.begin() + token_index + 1, std::move(leftover));
-                line_width += shaped.width;
-                ++token_index;
-                break;
-            } else {
                 break;
             }
 
