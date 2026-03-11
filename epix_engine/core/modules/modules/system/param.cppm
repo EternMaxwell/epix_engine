@@ -95,7 +95,7 @@ struct SystemParam<Query<D, F>> : ParamBase {
         if (!conflicts.empty()) {
             throw std::runtime_error(std::format(
                 "Query<{}, {}> in system [{}] has access conflicts with previous params, with conflicts on ids: {}.",
-                meta::type_id<D>().name(), meta.name, meta::type_id<F>().name(), conflicts.to_string()));
+                meta::type_id<D>().name(), meta::type_id<F>().name(), meta.name, conflicts.to_string()));
         }
         access.add(state.component_access());
     }
