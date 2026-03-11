@@ -84,9 +84,31 @@ export struct TextColor {
 };
 
 export enum class TextWrap {
+    /**
+     * @brief Break lines at word boundaries (whitespace).
+     *
+     * A word that exceeds the line width is placed on its own line without
+     * splitting.
+     */
     WordWrap,
+    /**
+     * @brief Break lines at glyph (character) boundaries.
+     *
+     * Fills remaining space on the current line with as many glyphs as
+     * possible before wrapping, ignoring word boundaries entirely.
+     */
     CharWrap,
+    /**
+     * @brief Break lines at word boundaries first; fall back to glyph-level
+     * splitting when a single word is wider than the entire line width.
+     */
     WordOrCharWrap,
+    /**
+     * @brief No automatic line wrapping.
+     *
+     * Text extends in a single line regardless of bounds width. Manual line
+     * breaks (\\n) are still respected.
+     */
     NoWrap,
 };
 
