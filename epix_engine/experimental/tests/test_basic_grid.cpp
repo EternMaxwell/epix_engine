@@ -373,7 +373,7 @@ TEST(DenseExtendibleGrid, Iterators) {
 
 TEST(TreeExtendibleGrid, DefaultConstruction) {
     tree_extendible_grid<2, int> g;
-    EXPECT_EQ(g.size(), 0u);
+    EXPECT_EQ(g.count(), 0u);
 }
 
 TEST(TreeExtendibleGrid, SetAndGet) {
@@ -381,7 +381,7 @@ TEST(TreeExtendibleGrid, SetAndGet) {
     EXPECT_TRUE(g.set({0, 0}, 42).has_value());
     EXPECT_TRUE(g.contains({0, 0}));
     EXPECT_EQ(g.get({0, 0})->get(), 42);
-    EXPECT_EQ(g.size(), 1u);
+    EXPECT_EQ(g.count(), 1u);
 }
 
 TEST(TreeExtendibleGrid, SetOverwrites) {
@@ -389,7 +389,7 @@ TEST(TreeExtendibleGrid, SetOverwrites) {
     g.set({0, 0}, 1);
     g.set({0, 0}, 2);
     EXPECT_EQ(g.get({0, 0})->get(), 2);
-    EXPECT_EQ(g.size(), 1u);
+    EXPECT_EQ(g.count(), 1u);
 }
 
 TEST(TreeExtendibleGrid, SetNew) {
@@ -417,7 +417,7 @@ TEST(TreeExtendibleGrid, Remove) {
     g.set({1, 1}, 42);
     EXPECT_TRUE(g.remove({1, 1}).has_value());
     EXPECT_FALSE(g.contains({1, 1}));
-    EXPECT_EQ(g.size(), 0u);
+    EXPECT_EQ(g.count(), 0u);
     EXPECT_EQ(g.remove({1, 1}).error(), grid_error::EmptyCell);
 }
 
@@ -428,7 +428,7 @@ TEST(TreeExtendibleGrid, Take) {
     ASSERT_TRUE(taken.has_value());
     EXPECT_EQ(taken.value(), 77);
     EXPECT_FALSE(g.contains({2, 3}));
-    EXPECT_EQ(g.size(), 0u);
+    EXPECT_EQ(g.count(), 0u);
 }
 
 TEST(TreeExtendibleGrid, AutoExtend) {
@@ -447,7 +447,7 @@ TEST(TreeExtendibleGrid, MultipleInserts) {
             g.set({i, j}, static_cast<int>(i * 10 + j));
         }
     }
-    EXPECT_EQ(g.size(), 100u);
+    EXPECT_EQ(g.count(), 100u);
     for (std::uint32_t i = 0; i < 10; i++) {
         for (std::uint32_t j = 0; j < 10; j++) {
             EXPECT_EQ(g.get({i, j})->get(), static_cast<int>(i * 10 + j));
@@ -478,7 +478,7 @@ TEST(TreeExtendibleGrid, CustomChildCount) {
     tree_extendible_grid<2, int, 4> g;
     g.set({0, 0}, 1);
     g.set({15, 15}, 2);
-    EXPECT_EQ(g.size(), 2u);
+    EXPECT_EQ(g.count(), 2u);
     EXPECT_EQ(g.get({0, 0})->get(), 1);
     EXPECT_EQ(g.get({15, 15})->get(), 2);
 }

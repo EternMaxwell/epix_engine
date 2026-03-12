@@ -55,6 +55,11 @@ struct packed_grid {
      */
     std::size_t dimension(std::size_t index) const { return m_dimensions[index]; }
     /**
+     * @brief Get the total number of cells in the grid.
+     * @return Total number of cells.
+     */
+    std::size_t count() const { return m_cells.size(); }
+    /**
      * @brief Get a mutable reference to the cell at the given position.
      * @param pos Position in the grid.
      * @return Reference to the cell, or grid_error::OutOfBounds.
@@ -131,6 +136,11 @@ struct dense_grid {
      * @return Size along the given axis.
      */
     std::size_t dimension(std::size_t index) const { return m_index_grid.dimension(index); }
+    /**
+     * @brief Get the total number of occupied cells in the grid.
+     * @return Number of occupied cells.
+     */
+    std::size_t count() const { return m_data.size(); }
     /** @brief Iterate over the positions of all occupied cells. */
     auto iter_pos() const { return m_positions | std::views::all; }
     /** @brief Iterate over the values of all occupied cells (const). */
@@ -228,6 +238,11 @@ struct sparse_grid {
      * @return Size along the given axis.
      */
     std::size_t dimension(std::size_t index) const { return m_index_grid.dimension(index); }
+    /**
+     * @brief Get the total number of active cells in the grid.
+     * @return Number of active cells.
+     */
+    std::size_t count() const { return m_data.size() - m_recycled_indices.size(); }
     /** @brief Iterate over the positions of all occupied cells. */
     auto iter_pos() const {
         return iter_valid_indices() |
@@ -340,6 +355,11 @@ struct dense_extendible_grid {
      * @return Size along the given axis.
      */
     std::size_t dimension(std::size_t index) const { return m_index_grid.dimension(index); }
+    /**
+     * @brief Get the total number of cells in the grid
+     * @return Total number of cells.
+     */
+    std::size_t count() const { return m_data.size(); }
     /** @brief Iterate over the positions of all occupied cells. */
     auto iter_pos() const { return m_positions | std::views::all; }
     /** @brief Iterate over the values of all occupied cells (const). */
@@ -445,10 +465,26 @@ struct tree_extendible_grid {
      */
     std::uint32_t coverage() const { return compute_coverage(); }
     /**
+     * @brief Get the current dimensions of the grid, which is a cube with side length equal to coverage().
+     * @return Array of sizes along each axis.
+     */
+    std::array<std::uint32_t, Dim> dimensions() const {
+        std::uint32_t cov = compute_coverage();
+        std::array<std::uint32_t, Dim> dims;
+        dims.fill(cov);
+        return dims;
+    }
+    /**
+     * @brief Get the size along a single axis.
+     * @param index Axis index.
+     * @return Size along the given axis.
+     */
+    std::size_t dimension(std::size_t index) const { return compute_coverage(); }
+    /**
      * @brief Get the number of occupied cells.
      * @return Count of stored elements.
      */
-    std::size_t size() const { return m_data.size(); }
+    std::size_t count() const { return m_data.size(); }
     /** @brief Iterate over the positions of all occupied cells. */
     auto iter_pos() const { return m_positions | std::views::all; }
     /** @brief Iterate over the values of all occupied cells (const). */
