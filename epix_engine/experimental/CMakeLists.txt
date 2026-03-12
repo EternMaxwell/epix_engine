@@ -11,6 +11,6 @@ foreach(TEST_SRC IN LISTS TEST_SOURCES)
 	string(REPLACE ".cpp" "" TEST_NAME "${TEST_NAME}")
 
 	add_executable(${TEST_NAME} "${TEST_SRC}")
-	# target_link_libraries(${TEST_NAME} PRIVATE epix_render epix_glfw_render epix_core_graph)
+	target_link_libraries(${TEST_NAME} PRIVATE epix_ext_fallingsand GTest::gtest_main)
 	add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
 endforeach()
