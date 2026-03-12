@@ -20,23 +20,25 @@ export import :app.extract;
 export import :app.plugin;
 
 export namespace core {
+/** @brief Error returned when the app's world has been moved to a system dispatcher. */
 struct WorldNotOwnedError {};
+/** @brief Ordered list of schedule labels controlling the execution order of schedules. */
 struct ScheduleOrder {
    public:
-    /// Iterate over the schedule labels in order
+    /** @brief Iterate over the schedule labels in order. */
     auto iter() const { return std::views::all(labels); }
-    /// Insert at the beginning
+    /** @brief Insert a schedule label at the beginning. */
     void insert_begin(const ScheduleLabel& label) { labels.insert(labels.begin(), label); }
-    /// Insert at the end
+    /** @brief Insert a schedule label at the end. */
     void insert_end(const ScheduleLabel& label) { labels.push_back(label); }
-    /// Insert after a specific label, or at the end if not found
+    /** @brief Insert a label after a specific label, or at the end if not found. */
     void insert_after(const ScheduleLabel& after, const ScheduleLabel& label) {
         auto it = std::find(labels.begin(), labels.end(), after);
         if (it != labels.end()) it++;
         labels.insert(it, label);
     }
-    /// Insert a sequence of labels after a specific label, or at the end if not found. New labels will be ignored if
-    /// already present.
+    /** @brief Insert a sequence of labels after a specific label, or at the end if not found.
+     *  Labels already present are skipped. */
     template <typename Rng>
     void insert_range_after(ScheduleLabel after, Rng&& new_labels)
         requires std::ranges::range<Rng> && std::same_as<std::ranges::range_value_t<Rng>, ScheduleLabel>
@@ -48,6 +50,7 @@ struct ScheduleOrder {
                                     return !existing.contains(label);
                                 }));
     }
+    /** @brief Insert a range of labels at the end, skipping duplicates. */
     template <typename Rng>
     void insert_range_end(Rng&& new_labels)
         requires std::ranges::range<Rng> && std::same_as<std::ranges::range_value_t<Rng>, ScheduleLabel>
@@ -58,6 +61,7 @@ struct ScheduleOrder {
                                 return !existing.contains(label);
                             }));
     }
+    /** @brief Insert a range of labels at the beginning, skipping duplicates. */
     template <typename Rng>
     void insert_range_begin(Rng&& new_labels)
         requires std::ranges::range<Rng> && std::same_as<std::ranges::range_value_t<Rng>, ScheduleLabel>
@@ -68,7 +72,7 @@ struct ScheduleOrder {
                                 return !existing.contains(label);
                             }));
     }
-    /// Remove a label, return true if found and removed
+    /** @brief Remove a label, return true if found and removed. */
     bool remove(const ScheduleLabel& label) {
         auto it = std::find(labels.begin(), labels.end(), label);
         if (it != labels.end()) {
@@ -81,11 +85,17 @@ struct ScheduleOrder {
    private:
     std::list<ScheduleLabel> labels;
 };
+/** @brief Abstract base class for app runner implementations.
+ *  Subclass and override step() and exit() to control the main loop. */
 struct AppRunner {
+    /** @brief Execute one iteration of the app loop. Return false to stop. */
     virtual bool step(App& app) = 0;
+    /** @brief Called when the app is exiting. */
     virtual void exit(App& app) = 0;
     virtual ~AppRunner()        = default;
 };
+/** @brief The main application. Owns a World, schedules, sub-apps, plugins, and a runner.
+ *  Provides a fluent API for configuration and execution. */
 struct App {
    public:
     App(const AppLabel& label                            = AppLabel::from_type<App>(),
@@ -105,7 +115,9 @@ struct App {
         }
     }
 
+    /** @brief Create a default App with all core plugins. */
     static App create();
+    /** @brief Chain a function call on this app, returning `*this`. */
     App& then(std::invocable<App&> auto&& func) {
         func(*this);
         return *this;
@@ -113,45 +125,46 @@ struct App {
 
     // === App Info and sub-apps ===
 
-    /// Get the label of the app.
+    /** @brief Get the label of the app. */
     AppLabel label() const { return _label; }
-    /// Get or create a sub-app with the given label.
+    /** @brief Get or create a sub-app with the given label. */
     App& sub_app_or_insert(const AppLabel& label);
-    /// Add a sub-app. If a sub-app with the same label exists, nothing will happen.
-    /// Unlike sub_app_or_insert, this will return the parent app.
+    /** @brief Add a sub-app. If a sub-app with the same label exists, nothing happens.
+     *  Unlike sub_app_or_insert, returns the parent app. */
     App& add_sub_app(const AppLabel& label);
-    /// Try get a sub-app with the given label.
+    /** @brief Try get a const sub-app with the given label. */
     std::optional<std::reference_wrapper<const App>> get_sub_app(const AppLabel& label) const;
-    /// Try get a mutable sub-app with the given label.
+    /** @brief Try get a mutable sub-app with the given label. */
     std::optional<std::reference_wrapper<App>> get_sub_app_mut(const AppLabel& label);
-    /// Get a const reference to a sub-app with the given label. Throws if not found.
+    /** @brief Get a const reference to a sub-app. Throws if not found. */
     const App& sub_app(const AppLabel& label) const { return get_sub_app(label).value(); }
-    /// Get a mutable reference to a sub-app with the given label. Throws if not found.
+    /** @brief Get a mutable reference to a sub-app. Throws if not found. */
     App& sub_app_mut(const AppLabel& label) { return get_sub_app_mut(label).value(); }
 
     // === World Access ===
 
-    /// Try to get a const reference to the world. Return error if the world is not owned.
+    /** @brief Try to get a const reference to the world. Returns error if the world is dispatched. */
     std::expected<std::reference_wrapper<const World>, WorldNotOwnedError> get_world() const;
-    /// Try to get a mutable reference to the world. Return error if the world is not owned.
+    /** @brief Try to get a mutable reference to the world. Returns error if the world is dispatched. */
     std::expected<std::reference_wrapper<World>, WorldNotOwnedError> get_world_mut();
-    /// Get a const reference to the world. Throws if the world is not owned.
+    /** @brief Get a const reference to the world. Throws if the world is not owned. */
     const World& world() const { return get_world().value(); }
-    /// Get a mutable reference to the world. Throws if the world is not owned.
+    /** @brief Get a mutable reference to the world. Throws if the world is not owned. */
     World& world_mut() { return get_world_mut().value(); }
-    /// Execute a function with exclusive access to the world. Throw if the world is not owned.
+    /** @brief Execute a function with exclusive access to the world. */
     App& world_scope(std::invocable<World&> auto&& func) {
         auto lock = lock_world();
         func(world_mut());
         return *this;
     }
-    /// Execute a function with exclusive access to the world's resources. Throw if the world is not owned.
+    /** @brief Execute a function with exclusive access to the world's resources. */
     template <typename F>
     App& resource_scope(F&& func) {
         auto lock = lock_world();
         world_mut().resource_scope(std::forward<F>(func));
         return *this;
     }
+    /** @brief Try get a const resource from the world. */
     template <typename T>
     std::optional<std::reference_wrapper<const T>> get_resource() const {
         return get_world()
@@ -159,6 +172,7 @@ struct App {
             .value_or(std::nullopt)
             .and_then([](const World& world) { return world.get_resource<T>(); });
     }
+    /** @brief Try get a mutable resource from the world. */
     template <typename T>
     std::optional<std::reference_wrapper<T>> get_resource_mut() {
         return get_world_mut()
@@ -166,10 +180,12 @@ struct App {
             .value_or(std::nullopt)
             .and_then([](World& world) { return world.get_resource_mut<T>(); });
     }
+    /** @brief Get a const resource. Throws if not present. */
     template <typename T>
     const T& resource() const {
         return get_resource<T>().value().get();
     }
+    /** @brief Get a mutable resource. Throws if not present. */
     template <typename T>
     T& resource_mut() {
         return get_resource_mut<T>().value().get();
@@ -177,30 +193,35 @@ struct App {
 
     // === Schedule Access ===
 
-    /// Add a schedule to the app. If a schedule with the same label exists, it will be replaced.
+    /** @brief Add a schedule to the app. Replaces any existing schedule with the same label. */
     App& add_schedule(Schedule&& schedule);
-    /// Add or replace systems in a schedule in the app. If the schedule does not exist, it will be created.
+    /** @brief Add or replace systems in a schedule. Creates the schedule if it does not exist. */
     App& add_systems(ScheduleInfo schedule, SetConfig&& config);
-    /// Configure sets in a schedule in the app. If the schedule does not exist, it will be created. If the sets exist,
-    /// they will be replaced with the new configuration.
+    /** @brief Configure sets in a schedule. Creates the schedule if needed. Replaces existing set configs. */
     App& configure_sets(ScheduleInfo schedule, SetConfig&& config);
-    /// Configure sets in all schedules in the app. If the sets exist in a schedule, they will be replaced with the new
-    /// configuration.
+    /** @brief Configure sets across all schedules. Replaces existing set configs in each. */
     App& configure_sets(SetConfig&& config);
+    /** @brief Get the Schedules resource. Throws if world not owned. */
     Schedules& schedules();
+    /** @brief Try get the Schedules resource. */
     std::optional<std::reference_wrapper<Schedules>> get_schedules();
+    /** @brief Get the ScheduleOrder resource. Throws if world not owned. */
     ScheduleOrder& schedule_order();
+    /** @brief Try get the ScheduleOrder resource (const). */
     std::optional<std::reference_wrapper<const ScheduleOrder>> get_schedule_order() const;
-    /// Execute a function with exclusive access to a schedule in the world's resources. Throw if the world is not
-    /// owned. If insert_if_missing is true, the schedule will be created if it does not exist.
+    /** @brief Execute a function with exclusive access to a schedule.
+     *  @param label The schedule label.
+     *  @param func The function to execute.
+     *  @param insert_if_missing If true, creates the schedule if it does not exist. */
     App& schedule_scope(const ScheduleLabel& label,
                         const std::function<void(Schedule&, World&)>& func,
                         bool insert_if_missing = false);
 
     // === Plugin Management ===
 
-    /// Add a plugin to the app. The build function for the plugin will be called during addition. finish function of
-    /// the plugin will be called before running, and finalize function will be called after running.
+    /** @brief Add a plugin to the app. build() is called immediately;
+     *  finish() before running, finalize() after running.
+     *  @tparam T Plugin type satisfying is_plugin. */
     template <typename T, typename... Args>
     App& add_plugin(Args&&... args)
         requires std::constructible_from<T, Args...> && is_plugin<T>
@@ -208,8 +229,7 @@ struct App {
         resource_scope([&](Plugins& plugins) { plugins.add_plugin<T>(*this, std::forward<Args>(args)...); });
         return *this;
     }
-    /// Add multiple plugins to the app. The build function for each plugin will be called during addition. The finish
-    /// function of each plugin will be called before running, and the finalize function will be called after running.
+    /** @brief Add multiple plugins to the app. */
     template <typename... Ts>
     App& add_plugins(Ts&&... ts)
         requires((std::constructible_from<std::decay_t<Ts>, Ts> && is_plugin<std::decay_t<Ts>>) && ...)
@@ -217,27 +237,30 @@ struct App {
         resource_scope([&](Plugins& plugins) { (plugins.add_plugin(*this, std::forward<Ts>(ts)), ...); });
         return *this;
     }
-    /// Try get a mutable reference to a plugin of type T.
+    /** @brief Try get a mutable reference to a plugin of type T. */
     template <typename T>
     std::optional<std::reference_wrapper<T>> get_plugin_mut() {
         return get_resource_mut<Plugins>().and_then([](Plugins& plugins) { return plugins.get_plugin_mut<T>(); });
     }
-    /// Try get a const reference to a plugin of type T.
+    /** @brief Try get a const reference to a plugin of type T. */
     template <typename T>
     std::optional<std::reference_wrapper<const T>> get_plugin() const {
         return get_resource<const Plugins>().and_then([](const Plugins& plugins) { return plugins.get_plugin<T>(); });
     }
-    /// Get a const reference to a plugin of type T. Throws if not found.
+    /** @brief Get a const reference to a plugin. Throws if not found.
+     *  @tparam T Plugin type. */
     template <typename T>
     const T& plugin() const {
         return get_plugin<T>().value().get();
     }
-    /// Get a mutable reference to a plugin of type T. Throws if not found.
+    /** @brief Get a mutable reference to a plugin. Throws if not found.
+     *  @tparam T Plugin type. */
     template <typename T>
     T& plugin_mut() {
         return get_plugin_mut<T>().value().get();
     }
-    /// Execute a function with exclusive access to a plugin of type T. Throws if not found.
+    /** @brief Execute a function with exclusive access to one or more plugins.
+     *  Logs an error if any requested plugin is not found. */
     template <typename F>
     App& plugin_scope(F&& func) {
         using arg_tuple = typename function_traits<std::decay_t<F>>::args_tuple;
@@ -282,7 +305,8 @@ struct App {
         }
     };
 
-    /// Register an event type T in the app.
+    /** @brief Register an event type T in the app.
+     *  Creates the Events<T> resource and sets up automatic update in the Last schedule. */
     template <typename T>
     App& add_event() {
         if (world().get_resource<Events<T>>()) return *this;
@@ -303,7 +327,7 @@ struct App {
         world_scope([&](World& world) { world.init_resource<Events<T>>(); });
         return *this;
     }
-    /// Register multiple event types in the app.
+    /** @brief Register multiple event types in the app. */
     template <typename... Ts>
     App& add_events() {
         (add_event<Ts>(), ...);
@@ -333,6 +357,7 @@ struct App {
         }
     };
 
+    /** @brief Insert a state with an initial value and register its updater. */
     template <typename T>
     App& insert_state(const T& state)
         requires(std::is_enum_v<T>)
@@ -363,6 +388,7 @@ struct App {
         });
         return *this;
     }
+    /** @brief Insert a default-constructed state. */
     template <typename T>
     App& init_state()
         requires(std::is_enum_v<T>)
@@ -373,16 +399,16 @@ struct App {
 
     // === System Dispatcher ===
 
-    /// Get or create the system dispatcher owning the world. Return error if no dispatcher exists and the app does not
-    /// own a world. Though theoretically no error can happen here.
+    /** @brief Get or create the system dispatcher owning the world.
+     *  Returns error if no dispatcher exists and the app does not own a world. */
     std::expected<std::shared_ptr<SystemDispatcher>, WorldNotOwnedError> get_system_dispatcher();
-    /// Get the system dispatcher owning the world. Throws if failed.
+    /** @brief Get the system dispatcher owning the world. Throws if failed. */
     std::shared_ptr<SystemDispatcher> system_dispatcher() { return get_system_dispatcher().value(); }
-    /// Try run schedule with label with the provided dispatcher. Return true if the schedule was found and run, false
-    /// otherwise.
+    /** @brief Try run a schedule with the provided dispatcher.
+     *  @return true if the schedule was found and run. */
     bool run_schedule(const ScheduleLabel& label, std::shared_ptr<SystemDispatcher> dispatcher);
-    /// Try run schedule with label with the internal dispatcher. Return true if system dispatcher successfully obtained
-    /// and the schedule was found and run, false otherwise.
+    /** @brief Try run a schedule with the internal dispatcher.
+     *  @return true if the schedule was found and run. */
     bool run_schedule(const ScheduleLabel& label) {
         return get_system_dispatcher()
             .transform([this, &label](std::shared_ptr<SystemDispatcher> dispatcher) {
@@ -390,8 +416,8 @@ struct App {
             })
             .value_or(false);
     }
-    /// Try run schedules with labels in the provided range and the provided dispatcher. Return true if system
-    /// dispatcher successfully obtained. For each schedule, log a warning if not found.
+    /** @brief Run schedules from a range of labels using the provided dispatcher.
+     *  Logs a warning for each schedule not found. */
     template <typename Rng>
     void run_schedules_local(Rng&& labels, std::shared_ptr<SystemDispatcher> dispatcher)
         requires std::ranges::range<Rng> && std::same_as<std::ranges::range_value_t<Rng>, ScheduleLabel>
@@ -434,36 +460,36 @@ struct App {
         }(std::make_index_sequence<(explicit_launch ? sizeof...(Labels) - 1 : sizeof...(Labels))>());
         return run_schedules(std::move(array), launch);
     }
-    /// Update the app, e.g. run schedules according to schedule order with the provided dispatcher. Return false if no
-    /// ScheduleOrder resource found.
+    /** @brief Update the app by running schedules in schedule-order with the provided dispatcher.
+     *  @return false if no ScheduleOrder resource found. */
     bool update_local(std::shared_ptr<SystemDispatcher> dispatcher);
-    /// Update the app, e.g. run schedules according to schedule order with the internal dispatcher.
-    /// Return a future that will hold false if no ScheduleOrder resource found or no dispatcher available.
-    /// Default launch policy is async.
+    /** @brief Update the app asynchronously with the internal dispatcher.
+     *  @return A future holding false if no ScheduleOrder or dispatcher available. */
     std::future<bool> update(std::launch launch = std::launch::async);
 
-    /// Check if the app has an extract function set.
+    /** @brief Check if the app has an extract function set. */
     bool has_extract() const { return static_cast<bool>(extract_fn); }
-    /// Extract data from another app into this app. will call the extract function set by set_extract_fn internally.
+    /** @brief Extract data from another app into this app using the extract function. */
     void extract(App& other);
-    /// Set the extract function for the app. First argument is this app, second argument is the world extracted from
-    /// the other app.
+    /** @brief Set the extract function. First argument is this app, second is the source world. */
     App& set_extract_fn(std::move_only_function<void(App&, World&)> fn) {
         extract_fn = std::move(fn);
         return *this;
     }
-    /// Check if the app has a runner function set.
+    /** @brief Check if the app has a runner set. */
     bool has_runner() const { return static_cast<bool>(runner); }
-    /// Set the runner function for the app. The function will be called when run() is called.
+    /** @brief Set the runner for the app. Called when run() is invoked. */
     void set_runner(std::unique_ptr<AppRunner> fn) { runner = std::move(fn); }
-    /// Pop the current runner
+    /** @brief Pop and return the current runner (leaves runner as nullptr). */
     std::unique_ptr<AppRunner> pop_runner() {
         return std::move(runner);  // runner should be nullptr after move
     }
+    /** @brief Error codes for runner scope access. */
     enum class RunnerError {
-        RunnerNotSet,
-        RunnerMismatch,  // The runner exists but does not match the expected type
+        RunnerNotSet,   /**< No runner has been set. */
+        RunnerMismatch, /**< Runner exists but does not match expected type. */
     };
+    /** @brief Access the runner as a specific subtype. Returns error if not set or type mismatch. */
     template <typename F>
         requires requires {
             typename function_traits<F>::return_type;
@@ -485,7 +511,7 @@ struct App {
             return func(*runner);
         }
     }
-    /// Run the app. Or throw if no runner function set.
+    /** @brief Run the app using the configured runner. Throws if no runner is set. */
     void run();
 
    private:

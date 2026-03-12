@@ -12,6 +12,8 @@ enum class StorageType : std::uint8_t {
     Table     = 0,  // default stored in tables
     SparseSet = 1,
 };
+/** @brief Trait to mark a component type as sparse-set stored instead of table stored.
+ *  @tparam T The component type. Specialize with `std::true_type` to use sparse storage. */
 export template <typename T>
 struct sparse_component : std::false_type {};
 
@@ -23,6 +25,7 @@ consteval StorageType storage_for() {
         return StorageType::Table;
     }
 }
+/** @brief Opaque identifier for a registered component/resource type. */
 export struct TypeId : core::int_base<std::uint64_t> {
     using int_base::int_base;
 };
@@ -36,6 +39,9 @@ struct TypeInfo {
         return &info;
     }
 };
+/** @brief Thread-safe registry that maps C++ types to unique TypeId values.
+ *  Uses a shared mutex for concurrent reads and exclusive writes.
+ *  Types are lazily registered on first lookup via `type_id()`. */
 export struct TypeRegistry {
    private:
     mutable std::vector<const TypeInfo*> typeInfos;
@@ -50,6 +56,10 @@ export struct TypeRegistry {
     TypeRegistry()  = default;
     ~TypeRegistry() = default;
 
+    /** @brief Look up or register the TypeId for type T.
+     *  Thread-safe: uses shared lock for reads and upgrades to exclusive lock for writes.
+     *  @tparam T The type to register.
+     *  @param index The type_index to use (defaults to `meta::type_id<T>()`). */
     template <typename T = void>
     TypeId type_id(const meta::type_index& index = meta::type_id<T>()) const {
         // First try with a shared (reader) lock
@@ -79,6 +89,8 @@ export struct TypeRegistry {
         }
         return id;
     }
+    /** @brief Look up a TypeId by its string name.
+     *  @return The TypeId if the name has been registered. */
     std::optional<TypeId> type_id(const std::string_view& name) const {
         std::shared_lock<std::shared_mutex> lock(mutex_);
         if (auto it = typeViews.find(name); it != typeViews.end()) {
@@ -95,12 +107,15 @@ export struct TypeRegistry {
         const TypeInfo* info = typeInfos[type_id];
         return info->type_index;
     }
+    /** @brief Get the storage type (Table or SparseSet) for a registered type.
+     *  @param type_id The id previously obtained from this registry. */
     const StorageType storage_type(std::size_t type_id) const {
         std::shared_lock<std::shared_mutex> lock(mutex_);
         const TypeInfo* info = typeInfos[type_id];
         return info->storage_type;
     }
 
+    /** @brief Get the total number of registered types. */
     std::size_t count() const {
         std::shared_lock<std::shared_mutex> lock(mutex_);
         return typeInfos.size();

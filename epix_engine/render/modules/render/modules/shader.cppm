@@ -47,20 +47,29 @@ export struct ShaderSource {
         return shader;
     }
 };
+/** @brief Loaded shader asset containing its file path, label, and
+ * source code. */
 export struct Shader {
+    /** @brief File system path of the shader source file. */
     std::filesystem::path path;
+    /** @brief Human-readable label for debugging. */
     std::string label;
+    /** @brief The shader source code (WGSL or SPIR-V). */
     ShaderSource source;
 };
+/** @brief Asset loader for WGSL shader files. */
 export struct ShaderLoaderWGSL {
     static std::span<const char* const> extensions();
     static Shader load(const std::filesystem::path& path, assets::LoadContext& context);
 };
+/** @brief Asset loader for SPIR-V shader files. */
 export struct ShaderLoaderSPIRV {
     static std::span<const char* const> extensions();
     static Shader load(const std::filesystem::path& path, assets::LoadContext& context);
 };
 
+/** @brief Plugin that registers shader asset loaders and the shader
+ * cache. */
 export struct ShaderPlugin {
     void build(App& app);
 };

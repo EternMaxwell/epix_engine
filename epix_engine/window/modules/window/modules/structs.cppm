@@ -6,17 +6,26 @@ import epix.image;
 import std;
 
 export namespace window {
+/** @brief Controls how the window position is interpreted. */
 enum PosType {
-    TopLeft,   // Top left corner of the current monitor
-    Centered,  // Centered on the current monitor
-    Relative,  // Relative to the parent window, top left aligned.
+    /** @brief Position is relative to the top-left corner of the current
+     * monitor. */
+    TopLeft,
+    /** @brief Window is centered on the current monitor. */
+    Centered,
+    /** @brief Position is relative to the parent window, top-left
+     * aligned. */
+    Relative,
 };
+/** @brief Pixel sizes of the window frame (borders and title bar). */
 struct FrameSize {
     int left   = 0;
     int right  = 0;
     int top    = 0;
     int bottom = 0;
 };
+/** @brief Minimum and maximum size constraints for a window. A value of -1
+ * means no limit for the corresponding maximum dimension. */
 struct SizeLimits {
     int min_width  = 160;
     int min_height = 120;
@@ -29,6 +38,7 @@ struct SizeLimits {
     }
     bool operator!=(const SizeLimits& other) const { return !(*this == other); }
 };
+/** @brief Standard system cursor shapes. */
 enum class StandardCursor {
     Arrow,
     IBeam,
@@ -41,15 +51,25 @@ enum class StandardCursor {
     ResizeNESW,
     NotAllowed,
 };
+/** @brief Controls cursor visibility and confinement behaviour. */
 enum class CursorMode {
+    /** @brief Cursor is visible and free to move. */
     Normal,
+    /** @brief Cursor is hidden but still tracks position. */
     Hidden,
+    /** @brief Cursor is hidden and confined to the window. */
     Captured,
+    /** @brief Cursor is hidden and virtual; provides unbounded motion
+     * (useful for FPS cameras). */
     Disabled,
 };
+/** @brief Custom cursor using an image asset with a hotspot position. */
 struct CustomCursor {
+    /** @brief Image asset used as the cursor icon. */
     assets::Handle<image::Image> image;
+    /** @brief X coordinate of the cursor hotspot within the image. */
     std::uint32_t hot_x = 0;
+    /** @brief Y coordinate of the cursor hotspot within the image. */
     std::uint32_t hot_y = 0;
 
     bool operator==(const CustomCursor& other) const {
@@ -57,10 +77,13 @@ struct CustomCursor {
     }
     bool operator!=(const CustomCursor& other) const { return !(*this == other); }
 };
+/** @brief Cursor icon variant: either a StandardCursor or a CustomCursor.
+ */
 struct CursorIcon : std::variant<StandardCursor, CustomCursor> {
     using std::variant<StandardCursor, CustomCursor>::variant;
     using std::variant<StandardCursor, CustomCursor>::operator=;
 };
+/** @brief Alpha compositing mode for the window surface. */
 enum class CompositeAlphaMode {
     Auto,
     Opacity,
@@ -68,6 +91,7 @@ enum class CompositeAlphaMode {
     PostMultiplied,
     Inherit,
 };
+/** @brief Presentation mode controlling vsync and latency. */
 enum class PresentMode {
     /**
      * @brief Chooses FifoRelaxed -> Fifo based on driver support.
@@ -82,91 +106,106 @@ enum class PresentMode {
     Immediate,
     Mailbox,
 };
+/** @brief Z-ordering level of the window relative to other windows. */
 enum class WindowLevel {
     AlwaysOnBottom,
     Normal,
     AlwaysOnTop,
 };
+/** @brief Fullscreen or windowed display mode. */
 enum class WindowMode {
     Windowed,
     Fullscreen,
     BorderlessFullscreen,
 };
+/** @brief Main window configuration component.
+ *
+ * Controls position, size, cursor, decorations, fullscreen mode, and
+ * other OS-level window properties. Attach to an entity to create a
+ * native window through a windowing backend (GLFW or SFML).
+ */
 struct Window {
-    // type of position. controls how the position is interpreted.
-    // changing this value will change the final pos, and recalculate the
-    // position based on the current monitor and size.
+    /** @brief How the position is interpreted. Changing this recalculates
+     * the final position based on the current monitor and size. */
     PosType pos_type = PosType::Centered;
-    // position of the window, final pos is calculated based on the pos_type.
+    /** @brief Requested position, interpreted according to pos_type. */
     std::pair<int, int> pos = {0, 0};
-    // the actual pos on the screen, changing this is prior to `pos`.
-    // this is usually same as `pos` if type is `PosType::TopLeft` and `monitor`
-    // is 0. This is usually irrelevent to monitor index.
+    /** @brief Actual screen position. Writing this takes priority over `pos`.
+     * Usually equals `pos` when pos_type is TopLeft and monitor is 0. */
     std::pair<int, int> final_pos = {0, 0};
 
-    // size of the window.
+    /** @brief Size of the window in pixels. */
     std::pair<int, int> size = {1280, 720};
 
-    // cursor position relevant to the window, do nothing in creation.
+    /** @brief Cursor position relative to the window. Ignored at creation. */
     std::pair<double, double> cursor_pos = {0.0, 0.0};
-    // whether cursor is in the window, get only.
+    /** @brief Whether the cursor is inside the window (read-only). */
     bool cursor_in_window = false;
 
-    // frame size of the window, get only.
+    /** @brief Frame border sizes in pixels (read-only). */
     FrameSize frame_size = {};
 
-    // size limits.
+    /** @brief Window size constraints. */
     SizeLimits size_limits = {};
 
-    // whether window is resizable.
+    /** @brief Whether the window is resizable by the user. */
     bool resizable = true;
-    // whether window is decorated with a title bar and borders.
+    /** @brief Whether the window has a title bar and borders. */
     bool decorations = true;
-    // whether window is visible on the screen.
+    /** @brief Whether the window is visible on screen. */
     bool visible = true;
-    // opacity of the window, 0.0 is fully transparent, 1.0 is fully opaque.
+    /** @brief Window opacity (0.0 = fully transparent, 1.0 = fully opaque). */
     float opacity = 1.0f;
 
-    // whether window is focused.
+    /** @brief Whether the window currently has input focus (read-only). */
     bool focused = false;
-    // whether window is iconified (minimized).
+    /** @brief Whether the window is minimized (read-only). */
     bool iconified = false;
-    // whether window is maximized.
+    /** @brief Whether the window is maximized (read-only). */
     bool maximized = false;
 
-    // window icon, as image.
+    /** @brief Optional window icon image. */
     std::optional<assets::Handle<image::Image>> icon;
 
-    // cursor icon, can be standard or custom image.
+    /** @brief Cursor icon (standard shape or custom image). */
     CursorIcon cursor_icon = StandardCursor::Arrow;
-    // cursor mode, controls how the cursor is displayed.
+    /** @brief Cursor visibility and confinement mode. */
     CursorMode cursor_mode = CursorMode::Normal;
 
-    // composite alpha mode, used in rendering.
+    /** @brief Alpha compositing mode for the window surface. */
     CompositeAlphaMode composite_alpha_mode = CompositeAlphaMode::Auto;
-    // present mode, controls how the rendered image is presented.
+    /** @brief Presentation/vsync mode. */
     PresentMode present_mode = PresentMode::AutoNoVsync;
 
-    // window level, controls the z-order of the window.
+    /** @brief Z-ordering level relative to other windows. */
     WindowLevel window_level = WindowLevel::Normal;
-    // window mode, controls fullscreen.
+    /** @brief Fullscreen or windowed mode. */
     WindowMode window_mode = WindowMode::Windowed;
-    // monitor index to use for fullscreen windows.
+    /** @brief Monitor index for fullscreen windows. */
     int monitor = 0;
 
-    // title of the window, displayed in the title bar.
+    /** @brief Title displayed in the window title bar. */
     std::string title = "untitled";
 
-    // whether request for attention.
+    /** @brief Whether an attention request (taskbar flash) is pending. */
     bool attention_request = false;
 
+    /** @brief Request user attention (e.g. taskbar flash). */
     void request_attention(bool request = true) { attention_request = request; }
 };
 
+/** @brief Marker component designating the primary (main) window entity.
+ */
 struct PrimaryWindow {};
 }  // namespace window
 
 namespace window {
-struct CachedWindowMut : Window {};                 // component for caching window state.
+struct CachedWindowMut : Window {};  // component for caching window state.
+/** @brief Read-only cached snapshot of a window's state from the previous
+ * frame.
+ *
+ * Users can only access CachedWindow as `const` to detect state changes
+ * between frames.
+ */
 export using CachedWindow = const CachedWindowMut;  // user can only access cached window as const.
 }  // namespace window

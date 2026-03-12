@@ -10,27 +10,40 @@ import :world.interface;
 import :world.entity_ref;
 
 namespace core {
+/** @brief Trait class defining how a type is used as a system parameter.
+ *  Specialize to define State, Item, init_state(), get_param(), etc. */
 export template <typename T>
 struct SystemParam;
 
+/** @brief Error returned when a system parameter fails validation before execution. */
 export struct ValidateParamError {
+    /** @brief Type of the parameter that failed validation. */
     meta::type_index param_type;
-    std::string message;  // An optional message, cause some error can be understood just with type name.
+    /** @brief Optional descriptive message about the validation failure. */
+    std::string message;
 };
 
 enum SystemFlagBits : std::uint8_t {
     EXCLUSIVE = 1 << 0,  // system requires exclusive access to the world
     DEFERRED  = 1 << 1,  // system has deferred commands.
 };
+/** @brief Metadata about a system, including its name, flags, and last-run tick. */
 export struct SystemMeta {
+    /** @brief Human-readable system name. */
     std::string name;
+    /** @brief Bitwise flags (exclusive, deferred). */
     SystemFlagBits flags = (SystemFlagBits)0;
-    Tick last_run        = 0;
+    /** @brief Tick when this system last ran. */
+    Tick last_run = 0;
 
+    /** @brief Check if this system requires exclusive world access. */
     bool is_exclusive() const { return (SystemFlagBits::EXCLUSIVE & flags) != (SystemFlagBits)0; }
+    /** @brief Check if this system produces deferred commands. */
     bool is_deferred() const { return (SystemFlagBits::DEFERRED & flags) != (SystemFlagBits)0; }
 };
 
+/** @brief Concept for types usable as system parameters.
+ *  Requires SystemParam specialization with State, Item, init_state, get_param, etc. */
 export template <typename T>
 concept system_param = requires(World& world, SystemMeta& meta, FilteredAccessSet& access) {
     // used to store data that persists across system runs
@@ -57,9 +70,11 @@ concept system_param = requires(World& world, SystemMeta& meta, FilteredAccessSe
     };
 };
 
+/** @brief Concept for read-only system parameters that don't mutate the world. */
 export template <typename T>
 concept readonly_system_param = system_param<T> && SystemParam<T>::readonly;
 
+/** @brief SystemParam adapter for read-only parameters, accepting const World&. */
 export template <readonly_system_param T>
 struct ROSystemParam : SystemParam<T> {
     using State = typename SystemParam<T>::State;
@@ -75,7 +90,7 @@ struct ROSystemParam : SystemParam<T> {
     }
 };
 
-// A base struct to provide default implementation for some functions.
+/** @brief Base struct providing default no-op implementations for SystemParam static methods. */
 export struct ParamBase {
     static void init_access(const auto&, SystemMeta&, FilteredAccessSet&, const World&) {}
     static void new_archetype(auto&, const Archetype&, SystemMeta&) {}
@@ -277,19 +292,28 @@ struct SystemParam<DeferredWorld> : ParamBase {
 };
 static_assert(system_param<DeferredWorld>);
 
+/** @brief System-local mutable state that persists across system invocations.
+ *  Initialized via FromWorld on first use.
+ *  @tparam T Value type (non-reference, non-const). */
 export template <typename T>
     requires(!std::is_reference_v<T> && !std::is_const_v<T>)
 struct Local {
    public:
     Local(T& value) : value(std::addressof(value)) {}
 
+    /** @brief Get a mutable reference to the local state. */
     T& get() { return *value; }
+    /** @brief Arrow operator for mutable access. */
     T* operator->() { return value; }
+    /** @brief Dereference operator for mutable access. */
     T& operator*() { return *value; }
     operator T&() { return *value; }
 
+    /** @brief Get a const reference to the local state. */
     const T& get() const { return *value; }
+    /** @brief Arrow operator for const access. */
     const T* operator->() const { return value; }
+    /** @brief Dereference operator for const access. */
     const T& operator*() const { return *value; }
     operator const T&() const { return *value; }
 
@@ -405,6 +429,9 @@ static_assert(
     system_param<
         std::tuple<const World&, Res<int>, std::optional<ResMut<float>>, Query<int&, With<float>>, Local<float>>>);
 
+/** @brief Groups multiple system parameters for deferred/manual access.
+ *  Use get<I>() to retrieve individual params or get() for all.
+ *  @tparam Ts System parameter types. */
 export template <system_param... Ts>
 struct ParamSet {
    public:
@@ -468,8 +495,16 @@ struct SystemParam<ParamSet<Ts...>> : SystemParam<std::tuple<Ts...>> {
 static_assert(system_param<
               ParamSet<const World&, Res<int>, std::optional<ResMut<float>>, Query<int&, With<float>>, Local<float>>>);
 
+/** @brief Trait struct that defines how a system buffer is applied and queued.
+ * @tparam T The buffer type.
+ *
+ * Users must specialize this struct and provide:
+ * - `static void apply(T& buffer, const SystemMeta& meta, World& world);`
+ * - `static void queue(T& buffer, const SystemMeta& meta, DeferredWorld world);`
+ */
 template <typename T>
 struct SystemBuffer;
+/** @brief Concept satisfied by types that have a valid SystemBuffer specialization. */
 template <typename T>
 concept system_buffer = requires {
     requires requires(T& buffer, const SystemMeta& meta, World& world) {
@@ -478,12 +513,21 @@ concept system_buffer = requires {
     };
 };
 
+/** @brief Wrapper for deferred system buffers.
+ *
+ * Deferred parameters do not immediately access the World. Instead, they
+ * accumulate work in a buffer that is applied later during flush.
+ * @tparam T A type satisfying the system_buffer concept.
+ */
 template <system_buffer T>
 struct Deferred {
    public:
     Deferred(T& buffer) : buffer_(std::addressof(buffer)) {}
+    /** @brief Get a reference to the underlying buffer. */
     T& get() { return *buffer_; }
+    /** @brief Arrow operator for accessing buffer members. */
     T* operator->() { return buffer_; }
+    /** @brief Dereference operator for accessing the buffer. */
     T& operator*() { return *buffer_; }
 
    private:

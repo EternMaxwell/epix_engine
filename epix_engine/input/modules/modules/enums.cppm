@@ -3,6 +3,7 @@
 import std;
 
 export namespace input {
+/** @brief Keyboard key codes corresponding to physical keys. */
 enum class KeyCode : int {
     KeyA,
     KeyB,
@@ -129,8 +130,10 @@ enum class KeyCode : int {
     KeyUnknown = -1,
 };
 
+/** @brief Get the human-readable name of a KeyCode. */
 std::string_view key_name(KeyCode key);
 
+/** @brief Mouse button codes. */
 enum class MouseButton : int {
     MouseButton1,
     MouseButton2,
@@ -148,6 +151,7 @@ enum class MouseButton : int {
     MouseButtonUnknown = -1,
 };
 
+/** @brief Get the human-readable name of a MouseButton. */
 std::string_view mouse_button_name(MouseButton button);
 }  // namespace input
 

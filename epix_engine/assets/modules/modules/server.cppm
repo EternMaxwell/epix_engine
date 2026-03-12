@@ -11,10 +11,15 @@ import :store;
 using namespace core;
 
 namespace assets {
+/** @brief Forward declaration. */
 export struct AssetServer;
 
+/** @brief Context passed to asset loaders during load.
+ *  Provides the server reference and the resolved file path. */
 export struct LoadContext {
+    /** @brief The asset server that initiated this load. */
     const AssetServer& server;
+    /** @brief The resolved file path of the asset being loaded. */
     std::filesystem::path path;
 };
 template <typename T>
@@ -138,11 +143,12 @@ struct ErasedAssetLoaderFuncImpl : ErasedAssetLoader {
     }
     std::vector<const char*> extensions() const override { return _extensions; }
 };
+/** @brief Current state of an asset's loading lifecycle. */
 export enum LoadState {
-    Pending,  // Asset is pending to be loaded
-    Loading,  // Asset is currently being loaded
-    Loaded,   // Asset has been loaded successfully
-    Failed,   // Asset failed to load
+    Pending, /**< Asset is queued but no loader has picked it up yet. */
+    Loading, /**< A loader is actively loading this asset. */
+    Loaded,  /**< Asset has been loaded and is ready to use. */
+    Failed,  /**< Loading failed; see error details in events. */
 };
 struct AssetInfo {
     std::weak_ptr<StrongHandle> weak_handle;
@@ -230,16 +236,22 @@ struct AssetLoadFailedEvent {
 using InternalAssetEvent = std::variant<AssetLoadedEvent,     // asset was loaded successfully
                                         AssetLoadFailedEvent  // asset failed to load
                                         >;
+/** @brief Central service that manages asset loading, caching and handle lifecycle.
+ *  Non-copyable and non-movable. Thread-safe for concurrent loads. */
 export struct AssetServer {
+    /** @brief Construct a new AssetServer. */
     AssetServer();
     AssetServer(const AssetServer&)            = delete;
     AssetServer(AssetServer&&)                 = delete;
     AssetServer& operator=(const AssetServer&) = delete;
     AssetServer& operator=(AssetServer&&)      = delete;
+    /** @brief Destroy the AssetServer and release all resources. */
     ~AssetServer();
-    /**
-     * @brief register an loader to the asset server.
-     */
+    /** @brief Register an asset loader with the server.
+     *  Any assets pending load whose extension matches will be loaded
+     *  immediately.
+     *  @tparam T A type satisfying the AssetLoader concept.
+     *  @return Index of the newly registered loader. */
     template <AssetLoader T>
     std::uint32_t register_loader(const T& t) {
         auto index = asset_loaders.push(t);
@@ -253,13 +265,9 @@ export struct AssetServer {
         }
         return index;  // Return the index of the newly added loader
     }
-    /**
-     * @brief register an asset type to the asset server.
-     * This will copy the HandleProvider ptr from the Assets<T> resource
-     *
-     * @tparam T
-     * @param assets
-     */
+    /** @brief Register an asset type so the server can create handles for it.
+     *  Copies the HandleProvider from an existing Assets<T> resource.
+     *  @tparam T The asset type to register. */
     template <typename T>
     void register_assets(const Assets<T>& assets) {
         auto type = meta::type_id<T>{};
@@ -268,8 +276,19 @@ export struct AssetServer {
         }
         asset_infos.handle_providers[type] = assets.get_handle_provider();
     }
+    /** @brief Query the current load state of an asset.
+     *  @return The LoadState, or std::nullopt if the id is unknown. */
     std::optional<LoadState> get_state(const UntypedAssetId& id) const;
+    /** @brief Internal: dispatch the actual async load for the given asset id.
+     * @param id The asset id to load.
+     * @param loader Optional specific loader to use; if null, one is resolved by extension. */
     void load_internal(const UntypedAssetId& id, const ErasedAssetLoader* loader = nullptr) const;
+    /** @brief Load an asset by path.
+     *  Creates or reuses a handle for the given path. The actual load happens
+     *  asynchronously; query state with get_state().
+     *  @tparam T The expected asset type.
+     *  @param path Filesystem path to the asset.
+     *  @return A Handle<T>, or std::nullopt if handle creation fails. */
     template <typename T>
     std::optional<Handle<T>> load(const std::filesystem::path& path) const {
         std::scoped_lock lock(info_mutex, pending_mutex);
@@ -280,6 +299,12 @@ export struct AssetServer {
         }
         return std::move(handle);
     }
+    /** @brief Load an asset with a pre-modification callback.
+     *  @tparam T The expected asset type.
+     *  @tparam PreMod A callable invoked with `T&` right before the asset is inserted.
+     *  @param path Filesystem path to the asset.
+     *  @param pre_mod Callback applied to the loaded asset before insertion.
+     *  @return A Handle<T>, or std::nullopt if handle creation fails. */
     template <typename T, typename PreMod>
     std::optional<Handle<T>> load(const std::filesystem::path& path, PreMod&& pre_mod) const {
         static_assert(std::is_invocable_v<PreMod, T&>);
@@ -295,7 +320,15 @@ export struct AssetServer {
         }
         return std::move(handle);
     }
+    /** @brief Load an asset without compile-time type information.
+     *  The loader is determined by the file extension.
+     *  @param path Filesystem path to the asset.
+     *  @return An UntypedHandle, or std::nullopt if no matching loader is found. */
     std::optional<UntypedHandle> load_untyped(const std::filesystem::path& path) const;
+    /** @brief Load an untyped asset with a pre-modification callback.
+     * @tparam PreMod Callable accepting a reference to the loaded asset type.
+     * @param path Filesystem path to the asset.
+     * @param pre_mod Callback applied before insertion. */
     template <typename PreMod>
     std::optional<UntypedHandle> load_untyped(const std::filesystem::path& path, PreMod&& pre_mod) const {
         auto handle = load_untyped(path);
@@ -320,7 +353,9 @@ export struct AssetServer {
         }
         return handle;
     }
+    /** @brief Process a handle destruction event; returns true if the asset was re-acquired. */
     bool process_handle_destruction(const UntypedAssetId& id) const;
+    /** @brief System that processes loaded/failed asset events and inserts them into the world. */
     static void handle_events(ParamSet<World&, Res<AssetServer>>);
 
    private:

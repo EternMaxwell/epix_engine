@@ -9,12 +9,19 @@ import epix.assets;
 import webgpu;
 
 namespace render {
+/** @brief Resource holding the default sampler used for image textures. */
 export struct DefaultImageSampler {
+    /** @brief The default GPU sampler. */
     wgpu::Sampler sampler;
 };
+/** @brief GPU-side representation of an image: texture, view, and
+ * sampler. */
 export struct GPUImage {
+    /** @brief The GPU texture backing this image. */
     wgpu::Texture texture;
+    /** @brief A texture view for binding this image in shaders. */
     wgpu::TextureView view;
+    /** @brief The sampler used when sampling this image. */
     wgpu::Sampler sampler;
 };
 }  // namespace render

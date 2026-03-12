@@ -14,16 +14,18 @@ import :world.decl;
 import :world.entity_ref;
 
 namespace core {
-/**
- * @brief Represents the items(components) in a query result.
- */
+/** @brief Represents the items (components) in a query result as a tuple.
+ *  @tparam Ts World-query types whose data items form the tuple elements. */
 export template <world_query... Ts>
 struct Item : std::tuple<typename QueryData<Ts>::Item...> {
     using type = std::tuple<Ts...>;
     using base = std::tuple<typename QueryData<Ts>::Item...>;
     using base::base;
+    /** @brief Construct from a const base tuple reference. */
     Item(const base& b) : base(b) {}
+    /** @brief Construct from an rvalue base tuple. */
     Item(base&& b) : base(std::move(b)) {}
+    /** @brief Dereference to get the underlying tuple. */
     std::tuple<typename QueryData<Ts>::Item...> operator*() { return *this; }
 };
 
@@ -101,6 +103,8 @@ struct QueryData<std::tuple<Ts...>> {
 template <world_query... Ts>
 struct QueryData<Item<Ts...>> : QueryData<std::tuple<Ts...>> {};
 
+/** @brief Type alias extracting the Item type from a query data descriptor.
+ *  @tparam T Query data type satisfying query_data. */
 export template <query_data T>
 using QueryItem = typename QueryData<T>::Item;
 
@@ -438,10 +442,10 @@ struct QueryData<T&> : QueryData<Mut<T>> {
 };
 static_assert(query_data<int&>);
 
-/**
- * @brief Optional fetch, returns std::optional<Ref<T>> for Opt<Ref<T>>, std::optional<Mut<T>> for Opt<Mut<T>>, const T*
- * for Opt<const T&>, T* for Opt<T&>.
- */
+/** @brief Optional query fetch. Returns `std::optional<Ref<T>>` for `Opt<Ref<T>>`,
+ *  `std::optional<Mut<T>>` for `Opt<Mut<T>>`, `std::optional<std::reference_wrapper<const T>>`
+ *  for `Opt<const T&>`, `std::optional<std::reference_wrapper<T>>` for `Opt<T&>`.
+ *  Matches even when the component is absent. */
 export template <world_query T>
 struct Opt {};  // empty definition needed for tuple.
 
@@ -499,9 +503,9 @@ static_assert(query_data<Opt<int&>>);
 static_assert(query_data<Opt<Ref<float>>>);
 static_assert(query_data<Opt<Mut<double>>>);
 
-/**
- * @brief Query item for checking existence of a component.
- */
+/** @brief Query item that yields true/false based on whether an entity has component T.
+ *  Does not fetch any data, only checks existence.
+ *  @tparam T Component type to check. */
 export template <typename T>
     requires(!std::is_reference_v<T> && !std::is_const_v<T>)
 struct Has;

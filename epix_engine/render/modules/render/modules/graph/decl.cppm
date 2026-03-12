@@ -19,12 +19,22 @@ import std;
 using namespace core;
 
 namespace render::graph {
+/** @brief Label type identifying a node within a render graph. */
 export EPIX_MAKE_LABEL(NodeLabel);
+/** @brief Label type identifying a sub-graph within a render graph. */
 export EPIX_MAKE_LABEL(GraphLabel);
+/** @brief Base class for render graph nodes. Override to implement custom
+ * rendering logic. */
 export struct Node;
 struct NodeState;
+/** @brief Directed acyclic graph of render nodes that drives the rendering
+ * pipeline. */
 export struct RenderGraph;
+/** @brief Context passed to a Node during graph execution, providing input/output slot access and sub-graph
+ * invocation. */
 export struct GraphContext;
+/** @brief Context providing GPU device access, command encoding, and render
+ * pass creation during graph execution. */
 export struct RenderContext;
 struct RunSubGraph;
 }  // namespace render::graph

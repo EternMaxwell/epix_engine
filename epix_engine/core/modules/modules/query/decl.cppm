@@ -10,16 +10,20 @@ import :world.decl;
 import :tick;
 
 namespace core {
-/**
- * @brief For types that can be used as a element of query item, e.g. template argument of Item.
- */
+/** @brief Trait class for types usable as query data elements (e.g. template arguments of Item).
+ *  Specialize to define Fetch and State types for custom queries. */
 export template <typename T>
 struct WorldQuery {};
+/** @brief Trait class defining how query data is fetched and its read-only variant.
+ *  Specialize to define Item type, ReadOnly type, and fetch() method. */
 export template <typename T>
 struct QueryData {};
+/** @brief Trait class defining query filter behavior.
+ *  Specialize to define archetypal flag and filter_fetch() method. */
 export template <typename T>
 struct QueryFilter {};
 
+/** @brief Forward declaration of the filtered access descriptor. */
 export struct FilteredAccess;
 
 template <typename Q>
@@ -46,6 +50,9 @@ concept world_query = requires(WorldQuery<Q> q) {
     };
 };
 
+/** @brief Concept for types that can appear as query data elements.
+ *  Requires WorldQuery and QueryData specializations with Fetch, State,
+ *  Item, ReadOnly, and fetch(). */
 export template <typename T>
 concept query_data = world_query<T> && requires(WorldQuery<T>::Fetch& fetch, Entity entity, TableRow row) {
     typename QueryData<T>::Item;  // the return type from fetch. most of the time should be T
@@ -56,19 +63,25 @@ concept query_data = world_query<T> && requires(WorldQuery<T>::Fetch& fetch, Ent
     requires std::constructible_from<const typename WorldQuery<typename QueryData<T>::ReadOnly>::State&,
                                      typename WorldQuery<T>::State>;
 };
+/** @brief Concept for read-only query data that does not require mutable access. */
 export template <typename T>
 concept readonly_query_data = query_data<T> && QueryData<T>::readonly;
 
+/** @brief Concept for types usable as query filters.
+ *  Requires archetypal flag and filter_fetch() method. */
 export template <typename T>
 concept query_filter = world_query<T> && requires(WorldQuery<T>::Fetch& fetch, Entity entity, TableRow row) {
     typename std::bool_constant<QueryFilter<T>::archetypal>;
     { QueryFilter<T>::filter_fetch(fetch, entity, row) } -> std::same_as<bool>;
 };
 
+/** @brief Composite query filter combining multiple sub-filters with AND logic.
+ *  @tparam Fs Filter types, each satisfying query_filter. */
 export template <typename... Fs>
     requires((query_filter<Fs> && ...))
 struct Filter;
 
+/** @brief Forward declaration of the query iterator. */
 export template <query_data D, query_filter F>
 struct QueryIter;
 

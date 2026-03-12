@@ -8,14 +8,22 @@ import std;
 import epix.meta;
 
 namespace core {
+/** @brief Type-erased dynamic array that stores elements by their runtime type_info.
+ *
+ * Manages memory for elements of any type, using meta::type_info for
+ * construction, destruction, move, and copy operations. Used internally
+ * as the underlying storage for Dense columns, resources, and sparse sets.
+ */
 export class untyped_vector {
    public:
+    /** @brief Construct with the given type descriptor and optional initial capacity. */
     explicit untyped_vector(const ::meta::type_info& desc, std::size_t reserve_cnt = 0)
         : desc_(std::addressof(desc)), size_(0), capacity_(0), data_(nullptr) {
         if (!desc_ || desc_->size == 0) throw std::invalid_argument("element size must be > 0");
         if (reserve_cnt) reserve(reserve_cnt);
     }
 
+    /** @brief Destructor; destroys all elements and frees memory. */
     ~untyped_vector() {
         clear();
         deallocate(data_);
@@ -71,6 +79,7 @@ export class untyped_vector {
         return *this;
     }
 
+    /** @brief Move constructor; takes ownership of other's memory. */
     untyped_vector(untyped_vector&& other) noexcept
         : desc_(other.desc_),
           size_(other.size_),
@@ -82,6 +91,7 @@ export class untyped_vector {
         other.capacity_ = 0;
     }
 
+    /** @brief Move assignment operator. */
     untyped_vector& operator=(untyped_vector&& other) noexcept {
         if (this != &other) {
             clear();
@@ -98,6 +108,7 @@ export class untyped_vector {
         return *this;
     }
 
+    /** @brief Create a deep copy of this vector. */
     untyped_vector clone() const {
         untyped_vector copy(*desc_, size_);
         if (desc_->trivially_copyable) {
@@ -115,34 +126,42 @@ export class untyped_vector {
         return std::move(copy);
     }
 
-    // size/capacity
+    /** @brief Get the number of elements. */
     std::size_t size() const noexcept { return size_; }
+    /** @brief Get the maximum possible number of elements. */
     std::size_t max_size() const noexcept { return std::numeric_limits<std::size_t>::max() / desc_->size; }
+    /** @brief Get the current capacity. */
     std::size_t capacity() const noexcept { return capacity_; }
+    /** @brief Check if the vector is empty. */
     bool empty() const noexcept { return size_ == 0; }
 
+    /** @brief Get the type_info descriptor. */
     const ::meta::type_info& type_info() const noexcept { return *desc_; }
 
-    // raw pointer access (void*)
+    /** @brief Get a raw pointer to the element data. */
     void* data() noexcept { return data_; }
+    /** @brief Get a const raw pointer to the element data. */
     const void* data() const noexcept { return data_; }
+    /** @brief Get a const raw pointer (explicit const alias). */
     const void* cdata() const noexcept { return data(); }
 
-    // index access as raw pointer. Caller must cast to appropriate type.
+    /** @brief Get a raw pointer to the element at the given index. */
     void* get(std::size_t idx) {
         assert(idx < size_);
         return static_cast<char*>(data_) + idx * desc_->size;
     }
 
+    /** @brief Get a const raw pointer to the element at the given index. */
     const void* get(std::size_t idx) const {
         assert(idx < size_);
         return static_cast<const char*>(data_) + idx * desc_->size;
     }
 
-    // explicit const getter alias: non-templated raw-pointer const getter
+    /** @brief Const raw-pointer getter alias. */
     const void* cget(std::size_t idx) const noexcept { return get(idx); }
 
-    // Templated helpers when caller knows the static type T
+    /** @brief Append a typed value by forwarding.
+     *  @tparam T Element type. */
     template <typename T>
     void push_back(T&& v) {
         using type = std::decay_t<T>;
@@ -152,6 +171,9 @@ export class untyped_vector {
         ++size_;
     }
 
+    /** @brief Construct a typed element in-place at the end.
+     *  @tparam T Element type.
+     *  @tparam Args Constructor argument types. */
     template <typename T, typename... Args>
     void emplace_back(Args&&... args) {
         ensure_capacity_for_one();
@@ -171,28 +193,31 @@ export class untyped_vector {
         ++size_;
     }
 
+    /** @brief Get a typed pointer to the data.
+     *  @tparam T Element type. */
     template <typename T>
     T* data_as() noexcept {
         return reinterpret_cast<T*>(data_);
     }
 
-    // Ranges-based iterator views over raw element pointers.
-    // Non-const: yields void* to each element.
+    /** @brief Iterate over raw element pointers (mutable). */
     auto iter() {
         return std::views::iota(std::size_t{0}, size()) | std::views::transform([this](std::size_t i) {
                    return static_cast<void*>(static_cast<char*>(data_) + i * desc_->size);
                });
     }
 
-    // Const: yields const void* to each element.
+    /** @brief Iterate over raw element pointers (const). */
     auto iter() const {
         return std::views::iota(std::size_t{0}, size()) | std::views::transform([this](std::size_t i) {
                    return static_cast<const void*>(static_cast<const char*>(data_) + i * desc_->size);
                });
     }
+    /** @brief Const iteration alias. */
     auto citer() const { return iter(); }
 
-    // Typed span accessors when caller knows T at compile time.
+    /** @brief Get a typed span over the elements.
+     *  @tparam T Element type. */
     template <typename T>
     std::span<T> span_as() noexcept {
         return {reinterpret_cast<T*>(data_), size_};
@@ -207,51 +232,59 @@ export class untyped_vector {
         return span_as<T>();
     }
 
+    /** @brief Get a const typed pointer to the data.
+     *  @tparam T Element type. */
     template <typename T>
     const T* data_as() const noexcept {
         return reinterpret_cast<const T*>(data_);
     }
+    /** @brief Const typed pointer alias.
+     *  @tparam T Element type. */
     template <typename T>
     const T* cdata_as() const noexcept {
         return data_as<T>();
     }
 
-    // Typed element accessors -------------------------------------------------
-    // Returns a reference to the element at `idx` interpreted as `T`.
+    /** @brief Get a mutable typed reference to the element at idx.
+     *  @tparam T Element type. */
     template <typename T>
     T& get_as(std::size_t idx) {
         assert(idx < size_);
         return *reinterpret_cast<T*>(get(idx));
     }
 
+    /** @brief Get a const typed reference to the element at idx.
+     *  @tparam T Element type. */
     template <typename T>
     const T& get_as(std::size_t idx) const {
         assert(idx < size_);
         return *reinterpret_cast<const T*>(get(idx));
     }
 
-    // typed const getter
+    /** @brief Const typed reference alias.
+     *  @tparam T Element type. */
     template <typename T>
     const T& cget_as(std::size_t idx) const {
         return get_as<T>(idx);
     }
 
-    // Replace element at index with a copy of the provided value (templated).
-    // Basic exception guarantee: if construction throws the element may be in an
-    // unspecified but valid state (consistent with other operations here).
+    /** @brief Replace the element at idx with a copy of src.
+     *  @tparam T Element type. */
     template <typename T>
     void replace(std::size_t idx, const T& src) {
         replace_from(idx, static_cast<const void*>(std::addressof(src)));
     }
 
+    /** @brief Replace the element at idx by moving from src.
+     *  @tparam T Element type. */
     template <typename T>
     void replace_move(std::size_t idx, T&& src) {
         replace_from_move(idx, static_cast<void*>(std::addressof(src)));
     }
 
-    // Replace element at index by constructing T in-place with provided args.
-    // Basic exception guarantee: if construction throws, the element may be
-    // in an unspecified but valid state (we destroy before constructing).
+    /** @brief Replace the element at idx by constructing in-place.
+     *  @tparam T Element type.
+     *  @tparam Args Constructor argument types. */
     template <typename T, typename... Args>
     void replace_emplace(std::size_t idx, Args&&... args) {
         assert(idx < size_);
@@ -261,7 +294,7 @@ export class untyped_vector {
         new (dst) T(std::forward<Args>(args)...);
     }
 
-    // Non-templated push from raw pointer (caller supplies source address)
+    /** @brief Append an element by copying from a raw pointer. */
     void push_back_from(const void* src) {
         ensure_capacity_for_one();
         void* dest = static_cast<char*>(data_) + size_ * desc_->size;
@@ -269,6 +302,7 @@ export class untyped_vector {
         ++size_;
     }
 
+    /** @brief Append an element by moving from a raw pointer. */
     void push_back_from_move(void* src) {
         ensure_capacity_for_one();
         void* dest = static_cast<char*>(data_) + size_ * desc_->size;
@@ -276,7 +310,7 @@ export class untyped_vector {
         ++size_;
     }
 
-    // Replace the element at index with a copy from raw pointer `src`.
+    /** @brief Replace the element at idx by copying from a raw pointer. */
     void replace_from(std::size_t idx, const void* src) {
         assert(idx < size_);
         void* dst = static_cast<char*>(data_) + idx * desc_->size;
@@ -284,7 +318,7 @@ export class untyped_vector {
         desc_->copy_construct(dst, src);
     }
 
-    // Replace the element at index by moving from raw pointer `src`.
+    /** @brief Replace the element at idx by moving from a raw pointer. */
     void replace_from_move(std::size_t idx, void* src) {
         assert(idx < size_);
         void* dst = static_cast<char*>(data_) + idx * desc_->size;
@@ -292,6 +326,7 @@ export class untyped_vector {
         desc_->move_construct(dst, src);
     }
 
+    /** @brief Remove the last element. */
     void pop_back() {
         if (size_ == 0) return;
         --size_;
@@ -299,6 +334,7 @@ export class untyped_vector {
         desc_->destruct(ptr);
     }
 
+    /** @brief Destroy all elements without releasing memory. */
     void clear() noexcept {
         // destroy elements in reverse order
         if (!desc_->trivially_destructible) {
@@ -310,11 +346,8 @@ export class untyped_vector {
         size_ = 0;
     }
 
-    // Remove element at index by swapping the last element into its place.
-    // Complexity: O(1).
-    // Exception safety: if the type is trivially copyable or noexcept-move-constructible,
-    // this operation is noexcept. Otherwise it provides the basic exception guarantee
-    // (an exception may leave the vector in a valid but unspecified state).
+    /** @brief Remove element at idx by swapping the last element into its place.
+     *  O(1) complexity. */
     void swap_remove(std::size_t idx) {
         assert(idx < size_);
         if (size_ == 0) return;
@@ -359,8 +392,8 @@ export class untyped_vector {
         reallocate(size_);
     }
 
-    // Mark the vector to have uninitialized elements up to new_size.
-    // If new_size < size(), destructs initialized elements in the tail.
+    /** @brief Resize to new_size without initializing new elements.
+     *  Destructs tail elements if shrinking. */
     void resize_uninitialized(std::size_t new_size) {
         if (new_size == size_) return;
         if (new_size < size_) {
@@ -380,27 +413,30 @@ export class untyped_vector {
         // note: intentionally do not construct new elements (unsafe)
         size_ = new_size;
     }
+    /** @brief Append count uninitialized slots. */
     void append_uninitialized(std::size_t count) {
         if (count == 0) return;
         std::size_t new_size = size_ + count;
         resize_uninitialized(new_size);
     }
 
-    // Initialize a previously-uninitialized slot from a raw pointer
+    /** @brief Copy-construct into a previously-uninitialized slot from a raw pointer. */
     void initialize_from(std::size_t idx, const void* src) {
         assert(idx < size_);
         void* dst = static_cast<char*>(data_) + idx * desc_->size;
         desc_->copy_construct(dst, src);
     }
 
-    // Initialize by move from raw pointer
+    /** @brief Move-construct into a previously-uninitialized slot from a raw pointer. */
     void initialize_from_move(std::size_t idx, void* src) {
         assert(idx < size_);
         void* dst = static_cast<char*>(data_) + idx * desc_->size;
         desc_->move_construct(dst, src);
     }
 
-    // Initialize templated emplace
+    /** @brief Construct in-place into a previously-uninitialized slot.
+     *  @tparam T Element type.
+     *  @tparam Args Constructor argument types. */
     template <typename T, typename... Args>
     void initialize_emplace(std::size_t idx, Args&&... args) {
         assert(idx < size_);

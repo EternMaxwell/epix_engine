@@ -9,6 +9,10 @@ import :ticks;
 import :world;
 
 namespace core {
+/** @brief Double-buffered event queue for type T.
+ *  Events are kept alive for one update cycle after being pushed,
+ *  then automatically expired and removed on the next update().
+ *  @tparam T A movable event type. */
 export template <std::movable T>
 struct Events {
    private:
@@ -39,22 +43,26 @@ struct Events {
         return *this;
     }
 
+    /** @brief Push a copy of an event into the queue. */
     void push(const T& event) {
         m_events.emplace_back(event);
         m_lifetimes.emplace_back(1);
         m_tail++;
     }
+    /** @brief Push an event by move. */
     void push(T&& event) {
         m_events.emplace_back(std::move(event));
         m_lifetimes.emplace_back(1);
         m_tail++;
     }
+    /** @brief Construct and push an event in-place. */
     template <typename... Args>
     void emplace(Args&&... args) {
         m_events.emplace_back(std::forward<Args>(args)...);
         m_lifetimes.emplace_back(1);
         m_tail++;
     }
+    /** @brief Tick all event lifetimes and remove expired events. */
     void update() {
         while (!m_events.empty() && m_lifetimes.front() == 0) {
             m_events.pop_front();
@@ -67,21 +75,28 @@ struct Events {
             }
         });
     }
+    /** @brief Remove all events immediately. */
     void clear() {
         m_events.clear();
         m_lifetimes.clear();
         m_head = m_tail;
     }
+    /** @brief Check if the queue contains no events. */
     bool empty() const { return m_events.empty(); }
+    /** @brief Number of currently live events. */
     size_t size() const { return m_events.size(); }
+    /** @brief Get the head (oldest live) event index. */
     std::uint32_t head() const { return m_head; }
+    /** @brief Get the tail (next write) event index. */
     std::uint32_t tail() const { return m_tail; }
+    /** @brief Get a mutable pointer to the event at the given index, or nullptr. */
     T* get(std::uint32_t index) {
         if (index >= m_head && index < m_tail) {
             return &m_events[index - m_head];
         }
         return nullptr;
     }
+    /** @brief Get a const pointer to the event at the given index, or nullptr. */
     const T* get(std::uint32_t index) const {
         if (index >= m_head && index < m_tail) {
             return &m_events[index - m_head];
@@ -94,6 +109,9 @@ template <typename T>
 struct EventCursor {
     std::uint32_t index = 0;
 };
+/** @brief System parameter that reads events of type T.
+ *  Maintains a cursor so each reader only sees unread events.
+ *  Usable directly as a system parameter. */
 export template <typename T>
 struct EventReader {
    private:
@@ -102,12 +120,14 @@ struct EventReader {
     EventReader(Local<EventCursor<T>> cursor, Res<Events<T>> events) : _cursor(cursor), _events(events) {}
 
    public:
+    /** @brief Construct an EventReader from system parameters. */
     static EventReader<T> from_param(Local<EventCursor<T>> cursor, Res<Events<T>> events) {
         cursor->index = std::max(cursor->index, events->head());
         cursor->index = std::min(cursor->index, events->tail());
         return EventReader<T>(cursor, events);
     }
 
+    /** @brief Return a range of unread events, advancing the cursor past them. */
     auto read() {
         return std::views::iota(_cursor->index, _events->tail()) |
                std::views::transform([this](std::uint32_t index) mutable {
@@ -115,6 +135,7 @@ struct EventReader {
                    return *_events->get(index);
                });
     }
+    /** @brief Return a range of (id, event) pairs for unread events. */
     auto read_with_id() {
         return std::views::iota(_cursor->index, _events->tail()) |
                std::views::transform([this](std::uint32_t index) mutable {
@@ -123,9 +144,13 @@ struct EventReader {
                    return std::tuple<std::uint32_t, const T&>(index, *event);
                });
     }
+    /** @brief Number of events not yet consumed by this reader. */
     std::uint32_t size() const { return _events->tail() - _cursor->index; }
+    /** @brief True if all events have been consumed. */
     bool empty() const { return _cursor->index == _events->tail(); }
+    /** @brief Skip all unread events. */
     void clear() { _cursor->index = _events->tail(); }
+    /** @brief Read exactly one event, or std::nullopt if none remain. */
     std::optional<std::reference_wrapper<const T>> read_one() {
         auto event = _events->get(_cursor->index);
         if (event) {
@@ -135,6 +160,7 @@ struct EventReader {
             return std::nullopt;
         }
     }
+    /** @brief Read one event with its index, or std::nullopt if none remain. */
     std::optional<std::tuple<const T&, uint32_t>> read_one_index() {
         auto event = _events->get(_cursor->index);
         if (event) {
@@ -150,6 +176,8 @@ struct EventReader {
 static_assert(from_param<EventReader<int>>);
 static_assert(system_param<EventReader<int>>);
 
+/** @brief System parameter that writes events of type T.
+ *  Wraps a mutable reference to Events<T>. */
 export template <typename T>
 struct EventWriter {
    private:
@@ -157,10 +185,14 @@ struct EventWriter {
     EventWriter(ResMut<Events<T>> events) : m_events(events) {}
 
    public:
+    /** @brief Construct an EventWriter from system parameters. */
     static EventWriter<T> from_param(ResMut<Events<T>> events) { return EventWriter<T>(events); }
 
+    /** @brief Push an event by const reference. */
     void write(const T& event) { m_events->push(event); }
+    /** @brief Push an event by move. */
     void write(T&& event) { m_events->push(std::move(event)); }
+    /** @brief Construct and push an event in-place. */
     template <typename... Args>
     void emplace(Args&&... args) {
         m_events->emplace(std::forward<Args>(args)...);

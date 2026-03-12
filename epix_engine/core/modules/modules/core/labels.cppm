@@ -20,8 +20,11 @@ import :label;
 #endif
 
 namespace core {
+/** @brief Label type for identifying system sets within a schedule. */
 export EPIX_MAKE_LABEL(SystemSetLabel);
+/** @brief Label type for identifying schedules. */
 export EPIX_MAKE_LABEL(ScheduleLabel);
+/** @brief Label type for identifying sub-applications. */
 export EPIX_MAKE_LABEL(AppLabel);
 }  // namespace core
 

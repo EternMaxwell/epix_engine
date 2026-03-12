@@ -13,22 +13,40 @@ export import :system.from_param;
 export import :system.commands;
 
 namespace core {
+/** @brief Wrapper around an exception caught during system execution. */
 export struct SystemException {
+    /** @brief The captured exception. */
     std::exception_ptr exception;
 };
+/** @brief Error type for system execution: either a parameter validation error or exception. */
 export using RunSystemError = std::variant<ValidateParamError, SystemException>;
+/** @brief Abstract base class for all systems.
+ *  Owns parameter state and provides run/apply/validate interface.
+ *  @tparam In System input type (default: empty tuple).
+ *  @tparam Out System output type (default: void). */
 export template <typename In, typename Out>
 struct System {
+    /** @brief Get the system's human-readable name. */
     virtual std::string_view name() const = 0;
+    /** @brief Set the system's display name. */
     virtual void set_name(std::string_view) {}
+    /** @brief Get the system's type index for identity/debugging. */
     virtual meta::type_index type_index() const = 0;
-    virtual SystemFlagBits flags() const        = 0;
+    /** @brief Get the system's flag bits (exclusive, deferred, etc.). */
+    virtual SystemFlagBits flags() const = 0;
+    /** @brief Check if this system requires exclusive world access. */
     bool is_exclusive() const { return (flags() & SystemFlagBits::EXCLUSIVE) != 0; }
+    /** @brief Check if this system produces deferred commands. */
     bool is_deferred() const { return (flags() & SystemFlagBits::DEFERRED) != 0; }
+    /** @brief Execute the system logic without parameter validation. */
     virtual std::expected<Out, RunSystemError> run_internal(typename SystemInput<In>::Input input, World& world) = 0;
-    virtual std::expected<void, ValidateParamError> validate_param(World& world)                                 = 0;
-    virtual void apply_deferred(World& world)                                                                    = 0;
-    virtual void queue_deferred(DeferredWorld deferred_world)                                                    = 0;
+    /** @brief Validate that all required parameters can be fetched from the world. */
+    virtual std::expected<void, ValidateParamError> validate_param(World& world) = 0;
+    /** @brief Apply all deferred commands queued by this system. */
+    virtual void apply_deferred(World& world) = 0;
+    /** @brief Queue deferred commands into the world's command queue. */
+    virtual void queue_deferred(DeferredWorld deferred_world) = 0;
+    /** @brief Validate parameters, run the system, and apply deferred commands. */
     std::expected<Out, RunSystemError> run(typename SystemInput<In>::Input input, World& world) {
         auto res = validate_param(world)
                        .transform_error([](ValidateParamError&& err) -> RunSystemError { return std::move(err); })
@@ -36,16 +54,24 @@ struct System {
         if (res.has_value()) apply_deferred(world);
         return std::move(res);
     }
+    /** @brief Run the system without applying deferred commands afterward. */
     std::expected<Out, RunSystemError> run_no_apply(typename SystemInput<In>::Input input, World& world) {
         return validate_param(world)
             .transform_error([](ValidateParamError&& err) -> RunSystemError { return std::move(err); })
             .and_then([&] { return run_internal(std::move(input), world); });
     }
+    /** @brief Initialize the system, registering component accesses with the world.
+     *  @return The set of filtered accesses this system requires. */
     virtual FilteredAccessSet initialize(World& world) = 0;
-    virtual bool initialized() const noexcept          = 0;
-    virtual void check_change_tick(Tick tick)          = 0;
-    virtual Tick get_last_run() const                  = 0;
+    /** @brief Check if the system has been initialized. */
+    virtual bool initialized() const noexcept = 0;
+    /** @brief Clamp stale change-detection ticks. */
+    virtual void check_change_tick(Tick tick) = 0;
+    /** @brief Get the tick when this system last ran. */
+    virtual Tick get_last_run() const = 0;
+    /** @brief Get the default system sets this system belongs to. */
     virtual std::vector<SystemSetLabel> default_sets() const { return {}; }
+    /** @brief Clone this system (deep copy). */
     virtual System* clone() const = 0;
     virtual ~System()             = default;
 };
@@ -219,6 +245,7 @@ template <valid_function_system F>
 System<typename function_system_traits<F>::Input, typename function_system_traits<F>::Output>* make_system(F&& func) {
     return new FunctionSystem<F>(std::forward<F>(func));
 }
+/** @brief Create a system from a function and return it as a unique_ptr. */
 export template <valid_function_system F>
 std::unique_ptr<System<typename function_system_traits<F>::Input, typename function_system_traits<F>::Output>>
 make_system_unique(F&& func) {
@@ -226,6 +253,7 @@ make_system_unique(F&& func) {
         System<typename function_system_traits<F>::Input, typename function_system_traits<F>::Output>>(
         make_system(std::forward<F>(func)));
 }
+/** @brief Create a system from a function and return it as a shared_ptr. */
 export template <valid_function_system F>
 std::shared_ptr<System<typename function_system_traits<F>::Input, typename function_system_traits<F>::Output>>
 make_system_shared(F&& func) {

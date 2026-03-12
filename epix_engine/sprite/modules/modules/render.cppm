@@ -12,33 +12,72 @@ import epix.render;
 import std;
 
 export namespace sprite {
+/** @brief Snapshot of a sprite extracted from the main world for rendering.
+ *
+ * Created during the extract phase so the render world has an immutable
+ * copy of every visible sprite's transform, color, texture, and depth.
+ */
 struct ExtractedSprite {
+    /** @brief Entity in the main world this sprite was extracted from. */
     core::Entity source_entity;
+    /** @brief Copy of the sprite's visual properties. */
     Sprite sprite;
+    /** @brief Model matrix representing the sprite's world transform. */
     glm::mat4 model;
+    /** @brief Depth value used for sorting transparent sprites. */
     float depth;
+    /** @brief Asset ID of the sprite's texture image. */
     assets::AssetId<image::Image> texture;
+    /** @brief Pixel dimensions of the source image. */
     glm::vec2 image_size;
 };
 
+/** @brief GPU batch for sprites sharing the same texture bind group.
+ *
+ * Each batch references a texture bind group and the starting offset
+ * into the shared instance buffer for instanced draw calls.
+ */
 struct SpriteBatch {
+    /** @brief Bind group holding the texture and sampler for this batch. */
     wgpu::BindGroup texture_bind_group;
+    /** @brief Index of the first instance in SpriteInstanceBuffer for this
+     * batch. */
     std::uint32_t instance_start = 0;
 };
 
+/** @brief Per-instance GPU data for a single sprite in an instanced draw
+ * call. */
 struct SpriteInstanceData {
+    /** @brief Model matrix for this sprite instance. */
     glm::mat4 model;
+    /** @brief UV offset (xy) and scale (zw) within the texture atlas or
+     * sheet. */
     glm::vec4 uv_offset_scale;
+    /** @brief Tint color for this instance. */
     glm::vec4 color;
+    /** @brief Position offset (xy) and scale (zw) applied to the quad
+     * vertices. */
     glm::vec4 pos_offset_scale;
 };
 
+/** @brief Shared GPU buffers for the unit-quad geometry used by all sprites.
+ *
+ * Created once as a resource; all sprite instances share these vertex and
+ * index buffers and are differentiated only through per-instance data.
+ */
 struct SpriteGeometryBuffers {
+    /** @brief Vertex buffer containing quad corner positions. */
     wgpu::Buffer position_buffer;
+    /** @brief Vertex buffer containing quad UV coordinates. */
     wgpu::Buffer uv_buffer;
+    /** @brief Index buffer for the two-triangle quad. */
     wgpu::Buffer index_buffer;
+    /** @brief Number of indices in the index buffer. */
     std::uint32_t index_count = 0;
 
+    /** @brief Constructs the quad geometry buffers on the GPU.
+     * @param world World providing the `wgpu::Device` and `wgpu::Queue`
+     * resources. */
     explicit SpriteGeometryBuffers(core::World& world) {
         auto& device = world.resource<wgpu::Device>();
         auto& queue  = world.resource<wgpu::Queue>();
@@ -77,12 +116,22 @@ struct SpriteGeometryBuffers {
     }
 };
 
+/** @brief GPU buffer holding all sprite instance data for the current frame.
+ *
+ * Sprite instances are collected, uploaded to `buffer`, and bound via
+ * `bind_group` during the prepare phase. */
 struct SpriteInstanceBuffer {
+    /** @brief GPU buffer storing the array of SpriteInstanceData. */
     wgpu::Buffer buffer;
+    /** @brief Bind group exposing the instance buffer to shaders. */
     wgpu::BindGroup bind_group;
+    /** @brief CPU-side instance data staged before uploading. */
     std::vector<SpriteInstanceData> instances;
 };
 
+/** @brief Render command that binds the sprite instance buffer at the given
+ * bind group slot.
+ * @tparam Slot Bind group index for the instance buffer. */
 template <size_t Slot>
 struct BindSpriteInstances {
     template <render::phase::PhaseItem PhaseItem>
@@ -110,6 +159,9 @@ struct BindSpriteInstances {
     };
 };
 
+/** @brief Render command that binds a sprite batch's texture at the given
+ * bind group slot.
+ * @tparam Slot Bind group index for the texture. */
 template <size_t Slot>
 struct BindSpriteTexture {
     template <render::phase::PhaseItem PhaseItem>
@@ -145,6 +197,9 @@ struct BindSpriteTexture {
     };
 };
 
+/** @brief Render command that issues the instanced draw call for a sprite
+ * batch.
+ * @tparam PhaseItem The render phase item type driving draw ordering. */
 template <render::phase::PhaseItem PhaseItem>
 struct DrawSpriteBatch {
     void prepare(const core::World&) {}
@@ -174,6 +229,8 @@ struct DrawSpriteBatch {
     }
 };
 
+/** @brief Plugin that registers the sprite rendering pipeline, including
+ * extraction, batching, and draw commands. */
 struct SpritePlugin {
     void build(core::App& app);
     void finish(core::App& app);

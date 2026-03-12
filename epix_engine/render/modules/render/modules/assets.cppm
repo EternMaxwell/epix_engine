@@ -11,13 +11,23 @@ using namespace assets;
 
 namespace render {
 
+/** @brief Trait type to specialize for enabling render asset processing.
+ *
+ * Specialize `RenderAsset<T>` and define `ProcessedAsset`, `Param`,
+ * `process()`, and `usage()` to make type T extractable and processable
+ * as a GPU-side render asset.
+ * @tparam T The source asset type. */
 export template <typename T>
 struct RenderAsset;
 
+/** @brief Bit flags controlling where a render asset is used. */
 export enum RenderAssetUsageBits : std::uint8_t {
-    MainWorld   = 1 << 0,  // used in main world(e.g. for cpu access)
-    RenderWorld = 1 << 1,  // used for rendering(e.g. for gpu access)
+    /** @brief Asset is used in the main world (e.g. CPU access). */
+    MainWorld = 1 << 0,
+    /** @brief Asset is used in the render world (e.g. GPU access). */
+    RenderWorld = 1 << 1,
 };
+/** @brief Combined usage flags for a render asset. */
 export using RenderAssetUsage = std::underlying_type_t<RenderAssetUsageBits>;
 
 template <typename T>
@@ -28,11 +38,15 @@ concept RenderAssetImpl = requires(RenderAsset<T> asset) {
     typename RenderAsset<T>::Param;
     requires core::system_param<typename RenderAsset<T>::Param>;
     {
-        asset.process(std::declval<T &&>(), std::declval<typename RenderAsset<T>::Param&>())
+        asset.process(std::declval<T&&>(), std::declval<typename RenderAsset<T>::Param&>())
     } -> std::same_as<typename RenderAsset<T>::ProcessedAsset>;
     { asset.usage(std::declval<const T&>()) } -> std::same_as<RenderAssetUsage>;
 };
 
+/** @brief Storage for processed GPU-ready render assets, keyed by asset
+ * ID.
+ * @tparam T The source asset type (must have a RenderAsset<T>
+ * specialization). */
 export template <RenderAssetImpl T>
 struct RenderAssets {
     using Type = typename RenderAsset<T>::ProcessedAsset;
@@ -44,38 +58,48 @@ struct RenderAssets {
     RenderAssets& operator=(const RenderAssets&) = delete;
     RenderAssets& operator=(RenderAssets&&)      = default;
 
+    /** @brief Insert a processed asset by id. */
     void insert(const assets::AssetId<T>& id, Type&& asset) { assets.emplace(id, std::move(asset)); }
+    /** @brief Emplace a processed asset by id, constructing in place. */
     template <typename... Args>
     void emplace(const assets::AssetId<T>& id, Args&&... args) {
         assets.emplace(id, std::forward<Args>(args)...);
     }
+    /** @brief Check if a processed asset exists for the given id. */
     bool contains(const assets::AssetId<T>& id) const { return assets.contains(id); }
+    /** @brief Remove the processed asset for the given id. Returns true if erased. */
     bool remove(const assets::AssetId<T>& id) { return assets.erase(id) > 0; }
+    /** @brief Get a mutable reference to the processed asset. Throws if not found. */
     Type& get(const assets::AssetId<T>& id) {
         if (auto ptr = try_get(id)) {
             return *ptr;
         }
         throw std::runtime_error("Render asset not found: " + id.to_string());
     }
+    /** @brief Get a const reference to the processed asset. Throws if not found. */
     const Type& get(const assets::AssetId<T>& id) const {
         if (auto ptr = try_get(id)) {
             return *ptr;
         }
         throw std::runtime_error("Render asset not found: " + id.to_string());
     }
+    /** @brief Try to get a mutable pointer to the processed asset. Returns nullptr if not found. */
     Type* try_get(const assets::AssetId<T>& id) {
         if (auto it = assets.find(id); it != assets.end()) {
             return std::addressof(it->second);
         }
         return nullptr;
     }
+    /** @brief Try to get a const pointer to the processed asset. Returns nullptr if not found. */
     const Type* try_get(const assets::AssetId<T>& id) const {
         if (auto it = assets.find(id); it != assets.end()) {
             return std::addressof(it->second);
         }
         return nullptr;
     }
+    /** @brief Iterate over all stored (id, asset) pairs. */
     auto iter() { return std::views::all(assets); }
+    /** @brief Iterate over all stored (id, asset) pairs (const). */
     auto iter() const { return std::views::all(assets); }
 
    private:
@@ -178,11 +202,18 @@ void process_render_assets(typename RenderAsset<T>::Param param,
     }
 }
 
+/** @brief System set labels for the asset extract/process pipeline. */
 export enum class ExtractAssetSet {
+    /** @brief Phase that extracts changed assets from the main world. */
     Extract,
+    /** @brief Phase that processes extracted assets into GPU resources. */
     Process,
 };
 
+/** @brief Plugin that sets up extraction and processing of render assets
+ * for type T.
+ * @tparam T The source asset type (must have a RenderAsset<T>
+ * specialization). */
 export template <RenderAssetImpl T>
 struct ExtractAssetPlugin {
     void build(App& app) {

@@ -117,7 +117,9 @@ struct FromWorld {
     }
 };
 
-// should make sure that all world impls inherit this does not include their own data members
+/** @brief Central ECS world that owns all entities, components, resources, and archetypes.
+ *  Non-copyable, non-movable. Provides methods for spawning entities, managing resources,
+ *  and querying components. Supports change detection via ticks. */
 export struct World {
    public:
     World(WorldId id, std::shared_ptr<TypeRegistry> type_registry = std::make_shared<TypeRegistry>())
@@ -132,22 +134,40 @@ export struct World {
     World& operator=(const World&) = delete;
     World& operator=(World&&)      = delete;
 
+    /** @brief Get the world's unique identifier. */
     WorldId id() const { return _id; }
+    /** @brief Get a const reference to the type registry. */
     const TypeRegistry& type_registry() const { return *_type_registry; }
+    /** @brief Get a shared pointer to the type registry. */
     std::shared_ptr<TypeRegistry> type_registry_ptr() const { return _type_registry; }
+    /** @brief Get a const reference to the component metadata store. */
     const Components& components() const { return _components; }
+    /** @brief Get a mutable reference to the component metadata store. */
     Components& components_mut() { return _components; }
+    /** @brief Get a const reference to the entity allocator. */
     const Entities& entities() const { return _entities; }
+    /** @brief Get a mutable reference to the entity allocator. */
     Entities& entities_mut() { return _entities; }
+    /** @brief Get a const reference to the storage (tables, sparse sets, resources). */
     const Storage& storage() const { return _storage; }
+    /** @brief Get a mutable reference to the storage. */
     Storage& storage_mut() { return _storage; }
+    /** @brief Get a const reference to all archetypes. */
     const Archetypes& archetypes() const { return _archetypes; }
+    /** @brief Get a mutable reference to all archetypes. */
     Archetypes& archetypes_mut() { return _archetypes; }
+    /** @brief Get a const reference to the bundle registry. */
     const Bundles& bundles() const { return _bundles; }
+    /** @brief Get a mutable reference to the bundle registry. */
     Bundles& bundles_mut() { return _bundles; }
+    /** @brief Get the current change tick (monotonically increasing). */
     Tick change_tick() const { return _change_tick->load(std::memory_order_relaxed); }
+    /** @brief Atomically increment and return the previous change tick. */
     Tick increment_change_tick() { return Tick(_change_tick->fetch_add(1, std::memory_order_relaxed)); }
+    /** @brief Get the tick value from the last time change ticks were checked. */
     Tick last_change_tick() const { return _last_change_tick; }
+    /** @brief Check and clamp stale change ticks in tables, sparse sets, and resources.
+     *  @param additional_checks Extra tick-checking logic invoked with the current change tick. */
     void check_change_tick(std::invocable<Tick> auto&& additional_checks) {
         auto change_tick = this->change_tick();
         if (change_tick.relative_to(_last_change_tick).get() < ::core::CHECK_TICK_THRESHOLD) {
@@ -159,16 +179,24 @@ export struct World {
         additional_checks(change_tick);
         _last_change_tick = change_tick;
     }
+    /** @brief Get a mutable reference to the deferred command queue. */
     CommandQueue& command_queue() { return _command_queue; }
 
+    /** @brief Despawn all entities and clear archetype/table/sparse-set data. */
     void clear_entities() {
         _entities.clear();
         _archetypes.clear_entities();
         _storage.tables.clear();
         _storage.sparse_sets.clear_entities();
     }
+    /** @brief Remove all resources from storage. */
     void clear_resources() { _storage.resources.clear(); }
 
+    /** @brief Spawn a new entity with the given components or bundle.
+     *  @tparam Args Component types or a single bundle type.
+     *  @param args Component values to attach to the new entity.
+     *  @return An EntityWorldMut handle for the newly created entity.
+     *  @note Calls flush() internally, so all pending commands are applied. */
     template <typename... Args>
     EntityWorldMut spawn(Args&&... args)
         requires((std::constructible_from<std::decay_t<Args>, Args> || is_bundle<Args>) && ...)
@@ -187,6 +215,10 @@ export struct World {
         return spawn_bundle(make_bundle<std::decay_t<Args>...>(std::forward_as_tuple(std::forward<Args>(args))...));
     }
 
+    /** @brief Construct and insert a resource of type T in-place.
+     *  @tparam T Resource type.
+     *  @tparam Args Constructor argument types.
+     *  @param args Arguments forwarded to T's constructor. */
     template <typename T, typename... Args>
         requires std::constructible_from<T, Args&&...>
     void emplace_resource(Args&&... args) {
@@ -196,12 +228,17 @@ export struct World {
             .get()
             .template emplace<T>(change_tick(), std::forward<Args>(args)...);
     }
+    /** @brief Insert a resource by moving or copying the given value.
+     *  @tparam T Resource type (deduced). */
     template <typename T>
         requires std::constructible_from<std::remove_cvref_t<T>, T>
     void insert_resource(T&& value) {
         using D = std::remove_cvref_t<T>;
         emplace_resource<D>(std::forward<T>(value));
     }
+    /** @brief Initialize a resource via FromWorld (default-construct, construct from World, or static from_world).
+     *  @tparam T Resource type satisfying is_from_world.
+     *  @note If construction throws, the resource slot is cleaned up and an error is logged. */
     template <typename T>
     void init_resource()
         requires is_from_world<T>
@@ -221,6 +258,7 @@ export struct World {
             _storage.resources.get_mut(_type_registry->type_id<T>()).value().get().remove();
         }
     }
+    /** @brief Remove a resource by its TypeId. Returns true if removed. */
     bool remove_resource(TypeId type_id) {
         return _storage.resources.get_mut(type_id)
             .and_then([](ResourceData& res) {
@@ -229,10 +267,15 @@ export struct World {
             })
             .value_or(false);
     }
+    /** @brief Remove a resource by type. Returns true if removed.
+     *  @tparam T Resource type. */
     template <typename T>
     bool remove_resource() {
         return remove_resource(_type_registry->type_id<T>());
     }
+    /** @brief Remove and return a resource by type, if it exists.
+     *  @tparam T Movable resource type.
+     *  @return The moved resource, or std::nullopt if not present. */
     template <typename T>
     std::optional<T> take_resource()
         requires std::movable<T>
@@ -240,6 +283,9 @@ export struct World {
         return _storage.resources.get_mut(_type_registry->type_id<T>())
             .and_then([](ResourceData& res) -> std::optional<T> { return res.take<T>(); });
     }
+    /** @brief Get a const reference to a resource, if it exists.
+     *  @tparam T Resource type.
+     *  @return Optional const reference wrapper. */
     template <typename T>
     std::optional<std::reference_wrapper<const T>> get_resource() const {
         return _storage.resources.get(_type_registry->type_id<T>())
@@ -247,21 +293,30 @@ export struct World {
                 return res.get_as<T>();
             });
     }
+    /** @brief Get a mutable reference to a resource, if it exists.
+     *  @tparam T Resource type.
+     *  @return Optional mutable reference wrapper. */
     template <typename T>
     std::optional<std::reference_wrapper<T>> get_resource_mut() {
         return _storage.resources.get_mut(_type_registry->type_id<T>())
             .and_then(
                 [&](ResourceData& res) -> std::optional<std::reference_wrapper<T>> { return res.get_as_mut<T>(); });
     }
+    /** @brief Get a const reference to a resource. Throws if not present.
+     *  @tparam T Resource type. */
     template <typename T>
     const T& resource() const {
         return get_resource<T>().value().get();
     }
+    /** @brief Get a mutable reference to a resource. Throws if not present.
+     *  @tparam T Resource type. */
     template <typename T>
     T& resource_mut() {
         return get_resource_mut<T>().value().get();
     }
 
+    /** @brief Get or initialize a resource. If the resource does not exist, it is
+     *  created via FromWorld. @tparam T Resource type satisfying is_from_world. */
     template <is_from_world T>
     T& resource_or_init() {
         return get_resource_mut<T>()
@@ -271,6 +326,9 @@ export struct World {
             })
             .value();
     }
+    /** @brief Get or emplace a resource with the given constructor arguments.
+     *  @tparam T Resource type.
+     *  @tparam Args Constructor argument types. */
     template <typename T, typename... Args>
         requires std::constructible_from<T, Args&&...>
     T& resource_or_emplace(Args&&... args) {
@@ -316,10 +374,8 @@ export struct World {
             // return std::nullopt
             std::tuple<
                 std::optional<std::reference_wrapper<std::remove_reference_t<std::tuple_element_t<I, args_tuple>>>>...>
-                params = {
-                    try_get_or_init_resource
-                        .template operator()<std::remove_reference_t<std::tuple_element_t<I, args_tuple>>>()...
-                };
+                params = {try_get_or_init_resource
+                              .template operator()<std::remove_reference_t<std::tuple_element_t<I, args_tuple>>>()...};
             if (!(... && std::get<I>(params).has_value())) {
                 return std::unexpected(std::monostate{});
             }
@@ -387,28 +443,43 @@ export struct World {
         }
     }
 
+    /** @brief Create a query over entities matching the given query data.
+     *  @tparam D Query data descriptor (component references, etc.). */
     template <query_data D>
     QueryState<D, Filter<>> query() {
         return QueryState<D, Filter<>>::create(*this);
     }
+    /** @brief Create a filtered query over entities.
+     *  @tparam D Query data descriptor.
+     *  @tparam F Query filter. */
     template <query_data D, query_filter F>
     QueryState<D, F> query_filtered() {
         return QueryState<D, F>::create(*this);
     }
+    /** @brief Try to create a query from a const world. Returns std::nullopt if requirements cannot be met.
+     *  @tparam D Query data descriptor. */
     template <query_data D>
     std::optional<QueryState<D, Filter<>>> try_query() const {
         return QueryState<D, Filter<>>::create_from_const(*this);
     }
+    /** @brief Try to create a filtered query from a const world.
+     *  @tparam D Query data descriptor.
+     *  @tparam F Query filter. */
     template <query_data D, query_filter F>
     std::optional<QueryState<D, F>> try_query_filtered() const {
         return QueryState<D, F>::create_from_const(*this);
     }
 
+    /** @brief Get a read-only reference to a living entity. Panics if the entity is invalid. */
     EntityRef entity(Entity entity) const;
+    /** @brief Get a mutable reference to a living entity. Panics if the entity is invalid. */
     EntityWorldMut entity_mut(Entity entity);
+    /** @brief Try to get a read-only reference to an entity. Returns std::nullopt if invalid. */
     std::optional<EntityRef> get_entity(Entity entity) const;
+    /** @brief Try to get a mutable reference to an entity. Returns std::nullopt if invalid. */
     std::optional<EntityWorldMut> get_entity_mut(Entity entity);
 
+    /** @brief Flush pending reserved entities into the empty archetype. */
     void flush_entities() {
         auto& empty_archetype = _archetypes.get_empty_mut();
         auto& empty_table     = _storage.tables.get_mut(empty_archetype.table_id()).value().get();
@@ -416,7 +487,9 @@ export struct World {
             location = empty_archetype.allocate(entity, empty_table.allocate(entity));
         });
     }
+    /** @brief Apply all deferred commands in the command queue. */
     void flush_commands() { _command_queue.apply(*reinterpret_cast<World*>(this)); }
+    /** @brief Flush entities and apply deferred commands. */
     void flush() {
         flush_entities();
         flush_commands();
@@ -434,45 +507,67 @@ export struct World {
     std::unique_ptr<std::atomic<std::uint32_t>> _change_tick;
     Tick _last_change_tick;
 };
+/** @brief A deferred view of a World that provides read-only data access
+ *  and deferred command submission. Does not allow direct mutation. */
 struct DeferredWorld {
    public:
     DeferredWorld(World& world) : world_(&world) {}
+    /** @brief Get the world's unique identifier. */
     WorldId id() const { return world_->id(); }
+    /** @brief Get a const reference to the type registry. */
     const TypeRegistry& type_registry() const { return world_->type_registry(); }
+    /** @brief Get a const reference to the component metadata store. */
     const Components& components() const { return world_->components(); }
+    /** @brief Get a const reference to the entity allocator. */
     const Entities& entities() const { return world_->entities(); }
+    /** @brief Get a const reference to the storage. */
     const Storage& storage() const { return world_->storage(); }
+    /** @brief Get a const reference to all archetypes. */
     const Archetypes& archetypes() const { return world_->archetypes(); }
+    /** @brief Get a const reference to the bundle registry. */
     const Bundles& bundles() const { return world_->bundles(); }
+    /** @brief Get the current change tick. */
     Tick change_tick() const { return world_->change_tick(); }
+    /** @brief Get the last change tick. */
     Tick last_change_tick() const { return world_->last_change_tick(); }
+    /** @brief Get a mutable reference to the deferred command queue. */
     CommandQueue& command_queue() { return world_->command_queue(); }
 
+    /** @brief Get a read-only reference to a living entity. */
     EntityRef entity(Entity entity);
+    /** @brief Get a deferred mutable reference to a living entity. */
     EntityRefMut entity_mut(Entity entity);
+    /** @brief Try to get a read-only entity reference. */
     std::optional<EntityRef> get_entity(Entity entity);
+    /** @brief Try to get a deferred mutable entity reference. */
     std::optional<EntityRefMut> get_entity_mut(Entity entity);
 
+    /** @brief Get a const reference to a resource, if it exists. */
     template <typename T>
     std::optional<std::reference_wrapper<const T>> get_resource() const {
         return world_->get_resource<T>();
     }
+    /** @brief Get a mutable reference to a resource, if it exists. */
     template <typename T>
     std::optional<std::reference_wrapper<T>> get_resource_mut() {
         return world_->get_resource_mut<T>();
     }
+    /** @brief Get a const reference to a resource. Throws if not present. */
     template <typename T>
     const T& resource() const {
         return world_->resource<T>();
     }
+    /** @brief Get a mutable reference to a resource. Throws if not present. */
     template <typename T>
     T& resource_mut() {
         return world_->resource_mut<T>();
     }
+    /** @brief Create a query over entities matching the given query data. */
     template <query_data D>
     QueryState<D, Filter<>> query() {
         return world_->template query<D>();
     }
+    /** @brief Create a filtered query over entities. */
     template <query_data D, query_filter F>
     QueryState<D, F> query_filtered() {
         return world_->template query_filtered<D, F>();

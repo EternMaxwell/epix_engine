@@ -11,20 +11,27 @@ export import :store;
 export import :server;
 
 namespace assets {
+/** @brief Built-in system set labels for asset event processing order. */
 export enum class AssetSystems {
-    HandleEvents,
-    WriteEvents,
+    HandleEvents, /**< Systems that react to handle lifecycle events. */
+    WriteEvents,  /**< Systems that emit asset lifecycle events. */
 };
+/** @brief Plugin that registers asset types and loaders with the application.
+ *  Call register_asset<T>() and register_loader<L>() before building. */
 export struct AssetPlugin {
    private:
     std::vector<std::function<void(App&)>> m_assets_inserts;
 
    public:
+    /** @brief Register an asset type T for management. */
     template <std::movable T>
     AssetPlugin& register_asset();
+    /** @brief Register an asset loader for its associated asset type. */
     template <AssetLoader T>
     AssetPlugin& register_loader(const T& t = T());
+    /** @brief Build the plugin, inserting asset resources into the app. */
     void build(App& app);
+    /** @brief Finalize the plugin after all other plugins have built. */
     void finish(App& app);
 };
 

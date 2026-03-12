@@ -14,13 +14,17 @@ import :storage.sparse_set;
 import :storage.table;
 
 namespace core {
+/** @brief Context passed to component lifecycle hook callbacks.
+ *  Contains the entity being affected and the component type involved. */
 export struct HookContext {
+    /** @brief The entity being affected. */
     Entity entity;
+    /** @brief The type id of the component being hooked. */
     TypeId component_id;
 };
-/// Component Hooks struct for storing component lifecycle hooks
-/// the priority of the hooks if can be called at the same time is as follows:
-/// [on_despawn > on_replace > on_remove > removed > added > on_add > on_insert]
+/** @brief Stores component lifecycle hook function pointers.
+ *  Priority when multiple hooks fire simultaneously:
+ *  on_despawn > on_replace > on_remove > removed > added > on_add > on_insert. */
 export struct ComponentHooks {
     using HookFunc = void (*)(World&, HookContext);
 
@@ -30,6 +34,8 @@ export struct ComponentHooks {
     HookFunc on_remove  = nullptr;
     HookFunc on_despawn = nullptr;
 
+    /** @brief Populate hook function pointers from static member functions defined on type T.
+     *  @tparam T The component type potentially defining on_add/on_insert/on_replace/on_remove/on_despawn. */
     template <typename T>
     ComponentHooks& update_from_component() {
         if constexpr (requires(World& world, HookContext ctx) { T::on_add(world, ctx); }) {
@@ -49,6 +55,7 @@ export struct ComponentHooks {
         }
         return *this;
     }
+    /** @brief Set the on_add hook if not already set. @return true if it was set. */
     bool try_on_add(HookFunc func) {
         if (on_add) {
             on_add = func;
@@ -56,6 +63,7 @@ export struct ComponentHooks {
         }
         return false;
     }
+    /** @brief Set the on_insert hook if not already set. @return true if it was set. */
     bool try_on_insert(HookFunc func) {
         if (on_insert) {
             on_insert = func;
@@ -63,6 +71,7 @@ export struct ComponentHooks {
         }
         return false;
     }
+    /** @brief Set the on_replace hook if not already set. @return true if it was set. */
     bool try_on_replace(HookFunc func) {
         if (on_replace) {
             on_replace = func;
@@ -70,6 +79,7 @@ export struct ComponentHooks {
         }
         return false;
     }
+    /** @brief Set the on_remove hook if not already set. @return true if it was set. */
     bool try_on_remove(HookFunc func) {
         if (on_remove) {
             on_remove = func;
@@ -77,6 +87,7 @@ export struct ComponentHooks {
         }
         return false;
     }
+    /** @brief Set the on_despawn hook if not already set. @return true if it was set. */
     bool try_on_despawn(HookFunc func) {
         if (on_despawn) {
             on_despawn = func;
@@ -154,11 +165,18 @@ struct ComponentInfo {
     ComponentInfo(TypeId id, ::meta::type_index index, StorageType storage_type)
         : _id(id), _index(index), _storage_type(storage_type) {}
 
+    /** @brief Get the component's type id. */
     TypeId type_id() const { return _id; }
+    /** @brief Get the component's runtime type index. */
     ::meta::type_index type_index() const { return _index; }
+    /** @brief Get the component's storage type (Table or SparseSet). */
     StorageType storage_type() const { return _storage_type; }
+    /** @brief Get the component's lifecycle hooks. */
     const ComponentHooks& hooks() const { return _hooks; }
+    /** @brief Get the components that are automatically added when this component is inserted. */
     const RequiredComponents& required_components() const { return _required_components; }
+    /** @brief Update lifecycle hooks from static members defined on type T.
+     *  @tparam T The component type. */
     template <typename T>
     void update_hooks() {
         _hooks.update_from_component<T>();
@@ -166,6 +184,8 @@ struct ComponentInfo {
 
     friend struct Components;
 };
+/** @brief Central component registry that also manages required-component relationships.
+ *  Inherits from SparseSet<TypeId, ComponentInfo>. */
 export struct Components : public SparseSet<TypeId, ComponentInfo> {
    private:
     std::shared_ptr<TypeRegistry> type_registry;
@@ -173,7 +193,11 @@ export struct Components : public SparseSet<TypeId, ComponentInfo> {
    public:
     Components(std::shared_ptr<TypeRegistry> type_registry)
         : SparseSet<TypeId, ComponentInfo>(), type_registry(std::move(type_registry)) {}
+    /** @brief Get a const reference to the underlying type registry. */
     const TypeRegistry& registry() const { return *type_registry; }
+    /** @brief Register component info for type T, creating it if not already registered.
+     *  @tparam T The component type.
+     *  @return The assigned TypeId. */
     template <typename T>
     TypeId register_info() {
         auto id = type_registry->type_id<T>();
@@ -184,6 +208,8 @@ export struct Components : public SparseSet<TypeId, ComponentInfo> {
         }
         return id;
     }
+    /** @brief Overwrite lifecycle hooks for the given component type.
+     *  Only non-null hook pointers in `hooks` are applied. */
     void update_hooks(TypeId type_id, ComponentHooks hooks) {
         get_mut(type_id).transform([&](ComponentInfo& info) -> bool {
             if (hooks.on_add) {
@@ -205,6 +231,10 @@ export struct Components : public SparseSet<TypeId, ComponentInfo> {
             return true;
         });
     }
+    /** @brief Register a required component for `requiree` using a typed constructor.
+     *  @tparam F Invocable returning the required component value.
+     *  @param requiree The component that requires another.
+     *  @param constructor Factory producing the default value of the required component. */
     template <typename F>
     void register_required(TypeId requiree, F&& constructor)
         requires std::invocable<F> && std::is_object_v<std::invoke_result_t<F>>
@@ -212,6 +242,10 @@ export struct Components : public SparseSet<TypeId, ComponentInfo> {
         auto required = registry().type_id<std::invoke_result_t<F>>();
         register_required_by_id(requiree, required, std::forward<F>(constructor));
     }
+    /** @brief Register a required component by explicit TypeId pair.
+     *  @param requiree Component that requires `required`.
+     *  @param required The required component's TypeId.
+     *  @param constructor Factory producing the default value. */
     template <typename F>
     void register_required_by_id(TypeId requiree, TypeId required, F&& constructor)
         requires std::invocable<F> && std::is_object_v<std::invoke_result_t<F>>
@@ -242,6 +276,10 @@ export struct Components : public SparseSet<TypeId, ComponentInfo> {
             }
         }
     }
+    /** @brief Register a required component using a type-erased constructor.
+     *  @param requiree Component that requires `required`.
+     *  @param required The required component's TypeId.
+     *  @param constructor Type-erased factory for the required component. */
     void register_required_dyn(TypeId requiree, TypeId required, RequiredComponentConstructor constructor) {
         auto& required_components = get_mut(requiree).value().get()._required_components;
         if (required_components.components.contains(required)) return;

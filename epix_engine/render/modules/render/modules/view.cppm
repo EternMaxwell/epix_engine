@@ -13,15 +13,27 @@ import :render_phase;
 using namespace core;
 
 namespace render::camera {
+/** @brief Defines a sub-region of the render target for camera output. */
 export struct Viewport {
+    /** @brief Top-left position of the viewport in pixels. */
     glm::uvec2 pos;
+    /** @brief Size of the viewport in pixels. */
     glm::uvec2 size;
+    /** @brief Depth range for the viewport (min, max). */
     std::pair<float, float> depth_range{0.0f, 1.0f};
 };
+/** @brief Reference to a window entity used as a render target.
+ *
+ * When `primary` is true, the primary window is used regardless of
+ * `window_entity`. */
 export struct WindowRef {
+    /** @brief Whether to target the primary window. */
     bool primary = true;
-    Entity window_entity;  // Used if primary is false
+    /** @brief Window entity to target when primary is false. */
+    Entity window_entity;
 };
+/** @brief A render target that is either a GPU texture or a window
+ * reference. */
 export struct RenderTarget : std::variant<wgpu::Texture, WindowRef> {
     using std::variant<wgpu::Texture, WindowRef>::variant;
     static RenderTarget from_texture(wgpu::Texture texture) { return RenderTarget(std::move(texture)); }
@@ -34,11 +46,13 @@ struct ComputedCameraValues {
     glm::uvec2 target_size;
     std::optional<glm::uvec2> old_viewport_size;
 };
+/** @brief RGBA clear color for render targets. */
 export struct ClearColor : public glm::vec4 {
     using glm::vec4::vec4;
     ClearColor(const glm::vec4& v) : glm::vec4(v) {}
     glm::vec4 to_vec4() const { return glm::vec4(*this); }
 };
+/** @brief Controls how the render target is cleared before rendering. */
 export struct ClearColorConfig {
     enum class Type {
         None,    // don't clear
@@ -53,28 +67,46 @@ export struct ClearColorConfig {
     static ClearColorConfig global() { return ClearColorConfig{Type::Global}; }
     static ClearColorConfig custom(const glm::vec4& color) { return ClearColorConfig{Type::Custom, color}; }
 };
+/** @brief Camera component that controls viewport, render target, ordering,
+ * and clear colour.
+ *
+ * Cameras with higher `order` render on top of those with lower order.
+ * The computed projection and target size are updated automatically by
+ * camera systems.
+ */
 export struct Camera {
-    /// @brief The camera's viewport within the render target.
+    /** @brief The camera's viewport within the render target. */
     std::optional<Viewport> viewport;
-    /// @brief Cameras with higher order are rendered on top of cameras with
-    /// lower order.
+    /** @brief Cameras with higher order are rendered on top of cameras with
+     * lower order. */
     std::ptrdiff_t order = 0;
-    /// @brief Whether this camera is active and should be used for rendering.
-    /// If false, the camera will be ignored.
+    /** @brief Whether this camera is active and should be used for rendering. */
     bool active = true;
 
+    /** @brief The render target for this camera. */
     RenderTarget render_target = RenderTarget::from_primary();
+    /** @brief Computed values updated by camera systems. */
     ComputedCameraValues computed;
+    /** @brief Clear color configuration for this camera. */
     ClearColorConfig clear_color = ClearColorConfig::global();
 
+    /** @brief Get the effective viewport size, falling back to target size. */
     glm::uvec2 get_viewport_size() const {
         return viewport.transform([](const Viewport& vp) { return vp.size; }).value_or(computed.target_size);
     }
+    /** @brief Get the render target's pixel dimensions. */
     glm::uvec2 get_target_size() const { return computed.target_size; }
+    /** @brief Get the viewport origin, defaulting to (0, 0). */
     glm::uvec2 get_viewport_origin() const {
         return viewport.transform([](const Viewport& vp) { return vp.pos; }).value_or(glm::uvec2(0, 0));
     }
 };
+/** @brief Scaling mode controlling how an orthographic projection adapts to
+ * the viewport size.
+ *
+ * Constructed via static factory methods (e.g. `fixed()`, `window_size()`,
+ * `auto_min()`).
+ */
 export struct ScalingMode {
    private:
     enum class Mode {
@@ -194,6 +226,8 @@ export struct ScalingMode {
         return *this;
     }
 };
+/** @brief Orthographic camera projection with configurable scaling, near/far
+ * planes, and viewport origin. */
 export struct OrthographicProjection {
     float near_plane          = -1000.0f;  // Near clipping plane
     float far_plane           = 1000.0f;   // Far clipping plane
@@ -207,14 +241,21 @@ export struct OrthographicProjection {
         float top    = 1.0f;
     } rect;
 
+    /** @brief Update the projection for new viewport dimensions. */
     void update(float width, float height);
+    /** @brief Get the far clipping plane distance. */
     float get_far() const { return far_plane; }
+    /** @brief Get the near clipping plane distance. */
     float get_near() const { return near_plane; }
+    /** @brief Set the far clipping plane distance. */
     void set_far(float far_plane) { this->far_plane = far_plane; }
+    /** @brief Set the near clipping plane distance. */
     void set_near(float near_plane) { this->near_plane = near_plane; }
+    /** @brief Compute the orthographic projection matrix. */
     glm::mat4 get_projection_matrix() const {
         return glm::gtc::orthoLH(rect.left, rect.right, rect.bottom, rect.top, near_plane, far_plane);
     }
+    /** @brief Compute the 8 corners of the view frustum. */
     std::array<glm::vec3, 8> get_frustum_corners() const {
         return {glm::vec3(rect.left, rect.bottom, near_plane), glm::vec3(rect.right, rect.bottom, near_plane),
                 glm::vec3(rect.right, rect.top, near_plane),   glm::vec3(rect.left, rect.top, near_plane),
@@ -222,20 +263,29 @@ export struct OrthographicProjection {
                 glm::vec3(rect.right, rect.top, far_plane),    glm::vec3(rect.left, rect.top, far_plane)};
     }
 };
+/** @brief Perspective camera projection with field of view, aspect ratio,
+ * and near/far planes. */
 export struct PerspectiveProjection {
     float fov          = glm::radians(45.0f);  // Field of view in radians
     float aspect_ratio = 1.0f;                 // Aspect ratio (width / height)
     float near_plane   = 0.1f;                 // Near clipping plane
     float far_plane    = 1000.0f;              // Far clipping plane
 
+    /** @brief Update the aspect ratio from viewport dimensions. */
     void update(float width, float height) { aspect_ratio = width / height; }
+    /** @brief Get the far clipping plane distance. */
     float get_far() const { return far_plane; }
+    /** @brief Get the near clipping plane distance. */
     float get_near() const { return near_plane; }
+    /** @brief Set the far clipping plane distance. */
     void set_far(float far_plane) { this->far_plane = far_plane; }
+    /** @brief Set the near clipping plane distance. */
     void set_near(float near_plane) { this->near_plane = near_plane; }
+    /** @brief Compute the perspective projection matrix. */
     glm::mat4 get_projection_matrix() const {
         return glm::gtc::perspectiveLH(fov, aspect_ratio, near_plane, far_plane);
     }
+    /** @brief Compute the 8 corners of the perspective frustum. */
     std::array<glm::vec3, 8> get_frustum_corners() const {
         float tan_half_fov = glm::tan(fov / 2.0f);
         float near_height  = near_plane * tan_half_fov;
@@ -260,6 +310,7 @@ concept CameraProjection = requires(T t) {
     { t.update(std::declval<float>(), std::declval<float>()) };
 };
 
+/** @brief Variant projection type wrapping orthographic or perspective. */
 export struct Projection {
     std::variant<OrthographicProjection, PerspectiveProjection> projection;
 
@@ -267,32 +318,42 @@ export struct Projection {
     Projection(const OrthographicProjection& ortho) : projection(ortho) {}
     Projection(const PerspectiveProjection& perspective) : projection(perspective) {}
 
+    /** @brief Create an orthographic projection. */
     static Projection orthographic(const OrthographicProjection& ortho = {}) { return Projection(ortho); }
 
+    /** @brief Create a perspective projection. */
     static Projection perspective(const PerspectiveProjection& perspective = {}) { return Projection(perspective); }
 
+    /** @brief Get the projection matrix from the active variant. */
     glm::mat4 get_projection_matrix() const {
         return std::visit([](const auto& proj) { return proj.get_projection_matrix(); }, projection);
     }
+    /** @brief Get the far clipping plane distance. */
     float get_far() const {
         return std::visit([](const auto& proj) { return proj.get_far(); }, projection);
     }
+    /** @brief Get the near clipping plane distance. */
     float get_near() const {
         return std::visit([](const auto& proj) { return proj.get_near(); }, projection);
     }
+    /** @brief Set the far clipping plane distance. */
     void set_far(float far_plane) {
         std::visit([far_plane](auto& proj) { proj.set_far(far_plane); }, projection);
     }
+    /** @brief Set the near clipping plane distance. */
     void set_near(float near_plane) {
         std::visit([near_plane](auto& proj) { proj.set_near(near_plane); }, projection);
     }
+    /** @brief Compute the 8 frustum corner points. */
     std::array<glm::vec3, 8> get_frustum_corners() const {
         return std::visit([](const auto& proj) { return proj.get_frustum_corners(); }, projection);
     }
+    /** @brief Update the projection for new viewport dimensions. */
     void update(float width, float height) {
         std::visit([width, height](auto& proj) { proj.update(width, height); }, projection);
     }
 
+    /** @brief Try to get a mutable pointer to the orthographic projection. */
     std::optional<OrthographicProjection*> as_orthographic() {
         if (auto ptr = std::get_if<OrthographicProjection>(&projection)) {
             return ptr;
@@ -300,6 +361,7 @@ export struct Projection {
             return std::nullopt;
         }
     }
+    /** @brief Try to get a const pointer to the orthographic projection. */
     std::optional<const OrthographicProjection*> as_orthographic() const {
         if (auto ptr = std::get_if<OrthographicProjection>(&projection)) {
             return ptr;
@@ -307,6 +369,7 @@ export struct Projection {
             return std::nullopt;
         }
     }
+    /** @brief Try to get a mutable pointer to the perspective projection. */
     std::optional<PerspectiveProjection*> as_perspective() {
         if (auto ptr = std::get_if<PerspectiveProjection>(&projection)) {
             return ptr;
@@ -314,6 +377,7 @@ export struct Projection {
             return std::nullopt;
         }
     }
+    /** @brief Try to get a const pointer to the perspective projection. */
     std::optional<const PerspectiveProjection*> as_perspective() const {
         if (auto ptr = std::get_if<PerspectiveProjection>(&projection)) {
             return ptr;
@@ -328,6 +392,7 @@ static_assert(CameraProjection<Projection>);
 
 // --- Camera Systems --- //
 
+/** @brief System labels for camera update systems. */
 export enum class CameraUpdateSystems {
     CameraUpdateSystem = 0,
 };
@@ -414,6 +479,9 @@ void camera_system(Query<Item<Mut<Camera>, Mut<ProjType>>> query,            // 
     }
 }
 
+/** @brief Plugin that registers the camera update system for a specific
+ * projection type.
+ * @tparam ProjType Camera projection type satisfying CameraProjection. */
 export template <CameraProjection ProjType>
 struct CameraProjectionPlugin {
     void build(App& app) {
@@ -421,6 +489,7 @@ struct CameraProjectionPlugin {
     }
 };
 
+/** @brief Label identifying the render graph assigned to a camera. */
 export struct CameraRenderGraph : public graph::GraphLabel {
     using graph::GraphLabel::GraphLabel;
 };
@@ -438,21 +507,32 @@ export struct ExtractedCamera {
 };
 }  // namespace render::camera
 namespace render::view {
+/** @brief Extracted view data: projection, transform, and viewport
+ * dimensions for a single camera. */
 export struct ExtractedView {
     glm::mat4 projection;
     transform::GlobalTransform transform;
     glm::uvec2 viewport_size;
     glm::uvec2 viewport_origin;
 };
+/** @brief Component listing entities visible to a camera view. */
 export struct VisibleEntities {
+    /** @brief Visible entity IDs. */
     std::vector<Entity> entities;
 };
+/** @brief Component holding the render target texture view and format for
+ * a camera view. */
 export struct ViewTarget {
+    /** @brief Texture view for the render target. */
     wgpu::TextureView texture_view;
+    /** @brief Format of the render target texture. */
     wgpu::TextureFormat format;
 };
+/** @brief Component holding the depth texture and view for a camera. */
 export struct ViewDepth {
+    /** @brief The depth texture. */
     wgpu::Texture texture;
+    /** @brief Depth texture view for depth testing. */
     wgpu::TextureView depth_view;
 };
 export struct UVec2Hash {
@@ -466,10 +546,15 @@ export struct UVec2Hash {
         return h;
     }
 };
+/** @brief Cache of depth textures keyed by viewport size to avoid
+ * re-creation each frame. */
 export struct ViewDepthCache {
+    /** @brief Map from viewport dimensions to cached depth textures. */
     std::unordered_map<glm::uvec2, wgpu::Texture, UVec2Hash> cache;
 };
 
+/** @brief Plugin that registers view extraction, target preparation, and
+ * depth buffer creation systems. */
 export struct ViewPlugin {
     void build(App& app);
 };
@@ -483,16 +568,23 @@ void create_view_depth(Query<Item<Entity, const ExtractedView&>> views,
                        ResMut<ViewDepthCache> depth_cache,
                        Commands cmd);
 
+/** @brief Uniform buffer data for a view: projection and view matrices. */
 export struct ViewUniform {
+    /** @brief Projection matrix. */
     glm::mat4 projection;
+    /** @brief View (inverse camera transform) matrix. */
     glm::mat4 view;
 };
 struct UniformBuffer {
     wgpu::Buffer buffer;
 };
+/** @brief Component holding the bind group for the view uniform buffer. */
 export struct ViewBindGroup {
+    /** @brief Bind group exposing the ViewUniform to shaders. */
     wgpu::BindGroup bind_group;
 };
+/** @brief Resource holding the bind group layout for view uniform
+ * binding. */
 export struct ViewUniformBindingLayout {
     wgpu::BindGroupLayout layout;
     ViewUniformBindingLayout(World& world)
@@ -507,6 +599,9 @@ export struct ViewUniformBindingLayout {
                                      .setMinBindingSize(sizeof(ViewUniform))),
               }))) {}
 };
+/** @brief Render command template that binds the view uniform buffer at
+ * the specified bind group slot.
+ * @tparam Slot Bind group index. */
 export template <size_t Slot>
 struct BindViewUniform {
     template <render::phase::PhaseItem P>
@@ -525,6 +620,7 @@ struct BindViewUniform {
 };
 }  // namespace render::view
 namespace render::camera {
+/** @brief System that extracts camera data into the render world. */
 export void extract_cameras(
     Commands cmd,
     Res<ClearColor> global_clear_color,
@@ -533,12 +629,16 @@ export void extract_cameras(
         cameras,
     Extract<Query<Entity, With<::window::PrimaryWindow, ::window::Window>>> primary_window);
 
+/** @brief Label for the camera driver node in the render graph. */
 export inline constexpr struct CameraDriverNodeLabelT {
 } CameraDriverNodeLabel;
 
 struct CameraPlugin {
     void build(App& app);
 };
+/** @brief Bundle for spawning a camera entity with all required
+ * components (Camera, Projection, RenderGraph, Transform, VisibleEntities).
+ */
 export struct CameraBundle {
     Camera camera;
     Projection projection;

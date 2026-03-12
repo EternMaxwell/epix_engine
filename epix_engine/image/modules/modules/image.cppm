@@ -6,6 +6,10 @@ import std;
 
 export namespace image {
 
+/** @brief Pixel format for images.
+ *
+ * Each variant specifies channels and bit depth.
+ */
 // Enum Format (8bit, 16bit, Float)
 enum class Format {
     Unknown = 0,
@@ -21,21 +25,33 @@ enum class Format {
     RGBA32F      // 4 channels, float
 };
 
-// Format Info Class
+/** @brief Descriptive metadata for a pixel Format. */
 struct FormatInfo {
+    /** @brief Number of color channels (1–4). */
     std::uint32_t channels;
+    /** @brief Bytes per channel (1, 2, or 4). */
     std::uint32_t bytesPerChannel;
+    /** @brief True if channels are 32-bit floating point. */
     bool isFloat;
+    /** @brief True if channels are 16-bit integer. */
     bool is16Bit;
 
+    /** @brief Get the total byte size of a single pixel. */
     std::size_t pixelSize() const { return channels * bytesPerChannel; }
 };
 
+/** @brief Look up the FormatInfo for a given pixel Format.
+ * @param fmt The pixel format to query.
+ * @return Reference to the static FormatInfo descriptor. */
 const FormatInfo& getFormatInfo(Format fmt);
 
+/** @brief Error codes returned when loading an image from disk. */
 enum class ImageLoadError { FileNotFound, UnsupportedFormat, LoadFailed };
+/** @brief Error codes returned when saving an image to disk. */
 enum class ImageSaveError { SaveFailed };
+/** @brief Error codes returned when sampling a pixel out of bounds. */
 enum class ImageSampleError { OutOfBounds };
+/** @brief Error codes returned when writing pixel data to an image. */
 enum class ImageWriteError { OutOfBounds, DataSizeMismatch };
 
 template <typename T>
@@ -44,23 +60,36 @@ struct span_type {
     using type = typename span::value_type;
 };
 
+/** @brief Bitmask specifying how an image is used (main world, render
+ * world, or both). */
 enum ImageUsage : std::uint8_t {
-    Main   = 0x1,
+    /** @brief Used in the main world only. */
+    Main = 0x1,
+    /** @brief Used in the render world only. */
     Render = 0x2,
-    Both   = Main | Render,
+    /** @brief Used in both main and render worlds. */
+    Both = Main | Render,
 };
 
+/** @brief Image dimension type. */
 export enum class ImageType {
+    /** @brief One-dimensional image. */
     e1D,
+    /** @brief Two-dimensional image. */
     e2D,
+    /** @brief Array of 2D image layers. */
     e2DArray,
+    /** @brief Three-dimensional (volumetric) image. */
     e3D,
 };
 
-// Image Struct
+/** @brief Multi-dimensional image with runtime pixel format.
+ *
+ * Supports 1D, 2D, 2D array, and 3D images. Provides factory methods,
+ * loading/saving, sampling, writing, and conversion utilities.
+ */
 export class Image {
    private:
-    // Format/Size constant after construct
     std::uint32_t m_width           = 1;
     std::uint32_t m_height          = 1;
     std::uint32_t m_depth_or_layers = 1;
@@ -82,12 +111,44 @@ export class Image {
     Image() = default;
 
    public:
-    // Constructors
+    /** @brief Create a zero-initialized image with the given type and
+     * dimensions.
+     * @param type Image dimension type.
+     * @param w Width in pixels.
+     * @param h Height in pixels.
+     * @param depth_or_layers Depth (3D) or layer count (2D array).
+     * @param fmt Pixel format. */
     static Image create(ImageType type, std::uint32_t w, std::uint32_t h, std::uint32_t depth_or_layers, Format fmt);
+    /** @brief Create a zero-initialized 1D image.
+     * @param w Width in pixels.
+     * @param fmt Pixel format. */
     static Image create1d(std::uint32_t w, Format fmt);
+    /** @brief Create a zero-initialized 2D image.
+     * @param w Width in pixels.
+     * @param h Height in pixels.
+     * @param fmt Pixel format. */
     static Image create2d(std::uint32_t w, std::uint32_t h, Format fmt);
+    /** @brief Create a zero-initialized 2D array image.
+     * @param w Width in pixels.
+     * @param h Height in pixels.
+     * @param layers Number of array layers.
+     * @param fmt Pixel format. */
     static Image create2d_array(std::uint32_t w, std::uint32_t h, std::uint32_t layers, Format fmt);
+    /** @brief Create a zero-initialized 3D image.
+     * @param w Width in pixels.
+     * @param h Height in pixels.
+     * @param depth Depth in pixels.
+     * @param fmt Pixel format. */
     static Image create3d(std::uint32_t w, std::uint32_t h, std::uint32_t depth, Format fmt);
+    /** @brief Create an image initialized with the provided data.
+     * @tparam T Contiguous range of trivially-copyable elements.
+     * @param type Image dimension type.
+     * @param w Width in pixels.
+     * @param h Height in pixels.
+     * @param depth_or_layers Depth (3D) or layer count (2D array).
+     * @param fmt Pixel format.
+     * @param initData Initial pixel data; must match the expected byte size.
+     * @return The image, or std::nullopt if the data size is wrong. */
     template <typename T>
         requires requires(T&& t) {
             { std::span(std::forward<T>(t)) };
@@ -95,18 +156,24 @@ export class Image {
         }
     static std::optional<Image> create(
         ImageType type, std::uint32_t w, std::uint32_t h, std::uint32_t depth_or_layers, Format fmt, T&& initData);
+    /** @brief Create a 1D image initialized with the provided data.
+     * @tparam T Contiguous range of trivially-copyable elements. */
     template <typename T>
         requires requires(T&& t) {
             { std::span(std::forward<T>(t)) };
             requires std::is_trivially_copyable_v<typename span_type<T>::type>;
         }
     static std::optional<Image> create1d(std::uint32_t w, Format fmt, T&& initData);
+    /** @brief Create a 2D image initialized with the provided data.
+     * @tparam T Contiguous range of trivially-copyable elements. */
     template <typename T>
         requires requires(T&& t) {
             { std::span(std::forward<T>(t)) };
             requires std::is_trivially_copyable_v<typename span_type<T>::type>;
         }
     static std::optional<Image> create2d(std::uint32_t w, std::uint32_t h, Format fmt, T&& initData);
+    /** @brief Create a 2D array image initialized with the provided data.
+     * @tparam T Contiguous range of trivially-copyable elements. */
     template <typename T>
         requires requires(T&& t) {
             { std::span(std::forward<T>(t)) };
@@ -114,6 +181,8 @@ export class Image {
         }
     static std::optional<Image> create2d_array(
         std::uint32_t w, std::uint32_t h, std::uint32_t layers, Format fmt, T&& initData);
+    /** @brief Create a 3D image initialized with the provided data.
+     * @tparam T Contiguous range of trivially-copyable elements. */
     template <typename T>
         requires requires(T&& t) {
             { std::span(std::forward<T>(t)) };
@@ -122,26 +191,41 @@ export class Image {
     static std::optional<Image> create3d(
         std::uint32_t w, std::uint32_t h, std::uint32_t depth, Format fmt, T&& initData);
 
-    // Loader and Saver
+    /** @brief Load an image from the filesystem.
+     * @param path Path to the image file.
+     * @return The loaded Image or an ImageLoadError. */
     static std::expected<Image, ImageLoadError> load(const std::filesystem::path& path);
+    /** @brief Save an image to the filesystem.
+     * @param path Destination file path.
+     * @param image The image to write.
+     * @return Void on success or an ImageSaveError. */
     static std::expected<void, ImageSaveError> save(const std::filesystem::path& path, const Image& image);
 
-    // Getters
+    /** @brief Get the image width in pixels. */
     std::uint32_t width() const { return m_width; }
+    /** @brief Get the image height in pixels. */
     std::uint32_t height() const { return m_height; }
+    /** @brief Get the raw depth-or-layers value. */
     std::uint32_t depth_or_layers() const { return m_depth_or_layers; }
+    /** @brief Get the depth (1 if not a 3D image). */
     std::uint32_t depth() const { return m_type == ImageType::e3D ? m_depth_or_layers : 1; }
+    /** @brief Get the layer count (1 if not a 2D array image). */
     std::uint32_t layers() const { return m_type == ImageType::e2DArray ? m_depth_or_layers : 1; }
+    /** @brief Get the image dimension type. */
     ImageType type() const { return m_type; }
+    /** @brief Get the pixel format. */
     Format format() const { return m_format; }
+    /** @brief Get the format metadata for this image's pixel format. */
     const FormatInfo& format_info() const { return getFormatInfo(m_format); }
+    /** @brief Get the usage flags for this image. */
     ImageUsage usage() const { return m_usage; }
+    /** @brief Set the usage flags.
+     * @param usage New usage bitmask. */
     void set_usage(ImageUsage usage) { m_usage = usage; }
 
-    // views
+    /** @brief Get a read-only byte span of the raw pixel data. */
     std::span<const std::byte> raw_view() const { return std::as_bytes(std::span(data)); }
 
-    // sample and write
     /**
      * @brief Sample a pixel at (x, y), returning an array of 4 floats, each representing a channel. Missing channels
      * are set to 0.
@@ -182,7 +266,6 @@ export class Image {
                                                std::uint32_t z,
                                                std::span<const float> values);
 
-    // processing
     /**
      * @brief Convert image to target format, return the converted image.
      */
@@ -197,10 +280,20 @@ export class Image {
     Image blur(std::uint32_t radius) const;
 };
 
+/** @brief Asset loader for image files.
+ *
+ * Registered with the asset server to load supported image formats. */
 export struct ImageLoader {
+    /** @brief Get the list of supported file extensions.
+     * @return Span of extension strings (e.g. ".png", ".jpg"). */
     static std::span<const char* const> extensions() noexcept;
+    /** @brief Load an image asset from disk.
+     * @param path Path to the image file.
+     * @param context Asset loading context. */
     static Image load(const std::filesystem::path& path, assets::LoadContext& context);
 };
+/** @brief Plugin that registers the image asset loader and related
+ * systems. */
 export struct ImagePlugin {
     void build(core::App& app);
 };

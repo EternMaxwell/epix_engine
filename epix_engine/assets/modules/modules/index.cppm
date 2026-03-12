@@ -7,6 +7,7 @@ import epix.core;
 
 namespace assets {
 export struct StrongHandle;
+/** @brief Typed handle to an asset of type T. */
 export template <typename T>
 struct Handle;
 struct AssetIndexAllocator;
@@ -14,6 +15,9 @@ struct AssetIndexAllocator;
 using core::Receiver;
 using core::Sender;
 
+/** @brief Generational index into an asset storage.
+ *  Pairs a slot index with a generation counter so stale references
+ *  can be detected after the slot is recycled. */
 export struct AssetIndex {
    private:
     std::uint32_t index_;
@@ -28,7 +32,9 @@ export struct AssetIndex {
     AssetIndex& operator=(const AssetIndex&) = default;
     AssetIndex& operator=(AssetIndex&&)      = default;
 
+    /** @brief Get the slot index. */
     std::uint32_t index() const { return index_; }
+    /** @brief Get the generation counter. */
     std::uint32_t generation() const { return generation_; }
 
     bool operator==(const AssetIndex& other) const                  = default;

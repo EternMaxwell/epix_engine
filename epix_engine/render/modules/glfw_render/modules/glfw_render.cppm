@@ -3,6 +3,8 @@
 import epix.core;
 
 namespace glfw::render {
+/** @brief Plugin that registers GLFW-specific render target (surface)
+ * creation for the render pipeline. */
 export struct GLFWRenderPlugin {
     void build(core::App& app);
 };

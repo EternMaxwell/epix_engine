@@ -60,12 +60,20 @@ struct async_queue {
     size_t size() const;
     bool empty() const;
 };
+/** @brief Configuration for dispatching systems.
+ *  Controls debug naming, Tracy profiling, and error/finish callbacks. */
 export struct DispatchConfig {
-    std::optional<std::string_view> debug_name          = std::nullopt;
-    bool enable_tracy                                   = false;
-    std::function<void()> on_finish                     = nullptr;
+    /** @brief Optional debug name for profiling/logging. */
+    std::optional<std::string_view> debug_name = std::nullopt;
+    /** @brief Whether to emit Tracy profiling zones. */
+    bool enable_tracy = false;
+    /** @brief Callback invoked when the dispatch completes. */
+    std::function<void()> on_finish = nullptr;
+    /** @brief Callback invoked on system execution error. */
     std::function<void(const RunSystemError&)> on_error = nullptr;
 };
+/** @brief Thread-pool-backed system dispatcher for parallel system execution.
+ *  Takes ownership of the World during dispatch to ensure thread safety. */
 export struct SystemDispatcher {
    private:
     std::vector<const FilteredAccessSet*> system_accesses;
@@ -108,6 +116,9 @@ export struct SystemDispatcher {
     BS::thread_pool<BS::tp::none>& get_thread_pool(size_t thread_count);
 
    public:
+    /** @brief Construct a dispatcher that takes ownership of a World.
+     *  @param world Unique pointer to the world.
+     *  @param thread_count Number of worker threads. */
     SystemDispatcher(std::unique_ptr<World> world,
                      size_t thread_count = std::clamp(std::thread::hardware_concurrency(), 2u, 8u))
         : world(world.get()),
@@ -118,6 +129,9 @@ export struct SystemDispatcher {
         world_scope_access = world_scope_system->initialize(*this->world);
         thread_pool        = &get_thread_pool(thread_count);
     }
+    /** @brief Construct a dispatcher borrowing a World reference.
+     *  @param world Reference to an externally-owned world.
+     *  @param thread_count Number of worker threads. */
     SystemDispatcher(World& world, size_t thread_count = std::clamp(std::thread::hardware_concurrency(), 2u, 8u))
         : world(&world),
           world_scope_system(
@@ -125,7 +139,9 @@ export struct SystemDispatcher {
         world_scope_access = world_scope_system->initialize(*this->world);
         thread_pool        = &get_thread_pool(thread_count);
     }
+    /** @brief Destructor; waits for all pending systems to finish. */
     ~SystemDispatcher();
+    /** @brief Block until all dispatched systems have completed. */
     void wait() {
         std::unique_lock lock(mutex_);
         if (world) cv_.wait(lock, [this] { return running == 0 && pending_systems.empty(); });
@@ -136,11 +152,14 @@ export struct SystemDispatcher {
      * @return std::unique_ptr<World> The owned world, or nullptr if not owned.
      */
     std::unique_ptr<World> release_world();
+    /** @brief Get the world's current change tick. */
     Tick change_tick() const {
         assert_world();
         return world->change_tick();
     }
 
+    /** @brief Execute a callable with exclusive world access.
+     *  Dispatches through the thread pool respecting access constraints. */
     auto world_scope(std::invocable<World&> auto&& func, DispatchConfig config = {})
         -> std::future<std::expected<typename function_traits<decltype(func)>::return_type, RunSystemError>> {
         std::packaged_task<std::expected<typename function_traits<decltype(func)>::return_type, RunSystemError>(World&)>
@@ -158,7 +177,8 @@ export struct SystemDispatcher {
         dispatch_system(*world_scope_system, std::move(task), world_scope_access, std::move(config));
         return fut;
     }
-    // Caller has to guarantee that the system and access pointers are valid during the execution
+    /** @brief Dispatch a system for parallel execution on the thread pool.
+     *  @return Future holding the system's result or error. */
     template <typename In, typename Out>
     std::future<std::expected<Out, RunSystemError>> dispatch_system(System<In, Out>& sys,
                                                                     SystemInput<In>::Input input,
@@ -188,6 +208,8 @@ export struct SystemDispatcher {
         tick();
         return fut;
     }
+    /** @brief Try to run a system immediately on the current thread if no access conflicts.
+     *  @return The result, or std::nullopt if conflicts prevent execution. */
     template <typename In, typename Out>
     std::optional<std::expected<Out, RunSystemError>> try_run_system(System<In, Out>& sys,
                                                                      SystemInput<In>::Input input,
@@ -203,10 +225,12 @@ export struct SystemDispatcher {
         // run on current thread
         return sys.run_no_apply(std::move(input), *world);
     }
+    /** @brief Apply a system's deferred commands via world_scope. */
     template <typename In, typename Out>
     std::future<std::expected<void, RunSystemError>> apply_deferred(System<In, Out>& sys, DispatchConfig config = {}) {
         return world_scope([&](World& world) { sys.apply_deferred(world); }, std::move(config));
     }
+    /** @brief Apply deferred commands for a range of systems. */
     template <typename T>
     std::future<std::expected<void, RunSystemError>> apply_deferred(T&& range)
         requires std::ranges::viewable_range<T> && requires(std::ranges::range_reference_t<T> ref, World& world) {

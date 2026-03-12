@@ -5,6 +5,11 @@ export module epix.utils:bit_vector;
 import std;
 
 namespace utils {
+/** @brief Dynamic bitset with set-theoretic operations (intersection, union, difference, etc.).
+ *
+ * Stores bits packed into 64-bit words. Supports iteration over set/unset bits,
+ * range operations, and in-place bitwise algebra.
+ */
 export class bit_vector {
    public:
     using size_type                      = std::size_t;
@@ -12,14 +17,20 @@ export class bit_vector {
     static constexpr size_type word_bits = sizeof(word_type) * 8;
     static constexpr size_type npos      = static_cast<size_type>(-1);
 
+    /** @brief Default-construct an empty bit vector. */
     bit_vector() noexcept = default;
+    /** @brief Construct a bit vector with the given number of bits.
+     * @param bits Number of bits.
+     * @param value Initial value for all bits.
+     */
     explicit bit_vector(size_type bits, bool value = false) { resize(bits, value); }
 
-    // capacity
+    /** @brief Return the number of bits in the vector. */
     size_type size() const noexcept { return bits_; }
+    /** @brief Check whether the bit vector is empty (has zero bits). */
     bool empty() const noexcept { return bits_ == 0; }
 
-    // resize (fills new bits with value)
+    /** @brief Resize the bit vector; new bits are filled with @p value. */
     void resize(size_type bits, bool value = false) {
         const size_type old_bits = bits_;
         if (bits == old_bits) return;
@@ -37,13 +48,19 @@ export class bit_vector {
         bits_ = bits;
         trim_tail();
     }
+    /** @brief Clear all bits and reset size to zero. */
     void clear() noexcept {
         bits_ = 0;
         words_.clear();
     }
 
-    // basic queries
+    /** @brief Test whether the bit at @p pos is set (returns false if out of
+     * bounds). */
     bool contains(size_type pos) const noexcept { return pos < bits_ && test(pos); }
+    /** @brief Test whether all bits in [start, end) are set.
+     * @param start Start of range (inclusive).
+     * @param end End of range (exclusive).
+     */
     bool contains_all_in_range(size_type start, size_type end) const noexcept {
         if (start >= end) return true;
         if (start >= bits_) return false;
@@ -61,6 +78,7 @@ export class bit_vector {
         }
         return true;
     }
+    /** @brief Test whether any bit in [start, end) is set. */
     bool contains_any_in_range(size_type start, size_type end) const noexcept {
         if (start >= end) return false;
         if (start >= bits_) return false;
@@ -78,14 +96,19 @@ export class bit_vector {
         return false;
     }
 
+    /** @brief Count the number of set (1) bits. */
     size_type count_ones() const noexcept {
         size_type c = 0;
         for (auto w : words_) c += static_cast<size_type>(std::popcount(w));
         return c;
     }
+    /** @brief Count the number of unset (0) bits. */
     size_type count_zeros() const noexcept { return bits_ - count_ones(); }
 
-    // modifiers (auto-grow when index out of bounds)
+    /** @brief Set or clear the bit at @p pos (auto-grows if out of bounds).
+     * @param pos Bit index.
+     * @param value True to set, false to clear.
+     */
     void set(size_type pos, bool value = true) noexcept {
         ensure_size_for_index(pos);
         const size_type wi = pos / word_bits;
@@ -96,6 +119,7 @@ export class bit_vector {
             words_[wi] &= ~m;
     }
 
+    /** @brief Set all bits in [start, end) to 1 (auto-grows). */
     void set_range(size_type start, size_type end) noexcept {
         if (start >= end) return;
         ensure_size_for_index(end - 1);
@@ -109,6 +133,7 @@ export class bit_vector {
             words_[w] |= make_mask(a, b);
         }
     }
+    /** @brief Set bits at indices from a range to @p value. */
     template <typename R>
     void set_range(R&& range, bool value = true) noexcept
         requires std::ranges::input_range<R> && std::convertible_to<std::ranges::range_value_t<R>, size_type>
@@ -116,6 +141,7 @@ export class bit_vector {
         for (auto i : range) set(i, value);
     }
 
+    /** @brief Check whether this and @p o share any set bits. */
     bool intersect(const bit_vector& o) const noexcept {
         const size_type min_words = std::min(words_.size(), o.words_.size());
         for (size_type i = 0; i < min_words; ++i)
@@ -123,34 +149,38 @@ export class bit_vector {
         return false;
     }
 
-    // lazy view of indices where both bitvectors have ones
+    /** @brief Return a lazy view of indices where both bitvectors have set
+     * bits. */
     auto intersection(const bit_vector& o) const noexcept {
         const size_type upper = std::min(bits_, o.bits_);
         return std::views::iota((size_type)0, upper) |
                std::views::filter([this, &o](size_type i) { return test(i) && o.test(i); });
     }
 
-    // lazy view of indices where either bitvector has ones (union)
+    /** @brief Return a lazy view of indices where either bitvector has a set
+     * bit. */
     auto set_union(const bit_vector& o) const noexcept {
         const size_type upper = std::max(bits_, o.bits_);
         return std::views::iota((size_type)0, upper) |
                std::views::filter([this, &o](size_type i) { return this->contains(i) || o.contains(i); });
     }
 
-    // lazy view of indices present in this but not in o (difference)
+    /** @brief Return a lazy view of indices set in this but not in @p o. */
     auto difference(const bit_vector& o) const noexcept {
         const size_type upper = bits_;
         return std::views::iota((size_type)0, upper) |
                std::views::filter([this, &o](size_type i) { return this->contains(i) && !o.contains(i); });
     }
 
-    // lazy view of indices present in exactly one of the two bitvectors (symmetric difference / XOR)
+    /** @brief Return a lazy view of indices set in exactly one of the two
+     * bitvectors. */
     auto symmetric_difference(const bit_vector& o) const noexcept {
         const size_type upper = std::max(bits_, o.bits_);
         return std::views::iota((size_type)0, upper) |
                std::views::filter([this, &o](size_type i) { return this->contains(i) != o.contains(i); });
     }
 
+    /** @brief Count bits set in the intersection of this and @p o. */
     size_type intersect_count(const bit_vector& o) const noexcept {
         const size_type min_words = std::min(words_.size(), o.words_.size());
         size_type c               = 0;
@@ -158,7 +188,7 @@ export class bit_vector {
         return c;
     }
 
-    // count of bits set in the union of this and o (up to max(bits_ , o.bits_))
+    /** @brief Count bits set in the union of this and @p o. */
     size_type union_count(const bit_vector& o) const noexcept {
         const size_type max_bits = std::max(bits_, o.bits_);
         if (max_bits == 0) return 0;
@@ -177,7 +207,7 @@ export class bit_vector {
         return c;
     }
 
-    // count of bits present in this but not in o (i.e. |this \ o|), limited to this->size()
+    /** @brief Count bits set in this but not in @p o. */
     size_type difference_count(const bit_vector& o) const noexcept {
         const size_type nwords = words_for(bits_);
         if (nwords == 0) return 0;
@@ -195,7 +225,7 @@ export class bit_vector {
         return c;
     }
 
-    // count of bits present in exactly one of the two bitvectors (symmetric difference / XOR)
+    /** @brief Count bits set in exactly one of the two bitvectors. */
     size_type symmetric_difference_count(const bit_vector& o) const noexcept {
         const size_type max_bits = std::max(bits_, o.bits_);
         if (max_bits == 0) return 0;
@@ -214,7 +244,7 @@ export class bit_vector {
         return c;
     }
 
-    // relation checks
+    /** @brief Check whether this and @p o have no bits in common. */
     bool is_disjoint(const bit_vector& o) const noexcept {
         const size_type min_words = std::min(words_.size(), o.words_.size());
         for (size_type i = 0; i < min_words; ++i)
@@ -222,6 +252,7 @@ export class bit_vector {
         return true;
     }
 
+    /** @brief Check whether every set bit in this is also set in @p o. */
     bool is_subset(const bit_vector& o) const noexcept {
         // all bits set in this must also be set in o
         const size_type na = words_.size();
@@ -235,14 +266,17 @@ export class bit_vector {
         return true;
     }
 
+    /** @brief Check whether every set bit in @p o is also set in this. */
     bool is_superset(const bit_vector& o) const noexcept { return o.is_subset(*this); }
 
+    /** @brief Check whether no bits are set. */
     bool is_clear() const noexcept {
         for (auto w : words_)
             if (w != 0) return false;
         return true;
     }
 
+    /** @brief Check whether all bits (up to size) are set. */
     bool is_full() const noexcept {
         if (bits_ == 0) return true;
         const size_type full_words = bits_ / word_bits;
@@ -254,24 +288,28 @@ export class bit_vector {
         return !words_.empty() && words_.back() == mask;
     }
 
-    // lazy ranges for indices of set/unset bits (views referencing *this)
+    /** @brief Return a lazy range of indices where bits are set. */
     auto iter_ones() const noexcept {
         return std::views::iota((size_type)0, bits_) |
                std::views::filter([this](size_type i) { return this->test(i); });
     }
 
+    /** @brief Return a lazy range of indices where bits are unset. */
     auto iter_zeros() const noexcept {
         return std::views::iota((size_type)0, bits_) |
                std::views::filter([this](size_type i) { return !this->test(i); });
     }
 
+    /** @brief Clear the bit at @p pos. */
     void reset(size_type pos) noexcept {
         if (pos >= bits_) return;
         const size_type wi = pos / word_bits;
         const word_type m  = word_type(1) << static_cast<unsigned>(pos % word_bits);
         words_[wi] &= ~m;
     }
+    /** @brief Clear all bits without changing size. */
     void reset_all() noexcept { std::fill(words_.begin(), words_.end(), word_type(0)); }
+    /** @brief Clear all bits in [start, end). */
     void reset_range(size_type start, size_type end) noexcept {
         if (start >= end || start >= bits_) return;
         end              = std::min(end, bits_);
@@ -286,16 +324,19 @@ export class bit_vector {
         trim_tail();
     }
 
+    /** @brief Toggle the bit at @p pos (auto-grows). */
     void toggle(size_type pos) noexcept {
         ensure_size_for_index(pos);
         const size_type wi = pos / word_bits;
         const word_type m  = word_type(1) << static_cast<unsigned>(pos % word_bits);
         words_[wi] ^= m;
     }
+    /** @brief Toggle all bits. */
     void toggle_all() noexcept {
         for (auto& w : words_) w = ~w;
         trim_tail();
     }
+    /** @brief Toggle all bits in [start, end). */
     void toggle_range(size_type start, size_type end) noexcept {
         if (start >= end) return;
         ensure_size_for_index(end - 1);
@@ -311,7 +352,8 @@ export class bit_vector {
         trim_tail();
     }
 
-    // named bit ops returning new bitvector
+    /** @brief Return a new bit_vector that is the bitwise AND of this and @p
+     * o. */
     bit_vector bit_and(const bit_vector& o) const noexcept {
         bit_vector out;
         const size_type max_bits = std::max(bits_, o.bits_);
@@ -322,6 +364,8 @@ export class bit_vector {
         out.trim_tail();
         return out;
     }
+    /** @brief Return a new bit_vector that is the bitwise OR of this and @p
+     * o. */
     bit_vector bit_or(const bit_vector& o) const noexcept {
         bit_vector out;
         const size_type max_bits = std::max(bits_, o.bits_);
@@ -336,6 +380,8 @@ export class bit_vector {
         out.trim_tail();
         return out;
     }
+    /** @brief Return a new bit_vector that is the bitwise XOR of this and @p
+     * o. */
     bit_vector bit_xor(const bit_vector& o) const noexcept {
         bit_vector out;
         const size_type max_bits = std::max(bits_, o.bits_);
@@ -351,7 +397,7 @@ export class bit_vector {
         return out;
     }
 
-    // assign variants (modify caller)
+    /** @brief In-place bitwise AND with @p o. */
     bit_vector& bit_and_assign(const bit_vector& o) noexcept {
         const size_type min_words = std::min(words_.size(), o.words_.size());
         for (size_type i = 0; i < min_words; ++i) words_[i] &= o.words_[i];
@@ -359,6 +405,7 @@ export class bit_vector {
         trim_tail();
         return *this;
     }
+    /** @brief In-place bitwise OR with @p o. */
     bit_vector& bit_or_assign(const bit_vector& o) noexcept {
         const size_type max_bits = std::max(bits_, o.bits_);
         if (max_bits != bits_) resize(max_bits, false);
@@ -366,6 +413,7 @@ export class bit_vector {
         trim_tail();
         return *this;
     }
+    /** @brief In-place bitwise XOR with @p o. */
     bit_vector& bit_xor_assign(const bit_vector& o) noexcept {
         const size_type max_bits = std::max(bits_, o.bits_);
         if (max_bits != bits_) resize(max_bits, false);
@@ -374,12 +422,14 @@ export class bit_vector {
         return *this;
     }
 
-    // friendlier in-place names
+    /** @brief Alias for bit_and_assign. */
     bit_vector& intersect_with(const bit_vector& o) noexcept { return bit_and_assign(o); }
+    /** @brief Alias for bit_or_assign. */
     bit_vector& union_with(const bit_vector& o) noexcept { return bit_or_assign(o); }
+    /** @brief Alias for bit_xor_assign. */
     bit_vector& symmetric_difference_with(const bit_vector& o) noexcept { return bit_xor_assign(o); }
 
-    // remove bits present in o from this (this = this \ o)
+    /** @brief Remove bits set in @p o from this (this = this \ o). */
     bit_vector& difference_with(const bit_vector& o) noexcept {
         const size_type n = words_.size();
         for (size_type i = 0; i < n; ++i) {
@@ -390,10 +440,12 @@ export class bit_vector {
         return *this;
     }
 
-    // utilities
+    /** @brief Get a const view of the underlying word storage. */
     const std::vector<word_type>& words() const noexcept { return words_; }
+    /** @brief Get a mutable reference to the underlying word storage. */
     std::vector<word_type>& words() noexcept { return words_; }
 
+    /** @brief Equality comparison. */
     friend bool operator==(const bit_vector& a, const bit_vector& b) noexcept {
         if (a.bits_ != b.bits_) return false;
         // words_ may have extra capacity cleared by trim_tail; compare relevant word content
@@ -411,15 +463,17 @@ export class bit_vector {
         }
         return std::ranges::equal(a.words_, b.words_);
     }
+    /** @brief Inequality comparison. */
     friend bool operator!=(const bit_vector& a, const bit_vector& b) noexcept { return !(a == b); }
 
+    /** @brief Swap contents with another bit_vector. */
     void swap(bit_vector& o) noexcept {
         using std::swap;
         swap(bits_, o.bits_);
         swap(words_, o.words_);
     }
 
-    // compatibility helpers
+    /** @brief Test the bit at @p pos (no bounds checking). */
     bool test(size_type pos) const noexcept {
         return ((words_[pos / word_bits] >> static_cast<unsigned>(pos % word_bits)) & word_type(1)) != 0;
     }

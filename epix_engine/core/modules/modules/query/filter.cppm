@@ -24,10 +24,16 @@ struct QueryFilter<Filter<Fs...>> {
     }
 };
 
+/** @brief Archetype filter: only matches entities that have all of the specified component types.
+ *  @tparam Ts Component types to require. */
 export template <typename... Ts>
 struct With;
+/** @brief Archetype filter: only matches entities that lack all of the specified component types.
+ *  @tparam Ts Component types to exclude. */
 export template <typename... Ts>
 struct Without;
+/** @brief Composite filter: matches entities satisfying any of the sub-filters (OR logic).
+ *  @tparam Fs Sub-filter types. */
 export template <typename... Fs>
 struct Or;
 
@@ -200,6 +206,9 @@ struct QueryFilter<Or<Fs...>> {
 };
 static_assert(query_filter<Or<With<int>, Without<float>>>);
 
+/** @brief Change-detection filter: matches entities whose component T was added
+ *  (i.e. first tick) since the system last ran.
+ *  @tparam T Component type. */
 export template <typename T>
 struct Added;
 
@@ -285,6 +294,9 @@ struct QueryFilter<Added<T>> {
 };
 static_assert(query_filter<Added<int>>);
 
+/** @brief Change-detection filter: matches entities whose component T was mutated
+ *  since the system last ran.
+ *  @tparam T Component type. */
 export template <typename T>
 struct Modified;
 

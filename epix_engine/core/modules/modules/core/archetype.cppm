@@ -131,13 +131,23 @@ struct ArchetypeEdges {
     SparseArray<BundleId, std::optional<ArchetypeId>> remove_bundle;
     SparseArray<BundleId, std::optional<ArchetypeId>> take_bundle;
 };
+/** @brief Describes the component layout of a group of entities.
+ *  Entities with the same set of components share the same archetype. */
 export struct Archetype {
    public:
+    /** @brief Create an archetype with the given component layout and register it in the component index.
+     *  @param component_index Global index mapping components to archetypes.
+     *  @param id Unique archetype identifier.
+     *  @param table_id Table storing dense components for this archetype.
+     *  @param table_components Component types stored densely in the table.
+     *  @param sparse_components Component types stored in sparse sets. */
     static Archetype create(ComponentIndex& component_index,
                             ArchetypeId id,
                             TableId table_id,
                             std::vector<TypeId> table_components,
                             std::vector<TypeId> sparse_components);
+    /** @brief Create an empty archetype with no components.
+     *  @param id Unique archetype identifier. */
     static Archetype empty(ArchetypeId id) {
         Archetype arch;
         arch._archetype_id = id;
@@ -145,13 +155,21 @@ export struct Archetype {
         return arch;
     }
 
+    /** @brief Get this archetype's unique identifier. */
     ArchetypeId id() const { return _archetype_id; }
+    /** @brief Get the table id that stores dense components for this archetype. */
     TableId table_id() const { return _table_id; }
+    /** @brief Get a read-only span of all entities in this archetype. */
     std::span<const ArchetypeEntity> entities() const { return _entities; }
+    /** @brief Get the number of entities in this archetype. */
     std::size_t size() const { return _entities.size(); }
+    /** @brief Check whether this archetype contains no entities. */
     bool empty() const { return _entities.empty(); }
+    /** @brief Get a const reference to the archetype's edge cache. */
     const ArchetypeEdges& edges() const { return _edges; }
+    /** @brief Get a mutable reference to the archetype's edge cache. */
     ArchetypeEdges& edges_mut() { return _edges; }
+    /** @brief Return a view of (Entity, EntityLocation) pairs for all entities in this archetype. */
     auto entities_with_location() const {
         return std::views::iota(0u, static_cast<unsigned>(_entities.size())) |
                std::views::transform([this](unsigned idx) -> std::pair<Entity, EntityLocation> {
@@ -174,28 +192,43 @@ export struct Archetype {
         }
     };
 
+    /** @brief Return a view of TypeIds for components stored in the table. */
     auto table_components() const {
         return _components.iter() | std::views::filter(IsTablePredicate{}) | std::views::keys;
     }
+    /** @brief Return a view of TypeIds for components stored in sparse sets. */
     auto sparse_components() const {
         return _components.iter() | std::views::filter(IsSparsePredicate{}) | std::views::keys;
     }
+    /** @brief Return a view of all component TypeIds in this archetype. */
     auto components() const { return _components.indices() | std::views::all; }
+    /** @brief Get the total number of component types in this archetype. */
     std::size_t component_count() const { return _components.size(); }
+    /** @brief Get the table row for the entity at the given archetype row. */
     TableRow entity_table_row(ArchetypeRow arch_idx) const { return _entities[arch_idx].table_idx; }
+    /** @brief Update the table row for the entity at the given archetype row. */
     void set_entity_table_row(ArchetypeRow arch_idx, TableRow table_idx) { _entities[arch_idx].table_idx = table_idx; }
+    /** @brief Add an entity to this archetype and return its location.
+     *  @param entity The entity to allocate.
+     *  @param table_idx The row assigned in the component table. */
     EntityLocation allocate(Entity entity, TableRow table_idx) {
         ArchetypeRow arch_idx = static_cast<ArchetypeRow>(_entities.size());
         _entities.push_back({entity, table_idx});
         return {this->_archetype_id, arch_idx, this->_table_id, table_idx};
     }
+    /** @brief Reserve capacity for at least `new_cap` entities. */
     void reserve(std::size_t new_cap) { _entities.reserve(new_cap); }
+    /** @brief Remove the entity at `arch_idx` by swap-removing it.
+     *  @return The swapped entity (if any) and the removed entity's table row. */
     ArchetypeSwapRemoveResult swap_remove(ArchetypeRow arch_idx);
+    /** @brief Check whether this archetype contains the given component type. */
     bool contains(TypeId type_id) const { return _components.contains(type_id); }
+    /** @brief Get the storage type (Table or SparseSet) for a component, if present. */
     std::optional<StorageType> get_storage_type(TypeId type_id) const {
         return _components.get(type_id).transform(
             [](std::reference_wrapper<const StorageType> storage_type) { return storage_type.get(); });
     }
+    /** @brief Remove all entities from this archetype without deallocating. */
     void clear_entities() { _entities.clear(); }
 
    private:
@@ -206,6 +239,8 @@ export struct Archetype {
     std::vector<ArchetypeEntity> _entities;
     SparseSet<TypeId, StorageType> _components;
 };
+/** @brief Container holding all archetypes and a component-to-archetype index.
+ *  Always contains an empty archetype at index 0. */
 export struct Archetypes {
     std::vector<Archetype> archetypes;
     std::unordered_map<ArchetypeComponents, ArchetypeId, ArchetypeComponentsHash, ArchetypeComponentsEqual>
@@ -218,29 +253,39 @@ export struct Archetypes {
         by_components.insert({ArchetypeComponents{{}, {}}, 0});
     }
 
+    /** @brief Get the number of archetypes. */
     std::size_t size() const { return archetypes.size(); }
 
+    /** @brief Get a const reference to the empty archetype (index 0). */
     const Archetype& get_empty() const { return archetypes[0]; }
+    /** @brief Get a mutable reference to the empty archetype (index 0). */
     Archetype& get_empty_mut() { return archetypes[0]; }
 
+    /** @brief Get a const reference to the archetype with the given id, if it exists. */
     std::optional<std::reference_wrapper<const Archetype>> get(this const Archetypes& self, ArchetypeId id) {
         if (id.get() >= self.archetypes.size()) {
             return std::nullopt;
         }
         return std::cref(self.archetypes[id.get()]);
     }
+    /** @brief Get a mutable reference to the archetype with the given id, if it exists. */
     std::optional<std::reference_wrapper<Archetype>> get_mut(this Archetypes& self, ArchetypeId id) {
         if (id.get() >= self.archetypes.size()) {
             return std::nullopt;
         }
         return std::ref(self.archetypes[id.get()]);
     }
+    /** @brief Return a const view over all archetypes. */
     auto iter() const { return std::views::all(archetypes); }
+    /** @brief Return a mutable view over all archetypes. */
     auto iter_mut() { return std::views::all(archetypes); }
 
+    /** @brief Look up an archetype by its component set, or create a new one.
+     *  @return A pair of (archetype id, was_newly_inserted). */
     std::pair<ArchetypeId, bool> get_id_or_insert(TableId table_id,
                                                   std::vector<TypeId> table_components,
                                                   std::vector<TypeId> sparse_components);
+    /** @brief Clear all entities from every archetype. */
     void clear_entities() {
         for (auto& arch : archetypes) {
             arch.clear_entities();

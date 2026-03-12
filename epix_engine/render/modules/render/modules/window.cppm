@@ -13,21 +13,36 @@ namespace render::window {
  * @brief A component for window entity, to tell how its surface should be created, cause the backend is unknown.
  */
 export using SurfaceCreation = std::function<wgpu::Surface(const wgpu::Instance&)>;
+/** @brief Snapshot of a window's rendering parameters extracted into the
+ * render world each frame. */
 export struct ExtractedWindow {
+    /** @brief Entity ID of the source window. */
     Entity entity;
+    /** @brief Functor to create a surface from a wgpu::Instance. */
     SurfaceCreation create_surface;
+    /** @brief Window width in physical pixels. */
     int physical_width;
+    /** @brief Window height in physical pixels. */
     int physical_height;
+    /** @brief Requested present mode. */
     PresentMode present_mode;
+    /** @brief Requested composite alpha mode. */
     CompositeAlphaMode alpha_mode;
 
+    /** @brief Texture view of the current swapchain frame. */
     wgpu::TextureView swapchain_texture_view;
+    /** @brief Surface texture of the current swapchain frame. */
     wgpu::SurfaceTexture swapchain_texture;
+    /** @brief Texture format of the swapchain surface. */
     wgpu::TextureFormat swapchain_texture_format;
 
-    bool size_changed         = false;
+    /** @brief Whether the window size changed since last frame. */
+    bool size_changed = false;
+    /** @brief Whether the present mode changed since last frame. */
     bool present_mode_changed = false;
 };
+/** @brief Resource collecting all extracted windows for the current
+ * frame. */
 export struct ExtractedWindows {
     ExtractedWindows()                                   = default;
     ExtractedWindows(const ExtractedWindows&)            = delete;
@@ -85,7 +100,11 @@ void create_surfaces(Res<ExtractedWindows> windows,
 
 void present_windows(ResMut<WindowSurfaces> window_surfaces, ResMut<ExtractedWindows> windows);
 
+/** @brief Plugin that registers window surface creation, extraction,
+ * preparation, and presentation systems. */
 export struct WindowRenderPlugin {
+    /** @brief Whether this plugin handles presenting the swapchain
+     * (default true). */
     bool handle_present = true;
     void build(App&);
 };

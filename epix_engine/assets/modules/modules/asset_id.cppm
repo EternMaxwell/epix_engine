@@ -9,6 +9,7 @@ import epix.meta;
 import :index;
 
 export namespace uuids {
+/** @brief Three-way comparison for uuids::uuid, providing strong ordering. */
 auto operator<=>(const uuids::uuid& lhs, const uuids::uuid& rhs) noexcept {
     if (lhs == rhs) return std::strong_ordering::equal;
     return lhs < rhs ? std::strong_ordering::less : std::strong_ordering::greater;
@@ -17,10 +18,13 @@ auto operator<=>(const uuids::uuid& lhs, const uuids::uuid& rhs) noexcept {
 static_assert(std::three_way_comparable<uuids::uuid>);
 
 namespace assets {
+/** @brief Helper for constructing overloaded visitors from multiple callables.
+ *  @tparam Ts Callable types whose operator() are merged. */
 export template <typename... Ts>
 struct visitor : public Ts... {
     using Ts::operator()...;
 };
+/** @brief Deduction guide for visitor. */
 export template <typename... Ts>
 visitor(Ts...) -> visitor<Ts...>;
 
@@ -28,8 +32,11 @@ export struct UntypedAssetId;
 
 constexpr uuids::uuid INVALID_UUID = uuids::uuid::from_string("1038587c-0b8d-4f2e-8a3f-1a2b3c4d5e6f").value();
 
+/** @brief Strongly-typed asset identifier, holding either an AssetIndex or a UUID.
+ *  @tparam T The asset type this id refers to. */
 export template <typename T>
 struct AssetId : public std::variant<AssetIndex, uuids::uuid> {
+    /** @brief Return a sentinel id that compares unequal to any valid id. */
     static AssetId<T> invalid() { return AssetId<T>(INVALID_UUID); }
 
     AssetId()                             = delete;
@@ -37,17 +44,23 @@ struct AssetId : public std::variant<AssetIndex, uuids::uuid> {
     AssetId(AssetId<T>&&)                 = default;
     AssetId& operator=(const AssetId<T>&) = default;
     AssetId& operator=(AssetId<T>&&)      = default;
+    /** @brief Forwarding constructor from variant-compatible arguments.
+     * @tparam Args Argument types forwarded to the underlying variant. */
     template <typename... Args>
         requires std::constructible_from<std::variant<AssetIndex, uuids::uuid>, Args...>
     AssetId(Args&&... args) : std::variant<AssetIndex, uuids::uuid>(std::forward<Args>(args)...) {}
 
     auto operator<=>(const AssetId<T>& other) const = default;
     bool operator==(const AssetId<T>& other) const  = default;
+    /** @brief Compare with a type-erased UntypedAssetId. */
     bool operator==(const UntypedAssetId& other) const;
 
+    /** @brief Check whether this id stores a UUID. */
     bool is_uuid() const { return std::holds_alternative<uuids::uuid>(*this); }
+    /** @brief Check whether this id stores an AssetIndex. */
     bool is_index() const { return std::holds_alternative<AssetIndex>(*this); }
 
+    /** @brief Return a human-readable string including the type name and underlying id. */
     std::string to_string() const {
         return std::format(
             "AssetId<{}>({})", meta::type_id<T>::name(),
@@ -58,6 +71,7 @@ struct AssetId : public std::variant<AssetIndex, uuids::uuid> {
                                [](const uuids::uuid& id) { return std::format("UUID({})", uuids::to_string(id)); }},
                        *this));
     }
+    /** @brief Return a short string representation without the type name. */
     std::string to_string_short() const {
         return std::visit(visitor{[](const AssetIndex& index) {
                                       return std::format("AssetIndex({}, {})", index.index(), index.generation());
@@ -67,23 +81,38 @@ struct AssetId : public std::variant<AssetIndex, uuids::uuid> {
     }
 };
 
+/** @brief Type-erased asset identifier that stores a type_index alongside the id.
+ *  Useful when the asset type is not known at compile time. */
 export struct UntypedAssetId {
+    /** @brief Runtime type identifier for the asset. */
     meta::type_index type;
+    /** @brief The underlying id, either an index or a UUID. */
     std::variant<AssetIndex, uuids::uuid> id;
 
+    /** @brief Construct from a typed AssetId.
+     * @tparam T The asset type. */
     template <typename T>
     UntypedAssetId(const AssetId<T>& id) : id(id), type(meta::type_id<T>{}) {}
+    /** @brief Construct from a type_index and variant-compatible arguments.
+     * @tparam Args Argument types forwarded to the underlying variant. */
     template <typename... Args>
     UntypedAssetId(const meta::type_index& type, Args&&... args) : id(std::forward<Args>(args)...), type(type) {}
+    /** @brief Create a sentinel invalid id for the given type.
+     *  @tparam T The asset type; defaults to void. */
     template <typename T = void>
     static UntypedAssetId invalid(const meta::type_index& type = meta::type_id<T>{}) {
         return UntypedAssetId(type, AssetId<T>::invalid());
     }
 
+    /** @brief Cast to a typed AssetId. Throws if the type does not match.
+     *  @tparam T Expected asset type. */
     template <typename T>
     AssetId<T> typed() const {
         return try_typed<T>().value();
     }
+    /** @brief Try to cast to a typed AssetId.
+     *  @tparam T Expected asset type.
+     *  @return The typed id, or std::nullopt on type mismatch. */
     template <typename T>
     std::optional<AssetId<T>> try_typed() const {
         if (type != meta::type_id<T>{}) {
@@ -92,16 +121,22 @@ export struct UntypedAssetId {
         return std::make_optional<AssetId<T>>(id);
     }
 
+    /** @brief Check whether this id stores a UUID. */
     bool is_uuid() const { return std::holds_alternative<uuids::uuid>(id); }
+    /** @brief Check whether this id stores an AssetIndex. */
     bool is_index() const { return std::holds_alternative<AssetIndex>(id); }
+    /** @brief Get the stored AssetIndex. Throws std::bad_variant_access if it holds a UUID. */
     const AssetIndex& index() const { return std::get<AssetIndex>(id); }
+    /** @brief Get the stored UUID. Throws std::bad_variant_access if it holds an AssetIndex. */
     const uuids::uuid& uuid() const { return std::get<uuids::uuid>(id); }
     auto operator<=>(const UntypedAssetId& other) const = default;
     bool operator==(const UntypedAssetId& other) const  = default;
+    /** @brief Compare with a typed AssetId. */
     template <typename T>
     bool operator==(const AssetId<T>& other) const {
         return other == *this;
     }
+    /** @brief Return a human-readable string including the type name and underlying id. */
     std::string to_string() const {
         return std::format(
             "UntypedAssetId<{}>({})", type.name(),
@@ -112,6 +147,7 @@ export struct UntypedAssetId {
                                [](const uuids::uuid& id) { return std::format("UUID({})", uuids::to_string(id)); }},
                        id));
     }
+    /** @brief Return a short string representation without the type name. */
     std::string to_string_short() const {
         return std::visit(visitor{[](const AssetIndex& index) {
                                       return std::format("AssetIndex({}, {})", index.index(), index.generation());
@@ -161,7 +197,7 @@ struct hash<assets::UntypedAssetId> {
 };
 }  // namespace std
 
-// formatter support for AssetId and UntypedAssetId
+/** @brief std::formatter support for AssetId and UntypedAssetId. */
 export namespace std {
 template <typename T>
 struct formatter<assets::AssetId<T>> {

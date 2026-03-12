@@ -9,20 +9,42 @@ import std;
 import webgpu;
 
 namespace mesh {
+/** @brief GPU-side mesh storing vertex/index buffers uploaded from a Mesh.
+ *
+ * Created from a CPU Mesh via create_from_mesh, and can be bound to a render pass.
+ */
 export struct GPUMesh {
    public:
+    /** @brief Create a GPUMesh from a CPU Mesh, using default device limits.
+     *  @param mesh The source mesh.
+     *  @param device The wgpu device for buffer allocation. */
     static GPUMesh create_from_mesh(const Mesh& mesh, const wgpu::Device& device);
+    /** @brief Create a GPUMesh from a CPU Mesh with explicit device limits.
+     *  @param mesh The source mesh.
+     *  @param device The wgpu device for buffer allocation.
+     *  @param limits Device limits for alignment constraints. */
     static GPUMesh create_from_mesh(const Mesh& mesh, const wgpu::Device& device, const wgpu::Limits& limits);
+    /** @brief Re-upload mesh data from a CPU Mesh to existing GPU buffers.
+     *  @param mesh The source mesh.
+     *  @param device The wgpu device.
+     *  @param limits Device limits for alignment constraints. */
     void update_from_mesh(const Mesh& mesh, const wgpu::Device& device, const wgpu::Limits& limits);
+    /** @brief Check whether this mesh uses indexed drawing. */
     bool is_indexed() const { return _index_binding.has_value(); }
+    /** @brief Get the number of vertices (or indices if indexed). */
     std::size_t vertex_count() const { return _vertex_count; }
+    /** @brief Get the primitive topology of this mesh. */
     wgpu::PrimitiveTopology primitive_type() const { return _primitive_type; }
+    /** @brief Bind vertex and index buffers to a render pass encoder. */
     void bind_to(const wgpu::RenderPassEncoder& encoder) const;
+    /** @brief Iterate over the mesh attribute descriptors. */
     auto iter_attributes() const { return std::views::values(_attributes); }
+    /** @brief Check whether this mesh contains a specific attribute. */
     bool contains_attribute(const MeshAttribute& attribute) const {
         auto it = _attributes.find(attribute.slot);
         return it != _attributes.end() && it->second == attribute;
     }
+    /** @brief Get the full attribute layout map. */
     const MeshAttributeLayout& attribute_layout() const { return _attributes; }
 
    private:

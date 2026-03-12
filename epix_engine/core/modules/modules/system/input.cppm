@@ -18,23 +18,35 @@ concept system_input = requires {
     } -> std::same_as<typename SystemInput<T>::Param>;
 };
 
+/** @brief System input wrapper for movable/copyable values.
+ *  Wraps a value passed as input to a system function.
+ *  @tparam T Value type. */
 export template <typename T>
     requires std::movable<T> || std::copyable<T>
 struct In {
    public:
+    /** @brief Default-construct with a value-initialized T. */
     In() = default;
+    /** @brief Copy-construct from a const reference. */
     In(const T& value)
         requires std::copyable<T>
         : value(value) {}
+    /** @brief Move-construct from an rvalue. */
     In(T&& value)
         requires std::movable<T>
         : value(std::move(value)) {}
 
+    /** @brief Get a const reference to the wrapped value. */
     const T& get() const { return value; }
-    T& get() { return value; }  // since this does not consider change detection, no explicit `mut` is needed.
+    /** @brief Get a mutable reference to the wrapped value. */
+    T& get() { return value; }
+    /** @brief Const pointer access to the wrapped value. */
     const T* operator->() const { return std::addressof(value); }
+    /** @brief Mutable pointer access to the wrapped value. */
     T* operator->() { return std::addressof(value); }
+    /** @brief Const dereference. */
     const T& operator*() const { return value; }
+    /** @brief Mutable dereference. */
     T& operator*() { return value; }
     operator const T&() const { return value; }
     operator T&() { return value; }
@@ -42,41 +54,62 @@ struct In {
    private:
     T value;
 };
+/** @brief System input wrapper for copy-only values.
+ *  @tparam T Copyable value type. */
 export template <std::copyable T>
 struct InCopy : public In<T> {
    public:
     using In<T>::In;
 };
+/** @brief System input wrapper for move-only values.
+ *  @tparam T Movable value type. */
 export template <std::movable T>
 struct InMove : public In<T> {
    public:
     using In<T>::In;
 };
+/** @brief System input wrapper providing const reference access.
+ *  @tparam T Value type. */
 export template <typename T>
 struct InRef {
    public:
+    /** @brief Construct from a const reference. */
     InRef(const T& value) : value(std::addressof(value)) {}
 
+    /** @brief Get the referenced value. */
     const T& get() const { return *value; }
+    /** @brief Const pointer access. */
     const T* operator->() const { return value; }
+    /** @brief Const dereference. */
     const T& operator*() const { return *value; }
     operator const T&() const { return *value; }
 
    private:
     const T* value;
 };
+/** @brief System input wrapper providing mutable reference access.
+ *  @tparam T Value type. */
 export template <typename T>
 struct InMut {
    public:
+    /** @brief Construct from a mutable reference. */
     InMut(T& value) : value(std::addressof(value)) {}
 
+    /** @brief Get a mutable reference. */
     T& get() { return *value; }
+    /** @brief Mutable pointer access. */
     T* operator->() { return value; }
+    /** @brief Mutable dereference. */
     T& operator*() { return *value; }
+    /** @brief Implicit conversion to mutable reference. */
     operator T&() { return *value; }
+    /** @brief Get a const reference. */
     const T& get() const { return *value; }
+    /** @brief Const pointer access. */
     const T* operator->() const { return value; }
+    /** @brief Const dereference. */
     const T& operator*() const { return *value; }
+    /** @brief Implicit conversion to const reference. */
     operator const T&() const { return *value; }
 
    private:

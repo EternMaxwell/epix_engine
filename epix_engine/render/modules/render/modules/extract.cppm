@@ -7,6 +7,8 @@ import :schedule;
 
 namespace render {
 using namespace core;
+/** @brief Schedule sentinel for the extract phase that copies data from
+ * the main world into the render world. */
 export struct ExtractScheduleT {
 } ExtractSchedule;
 template <std::copyable T>
@@ -18,6 +20,9 @@ void extract_fn(Commands cmd, ParamSet<std::optional<ResMut<T>>, Extract<ResMut<
         res.value().get_mut() = extract.get();
     }
 }
+/** @brief Plugin that extracts a copyable resource from the main world
+ * into the render world each frame.
+ * @tparam T A copyable resource type. */
 export template <std::copyable T>
 struct ExtractResourcePlugin {
     void build(App& app) {
@@ -26,8 +31,7 @@ struct ExtractResourcePlugin {
             into(extract_fn<T>).set_name(std::format("extract resource '{}'", meta::type_id<T>().short_name())));
     }
 };
-/// A helper marker to tell that a entity has a custom rendering process instead of handled by the engine. This is only
-/// for standard rendering process. For non-standard rendering processes, user is expected to use other markers provided
-/// by those modules providing the rendering process.
+/** @brief Marker component indicating an entity has a custom rendering
+ * process and should be skipped by standard render pipelines. */
 export struct CustomRendered {};
 }  // namespace render

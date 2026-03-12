@@ -15,6 +15,7 @@ import :shader;
 namespace render {
 make_atomic_id(RenderPipelineId);
 make_atomic_id(ComputePipelineId);
+/** @brief A created render pipeline with a unique auto-incremented ID. */
 export struct RenderPipeline {
     friend struct PipelineServer;  // Only PipelineServer can create pipelines
    public:
@@ -27,6 +28,7 @@ export struct RenderPipeline {
     RenderPipelineId _id;
     wgpu::RenderPipeline _pipeline;
 };
+/** @brief A created compute pipeline with a unique auto-incremented ID. */
 export struct ComputePipeline {
     friend struct PipelineServer;  // Only PipelineServer can create pipelines
    public:
@@ -41,24 +43,33 @@ export struct ComputePipeline {
     wgpu::ComputePipeline _pipeline;
 };
 
+/** @brief Vertex stage configuration: shader, entry point, and vertex
+ * buffer layouts. */
 export struct VertexState {
+    /** @brief Handle to the vertex shader. */
     assets::Handle<Shader> shader;
+    /** @brief Optional entry-point function name (defaults to "vs_main"). */
     std::optional<std::string> entry_point;
+    /** @brief Vertex buffer layouts describing attribute bindings. */
     std::vector<wgpu::VertexBufferLayout> buffers;
 
+    /** @brief Set the vertex shader handle. */
     auto&& set_shader(this auto&& self, assets::Handle<Shader> shader) {
         self.shader = std::move(shader);
         return std::forward<decltype(self)>(self);
     }
+    /** @brief Set the vertex shader entry-point name. */
     auto&& set_entry_point(this auto&& self, std::string entry_point) {
         self.entry_point = std::move(entry_point);
         return std::forward<decltype(self)>(self);
     }
+    /** @brief Set a vertex buffer layout at a specific binding index. */
     auto&& set_buffer(this auto&& self, std::uint32_t index, wgpu::VertexBufferLayout layout) {
         self.buffers.resize(std::max(self.buffers.size(), static_cast<std::size_t>(index + 1)));
         self.buffers[index] = std::move(layout);
         return std::forward<decltype(self)>(self);
     }
+    /** @brief Set all vertex buffer layouts from a range. */
     auto&& set_buffers(this auto&& self, std::ranges::range auto&& buffers)
         requires std::convertible_to<std::ranges::range_value_t<decltype(buffers)>, wgpu::VertexBufferLayout>
     {
@@ -67,23 +78,31 @@ export struct VertexState {
         return std::forward<decltype(self)>(self);
     }
 };
+/** @brief Fragment stage configuration: shader, entry point, and color
+ * targets. */
 export struct FragmentState {
     assets::Handle<Shader> shader;
     std::optional<std::string> entry_point;
     std::vector<wgpu::ColorTargetState> targets;
+    /** @brief Set the fragment shader handle. */
     auto&& set_shader(this auto&& self, assets::Handle<Shader> shader) {
         self.shader = std::move(shader);
         return std::forward<decltype(self)>(self);
     }
+    /** @brief Set the fragment shader entry-point name. */
     auto&& set_entry_point(this auto&& self, std::string entry_point) {
         self.entry_point = std::move(entry_point);
         return std::forward<decltype(self)>(self);
     }
+    /** @brief Add a color target state to the fragment stage. */
     auto&& add_target(this auto&& self, wgpu::ColorTargetState target) {
         self.targets.push_back(std::move(target));
         return std::forward<decltype(self)>(self);
     }
 };
+/** @brief Full descriptor for creating a render pipeline, including
+ * layout, vertex/fragment stages, primitive state, depth-stencil, and
+ * multisampling. Uses a builder pattern with `set_*` methods. */
 export struct RenderPipelineDescriptor {
     std::string label;
     std::vector<wgpu::BindGroupLayout> layouts;
@@ -128,6 +147,8 @@ export struct RenderPipelineDescriptor {
         return std::forward<decltype(self)>(self);
     }
 };
+/** @brief Full descriptor for creating a compute pipeline, including
+ * layout, shader, and entry point. Uses a builder pattern. */
 export struct ComputePipelineDescriptor {
     std::string label;
     std::vector<wgpu::BindGroupLayout> layouts;

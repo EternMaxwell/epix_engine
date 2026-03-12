@@ -13,24 +13,36 @@ using namespace render;
 
 namespace core_graph::core_2d {
 
+/** @brief Node labels for the 2D render graph passes. */
 export enum class Core2dNodes {
+    /** @brief Node that begins the main render pass. */
     StartMainPass,
+    /** @brief Node for rendering transparent 2D items. */
     MainTransparentPass,
+    /** @brief Node for rendering opaque 2D items. */
     MainOpaquePass,
+    /** @brief Node that ends the main render pass. */
     EndMainPass,
+    /** @brief Node for the screen-space UI pass. */
     ScreenUIPass,
 };
 
 /**
  * @brief A transparent 2D render phase item.
  *
- * The rendered object might be transparent, so this is preferred to be sorted before rendering.
+ * Sorted by inverse depth for back-to-front rendering. Supports instanced
+ * batching.
  */
 export struct Transparent2D {
+    /** @brief Entity this phase item refers to. */
     Entity id;
+    /** @brief Depth value for sorting (inverted for back-to-front). */
     float depth;
+    /** @brief Cached render pipeline ID. */
     CachedPipelineId pipeline_id;
+    /** @brief Draw function ID for rendering this item. */
     phase::DrawFunctionId draw_func;
+    /** @brief Number of instances in this batch. */
     size_t batch_count;
 
     Entity entity() const { return id; }
@@ -43,11 +55,20 @@ export struct Transparent2D {
 static_assert(phase::BatchedPhaseItem<Transparent2D>);
 static_assert(phase::CachedRenderPipelinePhaseItem<Transparent2D>);
 
+/** @brief An opaque 2D render phase item.
+ *
+ * Sorted by OpaqueSortKey for front-to-back rendering and batching.
+ */
 export struct Opaque2D {
+    /** @brief Entity this phase item refers to. */
     Entity id;
+    /** @brief Cached render pipeline ID. */
     CachedPipelineId pipeline_id;
+    /** @brief Draw function ID for rendering this item. */
     phase::DrawFunctionId draw_func;
+    /** @brief Number of instances in this batch. */
     size_t batch_count;
+    /** @brief Sort key for front-to-back opaque ordering. */
     phase::OpaqueSortKey batch_key;
 
     Entity entity() const { return id; }
@@ -59,11 +80,20 @@ export struct Opaque2D {
 static_assert(phase::BatchedPhaseItem<Opaque2D>);
 static_assert(phase::CachedRenderPipelinePhaseItem<Opaque2D>);
 
+/** @brief A UI 2D render phase item.
+ *
+ * Sorted by `order` for z-ordering of UI elements.
+ */
 export struct UI2DItem {
+    /** @brief Entity this phase item refers to. */
     Entity id;
-    int order;  // UI elements with higher order are rendered on top of those with lower order
+    /** @brief Z-order for UI stacking (higher = on top). */
+    int order;
+    /** @brief Cached render pipeline ID. */
     CachedPipelineId pipeline_id;
+    /** @brief Draw function ID for rendering this item. */
     phase::DrawFunctionId draw_func;
+    /** @brief Number of instances in this batch. */
     size_t batch_count;
 
     Entity entity() const { return id; }
@@ -101,25 +131,32 @@ struct Node2D : graph::Node {
                                                     .setLoadOp(wgpu::LoadOp::eLoad)
                                                     .setStoreOp(wgpu::StoreOp::eStore)})
                 .setDepthStencilAttachment(wgpu::RenderPassDepthStencilAttachment()
-                                                                    .setView(depth.depth_view)
-                                                                    .setDepthLoadOp(wgpu::LoadOp::eLoad)
-                                                                    .setDepthStoreOp(wgpu::StoreOp::eStore)));
+                                               .setView(depth.depth_view)
+                                               .setDepthLoadOp(wgpu::LoadOp::eLoad)
+                                               .setDepthStoreOp(wgpu::StoreOp::eStore)));
         phase.render(render_pass, world, view_entity);
         render_pass.end();
         render_ctx.flush_encoder();
     }
 };
 
+/** @brief Singleton struct for initializing the core 2D render graph. */
 export inline struct Core2dGraph {
+    /** @brief Add this graph as a sub-graph to the given render graph. */
     void add_to(graph::RenderGraph& g);
 } Core2d;
 
+/** @brief Plugin that sets up the core 2D render graph and camera
+ * projection. */
 export struct Core2dPlugin {
     void build(App& app);
 };
 
+/** @brief Marker component for 2D camera entities. */
 export struct Camera2D {};
 
+/** @brief Bundle for spawning a complete 2D camera entity configured with
+ * the core 2D render graph. */
 export struct Camera2DBundle {
     render::camera::Camera camera;
     render::camera::Projection projection;

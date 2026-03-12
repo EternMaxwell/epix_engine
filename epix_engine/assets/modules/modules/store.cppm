@@ -10,6 +10,7 @@ import std;
 import :handle;
 
 namespace assets {
+/** @brief Forward declaration of AssetServer. */
 export struct AssetServer;
 
 bool asset_server_process_handle_destruction(const AssetServer& server, const UntypedAssetId& id);
@@ -20,19 +21,29 @@ struct Entry {
     std::uint32_t generation = 0;
 };
 
+/** @brief Error: the requested slot index exceeds storage bounds. */
 export struct IndexOutOfBound {
+    /** @brief The index that was out of bounds. */
     std::uint32_t index;
 };
+/** @brief Error: the slot at the given index has been released. */
 export struct SlotEmpty {
+    /** @brief The slot index that was empty. */
     std::uint32_t index;
 };
+/** @brief Error: the generation counter of the slot does not match the request. */
 export struct GenMismatch {
+    /** @brief The slot index accessed. */
     std::uint32_t index;
+    /** @brief The generation currently stored in the slot. */
     std::uint32_t current_gen;
+    /** @brief The generation the caller expected. */
     std::uint32_t expected_gen;
 };
+/** @brief Error: an asset with the given identifier is not present. */
 export using AssetNotPresent = std::variant<AssetIndex, uuids::uuid>;
 
+/** @brief Sum type of all possible asset access errors. */
 export using AssetError = std::variant<IndexOutOfBound, SlotEmpty, GenMismatch, AssetNotPresent>;
 
 template <typename T>
@@ -224,31 +235,48 @@ struct AssetStorage {
     }
 };
 
+/** @brief Lifecycle event for an asset of type T.
+ *  Created automatically by Assets<T> when assets are added, removed,
+ *  modified, loaded, or when all strong handles are dropped. */
 export template <typename T>
 struct AssetEvent {
+    /** @brief Event kind discriminator. */
     enum class Type {
-        Added,     // Asset added
-        Removed,   // Asset removed
-        Modified,  // Asset modified or replaced
-        Unused,    // All strong handles destroyed
-        Loaded,    // Asset loaded from disk or network
+        Added,    /**< Asset was newly inserted. */
+        Removed,  /**< Asset was removed from storage. */
+        Modified, /**< Asset value was replaced or mutably accessed. */
+        Unused,   /**< All strong handles have been destroyed. */
+        Loaded,   /**< Asset finished loading from disk/network. */
     } type;
+    /** @brief The id of the asset this event refers to. */
     AssetId<T> id;
 
+    /** @brief Create an Added event. */
     static AssetEvent<T> added(const AssetId<T>& id) { return {Type::Added, id}; }
+    /** @brief Create a Removed event. */
     static AssetEvent<T> removed(const AssetId<T>& id) { return {Type::Removed, id}; }
+    /** @brief Create a Modified event. */
     static AssetEvent<T> modified(const AssetId<T>& id) { return {Type::Modified, id}; }
+    /** @brief Create an Unused event (all strong handles dropped). */
     static AssetEvent<T> unused(const AssetId<T>& id) { return {Type::Unused, id}; }
+    /** @brief Create a Loaded event. */
     static AssetEvent<T> loaded(const AssetId<T>& id) { return {Type::Loaded, id}; }
+    /** @brief Check if this is an Added event. */
     bool is_added() const { return type == Type::Added; }
+    /** @brief Check if this is a Removed event. */
     bool is_removed() const { return type == Type::Removed; }
+    /** @brief Check if this is a Modified event. */
     bool is_modified() const { return type == Type::Modified; }
+    /** @brief Check if this is an Unused event. */
     bool is_unused() const { return type == Type::Unused; }
+    /** @brief Check if this is a Loaded event. */
     bool is_loaded() const { return type == Type::Loaded; }
 };
 
 void log_asset_error(const AssetError& err, const std::string_view& header, const std::string_view& operation);
 
+/** @brief Collection that stores and manages assets of type T.
+ *  @tparam T The asset type (must be movable). */
 export template <std::movable T>
 struct Assets {
    private:
@@ -335,6 +363,7 @@ struct Assets {
     }
 
    public:
+    /** @brief Construct a new Assets collection with its own HandleProvider. */
     Assets() : m_handle_provider(std::make_shared<HandleProvider>(meta::type_id<T>{})) {}
     Assets(const Assets&)            = delete;
     Assets(Assets&&)                 = delete;
@@ -344,7 +373,7 @@ struct Assets {
     /**
      * @brief Get the handle provider for this assets collection.
      *
-     * @return `std::shared_ptr<HandleProvider<T>>` The handle provider for this
+     * @return The handle provider shared pointer.
      */
     std::shared_ptr<HandleProvider> get_handle_provider() const { return m_handle_provider; }
 
@@ -414,9 +443,8 @@ struct Assets {
      * This will increment the reference count of the asset and return a strong
      * handle to it. If the asset is not valid, std::nullopt is returned.
      *
-     * @param index The index of the asset to get a handle to.
-     * @return `std::optional<Handle<T>>` The strong handle to the asset, or
-     * std::nullopt if the asset is not valid.
+     * @param id The asset identifier.
+     * @return The strong handle to the asset, or an error if not found.
      */
     std::expected<Handle<T>, AssetError> get_strong_handle(const AssetId<T>& id) {
         return try_get(id).and_then([this, &id](const T& asset) -> std::expected<Handle<T>, AssetError> {
@@ -433,14 +461,14 @@ struct Assets {
      * This will return a reference to the asset at the given index. If the
      * asset is not valid, std::nullopt is returned.
      *
-     * @param index The index of the asset to get.
-     * @return `std::optional<std::reference_wrapper<T>>` A reference to the
-     * asset, or std::nullopt if the asset is not valid.
+     * @param id The asset identifier.
+     * @return A const reference to the asset, or std::nullopt if not found.
      */
     std::optional<std::reference_wrapper<const T>> get(const AssetId<T>& id) const {
         auto res = try_get(id);
         return res.has_value() ? std::make_optional<std::reference_wrapper<const T>>(res.value()) : std::nullopt;
     }
+    /** @brief Try to get a const reference to the asset, returning an error on failure. */
     std::expected<std::reference_wrapper<const T>, AssetError> try_get(const AssetId<T>& id) const {
         return std::visit(
             visitor{[this](const AssetIndex& index) { return m_assets.try_get(index); },
@@ -460,14 +488,14 @@ struct Assets {
      * This will return a reference to the asset at the given index. If the
      * asset is not valid, std::nullopt is returned.
      *
-     * @param index The index of the asset to get.
-     * @return `std::optional<std::reference_wrapper<T>>` A reference to the
-     * asset, or std::nullopt if the asset is not valid.
+     * @param id The asset identifier.
+     * @return A mutable reference to the asset, or std::nullopt if not found.
      */
     std::optional<std::reference_wrapper<T>> get_mut(const AssetId<T>& id) {
         auto res = try_get_mut(id);
         return res.has_value() ? std::make_optional<std::reference_wrapper<T>>(res.value()) : std::nullopt;
     }
+    /** @brief Try to get a mutable reference to the asset, returning an error on failure. */
     std::expected<std::reference_wrapper<T>, AssetError> try_get_mut(const AssetId<T>& id) {
         return std::visit(
                    visitor{[this](const AssetIndex& index) { return m_assets.try_get_mut(index); },
@@ -489,8 +517,8 @@ struct Assets {
      * @brief Remove the asset at the given index. This will remove the asset
      * from the storage but not invalidate the slot at this index.
      *
-     * @param index The index of the asset to remove.
-     * @return `bool` True if the operation was successful, false otherwise.
+     * @param id The asset identifier to remove.
+     * @return void on success, or an error if the asset was not found.
      */
     std::expected<void, AssetError> remove(const AssetId<T>& id) {
         return std::visit(visitor{[this, &id](const AssetIndex& index) { return m_assets.remove(index); },
@@ -511,9 +539,8 @@ struct Assets {
      * @brief Pop the asset at the given index. This will remove the asset from
      * the storage but not invalidate the slot at this index.
      *
-     * @param index The index of the asset to pop.
-     * @return `std::optional<T>` The asset at the given index, or std::nullopt
-     * if the asset is not valid.
+     * @param id The asset identifier to take.
+     * @return The taken asset on success, or an error if not found.
      */
     std::expected<T, AssetError> take(const AssetId<T>& id) {
         return std::visit(visitor{[this](const AssetIndex& index) { return m_assets.pop(index); },
@@ -534,6 +561,7 @@ struct Assets {
             });
     }
 
+    /** @brief Process pending handle destruction events manually. */
     void handle_events_manual(const AssetServer* asset_server = nullptr) {
         spdlog::trace("[{}] Handling events", meta::type_id<T>::short_name());
         while (auto&& opt = m_handle_provider->index_allocator.reserved_receiver().try_receive()) {
@@ -556,6 +584,7 @@ struct Assets {
         assets->handle_events_manual(asset_server.ptr());
     }
 
+    /** @brief System that flushes cached asset events to the event writer. */
     static void asset_events(core::ResMut<Assets<T>> assets, core::EventWriter<AssetEvent<T>> writer) {
         for (auto&& event : assets->m_cached_events) {
             writer.write(event);

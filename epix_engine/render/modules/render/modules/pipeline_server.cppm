@@ -12,6 +12,8 @@ import :shader_cache;
 using namespace core;
 
 namespace render {
+/** @brief Key type used to cache pipeline layouts by their bind group
+ * layout IDs. */
 export using LayoutCacheKey = std::vector<wgpu::BindGroupLayoutId>;
 struct LayoutKeyHash {
     std::size_t operator()(const LayoutCacheKey& key) const {
@@ -22,18 +24,22 @@ struct LayoutKeyHash {
         return hash;
     }
 };
+/** @brief Cache of pipeline layouts to avoid redundant creation.
+ *
+ * Deduplicates layouts by their constituent bind group layout IDs. */
 export struct LayoutCache {
    public:
     LayoutCache()                              = default;
     LayoutCache(const LayoutCache&)            = delete;
     LayoutCache& operator=(const LayoutCache&) = delete;
 
+    /** @brief Get or create a pipeline layout for the given bind group layouts. */
     wgpu::PipelineLayout get(const wgpu::Device& device, std::ranges::range auto&& layouts)
         requires std::convertible_to<std::ranges::range_value_t<decltype(layouts)>, wgpu::BindGroupLayout>
     {
         LayoutCacheKey key = layouts | std::views::transform([](const auto& layout) { return layout.id(); }) |
                              std::ranges::to<std::vector>();
-        auto it = cache.find(key);
+        auto it            = cache.find(key);
         if (it != cache.end()) {
             return it->second;
         }
@@ -49,18 +55,28 @@ export struct LayoutCache {
 
 std::optional<wgpu::ShaderModule> load_module(const wgpu::Device& device, const Shader& shader);
 
+/** @brief Variant describing either a render or compute pipeline
+ * descriptor. */
 export using PipelineDescriptor = std::variant<RenderPipelineDescriptor, ComputePipelineDescriptor>;
-export using Pipeline           = std::variant<RenderPipeline, ComputePipeline>;
+/** @brief Variant holding a created render or compute pipeline. */
+export using Pipeline = std::variant<RenderPipeline, ComputePipeline>;
+/** @brief Error code for pipeline creation failure. */
 export enum PipelineError {
     CreationFailure,
 };
+/** @brief Variant of errors that can occur during pipeline server
+ * operations. */
 export using PipelineServerError = std::variant<PipelineError, ShaderCacheError>;
-export struct GetPipelineNotReady {};   // pipeline is still queued or being compiled
-export struct GetPipelineInvalidId {};  // id is out of range
-// Failed carries the underlying PipelineServerError with its details
+/** @brief Returned when a queried pipeline is still queued or being
+ * compiled. */
+export struct GetPipelineNotReady {};
+/** @brief Returned when a pipeline ID is out of range. */
+export struct GetPipelineInvalidId {};
+/** @brief Error variant returned by pipeline retrieval methods. */
 export using GetPipelineError = std::variant<GetPipelineNotReady, GetPipelineInvalidId, PipelineServerError>;
 export struct PipelineStateQueued {};
 export using PipelineStateCreating = std::future<std::expected<Pipeline, PipelineServerError>>;
+/** @brief Current state of a cached pipeline in its lifecycle. */
 export using CachedPipelineState =
     std::variant<PipelineStateQueued, PipelineStateCreating, Pipeline, PipelineServerError>;
 struct CachedPipeline {
@@ -73,6 +89,13 @@ struct CachedPipeline {
         return std::nullopt;
     }
 };
+/** @brief Central server that manages pipeline creation, caching, and
+ * shader dependency tracking.
+ *
+ * Pipelines are queued via `queue_render_pipeline()` /
+ * `queue_compute_pipeline()` and compiled asynchronously in a thread
+ * pool. Call `process_queue()` each frame to advance pending pipelines.
+ */
 export struct PipelineServer {
    public:
     PipelineServer(const PipelineServer&)            = delete;
@@ -82,25 +105,38 @@ export struct PipelineServer {
 
     PipelineServer(wgpu::Device device);
 
+    /** @brief Get the current state of a cached pipeline by id. */
     auto get_pipeline_state(CachedPipelineId id) const
         -> std::optional<std::reference_wrapper<const CachedPipelineState>>;
+    /** @brief Get the render pipeline descriptor for a cached pipeline. */
     auto get_render_pipeline_descriptor(CachedPipelineId id) const
         -> std::optional<std::reference_wrapper<const RenderPipelineDescriptor>>;
+    /** @brief Get the compute pipeline descriptor for a cached pipeline. */
     auto get_compute_pipeline_descriptor(CachedPipelineId id) const
         -> std::optional<std::reference_wrapper<const ComputePipelineDescriptor>>;
+    /** @brief Get the compiled render pipeline, or an error if not ready. */
     auto get_render_pipeline(CachedPipelineId id) const
         -> std::expected<std::reference_wrapper<const RenderPipeline>, GetPipelineError>;
+    /** @brief Get the compiled compute pipeline, or an error if not ready. */
     auto get_compute_pipeline(CachedPipelineId id) const
         -> std::expected<std::reference_wrapper<const ComputePipeline>, GetPipelineError>;
+    /** @brief Queue a render pipeline for asynchronous creation. */
     CachedPipelineId queue_render_pipeline(RenderPipelineDescriptor descriptor) const;
+    /** @brief Queue a compute pipeline for asynchronous creation. */
     CachedPipelineId queue_compute_pipeline(ComputePipelineDescriptor descriptor) const;
 
+    /** @brief Register or update a shader in the shader cache. */
     void set_shader(assets::AssetId<Shader> id, Shader shader);
+    /** @brief Remove a shader from the shader cache. */
     void remove_shader(assets::AssetId<Shader> id);
+    /** @brief Process all queued and in-progress pipeline creations. */
     void process_queue();
+    /** @brief Process a single cached pipeline (advance its creation state). */
     void process_pipeline(CachedPipeline& cached_pipeline, CachedPipelineId id);
 
+    /** @brief System that calls process_queue() each frame. */
     static void process_pipeline_system(ResMut<PipelineServer> pipeline_server);
+    /** @brief System that extracts shader assets and events into the render world. */
     static void extract_shaders(ResMut<PipelineServer> pipeline_server,
                                 Extract<Res<assets::Assets<Shader>>> shaders,
                                 Extract<EventReader<assets::AssetEvent<Shader>>> shader_events);

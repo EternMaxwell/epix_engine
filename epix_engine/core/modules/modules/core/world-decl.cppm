@@ -10,9 +10,14 @@ import :type_registry;
 import :entities;
 
 namespace core {
+/** @brief Forward declaration of the ECS world. */
 export struct World;
+/** @brief Forward declaration of the deferred world.
+ *  Provides non-architectural change access to world data and
+ *  deferred command submission without direct mutation. */
 export struct DeferredWorld;
 
+/** @brief Unique identifier for a World instance. */
 export struct WorldId : ::core::int_base<std::uint64_t> {
     using int_base::int_base;
 };

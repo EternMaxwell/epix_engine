@@ -8,17 +8,28 @@ import std;
 using namespace core;
 
 namespace render::graph {
+/** @brief Type of data that can flow through a render graph slot. */
 export enum class SlotType {
-    Buffer,   // A buffer
-    Texture,  // A texture
-    Sampler,  // A sampler
-    Entity,   // An entity from ecs world
+    Buffer,  /**< @brief A GPU buffer. */
+    Texture, /**< @brief A texture view. */
+    Sampler, /**< @brief A texture sampler. */
+    Entity,  /**< @brief An ECS entity reference. */
 };
+/** @brief Get a human-readable name for a SlotType.
+ * @param type The slot type.
+ * @return String view of the type name. */
 export std::string_view type_name(SlotType type);
+/** @brief Describes a named slot with its data type. */
 export struct SlotInfo {
+    /** @brief Name of the slot. */
     std::string name;
+    /** @brief Data type of the slot. */
     SlotType type;
 };
+/** @brief Type-erased value held in a render graph slot.
+ *
+ * Can contain an Entity, wgpu::Buffer, wgpu::TextureView, or
+ * wgpu::Sampler. Clones GPU handles on copy. */
 export struct SlotValue {
    private:
     using variant_t = std::variant<Entity, wgpu::Buffer, wgpu::TextureView, wgpu::Sampler>;
@@ -50,6 +61,8 @@ export struct SlotValue {
     SlotValue(const wgpu::Buffer& buffer) : value(buffer.clone()) {}
     SlotValue(const wgpu::TextureView& texture) : value(texture.clone()) {}
     SlotValue(const wgpu::Sampler& sampler) : value(sampler.clone()) {}
+    /** @brief Get the type of the stored slot value.
+     *  @return The SlotType enum value. */
     SlotType type() const {
         return std::visit(assets::visitor{
                               [](const Entity&) { return SlotType::Entity; },
@@ -59,29 +72,42 @@ export struct SlotValue {
                           },
                           value);
     }
+    /** @brief Check if the slot holds an Entity. */
     bool is_entity() const { return std::holds_alternative<Entity>(value); }
+    /** @brief Check if the slot holds a wgpu::Buffer. */
     bool is_buffer() const { return std::holds_alternative<wgpu::Buffer>(value); }
+    /** @brief Check if the slot holds a wgpu::TextureView. */
     bool is_texture() const { return std::holds_alternative<wgpu::TextureView>(value); }
+    /** @brief Check if the slot holds a wgpu::Sampler. */
     bool is_sampler() const { return std::holds_alternative<wgpu::Sampler>(value); }
+    /** @brief Get the stored Entity, if present.
+     *  @return The Entity, or std::nullopt. */
     std::optional<Entity> entity() const {
         return std::get_if<Entity>(&value) ? std::optional<Entity>{*std::get_if<Entity>(&value)} : std::nullopt;
     }
+    /** @brief Get a clone of the stored wgpu::Buffer, if present.
+     *  @return The cloned buffer, or std::nullopt. */
     std::optional<wgpu::Buffer> buffer() const {
         return std::get_if<wgpu::Buffer>(&value)
                    ? std::optional<wgpu::Buffer>{std::get_if<wgpu::Buffer>(&value)->clone()}
                    : std::nullopt;
     }
+    /** @brief Get a clone of the stored wgpu::TextureView, if present.
+     *  @return The cloned texture view, or std::nullopt. */
     std::optional<wgpu::TextureView> texture() const {
         return std::get_if<wgpu::TextureView>(&value)
                    ? std::optional<wgpu::TextureView>{std::get_if<wgpu::TextureView>(&value)->clone()}
                    : std::nullopt;
     }
+    /** @brief Get a clone of the stored wgpu::Sampler, if present.
+     *  @return The cloned sampler, or std::nullopt. */
     std::optional<wgpu::Sampler> sampler() const {
         return std::get_if<wgpu::Sampler>(&value)
                    ? std::optional<wgpu::Sampler>{std::get_if<wgpu::Sampler>(&value)->clone()}
                    : std::nullopt;
     }
 };
+/** @brief Label identifying a slot by index or name. */
 export struct SlotLabel {
     std::variant<std::uint32_t, std::string> label;
     SlotLabel(std::uint32_t l) : label(l) {}

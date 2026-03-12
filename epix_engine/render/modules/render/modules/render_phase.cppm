@@ -16,6 +16,7 @@ import :pipeline;
 import :pipeline_server;
 
 namespace render::phase {
+/** @brief Strongly-typed index identifying a registered draw function. */
 export struct DrawFunctionId : core::int_base<uint32_t> {
     using core::int_base<uint32_t>::int_base;
     auto operator<=>(const DrawFunctionId&) const = default;
@@ -76,6 +77,8 @@ export struct OpaqueSortKey {
     bool operator==(const OpaqueSortKey& other) const { return (*this <=> other) == std::strong_ordering::equal; }
 };
 
+/** @brief Concept for a render phase item that provides entity, sort key,
+ * and draw function identifiers. */
 export template <typename T>
 concept PhaseItem = requires(const T item) {
     // the entity associated with this item
@@ -86,18 +89,24 @@ concept PhaseItem = requires(const T item) {
     { item.draw_function() } -> std::convertible_to<DrawFunctionId>;
 };
 
+/** @brief Concept extending PhaseItem with batch size support for
+ * instanced draws. */
 export template <typename P>
 concept BatchedPhaseItem = PhaseItem<P> && requires(const P item) {
     // batch size/count for this item
     { item.batch_size() } -> std::convertible_to<size_t>;
 };
 
+/** @brief Concept extending PhaseItem with a cached pipeline ID for
+ * pipeline state management. */
 export template <typename P>
 concept CachedRenderPipelinePhaseItem = PhaseItem<P> && requires(const P item) {
     // the pipeline cache key for this item
     { item.pipeline() } -> std::convertible_to<CachedPipelineId>;
 };
 
+/** @brief Error returned by draw functions, with type indicating whether
+ * to skip or report failure. */
 export struct DrawError {
     enum class ErrorType {
         Skip,
@@ -142,6 +151,10 @@ std::string_view to_str(DrawError error) {
     }
 }
 
+/** @brief Concept for a draw function that can prepare and draw phase
+ * items.
+ * @tparam FuncT The draw function type.
+ * @tparam P The phase item type. */
 export template <typename FuncT, typename P>
 concept Draw =
     PhaseItem<P> &&
@@ -150,6 +163,9 @@ concept Draw =
         { func.draw(world, ctx, view, item) } -> std::same_as<std::expected<void, DrawError>>;
     };
 
+/** @brief Abstract base class for type-erased draw functions for a
+ * specific phase item type.
+ * @tparam P The phase item type. */
 export template <PhaseItem P>
 struct DrawFunction {
     virtual void prepare(const World& world) {}
@@ -180,6 +196,7 @@ struct DrawFunctionImpl : DrawFunction<P> {
     Func m_func;
 };
 
+/** @brief A draw function that does nothing — useful as a placeholder. */
 export template <PhaseItem P>
 struct EmptyDrawFunction : DrawFunction<P> {
     std::expected<void, DrawError> draw(const World&, const wgpu::RenderPassEncoder&, Entity, const P&) override {
@@ -282,6 +299,9 @@ struct DrawFunctions {
         std::make_shared<std::pair<std::shared_mutex, DrawFunctionsInternal<P>>>();
 };
 
+/** @brief Component holding sorted phase items and executing their draw
+ * functions during rendering.
+ * @tparam T The phase item type. */
 export template <PhaseItem T>
 struct RenderPhase {
    public:
@@ -354,6 +374,8 @@ struct RenderPhase {
         }
     }
 };
+/** @brief Error returned by individual render commands within a draw
+ * function chain. */
 export struct RenderCommandError {
     enum class Type {
         Skip,
@@ -365,6 +387,10 @@ export struct RenderCommandError {
 template <template <typename> typename R, typename P>
 using render_command_traits = function_traits<decltype(&R<P>::render)>;
 
+/** @brief Concept for a struct template that forms a render command
+ * within a draw function sequence.
+ * @tparam R The command template (parameterized on PhaseItem).
+ * @tparam P The phase item type. */
 export template <template <typename> typename R, typename P>
 concept RenderCommand = requires {
     requires PhaseItem<P>;
@@ -448,6 +474,9 @@ struct RenderCommandState {
     command_type command;
 };
 
+/** @brief Render command that sets the cached render pipeline on the
+ * encoder for a CachedRenderPipelinePhaseItem.
+ * @tparam P The phase item type. */
 export template <CachedRenderPipelinePhaseItem P>
 struct SetItemPipeline {
     void prepare(const World&) {}
@@ -536,6 +565,11 @@ struct RenderCommandSequence {
     std::tuple<RenderCommandState<R, P>...> m_commands;
 };
 
+/** @brief Register a sequence of render commands as a draw function for
+ * phase P.
+ * @tparam P The phase item type.
+ * @tparam R Render command templates to chain.
+ * @return The DrawFunctionId of the registered sequence. */
 export template <PhaseItem P, template <typename> typename... R>
     requires(RenderCommand<R, P> && ...)
 DrawFunctionId app_add_render_commands(core::App& app) {
@@ -544,6 +578,8 @@ DrawFunctionId app_add_render_commands(core::App& app) {
     return draw_functions.template add<RenderCommandSequence<P, R...>>(world);
 }
 
+/** @brief System that sorts all RenderPhase<P> components by their sort
+ * keys. */
 export template <PhaseItem P>
 void sort_phase_items(Query<Item<RenderPhase<P>&>> phases) {
     for (auto&& [phase] : phases.iter()) {

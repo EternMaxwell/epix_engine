@@ -6,6 +6,8 @@ import :shader;
 import :pipeline;
 
 namespace render {
+/** @brief Strongly-typed ID referencing a cached pipeline in the
+ * PipelineServer. */
 export struct CachedPipelineId : public utils::int_base<std::uint64_t> {
     using utils::int_base<std::uint64_t>::int_base;
 };
@@ -15,14 +17,23 @@ struct std::hash<render::CachedPipelineId> {
     std::size_t operator()(const render::CachedPipelineId& id) const { return std::hash<std::uint64_t>()(id.get()); }
 };
 namespace render {
+/** @brief Cached shader data associating a processed shader module with
+ * the pipelines that depend on it. */
 export struct ShaderData {
+    /** @brief Set of pipeline IDs that use this shader. */
     std::unordered_set<CachedPipelineId> pipelines;
+    /** @brief The compiled WebGPU shader module. */
     wgpu::ShaderModule processed_shader;
 };
+/** @brief Error codes for shader cache operations. */
 export enum ShaderCacheError {
+    /** @brief Shader source not yet loaded. */
     NotLoaded,
+    /** @brief Failed to create the shader module from source. */
     ModuleCreationFailure,
 };
+/** @brief Cache that compiles and stores shader modules, tracking which
+ * pipelines depend on each shader for hot-reload invalidation. */
 export struct ShaderCache {
     using load_func = std::optional<wgpu::ShaderModule> (*)(const wgpu::Device& device, const Shader& shader);
 
@@ -44,11 +55,11 @@ export struct ShaderCache {
      */
     auto get(const wgpu::Device& device, CachedPipelineId pipeline, assets::AssetId<Shader> id)
         -> std::expected<std::reference_wrapper<const wgpu::ShaderModule>, ShaderCacheError>;
-    /// Clears the cached pipeline ids associated with the shader, return the affected pipeline ids
+    /** @brief Clear cached pipeline IDs associated with a shader, returning the affected IDs. */
     auto clear(assets::AssetId<Shader> id) -> std::vector<CachedPipelineId>;
-    /// Set shader for shader id, return the affected pipeline ids if any
+    /** @brief Set or replace a shader, returning any affected pipeline IDs. */
     auto set_shader(assets::AssetId<Shader> id, Shader shader) -> std::vector<CachedPipelineId>;
-    /// Remove a shader from cache, return the affected pipeline ids if any
+    /** @brief Remove a shader from the cache, returning any affected pipeline IDs. */
     auto remove(assets::AssetId<Shader> id) -> std::vector<CachedPipelineId>;
 };
 }  // namespace render

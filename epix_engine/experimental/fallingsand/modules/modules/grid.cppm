@@ -5,12 +5,19 @@ import std;
 import epix.meta;
 
 namespace ext::grid {
+/** @brief Error codes for chunk layer operations. */
 export enum LayerError {
     UnsupportedType,
     OutOfBounds,
     EmptyCell,
     InvalidValue,
 };
+/** @brief Abstract base for a single layer of a Dim-dimensional chunk.
+ *
+ * Provides type-erased get/set access to grid cells. Each layer supports
+ * one or more value types identified by meta::type_index.
+ * @tparam Dim Number of spatial dimensions.
+ */
 template <std::size_t Dim>
 export class ChunkLayer {
    public:
@@ -55,11 +62,18 @@ export class ChunkLayer {
         });
     }
 };
+/** @brief Error codes for chunk-level layer management. */
 export enum class ChunkLayerError {
     TypeAlreadyExists,
     WidthMismatch,
     LayerMissing,
 };
+/** @brief Composite chunk that delegates cell access to typed sub-layers.
+ *
+ * A Chunk owns multiple ChunkLayer instances and routes get/set calls
+ * to the appropriate layer based on value type.
+ * @tparam Dim Number of spatial dimensions.
+ */
 template <std::size_t Dim>
 export class Chunk : public ChunkLayer<Dim> {
    private:

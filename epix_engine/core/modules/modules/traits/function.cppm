@@ -5,6 +5,15 @@ export module epix.traits:function;
 import std;
 
 export {
+    /** @brief Trait that extracts return type, argument types, and arity from callable types.
+     * @tparam F The function/callable type to introspect.
+     *
+     * Provides:
+     * - `return_type` — the function's return type
+     * - `args_tuple` — a std::tuple of argument types
+     * - `arity` — the number of arguments
+     * - `class_type` — (member functions only) the owning class
+     */
     template <typename F>
     struct function_traits;
     template <typename R, typename... Args>

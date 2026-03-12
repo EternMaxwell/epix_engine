@@ -75,28 +75,34 @@ struct SchedulePrepareError {
         ParentsWithDeps,
     } type;
 };
+/** @brief Configuration for a set of systems, including ordering constraints,
+ *  conditions, and sub-configs. Built via `into()` or `sets()` helpers. */
 export struct SetConfig {
    public:
     SetConfig() = default;
 
+    /** @brief Add an ordering dependency: this set runs after `label`. */
     template <typename T>
     T&& after(this T&& self, const SystemSetLabel& label) {
         self.edges.depends.insert(label);
         std::ranges::for_each(self.sub_configs, [&](SetConfig& config) { config.after(label); });
         return std::forward<T>(self);
     }
+    /** @brief Add an ordering dependency: this set runs before `label`. */
     template <typename T>
     T&& before(this T&& self, const SystemSetLabel& label) {
         self.edges.successors.insert(label);
         std::ranges::for_each(self.sub_configs, [&](SetConfig& config) { config.before(label); });
         return std::forward<T>(self);
     }
+    /** @brief Add this set as a child of the given parent set. */
     template <typename T>
     T&& in_set(this T&& self, const SystemSetLabel& label) {
         self.edges.parents.insert(label);
         std::ranges::for_each(self.sub_configs, [&](SetConfig& config) { config.in_set(label); });
         return std::forward<T>(self);
     }
+    /** @brief Set a display name for the system. */
     template <typename T>
     T&& set_name(this T&& self, std::string_view name) {
         if (self.system) self.system->set_name(name);
@@ -105,6 +111,7 @@ export struct SetConfig {
                               [&](SetConfig& config) { config.set_name(std::format("{}#{}", name, index++)); });
         return std::forward<T>(self);
     }
+    /** @brief Set display names for this set and its sub-configs from a range. */
     template <typename T, typename Rng>
     T&& set_names(this T&& self, Rng&& names)
         requires std::ranges::range<Rng> && std::convertible_to<std::ranges::range_value_t<Rng>, std::string_view>
@@ -121,6 +128,7 @@ export struct SetConfig {
         }
         return std::forward<T>(self);
     }
+    /** @brief Add a run condition: the system only runs when `func` returns true. */
     template <typename T, valid_function_system F>
     T&& run_if(this T&& self, F&& func)
         requires std::same_as<typename function_system_traits<F>::Input, std::tuple<>> &&
@@ -130,6 +138,7 @@ export struct SetConfig {
         std::ranges::for_each(self.sub_configs, [&](SetConfig& config) { config.run_if(std::forward<F>(func)); });
         return std::forward<T>(self);
     }
+    /** @brief Chain all sub-configs in order: each runs after the previous. */
     template <typename T>
     T&& chain(this T&& self) {
         for (auto&& [c1, c2] : self.sub_configs | std::views::adjacent<2>) {
@@ -138,6 +147,7 @@ export struct SetConfig {
         return std::forward<T>(self);
     }
 
+    /** @brief Deep-copy this SetConfig, cloning all systems and conditions. */
     SetConfig clone() const {
         SetConfig config;
         config.label = label;
@@ -228,17 +238,24 @@ SetConfig make_sets(Ts&&... ts)
         return config;
     }
 }
+/** @brief Configuration controlling how deferred systems are handled during schedule execution. */
 export struct ExecuteConfig {
     bool apply_direct    = false;  // should call apply right after run or at the end of the schedule
     bool queue_deferred  = false;  // call queue for deferred systems instead of apply at the end
     bool handle_deferred = true;   // whether to handle deferred systems in this schedule
     bool run_once        = false;  // systems in this schedule will only run once and be removed
 
+    /** @brief Check if deferred system handling is enabled. */
     bool is_defer_handled() const { return handle_deferred; }
+    /** @brief Check if deferred systems should be applied immediately after each run. */
     bool is_apply_direct() const { return handle_deferred && apply_direct; }
+    /** @brief Check if deferred systems should be queued instead of applied. */
     bool is_queue_deferred() const { return handle_deferred && queue_deferred && !apply_direct; }
+    /** @brief Check if deferred systems should be applied at the end of the schedule. */
     bool is_apply_end() const { return handle_deferred && !apply_direct && !queue_deferred; }
 };
+/** @brief A named collection of systems with dependency ordering and parallel execution support.
+ *  Systems are organized into sets with before/after/in_set relationships. */
 export struct Schedule {
    private:
     ScheduleLabel _label;
@@ -248,9 +265,8 @@ export struct Schedule {
 
     std::optional<std::vector<std::shared_ptr<Node>>> pending_applies;
 
-    /// Add sets and systems in config to the schedule. If accept_system is false, this only adds the configured edges
-    /// and conditions to the target node, and remain the existing config if any.
-    /// If accept_system is true, the config will be replaced if contains system, or merged if only contains set.
+    /** @brief Add sets and systems from config. If accept_system is false, only edges/conditions are merged;
+     *  if true, existing systems are replaced when the config carries a system. */
     void add_config(SetConfig config, bool accept_system = true);
 
    public:
@@ -260,37 +276,38 @@ export struct Schedule {
     Schedule& operator=(const Schedule&) = delete;
     Schedule& operator=(Schedule&&)      = default;
 
+    /** @brief Get the schedule's label. */
     ScheduleLabel label() const { return _label; }
 
+    /** @brief Chain a configuration function on an rvalue schedule. */
     template <std::invocable<Schedule&> F>
     Schedule&& then(F&& func) && {
         func(*this);
         return std::move(*this);
     }
+    /** @brief Chain a configuration function on an lvalue schedule. */
     template <std::invocable<Schedule&> F>
     Schedule& then(F&& func) & {
         func(*this);
         return *this;
     }
 
-    /// Check if the schedule contains a set with the given label.
+    /** @brief Check if the schedule contains a set with the given label. */
     bool contains_set(const SystemSetLabel& label) const { return nodes.contains(label); }
-    /// Check if the schedule contains a set with the given label and has an associated system.
+    /** @brief Check if the schedule contains a set with the given label and has a system. */
     bool contains_system(const SystemSetLabel& label) const {
         if (auto it = nodes.find(label); it != nodes.end()) {
             return (bool)it->second->system;
         }
         return false;
     }
-    /// Add systems and sets in config to the schedule. Old config will be replaced if contains system, or merged if
-    /// only contains set.
+    /** @brief Add systems and sets from config. Existing systems are replaced. */
     void add_systems(SetConfig&& config) { add_config(std::move(config), true); }
-    /// Configure sets in config to the schedule. The existing systems will remain, existing edges and conditions will
-    /// be updated.
+    /** @brief Configure sets from config. Existing systems remain; edges/conditions are updated. */
     void configure_sets(SetConfig&& config) { add_config(std::move(config), false); }
     void add_systems(SetConfig& config) { add_config(std::move(config), true); }
     void configure_sets(SetConfig& config) { add_config(std::move(config), false); }
-    /// Remove the system associated with the set label. The set will remain.
+    /** @brief Remove the system associated with the set label. The set remains. */
     bool remove_system(const SystemSetLabel& label) {
         auto it = nodes.find(label);
         if (it != nodes.end()) {
@@ -300,7 +317,7 @@ export struct Schedule {
         }
         return false;
     }
-    /// Remove the set and its associated system.
+    /** @brief Remove the set and its associated system entirely. */
     bool remove_set(const SystemSetLabel& label) {
         auto it = nodes.find(label);
         if (it != nodes.end()) {
@@ -310,29 +327,42 @@ export struct Schedule {
         return false;
     }
 
+    /** @brief Set the default execution configuration. */
     void set_default_execute_config(const ExecuteConfig& config) { _default_execute_config = config; }
+    /** @brief Set the default execution configuration (rvalue chain). */
     Schedule&& with_execute_config(const ExecuteConfig& config) && {
         set_default_execute_config(config);
         return std::move(*this);
     }
+    /** @brief Set the default execution configuration (lvalue chain). */
     Schedule& with_execute_config(const ExecuteConfig& config) & {
         set_default_execute_config(config);
         return *this;
     }
+    /** @brief Get the default execution configuration (const). */
     const ExecuteConfig& default_execute_config() const { return _default_execute_config; }
+    /** @brief Get the default execution configuration (mutable). */
     ExecuteConfig& default_execute_config() { return _default_execute_config; }
 
-    // prepare the schedule (validate and build cache), if check_error is true, will check for errors
-    // otherwise the error will cause skipped nodes during execution
+    /** @brief Validate dependencies and build the execution cache.
+     *  @param check_error If true, returns an error on validation failure. */
     std::expected<void, SchedulePrepareError> prepare(bool check_error = true);
+    /** @brief Initialize all systems in this schedule by calling their initialize() methods.
+     *  @param force If true, re-initializes already-initialized systems. */
     void initialize_systems(World& world, bool force = false);
+    /** @brief Clamp stale change ticks on all systems. */
     void check_change_tick(Tick tick);
+    /** @brief Execute the schedule using the default configuration. */
     void execute(SystemDispatcher& dispatcher) { execute(dispatcher, _default_execute_config); }
+    /** @brief Execute the schedule with the given configuration. */
     void execute(SystemDispatcher& dispatcher, ExecuteConfig config);
+    /** @brief Apply all pending deferred commands from systems. */
     void apply_deferred(World& world);
 };
 static_assert(std::constructible_from<Schedule, Schedule&&>);
 
+/** @brief Create a SetConfig from one or more system functions.
+ *  All arguments must be valid system functions or existing SetConfig objects. */
 export template <typename... Ts>
 SetConfig into(Ts&&... ts)
     requires(sizeof...(Ts) >= 1) &&
@@ -344,6 +374,7 @@ SetConfig into(Ts&&... ts)
 {
     return make_sets<true, Ts...>(std::forward<Ts>(ts)...);
 }
+/** @brief Create a SetConfig from one or more label-only sets (no systems required). */
 export template <typename... Ts>
 SetConfig sets(Ts&&... ts)
     requires(sizeof...(Ts) >= 1)

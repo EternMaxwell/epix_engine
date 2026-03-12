@@ -12,6 +12,11 @@ import :query;
 import :ticks;
 
 namespace core {
+/** @brief Wrapper that redirects a system parameter's data source to the extracted (main) world.
+ *  Used in render systems to read data from the main world while running in a sub-world.
+ *  @tparam T A type satisfying system_param. Extract<T> accesses T from the
+ *  ExtractedWorld resource instead of the current world.
+ *  @note Deferred parameters (commands, etc.) are not allowed inside Extract. */
 export template <system_param T>
 struct Extract : public T {
    public:

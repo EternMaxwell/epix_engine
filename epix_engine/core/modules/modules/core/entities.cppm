@@ -12,35 +12,53 @@ import std;
 import :utils;
 
 namespace core {
+/** @brief Lightweight entity identifier composed of a generation counter and a slot index.
+ *  Two entities with the same index but different generations are distinct. */
 export struct Entity {
     union {
         struct {
+            /** @brief Generation counter; incremented when the slot is recycled. */
             std::uint32_t generation;
+            /** @brief Slot index into the entity storage. */
             std::uint32_t index;
         };
+        /** @brief Combined 64-bit unique id (generation | index). */
         std::uint64_t uid = 0;
     };
 
     bool operator==(const Entity& other) const { return uid == other.uid; }
     auto operator<=>(const Entity& other) const { return uid <=> other.uid; }
+    /** @brief Create an entity with generation 0 from a slot index. */
     static Entity from_index(std::uint32_t index) { return Entity{0, index}; }
+    /** @brief Create an entity from a slot index and generation counter. */
     static Entity from_parts(std::uint32_t index, std::uint32_t generation) { return Entity{generation, index}; }
 };
+/** @brief Strongly-typed archetype identifier. */
 export EPIX_MAKE_INT_WRAPPER(ArchetypeId, std::uint32_t);
+/** @brief Strongly-typed table identifier. */
 export EPIX_MAKE_INT_WRAPPER(TableId, std::uint32_t);
+/** @brief Strongly-typed row index within an archetype's entity list. */
 export EPIX_MAKE_INT_WRAPPER(ArchetypeRow, std::uint32_t);
+/** @brief Strongly-typed row index within a table. */
 export EPIX_MAKE_INT_WRAPPER(TableRow, std::uint32_t);
 EPIX_MAKE_INT_WRAPPER(BundleId, std::uint64_t);
 
+/** @brief Location of an entity within the ECS storage.
+ *  Tracks which archetype and table an entity belongs to. */
 export struct EntityLocation {
-    ArchetypeId archetype_id   = 0;
+    /** @brief Archetype this entity belongs to. */
+    ArchetypeId archetype_id = 0;
+    /** @brief Row within the archetype's entity list. */
     ArchetypeRow archetype_idx = 0;
-    TableId table_id           = 0;
-    TableRow table_idx         = 0;
+    /** @brief Table storing this entity's components. */
+    TableId table_id = 0;
+    /** @brief Row within the table. */
+    TableRow table_idx = 0;
 
     bool operator==(const EntityLocation& other) const = default;
     bool operator!=(const EntityLocation& other) const = default;
 
+    /** @brief Return a sentinel location with all fields set to max value. */
     static constexpr EntityLocation invalid() {
         return {std::numeric_limits<std::uint32_t>::max(), std::numeric_limits<std::uint32_t>::max(),
                 std::numeric_limits<std::uint32_t>::max(), std::numeric_limits<std::uint32_t>::max()};
@@ -52,6 +70,8 @@ struct EntityMeta {
 
     static constexpr EntityMeta empty() { return {0, EntityLocation::invalid()}; }
 };
+/** @brief Central entity allocator that manages entity ids and metadata.
+ *  Supports concurrent id reservation via reserve_entities(). */
 export struct Entities {
    private:
     std::vector<EntityMeta> meta;
@@ -186,6 +206,7 @@ export struct Entities {
      */
     std::optional<Entity> resolve_index(std::uint32_t index) const;
 
+    /** @brief Check whether there are reserved entities that need to be flushed. */
     bool needs_flush() const;
 
     /**

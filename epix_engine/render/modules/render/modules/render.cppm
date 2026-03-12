@@ -27,7 +27,10 @@ namespace render {
 export struct AnonymousSurface {
     std::function<wgpu::Surface(const wgpu::Instance&)> create_surface;
 };
+/** @brief Plugin that initializes the WebGPU rendering subsystem. */
 export struct RenderPlugin {
+    /** @brief Validation level (0 = none, 1 = nvrhi, 2 = Vulkan validation
+     * layers). */
     int validation = 0;
     /**
      * @brief Set the validation level for the render plugin.
