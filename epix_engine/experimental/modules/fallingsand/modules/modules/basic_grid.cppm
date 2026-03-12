@@ -3,19 +3,24 @@ export module epix.experimental.basic_grid;
 import std;
 
 namespace ext::grid {
-constexpr std::size_t npos = static_cast<std::size_t>(-1);
+constexpr std::size_t npos = std::numeric_limits<std::size_t>::max();
 bool is_npos(std::size_t index) { return index == npos; }
 bool not_npos(std::size_t index) { return index != npos; }
-template <typename T>
-T ref_value(std::reference_wrapper<T> ref) {
-    return ref.get();
-}
+/** @brief Error codes returned by grid operations. */
 export enum class grid_error {
-    OutOfBounds,
-    InvalidPos,
-    EmptyCell,
-    AlreadyOccupied,
+    OutOfBounds,     /**< Position is outside the grid bounds. */
+    InvalidPos,      /**< Position is invalid. */
+    EmptyCell,       /**< The cell at the given position is empty. */
+    AlreadyOccupied, /**< The cell at the given position is already occupied. */
 };
+/**
+ * @brief A fixed-size, densely packed N-dimensional grid where every cell holds a value.
+ *
+ * All cells are initialized with a default value. Every position within the
+ * grid dimensions is always occupied.
+ * @tparam Dim Number of dimensions.
+ * @tparam T   Cell value type (must be default-constructible and movable).
+ */
 export template <std::size_t Dim, typename T>
     requires std::constructible_from<T> && std::movable<T>
 struct packed_grid {
@@ -27,54 +32,168 @@ struct packed_grid {
     std::expected<std::size_t, grid_error> offset(std::array<std::uint32_t, Dim> pos) const;
 
    public:
+    /**
+     * @brief Construct a packed grid with the given dimensions.
+     * @param dimensions Size along each axis.
+     * @param default_value Value used to initialize every cell.
+     */
     packed_grid(std::array<std::uint32_t, Dim> dimensions, T default_value = T{});
+    /**
+     * @brief Change the default value used by reset().
+     * @param value New default value.
+     */
     void set_default(T value) { m_default_value = std::move(value); }
+    /**
+     * @brief Get the dimensions of the grid.
+     * @return Array of sizes along each axis.
+     */
     std::array<std::uint32_t, Dim> dimensions() const { return m_dimensions; }
+    /**
+     * @brief Get the size along a single axis.
+     * @param index Axis index.
+     * @return Size along the given axis.
+     */
     std::size_t dimension(std::size_t index) const { return m_dimensions[index]; }
+    /**
+     * @brief Get a mutable reference to the cell at the given position.
+     * @param pos Position in the grid.
+     * @return Reference to the cell, or grid_error::OutOfBounds.
+     */
     std::expected<std::reference_wrapper<T>, grid_error> get_mut(std::array<std::uint32_t, Dim> pos) {
         return offset(pos).transform([this](std::size_t index) { return std::ref(m_cells[index]); });
     }
+    /**
+     * @brief Get a const reference to the cell at the given position.
+     * @param pos Position in the grid.
+     * @return Const reference to the cell, or grid_error::OutOfBounds.
+     */
     std::expected<std::reference_wrapper<const T>, grid_error> get(std::array<std::uint32_t, Dim> pos) const {
         return offset(pos).transform([this](std::size_t index) { return std::cref(m_cells[index]); });
     }
+    /**
+     * @brief Set the cell at the given position by constructing a new value in-place.
+     * @tparam Args Constructor argument types.
+     * @param pos   Position in the grid.
+     * @param value Constructor arguments forwarded to T.
+     * @return void on success, or grid_error::OutOfBounds.
+     */
     template <typename... Args>
         requires std::constructible_from<T, Args...>
     std::expected<void, grid_error> set(std::array<std::uint32_t, Dim> pos, Args&&... value) {
         return offset(pos).transform([&](std::size_t index) { m_cells[index] = T(std::forward<Args>(value)...); });
     }
+    /**
+     * @brief Reset the cell at the given position to the default value.
+     * @param pos Position in the grid.
+     * @return void on success, or grid_error::OutOfBounds.
+     */
     std::expected<void, grid_error> reset(std::array<std::uint32_t, Dim> pos) {
         return offset(pos).transform([&](std::size_t index) { m_cells[index] = m_default_value; });
     }
 };
+/**
+ * @brief A fixed-size N-dimensional grid that stores only occupied cells densely.
+ *
+ * Cells are stored contiguously in a vector; an index grid maps positions
+ * to data indices. Iteration is efficient as it only visits occupied cells.
+ * Removal uses swap-and-pop so order is not preserved.
+ * @tparam Dim Number of dimensions.
+ * @tparam T   Cell value type (must be movable).
+ */
 export template <std::size_t Dim, typename T>
     requires std::movable<T>
 struct dense_grid {
    private:
     std::vector<T> m_data;
     std::vector<std::array<std::uint32_t, Dim>> m_positions;  // positions of each cell in m_data
-    packed_grid<Dim, std::size_t> m_index_grid;               // stores indices into m_data, or -1 for empty
+    packed_grid<Dim, std::size_t> m_index_grid;               // stores indices into m_data, or npos for empty
 
    public:
-    dense_grid(std::array<std::uint32_t, Dim> dimensions) : m_index_grid(dimensions, static_cast<std::size_t>(-1)) {}
+    /**
+     * @brief Construct a dense grid with the given dimensions (initially empty).
+     * @param dimensions Size along each axis.
+     */
+    dense_grid(std::array<std::uint32_t, Dim> dimensions) : m_index_grid(dimensions, npos) {}
+    /**
+     * @brief Check whether a cell exists at the given position.
+     * @param pos Position to query.
+     * @return true if a value is stored at @p pos.
+     */
     bool contains(std::array<std::uint32_t, Dim> pos) const { return m_index_grid.get(pos).value_or(npos) != npos; }
+    /**
+     * @brief Get the dimensions of the grid.
+     * @return Array of sizes along each axis.
+     */
     std::array<std::uint32_t, Dim> dimensions() const { return m_index_grid.dimensions(); }
+    /**
+     * @brief Get the size along a single axis.
+     * @param index Axis index.
+     * @return Size along the given axis.
+     */
     std::size_t dimension(std::size_t index) const { return m_index_grid.dimension(index); }
+    /** @brief Iterate over the positions of all occupied cells. */
     auto iter_pos() const { return m_positions | std::views::all; }
+    /** @brief Iterate over the values of all occupied cells (const). */
     auto iter_cells() const { return m_data | std::views::all; }
+    /** @brief Iterate over the values of all occupied cells (mutable). */
     auto iter_cells_mut() { return m_data | std::views::all; }
+    /** @brief Iterate over (position, value) pairs for all occupied cells (const). */
     auto iter() const { return std::views::zip(m_positions, m_data); }
+    /** @brief Iterate over (position, value) pairs for all occupied cells (mutable). */
     auto iter_mut() { return std::views::zip(m_positions, m_data); }
+    /**
+     * @brief Get a mutable reference to the cell at the given position.
+     * @param pos Position in the grid.
+     * @return Reference to the cell, or grid_error::EmptyCell / grid_error::OutOfBounds.
+     */
     std::expected<std::reference_wrapper<T>, grid_error> get_mut(std::array<std::uint32_t, Dim> pos);
+    /**
+     * @brief Get a const reference to the cell at the given position.
+     * @param pos Position in the grid.
+     * @return Const reference to the cell, or grid_error::EmptyCell / grid_error::OutOfBounds.
+     */
     std::expected<std::reference_wrapper<const T>, grid_error> get(std::array<std::uint32_t, Dim> pos) const;
+    /**
+     * @brief Set the cell at the given position, creating or overwriting.
+     * @tparam Args Constructor argument types.
+     * @param pos   Position in the grid.
+     * @param value Constructor arguments forwarded to T.
+     * @return void on success, or grid_error::OutOfBounds.
+     */
     template <typename... Args>
         requires std::constructible_from<T, Args...>
     std::expected<void, grid_error> set(std::array<std::uint32_t, Dim> pos, Args&&... value);
+    /**
+     * @brief Set the cell only if it is currently empty.
+     * @tparam Args Constructor argument types.
+     * @param pos   Position in the grid.
+     * @param value Constructor arguments forwarded to T.
+     * @return void on success, or grid_error::AlreadyOccupied / grid_error::OutOfBounds.
+     */
     template <typename... Args>
         requires std::constructible_from<T, Args...>
     std::expected<void, grid_error> set_new(std::array<std::uint32_t, Dim> pos, Args&&... value);
+    /**
+     * @brief Remove the cell at the given position, discarding its value.
+     * @param pos Position in the grid.
+     * @return void on success, or grid_error::EmptyCell / grid_error::OutOfBounds.
+     */
     std::expected<void, grid_error> remove(std::array<std::uint32_t, Dim> pos);
+    /**
+     * @brief Remove the cell at the given position and return its value.
+     * @param pos Position in the grid.
+     * @return The taken value, or grid_error::EmptyCell / grid_error::OutOfBounds.
+     */
     std::expected<T, grid_error> take(std::array<std::uint32_t, Dim> pos);
 };
+/**
+ * @brief A fixed-size N-dimensional grid with sparse storage and index recycling.
+ *
+ * Similar to dense_grid but recycles freed data slots instead of
+ * swap-and-pop, so data indices remain stable across removals.
+ * @tparam Dim Number of dimensions.
+ * @tparam T   Cell value type (must be movable).
+ */
 export template <std::size_t Dim, typename T>
     requires std::movable<T>
 struct sparse_grid {
@@ -82,46 +201,111 @@ struct sparse_grid {
     std::vector<T> m_data;
     std::vector<std::array<std::uint32_t, Dim>> m_positions;  // positions of each cell in m_data
     std::vector<std::size_t> m_recycled_indices;              // indices in m_data that are free to use
-    packed_grid<Dim, std::size_t> m_index_grid;               // stores indices into m_data, or -1 for empty
+    packed_grid<Dim, std::size_t> m_index_grid;               // stores indices into m_data, or npos for empty
 
     auto iter_valid_indices() const;
 
    public:
-    sparse_grid(std::array<std::uint32_t, Dim> dimensions) : m_index_grid(dimensions, static_cast<std::size_t>(-1)) {}
+    /**
+     * @brief Construct a sparse grid with the given dimensions (initially empty).
+     * @param dimensions Size along each axis.
+     */
+    sparse_grid(std::array<std::uint32_t, Dim> dimensions) : m_index_grid(dimensions, npos) {}
+    /**
+     * @brief Check whether a cell exists at the given position.
+     * @param pos Position to query.
+     * @return true if a value is stored at @p pos.
+     */
     bool contains(std::array<std::uint32_t, Dim> pos) const { return m_index_grid.get(pos).value_or(npos) != npos; }
+    /**
+     * @brief Get the dimensions of the grid.
+     * @return Array of sizes along each axis.
+     */
     std::array<std::uint32_t, Dim> dimensions() const { return m_index_grid.dimensions(); }
+    /**
+     * @brief Get the size along a single axis.
+     * @param index Axis index.
+     * @return Size along the given axis.
+     */
     std::size_t dimension(std::size_t index) const { return m_index_grid.dimension(index); }
+    /** @brief Iterate over the positions of all occupied cells. */
     auto iter_pos() const {
         return iter_valid_indices() |
                std::views::transform([this](std::size_t index) -> auto& { return m_positions[index]; });
     }
+    /** @brief Iterate over the values of all occupied cells (const). */
     auto iter_cells() const {
         return iter_valid_indices() |
                std::views::transform([this](std::size_t index) -> auto& { return m_data[index]; });
     }
+    /** @brief Iterate over the values of all occupied cells (mutable). */
     auto iter_cells_mut() {
         return iter_valid_indices() |
                std::views::transform([this](std::size_t index) -> auto& { return m_data[index]; });
     }
+    /** @brief Iterate over (position, value) pairs for all occupied cells (const). */
     auto iter() const {
         return iter_valid_indices() |
                std::views::transform([this](std::size_t index) { return std::tie(m_positions[index], m_data[index]); });
     }
+    /** @brief Iterate over (position, value) pairs for all occupied cells (mutable). */
     auto iter_mut() {
         return iter_valid_indices() |
                std::views::transform([this](std::size_t index) { return std::tie(m_positions[index], m_data[index]); });
     }
+    /**
+     * @brief Get a mutable reference to the cell at the given position.
+     * @param pos Position in the grid.
+     * @return Reference to the cell, or grid_error::EmptyCell / grid_error::OutOfBounds.
+     */
     std::expected<std::reference_wrapper<T>, grid_error> get_mut(std::array<std::uint32_t, Dim> pos);
+    /**
+     * @brief Get a const reference to the cell at the given position.
+     * @param pos Position in the grid.
+     * @return Const reference to the cell, or grid_error::EmptyCell / grid_error::OutOfBounds.
+     */
     std::expected<std::reference_wrapper<const T>, grid_error> get(std::array<std::uint32_t, Dim> pos) const;
+    /**
+     * @brief Set the cell at the given position, creating or overwriting.
+     * @tparam Args Constructor argument types.
+     * @param pos   Position in the grid.
+     * @param value Constructor arguments forwarded to T.
+     * @return void on success, or grid_error::OutOfBounds.
+     */
     template <typename... Args>
         requires std::constructible_from<T, Args...>
     std::expected<void, grid_error> set(std::array<std::uint32_t, Dim> pos, Args&&... value);
+    /**
+     * @brief Set the cell only if it is currently empty.
+     * @tparam Args Constructor argument types.
+     * @param pos   Position in the grid.
+     * @param value Constructor arguments forwarded to T.
+     * @return void on success, or grid_error::AlreadyOccupied / grid_error::OutOfBounds.
+     */
     template <typename... Args>
         requires std::constructible_from<T, Args...>
     std::expected<void, grid_error> set_new(std::array<std::uint32_t, Dim> pos, Args&&... value);
+    /**
+     * @brief Remove the cell at the given position, discarding its value.
+     * @param pos Position in the grid.
+     * @return void on success, or grid_error::EmptyCell / grid_error::OutOfBounds.
+     */
     std::expected<void, grid_error> remove(std::array<std::uint32_t, Dim> pos);
+    /**
+     * @brief Remove the cell at the given position and return its value.
+     * @param pos Position in the grid.
+     * @return The taken value, or grid_error::EmptyCell / grid_error::OutOfBounds.
+     */
     std::expected<T, grid_error> take(std::array<std::uint32_t, Dim> pos);
 };
+/**
+ * @brief A resizable N-dimensional grid with signed coordinates and dense storage.
+ *
+ * Supports negative positions through an internal origin offset. The grid
+ * can be extended to cover a larger range and shrunk to fit occupied cells.
+ * @tparam Dim Number of dimensions.
+ * @tparam T   Cell value type (must be movable).
+ */
 export template <std::size_t Dim, typename T>
     requires std::movable<T>
 struct dense_extendible_grid {
@@ -134,27 +318,89 @@ struct dense_extendible_grid {
     std::expected<std::array<std::uint32_t, Dim>, grid_error> relative_pos(std::array<std::int32_t, Dim> pos) const;
 
    public:
+    /**
+     * @brief Construct with the given initial dimensions centered at origin.
+     * @param dimensions Initial size along each axis.
+     */
     dense_extendible_grid(std::array<std::uint32_t, Dim> dimensions);
+    /**
+     * @brief Check whether a cell exists at the given position.
+     * @param pos Signed position to query.
+     * @return true if a value is stored at @p pos.
+     */
     bool contains(std::array<std::int32_t, Dim> pos) const;
+    /**
+     * @brief Get the current dimensions of the grid.
+     * @return Array of sizes along each axis.
+     */
     std::array<std::uint32_t, Dim> dimensions() const { return m_index_grid.dimensions(); }
+    /**
+     * @brief Get the size along a single axis.
+     * @param index Axis index.
+     * @return Size along the given axis.
+     */
     std::size_t dimension(std::size_t index) const { return m_index_grid.dimension(index); }
+    /** @brief Iterate over the positions of all occupied cells. */
     auto iter_pos() const { return m_positions | std::views::all; }
+    /** @brief Iterate over the values of all occupied cells (const). */
     auto iter_cells() const { return m_data | std::views::all; }
+    /** @brief Iterate over the values of all occupied cells (mutable). */
     auto iter_cells_mut() { return m_data | std::views::all; }
+    /** @brief Iterate over (position, value) pairs for all occupied cells (const). */
     auto iter() const { return std::views::zip(m_positions, m_data); }
+    /** @brief Iterate over (position, value) pairs for all occupied cells (mutable). */
     auto iter_mut() { return std::views::zip(m_positions, m_data); }
+    /**
+     * @brief Get a mutable reference to the cell at the given position.
+     * @param pos Signed position in the grid.
+     * @return Reference to the cell, or grid_error::EmptyCell / grid_error::OutOfBounds.
+     */
     std::expected<std::reference_wrapper<T>, grid_error> get_mut(std::array<std::int32_t, Dim> pos);
+    /**
+     * @brief Get a const reference to the cell at the given position.
+     * @param pos Signed position in the grid.
+     * @return Const reference to the cell, or grid_error::EmptyCell / grid_error::OutOfBounds.
+     */
     std::expected<std::reference_wrapper<const T>, grid_error> get(std::array<std::int32_t, Dim> pos) const;
+    /**
+     * @brief Extend the grid to cover the range [new_min, new_max).
+     * @param new_min Minimum corner (inclusive) of the new range.
+     * @param new_max Maximum corner (exclusive) of the new range.
+     */
     void extend(std::array<std::int32_t, Dim> new_min, std::array<std::int32_t, Dim> new_max);
+    /** @brief Shrink the grid to the bounding box of occupied cells. */
     void shrink();
+    /**
+     * @brief Set the cell at the given position, creating or overwriting.
+     * @tparam Args Constructor argument types.
+     * @param pos   Signed position in the grid.
+     * @param value Constructor arguments forwarded to T.
+     * @return void on success, or grid_error::OutOfBounds.
+     */
     template <typename... Args>
         requires std::constructible_from<T, Args...>
     std::expected<void, grid_error> set(std::array<std::int32_t, Dim> pos, Args&&... value);
+    /**
+     * @brief Set the cell only if it is currently empty.
+     * @tparam Args Constructor argument types.
+     * @param pos   Signed position in the grid.
+     * @param value Constructor arguments forwarded to T.
+     * @return void on success, or grid_error::AlreadyOccupied / grid_error::OutOfBounds.
+     */
     template <typename... Args>
         requires std::constructible_from<T, Args...>
     std::expected<void, grid_error> set_new(std::array<std::int32_t, Dim> pos, Args&&... value);
 };
-// dim, type, child count each axis
+/**
+ * @brief A tree-based dynamically extendible N-dimensional grid.
+ *
+ * Uses an N-ary tree (with ChildCount children per axis per node) that
+ * grows in depth as needed to accommodate any unsigned coordinate.
+ * Coverage per axis equals ChildCount^level.
+ * @tparam Dim        Number of dimensions.
+ * @tparam T          Cell value type (must be movable).
+ * @tparam ChildCount Number of children per axis at each tree level (>= 2).
+ */
 export template <std::size_t Dim, typename T, std::size_t ChildCount = 2>
     requires std::movable<T>
 struct tree_extendible_grid {
@@ -185,24 +431,81 @@ struct tree_extendible_grid {
     void update_data_index(std::array<std::uint32_t, Dim> pos, std::size_t new_data_index);
 
    public:
+    /** @brief Default-construct an empty tree grid. */
     tree_extendible_grid() = default;
+    /**
+     * @brief Check whether a cell exists at the given position.
+     * @param pos Position to query.
+     * @return true if a value is stored at @p pos.
+     */
     bool contains(std::array<std::uint32_t, Dim> pos) const;
+    /**
+     * @brief Get the current spatial coverage per axis (ChildCount^level).
+     * @return Coverage extent along each axis.
+     */
     std::uint32_t coverage() const { return compute_coverage(); }
+    /**
+     * @brief Get the number of occupied cells.
+     * @return Count of stored elements.
+     */
     std::size_t size() const { return m_data.size(); }
+    /** @brief Iterate over the positions of all occupied cells. */
     auto iter_pos() const { return m_positions | std::views::all; }
+    /** @brief Iterate over the values of all occupied cells (const). */
     auto iter_cells() const { return m_data | std::views::all; }
+    /** @brief Iterate over the values of all occupied cells (mutable). */
     auto iter_cells_mut() { return m_data | std::views::all; }
+    /** @brief Iterate over (position, value) pairs for all occupied cells (const). */
     auto iter() const { return std::views::zip(m_positions, m_data); }
+    /** @brief Iterate over (position, value) pairs for all occupied cells (mutable). */
     auto iter_mut() { return std::views::zip(m_positions, m_data); }
+    /**
+     * @brief Get a mutable reference to the cell at the given position.
+     * @param pos Position in the grid.
+     * @return Reference to the cell, or grid_error::EmptyCell.
+     */
     std::expected<std::reference_wrapper<T>, grid_error> get_mut(std::array<std::uint32_t, Dim> pos);
+    /**
+     * @brief Get a const reference to the cell at the given position.
+     * @param pos Position in the grid.
+     * @return Const reference to the cell, or grid_error::EmptyCell.
+     */
     std::expected<std::reference_wrapper<const T>, grid_error> get(std::array<std::uint32_t, Dim> pos) const;
+    /**
+     * @brief Set the cell at the given position, creating or overwriting.
+     *
+     * The tree is automatically extended if the position exceeds the current coverage.
+     * @tparam Args Constructor argument types.
+     * @param pos   Position in the grid.
+     * @param value Constructor arguments forwarded to T.
+     * @return void on success, or an error.
+     */
     template <typename... Args>
         requires std::constructible_from<T, Args...>
     std::expected<void, grid_error> set(std::array<std::uint32_t, Dim> pos, Args&&... value);
+    /**
+     * @brief Set the cell only if it is currently empty.
+     *
+     * The tree is automatically extended if the position exceeds the current coverage.
+     * @tparam Args Constructor argument types.
+     * @param pos   Position in the grid.
+     * @param value Constructor arguments forwarded to T.
+     * @return void on success, or grid_error::AlreadyOccupied.
+     */
     template <typename... Args>
         requires std::constructible_from<T, Args...>
     std::expected<void, grid_error> set_new(std::array<std::uint32_t, Dim> pos, Args&&... value);
+    /**
+     * @brief Remove the cell at the given position, discarding its value.
+     * @param pos Position in the grid.
+     * @return void on success, or grid_error::EmptyCell.
+     */
     std::expected<void, grid_error> remove(std::array<std::uint32_t, Dim> pos);
+    /**
+     * @brief Remove the cell at the given position and return its value.
+     * @param pos Position in the grid.
+     * @return The taken value, or grid_error::EmptyCell.
+     */
     std::expected<T, grid_error> take(std::array<std::uint32_t, Dim> pos);
 };
 
@@ -264,7 +567,7 @@ std::expected<void, grid_error> dense_grid<Dim, T>::set(std::array<std::uint32_t
     auto index_res = m_index_grid.get_mut(pos);
     if (!index_res.has_value()) return std::unexpected(index_res.error());
     std::size_t& index_ref = index_res.value();
-    if (index_ref == static_cast<std::size_t>(-1)) {
+    if (index_ref == npos) {
         // new cell
         m_data.emplace_back(std::forward<Args>(value)...);
         m_positions.push_back(pos);
@@ -283,7 +586,7 @@ std::expected<void, grid_error> dense_grid<Dim, T>::set_new(std::array<std::uint
     auto index_res = m_index_grid.get_mut(pos);
     if (!index_res.has_value()) return std::unexpected(index_res.error());
     std::size_t& index_ref = index_res.value();
-    if (index_ref == static_cast<std::size_t>(-1)) {
+    if (index_ref == npos) {
         // new cell
         m_data.emplace_back(std::forward<Args>(value)...);
         m_positions.push_back(pos);
@@ -299,7 +602,7 @@ std::expected<void, grid_error> dense_grid<Dim, T>::remove(std::array<std::uint3
     auto index_res = m_index_grid.get_mut(pos);
     if (!index_res.has_value()) return std::unexpected(index_res.error());
     std::size_t& index = index_res.value();
-    if (index == static_cast<std::size_t>(-1)) return std::unexpected(grid_error::EmptyCell);
+    if (index == npos) return std::unexpected(grid_error::EmptyCell);
     // swap-remove from m_data and m_positions
     std::size_t last_index = m_data.size() - 1;
     if (index != last_index) {
@@ -310,7 +613,7 @@ std::expected<void, grid_error> dense_grid<Dim, T>::remove(std::array<std::uint3
     }
     m_data.pop_back();
     m_positions.pop_back();
-    index = static_cast<std::size_t>(-1);
+    index = npos;
     return {};
 }
 template <std::size_t Dim, typename T>
@@ -319,7 +622,7 @@ std::expected<T, grid_error> dense_grid<Dim, T>::take(std::array<std::uint32_t, 
     auto index_res = m_index_grid.get_mut(pos);
     if (!index_res.has_value()) return std::unexpected(index_res.error());
     std::size_t& index = index_res.value();
-    if (index == static_cast<std::size_t>(-1)) return std::unexpected(grid_error::EmptyCell);
+    if (index == npos) return std::unexpected(grid_error::EmptyCell);
     T value = std::move(m_data[index]);
     // swap-remove from m_data and m_positions
     std::size_t last_index = m_data.size() - 1;
@@ -331,7 +634,7 @@ std::expected<T, grid_error> dense_grid<Dim, T>::take(std::array<std::uint32_t, 
     }
     m_data.pop_back();
     m_positions.pop_back();
-    index = static_cast<std::size_t>(-1);
+    index = npos;
     return value;
 }
 
@@ -475,7 +778,7 @@ std::expected<std::reference_wrapper<T>, grid_error> dense_extendible_grid<Dim, 
     return relative_pos(pos).and_then([this](std::array<std::uint32_t, Dim> rel_pos) {
         return m_index_grid.get(rel_pos).and_then(
             [this](std::size_t index) -> std::expected<std::reference_wrapper<T>, grid_error> {
-                if (index == static_cast<std::size_t>(-1)) return std::unexpected(grid_error::EmptyCell);
+                if (index == npos) return std::unexpected(grid_error::EmptyCell);
                 return std::ref(m_data[index]);
             });
     });
@@ -487,7 +790,7 @@ std::expected<std::reference_wrapper<const T>, grid_error> dense_extendible_grid
     return relative_pos(pos).and_then([this](std::array<std::uint32_t, Dim> rel_pos) {
         return m_index_grid.get(rel_pos).and_then(
             [this](std::size_t index) -> std::expected<std::reference_wrapper<const T>, grid_error> {
-                if (index == static_cast<std::size_t>(-1)) return std::unexpected(grid_error::EmptyCell);
+                if (index == npos) return std::unexpected(grid_error::EmptyCell);
                 return std::cref(m_data[index]);
             });
     });
@@ -513,7 +816,7 @@ void dense_extendible_grid<Dim, T>::extend(std::array<std::int32_t, Dim> new_min
     for (std::size_t i = 0; i < Dim; i++) {
         new_dims[i] = static_cast<std::uint32_t>(actual_max[i] - actual_min[i] + 1);
     }
-    packed_grid<Dim, std::size_t> new_grid(new_dims, static_cast<std::size_t>(-1));
+    packed_grid<Dim, std::size_t> new_grid(new_dims, npos);
     for (std::size_t idx = 0; idx < m_positions.size(); idx++) {
         std::array<std::uint32_t, Dim> new_rel;
         for (std::size_t i = 0; i < Dim; i++) {
@@ -548,7 +851,7 @@ void dense_extendible_grid<Dim, T>::shrink() {
     for (std::size_t i = 0; i < Dim; i++) {
         new_dims[i] = static_cast<std::uint32_t>(bb_max[i] - bb_min[i] + 1);
     }
-    packed_grid<Dim, std::size_t> new_grid(new_dims, static_cast<std::size_t>(-1));
+    packed_grid<Dim, std::size_t> new_grid(new_dims, npos);
     for (std::size_t idx = 0; idx < m_positions.size(); idx++) {
         std::array<std::uint32_t, Dim> new_rel;
         for (std::size_t i = 0; i < Dim; i++) {
@@ -565,10 +868,10 @@ template <typename... Args>
     requires std::constructible_from<T, Args...>
 std::expected<void, grid_error> dense_extendible_grid<Dim, T>::set(std::array<std::int32_t, Dim> pos, Args&&... value) {
     extend(pos, pos);  // ensure position is in bounds, extending if necessary
-    return relative_pos(pos).and_then([this, &value...](std::array<std::uint32_t, Dim> rel_pos) {
+    return relative_pos(pos).and_then([this, &pos, &value...](std::array<std::uint32_t, Dim> rel_pos) {
         return m_index_grid.get_mut(rel_pos).and_then(
-            [this, &value...](std::size_t& index_ref) -> std::expected<void, grid_error> {
-                if (index_ref == static_cast<std::size_t>(-1)) {
+            [this, &pos, &value...](std::size_t& index_ref) -> std::expected<void, grid_error> {
+                if (index_ref == npos) {
                     // new cell
                     m_data.emplace_back(std::forward<Args>(value)...);
                     m_positions.push_back(pos);
@@ -588,10 +891,10 @@ template <typename... Args>
 std::expected<void, grid_error> dense_extendible_grid<Dim, T>::set_new(std::array<std::int32_t, Dim> pos,
                                                                        Args&&... value) {
     extend(pos, pos);  // ensure position is in bounds, extending if necessary
-    return relative_pos(pos).and_then([this, &value...](std::array<std::uint32_t, Dim> rel_pos) {
+    return relative_pos(pos).and_then([this, &pos, &value...](std::array<std::uint32_t, Dim> rel_pos) {
         return m_index_grid.get_mut(rel_pos).and_then(
-            [this, &value...](std::size_t& index_ref) -> std::expected<void, grid_error> {
-                if (index_ref == static_cast<std::size_t>(-1)) {
+            [this, &pos, &value...](std::size_t& index_ref) -> std::expected<void, grid_error> {
+                if (index_ref == npos) {
                     // new cell
                     m_data.emplace_back(std::forward<Args>(value)...);
                     m_positions.push_back(pos);
