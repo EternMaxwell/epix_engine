@@ -299,35 +299,35 @@ TEST(SparseGrid, Iterators) {
 // ============================================================
 
 TEST(DenseExtendibleGrid, ConstructionAndDimensions) {
-    dense_extendible_grid<2, int> g({4, 4});
-    EXPECT_EQ(g.dimension(0), 4);
-    EXPECT_EQ(g.dimension(1), 4);
+    dense_extendible_grid<2, int> g;
+    EXPECT_EQ(g.dimension(0), 1);
+    EXPECT_EQ(g.dimension(1), 1);
     EXPECT_FALSE(g.contains({0, 0}));
 }
 
 TEST(DenseExtendibleGrid, SetAndGet) {
-    dense_extendible_grid<2, int> g({4, 4});
+    dense_extendible_grid<2, int> g;
     EXPECT_TRUE(g.set({1, 1}, 42).has_value());
     EXPECT_TRUE(g.contains({1, 1}));
     EXPECT_EQ(g.get({1, 1})->get(), 42);
 }
 
 TEST(DenseExtendibleGrid, SetNew) {
-    dense_extendible_grid<2, int> g({4, 4});
+    dense_extendible_grid<2, int> g;
     EXPECT_TRUE(g.set_new({0, 0}, 10).has_value());
     EXPECT_EQ(g.set_new({0, 0}, 20).error(), grid_error::AlreadyOccupied);
     EXPECT_EQ(g.get({0, 0})->get(), 10);
 }
 
 TEST(DenseExtendibleGrid, GetMut) {
-    dense_extendible_grid<2, int> g({4, 4});
+    dense_extendible_grid<2, int> g;
     g.set({0, 0}, 5);
     g.get_mut({0, 0})->get() = 99;
     EXPECT_EQ(g.get({0, 0})->get(), 99);
 }
 
 TEST(DenseExtendibleGrid, NegativeCoordinates) {
-    dense_extendible_grid<2, int> g({4, 4});
+    dense_extendible_grid<2, int> g;
     // Extend to cover negative range
     g.extend({-2, -2}, {4, 4});
     EXPECT_TRUE(g.set({-1, -1}, 77).has_value());
@@ -336,7 +336,7 @@ TEST(DenseExtendibleGrid, NegativeCoordinates) {
 }
 
 TEST(DenseExtendibleGrid, ExtendAndAccess) {
-    dense_extendible_grid<2, int> g({2, 2});
+    dense_extendible_grid<2, int> g;
     g.set({0, 0}, 1);
     g.extend({-3, -3}, {5, 5});
     // Old data should still be accessible
@@ -349,7 +349,7 @@ TEST(DenseExtendibleGrid, ExtendAndAccess) {
 }
 
 TEST(DenseExtendibleGrid, Iterators) {
-    dense_extendible_grid<2, int> g({4, 4});
+    dense_extendible_grid<2, int> g;
     g.set({0, 0}, 1);
     g.set({1, 1}, 2);
     g.set({2, 2}, 3);
@@ -365,6 +365,37 @@ TEST(DenseExtendibleGrid, Iterators) {
         count++;
     }
     EXPECT_EQ(count, 3u);
+}
+
+TEST(DenseExtendibleGrid, Remove) {
+    dense_extendible_grid<2, int> g;
+    g.set({0, 0}, 11);
+    g.set({1, 1}, 22);
+
+    EXPECT_TRUE(g.remove({0, 0}).has_value());
+    EXPECT_FALSE(g.contains({0, 0}));
+    EXPECT_TRUE(g.contains({1, 1}));
+    EXPECT_EQ(g.get({1, 1})->get(), 22);
+
+    EXPECT_EQ(g.remove({0, 0}).error(), grid_error::EmptyCell);
+}
+
+TEST(DenseExtendibleGrid, Take) {
+    dense_extendible_grid<2, int> g;
+    g.set({-1, -1}, 77);
+
+    auto taken = g.take({-1, -1});
+    ASSERT_TRUE(taken.has_value());
+    EXPECT_EQ(taken.value(), 77);
+    EXPECT_FALSE(g.contains({-1, -1}));
+
+    EXPECT_EQ(g.take({-1, -1}).error(), grid_error::EmptyCell);
+}
+
+TEST(DenseExtendibleGrid, RemoveAndTakeOutOfBounds) {
+    dense_extendible_grid<2, int> g;
+    EXPECT_EQ(g.remove({100, 100}).error(), grid_error::OutOfBounds);
+    EXPECT_EQ(g.take({100, 100}).error(), grid_error::OutOfBounds);
 }
 
 // ============================================================
@@ -442,15 +473,15 @@ TEST(TreeExtendibleGrid, AutoExtend) {
 
 TEST(TreeExtendibleGrid, MultipleInserts) {
     tree_extendible_grid<2, int> g;
-    for (std::uint32_t i = 0; i < 10; i++) {
-        for (std::uint32_t j = 0; j < 10; j++) {
-            g.set({i, j}, static_cast<int>(i * 10 + j));
+    for (std::int32_t i = 0; i < 10; i++) {
+        for (std::int32_t j = 0; j < 10; j++) {
+            g.set({i, j}, i * 10 + j);
         }
     }
     EXPECT_EQ(g.count(), 100u);
-    for (std::uint32_t i = 0; i < 10; i++) {
-        for (std::uint32_t j = 0; j < 10; j++) {
-            EXPECT_EQ(g.get({i, j})->get(), static_cast<int>(i * 10 + j));
+    for (std::int32_t i = 0; i < 10; i++) {
+        for (std::int32_t j = 0; j < 10; j++) {
+            EXPECT_EQ(g.get({i, j})->get(), i * 10 + j);
         }
     }
 }
@@ -472,6 +503,20 @@ TEST(TreeExtendibleGrid, Iterators) {
         count++;
     }
     EXPECT_EQ(count, 3u);
+}
+
+TEST(TreeExtendibleGrid, ManualShrinkAfterRemovals) {
+    tree_extendible_grid<2, int> g;
+    g.set(std::array<std::int32_t, 2>{100, 200}, 1);
+    g.set(std::array<std::int32_t, 2>{101, 200}, 2);
+    EXPECT_GE(g.coverage(), 201u);
+
+    EXPECT_TRUE(g.remove(std::array<std::int32_t, 2>{100, 200}).has_value());
+    EXPECT_TRUE(g.contains(std::array<std::int32_t, 2>{101, 200}));
+
+    g.shrink();
+    EXPECT_EQ(g.coverage(), 2u);
+    EXPECT_EQ(g.get(std::array<std::int32_t, 2>{101, 200})->get(), 2);
 }
 
 TEST(TreeExtendibleGrid, CustomChildCount) {
