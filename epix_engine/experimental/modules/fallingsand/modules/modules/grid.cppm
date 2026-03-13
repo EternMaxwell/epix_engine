@@ -282,53 +282,60 @@ struct ExtendibleChunkGrid {
 
     template <typename T>
     auto insert_cell(std::array<std::int64_t, Dim> pos, T&& value) -> std::expected<void, ChunkGridError> {
-        return chunk_coords(pos).and_then([this, &value](auto&& coords) {
-            auto&& [chunk_pos, cell_pos] = coords;
-            return m_chunk_grid.get_mut(chunk_pos).transform_error(map_err).and_then(
-                [&cell_pos, &value](Chunk<Dim>& chunk) -> std::expected<void, ChunkGridError> {
-                    return chunk.set(cell_pos, std::forward<T>(value));
-                });
-        });
+        auto coords_result = chunk_coords(pos);
+        if (!coords_result.has_value()) return std::unexpected(coords_result.error());
+
+        auto [chunk_pos, cell_pos] = coords_result.value();
+        return m_chunk_grid.get_mut(chunk_pos).transform_error(map_err).and_then(
+            [&cell_pos, &value](Chunk<Dim>& chunk) -> std::expected<void, ChunkGridError> {
+                return chunk.set(cell_pos, std::forward<T>(value));
+            });
     }
     template <typename... Args>
     auto insert_cell_multi(std::array<std::int64_t, Dim> pos, Args&&... value) -> std::expected<void, ChunkGridError> {
-        return chunk_coords(pos).and_then([this, &value...](auto&& coords) {
-            auto&& [chunk_pos, cell_pos] = coords;
-            return m_chunk_grid.get_mut(chunk_pos).transform_error(map_err).and_then(
-                [&cell_pos, &value...](Chunk<Dim>& chunk) -> std::expected<void, ChunkGridError> {
-                    return chunk.set_multi(cell_pos, std::forward<Args>(value)...);
-                });
-        });
+        auto coords_result = chunk_coords(pos);
+        if (!coords_result.has_value()) return std::unexpected(coords_result.error());
+
+        auto [chunk_pos, cell_pos] = coords_result.value();
+        return m_chunk_grid.get_mut(chunk_pos).transform_error(map_err).and_then(
+            [&cell_pos, &value...](Chunk<Dim>& chunk) -> std::expected<void, ChunkGridError> {
+                return chunk.set_multi(cell_pos, std::forward<Args>(value)...);
+            });
     }
     template <typename T>
     auto get_cell(std::array<std::int64_t, Dim> pos) const
         -> std::expected<std::reference_wrapper<const T>, ChunkGridError> {
-        return chunk_coords(pos).and_then([this](auto&& coords) {
-            auto&& [chunk_pos, cell_pos] = coords;
-            return m_chunk_grid.get(chunk_pos).transform_error(map_err).and_then(
-                [&cell_pos](const Chunk<Dim>& chunk) -> std::expected<std::reference_wrapper<const T>, ChunkGridError> {
-                    return chunk.template get<T>(cell_pos);
-                });
-        });
+        auto coords_result = chunk_coords(pos);
+        if (!coords_result.has_value()) return std::unexpected(coords_result.error());
+
+        auto [chunk_pos, cell_pos] = coords_result.value();
+        auto chunk_result          = m_chunk_grid.get(chunk_pos).transform_error(map_err);
+        if (!chunk_result.has_value()) return std::unexpected(chunk_result.error());
+
+        const ChunkLayer<Dim>& layer = chunk_result.value().get();
+        return layer.template get<T>(cell_pos).transform_error(map_err);
     }
     template <typename T>
     auto remove(std::array<std::int64_t, Dim> pos) -> std::expected<void, ChunkGridError> {
-        return chunk_coords(pos).and_then([this](auto&& coords) {
-            auto&& [chunk_pos, cell_pos] = coords;
-            return m_chunk_grid.get_mut(chunk_pos).transform_error(map_err).and_then(
-                [&cell_pos](Chunk<Dim>& chunk) -> std::expected<void, ChunkGridError> {
-                    return chunk.template remove<T>(cell_pos);
-                });
-        });
+        auto coords_result = chunk_coords(pos);
+        if (!coords_result.has_value()) return std::unexpected(coords_result.error());
+
+        auto [chunk_pos, cell_pos] = coords_result.value();
+        auto chunk_result          = m_chunk_grid.get_mut(chunk_pos).transform_error(map_err);
+        if (!chunk_result.has_value()) return std::unexpected(chunk_result.error());
+
+        ChunkLayer<Dim>& layer = chunk_result.value().get();
+        return layer.template remove<T>(cell_pos).transform_error(map_err);
     }
     auto remove_all(std::array<std::int64_t, Dim> pos) -> std::expected<void, ChunkGridError> {
-        return chunk_coords(pos).and_then([this](auto&& coords) {
-            auto&& [chunk_pos, cell_pos] = coords;
-            return m_chunk_grid.get_mut(chunk_pos).transform_error(map_err).and_then(
-                [&cell_pos](Chunk<Dim>& chunk) -> std::expected<void, ChunkGridError> {
-                    return chunk.remove_all(cell_pos);
-                });
-        });
+        auto coords_result = chunk_coords(pos);
+        if (!coords_result.has_value()) return std::unexpected(coords_result.error());
+
+        auto [chunk_pos, cell_pos] = coords_result.value();
+        auto chunk_result          = m_chunk_grid.get_mut(chunk_pos).transform_error(map_err);
+        if (!chunk_result.has_value()) return std::unexpected(chunk_result.error());
+
+        return chunk_result.value().get().remove_all(cell_pos).transform_error(map_err);
     }
 };
 
