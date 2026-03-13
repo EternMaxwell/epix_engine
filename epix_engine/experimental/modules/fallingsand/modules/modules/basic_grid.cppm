@@ -30,6 +30,7 @@ struct packed_grid {
     T m_default_value;
 
     std::expected<std::size_t, grid_error> offset(std::array<std::uint32_t, Dim> pos) const;
+    std::array<std::uint32_t, Dim> index_to_pos(std::size_t index) const;
 
    public:
     /**
@@ -59,6 +60,19 @@ struct packed_grid {
      * @return Total number of cells.
      */
     std::size_t count() const { return m_cells.size(); }
+    /** @brief Iterate over the positions of  cells. */
+    auto iter_pos() const {
+        return std::views::iota(std::size_t{0}, count()) |
+               std::views::transform([this](std::size_t index) { return index_to_pos(index); });
+    }
+    /** @brief Iterate over the values of all cells (const). */
+    auto iter_cells() const { return m_cells | std::views::all; }
+    /** @brief Iterate over the values of all cells (mutable). */
+    auto iter_cells_mut() { return m_cells | std::views::all; }
+    /** @brief Iterate over (position, value) pairs for all cells (const). */
+    auto iter() const { return std::views::zip(iter_pos(), m_cells); }
+    /** @brief Iterate over (position, value) pairs for all cells (mutable). */
+    auto iter_mut() { return std::views::zip(iter_pos(), m_cells); }
     /**
      * @brief Get a mutable reference to the cell at the given position.
      * @param pos Position in the grid.
@@ -580,6 +594,16 @@ std::expected<std::size_t, grid_error> packed_grid<Dim, T>::offset(std::array<st
         index += pos[i];
     }
     return index;
+}
+template <std::size_t Dim, typename T>
+    requires std::constructible_from<T> && std::movable<T>
+std::array<std::uint32_t, Dim> packed_grid<Dim, T>::index_to_pos(std::size_t index) const {
+    std::array<std::uint32_t, Dim> pos;
+    for (std::size_t i = Dim; i-- > 0;) {
+        pos[i] = index % m_dimensions[i];
+        index /= m_dimensions[i];
+    }
+    return pos;
 }
 template <std::size_t Dim, typename T>
     requires std::constructible_from<T> && std::movable<T>

@@ -74,6 +74,37 @@ TEST(PackedGrid, HigherDimensional) {
     EXPECT_EQ(g.get({0, 0, 0})->get(), 0);
 }
 
+TEST(PackedGrid, Iterators) {
+    packed_grid<2, int> g({2, 3}, 0);
+    for (std::uint32_t i = 0; i < 2; i++) {
+        for (std::uint32_t j = 0; j < 3; j++) {
+            g.set({i, j}, static_cast<int>(i * 10 + j));
+        }
+    }
+
+    int sum = 0;
+    for (auto& v : g.iter_cells()) {
+        sum += v;
+    }
+    EXPECT_EQ(sum, 36);
+
+    std::size_t pos_count = 0;
+    std::set<std::pair<std::uint32_t, std::uint32_t>> visited;
+    for (auto&& [p, value] : g.iter()) {
+        pos_count++;
+        visited.emplace(p[0], p[1]);
+        EXPECT_EQ(value, static_cast<int>(p[0] * 10 + p[1]));
+    }
+
+    EXPECT_EQ(pos_count, 6u);
+    EXPECT_EQ(visited.size(), 6u);
+    for (std::uint32_t i = 0; i < 2; i++) {
+        for (std::uint32_t j = 0; j < 3; j++) {
+            EXPECT_TRUE(visited.contains({i, j}));
+        }
+    }
+}
+
 // ============================================================
 // dense_grid tests
 // ============================================================
