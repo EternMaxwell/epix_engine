@@ -7,13 +7,33 @@ import epix.assets;
 import epix.core;
 import epix.core_graph;
 import epix.mesh;
+import epix.render;
 import epix.transform;
+import epix.input;
+import epix.window;
 
 import epix.experimental.grid;
 
 namespace ext::fallingsand {
 namespace {
 constexpr std::size_t kDim = 2;
+
+glm::vec2 screen_to_world(glm::vec2 screen_pos,
+                          glm::vec2 window_size,
+                          const render::camera::Camera& camera,
+                          const render::camera::Projection& projection,
+                          const transform::Transform& cam_transform) {
+    (void)projection;
+    float ndc_x = (screen_pos.x / window_size.x) * 2.0f - 1.0f;
+    float ndc_y = 1.0f - (screen_pos.y / window_size.y) * 2.0f;
+
+    glm::mat4 proj_matrix = camera.computed.projection;
+    glm::mat4 view_matrix = glm::inverse(cam_transform.to_matrix());
+    glm::mat4 vp_inv      = glm::inverse(proj_matrix * view_matrix);
+
+    glm::vec4 world = vp_inv * glm::vec4(ndc_x, ndc_y, 0.0f, 1.0f);
+    return glm::vec2(world.x / world.w, world.y / world.w);
+}
 
 struct SandSimulation {
     grid::ExtendibleChunkGrid<kDim> grid;
@@ -75,6 +95,30 @@ struct SandSimulation {
         std::int32_t y = height - 1;
         for (std::int32_t x = center - radius; x <= center + radius; ++x) {
             if (in_bounds(x, y) && !has_cell(x, y)) set_cell(x, y);
+        }
+    }
+
+    void clear_all() {
+        for (std::int32_t y = 0; y < height; ++y) {
+            for (std::int32_t x = 0; x < width; ++x) {
+                clear_cell(x, y);
+            }
+        }
+    }
+
+    void paint_disc(std::int32_t center_x, std::int32_t center_y, std::int32_t radius, bool fill) {
+        std::int32_t r2 = radius * radius;
+        for (std::int32_t y = center_y - radius; y <= center_y + radius; ++y) {
+            for (std::int32_t x = center_x - radius; x <= center_x + radius; ++x) {
+                std::int32_t dx = x - center_x;
+                std::int32_t dy = y - center_y;
+                if (dx * dx + dy * dy > r2) continue;
+                if (fill) {
+                    set_cell(x, y);
+                } else {
+                    clear_cell(x, y);
+                }
+            }
         }
     }
 
@@ -167,7 +211,10 @@ export struct SimpleFallingSandState {
     SandSimulation sim;
     assets::Handle<mesh::Mesh> mesh;
     float cell_size;
-    std::uint32_t rng = 0x8badf00dU;
+    std::int32_t brush_radius = 3;
+    bool paused               = false;
+    bool auto_spawn           = true;
+    std::uint32_t rng         = 0x8badf00dU;
     std::uint64_t frame{0};
 };
 
@@ -196,18 +243,73 @@ export struct SimpleFallingSandPlugin {
 
         app.add_systems(
             core::Update,
-            core::into([](core::ResMut<SimpleFallingSandState> state, core::ResMut<assets::Assets<mesh::Mesh>> meshes) {
-                state->frame += 1;
-                state->rng          = state->rng * 1664525U + 1013904223U;
-                std::int32_t center = state->sim.width / 2 + static_cast<std::int32_t>((state->rng % 11U) - 5U);
-                state->sim.spawn_row_drop(center, 2);
+            core::into(
+                [](core::ResMut<SimpleFallingSandState> state, core::Res<input::ButtonInput<input::KeyCode>> keys,
+                   core::Res<input::ButtonInput<input::MouseButton>> mouse_buttons,
+                   core::Query<core::Item<const render::camera::Camera&, const render::camera::Projection&,
+                                          const transform::Transform&>> camera_query,
+                   core::Query<core::Item<const window::CachedWindow&>, core::With<window::PrimaryWindow>> window_query,
+                   core::ResMut<assets::Assets<mesh::Mesh>> meshes) {
+                    state->frame += 1;
 
-                // Run multiple substeps to keep motion visible at lower frame rates.
-                state->sim.step(state->frame);
-                state->sim.step(state->frame + 1);
+                    if (keys->just_pressed(input::KeyCode::KeySpace)) state->paused = !state->paused;
+                    if (keys->just_pressed(input::KeyCode::KeyT)) state->auto_spawn = !state->auto_spawn;
+                    if (keys->just_pressed(input::KeyCode::KeyQ) && state->brush_radius > 1) state->brush_radius -= 1;
+                    if (keys->just_pressed(input::KeyCode::KeyE) && state->brush_radius < 16) state->brush_radius += 1;
+                    if (keys->just_pressed(input::KeyCode::KeyC)) state->sim.clear_all();
+                    if (keys->just_pressed(input::KeyCode::KeyR)) {
+                        state->sim.clear_all();
+                        state->sim.seed_pile();
+                    }
 
-                (void)meshes->insert(state->mesh.id(), state->sim.build_mesh(state->cell_size));
-            }).set_name("falling sand simulate and mesh sync"));
+                    if (auto window_opt = window_query.single(); window_opt.has_value()) {
+                        if (auto camera_opt = camera_query.single(); camera_opt.has_value()) {
+                            auto&& [window]                            = *window_opt;
+                            auto&& [camera, projection, cam_transform] = *camera_opt;
+                            auto [cursor_x, cursor_y]                  = window.cursor_pos;
+                            auto [win_w, win_h]                        = window.size;
+                            if (win_w > 0 && win_h > 0) {
+                                glm::vec2 world_cursor = screen_to_world(
+                                    glm::vec2(static_cast<float>(cursor_x), static_cast<float>(cursor_y)),
+                                    glm::vec2(static_cast<float>(win_w), static_cast<float>(win_h)), camera, projection,
+                                    cam_transform);
+
+                                float half_x = static_cast<float>(state->sim.width) * state->cell_size * 0.5f;
+                                float half_y = static_cast<float>(state->sim.height) * state->cell_size * 0.5f;
+                                float fx     = (world_cursor.x + half_x) / state->cell_size;
+                                float fy     = (world_cursor.y + half_y) / state->cell_size;
+
+                                std::int32_t gx = static_cast<std::int32_t>(std::floor(fx));
+                                std::int32_t gy = static_cast<std::int32_t>(std::floor(fy));
+
+                                if (state->sim.in_bounds(gx, gy)) {
+                                    if (mouse_buttons->pressed(input::MouseButton::MouseButtonLeft)) {
+                                        state->sim.paint_disc(gx, gy, state->brush_radius, true);
+                                    }
+                                    if (mouse_buttons->pressed(input::MouseButton::MouseButtonRight)) {
+                                        state->sim.paint_disc(gx, gy, state->brush_radius, false);
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if (!state->paused) {
+                        if (state->auto_spawn) {
+                            state->rng = state->rng * 1664525U + 1013904223U;
+                            std::int32_t center =
+                                state->sim.width / 2 + static_cast<std::int32_t>((state->rng % 11U) - 5U);
+                            state->sim.spawn_row_drop(center, 2);
+                        }
+
+                        // Run multiple substeps to keep motion visible at lower frame rates.
+                        state->sim.step(state->frame);
+                        state->sim.step(state->frame + 1);
+                    }
+
+                    (void)meshes->insert(state->mesh.id(), state->sim.build_mesh(state->cell_size));
+                })
+                .set_name("falling sand simulate and mesh sync"));
     }
 };
 }  // namespace ext::fallingsand

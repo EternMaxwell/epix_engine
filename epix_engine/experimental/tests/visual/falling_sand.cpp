@@ -13,7 +13,7 @@ int main() {
     core::App app = core::App::create();
 
     window::Window primary_window;
-    primary_window.title = "Falling Sand (ChunkGrid + DenseLayer + Mesh)";
+    primary_window.title = "Falling Sand Interactive Test (LMB add, RMB erase, Space pause, R reset)";
     primary_window.size  = {1280, 720};
 
     app.add_plugins(window::WindowPlugin{
