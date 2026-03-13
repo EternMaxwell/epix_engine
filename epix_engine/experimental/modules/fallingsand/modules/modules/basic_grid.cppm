@@ -574,13 +574,6 @@ struct tree_extendible_grid {
      */
     void shrink();
 };
-
-// instantiate for compile test
-template class packed_grid<3, int>;
-template class dense_grid<3, int>;
-template class sparse_grid<3, int>;
-template class dense_extendible_grid<3, int>;
-template class tree_extendible_grid<3, int>;
 }  // namespace ext::grid
 
 namespace ext::grid {
