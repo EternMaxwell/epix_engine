@@ -191,6 +191,10 @@ struct DrawMesh2dBatch {
             });
         }
 
+        if (gpu_mesh->vertex_count() == 0) {
+            return {};
+        }
+
         auto batch_size = static_cast<std::uint32_t>(item.batch_size());
         gpu_mesh->bind_to(encoder);
         if (gpu_mesh->is_indexed()) {

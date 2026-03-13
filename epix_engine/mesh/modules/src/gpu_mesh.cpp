@@ -92,6 +92,11 @@ void GPUMesh::update_from_mesh(const Mesh& mesh, const wgpu::Device& device, con
         }
     }
     mesh.get_indices().and_then([&](const MeshIndices& indices) -> std::optional<bool> {
+        if (indices.empty()) {
+            _index_binding.reset();
+            return std::nullopt;
+        }
+
         auto upload_view      = make_upload_buffer_view(indices.data);
         size_t byte_size      = indices.data.type_info().size * indices.data.size();
         size_t reserved_bytes = upload_view.size;

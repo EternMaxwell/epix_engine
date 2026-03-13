@@ -633,6 +633,11 @@ void queue_meshes_2d_opaque(
                              extracted_mesh.mesh.to_string_short());
                 continue;
             }
+            if (gpu_mesh->vertex_count() == 0) {
+                spdlog::debug("[mesh] Skip opaque mesh entity {:#x}: GPU mesh {} is empty.", entity.index,
+                              extracted_mesh.mesh.to_string_short());
+                continue;
+            }
             if (extracted_mesh.texture && !images->try_get(*extracted_mesh.texture)) {
                 spdlog::warn("[mesh] Skip opaque textured mesh entity {:#x}: GPU image {} is not available yet.",
                              entity.index, extracted_mesh.texture->to_string_short());
@@ -682,6 +687,11 @@ void queue_meshes_2d_transparent(
             if (!gpu_mesh) {
                 spdlog::warn("[mesh] Skip transparent mesh entity {:#x}: GPU mesh {} is not prepared yet.",
                              entity.index, extracted_mesh.mesh.to_string_short());
+                continue;
+            }
+            if (gpu_mesh->vertex_count() == 0) {
+                spdlog::debug("[mesh] Skip transparent mesh entity {:#x}: GPU mesh {} is empty.", entity.index,
+                              extracted_mesh.mesh.to_string_short());
                 continue;
             }
             if (extracted_mesh.texture && !images->try_get(*extracted_mesh.texture)) {
