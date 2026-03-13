@@ -10,14 +10,14 @@ template <typename R, typename... Args>
 class function_ref<R(Args...)> {
    private:
     const void* m_callable;
-    R (*m_invoke)(void*, Args&&...);
+    R (*m_invoke)(const void*, Args&&...);
 
    public:
     template <std::invocable<Args...> F>
         requires(!std::is_same_v<std::remove_cvref_t<F>, function_ref>) &&
                     std::same_as<std::invoke_result_t<F, Args...>, R>
     function_ref(const F& f)
-        : m_callable(static_cast<const void*>(&f)), m_invoke([](void* callable, Args&&... args) -> R {
+        : m_callable(static_cast<const void*>(&f)), m_invoke([](const void* callable, Args&&... args) -> R {
               return std::invoke(*static_cast<const F*>(callable), std::forward<Args>(args)...);
           }) {}
     function_ref(const function_ref&)            = default;
