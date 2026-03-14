@@ -57,6 +57,22 @@ TEST(PackedGrid, SetDefault) {
     EXPECT_EQ(g.get({0, 0})->get(), 99);
 }
 
+TEST(PackedGrid, ClearResetsToDefault) {
+    packed_grid<2, int> g({2, 3}, 7);
+    g.set({0, 0}, 1);
+    g.set({1, 2}, 2);
+
+    g.clear();
+
+    for (std::uint32_t i = 0; i < 2; i++) {
+        for (std::uint32_t j = 0; j < 3; j++) {
+            auto cell = g.get({i, j});
+            ASSERT_TRUE(cell.has_value());
+            EXPECT_EQ(cell->get(), 7);
+        }
+    }
+}
+
 TEST(PackedGrid, OutOfBounds) {
     packed_grid<2, int> g({2, 3}, 0);
     EXPECT_EQ(g.get({2, 0}).error(), grid_error::OutOfBounds);
@@ -224,6 +240,23 @@ TEST(DenseGrid, MultipleSetRemove) {
     EXPECT_TRUE(g.contains({1, 1}));
 }
 
+TEST(DenseGrid, ClearRemovesAllCells) {
+    dense_grid<2, int> g({4, 4});
+    g.set({0, 0}, 1);
+    g.set({1, 1}, 2);
+    g.set({2, 2}, 3);
+
+    g.clear();
+
+    EXPECT_EQ(g.count(), 0u);
+    EXPECT_FALSE(g.contains({0, 0}));
+    EXPECT_FALSE(g.contains({1, 1}));
+    EXPECT_FALSE(g.contains({2, 2}));
+    EXPECT_EQ(g.get({1, 1}).error(), grid_error::EmptyCell);
+    EXPECT_EQ(g.dimension(0), 4u);
+    EXPECT_EQ(g.dimension(1), 4u);
+}
+
 // ============================================================
 // sparse_grid tests
 // ============================================================
@@ -323,6 +356,25 @@ TEST(SparseGrid, Iterators) {
         sum += v;
     }
     EXPECT_EQ(sum, 40);
+}
+
+TEST(SparseGrid, ClearRemovesAllCellsAndRecycledIndices) {
+    sparse_grid<2, int> g({4, 4});
+    g.set({0, 0}, 1);
+    g.set({1, 1}, 2);
+    g.remove({0, 0});
+    g.set({2, 2}, 3);
+
+    g.clear();
+
+    EXPECT_EQ(g.count(), 0u);
+    EXPECT_FALSE(g.contains({1, 1}));
+    EXPECT_FALSE(g.contains({2, 2}));
+    EXPECT_EQ(g.get({1, 1}).error(), grid_error::EmptyCell);
+
+    EXPECT_TRUE(g.set({3, 3}, 9).has_value());
+    EXPECT_TRUE(g.contains({3, 3}));
+    EXPECT_EQ(g.get({3, 3})->get(), 9);
 }
 
 // ============================================================
@@ -427,6 +479,21 @@ TEST(DenseExtendibleGrid, RemoveAndTakeOutOfBounds) {
     dense_extendible_grid<2, int> g;
     EXPECT_EQ(g.remove({100, 100}).error(), grid_error::OutOfBounds);
     EXPECT_EQ(g.take({100, 100}).error(), grid_error::OutOfBounds);
+}
+
+TEST(DenseExtendibleGrid, ClearRemovesAllCellsButKeepsCoverage) {
+    dense_extendible_grid<2, int> g;
+    g.set({0, 0}, 1);
+    g.set({5, 5}, 2);
+    const auto before_dims = g.dimensions();
+
+    g.clear();
+
+    EXPECT_EQ(g.count(), 0u);
+    EXPECT_FALSE(g.contains({0, 0}));
+    EXPECT_FALSE(g.contains({5, 5}));
+    EXPECT_EQ(g.get({0, 0}).error(), grid_error::EmptyCell);
+    EXPECT_EQ(g.dimensions(), before_dims);
 }
 
 // ============================================================
@@ -563,4 +630,21 @@ TEST(TreeExtendibleGrid, HigherDimensional) {
     tree_extendible_grid<3, int> g;
     auto ref = g.get({1, 2, 3});
     EXPECT_FALSE(ref.has_value());
+}
+
+TEST(TreeExtendibleGrid, ClearResetsDataAndTreeState) {
+    tree_extendible_grid<2, int> g;
+    g.set({100, 200}, 1);
+    g.set({101, 200}, 2);
+    ASSERT_GT(g.coverage(), 2u);
+
+    g.clear();
+
+    EXPECT_EQ(g.count(), 0u);
+    EXPECT_EQ(g.coverage(), 2u);
+    EXPECT_FALSE(g.contains({100, 200}));
+    EXPECT_EQ(g.get({0, 0}).error(), grid_error::EmptyCell);
+
+    EXPECT_TRUE(g.set({0, 0}, 42).has_value());
+    EXPECT_EQ(g.get({0, 0})->get(), 42);
 }
