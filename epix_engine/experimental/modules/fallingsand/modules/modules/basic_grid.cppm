@@ -60,6 +60,8 @@ struct packed_grid {
      * @return Total number of cells.
      */
     std::size_t count() const { return m_cells.size(); }
+    /** @brief Clear all cells in the grid. */
+    void clear() { std::fill(m_cells.begin(), m_cells.end(), m_default_value); }
     /** @brief Iterate over the positions of  cells. */
     auto iter_pos() const {
         return std::views::iota(std::size_t{0}, count()) |
@@ -133,7 +135,12 @@ struct dense_grid {
      * @brief Construct a dense grid with the given dimensions (initially empty).
      * @param dimensions Size along each axis.
      */
-    dense_grid(std::array<std::uint32_t, Dim> dimensions) : m_index_grid(dimensions, npos) {}
+    dense_grid(std::array<std::uint32_t, Dim> dimensions) : m_index_grid(dimensions, npos) {
+        std::size_t total = 1;
+        for (std::uint32_t dim : dimensions) total *= dim;
+        m_positions.reserve(total);
+        m_data.reserve(total);
+    }
     /**
      * @brief Check whether a cell exists at the given position.
      * @param pos Position to query.
@@ -156,6 +163,12 @@ struct dense_grid {
      * @return Number of occupied cells.
      */
     std::size_t count() const { return m_data.size(); }
+    /** @brief Clear all cells in the grid. */
+    void clear() {
+        m_data.clear();
+        m_positions.clear();
+        m_index_grid.clear();
+    }
     /** @brief Iterate over the positions of all occupied cells. */
     auto iter_pos() const { return m_positions | std::views::all; }
     /** @brief Iterate over the values of all occupied cells (const). */
@@ -235,7 +248,12 @@ struct sparse_grid {
      * @brief Construct a sparse grid with the given dimensions (initially empty).
      * @param dimensions Size along each axis.
      */
-    sparse_grid(std::array<std::uint32_t, Dim> dimensions) : m_index_grid(dimensions, npos) {}
+    sparse_grid(std::array<std::uint32_t, Dim> dimensions) : m_index_grid(dimensions, npos) {
+        std::size_t total = 1;
+        for (std::uint32_t dim : dimensions) total *= dim;
+        m_positions.reserve(total);
+        m_data.reserve(total);
+    }
     /**
      * @brief Check whether a cell exists at the given position.
      * @param pos Position to query.
@@ -258,6 +276,13 @@ struct sparse_grid {
      * @return Number of active cells.
      */
     std::size_t count() const { return m_data.size() - m_recycled_indices.size(); }
+    /** @brief Clear all cells in the grid. */
+    void clear() {
+        m_data.clear();
+        m_positions.clear();
+        m_recycled_indices.clear();
+        m_index_grid.clear();
+    }
     /** @brief Iterate over the positions of all occupied cells. */
     auto iter_pos() const {
         return iter_valid_indices() |
@@ -374,6 +399,13 @@ struct dense_extendible_grid {
      * @return Total number of cells.
      */
     std::size_t count() const { return m_data.size(); }
+    /** @brief Clear all cells in the grid. */
+    void clear() {
+        m_data.clear();
+        m_positions.clear();
+        m_index_grid.clear();
+        m_origin.fill(0);
+    }
     /** @brief Iterate over the positions of all occupied cells. */
     auto iter_pos() const { return m_positions | std::views::all; }
     /** @brief Iterate over the values of all occupied cells (const). */
@@ -509,6 +541,8 @@ struct tree_extendible_grid {
      * @return Count of stored elements.
      */
     std::size_t count() const;
+    /** @brief Clear all cells in the grid. */
+    void clear();
     /** @brief Iterate over the positions of all occupied cells. */
     auto iter_pos() const { return m_positions | std::views::all; }
     /** @brief Iterate over the values of all occupied cells (const). */
@@ -1233,6 +1267,16 @@ template <std::size_t Dim, typename T, std::size_t ChildCount>
     requires std::movable<T>
 std::size_t tree_extendible_grid<Dim, T, ChildCount>::count() const {
     return m_data.size();
+}
+template <std::size_t Dim, typename T, std::size_t ChildCount>
+    requires std::movable<T>
+void tree_extendible_grid<Dim, T, ChildCount>::clear() {
+    m_data.clear();
+    m_positions.clear();
+    m_depth = 1;
+    m_origin.fill(0);
+    m_nodes.clear();
+    m_nodes.emplace_back();
 }
 template <std::size_t Dim, typename T, std::size_t ChildCount>
     requires std::movable<T>
