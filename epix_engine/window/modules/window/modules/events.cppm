@@ -37,13 +37,17 @@ struct WindowCloseRequested {
 struct WindowDestroyed {
     core::Entity window;
 };
-/** @brief Event sent when the cursor position changes within a window. */
+/** @brief Event sent when the cursor position changes for a window. */
 struct CursorMoved {
     /** @brief The window entity the cursor moved in. */
     core::Entity window;
-    /** @brief Current cursor position (x, y) in window coordinates. */
+    /** @brief Current cursor position (x, y) in client-area coordinates.
+     *
+     * Origin is top-left; +x right, +y down. In Disabled cursor mode this can
+     * be virtual/unbounded.
+     */
     std::pair<double, double> position;
-    /** @brief Change in cursor position since the last event. */
+    /** @brief Delta (dx, dy) since the previous cursor event in the same coordinates. */
     std::pair<double, double> delta;
 };
 /** @brief Event sent when the cursor enters or leaves a window. */

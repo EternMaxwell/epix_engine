@@ -137,7 +137,20 @@ struct Window {
     /** @brief Size of the window in pixels. */
     std::pair<int, int> size = {1280, 720};
 
-    /** @brief Cursor position relative to the window. Ignored at creation. */
+    /** @brief Cursor position (x, y) in client-area coordinates.
+     *
+     * Origin is the top-left corner of the window client area.
+     * +x points right, +y points down.
+     *
+     * In Normal/Hidden/Captured modes, when the cursor is inside the window,
+     * values are typically in [0, width) x [0, height). Values may be outside
+     * that range when the cursor leaves the window.
+     *
+     * In Disabled mode, this is a virtual unbounded cursor position and is not
+     * clamped to window bounds.
+     *
+     * This field is runtime state and is ignored at window creation.
+     */
     std::pair<double, double> cursor_pos = {0.0, 0.0};
     /** @brief Whether the cursor is inside the window (read-only). */
     bool cursor_in_window = false;
@@ -145,7 +158,10 @@ struct Window {
     /** @brief Frame border sizes in pixels (read-only). */
     FrameSize frame_size = {};
 
-    /** @brief Window size constraints. */
+    /** @brief Window size constraints.
+     *
+     * Note that even if limits not set, there can still be implicit limits based on backend.
+     */
     SizeLimits size_limits = {};
 
     /** @brief Whether the window is resizable by the user. */
@@ -192,6 +208,17 @@ struct Window {
 
     /** @brief Request user attention (e.g. taskbar flash). */
     void request_attention(bool request = true) { attention_request = request; }
+
+    /** @brief Get a relative cursor position to the window's current position and size.
+     *
+     * Origin will be center of the window, +x right, +y up.
+     * Values will be [-0.5, 0.5] when the cursor is within the window bounds.
+     */
+    std::pair<double, double> relative_cursor_pos() const {
+        double rel_x = (cursor_pos.first / size.first) - 0.5;
+        double rel_y = 0.5 - (cursor_pos.second / size.second);
+        return {rel_x, rel_y};
+    }
 };
 
 /** @brief Marker component designating the primary (main) window entity.
