@@ -18,14 +18,13 @@ namespace ext::fallingsand {
 namespace {
 constexpr std::size_t kDim = 2;
 
-glm::vec2 screen_to_world(glm::vec2 screen_pos,
-                          glm::vec2 window_size,
-                          const render::camera::Camera& camera,
-                          const render::camera::Projection& projection,
-                          const transform::Transform& cam_transform) {
+glm::vec2 relative_to_world(glm::vec2 relative_pos,
+                            const render::camera::Camera& camera,
+                            const render::camera::Projection& projection,
+                            const transform::Transform& cam_transform) {
     (void)projection;
-    float ndc_x = (screen_pos.x / window_size.x) * 2.0f - 1.0f;
-    float ndc_y = 1.0f - (screen_pos.y / window_size.y) * 2.0f;
+    float ndc_x = relative_pos.x * 2.0f;
+    float ndc_y = relative_pos.y * 2.0f;
 
     glm::mat4 proj_matrix = camera.computed.projection;
     glm::mat4 view_matrix = glm::inverse(cam_transform.to_matrix());
@@ -36,26 +35,18 @@ glm::vec2 screen_to_world(glm::vec2 screen_pos,
 }
 
 struct SandSimulation {
-    grid::ExtendibleChunkGrid<kDim> grid;
+    grid::ExtendibleChunkRefGrid<kDim> grid;
     std::int32_t width;
     std::int32_t height;
     std::size_t chunk_shift;
 
     SandSimulation(std::int32_t world_width, std::int32_t world_height, std::size_t world_chunk_shift)
-        : grid(world_chunk_shift), width(world_width), height(world_height), chunk_shift(world_chunk_shift) {
-        std::int32_t chunk_width = static_cast<std::int32_t>(grid.chunk_width());
-        std::int32_t chunks_x    = (width + chunk_width - 1) / chunk_width;
-        std::int32_t chunks_y    = (height + chunk_width - 1) / chunk_width;
-        for (std::int32_t cy = 0; cy < chunks_y; ++cy) {
-            for (std::int32_t cx = 0; cx < chunks_x; ++cx) {
-                grid::Chunk<kDim> chunk(chunk_shift);
-                auto layer_result = chunk.add_layer(std::make_unique<grid::layers::DenseLayer<kDim, int>>(chunk_shift));
-                if (!layer_result.has_value()) {
-                    continue;
-                }
-                (void)grid.insert_chunk({cx, cy}, std::move(chunk));
-            }
-        }
+        : grid(world_chunk_shift), width(world_width), height(world_height), chunk_shift(world_chunk_shift) {}
+
+    void reset_chunk_refs() { grid = grid::ExtendibleChunkRefGrid<kDim>(chunk_shift); }
+
+    void add_chunk_ref(std::array<std::int32_t, kDim> chunk_pos, grid::Chunk<kDim>& chunk) {
+        (void)grid.insert_chunk(chunk_pos, chunk);
     }
 
     bool in_bounds(std::int32_t x, std::int32_t y) const { return x >= 0 && y >= 0 && x < width && y < height; }
@@ -198,6 +189,10 @@ struct SandSimulation {
             .with_indices<std::uint32_t>(indices);
     }
 };
+
+struct SandChunkPos {
+    std::array<std::int32_t, kDim> value;
+};
 }  // namespace
 
 export struct SimpleFallingSandSettings {
@@ -211,6 +206,7 @@ export struct SimpleFallingSandState {
     SandSimulation sim;
     assets::Handle<mesh::Mesh> mesh;
     float cell_size;
+    bool initialized          = false;
     std::int32_t brush_radius = 3;
     bool paused               = false;
     bool auto_spawn           = true;
@@ -226,8 +222,22 @@ export struct SimpleFallingSandPlugin {
         app.add_systems(
             core::PreStartup, core::into([cfg](core::Commands cmd, core::ResMut<assets::Assets<mesh::Mesh>> meshes) {
                 auto sim = SandSimulation(cfg.width, cfg.height, cfg.chunk_shift);
-                sim.seed_pile();
-                auto mesh_handle = meshes->emplace(sim.build_mesh(cfg.cell_size));
+
+                std::int32_t chunk_width = static_cast<std::int32_t>(sim.grid.chunk_width());
+                std::int32_t chunks_x    = (cfg.width + chunk_width - 1) / chunk_width;
+                std::int32_t chunks_y    = (cfg.height + chunk_width - 1) / chunk_width;
+                for (std::int32_t cy = 0; cy < chunks_y; ++cy) {
+                    for (std::int32_t cx = 0; cx < chunks_x; ++cx) {
+                        grid::Chunk<kDim> chunk(cfg.chunk_shift);
+                        auto layer_result =
+                            chunk.add_layer(std::make_unique<grid::layers::DenseLayer<kDim, int>>(cfg.chunk_shift));
+                        if (!layer_result.has_value()) continue;
+                        cmd.spawn(SandChunkPos{.value = {cx, cy}}, std::move(chunk));
+                    }
+                }
+
+                auto mesh_handle =
+                    meshes->emplace(mesh::Mesh().with_primitive_type(wgpu::PrimitiveTopology::eTriangleList));
 
                 cmd.spawn(core_graph::core_2d::Camera2DBundle{});
                 cmd.spawn(mesh::Mesh2d{mesh_handle},
@@ -246,11 +256,22 @@ export struct SimpleFallingSandPlugin {
             core::into(
                 [](core::ResMut<SimpleFallingSandState> state, core::Res<input::ButtonInput<input::KeyCode>> keys,
                    core::Res<input::ButtonInput<input::MouseButton>> mouse_buttons,
+                   core::Query<core::Item<const SandChunkPos&, grid::Chunk<kDim>&>> chunk_query,
                    core::Query<core::Item<const render::camera::Camera&, const render::camera::Projection&,
                                           const transform::Transform&>> camera_query,
                    core::Query<core::Item<const window::CachedWindow&>, core::With<window::PrimaryWindow>> window_query,
                    core::ResMut<assets::Assets<mesh::Mesh>> meshes) {
                     state->frame += 1;
+
+                    state->sim.reset_chunk_refs();
+                    for (auto&& [chunk_pos, chunk] : chunk_query.iter()) {
+                        state->sim.add_chunk_ref(chunk_pos.value, chunk);
+                    }
+
+                    if (!state->initialized) {
+                        state->sim.seed_pile();
+                        state->initialized = true;
+                    }
 
                     if (keys->just_pressed(input::KeyCode::KeySpace)) state->paused = !state->paused;
                     if (keys->just_pressed(input::KeyCode::KeyT)) state->auto_spawn = !state->auto_spawn;
@@ -266,13 +287,12 @@ export struct SimpleFallingSandPlugin {
                         if (auto camera_opt = camera_query.single(); camera_opt.has_value()) {
                             auto&& [window]                            = *window_opt;
                             auto&& [camera, projection, cam_transform] = *camera_opt;
-                            auto [cursor_x, cursor_y]                  = window.cursor_pos;
                             auto [win_w, win_h]                        = window.size;
                             if (win_w > 0 && win_h > 0) {
-                                glm::vec2 world_cursor = screen_to_world(
-                                    glm::vec2(static_cast<float>(cursor_x), static_cast<float>(cursor_y)),
-                                    glm::vec2(static_cast<float>(win_w), static_cast<float>(win_h)), camera, projection,
-                                    cam_transform);
+                                auto [rel_x, rel_y] = window.relative_cursor_pos();
+                                glm::vec2 world_cursor =
+                                    relative_to_world(glm::vec2(static_cast<float>(rel_x), static_cast<float>(rel_y)),
+                                                      camera, projection, cam_transform);
 
                                 float half_x = static_cast<float>(state->sim.width) * state->cell_size * 0.5f;
                                 float half_y = static_cast<float>(state->sim.height) * state->cell_size * 0.5f;
