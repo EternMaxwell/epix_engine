@@ -65,7 +65,7 @@ struct AssetStorage {
     std::uint32_t size() const { return m_size; }
     bool empty() const { return m_size == 0; }
 
-    void resize_slots(std::uint32_t index) { m_storage.resize(index + 1); }
+    void resize_slots(std::uint32_t new_size) { m_storage.resize(new_size); }
 
     std::expected<Entry<T>*, AssetError> get_entry(const AssetIndex& index) {
         if (index.index() >= m_storage.size()) {
@@ -193,9 +193,9 @@ struct AssetStorage {
      */
     std::expected<void, AssetError> remove_dereferenced(const AssetIndex& index) {
         return get_entry(index).and_then([this, &index](Entry<T>* entry) -> std::expected<void, AssetError> {
+            entry->generation++;
             if (entry->asset.has_value()) {
                 entry->asset.reset();
-                entry->generation++;
                 m_size--;
                 return {};
             } else {
@@ -297,9 +297,13 @@ struct Assets {
     template <typename... Args>
         requires std::constructible_from<T, Args...>
     std::expected<bool, AssetError> insert_index(const AssetIndex& index, Args&&... args) {
+        std::uint32_t storage_size = static_cast<std::uint32_t>(m_references.size());
         while (auto&& opt = m_handle_provider->index_allocator.reserved_receiver().try_receive()) {
-            m_assets.resize_slots(opt->index());
-            m_references.resize(opt->index() + 1, 0);
+            storage_size = std::max(storage_size, opt->index() + 1);
+        }
+        if (storage_size > m_references.size()) {
+            m_assets.resize_slots(storage_size);
+            m_references.resize(storage_size, 0);
         }
         return m_assets.insert(index, std::forward<Args>(args)...)
             .or_else([this](AssetError&& err) -> std::expected<bool, AssetError> {
@@ -330,20 +334,20 @@ struct Assets {
     }
 
     bool release_index(const AssetIndex& index) {
-        if (contains(AssetId<T>(index))) {
+        if (index.index() < m_references.size()) {
             m_references[index.index()]--;
             if (m_references[index.index()] == 0) {
                 m_cached_events.emplace_back(AssetEvent<T>::unused(AssetId<T>(index)));
-                m_assets.remove_dereferenced(index);
+                m_assets.remove_dereferenced(index).transform(
+                    [&]() { m_cached_events.emplace_back(AssetEvent<T>::removed(AssetId<T>(index))); });
                 m_handle_provider->index_allocator.release(index);
-                m_cached_events.emplace_back(AssetEvent<T>::removed(AssetId<T>(index)));
                 return true;
             }
         }
         return false;
     }
     bool release_uuid(const uuids::uuid& id) {
-        if (contains(AssetId<T>(id))) {
+        if (m_mapped_assets_ref.contains(id)) {
             auto& ref = m_mapped_assets_ref.at(id);
             ref--;
             if (ref == 0) {
@@ -387,11 +391,9 @@ struct Assets {
     template <typename... Args>
         requires std::constructible_from<T, Args...>
     Handle<T> emplace(Args&&... args) {
-        Handle<T> handle = m_handle_provider->reserve().typed<T>();
-        auto res         = insert(handle, std::forward<Args>(args)...);
-        std::visit(
-            visitor{[this](const AssetIndex& index) { m_references[index.index()]++; }, [this](const auto& id) {}},
-            handle.id());
+        Handle<T> handle                                        = m_handle_provider->reserve().typed<T>();
+        auto res                                                = insert(handle, std::forward<Args>(args)...);
+        m_references[std::get<AssetIndex>(handle.id()).index()] = 1;
         return handle;
     }
 
@@ -525,7 +527,6 @@ struct Assets {
                                   [this, &id](const uuids::uuid& uuid) -> std::expected<void, AssetError> {
                                       if (contains(id)) {
                                           m_mapped_assets.erase(uuid);
-                                          m_mapped_assets_ref.erase(uuid);
                                           return {};
                                       } else {
                                           return std::unexpected(AssetNotPresent(uuid));
@@ -565,7 +566,7 @@ struct Assets {
     void handle_events_manual(const AssetServer* asset_server = nullptr) {
         spdlog::trace("[{}] Handling events", meta::type_id<T>::short_name());
         while (auto&& opt = m_handle_provider->index_allocator.reserved_receiver().try_receive()) {
-            m_assets.resize_slots(opt->index());
+            m_assets.resize_slots(opt->index() + 1);
         }
         while (auto&& opt = m_handle_provider->event_receiver.try_receive()) {
             auto id = (*opt).id.template typed<T>();

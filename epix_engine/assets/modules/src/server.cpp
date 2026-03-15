@@ -40,7 +40,8 @@ std::optional<UntypedHandle> AssetInfos::get_or_create_handle_internal(const std
     if (auto it = ids.find(asset_type); it != ids.end()) {
         auto& info = infos.at(it->second);
         // Check if the handle is expired we create a new one
-        if (info.weak_handle.expired()) {
+        auto strong_handle = info.weak_handle.lock();
+        if (!strong_handle) {
             // If the weak handle is expired, we need to create a new handle
             if (auto provider_it = handle_providers.find(asset_type); provider_it != handle_providers.end()) {
                 // If a provider for the type exists, use it to create a new
@@ -57,7 +58,7 @@ std::optional<UntypedHandle> AssetInfos::get_or_create_handle_internal(const std
         } else if (!force_new) {
             info.state = info.state == LoadState::Loading ? LoadState::Loading : LoadState::Pending;
         }
-        return info.weak_handle.lock();  // Return the existing handle
+        return strong_handle;  // Return the existing handle
     } else {
         // a new asset should be created.
         if (auto provider_it = handle_providers.find(asset_type); provider_it != handle_providers.end()) {
@@ -99,6 +100,7 @@ bool AssetInfos::process_handle_destruction(const UntypedAssetId& id) {
             // If the weak handle is expired, remove the asset info
             infos.erase(it);
             // Successfully processed the handle destruction
+            return false;
         } else {
             // This means that living handles are all destructed but a new
             // handle for this asset is required from
