@@ -60,7 +60,8 @@ class input_iterable : public std::ranges::view_interface<input_iterable<T>> {
     input_iterable& operator=(const input_iterable&) = default;
 
     template <std::ranges::input_range R>
-        requires std::convertible_to<std::ranges::range_reference_t<std::remove_cvref_t<R>>, T>
+        requires(std::convertible_to<std::ranges::range_reference_t<std::remove_cvref_t<R>>, T> &&
+                 !std::is_same_v<std::remove_cvref_t<R>, input_iterable>)
     input_iterable(R&& range) {
         using RR = std::remove_cvref_t<R>;
         if constexpr (std::is_lvalue_reference_v<R>) {
