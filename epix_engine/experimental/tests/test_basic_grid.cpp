@@ -377,6 +377,25 @@ TEST(SparseGrid, ClearRemovesAllCellsAndRecycledIndices) {
     EXPECT_EQ(g.get({3, 3})->get(), 9);
 }
 
+TEST(SparseGrid, IterAfterRecycle) {
+    sparse_grid<2, int> g({4, 4});
+    g.set({0, 0}, 1);
+    g.set({1, 1}, 2);
+    g.remove({0, 0});
+    g.set({2, 2}, 3);
+    g.set({0, 0}, 4);
+
+    std::vector<int> values;
+    for (auto& v : g.iter_cells()) {
+        values.push_back(v);
+    }
+    EXPECT_EQ(values.size(), 3u);
+    EXPECT_TRUE(std::find(values.begin(), values.end(), 1) == values.end());
+    EXPECT_TRUE(std::find(values.begin(), values.end(), 2) != values.end());
+    EXPECT_TRUE(std::find(values.begin(), values.end(), 3) != values.end());
+    EXPECT_TRUE(std::find(values.begin(), values.end(), 4) != values.end());
+}
+
 // ============================================================
 // dense_extendible_grid tests
 // ============================================================
@@ -647,4 +666,124 @@ TEST(TreeExtendibleGrid, ClearResetsDataAndTreeState) {
 
     EXPECT_TRUE(g.set({0, 0}, 42).has_value());
     EXPECT_EQ(g.get({0, 0})->get(), 42);
+}
+
+// ============================================================
+// tree_grid (fixed) tests
+// ============================================================
+
+TEST(TreeGrid, ConstructionAndCoverage) {
+    tree_grid<2, int> g({3, 5});
+    EXPECT_GE(g.coverage(), 5u);
+    auto dims = g.dimensions();
+    EXPECT_EQ(dims[0], g.coverage());
+    EXPECT_EQ(dims[1], g.coverage());
+}
+
+TEST(TreeGrid, SetAndGet) {
+    tree_grid<2, int> g({4, 4});
+    EXPECT_TRUE(g.set({1, 2}, 42).has_value());
+    EXPECT_TRUE(g.contains({1, 2}));
+    EXPECT_EQ(g.get({1, 2})->get(), 42);
+}
+
+TEST(TreeGrid, SetOverwritesAndSetNew) {
+    tree_grid<2, int> g({4, 4});
+    g.set({0, 0}, 1);
+    g.set({0, 0}, 2);
+    EXPECT_EQ(g.get({0, 0})->get(), 2);
+    EXPECT_TRUE(g.set_new({1, 1}, 10).has_value());
+    EXPECT_EQ(g.set_new({1, 1}, 20).error(), grid_error::AlreadyOccupied);
+}
+
+TEST(TreeGrid, GetEmptyAndGetMut) {
+    tree_grid<2, int> g({4, 4});
+    EXPECT_EQ(g.get({0, 0}).error(), grid_error::EmptyCell);
+    g.set({2, 2}, 5);
+    g.get_mut({2, 2})->get() = 99;
+    EXPECT_EQ(g.get({2, 2})->get(), 99);
+}
+
+TEST(TreeGrid, RemoveAndTake) {
+    tree_grid<2, int> g({4, 4});
+    g.set({1, 1}, 42);
+    EXPECT_TRUE(g.remove({1, 1}).has_value());
+    EXPECT_FALSE(g.contains({1, 1}));
+    EXPECT_EQ(g.remove({1, 1}).error(), grid_error::EmptyCell);
+
+    g.set({3, 3}, 77);
+    auto taken = g.take({3, 3});
+    ASSERT_TRUE(taken.has_value());
+    EXPECT_EQ(taken.value(), 77);
+    EXPECT_FALSE(g.contains({3, 3}));
+}
+
+TEST(TreeGrid, OutOfBoundsAndOrigin) {
+    // default origin = 0
+    tree_grid<2, int> g({2, 2});
+    EXPECT_EQ(g.set({100, 0}, 1).error(), grid_error::OutOfBounds);
+    EXPECT_EQ(g.get({0, 100}).error(), grid_error::OutOfBounds);
+
+    // custom origin
+    tree_grid<2, int> g2({4, 4}, std::array<std::uint32_t, 2>{10, 10});
+    EXPECT_TRUE(g2.set({10, 10}, 5).has_value());
+    EXPECT_EQ(g2.get({9, 9}).error(), grid_error::OutOfBounds);
+}
+
+TEST(TreeGrid, IteratorsAndMultipleInserts) {
+    tree_grid<2, int> g({8, 8});
+    g.set({0, 0}, 1);
+    g.set({1, 1}, 2);
+    g.set({2, 2}, 3);
+
+    int sum = 0;
+    for (auto& v : g.iter_cells()) sum += v;
+    EXPECT_EQ(sum, 6);
+
+    // multiple inserts
+    for (std::uint32_t i = 0; i < 4; i++) {
+        for (std::uint32_t j = 0; j < 4; j++) {
+            g.set({i, j}, static_cast<int>(i * 4 + j));
+        }
+    }
+    EXPECT_EQ(g.count(), 16u);
+}
+
+TEST(TreeGrid, ClearAndShrinkPreserveCoverage) {
+    tree_grid<2, int> g({4, 4});
+    g.set({0, 0}, 1);
+    g.set({3, 3}, 2);
+    auto cov = g.coverage();
+    g.clear();
+    EXPECT_EQ(g.count(), 0u);
+    EXPECT_EQ(g.coverage(), cov);
+    // shrink should rebuild the node table but keep coverage
+    g.shrink();
+    EXPECT_EQ(g.coverage(), cov);
+}
+
+TEST(TreeGrid, HigherDimensional) {
+    tree_grid<3, int> g({4, 4, 4});
+    auto ref = g.get({1, 2, 3});
+    EXPECT_FALSE(ref.has_value());
+}
+
+TEST(TreeGrid, CustomChildCount) {
+    tree_grid<2, int, 4> g({16, 16});
+    g.set({0, 0}, 1);
+    g.set({15, 15}, 2);
+    EXPECT_EQ(g.count(), 2u);
+    EXPECT_EQ(g.get({0, 0})->get(), 1);
+    EXPECT_EQ(g.get({15, 15})->get(), 2);
+}
+
+TEST(TreeGrid, IterPosExplicitCount) {
+    tree_grid<2, int> g({8, 8});
+    g.set({0, 0}, 1);
+    g.set({1, 2}, 2);
+    g.set({3, 4}, 3);
+
+    std::size_t pos_count = 0;
+    for (auto&& p : g.iter_pos()) pos_count++;
+    EXPECT_EQ(pos_count, g.count());
 }
