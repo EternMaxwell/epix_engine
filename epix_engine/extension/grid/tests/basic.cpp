@@ -1,7 +1,7 @@
 ﻿#include <gtest/gtest.h>
 
 import std;
-import epix.experimental.basic_grid;
+import epix.extension.grid;
 
 using namespace ext::grid;
 

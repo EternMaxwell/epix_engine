@@ -7,6 +7,7 @@ import epix.core_graph;
 import epix.mesh;
 import epix.transform;
 import epix.input;
+import epix.extension.grid;
 import epix.experimental.fallingsand;
 
 int main() {

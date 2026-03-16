@@ -13,7 +13,7 @@ import epix.transform;
 import epix.input;
 import epix.window;
 
-import epix.experimental.grid;
+import epix.extension.grid;
 
 using namespace core;
 

@@ -3,6 +3,7 @@ target_link_libraries(epix_ext_fallingsand PUBLIC epix_core)
 target_link_libraries(epix_ext_fallingsand PUBLIC epix_mesh)
 target_link_libraries(epix_ext_fallingsand PUBLIC epix_transform)
 target_link_libraries(epix_ext_fallingsand PUBLIC epix_core_graph)
+target_link_libraries(epix_ext_fallingsand PUBLIC epix_ext_grid)
 
 file(GLOB_RECURSE TEST_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/tests/*.cpp")
 foreach(TEST_SRC IN LISTS TEST_SOURCES)

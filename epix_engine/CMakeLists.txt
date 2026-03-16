@@ -20,34 +20,28 @@ function(epix_add_module MODULE_NAME)
   add_library(${MODULE_NAME} STATIC)
   epix_parse_options(${MODULE_NAME})
   file(GLOB_RECURSE MODULES CONFIGURE_DEPENDS "modules/*.ixx" "modules/*.cppm")
-  file(GLOB_RECURSE MODULE_SOURCES CONFIGURE_DEPENDS "modules/*.cpp")
   file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS "src/*.c" "src/*.cpp")
+  target_include_directories(${MODULE_NAME} PUBLIC "include")
   if (EPIX_CXX_MODULE)
     target_sources(${MODULE_NAME} 
       PUBLIC FILE_SET cxx_modules TYPE CXX_MODULES FILES ${MODULES}
-      PRIVATE ${MODULE_SOURCES}
+      PRIVATE ${SOURCES}
     )
   endif()
-  # target_sources(${MODULE_NAME}
-  #   PRIVATE ${SOURCES}
-  # )
 endfunction()
 
 function(epix_add_module_subdir MODULE_NAME SUBDIR)
   add_library(${MODULE_NAME} STATIC)
   epix_parse_options(${MODULE_NAME})
-  file(GLOB_RECURSE MODULES CONFIGURE_DEPENDS "modules/${SUBDIR}/*.ixx" "modules/${SUBDIR}/*.cppm")
-  file(GLOB_RECURSE MODULE_SOURCES CONFIGURE_DEPENDS "modules/${SUBDIR}/*.cpp")
-  file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS "src/${SUBDIR}/*.c" "src/${SUBDIR}/*.cpp")
+  file(GLOB_RECURSE MODULES CONFIGURE_DEPENDS "${SUBDIR}/modules/*.ixx" "${SUBDIR}/modules/*.cppm")
+  file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS "${SUBDIR}/src/*.c" "${SUBDIR}/src/*.cpp")
+  target_include_directories(${MODULE_NAME} PUBLIC "include")
   if (EPIX_CXX_MODULE)
     target_sources(${MODULE_NAME} 
       PUBLIC FILE_SET cxx_modules TYPE CXX_MODULES FILES ${MODULES}
-      PRIVATE ${MODULE_SOURCES}
+      PRIVATE ${SOURCES}
     )
   endif()
-  # target_sources(${MODULE_NAME}
-  #   PRIVATE ${SOURCES}
-  # )
 endfunction()
 
 add_subdirectory(core)
@@ -61,4 +55,5 @@ add_subdirectory(mesh)
 add_subdirectory(sprite)
 add_subdirectory(text)
 
+add_subdirectory(extension)
 add_subdirectory(experimental)
