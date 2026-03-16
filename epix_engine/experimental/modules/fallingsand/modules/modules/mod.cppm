@@ -14,9 +14,70 @@ import epix.window;
 
 import epix.experimental.grid;
 
+using namespace core;
+
 namespace ext::fallingsand {
-namespace {
 constexpr std::size_t kDim = 2;
+
+export enum class ElementType {
+    Solid,
+    Powder,
+    Liquid,
+    Gas,
+};
+
+/**
+ * @brief struct for storing common properties for some kind of elements.
+ *
+ * The actual element should be able to reference a base element.
+ */
+export struct ElementBase {
+    std::string name;
+    float density;
+    ElementType type;
+    std::function<glm::vec4(std::uint64_t sd)>
+        color_func;  // color function that takes a seed and returns a color, used for procedural variation
+    // add more properties as needed
+};
+
+export enum class ElementRegistryError {
+    NameAlreadyExists,
+    NameNotFound,
+    InvalidBaseId,
+};
+
+export struct ElementRegistry {
+   private:
+    std::vector<ElementBase> elements;
+    std::unordered_map<std::string, std::size_t> name_to_id;
+
+   public:
+    std::expected<std::size_t, ElementRegistryError> register_element(ElementBase element) {
+        if (name_to_id.contains(element.name)) return std::unexpected(ElementRegistryError::NameAlreadyExists);
+        std::size_t id = elements.size();
+        elements.emplace_back(std::move(element));
+        name_to_id.emplace(element.name, id);
+        return id;
+    }
+    std::expected<std::reference_wrapper<const ElementBase>, ElementRegistryError> get(std::size_t id) const {
+        if (id >= elements.size()) return std::unexpected(ElementRegistryError::InvalidBaseId);
+        return std::cref(elements[id]);
+    }
+    std::expected<std::size_t, ElementRegistryError> get_id(const std::string& name) const {
+        if (!name_to_id.contains(name)) return std::unexpected(ElementRegistryError::NameNotFound);
+        return name_to_id.at(name);
+    }
+    std::expected<std::reference_wrapper<const ElementBase>, ElementRegistryError> get(const std::string& name) const {
+        if (!name_to_id.contains(name)) return std::unexpected(ElementRegistryError::NameNotFound);
+        return get(name_to_id.at(name));
+    }
+    const ElementBase& operator[](std::size_t id) const { return elements[id]; }  // TODO: contract check in cpp26
+};
+
+export struct Element {
+    std::size_t base_id;
+    glm::vec4 color;
+};
 
 glm::vec2 relative_to_world(glm::vec2 relative_pos,
                             const render::camera::Camera& camera,
@@ -34,184 +95,336 @@ glm::vec2 relative_to_world(glm::vec2 relative_pos,
     return glm::vec2(world.x / world.w, world.y / world.w);
 }
 
-struct SandSimulation {
-    grid::ExtendibleChunkRefGrid<kDim> grid;
-    std::int32_t width;
-    std::int32_t height;
-    std::size_t chunk_shift;
+export struct SandChunkPos {
+    std::array<std::int32_t, kDim> value;
+};
 
-    SandSimulation(std::int32_t world_width, std::int32_t world_height, std::size_t world_chunk_shift)
-        : grid(world_chunk_shift), width(world_width), height(world_height), chunk_shift(world_chunk_shift) {}
+export struct SandSimulation : grid::ExtendibleChunkRefGrid<kDim> {
+   private:
+    std::unique_ptr<ElementRegistry> element_registry;
+    std::size_t m_sand_base_id  = 0;
+    float m_cell_size           = 6.0f;
+    bool m_initialized          = false;
+    bool m_paused               = false;
+    bool m_auto_fall            = true;
+    std::int32_t m_brush_radius = 2;
+    std::uint64_t m_tick        = 0;
 
-    void reset_chunk_refs() { grid = grid::ExtendibleChunkRefGrid<kDim>(chunk_shift); }
+    static std::array<std::int64_t, kDim> pos64(std::int64_t x, std::int64_t y) { return {x, y}; }
 
-    void add_chunk_ref(std::array<std::int32_t, kDim> chunk_pos, grid::Chunk<kDim>& chunk) {
-        (void)grid.insert_chunk(chunk_pos, chunk);
+    enum class CellState {
+        Occupied,
+        EmptyInChunk,
+        Blocked,
+    };
+
+    CellState cell_state(std::int64_t x, std::int64_t y) const {
+        auto cell = get_cell<Element>(pos64(x, y));
+        if (cell.has_value()) return CellState::Occupied;
+
+        return std::visit(
+            [](auto&& error) -> CellState {
+                using E = std::remove_cvref_t<decltype(error)>;
+                if constexpr (std::same_as<E, grid::LayerError>) {
+                    return error == grid::LayerError::EmptyCell ? CellState::EmptyInChunk : CellState::Blocked;
+                }
+                return CellState::Blocked;
+            },
+            cell.error());
     }
 
-    bool in_bounds(std::int32_t x, std::int32_t y) const { return x >= 0 && y >= 0 && x < width && y < height; }
+    bool has_cell(std::int64_t x, std::int64_t y) const { return cell_state(x, y) == CellState::Occupied; }
 
-    bool has_cell(std::int32_t x, std::int32_t y) const {
-        if (!in_bounds(x, y)) return false;
-        return grid.get_cell<int>({x, y}).has_value();
+    bool set_cell(std::int64_t x, std::int64_t y, Element value) {
+        return insert_cell(pos64(x, y), std::move(value)).has_value();
     }
 
-    void set_cell(std::int32_t x, std::int32_t y) {
-        if (!in_bounds(x, y)) return;
-        (void)grid.insert_cell({x, y}, 1);
+    bool clear_cell(std::int64_t x, std::int64_t y) { return remove_cell<Element>(pos64(x, y)).has_value(); }
+
+    bool move_cell(std::int64_t from_x, std::int64_t from_y, std::int64_t to_x, std::int64_t to_y) {
+        if (cell_state(to_x, to_y) != CellState::EmptyInChunk) return false;
+
+        auto from = get_cell<Element>(pos64(from_x, from_y));
+        if (!from.has_value()) return false;
+
+        Element moved = from->get();
+        if (!remove_cell<Element>(pos64(from_x, from_y)).has_value()) return false;
+        if (!insert_cell(pos64(to_x, to_y), std::move(moved)).has_value()) return false;
+        return true;
     }
 
-    void clear_cell(std::int32_t x, std::int32_t y) {
-        if (!in_bounds(x, y)) return;
-        (void)grid.remove<int>({x, y});
-    }
+    std::optional<std::array<std::int64_t, 4>> cell_bounds() const {
+        auto chunk_pos_iter = iter_chunk_pos();
+        auto begin          = chunk_pos_iter.begin();
+        auto end            = chunk_pos_iter.end();
+        if (begin == end) return std::nullopt;
 
-    void move_cell(std::int32_t from_x, std::int32_t from_y, std::int32_t to_x, std::int32_t to_y) {
-        if (!in_bounds(from_x, from_y) || !in_bounds(to_x, to_y)) return;
-        clear_cell(from_x, from_y);
-        set_cell(to_x, to_y);
+        const std::int64_t cw = static_cast<std::int64_t>(chunk_width());
+
+        std::int64_t min_cx = std::numeric_limits<std::int64_t>::max();
+        std::int64_t min_cy = std::numeric_limits<std::int64_t>::max();
+        std::int64_t max_cx = std::numeric_limits<std::int64_t>::min();
+        std::int64_t max_cy = std::numeric_limits<std::int64_t>::min();
+
+        for (auto&& cpos : chunk_pos_iter) {
+            min_cx = std::min(min_cx, static_cast<std::int64_t>(cpos[0]));
+            min_cy = std::min(min_cy, static_cast<std::int64_t>(cpos[1]));
+            max_cx = std::max(max_cx, static_cast<std::int64_t>(cpos[0]));
+            max_cy = std::max(max_cy, static_cast<std::int64_t>(cpos[1]));
+        }
+
+        return std::array<std::int64_t, 4>{
+            min_cx * cw,
+            (max_cx + 1) * cw - 1,
+            min_cy * cw,
+            (max_cy + 1) * cw - 1,
+        };
     }
 
     void seed_pile() {
-        std::int32_t center = width / 2;
-        for (std::int32_t y = height - 18; y < height - 4; ++y) {
-            std::int32_t spread = (height - 4 - y) / 2;
-            for (std::int32_t x = center - spread; x <= center + spread; ++x) {
-                set_cell(x, y);
+        auto bounds = cell_bounds();
+        if (!bounds.has_value()) return;
+
+        const std::int64_t min_x = bounds->at(0);
+        const std::int64_t max_x = bounds->at(1);
+        const std::int64_t min_y = bounds->at(2);
+        const std::int64_t max_y = bounds->at(3);
+
+        const std::int64_t cx    = (min_x + max_x) / 2;
+        const std::int64_t start = std::max(min_y, max_y - 8);
+        for (std::int64_t y = start; y < max_y; ++y) {
+            for (std::int64_t x = cx - 8; x <= cx + 8; ++x) {
+                std::uint64_t seed = (static_cast<std::uint64_t>(static_cast<std::uint32_t>(x)) << 32) |
+                                     static_cast<std::uint64_t>(static_cast<std::uint32_t>(y));
+                (void)set_cell(x, y, Element{m_sand_base_id, registry()[m_sand_base_id].color_func(seed)});
             }
         }
     }
 
-    void spawn_row_drop(std::int32_t center, std::int32_t radius) {
-        std::int32_t y = height - 1;
-        for (std::int32_t x = center - radius; x <= center + radius; ++x) {
-            if (in_bounds(x, y) && !has_cell(x, y)) set_cell(x, y);
+    void step_cells() {
+        const std::int64_t cw = static_cast<std::int64_t>(chunk_width());
+
+        auto chunk_coords = iter_chunk_pos() | std::ranges::to<std::vector>();
+        static auto rng   = std::mt19937{std::random_device{}()};
+        std::shuffle(chunk_coords.begin(), chunk_coords.end(), rng);
+
+        for (auto&& [x, y] : chunk_coords | std::views::transform([this, cw](auto& cpos) {
+                                 return get_chunk(cpos).value().get().iter<Element>() | std::views::elements<0> |
+                                        std::views::transform([cpos, cw](auto&& cell_pos) {
+                                            auto&& [cx, cy] = cpos;
+                                            auto&& [lx, ly] = cell_pos;
+                                            return std::array<std::int64_t, 2>{
+                                                static_cast<std::int64_t>(cx) * cw + static_cast<std::int64_t>(lx),
+                                                static_cast<std::int64_t>(cy) * cw + static_cast<std::int64_t>(ly),
+                                            };
+                                        });
+                             }) | std::views::join) {
+            if (!has_cell(x, y)) continue;
+
+            if (move_cell(x, y, x, y - 1)) continue;
+
+            const bool prefer_left = ((x + y + static_cast<std::int64_t>(m_tick)) & 1) == 0;
+            if (prefer_left) {
+                if (move_cell(x, y, x - 1, y - 1)) continue;
+                (void)move_cell(x, y, x + 1, y - 1);
+            } else {
+                if (move_cell(x, y, x + 1, y - 1)) continue;
+                (void)move_cell(x, y, x - 1, y - 1);
+            }
         }
+
+        m_tick++;
     }
+
+   public:
+    SandSimulation(std::size_t chunk_width_shift             = 5,
+                   float cell_size                           = 4.0f,
+                   std::unique_ptr<ElementRegistry> registry = std::make_unique<ElementRegistry>())
+        : grid::ExtendibleChunkRefGrid<kDim>(chunk_width_shift),
+          element_registry(std::move(registry)),
+          m_cell_size(cell_size) {
+        auto sand_res  = element_registry->register_element(ElementBase{
+            .name    = "sand",
+            .density = 1.0f,
+            .type    = ElementType::Powder,
+            .color_func =
+                [](std::uint64_t sd) {
+                    float t = static_cast<float>(std::hash<std::uint64_t>{}(sd)) /
+                              static_cast<float>(std::numeric_limits<std::uint64_t>::max());
+                    return glm::vec4(0.80f + t * 0.18f, 0.68f + t * 0.15f, 0.18f + t * 0.08f, 1.0f);
+                },
+        });
+        m_sand_base_id = sand_res.value_or(0);
+    }
+
+    const ElementRegistry& registry() const { return *element_registry; }
+    ElementRegistry& registry_mut() { return *element_registry; }
+
+    float cell_size() const { return m_cell_size; }
+    void set_cell_size(float size) { m_cell_size = size; }
+    std::int32_t brush_radius() const { return m_brush_radius; }
 
     void clear_all() {
-        for (std::int32_t y = 0; y < height; ++y) {
-            for (std::int32_t x = 0; x < width; ++x) {
-                clear_cell(x, y);
-            }
-        }
+        for (auto&& chunk : iter_chunks_mut()) chunk.get().clear();
     }
 
-    void paint_disc(std::int32_t center_x, std::int32_t center_y, std::int32_t radius, bool fill) {
-        std::int32_t r2 = radius * radius;
-        for (std::int32_t y = center_y - radius; y <= center_y + radius; ++y) {
-            for (std::int32_t x = center_x - radius; x <= center_x + radius; ++x) {
-                std::int32_t dx = x - center_x;
-                std::int32_t dy = y - center_y;
+    struct PaintDesc {
+        std::int32_t center_x;
+        std::int32_t center_y;
+        std::int32_t radius;
+        bool fill;
+    };
+
+    void paint_disc(PaintDesc desc, std::size_t base_id) {
+        std::int32_t r2 = desc.radius * desc.radius;
+        for (std::int32_t y = desc.center_y - desc.radius; y <= desc.center_y + desc.radius; ++y) {
+            for (std::int32_t x = desc.center_x - desc.radius; x <= desc.center_x + desc.radius; ++x) {
+                std::int32_t dx = x - desc.center_x;
+                std::int32_t dy = y - desc.center_y;
                 if (dx * dx + dy * dy > r2) continue;
-                if (fill) {
-                    set_cell(x, y);
+                if (desc.fill) {
+                    std::uint64_t seed = (static_cast<std::uint64_t>(static_cast<std::uint32_t>(x)) << 32) |
+                                         static_cast<std::uint64_t>(static_cast<std::uint32_t>(y));
+                    (void)insert_cell(pos64(x, y), Element{base_id, registry()[base_id].color_func(seed)});
                 } else {
-                    clear_cell(x, y);
+                    (void)clear_cell(x, y);
                 }
             }
         }
     }
 
-    void step(std::uint64_t frame) {
-        bool left_first = (frame & 1ULL) == 0ULL;
-        for (std::int32_t y = 1; y < height; ++y) {
-            for (std::int32_t x = 0; x < width; ++x) {
-                if (!has_cell(x, y)) continue;
-                if (!has_cell(x, y - 1)) {
-                    move_cell(x, y, x, y - 1);
-                    continue;
-                }
-                if (left_first) {
-                    if (in_bounds(x - 1, y - 1) && !has_cell(x - 1, y - 1)) {
-                        move_cell(x, y, x - 1, y - 1);
-                    } else if (in_bounds(x + 1, y - 1) && !has_cell(x + 1, y - 1)) {
-                        move_cell(x, y, x + 1, y - 1);
-                    }
-                } else {
-                    if (in_bounds(x + 1, y - 1) && !has_cell(x + 1, y - 1)) {
-                        move_cell(x, y, x + 1, y - 1);
-                    } else if (in_bounds(x - 1, y - 1) && !has_cell(x - 1, y - 1)) {
-                        move_cell(x, y, x - 1, y - 1);
-                    }
-                }
+    static void step(
+        ResMut<SandSimulation> sim,
+        Res<input::ButtonInput<input::MouseButton>> mouse_buttons,
+        Res<input::ButtonInput<input::KeyCode>> keys,
+        Query<Item<const window::CachedWindow&>, With<window::PrimaryWindow>> windows,
+        Query<Item<const render::camera::Camera&, const render::camera::Projection&, const transform::Transform&>>
+            cameras,
+        Query<Item<grid::Chunk<kDim>&, const SandChunkPos&>> chunks) {
+        // Build simulation view from ECS chunks.
+        sim->clear_grid();
+        for (auto&& [chunk, pos] : chunks.iter()) {
+            (void)sim->insert_chunk(pos.value, chunk);
+        }
+
+        if (!sim->m_initialized) {
+            sim->clear_all();
+            sim->seed_pile();
+            sim->m_initialized = true;
+        }
+
+        if (keys->just_pressed(input::KeyCode::KeySpace)) sim->m_paused = !sim->m_paused;
+        if (keys->just_pressed(input::KeyCode::KeyT)) sim->m_auto_fall = !sim->m_auto_fall;
+        if (keys->just_pressed(input::KeyCode::KeyQ)) {
+            sim->m_brush_radius = std::max<std::int32_t>(1, sim->m_brush_radius - 1);
+        }
+        if (keys->just_pressed(input::KeyCode::KeyE)) {
+            sim->m_brush_radius = std::min<std::int32_t>(32, sim->m_brush_radius + 1);
+        }
+        if (keys->just_pressed(input::KeyCode::KeyC)) sim->clear_all();
+        if (keys->just_pressed(input::KeyCode::KeyR)) {
+            sim->clear_all();
+            sim->seed_pile();
+        }
+
+        auto window = windows.single();
+        auto camera = cameras.single();
+        if (window.has_value() && camera.has_value()) {
+            auto&& [primary_window]                 = *window;
+            auto&& [cam, projection, cam_transform] = *camera;
+
+            auto [rel_x, rel_y]    = primary_window.relative_cursor_pos();
+            glm::vec2 world_cursor = relative_to_world(glm::vec2(static_cast<float>(rel_x), static_cast<float>(rel_y)),
+                                                       cam, projection, cam_transform);
+
+            std::int32_t cell_x = static_cast<std::int32_t>(std::floor(world_cursor.x / sim->cell_size()));
+            std::int32_t cell_y = static_cast<std::int32_t>(std::floor(world_cursor.y / sim->cell_size()));
+
+            if (mouse_buttons->pressed(input::MouseButton::MouseButtonLeft)) {
+                sim->paint_disc({.center_x = cell_x, .center_y = cell_y, .radius = sim->brush_radius(), .fill = true},
+                                sim->m_sand_base_id);
             }
+            if (mouse_buttons->pressed(input::MouseButton::MouseButtonRight)) {
+                sim->paint_disc({.center_x = cell_x, .center_y = cell_y, .radius = sim->brush_radius(), .fill = false},
+                                sim->m_sand_base_id);
+            }
+        }
+
+        if (sim->m_auto_fall && !sim->m_paused) {
+            auto bounds = sim->cell_bounds();
+            if (bounds.has_value()) {
+                const std::int64_t cx = (bounds->at(0) + bounds->at(1)) / 2;
+                const std::int64_t cy = std::max(bounds->at(2), bounds->at(3) - 1);
+                sim->paint_disc({.center_x = static_cast<std::int32_t>(cx),
+                                 .center_y = static_cast<std::int32_t>(cy),
+                                 .radius   = 1,
+                                 .fill     = true},
+                                sim->m_sand_base_id);
+            }
+        }
+
+        if (!sim->m_paused) {
+            sim->step_cells();
         }
     }
 
-    mesh::Mesh build_mesh(float cell_size) const {
-        std::vector<glm::vec3> positions;
-        std::vector<glm::vec4> colors;
-        std::vector<std::uint32_t> indices;
-        positions.reserve(static_cast<std::size_t>(width * height / 2) * 4ULL);
-        colors.reserve(static_cast<std::size_t>(width * height / 2) * 4ULL);
-        indices.reserve(static_cast<std::size_t>(width * height / 2) * 6ULL);
-
-        auto half_x = static_cast<float>(width) * cell_size * 0.5f;
-        auto half_y = static_cast<float>(height) * cell_size * 0.5f;
-
-        for (std::int32_t gy = 0; gy < height; ++gy) {
-            for (std::int32_t gx = 0; gx < width; ++gx) {
-                if (!has_cell(gx, gy)) continue;
-
-                float x0 = static_cast<float>(gx) * cell_size - half_x;
-                float y0 = static_cast<float>(gy) * cell_size - half_y;
-                float x1 = x0 + cell_size;
-                float y1 = y0 + cell_size;
-
-                std::uint32_t base = static_cast<std::uint32_t>(positions.size());
-                positions.push_back({x0, y0, 0.0f});
-                positions.push_back({x1, y0, 0.0f});
-                positions.push_back({x1, y1, 0.0f});
-                positions.push_back({x0, y1, 0.0f});
-
-                // Subtle variation by height gives depth without extra materials.
-                float shade = 0.75f + 0.25f * (static_cast<float>(gy) / static_cast<float>(std::max(1, height - 1)));
-                glm::vec4 c(0.92f * shade, 0.74f * shade, 0.28f * shade, 1.0f);
-                colors.push_back(c);
-                colors.push_back(c);
-                colors.push_back(c);
-                colors.push_back(c);
-
-                indices.push_back(base + 0);
-                indices.push_back(base + 1);
-                indices.push_back(base + 2);
-                indices.push_back(base + 2);
-                indices.push_back(base + 3);
-                indices.push_back(base + 0);
-            }
-        }
+    static mesh::Mesh build_chunk_mesh(const grid::Chunk<kDim>& chunk, float cell_size) {
+        auto positions_view = chunk.iter<Element>() | std::views::elements<0> |
+                              std::views::transform([cell_size](std::array<std::uint32_t, kDim> pos) {
+                                  float x = static_cast<float>(pos[0]) * cell_size;
+                                  float y = static_cast<float>(pos[1]) * cell_size;
+                                  return std::array<glm::vec3, 4>{{{x, y, 0.0f},
+                                                                   {x + cell_size, y, 0.0f},
+                                                                   {x + cell_size, y + cell_size, 0.0f},
+                                                                   {x, y + cell_size, 0.0f}}};
+                              }) |
+                              std::views::join;
+        auto colors_view    = chunk.iter<Element>() | std::views::transform([&chunk](auto&& pair) {
+                               auto&& [pos, elem] = pair;
+                               return std::array<glm::vec4, 4>{elem.color, elem.color, elem.color, elem.color};
+                              }) |
+                              std::views::join;
+        auto indices_view =
+            chunk.iter<Element>() | std::views::enumerate | std::views::transform([](auto&& indexed_pair) {
+                auto&& [i, pair]   = indexed_pair;
+                std::uint32_t base = static_cast<std::uint32_t>(i) * 4;
+                return std::array<std::uint32_t, 6>{{base + 0, base + 1, base + 2, base + 2, base + 3, base + 0}};
+            }) |
+            std::views::join;
 
         return mesh::Mesh()
             .with_primitive_type(wgpu::PrimitiveTopology::eTriangleList)
-            .with_attribute(mesh::Mesh::ATTRIBUTE_POSITION, positions)
-            .with_attribute(mesh::Mesh::ATTRIBUTE_COLOR, colors)
-            .with_indices<std::uint32_t>(indices);
+            .with_attribute(mesh::Mesh::ATTRIBUTE_POSITION, positions_view)
+            .with_attribute(mesh::Mesh::ATTRIBUTE_COLOR, colors_view)
+            .with_indices<std::uint32_t>(indices_view);
+    }
+
+    static void build_meshes(Commands cmd,
+                             Res<SandSimulation> sim,
+                             Query<Item<Entity, const SandChunkPos&, const grid::Chunk<kDim>&>> chunks,
+                             ResMut<assets::Assets<mesh::Mesh>> meshes) {
+        float cell_size = sim->cell_size();
+        for (auto&& [entity, pos, chunk] : chunks.iter()) {
+            auto chunk_mesh  = build_chunk_mesh(chunk, cell_size);
+            auto mesh_handle = meshes->emplace(std::move(chunk_mesh));
+            cmd.entity(entity).insert(mesh::Mesh2d{mesh_handle},
+                                      mesh::MeshMaterial2d{
+                                          .color      = glm::vec4(1.0f),
+                                          .alpha_mode = mesh::MeshAlphaMode2d::Opaque,
+                                      },
+                                      transform::Transform{
+                                          .translation = glm::vec3(pos.value[0] * cell_size * sim->chunk_width(),
+                                                                   pos.value[1] * cell_size * sim->chunk_width(), 0.0f),
+                                      });
+        }
     }
 };
-
-struct SandChunkPos {
-    std::array<std::int32_t, kDim> value;
-};
-}  // namespace
 
 export struct SimpleFallingSandSettings {
     std::int32_t width      = 128;
     std::int32_t height     = 96;
     std::size_t chunk_shift = 5;
-    float cell_size         = 6.0f;
-};
-
-export struct SimpleFallingSandState {
-    SandSimulation sim;
-    assets::Handle<mesh::Mesh> mesh;
-    float cell_size;
-    bool initialized          = false;
-    std::int32_t brush_radius = 3;
-    bool paused               = false;
-    bool auto_spawn           = true;
-    std::uint32_t rng         = 0x8badf00dU;
-    std::uint64_t frame{0};
+    float cell_size         = 4.0f;
 };
 
 export struct SimpleFallingSandPlugin {
@@ -219,117 +432,46 @@ export struct SimpleFallingSandPlugin {
 
     void build(core::App& app) {
         auto cfg = settings;
-        app.add_systems(
-            core::PreStartup, core::into([cfg](core::Commands cmd, core::ResMut<assets::Assets<mesh::Mesh>> meshes) {
-                auto sim = SandSimulation(cfg.width, cfg.height, cfg.chunk_shift);
 
-                std::int32_t chunk_width = static_cast<std::int32_t>(sim.grid.chunk_width());
-                std::int32_t chunks_x    = (cfg.width + chunk_width - 1) / chunk_width;
-                std::int32_t chunks_y    = (cfg.height + chunk_width - 1) / chunk_width;
-                for (std::int32_t cy = 0; cy < chunks_y; ++cy) {
-                    for (std::int32_t cx = 0; cx < chunks_x; ++cx) {
-                        grid::Chunk<kDim> chunk(cfg.chunk_shift);
-                        auto layer_result =
-                            chunk.add_layer(std::make_unique<grid::layers::DenseLayer<kDim, int>>(cfg.chunk_shift));
-                        if (!layer_result.has_value()) continue;
-                        cmd.spawn(SandChunkPos{.value = {cx, cy}}, std::move(chunk));
-                    }
+        app.add_systems(
+            core::PreStartup,
+            core::into([cfg](core::Commands cmd, core::ResMut<assets::Assets<mesh::Mesh>> meshes,
+                             core::Query<core::Item<const render::camera::Camera&>> cameras) {
+                auto camera_iter = cameras.iter();
+                if (camera_iter.begin() == camera_iter.end()) {
+                    cmd.spawn(core_graph::core_2d::Camera2DBundle{});
                 }
 
-                auto mesh_handle =
-                    meshes->emplace(mesh::Mesh().with_primitive_type(wgpu::PrimitiveTopology::eTriangleList));
+                cmd.insert_resource(SandSimulation(cfg.chunk_shift, cfg.cell_size));
 
-                cmd.spawn(core_graph::core_2d::Camera2DBundle{});
-                cmd.spawn(mesh::Mesh2d{mesh_handle},
-                          mesh::MeshMaterial2d{.color = glm::vec4(1.0f), .alpha_mode = mesh::MeshAlphaMode2d::Opaque},
-                          transform::Transform{});
+                const std::int32_t chunk_width = static_cast<std::int32_t>(std::size_t(1) << cfg.chunk_shift);
+                const std::int32_t chunks_x    = (cfg.width + chunk_width - 1) / chunk_width;
+                const std::int32_t chunks_y    = (cfg.height + chunk_width - 1) / chunk_width;
 
-                cmd.insert_resource(SimpleFallingSandState{
-                    .sim       = std::move(sim),
-                    .mesh      = mesh_handle,
-                    .cell_size = cfg.cell_size,
-                });
-            }));
+                for (std::int32_t cy = -chunks_y; cy < chunks_y; ++cy) {
+                    for (std::int32_t cx = -chunks_x; cx < chunks_x; ++cx) {
+                        grid::Chunk<kDim> chunk(cfg.chunk_shift);
+                        auto layer_res =
+                            chunk.add_layer(std::make_unique<grid::layers::DenseLayer<kDim, Element>>(cfg.chunk_shift));
+                        if (!layer_res.has_value()) continue;
 
-        app.add_systems(
-            core::Update,
-            core::into(
-                [](core::ResMut<SimpleFallingSandState> state, core::Res<input::ButtonInput<input::KeyCode>> keys,
-                   core::Res<input::ButtonInput<input::MouseButton>> mouse_buttons,
-                   core::Query<core::Item<const SandChunkPos&, grid::Chunk<kDim>&>> chunk_query,
-                   core::Query<core::Item<const render::camera::Camera&, const render::camera::Projection&,
-                                          const transform::Transform&>> camera_query,
-                   core::Query<core::Item<const window::CachedWindow&>, core::With<window::PrimaryWindow>> window_query,
-                   core::ResMut<assets::Assets<mesh::Mesh>> meshes) {
-                    state->frame += 1;
-
-                    state->sim.reset_chunk_refs();
-                    for (auto&& [chunk_pos, chunk] : chunk_query.iter()) {
-                        state->sim.add_chunk_ref(chunk_pos.value, chunk);
+                        auto empty_mesh = meshes->emplace(mesh::Mesh{});
+                        cmd.spawn(
+                            SandChunkPos{{cx, cy}}, std::move(chunk), mesh::Mesh2d{empty_mesh},
+                            mesh::MeshMaterial2d{
+                                .color      = glm::vec4(1.0f),
+                                .alpha_mode = mesh::MeshAlphaMode2d::Opaque,
+                            },
+                            transform::Transform{
+                                .translation = glm::vec3(static_cast<float>(cx * chunk_width) * cfg.cell_size,
+                                                         static_cast<float>(cy * chunk_width) * cfg.cell_size, 0.0f),
+                            });
                     }
+                }
+            }).set_name("fallingsand setup"));
 
-                    if (!state->initialized) {
-                        state->sim.seed_pile();
-                        state->initialized = true;
-                    }
-
-                    if (keys->just_pressed(input::KeyCode::KeySpace)) state->paused = !state->paused;
-                    if (keys->just_pressed(input::KeyCode::KeyT)) state->auto_spawn = !state->auto_spawn;
-                    if (keys->just_pressed(input::KeyCode::KeyQ) && state->brush_radius > 1) state->brush_radius -= 1;
-                    if (keys->just_pressed(input::KeyCode::KeyE) && state->brush_radius < 16) state->brush_radius += 1;
-                    if (keys->just_pressed(input::KeyCode::KeyC)) state->sim.clear_all();
-                    if (keys->just_pressed(input::KeyCode::KeyR)) {
-                        state->sim.clear_all();
-                        state->sim.seed_pile();
-                    }
-
-                    if (auto window_opt = window_query.single(); window_opt.has_value()) {
-                        if (auto camera_opt = camera_query.single(); camera_opt.has_value()) {
-                            auto&& [window]                            = *window_opt;
-                            auto&& [camera, projection, cam_transform] = *camera_opt;
-                            auto [win_w, win_h]                        = window.size;
-                            if (win_w > 0 && win_h > 0) {
-                                auto [rel_x, rel_y] = window.relative_cursor_pos();
-                                glm::vec2 world_cursor =
-                                    relative_to_world(glm::vec2(static_cast<float>(rel_x), static_cast<float>(rel_y)),
-                                                      camera, projection, cam_transform);
-
-                                float half_x = static_cast<float>(state->sim.width) * state->cell_size * 0.5f;
-                                float half_y = static_cast<float>(state->sim.height) * state->cell_size * 0.5f;
-                                float fx     = (world_cursor.x + half_x) / state->cell_size;
-                                float fy     = (world_cursor.y + half_y) / state->cell_size;
-
-                                std::int32_t gx = static_cast<std::int32_t>(std::floor(fx));
-                                std::int32_t gy = static_cast<std::int32_t>(std::floor(fy));
-
-                                if (state->sim.in_bounds(gx, gy)) {
-                                    if (mouse_buttons->pressed(input::MouseButton::MouseButtonLeft)) {
-                                        state->sim.paint_disc(gx, gy, state->brush_radius, true);
-                                    }
-                                    if (mouse_buttons->pressed(input::MouseButton::MouseButtonRight)) {
-                                        state->sim.paint_disc(gx, gy, state->brush_radius, false);
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    if (!state->paused) {
-                        if (state->auto_spawn) {
-                            state->rng = state->rng * 1664525U + 1013904223U;
-                            std::int32_t center =
-                                state->sim.width / 2 + static_cast<std::int32_t>((state->rng % 11U) - 5U);
-                            state->sim.spawn_row_drop(center, 2);
-                        }
-
-                        // Run multiple substeps to keep motion visible at lower frame rates.
-                        state->sim.step(state->frame);
-                        state->sim.step(state->frame + 1);
-                    }
-
-                    (void)meshes->insert(state->mesh.id(), state->sim.build_mesh(state->cell_size));
-                })
-                .set_name("falling sand simulate and mesh sync"));
+        app.add_systems(core::Update, core::into(SandSimulation::step).set_name("fallingsand step"));
+        app.add_systems(core::PostUpdate, core::into(SandSimulation::build_meshes).set_name("fallingsand mesh sync"));
     }
 };
 }  // namespace ext::fallingsand
