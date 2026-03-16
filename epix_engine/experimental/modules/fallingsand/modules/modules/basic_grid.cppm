@@ -608,6 +608,131 @@ struct tree_extendible_grid {
      */
     void shrink();
 };
+/**
+ * @brief A tree-based fixed-size N-dimensional grid.
+ *
+ * Similar to tree_extendible_grid but with fixed depth and coverage determined
+ * at construction time. Coordinates are unsigned and positions outside the
+ * configured coverage return OutOfBounds.
+ */
+export template <std::size_t Dim, typename T, std::size_t ChildCount = 2>
+    requires std::movable<T>
+struct tree_grid {
+   private:
+    constexpr static std::size_t child_per_node = [] consteval {
+        std::size_t count = 1;
+        for (std::size_t i = 0; i < Dim; i++) count *= ChildCount;
+        return count;
+    }();
+
+    struct Node {
+        std::array<std::size_t, child_per_node> children;
+        Node() { children.fill(npos); }
+    };
+
+    std::vector<T> m_data;
+    std::vector<std::array<std::uint32_t, Dim>> m_positions;  // positions of each cell in m_data
+    std::vector<Node> m_nodes;                                // tree nodes, root at index 0
+    std::size_t m_depth;                                      // fixed tree depth
+    std::array<std::uint32_t, Dim> m_origin;                  // min covered coordinate for each axis
+
+    static std::uint32_t pow_child(std::size_t exponent);
+    static std::size_t flat_child_index(std::array<std::uint32_t, Dim> rel_pos, std::uint32_t stride);
+    std::uint32_t axis_coverage() const;
+    std::array<std::uint32_t, Dim> dimensions_impl() const;
+
+    std::expected<std::array<std::uint32_t, Dim>, grid_error> relative_pos(std::array<std::uint32_t, Dim> pos) const;
+    std::expected<std::size_t, grid_error> find_index(std::array<std::uint32_t, Dim> pos) const;
+    std::expected<std::reference_wrapper<std::size_t>, grid_error> find_index_slot(std::array<std::uint32_t, Dim> pos);
+    void rebuild_tree();
+
+   public:
+    /** @brief Construct with required dimensions and optional origin (defaults to zeros).
+     *  The constructor computes the minimal tree depth that provides coverage
+     *  equal or greater than the requested dimensions along each axis.
+     *  @param dimensions Requested sizes along each axis.
+     *  @param origin Minimum coordinate covered by the grid (defaults to zero).
+     */
+    tree_grid(
+        std::array<std::uint32_t, Dim> dimensions, std::array<std::uint32_t, Dim> origin = [] {
+            std::array<std::uint32_t, Dim> o;
+            o.fill(0);
+            return o;
+        }());
+
+    /** @brief Check whether a cell exists at the given position.
+     *  @param pos Unsigned position to query.
+     *  @return true if a value is stored at @p pos.
+     */
+    bool contains(std::array<std::uint32_t, Dim> pos) const;
+    /** @brief Get current per-axis coverage (ChildCount^depth). */
+    std::uint32_t coverage() const;
+    /** @brief Get the current dimensions (coverage) of the grid. */
+    std::array<std::uint32_t, Dim> dimensions() const;
+    /** @brief Get the size along a single axis. */
+    std::size_t dimension(std::size_t index) const;
+    /** @brief Get the number of occupied cells stored. */
+    std::size_t count() const;
+    /** @brief Clear all stored cells and reset the internal node table. */
+    void clear();
+
+    /** @brief Iterate over the positions of all occupied cells. */
+    auto iter_pos() const { return m_positions | std::views::all; }
+    /** @brief Iterate over the values of all occupied cells (const). */
+    auto iter_cells() const { return m_data | std::views::all; }
+    /** @brief Iterate over the values of all occupied cells (mutable). */
+    auto iter_cells_mut() { return m_data | std::views::all; }
+    /** @brief Iterate over (position, value) pairs for all occupied cells (const). */
+    auto iter() const { return std::views::zip(m_positions, m_data); }
+    /** @brief Iterate over (position, value) pairs for all occupied cells (mutable). */
+    auto iter_mut() { return std::views::zip(m_positions, m_data); }
+
+    /** @brief Get a mutable reference to the cell at the given position.
+     *  @param pos Unsigned position to query.
+     *  @return Reference to the cell, or grid_error::EmptyCell / grid_error::OutOfBounds.
+     */
+    std::expected<std::reference_wrapper<T>, grid_error> get_mut(std::array<std::uint32_t, Dim> pos);
+    /** @brief Get a const reference to the cell at the given position.
+     *  @param pos Unsigned position to query.
+     *  @return Const reference to the cell, or grid_error::EmptyCell / grid_error::OutOfBounds.
+     */
+    std::expected<std::reference_wrapper<const T>, grid_error> get(std::array<std::uint32_t, Dim> pos) const;
+
+    /** @brief Set the cell at the given position, creating or overwriting.
+     *  @tparam Args Constructor argument types.
+     *  @param pos Position in the grid.
+     *  @param value Constructor arguments forwarded to T.
+     *  @return Reference to the stored value, or grid_error::OutOfBounds.
+     */
+    template <typename... Args>
+        requires std::constructible_from<T, Args...>
+    std::expected<std::reference_wrapper<T>, grid_error> set(std::array<std::uint32_t, Dim> pos, Args&&... value);
+
+    /** @brief Set the cell only if it is currently empty.
+     *  @tparam Args Constructor argument types.
+     *  @param pos Position in the grid.
+     *  @param value Constructor arguments forwarded to T.
+     *  @return Reference to the stored value, or grid_error::AlreadyOccupied / grid_error::OutOfBounds.
+     */
+    template <typename... Args>
+        requires std::constructible_from<T, Args...>
+    std::expected<std::reference_wrapper<T>, grid_error> set_new(std::array<std::uint32_t, Dim> pos, Args&&... value);
+
+    /** @brief Remove the cell at the given position, discarding its value.
+     *  @param pos Position in the grid.
+     *  @return void on success, or grid_error::EmptyCell / grid_error::OutOfBounds.
+     */
+    std::expected<void, grid_error> remove(std::array<std::uint32_t, Dim> pos);
+    /** @brief Remove the cell at the given position and return its value.
+     *  @param pos Position in the grid.
+     *  @return The taken value, or grid_error::EmptyCell / grid_error::OutOfBounds.
+     */
+    std::expected<T, grid_error> take(std::array<std::uint32_t, Dim> pos);
+    /** @brief Rebuild the internal node table and compact the index structure.
+     *  Depth and origin remain unchanged.
+     */
+    void shrink();
+};
 }  // namespace ext::grid
 
 namespace ext::grid {
@@ -784,12 +909,13 @@ std::expected<std::reference_wrapper<T>, grid_error> sparse_grid<Dim, T>::set(st
         if (!m_recycled_indices.empty()) {
             new_index = m_recycled_indices.back();
             m_recycled_indices.pop_back();
-            m_data[new_index] = T(std::forward<Args>(value)...);
+            m_data[new_index]      = T(std::forward<Args>(value)...);
+            m_positions[new_index] = pos;
         } else {
             m_data.emplace_back(std::forward<Args>(value)...);
+            m_positions.push_back(pos);
             new_index = m_data.size() - 1;
         }
-        m_positions.push_back(pos);
         index_ref = new_index;
     } else {
         // existing cell
@@ -812,12 +938,13 @@ std::expected<std::reference_wrapper<T>, grid_error> sparse_grid<Dim, T>::set_ne
         if (!m_recycled_indices.empty()) {
             new_index = m_recycled_indices.back();
             m_recycled_indices.pop_back();
-            m_data[new_index] = T(std::forward<Args>(value)...);
+            m_data[new_index]      = T(std::forward<Args>(value)...);
+            m_positions[new_index] = pos;
         } else {
             m_data.emplace_back(std::forward<Args>(value)...);
+            m_positions.push_back(pos);
             new_index = m_data.size() - 1;
         }
-        m_positions.push_back(pos);
         index_ref = new_index;
     } else {
         return std::unexpected(grid_error::AlreadyOccupied);
@@ -1449,4 +1576,318 @@ void tree_extendible_grid<Dim, T, ChildCount>::shrink() {
     m_origin = bb_min;
     rebuild_tree();
 }
+template <std::size_t Dim, typename T, std::size_t ChildCount>
+    requires std::movable<T>
+std::uint32_t tree_grid<Dim, T, ChildCount>::pow_child(std::size_t exponent) {
+    std::uint32_t result = 1;
+    for (std::size_t i = 0; i < exponent; i++) result *= static_cast<std::uint32_t>(ChildCount);
+    return result;
+}
+template <std::size_t Dim, typename T, std::size_t ChildCount>
+    requires std::movable<T>
+std::size_t tree_grid<Dim, T, ChildCount>::flat_child_index(std::array<std::uint32_t, Dim> rel_pos,
+                                                            std::uint32_t stride) {
+    std::size_t index = 0;
+    for (std::size_t axis = 0; axis < Dim; axis++) {
+        const std::size_t digit = static_cast<std::size_t>((rel_pos[axis] / stride) % ChildCount);
+        index                   = index * ChildCount + digit;
+    }
+    return index;
+}
+template <std::size_t Dim, typename T, std::size_t ChildCount>
+    requires std::movable<T>
+std::uint32_t tree_grid<Dim, T, ChildCount>::axis_coverage() const {
+    return pow_child(m_depth);
+}
+template <std::size_t Dim, typename T, std::size_t ChildCount>
+    requires std::movable<T>
+std::array<std::uint32_t, Dim> tree_grid<Dim, T, ChildCount>::dimensions_impl() const {
+    std::array<std::uint32_t, Dim> dims;
+    dims.fill(axis_coverage());
+    return dims;
+}
+template <std::size_t Dim, typename T, std::size_t ChildCount>
+    requires std::movable<T>
+std::expected<std::array<std::uint32_t, Dim>, grid_error> tree_grid<Dim, T, ChildCount>::relative_pos(
+    std::array<std::uint32_t, Dim> pos) const {
+    std::array<std::uint32_t, Dim> rel;
+    const std::uint32_t cov = axis_coverage();
+    for (std::size_t axis = 0; axis < Dim; axis++) {
+        if (pos[axis] < m_origin[axis]) return std::unexpected(grid_error::OutOfBounds);
+        const std::uint32_t delta = pos[axis] - m_origin[axis];
+        if (delta >= cov) return std::unexpected(grid_error::OutOfBounds);
+        rel[axis] = delta;
+    }
+    return rel;
+}
+template <std::size_t Dim, typename T, std::size_t ChildCount>
+    requires std::movable<T>
+std::expected<std::size_t, grid_error> tree_grid<Dim, T, ChildCount>::find_index(
+    std::array<std::uint32_t, Dim> pos) const {
+    auto rel_res = relative_pos(pos);
+    if (!rel_res.has_value()) return std::unexpected(rel_res.error());
+
+    const auto rel           = rel_res.value();
+    std::size_t current_node = 0;
+
+    for (std::size_t level = 0; level < m_depth; level++) {
+        const std::uint32_t stride = pow_child(m_depth - level - 1);
+        const std::size_t child    = flat_child_index(rel, stride);
+        const std::size_t entry    = m_nodes[current_node].children[child];
+        if (entry == npos) return std::unexpected(grid_error::EmptyCell);
+
+        if (level + 1 == m_depth) return entry;
+        if (entry >= m_nodes.size()) return std::unexpected(grid_error::EmptyCell);
+        current_node = entry;
+    }
+
+    return std::unexpected(grid_error::EmptyCell);
+}
+template <std::size_t Dim, typename T, std::size_t ChildCount>
+    requires std::movable<T>
+std::expected<std::reference_wrapper<std::size_t>, grid_error> tree_grid<Dim, T, ChildCount>::find_index_slot(
+    std::array<std::uint32_t, Dim> pos) {
+    auto rel_res = relative_pos(pos);
+    if (!rel_res.has_value()) return std::unexpected(rel_res.error());
+
+    const auto rel           = rel_res.value();
+    std::size_t current_node = 0;
+
+    for (std::size_t level = 0; level < m_depth; level++) {
+        const std::uint32_t stride = pow_child(m_depth - level - 1);
+        const std::size_t child    = flat_child_index(rel, stride);
+        std::size_t& entry         = m_nodes[current_node].children[child];
+        if (entry == npos) return std::unexpected(grid_error::EmptyCell);
+
+        if (level + 1 == m_depth) return std::ref(entry);
+        if (entry >= m_nodes.size()) return std::unexpected(grid_error::EmptyCell);
+        current_node = entry;
+    }
+
+    return std::unexpected(grid_error::EmptyCell);
+}
+template <std::size_t Dim, typename T, std::size_t ChildCount>
+    requires std::movable<T>
+void tree_grid<Dim, T, ChildCount>::rebuild_tree() {
+    m_nodes.clear();
+    m_nodes.emplace_back();
+
+    for (std::size_t data_index = 0; data_index < m_positions.size(); data_index++) {
+        auto rel = relative_pos(m_positions[data_index]);
+        if (!rel.has_value()) continue;
+
+        std::size_t current_node = 0;
+        for (std::size_t level = 0; level < m_depth; level++) {
+            const std::uint32_t stride = pow_child(m_depth - level - 1);
+            const std::size_t child    = flat_child_index(rel.value(), stride);
+            std::size_t& entry         = m_nodes[current_node].children[child];
+
+            if (level + 1 == m_depth) {
+                entry = data_index;
+                continue;
+            }
+
+            if (entry == npos) {
+                const std::size_t new_node_index = m_nodes.size();
+                entry                            = new_node_index;
+                m_nodes.emplace_back();
+                current_node = new_node_index;
+                continue;
+            }
+            current_node = entry;
+        }
+    }
+}
+template <std::size_t Dim, typename T, std::size_t ChildCount>
+    requires std::movable<T>
+tree_grid<Dim, T, ChildCount>::tree_grid(std::array<std::uint32_t, Dim> dimensions,
+                                         std::array<std::uint32_t, Dim> origin)
+    : m_origin(origin) {
+    // determine required coverage from requested dimensions
+    std::uint32_t required_cov = 1;
+    for (std::size_t i = 0; i < Dim; ++i) required_cov = std::max(required_cov, dimensions[i]);
+
+    m_depth           = 1;
+    std::uint32_t cov = pow_child(m_depth);
+    while (cov < required_cov) {
+        ++m_depth;
+        cov *= static_cast<std::uint32_t>(ChildCount);
+    }
+
+    m_nodes.emplace_back();
+}
+template <std::size_t Dim, typename T, std::size_t ChildCount>
+    requires std::movable<T>
+bool tree_grid<Dim, T, ChildCount>::contains(std::array<std::uint32_t, Dim> pos) const {
+    return find_index(pos).has_value();
+}
+template <std::size_t Dim, typename T, std::size_t ChildCount>
+    requires std::movable<T>
+std::uint32_t tree_grid<Dim, T, ChildCount>::coverage() const {
+    return axis_coverage();
+}
+template <std::size_t Dim, typename T, std::size_t ChildCount>
+    requires std::movable<T>
+std::array<std::uint32_t, Dim> tree_grid<Dim, T, ChildCount>::dimensions() const {
+    return dimensions_impl();
+}
+template <std::size_t Dim, typename T, std::size_t ChildCount>
+    requires std::movable<T>
+std::size_t tree_grid<Dim, T, ChildCount>::dimension(std::size_t index) const {
+    return dimensions_impl()[index];
+}
+template <std::size_t Dim, typename T, std::size_t ChildCount>
+    requires std::movable<T>
+std::size_t tree_grid<Dim, T, ChildCount>::count() const {
+    return m_data.size();
+}
+template <std::size_t Dim, typename T, std::size_t ChildCount>
+    requires std::movable<T>
+void tree_grid<Dim, T, ChildCount>::clear() {
+    m_data.clear();
+    m_positions.clear();
+    m_nodes.clear();
+    m_nodes.emplace_back();
+}
+template <std::size_t Dim, typename T, std::size_t ChildCount>
+    requires std::movable<T>
+std::expected<std::reference_wrapper<T>, grid_error> tree_grid<Dim, T, ChildCount>::get_mut(
+    std::array<std::uint32_t, Dim> pos) {
+    return find_index(pos).transform([this](std::size_t index) { return std::ref(m_data[index]); });
+}
+template <std::size_t Dim, typename T, std::size_t ChildCount>
+    requires std::movable<T>
+std::expected<std::reference_wrapper<const T>, grid_error> tree_grid<Dim, T, ChildCount>::get(
+    std::array<std::uint32_t, Dim> pos) const {
+    return find_index(pos).transform([this](std::size_t index) { return std::cref(m_data[index]); });
+}
+template <std::size_t Dim, typename T, std::size_t ChildCount>
+    requires std::movable<T>
+template <typename... Args>
+    requires std::constructible_from<T, Args...>
+std::expected<std::reference_wrapper<T>, grid_error> tree_grid<Dim, T, ChildCount>::set(
+    std::array<std::uint32_t, Dim> pos, Args&&... value) {
+    auto rel_res = relative_pos(pos);
+    if (!rel_res.has_value()) return std::unexpected(rel_res.error());
+
+    const auto rel           = rel_res.value();
+    std::size_t current_node = 0;
+    for (std::size_t level = 0; level < m_depth; level++) {
+        const std::uint32_t stride = pow_child(m_depth - level - 1);
+        const std::size_t child    = flat_child_index(rel, stride);
+        std::size_t& entry         = m_nodes[current_node].children[child];
+
+        if (level + 1 == m_depth) {
+            if (entry == npos) {
+                m_data.emplace_back(std::forward<Args>(value)...);
+                m_positions.push_back(pos);
+                entry = m_data.size() - 1;
+            } else {
+                m_data[entry] = T(std::forward<Args>(value)...);
+            }
+            return std::ref(m_data[entry]);
+        }
+
+        if (entry == npos) {
+            const std::size_t new_node_index = m_nodes.size();
+            entry                            = new_node_index;
+            m_nodes.emplace_back();
+            current_node = new_node_index;
+            continue;
+        }
+        current_node = entry;
+    }
+
+    return std::unexpected(grid_error::InvalidPos);
+}
+template <std::size_t Dim, typename T, std::size_t ChildCount>
+    requires std::movable<T>
+template <typename... Args>
+    requires std::constructible_from<T, Args...>
+std::expected<std::reference_wrapper<T>, grid_error> tree_grid<Dim, T, ChildCount>::set_new(
+    std::array<std::uint32_t, Dim> pos, Args&&... value) {
+    auto rel_res = relative_pos(pos);
+    if (!rel_res.has_value()) return std::unexpected(rel_res.error());
+
+    const auto rel           = rel_res.value();
+    std::size_t current_node = 0;
+    for (std::size_t level = 0; level < m_depth; level++) {
+        const std::uint32_t stride = pow_child(m_depth - level - 1);
+        const std::size_t child    = flat_child_index(rel, stride);
+        std::size_t& entry         = m_nodes[current_node].children[child];
+
+        if (level + 1 == m_depth) {
+            if (entry == npos) {
+                m_data.emplace_back(std::forward<Args>(value)...);
+                m_positions.push_back(pos);
+                entry = m_data.size() - 1;
+                return std::ref(m_data[entry]);
+            }
+            return std::unexpected(grid_error::AlreadyOccupied);
+        }
+
+        if (entry == npos) {
+            const std::size_t new_node_index = m_nodes.size();
+            entry                            = new_node_index;
+            m_nodes.emplace_back();
+            current_node = new_node_index;
+            continue;
+        }
+        current_node = entry;
+    }
+
+    return std::unexpected(grid_error::InvalidPos);
+}
+template <std::size_t Dim, typename T, std::size_t ChildCount>
+    requires std::movable<T>
+std::expected<void, grid_error> tree_grid<Dim, T, ChildCount>::remove(std::array<std::uint32_t, Dim> pos) {
+    auto slot_res = find_index_slot(pos);
+    if (!slot_res.has_value()) return std::unexpected(slot_res.error());
+
+    std::size_t& removed_slot    = slot_res.value();
+    std::size_t index            = removed_slot;
+    const std::size_t last_index = m_data.size() - 1;
+    if (index != last_index) {
+        std::swap(m_data[index], m_data[last_index]);
+        std::swap(m_positions[index], m_positions[last_index]);
+
+        auto moved_slot_res = find_index_slot(m_positions[index]);
+        if (!moved_slot_res.has_value()) return std::unexpected(moved_slot_res.error());
+        moved_slot_res.value().get() = index;
+    }
+    m_data.pop_back();
+    m_positions.pop_back();
+    removed_slot = npos;
+    return {};
+}
+template <std::size_t Dim, typename T, std::size_t ChildCount>
+    requires std::movable<T>
+std::expected<T, grid_error> tree_grid<Dim, T, ChildCount>::take(std::array<std::uint32_t, Dim> pos) {
+    auto slot_res = find_index_slot(pos);
+    if (!slot_res.has_value()) return std::unexpected(slot_res.error());
+
+    std::size_t& removed_slot    = slot_res.value();
+    std::size_t index            = removed_slot;
+    T value                      = std::move(m_data[index]);
+    const std::size_t last_index = m_data.size() - 1;
+    if (index != last_index) {
+        std::swap(m_data[index], m_data[last_index]);
+        std::swap(m_positions[index], m_positions[last_index]);
+
+        auto moved_slot_res = find_index_slot(m_positions[index]);
+        if (!moved_slot_res.has_value()) return std::unexpected(moved_slot_res.error());
+        moved_slot_res.value().get() = index;
+    }
+    m_data.pop_back();
+    m_positions.pop_back();
+    removed_slot = npos;
+    return value;
+}
+template <std::size_t Dim, typename T, std::size_t ChildCount>
+    requires std::movable<T>
+void tree_grid<Dim, T, ChildCount>::shrink() {
+    // rebuild nodes to compact internal structure; depth and origin remain fixed
+    rebuild_tree();
+}
+
 }  // namespace ext::grid
