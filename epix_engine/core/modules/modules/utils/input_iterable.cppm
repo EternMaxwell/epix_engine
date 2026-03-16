@@ -13,8 +13,8 @@ class input_iterable : public std::ranges::view_interface<input_iterable<T>> {
     };
 
     struct factory_base {
-        virtual ~factory_base()                         = default;
-        virtual std::unique_ptr<iter_base> make() const = 0;
+        virtual ~factory_base()                   = default;
+        virtual std::unique_ptr<iter_base> make() = 0;
     };
 
     template <typename I, typename S>
@@ -32,7 +32,7 @@ class input_iterable : public std::ranges::view_interface<input_iterable<T>> {
     struct owned_factory final : factory_base {
         R range;
         explicit owned_factory(R r) : range(std::move(r)) {}
-        std::unique_ptr<iter_base> make() const override {
+        std::unique_ptr<iter_base> make() override {
             using I = decltype(std::ranges::begin(range));
             using S = decltype(std::ranges::end(range));
             return std::make_unique<iter_model<I, S>>(std::ranges::begin(range), std::ranges::end(range));
@@ -43,7 +43,7 @@ class input_iterable : public std::ranges::view_interface<input_iterable<T>> {
     struct borrowed_factory final : factory_base {
         RR* rng;
         explicit borrowed_factory(RR* r) : rng(r) {}
-        std::unique_ptr<iter_base> make() const override {
+        std::unique_ptr<iter_base> make() override {
             using I = decltype(std::ranges::begin(*rng));
             using S = decltype(std::ranges::end(*rng));
             return std::make_unique<iter_model<I, S>>(std::ranges::begin(*rng), std::ranges::end(*rng));
