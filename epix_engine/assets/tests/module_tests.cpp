@@ -4,7 +4,6 @@ import epix.assets;
 import epix.core;
 import std;
 
-namespace tests {
 struct NonCopy {
     NonCopy()                          = default;
     NonCopy(const NonCopy&)            = delete;
@@ -104,9 +103,7 @@ TEST(assets, reserve) {
     auto& str = opt.value().get();
     ASSERT_EQ(str, "Hello Assets!") << "Insert value is not the expected value.";
 }
-}  // namespace tests
 
-namespace tests {
 using namespace assets;
 struct StringLoader {
     static constexpr std::array<const char*, 2> exts = {"txt", "log"};
@@ -185,10 +182,4 @@ TEST(assets, loading) {
                         }
                     }));
     app.run();
-}
-}  // namespace tests
-
-int main(int argc, char** argv) {
-    ::testing::InitGoogleTest(&argc, argv);
-    return RUN_ALL_TESTS();
 }
