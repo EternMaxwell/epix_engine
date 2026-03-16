@@ -2,6 +2,7 @@ export module epix.experimental.fallingsand;
 
 import std;
 import glm;
+import BS.thread_pool;
 
 import epix.assets;
 import epix.core;
@@ -102,6 +103,7 @@ export struct SandChunkPos {
 export struct SandSimulation : grid::ExtendibleChunkRefGrid<kDim> {
    private:
     std::unique_ptr<ElementRegistry> element_registry;
+    std::unique_ptr<BS::thread_pool<>> thread_pool;
     std::size_t m_sand_base_id  = 0;
     float m_cell_size           = 6.0f;
     bool m_initialized          = false;
@@ -110,8 +112,6 @@ export struct SandSimulation : grid::ExtendibleChunkRefGrid<kDim> {
     std::int32_t m_brush_radius = 2;
     std::uint64_t m_tick        = 0;
 
-    static std::array<std::int64_t, kDim> pos64(std::int64_t x, std::int64_t y) { return {x, y}; }
-
     enum class CellState {
         Occupied,
         EmptyInChunk,
@@ -119,7 +119,7 @@ export struct SandSimulation : grid::ExtendibleChunkRefGrid<kDim> {
     };
 
     CellState cell_state(std::int64_t x, std::int64_t y) const {
-        auto cell = get_cell<Element>(pos64(x, y));
+        auto cell = get_cell<Element>({x, y});
         if (cell.has_value()) return CellState::Occupied;
 
         return std::visit(
@@ -136,20 +136,20 @@ export struct SandSimulation : grid::ExtendibleChunkRefGrid<kDim> {
     bool has_cell(std::int64_t x, std::int64_t y) const { return cell_state(x, y) == CellState::Occupied; }
 
     bool set_cell(std::int64_t x, std::int64_t y, Element value) {
-        return insert_cell(pos64(x, y), std::move(value)).has_value();
+        return insert_cell({x, y}, std::move(value)).has_value();
     }
 
-    bool clear_cell(std::int64_t x, std::int64_t y) { return remove_cell<Element>(pos64(x, y)).has_value(); }
+    bool clear_cell(std::int64_t x, std::int64_t y) { return remove_cell<Element>({x, y}).has_value(); }
 
     bool move_cell(std::int64_t from_x, std::int64_t from_y, std::int64_t to_x, std::int64_t to_y) {
         if (cell_state(to_x, to_y) != CellState::EmptyInChunk) return false;
 
-        auto from = get_cell<Element>(pos64(from_x, from_y));
+        auto from = get_cell<Element>({from_x, from_y});
         if (!from.has_value()) return false;
 
         Element moved = from->get();
-        if (!remove_cell<Element>(pos64(from_x, from_y)).has_value()) return false;
-        if (!insert_cell(pos64(to_x, to_y), std::move(moved)).has_value()) return false;
+        if (!remove_cell<Element>({from_x, from_y}).has_value()) return false;
+        if (!insert_cell({to_x, to_y}, std::move(moved)).has_value()) return false;
         return true;
     }
 
@@ -208,29 +208,39 @@ export struct SandSimulation : grid::ExtendibleChunkRefGrid<kDim> {
         static auto rng   = std::mt19937{std::random_device{}()};
         std::shuffle(chunk_coords.begin(), chunk_coords.end(), rng);
 
-        for (auto&& [x, y] : chunk_coords | std::views::transform([this, cw](auto& cpos) {
-                                 return get_chunk(cpos).value().get().iter<Element>() | std::views::elements<0> |
-                                        std::views::transform([cpos, cw](auto&& cell_pos) {
-                                            auto&& [cx, cy] = cpos;
-                                            auto&& [lx, ly] = cell_pos;
-                                            return std::array<std::int64_t, 2>{
-                                                static_cast<std::int64_t>(cx) * cw + static_cast<std::int64_t>(lx),
-                                                static_cast<std::int64_t>(cy) * cw + static_cast<std::int64_t>(ly),
-                                            };
-                                        });
-                             }) | std::views::join) {
-            if (!has_cell(x, y)) continue;
+        for (auto&& [rx, ry] : std::views::cartesian_product(std::views::iota(0, 3), std::views::iota(0, 3))) {
+            for (auto&& cpos : chunk_coords | std::views::filter([rx, ry](auto&& cpos) {
+                                   auto&& [cx, cy] = cpos;
+                                   auto x_r        = (cx % 3 + 3) % 3;
+                                   auto y_r        = (cy % 3 + 3) % 3;
+                                   return x_r == rx && y_r == ry;
+                               })) {
+                thread_pool->detach_task([cpos, cw, this] {
+                    for (auto&& [x, y] : get_chunk(cpos).value().get().iter<Element>() | std::views::elements<0> |
+                                             std::views::transform([cpos, cw](auto&& cell_pos) {
+                                                 auto&& [cx, cy] = cpos;
+                                                 auto&& [lx, ly] = cell_pos;
+                                                 return std::array<std::int64_t, 2>{
+                                                     static_cast<std::int64_t>(cx) * cw + static_cast<std::int64_t>(lx),
+                                                     static_cast<std::int64_t>(cy) * cw + static_cast<std::int64_t>(ly),
+                                                 };
+                                             })) {
+                        if (!has_cell(x, y)) continue;
 
-            if (move_cell(x, y, x, y - 1)) continue;
+                        if (move_cell(x, y, x, y - 1)) continue;
 
-            const bool prefer_left = ((x + y + static_cast<std::int64_t>(m_tick)) & 1) == 0;
-            if (prefer_left) {
-                if (move_cell(x, y, x - 1, y - 1)) continue;
-                (void)move_cell(x, y, x + 1, y - 1);
-            } else {
-                if (move_cell(x, y, x + 1, y - 1)) continue;
-                (void)move_cell(x, y, x - 1, y - 1);
+                        const bool prefer_left = ((x + y + static_cast<std::int64_t>(m_tick)) & 1) == 0;
+                        if (prefer_left) {
+                            if (move_cell(x, y, x - 1, y - 1)) continue;
+                            (void)move_cell(x, y, x + 1, y - 1);
+                        } else {
+                            if (move_cell(x, y, x + 1, y - 1)) continue;
+                            (void)move_cell(x, y, x - 1, y - 1);
+                        }
+                    }
+                });
             }
+            thread_pool->wait();
         }
 
         m_tick++;
@@ -255,6 +265,7 @@ export struct SandSimulation : grid::ExtendibleChunkRefGrid<kDim> {
                 },
         });
         m_sand_base_id = sand_res.value_or(0);
+        thread_pool    = std::make_unique<BS::thread_pool<>>(std::thread::hardware_concurrency());
     }
 
     const ElementRegistry& registry() const { return *element_registry; }
@@ -285,7 +296,7 @@ export struct SandSimulation : grid::ExtendibleChunkRefGrid<kDim> {
                 if (desc.fill) {
                     std::uint64_t seed = (static_cast<std::uint64_t>(static_cast<std::uint32_t>(x)) << 32) |
                                          static_cast<std::uint64_t>(static_cast<std::uint32_t>(y));
-                    (void)insert_cell(pos64(x, y), Element{base_id, registry()[base_id].color_func(seed)});
+                    (void)insert_cell({x, y}, Element{base_id, registry()[base_id].color_func(seed)});
                 } else {
                     (void)clear_cell(x, y);
                 }
@@ -404,17 +415,22 @@ export struct SandSimulation : grid::ExtendibleChunkRefGrid<kDim> {
                              Query<Item<Entity, const SandChunkPos&, const grid::Chunk<kDim>&>> chunks,
                              ResMut<assets::Assets<mesh::Mesh>> meshes) {
         float cell_size = sim->cell_size();
+        std::vector<std::tuple<Entity, std::array<std::int32_t, kDim>, std::future<mesh::Mesh>>> mesh_futures;
         for (auto&& [entity, pos, chunk] : chunks.iter()) {
-            auto chunk_mesh  = build_chunk_mesh(chunk, cell_size);
-            auto mesh_handle = meshes->emplace(std::move(chunk_mesh));
+            mesh_futures.emplace_back(entity, pos.value, sim->thread_pool->submit_task([&chunk, cell_size] {
+                return build_chunk_mesh(chunk, cell_size);
+            }));
+        }
+        for (auto&& [entity, pos, mesh_future] : mesh_futures) {
+            auto mesh_handle = meshes->emplace(std::move(mesh_future.get()));
             cmd.entity(entity).insert(mesh::Mesh2d{mesh_handle},
                                       mesh::MeshMaterial2d{
                                           .color      = glm::vec4(1.0f),
                                           .alpha_mode = mesh::MeshAlphaMode2d::Opaque,
                                       },
                                       transform::Transform{
-                                          .translation = glm::vec3(pos.value[0] * cell_size * sim->chunk_width(),
-                                                                   pos.value[1] * cell_size * sim->chunk_width(), 0.0f),
+                                          .translation = glm::vec3(pos[0] * cell_size * sim->chunk_width(),
+                                                                   pos[1] * cell_size * sim->chunk_width(), 0.0f),
                                       });
         }
     }
