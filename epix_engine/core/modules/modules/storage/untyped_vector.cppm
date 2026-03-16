@@ -197,7 +197,7 @@ export class untyped_vector {
      *  @tparam T Element type. */
     template <typename T>
     T* data_as() noexcept {
-        return reinterpret_cast<T*>(data_);
+        return std::launder(reinterpret_cast<T*>(data_));
     }
 
     /** @brief Iterate over raw element pointers (mutable). */
@@ -220,12 +220,12 @@ export class untyped_vector {
      *  @tparam T Element type. */
     template <typename T>
     std::span<T> span_as() noexcept {
-        return {reinterpret_cast<T*>(data_), size_};
+        return {std::launder(reinterpret_cast<T*>(data_)), size_};
     }
 
     template <typename T>
     std::span<const T> span_as() const noexcept {
-        return {reinterpret_cast<const T*>(data_), size_};
+        return {std::launder(reinterpret_cast<const T*>(data_)), size_};
     }
     template <typename T>
     std::span<const T> cspan_as() const noexcept {
@@ -236,7 +236,7 @@ export class untyped_vector {
      *  @tparam T Element type. */
     template <typename T>
     const T* data_as() const noexcept {
-        return reinterpret_cast<const T*>(data_);
+        return std::launder(reinterpret_cast<const T*>(data_));
     }
     /** @brief Const typed pointer alias.
      *  @tparam T Element type. */
@@ -250,7 +250,7 @@ export class untyped_vector {
     template <typename T>
     T& get_as(std::size_t idx) {
         assert(idx < size_);
-        return *reinterpret_cast<T*>(get(idx));
+        return *std::launder(reinterpret_cast<T*>(get(idx)));
     }
 
     /** @brief Get a const typed reference to the element at idx.
@@ -258,7 +258,7 @@ export class untyped_vector {
     template <typename T>
     const T& get_as(std::size_t idx) const {
         assert(idx < size_);
-        return *reinterpret_cast<const T*>(get(idx));
+        return *std::launder(reinterpret_cast<const T*>(get(idx)));
     }
 
     /** @brief Const typed reference alias.
