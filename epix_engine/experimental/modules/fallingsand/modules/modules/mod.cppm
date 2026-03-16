@@ -425,6 +425,9 @@ export struct SimpleFallingSandSettings {
     std::int32_t height     = 96;
     std::size_t chunk_shift = 5;
     float cell_size         = 4.0f;
+    enum class LayerType { Dense, Sparse, Tree };
+    // the layer type to use. packed is not supported, cause it don't have empty cell.
+    LayerType layer_type = LayerType::Tree;
 };
 
 export struct SimpleFallingSandPlugin {
@@ -451,8 +454,22 @@ export struct SimpleFallingSandPlugin {
                 for (std::int32_t cy = -chunks_y; cy < chunks_y; ++cy) {
                     for (std::int32_t cx = -chunks_x; cx < chunks_x; ++cx) {
                         grid::Chunk<kDim> chunk(cfg.chunk_shift);
-                        auto layer_res =
-                            chunk.add_layer(std::make_unique<grid::layers::DenseLayer<kDim, Element>>(cfg.chunk_shift));
+                        std::expected<void, grid::ChunkLayerError> layer_res =
+                            std::unexpected(grid::ChunkLayerError::LayerMissing);
+                        switch (cfg.layer_type) {
+                            case SimpleFallingSandSettings::LayerType::Dense:
+                                layer_res = chunk.add_layer(
+                                    std::make_unique<grid::layers::DenseLayer<kDim, Element>>(cfg.chunk_shift));
+                                break;
+                            case SimpleFallingSandSettings::LayerType::Sparse:
+                                layer_res = chunk.add_layer(
+                                    std::make_unique<grid::layers::SparseLayer<kDim, Element>>(cfg.chunk_shift));
+                                break;
+                            case SimpleFallingSandSettings::LayerType::Tree:
+                                layer_res = chunk.add_layer(
+                                    std::make_unique<grid::layers::TreeLayer<kDim, Element>>(cfg.chunk_shift));
+                                break;
+                        }
                         if (!layer_res.has_value()) continue;
 
                         auto empty_mesh = meshes->emplace(mesh::Mesh{});
