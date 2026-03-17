@@ -41,6 +41,16 @@ TEST(PackedGrid, GetMut) {
     EXPECT_EQ(g.get({0, 1})->get(), 7);
 }
 
+TEST(PackedGrid, UnsafeAccessors) {
+    packed_grid<2, int> g({3, 3}, 0);
+
+    EXPECT_EQ(g.set_unsafe({1, 2}, 11), 11);
+    EXPECT_EQ(g.get_unsafe({1, 2}), 11);
+
+    g.get_mut_unsafe({1, 2}) = 23;
+    EXPECT_EQ(g.get_unsafe({1, 2}), 23);
+}
+
 TEST(PackedGrid, Reset) {
     packed_grid<2, int> g({2, 2}, 5);
     g.set({0, 0}, 100);
@@ -169,6 +179,20 @@ TEST(DenseGrid, GetMut) {
     ASSERT_TRUE(ref.has_value());
     ref->get() = 99;
     EXPECT_EQ(g.get({0, 0})->get(), 99);
+}
+
+TEST(DenseGrid, UnsafeAccessors) {
+    dense_grid<2, int> g({3, 3});
+
+    EXPECT_EQ(g.set_unsafe({1, 1}, 7), 7);
+    EXPECT_TRUE(g.contains({1, 1}));
+    EXPECT_EQ(g.get_unsafe({1, 1}), 7);
+
+    g.get_mut_unsafe({1, 1}) = 19;
+    EXPECT_EQ(g.get_unsafe({1, 1}), 19);
+
+    EXPECT_EQ(g.set_unsafe({1, 1}, 31), 31);
+    EXPECT_EQ(g.get_unsafe({1, 1}), 31);
 }
 
 TEST(DenseGrid, Remove) {
@@ -300,6 +324,21 @@ TEST(SparseGrid, GetMut) {
     EXPECT_EQ(g.get({0, 0})->get(), 99);
 }
 
+TEST(SparseGrid, UnsafeAccessors) {
+    sparse_grid<2, int> g({4, 4});
+
+    EXPECT_EQ(g.set_unsafe({2, 1}, 13), 13);
+    EXPECT_TRUE(g.contains({2, 1}));
+    EXPECT_EQ(g.get_unsafe({2, 1}), 13);
+
+    g.get_mut_unsafe({2, 1}) = 29;
+    EXPECT_EQ(g.get_unsafe({2, 1}), 29);
+
+    EXPECT_TRUE(g.remove({2, 1}).has_value());
+    EXPECT_EQ(g.set_unsafe({3, 3}, 41), 41);
+    EXPECT_EQ(g.get_unsafe({3, 3}), 41);
+}
+
 TEST(SparseGrid, Remove) {
     sparse_grid<2, int> g({3, 3});
     g.set({1, 1}, 42);
@@ -426,6 +465,20 @@ TEST(DenseExtendibleGrid, GetMut) {
     g.set({0, 0}, 5);
     g.get_mut({0, 0})->get() = 99;
     EXPECT_EQ(g.get({0, 0})->get(), 99);
+}
+
+TEST(DenseExtendibleGrid, UnsafeAccessors) {
+    dense_extendible_grid<2, int> g;
+
+    EXPECT_EQ(g.set_unsafe({-2, 3}, 17), 17);
+    EXPECT_TRUE(g.contains({-2, 3}));
+    EXPECT_EQ(g.get_unsafe({-2, 3}), 17);
+
+    g.get_mut_unsafe({-2, 3}) = 35;
+    EXPECT_EQ(g.get_unsafe({-2, 3}), 35);
+
+    EXPECT_EQ(g.set_unsafe({-2, 3}, 49), 49);
+    EXPECT_EQ(g.get_unsafe({-2, 3}), 49);
 }
 
 TEST(DenseExtendibleGrid, NegativeCoordinates) {
@@ -558,6 +611,20 @@ TEST(TreeExtendibleGrid, GetMut) {
     g.set({0, 0}, 5);
     g.get_mut({0, 0})->get() = 99;
     EXPECT_EQ(g.get({0, 0})->get(), 99);
+}
+
+TEST(TreeExtendibleGrid, UnsafeAccessors) {
+    tree_extendible_grid<2, int> g;
+
+    EXPECT_EQ(g.set_unsafe({12, 9}, 21), 21);
+    EXPECT_TRUE(g.contains({12, 9}));
+    EXPECT_EQ(g.get_unsafe({12, 9}), 21);
+
+    g.get_mut_unsafe({12, 9}) = 43;
+    EXPECT_EQ(g.get_unsafe({12, 9}), 43);
+
+    EXPECT_EQ(g.set_unsafe({12, 9}, 57), 57);
+    EXPECT_EQ(g.get_unsafe({12, 9}), 57);
 }
 
 TEST(TreeExtendibleGrid, Remove) {
@@ -702,6 +769,20 @@ TEST(TreeGrid, GetEmptyAndGetMut) {
     g.set({2, 2}, 5);
     g.get_mut({2, 2})->get() = 99;
     EXPECT_EQ(g.get({2, 2})->get(), 99);
+}
+
+TEST(TreeGrid, UnsafeAccessors) {
+    tree_grid<2, int> g({8, 8});
+
+    EXPECT_EQ(g.set_unsafe({5, 6}, 15), 15);
+    EXPECT_TRUE(g.contains({5, 6}));
+    EXPECT_EQ(g.get_unsafe({5, 6}), 15);
+
+    g.get_mut_unsafe({5, 6}) = 27;
+    EXPECT_EQ(g.get_unsafe({5, 6}), 27);
+
+    EXPECT_EQ(g.set_unsafe({5, 6}, 39), 39);
+    EXPECT_EQ(g.get_unsafe({5, 6}), 39);
 }
 
 TEST(TreeGrid, RemoveAndTake) {
