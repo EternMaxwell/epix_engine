@@ -56,18 +56,25 @@ void FontAtlas::apply_pending(assets::Assets<image::Image>& assets) {
     if (pending_glyphs.empty()) {
         return;
     }
+    add_image_if_missing(assets);
 
     const auto pixel_size   = std::size_t{4};
     const auto layer_stride = static_cast<std::size_t>(atlas_width) * atlas_height * pixel_size;
-    std::vector<std::byte> atlas_data(layer_stride * atlas_layers, std::byte{0});
+    std::span<std::byte> atlas_data;
 
-    if (image) {
-        if (auto atlas_image_ref = assets.try_get_mut(this->image.value()); atlas_image_ref) {
-            auto& current      = atlas_image_ref.value().get();
+    {
+        auto atlas_image_ref = assets.try_get_mut(this->image.value());
+        auto& current        = atlas_image_ref.value().get();
+        if (current.width() != atlas_width || current.height() != atlas_height ||
+            current.depth_or_layers() != atlas_layers) {
+            auto new_atlas     = make_atlas_image();
+            atlas_data         = new_atlas.raw_view_mut();
             auto current_bytes = current.raw_view();
             auto copy_size     = std::min(atlas_data.size(), current_bytes.size());
             std::memcpy(atlas_data.data(), current_bytes.data(), copy_size);
+            current = std::move(new_atlas);
         }
+        atlas_data = current.raw_view_mut();
     }
 
     for (auto& pending : pending_glyphs) {
@@ -87,20 +94,6 @@ void FontAtlas::apply_pending(assets::Assets<image::Image>& assets) {
                 std::memcpy(atlas_data.data() + atlas_offset, src + offset, pixel_size);
             }
         }
-    }
-
-    auto atlas_image =
-        image::Image::create2d_array(atlas_width, atlas_height, atlas_layers, image::Format::RGBA8, atlas_data).value();
-    atlas_image.set_usage(image::ImageUsage::Both);
-
-    if (image) {
-        if (auto atlas_image_ref = assets.try_get_mut(this->image.value()); atlas_image_ref) {
-            atlas_image_ref.value().get() = std::move(atlas_image);
-        } else {
-            image = assets.emplace(std::move(atlas_image));
-        }
-    } else {
-        image = assets.emplace(std::move(atlas_image));
     }
 
     pending_glyphs.clear();
