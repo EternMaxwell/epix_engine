@@ -809,6 +809,8 @@ std::expected<std::size_t, grid_error> packed_grid<Dim, T>::offset(const std::ar
     for (std::size_t i = 0; i < Dim; i++) {
         if (pos[i] >= m_dimensions[i]) [[unlikely]]
             return std::unexpected(grid_error::OutOfBounds);
+    }
+    for (std::size_t i = 0; i < Dim; i++) {
         index *= m_dimensions[i];
         index += pos[i];
     }
