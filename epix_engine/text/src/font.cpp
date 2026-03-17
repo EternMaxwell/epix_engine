@@ -91,7 +91,7 @@ void FontAtlas::apply_pending(assets::Assets<image::Image>& assets) {
 
     auto atlas_image =
         image::Image::create2d_array(atlas_width, atlas_height, atlas_layers, image::Format::RGBA8, atlas_data).value();
-    atlas_image.set_usage(image::ImageUsage::Render);
+    atlas_image.set_usage(image::ImageUsage::Both);
 
     if (image) {
         if (auto atlas_image_ref = assets.try_get_mut(this->image.value()); atlas_image_ref) {
@@ -183,7 +183,7 @@ std::expected<AtlasRect, FontAtlas::FontAtlasError> FontAtlas::place_char_bitmap
 
 image::Image FontAtlas::make_atlas_image() {
     auto img = image::Image::create2d_array(atlas_width, atlas_height, atlas_layers, image::Format::RGBA8);
-    img.set_usage(image::ImageUsage::Render);
+    img.set_usage(image::ImageUsage::Both);
     return img;
 }
 
@@ -388,10 +388,12 @@ void FontPlugin::build(core::App& app) {
     app.world_mut().init_resource<FontLibrary>();
     app.world_mut().init_resource<FontAtlasSets>();
     app.configure_sets(core::sets(FontSystems::AddFontAtlasSet, FontSystems::ApplyPendingFontAtlasUpdates));
-    app.add_systems(
-        core::First,
-        core::into(add_font_atlas_set).in_set(FontSystems::AddFontAtlasSet).after(assets::AssetSystems::WriteEvents));
+    app.add_systems(core::First, core::into(add_font_atlas_set)
+                                     .in_set(FontSystems::AddFontAtlasSet)
+                                     .after(assets::AssetSystems::WriteEvents)
+                                     .set_name("add font atlas set"));
     app.add_systems(core::PostUpdate, core::into(apply_pending_font_atlas_updates)
                                           .in_set(FontSystems::ApplyPendingFontAtlasUpdates)
-                                          .before(assets::AssetSystems::WriteEvents));
+                                          .before(assets::AssetSystems::WriteEvents)
+                                          .set_name("apply pending font atlas updates"));
 }
