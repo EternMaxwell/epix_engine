@@ -225,6 +225,7 @@ export class Image {
 
     /** @brief Get a read-only byte span of the raw pixel data. */
     std::span<const std::byte> raw_view() const { return std::as_bytes(std::span(data)); }
+    std::span<std::byte> raw_view_mut() { return std::as_writable_bytes(std::span(data)); }
 
     /**
      * @brief Sample a pixel at (x, y), returning an array of 4 floats, each representing a channel. Missing channels
