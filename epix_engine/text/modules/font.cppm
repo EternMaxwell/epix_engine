@@ -311,5 +311,6 @@ export enum class FontSystems {
  * update systems. */
 export struct FontPlugin {
     void build(core::App& app);
+    void finish(core::App& app);
 };
 }  // namespace text::font

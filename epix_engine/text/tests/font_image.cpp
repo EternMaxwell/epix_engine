@@ -13,8 +13,6 @@ import epix.glfw.core;
 import epix.glfw.render;
 import glm;
 
-#include "font_array.hpp"
-
 auto run_once = [run = false]() mutable {
     if (!run) {
         run = true;
@@ -103,10 +101,8 @@ int main(int argc, char** argv) {
 
     app.add_systems(
         core::PreStartup,
-        core::into([&](core::Commands cmd, core::ResMut<assets::Assets<text::font::Font>> fonts) {
-            text::font::Font font{std::make_unique<std::byte[]>(font_data_array_size), font_data_array_size};
-            std::memcpy(font.data.get(), font_data_array, font_data_array_size);
-            font_handle = fonts->emplace(std::move(font));
+        core::into([&](core::Commands cmd, core::Res<assets::AssetServer> asset_server) {
+            font_handle = asset_server->load<text::font::Font>("internal://fonts/default.ttf").value();
             cmd.spawn(text::TextBundle{.text{"Hello, Epix Engine!"},
                                        .font{
                                            .font            = *font_handle,

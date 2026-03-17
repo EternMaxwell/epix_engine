@@ -6,6 +6,8 @@
 
 #include <fstream>
 
+#include "font_array.hpp"
+
 module epix.text;
 
 import epix.image;
@@ -22,6 +24,13 @@ void add_font_atlas_set(core::ResMut<FontAtlasSets> atlas_sets,
                         core::Res<FontLibrary> font_lib,
                         core::EventReader<assets::AssetEvent<Font>> reader,
                         core::Res<assets::Assets<Font>> fonts);
+void register_default_embedded_font(core::App& app);
+
+Font make_default_embedded_font() {
+    Font font{std::make_unique<std::byte[]>(font_data_array_size), static_cast<std::size_t>(font_data_array_size)};
+    std::memcpy(font.data.get(), font_data_array, font.size);
+    return font;
+}
 }  // namespace
 
 std::span<const char* const> FontLoader::extensions() {
@@ -321,6 +330,12 @@ FontAtlasSets::FontAtlasSets(core::World& world) {
     }
 }
 
+namespace text::font {
+struct DefaultFontHandle {
+    assets::Handle<Font> handle;
+};
+}  // namespace text::font
+
 namespace {
 void apply_pending_font_atlas_updates(core::ResMut<FontAtlasSets> atlas_sets,
                                       core::ResMut<assets::Assets<image::Image>> images) {
@@ -372,7 +387,23 @@ void add_font_atlas_set(core::ResMut<FontAtlasSets> atlas_sets,
         atlas_sets->add(id, face);
     }
 }
+
+void register_default_embedded_font(core::App& app) {
+    auto server = app.world_mut().get_resource<assets::AssetServer>();
+    if (!server.has_value()) {
+        spdlog::error("[text] AssetServer resource is missing while registering embedded default font.");
+        return;
+    }
+
+    auto handle = server->get().add_asset<Font>("internal://fonts/default.ttf", make_default_embedded_font());
+    if (!handle.has_value()) {
+        spdlog::error("[text] Failed to register embedded default font at internal://fonts/default.ttf.");
+    }
+    app.world_mut().insert_resource(text::font::DefaultFontHandle{*handle});
+}
 }  // namespace
+
+import epix.meta;
 
 void FontPlugin::build(core::App& app) {
     app.add_plugins(image::ImagePlugin{});
@@ -390,3 +421,5 @@ void FontPlugin::build(core::App& app) {
                                           .before(assets::AssetSystems::WriteEvents)
                                           .set_name("apply pending font atlas updates"));
 }
+
+void FontPlugin::finish(core::App& app) { register_default_embedded_font(app); }

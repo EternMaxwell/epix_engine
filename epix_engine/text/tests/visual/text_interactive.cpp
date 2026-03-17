@@ -13,8 +13,6 @@ import epix.glfw.core;
 import epix.glfw.render;
 import glm;
 
-#include "../font_array.hpp"
-
 // Marker components
 struct MainText {};
 struct BoundsOutline {};
@@ -149,22 +147,18 @@ int main(int argc, char** argv) {
 
     app.world_mut().spawn(core_graph::core_2d::Camera2DBundle{});
 
-    std::optional<assets::Handle<text::font::Font>> font_handle;
-
     // Setup: spawn text entity, outline meshes, info text
     app.add_systems(
         core::PreStartup,
-        core::into([&](core::Commands cmd, core::ResMut<assets::Assets<text::font::Font>> fonts,
+        core::into([&](core::Commands cmd, core::Res<assets::AssetServer> asset_server,
                        core::ResMut<assets::Assets<mesh::Mesh>> meshes) {
             // Load font
-            text::font::Font font{std::make_unique<std::byte[]>(font_data_array_size), font_data_array_size};
-            std::memcpy(font.data.get(), font_data_array, font_data_array_size);
-            font_handle = fonts->emplace(std::move(font));
+            auto font_handle = asset_server->load<text::font::Font>("internal://fonts/default.ttf").value();
 
             // Spawn main text
             auto text_entity = cmd.spawn(text::TextBundle{.text{"Hello, Epix Engine!\nInteractive text test."},
                                                           .font{
-                                                              .font            = *font_handle,
+                                                              .font            = font_handle,
                                                               .size            = 36.0f,
                                                               .line_height     = 36.0f,
                                                               .relative_height = false,
@@ -194,7 +188,7 @@ int main(int argc, char** argv) {
             auto info_entity =
                 cmd.spawn(text::TextBundle{.text{"Info: ..."},
                                            .font{
-                                               .font            = *font_handle,
+                                               .font            = font_handle,
                                                .size            = 18.0f,
                                                .line_height     = 18.0f,
                                                .relative_height = false,

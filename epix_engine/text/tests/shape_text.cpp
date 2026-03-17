@@ -8,7 +8,7 @@
 #include <memory>
 #include <stdexcept>
 
-#include "font_array.hpp"
+#include "../src/font_array.hpp"
 
 import epix.assets;
 import epix.text;
