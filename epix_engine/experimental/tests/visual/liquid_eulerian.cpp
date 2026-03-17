@@ -11,21 +11,17 @@ import epix.mesh;
 import epix.transform;
 import epix.input;
 import epix.extension.grid;
-import epix.sprite;
-import epix.text;
-
-#include "../../../text/tests/font_array.hpp"
 
 namespace {
 using namespace core;
 using ext::grid::packed_grid;
 
-constexpr std::uint32_t kGridWidth  = 120;
-constexpr std::uint32_t kGridHeight = 80;
-constexpr float kCellSize           = 10.0f;
-constexpr float kBaseDt             = 1.0f / 60.0f;
-
-struct HudTextTag {};
+constexpr int kN          = 200;
+constexpr int kIter       = 20;
+constexpr float kGravity  = 0.5f;
+constexpr float kTargetD  = 1.0f;
+constexpr float kMaxVel   = 8.0f;
+constexpr float kCellSize = 4.0f;
 
 enum class PaintTool {
     Water,
@@ -33,548 +29,534 @@ enum class PaintTool {
     Eraser,
 };
 
-struct LiquidSim {
-    packed_grid<2, float> density{{kGridWidth, kGridHeight}, 0.0f};
-    packed_grid<2, float> density_next{{kGridWidth, kGridHeight}, 0.0f};
-    packed_grid<2, float> density_delta{{kGridWidth, kGridHeight}, 0.0f};
-    packed_grid<2, float> pressure{{kGridWidth, kGridHeight}, 0.0f};
-    packed_grid<2, std::uint8_t> solid{{kGridWidth, kGridHeight}, 0};
+struct Fluid {
+    packed_grid<2, float> D{{kN, kN}, 0.0f};
+    packed_grid<2, float> newD{{kN, kN}, 0.0f};
+    packed_grid<2, std::uint8_t> S{{kN, kN}, 0};
+    packed_grid<2, float> P{{kN, kN}, 0.0f};
 
-    packed_grid<2, float> u{{kGridWidth + 1, kGridHeight}, 0.0f};
-    packed_grid<2, float> v{{kGridWidth, kGridHeight + 1}, 0.0f};
-    packed_grid<2, float> u_prev{{kGridWidth + 1, kGridHeight}, 0.0f};
-    packed_grid<2, float> v_prev{{kGridWidth, kGridHeight + 1}, 0.0f};
+    packed_grid<2, float> U{{kN + 1, kN}, 0.0f};
+    packed_grid<2, float> newU{{kN + 1, kN}, 0.0f};
+    packed_grid<2, float> V{{kN, kN + 1}, 0.0f};
+    packed_grid<2, float> newV{{kN, kN + 1}, 0.0f};
 
-    PaintTool tool      = PaintTool::Water;
-    bool paused         = false;
-    int brush_radius    = 3;
-    float dt_scale      = 1.0f;
-    float gravity       = 0.5f;
-    int pressure_iters  = 20;
-    float max_velocity  = 8.0f;
-    float velocity_damp = 0.999f;
-    float density_decay = 1.0f;
+    packed_grid<2, float> fluxU{{kN + 1, kN}, 0.0f};
+    packed_grid<2, float> fluxV{{kN, kN + 1}, 0.0f};
 
-    float target_mass  = 0.0f;
-    float current_mass = 0.0f;
-    float last_max_vel = 0.0f;
-    int last_substeps  = 0;
+    std::vector<int> active_indices{};
+    std::vector<int> core_indices{};
 
-    static bool in_bounds(int x, int y) {
-        return x >= 0 && y >= 0 && x < static_cast<int>(kGridWidth) && y < static_cast<int>(kGridHeight);
+    float target_total_mass  = 0.0f;
+    float current_total_mass = 0.0f;
+
+    PaintTool tool   = PaintTool::Water;
+    bool paused      = false;
+    int pen_size     = 2;
+    float dt_scale   = 5.0f;
+    float stickiness = 0.0f;
+
+    static constexpr std::uint32_t u32(int v) { return static_cast<std::uint32_t>(v); }
+
+    static constexpr int idx(int x, int y) { return x + y * kN; }
+
+    static constexpr auto deref = [](auto&& value) { return value.get(); };
+
+    float getD(int x, int y) const { return D.get({u32(x), u32(y)}).transform(deref).value_or(0.0f); }
+
+    std::uint8_t getS(int x, int y) const { return S.get({u32(x), u32(y)}).transform(deref).value_or(1); }
+
+    float getP(int x, int y) const { return P.get({u32(x), u32(y)}).transform(deref).value_or(0.0f); }
+
+    float getU(int x, int y) const { return U.get({u32(x), u32(y)}).transform(deref).value_or(0.0f); }
+
+    float getV(int x, int y) const { return V.get({u32(x), u32(y)}).transform(deref).value_or(0.0f); }
+
+    void setD(int x, int y, float v) { (void)D.set({u32(x), u32(y)}, v); }
+
+    void setS(int x, int y, std::uint8_t v) { (void)S.set({u32(x), u32(y)}, v); }
+
+    void setP(int x, int y, float v) { (void)P.set({u32(x), u32(y)}, v); }
+
+    void setU(int x, int y, float v) { (void)U.set({u32(x), u32(y)}, v); }
+
+    void setV(int x, int y, float v) { (void)V.set({u32(x), u32(y)}, v); }
+
+    float sampleU(float x, float y) const {
+        x = std::clamp(x, 0.0f, static_cast<float>(kN));
+        y = std::clamp(y, 0.0f, static_cast<float>(kN - 1));
+
+        int x0 = static_cast<int>(std::floor(x));
+        int y0 = static_cast<int>(std::floor(y - 0.5f));
+        x0     = std::clamp(x0, 0, kN - 1);
+        y0     = std::clamp(y0, 0, kN - 2);
+
+        const float s = x - static_cast<float>(x0);
+        const float t = y - (static_cast<float>(y0) + 0.5f);
+
+        const float a = getU(x0, y0);
+        const float b = getU(std::min(x0 + 1, kN), y0);
+        const float c = getU(x0, y0 + 1);
+        const float d = getU(std::min(x0 + 1, kN), y0 + 1);
+        return (1.0f - s) * (1.0f - t) * a + s * (1.0f - t) * b + (1.0f - s) * t * c + s * t * d;
     }
 
-    static std::uint32_t to_u32(int value) { return static_cast<std::uint32_t>(value); }
+    float sampleV(float x, float y) const {
+        x = std::clamp(x, 0.0f, static_cast<float>(kN - 1));
+        y = std::clamp(y, 0.0f, static_cast<float>(kN));
 
-    float get_density(int x, int y) const {
-        if (!in_bounds(x, y)) return 0.0f;
-        return density.get({to_u32(x), to_u32(y)}).value().get();
+        int x0 = static_cast<int>(std::floor(x - 0.5f));
+        int y0 = static_cast<int>(std::floor(y));
+        x0     = std::clamp(x0, 0, kN - 2);
+        y0     = std::clamp(y0, 0, kN - 1);
+
+        const float s = x - (static_cast<float>(x0) + 0.5f);
+        const float t = y - static_cast<float>(y0);
+
+        const float a = getV(x0, y0);
+        const float b = getV(x0 + 1, y0);
+        const float c = getV(x0, std::min(y0 + 1, kN));
+        const float d = getV(x0 + 1, std::min(y0 + 1, kN));
+        return (1.0f - s) * (1.0f - t) * a + s * (1.0f - t) * b + (1.0f - s) * t * c + s * t * d;
     }
-
-    float get_pressure(int x, int y) const {
-        if (!in_bounds(x, y)) return 0.0f;
-        return pressure.get({to_u32(x), to_u32(y)}).value().get();
-    }
-
-    float get_u(int x, int y) const {
-        if (x < 0 || y < 0 || x > static_cast<int>(kGridWidth) || y >= static_cast<int>(kGridHeight)) return 0.0f;
-        return u.get({to_u32(x), to_u32(y)}).value().get();
-    }
-
-    float get_v(int x, int y) const {
-        if (x < 0 || y < 0 || x >= static_cast<int>(kGridWidth) || y > static_cast<int>(kGridHeight)) return 0.0f;
-        return v.get({to_u32(x), to_u32(y)}).value().get();
-    }
-
-    std::uint8_t get_solid(int x, int y) const {
-        if (!in_bounds(x, y)) return 1;
-        return solid.get({to_u32(x), to_u32(y)}).value().get();
-    }
-
-    void set_density(int x, int y, float value) {
-        if (!in_bounds(x, y)) return;
-        (void)density.set({to_u32(x), to_u32(y)}, std::clamp(value, 0.0f, 1.25f));
-    }
-
-    void set_pressure(int x, int y, float value) {
-        if (!in_bounds(x, y)) return;
-        (void)pressure.set({to_u32(x), to_u32(y)}, value);
-    }
-
-    void set_solid(int x, int y, std::uint8_t value) {
-        if (!in_bounds(x, y)) return;
-        (void)solid.set({to_u32(x), to_u32(y)}, value);
-    }
-
-    void set_u(int x, int y, float value) {
-        if (x < 0 || y < 0 || x > static_cast<int>(kGridWidth) || y >= static_cast<int>(kGridHeight)) return;
-        (void)u.set({to_u32(x), to_u32(y)}, value);
-    }
-
-    void set_v(int x, int y, float value) {
-        if (x < 0 || y < 0 || x >= static_cast<int>(kGridWidth) || y > static_cast<int>(kGridHeight)) return;
-        (void)v.set({to_u32(x), to_u32(y)}, value);
-    }
-
-    float cell_u(int x, int y) const { return 0.5f * (get_u(x, y) + get_u(x + 1, y)); }
-    float cell_v(int x, int y) const { return 0.5f * (get_v(x, y) + get_v(x, y + 1)); }
 
     void reset() {
-        density.clear();
-        density_next.clear();
-        density_delta.clear();
-        pressure.clear();
-        solid.clear();
-        u.clear();
-        v.clear();
-        u_prev.clear();
-        v_prev.clear();
+        D.clear();
+        newD.clear();
+        S.clear();
+        P.clear();
+        U.clear();
+        newU.clear();
+        V.clear();
+        newV.clear();
+        fluxU.clear();
+        fluxV.clear();
 
-        for (std::uint32_t x = 0; x < kGridWidth; ++x) {
-            set_solid(static_cast<int>(x), 0, 1);
-            set_solid(static_cast<int>(x), static_cast<int>(kGridHeight - 1), 1);
-        }
-        for (std::uint32_t y = 0; y < kGridHeight; ++y) {
-            set_solid(0, static_cast<int>(y), 1);
-            set_solid(static_cast<int>(kGridWidth - 1), static_cast<int>(y), 1);
-        }
+        target_total_mass  = 0.0f;
+        current_total_mass = 0.0f;
 
-        for (int x = 20; x < 40; ++x) {
-            for (int y = 45; y < 70; ++y) {
-                set_density(x, y, 1.0f);
-            }
+        for (int i = 0; i < kN; ++i) {
+            setS(i, 0, 1);
+            setS(i, kN - 1, 1);
+            setS(0, i, 1);
+            setS(kN - 1, i, 1);
         }
 
-        for (int x = 54; x < 78; ++x) set_solid(x, 22, 1);
-
-        update_mass();
-        target_mass = current_mass;
-    }
-
-    void clear_fluid() {
-        density.clear();
-        density_next.clear();
-        density_delta.clear();
-        u.clear();
-        v.clear();
-        u_prev.clear();
-        v_prev.clear();
-        pressure.clear();
-        update_mass();
-        target_mass = 0.0f;
-    }
-
-    static float bilerp(float a00, float a10, float a01, float a11, float tx, float ty) {
-        const float x0 = std::lerp(a00, a10, tx);
-        const float x1 = std::lerp(a01, a11, tx);
-        return std::lerp(x0, x1, ty);
-    }
-
-    float sample_u_prev(float x, float y) const {
-        x = std::clamp(x, 0.0f, static_cast<float>(kGridWidth));
-        y = std::clamp(y, 0.0f, static_cast<float>(kGridHeight - 1));
-
-        const int x0 = static_cast<int>(std::floor(x));
-        const int y0 = static_cast<int>(std::floor(y));
-        const int x1 = std::min(x0 + 1, static_cast<int>(kGridWidth));
-        const int y1 = std::min(y0 + 1, static_cast<int>(kGridHeight - 1));
-
-        const float tx = x - static_cast<float>(x0);
-        const float ty = y - static_cast<float>(y0);
-
-        auto read = [&](int px, int py) { return u_prev.get({to_u32(px), to_u32(py)}).value().get(); };
-        return bilerp(read(x0, y0), read(x1, y0), read(x0, y1), read(x1, y1), tx, ty);
-    }
-
-    float sample_v_prev(float x, float y) const {
-        x = std::clamp(x, 0.0f, static_cast<float>(kGridWidth - 1));
-        y = std::clamp(y, 0.0f, static_cast<float>(kGridHeight));
-
-        const int x0 = static_cast<int>(std::floor(x));
-        const int y0 = static_cast<int>(std::floor(y));
-        const int x1 = std::min(x0 + 1, static_cast<int>(kGridWidth - 1));
-        const int y1 = std::min(y0 + 1, static_cast<int>(kGridHeight));
-
-        const float tx = x - static_cast<float>(x0);
-        const float ty = y - static_cast<float>(y0);
-
-        auto read = [&](int px, int py) { return v_prev.get({to_u32(px), to_u32(py)}).value().get(); };
-        return bilerp(read(x0, y0), read(x1, y0), read(x0, y1), read(x1, y1), tx, ty);
-    }
-
-    void update_mass() {
-        current_mass = 0.0f;
-        for (int y = 0; y < static_cast<int>(kGridHeight); ++y) {
-            for (int x = 0; x < static_cast<int>(kGridWidth); ++x) {
-                if (get_solid(x, y) != 0) continue;
-                current_mass += get_density(x, y);
-            }
+        for (int x = 30; x < 70; ++x) setS(x, 70, 1);
+        for (int y = 30; y < 70; ++y) {
+            setS(30, y, 1);
+            setS(70, y, 1);
         }
     }
 
-    void adjust_target_mass_for_cell(int x, int y, float before, float after) {
-        if (get_solid(x, y) != 0) return;
-        target_mass += (after - before);
-        if (target_mass < 0.0f) target_mass = 0.0f;
-    }
+    void apply_brush(int cx, int cy, PaintTool paint) {
+        for (int oy = -pen_size; oy <= pen_size; ++oy) {
+            for (int ox = -pen_size; ox <= pen_size; ++ox) {
+                const int x = cx + ox;
+                const int y = cy + oy;
+                if (x <= 0 || x >= kN - 1 || y <= 0 || y >= kN - 1) continue;
 
-    void apply_brush(int cx, int cy, PaintTool active_tool) {
-        for (int dy = -brush_radius; dy <= brush_radius; ++dy) {
-            for (int dx = -brush_radius; dx <= brush_radius; ++dx) {
-                if (dx * dx + dy * dy > brush_radius * brush_radius) continue;
-                const int x = cx + dx;
-                const int y = cy + dy;
-                if (!in_bounds(x, y)) continue;
-                if (x == 0 || y == 0 || x == static_cast<int>(kGridWidth - 1) ||
-                    y == static_cast<int>(kGridHeight - 1)) {
-                    continue;
-                }
-
-                const float before = get_density(x, y);
-
-                if (active_tool == PaintTool::Eraser) {
-                    set_solid(x, y, 0);
-                    set_density(x, y, 0.0f);
-                    adjust_target_mass_for_cell(x, y, before, 0.0f);
-                    continue;
-                }
-
-                if (active_tool == PaintTool::Wall) {
-                    if (get_solid(x, y) == 0) {
-                        set_solid(x, y, 1);
-                        set_density(x, y, 0.0f);
-                        adjust_target_mass_for_cell(x, y, before, 0.0f);
+                const int id = idx(x, y);
+                if (paint == PaintTool::Water && getS(x, y) == 0) {
+                    if (getD(x, y) < 1.0f) {
+                        const float add = 1.0f - getD(x, y);
+                        setD(x, y, 1.0f);
+                        target_total_mass += add;
                     }
-                    continue;
+                } else if (paint == PaintTool::Wall && getS(x, y) == 0) {
+                    target_total_mass -= getD(x, y);
+                    setS(x, y, 1);
+                    setD(x, y, 0.0f);
+                    setU(x, y, 0.0f);
+                    setU(x + 1, y, 0.0f);
+                    setV(x, y, 0.0f);
+                    setV(x, y + 1, 0.0f);
+                } else if (paint == PaintTool::Eraser) {
+                    target_total_mass -= getD(x, y);
+                    setS(x, y, 0);
+                    setD(x, y, 0.0f);
                 }
+                (void)id;
+            }
+        }
+        if (target_total_mass < 0.0f) target_total_mass = 0.0f;
+    }
 
-                set_solid(x, y, 0);
-                set_density(x, y, 1.0f);
-                adjust_target_mass_for_cell(x, y, before, 1.0f);
+    void extrapolateVelocity() {
+        for (int i = 0; i < kN * kN; ++i) {
+            if (D.get({u32(i % kN), u32(i / kN)}).value().get() < 0.1f) {
+                const int x = i % kN;
+                const int y = i / kN;
+                float sumU = 0.0f, sumV = 0.0f;
+                int cU = 0, cV = 0;
+
+                if (x > 0 && getD(x - 1, y) > 0.2f) {
+                    sumU += getU(x, y);
+                    sumV += getV(x, y);
+                    cU++;
+                    cV++;
+                }
+                if (x < kN - 1 && getD(x + 1, y) > 0.2f) {
+                    sumU += getU(x + 1, y);
+                    sumV += getV(x, y);
+                    cU++;
+                    cV++;
+                }
+                if (y > 0 && getD(x, y - 1) > 0.2f) {
+                    sumU += getU(x, y);
+                    sumV += getV(x, y);
+                    cU++;
+                    cV++;
+                }
+                if (y < kN - 1 && getD(x, y + 1) > 0.2f) {
+                    sumU += getU(x, y);
+                    sumV += getV(x, y + 1);
+                    cU++;
+                    cV++;
+                }
+                if (cU > 0 && cV > 0) {
+                    const float aU = sumU / static_cast<float>(cU);
+                    const float aV = sumV / static_cast<float>(cV);
+                    setU(x, y, aU);
+                    setU(x + 1, y, aU);
+                    setV(x, y, aV);
+                    setV(x, y + 1, aV);
+                }
             }
         }
     }
 
-    void enforce_solid_boundaries() {
-        for (int y = 0; y < static_cast<int>(kGridHeight); ++y) {
-            set_u(0, y, 0.0f);
-            set_u(static_cast<int>(kGridWidth), y, 0.0f);
-        }
-        for (int x = 0; x < static_cast<int>(kGridWidth); ++x) {
-            set_v(x, 0, 0.0f);
-            set_v(x, static_cast<int>(kGridHeight), 0.0f);
-        }
+    void applyViscosity(float sticky, float dt) {
+        const int iterations     = std::max(0, static_cast<int>(std::round(sticky * 4.0f)));
+        const float nu           = std::min(0.5f, 0.05f * sticky);
+        const float wallFriction = std::clamp(1.0f - (sticky * 0.08f), 0.0f, 1.0f);
 
-        for (int y = 0; y < static_cast<int>(kGridHeight); ++y) {
-            for (int x = 0; x <= static_cast<int>(kGridWidth); ++x) {
-                const bool left_solid  = get_solid(x - 1, y) != 0;
-                const bool right_solid = get_solid(x, y) != 0;
-                if (left_solid || right_solid) set_u(x, y, 0.0f);
-            }
-        }
-        for (int y = 0; y <= static_cast<int>(kGridHeight); ++y) {
-            for (int x = 0; x < static_cast<int>(kGridWidth); ++x) {
-                const bool bottom_solid = get_solid(x, y - 1) != 0;
-                const bool top_solid    = get_solid(x, y) != 0;
-                if (bottom_solid || top_solid) set_v(x, y, 0.0f);
-            }
-        }
-    }
+        if (iterations > 0 && nu > 0.0f) {
+            for (int k = 0; k < iterations; ++k) {
+                for (const int id : active_indices) {
+                    const int x = id % kN;
+                    const int y = id / kN;
 
-    void restore_mass(float dt) {
-        update_mass();
-        if (target_mass <= 0.0001f) {
-            if (current_mass > 0.001f) target_mass = current_mass;
-            return;
-        }
-
-        float diff                 = target_mass - current_mass;
-        const float max_correction = target_mass * 0.10f * dt;
-        diff                       = std::clamp(diff, -max_correction, max_correction);
-        if (std::abs(diff) < 0.0001f) return;
-
-        int active_cells = 0;
-        for (int y = 1; y < static_cast<int>(kGridHeight - 1); ++y) {
-            for (int x = 1; x < static_cast<int>(kGridWidth - 1); ++x) {
-                if (get_solid(x, y) != 0) continue;
-                if (get_density(x, y) > 0.001f) active_cells++;
-            }
-        }
-        if (active_cells == 0) return;
-
-        const float add_per_cell = diff / static_cast<float>(active_cells);
-        for (int y = 1; y < static_cast<int>(kGridHeight - 1); ++y) {
-            for (int x = 1; x < static_cast<int>(kGridWidth - 1); ++x) {
-                if (get_solid(x, y) != 0) continue;
-                if (get_density(x, y) <= 0.001f) continue;
-                set_density(x, y, get_density(x, y) + add_per_cell);
-            }
-        }
-        update_mass();
-    }
-
-    void apply_gravity(float dt) {
-        for (int y = 1; y < static_cast<int>(kGridHeight); ++y) {
-            for (int x = 0; x < static_cast<int>(kGridWidth); ++x) {
-                if (get_solid(x, y - 1) != 0 || get_solid(x, y) != 0) continue;
-                const float d0           = get_density(x, y - 1);
-                const float d1           = get_density(x, y);
-                const float fluid_weight = 0.5f * (d0 + d1);
-                if (fluid_weight <= 0.0001f) continue;
-                set_v(x, y, get_v(x, y) - gravity * dt * std::min(fluid_weight, 1.0f));
-            }
-        }
-    }
-
-    void project_pressure(float dt) {
-        pressure.clear();
-        const float omega = 1.8f;
-
-        for (int iter = 0; iter < pressure_iters; ++iter) {
-            const bool reverse = (iter % 2) != 0;
-            const int y_begin  = reverse ? static_cast<int>(kGridHeight - 2) : 1;
-            const int y_end    = reverse ? 0 : static_cast<int>(kGridHeight - 1);
-            const int y_step   = reverse ? -1 : 1;
-            const int x_begin  = reverse ? static_cast<int>(kGridWidth - 2) : 1;
-            const int x_end    = reverse ? 0 : static_cast<int>(kGridWidth - 1);
-            const int x_step   = reverse ? -1 : 1;
-
-            for (int y = y_begin; y != y_end; y += y_step) {
-                for (int x = x_begin; x != x_end; x += x_step) {
-                    if (get_solid(x, y) != 0) {
-                        set_pressure(x, y, 0.0f);
-                        continue;
+                    if (x > 0 && x < kN && y > 0 && y < kN - 1) {
+                        const float uC        = getU(x, y);
+                        const float neighbors = getU(x - 1, y) + getU(x + 1, y) + getU(x, y - 1) + getU(x, y + 1);
+                        setU(x, y, uC + (neighbors - 4.0f * uC) * nu * dt * 60.0f);
                     }
-
-                    const float div = get_u(x + 1, y) - get_u(x, y) + get_v(x, y + 1) - get_v(x, y);
-                    float sum       = 0.0f;
-                    float count     = 0.0f;
-
-                    if (get_solid(x - 1, y) == 0) {
-                        sum += get_pressure(x - 1, y);
-                        count += 1.0f;
+                    if (y > 0 && y < kN && x > 0 && x < kN - 1) {
+                        const float vC        = getV(x, y);
+                        const float neighbors = getV(x - 1, y) + getV(x + 1, y) + getV(x, y - 1) + getV(x, y + 1);
+                        setV(x, y, vC + (neighbors - 4.0f * vC) * nu * dt * 60.0f);
                     }
-                    if (get_solid(x + 1, y) == 0) {
-                        sum += get_pressure(x + 1, y);
-                        count += 1.0f;
-                    }
-                    if (get_solid(x, y - 1) == 0) {
-                        sum += get_pressure(x, y - 1);
-                        count += 1.0f;
-                    }
-                    if (get_solid(x, y + 1) == 0) {
-                        sum += get_pressure(x, y + 1);
-                        count += 1.0f;
-                    }
-
-                    if (count <= 0.0f) continue;
-                    const float p_old = get_pressure(x, y);
-                    const float p_new = (sum - div) / count;
-                    set_pressure(x, y, std::lerp(p_old, p_new, omega));
                 }
             }
         }
 
-        const float pressure_scale = 1.0f / std::max(dt, 1.0e-4f);
-
-        for (int y = 0; y < static_cast<int>(kGridHeight); ++y) {
-            for (int x = 1; x < static_cast<int>(kGridWidth); ++x) {
-                if (get_solid(x - 1, y) != 0 || get_solid(x, y) != 0) {
-                    set_u(x, y, 0.0f);
-                    continue;
+        if (wallFriction < 1.0f) {
+            for (const int id : active_indices) {
+                const int x = id % kN;
+                const int y = id / kN;
+                if ((x > 0 && getS(x - 1, y)) || (x < kN - 1 && getS(x + 1, y)) || (y > 0 && getS(x, y - 1)) ||
+                    (y < kN - 1 && getS(x, y + 1))) {
+                    setU(x, y, getU(x, y) * wallFriction);
+                    setU(x + 1, y, getU(x + 1, y) * wallFriction);
+                    setV(x, y, getV(x, y) * wallFriction);
+                    setV(x, y + 1, getV(x, y + 1) * wallFriction);
                 }
-                const float grad = get_pressure(x, y) - get_pressure(x - 1, y);
-                set_u(x, y, (get_u(x, y) - grad * pressure_scale) * velocity_damp);
             }
         }
-
-        for (int y = 1; y < static_cast<int>(kGridHeight); ++y) {
-            for (int x = 0; x < static_cast<int>(kGridWidth); ++x) {
-                if (get_solid(x, y - 1) != 0 || get_solid(x, y) != 0) {
-                    set_v(x, y, 0.0f);
-                    continue;
-                }
-                const float grad = get_pressure(x, y) - get_pressure(x, y - 1);
-                set_v(x, y, (get_v(x, y) - grad * pressure_scale) * velocity_damp);
-            }
-        }
-
-        enforce_solid_boundaries();
     }
 
-    void advect_velocity(float dt) {
-        u_prev = u;
-        v_prev = v;
+    void applySurfaceTension(float dt) {
+        constexpr float kStrength = 0.2f;
+        for (int y = 1; y < kN - 1; ++y) {
+            for (int x = 1; x < kN - 1; ++x) {
+                const float d = getD(x, y);
+                if (d < 0.2f || d > 0.8f) continue;
 
-        for (int y = 0; y < static_cast<int>(kGridHeight); ++y) {
-            for (int x = 0; x <= static_cast<int>(kGridWidth); ++x) {
-                if (x > 0 && x < static_cast<int>(kGridWidth) && (get_solid(x - 1, y) != 0 || get_solid(x, y) != 0)) {
-                    set_u(x, y, 0.0f);
+                const float dL = getD(x - 1, y);
+                const float dR = getD(x + 1, y);
+                const float dT = getD(x, y - 1);
+                const float dB = getD(x, y + 1);
+                const float nX = dR - dL;
+                const float nY = dB - dT;
+
+                if (std::abs(nX) > 0.1f) {
+                    setU(x, y, getU(x, y) + nX * kStrength * dt);
+                    setU(x + 1, y, getU(x + 1, y) + nX * kStrength * dt);
+                }
+                if (std::abs(nY) > 0.1f) {
+                    setV(x, y, getV(x, y) + nY * kStrength * dt);
+                    setV(x, y + 1, getV(x, y + 1) + nY * kStrength * dt);
+                }
+            }
+        }
+    }
+
+    void advectVelocityRK2(float dt) {
+        for (int y = 0; y < kN; ++y) {
+            for (int x = 1; x < kN; ++x) {
+                if (getS(x, y) || getS(x - 1, y)) {
+                    (void)newU.set({u32(x), u32(y)}, 0.0f);
                     continue;
                 }
 
-                const float px = static_cast<float>(x);
-                const float py = static_cast<float>(y) + 0.5f;
-
-                const float vx = sample_u_prev(px, static_cast<float>(y));
-                const float vy = sample_v_prev(std::clamp(px - 0.5f, 0.0f, static_cast<float>(kGridWidth - 1)), py);
-
-                const float bx = px - vx * dt;
-                const float by = py - vy * dt - 0.5f;
-                set_u(x, y, sample_u_prev(bx, by));
+                const float uVal = getU(x, y);
+                const float vAvg = 0.25f * (getV(x, y) + getV(x - 1, y) + getV(x, y + 1) + getV(x - 1, y + 1));
+                const float midX = static_cast<float>(x) - uVal * 0.5f * dt;
+                const float midY = (static_cast<float>(y) + 0.5f) - vAvg * 0.5f * dt;
+                const float midU = sampleU(midX, midY);
+                const float midV = sampleV(midX, midY);
+                (void)newU.set({u32(x), u32(y)},
+                               sampleU(static_cast<float>(x) - midU * dt, (static_cast<float>(y) + 0.5f) - midV * dt));
             }
         }
 
-        for (int y = 0; y <= static_cast<int>(kGridHeight); ++y) {
-            for (int x = 0; x < static_cast<int>(kGridWidth); ++x) {
-                if (y > 0 && y < static_cast<int>(kGridHeight) && (get_solid(x, y - 1) != 0 || get_solid(x, y) != 0)) {
-                    set_v(x, y, 0.0f);
+        for (int y = 1; y < kN; ++y) {
+            for (int x = 0; x < kN; ++x) {
+                if (getS(x, y) || getS(x, y - 1)) {
+                    (void)newV.set({u32(x), u32(y)}, 0.0f);
                     continue;
                 }
 
-                const float px = static_cast<float>(x) + 0.5f;
-                const float py = static_cast<float>(y);
-
-                const float vx = sample_u_prev(px, std::clamp(py - 0.5f, 0.0f, static_cast<float>(kGridHeight - 1)));
-                const float vy = sample_v_prev(static_cast<float>(x), py);
-
-                const float bx = px - vx * dt - 0.5f;
-                const float by = py - vy * dt;
-                set_v(x, y, sample_v_prev(bx, by));
+                const float vVal = getV(x, y);
+                const float uAvg = 0.25f * (getU(x, y) + getU(x, y - 1) + getU(x + 1, y) + getU(x + 1, y - 1));
+                const float midX = (static_cast<float>(x) + 0.5f) - uAvg * 0.5f * dt;
+                const float midY = static_cast<float>(y) - vVal * 0.5f * dt;
+                const float midU = sampleU(midX, midY);
+                const float midV = sampleV(midX, midY);
+                (void)newV.set({u32(x), u32(y)},
+                               sampleV((static_cast<float>(x) + 0.5f) - midU * dt, static_cast<float>(y) - midV * dt));
             }
         }
 
-        enforce_solid_boundaries();
+        U = newU;
+        V = newV;
     }
 
-    void advect_density_flux(float dt) {
-        density_delta.clear();
+    void physicsStep(float dt) {
+        const float sticky = stickiness + 0.001f;
 
-        for (int y = 0; y < static_cast<int>(kGridHeight); ++y) {
-            for (int x = 1; x < static_cast<int>(kGridWidth); ++x) {
-                if (get_solid(x - 1, y) != 0 || get_solid(x, y) != 0) continue;
+        active_indices.clear();
+        core_indices.clear();
+        current_total_mass = 0.0f;
 
-                const float vel  = get_u(x, y);
-                const float move = std::clamp(std::abs(vel) * dt, 0.0f, 1.0f);
-                if (move <= 0.0f) continue;
-
-                const int from_x = vel >= 0.0f ? x - 1 : x;
-                const int to_x   = vel >= 0.0f ? x : x - 1;
-
-                const float source_density = get_density(from_x, y);
-                const float transfer       = std::min(source_density, source_density * move);
-                if (transfer <= 0.0f) continue;
-
-                const float from_delta = density_delta.get({to_u32(from_x), to_u32(y)}).value().get();
-                const float to_delta   = density_delta.get({to_u32(to_x), to_u32(y)}).value().get();
-                (void)density_delta.set({to_u32(from_x), to_u32(y)}, from_delta - transfer);
-                (void)density_delta.set({to_u32(to_x), to_u32(y)}, to_delta + transfer);
+        for (int y = 0; y < kN; ++y) {
+            for (int x = 0; x < kN; ++x) {
+                if (getS(x, y) != 0) continue;
+                const float d = getD(x, y);
+                current_total_mass += d;
+                if (d > 0.05f) active_indices.push_back(idx(x, y));
+                if (d > 0.8f && d < 1.3f) core_indices.push_back(idx(x, y));
             }
         }
 
-        for (int y = 1; y < static_cast<int>(kGridHeight); ++y) {
-            for (int x = 0; x < static_cast<int>(kGridWidth); ++x) {
-                if (get_solid(x, y - 1) != 0 || get_solid(x, y) != 0) continue;
+        if (target_total_mass > 0.001f && !core_indices.empty()) {
+            float diff                = target_total_mass - current_total_mass;
+            const float maxCorrection = target_total_mass * 0.1f * dt;
+            diff                      = std::clamp(diff, -maxCorrection, maxCorrection);
 
-                const float vel  = get_v(x, y);
-                const float move = std::clamp(std::abs(vel) * dt, 0.0f, 1.0f);
-                if (move <= 0.0f) continue;
-
-                const int from_y = vel >= 0.0f ? y - 1 : y;
-                const int to_y   = vel >= 0.0f ? y : y - 1;
-
-                const float source_density = get_density(x, from_y);
-                const float transfer       = std::min(source_density, source_density * move);
-                if (transfer <= 0.0f) continue;
-
-                const float from_delta = density_delta.get({to_u32(x), to_u32(from_y)}).value().get();
-                const float to_delta   = density_delta.get({to_u32(x), to_u32(to_y)}).value().get();
-                (void)density_delta.set({to_u32(x), to_u32(from_y)}, from_delta - transfer);
-                (void)density_delta.set({to_u32(x), to_u32(to_y)}, to_delta + transfer);
-            }
-        }
-
-        for (int y = 0; y < static_cast<int>(kGridHeight); ++y) {
-            for (int x = 0; x < static_cast<int>(kGridWidth); ++x) {
-                if (get_solid(x, y) != 0) {
-                    (void)density_next.set({to_u32(x), to_u32(y)}, 0.0f);
-                    continue;
+            if (std::abs(diff) > 0.0001f) {
+                const float addPerCell = diff / static_cast<float>(core_indices.size());
+                for (const int id : core_indices) {
+                    const int x = id % kN;
+                    const int y = id / kN;
+                    setD(x, y, getD(x, y) + addPerCell);
                 }
-                const float base  = get_density(x, y);
-                const float delta = density_delta.get({to_u32(x), to_u32(y)}).value().get();
-                (void)density_next.set({to_u32(x), to_u32(y)}, std::clamp((base + delta) * density_decay, 0.0f, 1.25f));
+            }
+        } else if (current_total_mass < 1.0f) {
+            target_total_mass = 0.0f;
+        }
+
+        for (int y = 1; y < kN - 1; ++y) {
+            for (int x = 0; x < kN; ++x) {
+                if (getD(x, y) > 0.01f || getD(x, y - 1) > 0.01f) {
+                    setV(x, y, getV(x, y) + kGravity * dt);
+                }
             }
         }
 
-        density = density_next;
+        applySurfaceTension(dt);
+        applyViscosity(sticky, dt);
+
+        P.clear();
+        constexpr float omega = 1.8f;
+
+        for (int k = 0; k < kIter; ++k) {
+            if ((k % 2) == 0) {
+                for (std::size_t ii = 0; ii < active_indices.size(); ++ii) {
+                    const int id = active_indices[ii];
+                    const int x  = id % kN;
+                    const int y  = id / kN;
+                    if (getD(x, y) < 0.2f) continue;
+
+                    const float uL = getU(x, y);
+                    const float uR = getU(x + 1, y);
+                    const float vT = getV(x, y);
+                    const float vB = getV(x, y + 1);
+
+                    const float velDiv     = uR - uL + vB - vT;
+                    const float densityErr = getD(x, y) - kTargetD;
+                    const float targetDiv  = (densityErr > 0.0f) ? (densityErr * 0.1f) : 0.0f;
+                    const float totalDiv   = velDiv - targetDiv;
+
+                    const int sL = (x > 0) ? static_cast<int>(getS(x - 1, y)) : 1;
+                    const int sR = (x < kN - 1) ? static_cast<int>(getS(x + 1, y)) : 1;
+                    const int sT = (y > 0) ? static_cast<int>(getS(x, y - 1)) : 1;
+                    const int sB = (y < kN - 1) ? static_cast<int>(getS(x, y + 1)) : 1;
+
+                    const int n = 4 - (sL + sR + sT + sB);
+                    if (n == 0) continue;
+
+                    float pCorr  = (-totalDiv / static_cast<float>(n)) * omega;
+                    float weight = getD(x, y);
+                    weight       = (weight < 1.0f) ? (weight * weight) : 1.0f;
+                    pCorr *= weight;
+
+                    setP(x, y, getP(x, y) + pCorr);
+                    if (sL == 0) setU(x, y, getU(x, y) - pCorr);
+                    if (sR == 0) setU(x + 1, y, getU(x + 1, y) + pCorr);
+                    if (sT == 0) setV(x, y, getV(x, y) - pCorr);
+                    if (sB == 0) setV(x, y + 1, getV(x, y + 1) + pCorr);
+                }
+            } else {
+                for (int ii = static_cast<int>(active_indices.size()) - 1; ii >= 0; --ii) {
+                    const int id = active_indices[static_cast<std::size_t>(ii)];
+                    const int x  = id % kN;
+                    const int y  = id / kN;
+                    if (getD(x, y) < 0.2f) continue;
+
+                    const float uL = getU(x, y);
+                    const float uR = getU(x + 1, y);
+                    const float vT = getV(x, y);
+                    const float vB = getV(x, y + 1);
+
+                    const float velDiv     = uR - uL + vB - vT;
+                    const float densityErr = getD(x, y) - kTargetD;
+                    const float targetDiv  = (densityErr > 0.0f) ? (densityErr * 0.1f) : 0.0f;
+                    const float totalDiv   = velDiv - targetDiv;
+
+                    const int sL = (x > 0) ? static_cast<int>(getS(x - 1, y)) : 1;
+                    const int sR = (x < kN - 1) ? static_cast<int>(getS(x + 1, y)) : 1;
+                    const int sT = (y > 0) ? static_cast<int>(getS(x, y - 1)) : 1;
+                    const int sB = (y < kN - 1) ? static_cast<int>(getS(x, y + 1)) : 1;
+
+                    const int n = 4 - (sL + sR + sT + sB);
+                    if (n == 0) continue;
+
+                    float pCorr  = (-totalDiv / static_cast<float>(n)) * omega;
+                    float weight = getD(x, y);
+                    weight       = (weight < 1.0f) ? (weight * weight) : 1.0f;
+                    pCorr *= weight;
+
+                    setP(x, y, getP(x, y) + pCorr);
+                    if (sL == 0) setU(x, y, getU(x, y) - pCorr);
+                    if (sR == 0) setU(x + 1, y, getU(x + 1, y) + pCorr);
+                    if (sT == 0) setV(x, y, getV(x, y) - pCorr);
+                    if (sB == 0) setV(x, y + 1, getV(x, y + 1) + pCorr);
+                }
+            }
+        }
+
+        extrapolateVelocity();
+
+        for (int y = 0; y < kN; ++y) {
+            for (int x = 0; x <= kN; ++x) {
+                const float uVal = getU(x, y);
+                if (std::abs(uVal) > kMaxVel) setU(x, y, std::copysign(kMaxVel, uVal));
+            }
+        }
+        for (int y = 0; y <= kN; ++y) {
+            for (int x = 0; x < kN; ++x) {
+                const float vVal = getV(x, y);
+                if (std::abs(vVal) > kMaxVel) setV(x, y, std::copysign(kMaxVel, vVal));
+            }
+        }
+
+        advectVelocityRK2(dt);
+
+        fluxU.clear();
+        fluxV.clear();
+
+        for (int y = 0; y < kN; ++y) {
+            for (int x = 1; x < kN; ++x) {
+                if (getS(x, y) || getS(x - 1, y)) continue;
+                const float uVal = getU(x, y);
+                const int sx     = (uVal > 0.0f) ? (x - 1) : x;
+                (void)fluxU.set({u32(x), u32(y)}, getD(sx, y) * uVal * dt);
+            }
+        }
+
+        for (int y = 1; y < kN; ++y) {
+            for (int x = 0; x < kN; ++x) {
+                if (getS(x, y) || getS(x, y - 1)) continue;
+                const float vVal = getV(x, y);
+                const int sy     = (vVal > 0.0f) ? (y - 1) : y;
+                (void)fluxV.set({u32(x), u32(y)}, getD(x, sy) * vVal * dt);
+            }
+        }
+
+        newD = D;
+        for (int y = 0; y < kN; ++y) {
+            for (int x = 0; x < kN; ++x) {
+                if (getS(x, y)) continue;
+                const float flowX =
+                    fluxU.get({u32(x), u32(y)}).value().get() - fluxU.get({u32(x + 1), u32(y)}).value().get();
+                const float flowY =
+                    fluxV.get({u32(x), u32(y)}).value().get() - fluxV.get({u32(x), u32(y + 1)}).value().get();
+                float d = newD.get({u32(x), u32(y)}).value().get() + flowX + flowY;
+                if (d < 0.001f) d = 0.0f;
+                (void)newD.set({u32(x), u32(y)}, d);
+            }
+        }
+        D = newD;
+
+        for (int y = 0; y < kN; ++y) {
+            for (int x = 0; x <= kN; ++x) {
+                const int sL = (x == 0) ? 1 : static_cast<int>(getS(x - 1, y));
+                const int sR = (x == kN) ? 1 : static_cast<int>(getS(x, y));
+                if (sL || sR) setU(x, y, 0.0f);
+            }
+        }
+
+        for (int x = 0; x < kN; ++x) {
+            for (int y = 0; y <= kN; ++y) {
+                const int sT = (y == 0) ? 1 : static_cast<int>(getS(x, y - 1));
+                const int sB = (y == kN) ? 1 : static_cast<int>(getS(x, y));
+                if (sT || sB) setV(x, y, 0.0f);
+            }
+        }
     }
 
-    void clamp_velocity() {
-        for (int y = 0; y < static_cast<int>(kGridHeight); ++y) {
-            for (int x = 0; x <= static_cast<int>(kGridWidth); ++x) {
-                set_u(x, y, std::clamp(get_u(x, y), -max_velocity, max_velocity));
+    void solve(float totalDt) {
+        float maxVel = 0.0f;
+        for (int y = 0; y < kN; ++y) {
+            for (int x = 0; x <= kN; ++x) {
+                maxVel = std::max(maxVel, std::abs(getU(x, y)));
             }
         }
-        for (int y = 0; y <= static_cast<int>(kGridHeight); ++y) {
-            for (int x = 0; x < static_cast<int>(kGridWidth); ++x) {
-                set_v(x, y, std::clamp(get_v(x, y), -max_velocity, max_velocity));
+        for (int y = 0; y <= kN; ++y) {
+            for (int x = 0; x < kN; ++x) {
+                maxVel = std::max(maxVel, std::abs(getV(x, y)));
             }
         }
-    }
 
-    float compute_max_velocity() {
-        float max_vel = 0.0f;
-        for (int y = 0; y < static_cast<int>(kGridHeight); ++y) {
-            for (int x = 0; x <= static_cast<int>(kGridWidth); ++x) {
-                max_vel = std::max(max_vel, std::abs(get_u(x, y)));
-            }
-        }
-        for (int y = 0; y <= static_cast<int>(kGridHeight); ++y) {
-            for (int x = 0; x < static_cast<int>(kGridWidth); ++x) {
-                max_vel = std::max(max_vel, std::abs(get_v(x, y)));
-            }
-        }
-        last_max_vel = max_vel;
-        return max_vel;
-    }
+        if (maxVel < 0.1f) maxVel = 0.1f;
+        float maxAllowedDt = 0.8f / maxVel;
+        if (maxAllowedDt > 0.2f) maxAllowedDt = 0.2f;
 
-    void physics_step(float dt) {
-        restore_mass(dt);
-        apply_gravity(dt);
-        project_pressure(dt);
-        clamp_velocity();
-        advect_velocity(dt);
-        project_pressure(dt);
-        clamp_velocity();
-        advect_density_flux(dt);
-        update_mass();
-    }
-
-    void solve(float total_dt) {
-        if (paused) {
-            last_substeps = 0;
-            update_mass();
-            return;
-        }
-
-        const float max_vel = std::max(0.1f, compute_max_velocity());
-        float max_step_dt   = 0.8f / max_vel;
-        max_step_dt         = std::min(max_step_dt, 0.2f);
-
-        float remaining = total_dt;
+        float remaining = totalDt;
         int substeps    = 0;
-        while (remaining > 1.0e-4f && substeps < 12) {
-            const float step_dt = std::min(remaining, max_step_dt);
-            physics_step(step_dt);
-            remaining -= step_dt;
-            substeps++;
+        while (remaining > 0.0001f && substeps < 10) {
+            float stepDt = remaining;
+            if (stepDt > maxAllowedDt) stepDt = maxAllowedDt;
+            physicsStep(stepDt);
+            remaining -= stepDt;
+            ++substeps;
         }
-        last_substeps = substeps;
     }
 };
 
-struct LiquidSimState {
-    LiquidSim sim;
+struct FluidState {
+    Fluid sim;
     assets::Handle<mesh::Mesh> mesh_handle;
 };
 
@@ -596,23 +578,22 @@ glm::vec2 screen_to_world(glm::vec2 screen_pos,
 }
 
 std::optional<std::pair<int, int>> world_to_cell(glm::vec2 world_pos) {
-    const float world_w = static_cast<float>(kGridWidth) * kCellSize;
-    const float world_h = static_cast<float>(kGridHeight) * kCellSize;
+    const float world_w = static_cast<float>(kN) * kCellSize;
+    const float world_h = static_cast<float>(kN) * kCellSize;
     const float min_x   = -0.5f * world_w;
     const float min_y   = -0.5f * world_h;
 
-    const int gx = static_cast<int>(std::floor((world_pos.x - min_x) / kCellSize));
-    const int gy = static_cast<int>(std::floor((world_pos.y - min_y) / kCellSize));
+    const int gx       = static_cast<int>(std::floor((world_pos.x - min_x) / kCellSize));
+    const int gy_world = static_cast<int>(std::floor((world_pos.y - min_y) / kCellSize));
+    const int gy       = (kN - 1) - gy_world;
 
-    if (gx < 0 || gy < 0 || gx >= static_cast<int>(kGridWidth) || gy >= static_cast<int>(kGridHeight)) {
-        return std::nullopt;
-    }
+    if (gx < 0 || gy < 0 || gx >= kN || gy >= kN) return std::nullopt;
     return std::pair{gx, gy};
 }
 
-mesh::Mesh build_liquid_mesh(const LiquidSim& sim) {
-    const float world_w = static_cast<float>(kGridWidth) * kCellSize;
-    const float world_h = static_cast<float>(kGridHeight) * kCellSize;
+mesh::Mesh build_mesh(const Fluid& sim) {
+    const float world_w = static_cast<float>(kN) * kCellSize;
+    const float world_h = static_cast<float>(kN) * kCellSize;
     const float min_x   = -0.5f * world_w;
     const float min_y   = -0.5f * world_h;
 
@@ -620,45 +601,48 @@ mesh::Mesh build_liquid_mesh(const LiquidSim& sim) {
     std::vector<glm::vec4> colors;
     std::vector<std::uint32_t> indices;
 
-    positions.reserve(static_cast<std::size_t>(kGridWidth * kGridHeight * 4));
-    colors.reserve(static_cast<std::size_t>(kGridWidth * kGridHeight * 4));
-    indices.reserve(static_cast<std::size_t>(kGridWidth * kGridHeight * 6));
+    positions.reserve(static_cast<std::size_t>(kN * kN * 4));
+    colors.reserve(static_cast<std::size_t>(kN * kN * 4));
+    indices.reserve(static_cast<std::size_t>(kN * kN * 6));
 
     std::uint32_t base = 0;
+    for (int y = 0; y < kN; ++y) {
+        for (int x = 0; x < kN; ++x) {
+            const bool wall = sim.getS(x, y) != 0;
+            const float d   = sim.getD(x, y);
+            if (!wall && d < 0.01f) continue;
 
-    for (int y = 0; y < static_cast<int>(kGridHeight); ++y) {
-        for (int x = 0; x < static_cast<int>(kGridWidth); ++x) {
-            const bool is_solid = sim.get_solid(x, y) != 0;
-            const float d       = sim.get_density(x, y);
-            if (!is_solid && d < 0.01f) continue;
+            const int draw_y = (kN - 1) - y;
 
-            const float px0 = min_x + static_cast<float>(x) * kCellSize;
-            const float py0 = min_y + static_cast<float>(y) * kCellSize;
-            const float px1 = px0 + kCellSize;
-            const float py1 = py0 + kCellSize;
+            const float x0 = min_x + static_cast<float>(x) * kCellSize;
+            const float y0 = min_y + static_cast<float>(draw_y) * kCellSize;
+            const float x1 = x0 + kCellSize;
+            const float y1 = y0 + kCellSize;
 
-            positions.push_back({px0, py0, 0.0f});
-            positions.push_back({px1, py0, 0.0f});
-            positions.push_back({px1, py1, 0.0f});
-            positions.push_back({px0, py1, 0.0f});
+            positions.push_back({x0, y0, 0.0f});
+            positions.push_back({x1, y0, 0.0f});
+            positions.push_back({x1, y1, 0.0f});
+            positions.push_back({x0, y1, 0.0f});
 
-            if (is_solid) {
-                const glm::vec4 wall_color(0.22f, 0.23f, 0.25f, 1.0f);
-                colors.push_back(wall_color);
-                colors.push_back(wall_color);
-                colors.push_back(wall_color);
-                colors.push_back(wall_color);
+            glm::vec4 c;
+            if (wall) {
+                c = glm::vec4(0.53f, 0.53f, 0.53f, 1.0f);
+            } else if (d < 0.8f) {
+                const float t = std::clamp(d / 0.8f, 0.0f, 1.0f);
+                c = glm::vec4((5.0f * (1.0f - t)) / 255.0f, (20.0f + 80.0f * t) / 255.0f, (60.0f + 160.0f * t) / 255.0f,
+                              1.0f);
+            } else if (d < 1.0f) {
+                const float t = std::clamp((d - 0.8f) / 0.2f, 0.0f, 1.0f);
+                c             = glm::vec4(0.0f, (100.0f + 80.0f * t) / 255.0f, (220.0f + 35.0f * t) / 255.0f, 1.0f);
             } else {
-                const float speed = glm::length(glm::vec2(sim.cell_u(x, y), sim.cell_v(x, y)));
-                const float t     = std::clamp(d, 0.0f, 1.0f);
-                const float s     = std::clamp(speed * 0.08f, 0.0f, 1.0f);
-                const glm::vec4 liquid_color(0.10f + 0.10f * s, 0.30f + 0.28f * s, 0.70f + 0.26f * t,
-                                             0.40f + 0.60f * t);
-                colors.push_back(liquid_color);
-                colors.push_back(liquid_color);
-                colors.push_back(liquid_color);
-                colors.push_back(liquid_color);
+                const float t = std::clamp((d - 1.0f) / 0.3f, 0.0f, 1.0f);
+                c             = glm::vec4((220.0f * t) / 255.0f, (180.0f + 60.0f * t) / 255.0f, 1.0f, 1.0f);
             }
+
+            colors.push_back(c);
+            colors.push_back(c);
+            colors.push_back(c);
+            colors.push_back(c);
 
             indices.push_back(base + 0);
             indices.push_back(base + 1);
@@ -677,150 +661,87 @@ mesh::Mesh build_liquid_mesh(const LiquidSim& sim) {
         .with_indices<std::uint32_t>(indices);
 }
 
-const char* tool_name(PaintTool tool) {
-    switch (tool) {
-        case PaintTool::Water:
-            return "Water";
-        case PaintTool::Wall:
-            return "Wall";
-        case PaintTool::Eraser:
-            return "Eraser";
-        default:
-            return "Unknown";
-    }
-}
-
-struct EulerianLiquidPlugin {
+struct Plugin {
     void finish(core::App& app) {
-        auto& world      = app.world_mut();
-        auto& mesh_asset = world.resource_mut<assets::Assets<mesh::Mesh>>();
-        auto& fonts      = world.resource_mut<assets::Assets<text::font::Font>>();
+        auto& world       = app.world_mut();
+        auto& mesh_assets = world.resource_mut<assets::Assets<mesh::Mesh>>();
 
         world.spawn(core_graph::core_2d::Camera2DBundle{});
 
-        LiquidSim sim;
+        Fluid sim;
         sim.reset();
+        auto mesh_handle = mesh_assets.emplace(build_mesh(sim));
 
-        auto mesh_handle = mesh_asset.emplace(build_liquid_mesh(sim));
         world.spawn(mesh::Mesh2d{mesh_handle},
-                    mesh::MeshMaterial2d{
-                        .color      = glm::vec4(1.0f),
-                        .alpha_mode = mesh::MeshAlphaMode2d::Blend,
-                    },
+                    mesh::MeshMaterial2d{.color = glm::vec4(1.0f), .alpha_mode = mesh::MeshAlphaMode2d::Opaque},
                     transform::Transform{});
 
-        text::font::Font font{std::make_unique<std::byte[]>(font_data_array_size), font_data_array_size};
-        std::memcpy(font.data.get(), font_data_array, font_data_array_size);
-        const auto font_handle = fonts.emplace(std::move(font));
-
-        world.spawn(text::TextBundle{.text{"HUD"},
-                                     .font{
-                                         .font            = font_handle,
-                                         .size            = 18.0f,
-                                         .line_height     = 18.0f,
-                                         .relative_height = false,
-                                     },
-                                     .layout{.justify = text::Justify::Left}},
-                    text::Text2d{}, transform::Transform{.translation = glm::vec3(-580.0f, 380.0f, 0.2f)},
-                    text::TextColor{.r = 0.92f, .g = 0.95f, .b = 1.0f, .a = 1.0f}, HudTextTag{});
-
-        world.insert_resource(LiquidSimState{
-            .sim         = std::move(sim),
-            .mesh_handle = std::move(mesh_handle),
-        });
+        world.insert_resource(FluidState{.sim = std::move(sim), .mesh_handle = std::move(mesh_handle)});
 
         app.add_systems(
             core::Update,
-            core::into([](core::ResMut<LiquidSimState> state,
-                          core::Res<input::ButtonInput<input::MouseButton>> mouse_buttons,
-                          core::Res<input::ButtonInput<input::KeyCode>> keys,
-                          core::Query<core::Item<const window::CachedWindow&>, core::With<window::PrimaryWindow>>
-                              window_query,
-                          core::Query<core::Item<const render::camera::Camera&, const render::camera::Projection&,
-                                                 const transform::Transform&>> camera_query,
-                          core::Query<core::Item<core::Mut<text::Text>>, core::With<HudTextTag>> hud_query,
-                          core::ResMut<assets::Assets<mesh::Mesh>> meshes) {
-                if (keys->just_pressed(input::KeyCode::KeySpace)) state->sim.paused = !state->sim.paused;
-                if (keys->just_pressed(input::KeyCode::KeyR)) state->sim.reset();
-                if (keys->just_pressed(input::KeyCode::KeyC)) state->sim.clear_fluid();
+            core::into(
+                [](core::ResMut<FluidState> state, core::Res<input::ButtonInput<input::MouseButton>> mouse_buttons,
+                   core::Res<input::ButtonInput<input::KeyCode>> keys,
+                   core::Query<core::Item<const window::CachedWindow&>, core::With<window::PrimaryWindow>> window_query,
+                   core::Query<core::Item<const render::camera::Camera&, const render::camera::Projection&,
+                                          const transform::Transform&>> camera_query,
+                   core::ResMut<assets::Assets<mesh::Mesh>> meshes) {
+                    if (keys->just_pressed(input::KeyCode::KeySpace)) state->sim.paused = !state->sim.paused;
+                    if (keys->just_pressed(input::KeyCode::KeyR)) state->sim.reset();
 
-                if (keys->just_pressed(input::KeyCode::Key1)) state->sim.tool = PaintTool::Water;
-                if (keys->just_pressed(input::KeyCode::Key2)) state->sim.tool = PaintTool::Wall;
-                if (keys->just_pressed(input::KeyCode::Key3)) state->sim.tool = PaintTool::Eraser;
+                    if (keys->just_pressed(input::KeyCode::Key1)) state->sim.tool = PaintTool::Water;
+                    if (keys->just_pressed(input::KeyCode::Key2)) state->sim.tool = PaintTool::Wall;
+                    if (keys->just_pressed(input::KeyCode::Key3)) state->sim.tool = PaintTool::Eraser;
 
-                if (keys->just_pressed(input::KeyCode::KeyLeftBracket)) {
-                    state->sim.brush_radius = std::max(1, state->sim.brush_radius - 1);
-                }
-                if (keys->just_pressed(input::KeyCode::KeyRightBracket)) {
-                    state->sim.brush_radius = std::min(16, state->sim.brush_radius + 1);
-                }
+                    if (keys->just_pressed(input::KeyCode::KeyLeftBracket))
+                        state->sim.pen_size = std::max(1, state->sim.pen_size - 1);
+                    if (keys->just_pressed(input::KeyCode::KeyRightBracket))
+                        state->sim.pen_size = std::min(20, state->sim.pen_size + 1);
 
-                if (keys->just_pressed(input::KeyCode::KeyMinus)) {
-                    state->sim.dt_scale = std::max(0.2f, state->sim.dt_scale * 0.9f);
-                }
-                if (keys->just_pressed(input::KeyCode::KeyEqual)) {
-                    state->sim.dt_scale = std::min(3.0f, state->sim.dt_scale * 1.1f);
-                }
+                    if (keys->just_pressed(input::KeyCode::KeyMinus))
+                        state->sim.dt_scale = std::max(1.0f, state->sim.dt_scale - 0.25f);
+                    if (keys->just_pressed(input::KeyCode::KeyEqual))
+                        state->sim.dt_scale = std::min(10.0f, state->sim.dt_scale + 0.25f);
 
-                if (keys->just_pressed(input::KeyCode::KeyG)) {
-                    state->sim.gravity = std::max(0.05f, state->sim.gravity * 0.85f);
-                }
-                if (keys->just_pressed(input::KeyCode::KeyH)) {
-                    state->sim.gravity = std::min(2.5f, state->sim.gravity * 1.15f);
-                }
+                    if (keys->just_pressed(input::KeyCode::KeyComma))
+                        state->sim.stickiness = std::max(0.0f, state->sim.stickiness - 0.1f);
+                    if (keys->just_pressed(input::KeyCode::KeyPeriod))
+                        state->sim.stickiness = std::min(10.0f, state->sim.stickiness + 0.1f);
 
-                if (keys->just_pressed(input::KeyCode::KeyJ)) {
-                    state->sim.pressure_iters = std::max(4, state->sim.pressure_iters - 2);
-                }
-                if (keys->just_pressed(input::KeyCode::KeyK)) {
-                    state->sim.pressure_iters = std::min(80, state->sim.pressure_iters + 2);
-                }
+                    auto win_opt = window_query.single();
+                    auto cam_opt = camera_query.single();
 
-                auto win_opt = window_query.single();
-                auto cam_opt = camera_query.single();
+                    if (win_opt && cam_opt) {
+                        auto&& [window]                   = *win_opt;
+                        auto&& [cam, proj, cam_transform] = *cam_opt;
 
-                if (win_opt && cam_opt) {
-                    auto&& [window]                   = *win_opt;
-                    auto&& [cam, proj, cam_transform] = *cam_opt;
+                        const auto [cx, cy] = window.cursor_pos;
+                        const auto [ww, wh] = window.size;
+                        if (ww > 0 && wh > 0) {
+                            const glm::vec2 world = screen_to_world(
+                                glm::vec2(static_cast<float>(cx), static_cast<float>(cy)),
+                                glm::vec2(static_cast<float>(ww), static_cast<float>(wh)), cam, proj, cam_transform);
 
-                    const auto [cursor_x, cursor_y] = window.cursor_pos;
-                    const auto [win_w, win_h]       = window.size;
-                    if (win_w > 0 && win_h > 0) {
-                        const glm::vec2 world_pos = screen_to_world(
-                            glm::vec2(static_cast<float>(cursor_x), static_cast<float>(cursor_y)),
-                            glm::vec2(static_cast<float>(win_w), static_cast<float>(win_h)), cam, proj, cam_transform);
-
-                        if (auto cell = world_to_cell(world_pos); cell.has_value()) {
-                            const bool lmb = mouse_buttons->pressed(input::MouseButton::MouseButtonLeft);
-                            const bool rmb = mouse_buttons->pressed(input::MouseButton::MouseButtonRight);
-
-                            if (lmb || rmb) {
-                                const PaintTool active_tool = rmb ? PaintTool::Eraser : state->sim.tool;
-                                state->sim.apply_brush(cell->first, cell->second, active_tool);
+                            if (auto cell = world_to_cell(world); cell.has_value()) {
+                                const bool lmb = mouse_buttons->pressed(input::MouseButton::MouseButtonLeft);
+                                const bool rmb = mouse_buttons->pressed(input::MouseButton::MouseButtonRight);
+                                if (lmb || rmb) {
+                                    const PaintTool t = rmb ? PaintTool::Eraser : state->sim.tool;
+                                    state->sim.apply_brush(cell->first, cell->second, t);
+                                }
                             }
                         }
                     }
-                }
 
-                state->sim.solve(kBaseDt * state->sim.dt_scale);
-                (void)meshes->insert(state->mesh_handle.id(), build_liquid_mesh(state->sim));
+                    if (!state->sim.paused) {
+                        const float dt = state->sim.dt_scale * 0.05f;
+                        state->sim.solve(dt);
+                    }
 
-                if (auto hud = hud_query.single(); hud.has_value()) {
-                    auto&& [text_comp]          = *hud;
-                    text_comp.get_mut().content = std::format(
-                        "Eulerian Liquid (HTML-like)\n"
-                        "Tool[1/2/3]: {}\n"
-                        "LMB paint | RMB erase | Space pause | R reset | C clear\n"
-                        "Brush[[]/]]: {}\n"
-                        "dt[-/=]: {:.2f} | gravity[G/H]: {:.3f}\n"
-                        "pressure[J/K]: {} | maxVel: {:.3f}\n"
-                        "mass target: {:.2f} | actual: {:.2f}\n"
-                        "substeps: {} | paused: {}",
-                        tool_name(state->sim.tool), state->sim.brush_radius, state->sim.dt_scale, state->sim.gravity,
-                        state->sim.pressure_iters, state->sim.last_max_vel, state->sim.target_mass,
-                        state->sim.current_mass, state->sim.last_substeps, state->sim.paused ? "yes" : "no");
-                }
-            }).set_name("eulerian liquid update"));
+                    (void)meshes->insert(state->mesh_handle.id(), build_mesh(state->sim));
+                })
+                .set_name("liquid html-port update"));
     }
 };
 }  // namespace
@@ -829,9 +750,8 @@ int main() {
     core::App app = core::App::create();
 
     window::Window primary_window;
-    primary_window.title =
-        "Eulerian Liquid | 1 water 2 wall 3 eraser | [ ] brush | - = dt | G/H gravity | J/K pressure";
-    primary_window.size = {1280, 720};
+    primary_window.title = "Liquid HTML Port | 1/2/3 tool | [ ] pen | -/= dt | ,/. stick | Space pause | R reset";
+    primary_window.size  = {1280, 800};
 
     app.add_plugins(window::WindowPlugin{
                         .primary_window = primary_window,
@@ -844,10 +764,7 @@ int main() {
         .add_plugins(render::RenderPlugin{}.set_validation(0))
         .add_plugins(core_graph::CoreGraphPlugin{})
         .add_plugins(mesh::MeshRenderPlugin{})
-        .add_plugins(sprite::SpritePlugin{})
-        .add_plugins(text::TextPlugin{})
-        .add_plugins(text::TextRenderPlugin{})
-        .add_plugins(EulerianLiquidPlugin{});
+        .add_plugins(Plugin{});
 
     app.run();
 }
