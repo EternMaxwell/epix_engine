@@ -14,13 +14,14 @@ using namespace core;
 using namespace text;
 
 namespace {
-void shape_changed_text(Commands cmd,
-                        Query<Item<Entity, Ref<Text>, Ref<TextFont>, Ref<TextLayout>, Ref<TextBounds>>> texts,
-                        ResMut<font::FontAtlasSets> atlas_sets) {
-    for (auto&& [entity, text_item, font_item, layout_item, bounds_item] : texts.iter()) {
-        if (!text_item.is_modified() && !text_item.is_added() && !font_item.is_modified() && !font_item.is_added() &&
-            !layout_item.is_modified() && !layout_item.is_added() && !bounds_item.is_modified() &&
-            !bounds_item.is_added()) {
+void shape_changed_text(
+    Commands cmd,
+    Query<Item<Entity, Ref<Text>, Ref<TextFont>, Ref<TextLayout>, Ref<TextBounds>, Has<ShapedText>>> texts,
+    ResMut<font::FontAtlasSets> atlas_sets) {
+    for (auto&& [entity, text_item, font_item, layout_item, bounds_item, has_shaped] : texts.iter()) {
+        if (has_shaped && !text_item.is_modified() && !text_item.is_added() && !font_item.is_modified() &&
+            !font_item.is_added() && !layout_item.is_modified() && !layout_item.is_added() &&
+            !bounds_item.is_modified() && !bounds_item.is_added()) {
             continue;
         }
 
