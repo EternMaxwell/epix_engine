@@ -402,6 +402,19 @@ struct App {
     /** @brief Get or create the system dispatcher owning the world.
      *  Returns error if no dispatcher exists and the app does not own a world. */
     std::expected<std::shared_ptr<SystemDispatcher>, WorldNotOwnedError> get_system_dispatcher();
+    /** @brief Configure hooks for this app's dispatcher.
+     *
+     * If the dispatcher already exists, hooks are applied immediately.
+     * Otherwise hooks are stored and applied when the dispatcher is created.
+     */
+    App& set_dispatch_system_hooks(DispatchSystemHooks hooks) {
+        auto lock               = lock_world();
+        _pending_dispatch_hooks = std::move(hooks);
+        if (auto dispatcher = _dispatcher.lock()) {
+            dispatcher->set_dispatch_system_hooks(*_pending_dispatch_hooks);
+        }
+        return *this;
+    }
     /** @brief Get the system dispatcher owning the world. Throws if failed. */
     std::shared_ptr<SystemDispatcher> system_dispatcher() { return get_system_dispatcher().value(); }
     /** @brief Try run a schedule with the provided dispatcher.
@@ -531,5 +544,6 @@ struct App {
     std::unique_ptr<AppRunner> runner;
 
     std::weak_ptr<SystemDispatcher> _dispatcher;
+    std::optional<DispatchSystemHooks> _pending_dispatch_hooks;
 };
 }  // namespace core

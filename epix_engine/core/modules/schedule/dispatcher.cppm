@@ -72,6 +72,17 @@ export struct DispatchConfig {
     /** @brief Callback invoked on system execution error. */
     std::function<void(const RunSystemError&)> on_error = nullptr;
 };
+/** @brief Global hooks invoked around every dispatched system execution.
+ *
+ * These hooks run on the worker thread executing the system. They are
+ * intended for thread-local integrations (e.g. per-system UI contexts).
+ */
+export struct DispatchSystemHooks {
+    /** @brief Called immediately before a system run. */
+    std::function<void(std::string_view)> before_system = nullptr;
+    /** @brief Called immediately after a system run (even on error). */
+    std::function<void(std::string_view)> after_system = nullptr;
+};
 /** @brief Thread-pool-backed system dispatcher for parallel system execution.
  *  Takes ownership of the World during dispatch to ensure thread safety. */
 export struct SystemDispatcher {
@@ -83,6 +94,7 @@ export struct SystemDispatcher {
         nullptr;  // keep ownership of world, so that during dispatch the access is thread-safe
     World* world;
     mutable std::recursive_mutex mutex_;
+    DispatchSystemHooks dispatch_hooks_;
     size_t running = 0;
     std::condition_variable_any cv_;
     BS::thread_pool<BS::tp::none>* thread_pool;
@@ -152,6 +164,16 @@ export struct SystemDispatcher {
      * @return std::unique_ptr<World> The owned world, or nullptr if not owned.
      */
     std::unique_ptr<World> release_world();
+    /** @brief Set hooks invoked around each dispatched system run. */
+    void set_dispatch_system_hooks(DispatchSystemHooks hooks) {
+        std::lock_guard lock(mutex_);
+        dispatch_hooks_ = std::move(hooks);
+    }
+    /** @brief Get a snapshot of current dispatch hooks. */
+    DispatchSystemHooks get_dispatch_system_hooks() const {
+        std::lock_guard lock(mutex_);
+        return dispatch_hooks_;
+    }
     /** @brief Get the world's current change tick. */
     Tick change_tick() const {
         assert_world();
@@ -187,14 +209,23 @@ export struct SystemDispatcher {
         if (!config.debug_name) config.debug_name = sys.name();
         std::packaged_task<std::expected<Out, RunSystemError>()> task(
             [this, &sys, input = std::move(input), error_handler = std::move(config.on_error)]() mutable {
+                auto hooks = this->get_dispatch_system_hooks();
+                if (hooks.before_system) hooks.before_system(sys.name());
+                auto on_finish = [&]() {
+                    if (hooks.after_system) hooks.after_system(sys.name());
+                };
                 if (!error_handler) {
-                    return sys.run_no_apply(std::move(input), *world);
+                    auto res = sys.run_no_apply(std::move(input), *world);
+                    on_finish();
+                    return res;
                 } else {
-                    return sys.run_no_apply(std::move(input), *world)
-                        .transform_error([error_handler = std::move(error_handler)](RunSystemError&& err) {
-                            error_handler(err);
-                            return std::move(err);
-                        });
+                    auto res = sys.run_no_apply(std::move(input), *world)
+                                   .transform_error([error_handler = std::move(error_handler)](RunSystemError&& err) {
+                                       error_handler(err);
+                                       return std::move(err);
+                                   });
+                    on_finish();
+                    return res;
                 }
             });
         auto fut          = task.get_future();
