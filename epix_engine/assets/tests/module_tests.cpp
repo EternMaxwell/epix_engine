@@ -104,6 +104,140 @@ TEST(assets, reserve) {
     ASSERT_EQ(str, "Hello Assets!") << "Insert value is not the expected value.";
 }
 
+TEST(assets, add_internal_asset) {
+    using namespace core;
+    using namespace assets;
+
+    App app    = App::create();
+    auto start = std::chrono::steady_clock::now();
+    app.add_plugins(LoopPlugin{});
+    app.add_plugins(assets::AssetPlugin{}.register_asset<std::string>());
+
+    std::optional<assets::Handle<std::string>> inserted_handle;
+    std::optional<assets::AssetId<std::string>> inserted_id;
+    bool startup_ok = false;
+    bool id_match   = false;
+    bool value_ok   = false;
+    bool timed_out  = false;
+
+    app.add_systems(Startup, into([&](Res<assets::AssetServer> server) {
+                        auto handle = server->add_asset<std::string>("internal://tests/default.txt",
+                                                                     std::string("embedded-text"));
+                        if (!handle.has_value()) {
+                            return;
+                        }
+                        inserted_handle = *handle;
+                        inserted_id     = handle->id();
+                        startup_ok      = true;
+
+                        auto loaded = server->load<std::string>("internal://tests/default.txt");
+                        if (loaded.has_value() && loaded->id() == *inserted_id) {
+                            id_match = true;
+                        }
+                    }));
+
+    app.add_systems(Update, into([&](Res<assets::Assets<std::string>> assets, EventWriter<AppExit> exit) {
+                        auto now       = std::chrono::steady_clock::now();
+                        double seconds = std::chrono::duration_cast<std::chrono::duration<double>>(now - start).count();
+                        if (seconds > 1.0) {
+                            timed_out = true;
+                            inserted_handle.reset();
+                            exit.write(AppExit{0});
+                            return;
+                        }
+
+                        if (!inserted_handle.has_value()) {
+                            return;
+                        }
+
+                        auto text = assets->get(*inserted_handle);
+                        if (!text.has_value()) {
+                            return;
+                        }
+                        value_ok = (text->get() == "embedded-text");
+                        inserted_handle.reset();
+                        exit.write(AppExit{0});
+                    }));
+
+    app.run();
+
+    EXPECT_TRUE(startup_ok) << "Failed to enqueue internal asset into server.";
+    EXPECT_TRUE(id_match) << "Resolved handle id does not match internal handle id.";
+    EXPECT_TRUE(value_ok) << "Internal asset content mismatch after event handling.";
+    EXPECT_FALSE(timed_out) << "Timed out waiting for internal asset load event.";
+}
+
+TEST(assets, add_internal_asset_replaces_stale_path_mapping) {
+    using namespace core;
+    using namespace assets;
+
+    App app    = App::create();
+    auto start = std::chrono::steady_clock::now();
+    app.add_plugins(LoopPlugin{});
+    app.add_plugins(assets::AssetPlugin{}.register_asset<std::string>());
+
+    std::optional<assets::Handle<std::string>> first_handle;
+    std::optional<assets::Handle<std::string>> second_handle;
+    std::optional<assets::AssetId<std::string>> second_id;
+    bool startup_ok = false;
+    bool id_match   = false;
+    bool value_ok   = false;
+    bool timed_out  = false;
+
+    app.add_systems(Startup, into([&](Res<assets::AssetServer> server) {
+                        auto first = server->add_asset<std::string>("internal://tests/stale.txt", std::string("old"));
+                        if (!first.has_value()) {
+                            return;
+                        }
+                        first_handle = *first;
+
+                        auto second = server->add_asset<std::string>("internal://tests/stale.txt", std::string("new"));
+                        if (!second.has_value()) {
+                            return;
+                        }
+                        second_handle = *second;
+                        second_id     = second->id();
+                        startup_ok    = true;
+
+                        auto loaded = server->load<std::string>("internal://tests/stale.txt");
+                        if (loaded.has_value() && loaded->id() == *second_id) {
+                            id_match = true;
+                        }
+                    }));
+
+    app.add_systems(Update, into([&](Res<assets::Assets<std::string>> assets, EventWriter<AppExit> exit) {
+                        auto now       = std::chrono::steady_clock::now();
+                        double seconds = std::chrono::duration_cast<std::chrono::duration<double>>(now - start).count();
+                        if (seconds > 1.0) {
+                            timed_out = true;
+                            first_handle.reset();
+                            second_handle.reset();
+                            exit.write(AppExit{0});
+                            return;
+                        }
+
+                        if (!first_handle.has_value() || !second_handle.has_value()) {
+                            return;
+                        }
+
+                        auto text = assets->get(*second_handle);
+                        if (!text.has_value()) {
+                            return;
+                        }
+                        value_ok = (text->get() == "new");
+                        first_handle.reset();
+                        second_handle.reset();
+                        exit.write(AppExit{0});
+                    }));
+
+    app.run();
+
+    EXPECT_TRUE(startup_ok) << "Failed to enqueue replacement internal assets.";
+    EXPECT_TRUE(id_match) << "Internal path should resolve to the latest handle mapping.";
+    EXPECT_TRUE(value_ok) << "Latest internal asset value was not applied.";
+    EXPECT_FALSE(timed_out) << "Timed out waiting for internal replacement asset load event.";
+}
+
 using namespace assets;
 struct StringLoader {
     static constexpr std::array<const char*, 2> exts = {"txt", "log"};

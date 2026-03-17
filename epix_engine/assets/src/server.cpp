@@ -42,17 +42,13 @@ std::optional<UntypedHandle> AssetInfos::get_or_create_handle_internal(const std
         // Check if the handle is expired we create a new one
         auto strong_handle = info.weak_handle.lock();
         if (!strong_handle) {
-            // If the weak handle is expired, we need to create a new handle
+            // weak handle is expired, but asset still exists, so we just get a new handle for the id.
             if (auto provider_it = handle_providers.find(asset_type); provider_it != handle_providers.end()) {
                 // If a provider for the type exists, use it to create a new
                 // handle
                 auto& provider   = *provider_it->second;
-                auto new_handle  = provider.reserve(true, path);
+                auto new_handle  = provider.get_handle(it->second, true, path);
                 info.weak_handle = new_handle;
-                info.path        = path;
-                // If it is loading, we keep the state as Loading,
-                // otherwise we set it to Pending
-                info.state = info.state == LoadState::Loading ? LoadState::Loading : LoadState::Pending;
                 return new_handle;
             }
         } else if (!force_new) {
@@ -284,8 +280,11 @@ void AssetServer::load_internal(const UntypedAssetId& id, const ErasedAssetLoade
 std::optional<UntypedHandle> AssetServer::load_untyped(const std::filesystem::path& path) const {
     std::scoped_lock lock(info_mutex, pending_mutex);
     auto loader = asset_loaders.get_by_path(path);  // Get the loader by path
-    if (!loader) return std::nullopt;               // No loader found, return empty handle
-    auto type   = loader->asset_type();             // Get the asset type from the loader
+    if (!loader) {
+        // No loader found, check if added manually.
+        return asset_infos.get_or_create_handle_internal(path, std::nullopt);
+    }
+    auto type   = loader->asset_type();  // Get the asset type from the loader
     auto handle = asset_infos.get_or_create_handle_untyped(path, type);
     if (!handle) return std::nullopt;  // No handle created, return empty handle
     auto&& id = handle->id();
@@ -313,7 +312,9 @@ void AssetServer::handle_events(ParamSet<World&, Res<AssetServer>> params) {
             auto& loaded_event = std::get<AssetLoadedEvent>(*event);
             auto info          = asset_server->asset_infos.get_info(loaded_event.id);
             // Insert the loaded asset into the world
-            loaded_event.asset.value->insert(loaded_event.id, world, info->on_loaded);
+            loaded_event.asset.value->insert(loaded_event.id, world,
+                                             info ? info->on_loaded : std::function<void(void*)>{});
+            if (info) info->state = LoadState::Loaded;
         } else if (std::holds_alternative<AssetLoadFailedEvent>(*event)) {
             auto& failed_event = std::get<AssetLoadFailedEvent>(*event);
             auto& id           = failed_event.id;
@@ -328,6 +329,6 @@ void AssetServer::handle_events(ParamSet<World&, Res<AssetServer>> params) {
 AssetServer::~AssetServer() {
     std::unique_lock lock(info_mutex);
     for (const auto& [id, info] : asset_infos.infos) {
-        info.waiter.wait();  // Wait for all asset loading tasks to finish
+        if (info.waiter.valid()) info.waiter.wait();  // Wait for all asset loading tasks to finish
     }
 }

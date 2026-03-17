@@ -276,6 +276,37 @@ export struct AssetServer {
         }
         asset_infos.handle_providers[type] = assets.get_handle_provider();
     }
+    /** @brief Insert an asset value and bind it to a virtual path.
+     *  This reuses the same handle/path logic as load(path), but bypasses loaders
+     *  by immediately queuing an AssetLoadedEvent.
+     *  @tparam T The asset type.
+     *  @tparam Args Constructor arguments for T.
+     *  @param path Internal virtual path used for future load<T>(path) lookups.
+     *  @param args Arguments used to construct the asset value.
+     *  @return A handle for the internal asset, or std::nullopt if handle creation fails. */
+    template <typename T, typename... Args>
+        requires std::constructible_from<T, Args...>
+    std::optional<Handle<T>> add_asset(const std::filesystem::path& path, Args&&... args) const {
+        std::scoped_lock lock(info_mutex, pending_mutex);
+        auto handle = asset_infos.get_or_create_handle<T>(path);
+        if (!handle) {
+            return std::nullopt;
+        }
+
+        auto id   = handle->id();
+        auto info = asset_infos.get_info(id);
+        if (info) {
+            info->state     = LoadState::Loading;
+            info->on_loaded = {};
+        }
+
+        T asset(std::forward<Args>(args)...);
+        event_sender.send(AssetLoadedEvent{
+            UntypedAssetId(id),
+            ErasedLoadedAsset{std::make_unique<AssetContainerImpl<T>>(std::move(asset))},
+        });
+        return std::move(*handle);
+    }
     /** @brief Query the current load state of an asset.
      *  @return The LoadState, or std::nullopt if the id is unknown. */
     std::optional<LoadState> get_state(const UntypedAssetId& id) const;
@@ -299,7 +330,7 @@ export struct AssetServer {
         }
         return std::move(handle);
     }
-    /** @brief Load an asset with a pre-modification callback.
+    /** @brief Load an asset with a pre-modification callback. Or return immediately if the asset is already loaded.
      *  @tparam T The expected asset type.
      *  @tparam PreMod A callable invoked with `T&` right before the asset is inserted.
      *  @param path Filesystem path to the asset.
@@ -320,8 +351,8 @@ export struct AssetServer {
         }
         return std::move(handle);
     }
-    /** @brief Load an asset without compile-time type information.
-     *  The loader is determined by the file extension.
+    /** @brief Load an asset without compile-time type information. Or return immediately if the asset is already
+     *  loaded. The loader is determined by the file extension.
      *  @param path Filesystem path to the asset.
      *  @return An UntypedHandle, or std::nullopt if no matching loader is found. */
     std::optional<UntypedHandle> load_untyped(const std::filesystem::path& path) const;
