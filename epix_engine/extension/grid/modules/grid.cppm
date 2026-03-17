@@ -649,7 +649,7 @@ struct ExtendibleChunkRefGrid {
 }  // namespace ext::grid
 
 namespace ext::grid::layers {
-constexpr static auto map_err = [](grid_error err) -> LayerError {
+auto map_err(grid_error err) -> LayerError {
     switch (err) {
         case grid_error::OutOfBounds:
             return LayerError::OutOfBounds;
