@@ -61,7 +61,7 @@ struct packed_grid {
      */
     std::size_t count() const { return m_cells.size(); }
     /** @brief Clear all cells in the grid. */
-    void clear() { std::fill(m_cells.begin(), m_cells.end(), m_default_value); }
+    void clear() { m_cells.assign(m_cells.size(), m_default_value); }
     /** @brief Iterate over the positions of  cells. */
     auto iter_pos() const {
         return std::views::iota(std::size_t{0}, count()) |
@@ -741,7 +741,8 @@ template <std::size_t Dim, typename T>
 std::expected<std::size_t, grid_error> packed_grid<Dim, T>::offset(std::array<std::uint32_t, Dim> pos) const {
     std::size_t index = 0;
     for (std::size_t i = 0; i < Dim; i++) {
-        if (pos[i] >= m_dimensions[i]) return std::unexpected(grid_error::OutOfBounds);
+        if (pos[i] >= m_dimensions[i]) [[unlikely]]
+            return std::unexpected(grid_error::OutOfBounds);
         index *= m_dimensions[i];
         index += pos[i];
     }
