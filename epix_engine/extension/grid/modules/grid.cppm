@@ -10,9 +10,13 @@ export import :basic_grid;
 namespace ext::grid {
 /** @brief Error codes for chunk layer operations. */
 export enum LayerError {
+    /** Requested value type is not supported by the target layer. */
     UnsupportedType,
+    /** Requested position is outside the valid chunk bounds. */
     OutOfBounds,
+    /** Cell has no value for the requested type. */
     EmptyCell,
+    /** Input value or operation payload is invalid. */
     InvalidValue,
 };
 /** @brief Abstract base for a single layer of a Dim-dimensional chunk.
@@ -24,6 +28,7 @@ export enum LayerError {
 export template <std::size_t Dim>
 class ChunkLayer {
    public:
+    /** Virtual destructor for polymorphic chunk layers. */
     virtual ~ChunkLayer() = default;
 
    private:
@@ -42,17 +47,35 @@ class ChunkLayer {
     friend class Chunk;
 
    public:
+    /** @brief Returns all value types currently supported by this layer. */
     virtual std::vector<meta::type_index> supported_types() const = 0;
-    virtual bool supports_type(meta::type_index type) const       = 0;
-    virtual void clear()                                          = 0;
+    /** @brief Checks whether this layer supports a value type.
+     * @param type Type identifier to query.
+     */
+    virtual bool supports_type(meta::type_index type) const = 0;
+    /** @brief Clears all stored cells in this layer. */
+    virtual void clear() = 0;
+    /** @brief Returns chunk width as log2(width).
+     *
+     * Implementations use this for shift-based coordinate transforms.
+     */
     virtual std::size_t width_shift() const = 0;  // for bit shifting optimization, should be equal to log2(width())
+    /** @brief Returns chunk width for each dimension. */
     std::size_t width() const { return static_cast<std::size_t>(1) << width_shift(); }
+    /** @brief Checks whether local chunk coordinates are valid.
+     * @param pos Local cell position within the chunk.
+     */
     bool in_bounds(std::array<std::uint32_t, Dim> pos) const {
         for (std::size_t i = 0; i < Dim; i++) {
             if (pos[i] >= width()) return false;
         }
         return true;
     }
+    /** @brief Inserts or overwrites a typed value at a local cell position.
+     * @tparam T Value type.
+     * @param pos Local cell position.
+     * @param value Value to copy or move into storage.
+     */
     template <typename T>
     std::expected<void, LayerError> set(std::array<std::uint32_t, Dim> pos, T&& value) {
         using type = std::remove_cvref_t<T>;
@@ -62,28 +85,42 @@ class ChunkLayer {
             return set_copy(meta::type_id<type>(), pos, static_cast<const void*>(std::addressof(value)));
         }
     }
+    /** @brief Attempts to set multiple values at one local position.
+     *
+     * Values are applied in argument order, and the last operation result is returned.
+     */
     template <typename... Args>
     std::expected<void, LayerError> set_multi(std::array<std::uint32_t, Dim> pos, Args&&... value) {
         std::expected<void, LayerError> result = std::unexpected(LayerError::UnsupportedType);
         ((result = set(pos, std::forward<Args>(value))), ...);
         return result;
     }
+    /** @brief Retrieves a mutable typed reference from a local cell position.
+     * @tparam T Requested value type.
+     */
     template <typename T>
     std::expected<std::reference_wrapper<T>, LayerError> get_mut(std::array<std::uint32_t, Dim> pos) {
         return get_mut(meta::type_id<std::remove_cvref_t<T>>(), pos).transform([](void* ptr) {
             return std::ref(*static_cast<T*>(ptr));
         });
     }
+    /** @brief Retrieves an immutable typed reference from a local cell position.
+     * @tparam T Requested value type.
+     */
     template <typename T>
     std::expected<std::reference_wrapper<const T>, LayerError> get(std::array<std::uint32_t, Dim> pos) const {
         return get(meta::type_id<std::remove_cvref_t<T>>(), pos).transform([](const void* ptr) {
             return std::cref(*static_cast<const T*>(ptr));
         });
     }
+    /** @brief Removes a typed value at a local cell position.
+     * @tparam T Value type to remove.
+     */
     template <typename T>
     std::expected<void, LayerError> remove(std::array<std::uint32_t, Dim> pos) {
         return remove(meta::type_id<std::remove_cvref_t<T>>(), pos);
     }
+    /** @brief Removes all supported value types at a local cell position. */
     std::expected<void, LayerError> remove_all(std::array<std::uint32_t, Dim> pos) {
         std::expected<void, LayerError> result = std::unexpected(LayerError::UnsupportedType);
         for (const auto& type : supported_types()) {
@@ -93,6 +130,9 @@ class ChunkLayer {
         return result;
     }
 
+    /** @brief Tries to iterate immutable values of a specific type.
+     * @tparam T Value type to iterate.
+     */
     template <typename T>
     auto try_iter() const {
         return try_iter_type(meta::type_id<std::remove_cvref_t<T>>()).transform([](auto iterable) {
@@ -102,10 +142,16 @@ class ChunkLayer {
                    });
         });
     }
+    /** @brief Iterates immutable values of a type, throwing on error via expected::value.
+     * @tparam T Value type to iterate.
+     */
     template <typename T>
     auto iter() const {
         return try_iter<T>().value();
     }
+    /** @brief Tries to iterate mutable values of a specific type.
+     * @tparam T Value type to iterate.
+     */
     template <typename T>
     auto try_iter_mut() {
         return try_iter_type_mut(meta::type_id<std::remove_cvref_t<T>>()).transform([](auto iterable) {
@@ -115,6 +161,9 @@ class ChunkLayer {
                    });
         });
     }
+    /** @brief Iterates mutable values of a type, throwing on error via expected::value.
+     * @tparam T Value type to iterate.
+     */
     template <typename T>
     auto iter_mut() {
         return try_iter_mut<T>().value();
@@ -122,8 +171,11 @@ class ChunkLayer {
 };
 /** @brief Error codes for chunk-level layer management. */
 export enum class ChunkLayerError {
+    /** One or more type identifiers already exist in this chunk. */
     TypeAlreadyExists,
+    /** Layer width does not match chunk width. */
     WidthMismatch,
+    /** Requested layer index or type mapping was not found. */
     LayerMissing,
 };
 /** @brief Composite chunk that delegates cell access to typed sub-layers.
@@ -176,21 +228,34 @@ class Chunk : public ChunkLayer<Dim> {
     }
 
    public:
+    /** @brief Creates an empty chunk with width $2^{width\_shift}$ in each dimension. */
     Chunk(std::size_t width_shift) : m_width_shift(width_shift) {}
-    Chunk(const Chunk&)            = delete;
-    Chunk(Chunk&&)                 = default;
+    /** Copy is disabled because layers are owned via unique pointers. */
+    Chunk(const Chunk&) = delete;
+    /** Move is enabled to transfer chunk ownership. */
+    Chunk(Chunk&&) = default;
+    /** Copy assignment is disabled because layers are owned via unique pointers. */
     Chunk& operator=(const Chunk&) = delete;
-    Chunk& operator=(Chunk&&)      = default;
+    /** Move assignment transfers chunk ownership. */
+    Chunk& operator=(Chunk&&) = default;
 
+    /** @brief Returns chunk width as log2(width). */
     std::size_t width_shift() const override { return m_width_shift; }
+    /** @brief Checks whether any layer in this chunk supports the given type. */
     bool supports_type(meta::type_index type) const override { return m_type_to_layer.contains(type); }
+    /** @brief Returns all currently supported types across all layers. */
     std::vector<meta::type_index> supported_types() const override {
         return m_type_to_layer | std::views::keys | std::ranges::to<std::vector>();
     }
+    /** @brief Clears all owned layers. */
     void clear() override {
         for (auto& layer : m_layers) layer->clear();
     }
 
+    /** @brief Adds a new layer to this chunk.
+     *
+     * Fails if width differs or any supported type is already present.
+     */
     std::expected<void, ChunkLayerError> add_layer(std::unique_ptr<ChunkLayer<Dim>> layer) {
         if (layer->width_shift() != m_width_shift) return std::unexpected(ChunkLayerError::WidthMismatch);
         for (const auto& type : layer->supported_types()) {
@@ -202,6 +267,7 @@ class Chunk : public ChunkLayer<Dim> {
         m_layers.push_back(std::move(layer));
         return {};
     }
+    /** @brief Removes and returns a layer by index. */
     std::expected<std::unique_ptr<ChunkLayer<Dim>>, ChunkLayerError> remove_layer(std::size_t index) {
         if (index >= m_layers.size()) return std::unexpected(ChunkLayerError::LayerMissing);
         auto layer = std::move(m_layers[index]);
@@ -211,15 +277,18 @@ class Chunk : public ChunkLayer<Dim> {
         m_layers.erase(m_layers.begin() + index);
         return std::move(layer);
     }
+    /** @brief Removes and returns the layer that owns a type. */
     std::expected<std::unique_ptr<ChunkLayer<Dim>>, ChunkLayerError> remove_layer_by_type(meta::type_index type) {
         if (!m_type_to_layer.contains(type)) return std::unexpected(ChunkLayerError::LayerMissing);
         return remove_layer(m_type_to_layer.at(type));
     }
+    /** @brief Gets a mutable layer by supported type. */
     std::expected<std::reference_wrapper<ChunkLayer<Dim>>, ChunkLayerError> get_layer_mut_by_type(
         meta::type_index type) {
         if (!m_type_to_layer.contains(type)) return std::unexpected(ChunkLayerError::LayerMissing);
         return std::ref(*m_layers[m_type_to_layer.at(type)]);
     }
+    /** @brief Gets an immutable layer by supported type. */
     std::expected<std::reference_wrapper<const ChunkLayer<Dim>>, ChunkLayerError> get_layer_by_type(
         meta::type_index type) const {
         if (!m_type_to_layer.contains(type)) return std::unexpected(ChunkLayerError::LayerMissing);
@@ -227,6 +296,7 @@ class Chunk : public ChunkLayer<Dim> {
     }
 };
 
+/** @brief Unified error type for chunk-grid level operations. */
 export using ChunkGridError = std::variant<ChunkLayerError, LayerError, grid_error>;
 
 // this won't work if using function instead of lambda, don't know why
@@ -234,6 +304,10 @@ constexpr auto map_err = [](auto&& error) -> ChunkGridError {
     return ChunkGridError{std::forward<decltype(error)>(error)};
 };
 
+/** @brief Extendible owning chunk grid over world-space coordinates.
+ *
+ * Chunks are allocated and owned by this structure and addressed by int32 chunk coordinates.
+ */
 export template <std::size_t Dim>
 struct ExtendibleChunkGrid {
    private:
@@ -257,25 +331,39 @@ struct ExtendibleChunkGrid {
     }
 
    public:
+    /** @brief Creates an extendible grid of owning chunks.
+     * @param chunk_width_shift Per-chunk width exponent.
+     */
     ExtendibleChunkGrid(std::size_t chunk_width_shift) : m_chunk_width_shift(chunk_width_shift) {}
-    ExtendibleChunkGrid(const ExtendibleChunkGrid&)            = delete;
-    ExtendibleChunkGrid(ExtendibleChunkGrid&&)                 = default;
+    /** Copy is disabled to avoid accidental heavy grid copies. */
+    ExtendibleChunkGrid(const ExtendibleChunkGrid&) = delete;
+    /** Move is enabled. */
+    ExtendibleChunkGrid(ExtendibleChunkGrid&&) = default;
+    /** Copy assignment is disabled. */
     ExtendibleChunkGrid& operator=(const ExtendibleChunkGrid&) = delete;
-    ExtendibleChunkGrid& operator=(ExtendibleChunkGrid&&)      = default;
+    /** Move assignment is enabled. */
+    ExtendibleChunkGrid& operator=(ExtendibleChunkGrid&&) = default;
 
+    /** @brief Returns chunk width as log2(width). */
     std::size_t chunk_width_shift() const { return m_chunk_width_shift; }
+    /** @brief Returns chunk width in cells for each dimension. */
     std::size_t chunk_width() const { return static_cast<std::size_t>(1) << m_chunk_width_shift; }
 
+    /** @brief Retrieves an immutable chunk reference at chunk coordinates. */
     auto get_chunk(std::array<std::int32_t, Dim> pos) const { return m_chunk_grid.get(pos); }
+    /** @brief Retrieves a mutable chunk reference at chunk coordinates. */
     auto get_chunk_mut(std::array<std::int32_t, Dim> pos) { return m_chunk_grid.get_mut(pos); }
 
+    /** @brief Compacts internal sparse tree storage. */
     void shrink_grid() { m_chunk_grid.shrink(); }
 
+    /** @brief Adds a new empty chunk at chunk coordinates. */
     auto add_chunk(std::array<std::int32_t, Dim> pos) -> std::expected<void, ChunkGridError> {
         auto result = m_chunk_grid.set_new(pos, chunk_width_shift());
         if (!result.has_value()) return std::unexpected(ChunkGridError{result.error()});
         return {};
     }
+    /** @brief Inserts an existing owning chunk at chunk coordinates. */
     auto insert_chunk(std::array<std::int32_t, Dim> pos, Chunk<Dim>&& chunk) -> std::expected<void, ChunkGridError> {
         if (chunk.width_shift() != m_chunk_width_shift) return std::unexpected(ChunkLayerError::WidthMismatch);
         auto result = m_chunk_grid.set_new(pos, std::move(chunk));
@@ -283,18 +371,28 @@ struct ExtendibleChunkGrid {
         return {};
     }
 
+    /** @brief Removes a chunk at chunk coordinates. */
     auto remove_chunk(std::array<std::int32_t, Dim> pos) -> std::expected<void, ChunkGridError> {
         return m_chunk_grid.remove(pos);
     }
+    /** @brief Removes and returns a chunk at chunk coordinates. */
     auto take_chunk(std::array<std::int32_t, Dim> pos) -> std::expected<Chunk<Dim>, ChunkGridError> {
         return m_chunk_grid.take(pos);
     }
+    /** @brief Iterates immutable chunk values. */
     auto iter_chunks() const { return m_chunk_grid.iter_cells(); }
+    /** @brief Iterates mutable chunk values. */
     auto iter_chunks_mut() { return m_chunk_grid.iter_cells_mut(); }
+    /** @brief Iterates chunk coordinates. */
     auto iter_chunk_pos() const { return m_chunk_grid.iter_pos(); }
+    /** @brief Iterates immutable pairs of chunk coordinates and chunks. */
     auto iter_chunk_with_pos() const { return m_chunk_grid.iter(); }
+    /** @brief Iterates mutable pairs of chunk coordinates and chunks. */
     auto iter_chunk_with_pos_mut() { return m_chunk_grid.iter_mut(); }
 
+    /** @brief Inserts or updates a typed cell at world-space coordinates.
+     * @tparam T Value type.
+     */
     template <typename T>
     auto insert_cell(std::array<std::int64_t, Dim> pos, T&& value) -> std::expected<void, ChunkGridError> {
         auto coords_result = chunk_coords(pos);
@@ -306,6 +404,7 @@ struct ExtendibleChunkGrid {
                 return chunk.set(cell_pos, std::forward<T>(value));
             });
     }
+    /** @brief Inserts or updates multiple values at one world-space cell. */
     template <typename... Args>
     auto insert_cell_multi(std::array<std::int64_t, Dim> pos, Args&&... value) -> std::expected<void, ChunkGridError> {
         auto coords_result = chunk_coords(pos);
@@ -317,6 +416,7 @@ struct ExtendibleChunkGrid {
                 return chunk.set_multi(cell_pos, std::forward<Args>(value)...);
             });
     }
+    /** @brief Gets an immutable typed cell reference from world-space coordinates. */
     template <typename T>
     auto get_cell(std::array<std::int64_t, Dim> pos) const
         -> std::expected<std::reference_wrapper<const T>, ChunkGridError> {
@@ -330,6 +430,10 @@ struct ExtendibleChunkGrid {
         const ChunkLayer<Dim>& layer = chunk_result.value().get();
         return layer.template get<T>(cell_pos).transform_error(map_err);
     }
+    /** @brief Gets a mutable typed cell reference from world-space coordinates.
+     *
+     * The return type is currently const-qualified to match existing API behavior.
+     */
     template <typename T>
     auto get_cell_mut(std::array<std::int64_t, Dim> pos) const
         -> std::expected<std::reference_wrapper<const T>, ChunkGridError> {
@@ -343,6 +447,7 @@ struct ExtendibleChunkGrid {
         const ChunkLayer<Dim>& layer = chunk_result.value().get();
         return layer.template get_mut<T>(cell_pos).transform_error(map_err);
     }
+    /** @brief Removes a typed value from a world-space cell. */
     template <typename T>
     auto remove_cell(std::array<std::int64_t, Dim> pos) -> std::expected<void, ChunkGridError> {
         auto coords_result = chunk_coords(pos);
@@ -355,6 +460,7 @@ struct ExtendibleChunkGrid {
         ChunkLayer<Dim>& layer = chunk_result.value().get();
         return layer.template remove<T>(cell_pos).transform_error(map_err);
     }
+    /** @brief Removes all supported types from a world-space cell. */
     auto remove_cell_all(std::array<std::int64_t, Dim> pos) -> std::expected<void, ChunkGridError> {
         auto coords_result = chunk_coords(pos);
         if (!coords_result.has_value()) return std::unexpected(coords_result.error());
@@ -367,6 +473,10 @@ struct ExtendibleChunkGrid {
     }
 };
 
+/** @brief Non-owning variant of ExtendibleChunkGrid.
+ *
+ * Stores references to external chunks rather than owning chunk instances.
+ */
 export template <std::size_t Dim>
 struct ExtendibleChunkRefGrid {
    private:
@@ -401,21 +511,33 @@ struct ExtendibleChunkRefGrid {
     };
 
    public:
+    /** @brief Creates a non-owning extendible grid of chunk references. */
     ExtendibleChunkRefGrid(std::size_t chunk_width_shift) : m_chunk_width_shift(chunk_width_shift) {}
-    ExtendibleChunkRefGrid(const ExtendibleChunkRefGrid&)            = delete;
-    ExtendibleChunkRefGrid(ExtendibleChunkRefGrid&&)                 = default;
+    /** Copy is disabled because reference ownership semantics are explicit. */
+    ExtendibleChunkRefGrid(const ExtendibleChunkRefGrid&) = delete;
+    /** Move is enabled. */
+    ExtendibleChunkRefGrid(ExtendibleChunkRefGrid&&) = default;
+    /** Copy assignment is disabled. */
     ExtendibleChunkRefGrid& operator=(const ExtendibleChunkRefGrid&) = delete;
-    ExtendibleChunkRefGrid& operator=(ExtendibleChunkRefGrid&&)      = default;
+    /** Move assignment is enabled. */
+    ExtendibleChunkRefGrid& operator=(ExtendibleChunkRefGrid&&) = default;
 
+    /** @brief Returns chunk width as log2(width). */
     std::size_t chunk_width_shift() const { return m_chunk_width_shift; }
+    /** @brief Returns chunk width in cells for each dimension. */
     std::size_t chunk_width() const { return static_cast<std::size_t>(1) << m_chunk_width_shift; }
 
+    /** @brief Retrieves an immutable referenced chunk at chunk coordinates. */
     auto get_chunk(std::array<std::int32_t, Dim> pos) const { return m_chunk_grid.get(pos).transform(deref); }
+    /** @brief Retrieves a mutable referenced chunk at chunk coordinates. */
     auto get_chunk_mut(std::array<std::int32_t, Dim> pos) { return m_chunk_grid.get_mut(pos).transform(deref_mut); }
 
+    /** @brief Compacts internal sparse tree storage. */
     void shrink_grid() { m_chunk_grid.shrink(); }
+    /** @brief Clears all stored chunk references. */
     void clear_grid() { m_chunk_grid.clear(); }
 
+    /** @brief Inserts a chunk reference at chunk coordinates. */
     auto insert_chunk(std::array<std::int32_t, Dim> pos, Chunk<Dim>& chunk) -> std::expected<void, ChunkGridError> {
         if (chunk.width_shift() != m_chunk_width_shift) return std::unexpected(ChunkLayerError::WidthMismatch);
         auto result = m_chunk_grid.set_new(pos, ChunkRef{std::ref(chunk)});
@@ -423,19 +545,27 @@ struct ExtendibleChunkRefGrid {
         return {};
     }
 
+    /** @brief Removes a chunk reference at chunk coordinates. */
     auto remove_chunk(std::array<std::int32_t, Dim> pos) -> std::expected<void, ChunkGridError> {
         return m_chunk_grid.remove(pos);
     }
+    /** @brief Taking owned chunks is unsupported for a reference grid. */
     auto take_chunk(std::array<std::int32_t, Dim> pos) -> std::expected<Chunk<Dim>, ChunkGridError> {
         (void)pos;
         return std::unexpected(ChunkGridError{grid_error::InvalidPos});
     }
+    /** @brief Iterates immutable referenced chunks. */
     auto iter_chunks() const { return m_chunk_grid.iter_cells() | std::views::transform(deref); }
+    /** @brief Iterates mutable referenced chunks. */
     auto iter_chunks_mut() { return m_chunk_grid.iter_cells_mut() | std::views::transform(deref_mut); }
+    /** @brief Iterates chunk coordinates. */
     auto iter_chunk_pos() const { return m_chunk_grid.iter_pos(); }
+    /** @brief Iterates immutable pairs of chunk coordinates and referenced chunks. */
     auto iter_chunk_with_pos() const { return std::views::zip(iter_chunk_pos(), iter_chunks()); }
+    /** @brief Iterates mutable pairs of chunk coordinates and referenced chunks. */
     auto iter_chunk_with_pos_mut() { return std::views::zip(iter_chunk_pos(), iter_chunks_mut()); }
 
+    /** @brief Inserts or updates a typed value at world-space coordinates. */
     template <typename T>
     auto insert_cell(std::array<std::int64_t, Dim> pos, T&& value) -> std::expected<void, ChunkGridError> {
         auto coords_result = chunk_coords(pos);
@@ -447,6 +577,7 @@ struct ExtendibleChunkRefGrid {
                 return chunk.set(cell_pos, std::forward<T>(value));
             });
     }
+    /** @brief Inserts or updates multiple values at one world-space cell. */
     template <typename... Args>
     auto insert_cell_multi(std::array<std::int64_t, Dim> pos, Args&&... value) -> std::expected<void, ChunkGridError> {
         auto coords_result = chunk_coords(pos);
@@ -458,6 +589,7 @@ struct ExtendibleChunkRefGrid {
                 return chunk.set_multi(cell_pos, std::forward<Args>(value)...);
             });
     }
+    /** @brief Gets an immutable typed cell reference from world-space coordinates. */
     template <typename T>
     auto get_cell(std::array<std::int64_t, Dim> pos) const
         -> std::expected<std::reference_wrapper<const T>, ChunkGridError> {
@@ -471,6 +603,10 @@ struct ExtendibleChunkRefGrid {
         const ChunkLayer<Dim>& layer = chunk_result.value().get();
         return layer.template get<T>(cell_pos).transform_error(map_err);
     }
+    /** @brief Gets a mutable typed cell reference from world-space coordinates.
+     *
+     * The return type is currently const-qualified to match existing API behavior.
+     */
     template <typename T>
     auto get_cell_mut(std::array<std::int64_t, Dim> pos) const
         -> std::expected<std::reference_wrapper<const T>, ChunkGridError> {
@@ -484,6 +620,7 @@ struct ExtendibleChunkRefGrid {
         const ChunkLayer<Dim>& layer = chunk_result.value().get();
         return layer.template get_mut<T>(cell_pos).transform_error(map_err);
     }
+    /** @brief Removes a typed value from a world-space cell. */
     template <typename T>
     auto remove_cell(std::array<std::int64_t, Dim> pos) -> std::expected<void, ChunkGridError> {
         auto coords_result = chunk_coords(pos);
@@ -496,6 +633,7 @@ struct ExtendibleChunkRefGrid {
         ChunkLayer<Dim>& layer = chunk_result.value().get();
         return layer.template remove<T>(cell_pos).transform_error(map_err);
     }
+    /** @brief Removes all supported types from a world-space cell. */
     auto remove_cell_all(std::array<std::int64_t, Dim> pos) -> std::expected<void, ChunkGridError> {
         auto coords_result = chunk_coords(pos);
         if (!coords_result.has_value()) return std::unexpected(coords_result.error());
@@ -523,6 +661,10 @@ constexpr static auto map_err = [](grid_error err) -> LayerError {
             return LayerError::InvalidValue;  // treat all other errors as invalid value for simplicity
     }
 };
+/** @brief Dense packed layer backed by packed_grid.
+ * @tparam Dim Number of spatial dimensions.
+ * @tparam T Stored value type.
+ */
 export template <std::size_t Dim, typename T>
     requires std::movable<T>
 class PackedLayer : public ChunkLayer<Dim> {
@@ -531,6 +673,10 @@ class PackedLayer : public ChunkLayer<Dim> {
     std::size_t m_width_shift;
 
    public:
+    /** @brief Creates a packed layer with fixed chunk width.
+     * @param width_shift Chunk width exponent.
+     * @param default_value Default value used by packed storage.
+     */
     PackedLayer(std::size_t width_shift, T default_value = T{})
         : m_grid(
               [width_shift]() {
@@ -540,9 +686,13 @@ class PackedLayer : public ChunkLayer<Dim> {
               }(),
               default_value),
           m_width_shift(width_shift) {}
+    /** @brief Returns chunk width as log2(width). */
     std::size_t width_shift() const override { return m_width_shift; }
+    /** @brief Checks whether this layer supports the given type. */
     bool supports_type(meta::type_index type) const override { return type == meta::type_id<T>(); }
+    /** @brief Returns the single supported type of this layer. */
     std::vector<meta::type_index> supported_types() const override { return {meta::type_id<T>()}; }
+    /** @brief Resets packed storage content. */
     void clear() override { m_grid.clear(); }
 
    private:
@@ -590,6 +740,10 @@ class PackedLayer : public ChunkLayer<Dim> {
                });
     }
 };
+/** @brief Tree-based sparse layer backed by tree_grid.
+ * @tparam Dim Number of spatial dimensions.
+ * @tparam T Stored value type.
+ */
 export template <std::size_t Dim, typename T>
     requires std::movable<T>
 class TreeLayer : public ChunkLayer<Dim> {
@@ -598,6 +752,9 @@ class TreeLayer : public ChunkLayer<Dim> {
     std::size_t m_width_shift;
 
    public:
+    /** @brief Creates a tree layer with fixed chunk width.
+     * @param width_shift Chunk width exponent.
+     */
     TreeLayer(std::size_t width_shift)
         : m_grid([width_shift]() {
               std::array<std::uint32_t, Dim> dimensions;
@@ -605,9 +762,13 @@ class TreeLayer : public ChunkLayer<Dim> {
               return dimensions;
           }()),
           m_width_shift(width_shift) {}
+    /** @brief Returns chunk width as log2(width). */
     std::size_t width_shift() const override { return m_width_shift; }
+    /** @brief Checks whether this layer supports the given type. */
     bool supports_type(meta::type_index type) const override { return type == meta::type_id<T>(); }
+    /** @brief Returns the single supported type of this layer. */
     std::vector<meta::type_index> supported_types() const override { return {meta::type_id<T>()}; }
+    /** @brief Clears tree-backed cell storage. */
     void clear() override { m_grid.clear(); }
 
    private:
@@ -655,6 +816,10 @@ class TreeLayer : public ChunkLayer<Dim> {
                });
     }
 };
+/** @brief Dense occupancy layer backed by dense_grid.
+ * @tparam Dim Number of spatial dimensions.
+ * @tparam T Stored value type.
+ */
 export template <std::size_t Dim, typename T>
     requires std::movable<T>
 class DenseLayer : public ChunkLayer<Dim> {
@@ -663,6 +828,9 @@ class DenseLayer : public ChunkLayer<Dim> {
     std::size_t m_width_shift;
 
    public:
+    /** @brief Creates a dense layer with fixed chunk width.
+     * @param width_shift Chunk width exponent.
+     */
     DenseLayer(std::size_t width_shift)
         : m_grid([width_shift]() {
               std::array<std::uint32_t, Dim> dimensions;
@@ -670,9 +838,13 @@ class DenseLayer : public ChunkLayer<Dim> {
               return dimensions;
           }()),
           m_width_shift(width_shift) {}
+    /** @brief Returns chunk width as log2(width). */
     std::size_t width_shift() const override { return m_width_shift; }
+    /** @brief Checks whether this layer supports the given type. */
     bool supports_type(meta::type_index type) const override { return type == meta::type_id<T>(); }
+    /** @brief Returns the single supported type of this layer. */
     std::vector<meta::type_index> supported_types() const override { return {meta::type_id<T>()}; }
+    /** @brief Clears dense cell storage. */
     void clear() override { m_grid.clear(); }
 
    private:
@@ -720,6 +892,10 @@ class DenseLayer : public ChunkLayer<Dim> {
                });
     }
 };
+/** @brief Sparse hash/tree layer backed by sparse_grid.
+ * @tparam Dim Number of spatial dimensions.
+ * @tparam T Stored value type.
+ */
 export template <std::size_t Dim, typename T>
     requires std::movable<T>
 class SparseLayer : public ChunkLayer<Dim> {
@@ -728,6 +904,9 @@ class SparseLayer : public ChunkLayer<Dim> {
     std::size_t m_width_shift;
 
    public:
+    /** @brief Creates a sparse layer with fixed chunk width.
+     * @param width_shift Chunk width exponent.
+     */
     SparseLayer(std::size_t width_shift)
         : m_grid([width_shift]() {
               std::array<std::uint32_t, Dim> dimensions;
@@ -735,9 +914,13 @@ class SparseLayer : public ChunkLayer<Dim> {
               return dimensions;
           }()),
           m_width_shift(width_shift) {}
+    /** @brief Returns chunk width as log2(width). */
     std::size_t width_shift() const override { return m_width_shift; }
+    /** @brief Checks whether this layer supports the given type. */
     bool supports_type(meta::type_index type) const override { return type == meta::type_id<T>(); }
+    /** @brief Returns the single supported type of this layer. */
     std::vector<meta::type_index> supported_types() const override { return {meta::type_id<T>()}; }
+    /** @brief Clears sparse cell storage. */
     void clear() override { m_grid.clear(); }
 
    private:
