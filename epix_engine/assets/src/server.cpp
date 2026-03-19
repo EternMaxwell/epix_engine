@@ -199,7 +199,7 @@ void AssetServer::load_internal(const UntypedAssetId& id, const ErasedAssetLoade
         if (loader) {
             info.waiter = std::async(std::launch::async, [this, loader, id, context]() mutable {
                 try {
-                    auto asset = loader->load(context.path, context);
+                    auto asset = loader->load(context.path(), context);
                     if (asset.value) {
                         event_sender.send(AssetLoadedEvent{id, std::move(asset)});
                     } else {
@@ -222,7 +222,7 @@ void AssetServer::load_internal(const UntypedAssetId& id, const ErasedAssetLoade
                      loaders | std::views::reverse |
                          std::views::filter([&id](const ErasedAssetLoader* l) { return l->asset_type() == id.type; })) {
                     try {
-                        auto asset = loader->load(context.path, context);
+                        auto asset = loader->load(context.path(), context);
                         if (asset.value) {
                             event_sender.send(AssetLoadedEvent{id, std::move(asset)});
                             return;  // Successfully loaded, exit
@@ -248,7 +248,7 @@ void AssetServer::load_internal(const UntypedAssetId& id, const ErasedAssetLoade
                 std::vector<std::string> errors;
                 for (auto& loader : loaders | std::views::reverse) {
                     try {
-                        auto asset = loader->load(context.path, context);
+                        auto asset = loader->load(context.path(), context);
                         if (asset.value) {
                             event_sender.send(AssetLoadedEvent{id, std::move(asset)});
                             return;  // Successfully loaded, exit
@@ -331,4 +331,13 @@ AssetServer::~AssetServer() {
     for (const auto& [id, info] : asset_infos.infos) {
         if (info.waiter.valid()) info.waiter.wait();  // Wait for all asset loading tasks to finish
     }
+}
+
+// LoadContext non-templated implementation (placed in .cpp since it's not templated)
+std::optional<UntypedHandle> LoadContext::load_untyped(const std::filesystem::path& path) {
+    auto handle = m_server.load_untyped(path);
+    if (handle) {
+        m_dependencies.try_emplace(path, handle->id());
+    }
+    return handle;
 }

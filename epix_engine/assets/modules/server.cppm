@@ -17,10 +17,35 @@ export struct AssetServer;
 /** @brief Context passed to asset loaders during load.
  *  Provides the server reference and the resolved file path. */
 export struct LoadContext {
+   private:
     /** @brief The asset server that initiated this load. */
-    const AssetServer& server;
+    const AssetServer& m_server;
     /** @brief The resolved file path of the asset being loaded. */
-    std::filesystem::path path;
+    std::filesystem::path m_path;
+
+    std::unordered_map<std::filesystem::path, UntypedAssetId> m_dependencies;
+
+    friend struct AssetServer;
+
+   public:
+    /** @brief Construct a new load context.
+     * @param server The asset server that initiated this load.
+     * @param path The resolved file path of the asset being loaded. */
+    LoadContext(const AssetServer& server, std::filesystem::path path);
+    /** @brief Get the resolved file path of the asset being loaded. */
+    const std::filesystem::path& path() const { return m_path; }
+    /** @brief Load a dependency asset and get a handle to it.
+     *  This allows loaders to load other assets they depend on, and ensures
+     *  proper tracking of asset dependencies for features like hot-reloading.
+     * @tparam T The type of the dependency asset.
+     * @param path The path of the dependency asset to load. */
+    template <typename T>
+    std::optional<Handle<T>> load(const std::filesystem::path& path);
+    /** @brief Load a dependency asset and get a handle to it.
+     *  This allows loaders to load other assets they depend on, and ensures
+     *  proper tracking of asset dependencies for features like hot-reloading.
+     * @param path The path of the dependency asset to load. */
+    std::optional<UntypedHandle> load_untyped(const std::filesystem::path& path);
 };
 template <typename T>
 concept AssetLoader = requires(T t) {
@@ -51,36 +76,20 @@ struct AssetContainerImpl : AssetContainer {
     AssetContainerImpl(T&& asset) : asset(std::move(asset)) {}
     ~AssetContainerImpl() override = default;
     meta::type_index type() const override { return meta::type_id<T>{}; }
-    void insert(const UntypedAssetId& id, World& world, const std::function<void(void*)>& pre_mod) override {
-        if (pre_mod) {
-            pre_mod(&asset);
-        }
-        world.resource_mut<Assets<T>>().insert(id.typed<T>(), std::move(asset));
-        world.resource_mut<Events<AssetEvent<T>>>().push(AssetEvent<T>::loaded(id.typed<T>()));
-    }
+    void insert(const UntypedAssetId& id, World& world, const std::function<void(void*)>& pre_mod) override;
 };
 template <typename T>
 struct AssetContainerImpl<T*> : AssetContainer {
     using asset_type = T;
     T* asset;
     AssetContainerImpl(T* asset) : asset(asset) {}
-    ~AssetContainerImpl() {
-        if (asset) {
-            delete asset;
-        }
-    }
+    ~AssetContainerImpl();
     meta::type_index type() const override { return meta::type_id<T>{}; }
-    void insert(const UntypedAssetId& id, World& world, const std::function<void(void*)>& pre_mod) override {
-        if (pre_mod) {
-            pre_mod(asset);
-        }
-        world.resource<Assets<T>>().insert(id.typed<T>(), std::move(*asset));
-        asset = nullptr;  // Prevent double deletion
-        world.resource<Events<AssetEvent<T>>>().push(AssetEvent<T>::loaded(id.typed<T>()));
-    }
+    void insert(const UntypedAssetId& id, World& world, const std::function<void(void*)>& pre_mod) override;
 };
 struct ErasedLoadedAsset {
     std::unique_ptr<AssetContainer> value;
+    std::unordered_set<UntypedAssetId> dependencies;
 };
 struct ErasedAssetLoader {
     virtual ~ErasedAssetLoader()                                                                  = default;
@@ -92,28 +101,10 @@ struct ErasedAssetLoader {
 template <AssetLoader T>
 struct ErasedAssetLoaderImpl : ErasedAssetLoader {
     using loader_info = LoaderInfo<T>;
-    meta::type_index asset_type() const override { return meta::type_id<typename loader_info::asset_type>{}; }
-    meta::type_index loader_type() const override { return meta::type_id<T>{}; }
-    ErasedLoadedAsset load(const std::filesystem::path& path, LoadContext& context) const override {
-        if constexpr (loader_info::return_ptr) {
-            auto asset = T::load(path, context);
-            if (asset) {
-                return ErasedLoadedAsset{std::make_unique<AssetContainerImpl<typename loader_info::asset_type>>(asset)};
-            } else {
-                return ErasedLoadedAsset{nullptr};
-            }
-        } else {
-            return ErasedLoadedAsset{
-                std::make_unique<AssetContainerImpl<typename loader_info::asset_type>>(T::load(path, context))};
-        }
-        // this function does not catch exceptions, and the exceptions should be
-        // handled by the caller, most likely the AssetServer, to send the
-        // related event
-    }
-    std::vector<const char*> extensions() const override {
-        return T::extensions() | std::views::transform([](const char* ext) { return ext; }) |
-               std::ranges::to<std::vector>();
-    }
+    meta::type_index asset_type() const override;
+    meta::type_index loader_type() const override;
+    ErasedLoadedAsset load(const std::filesystem::path& path, LoadContext& context) const override;
+    std::vector<const char*> extensions() const override;
 };
 template <typename Func>
     requires std::invocable<Func, const std::filesystem::path&, LoadContext&>
@@ -124,24 +115,11 @@ struct ErasedAssetLoaderFuncImpl : ErasedAssetLoader {
     using FuncStorage = std::decay_t<Func>;
     FuncStorage func;  // Store the function
     std::vector<const char*> _extensions;
-    ErasedAssetLoaderFuncImpl(Func&& func, std::span<const char*> extensions)
-        : func(std::forward<Func>(func)), _extensions(extensions.begin(), extensions.end()) {}
-    meta::type_index asset_type() const override { return meta::type_id<asset_t>{}; }
-    meta::type_index loader_type() const override { return meta::type_id<Func>{}; }
-    ErasedLoadedAsset load(const std::filesystem::path& path, LoadContext& context) const override {
-        if constexpr (std::is_pointer_v<typename Func::asset_type>) {
-            auto asset = func(path, context);
-            if (asset) {
-                return ErasedLoadedAsset{std::make_unique<AssetContainerImpl<typename Func::asset_type>>(asset)};
-            } else {
-                return ErasedLoadedAsset{nullptr};
-            }
-        } else {
-            auto asset = func(path, context);
-            return ErasedLoadedAsset{std::make_unique<AssetContainerImpl<asset_t>>(std::move(asset))};
-        }
-    }
-    std::vector<const char*> extensions() const override { return _extensions; }
+    ErasedAssetLoaderFuncImpl(Func&& func, std::span<const char*> extensions);
+    meta::type_index asset_type() const override;
+    meta::type_index loader_type() const override;
+    ErasedLoadedAsset load(const std::filesystem::path& path, LoadContext& context) const override;
+    std::vector<const char*> extensions() const override;
 };
 /** @brief Current state of an asset's loading lifecycle. */
 export enum LoadState {
@@ -154,6 +132,14 @@ struct AssetInfo {
     std::weak_ptr<StrongHandle> weak_handle;
     std::filesystem::path path;
     LoadState state;
+    LoadState dep_state;
+    LoadState recursive_dep_state;
+    std::unordered_set<UntypedAssetId> loading_deps;
+    std::unordered_set<UntypedAssetId> loaded_deps;
+    std::unordered_set<UntypedAssetId> failed_deps;
+    std::unordered_set<UntypedAssetId> rec_loading_deps;
+    std::unordered_set<UntypedAssetId> rec_loaded_deps;
+    std::unordered_set<UntypedAssetId> rec_failed_deps;
     std::shared_future<void> waiter;
     std::function<void(void*)> on_loaded;
 };
@@ -211,19 +197,7 @@ struct AssetLoaders {
     const ErasedAssetLoader* get_by_path(const std::filesystem::path& path) const;
     std::vector<const ErasedAssetLoader*> get_multi_by_path(const std::filesystem::path& path) const;
     template <AssetLoader T>
-    std::uint32_t push(const T&) {
-        using loader_info                         = LoaderInfo<T>;
-        std::unique_ptr<ErasedAssetLoader> loader = std::make_unique<ErasedAssetLoaderImpl<T>>();
-        auto type                                 = loader->asset_type();
-        auto ext                                  = loader->extensions();
-        std::uint32_t index                       = static_cast<std::uint32_t>(loaders.size());
-        loaders.emplace_back(std::move(loader));
-        type_to_loaders[type].push_back(index);
-        for (const char* e : ext) {
-            ext_to_loaders[e].push_back(index);
-        }
-        return index;  // Return the index of the newly added loader
-    }
+    std::uint32_t push(const T&);
 };
 struct AssetLoadedEvent {
     UntypedAssetId id;        // the id of the asset that was loaded
@@ -253,29 +227,12 @@ export struct AssetServer {
      *  @tparam T A type satisfying the AssetLoader concept.
      *  @return Index of the newly registered loader. */
     template <AssetLoader T>
-    std::uint32_t register_loader(const T& t) {
-        auto index = asset_loaders.push(t);
-        std::scoped_lock lock(pending_mutex, info_mutex);
-        size_t size = pending_loads.size();
-        while (size) {
-            auto id = pending_loads.front();
-            pending_loads.pop_front();
-            load_internal(id);  // Try to load the pending asset
-            --size;             // Decrease the size of pending loads
-        }
-        return index;  // Return the index of the newly added loader
-    }
+    std::uint32_t register_loader(const T& t);
     /** @brief Register an asset type so the server can create handles for it.
      *  Copies the HandleProvider from an existing Assets<T> resource.
      *  @tparam T The asset type to register. */
     template <typename T>
-    void register_assets(const Assets<T>& assets) {
-        auto type = meta::type_id<T>{};
-        if (asset_infos.handle_providers.contains(type)) {
-            return;  // already registered
-        }
-        asset_infos.handle_providers[type] = assets.get_handle_provider();
-    }
+    void register_assets(const Assets<T>& assets);
     /** @brief Insert an asset value and bind it to a virtual path.
      *  This reuses the same handle/path logic as load(path), but bypasses loaders
      *  by immediately queuing an AssetLoadedEvent.
@@ -286,27 +243,7 @@ export struct AssetServer {
      *  @return A handle for the internal asset, or std::nullopt if handle creation fails. */
     template <typename T, typename... Args>
         requires std::constructible_from<T, Args...>
-    std::optional<Handle<T>> add_asset(const std::filesystem::path& path, Args&&... args) const {
-        std::scoped_lock lock(info_mutex, pending_mutex);
-        auto handle = asset_infos.get_or_create_handle<T>(path);
-        if (!handle) {
-            return std::nullopt;
-        }
-
-        auto id   = handle->id();
-        auto info = asset_infos.get_info(id);
-        if (info) {
-            info->state     = LoadState::Loading;
-            info->on_loaded = {};
-        }
-
-        T asset(std::forward<Args>(args)...);
-        event_sender.send(AssetLoadedEvent{
-            UntypedAssetId(id),
-            ErasedLoadedAsset{std::make_unique<AssetContainerImpl<T>>(std::move(asset))},
-        });
-        return std::move(*handle);
-    }
+    std::optional<Handle<T>> add_asset(const std::filesystem::path& path, Args&&... args) const;
     /** @brief Query the current load state of an asset.
      *  @return The LoadState, or std::nullopt if the id is unknown. */
     std::optional<LoadState> get_state(const UntypedAssetId& id) const;
@@ -321,15 +258,7 @@ export struct AssetServer {
      *  @param path Filesystem path to the asset.
      *  @return A Handle<T>, or std::nullopt if handle creation fails. */
     template <typename T>
-    std::optional<Handle<T>> load(const std::filesystem::path& path) const {
-        std::scoped_lock lock(info_mutex, pending_mutex);
-        auto handle = asset_infos.get_or_create_handle<T>(path);
-        if (handle) {
-            auto id = handle->id();
-            load_internal(id);  // Load the asset internally
-        }
-        return std::move(handle);
-    }
+    std::optional<Handle<T>> load(const std::filesystem::path& path) const;
     /** @brief Load an asset with a pre-modification callback. Or return immediately if the asset is already loaded.
      *  @tparam T The expected asset type.
      *  @tparam PreMod A callable invoked with `T&` right before the asset is inserted.
@@ -337,20 +266,7 @@ export struct AssetServer {
      *  @param pre_mod Callback applied to the loaded asset before insertion.
      *  @return A Handle<T>, or std::nullopt if handle creation fails. */
     template <typename T, typename PreMod>
-    std::optional<Handle<T>> load(const std::filesystem::path& path, PreMod&& pre_mod) const {
-        static_assert(std::is_invocable_v<PreMod, T&>);
-        auto handle = load<T>(path);
-        if (handle) {
-            std::unique_lock lock(info_mutex);
-            auto info = asset_infos.get_info(handle.id());
-            if (info) {
-                info->on_loaded = [pre_mod = std::forward<PreMod>(pre_mod)](void* asset_ptr) {
-                    pre_mod(*static_cast<T*>(asset_ptr));
-                };
-            }
-        }
-        return std::move(handle);
-    }
+    std::optional<Handle<T>> load(const std::filesystem::path& path, PreMod&& pre_mod) const;
     /** @brief Load an asset without compile-time type information. Or return immediately if the asset is already
      *  loaded. The loader is determined by the file extension.
      *  @param path Filesystem path to the asset.
@@ -361,29 +277,7 @@ export struct AssetServer {
      * @param path Filesystem path to the asset.
      * @param pre_mod Callback applied before insertion. */
     template <typename PreMod>
-    std::optional<UntypedHandle> load_untyped(const std::filesystem::path& path, PreMod&& pre_mod) const {
-        auto handle = load_untyped(path);
-        if (handle) {
-            std::unique_lock lock(info_mutex);
-            auto info = asset_infos.get_info(handle->id());
-            if (info) {
-                using arg_raw  = function_traits<PreMod>::first_arg_type;
-                using arg_type = std::remove_cvref_t<arg_raw>;
-                if (handle->type() == meta::type_id<arg_type>{}) {
-                    info->on_loaded = [pre_mod = std::forward<PreMod>(pre_mod)](void* asset_ptr) {
-                        pre_mod(*static_cast<arg_type*>(asset_ptr));
-                    };
-                } else {
-                    spdlog::warn(
-                        "[asset-server] "
-                        "PreMod function argument type {} does not match "
-                        "asset type {}. Ignoring PreMod.",
-                        meta::type_id<arg_type>::name, handle->type().name());
-                }
-            }
-        }
-        return handle;
-    }
+    std::optional<UntypedHandle> load_untyped(const std::filesystem::path& path, PreMod&& pre_mod) const;
     /** @brief Process a handle destruction event; returns true if the asset was re-acquired. */
     bool process_handle_destruction(const UntypedAssetId& id) const;
     /** @brief System that processes loaded/failed asset events and inserts them into the world. */
@@ -423,4 +317,238 @@ export struct AssetServer {
     mutable std::deque<UntypedAssetId> pending_loads;  // Assets that are pending to be
                                                        // loaded but no loaders found
 };
+
+// ---------------------- Implementation section ----------------------
+
+// AssetContainerImpl<T>
+template <typename T>
+void AssetContainerImpl<T>::insert(const UntypedAssetId& id, World& world, const std::function<void(void*)>& pre_mod) {
+    if (pre_mod) {
+        pre_mod(&asset);
+    }
+    world.resource_mut<Assets<T>>().insert(id.typed<T>(), std::move(asset));
+    world.resource_mut<Events<AssetEvent<T>>>().push(AssetEvent<T>::loaded(id.typed<T>()));
+}
+
+// AssetContainerImpl<T*>
+template <typename T>
+AssetContainerImpl<T*>::~AssetContainerImpl() {
+    if (asset) {
+        delete asset;
+    }
+}
+
+template <typename T>
+void AssetContainerImpl<T*>::insert(const UntypedAssetId& id, World& world, const std::function<void(void*)>& pre_mod) {
+    if (pre_mod) {
+        pre_mod(asset);
+    }
+    world.resource<Assets<T>>().insert(id.typed<T>(), std::move(*asset));
+    asset = nullptr;  // Prevent double deletion
+    world.resource<Events<AssetEvent<T>>>().push(AssetEvent<T>::loaded(id.typed<T>()));
+}
+
+// ErasedAssetLoaderImpl<T>
+template <AssetLoader T>
+meta::type_index ErasedAssetLoaderImpl<T>::asset_type() const {
+    return meta::type_id<typename loader_info::asset_type>{};
+}
+
+template <AssetLoader T>
+meta::type_index ErasedAssetLoaderImpl<T>::loader_type() const {
+    return meta::type_id<T>{};
+}
+
+template <AssetLoader T>
+ErasedLoadedAsset ErasedAssetLoaderImpl<T>::load(const std::filesystem::path& path, LoadContext& context) const {
+    if constexpr (loader_info::return_ptr) {
+        auto asset = T::load(path, context);
+        if (asset) {
+            return ErasedLoadedAsset{std::make_unique<AssetContainerImpl<typename loader_info::asset_type>>(asset)};
+        } else {
+            return ErasedLoadedAsset{nullptr};
+        }
+    } else {
+        return ErasedLoadedAsset{
+            std::make_unique<AssetContainerImpl<typename loader_info::asset_type>>(T::load(path, context))};
+    }
+}
+
+template <AssetLoader T>
+std::vector<const char*> ErasedAssetLoaderImpl<T>::extensions() const {
+    return T::extensions() | std::views::transform([](const char* ext) { return ext; }) |
+           std::ranges::to<std::vector>();
+}
+
+// LoadContext implementations
+LoadContext::LoadContext(const AssetServer& server, std::filesystem::path path)
+    : m_server(server), m_path(std::move(path)) {}
+
+template <typename T>
+std::optional<Handle<T>> LoadContext::load(const std::filesystem::path& path) {
+    auto handle = m_server.load<T>(path);
+    if (handle) {
+        m_dependencies.try_emplace(path, handle->id());
+    }
+    return handle;
+}
+
+// ErasedAssetLoaderFuncImpl<Func>
+template <typename Func>
+    requires std::invocable<Func, const std::filesystem::path&, LoadContext&>
+ErasedAssetLoaderFuncImpl<Func>::ErasedAssetLoaderFuncImpl(Func&& func, std::span<const char*> extensions)
+    : func(std::forward<Func>(func)), _extensions(extensions.begin(), extensions.end()) {}
+
+template <typename Func>
+    requires std::invocable<Func, const std::filesystem::path&, LoadContext&>
+meta::type_index ErasedAssetLoaderFuncImpl<Func>::asset_type() const {
+    return meta::type_id<typename ErasedAssetLoaderFuncImpl<Func>::asset_t>{};
+}
+
+template <typename Func>
+    requires std::invocable<Func, const std::filesystem::path&, LoadContext&>
+meta::type_index ErasedAssetLoaderFuncImpl<Func>::loader_type() const {
+    return meta::type_id<Func>{};
+}
+
+template <typename Func>
+    requires std::invocable<Func, const std::filesystem::path&, LoadContext&>
+ErasedLoadedAsset ErasedAssetLoaderFuncImpl<Func>::load(const std::filesystem::path& path, LoadContext& context) const {
+    if constexpr (ErasedAssetLoaderFuncImpl<Func>::return_ptr) {
+        auto asset = func(path, context);
+        if (asset) {
+            return ErasedLoadedAsset{
+                std::make_unique<AssetContainerImpl<typename ErasedAssetLoaderFuncImpl<Func>::asset_t>>(asset)};
+        } else {
+            return ErasedLoadedAsset{nullptr};
+        }
+    } else {
+        auto asset = func(path, context);
+        return ErasedLoadedAsset{
+            std::make_unique<AssetContainerImpl<typename ErasedAssetLoaderFuncImpl<Func>::asset_t>>(std::move(asset))};
+    }
+}
+
+template <typename Func>
+    requires std::invocable<Func, const std::filesystem::path&, LoadContext&>
+std::vector<const char*> ErasedAssetLoaderFuncImpl<Func>::extensions() const {
+    return _extensions;
+}
+
+// AssetLoaders::push
+template <AssetLoader T>
+std::uint32_t AssetLoaders::push(const T& t) {
+    using loader_info                         = LoaderInfo<T>;
+    std::unique_ptr<ErasedAssetLoader> loader = std::make_unique<ErasedAssetLoaderImpl<T>>();
+    auto type                                 = loader->asset_type();
+    auto ext                                  = loader->extensions();
+    std::uint32_t index                       = static_cast<std::uint32_t>(loaders.size());
+    loaders.emplace_back(std::move(loader));
+    type_to_loaders[type].push_back(index);
+    for (const char* e : ext) {
+        ext_to_loaders[e].push_back(index);
+    }
+    return index;  // Return the index of the newly added loader
+}
+
+// AssetServer template implementations
+template <AssetLoader T>
+std::uint32_t AssetServer::register_loader(const T& t) {
+    auto index = asset_loaders.push(t);
+    std::scoped_lock lock(pending_mutex, info_mutex);
+    size_t size = pending_loads.size();
+    while (size) {
+        auto id = pending_loads.front();
+        pending_loads.pop_front();
+        load_internal(id);  // Try to load the pending asset
+        --size;             // Decrease the size of pending loads
+    }
+    return index;  // Return the index of the newly added loader
+}
+
+template <typename T>
+void AssetServer::register_assets(const Assets<T>& assets) {
+    auto type = meta::type_id<T>{};
+    if (asset_infos.handle_providers.contains(type)) {
+        return;  // already registered
+    }
+    asset_infos.handle_providers[type] = assets.get_handle_provider();
+}
+
+template <typename T, typename... Args>
+    requires std::constructible_from<T, Args...>
+std::optional<Handle<T>> AssetServer::add_asset(const std::filesystem::path& path, Args&&... args) const {
+    std::scoped_lock lock(info_mutex, pending_mutex);
+    auto handle = asset_infos.get_or_create_handle<T>(path);
+    if (!handle) {
+        return std::nullopt;
+    }
+
+    auto id   = handle->id();
+    auto info = asset_infos.get_info(id);
+    if (info) {
+        info->state     = LoadState::Loading;
+        info->on_loaded = {};
+    }
+
+    T asset(std::forward<Args>(args)...);
+    event_sender.send(AssetLoadedEvent{
+        UntypedAssetId(id),
+        ErasedLoadedAsset{std::make_unique<AssetContainerImpl<T>>(std::move(asset))},
+    });
+    return std::move(*handle);
+}
+
+template <typename T>
+std::optional<Handle<T>> AssetServer::load(const std::filesystem::path& path) const {
+    std::scoped_lock lock(info_mutex, pending_mutex);
+    auto handle = asset_infos.get_or_create_handle<T>(path);
+    if (handle) {
+        auto id = handle->id();
+        load_internal(id);  // Load the asset internally
+    }
+    return std::move(handle);
+}
+
+template <typename T, typename PreMod>
+std::optional<Handle<T>> AssetServer::load(const std::filesystem::path& path, PreMod&& pre_mod) const {
+    static_assert(std::is_invocable_v<PreMod, T&>);
+    auto handle = load<T>(path);
+    if (handle) {
+        std::unique_lock lock(info_mutex);
+        auto info = asset_infos.get_info(handle.id());
+        if (info) {
+            info->on_loaded = [pre_mod = std::forward<PreMod>(pre_mod)](void* asset_ptr) {
+                pre_mod(*static_cast<T*>(asset_ptr));
+            };
+        }
+    }
+    return std::move(handle);
+}
+
+template <typename PreMod>
+std::optional<UntypedHandle> AssetServer::load_untyped(const std::filesystem::path& path, PreMod&& pre_mod) const {
+    auto handle = load_untyped(path);
+    if (handle) {
+        std::unique_lock lock(info_mutex);
+        auto info = asset_infos.get_info(handle->id());
+        if (info) {
+            using arg_raw  = function_traits<PreMod>::first_arg_type;
+            using arg_type = std::remove_cvref_t<arg_raw>;
+            if (handle->type() == meta::type_id<arg_type>{}) {
+                info->on_loaded = [pre_mod = std::forward<PreMod>(pre_mod)](void* asset_ptr) {
+                    pre_mod(*static_cast<arg_type*>(asset_ptr));
+                };
+            } else {
+                spdlog::warn(
+                    "[asset-server] "
+                    "PreMod function argument type {} does not match "
+                    "asset type {}. Ignoring PreMod.",
+                    meta::type_id<arg_type>::name, handle->type().name());
+            }
+        }
+    }
+    return handle;
+}
+
 }  // namespace assets
