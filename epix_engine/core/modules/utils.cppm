@@ -7,3 +7,4 @@ export import :variant_visitor;
 export import :func_ref;
 export import :input_iterable;
 export import :fixed_point;
+export import :singleton_taskpool;
