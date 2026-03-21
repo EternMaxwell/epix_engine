@@ -272,4 +272,91 @@ struct Mutex {
      * value. */
     Guard lock() const { return Guard(m_mutex, m_value); }
 };
+export template <typename T>
+struct RwLock {
+   public:
+    struct ReadGuard {
+       private:
+        std::shared_lock<std::shared_mutex> const lock;
+
+       public:
+        const T& ref;
+
+        ReadGuard(std::shared_mutex& mtx, const T& val) : lock(mtx), ref(val) {}
+        ReadGuard(const ReadGuard&)            = delete;
+        ReadGuard(ReadGuard&&)                 = default;
+        ReadGuard& operator=(const ReadGuard&) = delete;
+        ReadGuard& operator=(ReadGuard&&)      = delete;
+
+        const T* operator->() const { return &ref; }
+        const T& operator*() const { return ref; }
+        operator const T&() const { return ref; }
+    };
+    struct WriteGuard {
+       private:
+        std::unique_lock<std::shared_mutex> const lock;
+
+       public:
+        T& ref;
+
+        WriteGuard(std::shared_mutex& mtx, T& val) : lock(mtx), ref(val) {}
+        WriteGuard(const WriteGuard&)            = delete;
+        WriteGuard(WriteGuard&&)                 = default;
+        WriteGuard& operator=(const WriteGuard&) = delete;
+        WriteGuard& operator=(WriteGuard&&)      = delete;
+
+        T* operator->() { return &ref; }
+        T& operator*() { return ref; }
+        const T* operator->() const { return &ref; }
+        const T& operator*() const { return ref; }
+        operator T&() { return ref; }
+        operator const T&() const { return ref; }
+    };
+
+   private:
+    mutable std::shared_mutex m_mutex;
+    union {
+        mutable T m_value;
+    };
+
+   public:
+    template <typename... Args>
+    RwLock(Args&&... args)
+        requires std::constructible_from<T, Args...>
+    {
+        new (&m_value) T(std::forward<Args>(args)...);
+    }
+    RwLock(const RwLock&) = delete;
+    RwLock(RwLock&& other)
+        requires std::move_constructible<T>
+    {
+        std::unique_lock lock(m_mutex, std::defer_lock);
+        std::unique_lock other_lock(other.m_mutex, std::defer_lock);
+        std::lock(lock, other_lock);
+        new (&m_value) T(std::move(other.m_value));
+    }
+    RwLock& operator=(const RwLock&) = delete;
+    RwLock& operator=(RwLock&& other)
+        requires std::is_move_assignable<T>::value
+    {
+        std::unique_lock lock(m_mutex, std::defer_lock);
+        std::unique_lock other_lock(other.m_mutex, std::defer_lock);
+        std::lock(lock, other_lock);
+        m_value = std::move(other.m_value);
+        return *this;
+    }
+    RwLock clone() const
+        requires std::copy_constructible<T>
+    {
+        std::shared_lock lock(m_mutex);
+        return RwLock(m_value);
+    }
+    ~RwLock() {
+        std::unique_lock lock(m_mutex);
+        m_value.~T();
+    }
+
+    ReadGuard read() const { return ReadGuard(m_mutex, m_value); }
+    WriteGuard write() const { return WriteGuard(m_mutex, m_value); }
+};
 }  // namespace utils
