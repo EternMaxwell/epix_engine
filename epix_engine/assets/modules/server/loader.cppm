@@ -1,0 +1,71 @@
+﻿module;
+
+export module epix.assets:server.loader;
+
+import std;
+import epix.meta;
+
+import :server.info;
+
+namespace assets {
+export struct LoadContext {
+   private:
+    const AssetServer& m_server;
+    std::filesystem::path m_path;
+    std::unordered_map<std::filesystem::path, UntypedAssetId> m_dependencies;
+
+    LoadContext(const AssetServer& server, std::filesystem::path path) : m_server(server), m_path(std::move(path)) {}
+
+    friend struct AssetServer;
+
+   public:
+};
+export struct Settings {
+    virtual ~Settings() = default;
+};
+template <typename T>
+export concept AssetLoader = requires(const T& t) {
+    typename T::AssetType;
+    typename T::Settings;
+    requires std::derived_from<typename T::Settings, Settings>;
+    requires std::is_default_constructible_v<typename T::Settings>;
+    { t.extensions() } -> std::span<std::string_view>;
+    {
+        t.load(std::declval<std::istream&>(), std::declval<const typename T::Settings&>(), std::declval<LoadContext&>())
+    } -> std::same_as<T::AssetType>;
+};
+struct ErasedAssetLoader {
+    virtual ~ErasedAssetLoader()                                                                  = default;
+    virtual std::span<std::string_view> extensions() const                                        = 0;
+    virtual meta::type_index loader_type() const                                                  = 0;
+    virtual meta::type_index asset_type() const                                                   = 0;
+    virtual std::expected<ErasedLoadedAsset, std::exception_ptr> load(std::istream& stream,
+                                                                      const Settings& settings,
+                                                                      LoadContext& context) const = 0;
+};
+template <AssetLoader T>
+struct ErasedAssetLoaderImpl : T, ErasedAssetLoader {
+    template <typename... Args>
+        requires std::constructible_from<T, Args...>
+    ErasedAssetLoaderImpl(Args&&... args) : T(std::forward<Args>(args)...) {}
+    const T& as_concrete() const { return static_cast<const T&>(*this); }
+    std::span<std::string_view> extensions() const override { return as_concrete().extensions(); }
+    meta::type_index loader_type() const override { return meta::type_id<T>{}; }
+    meta::type_index asset_type() const override { return meta::type_id<typename T::AssetType>{}; }
+    std::expected<ErasedLoadedAsset, std::exception_ptr> load(std::istream& stream,
+                                                              const Settings& settings,
+                                                              LoadContext& context) const override {
+        try {
+            auto* settings_ptr = dynamic_cast<const typename T::Settings*>(&settings);
+            if (!settings_ptr) {
+                throw std::runtime_error("Invalid settings type for loader " + std::string(loader_type().short_name()));
+            }
+            auto erased_asset =
+                std::make_unique<AssetContainerImpl<T::AssetType>>(as_concrete().load(stream, *settings_ptr, context));
+            return ErasedLoadedAsset{std::move(erased_asset), std::move(context.m_dependencies)};
+        } catch (...) {
+            return std::current_exception();
+        }
+    }
+};
+}  // namespace assets
