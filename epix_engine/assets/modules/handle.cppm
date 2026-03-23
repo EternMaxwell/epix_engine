@@ -96,9 +96,10 @@ struct Handle {
     Handle<T> weak() const { return id(); }
     /** @brief Get the underlying asset id regardless of strong/weak status. */
     AssetId<T> id() const {
-        return std::visit(visitor{[](const std::shared_ptr<StrongHandle>& handle) { return handle->id.typed<T>(); },
-                                  [](const AssetId<T>& index) { return index; }},
-                          ref);
+        return std::visit(
+            utils::visitor{[](const std::shared_ptr<StrongHandle>& handle) { return handle->id.typed<T>(); },
+                           [](const AssetId<T>& index) { return index; }},
+            ref);
     }
     /** @brief Implicit conversion to the underlying AssetId. */
     operator AssetId<T>() const { return id(); }
@@ -113,8 +114,8 @@ export struct UntypedHandle {
 
     template <typename T>
     UntypedHandle(const std::variant<std::shared_ptr<StrongHandle>, AssetId<T>>& ref) {
-        std::visit(visitor{[this](const std::shared_ptr<StrongHandle>& handle) { this->ref = handle; },
-                           [this](const AssetId<T>& id) { this->ref = UntypedAssetId(id); }},
+        std::visit(utils::visitor{[this](const std::shared_ptr<StrongHandle>& handle) { this->ref = handle; },
+                                  [this](const AssetId<T>& id) { this->ref = UntypedAssetId(id); }},
                    ref);
     }
     UntypedHandle(const std::variant<std::shared_ptr<StrongHandle>, UntypedAssetId>& ref) : ref(ref) {}
@@ -160,14 +161,14 @@ export struct UntypedHandle {
     bool is_weak() const { return std::holds_alternative<UntypedAssetId>(ref); }
     /** @brief Get the runtime type_index of the asset this handle refers to. */
     meta::type_index type() const {
-        return std::visit(visitor{[](const std::shared_ptr<StrongHandle>& handle) { return handle->id.type; },
-                                  [](const UntypedAssetId& id) { return id.type; }},
+        return std::visit(utils::visitor{[](const std::shared_ptr<StrongHandle>& handle) { return handle->id.type; },
+                                         [](const UntypedAssetId& id) { return id.type; }},
                           ref);
     }
     /** @brief Get the type-erased id. */
     UntypedAssetId id() const {
-        return std::visit(visitor{[](const std::shared_ptr<StrongHandle>& handle) { return handle->id; },
-                                  [](const UntypedAssetId& id) { return id; }},
+        return std::visit(utils::visitor{[](const std::shared_ptr<StrongHandle>& handle) { return handle->id; },
+                                         [](const UntypedAssetId& id) { return id; }},
                           ref);
     }
     /** @brief Implicit conversion to UntypedAssetId. */
@@ -183,8 +184,8 @@ export struct UntypedHandle {
         if (type() != meta::type_id<T>{}) {
             return std::nullopt;
         }
-        return std::visit(visitor{[](const std::shared_ptr<StrongHandle>& handle) { return Handle<T>(handle); },
-                                  [](const UntypedAssetId& id) { return Handle<T>(id.typed<T>()); }},
+        return std::visit(utils::visitor{[](const std::shared_ptr<StrongHandle>& handle) { return Handle<T>(handle); },
+                                         [](const UntypedAssetId& id) { return Handle<T>(id.typed<T>()); }},
                           ref);
     }
     /** @brief Downcast to a typed Handle. Throws on type mismatch.
@@ -203,8 +204,8 @@ Handle<T>::Handle(const UntypedHandle& handle) {
         throw std::runtime_error(std::format("{} cannot be constructed from UntypedHandle of type {}",
                                              meta::type_id<T>::short_name(), handle.type().short_name()));
     }
-    std::visit(visitor{[this](const std::shared_ptr<StrongHandle>& strong_handle) { ref = strong_handle; },
-                       [this](const UntypedAssetId& id) { ref = id.typed<T>(); }},
+    std::visit(utils::visitor{[this](const std::shared_ptr<StrongHandle>& strong_handle) { ref = strong_handle; },
+                              [this](const UntypedAssetId& id) { ref = id.typed<T>(); }},
                handle.ref);
 }
 template <typename T>
@@ -213,8 +214,8 @@ Handle<T>::Handle(UntypedHandle&& handle) {
         throw std::runtime_error(std::format("{} cannot be constructed from UntypedHandle of type {}",
                                              meta::type_id<T>::short_name(), handle.type().short_name()));
     }
-    std::visit(visitor{[this](std::shared_ptr<StrongHandle>&& strong_handle) { ref = std::move(strong_handle); },
-                       [this](UntypedAssetId&& id) { ref = id.typed<T>(); }},
+    std::visit(utils::visitor{[this](std::shared_ptr<StrongHandle>&& strong_handle) { ref = std::move(strong_handle); },
+                              [this](UntypedAssetId&& id) { ref = id.typed<T>(); }},
                std::move(handle.ref));
 }
 template <typename T>
@@ -223,8 +224,8 @@ Handle<T>& Handle<T>::operator=(const UntypedHandle& other) {
         throw std::runtime_error(std::format("{} cannot be constructed from UntypedHandle of type {}",
                                              meta::type_id<T>::short_name(), other.type().short_name()));
     }
-    std::visit(visitor{[this](const std::shared_ptr<StrongHandle>& strong_handle) { ref = strong_handle; },
-                       [this](const UntypedAssetId& id) { ref = id.typed<T>(); }},
+    std::visit(utils::visitor{[this](const std::shared_ptr<StrongHandle>& strong_handle) { ref = strong_handle; },
+                              [this](const UntypedAssetId& id) { ref = id.typed<T>(); }},
                other.ref);
     return *this;
 }
@@ -234,8 +235,8 @@ Handle<T>& Handle<T>::operator=(UntypedHandle&& other) {
         throw std::runtime_error(std::format("{} cannot be constructed from UntypedHandle of type {}",
                                              meta::type_id<T>::short_name(), other.type().short_name()));
     }
-    std::visit(visitor{[this](std::shared_ptr<StrongHandle>&& strong_handle) { ref = std::move(strong_handle); },
-                       [this](UntypedAssetId&& id) { ref = id.typed<T>(); }},
+    std::visit(utils::visitor{[this](std::shared_ptr<StrongHandle>&& strong_handle) { ref = std::move(strong_handle); },
+                              [this](UntypedAssetId&& id) { ref = id.typed<T>(); }},
                std::move(other.ref));
     return *this;
 }

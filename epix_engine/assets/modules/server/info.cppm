@@ -10,29 +10,43 @@ import epix.utils;
 import epix.core;
 
 import :store;
+import :server.loader;
 
 namespace assets {
-struct AssetContainer {
-    virtual ~AssetContainer()                                   = default;
-    virtual meta::type_index type() const                       = 0;
-    virtual void insert(const UntypedAssetId& id, World& world) = 0;
+export namespace load_error {
+struct RequestHandleMismatch {
+    std::filesystem::path path;
+    meta::type_index requested_type;
+    meta::type_index actual_type;
+    std::string_view loader_name;
+
+    bool operator==(const RequestHandleMismatch& other) const = default;
 };
-struct ErasedLoadedAsset {
-    std::unique_ptr<AssetContainer> value;
-    std::unordered_set<UntypedAssetId> dependencies;
+struct MissingAssetLoader {
+    std::optional<std::string> loader_name;
+    std::optional<meta::type_index> asset_type;
+    std::filesystem::path path;
+    std::vector<std::string> extension;
+
+    bool operator==(const MissingAssetLoader& other) const = default;
 };
-template <typename T>
-struct AssetContainerImpl : AssetContainer {
-    using asset_type = T;
-    T asset;
-    AssetContainerImpl(const T& asset) : asset(asset) {}
-    AssetContainerImpl(T&& asset) : asset(std::move(asset)) {}
-    ~AssetContainerImpl() override = default;
-    meta::type_index type() const override { return meta::type_id<T>{}; }
-    void insert(const UntypedAssetId& id, World& world) override {
-        world.resource_mut<Assets<T>>().insert(id.typed<T>(), std::move(asset));
-    }
+struct AssetLoaderException {
+    std::exception_ptr exception;
+    std::filesystem::path path;
+    std::string_view loader_name;
+
+    bool operator==(const AssetLoaderException& other) const = default;
 };
+}  // namespace load_error
+export using AssetLoadError =
+    std::variant<load_error::RequestHandleMismatch, load_error::MissingAssetLoader, load_error::AssetLoaderException>;
+export enum LoadStateOK {
+    NotLoaded, /**< Asset is not loaded and not queued for loading. */
+    Loading,   /**< A loader is actively loading this asset. */
+    Loaded,    /**< Asset has been loaded and is ready to use. */
+};
+/** @brief Current state of an asset's loading lifecycle. */
+export using LoadState = std::variant<LoadStateOK, AssetLoadError>;
 namespace internal_asset_event {
 struct Loaded {
     UntypedAssetId id;
@@ -49,34 +63,6 @@ struct Failed {
 }  // namespace internal_asset_event
 using InternalAssetEvent =
     std::variant<internal_asset_event::Loaded, internal_asset_event::LoadedWithDeps, internal_asset_event::Failed>;
-export namespace load_error {
-struct RequestHandleMismatch {
-    std::filesystem::path path;
-    meta::type_index requested_type;
-    meta::type_index actual_type;
-    std::string_view loader_name;
-};
-struct MissingAssetLoader {
-    std::optional<std::string> loader_name;
-    std::optional<meta::type_index> asset_type;
-    std::filesystem::path path;
-    std::vector<std::string> extension;
-};
-struct AssetLoaderException {
-    std::exception_ptr exception;
-    std::filesystem::path path;
-    std::string_view loader_name;
-};
-}  // namespace load_error
-export using AssetLoadError =
-    std::variant<load_error::RequestHandleMismatch, load_error::MissingAssetLoader, load_error::AssetLoaderException>;
-export enum LoadStateOK {
-    NotLoaded, /**< Asset is not loaded and not queued for loading. */
-    Loading,   /**< A loader is actively loading this asset. */
-    Loaded,    /**< Asset has been loaded and is ready to use. */
-};
-/** @brief Current state of an asset's loading lifecycle. */
-export using LoadState = std::variant<LoadStateOK, AssetLoadError>;
 struct AssetInfo {
     std::weak_ptr<StrongHandle> weak_handle;
     std::optional<std::filesystem::path> path;
@@ -158,7 +144,7 @@ struct AssetInfos {
     bool process_handle_destruction(const UntypedAssetId& id);
     void process_asset_load(const UntypedAssetId& loaded_asset_id,
                             ErasedLoadedAsset loaded_asset,
-                            World& world,
+                            core::World& world,
                             const utils::Sender<InternalAssetEvent>& event_sender);
     void propagate_loaded_state(UntypedAssetId loaded_asset_id,
                                 UntypedAssetId waiting_id,
@@ -206,12 +192,12 @@ void AssetInfos::propagate_loaded_state(UntypedAssetId loaded_asset_id,
                                         UntypedAssetId waiting_id,
                                         const utils::Sender<InternalAssetEvent>& sender) {
     auto deps_wait_on_rec_load = [&]() -> std::optional<std::unordered_set<UntypedAssetId>> {
-        if (auto info_opt = get_info(waiting_id)) {
+        if (auto info_opt = get_info_mut(waiting_id)) {
             auto& info = info_opt->get();
             info.loading_rec_deps.erase(loaded_asset_id);
             if (info.loading_rec_deps.empty() && info.failed_rec_deps.empty()) {
                 info.rec_dep_state = LoadStateOK::Loaded;
-                if (info.load_state == LoadStateOK::Loaded) {
+                if (info.state == LoadState{LoadStateOK::Loaded}) {
                     sender.send(InternalAssetEvent{internal_asset_event::LoadedWithDeps{waiting_id}});
                 }
                 return std::move(info.deps_wait_on_rec_dep_load);
@@ -230,7 +216,7 @@ void AssetInfos::propagate_failed_state(UntypedAssetId loaded_asset_id,
                                         UntypedAssetId waiting_id,
                                         const AssetLoadError& error) {
     auto deps_wait_on_rec_load = [&]() -> std::optional<std::unordered_set<UntypedAssetId>> {
-        if (auto info_opt = get_info(waiting_id)) {
+        if (auto info_opt = get_info_mut(waiting_id)) {
             auto& info = info_opt->get();
             info.failed_rec_deps.insert(loaded_asset_id);
             info.loading_rec_deps.erase(loaded_asset_id);
@@ -248,18 +234,18 @@ void AssetInfos::propagate_failed_state(UntypedAssetId loaded_asset_id,
 }
 void AssetInfos::process_asset_load(const UntypedAssetId& loaded_asset_id,
                                     ErasedLoadedAsset loaded_asset,
-                                    World& world,
-                                    const utils::Sender<InternalAssetEvent>& event_sender) {
+                                    core::World& world,
+                                    const utils::Sender<InternalAssetEvent>& sender) {
     if (!infos.contains(loaded_asset_id)) return;
 
     loaded_asset.value->insert(loaded_asset_id, world);
 
-    std::unordered_set<UntypedAssetId> falied_deps;
+    std::unordered_set<UntypedAssetId> failed_deps;
     std::optional<AssetLoadError> dep_error;
     auto loading_rec_deps = loaded_asset.dependencies;
     std::unordered_set<UntypedAssetId> failed_rec_deps;
     std::optional<AssetLoadError> rec_dep_error;
-    auto loading_deps = loaded_asset.dependencies | std::views::filter([this](const UntypedAssetId& dep_id) {
+    auto loading_deps = loaded_asset.dependencies | std::views::filter([&, this](const UntypedAssetId& dep_id) {
                             if (auto dep_info_opt = get_info_mut(dep_id)) {
                                 auto& dep_info = dep_info_opt->get();
                                 std::visit(utils::visitor{
@@ -292,6 +278,8 @@ void AssetInfos::process_asset_load(const UntypedAssetId& loaded_asset_id,
                                                               case LoadStateOK::Loaded: {
                                                                   return false;
                                                               }
+                                                              default:
+                                                                  std::unreachable();
                                                           }
                                                       },
                                                       [&](AssetLoadError error) {
@@ -341,22 +329,22 @@ void AssetInfos::process_asset_load(const UntypedAssetId& loaded_asset_id,
 
         auto& info            = get_info_mut(loaded_asset_id).value().get();
         info.loading_deps     = std::move(loading_deps);
-        info.failed_deps      = std::move(falied_deps);
+        info.failed_deps      = std::move(failed_deps);
         info.loading_rec_deps = std::move(loading_rec_deps);
         info.failed_rec_deps  = std::move(failed_rec_deps);
-        info.load_state       = LoadStateOk::Loaded;
+        info.state            = LoadStateOK::Loaded;
         info.dep_state        = dep_load_state;
         info.rec_dep_state    = rec_dep_load_state;
         // watching for change stuff
 
-        std::optional deps_wait_on_rec_load = [&]() -> std::optional {
-            if (rec_dep_load_state == LoadStateOK::Loaded ||
+        auto deps_wait_on_rec_load = [&]() -> std::optional<std::unordered_set<UntypedAssetId>> {
+            if (rec_dep_load_state == LoadState{LoadStateOK::Loaded} ||
                 std::holds_alternative<AssetLoadError>(rec_dep_load_state)) {
                 return std::move(info.deps_wait_on_rec_dep_load);
             } else {
                 return std::nullopt;
             }
-        }
+        }();
 
         return std::make_pair(std::move(info.deps_wait_on_load), std::move(deps_wait_on_rec_load));
     }();
@@ -396,7 +384,7 @@ auto AssetInfos::get_handles_by_path(const std::filesystem::path& path) const {
     return get_path_ids(path) |
            std::views::transform([this](const UntypedAssetId& id) { return get_handle_by_id(id); }) |
            std::views::filter([](const std::optional<UntypedHandle>& handle) { return handle.has_value(); }) |
-           std::views::transform([](std::optional<UntypedHandle>& handle) { return *handle; });
+           std::views::transform([](const std::optional<UntypedHandle>& handle) { return *handle; });
 }
 bool AssetInfos::is_path_alive(const std::filesystem::path& path) const {
     if (auto it = path_to_ids.find(path); it != path_to_ids.end()) {
@@ -493,9 +481,9 @@ std::expected<UntypedHandle, GetOrCreateHandleError> AssetInfos::create_handle_i
     auto handle   = provider->reserve(true, path);
     AssetInfo info(handle, path);
     if (loading) {
-        info.state               = LoadStateOK::Loading;
-        info.dep_state           = LoadStateOK::Loading;
-        info.recursive_dep_state = LoadStateOK::Loading;
+        info.state         = LoadStateOK::Loading;
+        info.dep_state     = LoadStateOK::Loading;
+        info.rec_dep_state = LoadStateOK::Loading;
     }
     infos.emplace(handle->id, std::move(info));
     return handle;
@@ -526,10 +514,10 @@ auto AssetInfos::get_or_create_handle_internal(const std::filesystem::path& path
                             [](const AssetLoadError& error) { return true; },
                         },
                         info.state))) {
-            info.state               = LoadStateOK::Loading;
-            info.dep_state           = LoadStateOK::Loading;
-            info.recursive_dep_state = LoadStateOK::Loading;
-            should_load              = true;
+            info.state         = LoadStateOK::Loading;
+            info.dep_state     = LoadStateOK::Loading;
+            info.rec_dep_state = LoadStateOK::Loading;
+            should_load        = true;
         }
 
         if (auto strong_handle = info.weak_handle.lock()) {

@@ -84,7 +84,7 @@ struct AssetLoaders {
             std::visit(
                 utils::visitor{[&](std::shared_ptr<ErasedAssetLoader>&) { std::unreachable(); },
                                [&](PendingAssetLoader& pending) {
-                                   utils::IOThreadPool::get().detach_task([maybe_loader = std::move(maybe_loader)]() {
+                                   utils::IOTaskPool::get().detach_task([maybe_loader = std::move(maybe_loader)]() {
                                        auto _ = pending.receiver.receive();  // get and destruct.
                                    });
                                }},
@@ -142,5 +142,5 @@ struct AssetLoaders {
         extension.erase(0, extension.find_first_not_of('.'));
         return get_by_extension(extension);
     }
-}
+};
 }  // namespace assets

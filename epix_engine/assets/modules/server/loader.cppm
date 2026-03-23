@@ -5,9 +5,32 @@ export module epix.assets:server.loader;
 import std;
 import epix.meta;
 
-import :server.info;
+import :store;
 
 namespace assets {
+struct AssetServer;
+
+struct AssetContainer {
+    virtual ~AssetContainer()                                         = default;
+    virtual meta::type_index type() const                             = 0;
+    virtual void insert(const UntypedAssetId& id, core::World& world) = 0;
+};
+struct ErasedLoadedAsset {
+    std::unique_ptr<AssetContainer> value;
+    std::unordered_set<UntypedAssetId> dependencies;
+};
+template <typename T>
+struct AssetContainerImpl : AssetContainer {
+    using asset_type = T;
+    T asset;
+    AssetContainerImpl(const T& asset) : asset(asset) {}
+    AssetContainerImpl(T&& asset) : asset(std::move(asset)) {}
+    ~AssetContainerImpl() override = default;
+    meta::type_index type() const override { return meta::type_id<T>{}; }
+    void insert(const UntypedAssetId& id, core::World& world) override {
+        world.resource_mut<Assets<T>>().insert(id.typed<T>(), std::move(asset));
+    }
+};
 export struct LoadContext {
    private:
     const AssetServer& m_server;
@@ -23,16 +46,14 @@ export struct LoadContext {
 export struct Settings {
     virtual ~Settings() = default;
 };
-template <typename T>
-export concept AssetLoader = requires(const T& t) {
+export template <typename T>
+concept AssetLoader = requires(const T& t, std::istream& stream, const LoadContext& context) {
     typename T::AssetType;
     typename T::Settings;
     requires std::derived_from<typename T::Settings, Settings>;
     requires std::is_default_constructible_v<typename T::Settings>;
-    { t.extensions() } -> std::span<std::string_view>;
-    {
-        t.load(std::declval<std::istream&>(), std::declval<const typename T::Settings&>(), std::declval<LoadContext&>())
-    } -> std::same_as<T::AssetType>;
+    { t.extensions() } -> std::same_as<std::span<std::string_view>>;
+    { t.load(stream, std::declval<const typename T::Settings&>(), context) } -> std::same_as<T::AssetType>;
 };
 struct ErasedAssetLoader {
     virtual ~ErasedAssetLoader()                                                                  = default;

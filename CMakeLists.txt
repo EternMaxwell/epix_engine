@@ -102,6 +102,9 @@ add_subdirectory (libs/nvrhi)
 set (HARFBUZZ_HAVE_FREETYPE ON)
 add_subdirectory (libs/harfbuzz)
 add_subdirectory (libs/googletest)
+add_subdirectory (libs/efsw)
+
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/asio.cmake)
 
 set(CMAKE_CXX_SCAN_FOR_MODULES ON)
 

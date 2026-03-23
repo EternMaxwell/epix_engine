@@ -10,6 +10,8 @@ export import :handle;
 export import :store;
 export import :server;
 
+using namespace core;
+
 namespace assets {
 /** @brief Built-in system set labels for asset event processing order. */
 export enum class AssetSystems {

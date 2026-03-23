@@ -6,6 +6,8 @@ export module epix.assets:id;
 
 import std;
 import epix.meta;
+import epix.utils;
+
 import :index;
 
 export namespace uuids {
@@ -18,16 +20,6 @@ auto operator<=>(const uuids::uuid& lhs, const uuids::uuid& rhs) noexcept {
 static_assert(std::three_way_comparable<uuids::uuid>);
 
 namespace assets {
-/** @brief Helper for constructing overloaded visitors from multiple callables.
- *  @tparam Ts Callable types whose operator() are merged. */
-export template <typename... Ts>
-struct visitor : public Ts... {
-    using Ts::operator()...;
-};
-/** @brief Deduction guide for visitor. */
-export template <typename... Ts>
-visitor(Ts...) -> visitor<Ts...>;
-
 export struct UntypedAssetId;
 
 constexpr uuids::uuid INVALID_UUID = uuids::uuid::from_string("1038587c-0b8d-4f2e-8a3f-1a2b3c4d5e6f").value();
@@ -62,22 +54,24 @@ struct AssetId : public std::variant<AssetIndex, uuids::uuid> {
 
     /** @brief Return a human-readable string including the type name and underlying id. */
     std::string to_string() const {
-        return std::format(
-            "AssetId<{}>({})", meta::type_id<T>::name(),
-            std::visit(visitor{[](const AssetIndex& index) {
-                                   return std::format("AssetIndex(index={}, generation={})", index.index(),
-                                                      index.generation());
-                               },
-                               [](const uuids::uuid& id) { return std::format("UUID({})", uuids::to_string(id)); }},
-                       *this));
+        return std::format("AssetId<{}>({})", meta::type_id<T>::name(),
+                           std::visit(utils::visitor{[](const AssetIndex& index) {
+                                                         return std::format("AssetIndex(index={}, generation={})",
+                                                                            index.index(), index.generation());
+                                                     },
+                                                     [](const uuids::uuid& id) {
+                                                         return std::format("UUID({})", uuids::to_string(id));
+                                                     }},
+                                      *this));
     }
     /** @brief Return a short string representation without the type name. */
     std::string to_string_short() const {
-        return std::visit(visitor{[](const AssetIndex& index) {
-                                      return std::format("AssetIndex({}, {})", index.index(), index.generation());
-                                  },
-                                  [](const uuids::uuid& id) { return std::format("UUID({})", uuids::to_string(id)); }},
-                          *this);
+        return std::visit(
+            utils::visitor{[](const AssetIndex& index) {
+                               return std::format("AssetIndex({}, {})", index.index(), index.generation());
+                           },
+                           [](const uuids::uuid& id) { return std::format("UUID({})", uuids::to_string(id)); }},
+            *this);
     }
 };
 
@@ -138,22 +132,24 @@ export struct UntypedAssetId {
     }
     /** @brief Return a human-readable string including the type name and underlying id. */
     std::string to_string() const {
-        return std::format(
-            "UntypedAssetId<{}>({})", type.name(),
-            std::visit(visitor{[](const AssetIndex& index) {
-                                   return std::format("AssetIndex(index={}, generation={})", index.index(),
-                                                      index.generation());
-                               },
-                               [](const uuids::uuid& id) { return std::format("UUID({})", uuids::to_string(id)); }},
-                       id));
+        return std::format("UntypedAssetId<{}>({})", type.name(),
+                           std::visit(utils::visitor{[](const AssetIndex& index) {
+                                                         return std::format("AssetIndex(index={}, generation={})",
+                                                                            index.index(), index.generation());
+                                                     },
+                                                     [](const uuids::uuid& id) {
+                                                         return std::format("UUID({})", uuids::to_string(id));
+                                                     }},
+                                      id));
     }
     /** @brief Return a short string representation without the type name. */
     std::string to_string_short() const {
-        return std::visit(visitor{[](const AssetIndex& index) {
-                                      return std::format("AssetIndex({}, {})", index.index(), index.generation());
-                                  },
-                                  [](const uuids::uuid& id) { return std::format("UUID({})", uuids::to_string(id)); }},
-                          id);
+        return std::visit(
+            utils::visitor{[](const AssetIndex& index) {
+                               return std::format("AssetIndex({}, {})", index.index(), index.generation());
+                           },
+                           [](const uuids::uuid& id) { return std::format("UUID({})", uuids::to_string(id)); }},
+            id);
     }
 };
 

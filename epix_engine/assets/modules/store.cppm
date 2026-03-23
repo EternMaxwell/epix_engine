@@ -8,6 +8,8 @@ export module epix.assets:store;
 import std;
 
 import :handle;
+import epix.utils;
+using utils::visitor;
 
 namespace assets {
 /** @brief Forward declaration of AssetServer. */
