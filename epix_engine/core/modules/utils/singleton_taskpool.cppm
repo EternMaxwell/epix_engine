@@ -3,7 +3,7 @@
 #define MakeTaskPool(Name)                                                \
     struct Name##TaskPool {                                               \
        private:                                                           \
-        BS::thread_pool m_pool;                                           \
+        BS::thread_pool<> m_pool;                                           \
         Name##TaskPool() : m_pool(std::thread::hardware_concurrency()) {} \
                                                                           \
        public:                                                            \
