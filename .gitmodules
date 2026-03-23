@@ -64,3 +64,9 @@
 [submodule "libs/sfml"]
 	path = libs/sfml
 	url = https://github.com/SFML/SFML.git
+[submodule "libs/asio"]
+	path = libs/asio
+	url = https://github.com/chriskohlhoff/asio.git
+[submodule "libs/efsw"]
+	path = libs/efsw
+	url = https://github.com/SpartanJ/efsw.git
