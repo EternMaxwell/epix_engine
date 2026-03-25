@@ -15,19 +15,19 @@ namespace assets {
 export struct AssetSource {
    private:
     AssetSourceId m_id;
-    std::unique_ptr<AssetReader> m_reader;
-    std::unique_ptr<AssetWriter> m_writer;
-    std::unique_ptr<AssetReader> m_processed_reader;
-    std::unique_ptr<AssetReader> m_ungated_processed_reader;
-    std::unique_ptr<AssetWriter> m_processed_writer;
-    std::unique_ptr<AssetWatcher> m_watcher;
-    std::unique_ptr<AssetWatcher> m_processed_watcher;
+    std::unique_ptr<AssetReader> m_reader;                    // required
+    std::unique_ptr<AssetWriter> m_writer;                    // optional
+    std::unique_ptr<AssetReader> m_processed_reader;          // optional
+    std::unique_ptr<AssetReader> m_ungated_processed_reader;  // optional
+    std::unique_ptr<AssetWriter> m_processed_writer;          // optional
+    std::unique_ptr<AssetWatcher> m_watcher;                  // optional
+    std::unique_ptr<AssetWatcher> m_processed_watcher;        // optional
     std::optional<utils::Receiver<AssetSourceEvent>> m_event_receiver;
     std::optional<utils::Receiver<AssetSourceEvent>> m_processed_event_receiver;
 
    public:
     AssetSourceId id() const { return m_id; }
-    const AssetReader& reader() const { return *m_reader; }
+    const AssetReader& reader() const { return *m_reader; }  // this is always present
     std::optional<std::reference_wrapper<const AssetWriter>> writer() const {
         if (m_writer) return *m_writer;
         return std::nullopt;
