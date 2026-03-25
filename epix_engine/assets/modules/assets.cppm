@@ -9,6 +9,10 @@ export import :id;
 export import :handle;
 export import :store;
 export import :server;
+export import :io.memory;
+export import :io.memory.asset;
+export import :io.reader;
+export import :io.source;
 
 using namespace core;
 
