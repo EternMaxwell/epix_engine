@@ -53,7 +53,7 @@ class input_iterable : public std::ranges::view_interface<input_iterable<T>> {
     std::shared_ptr<factory_base> factory_;
 
    public:
-    using value_type = T;
+    using value_type = std::remove_cvref_t<T>;
 
     input_iterable()                                 = default;
     input_iterable(const input_iterable&)            = default;
@@ -74,7 +74,7 @@ class input_iterable : public std::ranges::view_interface<input_iterable<T>> {
     struct sentinel {};
 
     struct iterator {
-        using value_type       = T;
+        using value_type       = std::remove_cvref_t<T>;
         using difference_type  = std::ptrdiff_t;
         using iterator_concept = std::input_iterator_tag;
 
