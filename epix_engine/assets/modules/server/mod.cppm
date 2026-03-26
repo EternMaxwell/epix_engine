@@ -13,16 +13,19 @@ import :server.loaders;
 import :io.source;
 
 namespace assets {
-enum class AssetServerMode {};
+enum class AssetServerMode {
+    Unprocessed,
+    Processed,
+};
 struct AssetServerData {
     utils::RwLock<AssetInfos> infos;
-    utils::RwLock<AssetLoaders> loaders;
+    std::shared_ptr<utils::RwLock<AssetLoaders>> loaders;
     utils::Sender<InternalAssetEvent> asset_event_sender;
     utils::Receiver<InternalAssetEvent> asset_event_receiver;
     std::shared_ptr<AssetSources> sources;
-
+    AssetServerMode mode = AssetServerMode::Unprocessed;
 };
-struct AssetServer {
+export struct AssetServer {
     std::shared_ptr<AssetServerData> data;
 
     AssetServer(const AssetServer&)            = default;
