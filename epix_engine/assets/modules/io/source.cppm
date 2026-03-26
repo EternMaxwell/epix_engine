@@ -174,12 +174,9 @@ export struct AssetSources {
     friend struct AssetSourceBuilders;
 
    public:
-    std::optional<std::reference_wrapper<const AssetSource>> get(const std::string_view& name) const {
-        if (name == "default") {
-            return m_default;
-        }
-        auto it = m_sources.find(name.data());
-        if (it != m_sources.end()) {
+    std::optional<std::reference_wrapper<const AssetSource>> get(AssetSourceId name) const {
+        if (name.is_default()) return m_default;
+        if (auto it = m_sources.find(name.value()); it != m_sources.end()) {
             return it->second;
         }
         return std::nullopt;
