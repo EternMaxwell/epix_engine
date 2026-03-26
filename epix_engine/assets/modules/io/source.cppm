@@ -185,10 +185,23 @@ export struct AssetSources {
         return std::nullopt;
     }
     auto iter() const {
-        return utils::input_iterable<const AssetSource&>(
-            std::views::join(std::ranges::owning_view(std::array<utils::input_iterable<const AssetSource&>, 2>{
-                utils::input_iterable<const AssetSource&>(std::span(&m_default, &m_default + 1)),
-                utils::input_iterable<const AssetSource&>(m_sources | std::views::values)})));
+        return std::views::join(std::ranges::owning_view(std::array<utils::input_iterable<const AssetSource&>, 2>{
+            utils::input_iterable<const AssetSource&>(std::span(&m_default, &m_default + 1)),
+            utils::input_iterable<const AssetSource&>(m_sources | std::views::values)}));
+    }
+    auto iter_mut() {
+        return std::views::join(std::ranges::owning_view(std::array<utils::input_iterable<AssetSource&>, 2>{
+            utils::input_iterable<AssetSource&>(std::span(&m_default, &m_default + 1)),
+            utils::input_iterable<AssetSource&>(m_sources | std::views::values)}));
+    }
+    auto iter_processed() const {
+        return iter() | std::views::filter([](const AssetSource& source) { return source.should_process(); });
+    }
+    auto iter_processed_mut() {
+        return iter_mut() | std::views::filter([](const AssetSource& source) { return source.should_process(); });
+    }
+    auto ids() const {
+        return iter() | std::views::transform([](const AssetSource& source) { return source.id(); });
     }
 };
 
