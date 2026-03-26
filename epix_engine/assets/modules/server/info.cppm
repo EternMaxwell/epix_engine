@@ -75,6 +75,9 @@ struct AssetInfo {
     std::unordered_set<UntypedAssetId> failed_rec_deps;
     std::unordered_set<UntypedAssetId> deps_wait_on_load;
     std::unordered_set<UntypedAssetId> deps_wait_on_rec_dep_load;
+    /// Loader dependencies: asset paths the loader read during loading, with their hashes.
+    /// Only populated when watching_for_changes is true, to save memory.
+    std::unordered_map<AssetPath, std::size_t> loader_dependencies;
     std::vector<std::shared_future<void>> waiting;
     std::size_t handle_destruct_skip = 0;
 
@@ -111,14 +114,27 @@ struct AssetInfos {
     std::unordered_map<UntypedAssetId, std::variant<std::packaged_task<void()>, std::shared_future<void>>>
         pending_tasks;
     AssetServerStatus status;
+    bool watching_for_changes = false;
+    /// Tracks assets that depend on the "key" asset path inside their asset loaders ("loader dependencies").
+    /// Only set when watching for changes to avoid unnecessary work.
+    std::unordered_map<AssetPath, std::unordered_set<AssetPath>> loader_dependents;
+    /// Tracks living labeled assets for a given source asset.
+    /// Only set when watching for changes to avoid unnecessary work.
+    std::unordered_map<AssetPath, std::unordered_set<std::string>> living_labeled_assets;
 
    private:
     static std::expected<UntypedHandle, GetOrCreateHandleError> create_handle_internal(
         decltype(infos)& infos,
         decltype(handle_providers)& handle_providers,
+        decltype(living_labeled_assets)& living_labeled_assets,
+        bool watching_for_changes,
         meta::type_index type,
         std::optional<AssetPath> path,
         bool loading);
+    static void remove_dependents_and_labels(const AssetInfo& info,
+                                             decltype(loader_dependents)& loader_dependents,
+                                             const AssetPath& path,
+                                             decltype(living_labeled_assets)& living_labeled_assets);
 
    public:
     template <typename T>
@@ -234,6 +250,13 @@ void AssetInfos::process_asset_load(const UntypedAssetId& loaded_asset_id,
                                     ErasedLoadedAsset loaded_asset,
                                     core::World& world,
                                     const utils::Sender<InternalAssetEvent>& sender) {
+    // Process all the labeled assets first so that they don't get skipped
+    // due to the "parent" not having its handle alive.
+    for (auto& [label, labeled] : loaded_asset.labeled_assets) {
+        auto labeled_id = labeled.handle.id();
+        process_asset_load(labeled_id, std::move(labeled.asset), world, sender);
+    }
+
     if (!infos.contains(loaded_asset_id)) return;
 
     loaded_asset.value->insert(loaded_asset_id, world);
@@ -323,7 +346,17 @@ void AssetInfos::process_asset_load(const UntypedAssetId& loaded_asset_id,
     }();
 
     auto [deps_wait_on_load, deps_wait_on_rec_dep_load] = [&]() {
-        // stuff for watching for changes
+        // If watching for changes, track reverse loader dependencies for hot reloading
+        if (watching_for_changes) {
+            if (auto info_opt = get_info(loaded_asset_id)) {
+                auto& info = info_opt->get();
+                if (info.path) {
+                    for (auto& [loader_dep_path, _] : loaded_asset.loader_dependencies) {
+                        loader_dependents[loader_dep_path].insert(*info.path);
+                    }
+                }
+            }
+        }
 
         auto& info            = get_info_mut(loaded_asset_id).value().get();
         info.loading_deps     = std::move(loading_deps);
@@ -333,7 +366,9 @@ void AssetInfos::process_asset_load(const UntypedAssetId& loaded_asset_id,
         info.state            = LoadStateOK::Loaded;
         info.dep_state        = dep_load_state;
         info.rec_dep_state    = rec_dep_load_state;
-        // watching for change stuff
+        if (watching_for_changes) {
+            info.loader_dependencies = std::move(loaded_asset.loader_dependencies);
+        }
 
         auto deps_wait_on_rec_load = [&]() -> std::optional<std::unordered_set<UntypedAssetId>> {
             if (rec_dep_load_state == LoadState{LoadStateOK::Loaded} ||
@@ -398,7 +433,33 @@ bool AssetInfos::should_reload(const AssetPath& path) const {
     if (is_path_alive(path)) {
         return true;
     }
+    if (auto it = living_labeled_assets.find(path); it != living_labeled_assets.end()) {
+        return !it->second.empty();
+    }
     return false;
+}
+void AssetInfos::remove_dependents_and_labels(const AssetInfo& info,
+                                              decltype(loader_dependents)& loader_dependents,
+                                              const AssetPath& path,
+                                              decltype(living_labeled_assets)& living_labeled_assets) {
+    for (auto& [loader_dep, _] : info.loader_dependencies) {
+        if (auto it = loader_dependents.find(loader_dep); it != loader_dependents.end()) {
+            it->second.erase(path);
+        }
+    }
+
+    if (!path.label) return;
+
+    auto without_label  = path;
+    without_label.label = std::nullopt;
+
+    auto it = living_labeled_assets.find(without_label);
+    if (it == living_labeled_assets.end()) return;
+
+    it->second.erase(*path.label);
+    if (it->second.empty()) {
+        living_labeled_assets.erase(it);
+    }
 }
 bool AssetInfos::process_handle_destruction(const UntypedAssetId& id) {
     auto info_res = get_info_mut(id);
@@ -417,7 +478,9 @@ bool AssetInfos::process_handle_destruction(const UntypedAssetId& id) {
     if (!info.path) return true;  // asset without path, just remove
     auto& path = *info.path;
 
-    // hot-reloading/watching for change stuff here
+    if (watching_for_changes) {
+        remove_dependents_and_labels(info, loader_dependents, path, living_labeled_assets);
+    }
 
     if (auto it = path_to_ids.find(path); it != path_to_ids.end()) {
         auto& type_map = it->second;
@@ -468,6 +531,8 @@ std::pair<UntypedHandle, bool> AssetInfos::get_or_create_handle_untyped(const As
 std::expected<UntypedHandle, GetOrCreateHandleError> AssetInfos::create_handle_internal(
     decltype(infos)& infos,
     decltype(handle_providers)& handle_providers,
+    decltype(living_labeled_assets)& living_labeled_assets,
+    bool watching_for_changes,
     meta::type_index type,
     std::optional<AssetPath> path,
     bool loading) {
@@ -476,7 +541,15 @@ std::expected<UntypedHandle, GetOrCreateHandleError> AssetInfos::create_handle_i
         return std::unexpected(GetOrCreateHandleError{GetOrCreateHandleError::Type::NoProvider});
     }
     auto provider = provider_it->second;
-    auto handle   = provider->reserve(true, path);
+
+    if (watching_for_changes && path && path->label) {
+        auto without_label  = *path;
+        auto label          = std::move(*without_label.label);
+        without_label.label = std::nullopt;
+        living_labeled_assets[std::move(without_label)].insert(std::move(label));
+    }
+
+    auto handle = provider->reserve(true, path);
     AssetInfo info(handle, path);
     if (loading) {
         info.state         = LoadStateOK::Loading;
@@ -536,7 +609,8 @@ auto AssetInfos::get_or_create_handle_internal(const AssetPath& path,
         }
     } else {
         bool should_load = loading_mode != HandleLoadingMode::NotLoading;
-        auto handle_res  = create_handle_internal(infos, handle_providers, type_index, path, should_load);
+        auto handle_res  = create_handle_internal(infos, handle_providers, living_labeled_assets, watching_for_changes,
+                                                  type_index, path, should_load);
         if (!handle_res) return std::unexpected(handle_res.error());
         auto handle = std::move(handle_res.value());
         handles.emplace(type_index, handle.id());

@@ -15,9 +15,16 @@ struct AssetContainer {
     virtual meta::type_index type() const                             = 0;
     virtual void insert(const UntypedAssetId& id, core::World& world) = 0;
 };
+struct LabeledAsset;
 struct ErasedLoadedAsset {
     std::unique_ptr<AssetContainer> value;
     std::unordered_set<UntypedAssetId> dependencies;
+    std::unordered_map<AssetPath, std::size_t> loader_dependencies;
+    std::unordered_map<std::string, LabeledAsset> labeled_assets;
+};
+struct LabeledAsset {
+    ErasedLoadedAsset asset;
+    UntypedHandle handle;
 };
 template <typename T>
 struct AssetContainerImpl : AssetContainer {
@@ -36,6 +43,8 @@ export struct LoadContext {
     const AssetServer& m_server;
     std::filesystem::path m_path;
     std::unordered_map<std::filesystem::path, UntypedAssetId> m_dependencies;
+    std::unordered_map<AssetPath, std::size_t> m_loader_dependencies;
+    std::unordered_map<std::string, LabeledAsset> m_labeled_assets;
 
     LoadContext(const AssetServer& server, std::filesystem::path path) : m_server(server), m_path(std::move(path)) {}
 
@@ -83,7 +92,8 @@ struct ErasedAssetLoaderImpl : T, ErasedAssetLoader {
             }
             auto erased_asset =
                 std::make_unique<AssetContainerImpl<T::AssetType>>(as_concrete().load(stream, *settings_ptr, context));
-            return ErasedLoadedAsset{std::move(erased_asset), std::move(context.m_dependencies)};
+            return ErasedLoadedAsset{std::move(erased_asset), std::move(context.m_dependencies),
+                                     std::move(context.m_loader_dependencies), std::move(context.m_labeled_assets)};
         } catch (...) {
             return std::current_exception();
         }
