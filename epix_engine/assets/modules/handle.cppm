@@ -7,6 +7,7 @@ export module epix.assets:handle;
 import std;
 
 import :id;
+import :path;
 
 namespace assets {
 using core::Receiver;
@@ -24,13 +25,13 @@ struct NonCopyNonMove {
 struct StrongHandle : NonCopyNonMove {
     UntypedAssetId id;
     Sender<DestructionEvent> event_sender;
-    std::optional<std::filesystem::path> path;
+    std::optional<AssetPath> path;
     bool loader_managed;
 
     StrongHandle(const UntypedAssetId& id,
                  const Sender<DestructionEvent>& event_sender,
-                 bool loader_managed                              = false,
-                 const std::optional<std::filesystem::path>& path = std::nullopt);
+                 bool loader_managed                  = false,
+                 const std::optional<AssetPath>& path = std::nullopt);
     ~StrongHandle();
 };
 /** @brief Forward declaration. */
@@ -256,7 +257,7 @@ struct HandleProvider {
     UntypedHandle reserve() const;
     std::shared_ptr<StrongHandle> get_handle(const InternalAssetId& id,
                                              bool loader_managed,
-                                             const std::optional<std::filesystem::path>& path) const;
-    std::shared_ptr<StrongHandle> reserve(bool loader_managed, const std::optional<std::filesystem::path>& path) const;
+                                             const std::optional<AssetPath>& path) const;
+    std::shared_ptr<StrongHandle> reserve(bool loader_managed, const std::optional<AssetPath>& path) const;
 };
 }  // namespace assets

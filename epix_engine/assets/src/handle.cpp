@@ -8,7 +8,7 @@ using namespace core;
 StrongHandle::StrongHandle(const UntypedAssetId& id,
                            const Sender<DestructionEvent>& event_sender,
                            bool loader_managed,
-                           const std::optional<std::filesystem::path>& path)
+                           const std::optional<AssetPath>& path)
     : id(id), event_sender(event_sender), path(path), loader_managed(loader_managed) {}
 
 StrongHandle::~StrongHandle() { event_sender.send(DestructionEvent{id}); }
@@ -23,11 +23,11 @@ UntypedHandle HandleProvider::reserve() const {
 }
 std::shared_ptr<StrongHandle> HandleProvider::get_handle(const InternalAssetId& id,
                                                          bool loader_managed,
-                                                         const std::optional<std::filesystem::path>& path) const {
+                                                         const std::optional<AssetPath>& path) const {
     return std::make_shared<StrongHandle>(id.untyped(type), event_sender, loader_managed, path);
 }
 std::shared_ptr<StrongHandle> HandleProvider::reserve(bool loader_managed,
-                                                      const std::optional<std::filesystem::path>& path) const {
+                                                      const std::optional<AssetPath>& path) const {
     auto index = index_allocator.reserve();
     return get_handle(index, loader_managed, path);
 }

@@ -15,7 +15,7 @@ import :server.loader;
 namespace assets {
 export namespace load_error {
 struct RequestHandleMismatch {
-    std::filesystem::path path;
+    AssetPath path;
     meta::type_index requested_type;
     meta::type_index actual_type;
     std::string_view loader_name;
@@ -25,14 +25,14 @@ struct RequestHandleMismatch {
 struct MissingAssetLoader {
     std::optional<std::string> loader_name;
     std::optional<meta::type_index> asset_type;
-    std::filesystem::path path;
+    AssetPath path;
     std::vector<std::string> extension;
 
     bool operator==(const MissingAssetLoader& other) const = default;
 };
 struct AssetLoaderException {
     std::exception_ptr exception;
-    std::filesystem::path path;
+    AssetPath path;
     std::string_view loader_name;
 
     bool operator==(const AssetLoaderException& other) const = default;
@@ -57,7 +57,7 @@ struct LoadedWithDeps {
 };
 struct Failed {
     UntypedAssetId id;
-    std::filesystem::path path;
+    AssetPath path;
     AssetLoadError error;
 };
 }  // namespace internal_asset_event
@@ -65,7 +65,7 @@ using InternalAssetEvent =
     std::variant<internal_asset_event::Loaded, internal_asset_event::LoadedWithDeps, internal_asset_event::Failed>;
 struct AssetInfo {
     std::weak_ptr<StrongHandle> weak_handle;
-    std::optional<std::filesystem::path> path;
+    std::optional<AssetPath> path;
     LoadState state;
     LoadState dep_state;
     LoadState rec_dep_state;
@@ -78,7 +78,7 @@ struct AssetInfo {
     std::vector<std::shared_future<void>> waiting;
     std::size_t handle_destruct_skip = 0;
 
-    AssetInfo(std::weak_ptr<StrongHandle> weak_handle, std::optional<std::filesystem::path> path)
+    AssetInfo(std::weak_ptr<StrongHandle> weak_handle, std::optional<AssetPath> path)
         : weak_handle(std::move(weak_handle)), path(std::move(path)), state(LoadStateOK::NotLoaded) {}
 };
 
@@ -100,12 +100,12 @@ enum class HandleLoadingMode {
 };
 
 struct AssetInfos {
-    std::unordered_map<std::filesystem::path, std::unordered_map<meta::type_index, UntypedAssetId>> path_to_ids;
+    std::unordered_map<AssetPath, std::unordered_map<meta::type_index, UntypedAssetId>> path_to_ids;
     std::unordered_map<UntypedAssetId, AssetInfo> infos;
     std::unordered_map<meta::type_index, std::shared_ptr<HandleProvider>> handle_providers;
 
     std::unordered_map<meta::type_index, void (*)(core::World&, AssetIndex)> dependency_loaded_event_sender;
-    std::unordered_map<meta::type_index, void (*)(core::World&, AssetIndex, std::filesystem::path, AssetLoadError)>
+    std::unordered_map<meta::type_index, void (*)(core::World&, AssetIndex, AssetPath, AssetLoadError)>
         dependency_failed_event_sender;
 
     std::unordered_map<UntypedAssetId, std::variant<std::packaged_task<void()>, std::shared_future<void>>>
@@ -117,29 +117,28 @@ struct AssetInfos {
         decltype(infos)& infos,
         decltype(handle_providers)& handle_providers,
         meta::type_index type,
-        std::optional<std::filesystem::path> path,
+        std::optional<AssetPath> path,
         bool loading);
 
    public:
     template <typename T>
-    std::pair<Handle<T>, bool> get_or_create_handle(const std::filesystem::path& path, HandleLoadingMode loading_mode);
-    std::pair<UntypedHandle, bool> get_or_create_handle_untyped(const std::filesystem::path& path,
+    std::pair<Handle<T>, bool> get_or_create_handle(const AssetPath& path, HandleLoadingMode loading_mode);
+    std::pair<UntypedHandle, bool> get_or_create_handle_untyped(const AssetPath& path,
                                                                 std::optional<meta::type_index> type,
                                                                 HandleLoadingMode loading_mode);
-    auto get_or_create_handle_internal(const std::filesystem::path& path,
+    auto get_or_create_handle_internal(const AssetPath& path,
                                        std::optional<meta::type_index> type,
                                        HandleLoadingMode loading_mode)
         -> std::expected<std::pair<UntypedHandle, bool>, GetOrCreateHandleError>;
     bool contains_key(const UntypedAssetId& id) const { return infos.contains(id); }
     std::optional<std::reference_wrapper<const AssetInfo>> get_info(const UntypedAssetId& id) const;
     std::optional<std::reference_wrapper<AssetInfo>> get_info_mut(const UntypedAssetId& id);
-    utils::input_iterable<UntypedAssetId> get_path_ids(const std::filesystem::path& path) const;
+    utils::input_iterable<UntypedAssetId> get_path_ids(const AssetPath& path) const;
     std::optional<UntypedHandle> get_handle_by_id(const UntypedAssetId& id) const;
-    auto get_handles_by_path(const std::filesystem::path& path) const;
-    auto get_handle_by_path_type(const std::filesystem::path& path, meta::type_index type) const
-        -> std::optional<UntypedHandle>;
-    bool is_path_alive(const std::filesystem::path& path) const;
-    bool should_reload(const std::filesystem::path& path) const;
+    auto get_handles_by_path(const AssetPath& path) const;
+    auto get_handle_by_path_type(const AssetPath& path, meta::type_index type) const -> std::optional<UntypedHandle>;
+    bool is_path_alive(const AssetPath& path) const;
+    bool should_reload(const AssetPath& path) const;
     /** @brief Returns `true` if the asset should be removed from collection. */
     bool process_handle_destruction(const UntypedAssetId& id);
     void process_asset_load(const UntypedAssetId& loaded_asset_id,
@@ -151,15 +150,14 @@ struct AssetInfos {
                                 const utils::Sender<InternalAssetEvent>& sender);
     void propagate_failed_state(UntypedAssetId loaded_asset_id, UntypedAssetId waiting_id, const AssetLoadError& error);
     // void remove_deps(const AssetInfo& info,
-    //                  std::unordered_map<std::filesystem::path, std::unordered_set<std::filesystem::path>>&
-    //                  loader_deps, const std::filesystem::path& path) {}
+    //                  std::unordered_map<AssetPath, std::unordered_set<AssetPath>>&
+    //                  loader_deps, const AssetPath& path) {}
 };
 }  // namespace assets
 
 namespace assets {
 template <typename T>
-std::pair<Handle<T>, bool> AssetInfos::get_or_create_handle(const std::filesystem::path& path,
-                                                            HandleLoadingMode loading_mode) {
+std::pair<Handle<T>, bool> AssetInfos::get_or_create_handle(const AssetPath& path, HandleLoadingMode loading_mode) {
     auto res = get_or_create_handle_internal(path, meta::type_id<T>{}, loading_mode);
     if (!res) {
         // error handling
@@ -172,8 +170,8 @@ std::pair<Handle<T>, bool> AssetInfos::get_or_create_handle(const std::filesyste
         })
         .value();
 }
-auto AssetInfos::get_handle_by_path_type(const std::filesystem::path& path, meta::type_index type) const
-    -> std::optional<UntypedHandle> {
+auto AssetInfos::get_handle_by_path_type(const AssetPath& path,
+                                         meta::type_index type) const -> std::optional<UntypedHandle> {
     auto it = path_to_ids.find(path);
     if (it != path_to_ids.end()) {
         auto& type_map = it->second;
@@ -380,13 +378,13 @@ void AssetInfos::process_asset_load(const UntypedAssetId& loaded_asset_id,
                    rec_dep_load_state);
     }
 }
-auto AssetInfos::get_handles_by_path(const std::filesystem::path& path) const {
+auto AssetInfos::get_handles_by_path(const AssetPath& path) const {
     return get_path_ids(path) |
            std::views::transform([this](const UntypedAssetId& id) { return get_handle_by_id(id); }) |
            std::views::filter([](const std::optional<UntypedHandle>& handle) { return handle.has_value(); }) |
            std::views::transform([](const std::optional<UntypedHandle>& handle) { return *handle; });
 }
-bool AssetInfos::is_path_alive(const std::filesystem::path& path) const {
+bool AssetInfos::is_path_alive(const AssetPath& path) const {
     if (auto it = path_to_ids.find(path); it != path_to_ids.end()) {
         for (const auto& [type, id] : it->second) {
             if (auto info = get_info(id); info && !info->get().weak_handle.expired()) {
@@ -396,7 +394,7 @@ bool AssetInfos::is_path_alive(const std::filesystem::path& path) const {
     }
     return false;
 }
-bool AssetInfos::should_reload(const std::filesystem::path& path) const {
+bool AssetInfos::should_reload(const AssetPath& path) const {
     if (is_path_alive(path)) {
         return true;
     }
@@ -444,7 +442,7 @@ std::optional<std::reference_wrapper<AssetInfo>> AssetInfos::get_info_mut(const 
     }
     return std::nullopt;
 }
-utils::input_iterable<UntypedAssetId> AssetInfos::get_path_ids(const std::filesystem::path& path) const {
+utils::input_iterable<UntypedAssetId> AssetInfos::get_path_ids(const AssetPath& path) const {
     auto it = path_to_ids.find(path);
     if (it != path_to_ids.end()) {
         return it->second | std::views::values;
@@ -457,7 +455,7 @@ std::optional<UntypedHandle> AssetInfos::get_handle_by_id(const UntypedAssetId& 
         return std::nullopt;
     });
 }
-std::pair<UntypedHandle, bool> AssetInfos::get_or_create_handle_untyped(const std::filesystem::path& path,
+std::pair<UntypedHandle, bool> AssetInfos::get_or_create_handle_untyped(const AssetPath& path,
                                                                         std::optional<meta::type_index> type,
                                                                         HandleLoadingMode loading_mode) {
     auto res = get_or_create_handle_internal(path, type, loading_mode);
@@ -471,7 +469,7 @@ std::expected<UntypedHandle, GetOrCreateHandleError> AssetInfos::create_handle_i
     decltype(infos)& infos,
     decltype(handle_providers)& handle_providers,
     meta::type_index type,
-    std::optional<std::filesystem::path> path,
+    std::optional<AssetPath> path,
     bool loading) {
     auto provider_it = handle_providers.find(type);
     if (provider_it == handle_providers.end()) {
@@ -488,7 +486,7 @@ std::expected<UntypedHandle, GetOrCreateHandleError> AssetInfos::create_handle_i
     infos.emplace(handle->id, std::move(info));
     return handle;
 }
-auto AssetInfos::get_or_create_handle_internal(const std::filesystem::path& path,
+auto AssetInfos::get_or_create_handle_internal(const AssetPath& path,
                                                std::optional<meta::type_index> type,
                                                HandleLoadingMode loading_mode)
     -> std::expected<std::pair<UntypedHandle, bool>, GetOrCreateHandleError> {
