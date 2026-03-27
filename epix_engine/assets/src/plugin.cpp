@@ -4,42 +4,62 @@ using namespace assets;
 using namespace core;
 
 void AssetPlugin::build(App& app) {
-    AssetSourceBuilders builders;
-    builders.init_default(file_path, processed_file_path);
+    auto& world = app.world_mut();
+
+    EmbeddedAssetRegistry embedded;
+
+    // Bevy-style: fetch builders from World, emplace if absent.
+    auto& builders = world.resource_or_emplace<AssetSourceBuilders>();
+    auto processed = (mode != AssetServerMode::Unprocessed) ? processed_file_path : std::nullopt;
+    builders.init_default(file_path, processed);
+    embedded.register_source(builders);
+
     for (auto& [id, builder] : m_source_builders) {
         builders.insert(std::move(id), std::move(builder));
     }
     m_source_builders.clear();
 
+    const bool watch = watch_for_changes_override.value_or(false);
+
     switch (mode) {
         case AssetServerMode::Unprocessed: {
-            auto sources = std::make_shared<AssetSources>(builders.build_sources(watch_for_changes, false));
-            app.world_mut().emplace_resource<AssetServer>(std::move(sources), mode, meta_check, watch_for_changes,
-                                                          unapproved_path_mode);
+            auto sources = std::make_shared<AssetSources>(builders.build_sources(watch, false));
+            world.emplace_resource<AssetServer>(std::move(sources), AssetServerMode::Unprocessed, meta_check, watch,
+                                                unapproved_path_mode);
             break;
         }
         case AssetServerMode::Processed: {
-            auto processor_data             = std::make_shared<AssetProcessorData>();
-            processor_data->source_builders = std::make_shared<AssetSourceBuilders>(std::move(builders));
-            auto processor                  = AssetProcessor(std::move(processor_data), watch_for_changes);
-            // Main server shares loaders and sources with the processor's internal server
-            app.world_mut().emplace_resource<AssetServer>(processor.sources(), processor.get_server().data->loaders,
-                                                          AssetServerMode::Processed, AssetMetaCheck::Always,
-                                                          watch_for_changes, unapproved_path_mode);
-            app.world_mut().emplace_resource<AssetProcessor>(std::move(processor));
-            app.add_systems(Startup, into(AssetProcessor::start));
+            const bool use_asset_processor = use_asset_processor_override.value_or(true);
+            if (use_asset_processor) {
+                auto processor_data             = std::make_shared<AssetProcessorData>();
+                processor_data->source_builders = std::make_shared<AssetSourceBuilders>(std::move(builders));
+                auto processor                  = AssetProcessor(std::move(processor_data), watch);
+
+                world.emplace_resource<AssetServer>(processor.sources(), processor.get_server().data->loaders,
+                                                    AssetServerMode::Processed, AssetMetaCheck::Always, watch,
+                                                    unapproved_path_mode);
+                world.emplace_resource<AssetProcessor>(std::move(processor));
+                app.add_systems(Startup, into(AssetProcessor::start));
+            } else {
+                auto sources = std::make_shared<AssetSources>(builders.build_sources(false, watch));
+                world.emplace_resource<AssetServer>(std::move(sources), AssetServerMode::Processed,
+                                                    AssetMetaCheck::Always, watch, unapproved_path_mode);
+            }
             break;
         }
     }
+
+    world.emplace_resource<EmbeddedAssetRegistry>(std::move(embedded));
+
+    // Mirror Bevy: init_asset::<LoadedFolder>() and init_asset::<LoadedUntypedAsset>()
+    app_register_asset<LoadedFolder>(app);
+    app_register_asset<LoadedUntypedAsset>(app);
+
     app.add_systems(Last, into(AssetServer::handle_internal_events));
     app.configure_sets(sets(AssetSystems::HandleEvents, AssetSystems::WriteEvents).chain());
 }
 
-void AssetPlugin::finish(App& app) {
-    for (auto&& insert : m_assets_inserts) {
-        insert(app);
-    }
-}
+void AssetPlugin::finish(App& app) { (void)app; }
 
 AssetPlugin& AssetPlugin::register_asset_source(AssetSourceId id, AssetSourceBuilder source) {
     m_source_builders.emplace_back(std::move(id), std::move(source));

@@ -33,46 +33,29 @@ export enum class AssetSystems {
     HandleEvents, /**< Systems that react to handle lifecycle events. */
     WriteEvents,  /**< Systems that emit asset lifecycle events. */
 };
-/** @brief Plugin that registers asset types and loaders with the application.
- *  Call register_asset<T>() and register_loader<L>() before building. */
+/** @brief Asset plugin configuration and source setup.
+ *  Mirrors Bevy's AssetPlugin role: configure sources/mode and build core resources/systems. */
 export struct AssetPlugin {
    private:
-    std::vector<std::function<void(App&)>> m_assets_inserts;
     std::vector<std::pair<AssetSourceId, AssetSourceBuilder>> m_source_builders;
 
    public:
     /** @brief Filesystem path to the default asset source directory. */
     std::filesystem::path file_path = "assets";
-    /** @brief Optional processed-asset directory path (for Processed mode). */
+    /** @brief Optional processed-asset directory path. */
     std::optional<std::filesystem::path> processed_file_path = std::nullopt;
     /** @brief Asset server mode. */
     AssetServerMode mode = AssetServerMode::Unprocessed;
-    /** @brief Whether to watch files for changes and hot-reload. */
-    bool watch_for_changes = false;
+    /** @brief Optional watch override (mirrors Bevy's watch_for_changes_override). */
+    std::optional<bool> watch_for_changes_override = std::nullopt;
+    /** @brief Optional processor override in Processed mode (mirrors Bevy's use_asset_processor_override). */
+    std::optional<bool> use_asset_processor_override = std::nullopt;
     /** @brief Controls when and how asset metadata files are checked. */
     AssetMetaCheck meta_check = AssetMetaCheck::Always;
     /** @brief Controls how unapproved asset paths are handled. */
     UnapprovedPathMode unapproved_path_mode = UnapprovedPathMode::Forbid;
 
-    /** @brief Register an asset type T for management. */
-    template <std::movable T>
-    AssetPlugin& register_asset();
-    /** @brief Register an asset loader for its associated asset type. */
-    template <AssetLoader T>
-    AssetPlugin& register_loader(const T& t = T());
-    /** @brief Pre-register a loader type so its extensions are known before the loader is available. */
-    template <AssetLoader T>
-    AssetPlugin& preregister_loader(std::span<std::string_view> extensions);
-    /** @brief Register an asset processor.
-     *  Matches bevy_asset's AssetApp::register_asset_processor. */
-    template <Process P>
-    AssetPlugin& register_asset_processor(P processor);
-    /** @brief Set the default processor for a file extension.
-     *  Matches bevy_asset's AssetApp::set_default_asset_processor. */
-    template <Process P>
-    AssetPlugin& set_default_asset_processor(const std::string& extension);
-    /** @brief Register a named asset source.
-     *  Matches bevy_asset's AssetApp::register_asset_source. */
+    /** @brief Register a named asset source builder. */
     AssetPlugin& register_asset_source(AssetSourceId id, AssetSourceBuilder source);
     /** @brief Build the plugin, inserting asset resources into the app. */
     void build(App& app);
@@ -143,32 +126,4 @@ App& app_set_default_asset_processor(App& app, const std::string& extension) {
     return app;
 }
 
-template <std::movable T>
-AssetPlugin& AssetPlugin::register_asset() {
-    m_assets_inserts.push_back([](App& app) { app_register_asset<T>(app); });
-    return *this;
-}
-template <AssetLoader T>
-AssetPlugin& AssetPlugin::register_loader(const T& t) {
-    m_assets_inserts.push_back([t](App& app) { app_register_loader<T>(app, t); });
-    return *this;
-}
-template <AssetLoader T>
-AssetPlugin& AssetPlugin::preregister_loader(std::span<std::string_view> extensions) {
-    m_assets_inserts.push_back([extensions = std::vector<std::string_view>(extensions.begin(), extensions.end())](
-                                   App& app) { app_preregister_loader<T>(app, extensions); });
-    return *this;
-}
-template <Process P>
-AssetPlugin& AssetPlugin::register_asset_processor(P processor) {
-    m_assets_inserts.push_back([processor = std::move(processor)](App& app) mutable {
-        app_register_asset_processor<P>(app, std::move(processor));
-    });
-    return *this;
-}
-template <Process P>
-AssetPlugin& AssetPlugin::set_default_asset_processor(const std::string& extension) {
-    m_assets_inserts.push_back([extension](App& app) { app_set_default_asset_processor<P>(app, extension); });
-    return *this;
-}
 }  // namespace assets

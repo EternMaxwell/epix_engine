@@ -365,9 +365,9 @@ TEST(AssetPlugin, BuildAndFinish_RegistersAssetsAndLoader) {
     App app = App::create();
 
     AssetPlugin plugin;
-    plugin.register_asset<std::string>().register_loader(TestTextLoader{});
     plugin.build(app);
-    plugin.finish(app);
+    app_register_asset<std::string>(app);
+    app_register_loader<TestTextLoader>(app);
 
     ASSERT_TRUE(app.get_resource<AssetServer>().has_value());
     ASSERT_TRUE(app.get_resource<Assets<std::string>>().has_value());
@@ -382,8 +382,8 @@ TEST(AssetPlugin, Build_PropagatesModeWatchingAndCustomSource) {
 
     auto dir = make_memory_dir_with_text("from_custom_source");
     AssetPlugin plugin;
-    plugin.mode              = AssetServerMode::Processed;
-    plugin.watch_for_changes = true;
+    plugin.mode                       = AssetServerMode::Processed;
+    plugin.watch_for_changes_override = true;
     plugin.register_asset_source(AssetSourceId(std::string("mem")), make_memory_source_builder(dir));
 
     plugin.build(app);
@@ -399,8 +399,8 @@ TEST(AssetPlugin, BuildWithWatching_WiresReceiversForCustomSourceWatchers) {
 
     auto dir = make_memory_dir_with_text("from_custom_source");
     AssetPlugin plugin;
-    plugin.mode              = AssetServerMode::Processed;
-    plugin.watch_for_changes = true;
+    plugin.mode                       = AssetServerMode::Processed;
+    plugin.watch_for_changes_override = true;
     plugin.register_asset_source(AssetSourceId(std::string("mem")),
                                  make_memory_source_builder_with_watchers(dir, true, true));
 
@@ -426,8 +426,8 @@ TEST(AssetPlugin, BuildWithoutWatching_InProcessedModeKeepsSourceReceiverButNotP
 
     auto dir = make_memory_dir_with_text("from_custom_source");
     AssetPlugin plugin;
-    plugin.mode              = AssetServerMode::Processed;
-    plugin.watch_for_changes = false;
+    plugin.mode                       = AssetServerMode::Processed;
+    plugin.watch_for_changes_override = false;
     plugin.register_asset_source(AssetSourceId(std::string("mem")),
                                  make_memory_source_builder_with_watchers(dir, true, true));
 
@@ -438,6 +438,28 @@ TEST(AssetPlugin, BuildWithoutWatching_InProcessedModeKeepsSourceReceiverButNotP
     ASSERT_TRUE(source.has_value());
     // In Processed mode, AssetProcessor always watches source assets so it can react to source changes.
     EXPECT_TRUE(source->get().event_receiver().has_value());
+    EXPECT_FALSE(source->get().processed_event_receiver().has_value());
+}
+
+// When use_asset_processor=false, the server is built with build_sources(false, watch=false),
+// so neither source nor processed watcher is wired — even if watcher factories are present.
+TEST(AssetPlugin, BuildWithoutWatching_WithoutProcessor_DoesNotWireAnyReceivers) {
+    App app = App::create();
+
+    auto dir = make_memory_dir_with_text("from_custom_source");
+    AssetPlugin plugin;
+    plugin.mode                         = AssetServerMode::Processed;
+    plugin.watch_for_changes_override   = false;
+    plugin.use_asset_processor_override = false;
+    plugin.register_asset_source(AssetSourceId(std::string("mem")),
+                                 make_memory_source_builder_with_watchers(dir, true, true));
+
+    plugin.build(app);
+
+    auto& server = app.resource<AssetServer>();
+    auto source  = server.get_source(AssetSourceId(std::string("mem")));
+    ASSERT_TRUE(source.has_value());
+    EXPECT_FALSE(source->get().event_receiver().has_value());
     EXPECT_FALSE(source->get().processed_event_receiver().has_value());
 }
 
@@ -510,15 +532,15 @@ PluginTestEnv make_plugin_env(bool watching, std::string_view initial_content = 
 
     App app = App::create();
     AssetPlugin plugin;
-    plugin.watch_for_changes = watching;
-    plugin.register_asset<std::string>().register_loader(TestTextLoader{});
+    plugin.watch_for_changes_override = watching;
     if (watching) {
         plugin.register_asset_source(AssetSourceId{}, make_memory_source_builder_with_watchers(dir));
     } else {
         plugin.register_asset_source(AssetSourceId{}, make_memory_source_builder(dir));
     }
     plugin.build(app);
-    plugin.finish(app);
+    app_register_asset<std::string>(app);
+    app_register_loader<TestTextLoader>(app);
 
     return {std::move(app), dir};
 }
@@ -858,12 +880,12 @@ TEST(HotReload, ProcessedMode_LoadsFromProcessedReader) {
     App app = App::create();
     AssetPlugin plugin;
     plugin.mode = AssetServerMode::Processed;
-    plugin.register_asset<std::string>().register_loader(TestTextLoader{});
     // Supply the same dir for both unprocessed and processed readers.
     auto builder = make_memory_source_builder(dir, /*with_processed_reader=*/true);
     plugin.register_asset_source(AssetSourceId{}, std::move(builder));
     plugin.build(app);
-    plugin.finish(app);
+    app_register_asset<std::string>(app);
+    app_register_loader<TestTextLoader>(app);
 
     auto& server = app.resource<AssetServer>();
     EXPECT_EQ(server.mode(), AssetServerMode::Processed);
@@ -935,10 +957,10 @@ TEST(LoadFailure, LoaderError_FailsWithAssetLoaderException) {
 
     App app = App::create();
     AssetPlugin plugin;
-    plugin.register_asset<std::string>().register_loader(FailingLoader{});
     plugin.register_asset_source(AssetSourceId{}, make_memory_source_builder(dir));
     plugin.build(app);
-    plugin.finish(app);
+    app_register_asset<std::string>(app);
+    app_register_loader<FailingLoader>(app);
 
     auto& server = app.resource<AssetServer>();
     // The FailingLoader handles ".fail" extension; put a file with that extension.
@@ -966,10 +988,11 @@ TEST(LoadFailure, MixedScenarios_CorrectStateForEach) {
 
     App app = App::create();
     AssetPlugin plugin;
-    plugin.register_asset<std::string>().register_loader(TestTextLoader{}).register_loader(FailingLoader{});
     plugin.register_asset_source(AssetSourceId{}, make_memory_source_builder(dir));
     plugin.build(app);
-    plugin.finish(app);
+    app_register_asset<std::string>(app);
+    app_register_loader<TestTextLoader>(app);
+    app_register_loader<FailingLoader>(app);
 
     auto& server = app.resource<AssetServer>();
 
@@ -1178,10 +1201,10 @@ TEST(LoadStates, FailedAsset_AllStatesReflectFailure) {
 
     App app = App::create();
     AssetPlugin plugin;
-    plugin.register_asset<std::string>().register_loader(FailingLoader{});
     plugin.register_asset_source(AssetSourceId{}, make_memory_source_builder(dir));
     plugin.build(app);
-    plugin.finish(app);
+    app_register_asset<std::string>(app);
+    app_register_loader<FailingLoader>(app);
 
     auto& server   = app.resource<AssetServer>();
     auto fail_data = std::make_shared<std::vector<std::uint8_t>>(std::initializer_list<std::uint8_t>{'!'});
