@@ -2,6 +2,7 @@
 
 import epix.assets;
 import epix.core;
+import epix.utils;
 import webgpu;
 import std;
 
@@ -37,7 +38,7 @@ export struct SlotValue {
 
    public:
     SlotValue(const SlotValue& other) {
-        value = std::visit(assets::visitor{
+        value = std::visit(utils::visitor{
                                [](const Entity& e) -> variant_t { return Entity(e); },
                                [](const wgpu::Buffer& b) -> variant_t { return b.clone(); },
                                [](const wgpu::TextureView& t) -> variant_t { return t.clone(); },
@@ -46,7 +47,7 @@ export struct SlotValue {
                            other.value);
     }
     SlotValue& operator=(const SlotValue& other) {
-        value = std::visit(assets::visitor{
+        value = std::visit(utils::visitor{
                                [](const Entity& e) -> variant_t { return Entity(e); },
                                [](const wgpu::Buffer& b) -> variant_t { return b.clone(); },
                                [](const wgpu::TextureView& t) -> variant_t { return t.clone(); },
@@ -64,7 +65,7 @@ export struct SlotValue {
     /** @brief Get the type of the stored slot value.
      *  @return The SlotType enum value. */
     SlotType type() const {
-        return std::visit(assets::visitor{
+        return std::visit(utils::visitor{
                               [](const Entity&) { return SlotType::Entity; },
                               [](const wgpu::Buffer&) { return SlotType::Buffer; },
                               [](const wgpu::TextureView&) { return SlotType::Texture; },

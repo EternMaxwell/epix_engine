@@ -629,6 +629,6 @@ std::expected<Image, ImageLoadError> ImageLoader::load(std::istream& reader,
 
 void ImagePlugin::build(core::App& app) {
     app.add_plugins(assets::AssetPlugin{});
-    app.plugin_scope(
-        [](assets::AssetPlugin& asset_plugin) { asset_plugin.register_asset<Image>().register_loader<ImageLoader>(); });
+    assets::app_register_asset<Image>(app);
+    assets::app_register_loader<ImageLoader>(app);
 }

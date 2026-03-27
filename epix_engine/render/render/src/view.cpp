@@ -17,7 +17,7 @@ void view::prepare_view_target(Query<Item<Entity, const camera::ExtractedCamera&
     // Prepare the view target for each extracted camera view
     for (auto&& [entity, camera, view] : views.iter()) {
         std::optional<wgpu::TextureView> target_texture = std::visit(
-            assets::visitor{
+            utils::visitor{
                 [&](const wgpu::Texture& tex) -> std::optional<wgpu::TextureView> { return tex.createView(); },
                 [&](const camera::WindowRef& win_ref) -> std::optional<wgpu::TextureView> {
                     auto&& id = win_ref.window_entity;
@@ -30,7 +30,7 @@ void view::prepare_view_target(Query<Item<Entity, const camera::ExtractedCamera&
                 }},
             camera.render_target);
         std::optional<wgpu::TextureFormat> target_format = std::visit(
-            assets::visitor{
+            utils::visitor{
                 [&](const wgpu::Texture& tex) -> std::optional<wgpu::TextureFormat> { return tex.getFormat(); },
                 [&](const camera::WindowRef& win_ref) -> std::optional<wgpu::TextureFormat> {
                     auto&& id = win_ref.window_entity;
@@ -189,18 +189,18 @@ void view::ViewPlugin::build(App& app) {
 }
 
 std::optional<RenderTarget> RenderTarget::normalize(std::optional<Entity> primary) const {
-    return std::visit(assets::visitor{[&](const wgpu::Texture& tex) -> std::optional<RenderTarget> { return *this; },
-                                      [&](const WindowRef& win_ref) -> std::optional<RenderTarget> {
-                                          if (win_ref.primary) {
-                                              if (primary.has_value()) {
-                                                  return RenderTarget(WindowRef{false, primary.value()});
-                                              } else {
-                                                  return std::nullopt;
-                                              }
-                                          } else {
-                                              return *this;
-                                          }
-                                      }},
+    return std::visit(utils::visitor{[&](const wgpu::Texture& tex) -> std::optional<RenderTarget> { return *this; },
+                                     [&](const WindowRef& win_ref) -> std::optional<RenderTarget> {
+                                         if (win_ref.primary) {
+                                             if (primary.has_value()) {
+                                                 return RenderTarget(WindowRef{false, primary.value()});
+                                             } else {
+                                                 return std::nullopt;
+                                             }
+                                         } else {
+                                             return *this;
+                                         }
+                                     }},
                       *this);
 }
 

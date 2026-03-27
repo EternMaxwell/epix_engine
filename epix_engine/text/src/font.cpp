@@ -410,8 +410,8 @@ import epix.meta;
 
 void FontPlugin::build(core::App& app) {
     app.add_plugins(image::ImagePlugin{});
-    app.plugin_scope(
-        [](assets::AssetPlugin& asset_plugin) { asset_plugin.register_asset<Font>().register_loader<FontLoader>(); });
+    assets::app_register_asset<Font>(app);
+    assets::app_register_loader<FontLoader>(app);
     app.world_mut().init_resource<FontLibrary>();
     app.world_mut().init_resource<FontAtlasSets>();
     app.configure_sets(core::sets(FontSystems::AddFontAtlasSet, FontSystems::ApplyPendingFontAtlasUpdates));

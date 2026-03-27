@@ -21,7 +21,7 @@ std::string_view graph::type_name(SlotType type) {
 }
 std::optional<std::uint32_t> SlotInfos::get_slot_index(const SlotLabel& label) const {
     return std::visit(
-        assets::visitor{
+        utils::visitor{
             [](std::uint32_t l) -> std::optional<std::uint32_t> { return l; },
             [this](const std::string& l) -> std::optional<std::uint32_t> {
                 if (auto iter = std::ranges::find_if(slots, [&l](const SlotInfo& info) { return info.name == l; });

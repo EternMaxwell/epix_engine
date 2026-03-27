@@ -46,7 +46,7 @@ std::expected<Shader, ShaderLoaderSPIRV::Error> ShaderLoaderSPIRV::load(std::ist
 }
 
 void ShaderPlugin::build(App& app) {
-    app.plugin_scope([](assets::AssetPlugin& asset_plugin) {
-        asset_plugin.register_asset<Shader>().register_loader<ShaderLoaderWGSL>().register_loader<ShaderLoaderSPIRV>();
-    });
+    assets::app_register_asset<Shader>(app);
+    assets::app_register_loader<ShaderLoaderWGSL>(app);
+    assets::app_register_loader<ShaderLoaderSPIRV>(app);
 }

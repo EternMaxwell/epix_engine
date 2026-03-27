@@ -4,6 +4,7 @@ export module epix.render:view;
 
 import epix.transform;
 import epix.core;
+import epix.utils;
 import webgpu;
 
 import :window;
@@ -411,7 +412,7 @@ void camera_system(Query<Item<Mut<Camera>, Mut<ProjType>>> query,            // 
             camera.get_mut().viewport.transform([](const Viewport& vp) { return glm::uvec2(vp.size); });
 
         glm::uvec2 target_size;
-        std::visit(assets::visitor{
+        std::visit(utils::visitor{
                        [&](const WindowRef& window_ref) {
                            if (window_ref.primary) {
                                // primary window

@@ -4,6 +4,8 @@
 
 module epix.glfw.core;
 
+import epix.utils;
+
 using namespace glfw;
 using namespace window;
 
@@ -374,7 +376,7 @@ void GLFWPlugin::update_window_states(Query<Item<Entity, Mut<Window>, const Cach
         }
         // cursor icon
         if (cached.cursor_icon != desc.cursor_icon) {
-            std::visit(assets::visitor{[&](const StandardCursor& icon) {
+            std::visit(utils::visitor{[&](const StandardCursor& icon) {
                                            auto cursor = glfwCreateStandardCursor([icon] {
                                                switch (icon) {
                                                    case StandardCursor::Arrow:
