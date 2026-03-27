@@ -8,36 +8,41 @@ import :shader;
 
 using namespace render;
 
-std::span<const char* const> ShaderLoaderWGSL::extensions() {
-    static constexpr auto exts = std::array{"wgsl"};
-    return std::span(exts);
+std::span<std::string_view> ShaderLoaderWGSL::extensions() {
+    static auto exts = std::array{std::string_view{"wgsl"}};
+    return std::span<std::string_view>(exts.data(), exts.size());
 }
-Shader ShaderLoaderWGSL::load(const std::filesystem::path& path, assets::LoadContext& context) {
-    std::ifstream file(path);
-    if (!file.is_open()) {
-        throw std::runtime_error("Failed to open shader file: " + path.string());
+std::expected<Shader, ShaderLoaderWGSL::Error> ShaderLoaderWGSL::load(std::istream& reader,
+                                                                      const Settings&,
+                                                                      assets::LoadContext& context) {
+    try {
+        std::stringstream buffer;
+        buffer << reader.rdbuf();
+        auto& path = context.path().path;
+        return Shader{path, path.string(), ShaderSource::wgsl(buffer.str())};
+    } catch (...) {
+        return std::unexpected(std::current_exception());
     }
-    std::stringstream buffer;
-    buffer << file.rdbuf();
-    return Shader{path, path.string(), ShaderSource::wgsl(buffer.str())};
 }
 
-std::span<const char* const> ShaderLoaderSPIRV::extensions() {
-    static constexpr auto exts = std::array{"spv"};
-    return std::span(exts);
+std::span<std::string_view> ShaderLoaderSPIRV::extensions() {
+    static auto exts = std::array{std::string_view{"spv"}};
+    return std::span<std::string_view>(exts.data(), exts.size());
 }
-Shader ShaderLoaderSPIRV::load(const std::filesystem::path& path, assets::LoadContext& context) {
-    std::ifstream file(path, std::ios::binary);
-    if (!file.is_open()) {
-        throw std::runtime_error("Failed to open shader file: " + path.string());
+std::expected<Shader, ShaderLoaderSPIRV::Error> ShaderLoaderSPIRV::load(std::istream& reader,
+                                                                        const Settings&,
+                                                                        assets::LoadContext& context) {
+    try {
+        std::vector<char> bytes =
+            std::ranges::subrange(std::istreambuf_iterator<char>(reader), std::istreambuf_iterator<char>()) |
+            std::ranges::to<std::vector<char>>();
+        std::vector<uint32_t> code(bytes.size() / sizeof(uint32_t));
+        std::memcpy(code.data(), bytes.data(), code.size() * sizeof(uint32_t));
+        auto& path = context.path().path;
+        return Shader{path, path.string(), ShaderSource::spirv(std::move(code))};
+    } catch (...) {
+        return std::unexpected(std::current_exception());
     }
-    std::vector<uint32_t> code;
-    file.seekg(0, std::ios::end);
-    std::streamoff size = file.tellg();
-    code.resize(static_cast<size_t>(size) / sizeof(uint32_t));
-    file.seekg(0, std::ios::beg);
-    file.read(reinterpret_cast<char*>(code.data()), size);
-    return Shader{path, path.string(), ShaderSource::spirv(std::move(code))};
 }
 
 void ShaderPlugin::build(App& app) {

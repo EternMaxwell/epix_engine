@@ -61,8 +61,14 @@ struct std::hash<assets::AssetId<text::font::Font>> {
 
 namespace text::font {
 struct FontLoader {
-    static std::span<const char* const> extensions();
-    static Font load(const std::filesystem::path& path, assets::LoadContext& context);
+    using Asset = Font;
+    struct Settings : assets::Settings {};
+    using Error = std::exception_ptr;
+
+    static std::span<std::string_view> extensions();
+    static std::expected<Font, Error> load(std::istream& reader,
+                                           const Settings& settings,
+                                           assets::LoadContext& context);
 };
 
 struct FontLibrary {

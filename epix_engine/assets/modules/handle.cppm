@@ -45,6 +45,8 @@ struct Handle {
    private:
     std::variant<std::shared_ptr<StrongHandle>, AssetId<T>> ref;
 
+    friend struct UntypedHandle;
+
    public:
     /** @brief Construct a strong handle from a shared StrongHandle pointer. */
     Handle(const std::shared_ptr<StrongHandle>& handle) : ref(handle) {}
@@ -102,6 +104,14 @@ struct Handle {
                            [](const AssetId<T>& index) { return index; }},
             ref);
     }
+    /** @brief Get the path associated with this asset, if available (only for strong handles). */
+    std::optional<AssetPath> path() const {
+        return std::visit(utils::visitor{[](const std::shared_ptr<StrongHandle>& handle) { return handle->path; },
+                                         [](const AssetId<T>&) -> std::optional<AssetPath> { return std::nullopt; }},
+                          ref);
+    }
+    /** @brief Convert this typed handle to an UntypedHandle. */
+    UntypedHandle untyped() const;
     /** @brief Implicit conversion to the underlying AssetId. */
     operator AssetId<T>() const { return id(); }
 };
@@ -128,7 +138,7 @@ export struct UntypedHandle {
     UntypedHandle(const UntypedAssetId& id) : ref(id) {}
     /** @brief Construct from a typed Handle, erasing the type. */
     template <typename T>
-    UntypedHandle(const Handle<T>& handle) : ref(handle.ref) {}
+    UntypedHandle(const Handle<T>& handle) : UntypedHandle(handle.ref) {}
 
     UntypedHandle()                                = delete;
     UntypedHandle(const UntypedHandle&)            = default;
@@ -172,6 +182,13 @@ export struct UntypedHandle {
                                          [](const UntypedAssetId& id) { return id; }},
                           ref);
     }
+    /** @brief Get the path associated with this asset, if available (only for strong handles). */
+    std::optional<AssetPath> path() const {
+        return std::visit(
+            utils::visitor{[](const std::shared_ptr<StrongHandle>& handle) { return handle->path; },
+                           [](const UntypedAssetId&) -> std::optional<AssetPath> { return std::nullopt; }},
+            ref);
+    }
     /** @brief Implicit conversion to UntypedAssetId. */
     operator UntypedAssetId() const { return id(); }
     /** @brief Return a weak copy holding only the id. */
@@ -208,6 +225,10 @@ Handle<T>::Handle(const UntypedHandle& handle) {
     std::visit(utils::visitor{[this](const std::shared_ptr<StrongHandle>& strong_handle) { ref = strong_handle; },
                               [this](const UntypedAssetId& id) { ref = id.typed<T>(); }},
                handle.ref);
+}
+template <typename T>
+UntypedHandle Handle<T>::untyped() const {
+    return UntypedHandle(*this);
 }
 template <typename T>
 Handle<T>::Handle(UntypedHandle&& handle) {

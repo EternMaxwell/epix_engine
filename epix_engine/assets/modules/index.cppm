@@ -45,6 +45,8 @@ export struct AssetIndex {
     template <typename T>
     friend struct Handle;
     friend struct AssetIndexAllocator;
+    template <std::movable T>
+    friend struct Assets;
 };
 
 struct AssetIndexAllocator {

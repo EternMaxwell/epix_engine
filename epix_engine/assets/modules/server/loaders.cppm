@@ -45,7 +45,7 @@ struct AssetLoaders {
         requires AssetLoader<std::remove_cvref_t<T>>
     void push(T&& loader) {
         using loader_type                  = std::remove_cvref_t<T>;
-        meta::type_index loader_asset_type = meta::type_id<typename loader_type::AssetType>{};
+        meta::type_index loader_asset_type = meta::type_id<typename loader_type::Asset>{};
 
         auto loader = std::make_shared<ErasedAssetLoaderImpl<std::remove_cvref_t<T>>>(std::forward<T>(loader));
         auto [loader_index, is_new] = [&]() {
@@ -93,7 +93,7 @@ struct AssetLoaders {
     }
     template <AssetLoader loader_type>
     void reserve(std::span<std::string_view> extensions) {
-        meta::type_index loader_asset_type = meta::type_id<typename loader_type::AssetType>{};
+        meta::type_index loader_asset_type = meta::type_id<typename loader_type::Asset>{};
         std::string_view loader_type_name  = meta::type_id<loader_type>{}.name();
         std::size_t loader_index           = loaders.size();
         type_name_to_preregistered_loader.emplace(loader_type_name, loader_index);

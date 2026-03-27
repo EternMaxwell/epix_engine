@@ -53,6 +53,69 @@ export struct AssetPath {
         if (label) ss << "#" << *label;
         return ss.str();
     }
+
+    /** @brief Return a copy of this path with a different label. */
+    AssetPath with_label(std::string new_label) const { return AssetPath(source, path, std::move(new_label)); }
+    /** @brief Return a copy of this path with a different source. */
+    AssetPath with_source(AssetSourceId new_source) const { return AssetPath(std::move(new_source), path, label); }
+    /** @brief Return a copy of this path without the label. */
+    AssetPath without_label() const { return AssetPath(source, path); }
+    /** @brief Remove the label from this path in place. */
+    void remove_label() { label.reset(); }
+    /** @brief Take the label out of this path, leaving it empty. */
+    std::optional<std::string> take_label() {
+        auto l = std::move(label);
+        label.reset();
+        return l;
+    }
+    /** @brief Return the parent directory of this asset path, or std::nullopt if there is no parent. */
+    std::optional<AssetPath> parent() const {
+        auto p = path.parent_path();
+        if (p.empty() || p == path) return std::nullopt;
+        return AssetPath(source, std::move(p));
+    }
+    /** @brief Resolve a relative path against this path's directory. */
+    AssetPath resolve(const AssetPath& relative) const {
+        auto base     = path.parent_path();
+        auto resolved = (base / relative.path).lexically_normal();
+        return AssetPath(relative.source.is_default() ? source : relative.source, std::move(resolved), relative.label);
+    }
+    /** @brief Resolve a relative path string against this path's directory. */
+    AssetPath resolve(std::string_view relative_str) const { return resolve(AssetPath(relative_str)); }
+    /** @brief Get the full extension (e.g. "gltf.json" for "model.gltf.json"). */
+    std::optional<std::string> get_full_extension() const {
+        auto filename = path.filename().string();
+        auto dot      = filename.find('.');
+        if (dot == std::string::npos) return std::nullopt;
+        return filename.substr(dot + 1);
+    }
+    /** @brief Get the short extension (e.g. "json" for "model.gltf.json"). */
+    std::optional<std::string> get_extension() const {
+        auto ext = path.extension().string();
+        if (ext.empty()) return std::nullopt;
+        if (ext.starts_with('.')) ext.erase(0, 1);
+        return ext;
+    }
+    /** @brief Iterate secondary extensions (all extensions except the final one).
+     *  E.g. for "model.gltf.json" yields {"gltf"}. */
+    std::vector<std::string> iter_secondary_extensions() const {
+        auto full = get_full_extension();
+        if (!full) return {};
+        std::vector<std::string> parts;
+        std::string_view sv = *full;
+        for (auto dot = sv.find('.'); dot != std::string_view::npos; dot = sv.find('.')) {
+            parts.emplace_back(sv.substr(0, dot));
+            sv = sv.substr(dot + 1);
+        }
+        // The last part is the primary extension, secondary = all but last
+        return parts;
+    }
+    /** @brief Try to parse a string as an AssetPath, returning std::nullopt on failure. */
+    static std::optional<AssetPath> try_parse(std::string_view str) {
+        if (str.empty()) return std::nullopt;
+        return AssetPath(str);
+    }
+
     bool operator==(const AssetPath&) const  = default;
     auto operator<=>(const AssetPath&) const = default;
 };

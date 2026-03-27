@@ -5,339 +5,163 @@
 module epix.assets;
 
 import std;
-import :store;
-import :server;
 
 using namespace assets;
 
-// const AssetInfo* AssetInfos::get_info(const UntypedAssetId& id) const {
-//     if (auto it = infos.find(id); it != infos.end()) {
-//         return &it->second;
-//     }
-//     return nullptr;
-// }
-// AssetInfo* AssetInfos::get_info(const UntypedAssetId& id) {
-//     if (auto it = infos.find(id); it != infos.end()) {
-//         return &it->second;
-//     }
-//     return nullptr;
-// }
-// std::optional<UntypedHandle> AssetInfos::get_or_create_handle_internal(const std::filesystem::path& path,
-//                                                                        const std::optional<meta::type_index>& type,
-//                                                                        bool force_new) {
-//     auto&& ids          = path_to_ids[path];
-//     auto asset_type_opt = type.or_else([&]() -> std::optional<meta::type_index> {
-//         // No type provided, get the first type from the ids
-//         if (auto it = ids.begin(); it != ids.end()) {
-//             return it->first;  // Return the first type found
-//         }
-//         return std::nullopt;  // No types found
-//     });
-//     if (!asset_type_opt) {
-//         return std::nullopt;  // No type found, cannot create handle
-//     }
-//     auto asset_type = *asset_type_opt;
-//     if (auto it = ids.find(asset_type); it != ids.end()) {
-//         auto& info = infos.at(it->second);
-//         // Check if the handle is expired we create a new one
-//         auto strong_handle = info.weak_handle.lock();
-//         if (!strong_handle) {
-//             // weak handle is expired, but asset still exists, so we just get a new handle for the id.
-//             if (auto provider_it = handle_providers.find(asset_type); provider_it != handle_providers.end()) {
-//                 // If a provider for the type exists, use it to create a new
-//                 // handle
-//                 auto& provider   = *provider_it->second;
-//                 auto new_handle  = provider.get_handle(it->second, true, path);
-//                 info.weak_handle = new_handle;
-//                 return new_handle;
-//             }
-//         } else if (!force_new) {
-//             info.state = info.state == LoadState::Loading ? LoadState::Loading : LoadState::Pending;
-//         }
-//         return strong_handle;  // Return the existing handle
-//     } else {
-//         // a new asset should be created.
-//         if (auto provider_it = handle_providers.find(asset_type); provider_it != handle_providers.end()) {
-//             // If a provider for the type exists, use it to create a new
-//             // handle
-//             auto& provider  = *provider_it->second;
-//             auto new_handle = provider.reserve(true, path);
-//             auto id         = new_handle->id;
-//             // Insert to path_to_ids
-//             ids.emplace(asset_type, id);  // Insert the new id for the type
-//             // Create a new AssetInfo and insert it
-//             AssetInfo info;
-//             info.weak_handle = new_handle;
-//             info.path        = path;
-//             info.state       = LoadState::Pending;  // Initial state is Pending
-//             infos.emplace(id, std::move(info));
-//             return new_handle;
-//         }
-//     }
-//     return std::nullopt;  // No handle created
-// }
-// std::optional<UntypedHandle> AssetInfos::get_or_create_handle_untyped(const std::filesystem::path& path,
-//                                                                       const meta::type_index& type,
-//                                                                       bool force_new) {
-//     return get_or_create_handle_internal(path, type, force_new);  // Call the internal function with the type
-// }
-// bool AssetInfos::process_handle_destruction(const UntypedAssetId& id) {
-//     if (auto it = infos.find(id); it != infos.end()) {
-//         auto&& info = it->second;
-//         if (info.weak_handle.expired()) {
-//             // remove the id from the path_to_ids map
-//             if (auto path_it = path_to_ids.find(info.path); path_it != path_to_ids.end()) {
-//                 auto& ids = path_it->second;
-//                 ids.erase(id.type);
-//                 if (ids.empty()) {
-//                     path_to_ids.erase(path_it);  // Remove empty paths
-//                 }
-//             }
-//             // If the weak handle is expired, remove the asset info
-//             infos.erase(it);
-//             // Successfully processed the handle destruction
-//             return false;
-//         } else {
-//             // This means that living handles are all destructed but a new
-//             // handle for this asset is required from
-//             // `get_or_create_handle_internal`.
-//             return true;
-//         }
-//     }
-//     return false;  // No action taken, either no info found or handle not
-//                    // expired
-// }
+AssetServer::AssetServer(std::shared_ptr<AssetSources> sources, AssetServerMode mode, bool watching_for_changes)
+    : data(std::make_shared<AssetServerData>()) {
+    data->sources                                                  = std::move(sources);
+    data->mode                                                     = mode;
+    data->watching_for_changes_flag                                = watching_for_changes;
+    data->loaders                                                  = std::make_shared<utils::RwLock<AssetLoaders>>();
+    std::tie(data->asset_event_sender, data->asset_event_receiver) = utils::make_channel<InternalAssetEvent>();
+    auto guard                                                     = data->infos.write();
+    guard->watching_for_changes                                    = watching_for_changes;
+}
 
-// const ErasedAssetLoader* AssetLoaders::get_by_index(uint32_t index) const {
-//     if (index < loaders.size()) {
-//         return loaders[index].get();
-//     }
-//     return nullptr;
-// }
-// const ErasedAssetLoader* AssetLoaders::get_by_type(const meta::type_index& type) const {
-//     auto it = type_to_loaders.find(type);
-//     if (it != type_to_loaders.end() && !it->second.empty()) {
-//         return get_by_index(it->second.back());  // Get the last loader of this type
-//     }
-//     return nullptr;
-// }
-// std::vector<const ErasedAssetLoader*> AssetLoaders::get_multi_by_type(
-//     const meta::type_index& type) const {  // get all loaders of a specific type
-//     if (auto it = type_to_loaders.find(type); it != type_to_loaders.end()) {
-//         return it->second | std::views::transform([this](uint32_t index) { return get_by_index(index); }) |
-//                std::ranges::to<std::vector>();
-//     }
-//     return {};  // Return an empty vector if no loaders of that type exist
-// }
-// const ErasedAssetLoader* AssetLoaders::get_by_extension(const std::string_view& ext) const {
-//     auto it = ext_to_loaders.find(ext.data());
-//     if (it != ext_to_loaders.end() && !it->second.empty()) {
-//         return get_by_index(it->second.back());
-//     }
-//     return nullptr;
-// }
-// std::vector<const ErasedAssetLoader*> AssetLoaders::get_multi_by_extension(
-//     const std::string_view& ext) const {  // get all loaders of a specific extension
-//     if (auto it = ext_to_loaders.find(ext.data()); it != ext_to_loaders.end()) {
-//         return it->second | std::views::transform([this](uint32_t index) { return get_by_index(index); }) |
-//                std::ranges::to<std::vector>();
-//     }
-//     return {};  // Return an empty vector if no loaders of that extension
-//                 // exist
-// }
-// // get by path is a wrapper method for get_by_extension, but much easier to
-// // use
-// const ErasedAssetLoader* AssetLoaders::get_by_path(
-//     const std::filesystem::path& path) const {  // get the loader by the file extension of the path
-//     // the extension name should not include the dot
-//     if (path.has_extension()) {
-//         auto ext      = path.extension().string();
-//         auto ext_view = std::string_view(ext);
-//         if (ext.starts_with('.')) {
-//             ext_view.remove_prefix(1);  // remove the leading dot
-//         }
-//         return get_by_extension(ext_view);
-//     }
-//     return nullptr;
-// }
-// std::vector<const ErasedAssetLoader*> AssetLoaders::get_multi_by_path(
-//     const std::filesystem::path& path) const {  // get all loaders by the file extension of the path
-//     // the extension name should not include the dot
-//     if (path.has_extension()) {
-//         auto ext      = path.extension().string();
-//         auto ext_view = std::string_view(ext);
-//         if (ext.starts_with('.')) {
-//             ext_view.remove_prefix(1);  // remove the leading dot
-//         }
-//         return get_multi_by_extension(ext_view);
-//     }
-//     return {};  // Return an empty vector if no loaders found
-// }
+AssetServer::AssetServer(std::shared_ptr<AssetSources> sources,
+                         AssetServerMode mode,
+                         AssetMetaCheck meta_check,
+                         bool watching_for_changes,
+                         UnapprovedPathMode unapproved_path_mode)
+    : data(std::make_shared<AssetServerData>()) {
+    data->sources                                                  = std::move(sources);
+    data->mode                                                     = mode;
+    data->watching_for_changes_flag                                = watching_for_changes;
+    data->meta_check                                               = meta_check;
+    data->unapproved_path_mode                                     = unapproved_path_mode;
+    data->loaders                                                  = std::make_shared<utils::RwLock<AssetLoaders>>();
+    std::tie(data->asset_event_sender, data->asset_event_receiver) = utils::make_channel<InternalAssetEvent>();
+    auto guard                                                     = data->infos.write();
+    guard->watching_for_changes                                    = watching_for_changes;
+}
 
-// AssetServer::AssetServer() : asset_infos(), asset_loaders() {
-//     std::tie(event_sender, event_receiver) = core::make_channel<InternalAssetEvent>();
-// }
-// std::optional<LoadState> AssetServer::get_state(const UntypedAssetId& id) const {
-//     std::unique_lock lock(info_mutex);
-//     if (auto info = asset_infos.get_info(id)) {
-//         return info->state;
-//     }
-//     return std::nullopt;
-// }
-// void AssetServer::load_internal(const UntypedAssetId& id, const ErasedAssetLoader* loader) const {
-//     if (auto opt = asset_infos.get_info(id);
-//         opt && (opt->state == LoadState::Pending || opt->state == LoadState::Failed)) {
-//         auto& info = *opt;
-//         info.state = LoadState::Loading;  // Set the state to Loading
-//         // check loader type
-//         if (loader && loader->asset_type() != id.type) {
-//             // If the loader type does not match the asset type, we cannot
-//             // use this loader
-//             loader = nullptr;
-//         }
-//         LoadContext context{*this, info.path};
-//         if (loader) {
-//             info.waiter = std::async(std::launch::async, [this, loader, id, context]() mutable {
-//                 try {
-//                     auto asset = loader->load(context.path(), context);
-//                     if (asset.value) {
-//                         event_sender.send(AssetLoadedEvent{id, std::move(asset)});
-//                     } else {
-//                         event_sender.send(AssetLoadFailedEvent{id,
-//                                                                "Failed to load asset. Loader returned no "
-//                                                                "value."});
-//                     }
-//                 } catch (const std::exception& e) {
-//                     event_sender.send(AssetLoadFailedEvent{id, e.what()});
-//                 }
-//             });
-//         } else if (auto loaders = asset_loaders.get_multi_by_path(info.path);
-//                    !loaders.empty() && std::ranges::any_of(loaders, [&id](const ErasedAssetLoader* l) {
-//                        return l->asset_type() == id.type;
-//                    })) {
-//             // There are loaders for the asset path, try them;
-//             info.waiter = std::async(std::launch::async, [this, id, context, loaders = std::move(loaders)]() mutable {
-//                 std::vector<std::string> errors;
-//                 for (auto& loader :
-//                      loaders | std::views::reverse |
-//                          std::views::filter([&id](const ErasedAssetLoader* l) { return l->asset_type() == id.type; })) {
-//                     try {
-//                         auto asset = loader->load(context.path(), context);
-//                         if (asset.value) {
-//                             event_sender.send(AssetLoadedEvent{id, std::move(asset)});
-//                             return;  // Successfully loaded, exit
-//                         } else {
-//                             errors.emplace_back("Loader returned no value.");
-//                         }
-//                     } catch (const std::exception& e) {
-//                         errors.emplace_back(e.what());
-//                     }
-//                 }
-//                 std::string error_message =
-//                     "Failed to load asset: " +
-//                     std::accumulate(errors.begin(), errors.end(), std::string(),
-//                                     [index = 0](const std::string& a, const std::string& b) mutable {
-//                                         return a + "\n" + "\tattempt " + std::to_string(++index) + ": " + b;
-//                                     });
-//                 event_sender.send(AssetLoadFailedEvent{id, std::move(error_message)});
-//             });
-//         } else if (auto loaders = asset_loaders.get_multi_by_type(id.type);  // Get loaders by type, if any exist
-//                    !loaders.empty()) {
-//             // There are loaders for the asset type, try them;
-//             info.waiter = std::async(std::launch::async, [this, id, context, loaders = std::move(loaders)]() mutable {
-//                 std::vector<std::string> errors;
-//                 for (auto& loader : loaders | std::views::reverse) {
-//                     try {
-//                         auto asset = loader->load(context.path(), context);
-//                         if (asset.value) {
-//                             event_sender.send(AssetLoadedEvent{id, std::move(asset)});
-//                             return;  // Successfully loaded, exit
-//                         } else {
-//                             errors.emplace_back("Loader returned no value.");
-//                         }
-//                     } catch (const std::exception& e) {
-//                         errors.emplace_back(e.what());
-//                     }
-//                 }
-//                 std::string error_message =
-//                     "Failed to load asset: " +
-//                     std::accumulate(errors.begin(), errors.end(), std::string(),
-//                                     [index = 0](const std::string& a, const std::string& b) mutable {
-//                                         return a + "\n" + "\tattempt " + std::to_string(++index) + ": " + b;
-//                                     });
-//                 event_sender.send(AssetLoadFailedEvent{id, std::move(error_message)});
-//             });
-//         } else {
-//             // No loader found for the asset type, we will keep it pending
-//             // and try to load it later
-//             spdlog::warn("No loader found for asset {} of type {}, keeping it pending", info.path.string(),
-//                          id.type.name());
-//             pending_loads.push_back(id);
-//             info.state = LoadState::Pending;  // Keep the state as Pending
-//         }
-//     }
-// }
-// std::optional<UntypedHandle> AssetServer::load_untyped(const std::filesystem::path& path) const {
-//     std::scoped_lock lock(info_mutex, pending_mutex);
-//     auto loader = asset_loaders.get_by_path(path);  // Get the loader by path
-//     if (!loader) {
-//         // No loader found, check if added manually.
-//         return asset_infos.get_or_create_handle_internal(path, std::nullopt);
-//     }
-//     auto type   = loader->asset_type();  // Get the asset type from the loader
-//     auto handle = asset_infos.get_or_create_handle_untyped(path, type);
-//     if (!handle) return std::nullopt;  // No handle created, return empty handle
-//     auto&& id = handle->id();
-//     load_internal(id, loader);  // Load the asset internally with the loader
-//     return *handle;             // Return the handle if it was created successfully
-// }
+namespace assets {
+bool asset_server_process_handle_destruction(const AssetServer& server, const UntypedAssetId& id) {
+    return server.process_handle_destruction(id);
+}
 
-// bool AssetServer::process_handle_destruction(const UntypedAssetId& id) const {
-//     // only lock infos
-//     std::unique_lock lock(info_mutex);
-//     // call the process_handle_destruction method of AssetInfos
-//     return asset_infos.process_handle_destruction(id);
-// }
-// bool assets::asset_server_process_handle_destruction(const AssetServer& server, const UntypedAssetId& id) {
-//     return server.process_handle_destruction(id);
-// }
+void log_asset_error(const AssetError& error, const std::string_view& header, const std::string_view& operation) {
+    std::visit(utils::visitor{
+                   [&header, &operation](const AssetNotPresent& e) {
+                       spdlog::error("[{}:{}] Asset not present at {}", header, operation,
+                                     std::visit(utils::visitor{[](const AssetIndex& idx) {
+                                                                   return std::format("index: {}, generation: {}",
+                                                                                      idx.index(), idx.generation());
+                                                               },
+                                                               [](const uuids::uuid& id) {
+                                                                   return std::format("uuid: {}", uuids::to_string(id));
+                                                               }},
+                                                e));
+                   },
+                   [&header, &operation](const IndexOutOfBound& e) {
+                       spdlog::error("[{}:{}] Index out of bound: {}", header, operation, e.index);
+                   },
+                   [&header, &operation](const SlotEmpty& e) {
+                       spdlog::error("[{}:{}] Slot is empty at index {}", header, operation, e.index);
+                   },
+                   [&header, &operation](const GenMismatch& e) {
+                       spdlog::error("[{}:{}] Generation mismatch at index {} (current: {}, expected: {})", header,
+                                     operation, e.index, e.current_gen, e.expected_gen);
+                   }},
+               error);
+}
+}  // namespace assets
 
-// void AssetServer::handle_events(ParamSet<World&, Res<AssetServer>> params) {
-//     auto&& [world, asset_server] = params.get();
-//     // Process events from the event receiver
-//     auto receiver = asset_server->event_receiver;
-//     std::unique_lock lock(asset_server->info_mutex);  // Lock the info mutex to ensure thread safety
-//     while (auto event = receiver.try_receive()) {
-//         if (std::holds_alternative<AssetLoadedEvent>(*event)) {
-//             auto& loaded_event = std::get<AssetLoadedEvent>(*event);
-//             auto info          = asset_server->asset_infos.get_info(loaded_event.id);
-//             // Insert the loaded asset into the world
-//             loaded_event.asset.value->insert(loaded_event.id, world,
-//                                              info ? info->on_loaded : std::function<void(void*)>{});
-//             if (info) info->state = LoadState::Loaded;
-//         } else if (std::holds_alternative<AssetLoadFailedEvent>(*event)) {
-//             auto& failed_event = std::get<AssetLoadFailedEvent>(*event);
-//             auto& id           = failed_event.id;
-//             spdlog::error("Failed to load asset {}: {}", id.to_string(), failed_event.error);
-//             if (auto info = asset_server->asset_infos.get_info(id)) {
-//                 info->state = LoadState::Failed;  // Set the state to Failed
-//             }
-//         }
-//     }
-// }
+void AssetServer::spawn_load_task(const UntypedAssetId& id, const AssetPath& path) const {
+    auto server     = *this;  // Copy AssetServer (shared_ptr copy, cheap)
+    auto asset_id   = id;
+    auto asset_path = path;
 
-// AssetServer::~AssetServer() {
-//     std::unique_lock lock(info_mutex);
-//     for (const auto& [id, info] : asset_infos.infos) {
-//         if (info.waiter.valid()) info.waiter.wait();  // Wait for all asset loading tasks to finish
-//     }
-// }
+    utils::IOTaskPool::instance().detach_task([server, asset_id, asset_path]() mutable {
+        std::optional<MaybeAssetLoader> maybe_loader;
+        {
+            auto loaders_guard = server.data->loaders->read();
+            maybe_loader       = loaders_guard->get_by_path(asset_path.path);
+        }
+        if (!maybe_loader) {
+            spdlog::error("No loader found for asset path: {}", asset_path.string());
+            server.data->asset_event_sender.send(internal_asset_event::Failed{
+                asset_id, asset_path,
+                load_error::MissingAssetLoader{
+                    std::nullopt, std::nullopt, asset_path,
+                    std::vector<std::string>{std::string(asset_path.get_extension().value_or(""))}}});
+            return;
+        }
+        auto loader = maybe_loader->get();
+        if (!loader) {
+            spdlog::error("Loader not available for asset path: {}", asset_path.string());
+            return;
+        }
 
-// // LoadContext non-templated implementation (placed in .cpp since it's not templated)
-// std::optional<UntypedHandle> LoadContext::load_untyped(const std::filesystem::path& path) {
-//     auto handle = m_server.load_untyped(path);
-//     if (handle) {
-//         m_dependencies.try_emplace(path, handle->id());
-//     }
-//     return handle;
-// }
+        // Get the asset source
+        auto source = server.data->sources->get(asset_path.source);
+        if (!source) {
+            spdlog::error("Asset source not found for: {}", asset_path.string());
+            return;
+        }
+
+        // Get the appropriate reader
+        const AssetReader* reader_ptr = nullptr;
+        std::optional<std::reference_wrapper<const AssetReader>> processed_reader_opt;
+        if (server.data->mode == AssetServerMode::Processed) {
+            processed_reader_opt = source->get().processed_reader();
+            if (!processed_reader_opt) {
+                spdlog::error("No processed reader available for source: {}", asset_path.string());
+                return;
+            }
+            reader_ptr = &processed_reader_opt->get();
+        } else {
+            reader_ptr = &source->get().reader();
+        }
+
+        auto read_result = reader_ptr->read(asset_path.path);
+        if (!read_result) {
+            spdlog::error("Failed to read asset: {}", asset_path.string());
+            server.data->asset_event_sender.send(internal_asset_event::Failed{
+                asset_id, asset_path,
+                load_error::AssetLoaderException{std::make_exception_ptr(std::runtime_error("Failed to read asset")),
+                                                 asset_path, loader->loader_type().short_name()}});
+            return;
+        }
+
+        auto context     = AssetServer::make_load_context(server, asset_path);
+        auto settings    = loader->default_settings();
+        auto load_result = loader->load(**read_result, *settings, context);
+        if (load_result) {
+            server.data->asset_event_sender.send(
+                internal_asset_event::Loaded{asset_id, std::move(load_result.value())});
+        } else {
+            spdlog::error("Failed to load asset: {}", asset_path.string());
+            server.data->asset_event_sender.send(internal_asset_event::Failed{
+                asset_id, asset_path,
+                load_error::AssetLoaderException{load_result.error(), asset_path, loader->loader_type().short_name()}});
+        }
+    });
+}
+
+void AssetServer::handle_internal_events(core::ParamSet<core::World&, core::Res<AssetServer>> params) {
+    auto&& [world, server] = params.get();
+    auto receiver          = server->data->asset_event_receiver;
+    while (auto event = receiver.try_receive()) {
+        std::visit(utils::visitor{
+                       [&](internal_asset_event::Loaded& loaded) {
+                           auto guard = server->data->infos.write();
+                           guard->process_asset_load(loaded.id, std::move(loaded.asset), world,
+                                                     server->data->asset_event_sender);
+                       },
+                       [&](internal_asset_event::LoadedWithDeps&) {
+                           // LoadedWithDependencies propagation is handled inside process_asset_load
+                       },
+                       [&](internal_asset_event::Failed& failed) {
+                           auto guard = server->data->infos.write();
+                           auto info  = guard->get_info_mut(failed.id);
+                           if (info) {
+                               info->get().state = failed.error;
+                           }
+                           spdlog::error("Asset load failed for {}", failed.path.string());
+                       },
+                   },
+                   *event);
+    }
+}

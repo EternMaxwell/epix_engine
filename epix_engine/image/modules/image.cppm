@@ -285,13 +285,18 @@ export class Image {
  *
  * Registered with the asset server to load supported image formats. */
 export struct ImageLoader {
+    using Asset = Image;
+    struct Settings : assets::Settings {};
+    using Error = ImageLoadError;
+
     /** @brief Get the list of supported file extensions.
      * @return Span of extension strings (e.g. ".png", ".jpg"). */
-    static std::span<const char* const> extensions() noexcept;
-    /** @brief Load an image asset from disk.
-     * @param path Path to the image file.
+    static std::span<std::string_view> extensions() noexcept;
+    /** @brief Load an image asset from a reader.
      * @param context Asset loading context. */
-    static Image load(const std::filesystem::path& path, assets::LoadContext& context);
+    static std::expected<Image, ImageLoadError> load(std::istream& reader,
+                                                     const Settings& settings,
+                                                     assets::LoadContext& context);
 };
 /** @brief Plugin that registers the image asset loader and related
  * systems. */

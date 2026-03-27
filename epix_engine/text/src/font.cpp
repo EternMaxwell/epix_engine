@@ -33,20 +33,23 @@ Font make_default_embedded_font() {
 }
 }  // namespace
 
-std::span<const char* const> FontLoader::extensions() {
-    static const auto exts = std::array{".ttf", ".otf", ".woff", ".woff2"};
-    return exts;
+std::span<std::string_view> FontLoader::extensions() {
+    static auto exts = std::array{std::string_view{"ttf"}, std::string_view{"otf"}, std::string_view{"woff"},
+                                  std::string_view{"woff2"}};
+    return std::span<std::string_view>(exts.data(), exts.size());
 }
 
-Font FontLoader::load(const std::filesystem::path& path, assets::LoadContext&) {
-    auto file_size = std::filesystem::file_size(path);
-    auto buffer    = std::make_unique<std::byte[]>(file_size);
-    std::ifstream file(path, std::ios::binary);
-    if (!file.is_open()) {
-        throw std::runtime_error("Failed to open font file: " + path.string());
+std::expected<Font, FontLoader::Error> FontLoader::load(std::istream& reader, const Settings&, assets::LoadContext&) {
+    try {
+        std::vector<char> bytes =
+            std::ranges::subrange(std::istreambuf_iterator<char>(reader), std::istreambuf_iterator<char>()) |
+            std::ranges::to<std::vector<char>>();
+        auto buffer = std::make_unique<std::byte[]>(bytes.size());
+        std::memcpy(buffer.get(), bytes.data(), bytes.size());
+        return Font{std::move(buffer), bytes.size()};
+    } catch (...) {
+        return std::unexpected(std::current_exception());
     }
-    file.read(reinterpret_cast<char*>(buffer.get()), static_cast<std::streamsize>(file_size));
-    return Font{std::move(buffer), static_cast<std::size_t>(file_size)};
 }
 
 FontLibrary::FontLibrary() {

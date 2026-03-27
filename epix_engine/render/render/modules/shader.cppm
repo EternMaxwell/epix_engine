@@ -59,13 +59,25 @@ export struct Shader {
 };
 /** @brief Asset loader for WGSL shader files. */
 export struct ShaderLoaderWGSL {
-    static std::span<const char* const> extensions();
-    static Shader load(const std::filesystem::path& path, assets::LoadContext& context);
+    using Asset = Shader;
+    struct Settings : assets::Settings {};
+    using Error = std::exception_ptr;
+
+    static std::span<std::string_view> extensions();
+    static std::expected<Shader, Error> load(std::istream& reader,
+                                             const Settings& settings,
+                                             assets::LoadContext& context);
 };
 /** @brief Asset loader for SPIR-V shader files. */
 export struct ShaderLoaderSPIRV {
-    static std::span<const char* const> extensions();
-    static Shader load(const std::filesystem::path& path, assets::LoadContext& context);
+    using Asset = Shader;
+    struct Settings : assets::Settings {};
+    using Error = std::exception_ptr;
+
+    static std::span<std::string_view> extensions();
+    static std::expected<Shader, Error> load(std::istream& reader,
+                                             const Settings& settings,
+                                             assets::LoadContext& context);
 };
 
 /** @brief Plugin that registers shader asset loaders and the shader

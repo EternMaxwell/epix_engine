@@ -525,33 +525,93 @@ Image Image::blur(std::uint32_t radius) const {
     return result;
 }
 
-std::span<const char* const> ImageLoader::extensions() noexcept {
-    static constexpr auto exts =
-        std::array{".png", ".jpg", ".jpeg", ".bmp", ".tga", ".hdr", ".pic", ".psd", ".gif", ".ppm", ".pgm", ".pnm"};
-    return exts;
-}
-Image ImageLoader::load(const std::filesystem::path& path, assets::LoadContext& context) {
-    auto res = Image::load(path);
-    if (!res) {
-        throw std::runtime_error("Failed to load image: " + path.string());
+namespace {
+std::expected<std::vector<unsigned char>, ImageLoadError> read_stream_bytes(std::istream& stream) {
+    try {
+        auto bytes = std::ranges::subrange(std::istreambuf_iterator<char>(stream), std::istreambuf_iterator<char>()) |
+                     std::views::transform([](char value) { return static_cast<unsigned char>(value); }) |
+                     std::ranges::to<std::vector<unsigned char>>();
+        return bytes;
+    } catch (...) {
+        return std::unexpected(ImageLoadError::LoadFailed);
     }
-    auto image = std::move(*res);
+}
+
+std::expected<Image, ImageLoadError> load_image_from_memory(const unsigned char* buffer, int size) {
+    int w, h, channels;
+    if (stbi_is_hdr_from_memory(buffer, size)) {
+        float* pixels = stbi_loadf_from_memory(buffer, size, &w, &h, &channels, 0);
+        if (!pixels) return std::unexpected(ImageLoadError::LoadFailed);
+
+        Format fmt      = (channels == 4) ? Format::RGBA32F : (channels == 3) ? Format::RGB32F : Format::Grey32F;
+        size_t byteSize = static_cast<size_t>(w) * h * channels * sizeof(float);
+        std::vector<std::byte> output(byteSize);
+        std::memcpy(output.data(), pixels, byteSize);
+        stbi_image_free(pixels);
+        return Image::create2d(w, h, fmt, output).value();
+    }
+
+    if (stbi_is_16_bit_from_memory(buffer, size)) {
+        unsigned short* pixels = stbi_load_16_from_memory(buffer, size, &w, &h, &channels, 0);
+        if (!pixels) return std::unexpected(ImageLoadError::LoadFailed);
+
+        Format fmt      = (channels == 4) ? Format::RGBA16 : (channels == 3) ? Format::RGB16 : Format::Grey16;
+        size_t byteSize = static_cast<size_t>(w) * h * channels * sizeof(unsigned short);
+        std::vector<std::byte> output(byteSize);
+        std::memcpy(output.data(), pixels, byteSize);
+        stbi_image_free(pixels);
+        return Image::create2d(w, h, fmt, output).value();
+    }
+
+    stbi_uc* pixels = stbi_load_from_memory(buffer, size, &w, &h, &channels, 0);
+    if (!pixels) return std::unexpected(ImageLoadError::LoadFailed);
+
+    Format fmt = (channels == 4)   ? Format::RGBA8
+                 : (channels == 3) ? Format::RGB8
+                 : (channels == 2) ? Format::GreyAlpha8
+                                   : Format::Grey8;
+
+    size_t byteSize = static_cast<size_t>(w) * h * channels;
+    std::vector<std::byte> output(byteSize);
+    std::memcpy(output.data(), pixels, byteSize);
+    stbi_image_free(pixels);
+    return Image::create2d(w, h, fmt, output).value();
+}
+}  // namespace
+
+std::span<std::string_view> ImageLoader::extensions() noexcept {
+    static auto exts =
+        std::array{std::string_view{"png"}, std::string_view{"jpg"}, std::string_view{"jpeg"}, std::string_view{"bmp"},
+                   std::string_view{"tga"}, std::string_view{"hdr"}, std::string_view{"pic"},  std::string_view{"psd"},
+                   std::string_view{"gif"}, std::string_view{"ppm"}, std::string_view{"pgm"},  std::string_view{"pnm"}};
+    return std::span<std::string_view>(exts.data(), exts.size());
+}
+std::expected<Image, ImageLoadError> ImageLoader::load(std::istream& reader,
+                                                       const Settings&,
+                                                       assets::LoadContext& context) {
+    auto bytes = read_stream_bytes(reader);
+    if (!bytes) return std::unexpected(bytes.error());
+
+    auto image = load_image_from_memory(bytes->data(), static_cast<int>(bytes->size()));
+    if (!image) return std::unexpected(image.error());
+
+    auto result = std::move(*image);
     // three channel images not supported in webgpu, convert to 4
-    switch (image.format()) {
+    switch (result.format()) {
         case Format::RGB8:
-            image = image.convert(Format::RGBA8);
+            result = result.convert(Format::RGBA8);
             break;
         case Format::RGB16:
-            image = image.convert(Format::RGBA16);
+            result = result.convert(Format::RGBA16);
             break;
         case Format::RGB32F:
-            image = image.convert(Format::RGBA32F);
+            result = result.convert(Format::RGBA32F);
             break;
         default:
             break;
     }
-    image.set_usage(ImageUsage::Render);  // default to render usage, can be changed later
-    return image;
+    result.set_usage(ImageUsage::Render);  // default to render usage, can be changed later
+    return result;
 }
 
 void ImagePlugin::build(core::App& app) {

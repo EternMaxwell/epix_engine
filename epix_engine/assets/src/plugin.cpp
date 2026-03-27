@@ -1,48 +1,29 @@
-﻿module;
-
-#include <spdlog/spdlog.h>
-
-module epix.assets;
+﻿module epix.assets;
 
 using namespace assets;
 using namespace core;
 
-// void assets::log_asset_error(const AssetError& error,
-//                              const std::string_view& header,
-//                              const std::string_view& operation) {
-//     std::visit(visitor{[&header, &operation](const AssetNotPresent& e) {
-//                            spdlog::error("[{}:{}] Asset not present at {}", header, operation,
-//                                          std::visit(visitor{[](const AssetIndex& idx) {
-//                                                                 return std::format("index: {}, generation: {}",
-//                                                                                    idx.index(), idx.generation());
-//                                                             },
-//                                                             [](const uuids::uuid& id) {
-//                                                                 return std::format("uuid: {}", uuids::to_string(id));
-//                                                             }},
-//                                                     e));
-//                        },
-//                        [&header, &operation](const IndexOutOfBound& e) {
-//                            spdlog::error("[{}:{}] Index out of bound: {}", header, operation, e.index);
-//                        },
-//                        [&header, &operation](const SlotEmpty& e) {
-//                            spdlog::error("[{}:{}] Slot is empty at index {}", header, operation, e.index);
-//                        },
-//                        [&header, &operation](const GenMismatch& e) {
-//                            spdlog::error(
-//                                "[{}:{}] Generation mismatch at index {} (current: {}, "
-//                                "expected: {})",
-//                                header, operation, e.index, e.current_gen, e.expected_gen);
-//                        }},
-//                error);
-// }
+void AssetPlugin::build(App& app) {
+    AssetSourceBuilders builders;
+    builders.init_default(file_path, processed_file_path);
+    for (auto& [id, builder] : m_source_builders) {
+        builders.insert(std::move(id), std::move(builder));
+    }
+    m_source_builders.clear();
+    auto sources = std::make_shared<AssetSources>(builders.build_sources(watch_for_changes, watch_for_changes));
+    app.world_mut().emplace_resource<AssetServer>(std::move(sources), mode, meta_check, watch_for_changes,
+                                                  unapproved_path_mode);
+    app.add_systems(Last, into(AssetServer::handle_internal_events));
+    app.configure_sets(sets(AssetSystems::HandleEvents, AssetSystems::WriteEvents).chain());
+}
 
-// void AssetPlugin::build(App& app) {
-//     app.world_mut().emplace_resource<AssetServer>();
-//     app.add_systems(Last, into(AssetServer::handle_events));
-//     app.configure_sets(sets(AssetSystems::HandleEvents, AssetSystems::WriteEvents).chain());
-// }
-// void AssetPlugin::finish(App& app) {
-//     for (auto&& insert : m_assets_inserts) {
-//         insert(app);
-//     }
-// }
+void AssetPlugin::finish(App& app) {
+    for (auto&& insert : m_assets_inserts) {
+        insert(app);
+    }
+}
+
+AssetPlugin& AssetPlugin::register_asset_source(AssetSourceId id, AssetSourceBuilder source) {
+    m_source_builders.emplace_back(std::move(id), std::move(source));
+    return *this;
+}
