@@ -155,6 +155,72 @@ struct TransformedSubAsset {
     A& operator*() { return m_asset.get(); }
     const A* operator->() const { return &m_asset.get(); }
     A* operator->() { return &m_asset.get(); }
+
+    /** @brief Try to get a nested labeled sub-asset by label string. */
+    template <typename B>
+    std::optional<TransformedSubAsset<B>> get_labeled(const std::string& label) {
+        auto it = m_labeled.get().find(label);
+        if (it == m_labeled.get().end()) return std::nullopt;
+        auto value = it->second.asset.template get<B>();
+        if (!value) return std::nullopt;
+        return TransformedSubAsset<B>(value->get(), it->second.asset.labeled_assets);
+    }
+
+    /** @brief Get a type-erased nested labeled sub-asset by label. */
+    std::optional<std::reference_wrapper<const ErasedLoadedAsset>> get_erased_labeled(const std::string& label) const {
+        auto it = m_labeled.get().find(label);
+        if (it == m_labeled.get().end()) return std::nullopt;
+        return std::cref(it->second.asset);
+    }
+
+    /** @brief Try to get a nested labeled sub-asset by handle id. */
+    template <typename B>
+    std::optional<TransformedSubAsset<B>> get_labeled_by_id(const UntypedAssetId& id) {
+        for (auto& [_, labeled] : m_labeled.get()) {
+            if (labeled.handle.id() != id) continue;
+            auto value = labeled.asset.template get<B>();
+            if (!value) return std::nullopt;
+            return TransformedSubAsset<B>(value->get(), labeled.asset.labeled_assets);
+        }
+        return std::nullopt;
+    }
+
+    /** @brief Get a type-erased nested labeled sub-asset by handle id. */
+    std::optional<std::reference_wrapper<const ErasedLoadedAsset>> get_erased_labeled_by_id(
+        const UntypedAssetId& id) const {
+        for (const auto& [_, labeled] : m_labeled.get()) {
+            if (labeled.handle.id() == id) return std::cref(labeled.asset);
+        }
+        return std::nullopt;
+    }
+
+    /** @brief Get the untyped handle of a nested labeled sub-asset. */
+    std::optional<UntypedHandle> get_untyped_handle(const std::string& label) const {
+        auto it = m_labeled.get().find(label);
+        if (it == m_labeled.get().end()) return std::nullopt;
+        return it->second.handle;
+    }
+
+    /** @brief Get the typed handle of a nested labeled sub-asset. */
+    template <typename B>
+    std::optional<Handle<B>> get_handle(const std::string& label) const {
+        auto handle = get_untyped_handle(label);
+        if (!handle) return std::nullopt;
+        auto typed = handle->template try_typed<B>();
+        if (!typed) return std::nullopt;
+        return std::move(*typed);
+    }
+
+    /** @brief Insert or replace a nested labeled sub-asset. */
+    void insert_labeled(const std::string& label, UntypedHandle handle, ErasedLoadedAsset asset) {
+        m_labeled.get().insert_or_assign(label, LabeledAsset{std::move(asset), handle});
+    }
+
+    /** @brief Get a range over all nested label strings. */
+    auto labels() const {
+        return m_labeled.get() |
+               std::views::transform([](const auto& pair) -> const std::string& { return pair.first; });
+    }
 };
 
 /** @brief An identity transformer that passes through the input asset unchanged.

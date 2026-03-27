@@ -6,25 +6,6 @@ import epix.assets;
 using namespace assets;
 
 // ===========================================================================
-// ErasedLoadedAsset — labels() range + take<A>()
-// Note: Creating a populated ErasedLoadedAsset requires internal types
-// (AssetContainerImpl) which are not exported. Tests are limited to
-// default-constructed state and API shape verification.
-// ===========================================================================
-
-TEST(ErasedLoadedAsset_Labels, Empty) {
-    ErasedLoadedAsset asset;
-    auto lbl = asset.labels();
-    EXPECT_TRUE(lbl.empty());
-}
-
-TEST(ErasedLoadedAsset_Take, NullValue) {
-    ErasedLoadedAsset asset;
-    auto taken = std::move(asset).take<int>();
-    EXPECT_FALSE(taken.has_value());
-}
-
-// ===========================================================================
 // LoadedAsset — labels() range
 // ===========================================================================
 
@@ -86,13 +67,31 @@ TEST(SavedAsset_FromTransformed, Dereference) {
 // ProcessContext — istream reader + ProcessedInfo
 // ===========================================================================
 
+// Helper for creating a minimal AssetProcessor for ProcessContext tests
+namespace {
+AssetProcessor make_test_processor() {
+    auto data           = std::make_shared<AssetProcessorData>();
+    auto dir            = memory::Directory::create({});
+    auto source_builder = AssetSourceBuilder::create([dir]() -> std::unique_ptr<AssetReader> {
+                              return std::make_unique<MemoryAssetReader>(dir);
+                          })
+                              .with_processed_reader([dir]() -> std::unique_ptr<AssetReader> {
+                                  return std::make_unique<MemoryAssetReader>(dir);
+                              })
+                              .with_processed_writer([dir]() -> std::unique_ptr<AssetWriter> {
+                                  return std::make_unique<MemoryAssetWriter>(dir);
+                              });
+    data->source_builders->insert(AssetSourceId{}, std::move(source_builder));
+    return AssetProcessor(data, false);
+}
+}  // namespace
+
 TEST(ProcessContext, ReaderAccess) {
-    auto sources = std::make_shared<AssetSources>();
-    AssetServer server(sources);
-    std::string data = "Hello, World!";
-    auto reader      = std::make_unique<std::istringstream>(data);
+    auto processor = make_test_processor();
+    std::istringstream data("Hello, World!");
     AssetPath path("test.txt");
-    ProcessContext ctx(server, path, std::move(reader));
+    ProcessedInfo info;
+    ProcessContext ctx(processor, path, data, info);
 
     std::string result;
     std::getline(ctx.asset_reader(), result);
@@ -100,22 +99,21 @@ TEST(ProcessContext, ReaderAccess) {
 }
 
 TEST(ProcessContext, ProcessedInfoPresent) {
-    auto sources = std::make_shared<AssetSources>();
-    AssetServer server(sources);
+    auto processor = make_test_processor();
     ProcessedInfo info;
-    info.hash   = 12345;
-    auto reader = std::make_unique<std::istringstream>("");
+    info.hash = 12345;
+    std::istringstream data("");
     AssetPath path("test.txt");
-    ProcessContext ctx(server, path, std::move(reader), info);
+    ProcessContext ctx(processor, path, data, info);
     EXPECT_EQ(ctx.path(), path);
 }
 
 TEST(ProcessContext, PathAccess) {
-    auto sources = std::make_shared<AssetSources>();
-    AssetServer server(sources);
-    auto reader = std::make_unique<std::istringstream>("");
+    auto processor = make_test_processor();
+    std::istringstream data("");
     AssetPath path("assets/model.obj");
-    ProcessContext ctx(server, path, std::move(reader));
+    ProcessedInfo info;
+    ProcessContext ctx(processor, path, data, info);
     EXPECT_EQ(ctx.path(), path);
 }
 
@@ -124,31 +122,30 @@ TEST(ProcessContext, PathAccess) {
 // ===========================================================================
 
 TEST(ProcessError, MissingProcessor) {
-    ProcessError err = process_error::MissingProcessor{.processor = "MyProcessor"};
-    EXPECT_TRUE(std::holds_alternative<process_error::MissingProcessor>(err));
+    ProcessError err{process_errors::MissingProcessor{"MyProcessor"}};
+    EXPECT_TRUE(std::holds_alternative<process_errors::MissingProcessor>(err));
 }
 
 TEST(ProcessError, AmbiguousProcessor) {
-    ProcessError err =
-        process_error::AmbiguousProcessor{.processor_short_name = "Proc", .ambiguous_processor_names = {"A", "B"}};
-    EXPECT_TRUE(std::holds_alternative<process_error::AmbiguousProcessor>(err));
+    ProcessError err{process_errors::AmbiguousProcessor{"Proc", {"A", "B"}}};
+    EXPECT_TRUE(std::holds_alternative<process_errors::AmbiguousProcessor>(err));
 }
 
 TEST(ProcessError, WrongMetaType) {
-    ProcessError err = process_error::WrongMetaType{};
-    EXPECT_TRUE(std::holds_alternative<process_error::WrongMetaType>(err));
+    ProcessError err{process_errors::WrongMetaType{}};
+    EXPECT_TRUE(std::holds_alternative<process_errors::WrongMetaType>(err));
 }
 
 TEST(ProcessError, ExtensionRequired) {
-    ProcessError err = process_error::ExtensionRequired{};
-    EXPECT_TRUE(std::holds_alternative<process_error::ExtensionRequired>(err));
+    ProcessError err{process_errors::ExtensionRequired{}};
+    EXPECT_TRUE(std::holds_alternative<process_errors::ExtensionRequired>(err));
 }
 
 TEST(ProcessError, DeserializeMetaError) {
-    ProcessError err = process_error::DeserializeMetaError{.message = "bad json"};
-    EXPECT_TRUE(std::holds_alternative<process_error::DeserializeMetaError>(err));
-    auto& dme = std::get<process_error::DeserializeMetaError>(err);
-    EXPECT_EQ(dme.message, "bad json");
+    ProcessError err{process_errors::DeserializeMetaError{"bad json"}};
+    EXPECT_TRUE(std::holds_alternative<process_errors::DeserializeMetaError>(err));
+    auto& dme = std::get<process_errors::DeserializeMetaError>(err);
+    EXPECT_EQ(dme.msg, "bad json");
 }
 
 // ===========================================================================

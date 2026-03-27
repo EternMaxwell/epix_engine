@@ -111,6 +111,19 @@ const FormatInfo& image::getFormatInfo(Format fmt) {
     }
 }
 
+std::exception_ptr image::to_exception_ptr(ImageLoadError error) {
+    switch (error) {
+        case ImageLoadError::FileNotFound:
+            return std::make_exception_ptr(std::runtime_error("Image file not found"));
+        case ImageLoadError::UnsupportedFormat:
+            return std::make_exception_ptr(std::runtime_error("Unsupported image format"));
+        case ImageLoadError::LoadFailed:
+            return std::make_exception_ptr(std::runtime_error("Image load failed"));
+        default:
+            return std::make_exception_ptr(std::runtime_error("Unknown image load error"));
+    }
+}
+
 Image Image::create(ImageType type, std::uint32_t w, std::uint32_t h, std::uint32_t depth_or_layers, Format fmt) {
     switch (type) {
         case ImageType::e1D:

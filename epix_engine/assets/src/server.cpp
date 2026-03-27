@@ -6,6 +6,8 @@ module epix.assets;
 
 import std;
 
+import :store;
+
 using namespace assets;
 
 AssetServer::AssetServer(std::shared_ptr<AssetSources> sources, AssetServerMode mode, bool watching_for_changes)
@@ -36,12 +38,31 @@ AssetServer::AssetServer(std::shared_ptr<AssetSources> sources,
     guard->watching_for_changes                                    = watching_for_changes;
 }
 
-namespace assets {
-bool asset_server_process_handle_destruction(const AssetServer& server, const UntypedAssetId& id) {
+AssetServer::AssetServer(std::shared_ptr<AssetSources> sources,
+                         std::shared_ptr<utils::RwLock<AssetLoaders>> loaders,
+                         AssetServerMode mode,
+                         AssetMetaCheck meta_check,
+                         bool watching_for_changes,
+                         UnapprovedPathMode unapproved_path_mode)
+    : data(std::make_shared<AssetServerData>()) {
+    data->sources                                                  = std::move(sources);
+    data->mode                                                     = mode;
+    data->watching_for_changes_flag                                = watching_for_changes;
+    data->meta_check                                               = meta_check;
+    data->unapproved_path_mode                                     = unapproved_path_mode;
+    data->loaders                                                  = std::move(loaders);
+    std::tie(data->asset_event_sender, data->asset_event_receiver) = utils::make_channel<InternalAssetEvent>();
+    auto guard                                                     = data->infos.write();
+    guard->watching_for_changes                                    = watching_for_changes;
+}
+
+bool ::assets::asset_server_process_handle_destruction(const AssetServer& server, const UntypedAssetId& id) {
     return server.process_handle_destruction(id);
 }
 
-void log_asset_error(const AssetError& error, const std::string_view& header, const std::string_view& operation) {
+void ::assets::log_asset_error(const AssetError& error,
+                               const std::string_view& header,
+                               const std::string_view& operation) {
     std::visit(utils::visitor{
                    [&header, &operation](const AssetNotPresent& e) {
                        spdlog::error("[{}:{}] Asset not present at {}", header, operation,
@@ -66,7 +87,6 @@ void log_asset_error(const AssetError& error, const std::string_view& header, co
                    }},
                error);
 }
-}  // namespace assets
 
 void AssetServer::spawn_load_task(const UntypedAssetId& id, const AssetPath& path) const {
     auto server     = *this;  // Copy AssetServer (shared_ptr copy, cheap)

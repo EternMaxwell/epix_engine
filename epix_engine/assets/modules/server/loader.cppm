@@ -8,17 +8,34 @@ import epix.meta;
 import :store;
 
 namespace assets {
-struct AssetServer;
+template <typename E>
+std::exception_ptr asset_loader_error_to_exception(const E& err) {
+    if constexpr (std::same_as<std::remove_cvref_t<E>, std::exception_ptr>) {
+        return err;
+    } else if constexpr (std::derived_from<std::remove_cvref_t<E>, std::exception>) {
+        return std::make_exception_ptr(err);
+    } else if constexpr (requires(const E& e) {
+                             { to_exception_ptr(e) } -> std::same_as<std::exception_ptr>;
+                         }) {
+        return to_exception_ptr(err);
+    } else {
+        static_assert(sizeof(E) == 0,
+                      "AssetLoader::Error must be convertible to std::exception_ptr (directly, via std::exception, "
+                      "or via to_exception_ptr(error)).");
+    }
+}
+
+export struct AssetServer;
 struct AssetInfos;
-struct ProcessContext;
-struct LoadContext;
-template <typename A>
+export struct ProcessContext;
+export struct LoadContext;
+export template <typename A>
 struct LoadedAsset;
-template <typename A>
+export template <typename A>
 struct SavedAsset;
-template <typename A>
+export template <typename A>
 struct TransformedAsset;
-template <typename A>
+export template <typename A>
 struct TransformedSubAsset;
 template <typename T>
 struct ErasedAssetLoaderImpl;
@@ -37,6 +54,15 @@ export struct ErasedLoadedAsset {
     std::unordered_set<UntypedAssetId> dependencies;
     std::unordered_map<AssetPath, std::size_t> loader_dependencies;
     std::unordered_map<std::string, LabeledAsset> labeled_assets;
+
+    ErasedLoadedAsset(std::unique_ptr<AssetContainer> v,
+                      std::unordered_set<UntypedAssetId> deps,
+                      std::unordered_map<AssetPath, std::size_t> loader_deps,
+                      std::unordered_map<std::string, LabeledAsset> labeled)
+        : value(std::move(v)),
+          dependencies(std::move(deps)),
+          loader_dependencies(std::move(loader_deps)),
+          labeled_assets(std::move(labeled)) {}
 
     friend struct AssetInfos;
     friend struct ProcessContext;
@@ -93,7 +119,8 @@ struct AssetContainerImpl : AssetContainer {
     ~AssetContainerImpl() override = default;
     meta::type_index type() const override { return meta::type_id<T>{}; }
     void insert(const UntypedAssetId& id, core::World& world) override {
-        world.resource_mut<Assets<T>>().insert(id.typed<T>(), std::move(asset));
+        auto&& assets                       = world.resource_mut<Assets<T>>();
+        [[maybe_unused]] auto insert_result = assets.insert(id.typed<T>(), std::move(asset));
     }
 };
 
@@ -208,6 +235,8 @@ export struct LoadContext {
     std::unordered_map<std::string, LabeledAsset> m_labeled_assets;
 
     friend struct NestedLoader;
+    template <typename>
+    friend struct ErasedAssetLoaderImpl;
 
    public:
     LoadContext(const AssetServer& server, AssetPath path);
@@ -312,6 +341,7 @@ concept AssetLoader = requires(const T& t, std::istream& stream, LoadContext& co
     {
         t.load(stream, std::declval<const typename T::Settings&>(), context)
     } -> std::same_as<std::expected<typename T::Asset, typename T::Error>>;
+    { asset_loader_error_to_exception(std::declval<const typename T::Error&>()) } -> std::same_as<std::exception_ptr>;
 };
 struct ErasedAssetLoader {
     virtual ~ErasedAssetLoader()                                                                  = default;
@@ -345,13 +375,13 @@ struct ErasedAssetLoaderImpl : T, ErasedAssetLoader {
             }
             auto loaded_asset = as_concrete().load(stream, *settings_ptr, context);
             if (!loaded_asset) {
-                throw std::runtime_error("Asset loader failed");
+                return std::unexpected(asset_loader_error_to_exception(loaded_asset.error()));
             }
             auto erased_asset = std::make_unique<AssetContainerImpl<typename T::Asset>>(std::move(*loaded_asset));
             return ErasedLoadedAsset{std::move(erased_asset), std::move(context.m_dependencies),
                                      std::move(context.m_loader_dependencies), std::move(context.m_labeled_assets)};
         } catch (...) {
-            return std::current_exception();
+            return std::unexpected(std::current_exception());
         }
     }
 };

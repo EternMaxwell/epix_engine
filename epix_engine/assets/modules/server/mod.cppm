@@ -39,6 +39,7 @@ struct AssetServerData {
 export struct AssetServer {
     std::shared_ptr<AssetServerData> data;
 
+    AssetServer()                              = default;
     AssetServer(const AssetServer&)            = default;
     AssetServer(AssetServer&&)                 = default;
     AssetServer& operator=(const AssetServer&) = default;
@@ -52,6 +53,15 @@ export struct AssetServer {
     /** @brief Construct with meta check policy.
      *  Matches bevy_asset's AssetServer::new_with_meta_check. */
     AssetServer(std::shared_ptr<AssetSources> sources,
+                AssetServerMode mode,
+                AssetMetaCheck meta_check,
+                bool watching_for_changes,
+                UnapprovedPathMode unapproved_path_mode = UnapprovedPathMode::Forbid);
+
+    /** @brief Construct with shared loaders (for sharing loaders between processor and main server).
+     *  Matches bevy_asset's AssetServer::new_with_loaders. */
+    AssetServer(std::shared_ptr<AssetSources> sources,
+                std::shared_ptr<utils::RwLock<AssetLoaders>> loaders,
                 AssetServerMode mode,
                 AssetMetaCheck meta_check,
                 bool watching_for_changes,

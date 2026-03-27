@@ -6,16 +6,6 @@ import epix.assets;
 using namespace assets;
 
 // ===========================================================================
-// ErasedLoadedAsset
-// ===========================================================================
-
-TEST(ErasedLoadedAsset, DefaultConstructed_NullValue) {
-    ErasedLoadedAsset asset;
-    EXPECT_TRUE(asset.labels().empty());
-    EXPECT_FALSE(asset.get<int>().has_value());
-}
-
-// ===========================================================================
 // LoadedAsset<A>
 // ===========================================================================
 

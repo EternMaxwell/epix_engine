@@ -47,6 +47,7 @@ const FormatInfo& getFormatInfo(Format fmt);
 
 /** @brief Error codes returned when loading an image from disk. */
 enum class ImageLoadError { FileNotFound, UnsupportedFormat, LoadFailed };
+std::exception_ptr to_exception_ptr(ImageLoadError error);
 /** @brief Error codes returned when saving an image to disk. */
 enum class ImageSaveError { SaveFailed };
 /** @brief Error codes returned when sampling a pixel out of bounds. */

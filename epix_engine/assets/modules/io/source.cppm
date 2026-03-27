@@ -56,6 +56,17 @@ export struct AssetSource {
     }
     bool should_process() const { return m_processed_writer != nullptr; }
 
+    /** @brief Gate the processed reader through a factory function.
+     *  Moves the current processed_reader to ungated_processed_reader,
+     *  then creates a new gated processed_reader via the factory.
+     *  The factory receives (source_id, reference_to_ungated_reader). */
+    void gate_on_processor(std::function<std::unique_ptr<AssetReader>(AssetSourceId, const AssetReader&)> factory) {
+        if (m_processed_reader) {
+            m_ungated_processed_reader = std::move(m_processed_reader);
+            m_processed_reader         = factory(m_id, *m_ungated_processed_reader);
+        }
+    }
+
     static std::function<std::unique_ptr<AssetReader>()> get_default_reader(std::filesystem::path path) {
         return [path = std::move(path)]() -> std::unique_ptr<AssetReader> {
             return std::make_unique<FileAssetReader>(path);
@@ -199,6 +210,12 @@ export struct AssetSources {
     }
     auto ids() const {
         return iter() | std::views::transform([](const AssetSource& source) { return source.id(); });
+    }
+    /** @brief Gate all processed sources through the given factory. */
+    void gate_on_processor(std::function<std::unique_ptr<AssetReader>(AssetSourceId, const AssetReader&)> factory) {
+        for (auto& source : iter_processed_mut()) {
+            source.gate_on_processor(factory);
+        }
     }
 };
 

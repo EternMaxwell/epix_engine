@@ -5,6 +5,13 @@ export module epix.utils:async;
 import std;
 
 namespace utils {
+/** @brief Policy controlling sender behavior when a bounded ConQueue is full. */
+export enum class OverflowPolicy {
+    Block,       ///< Block the sender until space is available.
+    DropOldest,  ///< Drop the oldest element in the queue to make room.
+    DropNewest,  ///< Discard the new element (do not enqueue).
+};
+
 /**
  * @brief A thread-safe queue implementation using std::deque and
  * std::shared_mutex.
@@ -32,9 +39,13 @@ struct ConQueue {
     container_type m_queue;
     std::mutex m_mutex;
     std::condition_variable m_cv;
+    std::optional<std::size_t> m_capacity;
+    OverflowPolicy m_overflow_policy = OverflowPolicy::Block;
 
    public:
-    ConQueue()                           = default;
+    ConQueue() = default;
+    ConQueue(std::size_t capacity, OverflowPolicy policy = OverflowPolicy::Block)
+        : m_capacity(capacity), m_overflow_policy(policy) {}
     ConQueue(const ConQueue&)            = delete;
     ConQueue(ConQueue&&)                 = delete;
     ConQueue& operator=(const ConQueue&) = delete;
@@ -48,8 +59,23 @@ struct ConQueue {
     template <typename... Args>
     void emplace(Args&&... args) {
         std::unique_lock lock(m_mutex);
+        if (m_capacity.has_value()) {
+            auto capacity = *m_capacity;
+            if (m_queue.size() >= capacity) {
+                switch (m_overflow_policy) {
+                    case OverflowPolicy::Block:
+                        m_cv.wait(lock, [this, capacity] { return m_queue.size() < capacity; });
+                        break;
+                    case OverflowPolicy::DropOldest:
+                        m_queue.pop_front();
+                        break;
+                    case OverflowPolicy::DropNewest:
+                        return;
+                }
+            }
+        }
         m_queue.emplace_back(std::forward<Args>(args)...);
-        m_cv.notify_one();
+        m_cv.notify_all();
     }
     /** @brief Remove and return the front element, blocking until one is
      * available. */
@@ -58,7 +84,8 @@ struct ConQueue {
         m_cv.wait(lock, [this] { return !m_queue.empty(); });
         T value = std::move(m_queue.front());
         m_queue.pop_front();
-        return std::move(value);
+        m_cv.notify_all();  // wake any sender waiting for space (Block policy)
+        return value;
     }
     /** @brief Try to remove and return the front element without blocking.
      * @return The front element, or std::nullopt if the queue is empty.
@@ -68,7 +95,8 @@ struct ConQueue {
         if (m_queue.empty()) return std::nullopt;
         T value = std::move(m_queue.front());
         m_queue.pop_front();
-        return std::move(value);
+        m_cv.notify_all();  // wake any sender waiting for space (Block policy)
+        return value;
     }
     /** @brief Check whether the queue is empty. */
     bool empty() {
@@ -171,6 +199,96 @@ export template <std::movable T, typename Alloc = std::allocator<T>>
 std::pair<Sender<T, Alloc>, Receiver<T, Alloc>> make_channel() {
     auto queue = std::make_shared<ConQueue<T, Alloc>>();
     return {Sender<T, Alloc>(queue), Receiver<T, Alloc>(queue)};
+}
+/** @brief Create a bounded Sender/Receiver channel pair backed by a shared ConQueue.
+ * @tparam T Element type.
+ * @param capacity Maximum number of elements the queue can hold.
+ * @param policy Overflow policy when the queue is full.
+ * @return A pair of (Sender, Receiver).
+ */
+export template <std::movable T, typename Alloc = std::allocator<T>>
+std::pair<Sender<T, Alloc>, Receiver<T, Alloc>> make_channel(std::size_t capacity,
+                                                             OverflowPolicy policy = OverflowPolicy::Block) {
+    auto queue = std::make_shared<ConQueue<T, Alloc>>(capacity, policy);
+    return {Sender<T, Alloc>(queue), Receiver<T, Alloc>(queue)};
+}
+
+/** @brief Sender end of a one-shot broadcast channel backed by std::promise.
+ *
+ * Sends a single value to ALL receivers independently.
+ * Duplicate sends are silently ignored.
+ * @tparam T Value type (must be copy-constructible).
+ */
+export template <typename T>
+struct BroadcastSender {
+   private:
+    std::shared_ptr<std::promise<T>> m_promise;
+
+   public:
+    BroadcastSender() = default;
+    BroadcastSender(std::shared_ptr<std::promise<T>> promise) : m_promise(std::move(promise)) {}
+    BroadcastSender(const BroadcastSender&)            = default;
+    BroadcastSender(BroadcastSender&&)                 = default;
+    BroadcastSender& operator=(const BroadcastSender&) = default;
+    BroadcastSender& operator=(BroadcastSender&&)      = default;
+    ~BroadcastSender()                                 = default;
+
+    operator bool() const { return m_promise != nullptr; }
+    bool operator!() const { return m_promise == nullptr; }
+
+    /** @brief Send a value to all receivers, blocking until stored.
+     *  Silently ignores duplicate sends (promise already fulfilled).
+     */
+    void send(T value) const {
+        if (!m_promise) return;
+        try {
+            m_promise->set_value(std::move(value));
+        } catch (const std::future_error&) {}
+    }
+};
+
+/** @brief Receiver end of a one-shot broadcast channel backed by std::shared_future.
+ *
+ * Cloneable: every copy independently receives the same value.
+ * receive() blocks until the sender sends, then returns the value;
+ * subsequent calls return the cached value immediately.
+ * @tparam T Value type (must be copy-constructible).
+ */
+export template <typename T>
+struct BroadcastReceiver {
+   private:
+    std::shared_future<T> m_future;
+
+   public:
+    BroadcastReceiver() = default;
+    BroadcastReceiver(std::shared_future<T> future) : m_future(std::move(future)) {}
+    BroadcastReceiver(const BroadcastReceiver&)            = default;
+    BroadcastReceiver(BroadcastReceiver&&)                 = default;
+    BroadcastReceiver& operator=(const BroadcastReceiver&) = default;
+    BroadcastReceiver& operator=(BroadcastReceiver&&)      = default;
+    ~BroadcastReceiver()                                   = default;
+
+    operator bool() const { return m_future.valid(); }
+    bool operator!() const { return !m_future.valid(); }
+
+    /** @brief Block until the value is available, then return it.
+     *  May be called multiple times; always returns the same value.
+     */
+    T receive() const { return m_future.get(); }
+};
+
+/** @brief Create a one-shot broadcast channel pair.
+ *
+ * The sender sets the value exactly once; all current and future receivers
+ * independently receive that same value via receive().
+ * @tparam T Element type (must be copy-constructible).
+ * @return A pair of (BroadcastSender, BroadcastReceiver).
+ */
+export template <typename T>
+std::pair<BroadcastSender<T>, BroadcastReceiver<T>> make_broadcast_channel() {
+    auto promise = std::make_shared<std::promise<T>>();
+    auto future  = std::shared_future<T>(promise->get_future());
+    return {BroadcastSender<T>(std::move(promise)), BroadcastReceiver<T>(std::move(future))};
 }
 /** @brief Simple mutex wrapper that pairs a std::mutex with the data it protects.
  *

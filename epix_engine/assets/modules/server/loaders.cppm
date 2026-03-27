@@ -13,8 +13,8 @@ import :server.loader;
 
 namespace assets {
 struct PendingAssetLoader {
-    utils::Sender<std::shared_ptr<ErasedAssetLoader>> sender;
-    utils::Receiver<std::shared_ptr<ErasedAssetLoader>> receiver;
+    utils::BroadcastSender<std::shared_ptr<ErasedAssetLoader>> sender;
+    utils::BroadcastReceiver<std::shared_ptr<ErasedAssetLoader>> receiver;
 };
 struct MaybeAssetLoader : std::variant<std::shared_ptr<ErasedAssetLoader>, PendingAssetLoader> {
     using variant::variant;
@@ -43,13 +43,14 @@ struct AssetLoaders {
     }
     template <typename T>
         requires AssetLoader<std::remove_cvref_t<T>>
-    void push(T&& loader) {
+    void push(T&& loader_value) {
         using loader_type                  = std::remove_cvref_t<T>;
         meta::type_index loader_asset_type = meta::type_id<typename loader_type::Asset>{};
 
-        auto loader = std::make_shared<ErasedAssetLoaderImpl<std::remove_cvref_t<T>>>(std::forward<T>(loader));
+        auto erased_loader =
+            std::make_shared<ErasedAssetLoaderImpl<std::remove_cvref_t<T>>>(std::forward<T>(loader_value));
         auto [loader_index, is_new] = [&]() {
-            if (auto it = type_name_to_preregistered_loader.find(loader->loader_type().name());
+            if (auto it = type_name_to_preregistered_loader.find(erased_loader->loader_type().name());
                 it != type_name_to_preregistered_loader.end()) {
                 return std::make_pair(it->second, false);
             } else {
@@ -60,7 +61,7 @@ struct AssetLoaders {
         if (is_new) {
             auto&& existing_loaders_for_asset = type_to_loaders[loader_asset_type];
             std::vector<std::string_view> duplicate_extensions;
-            for (auto&& extension : loader->extensions()) {
+            for (auto&& extension : erased_loader->extensions()) {
                 auto& loaders_for_extension = extension_to_loaders[extension];
                 if (!loaders_for_extension.empty() &&
                     std::ranges::any_of(loaders_for_extension, [&](std::size_t index) {
@@ -75,20 +76,21 @@ struct AssetLoaders {
                              loader_asset_type.short_name(), duplicate_extensions);
             }
 
-            type_name_to_loader.emplace(loader->loader_type().name(), loader_index);
+            type_name_to_loader.emplace(erased_loader->loader_type().name(), loader_index);
             type_to_loaders[loader_asset_type].push_back(loader_index);
-            loaders.push_back(std::move(loader));
+            loaders.push_back(std::move(erased_loader));
         } else {
             MaybeAssetLoader maybe_loader = std::move(loaders[loader_index]);
-            loaders[loader_index]         = std::move(loader);
-            std::visit(
-                utils::visitor{[&](std::shared_ptr<ErasedAssetLoader>&) { std::unreachable(); },
-                               [&](PendingAssetLoader& pending) {
-                                   utils::IOTaskPool::get().detach_task([maybe_loader = std::move(maybe_loader)]() {
-                                       auto _ = pending.receiver.receive();  // get and destruct.
-                                   });
-                               }},
-                maybe_loader.as_base());
+            loaders[loader_index]         = std::move(erased_loader);
+            std::visit(utils::visitor{[&](std::shared_ptr<ErasedAssetLoader>&) { std::unreachable(); },
+                                      [&](PendingAssetLoader& pending) {
+                                          auto loader = std::get<std::shared_ptr<ErasedAssetLoader>>(
+                                              loaders[loader_index].as_base());
+                                          auto sender = std::move(pending.sender);
+                                          utils::IOTaskPool::instance().detach_task(
+                                              [sender = std::move(sender), loader]() mutable { sender.send(loader); });
+                                      }},
+                       maybe_loader.as_base());
         }
     }
     template <AssetLoader loader_type>
@@ -116,7 +118,7 @@ struct AssetLoaders {
         }
 
         type_to_loaders[loader_asset_type].push_back(loader_index);
-        auto&& [sender, receiver] = utils::make_channel<std::shared_ptr<ErasedAssetLoader>>();
+        auto&& [sender, receiver] = utils::make_broadcast_channel<std::shared_ptr<ErasedAssetLoader>>();
         loaders.push_back(PendingAssetLoader{std::move(sender), std::move(receiver)});
     }
     std::optional<MaybeAssetLoader> get_by_name(std::string_view loader_type_name) const {

@@ -162,6 +162,32 @@ TEST(Assets, StrongHandleDrop_CausesRelease) {
     EXPECT_TRUE(assets.contains(id));
 }
 
+TEST(Assets, StrongHandleDrop_ManualEventHandlingReleasesAsset) {
+    Assets<std::string> assets;
+
+    auto id = AssetId<std::string>::invalid();
+    {
+        auto strong = assets.emplace("temp");
+        id          = strong.id();
+        EXPECT_TRUE(assets.contains(id));
+    }
+
+    assets.handle_events_manual();
+    EXPECT_FALSE(assets.contains(id));
+}
+
+TEST(Assets, MultipleStrongHandles_DroppingOneRetainsAsset) {
+    Assets<std::string> assets;
+
+    auto strong1 = assets.emplace("value");
+    auto strong2 = strong1;
+    auto id      = strong1.id();
+
+    strong1 = Handle<std::string>(AssetId<std::string>::invalid());
+    assets.handle_events_manual();
+    EXPECT_TRUE(assets.contains(id));
+}
+
 // ===========================================================================
 // Assets<T> — index recycling
 // ===========================================================================
@@ -178,6 +204,27 @@ TEST(Assets, IndexRecycling) {
     auto idx1 = std::get<AssetIndex>(id1);
     auto idx2 = std::get<AssetIndex>(id2);
     EXPECT_NE(idx1.index(), idx2.index());
+}
+
+TEST(Assets, IndexRecycling_AfterHandleDestruction_ReusesIndexAndBumpsGeneration) {
+    Assets<std::string> assets;
+
+    std::optional<AssetIndex> first_index;
+    {
+        auto first = assets.emplace("first");
+        ASSERT_TRUE(first.id().is_index());
+        first_index = std::get<AssetIndex>(first.id());
+    }
+    ASSERT_TRUE(first_index.has_value());
+
+    assets.handle_events_manual();
+
+    auto second = assets.emplace("second");
+    ASSERT_TRUE(second.id().is_index());
+    auto second_index = std::get<AssetIndex>(second.id());
+
+    EXPECT_EQ(first_index->index(), second_index.index());
+    EXPECT_EQ(first_index->generation() + 1, second_index.generation());
 }
 
 // ===========================================================================
@@ -197,6 +244,29 @@ TEST(Assets, ReserveHandle_ThenInsert) {
     auto val = assets.get(handle.id());
     ASSERT_TRUE(val.has_value());
     EXPECT_EQ(val->get(), "reserved");
+}
+
+TEST(Assets, ReserveHandle_PreservesReservedIndexForInsert) {
+    Assets<std::string> assets;
+
+    auto reserved = assets.reserve_handle();
+    ASSERT_TRUE(reserved.id().is_index());
+    auto reserved_index = std::get<AssetIndex>(reserved.id());
+
+    auto inserted = assets.insert(reserved.id(), std::string("value"));
+    ASSERT_TRUE(inserted.has_value());
+    EXPECT_FALSE(inserted.value());
+
+    auto stored = assets.get(reserved.id());
+    ASSERT_TRUE(stored.has_value());
+    EXPECT_EQ(stored->get(), "value");
+
+    auto ids = assets.ids();
+    ASSERT_EQ(ids.size(), 1u);
+    ASSERT_TRUE(ids.front().is_index());
+    auto stored_index = std::get<AssetIndex>(ids.front());
+    EXPECT_EQ(stored_index.index(), reserved_index.index());
+    EXPECT_EQ(stored_index.generation(), reserved_index.generation());
 }
 
 // ===========================================================================

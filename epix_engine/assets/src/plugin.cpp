@@ -10,9 +10,27 @@ void AssetPlugin::build(App& app) {
         builders.insert(std::move(id), std::move(builder));
     }
     m_source_builders.clear();
-    auto sources = std::make_shared<AssetSources>(builders.build_sources(watch_for_changes, watch_for_changes));
-    app.world_mut().emplace_resource<AssetServer>(std::move(sources), mode, meta_check, watch_for_changes,
-                                                  unapproved_path_mode);
+
+    switch (mode) {
+        case AssetServerMode::Unprocessed: {
+            auto sources = std::make_shared<AssetSources>(builders.build_sources(watch_for_changes, false));
+            app.world_mut().emplace_resource<AssetServer>(std::move(sources), mode, meta_check, watch_for_changes,
+                                                          unapproved_path_mode);
+            break;
+        }
+        case AssetServerMode::Processed: {
+            auto processor_data             = std::make_shared<AssetProcessorData>();
+            processor_data->source_builders = std::make_shared<AssetSourceBuilders>(std::move(builders));
+            auto processor                  = AssetProcessor(std::move(processor_data), watch_for_changes);
+            // Main server shares loaders and sources with the processor's internal server
+            app.world_mut().emplace_resource<AssetServer>(processor.sources(), processor.get_server().data->loaders,
+                                                          AssetServerMode::Processed, AssetMetaCheck::Always,
+                                                          watch_for_changes, unapproved_path_mode);
+            app.world_mut().emplace_resource<AssetProcessor>(std::move(processor));
+            app.add_systems(Startup, into(AssetProcessor::start));
+            break;
+        }
+    }
     app.add_systems(Last, into(AssetServer::handle_internal_events));
     app.configure_sets(sets(AssetSystems::HandleEvents, AssetSystems::WriteEvents).chain());
 }

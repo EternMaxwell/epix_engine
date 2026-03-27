@@ -15,7 +15,10 @@ export import :server.loader;
 export import :server;
 export import :saver;
 export import :transformer;
+export import :processor.process;
+export import :processor.log;
 export import :processor;
+export import :io.processor_gated;
 export import :io.memory;
 export import :io.memory.asset;
 export import :io.reader;
@@ -77,68 +80,95 @@ export struct AssetPlugin {
     void finish(App& app);
 };
 
+/** @brief AssetApp-style helper: register an asset type directly on an App with an existing AssetServer. */
+export template <std::movable T>
+App& app_register_asset(App& app) {
+    if (app.world_mut().get_resource<Assets<T>>().has_value()) return app;
+    app.world_mut().init_resource<Assets<T>>();
+    app.resource_mut<AssetServer>().register_assets(app.resource<Assets<T>>());
+    app.add_events<AssetEvent<T>>();
+    app.add_systems(PostStartup,
+                    into(into(Assets<T>::handle_events).in_set(AssetSystems::HandleEvents),
+                         into(Assets<T>::asset_events).in_set(AssetSystems::WriteEvents))
+                        .chain()
+                        .set_names(std::array{std::format("handle {} asset events", meta::type_id<T>::name()),
+                                              std::format("send {} asset events", meta::type_id<T>::name())}));
+    app.add_systems(PreStartup,
+                    into(Assets<T>::asset_events)
+                        .in_set(AssetSystems::WriteEvents)
+                        .set_names(std::array{std::format("send {} asset events", meta::type_id<T>::name())}));
+    app.add_systems(First, into(Assets<T>::asset_events)
+                               .in_set(AssetSystems::WriteEvents)
+                               .set_names(std::array{std::format("send {} asset events", meta::type_id<T>::name())}));
+    app.add_systems(Last, into(Assets<T>::asset_events)
+                              .in_set(AssetSystems::WriteEvents)
+                              .set_names(std::array{std::format("send {} asset events", meta::type_id<T>::name())}));
+    app.add_systems(PostUpdate, into(Assets<T>::handle_events)
+                                    .in_set(AssetSystems::HandleEvents)
+                                    .set_name(std::format("handle {} asset events", meta::type_id<T>::name())));
+    return app;
+}
+
+/** @brief AssetApp-style helper: register a loader directly on an App with an existing AssetServer. */
+export template <AssetLoader T>
+App& app_register_loader(App& app, const T& t = T()) {
+    app.resource_mut<AssetServer>().register_loader(t);
+    return app;
+}
+
+/** @brief AssetApp-style helper: preregister a loader extension mapping directly on an App. */
+export template <AssetLoader T>
+App& app_preregister_loader(App& app, std::span<std::string_view> extensions) {
+    app.resource_mut<AssetServer>().template preregister_loader<T>(extensions);
+    return app;
+}
+
+/** @brief AssetApp-style helper: register an asset processor directly on an App. */
+export template <Process P>
+App& app_register_asset_processor(App& app, P processor) {
+    if (!app.world_mut().get_resource<AssetProcessor>().has_value()) {
+        throw std::runtime_error("AssetProcessor resource not found. Build AssetPlugin in Processed mode first.");
+    }
+    app.resource_mut<AssetProcessor>().register_processor(std::move(processor));
+    return app;
+}
+
+/** @brief AssetApp-style helper: set the default asset processor for an extension directly on an App. */
+export template <Process P>
+App& app_set_default_asset_processor(App& app, const std::string& extension) {
+    if (!app.world_mut().get_resource<AssetProcessor>().has_value()) {
+        throw std::runtime_error("AssetProcessor resource not found. Build AssetPlugin in Processed mode first.");
+    }
+    app.resource_mut<AssetProcessor>().template set_default_processor<P>(extension);
+    return app;
+}
+
 template <std::movable T>
 AssetPlugin& AssetPlugin::register_asset() {
-    m_assets_inserts.push_back([](App& app) {
-        if (app.world_mut().get_resource<Assets<T>>().has_value()) return;
-        app.world_mut().init_resource<Assets<T>>();
-        app.resource_mut<AssetServer>().register_assets(app.resource<Assets<T>>());
-        app.add_events<AssetEvent<T>>();
-        app.add_systems(PostStartup,
-                        into(into(Assets<T>::handle_events).in_set(AssetSystems::HandleEvents),
-                             into(Assets<T>::asset_events).in_set(AssetSystems::WriteEvents))
-                            .chain()
-                            .set_names(std::array{std::format("handle {} asset events", meta::type_id<T>::name()),
-                                                  std::format("send {} asset events", meta::type_id<T>::name())}));
-        app.add_systems(PreStartup,
-                        into(Assets<T>::asset_events)
-                            .in_set(AssetSystems::WriteEvents)
-                            .set_names(std::array{std::format("send {} asset events", meta::type_id<T>::name())}));
-        app.add_systems(First,
-                        into(Assets<T>::asset_events)
-                            .in_set(AssetSystems::WriteEvents)
-                            .set_names(std::array{std::format("send {} asset events", meta::type_id<T>::name())}));
-        app.add_systems(Last,
-                        into(Assets<T>::asset_events)
-                            .in_set(AssetSystems::WriteEvents)
-                            .set_names(std::array{std::format("send {} asset events", meta::type_id<T>::name())}));
-        app.add_systems(PostUpdate, into(Assets<T>::handle_events)
-                                        .in_set(AssetSystems::HandleEvents)
-                                        .set_name(std::format("handle {} asset events", meta::type_id<T>::name())));
-    });
+    m_assets_inserts.push_back([](App& app) { app_register_asset<T>(app); });
     return *this;
 }
 template <AssetLoader T>
 AssetPlugin& AssetPlugin::register_loader(const T& t) {
-    m_assets_inserts.push_back([t](App& app) { app.resource_mut<AssetServer>().register_loader(t); });
+    m_assets_inserts.push_back([t](App& app) { app_register_loader<T>(app, t); });
     return *this;
 }
 template <AssetLoader T>
 AssetPlugin& AssetPlugin::preregister_loader(std::span<std::string_view> extensions) {
-    m_assets_inserts.push_back(
-        [extensions = std::vector<std::string_view>(extensions.begin(), extensions.end())](App& app) {
-            app.resource_mut<AssetServer>().template preregister_loader<T>(extensions);
-        });
+    m_assets_inserts.push_back([extensions = std::vector<std::string_view>(extensions.begin(), extensions.end())](
+                                   App& app) { app_preregister_loader<T>(app, extensions); });
     return *this;
 }
 template <Process P>
 AssetPlugin& AssetPlugin::register_asset_processor(P processor) {
     m_assets_inserts.push_back([processor = std::move(processor)](App& app) mutable {
-        if (!app.world_mut().get_resource<AssetProcessor>().has_value()) {
-            app.world_mut().init_resource<AssetProcessor>();
-        }
-        app.resource_mut<AssetProcessor>().register_processor(std::move(processor));
+        app_register_asset_processor<P>(app, std::move(processor));
     });
     return *this;
 }
 template <Process P>
 AssetPlugin& AssetPlugin::set_default_asset_processor(const std::string& extension) {
-    m_assets_inserts.push_back([extension](App& app) {
-        if (!app.world_mut().get_resource<AssetProcessor>().has_value()) {
-            app.world_mut().init_resource<AssetProcessor>();
-        }
-        app.resource_mut<AssetProcessor>().template set_default_processor<P>(extension);
-    });
+    m_assets_inserts.push_back([extension](App& app) { app_set_default_asset_processor<P>(app, extension); });
     return *this;
 }
 }  // namespace assets
