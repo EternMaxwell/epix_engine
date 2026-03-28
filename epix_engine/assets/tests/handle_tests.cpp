@@ -191,3 +191,22 @@ TEST(Handle, ImplicitConversionToAssetId) {
     AssetId<std::string> converted = h;
     EXPECT_EQ(converted, id);
 }
+
+// ===========================================================================
+// UntypedHandle::meta_transform()
+// ===========================================================================
+
+TEST(UntypedHandle, MetaTransform_WeakHandle_ReturnsNull) {
+    auto id = AssetId<std::string>::invalid();
+    Handle<std::string> h(id);
+    UntypedHandle uh = h.untyped();
+    EXPECT_EQ(uh.meta_transform(), nullptr);
+}
+
+TEST(UntypedHandle, MetaTransform_StrongHandle_WithoutTransform_ReturnsNull) {
+    Assets<std::string> assets;
+    auto strong      = assets.emplace("test");
+    UntypedHandle uh = strong.untyped();
+    EXPECT_TRUE(uh.is_strong());
+    EXPECT_EQ(uh.meta_transform(), nullptr);
+}

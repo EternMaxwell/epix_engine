@@ -10,6 +10,7 @@
 
 module epix.text;
 
+import epix.assets;
 import epix.image;
 import epix.mesh;
 import webgpu;
@@ -392,17 +393,9 @@ void add_font_atlas_set(core::ResMut<FontAtlasSets> atlas_sets,
 }
 
 void register_default_embedded_font(core::App& app) {
-    auto server = app.world_mut().get_resource<assets::AssetServer>();
-    if (!server.has_value()) {
-        spdlog::error("[text] AssetServer resource is missing while registering embedded default font.");
-        return;
-    }
-
-    auto handle = server->get().add_asset<Font>("internal://fonts/default.ttf", make_default_embedded_font());
-    if (!handle.has_value()) {
-        spdlog::error("[text] Failed to register embedded default font at internal://fonts/default.ttf.");
-    }
-    app.world_mut().insert_resource(text::font::DefaultFontHandle{*handle});
+    app.world_mut().resource_mut<assets::EmbeddedAssetRegistry>().insert_asset_static(
+        "fonts/default.ttf", "fonts/default.ttf",
+        std::span<const std::byte>(reinterpret_cast<const std::byte*>(font_data_array), font_data_array_size));
 }
 }  // namespace
 

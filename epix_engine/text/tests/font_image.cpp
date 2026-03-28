@@ -102,7 +102,7 @@ int main(int argc, char** argv) {
     app.add_systems(
         core::PreStartup,
         core::into([&](core::Commands cmd, core::Res<assets::AssetServer> asset_server) {
-            font_handle = asset_server->load<text::font::Font>("internal://fonts/default.ttf").value();
+            font_handle = asset_server->load<text::font::Font>("embedded://fonts/default.ttf");
             cmd.spawn(text::TextBundle{.text{"Hello, Epix Engine!"},
                                        .font{
                                            .font            = *font_handle,

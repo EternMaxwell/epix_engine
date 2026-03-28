@@ -10,7 +10,8 @@ using namespace assets::memory;
 // ---------------------------------------------------------------------------
 
 static Value make_val(std::string_view s) {
-    auto buf = std::make_shared<std::vector<std::uint8_t>>(s.begin(), s.end());
+    auto sp  = std::as_bytes(std::span(s));
+    auto buf = std::make_shared<std::vector<std::byte>>(sp.begin(), sp.end());
     return Value::from_shared(buf);
 }
 

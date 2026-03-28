@@ -55,6 +55,8 @@ void AssetPlugin::build(App& app) {
     app_register_asset<LoadedFolder>(app);
     app_register_asset<LoadedUntypedAsset>(app);
 
+    app.add_events<UntypedAssetLoadFailedEvent>();
+
     app.add_systems(Last, into(AssetServer::handle_internal_events));
     app.configure_sets(sets(AssetSystems::HandleEvents, AssetSystems::WriteEvents).chain());
 }

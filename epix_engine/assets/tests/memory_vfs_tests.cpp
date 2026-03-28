@@ -10,13 +10,14 @@ using namespace assets::memory;
 // ---------------------------------------------------------------------------
 
 static Value make_val(std::string_view s) {
-    auto buf = std::make_shared<std::vector<std::uint8_t>>(s.begin(), s.end());
+    auto sp  = std::as_bytes(std::span(s));
+    auto buf = std::make_shared<std::vector<std::byte>>(sp.begin(), sp.end());
     return Value::from_shared(buf);
 }
 
 static std::string read_val(const Value& v) {
-    auto& p = std::get<std::shared_ptr<std::vector<std::uint8_t>>>(v.v);
-    return std::string(p->begin(), p->end());
+    auto& p = std::get<std::shared_ptr<std::vector<std::byte>>>(v.v);
+    return std::string(reinterpret_cast<const char*>(p->data()), p->size());
 }
 
 // ---------------------------------------------------------------------------

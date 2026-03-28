@@ -70,6 +70,7 @@ App& app_register_asset(App& app) {
     app.world_mut().init_resource<Assets<T>>();
     app.resource_mut<AssetServer>().register_assets(app.resource<Assets<T>>());
     app.add_events<AssetEvent<T>>();
+    app.add_events<AssetLoadFailedEvent<T>>();
     app.add_systems(PostStartup,
                     into(into(Assets<T>::handle_events).in_set(AssetSystems::HandleEvents),
                          into(Assets<T>::asset_events).in_set(AssetSystems::WriteEvents))

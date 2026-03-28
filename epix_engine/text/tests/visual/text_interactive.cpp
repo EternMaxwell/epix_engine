@@ -153,7 +153,7 @@ int main(int argc, char** argv) {
         core::into([&](core::Commands cmd, core::Res<assets::AssetServer> asset_server,
                        core::ResMut<assets::Assets<mesh::Mesh>> meshes) {
             // Load font
-            auto font_handle = asset_server->load<text::font::Font>("internal://fonts/default.ttf").value();
+            auto font_handle = asset_server->load<text::font::Font>("embedded://fonts/default.ttf");
 
             // Spawn main text
             auto text_entity = cmd.spawn(text::TextBundle{.text{"Hello, Epix Engine!\nInteractive text test."},

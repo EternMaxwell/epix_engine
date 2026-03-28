@@ -6,6 +6,7 @@ import std;
 import epix.meta;
 
 import :store;
+import :meta;
 
 namespace assets {
 template <typename E>
@@ -79,6 +80,11 @@ export struct ErasedLoadedAsset {
     friend struct ErasedAssetLoaderImpl;
 
    public:
+    /** @brief Construct an ErasedLoadedAsset from a typed value with no dependencies.
+     *  Matches bevy_asset's `LoadedAsset::new_with_dependencies(value).into()`. */
+    template <typename A>
+    static ErasedLoadedAsset from_asset(A asset);
+
     /** @brief Get the type id of the contained asset. */
     meta::type_index asset_type_id() const { return value->type(); }
     /** @brief Get the type name of the contained asset. */
@@ -125,6 +131,10 @@ struct AssetContainerImpl : AssetContainer {
 };
 
 // -- Deferred ErasedLoadedAsset method definitions (need LabeledAsset & AssetContainerImpl) --
+template <typename A>
+ErasedLoadedAsset ErasedLoadedAsset::from_asset(A asset) {
+    return ErasedLoadedAsset{std::make_unique<AssetContainerImpl<A>>(std::move(asset)), {}, {}, {}};
+}
 inline std::optional<std::reference_wrapper<const ErasedLoadedAsset>> ErasedLoadedAsset::get_labeled(
     const std::string& label) const {
     auto it = labeled_assets.find(label);
@@ -326,9 +336,6 @@ export struct NestedLoader {
     Handle<A> load(std::string_view relative_path) {
         return load<A>(m_context.path().resolve(relative_path));
     }
-};
-export struct Settings {
-    virtual ~Settings() = default;
 };
 export template <typename T>
 concept AssetLoader = requires(const T& t, std::istream& stream, LoadContext& context) {

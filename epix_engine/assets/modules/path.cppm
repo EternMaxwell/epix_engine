@@ -31,7 +31,7 @@ export struct AssetPath {
     AssetPath() = default;
     AssetPath(AssetSourceId source, std::filesystem::path path, std::optional<std::string> label = std::nullopt)
         : source(std::move(source)), path(std::move(path).lexically_normal()), label(std::move(label)) {}
-    AssetPath(std::string_view str) {
+    AssetPath(std::convertible_to<std::string_view> auto&& str) {
         // Format: [source://]path/to/asset[#label]
         std::string_view remaining = str;
         // Parse source (if present)
@@ -55,7 +55,9 @@ export struct AssetPath {
     }
 
     /** @brief Return a copy of this path with a different label. */
-    AssetPath with_label(std::string new_label) const { return AssetPath(source, path, std::move(new_label)); }
+    AssetPath with_label(std::convertible_to<std::string_view> auto&& new_label) const {
+        return AssetPath(source, path, std::string(std::forward<decltype(new_label)>(new_label)));
+    }
     /** @brief Return a copy of this path with a different source. */
     AssetPath with_source(AssetSourceId new_source) const { return AssetPath(std::move(new_source), path, label); }
     /** @brief Return a copy of this path without the label. */
@@ -80,8 +82,6 @@ export struct AssetPath {
         auto resolved = (base / relative.path).lexically_normal();
         return AssetPath(relative.source.is_default() ? source : relative.source, std::move(resolved), relative.label);
     }
-    /** @brief Resolve a relative path string against this path's directory. */
-    AssetPath resolve(std::string_view relative_str) const { return resolve(AssetPath(relative_str)); }
     /** @brief Get the full extension (e.g. "gltf.json" for "model.gltf.json"). */
     std::optional<std::string> get_full_extension() const {
         auto filename = path.filename().string();

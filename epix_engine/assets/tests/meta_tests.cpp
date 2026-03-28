@@ -186,3 +186,170 @@ TEST(AssetMetaDyn, PolymorphicAccess) {
     EXPECT_FALSE(dyn->processor_name().has_value());
     EXPECT_EQ(dyn->processed_info(), nullptr);
 }
+
+// ===========================================================================
+// Settings base class
+// ===========================================================================
+
+struct MySettings : Settings {
+    int quality    = 5;
+    bool grayscale = false;
+};
+
+struct MyOtherSettings : Settings {
+    float scale = 1.0f;
+};
+
+TEST(SettingsBase, DerivedIsSettings) {
+    MySettings s;
+    Settings* base = &s;
+    EXPECT_NE(dynamic_cast<MySettings*>(base), nullptr);
+}
+
+TEST(SettingsBase, DynamicCast_WrongType_ReturnsNull) {
+    MySettings s;
+    Settings* base = &s;
+    EXPECT_EQ(dynamic_cast<MyOtherSettings*>(base), nullptr);
+}
+
+// ===========================================================================
+// AssetMeta::loader_settings() — Settings-derived LoaderSettings
+// ===========================================================================
+
+struct DerivedLoaderSettings : Settings {
+    int level = 3;
+};
+struct DerivedProcessSettings : Settings {
+    bool compress = true;
+};
+
+TEST(AssetMeta, LoaderSettings_WhenLoad_ReturnsPointer) {
+    AssetMeta<DerivedLoaderSettings, DerivedProcessSettings> meta;
+    meta.action                      = AssetActionType::Load;
+    meta.loader_settings_value.level = 42;
+
+    Settings* s = meta.loader_settings();
+    ASSERT_NE(s, nullptr);
+    auto* concrete = dynamic_cast<DerivedLoaderSettings*>(s);
+    ASSERT_NE(concrete, nullptr);
+    EXPECT_EQ(concrete->level, 42);
+}
+
+TEST(AssetMeta, LoaderSettings_WhenProcess_ReturnsNull) {
+    AssetMeta<DerivedLoaderSettings, DerivedProcessSettings> meta;
+    meta.action = AssetActionType::Process;
+    EXPECT_EQ(meta.loader_settings(), nullptr);
+}
+
+TEST(AssetMeta, LoaderSettings_WhenIgnore_ReturnsNull) {
+    AssetMeta<DerivedLoaderSettings, DerivedProcessSettings> meta;
+    meta.action = AssetActionType::Ignore;
+    EXPECT_EQ(meta.loader_settings(), nullptr);
+}
+
+TEST(AssetMeta, LoaderSettings_Const_WhenLoad_ReturnsPointer) {
+    AssetMeta<DerivedLoaderSettings, DerivedProcessSettings> meta;
+    meta.action                      = AssetActionType::Load;
+    meta.loader_settings_value.level = 99;
+
+    const AssetMetaDyn& dyn = meta;
+    const Settings* s       = dyn.loader_settings();
+    ASSERT_NE(s, nullptr);
+    auto* concrete = dynamic_cast<const DerivedLoaderSettings*>(s);
+    ASSERT_NE(concrete, nullptr);
+    EXPECT_EQ(concrete->level, 99);
+}
+
+TEST(AssetMeta, LoaderSettings_NonDerived_ReturnsNull) {
+    // TestLoaderSettings does NOT derive from Settings — should always return nullptr
+    AssetMeta<TestLoaderSettings, TestProcessSettings> meta;
+    meta.action = AssetActionType::Load;
+    EXPECT_EQ(meta.loader_settings(), nullptr);
+
+    const AssetMetaDyn& dyn = meta;
+    EXPECT_EQ(dyn.loader_settings(), nullptr);
+}
+
+// ===========================================================================
+// MetaTransform type
+// ===========================================================================
+
+TEST(MetaTransform, CanMutateActionType) {
+    AssetMeta<DerivedLoaderSettings, DerivedProcessSettings> meta;
+    meta.action = AssetActionType::Load;
+
+    MetaTransform transform = [](AssetMetaDyn& m) {
+        // We can't change action_type via the dyn interface, but we can verify
+        // calling loader_settings works inside a transform.
+        auto* s = m.loader_settings();
+        if (s) {
+            if (auto* ds = dynamic_cast<DerivedLoaderSettings*>(s)) {
+                ds->level = 100;
+            }
+        }
+    };
+
+    transform(meta);
+    EXPECT_EQ(meta.loader_settings_value.level, 100);
+}
+
+TEST(MetaTransform, IsCallable) {
+    bool called             = false;
+    MetaTransform transform = [&called](AssetMetaDyn&) { called = true; };
+    AssetMeta<DerivedLoaderSettings, DerivedProcessSettings> meta;
+    transform(meta);
+    EXPECT_TRUE(called);
+}
+
+// ===========================================================================
+// loader_settings_meta_transform
+// ===========================================================================
+
+TEST(LoaderSettingsMetaTransform, AppliesMutation) {
+    auto mt = loader_settings_meta_transform<DerivedLoaderSettings>([](DerivedLoaderSettings& s) { s.level = 77; });
+
+    AssetMeta<DerivedLoaderSettings, DerivedProcessSettings> meta;
+    meta.action                      = AssetActionType::Load;
+    meta.loader_settings_value.level = 0;
+
+    mt(meta);
+    EXPECT_EQ(meta.loader_settings_value.level, 77);
+}
+
+TEST(LoaderSettingsMetaTransform, NoOpWhenNotLoad) {
+    auto mt = loader_settings_meta_transform<DerivedLoaderSettings>([](DerivedLoaderSettings& s) { s.level = 77; });
+
+    AssetMeta<DerivedLoaderSettings, DerivedProcessSettings> meta;
+    meta.action                      = AssetActionType::Process;
+    meta.loader_settings_value.level = 0;
+
+    mt(meta);
+    EXPECT_EQ(meta.loader_settings_value.level, 0) << "Should not mutate when action != Load";
+}
+
+TEST(LoaderSettingsMetaTransform, WrongSettingsType_DoesNotCrash) {
+    // Create a transform expecting MySettings, but apply to DerivedLoaderSettings meta
+    auto mt = loader_settings_meta_transform<MySettings>([](MySettings& s) { s.quality = 999; });
+
+    AssetMeta<DerivedLoaderSettings, DerivedProcessSettings> meta;
+    meta.action = AssetActionType::Load;
+
+    // dynamic_cast should fail, but not crash — just logs an error
+    EXPECT_NO_THROW(mt(meta));
+    // The DerivedLoaderSettings should be unchanged
+    EXPECT_EQ(meta.loader_settings_value.level, 3);
+}
+
+TEST(LoaderSettingsMetaTransform, MultipleMutations) {
+    auto mt = loader_settings_meta_transform<MySettings>([](MySettings& s) {
+        s.quality   = 10;
+        s.grayscale = true;
+    });
+
+    AssetMeta<MySettings, DerivedProcessSettings> meta;
+    meta.action = AssetActionType::Load;
+
+    mt(meta);
+    EXPECT_EQ(meta.loader_settings_value.quality, 10);
+    EXPECT_TRUE(meta.loader_settings_value.grayscale);
+}

@@ -59,13 +59,13 @@ export struct MemoryAssetReader : public assets::AssetReader {
         if (!res.has_value()) return std::unexpected(dir_error_to_reader_error(res.error(), path));
         auto data = res.value();
         // extract bytes
-        if (std::holds_alternative<std::shared_ptr<std::vector<std::uint8_t>>>(data.value.v)) {
-            auto buf = std::get<std::shared_ptr<std::vector<std::uint8_t>>>(data.value.v);
-            std::string s(buf->begin(), buf->end());
+        if (std::holds_alternative<std::shared_ptr<std::vector<std::byte>>>(data.value.v)) {
+            auto buf = std::get<std::shared_ptr<std::vector<std::byte>>>(data.value.v);
+            std::string s(reinterpret_cast<const char*>(buf->data()), buf->size());
             auto stream = std::make_unique<std::istringstream>(s, std::ios::binary);
             return std::expected<std::unique_ptr<std::istream>, assets::AssetReaderError>(std::move(stream));
-        } else if (std::holds_alternative<std::span<const std::uint8_t>>(data.value.v)) {
-            auto sp = std::get<std::span<const std::uint8_t>>(data.value.v);
+        } else if (std::holds_alternative<std::span<const std::byte>>(data.value.v)) {
+            auto sp = std::get<std::span<const std::byte>>(data.value.v);
             std::string s(reinterpret_cast<const char*>(sp.data()), sp.size());
             auto stream = std::make_unique<std::istringstream>(s, std::ios::binary);
             return std::expected<std::unique_ptr<std::istream>, assets::AssetReaderError>(std::move(stream));
@@ -110,8 +110,9 @@ export struct MemoryAssetWriter : public assets::AssetWriter {
             ~CommitOStream() noexcept {
                 try {
                     auto s   = this->str();
+                    auto sp  = std::as_bytes(std::span(s));
                     auto val = assets::memory::Value::from_shared(
-                        std::make_shared<std::vector<std::uint8_t>>(s.begin(), s.end()));
+                        std::make_shared<std::vector<std::byte>>(sp.begin(), sp.end()));
                     auto res = dir.insert_file(path, std::move(val));
                 } catch (...) {}
             }

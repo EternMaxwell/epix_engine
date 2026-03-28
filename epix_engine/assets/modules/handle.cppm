@@ -8,12 +8,14 @@ import std;
 
 import :id;
 import :path;
+import :meta;
 
 namespace assets {
 using core::Receiver;
 using core::Sender;
 struct DestructionEvent {
     InternalAssetId id;
+    bool loader_managed;
 };
 struct NonCopyNonMove {
     NonCopyNonMove()                                 = default;
@@ -27,11 +29,16 @@ struct StrongHandle : NonCopyNonMove {
     Sender<DestructionEvent> event_sender;
     std::optional<AssetPath> path;
     bool loader_managed;
+    /// Modifies asset meta. Stored on the handle because it is:
+    /// 1. configuration tied to the lifetime of a specific asset load
+    /// 2. configuration that must be repeatable when the asset is hot-reloaded
+    std::optional<MetaTransform> meta_transform;
 
     StrongHandle(const UntypedAssetId& id,
                  const Sender<DestructionEvent>& event_sender,
-                 bool loader_managed                  = false,
-                 const std::optional<AssetPath>& path = std::nullopt);
+                 bool loader_managed                         = false,
+                 const std::optional<AssetPath>& path        = std::nullopt,
+                 std::optional<MetaTransform> meta_transform = std::nullopt);
     ~StrongHandle();
 };
 /** @brief Forward declaration. */
@@ -193,6 +200,14 @@ export struct UntypedHandle {
     operator UntypedAssetId() const { return id(); }
     /** @brief Return a weak copy holding only the id. */
     UntypedHandle weak() const { return id(); }
+    /** @brief Get the meta transform associated with this handle, if any (strong handles only). */
+    const MetaTransform* meta_transform() const {
+        return std::visit(utils::visitor{[](const std::shared_ptr<StrongHandle>& handle) -> const MetaTransform* {
+                                             return handle->meta_transform ? &*handle->meta_transform : nullptr;
+                                         },
+                                         [](const UntypedAssetId&) -> const MetaTransform* { return nullptr; }},
+                          ref);
+    }
 
     /** @brief Try to downcast to a typed Handle.
      *  @tparam T Expected asset type.
@@ -278,7 +293,10 @@ struct HandleProvider {
     UntypedHandle reserve() const;
     std::shared_ptr<StrongHandle> get_handle(const InternalAssetId& id,
                                              bool loader_managed,
-                                             const std::optional<AssetPath>& path) const;
-    std::shared_ptr<StrongHandle> reserve(bool loader_managed, const std::optional<AssetPath>& path) const;
+                                             const std::optional<AssetPath>& path,
+                                             std::optional<MetaTransform> meta_transform = std::nullopt) const;
+    std::shared_ptr<StrongHandle> reserve(bool loader_managed,
+                                          const std::optional<AssetPath>& path,
+                                          std::optional<MetaTransform> meta_transform = std::nullopt) const;
 };
 }  // namespace assets

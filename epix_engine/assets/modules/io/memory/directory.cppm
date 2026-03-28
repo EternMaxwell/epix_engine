@@ -34,9 +34,9 @@ export struct DirEvent {
 
 // Public value type: either a read-only view (std::span) or an owned shared buffer
 export struct Value {
-    std::variant<std::span<const std::uint8_t>, std::shared_ptr<std::vector<std::uint8_t>>> v;
-    static Value from_span(std::span<const std::uint8_t> s) { return Value{.v = s}; }
-    static Value from_shared(std::shared_ptr<std::vector<std::uint8_t>> b) { return Value{.v = b}; }
+    std::variant<std::span<const std::byte>, std::shared_ptr<std::vector<std::byte>>> v;
+    static Value from_span(std::span<const std::byte> s) { return Value{.v = s}; }
+    static Value from_shared(std::shared_ptr<std::vector<std::byte>> b) { return Value{.v = b}; }
 };
 
 export struct Data {
@@ -356,12 +356,12 @@ std::expected<assets::memory::Value, assets::memory::DirectoryError> assets::mem
             } else {
                 ev_type = DirEventType::FileModified;
             }
-            std::shared_ptr<std::vector<std::uint8_t>> stored_buf;
-            if (std::holds_alternative<std::span<const std::uint8_t>>(v.v)) {
-                auto sp    = std::get<std::span<const std::uint8_t>>(v.v);
-                stored_buf = std::make_shared<std::vector<std::uint8_t>>(sp.begin(), sp.end());
+            std::shared_ptr<std::vector<std::byte>> stored_buf;
+            if (std::holds_alternative<std::span<const std::byte>>(v.v)) {
+                auto sp    = std::get<std::span<const std::byte>>(v.v);
+                stored_buf = std::make_shared<std::vector<std::byte>>(sp.begin(), sp.end());
             } else {
-                stored_buf = std::get<std::shared_ptr<std::vector<std::uint8_t>>>(v.v);
+                stored_buf = std::get<std::shared_ptr<std::vector<std::byte>>>(v.v);
             }
             auto file_path            = (w.ref.path / parts.back()).lexically_normal();
             w.ref.nodes[parts.back()] = Data{file_path, Value::from_shared(stored_buf)};

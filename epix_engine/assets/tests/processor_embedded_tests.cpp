@@ -15,7 +15,8 @@ namespace {
 // ---- Helpers for reading memory VFS content ----
 
 memory::Value make_val(std::string_view s) {
-    auto buf = std::make_shared<std::vector<std::uint8_t>>(s.begin(), s.end());
+    auto sp  = std::as_bytes(std::span(s));
+    auto buf = std::make_shared<std::vector<std::byte>>(sp.begin(), sp.end());
     return memory::Value::from_shared(buf);
 }
 
@@ -23,12 +24,12 @@ std::string read_dir_file(const memory::Directory& dir, const std::filesystem::p
     auto file = dir.get_file(path);
     if (!file.has_value()) return {};
     auto& v = file->value;
-    if (std::holds_alternative<std::shared_ptr<std::vector<std::uint8_t>>>(v.v)) {
-        auto& buf = std::get<std::shared_ptr<std::vector<std::uint8_t>>>(v.v);
-        return std::string(buf->begin(), buf->end());
+    if (std::holds_alternative<std::shared_ptr<std::vector<std::byte>>>(v.v)) {
+        auto& buf = std::get<std::shared_ptr<std::vector<std::byte>>>(v.v);
+        return std::string(reinterpret_cast<const char*>(buf->data()), buf->size());
     }
-    if (std::holds_alternative<std::span<const std::uint8_t>>(v.v)) {
-        auto sp = std::get<std::span<const std::uint8_t>>(v.v);
+    if (std::holds_alternative<std::span<const std::byte>>(v.v)) {
+        auto sp = std::get<std::span<const std::byte>>(v.v);
         return std::string(reinterpret_cast<const char*>(sp.data()), sp.size());
     }
     return {};
@@ -382,7 +383,7 @@ TEST(AssetProcessor, AmbiguousShortPath_ReturnsError) {
 
 TEST(EmbeddedAssetRegistry, InsertAndRetrieve) {
     EmbeddedAssetRegistry registry;
-    std::vector<std::uint8_t> data = {0x48, 0x65, 0x6C, 0x6C, 0x6F};  // "Hello"
+    auto data = std::as_bytes(std::span("Hello", 5));
     registry.insert_asset("C:/assets/test.txt", "test.txt", data);
     auto& dir = registry.directory();
     auto file = dir.get_file("test.txt");
@@ -391,7 +392,7 @@ TEST(EmbeddedAssetRegistry, InsertAndRetrieve) {
 
 TEST(EmbeddedAssetRegistry, InsertStatic) {
     EmbeddedAssetRegistry registry;
-    static const std::uint8_t data[] = {0x41, 0x42, 0x43};
+    static const std::byte data[] = {std::byte{0x41}, std::byte{0x42}, std::byte{0x43}};
     registry.insert_asset_static("C:/assets/abc.bin", "abc.bin", std::span(data));
     auto& dir = registry.directory();
     EXPECT_TRUE(dir.exists("abc.bin").value_or(false));
@@ -399,7 +400,7 @@ TEST(EmbeddedAssetRegistry, InsertStatic) {
 
 TEST(EmbeddedAssetRegistry, InsertMeta) {
     EmbeddedAssetRegistry registry;
-    std::vector<std::uint8_t> meta = {0x7B, 0x7D};  // "{}"
+    auto meta = std::as_bytes(std::span("{}", 2));
     registry.insert_meta("C:/assets/test.txt", "test.txt", meta);
     auto& dir = registry.directory();
     EXPECT_TRUE(dir.exists("test.txt.meta").value_or(false));
@@ -407,7 +408,7 @@ TEST(EmbeddedAssetRegistry, InsertMeta) {
 
 TEST(EmbeddedAssetRegistry, RemoveAsset_Existing) {
     EmbeddedAssetRegistry registry;
-    std::vector<std::uint8_t> data = {0x01};
+    auto data = std::as_bytes(std::span("\x01", 1));
     registry.insert_asset("C:/test.bin", "test.bin", data);
     EXPECT_TRUE(registry.remove_asset("test.bin"));
     EXPECT_FALSE(registry.directory().exists("test.bin").value_or(true));

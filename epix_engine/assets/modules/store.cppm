@@ -500,7 +500,6 @@ struct Assets {
                     m_cached_events.emplace_back(AssetEvent<T>::modified(id));
                 } else {
                     m_cached_events.emplace_back(AssetEvent<T>::added(id));
-                    m_cached_events.emplace_back(AssetEvent<T>::modified(id));
                 }
                 return replace;
             });
@@ -795,8 +794,10 @@ struct Assets {
         }
         while (auto&& opt = m_handle_provider->event_receiver.try_receive()) {
             auto id = (*opt).id.template typed<T>();
-            if (asset_server && asset_server_process_handle_destruction(*asset_server, id)) {
-                continue;
+            if ((*opt).loader_managed && asset_server) {
+                if (!asset_server_process_handle_destruction(*asset_server, id)) {
+                    continue;
+                }
             }
             release(id);
         }

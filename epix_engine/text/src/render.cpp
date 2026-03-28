@@ -309,8 +309,8 @@ struct DrawTextBatch {
 };
 
 void insert_text_shaders(assets::Assets<render::Shader>& shaders) {
-    auto vertex_path             = std::filesystem::path("internal://text/text_vertex.wgsl");
-    auto fragment_path           = std::filesystem::path("internal://text/text_fragment.wgsl");
+    auto vertex_path             = std::filesystem::path("embedded://text/text_vertex.wgsl");
+    auto fragment_path           = std::filesystem::path("embedded://text/text_fragment.wgsl");
     [[maybe_unused]] auto vertex = shaders.insert(
         kTextVertexShaderId,
         render::Shader{vertex_path, vertex_path.string(), render::ShaderSource::wgsl(std::string(kTextVertexShader))});

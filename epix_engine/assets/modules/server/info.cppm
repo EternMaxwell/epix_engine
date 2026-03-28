@@ -11,6 +11,7 @@ import epix.core;
 
 import :store;
 import :server.loader;
+import :meta;
 
 namespace assets {
 export namespace load_error {
@@ -130,6 +131,7 @@ struct AssetInfos {
         bool watching_for_changes,
         meta::type_index type,
         std::optional<AssetPath> path,
+        std::optional<MetaTransform> meta_transform,
         bool loading);
     static void remove_dependents_and_labels(const AssetInfo& info,
                                              decltype(loader_dependents)& loader_dependents,
@@ -138,13 +140,18 @@ struct AssetInfos {
 
    public:
     template <typename T>
-    std::pair<Handle<T>, bool> get_or_create_handle(const AssetPath& path, HandleLoadingMode loading_mode);
-    std::pair<UntypedHandle, bool> get_or_create_handle_untyped(const AssetPath& path,
-                                                                std::optional<meta::type_index> type,
-                                                                HandleLoadingMode loading_mode);
+    std::pair<Handle<T>, bool> get_or_create_handle(const AssetPath& path,
+                                                    HandleLoadingMode loading_mode,
+                                                    std::optional<MetaTransform> meta_transform = std::nullopt);
+    std::pair<UntypedHandle, bool> get_or_create_handle_untyped(
+        const AssetPath& path,
+        std::optional<meta::type_index> type,
+        HandleLoadingMode loading_mode,
+        std::optional<MetaTransform> meta_transform = std::nullopt);
     auto get_or_create_handle_internal(const AssetPath& path,
                                        std::optional<meta::type_index> type,
-                                       HandleLoadingMode loading_mode)
+                                       HandleLoadingMode loading_mode,
+                                       std::optional<MetaTransform> meta_transform = std::nullopt)
         -> std::expected<std::pair<UntypedHandle, bool>, GetOrCreateHandleError>;
     bool contains_key(const UntypedAssetId& id) const { return infos.contains(id); }
     std::optional<std::reference_wrapper<const AssetInfo>> get_info(const UntypedAssetId& id) const;
@@ -165,6 +172,7 @@ struct AssetInfos {
                                 UntypedAssetId waiting_id,
                                 const utils::Sender<InternalAssetEvent>& sender);
     void propagate_failed_state(UntypedAssetId loaded_asset_id, UntypedAssetId waiting_id, const AssetLoadError& error);
+    void process_asset_fail(const UntypedAssetId& failed_id, const AssetLoadError& error);
     // void remove_deps(const AssetInfo& info,
     //                  std::unordered_map<AssetPath, std::unordered_set<AssetPath>>&
     //                  loader_deps, const AssetPath& path) {}
@@ -173,8 +181,10 @@ struct AssetInfos {
 
 namespace assets {
 template <typename T>
-std::pair<Handle<T>, bool> AssetInfos::get_or_create_handle(const AssetPath& path, HandleLoadingMode loading_mode) {
-    auto res = get_or_create_handle_internal(path, meta::type_id<T>{}, loading_mode);
+std::pair<Handle<T>, bool> AssetInfos::get_or_create_handle(const AssetPath& path,
+                                                            HandleLoadingMode loading_mode,
+                                                            std::optional<MetaTransform> meta_transform) {
+    auto res = get_or_create_handle_internal(path, meta::type_id<T>{}, loading_mode, std::move(meta_transform));
     if (!res) {
         // error handling
         throw std::runtime_error("Failed to get or create handle: " + path.string());
@@ -186,8 +196,8 @@ std::pair<Handle<T>, bool> AssetInfos::get_or_create_handle(const AssetPath& pat
         })
         .value();
 }
-auto AssetInfos::get_handle_by_path_type(const AssetPath& path,
-                                         meta::type_index type) const -> std::optional<UntypedHandle> {
+auto AssetInfos::get_handle_by_path_type(const AssetPath& path, meta::type_index type) const
+    -> std::optional<UntypedHandle> {
     auto it = path_to_ids.find(path);
     if (it != path_to_ids.end()) {
         auto& type_map = it->second;
@@ -246,6 +256,40 @@ void AssetInfos::propagate_failed_state(UntypedAssetId loaded_asset_id,
         }
     }
 }
+void AssetInfos::process_asset_fail(const UntypedAssetId& failed_id, const AssetLoadError& error) {
+    if (!infos.contains(failed_id)) return;
+
+    auto [deps_wait_on_load, deps_wait_on_rec_dep_load] = [&]() {
+        auto info_opt = get_info_mut(failed_id);
+        if (!info_opt)
+            return std::make_pair(std::unordered_set<UntypedAssetId>{}, std::unordered_set<UntypedAssetId>{});
+        auto& info         = info_opt->get();
+        info.state         = error;
+        info.dep_state     = error;
+        info.rec_dep_state = error;
+        // Wake any tasks waiting on this asset
+        for (auto& waiter : info.waiting) {
+            waiter.wait();
+        }
+        info.waiting.clear();
+        return std::make_pair(std::move(info.deps_wait_on_load), std::move(info.deps_wait_on_rec_dep_load));
+    }();
+
+    for (auto& waiting_id : deps_wait_on_load) {
+        if (auto info_opt = get_info_mut(waiting_id)) {
+            auto& info = info_opt->get();
+            info.loading_deps.erase(failed_id);
+            info.failed_deps.insert(failed_id);
+            if (!std::holds_alternative<AssetLoadError>(info.dep_state)) {
+                info.dep_state = error;
+            }
+        }
+    }
+
+    for (auto& waiting_id : deps_wait_on_rec_dep_load) {
+        propagate_failed_state(failed_id, waiting_id, error);
+    }
+}
 void AssetInfos::process_asset_load(const UntypedAssetId& loaded_asset_id,
                                     ErasedLoadedAsset loaded_asset,
                                     core::World& world,
@@ -274,10 +318,12 @@ void AssetInfos::process_asset_load(const UntypedAssetId& loaded_asset_id,
                                                    switch (state) {
                                                        case LoadStateOK::NotLoaded:
                                                        case LoadStateOK::Loading: {
-                                                           dep_info.deps_wait_on_rec_dep_load.insert(dep_id);
+                                                           dep_info.deps_wait_on_rec_dep_load.insert(loaded_asset_id);
+                                                           break;
                                                        }
                                                        case LoadStateOK::Loaded: {
                                                            loading_rec_deps.erase(dep_id);
+                                                           break;
                                                        }
                                                    }
                                                },
@@ -293,7 +339,7 @@ void AssetInfos::process_asset_load(const UntypedAssetId& loaded_asset_id,
                                                           switch (state) {
                                                               case LoadStateOK::NotLoaded:
                                                               case LoadStateOK::Loading: {
-                                                                  dep_info.deps_wait_on_load.insert(dep_id);
+                                                                  dep_info.deps_wait_on_load.insert(loaded_asset_id);
                                                                   return true;
                                                               }
                                                               case LoadStateOK::Loaded: {
@@ -309,7 +355,7 @@ void AssetInfos::process_asset_load(const UntypedAssetId& loaded_asset_id,
                                                           return false;
                                                       },
                                                   },
-                                                  dep_info.dep_state);
+                                                  dep_info.state);
                             } else {
                                 spdlog::warn(
                                     "Dependency {} of asset {} is unknown. The dependency load state will not "
@@ -520,8 +566,9 @@ std::optional<UntypedHandle> AssetInfos::get_handle_by_id(const UntypedAssetId& 
 }
 std::pair<UntypedHandle, bool> AssetInfos::get_or_create_handle_untyped(const AssetPath& path,
                                                                         std::optional<meta::type_index> type,
-                                                                        HandleLoadingMode loading_mode) {
-    auto res = get_or_create_handle_internal(path, type, loading_mode);
+                                                                        HandleLoadingMode loading_mode,
+                                                                        std::optional<MetaTransform> meta_transform) {
+    auto res = get_or_create_handle_internal(path, type, loading_mode, std::move(meta_transform));
     if (!res) {
         // error handling
         throw std::runtime_error("Failed to get or create handle: " + path.string());
@@ -535,6 +582,7 @@ std::expected<UntypedHandle, GetOrCreateHandleError> AssetInfos::create_handle_i
     bool watching_for_changes,
     meta::type_index type,
     std::optional<AssetPath> path,
+    std::optional<MetaTransform> meta_transform,
     bool loading) {
     auto provider_it = handle_providers.find(type);
     if (provider_it == handle_providers.end()) {
@@ -549,7 +597,7 @@ std::expected<UntypedHandle, GetOrCreateHandleError> AssetInfos::create_handle_i
         living_labeled_assets[std::move(without_label)].insert(std::move(label));
     }
 
-    auto handle = provider->reserve(true, path);
+    auto handle = provider->reserve(true, path, std::move(meta_transform));
     AssetInfo info(handle, path);
     if (loading) {
         info.state         = LoadStateOK::Loading;
@@ -561,7 +609,8 @@ std::expected<UntypedHandle, GetOrCreateHandleError> AssetInfos::create_handle_i
 }
 auto AssetInfos::get_or_create_handle_internal(const AssetPath& path,
                                                std::optional<meta::type_index> type,
-                                               HandleLoadingMode loading_mode)
+                                               HandleLoadingMode loading_mode,
+                                               std::optional<MetaTransform> meta_transform)
     -> std::expected<std::pair<UntypedHandle, bool>, GetOrCreateHandleError> {
     auto& handles = path_to_ids[path];
 
@@ -603,14 +652,14 @@ auto AssetInfos::get_or_create_handle_internal(const AssetPath& path,
             if (provider_it == handle_providers.end())
                 return std::unexpected(GetOrCreateHandleError{GetOrCreateHandleError::Type::NoProvider});
             auto provider    = provider_it->second;
-            auto handle      = provider->get_handle(id, true, path);
+            auto handle      = provider->get_handle(id, true, path, std::move(meta_transform));
             info.weak_handle = handle;
             return std::make_pair(UntypedHandle(handle), should_load);
         }
     } else {
         bool should_load = loading_mode != HandleLoadingMode::NotLoading;
         auto handle_res  = create_handle_internal(infos, handle_providers, living_labeled_assets, watching_for_changes,
-                                                  type_index, path, should_load);
+                                                  type_index, path, std::move(meta_transform), should_load);
         if (!handle_res) return std::unexpected(handle_res.error());
         auto handle = std::move(handle_res.value());
         handles.emplace(type_index, handle.id());

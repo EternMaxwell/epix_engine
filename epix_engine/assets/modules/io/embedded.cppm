@@ -33,8 +33,8 @@ export struct EmbeddedAssetRegistry {
      *  @param data       Raw bytes of the asset. */
     void insert_asset(const std::filesystem::path& full_path,
                       const std::filesystem::path& asset_path,
-                      std::span<const std::uint8_t> data) {
-        auto val = memory::Value::from_shared(std::make_shared<std::vector<std::uint8_t>>(data.begin(), data.end()));
+                      std::span<const std::byte> data) {
+        auto val = memory::Value::from_shared(std::make_shared<std::vector<std::byte>>(data.begin(), data.end()));
         (void)m_dir.insert_file(asset_path, std::move(val));
     }
 
@@ -44,7 +44,7 @@ export struct EmbeddedAssetRegistry {
      *  @param data       Static byte span (must outlive the registry). */
     void insert_asset_static(const std::filesystem::path& full_path,
                              const std::filesystem::path& asset_path,
-                             std::span<const std::uint8_t> data) {
+                             std::span<const std::byte> data) {
         auto val = memory::Value::from_span(data);
         (void)m_dir.insert_file(asset_path, std::move(val));
     }
@@ -55,10 +55,10 @@ export struct EmbeddedAssetRegistry {
      *  @param meta_data  Raw bytes of the meta file. */
     void insert_meta(const std::filesystem::path& full_path,
                      const std::filesystem::path& asset_path,
-                     std::span<const std::uint8_t> meta_data) {
+                     std::span<const std::byte> meta_data) {
         auto meta_path = std::filesystem::path(asset_path.string() + ".meta");
         auto val =
-            memory::Value::from_shared(std::make_shared<std::vector<std::uint8_t>>(meta_data.begin(), meta_data.end()));
+            memory::Value::from_shared(std::make_shared<std::vector<std::byte>>(meta_data.begin(), meta_data.end()));
         (void)m_dir.insert_file(meta_path, std::move(val));
     }
 

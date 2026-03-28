@@ -1,5 +1,7 @@
 ﻿module;
 
+#include <spdlog/spdlog.h>
+
 export module epix.assets:meta;
 
 import std;
@@ -84,6 +86,12 @@ struct AssetAction {
     }
 };
 
+/** @brief Base class for loader/processor settings, analogous to bevy's Settings trait.
+ *  All settings types must derive from this. */
+export struct Settings {
+    virtual ~Settings() = default;
+};
+
 /** @brief Abstract base for type-erased asset metadata, analogous to bevy's AssetMetaDyn. */
 export struct AssetMetaDyn {
     virtual ~AssetMetaDyn() = default;
@@ -95,6 +103,10 @@ export struct AssetMetaDyn {
     virtual AssetActionType action_type() const = 0;
     /** @brief Get processed info, if available. */
     virtual const ProcessedInfo* processed_info() const = 0;
+    /** @brief Get the loader settings, if this meta specifies a Load action. */
+    virtual Settings* loader_settings() = 0;
+    /** @brief Get the loader settings (const), if this meta specifies a Load action. */
+    virtual const Settings* loader_settings() const = 0;
 };
 
 /** @brief Type alias for a function that mutates an AssetMetaDyn in place.
@@ -115,7 +127,7 @@ struct AssetMeta : AssetMetaDyn {
     /** @brief Name of the loader (when action == Load). */
     std::string loader;
     /** @brief Loader-specific settings. */
-    LoaderSettings loader_settings{};
+    LoaderSettings loader_settings_value{};
     /** @brief Name of the processor (when action == Process). */
     std::string processor;
     /** @brief Processor-specific settings. */
@@ -133,6 +145,34 @@ struct AssetMeta : AssetMetaDyn {
     const ProcessedInfo* processed_info() const override {
         return processed.has_value() ? &processed.value() : nullptr;
     }
+    Settings* loader_settings() override {
+        if constexpr (std::derived_from<LoaderSettings, Settings>) {
+            if (action == AssetActionType::Load) return &loader_settings_value;
+        }
+        return nullptr;
+    }
+    const Settings* loader_settings() const override {
+        if constexpr (std::derived_from<LoaderSettings, Settings>) {
+            if (action == AssetActionType::Load) return &loader_settings_value;
+        }
+        return nullptr;
+    }
 };
+
+/** @brief Creates a MetaTransform that downcasts the loader settings to type S
+ *  and applies the given mutator function.
+ *  Matches bevy_asset's loader_settings_meta_transform. */
+export template <std::derived_from<Settings> S>
+MetaTransform loader_settings_meta_transform(std::function<void(S&)> settings_fn) {
+    return [settings_fn = std::move(settings_fn)](AssetMetaDyn& meta) {
+        if (auto* s = meta.loader_settings()) {
+            if (auto* concrete = dynamic_cast<S*>(s)) {
+                settings_fn(*concrete);
+            } else {
+                spdlog::error("Configured settings type does not match AssetLoader settings type");
+            }
+        }
+    };
+}
 
 }  // namespace assets

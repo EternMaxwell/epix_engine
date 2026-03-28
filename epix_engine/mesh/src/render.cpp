@@ -431,12 +431,12 @@ struct MeshOpaqueBatchKey {
 };
 
 void insert_mesh_shaders(assets::Assets<render::Shader>& shaders) {
-    auto solid_vertex_path             = std::filesystem::path("internal://mesh/solid_vertex.wgsl");
-    auto vertex_color_path             = std::filesystem::path("internal://mesh/vertex_color_vertex.wgsl");
-    auto textured_vertex_path          = std::filesystem::path("internal://mesh/textured_vertex.wgsl");
-    auto textured_vertex_color_path    = std::filesystem::path("internal://mesh/textured_vertex_color_vertex.wgsl");
-    auto color_fragment_path           = std::filesystem::path("internal://mesh/color_fragment.wgsl");
-    auto textured_fragment_path        = std::filesystem::path("internal://mesh/textured_fragment.wgsl");
+    auto solid_vertex_path             = std::filesystem::path("embedded://mesh/solid_vertex.wgsl");
+    auto vertex_color_path             = std::filesystem::path("embedded://mesh/vertex_color_vertex.wgsl");
+    auto textured_vertex_path          = std::filesystem::path("embedded://mesh/textured_vertex.wgsl");
+    auto textured_vertex_color_path    = std::filesystem::path("embedded://mesh/textured_vertex_color_vertex.wgsl");
+    auto color_fragment_path           = std::filesystem::path("embedded://mesh/color_fragment.wgsl");
+    auto textured_fragment_path        = std::filesystem::path("embedded://mesh/textured_fragment.wgsl");
     [[maybe_unused]] auto solid_vertex = shaders.insert(
         kMeshSolidVertexShaderId, render::Shader{solid_vertex_path, solid_vertex_path.string(),
                                                  render::ShaderSource::wgsl(std::string(kMeshSolidVertexShader))});
@@ -659,9 +659,9 @@ void queue_meshes_2d_opaque(
                 .draw_func   = draw_function_id->value,
                 .batch_count = 1,
                 .batch_key   = render::phase::OpaqueSortKey(MeshOpaqueBatchKey{
-                      .pipeline_id = pipeline_id->get(),
-                      .mesh_id     = extracted_mesh.mesh,
-                      .texture_id  = extracted_mesh.texture,
+                    .pipeline_id = pipeline_id->get(),
+                    .mesh_id     = extracted_mesh.mesh,
+                    .texture_id  = extracted_mesh.texture,
                 }),
             });
         }

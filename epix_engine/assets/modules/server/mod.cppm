@@ -76,11 +76,41 @@ export struct AssetServer {
         guard->push(loader);
     }
 
-    /** @brief Register a handle provider for the given asset type. */
+    /** @brief Register a handle provider and event senders for the given asset type.
+     *  Matches bevy_asset's AssetServer::register_asset. */
     template <std::movable A>
     void register_assets(const Assets<A>& assets) const {
         auto guard = data->infos.write();
         guard->handle_providers.emplace(meta::type_id<A>{}, assets.get_handle_provider());
+
+        guard->dependency_loaded_event_sender.emplace(
+            meta::type_id<A>{}, +[](core::World& world, AssetIndex index) {
+                auto events_opt = world.get_resource_mut<core::Events<AssetEvent<A>>>();
+                if (events_opt) {
+                    events_opt->get().push(AssetEvent<A>::loaded_with_dependencies(AssetId<A>(index)));
+                }
+            });
+        guard->dependency_failed_event_sender.emplace(
+            meta::type_id<A>{}, +[](core::World& world, AssetIndex index, AssetPath path, AssetLoadError error) {
+                auto events_opt = world.get_resource_mut<core::Events<AssetLoadFailedEvent<A>>>();
+                if (events_opt) {
+                    events_opt->get().push(AssetLoadFailedEvent<A>{
+                        AssetId<A>(index), std::move(path),
+                        std::visit(utils::visitor{
+                                       [](const load_error::RequestHandleMismatch& e)
+                                           -> std::variant<std::string, std::exception_ptr> {
+                                           return std::string("Request handle type mismatch for ") + e.path.string();
+                                       },
+                                       [](const load_error::MissingAssetLoader& e)
+                                           -> std::variant<std::string, std::exception_ptr> {
+                                           return std::string("Missing asset loader for ") + e.path.string();
+                                       },
+                                       [](const load_error::AssetLoaderException& e)
+                                           -> std::variant<std::string, std::exception_ptr> { return e.exception; },
+                                   },
+                                   error)});
+                }
+            });
     }
 
     /** @brief Pre-register a loader type with specific extensions before the loader is available. */
@@ -96,48 +126,44 @@ export struct AssetServer {
      *  If the asset is already loaded or loading, returns the existing handle. */
     template <typename A>
     Handle<A> load(const AssetPath& path) const {
-        auto guard                 = data->infos.write();
-        auto [handle, should_load] = guard->template get_or_create_handle<A>(path, HandleLoadingMode::Request);
-        if (should_load) {
-            spawn_load_task(handle.id(), path);
-        }
-        return handle;
+        return load_with_meta_transform<A>(path, std::nullopt, false);
     }
     /** @brief Load an asset, overriding any existing load for that path (force reload). */
     template <typename A>
     Handle<A> load_override(const AssetPath& path) const {
-        auto guard                 = data->infos.write();
-        auto [handle, should_load] = guard->template get_or_create_handle<A>(path, HandleLoadingMode::Force);
-        if (should_load) {
-            spawn_load_task(handle.id(), path);
-        }
-        return handle;
+        return load_with_meta_transform<A>(path, std::nullopt, true);
     }
 
     /** @brief Load an asset with loader-specific settings.
      *  @tparam A  Asset type.
      *  @tparam S  Settings type derived from assets::Settings.
      *  @param path     Asset path.
-     *  @param settings Settings to use for loading. */
+     *  @param settings Function that mutates the loader settings. */
     template <typename A, typename S>
         requires std::derived_from<S, Settings>
-    Handle<A> load_with_settings(const AssetPath& path, const S& settings) const {
-        auto guard                 = data->infos.write();
-        auto [handle, should_load] = guard->template get_or_create_handle<A>(path, HandleLoadingMode::Request);
-        if (should_load) {
-            spawn_load_task(handle.id(), path);
-        }
-        return handle;
+    Handle<A> load_with_settings(const AssetPath& path, std::function<void(S&)> settings) const {
+        return load_with_meta_transform<A>(path, loader_settings_meta_transform<S>(std::move(settings)), false);
     }
 
     /** @brief Load an asset with settings, overriding any existing load (force). */
     template <typename A, typename S>
         requires std::derived_from<S, Settings>
-    Handle<A> load_with_settings_override(const AssetPath& path, const S& settings) const {
+    Handle<A> load_with_settings_override(const AssetPath& path, std::function<void(S&)> settings) const {
+        return load_with_meta_transform<A>(path, loader_settings_meta_transform<S>(std::move(settings)), true);
+    }
+
+    /** @brief Core typed load function with optional meta transform.
+     *  All typed load methods delegate to this.
+     *  Matches bevy_asset's AssetServer::load_with_meta_transform. */
+    template <typename A>
+    Handle<A> load_with_meta_transform(const AssetPath& path,
+                                       std::optional<MetaTransform> meta_transform,
+                                       bool force) const {
+        auto mode                  = force ? HandleLoadingMode::Force : HandleLoadingMode::Request;
         auto guard                 = data->infos.write();
-        auto [handle, should_load] = guard->template get_or_create_handle<A>(path, HandleLoadingMode::Force);
+        auto [handle, should_load] = guard->template get_or_create_handle<A>(path, mode, std::move(meta_transform));
         if (should_load) {
-            spawn_load_task(handle.id(), path);
+            spawn_load_task(handle.untyped(), path, *guard);
         }
         return handle;
     }
@@ -158,7 +184,7 @@ export struct AssetServer {
         auto guard                 = data->infos.write();
         auto [handle, should_load] = guard->get_or_create_handle_untyped(path, loader_type, HandleLoadingMode::Request);
         if (should_load) {
-            spawn_load_task(handle.id(), path);
+            spawn_load_task(handle, path, *guard);
         }
         return handle;
     }
@@ -168,7 +194,7 @@ export struct AssetServer {
         auto guard                 = data->infos.write();
         auto [handle, should_load] = guard->get_or_create_handle_untyped(path, type_id, HandleLoadingMode::Request);
         if (should_load) {
-            spawn_load_task(handle.id(), path);
+            spawn_load_task(handle, path, *guard);
         }
         return handle;
     }
@@ -177,7 +203,14 @@ export struct AssetServer {
 
     /** @brief Load all assets in a folder. Returns a handle to a LoadedFolder.
      *  Matches bevy_asset's AssetServer::load_folder. */
-    Handle<LoadedFolder> load_folder(const AssetPath& path) const { return load<LoadedFolder>(path); }
+    Handle<LoadedFolder> load_folder(const AssetPath& path) const {
+        auto guard = data->infos.write();
+        auto [handle, should_load] =
+            guard->template get_or_create_handle<LoadedFolder>(path, HandleLoadingMode::Request);
+        if (!should_load) return handle;
+        load_folder_internal(handle.id(), path);
+        return handle;
+    }
 
     // ---- Blocking / Acquire Loading ----
 
@@ -198,8 +231,8 @@ export struct AssetServer {
      *  Matches bevy_asset's AssetServer::load_acquire_with_settings. */
     template <typename A, typename S>
         requires std::derived_from<S, Settings>
-    Handle<A> load_acquire_with_settings(const AssetPath& path, const S& settings) const {
-        auto handle = load_with_settings<A, S>(path, settings);
+    Handle<A> load_acquire_with_settings(const AssetPath& path, std::function<void(S&)> settings) const {
+        auto handle = load_with_settings<A, S>(path, std::move(settings));
         while (!is_loaded(handle.id())) {
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
@@ -208,9 +241,10 @@ export struct AssetServer {
 
     // ---- Reload ----
 
-    /** @brief Force reload an asset at the given path. */
+    /** @brief Force reload an asset at the given path.
+     *  Matches bevy_asset's AssetServer::reload / reload_internal. */
     void reload(const AssetPath& path) const {
-        std::vector<UntypedAssetId> ids_to_reload;
+        std::vector<UntypedHandle> handles_to_reload;
         {
             auto guard = data->infos.write();
             for (auto id : guard->get_path_ids(path)) {
@@ -219,12 +253,15 @@ export struct AssetServer {
                     info->get().state         = LoadStateOK::Loading;
                     info->get().dep_state     = LoadStateOK::Loading;
                     info->get().rec_dep_state = LoadStateOK::Loading;
-                    ids_to_reload.push_back(id);
+                    auto handle               = guard->get_handle_by_id(id);
+                    if (handle) {
+                        handles_to_reload.push_back(*handle);
+                    }
                 }
             }
         }
-        for (auto& id : ids_to_reload) {
-            spawn_load_task(id, path);
+        for (auto& handle : handles_to_reload) {
+            spawn_load_task(handle, path);
         }
     }
 
@@ -454,7 +491,16 @@ export struct AssetServer {
     static void handle_internal_events(core::ParamSet<core::World&, core::Res<AssetServer>> params);
 
    private:
-    void spawn_load_task(const UntypedAssetId& id, const AssetPath& path) const;
+    /** @brief Spawn an IO task to load an asset. Takes the handle (which carries meta_transform)
+     *  and the infos write guard for pending_tasks tracking.
+     *  Matches bevy_asset's AssetServer::spawn_load_task. */
+    void spawn_load_task(const UntypedHandle& handle, const AssetPath& path, AssetInfos& infos) const;
+    /** @brief Overload without infos guard, for reload path. */
+    void spawn_load_task(const UntypedHandle& handle, const AssetPath& path) const;
+    void load_folder_internal(const UntypedAssetId& id, const AssetPath& path) const;
+
+    /** @brief Send an internal asset event. */
+    void send_asset_event(InternalAssetEvent event) const { data->asset_event_sender.send(std::move(event)); }
 
     /** @brief Helper to create a LoadContext. Defined here in the module interface
      *  where AssetServer is complete, working around MSVC C++20 modules bug

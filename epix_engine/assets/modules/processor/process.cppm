@@ -174,10 +174,10 @@ struct ErasedProcessorImpl : P, ErasedProcessor {
             return std::unexpected(ProcessError{process_errors::AssetSaveError{result.error()}});
         }
         // Build an AssetMeta with a Load action using the output loader settings
-        auto meta             = std::make_unique<AssetMeta<typename P::OutputLoader::Settings, typename P::Settings>>();
-        meta->action          = AssetActionType::Load;
-        meta->loader          = std::string(meta::type_id<typename P::OutputLoader>{}.short_name());
-        meta->loader_settings = std::move(*result);
+        auto meta    = std::make_unique<AssetMeta<typename P::OutputLoader::Settings, typename P::Settings>>();
+        meta->action = AssetActionType::Load;
+        meta->loader = std::string(meta::type_id<typename P::OutputLoader>{}.short_name());
+        meta->loader_settings_value = std::move(*result);
         return meta;
     }
 
