@@ -377,55 +377,55 @@ void GLFWPlugin::update_window_states(Query<Item<Entity, Mut<Window>, const Cach
         // cursor icon
         if (cached.cursor_icon != desc.cursor_icon) {
             std::visit(utils::visitor{[&](const StandardCursor& icon) {
-                                           auto cursor = glfwCreateStandardCursor([icon] {
-                                               switch (icon) {
-                                                   case StandardCursor::Arrow:
-                                                       return GLFW_ARROW_CURSOR;
-                                                   case StandardCursor::IBeam:
-                                                       return GLFW_IBEAM_CURSOR;
-                                                   case StandardCursor::Crosshair:
-                                                       return GLFW_CROSSHAIR_CURSOR;
-                                                   case StandardCursor::Hand:
-                                                       return GLFW_HAND_CURSOR;
-                                                   case StandardCursor::ResizeAll:
-                                                       return GLFW_RESIZE_ALL_CURSOR;
-                                                   case StandardCursor::ResizeNS:
-                                                       return GLFW_RESIZE_NS_CURSOR;
-                                                   case StandardCursor::ResizeEW:
-                                                       return GLFW_RESIZE_EW_CURSOR;
-                                                   case StandardCursor::ResizeNWSE:
-                                                       return GLFW_RESIZE_NWSE_CURSOR;
-                                                   case StandardCursor::ResizeNESW:
-                                                       return GLFW_RESIZE_NESW_CURSOR;
-                                                   case StandardCursor::NotAllowed:
-                                                       return GLFW_NOT_ALLOWED_CURSOR;
-                                                   default:
-                                                       return GLFW_ARROW_CURSOR;  // default case
-                                               }
-                                           }());
-                                           glfwSetCursor(window, cursor);
-                                           cached.cursor_icon = desc.cursor_icon;
-                                       },
-                                       [&](const CustomCursor& handle) {
-                                           images->get(handle.image).transform([&](const image::Image& img) {
-                                               auto expected_format = image::Format::RGBA8;
-                                               std::optional<image::Image> converted_img;
-                                               if (img.format() != expected_format) {
-                                                   converted_img = img.convert(expected_format);
-                                               }
-                                               auto& image = converted_img.has_value() ? *converted_img : img;
-                                               auto view   = image.raw_view();
-                                               GLFWimage glfw_img;
-                                               glfw_img.width  = image.width();
-                                               glfw_img.height = image.height();
-                                               glfw_img.pixels = const_cast<unsigned char*>(
-                                                   reinterpret_cast<const unsigned char*>(view.data()));
-                                               auto cursor = glfwCreateCursor(&glfw_img, handle.hot_x, handle.hot_y);
-                                               glfwSetCursor(window, cursor);
-                                               cached.cursor_icon = desc.cursor_icon;
-                                               return std::cref(img);
-                                           });
-                                       }},
+                                          auto cursor = glfwCreateStandardCursor([icon] {
+                                              switch (icon) {
+                                                  case StandardCursor::Arrow:
+                                                      return GLFW_ARROW_CURSOR;
+                                                  case StandardCursor::IBeam:
+                                                      return GLFW_IBEAM_CURSOR;
+                                                  case StandardCursor::Crosshair:
+                                                      return GLFW_CROSSHAIR_CURSOR;
+                                                  case StandardCursor::Hand:
+                                                      return GLFW_HAND_CURSOR;
+                                                  case StandardCursor::ResizeAll:
+                                                      return GLFW_RESIZE_ALL_CURSOR;
+                                                  case StandardCursor::ResizeNS:
+                                                      return GLFW_RESIZE_NS_CURSOR;
+                                                  case StandardCursor::ResizeEW:
+                                                      return GLFW_RESIZE_EW_CURSOR;
+                                                  case StandardCursor::ResizeNWSE:
+                                                      return GLFW_RESIZE_NWSE_CURSOR;
+                                                  case StandardCursor::ResizeNESW:
+                                                      return GLFW_RESIZE_NESW_CURSOR;
+                                                  case StandardCursor::NotAllowed:
+                                                      return GLFW_NOT_ALLOWED_CURSOR;
+                                                  default:
+                                                      return GLFW_ARROW_CURSOR;  // default case
+                                              }
+                                          }());
+                                          glfwSetCursor(window, cursor);
+                                          cached.cursor_icon = desc.cursor_icon;
+                                      },
+                                      [&](const CustomCursor& handle) {
+                                          images->get(handle.image).transform([&](const image::Image& img) {
+                                              auto expected_format = image::Format::RGBA8;
+                                              std::optional<image::Image> converted_img;
+                                              if (img.format() != expected_format) {
+                                                  converted_img = img.convert(expected_format);
+                                              }
+                                              auto& image = converted_img.has_value() ? *converted_img : img;
+                                              auto view   = image.raw_view();
+                                              GLFWimage glfw_img;
+                                              glfw_img.width  = image.width();
+                                              glfw_img.height = image.height();
+                                              glfw_img.pixels = const_cast<unsigned char*>(
+                                                  reinterpret_cast<const unsigned char*>(view.data()));
+                                              auto cursor = glfwCreateCursor(&glfw_img, handle.hot_x, handle.hot_y);
+                                              glfwSetCursor(window, cursor);
+                                              cached.cursor_icon = desc.cursor_icon;
+                                              return std::cref(img);
+                                          });
+                                      }},
                        desc.cursor_icon);
         }
         if (cached.icon != desc.icon) {

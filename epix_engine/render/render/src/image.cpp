@@ -79,12 +79,12 @@ GPUImage render::RenderAsset<image::Image>::process(image::Image&& asset, Param 
     GPUImage gpu_image;
     gpu_image.texture = device->createTexture(desc);
     auto view_desc    = wgpu::TextureViewDescriptor()
-                         .setDimension(view_dimension_cast(asset.type()))
-                         .setMipLevelCount(1)
-                         .setBaseMipLevel(0)
-                         .setFormat(desc.format)
-                         .setBaseArrayLayer(0)
-                         .setArrayLayerCount(asset.layers());
+                            .setDimension(view_dimension_cast(asset.type()))
+                            .setMipLevelCount(1)
+                            .setBaseMipLevel(0)
+                            .setFormat(desc.format)
+                            .setBaseArrayLayer(0)
+                            .setArrayLayerCount(asset.layers());
     gpu_image.view    = gpu_image.texture.createView(view_desc);
     gpu_image.sampler = default_sampler->sampler;
 

@@ -82,7 +82,7 @@ export struct AssetWriter {
     virtual std::expected<void, AssetWriterError> remove_directory(const std::filesystem::path& path) const = 0;
     virtual std::expected<void, AssetWriterError> clear_directory(const std::filesystem::path& path) const  = 0;
     std::expected<void, AssetWriterError> write_bytes(const std::filesystem::path& path,
-                                                              std::span<const std::byte> bytes) const {
+                                                      std::span<const std::byte> bytes) const {
         return write(path).and_then(
             [&bytes](std::unique_ptr<std::ostream>&& stream) -> std::expected<void, AssetWriterError> {
                 try {
@@ -100,7 +100,7 @@ export struct AssetWriter {
             });
     }
     std::expected<void, AssetWriterError> write_meta_bytes(const std::filesystem::path& path,
-                                                                   std::span<const std::byte> bytes) const {
+                                                           std::span<const std::byte> bytes) const {
         return write_meta(path).and_then(
             [&bytes](std::unique_ptr<std::ostream>&& stream) -> std::expected<void, AssetWriterError> {
                 try {

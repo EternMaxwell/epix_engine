@@ -65,10 +65,10 @@ struct MeshBatchingTestPlugin {
                                                      .with_primitive_type(wgpu::PrimitiveTopology::eTriangleList)
                                                      .with_attribute(mesh::Mesh::ATTRIBUTE_POSITION,
                                                                      std::vector<glm::vec3>{
-                                                                      {0.0f, 12.0f, 0.0f},
-                                                                      {-10.0f, -8.0f, 0.0f},
-                                                                      {10.0f, -8.0f, 0.0f},
-                                                                  })
+                                                                         {0.0f, 12.0f, 0.0f},
+                                                                         {-10.0f, -8.0f, 0.0f},
+                                                                         {10.0f, -8.0f, 0.0f},
+                                                                     })
                                                      .with_indices<std::uint16_t>(std::vector<std::uint16_t>{0, 1, 2}));
 
         std::mt19937 rng(1337);

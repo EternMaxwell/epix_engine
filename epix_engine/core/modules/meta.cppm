@@ -38,9 +38,9 @@ constexpr std::string shorten(std::string_view str) {
         std::vector lefts = left_chars | std::views::transform([&](char c) { return result.rfind(c, last_colon); }) |
                             std::views::filter([&](std::size_t pos) { return pos != std::string::npos; }) |
                             std::ranges::to<std::vector>();
-        auto left_elem = std::ranges::max_element(lefts);
-        auto left      = (left_elem != lefts.end()) ? *left_elem + 1 : 0;
-        result         = result.substr(0, left) + result.substr(last_colon + 2);
+        auto left_elem    = std::ranges::max_element(lefts);
+        auto left         = (left_elem != lefts.end()) ? *left_elem + 1 : 0;
+        result            = result.substr(0, left) + result.substr(last_colon + 2);
     }
     // remove all spaces
     // result.erase(std::remove_if(result.begin(), result.end(), [](char c) { return c == ' '; }), result.end());

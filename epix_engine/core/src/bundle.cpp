@@ -205,7 +205,7 @@ BundleId Bundles::init_dynamic_info(Storage& storage, const Components& componen
                                                 return components.get(type_id).value().get().storage_type();
                                             }) |
                                             std::ranges::to<std::vector<StorageType>>();
-        BundleInfo info = BundleInfo::create("dynamic bundle", storage, components, ids, new_id);
+        BundleInfo info                   = BundleInfo::create("dynamic bundle", storage, components, ids, new_id);
         _bundle_infos.emplace_back(std::move(info));
         _dynamic_bundle_storages.emplace(new_id, std::move(storages));
         _dynamic_bundle_ids.emplace(std::move(ids), new_id);

@@ -13,7 +13,7 @@ concept from_param = requires {
     typename function_traits<decltype(T::from_param)>::args_tuple;
     requires system_param<typename function_traits<decltype(T::from_param)>::args_tuple>;
     {
-        std::apply(&T::from_param, std::declval<typename function_traits<decltype(T::from_param)>::args_tuple &&>())
+        std::apply(&T::from_param, std::declval<typename function_traits<decltype(T::from_param)>::args_tuple&&>())
     } -> std::same_as<T>;
 };
 template <from_param T>

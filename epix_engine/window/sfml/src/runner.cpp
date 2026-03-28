@@ -4,7 +4,6 @@
 
 #include <SFML/Window/WindowBase.hpp>
 
-
 module epix.sfml.core;
 
 import std;

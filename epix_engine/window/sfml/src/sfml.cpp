@@ -362,59 +362,59 @@ void SFMLPlugin::update_window_states(Query<Item<Entity, Mut<Window>, const Cach
         // cursor icon
         if (cached.cursor_icon != desc.cursor_icon) {
             std::visit(utils::visitor{[&](const StandardCursor& icon) {
-                                           auto type = [icon] {
-                                               switch (icon) {
-                                                   case StandardCursor::Arrow:
-                                                       return sf::Cursor::Type::Arrow;
-                                                   case StandardCursor::IBeam:
-                                                       return sf::Cursor::Type::Text;
-                                                   case StandardCursor::Crosshair:
-                                                       return sf::Cursor::Type::Cross;
-                                                   case StandardCursor::Hand:
-                                                       return sf::Cursor::Type::Hand;
-                                                   case StandardCursor::ResizeAll:
-                                                       return sf::Cursor::Type::SizeAll;
-                                                   case StandardCursor::ResizeNS:
-                                                       return sf::Cursor::Type::SizeVertical;
-                                                   case StandardCursor::ResizeEW:
-                                                       return sf::Cursor::Type::SizeHorizontal;
-                                                   case StandardCursor::ResizeNWSE:
-                                                       return sf::Cursor::Type::SizeTopLeftBottomRight;
-                                                   case StandardCursor::ResizeNESW:
-                                                       return sf::Cursor::Type::SizeBottomLeftTopRight;
-                                                   case StandardCursor::NotAllowed:
-                                                       return sf::Cursor::Type::NotAllowed;
-                                                   default:
-                                                       return sf::Cursor::Type::Arrow;
-                                               }
-                                           }();
-                                           auto cursor = sf::Cursor::createFromSystem(type);
-                                           if (cursor) {
-                                               window->setMouseCursor(*cursor);
-                                           }
-                                           cached.cursor_icon = desc.cursor_icon;
-                                       },
-                                       [&](const CustomCursor& handle) {
-                                           images->get(handle.image).transform([&](const image::Image& img) {
-                                               auto expected_format = image::Format::RGBA8;
-                                               std::optional<image::Image> converted_img;
-                                               if (img.format() != expected_format) {
-                                                   converted_img = img.convert(expected_format);
-                                               }
-                                               auto& image = converted_img.has_value() ? *converted_img : img;
-                                               auto view   = image.raw_view();
-                                               auto cursor = sf::Cursor::createFromPixels(
-                                                   reinterpret_cast<const std::uint8_t*>(view.data()),
-                                                   {static_cast<unsigned>(image.width()),
-                                                    static_cast<unsigned>(image.height())},
-                                                   {handle.hot_x, handle.hot_y});
-                                               if (cursor) {
-                                                   window->setMouseCursor(*cursor);
-                                               }
-                                               cached.cursor_icon = desc.cursor_icon;
-                                               return std::cref(img);
-                                           });
-                                       }},
+                                          auto type = [icon] {
+                                              switch (icon) {
+                                                  case StandardCursor::Arrow:
+                                                      return sf::Cursor::Type::Arrow;
+                                                  case StandardCursor::IBeam:
+                                                      return sf::Cursor::Type::Text;
+                                                  case StandardCursor::Crosshair:
+                                                      return sf::Cursor::Type::Cross;
+                                                  case StandardCursor::Hand:
+                                                      return sf::Cursor::Type::Hand;
+                                                  case StandardCursor::ResizeAll:
+                                                      return sf::Cursor::Type::SizeAll;
+                                                  case StandardCursor::ResizeNS:
+                                                      return sf::Cursor::Type::SizeVertical;
+                                                  case StandardCursor::ResizeEW:
+                                                      return sf::Cursor::Type::SizeHorizontal;
+                                                  case StandardCursor::ResizeNWSE:
+                                                      return sf::Cursor::Type::SizeTopLeftBottomRight;
+                                                  case StandardCursor::ResizeNESW:
+                                                      return sf::Cursor::Type::SizeBottomLeftTopRight;
+                                                  case StandardCursor::NotAllowed:
+                                                      return sf::Cursor::Type::NotAllowed;
+                                                  default:
+                                                      return sf::Cursor::Type::Arrow;
+                                              }
+                                          }();
+                                          auto cursor = sf::Cursor::createFromSystem(type);
+                                          if (cursor) {
+                                              window->setMouseCursor(*cursor);
+                                          }
+                                          cached.cursor_icon = desc.cursor_icon;
+                                      },
+                                      [&](const CustomCursor& handle) {
+                                          images->get(handle.image).transform([&](const image::Image& img) {
+                                              auto expected_format = image::Format::RGBA8;
+                                              std::optional<image::Image> converted_img;
+                                              if (img.format() != expected_format) {
+                                                  converted_img = img.convert(expected_format);
+                                              }
+                                              auto& image = converted_img.has_value() ? *converted_img : img;
+                                              auto view   = image.raw_view();
+                                              auto cursor = sf::Cursor::createFromPixels(
+                                                  reinterpret_cast<const std::uint8_t*>(view.data()),
+                                                  {static_cast<unsigned>(image.width()),
+                                                   static_cast<unsigned>(image.height())},
+                                                  {handle.hot_x, handle.hot_y});
+                                              if (cursor) {
+                                                  window->setMouseCursor(*cursor);
+                                              }
+                                              cached.cursor_icon = desc.cursor_icon;
+                                              return std::cref(img);
+                                          });
+                                      }},
                        desc.cursor_icon);
         }
         if (cached.icon != desc.icon) {

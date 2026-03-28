@@ -225,9 +225,9 @@ void PipelineServer::process_pipeline(CachedPipeline& cached_pipeline, CachedPip
         };
     };
     auto pipeline_name         = std::visit(utils::visitor{
-                                        [](const RenderPipelineDescriptor& desc) { return desc.label; },
-                                        [](const ComputePipelineDescriptor& desc) { return desc.label; },
-                                    },
+                                                [](const RenderPipelineDescriptor& desc) { return desc.label; },
+                                                [](const ComputePipelineDescriptor& desc) { return desc.label; },
+                                            },
                                             cached_pipeline.descriptor);
     auto handle_pipeline_error = [&](const PipelineServerError& error) {
         if (auto pipeline_error = std::get_if<PipelineError>(&error)) {

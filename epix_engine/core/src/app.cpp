@@ -174,7 +174,7 @@ std::expected<std::shared_ptr<SystemDispatcher>, WorldNotOwnedError> App::get_sy
                                                                 }
                                                                 delete dispatcher;
                                                             });
-        _dispatcher = dispatcher;
+        _dispatcher     = dispatcher;
         return dispatcher;
     }
     return std::unexpected(WorldNotOwnedError{});
