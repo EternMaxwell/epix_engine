@@ -145,4 +145,8 @@ message(STATUS "  EPIX_ENABLE_TEST  (optional): ${EPIX_ENABLE_TEST}")
 message(STATUS "  EPIX_CXX_MODULE   (optional): ${EPIX_CXX_MODULE}")
 message(STATUS "  EPIX_IMPORT_STD   (optional): ${EPIX_IMPORT_STD}")
 
+if (EPIX_ENABLE_TEST)
+  enable_testing()
+endif()
+
 add_subdirectory (epix_engine)
