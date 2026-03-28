@@ -274,9 +274,20 @@ export struct SandSimulation : grid::ExtendibleChunkRefGrid<kDim> {
     float cell_size() const { return m_cell_size; }
     void set_cell_size(float size) { m_cell_size = size; }
     std::int32_t brush_radius() const { return m_brush_radius; }
+    void set_brush_radius(std::int32_t r) { m_brush_radius = std::clamp(r, 1, 32); }
+    bool paused() const { return m_paused; }
+    void set_paused(bool p) { m_paused = p; }
+    bool auto_fall() const { return m_auto_fall; }
+    void set_auto_fall(bool a) { m_auto_fall = a; }
+    std::uint64_t tick() const { return m_tick; }
 
     void clear_all() {
         for (auto&& chunk : iter_chunks_mut()) chunk.get().clear();
+    }
+
+    void reset() {
+        clear_all();
+        seed_pile();
     }
 
     struct PaintDesc {
@@ -324,19 +335,12 @@ export struct SandSimulation : grid::ExtendibleChunkRefGrid<kDim> {
             sim->m_initialized = true;
         }
 
-        if (keys->just_pressed(input::KeyCode::KeySpace)) sim->m_paused = !sim->m_paused;
-        if (keys->just_pressed(input::KeyCode::KeyT)) sim->m_auto_fall = !sim->m_auto_fall;
-        if (keys->just_pressed(input::KeyCode::KeyQ)) {
-            sim->m_brush_radius = std::max<std::int32_t>(1, sim->m_brush_radius - 1);
-        }
-        if (keys->just_pressed(input::KeyCode::KeyE)) {
-            sim->m_brush_radius = std::min<std::int32_t>(32, sim->m_brush_radius + 1);
-        }
+        if (keys->just_pressed(input::KeyCode::KeySpace)) sim->set_paused(!sim->paused());
+        if (keys->just_pressed(input::KeyCode::KeyT)) sim->set_auto_fall(!sim->auto_fall());
+        if (keys->just_pressed(input::KeyCode::KeyQ)) sim->set_brush_radius(sim->brush_radius() - 1);
+        if (keys->just_pressed(input::KeyCode::KeyE)) sim->set_brush_radius(sim->brush_radius() + 1);
         if (keys->just_pressed(input::KeyCode::KeyC)) sim->clear_all();
-        if (keys->just_pressed(input::KeyCode::KeyR)) {
-            sim->clear_all();
-            sim->seed_pile();
-        }
+        if (keys->just_pressed(input::KeyCode::KeyR)) sim->reset();
 
         auto window = windows.single();
         auto camera = cameras.single();
