@@ -59,7 +59,7 @@ int main() {
         .add_plugins(mesh::MeshRenderPlugin{})
         .add_plugins(imgui::ImGuiPlugin{})
         .add_plugins(ext::fallingsand::SimpleFallingSandPlugin{})
-        .add_systems(PreUpdate, into(settings_ui));
+        .add_systems(PreUpdate, into(settings_ui).after(imgui::BeginFrameSet));
 
     app.run();
 }

@@ -35,6 +35,9 @@ export struct ImGuiPlugin {
     void build(App& app);
 };
 
+export inline struct BeginFrameSetT {
+} BeginFrameSet;
+
 // Frame lifecycle systems (main world)
 void imgui_begin_frame(ResMut<ImGuiState> state,
                        Res<glfw::GLFWwindows> windows,

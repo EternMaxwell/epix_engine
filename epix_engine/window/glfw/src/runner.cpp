@@ -118,28 +118,41 @@ bool GLFWRunner::step(App& app) {
         }
         // std::ranges::for_each(glfw_systems, [&](auto& sys) { sys->run({}, world); });
     });
-    app.update().wait();
+    app.update();
     std::optional<int> exit_code;
-    exit_code = app.system_dispatcher()->dispatch_system(*check_exit, {}, exit_access).get().value_or(-1);
-    if (render_app_future) render_app_future->wait();
-    render_app_future.reset();
-    if (exit_code.has_value()) return false;
-    render_app_future = render_app_label.and_then([&](const core::AppLabel& label) -> std::optional<std::future<bool>> {
-        if (auto render_app = app.get_sub_app_mut(label)) {
-            render_app.value().get().extract(app);
-            return render_app.value().get().update();
-        }
-        return std::nullopt;
+    app.world_scope([&](World& world) {
+        auto res = check_exit->run({}, world);
+        if (res.has_value() && res.value().has_value()) exit_code = res.value();
     });
+    if (render_app_future) {
+        auto sub = render_app_future->get();
+        if (sub) app.insert_sub_app(*render_app_label, std::move(sub));
+        render_app_future.reset();
+    }
+    if (exit_code.has_value()) return false;
+    if (render_app_label) {
+        auto sub = app.take_sub_app(*render_app_label);
+        if (sub) {
+            sub->extract(app);
+            render_app_future =
+                std::async(std::launch::async, [sub = std::move(sub)]() mutable -> std::unique_ptr<App> {
+                    sub->update();
+                    return std::move(sub);
+                });
+        }
+    }
     return true;
 }
 void GLFWRunner::exit(App& app) {
-    if (render_app_future) render_app_future->wait();
-    render_app_future.reset();
+    if (render_app_future) {
+        auto sub = render_app_future->get();
+        if (sub) app.insert_sub_app(*render_app_label, std::move(sub));
+        render_app_future.reset();
+    }
     app.world_scope([&](World& world) {
         auto res = remove_window->run({}, world);
         res      = destroy_windows_system->run({}, world);
     });
     glfwTerminate();
-    app.run_schedules(PreExit, Exit, PostExit).wait();
+    app.run_schedules(PreExit, Exit, PostExit);
 }

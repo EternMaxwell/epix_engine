@@ -133,13 +133,12 @@ TEST(core, schedule) {
     auto pres = exec_sched.prepare(true);
     EXPECT_TRUE(pres.has_value());
 
-    // Create dispatcher and execute
+    // Create world and execute
     auto registry2 = std::make_shared<TypeRegistry>();
-    SystemDispatcher dispatcher(world, 2);
     exec_sched.initialize_systems(world);
     std::println(std::cout, "First execution:");
-    exec_sched.execute(dispatcher);
+    exec_sched.execute(world);
     std::println(std::cout, "Since commands are deferred, spawned entities are not visible yet.");
     std::println(std::cout, "Second execution:");
-    exec_sched.execute(dispatcher);
+    exec_sched.execute(world);
 }

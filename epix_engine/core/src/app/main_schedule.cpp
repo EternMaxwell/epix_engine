@@ -10,9 +10,9 @@ import :labels;
 namespace core {
 void MainSchedulePlugin::build(App& app) {
     auto schedules = std::array{
-        Schedule(PreStartup).with_execute_config({.apply_direct = true, .run_once = true}),
-        Schedule(Startup).with_execute_config({.apply_direct = true, .run_once = true}),
-        Schedule(PostStartup).with_execute_config({.apply_direct = true, .run_once = true}),
+        Schedule(PreStartup).with_execute_config({.deferred = DeferredApply::ApplyDirect, .run_once = true}),
+        Schedule(Startup).with_execute_config({.deferred = DeferredApply::ApplyDirect, .run_once = true}),
+        Schedule(PostStartup).with_execute_config({.deferred = DeferredApply::ApplyDirect, .run_once = true}),
         Schedule(First),
         Schedule(PreUpdate),
         Schedule(Update),

@@ -21,39 +21,39 @@ void Schedule::add_config(SetConfig config, bool accept_system) {
         bool contain_system = contains_system(*config.label);
         if (contain_system && accept_system) {
             // fully replace.
-            nodes.at(*config.label) = node;
+            _data.nodes.at(*config.label) = node;
         } else if (contain_set) {
             // merge edges.
             if (contain_system) {
-                std::swap(node, nodes.at(*config.label));
+                std::swap(node, _data.nodes.at(*config.label));
             }
-            node->edges.merge(nodes.at(*config.label)->edges);
+            node->edges.merge(_data.nodes.at(*config.label)->edges);
             node->conditions.insert_range(node->conditions.end(),
-                                          std::move(nodes.at(*config.label)->conditions) | std::views::as_rvalue);
-            nodes.at(*config.label) = node;
+                                          std::move(_data.nodes.at(*config.label)->conditions) | std::views::as_rvalue);
+            _data.nodes.at(*config.label) = node;
         } else {
-            nodes.emplace(*config.label, node);
+            _data.nodes.emplace(*config.label, node);
         }
     }
     std::ranges::for_each(config.sub_configs,
                           [&](SetConfig& sub_config) { add_config(std::move(sub_config), accept_system); });
-    cache.reset();
+    _data.cache.reset();
 }
 
 std::expected<void, SchedulePrepareError> Schedule::prepare(bool check_error) {
     // clear validated edges first
-    for (auto& [label, pnode] : nodes) {
+    for (auto& [label, pnode] : _data.nodes) {
         pnode->validated_edges.children.clear();
         pnode->validated_edges.parents.clear();
         pnode->validated_edges.depends.clear();
         pnode->validated_edges.successors.clear();
     }
     // complete edges.
-    for (auto& [label, pnode] : nodes) {
+    for (auto& [label, pnode] : _data.nodes) {
         auto& node = *pnode;
         // validate edges
         for (const auto& dep_label : node.edges.depends) {
-            if (auto it = nodes.find(dep_label); it != nodes.end()) {
+            if (auto it = _data.nodes.find(dep_label); it != _data.nodes.end()) {
                 node.validated_edges.depends.insert(dep_label);
                 it->second->validated_edges.successors.insert(label);
             } else {
@@ -64,7 +64,7 @@ std::expected<void, SchedulePrepareError> Schedule::prepare(bool check_error) {
             }
         }
         for (const auto& succ_label : node.edges.successors) {
-            if (auto it = nodes.find(succ_label); it != nodes.end()) {
+            if (auto it = _data.nodes.find(succ_label); it != _data.nodes.end()) {
                 node.validated_edges.successors.insert(succ_label);
                 it->second->validated_edges.depends.insert(label);
             } else {
@@ -75,7 +75,7 @@ std::expected<void, SchedulePrepareError> Schedule::prepare(bool check_error) {
             }
         }
         for (const auto& parent_label : node.edges.parents) {
-            if (auto it = nodes.find(parent_label); it != nodes.end()) {
+            if (auto it = _data.nodes.find(parent_label); it != _data.nodes.end()) {
                 node.validated_edges.parents.insert(parent_label);
                 it->second->validated_edges.children.insert(label);
             } else {
@@ -86,7 +86,7 @@ std::expected<void, SchedulePrepareError> Schedule::prepare(bool check_error) {
             }
         }
         for (const auto& child_label : node.edges.children) {
-            if (auto it = nodes.find(child_label); it != nodes.end()) {
+            if (auto it = _data.nodes.find(child_label); it != _data.nodes.end()) {
                 node.validated_edges.children.insert(child_label);
                 it->second->validated_edges.parents.insert(label);
             } else {
@@ -98,10 +98,10 @@ std::expected<void, SchedulePrepareError> Schedule::prepare(bool check_error) {
         }
     }
     // rebuild cache
-    cache                         = std::make_shared<ScheduleCache>();
-    ScheduleCache& schedule_cache = *cache;
-    schedule_cache.nodes.reserve(nodes.size());
-    for (auto& [label, node] : nodes) {
+    _data.cache                   = std::make_shared<ScheduleCache>();
+    ScheduleCache& schedule_cache = *_data.cache;
+    schedule_cache.nodes.reserve(_data.nodes.size());
+    for (auto& [label, node] : _data.nodes) {
         schedule_cache.node_map.emplace(label, schedule_cache.nodes.size());
         CachedNode& cached_node = schedule_cache.nodes.emplace_back();
         cached_node.node        = node;
@@ -260,7 +260,7 @@ std::expected<void, SchedulePrepareError> Schedule::prepare(bool check_error) {
 }
 
 void Schedule::initialize_systems(World& world, bool force) {
-    for (auto& [label, node] : nodes) {
+    for (auto& [label, node] : _data.nodes) {
         if (node->system && (!node->system->initialized() || force)) {
             node->system_access = node->system->initialize(world);
         }
@@ -290,7 +290,7 @@ void Schedule::initialize_systems(World& world, bool force) {
 
 void Schedule::check_change_tick(Tick change_tick) {
     // check change tick for all systems
-    for (auto& [label, node] : nodes) {
+    for (auto& [label, node] : _data.nodes) {
         if (node->system) {
             if (node->system->initialized()) node->system->check_change_tick(change_tick);
         }
@@ -300,306 +300,389 @@ void Schedule::check_change_tick(Tick change_tick) {
     }
 }
 
-void Schedule::execute(SystemDispatcher& dispatcher, ExecuteConfig config) {
-    if (!cache) {
+void Schedule::execute(World& world, const ExecuteConfig& config) {
+    if (executor) {
+        executor->execute(_data, world, config);
+        return;
+    }
+    if (!_data.cache) {
         auto prepare_result = prepare(
-// compile debug level macro controlled
 #ifdef NDEBUG
             false
 #else
             true
 #endif
         );
-        // we still execute even if there are errors, cause it won't crash, just some nodes won't run
     }
 
-    // ? should we initialize systems here? or let caller assure systems are initialized?
-    auto init_future      = dispatcher.world_scope([this](World& world) {
-        try {
-            initialize_systems(world);
-        } catch (const std::exception& e) {
-            spdlog::error("[schedule] exception during system initialization: {}", e.what());
-        } catch (...) {
-            spdlog::error("[schedule] unknown exception during system initialization.");
-        }
-    });
-    std::shared_ptr cache = this->cache;  // keep a copy to avoid being invalidated during execution
-
-    ExecutionState exec_state{
-        .running_count       = 0,
-        .remaining_count     = cache->nodes.size(),
-        .ready_nodes         = bit_vector(cache->nodes.size()),
-        .finished_nodes      = bit_vector(cache->nodes.size()),
-        .entered_nodes       = bit_vector(cache->nodes.size()),
-        .dependencies        = std::vector<bit_vector>(cache->nodes.size()),
-        .children            = std::vector<bit_vector>(cache->nodes.size()),
-        .condition_met_nodes = bit_vector(cache->nodes.size(), true),  // default all met
-        .untest_conditions   = std::vector<bit_vector>(cache->nodes.size()),
-        .wait_count          = std::vector<size_t>(cache->nodes.size(), 0),
-        .child_count         = std::vector<size_t>(cache->nodes.size(), 0),
-    };
-    // initialize cache value.
-    bool has_system = false;
-    for (auto&& [index, cached_node] : cache->nodes | std::views::enumerate) {
-        exec_state.wait_count[index]  = cached_node.depends.size() + cached_node.parents.size();
-        exec_state.child_count[index] = cached_node.children.size() + (cached_node.node->system ? 1 : 0);
-        has_system |= (bool)cached_node.node->system;
-        exec_state.untest_conditions[index].resize(cached_node.node->conditions.size(), true);
-        exec_state.dependencies[index].set_range(cached_node.depends, true);
-        exec_state.children[index].set_range(cached_node.children, true);
-        if (exec_state.wait_count[index] == 0) {
-            // no dependencies, can run immediately
-            exec_state.ready_stack.push_back(index);
-        }
+    try {
+        initialize_systems(world);
+    } catch (const std::exception& e) {
+        spdlog::error("[schedule] exception during system initialization: {}", e.what());
+    } catch (...) {
+        spdlog::error("[schedule] unknown exception during system initialization.");
     }
-    init_future.wait();
+
+    std::shared_ptr cache = _data.cache;  // keep a copy to avoid being invalidated during execution
+
+    // Check if anything to do
+    bool has_system = std::ranges::any_of(cache->nodes, [](const CachedNode& cn) { return (bool)cn.node->system; });
     if (!has_system && m_pre_systems.empty() && m_post_systems.empty()) {
-        // no systems to run
         return;
     }
 
-    // Run pre-systems sequentially with exclusive world access
+    // Check schedule-level conditions (synchronous, caller thread)
+    for (auto& cond : config.conditions) {
+        if (!cond(world)) return;
+    }
+
+    // Run pre-systems (once, before loop body, synchronous)
     for (auto& ps : m_pre_systems) {
         if (ps.system) {
-            dispatcher.world_scope([&](World& world) { auto res = ps.system->run({}, world); }).wait();
+            auto res = ps.system->run({}, world);
         }
     }
 
-    auto dispatch_system = [&](size_t index) {
-        // dispatch a system for execution
-        CachedNode& cached_node = cache->nodes[index];
-        auto dispatch_config    = DispatchConfig{
-            .on_finish = [&, index]() { exec_state.finished_queue.push(index); },
-            .on_error =
-                [&, index](const RunSystemError& error) {
-                    if (std::holds_alternative<ValidateParamError>(error)) {
-                        auto&& param_error = std::get<ValidateParamError>(error);
-                        spdlog::error("[schedule] parameter validation error at system '{}', type: '{}', msg: {}",
-                                      cache->nodes[index].node->system->name(), param_error.param_type.short_name(),
-                                      param_error.message);
-                    } else if (std::holds_alternative<SystemException>(error)) {
-                        auto&& expection = std::get<SystemException>(error);
-                        try {
-                            std::rethrow_exception(expection.exception);
-                        } catch (const std::exception& e) {
-                            spdlog::error("[schedule] system exception at system '{}', msg: {}",
-                                          cache->nodes[index].node->system->name(), e.what());
-                        } catch (...) {
-                            spdlog::error("[schedule] system exception at system '{}', msg: unknown",
-                                          cache->nodes[index].node->system->name());
-                        }
-                    }
-                },
-        };
-        if (config.is_apply_direct() && cached_node.node->system->is_deferred()) {
-            auto& system = *cached_node.node->system.get();
-            dispatcher.world_scope([&system](World& world) { auto res = system.run({}, world); }, dispatch_config);
-        } else {
-            dispatcher.dispatch_system(*cached_node.node->system.get(), {}, cached_node.node->system_access,
-                                       dispatch_config);
-        }
-        exec_state.running_count++;
-    };
-    std::vector<size_t> pending_ready;  // ready nodes, but cannot test cause conditions' access conflict with
-                                        // running systems in dispatcher
-    auto check_cond = [&](size_t index) -> bool {  // return if there are any conditions left untested
-        return std::ranges::fold_left(
-            exec_state.untest_conditions[index].iter_ones() | std::ranges::to<std::vector>() |  // copied
-                std::views::transform(
-                    [&](size_t i) { return std::make_tuple(i, std::ref(*cache->nodes[index].node->conditions[i])); }),
-            true, [&](bool v, auto&& pair) -> bool {
-                auto&& [cond_index, condition] = pair;
-                auto res_opt =
-                    dispatcher.try_run_system(condition, {}, cache->nodes[index].node->condition_access[cond_index]);
-                if (res_opt.has_value()) {
-                    exec_state.condition_met_nodes.set(
-                        index, res_opt->value() && exec_state.condition_met_nodes.contains(index));
-                    exec_state.untest_conditions[index].reset(cond_index);
-                }
-                return v && res_opt.has_value();
-            });
-    };
-    auto enter_ready = [&]() {
-        auto& ready_stack = exec_state.ready_stack;
-        std::swap(pending_ready, ready_stack);
-        ready_stack.insert_range(ready_stack.end(), pending_ready);
-        pending_ready.clear();
-        while (!ready_stack.empty()) {
-            size_t index = ready_stack.back();
-            ready_stack.pop_back();
-            CachedNode& cached_node = cache->nodes[index];
-            bool cond_met           = exec_state.condition_met_nodes.contains(index);
-            if (cond_met) {
-                bool cond_done = check_cond(index);
-                if (!cond_done) {
-                    // cannot test all conditions now, put back to pending
-                    pending_ready.push_back(index);
-                    continue;
-                }
-            }
-            cond_met = exec_state.condition_met_nodes.contains(index);
-            exec_state.entered_nodes.set(index);
-            if (cached_node.node->system) {
-                if (cond_met) {
-                    dispatch_system(index);
-                } else {
-                    exec_state.running_count++;
-                    exec_state.finished_queue.push(index);
-                }
-            } else {
-                if (exec_state.child_count[index] == 0) {
-                    exec_state.finished_queue.push(index);
-                }
-            }
-            for (const auto& child_index : cached_node.children) {
-                exec_state.condition_met_nodes.set(child_index,
-                                                   cond_met && exec_state.condition_met_nodes.contains(child_index));
-                exec_state.wait_count[child_index]--;
-                if (exec_state.wait_count[child_index] == 0) {
-                    ready_stack.push_back(child_index);
-                }
-            }
-        }
-    };
+    // Get thread pool from world resource
+    auto& pool = world.resource_or_emplace<ScheduleThreadPool>().pool;
 
-    // loop
+    // Main body loop (single execution or repeated via loop_condition)
     do {
-        enter_ready();
-        auto finishes = exec_state.finished_queue.try_pop();
-        if (finishes.empty()) {
-            if (exec_state.running_count == 0) {
-                if (!pending_ready.empty()) {
-                    // we have pending, but no ready or running, try to yield and re-enter
-                    std::this_thread::yield();
-                    continue;
-                }
-                // no running tasks, no finished, no pending, end or deadlock
-                break;
-            }
-            // wait for some tasks to finish
-            finishes = exec_state.finished_queue.pop();
+        // Check loop condition before each iteration
+        if (config.loop_condition) {
+            if (!config.loop_condition(world)) break;
         }
 
-        for (auto&& finished_index : finishes) {
-            CachedNode& cached_node = cache->nodes[finished_index];
-            if (exec_state.child_count[finished_index] != 0) {
-                // this finished index is pushed by executable task, so the
-                // set is not really finished
-                exec_state.running_count--;
-                exec_state.child_count[finished_index]--;
+        ExecutionState exec_state{
+            .running_count       = 0,
+            .remaining_count     = cache->nodes.size(),
+            .ready_nodes         = bit_vector(cache->nodes.size()),
+            .finished_nodes      = bit_vector(cache->nodes.size()),
+            .entered_nodes       = bit_vector(cache->nodes.size()),
+            .dependencies        = std::vector<bit_vector>(cache->nodes.size()),
+            .children            = std::vector<bit_vector>(cache->nodes.size()),
+            .condition_met_nodes = bit_vector(cache->nodes.size(), true),
+            .untest_conditions   = std::vector<bit_vector>(cache->nodes.size()),
+            .wait_count          = std::vector<size_t>(cache->nodes.size(), 0),
+            .child_count         = std::vector<size_t>(cache->nodes.size(), 0),
+        };
+        for (auto&& [index, cached_node] : cache->nodes | std::views::enumerate) {
+            exec_state.wait_count[index]  = cached_node.depends.size() + cached_node.parents.size();
+            exec_state.child_count[index] = cached_node.children.size() + (cached_node.node->system ? 1 : 0);
+            exec_state.untest_conditions[index].resize(cached_node.node->conditions.size(), true);
+            exec_state.dependencies[index].set_range(cached_node.depends, true);
+            exec_state.children[index].set_range(cached_node.children, true);
+            if (exec_state.wait_count[index] == 0) {
+                exec_state.ready_stack.push_back(index);
+            }
+        }
+
+        // Access tracking for parallel system dispatch
+        std::mutex dispatch_mutex;
+        std::vector<const FilteredAccessSet*> active_accesses;
+        std::vector<size_t> free_slots;
+
+        auto get_slot = [&]() -> size_t {
+            // must hold dispatch_mutex
+            if (!free_slots.empty()) {
+                auto s = free_slots.back();
+                free_slots.pop_back();
+                return s;
+            }
+            active_accesses.push_back(nullptr);
+            return active_accesses.size() - 1;
+        };
+
+        auto is_access_compatible = [&](const FilteredAccessSet& access) -> bool {
+            // must hold dispatch_mutex
+            return std::ranges::none_of(active_accesses, [&](auto* a) { return a && !access.is_compatible(*a); });
+        };
+
+        auto handle_error = [&](size_t index, const RunSystemError& error) {
+            if (std::holds_alternative<ValidateParamError>(error)) {
+                auto&& param_error = std::get<ValidateParamError>(error);
+                spdlog::error("[schedule] parameter validation error at system '{}', type: '{}', msg: {}",
+                              cache->nodes[index].node->system->name(), param_error.param_type.short_name(),
+                              param_error.message);
+            } else if (std::holds_alternative<SystemException>(error)) {
+                auto&& expection = std::get<SystemException>(error);
+                try {
+                    std::rethrow_exception(expection.exception);
+                } catch (const std::exception& e) {
+                    spdlog::error("[schedule] system exception at system '{}', msg: {}",
+                                  cache->nodes[index].node->system->name(), e.what());
+                } catch (...) {
+                    spdlog::error("[schedule] system exception at system '{}', msg: unknown",
+                                  cache->nodes[index].node->system->name());
+                }
+            }
+            if (config.on_error) config.on_error(error);
+        };
+
+        // Pending dispatch queue (systems waiting for access compatibility)
+        struct PendingEntry {
+            size_t index;
+            bool exclusive;  // needs exclusive world access (deferred + ApplyDirect)
+        };
+        std::deque<PendingEntry> pending_dispatch;
+
+        // Flush pending systems to the pool when access is compatible
+        // Must hold dispatch_mutex
+        auto flush_pending = [&]() {
+            while (!pending_dispatch.empty()) {
+                auto& front = pending_dispatch.front();
+                if (front.exclusive) {
+                    // Exclusive: wait for all running pool tasks to drain
+                    if (std::ranges::any_of(active_accesses, [](auto* a) { return a != nullptr; })) {
+                        break;  // something still running, wait
+                    }
+                    // Nothing running - run exclusively on caller thread
+                    auto idx     = front.index;
+                    auto& system = *cache->nodes[idx].node->system;
+                    pending_dispatch.pop_front();
+                    auto res = system.run_no_apply({}, world);
+                    if (!res) handle_error(idx, res.error());
+                    system.apply_deferred(world);
+                    exec_state.finished_queue.push(idx);
+                    continue;
+                }
+                auto& access = cache->nodes[front.index].node->system_access;
+                if (!is_access_compatible(access)) break;  // conflict with running systems
+                auto slot             = get_slot();
+                active_accesses[slot] = &access;
+                auto idx              = front.index;
+                pending_dispatch.pop_front();
+                pool.detach_task([&, slot, idx]() {
+                    auto& system = *cache->nodes[idx].node->system;
+                    auto res     = system.run_no_apply({}, world);
+                    if (!res) handle_error(idx, res.error());
+                    {
+                        std::lock_guard lock(dispatch_mutex);
+                        active_accesses[slot] = nullptr;
+                        free_slots.push_back(slot);
+                    }
+                    exec_state.finished_queue.push(idx);
+                });
+            }
+        };
+
+        auto dispatch_system = [&](size_t index) {
+            CachedNode& cached_node = cache->nodes[index];
+            bool exclusive = (config.deferred == DeferredApply::ApplyDirect && cached_node.node->system->is_deferred());
+            {
+                std::lock_guard lock(dispatch_mutex);
+                pending_dispatch.push_back({index, exclusive});
+            }
+            exec_state.running_count++;
+        };
+
+        std::vector<size_t> pending_ready;  // ready nodes whose conditions can't be tested yet
+        auto check_cond = [&](size_t index) -> bool {
+            return std::ranges::fold_left(
+                exec_state.untest_conditions[index].iter_ones() | std::ranges::to<std::vector>() |
+                    std::views::transform([&](size_t i) {
+                        return std::make_tuple(i, std::ref(*cache->nodes[index].node->conditions[i]));
+                    }),
+                true, [&](bool v, auto&& pair) -> bool {
+                    auto&& [cond_index, condition] = pair;
+                    auto& access                   = cache->nodes[index].node->condition_access[cond_index];
+                    {
+                        std::lock_guard lock(dispatch_mutex);
+                        if (!is_access_compatible(access)) return false;
+                    }
+                    // Run condition on caller thread (no conflict with running systems)
+                    auto res = condition.run({}, world);
+                    if (res.has_value()) {
+                        exec_state.condition_met_nodes.set(
+                            index, res.value() && exec_state.condition_met_nodes.contains(index));
+                        exec_state.untest_conditions[index].reset(cond_index);
+                    }
+                    return v && res.has_value();
+                });
+        };
+
+        auto enter_ready = [&]() {
+            auto& ready_stack = exec_state.ready_stack;
+            std::swap(pending_ready, ready_stack);
+            ready_stack.insert_range(ready_stack.end(), pending_ready);
+            pending_ready.clear();
+            while (!ready_stack.empty()) {
+                size_t index = ready_stack.back();
+                ready_stack.pop_back();
+                CachedNode& cached_node = cache->nodes[index];
+                bool cond_met           = exec_state.condition_met_nodes.contains(index);
+                if (cond_met) {
+                    bool cond_done = check_cond(index);
+                    if (!cond_done) {
+                        pending_ready.push_back(index);
+                        continue;
+                    }
+                }
+                cond_met = exec_state.condition_met_nodes.contains(index);
+                exec_state.entered_nodes.set(index);
+                if (cached_node.node->system) {
+                    if (cond_met) {
+                        dispatch_system(index);
+                    } else {
+                        exec_state.running_count++;
+                        exec_state.finished_queue.push(index);
+                    }
+                } else {
+                    if (exec_state.child_count[index] == 0) {
+                        exec_state.finished_queue.push(index);
+                    }
+                }
+                for (const auto& child_index : cached_node.children) {
+                    exec_state.condition_met_nodes.set(
+                        child_index, cond_met && exec_state.condition_met_nodes.contains(child_index));
+                    exec_state.wait_count[child_index]--;
+                    if (exec_state.wait_count[child_index] == 0) {
+                        ready_stack.push_back(child_index);
+                    }
+                }
+            }
+            // After processing ready nodes, flush pending dispatch to pool
+            {
+                std::lock_guard lock(dispatch_mutex);
+                flush_pending();
+            }
+        };
+
+        // Inner execution loop
+        do {
+            enter_ready();
+            auto finishes = exec_state.finished_queue.try_pop();
+            if (finishes.empty()) {
+                if (exec_state.running_count == 0) {
+                    if (!pending_ready.empty()) {
+                        std::this_thread::yield();
+                        continue;
+                    }
+                    break;
+                }
+                finishes = exec_state.finished_queue.pop();
+            }
+
+            for (auto&& finished_index : finishes) {
+                CachedNode& cached_node = cache->nodes[finished_index];
                 if (exec_state.child_count[finished_index] != 0) {
-                    // still has children, set not finished
-                    continue;
+                    exec_state.running_count--;
+                    exec_state.child_count[finished_index]--;
+                    if (exec_state.child_count[finished_index] != 0) {
+                        continue;
+                    }
                 }
-            }
-            exec_state.finished_nodes.set(finished_index);
-            exec_state.entered_nodes.reset(finished_index);
-            exec_state.remaining_count--;
+                exec_state.finished_nodes.set(finished_index);
+                exec_state.entered_nodes.reset(finished_index);
+                exec_state.remaining_count--;
 
-            for (const auto& successor_index : cached_node.successors) {
-                exec_state.wait_count[successor_index]--;
-                exec_state.dependencies[successor_index].reset(finished_index);
-                if (exec_state.wait_count[successor_index] == 0) {
-                    exec_state.ready_stack.push_back(successor_index);
+                for (const auto& successor_index : cached_node.successors) {
+                    exec_state.wait_count[successor_index]--;
+                    exec_state.dependencies[successor_index].reset(finished_index);
+                    if (exec_state.wait_count[successor_index] == 0) {
+                        exec_state.ready_stack.push_back(successor_index);
+                    }
+                }
+                for (const auto& parent : cached_node.parents) {
+                    exec_state.child_count[parent]--;
+                    exec_state.children[parent].reset(finished_index);
+                    if (exec_state.child_count[parent] == 0) {
+                        exec_state.finished_queue.push(parent);
+                    }
                 }
             }
-            for (const auto& parent : cached_node.parents) {
-                exec_state.child_count[parent]--;
-                exec_state.children[parent].reset(finished_index);
-                if (exec_state.child_count[parent] == 0) {
-                    exec_state.finished_queue.push(parent);
-                }
+            // After processing finishes, try to flush newly unblocked pending systems
+            {
+                std::lock_guard lock(dispatch_mutex);
+                flush_pending();
             }
+        } while (true);
+
+        // End-of-iteration deferred handling
+        switch (config.deferred) {
+            case DeferredApply::ApplyEnd:
+                for (auto index : exec_state.finished_nodes.iter_ones()) {
+                    auto& node = cache->nodes[index];
+                    if (node.node->system && node.node->system->is_deferred()) {
+                        node.node->system->apply_deferred(world);
+                    }
+                }
+                break;
+            case DeferredApply::QueueDeferred:
+                for (auto index : exec_state.finished_nodes.iter_ones()) {
+                    auto& node = cache->nodes[index];
+                    if (node.node->system && node.node->system->is_deferred()) {
+                        node.node->system->queue_deferred(world);
+                    }
+                }
+                break;
+            case DeferredApply::ApplyDirect:
+                break;
+            case DeferredApply::Ignore: {
+                std::vector<std::shared_ptr<Node>> to_apply;
+                to_apply.reserve(exec_state.finished_nodes.size());
+                std::ranges::for_each(exec_state.finished_nodes.iter_ones() | std::views::transform([&](size_t index) {
+                                          return cache->nodes[index].node;
+                                      }) | std::views::filter([&](auto&& node) {
+                                          return ((bool)node->system) && node->system.get()->is_deferred();
+                                      }),
+                                      [&](auto&& node) { to_apply.push_back(node); });
+                _data.pending_applies = std::move(to_apply);
+            } break;
         }
+
+        if (exec_state.remaining_count > 0) {
+            ScheduleCache& task_cache = *cache;
+            spdlog::error("Some systems are not executed, check for cycles in the graph. with Execution state:");
+            auto index_to_name = [&](size_t index) -> std::string {
+                auto& node = task_cache.nodes[index].node;
+                if (node->system) {
+                    return std::format("(system: {})", node->system->name());
+                } else {
+                    return std::format("(set {}#{})", node->label.type_index().short_name(), node->label.extra());
+                }
+            };
+            spdlog::error("\tRemaining: {}\tNot Exited: {}, with remaining depends:{}\n\tand remaining children:{}",
+                          exec_state.finished_nodes.iter_zeros() | std::views::transform(index_to_name),
+                          exec_state.entered_nodes.iter_ones() | std::views::transform(index_to_name),
+                          exec_state.finished_nodes.iter_zeros() | std::views::transform([&](size_t i) {
+                              return std::format("\n\t{}", exec_state.dependencies[i].iter_ones() |
+                                                               std::views::transform(index_to_name));
+                          }),
+                          exec_state.finished_nodes.iter_zeros() | std::views::transform([&](size_t i) {
+                              return std::format(
+                                  "\n\t{}", exec_state.children[i].iter_ones() | std::views::transform(index_to_name));
+                          }));
+        }
+
+        if (config.run_once) {
+            std::ranges::for_each(
+                exec_state.finished_nodes.iter_ones() | std::views::transform([&](size_t index) {
+                    return cache->nodes[index].node;
+                }) | std::views::filter([](const std::shared_ptr<Node>& node) { return (bool)node->system; }),
+                [&](const std::shared_ptr<Node>& node) { _data.nodes.erase(node->label); });
+            _data.cache.reset();
+        }
+
+        if (!config.loop_condition) break;
     } while (true);
 
-    // end apply deferred
-    if (config.is_apply_end()) {
-        dispatcher
-            .apply_deferred(
-                exec_state.finished_nodes.iter_ones() | std::views::filter([&](size_t index) {
-                    CachedNode& cached_node = cache->nodes[index];
-                    return (bool)cached_node.node->system;
-                }) |
-                std::views::transform([&](size_t index) -> auto& { return *cache->nodes[index].node->system.get(); }) |
-                std::views::filter([&](auto& system) { return system.is_deferred(); }))
-            .wait();
-    } else if (config.is_queue_deferred()) {
-        dispatcher
-            .world_scope([&](World& world) {
-                std::ranges::for_each(exec_state.finished_nodes.iter_ones() | std::views::filter([&](size_t index) {
-                                          CachedNode& cached_node = cache->nodes[index];
-                                          return (bool)cached_node.node->system;
-                                      }) | std::views::transform([&](size_t index) -> auto& {
-                                          return *cache->nodes[index].node->system.get();
-                                      }) | std::views::filter([&](auto& system) { return system.is_deferred(); }),
-                                      [&](auto& system) { system.queue_deferred(world); });
-            })
-            .wait();
-    } else {
-        std::vector<std::shared_ptr<Node>> to_apply;
-        to_apply.reserve(exec_state.finished_nodes.size());
-        std::ranges::for_each(exec_state.finished_nodes.iter_ones() | std::views::transform([&](size_t index) {
-                                  return cache->nodes[index].node;
-                              }) | std::views::filter([&](auto&& node) {
-                                  return ((bool)node->system) && node->system.get()->is_deferred();
-                              }),
-                              [&](auto&& node) { to_apply.push_back(node); });
-        this->pending_applies = std::move(to_apply);
-    }
-
-    if (exec_state.remaining_count > 0) {
-        // print state
-        ScheduleCache& task_cache = *cache;
-        spdlog::error("Some systems are not executed, check for cycles in the graph. with Execution state:");
-        auto index_to_name = [&](size_t index) -> std::string {
-            auto& node = task_cache.nodes[index].node;
-            if (node->system) {
-                return std::format("(system: {})", node->system->name());
-            } else {
-                return std::format("(set {}#{})", node->label.type_index().short_name(), node->label.extra());
-            }
-        };
-        spdlog::error("\tRemaining: {}\tNot Exited: {}, with remaining depends:{}\n\tand remaining children:{}",
-                      exec_state.finished_nodes.iter_zeros() | std::views::transform(index_to_name),
-                      exec_state.entered_nodes.iter_ones() | std::views::transform(index_to_name),
-                      exec_state.finished_nodes.iter_zeros() | std::views::transform([&](size_t i) {
-                          return std::format(
-                              "\n\t{}", exec_state.dependencies[i].iter_ones() | std::views::transform(index_to_name));
-                      }),
-                      exec_state.finished_nodes.iter_zeros() | std::views::transform([&](size_t i) {
-                          return std::format("\n\t{}",
-                                             exec_state.children[i].iter_ones() | std::views::transform(index_to_name));
-                      }));
-    }
-
-    if (config.run_once) {
-        // only remove sets in cached nodes cause newly added sets that are not in cache didn't run yet.
-        // only remove sets with systems, cause sets may still needed by later added systems to define their deps.
-        std::ranges::for_each(
-            exec_state.finished_nodes.iter_ones() | std::views::transform([&](size_t index) {
-                return cache->nodes[index].node;
-            }) | std::views::filter([](const std::shared_ptr<Node>& node) { return (bool)node->system; }),
-            [&](const std::shared_ptr<Node>& node) { nodes.erase(node->label); });
-        this->cache.reset();  // invalidate cache
-    }
-
-    // Run post-systems sequentially with exclusive world access
+    // Run post-systems (once, after loop body, synchronous)
     for (auto& ps : m_post_systems) {
         if (ps.system) {
-            dispatcher.world_scope([&](World& world) { auto res = ps.system->run({}, world); }).wait();
+            auto res = ps.system->run({}, world);
         }
     }
 }
 
 void Schedule::apply_deferred(World& world) {
-    if (pending_applies) {
-        for (auto&& node : *pending_applies) {
+    if (_data.pending_applies) {
+        for (auto&& node : *_data.pending_applies) {
             if (node->system && node->system->is_deferred()) {
                 node->system->apply_deferred(world);
             }
         }
-        pending_applies.reset();
+        _data.pending_applies.reset();
     }
 }
 

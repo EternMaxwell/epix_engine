@@ -101,19 +101,12 @@ struct App {
     App(const AppLabel& label                            = AppLabel::from_type<App>(),
         std::shared_ptr<TypeRegistry> type_registry      = std::make_shared<TypeRegistry>(),
         std::shared_ptr<std::atomic<uint32_t>> world_ids = std::make_shared<std::atomic<uint32_t>>(0))
-        : _label(label),
-          _world(std::make_unique<World>(world_ids->fetch_add(1), type_registry)),
-          _world_ids(world_ids),
-          _world_mutex(std::make_unique<std::recursive_mutex>()) {}
+        : _label(label), _world(world_ids->fetch_add(1), type_registry), _world_ids(world_ids) {}
     App(const App&)            = delete;
     App(App&&)                 = default;
     App& operator=(const App&) = delete;
     App& operator=(App&&)      = default;
-    ~App() {
-        if (auto dispatcher = _dispatcher.lock()) {
-            _world = dispatcher->release_world();
-        }
-    }
+    ~App()                     = default;
 
     /** @brief Create a default App with all core plugins. */
     static App create();
@@ -143,42 +136,30 @@ struct App {
 
     // === World Access ===
 
-    /** @brief Try to get a const reference to the world. Returns error if the world is dispatched. */
-    std::expected<std::reference_wrapper<const World>, WorldNotOwnedError> get_world() const;
-    /** @brief Try to get a mutable reference to the world. Returns error if the world is dispatched. */
-    std::expected<std::reference_wrapper<World>, WorldNotOwnedError> get_world_mut();
-    /** @brief Get a const reference to the world. Throws if the world is not owned. */
-    const World& world() const { return get_world().value(); }
-    /** @brief Get a mutable reference to the world. Throws if the world is not owned. */
-    World& world_mut() { return get_world_mut().value(); }
-    /** @brief Execute a function with exclusive access to the world. */
+    /** @brief Get a const reference to the world. */
+    const World& world() const { return _world; }
+    /** @brief Get a mutable reference to the world. */
+    World& world_mut() { return _world; }
+    /** @brief Execute a function with access to the world. */
     App& world_scope(std::invocable<World&> auto&& func) {
-        auto lock = lock_world();
-        func(world_mut());
+        func(_world);
         return *this;
     }
-    /** @brief Execute a function with exclusive access to the world's resources. */
+    /** @brief Execute a function with access to the world's resources. */
     template <typename F>
     App& resource_scope(F&& func) {
-        auto lock = lock_world();
-        world_mut().resource_scope(std::forward<F>(func));
+        (void)_world.resource_scope(std::forward<F>(func));
         return *this;
     }
     /** @brief Try get a const resource from the world. */
     template <typename T>
     std::optional<std::reference_wrapper<const T>> get_resource() const {
-        return get_world()
-            .transform([](auto&& ref) { return std::optional(ref); })
-            .value_or(std::nullopt)
-            .and_then([](const World& world) { return world.get_resource<T>(); });
+        return _world.get_resource<T>();
     }
     /** @brief Try get a mutable resource from the world. */
     template <typename T>
     std::optional<std::reference_wrapper<T>> get_resource_mut() {
-        return get_world_mut()
-            .transform([](auto&& ref) { return std::optional(ref); })
-            .value_or(std::nullopt)
-            .and_then([](World& world) { return world.get_resource_mut<T>(); });
+        return _world.get_resource_mut<T>();
     }
     /** @brief Get a const resource. Throws if not present. */
     template <typename T>
@@ -405,88 +386,27 @@ struct App {
         return *this;
     }
 
-    // === System Dispatcher ===
+    // === Schedule Execution ===
 
-    /** @brief Get or create the system dispatcher owning the world.
-     *  Returns error if no dispatcher exists and the app does not own a world. */
-    std::expected<std::shared_ptr<SystemDispatcher>, WorldNotOwnedError> get_system_dispatcher();
-    /** @brief Configure hooks for this app's dispatcher.
-     *
-     * If the dispatcher already exists, hooks are applied immediately.
-     * Otherwise hooks are stored and applied when the dispatcher is created.
-     */
-    App& set_dispatch_system_hooks(DispatchSystemHooks hooks) {
-        auto lock               = lock_world();
-        _pending_dispatch_hooks = std::move(hooks);
-        if (auto dispatcher = _dispatcher.lock()) {
-            dispatcher->set_dispatch_system_hooks(*_pending_dispatch_hooks);
-        }
-        return *this;
-    }
-    /** @brief Get the system dispatcher owning the world. Throws if failed. */
-    std::shared_ptr<SystemDispatcher> system_dispatcher() { return get_system_dispatcher().value(); }
-    /** @brief Try run a schedule with the provided dispatcher.
+    /** @brief Try run a schedule by label.
      *  @return true if the schedule was found and run. */
-    bool run_schedule(const ScheduleLabel& label, std::shared_ptr<SystemDispatcher> dispatcher);
-    /** @brief Try run a schedule with the internal dispatcher.
-     *  @return true if the schedule was found and run. */
-    bool run_schedule(const ScheduleLabel& label) {
-        return get_system_dispatcher()
-            .transform([this, &label](std::shared_ptr<SystemDispatcher> dispatcher) {
-                return run_schedule(label, dispatcher);
-            })
-            .value_or(false);
-    }
-    /** @brief Run schedules from a range of labels using the provided dispatcher.
-     *  Logs a warning for each schedule not found. */
-    template <typename Rng>
-    void run_schedules_local(Rng&& labels, std::shared_ptr<SystemDispatcher> dispatcher)
-        requires std::ranges::range<Rng> && std::same_as<std::ranges::range_value_t<Rng>, ScheduleLabel>
-    {
-        std::ranges::for_each(labels, [&](const ScheduleLabel& label) {
-            if (!run_schedule(label, dispatcher)) {
-                spdlog::warn("Failed to run schedule '{}', schedule not found. Skip.", label.to_string());
-            }
-        });
-    }
-    template <typename Rng>
-    std::future<void> run_schedules(Rng&& labels, std::launch launch = std::launch::async)
-        requires std::ranges::range<Rng> && std::same_as<std::ranges::range_value_t<Rng>, ScheduleLabel>
-    {
-        return get_system_dispatcher()
-            .transform([this, launch,
-                        labels = std::forward<Rng>(labels)](std::shared_ptr<SystemDispatcher> dispatcher) mutable {
-                return std::async(launch, [this, dispatcher, labels = std::move(labels)]() mutable {
-                    run_schedules_local(std::move(labels), dispatcher);
-                });
-            })
-            .or_else([](auto&&) -> std::expected<std::future<void>, WorldNotOwnedError> {
-                return std::async(std::launch::deferred, []() {});
-            })
-            .value();
-    }
+    bool run_schedule(const ScheduleLabel& label);
+    /** @brief Run a sequence of schedules by label. Logs a warning for each not found. */
     template <typename... Labels>
-    std::future<void> run_schedules(Labels&&... labels) {
-        constexpr bool explicit_launch =
-            std::same_as<std::launch, std::tuple_element_t<sizeof...(Labels) - 1, std::tuple<std::decay_t<Labels>...>>>;
-        auto launch = [&] {
-            if constexpr (explicit_launch) {
-                return std::get<sizeof...(Labels) - 1>(std::forward_as_tuple(std::forward<Labels>(labels)...));
-            } else {
-                return std::launch::async;
-            }
-        }();
-        auto array = [&]<std::size_t... I>(std::index_sequence<I...>) {
-            return std::array{ScheduleLabel(std::forward<Labels>(std::get<I>(std::forward_as_tuple(labels...))))...};
-        }(std::make_index_sequence<(explicit_launch ? sizeof...(Labels) - 1 : sizeof...(Labels))>());
-        return run_schedules(std::move(array), launch);
+    void run_schedules(Labels&&... labels) {
+        (void)((run_schedule(ScheduleLabel(std::forward<Labels>(labels))) ||
+                (spdlog::warn("Failed to run schedule, schedule not found. Skip."), true)),
+               ...);
     }
-    /** @brief Update the app by running schedules in schedule-order with the provided dispatcher.
-     *  @return false if no ScheduleOrder resource found. */
-    bool update_local(std::shared_ptr<SystemDispatcher> dispatcher);
-    /** @brief Update the app asynchronously with the internal dispatcher.
-     *  @return A future holding false if no ScheduleOrder or dispatcher available. */
-    std::future<bool> update(std::launch launch = std::launch::async);
+    /** @brief Update the app by running schedules in schedule-order (synchronous). */
+    void update();
+
+    // === Sub-app Extraction ===
+
+    /** @brief Take ownership of a sub-app, removing it from this app. Returns nullptr if not found. */
+    std::unique_ptr<App> take_sub_app(const AppLabel& label);
+    /** @brief Re-insert a sub-app (e.g. after running it on another thread). */
+    void insert_sub_app(const AppLabel& label, std::unique_ptr<App> app);
 
     /** @brief Check if the app has an extract function set. */
     bool has_extract() const { return static_cast<bool>(extract_fn); }
@@ -536,22 +456,22 @@ struct App {
     void run();
 
    private:
-    std::unique_lock<std::recursive_mutex> lock_world() const {
-        return std::unique_lock<std::recursive_mutex>(*_world_mutex);
-    }
+    struct DefaultCreateTag {};
 
     AppLabel _label;
 
     std::unordered_map<AppLabel, std::unique_ptr<App>> _sub_apps;
 
     std::shared_ptr<std::atomic<uint32_t>> _world_ids;
-    std::unique_ptr<std::recursive_mutex> _world_mutex;
-    std::unique_ptr<World> _world;
+    World _world;
 
     std::move_only_function<void(App&, World&)> extract_fn;
     std::unique_ptr<AppRunner> runner;
 
-    std::weak_ptr<SystemDispatcher> _dispatcher;
-    std::optional<DispatchSystemHooks> _pending_dispatch_hooks;
+    explicit App(DefaultCreateTag tag,
+                 const AppLabel& label                            = AppLabel::from_type<App>(),
+                 std::shared_ptr<TypeRegistry> type_registry      = std::make_shared<TypeRegistry>(),
+                 std::shared_ptr<std::atomic<uint32_t>> world_ids = std::make_shared<std::atomic<uint32_t>>(0));
 };
+static_assert(std::movable<App>);
 }  // namespace core

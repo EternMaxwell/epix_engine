@@ -39,8 +39,10 @@ void imgui::ImGuiPlugin::build(App& app) {
         .initialized = false,
     });
 
+    app.configure_sets(PreUpdate, sets(BeginFrameSet));
+
     // Main world frame systems
-    app.add_systems(PreUpdate, into(imgui_begin_frame).set_name("imgui begin frame"));
+    app.add_systems(PreUpdate, into(imgui_begin_frame).set_name("imgui begin frame").in_set(BeginFrameSet));
     app.add_systems(Last, into(imgui_end_frame).set_name("imgui end frame"));
 
     // Consume input events that ImGui handled after every schedule.

@@ -22,12 +22,12 @@ struct TestRunner : public AppRunner {
         spdlog::info("Step {}", count);
         actions.emplace_back(std::format("step-{}", count));
         count++;
-        app.update().get();
+        app.update();
         return true;
     }
     void exit(App& app) override {
         spdlog::info("Exiting app.");
-        app.run_schedules(PreExit, Exit, PostExit).get();
+        app.run_schedules(PreExit, Exit, PostExit);
     }
 };
 }  // namespace

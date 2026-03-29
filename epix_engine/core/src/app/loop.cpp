@@ -23,8 +23,13 @@ struct LoopRunner : public AppRunner {
         access     = check_exit->initialize(app.world_mut());
     }
     bool step(App& app) override {
-        app.update().wait();
-        return !app.system_dispatcher()->dispatch_system(*check_exit, {}, access).get().value_or(false);
+        app.update();
+        bool should_exit = false;
+        app.world_scope([&](World& world) {
+            auto res = check_exit->run({}, world);
+            if (res.has_value()) should_exit = res.value();
+        });
+        return !should_exit;
     }
     void exit(App& app) override { app.run_schedules(PreExit, Exit, PostExit); }
 };

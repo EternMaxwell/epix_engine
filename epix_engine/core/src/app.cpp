@@ -21,18 +21,22 @@ namespace core {
 
 struct DefaultRunner : public AppRunner {
     bool step(App& app) override {
-        app.update().get();
+        app.update();
         return false;
     }
     void exit(App& app) override { app.run_schedules(PreExit, Exit, PostExit); }
 };
 
-App App::create() {
-    App app;
-    app.add_plugins(MainSchedulePlugin{});
-    app.set_runner(std::make_unique<DefaultRunner>());
-    app.add_event<AppExit>();
-    return std::move(app);
+App App::create() { return App(DefaultCreateTag{}); }
+
+App::App(DefaultCreateTag,
+         const AppLabel& label,
+         std::shared_ptr<TypeRegistry> type_registry,
+         std::shared_ptr<std::atomic<uint32_t>> world_ids)
+    : App(label, std::move(type_registry), std::move(world_ids)) {
+    add_plugins(MainSchedulePlugin{});
+    set_runner(std::make_unique<DefaultRunner>());
+    add_event<AppExit>();
 }
 
 App& App::sub_app_or_insert(const AppLabel& label) {
@@ -67,25 +71,8 @@ std::optional<std::reference_wrapper<App>> App::get_sub_app_mut(const AppLabel& 
     return std::nullopt;
 }
 
-std::expected<std::reference_wrapper<const World>, WorldNotOwnedError> App::get_world() const {
-    auto lock = lock_world();
-    if (_world) {
-        return *_world;
-    }
-    return std::unexpected(WorldNotOwnedError{});
-}
-
-std::expected<std::reference_wrapper<World>, WorldNotOwnedError> App::get_world_mut() {
-    auto lock = lock_world();
-    if (_world) {
-        return *_world;
-    }
-    return std::unexpected(WorldNotOwnedError{});
-}
-
 App& App::add_schedule(Schedule&& schedule) {
-    auto lock            = lock_world();
-    Schedules& schedules = world_mut().resource_or_init<Schedules>();
+    Schedules& schedules = _world.resource_or_init<Schedules>();
     // add or replace existing schedule
     schedules.add_schedule(std::move(schedule));
     return *this;
@@ -149,30 +136,14 @@ App& App::configure_sets(SetConfig&& config) {
     return *this;
 }
 
-Schedules& App::schedules() {
-    auto lock = lock_world();
-    return world_mut().resource_or_init<Schedules>();
-}
+Schedules& App::schedules() { return _world.resource_or_init<Schedules>(); }
 
-std::optional<std::reference_wrapper<Schedules>> App::get_schedules() {
-    auto lock = lock_world();
-    return get_world_mut()
-        .transform([](auto&& w) { return std::make_optional(w); })
-        .value_or(std::nullopt)
-        .and_then([](World& world) { return world.get_resource_mut<Schedules>(); });
-}
+std::optional<std::reference_wrapper<Schedules>> App::get_schedules() { return _world.get_resource_mut<Schedules>(); }
 
-ScheduleOrder& App::schedule_order() {
-    auto lock = lock_world();
-    return world_mut().resource_or_init<ScheduleOrder>();
-}
+ScheduleOrder& App::schedule_order() { return _world.resource_or_init<ScheduleOrder>(); }
 
 std::optional<std::reference_wrapper<const ScheduleOrder>> App::get_schedule_order() const {
-    auto lock = lock_world();
-    return get_world()
-        .transform([](auto&& w) { return std::make_optional(w); })
-        .value_or(std::nullopt)
-        .and_then([](const World& world) { return world.get_resource<const ScheduleOrder>(); });
+    return _world.get_resource<const ScheduleOrder>();
 }
 
 App& App::schedule_scope(const ScheduleLabel& label,
@@ -191,98 +162,53 @@ App& App::schedule_scope(const ScheduleLabel& label,
     return *this;
 }
 
-std::expected<std::shared_ptr<SystemDispatcher>, WorldNotOwnedError> App::get_system_dispatcher() {
-    auto lock = lock_world();
-    if (auto dispatcher = _dispatcher.lock()) {
-        return dispatcher;
-    } else if (_world) {
-        auto dispatcher = std::shared_ptr<SystemDispatcher>(new SystemDispatcher(std::move(_world)),
-                                                            [this](SystemDispatcher* dispatcher) {
-                                                                // retrieve world back since only the shared
-                                                                // ptr have the ability to modify the ptr, it
-                                                                // is safe not having extra synchronization
-                                                                // here
-                                                                {
-                                                                    auto lock    = lock_world();
-                                                                    this->_world = dispatcher->release_world();
-                                                                }
-                                                                delete dispatcher;
-                                                            });
-        _dispatcher     = dispatcher;
-        return dispatcher;
+bool App::run_schedule(const ScheduleLabel& label) {
+    auto schedules_opt = _world.get_resource_mut<Schedules>();
+    if (!schedules_opt) return false;
+    auto schedule = schedules_opt->get().remove_schedule(label);
+    if (!schedule) return false;
+    schedule->execute(_world);
+    if (schedules_opt->get().get_schedule(label)) {
+        spdlog::warn(
+            "Schedule '{}' was re-added while existing one running, old one will be "
+            "overwritten!",
+            label.to_string());
     }
-    return std::unexpected(WorldNotOwnedError{});
+    schedules_opt->get().add_schedule(std::move(*schedule));
+    return true;
 }
 
-bool App::run_schedule(const ScheduleLabel& label, std::shared_ptr<SystemDispatcher> dispatcher) {
-    std::optional<Schedule> schedule;
-    dispatcher
-        ->world_scope([&](World& world) {
-            schedule = world.get_resource_mut<Schedules>().and_then(
-                [&](Schedules& schedules) { return schedules.remove_schedule(label); });
-        })
-        .wait();
-    if (schedule) {
-        schedule->execute(*dispatcher);
-        // push back the schedule
-        dispatcher
-            ->world_scope([&](World& world) {
-                auto& schedules = world.resource_mut<Schedules>();
-                if (schedules.get_schedule(label)) {
-                    spdlog::warn(
-                        "Schedule '{}' was re-added while existing one running, old one will be "
-                        "overwritten!",
-                        label.to_string());
-                }
-                schedules.add_schedule(std::move(*schedule));
-            })
-            .wait();
+void App::update() {
+    _world.check_change_tick(
+        [&](Tick tick) { _world.resource_scope([&](Schedules& schedules) { schedules.check_change_tick(tick); }); });
+    auto order_opt = _world.take_resource<ScheduleOrder>();
+    if (order_opt) {
+        for (const auto& label : order_opt->iter()) {
+            if (!run_schedule(label)) {
+                spdlog::error("Failed to run schedule '{}', schedule not found.", label.to_string());
+            }
+        }
+        _world.insert_resource(std::move(*order_opt));
     }
-    return schedule.has_value();
 }
 
-bool App::update_local(std::shared_ptr<SystemDispatcher> dispatcher) {
-    return dispatcher->world_scope([&](World& world) { return world.take_resource<ScheduleOrder>(); })
-        .get()
-        .value_or(std::nullopt)
-        .transform([this, dispatcher](ScheduleOrder&& order) {
-            std::ranges::for_each(order.iter(), [&](const ScheduleLabel& label) {
-                if (!run_schedule(label)) {
-                    spdlog::error("Failed to run schedule '{}', schedule not found.", label.to_string());
-                }
-            });
-            // push back the order
-            dispatcher->world_scope([&](World& world) { world.insert_resource(std::move(order)); }).wait();
-            return true;
-        })
-        .value_or(false);
+std::unique_ptr<App> App::take_sub_app(const AppLabel& label) {
+    auto it = _sub_apps.find(label);
+    if (it != _sub_apps.end()) {
+        auto app = std::move(it->second);
+        _sub_apps.erase(it);
+        return app;
+    }
+    return nullptr;
 }
-std::future<bool> App::update(std::launch launch) {
-    auto res = get_world_mut().transform([](World& world) {
-        world.check_change_tick([&](Tick tick) {
-            auto res = world.resource_scope([&](Schedules& schedules) { schedules.check_change_tick(tick); });
-        });
-    });
-    return get_system_dispatcher()
-        .transform([this, launch](std::shared_ptr<SystemDispatcher> dispatcher) {
-            return std::async(launch, [this, dispatcher]() { return update_local(dispatcher); });
-        })
-        .or_else([](auto&&) -> std::expected<std::future<bool>, WorldNotOwnedError> {
-            return std::async(std::launch::deferred, []() { return false; });
-        })
-        .value();
-}
+
+void App::insert_sub_app(const AppLabel& label, std::unique_ptr<App> app) { _sub_apps[label] = std::move(app); }
 
 void App::extract(App& other) {
     if (extract_fn) {
-        std::scoped_lock lock(*_world_mutex, *other._world_mutex);
-        auto world_ptr = std::move(other._world);
-        world_mut().insert_resource(ExtractedWorld{*world_ptr});
-        extract_fn(*this, *world_ptr);
-        world_mut().remove_resource<ExtractedWorld>();
-        other._world = std::move(world_ptr);
-    } else {
-        throw std::runtime_error("No extract function set for App.");
+        _world.insert_resource(ExtractedWorld{other._world});
+        extract_fn(*this, other._world);
+        _world.remove_resource<ExtractedWorld>();
     }
 }
 

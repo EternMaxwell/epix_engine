@@ -118,7 +118,7 @@ struct FromWorld {
 };
 
 /** @brief Central ECS world that owns all entities, components, resources, and archetypes.
- *  Non-copyable, non-movable. Provides methods for spawning entities, managing resources,
+ *  Non-copyable and movable. Provides methods for spawning entities, managing resources,
  *  and querying components. Supports change detection via ticks. */
 export struct World {
    public:
@@ -130,9 +130,9 @@ export struct World {
           _change_tick(std::make_unique<std::atomic<std::uint32_t>>(1)),
           _last_change_tick(0) {}
     World(const World&)            = delete;
-    World(World&&)                 = delete;
+    World(World&&)                 = default;
     World& operator=(const World&) = delete;
-    World& operator=(World&&)      = delete;
+    World& operator=(World&&)      = default;
 
     /** @brief Get the world's unique identifier. */
     WorldId id() const { return _id; }
@@ -576,4 +576,5 @@ struct DeferredWorld {
    private:
     World* world_;
 };
+static_assert(std::movable<World>);
 }  // namespace core

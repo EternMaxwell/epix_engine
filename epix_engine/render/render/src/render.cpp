@@ -33,7 +33,7 @@ void RenderPlugin::build(App& app) {
         render_app
             .add_schedule(Schedule(render::ExtractSchedule)
                               .with_execute_config(core::ExecuteConfig{
-                                  .handle_deferred = false,
+                                  .deferred = core::DeferredApply::Ignore,
                               }))
             .add_schedule(render::Render.render_schedule())
             .set_extract_fn([](App& render_app, World& main_world) { render_app.run_schedule(ExtractSchedule); });

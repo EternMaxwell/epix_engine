@@ -5,7 +5,7 @@ export module epix.core:schedule;
 import std;
 import BS.thread_pool;
 
-export import :schedule.dispatcher;
+export import :schedule.queue;
 
 import :label;
 import :labels;
@@ -238,32 +238,48 @@ SetConfig make_sets(Ts&&... ts)
         return config;
     }
 }
+/** @brief How deferred systems are applied during schedule execution. */
+export enum class DeferredApply {
+    ApplyDirect,    // apply deferred commands immediately after each system runs
+    QueueDeferred,  // queue deferred commands for batched apply later
+    ApplyEnd,       // collect and apply all deferred commands at end of schedule
+    Ignore,         // do not handle deferred systems at all
+};
 /** @brief Configuration controlling how deferred systems are handled during schedule execution. */
 export struct ExecuteConfig {
-    bool apply_direct    = false;  // should call apply right after run or at the end of the schedule
-    bool queue_deferred  = false;  // call queue for deferred systems instead of apply at the end
-    bool handle_deferred = true;   // whether to handle deferred systems in this schedule
-    bool run_once        = false;  // systems in this schedule will only run once and be removed
+    DeferredApply deferred = DeferredApply::ApplyEnd;
+    bool run_once          = false;  // systems in this schedule will only run once and be removed
 
-    /** @brief Check if deferred system handling is enabled. */
-    bool is_defer_handled() const { return handle_deferred; }
-    /** @brief Check if deferred systems should be applied immediately after each run. */
-    bool is_apply_direct() const { return handle_deferred && apply_direct; }
-    /** @brief Check if deferred systems should be queued instead of applied. */
-    bool is_queue_deferred() const { return handle_deferred && queue_deferred && !apply_direct; }
-    /** @brief Check if deferred systems should be applied at the end of the schedule. */
-    bool is_apply_end() const { return handle_deferred && !apply_direct && !queue_deferred; }
+    /** @brief Schedule-level run conditions. All must return true for the schedule to execute.
+     *  Evaluated with exclusive world access before execution begins.
+     *  If any returns false, the entire schedule (including pre/post systems) is skipped. */
+    std::vector<std::function<bool(World&)>> conditions;
+
+    /** @brief Loop condition for repeated execution. When set, the schedule's main body
+     *  (system execution + deferred handling) loops while this returns true.
+     *  Pre-systems run once before the loop, post-systems run once after.
+     *  The condition is evaluated with exclusive world access before each iteration. */
+    std::function<bool(World&)> loop_condition;
+
+    std::function<void(const RunSystemError&)> on_error;  // callback for handling system run errors
+};
+export struct ScheduleSystems {
+    std::unordered_map<SystemSetLabel, std::shared_ptr<Node>> nodes;
+    std::shared_ptr<ScheduleCache> cache;
+    std::optional<std::vector<std::shared_ptr<Node>>> pending_applies;
+};
+export struct ScheduleExecutor {
+    virtual ~ScheduleExecutor()                                                                = default;
+    virtual void execute(ScheduleSystems& schedule, World& world, const ExecuteConfig& config) = 0;
 };
 /** @brief A named collection of systems with dependency ordering and parallel execution support.
  *  Systems are organized into sets with before/after/in_set relationships. */
 export struct Schedule {
    private:
     ScheduleLabel _label;
-    std::unordered_map<SystemSetLabel, std::shared_ptr<Node>> nodes;
-    std::shared_ptr<ScheduleCache> cache;
     ExecuteConfig _default_execute_config;
-
-    std::optional<std::vector<std::shared_ptr<Node>>> pending_applies;
+    ScheduleSystems _data;
+    std::unique_ptr<ScheduleExecutor> executor;
 
     /** @brief Add sets and systems from config. If accept_system is false, only edges/conditions are merged;
      *  if true, existing systems are replaced when the config carries a system. */
@@ -303,10 +319,10 @@ export struct Schedule {
     }
 
     /** @brief Check if the schedule contains a set with the given label. */
-    bool contains_set(const SystemSetLabel& label) const { return nodes.contains(label); }
+    bool contains_set(const SystemSetLabel& label) const { return _data.nodes.contains(label); }
     /** @brief Check if the schedule contains a set with the given label and has a system. */
     bool contains_system(const SystemSetLabel& label) const {
-        if (auto it = nodes.find(label); it != nodes.end()) {
+        if (auto it = _data.nodes.find(label); it != _data.nodes.end()) {
             return (bool)it->second->system;
         }
         return false;
@@ -319,8 +335,8 @@ export struct Schedule {
     void configure_sets(SetConfig& config) { add_config(std::move(config), false); }
     /** @brief Remove the system associated with the set label. The set remains. */
     bool remove_system(const SystemSetLabel& label) {
-        auto it = nodes.find(label);
-        if (it != nodes.end()) {
+        auto it = _data.nodes.find(label);
+        if (it != _data.nodes.end()) {
             // remove the system, remain set
             it->second->system.reset();
             return true;
@@ -329,9 +345,9 @@ export struct Schedule {
     }
     /** @brief Remove the set and its associated system entirely. */
     bool remove_set(const SystemSetLabel& label) {
-        auto it = nodes.find(label);
-        if (it != nodes.end()) {
-            nodes.erase(it);
+        auto it = _data.nodes.find(label);
+        if (it != _data.nodes.end()) {
+            _data.nodes.erase(it);
             return true;
         }
         return false;
@@ -354,6 +370,16 @@ export struct Schedule {
     /** @brief Get the default execution configuration (mutable). */
     ExecuteConfig& default_execute_config() { return _default_execute_config; }
 
+    void set_executor(std::unique_ptr<ScheduleExecutor> exec) { executor = std::move(exec); }
+    Schedule& with_executor(std::unique_ptr<ScheduleExecutor> exec) & {
+        set_executor(std::move(exec));
+        return *this;
+    }
+    Schedule&& with_executor(std::unique_ptr<ScheduleExecutor> exec) && {
+        set_executor(std::move(exec));
+        return std::move(*this);
+    }
+
     /** @brief Validate dependencies and build the execution cache.
      *  @param check_error If true, returns an error on validation failure. */
     std::expected<void, SchedulePrepareError> prepare(bool check_error = true);
@@ -363,9 +389,9 @@ export struct Schedule {
     /** @brief Clamp stale change ticks on all systems. */
     void check_change_tick(Tick tick);
     /** @brief Execute the schedule using the default configuration. */
-    void execute(SystemDispatcher& dispatcher) { execute(dispatcher, _default_execute_config); }
+    void execute(World& world) { execute(world, _default_execute_config); }
     /** @brief Execute the schedule with the given configuration. */
-    void execute(SystemDispatcher& dispatcher, ExecuteConfig config);
+    void execute(World& world, const ExecuteConfig& config);
     /** @brief Apply all pending deferred commands from systems. */
     void apply_deferred(World& world);
     /** @brief Add systems that run before all scheduled systems in this schedule.

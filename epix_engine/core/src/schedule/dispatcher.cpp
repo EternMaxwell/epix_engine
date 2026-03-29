@@ -1,15 +1,10 @@
 ﻿module;
 
-#ifdef EPIX_ENABLE_TRACY
-#include <tracy/Tracy.hpp>
-#endif
-
 module epix.core;
 
 import std;
-import BS.thread_pool;
 
-import :schedule.dispatcher;
+import :schedule.queue;
 
 namespace core {
 // smallvec
@@ -134,66 +129,4 @@ bool async_queue::empty() const {
     return queue.empty();
 }
 
-// SystemDispatcher impl
-void SystemDispatcher::tick() {
-    std::lock_guard lock(mutex_);
-    while (!pending_systems.empty()) {
-        auto&& [access, config, func] = pending_systems.front();
-        // check for conflicts
-        bool conflict = false;
-        for (const auto& existing_access : system_accesses) {
-            if (existing_access && !access->is_compatible(*existing_access)) {
-                conflict = true;
-                break;
-            }
-        }
-        if (conflict) break;
-        // can schedule
-        std::size_t index      = get_index();
-        system_accesses[index] = access;
-        thread_pool->detach_task([this, func = std::move(func), index, config = std::move(config)]() mutable {
-            if (!config.enable_tracy) {
-                func();
-            } else {
-#ifdef EPIX_ENABLE_TRACY
-                ZoneScopedN("Run dispatched system");
-                if (config.debug_name && config.debug_name->size() > 0) {
-                    ZoneName(config.debug_name->data(), config.debug_name->size());
-                }
-#endif
-                func();
-            }
-            if (config.on_finish) config.on_finish();
-            finish(index);
-        });
-        pending_systems.pop_front();
-    }
-}
-void SystemDispatcher::finish(std::size_t index) {
-    // collect finished system
-    std::lock_guard lock(mutex_);
-    const auto& access     = system_accesses[index];
-    system_accesses[index] = nullptr;
-    free_indices.push_back(index);
-    running--;
-    cv_.notify_all();
-    tick();
-}
-BS::thread_pool<BS::tp::none>& SystemDispatcher::get_thread_pool(std::size_t thread_count) {
-    return world->resource_or_emplace<SystemDispatcher::ThreadPoolWrapper>(
-        thread_count, []() { BS::this_thread::set_os_thread_name("system"); });
-}
-
-SystemDispatcher::~SystemDispatcher() {
-    // dispatch a world scope system to wait for all systems to finish.
-    if (world) world_scope([](World& world) {}).wait();
-}
-
-std::unique_ptr<World> SystemDispatcher::release_world() {
-    std::unique_lock lock(mutex_);
-    if (world) cv_.wait(lock, [this] { return running == 0 && pending_systems.empty(); });
-    if (!world_own) return nullptr;
-    world = nullptr;
-    return std::move(world_own);
-}
 }  // namespace core

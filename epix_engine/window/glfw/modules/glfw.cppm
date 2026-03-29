@@ -130,7 +130,7 @@ export struct GLFWRunner : public AppRunner {
         toggle_window_mode_system, update_window_states_system, destroy_windows_system, send_cached_events_system,
         clipboard_set_text_system, clipboard_update_system;
     std::vector<std::unique_ptr<core::System<std::tuple<>, void>>> extra_systems;
-    std::optional<std::future<bool>> render_app_future;
+    std::optional<std::future<std::unique_ptr<App>>> render_app_future;
     std::optional<core::AppLabel> render_app_label;
 };
 /** @brief Plugin that registers the GLFW windowing backend, including

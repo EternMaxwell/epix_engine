@@ -76,9 +76,15 @@ export struct Entities {
    private:
     std::vector<EntityMeta> meta;
     std::vector<std::uint32_t> pending;
-    mutable std::atomic<std::int64_t> free_cursor = 0;
+    std::unique_ptr<std::atomic<std::int64_t>> free_cursor;
 
    public:
+    Entities() : free_cursor(std::make_unique<std::atomic<std::int64_t>>(0)) {}
+    Entities(const Entities&)            = delete;
+    Entities(Entities&&)                 = default;
+    Entities& operator=(const Entities&) = delete;
+    Entities& operator=(Entities&&)      = default;
+
     /**
      * @brief Reserve entity IDs concurrently.
      *
@@ -88,7 +94,7 @@ export struct Entities {
      * @return A viewable range of reserved entities.
      */
     auto reserve_entities(std::uint32_t count) const {
-        std::int64_t range_end   = free_cursor.fetch_sub(count, std::memory_order_relaxed);
+        std::int64_t range_end   = free_cursor->fetch_sub(count, std::memory_order_relaxed);
         std::int64_t range_start = range_end - count;
 
         std::int64_t base = meta.size();
@@ -125,7 +131,7 @@ export struct Entities {
      * @return The reserved entity.
      */
     Entity reserve_entity() const {
-        std::int64_t n = free_cursor.fetch_sub(1, std::memory_order_relaxed);
+        std::int64_t n = free_cursor->fetch_sub(1, std::memory_order_relaxed);
         if (n > 0) {
             // from free list
             std::uint32_t idx = pending[n - 1];
@@ -219,7 +225,7 @@ export struct Entities {
     template <std::invocable<Entity, EntityLocation&> Fn>
     void flush(Fn&& fn) {
         // set cursor to 0 if negative and get new cursor
-        std::int64_t n = free_cursor.load(std::memory_order_relaxed);
+        std::int64_t n = free_cursor->load(std::memory_order_relaxed);
         if (n < 0) {
             auto old_meta_len = meta.size();
             auto new_meta_len = old_meta_len + static_cast<std::size_t>(-n);
@@ -235,7 +241,7 @@ export struct Entities {
             }
 #endif
 
-            free_cursor.store(0, std::memory_order_relaxed);
+            free_cursor->store(0, std::memory_order_relaxed);
             n = 0;
         }
 
@@ -264,7 +270,7 @@ export struct Entities {
      */
     std::size_t used_count() const {
         std::int64_t size = meta.size();
-        return size - free_cursor.load(std::memory_order_relaxed);
+        return size - free_cursor->load(std::memory_order_relaxed);
     }
     /**
      * @brief The count of all entities that have ever been allocated or reserved, including those that are freed.
@@ -273,7 +279,7 @@ export struct Entities {
      */
     std::size_t total_prospective_count() const {
         return meta.size() +
-               static_cast<std::size_t>(-std::min(free_cursor.load(std::memory_order_relaxed), std::int64_t{0}));
+               static_cast<std::size_t>(-std::min(free_cursor->load(std::memory_order_relaxed), std::int64_t{0}));
     }
     /**
      * @brief Count of currently allocated entities.
