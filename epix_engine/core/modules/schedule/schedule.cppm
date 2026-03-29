@@ -269,6 +269,16 @@ export struct Schedule {
      *  if true, existing systems are replaced when the config carries a system. */
     void add_config(SetConfig config, bool accept_system = true);
 
+    struct PrePostSystem {
+        SystemUnique<> system;
+        FilteredAccessSet access;
+        bool initialized = false;
+    };
+    std::vector<PrePostSystem> m_pre_systems;
+    std::vector<PrePostSystem> m_post_systems;
+
+    static void extract_systems_from_config(SetConfig& config, std::vector<PrePostSystem>& target);
+
    public:
     Schedule(const ScheduleLabel& label) : _label(label) {}
     Schedule(const Schedule&)            = delete;
@@ -358,6 +368,12 @@ export struct Schedule {
     void execute(SystemDispatcher& dispatcher, ExecuteConfig config);
     /** @brief Apply all pending deferred commands from systems. */
     void apply_deferred(World& world);
+    /** @brief Add systems that run before all scheduled systems in this schedule.
+     *  Pre-systems run sequentially with exclusive world access. */
+    void add_pre_systems(SetConfig&& config);
+    /** @brief Add systems that run after all scheduled systems in this schedule.
+     *  Post-systems run sequentially with exclusive world access. */
+    void add_post_systems(SetConfig&& config);
 };
 static_assert(std::constructible_from<Schedule, Schedule&&>);
 

@@ -6,6 +6,7 @@ namespace input {
 void ButtonInput<KeyCode>::collect_events(ResMut<ButtonInput<KeyCode>> input, EventReader<KeyInput> reader) {
     input->m_just_pressed.clear();
     input->m_just_released.clear();
+    input->clear_bypass();
     for (const auto& event : reader.read()) {
         if (event.pressed) {
             if (!input->m_pressed.contains(event.key)) {
@@ -24,6 +25,7 @@ void ButtonInput<MouseButton>::collect_events(ResMut<ButtonInput<MouseButton>> i
                                               EventReader<MouseButtonInput> reader) {
     input->m_just_pressed.clear();
     input->m_just_released.clear();
+    input->clear_bypass();
     for (const auto& event : reader.read()) {
         if (event.pressed) {
             if (!input->m_pressed.contains(event.button)) {

@@ -9,6 +9,7 @@
 module epix.render.imgui;
 
 import epix.core;
+import epix.input;
 import epix.render;
 import epix.window;
 import epix.glfw.core;
@@ -41,6 +42,10 @@ void imgui::ImGuiPlugin::build(App& app) {
     // Main world frame systems
     app.add_systems(PreUpdate, into(imgui_begin_frame).set_name("imgui begin frame"));
     app.add_systems(Last, into(imgui_end_frame).set_name("imgui end frame"));
+
+    // Consume input events that ImGui handled after every schedule.
+    // Resets WantCapture flags so events are only consumed once per frame.
+    app.add_post_systems(into(imgui_consume_input).set_name("imgui consume input"));
 
     // Extract ImGuiState to render world
     app.add_plugins(render::ExtractResourcePlugin<ImGuiState>{});
@@ -127,6 +132,32 @@ void imgui::imgui_end_frame(ResMut<ImGuiState> state) {
     }
 
     state->frame_active = false;
+}
+
+void imgui::imgui_consume_input(Res<ImGuiState> state,
+                                ResMut<Events<input::KeyInput>> key_events,
+                                ResMut<Events<input::MouseButtonInput>> mouse_events,
+                                ResMut<Events<input::MouseScroll>> scroll_events,
+                                ResMut<input::ButtonInput<input::KeyCode>> key_input,
+                                ResMut<input::ButtonInput<input::MouseButton>> mouse_input) {
+    if (!state->ctx || !state->initialized) return;
+    state->activate();
+    ImGuiIO& io = ImGui::GetIO();
+    if (io.WantCaptureKeyboard) {
+        key_events->advance_head(key_events->tail());
+        key_input->bypass_pressed();
+        key_input->bypass_just_pressed();
+        key_input->bypass_just_released();
+        io.WantCaptureKeyboard = false;
+    }
+    if (io.WantCaptureMouse) {
+        mouse_events->advance_head(mouse_events->tail());
+        scroll_events->advance_head(scroll_events->tail());
+        mouse_input->bypass_pressed();
+        mouse_input->bypass_just_pressed();
+        mouse_input->bypass_just_released();
+        io.WantCaptureMouse = false;
+    }
 }
 
 void imgui::imgui_render(Res<ImGuiState> state,

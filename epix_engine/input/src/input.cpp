@@ -29,6 +29,6 @@ void input::InputPlugin::build(App& app) {
 
     app.world_mut().init_resource<ButtonInput<KeyCode>>();
     app.world_mut().init_resource<ButtonInput<MouseButton>>();
-    app.add_systems(PreUpdate, into(ButtonInput<KeyCode>::collect_events, ButtonInput<MouseButton>::collect_events)
-                                   .set_name("collect input events"));
+    app.add_systems(First, into(ButtonInput<KeyCode>::collect_events, ButtonInput<MouseButton>::collect_events)
+                               .set_name("collect input events"));
 }

@@ -4,6 +4,7 @@ export module epix.render.imgui:plugin;
 
 import :state;
 import epix.core;
+import epix.input;
 import epix.render;
 import epix.window;
 import epix.glfw.core;
@@ -39,6 +40,16 @@ void imgui_begin_frame(ResMut<ImGuiState> state,
                        Res<glfw::GLFWwindows> windows,
                        Query<Item<Entity>, With<::window::Window, ::window::PrimaryWindow>> primary);
 void imgui_end_frame(ResMut<ImGuiState> state);
+
+// Post-PreUpdate system that consumes input events handled by ImGui.
+// Checks ImGui::GetIO().WantCapture* flags and advances the event head
+// so later schedules do not see consumed events.
+void imgui_consume_input(Res<ImGuiState> state,
+                         ResMut<Events<input::KeyInput>> key_events,
+                         ResMut<Events<input::MouseButtonInput>> mouse_events,
+                         ResMut<Events<input::MouseScroll>> scroll_events,
+                         ResMut<input::ButtonInput<input::KeyCode>> key_input,
+                         ResMut<input::ButtonInput<input::MouseButton>> mouse_input);
 
 // Render system (render sub-app)
 void imgui_render(Res<ImGuiState> state,

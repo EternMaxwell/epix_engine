@@ -35,6 +35,7 @@ target_link_libraries(epix_imgui PUBLIC epix_core)
 target_link_libraries(epix_imgui PUBLIC epix_render)
 target_link_libraries(epix_imgui PUBLIC epix_window)
 target_link_libraries(epix_imgui PUBLIC epix_glfw)
+target_link_libraries(epix_imgui PUBLIC epix_input)
 target_link_libraries(epix_imgui PUBLIC webgpu)
 target_link_libraries(epix_imgui PUBLIC imgui)
 

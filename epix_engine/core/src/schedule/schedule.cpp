@@ -273,6 +273,19 @@ void Schedule::initialize_systems(World& world, bool force) {
             node->condition_access[index] = condition->initialize(world);
         }
     }
+    // Initialize pre/post systems
+    for (auto& ps : m_pre_systems) {
+        if (ps.system && (!ps.initialized || force)) {
+            ps.access      = ps.system->initialize(world);
+            ps.initialized = true;
+        }
+    }
+    for (auto& ps : m_post_systems) {
+        if (ps.system && (!ps.initialized || force)) {
+            ps.access      = ps.system->initialize(world);
+            ps.initialized = true;
+        }
+    }
 }
 
 void Schedule::check_change_tick(Tick change_tick) {
@@ -340,9 +353,16 @@ void Schedule::execute(SystemDispatcher& dispatcher, ExecuteConfig config) {
         }
     }
     init_future.wait();
-    if (!has_system) {
+    if (!has_system && m_pre_systems.empty() && m_post_systems.empty()) {
         // no systems to run
         return;
+    }
+
+    // Run pre-systems sequentially with exclusive world access
+    for (auto& ps : m_pre_systems) {
+        if (ps.system) {
+            dispatcher.world_scope([&](World& world) { auto res = ps.system->run({}, world); }).wait();
+        }
     }
 
     auto dispatch_system = [&](size_t index) {
@@ -563,6 +583,13 @@ void Schedule::execute(SystemDispatcher& dispatcher, ExecuteConfig config) {
             [&](const std::shared_ptr<Node>& node) { nodes.erase(node->label); });
         this->cache.reset();  // invalidate cache
     }
+
+    // Run post-systems sequentially with exclusive world access
+    for (auto& ps : m_post_systems) {
+        if (ps.system) {
+            dispatcher.world_scope([&](World& world) { auto res = ps.system->run({}, world); }).wait();
+        }
+    }
 }
 
 void Schedule::apply_deferred(World& world) {
@@ -575,5 +602,17 @@ void Schedule::apply_deferred(World& world) {
         pending_applies.reset();
     }
 }
+
+void Schedule::extract_systems_from_config(SetConfig& config, std::vector<PrePostSystem>& target) {
+    if (config.system) {
+        target.push_back(PrePostSystem{.system = std::move(config.system)});
+    }
+    for (auto& sub : config.sub_configs) {
+        extract_systems_from_config(sub, target);
+    }
+}
+
+void Schedule::add_pre_systems(SetConfig&& config) { extract_systems_from_config(config, m_pre_systems); }
+void Schedule::add_post_systems(SetConfig&& config) { extract_systems_from_config(config, m_post_systems); }
 
 }  // namespace core

@@ -103,6 +103,16 @@ struct Events {
         }
         return nullptr;
     }
+    /** @brief Advance the head past consumed events so later readers skip them. */
+    void advance_head(std::uint32_t new_head) {
+        new_head            = std::clamp(new_head, m_head, m_tail);
+        std::uint32_t count = new_head - m_head;
+        for (std::uint32_t i = 0; i < count; ++i) {
+            m_events.pop_front();
+            m_lifetimes.pop_front();
+        }
+        m_head = new_head;
+    }
 };
 
 template <typename T>
@@ -148,6 +158,8 @@ struct EventReader {
     std::uint32_t size() const { return _events->tail() - _cursor->index; }
     /** @brief True if all events have been consumed. */
     bool empty() const { return _cursor->index == _events->tail(); }
+    /** @brief Get the current read position (cursor index). */
+    std::uint32_t position() const { return _cursor->index; }
     /** @brief Skip all unread events. */
     void clear() { _cursor->index = _events->tail(); }
     /** @brief Read exactly one event, or std::nullopt if none remain. */
@@ -188,6 +200,10 @@ struct EventWriter {
     /** @brief Construct an EventWriter from system parameters. */
     static EventWriter<T> from_param(ResMut<Events<T>> events) { return EventWriter<T>(events); }
 
+    /** @brief Get the current write position (tail index). */
+    std::uint32_t position() const { return m_events->tail(); }
+    /** @brief Advance the head past consumed events so later readers skip them. */
+    void advance_head(std::uint32_t new_head) { m_events->advance_head(new_head); }
     /** @brief Push an event by const reference. */
     void write(const T& event) { m_events->push(event); }
     /** @brief Push an event by move. */

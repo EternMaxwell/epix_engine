@@ -197,6 +197,14 @@ struct App {
     App& add_schedule(Schedule&& schedule);
     /** @brief Add or replace systems in a schedule. Creates the schedule if it does not exist. */
     App& add_systems(ScheduleInfo schedule, SetConfig&& config);
+    /** @brief Add pre-systems that run before all scheduled systems. Creates the schedule if needed. */
+    App& add_pre_systems(ScheduleInfo schedule, SetConfig&& config);
+    /** @brief Add pre-systems to every schedule in the schedule order. */
+    App& add_pre_systems(SetConfig&& config);
+    /** @brief Add post-systems that run after all scheduled systems. Creates the schedule if needed. */
+    App& add_post_systems(ScheduleInfo schedule, SetConfig&& config);
+    /** @brief Add post-systems to every schedule in the schedule order. */
+    App& add_post_systems(SetConfig&& config);
     /** @brief Configure sets in a schedule. Creates the schedule if needed. Replaces existing set configs. */
     App& configure_sets(ScheduleInfo schedule, SetConfig&& config);
     /** @brief Configure sets across all schedules. Replaces existing set configs in each. */

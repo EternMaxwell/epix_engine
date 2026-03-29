@@ -99,6 +99,40 @@ App& App::add_systems(ScheduleInfo schedule, SetConfig&& config) {
     return *this;
 }
 
+App& App::add_pre_systems(ScheduleInfo schedule, SetConfig&& config) {
+    std::ranges::for_each(schedule.transforms, [&](auto&& transform) { transform(config); });
+    resource_scope([&](Schedules& schedules, World& world) mutable {
+        schedules.schedule_or_insert((ScheduleLabel&)schedule).add_pre_systems(std::move(config));
+    });
+    return *this;
+}
+
+App& App::add_pre_systems(SetConfig&& config) {
+    resource_scope([&](Schedules& schedules, ScheduleOrder& order) mutable {
+        for (const auto& label : order.iter()) {
+            schedules.schedule_or_insert(label).add_pre_systems(config.clone());
+        }
+    });
+    return *this;
+}
+
+App& App::add_post_systems(ScheduleInfo schedule, SetConfig&& config) {
+    std::ranges::for_each(schedule.transforms, [&](auto&& transform) { transform(config); });
+    resource_scope([&](Schedules& schedules, World& world) mutable {
+        schedules.schedule_or_insert((ScheduleLabel&)schedule).add_post_systems(std::move(config));
+    });
+    return *this;
+}
+
+App& App::add_post_systems(SetConfig&& config) {
+    resource_scope([&](Schedules& schedules, ScheduleOrder& order) mutable {
+        for (const auto& label : order.iter()) {
+            schedules.schedule_or_insert(label).add_post_systems(config.clone());
+        }
+    });
+    return *this;
+}
+
 App& App::configure_sets(ScheduleInfo schedule, SetConfig&& config) {
     std::ranges::for_each(schedule.transforms, [&](auto&& transform) { transform(config); });
     resource_scope([&](Schedules& schedules, World& world) mutable {
