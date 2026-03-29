@@ -21,8 +21,12 @@ void calculate_global_transform(
             while (!child_stack.empty()) {
                 Entity current = child_stack.top();
                 child_stack.pop();
-                if (children.has_value()) {
-                    for (const auto& child : children->get().entities()) {
+                auto current_item = query.get(current);
+                if (!current_item.has_value()) continue;
+
+                auto [_, current_transform, current_children, current_parent, current_global] = *current_item;
+                if (current_children.has_value()) {
+                    for (const auto& child : current_children->get().entities()) {
                         child_stack.push(child);
                         change_root[child] = root;
                     }
