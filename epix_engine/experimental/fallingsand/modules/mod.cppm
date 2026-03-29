@@ -100,6 +100,14 @@ export struct SandChunkPos {
     std::array<std::int32_t, kDim> value;
 };
 
+export struct SandChunkMesh {};
+export struct SandChunkOutline {};
+
+export struct SandChunkRenderChildren {
+    Entity mesh_entity;
+    std::optional<Entity> outline_entity;
+};
+
 export struct SandSimulation : grid::ExtendibleChunkRefGrid<kDim> {
    private:
     std::unique_ptr<ElementRegistry> element_registry;
@@ -109,6 +117,7 @@ export struct SandSimulation : grid::ExtendibleChunkRefGrid<kDim> {
     bool m_initialized          = false;
     bool m_paused               = false;
     bool m_auto_fall            = true;
+    bool m_show_chunk_outlines  = true;
     std::int32_t m_brush_radius = 2;
     std::uint64_t m_tick        = 0;
 
@@ -279,6 +288,8 @@ export struct SandSimulation : grid::ExtendibleChunkRefGrid<kDim> {
     void set_paused(bool p) { m_paused = p; }
     bool auto_fall() const { return m_auto_fall; }
     void set_auto_fall(bool a) { m_auto_fall = a; }
+    bool show_chunk_outlines() const { return m_show_chunk_outlines; }
+    void set_show_chunk_outlines(bool show) { m_show_chunk_outlines = show; }
     std::uint64_t tick() const { return m_tick; }
 
     void clear_all() {
@@ -414,28 +425,99 @@ export struct SandSimulation : grid::ExtendibleChunkRefGrid<kDim> {
             .with_indices<std::uint32_t>(indices_view);
     }
 
+    static mesh::Mesh build_chunk_outline_mesh(std::size_t chunk_width, float cell_size) {
+        float extent = static_cast<float>(chunk_width) * cell_size;
+
+        std::array<glm::vec3, 4> positions{{
+            {0.0f, 0.0f, 0.0f},
+            {extent, 0.0f, 0.0f},
+            {extent, extent, 0.0f},
+            {0.0f, extent, 0.0f},
+        }};
+        std::array<glm::vec4, 4> colors{
+            glm::vec4(0.95f, 0.95f, 0.95f, 1.0f),
+            glm::vec4(0.95f, 0.95f, 0.95f, 1.0f),
+            glm::vec4(0.95f, 0.95f, 0.95f, 1.0f),
+            glm::vec4(0.95f, 0.95f, 0.95f, 1.0f),
+        };
+        std::array<std::uint16_t, 8> indices{{0, 1, 1, 2, 2, 3, 3, 0}};
+
+        return mesh::Mesh()
+            .with_primitive_type(wgpu::PrimitiveTopology::eLineList)
+            .with_attribute(mesh::Mesh::ATTRIBUTE_POSITION, positions)
+            .with_attribute(mesh::Mesh::ATTRIBUTE_COLOR, colors)
+            .with_indices<std::uint16_t>(indices);
+    }
+
     static void build_meshes(Commands cmd,
                              Res<SandSimulation> sim,
-                             Query<Item<Entity, const SandChunkPos&, const grid::Chunk<kDim>&>> chunks,
+                             Query<Item<const grid::Chunk<kDim>&, const SandChunkRenderChildren&>> chunks,
                              ResMut<assets::Assets<mesh::Mesh>> meshes) {
         float cell_size = sim->cell_size();
-        std::vector<std::tuple<Entity, std::array<std::int32_t, kDim>, std::future<mesh::Mesh>>> mesh_futures;
-        for (auto&& [entity, pos, chunk] : chunks.iter()) {
-            mesh_futures.emplace_back(entity, pos.value, sim->thread_pool->submit_task([&chunk, cell_size] {
-                return build_chunk_mesh(chunk, cell_size);
+        std::vector<std::tuple<Entity, std::future<mesh::Mesh>>> mesh_futures;
+        for (auto&& [chunk, render_children] : chunks.iter()) {
+            const grid::Chunk<kDim>* chunk_ptr = &chunk;
+            mesh_futures.emplace_back(render_children.mesh_entity,
+                                      sim->thread_pool->submit_task([chunk_ptr, cell_size] {
+                return build_chunk_mesh(*chunk_ptr, cell_size);
             }));
         }
-        for (auto&& [entity, pos, mesh_future] : mesh_futures) {
+        for (auto&& [mesh_entity, mesh_future] : mesh_futures) {
             auto mesh_handle = meshes->emplace(std::move(mesh_future.get()));
-            cmd.entity(entity).insert(mesh::Mesh2d{mesh_handle},
-                                      mesh::MeshMaterial2d{
-                                          .color      = glm::vec4(1.0f),
-                                          .alpha_mode = mesh::MeshAlphaMode2d::Opaque,
-                                      },
-                                      transform::Transform{
-                                          .translation = glm::vec3(pos[0] * cell_size * sim->chunk_width(),
-                                                                   pos[1] * cell_size * sim->chunk_width(), 0.0f),
-                                      });
+            cmd.entity(mesh_entity).insert(mesh::Mesh2d{mesh_handle});
+        }
+    }
+
+    static void sync_chunk_transforms(Res<SandSimulation> sim,
+                                      Query<Item<transform::Transform&, const SandChunkPos&>> chunks) {
+        float chunk_world_size = static_cast<float>(sim->chunk_width()) * sim->cell_size();
+        for (auto&& [chunk_transform, pos] : chunks.iter()) {
+            chunk_transform.translation.x = static_cast<float>(pos.value[0]) * chunk_world_size;
+            chunk_transform.translation.y = static_cast<float>(pos.value[1]) * chunk_world_size;
+            chunk_transform.translation.z = 0.0f;
+        }
+    }
+
+    static void sync_chunk_outline_children(Commands cmd,
+                                            Res<SandSimulation> sim,
+                                            ResMut<assets::Assets<mesh::Mesh>> meshes,
+                                            Local<std::optional<float>> prev_cell_size,
+                                            Query<Item<Entity, Mut<SandChunkRenderChildren>>> chunks) {
+        float current_cell_size = sim->cell_size();
+        bool cell_size_changed  = !prev_cell_size->has_value() ||
+                                 std::abs(prev_cell_size->value() - current_cell_size) > 1e-6f;
+        *prev_cell_size         = current_cell_size;
+
+        bool show_outline = sim->show_chunk_outlines();
+        for (auto&& [chunk_entity, render_children] : chunks.iter()) {
+            auto& tracked_children = render_children.get_mut();
+            if (cell_size_changed && tracked_children.outline_entity.has_value()) {
+                cmd.entity(*tracked_children.outline_entity).despawn();
+                tracked_children.outline_entity.reset();
+            }
+            if (show_outline) {
+                if (!tracked_children.outline_entity.has_value()) {
+                    auto outline_mesh =
+                        meshes->emplace(build_chunk_outline_mesh(sim->chunk_width(), current_cell_size));
+                    auto outline_entity =
+                        cmd.entity(chunk_entity)
+                            .spawn(SandChunkOutline{}, mesh::Mesh2d{outline_mesh},
+                                   mesh::MeshMaterial2d{
+                                       .color      = glm::vec4(1.0f, 1.0f, 1.0f, 0.55f),
+                                       .alpha_mode = mesh::MeshAlphaMode2d::Blend,
+                                   },
+                                   transform::Transform{
+                                       .translation = glm::vec3(0.0f, 0.0f, 0.01f),
+                                   })
+                            .id();
+                    tracked_children.outline_entity = outline_entity;
+                }
+            } else {
+                if (tracked_children.outline_entity.has_value()) {
+                    cmd.entity(*tracked_children.outline_entity).despawn();
+                    tracked_children.outline_entity.reset();
+                }
+            }
         }
     }
 };
@@ -493,22 +575,42 @@ export struct SimpleFallingSandPlugin {
                         if (!layer_res.has_value()) continue;
 
                         auto empty_mesh = meshes->emplace(mesh::Mesh{});
-                        cmd.spawn(
-                            SandChunkPos{{cx, cy}}, std::move(chunk), mesh::Mesh2d{empty_mesh},
-                            mesh::MeshMaterial2d{
-                                .color      = glm::vec4(1.0f),
-                                .alpha_mode = mesh::MeshAlphaMode2d::Opaque,
-                            },
-                            transform::Transform{
-                                .translation = glm::vec3(static_cast<float>(cx * chunk_width) * cfg.cell_size,
-                                                         static_cast<float>(cy * chunk_width) * cfg.cell_size, 0.0f),
+                        cmd.spawn(SandChunkPos{{cx, cy}}, std::move(chunk),
+                                  transform::Transform{
+                                      .translation = glm::vec3(static_cast<float>(cx * chunk_width) * cfg.cell_size,
+                                                               static_cast<float>(cy * chunk_width) * cfg.cell_size,
+                                                               0.0f),
+                                  })
+                            .then([empty_mesh = std::move(empty_mesh)](EntityCommands& chunk_entity) mutable {
+                                auto mesh_entity =
+                                    chunk_entity
+                                        .spawn(SandChunkMesh{}, mesh::Mesh2d{empty_mesh},
+                                               mesh::MeshMaterial2d{
+                                                   .color      = glm::vec4(1.0f),
+                                                   .alpha_mode = mesh::MeshAlphaMode2d::Opaque,
+                                               },
+                                               transform::Transform{
+                                                   .translation = glm::vec3(0.0f),
+                                               })
+                                        .id();
+
+                                chunk_entity.insert(SandChunkRenderChildren{
+                                    .mesh_entity    = mesh_entity,
+                                        .outline_entity = std::nullopt,
+                                });
                             });
                     }
                 }
             }).set_name("fallingsand setup"));
 
         app.add_systems(core::Update, core::into(SandSimulation::step).set_name("fallingsand step"));
-        app.add_systems(core::PostUpdate, core::into(SandSimulation::build_meshes).set_name("fallingsand mesh sync"));
+        app.add_systems(core::PostUpdate,
+                        core::into(SandSimulation::sync_chunk_transforms,
+                                   SandSimulation::build_meshes,
+                                   SandSimulation::sync_chunk_outline_children)
+                            .set_names(std::array{"fallingsand chunk transform sync",
+                                                  "fallingsand mesh sync",
+                                                  "fallingsand outline sync"}));
     }
 };
 }  // namespace ext::fallingsand

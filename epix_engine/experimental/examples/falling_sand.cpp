@@ -24,6 +24,9 @@ void settings_ui(imgui::Ctx imgui_ctx, ResMut<ext::fallingsand::SandSimulation> 
     bool auto_fall = sim->auto_fall();
     if (ImGui::Checkbox("Auto Fall (T)", &auto_fall)) sim->set_auto_fall(auto_fall);
 
+    bool show_outlines = sim->show_chunk_outlines();
+    if (ImGui::Checkbox("Show Chunk Outlines", &show_outlines)) sim->set_show_chunk_outlines(show_outlines);
+
     int brush = sim->brush_radius();
     if (ImGui::SliderInt("Brush Radius (Q/E)", &brush, 1, 32)) sim->set_brush_radius(brush);
 
