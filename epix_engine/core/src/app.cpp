@@ -252,4 +252,4 @@ void App::run() {
     spdlog::info("[app] App terminated. - {}", _label.to_string());
     std::set_terminate(prev_terminate);
 }
-}  // namespace core
+}  // namespace epix::core
