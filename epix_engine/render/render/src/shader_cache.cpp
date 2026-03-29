@@ -1,8 +1,8 @@
-﻿module epix.render;
+module epix.render;
 
 import :shader_cache;
 
-namespace render {
+namespace epix::render {
 auto ShaderCache::get(const wgpu::Device& device, CachedPipelineId pipeline, assets::AssetId<Shader> id)
     -> std::expected<std::reference_wrapper<const wgpu::ShaderModule>, ShaderCacheError> {
     auto it = data.find(id);

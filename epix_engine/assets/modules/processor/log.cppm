@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 #include <spdlog/spdlog.h>
 
@@ -9,7 +9,7 @@ import epix.utils;
 
 import :path;
 
-namespace assets {
+namespace epix::assets {
 
 // ---- LogEntry ----
 

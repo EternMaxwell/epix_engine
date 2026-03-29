@@ -1,10 +1,10 @@
-﻿module;
+module;
 
 export module epix.core:storage.sparse_array;
 
 import std;
 
-namespace core {
+namespace epix::core {
 template <std::convertible_to<std::size_t> I, typename V>
 struct SparseArray {
    private:

@@ -1,4 +1,4 @@
-﻿export module epix.render:graph.context;
+export module epix.render:graph.context;
 
 import webgpu;
 
@@ -6,9 +6,9 @@ import :graph.decl;
 import :graph.slot;
 import :graph.node;
 
-using namespace core;
+using namespace epix::core;
 
-namespace render::graph {
+namespace epix::render::graph {
 struct RunSubGraph {
     GraphLabel id;
     std::vector<SlotValue> inputs;

@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 #include <gtest/gtest.h>
 
@@ -9,7 +9,7 @@ import :storage;
 import :type_registry;
 
 TEST(core, table) {
-    using namespace core;
+    using namespace epix::core;
 
     auto registry  = std::make_shared<TypeRegistry>();
     TypeId tid_int = registry->type_id<int>();

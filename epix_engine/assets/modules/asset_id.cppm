@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 #include <uuid.h>
 
@@ -19,7 +19,7 @@ auto operator<=>(const uuids::uuid& lhs, const uuids::uuid& rhs) noexcept {
 }  // namespace uuids
 static_assert(std::three_way_comparable<uuids::uuid>);
 
-namespace assets {
+namespace epix::assets {
 export struct UntypedAssetId;
 
 constexpr uuids::uuid INVALID_UUID = uuids::uuid::from_string("1038587c-0b8d-4f2e-8a3f-1a2b3c4d5e6f").value();
@@ -178,16 +178,16 @@ struct InternalAssetId : std::variant<AssetIndex, uuids::uuid> {
 
 export namespace std {
 template <typename T>
-struct hash<assets::AssetId<T>> {
-    std::size_t operator()(const assets::AssetId<T>& id) const {
+struct hash<epix::assets::AssetId<T>> {
+    std::size_t operator()(const epix::assets::AssetId<T>& id) const {
         return std::visit([]<typename U>(const U& index) { return std::hash<U>()(index); }, id);
     }
 };
 
 template <>
-struct hash<assets::UntypedAssetId> {
-    std::size_t operator()(const assets::UntypedAssetId& id) const {
-        std::size_t type_hash = std::hash<meta::type_index>()(id.type);
+struct hash<epix::assets::UntypedAssetId> {
+    std::size_t operator()(const epix::assets::UntypedAssetId& id) const {
+        std::size_t type_hash = std::hash<epix::meta::type_index>()(id.type);
         std::size_t id_hash   = std::visit([]<typename T>(const T& index) { return std::hash<T>()(index); }, id.id);
         return type_hash ^ (id_hash + 0x9e3779b9 + (type_hash << 6) + (type_hash >> 2));
     }
@@ -197,17 +197,17 @@ struct hash<assets::UntypedAssetId> {
 /** @brief std::formatter support for AssetId and UntypedAssetId. */
 export namespace std {
 template <typename T>
-struct formatter<assets::AssetId<T>> {
+struct formatter<epix::assets::AssetId<T>> {
     template <typename ParseContext>
     constexpr auto parse(ParseContext& ctx) {
         return ctx.begin();
     }
 
     template <typename FormatContext>
-    auto format(const assets::AssetId<T>& id, FormatContext& ctx) const {
-        return format_to(ctx.out(), "AssetId<{}>({})", meta::type_id<T>::short_name(), [&id]() -> std::string {
-            if (std::holds_alternative<assets::AssetIndex>(id)) {
-                auto& index = std::get<assets::AssetIndex>(id);
+    auto format(const epix::assets::AssetId<T>& id, FormatContext& ctx) const {
+        return format_to(ctx.out(), "AssetId<{}>({})", epix::meta::type_id<T>::short_name(), [&id]() -> std::string {
+            if (std::holds_alternative<epix::assets::AssetIndex>(id)) {
+                auto& index = std::get<epix::assets::AssetIndex>(id);
                 return std::format("AssetIndex(index={}, generation={})", index.index(), index.generation());
             } else if (std::holds_alternative<uuids::uuid>(id)) {
                 auto& uuid = std::get<uuids::uuid>(id);
@@ -218,17 +218,17 @@ struct formatter<assets::AssetId<T>> {
     }
 };
 template <>
-struct formatter<assets::UntypedAssetId> {
+struct formatter<epix::assets::UntypedAssetId> {
     template <typename ParseContext>
     constexpr auto parse(ParseContext& ctx) {
         return ctx.begin();
     }
 
     template <typename FormatContext>
-    auto format(const assets::UntypedAssetId& id, FormatContext& ctx) const {
+    auto format(const epix::assets::UntypedAssetId& id, FormatContext& ctx) const {
         return format_to(ctx.out(), "UntypedAssetId<{}>({})", id.type.short_name(), [&id]() -> std::string {
-            if (std::holds_alternative<assets::AssetIndex>(id.id)) {
-                auto& index = std::get<assets::AssetIndex>(id.id);
+            if (std::holds_alternative<epix::assets::AssetIndex>(id.id)) {
+                auto& index = std::get<epix::assets::AssetIndex>(id.id);
                 return std::format("AssetIndex(index={}, generation={})", index.index(), index.generation());
             } else if (std::holds_alternative<uuids::uuid>(id.id)) {
                 auto& uuid = std::get<uuids::uuid>(id.id);

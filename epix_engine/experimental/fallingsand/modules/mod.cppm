@@ -15,9 +15,9 @@ import epix.window;
 
 import epix.extension.grid;
 
-using namespace core;
+using namespace epix::core;
 
-namespace ext::fallingsand {
+namespace epix::ext::fallingsand {
 constexpr std::size_t kDim = 2;
 
 export enum class ElementType {

@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 #define MakeTaskPool(Name)                                                \
     struct Name##TaskPool {                                               \
@@ -18,7 +18,7 @@ export module epix.utils:singleton_taskpool;
 import std;
 import BS.thread_pool;
 
-namespace utils {
+namespace epix::utils {
 export MakeTaskPool(IO);
 export MakeTaskPool(Worker);
 }  // namespace utils

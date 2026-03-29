@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 export module epix.core:schedule;
 
@@ -11,7 +11,7 @@ import :label;
 import :labels;
 import :storage;
 
-namespace core {
+namespace epix::core {
 struct Node;
 struct Edges {
     std::unordered_set<SystemSetLabel> depends;

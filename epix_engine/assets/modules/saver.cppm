@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 export module epix.assets:saver;
 
@@ -8,7 +8,7 @@ import epix.meta;
 import :server.loader;
 import :transformer;
 
-namespace assets {
+namespace epix::assets {
 
 /** @brief A read-only view of an asset and its labeled sub-assets, used during saving.
  *  Matches bevy_asset's SavedAsset. */

@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 #include <spdlog/spdlog.h>
 
@@ -11,8 +11,9 @@ import epix.render;
 import epix.transform;
 import std;
 
-using namespace core;
-using namespace sprite;
+using namespace epix;
+using namespace epix::core;
+using namespace epix::sprite;
 
 namespace {
 constexpr std::string_view kSpriteVertexShader = R"(

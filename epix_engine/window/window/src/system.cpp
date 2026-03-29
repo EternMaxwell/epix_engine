@@ -1,10 +1,12 @@
-﻿module epix.window;
+module epix.window;
 
 import :system;
 
-using namespace core;
+using namespace epix::core;
 
-void window::exit_on_all_closed(EventWriter<AppExit> exit_writer,
+namespace epix::window {
+
+void exit_on_all_closed(EventWriter<AppExit> exit_writer,
                                 Local<std::unordered_set<Entity>> still_alive,
                                 EventReader<WindowCreated> created,
                                 EventReader<WindowDestroyed> destroyed) {
@@ -18,7 +20,7 @@ void window::exit_on_all_closed(EventWriter<AppExit> exit_writer,
         exit_writer.write(AppExit{0});
     }
 }
-void window::exit_on_primary_closed(EventWriter<AppExit> exit_writer,
+void exit_on_primary_closed(EventWriter<AppExit> exit_writer,
                                     Query<Item<Entity>, With<Window, PrimaryWindow>> query,
                                     Local<std::optional<Entity>> primary_window,
                                     EventReader<WindowDestroyed> destroyed) {
@@ -40,8 +42,8 @@ void window::exit_on_primary_closed(EventWriter<AppExit> exit_writer,
         }
     }
 }
-void window::close_requested(Commands commands,
-                             Query<Item<Entity, const window::Window&>> windows,
+void close_requested(Commands commands,
+                     Query<Item<Entity, const Window&>> windows,
                              EventReader<WindowCloseRequested> reader) {
     for (auto&& [window] : reader.read()) {
         if (windows.contains(window)) {
@@ -49,3 +51,5 @@ void window::close_requested(Commands commands,
         }
     }
 }
+
+}  // namespace epix::window

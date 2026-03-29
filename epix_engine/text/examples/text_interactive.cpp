@@ -1,4 +1,4 @@
-﻿import std;
+import std;
 import epix.assets;
 import epix.core;
 import epix.core_graph;
@@ -12,6 +12,8 @@ import epix.window;
 import epix.glfw.core;
 import epix.glfw.render;
 import glm;
+
+using namespace epix;
 
 // Marker components
 struct MainText {};

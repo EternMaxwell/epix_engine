@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 export module epix.text:render;
 
@@ -12,7 +12,7 @@ import epix.transform;
 import glm;
 import std;
 
-namespace text {
+namespace epix::text {
 /** @brief Component holding a generated mesh and bounding metrics for
  * rendered text.
  *
@@ -111,7 +111,7 @@ export struct TextRenderPlugin {
 }  // namespace text
 
 template <>
-struct core::Bundle<text::Text2dBundle> {
+struct epix::core::Bundle<epix::text::Text2dBundle> {
     static std::size_t write(text::Text2dBundle& bundle, std::span<void*> dests) {
         new (dests[0]) text::Text2d(std::move(bundle.text2d));
         new (dests[1]) transform::Transform(std::move(bundle.transform));
@@ -134,4 +134,4 @@ struct core::Bundle<text::Text2dBundle> {
     }
 };
 
-static_assert(core::is_bundle<text::Text2dBundle>);
+static_assert(epix::core::is_bundle<epix::text::Text2dBundle>);

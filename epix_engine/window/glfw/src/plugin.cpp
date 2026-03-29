@@ -1,11 +1,11 @@
-﻿module;
+module;
 
 #include <GLFW/glfw3.h>
 
 module epix.glfw.core;
 
-using namespace glfw;
-using namespace core;
+using namespace epix::glfw;
+using namespace epix::core;
 
 void GLFWPlugin::build(App& app) {
     if (!glfwInit()) {

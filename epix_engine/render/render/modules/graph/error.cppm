@@ -1,10 +1,10 @@
-﻿export module epix.render:graph.error;
+export module epix.render:graph.error;
 
 import :graph.decl;
 import :graph.slot;
 import std;
 
-export namespace render::graph {
+export namespace epix::render::graph {
 /** @brief Error indicating a node was not found in the graph. */
 struct NodeNotPresent {
     /** @brief Label of the missing node. */

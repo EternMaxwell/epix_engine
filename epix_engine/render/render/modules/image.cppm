@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 export module epix.render:image;
 
@@ -8,7 +8,7 @@ import epix.image;
 import epix.assets;
 import webgpu;
 
-namespace render {
+namespace epix::render {
 /** @brief Resource holding the default sampler used for image textures. */
 export struct DefaultImageSampler {
     /** @brief The default GPU sampler. */
@@ -24,10 +24,10 @@ export struct GPUImage {
     /** @brief The sampler used when sampling this image. */
     wgpu::Sampler sampler;
 };
-}  // namespace render
+}  // namespace epix::render
 
 template <>
-struct render::RenderAsset<image::Image> {
+struct epix::render::RenderAsset<epix::image::Image> {
     using Param          = std::tuple<Res<wgpu::Device>, Res<wgpu::Queue>, Res<render::DefaultImageSampler>>;
     using ProcessedAsset = GPUImage;
 

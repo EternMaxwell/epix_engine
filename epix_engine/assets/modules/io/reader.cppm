@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 export module epix.assets:io.reader;
 
@@ -6,7 +6,7 @@ import std;
 import epix.meta;
 import epix.utils;
 
-namespace assets {
+namespace epix::assets {
 export namespace reader_errors {
 struct NotFound {
     std::filesystem::path path;
@@ -31,7 +31,7 @@ export struct AssetReader {
     virtual std::expected<std::unique_ptr<std::istream>, AssetReaderError> read_meta(
         const std::filesystem::path& path) const = 0;
     /** @brief Get an iterator of directory entries */
-    virtual std::expected<utils::input_iterable<std::filesystem::path>, AssetReaderError> read_directory(
+    virtual std::expected<epix::utils::input_iterable<std::filesystem::path>, AssetReaderError> read_directory(
         const std::filesystem::path& path) const = 0;
     /** @brief Check if a path is a directory */
     virtual std::expected<bool, AssetReaderError> is_directory(const std::filesystem::path& path) const = 0;

@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 #include <SFML/Window/Clipboard.hpp>
 #include <SFML/Window/Cursor.hpp>
@@ -16,9 +16,9 @@ import epix.window;
 import epix.assets;
 import epix.image;
 
-using namespace core;
+using namespace epix::core;
 
-namespace sfml {
+namespace epix::sfml {
 
 input::KeyCode map_sfml_key_to_input(sf::Keyboard::Key key);
 input::MouseButton map_sfml_mouse_button_to_input(sf::Mouse::Button button);

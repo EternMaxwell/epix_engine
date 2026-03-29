@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 export module epix.core:system;
 
@@ -12,7 +12,7 @@ export import :system.input;
 export import :system.from_param;
 export import :system.commands;
 
-namespace core {
+namespace epix::core {
 /** @brief Wrapper around an exception caught during system execution. */
 export struct SystemException {
     /** @brief The captured exception. */

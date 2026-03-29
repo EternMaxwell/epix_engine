@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 #include <GLFW/glfw3.h>
 #include <spdlog/spdlog.h>
@@ -7,9 +7,9 @@ module epix.glfw.core;
 
 import std;
 
-using namespace core;
-using namespace glfw;
-using namespace window;
+using namespace epix::core;
+using namespace epix::glfw;
+using namespace epix::window;
 
 GLFWRunner::GLFWRunner(App& app) {
     check_exit    = make_system_unique([](EventReader<AppExit> exit_event) -> std::optional<int> {

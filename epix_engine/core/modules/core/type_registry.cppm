@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 export module epix.core:type_registry;
 
@@ -7,7 +7,7 @@ import epix.meta;
 
 import :utils;
 
-namespace core {
+namespace epix::core {
 enum class StorageType : std::uint8_t {
     Table     = 0,  // default stored in tables
     SparseSet = 1,
@@ -125,6 +125,6 @@ export struct TypeRegistry {
 
 // temporary. currently partial specializations are errornous in modules in most compilers
 template <>
-struct std::hash<core::TypeId> {
-    std::size_t operator()(const core::TypeId& typeId) const noexcept { return std::hash<std::uint64_t>()(typeId); }
+struct std::hash<epix::core::TypeId> {
+    std::size_t operator()(const epix::core::TypeId& typeId) const noexcept { return std::hash<std::uint64_t>()(typeId); }
 };

@@ -1,10 +1,10 @@
-﻿module;
+module;
 
 module epix.render;
 
 import :image;
 
-using namespace render;
+namespace epix::render {
 
 wgpu::TextureFormat format_cast(image::Format format) {
     switch (format) {
@@ -62,7 +62,7 @@ wgpu::TextureViewDimension view_dimension_cast(image::ImageType type) {
     }
 }
 
-GPUImage render::RenderAsset<image::Image>::process(image::Image&& asset, Param param) {
+GPUImage RenderAsset<image::Image>::process(image::Image&& asset, Param param) {
     auto& [device, queue, default_sampler] = param;
     wgpu::TextureDescriptor desc;
     desc.setUsage(wgpu::TextureUsage::eCopyDst | wgpu::TextureUsage::eTextureBinding)
@@ -103,6 +103,8 @@ GPUImage render::RenderAsset<image::Image>::process(image::Image&& asset, Param 
     return gpu_image;
 }
 
-render::RenderAssetUsage render::RenderAsset<image::Image>::usage(const image::Image& asset) {
+RenderAssetUsage RenderAsset<image::Image>::usage(const image::Image& asset) {
     return static_cast<RenderAssetUsage>(asset.usage());
 }
+
+}  // namespace epix::render

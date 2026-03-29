@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 module epix.core;
 
@@ -9,7 +9,7 @@ import :app.main_schedule;
 import :system;
 import :query;
 
-namespace core {
+namespace epix::core {
 struct LoopRunner : public AppRunner {
     std::unique_ptr<System<std::tuple<>, bool>> check_exit;
     FilteredAccessSet access;

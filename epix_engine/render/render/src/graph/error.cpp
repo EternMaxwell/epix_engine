@@ -1,8 +1,10 @@
-﻿module epix.render;
+module epix.render;
 
 import :graph.error;
 
-std::string render::graph::GraphError::to_string() const {
+namespace epix::render::graph {
+
+std::string GraphError::to_string() const {
     return std::visit(
         utils::visitor{[](const NodeNotPresent& e) -> std::string {
                            return "Node not present: " + std::string(e.label.type_index().short_name());
@@ -57,3 +59,5 @@ std::string render::graph::GraphError::to_string() const {
                        }},
         *this);
 }
+
+    }  // namespace epix::render::graph

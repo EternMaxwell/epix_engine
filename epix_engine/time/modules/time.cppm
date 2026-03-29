@@ -1,4 +1,4 @@
-﻿export module epix.time;
+export module epix.time;
 
 export import :time_clock;
 export import :real;
@@ -11,9 +11,9 @@ export import :common_conditions;
 import epix.core;
 import std;
 
-using namespace core;
+using namespace epix::core;
 
-namespace time {
+namespace epix::time {
 
 export enum class TimeUpdateStrategy {
     Automatic,

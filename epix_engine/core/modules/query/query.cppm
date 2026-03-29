@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 export module epix.core:query;
 
@@ -11,7 +11,7 @@ export import :query.fetch;
 export import :query.filter;
 export import :query.iter;
 
-namespace core {
+namespace epix::core {
 /** @brief High-level query handle providing iteration, single-entity lookup, and existence checks.
  *  @tparam D Query data descriptor.
  *  @tparam F Query filter. */

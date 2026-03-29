@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 #include <spdlog/spdlog.h>
 
@@ -6,7 +6,7 @@ module epix.render;
 
 import :pipeline_server;
 
-namespace render {
+namespace epix::render {
 std::optional<wgpu::ShaderModule> load_module(const wgpu::Device& device, const Shader& shader) {
     const auto& source = shader.source;
     if (source.is_wgsl()) {

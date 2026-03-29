@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 export module epix.core:storage.resource;
 
@@ -6,14 +6,14 @@ import std;
 
 import :storage.sparse_set;
 
-namespace core {
+namespace epix::core {
 /**
  * @brief Storage for single resource data. Use untyped_vector for underlying storage.
  * Note that the data is reserved when the struct is constructed, so the reference is stable.
  */
 struct ResourceData {
    public:
-    ResourceData(const ::meta::type_info& desc) : data(desc, 1), added_tick(0), modified_tick(0) {}
+    ResourceData(const ::epix::meta::type_info& desc) : data(desc, 1), added_tick(0), modified_tick(0) {}
 
     bool is_present(this const ResourceData& self) { return !self.data.empty(); }
     std::optional<const void*> get(this const ResourceData& self) {
@@ -176,7 +176,7 @@ struct Resources {
 
     bool initialize(this Resources& self, TypeId resource_id) {
         if (!self.resources.contains(resource_id)) {
-            const ::meta::type_info& type_info = self.registry->type_index(resource_id).type_info();
+            const ::epix::meta::type_info& type_info = self.registry->type_index(resource_id).type_info();
             self.resources.emplace(resource_id, ResourceData(type_info));
             return true;
         }

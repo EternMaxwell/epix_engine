@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 #include <spdlog/spdlog.h>
 
@@ -7,7 +7,7 @@ module epix.core;
 import :app.schedules;
 import :labels;
 
-namespace core {
+namespace epix::core {
 std::optional<std::reference_wrapper<const Schedule>> Schedules::get_schedule(const ScheduleLabel& label) const {
     auto it = _schedules.find(label);
     if (it != _schedules.end()) {

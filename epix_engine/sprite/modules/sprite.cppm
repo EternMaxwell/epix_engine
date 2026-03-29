@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 export module epix.sprite:sprite;
 
@@ -9,7 +9,7 @@ import epix.transform;
 import glm;
 import std;
 
-export namespace sprite {
+export namespace epix::sprite {
 /** @brief Visual sprite component with color, flipping, UV region, and anchor
  * settings.
  *
@@ -45,10 +45,10 @@ struct SpriteBundle {
     /** @brief Handle to the Image asset used as the sprite texture. */
     assets::Handle<image::Image> texture;
 };
-}  // namespace sprite
+}  // namespace epix::sprite
 
 template <>
-struct core::Bundle<sprite::SpriteBundle> {
+struct epix::core::Bundle<epix::sprite::SpriteBundle> {
     static std::size_t write(sprite::SpriteBundle& bundle, std::span<void*> dests) {
         new (dests[0]) sprite::Sprite(std::move(bundle.sprite));
         new (dests[1]) transform::Transform(std::move(bundle.transform));
@@ -68,4 +68,4 @@ struct core::Bundle<sprite::SpriteBundle> {
     }
 };
 
-static_assert(core::is_bundle<sprite::SpriteBundle>);
+static_assert(epix::core::is_bundle<epix::sprite::SpriteBundle>);

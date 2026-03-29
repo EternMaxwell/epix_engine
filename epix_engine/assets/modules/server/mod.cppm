@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 #include <spdlog/spdlog.h>
 
@@ -15,7 +15,7 @@ import :server.loaders;
 import :meta;
 import :io.source;
 
-namespace assets {
+namespace epix::assets {
 /** @brief Operational mode of the asset server. */
 export enum class AssetServerMode {
     Unprocessed, /**< Assets are loaded directly without preprocessing. */

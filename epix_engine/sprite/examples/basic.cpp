@@ -10,6 +10,8 @@ import epix.input;
 import epix.image;
 import epix.sprite;
 
+using namespace epix;
+
 #include "cam_controll.hpp"
 
 namespace {

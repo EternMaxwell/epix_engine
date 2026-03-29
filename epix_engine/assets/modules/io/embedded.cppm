@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 export module epix.assets:io.embedded;
 
@@ -10,7 +10,7 @@ import :io.memory.asset;
 import :io.source;
 import :path;
 
-namespace assets {
+namespace epix::assets {
 
 /** @brief The canonical asset source name for embedded (in-binary) assets.
  *  Matches bevy_asset's EMBEDDED constant. */

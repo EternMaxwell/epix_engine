@@ -1,10 +1,10 @@
-﻿module;
+module;
 
 export module epix.utils:int_wrapper;
 
 import std;
 
-namespace utils {
+namespace epix::utils {
 /** @brief CRTP-style wrapper for integral types providing strong typing.
  *
  * Wraps a plain integer with value semantics, comparison operators, and
@@ -42,14 +42,14 @@ struct int_base {
 }  // namespace utils
 
 template <std::integral T>
-struct std::hash<::utils::int_base<T>> {
-    std::size_t operator()(const ::utils::int_base<T>& v) const { return std::hash<T>()(v.get()); }
+struct std::hash<::epix::utils::int_base<T>> {
+    std::size_t operator()(const ::epix::utils::int_base<T>& v) const { return std::hash<T>()(v.get()); }
 };
 template <typename T>
     requires requires {
         typename T::value_type;
-        requires std::derived_from<T, ::utils::int_base<typename T::value_type>>;
+        requires std::derived_from<T, ::epix::utils::int_base<typename T::value_type>>;
     }
 struct std::hash<T> {
-    std::size_t operator()(const T& v) const { return std::hash<::utils::int_base<typename T::value_type>>()(v); }
+    std::size_t operator()(const T& v) const { return std::hash<::epix::utils::int_base<typename T::value_type>>()(v); }
 };

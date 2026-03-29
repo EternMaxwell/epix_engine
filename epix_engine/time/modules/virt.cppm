@@ -1,11 +1,11 @@
-﻿export module epix.time:virt;
+export module epix.time:virt;
 
 import std;
 
 import :time_clock;
 import :real;
 
-namespace time {
+namespace epix::time {
 
 export struct Virtual {
     std::chrono::nanoseconds max_delta = std::chrono::milliseconds(250);

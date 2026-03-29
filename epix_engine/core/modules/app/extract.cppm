@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 export module epix.core:app.extract;
 
@@ -11,7 +11,7 @@ import :tick;
 import :query;
 import :ticks;
 
-namespace core {
+namespace epix::core {
 /** @brief Wrapper that redirects a system parameter's data source to the extracted (main) world.
  *  Used in render systems to read data from the main world while running in a sub-world.
  *  @tparam T A type satisfying system_param. Extract<T> accesses T from the

@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 #include <cassert>
 
@@ -7,7 +7,7 @@ export module epix.core:storage.untyped_vector;
 import std;
 import epix.meta;
 
-namespace core {
+namespace epix::core {
 /** @brief Type-erased dynamic array that stores elements by their runtime type_info.
  *
  * Manages memory for elements of any type, using meta::type_info for
@@ -17,7 +17,7 @@ namespace core {
 export class untyped_vector {
    public:
     /** @brief Construct with the given type descriptor and optional initial capacity. */
-    explicit untyped_vector(const ::meta::type_info& desc, std::size_t reserve_cnt = 0)
+    explicit untyped_vector(const ::epix::meta::type_info& desc, std::size_t reserve_cnt = 0)
         : desc_(std::addressof(desc)), size_(0), capacity_(0), data_(nullptr) {
         if (!desc_ || desc_->size == 0) throw std::invalid_argument("element size must be > 0");
         if (reserve_cnt) reserve(reserve_cnt);
@@ -136,7 +136,7 @@ export class untyped_vector {
     bool empty() const noexcept { return size_ == 0; }
 
     /** @brief Get the type_info descriptor. */
-    const ::meta::type_info& type_info() const noexcept { return *desc_; }
+    const ::epix::meta::type_info& type_info() const noexcept { return *desc_; }
 
     /** @brief Get a raw pointer to the element data. */
     void* data() noexcept { return data_; }
@@ -445,7 +445,7 @@ export class untyped_vector {
     }
 
    private:
-    const ::meta::type_info* desc_;
+    const ::epix::meta::type_info* desc_;
     std::pmr::memory_resource* mem_res_ = std::pmr::get_default_resource();
     std::size_t size_;
     std::size_t capacity_;

@@ -1,8 +1,8 @@
-﻿export module epix.window:events;
+export module epix.window:events;
 
 import epix.core;
 
-export namespace window {
+export namespace epix::window {
 /**
  * @brief This event is sent when the window is resized.
  */

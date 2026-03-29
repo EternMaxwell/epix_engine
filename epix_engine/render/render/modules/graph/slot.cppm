@@ -1,4 +1,4 @@
-﻿export module epix.render:graph.slot;
+export module epix.render:graph.slot;
 
 import epix.assets;
 import epix.core;
@@ -6,9 +6,9 @@ import epix.utils;
 import webgpu;
 import std;
 
-using namespace core;
+using namespace epix::core;
 
-namespace render::graph {
+namespace epix::render::graph {
 /** @brief Type of data that can flow through a render graph slot. */
 export enum class SlotType {
     Buffer,  /**< @brief A GPU buffer. */

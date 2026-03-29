@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 #include <spdlog/spdlog.h>
 
@@ -9,7 +9,7 @@ import std;
 import :schedule;
 import :labels;
 
-namespace core {
+namespace epix::core {
 void Schedule::add_config(SetConfig config, bool accept_system) {
     // create node
     if (config.label) {

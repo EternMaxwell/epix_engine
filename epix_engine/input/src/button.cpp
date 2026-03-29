@@ -1,8 +1,8 @@
-﻿module epix.input;
+module epix.input;
 
 import :button;
 
-namespace input {
+namespace epix::input {
 void ButtonInput<KeyCode>::collect_events(ResMut<ButtonInput<KeyCode>> input, EventReader<KeyInput> reader) {
     input->m_just_pressed.clear();
     input->m_just_released.clear();

@@ -4,7 +4,7 @@ import std;
 import epix.meta;
 import epix.utils;
 
-export namespace assets {
+export namespace epix::assets {
 export namespace memory {
 
 export struct NotFoundError {

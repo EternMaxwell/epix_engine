@@ -1,7 +1,7 @@
-﻿module epix.transform;
+module epix.transform;
 
-using namespace transform;
-using namespace core;
+using namespace epix::transform;
+using namespace epix::core;
 
 void calculate_global_transform(
     Commands cmd,

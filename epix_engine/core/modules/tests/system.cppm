@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 #include <gtest/gtest.h>
 
@@ -24,9 +24,9 @@ struct resource1 {
 };
 }  // namespace
 template <>
-struct core::sparse_component<C3> : std::true_type {};
+struct epix::core::sparse_component<C3> : std::true_type {};
 
-using namespace core;
+using namespace epix::core;
 
 namespace {
 void func2(Query<Item<Entity, Opt<const C1&>, Opt<const C2&>, Opt<const C3&>>> query, Res<resource1> res1) {

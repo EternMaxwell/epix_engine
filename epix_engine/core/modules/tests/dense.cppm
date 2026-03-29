@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 #include <gtest/gtest.h>
 
@@ -7,10 +7,10 @@ export module epix.core:tests.dense;
 import std;
 import :storage;
 
-using namespace core;
+using namespace epix::core;
 
 TEST(core, dense) {
-    Dense d(meta::type_id<std::string>::type_info(), 2);
+    Dense d(epix::meta::type_id<std::string>::type_info(), 2);
     EXPECT_EQ(d.len(), 0);
 
     d.push<std::string>({0, 0}, "a");

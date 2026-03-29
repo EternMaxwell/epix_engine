@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 export module epix.core:query.filter;
 
@@ -10,7 +10,7 @@ import :world.decl;
 import :component;
 import :storage;
 
-namespace core {
+namespace epix::core {
 template <query_filter... Fs>
 struct WorldQuery<Filter<Fs...>> : WorldQuery<std::tuple<Fs...>> {};
 

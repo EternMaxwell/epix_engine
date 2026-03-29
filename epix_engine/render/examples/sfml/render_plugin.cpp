@@ -1,4 +1,4 @@
-﻿#include <spdlog/spdlog.h>
+#include <spdlog/spdlog.h>
 
 #include <stacktrace>
 
@@ -12,7 +12,8 @@ import epix.sfml.render;
 
 import std;
 
-using namespace core;
+using namespace epix::core;
+using namespace epix;
 
 constexpr struct Test {
 } test_graph;

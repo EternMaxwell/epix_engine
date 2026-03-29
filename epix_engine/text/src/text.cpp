@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 #include <freetype/freetype.h>
 #include <hb-ft.h>
@@ -10,8 +10,9 @@ import epix.image;
 import epix.mesh;
 import std;
 
-using namespace core;
-using namespace text;
+using namespace epix;
+using namespace epix::core;
+using namespace epix::text;
 
 namespace {
 void shape_changed_text(
@@ -61,7 +62,7 @@ void regen_mesh_for_shaped_text(Commands cmd,
 }
 }  // namespace
 
-ShapedText text::shape_text(const Text& text,
+ShapedText epix::text::shape_text(const Text& text,
                             const TextFont& font,
                             const TextLayout& layout,
                             const TextBounds& bounds,

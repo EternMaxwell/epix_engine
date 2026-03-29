@@ -1,11 +1,11 @@
-﻿export module epix.time:fixed;
+export module epix.time:fixed;
 
 import std;
 
 import :time_clock;
 import :virt;
 
-namespace time {
+namespace epix::time {
 
 export struct Fixed {
     std::chrono::nanoseconds timestep = std::chrono::microseconds(15625);  // 64 Hz

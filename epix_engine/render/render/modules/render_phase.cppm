@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 #include <spdlog/spdlog.h>
 
@@ -15,7 +15,7 @@ import :graph;
 import :pipeline;
 import :pipeline_server;
 
-namespace render::phase {
+namespace epix::render::phase {
 /** @brief Strongly-typed index identifying a registered draw function. */
 export struct DrawFunctionId : core::int_base<uint32_t> {
     using core::int_base<uint32_t>::int_base;

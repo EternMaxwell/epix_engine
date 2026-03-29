@@ -1,11 +1,11 @@
-﻿export module epix.window:structs;
+export module epix.window:structs;
 
 import epix.core;
 import epix.assets;
 import epix.image;
 import std;
 
-export namespace window {
+export namespace epix::window {
 /** @brief Controls how the window position is interpreted. */
 enum PosType {
     /** @brief Position is relative to the top-left corner of the current
@@ -224,9 +224,9 @@ struct Window {
 /** @brief Marker component designating the primary (main) window entity.
  */
 struct PrimaryWindow {};
-}  // namespace window
+}  // namespace epix::window
 
-namespace window {
+namespace epix::window {
 struct CachedWindowMut : Window {};  // component for caching window state.
 /** @brief Read-only cached snapshot of a window's state from the previous
  * frame.
@@ -235,4 +235,4 @@ struct CachedWindowMut : Window {};  // component for caching window state.
  * between frames.
  */
 export using CachedWindow = const CachedWindowMut;  // user can only access cached window as const.
-}  // namespace window
+}  // namespace epix::window

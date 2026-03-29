@@ -1,9 +1,9 @@
-﻿export module epix.transform;
+export module epix.transform;
 
 export import glm;
 import epix.core;
 
-export namespace transform {
+export namespace epix::transform {
 /** @brief Generic transform component with translation, rotation, and scale.
  *
  * All mutation methods return `*this` by forwarding reference, enabling

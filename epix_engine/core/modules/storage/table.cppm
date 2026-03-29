@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 export module epix.core:storage.table;
 
@@ -7,7 +7,7 @@ import std;
 import :storage.sparse_set;
 import :storage.dense;
 
-namespace core {
+namespace epix::core {
 struct Table {
    private:
     SparseSet<TypeId, Dense> _denses;

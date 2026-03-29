@@ -3,7 +3,7 @@
 import std;
 import epix.extension.grid;
 
-using namespace ext::grid;
+using namespace epix::ext::grid;
 
 // ============================================================
 // packed_grid tests

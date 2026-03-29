@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 #include <spdlog/spdlog.h>
 
@@ -9,7 +9,7 @@ import epix.meta;
 
 import :app.decl;
 
-namespace core {
+namespace epix::core {
 template <typename T>
 concept is_plugin = requires(T t, App& app) {
     { t.build(app) } -> std::same_as<void>;

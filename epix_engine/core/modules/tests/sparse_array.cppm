@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 #include <gtest/gtest.h>
 
@@ -7,7 +7,7 @@ export module epix.core:tests.sparse_array;
 import :storage;
 
 TEST(core, sparse_array) {
-    using namespace core;
+    using namespace epix::core;
 
     SparseArray<size_t, int> sa;
     EXPECT_FALSE(sa.contains(5));

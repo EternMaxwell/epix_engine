@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 #include <gtest/gtest.h>
 #include <spdlog/spdlog.h>
@@ -9,9 +9,9 @@ import std;
 
 import :handle;
 import epix.utils;
-using utils::visitor;
+using epix::utils::visitor;
 
-namespace assets {
+namespace epix::assets {
 /** @brief Forward declaration of AssetServer. */
 export struct AssetServer;
 
@@ -819,4 +819,4 @@ struct Assets {
         assets->m_cached_events.clear();
     }
 };
-}  // namespace assets
+}  // namespace epix::assets

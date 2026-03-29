@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 export module epix.core:ticks;
 
@@ -6,7 +6,7 @@ import std;
 
 import :tick;
 
-namespace core {
+namespace epix::core {
 struct Ticks {
     static Ticks from_ticks(const Tick& added, const Tick& modified, Tick last_run, Tick this_run) {
         return Ticks{&added, &modified, last_run, this_run};

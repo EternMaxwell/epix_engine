@@ -2,6 +2,8 @@
 
 import epix.utils;
 
+using namespace epix;
+
 TEST(FixedPointTest, BasicOperations) {
     using fixed16_16 = utils::fixed32<16>;
     fixed16_16 a(1.5f);

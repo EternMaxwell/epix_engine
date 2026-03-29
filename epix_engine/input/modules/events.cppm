@@ -1,13 +1,13 @@
-﻿export module epix.input:events;
+export module epix.input:events;
 
 import epix.core;
 import std;
 
 import :enums;
 
-using namespace core;
+using namespace epix::core;
 
-export namespace input {
+export namespace epix::input {
 /** @brief Event fired on keyboard key press or release. */
 struct KeyInput {
     /** @brief The key that was pressed or released. */

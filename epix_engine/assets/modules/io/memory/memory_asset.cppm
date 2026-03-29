@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 export module epix.assets:io.memory.asset;
 
@@ -9,7 +9,7 @@ import epix.utils;
 import :io.reader;
 import :io.memory;
 
-namespace assets {
+namespace epix::assets {
 
 // helper: convert DirectoryError variant to AssetReaderError
 static AssetReaderError dir_error_to_reader_error(const memory::DirectoryError& derr,

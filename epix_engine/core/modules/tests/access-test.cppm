@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 #ifdef EPIX_ENABLE_TEST
 #include <gtest/gtest.h>
@@ -12,7 +12,7 @@ import :query.access;
 
 #ifdef EPIX_ENABLE_TEST
 TEST(core, access) {
-    using namespace core;
+    using namespace epix::core;
     // IDs (constructed directly from integers)
     TypeId A((size_t)1);
     TypeId B((size_t)2);

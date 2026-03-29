@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 #include <cassert>
 
@@ -8,7 +8,7 @@ import std;
 
 import :entities;
 
-namespace core {
+namespace epix::core {
 void Entities::verify_flush() {
     assert(!needs_flush() && "Entities need to be flushed before accessing meta or pending!");
 }

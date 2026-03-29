@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 #include <cassert>
 
@@ -8,7 +8,7 @@ import std;
 
 import :archetype;
 
-namespace core {
+namespace epix::core {
 Archetype Archetype::create(ComponentIndex& component_index,
                             ArchetypeId id,
                             TableId table_id,

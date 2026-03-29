@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 module epix.render;
 
@@ -6,7 +6,7 @@ import epix.meta;
 
 import :shader;
 
-using namespace render;
+using namespace epix::render;
 
 std::span<std::string_view> ShaderLoaderWGSL::extensions() {
     static auto exts = std::array{std::string_view{"wgsl"}};

@@ -1,11 +1,12 @@
-﻿module epix.time;
+module epix.time;
 
 import epix.core;
 import std;
 
-using namespace core;
+using namespace epix::core;
+namespace epix::time {
 
-void time::TimePlugin::build(App& app) {
+void TimePlugin::build(App& app) {
     app.world_mut().init_resource<Time<>>();
     app.world_mut().init_resource<Time<Real>>();
     app.world_mut().init_resource<Time<Virtual>>();
@@ -56,3 +57,5 @@ void time::TimePlugin::build(App& app) {
     // Insert FixedMain into schedule order after StateTransition (before Update)
     app.schedule_order().insert_after(ScheduleLabel(StateTransition), ScheduleLabel(FixedMain));
 }
+
+}  // namespace epix::time

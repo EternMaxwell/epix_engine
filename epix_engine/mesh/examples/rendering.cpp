@@ -1,4 +1,4 @@
-﻿import std;
+import std;
 import glm;
 import epix.core;
 import epix.window;
@@ -10,6 +10,8 @@ import epix.mesh;
 import epix.transform;
 import epix.input;
 import epix.image;
+
+using namespace epix;
 
 namespace {
 mesh::Mesh make_gradient_quad(float width, float height) {

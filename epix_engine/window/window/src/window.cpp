@@ -1,11 +1,11 @@
-﻿module;
+module;
 
 #include <spdlog/spdlog.h>
 
 module epix.window;
 
-using namespace window;
-using namespace core;
+using namespace epix::window;
+using namespace epix::core;
 
 void WindowPlugin::build(App& app) {
     app.add_events<WindowResized>()
@@ -36,7 +36,7 @@ void WindowPlugin::finish(App& app) {
     }
 }
 
-void window::log_events(EventReader<WindowResized> resized,
+void epix::window::log_events(EventReader<WindowResized> resized,
                         EventReader<WindowMoved> moved,
                         EventReader<WindowCreated> created,
                         EventReader<WindowClosed> closed,

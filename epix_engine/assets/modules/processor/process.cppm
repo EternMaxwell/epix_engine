@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 #include <spdlog/spdlog.h>
 
@@ -14,7 +14,7 @@ import :server.loader;
 import :saver;
 import :transformer;
 
-namespace assets {
+namespace epix::assets {
 
 // Forward declarations
 export struct AssetProcessor;
@@ -176,7 +176,7 @@ struct ErasedProcessorImpl : P, ErasedProcessor {
         // Build an AssetMeta with a Load action using the output loader settings
         auto meta    = std::make_unique<AssetMeta<typename P::OutputLoader::Settings, typename P::Settings>>();
         meta->action = AssetActionType::Load;
-        meta->loader = std::string(meta::type_id<typename P::OutputLoader>{}.short_name());
+        meta->loader = std::string(epix::meta::type_id<typename P::OutputLoader>{}.short_name());
         meta->loader_settings_value = std::move(*result);
         return meta;
     }
@@ -187,13 +187,13 @@ struct ErasedProcessorImpl : P, ErasedProcessor {
         return std::make_unique<AssetMeta<typename P::OutputLoader::Settings, typename P::Settings>>();
     }
 
-    std::string_view type_path() const override { return meta::type_id<P>{}.name(); }
-    std::string_view short_type_path() const override { return meta::type_id<P>{}.short_name(); }
+    std::string_view type_path() const override { return epix::meta::type_id<P>{}.name(); }
+    std::string_view short_type_path() const override { return epix::meta::type_id<P>{}.short_name(); }
 
     std::unique_ptr<AssetMetaDyn> default_meta() const override {
         auto meta       = std::make_unique<AssetMeta<typename P::OutputLoader::Settings, typename P::Settings>>();
         meta->action    = AssetActionType::Process;
-        meta->processor = std::string(meta::type_id<P>{}.short_name());
+        meta->processor = std::string(epix::meta::type_id<P>{}.short_name());
         return meta;
     }
 

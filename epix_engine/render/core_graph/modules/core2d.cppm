@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 export module epix.core_graph:core2d;
 
@@ -8,10 +8,10 @@ import epix.transform;
 
 import std;
 
-using namespace core;
-using namespace render;
+using namespace epix::core;
+using namespace epix::render;
 
-namespace core_graph::core_2d {
+namespace epix::core_graph::core_2d {
 
 /** @brief Node labels for the 2D render graph passes. */
 export enum class Core2dNodes {
@@ -168,8 +168,8 @@ export struct Camera2DBundle {
 }  // namespace core_graph::core_2d
 
 template <>
-struct core::Bundle<core_graph::core_2d::Camera2DBundle> {
-    static size_t write(core_graph::core_2d::Camera2DBundle& bundle, std::span<void*> dest) {
+struct epix::core::Bundle<epix::core_graph::core_2d::Camera2DBundle> {
+    static size_t write(epix::core_graph::core_2d::Camera2DBundle& bundle, std::span<void*> dest) {
         new (dest[0]) render::camera::Camera(std::move(bundle.camera));
         new (dest[1]) render::camera::Projection(std::move(bundle.projection));
         new (dest[2]) render::camera::CameraRenderGraph(std::move(bundle.render_graph));
@@ -197,4 +197,4 @@ struct core::Bundle<core_graph::core_2d::Camera2DBundle> {
         components.register_info<core_graph::core_2d::Camera2D>();
     }
 };
-static_assert(core::is_bundle<core_graph::core_2d::Camera2DBundle>);
+static_assert(epix::core::is_bundle<epix::core_graph::core_2d::Camera2DBundle>);

@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 #include <efsw/efsw.hpp>
 
@@ -10,7 +10,7 @@ import epix.utils;
 
 import :io.reader;
 
-namespace assets {
+namespace epix::assets {
 export struct FileAssetWatcher : public AssetWatcher {
    private:
     std::unique_ptr<efsw::FileWatcher> m_watcher;

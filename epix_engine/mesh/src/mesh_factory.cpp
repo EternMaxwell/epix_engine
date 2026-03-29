@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 #include <glm/gtc/constants.hpp>
 
@@ -7,7 +7,8 @@ module epix.mesh;
 import std;
 import glm;
 
-using namespace mesh;
+using namespace epix::mesh;
+namespace mesh = epix::mesh;
 
 Mesh mesh::make_circle(float radius, std::optional<glm::vec4> color, std::optional<std::uint32_t> segment_count) {
     auto segments = segment_count.transform([](std::uint32_t count) { return std::clamp(count, 12u, 1024u); })

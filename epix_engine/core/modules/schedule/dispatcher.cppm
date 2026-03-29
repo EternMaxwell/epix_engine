@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 export module epix.core:schedule.queue;
 
@@ -11,7 +11,7 @@ import :system;
 import :world;
 import :tick;
 
-namespace core {
+namespace epix::core {
 struct smallvec : std::ranges::view_interface<smallvec> {
    public:
     smallvec();

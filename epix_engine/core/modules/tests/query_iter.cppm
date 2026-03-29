@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 #include <gtest/gtest.h>
 
@@ -18,7 +18,7 @@ struct P {
 }  // namespace
 
 TEST(core, query_iter) {
-    using namespace core;
+    using namespace epix::core;
 
     World wc(0);
 

@@ -13,6 +13,8 @@ import epix.glfw.core;
 import epix.glfw.render;
 import glm;
 
+using namespace epix;
+
 auto run_once = [run = false]() mutable {
     if (!run) {
         run = true;

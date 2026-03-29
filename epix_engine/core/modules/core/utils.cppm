@@ -1,10 +1,10 @@
-﻿module;
+module;
 
 export module epix.core:utils;
 
 export import epix.utils;
 
-namespace core {
+namespace epix::core {
 export using utils::ConQueue;
 export using utils::Sender;
 export using utils::Receiver;

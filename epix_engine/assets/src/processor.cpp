@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 #include <spdlog/spdlog.h>
 
@@ -6,7 +6,7 @@ module epix.assets;
 
 import std;
 
-using namespace assets;
+using namespace epix::assets;
 
 // ---- AssetProcessor constructor ----
 

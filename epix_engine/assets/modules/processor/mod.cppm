@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 #include <spdlog/spdlog.h>
 
@@ -18,7 +18,7 @@ import :server;
 import :processor.process;
 import :processor.log;
 
-namespace assets {
+namespace epix::assets {
 
 // ---- ProcessorState ----
 

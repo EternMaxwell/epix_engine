@@ -1,8 +1,8 @@
-﻿export module epix.utils:input_iterable;
+export module epix.utils:input_iterable;
 
 import std;
 
-export namespace utils {
+export namespace epix::utils {
 template <typename T>
 class input_iterable : public std::ranges::view_interface<input_iterable<T>> {
     struct iter_base {

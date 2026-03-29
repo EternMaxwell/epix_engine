@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 #ifdef EPIX_ENABLE_TRACY
 #include <tracy/Tracy.hpp>
@@ -17,7 +17,7 @@ import :app;
 import :labels;
 import :schedule;
 
-namespace core {
+namespace epix::core {
 
 struct DefaultRunner : public AppRunner {
     bool step(App& app) override {

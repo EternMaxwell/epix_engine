@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 #include <spdlog/spdlog.h>
 
@@ -7,7 +7,7 @@ export module epix.assets:meta;
 import std;
 import epix.meta;
 
-namespace assets {
+namespace epix::assets {
 
 /** @brief Version string for the meta format. */
 export inline constexpr std::string_view META_FORMAT_VERSION = "1.0";

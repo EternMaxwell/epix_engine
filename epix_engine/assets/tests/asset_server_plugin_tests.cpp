@@ -1,11 +1,13 @@
-﻿#include <gtest/gtest.h>
+#include <gtest/gtest.h>
 
 import std;
 import epix.core;
+import epix.meta;
 import epix.assets;
 
-using namespace assets;
-using namespace core;
+using namespace epix::assets;
+using namespace epix::core;
+namespace meta = epix::meta;
 
 namespace {
 
@@ -35,14 +37,16 @@ AssetSourceBuilder make_memory_source_builder_with_watchers(const memory::Direct
                                                             bool with_processed_reader  = true,
                                                             bool with_processed_watcher = true) {
     auto builder = make_memory_source_builder(dir, with_processed_reader)
-                       .with_watcher([dir](utils::Sender<AssetSourceEvent> sender) -> std::unique_ptr<AssetWatcher> {
+                       .with_watcher(
+                           [dir](epix::utils::Sender<AssetSourceEvent> sender) -> std::unique_ptr<AssetWatcher> {
                            return std::make_unique<MemoryAssetWatcher>(
                                dir, [sender = std::move(sender)](AssetSourceEvent event) mutable {
                                    sender.send(std::move(event));
                                });
                        });
     if (with_processed_watcher) {
-        builder.with_processed_watcher([dir](utils::Sender<AssetSourceEvent> sender) -> std::unique_ptr<AssetWatcher> {
+        builder.with_processed_watcher(
+            [dir](epix::utils::Sender<AssetSourceEvent> sender) -> std::unique_ptr<AssetWatcher> {
             return std::make_unique<MemoryAssetWatcher>(
                 dir, [sender = std::move(sender)](AssetSourceEvent event) mutable { sender.send(std::move(event)); });
         });
@@ -62,7 +66,7 @@ AssetServer make_memory_server(bool with_processed_reader = true,
 
 struct TestTextLoader {
     using Asset = std::string;
-    struct Settings : assets::Settings {};
+    struct Settings : epix::assets::Settings {};
     using Error = std::exception_ptr;
 
     static inline std::atomic<int> load_count{0};
@@ -74,7 +78,9 @@ struct TestTextLoader {
         return std::span<std::string_view>(exts.data(), exts.size());
     }
 
-    static std::expected<std::string, Error> load(std::istream& reader, const Settings&, assets::LoadContext&) {
+    static std::expected<std::string, Error> load(std::istream& reader,
+                                                  const Settings&,
+                                                  epix::assets::LoadContext&) {
         load_count.fetch_add(1);
         std::stringstream ss;
         ss << reader.rdbuf();
@@ -83,7 +89,7 @@ struct TestTextLoader {
 };
 
 struct TestProcess {
-    struct Settings : assets::Settings {};
+    struct Settings : epix::assets::Settings {};
     using OutputLoader = TestTextLoader;
 
     std::expected<OutputLoader::Settings, std::exception_ptr> process(ProcessContext&,
@@ -93,7 +99,7 @@ struct TestProcess {
     }
 };
 
-std::vector<AssetSourceEvent> drain_source_events(const utils::Receiver<AssetSourceEvent>& receiver,
+std::vector<AssetSourceEvent> drain_source_events(const epix::utils::Receiver<AssetSourceEvent>& receiver,
                                                   std::size_t max_count = 16) {
     std::vector<AssetSourceEvent> events;
     events.reserve(max_count);
@@ -552,7 +558,7 @@ PluginTestEnv make_plugin_env(bool watching, std::string_view initial_content = 
 
 /// Wait for all IOTaskPool tasks and then run the Last schedule to process internal events.
 void flush_load_tasks(App& app) {
-    utils::IOTaskPool::instance().wait();
+    epix::utils::IOTaskPool::instance().wait();
     app.run_schedule(Last);
 }
 
@@ -908,7 +914,7 @@ TEST(HotReload, ProcessedMode_LoadsFromProcessedReader) {
 // A loader that always fails with a parse error.
 struct FailingLoader {
     using Asset = std::string;
-    struct Settings : assets::Settings {};
+    struct Settings : epix::assets::Settings {};
     using Error = std::exception_ptr;
 
     static std::span<std::string_view> extensions() {
@@ -916,7 +922,9 @@ struct FailingLoader {
         return std::span<std::string_view>(exts.data(), exts.size());
     }
 
-    static std::expected<std::string, Error> load(std::istream&, const Settings&, assets::LoadContext&) {
+    static std::expected<std::string, Error> load(std::istream&,
+                                                  const Settings&,
+                                                  epix::assets::LoadContext&) {
         return std::unexpected(std::make_exception_ptr(std::runtime_error("simulated parse error")));
     }
 };

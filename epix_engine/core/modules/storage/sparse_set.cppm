@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 export module epix.core:storage.sparse_set;
 
@@ -10,14 +10,14 @@ import :type_registry;
 import :storage.dense;
 import :storage.sparse_array;
 
-namespace core {
+namespace epix::core {
 struct ComponentSparseSet {
    private:
     Dense dense;                                       // Dense storage for the actual data
     std::vector<std::uint32_t> entities;               // from dense index to entity index
     SparseArray<std::uint32_t, std::uint32_t> sparse;  // from entity index to dense index
    public:
-    ComponentSparseSet(const ::meta::type_info& desc, std::size_t reserve_cnt = 0) : dense(desc, reserve_cnt) {}
+    ComponentSparseSet(const ::epix::meta::type_info& desc, std::size_t reserve_cnt = 0) : dense(desc, reserve_cnt) {}
 
     void clear(this ComponentSparseSet& self) {
         self.dense.clear();
@@ -27,7 +27,7 @@ struct ComponentSparseSet {
     std::size_t size(this const ComponentSparseSet& self) { return self.dense.len(); }
     bool empty(this const ComponentSparseSet& self) { return self.size() == 0; }
 
-    const ::meta::type_info& type_info(this const ComponentSparseSet& self) { return self.dense.type_info(); }
+    const ::epix::meta::type_info& type_info(this const ComponentSparseSet& self) { return self.dense.type_info(); }
 
     void alloc_uninitialized(this ComponentSparseSet& self, Entity entity) {
         std::uint32_t dense_index = static_cast<std::uint32_t>(self.dense.len());

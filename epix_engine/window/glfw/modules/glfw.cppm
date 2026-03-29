@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 #include <GLFW/glfw3.h>
 
@@ -10,9 +10,9 @@ import epix.window;
 import epix.assets;
 import epix.image;
 
-using namespace core;
+using namespace epix::core;
 
-namespace glfw {
+namespace epix::glfw {
 struct Resized {
     int width;
     int height;

@@ -21,6 +21,6 @@ void terminate_handle() {
 int main(int argc, char** argv) {
     std::set_terminate(terminate_handle);
     ::testing::InitGoogleTest(&argc, argv);
-    auto tests = core::tests::force_link_tests();
+    auto tests = epix::core::tests::force_link_tests();
     return RUN_ALL_TESTS();
 }

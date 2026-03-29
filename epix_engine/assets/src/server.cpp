@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 #include <spdlog/spdlog.h>
 
@@ -8,7 +8,7 @@ import std;
 
 import :store;
 
-using namespace assets;
+using namespace epix::assets;
 
 AssetServer::AssetServer(std::shared_ptr<AssetSources> sources, AssetServerMode mode, bool watching_for_changes)
     : data(std::make_shared<AssetServerData>()) {
@@ -56,11 +56,11 @@ AssetServer::AssetServer(std::shared_ptr<AssetSources> sources,
     guard->watching_for_changes                                    = watching_for_changes;
 }
 
-bool ::assets::asset_server_process_handle_destruction(const AssetServer& server, const UntypedAssetId& id) {
+bool ::epix::assets::asset_server_process_handle_destruction(const AssetServer& server, const UntypedAssetId& id) {
     return server.process_handle_destruction(id);
 }
 
-void ::assets::log_asset_error(const AssetError& error,
+void ::epix::assets::log_asset_error(const AssetError& error,
                                const std::string_view& header,
                                const std::string_view& operation) {
     std::visit(utils::visitor{

@@ -1,8 +1,8 @@
-﻿export module epix.sfml.render;
+export module epix.sfml.render;
 
 import epix.core;
 
-namespace sfml::render {
+namespace epix::sfml::render {
 /** @brief Plugin that registers SFML-specific render target (surface)
  * creation for the render pipeline. */
 export struct SFMLRenderPlugin {
@@ -10,6 +10,6 @@ export struct SFMLRenderPlugin {
 };
 }  // namespace sfml::render
 
-namespace sfml {
+namespace epix::sfml {
 export using render::SFMLRenderPlugin;
 }

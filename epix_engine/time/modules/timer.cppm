@@ -1,10 +1,10 @@
-﻿export module epix.time:timer;
+export module epix.time:timer;
 
 import std;
 
 import :stopwatch;
 
-namespace time {
+namespace epix::time {
 
 export enum class TimerMode {
     Once,

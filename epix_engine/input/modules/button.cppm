@@ -1,4 +1,4 @@
-﻿export module epix.input:button;
+export module epix.input:button;
 
 import std;
 import epix.core;
@@ -6,9 +6,9 @@ import epix.core;
 import :enums;
 import :events;
 
-using namespace core;
+using namespace epix::core;
 
-export namespace input {
+export namespace epix::input {
 /** @brief Tracks pressed/just-pressed/just-released state for a set of button keys.
  * @tparam T The button type (KeyCode or MouseButton).
  */

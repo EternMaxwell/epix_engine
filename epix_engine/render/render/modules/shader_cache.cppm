@@ -1,11 +1,11 @@
-﻿module;
+module;
 
 export module epix.render:shader_cache;
 
 import :shader;
 import :pipeline;
 
-namespace render {
+namespace epix::render {
 /** @brief Strongly-typed ID referencing a cached pipeline in the
  * PipelineServer. */
 export struct CachedPipelineId : public utils::int_base<std::uint64_t> {
@@ -13,10 +13,10 @@ export struct CachedPipelineId : public utils::int_base<std::uint64_t> {
 };
 }  // namespace render
 template <>
-struct std::hash<render::CachedPipelineId> {
-    std::size_t operator()(const render::CachedPipelineId& id) const { return std::hash<std::uint64_t>()(id.get()); }
+struct std::hash<epix::render::CachedPipelineId> {
+    std::size_t operator()(const epix::render::CachedPipelineId& id) const { return std::hash<std::uint64_t>()(id.get()); }
 };
-namespace render {
+namespace epix::render {
 /** @brief Cached shader data associating a processed shader module with
  * the pipelines that depend on it. */
 export struct ShaderData {

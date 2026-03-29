@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 export module epix.core:hierarchy;
 
@@ -8,7 +8,7 @@ import :entities;
 import :world.decl;
 import :component;
 
-namespace core {
+namespace epix::core {
 /** @brief Component that marks an entity as a child of another entity.
  *  When inserted, automatically updates the parent's Children component.
  *  When removed, the child is detached from the parent's children set. */

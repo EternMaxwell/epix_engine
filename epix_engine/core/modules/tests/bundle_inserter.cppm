@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 #include <gtest/gtest.h>
 
@@ -8,7 +8,7 @@ import std;
 import :bundle;
 import :world;
 
-using namespace core;
+using namespace epix::core;
 
 namespace {
 struct Y {
@@ -30,9 +30,9 @@ struct W {
 }  // namespace
 
 template <>
-struct core::sparse_component<Z> : std::true_type {};
+struct epix::core::sparse_component<Z> : std::true_type {};
 template <>
-struct core::sparse_component<W> : std::true_type {};
+struct epix::core::sparse_component<W> : std::true_type {};
 
 TEST(core, bundle_inserter) {
     auto registry = std::make_shared<TypeRegistry>();

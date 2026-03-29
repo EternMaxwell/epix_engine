@@ -1,7 +1,7 @@
-﻿module epix.assets;
+module epix.assets;
 
-using namespace assets;
-using namespace core;
+using namespace epix::assets;
+using namespace epix::core;
 
 void AssetPlugin::build(App& app) {
     auto& world = app.world_mut();

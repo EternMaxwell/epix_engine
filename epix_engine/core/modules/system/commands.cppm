@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 export module epix.core:system.commands;
 
@@ -10,7 +10,7 @@ import :hierarchy;
 import :storage;
 import :system.param;
 
-namespace core {
+namespace epix::core {
 template <>
 struct SystemBuffer<CommandQueue> {
     static void apply(CommandQueue& buffer, const SystemMeta&, World& world) {

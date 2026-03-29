@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 export module epix.assets:transformer;
 
@@ -7,7 +7,7 @@ import epix.meta;
 
 import :server.loader;
 
-namespace assets {
+namespace epix::assets {
 template <typename A>
 struct SavedAsset;
 

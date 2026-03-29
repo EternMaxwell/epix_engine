@@ -1,4 +1,4 @@
-﻿export module epix.render:shader;
+export module epix.render:shader;
 
 import epix.assets;
 import epix.core;
@@ -7,7 +7,7 @@ import std;
 
 import :assets;
 
-namespace render {
+namespace epix::render {
 /**
  * @brief A cpu side shader representation.
  *
@@ -85,11 +85,11 @@ export struct ShaderLoaderSPIRV {
 export struct ShaderPlugin {
     void build(App& app);
 };
-}  // namespace render
+}  // namespace epix::render
 
 template <>
-struct std::hash<assets::AssetId<render::Shader>> {
-    std::size_t operator()(const assets::AssetId<render::Shader>& id) const noexcept {
+struct std::hash<epix::assets::AssetId<epix::render::Shader>> {
+    std::size_t operator()(const epix::assets::AssetId<epix::render::Shader>& id) const noexcept {
         return std::visit([]<typename T>(const T& index) { return std::hash<T>()(index); }, id);
     }
 };

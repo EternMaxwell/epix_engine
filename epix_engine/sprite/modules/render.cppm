@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 export module epix.sprite:render;
 
@@ -11,7 +11,7 @@ import epix.image;
 import epix.render;
 import std;
 
-export namespace sprite {
+export namespace epix::sprite {
 /** @brief Snapshot of a sprite extracted from the main world for rendering.
  *
  * Created during the extract phase so the render world has an immutable

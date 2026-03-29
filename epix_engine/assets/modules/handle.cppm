@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 #include <cassert>
 
@@ -10,7 +10,7 @@ import :id;
 import :path;
 import :meta;
 
-namespace assets {
+namespace epix::assets {
 using core::Receiver;
 using core::Sender;
 struct DestructionEvent {

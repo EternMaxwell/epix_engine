@@ -1,4 +1,4 @@
-﻿export module epix.time:common_conditions;
+export module epix.time:common_conditions;
 
 import std;
 
@@ -9,9 +9,9 @@ import :timer;
 
 import epix.core;
 
-using namespace core;
+using namespace epix::core;
 
-namespace time {
+namespace epix::time {
 
 export inline auto on_timer(std::chrono::nanoseconds duration) {
     return [timer = Timer(duration, TimerMode::Repeating)](Res<Time<>> time) mutable -> bool {

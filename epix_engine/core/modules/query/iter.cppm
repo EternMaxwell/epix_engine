@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 export module epix.core:query.iter;
 
@@ -11,7 +11,7 @@ import :query.filter;
 import :storage;
 import :world.decl;
 
-namespace core {
+namespace epix::core {
 /** @brief Low-level cursor for iterating over query results across archetypes.
  *  @tparam D Query data descriptor.
  *  @tparam F Query filter. */
@@ -204,10 +204,10 @@ struct QueryIter : std::ranges::view_interface<QueryIter<D, F>> {
     std::optional<QueryIterCursor<D, F>> cursor;  // use optional to allow default construction
                                                   // this is needed for ranges view
 };
-}  // namespace core
+}  // namespace epix::core
 
-template <core::query_data D, core::query_filter F>
-constexpr bool ::std::ranges::enable_view<core::QueryIter<D, F>> = true;
+template <epix::core::query_data D, epix::core::query_filter F>
+constexpr bool ::std::ranges::enable_view<epix::core::QueryIter<D, F>> = true;
 
-static_assert(std::ranges::range<core::QueryIter<int&, core::Filter<>>>);
-static_assert(std::ranges::view<core::QueryIter<int&, core::Filter<>>>);
+static_assert(std::ranges::range<epix::core::QueryIter<int&, epix::core::Filter<>>>);
+static_assert(std::ranges::view<epix::core::QueryIter<int&, epix::core::Filter<>>>);

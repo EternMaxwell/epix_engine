@@ -12,7 +12,8 @@ import epix.input;
 import epix.extension.grid;
 import epix.experimental.fallingsand;
 
-using namespace core;
+using namespace epix;
+using namespace epix::core;
 
 void settings_ui(imgui::Ctx imgui_ctx, ResMut<ext::fallingsand::SandSimulation> sim) {
     ImGui::Begin("Falling Sand Settings");

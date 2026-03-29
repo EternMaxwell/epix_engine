@@ -3,7 +3,7 @@
 import std;
 import epix.assets;
 
-using namespace assets::memory;
+using namespace epix::assets::memory;
 
 // ---------------------------------------------------------------------------
 // Helpers

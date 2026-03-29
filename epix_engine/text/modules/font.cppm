@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 export module epix.text:font;
 
@@ -7,7 +7,7 @@ import epix.core;
 import epix.image;
 import std;
 
-namespace text::font {
+namespace epix::text::font {
 /** @brief Font resource holding raw font file data (e.g. TTF/OTF) in memory. */
 export struct Font {
     /** @brief Raw font file bytes. */
@@ -50,16 +50,16 @@ export struct AtlasRect {
         return AtlasRect{.x = x, .y = y, .layer = layer, .width = width, .height = height, .depth = depth};
     }
 };
-}  // namespace text::font
+}  // namespace epix::text::font
 
 template <>
-struct std::hash<assets::AssetId<text::font::Font>> {
-    std::size_t operator()(const assets::AssetId<text::font::Font>& id) const noexcept {
+struct std::hash<epix::assets::AssetId<epix::text::font::Font>> {
+    std::size_t operator()(const epix::assets::AssetId<epix::text::font::Font>& id) const noexcept {
         return std::visit([]<typename T>(const T& index) { return std::hash<T>()(index); }, id);
     }
 };
 
-namespace text::font {
+namespace epix::text::font {
 struct FontLoader {
     using Asset = Font;
     struct Settings : assets::Settings {};
@@ -319,4 +319,4 @@ export struct FontPlugin {
     void build(core::App& app);
     void finish(core::App& app);
 };
-}  // namespace text::font
+}  // namespace epix::text::font

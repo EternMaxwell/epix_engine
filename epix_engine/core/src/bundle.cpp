@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 module epix.core;
 
@@ -7,7 +7,7 @@ import std;
 import :bundle;
 import :entities;
 
-namespace core {
+namespace epix::core {
 BundleInfo BundleInfo::create(std::string_view bundle_type_name,
                               Storage& storage,
                               const Components& components,

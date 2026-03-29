@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 module epix.core;
 
@@ -28,8 +28,8 @@ import :tests.table;
 import :tests.type_registry;
 import :tests.untyped_vec;
 
-[[nodiscard]] std::vector<core::tests::ForceBase> core::tests::force_link_tests() {
-    using namespace core;
+[[nodiscard]] std::vector<epix::core::tests::ForceBase> epix::core::tests::force_link_tests() {
+    using namespace epix::core;
     return {
         {core_access_Test{}},         {core_app_main_Test{}},        {core_archetype_Test{}},
         {core_bitvector_Test{}},      {core_bundle_info_Test{}},     {core_bundle_inserter_Test{}},

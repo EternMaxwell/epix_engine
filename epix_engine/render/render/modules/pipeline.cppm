@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 #define make_atomic_id(name)                                                                   \
     struct name {                                                                              \
@@ -12,7 +12,7 @@ export module epix.render:pipeline;
 
 import :shader;
 
-namespace render {
+namespace epix::render {
 make_atomic_id(RenderPipelineId);
 make_atomic_id(ComputePipelineId);
 /** @brief A created render pipeline with a unique auto-incremented ID. */

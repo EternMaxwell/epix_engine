@@ -1,31 +1,34 @@
-﻿module epix.render;
+module epix.render;
 
 import :window;
 
-using namespace render::window;
-using namespace window;
-using namespace core;
+using namespace epix::render::window;
+using namespace epix::window;
+using namespace epix::core;
 
-void render::window::WindowSurfaces::remove(const Entity& entity) {
+void epix::render::window::WindowSurfaces::remove(const Entity& entity) {
     surfaces.erase(entity);
     configured_windows.erase(entity);
 }
 
 void WindowRenderPlugin::build(App& app) {
-    auto& render_app = app.sub_app_mut(render::Render);
+    auto& render_app = app.sub_app_mut(epix::render::Render);
     render_app.world_mut().insert_resource(ExtractedWindows{});
     render_app.world_mut().insert_resource(WindowSurfaces{});
     render_app.add_systems(ExtractSchedule, into(extract_windows).set_name("extract windows"));
-    render_app.add_systems(render::Render, into(create_surfaces).set_name("create_surfaces").before(prepare_windows));
-    render_app.add_systems(render::Render,
-                           into(prepare_windows).set_name("prepare windows").in_set(render::RenderSet::ManageViews));
+    render_app.add_systems(epix::render::Render,
+                           into(create_surfaces).set_name("create_surfaces").before(prepare_windows));
+    render_app.add_systems(
+        epix::render::Render,
+        into(prepare_windows).set_name("prepare windows").in_set(epix::render::RenderSet::ManageViews));
     if (handle_present) {
-        render_app.add_systems(render::Render,
-                               into(present_windows).set_name("present windows").after(render::RenderSet::Cleanup));
+        render_app.add_systems(
+            epix::render::Render,
+            into(present_windows).set_name("present windows").after(epix::render::RenderSet::Cleanup));
     }
 }
 
-void render::window::extract_windows(
+void epix::render::window::extract_windows(
     ResMut<ExtractedWindows> extracted_windows,
     Extract<Query<Item<Entity, const Window&, const SurfaceCreation&, Has<PrimaryWindow>>>> windows,
     ResMut<WindowSurfaces> window_surfaces,
@@ -69,10 +72,10 @@ void render::window::extract_windows(
     }
 }
 
-void render::window::prepare_windows(ResMut<ExtractedWindows> windows,
-                                     ResMut<WindowSurfaces> window_surfaces,
-                                     Res<wgpu::Device> device,
-                                     Res<wgpu::Instance> instance) {
+void epix::render::window::prepare_windows(ResMut<ExtractedWindows> windows,
+                                            ResMut<WindowSurfaces> window_surfaces,
+                                            Res<wgpu::Device> device,
+                                            Res<wgpu::Instance> instance) {
     std::vector<std::pair<Entity, std::string>> errors;
     for (auto&& window : std::views::all(windows->windows) | std::views::values) {
         auto it = window_surfaces->surfaces.find(window.entity);
@@ -134,11 +137,11 @@ void render::window::prepare_windows(ResMut<ExtractedWindows> windows,
     }
 }
 
-void render::window::create_surfaces(Res<ExtractedWindows> windows,
-                                     ResMut<WindowSurfaces> window_surfaces,
-                                     Res<wgpu::Instance> instance,
-                                     Res<wgpu::Adapter> adapter,
-                                     Res<wgpu::Device> device) {
+void epix::render::window::create_surfaces(Res<ExtractedWindows> windows,
+                                            ResMut<WindowSurfaces> window_surfaces,
+                                            Res<wgpu::Instance> instance,
+                                            Res<wgpu::Adapter> adapter,
+                                            Res<wgpu::Device> device) {
     for (auto&& window : std::views::all(windows->windows) | std::views::values) {
         if (!window_surfaces->surfaces.contains(window.entity)) {
             wgpu::Surface surface = window.create_surface(*instance);
@@ -264,7 +267,7 @@ void render::window::create_surfaces(Res<ExtractedWindows> windows,
     }
 }
 
-void render::window::present_windows(ResMut<WindowSurfaces> window_surfaces, ResMut<ExtractedWindows> windows) {
+void epix::render::window::present_windows(ResMut<WindowSurfaces> window_surfaces, ResMut<ExtractedWindows> windows) {
     for (auto&& [entity, surface_data] : window_surfaces->surfaces) {
         auto& window = windows->windows.at(entity);
         if (window.swapchain_texture.status == wgpu::SurfaceGetCurrentTextureStatus::eSuccessOptimal ||

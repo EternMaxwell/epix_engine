@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 #include <spdlog/spdlog.h>
 
@@ -6,8 +6,8 @@ module epix.core_graph;
 
 import std;
 
-using namespace render;
-using namespace core_graph::core_2d;
+using namespace epix::render;
+using namespace epix::core_graph::core_2d;
 
 void Core2dGraph::add_to(graph::RenderGraph& g) {
     graph::RenderGraph g2d;

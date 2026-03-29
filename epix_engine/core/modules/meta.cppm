@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 #if defined __clang__ || defined __GNUC__
 #define EPIX_PRETTY_FUNCTION __PRETTY_FUNCTION__
@@ -14,7 +14,7 @@ export module epix.meta;
 
 import std;
 
-namespace meta {
+namespace epix::meta {
 template <typename T>
 constexpr const char* pretty_function() {
     return EPIX_PRETTY_FUNCTION;
@@ -201,6 +201,6 @@ export struct type_index {
 }  // namespace meta
 
 template <>
-struct std::hash<meta::type_index> {
-    std::size_t operator()(const meta::type_index& ti) const noexcept { return ti.hash_code(); }
+struct std::hash<epix::meta::type_index> {
+    std::size_t operator()(const epix::meta::type_index& ti) const noexcept { return ti.hash_code(); }
 };

@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 #include <spdlog/spdlog.h>
 
@@ -6,10 +6,10 @@ module epix.render;
 
 import :view;
 
-using namespace core;
-using namespace render;
-using namespace view;
-using namespace camera;
+using namespace epix::core;
+using namespace epix::render;
+using namespace epix::render::view;
+using namespace epix::render::camera;
 
 void view::prepare_view_target(Query<Item<Entity, const camera::ExtractedCamera&, const ExtractedView&>> views,
                                Commands cmd,
@@ -248,13 +248,13 @@ void OrthographicProjection::update(float width, float height) {
     rect.top    = projection_height * scale + rect.bottom;
 }
 
-void render::camera::extract_cameras(
+void camera::extract_cameras(
     Commands cmd,
     Res<ClearColor> global_clear_color,
     Extract<Query<
         Item<const Camera&, const CameraRenderGraph&, const transform::GlobalTransform&, const view::VisibleEntities&>>>
         cameras,
-    Extract<Query<Entity, With<::window::PrimaryWindow, ::window::Window>>> primary_window) {
+    Extract<Query<Entity, With<::epix::window::PrimaryWindow, ::epix::window::Window>>> primary_window) {
     // extract camera entities to render world, this will spawn an related
     // entity with ExtractedCamera, ExtractedView and other components.
 
@@ -306,7 +306,7 @@ struct CameraDriverNode : graph::Node {
 void CameraDriverNode::run(graph::GraphContext& graph, graph::RenderContext& render_ctx, const World& world) {
     auto cameras = world.try_query<Item<Entity, const ExtractedCamera&, const view::ViewTarget&>>();
     if (!cameras) return;
-    auto&& windows = world.resource<render::window::ExtractedWindows>();
+    auto&& windows = world.resource<window::ExtractedWindows>();
     auto encoder   = render_ctx.command_encoder();
     for (auto&& [entity, camera, target] : cameras->query(world).iter()) {
         if (camera.clear_color) {

@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 #include <SFML/Window/Clipboard.hpp>
 #include <SFML/Window/Cursor.hpp>
@@ -14,8 +14,8 @@ module epix.sfml.core;
 
 import epix.utils;
 
-using namespace sfml;
-using namespace window;
+using namespace epix::sfml;
+using namespace epix::window;
 
 const std::string& Clipboard::get_text() const { return text; }
 void Clipboard::update(ResMut<Clipboard> clipboard) {

@@ -1,4 +1,4 @@
-﻿import std;
+import std;
 import epix.core;
 import epix.window;
 import epix.glfw.core;
@@ -9,6 +9,8 @@ import epix.transform;
 import epix.input;
 import epix.image;
 import epix.sprite;
+
+using namespace epix;
 
 #include "cam_controll.hpp"
 

@@ -1,10 +1,10 @@
-﻿module;
+module;
 
 export module epix.core:system.input;
 
 import std;
 
-namespace core {
+namespace epix::core {
 template <typename T>
 struct SystemInput;
 

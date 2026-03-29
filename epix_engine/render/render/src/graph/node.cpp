@@ -1,8 +1,8 @@
-﻿module epix.render;
+module epix.render;
 
 import :graph;
 
-namespace render::graph {
+namespace epix::render::graph {
 
 bool Edges::has_input_edge(const Edge& edge) const {
     return std::find(m_input_edges.begin(), m_input_edges.end(), edge) != m_input_edges.end();

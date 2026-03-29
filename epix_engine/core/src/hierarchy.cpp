@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 module epix.core;
 
@@ -8,7 +8,7 @@ import :hierarchy;
 import :world;
 import :world.entity_ref;
 
-namespace core {
+namespace epix::core {
 void Parent::on_remove(World& world, HookContext ctx) {
     auto&& this_entity = world.entity_mut(ctx.entity);
     this_entity.get<Parent>().transform([&](const Parent& parent) {

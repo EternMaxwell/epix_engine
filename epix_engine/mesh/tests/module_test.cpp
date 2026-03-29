@@ -1,7 +1,9 @@
-﻿#include <gtest/gtest.h>
+#include <gtest/gtest.h>
 
 import epix.mesh;
 import glm;
+
+namespace mesh = epix::mesh;
 
 TEST(MeshModule, RejectsIncompatibleAttributeType) {
     mesh::Mesh mesh;

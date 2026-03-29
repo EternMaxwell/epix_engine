@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 #include <gtest/gtest.h>
 
@@ -7,7 +7,7 @@ export module epix.core:tests.type_registry;
 import std;
 import :type_registry;
 
-using namespace core;
+using namespace epix::core;
 
 namespace {
 template <size_t N>

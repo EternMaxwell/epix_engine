@@ -1,10 +1,10 @@
-﻿export module epix.image;
+export module epix.image;
 
 import epix.core;
 import epix.assets;
 import std;
 
-export namespace image {
+export namespace epix::image {
 
 /** @brief Pixel format for images.
  *
@@ -416,11 +416,11 @@ std::expected<void, ImageWriteError> Image::write_raw(std::uint32_t x, std::uint
     std::memcpy(pixelPtr, bytes.data(), inf.pixelSize());
     return {};
 }
-}  // namespace image
+}  // namespace epix::image
 
 template <>
-struct std::hash<assets::AssetId<image::Image>> {
-    std::size_t operator()(const assets::AssetId<image::Image>& id) const {
+struct std::hash<epix::assets::AssetId<epix::image::Image>> {
+    std::size_t operator()(const epix::assets::AssetId<epix::image::Image>& id) const {
         return std::visit([]<typename U>(const U& index) { return std::hash<U>()(index); }, id);
     }
 };

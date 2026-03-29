@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 #include <freetype/freetype.h>
 #include <freetype/ftglyph.h>
@@ -16,7 +16,8 @@ import epix.mesh;
 import webgpu;
 import std;
 
-using namespace text::font;
+using namespace epix;
+using namespace epix::text::font;
 
 namespace {
 void apply_pending_font_atlas_updates(core::ResMut<FontAtlasSets> atlas_sets,
@@ -334,7 +335,7 @@ FontAtlasSets::FontAtlasSets(core::World& world) {
     }
 }
 
-namespace text::font {
+namespace epix::text::font {
 struct DefaultFontHandle {
     assets::Handle<Font> handle;
 };

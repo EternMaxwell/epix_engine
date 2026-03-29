@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 export module epix.core:archetype;
 
@@ -11,7 +11,7 @@ import :type_registry;
 import :component;
 import :world.decl;
 
-namespace core {
+namespace epix::core {
 template <typename R>
 concept type_id_view = std::ranges::sized_range<R> && view_of_value<R, TypeId>;
 

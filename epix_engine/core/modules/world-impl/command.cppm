@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 export module epix.core:world.commands;
 
@@ -6,7 +6,7 @@ import std;
 
 import :world.decl;
 
-namespace core {
+namespace epix::core {
 template <typename T>
 struct Command {
     static_assert("Not a valid command type");

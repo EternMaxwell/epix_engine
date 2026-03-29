@@ -1,10 +1,10 @@
-﻿export module epix.time:real;
+export module epix.time:real;
 
 import std;
 
 import :time_clock;
 
-namespace time {
+namespace epix::time {
 
 export struct Real {
     std::chrono::steady_clock::time_point startup = std::chrono::steady_clock::now();

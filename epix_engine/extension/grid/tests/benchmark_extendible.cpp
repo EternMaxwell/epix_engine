@@ -3,7 +3,7 @@
 import std;
 import epix.extension.grid;
 
-using namespace ext::grid;
+using namespace epix::ext::grid;
 
 namespace {
 using pos2 = std::array<std::int32_t, 2>;

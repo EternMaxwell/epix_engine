@@ -1,10 +1,10 @@
-﻿module;
+module;
 
 export module epix.utils:bit_vector;
 
 import std;
 
-namespace utils {
+namespace epix::utils {
 /** @brief Dynamic bitset with set-theoretic operations (intersection, union, difference, etc.).
  *
  * Stores bits packed into 64-bit words. Supports iteration over set/unset bits,
@@ -512,9 +512,9 @@ export class bit_vector {
 }  // namespace utils
 
 template <>
-struct std::hash<::utils::bit_vector> {
-    std::size_t operator()(::utils::bit_vector const& bv) const noexcept {
-        using bv_t        = ::utils::bit_vector;
+struct std::hash<::epix::utils::bit_vector> {
+    std::size_t operator()(::epix::utils::bit_vector const& bv) const noexcept {
+        using bv_t        = ::epix::utils::bit_vector;
         const auto& words = bv.words();
         std::size_t h     = std::ranges::fold_left(words, bv.size(), [](std::size_t acc, auto w) noexcept {
             return (acc * 0x9e3779b97f4a7c15ULL) ^

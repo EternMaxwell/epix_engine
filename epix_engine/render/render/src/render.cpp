@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 #include <spdlog/spdlog.h>
 
@@ -11,15 +11,15 @@ module epix.render;
 import webgpu;
 import std;
 
-using namespace render;
-using namespace core;
+using namespace epix::render;
+using namespace epix::core;
 
 RenderPlugin& RenderPlugin::set_validation(int level) {
     validation = level;
     return *this;
 }
 
-void render::render_system(World& world) {
+void epix::render::render_system(World& world) {
     auto&& graph  = world.resource_mut<graph::RenderGraph>();
     auto&& device = world.resource<wgpu::Device>();
     auto&& queue  = world.resource<wgpu::Queue>();

@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 #include <gtest/gtest.h>
 
@@ -33,12 +33,12 @@ struct S2 {
 }  // namespace
 
 template <>
-struct core::sparse_component<S1> : std::true_type {};
+struct epix::core::sparse_component<S1> : std::true_type {};
 template <>
-struct core::sparse_component<S2> : std::true_type {};
+struct epix::core::sparse_component<S2> : std::true_type {};
 
 TEST(core, random_spawn) {
-    using namespace core;
+    using namespace epix::core;
 
     auto registry = std::make_shared<TypeRegistry>();
     World world(0, registry);

@@ -1,10 +1,10 @@
-﻿module;
+module;
 
 export module epix.utils:async;
 
 import std;
 
-namespace utils {
+namespace epix::utils {
 /** @brief Policy controlling sender behavior when a bounded ConQueue is full. */
 export enum class OverflowPolicy {
     Block,       ///< Block the sender until space is available.

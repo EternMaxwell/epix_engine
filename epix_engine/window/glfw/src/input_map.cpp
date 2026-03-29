@@ -1,10 +1,12 @@
-﻿module;
+module;
 
 #include <GLFW/glfw3.h>
 
 module epix.glfw.core;
 
-int glfw::map_key_to_glfw(input::KeyCode key) {
+namespace epix::glfw {
+
+int map_key_to_glfw(input::KeyCode key) {
     switch (key) {
         case input::KeyCode::KeyA:
             return GLFW_KEY_A;
@@ -251,7 +253,7 @@ int glfw::map_key_to_glfw(input::KeyCode key) {
     }
 }
 
-int glfw::map_mouse_button_to_glfw(input::MouseButton button) {
+int map_mouse_button_to_glfw(input::MouseButton button) {
     switch (button) {
         case input::MouseButton::MouseButton1:
             return GLFW_MOUSE_BUTTON_1;
@@ -274,7 +276,7 @@ int glfw::map_mouse_button_to_glfw(input::MouseButton button) {
     }
 }
 
-input::KeyCode glfw::map_glfw_key_to_input(int key) {
+input::KeyCode map_glfw_key_to_input(int key) {
     switch (key) {
         case GLFW_KEY_A:
             return input::KeyCode::KeyA;
@@ -520,7 +522,7 @@ input::KeyCode glfw::map_glfw_key_to_input(int key) {
             return input::KeyCode::KeyUnknown;
     }
 }
-input::MouseButton glfw::map_glfw_mouse_button_to_input(int button) {
+input::MouseButton map_glfw_mouse_button_to_input(int button) {
     switch (button) {
         case GLFW_MOUSE_BUTTON_1:
             return input::MouseButton::MouseButton1;
@@ -542,3 +544,5 @@ input::MouseButton glfw::map_glfw_mouse_button_to_input(int button) {
             return input::MouseButton::MouseButtonUnknown;
     }
 }
+
+}  // namespace epix::glfw

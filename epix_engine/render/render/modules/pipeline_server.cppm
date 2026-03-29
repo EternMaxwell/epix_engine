@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 export module epix.render:pipeline_server;
 
@@ -9,9 +9,9 @@ import BS.thread_pool;
 import :pipeline;
 import :shader_cache;
 
-using namespace core;
+using namespace epix::core;
 
-namespace render {
+namespace epix::render {
 /** @brief Key type used to cache pipeline layouts by their bind group
  * layout IDs. */
 export using LayoutCacheKey = std::vector<wgpu::BindGroupLayoutId>;

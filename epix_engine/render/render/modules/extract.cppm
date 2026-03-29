@@ -1,12 +1,12 @@
-﻿export module epix.render:extract;
+export module epix.render:extract;
 
 import epix.core;
 import std;
 
 import :schedule;
 
-namespace render {
-using namespace core;
+namespace epix::render {
+using namespace epix::core;
 /** @brief Schedule sentinel for the extract phase that copies data from
  * the main world into the render world. */
 export struct ExtractScheduleT {

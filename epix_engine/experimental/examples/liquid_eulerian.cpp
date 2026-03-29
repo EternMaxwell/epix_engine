@@ -14,8 +14,9 @@ import epix.extension.grid;
 import BS.thread_pool;
 
 namespace {
-using namespace core;
-using ext::grid::packed_grid;
+using namespace epix;
+using namespace epix::core;
+using epix::ext::grid::packed_grid;
 
 constexpr int kN          = 200;
 constexpr int kIter       = 20;

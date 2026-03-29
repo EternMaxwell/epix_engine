@@ -1,10 +1,10 @@
-﻿module;
+module;
 
 module epix.core;
 
 import std;
 
-namespace core {
+namespace epix::core {
 void CommandQueue::append(CommandQueue& other) {
     assure_size(size_ + other.size_);
     std::size_t old_size = size_;

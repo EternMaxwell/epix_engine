@@ -1,11 +1,11 @@
-﻿module;
+module;
 
 export module epix.assets:index;
 
 import std;
 import epix.core;
 
-namespace assets {
+namespace epix::assets {
 export struct StrongHandle;
 /** @brief Typed handle to an asset of type T. */
 export template <typename T>
@@ -68,12 +68,12 @@ struct AssetIndexAllocator {
     void release(const AssetIndex& index) const;
     Receiver<AssetIndex> reserved_receiver() const;
 };
-}  // namespace assets
+}  // namespace epix::assets
 
 namespace std {
 template <>
-struct hash<assets::AssetIndex> {
-    std::size_t operator()(const assets::AssetIndex& index) const {
+struct hash<epix::assets::AssetIndex> {
+    std::size_t operator()(const epix::assets::AssetIndex& index) const {
         return std::hash<uint64_t>()((static_cast<uint64_t>(index.index()) << 32) |
                                      static_cast<uint64_t>(index.generation()));
     }

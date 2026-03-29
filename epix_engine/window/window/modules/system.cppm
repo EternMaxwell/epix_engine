@@ -5,7 +5,7 @@ import epix.core;
 import :structs;
 import :events;
 
-namespace window {
+namespace epix::window {
 void exit_on_all_closed(core::EventWriter<core::AppExit> exit_writer,
                         core::Local<std::unordered_set<core::Entity>> still_alive,
                         core::EventReader<WindowCreated> created,
@@ -17,4 +17,4 @@ void exit_on_primary_closed(core::EventWriter<core::AppExit> exit_writer,
 void close_requested(core::Commands commands,
                      core::Query<core::Item<core::Entity, const window::Window&>> windows,
                      core::EventReader<WindowCloseRequested> reader);
-}  // namespace window
+}  // namespace epix::window

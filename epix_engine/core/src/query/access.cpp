@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 module epix.core;
 
@@ -6,7 +6,7 @@ import std;
 
 import :query.access;
 
-namespace core {
+namespace epix::core {
 void Access::merge(const Access& other) {
     auto new_component_read_writes_inverted = component_read_writes_inverted || other.component_read_writes_inverted;
     auto new_component_writes_inverted      = component_writes_inverted || other.component_writes_inverted;

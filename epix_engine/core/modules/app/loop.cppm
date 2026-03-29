@@ -1,10 +1,10 @@
-﻿module;
+module;
 
 export module epix.core:app.loop;
 
 import :app.decl;
 
-namespace core {
+namespace epix::core {
 /** @brief Signal used to request application exit.
  *  Send this event to stop the main loop. */
 export struct AppExit {

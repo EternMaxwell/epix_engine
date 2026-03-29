@@ -1,8 +1,8 @@
-﻿export module epix.utils:variant_visitor;
+export module epix.utils:variant_visitor;
 
 import std;
 
-namespace utils {
+namespace epix::utils {
 /** @brief Overload set helper for std::visit on std::variant.
  *
  * Combines multiple callable objects into a single visitor using

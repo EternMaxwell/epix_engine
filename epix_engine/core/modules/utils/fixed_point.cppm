@@ -1,8 +1,8 @@
-﻿export module epix.utils:fixed_point;
+export module epix.utils:fixed_point;
 
 import std;
 
-namespace utils {
+namespace epix::utils {
 export template <std::size_t IntBits>
     requires(IntBits > 0 && IntBits < 32)
 struct fixed32 {

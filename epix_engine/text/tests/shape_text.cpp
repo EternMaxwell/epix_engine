@@ -1,4 +1,4 @@
-﻿#include <freetype/freetype.h>
+#include <freetype/freetype.h>
 #include <gtest/gtest.h>
 
 #include <algorithm>
@@ -12,6 +12,8 @@
 
 import epix.assets;
 import epix.text;
+
+using namespace epix;
 
 namespace {
 class FontFaceFixture {

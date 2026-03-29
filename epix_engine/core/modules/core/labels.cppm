@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 export module epix.core:labels;
 
@@ -8,7 +8,7 @@ import :label;
 
 #ifndef EPIX_MAKE_LABEL
 #define EPIX_MAKE_LABEL(type)                                                         \
-    struct type : public ::core::Label {                                              \
+    struct type : public ::epix::core::Label {                                              \
        public:                                                                        \
         type() = default;                                                             \
         template <typename T>                                                         \
@@ -19,7 +19,7 @@ import :label;
     };
 #endif
 
-namespace core {
+namespace epix::core {
 /** @brief Label type for identifying system sets within a schedule. */
 export EPIX_MAKE_LABEL(SystemSetLabel);
 /** @brief Label type for identifying schedules. */
@@ -31,15 +31,15 @@ export EPIX_MAKE_LABEL(AppLabel);
 // Temporary. Partial specializations are errornous in modules in most compilers currently
 namespace std {
 template <>
-struct hash<::core::AppLabel> {
-    size_t operator()(const ::core::AppLabel& label) const noexcept { return std::hash<::core::Label>()(label); }
+struct hash<::epix::core::AppLabel> {
+    size_t operator()(const ::epix::core::AppLabel& label) const noexcept { return std::hash<::epix::core::Label>()(label); }
 };
 template <>
-struct hash<::core::ScheduleLabel> {
-    size_t operator()(const ::core::ScheduleLabel& label) const noexcept { return std::hash<::core::Label>()(label); }
+struct hash<::epix::core::ScheduleLabel> {
+    size_t operator()(const ::epix::core::ScheduleLabel& label) const noexcept { return std::hash<::epix::core::Label>()(label); }
 };
 template <>
-struct hash<::core::SystemSetLabel> {
-    size_t operator()(const ::core::SystemSetLabel& label) const noexcept { return std::hash<::core::Label>()(label); }
+struct hash<::epix::core::SystemSetLabel> {
+    size_t operator()(const ::epix::core::SystemSetLabel& label) const noexcept { return std::hash<::epix::core::Label>()(label); }
 };
 }  // namespace std

@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 export module epix.render:view;
 
@@ -11,9 +11,9 @@ import :window;
 import :graph;
 import :render_phase;
 
-using namespace core;
+using namespace epix::core;
 
-namespace render::camera {
+namespace epix::render::camera {
 /** @brief Defines a sub-region of the render target for camera output. */
 export struct Viewport {
     /** @brief Top-left position of the viewport in pixels. */
@@ -400,8 +400,8 @@ export enum class CameraUpdateSystems {
 
 template <CameraProjection ProjType>
 void camera_system(Query<Item<Mut<Camera>, Mut<ProjType>>> query,            // camera and projection query
-                   Query<Item<const ::window::CachedWindow&>> window_query,  // window query
-                   Query<Item<const ::window::CachedWindow&>, With<::window::PrimaryWindow>>
+                   Query<Item<const ::epix::window::CachedWindow&>> window_query,  // window query
+                   Query<Item<const ::epix::window::CachedWindow&>, With<::epix::window::PrimaryWindow>>
                        primary_window_query  // primary window query
 ) {
     for (auto&& [camera, proj] : query.iter()) {
@@ -507,7 +507,7 @@ export struct ExtractedCamera {
     std::optional<ClearColor> clear_color;
 };
 }  // namespace render::camera
-namespace render::view {
+namespace epix::render::view {
 /** @brief Extracted view data: projection, transform, and viewport
  * dimensions for a single camera. */
 export struct ExtractedView {
@@ -620,7 +620,7 @@ struct BindViewUniform {
     };
 };
 }  // namespace render::view
-namespace render::camera {
+namespace epix::render::camera {
 /** @brief System that extracts camera data into the render world. */
 export void extract_cameras(
     Commands cmd,
@@ -628,7 +628,7 @@ export void extract_cameras(
     Extract<Query<
         Item<const Camera&, const CameraRenderGraph&, const transform::GlobalTransform&, const view::VisibleEntities&>>>
         cameras,
-    Extract<Query<Entity, With<::window::PrimaryWindow, ::window::Window>>> primary_window);
+    Extract<Query<Entity, With<::epix::window::PrimaryWindow, ::epix::window::Window>>> primary_window);
 
 /** @brief Label for the camera driver node in the render graph. */
 export inline constexpr struct CameraDriverNodeLabelT {
@@ -657,7 +657,7 @@ export struct CameraBundle {
 }  // namespace render::camera
 
 template <>
-struct core::Bundle<render::camera::CameraBundle> {
+struct epix::core::Bundle<epix::render::camera::CameraBundle> {
     static size_t write(render::camera::CameraBundle& bundle, std::span<void*> target) {
         new (target[0]) render::camera::Camera(std::move(bundle.camera));
         new (target[1]) render::camera::Projection(std::move(bundle.projection));
@@ -683,4 +683,4 @@ struct core::Bundle<render::camera::CameraBundle> {
         components.register_info<render::view::VisibleEntities>();
     }
 };
-static_assert(core::is_bundle<render::camera::CameraBundle>);
+static_assert(epix::core::is_bundle<epix::render::camera::CameraBundle>);

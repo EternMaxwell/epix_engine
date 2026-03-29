@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 export module epix.core:query.access;
 
@@ -7,7 +7,7 @@ import std;
 import :utils;
 import :type_registry;
 
-namespace core {
+namespace epix::core {
 /** @brief Tracks which component/resource accesses conflict between systems. */
 export struct AccessConflicts {
     /** @brief Whether all accesses conflict. */

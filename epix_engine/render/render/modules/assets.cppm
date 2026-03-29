@@ -1,4 +1,4 @@
-﻿export module epix.render:assets;
+export module epix.render:assets;
 
 import epix.assets;
 import epix.core;
@@ -6,10 +6,10 @@ import std;
 
 import :extract;
 
-using namespace core;
-using namespace assets;
+using namespace epix::core;
+using namespace epix::assets;
 
-namespace render {
+namespace epix::render {
 
 /** @brief Trait type to specialize for enabling render asset processing.
  *

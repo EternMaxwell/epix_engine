@@ -1,9 +1,9 @@
-﻿module epix.assets;
+module epix.assets;
 
 import :handle;
 
-using namespace assets;
-using namespace core;
+using namespace epix::assets;
+using namespace epix::core;
 
 StrongHandle::StrongHandle(const UntypedAssetId& id,
                            const Sender<DestructionEvent>& event_sender,

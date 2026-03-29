@@ -1,11 +1,12 @@
-﻿module;
+module;
 
 #include <SFML/Window/Keyboard.hpp>
 #include <SFML/Window/Mouse.hpp>
 
 module epix.sfml.core;
 
-input::KeyCode sfml::map_sfml_key_to_input(sf::Keyboard::Key key) {
+namespace epix::sfml {
+    input::KeyCode map_sfml_key_to_input(sf::Keyboard::Key key) {
     switch (key) {
         case sf::Keyboard::Key::A:
             return input::KeyCode::KeyA;
@@ -214,7 +215,7 @@ input::KeyCode sfml::map_sfml_key_to_input(sf::Keyboard::Key key) {
     }
 }
 
-input::MouseButton sfml::map_sfml_mouse_button_to_input(sf::Mouse::Button button) {
+    input::MouseButton map_sfml_mouse_button_to_input(sf::Mouse::Button button) {
     switch (button) {
         case sf::Mouse::Button::Left:
             return input::MouseButton::MouseButton1;
@@ -230,3 +231,4 @@ input::MouseButton sfml::map_sfml_mouse_button_to_input(sf::Mouse::Button button
             return input::MouseButton::MouseButtonUnknown;
     }
 }
+    }  // namespace epix::sfml

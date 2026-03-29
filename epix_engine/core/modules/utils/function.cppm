@@ -1,8 +1,8 @@
-﻿export module epix.utils:function;
+export module epix.utils:function;
 
 import std;
 
-namespace utils {
+namespace epix::utils {
 export template <typename Signature>
 class function_ref;
 

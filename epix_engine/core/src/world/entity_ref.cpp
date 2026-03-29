@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 module epix.core;
 
@@ -8,7 +8,7 @@ import :entities;
 import :world.entity_ref;
 import :world.interface;
 
-namespace core {
+namespace epix::core {
 void EntityWorldMut::remove_bundle(BundleId bundle_id) {
     assert_not_despawned();
     auto remover = BundleRemover::create_with_id(*world_, location_.archetype_id, bundle_id, world_->change_tick());

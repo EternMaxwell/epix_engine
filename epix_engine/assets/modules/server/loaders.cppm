@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 #include <spdlog/spdlog.h>
 
@@ -11,7 +11,7 @@ import epix.utils;
 import :server.info;
 import :server.loader;
 
-namespace assets {
+namespace epix::assets {
 struct PendingAssetLoader {
     utils::BroadcastSender<std::shared_ptr<ErasedAssetLoader>> sender;
     utils::BroadcastReceiver<std::shared_ptr<ErasedAssetLoader>> receiver;

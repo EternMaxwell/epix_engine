@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 #include <cassert>
 
@@ -13,7 +13,7 @@ import :component;
 import :world.decl;
 import :world.entity_ref;
 
-namespace core {
+namespace epix::core {
 /** @brief Represents the items (components) in a query result as a tuple.
  *  @tparam Ts World-query types whose data items form the tuple elements. */
 export template <world_query... Ts>

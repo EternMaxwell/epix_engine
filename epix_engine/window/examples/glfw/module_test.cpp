@@ -1,4 +1,4 @@
-﻿#include <spdlog/spdlog.h>
+#include <spdlog/spdlog.h>
 
 import epix.core;
 import epix.window;
@@ -13,9 +13,9 @@ enum class TestFuncState {
 };
 
 int main() {
-    using namespace window;
-    using namespace glfw;
-    using namespace core;
+    using namespace epix::window;
+    using namespace epix::glfw;
+    using namespace epix::core;
 
     Window window_desc;
     Window window_desc2;
@@ -48,15 +48,15 @@ int main() {
             plugin.exit_condition = ExitCondition::OnAllClosed;
             plugin.primary_window = window_desc;
         })
-        .add_plugins(glfw::GLFWPlugin{})
-        .add_plugins(input::InputPlugin{})
-        .add_systems(Update, into(input::log_inputs, log_events).set_name("print inputs"))
+        .add_plugins(epix::glfw::GLFWPlugin{})
+        .add_plugins(epix::input::InputPlugin{})
+        .add_systems(Update, into(epix::input::log_inputs, log_events).set_name("print inputs"))
         .add_systems(Update, into(
-                                 [](EventReader<input::KeyInput> key_reader, Query<Item<Mut<Window>>> windows,
+                                 [](EventReader<epix::input::KeyInput> key_reader, Query<Item<Mut<Window>>> windows,
                                     ResMut<Schedules> schedules) {
                                      for (auto&& [key, scancode, pressed, repeat, window] : key_reader.read()) {
                                          if (pressed) {
-                                             if (key == input::KeyCode::KeyF11) {
+                                             if (key == epix::input::KeyCode::KeyF11) {
                                                  if (auto window_opt = windows.get(window)) {
                                                      auto&& [window_desc] = *window_opt;
                                                      if (window_desc->window_mode == WindowMode::Windowed) {
@@ -69,10 +69,10 @@ int main() {
                                          }
                                      }
                                  },
-                                 [](EventReader<input::KeyInput> key_reader, Query<Item<Mut<Window>>> windows,
+                                 [](EventReader<epix::input::KeyInput> key_reader, Query<Item<Mut<Window>>> windows,
                                     ResMut<NextState<TestFuncState>> next_state) {
                                      for (auto&& [key, scancode, pressed, repeat, window] : key_reader.read()) {
-                                         if (key == input::KeyCode::KeySpace && pressed && !repeat) {
+                                         if (key == epix::input::KeyCode::KeySpace && pressed && !repeat) {
                                              if (*next_state == TestFuncState::Off) {
                                                  *next_state = TestFuncState::On;
                                              } else {

@@ -1,277 +1,279 @@
-﻿module epix.input;
+module epix.input;
 
 import std;
 import :enums;
 
-using namespace input;
+namespace epix::input {
 
-std::string_view input::key_name(KeyCode key) {
+std::string_view key_name(KeyCode key) {
     switch (key) {
-        case input::KeyCode::KeyA:
+        case KeyCode::KeyA:
             return "A";
-        case input::KeyCode::KeyB:
+        case KeyCode::KeyB:
             return "B";
-        case input::KeyCode::KeyC:
+        case KeyCode::KeyC:
             return "C";
-        case input::KeyCode::KeyD:
+        case KeyCode::KeyD:
             return "D";
-        case input::KeyCode::KeyE:
+        case KeyCode::KeyE:
             return "E";
-        case input::KeyCode::KeyF:
+        case KeyCode::KeyF:
             return "F";
-        case input::KeyCode::KeyG:
+        case KeyCode::KeyG:
             return "G";
-        case input::KeyCode::KeyH:
+        case KeyCode::KeyH:
             return "H";
-        case input::KeyCode::KeyI:
+        case KeyCode::KeyI:
             return "I";
-        case input::KeyCode::KeyJ:
+        case KeyCode::KeyJ:
             return "J";
-        case input::KeyCode::KeyK:
+        case KeyCode::KeyK:
             return "K";
-        case input::KeyCode::KeyL:
+        case KeyCode::KeyL:
             return "L";
-        case input::KeyCode::KeyM:
+        case KeyCode::KeyM:
             return "M";
-        case input::KeyCode::KeyN:
+        case KeyCode::KeyN:
             return "N";
-        case input::KeyCode::KeyO:
+        case KeyCode::KeyO:
             return "O";
-        case input::KeyCode::KeyP:
+        case KeyCode::KeyP:
             return "P";
-        case input::KeyCode::KeyQ:
+        case KeyCode::KeyQ:
             return "Q";
-        case input::KeyCode::KeyR:
+        case KeyCode::KeyR:
             return "R";
-        case input::KeyCode::KeyS:
+        case KeyCode::KeyS:
             return "S";
-        case input::KeyCode::KeyT:
+        case KeyCode::KeyT:
             return "T";
-        case input::KeyCode::KeyU:
+        case KeyCode::KeyU:
             return "U";
-        case input::KeyCode::KeyV:
+        case KeyCode::KeyV:
             return "V";
-        case input::KeyCode::KeyW:
+        case KeyCode::KeyW:
             return "W";
-        case input::KeyCode::KeyX:
+        case KeyCode::KeyX:
             return "X";
-        case input::KeyCode::KeyY:
+        case KeyCode::KeyY:
             return "Y";
-        case input::KeyCode::KeyZ:
+        case KeyCode::KeyZ:
             return "Z";
-        case input::KeyCode::Key0:
+        case KeyCode::Key0:
             return "0";
-        case input::KeyCode::Key1:
+        case KeyCode::Key1:
             return "1";
-        case input::KeyCode::Key2:
+        case KeyCode::Key2:
             return "2";
-        case input::KeyCode::Key3:
+        case KeyCode::Key3:
             return "3";
-        case input::KeyCode::Key4:
+        case KeyCode::Key4:
             return "4";
-        case input::KeyCode::Key5:
+        case KeyCode::Key5:
             return "5";
-        case input::KeyCode::Key6:
+        case KeyCode::Key6:
             return "6";
-        case input::KeyCode::Key7:
+        case KeyCode::Key7:
             return "7";
-        case input::KeyCode::Key8:
+        case KeyCode::Key8:
             return "8";
-        case input::KeyCode::Key9:
+        case KeyCode::Key9:
             return "9";
-        case input::KeyCode::KeySpace:
+        case KeyCode::KeySpace:
             return "Space";
-        case input::KeyCode::KeyApostrophe:
+        case KeyCode::KeyApostrophe:
             return "Apostrophe(')";
-        case input::KeyCode::KeyComma:
+        case KeyCode::KeyComma:
             return "Comma(,)";
-        case input::KeyCode::KeyMinus:
+        case KeyCode::KeyMinus:
             return "Minus(-)";
-        case input::KeyCode::KeyPeriod:
+        case KeyCode::KeyPeriod:
             return "Period(.)";
-        case input::KeyCode::KeySlash:
+        case KeyCode::KeySlash:
             return "Slash(/)";
-        case input::KeyCode::KeySemicolon:
+        case KeyCode::KeySemicolon:
             return "Semicolon(;)";
-        case input::KeyCode::KeyEqual:
+        case KeyCode::KeyEqual:
             return "Equal(=)";
-        case input::KeyCode::KeyLeftBracket:
+        case KeyCode::KeyLeftBracket:
             return "LeftBracket([)";
-        case input::KeyCode::KeyBackslash:
+        case KeyCode::KeyBackslash:
             return "Backslash(\\)";
-        case input::KeyCode::KeyRightBracket:
+        case KeyCode::KeyRightBracket:
             return "RightBracket(])";
-        case input::KeyCode::KeyGraveAccent:
+        case KeyCode::KeyGraveAccent:
             return "GraveAccent(`)";
-        case input::KeyCode::KeyWorld1:
+        case KeyCode::KeyWorld1:
             return "World1";
-        case input::KeyCode::KeyWorld2:
+        case KeyCode::KeyWorld2:
             return "World2";
-        case input::KeyCode::KeyEscape:
+        case KeyCode::KeyEscape:
             return "Escape";
-        case input::KeyCode::KeyEnter:
+        case KeyCode::KeyEnter:
             return "Enter";
-        case input::KeyCode::KeyTab:
+        case KeyCode::KeyTab:
             return "Tab";
-        case input::KeyCode::KeyBackspace:
+        case KeyCode::KeyBackspace:
             return "Backspace";
-        case input::KeyCode::KeyInsert:
+        case KeyCode::KeyInsert:
             return "Insert";
-        case input::KeyCode::KeyDelete:
+        case KeyCode::KeyDelete:
             return "Delete";
-        case input::KeyCode::KeyRight:
+        case KeyCode::KeyRight:
             return "Right";
-        case input::KeyCode::KeyLeft:
+        case KeyCode::KeyLeft:
             return "Left";
-        case input::KeyCode::KeyDown:
+        case KeyCode::KeyDown:
             return "Down";
-        case input::KeyCode::KeyUp:
+        case KeyCode::KeyUp:
             return "Up";
-        case input::KeyCode::KeyPageUp:
+        case KeyCode::KeyPageUp:
             return "PageUp";
-        case input::KeyCode::KeyPageDown:
+        case KeyCode::KeyPageDown:
             return "PageDown";
-        case input::KeyCode::KeyHome:
+        case KeyCode::KeyHome:
             return "Home";
-        case input::KeyCode::KeyEnd:
+        case KeyCode::KeyEnd:
             return "End";
-        case input::KeyCode::KeyCapsLock:
+        case KeyCode::KeyCapsLock:
             return "CapsLock";
-        case input::KeyCode::KeyScrollLock:
+        case KeyCode::KeyScrollLock:
             return "ScrollLock";
-        case input::KeyCode::KeyNumLock:
+        case KeyCode::KeyNumLock:
             return "NumLock";
-        case input::KeyCode::KeyPrintScreen:
+        case KeyCode::KeyPrintScreen:
             return "PrintScreen";
-        case input::KeyCode::KeyPause:
+        case KeyCode::KeyPause:
             return "Pause";
-        case input::KeyCode::KeyF1:
+        case KeyCode::KeyF1:
             return "F1";
-        case input::KeyCode::KeyF2:
+        case KeyCode::KeyF2:
             return "F2";
-        case input::KeyCode::KeyF3:
+        case KeyCode::KeyF3:
             return "F3";
-        case input::KeyCode::KeyF4:
+        case KeyCode::KeyF4:
             return "F4";
-        case input::KeyCode::KeyF5:
+        case KeyCode::KeyF5:
             return "F5";
-        case input::KeyCode::KeyF6:
+        case KeyCode::KeyF6:
             return "F6";
-        case input::KeyCode::KeyF7:
+        case KeyCode::KeyF7:
             return "F7";
-        case input::KeyCode::KeyF8:
+        case KeyCode::KeyF8:
             return "F8";
-        case input::KeyCode::KeyF9:
+        case KeyCode::KeyF9:
             return "F9";
-        case input::KeyCode::KeyF10:
+        case KeyCode::KeyF10:
             return "F10";
-        case input::KeyCode::KeyF11:
+        case KeyCode::KeyF11:
             return "F11";
-        case input::KeyCode::KeyF12:
+        case KeyCode::KeyF12:
             return "F12";
-        case input::KeyCode::KeyF13:
+        case KeyCode::KeyF13:
             return "F13";
-        case input::KeyCode::KeyF14:
+        case KeyCode::KeyF14:
             return "F14";
-        case input::KeyCode::KeyF15:
+        case KeyCode::KeyF15:
             return "F15";
-        case input::KeyCode::KeyF16:
+        case KeyCode::KeyF16:
             return "F16";
-        case input::KeyCode::KeyF17:
+        case KeyCode::KeyF17:
             return "F17";
-        case input::KeyCode::KeyF18:
+        case KeyCode::KeyF18:
             return "F18";
-        case input::KeyCode::KeyF19:
+        case KeyCode::KeyF19:
             return "F19";
-        case input::KeyCode::KeyF20:
+        case KeyCode::KeyF20:
             return "F20";
-        case input::KeyCode::KeyF21:
+        case KeyCode::KeyF21:
             return "F21";
-        case input::KeyCode::KeyF22:
+        case KeyCode::KeyF22:
             return "F22";
-        case input::KeyCode::KeyF23:
+        case KeyCode::KeyF23:
             return "F23";
-        case input::KeyCode::KeyF24:
+        case KeyCode::KeyF24:
             return "F24";
-        case input::KeyCode::KeyF25:
+        case KeyCode::KeyF25:
             return "F25";
-        case input::KeyCode::KeyKp0:
+        case KeyCode::KeyKp0:
             return "Kp0";
-        case input::KeyCode::KeyKp1:
+        case KeyCode::KeyKp1:
             return "Kp1";
-        case input::KeyCode::KeyKp2:
+        case KeyCode::KeyKp2:
             return "Kp2";
-        case input::KeyCode::KeyKp3:
+        case KeyCode::KeyKp3:
             return "Kp3";
-        case input::KeyCode::KeyKp4:
+        case KeyCode::KeyKp4:
             return "Kp4";
-        case input::KeyCode::KeyKp5:
+        case KeyCode::KeyKp5:
             return "Kp5";
-        case input::KeyCode::KeyKp6:
+        case KeyCode::KeyKp6:
             return "Kp6";
-        case input::KeyCode::KeyKp7:
+        case KeyCode::KeyKp7:
             return "Kp7";
-        case input::KeyCode::KeyKp8:
+        case KeyCode::KeyKp8:
             return "Kp8";
-        case input::KeyCode::KeyKp9:
+        case KeyCode::KeyKp9:
             return "Kp9";
-        case input::KeyCode::KeyKpDecimal:
+        case KeyCode::KeyKpDecimal:
             return "KpDecimal(.)";
-        case input::KeyCode::KeyKpDivide:
+        case KeyCode::KeyKpDivide:
             return "KpDivide(/)";
-        case input::KeyCode::KeyKpMultiply:
+        case KeyCode::KeyKpMultiply:
             return "KpMultiply(*)";
-        case input::KeyCode::KeyKpSubtract:
+        case KeyCode::KeyKpSubtract:
             return "KpSubtract(-)";
-        case input::KeyCode::KeyKpAdd:
+        case KeyCode::KeyKpAdd:
             return "KpAdd(+)";
-        case input::KeyCode::KeyKpEnter:
+        case KeyCode::KeyKpEnter:
             return "KpEnter";
-        case input::KeyCode::KeyKpEqual:
+        case KeyCode::KeyKpEqual:
             return "KpEqual(=)";
-        case input::KeyCode::KeyLeftShift:
+        case KeyCode::KeyLeftShift:
             return "LeftShift";
-        case input::KeyCode::KeyLeftControl:
+        case KeyCode::KeyLeftControl:
             return "LeftControl";
-        case input::KeyCode::KeyLeftAlt:
+        case KeyCode::KeyLeftAlt:
             return "LeftAlt";
-        case input::KeyCode::KeyLeftSuper:
+        case KeyCode::KeyLeftSuper:
             return "LeftSuper";
-        case input::KeyCode::KeyRightShift:
+        case KeyCode::KeyRightShift:
             return "RightShift";
-        case input::KeyCode::KeyRightControl:
+        case KeyCode::KeyRightControl:
             return "RightControl";
-        case input::KeyCode::KeyRightAlt:
+        case KeyCode::KeyRightAlt:
             return "RightAlt";
-        case input::KeyCode::KeyRightSuper:
+        case KeyCode::KeyRightSuper:
             return "RightSuper";
-        case input::KeyCode::KeyMenu:
+        case KeyCode::KeyMenu:
             return "Menu";
         default:
             return "Unknown";
     }
 }
-std::string_view input::mouse_button_name(MouseButton button) {
+std::string_view mouse_button_name(MouseButton button) {
     switch (button) {
-        case input::MouseButton::MouseButton1:
+        case MouseButton::MouseButton1:
             return "MouseButton1(Left)";
-        case input::MouseButton::MouseButton2:
+        case MouseButton::MouseButton2:
             return "MouseButton2(Right)";
-        case input::MouseButton::MouseButton3:
+        case MouseButton::MouseButton3:
             return "MouseButton3(Middle)";
-        case input::MouseButton::MouseButton4:
+        case MouseButton::MouseButton4:
             return "MouseButton4";
-        case input::MouseButton::MouseButton5:
+        case MouseButton::MouseButton5:
             return "MouseButton5";
-        case input::MouseButton::MouseButton6:
+        case MouseButton::MouseButton6:
             return "MouseButton6";
-        case input::MouseButton::MouseButton7:
+        case MouseButton::MouseButton7:
             return "MouseButton7";
-        case input::MouseButton::MouseButton8:
+        case MouseButton::MouseButton8:
             return "MouseButton8";
-        case input::MouseButton::MouseButtonLast:
+        case MouseButton::MouseButtonLast:
             return "Last";
         default:
             return "Unknown";
     }
 }
+
+}  // namespace epix::input

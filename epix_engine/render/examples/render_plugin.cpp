@@ -1,4 +1,4 @@
-﻿#include <spdlog/spdlog.h>
+#include <spdlog/spdlog.h>
 
 #include <stacktrace>
 
@@ -12,7 +12,8 @@ import epix.glfw.render;
 
 import std;
 
-using namespace core;
+using namespace epix;
+using namespace epix::core;
 
 constexpr struct Test {
 } test_graph;

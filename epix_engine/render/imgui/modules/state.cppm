@@ -1,11 +1,11 @@
-﻿module;
+module;
 
 export module epix.render.imgui:state;
 
 import epix.core;
 import std;
 
-namespace imgui {
+namespace epix::imgui {
 
 /** @brief Thread-safe snapshot of ImDrawData for pipelined rendering.
  *  Owns cloned draw lists so the render sub-app can use them even after
@@ -50,7 +50,7 @@ export struct ImGuiState {
 export struct Ctx {};
 }  // namespace imgui
 
-namespace core {
+namespace epix::core {
 template <>
 struct SystemParam<imgui::Ctx> : ParamBase {
     using State                    = TypeId;

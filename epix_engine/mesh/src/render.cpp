@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 #include <spdlog/spdlog.h>
 
@@ -10,8 +10,9 @@ import epix.render;
 import epix.transform;
 import std;
 
-using namespace core;
-using namespace mesh;
+using namespace epix;
+using namespace epix::core;
+using namespace epix::mesh;
 
 namespace {
 constexpr std::string_view kMeshSolidVertexShader = R"(

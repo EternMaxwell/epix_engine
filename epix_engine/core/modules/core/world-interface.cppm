@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 #include <spdlog/spdlog.h>
 
@@ -17,7 +17,7 @@ import :world.decl;
 import :world.commands;
 import :query;
 
-namespace core {
+namespace epix::core {
 
 template <typename T>
 concept is_construct_from_world = std::constructible_from<T, World&>;
@@ -170,7 +170,7 @@ export struct World {
      *  @param additional_checks Extra tick-checking logic invoked with the current change tick. */
     void check_change_tick(std::invocable<Tick> auto&& additional_checks) {
         auto change_tick = this->change_tick();
-        if (change_tick.relative_to(_last_change_tick).get() < ::core::CHECK_TICK_THRESHOLD) {
+        if (change_tick.relative_to(_last_change_tick).get() < ::epix::core::CHECK_TICK_THRESHOLD) {
             return;
         }
         storage_mut().tables.check_change_ticks(change_tick);

@@ -1,10 +1,10 @@
-﻿export module epix.window;
+export module epix.window;
 
 export import :events;
 export import :structs;
 export import :system;
 
-export namespace window {
+export namespace epix::window {
 /** @brief Determines when the application should exit based on window
  * state. */
 enum class ExitCondition {

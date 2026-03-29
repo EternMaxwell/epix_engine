@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 #include <cassert>
 
@@ -9,7 +9,7 @@ import std;
 import :bundle.interface;
 import :world.decl;
 
-namespace core {
+namespace epix::core {
 /**
  * @brief Detail of a bundle type.
  * The first template parameter is a tuple of the types that will explicitly added to the entity by this bundle.

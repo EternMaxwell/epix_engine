@@ -1,10 +1,10 @@
-﻿module;
+module;
 
 export module epix.assets:path;
 
 import std;
 
-namespace assets {
+namespace epix::assets {
 /**
  * @brief A reference to an 'asset source', which maps to an `AssetReader` or `AssetWriter`
  *
@@ -120,14 +120,15 @@ export struct AssetPath {
     auto operator<=>(const AssetPath&) const = default;
 };
 static_assert(std::three_way_comparable<AssetPath>);
-}  // namespace assets
+}  // namespace epix::assets
 
 template <>
-struct std::hash<assets::AssetPath> {
-    size_t operator()(const assets::AssetPath& ap) const noexcept {
+struct std::hash<epix::assets::AssetPath> {
+    size_t operator()(const epix::assets::AssetPath& ap) const noexcept {
         size_t h     = 0;
         auto combine = [&](size_t v) { h ^= v + 0x9e3779b9 + (h << 6) + (h >> 2); };
-        combine(std::hash<std::optional<std::string>>{}(static_cast<const assets::AssetSourceId::base&>(ap.source)));
+        combine(
+            std::hash<std::optional<std::string>>{}(static_cast<const epix::assets::AssetSourceId::base&>(ap.source)));
         combine(std::hash<std::filesystem::path>{}(ap.path));
         combine(std::hash<std::optional<std::string>>{}(ap.label));
         return h;

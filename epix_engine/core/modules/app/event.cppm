@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 export module epix.core:app.event;
 
@@ -8,7 +8,7 @@ import :system;
 import :ticks;
 import :world;
 
-namespace core {
+namespace epix::core {
 /** @brief Double-buffered event queue for type T.
  *  Events are kept alive for one update cycle after being pushed,
  *  then automatically expired and removed on the next update().

@@ -3,7 +3,7 @@
 import std;
 import epix.assets;
 
-using namespace assets;
+using namespace epix::assets;
 
 // ===========================================================================
 // Handle<T> - construction via weak id

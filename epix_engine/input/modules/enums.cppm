@@ -1,8 +1,8 @@
-﻿export module epix.input:enums;
+export module epix.input:enums;
 
 import std;
 
-export namespace input {
+export namespace epix::input {
 /** @brief Keyboard key codes corresponding to physical keys. */
 enum class KeyCode : int {
     KeyA,
@@ -156,11 +156,11 @@ std::string_view mouse_button_name(MouseButton button);
 }  // namespace input
 
 template <>
-struct std::hash<input::KeyCode> {
-    size_t operator()(const input::KeyCode& key) const { return std::hash<int>()(static_cast<int>(key)); }
+struct std::hash<epix::input::KeyCode> {
+    size_t operator()(const epix::input::KeyCode& key) const { return std::hash<int>()(static_cast<int>(key)); }
 };
 
 template <>
-struct std::hash<input::MouseButton> {
-    size_t operator()(const input::MouseButton& button) const { return std::hash<int>()(static_cast<int>(button)); }
+struct std::hash<epix::input::MouseButton> {
+    size_t operator()(const epix::input::MouseButton& button) const { return std::hash<int>()(static_cast<int>(button)); }
 };

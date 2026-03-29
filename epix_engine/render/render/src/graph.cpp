@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 #include <spdlog/spdlog.h>
 
@@ -6,7 +6,7 @@ module epix.render;
 
 import :graph;
 
-using namespace render::graph;
+using namespace epix::render::graph;
 
 void RenderGraph::update(World& world) {
     for (auto&& [id, node] : nodes) {

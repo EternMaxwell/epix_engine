@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 #include <GLFW/glfw3.h>
 
@@ -6,8 +6,8 @@ module epix.glfw.core;
 
 import epix.utils;
 
-using namespace glfw;
-using namespace window;
+using namespace epix::glfw;
+using namespace epix::window;
 
 const std::string& Clipboard::get_text() const { return text; }
 void Clipboard::update(ResMut<Clipboard> clipboard) {

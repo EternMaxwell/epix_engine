@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 #include <cassert>
 
@@ -13,7 +13,7 @@ import :component;
 import :storage;
 import :archetype;
 
-namespace core {
+namespace epix::core {
 export template <typename T>
 struct Bundle {};
 

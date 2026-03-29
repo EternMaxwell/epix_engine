@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 export module epix.mesh:gpumesh;
 
@@ -8,7 +8,7 @@ import epix.render;
 import std;
 import webgpu;
 
-namespace mesh {
+namespace epix::mesh {
 /** @brief GPU-side mesh storing vertex/index buffers uploaded from a Mesh.
  *
  * Created from a CPU Mesh via create_from_mesh, and can be bound to a render pass.
@@ -77,22 +77,24 @@ export struct GPUMesh {
 }  // namespace mesh
 
 template <>
-struct render::RenderAsset<mesh::Mesh> {
-    using ProcessedAsset = mesh::GPUMesh;
-    using Param          = core::ParamSet<core::Res<wgpu::Device>, core::Res<wgpu::Limits>>;
+struct epix::render::RenderAsset<epix::mesh::Mesh> {
+    using ProcessedAsset = epix::mesh::GPUMesh;
+    using Param          = epix::core::ParamSet<epix::core::Res<wgpu::Device>, epix::core::Res<wgpu::Limits>>;
 
-    ProcessedAsset process(const mesh::Mesh& mesh, Param params) {
+    ProcessedAsset process(const epix::mesh::Mesh& mesh, Param params) {
         auto&& [device, limits] = params.get();
         return ProcessedAsset::create_from_mesh(mesh, *device, *limits);
     }
 
-    render::RenderAssetUsage usage(const mesh::Mesh& mesh) { return render::RenderAssetUsageBits::RenderWorld; }
+    epix::render::RenderAssetUsage usage(const epix::mesh::Mesh& mesh) {
+        return epix::render::RenderAssetUsageBits::RenderWorld;
+    }
 };
 
 export namespace std {
 template <>
-struct hash<assets::AssetId<mesh::Mesh>> {
-    std::size_t operator()(const assets::AssetId<mesh::Mesh>& id) const {
+struct hash<epix::assets::AssetId<epix::mesh::Mesh>> {
+    std::size_t operator()(const epix::assets::AssetId<epix::mesh::Mesh>& id) const {
         return std::visit([]<typename T>(const T& value) { return std::hash<T>()(value); }, id);
     }
 };

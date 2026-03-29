@@ -1,11 +1,11 @@
-﻿export module epix.render:graph.decl;
+export module epix.render:graph.decl;
 
 import epix.core;
 import std;
 
 #ifndef EPIX_MAKE_LABEL
 #define EPIX_MAKE_LABEL(type)                                                         \
-    struct type : public ::core::Label {                                              \
+    struct type : public ::epix::core::Label {                                              \
        public:                                                                        \
         type() = default;                                                             \
         template <typename T>                                                         \
@@ -16,9 +16,9 @@ import std;
     };
 #endif
 
-using namespace core;
+using namespace epix::core;
 
-namespace render::graph {
+namespace epix::render::graph {
 /** @brief Label type identifying a node within a render graph. */
 export EPIX_MAKE_LABEL(NodeLabel);
 /** @brief Label type identifying a sub-graph within a render graph. */
@@ -40,14 +40,14 @@ struct RunSubGraph;
 }  // namespace render::graph
 
 template <>
-struct std::hash<render::graph::NodeLabel> {
-    std::size_t operator()(const render::graph::NodeLabel& label) const noexcept {
-        return std::hash<core::Label>()(label);
+struct std::hash<epix::render::graph::NodeLabel> {
+    std::size_t operator()(const epix::render::graph::NodeLabel& label) const noexcept {
+        return std::hash<epix::core::Label>()(label);
     }
 };
 template <>
-struct std::hash<render::graph::GraphLabel> {
-    std::size_t operator()(const render::graph::GraphLabel& label) const noexcept {
-        return std::hash<core::Label>()(label);
+struct std::hash<epix::render::graph::GraphLabel> {
+    std::size_t operator()(const epix::render::graph::GraphLabel& label) const noexcept {
+        return std::hash<epix::core::Label>()(label);
     }
 };

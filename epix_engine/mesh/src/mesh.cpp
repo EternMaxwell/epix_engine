@@ -1,8 +1,8 @@
-﻿module epix.mesh;
+module epix.mesh;
 
 import epix.assets;
 
-using namespace mesh;
+using namespace epix::mesh;
 
 MeshAttributeLayout Mesh::attribute_layout() const {
     MeshAttributeLayout layout;

@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 export module epix.core:query.state;
 
@@ -10,7 +10,7 @@ import :world.decl;
 import :storage;
 import :component;
 
-namespace core {
+namespace epix::core {
 /** @brief Cached query state holding matched archetypes and component access info.
  *  Created from a World and reused across iterations for efficiency.
  *  @tparam D Query data descriptor.

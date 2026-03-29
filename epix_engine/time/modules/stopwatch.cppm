@@ -1,8 +1,8 @@
-﻿export module epix.time:stopwatch;
+export module epix.time:stopwatch;
 
 import std;
 
-namespace time {
+namespace epix::time {
 
 export struct Stopwatch {
     Stopwatch() = default;

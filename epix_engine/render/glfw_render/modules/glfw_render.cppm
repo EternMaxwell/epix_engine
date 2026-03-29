@@ -1,8 +1,8 @@
-﻿export module epix.glfw.render;
+export module epix.glfw.render;
 
 import epix.core;
 
-namespace glfw::render {
+namespace epix::glfw::render {
 /** @brief Plugin that registers GLFW-specific render target (surface)
  * creation for the render pipeline. */
 export struct GLFWRenderPlugin {
@@ -10,6 +10,6 @@ export struct GLFWRenderPlugin {
 };
 }  // namespace glfw::render
 
-namespace glfw {
+namespace epix::glfw {
 export using render::GLFWRenderPlugin;
 }

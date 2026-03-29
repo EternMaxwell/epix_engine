@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 #include <gtest/gtest.h>
 
@@ -9,7 +9,7 @@ import std;
 import :storage;
 
 TEST(core, sparse_set) {
-    using namespace core;
+    using namespace epix::core;
 
     SparseSet<int, std::string> s;
     EXPECT_TRUE(s.empty());

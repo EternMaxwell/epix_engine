@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 #include <spdlog/spdlog.h>
 
@@ -8,8 +8,9 @@ import epix.core_graph;
 import epix.render;
 import std;
 
-using namespace core;
-using namespace text;
+using namespace epix::core;
+using namespace epix::text;
+using namespace epix;
 
 namespace {
 constexpr std::string_view kTextVertexShader = R"(

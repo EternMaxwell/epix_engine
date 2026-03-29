@@ -1,9 +1,9 @@
-﻿module epix.render;
+module epix.render;
 import :schedule;
 
-using namespace core;
+using namespace epix::core;
 
-namespace render {
+namespace epix::render {
 Schedule RenderT::render_schedule() {
     Schedule schedule(Render);
     schedule.configure_sets(sets(RenderSet::PostExtract, RenderSet::ManageViews, RenderSet::Queue, RenderSet::PhaseSort,

@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 #include <gtest/gtest.h>
 
@@ -16,7 +16,7 @@ struct X {
 }  // namespace
 
 TEST(core, query_state) {
-    using namespace core;
+    using namespace epix::core;
 
     auto registry = std::make_shared<TypeRegistry>();
     World wc(WorldId(1), std::move(registry));

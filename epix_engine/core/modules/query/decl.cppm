@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 export module epix.core:query.decl;
 
@@ -9,7 +9,7 @@ import :component;
 import :world.decl;
 import :tick;
 
-namespace core {
+namespace epix::core {
 /** @brief Trait class for types usable as query data elements (e.g. template arguments of Item).
  *  Specialize to define Fetch and State types for custom queries. */
 export template <typename T>

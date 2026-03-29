@@ -1,4 +1,4 @@
-﻿export module epix.input;
+export module epix.input;
 
 export import :enums;
 export import :events;
@@ -6,9 +6,9 @@ export import :button;
 
 import epix.core;
 
-using namespace core;
+using namespace epix::core;
 
-export namespace input {
+export namespace epix::input {
 /** @brief Plugin that registers input event handling systems. */
 struct InputPlugin {
     void build(App& app);

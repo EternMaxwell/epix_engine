@@ -1,9 +1,9 @@
-﻿#include <gtest/gtest.h>
+#include <gtest/gtest.h>
 
 import std;
 import epix.assets;
 
-using namespace assets;
+using namespace epix::assets;
 
 // ===========================================================================
 // LoadedAsset<A>

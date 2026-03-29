@@ -7,7 +7,7 @@ import epix.utils;
 
 export import :basic_grid;
 
-namespace ext::grid {
+namespace epix::ext::grid {
 /** @brief Error codes for chunk layer operations. */
 export enum LayerError {
     /** Requested value type is not supported by the target layer. */
@@ -648,7 +648,7 @@ struct ExtendibleChunkRefGrid {
 
 }  // namespace ext::grid
 
-namespace ext::grid::layers {
+namespace epix::ext::grid::layers {
 auto map_err(grid_error err) -> LayerError {
     switch (err) {
         case grid_error::OutOfBounds:

@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 export module epix.text:text;
 
@@ -8,7 +8,7 @@ import epix.core;
 import epix.image;
 import std;
 
-namespace text {
+namespace epix::text {
 /** @brief Re-export of font::Font for convenience. */
 export using font::Font;
 
@@ -218,7 +218,7 @@ export struct TextPlugin {
 }  // namespace text
 
 template <>
-struct core::Bundle<text::TextBundle> {
+struct epix::core::Bundle<epix::text::TextBundle> {
     static std::size_t write(text::TextBundle& bundle, std::span<void*> dests) {
         new (dests[0]) text::Text(std::move(bundle.text));
         new (dests[1]) text::TextFont(std::move(bundle.font));
@@ -244,4 +244,4 @@ struct core::Bundle<text::TextBundle> {
     }
 };
 
-static_assert(core::is_bundle<text::TextBundle>);
+static_assert(epix::core::is_bundle<epix::text::TextBundle>);

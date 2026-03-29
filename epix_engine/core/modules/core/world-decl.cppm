@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 export module epix.core:world.decl;
 
@@ -9,7 +9,7 @@ import :tick;
 import :type_registry;
 import :entities;
 
-namespace core {
+namespace epix::core {
 /** @brief Forward declaration of the ECS world. */
 export struct World;
 /** @brief Forward declaration of the deferred world.
@@ -18,7 +18,7 @@ export struct World;
 export struct DeferredWorld;
 
 /** @brief Unique identifier for a World instance. */
-export struct WorldId : ::core::int_base<std::uint64_t> {
+export struct WorldId : ::epix::core::int_base<std::uint64_t> {
     using int_base::int_base;
 };
 

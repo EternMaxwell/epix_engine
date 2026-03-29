@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 export module epix.core:storage;
 
@@ -14,7 +14,7 @@ export import :storage.dense;
 import :type_registry;
 import :component;
 
-namespace core {
+namespace epix::core {
 struct Storage {
     SparseSets sparse_sets;
     Tables tables;

@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 #include <spdlog/spdlog.h>
 
@@ -9,7 +9,7 @@ import webgpu;
 import epix.core;
 import glm;
 
-namespace mesh {
+namespace epix::mesh {
 constexpr std::size_t vertex_format_size(wgpu::VertexFormat format) {
     switch (format) {
         case wgpu::VertexFormat::eFloat32:

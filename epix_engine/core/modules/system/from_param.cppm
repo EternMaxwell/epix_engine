@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 export module epix.core:system.from_param;
 
@@ -7,7 +7,7 @@ import std;
 import :utils;
 import :system.param;
 
-namespace core {
+namespace epix::core {
 template <typename T>
 concept from_param = requires {
     typename function_traits<decltype(T::from_param)>::args_tuple;

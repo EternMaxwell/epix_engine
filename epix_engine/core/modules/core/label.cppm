@@ -1,11 +1,11 @@
-﻿module;
+module;
 
 export module epix.core:label;
 
 import std;
 import epix.meta;
 
-namespace core {
+namespace epix::core {
 /** @brief Generic label identified by a type_index and an optional extra discriminator.
  *  Used as a key for schedules, apps, and other named resources.
  *  Can be constructed from empty types, enums, integrals, or pointers. */
@@ -82,16 +82,16 @@ export struct Label {
 
 // hash for Label
 template <>
-struct std::hash<::core::Label> {
-    std::size_t operator()(const ::core::Label& label) const noexcept {
+struct std::hash<::epix::core::Label> {
+    std::size_t operator()(const ::epix::core::Label& label) const noexcept {
         std::size_t hash = std::hash<std::size_t>()(label.type_index().hash_code());
         hash ^= std::hash<std::size_t>()(label.extra()) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
         return hash;
     }
 };
-template <std::derived_from<::core::Label> T>
+template <std::derived_from<::epix::core::Label> T>
 struct std::hash<T> {
     std::size_t operator()(const T& label) const noexcept {
-        return std::hash<::core::Label>()(static_cast<const ::core::Label&>(label));
+        return std::hash<::epix::core::Label>()(static_cast<const ::epix::core::Label&>(label));
     }
 };

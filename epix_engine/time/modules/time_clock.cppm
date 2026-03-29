@@ -1,8 +1,8 @@
-﻿export module epix.time:time_clock;
+export module epix.time:time_clock;
 
 import std;
 
-namespace time {
+namespace epix::time {
 
 inline std::chrono::nanoseconds duration_rem(std::chrono::nanoseconds dividend, std::chrono::nanoseconds divisor) {
     return std::chrono::nanoseconds(dividend.count() % divisor.count());

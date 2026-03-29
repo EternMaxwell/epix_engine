@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 #include <cassert>
 
@@ -9,17 +9,17 @@ import std;
 import :tick;
 import :storage.untyped_vector;
 
-namespace core {
+namespace epix::core {
 struct Dense {
    public:
-    explicit Dense(const ::meta::type_info& desc, std::size_t reserve_cnt = 0) : values(desc, reserve_cnt) {
+    explicit Dense(const ::epix::meta::type_info& desc, std::size_t reserve_cnt = 0) : values(desc, reserve_cnt) {
         if (reserve_cnt) {
             added_ticks.reserve(reserve_cnt);
             modified_ticks.reserve(reserve_cnt);
         }
     }
 
-    const ::meta::type_info& type_info(this const Dense& self) { return self.values.type_info(); }
+    const ::epix::meta::type_info& type_info(this const Dense& self) { return self.values.type_info(); }
 
     void reserve(this Dense& self, std::size_t new_cap) {
         self.values.reserve(new_cap);

@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 export module epix.core:app.main_schedule;
 
@@ -9,7 +9,7 @@ import :app.state;
 import :ticks;
 import :schedule;
 
-namespace core {
+namespace epix::core {
 /** @brief A schedule label with optional system-set transforms.
  *  Extends ScheduleLabel to support run-condition transforms for
  *  state-dependent scheduling. */

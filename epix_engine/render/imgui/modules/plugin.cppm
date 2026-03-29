@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 export module epix.render.imgui:plugin;
 
@@ -11,9 +11,9 @@ import epix.glfw.core;
 import webgpu;
 import std;
 
-using namespace core;
+using namespace epix::core;
 
-namespace imgui {
+namespace epix::imgui {
 /** @brief Plugin that integrates Dear ImGui with the engine.
  *
  *  Sets up the ImGui context, GLFW and WebGPU backends, frame lifecycle
@@ -41,7 +41,7 @@ export inline struct BeginFrameSetT {
 // Frame lifecycle systems (main world)
 void imgui_begin_frame(ResMut<ImGuiState> state,
                        Res<glfw::GLFWwindows> windows,
-                       Query<Item<Entity>, With<::window::Window, ::window::PrimaryWindow>> primary);
+                       Query<Item<Entity>, With<::epix::window::Window, ::epix::window::PrimaryWindow>> primary);
 void imgui_end_frame(ResMut<ImGuiState> state);
 
 // Post-PreUpdate system that consumes input events handled by ImGui.
@@ -56,7 +56,7 @@ void imgui_consume_input(Res<ImGuiState> state,
 
 // Render system (render sub-app)
 void imgui_render(Res<ImGuiState> state,
-                  Res<render::window::ExtractedWindows> windows,
+                  Res<epix::render::window::ExtractedWindows> windows,
                   Res<wgpu::Device> device,
                   Res<wgpu::Queue> queue);
 }  // namespace imgui

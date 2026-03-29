@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 #include <stb_image.h>
 #include <stb_image_resize2.h>
@@ -9,8 +9,7 @@ module epix.image;
 import epix.assets;
 import std;
 
-using namespace image;
-
+namespace epix::image {
 namespace {
 Image create_like(const Image& image, Format format) {
     switch (image.type()) {
@@ -73,7 +72,7 @@ Image create_resized_like(const Image& image, std::uint32_t width, std::uint32_t
 }
 }  // namespace
 
-const FormatInfo& image::getFormatInfo(Format fmt) {
+const FormatInfo& getFormatInfo(Format fmt) {
     static FormatInfo info1{1, 1, false, false};
     static FormatInfo info2{2, 1, false, false};
     static FormatInfo info3{3, 1, false, false};
@@ -111,7 +110,7 @@ const FormatInfo& image::getFormatInfo(Format fmt) {
     }
 }
 
-std::exception_ptr image::to_exception_ptr(ImageLoadError error) {
+std::exception_ptr to_exception_ptr(ImageLoadError error) {
     switch (error) {
         case ImageLoadError::FileNotFound:
             return std::make_exception_ptr(std::runtime_error("Image file not found"));
@@ -632,3 +631,4 @@ void ImagePlugin::build(core::App& app) {
     assets::app_register_asset<Image>(app);
     assets::app_register_loader<ImageLoader>(app);
 }
+}  // namespace epix::image

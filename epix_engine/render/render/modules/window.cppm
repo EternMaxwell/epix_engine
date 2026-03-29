@@ -1,14 +1,14 @@
-﻿export module epix.render:window;
+export module epix.render:window;
 
 import epix.core;
 import epix.window;
 import webgpu;
 import std;
 
-using namespace core;
-using namespace window;
+using namespace epix::core;
+using namespace epix::window;
 
-namespace render::window {
+namespace epix::render::window {
 /**
  * @brief A component for window entity, to tell how its surface should be created, cause the backend is unknown.
  */
@@ -108,4 +108,4 @@ export struct WindowRenderPlugin {
     bool handle_present = true;
     void build(App&);
 };
-}  // namespace render::window
+}  // namespace epix::render::window

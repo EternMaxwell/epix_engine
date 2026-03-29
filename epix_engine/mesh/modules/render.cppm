@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 export module epix.mesh:render;
 
@@ -13,7 +13,7 @@ import std;
 import :mesh;
 import :gpumesh;
 
-namespace mesh {
+namespace epix::mesh {
 /** @brief Alpha blending mode for 2D mesh rendering. */
 export enum class MeshAlphaMode2d {
     Opaque,

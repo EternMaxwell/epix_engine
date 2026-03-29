@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 #include <spdlog/spdlog.h>
 
@@ -13,7 +13,7 @@ import :store;
 import :server.loader;
 import :meta;
 
-namespace assets {
+namespace epix::assets {
 export namespace load_error {
 struct RequestHandleMismatch {
     AssetPath path;
@@ -104,12 +104,12 @@ enum class HandleLoadingMode {
 };
 
 struct AssetInfos {
-    std::unordered_map<AssetPath, std::unordered_map<meta::type_index, UntypedAssetId>> path_to_ids;
+    std::unordered_map<AssetPath, std::unordered_map<epix::meta::type_index, UntypedAssetId>> path_to_ids;
     std::unordered_map<UntypedAssetId, AssetInfo> infos;
-    std::unordered_map<meta::type_index, std::shared_ptr<HandleProvider>> handle_providers;
+    std::unordered_map<epix::meta::type_index, std::shared_ptr<HandleProvider>> handle_providers;
 
-    std::unordered_map<meta::type_index, void (*)(core::World&, AssetIndex)> dependency_loaded_event_sender;
-    std::unordered_map<meta::type_index, void (*)(core::World&, AssetIndex, AssetPath, AssetLoadError)>
+    std::unordered_map<epix::meta::type_index, void (*)(epix::core::World&, AssetIndex)> dependency_loaded_event_sender;
+    std::unordered_map<epix::meta::type_index, void (*)(epix::core::World&, AssetIndex, AssetPath, AssetLoadError)>
         dependency_failed_event_sender;
 
     std::unordered_map<UntypedAssetId, std::variant<std::packaged_task<void()>, std::shared_future<void>>>
@@ -129,7 +129,7 @@ struct AssetInfos {
         decltype(handle_providers)& handle_providers,
         decltype(living_labeled_assets)& living_labeled_assets,
         bool watching_for_changes,
-        meta::type_index type,
+        epix::meta::type_index type,
         std::optional<AssetPath> path,
         std::optional<MetaTransform> meta_transform,
         bool loading);
@@ -145,46 +145,47 @@ struct AssetInfos {
                                                     std::optional<MetaTransform> meta_transform = std::nullopt);
     std::pair<UntypedHandle, bool> get_or_create_handle_untyped(
         const AssetPath& path,
-        std::optional<meta::type_index> type,
+        std::optional<epix::meta::type_index> type,
         HandleLoadingMode loading_mode,
         std::optional<MetaTransform> meta_transform = std::nullopt);
     auto get_or_create_handle_internal(const AssetPath& path,
-                                       std::optional<meta::type_index> type,
+                                       std::optional<epix::meta::type_index> type,
                                        HandleLoadingMode loading_mode,
                                        std::optional<MetaTransform> meta_transform = std::nullopt)
         -> std::expected<std::pair<UntypedHandle, bool>, GetOrCreateHandleError>;
     bool contains_key(const UntypedAssetId& id) const { return infos.contains(id); }
     std::optional<std::reference_wrapper<const AssetInfo>> get_info(const UntypedAssetId& id) const;
     std::optional<std::reference_wrapper<AssetInfo>> get_info_mut(const UntypedAssetId& id);
-    utils::input_iterable<UntypedAssetId> get_path_ids(const AssetPath& path) const;
+    epix::utils::input_iterable<UntypedAssetId> get_path_ids(const AssetPath& path) const;
     std::optional<UntypedHandle> get_handle_by_id(const UntypedAssetId& id) const;
     auto get_handles_by_path(const AssetPath& path) const;
-    auto get_handle_by_path_type(const AssetPath& path, meta::type_index type) const -> std::optional<UntypedHandle>;
+    auto get_handle_by_path_type(const AssetPath& path, epix::meta::type_index type) const
+        -> std::optional<UntypedHandle>;
     bool is_path_alive(const AssetPath& path) const;
     bool should_reload(const AssetPath& path) const;
     /** @brief Returns `true` if the asset should be removed from collection. */
     bool process_handle_destruction(const UntypedAssetId& id);
     void process_asset_load(const UntypedAssetId& loaded_asset_id,
                             ErasedLoadedAsset loaded_asset,
-                            core::World& world,
-                            const utils::Sender<InternalAssetEvent>& event_sender);
+                            epix::core::World& world,
+                            const epix::utils::Sender<InternalAssetEvent>& event_sender);
     void propagate_loaded_state(UntypedAssetId loaded_asset_id,
                                 UntypedAssetId waiting_id,
-                                const utils::Sender<InternalAssetEvent>& sender);
+                                const epix::utils::Sender<InternalAssetEvent>& sender);
     void propagate_failed_state(UntypedAssetId loaded_asset_id, UntypedAssetId waiting_id, const AssetLoadError& error);
     void process_asset_fail(const UntypedAssetId& failed_id, const AssetLoadError& error);
     // void remove_deps(const AssetInfo& info,
     //                  std::unordered_map<AssetPath, std::unordered_set<AssetPath>>&
     //                  loader_deps, const AssetPath& path) {}
 };
-}  // namespace assets
+}  // namespace epix::assets
 
-namespace assets {
+namespace epix::assets {
 template <typename T>
 std::pair<Handle<T>, bool> AssetInfos::get_or_create_handle(const AssetPath& path,
                                                             HandleLoadingMode loading_mode,
                                                             std::optional<MetaTransform> meta_transform) {
-    auto res = get_or_create_handle_internal(path, meta::type_id<T>{}, loading_mode, std::move(meta_transform));
+    auto res = get_or_create_handle_internal(path, epix::meta::type_id<T>{}, loading_mode, std::move(meta_transform));
     if (!res) {
         // error handling
         throw std::runtime_error("Failed to get or create handle: " + path.string());
@@ -196,7 +197,7 @@ std::pair<Handle<T>, bool> AssetInfos::get_or_create_handle(const AssetPath& pat
         })
         .value();
 }
-auto AssetInfos::get_handle_by_path_type(const AssetPath& path, meta::type_index type) const
+auto AssetInfos::get_handle_by_path_type(const AssetPath& path, epix::meta::type_index type) const
     -> std::optional<UntypedHandle> {
     auto it = path_to_ids.find(path);
     if (it != path_to_ids.end()) {
@@ -209,12 +210,12 @@ auto AssetInfos::get_handle_by_path_type(const AssetPath& path, meta::type_index
     }
     return std::nullopt;
 }
-}  // namespace assets
+}  // namespace epix::assets
 
-namespace assets {
+namespace epix::assets {
 void AssetInfos::propagate_loaded_state(UntypedAssetId loaded_asset_id,
                                         UntypedAssetId waiting_id,
-                                        const utils::Sender<InternalAssetEvent>& sender) {
+                                        const epix::utils::Sender<InternalAssetEvent>& sender) {
     auto deps_wait_on_rec_load = [&]() -> std::optional<std::unordered_set<UntypedAssetId>> {
         if (auto info_opt = get_info_mut(waiting_id)) {
             auto& info = info_opt->get();
@@ -292,8 +293,8 @@ void AssetInfos::process_asset_fail(const UntypedAssetId& failed_id, const Asset
 }
 void AssetInfos::process_asset_load(const UntypedAssetId& loaded_asset_id,
                                     ErasedLoadedAsset loaded_asset,
-                                    core::World& world,
-                                    const utils::Sender<InternalAssetEvent>& sender) {
+                                    epix::core::World& world,
+                                    const epix::utils::Sender<InternalAssetEvent>& sender) {
     // Process all the labeled assets first so that they don't get skipped
     // due to the "parent" not having its handle alive.
     for (auto& [label, labeled] : loaded_asset.labeled_assets) {
@@ -313,7 +314,7 @@ void AssetInfos::process_asset_load(const UntypedAssetId& loaded_asset_id,
     auto loading_deps = loaded_asset.dependencies | std::views::filter([&, this](const UntypedAssetId& dep_id) {
                             if (auto dep_info_opt = get_info_mut(dep_id)) {
                                 auto& dep_info = dep_info_opt->get();
-                                std::visit(utils::visitor{
+                                std::visit(epix::utils::visitor{
                                                [&](LoadStateOK state) {
                                                    switch (state) {
                                                        case LoadStateOK::NotLoaded:
@@ -334,7 +335,7 @@ void AssetInfos::process_asset_load(const UntypedAssetId& loaded_asset_id,
                                                },
                                            },
                                            dep_info.rec_dep_state);
-                                return std::visit(utils::visitor{
+                                return std::visit(epix::utils::visitor{
                                                       [&](LoadStateOK state) {
                                                           switch (state) {
                                                               case LoadStateOK::NotLoaded:
@@ -440,7 +441,7 @@ void AssetInfos::process_asset_load(const UntypedAssetId& loaded_asset_id,
 
     if (deps_wait_on_rec_dep_load) {
         auto& deps_wait_on_rec_load = *deps_wait_on_rec_dep_load;
-        std::visit(utils::visitor{
+        std::visit(epix::utils::visitor{
                        [&](const LoadStateOK& state) {
                            if (state == LoadStateOK::Loaded) {
                                for (auto&& dep_id : deps_wait_on_rec_load) {
@@ -551,12 +552,12 @@ std::optional<std::reference_wrapper<AssetInfo>> AssetInfos::get_info_mut(const 
     }
     return std::nullopt;
 }
-utils::input_iterable<UntypedAssetId> AssetInfos::get_path_ids(const AssetPath& path) const {
+epix::utils::input_iterable<UntypedAssetId> AssetInfos::get_path_ids(const AssetPath& path) const {
     auto it = path_to_ids.find(path);
     if (it != path_to_ids.end()) {
         return it->second | std::views::values;
     }
-    return utils::input_iterable<UntypedAssetId>{};
+    return epix::utils::input_iterable<UntypedAssetId>{};
 }
 std::optional<UntypedHandle> AssetInfos::get_handle_by_id(const UntypedAssetId& id) const {
     return get_info(id).and_then([](const AssetInfo& info) -> std::optional<UntypedHandle> {
@@ -565,7 +566,7 @@ std::optional<UntypedHandle> AssetInfos::get_handle_by_id(const UntypedAssetId& 
     });
 }
 std::pair<UntypedHandle, bool> AssetInfos::get_or_create_handle_untyped(const AssetPath& path,
-                                                                        std::optional<meta::type_index> type,
+                                                                        std::optional<epix::meta::type_index> type,
                                                                         HandleLoadingMode loading_mode,
                                                                         std::optional<MetaTransform> meta_transform) {
     auto res = get_or_create_handle_internal(path, type, loading_mode, std::move(meta_transform));
@@ -580,7 +581,7 @@ std::expected<UntypedHandle, GetOrCreateHandleError> AssetInfos::create_handle_i
     decltype(handle_providers)& handle_providers,
     decltype(living_labeled_assets)& living_labeled_assets,
     bool watching_for_changes,
-    meta::type_index type,
+    epix::meta::type_index type,
     std::optional<AssetPath> path,
     std::optional<MetaTransform> meta_transform,
     bool loading) {
@@ -608,13 +609,13 @@ std::expected<UntypedHandle, GetOrCreateHandleError> AssetInfos::create_handle_i
     return handle;
 }
 auto AssetInfos::get_or_create_handle_internal(const AssetPath& path,
-                                               std::optional<meta::type_index> type,
+                                               std::optional<epix::meta::type_index> type,
                                                HandleLoadingMode loading_mode,
                                                std::optional<MetaTransform> meta_transform)
     -> std::expected<std::pair<UntypedHandle, bool>, GetOrCreateHandleError> {
     auto& handles = path_to_ids[path];
 
-    type = type.or_else([&]() -> std::optional<meta::type_index> {
+    type = type.or_else([&]() -> std::optional<epix::meta::type_index> {
         if (handles.size() == 1) {
             return handles.begin()->first;
         }
@@ -629,7 +630,7 @@ auto AssetInfos::get_or_create_handle_internal(const AssetPath& path,
         bool should_load = false;
         if (loading_mode == HandleLoadingMode::Force ||
             (loading_mode == HandleLoadingMode::Request &&
-             std::visit(utils::visitor{
+             std::visit(epix::utils::visitor{
                             [](const LoadStateOK& state) { return state == LoadStateOK::NotLoaded; },
                             [](const AssetLoadError& error) { return true; },
                         },
@@ -666,4 +667,4 @@ auto AssetInfos::get_or_create_handle_internal(const AssetPath& path,
         return std::make_pair(UntypedHandle(handle), should_load);
     }
 }
-}  // namespace assets
+}  // namespace epix::assets

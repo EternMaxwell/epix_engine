@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 export module epix.assets:io.source;
 
@@ -11,7 +11,7 @@ import :io.reader;
 import :io.file.asset;
 import :io.file.watcher;
 
-namespace assets {
+namespace epix::assets {
 export struct AssetSource {
    private:
     AssetSourceId m_id;

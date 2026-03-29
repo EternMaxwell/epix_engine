@@ -2,7 +2,7 @@ export module epix.extension.grid:basic_grid;
 
 import std;
 
-namespace ext::grid {
+namespace epix::ext::grid {
 constexpr std::size_t npos = std::numeric_limits<std::size_t>::max();
 bool is_npos(std::size_t index) { return index == npos; }
 bool not_npos(std::size_t index) { return index != npos; }
@@ -791,7 +791,7 @@ struct tree_grid {
 };
 }  // namespace ext::grid
 
-namespace ext::grid {
+namespace epix::ext::grid {
 template <std::size_t Dim, typename T>
     requires std::constructible_from<T> && std::movable<T>
 std::size_t packed_grid<Dim, T>::offset_unsafe(const std::array<std::uint32_t, Dim>& pos) const {

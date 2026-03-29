@@ -1,10 +1,13 @@
-﻿#include <gtest/gtest.h>
+#include <gtest/gtest.h>
 
 import std;
 import epix.utils;
+import epix.core;
+import epix.meta;
 import epix.assets;
 
-using namespace assets;
+using namespace epix::assets;
+namespace meta = epix::meta;
 
 // ===========================================================================
 // Test helper types — matching Bevy's test patterns
@@ -54,12 +57,12 @@ struct FakeTransactionLogFactory : ProcessorTransactionLogFactory {
 
 struct TestTextLoader {
     using Asset = std::string;
-    struct Settings : assets::Settings {};
+    struct Settings : epix::assets::Settings {};
     using Error = std::exception_ptr;
 
     static std::span<std::string_view> extensions() {
         static auto exts = std::array{std::string_view{"txt"}, std::string_view{"text"}};
-        return exts;
+        return std::span<std::string_view>(exts.data(), exts.size());
     }
 
     static std::expected<std::string, Error> load(std::istream& reader, const Settings&, LoadContext&) {
@@ -74,7 +77,7 @@ struct TestTextLoader {
 struct TestTextSaver {
     using AssetType    = std::string;
     using OutputLoader = TestTextLoader;
-    struct Settings : assets::Settings {};
+    struct Settings : epix::assets::Settings {};
     using Error = std::exception_ptr;
 
     std::expected<OutputLoader::Settings, Error> save(std::ostream& writer,
@@ -91,7 +94,7 @@ struct TestTextSaver {
 struct AddTextTransformer {
     using AssetInput  = std::string;
     using AssetOutput = std::string;
-    struct Settings : assets::Settings {};
+    struct Settings : epix::assets::Settings {};
     using Error = std::exception_ptr;
 
     std::string suffix;
@@ -110,7 +113,7 @@ using TestLTSProcessor = LoadTransformAndSave<TestTextLoader, AddTextTransformer
 // ---- Simple identity processor (no-op transform) ----
 
 struct TestIdentityProcessor {
-    using Settings     = assets::Settings;
+    using Settings     = epix::assets::Settings;
     using OutputLoader = TestTextLoader;
 
     std::expected<OutputLoader::Settings, std::exception_ptr> process(ProcessContext& ctx,
@@ -209,7 +212,7 @@ TEST(ProcessError, MissingAssetLoaderForExtension) {
 
 TEST(ProcessError, AssetReaderError) {
     ProcessError err{process_errors::AssetReaderError{AssetPath("test.txt"),
-                                                      assets::AssetReaderError{reader_errors::NotFound{"test.txt"}}}};
+                                                      epix::assets::AssetReaderError{reader_errors::NotFound{"test.txt"}}}};
     EXPECT_TRUE(std::holds_alternative<process_errors::AssetReaderError>(err));
 }
 
@@ -335,7 +338,7 @@ struct AmbigMarker {};
 
 template <typename T>
 struct TemplatedProcessor {
-    using Settings     = assets::Settings;
+    using Settings     = epix::assets::Settings;
     using OutputLoader = TestTextLoader;
 
     std::expected<OutputLoader::Settings, std::exception_ptr> process(ProcessContext&,
@@ -442,7 +445,7 @@ TEST(ProcessError, AmbiguousProcessor) {
 TEST(ProcessError, AssetWriterError) {
     ProcessError err{process_errors::AssetWriterError{
         AssetPath("out.bin"),
-        assets::AssetWriterError{writer_errors::IoError{std::make_error_code(std::errc::no_space_on_device)}}}};
+        epix::assets::AssetWriterError{writer_errors::IoError{std::make_error_code(std::errc::no_space_on_device)}}}};
     EXPECT_TRUE(std::holds_alternative<process_errors::AssetWriterError>(err));
 }
 
@@ -458,7 +461,7 @@ TEST(ProcessError, MissingProcessedAssetWriter) {
 
 TEST(ProcessError, ReadAssetMetaError) {
     ProcessError err{process_errors::ReadAssetMetaError{AssetPath("test.txt"),
-                                                        assets::AssetReaderError{reader_errors::NotFound{"meta"}}}};
+                                                        epix::assets::AssetReaderError{reader_errors::NotFound{"meta"}}}};
     EXPECT_TRUE(std::holds_alternative<process_errors::ReadAssetMetaError>(err));
 }
 
@@ -506,7 +509,7 @@ TEST(ProcessError, AssetTransformError) {
 
 TEST(ProcessError, VisitorDispatch) {
     ProcessError err{process_errors::MissingProcessor{"proc_x"}};
-    bool matched = std::visit(utils::visitor{
+    bool matched = std::visit(epix::utils::visitor{
                                   [](const process_errors::MissingProcessor& e) { return e.name == "proc_x"; },
                                   [](const auto&) { return false; },
                               },
@@ -534,7 +537,7 @@ TEST(GetProcessorError, Ambiguous) {
 
 TEST(GetProcessorError, VisitorDispatch) {
     GetProcessorError err{get_processor_errors::Missing{"x"}};
-    bool matched = std::visit(utils::visitor{
+    bool matched = std::visit(epix::utils::visitor{
                                   [](const get_processor_errors::Missing&) { return true; },
                                   [](const get_processor_errors::Ambiguous&) { return false; },
                               },

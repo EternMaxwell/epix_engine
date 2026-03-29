@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 export module epix.assets:io.file.asset;
 
@@ -8,7 +8,7 @@ import epix.utils;
 
 import :io.reader;
 
-namespace assets {
+namespace epix::assets {
 export struct FileAssetReader : public AssetReader {
    private:
     std::filesystem::path m_root;

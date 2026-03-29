@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 export module epix.assets:io.processor_gated;
 
@@ -9,7 +9,7 @@ import :path;
 import :io.reader;
 import :processor;
 
-namespace assets {
+namespace epix::assets {
 
 /// A stream wrapper that holds a shared transaction lock, preventing the processor
 /// from writing while the stream is being read.

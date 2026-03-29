@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 module epix.core;
 
@@ -6,7 +6,7 @@ import std;
 
 import :schedule.queue;
 
-namespace core {
+namespace epix::core {
 // smallvec
 smallvec::smallvec() {}
 smallvec::smallvec(const smallvec& other) : size_(other.size_) {

@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 #include <spdlog/spdlog.h>
 
@@ -19,7 +19,7 @@ export import :app.event;
 export import :app.extract;
 export import :app.plugin;
 
-export namespace core {
+export namespace epix::core {
 /** @brief Error returned when the app's world has been moved to a system dispatcher. */
 struct WorldNotOwnedError {};
 /** @brief Ordered list of schedule labels controlling the execution order of schedules. */

@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 #include <cassert>
 
@@ -9,7 +9,7 @@ import epix.meta;
 
 import :storage.table;
 
-namespace core {
+namespace epix::core {
 std::optional<Entity> Table::swap_remove(this Table& self, size_t dense_index) {
     assert(dense_index < self._entities.size());
     bool is_last = dense_index == self._entities.size() - 1;

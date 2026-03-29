@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 #include <gtest/gtest.h>
 
@@ -44,10 +44,10 @@ std::atomic<int> Heavy::destructions{0};
 }  // namespace
 
 TEST(core, untyped_vector) {
-    using namespace core;
+    using namespace epix::core;
 
     // Test with int
-    const auto& int_desc = meta::type_info::of<int>();
+    const auto& int_desc = epix::meta::type_info::of<int>();
     untyped_vector v_int(int_desc, 4);
     for (int i = 0; i < 10; ++i) {
         v_int.push_back_from(&i);
@@ -59,7 +59,7 @@ TEST(core, untyped_vector) {
     }
 
     // Test with std::string
-    const auto& str_desc = meta::type_info::of<std::string>();
+    const auto& str_desc = epix::meta::type_info::of<std::string>();
     untyped_vector v_str(str_desc, 2);
     std::string s1 = "hello";
     std::string s2 = "world";
@@ -95,7 +95,7 @@ TEST(core, untyped_vector) {
         Heavy::moves         = 0;
         Heavy::destructions  = 0;
 
-        const auto& heavy_desc = meta::type_info::of<Heavy>();
+        const auto& heavy_desc = epix::meta::type_info::of<Heavy>();
         untyped_vector v_heavy(heavy_desc, 1);
 
         // push a sequence of named Heavy objects to force multiple reallocations

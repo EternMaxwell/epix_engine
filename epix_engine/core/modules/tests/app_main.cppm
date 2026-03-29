@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 #include <gtest/gtest.h>
 #include <spdlog/spdlog.h>
@@ -8,7 +8,7 @@ export module epix.core:tests.app_main;
 import :app;
 import std;
 
-using namespace core;
+using namespace epix::core;
 
 namespace {
 std::vector<std::string> actions;

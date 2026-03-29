@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 export module epix.core:app.schedules;
 
@@ -6,7 +6,7 @@ import std;
 
 import :schedule;
 
-namespace core {
+namespace epix::core {
 /**
  * @brief A collection of schedules, keyed by ScheduleLabel.
  *  Stored as a resource in World; provides lookup, insertion and removal.

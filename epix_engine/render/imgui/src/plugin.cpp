@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 #include <GLFW/glfw3.h>
 #include <imgui.h>
@@ -16,10 +16,11 @@ import epix.glfw.core;
 import webgpu;
 import std;
 
-using namespace core;
+using namespace epix;
+using namespace epix::core;
 
-namespace win  = ::window;
-namespace rwin = render::window;
+namespace win  = ::epix::window;
+namespace rwin = epix::render::window;
 
 void imgui::ImGuiPlugin::build(App& app) {
     // Create ImGui context and store in main world

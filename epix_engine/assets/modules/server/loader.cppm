@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 export module epix.assets:server.loader;
 
@@ -8,7 +8,7 @@ import epix.meta;
 import :store;
 import :meta;
 
-namespace assets {
+namespace epix::assets {
 template <typename E>
 std::exception_ptr asset_loader_error_to_exception(const E& err) {
     if constexpr (std::same_as<std::remove_cvref_t<E>, std::exception_ptr>) {

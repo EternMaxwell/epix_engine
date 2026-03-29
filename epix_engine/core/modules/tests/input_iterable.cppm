@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 #ifdef EPIX_ENABLE_TEST
 #include <gtest/gtest.h>
@@ -12,7 +12,7 @@ import epix.utils;
 
 #ifdef EPIX_ENABLE_TEST
 TEST(core, input_iterable) {
-    using namespace utils;
+    using namespace epix::utils;
 
     std::vector<int> v{1, 2, 3};
     input_iterable<int> it(v);
@@ -38,7 +38,7 @@ TEST(core, input_iterable) {
 
 #ifdef EPIX_ENABLE_TEST
 TEST(core, input_iterable_views_transform_filter) {
-    using namespace utils;
+    using namespace epix::utils;
 
     std::vector<int> v{1, 2, 3, 4, 5};
 
@@ -66,7 +66,7 @@ TEST(core, input_iterable_views_transform_filter) {
 
 #ifdef EPIX_ENABLE_TEST
 TEST(core, input_iterable_istream_view_single_pass) {
-    using namespace utils;
+    using namespace epix::utils;
 
     std::istringstream iss("10 20 30");
     std::ranges::istream_view<int> iv(iss);

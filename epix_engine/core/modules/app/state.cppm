@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 export module epix.core:app.state;
 
@@ -7,7 +7,7 @@ import std;
 import :app.decl;
 import :ticks;
 
-namespace core {
+namespace epix::core {
 /** @brief Read-only state resource wrapping an enum value.
  *  Only the App can modify the underlying value; systems read it via Res<State<T>>.
  *  @tparam T An enum type representing application states. */
@@ -22,7 +22,7 @@ struct State {
         return *this;
     }
 
-    friend struct ::core::App;
+    friend struct ::epix::core::App;
 
    public:
     State() : m_state() {}

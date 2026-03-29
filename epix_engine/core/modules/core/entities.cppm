@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 #define EPIX_MAKE_INT_WRAPPER(name, type) \
     struct name : core::int_base<type> {  \
@@ -11,7 +11,7 @@ import std;
 
 import :utils;
 
-namespace core {
+namespace epix::core {
 /** @brief Lightweight entity identifier composed of a generation counter and a slot index.
  *  Two entities with the same index but different generations are distinct. */
 export struct Entity {
@@ -294,38 +294,38 @@ export struct Entities {
 
 namespace std {
 template <>
-struct hash<::core::Entity> {
-    std::size_t operator()(::core::Entity e) const { return std::hash<std::uint64_t>()(e.uid); }
+struct hash<::epix::core::Entity> {
+    std::size_t operator()(::epix::core::Entity e) const { return std::hash<std::uint64_t>()(e.uid); }
 };
 // temporary. currently partial specializations are errornous in modules in most compilers
 template <>
-struct hash<::core::ArchetypeId> {
-    std::size_t operator()(const ::core::ArchetypeId& id) const noexcept {
-        return std::hash<::core::int_base<std::uint32_t>>()(id);
+struct hash<::epix::core::ArchetypeId> {
+    std::size_t operator()(const ::epix::core::ArchetypeId& id) const noexcept {
+        return std::hash<::epix::core::int_base<std::uint32_t>>()(id);
     }
 };
 template <>
-struct hash<::core::TableId> {
-    std::size_t operator()(const ::core::TableId& id) const noexcept {
-        return std::hash<::core::int_base<std::uint32_t>>()(id);
+struct hash<::epix::core::TableId> {
+    std::size_t operator()(const ::epix::core::TableId& id) const noexcept {
+        return std::hash<::epix::core::int_base<std::uint32_t>>()(id);
     }
 };
 template <>
-struct hash<::core::BundleId> {
-    std::size_t operator()(const ::core::BundleId& id) const noexcept {
-        return std::hash<::core::int_base<std::uint64_t>>()(id);
+struct hash<::epix::core::BundleId> {
+    std::size_t operator()(const ::epix::core::BundleId& id) const noexcept {
+        return std::hash<::epix::core::int_base<std::uint64_t>>()(id);
     }
 };
 template <>
-struct hash<::core::ArchetypeRow> {
-    std::size_t operator()(const ::core::ArchetypeRow& id) const noexcept {
-        return std::hash<::core::int_base<std::uint32_t>>()(id);
+struct hash<::epix::core::ArchetypeRow> {
+    std::size_t operator()(const ::epix::core::ArchetypeRow& id) const noexcept {
+        return std::hash<::epix::core::int_base<std::uint32_t>>()(id);
     }
 };
 template <>
-struct hash<::core::TableRow> {
-    std::size_t operator()(const ::core::TableRow& id) const noexcept {
-        return std::hash<::core::int_base<std::uint32_t>>()(id);
+struct hash<::epix::core::TableRow> {
+    std::size_t operator()(const ::epix::core::TableRow& id) const noexcept {
+        return std::hash<::epix::core::int_base<std::uint32_t>>()(id);
     }
 };
 }  // namespace std

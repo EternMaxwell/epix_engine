@@ -1,11 +1,11 @@
-﻿module;
+module;
 
 #include <SFML/Window/WindowBase.hpp>
 
 module epix.sfml.core;
 
-using namespace sfml;
-using namespace core;
+using namespace epix::sfml;
+using namespace epix::core;
 
 void SFMLPlugin::build(App& app) {
     app.add_plugins(image::ImagePlugin{});

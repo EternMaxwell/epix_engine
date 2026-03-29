@@ -1,4 +1,4 @@
-﻿#include <imgui.h>
+#include <imgui.h>
 #include <spdlog/spdlog.h>
 
 import epix.core;
@@ -13,7 +13,8 @@ import epix.render.imgui;
 
 import std;
 
-using namespace core;
+using namespace epix;
+using namespace epix::core;
 
 void demo_system(imgui::Ctx imgui) { ImGui::ShowDemoWindow(); }
 

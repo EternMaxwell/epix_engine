@@ -1,8 +1,8 @@
-﻿module epix.assets;
+module epix.assets;
 
 import :index;
 
-using namespace assets;
+namespace epix::assets {
 
 AssetIndexAllocator::AssetIndexAllocator() {
     std::tie(m_free_indices_sender, m_free_indices_receiver) = core::make_channel<AssetIndex>();
@@ -20,3 +20,4 @@ AssetIndex AssetIndexAllocator::reserve() const {
 }
 core::Receiver<AssetIndex> AssetIndexAllocator::reserved_receiver() const { return m_reserved; }
 void AssetIndexAllocator::release(const AssetIndex& index) const { m_free_indices_sender.send(index); }
+}  // namespace epix::assets

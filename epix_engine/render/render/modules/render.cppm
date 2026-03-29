@@ -1,4 +1,4 @@
-﻿export module epix.render;
+export module epix.render;
 
 import epix.core;
 import webgpu;
@@ -17,7 +17,7 @@ export import :pipeline_server;
 export import :render_phase;
 export import :view;
 
-namespace render {
+namespace epix::render {
 /**
  * @brief Resource for anonymous surface that is used for requesting adapter/device.
  * Since webgpu requires a surface to request an adapter, we provide this resource to let window implementations to

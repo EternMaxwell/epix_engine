@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 #include <gtest/gtest.h>
 
@@ -26,9 +26,9 @@ struct Comp4 {
 };
 }  // namespace
 template <>
-struct core::sparse_component<Comp4> : std::true_type {};
+struct epix::core::sparse_component<Comp4> : std::true_type {};
 
-using namespace core;
+using namespace epix::core;
 
 namespace {
 void spawn_entities(Commands commands) {

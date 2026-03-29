@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 export module epix.core:system.param;
 
@@ -9,7 +9,7 @@ import :query;
 import :world.interface;
 import :world.entity_ref;
 
-namespace core {
+namespace epix::core {
 /** @brief Trait class defining how a type is used as a system parameter.
  *  Specialize to define State, Item, init_state(), get_param(), etc. */
 export template <typename T>

@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 #include <gtest/gtest.h>
 
@@ -6,7 +6,7 @@ export module epix.core:tests;
 
 import std;
 
-namespace core::tests {
+namespace epix::core::tests {
 struct ForceBase {
     template <typename T>
     ForceBase(T&&) {}
@@ -17,4 +17,4 @@ struct ForceBase {
 };
 
 export [[nodiscard]] std::vector<ForceBase> force_link_tests();
-}  // namespace core::tests
+}  // namespace epix::core::tests

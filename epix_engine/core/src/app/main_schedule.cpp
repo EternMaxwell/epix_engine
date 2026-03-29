@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 module epix.core;
 
@@ -7,7 +7,7 @@ import std;
 import :app.main_schedule;
 import :labels;
 
-namespace core {
+namespace epix::core {
 void MainSchedulePlugin::build(App& app) {
     auto schedules = std::array{
         Schedule(PreStartup)

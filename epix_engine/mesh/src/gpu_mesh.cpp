@@ -1,6 +1,7 @@
-﻿module epix.mesh;
+module epix.mesh;
 
-using namespace mesh;
+using namespace epix;
+using namespace epix::mesh;
 
 namespace {
 constexpr std::size_t kBufferWriteAlignment = 4;

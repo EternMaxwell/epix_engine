@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 #include <gtest/gtest.h>
 
@@ -25,9 +25,9 @@ export import :io.reader;
 export import :io.source;
 export import :io.embedded;
 
-using namespace core;
+using namespace epix::core;
 
-namespace assets {
+namespace epix::assets {
 /** @brief Built-in system set labels for asset event processing order. */
 export enum class AssetSystems {
     HandleEvents, /**< Systems that react to handle lifecycle events. */

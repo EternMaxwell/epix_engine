@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 #include <cassert>
 
@@ -14,7 +14,7 @@ import :bundle.spec;
 import :storage;
 import :hierarchy;
 
-namespace core {
+namespace epix::core {
 /**
  * @brief Read only reference to an entity in a World. Can get mutable components, but cannot do structural changes.
  */

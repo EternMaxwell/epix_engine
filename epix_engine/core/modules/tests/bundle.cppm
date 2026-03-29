@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 #include <gtest/gtest.h>
 
@@ -8,7 +8,7 @@ import std;
 
 import :bundle;
 
-using namespace core;
+using namespace epix::core;
 
 namespace {
 struct A {

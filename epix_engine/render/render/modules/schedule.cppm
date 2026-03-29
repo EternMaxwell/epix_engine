@@ -1,8 +1,8 @@
-﻿export module epix.render:schedule;
+export module epix.render:schedule;
 
 import epix.core;
 
-namespace render {
+namespace epix::render {
 struct RenderT {
     static core::Schedule render_schedule();
 };

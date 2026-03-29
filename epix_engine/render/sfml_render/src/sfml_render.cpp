@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 #define WGPU_TARGET_MACOS 1
 #define WGPU_TARGET_LINUX_X11 2
@@ -125,13 +125,14 @@ wgpu::Surface sfmlGetWGPUSurface(const wgpu::Instance& instance, sf::WindowBase*
     return std::move(*reinterpret_cast<wgpu::Surface*>(&res));
 }
 
-using namespace core;
+using namespace epix::core;
 
-using render::window::SurfaceCreation;
+using epix::render::window::SurfaceCreation;
 
-void sfml::render::SFMLRenderPlugin::build(App& app) {
+void epix::sfml::render::SFMLRenderPlugin::build(App& app) {
     auto system = make_system_unique(
-        [](Commands commands, Query<Item<Entity>, Filter<With<window::Window>, Without<SurfaceCreation>>> windows,
+        [](Commands commands,
+           Query<Item<Entity>, Filter<With<epix::window::Window>, Without<SurfaceCreation>>> windows,
            ResMut<SFMLwindows> sfml_windows) {
             for (auto&& [id] : windows.iter()) {
                 auto it = sfml_windows->find(id);
@@ -144,7 +145,7 @@ void sfml::render::SFMLRenderPlugin::build(App& app) {
             }
         });
     app.runner_scope([system = std::move(system)](SFMLRunner& runner) mutable {
-           runner.set_render_app(::render::Render);
+           runner.set_render_app(::epix::render::Render);
            runner.append_system(std::move(system));
        })
         .transform_error([](App::RunnerError error) {

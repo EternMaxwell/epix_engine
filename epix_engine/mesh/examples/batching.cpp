@@ -11,6 +11,8 @@ import epix.transform;
 import epix.input;
 import epix.image;
 
+using namespace epix;
+
 // Camera controls: WASD to pan, scroll to zoom, Space to reset
 namespace {
 struct CamControlPlugin {

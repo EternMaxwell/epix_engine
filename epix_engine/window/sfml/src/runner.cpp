@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 #include <spdlog/spdlog.h>
 
@@ -8,9 +8,9 @@ module epix.sfml.core;
 
 import std;
 
-using namespace core;
-using namespace sfml;
-using namespace window;
+using namespace epix::core;
+using namespace epix::sfml;
+using namespace epix::window;
 
 SFMLRunner::SFMLRunner(App& app) {
     check_exit    = make_system_unique([](EventReader<AppExit> exit_event) -> std::optional<int> {

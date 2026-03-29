@@ -1,4 +1,4 @@
-﻿export module epix.render:graph.node;
+export module epix.render:graph.node;
 
 import :graph.decl;
 import :graph.slot;
@@ -6,9 +6,9 @@ import :graph.slot;
 import std;
 import epix.core;
 
-using namespace core;
+using namespace epix::core;
 
-namespace render::graph {
+namespace epix::render::graph {
 /** @brief Base class for render graph nodes.
  *
  * Override `inputs()` / `outputs()` to declare slots, `update()` for

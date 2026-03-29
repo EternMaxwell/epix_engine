@@ -1,9 +1,9 @@
-﻿module epix.render;
+module epix.render;
 
 import :graph.slot;
 
-using namespace render;
-using namespace graph;
+using namespace epix::render;
+using namespace epix::render::graph;
 
 std::string_view graph::type_name(SlotType type) {
     switch (type) {

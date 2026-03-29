@@ -8,7 +8,7 @@ export import :graph.error;
 
 import std;
 
-namespace render::graph {
+namespace epix::render::graph {
 /** @brief Directed acyclic graph of render nodes.
  *
  * Nodes are connected by node edges (execution order) and slot edges
@@ -127,7 +127,7 @@ struct RenderGraphRunner {
 };
 }  // namespace render::graph
 
-export namespace render {
+export namespace epix::render {
 using graph::GraphContext;
 using graph::RenderContext;
 using graph::RenderGraph;

@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 #include <cassert>
 
@@ -13,7 +13,7 @@ import :tick;
 import :storage.sparse_set;
 import :storage.table;
 
-namespace core {
+namespace epix::core {
 /** @brief Context passed to component lifecycle hook callbacks.
  *  Contains the entity being affected and the component type involved. */
 export struct HookContext {
@@ -155,20 +155,20 @@ struct RequiredComponents {
 struct ComponentInfo {
    private:
     TypeId _id;
-    ::meta::type_index _index;
+    ::epix::meta::type_index _index;
     StorageType _storage_type;
     ComponentHooks _hooks;
     RequiredComponents _required_components;
     std::unordered_set<TypeId> _required_by;
 
    public:
-    ComponentInfo(TypeId id, ::meta::type_index index, StorageType storage_type)
+    ComponentInfo(TypeId id, ::epix::meta::type_index index, StorageType storage_type)
         : _id(id), _index(index), _storage_type(storage_type) {}
 
     /** @brief Get the component's type id. */
     TypeId type_id() const { return _id; }
     /** @brief Get the component's runtime type index. */
-    ::meta::type_index type_index() const { return _index; }
+    ::epix::meta::type_index type_index() const { return _index; }
     /** @brief Get the component's storage type (Table or SparseSet). */
     StorageType storage_type() const { return _storage_type; }
     /** @brief Get the component's lifecycle hooks. */

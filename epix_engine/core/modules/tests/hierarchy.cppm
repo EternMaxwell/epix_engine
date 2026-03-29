@@ -1,4 +1,4 @@
-﻿module;
+module;
 
 #include <gtest/gtest.h>
 
@@ -10,7 +10,7 @@ import :hierarchy;
 import :world;
 
 TEST(core, hierarchy) {
-    using namespace core;
+    using namespace epix::core;
 
     auto registry = std::make_shared<TypeRegistry>();
     World world(WorldId(1), std::move(registry));
