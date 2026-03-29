@@ -20,6 +20,19 @@ struct UploadBufferView {
     std::size_t size = 0;
 };
 
+bool should_recreate_buffer(std::size_t required_size, std::size_t current_size) {
+    if (required_size == 0) {
+        return current_size != 0;
+    }
+    if (current_size == 0) {
+        return true;
+    }
+    if (required_size > current_size) {
+        return true;
+    }
+    return required_size < (current_size / 2);
+}
+
 UploadBufferView make_upload_buffer_view(const core::untyped_vector& data) {
     UploadBufferView view;
     auto element_size   = data.type_info().size;
@@ -73,14 +86,19 @@ void GPUMesh::update_from_mesh(const Mesh& mesh, const wgpu::Device& device, con
                                                     return align_up(acc, kBufferWriteAlignment) + write_size;
                                                  });
     auto queue          = device.getQueue();
-    if (total_bytes != 0) {
-        if (total_bytes > (_combined_buffer ? _combined_buffer.getSize() : 0)) {
+    auto combined_size  = static_cast<std::size_t>(_combined_buffer ? _combined_buffer.getSize() : 0);
+    if (should_recreate_buffer(total_bytes, combined_size)) {
+        if (total_bytes == 0) {
+            _combined_buffer = nullptr;
+        } else {
             _combined_buffer =
                 device.createBuffer(wgpu::BufferDescriptor()
                                         .setSize(total_bytes)
                                         .setLabel("GPUMesh::combined_buffer")
                                         .setUsage(wgpu::BufferUsage::eVertex | wgpu::BufferUsage::eCopyDst));
         }
+    }
+    if (total_bytes != 0) {
         size_t offset = 0;
         for (auto&& attribute_data : mesh.iter_attributes()) {
             auto&& [attribute, data] = attribute_data;
@@ -94,6 +112,7 @@ void GPUMesh::update_from_mesh(const Mesh& mesh, const wgpu::Device& device, con
     }
     mesh.get_indices().and_then([&](const MeshIndices& indices) -> std::optional<bool> {
         if (indices.empty()) {
+            _index_buffer = nullptr;
             _index_binding.reset();
             return std::nullopt;
         }
@@ -101,7 +120,8 @@ void GPUMesh::update_from_mesh(const Mesh& mesh, const wgpu::Device& device, con
         auto upload_view      = make_upload_buffer_view(indices.data);
         size_t byte_size      = indices.data.type_info().size * indices.data.size();
         size_t reserved_bytes = upload_view.size;
-        if (reserved_bytes > (_index_buffer ? _index_buffer.getSize() : 0)) {
+        auto index_size       = static_cast<std::size_t>(_index_buffer ? _index_buffer.getSize() : 0);
+        if (should_recreate_buffer(reserved_bytes, index_size)) {
             _index_buffer = device.createBuffer(wgpu::BufferDescriptor()
                                                     .setSize(reserved_bytes)
                                                     .setLabel("GPUMesh::index_buffer")
