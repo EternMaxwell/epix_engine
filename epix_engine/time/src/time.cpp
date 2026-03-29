@@ -35,7 +35,7 @@ void time::TimePlugin::build(App& app) {
         }).set_name("time_system"));
 
     // Register FixedMain schedule with loop condition
-    ExecuteConfig fixed_config;
+    ScheduleConfig fixed_config;
     fixed_config.loop_condition = [](World& world) -> bool {
         auto& fixed_time = world.resource_mut<Time<Fixed>>();
         if (!fixed_time.expend()) return false;
@@ -43,7 +43,7 @@ void time::TimePlugin::build(App& app) {
         return true;
     };
 
-    app.add_schedule(Schedule(FixedMain).with_execute_config(fixed_config).then([](Schedule& sche) {
+    app.add_schedule(Schedule(FixedMain).with_schedule_config(fixed_config).then([](Schedule& sche) {
         sche.add_pre_systems(into([](ResMut<Time<Fixed>> fixed_time, Res<Time<Virtual>> virtual_time) {
                                  fixed_time->accumulate_overstep(virtual_time->delta());
                              }).set_name("accumulate_fixed_overstep"));

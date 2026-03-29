@@ -13,9 +13,10 @@ Schedule RenderT::render_schedule() {
     schedule.configure_sets(sets(RenderSet::PrepareResources, RenderSet::PrepareFlush, RenderSet::PrepareSets)
                                 .chain()
                                 .in_set(RenderSet::Prepare));
-    auto config     = schedule.default_execute_config();
-    config.deferred = DeferredApply::ApplyDirect;  // commands are applied immediately after system execution
-    schedule.set_default_execute_config(config);
+    auto config = schedule.default_schedule_config();
+    config.executor_config.deferred =
+        DeferredApply::ApplyDirect;  // commands are applied immediately after system execution
+    schedule.set_default_schedule_config(config);
     return schedule;
 }
 }  // namespace render

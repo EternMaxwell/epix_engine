@@ -245,10 +245,15 @@ export enum class DeferredApply {
     ApplyEnd,       // collect and apply all deferred commands at end of schedule
     Ignore,         // do not handle deferred systems at all
 };
-/** @brief Configuration controlling how deferred systems are handled during schedule execution. */
-export struct ExecuteConfig {
+/** @brief Configuration passed to the executor controlling deferred handling and error callbacks. */
+export struct ExecutorConfig {
     DeferredApply deferred = DeferredApply::ApplyEnd;
-    bool run_once          = false;  // systems in this schedule will only run once and be removed
+    std::function<void(const RunSystemError&)> on_error;  // callback for handling system run errors
+};
+/** @brief Configuration controlling how the schedule executes its systems. */
+export struct ScheduleConfig {
+    ExecutorConfig executor_config;
+    bool run_once = false;  // systems in this schedule will only run once and be removed
 
     /** @brief Schedule-level run conditions. All must return true for the schedule to execute.
      *  Evaluated with exclusive world access before execution begins.
@@ -260,8 +265,6 @@ export struct ExecuteConfig {
      *  Pre-systems run once before the loop, post-systems run once after.
      *  The condition is evaluated with exclusive world access before each iteration. */
     std::function<bool(World&)> loop_condition;
-
-    std::function<void(const RunSystemError&)> on_error;  // callback for handling system run errors
 };
 export struct ScheduleSystems {
     std::unordered_map<SystemSetLabel, std::shared_ptr<Node>> nodes;
@@ -269,15 +272,19 @@ export struct ScheduleSystems {
     std::optional<std::vector<std::shared_ptr<Node>>> pending_applies;
 };
 export struct ScheduleExecutor {
-    virtual ~ScheduleExecutor()                                                                = default;
-    virtual void execute(ScheduleSystems& schedule, World& world, const ExecuteConfig& config) = 0;
+    virtual ~ScheduleExecutor()                                                                 = default;
+    virtual void execute(ScheduleSystems& schedule, World& world, const ExecutorConfig& config) = 0;
+};
+/** @brief Default executor using thread-pool-based parallel dispatch. */
+export struct DefaultScheduleExecutor : ScheduleExecutor {
+    void execute(ScheduleSystems& schedule, World& world, const ExecutorConfig& config) override;
 };
 /** @brief A named collection of systems with dependency ordering and parallel execution support.
  *  Systems are organized into sets with before/after/in_set relationships. */
 export struct Schedule {
    private:
     ScheduleLabel _label;
-    ExecuteConfig _default_execute_config;
+    ScheduleConfig _default_schedule_config;
     ScheduleSystems _data;
     std::unique_ptr<ScheduleExecutor> executor;
 
@@ -353,22 +360,22 @@ export struct Schedule {
         return false;
     }
 
-    /** @brief Set the default execution configuration. */
-    void set_default_execute_config(const ExecuteConfig& config) { _default_execute_config = config; }
-    /** @brief Set the default execution configuration (rvalue chain). */
-    Schedule&& with_execute_config(const ExecuteConfig& config) && {
-        set_default_execute_config(config);
+    /** @brief Set the default schedule configuration. */
+    void set_default_schedule_config(const ScheduleConfig& config) { _default_schedule_config = config; }
+    /** @brief Set the default schedule configuration (rvalue chain). */
+    Schedule&& with_schedule_config(const ScheduleConfig& config) && {
+        set_default_schedule_config(config);
         return std::move(*this);
     }
-    /** @brief Set the default execution configuration (lvalue chain). */
-    Schedule& with_execute_config(const ExecuteConfig& config) & {
-        set_default_execute_config(config);
+    /** @brief Set the default schedule configuration (lvalue chain). */
+    Schedule& with_schedule_config(const ScheduleConfig& config) & {
+        set_default_schedule_config(config);
         return *this;
     }
-    /** @brief Get the default execution configuration (const). */
-    const ExecuteConfig& default_execute_config() const { return _default_execute_config; }
-    /** @brief Get the default execution configuration (mutable). */
-    ExecuteConfig& default_execute_config() { return _default_execute_config; }
+    /** @brief Get the default schedule configuration (const). */
+    const ScheduleConfig& default_schedule_config() const { return _default_schedule_config; }
+    /** @brief Get the default schedule configuration (mutable). */
+    ScheduleConfig& default_schedule_config() { return _default_schedule_config; }
 
     void set_executor(std::unique_ptr<ScheduleExecutor> exec) { executor = std::move(exec); }
     Schedule& with_executor(std::unique_ptr<ScheduleExecutor> exec) & {
@@ -389,9 +396,9 @@ export struct Schedule {
     /** @brief Clamp stale change ticks on all systems. */
     void check_change_tick(Tick tick);
     /** @brief Execute the schedule using the default configuration. */
-    void execute(World& world) { execute(world, _default_execute_config); }
+    void execute(World& world) { execute(world, _default_schedule_config); }
     /** @brief Execute the schedule with the given configuration. */
-    void execute(World& world, const ExecuteConfig& config);
+    void execute(World& world, const ScheduleConfig& config);
     /** @brief Apply all pending deferred commands from systems. */
     void apply_deferred(World& world);
     /** @brief Add systems that run before all scheduled systems in this schedule.

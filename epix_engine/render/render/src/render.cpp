@@ -32,8 +32,8 @@ void RenderPlugin::build(App& app) {
     app.sub_app_mut(Render).then([](App& render_app) {
         render_app
             .add_schedule(Schedule(render::ExtractSchedule)
-                              .with_execute_config(core::ExecuteConfig{
-                                  .deferred = core::DeferredApply::Ignore,
+                              .with_schedule_config(core::ScheduleConfig{
+                                  .executor_config = {.deferred = core::DeferredApply::Ignore},
                               }))
             .add_schedule(render::Render.render_schedule())
             .set_extract_fn([](App& render_app, World& main_world) { render_app.run_schedule(ExtractSchedule); });
