@@ -9,6 +9,7 @@ import :graph;
 using namespace epix::render::graph;
 
 void RenderGraph::update(World& world) {
+    spdlog::trace("[render.graph] Updating render graph ({} nodes, {} sub-graphs).", nodes.size(), sub_graphs.size());
     for (auto&& [id, node] : nodes) {
         node.pnode->update(world);
     }

@@ -3,6 +3,7 @@ module;
 #include <freetype/freetype.h>
 #include <hb-ft.h>
 #include <hb.h>
+#include <spdlog/spdlog.h>
 
 module epix.text;
 
@@ -25,6 +26,7 @@ void shape_changed_text(
             !bounds_item.is_modified() && !bounds_item.is_added()) {
             continue;
         }
+        spdlog::trace("[text] shape_changed_text: shaping text for entity {}.", entity.index);
 
         auto atlas_set = atlas_sets->get_mut(font_item.get().font.id());
         if (!atlas_set) {
@@ -45,6 +47,7 @@ void regen_mesh_for_shaped_text(Commands cmd,
         if (!shaped_item.is_modified() && !shaped_item.is_added()) {
             continue;
         }
+        spdlog::trace("[text] regen_mesh_for_shaped_text: regenerating mesh for entity {}.", entity.index);
 
         auto atlas_set = atlas_sets->get_mut(font_item.get().font.id());
         if (!atlas_set) {
@@ -63,10 +66,10 @@ void regen_mesh_for_shaped_text(Commands cmd,
 }  // namespace
 
 ShapedText epix::text::shape_text(const Text& text,
-                            const TextFont& font,
-                            const TextLayout& layout,
-                            const TextBounds& bounds,
-                            font::FontAtlas& atlas) {
+                                  const TextFont& font,
+                                  const TextLayout& layout,
+                                  const TextBounds& bounds,
+                                  font::FontAtlas& atlas) {
     ShapedText out;
 
     auto face_ptr = atlas.get_font_face();

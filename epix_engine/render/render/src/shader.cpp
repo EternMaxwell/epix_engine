@@ -1,5 +1,7 @@
 module;
 
+#include <spdlog/spdlog.h>
+
 module epix.render;
 
 import epix.meta;
@@ -15,6 +17,7 @@ std::span<std::string_view> ShaderLoaderWGSL::extensions() {
 std::expected<Shader, ShaderLoaderWGSL::Error> ShaderLoaderWGSL::load(std::istream& reader,
                                                                       const Settings&,
                                                                       assets::LoadContext& context) {
+    spdlog::trace("[render.shader] Loading WGSL shader from '{}'.", context.path().path.string());
     try {
         std::stringstream buffer;
         buffer << reader.rdbuf();
@@ -32,6 +35,7 @@ std::span<std::string_view> ShaderLoaderSPIRV::extensions() {
 std::expected<Shader, ShaderLoaderSPIRV::Error> ShaderLoaderSPIRV::load(std::istream& reader,
                                                                         const Settings&,
                                                                         assets::LoadContext& context) {
+    spdlog::trace("[render.shader] Loading SPIR-V shader from '{}'.", context.path().path.string());
     try {
         std::vector<char> bytes =
             std::ranges::subrange(std::istreambuf_iterator<char>(reader), std::istreambuf_iterator<char>()) |
@@ -46,6 +50,7 @@ std::expected<Shader, ShaderLoaderSPIRV::Error> ShaderLoaderSPIRV::load(std::ist
 }
 
 void ShaderPlugin::build(App& app) {
+    spdlog::debug("[render.shader] Building ShaderPlugin, registering WGSL and SPIR-V loaders.");
     assets::app_register_asset<Shader>(app);
     assets::app_register_loader<ShaderLoaderWGSL>(app);
     assets::app_register_loader<ShaderLoaderSPIRV>(app);

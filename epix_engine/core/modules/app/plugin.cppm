@@ -123,10 +123,12 @@ struct Plugins {
     /// Finish building.
     void finish_all(App& app) {
         built = true;
+        spdlog::debug("[app] Finishing {} plugins.", _plugins.size());
         std::ranges::for_each(_plugins, [&](auto& plugin) { plugin->finish(app); });
     }
     /// Called at the end of the app's lifetime.
     void finalize_all(App& app) {
+        spdlog::debug("[app] Finalizing {} plugins.", _plugins.size());
         std::ranges::for_each(_plugins, [&](auto& plugin) { plugin->finalize(app); });
     }
 
@@ -147,6 +149,7 @@ struct Plugins {
         _plugins.push_back(std::unique_ptr<PluginBase>(wrapper));
         _plugin_index[type_id] = index;
         try {
+            spdlog::debug("[app] Building plugin [type = {}].", meta::type_id<T>::name());
             wrapper->build(app);
         } catch (const std::exception& e) {
             spdlog::error("Error building plugin[type = {}]: {}", meta::type_id<T>::name(), e.what());
@@ -159,4 +162,4 @@ struct Plugins {
     std::vector<std::unique_ptr<PluginBase>> _plugins;
     std::unordered_map<meta::type_index, std::size_t> _plugin_index;
 };
-}  // namespace core
+}  // namespace epix::core

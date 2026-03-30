@@ -1,5 +1,7 @@
 module;
 
+#include <spdlog/spdlog.h>
+
 module epix.core;
 
 import std;
@@ -13,6 +15,8 @@ BundleInfo BundleInfo::create(std::string_view bundle_type_name,
                               const Components& components,
                               std::vector<TypeId> component_ids,
                               BundleId id) {
+    spdlog::trace("[bundle] Creating BundleInfo '{}' id={} with {} components.", bundle_type_name, id.get(),
+                  component_ids.size());
     auto deduped = component_ids | std::ranges::to<std::unordered_set<TypeId>>();
     if (deduped.size() != std::ranges::size(component_ids)) {
         auto seen  = std::unordered_set<TypeId>{};
@@ -56,6 +60,7 @@ ArchetypeId BundleInfo::insert_bundle_into_archetype(Archetypes& archetypes,
                                                      Storage& storage,
                                                      const Components& components,
                                                      ArchetypeId archetype_id) const noexcept {
+    spdlog::trace("[bundle] Inserting bundle {} into archetype {}.", _id.get(), archetype_id.get());
     if (auto&& opt = archetypes.get(archetype_id)
                          .and_then([&](std::reference_wrapper<const Archetype> arch) -> std::optional<ArchetypeId> {
                              return arch.get().edges().get_archetype_after_bundle_insert(_id);
@@ -140,6 +145,8 @@ std::optional<ArchetypeId> BundleInfo::remove_bundle_from_archetype(Archetypes& 
                                                                     const Components& components,
                                                                     ArchetypeId archetype_id,
                                                                     bool ignore_missing) const noexcept {
+    spdlog::trace("[bundle] Removing bundle {} from archetype {} (ignore_missing={}).", _id.get(), archetype_id.get(),
+                  ignore_missing);
     {
         auto& edges = archetypes.get_mut(archetype_id).value().get().edges();
         auto&& opt =
@@ -227,4 +234,4 @@ BundleId Bundles::init_component_info(Storage& storage, const Components& compon
     }
 }
 
-}  // namespace core
+}  // namespace epix::core

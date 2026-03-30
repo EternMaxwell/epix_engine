@@ -1,3 +1,7 @@
+module;
+
+#include <spdlog/spdlog.h>
+
 module epix.mesh;
 
 using namespace epix;
@@ -85,12 +89,14 @@ void GPUMesh::update_from_mesh(const Mesh& mesh, const wgpu::Device& device, con
                                                     auto write_size = align_up(byte_size, kBufferWriteAlignment);
                                                     return align_up(acc, kBufferWriteAlignment) + write_size;
                                                  });
-    auto queue          = device.getQueue();
-    auto combined_size  = static_cast<std::size_t>(_combined_buffer ? _combined_buffer.getSize() : 0);
+    spdlog::trace("[mesh] GPUMesh::update_from_mesh: {} vertices, {} total bytes.", vertex_count, total_bytes);
+    auto queue         = device.getQueue();
+    auto combined_size = static_cast<std::size_t>(_combined_buffer ? _combined_buffer.getSize() : 0);
     if (should_recreate_buffer(total_bytes, combined_size)) {
         if (total_bytes == 0) {
             _combined_buffer = nullptr;
         } else {
+            spdlog::trace("[mesh] GPUMesh: recreating combined vertex buffer, {} bytes.", total_bytes);
             _combined_buffer =
                 device.createBuffer(wgpu::BufferDescriptor()
                                         .setSize(total_bytes)

@@ -1,5 +1,7 @@
 module;
 
+#include <spdlog/spdlog.h>
+
 module epix.render;
 
 import :image;
@@ -64,6 +66,8 @@ wgpu::TextureViewDimension view_dimension_cast(image::ImageType type) {
 
 GPUImage RenderAsset<image::Image>::process(image::Image&& asset, Param param) {
     auto& [device, queue, default_sampler] = param;
+    spdlog::trace("[render.image] Processing image to GPU: {}x{}x{} format={}.", asset.width(), asset.height(),
+                  asset.depth_or_layers(), static_cast<int>(asset.format()));
     wgpu::TextureDescriptor desc;
     desc.setUsage(wgpu::TextureUsage::eCopyDst | wgpu::TextureUsage::eTextureBinding)
         .setDimension(dimension_cast(asset.type()))

@@ -1,9 +1,14 @@
+module;
+
+#include <spdlog/spdlog.h>
+
 module epix.assets;
 
 using namespace epix::assets;
 using namespace epix::core;
 
 void AssetPlugin::build(App& app) {
+    spdlog::debug("[assets] Building AssetPlugin (mode={}).", static_cast<int>(mode));
     auto& world = app.world_mut();
 
     EmbeddedAssetRegistry embedded;

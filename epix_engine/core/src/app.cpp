@@ -42,6 +42,7 @@ App::App(DefaultCreateTag,
 App& App::sub_app_or_insert(const AppLabel& label) {
     auto&& [it, inserted] = _sub_apps.emplace(label, nullptr);
     if (inserted) {
+        spdlog::debug("[app] Created sub-app '{}' for parent '{}'.", label.to_string(), _label.to_string());
         it->second = std::make_unique<App>(label, world().type_registry_ptr(), _world_ids);
     }
     return *it->second;
@@ -72,6 +73,7 @@ std::optional<std::reference_wrapper<App>> App::get_sub_app_mut(const AppLabel& 
 }
 
 App& App::add_schedule(Schedule&& schedule) {
+    spdlog::trace("[app] Adding schedule '{}' to app '{}'.", schedule.label().to_string(), _label.to_string());
     Schedules& schedules = _world.resource_or_init<Schedules>();
     // add or replace existing schedule
     schedules.add_schedule(std::move(schedule));
@@ -167,6 +169,7 @@ bool App::run_schedule(const ScheduleLabel& label) {
     if (!schedules_opt) return false;
     auto schedule = schedules_opt->get().remove_schedule(label);
     if (!schedule) return false;
+    spdlog::trace("[app] Executing schedule '{}'.", label.to_string());
     schedule->execute(_world);
     if (schedules_opt->get().get_schedule(label)) {
         spdlog::warn(
@@ -179,6 +182,7 @@ bool App::run_schedule(const ScheduleLabel& label) {
 }
 
 void App::update() {
+    spdlog::trace("[app] Update tick for '{}'.", _label.to_string());
     _world.check_change_tick(
         [&](Tick tick) { _world.resource_scope([&](Schedules& schedules) { schedules.check_change_tick(tick); }); });
     auto order_opt = _world.take_resource<ScheduleOrder>();
@@ -206,6 +210,7 @@ void App::insert_sub_app(const AppLabel& label, std::unique_ptr<App> app) { _sub
 
 void App::extract(App& other) {
     if (extract_fn) {
+        spdlog::trace("[app] Extracting from app '{}' to '{}'.", other._label.to_string(), _label.to_string());
         _world.insert_resource(ExtractedWorld{other._world});
         extract_fn(*this, other._world);
         _world.remove_resource<ExtractedWorld>();
@@ -232,9 +237,14 @@ void handle_terminate() {
 void App::run() {
     auto prev_terminate = std::set_terminate(handle_terminate);
     spdlog::info("[app] App building. - {}", _label.to_string());
-    resource_scope([&](Plugins& plugins) { plugins.finish_all(*this); });
-    resource_scope([](World& world, Schedules& schedules) {
+    resource_scope([&](Plugins& plugins) {
+        spdlog::debug("[app] Finishing all plugins for '{}'.", _label.to_string());
+        plugins.finish_all(*this);
+    });
+    resource_scope([&](World& world, Schedules& schedules) {
+        spdlog::debug("[app] Preparing and initializing schedules for '{}'.", _label.to_string());
         for (auto&& [label, schedule] : schedules.iter_mut()) {
+            spdlog::trace("[app] Preparing schedule '{}'.", label.to_string());
             auto res = schedule.prepare(false);
             schedule.initialize_systems(world);
         }

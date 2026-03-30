@@ -1,6 +1,9 @@
 module;
 
+#include <spdlog/spdlog.h>
+
 #include <cassert>
+
 
 module epix.core;
 
@@ -27,6 +30,7 @@ std::optional<Entity> Table::swap_remove(this Table& self, size_t dense_index) {
 
 Table::MoveReturn Table::move_to(this Table& self, size_t dense_index, Table& target) {
     assert(dense_index < self._entities.size());
+    spdlog::trace("[table] Moving entity at row {} to another table.", dense_index);
     size_t new_index = target._entities.size();
     target.allocate(self._entities[dense_index]);
     // Iterate over source denses: if target has the type, move the value; otherwise
@@ -58,6 +62,8 @@ TableId Tables::get_id_or_insert(this Tables& self, const std::vector<TypeId>& t
         table_id = it->second;
     } else {
         table_id = self._tables.size();
+        spdlog::trace("[table] Creating new table id={} with {} column types.", static_cast<uint32_t>(table_id),
+                      type_ids.size());
         self._tables.emplace_back();
         Table& table = self._tables.back();
         for (size_t type_id : type_ids) {
@@ -69,4 +75,4 @@ TableId Tables::get_id_or_insert(this Tables& self, const std::vector<TypeId>& t
     return table_id;
 }
 
-}  // namespace core
+}  // namespace epix::core

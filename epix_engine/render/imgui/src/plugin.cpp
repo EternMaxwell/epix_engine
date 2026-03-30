@@ -23,6 +23,7 @@ namespace win  = ::epix::window;
 namespace rwin = epix::render::window;
 
 void imgui::ImGuiPlugin::build(App& app) {
+    spdlog::debug("[imgui] Building ImGuiPlugin.");
     // Create ImGui context and store in main world
     ImGuiContext* ctx = ImGui::CreateContext();
     ImGui::SetCurrentContext(ctx);
@@ -70,6 +71,7 @@ void imgui::imgui_begin_frame(ResMut<ImGuiState> state,
 
     // Lazy-initialize backends on first frame when the primary window is available
     if (!state->initialized) {
+        spdlog::trace("[imgui] Attempting lazy initialization of GLFW backend.");
         std::optional<Entity> primary_entity;
         for (auto&& [entity] : primary.iter()) {
             primary_entity = entity;

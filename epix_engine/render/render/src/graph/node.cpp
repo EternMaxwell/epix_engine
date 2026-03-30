@@ -1,3 +1,7 @@
+module;
+
+#include <spdlog/spdlog.h>
+
 module epix.render;
 
 import :graph;
@@ -27,12 +31,16 @@ void Edges::remove_output_edge(const Edge& edge) {
 
 void Edges::add_input_edge(const Edge& edge) {
     if (!has_input_edge(edge)) {
+        spdlog::trace("[render.graph] Adding input edge: output_node={} -> input_node={}.",
+                      edge.output_node.to_string(), edge.input_node.to_string());
         m_input_edges.push_back(edge);
     }
 }
 
 void Edges::add_output_edge(const Edge& edge) {
     if (!has_output_edge(edge)) {
+        spdlog::trace("[render.graph] Adding output edge: output_node={} -> input_node={}.",
+                      edge.output_node.to_string(), edge.input_node.to_string());
         m_output_edges.push_back(edge);
     }
 }
@@ -55,4 +63,4 @@ void GraphInputNode::run(GraphContext& graph, RenderContext&, const World&) {
     }
 }
 
-}  // namespace render::graph
+}  // namespace epix::render::graph

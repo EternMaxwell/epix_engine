@@ -1,3 +1,7 @@
+module;
+
+#include <spdlog/spdlog.h>
+
 module epix.input;
 
 import :button;
@@ -10,11 +14,13 @@ void ButtonInput<KeyCode>::collect_events(ResMut<ButtonInput<KeyCode>> input, Ev
     for (const auto& event : reader.read()) {
         if (event.pressed) {
             if (!input->m_pressed.contains(event.key)) {
+                spdlog::trace("[input] Key pressed: {}.", static_cast<int>(event.key));
                 input->m_just_pressed.insert(event.key);
                 input->m_pressed.insert(event.key);
             }
         } else {
             if (input->m_pressed.contains(event.key)) {
+                spdlog::trace("[input] Key released: {}.", static_cast<int>(event.key));
                 input->m_just_released.insert(event.key);
                 input->m_pressed.erase(event.key);
             }
@@ -29,15 +35,17 @@ void ButtonInput<MouseButton>::collect_events(ResMut<ButtonInput<MouseButton>> i
     for (const auto& event : reader.read()) {
         if (event.pressed) {
             if (!input->m_pressed.contains(event.button)) {
+                spdlog::trace("[input] Mouse button pressed: {}.", static_cast<int>(event.button));
                 input->m_just_pressed.insert(event.button);
                 input->m_pressed.insert(event.button);
             }
         } else {
             if (input->m_pressed.contains(event.button)) {
+                spdlog::trace("[input] Mouse button released: {}.", static_cast<int>(event.button));
                 input->m_just_released.insert(event.button);
                 input->m_pressed.erase(event.button);
             }
         }
     }
 }
-}  // namespace input
+}  // namespace epix::input

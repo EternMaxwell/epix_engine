@@ -1,6 +1,7 @@
 module;
 
 #include <GLFW/glfw3.h>
+#include <spdlog/spdlog.h>
 
 module epix.glfw.core;
 
@@ -24,6 +25,8 @@ void Clipboard::set_text(EventReader<SetClipboardString> events) {
     }
 }
 GLFWwindow* GLFWPlugin::create_window(Entity id, Window& desc) {
+    spdlog::debug("[glfw] Creating window '{}' ({}x{}) for entity {}.", desc.title, desc.size.first, desc.size.second,
+                  id.index);
     glfwDefaultWindowHints();
     glfwWindowHint(GLFW_FOCUSED, GLFW_TRUE);
     glfwWindowHint(GLFW_AUTO_ICONIFY, GLFW_FALSE);
@@ -34,6 +37,7 @@ GLFWwindow* GLFWPlugin::create_window(Entity id, Window& desc) {
     if (!window) {
         throw std::runtime_error("Failed to create GLFW window");
     }
+    spdlog::trace("[glfw] GLFW window handle created for entity {}.", id.index);
     glfwSetWindowPos(window, desc.final_pos.first, desc.final_pos.second);
     // window mode
     int monitor_count = 0;
@@ -305,6 +309,7 @@ void GLFWPlugin::create_windows(Commands cmd,
         }
         auto* created = create_window(id, desc);
         glfw_windows->emplace(id, created);
+        spdlog::debug("[glfw] Window created for entity {} ('{}').", id.index, desc.get().title);
         window_created.write(WindowCreated{id});
         cmd.entity(id).insert(CachedWindow{desc});
     }
@@ -714,6 +719,7 @@ void GLFWPlugin::destroy_windows(Query<Item<Entity, const Window&>> windows,
             delete user_data;
         }
         glfwDestroyWindow(window);
+        spdlog::debug("[glfw] Window entity {} destroyed.", id.index);
         to_erase.emplace_back(id);
         window_destroyed.write(WindowDestroyed{id});
     }

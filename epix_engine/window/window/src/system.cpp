@@ -1,3 +1,7 @@
+module;
+
+#include <spdlog/spdlog.h>
+
 module epix.window;
 
 import :system;
@@ -7,9 +11,9 @@ using namespace epix::core;
 namespace epix::window {
 
 void exit_on_all_closed(EventWriter<AppExit> exit_writer,
-                                Local<std::unordered_set<Entity>> still_alive,
-                                EventReader<WindowCreated> created,
-                                EventReader<WindowDestroyed> destroyed) {
+                        Local<std::unordered_set<Entity>> still_alive,
+                        EventReader<WindowCreated> created,
+                        EventReader<WindowDestroyed> destroyed) {
     for (auto&& [window] : created.read()) {
         still_alive->insert(window);
     }
@@ -17,15 +21,17 @@ void exit_on_all_closed(EventWriter<AppExit> exit_writer,
         still_alive->erase(window);
     }
     if (still_alive->empty()) {
+        spdlog::debug("[window] All windows closed, sending AppExit.");
         exit_writer.write(AppExit{0});
     }
 }
 void exit_on_primary_closed(EventWriter<AppExit> exit_writer,
-                                    Query<Item<Entity>, With<Window, PrimaryWindow>> query,
-                                    Local<std::optional<Entity>> primary_window,
-                                    EventReader<WindowDestroyed> destroyed) {
+                            Query<Item<Entity>, With<Window, PrimaryWindow>> query,
+                            Local<std::optional<Entity>> primary_window,
+                            EventReader<WindowDestroyed> destroyed) {
     // primary cache empty and no primary window set, exit
     if (query.empty() && !primary_window->has_value()) {
+        spdlog::debug("[window] No primary window found, sending AppExit.");
         exit_writer.write(AppExit{0});
         return;
     }
@@ -37,6 +43,7 @@ void exit_on_primary_closed(EventWriter<AppExit> exit_writer,
     // if primary window is destroyed, exit
     for (auto&& [window] : destroyed.read()) {
         if (**primary_window == window) {
+            spdlog::debug("[window] Primary window destroyed, sending AppExit.");
             exit_writer.write(AppExit{0});
             return;
         }
@@ -44,9 +51,10 @@ void exit_on_primary_closed(EventWriter<AppExit> exit_writer,
 }
 void close_requested(Commands commands,
                      Query<Item<Entity, const Window&>> windows,
-                             EventReader<WindowCloseRequested> reader) {
+                     EventReader<WindowCloseRequested> reader) {
     for (auto&& [window] : reader.read()) {
         if (windows.contains(window)) {
+            spdlog::debug("[window] Close requested for entity {}, despawning.", window.index);
             commands.entity(window).despawn();
         }
     }

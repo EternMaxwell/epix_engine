@@ -117,6 +117,8 @@ CachedPipelineId PipelineServer::queue_compute_pipeline(ComputePipelineDescripto
     return id;
 }
 void PipelineServer::set_shader(assets::AssetId<Shader> id, Shader shader) {
+    // TODO: MSVC partial specialization workaround - cast AssetId<T> to UntypedAssetId
+    spdlog::debug("[render.pipeline] Setting shader '{}' (label: {}).", assets::UntypedAssetId(id), shader.label);
     auto shader_cache       = this->shader_cache->lock();
     auto affected_pipelines = shader_cache->set_shader(id, std::move(shader));
     for (CachedPipelineId pipeline_id : affected_pipelines) {
@@ -125,6 +127,7 @@ void PipelineServer::set_shader(assets::AssetId<Shader> id, Shader shader) {
     }
 }
 void PipelineServer::remove_shader(assets::AssetId<Shader> id) {
+    spdlog::debug("[render.pipeline] Removing shader '{}'.", assets::UntypedAssetId(id));
     auto shader_cache       = this->shader_cache->lock();
     auto affected_pipelines = shader_cache->remove(id);
     for (CachedPipelineId pipeline_id : affected_pipelines) {
@@ -137,6 +140,9 @@ void PipelineServer::process_queue() {
     auto waiting_pipelines = std::move(this->waiting_pipelines);
     {
         auto new_pipelines = std::move(*this->new_pipelines.lock());
+        if (!new_pipelines.empty()) {
+            spdlog::debug("[render.pipeline] Processing {} new pipelines.", new_pipelines.size());
+        }
         for (auto&& pipeline : new_pipelines) {
             CachedPipelineId id = static_cast<CachedPipelineId>(pipelines.size());
             pipelines.push_back(std::move(pipeline));
@@ -255,6 +261,7 @@ void PipelineServer::process_pipeline(CachedPipeline& cached_pipeline, CachedPip
     };
 
     if (std::holds_alternative<PipelineStateQueued>(cached_pipeline.state)) {
+        spdlog::trace("[render.pipeline] Creating pipeline id={} name='{}'.", id.get(), pipeline_name);
         std::visit(utils::visitor{create_render_pipeline, create_compute_pipeline}, cached_pipeline.descriptor);
     }
 
@@ -304,12 +311,15 @@ void PipelineServer::extract_shaders(ResMut<PipelineServer> pipeline_server,
                                      Extract<EventReader<assets::AssetEvent<Shader>>> shader_events) {
     for (const auto& event : shader_events.read()) {
         if (event.is_added() || event.is_modified()) {
+            spdlog::trace("[render.pipeline] Shader asset event (added/modified) for '{}'.",
+                          assets::UntypedAssetId(event.id));
             if (auto shader = shaders->try_get(event.id)) {
                 pipeline_server->set_shader(event.id, *shader);
             }
         } else if (event.is_removed()) {
+            spdlog::trace("[render.pipeline] Shader asset event (removed) for '{}'.", assets::UntypedAssetId(event.id));
             pipeline_server->remove_shader(event.id);
         }
     }
 }
-}  // namespace render
+}  // namespace epix::render

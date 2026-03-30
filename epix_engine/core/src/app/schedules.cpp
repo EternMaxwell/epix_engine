@@ -28,6 +28,7 @@ Schedule& Schedules::add_schedule(Schedule&& schedule) {
         it->second = std::move(schedule);
         return it->second;
     } else {
+        spdlog::trace("[schedules] Registered schedule '{}'.", schedule.label().to_string());
         auto&& [it2, inserted] = _schedules.emplace(schedule.label(), std::move(schedule));
         return it2->second;
     }
@@ -41,4 +42,4 @@ std::optional<Schedule> Schedules::remove_schedule(const ScheduleLabel& label) {
     }
     return std::nullopt;
 }
-}  // namespace core
+}  // namespace epix::core

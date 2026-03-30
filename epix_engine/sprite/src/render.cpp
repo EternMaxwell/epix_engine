@@ -408,9 +408,13 @@ void prepare_sprite_batches(Query<Item<render::phase::RenderPhase<core_graph::co
 }
 }  // namespace
 
-void SpritePlugin::build(core::App& app) { app.add_plugins(core_graph::core_2d::Core2dPlugin{}); }
+void SpritePlugin::build(core::App& app) {
+    spdlog::debug("[sprite] Building SpritePlugin.");
+    app.add_plugins(core_graph::core_2d::Core2dPlugin{});
+}
 
 void SpritePlugin::finish(core::App& app) {
+    spdlog::debug("[sprite] Finishing SpritePlugin.");
     auto shaders = app.world_mut().get_resource_mut<assets::Assets<render::Shader>>();
     if (shaders) {
         insert_sprite_shaders(shaders->get());

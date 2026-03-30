@@ -1,5 +1,7 @@
 module;
 
+#include <spdlog/spdlog.h>
+
 module epix.core;
 
 import std;
@@ -9,6 +11,7 @@ import :labels;
 
 namespace epix::core {
 void MainSchedulePlugin::build(App& app) {
+    spdlog::debug("[app] Building MainSchedulePlugin: registering {} standard schedules.", 12);
     auto schedules = std::array{
         Schedule(PreStartup)
             .with_schedule_config({.executor_config = {.deferred = DeferredApply::ApplyDirect}, .run_once = true}),
@@ -36,4 +39,4 @@ void MainSchedulePlugin::build(App& app) {
     std::ranges::for_each(schedules, [&app](Schedule& schedule) { app.add_schedule(std::move(schedule)); });
     app.schedule_order().insert_range_end(order);
 }
-}  // namespace core
+}  // namespace epix::core

@@ -1,6 +1,9 @@
 module;
 
+#include <spdlog/spdlog.h>
+
 #include <cassert>
+
 
 module epix.core;
 
@@ -21,16 +24,21 @@ Entity Entities::alloc() {
         pending.pop_back();
         std::int64_t new_free_cursor = pending.size();
         free_cursor->store(new_free_cursor, std::memory_order_relaxed);
-        return Entity::from_parts(index, meta[index].generation);
+        auto entity = Entity::from_parts(index, meta[index].generation);
+        spdlog::trace("[entities] Allocated entity (recycled) index={} gen={}.", entity.index, entity.generation);
+        return entity;
     } else {
         std::uint32_t index = static_cast<std::uint32_t>(meta.size());
         meta.push_back(EntityMeta::empty());
-        return Entity::from_index(index);
+        auto entity = Entity::from_index(index);
+        spdlog::trace("[entities] Allocated entity (new) index={}.", entity.index);
+        return entity;
     }
 }
 
 std::optional<EntityLocation> Entities::free(Entity entity) {
     verify_flush();
+    spdlog::trace("[entities] Freeing entity index={} gen={}.", entity.index, entity.generation);
 
     auto& meta = this->meta[entity.index];
     if (meta.generation != entity.generation) {
@@ -64,6 +72,7 @@ bool Entities::contains(Entity entity) const {
 }
 
 void Entities::clear() {
+    spdlog::debug("[entities] Clearing all entities (count={}).", meta.size());
     meta.clear();
     pending.clear();
     free_cursor->store(0, std::memory_order_relaxed);
@@ -111,7 +120,8 @@ bool Entities::needs_flush() const {
 }
 
 void Entities::flush_as_invalid() {
+    spdlog::trace("[entities] Flushing entities as invalid.");
     flush([](Entity, EntityLocation& loc) { loc.archetype_id = std::numeric_limits<std::uint32_t>::max(); });
 }
 
-}  // namespace core
+}  // namespace epix::core

@@ -1,5 +1,7 @@
 module;
 
+#include <spdlog/spdlog.h>
+
 module epix.core;
 
 import std;
@@ -29,11 +31,16 @@ struct LoopRunner : public AppRunner {
             auto res = check_exit->run({}, world);
             if (res.has_value()) should_exit = res.value();
         });
+        if (should_exit) spdlog::debug("[app.loop] AppExit event received, loop will terminate.");
         return !should_exit;
     }
-    void exit(App& app) override { app.run_schedules(PreExit, Exit, PostExit); }
+    void exit(App& app) override {
+        spdlog::debug("[app.loop] LoopRunner exiting, running exit schedules.");
+        app.run_schedules(PreExit, Exit, PostExit);
+    }
 };
 void LoopPlugin::build(App& app) {
+    spdlog::debug("[app] Building LoopPlugin.");
     app.add_event<AppExit>();
     auto check_exit = make_system_unique([](EventReader<AppExit> exits) {
         if (!exits.empty()) {
@@ -44,4 +51,4 @@ void LoopPlugin::build(App& app) {
     auto access     = check_exit->initialize(app.world_mut());
     app.set_runner(std::make_unique<LoopRunner>(app));
 }
-}  // namespace core
+}  // namespace epix::core

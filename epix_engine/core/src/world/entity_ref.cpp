@@ -1,5 +1,7 @@
 module;
 
+#include <spdlog/spdlog.h>
+
 module epix.core;
 
 import std;
@@ -11,6 +13,7 @@ import :world.interface;
 namespace epix::core {
 void EntityWorldMut::remove_bundle(BundleId bundle_id) {
     assert_not_despawned();
+    spdlog::trace("[entity] Removing bundle {} from entity {}.", bundle_id.get(), entity_.index);
     auto remover = BundleRemover::create_with_id(*world_, location_.archetype_id, bundle_id, world_->change_tick());
     location_    = remover.remove(entity_, location_);
     world_->flush();
@@ -26,6 +29,7 @@ bool EntityWorldMut::remove_by_id(TypeId type_id) {
 
 void EntityWorldMut::clear() {
     assert_not_despawned();
+    spdlog::trace("[entity] Clearing all components from entity {}.", entity_.index);
     auto& archetype = world_->archetypes_mut().get_mut(location_.archetype_id).value().get();
     // reuse header template wrapper by converting to vector and calling remove_by_ids via type_id_view
     remove_by_ids(archetype.components());
@@ -33,6 +37,7 @@ void EntityWorldMut::clear() {
 
 void EntityWorldMut::despawn() {
     assert_not_despawned();
+    spdlog::trace("[entity] Despawning entity {}.", entity_.index);
     auto& entities  = world_->entities_mut();
     auto& archetype = world_->archetypes_mut().get_mut(location_.archetype_id).value().get();
     auto& table     = world_->storage_mut().tables.get_mut(archetype.table_id()).value().get();
@@ -81,4 +86,4 @@ std::optional<EntityWorldMut> World::get_entity_mut(Entity entity) {
 }
 EntityRef World::entity(Entity entity) const { return get_entity(entity).value(); }
 EntityWorldMut World::entity_mut(Entity entity) { return get_entity_mut(entity).value(); }
-}  // namespace core
+}  // namespace epix::core

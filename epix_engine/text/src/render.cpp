@@ -526,9 +526,13 @@ TextMesh TextMesh::from_shaped_text(const ShapedText& shaped,
                     shaped.descent());
 }
 
-void TextRenderPlugin::build(App& app) { app.add_plugins(core_graph::core_2d::Core2dPlugin{}); }
+void TextRenderPlugin::build(App& app) {
+    spdlog::debug("[text] Building TextRenderPlugin.");
+    app.add_plugins(core_graph::core_2d::Core2dPlugin{});
+}
 
 void TextRenderPlugin::finish(App& app) {
+    spdlog::debug("[text] Finishing TextRenderPlugin.");
     auto shaders = app.world_mut().get_resource_mut<assets::Assets<render::Shader>>();
     if (shaders) {
         insert_text_shaders(shaders->get());

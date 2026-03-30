@@ -1,6 +1,7 @@
 module;
 
 #include <GLFW/glfw3.h>
+#include <spdlog/spdlog.h>
 
 module epix.glfw.core;
 
@@ -8,9 +9,11 @@ using namespace epix::glfw;
 using namespace epix::core;
 
 void GLFWPlugin::build(App& app) {
+    spdlog::debug("[glfw] Initializing GLFW.");
     if (!glfwInit()) {
         throw std::runtime_error("Failed to initialize GLFW");
     }
+    spdlog::debug("[glfw] GLFW initialized successfully.");
     app.add_plugins(image::ImagePlugin{});
     app.world_mut().insert_resource(Clipboard{});
     app.world_mut().init_resource<GLFWwindows>();

@@ -167,6 +167,7 @@ void create_uniform_for_view(Commands cmd,
 }
 
 void view::ViewPlugin::build(App& app) {
+    spdlog::debug("[render.view] Building ViewPlugin.");
     ViewUniformBindingLayout view_uniform_binding_layout(app.world_mut());
     app.world_mut().insert_resource(view_uniform_binding_layout);
     if (auto sub_app = app.get_sub_app_mut(render::Render)) {

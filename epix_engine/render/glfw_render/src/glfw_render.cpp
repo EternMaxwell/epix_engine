@@ -42,6 +42,7 @@ module;
 #if !defined(__EMSCRIPTEN__)
 #include <GLFW/glfw3native.h>
 #endif
+#include <spdlog/spdlog.h>
 #include <webgpu/webgpu.h>
 
 module epix.glfw.render;
@@ -151,9 +152,9 @@ using namespace epix::core;
 using epix::render::window::SurfaceCreation;
 
 void epix::glfw::render::GLFWRenderPlugin::build(App& app) {
+    spdlog::debug("[glfw.render] Building GLFWRenderPlugin.");
     auto system = make_system_unique(
-        [](Commands commands,
-           Query<Item<Entity>, Filter<With<epix::window::Window>, Without<SurfaceCreation>>> windows,
+        [](Commands commands, Query<Item<Entity>, Filter<With<epix::window::Window>, Without<SurfaceCreation>>> windows,
            ResMut<GLFWwindows> glfw_windows) {
             for (auto&& [id] : windows.iter()) {
                 auto it = glfw_windows->find(id);

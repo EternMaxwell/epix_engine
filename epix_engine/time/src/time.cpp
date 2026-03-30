@@ -1,3 +1,7 @@
+module;
+
+#include <spdlog/spdlog.h>
+
 module epix.time;
 
 import epix.core;
@@ -28,6 +32,7 @@ struct FixedMainExecutor : ScheduleExecutor {
 };
 
 void TimePlugin::build(App& app) {
+    spdlog::debug("[time] Building TimePlugin.");
     app.world_mut().init_resource<Time<>>();
     app.world_mut().init_resource<Time<Real>>();
     app.world_mut().init_resource<Time<Virtual>>();

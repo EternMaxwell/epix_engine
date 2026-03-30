@@ -723,12 +723,14 @@ void queue_meshes_2d_transparent(
 }  // namespace
 
 void MeshRenderPlugin::build(core::App& app) {
+    spdlog::debug("[mesh] Building MeshRenderPlugin.");
     app.add_plugins(MeshPlugin{});
     app.add_plugins(core_graph::core_2d::Core2dPlugin{});
     app.add_plugins(render::ExtractAssetPlugin<Mesh>{});
 }
 
 void MeshRenderPlugin::finish(core::App& app) {
+    spdlog::debug("[mesh] Finishing MeshRenderPlugin.");
     auto shaders = app.world_mut().get_resource_mut<assets::Assets<render::Shader>>();
     if (shaders) {
         insert_mesh_shaders(shaders->get());

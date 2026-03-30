@@ -1,11 +1,14 @@
 module;
 
+#include <spdlog/spdlog.h>
+
 module epix.core;
 
 import std;
 
 namespace epix::core {
 void CommandQueue::append(CommandQueue& other) {
+    spdlog::trace("[world] Appending {} commands from another queue.", other.metas_.size());
     assure_size(size_ + other.size_);
     std::size_t old_size = size_;
     size_ += other.size_;
@@ -32,6 +35,7 @@ void CommandQueue::append(CommandQueue& other) {
 }
 
 void CommandQueue::apply(World& world) {
+    spdlog::trace("[world] Applying {} commands to world.", metas_.size());
     std::size_t offset = 0;
     for (const CommandMeta* meta : metas_) {
         meta->apply(static_cast<std::byte*>(commands_) + offset, world);
@@ -71,4 +75,4 @@ void CommandQueue::assure_size(std::size_t new_size) {
         reallocate(new_capacity);
     }
 }
-}  // namespace core
+}  // namespace epix::core

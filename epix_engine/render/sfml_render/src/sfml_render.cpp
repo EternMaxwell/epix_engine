@@ -1,5 +1,7 @@
 module;
 
+#include <spdlog/spdlog.h>
+
 #define WGPU_TARGET_MACOS 1
 #define WGPU_TARGET_LINUX_X11 2
 #define WGPU_TARGET_WINDOWS 3
@@ -130,9 +132,9 @@ using namespace epix::core;
 using epix::render::window::SurfaceCreation;
 
 void epix::sfml::render::SFMLRenderPlugin::build(App& app) {
+    spdlog::debug("[sfml.render] Building SFMLRenderPlugin.");
     auto system = make_system_unique(
-        [](Commands commands,
-           Query<Item<Entity>, Filter<With<epix::window::Window>, Without<SurfaceCreation>>> windows,
+        [](Commands commands, Query<Item<Entity>, Filter<With<epix::window::Window>, Without<SurfaceCreation>>> windows,
            ResMut<SFMLwindows> sfml_windows) {
             for (auto&& [id] : windows.iter()) {
                 auto it = sfml_windows->find(id);

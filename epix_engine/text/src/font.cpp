@@ -339,7 +339,7 @@ namespace epix::text::font {
 struct DefaultFontHandle {
     assets::Handle<Font> handle;
 };
-}  // namespace text::font
+}  // namespace epix::text::font
 
 namespace {
 void apply_pending_font_atlas_updates(core::ResMut<FontAtlasSets> atlas_sets,
@@ -390,6 +390,7 @@ void add_font_atlas_set(core::ResMut<FontAtlasSets> atlas_sets,
             atlas_sets->erase(id);
         }
         atlas_sets->add(id, face);
+        spdlog::debug("[text] Font atlas set created for font '{}'.", id.to_string_short());
     }
 }
 
@@ -403,6 +404,7 @@ void register_default_embedded_font(core::App& app) {
 import epix.meta;
 
 void FontPlugin::build(core::App& app) {
+    spdlog::debug("[text] Building FontPlugin.");
     app.add_plugins(image::ImagePlugin{});
     assets::app_register_asset<Font>(app);
     assets::app_register_loader<FontLoader>(app);
@@ -419,4 +421,7 @@ void FontPlugin::build(core::App& app) {
                                           .set_name("apply pending font atlas updates"));
 }
 
-void FontPlugin::finish(core::App& app) { register_default_embedded_font(app); }
+void FontPlugin::finish(core::App& app) {
+    spdlog::debug("[text] Registering default embedded font.");
+    register_default_embedded_font(app);
+}

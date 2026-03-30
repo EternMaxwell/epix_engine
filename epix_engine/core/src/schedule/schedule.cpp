@@ -41,6 +41,7 @@ void Schedule::add_config(SetConfig config, bool accept_system) {
 }
 
 std::expected<void, SchedulePrepareError> Schedule::prepare(bool check_error) {
+    spdlog::trace("[schedule] Preparing schedule '{}', check_error={}.", label().to_string(), check_error);
     // clear validated edges first
     for (auto& [label, pnode] : _data.nodes) {
         pnode->validated_edges.children.clear();
@@ -260,6 +261,7 @@ std::expected<void, SchedulePrepareError> Schedule::prepare(bool check_error) {
 }
 
 void Schedule::initialize_systems(World& world, bool force) {
+    spdlog::trace("[schedule] Initializing systems for schedule '{}', force={}.", label().to_string(), force);
     for (auto& [label, node] : _data.nodes) {
         if (node->system && (!node->system->initialized() || force)) {
             node->system_access = node->system->initialize(world);
@@ -301,6 +303,7 @@ void Schedule::check_change_tick(Tick change_tick) {
 }
 
 void Schedule::execute(World& world, const ScheduleConfig& config) {
+    spdlog::trace("[schedule] Executing schedule '{}'.", label().to_string());
     if (!executor) {
         executor = std::make_unique<DefaultScheduleExecutor>();
     }
@@ -371,7 +374,11 @@ void DefaultScheduleExecutor::execute(ScheduleSystems& _data, World& world, cons
 
     // Check if anything to do
     bool has_system = std::ranges::any_of(cache->nodes, [](const CachedNode& cn) { return (bool)cn.node->system; });
-    if (!has_system) return;
+    if (!has_system) {
+        spdlog::trace("[schedule] No systems to execute, skipping.");
+        return;
+    }
+    spdlog::trace("[schedule] Dispatching {} nodes.", cache->nodes.size());
 
     // Get thread pool from world resource
     auto& pool = world.resource_or_emplace<ScheduleThreadPool>().pool;

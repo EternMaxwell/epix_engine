@@ -1,5 +1,7 @@
 module;
 
+#include <spdlog/spdlog.h>
+
 module epix.core;
 
 import std;
@@ -10,6 +12,7 @@ import :world.entity_ref;
 
 namespace epix::core {
 void Parent::on_remove(World& world, HookContext ctx) {
+    spdlog::trace("[hierarchy] Parent::on_remove for entity {}.", ctx.entity.index);
     auto&& this_entity = world.entity_mut(ctx.entity);
     this_entity.get<Parent>().transform([&](const Parent& parent) {
         return world.entity_mut(parent._entity)
@@ -23,6 +26,7 @@ void Parent::on_remove(World& world, HookContext ctx) {
 }
 
 void Parent::on_insert(World& world, HookContext ctx) {
+    spdlog::trace("[hierarchy] Parent::on_insert for entity {}.", ctx.entity.index);
     auto&& this_entity = world.entity_mut(ctx.entity);
     this_entity.get<Parent>().transform([&](const Parent& parent) {
         return world.entity_mut(parent._entity)
@@ -41,6 +45,7 @@ void Parent::on_insert(World& world, HookContext ctx) {
 }
 
 void Children::on_remove(World& world, HookContext ctx) {
+    spdlog::trace("[hierarchy] Children::on_remove for entity {}.", ctx.entity.index);
     auto&& this_entity = world.entity_mut(ctx.entity);
     // copy children set cause removing it inside transform or and_then might invalidate the reference
     std::optional children_to_remove =
@@ -54,6 +59,7 @@ void Children::on_remove(World& world, HookContext ctx) {
 }
 
 void Children::on_despawn(World& world, HookContext ctx) {
+    spdlog::trace("[hierarchy] Children::on_despawn for entity {} (despawning children).", ctx.entity.index);
     auto&& this_entity = world.entity_mut(ctx.entity);
     std::optional children_to_remove =
         this_entity.get<Children>().transform([&](const Children& children) { return children._entities; });
@@ -65,4 +71,4 @@ void Children::on_despawn(World& world, HookContext ctx) {
     });
 }
 
-}  // namespace core
+}  // namespace epix::core

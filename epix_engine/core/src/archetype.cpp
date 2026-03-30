@@ -1,6 +1,9 @@
 module;
 
+#include <spdlog/spdlog.h>
+
 #include <cassert>
+
 
 module epix.core;
 
@@ -14,6 +17,8 @@ Archetype Archetype::create(ComponentIndex& component_index,
                             TableId table_id,
                             std::vector<TypeId> table_components,
                             std::vector<TypeId> sparse_components) {
+    spdlog::trace("[archetype] Creating archetype id={} table={} table_components={} sparse_components={}.", id.get(),
+                  table_id.get(), table_components.size(), sparse_components.size());
     Archetype arch;
     arch._archetype_id = id;
     arch._table_id     = table_id;
@@ -56,10 +61,12 @@ std::pair<ArchetypeId, bool> Archetypes::get_id_or_insert(TableId table_id,
         return {it->second, false};
     } else {
         ArchetypeId new_id = static_cast<ArchetypeId>(archetypes.size());
+        spdlog::trace("[archetype] Inserting new archetype id={} into archetypes (total={}).", new_id.get(),
+                      archetypes.size() + 1);
         archetypes.emplace_back(Archetype::create(by_component, new_id, table_id, archetype_components.table_components,
                                                   archetype_components.sparse_components));
         by_components.insert({archetype_components, new_id});
         return {new_id, true};
     }
 }
-}  // namespace core
+}  // namespace epix::core

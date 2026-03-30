@@ -10,6 +10,7 @@ using namespace epix::render;
 using namespace epix::core_graph::core_2d;
 
 void Core2dGraph::add_to(graph::RenderGraph& g) {
+    spdlog::debug("[render.core_graph] Adding Core2D sub-graph to render graph.");
     graph::RenderGraph g2d;
     g2d.add_node(Core2dNodes::StartMainPass, graph::EmptyNode{});
     g2d.add_node(Core2dNodes::MainTransparentPass, Node2D<Transparent2D>{});

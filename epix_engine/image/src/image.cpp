@@ -1,5 +1,6 @@
 module;
 
+#include <spdlog/spdlog.h>
 #include <stb_image.h>
 #include <stb_image_resize2.h>
 #include <stb_image_write.h>
@@ -601,6 +602,7 @@ std::span<std::string_view> ImageLoader::extensions() noexcept {
 std::expected<Image, ImageLoadError> ImageLoader::load(std::istream& reader,
                                                        const Settings&,
                                                        assets::LoadContext& context) {
+    spdlog::trace("[image] Loading image from '{}'.", context.path().path.string());
     auto bytes = read_stream_bytes(reader);
     if (!bytes) return std::unexpected(bytes.error());
 
@@ -627,6 +629,7 @@ std::expected<Image, ImageLoadError> ImageLoader::load(std::istream& reader,
 }
 
 void ImagePlugin::build(core::App& app) {
+    spdlog::debug("[image] Building ImagePlugin.");
     app.add_plugins(assets::AssetPlugin{});
     assets::app_register_asset<Image>(app);
     assets::app_register_loader<ImageLoader>(app);

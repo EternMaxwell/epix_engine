@@ -144,6 +144,7 @@ bool GLFWRunner::step(App& app) {
     return true;
 }
 void GLFWRunner::exit(App& app) {
+    spdlog::debug("[glfw] Runner exiting, destroying windows and terminating GLFW.");
     if (render_app_future) {
         auto sub = render_app_future->get();
         if (sub) app.insert_sub_app(*render_app_label, std::move(sub));

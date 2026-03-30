@@ -1,5 +1,7 @@
 module;
 
+#include <spdlog/spdlog.h>
+
 #include <SFML/Window/Clipboard.hpp>
 #include <SFML/Window/Cursor.hpp>
 #include <SFML/Window/Event.hpp>
@@ -9,6 +11,7 @@ module;
 #include <SFML/Window/WindowBase.hpp>
 #include <SFML/Window/WindowEnums.hpp>
 #include <SFML/Window/WindowHandle.hpp>
+
 
 module epix.sfml.core;
 
@@ -29,6 +32,8 @@ void Clipboard::set_text(EventReader<SetClipboardString> events) {
 }
 
 std::shared_ptr<sf::WindowBase> SFMLPlugin::create_window(Entity id, Window& desc) {
+    spdlog::debug("[sfml] Creating window for entity {} ('{}') size={}x{}.", id.index, desc.title, desc.size.first,
+                  desc.size.second);
     auto [width, height] = desc.size;
 
     std::uint32_t style = sf::Style::None;

@@ -1,3 +1,7 @@
+module;
+
+#include <spdlog/spdlog.h>
+
 module epix.render;
 
 import :window;
@@ -64,6 +68,7 @@ void epix::render::window::extract_windows(
     // Remove closed windows
     for (auto&& event : closed.read()) {
         Entity closed_entity = event.window;
+        spdlog::debug("[render.window] Window entity {} closed, removing.", closed_entity.index);
         extracted_windows->windows.erase(closed_entity);
         window_surfaces->remove(closed_entity);
         if (extracted_windows->primary.has_value() && extracted_windows->primary.value() == closed_entity) {
@@ -73,9 +78,9 @@ void epix::render::window::extract_windows(
 }
 
 void epix::render::window::prepare_windows(ResMut<ExtractedWindows> windows,
-                                            ResMut<WindowSurfaces> window_surfaces,
-                                            Res<wgpu::Device> device,
-                                            Res<wgpu::Instance> instance) {
+                                           ResMut<WindowSurfaces> window_surfaces,
+                                           Res<wgpu::Device> device,
+                                           Res<wgpu::Instance> instance) {
     std::vector<std::pair<Entity, std::string>> errors;
     for (auto&& window : std::views::all(windows->windows) | std::views::values) {
         auto it = window_surfaces->surfaces.find(window.entity);
@@ -138,12 +143,13 @@ void epix::render::window::prepare_windows(ResMut<ExtractedWindows> windows,
 }
 
 void epix::render::window::create_surfaces(Res<ExtractedWindows> windows,
-                                            ResMut<WindowSurfaces> window_surfaces,
-                                            Res<wgpu::Instance> instance,
-                                            Res<wgpu::Adapter> adapter,
-                                            Res<wgpu::Device> device) {
+                                           ResMut<WindowSurfaces> window_surfaces,
+                                           Res<wgpu::Instance> instance,
+                                           Res<wgpu::Adapter> adapter,
+                                           Res<wgpu::Device> device) {
     for (auto&& window : std::views::all(windows->windows) | std::views::values) {
         if (!window_surfaces->surfaces.contains(window.entity)) {
+            spdlog::debug("[render.window] Creating surface for window entity {}.", window.entity.index);
             wgpu::Surface surface = window.create_surface(*instance);
             wgpu::SurfaceCapabilities capabilities;
             auto status = surface.getCapabilities(*adapter, &capabilities);
@@ -221,6 +227,10 @@ void epix::render::window::create_surfaces(Res<ExtractedWindows> windows,
         }
 
         if (window.size_changed || window.present_mode_changed) {
+            spdlog::debug(
+                "[render.window] Reconfiguring surface for window entity {} (size_changed={}, "
+                "present_mode_changed={}).",
+                window.entity.index, window.size_changed, window.present_mode_changed);
             auto& data = window_surfaces->surfaces.at(window.entity);
             data.config.setWidth(window.physical_width);
             data.config.setHeight(window.physical_height);

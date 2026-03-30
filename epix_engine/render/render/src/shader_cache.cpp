@@ -1,3 +1,7 @@
+module;
+
+#include <spdlog/spdlog.h>
+
 module epix.render;
 
 import :shader_cache;
@@ -7,13 +11,17 @@ auto ShaderCache::get(const wgpu::Device& device, CachedPipelineId pipeline, ass
     -> std::expected<std::reference_wrapper<const wgpu::ShaderModule>, ShaderCacheError> {
     auto it = data.find(id);
     if (it != data.end()) {
+        // TODO: MSVC partial specialization workaround - cast AssetId<T> to UntypedAssetId
+        spdlog::trace("[render.shader_cache] Cache hit for shader '{}'.", assets::UntypedAssetId(id));
         it->second.pipelines.insert(pipeline);
         return std::cref(it->second.processed_shader);
     }
     auto shader_it = shaders.find(id);
     if (shader_it == shaders.end()) {
+        spdlog::trace("[render.shader_cache] Shader '{}' not loaded.", assets::UntypedAssetId(id));
         return std::unexpected(ShaderCacheError::NotLoaded);
     }
+    spdlog::trace("[render.shader_cache] Compiling shader module for '{}'.", assets::UntypedAssetId(id));
     const Shader& shader                     = shader_it->second;
     std::optional<wgpu::ShaderModule> module = load_module(device, shader);
     if (!module) {
@@ -26,6 +34,8 @@ auto ShaderCache::clear(assets::AssetId<Shader> id) -> std::vector<CachedPipelin
     auto affected_pipelines = std::vector<CachedPipelineId>{};
     auto it                 = data.find(id);
     if (it != data.end()) {
+        spdlog::trace("[render.shader_cache] Clearing cached module for '{}', {} affected pipelines.",
+                      assets::UntypedAssetId(id), it->second.pipelines.size());
         affected_pipelines.append_range(it->second.pipelines);
         data.erase(it);
     }
@@ -41,4 +51,4 @@ auto ShaderCache::remove(assets::AssetId<Shader> id) -> std::vector<CachedPipeli
     shaders.erase(id);
     return affected_pipelines;
 }
-}  // namespace render
+}  // namespace epix::render

@@ -28,6 +28,7 @@ void epix::render::render_system(World& world) {
 }
 
 void RenderPlugin::build(App& app) {
+    spdlog::debug("[render] Building RenderPlugin.");
     app.add_sub_app(Render);
     app.sub_app_mut(Render).then([](App& render_app) {
         render_app
@@ -42,21 +43,23 @@ void RenderPlugin::build(App& app) {
     });
 
     wgpu::Instance instance = wgpu::createInstance();
-    wgpu::Surface surface   = app.world()
-                                  .get_resource<AnonymousSurface>()
-                                  .transform([&](const AnonymousSurface& anonymous_surface) -> wgpu::Surface {
+    spdlog::debug("[render] WebGPU instance created.");
+    wgpu::Surface surface = app.world()
+                                .get_resource<AnonymousSurface>()
+                                .transform([&](const AnonymousSurface& anonymous_surface) -> wgpu::Surface {
                                     return anonymous_surface.create_surface(instance);
-                                  })
-                                  .value_or(wgpu::Surface{});
-    wgpu::Adapter adapter   = instance.requestAdapter(wgpu::RequestAdapterOptions()
-                                                          .setCompatibleSurface(surface)
-                                                          .setPowerPreference(wgpu::PowerPreference::eHighPerformance)
-                                                          .setBackendType(wgpu::BackendType::eVulkan));
-    surface                 = nullptr;  // release the temporary surface
+                                })
+                                .value_or(wgpu::Surface{});
+    wgpu::Adapter adapter = instance.requestAdapter(wgpu::RequestAdapterOptions()
+                                                        .setCompatibleSurface(surface)
+                                                        .setPowerPreference(wgpu::PowerPreference::eHighPerformance)
+                                                        .setBackendType(wgpu::BackendType::eVulkan));
+    surface               = nullptr;  // release the temporary surface
     app.world_mut().remove_resource<AnonymousSurface>();
     if (!adapter) {
         throw std::runtime_error("Failed to request WebGPU adapter");
     }
+    spdlog::debug("[render] WebGPU adapter acquired.");
     wgpu::DeviceDescriptor deviceDesc =
         wgpu::DeviceDescriptor()
             .setLabel("Render Device")
@@ -72,6 +75,7 @@ void RenderPlugin::build(App& app) {
                     spdlog::error("WebGPU Uncaptured error: {}, with stack:\n{}", std::string_view(message), stack);
                 }));
     wgpu::Device device = adapter.requestDevice(deviceDesc);
+    spdlog::debug("[render] WebGPU device created.");
     wgpu::Limits limits;
     device.getLimits(&limits);
     wgpu::Queue queue = device.getQueue();
