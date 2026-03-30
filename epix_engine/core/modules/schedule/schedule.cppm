@@ -276,7 +276,48 @@ export struct ScheduleExecutor {
     virtual void execute(ScheduleSystems& schedule, World& world, const ExecutorConfig& config) = 0;
 };
 /** @brief Default executor using thread-pool-based parallel dispatch. */
-export struct DefaultScheduleExecutor : ScheduleExecutor {
+export struct MultithreadClassicExecutor : ScheduleExecutor {
+    void execute(ScheduleSystems& schedule, World& world, const ExecutorConfig& config) override;
+};
+/** @brief A flat node in the expanded dependency graph used by FlatGraphExecutor.
+ *  Each original node is split into a pre node (runs system/conditions) and a post node
+ *  (waits for all children to finish). Hierarchy is encoded as pure dependency edges. */
+struct FlatNode {
+    size_t original_index;
+    bool is_post;
+    bool has_system;
+    std::vector<size_t> flat_depends;
+    std::vector<size_t> flat_successors;
+    std::vector<size_t> parent_originals;  // pre nodes only: original parent indices for condition propagation
+};
+/** @brief Cached flat graph derived from ScheduleCache. */
+struct FlatGraphCache {
+    std::vector<FlatNode> nodes;          // 2*N entries: [2*i]=pre, [2*i+1]=post for original node i
+    std::weak_ptr<ScheduleCache> source;  // detect when schedule cache is rebuilt
+};
+/** @brief Flat-graph executor that converts set hierarchy into pure dependency edges.
+ *  Each set is split into pre/post nodes: children depend on the pre node and the
+ *  post node depends on children's post nodes. This eliminates child_count tracking
+ *  and simplifies the main execution loop to pure wait_count decrements. */
+export struct MultithreadFlatExecutor : ScheduleExecutor {
+    std::shared_ptr<FlatGraphCache> m_flat_cache;
+
+    void rebuild_flat_cache(const std::shared_ptr<ScheduleCache>& cache);
+    void execute(ScheduleSystems& schedule, World& world, const ExecutorConfig& config) override;
+};
+/** @brief Executor backed by taskflow's work-stealing scheduler.
+ *  Converts the flat pre/post graph into a pure taskflow graph at cache-build time.
+ *  Access conflicts between systems are resolved by inserting dependency edges so
+ *  taskflow can fully manage parallelism. Conditions use taskflow's conditional tasking. */
+export struct TaskflowExecutor : ScheduleExecutor {
+    struct Impl;
+    std::unique_ptr<Impl> m_impl;
+
+    TaskflowExecutor();
+    explicit TaskflowExecutor(size_t num_threads);
+    ~TaskflowExecutor() override;
+    TaskflowExecutor(TaskflowExecutor&&) noexcept;
+    TaskflowExecutor& operator=(TaskflowExecutor&&) noexcept;
     void execute(ScheduleSystems& schedule, World& world, const ExecutorConfig& config) override;
 };
 /** @brief A named collection of systems with dependency ordering and parallel execution support.
@@ -287,6 +328,8 @@ export struct Schedule {
     ScheduleConfig _default_schedule_config;
     ScheduleSystems _data;
     std::unique_ptr<ScheduleExecutor> executor;
+
+    static std::unique_ptr<ScheduleExecutor> default_executor();
 
     /** @brief Add sets and systems from config. If accept_system is false, only edges/conditions are merged;
      *  if true, existing systems are replaced when the config carries a system. */
@@ -430,4 +473,4 @@ SetConfig sets(Ts&&... ts)
 {
     return make_sets<false, Ts...>(std::forward<Ts>(ts)...);
 }
-}  // namespace core
+}  // namespace epix::core

@@ -103,6 +103,12 @@ set (HARFBUZZ_HAVE_FREETYPE ON)
 add_subdirectory (libs/harfbuzz)
 add_subdirectory (libs/googletest)
 add_subdirectory (libs/efsw)
+block()
+  set(TF_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+  set(TF_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+  set(TF_BUILD_MODULES OFF CACHE BOOL "" FORCE)
+  add_subdirectory (libs/taskflow)
+endblock()
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/asio.cmake)
 
