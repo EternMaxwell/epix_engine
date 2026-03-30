@@ -1,6 +1,7 @@
 ﻿epix_add_module(epix_core)
 target_link_libraries(epix_core PUBLIC BSThreadPool)
 target_link_libraries(epix_core PUBLIC spdlog::spdlog)
+target_link_libraries(epix_core PRIVATE Taskflow)
 if (EPIX_ENABLE_TRACY)
   target_compile_definitions(epix_core PRIVATE EPIX_ENABLE_TRACY)
   target_link_libraries(epix_core PRIVATE TracyClient)

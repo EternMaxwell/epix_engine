@@ -70,3 +70,6 @@
 [submodule "libs/efsw"]
 	path = libs/efsw
 	url = https://github.com/SpartanJ/efsw.git
+[submodule "libs/taskflow"]
+	path = libs/taskflow
+	url = https://github.com/taskflow/taskflow.git
