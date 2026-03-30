@@ -66,4 +66,4 @@ export struct ScheduleThreadPool {
     ScheduleThreadPool()
         : pool(std::thread::hardware_concurrency(), []() { BS::this_thread::set_os_thread_name("system"); }) {}
 };
-}  // namespace core
+}  // namespace epix::core
