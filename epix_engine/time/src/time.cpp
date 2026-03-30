@@ -6,6 +6,27 @@ import std;
 using namespace epix::core;
 namespace epix::time {
 
+/** @brief Custom executor for FixedMain that runs the fixed sub-schedules
+ *  (FixedFirst, FixedPreUpdate, FixedUpdate, FixedPostUpdate, FixedLast) in order,
+ *  ignoring FixedMain's own systems. */
+struct FixedMainExecutor : ScheduleExecutor {
+    std::array<ScheduleLabel, 5> sub_schedules = {
+        ScheduleLabel(FixedFirst),      ScheduleLabel(FixedPreUpdate), ScheduleLabel(FixedUpdate),
+        ScheduleLabel(FixedPostUpdate), ScheduleLabel(FixedLast),
+    };
+
+    void execute(ScheduleSystems& /*unused*/, World& world, const ExecutorConfig& /*unused*/) override {
+        auto& schedules = world.resource_mut<Schedules>();
+        for (auto& label : sub_schedules) {
+            auto schedule = schedules.remove_schedule(label);
+            if (schedule) {
+                schedule->execute(world);
+                schedules.add_schedule(std::move(*schedule));
+            }
+        }
+    }
+};
+
 void TimePlugin::build(App& app) {
     app.world_mut().init_resource<Time<>>();
     app.world_mut().init_resource<Time<Real>>();
@@ -35,7 +56,14 @@ void TimePlugin::build(App& app) {
             update_virtual_time(current, *virtual_time, *real_time);
         }).set_name("time_system"));
 
-    // Register FixedMain schedule with loop condition
+    // Register sub-schedules for fixed-timestep execution
+    app.add_schedule(Schedule(FixedFirst));
+    app.add_schedule(Schedule(FixedPreUpdate));
+    app.add_schedule(Schedule(FixedUpdate));
+    app.add_schedule(Schedule(FixedPostUpdate));
+    app.add_schedule(Schedule(FixedLast));
+
+    // Register FixedMain schedule with loop condition and custom executor
     ScheduleConfig fixed_config;
     fixed_config.loop_condition = [](World& world) -> bool {
         auto& fixed_time = world.resource_mut<Time<Fixed>>();
@@ -44,15 +72,18 @@ void TimePlugin::build(App& app) {
         return true;
     };
 
-    app.add_schedule(Schedule(FixedMain).with_schedule_config(fixed_config).then([](Schedule& sche) {
-        sche.add_pre_systems(into([](ResMut<Time<Fixed>> fixed_time, Res<Time<Virtual>> virtual_time) {
-                                 fixed_time->accumulate_overstep(virtual_time->delta());
-                             }).set_name("accumulate_fixed_overstep"));
-        sche.add_post_systems(into([](ResMut<Time<>> time, Res<Time<Virtual>> virtual_time) {
-                                  *time = virtual_time->as_generic();
-                              }).set_name("restore_virtual_time"));
-        sche.configure_sets(sets(FixedFirst, FixedPreUpdate, FixedUpdate, FixedPostUpdate, FixedLast).chain());
-    }));
+    app.add_schedule(Schedule(FixedMain)
+                         .with_schedule_config(fixed_config)
+                         .with_executor(std::make_unique<FixedMainExecutor>())
+                         .then([](Schedule& sche) {
+                             sche.add_pre_systems(
+                                 into([](ResMut<Time<Fixed>> fixed_time, Res<Time<Virtual>> virtual_time) {
+                                     fixed_time->accumulate_overstep(virtual_time->delta());
+                                 }).set_name("accumulate_fixed_overstep"));
+                             sche.add_post_systems(into([](ResMut<Time<>> time, Res<Time<Virtual>> virtual_time) {
+                                                       *time = virtual_time->as_generic();
+                                                   }).set_name("restore_virtual_time"));
+                         }));
 
     // Insert FixedMain into schedule order after StateTransition (before Update)
     app.schedule_order().insert_after(ScheduleLabel(StateTransition), ScheduleLabel(FixedMain));

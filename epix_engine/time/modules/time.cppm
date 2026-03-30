@@ -29,22 +29,23 @@ export struct TimeUpdateConfig {
     uint32_t fixed_timestep_factor = 1;
 };
 
-/** @brief Schedule for fixed-timestep systems. Loops based on accumulated time. */
+/** @brief Schedule for fixed-timestep systems. Loops based on accumulated time.
+ *  Uses a custom executor that runs the sub-schedules below in order. */
 export inline struct FixedMainT {
 } FixedMain;
-/** @brief System set: runs first in FixedMain each iteration. */
+/** @brief Schedule: runs first in FixedMain each iteration. */
 export inline struct FixedFirstT {
 } FixedFirst;
-/** @brief System set: runs before FixedUpdate in FixedMain. */
+/** @brief Schedule: runs before FixedUpdate in FixedMain. */
 export inline struct FixedPreUpdateT {
 } FixedPreUpdate;
-/** @brief System set: main fixed-timestep update. */
+/** @brief Schedule: main fixed-timestep update. */
 export inline struct FixedUpdateT {
 } FixedUpdate;
-/** @brief System set: runs after FixedUpdate in FixedMain. */
+/** @brief Schedule: runs after FixedUpdate in FixedMain. */
 export inline struct FixedPostUpdateT {
 } FixedPostUpdate;
-/** @brief System set: runs last in FixedMain each iteration. */
+/** @brief Schedule: runs last in FixedMain each iteration. */
 export inline struct FixedLastT {
 } FixedLast;
 
@@ -52,4 +53,4 @@ export struct TimePlugin {
     void build(App& app);
 };
 
-}  // namespace time
+}  // namespace epix::time
