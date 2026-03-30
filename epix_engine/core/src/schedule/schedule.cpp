@@ -322,14 +322,6 @@ void Schedule::execute(World& world, const ScheduleConfig& config) {
         spdlog::error("[schedule] unknown exception during system initialization.");
     }
 
-    std::shared_ptr cache = _data.cache;  // keep a copy to avoid being invalidated during execution
-
-    // Check if anything to do
-    bool has_system = std::ranges::any_of(cache->nodes, [](const CachedNode& cn) { return (bool)cn.node->system; });
-    if (!has_system && m_pre_systems.empty() && m_post_systems.empty()) {
-        return;
-    }
-
     // Check schedule-level conditions (synchronous, caller thread)
     for (auto& cond : config.conditions) {
         if (!cond(world)) return;
@@ -376,6 +368,10 @@ void Schedule::execute(World& world, const ScheduleConfig& config) {
 
 void DefaultScheduleExecutor::execute(ScheduleSystems& _data, World& world, const ExecutorConfig& config) {
     std::shared_ptr cache = _data.cache;  // keep a copy to avoid being invalidated during execution
+
+    // Check if anything to do
+    bool has_system = std::ranges::any_of(cache->nodes, [](const CachedNode& cn) { return (bool)cn.node->system; });
+    if (!has_system) return;
 
     // Get thread pool from world resource
     auto& pool = world.resource_or_emplace<ScheduleThreadPool>().pool;
@@ -705,4 +701,4 @@ void Schedule::extract_systems_from_config(SetConfig& config, std::vector<PrePos
 void Schedule::add_pre_systems(SetConfig&& config) { extract_systems_from_config(config, m_pre_systems); }
 void Schedule::add_post_systems(SetConfig&& config) { extract_systems_from_config(config, m_post_systems); }
 
-}  // namespace core
+}  // namespace epix::core
