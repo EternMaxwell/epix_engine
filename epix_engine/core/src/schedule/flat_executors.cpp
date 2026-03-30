@@ -196,10 +196,7 @@ void MultithreadFlatExecutor::execute(ScheduleSystems& _data, World& world, cons
     auto dispatch_system = [&](size_t flat_index, size_t orig_index) {
         bool exclusive =
             (config.deferred == DeferredApply::ApplyDirect && cache->nodes[orig_index].node->system->is_deferred());
-        {
-            std::lock_guard lock(dispatch_mutex);
-            pending_dispatch.push_back({flat_index, orig_index, exclusive});
-        }
+        pending_dispatch.push_back({flat_index, orig_index, exclusive});
         running_count++;
     };
 

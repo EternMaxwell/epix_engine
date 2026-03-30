@@ -127,7 +127,7 @@ void MultithreadClassicExecutor::execute(ScheduleSystems& _data, World& world, c
             pool.detach_task([&, slot, idx]() {
                 auto& system = *cache->nodes[idx].node->system;
                 spdlog::trace("[schedule] Running system '{}' on worker thread.", system.name());
-                auto res     = system.run_no_apply({}, world);
+                auto res = system.run_no_apply({}, world);
                 if (!res) handle_error(idx, res.error());
                 spdlog::trace("[schedule] Finished system '{}' on worker thread.", system.name());
                 {
@@ -143,10 +143,7 @@ void MultithreadClassicExecutor::execute(ScheduleSystems& _data, World& world, c
     auto dispatch_system = [&](size_t index) {
         CachedNode& cached_node = cache->nodes[index];
         bool exclusive = (config.deferred == DeferredApply::ApplyDirect && cached_node.node->system->is_deferred());
-        {
-            std::lock_guard lock(dispatch_mutex);
-            pending_dispatch.push_back({index, exclusive});
-        }
+        pending_dispatch.push_back({index, exclusive});
         exec_state.running_count++;
     };
 
