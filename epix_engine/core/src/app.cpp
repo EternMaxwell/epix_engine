@@ -4,9 +4,11 @@ module;
 #include <tracy/Tracy.hpp>
 #endif
 
+#include <spdlog/cfg/env.h>
 #include <spdlog/spdlog.h>
 
 #include <stacktrace>
+
 
 module epix.core;
 
@@ -27,7 +29,11 @@ struct DefaultRunner : public AppRunner {
     void exit(App& app) override { app.run_schedules(PreExit, Exit, PostExit); }
 };
 
-App App::create() { return App(DefaultCreateTag{}); }
+App App::create() {
+    static std::once_flag spdlog_env_loaded;
+    std::call_once(spdlog_env_loaded, []() { spdlog::cfg::load_env_levels(); });
+    return App(DefaultCreateTag{});
+}
 
 App::App(DefaultCreateTag,
          const AppLabel& label,
