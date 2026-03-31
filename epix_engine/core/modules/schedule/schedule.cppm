@@ -272,6 +272,7 @@ export struct ScheduleSystems {
     std::optional<std::vector<std::shared_ptr<Node>>> pending_applies;
 };
 export struct ScheduleExecutor {
+    ScheduleLabel label;
     virtual ~ScheduleExecutor()                                                                 = default;
     virtual void execute(ScheduleSystems& schedule, World& world, const ExecutorConfig& config) = 0;
 };
@@ -306,6 +307,8 @@ export struct Schedule {
     Schedule(Schedule&&)                 = default;
     Schedule& operator=(const Schedule&) = delete;
     Schedule& operator=(Schedule&&)      = default;
+
+    static std::optional<ScheduleLabel> current_label();
 
     /** @brief Get the schedule's label. */
     ScheduleLabel label() const { return _label; }
@@ -375,7 +378,10 @@ export struct Schedule {
     /** @brief Get the default schedule configuration (mutable). */
     ScheduleConfig& default_schedule_config() { return _default_schedule_config; }
 
-    void set_executor(std::unique_ptr<ScheduleExecutor> exec) { executor = std::move(exec); }
+    void set_executor(std::unique_ptr<ScheduleExecutor> exec) {
+        executor        = std::move(exec);
+        executor->label = label();
+    }
     Schedule& with_executor(std::unique_ptr<ScheduleExecutor> exec) & {
         set_executor(std::move(exec));
         return *this;

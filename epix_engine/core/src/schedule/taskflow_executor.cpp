@@ -27,71 +27,12 @@ struct TaskflowExecutor::Impl {
     World* exec_world = nullptr;
     ExecutorConfig exec_config;
 
-    std::shared_ptr<FlatGraphCache> flat_cache;
     std::shared_ptr<ScheduleCache> source;
     std::vector<std::uint8_t> entered_nodes;
     std::vector<std::uint8_t> ended_nodes;
 
     Impl() : executor(std::thread::hardware_concurrency()) {}
     explicit Impl(size_t n) : executor(n) {}
-
-    // ---- flat-cache construction ----
-
-    void rebuild_flat_cache(const std::shared_ptr<ScheduleCache>& cache) {
-        flat_cache         = std::make_shared<FlatGraphCache>();
-        flat_cache->source = cache;
-        source             = cache;
-
-        const size_t N = cache->nodes.size();
-        flat_cache->nodes.resize(2 * N);
-
-        for (size_t i = 0; i < N; i++) {
-            const size_t pre_i  = 2 * i;
-            const size_t post_i = 2 * i + 1;
-            auto& pre           = flat_cache->nodes[pre_i];
-            auto& post          = flat_cache->nodes[post_i];
-
-            pre.original_index = i;
-            pre.is_post        = false;
-            pre.has_system     = (bool)cache->nodes[i].node->system;
-
-            post.original_index = i;
-            post.is_post        = true;
-            post.has_system     = false;
-
-            post.flat_depends.push_back(pre_i);
-            pre.flat_successors.push_back(post_i);
-        }
-
-        for (size_t i = 0; i < N; i++) {
-            const auto& cn      = cache->nodes[i];
-            const size_t pre_i  = 2 * i;
-            const size_t post_i = 2 * i + 1;
-
-            for (size_t dep : cn.depends) {
-                const size_t post_dep = 2 * dep + 1;
-                flat_cache->nodes[pre_i].flat_depends.push_back(post_dep);
-                flat_cache->nodes[post_dep].flat_successors.push_back(pre_i);
-            }
-
-            for (size_t par : cn.parents) {
-                const size_t pre_par  = 2 * par;
-                const size_t post_par = 2 * par + 1;
-
-                flat_cache->nodes[pre_i].flat_depends.push_back(pre_par);
-                flat_cache->nodes[pre_par].flat_successors.push_back(pre_i);
-
-                flat_cache->nodes[post_par].flat_depends.push_back(post_i);
-                flat_cache->nodes[post_i].flat_successors.push_back(post_par);
-
-                flat_cache->nodes[pre_i].parent_originals.push_back(par);
-            }
-        }
-    }
-
-    bool needs_flat_rebuild(const std::shared_ptr<ScheduleCache>& cache) const {
-        return !flat_cache || source != cache;
-    }
 
     void handle_error(size_t index, const RunSystemError& error) {
         if (std::holds_alternative<ValidateParamError>(error)) {
@@ -206,18 +147,6 @@ struct TaskflowExecutor::Impl {
                     task_nodes[i].cond_meet.precede(task_nodes[i].out);
                 }
             }
-            task_nodes[i].in.precede(taskflow
-                                         .emplace([i, this] {
-                                             spdlog::trace("[taskflow] Entered node {}.", i);
-                                             entered_nodes[i] = 1;
-                                         })
-                                         .name(node_name(i) + " [enter]"));
-            task_nodes[i].out.precede(taskflow
-                                          .emplace([i, this] {
-                                              spdlog::trace("[taskflow] Ended node {}.", i);
-                                              ended_nodes[i] = 1;
-                                          })
-                                          .name(node_name(i) + " [end]"));
             // configure deps between conditions and system
             for (std::size_t ci = 0; ci < conditions.size(); ci++) {
                 task_nodes[i].cond_tasks[ci].precede(task_nodes[i].out, ci == conditions.size() - 1
@@ -266,7 +195,7 @@ struct TaskflowExecutor::Impl {
         access_order.reserve(task_accesses.size());
         std::unordered_set<tf::Task> visited;
         for (auto&& [task, index] : task_to_node) {
-            if (task.num_successors() == 0) {
+            if (task.num_predecessors() == 0) {
                 if (index) access_order.push_back(*index);
                 visited.insert(task);
             }
@@ -276,8 +205,8 @@ struct TaskflowExecutor::Impl {
             for (auto&& [task, index] : task_to_node) {
                 if (visited.contains(task)) continue;
                 bool ready = true;
-                task.for_each_successor([&](tf::Task succ) {
-                    if (!visited.contains(succ)) {
+                task.for_each_predecessor([&](tf::Task t) {
+                    if (!visited.contains(t)) {
                         ready = false;
                     }
                 });
@@ -292,13 +221,32 @@ struct TaskflowExecutor::Impl {
             }
         }
 
-        // order done, add edges for access conflicts
+        // order done, add missing edges for access conflicts
+        std::unordered_map<tf::Task, std::unordered_set<tf::Task>> predecessors;
+        auto get_predecessors = [&](this auto&& self, tf::Task t) -> const std::unordered_set<tf::Task>& {
+            if (predecessors.contains(t)) {
+                return predecessors[t];
+            }
+            auto& result = predecessors[t];
+            t.for_each_predecessor([&](tf::Task pt) {
+                result.insert(pt);
+                auto&& pts = self(pt);
+                result.insert(pts.begin(), pts.end());
+            });
+            return result;
+        };
+        taskflow.for_each_task([&](tf::Task t) {
+            predecessors[t] = {};
+            t.for_each_predecessor([&](tf::Task pt) { predecessors[t].insert(pt); });
+        });
         for (std::size_t i1 = 0; i1 < access_order.size(); i1++) {
             auto&& [task1, access1, exclusive1] = task_accesses[access_order[i1]];
             for (std::size_t i2 = i1 + 1; i2 < access_order.size(); i2++) {
                 auto&& [task2, access2, exclusive2] = task_accesses[access_order[i2]];
                 if (exclusive1 || exclusive2 || !access1->is_compatible(*access2)) {
-                    task1.precede(task2);
+                    if (!predecessors[task2].contains(task1)) {
+                        task1.precede(task2);
+                    }
                 }
             }
         }
@@ -314,20 +262,16 @@ TaskflowExecutor& TaskflowExecutor::operator=(TaskflowExecutor&&) noexcept = def
 void TaskflowExecutor::execute(ScheduleSystems& _data, World& world, const ExecutorConfig& config) {
     std::shared_ptr cache = _data.cache;
 
-    bool rebuild_flat = m_impl->needs_flat_rebuild(cache);
     bool rebuild_taskflow =
-        rebuild_flat || !m_impl->taskflow.has_value() || config.deferred != m_impl->exec_config.deferred;
+        m_impl->source != cache || !m_impl->taskflow.has_value() || config.deferred != m_impl->exec_config.deferred;
 
-    m_impl->source      = cache;
     m_impl->exec_world  = &world;
     m_impl->exec_config = config;
 
-    if (rebuild_flat) {
-        m_impl->rebuild_flat_cache(cache);
-    }
     if (rebuild_taskflow) {
-        m_impl->build_taskflow(m_impl->flat_cache->source.lock());
+        m_impl->build_taskflow(cache);
     }
+    m_impl->source = cache;
 
     bool has_system = std::ranges::any_of(cache->nodes, [](const CachedNode& cn) { return (bool)cn.node->system; });
     if (!has_system) return;
@@ -336,6 +280,16 @@ void TaskflowExecutor::execute(ScheduleSystems& _data, World& world, const Execu
     m_impl->ended_nodes.resize(cache->nodes.size(), 0);
 
     m_impl->executor.run(m_impl->taskflow.value()).wait();
+
+    // check if all nodes are entered and ended, if not, there must be a cycle in the taskflow which means a bug in the
+    for (size_t i = 0; i < cache->nodes.size(); i++) {
+        if (m_impl->entered_nodes[i] != m_impl->ended_nodes[i]) {
+            spdlog::error(
+                "[schedule] internal error: node {} is entered {} times but ended {} times, there must be a "
+                "bug in the taskflow construction.",
+                i, m_impl->entered_nodes[i], m_impl->ended_nodes[i]);
+        }
+    }
 
     // End-of-iteration deferred handling.
     switch (config.deferred) {

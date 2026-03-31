@@ -303,13 +303,13 @@ void Schedule::check_change_tick(Tick change_tick) {
 }
 
 std::unique_ptr<ScheduleExecutor> Schedule::default_executor() {
-    return std::make_unique<executors::MultithreadClassicExecutor>();
+    return std::make_unique<executors::TaskflowExecutor>();
 }
 
 void Schedule::execute(World& world, const ScheduleConfig& config) {
     spdlog::trace("[schedule] Executing schedule '{}'.", label().to_string());
     if (!executor) {
-        executor = default_executor();
+        set_executor(default_executor());
     }
     if (!_data.cache) {
         auto prepare_result = prepare(
