@@ -53,4 +53,15 @@ export struct TaskflowExecutor : ScheduleExecutor {
     TaskflowExecutor& operator=(TaskflowExecutor&&) noexcept;
     void execute(ScheduleSystems& schedule, World& world, const ExecutorConfig& config) override;
 };
+
+export struct AutoExecutor : ScheduleExecutor {
+    struct Impl;
+    std::unique_ptr<Impl> m_impl;
+
+    AutoExecutor();
+    ~AutoExecutor() override;
+    AutoExecutor(AutoExecutor&&) noexcept;
+    AutoExecutor& operator=(AutoExecutor&&) noexcept;
+    void execute(ScheduleSystems& schedule, World& world, const ExecutorConfig& config) override;
+};
 }  // namespace epix::core::executors

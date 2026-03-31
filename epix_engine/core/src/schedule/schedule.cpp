@@ -303,7 +303,7 @@ void Schedule::check_change_tick(Tick change_tick) {
 }
 
 std::unique_ptr<ScheduleExecutor> Schedule::default_executor() {
-    return std::make_unique<executors::TaskflowExecutor>();
+    return std::make_unique<executors::AutoExecutor>();
 }
 
 void Schedule::execute(World& world, const ScheduleConfig& config) {
