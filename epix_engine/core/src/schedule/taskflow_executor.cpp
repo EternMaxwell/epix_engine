@@ -22,20 +22,15 @@ struct AccessEdge {
 
 struct TaskflowExecutor::Impl {
     tf::Executor executor;
-    std::shared_ptr<FlatGraphCache> flat_cache;
-    std::weak_ptr<ScheduleCache> source;
+    std::optional<tf::Taskflow> taskflow;
 
-    // Cached taskflow — rebuilt whenever flat_cache is rebuilt.
-    tf::Taskflow taskflow;
-    bool taskflow_built = false;
-
-    // Per-execution state — refreshed by execute() before each run.
-    // Raw pointer is safe: execute() holds a shared_ptr to the same cache alive.
-    ScheduleCache* exec_cache = nullptr;
-    World* exec_world         = nullptr;
+    World* exec_world = nullptr;
     ExecutorConfig exec_config;
-    std::vector<uint8_t> condition_met;
-    std::mutex system_run_mutex;
+
+    std::shared_ptr<FlatGraphCache> flat_cache;
+    std::shared_ptr<ScheduleCache> source;
+    std::vector<std::uint8_t> entered_nodes;
+    std::vector<std::uint8_t> ended_nodes;
 
     Impl() : executor(std::thread::hardware_concurrency()) {}
     explicit Impl(size_t n) : executor(n) {}
@@ -92,250 +87,221 @@ struct TaskflowExecutor::Impl {
                 flat_cache->nodes[pre_i].parent_originals.push_back(par);
             }
         }
-
-        taskflow_built = false;  // invalidate cached taskflow
     }
 
     bool needs_flat_rebuild(const std::shared_ptr<ScheduleCache>& cache) const {
-        return !flat_cache || source.lock() != cache;
+        return !flat_cache || source != cache;
     }
 
-    // ---- per-execution helpers (use exec_* members) ----
-
-    std::string node_name(size_t i) {
-        auto& node = exec_cache->nodes[i].node;
-        if (node->system) return std::string(node->system->name());
-        return std::format("set {}#{}", node->label.type_index().short_name(), node->label.extra());
-    }
-
-    void handle_error(size_t orig_index, const RunSystemError& error) {
+    void handle_error(size_t index, const RunSystemError& error) {
         if (std::holds_alternative<ValidateParamError>(error)) {
             auto&& param_error = std::get<ValidateParamError>(error);
             spdlog::error("[schedule] parameter validation error at system '{}', type: '{}', msg: {}",
-                          exec_cache->nodes[orig_index].node->system->name(), param_error.param_type.short_name(),
+                          source->nodes[index].node->system->name(), param_error.param_type.short_name(),
                           param_error.message);
         } else if (std::holds_alternative<SystemException>(error)) {
-            auto&& exception = std::get<SystemException>(error);
+            auto&& expection = std::get<SystemException>(error);
             try {
-                std::rethrow_exception(exception.exception);
+                std::rethrow_exception(expection.exception);
             } catch (const std::exception& e) {
                 spdlog::error("[schedule] system exception at system '{}', msg: {}",
-                              exec_cache->nodes[orig_index].node->system->name(), e.what());
+                              source->nodes[index].node->system->name(), e.what());
             } catch (...) {
                 spdlog::error("[schedule] system exception at system '{}', msg: unknown",
-                              exec_cache->nodes[orig_index].node->system->name());
+                              source->nodes[index].node->system->name());
             }
         }
         if (exec_config.on_error) exec_config.on_error(error);
-    }
-
-    void run_system_task_impl(size_t i) {
-        auto& system = *exec_cache->nodes[i].node->system;
-        spdlog::trace("[taskflow] Running system '{}' (node={}).", system.name(), i);
-        bool exclusive =
-            system.is_exclusive() || (exec_config.deferred == DeferredApply::ApplyDirect && system.is_deferred());
-        {
-            std::lock_guard lock(system_run_mutex);
-            if (exclusive) {
-                auto res = system.run_no_apply({}, *exec_world);
-                if (!res) handle_error(i, res.error());
-                system.apply_deferred(*exec_world);
-            } else {
-                auto res = system.run_no_apply({}, *exec_world);
-                if (!res) handle_error(i, res.error());
-            }
-        }
-        spdlog::trace("[taskflow] Finished system '{}' (node={}).", system.name(), i);
-    }
-
-    // Evaluates parent + own conditions for node i. Sets condition_met[i]=0 on
-    // failure. Returns true if the node should run.
-    bool eval_conditions(size_t i) {
-        for (size_t par : flat_cache->nodes[2 * i].parent_originals) {
-            if (!condition_met[par]) {
-                condition_met[i] = 0;
-                spdlog::trace("[taskflow] Node {} ('{}') skipped due to parent condition.", i, node_name(i));
-                return false;
-            }
-        }
-        auto& conditions = exec_cache->nodes[i].node->conditions;
-        for (size_t ci = 0; ci < conditions.size(); ci++) {
-            auto res = conditions[ci]->run({}, *exec_world);
-            if (!res.has_value()) {
-                condition_met[i] = 0;
-                spdlog::trace("[taskflow] Condition {} on node {} returned no value, skipping.", ci, i);
-                return false;
-            }
-            if (!res.value()) {
-                condition_met[i] = 0;
-                spdlog::trace("[taskflow] Condition {} on node {} evaluated false, skipping.", ci, i);
-                return false;
-            }
-        }
-        return true;
-    }
+    };
 
     // ---- taskflow construction ----
 
     void build_taskflow(const std::shared_ptr<ScheduleCache>& cache) {
-        taskflow.clear();
+        this->taskflow.reset();
+        this->taskflow.emplace();
+        auto& taskflow = *this->taskflow;
 
-        const size_t N          = cache->nodes.size();
-        const size_t flat_count = flat_cache->nodes.size();
+        struct TaskNode {
+            std::shared_ptr<Node> node;
+            std::optional<tf::Task> task;      // system task, if has
+            std::vector<tf::Task> cond_tasks;  // condition tasks, one per condition
+            tf::Task cond_meet;  // placeholder task that represents the point where all conditions are met; conditions
+                                 // precede this, system task (if has) follows this
+            tf::Task in;         // reference to a task that can be used to configure tasks that before this node.
+            tf::Task out;        // reference to a task that can be used to configure tasks that after this node.
+            bool exclusive = false;
+        };
 
-        // Build flat-graph adjacency for topo-sort and reachability.
-        std::vector<std::vector<size_t>> flat_succs(flat_count);
-        std::vector<size_t> indegree(flat_count, 0);
-        for (size_t fi = 0; fi < flat_count; fi++) {
-            flat_succs[fi] = flat_cache->nodes[fi].flat_successors;
-            for (size_t succ : flat_succs[fi]) indegree[succ]++;
-        }
-
-        std::vector<size_t> topo_rank(flat_count, flat_count);
-        {
-            std::deque<size_t> q;
-            for (size_t fi = 0; fi < flat_count; fi++) {
-                if (indegree[fi] == 0) q.push_back(fi);
-            }
-            size_t rank = 0;
-            while (!q.empty()) {
-                size_t u     = q.front();
-                topo_rank[u] = rank++;
-                q.pop_front();
-                for (size_t v : flat_succs[u]) {
-                    if (--indegree[v] == 0) q.push_back(v);
-                }
-            }
-        }
-
-        // Collect access sets for each original pre-node.
-        std::vector<std::vector<const FilteredAccessSet*>> pre_accesses(N);
-        for (size_t i = 0; i < N; i++) {
-            auto& cn = cache->nodes[i];
-            for (size_t ci = 0; ci < cn.node->condition_access.size(); ci++) {
-                pre_accesses[i].push_back(&cn.node->condition_access[ci]);
-            }
-            if (cn.node->system) pre_accesses[i].push_back(&cn.node->system_access);
-        }
-
-        // Reachability from each pre-node through the full flat graph.
-        std::vector<bit_vector> reachable_pre(N, bit_vector(N));
-        for (size_t i = 0; i < N; i++) {
-            bit_vector visited(flat_count);
-            std::vector<size_t> stack;
-            stack.push_back(2 * i);
-            visited.set(2 * i);
-            while (!stack.empty()) {
-                size_t u = stack.back();
-                stack.pop_back();
-                for (size_t v : flat_succs[u]) {
-                    if (!visited.contains(v)) {
-                        visited.set(v);
-                        stack.push_back(v);
-                    }
-                }
-            }
-            for (size_t j = 0; j < N; j++) {
-                if (visited.contains(2 * j)) reachable_pre[i].set(j);
-            }
-        }
-
-        // Compute access-conflict edges, ordered by topological rank.
-        std::vector<AccessEdge> access_edges;
-        for (size_t i = 0; i < N; i++) {
-            if (pre_accesses[i].empty()) continue;
-            for (size_t j = i + 1; j < N; j++) {
-                if (pre_accesses[j].empty()) continue;
-                if (reachable_pre[i].contains(j) || reachable_pre[j].contains(i)) continue;
-                bool conflict = false;
-                for (auto* a : pre_accesses[i]) {
-                    for (auto* b : pre_accesses[j]) {
-                        if (!a->is_compatible(*b)) {
-                            conflict = true;
-                            break;
-                        }
-                    }
-                    if (conflict) break;
-                }
-                if (conflict) {
-                    if (topo_rank[2 * i] <= topo_rank[2 * j]) {
-                        access_edges.push_back({i, j});
-                    } else {
-                        access_edges.push_back({j, i});
-                    }
-                }
-            }
-        }
-
-        spdlog::trace("[taskflow] Building taskflow: {} nodes, {} flat nodes, {} access edges.", N, flat_count,
-                      access_edges.size());
-
-        // Create task placeholders.
-        std::vector<tf::Task> pre_start_tasks(N);
-        std::vector<tf::Task> pre_done_tasks(N);
-        std::vector<tf::Task> cond_tasks(N);
-        std::vector<tf::Task> system_tasks(N);
-        std::vector<tf::Task> post_tasks(N);
-
-        auto pre_start_task = [&](size_t i) -> tf::Task& { return pre_start_tasks[i]; };
-        auto pre_done_task  = [&](size_t i) -> tf::Task& { return pre_done_tasks[i]; };
-
-        // Build per-node task chains.
-        for (size_t i = 0; i < N; i++) {
-            auto& cn            = cache->nodes[i];
-            bool has_conditions = !cn.node->conditions.empty();
-            bool has_parents    = !flat_cache->nodes[2 * i].parent_originals.empty();
-            bool needs_cond     = has_conditions || has_parents;
-            bool has_system_i   = (bool)cn.node->system;
-
-            pre_start_tasks[i] = taskflow.placeholder();
-            pre_done_tasks[i]  = taskflow.placeholder();
-            post_tasks[i]      = taskflow.placeholder();
-            pre_done_tasks[i].precede(post_tasks[i]);
-
-            if (needs_cond) {
-                if (has_system_i) {
-                    // Condition task returns 0=skip (-> pre_done), 1=run (-> system).
-                    cond_tasks[i] = taskflow.emplace([this, i]() -> int { return eval_conditions(i) ? 1 : 0; });
-                    pre_start_tasks[i].precede(cond_tasks[i]);
-                    system_tasks[i] = taskflow.emplace([this, i]() { run_system_task_impl(i); });
-                    cond_tasks[i].precede(pre_done_tasks[i], system_tasks[i]);
-                    system_tasks[i].precede(pre_done_tasks[i]);
-                } else {
-                    // Set node: evaluate conditions but no system to branch to.
-                    cond_tasks[i] = taskflow.emplace([this, i]() { eval_conditions(i); });
-                    pre_start_tasks[i].precede(cond_tasks[i]);
-                    cond_tasks[i].precede(pre_done_tasks[i]);
-                }
-            } else if (has_system_i) {
-                system_tasks[i] = taskflow.emplace([this, i]() { run_system_task_impl(i); });
-                pre_start_tasks[i].precede(system_tasks[i]);
-                system_tasks[i].precede(pre_done_tasks[i]);
+        auto node_name = [&](size_t i) {
+            auto& node = cache->nodes[i].node;
+            if (node->system) {
+                return std::format("system '{}' (node {})", node->system->name(), i);
             } else {
-                // Empty set node.
-                pre_start_tasks[i].precede(pre_done_tasks[i]);
+                return std::format("set '{}' (node {})", node->label.to_string(), i);
+            }
+        };
+
+        std::vector<TaskNode> task_nodes(cache->nodes.size());
+        for (std::size_t i = 0; i < cache->nodes.size(); i++) {
+            bool exclusive =
+                cache->nodes[i].node->system &&
+                (cache->nodes[i].node->system->is_exclusive() ||
+                 (exec_config.deferred == DeferredApply::ApplyDirect && cache->nodes[i].node->system->is_deferred()));
+            task_nodes[i].node      = cache->nodes[i].node;
+            task_nodes[i].exclusive = exclusive;
+            if (cache->nodes[i].node->system) {
+                task_nodes[i].task.emplace(
+                    taskflow
+                        .emplace([this, i, node = cache->nodes[i].node, exclusive]() {
+                            spdlog::trace("[taskflow] Running system '{}' (node={}).", node->system->name(), i);
+                            if (!exclusive) {
+                                auto res = node->system->run_no_apply({}, *exec_world);
+                                if (!res) this->handle_error(i, res.error());
+                            } else {
+                                auto res = node->system->run({}, *exec_world);
+                                if (!res) this->handle_error(i, res.error());
+                            }
+                            spdlog::trace("[taskflow] Finished system '{}' (node={}).", node->system->name(), i);
+                        })
+                        .name(node_name(i)));
+            }
+            auto& conditions = cache->nodes[i].node->conditions;
+            task_nodes[i].cond_tasks.reserve(conditions.size());
+            for (std::size_t ci = 0; ci < conditions.size(); ci++) {
+                task_nodes[i].cond_tasks.emplace_back(
+                    taskflow
+                        .emplace([this, i, ci, node = cache->nodes[i].node]() {
+                            auto res = node->conditions[ci]->run({}, *exec_world);
+                            if (!res.has_value()) {
+                                spdlog::trace("[taskflow] Condition {} on node {} returned no value, skipping.", ci, i);
+                            } else if (!res.value()) {
+                                spdlog::trace("[taskflow] Condition {} on node {} evaluated false, skipping.", ci, i);
+                            }
+                            return res.value_or(false);
+                        })
+                        .name(std::format("{} [cond {}]", node_name(i), ci)));
+            }
+            if (!task_nodes[i].cond_tasks.empty()) {
+                task_nodes[i].in        = task_nodes[i].cond_tasks[0];
+                task_nodes[i].out       = taskflow.placeholder().name(node_name(i) + " [placeholder out]");
+                task_nodes[i].cond_meet = taskflow.placeholder().name(node_name(i) + " [conditions met]");
+                if (task_nodes[i].task.has_value()) {
+                    task_nodes[i].cond_meet.precede(task_nodes[i].task.value());
+                    task_nodes[i].task.value().precede(task_nodes[i].out);
+                } else {
+                    task_nodes[i].cond_meet.precede(task_nodes[i].out);
+                }
+            } else if (task_nodes[i].task.has_value() && cache->nodes[i].children.empty()) {
+                task_nodes[i].in        = task_nodes[i].task.value();
+                task_nodes[i].out       = task_nodes[i].task.value();
+                task_nodes[i].cond_meet = task_nodes[i].task.value();
+            } else {
+                task_nodes[i].in        = taskflow.placeholder().name(node_name(i) + " [placeholder in]");
+                task_nodes[i].out       = taskflow.placeholder().name(node_name(i) + " [placeholder out]");
+                task_nodes[i].cond_meet = task_nodes[i].in;
+                if (task_nodes[i].task.has_value()) {
+                    task_nodes[i].cond_meet.precede(task_nodes[i].task.value());
+                    task_nodes[i].task.value().precede(task_nodes[i].out);
+                } else {
+                    task_nodes[i].cond_meet.precede(task_nodes[i].out);
+                }
+            }
+            task_nodes[i].in.precede(taskflow
+                                         .emplace([i, this] {
+                                             spdlog::trace("[taskflow] Entered node {}.", i);
+                                             entered_nodes[i] = 1;
+                                         })
+                                         .name(node_name(i) + " [enter]"));
+            task_nodes[i].out.precede(taskflow
+                                          .emplace([i, this] {
+                                              spdlog::trace("[taskflow] Ended node {}.", i);
+                                              ended_nodes[i] = 1;
+                                          })
+                                          .name(node_name(i) + " [end]"));
+            // configure deps between conditions and system
+            for (std::size_t ci = 0; ci < conditions.size(); ci++) {
+                task_nodes[i].cond_tasks[ci].precede(task_nodes[i].out, ci == conditions.size() - 1
+                                                                            ? task_nodes[i].cond_meet
+                                                                            : task_nodes[i].cond_tasks[ci + 1]);
             }
         }
 
-        // Wire dependency and hierarchy edges.
-        for (size_t i = 0; i < N; i++) {
-            auto& cn = cache->nodes[i];
-            for (size_t dep : cn.depends) {
-                post_tasks[dep].precede(pre_start_task(i));
+        // configure edges between nodes
+        for (std::size_t i = 0; i < cache->nodes.size(); i++) {
+            auto&& task_node = task_nodes[i];
+            for (std::size_t dep : cache->nodes[i].depends) {
+                task_nodes[dep].out.precede(task_node.in);
             }
-            for (size_t par : flat_cache->nodes[2 * i].parent_originals) {
-                pre_done_task(par).precede(pre_start_task(i));
-                post_tasks[i].precede(post_tasks[par]);
+            for (std::size_t par : cache->nodes[i].parents) {
+                // after par cond met
+                task_nodes[par].cond_meet.precede(task_node.in);
+                task_node.out.precede(task_nodes[par].out);
             }
         }
 
-        // Wire access-conflict edges.
-        for (auto& [from, to] : access_edges) {
-            post_tasks[from].precede(pre_start_task(to));
+        // configure edges between no explicit deps but access conflict tasks.
+        std::vector<std::tuple<tf::Task, FilteredAccessSet*, bool>> task_accesses;
+        std::unordered_map<tf::Task, std::optional<size_t>> task_to_node;
+        for (std::size_t i = 0; i < cache->nodes.size(); i++) {
+            if (cache->nodes[i].node->system) {
+                task_accesses.emplace_back(task_nodes[i].cond_meet, &cache->nodes[i].node->system_access,
+                                           task_nodes[i].exclusive);
+                task_to_node[task_nodes[i].cond_meet] = task_accesses.size() - 1;
+            }
+            for (std::size_t ci = 0; ci < cache->nodes[i].node->conditions.size(); ci++) {
+                task_accesses.emplace_back(task_nodes[i].cond_tasks[ci], &cache->nodes[i].node->condition_access[ci],
+                                           false);
+                task_to_node[task_nodes[i].cond_tasks[ci]] = task_accesses.size() - 1;
+            }
+        }
+        // tasks that are not from systems or conditions (e.g. placeholders) are not in task_to_node and thus not in
+        // task_accesses, so we don't consider them for access conflict edges.
+        taskflow.for_each_task([&](tf::Task t) {
+            if (!task_to_node.contains(t)) {
+                task_to_node[t] = std::nullopt;
+            }
+        });
+        // topo sort the task accesses
+        std::vector<std::size_t> access_order;
+        access_order.reserve(task_accesses.size());
+        std::unordered_set<tf::Task> visited;
+        for (auto&& [task, index] : task_to_node) {
+            if (task.num_successors() == 0) {
+                if (index) access_order.push_back(*index);
+                visited.insert(task);
+            }
+        }
+        while (access_order.size() < task_accesses.size()) {
+            bool progress = false;
+            for (auto&& [task, index] : task_to_node) {
+                if (visited.contains(task)) continue;
+                bool ready = true;
+                task.for_each_successor([&](tf::Task succ) {
+                    if (!visited.contains(succ)) {
+                        ready = false;
+                    }
+                });
+                if (ready) {
+                    if (index) access_order.push_back(*index);
+                    visited.insert(task);
+                    progress = true;
+                }
+            }
+            if (!progress) {
+                throw std::runtime_error("cycle detected in task accesses");
+            }
         }
 
-        condition_met.assign(N, 1);
-        taskflow_built = true;
+        // order done, add edges for access conflicts
+        for (std::size_t i1 = 0; i1 < access_order.size(); i1++) {
+            auto&& [task1, access1, exclusive1] = task_accesses[access_order[i1]];
+            for (std::size_t i2 = i1 + 1; i2 < access_order.size(); i2++) {
+                auto&& [task2, access2, exclusive2] = task_accesses[access_order[i2]];
+                if (exclusive1 || exclusive2 || !access1->is_compatible(*access2)) {
+                    task1.precede(task2);
+                }
+            }
+        }
     }
 };
 
@@ -348,42 +314,41 @@ TaskflowExecutor& TaskflowExecutor::operator=(TaskflowExecutor&&) noexcept = def
 void TaskflowExecutor::execute(ScheduleSystems& _data, World& world, const ExecutorConfig& config) {
     std::shared_ptr cache = _data.cache;
 
-    if (m_impl->needs_flat_rebuild(cache)) {
+    bool rebuild_flat = m_impl->needs_flat_rebuild(cache);
+    bool rebuild_taskflow =
+        rebuild_flat || !m_impl->taskflow.has_value() || config.deferred != m_impl->exec_config.deferred;
+
+    m_impl->source      = cache;
+    m_impl->exec_world  = &world;
+    m_impl->exec_config = config;
+
+    if (rebuild_flat) {
         m_impl->rebuild_flat_cache(cache);
     }
-
-    const size_t N = cache->nodes.size();
+    if (rebuild_taskflow) {
+        m_impl->build_taskflow(m_impl->flat_cache->source.lock());
+    }
 
     bool has_system = std::ranges::any_of(cache->nodes, [](const CachedNode& cn) { return (bool)cn.node->system; });
     if (!has_system) return;
 
-    if (!m_impl->taskflow_built) {
-        m_impl->build_taskflow(cache);
-    }
+    m_impl->entered_nodes.resize(cache->nodes.size(), 0);
+    m_impl->ended_nodes.resize(cache->nodes.size(), 0);
 
-    // Refresh per-execution state.
-    m_impl->exec_cache  = cache.get();
-    m_impl->exec_world  = &world;
-    m_impl->exec_config = config;
-    std::fill(m_impl->condition_met.begin(), m_impl->condition_met.end(), uint8_t{1});
-
-    spdlog::trace("[taskflow] Executing schedule cache with {} nodes.", N);
-
-    m_impl->executor.run(m_impl->taskflow).wait();
+    m_impl->executor.run(m_impl->taskflow.value()).wait();
 
     // End-of-iteration deferred handling.
-    auto& condition_met = m_impl->condition_met;
     switch (config.deferred) {
         case DeferredApply::ApplyEnd:
-            for (size_t i = 0; i < N; i++) {
-                if (condition_met[i] && cache->nodes[i].node->system && cache->nodes[i].node->system->is_deferred()) {
+            for (size_t i = 0; i < cache->nodes.size(); i++) {
+                if (cache->nodes[i].node->system && cache->nodes[i].node->system->is_deferred()) {
                     cache->nodes[i].node->system->apply_deferred(world);
                 }
             }
             break;
         case DeferredApply::QueueDeferred:
-            for (size_t i = 0; i < N; i++) {
-                if (condition_met[i] && cache->nodes[i].node->system && cache->nodes[i].node->system->is_deferred()) {
+            for (size_t i = 0; i < cache->nodes.size(); i++) {
+                if (cache->nodes[i].node->system && cache->nodes[i].node->system->is_deferred()) {
                     cache->nodes[i].node->system->queue_deferred(world);
                 }
             }
@@ -392,8 +357,8 @@ void TaskflowExecutor::execute(ScheduleSystems& _data, World& world, const Execu
             break;
         case DeferredApply::Ignore: {
             std::vector<std::shared_ptr<Node>> to_apply;
-            for (size_t i = 0; i < N; i++) {
-                if (condition_met[i] && cache->nodes[i].node->system && cache->nodes[i].node->system->is_deferred()) {
+            for (size_t i = 0; i < cache->nodes.size(); i++) {
+                if (cache->nodes[i].node->system && cache->nodes[i].node->system->is_deferred()) {
                     to_apply.push_back(cache->nodes[i].node);
                 }
             }
