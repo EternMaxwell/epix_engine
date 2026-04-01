@@ -1,6 +1,4 @@
-﻿#include <gtest/gtest.h>
-
-import std;
+﻿import std;
 import epix.extension.grid;
 
 using namespace epix::ext::grid;
@@ -111,7 +109,7 @@ void print_report(const std::vector<benchmark_row>& rows) {
 }
 }  // namespace
 
-TEST(ExtendibleGridBenchmark, DenseVsTreeScenarios) {
+int main() {
     const auto tight_positions  = make_tight_positions(64, 64);
     const auto spread_positions = make_spread_positions(4096, 16, 4);
     const pos2 tight_min{0, 0};
@@ -182,5 +180,4 @@ TEST(ExtendibleGridBenchmark, DenseVsTreeScenarios) {
     }));
 
     print_report(rows);
-    SUCCEED();
 }
