@@ -54,7 +54,9 @@ export struct LayoutCache {
     std::unordered_map<LayoutCacheKey, wgpu::PipelineLayout, LayoutKeyHash> cache;
 };
 
-std::optional<wgpu::ShaderModule> load_module(const wgpu::Device& device, const shader::Shader& shader);
+std::expected<wgpu::ShaderModule, shader::ShaderCacheError> load_module(const wgpu::Device& device,
+                                                                        const shader::ShaderCacheSource& source,
+                                                                        shader::ValidateShader);
 
 /** @brief Variant describing either a render or compute pipeline
  * descriptor. */

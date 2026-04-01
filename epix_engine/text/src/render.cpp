@@ -313,11 +313,9 @@ void insert_text_shaders(assets::Assets<shader::Shader>& shaders) {
     auto vertex_path             = std::filesystem::path("embedded://text/text_vertex.wgsl");
     auto fragment_path           = std::filesystem::path("embedded://text/text_fragment.wgsl");
     [[maybe_unused]] auto vertex = shaders.insert(
-        kTextVertexShaderId,
-        shader::Shader{vertex_path, vertex_path.string(), shader::ShaderSource::wgsl(std::string(kTextVertexShader))});
+        kTextVertexShaderId, shader::Shader::from_wgsl(std::string(kTextVertexShader), vertex_path.string()));
     [[maybe_unused]] auto fragment = shaders.insert(
-        kTextFragmentShaderId, shader::Shader{fragment_path, fragment_path.string(),
-                                              shader::ShaderSource::wgsl(std::string(kTextFragmentShader))});
+        kTextFragmentShaderId, shader::Shader::from_wgsl(std::string(kTextFragmentShader), fragment_path.string()));
 }
 
 void ensure_text_instance_buffer(TextInstanceBuffer& instance_buffer,

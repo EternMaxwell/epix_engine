@@ -3,64 +3,102 @@ module;
 export module epix.shader:shader_cache;
 
 import :shader;
+import :shader_composer;
 
 namespace epix::shader {
-/** @brief Strongly-typed ID referencing a cached pipeline in the
- * PipelineServer. */
-export struct CachedPipelineId : public utils::int_base<std::uint64_t> {
+
+// ─── CachedPipelineId ──────────────────────────────────────────────────────
+export struct CachedPipelineId : utils::int_base<std::uint64_t> {
     using utils::int_base<std::uint64_t>::int_base;
 };
+
 }  // namespace epix::shader
+
 template <>
 struct std::hash<epix::shader::CachedPipelineId> {
-    std::size_t operator()(const epix::shader::CachedPipelineId& id) const {
-        return std::hash<std::uint64_t>()(id.get());
+    std::size_t operator()(const epix::shader::CachedPipelineId& id) const noexcept {
+        return std::hash<std::uint64_t>{}(id.get());
     }
 };
+
 namespace epix::shader {
-/** @brief Cached shader data associating a processed shader module with
- * the pipelines that depend on it. */
+
+// ─── ShaderData (internal) ─────────────────────────────────────────────────
 export struct ShaderData {
-    /** @brief Set of pipeline IDs that use this shader. */
     std::unordered_set<CachedPipelineId> pipelines;
-    /** @brief The compiled WebGPU shader module. */
-    wgpu::ShaderModule processed_shader;
+    std::unordered_map<std::vector<ShaderDefVal>, std::shared_ptr<wgpu::ShaderModule>> processed_shaders;
+    std::unordered_map<ShaderImport, assets::AssetId<Shader>> resolved_imports;
+    std::unordered_set<assets::AssetId<Shader>> dependents;
 };
-/** @brief Error codes for shader cache operations. */
-export enum ShaderCacheError {
-    /** @brief Shader source not yet loaded. */
-    NotLoaded,
-    /** @brief Failed to create the shader module from source. */
-    ModuleCreationFailure,
+
+// ─── ShaderCacheSource ─────────────────────────────────────────────────────
+export struct ShaderCacheSource {
+    struct SpirV {
+        std::span<const std::uint8_t> bytes;
+    };
+    struct Wgsl {
+        std::string source;
+    };
+
+    std::variant<SpirV, Wgsl> data;
 };
-/** @brief Cache that compiles and stores shader modules, tracking which
- * pipelines depend on each shader for hot-reload invalidation. */
+
+// ─── ShaderCacheError ──────────────────────────────────────────────────────
+// Note: ComposeError is defined in :shader_composer.
+export struct ShaderCacheError {
+    struct ShaderNotLoaded {
+        assets::AssetId<Shader> id;
+    };
+    struct ProcessShaderError {
+        ComposeError error;
+    };
+    struct ShaderImportNotYetAvailable {};
+    struct CreateShaderModule {
+        std::string wgpu_message;
+    };
+
+    std::variant<ShaderNotLoaded, ProcessShaderError, ShaderImportNotYetAvailable, CreateShaderModule> data;
+
+    static ShaderCacheError not_loaded(assets::AssetId<Shader> id) { return {ShaderNotLoaded{id}}; }
+    static ShaderCacheError process_error(ComposeError error) { return {ProcessShaderError{std::move(error)}}; }
+    static ShaderCacheError import_not_available() { return {ShaderImportNotYetAvailable{}}; }
+    static ShaderCacheError create_module_failed(std::string wgpu_message) {
+        return {CreateShaderModule{std::move(wgpu_message)}};
+    }
+};
+
+// ─── ShaderCache ───────────────────────────────────────────────────────────
 export struct ShaderCache {
-    using load_func = std::optional<wgpu::ShaderModule> (*)(const wgpu::Device& device, const Shader& shader);
+    using LoadModuleFn = std::function<std::expected<wgpu::ShaderModule, ShaderCacheError>(
+        const wgpu::Device&, const ShaderCacheSource&, ValidateShader)>;
 
    private:
-    std::unordered_map<assets::AssetId<Shader>, ShaderData> data;
-    std::unordered_map<assets::AssetId<Shader>, Shader> shaders;
-    load_func load_module;
+    wgpu::Device device_;
+    std::unordered_map<assets::AssetId<Shader>, ShaderData> data_;
+    LoadModuleFn load_module_;
+    std::unordered_map<assets::AssetId<Shader>, Shader> shaders_;
+    std::unordered_map<ShaderImport, assets::AssetId<Shader>> import_path_shaders_;
+    std::unordered_map<ShaderImport, std::vector<assets::AssetId<Shader>>> waiting_on_import_;
+    ShaderComposer composer_;
 
    public:
-    ShaderCache(load_func load_module) : load_module(load_module) {}
-    /**
-     * @brief Get the processed shader module for given shader id, and cache the pipeline id that uses it. Returns
-     * nullopt if shader is not loaded or failed to process.
-     *
-     * @param pipeline The pipeline id that is trying to use the shader, used for caching which pipelines are affected
-     * when shader is updated
-     * @param id The asset id of the shader
-     * @return std::expected<std::reference_wrapper<const wgpu::ShaderModule>, ShaderError>
-     */
-    auto get(const wgpu::Device& device, CachedPipelineId pipeline, assets::AssetId<Shader> id)
-        -> std::expected<std::reference_wrapper<const wgpu::ShaderModule>, ShaderCacheError>;
-    /** @brief Clear cached pipeline IDs associated with a shader, returning the affected IDs. */
-    auto clear(assets::AssetId<Shader> id) -> std::vector<CachedPipelineId>;
-    /** @brief Set or replace a shader, returning any affected pipeline IDs. */
-    auto set_shader(assets::AssetId<Shader> id, Shader shader) -> std::vector<CachedPipelineId>;
-    /** @brief Remove a shader from the cache, returning any affected pipeline IDs. */
-    auto remove(assets::AssetId<Shader> id) -> std::vector<CachedPipelineId>;
+    ShaderCache(wgpu::Device device, LoadModuleFn load_module);
+
+    std::expected<std::shared_ptr<wgpu::ShaderModule>, ShaderCacheError> get(CachedPipelineId pipeline,
+                                                                             assets::AssetId<Shader> id,
+                                                                             std::span<const ShaderDefVal> shader_defs);
+
+    std::vector<CachedPipelineId> set_shader(assets::AssetId<Shader> id, Shader shader);
+    std::vector<CachedPipelineId> remove(assets::AssetId<Shader> id);
+
+   private:
+    std::vector<CachedPipelineId> clear(assets::AssetId<Shader> id);
+
+    static std::expected<void, ShaderCacheError> add_import_to_composer(
+        ShaderComposer& composer,
+        const std::unordered_map<ShaderImport, assets::AssetId<Shader>>& import_path_shaders,
+        const std::unordered_map<assets::AssetId<Shader>, Shader>& shaders,
+        const ShaderImport& import_ref);
 };
+
 }  // namespace epix::shader

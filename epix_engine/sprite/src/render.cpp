@@ -190,11 +190,9 @@ void insert_sprite_shaders(assets::Assets<shader::Shader>& shaders) {
     auto vertex_path             = std::filesystem::path("embedded://sprite/sprite_vertex.wgsl");
     auto fragment_path           = std::filesystem::path("embedded://sprite/sprite_fragment.wgsl");
     [[maybe_unused]] auto vertex = shaders.insert(
-        kSpriteVertexShaderId, shader::Shader{vertex_path, vertex_path.string(),
-                                              shader::ShaderSource::wgsl(std::string(kSpriteVertexShader))});
+        kSpriteVertexShaderId, shader::Shader::from_wgsl(std::string(kSpriteVertexShader), vertex_path.string()));
     [[maybe_unused]] auto fragment = shaders.insert(
-        kSpriteFragmentShaderId, shader::Shader{fragment_path, fragment_path.string(),
-                                                shader::ShaderSource::wgsl(std::string(kSpriteFragmentShader))});
+        kSpriteFragmentShaderId, shader::Shader::from_wgsl(std::string(kSpriteFragmentShader), fragment_path.string()));
 }
 
 void ensure_instance_buffer(SpriteInstanceBuffer& instance_buffer,

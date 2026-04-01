@@ -9,37 +9,27 @@ import :pipeline_server;
 using namespace epix::shader;
 
 namespace epix::render {
-std::optional<wgpu::ShaderModule> load_module(const wgpu::Device& device, const Shader& shader) {
-    const auto& source = shader.source;
-    if (source.is_wgsl()) {
-        auto wgsl_code = source.get_wgsl();
-        if (!wgsl_code) {
-            return std::nullopt;
-        }
-        wgpu::ShaderModuleDescriptor desc;
-        if (!shader.label.empty()) {
-            desc.setLabel(wgpu::StringView(std::string_view(shader.label)));
-        }
-        desc.setNextInChain(wgpu::ShaderSourceWGSL().setCode(*wgsl_code));
-        return device.createShaderModule(desc);
-    } else if (source.is_spirv()) {
-        auto spirv_code = source.get_spirv();
-        if (!spirv_code) {
-            return std::nullopt;
-        }
-        wgpu::ShaderModuleDescriptor desc;
-        if (!shader.label.empty()) {
-            desc.setLabel(wgpu::StringView(std::string_view(shader.label)));
-        }
-        desc.setNextInChain(wgpu::ShaderSourceSPIRV().setCode(spirv_code->data()).setCodeSize(spirv_code->size()));
-        return device.createShaderModule(desc);
+std::expected<wgpu::ShaderModule, ShaderCacheError> load_module(const wgpu::Device& device,
+                                                                const ShaderCacheSource& source,
+                                                                ValidateShader) {
+    wgpu::ShaderModuleDescriptor desc;
+    if (std::holds_alternative<ShaderCacheSource::Wgsl>(source.data)) {
+        const auto& code = std::get<ShaderCacheSource::Wgsl>(source.data).source;
+        desc.setNextInChain(wgpu::ShaderSourceWGSL().setCode(wgpu::StringView(std::string_view(code))));
+    } else {
+        const auto& bytes = std::get<ShaderCacheSource::SpirV>(source.data).bytes;
+        desc.setNextInChain(wgpu::ShaderSourceSPIRV()
+                                .setCode(reinterpret_cast<const uint32_t*>(bytes.data()))
+                                .setCodeSize(bytes.size() / sizeof(uint32_t)));
     }
-    return std::nullopt;
+    auto mod = device.createShaderModule(desc);
+    if (!mod) return std::unexpected(ShaderCacheError::create_module_failed("WebGPU createShaderModule failed"));
+    return mod;
 }
 
 PipelineServer::PipelineServer(wgpu::Device device)
     : layout_cache(std::make_shared<utils::Mutex<LayoutCache>>()),
-      shader_cache(std::make_shared<utils::Mutex<ShaderCache>>(load_module)),
+      shader_cache(std::make_shared<utils::Mutex<ShaderCache>>(device, load_module)),
       device(std::move(device)),
       pipeline_create_task_pool(std::make_unique<BS::thread_pool<BS::tp::none>>(std::thread::hardware_concurrency())) {}
 
@@ -120,7 +110,7 @@ CachedPipelineId PipelineServer::queue_compute_pipeline(ComputePipelineDescripto
 }
 void PipelineServer::set_shader(assets::AssetId<Shader> id, Shader shader) {
     // TODO: MSVC partial specialization workaround - cast AssetId<T> to UntypedAssetId
-    spdlog::debug("[render.pipeline] Setting shader '{}' (label: {}).", assets::UntypedAssetId(id), shader.label);
+    spdlog::debug("[render.pipeline] Setting shader '{}' (path: {}).", assets::UntypedAssetId(id), shader.path);
     auto shader_cache       = this->shader_cache->lock();
     auto affected_pipelines = shader_cache->set_shader(id, std::move(shader));
     for (CachedPipelineId pipeline_id : affected_pipelines) {
@@ -170,13 +160,13 @@ void PipelineServer::process_pipeline(CachedPipeline& cached_pipeline, CachedPip
                 {
                     auto shader_cache = shader_cache_ptr->lock();
                     auto layout_cache = layout_cache_ptr->lock();
-                    auto vertex_opt   = shader_cache->get(device, id, descriptor.vertex.shader);
+                    auto vertex_opt   = shader_cache->get(id, descriptor.vertex.shader, {});
                     if (!vertex_opt) return std::unexpected(vertex_opt.error());
-                    vertex_module = vertex_opt->get();
+                    vertex_module = *vertex_opt.value();
                     if (descriptor.fragment) {
-                        auto fragment_opt = shader_cache->get(device, id, descriptor.fragment->shader);
+                        auto fragment_opt = shader_cache->get(id, descriptor.fragment->shader, {});
                         if (!fragment_opt) return std::unexpected(fragment_opt.error());
-                        fragment_module = fragment_opt->get();
+                        fragment_module = *fragment_opt.value();
                     }
                     if (!descriptor.layouts.empty()) layout = layout_cache->get(device, descriptor.layouts);
                 }
@@ -216,9 +206,9 @@ void PipelineServer::process_pipeline(CachedPipeline& cached_pipeline, CachedPip
                 {
                     auto layout_cache = layout_cache_ptr->lock();
                     auto shader_cache = shader_cache_ptr->lock();
-                    auto shader_opt   = shader_cache->get(device, id, descriptor.shader);
+                    auto shader_opt   = shader_cache->get(id, descriptor.shader, {});
                     if (!shader_opt) return std::unexpected(shader_opt.error());
-                    module = shader_opt->get();
+                    module = *shader_opt.value();
                     if (!descriptor.layouts.empty()) layout = layout_cache->get(device, descriptor.layouts);
                 }
                 desc.setLabel(std::string_view(descriptor.label))
@@ -250,14 +240,11 @@ void PipelineServer::process_pipeline(CachedPipeline& cached_pipeline, CachedPip
         }
 
         if (auto shader_error = std::get_if<ShaderCacheError>(&error)) {
-            switch (*shader_error) {
-                case ShaderCacheError::NotLoaded:
-                    // Not loaded yet, retry
-                    cached_pipeline.state = PipelineStateQueued{};
-                    break;
-                case ShaderCacheError::ModuleCreationFailure:
-                    spdlog::error("Failed to create shader module. Pipeline Id: {}, name: {}", id.get(), pipeline_name);
-                    break;
+            if (std::holds_alternative<ShaderCacheError::ShaderNotLoaded>(shader_error->data) ||
+                std::holds_alternative<ShaderCacheError::ShaderImportNotYetAvailable>(shader_error->data)) {
+                cached_pipeline.state = PipelineStateQueued{};
+            } else {
+                spdlog::error("[render.pipeline] Shader error for pipeline id={}, name='{}'.", id.get(), pipeline_name);
             }
         }
     };
@@ -291,14 +278,12 @@ void PipelineServer::process_pipeline(CachedPipeline& cached_pipeline, CachedPip
         }
 
         if (auto shader_error = std::get_if<ShaderCacheError>(error)) {
-            switch (*shader_error) {
-                case ShaderCacheError::NotLoaded:
-                    // Not loaded yet, retry
-                    break;
-                case ShaderCacheError::ModuleCreationFailure:
-                    spdlog::error("Failed to create shader module. Pipeline Id: {}, name: {}", id.get(), pipeline_name);
-                    return;
-                    break;
+            if (std::holds_alternative<ShaderCacheError::ShaderNotLoaded>(shader_error->data) ||
+                std::holds_alternative<ShaderCacheError::ShaderImportNotYetAvailable>(shader_error->data)) {
+                // Not ready yet – will be re-queued
+            } else {
+                spdlog::error("[render.pipeline] Shader error for pipeline id={}, name='{}'.", id.get(), pipeline_name);
+                return;
             }
         }
     }

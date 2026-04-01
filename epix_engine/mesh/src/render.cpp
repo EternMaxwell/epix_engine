@@ -432,34 +432,30 @@ struct MeshOpaqueBatchKey {
 };
 
 void insert_mesh_shaders(assets::Assets<shader::Shader>& shaders) {
-    auto solid_vertex_path             = std::filesystem::path("embedded://mesh/solid_vertex.wgsl");
-    auto vertex_color_path             = std::filesystem::path("embedded://mesh/vertex_color_vertex.wgsl");
-    auto textured_vertex_path          = std::filesystem::path("embedded://mesh/textured_vertex.wgsl");
-    auto textured_vertex_color_path    = std::filesystem::path("embedded://mesh/textured_vertex_color_vertex.wgsl");
-    auto color_fragment_path           = std::filesystem::path("embedded://mesh/color_fragment.wgsl");
-    auto textured_fragment_path        = std::filesystem::path("embedded://mesh/textured_fragment.wgsl");
-    [[maybe_unused]] auto solid_vertex = shaders.insert(
-        kMeshSolidVertexShaderId, shader::Shader{solid_vertex_path, solid_vertex_path.string(),
-                                                 shader::ShaderSource::wgsl(std::string(kMeshSolidVertexShader))});
-    [[maybe_unused]] auto vertex_color_vertex =
-        shaders.insert(kMeshVertexColorShaderId,
-                       shader::Shader{vertex_color_path, vertex_color_path.string(),
-                                      shader::ShaderSource::wgsl(std::string(kMeshVertexColorVertexShader))});
-    [[maybe_unused]] auto textured_vertex =
-        shaders.insert(kMeshTexturedVertexShaderId,
-                       shader::Shader{textured_vertex_path, textured_vertex_path.string(),
-                                      shader::ShaderSource::wgsl(std::string(kMeshTexturedVertexShader))});
-    [[maybe_unused]] auto textured_vertex_color =
-        shaders.insert(kMeshTexturedVertexColorShaderId,
-                       shader::Shader{textured_vertex_color_path, textured_vertex_color_path.string(),
-                                      shader::ShaderSource::wgsl(std::string(kMeshTexturedVertexColorVertexShader))});
-    [[maybe_unused]] auto color_fragment = shaders.insert(
-        kMeshColorFragmentShaderId, shader::Shader{color_fragment_path, color_fragment_path.string(),
-                                                   shader::ShaderSource::wgsl(std::string(kMeshColorFragmentShader))});
-    [[maybe_unused]] auto textured_fragment =
-        shaders.insert(kMeshTexturedFragmentShaderId,
-                       shader::Shader{textured_fragment_path, textured_fragment_path.string(),
-                                      shader::ShaderSource::wgsl(std::string(kMeshTexturedFragmentShader))});
+    auto solid_vertex_path          = std::filesystem::path("embedded://mesh/solid_vertex.wgsl");
+    auto vertex_color_path          = std::filesystem::path("embedded://mesh/vertex_color_vertex.wgsl");
+    auto textured_vertex_path       = std::filesystem::path("embedded://mesh/textured_vertex.wgsl");
+    auto textured_vertex_color_path = std::filesystem::path("embedded://mesh/textured_vertex_color_vertex.wgsl");
+    auto color_fragment_path        = std::filesystem::path("embedded://mesh/color_fragment.wgsl");
+    auto textured_fragment_path     = std::filesystem::path("embedded://mesh/textured_fragment.wgsl");
+    [[maybe_unused]] auto solid_vertex =
+        shaders.insert(kMeshSolidVertexShaderId,
+                       shader::Shader::from_wgsl(std::string(kMeshSolidVertexShader), solid_vertex_path.string()));
+    [[maybe_unused]] auto vertex_color_vertex = shaders.insert(
+        kMeshVertexColorShaderId,
+        shader::Shader::from_wgsl(std::string(kMeshVertexColorVertexShader), vertex_color_path.string()));
+    [[maybe_unused]] auto textured_vertex = shaders.insert(
+        kMeshTexturedVertexShaderId,
+        shader::Shader::from_wgsl(std::string(kMeshTexturedVertexShader), textured_vertex_path.string()));
+    [[maybe_unused]] auto textured_vertex_color = shaders.insert(
+        kMeshTexturedVertexColorShaderId, shader::Shader::from_wgsl(std::string(kMeshTexturedVertexColorVertexShader),
+                                                                    textured_vertex_color_path.string()));
+    [[maybe_unused]] auto color_fragment =
+        shaders.insert(kMeshColorFragmentShaderId,
+                       shader::Shader::from_wgsl(std::string(kMeshColorFragmentShader), color_fragment_path.string()));
+    [[maybe_unused]] auto textured_fragment = shaders.insert(
+        kMeshTexturedFragmentShaderId,
+        shader::Shader::from_wgsl(std::string(kMeshTexturedFragmentShader), textured_fragment_path.string()));
 }
 
 void extract_meshes_2d(Commands cmd,
