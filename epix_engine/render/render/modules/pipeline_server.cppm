@@ -4,17 +4,18 @@ export module epix.render:pipeline_server;
 
 import epix.core;
 import epix.utils;
+import epix.shader;
 import BS.thread_pool;
 
 import :pipeline;
-import :shader_cache;
 
 using namespace epix::core;
 
 namespace epix::render {
 /** @brief Key type used to cache pipeline layouts by their bind group
  * layout IDs. */
-export using LayoutCacheKey = std::vector<wgpu::BindGroupLayoutId>;
+export using LayoutCacheKey   = std::vector<wgpu::BindGroupLayoutId>;
+export using CachedPipelineId = shader::CachedPipelineId;
 struct LayoutKeyHash {
     std::size_t operator()(const LayoutCacheKey& key) const {
         std::size_t hash = 0;
@@ -53,7 +54,7 @@ export struct LayoutCache {
     std::unordered_map<LayoutCacheKey, wgpu::PipelineLayout, LayoutKeyHash> cache;
 };
 
-std::optional<wgpu::ShaderModule> load_module(const wgpu::Device& device, const Shader& shader);
+std::optional<wgpu::ShaderModule> load_module(const wgpu::Device& device, const shader::Shader& shader);
 
 /** @brief Variant describing either a render or compute pipeline
  * descriptor. */
@@ -66,7 +67,7 @@ export enum PipelineError {
 };
 /** @brief Variant of errors that can occur during pipeline server
  * operations. */
-export using PipelineServerError = std::variant<PipelineError, ShaderCacheError>;
+export using PipelineServerError = std::variant<PipelineError, shader::ShaderCacheError>;
 /** @brief Returned when a queried pipeline is still queued or being
  * compiled. */
 export struct GetPipelineNotReady {};
@@ -126,9 +127,9 @@ export struct PipelineServer {
     CachedPipelineId queue_compute_pipeline(ComputePipelineDescriptor descriptor) const;
 
     /** @brief Register or update a shader in the shader cache. */
-    void set_shader(assets::AssetId<Shader> id, Shader shader);
+    void set_shader(assets::AssetId<shader::Shader> id, shader::Shader shader);
     /** @brief Remove a shader from the shader cache. */
-    void remove_shader(assets::AssetId<Shader> id);
+    void remove_shader(assets::AssetId<shader::Shader> id);
     /** @brief Process all queued and in-progress pipeline creations. */
     void process_queue();
     /** @brief Process a single cached pipeline (advance its creation state). */
@@ -138,12 +139,12 @@ export struct PipelineServer {
     static void process_pipeline_system(ResMut<PipelineServer> pipeline_server);
     /** @brief System that extracts shader assets and events into the render world. */
     static void extract_shaders(ResMut<PipelineServer> pipeline_server,
-                                Extract<Res<assets::Assets<Shader>>> shaders,
-                                Extract<EventReader<assets::AssetEvent<Shader>>> shader_events);
+                                Extract<Res<assets::Assets<shader::Shader>>> shaders,
+                                Extract<EventReader<assets::AssetEvent<shader::Shader>>> shader_events);
 
    private:
     std::shared_ptr<utils::Mutex<LayoutCache>> layout_cache;
-    std::shared_ptr<utils::Mutex<ShaderCache>> shader_cache;
+    std::shared_ptr<utils::Mutex<shader::ShaderCache>> shader_cache;
     wgpu::Device device;
     std::vector<CachedPipeline> pipelines;
     std::unordered_set<CachedPipelineId> waiting_pipelines;
@@ -151,4 +152,4 @@ export struct PipelineServer {
 
     std::unique_ptr<BS::thread_pool<BS::tp::none>> pipeline_create_task_pool;
 };
-}  // namespace render
+}  // namespace epix::render

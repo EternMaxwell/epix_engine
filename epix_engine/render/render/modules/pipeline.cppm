@@ -10,7 +10,9 @@ module;
 
 export module epix.render:pipeline;
 
-import :shader;
+import epix.shader;
+import epix.assets;
+import std;
 
 namespace epix::render {
 make_atomic_id(RenderPipelineId);
@@ -47,14 +49,14 @@ export struct ComputePipeline {
  * buffer layouts. */
 export struct VertexState {
     /** @brief Handle to the vertex shader. */
-    assets::Handle<Shader> shader;
+    assets::Handle<shader::Shader> shader;
     /** @brief Optional entry-point function name (defaults to "vs_main"). */
     std::optional<std::string> entry_point;
     /** @brief Vertex buffer layouts describing attribute bindings. */
     std::vector<wgpu::VertexBufferLayout> buffers;
 
     /** @brief Set the vertex shader handle. */
-    auto&& set_shader(this auto&& self, assets::Handle<Shader> shader) {
+    auto&& set_shader(this auto&& self, assets::Handle<shader::Shader> shader) {
         self.shader = std::move(shader);
         return std::forward<decltype(self)>(self);
     }
@@ -81,11 +83,11 @@ export struct VertexState {
 /** @brief Fragment stage configuration: shader, entry point, and color
  * targets. */
 export struct FragmentState {
-    assets::Handle<Shader> shader;
+    assets::Handle<shader::Shader> shader;
     std::optional<std::string> entry_point;
     std::vector<wgpu::ColorTargetState> targets;
     /** @brief Set the fragment shader handle. */
-    auto&& set_shader(this auto&& self, assets::Handle<Shader> shader) {
+    auto&& set_shader(this auto&& self, assets::Handle<shader::Shader> shader) {
         self.shader = std::move(shader);
         return std::forward<decltype(self)>(self);
     }
@@ -152,7 +154,7 @@ export struct RenderPipelineDescriptor {
 export struct ComputePipelineDescriptor {
     std::string label;
     std::vector<wgpu::BindGroupLayout> layouts;
-    assets::Handle<Shader> shader;
+    assets::Handle<shader::Shader> shader;
     std::optional<std::string> entry_point;
 
     auto&& set_label(this auto&& self, std::string label) {
@@ -169,7 +171,7 @@ export struct ComputePipelineDescriptor {
         self.layouts = std::forward<decltype(layouts)>(layouts) | std::ranges::to<std::vector<wgpu::BindGroupLayout>>();
         return std::forward<decltype(self)>(self);
     }
-    auto&& set_shader(this auto&& self, assets::Handle<Shader> shader) {
+    auto&& set_shader(this auto&& self, assets::Handle<shader::Shader> shader) {
         self.shader = std::move(shader);
         return std::forward<decltype(self)>(self);
     }
@@ -178,4 +180,4 @@ export struct ComputePipelineDescriptor {
         return std::forward<decltype(self)>(self);
     }
 };
-}  // namespace render
+}  // namespace epix::render

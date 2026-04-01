@@ -2,11 +2,11 @@ module;
 
 #include <spdlog/spdlog.h>
 
-module epix.render;
+module epix.shader;
 
 import :shader_cache;
 
-namespace epix::render {
+namespace epix::shader {
 auto ShaderCache::get(const wgpu::Device& device, CachedPipelineId pipeline, assets::AssetId<Shader> id)
     -> std::expected<std::reference_wrapper<const wgpu::ShaderModule>, ShaderCacheError> {
     auto it = data.find(id);
@@ -51,4 +51,4 @@ auto ShaderCache::remove(assets::AssetId<Shader> id) -> std::vector<CachedPipeli
     shaders.erase(id);
     return affected_pipelines;
 }
-}  // namespace epix::render
+}  // namespace epix::shader

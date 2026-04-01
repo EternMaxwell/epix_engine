@@ -509,9 +509,10 @@ struct SetItemPipeline {
                                 using inner_t = std::decay_t<Inner>;
                                 if constexpr (std::is_same_v<inner_t, PipelineError>) {
                                     return "pipeline creation failure";
-                                } else if constexpr (std::is_same_v<inner_t, ShaderCacheError>) {
-                                    return inner == ShaderCacheError::NotLoaded ? "shader not loaded"
-                                                                                : "shader module creation failure";
+                                } else if constexpr (std::is_same_v<inner_t, shader::ShaderCacheError>) {
+                                    return inner == shader::ShaderCacheError::NotLoaded
+                                               ? "shader not loaded"
+                                               : "shader module creation failure";
                                 } else {
                                     return "unknown pipeline server error";
                                 }
@@ -586,4 +587,4 @@ void sort_phase_items(Query<Item<RenderPhase<P>&>> phases) {
         phase.sort();
     }
 }
-}  // namespace render::phase
+}  // namespace epix::render::phase

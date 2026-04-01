@@ -74,17 +74,17 @@ fn main(input : FragmentInput) -> @location(0) vec4<f32> {
 }
 )";
 
-const assets::AssetId<render::Shader> kSpriteVertexShaderId(
+const assets::AssetId<shader::Shader> kSpriteVertexShaderId(
     uuids::uuid::from_string("89282c3c-0eaa-4f75-bf12-5b7f78c763f0").value());
-const assets::AssetId<render::Shader> kSpriteFragmentShaderId(
+const assets::AssetId<shader::Shader> kSpriteFragmentShaderId(
     uuids::uuid::from_string("63e69646-4b35-4eb8-b095-78ef59bd3ea3").value());
 
 struct SpritePipelineCache {
     wgpu::BindGroupLayout view_layout;
     wgpu::BindGroupLayout instance_layout;
     wgpu::BindGroupLayout texture_layout;
-    assets::Handle<render::Shader> vertex_shader{kSpriteVertexShaderId};
-    assets::Handle<render::Shader> fragment_shader{kSpriteFragmentShaderId};
+    assets::Handle<shader::Shader> vertex_shader{kSpriteVertexShaderId};
+    assets::Handle<shader::Shader> fragment_shader{kSpriteFragmentShaderId};
     std::unordered_map<std::uint32_t, render::CachedPipelineId> pipelines;
 
     explicit SpritePipelineCache(World& world)
@@ -186,15 +186,15 @@ struct TransparentSpriteDrawFunction {
     render::phase::DrawFunctionId value;
 };
 
-void insert_sprite_shaders(assets::Assets<render::Shader>& shaders) {
+void insert_sprite_shaders(assets::Assets<shader::Shader>& shaders) {
     auto vertex_path             = std::filesystem::path("embedded://sprite/sprite_vertex.wgsl");
     auto fragment_path           = std::filesystem::path("embedded://sprite/sprite_fragment.wgsl");
     [[maybe_unused]] auto vertex = shaders.insert(
-        kSpriteVertexShaderId, render::Shader{vertex_path, vertex_path.string(),
-                                              render::ShaderSource::wgsl(std::string(kSpriteVertexShader))});
+        kSpriteVertexShaderId, shader::Shader{vertex_path, vertex_path.string(),
+                                              shader::ShaderSource::wgsl(std::string(kSpriteVertexShader))});
     [[maybe_unused]] auto fragment = shaders.insert(
-        kSpriteFragmentShaderId, render::Shader{fragment_path, fragment_path.string(),
-                                                render::ShaderSource::wgsl(std::string(kSpriteFragmentShader))});
+        kSpriteFragmentShaderId, shader::Shader{fragment_path, fragment_path.string(),
+                                                shader::ShaderSource::wgsl(std::string(kSpriteFragmentShader))});
 }
 
 void ensure_instance_buffer(SpriteInstanceBuffer& instance_buffer,
@@ -415,11 +415,11 @@ void SpritePlugin::build(core::App& app) {
 
 void SpritePlugin::finish(core::App& app) {
     spdlog::debug("[sprite] Finishing SpritePlugin.");
-    auto shaders = app.world_mut().get_resource_mut<assets::Assets<render::Shader>>();
+    auto shaders = app.world_mut().get_resource_mut<assets::Assets<shader::Shader>>();
     if (shaders) {
         insert_sprite_shaders(shaders->get());
     } else {
-        spdlog::warn("[sprite] Assets<render::Shader> is not available in the main world.");
+        spdlog::warn("[sprite] Assets<shader::Shader> is not available in the main world.");
     }
 
     auto render_app = app.get_sub_app_mut(render::Render);

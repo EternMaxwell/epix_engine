@@ -6,6 +6,8 @@ module epix.render;
 
 import :pipeline_server;
 
+using namespace epix::shader;
+
 namespace epix::render {
 std::optional<wgpu::ShaderModule> load_module(const wgpu::Device& device, const Shader& shader) {
     const auto& source = shader.source;

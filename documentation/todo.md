@@ -19,7 +19,6 @@ Status legend:
   - [x] moving step to gpu
   - [ ] use extendible tree grid instead of 2d array
   - [~] use fixed point number for calculating to avoid floating point number precision loss
-- [x] asset server and asset module extend
-  - [x] asset dependencies
-  - [x] asset hot reloading
-- [x] mesh gpu buffer should shrink if mesh too small, or just delete them.
+- [ ] shader preprocessing
+  - [ ] shader cache change
+  - [ ] shader change

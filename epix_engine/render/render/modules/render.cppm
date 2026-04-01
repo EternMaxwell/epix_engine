@@ -4,14 +4,14 @@ import epix.core;
 import webgpu;
 import std;
 
+export import epix.shader;
+
 export import :schedule;
 export import :extract;
 export import :assets;
 export import :graph;
 export import :image;
 export import :window;
-export import :shader;
-export import :shader_cache;
 export import :pipeline;
 export import :pipeline_server;
 export import :render_phase;

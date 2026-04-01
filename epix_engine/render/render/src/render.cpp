@@ -132,7 +132,7 @@ void RenderPlugin::build(App& app) {
     app.add_plugins(render::window::WindowRenderPlugin{});
     app.add_plugins(image::ImagePlugin{});
     app.add_plugins(render::ExtractAssetPlugin<image::Image>{});
-    app.add_plugins(render::ShaderPlugin{});
+    app.add_plugins(shader::ShaderPlugin{});
     app.add_plugins(render::camera::CameraPlugin{});
     app.add_plugins(render::view::ViewPlugin{});
 }

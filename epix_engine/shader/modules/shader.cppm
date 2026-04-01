@@ -1,13 +1,11 @@
-export module epix.render:shader;
+export module epix.shader:shader;
 
 import epix.assets;
 import epix.core;
 import webgpu;
 import std;
 
-import :assets;
-
-namespace epix::render {
+namespace epix::shader {
 /**
  * @brief A cpu side shader representation.
  *
@@ -83,13 +81,13 @@ export struct ShaderLoaderSPIRV {
 /** @brief Plugin that registers shader asset loaders and the shader
  * cache. */
 export struct ShaderPlugin {
-    void build(App& app);
+    void build(core::App& app);
 };
-}  // namespace epix::render
+}  // namespace epix::shader
 
 template <>
-struct std::hash<epix::assets::AssetId<epix::render::Shader>> {
-    std::size_t operator()(const epix::assets::AssetId<epix::render::Shader>& id) const noexcept {
+struct std::hash<epix::assets::AssetId<epix::shader::Shader>> {
+    std::size_t operator()(const epix::assets::AssetId<epix::shader::Shader>& id) const noexcept {
         return std::visit([]<typename T>(const T& index) { return std::hash<T>()(index); }, id);
     }
 };

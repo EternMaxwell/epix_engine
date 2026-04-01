@@ -67,9 +67,9 @@ fn main(input : FragmentInput) -> @location(0) vec4<f32> {
 }
 )";
 
-const assets::AssetId<render::Shader> kTextVertexShaderId(
+const assets::AssetId<shader::Shader> kTextVertexShaderId(
     uuids::uuid::from_string("33aad04b-4639-46bb-98b1-4f372e9c1f75").value());
-const assets::AssetId<render::Shader> kTextFragmentShaderId(
+const assets::AssetId<shader::Shader> kTextFragmentShaderId(
     uuids::uuid::from_string("7c271b37-4baa-4e9f-974f-1cfe0d5d6b2f").value());
 
 const mesh::MeshAttribute kTextUvLayerAttribute{"text_uv_layer", 5, wgpu::VertexFormat::eFloat32x3};
@@ -103,8 +103,8 @@ struct Text2dPipelineCache {
     wgpu::BindGroupLayout view_layout;
     wgpu::BindGroupLayout instance_layout;
     wgpu::BindGroupLayout texture_layout;
-    assets::Handle<render::Shader> vertex_shader{kTextVertexShaderId};
-    assets::Handle<render::Shader> fragment_shader{kTextFragmentShaderId};
+    assets::Handle<shader::Shader> vertex_shader{kTextVertexShaderId};
+    assets::Handle<shader::Shader> fragment_shader{kTextFragmentShaderId};
     std::unordered_map<std::uint32_t, render::CachedPipelineId> pipelines;
 
     explicit Text2dPipelineCache(World& world)
@@ -309,15 +309,15 @@ struct DrawTextBatch {
     }
 };
 
-void insert_text_shaders(assets::Assets<render::Shader>& shaders) {
+void insert_text_shaders(assets::Assets<shader::Shader>& shaders) {
     auto vertex_path             = std::filesystem::path("embedded://text/text_vertex.wgsl");
     auto fragment_path           = std::filesystem::path("embedded://text/text_fragment.wgsl");
     [[maybe_unused]] auto vertex = shaders.insert(
         kTextVertexShaderId,
-        render::Shader{vertex_path, vertex_path.string(), render::ShaderSource::wgsl(std::string(kTextVertexShader))});
+        shader::Shader{vertex_path, vertex_path.string(), shader::ShaderSource::wgsl(std::string(kTextVertexShader))});
     [[maybe_unused]] auto fragment = shaders.insert(
-        kTextFragmentShaderId, render::Shader{fragment_path, fragment_path.string(),
-                                              render::ShaderSource::wgsl(std::string(kTextFragmentShader))});
+        kTextFragmentShaderId, shader::Shader{fragment_path, fragment_path.string(),
+                                              shader::ShaderSource::wgsl(std::string(kTextFragmentShader))});
 }
 
 void ensure_text_instance_buffer(TextInstanceBuffer& instance_buffer,
@@ -533,11 +533,11 @@ void TextRenderPlugin::build(App& app) {
 
 void TextRenderPlugin::finish(App& app) {
     spdlog::debug("[text] Finishing TextRenderPlugin.");
-    auto shaders = app.world_mut().get_resource_mut<assets::Assets<render::Shader>>();
+    auto shaders = app.world_mut().get_resource_mut<assets::Assets<shader::Shader>>();
     if (shaders) {
         insert_text_shaders(shaders->get());
     } else {
-        spdlog::warn("[text] Assets<render::Shader> is not available in the main world.");
+        spdlog::warn("[text] Assets<shader::Shader> is not available in the main world.");
     }
 
     auto render_app = app.get_sub_app_mut(render::Render);
