@@ -204,6 +204,22 @@ export struct ShaderLoader {
                                              assets::LoadContext& context);
 };
 
+// ─── ShaderProcessor ───────────────────────────────────────────────────────
+export struct ShaderProcessorSettings : assets::Settings {
+    ShaderSettings loader_settings;
+    bool preprocess_wgsl  = true;
+    bool preprocess_slang = true;
+};
+
+export struct ShaderProcessor {
+    using Settings     = ShaderProcessorSettings;
+    using OutputLoader = ShaderLoader;
+
+    std::expected<OutputLoader::Settings, std::exception_ptr> process(assets::ProcessContext& context,
+                                                                      const Settings& settings,
+                                                                      std::ostream& writer) const;
+};
+
 // ─── ShaderRef ─────────────────────────────────────────────────────────────
 export struct ShaderRef {
     struct Default {};

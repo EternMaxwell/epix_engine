@@ -10,6 +10,213 @@ import :shader;
 
 using namespace epix::shader;
 
+namespace {
+
+constexpr std::array<std::uint8_t, 8> k_processed_shader_magic = {'E', 'P', 'S', 'H', 'P', 'R', '0', '1'};
+constexpr std::uint32_t k_processed_shader_version             = 1;
+
+enum class ProcessedSourceKind : std::uint8_t {
+    Wgsl  = 1,
+    SpirV = 2,
+    Slang = 3,
+};
+
+enum class ProcessedImportKind : std::uint8_t {
+    AssetPath = 1,
+    Custom    = 2,
+};
+
+struct ProcessedDecodedShader {
+    Source source;
+    ShaderImport import_path;
+    std::vector<ShaderImport> imports;
+};
+
+bool validate_utf8_bytes(const std::vector<char>& bytes, std::size_t& invalid_offset) {
+    for (std::size_t i = 0; i < bytes.size();) {
+        unsigned char c = static_cast<unsigned char>(bytes[i]);
+        int seq         = 0;
+        if (c <= 0x7F) {
+            seq = 1;
+        } else if ((c & 0xE0) == 0xC0) {
+            seq = 2;
+        } else if ((c & 0xF0) == 0xE0) {
+            seq = 3;
+        } else if ((c & 0xF8) == 0xF0) {
+            seq = 4;
+        } else {
+            invalid_offset = i;
+            return false;
+        }
+        for (int j = 1; j < seq; ++j) {
+            if (i + j >= bytes.size() || (static_cast<unsigned char>(bytes[i + j]) & 0xC0) != 0x80) {
+                invalid_offset = i;
+                return false;
+            }
+        }
+        i += seq;
+    }
+    return true;
+}
+
+void write_u8(std::vector<std::uint8_t>& out, std::uint8_t v) { out.push_back(v); }
+
+void write_u32(std::vector<std::uint8_t>& out, std::uint32_t v) {
+    out.push_back(static_cast<std::uint8_t>((v >> 0) & 0xFF));
+    out.push_back(static_cast<std::uint8_t>((v >> 8) & 0xFF));
+    out.push_back(static_cast<std::uint8_t>((v >> 16) & 0xFF));
+    out.push_back(static_cast<std::uint8_t>((v >> 24) & 0xFF));
+}
+
+void write_string(std::vector<std::uint8_t>& out, std::string_view s) {
+    write_u32(out, static_cast<std::uint32_t>(s.size()));
+    out.insert(out.end(), s.begin(), s.end());
+}
+
+void write_import(std::vector<std::uint8_t>& out, const ShaderImport& imp) {
+    if (imp.is_asset_path()) {
+        write_u8(out, static_cast<std::uint8_t>(ProcessedImportKind::AssetPath));
+        write_string(out, imp.as_asset_path().string());
+    } else {
+        write_u8(out, static_cast<std::uint8_t>(ProcessedImportKind::Custom));
+        write_string(out, imp.as_custom());
+    }
+}
+
+std::vector<std::uint8_t> serialize_processed_shader(const Shader& shader) {
+    std::vector<std::uint8_t> out;
+    out.reserve(64 + shader.imports.size() * 24);
+
+    out.insert(out.end(), k_processed_shader_magic.begin(), k_processed_shader_magic.end());
+    write_u32(out, k_processed_shader_version);
+
+    if (shader.source.is_wgsl()) {
+        write_u8(out, static_cast<std::uint8_t>(ProcessedSourceKind::Wgsl));
+        write_string(out, shader.source.as_str());
+    } else if (shader.source.is_slang()) {
+        write_u8(out, static_cast<std::uint8_t>(ProcessedSourceKind::Slang));
+        write_string(out, shader.source.as_str());
+    } else {
+        write_u8(out, static_cast<std::uint8_t>(ProcessedSourceKind::SpirV));
+        const auto& bytes = std::get<Source::SpirV>(shader.source.data).bytes;
+        write_u32(out, static_cast<std::uint32_t>(bytes.size()));
+        out.insert(out.end(), bytes.begin(), bytes.end());
+    }
+
+    write_import(out, shader.import_path);
+    write_u32(out, static_cast<std::uint32_t>(shader.imports.size()));
+    for (const auto& imp : shader.imports) {
+        write_import(out, imp);
+    }
+    return out;
+}
+
+bool has_processed_magic(const std::vector<char>& bytes) {
+    if (bytes.size() < k_processed_shader_magic.size()) return false;
+    return std::equal(k_processed_shader_magic.begin(), k_processed_shader_magic.end(),
+                      reinterpret_cast<const std::uint8_t*>(bytes.data()));
+}
+
+bool read_u8(const std::vector<char>& bytes, std::size_t& pos, std::uint8_t& out) {
+    if (pos + 1 > bytes.size()) return false;
+    out = static_cast<std::uint8_t>(bytes[pos]);
+    ++pos;
+    return true;
+}
+
+bool read_u32(const std::vector<char>& bytes, std::size_t& pos, std::uint32_t& out) {
+    if (pos + 4 > bytes.size()) return false;
+    const auto b0 = static_cast<std::uint8_t>(bytes[pos + 0]);
+    const auto b1 = static_cast<std::uint8_t>(bytes[pos + 1]);
+    const auto b2 = static_cast<std::uint8_t>(bytes[pos + 2]);
+    const auto b3 = static_cast<std::uint8_t>(bytes[pos + 3]);
+    out           = static_cast<std::uint32_t>(b0) | (static_cast<std::uint32_t>(b1) << 8) |
+                    (static_cast<std::uint32_t>(b2) << 16) | (static_cast<std::uint32_t>(b3) << 24);
+    pos += 4;
+    return true;
+}
+
+bool read_string(const std::vector<char>& bytes, std::size_t& pos, std::string& out) {
+    std::uint32_t len = 0;
+    if (!read_u32(bytes, pos, len)) return false;
+    if (pos + len > bytes.size()) return false;
+    out.assign(bytes.data() + pos, bytes.data() + pos + len);
+    pos += len;
+    return true;
+}
+
+bool read_import(const std::vector<char>& bytes, std::size_t& pos, ShaderImport& out) {
+    std::uint8_t kind_raw = 0;
+    if (!read_u8(bytes, pos, kind_raw)) return false;
+
+    std::string payload;
+    if (!read_string(bytes, pos, payload)) return false;
+
+    auto kind = static_cast<ProcessedImportKind>(kind_raw);
+    if (kind == ProcessedImportKind::AssetPath) {
+        out = ShaderImport::asset_path(epix::assets::AssetPath(std::move(payload)));
+        return true;
+    }
+    if (kind == ProcessedImportKind::Custom) {
+        out = ShaderImport::custom(std::move(payload));
+        return true;
+    }
+    return false;
+}
+
+std::optional<ProcessedDecodedShader> deserialize_processed_shader(const std::vector<char>& bytes) {
+    if (!has_processed_magic(bytes)) return std::nullopt;
+    std::size_t pos = k_processed_shader_magic.size();
+
+    std::uint32_t version = 0;
+    if (!read_u32(bytes, pos, version) || version != k_processed_shader_version) return std::nullopt;
+
+    std::uint8_t source_kind_raw = 0;
+    if (!read_u8(bytes, pos, source_kind_raw)) return std::nullopt;
+    auto source_kind = static_cast<ProcessedSourceKind>(source_kind_raw);
+
+    Source source;
+    if (source_kind == ProcessedSourceKind::Wgsl || source_kind == ProcessedSourceKind::Slang) {
+        std::string text;
+        if (!read_string(bytes, pos, text)) return std::nullopt;
+        if (source_kind == ProcessedSourceKind::Wgsl) {
+            source = Source::wgsl(std::move(text));
+        } else {
+            source = Source::slang(std::move(text));
+        }
+    } else if (source_kind == ProcessedSourceKind::SpirV) {
+        std::uint32_t len = 0;
+        if (!read_u32(bytes, pos, len) || pos + len > bytes.size()) return std::nullopt;
+        std::vector<std::uint8_t> spirv;
+        spirv.reserve(len);
+        for (std::uint32_t i = 0; i < len; ++i) {
+            spirv.push_back(static_cast<std::uint8_t>(bytes[pos + i]));
+        }
+        pos += len;
+        source = Source::spirv(std::move(spirv));
+    } else {
+        return std::nullopt;
+    }
+
+    ShaderImport import_path;
+    if (!read_import(bytes, pos, import_path)) return std::nullopt;
+
+    std::uint32_t import_count = 0;
+    if (!read_u32(bytes, pos, import_count)) return std::nullopt;
+    std::vector<ShaderImport> imports;
+    imports.reserve(import_count);
+    for (std::uint32_t i = 0; i < import_count; ++i) {
+        ShaderImport imp;
+        if (!read_import(bytes, pos, imp)) return std::nullopt;
+        imports.push_back(std::move(imp));
+    }
+
+    if (pos != bytes.size()) return std::nullopt;
+    return ProcessedDecodedShader{std::move(source), std::move(import_path), std::move(imports)};
+}
+
+}  // namespace
+
 // ─── Shader::preprocess ────────────────────────────────────────────────────
 // Scans WGSL source for:
 //   #define_import_path <name>  → import_path = Custom(name)
@@ -52,7 +259,7 @@ std::pair<ShaderImport, std::vector<ShaderImport>> Shader::preprocess(std::strin
                 auto end_q    = rest.find('"', 1);
                 std::string p = end_q == std::string_view::npos ? std::string(rest.substr(1))
                                                                 : std::string(rest.substr(1, end_q - 1));
-                imports.emplace_back(ShaderImport::asset_path(assets::AssetPath(std::move(p))));
+                imports.emplace_back(ShaderImport::asset_path(epix::assets::AssetPath(std::move(p))));
             } else {
                 // #import some::module::name  (possibly with "as alias")
                 std::size_t as_pos = rest.find(" as ");
@@ -250,6 +457,35 @@ std::expected<Shader, ShaderLoaderError> ShaderLoader::load(std::istream& reader
         return std::unexpected(ShaderLoaderError::io(std::make_error_code(std::io_errc::stream), raw_path));
     }
 
+    auto attach_dependencies = [&](Shader& shader) {
+        for (const auto& imp : shader.imports) {
+            if (imp.is_asset_path()) {
+                // resolve() resolves relative paths against the parent's dir,
+                // and respects the source in the import (from source:// syntax).
+                auto dep_path = context.path().resolve(imp.as_asset_path());
+                auto handle   = context.asset_server().template load<Shader>(dep_path);
+                context.track_dependency(assets::UntypedAssetId(handle.id()));
+                shader.file_dependencies.push_back(std::move(handle));
+            }
+        }
+    };
+
+    if (has_processed_magic(bytes)) {
+        auto decoded = deserialize_processed_shader(bytes);
+        if (!decoded.has_value()) {
+            return std::unexpected(ShaderLoaderError::parse(raw_path, 0));
+        }
+
+        Shader shader;
+        shader.path        = path_str;
+        shader.source      = std::move(decoded->source);
+        shader.import_path = std::move(decoded->import_path);
+        shader.imports     = std::move(decoded->imports);
+        shader.shader_defs = settings.shader_defs;
+        attach_dependencies(shader);
+        return shader;
+    }
+
     auto ext = raw_path.extension().string();
     // strip leading dot
     if (!ext.empty() && ext.front() == '.') ext = ext.substr(1);
@@ -266,82 +502,104 @@ std::expected<Shader, ShaderLoaderError> ShaderLoader::load(std::istream& reader
         if (!settings.shader_defs.empty()) {
             spdlog::debug("[shader] Applying {} shader_defs to '{}'.", settings.shader_defs.size(), path_str);
         }
-        // Validate UTF-8
-        for (std::size_t i = 0; i < bytes.size();) {
-            unsigned char c = static_cast<unsigned char>(bytes[i]);
-            int seq         = 0;
-            if (c <= 0x7F) {
-                seq = 1;
-            } else if ((c & 0xE0) == 0xC0) {
-                seq = 2;
-            } else if ((c & 0xF0) == 0xE0) {
-                seq = 3;
-            } else if ((c & 0xF8) == 0xF0) {
-                seq = 4;
-            } else {
-                return std::unexpected(ShaderLoaderError::parse(raw_path, i));
-            }
-            for (int j = 1; j < seq; ++j) {
-                if (i + j >= bytes.size() || (static_cast<unsigned char>(bytes[i + j]) & 0xC0) != 0x80)
-                    return std::unexpected(ShaderLoaderError::parse(raw_path, i));
-            }
-            i += seq;
+        std::size_t bad_utf8 = 0;
+        if (!validate_utf8_bytes(bytes, bad_utf8)) {
+            return std::unexpected(ShaderLoaderError::parse(raw_path, bad_utf8));
         }
         std::string text(bytes.begin(), bytes.end());
         auto shader = Shader::from_wgsl_with_defs(std::move(text), path_str, settings.shader_defs);
-
-        // Load AssetPath dependencies so the asset system tracks them.
-        for (const auto& imp : shader.imports) {
-            if (imp.is_asset_path()) {
-                // resolve() resolves relative paths against the parent's dir,
-                // and respects the source in the import (from source:// syntax).
-                auto dep_path = context.path().resolve(imp.as_asset_path());
-                auto handle   = context.asset_server().template load<Shader>(dep_path);
-                context.track_dependency(assets::UntypedAssetId(handle.id()));
-                shader.file_dependencies.push_back(std::move(handle));
-            }
-        }
+        attach_dependencies(shader);
         return shader;
     }
 
     if (ext == "slang") {
-        // Validate UTF-8 (same as WGSL)
-        for (std::size_t i = 0; i < bytes.size();) {
-            unsigned char c = static_cast<unsigned char>(bytes[i]);
-            int seq         = 0;
-            if (c <= 0x7F) {
-                seq = 1;
-            } else if ((c & 0xE0) == 0xC0) {
-                seq = 2;
-            } else if ((c & 0xF0) == 0xE0) {
-                seq = 3;
-            } else if ((c & 0xF8) == 0xF0) {
-                seq = 4;
-            } else {
-                return std::unexpected(ShaderLoaderError::parse(raw_path, i));
-            }
-            for (int j = 1; j < seq; ++j) {
-                if (i + j >= bytes.size() || (static_cast<unsigned char>(bytes[i + j]) & 0xC0) != 0x80)
-                    return std::unexpected(ShaderLoaderError::parse(raw_path, i));
-            }
-            i += seq;
+        std::size_t bad_utf8 = 0;
+        if (!validate_utf8_bytes(bytes, bad_utf8)) {
+            return std::unexpected(ShaderLoaderError::parse(raw_path, bad_utf8));
         }
         std::string text(bytes.begin(), bytes.end());
         auto shader = Shader::from_slang_with_defs(std::move(text), path_str, settings.shader_defs);
-
-        // Load AssetPath dependencies so the asset system tracks them.
-        for (const auto& imp : shader.imports) {
-            if (imp.is_asset_path()) {
-                auto dep_path = context.path().resolve(imp.as_asset_path());
-                auto handle   = context.asset_server().template load<Shader>(dep_path);
-                context.track_dependency(assets::UntypedAssetId(handle.id()));
-                shader.file_dependencies.push_back(std::move(handle));
-            }
-        }
+        attach_dependencies(shader);
         return shader;
     }
 
     return std::unexpected(ShaderLoaderError::parse(raw_path, 0));
+}
+
+std::expected<ShaderProcessor::OutputLoader::Settings, std::exception_ptr> ShaderProcessor::process(
+    assets::ProcessContext& context, const Settings& settings, std::ostream& writer) const {
+    try {
+        const auto& raw_path = context.path().path;
+        std::string path_str = raw_path.string();
+        std::ranges::replace(path_str, '\\', '/');
+
+        std::vector<char> bytes = std::ranges::subrange(std::istreambuf_iterator<char>(context.asset_reader()),
+                                                        std::istreambuf_iterator<char>()) |
+                                  std::ranges::to<std::vector<char>>();
+
+        if (context.asset_reader().fail() && !context.asset_reader().eof()) {
+            return std::unexpected(
+                std::make_exception_ptr(std::runtime_error("Failed to read shader source for processing")));
+        }
+
+        std::string ext = raw_path.extension().string();
+        if (!ext.empty() && ext.front() == '.') ext = ext.substr(1);
+
+        auto register_process_deps = [&](const Shader& shader) {
+            for (const auto& imp : shader.imports) {
+                if (!imp.is_asset_path()) continue;
+                auto dep = context.path().resolve(imp.as_asset_path());
+                context.new_processed_info().process_dependencies.push_back(
+                    epix::assets::ProcessDependencyInfo{.full_hash = 0, .path = dep.string()});
+            }
+        };
+
+        auto write_serialized = [&](const Shader& shader) -> bool {
+            auto encoded = serialize_processed_shader(shader);
+            writer.write(reinterpret_cast<const char*>(encoded.data()), static_cast<std::streamsize>(encoded.size()));
+            return writer.good();
+        };
+
+        if (ext == "wgsl" && settings.preprocess_wgsl) {
+            std::size_t bad_utf8 = 0;
+            if (!validate_utf8_bytes(bytes, bad_utf8)) {
+                return std::unexpected(std::make_exception_ptr(std::runtime_error("Invalid UTF-8 in WGSL")));
+            }
+
+            auto shader = Shader::from_wgsl_with_defs(std::string(bytes.begin(), bytes.end()), path_str,
+                                                      settings.loader_settings.shader_defs);
+            register_process_deps(shader);
+            if (!write_serialized(shader)) {
+                return std::unexpected(std::make_exception_ptr(std::runtime_error("Failed to write processed WGSL")));
+            }
+            return settings.loader_settings;
+        }
+
+        if (ext == "slang" && settings.preprocess_slang) {
+            std::size_t bad_utf8 = 0;
+            if (!validate_utf8_bytes(bytes, bad_utf8)) {
+                return std::unexpected(std::make_exception_ptr(std::runtime_error("Invalid UTF-8 in Slang")));
+            }
+
+            auto shader = Shader::from_slang_with_defs(std::string(bytes.begin(), bytes.end()), path_str,
+                                                       settings.loader_settings.shader_defs);
+            register_process_deps(shader);
+            if (!write_serialized(shader)) {
+                return std::unexpected(std::make_exception_ptr(std::runtime_error("Failed to write processed Slang")));
+            }
+            return settings.loader_settings;
+        }
+
+        // Copy-through for all other formats/extensions.
+        writer.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+        if (!writer.good()) {
+            return std::unexpected(
+                std::make_exception_ptr(std::runtime_error("Failed to write processed shader bytes")));
+        }
+        return settings.loader_settings;
+    } catch (...) {
+        return std::unexpected(std::current_exception());
+    }
 }
 
 // ─── ShaderPlugin ──────────────────────────────────────────────────────────
@@ -349,4 +607,10 @@ void ShaderPlugin::build(core::App& app) {
     spdlog::debug("[shader] Building ShaderPlugin, registering shader asset loader.");
     assets::app_register_asset<Shader>(app);
     assets::app_register_loader<ShaderLoader>(app);
+
+    if (app.world_mut().get_resource<assets::AssetProcessor>().has_value()) {
+        assets::app_register_asset_processor<ShaderProcessor>(app, ShaderProcessor{});
+        assets::app_set_default_asset_processor<ShaderProcessor>(app, "wgsl");
+        assets::app_set_default_asset_processor<ShaderProcessor>(app, "slang");
+    }
 }
