@@ -507,4 +507,14 @@ export struct AssetServer {
      *  where forward-declared and fully-defined types are treated as mismatched. */
     static LoadContext make_load_context(const AssetServer& s, AssetPath p) { return LoadContext(s, std::move(p)); }
 };
-}  // namespace assets
+
+// --- NestedLoader template implementations (AssetServer must be complete) ---
+
+template <typename A>
+Handle<A> NestedLoader::load(const AssetPath& path) {
+    auto handle = m_context.asset_server().template load<A>(path);
+    m_context.track_dependency(UntypedAssetId(handle.id()));
+    return handle;
+}
+
+}  // namespace epix::assets

@@ -2,6 +2,7 @@
 target_link_libraries(epix_shader PUBLIC epix_core)
 target_link_libraries(epix_shader PUBLIC epix_assets)
 target_link_libraries(epix_shader PUBLIC webgpu)
+target_link_libraries(epix_shader PUBLIC slang_compiler)
 
 if (EPIX_ENABLE_TEST)
 # --- tests: auto-discover ---

@@ -331,6 +331,191 @@ TEST_F(ShaderCacheTest, SpirvShader_NoAssetPathImports_GetNeverBlocked) {
 }
 
 // ===========================================================================
+// Slang shaders
+// ===========================================================================
+
+// Build a simple Slang compute shader.
+static Shader simple_slang(std::string src  = "[shader(\"compute\")]\n[numthreads(1,1,1)]\nvoid computeMain() {}",
+                           std::string path = "test.slang") {
+    return Shader::from_slang(std::move(src), std::move(path));
+}
+
+TEST_F(ShaderCacheTest, SlangShader_GetSucceeds) {
+    auto id = make_id(1);
+    cache.set_shader(id, simple_slang());
+    auto result = cache.get(CachedPipelineId{1}, id, {});
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(call_count, 1);
+}
+
+TEST_F(ShaderCacheTest, SlangShader_CacheHit_LoadModuleCalledOnce) {
+    auto id = make_id(1);
+    cache.set_shader(id, simple_slang());
+    cache.get(CachedPipelineId{1}, id, {});
+    cache.get(CachedPipelineId{2}, id, {});
+    EXPECT_EQ(call_count, 1);
+}
+
+TEST_F(ShaderCacheTest, SlangShader_DifferentDefs_CacheMiss) {
+    auto id                         = make_id(1);
+    std::vector<ShaderDefVal> defsA = {ShaderDefVal::from_bool("FEAT_A")};
+    std::vector<ShaderDefVal> defsB = {ShaderDefVal::from_bool("FEAT_B")};
+    cache.set_shader(id, simple_slang());
+    cache.get(CachedPipelineId{1}, id, defsA);
+    cache.get(CachedPipelineId{2}, id, defsB);
+    EXPECT_EQ(call_count, 2);
+}
+
+TEST_F(ShaderCacheTest, SlangShader_Update_InvalidatesPipeline) {
+    auto id = make_id(1);
+    cache.set_shader(id, simple_slang("[shader(\"compute\")]\n[numthreads(1,1,1)]\nvoid computeMain() { /* v1 */ }"));
+    cache.get(CachedPipelineId{10}, id, {});
+    auto affected = cache.set_shader(
+        id, simple_slang("[shader(\"compute\")]\n[numthreads(1,1,1)]\nvoid computeMain() { /* v2 */ }"));
+    EXPECT_TRUE(std::ranges::contains(affected, CachedPipelineId{10}));
+}
+
+TEST_F(ShaderCacheTest, SlangShader_OwnDefs_MergedWithCaller) {
+    auto id     = make_id(1);
+    auto shader = Shader::from_slang_with_defs("[shader(\"compute\")]\n[numthreads(1,1,1)]\nvoid computeMain() {}",
+                                               "test.slang", {ShaderDefVal::from_int("VALUE", 1)});
+    cache.set_shader(id, shader);
+    // Caller overrides VALUE — different merged-defs → separate cache entry.
+    std::vector<ShaderDefVal> caller_defs = {ShaderDefVal::from_int("VALUE", 2)};
+    cache.get(CachedPipelineId{1}, id, {});           // uses shader's own defs only
+    cache.get(CachedPipelineId{2}, id, caller_defs);  // caller overrides VALUE
+    EXPECT_EQ(call_count, 2);                         // different merged defs → two compiles
+}
+
+TEST_F(ShaderCacheTest, SlangShader_ReturnsSamePointerForSameDefs) {
+    auto id = make_id(1);
+    cache.set_shader(id, simple_slang());
+    auto r1 = cache.get(CachedPipelineId{1}, id, {});
+    auto r2 = cache.get(CachedPipelineId{2}, id, {});
+    ASSERT_TRUE(r1.has_value());
+    ASSERT_TRUE(r2.has_value());
+    EXPECT_EQ(r1.value().get(), r2.value().get());
+}
+
+TEST_F(ShaderCacheTest, SlangShader_Import_ResolvesFromCache) {
+    auto util_id = make_id(1);
+    auto main_id = make_id(2);
+    // Utility module — no entry point needed.
+    cache.set_shader(util_id, Shader::from_slang("float4 getColor() { return float4(1, 0, 0, 1); }", "utility.slang"));
+    // Main shader imports the utility module.
+    cache.set_shader(main_id, Shader::from_slang("import utility;\n\n"
+                                                 "[shader(\"compute\")]\n[numthreads(1,1,1)]\n"
+                                                 "void computeMain() { float4 c = getColor(); }",
+                                                 "main.slang"));
+    auto result = cache.get(CachedPipelineId{1}, main_id, {});
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(call_count, 1);
+}
+
+// ===========================================================================
+// Slang — import resolved via import_path (AssetPath), not shader.path
+// ===========================================================================
+
+TEST_F(ShaderCacheTest, SlangShader_Import_ResolvedByImportPath_AssetPath) {
+    auto util_id = make_id(1);
+    auto main_id = make_id(2);
+
+    // Utility module lives at an internal VFS path, but its import_path is "utility.slang"
+    auto util = Shader::from_slang("float4 getColor() { return float4(1, 0, 0, 1); }", "vfs/internal/utility.slang");
+    util.import_path = ShaderImport::asset_path("utility.slang");
+    cache.set_shader(util_id, util);
+
+    // Main shader does `import utility;` → Slang calls loadFile("utility.slang")
+    cache.set_shader(main_id, Shader::from_slang("import utility;\n\n"
+                                                 "[shader(\"compute\")]\n[numthreads(1,1,1)]\n"
+                                                 "void computeMain() { float4 c = getColor(); }",
+                                                 "main.slang"));
+
+    auto result = cache.get(CachedPipelineId{1}, main_id, {});
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(call_count, 1);
+}
+
+TEST_F(ShaderCacheTest, SlangShader_Import_ResolvedByImportPath_Custom) {
+    auto util_id = make_id(1);
+    auto main_id = make_id(2);
+
+    // Utility module with an explicit import_path (like `module utility;`)
+    auto util        = Shader::from_slang("float4 getColor() { return float4(1, 0, 0, 1); }", "some/other/path.slang");
+    util.import_path = ShaderImport::asset_path("utility.slang");
+    cache.set_shader(util_id, util);
+
+    // Main shader imports "utility" → loadFile("utility.slang") → matches custom import_path
+    cache.set_shader(main_id, Shader::from_slang("import utility;\n\n"
+                                                 "[shader(\"compute\")]\n[numthreads(1,1,1)]\n"
+                                                 "void computeMain() { float4 c = getColor(); }",
+                                                 "main.slang"));
+
+    auto result = cache.get(CachedPipelineId{1}, main_id, {});
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(call_count, 1);
+}
+
+// ===========================================================================
+// WGSL — import resolved via explicit import_path (different from file path)
+// ===========================================================================
+
+TEST_F(ShaderCacheTest, WgslImport_ResolvedByExplicitAssetPath) {
+    auto dep_id  = make_id(1);
+    auto main_id = make_id(2);
+
+    // Dependency has a VFS file path but import_path is set to a short name
+    auto dep        = Shader::from_wgsl("fn dep_fn() {}", "vfs/internal/dep.wgsl");
+    dep.import_path = ShaderImport::asset_path("dep.wgsl");
+    cache.set_shader(dep_id, dep);
+
+    // Main shader imports "dep.wgsl" via AssetPath
+    cache.set_shader(main_id, Shader::from_wgsl("#import \"dep.wgsl\"\nfn main_fn() {}", "main.wgsl"));
+
+    auto result = cache.get(CachedPipelineId{1}, main_id, {});
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(call_count, 1);
+}
+
+TEST_F(ShaderCacheTest, WgslImport_ResolvedByCustomImportPath) {
+    auto dep_id  = make_id(1);
+    auto main_id = make_id(2);
+
+    // Dependency with #define_import_path and a VFS file path
+    auto dep = Shader::from_wgsl("#define_import_path my::utils\nfn dep_fn() {}", "vfs/dep.wgsl");
+    // preprocess sets import_path = ShaderImport::custom("my::utils")
+    cache.set_shader(dep_id, dep);
+
+    // Main imports via custom path
+    cache.set_shader(main_id, Shader::from_wgsl("#import my::utils\nfn main_fn() {}", "main.wgsl"));
+
+    auto result = cache.get(CachedPipelineId{1}, main_id, {});
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(call_count, 1);
+}
+
+TEST_F(ShaderCacheTest, WgslImport_AssetPath_DependencyAfterMain_Resolves) {
+    auto dep_id  = make_id(1);
+    auto main_id = make_id(2);
+
+    // Register main FIRST (dependency not yet available)
+    cache.set_shader(main_id, Shader::from_wgsl("#import \"dep.wgsl\"\nfn main_fn() {}", "main.wgsl"));
+
+    auto blocked = cache.get(CachedPipelineId{1}, main_id, {});
+    ASSERT_FALSE(blocked.has_value());
+    EXPECT_TRUE(std::holds_alternative<ShaderCacheError::ShaderImportNotYetAvailable>(blocked.error().data));
+
+    // Now register dependency with explicit import_path (different from path)
+    auto dep        = Shader::from_wgsl("fn dep_fn() {}", "vfs/deep/dep.wgsl");
+    dep.import_path = ShaderImport::asset_path("dep.wgsl");
+    cache.set_shader(dep_id, dep);
+
+    auto result = cache.get(CachedPipelineId{1}, main_id, {});
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(call_count, 1);
+}
+
+// ===========================================================================
 // ShaderCacheError: factory methods
 // ===========================================================================
 

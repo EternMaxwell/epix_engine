@@ -160,21 +160,52 @@ TEST(Source, SpirVHoldsCorrectVariant) {
     EXPECT_FALSE(std::holds_alternative<Source::Wgsl>(s.data));
 }
 
+TEST(Source, SlangFactoryProducesSlang) {
+    auto s = Source::slang("[shader(\"vertex\")] float4 main() : SV_Position { return 0; }");
+    EXPECT_TRUE(s.is_slang());
+    EXPECT_FALSE(s.is_wgsl());
+    EXPECT_FALSE(s.is_spirv());
+    EXPECT_EQ(s.as_str(), "[shader(\"vertex\")] float4 main() : SV_Position { return 0; }");
+}
+
+TEST(Source, SlangEmptyString) {
+    auto s = Source::slang("");
+    EXPECT_TRUE(s.is_slang());
+    EXPECT_EQ(s.as_str(), "");
+}
+
+TEST(Source, SlangHoldsCorrectVariant) {
+    auto s = Source::slang("code");
+    EXPECT_TRUE(std::holds_alternative<Source::Slang>(s.data));
+    EXPECT_FALSE(std::holds_alternative<Source::Wgsl>(s.data));
+    EXPECT_FALSE(std::holds_alternative<Source::SpirV>(s.data));
+}
+
+TEST(Source, WgslIsNotSlang) {
+    auto s = Source::wgsl("code");
+    EXPECT_FALSE(s.is_slang());
+}
+
+TEST(Source, SpirVIsNotSlang) {
+    auto s = Source::spirv({0x01});
+    EXPECT_FALSE(s.is_slang());
+}
+
 // ===========================================================================
 // ShaderImport
 // ===========================================================================
 
 TEST(ShaderImport, AssetPathModuleName) {
     auto imp = ShaderImport::asset_path("shaders/common.wgsl");
-    EXPECT_EQ(imp.kind, ShaderImport::Kind::AssetPath);
-    EXPECT_EQ(imp.path, "shaders/common.wgsl");
-    EXPECT_EQ(imp.module_name(), "\"shaders/common.wgsl\"");
+    EXPECT_TRUE(imp.is_asset_path());
+    EXPECT_EQ(imp.as_asset_path().path.generic_string(), "shaders/common.wgsl");
+    EXPECT_EQ(imp.module_name(), '"' + imp.as_asset_path().string() + '"');
 }
 
 TEST(ShaderImport, CustomModuleName) {
     auto imp = ShaderImport::custom("my::module::utils");
-    EXPECT_EQ(imp.kind, ShaderImport::Kind::Custom);
-    EXPECT_EQ(imp.path, "my::module::utils");
+    EXPECT_TRUE(imp.is_custom());
+    EXPECT_EQ(imp.as_custom(), "my::module::utils");
     EXPECT_EQ(imp.module_name(), "my::module::utils");
 }
 

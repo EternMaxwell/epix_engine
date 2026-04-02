@@ -117,6 +117,9 @@ set(CMAKE_CXX_SCAN_FOR_MODULES ON)
 # WebGPU integration
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/WebGPU.cmake)
 
+# Slang shader compiler
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/FetchSlang.cmake)
+
 set (GLM_ENABLE_CXX_20 ON)
 add_subdirectory (libs/glm)
 target_sources(glm

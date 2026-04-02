@@ -72,34 +72,55 @@ export struct Source {
     struct SpirV {
         std::vector<std::uint8_t> bytes;
     };
+    struct Slang {
+        std::string code;
+    };
 
-    std::variant<Wgsl, SpirV> data;
+    std::variant<Wgsl, SpirV, Slang> data;
 
     static Source wgsl(std::string code) { return {Wgsl{std::move(code)}}; }
     static Source spirv(std::vector<std::uint8_t> bytes) { return {SpirV{std::move(bytes)}}; }
+    static Source slang(std::string code) { return {Slang{std::move(code)}}; }
 
     bool is_wgsl() const { return std::holds_alternative<Wgsl>(data); }
     bool is_spirv() const { return std::holds_alternative<SpirV>(data); }
+    bool is_slang() const { return std::holds_alternative<Slang>(data); }
 
     // Asserts / UB for SpirV.
-    std::string_view as_str() const { return std::get<Wgsl>(data).code; }
+    std::string_view as_str() const {
+        if (auto* w = std::get_if<Wgsl>(&data)) return w->code;
+        if (auto* s = std::get_if<Slang>(&data)) return s->code;
+        return std::get<Wgsl>(data).code;  // UB fallback
+    }
 };
 
 // ─── ShaderImport ──────────────────────────────────────────────────────────
+// Mirrors Bevy's ShaderImport: either a full AssetPath (with optional source)
+// or a custom module name (e.g. "my::utils" from #define_import_path / Slang custom).
 export struct ShaderImport {
-    enum class Kind { AssetPath, Custom };
-    Kind kind;
-    std::string path;
+    // AssetPath variant: a specific file, may carry a source:// origin.
+    // Custom    variant: a named module string (e.g. "my::module").
+    std::variant<assets::AssetPath, std::string> data;
 
-    static ShaderImport asset_path(std::string p) { return {Kind::AssetPath, std::move(p)}; }
-    static ShaderImport custom(std::string name) { return {Kind::Custom, std::move(name)}; }
+    ShaderImport() = default;
+    explicit ShaderImport(assets::AssetPath p) : data(std::move(p)) {}
+    explicit ShaderImport(std::in_place_index_t<1>, std::string name) : data(std::in_place_index<1>, std::move(name)) {}
 
-    // Returns the canonical module name used by ShaderComposer:
-    //   AssetPath → '"' + path + '"'
-    //   Custom    → path verbatim
+    static ShaderImport asset_path(assets::AssetPath p) { return ShaderImport(std::move(p)); }
+    static ShaderImport custom(std::string name) { return ShaderImport(std::in_place_index<1>, std::move(name)); }
+
+    bool is_asset_path() const { return std::holds_alternative<assets::AssetPath>(data); }
+    bool is_custom() const { return std::holds_alternative<std::string>(data); }
+
+    const assets::AssetPath& as_asset_path() const { return std::get<assets::AssetPath>(data); }
+    const std::string& as_custom() const { return std::get<std::string>(data); }
+
+    // Returns the canonical module name used by ShaderComposer.
+    //   AssetPath → '"' + AssetPath::string() + '"'
+    //   Custom    → name verbatim
     std::string module_name() const {
-        if (kind == Kind::AssetPath) return '"' + path + '"';
-        return path;
+        if (is_asset_path()) return '"' + as_asset_path().string() + '"';
+        return as_custom();
     }
 
     bool operator==(const ShaderImport&) const = default;
@@ -112,7 +133,7 @@ export struct Shader;
 export struct Shader {
     std::string path;
     Source source;
-    ShaderImport import_path = ShaderImport::asset_path({});
+    ShaderImport import_path = ShaderImport::asset_path(assets::AssetPath{});
     std::vector<ShaderImport> imports;
     std::vector<ShaderDefVal> shader_defs;
     std::vector<assets::Handle<Shader>> file_dependencies;
@@ -122,9 +143,15 @@ export struct Shader {
     static std::pair<ShaderImport, std::vector<ShaderImport>> preprocess(std::string_view source,
                                                                          std::string_view path);
 
+    // Parses Slang source to extract `import X;` statements.
+    static std::pair<ShaderImport, std::vector<ShaderImport>> preprocess_slang(std::string_view source,
+                                                                               std::string_view path);
+
     static Shader from_wgsl(std::string source, std::string path);
     static Shader from_wgsl_with_defs(std::string source, std::string path, std::vector<ShaderDefVal> shader_defs);
     static Shader from_spirv(std::vector<std::uint8_t> source, std::string path);
+    static Shader from_slang(std::string source, std::string path);
+    static Shader from_slang_with_defs(std::string source, std::string path, std::vector<ShaderDefVal> shader_defs);
 };
 
 // ─── ShaderSettings ────────────────────────────────────────────────────────
@@ -238,7 +265,15 @@ struct std::hash<std::vector<epix::shader::ShaderDefVal>> {
 template <>
 struct std::hash<epix::shader::ShaderImport> {
     std::size_t operator()(const epix::shader::ShaderImport& import) const noexcept {
-        return std::hash<std::string>{}(import.path) ^ static_cast<std::size_t>(import.kind);
+        return std::visit(
+            []<typename T>(const T& v) -> std::size_t {
+                if constexpr (std::same_as<T, epix::assets::AssetPath>) {
+                    return std::hash<epix::assets::AssetPath>{}(v);
+                } else {
+                    return std::hash<std::string>{}(v) ^ std::size_t(0x1'0000);
+                }
+            },
+            import.data);
     }
 };
 

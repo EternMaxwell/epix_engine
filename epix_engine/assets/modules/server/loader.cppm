@@ -257,6 +257,10 @@ export struct LoadContext {
     /** @brief Get a reference to the asset server. */
     const AssetServer& asset_server() const { return m_server; }
 
+    /** @brief Register an asset id as a direct dependency of this load.
+     *  Used by loaders that call AssetServer::load directly instead of NestedLoader. */
+    void track_dependency(const UntypedAssetId& id) { m_dependencies.insert(id); }
+
     /** @brief Check whether a labeled asset with the given label exists. */
     bool has_labeled_asset(const std::string& label) const { return m_labeled_assets.contains(label); }
 
@@ -333,7 +337,7 @@ export struct NestedLoader {
      *  @tparam A Asset type.
      *  @param relative_path Relative path string. */
     template <typename A>
-    Handle<A> load(std::string_view relative_path) {
+    Handle<A> load_relative(std::string_view relative_path) {
         return load<A>(m_context.path().resolve(relative_path));
     }
 };
@@ -438,4 +442,4 @@ Handle<A> LoadContext::labeled_asset_scope(const std::string& label, F&& fn) {
     return add_labeled_asset<A>(label, std::move(asset));
 }
 
-}  // namespace assets
+}  // namespace epix::assets
