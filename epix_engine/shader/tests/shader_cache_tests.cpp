@@ -552,3 +552,123 @@ TEST(CachedPipelineId, GetReturnsConstructedValue) { EXPECT_EQ(CachedPipelineId{
 TEST(CachedPipelineId, TwoDistinctIds_NotEqual) { EXPECT_NE(CachedPipelineId{1}, CachedPipelineId{2}); }
 
 TEST(CachedPipelineId, SameValue_Equal) { EXPECT_EQ(CachedPipelineId{100}, CachedPipelineId{100}); }
+
+// ===========================================================================
+// Dual-name import: shader with custom name is also reachable by asset path
+// ===========================================================================
+
+class DualNameTest : public ::testing::Test {
+   protected:
+    int call_count{0};
+    ShaderCache cache{null_device(),
+                      [this](const wgpu::Device&,
+                             const ShaderCacheSource&,
+                             ValidateShader) -> std::expected<wgpu::ShaderModule, ShaderCacheError> {
+                          ++call_count;
+                          return wgpu::ShaderModule{};
+                      }};
+};
+
+TEST_F(DualNameTest, Wgsl_ImportByAssetPath_WhenDepHasCustomName) {
+    // dep.wgsl has #define_import_path my::utils — its import_path is Custom("my::utils")
+    // But main.wgsl imports it by asset path: #import "dep.wgsl"
+    auto dep_id  = make_id(1);
+    auto main_id = make_id(2);
+
+    cache.set_shader(dep_id, Shader::from_wgsl("#define_import_path my::utils\nfn dep_fn() {}", "dep.wgsl"));
+    cache.set_shader(main_id, Shader::from_wgsl("#import \"dep.wgsl\"\nfn main_fn() {}", "main.wgsl"));
+
+    auto result = cache.get(CachedPipelineId{1}, main_id, {});
+    ASSERT_TRUE(result.has_value()) << "Should resolve dep by asset path even though dep has a custom import_path";
+    EXPECT_EQ(call_count, 1);
+}
+
+TEST_F(DualNameTest, Wgsl_ImportByCustomName_WhenDepHasCustomName) {
+    // Same dep, but main imports by custom name — should also work
+    auto dep_id  = make_id(1);
+    auto main_id = make_id(2);
+
+    cache.set_shader(dep_id, Shader::from_wgsl("#define_import_path my::utils\nfn dep_fn() {}", "dep.wgsl"));
+    cache.set_shader(main_id, Shader::from_wgsl("#import my::utils\nfn main_fn() {}", "main.wgsl"));
+
+    auto result = cache.get(CachedPipelineId{1}, main_id, {});
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(call_count, 1);
+}
+
+TEST_F(DualNameTest, Wgsl_BothNamesWork_SameShader) {
+    // Two main shaders import the same dep by different names — both should work
+    auto dep_id   = make_id(1);
+    auto main1_id = make_id(2);
+    auto main2_id = make_id(3);
+
+    cache.set_shader(dep_id, Shader::from_wgsl("#define_import_path my::utils\nfn dep_fn() {}", "dep.wgsl"));
+    cache.set_shader(main1_id, Shader::from_wgsl("#import \"dep.wgsl\"\nfn main1() {}", "main1.wgsl"));
+    cache.set_shader(main2_id, Shader::from_wgsl("#import my::utils\nfn main2() {}", "main2.wgsl"));
+
+    auto r1 = cache.get(CachedPipelineId{1}, main1_id, {});
+    auto r2 = cache.get(CachedPipelineId{2}, main2_id, {});
+    ASSERT_TRUE(r1.has_value()) << "Import by asset path";
+    ASSERT_TRUE(r2.has_value()) << "Import by custom name";
+    EXPECT_EQ(call_count, 2);
+}
+
+TEST_F(DualNameTest, Wgsl_DualName_DependencyAfterMain_Resolves) {
+    // Main registered first, dep comes later — both names should resolve waiters
+    auto dep_id   = make_id(1);
+    auto main1_id = make_id(2);
+    auto main2_id = make_id(3);
+
+    cache.set_shader(main1_id, Shader::from_wgsl("#import \"dep.wgsl\"\nfn main1() {}", "main1.wgsl"));
+    cache.set_shader(main2_id, Shader::from_wgsl("#import my::utils\nfn main2() {}", "main2.wgsl"));
+
+    // Both should be blocked
+    EXPECT_FALSE(cache.get(CachedPipelineId{1}, main1_id, {}).has_value());
+    EXPECT_FALSE(cache.get(CachedPipelineId{2}, main2_id, {}).has_value());
+
+    // Register dep — should resolve both waiters
+    cache.set_shader(dep_id, Shader::from_wgsl("#define_import_path my::utils\nfn dep_fn() {}", "dep.wgsl"));
+
+    EXPECT_TRUE(cache.get(CachedPipelineId{1}, main1_id, {}).has_value());
+    EXPECT_TRUE(cache.get(CachedPipelineId{2}, main2_id, {}).has_value());
+}
+
+TEST_F(DualNameTest, Slang_ImportByAssetPath_WhenDepHasModuleDecl) {
+    // utility.slang has `module utility;` → import_path = AssetPath("utility.slang")
+    // This is actually the same as the file path, so no dual name needed.
+    // But let's test with a different internal path to verify dual-name works.
+    auto dep_id  = make_id(1);
+    auto main_id = make_id(2);
+
+    auto dep        = Shader::from_slang("float4 getColor() { return float4(1,0,0,1); }", "vfs/internal/util.slang");
+    dep.import_path = ShaderImport::asset_path(AssetPath("utility.slang"));
+    cache.set_shader(dep_id, dep);
+
+    // Main imports "utility" → loadFile("utility.slang")
+    cache.set_shader(main_id, Shader::from_slang("import utility;\n\n"
+                                                 "[shader(\"compute\")]\n[numthreads(1,1,1)]\n"
+                                                 "void computeMain() { float4 c = getColor(); }",
+                                                 "main.slang"));
+
+    auto result = cache.get(CachedPipelineId{1}, main_id, {});
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(call_count, 1);
+}
+
+TEST_F(DualNameTest, Remove_CleansUpBothNames) {
+    auto dep_id  = make_id(1);
+    auto main_id = make_id(2);
+
+    cache.set_shader(dep_id, Shader::from_wgsl("#define_import_path my::utils\nfn dep_fn() {}", "dep.wgsl"));
+    cache.set_shader(main_id, Shader::from_wgsl("#import \"dep.wgsl\"\nfn main_fn() {}", "main.wgsl"));
+
+    // Works before removal
+    ASSERT_TRUE(cache.get(CachedPipelineId{1}, main_id, {}).has_value());
+
+    // Remove dep — both names should be cleaned up
+    cache.remove(dep_id);
+
+    // Re-registering main should Block since dep is gone
+    cache.set_shader(main_id, Shader::from_wgsl("#import \"dep.wgsl\"\nfn main_fn() {}", "main.wgsl"));
+    EXPECT_FALSE(cache.get(CachedPipelineId{2}, main_id, {}).has_value());
+}

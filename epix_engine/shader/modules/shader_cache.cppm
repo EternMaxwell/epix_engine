@@ -2,6 +2,7 @@ module;
 
 export module epix.shader:shader_cache;
 
+import epix.core;
 import :shader;
 import :shader_composer;
 
@@ -72,16 +73,6 @@ export struct ShaderCache {
     using LoadModuleFn = std::function<std::expected<wgpu::ShaderModule, ShaderCacheError>(
         const wgpu::Device&, const ShaderCacheSource&, ValidateShader)>;
 
-   private:
-    wgpu::Device device_;
-    std::unordered_map<assets::AssetId<Shader>, ShaderData> data_;
-    LoadModuleFn load_module_;
-    std::unordered_map<assets::AssetId<Shader>, Shader> shaders_;
-    std::unordered_map<ShaderImport, assets::AssetId<Shader>> import_path_shaders_;
-    std::unordered_map<ShaderImport, std::vector<assets::AssetId<Shader>>> waiting_on_import_;
-    ShaderComposer composer_;
-
-   public:
     ShaderCache(wgpu::Device device, LoadModuleFn load_module);
 
     std::expected<std::shared_ptr<wgpu::ShaderModule>, ShaderCacheError> get(CachedPipelineId pipeline,
@@ -91,8 +82,30 @@ export struct ShaderCache {
     std::vector<CachedPipelineId> set_shader(assets::AssetId<Shader> id, Shader shader);
     std::vector<CachedPipelineId> remove(assets::AssetId<Shader> id);
 
+    // System: automatically syncs AssetEvent<Shader> to the cache.
+    // Added/Modified → set_shader, Unused → remove.
+    static void sync_shaders(core::ResMut<ShaderCache> cache,
+                             core::Res<assets::Assets<Shader>> shaders,
+                             core::EventReader<assets::AssetEvent<Shader>> events);
+
    private:
+    wgpu::Device device_;
+    std::unordered_map<assets::AssetId<Shader>, ShaderData> data_;
+    LoadModuleFn load_module_;
+    std::unordered_map<assets::AssetId<Shader>, Shader> shaders_;
+    std::unordered_map<ShaderImport, assets::AssetId<Shader>> import_path_shaders_;
+    std::unordered_map<ShaderImport, std::vector<assets::AssetId<Shader>>> waiting_on_import_;
+    ShaderComposer composer_;
+
+    struct SlangCompiler;
+    std::shared_ptr<SlangCompiler> slang_;
+
     std::vector<CachedPipelineId> clear(assets::AssetId<Shader> id);
+
+    // Register/unregister the secondary import name (asset path from file path)
+    // when it differs from the primary import_path.
+    void register_import_names(const Shader& shader, assets::AssetId<Shader> id);
+    void unregister_import_names(const Shader& shader);
 
     static std::expected<void, ShaderCacheError> add_import_to_composer(
         ShaderComposer& composer,

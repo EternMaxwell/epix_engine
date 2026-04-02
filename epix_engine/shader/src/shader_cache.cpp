@@ -12,190 +12,184 @@ using namespace epix::shader;
 
 namespace epix::shader {
 
-// ─── In-memory file system for resolving Slang imports from the shader cache ──
-class CacheFileSystem : public ISlangFileSystem {
-    const std::unordered_map<assets::AssetId<Shader>, Shader>& shaders_;
+// ─── SlangCompiler: owns the Slang global session and provides compilation ──
+struct ShaderCache::SlangCompiler {
+    Slang::ComPtr<slang::IGlobalSession> global_session;
 
-   public:
-    explicit CacheFileSystem(const std::unordered_map<assets::AssetId<Shader>, Shader>& shaders) : shaders_(shaders) {}
-
-    SLANG_NO_THROW SlangResult SLANG_MCALL queryInterface(SlangUUID const& uuid, void** outObject) override {
-        if (uuid == ISlangUnknown::getTypeGuid() || uuid == ISlangCastable::getTypeGuid() ||
-            uuid == ISlangFileSystem::getTypeGuid()) {
-            *outObject = static_cast<ISlangFileSystem*>(this);
-            return SLANG_OK;
+    SlangCompiler() {
+        if (SLANG_FAILED(slang::createGlobalSession(global_session.writeRef()))) {
+            spdlog::error("[shader.cache] Failed to create Slang global session.");
         }
-        *outObject = nullptr;
-        return SLANG_E_NO_INTERFACE;
     }
 
-    SLANG_NO_THROW uint32_t SLANG_MCALL addRef() override { return 1; }
-    SLANG_NO_THROW uint32_t SLANG_MCALL release() override { return 1; }
+    // In-memory file system that resolves imports via import_path_shaders (O(1)).
+    class FileSystem : public ISlangFileSystem {
+        const std::unordered_map<ShaderImport, assets::AssetId<Shader>>& import_map_;
+        const std::unordered_map<assets::AssetId<Shader>, Shader>& shaders_;
 
-    SLANG_NO_THROW void* SLANG_MCALL castAs(const SlangUUID& guid) override {
-        if (guid == ISlangUnknown::getTypeGuid() || guid == ISlangCastable::getTypeGuid())
-            return static_cast<ISlangCastable*>(this);
-        if (guid == ISlangFileSystem::getTypeGuid()) return static_cast<ISlangFileSystem*>(this);
-        return nullptr;
-    }
+       public:
+        FileSystem(const std::unordered_map<ShaderImport, assets::AssetId<Shader>>& import_map,
+                   const std::unordered_map<assets::AssetId<Shader>, Shader>& shaders)
+            : import_map_(import_map), shaders_(shaders) {}
 
-    SLANG_NO_THROW SlangResult SLANG_MCALL loadFile(char const* path, ISlangBlob** outBlob) override {
-        std::string_view requested(path);
-        // Slang may pass the path verbatim from source text — strip any source://
-        // scheme prefix since shader.path stores the scheme-free path component.
-        std::string_view path_part = requested;
-        if (auto scheme_end = requested.find("://"); scheme_end != std::string_view::npos)
-            path_part = requested.substr(scheme_end + 3);
-
-        auto normalize = [](std::string_view p) {
-            std::string s(p);
-            if (s.size() >= 2 && s.front() == '"' && s.back() == '"') s = s.substr(1, s.size() - 2);
-            std::replace(s.begin(), s.end(), '\\', '/');
-            return s;
-        };
-
-        std::string requested_norm = normalize(path_part);
-        std::string requested_ext  = requested_norm;
-        if (std::filesystem::path(requested_norm).extension().empty()) {
-            requested_ext += ".slang";
+        SLANG_NO_THROW SlangResult SLANG_MCALL queryInterface(SlangUUID const& uuid, void** outObject) override {
+            if (uuid == ISlangUnknown::getTypeGuid() || uuid == ISlangCastable::getTypeGuid() ||
+                uuid == ISlangFileSystem::getTypeGuid()) {
+                *outObject = static_cast<ISlangFileSystem*>(this);
+                return SLANG_OK;
+            }
+            *outObject = nullptr;
+            return SLANG_E_NO_INTERFACE;
+        }
+        SLANG_NO_THROW uint32_t SLANG_MCALL addRef() override { return 1; }
+        SLANG_NO_THROW uint32_t SLANG_MCALL release() override { return 1; }
+        SLANG_NO_THROW void* SLANG_MCALL castAs(const SlangUUID& guid) override {
+            if (guid == ISlangUnknown::getTypeGuid() || guid == ISlangCastable::getTypeGuid())
+                return static_cast<ISlangCastable*>(this);
+            if (guid == ISlangFileSystem::getTypeGuid()) return static_cast<ISlangFileSystem*>(this);
+            return nullptr;
         }
 
-        for (const auto& [id, shader] : shaders_) {
-            if (!std::holds_alternative<Source::Slang>(shader.source.data)) continue;
-            // Match by bare file path or by the AssetPath component of import_path.
-            // Custom-name import_paths are never the target of file-based loading.
-            const std::string shader_path_norm = normalize(shader.path);
-            const std::string import_path_norm = shader.import_path.is_asset_path()
-                                                     ? shader.import_path.as_asset_path().path.generic_string()
-                                                     : std::string{};
-            if (shader_path_norm == requested_norm || shader_path_norm == requested_ext ||
-                import_path_norm == requested_norm || import_path_norm == requested_ext) {
-                const auto& code = std::get<Source::Slang>(shader.source.data).code;
+        SLANG_NO_THROW SlangResult SLANG_MCALL loadFile(char const* path, ISlangBlob** outBlob) override {
+            // Normalize: strip quotes, forward slashes
+            std::string norm(path);
+            if (norm.size() >= 2 && norm.front() == '"' && norm.back() == '"') norm = norm.substr(1, norm.size() - 2);
+            std::ranges::replace(norm, '\\', '/');
+
+            // Build candidates to look up
+            std::string with_ext = norm;
+            if (std::filesystem::path(norm).extension().empty()) with_ext += ".slang";
+
+            // O(1) lookup via import_path_shaders
+            for (const auto& candidate : {norm, with_ext}) {
+                auto key = ShaderImport::asset_path(assets::AssetPath(candidate));
+                auto it  = import_map_.find(key);
+                if (it == import_map_.end()) continue;
+                auto sit = shaders_.find(it->second);
+                if (sit == shaders_.end()) continue;
+                if (!sit->second.source.is_slang()) continue;
+                const auto& code = std::get<Source::Slang>(sit->second.source.data).code;
                 *outBlob         = slang_createBlob(code.data(), code.size());
                 return SLANG_OK;
             }
+            return SLANG_E_NOT_FOUND;
         }
-        return SLANG_E_NOT_FOUND;
+    };
+
+    std::expected<std::vector<std::uint8_t>, ShaderCacheError> compile(
+        const std::string& source,
+        const std::string& path,
+        std::span<const ShaderDefVal> shader_defs,
+        const std::unordered_map<ShaderImport, assets::AssetId<Shader>>& import_map,
+        const std::unordered_map<assets::AssetId<Shader>, Shader>& shaders) {
+        if (!global_session) {
+            return std::unexpected(ShaderCacheError::create_module_failed("Slang global session not available"));
+        }
+
+        // Preprocessor macros from shader defs
+        std::vector<std::string> def_values;
+        std::vector<slang::PreprocessorMacroDesc> macros;
+        def_values.reserve(shader_defs.size());
+        macros.reserve(shader_defs.size());
+        for (const auto& def : shader_defs) {
+            def_values.push_back(def.value_as_string());
+            macros.push_back({def.name.c_str(), def_values.back().c_str()});
+        }
+
+        // Target: SPIR-V
+        slang::TargetDesc target_desc = {};
+        target_desc.format            = SLANG_SPIRV;
+        target_desc.profile           = global_session->findProfile("sm_6_0");
+
+        FileSystem fs(import_map, shaders);
+
+        slang::SessionDesc session_desc     = {};
+        session_desc.targets                = &target_desc;
+        session_desc.targetCount            = 1;
+        session_desc.preprocessorMacros     = macros.data();
+        session_desc.preprocessorMacroCount = static_cast<SlangInt>(macros.size());
+        session_desc.fileSystem             = &fs;
+
+        Slang::ComPtr<slang::ISession> session;
+        if (SLANG_FAILED(global_session->createSession(session_desc, session.writeRef()))) {
+            return std::unexpected(ShaderCacheError::create_module_failed("Failed to create Slang session"));
+        }
+
+        // Load module from source
+        Slang::ComPtr<slang::IBlob> diagnostics;
+        slang::IModule* mod =
+            session->loadModuleFromSourceString("shader", path.c_str(), source.c_str(), diagnostics.writeRef());
+        if (!mod) {
+            std::string msg = "Slang compilation failed";
+            if (diagnostics) {
+                msg += ": ";
+                msg += static_cast<const char*>(diagnostics->getBufferPointer());
+            }
+            return std::unexpected(ShaderCacheError::create_module_failed(std::move(msg)));
+        }
+
+        // Gather entry points
+        std::vector<slang::IComponentType*> components;
+        components.push_back(mod);
+        SlangInt ep_count = mod->getDefinedEntryPointCount();
+        std::vector<Slang::ComPtr<slang::IEntryPoint>> entry_points(ep_count);
+        for (SlangInt i = 0; i < ep_count; ++i) {
+            mod->getDefinedEntryPoint(i, entry_points[i].writeRef());
+            components.push_back(entry_points[i].get());
+        }
+
+        // Compose
+        Slang::ComPtr<slang::IComponentType> composed;
+        {
+            Slang::ComPtr<slang::IBlob> diag;
+            if (SLANG_FAILED(session->createCompositeComponentType(components.data(),
+                                                                   static_cast<SlangInt>(components.size()),
+                                                                   composed.writeRef(), diag.writeRef()))) {
+                std::string msg = "Slang linking failed";
+                if (diag) {
+                    msg += ": ";
+                    msg += static_cast<const char*>(diag->getBufferPointer());
+                }
+                return std::unexpected(ShaderCacheError::create_module_failed(std::move(msg)));
+            }
+        }
+
+        // Link
+        Slang::ComPtr<slang::IComponentType> linked;
+        {
+            Slang::ComPtr<slang::IBlob> diag;
+            if (SLANG_FAILED(composed->link(linked.writeRef(), diag.writeRef()))) {
+                std::string msg = "Slang link step failed";
+                if (diag) {
+                    msg += ": ";
+                    msg += static_cast<const char*>(diag->getBufferPointer());
+                }
+                return std::unexpected(ShaderCacheError::create_module_failed(std::move(msg)));
+            }
+        }
+
+        // Code generation
+        Slang::ComPtr<slang::IBlob> spirv_code;
+        {
+            Slang::ComPtr<slang::IBlob> diag;
+            if (SLANG_FAILED(linked->getTargetCode(0, spirv_code.writeRef(), diag.writeRef()))) {
+                std::string msg = "Slang code generation failed";
+                if (diag) {
+                    msg += ": ";
+                    msg += static_cast<const char*>(diag->getBufferPointer());
+                }
+                return std::unexpected(ShaderCacheError::create_module_failed(std::move(msg)));
+            }
+        }
+
+        auto ptr = static_cast<const std::uint8_t*>(spirv_code->getBufferPointer());
+        return std::vector<std::uint8_t>(ptr, ptr + spirv_code->getBufferSize());
     }
 };
 
-// ─── Slang → SPIR-V compilation helper ─────────────────────────────────────
-static std::expected<std::vector<std::uint8_t>, ShaderCacheError> compile_slang_to_spirv(
-    const std::string& source,
-    const std::string& path,
-    std::span<const ShaderDefVal> shader_defs,
-    const std::unordered_map<assets::AssetId<Shader>, Shader>& all_shaders) {
-    // Create global session
-    Slang::ComPtr<slang::IGlobalSession> globalSession;
-    if (SLANG_FAILED(slang::createGlobalSession(globalSession.writeRef()))) {
-        return std::unexpected(ShaderCacheError::create_module_failed("Failed to create Slang global session"));
-    }
-
-    // Build preprocessor macros from shader defs
-    std::vector<std::string> def_values;  // keep strings alive
-    std::vector<slang::PreprocessorMacroDesc> macros;
-    def_values.reserve(shader_defs.size());
-    macros.reserve(shader_defs.size());
-    for (const auto& def : shader_defs) {
-        def_values.push_back(def.value_as_string());
-        macros.push_back({def.name.c_str(), def_values.back().c_str()});
-    }
-
-    // Configure target: SPIR-V output (wgpu-native loads SPIR-V directly)
-    slang::TargetDesc targetDesc = {};
-    targetDesc.format            = SLANG_SPIRV;
-    targetDesc.profile           = globalSession->findProfile("sm_6_0");
-
-    // In-memory file system so Slang can resolve `import` from cache
-    CacheFileSystem cacheFs(all_shaders);
-
-    // Create session
-    slang::SessionDesc sessionDesc     = {};
-    sessionDesc.targets                = &targetDesc;
-    sessionDesc.targetCount            = 1;
-    sessionDesc.preprocessorMacros     = macros.data();
-    sessionDesc.preprocessorMacroCount = static_cast<SlangInt>(macros.size());
-    sessionDesc.fileSystem             = &cacheFs;
-
-    Slang::ComPtr<slang::ISession> session;
-    if (SLANG_FAILED(globalSession->createSession(sessionDesc, session.writeRef()))) {
-        return std::unexpected(ShaderCacheError::create_module_failed("Failed to create Slang session"));
-    }
-
-    // Load module from source string
-    Slang::ComPtr<slang::IBlob> diagnostics;
-    slang::IModule* module =
-        session->loadModuleFromSourceString("shader", path.c_str(), source.c_str(), diagnostics.writeRef());
-    if (!module) {
-        std::string msg = "Slang compilation failed";
-        if (diagnostics) {
-            msg += ": ";
-            msg += static_cast<const char*>(diagnostics->getBufferPointer());
-        }
-        return std::unexpected(ShaderCacheError::create_module_failed(std::move(msg)));
-    }
-
-    // Gather module + all defined entry points into a composite
-    std::vector<slang::IComponentType*> components;
-    components.push_back(module);
-
-    SlangInt entryPointCount = module->getDefinedEntryPointCount();
-    std::vector<Slang::ComPtr<slang::IEntryPoint>> entryPoints(entryPointCount);
-    for (SlangInt i = 0; i < entryPointCount; ++i) {
-        module->getDefinedEntryPoint(i, entryPoints[i].writeRef());
-        components.push_back(entryPoints[i].get());
-    }
-
-    Slang::ComPtr<slang::IComponentType> composed;
-    {
-        Slang::ComPtr<slang::IBlob> linkDiag;
-        if (SLANG_FAILED(session->createCompositeComponentType(components.data(),
-                                                               static_cast<SlangInt>(components.size()),
-                                                               composed.writeRef(), linkDiag.writeRef()))) {
-            std::string msg = "Slang linking failed";
-            if (linkDiag) {
-                msg += ": ";
-                msg += static_cast<const char*>(linkDiag->getBufferPointer());
-            }
-            return std::unexpected(ShaderCacheError::create_module_failed(std::move(msg)));
-        }
-    }
-
-    // Link — resolves all transitively imported modules
-    Slang::ComPtr<slang::IComponentType> linked;
-    {
-        Slang::ComPtr<slang::IBlob> linkDiag2;
-        if (SLANG_FAILED(composed->link(linked.writeRef(), linkDiag2.writeRef()))) {
-            std::string msg = "Slang link step failed";
-            if (linkDiag2) {
-                msg += ": ";
-                msg += static_cast<const char*>(linkDiag2->getBufferPointer());
-            }
-            return std::unexpected(ShaderCacheError::create_module_failed(std::move(msg)));
-        }
-    }
-
-    // Get compiled SPIR-V output
-    Slang::ComPtr<slang::IBlob> spirvCode;
-    {
-        Slang::ComPtr<slang::IBlob> codeDiag;
-        if (SLANG_FAILED(linked->getTargetCode(0, spirvCode.writeRef(), codeDiag.writeRef()))) {
-            std::string msg = "Slang code generation failed";
-            if (codeDiag) {
-                msg += ": ";
-                msg += static_cast<const char*>(codeDiag->getBufferPointer());
-            }
-            return std::unexpected(ShaderCacheError::create_module_failed(std::move(msg)));
-        }
-    }
-
-    auto ptr = static_cast<const std::uint8_t*>(spirvCode->getBufferPointer());
-    return std::vector<std::uint8_t>(ptr, ptr + spirvCode->getBufferSize());
-}
-
 // ─── ShaderCache constructor ───────────────────────────────────────────────
 ShaderCache::ShaderCache(wgpu::Device device, LoadModuleFn load_module)
-    : device_(std::move(device)), load_module_(std::move(load_module)) {}
+    : device_(std::move(device)), load_module_(std::move(load_module)), slang_(std::make_shared<SlangCompiler>()) {}
 
 // ─── add_import_to_composer (private static) ──────────────────────────────
 std::expected<void, ShaderCacheError> ShaderCache::add_import_to_composer(
@@ -251,10 +245,14 @@ std::vector<CachedPipelineId> ShaderCache::clear(assets::AssetId<Shader> id) {
             for (auto dep_id : dit->second.dependents) work.push(dep_id);
         }
 
-        // Remove from composer
+        // Remove from composer (both primary and secondary names)
         auto sit = shaders_.find(cur);
         if (sit != shaders_.end()) {
             composer_.remove_module(sit->second.import_path.module_name());
+            ShaderImport file_import = ShaderImport::asset_path(assets::AssetPath(sit->second.path));
+            if (file_import != sit->second.import_path) {
+                composer_.remove_module(file_import.module_name());
+            }
         }
     }
 
@@ -302,9 +300,9 @@ std::expected<std::shared_ptr<wgpu::ShaderModule>, ShaderCacheError> ShaderCache
         const auto& bytes = std::get<Source::SpirV>(shader.source.data).bytes;
         source            = ShaderCacheSource{ShaderCacheSource::SpirV{std::span<const std::uint8_t>(bytes)}};
     } else if (std::holds_alternative<Source::Slang>(shader.source.data)) {
-        // Slang: compile to SPIR-V via Slang compiler (bypasses ShaderComposer)
-        auto spirv = compile_slang_to_spirv(std::get<Source::Slang>(shader.source.data).code, shader.path, merged_defs,
-                                            shaders_);
+        // Slang: compile to SPIR-V via the integrated Slang compiler
+        auto spirv = slang_->compile(std::get<Source::Slang>(shader.source.data).code, shader.path, merged_defs,
+                                     import_path_shaders_, shaders_);
         if (!spirv) return std::unexpected(spirv.error());
         spirv_storage = std::move(spirv.value());
         source        = ShaderCacheSource{ShaderCacheSource::SpirV{std::span<const std::uint8_t>(spirv_storage)}};
@@ -328,21 +326,46 @@ std::expected<std::shared_ptr<wgpu::ShaderModule>, ShaderCacheError> ShaderCache
     return ptr;
 }
 
+// ─── register/unregister import names (dual-name support) ─────────────────
+void ShaderCache::register_import_names(const Shader& shader, assets::AssetId<Shader> id) {
+    import_path_shaders_.insert_or_assign(shader.import_path, id);
+    // Also register the file path as an AssetPath name if it differs
+    ShaderImport file_import = ShaderImport::asset_path(assets::AssetPath(shader.path));
+    if (file_import != shader.import_path) {
+        import_path_shaders_.insert_or_assign(file_import, id);
+    }
+}
+
+void ShaderCache::unregister_import_names(const Shader& shader) {
+    import_path_shaders_.erase(shader.import_path);
+    ShaderImport file_import = ShaderImport::asset_path(assets::AssetPath(shader.path));
+    if (file_import != shader.import_path) {
+        import_path_shaders_.erase(file_import);
+    }
+}
+
 // ─── set_shader ───────────────────────────────────────────────────────────
 std::vector<CachedPipelineId> ShaderCache::set_shader(assets::AssetId<Shader> id, Shader shader) {
     auto affected = clear(id);
 
-    // Register import path → id
-    import_path_shaders_.insert_or_assign(shader.import_path, id);
+    // Register both primary import_path and file-path alias
+    register_import_names(shader, id);
 
-    // Resolve waiting shaders that were waiting for this import
-    auto wit = waiting_on_import_.find(shader.import_path);
-    if (wit != waiting_on_import_.end()) {
-        for (auto waiting_id : wit->second) {
-            data_[waiting_id].resolved_imports.insert_or_assign(shader.import_path, id);
-            data_[id].dependents.insert(waiting_id);
+    // Resolve waiting shaders — check both names
+    auto resolve_waiters = [&](const ShaderImport& name) {
+        auto wit = waiting_on_import_.find(name);
+        if (wit != waiting_on_import_.end()) {
+            for (auto waiting_id : wit->second) {
+                data_[waiting_id].resolved_imports.insert_or_assign(name, id);
+                data_[id].dependents.insert(waiting_id);
+            }
+            waiting_on_import_.erase(wit);
         }
-        waiting_on_import_.erase(wit);
+    };
+    resolve_waiters(shader.import_path);
+    ShaderImport file_import = ShaderImport::asset_path(assets::AssetPath(shader.path));
+    if (file_import != shader.import_path) {
+        resolve_waiters(file_import);
     }
 
     // For each import this shader needs, resolve or enqueue
@@ -367,12 +390,28 @@ std::vector<CachedPipelineId> ShaderCache::remove(assets::AssetId<Shader> id) {
     auto affected = clear(id);
     auto sit      = shaders_.find(id);
     if (sit != shaders_.end()) {
-        import_path_shaders_.erase(sit->second.import_path);
+        unregister_import_names(sit->second);
         shaders_.erase(sit);
     }
     spdlog::debug("[shader.cache] Removed shader '{}'. {} pipelines affected.", assets::UntypedAssetId(id),
                   affected.size());
     return affected;
+}
+
+// ─── sync_shaders (system) ────────────────────────────────────────────────
+void ShaderCache::sync_shaders(core::ResMut<ShaderCache> cache,
+                               core::Res<assets::Assets<Shader>> shaders,
+                               core::EventReader<assets::AssetEvent<Shader>> events) {
+    for (const auto& event : events.read()) {
+        if (event.is_added() || event.is_modified()) {
+            auto val = shaders->get(event.id);
+            if (val.has_value()) {
+                cache->set_shader(event.id, val->get());
+            }
+        } else if (event.is_unused()) {
+            cache->remove(event.id);
+        }
+    }
 }
 
 }  // namespace epix::shader

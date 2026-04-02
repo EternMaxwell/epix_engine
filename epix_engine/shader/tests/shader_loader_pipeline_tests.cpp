@@ -71,6 +71,43 @@ static auto make_cache() {
     return std::pair{std::move(cache), count_ptr};
 }
 
+// ─── Pipeline test helpers ───────────────────────────────────────────────
+
+struct PipelineTestEnv {
+    App app;
+    memory::Directory dir;
+    int* call_count;
+};
+
+PipelineTestEnv make_pipeline_env(const memory::Directory& dir) {
+    App app = App::create();
+    AssetPlugin asset_plugin;
+    asset_plugin.register_asset_source(AssetSourceId{}, make_memory_source_builder(dir));
+    asset_plugin.build(app);
+
+    ShaderPlugin shader_plugin;
+    shader_plugin.build(app);
+
+    int* count_ptr = new int(0);
+    app.world_mut().insert_resource(
+        ShaderCache{null_device(),
+                    [count_ptr](const wgpu::Device&, const ShaderCacheSource&,
+                                ValidateShader) -> std::expected<wgpu::ShaderModule, ShaderCacheError> {
+                        ++(*count_ptr);
+                        return wgpu::ShaderModule{};
+                    }});
+
+    return {std::move(app), dir, count_ptr};
+}
+
+// Flush IO tasks AND ensure shader cache auto-sync has processed the events.
+// Two Last passes guarantee all events are flushed and consumed by sync_shaders.
+void flush_and_sync(App& app) {
+    epix::utils::IOTaskPool::instance().wait();
+    app.run_schedule(Last);
+    app.run_schedule(Last);
+}
+
 // ===========================================================================
 // ShaderLoader — load WGSL from VFS
 // ===========================================================================
@@ -459,177 +496,119 @@ TEST(ShaderLoaderError, InvalidUtf8_Slang) {
 }
 
 // ===========================================================================
-// Full pipeline: load → ShaderCache → get module (WGSL)
+// Full pipeline: load → auto-sync to ShaderCache → get module (WGSL)
 // ===========================================================================
 
-TEST(ShaderPipelineWgsl, SingleShader_LoadAndGetModule) {
+TEST(ShaderPipelineWgsl, SingleShader_AutoSyncedToCache) {
     auto dir = memory::Directory::create({});
     dir.insert_file("test.wgsl", memory::Value::from_shared(make_bytes("@compute @workgroup_size(1)\nfn main() {}")));
-    auto [app, _] = make_shader_env(dir);
-    auto& server  = app.resource<AssetServer>();
+    auto env     = make_pipeline_env(dir);
+    auto& server = env.app.resource<AssetServer>();
 
     auto handle = server.load<Shader>(AssetPath("test.wgsl"));
-    flush_load_tasks(app);
+    flush_and_sync(env.app);
     ASSERT_TRUE(server.is_loaded(handle.id()));
 
-    auto& assets = app.resource<Assets<Shader>>();
-    auto val     = assets.get(handle.id());
-    ASSERT_TRUE(val.has_value());
-    auto& shader = val->get();
-
-    // Feed into ShaderCache
-    int call_count = 0;
-    ShaderCache cache{null_device(),
-                      [&](const wgpu::Device&, const ShaderCacheSource&,
-                          ValidateShader) -> std::expected<wgpu::ShaderModule, ShaderCacheError> {
-                          ++call_count;
-                          return wgpu::ShaderModule{};
-                      }};
-
-    auto shader_id = make_id(1);
-    cache.set_shader(shader_id, shader);
-    auto result = cache.get(CachedPipelineId{1}, shader_id, {});
+    // Shader should be automatically synced to cache via sync_shaders system
+    auto& cache = env.app.resource_mut<ShaderCache>();
+    auto result = cache.get(CachedPipelineId{1}, handle.id(), {});
     ASSERT_TRUE(result.has_value());
-    EXPECT_EQ(call_count, 1);
+    EXPECT_EQ(*env.call_count, 1);
 }
 
-TEST(ShaderPipelineWgsl, WithImport_LoadAndResolveInCache) {
+TEST(ShaderPipelineWgsl, WithCustomImport_AutoSyncedAndResolved) {
     auto dir = memory::Directory::create({});
     dir.insert_file("dep.wgsl", memory::Value::from_shared(
                                     make_bytes("#define_import_path my::dep\nfn dep_fn() -> f32 { return 1.0; }")));
     dir.insert_file("main.wgsl", memory::Value::from_shared(
                                      make_bytes("#import my::dep\n@compute @workgroup_size(1)\nfn main() {}")));
-    auto [app, _] = make_shader_env(dir);
-    auto& server  = app.resource<AssetServer>();
+    auto env     = make_pipeline_env(dir);
+    auto& server = env.app.resource<AssetServer>();
 
     auto main_handle = server.load<Shader>(AssetPath("main.wgsl"));
     auto dep_handle  = server.load<Shader>(AssetPath("dep.wgsl"));
-    flush_load_tasks(app);
+    flush_and_sync(env.app);
     ASSERT_TRUE(server.is_loaded(main_handle.id()));
     ASSERT_TRUE(server.is_loaded(dep_handle.id()));
 
-    auto& assets  = app.resource<Assets<Shader>>();
-    auto main_val = assets.get(main_handle.id());
-    auto dep_val  = assets.get(dep_handle.id());
-    ASSERT_TRUE(main_val.has_value());
-    ASSERT_TRUE(dep_val.has_value());
-
-    int call_count = 0;
-    ShaderCache cache{null_device(),
-                      [&](const wgpu::Device&, const ShaderCacheSource&,
-                          ValidateShader) -> std::expected<wgpu::ShaderModule, ShaderCacheError> {
-                          ++call_count;
-                          return wgpu::ShaderModule{};
-                      }};
-
-    auto dep_id  = make_id(1);
-    auto main_id = make_id(2);
-    cache.set_shader(dep_id, dep_val->get());
-    cache.set_shader(main_id, main_val->get());
-
-    auto result = cache.get(CachedPipelineId{1}, main_id, {});
+    // Both shaders auto-synced; imports resolved via import_path matching
+    auto& cache = env.app.resource_mut<ShaderCache>();
+    auto result = cache.get(CachedPipelineId{1}, main_handle.id(), {});
     ASSERT_TRUE(result.has_value());
-    EXPECT_EQ(call_count, 1);
+    EXPECT_EQ(*env.call_count, 1);
 }
 
-TEST(ShaderPipelineWgsl, WithAssetPathImport_LoadAndResolve) {
+TEST(ShaderPipelineWgsl, WithAssetPathImport_AutoSyncedAndResolved) {
     auto dir = memory::Directory::create({});
     dir.insert_file("lib/dep.wgsl", memory::Value::from_shared(make_bytes("fn dep_fn() -> f32 { return 1.0; }")));
     dir.insert_file(
         "main.wgsl",
         memory::Value::from_shared(make_bytes("#import \"lib/dep.wgsl\"\n@compute @workgroup_size(1)\nfn main() {}")));
-    auto [app, _] = make_shader_env(dir);
-    auto& server  = app.resource<AssetServer>();
+    auto env     = make_pipeline_env(dir);
+    auto& server = env.app.resource<AssetServer>();
 
     auto main_handle = server.load<Shader>(AssetPath("main.wgsl"));
-    flush_load_tasks(app);
+    flush_and_sync(env.app);
     ASSERT_TRUE(server.is_loaded(main_handle.id()));
 
-    auto& assets  = app.resource<Assets<Shader>>();
-    auto main_val = assets.get(main_handle.id());
-    ASSERT_TRUE(main_val.has_value());
-    auto& shader = main_val->get();
-    ASSERT_EQ(shader.imports.size(), 1u);
-    EXPECT_EQ(shader.imports[0].as_asset_path().path.generic_string(), "lib/dep.wgsl");
-    EXPECT_EQ(shader.file_dependencies.size(), 1u);
+    // dep auto-loaded transitively
+    auto dep_handle_opt = server.get_handle<Shader>(AssetPath("lib/dep.wgsl"));
+    ASSERT_TRUE(dep_handle_opt.has_value());
+    EXPECT_TRUE(server.is_loaded(dep_handle_opt->id()));
+
+    // Dep is auto-synced to cache and can produce a module independently
+    auto& cache     = env.app.resource_mut<ShaderCache>();
+    auto dep_result = cache.get(CachedPipelineId{1}, dep_handle_opt->id(), {});
+    ASSERT_TRUE(dep_result.has_value());
+    EXPECT_EQ(*env.call_count, 1);
 }
 
 // ===========================================================================
-// Full pipeline: load → ShaderCache → get module (SPIR-V)
+// Full pipeline: load → auto-sync to ShaderCache → get module (SPIR-V)
 // ===========================================================================
 
-TEST(ShaderPipelineSpirv, LoadAndGetModule) {
+TEST(ShaderPipelineSpirv, LoadAndAutoSyncToCache) {
     auto dir                        = memory::Directory::create({});
     std::vector<std::uint8_t> spirv = {0x03, 0x02, 0x23, 0x07};
     dir.insert_file("compiled.spv", memory::Value::from_shared(make_bytes_from_vec(spirv)));
-    auto [app, _] = make_shader_env(dir);
-    auto& server  = app.resource<AssetServer>();
+    auto env     = make_pipeline_env(dir);
+    auto& server = env.app.resource<AssetServer>();
 
     auto handle = server.load<Shader>(AssetPath("compiled.spv"));
-    flush_load_tasks(app);
+    flush_and_sync(env.app);
     ASSERT_TRUE(server.is_loaded(handle.id()));
 
-    auto& assets = app.resource<Assets<Shader>>();
-    auto val     = assets.get(handle.id());
-    ASSERT_TRUE(val.has_value());
-    auto& shader = val->get();
-    EXPECT_TRUE(shader.source.is_spirv());
-
-    int call_count = 0;
-    ShaderCache cache{null_device(),
-                      [&](const wgpu::Device&, const ShaderCacheSource&,
-                          ValidateShader) -> std::expected<wgpu::ShaderModule, ShaderCacheError> {
-                          ++call_count;
-                          return wgpu::ShaderModule{};
-                      }};
-
-    auto shader_id = make_id(1);
-    cache.set_shader(shader_id, shader);
-    auto result = cache.get(CachedPipelineId{1}, shader_id, {});
+    auto& cache = env.app.resource_mut<ShaderCache>();
+    auto result = cache.get(CachedPipelineId{1}, handle.id(), {});
     ASSERT_TRUE(result.has_value());
-    EXPECT_EQ(call_count, 1);
+    EXPECT_EQ(*env.call_count, 1);
 }
 
 // ===========================================================================
-// Full pipeline: load → ShaderCache → get module (Slang)
+// Full pipeline: load → auto-sync to ShaderCache → get module (Slang)
 // ===========================================================================
 
-TEST(ShaderPipelineSlang, SingleShader_LoadAndGetModule) {
+TEST(ShaderPipelineSlang, SingleShader_AutoSyncedToCache) {
     auto dir = memory::Directory::create({});
     dir.insert_file("test.slang", memory::Value::from_shared(make_bytes("[shader(\"compute\")]\n[numthreads(1,1,1)]\n"
                                                                         "void computeMain() {}")));
-    auto [app, _] = make_shader_env(dir);
-    auto& server  = app.resource<AssetServer>();
+    auto env     = make_pipeline_env(dir);
+    auto& server = env.app.resource<AssetServer>();
 
     auto handle = server.load<Shader>(AssetPath("test.slang"));
-    flush_load_tasks(app);
+    flush_and_sync(env.app);
     ASSERT_TRUE(server.is_loaded(handle.id()));
 
-    auto& assets = app.resource<Assets<Shader>>();
-    auto val     = assets.get(handle.id());
-    ASSERT_TRUE(val.has_value());
-    auto& shader = val->get();
-
-    // Slang shader goes through Slang→SPIR-V compilation in cache.get()
-    int call_count = 0;
-    ShaderCache cache{null_device(),
-                      [&](const wgpu::Device&, const ShaderCacheSource&,
-                          ValidateShader) -> std::expected<wgpu::ShaderModule, ShaderCacheError> {
-                          ++call_count;
-                          return wgpu::ShaderModule{};
-                      }};
-
-    auto shader_id = make_id(1);
-    cache.set_shader(shader_id, shader);
-    auto result = cache.get(CachedPipelineId{1}, shader_id, {});
+    // Slang shader auto-synced to cache; Slang→SPIR-V compilation happens in cache.get()
+    auto& cache = env.app.resource_mut<ShaderCache>();
+    auto result = cache.get(CachedPipelineId{1}, handle.id(), {});
     // Slang compilation may succeed or fail depending on runtime Slang availability
-    // but the cache.get mechanism should work
     if (result.has_value()) {
-        EXPECT_EQ(call_count, 1);
+        EXPECT_EQ(*env.call_count, 1);
     }
 }
 
-TEST(ShaderPipelineSlang, WithImport_BothLoadedInCache) {
+TEST(ShaderPipelineSlang, WithImport_AutoSyncedAndResolved) {
     auto dir = memory::Directory::create({});
     dir.insert_file("utility.slang",
                     memory::Value::from_shared(make_bytes("float4 getColor() { return float4(1,0,0,1); }")));
@@ -637,41 +616,23 @@ TEST(ShaderPipelineSlang, WithImport_BothLoadedInCache) {
                     memory::Value::from_shared(make_bytes("import utility;\n\n"
                                                           "[shader(\"compute\")]\n[numthreads(1,1,1)]\n"
                                                           "void computeMain() { float4 c = getColor(); }")));
-    auto [app, _] = make_shader_env(dir);
-    auto& server  = app.resource<AssetServer>();
+    auto env     = make_pipeline_env(dir);
+    auto& server = env.app.resource<AssetServer>();
 
     auto main_handle = server.load<Shader>(AssetPath("main.slang"));
     auto util_handle = server.load<Shader>(AssetPath("utility.slang"));
-    flush_load_tasks(app);
+    flush_and_sync(env.app);
     ASSERT_TRUE(server.is_loaded(main_handle.id()));
     ASSERT_TRUE(server.is_loaded(util_handle.id()));
 
-    auto& assets  = app.resource<Assets<Shader>>();
-    auto main_val = assets.get(main_handle.id());
-    auto util_val = assets.get(util_handle.id());
-    ASSERT_TRUE(main_val.has_value());
-    ASSERT_TRUE(util_val.has_value());
-
-    int call_count = 0;
-    ShaderCache cache{null_device(),
-                      [&](const wgpu::Device&, const ShaderCacheSource&,
-                          ValidateShader) -> std::expected<wgpu::ShaderModule, ShaderCacheError> {
-                          ++call_count;
-                          return wgpu::ShaderModule{};
-                      }};
-
-    auto util_id = make_id(1);
-    auto main_id = make_id(2);
-    cache.set_shader(util_id, util_val->get());
-    cache.set_shader(main_id, main_val->get());
-
-    // main depends on utility — import should be resolved in cache
-    auto result = cache.get(CachedPipelineId{1}, main_id, {});
+    // Both auto-synced; import resolved via import_path matching in cache
+    auto& cache = env.app.resource_mut<ShaderCache>();
+    auto result = cache.get(CachedPipelineId{1}, main_handle.id(), {});
     ASSERT_TRUE(result.has_value());
-    EXPECT_EQ(call_count, 1);
+    EXPECT_EQ(*env.call_count, 1);
 }
 
-TEST(ShaderPipelineSlang, WithInclude_BothLoadedInCache) {
+TEST(ShaderPipelineSlang, WithInclude_AutoSyncedAndResolved) {
     auto dir = memory::Directory::create({});
     dir.insert_file("scene-helpers.slang",
                     memory::Value::from_shared(make_bytes("implementing scene;\nfloat helper() { return 1.0; }")));
@@ -679,40 +640,22 @@ TEST(ShaderPipelineSlang, WithInclude_BothLoadedInCache) {
                     memory::Value::from_shared(make_bytes("module scene;\n__include scene_helpers;\n"
                                                           "[shader(\"compute\")]\n[numthreads(1,1,1)]\n"
                                                           "void computeMain() { float h = helper(); }")));
-    auto [app, _] = make_shader_env(dir);
-    auto& server  = app.resource<AssetServer>();
+    auto env     = make_pipeline_env(dir);
+    auto& server = env.app.resource<AssetServer>();
 
     auto scene_handle  = server.load<Shader>(AssetPath("scene.slang"));
     auto helper_handle = server.load<Shader>(AssetPath("scene-helpers.slang"));
-    flush_load_tasks(app);
+    flush_and_sync(env.app);
     ASSERT_TRUE(server.is_loaded(scene_handle.id()));
     ASSERT_TRUE(server.is_loaded(helper_handle.id()));
 
-    auto& assets    = app.resource<Assets<Shader>>();
-    auto scene_val  = assets.get(scene_handle.id());
-    auto helper_val = assets.get(helper_handle.id());
-    ASSERT_TRUE(scene_val.has_value());
-    ASSERT_TRUE(helper_val.has_value());
-
-    int call_count = 0;
-    ShaderCache cache{null_device(),
-                      [&](const wgpu::Device&, const ShaderCacheSource&,
-                          ValidateShader) -> std::expected<wgpu::ShaderModule, ShaderCacheError> {
-                          ++call_count;
-                          return wgpu::ShaderModule{};
-                      }};
-
-    auto helper_id = make_id(1);
-    auto scene_id  = make_id(2);
-    cache.set_shader(helper_id, helper_val->get());
-    cache.set_shader(scene_id, scene_val->get());
-
-    auto result = cache.get(CachedPipelineId{1}, scene_id, {});
+    auto& cache = env.app.resource_mut<ShaderCache>();
+    auto result = cache.get(CachedPipelineId{1}, scene_handle.id(), {});
     ASSERT_TRUE(result.has_value());
-    EXPECT_EQ(call_count, 1);
+    EXPECT_EQ(*env.call_count, 1);
 }
 
-TEST(ShaderPipelineSlang, MixedImportInclude_AllResolvedInCache) {
+TEST(ShaderPipelineSlang, MixedImportInclude_AllAutoSyncedAndResolved) {
     auto dir = memory::Directory::create({});
     dir.insert_file("utils.slang", memory::Value::from_shared(make_bytes("float util() { return 1.0; }")));
     dir.insert_file("my-app-helpers.slang",
@@ -722,44 +665,22 @@ TEST(ShaderPipelineSlang, MixedImportInclude_AllResolvedInCache) {
                                                                        "__include my_app_helpers;\n"
                                                                        "[shader(\"compute\")]\n[numthreads(1,1,1)]\n"
                                                                        "void computeMain() {}")));
-    auto [app, _] = make_shader_env(dir);
-    auto& server  = app.resource<AssetServer>();
+    auto env     = make_pipeline_env(dir);
+    auto& server = env.app.resource<AssetServer>();
 
     auto app_handle    = server.load<Shader>(AssetPath("app.slang"));
     auto utils_handle  = server.load<Shader>(AssetPath("utils.slang"));
     auto helper_handle = server.load<Shader>(AssetPath("my-app-helpers.slang"));
-    flush_load_tasks(app);
+    flush_and_sync(env.app);
 
     ASSERT_TRUE(server.is_loaded(app_handle.id()));
     ASSERT_TRUE(server.is_loaded(utils_handle.id()));
     ASSERT_TRUE(server.is_loaded(helper_handle.id()));
 
-    auto& assets    = app.resource<Assets<Shader>>();
-    auto app_val    = assets.get(app_handle.id());
-    auto utils_val  = assets.get(utils_handle.id());
-    auto helper_val = assets.get(helper_handle.id());
-    ASSERT_TRUE(app_val.has_value());
-    ASSERT_TRUE(utils_val.has_value());
-    ASSERT_TRUE(helper_val.has_value());
-
-    int call_count = 0;
-    ShaderCache cache{null_device(),
-                      [&](const wgpu::Device&, const ShaderCacheSource&,
-                          ValidateShader) -> std::expected<wgpu::ShaderModule, ShaderCacheError> {
-                          ++call_count;
-                          return wgpu::ShaderModule{};
-                      }};
-
-    auto utils_id  = make_id(1);
-    auto helper_id = make_id(2);
-    auto app_id    = make_id(3);
-    cache.set_shader(utils_id, utils_val->get());
-    cache.set_shader(helper_id, helper_val->get());
-    cache.set_shader(app_id, app_val->get());
-
-    auto result = cache.get(CachedPipelineId{1}, app_id, {});
+    auto& cache = env.app.resource_mut<ShaderCache>();
+    auto result = cache.get(CachedPipelineId{1}, app_handle.id(), {});
     ASSERT_TRUE(result.has_value());
-    EXPECT_EQ(call_count, 1);
+    EXPECT_EQ(*env.call_count, 1);
 }
 
 // ===========================================================================
@@ -874,135 +795,90 @@ TEST(ShaderDepLoading, SlangInclude_LoadsDepTransitively) {
 }
 
 // ===========================================================================
-// Dep pipeline: transitively loaded shader is fully loaded and can produce
-// a shader module through cache.get() independently.
+// Dep pipeline: transitively loaded shaders are auto-synced to cache
+// and can produce a shader module through cache.get() independently.
 // ===========================================================================
 
-TEST(ShaderDepPipeline, WgslDep_IsFullyLoadedAndCanGetModule) {
+TEST(ShaderDepPipeline, WgslDep_AutoSyncedAndCanGetModule) {
     auto dir = memory::Directory::create({});
     dir.insert_file("dep.wgsl", memory::Value::from_shared(make_bytes("fn helper() -> f32 { return 1.0; }")));
     dir.insert_file("main.wgsl", memory::Value::from_shared(make_bytes("#import \"dep.wgsl\"\n"
                                                                        "@compute @workgroup_size(1)\nfn main() {}")));
-    auto [app, _] = make_shader_env(dir);
-    auto& server  = app.resource<AssetServer>();
+    auto env     = make_pipeline_env(dir);
+    auto& server = env.app.resource<AssetServer>();
 
-    // Load only main — dep should be loaded transitively
+    // Load only main — dep should be loaded transitively and auto-synced
     auto main_handle = server.load<Shader>(AssetPath("main.wgsl"));
-    flush_load_tasks(app);
-
+    flush_and_sync(env.app);
     ASSERT_TRUE(server.is_loaded(main_handle.id()));
 
-    // The dep must also be fully loaded (tracked via track_dependency)
     auto dep_handle_opt = server.get_handle<Shader>(AssetPath("dep.wgsl"));
     ASSERT_TRUE(dep_handle_opt.has_value());
     EXPECT_TRUE(server.is_loaded(dep_handle_opt->id()));
 
-    auto& assets = app.resource<Assets<Shader>>();
-    auto dep_val = assets.get(dep_handle_opt->id());
-    ASSERT_TRUE(dep_val.has_value());
-
-    // Dep can independently go through cache.get() → load_module_fn
-    int call_count = 0;
-    ShaderCache cache{null_device(),
-                      [&](const wgpu::Device&, const ShaderCacheSource&,
-                          ValidateShader) -> std::expected<wgpu::ShaderModule, ShaderCacheError> {
-                          ++call_count;
-                          return wgpu::ShaderModule{};
-                      }};
-    auto dep_id = make_id(1);
-    cache.set_shader(dep_id, dep_val->get());
-    auto result = cache.get(CachedPipelineId{1}, dep_id, {});
-    ASSERT_TRUE(result.has_value());
-    EXPECT_EQ(call_count, 1);
+    // Dep auto-synced to cache; can independently produce a shader module
+    auto& cache     = env.app.resource_mut<ShaderCache>();
+    auto dep_result = cache.get(CachedPipelineId{1}, dep_handle_opt->id(), {});
+    ASSERT_TRUE(dep_result.has_value());
+    EXPECT_EQ(*env.call_count, 1);
 }
 
-TEST(ShaderDepPipeline, WgslMainAndDep_BothReachLoadModuleFn) {
+TEST(ShaderDepPipeline, WgslMainAndDep_BothAutoSyncedAndReachLoadModule) {
     auto dir = memory::Directory::create({});
     dir.insert_file("dep.wgsl", memory::Value::from_shared(make_bytes("fn helper() -> f32 { return 1.0; }")));
     dir.insert_file("main.wgsl", memory::Value::from_shared(make_bytes("#import \"dep.wgsl\"\n"
                                                                        "@compute @workgroup_size(1)\nfn main() {}")));
-    auto [app, _] = make_shader_env(dir);
-    auto& server  = app.resource<AssetServer>();
+    auto env     = make_pipeline_env(dir);
+    auto& server = env.app.resource<AssetServer>();
 
     auto main_handle = server.load<Shader>(AssetPath("main.wgsl"));
-    flush_load_tasks(app);
+    flush_and_sync(env.app);
     ASSERT_TRUE(server.is_loaded(main_handle.id()));
 
     auto dep_handle_opt = server.get_handle<Shader>(AssetPath("dep.wgsl"));
     ASSERT_TRUE(dep_handle_opt.has_value());
     ASSERT_TRUE(server.is_loaded(dep_handle_opt->id()));
 
-    auto& assets  = app.resource<Assets<Shader>>();
-    auto main_val = assets.get(main_handle.id());
-    auto dep_val  = assets.get(dep_handle_opt->id());
-    ASSERT_TRUE(main_val.has_value());
-    ASSERT_TRUE(dep_val.has_value());
-
-    int call_count = 0;
-    ShaderCache cache{null_device(),
-                      [&](const wgpu::Device&, const ShaderCacheSource&,
-                          ValidateShader) -> std::expected<wgpu::ShaderModule, ShaderCacheError> {
-                          ++call_count;
-                          return wgpu::ShaderModule{};
-                      }};
-    auto dep_id  = make_id(1);
-    auto main_id = make_id(2);
-    cache.set_shader(dep_id, dep_val->get());
-    cache.set_shader(main_id, main_val->get());
+    auto& cache = env.app.resource_mut<ShaderCache>();
 
     // dep can get its own module
-    auto dep_result = cache.get(CachedPipelineId{1}, dep_id, {});
+    auto dep_result = cache.get(CachedPipelineId{1}, dep_handle_opt->id(), {});
     ASSERT_TRUE(dep_result.has_value());
-    EXPECT_EQ(call_count, 1);
+    EXPECT_EQ(*env.call_count, 1);
 
     // main can get its module (composes dep inline)
-    auto main_result = cache.get(CachedPipelineId{2}, main_id, {});
+    auto main_result = cache.get(CachedPipelineId{2}, main_handle.id(), {});
     ASSERT_TRUE(main_result.has_value());
-    EXPECT_EQ(call_count, 2);
+    EXPECT_EQ(*env.call_count, 2);
 }
 
-TEST(ShaderDepPipeline, SlangDep_IsFullyLoadedAndCanGetModule) {
+TEST(ShaderDepPipeline, SlangDep_AutoSyncedAndCanGetModule) {
     auto dir = memory::Directory::create({});
-    // The dep has its own entry point so it can compile standalone
     dir.insert_file("utility.slang",
                     memory::Value::from_shared(make_bytes("[shader(\"compute\")]\n[numthreads(1,1,1)]\n"
                                                           "void utilMain() {}")));
     dir.insert_file("main.slang", memory::Value::from_shared(make_bytes("import utility;\n"
                                                                         "[shader(\"compute\")]\n[numthreads(1,1,1)]\n"
                                                                         "void computeMain() {}")));
-    auto [app, _] = make_shader_env(dir);
-    auto& server  = app.resource<AssetServer>();
+    auto env     = make_pipeline_env(dir);
+    auto& server = env.app.resource<AssetServer>();
 
     auto main_handle = server.load<Shader>(AssetPath("main.slang"));
-    flush_load_tasks(app);
+    flush_and_sync(env.app);
     ASSERT_TRUE(server.is_loaded(main_handle.id()));
 
-    // Dep must also be fully loaded
     auto dep_handle_opt = server.get_handle<Shader>(AssetPath("utility.slang"));
     ASSERT_TRUE(dep_handle_opt.has_value());
     EXPECT_TRUE(server.is_loaded(dep_handle_opt->id()));
 
-    auto& assets = app.resource<Assets<Shader>>();
-    auto dep_val = assets.get(dep_handle_opt->id());
-    ASSERT_TRUE(dep_val.has_value());
-    EXPECT_TRUE(dep_val->get().source.is_slang());
-
-    // Dep can independently go through cache.get() → load_module_fn
-    int call_count = 0;
-    ShaderCache cache{null_device(),
-                      [&](const wgpu::Device&, const ShaderCacheSource&,
-                          ValidateShader) -> std::expected<wgpu::ShaderModule, ShaderCacheError> {
-                          ++call_count;
-                          return wgpu::ShaderModule{};
-                      }};
-    auto dep_id = make_id(1);
-    cache.set_shader(dep_id, dep_val->get());
-    auto result = cache.get(CachedPipelineId{1}, dep_id, {});
-    ASSERT_TRUE(result.has_value());
-    EXPECT_EQ(call_count, 1);
+    // Dep auto-synced and can produce a module independently
+    auto& cache     = env.app.resource_mut<ShaderCache>();
+    auto dep_result = cache.get(CachedPipelineId{1}, dep_handle_opt->id(), {});
+    ASSERT_TRUE(dep_result.has_value());
+    EXPECT_EQ(*env.call_count, 1);
 }
 
-TEST(ShaderDepPipeline, SlangMainAndDep_BothReachLoadModuleFn) {
+TEST(ShaderDepPipeline, SlangMainAndDep_BothAutoSyncedAndReachLoadModule) {
     auto dir = memory::Directory::create({});
     dir.insert_file("utility.slang",
                     memory::Value::from_shared(make_bytes("[shader(\"compute\")]\n[numthreads(1,1,1)]\n"
@@ -1010,44 +886,28 @@ TEST(ShaderDepPipeline, SlangMainAndDep_BothReachLoadModuleFn) {
     dir.insert_file("main.slang", memory::Value::from_shared(make_bytes("import utility;\n"
                                                                         "[shader(\"compute\")]\n[numthreads(1,1,1)]\n"
                                                                         "void computeMain() {}")));
-    auto [app, _] = make_shader_env(dir);
-    auto& server  = app.resource<AssetServer>();
+    auto env     = make_pipeline_env(dir);
+    auto& server = env.app.resource<AssetServer>();
 
     auto main_handle = server.load<Shader>(AssetPath("main.slang"));
-    flush_load_tasks(app);
+    flush_and_sync(env.app);
     ASSERT_TRUE(server.is_loaded(main_handle.id()));
 
     auto dep_handle_opt = server.get_handle<Shader>(AssetPath("utility.slang"));
     ASSERT_TRUE(dep_handle_opt.has_value());
     ASSERT_TRUE(server.is_loaded(dep_handle_opt->id()));
 
-    auto& assets  = app.resource<Assets<Shader>>();
-    auto main_val = assets.get(main_handle.id());
-    auto dep_val  = assets.get(dep_handle_opt->id());
-    ASSERT_TRUE(main_val.has_value());
-    ASSERT_TRUE(dep_val.has_value());
-
-    int call_count = 0;
-    ShaderCache cache{null_device(),
-                      [&](const wgpu::Device&, const ShaderCacheSource&,
-                          ValidateShader) -> std::expected<wgpu::ShaderModule, ShaderCacheError> {
-                          ++call_count;
-                          return wgpu::ShaderModule{};
-                      }};
-    auto dep_id  = make_id(1);
-    auto main_id = make_id(2);
-    cache.set_shader(dep_id, dep_val->get());
-    cache.set_shader(main_id, main_val->get());
+    auto& cache = env.app.resource_mut<ShaderCache>();
 
     // dep compiles standalone
-    auto dep_result = cache.get(CachedPipelineId{1}, dep_id, {});
+    auto dep_result = cache.get(CachedPipelineId{1}, dep_handle_opt->id(), {});
     ASSERT_TRUE(dep_result.has_value());
-    EXPECT_EQ(call_count, 1);
+    EXPECT_EQ(*env.call_count, 1);
 
     // main compiles (resolves utility via CacheFileSystem)
-    auto main_result = cache.get(CachedPipelineId{2}, main_id, {});
+    auto main_result = cache.get(CachedPipelineId{2}, main_handle.id(), {});
     ASSERT_TRUE(main_result.has_value());
-    EXPECT_EQ(call_count, 2);
+    EXPECT_EQ(*env.call_count, 2);
 }
 
 }  // namespace
