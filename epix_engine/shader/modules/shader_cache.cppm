@@ -83,6 +83,32 @@ export struct ShaderCacheError {
     static ShaderCacheError slang_error(SlangCompileError::Stage stage, std::string message) {
         return {SlangCompileError{stage, std::move(message)}};
     }
+
+    /// Returns true if this error is transient and the pipeline should be re-queued.
+    bool is_recoverable() const {
+        return std::holds_alternative<ShaderNotLoaded>(data) ||
+               std::holds_alternative<ShaderImportNotYetAvailable>(data);
+    }
+
+    /// Returns a human-readable description of the error.
+    std::string message() const {
+        return std::visit(
+            [](auto&& e) -> std::string {
+                using T = std::decay_t<decltype(e)>;
+                if constexpr (std::is_same_v<T, ShaderNotLoaded>) {
+                    return std::format("shader not loaded (id={})", assets::UntypedAssetId(e.id));
+                } else if constexpr (std::is_same_v<T, ProcessShaderError>) {
+                    return "shader processing error";
+                } else if constexpr (std::is_same_v<T, ShaderImportNotYetAvailable>) {
+                    return "shader import not yet available";
+                } else if constexpr (std::is_same_v<T, CreateShaderModule>) {
+                    return std::format("create shader module failed: {}", e.wgpu_message);
+                } else if constexpr (std::is_same_v<T, SlangCompileError>) {
+                    return std::format("Slang compilation failed: {}", e.message);
+                }
+            },
+            data);
+    }
 };
 
 // ─── ShaderCache ───────────────────────────────────────────────────────────

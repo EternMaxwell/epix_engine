@@ -14,37 +14,34 @@ using namespace epix;
 
 namespace {
 constexpr std::string_view kTextVertexShader = R"(
-struct ViewUniform {
-    projection : mat4x4<f32>,
-    view : mat4x4<f32>,
-};
+import epix.view;
 
 struct TextInstance {
-    model : mat4x4<f32>,
-    color : vec4<f32>,
+    float4x4 model;
+    float4 color;
 };
 
-@group(0) @binding(0) var<uniform> view_uniform : ViewUniform;
-@group(1) @binding(0) var<storage, read> text_instances : array<TextInstance>;
+[[vk::binding(0, 0)]] ConstantBuffer<epix::View> view_uniform;
+[[vk::binding(0, 1)]] StructuredBuffer<TextInstance> text_instances;
 
 struct VertexInput {
-    @location(0) position : vec3<f32>,
-    @location(5) uv_layer : vec3<f32>,
-    @builtin(instance_index) instance_index : u32,
+    [[vk::location(0)]] float3 position;
+    [[vk::location(5)]] float3 uv_layer;
+    uint instance_index : SV_VulkanInstanceID;
 };
 
 struct VertexOutput {
-    @builtin(position) position : vec4<f32>,
-    @location(0) color : vec4<f32>,
-    @location(1) uv_layer : vec3<f32>,
+    float4 position : SV_Position;
+    [[vk::location(0)]] float4 color;
+    [[vk::location(1)]] float3 uv_layer;
 };
 
-@vertex
-fn main(input : VertexInput) -> VertexOutput {
-    let instance = text_instances[input.instance_index];
+[shader("vertex")]
+VertexOutput main(VertexInput input) {
+    TextInstance instance = text_instances[input.instance_index];
 
-    var output : VertexOutput;
-    output.position = view_uniform.projection * view_uniform.view * instance.model * vec4<f32>(input.position, 1.0);
+    VertexOutput output;
+    output.position = mul(view_uniform.projection, mul(view_uniform.view, mul(instance.model, float4(input.position, 1.0))));
     output.color = instance.color;
     output.uv_layer = input.uv_layer;
     return output;
@@ -52,18 +49,17 @@ fn main(input : VertexInput) -> VertexOutput {
 )";
 
 constexpr std::string_view kTextFragmentShader = R"(
-@group(2) @binding(0) var text_sampler : sampler;
-@group(2) @binding(1) var text_texture : texture_2d_array<f32>;
+[[vk::binding(0, 2)]] SamplerState text_sampler;
+[[vk::binding(1, 2)]] Texture2DArray<float4> text_texture;
 
 struct FragmentInput {
-    @location(0) color : vec4<f32>,
-    @location(1) uv_layer : vec3<f32>,
+    [[vk::location(0)]] float4 color;
+    [[vk::location(1)]] float3 uv_layer;
 };
 
-@fragment
-fn main(input : FragmentInput) -> @location(0) vec4<f32> {
-    let layer = i32(input.uv_layer.z);
-    return textureSample(text_texture, text_sampler, input.uv_layer.xy, layer) * input.color;
+[shader("fragment")]
+float4 main(FragmentInput input) : SV_Target {
+    return text_texture.Sample(text_sampler, input.uv_layer) * input.color;
 }
 )";
 
@@ -310,12 +306,12 @@ struct DrawTextBatch {
 };
 
 void insert_text_shaders(assets::Assets<shader::Shader>& shaders) {
-    auto vertex_path             = std::filesystem::path("embedded://text/text_vertex.wgsl");
-    auto fragment_path           = std::filesystem::path("embedded://text/text_fragment.wgsl");
+    auto vertex_path             = std::filesystem::path("embedded://text/text_vertex.slang");
+    auto fragment_path           = std::filesystem::path("embedded://text/text_fragment.slang");
     [[maybe_unused]] auto vertex = shaders.insert(
-        kTextVertexShaderId, shader::Shader::from_wgsl(std::string(kTextVertexShader), vertex_path.string()));
+        kTextVertexShaderId, shader::Shader::from_slang(std::string(kTextVertexShader), vertex_path.string()));
     [[maybe_unused]] auto fragment = shaders.insert(
-        kTextFragmentShaderId, shader::Shader::from_wgsl(std::string(kTextFragmentShader), fragment_path.string()));
+        kTextFragmentShaderId, shader::Shader::from_slang(std::string(kTextFragmentShader), fragment_path.string()));
 }
 
 void ensure_text_instance_buffer(TextInstanceBuffer& instance_buffer,

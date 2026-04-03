@@ -399,7 +399,7 @@ export enum class CameraUpdateSystems {
 };
 
 template <CameraProjection ProjType>
-void camera_system(Query<Item<Mut<Camera>, Mut<ProjType>>> query,            // camera and projection query
+void camera_system(Query<Item<Mut<Camera>, Mut<ProjType>>> query,                  // camera and projection query
                    Query<Item<const ::epix::window::CachedWindow&>> window_query,  // window query
                    Query<Item<const ::epix::window::CachedWindow&>, With<::epix::window::PrimaryWindow>>
                        primary_window_query  // primary window query
@@ -506,7 +506,7 @@ export struct ExtractedCamera {
     ptrdiff_t order;
     std::optional<ClearColor> clear_color;
 };
-}  // namespace render::camera
+}  // namespace epix::render::camera
 namespace epix::render::view {
 /** @brief Extracted view data: projection, transform, and viewport
  * dimensions for a single camera. */
@@ -619,7 +619,7 @@ struct BindViewUniform {
         }
     };
 };
-}  // namespace render::view
+}  // namespace epix::render::view
 namespace epix::render::camera {
 /** @brief System that extracts camera data into the render world. */
 export void extract_cameras(
@@ -654,7 +654,7 @@ export struct CameraBundle {
         return bundle;
     }
 };
-}  // namespace render::camera
+}  // namespace epix::render::camera
 
 template <>
 struct epix::core::Bundle<epix::render::camera::CameraBundle> {

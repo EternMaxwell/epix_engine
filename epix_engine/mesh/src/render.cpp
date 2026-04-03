@@ -16,105 +16,96 @@ using namespace epix::mesh;
 
 namespace {
 constexpr std::string_view kMeshSolidVertexShader = R"(
-struct ViewUniform {
-    projection : mat4x4<f32>,
-    view : mat4x4<f32>,
-};
+import epix.view;
 
 struct MeshUniform {
-    model : mat4x4<f32>,
-    color : vec4<f32>,
+    float4x4 model;
+    float4 color;
 };
 
-@group(0) @binding(0) var<uniform> view_uniform : ViewUniform;
-@group(1) @binding(0) var<storage, read> mesh_instances : array<MeshUniform>;
+[[vk::binding(0, 0)]] ConstantBuffer<epix::View> view_uniform;
+[[vk::binding(0, 1)]] StructuredBuffer<MeshUniform> mesh_instances;
 
 struct VertexInput {
-    @location(0) position : vec3<f32>,
-    @builtin(instance_index) instance_index : u32,
+    [[vk::location(0)]] float3 position;
+    uint instance_index : SV_VulkanInstanceID;
 };
 
 struct VertexOutput {
-    @builtin(position) position : vec4<f32>,
-    @location(0) color : vec4<f32>,
+    float4 position : SV_Position;
+    [[vk::location(0)]] float4 color;
 };
 
-@vertex
-fn main(input : VertexInput) -> VertexOutput {
-    let mesh = mesh_instances[input.instance_index];
-    var output : VertexOutput;
-    output.position = view_uniform.projection * view_uniform.view * mesh.model * vec4<f32>(input.position, 1.0);
+[shader("vertex")]
+VertexOutput main(VertexInput input) {
+    MeshUniform mesh = mesh_instances[input.instance_index];
+    VertexOutput output;
+    output.position = mul(view_uniform.projection, mul(view_uniform.view, mul(mesh.model, float4(input.position, 1.0))));
     output.color = mesh.color;
     return output;
 }
 )";
 
 constexpr std::string_view kMeshVertexColorVertexShader = R"(
-struct ViewUniform {
-    projection : mat4x4<f32>,
-    view : mat4x4<f32>,
-};
+import epix.view;
 
 struct MeshUniform {
-    model : mat4x4<f32>,
-    color : vec4<f32>,
+    float4x4 model;
+    float4 color;
 };
 
-@group(0) @binding(0) var<uniform> view_uniform : ViewUniform;
-@group(1) @binding(0) var<storage, read> mesh_instances : array<MeshUniform>;
+[[vk::binding(0, 0)]] ConstantBuffer<epix::View> view_uniform;
+[[vk::binding(0, 1)]] StructuredBuffer<MeshUniform> mesh_instances;
 
 struct VertexInput {
-    @location(0) position : vec3<f32>,
-    @location(1) color : vec4<f32>,
-    @builtin(instance_index) instance_index : u32,
+    [[vk::location(0)]] float3 position;
+    [[vk::location(1)]] float4 color;
+    uint instance_index : SV_VulkanInstanceID;
 };
 
 struct VertexOutput {
-    @builtin(position) position : vec4<f32>,
-    @location(0) color : vec4<f32>,
+    float4 position : SV_Position;
+    [[vk::location(0)]] float4 color;
 };
 
-@vertex
-fn main(input : VertexInput) -> VertexOutput {
-    let mesh = mesh_instances[input.instance_index];
-    var output : VertexOutput;
-    output.position = view_uniform.projection * view_uniform.view * mesh.model * vec4<f32>(input.position, 1.0);
+[shader("vertex")]
+VertexOutput main(VertexInput input) {
+    MeshUniform mesh = mesh_instances[input.instance_index];
+    VertexOutput output;
+    output.position = mul(view_uniform.projection, mul(view_uniform.view, mul(mesh.model, float4(input.position, 1.0))));
     output.color = input.color * mesh.color;
     return output;
 }
 )";
 
 constexpr std::string_view kMeshTexturedVertexShader = R"(
-struct ViewUniform {
-    projection : mat4x4<f32>,
-    view : mat4x4<f32>,
-};
+import epix.view;
 
 struct MeshUniform {
-    model : mat4x4<f32>,
-    color : vec4<f32>,
+    float4x4 model;
+    float4 color;
 };
 
-@group(0) @binding(0) var<uniform> view_uniform : ViewUniform;
-@group(1) @binding(0) var<storage, read> mesh_instances : array<MeshUniform>;
+[[vk::binding(0, 0)]] ConstantBuffer<epix::View> view_uniform;
+[[vk::binding(0, 1)]] StructuredBuffer<MeshUniform> mesh_instances;
 
 struct VertexInput {
-    @location(0) position : vec3<f32>,
-    @location(3) uv : vec2<f32>,
-    @builtin(instance_index) instance_index : u32,
+    [[vk::location(0)]] float3 position;
+    [[vk::location(3)]] float2 uv;
+    uint instance_index : SV_VulkanInstanceID;
 };
 
 struct VertexOutput {
-    @builtin(position) position : vec4<f32>,
-    @location(0) color : vec4<f32>,
-    @location(1) uv : vec2<f32>,
+    float4 position : SV_Position;
+    [[vk::location(0)]] float4 color;
+    [[vk::location(1)]] float2 uv;
 };
 
-@vertex
-fn main(input : VertexInput) -> VertexOutput {
-    let mesh = mesh_instances[input.instance_index];
-    var output : VertexOutput;
-    output.position = view_uniform.projection * view_uniform.view * mesh.model * vec4<f32>(input.position, 1.0);
+[shader("vertex")]
+VertexOutput main(VertexInput input) {
+    MeshUniform mesh = mesh_instances[input.instance_index];
+    VertexOutput output;
+    output.position = mul(view_uniform.projection, mul(view_uniform.view, mul(mesh.model, float4(input.position, 1.0))));
     output.color = mesh.color;
     output.uv = input.uv;
     return output;
@@ -122,37 +113,34 @@ fn main(input : VertexInput) -> VertexOutput {
 )";
 
 constexpr std::string_view kMeshTexturedVertexColorVertexShader = R"(
-struct ViewUniform {
-    projection : mat4x4<f32>,
-    view : mat4x4<f32>,
-};
+import epix.view;
 
 struct MeshUniform {
-    model : mat4x4<f32>,
-    color : vec4<f32>,
+    float4x4 model;
+    float4 color;
 };
 
-@group(0) @binding(0) var<uniform> view_uniform : ViewUniform;
-@group(1) @binding(0) var<storage, read> mesh_instances : array<MeshUniform>;
+[[vk::binding(0, 0)]] ConstantBuffer<epix::View> view_uniform;
+[[vk::binding(0, 1)]] StructuredBuffer<MeshUniform> mesh_instances;
 
 struct VertexInput {
-    @location(0) position : vec3<f32>,
-    @location(1) color : vec4<f32>,
-    @location(3) uv : vec2<f32>,
-    @builtin(instance_index) instance_index : u32,
+    [[vk::location(0)]] float3 position;
+    [[vk::location(1)]] float4 color;
+    [[vk::location(3)]] float2 uv;
+    uint instance_index : SV_VulkanInstanceID;
 };
 
 struct VertexOutput {
-    @builtin(position) position : vec4<f32>,
-    @location(0) color : vec4<f32>,
-    @location(1) uv : vec2<f32>,
+    float4 position : SV_Position;
+    [[vk::location(0)]] float4 color;
+    [[vk::location(1)]] float2 uv;
 };
 
-@vertex
-fn main(input : VertexInput) -> VertexOutput {
-    let mesh = mesh_instances[input.instance_index];
-    var output : VertexOutput;
-    output.position = view_uniform.projection * view_uniform.view * mesh.model * vec4<f32>(input.position, 1.0);
+[shader("vertex")]
+VertexOutput main(VertexInput input) {
+    MeshUniform mesh = mesh_instances[input.instance_index];
+    VertexOutput output;
+    output.position = mul(view_uniform.projection, mul(view_uniform.view, mul(mesh.model, float4(input.position, 1.0))));
     output.color = input.color * mesh.color;
     output.uv = input.uv;
     return output;
@@ -161,27 +149,27 @@ fn main(input : VertexInput) -> VertexOutput {
 
 constexpr std::string_view kMeshColorFragmentShader = R"(
 struct FragmentInput {
-    @location(0) color : vec4<f32>,
+    [[vk::location(0)]] float4 color;
 };
 
-@fragment
-fn main(input : FragmentInput) -> @location(0) vec4<f32> {
+[shader("fragment")]
+float4 main(FragmentInput input) : SV_Target {
     return input.color;
 }
 )";
 
 constexpr std::string_view kMeshTexturedFragmentShader = R"(
-@group(2) @binding(0) var mesh_sampler : sampler;
-@group(2) @binding(1) var mesh_texture : texture_2d<f32>;
+[[vk::binding(0, 2)]] SamplerState mesh_sampler;
+[[vk::binding(1, 2)]] Texture2D<float4> mesh_texture;
 
 struct FragmentInput {
-    @location(0) color : vec4<f32>,
-    @location(1) uv : vec2<f32>,
+    [[vk::location(0)]] float4 color;
+    [[vk::location(1)]] float2 uv;
 };
 
-@fragment
-fn main(input : FragmentInput) -> @location(0) vec4<f32> {
-    return textureSample(mesh_texture, mesh_sampler, input.uv) * input.color;
+[shader("fragment")]
+float4 main(FragmentInput input) : SV_Target {
+    return mesh_texture.Sample(mesh_sampler, input.uv) * input.color;
 }
 )";
 
@@ -432,30 +420,30 @@ struct MeshOpaqueBatchKey {
 };
 
 void insert_mesh_shaders(assets::Assets<shader::Shader>& shaders) {
-    auto solid_vertex_path          = std::filesystem::path("embedded://mesh/solid_vertex.wgsl");
-    auto vertex_color_path          = std::filesystem::path("embedded://mesh/vertex_color_vertex.wgsl");
-    auto textured_vertex_path       = std::filesystem::path("embedded://mesh/textured_vertex.wgsl");
-    auto textured_vertex_color_path = std::filesystem::path("embedded://mesh/textured_vertex_color_vertex.wgsl");
-    auto color_fragment_path        = std::filesystem::path("embedded://mesh/color_fragment.wgsl");
-    auto textured_fragment_path     = std::filesystem::path("embedded://mesh/textured_fragment.wgsl");
+    auto solid_vertex_path          = std::filesystem::path("embedded://mesh/solid_vertex.slang");
+    auto vertex_color_path          = std::filesystem::path("embedded://mesh/vertex_color_vertex.slang");
+    auto textured_vertex_path       = std::filesystem::path("embedded://mesh/textured_vertex.slang");
+    auto textured_vertex_color_path = std::filesystem::path("embedded://mesh/textured_vertex_color_vertex.slang");
+    auto color_fragment_path        = std::filesystem::path("embedded://mesh/color_fragment.slang");
+    auto textured_fragment_path     = std::filesystem::path("embedded://mesh/textured_fragment.slang");
     [[maybe_unused]] auto solid_vertex =
         shaders.insert(kMeshSolidVertexShaderId,
-                       shader::Shader::from_wgsl(std::string(kMeshSolidVertexShader), solid_vertex_path.string()));
+                       shader::Shader::from_slang(std::string(kMeshSolidVertexShader), solid_vertex_path.string()));
     [[maybe_unused]] auto vertex_color_vertex = shaders.insert(
         kMeshVertexColorShaderId,
-        shader::Shader::from_wgsl(std::string(kMeshVertexColorVertexShader), vertex_color_path.string()));
+        shader::Shader::from_slang(std::string(kMeshVertexColorVertexShader), vertex_color_path.string()));
     [[maybe_unused]] auto textured_vertex = shaders.insert(
         kMeshTexturedVertexShaderId,
-        shader::Shader::from_wgsl(std::string(kMeshTexturedVertexShader), textured_vertex_path.string()));
+        shader::Shader::from_slang(std::string(kMeshTexturedVertexShader), textured_vertex_path.string()));
     [[maybe_unused]] auto textured_vertex_color = shaders.insert(
-        kMeshTexturedVertexColorShaderId, shader::Shader::from_wgsl(std::string(kMeshTexturedVertexColorVertexShader),
+        kMeshTexturedVertexColorShaderId, shader::Shader::from_slang(std::string(kMeshTexturedVertexColorVertexShader),
                                                                     textured_vertex_color_path.string()));
     [[maybe_unused]] auto color_fragment =
         shaders.insert(kMeshColorFragmentShaderId,
-                       shader::Shader::from_wgsl(std::string(kMeshColorFragmentShader), color_fragment_path.string()));
+                       shader::Shader::from_slang(std::string(kMeshColorFragmentShader), color_fragment_path.string()));
     [[maybe_unused]] auto textured_fragment = shaders.insert(
         kMeshTexturedFragmentShaderId,
-        shader::Shader::from_wgsl(std::string(kMeshTexturedFragmentShader), textured_fragment_path.string()));
+        shader::Shader::from_slang(std::string(kMeshTexturedFragmentShader), textured_fragment_path.string()));
 }
 
 void extract_meshes_2d(Commands cmd,

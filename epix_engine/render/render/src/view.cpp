@@ -11,6 +11,28 @@ using namespace epix::render;
 using namespace epix::render::view;
 using namespace epix::render::camera;
 
+namespace {
+constexpr std::string_view kViewShaderWgsl = R"(
+#define_import_path epix::view
+
+struct EpixView {
+    projection : mat4x4<f32>,
+    view : mat4x4<f32>,
+};
+)";
+
+constexpr std::string_view kViewShaderSlang = R"(
+module "epix/view";
+
+namespace epix {
+public struct View {
+    public float4x4 projection;
+    public float4x4 view;
+};
+}
+)";
+}  // namespace
+
 void view::prepare_view_target(Query<Item<Entity, const camera::ExtractedCamera&, const ExtractedView&>> views,
                                Commands cmd,
                                Res<window::ExtractedWindows> extracted_windows) {
@@ -168,6 +190,35 @@ void create_uniform_for_view(Commands cmd,
 
 void view::ViewPlugin::build(App& app) {
     spdlog::debug("[render.view] Building ViewPlugin.");
+
+    // Register view shader libraries into the embedded asset registry
+    {
+        auto& world   = app.world_mut();
+        auto registry = world.get_resource_mut<epix::assets::EmbeddedAssetRegistry>();
+        auto server   = world.get_resource<epix::assets::AssetServer>();
+        if (registry && server) {
+            // WGSL
+            {
+                auto bytes = std::span<const std::byte>(reinterpret_cast<const std::byte*>(kViewShaderWgsl.data()),
+                                                        kViewShaderWgsl.size());
+                registry->get().insert_asset_static("epix/shaders/view.wgsl", "epix/shaders/view.wgsl", bytes);
+                auto handle = server->get().load<epix::shader::Shader>("embedded://epix/shaders/view.wgsl");
+                static auto permanent_wgsl = std::move(handle);
+            }
+            // Slang
+            {
+                auto bytes = std::span<const std::byte>(reinterpret_cast<const std::byte*>(kViewShaderSlang.data()),
+                                                        kViewShaderSlang.size());
+                registry->get().insert_asset_static("epix/shaders/view.slang", "epix/shaders/view.slang", bytes);
+                auto handle = server->get().load<epix::shader::Shader>("embedded://epix/shaders/view.slang");
+                static auto permanent_slang = std::move(handle);
+            }
+        } else {
+            spdlog::warn(
+                "[render.view] EmbeddedAssetRegistry or AssetServer not available. View shader library not "
+                "registered.");
+        }
+    }
     ViewUniformBindingLayout view_uniform_binding_layout(app.world_mut());
     app.world_mut().insert_resource(view_uniform_binding_layout);
     if (auto sub_app = app.get_sub_app_mut(render::Render)) {

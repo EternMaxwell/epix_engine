@@ -240,11 +240,11 @@ void PipelineServer::process_pipeline(CachedPipeline& cached_pipeline, CachedPip
         }
 
         if (auto shader_error = std::get_if<ShaderCacheError>(&error)) {
-            if (std::holds_alternative<ShaderCacheError::ShaderNotLoaded>(shader_error->data) ||
-                std::holds_alternative<ShaderCacheError::ShaderImportNotYetAvailable>(shader_error->data)) {
+            if (shader_error->is_recoverable()) {
                 cached_pipeline.state = PipelineStateQueued{};
             } else {
-                spdlog::error("[render.pipeline] Shader error for pipeline id={}, name='{}'.", id.get(), pipeline_name);
+                spdlog::error("[render.pipeline] Shader error for pipeline id={}, name='{}': {}",
+                              id.get(), pipeline_name, shader_error->message());
             }
         }
     };
@@ -278,11 +278,11 @@ void PipelineServer::process_pipeline(CachedPipeline& cached_pipeline, CachedPip
         }
 
         if (auto shader_error = std::get_if<ShaderCacheError>(error)) {
-            if (std::holds_alternative<ShaderCacheError::ShaderNotLoaded>(shader_error->data) ||
-                std::holds_alternative<ShaderCacheError::ShaderImportNotYetAvailable>(shader_error->data)) {
+            if (shader_error->is_recoverable()) {
                 // Not ready yet – will be re-queued
             } else {
-                spdlog::error("[render.pipeline] Shader error for pipeline id={}, name='{}'.", id.get(), pipeline_name);
+                spdlog::error("[render.pipeline] Shader error for pipeline id={}, name='{}': {}",
+                              id.get(), pipeline_name, shader_error->message());
                 return;
             }
         }

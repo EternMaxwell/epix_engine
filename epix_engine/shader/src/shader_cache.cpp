@@ -105,12 +105,19 @@ struct ShaderCache::SlangCompiler {
 
         FileSystem fs(import_map, shaders);
 
-        slang::SessionDesc session_desc     = {};
-        session_desc.targets                = &target_desc;
-        session_desc.targetCount            = 1;
-        session_desc.preprocessorMacros     = macros.data();
-        session_desc.preprocessorMacroCount = static_cast<SlangInt>(macros.size());
-        session_desc.fileSystem             = &fs;
+        // Empty search path so Slang also tries bare module paths
+        // (not only relative to the importing file's directory).
+        const char* search_paths[] = {""};
+
+        slang::SessionDesc session_desc      = {};
+        session_desc.targets                 = &target_desc;
+        session_desc.targetCount             = 1;
+        session_desc.defaultMatrixLayoutMode = SLANG_MATRIX_LAYOUT_COLUMN_MAJOR;
+        session_desc.searchPaths             = search_paths;
+        session_desc.searchPathCount         = 1;
+        session_desc.preprocessorMacros      = macros.data();
+        session_desc.preprocessorMacroCount  = static_cast<SlangInt>(macros.size());
+        session_desc.fileSystem              = &fs;
 
         Slang::ComPtr<slang::ISession> session;
         if (SLANG_FAILED(global_session->createSession(session_desc, session.writeRef()))) {

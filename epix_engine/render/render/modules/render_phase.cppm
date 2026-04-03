@@ -510,12 +510,10 @@ struct SetItemPipeline {
                                 if constexpr (std::is_same_v<inner_t, PipelineError>) {
                                     return "pipeline creation failure";
                                 } else if constexpr (std::is_same_v<inner_t, shader::ShaderCacheError>) {
-                                    if (std::holds_alternative<shader::ShaderCacheError::ShaderNotLoaded>(inner.data) ||
-                                        std::holds_alternative<shader::ShaderCacheError::ShaderImportNotYetAvailable>(
-                                            inner.data)) {
+                                    if (inner.is_recoverable()) {
                                         return "shader not loaded";
                                     }
-                                    return "shader error";
+                                    return std::format("shader error: {}", inner.message());
                                 } else {
                                     return "unknown pipeline server error";
                                 }

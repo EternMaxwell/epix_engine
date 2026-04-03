@@ -17,42 +17,39 @@ using namespace epix::sprite;
 
 namespace {
 constexpr std::string_view kSpriteVertexShader = R"(
-struct ViewUniform {
-    projection : mat4x4<f32>,
-    view : mat4x4<f32>,
-};
+import epix.view;
 
 struct SpriteInstance {
-    model : mat4x4<f32>,
-    uv_offset_scale : vec4<f32>,
-    color : vec4<f32>,
-    pos_offset_scale : vec4<f32>,
+    float4x4 model;
+    float4 uv_offset_scale;
+    float4 color;
+    float4 pos_offset_scale;
 };
 
-@group(0) @binding(0) var<uniform> view_uniform : ViewUniform;
-@group(1) @binding(0) var<storage, read> sprite_instances : array<SpriteInstance>;
+[[vk::binding(0, 0)]] ConstantBuffer<epix::View> view_uniform;
+[[vk::binding(0, 1)]] StructuredBuffer<SpriteInstance> sprite_instances;
 
 struct VertexInput {
-    @location(0) position : vec2<f32>,
-    @location(1) uv : vec2<f32>,
-    @builtin(instance_index) instance_index : u32,
+    [[vk::location(0)]] float2 position;
+    [[vk::location(1)]] float2 uv;
+    uint instance_index : SV_VulkanInstanceID;
 };
 
 struct VertexOutput {
-    @builtin(position) position : vec4<f32>,
-    @location(0) uv : vec2<f32>,
-    @location(1) color : vec4<f32>,
+    float4 position : SV_Position;
+    [[vk::location(0)]] float2 uv;
+    [[vk::location(1)]] float4 color;
 };
 
-@vertex
-fn main(input : VertexInput) -> VertexOutput {
-    let instance = sprite_instances[input.instance_index];
-    let local_position = vec4<f32>((input.position + instance.pos_offset_scale.xy) * instance.pos_offset_scale.zw,
+[shader("vertex")]
+VertexOutput main(VertexInput input) {
+    SpriteInstance instance = sprite_instances[input.instance_index];
+    float4 local_position = float4((input.position + instance.pos_offset_scale.xy) * instance.pos_offset_scale.zw,
                                    0.0,
                                    1.0);
 
-    var output : VertexOutput;
-    output.position = view_uniform.projection * view_uniform.view * instance.model * local_position;
+    VertexOutput output;
+    output.position = mul(view_uniform.projection, mul(view_uniform.view, mul(instance.model, local_position)));
     output.uv = input.uv * instance.uv_offset_scale.zw + instance.uv_offset_scale.xy;
     output.color = instance.color;
     return output;
@@ -60,17 +57,17 @@ fn main(input : VertexInput) -> VertexOutput {
 )";
 
 constexpr std::string_view kSpriteFragmentShader = R"(
-@group(2) @binding(0) var sprite_sampler : sampler;
-@group(2) @binding(1) var sprite_texture : texture_2d<f32>;
+[[vk::binding(0, 2)]] SamplerState sprite_sampler;
+[[vk::binding(1, 2)]] Texture2D<float4> sprite_texture;
 
 struct FragmentInput {
-    @location(0) uv : vec2<f32>,
-    @location(1) color : vec4<f32>,
+    [[vk::location(0)]] float2 uv;
+    [[vk::location(1)]] float4 color;
 };
 
-@fragment
-fn main(input : FragmentInput) -> @location(0) vec4<f32> {
-    return textureSample(sprite_texture, sprite_sampler, input.uv) * input.color;
+[shader("fragment")]
+float4 main(FragmentInput input) : SV_Target {
+    return sprite_texture.Sample(sprite_sampler, input.uv) * input.color;
 }
 )";
 
@@ -187,12 +184,12 @@ struct TransparentSpriteDrawFunction {
 };
 
 void insert_sprite_shaders(assets::Assets<shader::Shader>& shaders) {
-    auto vertex_path             = std::filesystem::path("embedded://sprite/sprite_vertex.wgsl");
-    auto fragment_path           = std::filesystem::path("embedded://sprite/sprite_fragment.wgsl");
+    auto vertex_path             = std::filesystem::path("embedded://sprite/sprite_vertex.slang");
+    auto fragment_path           = std::filesystem::path("embedded://sprite/sprite_fragment.slang");
     [[maybe_unused]] auto vertex = shaders.insert(
-        kSpriteVertexShaderId, shader::Shader::from_wgsl(std::string(kSpriteVertexShader), vertex_path.string()));
+        kSpriteVertexShaderId, shader::Shader::from_slang(std::string(kSpriteVertexShader), vertex_path.string()));
     [[maybe_unused]] auto fragment = shaders.insert(
-        kSpriteFragmentShaderId, shader::Shader::from_wgsl(std::string(kSpriteFragmentShader), fragment_path.string()));
+        kSpriteFragmentShaderId, shader::Shader::from_slang(std::string(kSpriteFragmentShader), fragment_path.string()));
 }
 
 void ensure_instance_buffer(SpriteInstanceBuffer& instance_buffer,
