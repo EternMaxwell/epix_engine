@@ -87,7 +87,7 @@ void imgui::imgui_begin_frame(ResMut<ImGuiState> state,
         ImGui_ImplGlfw_InitForOther(glfw_window, true);
 
         state->initialized = true;
-        spdlog::info("[imgui] Initialized GLFW backend.");
+        spdlog::debug("[imgui] Initialized GLFW backend.");
     }
 
     if (state->initialized) {
@@ -196,8 +196,8 @@ void imgui::imgui_render(Res<ImGuiState> state,
         init_info.NumFramesInFlight  = 3;
         ImGui_ImplWGPU_Init(&init_info);
         wgpu_initialized = true;
-        spdlog::info("[imgui] Initialized WebGPU backend (format={}).",
-                     static_cast<int>(window.swapchain_texture_format));
+        spdlog::debug("[imgui] Initialized WebGPU backend (format={}).",
+                      static_cast<int>(window.swapchain_texture_format));
     }
     ImGui_ImplWGPU_NewFrame();
 
