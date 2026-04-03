@@ -10,6 +10,7 @@ namespace epix::core::executors {
 struct AutoExecutor::Impl {
     std::vector<std::pair<std::unique_ptr<ScheduleExecutor>, double>> m_executors;
     std::vector<std::size_t> used_time;
+    std::size_t last_index = std::numeric_limits<std::size_t>::max();
 
     AutoExecutor::Impl() {
         m_executors.emplace_back(std::make_unique<TaskflowExecutor>(), 0.0);
@@ -43,8 +44,13 @@ struct AutoExecutor::Impl {
         std::discrete_distribution<std::size_t> dist(weights.begin(), weights.end());
         return dist(rng);
     }
-    void execute(ScheduleSystems& schedule, World& world, const ExecutorConfig& config) {
+    void execute(const ScheduleLabel& label, ScheduleSystems& schedule, World& world, const ExecutorConfig& config) {
         auto index = pick_executor();
+        if (last_index != index) {
+            spdlog::debug("[schedule] AutoExecutor '{}' switching to {}.", label.to_string(),
+                          m_executors[index].first->type().name());
+            last_index = index;
+        }
         if (used_time.size() <= index) {
             used_time.resize(index + 1);
         }
@@ -73,6 +79,6 @@ void AutoExecutor::execute(ScheduleSystems& schedule, World& world, const Execut
     if (!m_impl) {
         m_impl = std::make_unique<Impl>();
     }
-    m_impl->execute(schedule, world, config);
+    m_impl->execute(label, schedule, world, config);
 }
 }  // namespace epix::core::executors

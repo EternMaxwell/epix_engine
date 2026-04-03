@@ -29,6 +29,7 @@ struct FixedMainExecutor : ScheduleExecutor {
             }
         }
     }
+    meta::type_index type() const override { return meta::type_id<FixedMainExecutor>(); }
 };
 
 void TimePlugin::build(App& app) {

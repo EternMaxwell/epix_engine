@@ -352,14 +352,16 @@ void Schedule::execute(World& world, const ScheduleConfig& config) {
 
         // run_once cleanup: remove executed systems
         if (config.run_once) {
+            bool any_system = false;
             for (auto it = _data.nodes.begin(); it != _data.nodes.end();) {
                 if (it->second->system) {
-                    it = _data.nodes.erase(it);
+                    it         = _data.nodes.erase(it);
+                    any_system = true;
                 } else {
                     ++it;
                 }
             }
-            _data.cache.reset();
+            if (any_system) _data.cache.reset();
         }
 
         if (!config.loop_condition) break;

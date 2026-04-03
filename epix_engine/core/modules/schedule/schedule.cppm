@@ -4,6 +4,7 @@ export module epix.core:schedule.schedule;
 
 import std;
 import BS.thread_pool;
+import epix.meta;
 
 export import :schedule.queue;
 
@@ -275,6 +276,7 @@ export struct ScheduleExecutor {
     ScheduleLabel label;
     virtual ~ScheduleExecutor()                                                                 = default;
     virtual void execute(ScheduleSystems& schedule, World& world, const ExecutorConfig& config) = 0;
+    virtual meta::type_index type() const                                                       = 0;
 };
 /** @brief A named collection of systems with dependency ordering and parallel execution support.
  *  Systems are organized into sets with before/after/in_set relationships. */
