@@ -3,6 +3,7 @@ module;
 export module epix.shader:shader_cache;
 
 import epix.core;
+import epix.utils;
 import :shader;
 import :shader_composer;
 
@@ -57,14 +58,30 @@ export struct ShaderCacheError {
     struct CreateShaderModule {
         std::string wgpu_message;
     };
+    struct SlangCompileError {
+        enum class Stage {
+            SessionCreation,
+            ModuleLoad,
+            Compose,
+            Link,
+            CodeGeneration,
+        };
+        Stage stage;
+        std::string message;
+    };
 
-    std::variant<ShaderNotLoaded, ProcessShaderError, ShaderImportNotYetAvailable, CreateShaderModule> data;
+    std::
+        variant<ShaderNotLoaded, ProcessShaderError, ShaderImportNotYetAvailable, CreateShaderModule, SlangCompileError>
+            data;
 
     static ShaderCacheError not_loaded(assets::AssetId<Shader> id) { return {ShaderNotLoaded{id}}; }
     static ShaderCacheError process_error(ComposeError error) { return {ProcessShaderError{std::move(error)}}; }
     static ShaderCacheError import_not_available() { return {ShaderImportNotYetAvailable{}}; }
     static ShaderCacheError create_module_failed(std::string wgpu_message) {
         return {CreateShaderModule{std::move(wgpu_message)}};
+    }
+    static ShaderCacheError slang_error(SlangCompileError::Stage stage, std::string message) {
+        return {SlangCompileError{stage, std::move(message)}};
     }
 };
 
@@ -82,11 +99,11 @@ export struct ShaderCache {
     std::vector<CachedPipelineId> set_shader(assets::AssetId<Shader> id, Shader shader);
     std::vector<CachedPipelineId> remove(assets::AssetId<Shader> id);
 
-    // System: automatically syncs AssetEvent<Shader> to the cache.
-    // Added/Modified → set_shader, Unused → remove.
-    static void sync_shaders(core::ResMut<ShaderCache> cache,
-                             core::Res<assets::Assets<Shader>> shaders,
-                             core::EventReader<assets::AssetEvent<Shader>> events);
+    // Sync asset events into the cache.
+    // Added/Modified → set_shader, Unused/Removed → remove.
+    // Returns all affected pipeline IDs.
+    std::vector<CachedPipelineId> sync(utils::input_iterable<assets::AssetEvent<Shader>> events,
+                                       const assets::Assets<Shader>& shaders);
 
    private:
     wgpu::Device device_;

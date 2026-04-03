@@ -82,8 +82,10 @@ struct ShaderCache::SlangCompiler {
         std::span<const ShaderDefVal> shader_defs,
         const std::unordered_map<ShaderImport, assets::AssetId<Shader>>& import_map,
         const std::unordered_map<assets::AssetId<Shader>, Shader>& shaders) {
+        using Stage = ShaderCacheError::SlangCompileError::Stage;
         if (!global_session) {
-            return std::unexpected(ShaderCacheError::create_module_failed("Slang global session not available"));
+            return std::unexpected(
+                ShaderCacheError::slang_error(Stage::SessionCreation, "Slang global session not available"));
         }
 
         // Preprocessor macros from shader defs
@@ -112,7 +114,8 @@ struct ShaderCache::SlangCompiler {
 
         Slang::ComPtr<slang::ISession> session;
         if (SLANG_FAILED(global_session->createSession(session_desc, session.writeRef()))) {
-            return std::unexpected(ShaderCacheError::create_module_failed("Failed to create Slang session"));
+            return std::unexpected(
+                ShaderCacheError::slang_error(Stage::SessionCreation, "Failed to create Slang session"));
         }
 
         // Load module from source
@@ -125,7 +128,7 @@ struct ShaderCache::SlangCompiler {
                 msg += ": ";
                 msg += static_cast<const char*>(diagnostics->getBufferPointer());
             }
-            return std::unexpected(ShaderCacheError::create_module_failed(std::move(msg)));
+            return std::unexpected(ShaderCacheError::slang_error(Stage::ModuleLoad, std::move(msg)));
         }
 
         // Gather entry points
@@ -145,12 +148,12 @@ struct ShaderCache::SlangCompiler {
             if (SLANG_FAILED(session->createCompositeComponentType(components.data(),
                                                                    static_cast<SlangInt>(components.size()),
                                                                    composed.writeRef(), diag.writeRef()))) {
-                std::string msg = "Slang linking failed";
+                std::string msg = "Slang compose failed";
                 if (diag) {
                     msg += ": ";
                     msg += static_cast<const char*>(diag->getBufferPointer());
                 }
-                return std::unexpected(ShaderCacheError::create_module_failed(std::move(msg)));
+                return std::unexpected(ShaderCacheError::slang_error(Stage::Compose, std::move(msg)));
             }
         }
 
@@ -159,12 +162,12 @@ struct ShaderCache::SlangCompiler {
         {
             Slang::ComPtr<slang::IBlob> diag;
             if (SLANG_FAILED(composed->link(linked.writeRef(), diag.writeRef()))) {
-                std::string msg = "Slang link step failed";
+                std::string msg = "Slang link failed";
                 if (diag) {
                     msg += ": ";
                     msg += static_cast<const char*>(diag->getBufferPointer());
                 }
-                return std::unexpected(ShaderCacheError::create_module_failed(std::move(msg)));
+                return std::unexpected(ShaderCacheError::slang_error(Stage::Link, std::move(msg)));
             }
         }
 
@@ -178,7 +181,7 @@ struct ShaderCache::SlangCompiler {
                     msg += ": ";
                     msg += static_cast<const char*>(diag->getBufferPointer());
                 }
-                return std::unexpected(ShaderCacheError::create_module_failed(std::move(msg)));
+                return std::unexpected(ShaderCacheError::slang_error(Stage::CodeGeneration, std::move(msg)));
             }
         }
 
@@ -398,20 +401,23 @@ std::vector<CachedPipelineId> ShaderCache::remove(assets::AssetId<Shader> id) {
     return affected;
 }
 
-// ─── sync_shaders (system) ────────────────────────────────────────────────
-void ShaderCache::sync_shaders(core::ResMut<ShaderCache> cache,
-                               core::Res<assets::Assets<Shader>> shaders,
-                               core::EventReader<assets::AssetEvent<Shader>> events) {
-    for (const auto& event : events.read()) {
+// ─── sync ─────────────────────────────────────────────────────────────────
+std::vector<CachedPipelineId> ShaderCache::sync(utils::input_iterable<assets::AssetEvent<Shader>> events,
+                                                const assets::Assets<Shader>& shaders) {
+    std::vector<CachedPipelineId> affected;
+    for (const auto& event : events) {
         if (event.is_added() || event.is_modified()) {
-            auto val = shaders->get(event.id);
+            auto val = shaders.get(event.id);
             if (val.has_value()) {
-                cache->set_shader(event.id, val->get());
+                auto ids = set_shader(event.id, val->get());
+                affected.insert(affected.end(), ids.begin(), ids.end());
             }
-        } else if (event.is_unused()) {
-            cache->remove(event.id);
+        } else if (event.is_unused() || event.is_removed()) {
+            auto ids = remove(event.id);
+            affected.insert(affected.end(), ids.begin(), ids.end());
         }
     }
+    return affected;
 }
 
 }  // namespace epix::shader

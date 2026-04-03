@@ -609,10 +609,13 @@ void ShaderPlugin::build(core::App& app) {
     assets::app_register_loader<ShaderLoader>(app);
 
     // Sync loaded/modified/unused shader assets to ShaderCache (skipped if no ShaderCache resource).
-    app.add_systems(core::Last, core::into(ShaderCache::sync_shaders)
-                                    .after(assets::AssetSystems::WriteEvents)
-                                    .run_if([](std::optional<core::Res<ShaderCache>> opt) { return opt.has_value(); })
-                                    .set_name("sync shader cache"));
+    app.add_systems(
+        core::Last,
+        core::into([](core::ResMut<ShaderCache> cache, core::Res<assets::Assets<Shader>> shaders,
+                      core::EventReader<assets::AssetEvent<Shader>> events) { cache->sync(events.read(), *shaders); })
+            .after(assets::AssetSystems::WriteEvents)
+            .run_if([](std::optional<core::Res<ShaderCache>> opt) { return opt.has_value(); })
+            .set_name("sync shader cache"));
 
     if (app.world_mut().get_resource<assets::AssetProcessor>().has_value()) {
         assets::app_register_asset_processor<ShaderProcessor>(app, ShaderProcessor{});

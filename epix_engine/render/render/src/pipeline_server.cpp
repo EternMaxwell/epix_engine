@@ -296,17 +296,11 @@ void PipelineServer::process_pipeline_system(ResMut<PipelineServer> pipeline_ser
 void PipelineServer::extract_shaders(ResMut<PipelineServer> pipeline_server,
                                      Extract<Res<assets::Assets<Shader>>> shaders,
                                      Extract<EventReader<assets::AssetEvent<Shader>>> shader_events) {
-    for (const auto& event : shader_events.read()) {
-        if (event.is_added() || event.is_modified()) {
-            spdlog::trace("[render.pipeline] Shader asset event (added/modified) for '{}'.",
-                          assets::UntypedAssetId(event.id));
-            if (auto shader = shaders->try_get(event.id)) {
-                pipeline_server->set_shader(event.id, *shader);
-            }
-        } else if (event.is_removed()) {
-            spdlog::trace("[render.pipeline] Shader asset event (removed) for '{}'.", assets::UntypedAssetId(event.id));
-            pipeline_server->remove_shader(event.id);
-        }
+    auto shader_cache = pipeline_server->shader_cache->lock();
+    auto affected     = shader_cache->sync(shader_events.read(), *shaders);
+    for (CachedPipelineId id : affected) {
+        pipeline_server->pipelines[id].state = PipelineStateQueued{};
+        pipeline_server->waiting_pipelines.insert(id);
     }
 }
 }  // namespace epix::render

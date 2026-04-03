@@ -537,6 +537,17 @@ TEST(ShaderCacheError, CreateModuleFailed_StoresMessage) {
     EXPECT_EQ(std::get<ShaderCacheError::CreateShaderModule>(err.data).wgpu_message, "webgpu error");
 }
 
+TEST(ShaderCacheError, SlangError_StoresStageAndMessage) {
+    using Stage = ShaderCacheError::SlangCompileError::Stage;
+    for (auto stage : {Stage::SessionCreation, Stage::ModuleLoad, Stage::Compose, Stage::Link, Stage::CodeGeneration}) {
+        auto err = ShaderCacheError::slang_error(stage, "test msg");
+        ASSERT_TRUE(std::holds_alternative<ShaderCacheError::SlangCompileError>(err.data));
+        auto& se = std::get<ShaderCacheError::SlangCompileError>(err.data);
+        EXPECT_EQ(se.stage, stage);
+        EXPECT_EQ(se.message, "test msg");
+    }
+}
+
 TEST(ShaderCacheError, ProcessError_IsCorrectVariant) {
     ComposeError ce{ComposeError::ImportNotFound{"missing"}};
     auto err = ShaderCacheError::process_error(ce);
