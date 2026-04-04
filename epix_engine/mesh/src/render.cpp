@@ -173,18 +173,59 @@ float4 main(FragmentInput input) : SV_Target {
 }
 )";
 
-const assets::AssetId<shader::Shader> kMeshSolidVertexShaderId(
-    uuids::uuid::from_string("63191e5e-7ef8-4f38-b08a-c3e1fb7ebc31").value());
-const assets::AssetId<shader::Shader> kMeshVertexColorShaderId(
-    uuids::uuid::from_string("a9fbc001-c1df-4f55-8b42-a789aa0434e5").value());
-const assets::AssetId<shader::Shader> kMeshTexturedVertexShaderId(
-    uuids::uuid::from_string("4e8cc4d7-fffc-4d15-85a6-4661905f8a87").value());
-const assets::AssetId<shader::Shader> kMeshTexturedVertexColorShaderId(
-    uuids::uuid::from_string("cde0ce74-ed98-43ca-8995-b294fce1b372").value());
-const assets::AssetId<shader::Shader> kMeshColorFragmentShaderId(
-    uuids::uuid::from_string("906bb4fb-0cd4-44d0-adbf-5becf7352034").value());
-const assets::AssetId<shader::Shader> kMeshTexturedFragmentShaderId(
-    uuids::uuid::from_string("77d59064-22e7-42b1-a09c-c885320f4678").value());
+constexpr std::string_view kMeshSolidVertexShaderAssetPath         = "mesh/solid_vertex.slang";
+constexpr std::string_view kMeshVertexColorShaderAssetPath         = "mesh/vertex_color_vertex.slang";
+constexpr std::string_view kMeshTexturedVertexShaderAssetPath      = "mesh/textured_vertex.slang";
+constexpr std::string_view kMeshTexturedVertexColorShaderAssetPath = "mesh/textured_vertex_color_vertex.slang";
+constexpr std::string_view kMeshColorFragmentShaderAssetPath       = "mesh/color_fragment.slang";
+constexpr std::string_view kMeshTexturedFragmentShaderAssetPath    = "mesh/textured_fragment.slang";
+
+std::span<const std::byte> shader_bytes(std::string_view source) {
+    return std::span<const std::byte>(reinterpret_cast<const std::byte*>(source.data()), source.size());
+}
+
+struct MeshShaderHandles {
+    assets::Handle<shader::Shader> solid_vertex_shader;
+    assets::Handle<shader::Shader> vertex_color_shader;
+    assets::Handle<shader::Shader> textured_vertex_shader;
+    assets::Handle<shader::Shader> textured_vertex_color_shader;
+    assets::Handle<shader::Shader> color_fragment_shader;
+    assets::Handle<shader::Shader> textured_fragment_shader;
+};
+
+std::optional<MeshShaderHandles> load_mesh_shader_handles(World& world) {
+    auto registry = world.get_resource_mut<assets::EmbeddedAssetRegistry>();
+    auto server   = world.get_resource<assets::AssetServer>();
+    if (!registry || !server) {
+        spdlog::warn(
+            "[mesh] EmbeddedAssetRegistry or AssetServer is not available. Internal mesh shaders were not registered.");
+        return std::nullopt;
+    }
+
+    registry->get().insert_asset_static(kMeshSolidVertexShaderAssetPath, kMeshSolidVertexShaderAssetPath,
+                                        shader_bytes(kMeshSolidVertexShader));
+    registry->get().insert_asset_static(kMeshVertexColorShaderAssetPath, kMeshVertexColorShaderAssetPath,
+                                        shader_bytes(kMeshVertexColorVertexShader));
+    registry->get().insert_asset_static(kMeshTexturedVertexShaderAssetPath, kMeshTexturedVertexShaderAssetPath,
+                                        shader_bytes(kMeshTexturedVertexShader));
+    registry->get().insert_asset_static(kMeshTexturedVertexColorShaderAssetPath,
+                                        kMeshTexturedVertexColorShaderAssetPath,
+                                        shader_bytes(kMeshTexturedVertexColorVertexShader));
+    registry->get().insert_asset_static(kMeshColorFragmentShaderAssetPath, kMeshColorFragmentShaderAssetPath,
+                                        shader_bytes(kMeshColorFragmentShader));
+    registry->get().insert_asset_static(kMeshTexturedFragmentShaderAssetPath, kMeshTexturedFragmentShaderAssetPath,
+                                        shader_bytes(kMeshTexturedFragmentShader));
+
+    return MeshShaderHandles{
+        .solid_vertex_shader    = server->get().load<shader::Shader>("embedded://mesh/solid_vertex.slang"),
+        .vertex_color_shader    = server->get().load<shader::Shader>("embedded://mesh/vertex_color_vertex.slang"),
+        .textured_vertex_shader = server->get().load<shader::Shader>("embedded://mesh/textured_vertex.slang"),
+        .textured_vertex_color_shader =
+            server->get().load<shader::Shader>("embedded://mesh/textured_vertex_color_vertex.slang"),
+        .color_fragment_shader    = server->get().load<shader::Shader>("embedded://mesh/color_fragment.slang"),
+        .textured_fragment_shader = server->get().load<shader::Shader>("embedded://mesh/textured_fragment.slang"),
+    };
+}
 
 enum class MeshShaderVariant : std::uint8_t {
     SolidColor,
@@ -245,15 +286,15 @@ struct Mesh2dPipelineCache {
     wgpu::BindGroupLayout view_layout;
     wgpu::BindGroupLayout mesh_layout;
     wgpu::BindGroupLayout texture_layout;
-    assets::Handle<shader::Shader> solid_vertex_shader{kMeshSolidVertexShaderId};
-    assets::Handle<shader::Shader> vertex_color_shader{kMeshVertexColorShaderId};
-    assets::Handle<shader::Shader> textured_vertex_shader{kMeshTexturedVertexShaderId};
-    assets::Handle<shader::Shader> textured_vertex_color_shader{kMeshTexturedVertexColorShaderId};
-    assets::Handle<shader::Shader> color_fragment_shader{kMeshColorFragmentShaderId};
-    assets::Handle<shader::Shader> textured_fragment_shader{kMeshTexturedFragmentShaderId};
+    assets::Handle<shader::Shader> solid_vertex_shader;
+    assets::Handle<shader::Shader> vertex_color_shader;
+    assets::Handle<shader::Shader> textured_vertex_shader;
+    assets::Handle<shader::Shader> textured_vertex_color_shader;
+    assets::Handle<shader::Shader> color_fragment_shader;
+    assets::Handle<shader::Shader> textured_fragment_shader;
     std::unordered_map<Mesh2dPipelineKey, render::CachedPipelineId, Mesh2dPipelineKeyHash> pipelines;
 
-    explicit Mesh2dPipelineCache(World& world)
+    explicit Mesh2dPipelineCache(World& world, const MeshShaderHandles& shader_handles)
         : view_layout(world.resource<render::view::ViewUniformBindingLayout>().layout),
           mesh_layout(world.resource<wgpu::Device>().createBindGroupLayout(
               wgpu::BindGroupLayoutDescriptor()
@@ -282,7 +323,13 @@ struct Mesh2dPipelineCache {
                                           .setSampleType(wgpu::TextureSampleType::eFloat)
                                           .setViewDimension(wgpu::TextureViewDimension::e2D)
                                           .setMultisampled(false)),
-                  }))) {}
+                  }))),
+          solid_vertex_shader(shader_handles.solid_vertex_shader),
+          vertex_color_shader(shader_handles.vertex_color_shader),
+          textured_vertex_shader(shader_handles.textured_vertex_shader),
+          textured_vertex_color_shader(shader_handles.textured_vertex_color_shader),
+          color_fragment_shader(shader_handles.color_fragment_shader),
+          textured_fragment_shader(shader_handles.textured_fragment_shader) {}
 
     std::optional<render::CachedPipelineId> specialize(render::PipelineServer& pipeline_server,
                                                        const MeshAttributeLayout& layout,
@@ -418,33 +465,6 @@ struct MeshOpaqueBatchKey {
     std::strong_ordering operator<=>(const MeshOpaqueBatchKey& other) const = default;
     bool operator==(const MeshOpaqueBatchKey&) const                        = default;
 };
-
-void insert_mesh_shaders(assets::Assets<shader::Shader>& shaders) {
-    auto solid_vertex_path          = std::filesystem::path("embedded://mesh/solid_vertex.slang");
-    auto vertex_color_path          = std::filesystem::path("embedded://mesh/vertex_color_vertex.slang");
-    auto textured_vertex_path       = std::filesystem::path("embedded://mesh/textured_vertex.slang");
-    auto textured_vertex_color_path = std::filesystem::path("embedded://mesh/textured_vertex_color_vertex.slang");
-    auto color_fragment_path        = std::filesystem::path("embedded://mesh/color_fragment.slang");
-    auto textured_fragment_path     = std::filesystem::path("embedded://mesh/textured_fragment.slang");
-    [[maybe_unused]] auto solid_vertex =
-        shaders.insert(kMeshSolidVertexShaderId,
-                       shader::Shader::from_slang(std::string(kMeshSolidVertexShader), solid_vertex_path.string()));
-    [[maybe_unused]] auto vertex_color_vertex = shaders.insert(
-        kMeshVertexColorShaderId,
-        shader::Shader::from_slang(std::string(kMeshVertexColorVertexShader), vertex_color_path.string()));
-    [[maybe_unused]] auto textured_vertex = shaders.insert(
-        kMeshTexturedVertexShaderId,
-        shader::Shader::from_slang(std::string(kMeshTexturedVertexShader), textured_vertex_path.string()));
-    [[maybe_unused]] auto textured_vertex_color = shaders.insert(
-        kMeshTexturedVertexColorShaderId, shader::Shader::from_slang(std::string(kMeshTexturedVertexColorVertexShader),
-                                                                     textured_vertex_color_path.string()));
-    [[maybe_unused]] auto color_fragment =
-        shaders.insert(kMeshColorFragmentShaderId,
-                       shader::Shader::from_slang(std::string(kMeshColorFragmentShader), color_fragment_path.string()));
-    [[maybe_unused]] auto textured_fragment = shaders.insert(
-        kMeshTexturedFragmentShaderId,
-        shader::Shader::from_slang(std::string(kMeshTexturedFragmentShader), textured_fragment_path.string()));
-}
 
 void extract_meshes_2d(Commands cmd,
                        Extract<Query<Item<Entity,
@@ -711,17 +731,26 @@ void MeshRenderPlugin::build(core::App& app) {
     app.add_plugins(MeshPlugin{});
     app.add_plugins(core_graph::core_2d::Core2dPlugin{});
     app.add_plugins(render::ExtractAssetPlugin<Mesh>{});
+
+    if (!app.world_mut().get_resource<MeshShaderHandles>()) {
+        if (auto shader_handles = load_mesh_shader_handles(app.world_mut())) {
+            app.world_mut().insert_resource(std::move(*shader_handles));
+        }
+    }
 }
 
 void MeshRenderPlugin::finish(core::App& app) {
     spdlog::debug("[mesh] Finishing MeshRenderPlugin.");
-    auto shaders = app.world_mut().get_resource_mut<assets::Assets<shader::Shader>>();
-    if (shaders) {
-        insert_mesh_shaders(shaders->get());
-    } else {
-        spdlog::warn(
-            "[mesh] MeshRenderPlugin could not find Assets<shader::Shader> in the main world. Internal mesh shaders "
-            "were not inserted.");
+    if (!app.world_mut().get_resource<MeshShaderHandles>()) {
+        if (auto shader_handles = load_mesh_shader_handles(app.world_mut())) {
+            app.world_mut().insert_resource(std::move(*shader_handles));
+        }
+    }
+
+    auto shader_handles = app.world_mut().get_resource<MeshShaderHandles>();
+    if (!shader_handles) {
+        spdlog::error("[mesh] MeshRenderPlugin could not load internal mesh shaders through AssetServer.");
+        return;
     }
 
     auto render_app = app.get_sub_app_mut(render::Render);
@@ -737,7 +766,7 @@ void MeshRenderPlugin::finish(core::App& app) {
         world.insert_resource(MeshInstanceBuffer{});
     }
     if (!world.get_resource<Mesh2dPipelineCache>()) {
-        world.init_resource<Mesh2dPipelineCache>();
+        world.insert_resource(Mesh2dPipelineCache(world, shader_handles->get()));
     }
     auto& render_subapp = render_app->get();
     world.insert_resource(OpaqueMesh2dDrawFunction{

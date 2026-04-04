@@ -199,7 +199,7 @@ TEST(ShaderImport, AssetPathModuleName) {
     auto imp = ShaderImport::asset_path("shaders/common.wgsl");
     EXPECT_TRUE(imp.is_asset_path());
     EXPECT_EQ(imp.as_asset_path().path.generic_string(), "shaders/common.wgsl");
-    EXPECT_EQ(imp.module_name(), '"' + imp.as_asset_path().string() + '"');
+    EXPECT_EQ(imp.module_name(), "\"shaders/common.wgsl\"");
 }
 
 TEST(ShaderImport, CustomModuleName) {

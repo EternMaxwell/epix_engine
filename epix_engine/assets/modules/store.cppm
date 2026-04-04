@@ -260,7 +260,8 @@ struct AssetStorage {
 
 /** @brief Lifecycle event for an asset of type T.
  *  Created automatically by Assets<T> when assets are added, removed,
- *  modified, loaded, or when all strong handles are dropped. */
+ *  modified, when all strong handles are dropped, or when recursive
+ *  dependencies have finished loading. */
 export template <typename T>
 struct AssetEvent {
     /** @brief Event kind discriminator. */
@@ -269,7 +270,6 @@ struct AssetEvent {
         Removed,               /**< Asset was removed from storage. */
         Modified,              /**< Asset value was replaced or mutably accessed. */
         Unused,                /**< All strong handles have been destroyed. */
-        Loaded,                /**< Asset finished loading from disk/network. */
         LoadedWithDependencies /**< Asset and all its dependencies finished loading. */
     } type;
     /** @brief The id of the asset this event refers to. */
@@ -283,8 +283,6 @@ struct AssetEvent {
     static AssetEvent<T> modified(const AssetId<T>& id) { return {Type::Modified, id}; }
     /** @brief Create an Unused event (all strong handles dropped). */
     static AssetEvent<T> unused(const AssetId<T>& id) { return {Type::Unused, id}; }
-    /** @brief Create a Loaded event. */
-    static AssetEvent<T> loaded(const AssetId<T>& id) { return {Type::Loaded, id}; }
     /** @brief Create a LoadedWithDependencies event. */
     static AssetEvent<T> loaded_with_dependencies(const AssetId<T>& id) { return {Type::LoadedWithDependencies, id}; }
 
@@ -296,8 +294,6 @@ struct AssetEvent {
     bool is_modified() const { return type == Type::Modified; }
     /** @brief Check if this is an Unused event. */
     bool is_unused() const { return type == Type::Unused; }
-    /** @brief Check if this is a Loaded event. */
-    bool is_loaded() const { return type == Type::Loaded; }
     /** @brief Check if this is a LoadedWithDependencies event. */
     bool is_loaded_with_dependencies() const { return type == Type::LoadedWithDependencies; }
 
@@ -309,8 +305,6 @@ struct AssetEvent {
     bool is_modified(const AssetId<T>& asset_id) const { return type == Type::Modified && id == asset_id; }
     /** @brief Check if this is an Unused event for a specific asset. */
     bool is_unused(const AssetId<T>& asset_id) const { return type == Type::Unused && id == asset_id; }
-    /** @brief Check if this is a Loaded event for a specific asset. */
-    bool is_loaded(const AssetId<T>& asset_id) const { return type == Type::Loaded && id == asset_id; }
     /** @brief Check if this is a LoadedWithDependencies event for a specific asset. */
     bool is_loaded_with_dependencies(const AssetId<T>& asset_id) const {
         return type == Type::LoadedWithDependencies && id == asset_id;

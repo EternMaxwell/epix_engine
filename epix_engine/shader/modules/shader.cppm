@@ -7,6 +7,27 @@ import std;
 
 namespace epix::shader {
 
+inline std::string canonical_asset_path_string(const assets::AssetPath& path) {
+    std::string normalized;
+    if (!path.source.is_default()) {
+        normalized += *path.source.as_str();
+        normalized += "://";
+    }
+
+    if (path.path.has_root_directory()) {
+        normalized += '/';
+        normalized += path.path.relative_path().generic_string();
+    } else {
+        normalized += path.path.generic_string();
+    }
+
+    if (path.label) {
+        normalized += '#';
+        normalized += *path.label;
+    }
+    return normalized;
+}
+
 // ─── ShaderId ──────────────────────────────────────────────────────────────
 export struct ShaderId {
    private:
@@ -119,7 +140,7 @@ export struct ShaderImport {
     //   AssetPath → '"' + AssetPath::string() + '"'
     //   Custom    → name verbatim
     std::string module_name() const {
-        if (is_asset_path()) return '"' + as_asset_path().string() + '"';
+        if (is_asset_path()) return '"' + canonical_asset_path_string(as_asset_path()) + '"';
         return as_custom();
     }
 
@@ -131,9 +152,9 @@ export struct Shader;
 
 // ─── Shader ────────────────────────────────────────────────────────────────
 export struct Shader {
-    std::string path;
+    assets::AssetPath path;
     Source source;
-    ShaderImport import_path = ShaderImport::asset_path(assets::AssetPath{});
+    ShaderImport import_path;  // default is path, e.g. asset_path(path)
     std::vector<ShaderImport> imports;
     std::vector<ShaderDefVal> shader_defs;
     std::vector<assets::Handle<Shader>> file_dependencies;
@@ -141,17 +162,21 @@ export struct Shader {
 
     // Parses WGSL source to extract #define_import_path and #import directives.
     static std::pair<ShaderImport, std::vector<ShaderImport>> preprocess(std::string_view source,
-                                                                         std::string_view path);
+                                                                         const assets::AssetPath& path);
 
     // Parses Slang source to extract `import X;` statements.
     static std::pair<ShaderImport, std::vector<ShaderImport>> preprocess_slang(std::string_view source,
-                                                                               std::string_view path);
+                                                                               const assets::AssetPath& path);
 
-    static Shader from_wgsl(std::string source, std::string path);
-    static Shader from_wgsl_with_defs(std::string source, std::string path, std::vector<ShaderDefVal> shader_defs);
-    static Shader from_spirv(std::vector<std::uint8_t> source, std::string path);
-    static Shader from_slang(std::string source, std::string path);
-    static Shader from_slang_with_defs(std::string source, std::string path, std::vector<ShaderDefVal> shader_defs);
+    static Shader from_wgsl(std::string source, assets::AssetPath path);
+    static Shader from_wgsl_with_defs(std::string source,
+                                      assets::AssetPath path,
+                                      std::vector<ShaderDefVal> shader_defs);
+    static Shader from_spirv(std::vector<std::uint8_t> source, assets::AssetPath path);
+    static Shader from_slang(std::string source, assets::AssetPath path);
+    static Shader from_slang_with_defs(std::string source,
+                                       assets::AssetPath path,
+                                       std::vector<ShaderDefVal> shader_defs);
 };
 
 // ─── ShaderSettings ────────────────────────────────────────────────────────

@@ -127,7 +127,7 @@ TEST(ShaderLoaderWgsl, BasicLoad) {
     ASSERT_TRUE(val.has_value());
     EXPECT_TRUE(val->get().source.is_wgsl());
     EXPECT_EQ(val->get().source.as_str(), "fn main() {}");
-    EXPECT_EQ(val->get().path, "test.wgsl");
+    EXPECT_EQ(val->get().path, AssetPath("test.wgsl"));
 }
 
 TEST(ShaderLoaderWgsl, ImportPath_SetByDirective) {
@@ -211,6 +211,104 @@ TEST(ShaderLoaderWgsl, MultipleImports_AllDepsLoaded) {
     EXPECT_EQ(shader.file_dependencies.size(), 2u);
 }
 
+TEST(ShaderLoaderWgsl, EmbeddedSource_RelativeImportKeepsSourceAndResolvesRelativePath) {
+    App app = App::create();
+    AssetPlugin plugin;
+    plugin.build(app);
+    epix::assets::app_register_asset<Shader>(app);
+    epix::assets::app_register_loader<ShaderLoader>(app);
+
+    auto registry = app.world_mut().get_resource_mut<EmbeddedAssetRegistry>();
+    ASSERT_TRUE(registry.has_value());
+
+    registry->get().insert_asset_static(
+        "mesh/main.wgsl", "mesh/main.wgsl",
+        std::as_bytes(std::span(std::string_view{"#import \"common/view.wgsl\"\nfn main() {}"})));
+    registry->get().insert_asset_static(
+        "mesh/common/view.wgsl", "mesh/common/view.wgsl",
+        std::as_bytes(std::span(std::string_view{"#define_import_path epix::view\nfn helper() {}"})));
+
+    auto& server = app.resource<AssetServer>();
+    auto handle  = server.load<Shader>(AssetPath("embedded://mesh/main.wgsl"));
+    flush_load_tasks(app);
+
+    ASSERT_TRUE(server.is_loaded(handle.id()));
+    auto& assets = app.resource<Assets<Shader>>();
+    auto val     = assets.get(handle.id());
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(val->get().path, AssetPath("embedded://mesh/main.wgsl"));
+    ASSERT_EQ(val->get().file_dependencies.size(), 1u);
+    auto dep_path = val->get().file_dependencies[0].path();
+    ASSERT_TRUE(dep_path.has_value());
+    ASSERT_TRUE(dep_path->source.has_value());
+    EXPECT_EQ(*dep_path->source, "embedded");
+    EXPECT_EQ(dep_path->path.generic_string(), "mesh/common/view.wgsl");
+}
+
+TEST(ShaderLoaderWgsl, EmbeddedSource_RootRelativeImportUsesSameSourceRoot) {
+    App app = App::create();
+    AssetPlugin plugin;
+    plugin.build(app);
+    epix::assets::app_register_asset<Shader>(app);
+    epix::assets::app_register_loader<ShaderLoader>(app);
+
+    auto registry = app.world_mut().get_resource_mut<EmbeddedAssetRegistry>();
+    ASSERT_TRUE(registry.has_value());
+
+    registry->get().insert_asset_static(
+        "mesh/main.wgsl", "mesh/main.wgsl",
+        std::as_bytes(std::span(std::string_view{"#import \"/shared/view.wgsl\"\nfn main() {}"})));
+    registry->get().insert_asset_static("shared/view.wgsl", "shared/view.wgsl",
+                                        std::as_bytes(std::span(std::string_view{"fn helper() {}"})));
+
+    auto& server = app.resource<AssetServer>();
+    auto handle  = server.load<Shader>(AssetPath("embedded://mesh/main.wgsl"));
+    flush_load_tasks(app);
+
+    ASSERT_TRUE(server.is_loaded(handle.id()));
+    auto& assets = app.resource<Assets<Shader>>();
+    auto val     = assets.get(handle.id());
+    ASSERT_TRUE(val.has_value());
+    ASSERT_EQ(val->get().file_dependencies.size(), 1u);
+    auto dep_path = val->get().file_dependencies[0].path();
+    ASSERT_TRUE(dep_path.has_value());
+    ASSERT_TRUE(dep_path->source.has_value());
+    EXPECT_EQ(*dep_path->source, "embedded");
+    EXPECT_EQ(dep_path->path.generic_string(), "shared/view.wgsl");
+}
+
+TEST(ShaderLoaderWgsl, EmbeddedSource_FullPathImportPreservesExplicitSource) {
+    App app = App::create();
+    AssetPlugin plugin;
+    plugin.build(app);
+    epix::assets::app_register_asset<Shader>(app);
+    epix::assets::app_register_loader<ShaderLoader>(app);
+
+    auto registry = app.world_mut().get_resource_mut<EmbeddedAssetRegistry>();
+    ASSERT_TRUE(registry.has_value());
+
+    registry->get().insert_asset_static(
+        "mesh/main.wgsl", "mesh/main.wgsl",
+        std::as_bytes(std::span(std::string_view{"#import \"embedded://shared/view.wgsl\"\nfn main() {}"})));
+    registry->get().insert_asset_static("shared/view.wgsl", "shared/view.wgsl",
+                                        std::as_bytes(std::span(std::string_view{"fn helper() {}"})));
+
+    auto& server = app.resource<AssetServer>();
+    auto handle  = server.load<Shader>(AssetPath("embedded://mesh/main.wgsl"));
+    flush_load_tasks(app);
+
+    ASSERT_TRUE(server.is_loaded(handle.id()));
+    auto& assets = app.resource<Assets<Shader>>();
+    auto val     = assets.get(handle.id());
+    ASSERT_TRUE(val.has_value());
+    ASSERT_EQ(val->get().file_dependencies.size(), 1u);
+    auto dep_path = val->get().file_dependencies[0].path();
+    ASSERT_TRUE(dep_path.has_value());
+    ASSERT_TRUE(dep_path->source.has_value());
+    EXPECT_EQ(*dep_path->source, "embedded");
+    EXPECT_EQ(dep_path->path.generic_string(), "shared/view.wgsl");
+}
+
 TEST(ShaderLoaderWgsl, ShaderDefs_Applied) {
     // The ShaderLoader takes Settings with shader_defs but doesn't modify source here —
     // it stores them on the Shader for cache-time use. Verify they are attached.
@@ -245,7 +343,7 @@ TEST(ShaderLoaderSpirv, BasicLoad) {
     auto val     = assets.get(handle.id());
     ASSERT_TRUE(val.has_value());
     EXPECT_TRUE(val->get().source.is_spirv());
-    EXPECT_EQ(val->get().path, "shader.spv");
+    EXPECT_EQ(val->get().path, AssetPath("shader.spv"));
     EXPECT_TRUE(val->get().imports.empty());
 }
 
@@ -286,7 +384,7 @@ TEST(ShaderLoaderSlang, BasicLoad) {
     auto val     = assets.get(handle.id());
     ASSERT_TRUE(val.has_value());
     EXPECT_TRUE(val->get().source.is_slang());
-    EXPECT_EQ(val->get().path, "test.slang");
+    EXPECT_EQ(val->get().path, AssetPath("test.slang"));
 }
 
 TEST(ShaderLoaderSlang, ImportStatement_ExtractsImportsAndLoadsDeps) {
@@ -309,8 +407,9 @@ TEST(ShaderLoaderSlang, ImportStatement_ExtractsImportsAndLoadsDeps) {
     ASSERT_TRUE(val.has_value());
     auto& shader = val->get();
     ASSERT_EQ(shader.imports.size(), 1u);
-    EXPECT_EQ(shader.imports[0].as_asset_path().path.generic_string(), "utility.slang");
-    EXPECT_EQ(shader.file_dependencies.size(), 1u);
+    EXPECT_TRUE(shader.imports[0].is_custom());
+    EXPECT_EQ(shader.imports[0].as_custom(), "utility.slang");
+    EXPECT_EQ(shader.file_dependencies.size(), 0u);
 }
 
 TEST(ShaderLoaderSlang, DottedImport_ConvertedToPath) {
@@ -329,8 +428,9 @@ TEST(ShaderLoaderSlang, DottedImport_ConvertedToPath) {
     auto val     = assets.get(handle.id());
     ASSERT_TRUE(val.has_value());
     ASSERT_EQ(val->get().imports.size(), 1u);
-    EXPECT_EQ(val->get().imports[0].as_asset_path().path.generic_string(), "math/vec.slang");
-    EXPECT_EQ(val->get().file_dependencies.size(), 1u);
+    EXPECT_TRUE(val->get().imports[0].is_custom());
+    EXPECT_EQ(val->get().imports[0].as_custom(), "math/vec.slang");
+    EXPECT_EQ(val->get().file_dependencies.size(), 0u);
 }
 
 TEST(ShaderLoaderSlang, UnderscoreToHyphen_InImport) {
@@ -348,10 +448,11 @@ TEST(ShaderLoaderSlang, UnderscoreToHyphen_InImport) {
     auto val     = assets.get(handle.id());
     ASSERT_TRUE(val.has_value());
     ASSERT_EQ(val->get().imports.size(), 1u);
-    EXPECT_EQ(val->get().imports[0].as_asset_path().path.generic_string(), "my-lib.slang");
+    EXPECT_TRUE(val->get().imports[0].is_custom());
+    EXPECT_EQ(val->get().imports[0].as_custom(), "my-lib.slang");
 }
 
-TEST(ShaderLoaderSlang, IncludeStatement_LoadsDeps) {
+TEST(ShaderLoaderSlang, IncludeStatement_RemainsCustomImport) {
     auto dir = memory::Directory::create({});
     dir.insert_file("scene-helpers.slang",
                     memory::Value::from_shared(make_bytes("implementing scene;\nfloat helper() { return 1.0; }")));
@@ -369,11 +470,13 @@ TEST(ShaderLoaderSlang, IncludeStatement_LoadsDeps) {
     ASSERT_TRUE(val.has_value());
     auto& shader = val->get();
     // module declaration sets import_path
-    EXPECT_EQ(shader.import_path.as_asset_path().path.generic_string(), "scene.slang");
+    EXPECT_TRUE(shader.import_path.is_custom());
+    EXPECT_EQ(shader.import_path.as_custom(), "scene.slang");
     // __include scene_helpers → scene-helpers.slang
     ASSERT_EQ(shader.imports.size(), 1u);
-    EXPECT_EQ(shader.imports[0].as_asset_path().path.generic_string(), "scene-helpers.slang");
-    EXPECT_EQ(shader.file_dependencies.size(), 1u);
+    EXPECT_TRUE(shader.imports[0].is_custom());
+    EXPECT_EQ(shader.imports[0].as_custom(), "scene-helpers.slang");
+    EXPECT_TRUE(shader.file_dependencies.empty());
 }
 
 TEST(ShaderLoaderSlang, StringLiteralImport_LoadsDeps) {
@@ -409,7 +512,8 @@ TEST(ShaderLoaderSlang, ModuleDeclaration_SetsImportPath) {
     auto& assets = app.resource<Assets<Shader>>();
     auto val     = assets.get(handle.id());
     ASSERT_TRUE(val.has_value());
-    EXPECT_EQ(val->get().import_path.as_asset_path().path.generic_string(), "graphics.slang");
+    EXPECT_TRUE(val->get().import_path.is_custom());
+    EXPECT_EQ(val->get().import_path.as_custom(), "graphics.slang");
 }
 
 TEST(ShaderLoaderSlang, MixedImportAndInclude_AllDepsLoaded) {
@@ -434,15 +538,213 @@ TEST(ShaderLoaderSlang, MixedImportAndInclude_AllDepsLoaded) {
     auto val     = assets.get(handle.id());
     ASSERT_TRUE(val.has_value());
     auto& shader = val->get();
-    EXPECT_EQ(shader.import_path.as_asset_path().path.generic_string(), "my-app.slang");
+    EXPECT_TRUE(shader.import_path.is_custom());
+    EXPECT_EQ(shader.import_path.as_custom(), "my-app.slang");
     ASSERT_EQ(shader.imports.size(), 3u);
-    EXPECT_EQ(shader.imports[0].as_asset_path().path.generic_string(), "utils.slang");
-    EXPECT_EQ(shader.imports[1].as_asset_path().path.generic_string(), "app-helpers.slang");
+    EXPECT_TRUE(shader.imports[0].is_custom());
+    EXPECT_EQ(shader.imports[0].as_custom(), "utils.slang");
+    EXPECT_TRUE(shader.imports[1].is_custom());
+    EXPECT_EQ(shader.imports[1].as_custom(), "app-helpers.slang");
     EXPECT_EQ(shader.imports[2].as_asset_path().path.generic_string(), "third-party/lib.slang");
-    EXPECT_EQ(shader.file_dependencies.size(), 3u);
+    EXPECT_EQ(shader.file_dependencies.size(), 1u);
 }
 
-TEST(ShaderLoaderSlang, MultipleImports_AllDepsLoaded) {
+TEST(ShaderLoaderSlang, EmbeddedSource_RootRelativeImportUsesSameSourceRoot) {
+    App app = App::create();
+    AssetPlugin plugin;
+    plugin.build(app);
+    epix::assets::app_register_asset<Shader>(app);
+    epix::assets::app_register_loader<ShaderLoader>(app);
+
+    auto registry = app.world_mut().get_resource_mut<EmbeddedAssetRegistry>();
+    ASSERT_TRUE(registry.has_value());
+
+    registry->get().insert_asset_static(
+        "mesh/main.slang", "mesh/main.slang",
+        std::as_bytes(std::span(std::string_view{"import \"/shared/view\";\nvoid main() {}"})));
+    registry->get().insert_asset_static("shared/view.slang", "shared/view.slang",
+                                        std::as_bytes(std::span(std::string_view{"module \"shared/view\";\n"})));
+
+    auto& server = app.resource<AssetServer>();
+    auto handle  = server.load<Shader>(AssetPath("embedded://mesh/main.slang"));
+    flush_load_tasks(app);
+
+    ASSERT_TRUE(server.is_loaded(handle.id()));
+    auto& assets = app.resource<Assets<Shader>>();
+    auto val     = assets.get(handle.id());
+    ASSERT_TRUE(val.has_value());
+    ASSERT_EQ(val->get().file_dependencies.size(), 1u);
+    auto dep_path = val->get().file_dependencies[0].path();
+    ASSERT_TRUE(dep_path.has_value());
+    ASSERT_TRUE(dep_path->source.as_str().has_value());
+    EXPECT_EQ(dep_path->source.as_str().value(), "embedded");
+    EXPECT_EQ(dep_path->path.generic_string(), "shared/view.slang");
+}
+
+TEST(ShaderLoaderSlang, EmbeddedSource_RelativeImportKeepsSourceAndResolvesRelativePath) {
+    App app = App::create();
+    AssetPlugin plugin;
+    plugin.build(app);
+    epix::assets::app_register_asset<Shader>(app);
+    epix::assets::app_register_loader<ShaderLoader>(app);
+
+    auto registry = app.world_mut().get_resource_mut<EmbeddedAssetRegistry>();
+    ASSERT_TRUE(registry.has_value());
+
+    registry->get().insert_asset_static(
+        "mesh/main.slang", "mesh/main.slang",
+        std::as_bytes(std::span(std::string_view{"import \"common/view\";\nvoid main() {}"})));
+    registry->get().insert_asset_static("mesh/common/view.slang", "mesh/common/view.slang",
+                                        std::as_bytes(std::span(std::string_view{"module \"common/view\";\n"})));
+
+    auto& server = app.resource<AssetServer>();
+    auto handle  = server.load<Shader>(AssetPath("embedded://mesh/main.slang"));
+    flush_load_tasks(app);
+
+    ASSERT_TRUE(server.is_loaded(handle.id()));
+    auto& assets = app.resource<Assets<Shader>>();
+    auto val     = assets.get(handle.id());
+    ASSERT_TRUE(val.has_value());
+    ASSERT_EQ(val->get().file_dependencies.size(), 1u);
+    auto dep_path = val->get().file_dependencies[0].path();
+    ASSERT_TRUE(dep_path.has_value());
+    ASSERT_TRUE(dep_path->source.as_str().has_value());
+    EXPECT_EQ(dep_path->source.as_str().value(), "embedded");
+    EXPECT_EQ(dep_path->path.generic_string(), "mesh/common/view.slang");
+}
+
+TEST(ShaderLoaderSlang, EmbeddedSource_FullPathImportPreservesExplicitSource) {
+    App app = App::create();
+    AssetPlugin plugin;
+    plugin.build(app);
+    epix::assets::app_register_asset<Shader>(app);
+    epix::assets::app_register_loader<ShaderLoader>(app);
+
+    auto registry = app.world_mut().get_resource_mut<EmbeddedAssetRegistry>();
+    ASSERT_TRUE(registry.has_value());
+
+    registry->get().insert_asset_static(
+        "mesh/main.slang", "mesh/main.slang",
+        std::as_bytes(std::span(std::string_view{"import \"embedded://shared/view\";\nvoid main() {}"})));
+    registry->get().insert_asset_static("shared/view.slang", "shared/view.slang",
+                                        std::as_bytes(std::span(std::string_view{"module \"shared/view\";\n"})));
+
+    auto& server = app.resource<AssetServer>();
+    auto handle  = server.load<Shader>(AssetPath("embedded://mesh/main.slang"));
+    flush_load_tasks(app);
+
+    ASSERT_TRUE(server.is_loaded(handle.id()));
+    auto& assets = app.resource<Assets<Shader>>();
+    auto val     = assets.get(handle.id());
+    ASSERT_TRUE(val.has_value());
+    ASSERT_EQ(val->get().file_dependencies.size(), 1u);
+    auto dep_path = val->get().file_dependencies[0].path();
+    ASSERT_TRUE(dep_path.has_value());
+    ASSERT_TRUE(dep_path->source.as_str().has_value());
+    EXPECT_EQ(dep_path->source.as_str().value(), "embedded");
+    EXPECT_EQ(dep_path->path.generic_string(), "shared/view.slang");
+}
+
+TEST(ShaderLoaderSlang, EmbeddedSource_RelativeIncludeKeepsSourceAndResolvesRelativePath) {
+    App app = App::create();
+    AssetPlugin plugin;
+    plugin.build(app);
+    epix::assets::app_register_asset<Shader>(app);
+    epix::assets::app_register_loader<ShaderLoader>(app);
+
+    auto registry = app.world_mut().get_resource_mut<EmbeddedAssetRegistry>();
+    ASSERT_TRUE(registry.has_value());
+
+    registry->get().insert_asset_static(
+        "mesh/main.slang", "mesh/main.slang",
+        std::as_bytes(std::span(std::string_view{"module scene;\n__include \"common/view\";\nvoid main() {}"})));
+    registry->get().insert_asset_static(
+        "mesh/common/view.slang", "mesh/common/view.slang",
+        std::as_bytes(std::span(std::string_view{"implementing scene;\nfloat helper() { return 1.0; }"})));
+
+    auto& server = app.resource<AssetServer>();
+    auto handle  = server.load<Shader>(AssetPath("embedded://mesh/main.slang"));
+    flush_load_tasks(app);
+
+    ASSERT_TRUE(server.is_loaded(handle.id()));
+    auto& assets = app.resource<Assets<Shader>>();
+    auto val     = assets.get(handle.id());
+    ASSERT_TRUE(val.has_value());
+    ASSERT_EQ(val->get().file_dependencies.size(), 1u);
+    auto dep_path = val->get().file_dependencies[0].path();
+    ASSERT_TRUE(dep_path.has_value());
+    ASSERT_TRUE(dep_path->source.as_str().has_value());
+    EXPECT_EQ(dep_path->source.as_str().value(), "embedded");
+    EXPECT_EQ(dep_path->path.generic_string(), "mesh/common/view.slang");
+}
+
+TEST(ShaderLoaderSlang, EmbeddedSource_RootRelativeIncludeUsesSameSourceRoot) {
+    App app = App::create();
+    AssetPlugin plugin;
+    plugin.build(app);
+    epix::assets::app_register_asset<Shader>(app);
+    epix::assets::app_register_loader<ShaderLoader>(app);
+
+    auto registry = app.world_mut().get_resource_mut<EmbeddedAssetRegistry>();
+    ASSERT_TRUE(registry.has_value());
+
+    registry->get().insert_asset_static(
+        "mesh/main.slang", "mesh/main.slang",
+        std::as_bytes(std::span(std::string_view{"module scene;\n__include \"/shared/view\";\nvoid main() {}"})));
+    registry->get().insert_asset_static(
+        "shared/view.slang", "shared/view.slang",
+        std::as_bytes(std::span(std::string_view{"implementing scene;\nfloat helper() { return 1.0; }"})));
+
+    auto& server = app.resource<AssetServer>();
+    auto handle  = server.load<Shader>(AssetPath("embedded://mesh/main.slang"));
+    flush_load_tasks(app);
+
+    ASSERT_TRUE(server.is_loaded(handle.id()));
+    auto& assets = app.resource<Assets<Shader>>();
+    auto val     = assets.get(handle.id());
+    ASSERT_TRUE(val.has_value());
+    ASSERT_EQ(val->get().file_dependencies.size(), 1u);
+    auto dep_path = val->get().file_dependencies[0].path();
+    ASSERT_TRUE(dep_path.has_value());
+    ASSERT_TRUE(dep_path->source.as_str().has_value());
+    EXPECT_EQ(dep_path->source.as_str().value(), "embedded");
+    EXPECT_EQ(dep_path->path.generic_string(), "shared/view.slang");
+}
+
+TEST(ShaderLoaderSlang, EmbeddedSource_FullPathIncludePreservesExplicitSource) {
+    App app = App::create();
+    AssetPlugin plugin;
+    plugin.build(app);
+    epix::assets::app_register_asset<Shader>(app);
+    epix::assets::app_register_loader<ShaderLoader>(app);
+
+    auto registry = app.world_mut().get_resource_mut<EmbeddedAssetRegistry>();
+    ASSERT_TRUE(registry.has_value());
+
+    registry->get().insert_asset_static("mesh/main.slang", "mesh/main.slang",
+                                        std::as_bytes(std::span(std::string_view{
+                                            "module scene;\n__include \"embedded://shared/view\";\nvoid main() {}"})));
+    registry->get().insert_asset_static(
+        "shared/view.slang", "shared/view.slang",
+        std::as_bytes(std::span(std::string_view{"implementing scene;\nfloat helper() { return 1.0; }"})));
+
+    auto& server = app.resource<AssetServer>();
+    auto handle  = server.load<Shader>(AssetPath("embedded://mesh/main.slang"));
+    flush_load_tasks(app);
+
+    ASSERT_TRUE(server.is_loaded(handle.id()));
+    auto& assets = app.resource<Assets<Shader>>();
+    auto val     = assets.get(handle.id());
+    ASSERT_TRUE(val.has_value());
+    ASSERT_EQ(val->get().file_dependencies.size(), 1u);
+    auto dep_path = val->get().file_dependencies[0].path();
+    ASSERT_TRUE(dep_path.has_value());
+    ASSERT_TRUE(dep_path->source.as_str().has_value());
+    EXPECT_EQ(dep_path->source.as_str().value(), "embedded");
+    EXPECT_EQ(dep_path->path.generic_string(), "shared/view.slang");
+}
+
+TEST(ShaderLoaderSlang, MultipleImports_RemainCustomImports) {
     auto dir = memory::Directory::create({});
     dir.insert_file("alpha.slang", memory::Value::from_shared(make_bytes("float a() { return 1.0; }")));
     dir.insert_file("beta.slang", memory::Value::from_shared(make_bytes("float b() { return 2.0; }")));
@@ -460,7 +762,44 @@ TEST(ShaderLoaderSlang, MultipleImports_AllDepsLoaded) {
     auto val     = assets.get(handle.id());
     ASSERT_TRUE(val.has_value());
     EXPECT_EQ(val->get().imports.size(), 2u);
-    EXPECT_EQ(val->get().file_dependencies.size(), 2u);
+    EXPECT_TRUE(val->get().imports[0].is_custom());
+    EXPECT_EQ(val->get().imports[0].as_custom(), "alpha.slang");
+    EXPECT_TRUE(val->get().imports[1].is_custom());
+    EXPECT_EQ(val->get().imports[1].as_custom(), "beta.slang");
+    EXPECT_EQ(val->get().file_dependencies.size(), 0u);
+}
+
+TEST(ShaderLoaderSlang, EmbeddedSource_CustomImportDoesNotBecomeFileDependency) {
+    App app = App::create();
+    AssetPlugin plugin;
+    plugin.build(app);
+    epix::assets::app_register_asset<Shader>(app);
+    epix::assets::app_register_loader<ShaderLoader>(app);
+
+    auto registry = app.world_mut().get_resource_mut<EmbeddedAssetRegistry>();
+    ASSERT_TRUE(registry.has_value());
+
+    registry->get().insert_asset_static(
+        "mesh/main.slang", "mesh/main.slang",
+        std::as_bytes(std::span(std::string_view{"import epix.view;\nvoid main() {}"})));
+    registry->get().insert_asset_static("epix/shaders/view.slang", "epix/shaders/view.slang",
+                                        std::as_bytes(std::span(std::string_view{"module \"epix/view\";\n"})));
+
+    auto& server = app.resource<AssetServer>();
+    auto handle  = server.load<Shader>(AssetPath("embedded://mesh/main.slang"));
+    flush_load_tasks(app);
+
+    ASSERT_TRUE(server.is_loaded(handle.id()));
+    auto& assets = app.resource<Assets<Shader>>();
+    auto val     = assets.get(handle.id());
+    ASSERT_TRUE(val.has_value());
+    ASSERT_EQ(val->get().imports.size(), 1u);
+    EXPECT_TRUE(val->get().imports[0].is_custom());
+    EXPECT_EQ(val->get().imports[0].as_custom(), "epix/view.slang");
+    EXPECT_TRUE(val->get().file_dependencies.empty());
+
+    auto dep_handle = server.get_handle<Shader>(AssetPath("embedded://epix/shaders/view.slang"));
+    EXPECT_FALSE(dep_handle.has_value());
 }
 
 // ===========================================================================
@@ -749,7 +1088,104 @@ TEST(ShaderDepLoading, WgslMain_LoadsDepTransitively) {
     EXPECT_TRUE(dep_handle.has_value());
 }
 
-TEST(ShaderDepLoading, SlangMain_LoadsDepTransitively) {
+TEST(ShaderDepLoading, WgslMain_LoadsRecursiveDepsTransitively) {
+    auto dir = memory::Directory::create({});
+    dir.insert_file("leaf.wgsl", memory::Value::from_shared(make_bytes("fn leaf_helper() -> f32 { return 2.0; }")));
+    dir.insert_file("dep.wgsl", memory::Value::from_shared(make_bytes(
+                                    "#import \"leaf.wgsl\"\nfn dep_helper() -> f32 { return leaf_helper(); }")));
+    dir.insert_file("main.wgsl", memory::Value::from_shared(make_bytes("#import \"dep.wgsl\"\nfn main() {}")));
+    auto [app, _] = make_shader_env(dir);
+    auto& server  = app.resource<AssetServer>();
+
+    auto main_handle = server.load<Shader>(AssetPath("main.wgsl"));
+    flush_load_tasks(app);
+
+    ASSERT_TRUE(server.is_loaded_with_dependencies(main_handle.id()));
+
+    auto& assets  = app.resource<Assets<Shader>>();
+    auto main_val = assets.get(main_handle.id());
+    ASSERT_TRUE(main_val.has_value());
+    EXPECT_EQ(main_val->get().file_dependencies.size(), 1u);
+
+    auto dep_handle = server.get_handle<Shader>(AssetPath("dep.wgsl"));
+    ASSERT_TRUE(dep_handle.has_value());
+    ASSERT_TRUE(server.is_loaded_with_dependencies(dep_handle->id()));
+
+    auto dep_val = assets.get(dep_handle->id());
+    ASSERT_TRUE(dep_val.has_value());
+    EXPECT_EQ(dep_val->get().file_dependencies.size(), 1u);
+
+    auto leaf_handle = server.get_handle<Shader>(AssetPath("leaf.wgsl"));
+    ASSERT_TRUE(leaf_handle.has_value());
+    EXPECT_TRUE(server.is_loaded_with_dependencies(leaf_handle->id()));
+    auto leaf_val = assets.get(leaf_handle->id());
+    ASSERT_TRUE(leaf_val.has_value());
+    EXPECT_TRUE(leaf_val->get().file_dependencies.empty());
+}
+
+TEST(ShaderDepLoading, WgslEmbeddedRecursiveDeps_SelectExactRelativeAndRootFiles) {
+    App app = App::create();
+    AssetPlugin plugin;
+    plugin.build(app);
+    epix::assets::app_register_asset<Shader>(app);
+    epix::assets::app_register_loader<ShaderLoader>(app);
+
+    auto registry = app.world_mut().get_resource_mut<EmbeddedAssetRegistry>();
+    ASSERT_TRUE(registry.has_value());
+
+    registry->get().insert_asset_static(
+        "mesh/main.wgsl", "mesh/main.wgsl",
+        std::as_bytes(std::span(std::string_view{"#import \"common/dep.wgsl\"\nfn main() {}"})));
+    registry->get().insert_asset_static(
+        "mesh/common/dep.wgsl", "mesh/common/dep.wgsl",
+        std::as_bytes(std::span(std::string_view{"#import \"/shared/leaf.wgsl\"\nfn dep_helper() {}"})));
+    registry->get().insert_asset_static("common/dep.wgsl", "common/dep.wgsl",
+                                        std::as_bytes(std::span(std::string_view{"fn wrong_dep_global() {}"})));
+    registry->get().insert_asset_static("other/common/dep.wgsl", "other/common/dep.wgsl",
+                                        std::as_bytes(std::span(std::string_view{"fn wrong_dep_other() {}"})));
+    registry->get().insert_asset_static(
+        "shared/leaf.wgsl", "shared/leaf.wgsl",
+        std::as_bytes(std::span(std::string_view{"fn leaf_helper() -> f32 { return 4.0; }"})));
+    registry->get().insert_asset_static(
+        "mesh/shared/leaf.wgsl", "mesh/shared/leaf.wgsl",
+        std::as_bytes(std::span(std::string_view{"fn wrong_leaf_mesh() -> f32 { return 1.0; }"})));
+    registry->get().insert_asset_static(
+        "mesh/common/shared/leaf.wgsl", "mesh/common/shared/leaf.wgsl",
+        std::as_bytes(std::span(std::string_view{"fn wrong_leaf_nested() -> f32 { return 2.0; }"})));
+
+    auto& server     = app.resource<AssetServer>();
+    auto main_handle = server.load<Shader>(AssetPath("embedded://mesh/main.wgsl"));
+    flush_load_tasks(app);
+
+    ASSERT_TRUE(server.is_loaded_with_dependencies(main_handle.id()));
+
+    auto& assets  = app.resource<Assets<Shader>>();
+    auto main_val = assets.get(main_handle.id());
+    ASSERT_TRUE(main_val.has_value());
+    ASSERT_EQ(main_val->get().file_dependencies.size(), 1u);
+    ASSERT_TRUE(main_val->get().file_dependencies[0].path().has_value());
+    EXPECT_EQ(*main_val->get().file_dependencies[0].path(), AssetPath("embedded://mesh/common/dep.wgsl"));
+
+    auto dep_handle = server.get_handle<Shader>(AssetPath("embedded://mesh/common/dep.wgsl"));
+    ASSERT_TRUE(dep_handle.has_value());
+    ASSERT_TRUE(server.is_loaded_with_dependencies(dep_handle->id()));
+    auto dep_val = assets.get(dep_handle->id());
+    ASSERT_TRUE(dep_val.has_value());
+    ASSERT_EQ(dep_val->get().file_dependencies.size(), 1u);
+    ASSERT_TRUE(dep_val->get().file_dependencies[0].path().has_value());
+    EXPECT_EQ(*dep_val->get().file_dependencies[0].path(), AssetPath("embedded://shared/leaf.wgsl"));
+
+    auto leaf_handle = server.get_handle<Shader>(AssetPath("embedded://shared/leaf.wgsl"));
+    ASSERT_TRUE(leaf_handle.has_value());
+    EXPECT_TRUE(server.is_loaded_with_dependencies(leaf_handle->id()));
+
+    EXPECT_FALSE(server.get_handle<Shader>(AssetPath("embedded://common/dep.wgsl")).has_value());
+    EXPECT_FALSE(server.get_handle<Shader>(AssetPath("embedded://other/common/dep.wgsl")).has_value());
+    EXPECT_FALSE(server.get_handle<Shader>(AssetPath("embedded://mesh/shared/leaf.wgsl")).has_value());
+    EXPECT_FALSE(server.get_handle<Shader>(AssetPath("embedded://mesh/common/shared/leaf.wgsl")).has_value());
+}
+
+TEST(ShaderDepLoading, SlangMain_CustomImportDoesNotLoadDepTransitively) {
     auto dir = memory::Directory::create({});
     dir.insert_file("utility.slang",
                     memory::Value::from_shared(make_bytes("float4 getColor() { return float4(1,0,0,1); }")));
@@ -765,13 +1201,16 @@ TEST(ShaderDepLoading, SlangMain_LoadsDepTransitively) {
     auto& assets  = app.resource<Assets<Shader>>();
     auto main_val = assets.get(main_handle.id());
     ASSERT_TRUE(main_val.has_value());
-    EXPECT_EQ(main_val->get().file_dependencies.size(), 1u);
+    ASSERT_EQ(main_val->get().imports.size(), 1u);
+    EXPECT_TRUE(main_val->get().imports[0].is_custom());
+    EXPECT_EQ(main_val->get().imports[0].as_custom(), "utility.slang");
+    EXPECT_EQ(main_val->get().file_dependencies.size(), 0u);
 
     auto dep_handle = server.get_handle<Shader>(AssetPath("utility.slang"));
-    EXPECT_TRUE(dep_handle.has_value());
+    EXPECT_FALSE(dep_handle.has_value());
 }
 
-TEST(ShaderDepLoading, SlangInclude_LoadsDepTransitively) {
+TEST(ShaderDepLoading, SlangInclude_CustomImportDoesNotLoadDepTransitively) {
     auto dir = memory::Directory::create({});
     dir.insert_file("scene-helpers.slang",
                     memory::Value::from_shared(make_bytes("implementing scene;\nfloat h() { return 1.0; }")));
@@ -788,10 +1227,93 @@ TEST(ShaderDepLoading, SlangInclude_LoadsDepTransitively) {
     auto& assets  = app.resource<Assets<Shader>>();
     auto main_val = assets.get(main_handle.id());
     ASSERT_TRUE(main_val.has_value());
-    EXPECT_EQ(main_val->get().file_dependencies.size(), 1u);
+    ASSERT_EQ(main_val->get().imports.size(), 1u);
+    EXPECT_TRUE(main_val->get().imports[0].is_custom());
+    EXPECT_EQ(main_val->get().imports[0].as_custom(), "scene-helpers.slang");
+    EXPECT_EQ(main_val->get().file_dependencies.size(), 0u);
 
     auto dep_handle = server.get_handle<Shader>(AssetPath("scene-helpers.slang"));
-    EXPECT_TRUE(dep_handle.has_value());
+    EXPECT_FALSE(dep_handle.has_value());
+}
+
+TEST(ShaderDepLoading, SlangFileImport_LoadsRecursiveFileDepsTransitively) {
+    App app = App::create();
+    AssetPlugin plugin;
+    plugin.build(app);
+    epix::assets::app_register_asset<Shader>(app);
+    epix::assets::app_register_loader<ShaderLoader>(app);
+
+    auto registry = app.world_mut().get_resource_mut<EmbeddedAssetRegistry>();
+    ASSERT_TRUE(registry.has_value());
+
+    registry->get().insert_asset_static(
+        "mesh/main.slang", "mesh/main.slang",
+        std::as_bytes(std::span(std::string_view{"import \"scene\";\n"
+                                                 "[shader(\"compute\")]\n[numthreads(1,1,1)]\n"
+                                                 "void computeMain() { float4 c = helper(); }"})));
+    registry->get().insert_asset_static(
+        "mesh/scene.slang", "mesh/scene.slang",
+        std::as_bytes(std::span(std::string_view{"module scene;\n__include \"impl/scene\";\n"})));
+    registry->get().insert_asset_static(
+        "scene.slang", "scene.slang",
+        std::as_bytes(std::span(std::string_view{"module scene;\npublic float4 wrongScene() { return 0; }\n"})));
+    registry->get().insert_asset_static(
+        "mesh/impl/scene.slang", "mesh/impl/scene.slang",
+        std::as_bytes(std::span(std::string_view{
+            "implementing scene;\nimport \"/shared/utility\";\nfloat4 helper() { return getColor(); }"})));
+    registry->get().insert_asset_static(
+        "impl/scene.slang", "impl/scene.slang",
+        std::as_bytes(std::span(std::string_view{"implementing scene;\nfloat4 wrongHelper() { return 0; }"})));
+    registry->get().insert_asset_static(
+        "shared/utility.slang", "shared/utility.slang",
+        std::as_bytes(std::span(std::string_view{"float4 getColor() { return float4(1, 0, 0, 1); }"})));
+    registry->get().insert_asset_static(
+        "mesh/shared/utility.slang", "mesh/shared/utility.slang",
+        std::as_bytes(std::span(std::string_view{"float4 wrongColor() { return float4(0, 1, 0, 1); }"})));
+
+    auto& server     = app.resource<AssetServer>();
+    auto main_handle = server.load<Shader>(AssetPath("embedded://mesh/main.slang"));
+    flush_load_tasks(app);
+
+    ASSERT_TRUE(server.is_loaded_with_dependencies(main_handle.id()));
+
+    auto& assets  = app.resource<Assets<Shader>>();
+    auto main_val = assets.get(main_handle.id());
+    ASSERT_TRUE(main_val.has_value());
+    EXPECT_EQ(main_val->get().file_dependencies.size(), 1u);
+    ASSERT_TRUE(main_val->get().file_dependencies[0].path().has_value());
+    EXPECT_EQ(*main_val->get().file_dependencies[0].path(), AssetPath("embedded://mesh/scene.slang"));
+
+    auto scene_handle = server.get_handle<Shader>(AssetPath("embedded://mesh/scene.slang"));
+    ASSERT_TRUE(scene_handle.has_value());
+    ASSERT_TRUE(server.is_loaded_with_dependencies(scene_handle->id()));
+    auto scene_val = assets.get(scene_handle->id());
+    ASSERT_TRUE(scene_val.has_value());
+    EXPECT_EQ(scene_val->get().file_dependencies.size(), 1u);
+    EXPECT_TRUE(scene_val->get().import_path.is_custom());
+    EXPECT_EQ(scene_val->get().import_path.as_custom(), "scene.slang");
+    ASSERT_TRUE(scene_val->get().file_dependencies[0].path().has_value());
+    EXPECT_EQ(*scene_val->get().file_dependencies[0].path(), AssetPath("embedded://mesh/impl/scene.slang"));
+
+    auto impl_handle = server.get_handle<Shader>(AssetPath("embedded://mesh/impl/scene.slang"));
+    ASSERT_TRUE(impl_handle.has_value());
+    ASSERT_TRUE(server.is_loaded_with_dependencies(impl_handle->id()));
+    auto impl_val = assets.get(impl_handle->id());
+    ASSERT_TRUE(impl_val.has_value());
+    EXPECT_EQ(impl_val->get().file_dependencies.size(), 1u);
+    ASSERT_TRUE(impl_val->get().file_dependencies[0].path().has_value());
+    EXPECT_EQ(*impl_val->get().file_dependencies[0].path(), AssetPath("embedded://shared/utility.slang"));
+
+    auto utility_handle = server.get_handle<Shader>(AssetPath("embedded://shared/utility.slang"));
+    ASSERT_TRUE(utility_handle.has_value());
+    EXPECT_TRUE(server.is_loaded_with_dependencies(utility_handle->id()));
+    auto utility_val = assets.get(utility_handle->id());
+    ASSERT_TRUE(utility_val.has_value());
+    EXPECT_TRUE(utility_val->get().file_dependencies.empty());
+
+    EXPECT_FALSE(server.get_handle<Shader>(AssetPath("embedded://scene.slang")).has_value());
+    EXPECT_FALSE(server.get_handle<Shader>(AssetPath("embedded://impl/scene.slang")).has_value());
+    EXPECT_FALSE(server.get_handle<Shader>(AssetPath("embedded://mesh/shared/utility.slang")).has_value());
 }
 
 // ===========================================================================
@@ -852,7 +1374,7 @@ TEST(ShaderDepPipeline, WgslMainAndDep_BothAutoSyncedAndReachLoadModule) {
     EXPECT_EQ(*env.call_count, 2);
 }
 
-TEST(ShaderDepPipeline, SlangDep_AutoSyncedAndCanGetModule) {
+TEST(ShaderDepPipeline, SlangCustomImport_ExplicitDepAutoSyncedAndCanGetModule) {
     auto dir = memory::Directory::create({});
     dir.insert_file("utility.slang",
                     memory::Value::from_shared(make_bytes("[shader(\"compute\")]\n[numthreads(1,1,1)]\n"
@@ -864,21 +1386,19 @@ TEST(ShaderDepPipeline, SlangDep_AutoSyncedAndCanGetModule) {
     auto& server = env.app.resource<AssetServer>();
 
     auto main_handle = server.load<Shader>(AssetPath("main.slang"));
+    auto dep_handle  = server.load<Shader>(AssetPath("utility.slang"));
     flush_and_sync(env.app);
-    ASSERT_TRUE(server.is_loaded(main_handle.id()));
+    ASSERT_TRUE(server.is_loaded_with_dependencies(main_handle.id()));
+    ASSERT_TRUE(server.is_loaded_with_dependencies(dep_handle.id()));
 
-    auto dep_handle_opt = server.get_handle<Shader>(AssetPath("utility.slang"));
-    ASSERT_TRUE(dep_handle_opt.has_value());
-    EXPECT_TRUE(server.is_loaded(dep_handle_opt->id()));
-
-    // Dep auto-synced and can produce a module independently
+    // Dep is explicitly loaded, auto-synced, and can produce a module independently.
     auto& cache     = env.app.resource_mut<ShaderCache>();
-    auto dep_result = cache.get(CachedPipelineId{1}, dep_handle_opt->id(), {});
+    auto dep_result = cache.get(CachedPipelineId{1}, dep_handle.id(), {});
     ASSERT_TRUE(dep_result.has_value());
     EXPECT_EQ(*env.call_count, 1);
 }
 
-TEST(ShaderDepPipeline, SlangMainAndDep_BothAutoSyncedAndReachLoadModule) {
+TEST(ShaderDepPipeline, SlangMainAndExplicitDep_BothAutoSyncedAndReachLoadModule) {
     auto dir = memory::Directory::create({});
     dir.insert_file("utility.slang",
                     memory::Value::from_shared(make_bytes("[shader(\"compute\")]\n[numthreads(1,1,1)]\n"
@@ -890,17 +1410,15 @@ TEST(ShaderDepPipeline, SlangMainAndDep_BothAutoSyncedAndReachLoadModule) {
     auto& server = env.app.resource<AssetServer>();
 
     auto main_handle = server.load<Shader>(AssetPath("main.slang"));
+    auto dep_handle  = server.load<Shader>(AssetPath("utility.slang"));
     flush_and_sync(env.app);
-    ASSERT_TRUE(server.is_loaded(main_handle.id()));
-
-    auto dep_handle_opt = server.get_handle<Shader>(AssetPath("utility.slang"));
-    ASSERT_TRUE(dep_handle_opt.has_value());
-    ASSERT_TRUE(server.is_loaded(dep_handle_opt->id()));
+    ASSERT_TRUE(server.is_loaded_with_dependencies(main_handle.id()));
+    ASSERT_TRUE(server.is_loaded_with_dependencies(dep_handle.id()));
 
     auto& cache = env.app.resource_mut<ShaderCache>();
 
     // dep compiles standalone
-    auto dep_result = cache.get(CachedPipelineId{1}, dep_handle_opt->id(), {});
+    auto dep_result = cache.get(CachedPipelineId{1}, dep_handle.id(), {});
     ASSERT_TRUE(dep_result.has_value());
     EXPECT_EQ(*env.call_count, 1);
 

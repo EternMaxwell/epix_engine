@@ -110,7 +110,8 @@ CachedPipelineId PipelineServer::queue_compute_pipeline(ComputePipelineDescripto
 }
 void PipelineServer::set_shader(assets::AssetId<Shader> id, Shader shader) {
     // TODO: MSVC partial specialization workaround - cast AssetId<T> to UntypedAssetId
-    spdlog::debug("[render.pipeline] Setting shader '{}' (path: {}).", assets::UntypedAssetId(id), shader.path);
+    spdlog::debug("[render.pipeline] Setting shader '{}' (path: {}).", assets::UntypedAssetId(id),
+                  shader.path.string());
     auto shader_cache       = this->shader_cache->lock();
     auto affected_pipelines = shader_cache->set_shader(id, std::move(shader));
     for (CachedPipelineId pipeline_id : affected_pipelines) {
@@ -243,8 +244,8 @@ void PipelineServer::process_pipeline(CachedPipeline& cached_pipeline, CachedPip
             if (shader_error->is_recoverable()) {
                 cached_pipeline.state = PipelineStateQueued{};
             } else {
-                spdlog::error("[render.pipeline] Shader error for pipeline id={}, name='{}': {}",
-                              id.get(), pipeline_name, shader_error->message());
+                spdlog::error("[render.pipeline] Shader error for pipeline id={}, name='{}': {}", id.get(),
+                              pipeline_name, shader_error->message());
             }
         }
     };
@@ -281,8 +282,8 @@ void PipelineServer::process_pipeline(CachedPipeline& cached_pipeline, CachedPip
             if (shader_error->is_recoverable()) {
                 // Not ready yet – will be re-queued
             } else {
-                spdlog::error("[render.pipeline] Shader error for pipeline id={}, name='{}': {}",
-                              id.get(), pipeline_name, shader_error->message());
+                spdlog::error("[render.pipeline] Shader error for pipeline id={}, name='{}': {}", id.get(),
+                              pipeline_name, shader_error->message());
                 return;
             }
         }

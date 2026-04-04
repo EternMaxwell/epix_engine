@@ -63,10 +63,37 @@ float4 main(FragmentInput input) : SV_Target {
 }
 )";
 
-const assets::AssetId<shader::Shader> kTextVertexShaderId(
-    uuids::uuid::from_string("33aad04b-4639-46bb-98b1-4f372e9c1f75").value());
-const assets::AssetId<shader::Shader> kTextFragmentShaderId(
-    uuids::uuid::from_string("7c271b37-4baa-4e9f-974f-1cfe0d5d6b2f").value());
+constexpr std::string_view kTextVertexShaderAssetPath   = "text/text_vertex.slang";
+constexpr std::string_view kTextFragmentShaderAssetPath = "text/text_fragment.slang";
+
+std::span<const std::byte> shader_bytes(std::string_view source) {
+    return std::span<const std::byte>(reinterpret_cast<const std::byte*>(source.data()), source.size());
+}
+
+struct TextShaderHandles {
+    assets::Handle<shader::Shader> vertex_shader;
+    assets::Handle<shader::Shader> fragment_shader;
+};
+
+std::optional<TextShaderHandles> load_text_shader_handles(World& world) {
+    auto registry = world.get_resource_mut<assets::EmbeddedAssetRegistry>();
+    auto server   = world.get_resource<assets::AssetServer>();
+    if (!registry || !server) {
+        spdlog::warn(
+            "[text] EmbeddedAssetRegistry or AssetServer is not available. Internal text shaders were not registered.");
+        return std::nullopt;
+    }
+
+    registry->get().insert_asset_static(kTextVertexShaderAssetPath, kTextVertexShaderAssetPath,
+                                        shader_bytes(kTextVertexShader));
+    registry->get().insert_asset_static(kTextFragmentShaderAssetPath, kTextFragmentShaderAssetPath,
+                                        shader_bytes(kTextFragmentShader));
+
+    return TextShaderHandles{
+        .vertex_shader   = server->get().load<shader::Shader>("embedded://text/text_vertex.slang"),
+        .fragment_shader = server->get().load<shader::Shader>("embedded://text/text_fragment.slang"),
+    };
+}
 
 const mesh::MeshAttribute kTextUvLayerAttribute{"text_uv_layer", 5, wgpu::VertexFormat::eFloat32x3};
 
@@ -99,11 +126,11 @@ struct Text2dPipelineCache {
     wgpu::BindGroupLayout view_layout;
     wgpu::BindGroupLayout instance_layout;
     wgpu::BindGroupLayout texture_layout;
-    assets::Handle<shader::Shader> vertex_shader{kTextVertexShaderId};
-    assets::Handle<shader::Shader> fragment_shader{kTextFragmentShaderId};
+    assets::Handle<shader::Shader> vertex_shader;
+    assets::Handle<shader::Shader> fragment_shader;
     std::unordered_map<std::uint32_t, render::CachedPipelineId> pipelines;
 
-    explicit Text2dPipelineCache(World& world)
+    explicit Text2dPipelineCache(World& world, const TextShaderHandles& shader_handles)
         : view_layout(world.resource<render::view::ViewUniformBindingLayout>().layout),
           instance_layout(world.resource<wgpu::Device>().createBindGroupLayout(
               wgpu::BindGroupLayoutDescriptor()
@@ -132,7 +159,9 @@ struct Text2dPipelineCache {
                                           .setSampleType(wgpu::TextureSampleType::eFloat)
                                           .setViewDimension(wgpu::TextureViewDimension::e2DArray)
                                           .setMultisampled(false)),
-                  }))) {}
+                  }))),
+          vertex_shader(shader_handles.vertex_shader),
+          fragment_shader(shader_handles.fragment_shader) {}
 
     std::optional<render::CachedPipelineId> specialize(render::PipelineServer& pipeline_server,
                                                        wgpu::TextureFormat color_format) {
@@ -304,15 +333,6 @@ struct DrawTextBatch {
         return {};
     }
 };
-
-void insert_text_shaders(assets::Assets<shader::Shader>& shaders) {
-    auto vertex_path             = std::filesystem::path("embedded://text/text_vertex.slang");
-    auto fragment_path           = std::filesystem::path("embedded://text/text_fragment.slang");
-    [[maybe_unused]] auto vertex = shaders.insert(
-        kTextVertexShaderId, shader::Shader::from_slang(std::string(kTextVertexShader), vertex_path.string()));
-    [[maybe_unused]] auto fragment = shaders.insert(
-        kTextFragmentShaderId, shader::Shader::from_slang(std::string(kTextFragmentShader), fragment_path.string()));
-}
 
 void ensure_text_instance_buffer(TextInstanceBuffer& instance_buffer,
                                  const Text2dPipelineCache& pipeline_cache,
@@ -523,15 +543,26 @@ TextMesh TextMesh::from_shaped_text(const ShapedText& shaped,
 void TextRenderPlugin::build(App& app) {
     spdlog::debug("[text] Building TextRenderPlugin.");
     app.add_plugins(core_graph::core_2d::Core2dPlugin{});
+
+    if (!app.world_mut().get_resource<TextShaderHandles>()) {
+        if (auto shader_handles = load_text_shader_handles(app.world_mut())) {
+            app.world_mut().insert_resource(std::move(*shader_handles));
+        }
+    }
 }
 
 void TextRenderPlugin::finish(App& app) {
     spdlog::debug("[text] Finishing TextRenderPlugin.");
-    auto shaders = app.world_mut().get_resource_mut<assets::Assets<shader::Shader>>();
-    if (shaders) {
-        insert_text_shaders(shaders->get());
-    } else {
-        spdlog::warn("[text] Assets<shader::Shader> is not available in the main world.");
+    if (!app.world_mut().get_resource<TextShaderHandles>()) {
+        if (auto shader_handles = load_text_shader_handles(app.world_mut())) {
+            app.world_mut().insert_resource(std::move(*shader_handles));
+        }
+    }
+
+    auto shader_handles = app.world_mut().get_resource<TextShaderHandles>();
+    if (!shader_handles) {
+        spdlog::error("[text] TextRenderPlugin could not load internal text shaders through AssetServer.");
+        return;
     }
 
     auto render_app = app.get_sub_app_mut(render::Render);
@@ -545,7 +576,7 @@ void TextRenderPlugin::finish(App& app) {
         world.insert_resource(TextInstanceBuffer{});
     }
     if (!world.get_resource<Text2dPipelineCache>()) {
-        world.insert_resource(Text2dPipelineCache(world));
+        world.insert_resource(Text2dPipelineCache(world, shader_handles->get()));
     }
     auto& render_subapp = render_app->get();
     world.insert_resource(TransparentTextDrawFunction{

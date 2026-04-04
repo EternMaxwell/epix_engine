@@ -59,6 +59,87 @@ bool validate_utf8_bytes(const std::vector<char>& bytes, std::size_t& invalid_of
     return true;
 }
 
+std::string normalize_path_string(std::string path) {
+    std::ranges::replace(path, '\\', '/');
+    return path;
+}
+
+std::string normalize_asset_path_string(const epix::assets::AssetPath& path) {
+    std::string normalized;
+    if (!path.source.is_default()) {
+        normalized += *path.source.as_str();
+        normalized += "://";
+    }
+
+    auto path_string = normalize_path_string(path.path.generic_string());
+    if (path.path.has_root_directory()) {
+        normalized += '/';
+        normalized += path.path.relative_path().generic_string();
+    } else {
+        normalized += path_string;
+    }
+
+    if (path.label) {
+        normalized += '#';
+        normalized += *path.label;
+    }
+    return normalized;
+}
+
+epix::assets::AssetPath resolve_dependency_path(const epix::assets::AssetPath& parent_path,
+                                                const ShaderImport& import_path) {
+    auto resolved = import_path.as_asset_path();
+    if (!resolved.source.is_default()) {
+        return resolved;
+    }
+    if (resolved.path.has_root_directory()) {
+        return epix::assets::AssetPath(parent_path.source, resolved.path.relative_path(), resolved.label);
+    }
+    return parent_path.resolve(resolved);
+}
+
+void ensure_slang_extension(std::string& path) {
+    std::string_view path_part = path;
+    if (auto scheme = path.find("://"); scheme != std::string::npos) {
+        path_part = std::string_view(path).substr(scheme + 3);
+    }
+    if (std::filesystem::path(path_part).extension().empty()) {
+        path += ".slang";
+    }
+}
+
+std::string canonicalize_slang_custom_name(std::string_view name) {
+    if (name.size() >= 2 && name.front() == '"') {
+        auto end_q   = name.find('"', 1);
+        auto literal = end_q == std::string_view::npos ? name.substr(1) : name.substr(1, end_q - 1);
+        auto path    = normalize_path_string(std::string(literal));
+        ensure_slang_extension(path);
+        return path;
+    }
+
+    std::string file_path;
+    file_path.reserve(name.size() + 6);
+    for (char c : name) {
+        if (c == '.') {
+            file_path += '/';
+        } else if (c == '_') {
+            file_path += '-';
+        } else {
+            file_path += c;
+        }
+    }
+    file_path += ".slang";
+    return file_path;
+}
+
+epix::assets::AssetPath parse_slang_asset_path_literal(std::string_view name) {
+    auto end_q   = name.find('"', 1);
+    auto literal = end_q == std::string_view::npos ? name.substr(1) : name.substr(1, end_q - 1);
+    auto path    = normalize_path_string(std::string(literal));
+    ensure_slang_extension(path);
+    return epix::assets::AssetPath(std::move(path));
+}
+
 void write_u8(std::vector<std::uint8_t>& out, std::uint8_t v) { out.push_back(v); }
 
 void write_u32(std::vector<std::uint8_t>& out, std::uint32_t v) {
@@ -76,7 +157,7 @@ void write_string(std::vector<std::uint8_t>& out, std::string_view s) {
 void write_import(std::vector<std::uint8_t>& out, const ShaderImport& imp) {
     if (imp.is_asset_path()) {
         write_u8(out, static_cast<std::uint8_t>(ProcessedImportKind::AssetPath));
-        write_string(out, imp.as_asset_path().string());
+        write_string(out, normalize_asset_path_string(imp.as_asset_path()));
     } else {
         write_u8(out, static_cast<std::uint8_t>(ProcessedImportKind::Custom));
         write_string(out, imp.as_custom());
@@ -222,7 +303,8 @@ std::optional<ProcessedDecodedShader> deserialize_processed_shader(const std::ve
 //   #define_import_path <name>  → import_path = Custom(name)
 //   #import "path"              → AssetPath import
 //   #import name                → Custom import
-std::pair<ShaderImport, std::vector<ShaderImport>> Shader::preprocess(std::string_view source, std::string_view path) {
+std::pair<ShaderImport, std::vector<ShaderImport>> Shader::preprocess(std::string_view source,
+                                                                      const epix::assets::AssetPath& path) {
     std::optional<ShaderImport> import_path;
     std::vector<ShaderImport> imports;
 
@@ -271,58 +353,22 @@ std::pair<ShaderImport, std::vector<ShaderImport>> Shader::preprocess(std::strin
         }
     }
 
-    ShaderImport ip = import_path.value_or(ShaderImport::asset_path(std::string(path)));
+    ShaderImport ip = import_path.value_or(ShaderImport::asset_path(path));
     return {std::move(ip), std::move(imports)};
-}
-
-// ─── Slang identifier-to-file-path helper ──────────────────────────────────
-// Per the Slang spec:
-//   - Dots (.) become path separators (/)
-//   - Underscores (_) become hyphens (-)
-//   - String-literal syntax is used verbatim (without quotes)
-// The .slang extension is appended if not already present.
-static std::string slang_name_to_path(std::string_view name) {
-    // String-literal syntax: import "path/to/file"; or __include "file";
-    if (name.size() >= 2 && name.front() == '"') {
-        auto end_q = name.find('"', 1);
-        std::string p(end_q == std::string_view::npos ? name.substr(1) : name.substr(1, end_q - 1));
-        // Preserve source:// prefix for asset routing; CacheFileSystem will strip it
-        // when matching against shader.path (Slang passes the path verbatim).
-        // Append .slang if no extension present (checking only after any scheme).
-        std::string_view path_part = p;
-        if (auto scheme = p.find("://"); scheme != std::string::npos)
-            path_part = std::string_view(p).substr(scheme + 3);
-        std::filesystem::path raw_path(path_part);
-        if (raw_path.extension().empty()) {
-            p += ".slang";
-        }
-        return p;
-    }
-    // Identifier-token syntax: import dir.file_name;
-    std::string file_path;
-    file_path.reserve(name.size() + 6);
-    for (char c : name) {
-        if (c == '.')
-            file_path += '/';
-        else if (c == '_')
-            file_path += '-';
-        else
-            file_path += c;
-    }
-    file_path += ".slang";
-    return file_path;
 }
 
 // ─── Shader::preprocess_slang ──────────────────────────────────────────────
 // Scans Slang source for:
-//   module <name>;              → sets import_path
-//   import <name>;              → inter-module dependency (AssetPath import)
-//   import "path";              → inter-module dependency (AssetPath import)
-//   __include <name>;           → intra-module file inclusion (AssetPath import)
+//   module <name>;              → sets import_path as a custom module name
+//   import <name>;              → inter-module dependency (custom import)
+//   import "path";              → file dependency (AssetPath import)
+//   __include <name>;           → intra-module dependency (custom import)
 //   __include "path";           → intra-module file inclusion (AssetPath import)
-// Per spec, identifier underscores → hyphens, dots → path separators.
+// Unquoted names always become custom names. Quoted names keep asset-path semantics:
+// `source://...` is a full asset path, `/...` is source-root-relative, and everything else
+// stays relative to the importing asset until resolved against that asset path.
 std::pair<ShaderImport, std::vector<ShaderImport>> Shader::preprocess_slang(std::string_view source,
-                                                                            std::string_view path) {
+                                                                            const epix::assets::AssetPath& path) {
     std::optional<ShaderImport> import_path;
     std::vector<ShaderImport> imports;
 
@@ -350,7 +396,7 @@ std::pair<ShaderImport, std::vector<ShaderImport>> Shader::preprocess_slang(std:
             std::string_view name = (semi == std::string_view::npos) ? rest : rest.substr(0, semi);
             while (!name.empty() && (name.back() == ' ' || name.back() == '\t')) name.remove_suffix(1);
             if (!name.empty()) {
-                import_path = ShaderImport::asset_path(slang_name_to_path(name));
+                import_path = ShaderImport::custom(canonicalize_slang_custom_name(name));
             }
             continue;
         }
@@ -365,7 +411,11 @@ std::pair<ShaderImport, std::vector<ShaderImport>> Shader::preprocess_slang(std:
             std::string_view name = (semi == std::string_view::npos) ? rest : rest.substr(0, semi);
             while (!name.empty() && (name.back() == ' ' || name.back() == '\t')) name.remove_suffix(1);
             if (!name.empty()) {
-                imports.emplace_back(ShaderImport::asset_path(slang_name_to_path(name)));
+                if (name.front() == '"') {
+                    imports.emplace_back(ShaderImport::asset_path(parse_slang_asset_path_literal(name)));
+                } else {
+                    imports.emplace_back(ShaderImport::custom(canonicalize_slang_custom_name(name)));
+                }
             }
             continue;
         }
@@ -380,18 +430,22 @@ std::pair<ShaderImport, std::vector<ShaderImport>> Shader::preprocess_slang(std:
             std::string_view name = (semi == std::string_view::npos) ? rest : rest.substr(0, semi);
             while (!name.empty() && (name.back() == ' ' || name.back() == '\t')) name.remove_suffix(1);
             if (!name.empty()) {
-                imports.emplace_back(ShaderImport::asset_path(slang_name_to_path(name)));
+                if (name.front() == '"') {
+                    imports.emplace_back(ShaderImport::asset_path(parse_slang_asset_path_literal(name)));
+                } else {
+                    imports.emplace_back(ShaderImport::custom(canonicalize_slang_custom_name(name)));
+                }
             }
             continue;
         }
     }
 
-    ShaderImport ip = import_path.value_or(ShaderImport::asset_path(std::string(path)));
+    ShaderImport ip = import_path.value_or(ShaderImport::asset_path(path));
     return {std::move(ip), std::move(imports)};
 }
 
 // ─── Shader constructors ───────────────────────────────────────────────────
-Shader Shader::from_wgsl(std::string source, std::string path) {
+Shader Shader::from_wgsl(std::string source, epix::assets::AssetPath path) {
     auto [ip, imps] = Shader::preprocess(source, path);
     Shader s;
     s.path        = std::move(path);
@@ -401,22 +455,24 @@ Shader Shader::from_wgsl(std::string source, std::string path) {
     return s;
 }
 
-Shader Shader::from_wgsl_with_defs(std::string source, std::string path, std::vector<ShaderDefVal> shader_defs) {
+Shader Shader::from_wgsl_with_defs(std::string source,
+                                   epix::assets::AssetPath path,
+                                   std::vector<ShaderDefVal> shader_defs) {
     auto s        = Shader::from_wgsl(std::move(source), std::move(path));
     s.shader_defs = std::move(shader_defs);
     return s;
 }
 
-Shader Shader::from_spirv(std::vector<std::uint8_t> source, std::string path) {
+Shader Shader::from_spirv(std::vector<std::uint8_t> source, epix::assets::AssetPath path) {
     Shader s;
     s.path        = path;
     s.source      = Source::spirv(std::move(source));
-    s.import_path = ShaderImport::asset_path(std::move(path));
+    s.import_path = ShaderImport::asset_path(s.path);
     // imports is empty (no text to parse)
     return s;
 }
 
-Shader Shader::from_slang(std::string source, std::string path) {
+Shader Shader::from_slang(std::string source, epix::assets::AssetPath path) {
     auto [ip, imps] = Shader::preprocess_slang(source, path);
     Shader s;
     s.path        = std::move(path);
@@ -426,7 +482,9 @@ Shader Shader::from_slang(std::string source, std::string path) {
     return s;
 }
 
-Shader Shader::from_slang_with_defs(std::string source, std::string path, std::vector<ShaderDefVal> shader_defs) {
+Shader Shader::from_slang_with_defs(std::string source,
+                                    epix::assets::AssetPath path,
+                                    std::vector<ShaderDefVal> shader_defs) {
     auto s        = Shader::from_slang(std::move(source), std::move(path));
     s.shader_defs = std::move(shader_defs);
     return s;
@@ -441,12 +499,10 @@ std::span<std::string_view> ShaderLoader::extensions() {
 std::expected<Shader, ShaderLoaderError> ShaderLoader::load(std::istream& reader,
                                                             const Settings& settings,
                                                             assets::LoadContext& context) {
-    const auto& raw_path = context.path().path;
-    // Normalize to forward slashes
-    std::string path_str = raw_path.string();
-    std::ranges::replace(path_str, '\\', '/');
+    const auto& asset_path = context.path();
+    const auto& raw_path   = asset_path.path;
 
-    spdlog::trace("[shader] Loading shader from '{}'.", path_str);
+    spdlog::trace("[shader] Loading shader from '{}'.", normalize_asset_path_string(asset_path));
 
     // Read all bytes
     std::vector<char> bytes =
@@ -460,9 +516,7 @@ std::expected<Shader, ShaderLoaderError> ShaderLoader::load(std::istream& reader
     auto attach_dependencies = [&](Shader& shader) {
         for (const auto& imp : shader.imports) {
             if (imp.is_asset_path()) {
-                // resolve() resolves relative paths against the parent's dir,
-                // and respects the source in the import (from source:// syntax).
-                auto dep_path = context.path().resolve(imp.as_asset_path());
+                auto dep_path = resolve_dependency_path(context.path(), imp);
                 auto handle   = context.asset_server().template load<Shader>(dep_path);
                 context.track_dependency(assets::UntypedAssetId(handle.id()));
                 shader.file_dependencies.push_back(std::move(handle));
@@ -477,7 +531,7 @@ std::expected<Shader, ShaderLoaderError> ShaderLoader::load(std::istream& reader
         }
 
         Shader shader;
-        shader.path        = path_str;
+        shader.path        = asset_path;
         shader.source      = std::move(decoded->source);
         shader.import_path = std::move(decoded->import_path);
         shader.imports     = std::move(decoded->imports);
@@ -495,19 +549,20 @@ std::expected<Shader, ShaderLoaderError> ShaderLoader::load(std::istream& reader
             return std::unexpected(ShaderLoaderError::parse(raw_path, 0));
         }
         std::vector<std::uint8_t> code(bytes.begin(), bytes.end());
-        return Shader::from_spirv(std::move(code), path_str);
+        return Shader::from_spirv(std::move(code), asset_path);
     }
 
     if (ext == "wgsl") {
         if (!settings.shader_defs.empty()) {
-            spdlog::debug("[shader] Applying {} shader_defs to '{}'.", settings.shader_defs.size(), path_str);
+            spdlog::debug("[shader] Applying {} shader_defs to '{}'.", settings.shader_defs.size(),
+                          normalize_asset_path_string(asset_path));
         }
         std::size_t bad_utf8 = 0;
         if (!validate_utf8_bytes(bytes, bad_utf8)) {
             return std::unexpected(ShaderLoaderError::parse(raw_path, bad_utf8));
         }
         std::string text(bytes.begin(), bytes.end());
-        auto shader = Shader::from_wgsl_with_defs(std::move(text), path_str, settings.shader_defs);
+        auto shader = Shader::from_wgsl_with_defs(std::move(text), asset_path, settings.shader_defs);
         attach_dependencies(shader);
         return shader;
     }
@@ -518,7 +573,7 @@ std::expected<Shader, ShaderLoaderError> ShaderLoader::load(std::istream& reader
             return std::unexpected(ShaderLoaderError::parse(raw_path, bad_utf8));
         }
         std::string text(bytes.begin(), bytes.end());
-        auto shader = Shader::from_slang_with_defs(std::move(text), path_str, settings.shader_defs);
+        auto shader = Shader::from_slang_with_defs(std::move(text), asset_path, settings.shader_defs);
         attach_dependencies(shader);
         return shader;
     }
@@ -530,8 +585,6 @@ std::expected<ShaderProcessor::OutputLoader::Settings, std::exception_ptr> Shade
     assets::ProcessContext& context, const Settings& settings, std::ostream& writer) const {
     try {
         const auto& raw_path = context.path().path;
-        std::string path_str = raw_path.string();
-        std::ranges::replace(path_str, '\\', '/');
 
         std::vector<char> bytes = std::ranges::subrange(std::istreambuf_iterator<char>(context.asset_reader()),
                                                         std::istreambuf_iterator<char>()) |
@@ -548,9 +601,9 @@ std::expected<ShaderProcessor::OutputLoader::Settings, std::exception_ptr> Shade
         auto register_process_deps = [&](const Shader& shader) {
             for (const auto& imp : shader.imports) {
                 if (!imp.is_asset_path()) continue;
-                auto dep = context.path().resolve(imp.as_asset_path());
+                auto dep = resolve_dependency_path(context.path(), imp);
                 context.new_processed_info().process_dependencies.push_back(
-                    epix::assets::ProcessDependencyInfo{.full_hash = 0, .path = dep.string()});
+                    epix::assets::ProcessDependencyInfo{.full_hash = 0, .path = normalize_asset_path_string(dep)});
             }
         };
 
@@ -566,7 +619,7 @@ std::expected<ShaderProcessor::OutputLoader::Settings, std::exception_ptr> Shade
                 return std::unexpected(std::make_exception_ptr(std::runtime_error("Invalid UTF-8 in WGSL")));
             }
 
-            auto shader = Shader::from_wgsl_with_defs(std::string(bytes.begin(), bytes.end()), path_str,
+            auto shader = Shader::from_wgsl_with_defs(std::string(bytes.begin(), bytes.end()), context.path(),
                                                       settings.loader_settings.shader_defs);
             register_process_deps(shader);
             if (!write_serialized(shader)) {
@@ -581,7 +634,7 @@ std::expected<ShaderProcessor::OutputLoader::Settings, std::exception_ptr> Shade
                 return std::unexpected(std::make_exception_ptr(std::runtime_error("Invalid UTF-8 in Slang")));
             }
 
-            auto shader = Shader::from_slang_with_defs(std::string(bytes.begin(), bytes.end()), path_str,
+            auto shader = Shader::from_slang_with_defs(std::string(bytes.begin(), bytes.end()), context.path(),
                                                        settings.loader_settings.shader_defs);
             register_process_deps(shader);
             if (!write_serialized(shader)) {
@@ -608,7 +661,7 @@ void ShaderPlugin::build(core::App& app) {
     assets::app_register_asset<Shader>(app);
     assets::app_register_loader<ShaderLoader>(app);
 
-    // Sync loaded/modified/unused shader assets to ShaderCache (skipped if no ShaderCache resource).
+    // Sync dependency-ready shader assets to ShaderCache (skipped if no ShaderCache resource).
     app.add_systems(
         core::Last,
         core::into([](core::ResMut<ShaderCache> cache, core::Res<assets::Assets<Shader>> shaders,

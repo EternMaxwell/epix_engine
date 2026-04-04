@@ -90,7 +90,7 @@ bool wait_for_loaded(App& app,
         if (state.has_value() && std::holds_alternative<AssetLoadError>(*state)) {
             return false;
         }
-        if (server.is_loaded(id)) return true;
+        if (server.is_loaded_with_dependencies(id)) return true;
 
         app.run_schedule(Last);
         std::this_thread::sleep_for(std::chrono::milliseconds(2));
@@ -130,6 +130,7 @@ TEST(ShaderProcessingWgsl, ProcessedMode_WritesBinaryAndLoadsDeps) {
     auto shader = assets.get(main_hnd.id());
     ASSERT_TRUE(shader.has_value());
     EXPECT_TRUE(shader->get().source.is_wgsl());
+    EXPECT_EQ(shader->get().path, AssetPath("main.wgsl"));
     ASSERT_EQ(shader->get().imports.size(), 1u);
     EXPECT_TRUE(shader->get().imports[0].is_asset_path());
     EXPECT_EQ(shader->get().imports[0].as_asset_path().path.generic_string(), "dep.wgsl");
@@ -187,7 +188,7 @@ TEST(ShaderProcessingWgsl, ProcessedMode_LargeSourceRoundTrips) {
     EXPECT_TRUE(starts_with_processed_magic(processed));
 }
 
-TEST(ShaderProcessingSlang, ProcessedMode_WritesBinaryAndLoadsDeps) {
+TEST(ShaderProcessingSlang, ProcessedMode_PreservesCustomImportsWithoutFileDeps) {
     auto source = memory::Directory::create({});
     (void)source.insert_file("utility.slang", memory::Value::from_shared(make_bytes("float util() { return 1.0; }")));
     (void)source.insert_file(
@@ -204,9 +205,11 @@ TEST(ShaderProcessingSlang, ProcessedMode_WritesBinaryAndLoadsDeps) {
     auto shader = assets.get(main_hnd.id());
     ASSERT_TRUE(shader.has_value());
     EXPECT_TRUE(shader->get().source.is_slang());
+    EXPECT_EQ(shader->get().path, AssetPath("main.slang"));
     ASSERT_EQ(shader->get().imports.size(), 1u);
-    EXPECT_EQ(shader->get().imports[0].as_asset_path().path.generic_string(), "utility.slang");
-    EXPECT_EQ(shader->get().file_dependencies.size(), 1u);
+    EXPECT_TRUE(shader->get().imports[0].is_custom());
+    EXPECT_EQ(shader->get().imports[0].as_custom(), "utility.slang");
+    EXPECT_EQ(shader->get().file_dependencies.size(), 0u);
 
     auto processed = read_bytes(env.processed_dir, "main.slang");
     ASSERT_FALSE(processed.empty());

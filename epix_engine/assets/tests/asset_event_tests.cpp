@@ -16,7 +16,6 @@ TEST(AssetEvent, Added) {
     EXPECT_FALSE(ev.is_removed());
     EXPECT_FALSE(ev.is_modified());
     EXPECT_FALSE(ev.is_unused());
-    EXPECT_FALSE(ev.is_loaded());
     EXPECT_FALSE(ev.is_loaded_with_dependencies());
     EXPECT_EQ(ev.id, id);
 }
@@ -38,12 +37,6 @@ TEST(AssetEvent, Unused) {
     auto id = AssetId<std::string>::invalid();
     auto ev = AssetEvent<std::string>::unused(id);
     EXPECT_TRUE(ev.is_unused());
-}
-
-TEST(AssetEvent, Loaded) {
-    auto id = AssetId<std::string>::invalid();
-    auto ev = AssetEvent<std::string>::loaded(id);
-    EXPECT_TRUE(ev.is_loaded());
 }
 
 TEST(AssetEvent, LoadedWithDependencies) {
@@ -90,12 +83,6 @@ TEST(AssetEvent, IsUnusedWithId) {
     EXPECT_TRUE(ev.is_unused(id));
 }
 
-TEST(AssetEvent, IsLoadedWithId) {
-    auto id = AssetId<std::string>::invalid();
-    auto ev = AssetEvent<std::string>::loaded(id);
-    EXPECT_TRUE(ev.is_loaded(id));
-}
-
 TEST(AssetEvent, IsLoadedWithDependenciesWithId) {
     auto id = AssetId<std::string>::invalid();
     auto ev = AssetEvent<std::string>::loaded_with_dependencies(id);
@@ -112,6 +99,5 @@ TEST(AssetEvent, IsRemoved_ButActuallyAdded) {
     EXPECT_FALSE(ev.is_removed(id));
     EXPECT_FALSE(ev.is_modified(id));
     EXPECT_FALSE(ev.is_unused(id));
-    EXPECT_FALSE(ev.is_loaded(id));
     EXPECT_FALSE(ev.is_loaded_with_dependencies(id));
 }

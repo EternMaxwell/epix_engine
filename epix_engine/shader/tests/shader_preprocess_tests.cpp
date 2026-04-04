@@ -4,8 +4,10 @@
 #include <gtest/gtest.h>
 
 import std;
+import epix.assets;
 import epix.shader;
 
+using namespace epix::assets;
 using namespace epix::shader;
 
 // ===========================================================================
@@ -52,6 +54,16 @@ TEST(ShaderPreprocess, ImportAssetPath_SourceSchemeStripped) {
     EXPECT_EQ(imps[0].as_asset_path().path.generic_string(), "shaders/common.wgsl");
     ASSERT_TRUE(imps[0].as_asset_path().source.has_value());
     EXPECT_EQ(*imps[0].as_asset_path().source, "source");
+}
+
+TEST(ShaderPreprocess, ImportAssetPath_RootRelativePreserved) {
+    const char* src = "#import \"/shared/common.wgsl\"\n";
+    auto [ip, imps] = Shader::preprocess(src, "embedded://mesh/main.wgsl");
+    ASSERT_EQ(imps.size(), 1u);
+    EXPECT_TRUE(imps[0].is_asset_path());
+    EXPECT_TRUE(imps[0].as_asset_path().source.is_default());
+    EXPECT_TRUE(imps[0].as_asset_path().path.has_root_directory());
+    EXPECT_EQ(imps[0].as_asset_path().path.relative_path().generic_string(), "shared/common.wgsl");
 }
 
 TEST(ShaderPreprocess, ImportCustomName) {
@@ -132,9 +144,16 @@ TEST(ShaderPreprocess, ImportWithUnclosedQuote_StillParses) {
 
 TEST(ShaderFromWgsl, SetsPathAndSource) {
     auto s = Shader::from_wgsl("fn main() {}", "shaders/simple.wgsl");
-    EXPECT_EQ(s.path, "shaders/simple.wgsl");
+    EXPECT_EQ(s.path, AssetPath("shaders/simple.wgsl"));
     EXPECT_TRUE(s.source.is_wgsl());
     EXPECT_EQ(s.source.as_str(), "fn main() {}");
+}
+
+TEST(ShaderFromWgsl, PreservesAssetSourceInPathAndFallbackImportPath) {
+    auto s = Shader::from_wgsl("", "embedded://shaders/simple.wgsl");
+    EXPECT_EQ(s.path, AssetPath("embedded://shaders/simple.wgsl"));
+    EXPECT_TRUE(s.import_path.is_asset_path());
+    EXPECT_EQ(s.import_path.as_asset_path(), AssetPath("embedded://shaders/simple.wgsl"));
 }
 
 TEST(ShaderFromWgsl, DefaultImportPath_FallsBackToPath) {
@@ -184,7 +203,7 @@ TEST(ShaderFromWgslWithDefs, SetsShaderDefs) {
     ASSERT_EQ(s.shader_defs.size(), 2u);
     EXPECT_EQ(s.shader_defs[0].name, "FEATURE_A");
     EXPECT_EQ(s.shader_defs[1].name, "MAX_LIGHTS");
-    EXPECT_EQ(s.path, "x.wgsl");
+    EXPECT_EQ(s.path, AssetPath("x.wgsl"));
     EXPECT_TRUE(s.source.is_wgsl());
 }
 
@@ -208,7 +227,7 @@ TEST(ShaderFromWgslWithDefs, PreprocessStillRunsForDirectives) {
 TEST(ShaderFromSpirv, SetsPathAndSource) {
     std::vector<std::uint8_t> bytecode = {0x03, 0x02, 0x23, 0x07};
     auto s                             = Shader::from_spirv(bytecode, "shaders/compiled.spv");
-    EXPECT_EQ(s.path, "shaders/compiled.spv");
+    EXPECT_EQ(s.path, AssetPath("shaders/compiled.spv"));
     EXPECT_TRUE(s.source.is_spirv());
     EXPECT_FALSE(s.source.is_wgsl());
     const auto& spv = std::get<Source::SpirV>(s.source.data);
@@ -228,7 +247,7 @@ TEST(ShaderFromSpirv, ImportsAlwaysEmpty) {
 
 TEST(ShaderFromSpirv, EmptyBytecode) {
     auto s = Shader::from_spirv({}, "empty.spv");
-    EXPECT_EQ(s.path, "empty.spv");
+    EXPECT_EQ(s.path, AssetPath("empty.spv"));
     const auto& spv = std::get<Source::SpirV>(s.source.data);
     EXPECT_TRUE(spv.bytes.empty());
 }
@@ -244,7 +263,7 @@ TEST(ShaderFromSpirv, ShaderDefsDefaultEmpty) {
 
 TEST(ShaderFromSlang, SetsPathAndSource) {
     auto s = Shader::from_slang("[shader(\"vertex\")] float4 main() : SV_Position { return 0; }", "shaders/test.slang");
-    EXPECT_EQ(s.path, "shaders/test.slang");
+    EXPECT_EQ(s.path, AssetPath("shaders/test.slang"));
     EXPECT_TRUE(s.source.is_slang());
     EXPECT_FALSE(s.source.is_wgsl());
     EXPECT_FALSE(s.source.is_spirv());
@@ -262,8 +281,8 @@ TEST(ShaderFromSlang, ImportsExtractedFromImportStatements) {
     // Underscores in identifier tokens → hyphens per Slang spec
     auto s = Shader::from_slang("import some_module;\nvoid main() {}", "test.slang");
     ASSERT_EQ(s.imports.size(), 1u);
-    EXPECT_TRUE(s.imports[0].is_asset_path());
-    EXPECT_EQ(s.imports[0].as_asset_path().path.generic_string(), "some-module.slang");
+    EXPECT_TRUE(s.imports[0].is_custom());
+    EXPECT_EQ(s.imports[0].as_custom(), "some-module.slang");
 }
 
 TEST(ShaderFromSlang, NoImportStatements_ImportsEmpty) {
@@ -294,7 +313,7 @@ TEST(ShaderFromSlangWithDefs, SetsShaderDefs) {
     ASSERT_EQ(s.shader_defs.size(), 2u);
     EXPECT_EQ(s.shader_defs[0].name, "USE_NORMAL_MAP");
     EXPECT_EQ(s.shader_defs[1].name, "MAX_LIGHTS");
-    EXPECT_EQ(s.path, "x.slang");
+    EXPECT_EQ(s.path, AssetPath("x.slang"));
     EXPECT_TRUE(s.source.is_slang());
 }
 
@@ -318,15 +337,16 @@ TEST(SlangPreprocess, EmptySource_NoImports) {
 TEST(SlangPreprocess, SingleImport) {
     auto [ip, imps] = Shader::preprocess_slang("import utility;\n", "test.slang");
     ASSERT_EQ(imps.size(), 1u);
-    EXPECT_TRUE(imps[0].is_asset_path());
-    EXPECT_EQ(imps[0].as_asset_path().path.generic_string(), "utility.slang");
+    EXPECT_TRUE(imps[0].is_custom());
+    EXPECT_EQ(imps[0].as_custom(), "utility.slang");
 }
 
 TEST(SlangPreprocess, DottedImport_ConvertedToPath) {
     // import some.nested.module; → some/nested/module.slang
     auto [ip, imps] = Shader::preprocess_slang("import some.nested.module;\n", "test.slang");
     ASSERT_EQ(imps.size(), 1u);
-    EXPECT_EQ(imps[0].as_asset_path().path.generic_string(), "some/nested/module.slang");
+    EXPECT_TRUE(imps[0].is_custom());
+    EXPECT_EQ(imps[0].as_custom(), "some/nested/module.slang");
 }
 
 TEST(SlangPreprocess, MultipleImports_PreservesOrder) {
@@ -336,15 +356,16 @@ TEST(SlangPreprocess, MultipleImports_PreservesOrder) {
         "import delta;\n";
     auto [ip, imps] = Shader::preprocess_slang(src, "test.slang");
     ASSERT_EQ(imps.size(), 3u);
-    EXPECT_EQ(imps[0].as_asset_path().path.generic_string(), "alpha.slang");
-    EXPECT_EQ(imps[1].as_asset_path().path.generic_string(), "beta/gamma.slang");
-    EXPECT_EQ(imps[2].as_asset_path().path.generic_string(), "delta.slang");
+    EXPECT_EQ(imps[0].as_custom(), "alpha.slang");
+    EXPECT_EQ(imps[1].as_custom(), "beta/gamma.slang");
+    EXPECT_EQ(imps[2].as_custom(), "delta.slang");
 }
 
 TEST(SlangPreprocess, ImportWithExtraWhitespace) {
     auto [ip, imps] = Shader::preprocess_slang("  import   utility  ;\n", "test.slang");
     ASSERT_EQ(imps.size(), 1u);
-    EXPECT_EQ(imps[0].as_asset_path().path.generic_string(), "utility.slang");
+    EXPECT_TRUE(imps[0].is_custom());
+    EXPECT_EQ(imps[0].as_custom(), "utility.slang");
 }
 
 TEST(SlangPreprocess, ImportMissingName_Skipped) {
@@ -356,7 +377,8 @@ TEST(SlangPreprocess, ImportWithoutSemicolon_StillParses) {
     // Gracefully handle missing semicolon
     auto [ip, imps] = Shader::preprocess_slang("import utility\n", "test.slang");
     ASSERT_EQ(imps.size(), 1u);
-    EXPECT_EQ(imps[0].as_asset_path().path.generic_string(), "utility.slang");
+    EXPECT_TRUE(imps[0].is_custom());
+    EXPECT_EQ(imps[0].as_custom(), "utility.slang");
 }
 
 TEST(SlangPreprocess, CommentedOutImport_Skipped) {
@@ -386,8 +408,8 @@ TEST(SlangPreprocess, MixedImportsAndCode) {
         "void computeMain() {}\n";
     auto [ip, imps] = Shader::preprocess_slang(src, "main.slang");
     ASSERT_EQ(imps.size(), 2u);
-    EXPECT_EQ(imps[0].as_asset_path().path.generic_string(), "utility.slang");
-    EXPECT_EQ(imps[1].as_asset_path().path.generic_string(), "math/vec.slang");
+    EXPECT_EQ(imps[0].as_custom(), "utility.slang");
+    EXPECT_EQ(imps[1].as_custom(), "math/vec.slang");
 }
 
 TEST(SlangPreprocess, ImportPath_AlwaysAssetPath) {
@@ -410,20 +432,22 @@ TEST(SlangPreprocess, ImportKeywordInString_NotTreatedAsImport) {
 TEST(ShaderFromSlang, SingleImportIdentifier_PopulatesImports) {
     auto s = Shader::from_slang("import utility;\nvoid main() {}", "main.slang");
     ASSERT_EQ(s.imports.size(), 1u);
-    EXPECT_EQ(s.imports[0].as_asset_path().path.generic_string(), "utility.slang");
+    EXPECT_TRUE(s.imports[0].is_custom());
+    EXPECT_EQ(s.imports[0].as_custom(), "utility.slang");
 }
 
 TEST(ShaderFromSlang, DottedImport_PopulatesImports) {
     auto s = Shader::from_slang("import a.b.c;\nvoid main() {}", "main.slang");
     ASSERT_EQ(s.imports.size(), 1u);
-    EXPECT_EQ(s.imports[0].as_asset_path().path.generic_string(), "a/b/c.slang");
+    EXPECT_TRUE(s.imports[0].is_custom());
+    EXPECT_EQ(s.imports[0].as_custom(), "a/b/c.slang");
 }
 
 TEST(ShaderFromSlang, MultipleImports_PopulatesAll) {
     auto s = Shader::from_slang("import foo;\nimport bar.baz;\nvoid main() {}", "main.slang");
     ASSERT_EQ(s.imports.size(), 2u);
-    EXPECT_EQ(s.imports[0].as_asset_path().path.generic_string(), "foo.slang");
-    EXPECT_EQ(s.imports[1].as_asset_path().path.generic_string(), "bar/baz.slang");
+    EXPECT_EQ(s.imports[0].as_custom(), "foo.slang");
+    EXPECT_EQ(s.imports[1].as_custom(), "bar/baz.slang");
 }
 
 TEST(ShaderFromSlang, ImportPath_IsAssetPathOfFilePath) {
@@ -436,7 +460,8 @@ TEST(ShaderFromSlangWithDefs, ImportsStillParsed) {
     auto s = Shader::from_slang_with_defs("import utility;\nvoid main() {}", "main.slang",
                                           {ShaderDefVal::from_bool("DEBUG")});
     ASSERT_EQ(s.imports.size(), 1u);
-    EXPECT_EQ(s.imports[0].as_asset_path().path.generic_string(), "utility.slang");
+    EXPECT_TRUE(s.imports[0].is_custom());
+    EXPECT_EQ(s.imports[0].as_custom(), "utility.slang");
     ASSERT_EQ(s.shader_defs.size(), 1u);
     EXPECT_EQ(s.shader_defs[0].name, "DEBUG");
 }
@@ -448,15 +473,15 @@ TEST(ShaderFromSlangWithDefs, ImportsStillParsed) {
 TEST(SlangPreprocess, Include_Identifier) {
     auto [ip, imps] = Shader::preprocess_slang("__include scene_helpers;\n", "main.slang");
     ASSERT_EQ(imps.size(), 1u);
-    EXPECT_TRUE(imps[0].is_asset_path());
-    // Underscores in identifiers → hyphens
-    EXPECT_EQ(imps[0].as_asset_path().path.generic_string(), "scene-helpers.slang");
+    EXPECT_TRUE(imps[0].is_custom());
+    EXPECT_EQ(imps[0].as_custom(), "scene-helpers.slang");
 }
 
 TEST(SlangPreprocess, Include_DottedIdentifier) {
     auto [ip, imps] = Shader::preprocess_slang("__include scene.helpers_util;\n", "main.slang");
     ASSERT_EQ(imps.size(), 1u);
-    EXPECT_EQ(imps[0].as_asset_path().path.generic_string(), "scene/helpers-util.slang");
+    EXPECT_TRUE(imps[0].is_custom());
+    EXPECT_EQ(imps[0].as_custom(), "scene/helpers-util.slang");
 }
 
 TEST(SlangPreprocess, Include_StringLiteral) {
@@ -480,7 +505,8 @@ TEST(SlangPreprocess, Include_MissingName_Skipped) {
 TEST(SlangPreprocess, Include_WithExtraWhitespace) {
     auto [ip, imps] = Shader::preprocess_slang("  __include   helpers  ;\n", "main.slang");
     ASSERT_EQ(imps.size(), 1u);
-    EXPECT_EQ(imps[0].as_asset_path().path.generic_string(), "helpers.slang");
+    EXPECT_TRUE(imps[0].is_custom());
+    EXPECT_EQ(imps[0].as_custom(), "helpers.slang");
 }
 
 // ===========================================================================
@@ -489,19 +515,28 @@ TEST(SlangPreprocess, Include_WithExtraWhitespace) {
 
 TEST(SlangPreprocess, ModuleDeclaration_SetsImportPath) {
     auto [ip, imps] = Shader::preprocess_slang("module scene;\nvoid draw() {}\n", "shaders/scene.slang");
-    EXPECT_TRUE(ip.is_asset_path());
-    EXPECT_EQ(ip.as_asset_path().path.generic_string(), "scene.slang");
+    EXPECT_TRUE(ip.is_custom());
+    EXPECT_EQ(ip.as_custom(), "scene.slang");
     EXPECT_TRUE(imps.empty());
 }
 
 TEST(SlangPreprocess, ModuleDeclaration_DottedName) {
     auto [ip, imps] = Shader::preprocess_slang("module graphics.utils;\n", "x.slang");
-    EXPECT_EQ(ip.as_asset_path().path.generic_string(), "graphics/utils.slang");
+    EXPECT_TRUE(ip.is_custom());
+    EXPECT_EQ(ip.as_custom(), "graphics/utils.slang");
 }
 
 TEST(SlangPreprocess, ModuleDeclaration_Underscore) {
     auto [ip, imps] = Shader::preprocess_slang("module my_lib;\n", "x.slang");
-    EXPECT_EQ(ip.as_asset_path().path.generic_string(), "my-lib.slang");
+    EXPECT_TRUE(ip.is_custom());
+    EXPECT_EQ(ip.as_custom(), "my-lib.slang");
+}
+
+TEST(SlangPreprocess, ModuleDeclaration_StringLiteralNoExtension_CanonicalizedToCustomName) {
+    auto [ip, imps] = Shader::preprocess_slang("module \"common/view\";\n", "embedded://mesh/main.slang");
+    EXPECT_TRUE(ip.is_custom());
+    EXPECT_EQ(ip.as_custom(), "common/view.slang");
+    EXPECT_TRUE(imps.empty());
 }
 
 TEST(SlangPreprocess, NoModuleDeclaration_ImportPathIsFallback) {
@@ -532,20 +567,23 @@ TEST(SlangPreprocess, ImportStringLiteral_NoExtension) {
 TEST(SlangPreprocess, UnderscoreToHyphen_Import) {
     auto [ip, imps] = Shader::preprocess_slang("import my_lib;\n", "test.slang");
     ASSERT_EQ(imps.size(), 1u);
-    EXPECT_EQ(imps[0].as_asset_path().path.generic_string(), "my-lib.slang");
+    EXPECT_TRUE(imps[0].is_custom());
+    EXPECT_EQ(imps[0].as_custom(), "my-lib.slang");
 }
 
 TEST(SlangPreprocess, UnderscoreToHyphen_DottedImport) {
     // import dir.file_name; → dir/file-name.slang
     auto [ip, imps] = Shader::preprocess_slang("import some_dir.my_module;\n", "test.slang");
     ASSERT_EQ(imps.size(), 1u);
-    EXPECT_EQ(imps[0].as_asset_path().path.generic_string(), "some-dir/my-module.slang");
+    EXPECT_TRUE(imps[0].is_custom());
+    EXPECT_EQ(imps[0].as_custom(), "some-dir/my-module.slang");
 }
 
 TEST(SlangPreprocess, UnderscoreToHyphen_Include) {
     auto [ip, imps] = Shader::preprocess_slang("__include scene_helpers;\n", "test.slang");
     ASSERT_EQ(imps.size(), 1u);
-    EXPECT_EQ(imps[0].as_asset_path().path.generic_string(), "scene-helpers.slang");
+    EXPECT_TRUE(imps[0].is_custom());
+    EXPECT_EQ(imps[0].as_custom(), "scene-helpers.slang");
 }
 
 // ===========================================================================
@@ -570,10 +608,13 @@ TEST(SlangPreprocess, Mixed_ImportAndInclude) {
         "import \"third-party/lib.slang\";\n"
         "void main() {}\n";
     auto [ip, imps] = Shader::preprocess_slang(src, "app.slang");
-    EXPECT_EQ(ip.as_asset_path().path.generic_string(), "my-app.slang");
+    EXPECT_TRUE(ip.is_custom());
+    EXPECT_EQ(ip.as_custom(), "my-app.slang");
     ASSERT_EQ(imps.size(), 3u);
-    EXPECT_EQ(imps[0].as_asset_path().path.generic_string(), "graphics/utils.slang");
-    EXPECT_EQ(imps[1].as_asset_path().path.generic_string(), "app-helpers.slang");
+    EXPECT_TRUE(imps[0].is_custom());
+    EXPECT_EQ(imps[0].as_custom(), "graphics/utils.slang");
+    EXPECT_TRUE(imps[1].is_custom());
+    EXPECT_EQ(imps[1].as_custom(), "app-helpers.slang");
     EXPECT_EQ(imps[2].as_asset_path().path.generic_string(), "third-party/lib.slang");
 }
 
@@ -588,11 +629,33 @@ TEST(SlangPreprocess, ImportStringLiteral_SourceSchemeStripped) {
     // source:// prefix is preserved in AssetPath source component
     auto [ip, imps] = Shader::preprocess_slang("import \"my-source://shaders/dep.slang\";\n", "test.slang");
     ASSERT_EQ(imps.size(), 1u);
+    ASSERT_TRUE(imps[0].as_asset_path().source.as_str().has_value());
+    EXPECT_EQ(imps[0].as_asset_path().source.as_str().value(), "my-source");
     EXPECT_EQ(imps[0].as_asset_path().path.generic_string(), "shaders/dep.slang");
 }
 
 TEST(SlangPreprocess, IncludeStringLiteral_SourceSchemeStripped) {
     auto [ip, imps] = Shader::preprocess_slang("__include \"assets://helpers/scene.slang\";\n", "test.slang");
     ASSERT_EQ(imps.size(), 1u);
+    ASSERT_TRUE(imps[0].as_asset_path().source.as_str().has_value());
+    EXPECT_EQ(imps[0].as_asset_path().source.as_str().value(), "assets");
     EXPECT_EQ(imps[0].as_asset_path().path.generic_string(), "helpers/scene.slang");
+}
+
+TEST(SlangPreprocess, IncludeStringLiteral_RootRelativeSameSource) {
+    auto [ip, imps] = Shader::preprocess_slang("__include \"/shared/view\";\n", "embedded://mesh/main.slang");
+    ASSERT_EQ(imps.size(), 1u);
+    EXPECT_TRUE(imps[0].is_asset_path());
+    EXPECT_TRUE(imps[0].as_asset_path().source.is_default());
+    EXPECT_TRUE(imps[0].as_asset_path().path.has_root_directory());
+    EXPECT_EQ(imps[0].as_asset_path().path.relative_path().generic_string(), "shared/view.slang");
+}
+
+TEST(SlangPreprocess, ImportStringLiteral_RootRelativeSameSource) {
+    auto [ip, imps] = Shader::preprocess_slang("import \"/shared/view\";\n", "embedded://mesh/main.slang");
+    ASSERT_EQ(imps.size(), 1u);
+    EXPECT_TRUE(imps[0].is_asset_path());
+    EXPECT_TRUE(imps[0].as_asset_path().source.is_default());
+    EXPECT_TRUE(imps[0].as_asset_path().path.has_root_directory());
+    EXPECT_EQ(imps[0].as_asset_path().path.relative_path().generic_string(), "shared/view.slang");
 }

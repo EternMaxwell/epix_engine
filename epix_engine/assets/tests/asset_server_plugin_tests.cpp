@@ -36,20 +36,20 @@ AssetSourceBuilder make_memory_source_builder(const memory::Directory& dir, bool
 AssetSourceBuilder make_memory_source_builder_with_watchers(const memory::Directory& dir,
                                                             bool with_processed_reader  = true,
                                                             bool with_processed_watcher = true) {
-    auto builder = make_memory_source_builder(dir, with_processed_reader)
-                       .with_watcher(
-                           [dir](epix::utils::Sender<AssetSourceEvent> sender) -> std::unique_ptr<AssetWatcher> {
-                           return std::make_unique<MemoryAssetWatcher>(
-                               dir, [sender = std::move(sender)](AssetSourceEvent event) mutable {
-                                   sender.send(std::move(event));
-                               });
-                       });
+    auto builder =
+        make_memory_source_builder(dir, with_processed_reader)
+            .with_watcher([dir](epix::utils::Sender<AssetSourceEvent> sender) -> std::unique_ptr<AssetWatcher> {
+                return std::make_unique<MemoryAssetWatcher>(
+                    dir,
+                    [sender = std::move(sender)](AssetSourceEvent event) mutable { sender.send(std::move(event)); });
+            });
     if (with_processed_watcher) {
         builder.with_processed_watcher(
             [dir](epix::utils::Sender<AssetSourceEvent> sender) -> std::unique_ptr<AssetWatcher> {
-            return std::make_unique<MemoryAssetWatcher>(
-                dir, [sender = std::move(sender)](AssetSourceEvent event) mutable { sender.send(std::move(event)); });
-        });
+                return std::make_unique<MemoryAssetWatcher>(
+                    dir,
+                    [sender = std::move(sender)](AssetSourceEvent event) mutable { sender.send(std::move(event)); });
+            });
     }
     return builder;
 }
@@ -78,9 +78,7 @@ struct TestTextLoader {
         return std::span<std::string_view>(exts.data(), exts.size());
     }
 
-    static std::expected<std::string, Error> load(std::istream& reader,
-                                                  const Settings&,
-                                                  epix::assets::LoadContext&) {
+    static std::expected<std::string, Error> load(std::istream& reader, const Settings&, epix::assets::LoadContext&) {
         load_count.fetch_add(1);
         std::stringstream ss;
         ss << reader.rdbuf();
@@ -98,6 +96,59 @@ struct TestProcess {
         return OutputLoader::Settings{};
     }
 };
+
+struct DependencyManifestAsset {
+    std::string value;
+    UntypedHandle dependency;
+};
+
+struct DependencyManifestLoader {
+    using Asset = DependencyManifestAsset;
+    struct Settings : epix::assets::Settings {};
+    using Error = std::exception_ptr;
+
+    static std::span<std::string_view> extensions() {
+        static auto exts = std::array{std::string_view{"dep"}};
+        return std::span<std::string_view>(exts.data(), exts.size());
+    }
+
+    static std::expected<DependencyManifestAsset, Error> load(std::istream& reader,
+                                                              const Settings&,
+                                                              epix::assets::LoadContext& context) {
+        std::stringstream ss;
+        ss << reader.rdbuf();
+        auto dependency_path = ss.str();
+        while (!dependency_path.empty() && (dependency_path.back() == '\n' || dependency_path.back() == '\r' ||
+                                            dependency_path.back() == ' ' || dependency_path.back() == '\t')) {
+            dependency_path.pop_back();
+        }
+
+        auto dep_handle = context.asset_server().load_untyped(AssetPath(dependency_path));
+        context.track_dependency(UntypedAssetId(dep_handle.id()));
+        return DependencyManifestAsset{std::string("manifest:") + dependency_path, std::move(dep_handle)};
+    }
+};
+
+template <typename EventT, typename Pred>
+bool any_recorded_event(const Events<EventT>& events, Pred&& pred) {
+    for (std::uint32_t i = events.head(); i < events.tail(); ++i) {
+        auto* event = events.get(i);
+        if (event && pred(*event)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+const char* asset_server_mode_name(AssetServerMode mode) {
+    switch (mode) {
+        case AssetServerMode::Unprocessed:
+            return "Unprocessed";
+        case AssetServerMode::Processed:
+            return "Processed";
+    }
+    return "Unknown";
+}
 
 std::vector<AssetSourceEvent> drain_source_events(const epix::utils::Receiver<AssetSourceEvent>& receiver,
                                                   std::size_t max_count = 16) {
@@ -556,6 +607,30 @@ PluginTestEnv make_plugin_env(bool watching, std::string_view initial_content = 
     return {std::move(app), dir};
 }
 
+PluginTestEnv make_plugin_env_for_mode(AssetServerMode mode,
+                                       bool watching                    = false,
+                                       std::string_view initial_content = "hello") {
+    auto dir = make_memory_dir_with_text(initial_content);
+
+    App app = App::create();
+    AssetPlugin plugin;
+    plugin.mode = mode;
+    if (mode == AssetServerMode::Processed) {
+        plugin.use_asset_processor_override = false;
+    }
+    plugin.watch_for_changes_override = watching;
+    if (watching) {
+        plugin.register_asset_source(AssetSourceId{}, make_memory_source_builder_with_watchers(dir));
+    } else {
+        plugin.register_asset_source(AssetSourceId{}, make_memory_source_builder(dir));
+    }
+    plugin.build(app);
+    app_register_asset<std::string>(app);
+    app_register_loader<TestTextLoader>(app);
+
+    return {std::move(app), dir};
+}
+
 /// Wait for all IOTaskPool tasks and then run the Last schedule to process internal events.
 void flush_load_tasks(App& app) {
     epix::utils::IOTaskPool::instance().wait();
@@ -922,9 +997,7 @@ struct FailingLoader {
         return std::span<std::string_view>(exts.data(), exts.size());
     }
 
-    static std::expected<std::string, Error> load(std::istream&,
-                                                  const Settings&,
-                                                  epix::assets::LoadContext&) {
+    static std::expected<std::string, Error> load(std::istream&, const Settings&, epix::assets::LoadContext&) {
         return std::unexpected(std::make_exception_ptr(std::runtime_error("simulated parse error")));
     }
 };
@@ -1228,6 +1301,220 @@ TEST(LoadStates, FailedAsset_AllStatesReflectFailure) {
     EXPECT_FALSE(server.is_loaded(handle.id()));
     EXPECT_FALSE(server.is_loaded_with_direct_dependencies(handle.id()));
     EXPECT_FALSE(server.is_loaded_with_dependencies(handle.id()));
+}
+
+TEST(LoadStateEvents, SingleAsset_SuccessMatchesStateAndEventsAcrossModes) {
+    for (auto mode : {AssetServerMode::Unprocessed, AssetServerMode::Processed}) {
+        SCOPED_TRACE(asset_server_mode_name(mode));
+
+        auto [app, dir] = make_plugin_env_for_mode(mode, /*watching=*/false);
+        auto& server    = app.resource<AssetServer>();
+
+        auto handle = server.load<std::string>(AssetPath("hello.txt"));
+        flush_load_tasks(app);
+
+        auto states = server.get_load_states(handle.id());
+        ASSERT_TRUE(states.has_value());
+        auto [self_state, dep_state, rec_dep_state] = *states;
+
+        ASSERT_TRUE(std::holds_alternative<LoadStateOK>(self_state));
+        EXPECT_EQ(std::get<LoadStateOK>(self_state), LoadStateOK::Loaded);
+        ASSERT_TRUE(std::holds_alternative<LoadStateOK>(dep_state));
+        EXPECT_EQ(std::get<LoadStateOK>(dep_state), LoadStateOK::Loaded);
+        ASSERT_TRUE(std::holds_alternative<LoadStateOK>(rec_dep_state));
+        EXPECT_EQ(std::get<LoadStateOK>(rec_dep_state), LoadStateOK::Loaded);
+
+        EXPECT_TRUE(server.is_loaded(handle.id()));
+        EXPECT_TRUE(server.is_loaded_with_direct_dependencies(handle.id()));
+        EXPECT_TRUE(server.is_loaded_with_dependencies(handle.id()));
+
+        auto& asset_events = app.resource<Events<AssetEvent<std::string>>>();
+        EXPECT_TRUE(any_recorded_event(
+            asset_events, [&](const AssetEvent<std::string>& event) { return event.is_added(handle.id()); }));
+        EXPECT_TRUE(any_recorded_event(asset_events, [&](const AssetEvent<std::string>& event) {
+            return event.is_loaded_with_dependencies(handle.id());
+        }));
+
+        auto& typed_failures = app.resource<Events<AssetLoadFailedEvent<std::string>>>();
+        EXPECT_FALSE(any_recorded_event(
+            typed_failures, [&](const AssetLoadFailedEvent<std::string>& event) { return event.id == handle.id(); }));
+
+        auto& untyped_failures = app.resource<Events<UntypedAssetLoadFailedEvent>>();
+        EXPECT_FALSE(any_recorded_event(untyped_failures, [&](const UntypedAssetLoadFailedEvent& event) {
+            return event.id == UntypedAssetId(handle.id());
+        }));
+    }
+}
+
+TEST(LoadStateEvents, DirectDependencySuccess_MatchesStateAndEventsAcrossModes) {
+    for (auto mode : {AssetServerMode::Unprocessed, AssetServerMode::Processed}) {
+        SCOPED_TRACE(asset_server_mode_name(mode));
+
+        auto [app, dir] = make_plugin_env_for_mode(mode, /*watching=*/false);
+        auto& server    = app.resource<AssetServer>();
+        app_register_asset<DependencyManifestAsset>(app);
+        app_register_loader<DependencyManifestLoader>(app);
+
+        auto main_data = make_bytes("hello.txt");
+        ASSERT_TRUE(dir.insert_file("main.dep", memory::Value::from_shared(main_data)).has_value());
+
+        auto root = server.load<DependencyManifestAsset>(AssetPath("main.dep"));
+        flush_load_tasks(app);
+
+        auto child = server.get_handle<std::string>(AssetPath("hello.txt"));
+        ASSERT_TRUE(child.has_value());
+
+        EXPECT_TRUE(server.is_loaded(root.id()));
+        EXPECT_TRUE(server.is_loaded_with_direct_dependencies(root.id()));
+        EXPECT_TRUE(server.is_loaded_with_dependencies(root.id()));
+        EXPECT_TRUE(server.is_loaded_with_dependencies(child->id()));
+
+        auto root_states = server.get_load_states(root.id());
+        ASSERT_TRUE(root_states.has_value());
+        EXPECT_EQ(std::get<LoadStateOK>(std::get<0>(*root_states)), LoadStateOK::Loaded);
+        EXPECT_EQ(std::get<LoadStateOK>(std::get<1>(*root_states)), LoadStateOK::Loaded);
+        EXPECT_EQ(std::get<LoadStateOK>(std::get<2>(*root_states)), LoadStateOK::Loaded);
+
+        auto& root_events = app.resource<Events<AssetEvent<DependencyManifestAsset>>>();
+        EXPECT_TRUE(any_recorded_event(root_events, [&](const AssetEvent<DependencyManifestAsset>& event) {
+            return event.is_loaded_with_dependencies(root.id());
+        }));
+        auto& child_events = app.resource<Events<AssetEvent<std::string>>>();
+        EXPECT_TRUE(any_recorded_event(child_events, [&](const AssetEvent<std::string>& event) {
+            return event.is_loaded_with_dependencies(child->id());
+        }));
+
+        auto& root_failures = app.resource<Events<AssetLoadFailedEvent<DependencyManifestAsset>>>();
+        EXPECT_FALSE(any_recorded_event(root_failures, [&](const AssetLoadFailedEvent<DependencyManifestAsset>& event) {
+            return event.id == root.id();
+        }));
+        auto& typed_failures = app.resource<Events<AssetLoadFailedEvent<std::string>>>();
+        EXPECT_FALSE(any_recorded_event(
+            typed_failures, [&](const AssetLoadFailedEvent<std::string>& event) { return event.id == child->id(); }));
+    }
+}
+
+TEST(LoadStateEvents, DirectDependencyFailure_ParentStaysLoadedButDependencyStatesFailAcrossModes) {
+    for (auto mode : {AssetServerMode::Unprocessed, AssetServerMode::Processed}) {
+        SCOPED_TRACE(asset_server_mode_name(mode));
+
+        auto [app, dir] = make_plugin_env_for_mode(mode, /*watching=*/false);
+        auto& server    = app.resource<AssetServer>();
+        app_register_asset<DependencyManifestAsset>(app);
+        app_register_loader<DependencyManifestLoader>(app);
+
+        auto main_data = make_bytes("missing.txt");
+        ASSERT_TRUE(dir.insert_file("main.dep", memory::Value::from_shared(main_data)).has_value());
+
+        auto root = server.load<DependencyManifestAsset>(AssetPath("main.dep"));
+        flush_load_tasks(app);
+
+        auto child = server.get_handle<std::string>(AssetPath("missing.txt"));
+        ASSERT_TRUE(child.has_value());
+
+        auto root_states = server.get_load_states(root.id());
+        ASSERT_TRUE(root_states.has_value());
+        EXPECT_TRUE(std::holds_alternative<LoadStateOK>(std::get<0>(*root_states)));
+        EXPECT_EQ(std::get<LoadStateOK>(std::get<0>(*root_states)), LoadStateOK::Loaded);
+        EXPECT_TRUE(std::holds_alternative<AssetLoadError>(std::get<1>(*root_states)));
+        EXPECT_TRUE(std::holds_alternative<AssetLoadError>(std::get<2>(*root_states)));
+
+        EXPECT_TRUE(server.is_loaded(root.id()));
+        EXPECT_FALSE(server.is_loaded_with_direct_dependencies(root.id()));
+        EXPECT_FALSE(server.is_loaded_with_dependencies(root.id()));
+
+        auto child_state = server.get_load_state(child->id());
+        ASSERT_TRUE(child_state.has_value());
+        EXPECT_TRUE(std::holds_alternative<AssetLoadError>(*child_state));
+
+        auto& root_events = app.resource<Events<AssetEvent<DependencyManifestAsset>>>();
+        EXPECT_TRUE(any_recorded_event(
+            root_events, [&](const AssetEvent<DependencyManifestAsset>& event) { return event.is_added(root.id()); }));
+        EXPECT_FALSE(any_recorded_event(root_events, [&](const AssetEvent<DependencyManifestAsset>& event) {
+            return event.is_loaded_with_dependencies(root.id());
+        }));
+        auto& child_events = app.resource<Events<AssetEvent<std::string>>>();
+        EXPECT_FALSE(any_recorded_event(child_events, [&](const AssetEvent<std::string>& event) {
+            return event.is_loaded_with_dependencies(child->id());
+        }));
+
+        auto& root_failures = app.resource<Events<AssetLoadFailedEvent<DependencyManifestAsset>>>();
+        EXPECT_FALSE(any_recorded_event(root_failures, [&](const AssetLoadFailedEvent<DependencyManifestAsset>& event) {
+            return event.id == root.id();
+        }));
+        auto& typed_failures = app.resource<Events<AssetLoadFailedEvent<std::string>>>();
+        EXPECT_TRUE(any_recorded_event(typed_failures, [&](const AssetLoadFailedEvent<std::string>& event) {
+            return event.id == child->id() && event.path == AssetPath("missing.txt");
+        }));
+
+        auto& untyped_failures = app.resource<Events<UntypedAssetLoadFailedEvent>>();
+        EXPECT_TRUE(any_recorded_event(untyped_failures, [&](const UntypedAssetLoadFailedEvent& event) {
+            return event.id == UntypedAssetId(child->id()) && event.path == AssetPath("missing.txt");
+        }));
+    }
+}
+
+TEST(LoadStateEvents, RecursiveDependencyFailure_OnlyRecursiveStateFailsAcrossModes) {
+    for (auto mode : {AssetServerMode::Unprocessed, AssetServerMode::Processed}) {
+        SCOPED_TRACE(asset_server_mode_name(mode));
+
+        auto [app, dir] = make_plugin_env_for_mode(mode, /*watching=*/false);
+        auto& server    = app.resource<AssetServer>();
+        app_register_asset<DependencyManifestAsset>(app);
+        app_register_loader<DependencyManifestLoader>(app);
+
+        ASSERT_TRUE(dir.insert_file("root.dep", memory::Value::from_shared(make_bytes("mid.dep"))).has_value());
+        ASSERT_TRUE(dir.insert_file("mid.dep", memory::Value::from_shared(make_bytes("missing.txt"))).has_value());
+
+        auto root = server.load<DependencyManifestAsset>(AssetPath("root.dep"));
+        flush_load_tasks(app);
+
+        auto mid  = server.get_handle<DependencyManifestAsset>(AssetPath("mid.dep"));
+        auto leaf = server.get_handle<std::string>(AssetPath("missing.txt"));
+        ASSERT_TRUE(mid.has_value());
+        ASSERT_TRUE(leaf.has_value());
+
+        auto root_states = server.get_load_states(root.id());
+        ASSERT_TRUE(root_states.has_value());
+        EXPECT_TRUE(std::holds_alternative<LoadStateOK>(std::get<0>(*root_states)));
+        EXPECT_EQ(std::get<LoadStateOK>(std::get<0>(*root_states)), LoadStateOK::Loaded);
+        EXPECT_TRUE(std::holds_alternative<LoadStateOK>(std::get<1>(*root_states)));
+        EXPECT_EQ(std::get<LoadStateOK>(std::get<1>(*root_states)), LoadStateOK::Loaded);
+        EXPECT_TRUE(std::holds_alternative<AssetLoadError>(std::get<2>(*root_states)));
+
+        auto mid_states = server.get_load_states(mid->id());
+        ASSERT_TRUE(mid_states.has_value());
+        EXPECT_TRUE(std::holds_alternative<LoadStateOK>(std::get<0>(*mid_states)));
+        EXPECT_EQ(std::get<LoadStateOK>(std::get<0>(*mid_states)), LoadStateOK::Loaded);
+        EXPECT_TRUE(std::holds_alternative<AssetLoadError>(std::get<1>(*mid_states)));
+        EXPECT_TRUE(std::holds_alternative<AssetLoadError>(std::get<2>(*mid_states)));
+
+        EXPECT_TRUE(server.is_loaded(root.id()));
+        EXPECT_TRUE(server.is_loaded_with_direct_dependencies(root.id()));
+        EXPECT_FALSE(server.is_loaded_with_dependencies(root.id()));
+        EXPECT_TRUE(server.is_loaded(mid->id()));
+        EXPECT_FALSE(server.is_loaded_with_direct_dependencies(mid->id()));
+        EXPECT_FALSE(server.is_loaded_with_dependencies(mid->id()));
+
+        auto& manifest_events = app.resource<Events<AssetEvent<DependencyManifestAsset>>>();
+        EXPECT_FALSE(any_recorded_event(manifest_events, [&](const AssetEvent<DependencyManifestAsset>& event) {
+            return event.is_loaded_with_dependencies(root.id()) || event.is_loaded_with_dependencies(mid->id());
+        }));
+        auto& text_events = app.resource<Events<AssetEvent<std::string>>>();
+        EXPECT_FALSE(any_recorded_event(text_events, [&](const AssetEvent<std::string>& event) {
+            return event.is_loaded_with_dependencies(leaf->id());
+        }));
+
+        auto& manifest_failures = app.resource<Events<AssetLoadFailedEvent<DependencyManifestAsset>>>();
+        EXPECT_FALSE(
+            any_recorded_event(manifest_failures, [&](const AssetLoadFailedEvent<DependencyManifestAsset>& event) {
+                return event.id == root.id() || event.id == mid->id();
+            }));
+        auto& typed_failures = app.resource<Events<AssetLoadFailedEvent<std::string>>>();
+        EXPECT_TRUE(any_recorded_event(typed_failures, [&](const AssetLoadFailedEvent<std::string>& event) {
+            return event.id == leaf->id() && event.path == AssetPath("missing.txt");
+        }));
+    }
 }
 
 // -------------------------------------------------------------------------------------

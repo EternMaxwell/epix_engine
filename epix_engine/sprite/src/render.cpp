@@ -71,20 +71,48 @@ float4 main(FragmentInput input) : SV_Target {
 }
 )";
 
-const assets::AssetId<shader::Shader> kSpriteVertexShaderId(
-    uuids::uuid::from_string("89282c3c-0eaa-4f75-bf12-5b7f78c763f0").value());
-const assets::AssetId<shader::Shader> kSpriteFragmentShaderId(
-    uuids::uuid::from_string("63e69646-4b35-4eb8-b095-78ef59bd3ea3").value());
+constexpr std::string_view kSpriteVertexShaderAssetPath   = "sprite/sprite_vertex.slang";
+constexpr std::string_view kSpriteFragmentShaderAssetPath = "sprite/sprite_fragment.slang";
+
+std::span<const std::byte> shader_bytes(std::string_view source) {
+    return std::span<const std::byte>(reinterpret_cast<const std::byte*>(source.data()), source.size());
+}
+
+struct SpriteShaderHandles {
+    assets::Handle<shader::Shader> vertex_shader;
+    assets::Handle<shader::Shader> fragment_shader;
+};
+
+std::optional<SpriteShaderHandles> load_sprite_shader_handles(World& world) {
+    auto registry = world.get_resource_mut<assets::EmbeddedAssetRegistry>();
+    auto server   = world.get_resource<assets::AssetServer>();
+    if (!registry || !server) {
+        spdlog::warn(
+            "[sprite] EmbeddedAssetRegistry or AssetServer is not available. Internal sprite shaders were not "
+            "registered.");
+        return std::nullopt;
+    }
+
+    registry->get().insert_asset_static(kSpriteVertexShaderAssetPath, kSpriteVertexShaderAssetPath,
+                                        shader_bytes(kSpriteVertexShader));
+    registry->get().insert_asset_static(kSpriteFragmentShaderAssetPath, kSpriteFragmentShaderAssetPath,
+                                        shader_bytes(kSpriteFragmentShader));
+
+    return SpriteShaderHandles{
+        .vertex_shader   = server->get().load<shader::Shader>("embedded://sprite/sprite_vertex.slang"),
+        .fragment_shader = server->get().load<shader::Shader>("embedded://sprite/sprite_fragment.slang"),
+    };
+}
 
 struct SpritePipelineCache {
     wgpu::BindGroupLayout view_layout;
     wgpu::BindGroupLayout instance_layout;
     wgpu::BindGroupLayout texture_layout;
-    assets::Handle<shader::Shader> vertex_shader{kSpriteVertexShaderId};
-    assets::Handle<shader::Shader> fragment_shader{kSpriteFragmentShaderId};
+    assets::Handle<shader::Shader> vertex_shader;
+    assets::Handle<shader::Shader> fragment_shader;
     std::unordered_map<std::uint32_t, render::CachedPipelineId> pipelines;
 
-    explicit SpritePipelineCache(World& world)
+    explicit SpritePipelineCache(World& world, const SpriteShaderHandles& shader_handles)
         : view_layout(world.resource<render::view::ViewUniformBindingLayout>().layout),
           instance_layout(world.resource<wgpu::Device>().createBindGroupLayout(
               wgpu::BindGroupLayoutDescriptor()
@@ -113,7 +141,9 @@ struct SpritePipelineCache {
                                           .setSampleType(wgpu::TextureSampleType::eFloat)
                                           .setViewDimension(wgpu::TextureViewDimension::e2D)
                                           .setMultisampled(false)),
-                  }))) {}
+                  }))),
+          vertex_shader(shader_handles.vertex_shader),
+          fragment_shader(shader_handles.fragment_shader) {}
 
     std::optional<render::CachedPipelineId> specialize(render::PipelineServer& pipeline_server,
                                                        wgpu::TextureFormat color_format) {
@@ -182,16 +212,6 @@ struct SpritePipelineCache {
 struct TransparentSpriteDrawFunction {
     render::phase::DrawFunctionId value;
 };
-
-void insert_sprite_shaders(assets::Assets<shader::Shader>& shaders) {
-    auto vertex_path             = std::filesystem::path("embedded://sprite/sprite_vertex.slang");
-    auto fragment_path           = std::filesystem::path("embedded://sprite/sprite_fragment.slang");
-    [[maybe_unused]] auto vertex = shaders.insert(
-        kSpriteVertexShaderId, shader::Shader::from_slang(std::string(kSpriteVertexShader), vertex_path.string()));
-    [[maybe_unused]] auto fragment =
-        shaders.insert(kSpriteFragmentShaderId,
-                       shader::Shader::from_slang(std::string(kSpriteFragmentShader), fragment_path.string()));
-}
 
 void ensure_instance_buffer(SpriteInstanceBuffer& instance_buffer,
                             const SpritePipelineCache& pipeline_cache,
@@ -407,15 +427,26 @@ void prepare_sprite_batches(Query<Item<render::phase::RenderPhase<core_graph::co
 void SpritePlugin::build(core::App& app) {
     spdlog::debug("[sprite] Building SpritePlugin.");
     app.add_plugins(core_graph::core_2d::Core2dPlugin{});
+
+    if (!app.world_mut().get_resource<SpriteShaderHandles>()) {
+        if (auto shader_handles = load_sprite_shader_handles(app.world_mut())) {
+            app.world_mut().insert_resource(std::move(*shader_handles));
+        }
+    }
 }
 
 void SpritePlugin::finish(core::App& app) {
     spdlog::debug("[sprite] Finishing SpritePlugin.");
-    auto shaders = app.world_mut().get_resource_mut<assets::Assets<shader::Shader>>();
-    if (shaders) {
-        insert_sprite_shaders(shaders->get());
-    } else {
-        spdlog::warn("[sprite] Assets<shader::Shader> is not available in the main world.");
+    if (!app.world_mut().get_resource<SpriteShaderHandles>()) {
+        if (auto shader_handles = load_sprite_shader_handles(app.world_mut())) {
+            app.world_mut().insert_resource(std::move(*shader_handles));
+        }
+    }
+
+    auto shader_handles = app.world_mut().get_resource<SpriteShaderHandles>();
+    if (!shader_handles) {
+        spdlog::error("[sprite] SpritePlugin could not load internal sprite shaders through AssetServer.");
+        return;
     }
 
     auto render_app = app.get_sub_app_mut(render::Render);
@@ -432,7 +463,7 @@ void SpritePlugin::finish(core::App& app) {
         world.insert_resource(SpriteInstanceBuffer{});
     }
     if (!world.get_resource<SpritePipelineCache>()) {
-        world.insert_resource(SpritePipelineCache(world));
+        world.insert_resource(SpritePipelineCache(world, shader_handles->get()));
     }
     auto& render_subapp = render_app->get();
     world.insert_resource(TransparentSpriteDrawFunction{

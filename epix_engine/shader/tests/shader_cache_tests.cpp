@@ -343,6 +343,22 @@ TEST_F(ShaderCacheTest, AssetPathImport_DependencyUpdate_InvalidatesMainPipeline
     EXPECT_TRUE(std::ranges::contains(affected, CachedPipelineId{5}));
 }
 
+TEST_F(ShaderCacheTest, AssetPathImport_RecursiveDependencyChain_GetSucceeds) {
+    auto leaf_id = make_id(1);
+    auto dep_id  = make_id(2);
+    auto main_id = make_id(3);
+
+    cache.set_shader(leaf_id, Shader::from_wgsl("fn leaf_fn() -> f32 { return 3.0; }", "leaf.wgsl"));
+    cache.set_shader(dep_id,
+                     Shader::from_wgsl("#import \"leaf.wgsl\"\nfn dep_fn() -> f32 { return leaf_fn(); }", "dep.wgsl"));
+    cache.set_shader(main_id,
+                     Shader::from_wgsl("#import \"dep.wgsl\"\nfn main_fn() -> f32 { return dep_fn(); }", "main.wgsl"));
+
+    auto result = cache.get(CachedPipelineId{1}, main_id, {});
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(call_count, 1);
+}
+
 // ===========================================================================
 // Shader defs merging: caller defs override shader's own defs
 // ===========================================================================
@@ -499,19 +515,19 @@ TEST_F(ShaderCacheTest, SlangShader_Import_ResolvesFromCache) {
 }
 
 // ===========================================================================
-// Slang — import resolved via import_path (AssetPath), not shader.path
+// Slang — import resolved via import_path (custom module name), not shader.path
 // ===========================================================================
 
-TEST_F(ShaderCacheTest, SlangShader_Import_ResolvedByImportPath_AssetPath) {
+TEST_F(ShaderCacheTest, SlangShader_Import_ResolvedByImportPath_Custom) {
     auto util_id = make_id(1);
     auto main_id = make_id(2);
 
-    // Utility module lives at an internal VFS path, but its import_path is "utility.slang"
+    // Utility module lives at an internal VFS path, but its import_path is the Slang module name.
     auto util = Shader::from_slang("float4 getColor() { return float4(1, 0, 0, 1); }", "vfs/internal/utility.slang");
-    util.import_path = ShaderImport::asset_path("utility.slang");
+    util.import_path = ShaderImport::custom("utility.slang");
     cache.set_shader(util_id, util);
 
-    // Main shader does `import utility;` → Slang calls loadFile("utility.slang")
+    // Main shader does `import utility;` → Slang resolves it via the custom module name.
     cache.set_shader(main_id, Shader::from_slang("import utility;\n\n"
                                                  "[shader(\"compute\")]\n[numthreads(1,1,1)]\n"
                                                  "void computeMain() { float4 c = getColor(); }",
@@ -522,16 +538,16 @@ TEST_F(ShaderCacheTest, SlangShader_Import_ResolvedByImportPath_AssetPath) {
     EXPECT_EQ(call_count, 1);
 }
 
-TEST_F(ShaderCacheTest, SlangShader_Import_ResolvedByImportPath_Custom) {
+TEST_F(ShaderCacheTest, SlangShader_Import_ResolvedByExplicitCustomImportPath) {
     auto util_id = make_id(1);
     auto main_id = make_id(2);
 
     // Utility module with an explicit import_path (like `module utility;`)
     auto util        = Shader::from_slang("float4 getColor() { return float4(1, 0, 0, 1); }", "some/other/path.slang");
-    util.import_path = ShaderImport::asset_path("utility.slang");
+    util.import_path = ShaderImport::custom("utility.slang");
     cache.set_shader(util_id, util);
 
-    // Main shader imports "utility" → loadFile("utility.slang") → matches custom import_path
+    // Main shader imports "utility" → canonical custom name is "utility.slang".
     cache.set_shader(main_id, Shader::from_slang("import utility;\n\n"
                                                  "[shader(\"compute\")]\n[numthreads(1,1,1)]\n"
                                                  "void computeMain() { float4 c = getColor(); }",
@@ -539,6 +555,138 @@ TEST_F(ShaderCacheTest, SlangShader_Import_ResolvedByImportPath_Custom) {
 
     auto result = cache.get(CachedPipelineId{1}, main_id, {});
     ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(call_count, 1);
+}
+
+TEST_F(ShaderCacheTest, SlangShader_StringLiteralImport_FullSourcePathPreservesExplicitSource) {
+    auto util_id = make_id(1);
+    auto main_id = make_id(2);
+
+    cache.set_shader(util_id, Shader::from_slang("float4 getColor() { return float4(0, 0, 1, 1); }",
+                                                 "embedded://shared/utility.slang"));
+    cache.set_shader(main_id, Shader::from_slang("import \"embedded://shared/utility\";\n\n"
+                                                 "[shader(\"compute\")]\n[numthreads(1,1,1)]\n"
+                                                 "void computeMain() { float4 c = getColor(); }",
+                                                 "embedded://mesh/main.slang"));
+
+    auto result = cache.get(CachedPipelineId{1}, main_id, {});
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(call_count, 1);
+}
+
+TEST_F(ShaderCacheTest, SlangShader_StringLiteralImport_RelativePathResolvesAgainstImporter) {
+    auto util_id  = make_id(1);
+    auto decoy_id = make_id(2);
+    auto main_id  = make_id(3);
+
+    auto util        = Shader::from_slang("public float4 getColor() { return float4(0, 1, 0, 1); }",
+                                          "embedded://mesh/common/utility.slang");
+    util.import_path = ShaderImport::asset_path("common/utility.slang");
+    cache.set_shader(util_id, util);
+
+    auto decoy        = Shader::from_slang("public float4 wrongColor() { return float4(1, 0, 0, 1); }",
+                                           "embedded://shared/utility.slang");
+    decoy.import_path = ShaderImport::custom("utility.slang");
+    cache.set_shader(decoy_id, decoy);
+
+    cache.set_shader(main_id, Shader::from_slang("import \"common/utility\";\n\n"
+                                                 "[shader(\"compute\")]\n[numthreads(1,1,1)]\n"
+                                                 "void computeMain() { float4 c = getColor(); }",
+                                                 "embedded://mesh/main.slang"));
+
+    auto result = cache.get(CachedPipelineId{1}, main_id, {});
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(call_count, 1);
+}
+
+TEST_F(ShaderCacheTest, SlangShader_StringLiteralImport_RootRelativeUsesSameSourceRoot) {
+    auto util_id  = make_id(1);
+    auto decoy_id = make_id(2);
+    auto main_id  = make_id(3);
+
+    auto util        = Shader::from_slang("public float4 getColor() { return float4(1, 1, 0, 1); }",
+                                          "embedded://shared/utility.slang");
+    util.import_path = ShaderImport::asset_path(AssetPath("/shared/utility.slang"));
+    cache.set_shader(util_id, util);
+
+    auto decoy        = Shader::from_slang("public float4 wrongColor() { return float4(0, 1, 0, 1); }",
+                                           "embedded://mesh/shared/utility.slang");
+    decoy.import_path = ShaderImport::custom("utility.slang");
+    cache.set_shader(decoy_id, decoy);
+
+    cache.set_shader(main_id, Shader::from_slang("import \"/shared/utility\";\n\n"
+                                                 "[shader(\"compute\")]\n[numthreads(1,1,1)]\n"
+                                                 "void computeMain() { float4 c = getColor(); }",
+                                                 "embedded://mesh/main.slang"));
+
+    auto result = cache.get(CachedPipelineId{1}, main_id, {});
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(call_count, 1);
+}
+
+TEST_F(ShaderCacheTest, SlangShader_StringLiteralInclude_RelativePathUsesFileAliasWhenImportPathIsCustom) {
+    auto util_id = make_id(1);
+    auto main_id = make_id(2);
+
+    auto util =
+        Shader::from_slang("implementing scene;\nfloat helper() { return 1.0; }", "embedded://mesh/common/scene.slang");
+    util.import_path = ShaderImport::custom("scene.slang");
+    cache.set_shader(util_id, util);
+
+    cache.set_shader(main_id, Shader::from_slang("module scene;\n__include \"common/scene\";\n\n"
+                                                 "[shader(\"compute\")]\n[numthreads(1,1,1)]\n"
+                                                 "void computeMain() { float value = helper(); }",
+                                                 "embedded://mesh/main.slang"));
+
+    auto result = cache.get(CachedPipelineId{1}, main_id, {});
+    ASSERT_TRUE(result.has_value()) << result.error().message();
+    EXPECT_EQ(call_count, 1);
+}
+
+TEST_F(ShaderCacheTest, SlangShader_RecursiveFileImportIncludeImport_GetSucceeds) {
+    auto util_id        = make_id(1);
+    auto file_id        = make_id(2);
+    auto impl_id        = make_id(3);
+    auto scene_decoy_id = make_id(4);
+    auto impl_decoy_id  = make_id(5);
+    auto util_decoy_id  = make_id(6);
+    auto main_id        = make_id(7);
+
+    auto utility        = Shader::from_slang("public float4 getColor() { return float4(0, 0.5, 1, 1); }",
+                                             "embedded://shared/utility.slang");
+    utility.import_path = ShaderImport::custom("utility.slang");
+    cache.set_shader(util_id, utility);
+
+    cache.set_shader(file_id,
+                     Shader::from_slang("module scene;\n__include \"impl/scene\";\n", "embedded://mesh/scene.slang"));
+
+    cache.set_shader(scene_decoy_id, Shader::from_slang("module scene;\npublic float4 wrongScene() { return 0; }\n",
+                                                        "embedded://scene.slang"));
+
+    auto impl_shader = Shader::from_slang(
+        "implementing scene;\nimport \"/shared/utility\";\n"
+        "public float4 helper() { return getColor(); }",
+        "embedded://mesh/impl/scene.slang");
+    impl_shader.import_path = ShaderImport::custom("scene.slang");
+    cache.set_shader(impl_id, impl_shader);
+
+    auto impl_decoy        = Shader::from_slang("implementing scene;\npublic float4 wrongHelper() { return 0; }\n",
+                                                "embedded://impl/scene.slang");
+    impl_decoy.import_path = ShaderImport::custom("scene_alt.slang");
+    cache.set_shader(impl_decoy_id, impl_decoy);
+
+    auto util_decoy        = Shader::from_slang("public float4 wrongColor() { return float4(1, 0, 0, 1); }",
+                                                "embedded://mesh/shared/utility.slang");
+    util_decoy.import_path = ShaderImport::custom("utility.slang");
+    cache.set_shader(util_decoy_id, util_decoy);
+
+    cache.set_shader(main_id, Shader::from_slang("import \"scene\";\n\n"
+                                                 "[shader(\"compute\")]\n[numthreads(1,1,1)]\n"
+                                                 "void computeMain() { float4 c = helper(); }",
+                                                 "embedded://mesh/main.slang"));
+
+    auto result = cache.get(CachedPipelineId{1}, main_id, {});
+    ASSERT_TRUE(result.has_value()) << result.error().message();
     EXPECT_EQ(call_count, 1);
 }
 
@@ -869,18 +1017,17 @@ TEST_F(DualNameTest, Wgsl_DualName_DependencyAfterMain_Resolves) {
     EXPECT_TRUE(cache.get(CachedPipelineId{2}, main2_id, {}).has_value());
 }
 
-TEST_F(DualNameTest, Slang_ImportByAssetPath_WhenDepHasModuleDecl) {
-    // utility.slang has `module utility;` → import_path = AssetPath("utility.slang")
-    // This is actually the same as the file path, so no dual name needed.
-    // But let's test with a different internal path to verify dual-name works.
+TEST_F(DualNameTest, Slang_ImportByCustomName_WhenDepHasModuleDecl) {
+    // utility.slang has `module utility;` → import_path = custom("utility.slang")
+    // Use a different backing file path to verify the custom import name still resolves.
     auto dep_id  = make_id(1);
     auto main_id = make_id(2);
 
     auto dep        = Shader::from_slang("float4 getColor() { return float4(1,0,0,1); }", "vfs/internal/util.slang");
-    dep.import_path = ShaderImport::asset_path(AssetPath("utility.slang"));
+    dep.import_path = ShaderImport::custom("utility.slang");
     cache.set_shader(dep_id, dep);
 
-    // Main imports "utility" → loadFile("utility.slang")
+    // Main imports "utility" → canonical custom name "utility.slang".
     cache.set_shader(main_id, Shader::from_slang("import utility;\n\n"
                                                  "[shader(\"compute\")]\n[numthreads(1,1,1)]\n"
                                                  "void computeMain() { float4 c = getColor(); }",
