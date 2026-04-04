@@ -35,16 +35,102 @@ static Shader simple_wgsl(std::string src = "fn main() {}", std::string path = "
 class ShaderCacheTest : public ::testing::Test {
    protected:
     int call_count{0};
+    bool saw_spirv{false};
+    std::vector<std::uint8_t> last_spirv;
     std::expected<wgpu::ShaderModule, ShaderCacheError> load_result{wgpu::ShaderModule{}};
 
     ShaderCache cache{null_device(),
                       [this](const wgpu::Device&,
-                             const ShaderCacheSource&,
+                             const ShaderCacheSource& source,
                              ValidateShader) -> std::expected<wgpu::ShaderModule, ShaderCacheError> {
+                          if (auto spirv = std::get_if<ShaderCacheSource::SpirV>(&source.data)) {
+                              saw_spirv = true;
+                              last_spirv.assign(spirv->bytes.begin(), spirv->bytes.end());
+                          }
                           ++call_count;
                           return load_result;
                       }};
+
+    std::expected<std::vector<std::uint8_t>, ShaderCacheError> compile_slang_to_spirv(std::string source,
+                                                                                      std::string path) {
+        saw_spirv = false;
+        last_spirv.clear();
+
+        auto id = make_id(250);
+        cache.set_shader(id, Shader::from_slang(std::move(source), std::move(path)));
+        auto result = cache.get(CachedPipelineId{1}, id, {});
+        if (!result.has_value()) return std::unexpected(result.error());
+        if (!saw_spirv || last_spirv.empty()) {
+            return std::unexpected(ShaderCacheError::create_module_failed("ShaderCache did not emit SPIR-V"));
+        }
+        return last_spirv;
+    }
 };
+
+struct GpuTestContext {
+    wgpu::Instance instance;
+    wgpu::Adapter adapter;
+    wgpu::Device device;
+    wgpu::Queue queue;
+    std::shared_ptr<std::vector<std::string>> uncaptured_errors = std::make_shared<std::vector<std::string>>();
+    std::shared_ptr<std::vector<std::string>> lost_messages     = std::make_shared<std::vector<std::string>>();
+};
+
+static std::optional<GpuTestContext> create_gpu_test_context() {
+    GpuTestContext context;
+    context.instance = wgpu::createInstance();
+    if (!context.instance) return std::nullopt;
+
+    auto try_request_adapter = [&](wgpu::RequestAdapterOptions options) {
+        return context.instance.requestAdapter(options);
+    };
+
+    context.adapter = try_request_adapter(wgpu::RequestAdapterOptions()
+                                              .setPowerPreference(wgpu::PowerPreference::eHighPerformance)
+                                              .setBackendType(wgpu::BackendType::eVulkan));
+    if (!context.adapter) {
+        context.adapter = try_request_adapter(
+            wgpu::RequestAdapterOptions().setPowerPreference(wgpu::PowerPreference::eHighPerformance));
+    }
+    if (!context.adapter) {
+        context.adapter = try_request_adapter(wgpu::RequestAdapterOptions());
+    }
+    if (!context.adapter) return std::nullopt;
+
+    auto uncaptured_errors = context.uncaptured_errors;
+    auto lost_messages     = context.lost_messages;
+    context.device         = context.adapter.requestDevice(
+        wgpu::DeviceDescriptor()
+            .setLabel("ShaderCacheTestDevice")
+            .setDefaultQueue(wgpu::QueueDescriptor().setLabel("ShaderCacheTestQueue"))
+            .setDeviceLostCallbackInfo(
+                wgpu::DeviceLostCallbackInfo()
+                    .setMode(wgpu::CallbackMode::eAllowSpontaneous)
+                    .setCallback(
+                        [lost_messages](const wgpu::Device&, wgpu::DeviceLostReason reason, wgpu::StringView message) {
+                            lost_messages->push_back(std::string(wgpu::to_string(reason)) + ": " +
+                                                     std::string(std::string_view(message)));
+                        }))
+            .setUncapturedErrorCallbackInfo(wgpu::UncapturedErrorCallbackInfo().setCallback(
+                [uncaptured_errors](const wgpu::Device&, wgpu::ErrorType type, wgpu::StringView message) {
+                    uncaptured_errors->push_back(std::string(wgpu::to_string(type)) + ": " +
+                                                 std::string(std::string_view(message)));
+                })));
+    if (!context.device) return std::nullopt;
+
+    context.queue = context.device.getQueue();
+    if (!context.queue) return std::nullopt;
+
+    return context;
+}
+
+static std::vector<std::uint32_t> spirv_words(std::span<const std::uint8_t> bytes) {
+    if (bytes.size() % 4 != 0) return {};
+
+    std::vector<std::uint32_t> words(bytes.size() / 4);
+    std::memcpy(words.data(), bytes.data(), bytes.size());
+    return words;
+}
 
 // ===========================================================================
 // get — unregistered shader
@@ -454,6 +540,145 @@ TEST_F(ShaderCacheTest, SlangShader_Import_ResolvedByImportPath_Custom) {
     auto result = cache.get(CachedPipelineId{1}, main_id, {});
     ASSERT_TRUE(result.has_value());
     EXPECT_EQ(call_count, 1);
+}
+
+TEST_F(ShaderCacheTest, SlangShader_MatrixBuffers_RespectSessionLayoutInComputeResults) {
+    auto spirv = compile_slang_to_spirv(R"(
+struct Params {
+    float4x4 transform;
+};
+
+[[vk::binding(0, 0)]] ConstantBuffer<Params> params;
+[[vk::binding(1, 0)]] RWStructuredBuffer<float4> out_values;
+
+[shader("compute")]
+[numthreads(1,1,1)]
+void computeMain() {
+    out_values[0] = mul(params.transform, float4(1.0, 2.0, 3.0, 1.0));
+}
+)",
+                                        "matrix_layout.slang");
+    ASSERT_TRUE(spirv.has_value()) << spirv.error().message();
+
+    auto gpu = create_gpu_test_context();
+    if (!gpu.has_value()) {
+        GTEST_SKIP() << "No WebGPU adapter/device available for compute validation";
+    }
+
+    auto words = spirv_words(*spirv);
+    ASSERT_FALSE(words.empty());
+
+    constexpr std::array<float, 16> kMatrixBytes = {
+        1.0f, 5.0f, 9.0f, 13.0f, 2.0f, 6.0f, 10.0f, 14.0f, 3.0f, 7.0f, 11.0f, 15.0f, 4.0f, 8.0f, 12.0f, 16.0f,
+    };
+    constexpr std::array<float, 4> kExpected = {18.0f, 46.0f, 74.0f, 102.0f};
+
+    auto module = gpu->device.createShaderModule(
+        wgpu::ShaderModuleDescriptor()
+            .setLabel("MatrixLayoutComputeModule")
+            .setNextInChain(
+                wgpu::ShaderSourceSPIRV().setCodeSize(static_cast<std::uint32_t>(words.size())).setCode(words.data())));
+    ASSERT_TRUE(module);
+
+    auto bind_group_layout =
+        gpu->device.createBindGroupLayout(wgpu::BindGroupLayoutDescriptor()
+                                              .setLabel("MatrixLayoutBindGroupLayout")
+                                              .setEntries(std::array{
+                                                  wgpu::BindGroupLayoutEntry()
+                                                      .setBinding(0)
+                                                      .setVisibility(wgpu::ShaderStage::eCompute)
+                                                      .setBuffer(wgpu::BufferBindingLayout()
+                                                                     .setType(wgpu::BufferBindingType::eUniform)
+                                                                     .setMinBindingSize(sizeof(kMatrixBytes))),
+                                                  wgpu::BindGroupLayoutEntry()
+                                                      .setBinding(1)
+                                                      .setVisibility(wgpu::ShaderStage::eCompute)
+                                                      .setBuffer(wgpu::BufferBindingLayout()
+                                                                     .setType(wgpu::BufferBindingType::eStorage)
+                                                                     .setMinBindingSize(sizeof(kExpected))),
+                                              }));
+    ASSERT_TRUE(bind_group_layout);
+
+    auto pipeline_layout = gpu->device.createPipelineLayout(wgpu::PipelineLayoutDescriptor()
+                                                                .setLabel("MatrixLayoutPipelineLayout")
+                                                                .setBindGroupLayouts(std::array{bind_group_layout}));
+    ASSERT_TRUE(pipeline_layout);
+
+    auto pipeline = gpu->device.createComputePipeline(
+        wgpu::ComputePipelineDescriptor()
+            .setLabel("MatrixLayoutComputePipeline")
+            .setLayout(pipeline_layout)
+            .setCompute(wgpu::ProgrammableStageDescriptor().setModule(module).setEntryPoint("computeMain")));
+    ASSERT_TRUE(pipeline);
+
+    auto uniform_buffer =
+        gpu->device.createBuffer(wgpu::BufferDescriptor()
+                                     .setLabel("MatrixLayoutUniformBuffer")
+                                     .setUsage(wgpu::BufferUsage::eUniform | wgpu::BufferUsage::eCopyDst)
+                                     .setSize(sizeof(kMatrixBytes)));
+    auto storage_buffer =
+        gpu->device.createBuffer(wgpu::BufferDescriptor()
+                                     .setLabel("MatrixLayoutStorageBuffer")
+                                     .setUsage(wgpu::BufferUsage::eStorage | wgpu::BufferUsage::eCopySrc)
+                                     .setSize(sizeof(kExpected)));
+    auto readback_buffer =
+        gpu->device.createBuffer(wgpu::BufferDescriptor()
+                                     .setLabel("MatrixLayoutReadbackBuffer")
+                                     .setUsage(wgpu::BufferUsage::eMapRead | wgpu::BufferUsage::eCopyDst)
+                                     .setSize(sizeof(kExpected)));
+    ASSERT_TRUE(uniform_buffer);
+    ASSERT_TRUE(storage_buffer);
+    ASSERT_TRUE(readback_buffer);
+
+    gpu->queue.writeBuffer(uniform_buffer, 0, kMatrixBytes.data(), sizeof(kMatrixBytes));
+
+    auto bind_group = gpu->device.createBindGroup(
+        wgpu::BindGroupDescriptor()
+            .setLabel("MatrixLayoutBindGroup")
+            .setLayout(bind_group_layout)
+            .setEntries(std::array{
+                wgpu::BindGroupEntry().setBinding(0).setBuffer(uniform_buffer).setSize(sizeof(kMatrixBytes)),
+                wgpu::BindGroupEntry().setBinding(1).setBuffer(storage_buffer).setSize(sizeof(kExpected)),
+            }));
+    ASSERT_TRUE(bind_group);
+
+    auto encoder = gpu->device.createCommandEncoder(wgpu::CommandEncoderDescriptor().setLabel("MatrixLayoutEncoder"));
+    {
+        auto pass = encoder.beginComputePass();
+        pass.setPipeline(pipeline);
+        pass.setBindGroup(0, bind_group, std::span<const std::uint32_t>{});
+        pass.dispatchWorkgroups(1, 1, 1);
+        pass.end();
+    }
+    encoder.copyBufferToBuffer(storage_buffer, 0, readback_buffer, 0, sizeof(kExpected));
+    gpu->queue.submit(encoder.finish());
+
+    bool map_done    = false;
+    bool map_success = false;
+    (void)readback_buffer.mapAsync(
+        wgpu::MapMode::eRead, 0, sizeof(kExpected),
+        wgpu::BufferMapCallbackInfo()
+            .setMode(wgpu::CallbackMode::eAllowProcessEvents)
+            .setCallback(wgpu::BufferMapCallback([&](wgpu::MapAsyncStatus status, wgpu::StringView) {
+                map_success = status == wgpu::MapAsyncStatus::eSuccess;
+                map_done    = true;
+            })));
+
+    while (!map_done) {
+        (void)gpu->device.poll(true);
+    }
+
+    ASSERT_TRUE(map_success);
+    auto mapped = static_cast<const float*>(readback_buffer.getConstMappedRange(0, sizeof(kExpected)));
+    ASSERT_NE(mapped, nullptr);
+
+    for (std::size_t i = 0; i < kExpected.size(); ++i) {
+        EXPECT_NEAR(mapped[i], kExpected[i], 1e-5f);
+    }
+    readback_buffer.unmap();
+
+    EXPECT_TRUE(gpu->uncaptured_errors->empty());
+    EXPECT_TRUE(gpu->lost_messages->empty());
 }
 
 // ===========================================================================

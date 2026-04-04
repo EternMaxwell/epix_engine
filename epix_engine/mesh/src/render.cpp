@@ -437,7 +437,7 @@ void insert_mesh_shaders(assets::Assets<shader::Shader>& shaders) {
         shader::Shader::from_slang(std::string(kMeshTexturedVertexShader), textured_vertex_path.string()));
     [[maybe_unused]] auto textured_vertex_color = shaders.insert(
         kMeshTexturedVertexColorShaderId, shader::Shader::from_slang(std::string(kMeshTexturedVertexColorVertexShader),
-                                                                    textured_vertex_color_path.string()));
+                                                                     textured_vertex_color_path.string()));
     [[maybe_unused]] auto color_fragment =
         shaders.insert(kMeshColorFragmentShaderId,
                        shader::Shader::from_slang(std::string(kMeshColorFragmentShader), color_fragment_path.string()));

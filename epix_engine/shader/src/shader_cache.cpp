@@ -107,17 +107,23 @@ struct ShaderCache::SlangCompiler {
 
         // Empty search path so Slang also tries bare module paths
         // (not only relative to the importing file's directory).
-        const char* search_paths[] = {""};
+        const char* search_paths[]                     = {""};
+        slang::CompilerOptionEntry compiler_options[1] = {};
+        compiler_options[0].name                       = slang::CompilerOptionName::VulkanUseEntryPointName;
+        compiler_options[0].value.kind                 = slang::CompilerOptionValueKind::Int;
+        compiler_options[0].value.intValue0            = 1;
 
-        slang::SessionDesc session_desc      = {};
-        session_desc.targets                 = &target_desc;
-        session_desc.targetCount             = 1;
-        session_desc.defaultMatrixLayoutMode = SLANG_MATRIX_LAYOUT_COLUMN_MAJOR;
-        session_desc.searchPaths             = search_paths;
-        session_desc.searchPathCount         = 1;
-        session_desc.preprocessorMacros      = macros.data();
-        session_desc.preprocessorMacroCount  = static_cast<SlangInt>(macros.size());
-        session_desc.fileSystem              = &fs;
+        slang::SessionDesc session_desc       = {};
+        session_desc.targets                  = &target_desc;
+        session_desc.targetCount              = 1;
+        session_desc.defaultMatrixLayoutMode  = SLANG_MATRIX_LAYOUT_COLUMN_MAJOR;
+        session_desc.searchPaths              = search_paths;
+        session_desc.searchPathCount          = 1;
+        session_desc.preprocessorMacros       = macros.data();
+        session_desc.preprocessorMacroCount   = static_cast<SlangInt>(macros.size());
+        session_desc.compilerOptionEntries    = compiler_options;
+        session_desc.compilerOptionEntryCount = 1;
+        session_desc.fileSystem               = &fs;
 
         Slang::ComPtr<slang::ISession> session;
         if (SLANG_FAILED(global_session->createSession(session_desc, session.writeRef()))) {

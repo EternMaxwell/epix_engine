@@ -188,8 +188,9 @@ void insert_sprite_shaders(assets::Assets<shader::Shader>& shaders) {
     auto fragment_path           = std::filesystem::path("embedded://sprite/sprite_fragment.slang");
     [[maybe_unused]] auto vertex = shaders.insert(
         kSpriteVertexShaderId, shader::Shader::from_slang(std::string(kSpriteVertexShader), vertex_path.string()));
-    [[maybe_unused]] auto fragment = shaders.insert(
-        kSpriteFragmentShaderId, shader::Shader::from_slang(std::string(kSpriteFragmentShader), fragment_path.string()));
+    [[maybe_unused]] auto fragment =
+        shaders.insert(kSpriteFragmentShaderId,
+                       shader::Shader::from_slang(std::string(kSpriteFragmentShader), fragment_path.string()));
 }
 
 void ensure_instance_buffer(SpriteInstanceBuffer& instance_buffer,
