@@ -768,21 +768,21 @@ std::vector<CachedPipelineId> ShaderCache::remove(assets::AssetId<Shader> id) {
 
 // ─── sync ─────────────────────────────────────────────────────────────────
 std::vector<CachedPipelineId> ShaderCache::sync(utils::input_iterable<assets::AssetEvent<Shader>> events,
-                                                const assets::Assets<Shader>& shaders) {
-    std::vector<CachedPipelineId> affected;
+                                                assets::Assets<Shader>& shaders) {
+    std::unordered_set<CachedPipelineId> affected;
     for (const auto& event : events) {
         if (event.is_loaded_with_dependencies() || event.is_modified()) {
-            auto val = shaders.get(event.id);
+            auto val = shaders.take(event.id);
             if (val.has_value()) {
-                auto ids = set_shader(event.id, val->get());
-                affected.insert(affected.end(), ids.begin(), ids.end());
+                auto ids = set_shader(event.id, std::move(*val));
+                affected.insert(ids.begin(), ids.end());
             }
-        } else if (event.is_unused() || event.is_removed()) {
+        } else if (event.is_unused()) {
             auto ids = remove(event.id);
-            affected.insert(affected.end(), ids.begin(), ids.end());
+            affected.insert(ids.begin(), ids.end());
         }
     }
-    return affected;
+    return affected | std::ranges::to<std::vector>();
 }
 
 }  // namespace epix::shader

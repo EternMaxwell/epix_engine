@@ -141,7 +141,7 @@ export struct PipelineServer {
     static void process_pipeline_system(ResMut<PipelineServer> pipeline_server);
     /** @brief System that extracts shader assets and events into the render world. */
     static void extract_shaders(ResMut<PipelineServer> pipeline_server,
-                                Extract<Res<assets::Assets<shader::Shader>>> shaders,
+                                Extract<ResMut<assets::Assets<shader::Shader>>> shaders,
                                 Extract<EventReader<assets::AssetEvent<shader::Shader>>> shader_events);
 
    private:

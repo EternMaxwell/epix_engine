@@ -295,7 +295,7 @@ void PipelineServer::process_pipeline_system(ResMut<PipelineServer> pipeline_ser
     pipeline_server->process_queue();
 }
 void PipelineServer::extract_shaders(ResMut<PipelineServer> pipeline_server,
-                                     Extract<Res<assets::Assets<Shader>>> shaders,
+                                     Extract<ResMut<assets::Assets<Shader>>> shaders,
                                      Extract<EventReader<assets::AssetEvent<Shader>>> shader_events) {
     auto shader_cache = pipeline_server->shader_cache->lock();
     auto affected     = shader_cache->sync(shader_events.read(), *shaders);

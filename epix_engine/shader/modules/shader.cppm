@@ -28,7 +28,12 @@ inline std::string canonical_asset_path_string(const assets::AssetPath& path) {
     return normalized;
 }
 
-// ─── ShaderId ──────────────────────────────────────────────────────────────
+/** @brief Simple runtime id for shaders created inside the process.
+ *
+ * This is not the same thing as `assets::AssetId<Shader>`.
+ * Use `ShaderId` when you only need a local unique id, for example in runtime
+ * bookkeeping or temporary shader graphs.
+ */
 export struct ShaderId {
    private:
     inline static std::atomic<std::uint32_t> s_counter{0};
@@ -36,34 +41,48 @@ export struct ShaderId {
     explicit ShaderId(std::uint32_t v) : value(v) {}
 
    public:
+    /** @brief Create the next unique local shader id. */
     static ShaderId next() { return ShaderId{s_counter.fetch_add(1, std::memory_order_relaxed)}; }
+    /** @brief Get the raw integer value. */
     std::uint32_t get() const { return value; }
     auto operator<=>(const ShaderId&) const = default;
 };
 
-// ─── ShaderDefVal ──────────────────────────────────────────────────────────
+/** @brief One shader definition value.
+ *
+ * This is used for shader options such as `USE_FOG`, `MAX_LIGHTS`, or
+ * `MSAA_SAMPLES`. The stored value is later turned into text like `true`, `4`,
+ * or `16` when the shader is composed or compiled.
+ */
 export struct ShaderDefVal {
+    /** @brief Definition name, such as `USE_FOG` or `MAX_LIGHTS`. */
     std::string name;
+    /** @brief Definition value. */
     std::variant<bool, std::int32_t, std::uint32_t> value;
 
+    /** @brief Create a boolean definition that defaults to `true`. */
     explicit ShaderDefVal(std::string n) : name(std::move(n)), value(true) {}
 
+    /** @brief Create a boolean definition, for example `from_bool("USE_FOG")`. */
     static ShaderDefVal from_bool(std::string n, bool v = true) {
         ShaderDefVal d(std::move(n));
         d.value = v;
         return d;
     }
+    /** @brief Create a signed integer definition, for example `from_int("LOD", -1)`. */
     static ShaderDefVal from_int(std::string n, std::int32_t v) {
         ShaderDefVal d(std::move(n));
         d.value = v;
         return d;
     }
+    /** @brief Create an unsigned integer definition, for example `from_uint("MSAA_SAMPLES", 4)`. */
     static ShaderDefVal from_uint(std::string n, std::uint32_t v) {
         ShaderDefVal d(std::move(n));
         d.value = v;
         return d;
     }
 
+    /** @brief Convert the stored value to the string form used by shader code. */
     std::string value_as_string() const {
         return std::visit(
             []<typename T>(const T& v) -> std::string {
@@ -79,35 +98,52 @@ export struct ShaderDefVal {
     bool operator==(const ShaderDefVal&) const = default;
 };
 
-// ─── ValidateShader ────────────────────────────────────────────────────────
+/** @brief Controls whether backend shader validation is requested. */
 export enum class ValidateShader : std::uint8_t {
     Disabled = 0,
     Enabled  = 1,
 };
 
-// ─── Source ────────────────────────────────────────────────────────────────
+/** @brief Shader source payload.
+ *
+ * A shader can start from WGSL text, Slang text, or SPIR-V bytes.
+ */
 export struct Source {
+    /** @brief WGSL source text. */
     struct Wgsl {
         std::string code;
     };
+    /** @brief SPIR-V bytecode. */
     struct SpirV {
         std::vector<std::uint8_t> bytes;
     };
+    /** @brief Slang source text. */
     struct Slang {
         std::string code;
     };
 
+    /** @brief The active payload. */
     std::variant<Wgsl, SpirV, Slang> data;
 
+    /** @brief Create WGSL source. */
     static Source wgsl(std::string code) { return {Wgsl{std::move(code)}}; }
+    /** @brief Create SPIR-V source. */
     static Source spirv(std::vector<std::uint8_t> bytes) { return {SpirV{std::move(bytes)}}; }
+    /** @brief Create Slang source. */
     static Source slang(std::string code) { return {Slang{std::move(code)}}; }
 
+    /** @brief Returns `true` when this source holds WGSL text. */
     bool is_wgsl() const { return std::holds_alternative<Wgsl>(data); }
+    /** @brief Returns `true` when this source holds SPIR-V bytes. */
     bool is_spirv() const { return std::holds_alternative<SpirV>(data); }
+    /** @brief Returns `true` when this source holds Slang text. */
     bool is_slang() const { return std::holds_alternative<Slang>(data); }
 
-    // Asserts / UB for SpirV.
+    /** @brief Read WGSL or Slang text as a string view.
+     *
+     * Call this only when the source is WGSL or Slang. Calling it for SPIR-V
+     * is invalid.
+     */
     std::string_view as_str() const {
         if (auto* w = std::get_if<Wgsl>(&data)) return w->code;
         if (auto* s = std::get_if<Slang>(&data)) return s->code;
@@ -115,30 +151,65 @@ export struct Source {
     }
 };
 
-// ─── ShaderImport ──────────────────────────────────────────────────────────
-// Mirrors Bevy's ShaderImport: either a full AssetPath (with optional source)
-// or a custom module name (e.g. "my::utils" from #define_import_path / Slang custom).
+/** @brief One shader import target.
+ *
+ * This keeps the exact kind of import the shader asked for.
+ *
+ * There are four cases:
+ *
+ * - WGSL `#import some::mod` or Slang `import some.mod;` becomes
+ *   `ShaderImport::custom(...)`.
+ * - WGSL `#import "embedded://shared/math.wgsl"` or Slang
+ *   `import "source://shared/math.slang";` becomes
+ *   `ShaderImport::asset_path(...)` with an explicit source. This is not
+ *   resolved relative to the importer.
+ * - WGSL `#import "/shared/math.wgsl"` or Slang
+ *   `import "/shared/math.slang";` becomes `ShaderImport::asset_path(...)`
+ *   using a source-root-relative path.
+ * - WGSL `#import "common/math.wgsl"` or Slang
+ *   `import "common/math.slang";` becomes `ShaderImport::asset_path(...)`
+ *   using a path relative to the importing shader.
+ *
+ * Custom imports are looked up by module name, while
+ * asset-path imports are resolved as concrete files with the correct source and
+ * path semantics preserved.
+ */
 export struct ShaderImport {
-    // AssetPath variant: a specific file, may carry a source:// origin.
-    // Custom    variant: a named module string (e.g. "my::module").
+    /** @brief Stored import value.
+     *
+     * `assets::AssetPath` means "load this file".
+     * `std::string` means "load the module with this custom name".
+     */
     std::variant<assets::AssetPath, std::string> data;
 
+    /** @brief Create an empty import value. */
     ShaderImport() = default;
+    /** @brief Create a file-backed import. */
     explicit ShaderImport(assets::AssetPath p) : data(std::move(p)) {}
+    /** @brief Create a custom-name import. */
     explicit ShaderImport(std::in_place_index_t<1>, std::string name) : data(std::in_place_index<1>, std::move(name)) {}
 
+    /** @brief Helper for `ShaderImport` from an asset path. */
     static ShaderImport asset_path(assets::AssetPath p) { return ShaderImport(std::move(p)); }
+    /** @brief Helper for `ShaderImport` from a custom module name. */
     static ShaderImport custom(std::string name) { return ShaderImport(std::in_place_index<1>, std::move(name)); }
 
+    /** @brief Returns `true` when this import points to a file. */
     bool is_asset_path() const { return std::holds_alternative<assets::AssetPath>(data); }
+    /** @brief Returns `true` when this import points to a custom module name. */
     bool is_custom() const { return std::holds_alternative<std::string>(data); }
 
+    /** @brief Get the file-backed import path. */
     const assets::AssetPath& as_asset_path() const { return std::get<assets::AssetPath>(data); }
+    /** @brief Get the custom module name. */
     const std::string& as_custom() const { return std::get<std::string>(data); }
 
-    // Returns the canonical module name used by ShaderComposer.
-    //   AssetPath → '"' + AssetPath::string() + '"'
-    //   Custom    → name verbatim
+    /** @brief Get the canonical module key used by shader composition.
+     *
+     * A custom import returns the custom name unchanged.
+     * A file import returns the canonical path wrapped in quotes so different
+     * files with the same filename still stay distinct.
+     */
     std::string module_name() const {
         if (is_asset_path()) return '"' + canonical_asset_path_string(as_asset_path()) + '"';
         return as_custom();
@@ -150,58 +221,117 @@ export struct ShaderImport {
 // ─── Forward-declare Shader so Handle<Shader> can be used in fields ────────
 export struct Shader;
 
-// ─── Shader ────────────────────────────────────────────────────────────────
+/** @brief Parsed shader asset.
+ *
+ * `path` is where the shader comes from.
+ * `import_path` is the name other shaders use to import it.
+ * `imports` is what this shader asks for.
+ * `file_dependencies` contains only imports that were resolved as actual file
+ * dependencies during loading.
+ *
+ * Note:
+ *  - Other shaders can import this shader using either `path` or `import_path` (if an custom name is used)
+ *  - Shaders added manually can also have assigned `path`, and will be resolved by the composer and compiler
+ *    but will not be visible in loader and asset server, so cannot be imported by asset path, only custom name
+ */
 export struct Shader {
+    /** @brief The shader asset path. */
     assets::AssetPath path;
+    /** @brief Original source or bytecode. */
     Source source;
-    ShaderImport import_path;  // default is path, e.g. asset_path(path)
+    /** @brief The shader's own import name.
+     *
+     * If the source does not declare a custom import name, this falls back to
+     * `ShaderImport::asset_path(path)`.
+     */
+    ShaderImport import_path;
+    /** @brief Imports declared by this shader. */
     std::vector<ShaderImport> imports;
+    /** @brief Default definitions attached to this shader. */
     std::vector<ShaderDefVal> shader_defs;
+    /** @brief File dependencies loaded through the asset system. */
     std::vector<assets::Handle<Shader>> file_dependencies;
+    /** @brief Validation mode used when creating the backend shader module. */
     ValidateShader validate_shader = ValidateShader::Disabled;
 
-    // Parses WGSL source to extract #define_import_path and #import directives.
+    /** @brief Parse WGSL imports.
+     *
+     * `#define_import_path ui/button` sets the shader's own import name to a
+     * custom import.
+     *
+     * For `#import`, WGSL has the same four cases described by `ShaderImport`:
+     *
+     * - `#import some::mod` -> custom import.
+     * - `#import "embedded://shared/math.wgsl"` -> file import with explicit source.
+     * - `#import "/shared/math.wgsl"` -> file import relative to the source root.
+     * - `#import "common/math.wgsl"` -> file import relative to the importing shader.
+     */
     static std::pair<ShaderImport, std::vector<ShaderImport>> preprocess(std::string_view source,
                                                                          const assets::AssetPath& path);
 
-    // Parses Slang source to extract `import X;` statements.
+    /** @brief Parse Slang imports.
+     *
+     * `module scene;` sets the shader's own import name to a custom import.
+     *
+     * For string-literal `import` and `__include`, Slang has the same three
+     * file cases as WGSL:
+     *
+     * - `import lighting.core;` or `__include helpers;` -> custom import.
+     * - `import "source://shared/lighting.slang";` -> file import with explicit source.
+     * - `import "/shared/lighting.slang";` -> file import relative to the source root.
+     * - `import "lighting/common.slang";` -> file import relative to the importing shader.
+     *
+     * The same path rules also apply to string-literal `__include` directives.
+     */
     static std::pair<ShaderImport, std::vector<ShaderImport>> preprocess_slang(std::string_view source,
                                                                                const assets::AssetPath& path);
 
+    /** @brief Create a shader from WGSL source and parse its imports. */
     static Shader from_wgsl(std::string source, assets::AssetPath path);
+    /** @brief Create a WGSL shader and attach default definitions. */
     static Shader from_wgsl_with_defs(std::string source,
                                       assets::AssetPath path,
                                       std::vector<ShaderDefVal> shader_defs);
+    /** @brief Create a shader from SPIR-V bytes. */
     static Shader from_spirv(std::vector<std::uint8_t> source, assets::AssetPath path);
+    /** @brief Create a shader from Slang source and parse its imports. */
     static Shader from_slang(std::string source, assets::AssetPath path);
+    /** @brief Create a Slang shader and attach default definitions. */
     static Shader from_slang_with_defs(std::string source,
                                        assets::AssetPath path,
                                        std::vector<ShaderDefVal> shader_defs);
 };
 
-// ─── ShaderSettings ────────────────────────────────────────────────────────
+/** @brief Loader settings for shader assets. */
 export struct ShaderSettings : assets::Settings {
+    /** @brief Definitions attached to the loaded shader. */
     std::vector<ShaderDefVal> shader_defs;
 };
 
-// ─── ShaderLoaderError ─────────────────────────────────────────────────────
+/** @brief Error returned while loading a shader asset. */
 export struct ShaderLoaderError {
+    /** @brief File read error. */
     struct Io {
         std::error_code code;
         std::filesystem::path path;
     };
+    /** @brief Parse error with byte offset. */
     struct Parse {
         std::filesystem::path path;
         std::size_t byte_offset;
     };
+    /** @brief The active error value. */
     std::variant<Io, Parse> data;
 
+    /** @brief Build an I/O error value. */
     static ShaderLoaderError io(std::error_code code, std::filesystem::path p) { return {Io{code, std::move(p)}}; }
+    /** @brief Build a parse error value. */
     static ShaderLoaderError parse(std::filesystem::path p, std::size_t offset = 0) {
         return {Parse{std::move(p), offset}};
     }
 };
 
+/** @brief Convert `ShaderLoaderError` into `std::exception_ptr`. */
 export inline std::exception_ptr to_exception_ptr(const ShaderLoaderError& err) noexcept {
     return std::visit(
         [](const auto& e) -> std::exception_ptr {
@@ -217,61 +347,90 @@ export inline std::exception_ptr to_exception_ptr(const ShaderLoaderError& err) 
         err.data);
 }
 
-// ─── ShaderLoader ──────────────────────────────────────────────────────────
+/** @brief Asset loader for shader files. */
 export struct ShaderLoader {
     using Asset    = Shader;
     using Settings = ShaderSettings;
     using Error    = ShaderLoaderError;
 
+    /** @brief File extensions handled by this loader. */
     static std::span<std::string_view> extensions();
+    /** @brief Load one shader from a stream.
+     *
+     * File-backed imports are resolved through `context` and added to
+     * `file_dependencies`. Custom-name imports stay as logical imports.
+     */
     static std::expected<Shader, Error> load(std::istream& reader,
                                              const Settings& settings,
                                              assets::LoadContext& context);
 };
 
-// ─── ShaderProcessor ───────────────────────────────────────────────────────
+/** @brief Processing settings used before shader loading. */
 export struct ShaderProcessorSettings : assets::Settings {
+    /** @brief Settings forwarded to `ShaderLoader`. */
     ShaderSettings loader_settings;
-    bool preprocess_wgsl  = true;
+    /** @brief When `true`, WGSL preprocessing is enabled. */
+    bool preprocess_wgsl = true;
+    /** @brief When `true`, Slang preprocessing is enabled. */
     bool preprocess_slang = true;
 };
 
+/** @brief Asset processor for shader sources. */
 export struct ShaderProcessor {
     using Settings     = ShaderProcessorSettings;
     using OutputLoader = ShaderLoader;
 
+    /** @brief Process one shader asset before it is loaded. */
     std::expected<OutputLoader::Settings, std::exception_ptr> process(assets::ProcessContext& context,
                                                                       const Settings& settings,
                                                                       std::ostream& writer) const;
 };
 
-// ─── ShaderRef ─────────────────────────────────────────────────────────────
+/** @brief Reference to a shader.
+ *
+ * Use this when a system can accept either the default shader, a concrete
+ * loaded handle, or a filesystem path that will be resolved later.
+ */
 export struct ShaderRef {
+    /** @brief Use the built-in default shader. */
     struct Default {};
+    /** @brief Reference a shader by loaded handle. */
     struct ByHandle {
         assets::Handle<Shader> handle;
     };
+    /** @brief Reference a shader by path. */
     struct ByPath {
         std::filesystem::path path;
     };
 
+    /** @brief The active reference form. */
     std::variant<Default, ByHandle, ByPath> value;
 
+    /** @brief Create a default shader reference. */
     ShaderRef() : value(Default{}) {}
+    /** @brief Create a handle-based shader reference. */
     ShaderRef(ByHandle h) : value(std::move(h)) {}
+    /** @brief Create a path-based shader reference. */
     ShaderRef(ByPath p) : value(std::move(p)) {}
 
+    /** @brief Create a handle-based shader reference. */
     static ShaderRef from_handle(assets::Handle<Shader> h) { return ShaderRef{ByHandle{std::move(h)}}; }
+    /** @brief Create a path-based shader reference. */
     static ShaderRef from_path(std::filesystem::path p) { return ShaderRef{ByPath{std::move(p)}}; }
+    /** @brief Create a path-based shader reference from text. */
     static ShaderRef from_str(std::string_view s) { return ShaderRef{ByPath{std::filesystem::path{s}}}; }
 
+    /** @brief Returns `true` when this is the default shader. */
     bool is_default() const { return std::holds_alternative<Default>(value); }
+    /** @brief Returns `true` when this stores a handle. */
     bool is_handle() const { return std::holds_alternative<ByHandle>(value); }
+    /** @brief Returns `true` when this stores a path. */
     bool is_path() const { return std::holds_alternative<ByPath>(value); }
 };
 
-// ─── ShaderPlugin ──────────────────────────────────────────────────────────
+/** @brief App plugin that registers shader loading and processing. */
 export struct ShaderPlugin {
+    /** @brief Register shader systems and asset support into the app. */
     void build(core::App& app);
 };
 

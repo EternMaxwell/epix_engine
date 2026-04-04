@@ -664,7 +664,7 @@ void ShaderPlugin::build(core::App& app) {
     // Sync dependency-ready shader assets to ShaderCache (skipped if no ShaderCache resource).
     app.add_systems(
         core::Last,
-        core::into([](core::ResMut<ShaderCache> cache, core::Res<assets::Assets<Shader>> shaders,
+        core::into([](core::ResMut<ShaderCache> cache, core::ResMut<assets::Assets<Shader>> shaders,
                       core::EventReader<assets::AssetEvent<Shader>> events) { cache->sync(events.read(), *shaders); })
             .after(assets::AssetSystems::WriteEvents)
             .run_if([](std::optional<core::Res<ShaderCache>> opt) { return opt.has_value(); })

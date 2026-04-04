@@ -5,43 +5,64 @@ import std;
 
 namespace epix::shader {
 
-// ─── ComposeError ──────────────────────────────────────────────────────────
+/** @brief Error returned while composing WGSL source. */
 export struct ComposeError {
+    /** @brief A `#import ...` name was used but no module with that name was registered. */
     struct ImportNotFound {
         std::string import_name;
     };
+    /** @brief The composer could not parse part of the source. */
     struct ParseError {
         std::string module_name;
         std::string details;
     };
+    /** @brief Imports formed a cycle such as `a -> b -> a`. */
     struct CircularImport {
         std::vector<std::string> cycle_chain;
     };
 
+    /** @brief The active error value. */
     std::variant<ImportNotFound, ParseError, CircularImport> data;
 };
 
-// ─── ShaderComposer ────────────────────────────────────────────────────────
-// A simple WGSL preprocessor that resolves #import directives and handles
-// #ifdef / #ifndef / #if / #else / #endif conditional blocks based on
-// ShaderDefVal sets.
+/** @brief WGSL composer used to expand `#import` and simple conditional blocks.
+ *
+ * In practice this means:
+ *
+ * - if your shader contains `#import lighting`, the composer replaces it with
+ *   the WGSL module previously added as `lighting`.
+ * - if your shader contains `#ifdef USE_FOG`, the block is kept only when the
+ *   active definitions contain `USE_FOG`.
+ *
+ * This is only for WGSL. Slang uses its own import system.
+ */
 export struct ShaderComposer {
-    // Add a module that can be #imported by other shaders.
-    // module_name should match what appears after '#import' in WGSL source.
-    // defs are the module's base-level always-active defines (from Shader::shader_defs).
+    /** @brief Register one WGSL module.
+     *
+     * `module_name` must match what appears in source, for example
+     * `#import lighting` looks for a module added as `lighting`.
+     * `defs` are definitions that are always active for this module.
+     */
     std::expected<void, ComposeError> add_module(const std::string& module_name,
                                                  std::string_view source,
                                                  std::span<const ShaderDefVal> defs);
 
-    // Remove a registered module. Silently ignores unknown names.
+    /** @brief Remove one registered module.
+     *
+     * If the module does not exist, nothing happens.
+     */
     void remove_module(const std::string& module_name);
 
-    // Returns true if module_name is registered.
+    /** @brief Returns `true` when a module with this name is registered. */
     bool contains_module(const std::string& module_name) const;
 
-    // Compose source: resolve all #import directives (inline registered modules),
-    // apply additional_defs to #ifdef / #ifndef / #if guards.
-    // Returns the flat, self-contained WGSL string ready for createShaderModule.
+    /** @brief Compose one WGSL source string.
+     *
+     * This expands all `#import ...` directives and evaluates simple
+     * conditionals like `#ifdef`, `#ifndef`, `#if`, `#else`, and `#endif`.
+     * The returned string is the final WGSL text ready to pass to shader
+     * module creation.
+     */
     std::expected<std::string, ComposeError> compose(std::string_view source,
                                                      std::string_view file_path,
                                                      std::span<const ShaderDefVal> additional_defs);
