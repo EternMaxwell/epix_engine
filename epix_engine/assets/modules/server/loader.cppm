@@ -1,9 +1,10 @@
-module;
+﻿module;
 
 export module epix.assets:server.loader;
 
 import std;
 import epix.meta;
+import epix.utils;
 
 import :store;
 import :handle;
@@ -48,7 +49,7 @@ export struct AssetContainer {
     virtual void insert(const UntypedAssetId& id, core::World& world) = 0;
     /** @brief Visit all asset handle dependencies within this container.
      *  Matches bevy_asset's VisitAssetDependencies::visit_dependencies. */
-    virtual void visit_dependencies(std::function<void(UntypedAssetId)>& visit) const {}
+    virtual void visit_dependencies(utils::function_ref<void(UntypedAssetId)> visit) const {}
 };
 struct LabeledAsset;
 
@@ -132,7 +133,7 @@ struct AssetContainerImpl : AssetContainer {
         auto&& assets                       = world.resource_mut<Assets<T>>();
         [[maybe_unused]] auto insert_result = assets.insert(id.typed<T>(), std::move(asset));
     }
-    void visit_dependencies(std::function<void(UntypedAssetId)>& visit) const override {
+    void visit_dependencies(utils::function_ref<void(UntypedAssetId)> visit) const override {
         if constexpr (VisitAssetDependencies<T>) {
             asset.visit_dependencies(visit);
         }
@@ -144,8 +145,7 @@ template <typename A>
 ErasedLoadedAsset ErasedLoadedAsset::from_asset(A asset) {
     std::unordered_set<UntypedAssetId> deps;
     if constexpr (VisitAssetDependencies<A>) {
-        std::function<void(UntypedAssetId)> visitor = [&deps](UntypedAssetId id) { deps.insert(id); };
-        asset.visit_dependencies(visitor);
+        asset.visit_dependencies([&deps](UntypedAssetId id) { deps.insert(id); });
     }
     return ErasedLoadedAsset{std::make_unique<AssetContainerImpl<A>>(std::move(asset)), std::move(deps), {}, {}};
 }

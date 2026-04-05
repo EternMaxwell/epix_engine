@@ -5,6 +5,7 @@ module;
 export module epix.assets:handle;
 
 import std;
+import epix.utils;
 
 import :id;
 import :path;
@@ -138,7 +139,7 @@ struct Handle {
     operator AssetId<T>() const { return id(); }
     /** @brief Visit this handle as an asset dependency.
      *  Matches bevy_asset's VisitAssetDependencies impl for Handle<A>. */
-    void visit_dependencies(std::function<void(UntypedAssetId)>& visit) const { visit(UntypedAssetId(id())); }
+    void visit_dependencies(utils::function_ref<void(UntypedAssetId)> visit) const { visit(UntypedAssetId(id())); }
 };
 
 /** @brief Type-erased handle to an asset of any type.
@@ -223,7 +224,7 @@ export struct UntypedHandle {
     UntypedHandle weak() const { return id(); }
     /** @brief Visit this handle as an asset dependency.
      *  Matches bevy_asset's VisitAssetDependencies impl for UntypedHandle. */
-    void visit_dependencies(std::function<void(UntypedAssetId)>& visit) const { visit(id()); }
+    void visit_dependencies(utils::function_ref<void(UntypedAssetId)> visit) const { visit(id()); }
     /** @brief Get the meta transform associated with this handle, if any (strong handles only). */
     const MetaTransform* meta_transform() const {
         return std::visit(utils::visitor{[](const std::shared_ptr<StrongHandle>& handle) -> const MetaTransform* {
@@ -346,7 +347,7 @@ struct HandleProvider {
  *  Matches bevy_asset's VisitAssetDependencies trait.
  *  Types satisfying this concept must implement visit_dependencies(visitor). */
 export template <typename T>
-concept VisitAssetDependencies = requires(const T& t, std::function<void(UntypedAssetId)>& visit) {
+concept VisitAssetDependencies = requires(const T& t, utils::function_ref<void(UntypedAssetId)> visit) {
     { t.visit_dependencies(visit) } -> std::same_as<void>;
 };
 

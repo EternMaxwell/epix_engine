@@ -60,7 +60,8 @@ export struct AssetSource {
      *  Moves the current processed_reader to ungated_processed_reader,
      *  then creates a new gated processed_reader via the factory.
      *  The factory receives (source_id, reference_to_ungated_reader). */
-    void gate_on_processor(std::function<std::unique_ptr<AssetReader>(AssetSourceId, const AssetReader&)> factory) {
+    void gate_on_processor(
+        utils::function_ref<std::unique_ptr<AssetReader>(AssetSourceId, const AssetReader&)> factory) {
         if (m_processed_reader) {
             m_ungated_processed_reader = std::move(m_processed_reader);
             m_processed_reader         = factory(m_id, *m_ungated_processed_reader);
@@ -212,7 +213,8 @@ export struct AssetSources {
         return iter() | std::views::transform([](const AssetSource& source) { return source.id(); });
     }
     /** @brief Gate all processed sources through the given factory. */
-    void gate_on_processor(std::function<std::unique_ptr<AssetReader>(AssetSourceId, const AssetReader&)> factory) {
+    void gate_on_processor(
+        utils::function_ref<std::unique_ptr<AssetReader>(AssetSourceId, const AssetReader&)> factory) {
         for (auto& source : iter_processed_mut()) {
             source.gate_on_processor(factory);
         }
