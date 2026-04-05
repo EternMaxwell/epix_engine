@@ -18,8 +18,8 @@ AssetProcessor::AssetProcessor(std::shared_ptr<AssetProcessorData> processor_dat
         return std::make_unique<ProcessorGatedReader>(std::move(id), reader, state);
     });
     auto sources = std::make_shared<AssetSources>(std::move(sources_val));
-    server       = AssetServer(std::move(sources), AssetServerMode::Processed, AssetMetaCheck::Always, false,
-                               UnapprovedPathMode::Forbid);
+    server = AssetServer(std::move(sources), AssetServerMode::Processed, AssetMetaCheck{asset_meta_check::Always{}},
+                         false, UnapprovedPathMode::Forbid);
 }
 
 // ---- start ----
@@ -37,22 +37,30 @@ void AssetProcessor::start(core::Res<AssetProcessor> processor) {
 
         proc.queue_initial_processing_tasks(new_task_sender);
 
-        // Spawn task executor in background
+        // Spawn task executor in background.
+        // Pass a copy of new_task_sender so the executor can immediately downgrade it to a
+        // WeakSender (matching Bevy's pattern) �?avoiding keeping the channel artificially open.
         {
             auto p = proc;
-            auto s = new_task_sender;
+            auto s = new_task_sender;  // copy: executor will downgrade and drop this
             auto r = new_task_receiver;
-            utils::IOTaskPool::instance().detach_task([p, s, r]() mutable { p.execute_processing_tasks(r); });
+            utils::IOTaskPool::instance().detach_task(
+                [p, s, r]() mutable { p.execute_processing_tasks(std::move(s), r); });
         }
+
+        // Start source-change listeners BEFORE waiting. Listeners use a WeakSender so they
+        // do NOT keep new_task_sender alive. After spawn_source_change_event_listeners returns,
+        // new_task_sender is dropped, signaling execute_processing_tasks that there are no more
+        // producers, allowing it to eventually reach ProcessorState::Finished.
+        spdlog::debug("Listening for changes to source assets");
+        proc.spawn_source_change_event_listeners(new_task_sender);
+        new_task_sender = {};  // drop last strong sender -> unblocks execute_processing_tasks
 
         proc.data->wait_until_finished();
 
         auto end_time = std::chrono::steady_clock::now();
         auto elapsed  = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
         spdlog::debug("Processing finished in {}ms", elapsed.count());
-
-        spdlog::debug("Listening for changes to source assets");
-        proc.spawn_source_change_event_listeners(new_task_sender);
     });
 }
 
@@ -234,6 +242,9 @@ void AssetProcessor::initialize() const {
         }
 
         for (auto& path : processed_paths) {
+            // Skip the transaction log file — it lives in the processed dir but is not an asset.
+            if (data->log_factory && path == data->log_factory->log_path()) continue;
+
             std::vector<AssetPath> dependencies;
             auto asset_path = AssetPath(source.id(), path);
             auto* info      = infos_guard->get(asset_path);
@@ -264,19 +275,21 @@ void AssetProcessor::initialize() const {
 
 // ---- process_asset ----
 
-void AssetProcessor::process_asset(const AssetSourceId& source_id, const std::filesystem::path& path) const {
+void AssetProcessor::process_asset(
+    const AssetSourceId& source_id,
+    const std::filesystem::path& path,
+    utils::Sender<std::pair<AssetSourceId, std::filesystem::path>> reprocess_sender) const {
     auto source_opt = get_source(source_id);
     if (!source_opt) {
         spdlog::error("AssetSource {} not found for processing",
                       source_id.is_default() ? "default" : source_id.value());
         return;
     }
-    auto& source            = source_opt->get();
-    auto asset_path         = AssetPath(source.id(), path);
-    auto result             = process_asset_internal(source, asset_path);
-    auto infos_guard        = data->processing_state->m_asset_infos.write();
-    auto [sender, receiver] = utils::make_channel<std::pair<AssetSourceId, std::filesystem::path>>();
-    infos_guard->finish_processing(asset_path, result, sender);
+    auto& source     = source_opt->get();
+    auto asset_path  = AssetPath(source.id(), path);
+    auto result      = process_asset_internal(source, asset_path);
+    auto infos_guard = data->processing_state->m_asset_infos.write();
+    infos_guard->finish_processing(asset_path, result, reprocess_sender);
 }
 
 // ---- process_asset_internal ----
@@ -536,76 +549,149 @@ void AssetProcessor::queue_initial_processing_tasks(
 
 void AssetProcessor::spawn_source_change_event_listeners(
     utils::Sender<std::pair<AssetSourceId, std::filesystem::path>>& sender) const {
+    // Downgrade to a WeakSender so listener tasks do NOT keep the new_task channel alive.
+    // This allows execute_processing_tasks to detect input_closed when the owning (start)
+    // task drops its strong Sender.
+    auto weak_s = sender.downgrade();
     for (auto& source : sources()->iter_processed()) {
         auto receiver_opt = source.event_receiver();
         if (!receiver_opt) continue;
         auto source_id = source.id();
-        auto proc      = *this;
-        auto s         = sender;
-        auto r         = receiver_opt->get();
-        utils::IOTaskPool::instance().detach_task([proc, source_id, s, r]() mutable {
-            try {
-                while (true) {
-                    auto event      = r.receive();
-                    auto source_opt = proc.get_source(source_id);
-                    if (!source_opt) return;
-                    proc.handle_asset_source_event(source_opt->get(), event, s);
-                }
-            } catch (const std::runtime_error&) {
-                // channel disconnected
+        // Use weak_ptr to data and server.data to avoid a reference cycle:
+        // listener task -> proc -> server.data -> sources -> watcher (sender to r).
+        // If the processor is destroyed (e.g. App exits), the sources are freed,
+        // the watcher's sender is dropped, r.receive() returns Closed, and the task exits.
+        auto weak_data        = std::weak_ptr<AssetProcessorData>(data);
+        auto weak_server_data = std::weak_ptr<AssetServerData>(server.data);
+        auto ws               = weak_s;  // copy of WeakSender
+        auto r                = receiver_opt->get();
+        utils::IOTaskPool::instance().detach_task([weak_data, weak_server_data, source_id, ws, r]() mutable {
+            while (true) {
+                auto event = r.receive();
+                if (!event) return;
+                auto locked_data        = weak_data.lock();
+                auto locked_server_data = weak_server_data.lock();
+                if (!locked_data || !locked_server_data) return;
+                // Upgrade WeakSender to send a new processing task - if it fails the
+                // executor has already shut down, so we exit.
+                auto s = ws.upgrade();
+                if (!s) return;
+                // Reconstruct a temporary AssetProcessor from the locked weak_ptr data.
+                // Note: we do NOT use AssetProcessor() default-construction (not available);
+                // instead we use the (AssetServer, shared_ptr<AssetProcessorData>) constructor.
+                AssetServer tmp_server;
+                tmp_server.data = locked_server_data;
+                AssetProcessor proc(std::move(tmp_server), locked_data);
+                auto source_opt = proc.get_source(source_id);
+                if (!source_opt) return;
+                proc.handle_asset_source_event(source_opt->get(), *event, *s);
+                // `s` (strong sender) goes out of scope and is dropped here
             }
         });
     }
 }
 
 void AssetProcessor::execute_processing_tasks(
+    utils::Sender<std::pair<AssetSourceId, std::filesystem::path>> new_task_sender,
     utils::Receiver<std::pair<AssetSourceId, std::filesystem::path>>& receiver) const {
-    // If there are no initial tasks, go straight to finished
-    // TODO: check if channel is empty
-    std::atomic<int> pending_tasks{0};
-    auto [finished_sender, finished_receiver] = utils::make_channel<bool>();
-    auto proc                                 = *this;
+    // Convert the Sender into a WeakSender so that once all task producers terminate (and drop
+    // their sender), this executor doesn't keep itself alive. We can still upgrade when spawning
+    // tasks that need to queue dependency assets.  Matches Bevy's WeakSender downgrade pattern.
+    auto weak_sender = new_task_sender.downgrade();
+    new_task_sender  = {};  // drop the strong ref
 
-    try {
-        while (true) {
-            auto task               = receiver.receive();
-            auto& [source_id, path] = task;
-            pending_tasks.fetch_add(1, std::memory_order_relaxed);
+    // If there are no initial tasks in the channel, go straight to Finished (matches Bevy check:
+    // `if new_task_receiver.is_empty() { set_state(Finished) }`).
+    // We use try_receive: if it returns Empty the channel has no items yet (but may receive more
+    // from file-watcher senders later); if it returns a value we'll re-inject it below.
+    using Task = std::pair<AssetSourceId, std::filesystem::path>;
 
-            auto p   = proc;
-            auto fs  = finished_sender;
-            auto sid = source_id;
-            auto pt  = path;
-            utils::IOTaskPool::instance().detach_task([p, fs, sid, pt]() mutable {
-                p.process_asset(sid, pt);
-                fs.send(true);
-            });
+    struct StartTaskEvent {
+        Task task;
+    };
+    struct FinishedTaskEvent {};
+    struct InputClosedEvent {};
+    using ProcessingTaskEvent = std::variant<StartTaskEvent, FinishedTaskEvent, InputClosedEvent>;
 
-            p.data->processing_state->set_state(ProcessorState::Processing);
+    auto [event_sender, event_receiver] = utils::make_channel<ProcessingTaskEvent>();
 
-            // Drain finished notifications
-            while (auto finished = finished_receiver.try_receive()) {
-                auto count = pending_tasks.fetch_sub(1, std::memory_order_relaxed) - 1;
-                if (count == 0) {
-                    p.data->processing_state->set_state(ProcessorState::Finished);
-                }
+    // Handle the initial-empty check using try_receive so we don't block.
+    // If a value is present we forward it into the event queue first.
+    {
+        auto first = receiver.try_receive();
+        if (!first) {
+            if (first.error() == utils::ReceiveError::Empty) {
+                // No tasks are queued right now �?go to Finished immediately.
+                data->processing_state->set_state(ProcessorState::Finished);
             }
+            // If Closed, the InputClosedEvent from the forwarding thread handles it.
+        } else {
+            event_sender.send(StartTaskEvent{std::move(*first)});
         }
-    } catch (const std::runtime_error&) {
-        // channel disconnected
     }
 
-    // Drain remaining
-    while (pending_tasks.load(std::memory_order_relaxed) > 0) {
-        try {
-            finished_receiver.receive();
-            auto count = pending_tasks.fetch_sub(1, std::memory_order_relaxed) - 1;
-            if (count == 0) {
-                proc.data->processing_state->set_state(ProcessorState::Finished);
+    // Background forwarding thread: pulls from the outer task receiver and forwards as
+    // StartTaskEvent/InputClosedEvent into the unified event queue.  This mirrors Bevy's
+    // `new_task_receiver.recv()` arm inside `select_biased!`.
+    auto fwd_receiver = receiver;
+    auto fwd_sender   = event_sender;
+    utils::IOTaskPool::instance().detach_task([fwd_receiver, fwd_sender]() mutable {
+        while (true) {
+            auto task = fwd_receiver.receive();
+            if (!task) {
+                fwd_sender.send(InputClosedEvent{});
+                break;
             }
-        } catch (const std::runtime_error&) {
-            break;
+            fwd_sender.send(StartTaskEvent{std::move(*task)});
         }
+    });
+
+    int pending_tasks = 0;
+    bool input_closed = false;
+
+    // Unified event loop �?equivalent to Bevy's `select_biased!` over new_task_receiver and
+    // task_finished_receiver.  We prefer StartTaskEvent (start tasks) over FinishedTaskEvent so
+    // we don't prematurely mark as Finished before all queued tasks are dispatched.
+    while (!input_closed || pending_tasks > 0) {
+        auto event = event_receiver.receive();
+        if (!event) break;  // event channel closed unexpectedly
+
+        std::visit(utils::visitor{
+                       [&](StartTaskEvent& e) {
+                           // Upgrade the weak sender to verify that task producers are still alive.
+                           // Matches Bevy: `let Some(new_task_sender) = new_task_sender.upgrade()`.
+                           auto upgraded = weak_sender.upgrade();
+                           if (!upgraded) {
+                               // All producers (e.g. watcher tasks) are gone �?safe to ignore.
+                               return;
+                           }
+                           pending_tasks++;
+                           auto p  = *this;
+                           auto s  = std::move(*upgraded);
+                           auto es = event_sender;
+                           auto t  = std::move(e.task);
+                           utils::IOTaskPool::instance().detach_task([p, s, es, t]() mutable {
+                               auto& [source_id, path] = t;
+                               p.process_asset(source_id, path, std::move(s));
+                               es.send(FinishedTaskEvent{});
+                           });
+                           data->processing_state->set_state(ProcessorState::Processing);
+                       },
+                       [&](FinishedTaskEvent&) {
+                           pending_tasks--;
+                           if (pending_tasks == 0) {
+                               data->processing_state->set_state(ProcessorState::Finished);
+                           }
+                       },
+                       [&](InputClosedEvent&) {
+                           input_closed = true;
+                           // If there are no in-flight tasks left, processing is done now.
+                           if (pending_tasks == 0) {
+                               data->processing_state->set_state(ProcessorState::Finished);
+                           }
+                       },
+                   },
+                   *event);
     }
 }
 

@@ -94,7 +94,7 @@ TEST(Handle, Untyped_TypedThrowsOnMismatch) {
     auto id = AssetId<std::string>::invalid();
     Handle<std::string> h(id);
     UntypedHandle uh = h.untyped();
-    EXPECT_THROW(uh.typed<int>(), std::bad_optional_access);
+    EXPECT_THROW(uh.typed<int>(), UntypedAssetConversionError);
 }
 
 // ===========================================================================

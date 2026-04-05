@@ -101,7 +101,10 @@ TEST(ProcessContext, ReaderAccess) {
 TEST(ProcessContext, ProcessedInfoPresent) {
     auto processor = make_test_processor();
     ProcessedInfo info;
-    info.hash = 12345;
+    AssetHash h = {};
+    h[0]        = 12345 & 0xFF;
+    h[1]        = (12345 >> 8) & 0xFF;
+    info.hash   = h;
     std::istringstream data("");
     AssetPath path("test.txt");
     ProcessContext ctx(processor, path, data, info);

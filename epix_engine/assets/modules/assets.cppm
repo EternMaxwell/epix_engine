@@ -43,15 +43,15 @@ export struct AssetPlugin {
     /** @brief Filesystem path to the default asset source directory. */
     std::filesystem::path file_path = "assets";
     /** @brief Optional processed-asset directory path. */
-    std::optional<std::filesystem::path> processed_file_path = std::nullopt;
+    std::optional<std::filesystem::path> processed_file_path = "processed_assets";
     /** @brief Asset server mode. */
-    AssetServerMode mode = AssetServerMode::Unprocessed;
+    AssetServerMode mode = AssetServerMode::Processed;
     /** @brief Optional watch override (mirrors Bevy's watch_for_changes_override). */
     std::optional<bool> watch_for_changes_override = std::nullopt;
     /** @brief Optional processor override in Processed mode (mirrors Bevy's use_asset_processor_override). */
     std::optional<bool> use_asset_processor_override = std::nullopt;
     /** @brief Controls when and how asset metadata files are checked. */
-    AssetMetaCheck meta_check = AssetMetaCheck::Always;
+    AssetMetaCheck meta_check = AssetMetaCheck{asset_meta_check::Always{}};
     /** @brief Controls how unapproved asset paths are handled. */
     UnapprovedPathMode unapproved_path_mode = UnapprovedPathMode::Forbid;
 
@@ -68,7 +68,7 @@ export template <std::movable T>
 App& app_register_asset(App& app) {
     if (app.world_mut().get_resource<Assets<T>>().has_value()) return app;
     app.world_mut().init_resource<Assets<T>>();
-    app.resource_mut<AssetServer>().register_assets(app.resource<Assets<T>>());
+    app.resource_mut<AssetServer>().register_asset(app.resource<Assets<T>>());
     app.add_events<AssetEvent<T>>();
     app.add_events<AssetLoadFailedEvent<T>>();
     app.add_systems(PostStartup,
@@ -127,4 +127,4 @@ App& app_set_default_asset_processor(App& app, const std::string& extension) {
     return app;
 }
 
-}  // namespace assets
+}  // namespace epix::assets

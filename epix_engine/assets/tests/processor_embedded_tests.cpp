@@ -75,7 +75,7 @@ struct TestTextLoader {
 // ---- Test saver: writes string to stream ----
 
 struct TestTextSaver {
-    using AssetType    = std::string;
+    using Asset        = std::string;
     using OutputLoader = TestTextLoader;
     struct Settings : epix::assets::Settings {};
     using Error = std::exception_ptr;
@@ -196,8 +196,10 @@ TEST(ProcessContext, WithProcessedInfo) {
     ProcessContext ctx(processor, path, data, info);
     EXPECT_EQ(ctx.path(), path);
     // new_processed_info should be accessible
-    ctx.new_processed_info().hash = 42;
-    EXPECT_EQ(info.hash, 42);
+    AssetHash test_hash           = {};
+    test_hash[0]                  = 42;
+    ctx.new_processed_info().hash = test_hash;
+    EXPECT_EQ(info.hash, test_hash);
 }
 
 // ===========================================================================
@@ -211,8 +213,8 @@ TEST(ProcessError, MissingAssetLoaderForExtension) {
 }
 
 TEST(ProcessError, AssetReaderError) {
-    ProcessError err{process_errors::AssetReaderError{AssetPath("test.txt"),
-                                                      epix::assets::AssetReaderError{reader_errors::NotFound{"test.txt"}}}};
+    ProcessError err{process_errors::AssetReaderError{
+        AssetPath("test.txt"), epix::assets::AssetReaderError{reader_errors::NotFound{"test.txt"}}}};
     EXPECT_TRUE(std::holds_alternative<process_errors::AssetReaderError>(err));
 }
 
@@ -233,11 +235,13 @@ TEST(ProcessError, ExtensionRequired) {
 
 TEST(ProcessResult, MakeProcessed) {
     ProcessedInfo info;
-    info.hash   = 123;
-    auto result = ProcessResult::make_processed(std::move(info));
+    AssetHash test_hash = {};
+    test_hash[0]        = 123;
+    info.hash           = test_hash;
+    auto result         = ProcessResult::make_processed(std::move(info));
     EXPECT_EQ(result.kind, ProcessResultKind::Processed);
     ASSERT_TRUE(result.processed_info.has_value());
-    EXPECT_EQ(result.processed_info->hash, 123);
+    EXPECT_EQ(result.processed_info->hash, test_hash);
 }
 
 TEST(ProcessResult, SkippedNotChanged) {
@@ -460,8 +464,8 @@ TEST(ProcessError, MissingProcessedAssetWriter) {
 }
 
 TEST(ProcessError, ReadAssetMetaError) {
-    ProcessError err{process_errors::ReadAssetMetaError{AssetPath("test.txt"),
-                                                        epix::assets::AssetReaderError{reader_errors::NotFound{"meta"}}}};
+    ProcessError err{process_errors::ReadAssetMetaError{
+        AssetPath("test.txt"), epix::assets::AssetReaderError{reader_errors::NotFound{"meta"}}}};
     EXPECT_TRUE(std::holds_alternative<process_errors::ReadAssetMetaError>(err));
 }
 

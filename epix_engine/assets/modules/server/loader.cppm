@@ -6,6 +6,7 @@ import std;
 import epix.meta;
 
 import :store;
+import :handle;
 import :meta;
 
 namespace epix::assets {
@@ -41,10 +42,13 @@ struct TransformedSubAsset;
 template <typename T>
 struct ErasedAssetLoaderImpl;
 
-struct AssetContainer {
+export struct AssetContainer {
     virtual ~AssetContainer()                                         = default;
     virtual meta::type_index type() const                             = 0;
     virtual void insert(const UntypedAssetId& id, core::World& world) = 0;
+    /** @brief Visit all asset handle dependencies within this container.
+     *  Matches bevy_asset's VisitAssetDependencies::visit_dependencies. */
+    virtual void visit_dependencies(std::function<void(UntypedAssetId)>& visit) const {}
 };
 struct LabeledAsset;
 
@@ -53,12 +57,12 @@ export struct ErasedLoadedAsset {
    private:
     std::unique_ptr<AssetContainer> value;
     std::unordered_set<UntypedAssetId> dependencies;
-    std::unordered_map<AssetPath, std::size_t> loader_dependencies;
+    std::unordered_map<AssetPath, AssetHash> loader_dependencies;
     std::unordered_map<std::string, LabeledAsset> labeled_assets;
 
     ErasedLoadedAsset(std::unique_ptr<AssetContainer> v,
                       std::unordered_set<UntypedAssetId> deps,
-                      std::unordered_map<AssetPath, std::size_t> loader_deps,
+                      std::unordered_map<AssetPath, AssetHash> loader_deps,
                       std::unordered_map<std::string, LabeledAsset> labeled)
         : value(std::move(v)),
           dependencies(std::move(deps)),
@@ -128,12 +132,22 @@ struct AssetContainerImpl : AssetContainer {
         auto&& assets                       = world.resource_mut<Assets<T>>();
         [[maybe_unused]] auto insert_result = assets.insert(id.typed<T>(), std::move(asset));
     }
+    void visit_dependencies(std::function<void(UntypedAssetId)>& visit) const override {
+        if constexpr (VisitAssetDependencies<T>) {
+            asset.visit_dependencies(visit);
+        }
+    }
 };
 
 // -- Deferred ErasedLoadedAsset method definitions (need LabeledAsset & AssetContainerImpl) --
 template <typename A>
 ErasedLoadedAsset ErasedLoadedAsset::from_asset(A asset) {
-    return ErasedLoadedAsset{std::make_unique<AssetContainerImpl<A>>(std::move(asset)), {}, {}, {}};
+    std::unordered_set<UntypedAssetId> deps;
+    if constexpr (VisitAssetDependencies<A>) {
+        std::function<void(UntypedAssetId)> visitor = [&deps](UntypedAssetId id) { deps.insert(id); };
+        asset.visit_dependencies(visitor);
+    }
+    return ErasedLoadedAsset{std::make_unique<AssetContainerImpl<A>>(std::move(asset)), std::move(deps), {}, {}};
 }
 inline std::optional<std::reference_wrapper<const ErasedLoadedAsset>> ErasedLoadedAsset::get_labeled(
     const std::string& label) const {
@@ -197,7 +211,7 @@ struct LoadedAsset {
    private:
     A value;
     std::unordered_set<UntypedAssetId> dependencies;
-    std::unordered_map<AssetPath, std::size_t> loader_dependencies;
+    std::unordered_map<AssetPath, AssetHash> loader_dependencies;
     std::unordered_map<std::string, LabeledAsset> labeled_assets;
 
     friend struct LoadContext;
@@ -232,6 +246,103 @@ struct LoadedAsset {
     }
 };
 
+// --- Error types and load-state types ---
+// Moved here from server.info so that LoadContext can use AssetLoadError
+// without creating a circular module dependency (server.info imports server.loader).
+
+export namespace load_error {
+/** @brief Requested typed handle but loader produced a different asset type. */
+struct RequestHandleMismatch {
+    AssetPath path;
+    meta::type_index requested_type;
+    meta::type_index actual_type;
+    std::string_view loader_name;
+    bool operator==(const RequestHandleMismatch&) const = default;
+};
+/** @brief No asset loader is registered for this extension/type. */
+struct MissingAssetLoader {
+    std::optional<std::string> loader_name;
+    std::optional<meta::type_index> asset_type;
+    AssetPath path;
+    std::vector<std::string> extension;
+    bool operator==(const MissingAssetLoader&) const = default;
+};
+/** @brief The asset loader threw an exception during loading. */
+struct AssetLoaderException {
+    std::exception_ptr exception;
+    AssetPath path;
+    std::string_view loader_name;
+    bool operator==(const AssetLoaderException&) const = default;
+};
+}  // namespace load_error
+
+/** @brief Union of all asset load error variants. Matches bevy_asset's AssetLoadError. */
+export using AssetLoadError =
+    std::variant<load_error::RequestHandleMismatch, load_error::MissingAssetLoader, load_error::AssetLoaderException>;
+
+/** @brief Simple load-state discriminant without associated error data. */
+export enum LoadStateOK { NotLoaded, Loading, Loaded };
+
+/** @brief Current state of an asset's loading lifecycle. */
+export using LoadState = std::variant<LoadStateOK, AssetLoadError>;
+
+/** @brief Load state of an asset's direct dependencies. */
+export struct DependencyLoadState : std::variant<LoadStateOK, AssetLoadError> {
+    using base = std::variant<LoadStateOK, AssetLoadError>;
+    using base::base;
+    DependencyLoadState() = default;
+    bool is_loading() const {
+        return std::holds_alternative<LoadStateOK>(*this) && std::get<LoadStateOK>(*this) == LoadStateOK::Loading;
+    }
+    bool is_loaded() const {
+        return std::holds_alternative<LoadStateOK>(*this) && std::get<LoadStateOK>(*this) == LoadStateOK::Loaded;
+    }
+    bool is_failed() const { return std::holds_alternative<AssetLoadError>(*this); }
+};
+
+/** @brief Load state of an asset's full recursive dependency tree. */
+export struct RecursiveDependencyLoadState : std::variant<LoadStateOK, AssetLoadError> {
+    using base = std::variant<LoadStateOK, AssetLoadError>;
+    using base::base;
+    RecursiveDependencyLoadState() = default;
+    bool is_loading() const {
+        return std::holds_alternative<LoadStateOK>(*this) && std::get<LoadStateOK>(*this) == LoadStateOK::Loading;
+    }
+    bool is_loaded() const {
+        return std::holds_alternative<LoadStateOK>(*this) && std::get<LoadStateOK>(*this) == LoadStateOK::Loaded;
+    }
+    bool is_failed() const { return std::holds_alternative<AssetLoadError>(*this); }
+};
+
+export namespace wait_for_asset_error {
+struct NotLoaded {};
+struct Failed {
+    std::shared_ptr<AssetLoadError> error;
+};
+struct DependencyFailed {
+    std::shared_ptr<AssetLoadError> error;
+};
+}  // namespace wait_for_asset_error
+export using WaitForAssetError =
+    std::variant<wait_for_asset_error::NotLoaded, wait_for_asset_error::Failed, wait_for_asset_error::DependencyFailed>;
+
+export namespace internal_asset_event {
+struct Loaded {
+    UntypedAssetId id;
+    ErasedLoadedAsset asset;
+};
+struct LoadedWithDeps {
+    UntypedAssetId id;
+};
+struct Failed {
+    UntypedAssetId id;
+    AssetPath path;
+    AssetLoadError error;
+};
+}  // namespace internal_asset_event
+using InternalAssetEvent =
+    std::variant<internal_asset_event::Loaded, internal_asset_event::LoadedWithDeps, internal_asset_event::Failed>;
+
 /** @brief A builder for performing nested asset loads within a LoadContext.
  *  Matches bevy_asset's NestedLoader. */
 export struct NestedLoader;
@@ -241,8 +352,11 @@ export struct LoadContext {
     const AssetServer& m_server;
     AssetPath m_path;
     std::unordered_set<UntypedAssetId> m_dependencies;
-    std::unordered_map<AssetPath, std::size_t> m_loader_dependencies;
+    std::unordered_map<AssetPath, AssetHash> m_loader_dependencies;
     std::unordered_map<std::string, LabeledAsset> m_labeled_assets;
+    /// When false, NestedLoader::load() only reserves a handle without scheduling a load task.
+    /// Matches bevy_asset's LoadContext::should_load_dependencies.
+    bool m_should_load_dependencies = true;
 
     friend struct NestedLoader;
     template <typename>
@@ -260,6 +374,14 @@ export struct LoadContext {
     /** @brief Register an asset id as a direct dependency of this load.
      *  Used by loaders that call AssetServer::load directly instead of NestedLoader. */
     void track_dependency(const UntypedAssetId& id) { m_dependencies.insert(id); }
+
+    /** @brief Whether nested loads should actually schedule load tasks.
+     *  When false, NestedLoader::load only reserves/looks up handles without scheduling.
+     *  Matches bevy_asset's LoadContext::should_load_dependencies. */
+    bool should_load_dependencies() const { return m_should_load_dependencies; }
+    /** @brief Set whether nested loads schedule load tasks.
+     *  Matches bevy_asset's LoadContext::should_load_dependencies field. */
+    void set_should_load_dependencies(bool v) { m_should_load_dependencies = v; }
 
     /** @brief Check whether a labeled asset with the given label exists. */
     bool has_labeled_asset(const std::string& label) const { return m_labeled_assets.contains(label); }
@@ -288,6 +410,19 @@ export struct LoadContext {
     /** @brief Get a nested loader for loading sub-assets from within this load.
      *  Matches bevy_asset's LoadContext::loader(). */
     NestedLoader loader();
+
+    /** @brief Directly load an asset at path, running the full loader pipeline synchronously.
+     *  @tparam A The expected asset type.
+     *  Matches bevy_asset's LoadContext::load_direct (async in Bevy, sync here). */
+    template <typename A>
+    std::expected<LoadedAsset<A>, AssetLoadError> load_direct(const AssetPath& path) const;
+
+    /** @brief Load an asset directly using an already-open reader stream.
+     *  @tparam A The expected asset type.
+     *  Matches bevy_asset's LoadContext::load_direct_with_reader. */
+    template <typename A>
+    std::expected<LoadedAsset<A>, AssetLoadError> load_direct_with_reader(const AssetPath& path,
+                                                                          std::istream& reader) const;
 
     /** @brief Begin a labeled asset scope, returning a new LoadContext
      *  whose path includes the given label. The caller is responsible for
@@ -323,15 +458,28 @@ export struct LoadContext {
 export struct NestedLoader {
    private:
     LoadContext& m_context;
+    std::optional<MetaTransform> m_meta_transform = std::nullopt;
 
    public:
     explicit NestedLoader(LoadContext& context) : m_context(context) {}
+
+    /** @brief Set a settings function that modifies the loader meta for the next load call.
+     *  Matches bevy_asset's NestedLoader::with_settings. */
+    template <typename S>
+    NestedLoader& with_settings(std::function<void(S&)> fn) {
+        m_meta_transform = loader_settings_meta_transform<S>(std::move(fn));
+        return *this;
+    }
 
     /** @brief Load a sub-asset and register it as a dependency.
      *  @tparam A Asset type.
      *  @param path Path of the sub-asset. */
     template <typename A>
     Handle<A> load(const AssetPath& path);
+
+    /** @brief Load a sub-asset with unknown type (dynamic dispatch), registering it as a dependency.
+     *  Matches bevy_asset's DynamicTyped NestedLoader::load. */
+    UntypedHandle load_untyped(const AssetPath& path);
 
     /** @brief Load a sub-asset by resolving a relative path against the parent's directory.
      *  @tparam A Asset type.
@@ -355,11 +503,23 @@ concept AssetLoader = requires(const T& t, std::istream& stream, LoadContext& co
     { asset_loader_error_to_exception(std::declval<const typename T::Error&>()) } -> std::same_as<std::exception_ptr>;
 };
 struct ErasedAssetLoader {
-    virtual ~ErasedAssetLoader()                                                                  = default;
-    virtual std::span<std::string_view> extensions() const                                        = 0;
-    virtual meta::type_index loader_type() const                                                  = 0;
-    virtual meta::type_index asset_type() const                                                   = 0;
-    virtual std::unique_ptr<Settings> default_settings() const                                    = 0;
+    virtual ~ErasedAssetLoader()                           = default;
+    virtual std::span<std::string_view> extensions() const = 0;
+    virtual meta::type_index loader_type() const           = 0;
+    virtual meta::type_index asset_type() const            = 0;
+    /** @brief The short name of the asset type (e.g. "Image").
+     *  Matches bevy_asset's ErasedAssetLoader::asset_type_name. */
+    std::string_view asset_type_name() const { return asset_type().short_name(); }
+    /** @brief The type_index of the asset type.
+     *  Matches bevy_asset's ErasedAssetLoader::asset_type_id. */
+    meta::type_index asset_type_id() const { return asset_type(); }
+    /** @brief The full qualified name of the loader type.
+     *  Matches bevy_asset's ErasedAssetLoader::type_path. */
+    std::string_view type_path() const { return loader_type().name(); }
+    virtual std::unique_ptr<Settings> default_settings() const = 0;
+    /** @brief Return a heap-allocated default AssetMetaDyn for this loader.
+     *  Matches bevy_asset's ErasedAssetLoader::default_meta. */
+    virtual std::unique_ptr<AssetMetaDyn> default_meta() const                                    = 0;
     virtual std::expected<ErasedLoadedAsset, std::exception_ptr> load(std::istream& stream,
                                                                       const Settings& settings,
                                                                       LoadContext& context) const = 0;
@@ -376,6 +536,12 @@ struct ErasedAssetLoaderImpl : T, ErasedAssetLoader {
     meta::type_index loader_type() const override { return meta::type_id<T>{}; }
     meta::type_index asset_type() const override { return meta::type_id<typename T::Asset>{}; }
     std::unique_ptr<Settings> default_settings() const override { return std::make_unique<typename T::Settings>(); }
+    std::unique_ptr<AssetMetaDyn> default_meta() const override {
+        auto m    = std::make_unique<AssetMeta<typename T::Settings, Settings>>();
+        m->action = AssetActionType::Load;
+        m->loader = std::string(loader_type().name());
+        return m;
+    }
     std::expected<ErasedLoadedAsset, std::exception_ptr> load(std::istream& stream,
                                                               const Settings& settings,
                                                               LoadContext& context) const override {
@@ -398,17 +564,18 @@ struct ErasedAssetLoaderImpl : T, ErasedAssetLoader {
 };
 
 /** @brief Concept for an asset saver. Savers write assets to a stream.
- *  Implementations must provide: AssetType, Settings, save(). */
+ *  Implementations must provide: Asset, Settings, save().
+ *  Matches bevy_asset's AssetSaver trait �?associated type is named `Asset`. */
 export template <typename T>
 concept AssetSaver = requires(const T& t, std::ostream& writer, const typename T::Settings& settings) {
-    typename T::AssetType;
+    typename T::Asset;
     typename T::Settings;
     typename T::OutputLoader;
     typename T::Error;
     requires std::derived_from<typename T::Settings, Settings>;
     requires std::is_default_constructible_v<typename T::Settings>;
     {
-        t.save(writer, std::declval<SavedAsset<typename T::AssetType>>(), settings, std::declval<const AssetPath&>())
+        t.save(writer, std::declval<SavedAsset<typename T::Asset>>(), settings, std::declval<const AssetPath&>())
     } -> std::same_as<std::expected<typename T::OutputLoader::Settings, typename T::Error>>;
 };
 

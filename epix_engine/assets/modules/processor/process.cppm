@@ -215,7 +215,7 @@ struct LoadTransformAndSaveSettings : Settings {
  *  Matches bevy_asset's LoadTransformAndSave<L, T, S>. */
 export template <AssetLoader L, AssetTransformer T, AssetSaver S>
     requires std::same_as<typename L::Asset, typename T::AssetInput> &&
-             std::same_as<typename T::AssetOutput, typename S::AssetType>
+             std::same_as<typename T::AssetOutput, typename S::Asset>
 struct LoadTransformAndSave {
     using Settings     = LoadTransformAndSaveSettings<typename L::Settings, typename T::Settings, typename S::Settings>;
     using OutputLoader = typename S::OutputLoader;
@@ -286,7 +286,7 @@ export struct ProcessContext {
 
 template <AssetLoader L, AssetTransformer T, AssetSaver S>
     requires std::same_as<typename L::Asset, typename T::AssetInput> &&
-             std::same_as<typename T::AssetOutput, typename S::AssetType>
+             std::same_as<typename T::AssetOutput, typename S::Asset>
 std::expected<typename LoadTransformAndSave<L, T, S>::OutputLoader::Settings, std::exception_ptr>
 LoadTransformAndSave<L, T, S>::process(ProcessContext& context, const Settings& settings, std::ostream& writer) {
     try {
@@ -317,4 +317,4 @@ LoadTransformAndSave<L, T, S>::process(ProcessContext& context, const Settings& 
     }
 }
 
-}  // namespace assets
+}  // namespace epix::assets

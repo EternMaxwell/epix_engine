@@ -46,7 +46,9 @@ export struct FileAssetReader : public AssetReader {
                 return std::unexpected(AssetReaderError(reader_errors::NotFound{full_path}));
             }
             return std::expected<utils::input_iterable<std::filesystem::path>, AssetReaderError>(
-                std::filesystem::directory_iterator(full_path));
+                std::filesystem::directory_iterator(full_path) |
+                std::views::transform(
+                    [rel = path](const std::filesystem::directory_entry& e) { return rel / e.path().filename(); }));
         } catch (const std::system_error& e) {
             return std::unexpected(AssetReaderError(reader_errors::IoError{e.code()}));
         } catch (...) {
@@ -173,4 +175,4 @@ export struct FileAssetWriter : public AssetWriter {
     }
 };
 static_assert(!std::is_abstract_v<FileAssetWriter>);
-}  // namespace assets
+}  // namespace epix::assets

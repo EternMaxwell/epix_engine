@@ -15,7 +15,7 @@ using core::Receiver;
 using core::Sender;
 struct DestructionEvent {
     InternalAssetId id;
-    bool loader_managed;
+    bool asset_server_managed;
 };
 struct NonCopyNonMove {
     NonCopyNonMove()                                 = default;
@@ -28,7 +28,7 @@ struct StrongHandle : NonCopyNonMove {
     UntypedAssetId id;
     Sender<DestructionEvent> event_sender;
     std::optional<AssetPath> path;
-    bool loader_managed;
+    bool asset_server_managed;
     /// Modifies asset meta. Stored on the handle because it is:
     /// 1. configuration tied to the lifetime of a specific asset load
     /// 2. configuration that must be repeatable when the asset is hot-reloaded
@@ -36,13 +36,23 @@ struct StrongHandle : NonCopyNonMove {
 
     StrongHandle(const UntypedAssetId& id,
                  const Sender<DestructionEvent>& event_sender,
-                 bool loader_managed                         = false,
+                 bool asset_server_managed                   = false,
                  const std::optional<AssetPath>& path        = std::nullopt,
                  std::optional<MetaTransform> meta_transform = std::nullopt);
     ~StrongHandle();
 };
 /** @brief Forward declaration. */
 export struct UntypedHandle;
+/** @brief Forward declaration for make_strong. */
+export template <std::movable T>
+struct Assets;
+
+/** @brief Error returned when converting an UntypedHandle to a typed Handle<T> of the wrong type.
+ *  Matches bevy_asset's UntypedAssetConversionError. */
+export struct UntypedAssetConversionError {
+    meta::type_index expected; /**< The TypeId that was requested. */
+    meta::type_index found;    /**< The TypeId actually stored in this handle. */
+};
 /** @brief Typed handle to a loaded asset.
  *  A Handle is either *strong* (shared_ptr to StrongHandle, keeps the asset
  *  alive) or *weak* (holds only an AssetId, does not prevent unloading).
@@ -119,8 +129,16 @@ struct Handle {
     }
     /** @brief Convert this typed handle to an UntypedHandle. */
     UntypedHandle untyped() const;
+    /** @brief Upgrade this weak handle to a strong one if the asset exists.
+     *  If already strong, does nothing. If weak and the asset is found in
+     *  `assets`, upgrades to a strong reference-counted handle.
+     *  Matches bevy_asset's Handle::make_strong. */
+    void make_strong(Assets<T>& assets);
     /** @brief Implicit conversion to the underlying AssetId. */
     operator AssetId<T>() const { return id(); }
+    /** @brief Visit this handle as an asset dependency.
+     *  Matches bevy_asset's VisitAssetDependencies impl for Handle<A>. */
+    void visit_dependencies(std::function<void(UntypedAssetId)>& visit) const { visit(UntypedAssetId(id())); }
 };
 
 /** @brief Type-erased handle to an asset of any type.
@@ -177,12 +195,15 @@ export struct UntypedHandle {
     bool is_strong() const { return std::holds_alternative<std::shared_ptr<StrongHandle>>(ref); }
     /** @brief Check if this is a weak (id-only) handle. */
     bool is_weak() const { return std::holds_alternative<UntypedAssetId>(ref); }
-    /** @brief Get the runtime type_index of the asset this handle refers to. */
-    meta::type_index type() const {
+    /** @brief Get the runtime type_index of the asset this handle refers to.
+     *  Matches bevy_asset's UntypedHandle::type_id(). */
+    meta::type_index type_id() const {
         return std::visit(utils::visitor{[](const std::shared_ptr<StrongHandle>& handle) { return handle->id.type; },
                                          [](const UntypedAssetId& id) { return id.type; }},
                           ref);
     }
+    /** @brief Alias for type_id(). */
+    meta::type_index type() const { return type_id(); }
     /** @brief Get the type-erased id. */
     UntypedAssetId id() const {
         return std::visit(utils::visitor{[](const std::shared_ptr<StrongHandle>& handle) { return handle->id; },
@@ -200,6 +221,9 @@ export struct UntypedHandle {
     operator UntypedAssetId() const { return id(); }
     /** @brief Return a weak copy holding only the id. */
     UntypedHandle weak() const { return id(); }
+    /** @brief Visit this handle as an asset dependency.
+     *  Matches bevy_asset's VisitAssetDependencies impl for UntypedHandle. */
+    void visit_dependencies(std::function<void(UntypedAssetId)>& visit) const { visit(id()); }
     /** @brief Get the meta transform associated with this handle, if any (strong handles only). */
     const MetaTransform* meta_transform() const {
         return std::visit(utils::visitor{[](const std::shared_ptr<StrongHandle>& handle) -> const MetaTransform* {
@@ -211,21 +235,39 @@ export struct UntypedHandle {
 
     /** @brief Try to downcast to a typed Handle.
      *  @tparam T Expected asset type.
-     *  @return The typed handle, or std::nullopt on type mismatch. */
+     *  @return The typed handle, or an UntypedAssetConversionError on type mismatch.
+     *  Matches bevy_asset's UntypedHandle::try_typed. */
     template <typename T>
-    std::optional<Handle<T>> try_typed() const {
+    std::expected<Handle<T>, UntypedAssetConversionError> try_typed() const {
         if (type() != meta::type_id<T>{}) {
-            return std::nullopt;
+            return std::unexpected(UntypedAssetConversionError{meta::type_id<T>{}, type()});
         }
         return std::visit(utils::visitor{[](const std::shared_ptr<StrongHandle>& handle) { return Handle<T>(handle); },
                                          [](const UntypedAssetId& id) { return Handle<T>(id.typed<T>()); }},
                           ref);
     }
-    /** @brief Downcast to a typed Handle. Throws on type mismatch.
+    /** @brief Downcast to a typed Handle. Throws UntypedAssetConversionError on type mismatch.
      *  @tparam T Expected asset type. */
     template <typename T>
     Handle<T> typed() const {
-        return try_typed<T>().value();
+        auto result = try_typed<T>();
+        if (!result) throw result.error();
+        return *result;
+    }
+    /** @brief Converts to a typed Handle without checking the type.
+     *  Matches bevy_asset's UntypedHandle::typed_unchecked<A>(). */
+    template <typename T>
+    Handle<T> typed_unchecked() const {
+        return std::visit(utils::visitor{[](const std::shared_ptr<StrongHandle>& handle) { return Handle<T>(handle); },
+                                         [](const UntypedAssetId& id) { return Handle<T>(AssetId<T>(id.id)); }},
+                          ref);
+    }
+    /** @brief Converts to a typed Handle. Asserts type match in debug builds only.
+     *  Matches bevy_asset's UntypedHandle::typed_debug_checked<A>(). */
+    template <typename T>
+    Handle<T> typed_debug_checked() const {
+        assert(type_id() == meta::type_id<T>{} && "UntypedHandle type does not match target Handle<T> type");
+        return typed_unchecked<T>();
     }
 
     template <typename T>
@@ -292,11 +334,39 @@ struct HandleProvider {
 
     UntypedHandle reserve() const;
     std::shared_ptr<StrongHandle> get_handle(const InternalAssetId& id,
-                                             bool loader_managed,
+                                             bool asset_server_managed,
                                              const std::optional<AssetPath>& path,
                                              std::optional<MetaTransform> meta_transform = std::nullopt) const;
-    std::shared_ptr<StrongHandle> reserve(bool loader_managed,
+    std::shared_ptr<StrongHandle> reserve(bool asset_server_managed,
                                           const std::optional<AssetPath>& path,
                                           std::optional<MetaTransform> meta_transform = std::nullopt) const;
 };
-}  // namespace assets
+
+/** @brief Concept for asset types that can report their asset handle dependencies.
+ *  Matches bevy_asset's VisitAssetDependencies trait.
+ *  Types satisfying this concept must implement visit_dependencies(visitor). */
+export template <typename T>
+concept VisitAssetDependencies = requires(const T& t, std::function<void(UntypedAssetId)>& visit) {
+    { t.visit_dependencies(visit) } -> std::same_as<void>;
+};
+
+/** @brief Concept for asset types.
+ *  Matches bevy_asset's `Asset` trait bound: `VisitAssetDependencies + TypePath + Send + Sync`.
+ *  C++ has no TypePath/Send/Sync equivalents, so only VisitAssetDependencies is required. */
+export template <typename T>
+concept Asset = VisitAssetDependencies<T>;
+/** @brief Construct a Handle<T> from a UUID string literal.
+ *  Equivalent to Bevy's uuid_handle! macro.
+ *  @tparam T  The asset type the handle is associated with.
+ *  @param uuid_str  A UUID string in standard 8-4-4-4-12 hex format, e.g. "00000000-0000-0000-0000-000000000001".
+ *  @return A weak Handle<T> identifying the asset by UUID. Throws std::invalid_argument on invalid format. */
+export template <typename T>
+Handle<T> uuid_handle(std::string_view uuid_str) {
+    auto parsed = uuids::uuid::from_string(uuid_str);
+    if (!parsed) {
+        throw std::invalid_argument(std::string("uuid_handle: invalid UUID string: ") + std::string(uuid_str));
+    }
+    return Handle<T>(*parsed);
+}
+
+}  // namespace epix::assets

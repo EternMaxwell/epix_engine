@@ -1,4 +1,4 @@
-module;
+﻿module;
 
 #include <spdlog/spdlog.h>
 
@@ -10,66 +10,16 @@ import epix.utils;
 import epix.core;
 
 import :store;
-import :server.loader;
+export import :server.loader;
 import :meta;
 
 namespace epix::assets {
-export namespace load_error {
-struct RequestHandleMismatch {
-    AssetPath path;
-    meta::type_index requested_type;
-    meta::type_index actual_type;
-    std::string_view loader_name;
-
-    bool operator==(const RequestHandleMismatch& other) const = default;
-};
-struct MissingAssetLoader {
-    std::optional<std::string> loader_name;
-    std::optional<meta::type_index> asset_type;
-    AssetPath path;
-    std::vector<std::string> extension;
-
-    bool operator==(const MissingAssetLoader& other) const = default;
-};
-struct AssetLoaderException {
-    std::exception_ptr exception;
-    AssetPath path;
-    std::string_view loader_name;
-
-    bool operator==(const AssetLoaderException& other) const = default;
-};
-}  // namespace load_error
-export using AssetLoadError =
-    std::variant<load_error::RequestHandleMismatch, load_error::MissingAssetLoader, load_error::AssetLoaderException>;
-export enum LoadStateOK {
-    NotLoaded, /**< Asset is not loaded and not queued for loading. */
-    Loading,   /**< A loader is actively loading this asset. */
-    Loaded,    /**< Asset has been loaded and is ready to use. */
-};
-/** @brief Current state of an asset's loading lifecycle. */
-export using LoadState = std::variant<LoadStateOK, AssetLoadError>;
-namespace internal_asset_event {
-struct Loaded {
-    UntypedAssetId id;
-    ErasedLoadedAsset asset;
-};
-struct LoadedWithDeps {
-    UntypedAssetId id;
-};
-struct Failed {
-    UntypedAssetId id;
-    AssetPath path;
-    AssetLoadError error;
-};
-}  // namespace internal_asset_event
-using InternalAssetEvent =
-    std::variant<internal_asset_event::Loaded, internal_asset_event::LoadedWithDeps, internal_asset_event::Failed>;
 struct AssetInfo {
     std::weak_ptr<StrongHandle> weak_handle;
     std::optional<AssetPath> path;
     LoadState state;
-    LoadState dep_state;
-    LoadState rec_dep_state;
+    DependencyLoadState dep_state;
+    RecursiveDependencyLoadState rec_dep_state;
     std::unordered_set<UntypedAssetId> loading_deps;
     std::unordered_set<UntypedAssetId> failed_deps;
     std::unordered_set<UntypedAssetId> loading_rec_deps;
@@ -78,24 +28,44 @@ struct AssetInfo {
     std::unordered_set<UntypedAssetId> deps_wait_on_rec_dep_load;
     /// Loader dependencies: asset paths the loader read during loading, with their hashes.
     /// Only populated when watching_for_changes is true, to save memory.
-    std::unordered_map<AssetPath, std::size_t> loader_dependencies;
-    std::vector<std::shared_future<void>> waiting;
+    std::unordered_map<AssetPath, AssetHash> loader_dependencies;
+    /// Tasks waiting for this asset to finish loading. Each entry is resolved when loading completes
+    /// or fails. Mirrors bevy_asset's AssetInfo::waiting_tasks (Vec<Waker>).
+    std::vector<std::shared_ptr<std::promise<std::expected<void, WaitForAssetError>>>> waiting_tasks;
     std::size_t handle_destruct_skip = 0;
+    /// Reverse dependency tracking: assets that have this asset as a direct dependency.
+    /// Matches bevy_asset's AssetInfo::dependants (HashSet<ErasedAssetIndex>).
+    std::unordered_set<UntypedAssetId> dependants;
 
     AssetInfo(std::weak_ptr<StrongHandle> weak_handle, std::optional<AssetPath> path)
         : weak_handle(std::move(weak_handle)), path(std::move(path)), state(LoadStateOK::NotLoaded) {}
 };
 
-struct AssetServerStatus {
-    std::size_t started_load_tasks;
+/** @brief Statistics reported by the asset server.
+ *  Matches bevy_asset's AssetServerStats. */
+export struct AssetServerStats {
+    std::size_t started_load_tasks  = 0;
+    std::size_t finished_load_tasks = 0;
 };
 
-struct GetOrCreateHandleError {
-    enum class Type {
-        NoProvider,             /**< No provider found for the asset's type. */
-        NoHandleAndNoTypeIndex, /**< No handle exists and no type index provided to create one. */
-    } type;
+/** @brief Error variants for GetOrCreateHandleInternalError.
+ *  Matches bevy_asset's GetOrCreateHandleInternalError variants. */
+export namespace get_or_create_handle_internal_errors {
+/** @brief No HandleProvider is registered for the given asset type. Contains the unregistered TypeId.
+ *  Matches bevy_asset GetOrCreateHandleInternalError::MissingHandleProviderError. */
+struct MissingHandleProviderError {
+    epix::meta::type_index type_id; /**< The type that has no registered HandleProvider. */
 };
+/** @brief The path has no associated handle and no TypeId was provided to create one.
+ *  Matches bevy_asset GetOrCreateHandleInternalError::HandleMissingButTypeIdNotSpecified. */
+struct HandleMissingButTypeIdNotSpecified {};
+}  // namespace get_or_create_handle_internal_errors
+
+/** @brief Internal error from get_or_create_handle_internal.
+ *  Matches bevy_asset's GetOrCreateHandleInternalError. */
+export using GetOrCreateHandleInternalError =
+    std::variant<get_or_create_handle_internal_errors::MissingHandleProviderError,
+                 get_or_create_handle_internal_errors::HandleMissingButTypeIdNotSpecified>;
 
 enum class HandleLoadingMode {
     NotLoading, /**< The handle is for an asset that isn't loading/loaded yet. */
@@ -114,8 +84,11 @@ struct AssetInfos {
 
     std::unordered_map<UntypedAssetId, std::variant<std::packaged_task<void()>, std::shared_future<void>>>
         pending_tasks;
-    AssetServerStatus status;
+    AssetServerStats stats;
     bool watching_for_changes = false;
+    /// Monotonically increasing counter; incremented each time an AssetInfo entry is created or removed.
+    /// Matches bevy_asset's AssetInfos::infos_generation.
+    uint64_t infos_generation = 0;
     /// Tracks assets that depend on the "key" asset path inside their asset loaders ("loader dependencies").
     /// Only set when watching for changes to avoid unnecessary work.
     std::unordered_map<AssetPath, std::unordered_set<AssetPath>> loader_dependents;
@@ -124,7 +97,7 @@ struct AssetInfos {
     std::unordered_map<AssetPath, std::unordered_set<std::string>> living_labeled_assets;
 
    private:
-    static std::expected<UntypedHandle, GetOrCreateHandleError> create_handle_internal(
+    static std::expected<UntypedHandle, GetOrCreateHandleInternalError> create_handle_internal(
         decltype(infos)& infos,
         decltype(handle_providers)& handle_providers,
         decltype(living_labeled_assets)& living_labeled_assets,
@@ -139,6 +112,10 @@ struct AssetInfos {
                                              decltype(living_labeled_assets)& living_labeled_assets);
 
    public:
+    /** @brief Create a loading handle for a non-path asset (e.g., from add() or add_async()).
+     *  Matches bevy_asset's AssetInfos::create_loading_handle_untyped. */
+    UntypedHandle create_loading_handle_untyped(epix::meta::type_index type_id);
+
     template <typename T>
     std::pair<Handle<T>, bool> get_or_create_handle(const AssetPath& path,
                                                     HandleLoadingMode loading_mode,
@@ -152,7 +129,7 @@ struct AssetInfos {
                                        std::optional<epix::meta::type_index> type,
                                        HandleLoadingMode loading_mode,
                                        std::optional<MetaTransform> meta_transform = std::nullopt)
-        -> std::expected<std::pair<UntypedHandle, bool>, GetOrCreateHandleError>;
+        -> std::expected<std::pair<UntypedHandle, bool>, GetOrCreateHandleInternalError>;
     bool contains_key(const UntypedAssetId& id) const { return infos.contains(id); }
     std::optional<std::reference_wrapper<const AssetInfo>> get_info(const UntypedAssetId& id) const;
     std::optional<std::reference_wrapper<AssetInfo>> get_info_mut(const UntypedAssetId& id);
@@ -246,6 +223,14 @@ void AssetInfos::propagate_failed_state(UntypedAssetId loaded_asset_id,
             info.failed_rec_deps.insert(loaded_asset_id);
             info.loading_rec_deps.erase(loaded_asset_id);
             info.rec_dep_state = error;
+            // Resolve promises on parent assets waiting on this — a recursive dependency failed
+            auto error_ptr = std::make_shared<AssetLoadError>(error);
+            for (auto& task : info.waiting_tasks) {
+                if (task)
+                    task->set_value(
+                        std::unexpected(WaitForAssetError{wait_for_asset_error::DependencyFailed{error_ptr}}));
+            }
+            info.waiting_tasks.clear();
             return std::move(info.deps_wait_on_rec_dep_load);
         }
         return std::nullopt;
@@ -268,11 +253,12 @@ void AssetInfos::process_asset_fail(const UntypedAssetId& failed_id, const Asset
         info.state         = error;
         info.dep_state     = error;
         info.rec_dep_state = error;
-        // Wake any tasks waiting on this asset
-        for (auto& waiter : info.waiting) {
-            waiter.wait();
+        // Resolve all promises waiting on this asset with a failure result
+        auto error_ptr = std::make_shared<AssetLoadError>(error);
+        for (auto& task : info.waiting_tasks) {
+            if (task) task->set_value(std::unexpected(WaitForAssetError{wait_for_asset_error::Failed{error_ptr}}));
         }
-        info.waiting.clear();
+        info.waiting_tasks.clear();
         return std::make_pair(std::move(info.deps_wait_on_load), std::move(info.deps_wait_on_rec_dep_load));
     }();
 
@@ -281,7 +267,7 @@ void AssetInfos::process_asset_fail(const UntypedAssetId& failed_id, const Asset
             auto& info = info_opt->get();
             info.loading_deps.erase(failed_id);
             info.failed_deps.insert(failed_id);
-            if (!std::holds_alternative<AssetLoadError>(info.dep_state)) {
+            if (!info.dep_state.is_failed()) {
                 info.dep_state = error;
             }
         }
@@ -367,7 +353,7 @@ void AssetInfos::process_asset_load(const UntypedAssetId& loaded_asset_id,
                         }) |
                         std::ranges::to<std::unordered_set>();
 
-    auto dep_load_state = [&]() -> LoadState {
+    auto dep_load_state = [&]() -> DependencyLoadState {
         if (failed_deps.empty()) {
             if (loading_deps.empty()) {
                 return LoadStateOK::Loaded;
@@ -379,7 +365,7 @@ void AssetInfos::process_asset_load(const UntypedAssetId& loaded_asset_id,
         }
     }();
 
-    auto rec_dep_load_state = [&]() -> LoadState {
+    auto rec_dep_load_state = [&]() -> RecursiveDependencyLoadState {
         if (failed_rec_deps.empty()) {
             if (loading_rec_deps.empty()) {
                 sender.send(InternalAssetEvent{internal_asset_event::LoadedWithDeps{loaded_asset_id}});
@@ -418,8 +404,7 @@ void AssetInfos::process_asset_load(const UntypedAssetId& loaded_asset_id,
         }
 
         auto deps_wait_on_rec_load = [&]() -> std::optional<std::unordered_set<UntypedAssetId>> {
-            if (rec_dep_load_state == LoadState{LoadStateOK::Loaded} ||
-                std::holds_alternative<AssetLoadError>(rec_dep_load_state)) {
+            if (rec_dep_load_state.is_loaded() || rec_dep_load_state.is_failed()) {
                 return std::move(info.deps_wait_on_rec_dep_load);
             } else {
                 return std::nullopt;
@@ -522,6 +507,7 @@ bool AssetInfos::process_handle_destruction(const UntypedAssetId& id) {
     auto type_index = id.type;
     auto info       = std::move(info_res->get());
     infos.erase(id);
+    infos_generation++;
     if (!info.path) return true;  // asset without path, just remove
     auto& path = *info.path;
 
@@ -576,7 +562,7 @@ std::pair<UntypedHandle, bool> AssetInfos::get_or_create_handle_untyped(const As
     }
     return res.value();
 }
-std::expected<UntypedHandle, GetOrCreateHandleError> AssetInfos::create_handle_internal(
+std::expected<UntypedHandle, GetOrCreateHandleInternalError> AssetInfos::create_handle_internal(
     decltype(infos)& infos,
     decltype(handle_providers)& handle_providers,
     decltype(living_labeled_assets)& living_labeled_assets,
@@ -587,7 +573,8 @@ std::expected<UntypedHandle, GetOrCreateHandleError> AssetInfos::create_handle_i
     bool loading) {
     auto provider_it = handle_providers.find(type);
     if (provider_it == handle_providers.end()) {
-        return std::unexpected(GetOrCreateHandleError{GetOrCreateHandleError::Type::NoProvider});
+        return std::unexpected(
+            GetOrCreateHandleInternalError{get_or_create_handle_internal_errors::MissingHandleProviderError{type}});
     }
     auto provider = provider_it->second;
 
@@ -612,7 +599,7 @@ auto AssetInfos::get_or_create_handle_internal(const AssetPath& path,
                                                std::optional<epix::meta::type_index> type,
                                                HandleLoadingMode loading_mode,
                                                std::optional<MetaTransform> meta_transform)
-    -> std::expected<std::pair<UntypedHandle, bool>, GetOrCreateHandleError> {
+    -> std::expected<std::pair<UntypedHandle, bool>, GetOrCreateHandleInternalError> {
     auto& handles = path_to_ids[path];
 
     type = type.or_else([&]() -> std::optional<epix::meta::type_index> {
@@ -621,7 +608,9 @@ auto AssetInfos::get_or_create_handle_internal(const AssetPath& path,
         }
         return std::nullopt;
     });
-    if (!type) return std::unexpected(GetOrCreateHandleError{GetOrCreateHandleError::Type::NoHandleAndNoTypeIndex});
+    if (!type)
+        return std::unexpected(
+            GetOrCreateHandleInternalError{get_or_create_handle_internal_errors::HandleMissingButTypeIdNotSpecified{}});
     auto type_index = *type;
 
     if (auto handle_it = handles.find(type_index); handle_it != handles.end()) {
@@ -651,7 +640,8 @@ auto AssetInfos::get_or_create_handle_internal(const AssetPath& path,
             info.handle_destruct_skip++;
             auto provider_it = handle_providers.find(type_index);
             if (provider_it == handle_providers.end())
-                return std::unexpected(GetOrCreateHandleError{GetOrCreateHandleError::Type::NoProvider});
+                return std::unexpected(GetOrCreateHandleInternalError{
+                    get_or_create_handle_internal_errors::MissingHandleProviderError{type_index}});
             auto provider    = provider_it->second;
             auto handle      = provider->get_handle(id, true, path, std::move(meta_transform));
             info.weak_handle = handle;
@@ -664,7 +654,18 @@ auto AssetInfos::get_or_create_handle_internal(const AssetPath& path,
         if (!handle_res) return std::unexpected(handle_res.error());
         auto handle = std::move(handle_res.value());
         handles.emplace(type_index, handle.id());
+        infos_generation++;
         return std::make_pair(UntypedHandle(handle), should_load);
     }
+}
+UntypedHandle AssetInfos::create_loading_handle_untyped(epix::meta::type_index type_id) {
+    // Use an empty (pathless) AssetPath with Force mode so a fresh handle is always created.
+    // Matches bevy_asset's AssetInfos::create_loading_handle_untyped.
+    auto result = get_or_create_handle_internal(AssetPath{}, type_id, HandleLoadingMode::Force, std::nullopt);
+    if (!result) {
+        throw std::runtime_error(std::string("create_loading_handle_untyped: no provider for type ") +
+                                 std::string(type_id.name()));
+    }
+    return result->first;
 }
 }  // namespace epix::assets

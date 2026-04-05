@@ -788,7 +788,7 @@ struct Assets {
         }
         while (auto&& opt = m_handle_provider->event_receiver.try_receive()) {
             auto id = (*opt).id.template typed<T>();
-            if ((*opt).loader_managed && asset_server) {
+            if ((*opt).asset_server_managed && asset_server) {
                 if (!asset_server_process_handle_destruction(*asset_server, id)) {
                     continue;
                 }
@@ -813,4 +813,13 @@ struct Assets {
         assets->m_cached_events.clear();
     }
 };
+
+/** @brief Out-of-line definition of Handle<T>::make_strong (requires complete Assets<T>).
+ *  Matches bevy_asset's Handle::make_strong. */
+template <typename T>
+void Handle<T>::make_strong(Assets<T>& assets) {
+    if (is_strong()) return;
+    auto result = assets.get_strong_handle(id());
+    if (result) ref = std::move(result->ref);
+}
 }  // namespace epix::assets

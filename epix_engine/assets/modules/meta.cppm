@@ -6,6 +6,7 @@ export module epix.assets:meta;
 
 import std;
 import epix.meta;
+import :path;
 
 namespace epix::assets {
 
@@ -14,11 +15,18 @@ export inline constexpr std::string_view META_FORMAT_VERSION = "1.0";
 
 /** @brief Controls when and how asset metadata files are checked.
  *  Matches bevy_asset's AssetMetaCheck. */
-export enum class AssetMetaCheck {
-    Always, /**< Always check for .meta files alongside assets (default). */
-    Never,  /**< Never check for .meta files. */
-    Paths,  /**< Only check for .meta files at specified paths. */
+export namespace asset_meta_check {
+/** @brief Always check for .meta files alongside assets (default). */
+struct Always {};
+/** @brief Never check for .meta files. */
+struct Never {};
+/** @brief Only check for .meta files at the specified asset paths.
+ *  Matches bevy_asset's AssetMetaCheck::Paths(HashSet<AssetPath>). */
+struct Paths {
+    std::unordered_set<AssetPath> paths;
 };
+}  // namespace asset_meta_check
+export using AssetMetaCheck = std::variant<asset_meta_check::Always, asset_meta_check::Never, asset_meta_check::Paths>;
 
 /** @brief Controls how unapproved asset paths are handled.
  *  Matches bevy_asset's UnapprovedPathMode. */
@@ -28,13 +36,14 @@ export enum class UnapprovedPathMode {
     Forbid, /**< Always forbid unapproved paths (default). */
 };
 
-/** @brief Hash type used by the asset processing pipeline. */
-export using AssetHash = std::size_t;
+/** @brief Hash type used by the asset processing pipeline.
+ *  Matches bevy_asset's AssetHash = [u8; 32] (BLAKE3 hash). */
+export using AssetHash = std::array<uint8_t, 32>;
 
 /** @brief Information about a processed asset's dependency on another asset. */
 export struct ProcessDependencyInfo {
     /** @brief Full hash of the dependency. */
-    AssetHash full_hash;
+    AssetHash full_hash = {};
     /** @brief Path of the dependency asset. */
     std::string path;
 };
@@ -42,9 +51,9 @@ export struct ProcessDependencyInfo {
 /** @brief Information produced by the asset processor about a processed asset. */
 export struct ProcessedInfo {
     /** @brief Hash of the asset bytes combined with its meta. */
-    AssetHash hash = 0;
+    AssetHash hash = {};
     /** @brief Hash including all transitive process dependencies. */
-    AssetHash full_hash = 0;
+    AssetHash full_hash = {};
     /** @brief Dependencies that contributed to processing. */
     std::vector<ProcessDependencyInfo> process_dependencies;
 };
@@ -175,4 +184,26 @@ MetaTransform loader_settings_meta_transform(std::function<void(S&)> settings_fn
     };
 }
 
-}  // namespace assets
+/** @brief Minimal action descriptor parsed from a bare .meta file.
+ *  Only contains the discriminant (load/process/ignore) and the loader/processor name.
+ *  Matches bevy_asset's AssetActionMinimal. */
+export struct AssetActionMinimal {
+    /** @brief The kind of action this meta record specifies. */
+    AssetActionType action = AssetActionType::Load;
+    /** @brief The loader type name when action == Load; empty otherwise. */
+    std::string loader;
+    /** @brief The processor type name when action == Process; empty otherwise. */
+    std::string processor;
+};
+
+/** @brief Minimal meta record sufficient to identify the loader or processor for an asset path.
+ *  Used when deserializing .meta files before full settings are needed.
+ *  Matches bevy_asset's AssetMetaMinimal. */
+export struct AssetMetaMinimal {
+    /** @brief Meta format version string as stored in the .meta file. */
+    std::string meta_format_version;
+    /** @brief The minimal action information. */
+    AssetActionMinimal asset;
+};
+
+}  // namespace epix::assets

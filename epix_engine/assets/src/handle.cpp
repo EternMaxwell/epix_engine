@@ -11,18 +11,18 @@ using namespace epix::core;
 
 StrongHandle::StrongHandle(const UntypedAssetId& id,
                            const Sender<DestructionEvent>& event_sender,
-                           bool loader_managed,
+                           bool asset_server_managed,
                            const std::optional<AssetPath>& path,
                            std::optional<MetaTransform> meta_transform)
     : id(id),
       event_sender(event_sender),
       path(path),
-      loader_managed(loader_managed),
+      asset_server_managed(asset_server_managed),
       meta_transform(std::move(meta_transform)) {}
 
 StrongHandle::~StrongHandle() {
     spdlog::trace("[assets] StrongHandle destroyed: {}.", id);
-    event_sender.send(DestructionEvent{id, loader_managed});
+    event_sender.send(DestructionEvent{id, asset_server_managed});
 }
 
 HandleProvider::HandleProvider(const meta::type_index& type) : type(type) {
@@ -35,15 +35,15 @@ UntypedHandle HandleProvider::reserve() const {
     return std::make_shared<StrongHandle>(UntypedAssetId(type, index), event_sender, false, std::nullopt);
 }
 std::shared_ptr<StrongHandle> HandleProvider::get_handle(const InternalAssetId& id,
-                                                         bool loader_managed,
+                                                         bool asset_server_managed,
                                                          const std::optional<AssetPath>& path,
                                                          std::optional<MetaTransform> meta_transform) const {
-    return std::make_shared<StrongHandle>(id.untyped(type), event_sender, loader_managed, path,
+    return std::make_shared<StrongHandle>(id.untyped(type), event_sender, asset_server_managed, path,
                                           std::move(meta_transform));
 }
-std::shared_ptr<StrongHandle> HandleProvider::reserve(bool loader_managed,
+std::shared_ptr<StrongHandle> HandleProvider::reserve(bool asset_server_managed,
                                                       const std::optional<AssetPath>& path,
                                                       std::optional<MetaTransform> meta_transform) const {
     auto index = index_allocator.reserve();
-    return get_handle(index, loader_managed, path, std::move(meta_transform));
+    return get_handle(index, asset_server_managed, path, std::move(meta_transform));
 }

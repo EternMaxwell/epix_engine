@@ -74,6 +74,10 @@ export struct EmbeddedAssetRegistry {
         sources.insert(AssetSourceId(std::string(EMBEDDED)),
                        AssetSourceBuilder::create([dir]() -> std::unique_ptr<AssetReader> {
                            return std::make_unique<MemoryAssetReader>(dir);
+                       }).with_processed_reader([dir]() -> std::unique_ptr<AssetReader> {
+                           // Embedded assets are pre-compiled and treated as pre-processed.
+                           // The processed reader reads from the same in-memory directory.
+                           return std::make_unique<MemoryAssetReader>(dir);
                        }));
     }
 
@@ -82,4 +86,4 @@ export struct EmbeddedAssetRegistry {
     memory::Directory& directory() { return m_dir; }
 };
 
-}  // namespace assets
+}  // namespace epix::assets

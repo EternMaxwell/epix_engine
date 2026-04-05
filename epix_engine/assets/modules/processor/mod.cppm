@@ -282,6 +282,12 @@ export struct AssetProcessor {
      *  sharing its loaders. Matches bevy_asset's AssetProcessor::new(). */
     AssetProcessor(std::shared_ptr<AssetProcessorData> data, bool watching_for_changes);
 
+    /** @brief Low-level constructor for reconstructing from component shared_ptrs.
+     *  Used internally by background tasks that recover from weak_ptr captures.
+     *  Normal code should use AssetProcessor(shared_ptr<AssetProcessorData>, bool). */
+    AssetProcessor(AssetServer srv, std::shared_ptr<AssetProcessorData> proc_data)
+        : server(std::move(srv)), data(std::move(proc_data)) {}
+
     /** @brief Get a reference to the internal AssetServer. */
     const AssetServer& get_server() const { return server; }
 
@@ -386,8 +392,11 @@ export struct AssetProcessor {
 
     // ---- Processing tasks ----
 
-    /** @brief Process a single asset at the given source + path. */
-    void process_asset(const AssetSourceId& source, const std::filesystem::path& path) const;
+    /** @brief Process a single asset at the given source + path.
+     *  Matches bevy_asset's process_asset: takes a reprocess_sender to queue dependency tasks. */
+    void process_asset(const AssetSourceId& source,
+                       const std::filesystem::path& path,
+                       utils::Sender<std::pair<AssetSourceId, std::filesystem::path>> reprocess_sender) const;
 
     /** @brief Internal implementation: process a single asset, returning result or error. */
     std::expected<ProcessResult, ProcessError> process_asset_internal(const AssetSource& source,
@@ -437,8 +446,11 @@ export struct AssetProcessor {
     void spawn_source_change_event_listeners(
         utils::Sender<std::pair<AssetSourceId, std::filesystem::path>>& sender) const;
 
-    /** @brief Execute pending processing tasks from the receiver. */
-    void execute_processing_tasks(utils::Receiver<std::pair<AssetSourceId, std::filesystem::path>>& receiver) const;
+    /** @brief Execute pending processing tasks from the receiver.
+     *  Takes the new_task_sender so it can be downgraded to WeakSender (matching Bevy's pattern):
+     *  the executor doesn't keep the channel alive, but can upgrade when spawning tasks. */
+    void execute_processing_tasks(utils::Sender<std::pair<AssetSourceId, std::filesystem::path>> new_task_sender,
+                                  utils::Receiver<std::pair<AssetSourceId, std::filesystem::path>>& receiver) const;
 
     // ---- Logging helpers ----
 
@@ -496,6 +508,7 @@ inline ProcessorState ProcessingState::get_state() const {
 
 inline ProcessStatus ProcessingState::wait_until_processed(const AssetPath& path) const {
     // First check if already processed
+    std::optional<utils::BroadcastReceiver<ProcessStatus>> pending_receiver;
     {
         auto guard = m_asset_infos.read();
         if (auto* info = guard->get(path)) {
@@ -503,9 +516,13 @@ inline ProcessStatus ProcessingState::wait_until_processed(const AssetPath& path
                 return *info->status;
             }
             // Not yet processed; clone the receiver to wait on
-            auto receiver = info->status_receiver;
-            // Release lock, then wait
-            return receiver.receive();
+            pending_receiver = info->status_receiver;
+        }
+    }
+    if (pending_receiver) {
+        auto status = pending_receiver->receive();
+        if (status) {
+            return *status;
         }
     }
     // Asset not tracked yet, wait for finished state instead
@@ -521,12 +538,14 @@ inline ProcessStatus ProcessingState::wait_until_processed(const AssetPath& path
 
 inline void ProcessingState::wait_until_initialized() const {
     auto receiver = m_initialized_receiver;
-    receiver.receive();
+    auto ready    = receiver.receive();
+    (void)ready;
 }
 
 inline void ProcessingState::wait_until_finished() const {
     auto receiver = m_finished_receiver;
-    receiver.receive();
+    auto ready    = receiver.receive();
+    (void)ready;
 }
 
 inline std::expected<std::shared_ptr<std::shared_mutex>, AssetReaderError> ProcessingState::get_transaction_lock(
@@ -539,4 +558,4 @@ inline std::expected<std::shared_ptr<std::shared_mutex>, AssetReaderError> Proce
     return info->file_transaction_lock;
 }
 
-}  // namespace assets
+}  // namespace epix::assets

@@ -182,4 +182,33 @@ export struct AssetWatcher {
     virtual ~AssetWatcher() = default;
 };
 
-}  // namespace assets
+/** @brief An in-memory reader backed by a byte vector.
+ *  Matches bevy_asset's VecReader, which wraps a Vec<u8> into an AsyncRead stream.
+ *  C++ equivalent: an istream backed by an in-memory byte buffer.
+ *  Usage: pass the returned stream as the std::istream& argument to asset loaders. */
+export struct VecReader {
+   private:
+    std::string m_data;
+    std::istringstream m_stream;
+
+   public:
+    /** @brief Construct from a byte vector. */
+    explicit VecReader(std::vector<uint8_t> bytes)
+        : m_data(reinterpret_cast<const char*>(bytes.data()), bytes.size()), m_stream(m_data) {}
+    /** @brief Construct from a string. */
+    explicit VecReader(std::string data) : m_data(std::move(data)), m_stream(m_data) {}
+    /** @brief Construct from a string_view. */
+    explicit VecReader(std::string_view data) : m_data(data), m_stream(m_data) {}
+
+    VecReader(const VecReader&)            = delete;
+    VecReader& operator=(const VecReader&) = delete;
+    VecReader(VecReader&&)                 = delete;
+    VecReader& operator=(VecReader&&)      = delete;
+
+    /** @brief Get the underlying istream. Pass this to asset loaders. */
+    std::istream& stream() { return m_stream; }
+    /** @brief Implicit conversion to std::istream& for use as loader argument. */
+    operator std::istream&() { return m_stream; }
+};
+
+}  // namespace epix::assets

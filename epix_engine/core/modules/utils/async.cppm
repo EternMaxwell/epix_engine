@@ -12,6 +12,12 @@ export enum class OverflowPolicy {
     DropNewest,  ///< Discard the new element (do not enqueue).
 };
 
+/** @brief Receive-side error state for async channels. */
+export enum class ReceiveError {
+    Empty,
+    Closed,
+};
+
 /**
  * @brief A thread-safe queue implementation using std::deque and
  * std::shared_mutex.
@@ -41,6 +47,7 @@ struct ConQueue {
     std::condition_variable m_cv;
     std::optional<std::size_t> m_capacity;
     OverflowPolicy m_overflow_policy = OverflowPolicy::Block;
+    std::size_t m_sender_count       = 0;
 
    public:
     ConQueue() = default;
@@ -51,6 +58,20 @@ struct ConQueue {
     ConQueue& operator=(const ConQueue&) = delete;
     ConQueue& operator=(ConQueue&&)      = delete;
     ~ConQueue()                          = default;
+
+    void add_sender() {
+        std::unique_lock lock(m_mutex);
+        ++m_sender_count;
+    }
+
+    void remove_sender() {
+        std::unique_lock lock(m_mutex);
+        if (m_sender_count == 0) return;
+        --m_sender_count;
+        if (m_sender_count == 0) {
+            m_cv.notify_all();
+        }
+    }
 
     /** @brief Construct an element in-place at the back of the queue.
      * @tparam Args Constructor argument types.
@@ -79,9 +100,12 @@ struct ConQueue {
     }
     /** @brief Remove and return the front element, blocking until one is
      * available. */
-    T pop() {
+    std::expected<T, ReceiveError> pop() {
         std::unique_lock lock(m_mutex);
-        m_cv.wait(lock, [this] { return !m_queue.empty(); });
+        m_cv.wait(lock, [this] { return !m_queue.empty() || m_sender_count == 0; });
+        if (m_queue.empty()) {
+            return std::unexpected(ReceiveError::Closed);
+        }
         T value = std::move(m_queue.front());
         m_queue.pop_front();
         m_cv.notify_all();  // wake any sender waiting for space (Block policy)
@@ -90,9 +114,11 @@ struct ConQueue {
     /** @brief Try to remove and return the front element without blocking.
      * @return The front element, or std::nullopt if the queue is empty.
      */
-    std::optional<T> try_pop() {
+    std::expected<T, ReceiveError> try_pop() {
         std::unique_lock lock(m_mutex);
-        if (m_queue.empty()) return std::nullopt;
+        if (m_queue.empty()) {
+            return std::unexpected(m_sender_count == 0 ? ReceiveError::Closed : ReceiveError::Empty);
+        }
         T value = std::move(m_queue.front());
         m_queue.pop_front();
         m_cv.notify_all();  // wake any sender waiting for space (Block policy)
@@ -103,7 +129,17 @@ struct ConQueue {
         std::unique_lock lock(m_mutex);
         return m_queue.empty();
     }
+
+    /** @brief Check whether any sender is still connected. */
+    bool has_senders() {
+        std::unique_lock lock(m_mutex);
+        return m_sender_count > 0;
+    }
 };
+
+export template <std::movable T, typename Alloc = std::allocator<T>>
+struct WeakSender;
+
 /** @brief Thread-safe MPSC sender that pushes values into a shared ConQueue.
  * @tparam T Element type (must be movable).
  * @tparam Alloc Allocator type.
@@ -115,19 +151,38 @@ struct Sender {
    private:
     mutable std::shared_ptr<queue_type> m_queue;
 
+    static void connect(const std::shared_ptr<queue_type>& queue) {
+        if (queue) queue->add_sender();
+    }
+
+    static void disconnect(const std::shared_ptr<queue_type>& queue) {
+        if (queue) queue->remove_sender();
+    }
+
    public:
-    Sender(const std::shared_ptr<queue_type>& queue) : m_queue(queue) {}
-    Sender()                         = default;
-    Sender(const Sender&)            = default;
-    Sender(Sender&&)                 = default;
-    Sender& operator=(const Sender&) = default;
-    Sender& operator=(Sender&&)      = default;
-    ~Sender()                        = default;
+    Sender(const std::shared_ptr<queue_type>& queue) : m_queue(queue) { connect(m_queue); }
+    Sender() = default;
+    Sender(const Sender& other) : m_queue(other.m_queue) { connect(m_queue); }
+    Sender(Sender&& other) noexcept : m_queue(std::exchange(other.m_queue, nullptr)) {}
+    Sender& operator=(const Sender& other) {
+        if (this == &other || m_queue == other.m_queue) return *this;
+        disconnect(m_queue);
+        m_queue = other.m_queue;
+        connect(m_queue);
+        return *this;
+    }
+    Sender& operator=(Sender&& other) noexcept {
+        if (this == &other) return *this;
+        disconnect(m_queue);
+        m_queue = std::exchange(other.m_queue, nullptr);
+        return *this;
+    }
+    ~Sender() { disconnect(m_queue); }
 
     /** @brief Check whether this sender is connected to a queue. */
-    operator bool() { return m_queue.operator bool(); }
+    operator bool() const { return m_queue.operator bool(); }
     /** @brief Check whether this sender is disconnected. */
-    bool operator!() { return !m_queue; }
+    bool operator!() const { return !m_queue; }
 
     /** @brief Send a value by constructing it in-place into the queue.
      * @tparam Args Constructor argument types.
@@ -138,7 +193,34 @@ struct Sender {
         if (!m_queue) return;
         m_queue->emplace(std::forward<Args>(args)...);
     }
+
+    WeakSender<T, Alloc> downgrade() const;
 };
+
+/** @brief Weak sender handle that does not keep a channel open by itself. */
+export template <std::movable T, typename Alloc>
+struct WeakSender {
+    using queue_type = ConQueue<T, Alloc>;
+
+   private:
+    std::weak_ptr<queue_type> m_queue;
+
+   public:
+    WeakSender() = default;
+    WeakSender(const std::shared_ptr<queue_type>& queue) : m_queue(queue) {}
+
+    std::optional<Sender<T, Alloc>> upgrade() const {
+        auto queue = m_queue.lock();
+        if (!queue) return std::nullopt;
+        if (!queue->has_senders()) return std::nullopt;
+        return Sender<T, Alloc>(queue);
+    }
+};
+
+template <std::movable T, typename Alloc>
+WeakSender<T, Alloc> Sender<T, Alloc>::downgrade() const {
+    return WeakSender<T, Alloc>(m_queue);
+}
 /** @brief Thread-safe receiver that pops values from a shared ConQueue.
  *
  * Supports blocking receive and non-blocking try_receive.
@@ -169,18 +251,18 @@ struct Receiver {
     /** @brief Block until a value is available, then return it.
      * @throws std::runtime_error If the receiver is not initialized.
      */
-    T receive() const {
+    std::expected<T, ReceiveError> receive() const {
         if (!m_queue) {
-            throw std::runtime_error("Receiver is not initialized.");
+            return std::unexpected(ReceiveError::Closed);
         }
         return m_queue->pop();
     }
     /** @brief Try to receive a value without blocking.
      * @return The received value, or std::nullopt if unavailable.
      */
-    std::optional<T> try_receive() const {
+    std::expected<T, ReceiveError> try_receive() const {
         if (!m_queue) {
-            return std::nullopt;
+            return std::unexpected(ReceiveError::Closed);
         }
         return m_queue->try_pop();
     }
@@ -274,7 +356,31 @@ struct BroadcastReceiver {
     /** @brief Block until the value is available, then return it.
      *  May be called multiple times; always returns the same value.
      */
-    T receive() const { return m_future.get(); }
+    std::expected<T, ReceiveError> receive() const {
+        if (!m_future.valid()) {
+            return std::unexpected(ReceiveError::Closed);
+        }
+        try {
+            return m_future.get();
+        } catch (const std::future_error&) {
+            return std::unexpected(ReceiveError::Closed);
+        }
+    }
+
+    /** @brief Try to receive the broadcast value without blocking. */
+    std::expected<T, ReceiveError> try_receive() const {
+        if (!m_future.valid()) {
+            return std::unexpected(ReceiveError::Closed);
+        }
+        if (m_future.wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
+            return std::unexpected(ReceiveError::Empty);
+        }
+        try {
+            return m_future.get();
+        } catch (const std::future_error&) {
+            return std::unexpected(ReceiveError::Closed);
+        }
+    }
 };
 
 /** @brief Create a one-shot broadcast channel pair.
@@ -477,4 +583,4 @@ struct RwLock {
     ReadGuard read() const { return ReadGuard(m_mutex, m_value); }
     WriteGuard write() const { return WriteGuard(m_mutex, m_value); }
 };
-}  // namespace utils
+}  // namespace epix::utils

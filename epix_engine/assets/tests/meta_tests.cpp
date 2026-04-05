@@ -6,13 +6,19 @@ import epix.assets;
 using namespace epix::assets;
 
 // ===========================================================================
-// AssetMetaCheck enum
+// AssetMetaCheck variant
 // ===========================================================================
 
-TEST(AssetMetaCheck, EnumValues) {
-    EXPECT_NE(AssetMetaCheck::Always, AssetMetaCheck::Never);
-    EXPECT_NE(AssetMetaCheck::Always, AssetMetaCheck::Paths);
-    EXPECT_NE(AssetMetaCheck::Never, AssetMetaCheck::Paths);
+TEST(AssetMetaCheck, DistinctVariants) {
+    AssetMetaCheck always{asset_meta_check::Always{}};
+    AssetMetaCheck never{asset_meta_check::Never{}};
+    AssetMetaCheck paths{asset_meta_check::Paths{}};
+    EXPECT_TRUE(std::holds_alternative<asset_meta_check::Always>(always));
+    EXPECT_TRUE(std::holds_alternative<asset_meta_check::Never>(never));
+    EXPECT_TRUE(std::holds_alternative<asset_meta_check::Paths>(paths));
+    EXPECT_FALSE(std::holds_alternative<asset_meta_check::Always>(never));
+    EXPECT_FALSE(std::holds_alternative<asset_meta_check::Always>(paths));
+    EXPECT_FALSE(std::holds_alternative<asset_meta_check::Never>(paths));
 }
 
 // ===========================================================================
@@ -40,8 +46,10 @@ TEST(AssetActionType, EnumValues) {
 // ===========================================================================
 
 TEST(ProcessDependencyInfo, Construction) {
-    ProcessDependencyInfo info{.full_hash = 42, .path = "textures/a.png"};
-    EXPECT_EQ(info.full_hash, 42u);
+    AssetHash h = {};
+    h[0]        = 42;
+    ProcessDependencyInfo info{.full_hash = h, .path = "textures/a.png"};
+    EXPECT_TRUE(info.full_hash == h);
     EXPECT_EQ(info.path, "textures/a.png");
 }
 
@@ -51,18 +59,24 @@ TEST(ProcessDependencyInfo, Construction) {
 
 TEST(ProcessedInfo, DefaultValues) {
     ProcessedInfo info;
-    EXPECT_EQ(info.hash, 0u);
-    EXPECT_EQ(info.full_hash, 0u);
+    EXPECT_TRUE(info.hash == AssetHash{});
+    EXPECT_TRUE(info.full_hash == AssetHash{});
     EXPECT_TRUE(info.process_dependencies.empty());
 }
 
 TEST(ProcessedInfo, WithDependencies) {
     ProcessedInfo info;
-    info.hash      = 100;
-    info.full_hash = 200;
-    info.process_dependencies.push_back({.full_hash = 50, .path = "dep.txt"});
+    AssetHash h100 = {};
+    h100[0]        = 100;
+    AssetHash h200 = {};
+    h200[0]        = 200;
+    AssetHash h50  = {};
+    h50[0]         = 50;
+    info.hash      = h100;
+    info.full_hash = h200;
+    info.process_dependencies.push_back({.full_hash = h50, .path = "dep.txt"});
     EXPECT_EQ(info.process_dependencies.size(), 1u);
-    EXPECT_EQ(info.process_dependencies[0].full_hash, 50u);
+    EXPECT_TRUE(info.process_dependencies[0].full_hash == h50);
 }
 
 // ===========================================================================
@@ -157,10 +171,14 @@ TEST(AssetMeta, ProcessedInfo_Null) {
 
 TEST(AssetMeta, ProcessedInfo_Present) {
     AssetMeta<TestLoaderSettings, TestProcessSettings> meta;
-    meta.processed = ProcessedInfo{.hash = 1, .full_hash = 2};
+    AssetHash h1   = {};
+    h1[0]          = 1;
+    AssetHash h2   = {};
+    h2[0]          = 2;
+    meta.processed = ProcessedInfo{.hash = h1, .full_hash = h2};
     ASSERT_NE(meta.processed_info(), nullptr);
-    EXPECT_EQ(meta.processed_info()->hash, 1u);
-    EXPECT_EQ(meta.processed_info()->full_hash, 2u);
+    EXPECT_TRUE(meta.processed_info()->hash == h1);
+    EXPECT_TRUE(meta.processed_info()->full_hash == h2);
 }
 
 TEST(AssetMeta, ActionType) {

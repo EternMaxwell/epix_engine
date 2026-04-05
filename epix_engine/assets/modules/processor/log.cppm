@@ -42,6 +42,9 @@ export struct ProcessorTransactionLogFactory {
     virtual std::expected<std::vector<LogEntry>, std::string> read() const = 0;
     /** @brief Creates a new transaction log to write to. Removes previous entries if they exist. */
     virtual std::expected<std::unique_ptr<ProcessorTransactionLog>, std::string> create_new_log() const = 0;
+    /** @brief Returns the path of the log file relative to the processed asset root, if applicable.
+     *  Returns empty path if the log is not file-based. */
+    virtual std::filesystem::path log_path() const { return {}; }
 };
 
 // ---- ProcessorTransactionLog ----
@@ -178,6 +181,8 @@ export struct FileTransactionLogFactory : ProcessorTransactionLogFactory {
     FileTransactionLogFactory() : file_path(LOG_PATH) {}
     explicit FileTransactionLogFactory(std::filesystem::path path) : file_path(std::move(path)) {}
 
+    std::filesystem::path log_path() const override { return file_path.filename(); }
+
     std::expected<std::vector<LogEntry>, std::string> read() const override {
         std::vector<LogEntry> log_lines;
         std::ifstream file(file_path);
@@ -226,4 +231,4 @@ export struct FileTransactionLogFactory : ProcessorTransactionLogFactory {
     }
 };
 
-}  // namespace assets
+}  // namespace epix::assets

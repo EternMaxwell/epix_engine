@@ -133,7 +133,7 @@ struct ErasedAssetSaverImpl : T, ErasedAssetSaver {
             if (!typed_settings) {
                 throw std::runtime_error("Settings type mismatch in saver");
             }
-            auto saved  = SavedAsset<typename T::AssetType>::from_loaded(asset);
+            auto saved  = SavedAsset<typename T::Asset>::from_loaded(asset);
             auto result = as_concrete().save(writer, saved, *typed_settings, asset_path);
             if (!result) {
                 throw std::runtime_error("Asset saver failed");
@@ -147,4 +147,4 @@ struct ErasedAssetSaverImpl : T, ErasedAssetSaver {
     std::string_view type_name() const override { return meta::type_id<T>{}.short_name(); }
 };
 
-}  // namespace assets
+}  // namespace epix::assets

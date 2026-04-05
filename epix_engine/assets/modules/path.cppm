@@ -82,6 +82,39 @@ export struct AssetPath {
         auto resolved = (base / relative.path).lexically_normal();
         return AssetPath(relative.source.is_default() ? source : relative.source, std::move(resolved), relative.label);
     }
+    /** @brief Resolve a relative path using RFC 1808 (embedded) semantics, replacing the last component.
+     *  Unlike resolve(), the base path's last component is stripped before joining.
+     *  Matches bevy_asset's AssetPath::resolve_embed(). */
+    AssetPath resolve_embed(const AssetPath& relative) const {
+        // If relative is label-only, keep our path and just change the label
+        if (relative.source.is_default() && relative.path.empty() && relative.label) {
+            AssetPath result = *this;
+            result.label     = relative.label;
+            return result;
+        }
+        // RFC 1808: pop last component of base before joining
+        auto base = path;
+        if (!path.empty()) base = path.parent_path();
+        auto resolved = (base / relative.path).lexically_normal();
+        return AssetPath(relative.source.is_default() ? source : relative.source, std::move(resolved), relative.label);
+    }
+    /** @brief Returns true if this path escapes the asset directory (has a prefix, root, or parent dirs).
+     *  Matches bevy_asset's AssetPath::is_unapproved(). */
+    bool is_unapproved() const {
+        namespace fs = std::filesystem;
+        fs::path simplified;
+        for (auto component : path) {
+            if (component == fs::path("..")) {
+                if (!simplified.has_relative_path()) return true;
+                simplified = simplified.parent_path();
+            } else if (component.is_absolute() || component.root_name() != fs::path{}) {
+                return true;
+            } else if (component != fs::path(".")) {
+                simplified /= component;
+            }
+        }
+        return false;
+    }
     /** @brief Get the full extension (e.g. "gltf.json" for "model.gltf.json"). */
     std::optional<std::string> get_full_extension() const {
         auto filename = path.filename().string();

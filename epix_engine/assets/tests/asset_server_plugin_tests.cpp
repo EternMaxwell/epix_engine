@@ -11,6 +11,8 @@ namespace meta = epix::meta;
 
 namespace {
 
+void flush_load_tasks(App& app);
+
 static auto make_bytes(std::string_view s) {
     auto sp = std::as_bytes(std::span(s));
     return std::make_shared<std::vector<std::byte>>(sp.begin(), sp.end());
@@ -61,7 +63,7 @@ AssetServer make_memory_server(bool with_processed_reader = true,
     auto builders = AssetSourceBuilders();
     builders.insert(AssetSourceId{}, make_memory_source_builder(dir, with_processed_reader));
     auto sources = std::make_shared<AssetSources>(builders.build_sources(watching, watching));
-    return AssetServer(std::move(sources), mode, AssetMetaCheck::Always, watching, UnapprovedPathMode::Forbid);
+    return AssetServer(std::move(sources), mode, AssetMetaCheck{asset_meta_check::Always{}}, watching, UnapprovedPathMode::Forbid);
 }
 
 struct TestTextLoader {
@@ -225,7 +227,7 @@ TEST(AssetServer, ConstructorOptions_AreVisibleFromQueries) {
 TEST(AssetServer, LoadErased_CreatesTrackableHandleAndPathMappings) {
     auto server = make_memory_server();
     Assets<std::string> assets;
-    server.register_assets(assets);
+    server.register_asset(assets);
 
     auto path   = AssetPath("hello.txt");
     auto handle = server.load_erased(meta::type_id<std::string>{}, path);
@@ -291,8 +293,8 @@ TEST(AssetServer, SamePathDifferentTypes_GetHandlesUntypedReturnsAll) {
     auto server = make_memory_server();
     Assets<std::string> text_assets;
     Assets<int> int_assets;
-    server.register_assets(text_assets);
-    server.register_assets(int_assets);
+    server.register_asset(text_assets);
+    server.register_asset(int_assets);
 
     auto path = AssetPath("multi.asset");
     auto h1   = server.load_erased(meta::type_id<std::string>{}, path);
@@ -307,7 +309,7 @@ TEST(AssetServer, SamePathDifferentTypes_GetHandlesUntypedReturnsAll) {
 TEST(AssetServer, Reload_UnknownPath_IsNoOp) {
     auto server = make_memory_server();
     Assets<std::string> assets;
-    server.register_assets(assets);
+    server.register_asset(assets);
 
     auto path   = AssetPath("not_tracked.txt");
     auto handle = server.load_erased(meta::type_id<std::string>{}, AssetPath("hello.txt"));
@@ -323,7 +325,7 @@ TEST(AssetServer, Reload_UnknownPath_IsNoOp) {
 TEST(AssetServer, ConcurrentLoadRequestsForSamePath_ReturnSameId) {
     auto server = make_memory_server();
     Assets<std::string> assets;
-    server.register_assets(assets);
+    server.register_asset(assets);
 
     auto path = AssetPath("hello.txt");
 
@@ -377,7 +379,7 @@ TEST(AssetServer, WatchingEnabled_WiresSourceEventReceivers) {
     auto builders = AssetSourceBuilders();
     builders.insert(AssetSourceId{}, make_memory_source_builder_with_watchers(dir, true, true));
     auto sources = std::make_shared<AssetSources>(builders.build_sources(true, true));
-    AssetServer server(std::move(sources), AssetServerMode::Processed, AssetMetaCheck::Always, true,
+    AssetServer server(std::move(sources), AssetServerMode::Processed, AssetMetaCheck{asset_meta_check::Always{}}, true,
                        UnapprovedPathMode::Forbid);
 
     auto source = server.get_source(AssetSourceId{});
@@ -391,7 +393,7 @@ TEST(AssetServer, WatchingDisabled_DoesNotWireSourceEventReceivers) {
     auto builders = AssetSourceBuilders();
     builders.insert(AssetSourceId{}, make_memory_source_builder_with_watchers(dir, true, true));
     auto sources = std::make_shared<AssetSources>(builders.build_sources(false, false));
-    AssetServer server(std::move(sources), AssetServerMode::Processed, AssetMetaCheck::Always, false,
+    AssetServer server(std::move(sources), AssetServerMode::Processed, AssetMetaCheck{asset_meta_check::Always{}}, false,
                        UnapprovedPathMode::Forbid);
 
     auto source = server.get_source(AssetSourceId{});
@@ -405,7 +407,7 @@ TEST(AssetServer, SourceWatcher_ReceivesAddedAndModifiedEvents) {
     auto builders = AssetSourceBuilders();
     builders.insert(AssetSourceId{}, make_memory_source_builder_with_watchers(dir, true, false));
     auto sources = std::make_shared<AssetSources>(builders.build_sources(true, false));
-    AssetServer server(std::move(sources), AssetServerMode::Unprocessed, AssetMetaCheck::Always, true,
+    AssetServer server(std::move(sources), AssetServerMode::Unprocessed, AssetMetaCheck{asset_meta_check::Always{}}, true,
                        UnapprovedPathMode::Forbid);
 
     auto source = server.get_source(AssetSourceId{});
@@ -456,6 +458,71 @@ TEST(AssetPlugin, Build_PropagatesModeWatchingAndCustomSource) {
     EXPECT_TRUE(server.get_source(AssetSourceId(std::string("mem"))).has_value());
 }
 
+TEST(AssetPlugin, BuildInProcessedMode_DefaultSourceProvidesProcessedIo) {
+    App app = App::create();
+
+    AssetPlugin plugin;
+    plugin.mode = AssetServerMode::Processed;
+    plugin.build(app);
+
+    auto& server        = app.resource<AssetServer>();
+    auto default_source = server.get_source(AssetSourceId{});
+    ASSERT_TRUE(default_source.has_value());
+    EXPECT_TRUE(default_source->get().processed_reader().has_value());
+    EXPECT_TRUE(default_source->get().processed_writer().has_value());
+}
+
+TEST(AssetPlugin, BuildInProcessedMode_WithProcessorSetsLogFactory) {
+    App app = App::create();
+
+    AssetPlugin plugin;
+    plugin.mode = AssetServerMode::Processed;
+    plugin.build(app);
+
+    auto processor = app.get_resource<AssetProcessor>();
+    ASSERT_TRUE(processor.has_value());
+    ASSERT_TRUE(processor->get().get_data());
+    EXPECT_TRUE(processor->get().get_data()->log_factory != nullptr);
+}
+
+TEST(AssetPlugin, ProcessedMode_AppRunExitsCleanly) {
+    App app = App::create();
+
+    AssetPlugin plugin;
+    plugin.mode = AssetServerMode::Processed;
+    app.add_plugins(plugin);
+
+    EXPECT_NO_THROW(app.run());
+}
+
+TEST(AssetPlugin, ProcessedMode_EmbeddedSourceProvidesExplicitProcessedReader) {
+    App app = App::create();
+
+    AssetPlugin plugin;
+    plugin.mode = AssetServerMode::Processed;
+    plugin.build(app);
+    app_register_asset<std::string>(app);
+    app_register_loader<TestTextLoader>(app);
+
+    auto registry = app.get_resource_mut<EmbeddedAssetRegistry>();
+    ASSERT_TRUE(registry.has_value());
+    auto bytes = make_bytes("embedded_content");
+    ASSERT_TRUE(registry->get().directory().insert_file("hello.txt", memory::Value::from_shared(bytes)).has_value());
+
+    auto& server = app.resource<AssetServer>();
+    auto source  = server.get_source(AssetSourceId(std::string(EMBEDDED)));
+    ASSERT_TRUE(source.has_value());
+    EXPECT_TRUE(source->get().processed_reader().has_value());
+
+    auto handle = server.load<std::string>(AssetPath("embedded://hello.txt"));
+    flush_load_tasks(app);
+
+    auto& assets = app.resource<Assets<std::string>>();
+    auto value   = assets.get(handle.id());
+    ASSERT_TRUE(value.has_value());
+    EXPECT_EQ(value->get(), "embedded_content");
+}
+
 TEST(AssetPlugin, BuildWithWatching_WiresReceiversForCustomSourceWatchers) {
     App app = App::create();
 
@@ -504,7 +571,7 @@ TEST(AssetPlugin, BuildWithoutWatching_InProcessedModeKeepsSourceReceiverButNotP
 }
 
 // When use_asset_processor=false, the server is built with build_sources(false, watch=false),
-// so neither source nor processed watcher is wired â€” even if watcher factories are present.
+// so neither source nor processed watcher is wired â€?even if watcher factories are present.
 TEST(AssetPlugin, BuildWithoutWatching_WithoutProcessor_DoesNotWireAnyReceivers) {
     App app = App::create();
 
@@ -640,7 +707,7 @@ void flush_load_tasks(App& app) {
 }  // namespace
 
 // -------------------------------------------------------------------------------------
-// HotReload test suite â€“ end-to-end with AssetPlugin
+// HotReload test suite â€?end-to-end with AssetPlugin
 // -------------------------------------------------------------------------------------
 
 TEST(HotReload, InitialLoad_ReachesAssetsStorage) {
@@ -725,7 +792,7 @@ TEST(HotReload, Reload_NonExistentPath_DoesNotAffectExistingAssets) {
     flush_load_tasks(app);
     ASSERT_TRUE(server.is_loaded(handle.id()));
 
-    // Reload a path that was never loaded â€“ must not crash or affect the real asset.
+    // Reload a path that was never loaded â€?must not crash or affect the real asset.
     server.reload(AssetPath("nonexistent.txt"));
     flush_load_tasks(app);
 
@@ -809,7 +876,7 @@ TEST(HotReload, WatcherProducesSourceEvent_ManualReloadUpdatesStorage) {
     flush_load_tasks(app);
     ASSERT_TRUE(server.is_loaded(handle.id()));
 
-    // Modify the file â€“ the watcher should emit AssetSourceEvent::ModifiedAsset.
+    // Modify the file â€?the watcher should emit AssetSourceEvent::ModifiedAsset.
     auto mod_bytes = make_bytes("mod");
     ASSERT_TRUE(dir.insert_file("hello.txt", memory::Value::from_shared(mod_bytes)).has_value());
 
@@ -982,7 +1049,7 @@ TEST(HotReload, ProcessedMode_LoadsFromProcessedReader) {
 }
 
 // -------------------------------------------------------------------------------------
-// Bevy lib.rs integrated tests â€” load failure scenarios
+// Bevy lib.rs integrated tests â€?load failure scenarios
 // Ported from bevy_asset::tests::load_failure
 // -------------------------------------------------------------------------------------
 
@@ -1002,7 +1069,7 @@ struct FailingLoader {
     }
 };
 
-// Ported from bevy_asset::tests::load_failure â€” "root asset has no loader"
+// Ported from bevy_asset::tests::load_failure â€?"root asset has no loader"
 // Tests that loading a file with no registered loader produces a MissingAssetLoader error.
 TEST(LoadFailure, MissingLoader_FailsWithMissingAssetLoaderError) {
     auto [app, dir] = make_plugin_env(/*watching=*/false);
@@ -1015,7 +1082,7 @@ TEST(LoadFailure, MissingLoader_FailsWithMissingAssetLoaderError) {
     // server.load<T> checks loader existence eagerly in some paths, or fails async.
     // Register assets for the type so the server can track it, then try loading.
     Assets<std::string> assets;
-    server.register_assets(assets);
+    server.register_asset(assets);
     auto handle = server.load_erased(meta::type_id<std::string>{}, AssetPath("test.unknown"));
 
     flush_load_tasks(app);
@@ -1032,7 +1099,7 @@ TEST(LoadFailure, MissingLoader_FailsWithMissingAssetLoaderError) {
     }
 }
 
-// Ported from bevy_asset::tests::load_failure â€” "malformed root asset"
+// Ported from bevy_asset::tests::load_failure â€?"malformed root asset"
 // Tests that a loader returning an error produces AssetLoaderException.
 TEST(LoadFailure, LoaderError_FailsWithAssetLoaderException) {
     auto dir = make_memory_dir_with_text("malformed content");
@@ -1063,7 +1130,7 @@ TEST(LoadFailure, LoaderError_FailsWithAssetLoaderException) {
     }
 }
 
-// Ported from bevy_asset::tests::load_failure â€” combined scenario
+// Ported from bevy_asset::tests::load_failure â€?combined scenario
 // Verifies that a successful load produces Loaded, while missing file and loader error produce distinct failures.
 TEST(LoadFailure, MixedScenarios_CorrectStateForEach) {
     auto dir = make_memory_dir_with_text("good content");
@@ -1116,7 +1183,7 @@ TEST(LoadFailure, MixedScenarios_CorrectStateForEach) {
 }
 
 // -------------------------------------------------------------------------------------
-// Bevy lib.rs integrated tests â€” asset lifecycle
+// Bevy lib.rs integrated tests â€?asset lifecycle
 // Ported from bevy_asset::tests::keep_gotten_strong_handles
 // -------------------------------------------------------------------------------------
 
@@ -1133,7 +1200,7 @@ TEST(AssetLifecycle, GetStrongHandle_KeepsAssetAlive) {
     auto strong = assets.get_strong_handle(id);
     ASSERT_TRUE(strong.has_value());
 
-    // Drop the original handle â€” asset should still be reachable.
+    // Drop the original handle â€?asset should still be reachable.
     handle = id;  // convert to weak handle, releasing the strong reference
 
     // Process handle destruction events.
@@ -1167,7 +1234,7 @@ TEST(AssetLifecycle, AllHandlesDropped_AssetRemoved) {
 }
 
 // -------------------------------------------------------------------------------------
-// Bevy lib.rs integrated tests â€” manual asset management
+// Bevy lib.rs integrated tests â€?manual asset management
 // Ported from bevy_asset::tests::manual_asset_management
 // -------------------------------------------------------------------------------------
 
@@ -1216,8 +1283,8 @@ TEST(ManualAssetManagement, AddAndDrop_GeneratesCorrectEvents) {
 }
 
 // -------------------------------------------------------------------------------------
-// Bevy lib.rs integrated tests â€” failure_load_states
-// Ported from bevy_asset::tests::failure_load_states (simplified â€” no dep chain)
+// Bevy lib.rs integrated tests â€?failure_load_states
+// Ported from bevy_asset::tests::failure_load_states (simplified â€?no dep chain)
 // -------------------------------------------------------------------------------------
 
 // Tests that consecutive loads of the same path return the same handle (Bevy guarantee).
@@ -1244,7 +1311,7 @@ TEST(LoadFailure, ConsecutiveLoads_ReturnSameHandleAndSingleLoadTask) {
 }
 
 // -------------------------------------------------------------------------------------
-// Bevy lib.rs integrated tests â€” failure_load_states
+// Bevy lib.rs integrated tests â€?failure_load_states
 // Ported from bevy_asset::tests::failure_load_states
 // Tests load state transitions: loaded, dep_loaded, rec_dep_loaded for a single-asset load.
 // -------------------------------------------------------------------------------------

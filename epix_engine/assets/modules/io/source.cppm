@@ -258,4 +258,4 @@ export struct AssetSourceBuilders {
     }
 };
 
-}  // namespace assets
+}  // namespace epix::assets
