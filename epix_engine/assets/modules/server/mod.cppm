@@ -189,46 +189,16 @@ export struct AssetServer {
     // ---- Loading (untyped) ----
 
     /** @brief Load an asset by path, using the registered loader's type inferred from extension. */
-    UntypedHandle load_untyped(const AssetPath& path) const {
-        std::optional<meta::type_index> loader_type;
-        {
-            auto loaders_guard = data->loaders->read();
-            auto maybe         = loaders_guard->get_by_path(path);
-            if (maybe) {
-                auto loader = maybe->get();
-                if (loader) loader_type = loader->asset_type();
-            }
-        }
-        auto guard                 = data->infos.write();
-        auto [handle, should_load] = guard->get_or_create_handle_untyped(path, loader_type, HandleLoadingMode::Request);
-        if (should_load) {
-            spawn_load_task(handle, path, *guard);
-        }
-        return handle;
-    }
+    UntypedHandle load_untyped(const AssetPath& path) const;
 
     /** @brief Load an asset by explicit type id and path. */
-    UntypedHandle load_erased(meta::type_index type_id, const AssetPath& path) const {
-        auto guard                 = data->infos.write();
-        auto [handle, should_load] = guard->get_or_create_handle_untyped(path, type_id, HandleLoadingMode::Request);
-        if (should_load) {
-            spawn_load_task(handle, path, *guard);
-        }
-        return handle;
-    }
+    UntypedHandle load_erased(meta::type_index type_id, const AssetPath& path) const;
 
     // ---- Folder Loading ----
 
     /** @brief Load all assets in a folder. Returns a handle to a LoadedFolder.
      *  Matches bevy_asset's AssetServer::load_folder. */
-    Handle<LoadedFolder> load_folder(const AssetPath& path) const {
-        auto guard = data->infos.write();
-        auto [handle, should_load] =
-            guard->template get_or_create_handle<LoadedFolder>(path, HandleLoadingMode::Request);
-        if (!should_load) return handle;
-        load_folder_internal(handle.id(), path);
-        return handle;
-    }
+    Handle<LoadedFolder> load_folder(const AssetPath& path) const;
 
     // ---- Blocking / Acquire Loading ----
 
@@ -261,13 +231,7 @@ export struct AssetServer {
     /** @brief Force reload an asset at the given path.
      *  Returns an error if the source is not registered.
      *  Matches bevy_asset's AssetServer::reload. */
-    std::expected<void, MissingAssetSourceError> reload(const AssetPath& path) const {
-        if (!get_source(path.source)) {
-            return std::unexpected(MissingAssetSourceError{path.source});
-        }
-        reload_internal(path, false);
-        return {};
-    }
+    std::expected<void, MissingAssetSourceError> reload(const AssetPath& path) const;
 
     // ---- Direct Asset Insertion ----
 
@@ -333,9 +297,7 @@ export struct AssetServer {
 
     /** @brief Block until an untyped asset is fully loaded or an error occurs.
      *  Matches bevy_asset's AssetServer::wait_for_asset_untyped. */
-    std::expected<void, WaitForAssetError> wait_for_asset_untyped(const UntypedHandle& handle) const {
-        return wait_for_asset_id(handle.id());
-    }
+    std::expected<void, WaitForAssetError> wait_for_asset_untyped(const UntypedHandle& handle) const;
 
     /** @brief Block until the given asset and all its recursive dependencies are loaded.
      *  Registers a std::promise on AssetInfo::waiting_tasks which is resolved by the event
@@ -343,50 +305,7 @@ export struct AssetServer {
      *  propagate_failed_state). No polling or sleep — this is a proper blocking wait on a future.
      *  Matches bevy_asset's AssetServer::wait_for_asset_id (async poll_fn equivalent).
      *  IMPORTANT: Must NOT be called on the same thread as handle_internal_asset_events. */
-    std::expected<void, WaitForAssetError> wait_for_asset_id(const UntypedAssetId& id) const {
-        // ---- Fast path: check state without registering a promise ----
-        {
-            auto guard    = data->infos.read();
-            auto info_opt = guard->get_info(id);
-            if (!info_opt) return std::unexpected(WaitForAssetError{wait_for_asset_error::NotLoaded{}});
-            const auto& info = info_opt->get();
-            if (auto* ok = std::get_if<LoadStateOK>(&info.state)) {
-                if (*ok == LoadStateOK::NotLoaded)
-                    return std::unexpected(WaitForAssetError{wait_for_asset_error::NotLoaded{}});
-                if (*ok == LoadStateOK::Loaded && info.rec_dep_state.is_loaded()) return {};
-            }
-            if (std::holds_alternative<AssetLoadError>(info.state))
-                return std::unexpected(WaitForAssetError{wait_for_asset_error::Failed{
-                    std::make_shared<AssetLoadError>(std::get<AssetLoadError>(info.state))}});
-            if (info.rec_dep_state.is_failed())
-                return std::unexpected(WaitForAssetError{wait_for_asset_error::DependencyFailed{
-                    std::make_shared<AssetLoadError>(std::get<AssetLoadError>(info.rec_dep_state))}});
-        }
-        // ---- Slow path: register a promise and block until it is resolved ----
-        auto promise = std::make_shared<std::promise<std::expected<void, WaitForAssetError>>>();
-        std::shared_future<std::expected<void, WaitForAssetError>> future = promise->get_future();
-        {
-            auto guard    = data->infos.write();
-            auto info_opt = guard->get_info_mut(id);
-            if (!info_opt) return std::unexpected(WaitForAssetError{wait_for_asset_error::NotLoaded{}});
-            auto& info = info_opt->get();
-            // Re-check under write lock to close the TOCTOU window
-            if (auto* ok = std::get_if<LoadStateOK>(&info.state)) {
-                if (*ok == LoadStateOK::NotLoaded)
-                    return std::unexpected(WaitForAssetError{wait_for_asset_error::NotLoaded{}});
-                if (*ok == LoadStateOK::Loaded && info.rec_dep_state.is_loaded()) return {};
-            }
-            if (std::holds_alternative<AssetLoadError>(info.state))
-                return std::unexpected(WaitForAssetError{wait_for_asset_error::Failed{
-                    std::make_shared<AssetLoadError>(std::get<AssetLoadError>(info.state))}});
-            if (info.rec_dep_state.is_failed())
-                return std::unexpected(WaitForAssetError{wait_for_asset_error::DependencyFailed{
-                    std::make_shared<AssetLoadError>(std::get<AssetLoadError>(info.rec_dep_state))}});
-            // Asset is still loading — register the promise; event handler will resolve it
-            info.waiting_tasks.push_back(std::move(promise));
-        }
-        return future.get();
-    }
+    std::expected<void, WaitForAssetError> wait_for_asset_id(const UntypedAssetId& id) const;
 
     /** @brief Retrieve or create a path handle for type A without triggering a load.
      *  Matches bevy_asset's AssetServer::get_or_create_path_handle. */
@@ -401,11 +320,7 @@ export struct AssetServer {
      *  Matches bevy_asset's AssetServer::get_or_create_path_handle_erased. */
     UntypedHandle get_or_create_path_handle_erased(const AssetPath& path,
                                                    meta::type_index type_id,
-                                                   std::optional<MetaTransform> meta_transform) const {
-        return data->infos.write()
-            ->get_or_create_handle_untyped(path, type_id, HandleLoadingMode::NotLoading, std::move(meta_transform))
-            .first;
-    }
+                                                   std::optional<MetaTransform> meta_transform) const;
 
     /** @brief Insert a pre-built asset, send a Loaded event, return an untyped handle.
      *  Matches bevy_asset's AssetServer::load_asset_untyped. */
@@ -415,66 +330,26 @@ export struct AssetServer {
 
     /** @brief Get all three load states (self, dependency, recursive dependency) at once. */
     std::optional<std::tuple<LoadState, DependencyLoadState, RecursiveDependencyLoadState>> get_load_states(
-        const UntypedAssetId& id) const {
-        auto guard = data->infos.read();
-        auto info  = guard->get_info(id);
-        if (!info) return std::nullopt;
-        return std::make_tuple(info->get().state, info->get().dep_state, info->get().rec_dep_state);
-    }
+        const UntypedAssetId& id) const;
 
     /** @brief Get the load state of an asset (self only). */
-    std::optional<LoadState> get_load_state(const UntypedAssetId& id) const {
-        auto guard = data->infos.read();
-        auto info  = guard->get_info(id);
-        if (!info) return std::nullopt;
-        return info->get().state;
-    }
+    std::optional<LoadState> get_load_state(const UntypedAssetId& id) const;
     /** @brief Get the load state, returning NotLoaded if not tracked. */
-    LoadState load_state(const UntypedAssetId& id) const {
-        return get_load_state(id).value_or(LoadState{LoadStateOK::NotLoaded});
-    }
+    LoadState load_state(const UntypedAssetId& id) const;
     /** @brief Get the direct dependency load state. */
-    std::optional<DependencyLoadState> get_dependency_load_state(const UntypedAssetId& id) const {
-        auto guard = data->infos.read();
-        auto info  = guard->get_info(id);
-        if (!info) return std::nullopt;
-        return info->get().dep_state;
-    }
+    std::optional<DependencyLoadState> get_dependency_load_state(const UntypedAssetId& id) const;
     /** @brief Get the dependency load state, returning NotLoaded if not tracked. */
-    DependencyLoadState dependency_load_state(const UntypedAssetId& id) const {
-        return get_dependency_load_state(id).value_or(DependencyLoadState{LoadStateOK::NotLoaded});
-    }
+    DependencyLoadState dependency_load_state(const UntypedAssetId& id) const;
     /** @brief Get the recursive dependency load state. */
-    std::optional<RecursiveDependencyLoadState> get_recursive_dependency_load_state(const UntypedAssetId& id) const {
-        auto guard = data->infos.read();
-        auto info  = guard->get_info(id);
-        if (!info) return std::nullopt;
-        return info->get().rec_dep_state;
-    }
+    std::optional<RecursiveDependencyLoadState> get_recursive_dependency_load_state(const UntypedAssetId& id) const;
     /** @brief Get the recursive dependency load state, returning NotLoaded if not tracked. */
-    RecursiveDependencyLoadState recursive_dependency_load_state(const UntypedAssetId& id) const {
-        return get_recursive_dependency_load_state(id).value_or(RecursiveDependencyLoadState{LoadStateOK::NotLoaded});
-    }
+    RecursiveDependencyLoadState recursive_dependency_load_state(const UntypedAssetId& id) const;
     /** @brief Check if the asset is fully loaded (self only). */
-    bool is_loaded(const UntypedAssetId& id) const {
-        auto state = get_load_state(id);
-        return state && std::holds_alternative<LoadStateOK>(*state) &&
-               std::get<LoadStateOK>(*state) == LoadStateOK::Loaded;
-    }
+    bool is_loaded(const UntypedAssetId& id) const;
     /** @brief Check if the asset and all its direct dependencies are loaded. */
-    bool is_loaded_with_direct_dependencies(const UntypedAssetId& id) const {
-        return is_loaded(id) && [&] {
-            auto dep = get_dependency_load_state(id);
-            return dep && dep->is_loaded();
-        }();
-    }
+    bool is_loaded_with_direct_dependencies(const UntypedAssetId& id) const;
     /** @brief Check if the asset and all its recursive dependencies are loaded. */
-    bool is_loaded_with_dependencies(const UntypedAssetId& id) const {
-        return is_loaded(id) && [&] {
-            auto rec = get_recursive_dependency_load_state(id);
-            return rec && rec->is_loaded();
-        }();
-    }
+    bool is_loaded_with_dependencies(const UntypedAssetId& id) const;
 
     // ---- Handle Queries ----
 
@@ -488,27 +363,10 @@ export struct AssetServer {
         return typed ? std::make_optional(*typed) : std::nullopt;
     }
     /** @brief Get an untyped handle for an asset at the given path, if one exists. */
-    std::optional<UntypedHandle> get_handle_untyped(const AssetPath& path) const {
-        auto guard = data->infos.read();
-        auto ids   = guard->get_path_ids(path);
-        for (auto id : ids) {
-            auto handle = guard->get_handle_by_id(id);
-            if (handle) return handle;
-        }
-        return std::nullopt;
-    }
+    std::optional<UntypedHandle> get_handle_untyped(const AssetPath& path) const;
     /** @brief Get all untyped handles for assets at the given path.
      *  Matches bevy_asset's AssetServer::get_handles_untyped. */
-    std::vector<UntypedHandle> get_handles_untyped(const AssetPath& path) const {
-        std::vector<UntypedHandle> result;
-        auto guard = data->infos.read();
-        auto ids   = guard->get_path_ids(path);
-        for (auto id : ids) {
-            auto handle = guard->get_handle_by_id(id);
-            if (handle) result.push_back(*handle);
-        }
-        return result;
-    }
+    std::vector<UntypedHandle> get_handles_untyped(const AssetPath& path) const;
     /** @brief Get a handle by its typed AssetId, if tracked. */
     template <typename A>
     std::optional<Handle<A>> get_id_handle(const AssetId<A>& id) const {
@@ -519,97 +377,48 @@ export struct AssetServer {
         return typed ? std::make_optional(*typed) : std::nullopt;
     }
     /** @brief Get a handle by UntypedAssetId, if tracked. */
-    std::optional<UntypedHandle> get_id_handle_untyped(const UntypedAssetId& id) const {
-        auto guard = data->infos.read();
-        return guard->get_handle_by_id(id);
-    }
+    std::optional<UntypedHandle> get_id_handle_untyped(const UntypedAssetId& id) const;
     /** @brief Get a handle by path and type_id combined lookup.
      *  Matches bevy_asset's AssetServer::get_path_and_type_id_handle. */
-    std::optional<UntypedHandle> get_path_and_type_id_handle(const AssetPath& path, meta::type_index type_id) const {
-        auto guard = data->infos.read();
-        return guard->get_handle_by_path_type(path, type_id);
-    }
+    std::optional<UntypedHandle> get_path_and_type_id_handle(const AssetPath& path, meta::type_index type_id) const;
 
     // ---- Path & Info Queries ----
 
     /** @brief Get the path associated with an asset id, if known. */
-    std::optional<AssetPath> get_path(const UntypedAssetId& id) const {
-        auto guard = data->infos.read();
-        auto info  = guard->get_info(id);
-        if (!info) return std::nullopt;
-        return info->get().path;
-    }
+    std::optional<AssetPath> get_path(const UntypedAssetId& id) const;
     /** @brief Get a single asset id for a path (first match), if any.
      *  Matches bevy_asset's AssetServer::get_path_id. */
-    std::optional<UntypedAssetId> get_path_id(const AssetPath& path) const {
-        auto guard = data->infos.read();
-        auto ids   = guard->get_path_ids(path);
-        for (auto id : ids) return id;
-        return std::nullopt;
-    }
+    std::optional<UntypedAssetId> get_path_id(const AssetPath& path) const;
     /** @brief Get all asset ids for a path.
      *  Matches bevy_asset's AssetServer::get_path_ids. */
-    std::vector<UntypedAssetId> get_path_ids(const AssetPath& path) const {
-        auto guard = data->infos.read();
-        std::vector<UntypedAssetId> result;
-        for (auto id : guard->get_path_ids(path)) {
-            result.push_back(id);
-        }
-        return result;
-    }
+    std::vector<UntypedAssetId> get_path_ids(const AssetPath& path) const;
     /** @brief Check if an asset id is managed by this server. */
-    bool is_managed(const UntypedAssetId& id) const {
-        auto guard = data->infos.read();
-        return guard->contains_key(id);
-    }
+    bool is_managed(const UntypedAssetId& id) const;
     /** @brief Get the current server mode (Unprocessed or Processed). */
-    AssetServerMode mode() const { return data->mode; }
+    AssetServerMode mode() const;
     /** @brief Check if the server is watching for file changes. */
-    bool watching_for_changes() const { return data->watching_for_changes; }
+    bool watching_for_changes() const;
 
     /** @brief Get an asset source by id. Returns std::nullopt if not found. */
-    std::optional<std::reference_wrapper<const AssetSource>> get_source(const AssetSourceId& source_id) const {
-        if (!data->sources) return std::nullopt;
-        return data->sources->get(source_id);
-    }
+    std::optional<std::reference_wrapper<const AssetSource>> get_source(const AssetSourceId& source_id) const;
 
     // ---- Loader Queries ----
 
     /** @brief Get a loader registered for the given file extension.
      *  Matches bevy_asset's AssetServer::get_asset_loader_with_extension. */
-    std::shared_ptr<ErasedAssetLoader> get_asset_loader_with_extension(std::string_view extension) const {
-        auto guard = data->loaders->read();
-        auto maybe = guard->get_by_extension(extension);
-        if (!maybe) return nullptr;
-        return maybe->get();
-    }
+    std::shared_ptr<ErasedAssetLoader> get_asset_loader_with_extension(std::string_view extension) const;
 
     /** @brief Get a loader registered under the given type name.
      *  Matches bevy_asset's AssetServer::get_asset_loader_with_type_name. */
-    std::shared_ptr<ErasedAssetLoader> get_asset_loader_with_type_name(std::string_view type_name) const {
-        auto guard = data->loaders->read();
-        auto maybe = guard->get_by_name(type_name);
-        if (!maybe) return nullptr;
-        return maybe->get();
-    }
+    std::shared_ptr<ErasedAssetLoader> get_asset_loader_with_type_name(std::string_view type_name) const;
 
     /** @brief Get a loader that would handle the given path (based on extension).
      *  Matches bevy_asset's AssetServer::get_path_asset_loader. */
-    std::shared_ptr<ErasedAssetLoader> get_path_asset_loader(const AssetPath& path) const {
-        auto guard = data->loaders->read();
-        auto maybe = guard->get_by_path(path);
-        if (!maybe) return nullptr;
-        return maybe->get();
-    }
+    std::shared_ptr<ErasedAssetLoader> get_path_asset_loader(const AssetPath& path) const;
 
     /** @brief Get a loader registered for the given asset type.
      *  Matches bevy_asset's AssetServer::get_asset_loader_with_asset_type_id. */
-    std::shared_ptr<ErasedAssetLoader> get_asset_loader_with_asset_type_id(meta::type_index type_id) const {
-        auto guard = data->loaders->read();
-        auto maybe = guard->get_by_type(type_id);
-        if (!maybe) return nullptr;
-        return maybe->get();
-    }
+    std::shared_ptr<ErasedAssetLoader> get_asset_loader_with_asset_type_id(meta::type_index type_id) const;
 
     /** @brief Get a loader for asset type A.
      *  Matches bevy_asset's AssetServer::get_asset_loader_with_asset_type. */
@@ -637,10 +446,7 @@ export struct AssetServer {
 
     /** @brief Process handle destruction across the info table.
      *  @return true if the asset should be removed from its collection. */
-    bool process_handle_destruction(const UntypedAssetId& id) const {
-        auto guard = data->infos.write();
-        return guard->process_handle_destruction(id);
-    }
+    bool process_handle_destruction(const UntypedAssetId& id) const;
 
     /** @brief Process internal asset events (called from system). */
     static void handle_internal_events(core::ParamSet<core::World&, core::Res<AssetServer>> params);

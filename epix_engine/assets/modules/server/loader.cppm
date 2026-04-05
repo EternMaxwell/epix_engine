@@ -149,25 +149,6 @@ ErasedLoadedAsset ErasedLoadedAsset::from_asset(A asset) {
     }
     return ErasedLoadedAsset{std::make_unique<AssetContainerImpl<A>>(std::move(asset)), std::move(deps), {}, {}};
 }
-inline std::optional<std::reference_wrapper<const ErasedLoadedAsset>> ErasedLoadedAsset::get_labeled(
-    const std::string& label) const {
-    auto it = labeled_assets.find(label);
-    if (it == labeled_assets.end()) return std::nullopt;
-    return std::cref(it->second.asset);
-}
-inline std::optional<std::reference_wrapper<const ErasedLoadedAsset>> ErasedLoadedAsset::get_labeled_by_id(
-    const UntypedAssetId& id) const {
-    for (const auto& [_, labeled] : labeled_assets) {
-        if (labeled.handle.id() == id) return std::cref(labeled.asset);
-    }
-    return std::nullopt;
-}
-inline std::vector<std::string_view> ErasedLoadedAsset::labels() const {
-    std::vector<std::string_view> result;
-    result.reserve(labeled_assets.size());
-    for (const auto& [label, _] : labeled_assets) result.push_back(label);
-    return result;
-}
 template <typename A>
 std::optional<std::reference_wrapper<A>> ErasedLoadedAsset::get() {
     if (value && value->type() == meta::type_id<A>{}) {

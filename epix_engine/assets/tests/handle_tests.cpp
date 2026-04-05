@@ -152,7 +152,7 @@ TEST(Handle, FromUntypedHandle_WrongType_Throws) {
     auto id = AssetId<std::string>::invalid();
     Handle<std::string> orig(id);
     UntypedHandle uh = orig.untyped();
-    EXPECT_THROW({ auto h = uh.typed<int>(); }, std::bad_optional_access);
+    EXPECT_THROW({ auto h = uh.typed<int>(); }, epix::assets::UntypedAssetConversionError);
 }
 
 TEST(Handle, MoveFromUntypedHandle_Correct) {

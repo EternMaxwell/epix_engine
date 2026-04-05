@@ -40,6 +40,7 @@ struct ShaderTestEnv {
 ShaderTestEnv make_shader_env(const memory::Directory& dir) {
     App app = App::create();
     AssetPlugin plugin;
+    plugin.mode = AssetServerMode::Unprocessed;
     plugin.register_asset_source(AssetSourceId{}, make_memory_source_builder(dir));
     plugin.build(app);
     epix::assets::app_register_asset<Shader>(app);
@@ -82,6 +83,7 @@ struct PipelineTestEnv {
 PipelineTestEnv make_pipeline_env(const memory::Directory& dir) {
     App app = App::create();
     AssetPlugin asset_plugin;
+    asset_plugin.mode = AssetServerMode::Unprocessed;
     asset_plugin.register_asset_source(AssetSourceId{}, make_memory_source_builder(dir));
     asset_plugin.build(app);
 
