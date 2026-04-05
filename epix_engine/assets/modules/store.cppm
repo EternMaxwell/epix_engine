@@ -6,6 +6,7 @@ module;
 export module epix.assets:store;
 
 import std;
+import :concepts;
 
 import :handle;
 import epix.utils;
@@ -262,7 +263,7 @@ struct AssetStorage {
  *  Created automatically by Assets<T> when assets are added, removed,
  *  modified, when all strong handles are dropped, or when recursive
  *  dependencies have finished loading. */
-export template <typename T>
+export template <Asset T>
 struct AssetEvent {
     /** @brief Event kind discriminator. */
     enum class Type {
@@ -329,7 +330,7 @@ export struct LoadedUntypedAsset {
 
 /** @brief Event fired when an asset load fails (typed).
  *  @tparam T The expected asset type. */
-export template <typename T>
+export template <Asset T>
 struct AssetLoadFailedEvent {
     /** @brief The id of the asset that failed to load. */
     AssetId<T> id;
@@ -350,8 +351,8 @@ export struct UntypedAssetLoadFailedEvent {
 };
 
 /** @brief Collection that stores and manages assets of type T.
- *  @tparam T The asset type (must be movable). */
-export template <std::movable T>
+ *  @tparam T The asset type (must satisfy Asset). */
+export template <Asset T>
 struct Assets {
    private:
     AssetStorage<T> m_assets;

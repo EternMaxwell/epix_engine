@@ -9,6 +9,7 @@ import epix.meta;
 import epix.utils;
 
 import :index;
+import :concepts;
 
 export namespace uuids {
 /** @brief Three-way comparison for uuids::uuid, providing strong ordering. */

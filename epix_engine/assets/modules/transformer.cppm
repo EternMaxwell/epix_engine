@@ -4,24 +4,25 @@ export module epix.assets:transformer;
 
 import std;
 import epix.meta;
+import :concepts;
 
 import :server.loader;
 
 namespace epix::assets {
-template <typename A>
+template <Asset A>
 struct SavedAsset;
 
 /** @brief A mutable wrapper around an asset and its labeled sub-assets, used during transformation.
  *  Matches bevy_asset's TransformedAsset. */
-export template <typename A>
+export template <Asset A>
 struct TransformedAsset {
    private:
     A m_asset;
     std::unordered_map<std::string, LabeledAsset> m_labeled_assets;
 
-    template <typename>
+    template <Asset>
     friend struct SavedAsset;
-    template <typename>
+    template <Asset>
     friend struct TransformedAsset;
 
    public:
@@ -49,19 +50,19 @@ struct TransformedAsset {
     A* operator->() { return &m_asset; }
 
     /** @brief Replace the contained asset with one of a different type. */
-    template <typename B>
+    template <Asset B>
     TransformedAsset<B> replace_asset(B new_asset) {
         return TransformedAsset<B>(std::move(new_asset), std::move(m_labeled_assets));
     }
 
     /** @brief Take labeled assets from another transformed asset. */
-    template <typename B>
+    template <Asset B>
     void take_labeled_assets(TransformedAsset<B> labeled_source) {
         m_labeled_assets = std::move(labeled_source.m_labeled_assets);
     }
 
     /** @brief Try to get a labeled sub-asset by label string. */
-    template <typename B>
+    template <Asset B>
     std::optional<std::reference_wrapper<B>> get_labeled(const std::string& label) {
         auto it = m_labeled_assets.find(label);
         if (it == m_labeled_assets.end()) return std::nullopt;
@@ -69,7 +70,7 @@ struct TransformedAsset {
     }
 
     /** @brief Try to get a labeled sub-asset by label string (const). */
-    template <typename B>
+    template <Asset B>
     std::optional<std::reference_wrapper<const B>> get_labeled(const std::string& label) const {
         auto it = m_labeled_assets.find(label);
         if (it == m_labeled_assets.end()) return std::nullopt;
@@ -93,7 +94,7 @@ struct TransformedAsset {
     }
 
     /** @brief Try to get a labeled sub-asset by handle id. */
-    template <typename B>
+    template <Asset B>
     std::optional<std::reference_wrapper<B>> get_labeled_by_id(const UntypedAssetId& id) {
         for (auto& [_, labeled] : m_labeled_assets) {
             if (labeled.handle.id() == id) return labeled.asset.template get<B>();
@@ -109,7 +110,7 @@ struct TransformedAsset {
     }
 
     /** @brief Get the typed handle of a labeled sub-asset. */
-    template <typename B>
+    template <Asset B>
     std::optional<Handle<B>> get_handle(const std::string& label) const {
         auto handle = get_untyped_handle(label);
         if (!handle) return std::nullopt;
@@ -119,7 +120,7 @@ struct TransformedAsset {
     }
 
     /** @brief Add a labeled sub-asset. */
-    template <typename B>
+    template <Asset B>
     void insert_labeled(const std::string& label, UntypedHandle handle, ErasedLoadedAsset asset) {
         m_labeled_assets.insert_or_assign(label, LabeledAsset{std::move(asset), handle});
     }
@@ -133,7 +134,7 @@ struct TransformedAsset {
 
 /** @brief A sub-asset reference for use during transformation.
  *  Matches bevy_asset's TransformedSubAsset. */
-export template <typename A>
+export template <Asset A>
 struct TransformedSubAsset {
    private:
     std::reference_wrapper<A> m_asset;
@@ -157,7 +158,7 @@ struct TransformedSubAsset {
     A* operator->() { return &m_asset.get(); }
 
     /** @brief Try to get a nested labeled sub-asset by label string. */
-    template <typename B>
+    template <Asset B>
     std::optional<TransformedSubAsset<B>> get_labeled(const std::string& label) {
         auto it = m_labeled.get().find(label);
         if (it == m_labeled.get().end()) return std::nullopt;
@@ -174,7 +175,7 @@ struct TransformedSubAsset {
     }
 
     /** @brief Try to get a nested labeled sub-asset by handle id. */
-    template <typename B>
+    template <Asset B>
     std::optional<TransformedSubAsset<B>> get_labeled_by_id(const UntypedAssetId& id) {
         for (auto& [_, labeled] : m_labeled.get()) {
             if (labeled.handle.id() != id) continue;
@@ -202,7 +203,7 @@ struct TransformedSubAsset {
     }
 
     /** @brief Get the typed handle of a nested labeled sub-asset. */
-    template <typename B>
+    template <Asset B>
     std::optional<Handle<B>> get_handle(const std::string& label) const {
         auto handle = get_untyped_handle(label);
         if (!handle) return std::nullopt;
@@ -225,7 +226,7 @@ struct TransformedSubAsset {
 
 /** @brief An identity transformer that passes through the input asset unchanged.
  *  Matches bevy_asset's IdentityAssetTransformer. */
-export template <typename A>
+export template <Asset A>
 struct IdentityAssetTransformer {
     using AssetInput  = A;
     using AssetOutput = A;
@@ -237,4 +238,4 @@ struct IdentityAssetTransformer {
     }
 };
 
-}  // namespace assets
+}  // namespace epix::assets

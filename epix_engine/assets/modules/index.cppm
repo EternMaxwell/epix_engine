@@ -4,6 +4,7 @@ export module epix.assets:index;
 
 import std;
 import epix.core;
+import :concepts;
 
 namespace epix::assets {
 export struct StrongHandle;
@@ -45,7 +46,7 @@ export struct AssetIndex {
     template <typename T>
     friend struct Handle;
     friend struct AssetIndexAllocator;
-    template <std::movable T>
+    template <Asset T>
     friend struct Assets;
 };
 

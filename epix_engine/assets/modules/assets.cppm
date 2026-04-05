@@ -4,6 +4,7 @@ module;
 
 export module epix.assets;
 
+export import :concepts;
 export import :index;
 export import :id;
 export import :path;

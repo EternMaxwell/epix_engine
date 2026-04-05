@@ -45,7 +45,7 @@ struct StrongHandle : NonCopyNonMove {
 /** @brief Forward declaration. */
 export struct UntypedHandle;
 /** @brief Forward declaration for make_strong. */
-export template <std::movable T>
+export template <Asset T>
 struct Assets;
 
 /** @brief Error returned when converting an UntypedHandle to a typed Handle<T> of the wrong type.
@@ -351,11 +351,6 @@ concept VisitAssetDependencies = requires(const T& t, utils::function_ref<void(U
     { t.visit_dependencies(visit) } -> std::same_as<void>;
 };
 
-/** @brief Concept for asset types.
- *  Matches bevy_asset's `Asset` trait bound: `VisitAssetDependencies + TypePath + Send + Sync`.
- *  C++ has no TypePath/Send/Sync equivalents, so only VisitAssetDependencies is required. */
-export template <typename T>
-concept Asset = VisitAssetDependencies<T>;
 /** @brief Construct a Handle<T> from a UUID string literal.
  *  Equivalent to Bevy's uuid_handle! macro.
  *  @tparam T  The asset type the handle is associated with.

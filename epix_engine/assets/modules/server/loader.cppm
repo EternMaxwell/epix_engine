@@ -5,6 +5,7 @@ export module epix.assets:server.loader;
 import std;
 import epix.meta;
 import epix.utils;
+import :concepts;
 
 import :store;
 import :handle;
@@ -32,13 +33,13 @@ export struct AssetServer;
 struct AssetInfos;
 export struct ProcessContext;
 export struct LoadContext;
-export template <typename A>
+export template <Asset A>
 struct LoadedAsset;
-export template <typename A>
+export template <Asset A>
 struct SavedAsset;
-export template <typename A>
+export template <Asset A>
 struct TransformedAsset;
-export template <typename A>
+export template <Asset A>
 struct TransformedSubAsset;
 template <typename T>
 struct ErasedAssetLoaderImpl;
@@ -73,13 +74,13 @@ export struct ErasedLoadedAsset {
     friend struct AssetInfos;
     friend struct ProcessContext;
     friend struct LoadContext;
-    template <typename>
+    template <Asset>
     friend struct LoadedAsset;
-    template <typename>
+    template <Asset>
     friend struct SavedAsset;
-    template <typename>
+    template <Asset>
     friend struct TransformedAsset;
-    template <typename>
+    template <Asset>
     friend struct TransformedSubAsset;
     template <typename>
     friend struct ErasedAssetLoaderImpl;
@@ -87,7 +88,7 @@ export struct ErasedLoadedAsset {
    public:
     /** @brief Construct an ErasedLoadedAsset from a typed value with no dependencies.
      *  Matches bevy_asset's `LoadedAsset::new_with_dependencies(value).into()`. */
-    template <typename A>
+    template <Asset A>
     static ErasedLoadedAsset from_asset(A asset);
 
     /** @brief Get the type id of the contained asset. */
@@ -102,17 +103,17 @@ export struct ErasedLoadedAsset {
     /** @brief Get a range over all label strings. */
     std::vector<std::string_view> labels() const;
     /** @brief Take the contained asset, moving it out. Returns std::nullopt on type mismatch. */
-    template <typename A>
+    template <Asset A>
     std::optional<A> take() &&;
     /** @brief Cast this loaded asset as the given type. */
-    template <typename A>
+    template <Asset A>
     std::expected<LoadedAsset<A>, ErasedLoadedAsset> downcast() &&;
 
     /** @brief Try to downcast the contained asset to type A. Returns nullptr on type mismatch. */
-    template <typename A>
+    template <Asset A>
     std::optional<std::reference_wrapper<A>> get();
     /** @brief Try to downcast the contained asset to type A (const). Returns nullptr on type mismatch. */
-    template <typename A>
+    template <Asset A>
     std::optional<std::reference_wrapper<const A>> get() const;
 };
 
@@ -141,7 +142,7 @@ struct AssetContainerImpl : AssetContainer {
 };
 
 // -- Deferred ErasedLoadedAsset method definitions (need LabeledAsset & AssetContainerImpl) --
-template <typename A>
+template <Asset A>
 ErasedLoadedAsset ErasedLoadedAsset::from_asset(A asset) {
     std::unordered_set<UntypedAssetId> deps;
     if constexpr (VisitAssetDependencies<A>) {
@@ -149,21 +150,21 @@ ErasedLoadedAsset ErasedLoadedAsset::from_asset(A asset) {
     }
     return ErasedLoadedAsset{std::make_unique<AssetContainerImpl<A>>(std::move(asset)), std::move(deps), {}, {}};
 }
-template <typename A>
+template <Asset A>
 std::optional<std::reference_wrapper<A>> ErasedLoadedAsset::get() {
     if (value && value->type() == meta::type_id<A>{}) {
         return std::ref(static_cast<AssetContainerImpl<A>*>(value.get())->asset);
     }
     return std::nullopt;
 }
-template <typename A>
+template <Asset A>
 std::optional<std::reference_wrapper<const A>> ErasedLoadedAsset::get() const {
     if (value && value->type() == meta::type_id<A>{}) {
         return std::cref(static_cast<const AssetContainerImpl<A>*>(value.get())->asset);
     }
     return std::nullopt;
 }
-template <typename A>
+template <Asset A>
 std::optional<A> ErasedLoadedAsset::take() && {
     if (value && value->type() == meta::type_id<A>{}) {
         A result = std::move(static_cast<AssetContainerImpl<A>*>(value.get())->asset);
@@ -172,7 +173,7 @@ std::optional<A> ErasedLoadedAsset::take() && {
     }
     return std::nullopt;
 }
-template <typename A>
+template <Asset A>
 std::expected<LoadedAsset<A>, ErasedLoadedAsset> ErasedLoadedAsset::downcast() && {
     auto value_opt = std::move(*this).template take<A>();
     if (!value_opt) {
@@ -187,7 +188,7 @@ std::expected<LoadedAsset<A>, ErasedLoadedAsset> ErasedLoadedAsset::downcast() &
 
 /** @brief Typed wrapper for a loaded asset with dependency tracking.
  *  @tparam A The asset type. */
-export template <typename A>
+export template <Asset A>
 struct LoadedAsset {
    private:
     A value;
@@ -197,7 +198,7 @@ struct LoadedAsset {
 
     friend struct LoadContext;
     friend struct ErasedLoadedAsset;
-    template <typename>
+    template <Asset>
     friend struct TransformedAsset;
 
    public:
@@ -378,14 +379,14 @@ export struct LoadContext {
      *  @tparam A The asset type.
      *  @param label The label string.
      *  @param asset The asset value. */
-    template <typename A>
+    template <Asset A>
     Handle<A> add_labeled_asset(const std::string& label, A asset);
 
     /** @brief Add a pre-loaded labeled asset and return a handle to it.
      *  @tparam A The asset type.
      *  @param label The label string.
      *  @param loaded The already-loaded asset. */
-    template <typename A>
+    template <Asset A>
     Handle<A> add_loaded_labeled_asset(const std::string& label, LoadedAsset<A> loaded);
 
     /** @brief Get a nested loader for loading sub-assets from within this load.
@@ -395,13 +396,13 @@ export struct LoadContext {
     /** @brief Directly load an asset at path, running the full loader pipeline synchronously.
      *  @tparam A The expected asset type.
      *  Matches bevy_asset's LoadContext::load_direct (async in Bevy, sync here). */
-    template <typename A>
+    template <Asset A>
     std::expected<LoadedAsset<A>, AssetLoadError> load_direct(const AssetPath& path) const;
 
     /** @brief Load an asset directly using an already-open reader stream.
      *  @tparam A The expected asset type.
      *  Matches bevy_asset's LoadContext::load_direct_with_reader. */
-    template <typename A>
+    template <Asset A>
     std::expected<LoadedAsset<A>, AssetLoadError> load_direct_with_reader(const AssetPath& path,
                                                                           std::istream& reader) const;
 
@@ -417,14 +418,14 @@ export struct LoadContext {
      *  @tparam A  Asset type.
      *  @param label The sub-asset label.
      *  @param fn    Callback: fn(LoadContext&) -> A. */
-    template <typename A, typename F>
+    template <Asset A, typename F>
         requires std::invocable<F, LoadContext&>
     Handle<A> labeled_asset_scope(const std::string& label, F&& fn);
 
     /** @brief Finish loading, producing a typed LoadedAsset.
      *  @tparam A The asset type.
      *  @param value The loaded asset value. */
-    template <typename A>
+    template <Asset A>
     LoadedAsset<A> finish(A value) {
         LoadedAsset<A> result(std::move(value));
         result.dependencies        = std::move(m_dependencies);
@@ -455,7 +456,7 @@ export struct NestedLoader {
     /** @brief Load a sub-asset and register it as a dependency.
      *  @tparam A Asset type.
      *  @param path Path of the sub-asset. */
-    template <typename A>
+    template <Asset A>
     Handle<A> load(const AssetPath& path);
 
     /** @brief Load a sub-asset with unknown type (dynamic dispatch), registering it as a dependency.
@@ -465,7 +466,7 @@ export struct NestedLoader {
     /** @brief Load a sub-asset by resolving a relative path against the parent's directory.
      *  @tparam A Asset type.
      *  @param relative_path Relative path string. */
-    template <typename A>
+    template <Asset A>
     Handle<A> load_relative(std::string_view relative_path) {
         return load<A>(m_context.path().resolve(relative_path));
     }
@@ -475,6 +476,7 @@ concept AssetLoader = requires(const T& t, std::istream& stream, LoadContext& co
     typename T::Asset;
     typename T::Settings;
     typename T::Error;
+    requires Asset<typename T::Asset>;
     requires std::derived_from<typename T::Settings, Settings>;
     requires std::is_default_constructible_v<typename T::Settings>;
     { t.extensions() } -> std::same_as<std::span<std::string_view>>;
@@ -553,6 +555,7 @@ concept AssetSaver = requires(const T& t, std::ostream& writer, const typename T
     typename T::Settings;
     typename T::OutputLoader;
     typename T::Error;
+    requires Asset<typename T::Asset>;
     requires std::derived_from<typename T::Settings, Settings>;
     requires std::is_default_constructible_v<typename T::Settings>;
     {
@@ -568,6 +571,8 @@ concept AssetTransformer = requires(const T& t, const typename T::Settings& sett
     typename T::AssetOutput;
     typename T::Settings;
     typename T::Error;
+    requires Asset<typename T::AssetInput>;
+    requires Asset<typename T::AssetOutput>;
     requires std::derived_from<typename T::Settings, Settings>;
     requires std::is_default_constructible_v<typename T::Settings>;
     {
@@ -582,7 +587,7 @@ inline LoadContext::LoadContext(const AssetServer& server, AssetPath path)
 
 inline NestedLoader LoadContext::loader() { return NestedLoader(*this); }
 
-template <typename A, typename F>
+template <Asset A, typename F>
     requires std::invocable<F, LoadContext&>
 Handle<A> LoadContext::labeled_asset_scope(const std::string& label, F&& fn) {
     auto sub_context = begin_labeled_asset();

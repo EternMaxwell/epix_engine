@@ -4,6 +4,7 @@ export module epix.assets:saver;
 
 import std;
 import epix.meta;
+import :concepts;
 
 import :server.loader;
 import :transformer;
@@ -12,7 +13,7 @@ namespace epix::assets {
 
 /** @brief A read-only view of an asset and its labeled sub-assets, used during saving.
  *  Matches bevy_asset's SavedAsset. */
-export template <typename A>
+export template <Asset A>
 struct SavedAsset {
    private:
     std::reference_wrapper<const A> m_asset;
@@ -47,7 +48,7 @@ struct SavedAsset {
     const A* operator->() const { return &m_asset.get(); }
 
     /** @brief Try to get a labeled sub-asset by label. */
-    template <typename B>
+    template <Asset B>
     std::optional<SavedAsset<B>> get_labeled(const std::string& label) const {
         auto it = m_labeled.get().find(label);
         if (it == m_labeled.get().end()) return std::nullopt;
@@ -62,7 +63,7 @@ struct SavedAsset {
     }
 
     /** @brief Try to get a labeled sub-asset by handle id. */
-    template <typename B>
+    template <Asset B>
     std::optional<SavedAsset<B>> get_labeled_by_id(const UntypedAssetId& id) const {
         for (const auto& [_, labeled] : m_labeled.get()) {
             if (labeled.handle.id() == id) return SavedAsset<B>::from_loaded(labeled.asset);
@@ -87,7 +88,7 @@ struct SavedAsset {
     }
 
     /** @brief Get the typed handle of a labeled sub-asset by label. */
-    template <typename B>
+    template <Asset B>
     std::optional<Handle<B>> get_handle(const std::string& label) const {
         auto handle = get_untyped_handle(label);
         if (!handle) return std::nullopt;

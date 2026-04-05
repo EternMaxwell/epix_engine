@@ -502,7 +502,7 @@ export struct AssetServer {
 
 // --- NestedLoader template implementations (AssetServer must be complete) ---
 
-template <typename A>
+template <Asset A>
 Handle<A> NestedLoader::load(const AssetPath& path) {
     Handle<A> handle;
     if (m_meta_transform) {
@@ -526,7 +526,7 @@ UntypedHandle NestedLoader::load_untyped(const AssetPath& path) {
 
 // --- LoadContext template implementations (AssetServer must be complete) ---
 
-template <typename A>
+template <Asset A>
 std::expected<LoadedAsset<A>, AssetLoadError> LoadContext::load_direct(const AssetPath& path) const {
     auto result = m_server.load_direct_untyped(path);
     if (!result) return std::unexpected(result.error());
@@ -539,7 +539,7 @@ std::expected<LoadedAsset<A>, AssetLoadError> LoadContext::load_direct(const Ass
     return std::move(*down);
 }
 
-template <typename A>
+template <Asset A>
 std::expected<LoadedAsset<A>, AssetLoadError> LoadContext::load_direct_with_reader(const AssetPath& path,
                                                                                    std::istream& reader) const {
     auto result = m_server.load_direct_with_reader_untyped(path, reader);
