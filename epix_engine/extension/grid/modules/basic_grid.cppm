@@ -789,7 +789,7 @@ struct tree_grid {
      */
     void shrink();
 };
-}  // namespace ext::grid
+}  // namespace epix::ext::grid
 
 namespace epix::ext::grid {
 template <std::size_t Dim, typename T>
@@ -2204,4 +2204,174 @@ void tree_grid<Dim, T, ChildCount>::shrink() {
     rebuild_tree();
 }
 
-}  // namespace ext::grid
+// ============================================================
+// Internal helpers
+// ============================================================
+
+namespace detail {
+
+/** @brief Strips std::reference_wrapper<T> to its underlying type T. */
+template <typename T>
+struct unwrap_ref {
+    using type = T;
+};
+template <typename T>
+struct unwrap_ref<std::reference_wrapper<T>> {
+    using type = T;
+};
+/** @brief Removes cv-qualifiers then unwraps reference_wrapper, giving the plain value type. */
+template <typename T>
+using unwrap_ref_t = typename unwrap_ref<std::remove_cv_t<T>>::type;
+
+}  // namespace detail
+
+// ============================================================
+// Grid concepts — purely structural, no grid_trait dependency
+// ============================================================
+
+/**
+ * @brief Fundamental structural concept satisfied by any grid type.
+ *
+ * Requires:
+ *   - count()      → convertible to std::size_t
+ *   - iter_pos()   → input_range whose value_type is a fixed-size std::array
+ *                    (detected via std::tuple_size and ::value_type)
+ *   - iter_cells() → input_range
+ *   - iter()       → input_range (position–value pairs)
+ */
+export template <typename G>
+concept any_grid = requires(const G& g) {
+    { g.count() } -> std::convertible_to<std::size_t>;
+    { g.iter_pos() } -> std::ranges::input_range;
+    requires requires {
+        typename std::tuple_size<std::ranges::range_value_t<decltype(g.iter_pos())>>::type;
+        typename std::ranges::range_value_t<decltype(g.iter_pos())>::value_type;
+    };
+    { g.iter_cells() } -> std::ranges::input_range;
+    { g.iter() } -> std::ranges::input_range;
+};
+
+/**
+ * @brief A grid with unsigned (non-negative) coordinates.
+ *        Covers: packed_grid, dense_grid, sparse_grid, tree_grid.
+ */
+export template <typename G>
+concept fixed_grid =
+    any_grid<G> && std::unsigned_integral<
+                       typename std::ranges::range_value_t<decltype(std::declval<const G&>().iter_pos())>::value_type>;
+
+/**
+ * @brief A grid with signed (possibly negative) coordinates.
+ *        Covers: dense_extendible_grid, tree_extendible_grid.
+ */
+export template <typename G>
+concept extendible_grid =
+    any_grid<G> && std::signed_integral<
+                       typename std::ranges::range_value_t<decltype(std::declval<const G&>().iter_pos())>::value_type>;
+
+/**
+ * @brief A grid backed by a tree structure that exposes coverage().
+ *        Covers: tree_grid, tree_extendible_grid.
+ */
+export template <typename G>
+concept tree_based_grid = any_grid<G> && requires(const G& g) {
+    { g.coverage() } -> std::convertible_to<std::uint32_t>;
+};
+
+/**
+ * @brief Extends any_grid with a contains() occupancy query.
+ *
+ * Satisfied by all grid types except packed_grid (which always has all cells full).
+ */
+export template <typename G>
+concept containable_grid =
+    any_grid<G> &&
+    requires(const G& g, const std::ranges::range_value_t<decltype(std::declval<const G&>().iter_pos())>& pos) {
+        { g.contains(pos) } -> std::convertible_to<bool>;
+    };
+
+/**
+ * @brief Extends any_grid with a const get() operation.
+ *
+ * get(pos) must return expected<reference_wrapper<const T>, grid_error>
+ * where T is the unwrapped cell value type.
+ */
+export template <typename G>
+concept gettable_grid =
+    any_grid<G> &&
+    requires(const G& g, const std::ranges::range_value_t<decltype(std::declval<const G&>().iter_pos())>& pos) {
+        {
+            g.get(pos)
+        }
+        -> std::same_as<std::expected<std::reference_wrapper<const detail::unwrap_ref_t<
+                                          std::ranges::range_value_t<decltype(std::declval<const G&>().iter_cells())>>>,
+                                      grid_error>>;
+    };
+
+/**
+ * @brief Extends any_grid with a mutable set() operation.
+ *
+ * set(pos, val) must return expected<reference_wrapper<T>, grid_error>
+ * where T is the unwrapped cell value type.
+ */
+export template <typename G>
+concept settable_grid =
+    any_grid<G> &&
+    requires(G& g,
+             const std::ranges::range_value_t<decltype(std::declval<const G&>().iter_pos())>& pos,
+             detail::unwrap_ref_t<std::ranges::range_value_t<decltype(std::declval<const G&>().iter_cells())>> val) {
+        {
+            g.set(pos, std::move(val))
+        }
+        -> std::same_as<std::expected<std::reference_wrapper<detail::unwrap_ref_t<
+                                          std::ranges::range_value_t<decltype(std::declval<const G&>().iter_cells())>>>,
+                                      grid_error>>;
+    };
+
+/**
+ * @brief A basic grid concept combining gettable, settable, and containable.
+ */
+export template <typename G>
+concept basic_grid = any_grid<G> && gettable_grid<G> && settable_grid<G> && containable_grid<G>;
+
+/**
+ * @brief An extendible grid concept combining basic_grid and extendible_grid.
+ */
+export template <typename G>
+concept basic_extendible_grid = basic_grid<G> && extendible_grid<G>;
+
+// ============================================================
+// grid_trait — constrained on any_grid, derives facts from the interface
+// ============================================================
+
+/**
+ * @brief Auto-detecting traits struct for any grid type.
+ *
+ * Constrained on any_grid<G>; no user specialization needed.
+ * value_type unwraps reference_wrapper<T> if iter_cells() yields one.
+ *
+ * Members:
+ *   - `using pos_array_t`              — std::array<coord_type, dim>
+ *   - `using coord_type`               — element type of pos_array_t
+ *   - `using value_type`               — T (reference_wrapper<T> is unwrapped)
+ *   - `static constexpr dim`           — number of spatial dimensions
+ *   - `static constexpr is_extendible` — true when coord_type is signed
+ *   - `static constexpr has_coverage`  — true when the grid satisfies tree_based_grid
+ */
+export template <any_grid G>
+struct grid_trait {
+    using pos_array_t = std::ranges::range_value_t<decltype(std::declval<const G&>().iter_pos())>;
+    using coord_type  = typename pos_array_t::value_type;
+
+    static constexpr std::size_t dim = std::tuple_size_v<pos_array_t>;
+
+    // range_value_t removes const& but leaves reference_wrapper intact;
+    // unwrap_ref_t then strips reference_wrapper<T> → T.
+    using value_type =
+        detail::unwrap_ref_t<std::ranges::range_value_t<decltype(std::declval<const G&>().iter_cells())>>;
+
+    static constexpr bool is_extendible = extendible_grid<G>;
+    static constexpr bool has_coverage  = tree_based_grid<G>;
+};
+
+}  // namespace epix::ext::grid
