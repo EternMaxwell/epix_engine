@@ -1,0 +1,737 @@
+﻿export module epix.extension.grid_gpu:svo;
+
+import std;
+import epix.extension.grid;
+
+// Bring fixed-width integer types into scope (MSVC only exports them under std::)
+using std::int32_t;
+using std::int64_t;
+using std::size_t;
+using std::uint32_t;
+using std::uint64_t;
+
+// ============================================================
+// SvoBuffer 锟?Laine & Karras 2010-style flat sparse voxel tree
+//             for N-dimensional grids (Dim = 1, 2, 3)
+//
+// The approach serialises any tree_extendible_grid or tree_grid by
+// walking the public API only (iter_pos / count / coverage).
+// An independent internal tree is built from the occupied positions,
+// then serialised to a flat uint32 buffer.
+//
+// ---- Buffer layout (uint32 words) ----
+//
+//   [0]              : header word
+//                       bits  [7:0]  = Dim
+//                       bits [15:8]  = depth (number of tree levels)
+//                       bits [23:16] = child_per_node (= ChildCount^Dim)
+//                       bits [31:24] = reserved
+//   [1]              : data_count  (number of occupied cells)
+//   [2 .. 2+Dim-1]   : origin[i] reinterpreted as uint32
+//   [2+Dim ..]       : node pool, root descriptor first (DFS pre-order)
+//
+// ---- Node descriptor layout (1 uint32 per interior node) ----
+//
+//   bits [0         .. cpn-1]:     valid_mask  锟?which of the cpn children exist
+//   bits [cpn       .. 2*cpn-1]:   leaf_mask   锟?which valid children are leaves
+//   bits [2*cpn     .. 31]:        child_offset 锟?1 always (child block is right after
+//                                                  the descriptor word)
+//
+// ---- Child block (cpn slots, densely packed for valid children only) ----
+//   Slot for child i: slot = child_block_base[popcount(valid_mask & ((1<<i)-1))]
+//   Leaf  slot 锟?DATA INDEX (ordinal in CPU iter_pos/iter_cells sequence)
+//   Inner slot 锟?absolute word index of child's node descriptor in the pool
+//
+// ---- Coordinate / child-index convention ----
+//   Coverage = ChildCount^depth per axis.
+//   Origin stored in buffer; rel[axis] = coord[axis] - origin[axis]
+//   At level L (root=0), stride = ChildCount^(depth-1-L)
+//   digit[axis] = (rel[axis] / stride) % ChildCount
+//   flat_child_index (row-major, axis 0 is MSB):
+//     idx = 0; for axis in [0,Dim): idx = idx*ChildCount + digit[axis]
+// ============================================================
+
+namespace epix::ext::grid_gpu {
+
+// -------------------------------------------------------
+// Public types
+// -------------------------------------------------------
+
+/// Decoded header fields from an SvoBuffer.
+export struct SvoHeader {
+    uint32_t dim;
+    uint32_t depth;
+    uint32_t child_per_node;
+    uint32_t data_count;
+};
+
+/**
+ * @brief Flat single-buffer Sparse Voxel Tree ready for GPU upload.
+ *
+ * Produced by svo_upload() from any tree grid.  Upload words.data()
+ * (byte_size() bytes) to a GPU storage buffer or ByteAddressBuffer.
+ *
+ * The DATA INDEX in leaf slots is the 0-based ordinal of that cell in the
+ * grid's iter_pos() / iter_cells() sequence (matches m_data[index] on CPU).
+ */
+export struct SvoBuffer {
+    std::vector<uint32_t> words;
+
+    SvoHeader header() const noexcept {
+        if (words.size() < 2) return {};
+        uint32_t h = words[0];
+        return {
+            .dim            = (h) & 0xFFu,
+            .depth          = (h >> 8u) & 0xFFu,
+            .child_per_node = (h >> 16u) & 0xFFu,
+            .data_count     = words[1],
+        };
+    }
+
+    std::size_t size() const noexcept { return words.size(); }
+    std::size_t byte_size() const noexcept { return words.size() * sizeof(uint32_t); }
+    const uint32_t* data() const noexcept { return words.data(); }
+};
+
+// -------------------------------------------------------
+// Embedded Slang shader library source
+// -------------------------------------------------------
+
+/**
+ * @brief Slang source for the GPU-side SVO traversal library.
+ *
+ * This source declares `module "epix/ext/grid/svo"` so other Slang shaders can do:
+ *   import epix.ext.grid.svo;
+ * and then use SvoGrid1D, SvoGrid2D, or SvoGrid3D.
+ *
+ * Register with the shader cache via:
+ *   Shader::from_slang(std::string(kSvoGridSlangSource), "embedded://epix/shaders/grid/svo.slang")
+ */
+export constexpr std::string_view kSvoGridSlangSource = R"slang(
+// epix.ext.grid.svo 锟?GPU-side SVO traversal for sparse voxel trees
+// Companion to epix.extension.grid_gpu (C++ module).
+//
+// Register the SvoBuffer produced by svo_upload() as a StructuredBuffer<uint>
+// and use the SvoGrid1D / SvoGrid2D / SvoGrid3D structs for lookups.
+//
+// Declares module "epix/ext/grid/svo" so other Slang shaders can import it:
+//   import epix.ext.grid.svo;
+
+module "epix/ext/grid/svo";
+
+// ---- Buffer layout (uint32 words, mirrors SvoBuffer::words) ----
+//   [0]             : header = dim(8b) | depth(8b) | cpn(8b) | reserved(8b)
+//   [1]             : data_count
+//   [2 .. 2+Dim-1]  : origin[i] (bit-cast uint32; int32 for signed, uint32 for fixed grids)
+//   [2+Dim ..]      : node pool (root descriptor first, DFS pre-order)
+//
+// ---- Node descriptor (1 uint32) ----
+//   bits [0..cpn-1]     : valid_mask
+//   bits [cpn..2*cpn-1] : leaf_mask
+//   bits [2*cpn..31]    : child_offset (always 1; child block is immediately after descriptor)
+//
+// ---- Child block (valid_count compact slots) ----
+//   Slot for child i = child_block_base[popcount(valid_mask & ((1<<i)-1))]
+//   Leaf  slot 锟?DATA INDEX into the parallel user data buffer
+//   Inner slot 锟?absolute word index of child descriptor in the pool
+//
+// ---- Coordinate convention (ChildCount = 2 for all structs below) ----
+//   rel[axis] = coord[axis] - origin[axis]
+//   stride at level L = 2^(depth-1-L)
+//   digit[axis] = (rel[axis] >> (depth-1-L)) & 1
+//   flat_child_index (row-major, axis 0 MSB):
+//     idx = 0; for axis in [0,Dim): idx = idx*2 + digit[axis]
+
+namespace epix::ext::grid {
+
+// ============================================================
+// Shared helpers
+// ============================================================
+
+uint svo_popcount_below(uint mask, uint i)
+{
+    return countbits(mask & ((1u << i) - 1u));
+}
+
+void svo_decode_node(uint word, uint cpn, out uint valid_mask, out uint leaf_mask, out uint child_offset)
+{
+    valid_mask   = word & ((1u << cpn) - 1u);
+    leaf_mask    = (word >> cpn) & ((1u << cpn) - 1u);
+    child_offset = word >> (2u * cpn);
+}
+
+// ============================================================
+// SvoGrid1D 锟?1-D (ChildCount=2, cpn=2)
+// ============================================================
+
+public struct SvoGrid1D
+{
+    public StructuredBuffer<uint> buf;
+
+    public uint depth()          { return (buf[0] >> 8u) & 0xFFu; }
+    public uint child_per_node() { return (buf[0] >> 16u) & 0xFFu; }
+    public uint data_count()     { return buf[1]; }
+    public int  origin_x()       { return int(buf[2]); }
+    public uint pool_base()      { return 3u; }  // 2+Dim = 3
+
+    /// Returns the DATA INDEX for pos_x, or -1 if absent.
+    public int lookup(int pos_x)
+    {
+        uint d   = depth();
+        uint cpn = child_per_node();
+        if (d == 0u) return -1;
+
+        uint rel_x = uint(pos_x - origin_x());
+        uint cov   = 1u << d;
+        if (rel_x >= cov) return -1;
+
+        uint node_idx = pool_base();
+        for (uint level = 0u; level < d; ++level)
+        {
+            uint ci   = (rel_x >> (d - level - 1u)) & 1u;
+            uint word = buf[node_idx];
+            uint valid_mask, leaf_mask, child_offset;
+            svo_decode_node(word, cpn, valid_mask, leaf_mask, child_offset);
+
+            if ((valid_mask & (1u << ci)) == 0u) return -1;
+
+            uint slot_pos = node_idx + child_offset + svo_popcount_below(valid_mask, ci);
+            if ((leaf_mask & (1u << ci)) != 0u) return int(buf[slot_pos]);
+            node_idx = buf[slot_pos];
+        }
+        return -1;
+    }
+
+    public bool contains(int pos_x) { return lookup(pos_x) >= 0; }
+};
+
+// ============================================================
+// SvoGrid2D 锟?2-D (ChildCount=2, cpn=4)
+// ============================================================
+
+public struct SvoGrid2D
+{
+    public StructuredBuffer<uint> buf;
+
+    public uint depth()          { return (buf[0] >> 8u) & 0xFFu; }
+    public uint child_per_node() { return (buf[0] >> 16u) & 0xFFu; }
+    public uint data_count()     { return buf[1]; }
+    public int  origin_x()       { return int(buf[2]); }
+    public int  origin_y()       { return int(buf[3]); }
+    public uint pool_base()      { return 4u; }  // 2+Dim = 4
+
+    /// Returns the DATA INDEX for (x,y), or -1 if absent.
+    public int lookup(int2 pos)
+    {
+        uint d   = depth();
+        uint cpn = child_per_node();
+        if (d == 0u) return -1;
+
+        uint rel_x = uint(pos.x - origin_x());
+        uint rel_y = uint(pos.y - origin_y());
+        uint cov   = 1u << d;
+        if (rel_x >= cov || rel_y >= cov) return -1;
+
+        uint node_idx = pool_base();
+        for (uint level = 0u; level < d; ++level)
+        {
+            uint shift = d - level - 1u;
+            uint ci    = (((rel_x >> shift) & 1u) << 1u) | ((rel_y >> shift) & 1u);
+
+            uint word = buf[node_idx];
+            uint valid_mask, leaf_mask, child_offset;
+            svo_decode_node(word, cpn, valid_mask, leaf_mask, child_offset);
+
+            if ((valid_mask & (1u << ci)) == 0u) return -1;
+
+            uint slot_pos = node_idx + child_offset + svo_popcount_below(valid_mask, ci);
+            if ((leaf_mask & (1u << ci)) != 0u) return int(buf[slot_pos]);
+            node_idx = buf[slot_pos];
+        }
+        return -1;
+    }
+
+    public bool contains(int2 pos) { return lookup(pos) >= 0; }
+};
+
+// ============================================================
+// SvoGrid3D 锟?3-D (ChildCount=2, cpn=8)
+// ============================================================
+
+public struct SvoGrid3D
+{
+    public StructuredBuffer<uint> buf;
+
+    public uint depth()          { return (buf[0] >> 8u) & 0xFFu; }
+    public uint child_per_node() { return (buf[0] >> 16u) & 0xFFu; }
+    public uint data_count()     { return buf[1]; }
+    public int  origin_x()       { return int(buf[2]); }
+    public int  origin_y()       { return int(buf[3]); }
+    public int  origin_z()       { return int(buf[4]); }
+    public uint pool_base()      { return 5u; }  // 2+Dim = 5
+
+    /// Returns the DATA INDEX for (x,y,z), or -1 if absent.
+    public int lookup(int3 pos)
+    {
+        uint d   = depth();
+        uint cpn = child_per_node();
+        if (d == 0u) return -1;
+
+        uint rel_x = uint(pos.x - origin_x());
+        uint rel_y = uint(pos.y - origin_y());
+        uint rel_z = uint(pos.z - origin_z());
+        uint cov   = 1u << d;
+        if (rel_x >= cov || rel_y >= cov || rel_z >= cov) return -1;
+
+        uint node_idx = pool_base();
+        for (uint level = 0u; level < d; ++level)
+        {
+            uint shift = d - level - 1u;
+            uint ci    = (((rel_x >> shift) & 1u) << 2u)
+                       | (((rel_y >> shift) & 1u) << 1u)
+                       |  ((rel_z >> shift) & 1u);
+
+            uint word = buf[node_idx];
+            uint valid_mask, leaf_mask, child_offset;
+            svo_decode_node(word, cpn, valid_mask, leaf_mask, child_offset);
+
+            if ((valid_mask & (1u << ci)) == 0u) return -1;
+
+            uint slot_pos = node_idx + child_offset + svo_popcount_below(valid_mask, ci);
+            if ((leaf_mask & (1u << ci)) != 0u) return int(buf[slot_pos]);
+            node_idx = buf[slot_pos];
+        }
+        return -1;
+    }
+
+    public bool contains(int3 pos) { return lookup(pos) >= 0; }
+};
+
+}  // namespace epix::ext::grid
+)slang";
+
+// -------------------------------------------------------
+// Internal implementation
+// -------------------------------------------------------
+namespace detail {
+
+static constexpr uint32_t SVO_EMPTY = 0xFFFF'FFFFu;
+
+// child_per_node = ChildCount^Dim at compile time
+template <std::size_t Dim, std::size_t ChildCount>
+inline constexpr uint32_t cpn_v = [] {
+    uint32_t r = 1;
+    for (std::size_t i = 0; i < Dim; ++i) r *= static_cast<uint32_t>(ChildCount);
+    return r;
+}();
+
+// popcount of bits below position i
+inline uint32_t popcount_below(uint32_t mask, uint32_t i) noexcept {
+    return static_cast<uint32_t>(std::popcount(mask & ((1u << i) - 1u)));
+}
+
+// Build one node descriptor word
+inline uint32_t make_descriptor(uint32_t valid, uint32_t leaf, uint32_t offset, uint32_t cpn) noexcept {
+    return valid | (leaf << cpn) | (offset << (2u * cpn));
+}
+
+// -------------------------------------------------------
+// Builder tree (built from occupied positions via public API)
+// -------------------------------------------------------
+
+struct BuildNode {
+    std::vector<uint32_t> children;  // size = cpn; SVO_EMPTY = absent slot
+    explicit BuildNode(uint32_t cpn) : children(cpn, SVO_EMPTY) {}
+};
+
+struct BuildTree {
+    uint32_t cpn;
+    uint32_t depth;
+    uint32_t child_count;  // per-axis branching = ChildCount
+    std::vector<BuildNode> nodes;
+
+    BuildTree(uint32_t cpn_, uint32_t depth_, uint32_t child_count_)
+        : cpn(cpn_), depth(depth_), child_count(child_count_) {
+        nodes.emplace_back(cpn);  // root at index 0
+    }
+
+    uint32_t pow_cc(uint32_t exp) const noexcept {
+        uint32_t r = 1;
+        for (uint32_t i = 0; i < exp; ++i) r *= child_count;
+        return r;
+    }
+
+    template <std::size_t Dim>
+    uint32_t flat_child_idx(const std::array<uint32_t, Dim>& rel, uint32_t stride) const noexcept {
+        uint32_t idx = 0;
+        for (std::size_t axis = 0; axis < Dim; ++axis) {
+            uint32_t digit = (rel[axis] / stride) % child_count;
+            idx            = idx * child_count + digit;
+        }
+        return idx;
+    }
+
+    template <std::size_t Dim>
+    void insert(const std::array<uint32_t, Dim>& rel, uint32_t data_index) {
+        uint32_t cur = 0;
+        for (uint32_t level = 0; level < depth; ++level) {
+            uint32_t stride = pow_cc(depth - level - 1u);
+            uint32_t ci     = flat_child_idx<Dim>(rel, stride);
+
+            if (level + 1u == depth) {
+                // Parent-of-leaves level: slot holds data index
+                nodes[cur].children[ci] = data_index;
+            } else {
+                uint32_t& slot = nodes[cur].children[ci];
+                if (slot == SVO_EMPTY) {
+                    slot = static_cast<uint32_t>(nodes.size());
+                    nodes.emplace_back(cpn);
+                }
+                cur = slot;
+            }
+        }
+    }
+
+    // DFS serialise into out[].  Returns absolute word index of the descriptor written.
+    uint32_t serialize(std::vector<uint32_t>& out, uint32_t node_idx, uint32_t level) {
+        const BuildNode& node       = nodes[node_idx];
+        const bool parent_of_leaves = (level + 1u == depth);
+
+        uint32_t valid_mask = 0u;
+        uint32_t leaf_mask  = 0u;
+        for (uint32_t i = 0; i < cpn; ++i) {
+            if (node.children[i] != SVO_EMPTY) {
+                valid_mask |= (1u << i);
+                if (parent_of_leaves) leaf_mask |= (1u << i);
+            }
+        }
+
+        uint32_t valid_count = static_cast<uint32_t>(std::popcount(valid_mask));
+
+        // Allocate: 1 descriptor word + valid_count child slots (contiguous)
+        uint32_t desc_pos      = static_cast<uint32_t>(out.size());
+        uint32_t child_blk_pos = desc_pos + 1u;
+        out.resize(out.size() + 1u + valid_count, 0u);
+
+        // child_offset = 1 (child block is always right after descriptor)
+        out[desc_pos] = make_descriptor(valid_mask, leaf_mask, 1u, cpn);
+
+        // Collect interior children for post-recursion fixup
+        struct Pending {
+            uint32_t slot_pos;
+            uint32_t child_node;
+        };
+        std::vector<Pending> pending;
+
+        for (uint32_t i = 0; i < cpn; ++i) {
+            if (!((valid_mask >> i) & 1u)) continue;
+            uint32_t slot_pos = child_blk_pos + popcount_below(valid_mask, i);
+            if (parent_of_leaves) {
+                out[slot_pos] = node.children[i];  // data index
+            } else {
+                pending.push_back({slot_pos, node.children[i]});
+            }
+        }
+
+        // Recurse 锟?must be done after the current block is fully allocated
+        for (auto& p : pending) {
+            uint32_t child_desc_pos = serialize(out, p.child_node, level + 1u);
+            out[p.slot_pos]         = child_desc_pos;  // absolute word index
+        }
+
+        return desc_pos;
+    }
+};
+
+// -------------------------------------------------------
+// Header helpers
+// -------------------------------------------------------
+
+template <std::size_t Dim>
+void push_header(std::vector<uint32_t>& words,
+                 uint32_t depth,
+                 uint32_t cpn,
+                 uint32_t data_count,
+                 const std::array<int32_t, Dim>& origin) {
+    uint32_t h = (static_cast<uint32_t>(Dim) & 0xFFu) | ((depth & 0xFFu) << 8u) | ((cpn & 0xFFu) << 16u);
+    words.push_back(h);
+    words.push_back(data_count);
+    for (std::size_t i = 0; i < Dim; ++i) words.push_back(static_cast<uint32_t>(origin[i]));
+}
+
+template <std::size_t Dim>
+void push_header(std::vector<uint32_t>& words,
+                 uint32_t depth,
+                 uint32_t cpn,
+                 uint32_t data_count,
+                 const std::array<uint32_t, Dim>& origin) {
+    uint32_t h = (static_cast<uint32_t>(Dim) & 0xFFu) | ((depth & 0xFFu) << 8u) | ((cpn & 0xFFu) << 16u);
+    words.push_back(h);
+    words.push_back(data_count);
+    for (std::size_t i = 0; i < Dim; ++i) words.push_back(origin[i]);
+}
+
+// -------------------------------------------------------
+// Core serialise helper
+// -------------------------------------------------------
+
+template <std::size_t Dim, std::size_t ChildCount>
+void build_and_serialize(std::vector<uint32_t>& words,
+                         uint32_t depth,
+                         const std::vector<std::pair<std::array<uint32_t, Dim>, uint32_t>>& cells) {
+    constexpr uint32_t CPN = cpn_v<Dim, ChildCount>;
+    if (cells.empty()) return;
+    BuildTree tree(CPN, depth, static_cast<uint32_t>(ChildCount));
+    for (auto& [rel, idx] : cells) tree.insert<Dim>(rel, idx);
+    tree.serialize(words, 0u, 0u);
+}
+
+// -------------------------------------------------------
+// Depth computation from a coverage value
+// -------------------------------------------------------
+inline uint32_t depth_from_coverage(uint32_t cov, uint32_t child_count) noexcept {
+    if (cov <= 1u) return 1u;
+    uint32_t depth = 0u;
+    uint32_t c     = 1u;
+    while (c < cov) {
+        c *= child_count;
+        ++depth;
+    }
+    return depth;
+}
+
+// -------------------------------------------------------
+// Compile-time-CC upload helpers (dispatch targets)
+// -------------------------------------------------------
+
+template <std::size_t CC, std::size_t Dim, typename CoordT, epix::ext::grid::tree_based_grid G>
+    requires(Dim >= 1 && Dim <= 3)
+SvoBuffer svo_upload_tree_cc(const G& grid) {
+    constexpr uint32_t CPN = cpn_v<Dim, CC>;
+    SvoBuffer buf;
+    const uint32_t n = static_cast<uint32_t>(grid.count());
+
+    if (n == 0) {
+        std::array<CoordT, Dim> zero_origin{};
+        push_header<Dim>(buf.words, 0u, CPN, 0u, zero_origin);
+        return buf;
+    }
+
+    std::array<CoordT, Dim> origin;
+    {
+        bool first = true;
+        for (const auto& pos : grid.iter_pos()) {
+            if (first) {
+                origin = pos;
+                first  = false;
+                continue;
+            }
+            for (std::size_t axis = 0; axis < Dim; ++axis) origin[axis] = std::min(origin[axis], pos[axis]);
+        }
+    }
+
+    const uint32_t depth = depth_from_coverage(grid.coverage(), static_cast<uint32_t>(CC));
+
+    std::vector<std::pair<std::array<uint32_t, Dim>, uint32_t>> cells;
+    cells.reserve(n);
+    uint32_t idx = 0;
+    for (const auto& pos : grid.iter_pos()) {
+        std::array<uint32_t, Dim> rel;
+        for (std::size_t axis = 0; axis < Dim; ++axis) rel[axis] = static_cast<uint32_t>(pos[axis] - origin[axis]);
+        cells.push_back({rel, idx++});
+    }
+
+    push_header<Dim>(buf.words, depth, CPN, n, origin);
+    build_and_serialize<Dim, CC>(buf.words, depth, cells);
+    return buf;
+}
+
+template <std::size_t CC, std::size_t Dim, typename CoordT, epix::ext::grid::any_grid G>
+    requires(!epix::ext::grid::tree_based_grid<G> && Dim >= 1 && Dim <= 3)
+SvoBuffer svo_upload_flat_cc(const G& grid) {
+    constexpr uint32_t CPN = cpn_v<Dim, CC>;
+    SvoBuffer buf;
+    const uint32_t n = static_cast<uint32_t>(grid.count());
+
+    if (n == 0) {
+        std::array<CoordT, Dim> zero_origin{};
+        push_header<Dim>(buf.words, 0u, CPN, 0u, zero_origin);
+        return buf;
+    }
+
+    std::array<CoordT, Dim> origin;
+    {
+        bool first = true;
+        for (const auto& pos : grid.iter_pos()) {
+            if (first) {
+                origin = pos;
+                first  = false;
+                continue;
+            }
+            for (std::size_t axis = 0; axis < Dim; ++axis) origin[axis] = std::min(origin[axis], pos[axis]);
+        }
+    }
+
+    std::vector<std::pair<std::array<uint32_t, Dim>, uint32_t>> cells;
+    cells.reserve(n);
+    uint32_t max_rel = 0u, idx = 0;
+    for (const auto& pos : grid.iter_pos()) {
+        std::array<uint32_t, Dim> rel;
+        for (std::size_t axis = 0; axis < Dim; ++axis) {
+            rel[axis] = static_cast<uint32_t>(pos[axis] - origin[axis]);
+            max_rel   = std::max(max_rel, rel[axis]);
+        }
+        cells.push_back({rel, idx++});
+    }
+
+    const uint32_t depth = depth_from_coverage(max_rel + 1u, static_cast<uint32_t>(CC));
+    push_header<Dim>(buf.words, depth, CPN, n, origin);
+    build_and_serialize<Dim, CC>(buf.words, depth, cells);
+    return buf;
+}
+
+}  // namespace detail
+
+// -------------------------------------------------------
+// GPU upload configuration
+// -------------------------------------------------------
+
+/**
+ * @brief Detailed error returned by svo_upload().
+ *
+ * Internally holds a std::variant of public sub-structs, one per error category.
+ * Use is<E>() to check the active type, get<E>() to access it, or message() for
+ * a human-readable string.
+ *
+ * Example:
+ *   if (auto e = err.get<SvoUploadError::InvalidChildCount>())
+ *       std::println("bad child_count: {}", e->provided);
+ */
+export struct SvoUploadError {
+    // ---- error sub-types ------------------------------------------------
+
+    /** @brief SvoConfig::child_count was not one of the supported values. */
+    struct InvalidChildCount {
+        std::size_t provided; /**< The value that was supplied. */
+
+        std::string message() const {
+            return "svo_upload: unsupported child_count " + std::to_string(provided) + " (must be 2, 4, or 8)";
+        }
+    };
+
+    // ---- variant --------------------------------------------------------
+
+    using Data = std::variant<InvalidChildCount>;
+
+    Data data;
+
+    // ---- constructors ---------------------------------------------------
+
+    template <typename E>
+        requires std::constructible_from<Data, E>
+    explicit SvoUploadError(E&& e) : data(std::forward<E>(e)) {}
+
+    // ---- query helpers --------------------------------------------------
+
+    /** @brief Returns true when the active error type is E. */
+    template <typename E>
+    bool is() const noexcept {
+        return std::holds_alternative<E>(data);
+    }
+
+    /**
+     * @brief Returns a pointer to the active error value if it is of type E,
+     *        or nullptr otherwise.
+     */
+    template <typename E>
+    const E* get() const noexcept {
+        return std::get_if<E>(&data);
+    }
+
+    template <typename E>
+    E* get() noexcept {
+        return std::get_if<E>(&data);
+    }
+
+    /** @brief Human-readable description dispatched through the variant. */
+    std::string message() const {
+        return std::visit([](const auto& e) { return e.message(); }, data);
+    }
+};
+
+/**
+ * @brief Configuration for the GPU-side SVO produced by svo_upload().
+ *
+ * The GPU SVO structure is independent of the CPU grid's storage — it can use
+ * any branching factor regardless of how data is organised on the CPU.
+ * Supported child_count values: 2, 4, 8.
+ */
+export struct SvoConfig {
+    /** @brief Per-axis branching factor for the GPU tree (default: 2 = binary tree). */
+    std::size_t child_count = 2;
+};
+
+// -------------------------------------------------------
+// Public API
+// -------------------------------------------------------
+
+/**
+ * @brief Serialize any tree-based grid (has coverage()) into a flat SvoBuffer.
+ *
+ * @tparam G      Grid type satisfying tree_based_grid.
+ * @param  grid   Source grid.
+ * @param  config GPU tree configuration (default: binary tree with child_count=2).
+ * @return SvoBuffer on success, or SvoUploadError (kind=InvalidChildCount) for unsupported child_count.
+ *
+ * DATA INDEX in each leaf = 0-based ordinal of that cell in grid.iter_pos().
+ */
+export template <epix::ext::grid::tree_based_grid G>
+    requires(epix::ext::grid::grid_trait<G>::dim >= 1 && epix::ext::grid::grid_trait<G>::dim <= 3)
+std::expected<SvoBuffer, SvoUploadError> svo_upload(const G& grid, const SvoConfig& config = {}) {
+    using Trait               = epix::ext::grid::grid_trait<G>;
+    constexpr std::size_t Dim = Trait::dim;
+    using CoordT              = typename Trait::coord_type;
+    switch (config.child_count) {
+        case 2:
+            return detail::svo_upload_tree_cc<2, Dim, CoordT>(grid);
+        case 4:
+            return detail::svo_upload_tree_cc<4, Dim, CoordT>(grid);
+        case 8:
+            return detail::svo_upload_tree_cc<8, Dim, CoordT>(grid);
+        default:
+            return std::unexpected(SvoUploadError{SvoUploadError::InvalidChildCount{config.child_count}});
+    }
+}
+
+/**
+ * @brief Serialize any flat (non-tree) grid into a flat SvoBuffer.
+ *
+ * Works for dense_grid, sparse_grid, dense_extendible_grid, packed_grid, and
+ * any other grid type without coverage(). Depth is computed from the occupied
+ * bounding box.
+ *
+ * @tparam G      Grid type satisfying any_grid but not tree_based_grid.
+ * @param  grid   Source grid.
+ * @param  config GPU tree configuration (default: binary tree with child_count=2).
+ * @return SvoBuffer on success, or SvoUploadError (kind=InvalidChildCount) for unsupported child_count.
+ */
+export template <epix::ext::grid::any_grid G>
+    requires(!epix::ext::grid::tree_based_grid<G> && epix::ext::grid::grid_trait<G>::dim >= 1 &&
+             epix::ext::grid::grid_trait<G>::dim <= 3)
+std::expected<SvoBuffer, SvoUploadError> svo_upload(const G& grid, const SvoConfig& config = {}) {
+    using Trait               = epix::ext::grid::grid_trait<G>;
+    constexpr std::size_t Dim = Trait::dim;
+    using CoordT              = typename Trait::coord_type;
+    switch (config.child_count) {
+        case 2:
+            return detail::svo_upload_flat_cc<2, Dim, CoordT>(grid);
+        case 4:
+            return detail::svo_upload_flat_cc<4, Dim, CoordT>(grid);
+        case 8:
+            return detail::svo_upload_flat_cc<8, Dim, CoordT>(grid);
+        default:
+            return std::unexpected(SvoUploadError{SvoUploadError::InvalidChildCount{config.child_count}});
+    }
+}
+
+}  // namespace epix::ext::grid_gpu
