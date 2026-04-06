@@ -70,6 +70,3 @@
 [submodule "libs/taskflow"]
 	path = libs/taskflow
 	url = https://github.com/taskflow/taskflow.git
-[submodule "reflect-cpp"]
-	path = reflect-cpp
-	url = https://github.com/getml/reflect-cpp.git
