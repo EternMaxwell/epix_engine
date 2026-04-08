@@ -188,20 +188,37 @@ void AssetServer::handle_internal_events(core::ParamSet<core::World&, core::Res<
                         // Collect untyped failure event
                         untyped_failures.push_back(UntypedAssetLoadFailedEvent{
                             failed.id, failed.path,
-                            std::visit(utils::visitor{
-                                           [](const load_error::RequestHandleMismatch& e)
-                                               -> std::variant<std::string, std::exception_ptr> {
-                                               return std::string("Request handle type mismatch for ") +
-                                                      e.path.string();
-                                           },
-                                           [](const load_error::MissingAssetLoader& e)
-                                               -> std::variant<std::string, std::exception_ptr> {
-                                               return std::string("Missing asset loader for ") + e.path.string();
-                                           },
-                                           [](const load_error::AssetLoaderException& e)
-                                               -> std::variant<std::string, std::exception_ptr> { return e.exception; },
-                                       },
-                                       failed.error)});
+                            std::visit(
+                                utils::visitor{
+                                    [](const load_error::RequestHandleMismatch& e)
+                                        -> std::variant<std::string, std::exception_ptr> {
+                                        return std::format(
+                                            "Type mismatch for '{}': requested '{}' but loader '{}' produces '{}'",
+                                            e.path.string(), e.requested_type.short_name(), e.loader_name,
+                                            e.actual_type.short_name());
+                                    },
+                                    [](const load_error::MissingAssetLoader& e)
+                                        -> std::variant<std::string, std::exception_ptr> {
+                                        if (!e.extension.empty()) {
+                                            return std::format("No loader for '{}' (extension(s): [{}])",
+                                                               e.path.string(),
+                                                               std::accumulate(std::next(e.extension.begin()),
+                                                                               e.extension.end(), e.extension.front(),
+                                                                               [](std::string a, const std::string& b) {
+                                                                                   return std::move(a) + ", " + b;
+                                                                               }));
+                                        } else if (e.asset_type) {
+                                            return std::format("No loader for '{}' (asset type: '{}')", e.path.string(),
+                                                               e.asset_type->short_name());
+                                        } else {
+                                            return std::format("No loader for '{}' (unknown extension and type)",
+                                                               e.path.string());
+                                        }
+                                    },
+                                    [](const load_error::AssetLoaderException& e)
+                                        -> std::variant<std::string, std::exception_ptr> { return e.exception; },
+                                },
+                                failed.error)});
 
                         // Dispatch typed failure event
                         auto type_id = failed.id.type;
@@ -211,7 +228,52 @@ void AssetServer::handle_internal_events(core::ParamSet<core::World&, core::Res<
                             it->second(world, index, failed.path, failed.error);
                         }
 
-                        spdlog::error("Asset load failed for {}", failed.path.string());
+                        std::visit(
+                            utils::visitor{
+                                [&](const load_error::RequestHandleMismatch& e) {
+                                    spdlog::error(
+                                        "[asset_server] Asset load failed for '{}': type mismatch — requested '{}' "
+                                        "but loader '{}' produces '{}'",
+                                        failed.path.string(), e.requested_type.short_name(), e.loader_name,
+                                        e.actual_type.short_name());
+                                },
+                                [&](const load_error::MissingAssetLoader& e) {
+                                    if (!e.extension.empty()) {
+                                        spdlog::error(
+                                            "[asset_server] Asset load failed for '{}': no loader registered for "
+                                            "extension(s) [{}]",
+                                            failed.path.string(),
+                                            std::accumulate(std::next(e.extension.begin()), e.extension.end(),
+                                                            e.extension.front(),
+                                                            [](std::string a, const std::string& b) {
+                                                                return std::move(a) + ", " + b;
+                                                            }));
+                                    } else if (e.asset_type) {
+                                        spdlog::error(
+                                            "[asset_server] Asset load failed for '{}': no loader registered for "
+                                            "asset type '{}'",
+                                            failed.path.string(), e.asset_type->short_name());
+                                    } else {
+                                        spdlog::error(
+                                            "[asset_server] Asset load failed for '{}': no loader found (unknown "
+                                            "extension and type)",
+                                            failed.path.string());
+                                    }
+                                },
+                                [&](const load_error::AssetLoaderException& e) {
+                                    std::string what = "(unknown exception)";
+                                    if (e.exception) {
+                                        try {
+                                            std::rethrow_exception(e.exception);
+                                        } catch (const std::exception& ex) {
+                                            what = ex.what();
+                                        } catch (...) {}
+                                    }
+                                    spdlog::error("[asset_server] Asset load failed for '{}' (loader '{}'): {}",
+                                                  failed.path.string(), e.loader_name, what);
+                                },
+                            },
+                            failed.error);
                     },
                 },
                 *event);
@@ -545,7 +607,7 @@ void AssetServer::load_internal(std::optional<UntypedHandle> input_handle,
     if (load_result) {
         send_asset_event(InternalAssetEvent{internal_asset_event::Loaded{*asset_id, std::move(*load_result)}});
     } else {
-        spdlog::error("Asset load failed: {}", path.string());
+        // Detailed error is logged later in handle_internal_events when the Failed event is processed.
         send_asset_event(InternalAssetEvent{internal_asset_event::Failed{*asset_id, path, load_result.error()}});
     }
 }
