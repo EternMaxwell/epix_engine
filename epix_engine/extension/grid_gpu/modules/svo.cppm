@@ -11,7 +11,7 @@ using std::uint32_t;
 using std::uint64_t;
 
 // ============================================================
-// SvoBuffer 锟?Laine & Karras 2010-style flat sparse voxel tree
+// SvoBuffer - Laine & Karras 2010-style flat sparse voxel tree
 //             for N-dimensional grids (Dim = 1, 2, 3)
 //
 // The approach serialises any tree_extendible_grid or tree_grid by
@@ -32,15 +32,15 @@ using std::uint64_t;
 //
 // ---- Node descriptor layout (1 uint32 per interior node) ----
 //
-//   bits [0         .. cpn-1]:     valid_mask  锟?which of the cpn children exist
-//   bits [cpn       .. 2*cpn-1]:   leaf_mask   锟?which valid children are leaves
-//   bits [2*cpn     .. 31]:        child_offset 锟?1 always (child block is right after
+//   bits [0         .. cpn-1]:     valid_mask   -- which of the cpn children exist
+//   bits [cpn       .. 2*cpn-1]:   leaf_mask    -- which valid children are leaves
+//   bits [2*cpn     .. 31]:        child_offset -- 1 always (child block is right after
 //                                                  the descriptor word)
 //
 // ---- Child block (cpn slots, densely packed for valid children only) ----
 //   Slot for child i: slot = child_block_base[popcount(valid_mask & ((1<<i)-1))]
-//   Leaf  slot 锟?DATA INDEX (ordinal in CPU iter_pos/iter_cells sequence)
-//   Inner slot 锟?absolute word index of child's node descriptor in the pool
+//   Leaf  slot = DATA INDEX (ordinal in CPU iter_pos/iter_cells sequence)
+//   Inner slot = absolute word index of child's node descriptor in the pool
 //
 // ---- Coordinate / child-index convention ----
 //   Coverage = ChildCount^depth per axis.
@@ -108,7 +108,7 @@ export struct SvoBuffer {
  *   Shader::from_slang(std::string(kSvoGridSlangSource), "embedded://epix/shaders/grid/svo.slang")
  */
 export constexpr std::string_view kSvoGridSlangSource = R"slang(
-// epix.ext.grid.svo 锟?GPU-side SVO traversal for sparse voxel trees
+// epix.ext.grid.svo - GPU-side SVO traversal for sparse voxel trees
 // Companion to epix.extension.grid_gpu (C++ module).
 //
 // Register the SvoBuffer produced by svo_upload() as a StructuredBuffer<uint>
@@ -132,8 +132,8 @@ module "epix/ext/grid/svo";
 //
 // ---- Child block (valid_count compact slots) ----
 //   Slot for child i = child_block_base[popcount(valid_mask & ((1<<i)-1))]
-//   Leaf  slot 锟?DATA INDEX into the parallel user data buffer
-//   Inner slot 锟?absolute word index of child descriptor in the pool
+//   Leaf  slot = DATA INDEX into the parallel user data buffer
+//   Inner slot = absolute word index of child descriptor in the pool
 //
 // ---- Coordinate convention (ChildCount = 2 for all structs below) ----
 //   rel[axis] = coord[axis] - origin[axis]
@@ -161,7 +161,7 @@ void svo_decode_node(uint word, uint cpn, out uint valid_mask, out uint leaf_mas
 }
 
 // ============================================================
-// SvoGrid1D 锟?1-D (ChildCount=2, cpn=2)
+// SvoGrid1D - 1-D (ChildCount=2, cpn=2)
 // ============================================================
 
 public struct SvoGrid1D
@@ -206,7 +206,7 @@ public struct SvoGrid1D
 };
 
 // ============================================================
-// SvoGrid2D 锟?2-D (ChildCount=2, cpn=4)
+// SvoGrid2D - 2-D (ChildCount=2, cpn=4)
 // ============================================================
 
 public struct SvoGrid2D
@@ -255,7 +255,7 @@ public struct SvoGrid2D
 };
 
 // ============================================================
-// SvoGrid3D 锟?3-D (ChildCount=2, cpn=8)
+// SvoGrid3D - 3-D (ChildCount=2, cpn=8)
 // ============================================================
 
 public struct SvoGrid3D
@@ -433,7 +433,7 @@ struct BuildTree {
             }
         }
 
-        // Recurse 锟?must be done after the current block is fully allocated
+        // Recurse -- must be done after the current block is fully allocated
         for (auto& p : pending) {
             uint32_t child_desc_pos = serialize(out, p.child_node, level + 1u);
             out[p.slot_pos]         = child_desc_pos;  // absolute word index
