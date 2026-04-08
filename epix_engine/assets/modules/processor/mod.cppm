@@ -95,6 +95,13 @@ struct ProcessorAssetInfos {
     /** @brief Remove an asset from tracking. Returns the transaction lock if it existed. */
     std::shared_ptr<std::shared_mutex> remove(const AssetPath& asset_path);
 
+    /** @brief Rename an asset in tracking, preserving status and requeueing affected work.
+     *  Matches bevy_asset's ProcessorAssetInfos::rename. */
+    std::optional<std::pair<std::shared_ptr<std::shared_mutex>, std::shared_ptr<std::shared_mutex>>> rename(
+        const AssetPath& old_path,
+        const AssetPath& new_path,
+        utils::Sender<std::pair<AssetSourceId, std::filesystem::path>>& reprocess_sender);
+
     /** @brief Finalize processing for an asset, incorporating the result. */
     void finish_processing(const AssetPath& asset_path,
                            std::expected<ProcessResult, ProcessError>& result,
@@ -107,7 +114,7 @@ struct ProcessorAssetInfos {
 
 /** @brief The current state of processing, including the overall state and the state of all assets.
  *  Matches bevy_asset's ProcessingState. Uses blocking primitives instead of async. */
-export struct ProcessingState {
+struct ProcessingState {
    private:
     mutable utils::RwLock<ProcessorState> m_state{ProcessorState::Initializing};
 
@@ -139,23 +146,49 @@ export struct ProcessingState {
     void wait_until_initialized() const;
     /** @brief Block until processing has finished. */
     void wait_until_finished() const;
+    /** @brief Close all wait channels so blocked receivers wake and exit. */
+    void shutdown();
 };
 
 // ---- AssetProcessorData ----
 
+/** @brief Error when updating the transaction log factory after the processor has started.
+ *  Matches bevy_asset's SetTransactionLogFactoryError. */
+export namespace set_transaction_log_factory_errors {
+struct AlreadyInUse {};
+}  // namespace set_transaction_log_factory_errors
+
+export using SetTransactionLogFactoryError = std::variant<set_transaction_log_factory_errors::AlreadyInUse>;
+
 /** @brief Shared data for the AssetProcessor, accessible across threads.
  *  Matches bevy_asset's AssetProcessorData. */
 export struct AssetProcessorData {
+   private:
     std::shared_ptr<ProcessingState> processing_state;
-    std::shared_ptr<ProcessorTransactionLogFactory> log_factory;
-    std::shared_ptr<ProcessorTransactionLog> log;
+    utils::Mutex<std::optional<std::unique_ptr<ProcessorTransactionLogFactory>>> log_factory;
+    utils::RwLock<std::optional<std::unique_ptr<ProcessorTransactionLog>>> log;
     utils::RwLock<Processors> processors;
-    std::shared_ptr<AssetSourceBuilders> source_builders;
+    std::shared_ptr<AssetSources> sources;
+    struct TaskSenderState {
+        std::optional<utils::Sender<std::pair<AssetSourceId, std::filesystem::path>>> sender;
+        bool shutdown_requested = false;
+    };
+    utils::Mutex<TaskSenderState> task_sender;
 
-    AssetProcessorData();
+    AssetProcessorData(std::shared_ptr<AssetSources> sources, std::shared_ptr<ProcessingState> processing_state);
+    AssetProcessorData(std::shared_ptr<AssetSources> sources,
+                       std::shared_ptr<ProcessingState> processing_state,
+                       std::unique_ptr<ProcessorTransactionLogFactory> log_factory);
 
-    void set_log_factory(std::shared_ptr<ProcessorTransactionLogFactory> factory);
+    friend struct AssetProcessor;
 
+    void set_task_sender(utils::Sender<std::pair<AssetSourceId, std::filesystem::path>> sender) const;
+    void shutdown() const;
+
+   public:
+    std::expected<void, SetTransactionLogFactoryError> set_log_factory(
+        std::unique_ptr<ProcessorTransactionLogFactory> factory) const;
+    ProcessStatus wait_until_processed(const AssetPath& path) const;
     void wait_until_initialized() const;
     void wait_until_finished() const;
     ProcessorState state() const;
@@ -166,22 +199,66 @@ export struct AssetProcessorData {
 /** @brief The main asset processor. Processes assets from source readers into processed writers.
  *  Matches bevy_asset's AssetProcessor. */
 export struct AssetProcessor {
+   private:
     AssetServer server;
     std::shared_ptr<AssetProcessorData> data;
+    bool m_owns_shutdown = true;
 
-    AssetProcessor(const AssetProcessor&)            = default;
-    AssetProcessor(AssetProcessor&&)                 = default;
-    AssetProcessor& operator=(const AssetProcessor&) = default;
-    AssetProcessor& operator=(AssetProcessor&&)      = default;
-
-    /** @brief Construct a new processor. Sets up the internal AssetServer in Processed mode,
-     *  sharing its loaders. Matches bevy_asset's AssetProcessor::new(). */
-    AssetProcessor(std::shared_ptr<AssetProcessorData> data, bool watching_for_changes);
-
-    /** @brief Low-level constructor for reconstructing from component shared_ptrs.
-     *  Used internally by background tasks that recover from weak_ptr captures.
-     *  Normal code should use AssetProcessor(shared_ptr<AssetProcessorData>, bool). */
     AssetProcessor(AssetServer srv, std::shared_ptr<AssetProcessorData> proc_data);
+
+    void initialize() const;
+    void process_asset(const AssetSourceId& source,
+                       const std::filesystem::path& path,
+                       utils::Sender<std::pair<AssetSourceId, std::filesystem::path>> reprocess_sender) const;
+    std::expected<ProcessResult, ProcessError> process_asset_internal(const AssetSource& source,
+                                                                      const AssetPath& asset_path) const;
+    void handle_asset_source_event(const AssetSource& source,
+                                   const AssetSourceEvent& event,
+                                   utils::Sender<std::pair<AssetSourceId, std::filesystem::path>>& sender) const;
+    void handle_added_folder(const AssetSource& source,
+                             const std::filesystem::path& path,
+                             utils::Sender<std::pair<AssetSourceId, std::filesystem::path>>& sender) const;
+    void handle_removed_meta(const AssetSource& source,
+                             const std::filesystem::path& path,
+                             utils::Sender<std::pair<AssetSourceId, std::filesystem::path>>& sender) const;
+    void handle_removed_asset(const AssetSource& source, const std::filesystem::path& path) const;
+    void handle_removed_folder(const AssetSource& source, const std::filesystem::path& path) const;
+    void handle_renamed_asset(const AssetSource& source,
+                              const std::filesystem::path& old_path,
+                              const std::filesystem::path& new_path,
+                              utils::Sender<std::pair<AssetSourceId, std::filesystem::path>>& sender) const;
+    void queue_processing_tasks_for_folder(
+        const AssetSource& source,
+        const std::filesystem::path& folder,
+        utils::Sender<std::pair<AssetSourceId, std::filesystem::path>>& sender) const;
+    void queue_initial_processing_tasks(utils::Sender<std::pair<AssetSourceId, std::filesystem::path>>& sender) const;
+    void spawn_source_change_event_listeners(
+        utils::Sender<std::pair<AssetSourceId, std::filesystem::path>>& sender) const;
+    void execute_processing_tasks(utils::Sender<std::pair<AssetSourceId, std::filesystem::path>> new_task_sender,
+                                  utils::Receiver<std::pair<AssetSourceId, std::filesystem::path>>& receiver) const;
+    void log_begin_processing(const AssetPath& path) const;
+    void log_end_processing(const AssetPath& path) const;
+    void log_unrecoverable() const;
+    std::filesystem::path validate_transaction_log_and_recover() const;
+    void remove_processed_asset_and_meta(const AssetSource& source, const std::filesystem::path& path) const;
+    void clean_empty_processed_ancestor_folders(const AssetSource& source, const std::filesystem::path& path) const;
+    void write_default_meta_file_for_path(const AssetSource& source, const AssetPath& asset_path) const;
+
+   public:
+    AssetProcessor(const AssetProcessor& other);
+    AssetProcessor(AssetProcessor&& other) noexcept;
+    AssetProcessor& operator=(const AssetProcessor& other);
+    AssetProcessor& operator=(AssetProcessor&& other) noexcept;
+    ~AssetProcessor();
+
+    /** @brief Construct a new processor from source builders.
+     *  Matches bevy_asset's AssetProcessor::new(). */
+    AssetProcessor(AssetSourceBuilders& builders, bool watching_for_changes);
+
+    /** @brief Construct a new processor from source builders and an explicit transaction log factory. */
+    AssetProcessor(AssetSourceBuilders& builders,
+                   bool watching_for_changes,
+                   std::unique_ptr<ProcessorTransactionLogFactory> log_factory);
 
     /** @brief Get a reference to the internal AssetServer. */
     const AssetServer& get_server() const;
@@ -251,91 +328,6 @@ export struct AssetProcessor {
      *  Spawns background tasks to initialize and process assets.
      *  Matches bevy_asset's AssetProcessor::start. */
     static void start(core::Res<AssetProcessor> processor);
-
-    /** @brief Initialize the processor: validate logs, recover, and queue initial tasks. */
-    void initialize() const;
-
-    // ---- Processing tasks ----
-
-    /** @brief Process a single asset at the given source + path.
-     *  Matches bevy_asset's process_asset: takes a reprocess_sender to queue dependency tasks. */
-    void process_asset(const AssetSourceId& source,
-                       const std::filesystem::path& path,
-                       utils::Sender<std::pair<AssetSourceId, std::filesystem::path>> reprocess_sender) const;
-
-    /** @brief Internal implementation: process a single asset, returning result or error. */
-    std::expected<ProcessResult, ProcessError> process_asset_internal(const AssetSource& source,
-                                                                      const AssetPath& asset_path) const;
-
-    // ---- Event handling ----
-
-    /** @brief Handle an AssetSourceEvent from a source watcher. */
-    void handle_asset_source_event(const AssetSource& source,
-                                   const AssetSourceEvent& event,
-                                   utils::Sender<std::pair<AssetSourceId, std::filesystem::path>>& sender) const;
-
-    /** @brief Handle a new folder that appeared in a source. Queues processing for all files in the folder. */
-    void handle_added_folder(const AssetSource& source,
-                             const std::filesystem::path& path,
-                             utils::Sender<std::pair<AssetSourceId, std::filesystem::path>>& sender) const;
-
-    /** @brief Handle a removed meta file. */
-    void handle_removed_meta(const AssetSource& source,
-                             const std::filesystem::path& path,
-                             utils::Sender<std::pair<AssetSourceId, std::filesystem::path>>& sender) const;
-
-    /** @brief Handle a removed asset file. */
-    void handle_removed_asset(const AssetSource& source, const std::filesystem::path& path) const;
-
-    /** @brief Handle a removed folder. */
-    void handle_removed_folder(const AssetSource& source, const std::filesystem::path& path) const;
-
-    /** @brief Handle a renamed asset. */
-    void handle_renamed_asset(const AssetSource& source,
-                              const std::filesystem::path& old_path,
-                              const std::filesystem::path& new_path,
-                              utils::Sender<std::pair<AssetSourceId, std::filesystem::path>>& sender) const;
-
-    // ---- Task dispatching ----
-
-    /** @brief Queue processing tasks for all files in a folder. */
-    void queue_processing_tasks_for_folder(
-        const AssetSource& source,
-        const std::filesystem::path& folder,
-        utils::Sender<std::pair<AssetSourceId, std::filesystem::path>>& sender) const;
-
-    /** @brief Queue initial processing tasks for all processed sources. */
-    void queue_initial_processing_tasks(utils::Sender<std::pair<AssetSourceId, std::filesystem::path>>& sender) const;
-
-    /** @brief Spawn background listeners for source change events. */
-    void spawn_source_change_event_listeners(
-        utils::Sender<std::pair<AssetSourceId, std::filesystem::path>>& sender) const;
-
-    /** @brief Execute pending processing tasks from the receiver.
-     *  Takes the new_task_sender so it can be downgraded to WeakSender (matching Bevy's pattern):
-     *  the executor doesn't keep the channel alive, but can upgrade when spawning tasks. */
-    void execute_processing_tasks(utils::Sender<std::pair<AssetSourceId, std::filesystem::path>> new_task_sender,
-                                  utils::Receiver<std::pair<AssetSourceId, std::filesystem::path>>& receiver) const;
-
-    // ---- Logging helpers ----
-
-    void log_begin_processing(const AssetPath& path) const;
-    void log_end_processing(const AssetPath& path) const;
-    void log_unrecoverable() const;
-
-    /** @brief Validate the transaction log and recover from incomplete transactions. */
-    void validate_transaction_log_and_recover() const;
-
-    // ---- File system helpers ----
-
-    /** @brief Remove the processed asset and its meta file from the processed writer. */
-    void remove_processed_asset_and_meta(const AssetSource& source, const std::filesystem::path& path) const;
-
-    /** @brief Clean empty ancestor directories in the processed output. */
-    void clean_empty_processed_ancestor_folders(const AssetSource& source, const std::filesystem::path& path) const;
-
-    /** @brief Write a default meta file for the given path (if the asset has no meta). */
-    void write_default_meta_file_for_path(const AssetSource& source, const AssetPath& asset_path) const;
 };
 
 }  // namespace epix::assets

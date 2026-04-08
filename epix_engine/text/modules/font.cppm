@@ -62,7 +62,7 @@ struct std::hash<epix::assets::AssetId<epix::text::font::Font>> {
 namespace epix::text::font {
 struct FontLoader {
     using Asset = Font;
-    struct Settings : assets::Settings {};
+    struct Settings {};
     using Error = std::exception_ptr;
 
     static std::span<std::string_view> extensions();

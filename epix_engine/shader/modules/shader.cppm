@@ -1,3 +1,7 @@
+module;
+
+#include <zpp_bits.h>
+
 export module epix.shader:shader;
 
 import epix.assets;
@@ -55,6 +59,13 @@ export struct ShaderId {
  * or `16` when the shader is composed or compiled.
  */
 export struct ShaderDefVal {
+   private:
+    friend zpp::bits::access;
+    using serialize = zpp::bits::members<2>;
+
+   public:
+    ShaderDefVal() = default;
+
     /** @brief Definition name, such as `USE_FOG` or `MAX_LIGHTS`. */
     std::string name;
     /** @brief Definition value. */
@@ -303,7 +314,7 @@ export struct Shader {
 };
 
 /** @brief Loader settings for shader assets. */
-export struct ShaderSettings : assets::Settings {
+export struct ShaderSettings {
     /** @brief Definitions attached to the loaded shader. */
     std::vector<ShaderDefVal> shader_defs;
 };
@@ -366,7 +377,7 @@ export struct ShaderLoader {
 };
 
 /** @brief Processing settings used before shader loading. */
-export struct ShaderProcessorSettings : assets::Settings {
+export struct ShaderProcessorSettings {
     /** @brief Settings forwarded to `ShaderLoader`. */
     ShaderSettings loader_settings;
     /** @brief When `true`, WGSL preprocessing is enabled. */

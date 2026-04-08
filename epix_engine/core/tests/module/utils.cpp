@@ -52,3 +52,64 @@ TEST(FixedPointTest, Fixed64NegativeValues) {
     EXPECT_NEAR(static_cast<double>(a * b), -3.375, kFixed64Tolerance);
     EXPECT_NEAR(static_cast<double>(a / b), -0.6666666666666666, kFixed64Tolerance);
 }
+
+TEST(BroadcastChannelTest, DeliversEachMessageToEachReceiver) {
+    auto [sender, receiver_a] = utils::make_broadcast_channel<int>();
+    auto receiver_b           = receiver_a;
+
+    sender.send(7);
+    sender.send(8);
+
+    auto first_a = receiver_a.receive();
+    ASSERT_TRUE(first_a.has_value());
+    EXPECT_EQ(*first_a, 7);
+
+    auto second_a = receiver_a.receive();
+    ASSERT_TRUE(second_a.has_value());
+    EXPECT_EQ(*second_a, 8);
+
+    auto first_b = receiver_b.receive();
+    ASSERT_TRUE(first_b.has_value());
+    EXPECT_EQ(*first_b, 7);
+
+    auto second_b = receiver_b.receive();
+    ASSERT_TRUE(second_b.has_value());
+    EXPECT_EQ(*second_b, 8);
+}
+
+TEST(BroadcastChannelTest, ReturnsClosedAfterLastSenderDrops) {
+    auto receiver = [] {
+        auto [sender, inner_receiver] = utils::make_broadcast_channel<int>();
+        auto sender_copy              = sender;
+
+        sender.send(42);
+        auto value = inner_receiver.receive();
+        EXPECT_TRUE(value.has_value());
+        EXPECT_EQ(*value, 42);
+
+        sender_copy = {};
+        return inner_receiver;
+    }();
+
+    auto result = receiver.try_receive();
+    ASSERT_FALSE(result.has_value());
+    EXPECT_EQ(result.error(), utils::ReceiveError::Closed);
+}
+
+TEST(ChannelTest, CloseWakesBlockedReceiver) {
+    auto [sender, receiver] = utils::make_channel<int>();
+    sender.close();
+
+    auto result = receiver.receive();
+    ASSERT_FALSE(result.has_value());
+    EXPECT_EQ(result.error(), utils::ReceiveError::Closed);
+}
+
+TEST(BroadcastChannelTest, CloseWakesBlockedReceiver) {
+    auto [sender, receiver] = utils::make_broadcast_channel<int>();
+    sender.close();
+
+    auto result = receiver.receive();
+    ASSERT_FALSE(result.has_value());
+    EXPECT_EQ(result.error(), utils::ReceiveError::Closed);
+}

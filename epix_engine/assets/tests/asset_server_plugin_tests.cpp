@@ -63,12 +63,13 @@ AssetServer make_memory_server(bool with_processed_reader = true,
     auto builders = AssetSourceBuilders();
     builders.insert(AssetSourceId{}, make_memory_source_builder(dir, with_processed_reader));
     auto sources = std::make_shared<AssetSources>(builders.build_sources(watching, watching));
-    return AssetServer(std::move(sources), mode, AssetMetaCheck{asset_meta_check::Always{}}, watching, UnapprovedPathMode::Forbid);
+    return AssetServer(std::move(sources), mode, AssetMetaCheck{asset_meta_check::Always{}}, watching,
+                       UnapprovedPathMode::Forbid);
 }
 
 struct TestTextLoader {
     using Asset = std::string;
-    struct Settings : epix::assets::Settings {};
+    struct Settings {};
     using Error = std::exception_ptr;
 
     static inline std::atomic<int> load_count{0};
@@ -89,7 +90,7 @@ struct TestTextLoader {
 };
 
 struct TestProcess {
-    struct Settings : epix::assets::Settings {};
+    struct Settings {};
     using OutputLoader = TestTextLoader;
 
     std::expected<OutputLoader::Settings, std::exception_ptr> process(ProcessContext&,
@@ -106,7 +107,7 @@ struct DependencyManifestAsset {
 
 struct DependencyManifestLoader {
     using Asset = DependencyManifestAsset;
-    struct Settings : epix::assets::Settings {};
+    struct Settings {};
     using Error = std::exception_ptr;
 
     static std::span<std::string_view> extensions() {
@@ -181,6 +182,56 @@ bool has_modified_asset_event_for(const std::vector<AssetSourceEvent>& events, c
         return false;
     });
 }
+
+// An alternative text loader used to test .meta-file-driven loader selection.
+struct AltTextLoader {
+    using Asset = std::string;
+    struct Settings {};
+    using Error = std::exception_ptr;
+
+    static inline std::atomic<int> load_count{0};
+
+    static void reset_stats() { load_count.store(0); }
+
+    static std::span<std::string_view> extensions() {
+        static auto exts = std::array{std::string_view{"txt"}};
+        return std::span<std::string_view>(exts.data(), exts.size());
+    }
+
+    static std::expected<std::string, Error> load(std::istream& reader, const Settings&, epix::assets::LoadContext&) {
+        load_count.fetch_add(1);
+        std::stringstream ss;
+        ss << reader.rdbuf();
+        return ss.str();
+    }
+};
+
+// Loader with non-trivial Settings used to verify the server restores loader
+// settings from a .meta file via ErasedAssetLoader::deserialize_meta.
+struct SettingsCapturingLoader {
+    using Asset = std::string;
+    struct Settings {
+        int quality = 5;
+    };
+    using Error = std::exception_ptr;
+
+    static inline std::atomic<int> last_quality{-1};
+
+    static void reset_stats() { last_quality.store(-1); }
+
+    static std::span<std::string_view> extensions() {
+        static auto exts = std::array{std::string_view{"qtxt"}};
+        return std::span<std::string_view>(exts.data(), exts.size());
+    }
+
+    static std::expected<std::string, Error> load(std::istream& reader, const Settings& s, epix::assets::LoadContext&) {
+        last_quality.store(s.quality);
+        std::stringstream ss;
+        ss << reader.rdbuf();
+        return ss.str();
+    }
+};
+
 }  // namespace
 
 TEST(AssetServer, RegisterLoader_CanQueryByExtensionTypeAndAssetType) {
@@ -393,8 +444,8 @@ TEST(AssetServer, WatchingDisabled_DoesNotWireSourceEventReceivers) {
     auto builders = AssetSourceBuilders();
     builders.insert(AssetSourceId{}, make_memory_source_builder_with_watchers(dir, true, true));
     auto sources = std::make_shared<AssetSources>(builders.build_sources(false, false));
-    AssetServer server(std::move(sources), AssetServerMode::Processed, AssetMetaCheck{asset_meta_check::Always{}}, false,
-                       UnapprovedPathMode::Forbid);
+    AssetServer server(std::move(sources), AssetServerMode::Processed, AssetMetaCheck{asset_meta_check::Always{}},
+                       false, UnapprovedPathMode::Forbid);
 
     auto source = server.get_source(AssetSourceId{});
     ASSERT_TRUE(source.has_value());
@@ -407,8 +458,8 @@ TEST(AssetServer, SourceWatcher_ReceivesAddedAndModifiedEvents) {
     auto builders = AssetSourceBuilders();
     builders.insert(AssetSourceId{}, make_memory_source_builder_with_watchers(dir, true, false));
     auto sources = std::make_shared<AssetSources>(builders.build_sources(true, false));
-    AssetServer server(std::move(sources), AssetServerMode::Unprocessed, AssetMetaCheck{asset_meta_check::Always{}}, true,
-                       UnapprovedPathMode::Forbid);
+    AssetServer server(std::move(sources), AssetServerMode::Unprocessed, AssetMetaCheck{asset_meta_check::Always{}},
+                       true, UnapprovedPathMode::Forbid);
 
     auto source = server.get_source(AssetSourceId{});
     ASSERT_TRUE(source.has_value());
@@ -472,7 +523,7 @@ TEST(AssetPlugin, BuildInProcessedMode_DefaultSourceProvidesProcessedIo) {
     EXPECT_TRUE(default_source->get().processed_writer().has_value());
 }
 
-TEST(AssetPlugin, BuildInProcessedMode_WithProcessorSetsLogFactory) {
+TEST(AssetPlugin, BuildInProcessedMode_WithProcessorCreatesProcessorResource) {
     App app = App::create();
 
     AssetPlugin plugin;
@@ -481,8 +532,7 @@ TEST(AssetPlugin, BuildInProcessedMode_WithProcessorSetsLogFactory) {
 
     auto processor = app.get_resource<AssetProcessor>();
     ASSERT_TRUE(processor.has_value());
-    ASSERT_TRUE(processor->get().get_data());
-    EXPECT_TRUE(processor->get().get_data()->log_factory != nullptr);
+    EXPECT_TRUE(processor->get().sources()->get(AssetSourceId{}).has_value());
 }
 
 TEST(AssetPlugin, ProcessedMode_AppRunExitsCleanly) {
@@ -571,7 +621,7 @@ TEST(AssetPlugin, BuildWithoutWatching_InProcessedModeKeepsSourceReceiverButNotP
 }
 
 // When use_asset_processor=false, the server is built with build_sources(false, watch=false),
-// so neither source nor processed watcher is wired â€?even if watcher factories are present.
+// so neither source nor processed watcher is wired ï¿½?even if watcher factories are present.
 TEST(AssetPlugin, BuildWithoutWatching_WithoutProcessor_DoesNotWireAnyReceivers) {
     App app = App::create();
 
@@ -707,7 +757,7 @@ void flush_load_tasks(App& app) {
 }  // namespace
 
 // -------------------------------------------------------------------------------------
-// HotReload test suite â€?end-to-end with AssetPlugin
+// HotReload test suite ï¿½?end-to-end with AssetPlugin
 // -------------------------------------------------------------------------------------
 
 TEST(HotReload, InitialLoad_ReachesAssetsStorage) {
@@ -792,7 +842,7 @@ TEST(HotReload, Reload_NonExistentPath_DoesNotAffectExistingAssets) {
     flush_load_tasks(app);
     ASSERT_TRUE(server.is_loaded(handle.id()));
 
-    // Reload a path that was never loaded â€?must not crash or affect the real asset.
+    // Reload a path that was never loaded ï¿½?must not crash or affect the real asset.
     server.reload(AssetPath("nonexistent.txt"));
     flush_load_tasks(app);
 
@@ -876,7 +926,7 @@ TEST(HotReload, WatcherProducesSourceEvent_ManualReloadUpdatesStorage) {
     flush_load_tasks(app);
     ASSERT_TRUE(server.is_loaded(handle.id()));
 
-    // Modify the file â€?the watcher should emit AssetSourceEvent::ModifiedAsset.
+    // Modify the file ï¿½?the watcher should emit AssetSourceEvent::ModifiedAsset.
     auto mod_bytes = make_bytes("mod");
     ASSERT_TRUE(dir.insert_file("hello.txt", memory::Value::from_shared(mod_bytes)).has_value());
 
@@ -1049,14 +1099,14 @@ TEST(HotReload, ProcessedMode_LoadsFromProcessedReader) {
 }
 
 // -------------------------------------------------------------------------------------
-// Bevy lib.rs integrated tests â€?load failure scenarios
+// Bevy lib.rs integrated tests ï¿½?load failure scenarios
 // Ported from bevy_asset::tests::load_failure
 // -------------------------------------------------------------------------------------
 
 // A loader that always fails with a parse error.
 struct FailingLoader {
     using Asset = std::string;
-    struct Settings : epix::assets::Settings {};
+    struct Settings {};
     using Error = std::exception_ptr;
 
     static std::span<std::string_view> extensions() {
@@ -1069,7 +1119,7 @@ struct FailingLoader {
     }
 };
 
-// Ported from bevy_asset::tests::load_failure â€?"root asset has no loader"
+// Ported from bevy_asset::tests::load_failure ï¿½?"root asset has no loader"
 // Tests that loading a file with no registered loader produces a MissingAssetLoader error.
 TEST(LoadFailure, MissingLoader_FailsWithMissingAssetLoaderError) {
     auto [app, dir] = make_plugin_env(/*watching=*/false);
@@ -1099,7 +1149,7 @@ TEST(LoadFailure, MissingLoader_FailsWithMissingAssetLoaderError) {
     }
 }
 
-// Ported from bevy_asset::tests::load_failure â€?"malformed root asset"
+// Ported from bevy_asset::tests::load_failure ï¿½?"malformed root asset"
 // Tests that a loader returning an error produces AssetLoaderException.
 TEST(LoadFailure, LoaderError_FailsWithAssetLoaderException) {
     auto dir = make_memory_dir_with_text("malformed content");
@@ -1130,7 +1180,7 @@ TEST(LoadFailure, LoaderError_FailsWithAssetLoaderException) {
     }
 }
 
-// Ported from bevy_asset::tests::load_failure â€?combined scenario
+// Ported from bevy_asset::tests::load_failure ï¿½?combined scenario
 // Verifies that a successful load produces Loaded, while missing file and loader error produce distinct failures.
 TEST(LoadFailure, MixedScenarios_CorrectStateForEach) {
     auto dir = make_memory_dir_with_text("good content");
@@ -1183,7 +1233,7 @@ TEST(LoadFailure, MixedScenarios_CorrectStateForEach) {
 }
 
 // -------------------------------------------------------------------------------------
-// Bevy lib.rs integrated tests â€?asset lifecycle
+// Bevy lib.rs integrated tests ï¿½?asset lifecycle
 // Ported from bevy_asset::tests::keep_gotten_strong_handles
 // -------------------------------------------------------------------------------------
 
@@ -1200,7 +1250,7 @@ TEST(AssetLifecycle, GetStrongHandle_KeepsAssetAlive) {
     auto strong = assets.get_strong_handle(id);
     ASSERT_TRUE(strong.has_value());
 
-    // Drop the original handle â€?asset should still be reachable.
+    // Drop the original handle ï¿½?asset should still be reachable.
     handle = id;  // convert to weak handle, releasing the strong reference
 
     // Process handle destruction events.
@@ -1234,7 +1284,7 @@ TEST(AssetLifecycle, AllHandlesDropped_AssetRemoved) {
 }
 
 // -------------------------------------------------------------------------------------
-// Bevy lib.rs integrated tests â€?manual asset management
+// Bevy lib.rs integrated tests ï¿½?manual asset management
 // Ported from bevy_asset::tests::manual_asset_management
 // -------------------------------------------------------------------------------------
 
@@ -1283,8 +1333,8 @@ TEST(ManualAssetManagement, AddAndDrop_GeneratesCorrectEvents) {
 }
 
 // -------------------------------------------------------------------------------------
-// Bevy lib.rs integrated tests â€?failure_load_states
-// Ported from bevy_asset::tests::failure_load_states (simplified â€?no dep chain)
+// Bevy lib.rs integrated tests ï¿½?failure_load_states
+// Ported from bevy_asset::tests::failure_load_states (simplified ï¿½?no dep chain)
 // -------------------------------------------------------------------------------------
 
 // Tests that consecutive loads of the same path return the same handle (Bevy guarantee).
@@ -1311,7 +1361,7 @@ TEST(LoadFailure, ConsecutiveLoads_ReturnSameHandleAndSingleLoadTask) {
 }
 
 // -------------------------------------------------------------------------------------
-// Bevy lib.rs integrated tests â€?failure_load_states
+// Bevy lib.rs integrated tests ï¿½?failure_load_states
 // Ported from bevy_asset::tests::failure_load_states
 // Tests load state transitions: loaded, dep_loaded, rec_dep_loaded for a single-asset load.
 // -------------------------------------------------------------------------------------
@@ -1740,4 +1790,212 @@ TEST(MetaTransformLoad, HandleWithoutMetaTransform_ReturnsNull) {
     UntypedHandle uh = handle.untyped();
     EXPECT_TRUE(uh.is_strong());
     EXPECT_EQ(uh.meta_transform(), nullptr) << "Handle loaded without meta_transform should return nullptr";
+}
+
+// -------------------------------------------------------------------------------------
+// MetaFile integration tests â€” .meta file drives loader selection
+// -------------------------------------------------------------------------------------
+
+TEST(MetaFileIntegration, MetaFile_SelectsLoaderByName) {
+    // Build a memory dir with both the asset and a .meta file pointing to AltTextLoader.
+    auto dir = memory::Directory::create({});
+    ASSERT_TRUE(dir.insert_file("hello.txt", memory::Value::from_shared(make_bytes("hello"))).has_value());
+
+    AssetMetaMinimal meta_min;
+    meta_min.meta_format_version = std::string(META_FORMAT_VERSION);
+    meta_min.asset.action        = AssetActionType::Load;
+    meta_min.asset.loader        = std::string(meta::type_id<AltTextLoader>{}.name());
+
+    auto meta_bytes_opt = serialize_meta_minimal(meta_min);
+    ASSERT_TRUE(meta_bytes_opt.has_value());
+    auto meta_data = std::make_shared<std::vector<std::byte>>(*meta_bytes_opt);
+    ASSERT_TRUE(dir.insert_file("hello.txt.meta", memory::Value::from_shared(meta_data)).has_value());
+
+    App app = App::create();
+    AssetPlugin plugin;
+    plugin.watch_for_changes_override = false;
+    plugin.register_asset_source(AssetSourceId{}, make_memory_source_builder(dir));
+    plugin.build(app);
+    app_register_asset<std::string>(app);
+    app_register_loader<TestTextLoader>(app);
+    app_register_loader<AltTextLoader>(app);
+
+    TestTextLoader::reset_stats();
+    AltTextLoader::reset_stats();
+
+    auto& server = app.resource<AssetServer>();
+    auto handle  = server.load<std::string>(AssetPath("hello.txt"));
+    flush_load_tasks(app);
+
+    EXPECT_TRUE(server.is_loaded(handle.id()));
+    EXPECT_EQ(AltTextLoader::load_count.load(), 1) << "Meta file should route load to AltTextLoader";
+    EXPECT_EQ(TestTextLoader::load_count.load(), 0) << "TestTextLoader should not be invoked";
+
+    auto& assets = app.resource<Assets<std::string>>();
+    auto value   = assets.get(handle.id());
+    ASSERT_TRUE(value.has_value());
+    EXPECT_EQ(value->get(), "hello");
+}
+
+TEST(MetaFileIntegration, NoMetaFile_FallsBackToExtensionLoader) {
+    // Without a .meta file the server uses extension-based lookup (TestTextLoader registered first).
+    auto [app, dir] = make_plugin_env(/*watching=*/false);
+    auto& server    = app.resource<AssetServer>();
+    app_register_loader<AltTextLoader>(app);
+
+    TestTextLoader::reset_stats();
+    AltTextLoader::reset_stats();
+
+    auto handle = server.load<std::string>(AssetPath("hello.txt"));
+    flush_load_tasks(app);
+
+    EXPECT_TRUE(server.is_loaded(handle.id()));
+    EXPECT_EQ(TestTextLoader::load_count.load() + AltTextLoader::load_count.load(), 1)
+        << "Exactly one loader must have handled the asset";
+
+    auto& assets = app.resource<Assets<std::string>>();
+    auto value   = assets.get(handle.id());
+    ASSERT_TRUE(value.has_value());
+    EXPECT_EQ(value->get(), "hello");
+}
+
+TEST(MetaFileIntegration, MetaFile_RoundTrip_SerializeDeserializeMinimal) {
+    // Verify that a serialized AssetMetaMinimal can be deserialized back to its original values.
+    AssetMetaMinimal original;
+    original.meta_format_version = std::string(META_FORMAT_VERSION);
+    original.asset.action        = AssetActionType::Load;
+    original.asset.loader        = std::string(meta::type_id<AltTextLoader>{}.name());
+
+    auto bytes = serialize_meta_minimal(original);
+    ASSERT_TRUE(bytes.has_value());
+
+    auto result = deserialize_meta_minimal(*bytes);
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->meta_format_version, original.meta_format_version);
+    EXPECT_EQ(result->asset.action, AssetActionType::Load);
+    EXPECT_EQ(result->asset.loader, original.asset.loader);
+}
+
+// -------------------------------------------------------------------------------------
+// DeserializeMeta integration â€” server restores loader settings from .meta bytes
+// -------------------------------------------------------------------------------------
+
+// Helper: build a serialized AssetMeta for SettingsCapturingLoader with custom quality.
+static std::shared_ptr<std::vector<std::byte>> make_settings_meta_bytes(int quality) {
+    AssetMeta<SettingsCapturingLoader::Settings, EmptySettings> meta;
+    meta.meta_format_version           = std::string(META_FORMAT_VERSION);
+    meta.action                        = AssetActionType::Load;
+    meta.loader                        = std::string(meta::type_id<SettingsCapturingLoader>{}.name());
+    meta.loader_settings_storage.value = SettingsCapturingLoader::Settings{quality};
+    auto result                        = serialize_asset_meta(meta);
+    EXPECT_TRUE(result.has_value());
+    return std::make_shared<std::vector<std::byte>>(*result);
+}
+
+TEST(DeserializeMetaIntegration, CustomQuality_RestoredFromMetaFile) {
+    // Build a memory source with both the asset file and a .meta file.
+    auto dir = memory::Directory::create({});
+    ASSERT_TRUE(dir.insert_file("asset.qtxt", memory::Value::from_shared(make_bytes("data"))).has_value());
+    ASSERT_TRUE(
+        dir.insert_file("asset.qtxt.meta", memory::Value::from_shared(make_settings_meta_bytes(99))).has_value());
+
+    App app = App::create();
+    AssetPlugin plugin;
+    plugin.watch_for_changes_override = false;
+    plugin.register_asset_source(AssetSourceId{}, make_memory_source_builder(dir));
+    plugin.build(app);
+    app_register_asset<std::string>(app);
+    app_register_loader<SettingsCapturingLoader>(app);
+
+    SettingsCapturingLoader::reset_stats();
+
+    auto& server = app.resource<AssetServer>();
+    auto handle  = server.load<std::string>(AssetPath("asset.qtxt"));
+    flush_load_tasks(app);
+
+    EXPECT_TRUE(server.is_loaded(handle.id()));
+    EXPECT_EQ(SettingsCapturingLoader::last_quality.load(), 99)
+        << "Loader should receive quality=99 restored from the .meta file";
+}
+
+TEST(DeserializeMetaIntegration, DefaultQuality_UsedWhenNoMetaFile) {
+    // No .meta file present â€” loader should receive the default quality=5.
+    auto dir = memory::Directory::create({});
+    ASSERT_TRUE(dir.insert_file("asset.qtxt", memory::Value::from_shared(make_bytes("data"))).has_value());
+
+    App app = App::create();
+    AssetPlugin plugin;
+    plugin.watch_for_changes_override = false;
+    plugin.register_asset_source(AssetSourceId{}, make_memory_source_builder(dir));
+    plugin.build(app);
+    app_register_asset<std::string>(app);
+    app_register_loader<SettingsCapturingLoader>(app);
+
+    SettingsCapturingLoader::reset_stats();
+
+    auto& server = app.resource<AssetServer>();
+    auto handle  = server.load<std::string>(AssetPath("asset.qtxt"));
+    flush_load_tasks(app);
+
+    EXPECT_TRUE(server.is_loaded(handle.id()));
+    EXPECT_EQ(SettingsCapturingLoader::last_quality.load(), 5)
+        << "No .meta file: loader should receive default quality=5";
+}
+
+TEST(DeserializeMetaIntegration, DefaultQuality_UsedWhenMetaFileBytesAreGarbage) {
+    // .meta file exists but contains unparseable garbage â€” server falls back to default_meta().
+    auto dir = memory::Directory::create({});
+    ASSERT_TRUE(dir.insert_file("asset.qtxt", memory::Value::from_shared(make_bytes("data"))).has_value());
+
+    auto garbage = std::make_shared<std::vector<std::byte>>(
+        std::vector<std::byte>{std::byte{0xFF}, std::byte{0xFE}, std::byte{0x00}, std::byte{0x01}});
+    ASSERT_TRUE(dir.insert_file("asset.qtxt.meta", memory::Value::from_shared(garbage)).has_value());
+
+    App app = App::create();
+    AssetPlugin plugin;
+    plugin.watch_for_changes_override = false;
+    plugin.register_asset_source(AssetSourceId{}, make_memory_source_builder(dir));
+    plugin.build(app);
+    app_register_asset<std::string>(app);
+    app_register_loader<SettingsCapturingLoader>(app);
+
+    SettingsCapturingLoader::reset_stats();
+
+    auto& server = app.resource<AssetServer>();
+    auto handle  = server.load<std::string>(AssetPath("asset.qtxt"));
+    flush_load_tasks(app);
+
+    // The asset should still load successfully using the default settings.
+    EXPECT_TRUE(server.is_loaded(handle.id()));
+    EXPECT_EQ(SettingsCapturingLoader::last_quality.load(), 5)
+        << "Garbage .meta file: loader should fall back to default quality=5";
+}
+
+TEST(DeserializeMetaIntegration, DifferentQualities_LoadSamePathWithMetaTransform_Overrides) {
+    // Verify meta_transform takes precedence over settings from .meta file.
+    // We write quality=99 to the .meta file, then use load_with_settings_override to set quality=77.
+    auto dir = memory::Directory::create({});
+    ASSERT_TRUE(dir.insert_file("asset.qtxt", memory::Value::from_shared(make_bytes("data"))).has_value());
+    ASSERT_TRUE(
+        dir.insert_file("asset.qtxt.meta", memory::Value::from_shared(make_settings_meta_bytes(99))).has_value());
+
+    App app = App::create();
+    AssetPlugin plugin;
+    plugin.watch_for_changes_override = false;
+    plugin.register_asset_source(AssetSourceId{}, make_memory_source_builder(dir));
+    plugin.build(app);
+    app_register_asset<std::string>(app);
+    app_register_loader<SettingsCapturingLoader>(app);
+
+    SettingsCapturingLoader::reset_stats();
+
+    auto& server = app.resource<AssetServer>();
+    // load_with_settings_override applies a MetaTransform after deserialization; quality must be 77.
+    auto handle = server.load_with_settings_override<std::string, SettingsCapturingLoader::Settings>(
+        AssetPath("asset.qtxt"), [](SettingsCapturingLoader::Settings& s) { s.quality = 77; });
+    flush_load_tasks(app);
+
+    EXPECT_TRUE(server.is_loaded(handle.id()));
+    EXPECT_EQ(SettingsCapturingLoader::last_quality.load(), 77)
+        << "MetaTransform override should win over .meta file settings";
 }

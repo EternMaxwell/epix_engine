@@ -103,7 +103,7 @@ export using ValidateLogError = std::variant<validate_log_errors::UnrecoverableE
 
 /** @brief Validate the previous state of the transaction log and determine any assets that need reprocessing.
  *  Matches bevy_asset's validate_transaction_log. */
-export std::expected<void, ValidateLogError> validate_transaction_log(
+std::expected<void, ValidateLogError> validate_transaction_log(
     const ProcessorTransactionLogFactory& log_factory);
 
 // ---- FileTransactionLogFactory ----

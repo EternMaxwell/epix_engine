@@ -70,7 +70,7 @@ TEST(SavedAsset_FromTransformed, Dereference) {
 // Helper for creating a minimal AssetProcessor for ProcessContext tests
 namespace {
 AssetProcessor make_test_processor() {
-    auto data           = std::make_shared<AssetProcessorData>();
+    AssetSourceBuilders builders;
     auto dir            = memory::Directory::create({});
     auto source_builder = AssetSourceBuilder::create([dir]() -> std::unique_ptr<AssetReader> {
                               return std::make_unique<MemoryAssetReader>(dir);
@@ -81,8 +81,8 @@ AssetProcessor make_test_processor() {
                               .with_processed_writer([dir]() -> std::unique_ptr<AssetWriter> {
                                   return std::make_unique<MemoryAssetWriter>(dir);
                               });
-    data->source_builders->insert(AssetSourceId{}, std::move(source_builder));
-    return AssetProcessor(data, false);
+    builders.insert(AssetSourceId{}, std::move(source_builder));
+    return AssetProcessor(builders, false);
 }
 }  // namespace
 

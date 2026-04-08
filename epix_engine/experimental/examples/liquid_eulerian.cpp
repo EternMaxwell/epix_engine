@@ -2,6 +2,7 @@
 #include <uuid.h>
 import std;
 import glm;
+import webgpu;
 import epix.assets;
 import epix.core;
 import epix.window;

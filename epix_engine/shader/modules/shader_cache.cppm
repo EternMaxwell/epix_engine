@@ -200,7 +200,7 @@ export struct ShaderCache {
      * The return value is the full list of pipelines that should rebuild.
      */
     std::vector<CachedPipelineId> sync(utils::input_iterable<assets::AssetEvent<Shader>> events,
-                                       assets::Assets<Shader>& shaders);
+                                       const assets::Assets<Shader>& shaders);
 
    private:
     wgpu::Device device_;

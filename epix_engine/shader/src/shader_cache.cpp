@@ -768,13 +768,13 @@ std::vector<CachedPipelineId> ShaderCache::remove(assets::AssetId<Shader> id) {
 
 // ─── sync ─────────────────────────────────────────────────────────────────
 std::vector<CachedPipelineId> ShaderCache::sync(utils::input_iterable<assets::AssetEvent<Shader>> events,
-                                                assets::Assets<Shader>& shaders) {
+                                                const assets::Assets<Shader>& shaders) {
     std::unordered_set<CachedPipelineId> affected;
     for (const auto& event : events) {
         if (event.is_loaded_with_dependencies() || event.is_modified()) {
-            auto val = shaders.take(event.id);
+            auto val = shaders.get(event.id);
             if (val.has_value()) {
-                auto ids = set_shader(event.id, std::move(*val));
+                auto ids = set_shader(event.id, val.value().get());
                 affected.insert(ids.begin(), ids.end());
             }
         } else if (event.is_unused()) {

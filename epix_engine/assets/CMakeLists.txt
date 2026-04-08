@@ -3,6 +3,7 @@ target_link_libraries(epix_assets PUBLIC epix_core)
 target_link_libraries(epix_assets PUBLIC stduuid)
 # target_link_libraries(epix_assets PUBLIC asio)
 target_link_libraries(epix_assets PUBLIC efsw)
+target_link_libraries(epix_assets PUBLIC zpp_bits)
 
 # --- tests: auto-discover ---
 # Recursively find all .cpp test sources under tests/ and create an executable + ctest entry

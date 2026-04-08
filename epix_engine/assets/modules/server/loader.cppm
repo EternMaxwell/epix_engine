@@ -308,7 +308,7 @@ struct DependencyFailed {
 export using WaitForAssetError =
     std::variant<wait_for_asset_error::NotLoaded, wait_for_asset_error::Failed, wait_for_asset_error::DependencyFailed>;
 
-export namespace internal_asset_event {
+namespace internal_asset_event {
 struct Loaded {
     UntypedAssetId id;
     ErasedLoadedAsset asset;
@@ -477,7 +477,7 @@ concept AssetLoader = requires(const T& t, std::istream& stream, LoadContext& co
     typename T::Settings;
     typename T::Error;
     requires Asset<typename T::Asset>;
-    requires std::derived_from<typename T::Settings, Settings>;
+    requires is_settings<typename T::Settings>;
     requires std::is_default_constructible_v<typename T::Settings>;
     { t.extensions() } -> std::same_as<std::span<std::string_view>>;
     {
@@ -485,7 +485,7 @@ concept AssetLoader = requires(const T& t, std::istream& stream, LoadContext& co
     } -> std::same_as<std::expected<typename T::Asset, typename T::Error>>;
     { asset_loader_error_to_exception(std::declval<const typename T::Error&>()) } -> std::same_as<std::exception_ptr>;
 };
-struct ErasedAssetLoader {
+export struct ErasedAssetLoader {
     virtual ~ErasedAssetLoader()                           = default;
     virtual std::span<std::string_view> extensions() const = 0;
     virtual meta::type_index loader_type() const           = 0;
@@ -502,7 +502,12 @@ struct ErasedAssetLoader {
     virtual std::unique_ptr<Settings> default_settings() const = 0;
     /** @brief Return a heap-allocated default AssetMetaDyn for this loader.
      *  Matches bevy_asset's ErasedAssetLoader::default_meta. */
-    virtual std::unique_ptr<AssetMetaDyn> default_meta() const                                    = 0;
+    virtual std::unique_ptr<AssetMetaDyn> default_meta() const = 0;
+    /** @brief Deserialize a .meta file's bytes into a typed AssetMetaDyn for this loader.
+     *  Returns an error string on failure; use default_meta() when bytes are unavailable.
+     *  Matches bevy_asset's ErasedAssetLoader::deserialize_meta. */
+    virtual std::expected<std::unique_ptr<AssetMetaDyn>, std::string> deserialize_meta(
+        std::span<const std::byte> bytes) const                                                   = 0;
     virtual std::expected<ErasedLoadedAsset, std::exception_ptr> load(std::istream& stream,
                                                                       const Settings& settings,
                                                                       LoadContext& context) const = 0;
@@ -518,22 +523,32 @@ struct ErasedAssetLoaderImpl : T, ErasedAssetLoader {
     std::span<std::string_view> extensions() const override { return as_concrete().extensions(); }
     meta::type_index loader_type() const override { return meta::type_id<T>{}; }
     meta::type_index asset_type() const override { return meta::type_id<typename T::Asset>{}; }
-    std::unique_ptr<Settings> default_settings() const override { return std::make_unique<typename T::Settings>(); }
+    std::unique_ptr<Settings> default_settings() const override {
+        return std::make_unique<SettingsImpl<typename T::Settings>>();
+    }
     std::unique_ptr<AssetMetaDyn> default_meta() const override {
-        auto m    = std::make_unique<AssetMeta<typename T::Settings, Settings>>();
+        auto m    = std::make_unique<AssetMeta<typename T::Settings, EmptySettings>>();
         m->action = AssetActionType::Load;
         m->loader = std::string(loader_type().name());
         return m;
+    }
+    std::expected<std::unique_ptr<AssetMetaDyn>, std::string> deserialize_meta(
+        std::span<const std::byte> bytes) const override {
+        auto result = deserialize_asset_meta<typename T::Settings, EmptySettings>(bytes);
+        if (!result) {
+            return std::unexpected(std::make_error_code(result.error()).message());
+        }
+        return std::make_unique<AssetMeta<typename T::Settings, EmptySettings>>(std::move(*result));
     }
     std::expected<ErasedLoadedAsset, std::exception_ptr> load(std::istream& stream,
                                                               const Settings& settings,
                                                               LoadContext& context) const override {
         try {
-            auto* settings_ptr = dynamic_cast<const typename T::Settings*>(&settings);
+            auto* settings_ptr = dynamic_cast<const SettingsImpl<typename T::Settings>*>(&settings);
             if (!settings_ptr) {
                 throw std::runtime_error("Invalid settings type for loader " + std::string(loader_type().short_name()));
             }
-            auto loaded_asset = as_concrete().load(stream, *settings_ptr, context);
+            auto loaded_asset = as_concrete().load(stream, settings_ptr->value, context);
             if (!loaded_asset) {
                 return std::unexpected(asset_loader_error_to_exception(loaded_asset.error()));
             }
@@ -556,7 +571,6 @@ concept AssetSaver = requires(const T& t, std::ostream& writer, const typename T
     typename T::OutputLoader;
     typename T::Error;
     requires Asset<typename T::Asset>;
-    requires std::derived_from<typename T::Settings, Settings>;
     requires std::is_default_constructible_v<typename T::Settings>;
     {
         t.save(writer, std::declval<SavedAsset<typename T::Asset>>(), settings, std::declval<const AssetPath&>())
@@ -573,7 +587,7 @@ concept AssetTransformer = requires(const T& t, const typename T::Settings& sett
     typename T::Error;
     requires Asset<typename T::AssetInput>;
     requires Asset<typename T::AssetOutput>;
-    requires std::derived_from<typename T::Settings, Settings>;
+    requires is_settings<typename T::Settings>;
     requires std::is_default_constructible_v<typename T::Settings>;
     {
         t.transform(std::declval<TransformedAsset<typename T::AssetInput>>(), settings)

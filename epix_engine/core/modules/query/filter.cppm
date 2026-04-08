@@ -241,6 +241,7 @@ struct WorldQuery<Added<T>> {
                                    .transform([](auto& ref) { return &ref.get(); })
                                    .value_or(nullptr);
         }
+        return fetch;
     }
     static void set_archetype(Fetch& fetch, const State& state, const Archetype& archetype, Table& table) {
         if (state.storage_type == StorageType::Table) {
@@ -325,4 +326,4 @@ static_assert(query_filter<Modified<int>>);
 
 template <typename T>
 concept archetype_filter = query_filter<T> && T::archetypal;
-}  // namespace core
+}  // namespace epix::core

@@ -36,3 +36,58 @@ For file names associated with these modules and partitions, the following conve
 *If the category is not in the same target with other categories, `[epix\<category>]` folder can be omitted for brevity.*
 
 Where the `<>` brackets indicate optional components based on the module's structure.
+
+---
+
+## Member Function Naming
+
+### Accessor pairs
+
+Prefer overloaded functions by `const`-qualification over separate names when the read and write forms differ only in mutability.
+
+When a separate name is needed for the mutable accessor (e.g. on a virtual interface or when the return type itself differs), use the **`_mut` suffix** on the mutable overload — never the `mutable_` prefix:
+
+```cpp
+// ✅ correct
+virtual const ProcessedInfo* processed_info() const = 0;
+virtual std::optional<ProcessedInfo>& processed_info_mut() = 0;
+
+Components&       components_mut();
+const Components& components() const;
+
+// ❌ incorrect — do not use mutable_ prefix
+virtual std::optional<ProcessedInfo>& mutable_processed_info() = 0;
+```
+
+This mirrors the engine's existing naming style used throughout `epix_core` (`world_mut()`, `components_mut()`, `storage_mut()`, `entities_mut()`, `archetypes_mut()`, `bundles_mut()`, `get_mut()`, `access_mut()`, `required_mut()`, …) and the Bevy convention (`processed_info_mut`, `world_mut`, …) that the C++ code tracks.
+
+### General rules
+
+| Pattern                 | Style        | Example                                 |
+| ----------------------- | ------------ | --------------------------------------- |
+| Type names              | `PascalCase` | `AssetMetaDyn`, `ProcessedInfo`         |
+| Variable / field names  | `snake_case` | `meta_format_version`, `processed_info` |
+| Free / member functions | `snake_case` | `get_asset_hash()`, `serialize_bytes()` |
+| Mutable accessor suffix | `_mut`       | `processed_info_mut()`, `world_mut()`   |
+| Template type params    | `PascalCase` | `LoaderSettings`, `ProcessSettings`     |
+| Concepts                | `PascalCase` | `Asset`, `AssetLoader`, `Process`       |
+
+---
+
+## Optional References
+
+Prefer `std::optional<std::reference_wrapper<T>>` (or `std::optional<std::reference_wrapper<const T>>`) over raw pointer `T*` / `const T*` when the value is optional (may or may not exist). This applies primarily to return types of getter functions and API boundaries.
+
+```cpp
+// ✅ correct — optionality is explicit, no ownership ambiguity
+std::optional<std::reference_wrapper<const ErasedLoadedAsset>> get_labeled(const std::string& label) const;
+std::optional<std::reference_wrapper<const AssetSource>>       get_source(const AssetSourceId& id) const;
+
+// ❌ incorrect — raw pointer is ambiguous (owned? nullable? error-sentinel?)
+const ErasedLoadedAsset* get_labeled(const std::string& label) const;
+const AssetSource*       get_source(const AssetSourceId& id) const;
+```
+
+Use `std::ref(value)` to construct `optional<reference_wrapper<T>>` and `std::cref(value)` for the const form. Callers access the wrapped value via `.get()` or implicit conversion.
+
+**Exception:** a raw non-owning `T*` observer parameter (not a return value) remains acceptable in hot-path code where the overhead of `optional`-wrapping is measurable and established by profiling.

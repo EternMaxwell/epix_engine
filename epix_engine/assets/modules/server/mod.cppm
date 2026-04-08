@@ -44,8 +44,12 @@ export struct MissingAssetSourceError {
 /** @brief Central server that manages asset loading, tracking, and lifecycle.
  *  Thread-safe: all accesses go through internal RwLock guards. */
 export struct AssetServer {
+   private:
     std::shared_ptr<AssetServerData> data;
 
+    friend struct AssetProcessor;
+
+   public:
     AssetServer()                              = default;
     AssetServer(const AssetServer&)            = default;
     AssetServer(AssetServer&&)                 = default;
@@ -73,6 +77,9 @@ export struct AssetServer {
                 AssetMetaCheck meta_check,
                 bool watching_for_changes,
                 UnapprovedPathMode unapproved_path_mode = UnapprovedPathMode::Forbid);
+
+    /** @brief Get the shared loaders handle (for sharing between processor and main server). */
+    const std::shared_ptr<utils::RwLock<AssetLoaders>>& get_loaders() const { return data->loaders; }
 
     // ---- Loader Registration ----
 
@@ -143,18 +150,16 @@ export struct AssetServer {
 
     /** @brief Load an asset with loader-specific settings.
      *  @tparam A  Asset type.
-     *  @tparam S  Settings type derived from assets::Settings.
+     *  @tparam S  Settings aggregate type.
      *  @param path     Asset path.
      *  @param settings Function that mutates the loader settings. */
     template <typename A, typename S>
-        requires std::derived_from<S, Settings>
     Handle<A> load_with_settings(const AssetPath& path, std::function<void(S&)> settings) const {
         return load_with_meta_transform<A>(path, loader_settings_meta_transform<S>(std::move(settings)), false);
     }
 
     /** @brief Load an asset with settings, overriding any existing load (force). */
     template <typename A, typename S>
-        requires std::derived_from<S, Settings>
     Handle<A> load_with_settings_override(const AssetPath& path, std::function<void(S&)> settings) const {
         return load_with_meta_transform<A>(path, loader_settings_meta_transform<S>(std::move(settings)), true,
                                            /*override_unapproved=*/true);
@@ -219,7 +224,7 @@ export struct AssetServer {
      *  Matches bevy_asset's AssetServer::load_acquire_with_settings.
      *  @note Guard parameter omitted — see load_acquire note. */
     template <typename A, typename S>
-        requires std::derived_from<S, Settings>
+        requires is_settings<S>
     Handle<A> load_acquire_with_settings(const AssetPath& path, std::function<void(S&)> settings) const {
         auto handle = load_with_settings<A, S>(path, std::move(settings));
         wait_for_asset(handle);

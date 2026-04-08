@@ -1,24 +1,21 @@
-# TODO list
+﻿# Documentation TODO — Cross-module tracker
 
-A list of things currently i'm working on or will work in future or things i'm interested in but don't have the time to work on.
+Tracks outstanding implementation gaps found during documentation audits.
+Per-module details live in each module's `documentation/<module>/todo.md`.
 
-Note that major module or huge module will be work on separate branch.
+---
 
-Status legend:
-- [ ] not started
-- [~] in progress
-- [x] done and will be removed from list later
+| Module   | Item                                                                                                                 | Severity |
+| -------- | -------------------------------------------------------------------------------------------------------------------- | -------- |
+| `core`   | `set_table` hook commented out across all `WorldQuery<T>` — table-level iteration not implemented                    | perf     |
+| `core`   | No user-facing API for required-component registration (`App` method or static `require_components` hook)            | feature  |
+| `assets` | `.meta` file contents cannot be serialized or deserialized — `AssetMetaDyn::serialize()` absent; blocked on C++26 reflection (`import std` conflicts with all aggregate-reflection serde libs) | blocked  |
+| `assets` | `AssetReader` interface is synchronous; coroutine/async reads planned but not implemented                            | perf     |
+| `assets` | `NestedLoader` immediate mode missing (`immediate()` + `with_reader()`)                                              | feature  |
+| `assets` | `AssetServer::write_default_loader_meta_file_for_path` + `WriteDefaultMetaError` missing                            | feature  |
+| `assets` | `AsAssetId` concept missing — no ECS component protocol for asset-holding components                                 | feature  |
+| `assets` | `DirectAssetAccessExt` missing — no `World`-level `add_asset / load_asset` helpers                                  | feature  |
+| `assets` | `publish_asset_server_diagnostics` system missing                                                                    | feature  |
+| `assets` | `AssetInfos::infos` uses `unordered_map` instead of SlotMap — potential perf gap                                     | perf     |
 
-## Working on
-
-- [~] falling sand simulation
-  - [ ] extendible element registry
-  - [~] more element type, currently only powder
-  - [~] phsical correct sim, currently still pure cellular automaton
-- [~] eularian liquid simulation
-  - [x] moving step to gpu
-  - [ ] use extendible tree grid instead of 2d array
-  - [~] use fixed point number for calculating to avoid floating point number precision loss
-- [ ] shader preprocessing
-  - [ ] shader cache change
-  - [ ] shader change
+See [documentation/core/todo.md](core/todo.md) and [documentation/assets/todo.md](assets/todo.md) for full details.

@@ -155,8 +155,9 @@ export struct AssetPath {
 static_assert(std::three_way_comparable<AssetPath>);
 }  // namespace epix::assets
 
+export namespace std {
 template <>
-struct std::hash<epix::assets::AssetPath> {
+struct hash<epix::assets::AssetPath> {
     size_t operator()(const epix::assets::AssetPath& ap) const noexcept {
         size_t h     = 0;
         auto combine = [&](size_t v) { h ^= v + 0x9e3779b9 + (h << 6) + (h >> 2); };
@@ -167,3 +168,4 @@ struct std::hash<epix::assets::AssetPath> {
         return h;
     }
 };
+}  // namespace std
