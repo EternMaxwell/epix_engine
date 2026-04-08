@@ -110,16 +110,18 @@ void RenderPlugin::build(App& app) {
         render_app.world_mut().insert_resource(render::DefaultImageSampler{
             .sampler = default_sampler,
         });
-        render_app.world_mut().insert_resource(PipelineServer(device.clone()));
-        render_app.add_systems(ExtractSchedule, into(PipelineServer::extract_shaders).set_name("extract shaders"))
+        PipelineServer pipeline_server(device.clone());
+        app.world_mut().insert_resource(pipeline_server);
+        render_app.world_mut().insert_resource(std::move(pipeline_server));
+        render_app
+            .add_systems(ExtractSchedule, into(PipelineServer::extract_shaders, PipelineServer::process_pipeline_system)
+                                              .chain()
+                                              .set_names(std::array{"extract shaders", "process pipeline"}))
             .add_systems(Render, into([](Res<wgpu::Device> device) { device->poll(false); },
                                       [](World& world) { world.clear_entities(); })
                                      .set_names(std::array{"device poll", "clear render entities"})
                                      .after(RenderSet::Cleanup))
-            .add_systems(Render, into(PipelineServer::process_pipeline_system, render_system)
-                                     .chain()
-                                     .in_set(RenderSet::Render)
-                                     .set_names(std::array{"process pipeline", "render system"}))
+            .add_systems(Render, into(render_system).in_set(RenderSet::Render).set_name("render system"))
             .add_systems(Render,
                          into([](ParamSet<World&, ResMut<core::Schedules>> params) {
                              auto&& [world, schedules] = params.get();

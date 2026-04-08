@@ -92,17 +92,35 @@ struct CachedPipeline {
         return std::nullopt;
     }
 };
+/** @brief Internal data shared between all copies of a PipelineServer. */
+struct PipelineServerData {
+    PipelineServerData(const PipelineServerData&)            = delete;
+    PipelineServerData& operator=(const PipelineServerData&) = delete;
+
+    std::shared_ptr<utils::Mutex<LayoutCache>> layout_cache;
+    std::shared_ptr<utils::Mutex<shader::ShaderCache>> shader_cache;
+    wgpu::Device device;
+    std::vector<CachedPipeline> pipelines;
+    std::unordered_set<CachedPipelineId> waiting_pipelines;
+    utils::Mutex<std::vector<CachedPipeline>> new_pipelines;
+    std::unique_ptr<BS::thread_pool<BS::tp::none>> pipeline_create_task_pool;
+
+    PipelineServerData(wgpu::Device device);
+};
 /** @brief Central server that manages pipeline creation, caching, and
  * shader dependency tracking.
  *
  * Pipelines are queued via `queue_render_pipeline()` /
  * `queue_compute_pipeline()` and compiled asynchronously in a thread
- * pool. Call `process_queue()` each frame to advance pending pipelines.
+ * pool. The underlying data is shared across copies via a shared_ptr,
+ * allowing PipelineServer to exist in both the main app and render app.
+ * Mutation methods are private and driven by RenderPlugin systems in
+ * ExtractSchedule.
  */
 export struct PipelineServer {
    public:
-    PipelineServer(const PipelineServer&)            = delete;
-    PipelineServer& operator=(const PipelineServer&) = delete;
+    PipelineServer(const PipelineServer&)            = default;
+    PipelineServer& operator=(const PipelineServer&) = default;
     PipelineServer(PipelineServer&&)                 = default;
     PipelineServer& operator=(PipelineServer&&)      = default;
 
@@ -128,30 +146,19 @@ export struct PipelineServer {
     /** @brief Queue a compute pipeline for asynchronous creation. */
     CachedPipelineId queue_compute_pipeline(ComputePipelineDescriptor descriptor) const;
 
-    /** @brief Register or update a shader in the shader cache. */
+   private:
+    friend struct RenderPlugin;
+
     void set_shader(assets::AssetId<shader::Shader> id, shader::Shader shader);
-    /** @brief Remove a shader from the shader cache. */
     void remove_shader(assets::AssetId<shader::Shader> id);
-    /** @brief Process all queued and in-progress pipeline creations. */
     void process_queue();
-    /** @brief Process a single cached pipeline (advance its creation state). */
     void process_pipeline(CachedPipeline& cached_pipeline, CachedPipelineId id);
 
-    /** @brief System that calls process_queue() each frame. */
     static void process_pipeline_system(ResMut<PipelineServer> pipeline_server);
-    /** @brief System that extracts shader assets and events into the render world. */
     static void extract_shaders(ResMut<PipelineServer> pipeline_server,
-                                Extract<ResMut<assets::Assets<shader::Shader>>> shaders,
+                                Extract<Res<assets::Assets<shader::Shader>>> shaders,
                                 Extract<EventReader<assets::AssetEvent<shader::Shader>>> shader_events);
 
-   private:
-    std::shared_ptr<utils::Mutex<LayoutCache>> layout_cache;
-    std::shared_ptr<utils::Mutex<shader::ShaderCache>> shader_cache;
-    wgpu::Device device;
-    std::vector<CachedPipeline> pipelines;
-    std::unordered_set<CachedPipelineId> waiting_pipelines;
-    utils::Mutex<std::vector<CachedPipeline>> new_pipelines;
-
-    std::unique_ptr<BS::thread_pool<BS::tp::none>> pipeline_create_task_pool;
+    std::shared_ptr<PipelineServerData> m_data;
 };
 }  // namespace epix::render
