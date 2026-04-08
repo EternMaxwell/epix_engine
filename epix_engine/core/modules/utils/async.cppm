@@ -48,6 +48,7 @@ struct ConQueue {
     std::optional<std::size_t> m_capacity;
     OverflowPolicy m_overflow_policy = OverflowPolicy::Block;
     std::size_t m_sender_count       = 0;
+    bool m_closed                    = false;
 
    public:
     ConQueue() = default;
@@ -73,6 +74,12 @@ struct ConQueue {
         }
     }
 
+    void close() {
+        std::unique_lock lock(m_mutex);
+        m_closed = true;
+        m_cv.notify_all();
+    }
+
     /** @brief Construct an element in-place at the back of the queue.
      * @tparam Args Constructor argument types.
      * @param args Arguments forwarded to T's constructor.
@@ -80,12 +87,14 @@ struct ConQueue {
     template <typename... Args>
     void emplace(Args&&... args) {
         std::unique_lock lock(m_mutex);
+        if (m_closed) return;
         if (m_capacity.has_value()) {
             auto capacity = *m_capacity;
             if (m_queue.size() >= capacity) {
                 switch (m_overflow_policy) {
                     case OverflowPolicy::Block:
-                        m_cv.wait(lock, [this, capacity] { return m_queue.size() < capacity; });
+                        m_cv.wait(lock, [this, capacity] { return m_closed || m_queue.size() < capacity; });
+                        if (m_closed) return;
                         break;
                     case OverflowPolicy::DropOldest:
                         m_queue.pop_front();
@@ -102,7 +111,7 @@ struct ConQueue {
      * available. */
     std::expected<T, ReceiveError> pop() {
         std::unique_lock lock(m_mutex);
-        m_cv.wait(lock, [this] { return !m_queue.empty() || m_sender_count == 0; });
+        m_cv.wait(lock, [this] { return !m_queue.empty() || m_sender_count == 0 || m_closed; });
         if (m_queue.empty()) {
             return std::unexpected(ReceiveError::Closed);
         }
@@ -117,7 +126,7 @@ struct ConQueue {
     std::expected<T, ReceiveError> try_pop() {
         std::unique_lock lock(m_mutex);
         if (m_queue.empty()) {
-            return std::unexpected(m_sender_count == 0 ? ReceiveError::Closed : ReceiveError::Empty);
+            return std::unexpected((m_sender_count == 0 || m_closed) ? ReceiveError::Closed : ReceiveError::Empty);
         }
         T value = std::move(m_queue.front());
         m_queue.pop_front();
@@ -192,6 +201,11 @@ struct Sender {
     void send(Args&&... args) const {
         if (!m_queue) return;
         m_queue->emplace(std::forward<Args>(args)...);
+    }
+
+    void close() const {
+        if (!m_queue) return;
+        m_queue->close();
     }
 
     WeakSender<T, Alloc> downgrade() const;
@@ -295,106 +309,311 @@ std::pair<Sender<T, Alloc>, Receiver<T, Alloc>> make_channel(std::size_t capacit
     return {Sender<T, Alloc>(queue), Receiver<T, Alloc>(queue)};
 }
 
-/** @brief Sender end of a one-shot broadcast channel backed by std::promise.
+template <typename T>
+struct BroadcastCursor {
+    std::size_t next_index = 0;
+};
+
+template <typename T>
+struct BroadcastQueue {
+   private:
+    using cursor_type = BroadcastCursor<T>;
+
+    mutable std::mutex m_mutex;
+    mutable std::condition_variable m_cv;
+    std::deque<T> m_messages;
+    std::vector<std::weak_ptr<cursor_type>> m_cursors;
+    std::size_t m_front_index    = 0;
+    std::size_t m_next_index     = 0;
+    std::size_t m_sender_count   = 0;
+    std::size_t m_receiver_count = 0;
+    bool m_closed                = false;
+
+    void prune_consumed_locked() {
+        std::size_t min_next_index = m_next_index;
+        bool has_live_cursor       = false;
+
+        auto out = m_cursors.begin();
+        for (auto it = m_cursors.begin(); it != m_cursors.end(); ++it) {
+            if (auto cursor = it->lock()) {
+                has_live_cursor = true;
+                min_next_index  = std::min(min_next_index, cursor->next_index);
+                *out++          = *it;
+            }
+        }
+        m_cursors.erase(out, m_cursors.end());
+
+        if (!has_live_cursor) {
+            min_next_index = m_next_index;
+        }
+
+        while (m_front_index < min_next_index && !m_messages.empty()) {
+            m_messages.pop_front();
+            ++m_front_index;
+        }
+    }
+
+    std::expected<T, ReceiveError> receive_locked(cursor_type& cursor) {
+        if (cursor.next_index < m_front_index) {
+            cursor.next_index = m_front_index;
+        }
+        if (cursor.next_index >= m_next_index) {
+            return std::unexpected(ReceiveError::Closed);
+        }
+
+        auto offset = cursor.next_index - m_front_index;
+        T value     = m_messages[offset];
+        ++cursor.next_index;
+        prune_consumed_locked();
+        return value;
+    }
+
+   public:
+    using cursor_ptr = std::shared_ptr<cursor_type>;
+
+    BroadcastQueue()                                 = default;
+    BroadcastQueue(const BroadcastQueue&)            = delete;
+    BroadcastQueue(BroadcastQueue&&)                 = delete;
+    BroadcastQueue& operator=(const BroadcastQueue&) = delete;
+    BroadcastQueue& operator=(BroadcastQueue&&)      = delete;
+    ~BroadcastQueue()                                = default;
+
+    void add_sender() {
+        std::unique_lock lock(m_mutex);
+        if (m_closed) return;
+        ++m_sender_count;
+    }
+
+    void remove_sender() {
+        std::unique_lock lock(m_mutex);
+        if (m_sender_count == 0) return;
+        --m_sender_count;
+        if (m_sender_count == 0) {
+            m_cv.notify_all();
+        }
+    }
+
+    void add_receiver() {
+        std::unique_lock lock(m_mutex);
+        ++m_receiver_count;
+    }
+
+    void remove_receiver() {
+        std::unique_lock lock(m_mutex);
+        if (m_receiver_count == 0) return;
+        --m_receiver_count;
+        if (m_receiver_count == 0) {
+            m_closed = true;
+            prune_consumed_locked();
+            m_cv.notify_all();
+        }
+    }
+
+    void close() {
+        std::unique_lock lock(m_mutex);
+        m_closed = true;
+        prune_consumed_locked();
+        m_cv.notify_all();
+    }
+
+    cursor_ptr create_cursor(std::size_t next_index = 0) {
+        std::unique_lock lock(m_mutex);
+        auto cursor        = std::make_shared<cursor_type>();
+        cursor->next_index = std::max(next_index, m_front_index);
+        m_cursors.push_back(cursor);
+        return cursor;
+    }
+
+    cursor_ptr clone_cursor(const cursor_ptr& other) {
+        std::unique_lock lock(m_mutex);
+        auto cursor = std::make_shared<cursor_type>();
+        if (other) {
+            cursor->next_index = std::max(other->next_index, m_front_index);
+        } else {
+            cursor->next_index = m_front_index;
+        }
+        m_cursors.push_back(cursor);
+        return cursor;
+    }
+
+    void push(T value) {
+        std::unique_lock lock(m_mutex);
+        if (m_closed) return;
+        m_messages.emplace_back(std::move(value));
+        ++m_next_index;
+        m_cv.notify_all();
+    }
+
+    std::expected<T, ReceiveError> receive(const cursor_ptr& cursor) {
+        if (!cursor) {
+            return std::unexpected(ReceiveError::Closed);
+        }
+
+        std::unique_lock lock(m_mutex);
+        m_cv.wait(lock, [&] { return cursor->next_index < m_next_index || m_sender_count == 0 || m_closed; });
+        if (cursor->next_index < m_next_index) {
+            return receive_locked(*cursor);
+        }
+        return std::unexpected(ReceiveError::Closed);
+    }
+
+    std::expected<T, ReceiveError> try_receive(const cursor_ptr& cursor) {
+        if (!cursor) {
+            return std::unexpected(ReceiveError::Closed);
+        }
+
+        std::unique_lock lock(m_mutex);
+        if (cursor->next_index < m_next_index) {
+            return receive_locked(*cursor);
+        }
+        return std::unexpected((m_sender_count == 0 || m_closed) ? ReceiveError::Closed : ReceiveError::Empty);
+    }
+};
+
+/** @brief Sender end of a multi-message broadcast channel.
  *
- * Sends a single value to ALL receivers independently.
- * Duplicate sends are silently ignored.
+ * Every sent value is delivered to all receivers independently.
+ * When the last sender disconnects, waiting receivers observe Closed once all
+ * buffered messages have been consumed.
  * @tparam T Value type (must be copy-constructible).
  */
 export template <typename T>
 struct BroadcastSender {
    private:
-    std::shared_ptr<std::promise<T>> m_promise;
+    using queue_type = BroadcastQueue<T>;
+
+    std::shared_ptr<queue_type> m_queue;
+
+    static void connect(const std::shared_ptr<queue_type>& queue) {
+        if (queue) queue->add_sender();
+    }
+
+    static void disconnect(const std::shared_ptr<queue_type>& queue) {
+        if (queue) queue->remove_sender();
+    }
 
    public:
     BroadcastSender() = default;
-    BroadcastSender(std::shared_ptr<std::promise<T>> promise) : m_promise(std::move(promise)) {}
-    BroadcastSender(const BroadcastSender&)            = default;
-    BroadcastSender(BroadcastSender&&)                 = default;
-    BroadcastSender& operator=(const BroadcastSender&) = default;
-    BroadcastSender& operator=(BroadcastSender&&)      = default;
-    ~BroadcastSender()                                 = default;
+    BroadcastSender(const std::shared_ptr<queue_type>& queue) : m_queue(queue) { connect(m_queue); }
+    BroadcastSender(const BroadcastSender& other) : m_queue(other.m_queue) { connect(m_queue); }
+    BroadcastSender(BroadcastSender&& other) noexcept : m_queue(std::exchange(other.m_queue, nullptr)) {}
+    BroadcastSender& operator=(const BroadcastSender& other) {
+        if (this == &other || m_queue == other.m_queue) return *this;
+        disconnect(m_queue);
+        m_queue = other.m_queue;
+        connect(m_queue);
+        return *this;
+    }
+    BroadcastSender& operator=(BroadcastSender&& other) noexcept {
+        if (this == &other) return *this;
+        disconnect(m_queue);
+        m_queue = std::exchange(other.m_queue, nullptr);
+        return *this;
+    }
+    ~BroadcastSender() { disconnect(m_queue); }
 
-    operator bool() const { return m_promise != nullptr; }
-    bool operator!() const { return m_promise == nullptr; }
+    operator bool() const { return m_queue != nullptr; }
+    bool operator!() const { return m_queue == nullptr; }
 
-    /** @brief Send a value to all receivers, blocking until stored.
-     *  Silently ignores duplicate sends (promise already fulfilled).
-     */
     void send(T value) const {
-        if (!m_promise) return;
-        try {
-            m_promise->set_value(std::move(value));
-        } catch (const std::future_error&) {}
+        if (!m_queue) return;
+        m_queue->push(std::move(value));
+    }
+
+    void close() const {
+        if (!m_queue) return;
+        m_queue->close();
     }
 };
 
-/** @brief Receiver end of a one-shot broadcast channel backed by std::shared_future.
+/** @brief Receiver end of a multi-message broadcast channel.
  *
- * Cloneable: every copy independently receives the same value.
- * receive() blocks until the sender sends, then returns the value;
- * subsequent calls return the cached value immediately.
+ * Receiver copies keep their own read cursor and each independently observe the
+ * same sequence of values from their copy point onward.
  * @tparam T Value type (must be copy-constructible).
  */
 export template <typename T>
 struct BroadcastReceiver {
    private:
-    std::shared_future<T> m_future;
+    using queue_type  = BroadcastQueue<T>;
+    using cursor_type = typename queue_type::cursor_ptr;
+
+    std::shared_ptr<queue_type> m_queue;
+    cursor_type m_cursor;
+
+    static void connect(const std::shared_ptr<queue_type>& queue) {
+        if (queue) queue->add_receiver();
+    }
+
+    static void disconnect(const std::shared_ptr<queue_type>& queue) {
+        if (queue) queue->remove_receiver();
+    }
 
    public:
     BroadcastReceiver() = default;
-    BroadcastReceiver(std::shared_future<T> future) : m_future(std::move(future)) {}
-    BroadcastReceiver(const BroadcastReceiver&)            = default;
-    BroadcastReceiver(BroadcastReceiver&&)                 = default;
-    BroadcastReceiver& operator=(const BroadcastReceiver&) = default;
-    BroadcastReceiver& operator=(BroadcastReceiver&&)      = default;
-    ~BroadcastReceiver()                                   = default;
-
-    operator bool() const { return m_future.valid(); }
-    bool operator!() const { return !m_future.valid(); }
-
-    /** @brief Block until the value is available, then return it.
-     *  May be called multiple times; always returns the same value.
-     */
-    std::expected<T, ReceiveError> receive() const {
-        if (!m_future.valid()) {
-            return std::unexpected(ReceiveError::Closed);
-        }
-        try {
-            return m_future.get();
-        } catch (const std::future_error&) {
-            return std::unexpected(ReceiveError::Closed);
+    BroadcastReceiver(std::shared_ptr<queue_type> queue, cursor_type cursor)
+        : m_queue(std::move(queue)), m_cursor(std::move(cursor)) {
+        connect(m_queue);
+    }
+    BroadcastReceiver(const BroadcastReceiver& other) : m_queue(other.m_queue) {
+        if (m_queue) {
+            m_cursor = m_queue->clone_cursor(other.m_cursor);
+            connect(m_queue);
         }
     }
+    BroadcastReceiver(BroadcastReceiver&& other) noexcept
+        : m_queue(std::exchange(other.m_queue, nullptr)), m_cursor(std::exchange(other.m_cursor, nullptr)) {}
+    BroadcastReceiver& operator=(const BroadcastReceiver& other) {
+        if (this == &other) return *this;
+        disconnect(m_queue);
+        m_queue = other.m_queue;
+        m_cursor.reset();
+        if (m_queue) {
+            m_cursor = m_queue->clone_cursor(other.m_cursor);
+            connect(m_queue);
+        }
+        return *this;
+    }
+    BroadcastReceiver& operator=(BroadcastReceiver&& other) noexcept {
+        if (this == &other) return *this;
+        disconnect(m_queue);
+        m_queue  = std::exchange(other.m_queue, nullptr);
+        m_cursor = std::exchange(other.m_cursor, nullptr);
+        return *this;
+    }
+    ~BroadcastReceiver() { disconnect(m_queue); }
 
-    /** @brief Try to receive the broadcast value without blocking. */
+    operator bool() const { return m_queue != nullptr && m_cursor != nullptr; }
+    bool operator!() const { return !m_queue || !m_cursor; }
+
+    std::expected<T, ReceiveError> receive() const {
+        if (!m_queue || !m_cursor) {
+            return std::unexpected(ReceiveError::Closed);
+        }
+        return m_queue->receive(m_cursor);
+    }
+
     std::expected<T, ReceiveError> try_receive() const {
-        if (!m_future.valid()) {
+        if (!m_queue || !m_cursor) {
             return std::unexpected(ReceiveError::Closed);
         }
-        if (m_future.wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
-            return std::unexpected(ReceiveError::Empty);
-        }
-        try {
-            return m_future.get();
-        } catch (const std::future_error&) {
-            return std::unexpected(ReceiveError::Closed);
-        }
+        return m_queue->try_receive(m_cursor);
     }
 };
 
-/** @brief Create a one-shot broadcast channel pair.
+/** @brief Create a multi-message broadcast channel pair.
  *
- * The sender sets the value exactly once; all current and future receivers
- * independently receive that same value via receive().
+ * All receiver copies observe the same sequence independently. If all senders
+ * disconnect before another value arrives, receivers return Closed instead of
+ * blocking forever.
  * @tparam T Element type (must be copy-constructible).
  * @return A pair of (BroadcastSender, BroadcastReceiver).
  */
 export template <typename T>
 std::pair<BroadcastSender<T>, BroadcastReceiver<T>> make_broadcast_channel() {
-    auto promise = std::make_shared<std::promise<T>>();
-    auto future  = std::shared_future<T>(promise->get_future());
-    return {BroadcastSender<T>(std::move(promise)), BroadcastReceiver<T>(std::move(future))};
+    auto queue  = std::make_shared<BroadcastQueue<T>>();
+    auto cursor = queue->create_cursor();
+    return {BroadcastSender<T>(queue), BroadcastReceiver<T>(queue, std::move(cursor))};
 }
 /** @brief Simple mutex wrapper that pairs a std::mutex with the data it protects.
  *

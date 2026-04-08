@@ -321,12 +321,18 @@ Handle<T>& Handle<T>::operator=(UntypedHandle&& other) {
     return *this;
 }
 
-struct HandleProvider {
+export struct HandleProvider {
+   private:
     AssetIndexAllocator index_allocator;
     Sender<DestructionEvent> event_sender;
     Receiver<DestructionEvent> event_receiver;
     meta::type_index type;
 
+    friend struct AssetInfos;
+    template <Asset T>
+    friend struct Assets;
+
+   public:
     HandleProvider(const meta::type_index& type);
     HandleProvider(const HandleProvider&)            = delete;
     HandleProvider(HandleProvider&&)                 = delete;

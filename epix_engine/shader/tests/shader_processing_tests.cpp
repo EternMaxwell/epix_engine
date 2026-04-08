@@ -34,31 +34,6 @@ AssetSourceBuilder make_processed_memory_source_builder(const memory::Directory&
         });
 }
 
-bool preprocess_shader_assets(const memory::Directory& source_dir,
-                              const memory::Directory& processed_dir,
-                              std::initializer_list<std::string_view> paths) {
-    auto data = std::make_shared<AssetProcessorData>();
-    auto log_name =
-        std::format("shader_processing_test_{}.log", std::chrono::steady_clock::now().time_since_epoch().count());
-    data->set_log_factory(std::make_shared<FileTransactionLogFactory>(std::filesystem::path(log_name)));
-    data->source_builders->insert(AssetSourceId{}, make_processed_memory_source_builder(source_dir, processed_dir));
-
-    AssetProcessor processor(data, false);
-    processor.get_server().register_loader(ShaderLoader{});
-    processor.register_processor(ShaderProcessor{});
-    processor.set_default_processor<ShaderProcessor>("wgsl");
-    processor.set_default_processor<ShaderProcessor>("slang");
-
-    auto source_opt = processor.get_source(AssetSourceId{});
-    if (!source_opt.has_value()) return false;
-
-    for (auto path : paths) {
-        auto result = processor.process_asset_internal(source_opt->get(), AssetPath(std::string(path)));
-        if (!result.has_value()) return false;
-    }
-    return true;
-}
-
 struct ProcessedShaderEnv {
     App app;
     memory::Directory source_dir;
@@ -70,8 +45,7 @@ ProcessedShaderEnv make_processed_shader_env(const memory::Directory& source_dir
 
     App app = App::create();
     AssetPlugin plugin;
-    plugin.mode                         = AssetServerMode::Processed;
-    plugin.use_asset_processor_override = false;
+    plugin.mode = AssetServerMode::Processed;
     plugin.register_asset_source(AssetSourceId{}, make_processed_memory_source_builder(source_dir, processed_dir));
     plugin.build(app);
 
@@ -109,6 +83,36 @@ std::vector<std::uint8_t> read_bytes(const memory::Directory& dir, const std::fi
     return std::vector<std::uint8_t>(raw.begin(), raw.end());
 }
 
+bool preprocess_shader_assets(ProcessedShaderEnv& env,
+                              std::initializer_list<std::string_view> paths,
+                              std::chrono::milliseconds timeout = std::chrono::milliseconds(5000)) {
+    try {
+        env.app.run_schedule(Startup);
+
+        auto processor = env.app.get_resource<AssetProcessor>();
+        if (!processor.has_value()) return false;
+
+        processor->get().get_data()->wait_until_initialized();
+        (void)timeout;
+
+        for (auto path : paths) {
+            if (processor->get().get_data()->wait_until_processed(AssetPath(std::string(path))) !=
+                ProcessStatus::Processed) {
+                return false;
+            }
+        }
+
+        processor->get().get_data()->wait_until_finished();
+        return true;
+    } catch (const std::exception& ex) {
+        std::cerr << "preprocess_shader_assets exception: " << ex.what() << std::endl;
+        return false;
+    } catch (...) {
+        std::cerr << "preprocess_shader_assets unknown exception" << std::endl;
+        return false;
+    }
+}
+
 bool starts_with_processed_magic(const std::vector<std::uint8_t>& bytes) {
     static constexpr std::array<std::uint8_t, 8> k_magic = {'E', 'P', 'S', 'H', 'P', 'R', '0', '1'};
     return bytes.size() >= k_magic.size() && std::equal(k_magic.begin(), k_magic.end(), bytes.begin());
@@ -121,7 +125,7 @@ TEST(ShaderProcessingWgsl, ProcessedMode_WritesBinaryAndLoadsDeps) {
                              memory::Value::from_shared(make_bytes("#import \"dep.wgsl\"\nfn main_fn() {}")));
 
     auto env = make_processed_shader_env(source);
-    ASSERT_TRUE(preprocess_shader_assets(env.source_dir, env.processed_dir, {"dep.wgsl", "main.wgsl"}));
+    ASSERT_TRUE(preprocess_shader_assets(env, {"dep.wgsl", "main.wgsl"}));
     auto& server  = env.app.resource<AssetServer>();
     auto& assets  = env.app.resource<Assets<Shader>>();
     auto main_hnd = server.load<Shader>(AssetPath("main.wgsl"));
@@ -147,7 +151,7 @@ TEST(ShaderProcessingWgsl, ProcessedMode_CyclicImportsStillSerialize) {
     (void)source.insert_file("b.wgsl", memory::Value::from_shared(make_bytes("#import \"a.wgsl\"\nfn b() {}")));
 
     auto env = make_processed_shader_env(source);
-    ASSERT_TRUE(preprocess_shader_assets(env.source_dir, env.processed_dir, {"a.wgsl", "b.wgsl"}));
+    ASSERT_TRUE(preprocess_shader_assets(env, {"a.wgsl", "b.wgsl"}));
 
     auto processed_a = read_bytes(env.processed_dir, "a.wgsl");
     auto processed_b = read_bytes(env.processed_dir, "b.wgsl");
@@ -169,7 +173,7 @@ TEST(ShaderProcessingWgsl, ProcessedMode_LargeSourceRoundTrips) {
     (void)source.insert_file("large.wgsl", memory::Value::from_shared(make_bytes(large_source)));
 
     auto env = make_processed_shader_env(source);
-    ASSERT_TRUE(preprocess_shader_assets(env.source_dir, env.processed_dir, {"common.wgsl", "large.wgsl"}));
+    ASSERT_TRUE(preprocess_shader_assets(env, {"common.wgsl", "large.wgsl"}));
     auto& server = env.app.resource<AssetServer>();
     auto& assets = env.app.resource<Assets<Shader>>();
 
@@ -196,7 +200,7 @@ TEST(ShaderProcessingSlang, ProcessedMode_PreservesCustomImportsWithoutFileDeps)
                           make_bytes("import utility;\n[shader(\"compute\")]\n[numthreads(1,1,1)]\nvoid main() {}")));
 
     auto env = make_processed_shader_env(source);
-    ASSERT_TRUE(preprocess_shader_assets(env.source_dir, env.processed_dir, {"utility.slang", "main.slang"}));
+    ASSERT_TRUE(preprocess_shader_assets(env, {"utility.slang", "main.slang"}));
     auto& server  = env.app.resource<AssetServer>();
     auto& assets  = env.app.resource<Assets<Shader>>();
     auto main_hnd = server.load<Shader>(AssetPath("main.slang"));
@@ -221,7 +225,7 @@ TEST(ShaderProcessingSlang, ProcessedMode_DoesNotConvertToSpirv) {
     (void)source.insert_file("scene.slang", memory::Value::from_shared(make_bytes("module scene;\nvoid main() {}")));
 
     auto env = make_processed_shader_env(source);
-    ASSERT_TRUE(preprocess_shader_assets(env.source_dir, env.processed_dir, {"scene.slang"}));
+    ASSERT_TRUE(preprocess_shader_assets(env, {"scene.slang"}));
     auto& server = env.app.resource<AssetServer>();
     auto& assets = env.app.resource<Assets<Shader>>();
 
@@ -240,7 +244,7 @@ TEST(ShaderProcessing, InvalidUtf8PreprocessFailureFallsBackToSourceLoad) {
     (void)source.insert_file("bad.wgsl", memory::Value::from_shared(bad_shared));
 
     auto env = make_processed_shader_env(source);
-    EXPECT_FALSE(preprocess_shader_assets(env.source_dir, env.processed_dir, {"bad.wgsl"}));
+    EXPECT_FALSE(preprocess_shader_assets(env, {"bad.wgsl"}));
     auto& server = env.app.resource<AssetServer>();
     auto& assets = env.app.resource<Assets<Shader>>();
 
@@ -261,7 +265,7 @@ TEST(ShaderProcessingSpirv, ProcessedMode_CopyThroughStillLoads) {
     (void)source.insert_file("compiled.spv", memory::Value::from_shared(make_bytes_from_vec(spirv)));
 
     auto env = make_processed_shader_env(source);
-    ASSERT_TRUE(preprocess_shader_assets(env.source_dir, env.processed_dir, {"compiled.spv"}));
+    ASSERT_TRUE(preprocess_shader_assets(env, {"compiled.spv"}));
     auto& server = env.app.resource<AssetServer>();
     auto& assets = env.app.resource<Assets<Shader>>();
 

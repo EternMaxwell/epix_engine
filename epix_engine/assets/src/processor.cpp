@@ -10,14 +10,19 @@ using namespace epix::assets;
 
 // ---- AssetProcessor constructor ----
 
-AssetProcessor::AssetProcessor(std::shared_ptr<AssetProcessorData> processor_data, bool watching_for_changes)
-    : data(std::move(processor_data)) {
-    auto sources_val = data->source_builders->build_sources(true, watching_for_changes);
-    auto state       = data->processing_state;
+AssetProcessor::AssetProcessor(AssetSourceBuilders& builders, bool watching_for_changes)
+    : AssetProcessor(builders, watching_for_changes, std::make_unique<FileTransactionLogFactory>()) {}
+AssetProcessor::AssetProcessor(AssetSourceBuilders& builders,
+                               bool watching_for_changes,
+                               std::unique_ptr<ProcessorTransactionLogFactory> log_factory) {
+    auto state       = std::make_shared<ProcessingState>();
+    auto sources_val = builders.build_sources(true, watching_for_changes);
     sources_val.gate_on_processor([state](AssetSourceId id, const AssetReader& reader) -> std::unique_ptr<AssetReader> {
         return std::make_unique<ProcessorGatedReader>(std::move(id), reader, state);
     });
     auto sources = std::make_shared<AssetSources>(std::move(sources_val));
+    data =
+        std::shared_ptr<AssetProcessorData>(new AssetProcessorData(sources, std::move(state), std::move(log_factory)));
     server = AssetServer(std::move(sources), AssetServerMode::Processed, AssetMetaCheck{asset_meta_check::Always{}},
                          false, UnapprovedPathMode::Forbid);
 }
@@ -34,12 +39,13 @@ void AssetProcessor::start(core::Res<AssetProcessor> processor) {
 
         auto [new_task_sender, new_task_receiver] =
             utils::make_channel<std::pair<AssetSourceId, std::filesystem::path>>();
+        proc.data->set_task_sender(new_task_sender);
 
         proc.queue_initial_processing_tasks(new_task_sender);
 
         // Spawn task executor in background.
         // Pass a copy of new_task_sender so the executor can immediately downgrade it to a
-        // WeakSender (matching Bevy's pattern) �?avoiding keeping the channel artificially open.
+        // WeakSender (matching Bevy's pattern), avoiding keeping the channel artificially open.
         {
             auto p = proc;
             auto s = new_task_sender;  // copy: executor will downgrade and drop this
@@ -48,50 +54,66 @@ void AssetProcessor::start(core::Res<AssetProcessor> processor) {
                 [p, s, r]() mutable { p.execute_processing_tasks(std::move(s), r); });
         }
 
-        // Start source-change listeners BEFORE waiting. Listeners use a WeakSender so they
-        // do NOT keep new_task_sender alive. After spawn_source_change_event_listeners returns,
-        // new_task_sender is dropped, signaling execute_processing_tasks that there are no more
-        // producers, allowing it to eventually reach ProcessorState::Finished.
-        spdlog::debug("Listening for changes to source assets");
-        proc.spawn_source_change_event_listeners(new_task_sender);
-        new_task_sender = {};  // drop last strong sender -> unblocks execute_processing_tasks
-
         proc.data->wait_until_finished();
 
         auto end_time = std::chrono::steady_clock::now();
         auto elapsed  = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
         spdlog::debug("Processing finished in {}ms", elapsed.count());
+
+        spdlog::debug("Listening for changes to source assets");
+        proc.spawn_source_change_event_listeners(new_task_sender);
     });
 }
 
 // ---- Logging helpers ----
 
 void AssetProcessor::log_begin_processing(const AssetPath& path) const {
-    if (data->log) {
-        data->log->begin_processing(path);
+    auto log = data->log.write();
+    if (log->has_value() && log->value()) {
+        if (auto result = log->value()->begin_processing(path); !result) {
+            spdlog::error("Failed to write begin-processing log entry for {}: {}", path.string(), result.error());
+        }
     }
 }
 
 void AssetProcessor::log_end_processing(const AssetPath& path) const {
-    if (data->log) {
-        data->log->end_processing(path);
+    auto log = data->log.write();
+    if (log->has_value() && log->value()) {
+        if (auto result = log->value()->end_processing(path); !result) {
+            spdlog::error("Failed to write end-processing log entry for {}: {}", path.string(), result.error());
+        }
     }
 }
 
 void AssetProcessor::log_unrecoverable() const {
-    if (data->log) {
-        data->log->unrecoverable();
+    auto log = data->log.write();
+    if (log->has_value() && log->value()) {
+        if (auto result = log->value()->unrecoverable(); !result) {
+            spdlog::error("Failed to write unrecoverable log entry: {}", result.error());
+        }
     }
 }
 
 // ---- validate_transaction_log_and_recover ----
 
-void AssetProcessor::validate_transaction_log_and_recover() const {
-    if (!data->log_factory) {
-        spdlog::error("Asset processor log factory not set. Cannot validate transaction log.");
-        return;
+std::filesystem::path AssetProcessor::validate_transaction_log_and_recover() const {
+    std::unique_ptr<ProcessorTransactionLogFactory> log_factory;
+    {
+        auto guarded_log_factory = data->log_factory.lock();
+        if (!guarded_log_factory->has_value()) {
+            spdlog::error("Asset processor log factory not set. Cannot validate transaction log.");
+            return {};
+        }
+        log_factory = std::move(guarded_log_factory->value());
+        guarded_log_factory->reset();
     }
-    auto result = validate_transaction_log(*data->log_factory);
+
+    if (!log_factory) {
+        spdlog::error("Asset processor log factory not set. Cannot validate transaction log.");
+        return {};
+    }
+    auto log_path = log_factory->log_path();
+    auto result   = validate_transaction_log(*log_factory);
     if (!result) {
         auto& err              = result.error();
         bool state_valid       = true;
@@ -181,12 +203,15 @@ void AssetProcessor::validate_transaction_log_and_recover() const {
         }
     }
     // Create new log
-    auto new_log = data->log_factory->create_new_log();
+    auto new_log = log_factory->create_new_log();
     if (new_log) {
-        data->log = std::move(*new_log);
+        auto log = data->log.write();
+        *log     = std::move(*new_log);
     } else {
         spdlog::error("Failed to create new transaction log: {}", new_log.error());
     }
+
+    return log_path;
 }
 
 // ---- initialize ----
@@ -214,7 +239,7 @@ static void get_asset_paths(const AssetReader& reader,
 }
 
 void AssetProcessor::initialize() const {
-    validate_transaction_log_and_recover();
+    auto log_path    = validate_transaction_log_and_recover();
     auto infos_guard = data->processing_state->m_asset_infos.write();
 
     for (auto& source : sources()->iter_processed()) {
@@ -234,7 +259,7 @@ void AssetProcessor::initialize() const {
 
         // Clean up empty dirs in processed output
         for (auto& empty_dir : empty_dirs) {
-            processed_writer.remove_directory(empty_dir);  // best-effort
+            (void)processed_writer.remove_directory(empty_dir);
         }
 
         for (auto& path : unprocessed_paths) {
@@ -242,8 +267,8 @@ void AssetProcessor::initialize() const {
         }
 
         for (auto& path : processed_paths) {
-            // Skip the transaction log file — it lives in the processed dir but is not an asset.
-            if (data->log_factory && path == data->log_factory->log_path()) continue;
+            // Skip the transaction log file - it lives in the processed dir but is not an asset.
+            if (!log_path.empty() && path == log_path) continue;
 
             std::vector<AssetPath> dependencies;
             auto asset_path = AssetPath(source.id(), path);
@@ -251,10 +276,17 @@ void AssetProcessor::initialize() const {
             if (info) {
                 auto meta_bytes = processed_reader.read_meta_bytes(asset_path.path);
                 if (meta_bytes) {
-                    // Try to deserialize ProcessedInfo from meta bytes
-                    // For now, we store the raw processed_info if available
-                    // TODO: actual deserialization of meta bytes into ProcessedInfo
-                    spdlog::trace("Found processed meta for {}", asset_path.string());
+                    // Deserialize ProcessedInfo from the stored processed meta to enable
+                    // the skip-unchanged check on next run.  We only read the first two
+                    // fields (version + processed) so we don't need to know the settings types.
+                    auto pi = deserialize_processed_info(*meta_bytes);
+                    if (pi && pi->has_value()) {
+                        info->processed_info = std::move(**pi);
+                        spdlog::trace("Restored ProcessedInfo for {} (hash {}...)", asset_path.string(),
+                                      static_cast<int>(info->processed_info->hash[0]));
+                    } else {
+                        spdlog::trace("Found processed meta for {} (no ProcessedInfo stored)", asset_path.string());
+                    }
                 } else {
                     spdlog::trace("Removing processed data for {} because meta failed to load", asset_path.string());
                     remove_processed_asset_and_meta(source, asset_path.path);
@@ -316,7 +348,7 @@ std::expected<ProcessResult, ProcessError> AssetProcessor::process_asset_interna
     // Find the processor for this extension
     auto processor = get_default_processor(*ext);
     if (!processor) {
-        // No processor, try to just copy through (load action)
+        // No processor - copy-through (load action)
         auto meta_result = reader.read_meta_bytes(path);
         if (!meta_result) {
             // No meta file and no processor - check if there's a loader
@@ -326,7 +358,46 @@ std::expected<ProcessResult, ProcessError> AssetProcessor::process_asset_interna
             }
         }
 
-        // Copy-through: read from source, write to processed
+        // Get default loader meta for canonical meta bytes
+        auto loader         = server.get_path_asset_loader(asset_path);
+        auto source_meta    = loader ? loader->default_meta() : nullptr;
+        auto meta_bytes_raw = reader.read_meta_bytes(path);
+        std::vector<std::byte> meta_bytes_for_hash;
+        if (meta_bytes_raw) {
+            meta_bytes_for_hash = std::move(*meta_bytes_raw);
+        } else if (source_meta) {
+            meta_bytes_for_hash = source_meta->serialize_bytes();
+        }
+
+        // Compute hash of (meta bytes + asset bytes)
+        AssetHash new_hash = {};
+        {
+            auto hash_reader = reader.read(path);
+            if (hash_reader) {
+                new_hash = get_asset_hash(meta_bytes_for_hash, **hash_reader);
+            }
+        }
+
+        // Skip if unchanged
+        {
+            auto infos_guard = data->processing_state->m_asset_infos.read();
+            if (const auto* existing = infos_guard->get(asset_path)) {
+                if (existing->processed_info && existing->processed_info->hash == new_hash) {
+                    bool dep_changed = false;
+                    for (const auto& dep : existing->processed_info->process_dependencies) {
+                        const auto* dep_info = infos_guard->get(AssetPath(dep.path));
+                        bool live_ok         = dep_info && dep_info->processed_info &&
+                                               dep_info->processed_info->full_hash == dep.full_hash;
+                        if (!live_ok) {
+                            dep_changed = true;
+                            break;
+                        }
+                    }
+                    if (!dep_changed) return ProcessResult::skipped_not_changed();
+                }
+            }
+        }
+
         auto writer_opt = source.processed_writer();
         if (!writer_opt) {
             return std::unexpected(ProcessError{process_errors::MissingProcessedAssetWriter{}});
@@ -339,26 +410,93 @@ std::expected<ProcessResult, ProcessError> AssetProcessor::process_asset_interna
         auto dest_stream = processed_writer.write(path);
         if (!dest_stream) return std::unexpected(writer_err(dest_stream.error()));
 
-        // Copy bytes
+        // Copy asset bytes
         (**dest_stream) << (**source_stream).rdbuf();
 
-        // Also copy/write meta
-        auto meta_bytes = reader.read_meta_bytes(path);
-        if (meta_bytes) {
-            processed_writer.write_meta_bytes(path, *meta_bytes);
+        // Build ProcessedInfo
+        ProcessedInfo new_processed_info;
+        new_processed_info.hash      = new_hash;
+        new_processed_info.full_hash = new_hash;  // no dependencies
+
+        // Write processed meta with embedded ProcessedInfo
+        if (source_meta) {
+            source_meta->processed_info_mut() = new_processed_info;
+            auto processed_meta_bytes         = source_meta->serialize_bytes();
+            if (!processed_meta_bytes.empty()) {
+                auto meta_write = processed_writer.write_meta_bytes(path, processed_meta_bytes);
+                if (!meta_write) return std::unexpected(writer_err(meta_write.error()));
+            }
+        } else if (!meta_bytes_for_hash.empty()) {
+            // Fall back to copying raw meta bytes
+            auto meta_write = processed_writer.write_meta_bytes(path, meta_bytes_for_hash);
+            if (!meta_write) return std::unexpected(writer_err(meta_write.error()));
         }
 
-        return ProcessResult{ProcessResultKind::Processed};
+        return ProcessResult{ProcessResultKind::Processed, std::move(new_processed_info)};
     }
 
-    // We have a processor - use it
+    // --- We have a processor - use it ---
     auto writer_opt = source.processed_writer();
     if (!writer_opt) {
         return std::unexpected(ProcessError{process_errors::MissingProcessedAssetWriter{}});
     }
     auto& processed_writer = writer_opt->get();
 
-    // Get transaction lock
+    // 1. Get source meta (deserialize from file if available, else use default)
+    std::unique_ptr<AssetMetaDyn> source_meta;
+    std::vector<std::byte> meta_bytes_for_hash;
+    {
+        auto mb_opt = reader.read_meta_bytes(path);
+        if (mb_opt) {
+            auto dm = processor->deserialize_meta(*mb_opt);
+            if (dm) {
+                source_meta         = std::move(*dm);
+                meta_bytes_for_hash = source_meta->serialize_bytes();
+            }
+        }
+        if (!source_meta) {
+            source_meta         = processor->default_meta();
+            meta_bytes_for_hash = source_meta->serialize_bytes();
+        }
+    }
+
+    // Settings to use for processing (from meta, falling back to default)
+    const Settings* settings_to_use = source_meta->process_settings();
+    std::unique_ptr<Settings> fallback_settings;
+    if (!settings_to_use) {
+        fallback_settings = processor->default_settings();
+        settings_to_use   = fallback_settings.get();
+    }
+
+    // 2. Compute new_hash = hash(meta_bytes + asset_bytes)
+    AssetHash new_hash = {};
+    {
+        auto hash_reader = reader.read(path);
+        if (!hash_reader) return std::unexpected(reader_err(hash_reader.error()));
+        new_hash = get_asset_hash(meta_bytes_for_hash, **hash_reader);
+    }
+
+    // 3. Skip-unchanged check
+    {
+        auto infos_guard = data->processing_state->m_asset_infos.read();
+        if (const auto* existing = infos_guard->get(asset_path)) {
+            if (existing->processed_info && existing->processed_info->hash == new_hash) {
+                bool dep_changed = false;
+                for (const auto& dep : existing->processed_info->process_dependencies) {
+                    const auto* dep_info = infos_guard->get(AssetPath(dep.path));
+                    bool live_ok =
+                        dep_info && dep_info->processed_info && dep_info->processed_info->full_hash == dep.full_hash;
+                    if (!live_ok) {
+                        dep_changed = true;
+                        break;
+                    }
+                }
+                if (!dep_changed) return ProcessResult::skipped_not_changed();
+            }
+        }
+    }
+
+    // 4. Acquire transaction lock and log
     auto _transaction_lock = [&]() -> std::shared_ptr<std::shared_mutex> {
         auto infos_guard = data->processing_state->m_asset_infos.write();
         auto& info       = infos_guard->get_or_insert(asset_path);
@@ -368,19 +506,41 @@ std::expected<ProcessResult, ProcessError> AssetProcessor::process_asset_interna
 
     log_begin_processing(asset_path);
 
+    // 5. Open streams for the actual process
     auto source_stream = reader.read(path);
     if (!source_stream) return std::unexpected(reader_err(source_stream.error()));
 
     auto dest_stream = processed_writer.write(path);
     if (!dest_stream) return std::unexpected(writer_err(dest_stream.error()));
 
+    // 6. Process
     ProcessedInfo new_processed_info;
-    auto default_settings = processor->default_settings();
+    new_processed_info.hash      = new_hash;
+    new_processed_info.full_hash = new_hash;
     ProcessContext context(*this, asset_path, **source_stream, new_processed_info);
 
-    auto process_result = processor->process(context, *default_settings, **dest_stream);
+    auto process_result = processor->process(context, *settings_to_use, **dest_stream);
     if (!process_result) {
         return std::unexpected(std::move(process_result.error()));
+    }
+    auto& processed_meta = *process_result;
+
+    // 7. Compute full_hash = hash(new_hash, dep full_hashes)
+    {
+        std::vector<AssetHash> dep_hashes;
+        dep_hashes.reserve(new_processed_info.process_dependencies.size());
+        for (const auto& dep : new_processed_info.process_dependencies) {
+            dep_hashes.push_back(dep.full_hash);
+        }
+        new_processed_info.full_hash = get_full_asset_hash(new_hash, dep_hashes);
+    }
+
+    // 8. Embed ProcessedInfo in the processed meta and write meta file
+    processed_meta->processed_info_mut() = new_processed_info;
+    auto processed_meta_bytes            = processed_meta->serialize_bytes();
+    if (!processed_meta_bytes.empty()) {
+        auto meta_write = processed_writer.write_meta_bytes(path, processed_meta_bytes);
+        if (!meta_write) return std::unexpected(writer_err(meta_write.error()));
     }
 
     log_end_processing(asset_path);
@@ -493,7 +653,7 @@ void AssetProcessor::handle_removed_folder(const AssetSource& source, const std:
     }
     auto writer_opt = source.processed_writer();
     if (writer_opt) {
-        writer_opt->get().remove_directory(path);  // ignore errors; may already be cleaned
+        (void)writer_opt->get().remove_directory(path);
     }
 }
 
@@ -508,18 +668,18 @@ void AssetProcessor::handle_renamed_asset(
     if (!writer_opt) return;
     auto& processed_writer = writer_opt->get();
 
-    // Remove old and add new in infos
-    auto old_lock = [&]() -> std::shared_ptr<std::shared_mutex> {
+    auto lock_pair =
+        [&]() -> std::optional<std::pair<std::shared_ptr<std::shared_mutex>, std::shared_ptr<std::shared_mutex>>> {
         auto infos_guard = data->processing_state->m_asset_infos.write();
-        return infos_guard->remove(old_asset);
+        return infos_guard->rename(old_asset, new_asset, sender);
     }();
-    if (old_lock) {
-        std::unique_lock lock(*old_lock);
-        processed_writer.rename(old_path, new_path);
-        processed_writer.rename_meta(old_path, new_path);
-    }
-    // Queue the new path for processing
-    sender.send(std::pair{source.id(), new_path});
+    if (!lock_pair) return;
+
+    auto& [old_lock, new_lock] = *lock_pair;
+    std::unique_lock old_write_lock(*old_lock);
+    std::unique_lock new_write_lock(*new_lock);
+    (void)processed_writer.rename(old_path, new_path);
+    (void)processed_writer.rename_meta(old_path, new_path);
 }
 
 // ---- Task dispatching ----
@@ -549,10 +709,6 @@ void AssetProcessor::queue_initial_processing_tasks(
 
 void AssetProcessor::spawn_source_change_event_listeners(
     utils::Sender<std::pair<AssetSourceId, std::filesystem::path>>& sender) const {
-    // Downgrade to a WeakSender so listener tasks do NOT keep the new_task channel alive.
-    // This allows execute_processing_tasks to detect input_closed when the owning (start)
-    // task drops its strong Sender.
-    auto weak_s = sender.downgrade();
     for (auto& source : sources()->iter_processed()) {
         auto receiver_opt = source.event_receiver();
         if (!receiver_opt) continue;
@@ -563,19 +719,21 @@ void AssetProcessor::spawn_source_change_event_listeners(
         // the watcher's sender is dropped, r.receive() returns Closed, and the task exits.
         auto weak_data        = std::weak_ptr<AssetProcessorData>(data);
         auto weak_server_data = std::weak_ptr<AssetServerData>(server.data);
-        auto ws               = weak_s;  // copy of WeakSender
+        auto task_sender      = sender;
         auto r                = receiver_opt->get();
-        utils::IOTaskPool::instance().detach_task([weak_data, weak_server_data, source_id, ws, r]() mutable {
+        utils::IOTaskPool::instance().detach_task([weak_data, weak_server_data, source_id, task_sender, r]() mutable {
             while (true) {
                 auto event = r.receive();
-                if (!event) return;
+                if (!event) {
+                    spdlog::trace("[assets.processor] Source change listener exiting after receiver closed.");
+                    return;
+                }
                 auto locked_data        = weak_data.lock();
                 auto locked_server_data = weak_server_data.lock();
-                if (!locked_data || !locked_server_data) return;
-                // Upgrade WeakSender to send a new processing task - if it fails the
-                // executor has already shut down, so we exit.
-                auto s = ws.upgrade();
-                if (!s) return;
+                if (!locked_data || !locked_server_data) {
+                    spdlog::trace("[assets.processor] Source change listener exiting after processor data expired.");
+                    return;
+                }
                 // Reconstruct a temporary AssetProcessor from the locked weak_ptr data.
                 // Note: we do NOT use AssetProcessor() default-construction (not available);
                 // instead we use the (AssetServer, shared_ptr<AssetProcessorData>) constructor.
@@ -584,8 +742,7 @@ void AssetProcessor::spawn_source_change_event_listeners(
                 AssetProcessor proc(std::move(tmp_server), locked_data);
                 auto source_opt = proc.get_source(source_id);
                 if (!source_opt) return;
-                proc.handle_asset_source_event(source_opt->get(), *event, *s);
-                // `s` (strong sender) goes out of scope and is dropped here
+                proc.handle_asset_source_event(source_opt->get(), *event, task_sender);
             }
         });
     }
@@ -596,9 +753,9 @@ void AssetProcessor::execute_processing_tasks(
     utils::Receiver<std::pair<AssetSourceId, std::filesystem::path>>& receiver) const {
     // Convert the Sender into a WeakSender so that once all task producers terminate (and drop
     // their sender), this executor doesn't keep itself alive. We can still upgrade when spawning
-    // tasks that need to queue dependency assets.  Matches Bevy's WeakSender downgrade pattern.
+    // tasks that need to queue dependency assets. Matches Bevy's WeakSender downgrade pattern.
     auto weak_sender = new_task_sender.downgrade();
-    new_task_sender  = {};  // drop the strong ref
+    new_task_sender  = {};
 
     // If there are no initial tasks in the channel, go straight to Finished (matches Bevy check:
     // `if new_task_receiver.is_empty() { set_state(Finished) }`).
@@ -621,7 +778,7 @@ void AssetProcessor::execute_processing_tasks(
         auto first = receiver.try_receive();
         if (!first) {
             if (first.error() == utils::ReceiveError::Empty) {
-                // No tasks are queued right now �?go to Finished immediately.
+                // No tasks are queued right now; go to Finished immediately.
                 data->processing_state->set_state(ProcessorState::Finished);
             }
             // If Closed, the InputClosedEvent from the forwarding thread handles it.
@@ -649,20 +806,19 @@ void AssetProcessor::execute_processing_tasks(
     int pending_tasks = 0;
     bool input_closed = false;
 
-    // Unified event loop �?equivalent to Bevy's `select_biased!` over new_task_receiver and
+    // Unified event loop, equivalent to Bevy's `select_biased!` over new_task_receiver and
     // task_finished_receiver.  We prefer StartTaskEvent (start tasks) over FinishedTaskEvent so
     // we don't prematurely mark as Finished before all queued tasks are dispatched.
     while (!input_closed || pending_tasks > 0) {
         auto event = event_receiver.receive();
-        if (!event) break;  // event channel closed unexpectedly
+        if (!event) {
+            break;
+        }
 
         std::visit(utils::visitor{
                        [&](StartTaskEvent& e) {
-                           // Upgrade the weak sender to verify that task producers are still alive.
-                           // Matches Bevy: `let Some(new_task_sender) = new_task_sender.upgrade()`.
                            auto upgraded = weak_sender.upgrade();
                            if (!upgraded) {
-                               // All producers (e.g. watcher tasks) are gone �?safe to ignore.
                                return;
                            }
                            pending_tasks++;
@@ -744,8 +900,11 @@ void AssetProcessor::write_default_meta_file_for_path(const AssetSource& source,
     auto existing_meta = reader.read_meta_bytes(asset_path.path);
     if (existing_meta) return;  // meta already exists
 
-    // TODO: implement meta serialization and write default meta bytes
-    // auto meta = processor->default_meta();
-    // auto meta_bytes = meta->serialize();
-    // writer.write_meta_bytes(asset_path.path, meta_bytes);
+    auto meta       = processor->default_meta();
+    auto meta_bytes = meta->serialize_bytes();
+    if (meta_bytes.empty()) return;
+
+    auto writer_opt = source.writer();
+    if (!writer_opt) return;
+    (void)writer_opt->get().write_meta_bytes(asset_path.path, meta_bytes);
 }

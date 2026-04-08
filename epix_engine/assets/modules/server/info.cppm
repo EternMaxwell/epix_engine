@@ -43,14 +43,14 @@ struct AssetInfo {
 
 /** @brief Statistics reported by the asset server.
  *  Matches bevy_asset's AssetServerStats. */
-export struct AssetServerStats {
+struct AssetServerStats {
     std::size_t started_load_tasks  = 0;
     std::size_t finished_load_tasks = 0;
 };
 
 /** @brief Error variants for GetOrCreateHandleInternalError.
  *  Matches bevy_asset's GetOrCreateHandleInternalError variants. */
-export namespace get_or_create_handle_internal_errors {
+namespace get_or_create_handle_internal_errors {
 /** @brief No HandleProvider is registered for the given asset type. Contains the unregistered TypeId.
  *  Matches bevy_asset GetOrCreateHandleInternalError::MissingHandleProviderError. */
 struct MissingHandleProviderError {
@@ -63,7 +63,7 @@ struct HandleMissingButTypeIdNotSpecified {};
 
 /** @brief Internal error from get_or_create_handle_internal.
  *  Matches bevy_asset's GetOrCreateHandleInternalError. */
-export using GetOrCreateHandleInternalError =
+using GetOrCreateHandleInternalError =
     std::variant<get_or_create_handle_internal_errors::MissingHandleProviderError,
                  get_or_create_handle_internal_errors::HandleMissingButTypeIdNotSpecified>;
 
@@ -135,7 +135,12 @@ struct AssetInfos {
     std::optional<std::reference_wrapper<AssetInfo>> get_info_mut(const UntypedAssetId& id);
     epix::utils::input_iterable<UntypedAssetId> get_path_ids(const AssetPath& path) const;
     std::optional<UntypedHandle> get_handle_by_id(const UntypedAssetId& id) const;
-    auto get_handles_by_path(const AssetPath& path) const;
+    auto get_handles_by_path(const AssetPath& path) const {
+        return get_path_ids(path) |
+               std::views::transform([this](const UntypedAssetId& id) { return get_handle_by_id(id); }) |
+               std::views::filter([](const std::optional<UntypedHandle>& handle) { return handle.has_value(); }) |
+               std::views::transform([](const std::optional<UntypedHandle>& handle) { return *handle; });
+    }
     auto get_handle_by_path_type(const AssetPath& path, epix::meta::type_index type) const
         -> std::optional<UntypedHandle>;
     bool is_path_alive(const AssetPath& path) const;
@@ -186,14 +191,5 @@ auto AssetInfos::get_handle_by_path_type(const AssetPath& path, epix::meta::type
         }
     }
     return std::nullopt;
-}
-}  // namespace epix::assets
-
-namespace epix::assets {
-auto AssetInfos::get_handles_by_path(const AssetPath& path) const {
-    return get_path_ids(path) |
-           std::views::transform([this](const UntypedAssetId& id) { return get_handle_by_id(id); }) |
-           std::views::filter([](const std::optional<UntypedHandle>& handle) { return handle.has_value(); }) |
-           std::views::transform([](const std::optional<UntypedHandle>& handle) { return *handle; });
 }
 }  // namespace epix::assets

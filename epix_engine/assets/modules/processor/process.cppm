@@ -30,7 +30,7 @@ export template <typename P>
 concept Process = requires(P& p, ProcessContext& ctx, const typename P::Settings& settings, std::ostream& writer) {
     typename P::Settings;
     typename P::OutputLoader;
-    requires std::derived_from<typename P::Settings, Settings>;
+    requires is_settings<typename P::Settings>;
     requires std::is_default_constructible_v<typename P::Settings>;
     requires AssetLoader<typename P::OutputLoader>;
     {
@@ -165,11 +165,11 @@ struct ErasedProcessorImpl : P, ErasedProcessor {
     std::expected<std::unique_ptr<AssetMetaDyn>, ProcessError> process(ProcessContext& context,
                                                                        const Settings& settings,
                                                                        std::ostream& writer) const override {
-        auto* typed_settings = dynamic_cast<const typename P::Settings*>(&settings);
+        auto* typed_settings = dynamic_cast<const SettingsImpl<typename P::Settings>*>(&settings);
         if (!typed_settings) {
             return std::unexpected(ProcessError{process_errors::WrongMetaType{}});
         }
-        auto result = const_cast<P&>(as_concrete()).process(context, *typed_settings, writer);
+        auto result = const_cast<P&>(as_concrete()).process(context, typed_settings->value, writer);
         if (!result) {
             return std::unexpected(ProcessError{process_errors::AssetSaveError{result.error()}});
         }
@@ -177,14 +177,18 @@ struct ErasedProcessorImpl : P, ErasedProcessor {
         auto meta    = std::make_unique<AssetMeta<typename P::OutputLoader::Settings, typename P::Settings>>();
         meta->action = AssetActionType::Load;
         meta->loader = std::string(epix::meta::type_id<typename P::OutputLoader>{}.short_name());
-        meta->loader_settings_value = std::move(*result);
+        meta->loader_settings_storage.value = std::move(*result);
         return meta;
     }
 
     std::expected<std::unique_ptr<AssetMetaDyn>, std::string> deserialize_meta(
-        std::span<const std::byte> /*meta_bytes*/) const override {
-        // TODO: implement actual deserialization when meta serialization is implemented
-        return std::make_unique<AssetMeta<typename P::OutputLoader::Settings, typename P::Settings>>();
+        std::span<const std::byte> meta_bytes) const override {
+        auto result = deserialize_asset_meta<typename P::OutputLoader::Settings, typename P::Settings>(meta_bytes);
+        if (!result) {
+            return std::unexpected(std::make_error_code(result.error()).message());
+        }
+        return std::make_unique<AssetMeta<typename P::OutputLoader::Settings, typename P::Settings>>(
+            std::move(*result));
     }
 
     std::string_view type_path() const override { return epix::meta::type_id<P>{}.name(); }
@@ -197,7 +201,9 @@ struct ErasedProcessorImpl : P, ErasedProcessor {
         return meta;
     }
 
-    std::unique_ptr<Settings> default_settings() const override { return std::make_unique<typename P::Settings>(); }
+    std::unique_ptr<Settings> default_settings() const override {
+        return std::make_unique<SettingsImpl<typename P::Settings>>();
+    }
 };
 
 // ---- LoadTransformAndSave ----
@@ -205,7 +211,7 @@ struct ErasedProcessorImpl : P, ErasedProcessor {
 /** @brief Settings for the LoadTransformAndSave processor.
  *  Matches bevy_asset's LoadTransformAndSaveSettings. */
 export template <typename LoaderSettings, typename TransformerSettings, typename SaverSettings>
-struct LoadTransformAndSaveSettings : Settings {
+struct LoadTransformAndSaveSettings {
     LoaderSettings loader_settings{};
     TransformerSettings transformer_settings{};
     SaverSettings saver_settings{};

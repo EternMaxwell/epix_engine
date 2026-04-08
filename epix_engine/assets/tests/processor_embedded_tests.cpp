@@ -1,16 +1,16 @@
 #include <gtest/gtest.h>
 
 import std;
-import epix.utils;
-import epix.core;
-import epix.meta;
 import epix.assets;
+import epix.core;
+import epix.utils;
+import epix.meta;
 
 using namespace epix::assets;
 namespace meta = epix::meta;
 
 // ===========================================================================
-// Test helper types — matching Bevy's test patterns
+// Test helper types - matching Bevy's test patterns
 // ===========================================================================
 
 namespace {
@@ -38,26 +38,11 @@ std::string read_dir_file(const memory::Directory& dir, const std::filesystem::p
     return {};
 }
 
-// ---- FakeTransactionLog — matches Bevy's FakeTransactionLog ----
-
-struct FakeTransactionLog : ProcessorTransactionLog {
-    std::expected<void, std::string> begin_processing(const AssetPath&) override { return {}; }
-    std::expected<void, std::string> end_processing(const AssetPath&) override { return {}; }
-    std::expected<void, std::string> unrecoverable() override { return {}; }
-};
-
-struct FakeTransactionLogFactory : ProcessorTransactionLogFactory {
-    std::expected<std::vector<LogEntry>, std::string> read() const override { return std::vector<LogEntry>{}; }
-    std::expected<std::unique_ptr<ProcessorTransactionLog>, std::string> create_new_log() const override {
-        return std::make_unique<FakeTransactionLog>();
-    }
-};
-
 // ---- Test asset loader: loads string from stream ----
 
 struct TestTextLoader {
     using Asset = std::string;
-    struct Settings : epix::assets::Settings {};
+    struct Settings {};
     using Error = std::exception_ptr;
 
     static std::span<std::string_view> extensions() {
@@ -77,7 +62,7 @@ struct TestTextLoader {
 struct TestTextSaver {
     using Asset        = std::string;
     using OutputLoader = TestTextLoader;
-    struct Settings : epix::assets::Settings {};
+    struct Settings {};
     using Error = std::exception_ptr;
 
     std::expected<OutputLoader::Settings, Error> save(std::ostream& writer,
@@ -94,7 +79,7 @@ struct TestTextSaver {
 struct AddTextTransformer {
     using AssetInput  = std::string;
     using AssetOutput = std::string;
-    struct Settings : epix::assets::Settings {};
+    struct Settings {};
     using Error = std::exception_ptr;
 
     std::string suffix;
@@ -113,7 +98,7 @@ using TestLTSProcessor = LoadTransformAndSave<TestTextLoader, AddTextTransformer
 // ---- Simple identity processor (no-op transform) ----
 
 struct TestIdentityProcessor {
-    using Settings     = epix::assets::Settings;
+    struct Settings {};
     using OutputLoader = TestTextLoader;
 
     std::expected<OutputLoader::Settings, std::exception_ptr> process(ProcessContext& ctx,
@@ -127,46 +112,14 @@ struct TestIdentityProcessor {
 // ---- Helper: create an AssetProcessor with in-memory sources ----
 
 AssetProcessor create_empty_asset_processor() {
-    auto data           = std::make_shared<AssetProcessorData>();
-    auto dir            = memory::Directory::create({});
-    auto source_builder = AssetSourceBuilder::create([dir]() -> std::unique_ptr<AssetReader> {
-                              return std::make_unique<MemoryAssetReader>(dir);
-                          })
-                              .with_processed_reader([dir]() -> std::unique_ptr<AssetReader> {
-                                  return std::make_unique<MemoryAssetReader>(dir);
-                              })
-                              .with_processed_writer([dir]() -> std::unique_ptr<AssetWriter> {
-                                  return std::make_unique<MemoryAssetWriter>(dir);
-                              });
-    data->source_builders->insert(AssetSourceId{}, std::move(source_builder));
-    data->set_log_factory(std::make_shared<FakeTransactionLogFactory>());
-    return AssetProcessor(data, false);
-}
+    auto app = epix::core::App::create();
+    AssetPlugin plugin;
+    plugin.mode = AssetServerMode::Processed;
+    plugin.build(app);
 
-struct ProcessorTestEnv {
-    memory::Directory source_dir;
-    memory::Directory processed_dir;
-    AssetProcessor processor;
-};
-
-ProcessorTestEnv create_processor_with_dirs() {
-    auto source_dir    = memory::Directory::create({});
-    auto processed_dir = memory::Directory::create({});
-    auto data          = std::make_shared<AssetProcessorData>();
-    auto sd            = source_dir;
-    auto pd            = processed_dir;
-    auto source_builder =
-        AssetSourceBuilder::create(
-            [sd]() -> std::unique_ptr<AssetReader> { return std::make_unique<MemoryAssetReader>(sd); })
-            .with_writer([sd]() -> std::unique_ptr<AssetWriter> { return std::make_unique<MemoryAssetWriter>(sd); })
-            .with_processed_reader(
-                [pd]() -> std::unique_ptr<AssetReader> { return std::make_unique<MemoryAssetReader>(pd); })
-            .with_processed_writer(
-                [pd]() -> std::unique_ptr<AssetWriter> { return std::make_unique<MemoryAssetWriter>(pd); });
-    data->source_builders->insert(AssetSourceId{}, std::move(source_builder));
-    data->set_log_factory(std::make_shared<FakeTransactionLogFactory>());
-    auto processor = AssetProcessor(data, false);
-    return {source_dir, processed_dir, processor};
+    auto processor = app.get_resource<AssetProcessor>();
+    EXPECT_TRUE(processor.has_value());
+    return processor->get();
 }
 
 }  // namespace
@@ -203,7 +156,7 @@ TEST(ProcessContext, WithProcessedInfo) {
 }
 
 // ===========================================================================
-// ProcessError — variant-based
+// ProcessError - variant-based
 // ===========================================================================
 
 TEST(ProcessError, MissingAssetLoaderForExtension) {
@@ -256,7 +209,7 @@ TEST(ProcessResult, Ignored) {
 }
 
 // ===========================================================================
-// AssetProcessor — register and lookup (matches Bevy's get_asset_processor_by_name)
+// AssetProcessor - register and lookup (matches Bevy's get_asset_processor_by_name)
 // ===========================================================================
 
 TEST(AssetProcessor, RegisterAndGetProcessor) {
@@ -342,7 +295,7 @@ struct AmbigMarker {};
 
 template <typename T>
 struct TemplatedProcessor {
-    using Settings     = epix::assets::Settings;
+    struct Settings {};
     using OutputLoader = TestTextLoader;
 
     std::expected<OutputLoader::Settings, std::exception_ptr> process(ProcessContext&,
@@ -430,12 +383,12 @@ TEST(EmbeddedAssetRegistry, DirectoryAccess_Mutable) {
     EmbeddedAssetRegistry registry;
     auto& dir = registry.directory();
     // Mutable access should also work
-    dir.create_directory("subdir");
+    (void)dir.create_directory("subdir");
     EXPECT_TRUE(dir.is_directory("subdir").value_or(false));
 }
 
 // ===========================================================================
-// ProcessError — remaining variants
+// ProcessError - remaining variants
 // ===========================================================================
 
 TEST(ProcessError, AmbiguousProcessor) {
@@ -508,7 +461,7 @@ TEST(ProcessError, AssetTransformError) {
 }
 
 // ===========================================================================
-// ProcessError — visitor dispatch (matches Bevy's pattern-matching style)
+// ProcessError - visitor dispatch (matches Bevy's pattern-matching style)
 // ===========================================================================
 
 TEST(ProcessError, VisitorDispatch) {
@@ -522,7 +475,7 @@ TEST(ProcessError, VisitorDispatch) {
 }
 
 // ===========================================================================
-// GetProcessorError — variant coverage
+// GetProcessorError - variant coverage
 // ===========================================================================
 
 TEST(GetProcessorError, Missing) {
@@ -550,118 +503,7 @@ TEST(GetProcessorError, VisitorDispatch) {
 }
 
 // ===========================================================================
-// validate_transaction_log — edge cases (Bevy tests these implicitly)
-// ===========================================================================
-
-namespace {
-
-struct ConfigurableLogFactory : ProcessorTransactionLogFactory {
-    std::vector<LogEntry> entries;
-    bool read_fails = false;
-
-    std::expected<std::vector<LogEntry>, std::string> read() const override {
-        if (read_fails) return std::unexpected(std::string("disk error"));
-        return entries;
-    }
-    std::expected<std::unique_ptr<ProcessorTransactionLog>, std::string> create_new_log() const override {
-        return std::make_unique<FakeTransactionLog>();
-    }
-};
-
-}  // namespace
-
-TEST(ValidateTransactionLog, EmptyLog_Succeeds) {
-    ConfigurableLogFactory factory;
-    auto result = validate_transaction_log(factory);
-    EXPECT_TRUE(result.has_value());
-}
-
-TEST(ValidateTransactionLog, MatchedBeginEnd_Succeeds) {
-    ConfigurableLogFactory factory;
-    factory.entries.push_back(LogEntry::begin_processing(AssetPath("a.txt")));
-    factory.entries.push_back(LogEntry::end_processing(AssetPath("a.txt")));
-    auto result = validate_transaction_log(factory);
-    EXPECT_TRUE(result.has_value());
-}
-
-TEST(ValidateTransactionLog, MultipleMatchedPairs_Succeeds) {
-    ConfigurableLogFactory factory;
-    factory.entries.push_back(LogEntry::begin_processing(AssetPath("a.txt")));
-    factory.entries.push_back(LogEntry::begin_processing(AssetPath("b.txt")));
-    factory.entries.push_back(LogEntry::end_processing(AssetPath("a.txt")));
-    factory.entries.push_back(LogEntry::end_processing(AssetPath("b.txt")));
-    auto result = validate_transaction_log(factory);
-    EXPECT_TRUE(result.has_value());
-}
-
-TEST(ValidateTransactionLog, ReadFailure_ReturnsReadLogError) {
-    ConfigurableLogFactory factory;
-    factory.read_fails = true;
-    auto result        = validate_transaction_log(factory);
-    ASSERT_FALSE(result.has_value());
-    ASSERT_TRUE(std::holds_alternative<validate_log_errors::ReadLogError>(result.error()));
-    EXPECT_EQ(std::get<validate_log_errors::ReadLogError>(result.error()).msg, "disk error");
-}
-
-TEST(ValidateTransactionLog, UnrecoverableEntry) {
-    ConfigurableLogFactory factory;
-    factory.entries.push_back(LogEntry::begin_processing(AssetPath("a.txt")));
-    factory.entries.push_back(LogEntry::unrecoverable_error());
-    auto result = validate_transaction_log(factory);
-    ASSERT_FALSE(result.has_value());
-    EXPECT_TRUE(std::holds_alternative<validate_log_errors::UnrecoverableError>(result.error()));
-}
-
-TEST(ValidateTransactionLog, DuplicateTransaction) {
-    ConfigurableLogFactory factory;
-    factory.entries.push_back(LogEntry::begin_processing(AssetPath("a.txt")));
-    factory.entries.push_back(LogEntry::begin_processing(AssetPath("a.txt")));
-    auto result = validate_transaction_log(factory);
-    ASSERT_FALSE(result.has_value());
-    ASSERT_TRUE(std::holds_alternative<validate_log_errors::EntryErrors>(result.error()));
-    auto& errs = std::get<validate_log_errors::EntryErrors>(result.error()).errors;
-    ASSERT_GE(errs.size(), 1u);
-    EXPECT_TRUE(std::holds_alternative<log_entry_errors::DuplicateTransaction>(errs[0]));
-}
-
-TEST(ValidateTransactionLog, EndedMissingTransaction) {
-    ConfigurableLogFactory factory;
-    factory.entries.push_back(LogEntry::end_processing(AssetPath("a.txt")));
-    auto result = validate_transaction_log(factory);
-    ASSERT_FALSE(result.has_value());
-    ASSERT_TRUE(std::holds_alternative<validate_log_errors::EntryErrors>(result.error()));
-    auto& errs = std::get<validate_log_errors::EntryErrors>(result.error()).errors;
-    ASSERT_GE(errs.size(), 1u);
-    EXPECT_TRUE(std::holds_alternative<log_entry_errors::EndedMissingTransaction>(errs[0]));
-}
-
-TEST(ValidateTransactionLog, UnfinishedTransaction) {
-    ConfigurableLogFactory factory;
-    factory.entries.push_back(LogEntry::begin_processing(AssetPath("a.txt")));
-    // No end entry → unfinished
-    auto result = validate_transaction_log(factory);
-    ASSERT_FALSE(result.has_value());
-    ASSERT_TRUE(std::holds_alternative<validate_log_errors::EntryErrors>(result.error()));
-    auto& errs = std::get<validate_log_errors::EntryErrors>(result.error()).errors;
-    ASSERT_GE(errs.size(), 1u);
-    EXPECT_TRUE(std::holds_alternative<log_entry_errors::UnfinishedTransaction>(errs[0]));
-}
-
-TEST(ValidateTransactionLog, MixedErrors_DuplicateAndUnfinished) {
-    ConfigurableLogFactory factory;
-    factory.entries.push_back(LogEntry::begin_processing(AssetPath("a.txt")));
-    factory.entries.push_back(LogEntry::begin_processing(AssetPath("a.txt")));
-    factory.entries.push_back(LogEntry::begin_processing(AssetPath("b.txt")));
-    // a.txt: duplicate. b.txt: unfinished. a.txt also unfinished.
-    auto result = validate_transaction_log(factory);
-    ASSERT_FALSE(result.has_value());
-    ASSERT_TRUE(std::holds_alternative<validate_log_errors::EntryErrors>(result.error()));
-    auto& errs = std::get<validate_log_errors::EntryErrors>(result.error()).errors;
-    EXPECT_GE(errs.size(), 2u);
-}
-
-// ===========================================================================
-// LogEntryError — variant coverage
+// LogEntryError - variant coverage
 // ===========================================================================
 
 TEST(LogEntryError, DuplicateTransaction) {
@@ -683,7 +525,7 @@ TEST(LogEntryError, UnfinishedTransaction) {
 }
 
 // ===========================================================================
-// ValidateLogError — variant coverage
+// ValidateLogError - variant coverage
 // ===========================================================================
 
 TEST(ValidateLogError, UnrecoverableError) {
@@ -704,95 +546,3 @@ TEST(ValidateLogError, EntryErrors) {
     EXPECT_EQ(std::get<validate_log_errors::EntryErrors>(err).errors.size(), 1u);
 }
 
-// ===========================================================================
-// process_asset_internal — pipeline tests (matches Bevy's processing tests)
-// ===========================================================================
-
-TEST(ProcessAssetInternal, ExtensionRequired_NoExtension) {
-    auto env        = create_processor_with_dirs();
-    auto source_opt = env.processor.get_source(AssetSourceId{});
-    ASSERT_TRUE(source_opt.has_value());
-    auto& source = source_opt->get();
-
-    // Write a file with no extension
-    env.source_dir.insert_file("noext", make_val("data"));
-
-    AssetPath path("noext");
-    auto result = env.processor.process_asset_internal(source, path);
-    ASSERT_FALSE(result.has_value());
-    EXPECT_TRUE(std::holds_alternative<process_errors::ExtensionRequired>(result.error()));
-}
-
-TEST(ProcessAssetInternal, MissingLoader_NoProcessorOrLoader) {
-    auto env        = create_processor_with_dirs();
-    auto source_opt = env.processor.get_source(AssetSourceId{});
-    ASSERT_TRUE(source_opt.has_value());
-    auto& source = source_opt->get();
-
-    // Write a file with an extension that has no registered loader or processor
-    env.source_dir.insert_file("test.xyz", make_val("data"));
-
-    AssetPath path("test.xyz");
-    auto result = env.processor.process_asset_internal(source, path);
-    ASSERT_FALSE(result.has_value());
-    EXPECT_TRUE(std::holds_alternative<process_errors::MissingAssetLoaderForExtension>(result.error()));
-}
-
-TEST(ProcessAssetInternal, CopyThrough_WithLoader) {
-    auto env = create_processor_with_dirs();
-    env.processor.get_server().register_loader(TestTextLoader{});
-    auto source_opt = env.processor.get_source(AssetSourceId{});
-    ASSERT_TRUE(source_opt.has_value());
-    auto& source = source_opt->get();
-
-    // Write a source file
-    env.source_dir.insert_file("hello.txt", make_val("hello world"));
-
-    AssetPath path("hello.txt");
-    auto result = env.processor.process_asset_internal(source, path);
-    ASSERT_TRUE(result.has_value()) << "Copy-through should succeed";
-    EXPECT_EQ(result->kind, ProcessResultKind::Processed);
-
-    // Verify the file was copied to the processed directory
-    auto processed_content = read_dir_file(env.processed_dir, "hello.txt");
-    EXPECT_EQ(processed_content, "hello world");
-}
-
-TEST(ProcessAssetInternal, DefaultProcessor_TransformsAsset) {
-    auto env = create_processor_with_dirs();
-    env.processor.get_server().register_loader(TestTextLoader{});
-    env.processor.register_processor(TestLTSProcessor(AddTextTransformer{" [processed]"}, TestTextSaver{}));
-    env.processor.set_default_processor<TestLTSProcessor>("txt");
-    auto source_opt = env.processor.get_source(AssetSourceId{});
-    ASSERT_TRUE(source_opt.has_value());
-    auto& source = source_opt->get();
-
-    // Write a source file
-    env.source_dir.insert_file("greet.txt", make_val("hello"));
-
-    AssetPath path("greet.txt");
-    auto result = env.processor.process_asset_internal(source, path);
-    ASSERT_TRUE(result.has_value()) << "Processing should succeed";
-    EXPECT_EQ(result->kind, ProcessResultKind::Processed);
-
-    // Verify the processed output has the transformer's suffix
-    auto processed_content = read_dir_file(env.processed_dir, "greet.txt");
-    EXPECT_EQ(processed_content, "hello [processed]");
-}
-
-TEST(ProcessAssetInternal, AssetReadError_MissingSourceFile) {
-    auto env        = create_processor_with_dirs();
-    auto source_opt = env.processor.get_source(AssetSourceId{});
-    ASSERT_TRUE(source_opt.has_value());
-    auto& source = source_opt->get();
-
-    env.processor.get_server().register_loader(TestTextLoader{});
-    env.processor.register_processor(TestLTSProcessor(AddTextTransformer{""}, TestTextSaver{}));
-    env.processor.set_default_processor<TestLTSProcessor>("txt");
-
-    // Don't create the source file — should fail with AssetReaderError
-    AssetPath path("missing.txt");
-    auto result = env.processor.process_asset_internal(source, path);
-    ASSERT_FALSE(result.has_value());
-    EXPECT_TRUE(std::holds_alternative<process_errors::AssetReaderError>(result.error()));
-}

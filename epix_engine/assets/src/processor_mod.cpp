@@ -64,6 +64,56 @@ std::shared_ptr<std::shared_mutex> ProcessorAssetInfos::remove(const AssetPath& 
     return info.file_transaction_lock;
 }
 
+std::optional<std::pair<std::shared_ptr<std::shared_mutex>, std::shared_ptr<std::shared_mutex>>>
+ProcessorAssetInfos::rename(const AssetPath& old_path,
+                            const AssetPath& new_path,
+                            utils::Sender<std::pair<AssetSourceId, std::filesystem::path>>& reprocess_sender) {
+    auto it = infos.find(old_path);
+    if (it == infos.end()) return std::nullopt;
+
+    auto info = std::move(it->second);
+    infos.erase(it);
+
+    if (!info.dependents.empty()) {
+        spdlog::error(
+            "The asset at {} was removed, but it had assets that depend on it to be processed. Consider updating the "
+            "path in the following assets.",
+            old_path.string());
+        non_existent_dependents.emplace(old_path, std::move(info.dependents));
+    }
+
+    if (info.processed_info) {
+        for (const auto& dep : info.processed_info->process_dependencies) {
+            AssetPath dep_path(dep.path);
+            if (auto dep_it = infos.find(dep_path); dep_it != infos.end()) {
+                dep_it->second.dependents.erase(old_path);
+                dep_it->second.dependents.insert(new_path);
+            } else if (auto dep_it = non_existent_dependents.find(dep_path); dep_it != non_existent_dependents.end()) {
+                dep_it->second.erase(old_path);
+                dep_it->second.insert(new_path);
+            }
+        }
+    }
+
+    info.status_sender.send(ProcessStatus::NonExistent);
+
+    auto old_lock           = info.file_transaction_lock;
+    auto& new_info          = get_or_insert(new_path);
+    new_info.processed_info = std::move(info.processed_info);
+    new_info.status         = info.status;
+    if (new_info.status) {
+        new_info.status_sender.send(*new_info.status);
+    }
+
+    reprocess_sender.send(std::pair{new_path.source, new_path.path});
+    auto dependents = std::vector<AssetPath>(new_info.dependents.begin(), new_info.dependents.end());
+    for (const auto& dependent : dependents) {
+        reprocess_sender.send(std::pair{dependent.source, dependent.path});
+    }
+
+    return std::pair{std::move(old_lock), new_info.file_transaction_lock};
+}
+
 void ProcessorAssetInfos::finish_processing(
     const AssetPath& asset_path,
     std::expected<ProcessResult, ProcessError>& result,
@@ -135,11 +185,53 @@ void ProcessorAssetInfos::clear_dependencies(const AssetPath& asset_path, const 
 
 // ---- AssetProcessorData ----
 
-AssetProcessorData::AssetProcessorData()
-    : processing_state(std::make_shared<ProcessingState>()), source_builders(std::make_shared<AssetSourceBuilders>()) {}
+AssetProcessorData::AssetProcessorData(std::shared_ptr<AssetSources> sources,
+                                       std::shared_ptr<ProcessingState> processing_state)
+    : AssetProcessorData(
+          std::move(sources), std::move(processing_state), std::make_unique<FileTransactionLogFactory>()) {}
 
-void AssetProcessorData::set_log_factory(std::shared_ptr<ProcessorTransactionLogFactory> factory) {
-    log_factory = std::move(factory);
+AssetProcessorData::AssetProcessorData(std::shared_ptr<AssetSources> sources,
+                                       std::shared_ptr<ProcessingState> processing_state,
+                                       std::unique_ptr<ProcessorTransactionLogFactory> transaction_log_factory)
+    : processing_state(std::move(processing_state)),
+      log_factory(std::optional<std::unique_ptr<ProcessorTransactionLogFactory>>(std::move(transaction_log_factory))),
+      log(std::optional<std::unique_ptr<ProcessorTransactionLog>>{}),
+      sources(std::move(sources)),
+      task_sender(AssetProcessorData::TaskSenderState{}) {}
+
+void AssetProcessorData::set_task_sender(utils::Sender<std::pair<AssetSourceId, std::filesystem::path>> sender) const {
+    auto guarded     = task_sender.lock();
+    guarded->sender  = std::move(sender);
+    if (guarded->shutdown_requested) {
+        guarded->sender->close();
+        guarded->sender.reset();
+    }
+}
+
+void AssetProcessorData::shutdown() const {
+    {
+        auto guarded                  = task_sender.lock();
+        guarded->shutdown_requested   = true;
+        if (guarded->sender.has_value()) {
+            guarded->sender->close();
+            guarded->sender.reset();
+        }
+    }
+    processing_state->shutdown();
+}
+
+std::expected<void, SetTransactionLogFactoryError> AssetProcessorData::set_log_factory(
+    std::unique_ptr<ProcessorTransactionLogFactory> factory) const {
+    auto guarded_factory = log_factory.lock();
+    if (!guarded_factory->has_value()) {
+        return std::unexpected(SetTransactionLogFactoryError{set_transaction_log_factory_errors::AlreadyInUse{}});
+    }
+    *guarded_factory = std::move(factory);
+    return {};
+}
+
+ProcessStatus AssetProcessorData::wait_until_processed(const AssetPath& path) const {
+    return processing_state->wait_until_processed(path);
 }
 
 void AssetProcessorData::wait_until_initialized() const { processing_state->wait_until_initialized(); }
@@ -151,7 +243,43 @@ ProcessorState AssetProcessorData::state() const { return processing_state->get_
 // ---- AssetProcessor ----
 
 AssetProcessor::AssetProcessor(AssetServer srv, std::shared_ptr<AssetProcessorData> proc_data)
-    : server(std::move(srv)), data(std::move(proc_data)) {}
+    : server(std::move(srv)), data(std::move(proc_data)), m_owns_shutdown(false) {}
+
+AssetProcessor::AssetProcessor(const AssetProcessor& other)
+    : server(other.server), data(other.data), m_owns_shutdown(false) {}
+
+AssetProcessor::AssetProcessor(AssetProcessor&& other) noexcept
+    : server(std::move(other.server)),
+      data(std::move(other.data)),
+      m_owns_shutdown(std::exchange(other.m_owns_shutdown, false)) {}
+
+AssetProcessor& AssetProcessor::operator=(const AssetProcessor& other) {
+    if (this == &other) return *this;
+    if (m_owns_shutdown && data) {
+        data->shutdown();
+    }
+    server          = other.server;
+    data            = other.data;
+    m_owns_shutdown = false;
+    return *this;
+}
+
+AssetProcessor& AssetProcessor::operator=(AssetProcessor&& other) noexcept {
+    if (this == &other) return *this;
+    if (m_owns_shutdown && data) {
+        data->shutdown();
+    }
+    server          = std::move(other.server);
+    data            = std::move(other.data);
+    m_owns_shutdown = std::exchange(other.m_owns_shutdown, false);
+    return *this;
+}
+
+AssetProcessor::~AssetProcessor() {
+    if (m_owns_shutdown && data) {
+        data->shutdown();
+    }
+}
 
 const AssetServer& AssetProcessor::get_server() const { return server; }
 
@@ -162,7 +290,7 @@ std::optional<std::reference_wrapper<const AssetSource>> AssetProcessor::get_sou
     return server.get_source(source_id);
 }
 
-const std::shared_ptr<AssetSources>& AssetProcessor::sources() const { return server.data->sources; }
+const std::shared_ptr<AssetSources>& AssetProcessor::sources() const { return data->sources; }
 
 std::shared_ptr<ErasedProcessor> AssetProcessor::get_default_processor(std::string_view extension) const {
     auto guard  = data->processors.read();
@@ -239,7 +367,6 @@ ProcessStatus ProcessingState::wait_until_processed(const AssetPath& path) const
             if (info->status) {
                 return *info->status;
             }
-            // Not yet processed; clone the receiver to wait on
             pending_receiver = info->status_receiver;
         }
     }
@@ -270,6 +397,15 @@ void ProcessingState::wait_until_finished() const {
     auto receiver = m_finished_receiver;
     auto ready    = receiver.receive();
     (void)ready;
+}
+
+void ProcessingState::shutdown() {
+    m_initialized_sender.close();
+    m_finished_sender.close();
+    auto infos = m_asset_infos.write();
+    for (auto& [_, info] : infos->infos) {
+        info.status_sender.close();
+    }
 }
 
 std::expected<std::shared_ptr<std::shared_mutex>, AssetReaderError> ProcessingState::get_transaction_lock(

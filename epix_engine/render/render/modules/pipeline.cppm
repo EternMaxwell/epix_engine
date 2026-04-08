@@ -12,6 +12,7 @@ export module epix.render:pipeline;
 
 import epix.shader;
 import epix.assets;
+import webgpu;
 import std;
 
 namespace epix::render {

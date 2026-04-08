@@ -36,14 +36,12 @@ void AssetPlugin::build(App& app) {
         case AssetServerMode::Processed: {
             const bool use_asset_processor = use_asset_processor_override.value_or(true);
             if (use_asset_processor && processed.has_value()) {
-                auto processor_data             = std::make_shared<AssetProcessorData>();
-                processor_data->source_builders = std::make_shared<AssetSourceBuilders>(std::move(builders));
-                processor_data->set_log_factory(std::make_shared<FileTransactionLogFactory>(processed.value() / "log"));
-                auto processor = AssetProcessor(std::move(processor_data), watch);
+                auto processor = AssetProcessor(builders, watch,
+                                                std::make_unique<FileTransactionLogFactory>(processed.value() / "log"));
 
-                world.emplace_resource<AssetServer>(processor.sources(), processor.get_server().data->loaders,
-                                                    AssetServerMode::Processed, AssetMetaCheck{asset_meta_check::Always{}}, watch,
-                                                    unapproved_path_mode);
+                world.emplace_resource<AssetServer>(
+                    processor.sources(), processor.get_server().get_loaders(), AssetServerMode::Processed,
+                    AssetMetaCheck{asset_meta_check::Always{}}, watch, unapproved_path_mode);
                 world.emplace_resource<AssetProcessor>(std::move(processor));
                 app.add_systems(Startup, into(AssetProcessor::start));
             } else {
@@ -54,7 +52,8 @@ void AssetPlugin::build(App& app) {
                 }
                 auto sources = std::make_shared<AssetSources>(builders.build_sources(false, watch));
                 world.emplace_resource<AssetServer>(std::move(sources), AssetServerMode::Processed,
-                                                    AssetMetaCheck{asset_meta_check::Always{}}, watch, unapproved_path_mode);
+                                                    AssetMetaCheck{asset_meta_check::Always{}}, watch,
+                                                    unapproved_path_mode);
             }
             break;
         }

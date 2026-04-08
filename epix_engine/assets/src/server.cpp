@@ -335,12 +335,11 @@ std::expected<ErasedLoadedAsset, AssetLoadError> AssetServer::load_with_settings
 // get_meta_loader_and_reader
 // Matches bevy_asset's AssetServer::get_meta_loader_and_reader.
 // Selects the reader mode (processed vs unprocessed), checks AssetMetaCheck,
-// and picks a loader. If a .meta file is found its loader_name field is used;
-// otherwise the extension-based loader is used and default_meta() is returned.
-// NOTE: full .meta deserialization (settings override from file) is not yet
-// implemented because there is no RON parser in C++. The meta object is always
-// created from loader.default_meta() and any handle meta_transform is applied
-// by load_internal on top of that.
+// and picks a loader. If a .meta file is found its loader_name field is used
+// (via binary zpp::bits deserialization of AssetMetaMinimal); otherwise the
+// extension-based loader is used and default_meta() is returned.
+// NOTE: full .meta deserialization (settings override from file) still requires
+// the caller to deserialize the full AssetMeta<LS,PS> with desialize_asset_meta().
 // ---------------------------------------------------------------------------
 std::optional<AssetServer::MetaLoaderReader> AssetServer::get_meta_loader_and_reader(
     const AssetPath& asset_path,
@@ -379,17 +378,26 @@ std::optional<AssetServer::MetaLoaderReader> AssetServer::get_meta_loader_and_re
                    data->meta_check);
 
     // 4. Try to find a loader.  When read_meta is enabled we peek at the .meta
-    //    file to get the loader_name; but since we have no RON deserializer we
-    //    fall through to extension-based lookup in all cases.
+    //    file to get the loader_name.  We keep the bytes so we can deserialize
+    //    the full settings after selecting the loader (step 5 below).
     std::shared_ptr<ErasedAssetLoader> loader;
+    std::optional<std::vector<std::byte>> stored_meta_bytes;
     if (read_meta) {
-        auto meta_result = reader_ptr->read_meta(asset_path.path);
-        if (meta_result) {
-            // .meta file exists — for now we just use extension-based fallback.
-            // TODO: parse meta bytes with a RON (or similar) parser and look up
-            //       the loader by loader_name from the minimal meta.
+        auto meta_bytes = reader_ptr->read_meta_bytes(asset_path.path);
+        if (meta_bytes) {
+            stored_meta_bytes = std::move(meta_bytes.value());
+            // .meta file found — deserialize the minimal meta to look up the loader by name.
+            auto minimal = deserialize_meta_minimal(*stored_meta_bytes);
+            if (minimal && !minimal->asset.loader.empty()) {
+                loader = [&]() -> std::shared_ptr<ErasedAssetLoader> {
+                    auto guard = data->loaders->read();
+                    auto maybe =
+                        guard->find(std::string_view{minimal->asset.loader}, asset_type_id, std::nullopt, std::nullopt);
+                    return maybe ? maybe->get() : nullptr;
+                }();
+            }
         }
-        // fall through to extension-based lookup
+        // fall through to extension-based lookup if no loader found from .meta
     }
 
     if (!loader) {
@@ -417,8 +425,18 @@ std::optional<AssetServer::MetaLoaderReader> AssetServer::get_meta_loader_and_re
         }
     }
 
-    // 5. Build default meta from the loader
-    auto meta = loader->default_meta();
+    // 5. Build meta from the loader.  Prefer the stored .meta file bytes so that
+    //    user-customised loader settings are respected (matches Bevy's
+    //    ErasedAssetLoader::deserialize_meta path).  Fall back to default_meta()
+    //    when no .meta file exists or deserialization fails.
+    auto meta = [&]() -> std::unique_ptr<AssetMetaDyn> {
+        if (stored_meta_bytes) {
+            auto dm = loader->deserialize_meta(*stored_meta_bytes);
+            if (dm) return std::move(*dm);
+            spdlog::warn("Failed to deserialize .meta for '{}': {}; using defaults", asset_path.string(), dm.error());
+        }
+        return loader->default_meta();
+    }();
 
     // 6. Open the asset file for reading
     auto read_result = reader_ptr->read(asset_path.path);

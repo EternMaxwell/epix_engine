@@ -8,6 +8,7 @@ import std;
 import epix.core;
 import epix.assets;
 import epix.shader;
+import webgpu;
 
 using namespace epix::shader;
 using namespace epix::assets;

@@ -230,7 +230,7 @@ export template <Asset A>
 struct IdentityAssetTransformer {
     using AssetInput  = A;
     using AssetOutput = A;
-    struct Settings : assets::Settings {};
+    struct Settings {};
     using Error = std::exception_ptr;
 
     std::expected<TransformedAsset<A>, Error> transform(TransformedAsset<A> asset, const Settings&) const {

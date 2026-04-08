@@ -287,7 +287,7 @@ export class Image {
  * Registered with the asset server to load supported image formats. */
 export struct ImageLoader {
     using Asset = Image;
-    struct Settings : assets::Settings {};
+    struct Settings {};
     using Error = ImageLoadError;
 
     /** @brief Get the list of supported file extensions.

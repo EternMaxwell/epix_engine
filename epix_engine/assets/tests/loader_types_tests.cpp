@@ -95,6 +95,97 @@ TEST(IdentityAssetTransformer, PassesThrough) {
 }
 
 // ===========================================================================
+// AssetLoader concept
+// ===========================================================================
+
+namespace {
+struct SimpleLoader {
+    using Asset    = std::string;
+    using Settings = EmptySettings;
+    using Error    = std::string;
+
+    std::span<std::string_view> extensions() const {
+        static std::array<std::string_view, 1> exts = {"txt"};
+        return exts;
+    }
+    std::expected<std::string, std::string> load(std::istream& stream, const EmptySettings&, LoadContext& ctx) const {
+        return std::string("loaded");
+    }
+};
+}  // namespace
+
+static_assert(AssetLoader<SimpleLoader>);
+
+// ===========================================================================
+// ErasedLoadedAsset
+// ===========================================================================
+
+TEST(ErasedLoadedAsset, FromAsset_TypeId) {
+    auto erased = ErasedLoadedAsset::from_asset(std::string("hello"));
+    EXPECT_EQ(erased.asset_type_id(), epix::meta::type_id<std::string>{});
+}
+
+TEST(ErasedLoadedAsset, FromAsset_TypeName) {
+    auto erased = ErasedLoadedAsset::from_asset(std::string("hello"));
+    EXPECT_FALSE(erased.asset_type_name().empty());
+}
+
+TEST(ErasedLoadedAsset, Get_CorrectType) {
+    auto erased = ErasedLoadedAsset::from_asset(std::string("world"));
+    auto maybe  = erased.get<std::string>();
+    ASSERT_TRUE(maybe.has_value());
+    EXPECT_EQ(maybe->get(), "world");
+}
+
+TEST(ErasedLoadedAsset, Get_WrongType_ReturnsNullopt) {
+    auto erased = ErasedLoadedAsset::from_asset(std::string("world"));
+    auto maybe  = erased.get<int>();
+    EXPECT_FALSE(maybe.has_value());
+}
+
+TEST(ErasedLoadedAsset, Get_Const_CorrectType) {
+    const auto erased = ErasedLoadedAsset::from_asset(std::string("const_world"));
+    auto maybe        = erased.get<std::string>();
+    ASSERT_TRUE(maybe.has_value());
+    EXPECT_EQ(maybe->get(), "const_world");
+}
+
+TEST(ErasedLoadedAsset, Get_Const_WrongType_ReturnsNullopt) {
+    const auto erased = ErasedLoadedAsset::from_asset(std::string("const_world"));
+    auto maybe        = erased.get<int>();
+    EXPECT_FALSE(maybe.has_value());
+}
+
+TEST(ErasedLoadedAsset, Take_CorrectType) {
+    auto erased = ErasedLoadedAsset::from_asset(std::string("take_me"));
+    auto taken  = std::move(erased).take<std::string>();
+    ASSERT_TRUE(taken.has_value());
+    EXPECT_EQ(*taken, "take_me");
+}
+
+TEST(ErasedLoadedAsset, Take_WrongType_ReturnsNullopt) {
+    auto erased = ErasedLoadedAsset::from_asset(std::string("take_me"));
+    auto taken  = std::move(erased).take<int>();
+    EXPECT_FALSE(taken.has_value());
+}
+
+TEST(ErasedLoadedAsset, Labels_Empty) {
+    auto erased = ErasedLoadedAsset::from_asset(std::string("x"));
+    EXPECT_TRUE(erased.labels().empty());
+}
+
+TEST(ErasedLoadedAsset, GetLabeled_NotFound) {
+    auto erased = ErasedLoadedAsset::from_asset(std::string("x"));
+    EXPECT_FALSE(erased.get_labeled("missing").has_value());
+}
+
+TEST(ErasedLoadedAsset, GetLabeledById_NotFound) {
+    auto erased  = ErasedLoadedAsset::from_asset(std::string("x"));
+    auto fake_id = UntypedAssetId(AssetId<std::string>::invalid());
+    EXPECT_FALSE(erased.get_labeled_by_id(fake_id).has_value());
+}
+
+// ===========================================================================
 // SavedAsset<A>
 // ===========================================================================
 

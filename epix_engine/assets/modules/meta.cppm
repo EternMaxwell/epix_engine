@@ -1,10 +1,25 @@
 module;
 
 #include <spdlog/spdlog.h>
+#include <zpp_bits.h>
+
+#include <array>
+#include <cstdint>
+#include <cstring>
+#include <expected>
+#include <functional>
+#include <istream>
+#include <memory>
+#include <optional>
+#include <span>
+#include <string>
+#include <string_view>
+#include <unordered_set>
+#include <variant>
+#include <vector>
 
 export module epix.assets:meta;
 
-import std;
 import epix.meta;
 import :path;
 
@@ -95,11 +110,74 @@ struct AssetAction {
     }
 };
 
-/** @brief Base class for loader/processor settings, analogous to bevy's Settings trait.
- *  All settings types must derive from this. */
+/** @brief Base class for loader/processor settings.
+ *  Settings types are plain aggregates; the engine wraps them in SettingsImpl<T>. */
 export struct Settings {
     virtual ~Settings() = default;
+    template <typename T>
+    std::optional<std::reference_wrapper<const T>> try_cast() const;
+    template <typename T>
+    std::optional<std::reference_wrapper<T>> try_cast();
+    template <typename T>
+    const T& cast() const;
+    template <typename T>
+    T& cast();
 };
+
+/** @brief Default empty settings used when no settings are needed.
+ *  zpp::bits natively handles empty types via its `empty` concept (std::is_empty_v). */
+export struct EmptySettings {};
+
+/** @brief Concept satisfied by any type that zpp::bits can serialize:
+ *  - types with an explicit serialize hook (has_serialize)
+ *  - containers (std::vector, std::string, std::map, …)
+ *  - tuple-like types
+ *  - std::variant, std::optional
+ *  - empty types (std::is_empty_v — includes EmptySettings)
+ *  - byte-serializable fundamentals/enums
+ *  - unspecialized aggregates (struct with only serializable members)
+ *  All must also be default-constructible. */
+export template <typename T>
+concept is_settings =
+    std::is_default_constructible_v<T> &&
+    (zpp::bits::concepts::has_serialize<T> || zpp::bits::concepts::container<T> || zpp::bits::concepts::tuple<T> ||
+     zpp::bits::concepts::variant<T> || zpp::bits::concepts::optional<T> || zpp::bits::concepts::empty<T> ||
+     zpp::bits::concepts::byte_serializable<T> || (zpp::bits::concepts::unspecialized<T> && std::is_aggregate_v<T>));
+
+/** @brief Engine-internal wrapper that makes any plain aggregate T a Settings subclass.
+ *  Users define settings as plain aggregates (no inheritance required).
+ *  The engine wraps them via this type for polymorphic storage. */
+template <typename T>
+struct SettingsImpl : Settings {
+    T value{};
+};
+
+template <typename T>
+std::optional<std::reference_wrapper<const T>> Settings::try_cast() const {
+    if (auto* derived = dynamic_cast<const SettingsImpl<T>*>(this)) {
+        return std::cref(derived->value);
+    }
+    return std::nullopt;
+}
+template <typename T>
+std::optional<std::reference_wrapper<T>> Settings::try_cast() {
+    if (auto* derived = dynamic_cast<SettingsImpl<T>*>(this)) {
+        return std::ref(derived->value);
+    }
+    return std::nullopt;
+}
+template <typename T>
+const T& Settings::cast() const {
+    auto result = try_cast<T>();
+    if (!result.has_value()) throw std::bad_cast();
+    return result->get();
+}
+template <typename T>
+T& Settings::cast() {
+    auto result = try_cast<T>();
+    if (!result.has_value()) throw std::bad_cast();
+    return result->get();
+}
 
 /** @brief Abstract base for type-erased asset metadata, analogous to bevy's AssetMetaDyn. */
 export struct AssetMetaDyn {
@@ -110,12 +188,23 @@ export struct AssetMetaDyn {
     virtual std::optional<std::string_view> processor_name() const = 0;
     /** @brief Get the action type. */
     virtual AssetActionType action_type() const = 0;
-    /** @brief Get processed info, if available. */
+    /** @brief Get processed info (const), if available. */
     virtual const ProcessedInfo* processed_info() const = 0;
+    /** @brief Get mutable reference to the stored ProcessedInfo optional.
+     *  Matches bevy_asset's AssetMetaDyn::processed_info_mut. */
+    virtual std::optional<ProcessedInfo>& processed_info_mut() = 0;
     /** @brief Get the loader settings, if this meta specifies a Load action. */
     virtual Settings* loader_settings() = 0;
     /** @brief Get the loader settings (const), if this meta specifies a Load action. */
     virtual const Settings* loader_settings() const = 0;
+    /** @brief Get the processor settings, if this meta specifies a Process action.
+     *  Matches bevy_asset's AssetMetaDyn::process_settings. */
+    virtual Settings* process_settings() = 0;
+    /** @brief Get the processor settings (const), if this meta specifies a Process action. */
+    virtual const Settings* process_settings() const = 0;
+    /** @brief Serialize this meta to binary bytes for writing to disk.
+     *  Matches bevy_asset's AssetMetaDyn::serialize. */
+    virtual std::vector<std::byte> serialize_bytes() const = 0;
 };
 
 /** @brief Type alias for a function that mutates an AssetMetaDyn in place.
@@ -123,9 +212,9 @@ export struct AssetMetaDyn {
 export using MetaTransform = std::function<void(AssetMetaDyn&)>;
 
 /** @brief Concrete metadata for an asset, parameterised on loader and processor settings types.
- *  @tparam LoaderSettings  The settings type for the asset loader.
- *  @tparam ProcessSettings The settings type for the asset processor. */
-export template <typename LoaderSettings, typename ProcessSettings>
+ *  @tparam LoaderSettings  The aggregate settings type for the asset loader.
+ *  @tparam ProcessSettings The aggregate settings type for the asset processor. */
+export template <typename LoaderSettings, typename ProcessSettings = EmptySettings>
 struct AssetMeta : AssetMetaDyn {
     /** @brief Meta format version string. */
     std::string meta_format_version = std::string(META_FORMAT_VERSION);
@@ -135,12 +224,12 @@ struct AssetMeta : AssetMetaDyn {
     AssetActionType action = AssetActionType::Load;
     /** @brief Name of the loader (when action == Load). */
     std::string loader;
-    /** @brief Loader-specific settings. */
-    LoaderSettings loader_settings_value{};
+    /** @brief Loader-specific settings (wrapped in SettingsImpl for polymorphism). */
+    SettingsImpl<LoaderSettings> loader_settings_storage{};
     /** @brief Name of the processor (when action == Process). */
     std::string processor;
-    /** @brief Processor-specific settings. */
-    ProcessSettings processor_settings{};
+    /** @brief Processor-specific settings (wrapped in SettingsImpl for polymorphism). */
+    SettingsImpl<ProcessSettings> processor_settings_storage{};
 
     std::optional<std::string_view> loader_name() const override {
         if (action == AssetActionType::Load) return loader;
@@ -154,29 +243,42 @@ struct AssetMeta : AssetMetaDyn {
     const ProcessedInfo* processed_info() const override {
         return processed.has_value() ? &processed.value() : nullptr;
     }
+    std::optional<ProcessedInfo>& processed_info_mut() override { return processed; }
     Settings* loader_settings() override {
-        if constexpr (std::derived_from<LoaderSettings, Settings>) {
-            if (action == AssetActionType::Load) return &loader_settings_value;
-        }
+        if (action == AssetActionType::Load) return &loader_settings_storage;
         return nullptr;
     }
     const Settings* loader_settings() const override {
-        if constexpr (std::derived_from<LoaderSettings, Settings>) {
-            if (action == AssetActionType::Load) return &loader_settings_value;
-        }
+        if (action == AssetActionType::Load) return &loader_settings_storage;
         return nullptr;
+    }
+    Settings* process_settings() override {
+        if (action == AssetActionType::Process) return &processor_settings_storage;
+        return nullptr;
+    }
+    const Settings* process_settings() const override {
+        if (action == AssetActionType::Process) return &processor_settings_storage;
+        return nullptr;
+    }
+    std::vector<std::byte> serialize_bytes() const override {
+        auto result = serialize_asset_meta(*this);
+        if (!result) {
+            spdlog::error("Failed to serialize AssetMeta: {}", std::make_error_code(result.error()).message());
+            return {};
+        }
+        return std::move(*result);
     }
 };
 
-/** @brief Creates a MetaTransform that downcasts the loader settings to type S
- *  and applies the given mutator function.
+/** @brief Creates a MetaTransform that downcasts the loader settings to SettingsImpl<S>
+ *  and applies the given mutator function to the wrapped value.
  *  Matches bevy_asset's loader_settings_meta_transform. */
-export template <std::derived_from<Settings> S>
+template <typename S>
 MetaTransform loader_settings_meta_transform(std::function<void(S&)> settings_fn) {
     return [settings_fn = std::move(settings_fn)](AssetMetaDyn& meta) {
         if (auto* s = meta.loader_settings()) {
-            if (auto* concrete = dynamic_cast<S*>(s)) {
-                settings_fn(*concrete);
+            if (auto* concrete = dynamic_cast<SettingsImpl<S>*>(s)) {
+                settings_fn(concrete->value);
             } else {
                 spdlog::error("Configured settings type does not match AssetLoader settings type");
             }
@@ -205,5 +307,150 @@ export struct AssetMetaMinimal {
     /** @brief The minimal action information. */
     AssetActionMinimal asset;
 };
+
+// ---------------------------------------------------------------------------
+// Binary serialize/deserialize helpers
+// ---------------------------------------------------------------------------
+
+/** @brief Serialize an AssetMetaMinimal to a byte vector using zpp::bits. */
+export inline std::expected<std::vector<std::byte>, std::errc> serialize_meta_minimal(const AssetMetaMinimal& minimal) {
+    std::vector<std::byte> data;
+    zpp::bits::out out{data};
+    auto result = out(minimal);
+    if (zpp::bits::failure(result)) return std::unexpected(result);
+    return data;
+}
+
+/** @brief Deserialize an AssetMetaMinimal from a byte span using zpp::bits. */
+export inline std::expected<AssetMetaMinimal, std::errc> deserialize_meta_minimal(std::span<const std::byte> bytes) {
+    AssetMetaMinimal minimal;
+    zpp::bits::in in(bytes);
+    auto result = in(minimal);
+    if (zpp::bits::failure(result)) return std::unexpected(result);
+    return minimal;
+}
+
+/** @brief Overload accepting a std::vector<std::byte>. */
+export inline std::expected<AssetMetaMinimal, std::errc> deserialize_meta_minimal(const std::vector<std::byte>& bytes) {
+    return deserialize_meta_minimal(std::span<const std::byte>(bytes.data(), bytes.size()));
+}
+
+/** @brief Serialize a full AssetMeta<LS,PS> to a byte vector using zpp::bits.
+ *  Fields are passed individually to avoid zpp_bits trying to reflect on
+ *  AssetMeta (which has virtual methods — MSVC cannot handle that via pfr).
+ *  Uses explicit vector+out construction to avoid the data_out() local-struct
+ *  duplicate-COMDAT MSVC issue. */
+export template <typename LS, typename PS>
+std::expected<std::vector<std::byte>, std::errc> serialize_asset_meta(const AssetMeta<LS, PS>& meta) {
+    std::vector<std::byte> data;
+    zpp::bits::out out{data};
+    auto result = out(meta.meta_format_version, meta.processed, meta.action, meta.loader,
+                      meta.loader_settings_storage.value, meta.processor, meta.processor_settings_storage.value);
+    if (zpp::bits::failure(result)) return std::unexpected(result);
+    return data;
+}
+
+/** @brief Deserialize a full AssetMeta<LS,PS> from a byte span using zpp::bits. */
+export template <typename LS, typename PS>
+std::expected<AssetMeta<LS, PS>, std::errc> deserialize_asset_meta(std::span<const std::byte> bytes) {
+    AssetMeta<LS, PS> meta;
+    zpp::bits::in in(bytes);
+    auto result = in(meta.meta_format_version, meta.processed, meta.action, meta.loader,
+                     meta.loader_settings_storage.value, meta.processor, meta.processor_settings_storage.value);
+    if (zpp::bits::failure(result)) return std::unexpected(result);
+    return meta;
+}
+
+/** @brief Extract only the ProcessedInfo from serialized AssetMeta bytes.
+ *  Reads just the first two fields (version + processed) and stops, which is
+ *  valid with zpp::bits sequential deserialization.  Used during processor
+ *  start-up to restore the stored hash without needing to know the settings types.
+ *  Matches bevy_asset's ProcessedInfoMinimal concept. */
+export inline std::expected<std::optional<ProcessedInfo>, std::errc> deserialize_processed_info(
+    std::span<const std::byte> bytes) {
+    std::string meta_format_version;
+    std::optional<ProcessedInfo> info;
+    zpp::bits::in in(bytes);
+    auto result = in(meta_format_version, info);
+    if (zpp::bits::failure(result)) return std::unexpected(result);
+    return info;
+}
+
+/** @brief Overload accepting std::vector<std::byte>. */
+export inline std::expected<std::optional<ProcessedInfo>, std::errc> deserialize_processed_info(
+    const std::vector<std::byte>& bytes) {
+    return deserialize_processed_info(std::span<const std::byte>(bytes.data(), bytes.size()));
+}
+
+// ---------------------------------------------------------------------------
+// Asset hashing utilities
+// Matches bevy_asset's get_asset_hash / get_full_asset_hash.
+// Uses a simple streaming 32-byte hash (4 x 64-bit lanes, FNV-inspired) since
+// BLAKE3 is not available as a standalone dependency.  The format is internal
+// to epix_engine and does not need to interoperate with bevy's binary format.
+// ---------------------------------------------------------------------------
+
+/** @brief Streaming 32-byte hasher used for asset change detection. */
+struct AssetHasher {
+    uint64_t s[4] = {
+        0xcbf29ce484222325ULL,  // FNV-1a 64-bit offset basis
+        0x9e3779b97f4a7c15ULL,  // golden ratio x 2^64
+        0x6c62272e07bb0142ULL,  // random constant
+        0x14020a57acced8b7ULL,  // random constant
+    };
+
+    void update(const uint8_t* data, std::size_t len) noexcept {
+        for (std::size_t i = 0; i < len; ++i) {
+            const uint64_t b = data[i];
+            s[0]             = (s[0] ^ b) * 0x00000100000001B3ULL;
+            s[1]             = (s[1] + b) * 0x9e3779b97f4a7415ULL;
+            s[2] ^= (s[0] >> 17) | (s[0] << 47);
+            s[3] ^= (s[1] >> 23) | (s[1] << 41);
+        }
+    }
+
+    void update(std::span<const std::byte> data) noexcept {
+        update(reinterpret_cast<const uint8_t*>(data.data()), data.size());
+    }
+
+    AssetHash finish() noexcept {
+        for (auto& x : s) {
+            x ^= x >> 33;
+            x *= 0xff51afd7ed558ccdULL;
+            x ^= x >> 33;
+            x *= 0xc4ceb9fe1a85ec53ULL;
+            x ^= x >> 33;
+        }
+        AssetHash result;
+        std::memcpy(result.data(), s, 32);
+        return result;
+    }
+};
+
+/** @brief Compute a 32-byte asset hash from meta bytes + asset stream contents.
+ *  NOTE: changing the hashing algorithm requires a META_FORMAT_VERSION bump.
+ *  Matches bevy_asset's get_asset_hash (synchronous version). */
+inline AssetHash get_asset_hash(std::span<const std::byte> meta_bytes, std::istream& reader) {
+    AssetHasher hasher;
+    hasher.update(meta_bytes);
+    char buf[8192];
+    while (reader.read(buf, sizeof(buf)) || reader.gcount() > 0) {
+        hasher.update(std::span<const std::byte>(reinterpret_cast<const std::byte*>(buf),
+                                                 static_cast<std::size_t>(reader.gcount())));
+        if (reader.eof()) break;
+    }
+    return hasher.finish();
+}
+
+/** @brief Compute the full_hash by chaining an asset hash with all dependency full_hashes.
+ *  Matches bevy_asset's get_full_asset_hash. */
+inline AssetHash get_full_asset_hash(AssetHash asset_hash, const std::vector<AssetHash>& dependency_hashes) {
+    AssetHasher hasher;
+    hasher.update(std::span<const std::byte>(reinterpret_cast<const std::byte*>(asset_hash.data()), asset_hash.size()));
+    for (const auto& dep : dependency_hashes) {
+        hasher.update(std::span<const std::byte>(reinterpret_cast<const std::byte*>(dep.data()), dep.size()));
+    }
+    return hasher.finish();
+}
 
 }  // namespace epix::assets
