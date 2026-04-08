@@ -589,10 +589,8 @@ std::expected<std::shared_ptr<wgpu::ShaderModule>, ShaderCacheError> ShaderCache
     auto& shader_data = data_[id];
 
     // Check all AssetPath imports are resolved
-    std::size_t n_asset_imports =
-        std::ranges::count_if(shader.imports, [](const ShaderImport& i) { return i.is_asset_path(); });
-    std::size_t n_resolved =
-        std::ranges::count_if(shader_data.resolved_imports, [](const auto& kv) { return kv.first.is_asset_path(); });
+    std::size_t n_asset_imports = shader.imports.size();
+    std::size_t n_resolved      = shader_data.resolved_imports.size();
     if (n_asset_imports != n_resolved) return std::unexpected(ShaderCacheError::import_not_available());
 
     shader_data.pipelines.insert(pipeline);
