@@ -1,5 +1,4 @@
 ﻿#include <imgui.h>
-#include <uuid.h>
 import std;
 import glm;
 import webgpu;
@@ -522,7 +521,10 @@ struct GpuPressureProjector {
     SvoBuffer svo_chunk_pos;
     bool svo_uploaded = false;
 
-    bool queued_ = false;
+    bool buffers_ready_ = false;
+    bool queued_        = false;
+
+    std::optional<assets::Handle<shader::Shader>> svo_library_handle_;
 
     render::CachedPipelineId pipeline_even_id{};
     render::CachedPipelineId pipeline_odd_id{};
@@ -545,14 +547,9 @@ struct GpuPressureProjector {
     render::CachedPipelineId clamp_u_pipeline_id{};
     render::CachedPipelineId clamp_v_pipeline_id{};
 
-    static assets::AssetId<shader::Shader> make_shader_id(std::uint8_t n) {
-        std::array<std::uint8_t, 16> b{};
-        b[0] = n;
-        return assets::AssetId<shader::Shader>(uuids::uuid(b));
-    }
-
-    void init(const wgpu::Device& device, render::PipelineServer& ps) {
-        if (queued_) return;
+    // Creates GPU buffers and builds the chunk-position SVO. Called lazily each frame.
+    void init(const wgpu::Device& device) {
+        if (buffers_ready_) return;
 
         // ------- Slang shader common preambles (SVO-indexed chunk lookup via kSvoGridSlangSource) -------
         // Buffer layout: one flat array<int32> for [D|S|P|U|V] field sections,
@@ -1208,52 +1205,663 @@ void computeMain(uint3 gid : SV_DispatchThreadID) {
         chunk_svo_buf = mk_buf("liquid_chunk_svo", svo_chunk_pos.byte_size(),
                                wgpu::BufferUsage::eStorage | wgpu::BufferUsage::eCopyDst);
 
-        // ------- Shader registration and pipeline queuing (via PipelineServer) -------
-        // Register the SVO grid library (resolves "import epix.ext.grid.svo;")
-        ps.set_shader(make_shader_id(0), shader::Shader::from_slang(std::string(kSvoGridSlangSource),
-                                                                    "embedded://epix/shaders/grid/svo.slang"));
+        buffers_ready_ = true;
+    }
 
-        // Helper: register shader + queue compute pipeline
-        const auto queue_one = [&](std::uint8_t n, const std::string& src, const char* path,
-                                   const char* label) -> render::CachedPipelineId {
-            ps.set_shader(make_shader_id(n), shader::Shader::from_slang(src, path));
+    // Registers compute shaders and queues GPU pipelines via the embedded asset system.
+    // Call once from Plugin::finish() before inserting FluidState into the world.
+    void register_pipelines(core::World& world) {
+        if (queued_) return;
+
+        auto registry = world.get_resource_mut<assets::EmbeddedAssetRegistry>();
+        auto server   = world.get_resource<assets::AssetServer>();
+        auto& ps      = world.resource_mut<render::PipelineServer>();
+        if (!registry || !server) {
+            return;  // Resources not yet available; called too early or missing plugins
+        }
+
+        const auto bytes = [](std::string_view s) {
+            return std::span<const std::byte>(reinterpret_cast<const std::byte*>(s.data()), s.size());
+        };
+
+        // Register the SVO grid library (resolves "import epix.ext.grid.svo;")
+        registry->get().insert_asset_static("epix/shaders/grid/svo.slang", bytes(kSvoGridSlangSource));
+        svo_library_handle_ = server->get().load<shader::Shader>("embedded://epix/shaders/grid/svo.slang");
+
+        // ------- Slang shader sources -------
+
+        // Common preamble: inplace (bindings 0=chunk_data RW, 1=chunk_svo)
+        static const std::string kSlangCommonInplace = R"slg(
+import epix.ext.grid.svo;
+[[vk::binding(0,0)]] RWStructuredBuffer<int>  chunk_data;
+[[vk::binding(1,0)]] StructuredBuffer<uint>   chunk_svo;
+static const int CHUNK_SIZE         = 16;
+static const int CHUNK_CELLS        = 256;
+static const int CHUNKS_X           = 13;
+static const int CHUNKS_Y           = 13;
+static const int GRID_N             = 200;
+static const int D_BASE             = 0;
+static const int S_BASE             = 43264;
+static const int P_BASE             = 86528;
+static const int U_BASE             = 129792;
+static const int V_BASE             = 173056;
+static const int MAXV_FX            = 524288;
+static const int OMEGA_FX           = 117965;
+static const int TARGET_DIV_GAIN_FX = 6554;
+int chunk_idx(int cx, int cy) {
+    if (cx < 0 || cx >= CHUNKS_X || cy < 0 || cy >= CHUNKS_Y) return -1;
+    epix::ext::grid::SvoGrid2D g; g.buf = chunk_svo;
+    return g.lookup(int2(cx, cy));
+}
+int fx_mul(int a, int b) {
+    int ah = a >> 16; int bh = b >> 16; int al = a & 65535; int bl = b & 65535;
+    int hi = (ah * bh) << 16; int mid = ah * bl + al * bh;
+    int lo = int((uint(al) * uint(bl)) >> 16u);
+    return hi + mid + lo;
+}
+int d_at(int gx, int gy) {
+    if (gx < 0 || gx >= GRID_N || gy < 0 || gy >= GRID_N) return 0;
+    int c = chunk_idx(gx / CHUNK_SIZE, gy / CHUNK_SIZE); if (c < 0) return 0;
+    return chunk_data[D_BASE + c * CHUNK_CELLS + (gx % CHUNK_SIZE) + (gy % CHUNK_SIZE) * CHUNK_SIZE];
+}
+bool s_at(int gx, int gy) {
+    if (gx < 0 || gx >= GRID_N || gy < 0 || gy >= GRID_N) return true;
+    int c = chunk_idx(gx / CHUNK_SIZE, gy / CHUNK_SIZE); if (c < 0) return true;
+    return chunk_data[S_BASE + c * CHUNK_CELLS + (gx % CHUNK_SIZE) + (gy % CHUNK_SIZE) * CHUNK_SIZE] != 0;
+}
+int p_at(int gx, int gy) {
+    if (gx < 0 || gx >= GRID_N || gy < 0 || gy >= GRID_N) return 0;
+    int c = chunk_idx(gx / CHUNK_SIZE, gy / CHUNK_SIZE); if (c < 0) return 0;
+    return chunk_data[P_BASE + c * CHUNK_CELLS + (gx % CHUNK_SIZE) + (gy % CHUNK_SIZE) * CHUNK_SIZE];
+}
+int u_at(int gx, int gy) {
+    if (gx < 0 || gx > GRID_N || gy < 0 || gy >= GRID_N) return 0;
+    int cx2 = gx / CHUNK_SIZE; int cy2 = gy / CHUNK_SIZE;
+    if (cx2 >= CHUNKS_X || cy2 >= CHUNKS_Y) return 0;
+    int c = chunk_idx(cx2, cy2); if (c < 0) return 0;
+    return chunk_data[U_BASE + c * CHUNK_CELLS + (gx % CHUNK_SIZE) + (gy % CHUNK_SIZE) * CHUNK_SIZE];
+}
+int v_at(int gx, int gy) {
+    if (gx < 0 || gx >= GRID_N || gy < 0 || gy > GRID_N) return 0;
+    int cx2 = gx / CHUNK_SIZE; int cy2 = gy / CHUNK_SIZE;
+    if (cx2 >= CHUNKS_X || cy2 >= CHUNKS_Y) return 0;
+    int c = chunk_idx(cx2, cy2); if (c < 0) return 0;
+    return chunk_data[V_BASE + c * CHUNK_CELLS + (gx % CHUNK_SIZE) + (gy % CHUNK_SIZE) * CHUNK_SIZE];
+}
+void set_d(int gx, int gy, int val) {
+    if (gx < 0 || gx >= GRID_N || gy < 0 || gy >= GRID_N) return;
+    int c = chunk_idx(gx / CHUNK_SIZE, gy / CHUNK_SIZE); if (c < 0) return;
+    chunk_data[D_BASE + c * CHUNK_CELLS + (gx % CHUNK_SIZE) + (gy % CHUNK_SIZE) * CHUNK_SIZE] = val;
+}
+void set_p(int gx, int gy, int val) {
+    if (gx < 0 || gx >= GRID_N || gy < 0 || gy >= GRID_N) return;
+    int c = chunk_idx(gx / CHUNK_SIZE, gy / CHUNK_SIZE); if (c < 0) return;
+    chunk_data[P_BASE + c * CHUNK_CELLS + (gx % CHUNK_SIZE) + (gy % CHUNK_SIZE) * CHUNK_SIZE] = val;
+}
+void set_u(int gx, int gy, int val) {
+    if (gx < 0 || gx > GRID_N || gy < 0 || gy >= GRID_N) return;
+    int cx2 = gx / CHUNK_SIZE; int cy2 = gy / CHUNK_SIZE;
+    if (cx2 >= CHUNKS_X || cy2 >= CHUNKS_Y) return;
+    int c = chunk_idx(cx2, cy2); if (c < 0) return;
+    chunk_data[U_BASE + c * CHUNK_CELLS + (gx % CHUNK_SIZE) + (gy % CHUNK_SIZE) * CHUNK_SIZE] = val;
+}
+void set_v(int gx, int gy, int val) {
+    if (gx < 0 || gx >= GRID_N || gy < 0 || gy > GRID_N) return;
+    int cx2 = gx / CHUNK_SIZE; int cy2 = gy / CHUNK_SIZE;
+    if (cx2 >= CHUNKS_X || cy2 >= CHUNKS_Y) return;
+    int c = chunk_idx(cx2, cy2); if (c < 0) return;
+    chunk_data[V_BASE + c * CHUNK_CELLS + (gx % CHUNK_SIZE) + (gy % CHUNK_SIZE) * CHUNK_SIZE] = val;
+}
+)slg";
+
+        // Common preamble: output (bindings 0=chunk_data RO, 1=chunk_out RW, 2=chunk_svo)
+        static const std::string kSlangCommonOutput = R"slg(
+import epix.ext.grid.svo;
+[[vk::binding(0,0)]] StructuredBuffer<int>    chunk_data;
+[[vk::binding(1,0)]] RWStructuredBuffer<int>  chunk_out;
+[[vk::binding(2,0)]] StructuredBuffer<uint>   chunk_svo;
+static const int CHUNK_SIZE  = 16;
+static const int CHUNK_CELLS = 256;
+static const int CHUNKS_X    = 13;
+static const int CHUNKS_Y    = 13;
+static const int GRID_N      = 200;
+static const int D_BASE      = 0;
+static const int S_BASE      = 43264;
+static const int P_BASE      = 86528;
+static const int U_BASE      = 129792;
+static const int V_BASE      = 173056;
+static const int MAXV_FX     = 524288;
+int chunk_idx(int cx, int cy) {
+    if (cx < 0 || cx >= CHUNKS_X || cy < 0 || cy >= CHUNKS_Y) return -1;
+    epix::ext::grid::SvoGrid2D g; g.buf = chunk_svo;
+    return g.lookup(int2(cx, cy));
+}
+int fx_mul(int a, int b) {
+    int ah = a >> 16; int bh = b >> 16; int al = a & 65535; int bl = b & 65535;
+    int hi = (ah * bh) << 16; int mid = ah * bl + al * bh;
+    int lo = int((uint(al) * uint(bl)) >> 16u);
+    return hi + mid + lo;
+}
+int d_at(int gx, int gy) {
+    if (gx < 0 || gx >= GRID_N || gy < 0 || gy >= GRID_N) return 0;
+    int c = chunk_idx(gx / CHUNK_SIZE, gy / CHUNK_SIZE); if (c < 0) return 0;
+    return chunk_data[D_BASE + c * CHUNK_CELLS + (gx % CHUNK_SIZE) + (gy % CHUNK_SIZE) * CHUNK_SIZE];
+}
+bool s_at(int gx, int gy) {
+    if (gx < 0 || gx >= GRID_N || gy < 0 || gy >= GRID_N) return true;
+    int c = chunk_idx(gx / CHUNK_SIZE, gy / CHUNK_SIZE); if (c < 0) return true;
+    return chunk_data[S_BASE + c * CHUNK_CELLS + (gx % CHUNK_SIZE) + (gy % CHUNK_SIZE) * CHUNK_SIZE] != 0;
+}
+int u_at(int gx, int gy) {
+    if (gx < 0 || gx > GRID_N || gy < 0 || gy >= GRID_N) return 0;
+    int cx2 = gx / CHUNK_SIZE; int cy2 = gy / CHUNK_SIZE;
+    if (cx2 >= CHUNKS_X || cy2 >= CHUNKS_Y) return 0;
+    int c = chunk_idx(cx2, cy2); if (c < 0) return 0;
+    return chunk_data[U_BASE + c * CHUNK_CELLS + (gx % CHUNK_SIZE) + (gy % CHUNK_SIZE) * CHUNK_SIZE];
+}
+int v_at(int gx, int gy) {
+    if (gx < 0 || gx >= GRID_N || gy < 0 || gy > GRID_N) return 0;
+    int cx2 = gx / CHUNK_SIZE; int cy2 = gy / CHUNK_SIZE;
+    if (cx2 >= CHUNKS_X || cy2 >= CHUNKS_Y) return 0;
+    int c = chunk_idx(cx2, cy2); if (c < 0) return 0;
+    return chunk_data[V_BASE + c * CHUNK_CELLS + (gx % CHUNK_SIZE) + (gy % CHUNK_SIZE) * CHUNK_SIZE];
+}
+void out_write(int base, int gx, int gy, int val) {
+    if (gx < 0 || gx > GRID_N || gy < 0 || gy > GRID_N) return;
+    int cx2 = gx / CHUNK_SIZE; int cy2 = gy / CHUNK_SIZE;
+    if (cx2 >= CHUNKS_X || cy2 >= CHUNKS_Y) return;
+    int c = chunk_idx(cx2, cy2); if (c < 0) return;
+    chunk_out[base + c * CHUNK_CELLS + (gx % CHUNK_SIZE) + (gy % CHUNK_SIZE) * CHUNK_SIZE] = val;
+}
+)slg";
+
+        static const std::string kShaderEven = kSlangCommonInplace + R"slg(
+[shader("compute")]
+[numthreads(16,16,1)]
+void computeMain(uint3 gid : SV_DispatchThreadID) {
+    int x = int(gid.x); int y = int(gid.y);
+    if (x <= 0 || y <= 0 || x >= GRID_N-1 || y >= GRID_N-1) return;
+    if (((x+y)&1) != 0) return;
+    int dFx = d_at(x,y); if (dFx < 13107) return;
+    int uLFx = u_at(x,y); int uRFx = u_at(x+1,y);
+    int vTFx = v_at(x,y); int vBFx = v_at(x,y+1);
+    int velDivFx = (uRFx-uLFx) + (vBFx-vTFx);
+    int densityErrFx = dFx - 65536;
+    int targetDivFx = densityErrFx > 0 ? fx_mul(densityErrFx, TARGET_DIV_GAIN_FX) : 0;
+    int totalDivFx = velDivFx - targetDivFx;
+    int sL = s_at(x-1,y)?1:0; int sR = s_at(x+1,y)?1:0;
+    int sT = s_at(x,y-1)?1:0; int sB = s_at(x,y+1)?1:0;
+    int n = 4 - (sL+sR+sT+sB); if (n == 0) return;
+    int pCorrFx = int(-totalDivFx / n);
+    pCorrFx = fx_mul(pCorrFx, OMEGA_FX);
+    int weightFx = dFx >= 65536 ? 65536 : fx_mul(dFx, dFx);
+    pCorrFx = fx_mul(pCorrFx, weightFx);
+    set_p(x,y, p_at(x,y)+pCorrFx);
+    if (sL==0) set_u(x,y, uLFx-pCorrFx);
+    if (sR==0) set_u(x+1,y, uRFx+pCorrFx);
+    if (sT==0) set_v(x,y, vTFx-pCorrFx);
+    if (sB==0) set_v(x,y+1, vBFx+pCorrFx);
+}
+)slg";
+
+        static const std::string kShaderOdd = kSlangCommonInplace + R"slg(
+[shader("compute")]
+[numthreads(16,16,1)]
+void computeMain(uint3 gid : SV_DispatchThreadID) {
+    int x = int(gid.x); int y = int(gid.y);
+    if (x <= 0 || y <= 0 || x >= GRID_N-1 || y >= GRID_N-1) return;
+    if (((x+y)&1) != 1) return;
+    int dFx = d_at(x,y); if (dFx < 13107) return;
+    int uLFx = u_at(x,y); int uRFx = u_at(x+1,y);
+    int vTFx = v_at(x,y); int vBFx = v_at(x,y+1);
+    int velDivFx = (uRFx-uLFx) + (vBFx-vTFx);
+    int densityErrFx = dFx - 65536;
+    int targetDivFx = densityErrFx > 0 ? fx_mul(densityErrFx, TARGET_DIV_GAIN_FX) : 0;
+    int totalDivFx = velDivFx - targetDivFx;
+    int sL = s_at(x-1,y)?1:0; int sR = s_at(x+1,y)?1:0;
+    int sT = s_at(x,y-1)?1:0; int sB = s_at(x,y+1)?1:0;
+    int n = 4 - (sL+sR+sT+sB); if (n == 0) return;
+    int pCorrFx = int(-totalDivFx / n);
+    pCorrFx = fx_mul(pCorrFx, OMEGA_FX);
+    int weightFx = dFx >= 65536 ? 65536 : fx_mul(dFx, dFx);
+    pCorrFx = fx_mul(pCorrFx, weightFx);
+    set_p(x,y, p_at(x,y)+pCorrFx);
+    if (sL==0) set_u(x,y, uLFx-pCorrFx);
+    if (sR==0) set_u(x+1,y, uRFx+pCorrFx);
+    if (sT==0) set_v(x,y, vTFx-pCorrFx);
+    if (sB==0) set_v(x,y+1, vBFx+pCorrFx);
+}
+)slg";
+
+        static const std::string kShaderGravity = kSlangCommonInplace + R"slg(
+struct SimParam { int p0,p1,p2,p3,p4,p5,p6,p7; };
+[[vk::binding(2,0)]] ConstantBuffer<SimParam> param;
+[shader("compute")]
+[numthreads(16,16,1)]
+void computeMain(uint3 gid : SV_DispatchThreadID) {
+    int x = int(gid.x); int y = int(gid.y);
+    if (x < 0 || x >= GRID_N || y <= 0 || y >= GRID_N) return;
+    int d0 = d_at(x,y); int d1 = d_at(x,y-1);
+    if (d0 > 655 || d1 > 655) set_v(x,y, v_at(x,y) + param.p0/2);
+}
+)slg";
+
+        static const std::string kShaderPostU = kSlangCommonInplace + R"slg(
+[shader("compute")]
+[numthreads(16,16,1)]
+void computeMain(uint3 gid : SV_DispatchThreadID) {
+    int x = int(gid.x); int y = int(gid.y);
+    if (x < 0 || x > GRID_N || y < 0 || y >= GRID_N) return;
+    int uFx = u_at(x,y);
+    if (abs(uFx) > MAXV_FX) uFx = uFx > 0 ? MAXV_FX : -MAXV_FX;
+    bool sL = x == 0 || s_at(x-1,y); bool sR = x == GRID_N || s_at(x,y);
+    if (sL || sR) uFx = 0;
+    set_u(x,y,uFx);
+}
+)slg";
+
+        static const std::string kShaderPostV = kSlangCommonInplace + R"slg(
+[shader("compute")]
+[numthreads(16,16,1)]
+void computeMain(uint3 gid : SV_DispatchThreadID) {
+    int x = int(gid.x); int y = int(gid.y);
+    if (x < 0 || x >= GRID_N || y < 0 || y > GRID_N) return;
+    int vFx = v_at(x,y);
+    if (abs(vFx) > MAXV_FX) vFx = vFx > 0 ? MAXV_FX : -MAXV_FX;
+    bool sT = y == 0 || s_at(x,y-1); bool sB = y == GRID_N || s_at(x,y);
+    if (sT || sB) vFx = 0;
+    set_v(x,y,vFx);
+}
+)slg";
+
+        static const std::string kShaderViscUEven = kSlangCommonInplace + R"slg(
+struct SimParam { int p0,p1,p2,p3,p4,p5,p6,p7; };
+[[vk::binding(2,0)]] ConstantBuffer<SimParam> param;
+bool face_active_u(int x, int y) { return max(d_at(x-1,y), d_at(x,y)) > 3276; }
+[shader("compute")]
+[numthreads(16,16,1)]
+void computeMain(uint3 gid : SV_DispatchThreadID) {
+    int x = int(gid.x); int y = int(gid.y);
+    if (x < 0 || x > GRID_N || y < 0 || y >= GRID_N) return;
+    if (((x+y)&1) != 0) return;
+    int uFx = u_at(x,y);
+    int scaleFx = fx_mul(fx_mul(param.p1, param.p0), 3932160);
+    if (x > 0 && x < GRID_N && y > 0 && y < GRID_N-1 && face_active_u(x,y)) {
+        int nFx = u_at(x-1,y)+u_at(x+1,y)+u_at(x,y-1)+u_at(x,y+1);
+        uFx = uFx + fx_mul(nFx - 4*uFx, scaleFx);
+    }
+    set_u(x,y,uFx);
+}
+)slg";
+
+        static const std::string kShaderViscUOdd = kSlangCommonInplace + R"slg(
+struct SimParam { int p0,p1,p2,p3,p4,p5,p6,p7; };
+[[vk::binding(2,0)]] ConstantBuffer<SimParam> param;
+bool face_active_u(int x, int y) { return max(d_at(x-1,y), d_at(x,y)) > 3276; }
+[shader("compute")]
+[numthreads(16,16,1)]
+void computeMain(uint3 gid : SV_DispatchThreadID) {
+    int x = int(gid.x); int y = int(gid.y);
+    if (x < 0 || x > GRID_N || y < 0 || y >= GRID_N) return;
+    if (((x+y)&1) != 1) return;
+    int uFx = u_at(x,y);
+    int scaleFx = fx_mul(fx_mul(param.p1, param.p0), 3932160);
+    if (x > 0 && x < GRID_N && y > 0 && y < GRID_N-1 && face_active_u(x,y)) {
+        int nFx = u_at(x-1,y)+u_at(x+1,y)+u_at(x,y-1)+u_at(x,y+1);
+        uFx = uFx + fx_mul(nFx - 4*uFx, scaleFx);
+    }
+    set_u(x,y,uFx);
+}
+)slg";
+
+        static const std::string kShaderViscVEven = kSlangCommonInplace + R"slg(
+struct SimParam { int p0,p1,p2,p3,p4,p5,p6,p7; };
+[[vk::binding(2,0)]] ConstantBuffer<SimParam> param;
+bool face_active_v(int x, int y) { return max(d_at(x,y-1), d_at(x,y)) > 3276; }
+[shader("compute")]
+[numthreads(16,16,1)]
+void computeMain(uint3 gid : SV_DispatchThreadID) {
+    int x = int(gid.x); int y = int(gid.y);
+    if (x < 0 || x >= GRID_N || y < 0 || y > GRID_N) return;
+    if (((x+y)&1) != 0) return;
+    int vFx = v_at(x,y);
+    int scaleFx = fx_mul(fx_mul(param.p1, param.p0), 3932160);
+    if (y > 0 && y < GRID_N && x > 0 && x < GRID_N-1 && face_active_v(x,y)) {
+        int nFx = v_at(x-1,y)+v_at(x+1,y)+v_at(x,y-1)+v_at(x,y+1);
+        vFx = vFx + fx_mul(nFx - 4*vFx, scaleFx);
+    }
+    set_v(x,y,vFx);
+}
+)slg";
+
+        static const std::string kShaderViscVOdd = kSlangCommonInplace + R"slg(
+struct SimParam { int p0,p1,p2,p3,p4,p5,p6,p7; };
+[[vk::binding(2,0)]] ConstantBuffer<SimParam> param;
+bool face_active_v(int x, int y) { return max(d_at(x,y-1), d_at(x,y)) > 3276; }
+[shader("compute")]
+[numthreads(16,16,1)]
+void computeMain(uint3 gid : SV_DispatchThreadID) {
+    int x = int(gid.x); int y = int(gid.y);
+    if (x < 0 || x >= GRID_N || y < 0 || y > GRID_N) return;
+    if (((x+y)&1) != 1) return;
+    int vFx = v_at(x,y);
+    int scaleFx = fx_mul(fx_mul(param.p1, param.p0), 3932160);
+    if (y > 0 && y < GRID_N && x > 0 && x < GRID_N-1 && face_active_v(x,y)) {
+        int nFx = v_at(x-1,y)+v_at(x+1,y)+v_at(x,y-1)+v_at(x,y+1);
+        vFx = vFx + fx_mul(nFx - 4*vFx, scaleFx);
+    }
+    set_v(x,y,vFx);
+}
+)slg";
+
+        static const std::string kShaderViscWallU = kSlangCommonInplace + R"slg(
+struct SimParam { int p0,p1,p2,p3,p4,p5,p6,p7; };
+[[vk::binding(2,0)]] ConstantBuffer<SimParam> param;
+bool cell_active(int cx, int cy) { return d_at(cx,cy) > 3276; }
+bool cell_near_wall(int cx, int cy) {
+    if (!cell_active(cx,cy)) return false;
+    if (cx > 0 && s_at(cx-1,cy)) return true;
+    if (cx < GRID_N-1 && s_at(cx+1,cy)) return true;
+    if (cy > 0 && s_at(cx,cy-1)) return true;
+    if (cy < GRID_N-1 && s_at(cx,cy+1)) return true;
+    return false;
+}
+[shader("compute")]
+[numthreads(16,16,1)]
+void computeMain(uint3 gid : SV_DispatchThreadID) {
+    int x = int(gid.x); int y = int(gid.y);
+    if (x < 0 || x > GRID_N || y < 0 || y >= GRID_N) return;
+    int uFx = u_at(x,y); int hits = 0;
+    if (cell_near_wall(x-1,y)) hits++;
+    if (cell_near_wall(x,y))   hits++;
+    if (hits > 0) {
+        int dampFx = 65536;
+        for (int h = 0; h < hits; h++) dampFx = fx_mul(dampFx, param.p2);
+        uFx = fx_mul(uFx, dampFx);
+    }
+    set_u(x,y,uFx);
+}
+)slg";
+
+        static const std::string kShaderViscWallV = kSlangCommonInplace + R"slg(
+struct SimParam { int p0,p1,p2,p3,p4,p5,p6,p7; };
+[[vk::binding(2,0)]] ConstantBuffer<SimParam> param;
+bool cell_active(int cx, int cy) { return d_at(cx,cy) > 3276; }
+bool cell_near_wall(int cx, int cy) {
+    if (!cell_active(cx,cy)) return false;
+    if (cx > 0 && s_at(cx-1,cy)) return true;
+    if (cx < GRID_N-1 && s_at(cx+1,cy)) return true;
+    if (cy > 0 && s_at(cx,cy-1)) return true;
+    if (cy < GRID_N-1 && s_at(cx,cy+1)) return true;
+    return false;
+}
+[shader("compute")]
+[numthreads(16,16,1)]
+void computeMain(uint3 gid : SV_DispatchThreadID) {
+    int x = int(gid.x); int y = int(gid.y);
+    if (x < 0 || x >= GRID_N || y < 0 || y > GRID_N) return;
+    int vFx = v_at(x,y); int hits = 0;
+    if (cell_near_wall(x,y-1)) hits++;
+    if (cell_near_wall(x,y))   hits++;
+    if (hits > 0) {
+        int dampFx = 65536;
+        for (int h = 0; h < hits; h++) dampFx = fx_mul(dampFx, param.p2);
+        vFx = fx_mul(vFx, dampFx);
+    }
+    set_v(x,y,vFx);
+}
+)slg";
+
+        static const std::string kShaderExtrapCellEven = kSlangCommonInplace + R"slg(
+bool cell_fluid(int x, int y) { return d_at(x,y) > 13107; }
+[shader("compute")]
+[numthreads(16,16,1)]
+void computeMain(uint3 gid : SV_DispatchThreadID) {
+    int x = int(gid.x); int y = int(gid.y);
+    if (x < 0 || x >= GRID_N || y < 0 || y >= GRID_N) return;
+    if (((x+y)&1) != 0) return;
+    if (d_at(x,y) >= 6554) return;
+    int sumU=0,sumV=0,cU=0,cV=0;
+    if (x>0 && cell_fluid(x-1,y))       { sumU+=u_at(x,y);   sumV+=v_at(x,y);   cU++;cV++; }
+    if (x<GRID_N-1&&cell_fluid(x+1,y))  { sumU+=u_at(x+1,y); sumV+=v_at(x,y);   cU++;cV++; }
+    if (y>0 && cell_fluid(x,y-1))       { sumU+=u_at(x,y);   sumV+=v_at(x,y);   cU++;cV++; }
+    if (y<GRID_N-1&&cell_fluid(x,y+1))  { sumU+=u_at(x,y);   sumV+=v_at(x,y+1); cU++;cV++; }
+    if (cU>0 && cV>0) {
+        int aU = sumU>=0?(sumU+(cU/2))/cU:(sumU-(cU/2))/cU;
+        int aV = sumV>=0?(sumV+(cV/2))/cV:(sumV-(cV/2))/cV;
+        set_u(x,y,aU); set_u(x+1,y,aU); set_v(x,y,aV); set_v(x,y+1,aV);
+    }
+}
+)slg";
+
+        static const std::string kShaderExtrapCellOdd = kSlangCommonInplace + R"slg(
+bool cell_fluid(int x, int y) { return d_at(x,y) > 13107; }
+[shader("compute")]
+[numthreads(16,16,1)]
+void computeMain(uint3 gid : SV_DispatchThreadID) {
+    int x = int(gid.x); int y = int(gid.y);
+    if (x < 0 || x >= GRID_N || y < 0 || y >= GRID_N) return;
+    if (((x+y)&1) != 1) return;
+    if (d_at(x,y) >= 6554) return;
+    int sumU=0,sumV=0,cU=0,cV=0;
+    if (x>0 && cell_fluid(x-1,y))       { sumU+=u_at(x,y);   sumV+=v_at(x,y);   cU++;cV++; }
+    if (x<GRID_N-1&&cell_fluid(x+1,y))  { sumU+=u_at(x+1,y); sumV+=v_at(x,y);   cU++;cV++; }
+    if (y>0 && cell_fluid(x,y-1))       { sumU+=u_at(x,y);   sumV+=v_at(x,y);   cU++;cV++; }
+    if (y<GRID_N-1&&cell_fluid(x,y+1))  { sumU+=u_at(x,y);   sumV+=v_at(x,y+1); cU++;cV++; }
+    if (cU>0 && cV>0) {
+        int aU = sumU>=0?(sumU+(cU/2))/cU:(sumU-(cU/2))/cU;
+        int aV = sumV>=0?(sumV+(cV/2))/cV:(sumV-(cV/2))/cV;
+        set_u(x,y,aU); set_u(x+1,y,aU); set_v(x,y,aV); set_v(x,y+1,aV);
+    }
+}
+)slg";
+
+        static const std::string kShaderAdvectU = kSlangCommonOutput + R"slg(
+struct Param { int dt,_p0,_p1,_p2; };
+[[vk::binding(3,0)]] ConstantBuffer<Param> param;
+int fx_lerp(int a, int b, int tFx) { return a + fx_mul(b-a, tFx); }
+int sample_u(int xFx, int yFx) {
+    xFx = clamp(xFx,0,GRID_N*65536); yFx = clamp(yFx,0,(GRID_N-1)*65536);
+    int x0 = clamp(xFx>>16,0,GRID_N-1); int y0 = clamp((yFx-32768)>>16,0,GRID_N-2);
+    int s = xFx-(x0<<16); int t2 = yFx-((y0<<16)+32768);
+    return fx_lerp(fx_lerp(u_at(x0,y0),u_at(min(x0+1,GRID_N),y0),s),
+                   fx_lerp(u_at(x0,y0+1),u_at(min(x0+1,GRID_N),y0+1),s),t2);
+}
+int sample_v(int xFx, int yFx) {
+    xFx = clamp(xFx,0,(GRID_N-1)*65536); yFx = clamp(yFx,0,GRID_N*65536);
+    int x0 = clamp((xFx-32768)>>16,0,GRID_N-2); int y0 = clamp(yFx>>16,0,GRID_N-1);
+    int s = xFx-((x0<<16)+32768); int t2 = yFx-(y0<<16);
+    return fx_lerp(fx_lerp(v_at(x0,y0),v_at(x0+1,y0),s),
+                   fx_lerp(v_at(x0,min(y0+1,GRID_N)),v_at(x0+1,min(y0+1,GRID_N)),s),t2);
+}
+[shader("compute")]
+[numthreads(16,16,1)]
+void computeMain(uint3 gid : SV_DispatchThreadID) {
+    int x = int(gid.x); int y = int(gid.y);
+    if (x < 0 || x > GRID_N || y < 0 || y >= GRID_N) return;
+    if (x <= 0 || x >= GRID_N) { out_write(0,x,y,0); return; }
+    if (s_at(x,y) || s_at(x-1,y)) { out_write(0,x,y,0); return; }
+    int hdt = param.dt/2;
+    int xFx = x*65536; int yHFx = y*65536+32768;
+    int uV = u_at(x,y); int vA = (v_at(x,y)+v_at(x-1,y)+v_at(x,y+1)+v_at(x-1,y+1))/4;
+    int mxFx = xFx-fx_mul(uV,hdt); int myFx = yHFx-fx_mul(vA,hdt);
+    int muFx = sample_u(mxFx,myFx); int mvFx = sample_v(mxFx,myFx);
+    out_write(0,x,y, sample_u(xFx-fx_mul(muFx,param.dt), yHFx-fx_mul(mvFx,param.dt)));
+}
+)slg";
+
+        static const std::string kShaderAdvectV = kSlangCommonOutput + R"slg(
+struct Param { int dt,_p0,_p1,_p2; };
+[[vk::binding(3,0)]] ConstantBuffer<Param> param;
+int fx_lerp(int a, int b, int tFx) { return a + fx_mul(b-a, tFx); }
+int sample_u(int xFx, int yFx) {
+    xFx = clamp(xFx,0,GRID_N*65536); yFx = clamp(yFx,0,(GRID_N-1)*65536);
+    int x0 = clamp(xFx>>16,0,GRID_N-1); int y0 = clamp((yFx-32768)>>16,0,GRID_N-2);
+    int s = xFx-(x0<<16); int t2 = yFx-((y0<<16)+32768);
+    return fx_lerp(fx_lerp(u_at(x0,y0),u_at(min(x0+1,GRID_N),y0),s),
+                   fx_lerp(u_at(x0,y0+1),u_at(min(x0+1,GRID_N),y0+1),s),t2);
+}
+int sample_v(int xFx, int yFx) {
+    xFx = clamp(xFx,0,(GRID_N-1)*65536); yFx = clamp(yFx,0,GRID_N*65536);
+    int x0 = clamp((xFx-32768)>>16,0,GRID_N-2); int y0 = clamp(yFx>>16,0,GRID_N-1);
+    int s = xFx-((x0<<16)+32768); int t2 = yFx-(y0<<16);
+    return fx_lerp(fx_lerp(v_at(x0,y0),v_at(x0+1,y0),s),
+                   fx_lerp(v_at(x0,min(y0+1,GRID_N)),v_at(x0+1,min(y0+1,GRID_N)),s),t2);
+}
+[shader("compute")]
+[numthreads(16,16,1)]
+void computeMain(uint3 gid : SV_DispatchThreadID) {
+    int x = int(gid.x); int y = int(gid.y);
+    if (x < 0 || x >= GRID_N || y < 0 || y > GRID_N) return;
+    if (y <= 0 || y >= GRID_N) { out_write(0,x,y,0); return; }
+    if (s_at(x,y) || s_at(x,y-1)) { out_write(0,x,y,0); return; }
+    int hdt = param.dt/2;
+    int xHFx = x*65536+32768; int yFx = y*65536;
+    int vV = v_at(x,y); int uA = (u_at(x,y)+u_at(x,y-1)+u_at(x+1,y)+u_at(x+1,y-1))/4;
+    int mxFx = xHFx-fx_mul(uA,hdt); int myFx = yFx-fx_mul(vV,hdt);
+    int muFx = sample_u(mxFx,myFx); int mvFx = sample_v(mxFx,myFx);
+    out_write(0,x,y, sample_v(xHFx-fx_mul(muFx,param.dt), yFx-fx_mul(mvFx,param.dt)));
+}
+)slg";
+
+        static const std::string kShaderDensity = kSlangCommonOutput + R"slg(
+static const int MAX_DENSITY_FX  = 88474;
+static const int SOFT_START_FX   = 72090;
+static const int SOFT_RANGE_FX   = 16384;
+static const int SOFT_ZERO_FX    = 66;
+static const int EXP1M_MAX_T_FX  = 524288;
+static const int EXP1M_LUT_LAST  = 65514;
+static const int EXP1M_LUT[33]   = {0,14497,25786,34579,41427,46760,50913,54148,56667,58629,60156,
+    61346,62273,62995,63557,63995,64336,64601,64808,64969,65094,65192,
+    65268,65327,65374,65409,65437,65459,65476,65489,65500,65508,65514};
+struct Param { int dt,_p0,_p1,_p2; };
+[[vk::binding(3,0)]] ConstantBuffer<Param> param;
+int exp1m_fx(int tFx) {
+    if (tFx<=0) return 0; if (tFx>=EXP1M_MAX_T_FX) return EXP1M_LUT_LAST;
+    int idx=tFx>>14; int rem=tFx-(idx<<14);
+    return EXP1M_LUT[idx]+fx_mul(EXP1M_LUT[idx+1]-EXP1M_LUT[idx],rem<<2);
+}
+int soft_bound(int dFx) {
+    if (dFx<=0) return 0; if (dFx<=SOFT_START_FX) return dFx;
+    int ov=dFx-SOFT_START_FX;
+    return min(SOFT_START_FX+fx_mul(SOFT_RANGE_FX,exp1m_fx(ov<<2)),MAX_DENSITY_FX);
+}
+[shader("compute")]
+[numthreads(16,16,1)]
+void computeMain(uint3 gid : SV_DispatchThreadID) {
+    int x = int(gid.x); int y = int(gid.y);
+    if (x<0||x>=GRID_N||y<0||y>=GRID_N) return;
+    if (s_at(x,y)) { out_write(0,x,y,d_at(x,y)); return; }
+    int fL=0,fR=0,fT=0,fB=0; int dtFx=param.dt;
+    if (x>0&&!s_at(x-1,y)) { int u=u_at(x,y); fL=fx_mul(fx_mul(d_at(u>0?x-1:x,y),u),dtFx); }
+    if (x<GRID_N-1&&!s_at(x+1,y)) { int u=u_at(x+1,y); fR=fx_mul(fx_mul(d_at(u>0?x:x+1,y),u),dtFx); }
+    if (y>0&&!s_at(x,y-1)) { int v=v_at(x,y); fT=fx_mul(fx_mul(d_at(x,v>0?y-1:y),v),dtFx); }
+    if (y<GRID_N-1&&!s_at(x,y+1)) { int v=v_at(x,y+1); fB=fx_mul(fx_mul(d_at(x,v>0?y:y+1),v),dtFx); }
+    int dFx=soft_bound(d_at(x,y)+(fL-fR)+(fT-fB));
+    if (dFx<SOFT_ZERO_FX) dFx=0;
+    out_write(0,x,y,dFx);
+}
+)slg";
+
+        static const std::string kShaderSurfaceU = kSlangCommonOutput + R"slg(
+static const int STRENGTH_FX  = 13107;
+static const int D_MIN_FX     = 13107;
+static const int D_MAX_FX     = 52429;
+static const int GRAD_MIN_FX  = 6554;
+struct SimParam { int p0,p1,p2,p3,p4,p5,p6,p7; };
+[[vk::binding(3,0)]] ConstantBuffer<SimParam> param;
+int contrib_fx(int cx, int cy) {
+    if (cx<=0||cx>=GRID_N-1||cy<=0||cy>=GRID_N-1) return 0;
+    int dFx=d_at(cx,cy); if (dFx<D_MIN_FX||dFx>D_MAX_FX) return 0;
+    int nx=d_at(cx+1,cy)-d_at(cx-1,cy); if (abs(nx)<=GRAD_MIN_FX) return 0; return nx;
+}
+[shader("compute")]
+[numthreads(16,16,1)]
+void computeMain(uint3 gid : SV_DispatchThreadID) {
+    int x=int(gid.x); int y=int(gid.y);
+    if (x<0||x>GRID_N||y<0||y>=GRID_N) return;
+    out_write(0,x,y, u_at(x,y)+fx_mul(fx_mul(contrib_fx(x,y)+contrib_fx(x-1,y),STRENGTH_FX),param.p0));
+}
+)slg";
+
+        static const std::string kShaderSurfaceV = kSlangCommonOutput + R"slg(
+static const int STRENGTH_FX  = 13107;
+static const int D_MIN_FX     = 13107;
+static const int D_MAX_FX     = 52429;
+static const int GRAD_MIN_FX  = 6554;
+struct SimParam { int p0,p1,p2,p3,p4,p5,p6,p7; };
+[[vk::binding(3,0)]] ConstantBuffer<SimParam> param;
+int contrib_fy(int cx, int cy) {
+    if (cx<=0||cx>=GRID_N-1||cy<=0||cy>=GRID_N-1) return 0;
+    int dFx=d_at(cx,cy); if (dFx<D_MIN_FX||dFx>D_MAX_FX) return 0;
+    int ny=d_at(cx,cy+1)-d_at(cx,cy-1); if (abs(ny)<=GRAD_MIN_FX) return 0; return ny;
+}
+[shader("compute")]
+[numthreads(16,16,1)]
+void computeMain(uint3 gid : SV_DispatchThreadID) {
+    int x=int(gid.x); int y=int(gid.y);
+    if (x<0||x>=GRID_N||y<0||y>GRID_N) return;
+    out_write(0,x,y, v_at(x,y)+fx_mul(fx_mul(contrib_fy(x,y)+contrib_fy(x,y-1),STRENGTH_FX),param.p0));
+}
+)slg";
+
+        static const std::string kShaderClampU = kSlangCommonOutput + R"slg(
+[shader("compute")]
+[numthreads(16,16,1)]
+void computeMain(uint3 gid : SV_DispatchThreadID) {
+    int x=int(gid.x); int y=int(gid.y);
+    if (x<0||x>GRID_N||y<0||y>=GRID_N) return;
+    int uFx=u_at(x,y);
+    if (abs(uFx)>MAXV_FX) uFx = uFx>0?MAXV_FX:-MAXV_FX;
+    out_write(0,x,y,uFx);
+}
+)slg";
+
+        static const std::string kShaderClampV = kSlangCommonOutput + R"slg(
+[shader("compute")]
+[numthreads(16,16,1)]
+void computeMain(uint3 gid : SV_DispatchThreadID) {
+    int x=int(gid.x); int y=int(gid.y);
+    if (x<0||x>=GRID_N||y<0||y>GRID_N) return;
+    int vFx=v_at(x,y);
+    if (abs(vFx)>MAXV_FX) vFx = vFx>0?MAXV_FX:-MAXV_FX;
+    out_write(0,x,y,vFx);
+}
+)slg";
+
+        // Register + load + queue each compute pipeline
+        const auto queue_one = [&](std::string_view path, const std::string& src, const char* label) {
+            registry->get().insert_asset_static(path, bytes(src));
+            auto handle = server->get().load<shader::Shader>(std::string("embedded://") + std::string(path));
             return ps.queue_compute_pipeline(render::ComputePipelineDescriptor{
                 .label       = std::string(label),
-                .shader      = assets::Handle<shader::Shader>(make_shader_id(n)),
+                .shader      = std::move(handle),
                 .entry_point = std::string("computeMain"),
             });
         };
 
-        pipeline_even_id =
-            queue_one(1, kShaderEven, "embedded://liquid/pressure_even.slang", "LiquidPressureProjectEven");
-        pipeline_odd_id = queue_one(2, kShaderOdd, "embedded://liquid/pressure_odd.slang", "LiquidPressureProjectOdd");
-        gravity_pipeline_id = queue_one(3, kShaderGravity, "embedded://liquid/gravity.slang", "LiquidGravity");
-        post_u_pipeline_id  = queue_one(4, kShaderPostU, "embedded://liquid/post_u.slang", "LiquidPostU");
-        post_v_pipeline_id  = queue_one(5, kShaderPostV, "embedded://liquid/post_v.slang", "LiquidPostV");
-        visc_u_even_pipeline_id =
-            queue_one(6, kShaderViscUEven, "embedded://liquid/visc_u_even.slang", "LiquidViscosityUEven");
-        visc_u_odd_pipeline_id =
-            queue_one(7, kShaderViscUOdd, "embedded://liquid/visc_u_odd.slang", "LiquidViscosityUOdd");
-        visc_v_even_pipeline_id =
-            queue_one(8, kShaderViscVEven, "embedded://liquid/visc_v_even.slang", "LiquidViscosityVEven");
-        visc_v_odd_pipeline_id =
-            queue_one(9, kShaderViscVOdd, "embedded://liquid/visc_v_odd.slang", "LiquidViscosityVOdd");
-        visc_wall_u_pipeline_id =
-            queue_one(10, kShaderViscWallU, "embedded://liquid/visc_wall_u.slang", "LiquidViscosityWallU");
-        visc_wall_v_pipeline_id =
-            queue_one(11, kShaderViscWallV, "embedded://liquid/visc_wall_v.slang", "LiquidViscosityWallV");
+        pipeline_even_id        = queue_one("liquid/pressure_even.slang", kShaderEven, "LiquidPressureProjectEven");
+        pipeline_odd_id         = queue_one("liquid/pressure_odd.slang", kShaderOdd, "LiquidPressureProjectOdd");
+        gravity_pipeline_id     = queue_one("liquid/gravity.slang", kShaderGravity, "LiquidGravity");
+        post_u_pipeline_id      = queue_one("liquid/post_u.slang", kShaderPostU, "LiquidPostU");
+        post_v_pipeline_id      = queue_one("liquid/post_v.slang", kShaderPostV, "LiquidPostV");
+        visc_u_even_pipeline_id = queue_one("liquid/visc_u_even.slang", kShaderViscUEven, "LiquidViscosityUEven");
+        visc_u_odd_pipeline_id  = queue_one("liquid/visc_u_odd.slang", kShaderViscUOdd, "LiquidViscosityUOdd");
+        visc_v_even_pipeline_id = queue_one("liquid/visc_v_even.slang", kShaderViscVEven, "LiquidViscosityVEven");
+        visc_v_odd_pipeline_id  = queue_one("liquid/visc_v_odd.slang", kShaderViscVOdd, "LiquidViscosityVOdd");
+        visc_wall_u_pipeline_id = queue_one("liquid/visc_wall_u.slang", kShaderViscWallU, "LiquidViscosityWallU");
+        visc_wall_v_pipeline_id = queue_one("liquid/visc_wall_v.slang", kShaderViscWallV, "LiquidViscosityWallV");
         extrap_cell_even_pipeline_id =
-            queue_one(12, kShaderExtrapCellEven, "embedded://liquid/extrap_even.slang", "LiquidExtrapolateCellEven");
+            queue_one("liquid/extrap_even.slang", kShaderExtrapCellEven, "LiquidExtrapolateCellEven");
         extrap_cell_odd_pipeline_id =
-            queue_one(13, kShaderExtrapCellOdd, "embedded://liquid/extrap_odd.slang", "LiquidExtrapolateCellOdd");
-        advect_u_pipeline_id = queue_one(14, kShaderAdvectU, "embedded://liquid/advect_u.slang", "LiquidAdvectU");
-        advect_v_pipeline_id = queue_one(15, kShaderAdvectV, "embedded://liquid/advect_v.slang", "LiquidAdvectV");
-        density_pipeline_id =
-            queue_one(16, kShaderDensity, "embedded://liquid/density.slang", "LiquidDensityTransport");
-        surface_u_pipeline_id = queue_one(17, kShaderSurfaceU, "embedded://liquid/surface_u.slang", "LiquidSurfaceU");
-        surface_v_pipeline_id = queue_one(18, kShaderSurfaceV, "embedded://liquid/surface_v.slang", "LiquidSurfaceV");
-        clamp_u_pipeline_id   = queue_one(19, kShaderClampU, "embedded://liquid/clamp_u.slang", "LiquidClampU");
-        clamp_v_pipeline_id   = queue_one(20, kShaderClampV, "embedded://liquid/clamp_v.slang", "LiquidClampV");
+            queue_one("liquid/extrap_odd.slang", kShaderExtrapCellOdd, "LiquidExtrapolateCellOdd");
+        advect_u_pipeline_id  = queue_one("liquid/advect_u.slang", kShaderAdvectU, "LiquidAdvectU");
+        advect_v_pipeline_id  = queue_one("liquid/advect_v.slang", kShaderAdvectV, "LiquidAdvectV");
+        density_pipeline_id   = queue_one("liquid/density.slang", kShaderDensity, "LiquidDensityTransport");
+        surface_u_pipeline_id = queue_one("liquid/surface_u.slang", kShaderSurfaceU, "LiquidSurfaceU");
+        surface_v_pipeline_id = queue_one("liquid/surface_v.slang", kShaderSurfaceV, "LiquidSurfaceV");
+        clamp_u_pipeline_id   = queue_one("liquid/clamp_u.slang", kShaderClampU, "LiquidClampU");
+        clamp_v_pipeline_id   = queue_one("liquid/clamp_v.slang", kShaderClampV, "LiquidClampV");
 
         queued_ = true;
     }
@@ -1711,7 +2319,7 @@ bool gpu_run_full_step_chain(Fluid& sim,
                              const wgpu::Queue* queue,
                              render::PipelineServer* ps) {
     if (projector == nullptr || device == nullptr || queue == nullptr || ps == nullptr) return false;
-    projector->init(*device, *ps);
+    projector->init(*device);
     if (!projector->ready) projector->ensure_ready(*device, *ps);
     if (!projector->ready) return false;
     projector->upload_from_sim(sim, *queue);
@@ -1982,16 +2590,13 @@ struct Plugin {
 
         world.spawn(core_graph::core_2d::Camera2DBundle{});
 
-        // Create a PipelineServer in the main world for fluid compute pipelines.
-        world.insert_resource(render::PipelineServer(world.resource<wgpu::Device>().clone()));
-        app.add_systems(core::Update, core::into(render::PipelineServer::process_pipeline_system));
-
         Fluid sim;
         sim.reset();
 
         auto thread_pool  = std::make_unique<BS::thread_pool<>>(std::max(1u, std::thread::hardware_concurrency()));
         auto gpu_pressure = std::make_unique<GpuPressureProjector>();
-        auto mesh_handle  = mesh_assets.emplace(build_mesh(sim, thread_pool.get()));
+        gpu_pressure->register_pipelines(world);
+        auto mesh_handle = mesh_assets.emplace(build_mesh(sim, thread_pool.get()));
 
         world.spawn(mesh::Mesh2d{mesh_handle},
                     mesh::MeshMaterial2d{.color = glm::vec4(1.0f), .alpha_mode = mesh::MeshAlphaMode2d::Opaque},
