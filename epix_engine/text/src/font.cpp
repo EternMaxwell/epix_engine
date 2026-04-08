@@ -396,7 +396,7 @@ void add_font_atlas_set(core::ResMut<FontAtlasSets> atlas_sets,
 
 void register_default_embedded_font(core::App& app) {
     app.world_mut().resource_mut<assets::EmbeddedAssetRegistry>().insert_asset_static(
-        "fonts/default.ttf", "fonts/default.ttf",
+        "fonts/default.ttf",
         std::span<const std::byte>(reinterpret_cast<const std::byte*>(font_data_array), font_data_array_size));
 }
 }  // namespace

@@ -225,10 +225,9 @@ TEST(ShaderLoaderWgsl, EmbeddedSource_RelativeImportKeepsSourceAndResolvesRelati
     ASSERT_TRUE(registry.has_value());
 
     registry->get().insert_asset_static(
-        "mesh/main.wgsl", "mesh/main.wgsl",
-        std::as_bytes(std::span(std::string_view{"#import \"common/view.wgsl\"\nfn main() {}"})));
+        "mesh/main.wgsl", std::as_bytes(std::span(std::string_view{"#import \"common/view.wgsl\"\nfn main() {}"})));
     registry->get().insert_asset_static(
-        "mesh/common/view.wgsl", "mesh/common/view.wgsl",
+        "mesh/common/view.wgsl",
         std::as_bytes(std::span(std::string_view{"#define_import_path epix::view\nfn helper() {}"})));
 
     auto& server = app.resource<AssetServer>();
@@ -259,9 +258,8 @@ TEST(ShaderLoaderWgsl, EmbeddedSource_RootRelativeImportUsesSameSourceRoot) {
     ASSERT_TRUE(registry.has_value());
 
     registry->get().insert_asset_static(
-        "mesh/main.wgsl", "mesh/main.wgsl",
-        std::as_bytes(std::span(std::string_view{"#import \"/shared/view.wgsl\"\nfn main() {}"})));
-    registry->get().insert_asset_static("shared/view.wgsl", "shared/view.wgsl",
+        "mesh/main.wgsl", std::as_bytes(std::span(std::string_view{"#import \"/shared/view.wgsl\"\nfn main() {}"})));
+    registry->get().insert_asset_static("shared/view.wgsl",
                                         std::as_bytes(std::span(std::string_view{"fn helper() {}"})));
 
     auto& server = app.resource<AssetServer>();
@@ -291,9 +289,9 @@ TEST(ShaderLoaderWgsl, EmbeddedSource_FullPathImportPreservesExplicitSource) {
     ASSERT_TRUE(registry.has_value());
 
     registry->get().insert_asset_static(
-        "mesh/main.wgsl", "mesh/main.wgsl",
+        "mesh/main.wgsl",
         std::as_bytes(std::span(std::string_view{"#import \"embedded://shared/view.wgsl\"\nfn main() {}"})));
-    registry->get().insert_asset_static("shared/view.wgsl", "shared/view.wgsl",
+    registry->get().insert_asset_static("shared/view.wgsl",
                                         std::as_bytes(std::span(std::string_view{"fn helper() {}"})));
 
     auto& server = app.resource<AssetServer>();
@@ -563,9 +561,8 @@ TEST(ShaderLoaderSlang, EmbeddedSource_RootRelativeImportUsesSameSourceRoot) {
     ASSERT_TRUE(registry.has_value());
 
     registry->get().insert_asset_static(
-        "mesh/main.slang", "mesh/main.slang",
-        std::as_bytes(std::span(std::string_view{"import \"/shared/view\";\nvoid main() {}"})));
-    registry->get().insert_asset_static("shared/view.slang", "shared/view.slang",
+        "mesh/main.slang", std::as_bytes(std::span(std::string_view{"import \"/shared/view\";\nvoid main() {}"})));
+    registry->get().insert_asset_static("shared/view.slang",
                                         std::as_bytes(std::span(std::string_view{"module \"shared/view\";\n"})));
 
     auto& server = app.resource<AssetServer>();
@@ -595,9 +592,8 @@ TEST(ShaderLoaderSlang, EmbeddedSource_RelativeImportKeepsSourceAndResolvesRelat
     ASSERT_TRUE(registry.has_value());
 
     registry->get().insert_asset_static(
-        "mesh/main.slang", "mesh/main.slang",
-        std::as_bytes(std::span(std::string_view{"import \"common/view\";\nvoid main() {}"})));
-    registry->get().insert_asset_static("mesh/common/view.slang", "mesh/common/view.slang",
+        "mesh/main.slang", std::as_bytes(std::span(std::string_view{"import \"common/view\";\nvoid main() {}"})));
+    registry->get().insert_asset_static("mesh/common/view.slang",
                                         std::as_bytes(std::span(std::string_view{"module \"common/view\";\n"})));
 
     auto& server = app.resource<AssetServer>();
@@ -627,9 +623,9 @@ TEST(ShaderLoaderSlang, EmbeddedSource_FullPathImportPreservesExplicitSource) {
     ASSERT_TRUE(registry.has_value());
 
     registry->get().insert_asset_static(
-        "mesh/main.slang", "mesh/main.slang",
+        "mesh/main.slang",
         std::as_bytes(std::span(std::string_view{"import \"embedded://shared/view\";\nvoid main() {}"})));
-    registry->get().insert_asset_static("shared/view.slang", "shared/view.slang",
+    registry->get().insert_asset_static("shared/view.slang",
                                         std::as_bytes(std::span(std::string_view{"module \"shared/view\";\n"})));
 
     auto& server = app.resource<AssetServer>();
@@ -659,10 +655,10 @@ TEST(ShaderLoaderSlang, EmbeddedSource_RelativeIncludeKeepsSourceAndResolvesRela
     ASSERT_TRUE(registry.has_value());
 
     registry->get().insert_asset_static(
-        "mesh/main.slang", "mesh/main.slang",
+        "mesh/main.slang",
         std::as_bytes(std::span(std::string_view{"module scene;\n__include \"common/view\";\nvoid main() {}"})));
     registry->get().insert_asset_static(
-        "mesh/common/view.slang", "mesh/common/view.slang",
+        "mesh/common/view.slang",
         std::as_bytes(std::span(std::string_view{"implementing scene;\nfloat helper() { return 1.0; }"})));
 
     auto& server = app.resource<AssetServer>();
@@ -692,10 +688,10 @@ TEST(ShaderLoaderSlang, EmbeddedSource_RootRelativeIncludeUsesSameSourceRoot) {
     ASSERT_TRUE(registry.has_value());
 
     registry->get().insert_asset_static(
-        "mesh/main.slang", "mesh/main.slang",
+        "mesh/main.slang",
         std::as_bytes(std::span(std::string_view{"module scene;\n__include \"/shared/view\";\nvoid main() {}"})));
     registry->get().insert_asset_static(
-        "shared/view.slang", "shared/view.slang",
+        "shared/view.slang",
         std::as_bytes(std::span(std::string_view{"implementing scene;\nfloat helper() { return 1.0; }"})));
 
     auto& server = app.resource<AssetServer>();
@@ -724,11 +720,11 @@ TEST(ShaderLoaderSlang, EmbeddedSource_FullPathIncludePreservesExplicitSource) {
     auto registry = app.world_mut().get_resource_mut<EmbeddedAssetRegistry>();
     ASSERT_TRUE(registry.has_value());
 
-    registry->get().insert_asset_static("mesh/main.slang", "mesh/main.slang",
+    registry->get().insert_asset_static("mesh/main.slang",
                                         std::as_bytes(std::span(std::string_view{
                                             "module scene;\n__include \"embedded://shared/view\";\nvoid main() {}"})));
     registry->get().insert_asset_static(
-        "shared/view.slang", "shared/view.slang",
+        "shared/view.slang",
         std::as_bytes(std::span(std::string_view{"implementing scene;\nfloat helper() { return 1.0; }"})));
 
     auto& server = app.resource<AssetServer>();
@@ -783,9 +779,8 @@ TEST(ShaderLoaderSlang, EmbeddedSource_CustomImportDoesNotBecomeFileDependency) 
     ASSERT_TRUE(registry.has_value());
 
     registry->get().insert_asset_static(
-        "mesh/main.slang", "mesh/main.slang",
-        std::as_bytes(std::span(std::string_view{"import epix.view;\nvoid main() {}"})));
-    registry->get().insert_asset_static("epix/shaders/view.slang", "epix/shaders/view.slang",
+        "mesh/main.slang", std::as_bytes(std::span(std::string_view{"import epix.view;\nvoid main() {}"})));
+    registry->get().insert_asset_static("epix/shaders/view.slang",
                                         std::as_bytes(std::span(std::string_view{"module \"epix/view\";\n"})));
 
     auto& server = app.resource<AssetServer>();
@@ -1137,23 +1132,21 @@ TEST(ShaderDepLoading, WgslEmbeddedRecursiveDeps_SelectExactRelativeAndRootFiles
     ASSERT_TRUE(registry.has_value());
 
     registry->get().insert_asset_static(
-        "mesh/main.wgsl", "mesh/main.wgsl",
-        std::as_bytes(std::span(std::string_view{"#import \"common/dep.wgsl\"\nfn main() {}"})));
+        "mesh/main.wgsl", std::as_bytes(std::span(std::string_view{"#import \"common/dep.wgsl\"\nfn main() {}"})));
     registry->get().insert_asset_static(
-        "mesh/common/dep.wgsl", "mesh/common/dep.wgsl",
+        "mesh/common/dep.wgsl",
         std::as_bytes(std::span(std::string_view{"#import \"/shared/leaf.wgsl\"\nfn dep_helper() {}"})));
-    registry->get().insert_asset_static("common/dep.wgsl", "common/dep.wgsl",
+    registry->get().insert_asset_static("common/dep.wgsl",
                                         std::as_bytes(std::span(std::string_view{"fn wrong_dep_global() {}"})));
-    registry->get().insert_asset_static("other/common/dep.wgsl", "other/common/dep.wgsl",
+    registry->get().insert_asset_static("other/common/dep.wgsl",
                                         std::as_bytes(std::span(std::string_view{"fn wrong_dep_other() {}"})));
     registry->get().insert_asset_static(
-        "shared/leaf.wgsl", "shared/leaf.wgsl",
-        std::as_bytes(std::span(std::string_view{"fn leaf_helper() -> f32 { return 4.0; }"})));
+        "shared/leaf.wgsl", std::as_bytes(std::span(std::string_view{"fn leaf_helper() -> f32 { return 4.0; }"})));
     registry->get().insert_asset_static(
-        "mesh/shared/leaf.wgsl", "mesh/shared/leaf.wgsl",
+        "mesh/shared/leaf.wgsl",
         std::as_bytes(std::span(std::string_view{"fn wrong_leaf_mesh() -> f32 { return 1.0; }"})));
     registry->get().insert_asset_static(
-        "mesh/common/shared/leaf.wgsl", "mesh/common/shared/leaf.wgsl",
+        "mesh/common/shared/leaf.wgsl",
         std::as_bytes(std::span(std::string_view{"fn wrong_leaf_nested() -> f32 { return 2.0; }"})));
 
     auto& server     = app.resource<AssetServer>();
@@ -1250,28 +1243,26 @@ TEST(ShaderDepLoading, SlangFileImport_LoadsRecursiveFileDepsTransitively) {
     ASSERT_TRUE(registry.has_value());
 
     registry->get().insert_asset_static(
-        "mesh/main.slang", "mesh/main.slang",
-        std::as_bytes(std::span(std::string_view{"import \"scene\";\n"
-                                                 "[shader(\"compute\")]\n[numthreads(1,1,1)]\n"
-                                                 "void computeMain() { float4 c = helper(); }"})));
+        "mesh/main.slang", std::as_bytes(std::span(std::string_view{"import \"scene\";\n"
+                                                                    "[shader(\"compute\")]\n[numthreads(1,1,1)]\n"
+                                                                    "void computeMain() { float4 c = helper(); }"})));
     registry->get().insert_asset_static(
-        "mesh/scene.slang", "mesh/scene.slang",
-        std::as_bytes(std::span(std::string_view{"module scene;\n__include \"impl/scene\";\n"})));
+        "mesh/scene.slang", std::as_bytes(std::span(std::string_view{"module scene;\n__include \"impl/scene\";\n"})));
     registry->get().insert_asset_static(
-        "scene.slang", "scene.slang",
+        "scene.slang",
         std::as_bytes(std::span(std::string_view{"module scene;\npublic float4 wrongScene() { return 0; }\n"})));
     registry->get().insert_asset_static(
-        "mesh/impl/scene.slang", "mesh/impl/scene.slang",
+        "mesh/impl/scene.slang",
         std::as_bytes(std::span(std::string_view{
             "implementing scene;\nimport \"/shared/utility\";\nfloat4 helper() { return getColor(); }"})));
     registry->get().insert_asset_static(
-        "impl/scene.slang", "impl/scene.slang",
+        "impl/scene.slang",
         std::as_bytes(std::span(std::string_view{"implementing scene;\nfloat4 wrongHelper() { return 0; }"})));
     registry->get().insert_asset_static(
-        "shared/utility.slang", "shared/utility.slang",
+        "shared/utility.slang",
         std::as_bytes(std::span(std::string_view{"float4 getColor() { return float4(1, 0, 0, 1); }"})));
     registry->get().insert_asset_static(
-        "mesh/shared/utility.slang", "mesh/shared/utility.slang",
+        "mesh/shared/utility.slang",
         std::as_bytes(std::span(std::string_view{"float4 wrongColor() { return float4(0, 1, 0, 1); }"})));
 
     auto& server     = app.resource<AssetServer>();

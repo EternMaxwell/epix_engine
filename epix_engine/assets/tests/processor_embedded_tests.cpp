@@ -344,7 +344,7 @@ TEST(AssetProcessor, AmbiguousShortPath_ReturnsError) {
 TEST(EmbeddedAssetRegistry, InsertAndRetrieve) {
     EmbeddedAssetRegistry registry;
     auto data = std::as_bytes(std::span("Hello", 5));
-    registry.insert_asset("C:/assets/test.txt", "test.txt", data);
+    registry.insert_asset("test.txt", data);
     auto& dir = registry.directory();
     auto file = dir.get_file("test.txt");
     ASSERT_TRUE(file.has_value());
@@ -353,7 +353,7 @@ TEST(EmbeddedAssetRegistry, InsertAndRetrieve) {
 TEST(EmbeddedAssetRegistry, InsertStatic) {
     EmbeddedAssetRegistry registry;
     static const std::byte data[] = {std::byte{0x41}, std::byte{0x42}, std::byte{0x43}};
-    registry.insert_asset_static("C:/assets/abc.bin", "abc.bin", std::span(data));
+    registry.insert_asset_static("abc.bin", std::span(data));
     auto& dir = registry.directory();
     EXPECT_TRUE(dir.exists("abc.bin").value_or(false));
 }
@@ -361,7 +361,7 @@ TEST(EmbeddedAssetRegistry, InsertStatic) {
 TEST(EmbeddedAssetRegistry, InsertMeta) {
     EmbeddedAssetRegistry registry;
     auto meta = std::as_bytes(std::span("{}", 2));
-    registry.insert_meta("C:/assets/test.txt", "test.txt", meta);
+    registry.insert_meta("test.txt", meta);
     auto& dir = registry.directory();
     EXPECT_TRUE(dir.exists("test.txt.meta").value_or(false));
 }
@@ -369,7 +369,7 @@ TEST(EmbeddedAssetRegistry, InsertMeta) {
 TEST(EmbeddedAssetRegistry, RemoveAsset_Existing) {
     EmbeddedAssetRegistry registry;
     auto data = std::as_bytes(std::span("\x01", 1));
-    registry.insert_asset("C:/test.bin", "test.bin", data);
+    registry.insert_asset("test.bin", data);
     EXPECT_TRUE(registry.remove_asset("test.bin"));
     EXPECT_FALSE(registry.directory().exists("test.bin").value_or(true));
 }
@@ -545,4 +545,3 @@ TEST(ValidateLogError, EntryErrors) {
     ASSERT_TRUE(std::holds_alternative<validate_log_errors::EntryErrors>(err));
     EXPECT_EQ(std::get<validate_log_errors::EntryErrors>(err).errors.size(), 1u);
 }
-

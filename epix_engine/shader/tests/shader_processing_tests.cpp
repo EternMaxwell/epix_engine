@@ -237,7 +237,7 @@ TEST(ShaderProcessingSlang, ProcessedMode_DoesNotConvertToSpirv) {
     EXPECT_FALSE(shader->get().source.is_spirv());
 }
 
-TEST(ShaderProcessing, InvalidUtf8PreprocessFailureFallsBackToSourceLoad) {
+TEST(ShaderProcessing, InvalidUtf8PreprocessFailureBlocksLoad) {
     auto source                = memory::Directory::create({});
     std::vector<std::byte> bad = {std::byte{0xFF}, std::byte{0xFE}};
     auto bad_shared            = std::make_shared<std::vector<std::byte>>(bad);
@@ -251,12 +251,22 @@ TEST(ShaderProcessing, InvalidUtf8PreprocessFailureFallsBackToSourceLoad) {
     auto processed = read_bytes(env.processed_dir, "bad.wgsl");
     EXPECT_TRUE(processed.empty());
 
+    // In Processed mode, ProcessStatus::Failed causes the gated reader to return NotFound.
+    // The asset server marks the load as failed — no fallback to source (matches Bevy behavior).
     auto handle = server.load<Shader>(AssetPath("bad.wgsl"));
-    EXPECT_TRUE(wait_for_loaded(env.app, server, handle.id(), std::chrono::milliseconds(1500)));
-
-    auto shader = assets.get(handle.id());
-    ASSERT_TRUE(shader.has_value());
-    EXPECT_TRUE(shader->get().source.is_wgsl());
+    const auto start = std::chrono::steady_clock::now();
+    bool load_failed = false;
+    while (std::chrono::steady_clock::now() - start < std::chrono::milliseconds(1500)) {
+        auto state = server.get_load_state(handle.id());
+        if (state.has_value() && std::holds_alternative<AssetLoadError>(*state)) {
+            load_failed = true;
+            break;
+        }
+        env.app.run_schedule(Last);
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    }
+    EXPECT_TRUE(load_failed);
+    EXPECT_FALSE(assets.get(handle.id()).has_value());
 }
 
 TEST(ShaderProcessingSpirv, ProcessedMode_CopyThroughStillLoads) {

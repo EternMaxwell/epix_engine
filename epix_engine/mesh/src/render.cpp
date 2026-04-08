@@ -202,18 +202,13 @@ std::optional<MeshShaderHandles> load_mesh_shader_handles(World& world) {
         return std::nullopt;
     }
 
-    registry->get().insert_asset_static(kMeshSolidVertexShaderAssetPath, kMeshSolidVertexShaderAssetPath,
-                                        shader_bytes(kMeshSolidVertexShader));
-    registry->get().insert_asset_static(kMeshVertexColorShaderAssetPath, kMeshVertexColorShaderAssetPath,
-                                        shader_bytes(kMeshVertexColorVertexShader));
-    registry->get().insert_asset_static(kMeshTexturedVertexShaderAssetPath, kMeshTexturedVertexShaderAssetPath,
-                                        shader_bytes(kMeshTexturedVertexShader));
+    registry->get().insert_asset_static(kMeshSolidVertexShaderAssetPath, shader_bytes(kMeshSolidVertexShader));
+    registry->get().insert_asset_static(kMeshVertexColorShaderAssetPath, shader_bytes(kMeshVertexColorVertexShader));
+    registry->get().insert_asset_static(kMeshTexturedVertexShaderAssetPath, shader_bytes(kMeshTexturedVertexShader));
     registry->get().insert_asset_static(kMeshTexturedVertexColorShaderAssetPath,
-                                        kMeshTexturedVertexColorShaderAssetPath,
                                         shader_bytes(kMeshTexturedVertexColorVertexShader));
-    registry->get().insert_asset_static(kMeshColorFragmentShaderAssetPath, kMeshColorFragmentShaderAssetPath,
-                                        shader_bytes(kMeshColorFragmentShader));
-    registry->get().insert_asset_static(kMeshTexturedFragmentShaderAssetPath, kMeshTexturedFragmentShaderAssetPath,
+    registry->get().insert_asset_static(kMeshColorFragmentShaderAssetPath, shader_bytes(kMeshColorFragmentShader));
+    registry->get().insert_asset_static(kMeshTexturedFragmentShaderAssetPath,
                                         shader_bytes(kMeshTexturedFragmentShader));
 
     return MeshShaderHandles{

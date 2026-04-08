@@ -201,7 +201,7 @@ void view::ViewPlugin::build(App& app) {
             {
                 auto bytes = std::span<const std::byte>(reinterpret_cast<const std::byte*>(kViewShaderWgsl.data()),
                                                         kViewShaderWgsl.size());
-                registry->get().insert_asset_static("epix/shaders/view.wgsl", "epix/shaders/view.wgsl", bytes);
+                registry->get().insert_asset_static("epix/shaders/view.wgsl", bytes);
                 auto handle = server->get().load<epix::shader::Shader>("embedded://epix/shaders/view.wgsl");
                 static auto permanent_wgsl = std::move(handle);
             }
@@ -209,7 +209,7 @@ void view::ViewPlugin::build(App& app) {
             {
                 auto bytes = std::span<const std::byte>(reinterpret_cast<const std::byte*>(kViewShaderSlang.data()),
                                                         kViewShaderSlang.size());
-                registry->get().insert_asset_static("epix/shaders/view.slang", "epix/shaders/view.slang", bytes);
+                registry->get().insert_asset_static("epix/shaders/view.slang", bytes);
                 auto handle = server->get().load<epix::shader::Shader>("embedded://epix/shaders/view.slang");
                 static auto permanent_slang = std::move(handle);
             }

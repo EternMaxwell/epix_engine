@@ -84,10 +84,8 @@ std::optional<TextShaderHandles> load_text_shader_handles(World& world) {
         return std::nullopt;
     }
 
-    registry->get().insert_asset_static(kTextVertexShaderAssetPath, kTextVertexShaderAssetPath,
-                                        shader_bytes(kTextVertexShader));
-    registry->get().insert_asset_static(kTextFragmentShaderAssetPath, kTextFragmentShaderAssetPath,
-                                        shader_bytes(kTextFragmentShader));
+    registry->get().insert_asset_static(kTextVertexShaderAssetPath, shader_bytes(kTextVertexShader));
+    registry->get().insert_asset_static(kTextFragmentShaderAssetPath, shader_bytes(kTextFragmentShader));
 
     return TextShaderHandles{
         .vertex_shader   = server->get().load<shader::Shader>("embedded://text/text_vertex.slang"),

@@ -28,34 +28,25 @@ export struct EmbeddedAssetRegistry {
     EmbeddedAssetRegistry() : m_dir(memory::Directory::create("")) {}
 
     /** @brief Insert asset data into the embedded registry.
-     *  @param full_path  Full filesystem path of the asset (for identification).
      *  @param asset_path Path relative to the "embedded" source root.
      *  @param data       Raw bytes of the asset. */
-    void insert_asset(const std::filesystem::path& full_path,
-                      const std::filesystem::path& asset_path,
-                      std::span<const std::byte> data) {
+    void insert_asset(const std::filesystem::path& asset_path, std::span<const std::byte> data) {
         auto val = memory::Value::from_shared(std::make_shared<std::vector<std::byte>>(data.begin(), data.end()));
         (void)m_dir.insert_file(asset_path, std::move(val));
     }
 
     /** @brief Insert asset data from a static/compile-time buffer (zero-copy view).
-     *  @param full_path  Full filesystem path of the asset.
      *  @param asset_path Path relative to the "embedded" source root.
      *  @param data       Static byte span (must outlive the registry). */
-    void insert_asset_static(const std::filesystem::path& full_path,
-                             const std::filesystem::path& asset_path,
-                             std::span<const std::byte> data) {
+    void insert_asset_static(const std::filesystem::path& asset_path, std::span<const std::byte> data) {
         auto val = memory::Value::from_span(data);
         (void)m_dir.insert_file(asset_path, std::move(val));
     }
 
     /** @brief Insert metadata for an embedded asset.
-     *  @param full_path  Full filesystem path of the asset.
      *  @param asset_path Path relative to the "embedded" source root.
      *  @param meta_data  Raw bytes of the meta file. */
-    void insert_meta(const std::filesystem::path& full_path,
-                     const std::filesystem::path& asset_path,
-                     std::span<const std::byte> meta_data) {
+    void insert_meta(const std::filesystem::path& asset_path, std::span<const std::byte> meta_data) {
         auto meta_path = std::filesystem::path(asset_path.string() + ".meta");
         auto val =
             memory::Value::from_shared(std::make_shared<std::vector<std::byte>>(meta_data.begin(), meta_data.end()));

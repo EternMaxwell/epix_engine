@@ -93,10 +93,8 @@ std::optional<SpriteShaderHandles> load_sprite_shader_handles(World& world) {
         return std::nullopt;
     }
 
-    registry->get().insert_asset_static(kSpriteVertexShaderAssetPath, kSpriteVertexShaderAssetPath,
-                                        shader_bytes(kSpriteVertexShader));
-    registry->get().insert_asset_static(kSpriteFragmentShaderAssetPath, kSpriteFragmentShaderAssetPath,
-                                        shader_bytes(kSpriteFragmentShader));
+    registry->get().insert_asset_static(kSpriteVertexShaderAssetPath, shader_bytes(kSpriteVertexShader));
+    registry->get().insert_asset_static(kSpriteFragmentShaderAssetPath, shader_bytes(kSpriteFragmentShader));
 
     return SpriteShaderHandles{
         .vertex_shader   = server->get().load<shader::Shader>("embedded://sprite/sprite_vertex.slang"),
