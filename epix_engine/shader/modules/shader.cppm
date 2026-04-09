@@ -169,17 +169,21 @@ export struct Source {
  * There are four cases:
  *
  * - WGSL `#import some::mod` or Slang `import some.mod;` becomes
- *   `ShaderImport::custom(...)`.
+ *   `ShaderImport::custom("some::mod"\"some.mod")`.
  * - WGSL `#import "embedded://shared/math.wgsl"` or Slang
  *   `import "source://shared/math.slang";` becomes
- *   `ShaderImport::asset_path(...)` with an explicit source. This is not
- *   resolved relative to the importer.
+ *   `ShaderImport::asset_path("source://shared/math.slang")`.
  * - WGSL `#import "/shared/math.wgsl"` or Slang
- *   `import "/shared/math.slang";` becomes `ShaderImport::asset_path(...)`
- *   using a source-root-relative path.
+ *   `import "/shared/math.slang";`, given the current shader source `source`
+ *   becomes `ShaderImport::asset_path("source://shared/math.slang")`
  * - WGSL `#import "common/math.wgsl"` or Slang
- *   `import "common/math.slang";` becomes `ShaderImport::asset_path(...)`
- *   using a path relative to the importing shader.
+ *   `import "common/math.slang";` given this shader path `path://to/this/shader.[ext]`
+ *   becomes `ShaderImport::asset_path("path://to/this/common/math.slang")`
+ * 
+ * This is also used for the shader to declare how other shaders can import a shader itself.
+ * 
+ *  - wgsl: use `#define_import_path ui::button` add `ShaderImport::custom("ui::button")`
+ *  - slang: `module mod;` add ShaderImport::custom("mod") and `module "path/to/mod";` so others can use `path.to.mod`.
  *
  * Custom imports are looked up by module name, while
  * asset-path imports are resolved as concrete files with the correct source and
