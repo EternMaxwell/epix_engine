@@ -173,17 +173,7 @@ export struct UntypedHandle {
     UntypedHandle& operator=(UntypedHandle&&)      = default;
 
     /** @brief Assign from a StrongHandle pointer. */
-    UntypedHandle& operator=(const std::shared_ptr<StrongHandle>& handle) {
-        assert(handle != nullptr || handle->id.type == type());
-        if (!handle) {
-            throw std::runtime_error("Cannot assign null StrongHandle to Handle.");
-        } else if (handle->id.type != type()) {
-            throw std::runtime_error(std::format("Cannot assign StrongHandle of type {} to Handle of type {}",
-                                                 handle->id.type.short_name(), type().short_name()));
-        }
-        ref = handle;
-        return *this;
-    }
+    UntypedHandle& operator=(const std::shared_ptr<StrongHandle>& handle);
     /** @brief Assign from an UntypedAssetId, making this a weak handle. */
     UntypedHandle& operator=(const UntypedAssetId& id) {
         ref = id;
@@ -198,26 +188,13 @@ export struct UntypedHandle {
     bool is_weak() const { return std::holds_alternative<UntypedAssetId>(ref); }
     /** @brief Get the runtime type_index of the asset this handle refers to.
      *  Matches bevy_asset's UntypedHandle::type_id(). */
-    meta::type_index type_id() const {
-        return std::visit(utils::visitor{[](const std::shared_ptr<StrongHandle>& handle) { return handle->id.type; },
-                                         [](const UntypedAssetId& id) { return id.type; }},
-                          ref);
-    }
+    meta::type_index type_id() const;
     /** @brief Alias for type_id(). */
     meta::type_index type() const { return type_id(); }
     /** @brief Get the type-erased id. */
-    UntypedAssetId id() const {
-        return std::visit(utils::visitor{[](const std::shared_ptr<StrongHandle>& handle) { return handle->id; },
-                                         [](const UntypedAssetId& id) { return id; }},
-                          ref);
-    }
+    UntypedAssetId id() const;
     /** @brief Get the path associated with this asset, if available (only for strong handles). */
-    std::optional<AssetPath> path() const {
-        return std::visit(
-            utils::visitor{[](const std::shared_ptr<StrongHandle>& handle) { return handle->path; },
-                           [](const UntypedAssetId&) -> std::optional<AssetPath> { return std::nullopt; }},
-            ref);
-    }
+    std::optional<AssetPath> path() const;
     /** @brief Implicit conversion to UntypedAssetId. */
     operator UntypedAssetId() const { return id(); }
     /** @brief Return a weak copy holding only the id. */
@@ -226,13 +203,7 @@ export struct UntypedHandle {
      *  Matches bevy_asset's VisitAssetDependencies impl for UntypedHandle. */
     void visit_dependencies(utils::function_ref<void(UntypedAssetId)> visit) const { visit(id()); }
     /** @brief Get the meta transform associated with this handle, if any (strong handles only). */
-    const MetaTransform* meta_transform() const {
-        return std::visit(utils::visitor{[](const std::shared_ptr<StrongHandle>& handle) -> const MetaTransform* {
-                                             return handle->meta_transform ? &*handle->meta_transform : nullptr;
-                                         },
-                                         [](const UntypedAssetId&) -> const MetaTransform* { return nullptr; }},
-                          ref);
-    }
+    const MetaTransform* meta_transform() const;
 
     /** @brief Try to downcast to a typed Handle.
      *  @tparam T Expected asset type.

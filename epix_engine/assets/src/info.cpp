@@ -4,8 +4,6 @@ module;
 
 module epix.assets;
 
-import :server.info;
-
 import std;
 import epix.meta;
 import epix.utils;
@@ -37,15 +35,14 @@ void AssetInfos::propagate_loaded_state(UntypedAssetId loaded_asset_id,
 }
 void AssetInfos::propagate_failed_state(UntypedAssetId loaded_asset_id,
                                         UntypedAssetId waiting_id,
-                                        const AssetLoadError& error) {
+                                        const std::shared_ptr<AssetLoadError>& error_ptr) {
     auto deps_wait_on_rec_load = [&]() -> std::optional<std::unordered_set<UntypedAssetId>> {
         if (auto info_opt = get_info_mut(waiting_id)) {
             auto& info = info_opt->get();
             info.failed_rec_deps.insert(loaded_asset_id);
             info.loading_rec_deps.erase(loaded_asset_id);
-            info.rec_dep_state = error;
+            info.rec_dep_state = error_ptr;
             // Resolve promises on parent assets waiting on this — a recursive dependency failed
-            auto error_ptr = std::make_shared<AssetLoadError>(error);
             for (auto& task : info.waiting_tasks) {
                 if (task)
                     task->set_value(
@@ -59,23 +56,24 @@ void AssetInfos::propagate_failed_state(UntypedAssetId loaded_asset_id,
 
     if (deps_wait_on_rec_load) {
         for (auto&& dep_id : *deps_wait_on_rec_load) {
-            propagate_failed_state(waiting_id, dep_id, error);
+            propagate_failed_state(waiting_id, dep_id, error_ptr);
         }
     }
 }
 void AssetInfos::process_asset_fail(const UntypedAssetId& failed_id, const AssetLoadError& error) {
     if (!infos.contains(failed_id)) return;
 
+    auto error_ptr = std::make_shared<AssetLoadError>(error);
+
     auto [deps_wait_on_load, deps_wait_on_rec_dep_load] = [&]() {
         auto info_opt = get_info_mut(failed_id);
         if (!info_opt)
             return std::make_pair(std::unordered_set<UntypedAssetId>{}, std::unordered_set<UntypedAssetId>{});
         auto& info         = info_opt->get();
-        info.state         = error;
-        info.dep_state     = error;
-        info.rec_dep_state = error;
+        info.state         = error_ptr;
+        info.dep_state     = error_ptr;
+        info.rec_dep_state = error_ptr;
         // Resolve all promises waiting on this asset with a failure result
-        auto error_ptr = std::make_shared<AssetLoadError>(error);
         for (auto& task : info.waiting_tasks) {
             if (task) task->set_value(std::unexpected(WaitForAssetError{wait_for_asset_error::Failed{error_ptr}}));
         }
@@ -89,13 +87,13 @@ void AssetInfos::process_asset_fail(const UntypedAssetId& failed_id, const Asset
             info.loading_deps.erase(failed_id);
             info.failed_deps.insert(failed_id);
             if (!info.dep_state.is_failed()) {
-                info.dep_state = error;
+                info.dep_state = error_ptr;
             }
         }
     }
 
     for (auto& waiting_id : deps_wait_on_rec_dep_load) {
-        propagate_failed_state(failed_id, waiting_id, error);
+        propagate_failed_state(failed_id, waiting_id, error_ptr);
     }
 }
 void AssetInfos::process_asset_load(const UntypedAssetId& loaded_asset_id,
@@ -114,10 +112,10 @@ void AssetInfos::process_asset_load(const UntypedAssetId& loaded_asset_id,
     loaded_asset.value->insert(loaded_asset_id, world);
 
     std::unordered_set<UntypedAssetId> failed_deps;
-    std::optional<AssetLoadError> dep_error;
+    std::shared_ptr<AssetLoadError> dep_error;
     auto loading_rec_deps = loaded_asset.dependencies;
     std::unordered_set<UntypedAssetId> failed_rec_deps;
-    std::optional<AssetLoadError> rec_dep_error;
+    std::shared_ptr<AssetLoadError> rec_dep_error;
     auto loading_deps = loaded_asset.dependencies | std::views::filter([&, this](const UntypedAssetId& dep_id) {
                             if (auto dep_info_opt = get_info_mut(dep_id)) {
                                 auto& dep_info = dep_info_opt->get();
@@ -135,8 +133,8 @@ void AssetInfos::process_asset_load(const UntypedAssetId& loaded_asset_id,
                                                        }
                                                    }
                                                },
-                                               [&](AssetLoadError error) {
-                                                   if (!rec_dep_error) rec_dep_error = std::move(error);
+                                               [&](std::shared_ptr<AssetLoadError> error_ptr) {
+                                                   if (!rec_dep_error) rec_dep_error = error_ptr;
                                                    failed_rec_deps.insert(dep_id);
                                                    loading_rec_deps.erase(dep_id);
                                                },
@@ -157,8 +155,8 @@ void AssetInfos::process_asset_load(const UntypedAssetId& loaded_asset_id,
                                                                   std::unreachable();
                                                           }
                                                       },
-                                                      [&](AssetLoadError error) {
-                                                          if (!dep_error) dep_error = std::move(error);
+                                                      [&](std::shared_ptr<AssetLoadError> error_ptr) {
+                                                          if (!dep_error) dep_error = error_ptr;
                                                           failed_deps.insert(dep_id);
                                                           return false;
                                                       },
@@ -182,7 +180,7 @@ void AssetInfos::process_asset_load(const UntypedAssetId& loaded_asset_id,
                 return LoadStateOK::Loading;
             }
         } else {
-            return *dep_error;
+            return dep_error;  // shared_ptr<AssetLoadError>
         }
     }();
 
@@ -195,7 +193,7 @@ void AssetInfos::process_asset_load(const UntypedAssetId& loaded_asset_id,
                 return LoadStateOK::Loading;
             }
         } else {
-            return *rec_dep_error;
+            return rec_dep_error;  // shared_ptr<AssetLoadError>
         }
     }();
 
@@ -239,7 +237,7 @@ void AssetInfos::process_asset_load(const UntypedAssetId& loaded_asset_id,
         if (auto dep_info_opt = get_info_mut(id)) {
             auto& dep_info = dep_info_opt->get();
             dep_info.loading_deps.erase(loaded_asset_id);
-            if (dep_info.loading_deps.empty() && !std::holds_alternative<AssetLoadError>(dep_info.dep_state)) {
+            if (dep_info.loading_deps.empty() && !dep_info.dep_state.is_failed()) {
                 dep_info.dep_state = LoadStateOK::Loaded;
             }
         }
@@ -257,9 +255,9 @@ void AssetInfos::process_asset_load(const UntypedAssetId& loaded_asset_id,
                                std::unreachable();
                            }
                        },
-                       [&](const AssetLoadError& error) {
+                       [&](const std::shared_ptr<AssetLoadError>& error_ptr) {
                            for (auto&& dep_id : deps_wait_on_rec_load) {
-                               propagate_failed_state(loaded_asset_id, dep_id, error);
+                               propagate_failed_state(loaded_asset_id, dep_id, error_ptr);
                            }
                        },
                    },
@@ -436,7 +434,7 @@ auto AssetInfos::get_or_create_handle_internal(const AssetPath& path,
             (loading_mode == HandleLoadingMode::Request &&
              std::visit(epix::utils::visitor{
                             [](const LoadStateOK& state) { return state == LoadStateOK::NotLoaded; },
-                            [](const AssetLoadError& error) { return true; },
+                            [](const std::shared_ptr<AssetLoadError>&) { return true; },
                         },
                         info.state))) {
             info.state         = LoadStateOK::Loading;

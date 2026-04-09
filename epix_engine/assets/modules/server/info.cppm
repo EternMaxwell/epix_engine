@@ -154,7 +154,9 @@ struct AssetInfos {
     void propagate_loaded_state(UntypedAssetId loaded_asset_id,
                                 UntypedAssetId waiting_id,
                                 const epix::utils::Sender<InternalAssetEvent>& sender);
-    void propagate_failed_state(UntypedAssetId loaded_asset_id, UntypedAssetId waiting_id, const AssetLoadError& error);
+    void propagate_failed_state(UntypedAssetId loaded_asset_id,
+                                UntypedAssetId waiting_id,
+                                const std::shared_ptr<AssetLoadError>& error);
     void process_asset_fail(const UntypedAssetId& failed_id, const AssetLoadError& error);
     // void remove_deps(const AssetInfo& info,
     //                  std::unordered_map<AssetPath, std::unordered_set<AssetPath>>&

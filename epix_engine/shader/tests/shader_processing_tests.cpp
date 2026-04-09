@@ -61,7 +61,7 @@ bool wait_for_loaded(App& app,
     const auto start = std::chrono::steady_clock::now();
     while (std::chrono::steady_clock::now() - start < timeout) {
         auto state = server.get_load_state(id);
-        if (state.has_value() && std::holds_alternative<AssetLoadError>(*state)) {
+        if (state.has_value() && std::holds_alternative<std::shared_ptr<AssetLoadError>>(*state)) {
             return false;
         }
         if (server.is_loaded_with_dependencies(id)) return true;
@@ -253,12 +253,12 @@ TEST(ShaderProcessing, InvalidUtf8PreprocessFailureBlocksLoad) {
 
     // In Processed mode, ProcessStatus::Failed causes the gated reader to return NotFound.
     // The asset server marks the load as failed — no fallback to source (matches Bevy behavior).
-    auto handle = server.load<Shader>(AssetPath("bad.wgsl"));
+    auto handle      = server.load<Shader>(AssetPath("bad.wgsl"));
     const auto start = std::chrono::steady_clock::now();
     bool load_failed = false;
     while (std::chrono::steady_clock::now() - start < std::chrono::milliseconds(1500)) {
         auto state = server.get_load_state(handle.id());
-        if (state.has_value() && std::holds_alternative<AssetLoadError>(*state)) {
+        if (state.has_value() && std::holds_alternative<std::shared_ptr<AssetLoadError>>(*state)) {
             load_failed = true;
             break;
         }

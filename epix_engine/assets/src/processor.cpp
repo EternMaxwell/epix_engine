@@ -8,25 +8,6 @@ import std;
 
 using namespace epix::assets;
 
-// ---- AssetProcessor constructor ----
-
-AssetProcessor::AssetProcessor(AssetSourceBuilders& builders, bool watching_for_changes)
-    : AssetProcessor(builders, watching_for_changes, std::make_unique<FileTransactionLogFactory>()) {}
-AssetProcessor::AssetProcessor(AssetSourceBuilders& builders,
-                               bool watching_for_changes,
-                               std::unique_ptr<ProcessorTransactionLogFactory> log_factory) {
-    auto state       = std::make_shared<ProcessingState>();
-    auto sources_val = builders.build_sources(true, watching_for_changes);
-    sources_val.gate_on_processor([state](AssetSourceId id, const AssetReader& reader) -> std::unique_ptr<AssetReader> {
-        return std::make_unique<ProcessorGatedReader>(std::move(id), reader, state);
-    });
-    auto sources = std::make_shared<AssetSources>(std::move(sources_val));
-    data =
-        std::shared_ptr<AssetProcessorData>(new AssetProcessorData(sources, std::move(state), std::move(log_factory)));
-    server = AssetServer(std::move(sources), AssetServerMode::Processed, AssetMetaCheck{asset_meta_check::Always{}},
-                         false, UnapprovedPathMode::Forbid);
-}
-
 // ---- start ----
 
 void AssetProcessor::start(core::Res<AssetProcessor> processor) {
@@ -236,6 +217,106 @@ static void get_asset_paths(const AssetReader& reader,
     } else {
         paths.push_back(path);
     }
+}
+
+// ---- AssetProcessor ----
+
+AssetProcessor::AssetProcessor(AssetServer srv, std::shared_ptr<AssetProcessorData> proc_data)
+    : server(std::move(srv)), data(std::move(proc_data)), m_owns_shutdown(false) {}
+
+AssetProcessor::AssetProcessor(const AssetProcessor& other)
+    : server(other.server), data(other.data), m_owns_shutdown(false) {}
+
+AssetProcessor::AssetProcessor(AssetProcessor&& other) noexcept
+    : server(std::move(other.server)),
+      data(std::move(other.data)),
+      m_owns_shutdown(std::exchange(other.m_owns_shutdown, false)) {}
+
+AssetProcessor::AssetProcessor(std::reference_wrapper<AssetSourceBuilders> builders,
+                               bool watching_for_changes,
+                               std::unique_ptr<ProcessorTransactionLogFactory> log_factory) {
+    auto state       = std::make_shared<ProcessingState>();
+    auto sources_val = builders.get().build_sources(true, watching_for_changes);
+    sources_val.gate_on_processor([state](AssetSourceId id, const AssetReader& reader) -> std::unique_ptr<AssetReader> {
+        return std::make_unique<ProcessorGatedReader>(std::move(id), reader, state);
+    });
+    auto sources = std::make_shared<AssetSources>(std::move(sources_val));
+    data =
+        std::shared_ptr<AssetProcessorData>(new AssetProcessorData(sources, std::move(state), std::move(log_factory)));
+    server = AssetServer(std::move(sources), AssetServerMode::Processed, AssetMetaCheck{asset_meta_check::Always{}},
+                         false, UnapprovedPathMode::Forbid);
+}
+
+AssetProcessor& AssetProcessor::operator=(const AssetProcessor& other) {
+    if (this == &other) return *this;
+    if (m_owns_shutdown && data) {
+        data->shutdown();
+    }
+    server          = other.server;
+    data            = other.data;
+    m_owns_shutdown = false;
+    return *this;
+}
+
+AssetProcessor& AssetProcessor::operator=(AssetProcessor&& other) noexcept {
+    if (this == &other) return *this;
+    if (m_owns_shutdown && data) {
+        data->shutdown();
+    }
+    server          = std::move(other.server);
+    data            = std::move(other.data);
+    m_owns_shutdown = std::exchange(other.m_owns_shutdown, false);
+    return *this;
+}
+
+AssetProcessor::~AssetProcessor() {
+    if (m_owns_shutdown && data) {
+        data->shutdown();
+    }
+}
+
+const AssetServer& AssetProcessor::get_server() const { return server; }
+
+const std::shared_ptr<AssetProcessorData>& AssetProcessor::get_data() const { return data; }
+
+std::optional<std::reference_wrapper<const AssetSource>> AssetProcessor::get_source(
+    const AssetSourceId& source_id) const {
+    return server.get_source(source_id);
+}
+
+const std::shared_ptr<AssetSources>& AssetProcessor::sources() const { return data->sources; }
+
+std::shared_ptr<ErasedProcessor> AssetProcessor::get_default_processor(std::string_view extension) const {
+    auto guard  = data->processors.read();
+    auto ext_it = guard->file_extension_to_default_processor.find(std::string(extension));
+    if (ext_it == guard->file_extension_to_default_processor.end()) return nullptr;
+    auto proc_it = guard->type_path_to_processor.find(ext_it->second);
+    if (proc_it == guard->type_path_to_processor.end()) return nullptr;
+    return proc_it->second;
+}
+
+std::expected<std::shared_ptr<ErasedProcessor>, GetProcessorError> AssetProcessor::get_processor(
+    std::string_view type_name) const {
+    auto guard = data->processors.read();
+    // First try short type path lookup
+    auto short_it = guard->short_type_path_to_processor.find(type_name);
+    if (short_it != guard->short_type_path_to_processor.end()) {
+        return std::visit(
+            utils::visitor{
+                [](const ShortTypeProcessorEntry::Unique& u)
+                    -> std::expected<std::shared_ptr<ErasedProcessor>, GetProcessorError> { return u.processor; },
+                [&](const ShortTypeProcessorEntry::Ambiguous& a)
+                    -> std::expected<std::shared_ptr<ErasedProcessor>, GetProcessorError> {
+                    return std::unexpected(
+                        GetProcessorError{get_processor_errors::Ambiguous{std::string(type_name), a.type_paths}});
+                },
+            },
+            short_it->second.entry);
+    }
+    // Fall back to full type path
+    auto it = guard->type_path_to_processor.find(type_name);
+    if (it != guard->type_path_to_processor.end()) return it->second;
+    return std::unexpected(GetProcessorError{get_processor_errors::Missing{std::string(type_name)}});
 }
 
 void AssetProcessor::initialize() const {
@@ -735,8 +816,6 @@ void AssetProcessor::spawn_source_change_event_listeners(
                     return;
                 }
                 // Reconstruct a temporary AssetProcessor from the locked weak_ptr data.
-                // Note: we do NOT use AssetProcessor() default-construction (not available);
-                // instead we use the (AssetServer, shared_ptr<AssetProcessorData>) constructor.
                 AssetServer tmp_server;
                 tmp_server.data = locked_server_data;
                 AssetProcessor proc(std::move(tmp_server), locked_data);

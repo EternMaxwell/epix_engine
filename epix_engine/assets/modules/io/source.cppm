@@ -1,9 +1,6 @@
-module;
-
 export module epix.assets:io.source;
 
 import std;
-import epix.meta;
 import epix.utils;
 
 import :path;
@@ -11,7 +8,7 @@ import :io.reader;
 import :io.file.asset;
 import :io.file.watcher;
 
-namespace epix::assets {
+export namespace epix::assets {
 export struct AssetSource {
    private:
     AssetSourceId m_id;
@@ -30,30 +27,12 @@ export struct AssetSource {
    public:
     AssetSourceId id() const { return m_id; }
     const AssetReader& reader() const { return *m_reader; }  // this is always present
-    std::optional<std::reference_wrapper<const AssetWriter>> writer() const {
-        if (m_writer) return *m_writer;
-        return std::nullopt;
-    }
-    std::optional<std::reference_wrapper<const AssetReader>> processed_reader() const {
-        if (m_processed_reader) return *m_processed_reader;
-        return std::nullopt;
-    }
-    std::optional<std::reference_wrapper<const AssetReader>> ungated_processed_reader() const {
-        if (m_ungated_processed_reader) return *m_ungated_processed_reader;
-        return std::nullopt;
-    }
-    std::optional<std::reference_wrapper<const AssetWriter>> processed_writer() const {
-        if (m_processed_writer) return *m_processed_writer;
-        return std::nullopt;
-    }
-    std::optional<std::reference_wrapper<const utils::Receiver<AssetSourceEvent>>> event_receiver() const {
-        if (m_event_receiver) return *m_event_receiver;
-        return std::nullopt;
-    }
-    std::optional<std::reference_wrapper<const utils::Receiver<AssetSourceEvent>>> processed_event_receiver() const {
-        if (m_processed_event_receiver) return *m_processed_event_receiver;
-        return std::nullopt;
-    }
+    std::optional<std::reference_wrapper<const AssetWriter>> writer() const;
+    std::optional<std::reference_wrapper<const AssetReader>> processed_reader() const;
+    std::optional<std::reference_wrapper<const AssetReader>> ungated_processed_reader() const;
+    std::optional<std::reference_wrapper<const AssetWriter>> processed_writer() const;
+    std::optional<std::reference_wrapper<const utils::Receiver<AssetSourceEvent>>> event_receiver() const;
+    std::optional<std::reference_wrapper<const utils::Receiver<AssetSourceEvent>>> processed_event_receiver() const;
     bool should_process() const { return m_processed_writer != nullptr; }
 
     /** @brief Gate the processed reader through a factory function.
@@ -61,29 +40,12 @@ export struct AssetSource {
      *  then creates a new gated processed_reader via the factory.
      *  The factory receives (source_id, reference_to_ungated_reader). */
     void gate_on_processor(
-        utils::function_ref<std::unique_ptr<AssetReader>(AssetSourceId, const AssetReader&)> factory) {
-        if (m_processed_reader) {
-            m_ungated_processed_reader = std::move(m_processed_reader);
-            m_processed_reader         = factory(m_id, *m_ungated_processed_reader);
-        }
-    }
+        utils::function_ref<std::unique_ptr<AssetReader>(AssetSourceId, const AssetReader&)> factory);
 
-    static std::function<std::unique_ptr<AssetReader>()> get_default_reader(std::filesystem::path path) {
-        return [path = std::move(path)]() -> std::unique_ptr<AssetReader> {
-            return std::make_unique<FileAssetReader>(path);
-        };
-    }
-    static std::function<std::unique_ptr<AssetWriter>()> get_default_writer(std::filesystem::path path) {
-        return [path = std::move(path)]() -> std::unique_ptr<AssetWriter> {
-            return std::make_unique<FileAssetWriter>(path);
-        };
-    }
+    static std::function<std::unique_ptr<AssetReader>()> get_default_reader(std::filesystem::path path);
+    static std::function<std::unique_ptr<AssetWriter>()> get_default_writer(std::filesystem::path path);
     static std::function<std::unique_ptr<AssetWatcher>(utils::Sender<AssetSourceEvent>)> get_default_watcher(
-        std::filesystem::path path) {
-        return [path = std::move(path)](utils::Sender<AssetSourceEvent> sender) -> std::unique_ptr<AssetWatcher> {
-            return std::make_unique<FileAssetWatcher>(path, std::move(sender));
-        };
-    }
+        std::filesystem::path path);
 };
 
 export struct AssetSourceBuilder {
@@ -104,34 +66,7 @@ export struct AssetSourceBuilder {
         return AssetSourceBuilder(std::move(reader_factory));
     }
 
-    AssetSource build(AssetSourceId id, bool watch, bool watch_processed) {
-        AssetSource source;
-        source.m_id     = std::move(id);
-        source.m_reader = reader_factory();
-        if (writer_factory) {
-            source.m_writer = (*writer_factory)();
-        }
-        if (processed_reader_factory) {
-            source.m_processed_reader = (*processed_reader_factory)();
-        }
-        if (ungated_processed_reader_factory) {
-            source.m_ungated_processed_reader = (*ungated_processed_reader_factory)();
-        }
-        if (processed_writer_factory) {
-            source.m_processed_writer = (*processed_writer_factory)();
-        }
-        if (watch && watcher_factory) {
-            auto [sender, receiver] = utils::make_channel<AssetSourceEvent>();
-            source.m_watcher        = (*watcher_factory)(std::move(sender));
-            source.m_event_receiver = std::move(receiver);
-        }
-        if (watch_processed && processed_watcher_factory) {
-            auto [sender, receiver]           = utils::make_channel<AssetSourceEvent>();
-            source.m_processed_watcher        = (*processed_watcher_factory)(std::move(sender));
-            source.m_processed_event_receiver = std::move(receiver);
-        }
-        return source;
-    }
+    AssetSource build(AssetSourceId id, bool watch, bool watch_processed);
 
     auto&& with_reader(this auto&& self, std::function<std::unique_ptr<AssetReader>()> factory) {
         self.reader_factory = std::move(factory);
@@ -165,17 +100,7 @@ export struct AssetSourceBuilder {
     }
 
     static AssetSourceBuilder platform_default(std::filesystem::path path,
-                                               std::optional<std::filesystem::path> processed_path = std::nullopt) {
-        auto builder = AssetSourceBuilder::create(AssetSource::get_default_reader(path))
-                           .with_writer(AssetSource::get_default_writer(path))
-                           .with_watcher(AssetSource::get_default_watcher(path));
-        if (processed_path) {
-            builder.with_processed_reader(AssetSource::get_default_reader(*processed_path))
-                .with_processed_writer(AssetSource::get_default_writer(*processed_path))
-                .with_processed_watcher(AssetSource::get_default_watcher(*processed_path));
-        }
-        return builder;
-    }
+                                               std::optional<std::filesystem::path> processed_path = std::nullopt);
 };
 
 export struct AssetSources {
@@ -186,13 +111,7 @@ export struct AssetSources {
     friend struct AssetSourceBuilders;
 
    public:
-    std::optional<std::reference_wrapper<const AssetSource>> get(AssetSourceId name) const {
-        if (name.is_default()) return m_default;
-        if (auto it = m_sources.find(name.value()); it != m_sources.end()) {
-            return it->second;
-        }
-        return std::nullopt;
-    }
+    std::optional<std::reference_wrapper<const AssetSource>> get(AssetSourceId name) const;
     auto iter() const {
         return std::views::join(std::ranges::owning_view(std::array<utils::input_iterable<const AssetSource&>, 2>{
             utils::input_iterable<const AssetSource&>(std::span(&m_default, &m_default + 1)),
@@ -214,11 +133,7 @@ export struct AssetSources {
     }
     /** @brief Gate all processed sources through the given factory. */
     void gate_on_processor(
-        utils::function_ref<std::unique_ptr<AssetReader>(AssetSourceId, const AssetReader&)> factory) {
-        for (auto& source : iter_processed_mut()) {
-            source.gate_on_processor(factory);
-        }
-    }
+        utils::function_ref<std::unique_ptr<AssetReader>(AssetSourceId, const AssetReader&)> factory);
 };
 
 export struct AssetSourceBuilders {
@@ -227,37 +142,12 @@ export struct AssetSourceBuilders {
     std::optional<AssetSourceBuilder> m_default;
 
    public:
-    void insert(AssetSourceId id, AssetSourceBuilder builder) {
-        if (!id.has_value()) {
-            m_default = std::move(builder);
-        } else {
-            m_sources.emplace(std::move(id.value()), std::move(builder));
-        }
-    }
-    std::optional<std::reference_wrapper<AssetSourceBuilder>> get(const AssetSourceId& id) {
-        if (!id.has_value()) {
-            if (m_default) return *m_default;
-            return std::nullopt;
-        }
-        auto it = m_sources.find(id.value());
-        if (it != m_sources.end()) {
-            return it->second;
-        }
-        return std::nullopt;
-    }
+    void insert(AssetSourceId id, AssetSourceBuilder builder);
+    std::optional<std::reference_wrapper<AssetSourceBuilder>> get(const AssetSourceId& id);
     void init_default(std::filesystem::path path, std::optional<std::filesystem::path> processed_path = std::nullopt) {
         m_default = AssetSourceBuilder::platform_default(std::move(path), std::move(processed_path));
     }
-    AssetSources build_sources(bool watch, bool watch_processed) {
-        AssetSources sources;
-        if (m_default) {
-            sources.m_default = m_default->build(std::nullopt, watch, watch_processed);
-        }
-        for (auto& [id, builder] : m_sources) {
-            sources.m_sources.emplace(id, builder.build(id, watch, watch_processed));
-        }
-        return sources;
-    }
+    AssetSources build_sources(bool watch, bool watch_processed);
 };
 
 }  // namespace epix::assets

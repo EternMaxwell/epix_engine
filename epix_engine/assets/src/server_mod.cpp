@@ -65,12 +65,10 @@ std::expected<void, WaitForAssetError> AssetServer::wait_for_asset_id(const Unty
                 return std::unexpected(WaitForAssetError{wait_for_asset_error::NotLoaded{}});
             if (*ok == LoadStateOK::Loaded && info.rec_dep_state.is_loaded()) return {};
         }
-        if (std::holds_alternative<AssetLoadError>(info.state))
-            return std::unexpected(WaitForAssetError{
-                wait_for_asset_error::Failed{std::make_shared<AssetLoadError>(std::get<AssetLoadError>(info.state))}});
-        if (info.rec_dep_state.is_failed())
-            return std::unexpected(WaitForAssetError{wait_for_asset_error::DependencyFailed{
-                std::make_shared<AssetLoadError>(std::get<AssetLoadError>(info.rec_dep_state))}});
+        if (auto* ep = std::get_if<std::shared_ptr<AssetLoadError>>(&info.state))
+            return std::unexpected(WaitForAssetError{wait_for_asset_error::Failed{*ep}});
+        if (auto ep = info.rec_dep_state.error())
+            return std::unexpected(WaitForAssetError{wait_for_asset_error::DependencyFailed{ep}});
     }
     // ---- Slow path: register a promise and block until it is resolved ----
     auto promise = std::make_shared<std::promise<std::expected<void, WaitForAssetError>>>();
@@ -86,12 +84,10 @@ std::expected<void, WaitForAssetError> AssetServer::wait_for_asset_id(const Unty
                 return std::unexpected(WaitForAssetError{wait_for_asset_error::NotLoaded{}});
             if (*ok == LoadStateOK::Loaded && info.rec_dep_state.is_loaded()) return {};
         }
-        if (std::holds_alternative<AssetLoadError>(info.state))
-            return std::unexpected(WaitForAssetError{
-                wait_for_asset_error::Failed{std::make_shared<AssetLoadError>(std::get<AssetLoadError>(info.state))}});
-        if (info.rec_dep_state.is_failed())
-            return std::unexpected(WaitForAssetError{wait_for_asset_error::DependencyFailed{
-                std::make_shared<AssetLoadError>(std::get<AssetLoadError>(info.rec_dep_state))}});
+        if (auto* ep = std::get_if<std::shared_ptr<AssetLoadError>>(&info.state))
+            return std::unexpected(WaitForAssetError{wait_for_asset_error::Failed{*ep}});
+        if (auto ep = info.rec_dep_state.error())
+            return std::unexpected(WaitForAssetError{wait_for_asset_error::DependencyFailed{ep}});
         // Asset is still loading — register the promise; event handler will resolve it
         info.waiting_tasks.push_back(std::move(promise));
     }
@@ -267,4 +263,10 @@ std::shared_ptr<ErasedAssetLoader> AssetServer::get_asset_loader_with_asset_type
 bool AssetServer::process_handle_destruction(const UntypedAssetId& id) const {
     auto guard = data->infos.write();
     return guard->process_handle_destruction(id);
+}
+
+UntypedHandle NestedLoader::load_untyped(const AssetPath& path) {
+    UntypedHandle handle = m_context.asset_server().load_untyped(path);
+    m_context.track_dependency(handle.id());
+    return handle;
 }

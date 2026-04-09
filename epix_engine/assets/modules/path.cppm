@@ -46,13 +46,7 @@ export struct AssetPath {
         }
         path = std::filesystem::path(remaining).lexically_normal();
     }
-    std::string string() const {
-        std::stringstream ss;
-        if (!source.is_default()) ss << *source << "://";
-        ss << path.string();
-        if (label) ss << "#" << *label;
-        return ss.str();
-    }
+    std::string string() const;
 
     /** @brief Return a copy of this path with a different label. */
     AssetPath with_label(std::convertible_to<std::string_view> auto&& new_label) const {
@@ -65,89 +59,27 @@ export struct AssetPath {
     /** @brief Remove the label from this path in place. */
     void remove_label() { label.reset(); }
     /** @brief Take the label out of this path, leaving it empty. */
-    std::optional<std::string> take_label() {
-        auto l = std::move(label);
-        label.reset();
-        return l;
-    }
+    std::optional<std::string> take_label();
     /** @brief Return the parent directory of this asset path, or std::nullopt if there is no parent. */
-    std::optional<AssetPath> parent() const {
-        auto p = path.parent_path();
-        if (p.empty() || p == path) return std::nullopt;
-        return AssetPath(source, std::move(p));
-    }
+    std::optional<AssetPath> parent() const;
     /** @brief Resolve a relative path against this path's directory. */
-    AssetPath resolve(const AssetPath& relative) const {
-        auto base     = path.parent_path();
-        auto resolved = (base / relative.path).lexically_normal();
-        return AssetPath(relative.source.is_default() ? source : relative.source, std::move(resolved), relative.label);
-    }
+    AssetPath resolve(const AssetPath& relative) const;
     /** @brief Resolve a relative path using RFC 1808 (embedded) semantics, replacing the last component.
      *  Unlike resolve(), the base path's last component is stripped before joining.
      *  Matches bevy_asset's AssetPath::resolve_embed(). */
-    AssetPath resolve_embed(const AssetPath& relative) const {
-        // If relative is label-only, keep our path and just change the label
-        if (relative.source.is_default() && relative.path.empty() && relative.label) {
-            AssetPath result = *this;
-            result.label     = relative.label;
-            return result;
-        }
-        // RFC 1808: pop last component of base before joining
-        auto base = path;
-        if (!path.empty()) base = path.parent_path();
-        auto resolved = (base / relative.path).lexically_normal();
-        return AssetPath(relative.source.is_default() ? source : relative.source, std::move(resolved), relative.label);
-    }
+    AssetPath resolve_embed(const AssetPath& relative) const;
     /** @brief Returns true if this path escapes the asset directory (has a prefix, root, or parent dirs).
      *  Matches bevy_asset's AssetPath::is_unapproved(). */
-    bool is_unapproved() const {
-        namespace fs = std::filesystem;
-        fs::path simplified;
-        for (auto component : path) {
-            if (component == fs::path("..")) {
-                if (!simplified.has_relative_path()) return true;
-                simplified = simplified.parent_path();
-            } else if (component.is_absolute() || component.root_name() != fs::path{}) {
-                return true;
-            } else if (component != fs::path(".")) {
-                simplified /= component;
-            }
-        }
-        return false;
-    }
+    bool is_unapproved() const;
     /** @brief Get the full extension (e.g. "gltf.json" for "model.gltf.json"). */
-    std::optional<std::string> get_full_extension() const {
-        auto filename = path.filename().string();
-        auto dot      = filename.find('.');
-        if (dot == std::string::npos) return std::nullopt;
-        return filename.substr(dot + 1);
-    }
+    std::optional<std::string> get_full_extension() const;
     /** @brief Get the short extension (e.g. "json" for "model.gltf.json"). */
-    std::optional<std::string> get_extension() const {
-        auto ext = path.extension().string();
-        if (ext.empty()) return std::nullopt;
-        if (ext.starts_with('.')) ext.erase(0, 1);
-        return ext;
-    }
+    std::optional<std::string> get_extension() const;
     /** @brief Iterate secondary extensions (all extensions except the final one).
      *  E.g. for "model.gltf.json" yields {"gltf"}. */
-    std::vector<std::string> iter_secondary_extensions() const {
-        auto full = get_full_extension();
-        if (!full) return {};
-        std::vector<std::string> parts;
-        std::string_view sv = *full;
-        for (auto dot = sv.find('.'); dot != std::string_view::npos; dot = sv.find('.')) {
-            parts.emplace_back(sv.substr(0, dot));
-            sv = sv.substr(dot + 1);
-        }
-        // The last part is the primary extension, secondary = all but last
-        return parts;
-    }
+    std::vector<std::string> iter_secondary_extensions() const;
     /** @brief Try to parse a string as an AssetPath, returning std::nullopt on failure. */
-    static std::optional<AssetPath> try_parse(std::string_view str) {
-        if (str.empty()) return std::nullopt;
-        return AssetPath(str);
-    }
+    static std::optional<AssetPath> try_parse(std::string_view str);
 
     bool operator==(const AssetPath&) const  = default;
     auto operator<=>(const AssetPath&) const = default;
@@ -155,7 +87,7 @@ export struct AssetPath {
 static_assert(std::three_way_comparable<AssetPath>);
 }  // namespace epix::assets
 
-export namespace std {
+namespace std {
 template <>
 struct hash<epix::assets::AssetPath> {
     size_t operator()(const epix::assets::AssetPath& ap) const noexcept {

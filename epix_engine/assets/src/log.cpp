@@ -4,9 +4,6 @@
 
 module epix.assets;
 
-import :processor.log;
-import :path;
-
 import std;
 import epix.utils;
 

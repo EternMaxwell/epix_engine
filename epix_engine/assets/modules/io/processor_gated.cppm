@@ -40,47 +40,15 @@ struct ProcessorGatedReader : public AssetReader {
         : m_source(std::move(source)), m_reader(&reader), m_processing_state(std::move(processing_state)) {}
 
     std::expected<std::unique_ptr<std::istream>, AssetReaderError> read(
-        const std::filesystem::path& path) const override {
-        auto asset_path = AssetPath(m_source, path);
-        auto status     = m_processing_state->wait_until_processed(asset_path);
-        if (status != ProcessStatus::Processed) {
-            return std::unexpected(AssetReaderError(reader_errors::NotFound{path}));
-        }
-        auto lock_result = m_processing_state->get_transaction_lock(asset_path);
-        if (!lock_result) return std::unexpected(lock_result.error());
-        auto mutex       = lock_result.value();
-        auto lock        = std::shared_lock(*mutex);
-        auto read_result = m_reader->read(path);
-        if (!read_result) return std::unexpected(read_result.error());
-        return std::make_unique<TransactionLockedStream>(std::move(*read_result), std::move(mutex), std::move(lock));
-    }
+        const std::filesystem::path& path) const override;
 
     std::expected<std::unique_ptr<std::istream>, AssetReaderError> read_meta(
-        const std::filesystem::path& path) const override {
-        auto asset_path = AssetPath(m_source, path);
-        auto status     = m_processing_state->wait_until_processed(asset_path);
-        if (status != ProcessStatus::Processed) {
-            return std::unexpected(AssetReaderError(reader_errors::NotFound{path}));
-        }
-        auto lock_result = m_processing_state->get_transaction_lock(asset_path);
-        if (!lock_result) return std::unexpected(lock_result.error());
-        auto mutex       = lock_result.value();
-        auto lock        = std::shared_lock(*mutex);
-        auto read_result = m_reader->read_meta(path);
-        if (!read_result) return std::unexpected(read_result.error());
-        return std::make_unique<TransactionLockedStream>(std::move(*read_result), std::move(mutex), std::move(lock));
-    }
+        const std::filesystem::path& path) const override;
 
     std::expected<utils::input_iterable<std::filesystem::path>, AssetReaderError> read_directory(
-        const std::filesystem::path& path) const override {
-        m_processing_state->wait_until_finished();
-        return m_reader->read_directory(path);
-    }
+        const std::filesystem::path& path) const override;
 
-    std::expected<bool, AssetReaderError> is_directory(const std::filesystem::path& path) const override {
-        m_processing_state->wait_until_finished();
-        return m_reader->is_directory(path);
-    }
+    std::expected<bool, AssetReaderError> is_directory(const std::filesystem::path& path) const override;
 };
 
-}  // namespace assets
+}  // namespace epix::assets

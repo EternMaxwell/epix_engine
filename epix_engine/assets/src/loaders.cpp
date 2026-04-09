@@ -4,8 +4,6 @@
 
 module epix.assets;
 
-import :server.loaders;
-
 import std;
 import epix.meta;
 import epix.utils;

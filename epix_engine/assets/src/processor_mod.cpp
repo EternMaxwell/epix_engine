@@ -10,6 +10,12 @@ using namespace epix::assets;
 
 // ---- ProcessorAssetInfo ----
 
+ProcessorAssetInfo::ProcessorAssetInfo() {
+    auto [sender, receiver] = utils::make_broadcast_channel<ProcessStatus>();
+    status_sender           = std::move(sender);
+    status_receiver         = std::move(receiver);
+}
+
 void ProcessorAssetInfo::update_status(ProcessStatus new_status) {
     if (status != new_status) {
         status = new_status;
@@ -200,8 +206,8 @@ AssetProcessorData::AssetProcessorData(std::shared_ptr<AssetSources> sources,
       task_sender(AssetProcessorData::TaskSenderState{}) {}
 
 void AssetProcessorData::set_task_sender(utils::Sender<std::pair<AssetSourceId, std::filesystem::path>> sender) const {
-    auto guarded     = task_sender.lock();
-    guarded->sender  = std::move(sender);
+    auto guarded    = task_sender.lock();
+    guarded->sender = std::move(sender);
     if (guarded->shutdown_requested) {
         guarded->sender->close();
         guarded->sender.reset();
@@ -210,8 +216,8 @@ void AssetProcessorData::set_task_sender(utils::Sender<std::pair<AssetSourceId, 
 
 void AssetProcessorData::shutdown() const {
     {
-        auto guarded                  = task_sender.lock();
-        guarded->shutdown_requested   = true;
+        auto guarded                = task_sender.lock();
+        guarded->shutdown_requested = true;
         if (guarded->sender.has_value()) {
             guarded->sender->close();
             guarded->sender.reset();
@@ -239,91 +245,6 @@ void AssetProcessorData::wait_until_initialized() const { processing_state->wait
 void AssetProcessorData::wait_until_finished() const { processing_state->wait_until_finished(); }
 
 ProcessorState AssetProcessorData::state() const { return processing_state->get_state(); }
-
-// ---- AssetProcessor ----
-
-AssetProcessor::AssetProcessor(AssetServer srv, std::shared_ptr<AssetProcessorData> proc_data)
-    : server(std::move(srv)), data(std::move(proc_data)), m_owns_shutdown(false) {}
-
-AssetProcessor::AssetProcessor(const AssetProcessor& other)
-    : server(other.server), data(other.data), m_owns_shutdown(false) {}
-
-AssetProcessor::AssetProcessor(AssetProcessor&& other) noexcept
-    : server(std::move(other.server)),
-      data(std::move(other.data)),
-      m_owns_shutdown(std::exchange(other.m_owns_shutdown, false)) {}
-
-AssetProcessor& AssetProcessor::operator=(const AssetProcessor& other) {
-    if (this == &other) return *this;
-    if (m_owns_shutdown && data) {
-        data->shutdown();
-    }
-    server          = other.server;
-    data            = other.data;
-    m_owns_shutdown = false;
-    return *this;
-}
-
-AssetProcessor& AssetProcessor::operator=(AssetProcessor&& other) noexcept {
-    if (this == &other) return *this;
-    if (m_owns_shutdown && data) {
-        data->shutdown();
-    }
-    server          = std::move(other.server);
-    data            = std::move(other.data);
-    m_owns_shutdown = std::exchange(other.m_owns_shutdown, false);
-    return *this;
-}
-
-AssetProcessor::~AssetProcessor() {
-    if (m_owns_shutdown && data) {
-        data->shutdown();
-    }
-}
-
-const AssetServer& AssetProcessor::get_server() const { return server; }
-
-const std::shared_ptr<AssetProcessorData>& AssetProcessor::get_data() const { return data; }
-
-std::optional<std::reference_wrapper<const AssetSource>> AssetProcessor::get_source(
-    const AssetSourceId& source_id) const {
-    return server.get_source(source_id);
-}
-
-const std::shared_ptr<AssetSources>& AssetProcessor::sources() const { return data->sources; }
-
-std::shared_ptr<ErasedProcessor> AssetProcessor::get_default_processor(std::string_view extension) const {
-    auto guard  = data->processors.read();
-    auto ext_it = guard->file_extension_to_default_processor.find(std::string(extension));
-    if (ext_it == guard->file_extension_to_default_processor.end()) return nullptr;
-    auto proc_it = guard->type_path_to_processor.find(ext_it->second);
-    if (proc_it == guard->type_path_to_processor.end()) return nullptr;
-    return proc_it->second;
-}
-
-std::expected<std::shared_ptr<ErasedProcessor>, GetProcessorError> AssetProcessor::get_processor(
-    std::string_view type_name) const {
-    auto guard = data->processors.read();
-    // First try short type path lookup
-    auto short_it = guard->short_type_path_to_processor.find(type_name);
-    if (short_it != guard->short_type_path_to_processor.end()) {
-        return std::visit(
-            utils::visitor{
-                [](const ShortTypeProcessorEntry::Unique& u)
-                    -> std::expected<std::shared_ptr<ErasedProcessor>, GetProcessorError> { return u.processor; },
-                [&](const ShortTypeProcessorEntry::Ambiguous& a)
-                    -> std::expected<std::shared_ptr<ErasedProcessor>, GetProcessorError> {
-                    return std::unexpected(
-                        GetProcessorError{get_processor_errors::Ambiguous{std::string(type_name), a.type_paths}});
-                },
-            },
-            short_it->second.entry);
-    }
-    // Fall back to full type path
-    auto it = guard->type_path_to_processor.find(type_name);
-    if (it != guard->type_path_to_processor.end()) return it->second;
-    return std::unexpected(GetProcessorError{get_processor_errors::Missing{std::string(type_name)}});
-}
 
 // ---- ProcessingState ----
 

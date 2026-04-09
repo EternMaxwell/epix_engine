@@ -12,7 +12,11 @@ using std::uint64_t;
 
 // ============================================================
 // SvoBuffer - Laine & Karras 2010-style flat sparse voxel tree
-//             for N-dimensional grids (Dim = 1, 2, 3)
+//             for N-dimensional grids
+//
+//   cpn = CC^Dim must fit in a uint32 node descriptor using 2*cpn bits,
+//   so the hard constraint is:  CC^Dim <= 16
+//   (e.g. CC=2 allows Dim 1-4; CC=4 allows Dim 1-2; CC=8 allows Dim=1)
 //
 // The approach serialises any tree_extendible_grid or tree_grid by
 // walking the public API only (iter_pos / count / coverage).
@@ -34,8 +38,8 @@ using std::uint64_t;
 //
 //   bits [0         .. cpn-1]:     valid_mask   -- which of the cpn children exist
 //   bits [cpn       .. 2*cpn-1]:   leaf_mask    -- which valid children are leaves
-//   bits [2*cpn     .. 31]:        child_offset -- 1 always (child block is right after
-//                                                  the descriptor word)
+//   child_offset is always 1 (child block immediately follows descriptor word)
+//                                                  and is NOT encoded in the word
 //
 // ---- Child block (cpn slots, densely packed for valid children only) ----
 //   Slot for child i: slot = child_block_base[popcount(valid_mask & ((1<<i)-1))]
@@ -128,14 +132,14 @@ module "epix/ext/grid/svo";
 // ---- Node descriptor (1 uint32) ----
 //   bits [0..cpn-1]     : valid_mask
 //   bits [cpn..2*cpn-1] : leaf_mask
-//   bits [2*cpn..31]    : child_offset (always 1; child block is immediately after descriptor)
+//   (no further bits used; child block is always at desc+1)
 //
 // ---- Child block (valid_count compact slots) ----
 //   Slot for child i = child_block_base[popcount(valid_mask & ((1<<i)-1))]
 //   Leaf  slot = DATA INDEX into the parallel user data buffer
 //   Inner slot = absolute word index of child descriptor in the pool
 //
-// ---- Coordinate convention (ChildCount = 2 for all structs below) ----
+// ---- Coordinate convention (CC = branching factor of the SvoGrid generic below) ----
 //   rel[axis] = coord[axis] - origin[axis]
 //   stride at level L = 2^(depth-1-L)
 //   digit[axis] = (rel[axis] >> (depth-1-L)) & 1
@@ -153,159 +157,71 @@ uint svo_popcount_below(uint mask, uint i)
     return countbits(mask & ((1u << i) - 1u));
 }
 
-void svo_decode_node(uint word, uint cpn, out uint valid_mask, out uint leaf_mask, out uint child_offset)
+void svo_decode_node(uint word, uint cpn, out uint valid_mask, out uint leaf_mask)
 {
-    valid_mask   = word & ((1u << cpn) - 1u);
-    leaf_mask    = (word >> cpn) & ((1u << cpn) - 1u);
-    child_offset = word >> (2u * cpn);
+    valid_mask = word & ((1u << cpn) - 1u);
+    leaf_mask  = (word >> cpn) & ((1u << cpn) - 1u);
 }
 
 // ============================================================
-// SvoGrid1D - 1-D (ChildCount=2, cpn=2)
+// SvoGrid<Dim, CC> - generic N-D / CC-ary SVO traversal
 // ============================================================
 
-public struct SvoGrid1D
+public struct SvoGrid<let Dim : int, let CC : int>
 {
     public StructuredBuffer<uint> buf;
 
     public uint depth()          { return (buf[0] >> 8u) & 0xFFu; }
-    public uint child_per_node() { return (buf[0] >> 16u) & 0xFFu; }
     public uint data_count()     { return buf[1]; }
-    public int  origin_x()       { return int(buf[2]); }
-    public uint pool_base()      { return 3u; }  // 2+Dim = 3
+    public uint pool_base()      { return 2u + uint(Dim); }
+    public int  origin(int axis) { return int(buf[2 + axis]); }
 
-    /// Returns the DATA INDEX for pos_x, or -1 if absent.
-    public int lookup(int pos_x)
-    {
-        uint d   = depth();
-        uint cpn = child_per_node();
+    uint __pow_cc(uint exp) {
+        uint r = 1u;
+        for (uint i = 0u; i < exp; ++i) r *= uint(CC);
+        return r;
+    }
+
+    uint __flat_ci(uint[Dim] rel, uint stride) {
+        uint idx = 0u;
+        for (int a = 0; a < Dim; ++a)
+            idx = idx * uint(CC) + (rel[a] / stride) % uint(CC);
+        return idx;
+    }
+
+    public int lookup(int[Dim] pos) {
+        uint d = depth();
         if (d == 0u) return -1;
-
-        uint rel_x = uint(pos_x - origin_x());
-        uint cov   = 1u << d;
-        if (rel_x >= cov) return -1;
-
+        uint cpn = 1u;
+        for (int i = 0; i < Dim; ++i) cpn *= uint(CC);
+        uint[Dim] rel;
+        for (int a = 0; a < Dim; ++a)
+            rel[a] = uint(pos[a] - origin(a));
+        uint cov = __pow_cc(d);
+        for (int a = 0; a < Dim; ++a)
+            if (rel[a] >= cov) return -1;
+        uint stride = cov / uint(CC);
         uint node_idx = pool_base();
-        for (uint level = 0u; level < d; ++level)
-        {
-            uint ci   = (rel_x >> (d - level - 1u)) & 1u;
+        for (uint level = 0u; level < d; ++level) {
+            uint ci = __flat_ci(rel, stride);
+            stride /= uint(CC);
             uint word = buf[node_idx];
-            uint valid_mask, leaf_mask, child_offset;
-            svo_decode_node(word, cpn, valid_mask, leaf_mask, child_offset);
-
+            uint valid_mask, leaf_mask;
+            svo_decode_node(word, cpn, valid_mask, leaf_mask);
             if ((valid_mask & (1u << ci)) == 0u) return -1;
-
-            uint slot_pos = node_idx + child_offset + svo_popcount_below(valid_mask, ci);
+            uint slot_pos = node_idx + 1u + svo_popcount_below(valid_mask, ci);
             if ((leaf_mask & (1u << ci)) != 0u) return int(buf[slot_pos]);
             node_idx = buf[slot_pos];
         }
         return -1;
     }
 
-    public bool contains(int pos_x) { return lookup(pos_x) >= 0; }
+    public bool contains(int[Dim] pos) { return lookup(pos) >= 0; }
 };
 
-// ============================================================
-// SvoGrid2D - 2-D (ChildCount=2, cpn=4)
-// ============================================================
-
-public struct SvoGrid2D
-{
-    public StructuredBuffer<uint> buf;
-
-    public uint depth()          { return (buf[0] >> 8u) & 0xFFu; }
-    public uint child_per_node() { return (buf[0] >> 16u) & 0xFFu; }
-    public uint data_count()     { return buf[1]; }
-    public int  origin_x()       { return int(buf[2]); }
-    public int  origin_y()       { return int(buf[3]); }
-    public uint pool_base()      { return 4u; }  // 2+Dim = 4
-
-    /// Returns the DATA INDEX for (x,y), or -1 if absent.
-    public int lookup(int2 pos)
-    {
-        uint d   = depth();
-        uint cpn = child_per_node();
-        if (d == 0u) return -1;
-
-        uint rel_x = uint(pos.x - origin_x());
-        uint rel_y = uint(pos.y - origin_y());
-        uint cov   = 1u << d;
-        if (rel_x >= cov || rel_y >= cov) return -1;
-
-        uint node_idx = pool_base();
-        for (uint level = 0u; level < d; ++level)
-        {
-            uint shift = d - level - 1u;
-            uint ci    = (((rel_x >> shift) & 1u) << 1u) | ((rel_y >> shift) & 1u);
-
-            uint word = buf[node_idx];
-            uint valid_mask, leaf_mask, child_offset;
-            svo_decode_node(word, cpn, valid_mask, leaf_mask, child_offset);
-
-            if ((valid_mask & (1u << ci)) == 0u) return -1;
-
-            uint slot_pos = node_idx + child_offset + svo_popcount_below(valid_mask, ci);
-            if ((leaf_mask & (1u << ci)) != 0u) return int(buf[slot_pos]);
-            node_idx = buf[slot_pos];
-        }
-        return -1;
-    }
-
-    public bool contains(int2 pos) { return lookup(pos) >= 0; }
-};
-
-// ============================================================
-// SvoGrid3D - 3-D (ChildCount=2, cpn=8)
-// ============================================================
-
-public struct SvoGrid3D
-{
-    public StructuredBuffer<uint> buf;
-
-    public uint depth()          { return (buf[0] >> 8u) & 0xFFu; }
-    public uint child_per_node() { return (buf[0] >> 16u) & 0xFFu; }
-    public uint data_count()     { return buf[1]; }
-    public int  origin_x()       { return int(buf[2]); }
-    public int  origin_y()       { return int(buf[3]); }
-    public int  origin_z()       { return int(buf[4]); }
-    public uint pool_base()      { return 5u; }  // 2+Dim = 5
-
-    /// Returns the DATA INDEX for (x,y,z), or -1 if absent.
-    public int lookup(int3 pos)
-    {
-        uint d   = depth();
-        uint cpn = child_per_node();
-        if (d == 0u) return -1;
-
-        uint rel_x = uint(pos.x - origin_x());
-        uint rel_y = uint(pos.y - origin_y());
-        uint rel_z = uint(pos.z - origin_z());
-        uint cov   = 1u << d;
-        if (rel_x >= cov || rel_y >= cov || rel_z >= cov) return -1;
-
-        uint node_idx = pool_base();
-        for (uint level = 0u; level < d; ++level)
-        {
-            uint shift = d - level - 1u;
-            uint ci    = (((rel_x >> shift) & 1u) << 2u)
-                       | (((rel_y >> shift) & 1u) << 1u)
-                       |  ((rel_z >> shift) & 1u);
-
-            uint word = buf[node_idx];
-            uint valid_mask, leaf_mask, child_offset;
-            svo_decode_node(word, cpn, valid_mask, leaf_mask, child_offset);
-
-            if ((valid_mask & (1u << ci)) == 0u) return -1;
-
-            uint slot_pos = node_idx + child_offset + svo_popcount_below(valid_mask, ci);
-            if ((leaf_mask & (1u << ci)) != 0u) return int(buf[slot_pos]);
-            node_idx = buf[slot_pos];
-        }
-        return -1;
-    }
-
-    public bool contains(int3 pos) { return lookup(pos) >= 0; }
-};
+public typealias SvoGrid1D = SvoGrid<1, 2>;
+public typealias SvoGrid2D = SvoGrid<2, 2>;
+public typealias SvoGrid3D = SvoGrid<3, 2>;
 
 }  // namespace epix::ext::grid
 )slang";
@@ -330,10 +246,10 @@ inline uint32_t popcount_below(uint32_t mask, uint32_t i) noexcept {
     return static_cast<uint32_t>(std::popcount(mask & ((1u << i) - 1u)));
 }
 
-// Build one node descriptor word
-inline uint32_t make_descriptor(uint32_t valid, uint32_t leaf, uint32_t offset, uint32_t cpn) noexcept {
-    return valid | (leaf << cpn) | (offset << (2u * cpn));
-}
+// Build one node descriptor word.
+// child_offset is always 1 and is NOT encoded in the descriptor;
+// the child block is implicitly at desc_pos+1.
+inline uint32_t make_descriptor(uint32_t valid, uint32_t leaf, uint32_t cpn) noexcept { return valid | (leaf << cpn); }
 
 // -------------------------------------------------------
 // Builder tree (built from occupied positions via public API)
@@ -413,8 +329,8 @@ struct BuildTree {
         uint32_t child_blk_pos = desc_pos + 1u;
         out.resize(out.size() + 1u + valid_count, 0u);
 
-        // child_offset = 1 (child block is always right after descriptor)
-        out[desc_pos] = make_descriptor(valid_mask, leaf_mask, 1u, cpn);
+        // child_offset = 1 is NOT encoded; child block is always at desc_pos+1
+        out[desc_pos] = make_descriptor(valid_mask, leaf_mask, cpn);
 
         // Collect interior children for post-recursion fixup
         struct Pending {
@@ -505,7 +421,7 @@ inline uint32_t depth_from_coverage(uint32_t cov, uint32_t child_count) noexcept
 // -------------------------------------------------------
 
 template <std::size_t CC, std::size_t Dim, typename CoordT, epix::ext::grid::tree_based_grid G>
-    requires(Dim >= 1 && Dim <= 3)
+    requires(cpn_v<Dim, CC> <= 16)
 SvoBuffer svo_upload_tree_cc(const G& grid) {
     constexpr uint32_t CPN = cpn_v<Dim, CC>;
     SvoBuffer buf;
@@ -547,7 +463,7 @@ SvoBuffer svo_upload_tree_cc(const G& grid) {
 }
 
 template <std::size_t CC, std::size_t Dim, typename CoordT, epix::ext::grid::any_grid G>
-    requires(!epix::ext::grid::tree_based_grid<G> && Dim >= 1 && Dim <= 3)
+    requires(!epix::ext::grid::tree_based_grid<G> && cpn_v<Dim, CC> <= 16)
 SvoBuffer svo_upload_flat_cc(const G& grid) {
     constexpr uint32_t CPN = cpn_v<Dim, CC>;
     SvoBuffer buf;
@@ -610,12 +526,20 @@ SvoBuffer svo_upload_flat_cc(const G& grid) {
 export struct SvoUploadError {
     // ---- error sub-types ------------------------------------------------
 
-    /** @brief SvoConfig::child_count was not one of the supported values. */
+    /** @brief child_count was unsupported or incompatible with the grid dimension. */
     struct InvalidChildCount {
-        std::size_t provided; /**< The value that was supplied. */
+        std::size_t provided; /**< The child_count value that was supplied. */
+        std::size_t dim;      /**< The grid dimension for which this was attempted. */
 
         std::string message() const {
-            return "svo_upload: unsupported child_count " + std::to_string(provided) + " (must be 2, 4, or 8)";
+            if (provided != 2 && provided != 4 && provided != 8)
+                return std::format("svo_upload: unsupported child_count {} (must be 2, 4, or 8)", provided);
+            std::size_t cpn = 1;
+            for (std::size_t i = 0; i < dim; ++i) cpn *= provided;
+            return std::format(
+                "svo_upload: child_count {} is incompatible with a {}-dimensional grid "
+                "(cpn = {}^{} = {} > 16; constraint: cpn <= 16)",
+                provided, dim, provided, dim, cpn);
         }
     };
 
@@ -686,21 +610,25 @@ export struct SvoConfig {
  * DATA INDEX in each leaf = 0-based ordinal of that cell in grid.iter_pos().
  */
 export template <epix::ext::grid::tree_based_grid G>
-    requires(epix::ext::grid::grid_trait<G>::dim >= 1 && epix::ext::grid::grid_trait<G>::dim <= 3)
+    requires(epix::ext::grid::grid_trait<G>::dim >= 1)
 std::expected<SvoBuffer, SvoUploadError> svo_upload(const G& grid, const SvoConfig& config = {}) {
     using Trait               = epix::ext::grid::grid_trait<G>;
     constexpr std::size_t Dim = Trait::dim;
     using CoordT              = typename Trait::coord_type;
     switch (config.child_count) {
         case 2:
-            return detail::svo_upload_tree_cc<2, Dim, CoordT>(grid);
+            if constexpr (detail::cpn_v<Dim, 2> <= 16) return detail::svo_upload_tree_cc<2, Dim, CoordT>(grid);
+            break;
         case 4:
-            return detail::svo_upload_tree_cc<4, Dim, CoordT>(grid);
+            if constexpr (detail::cpn_v<Dim, 4> <= 16) return detail::svo_upload_tree_cc<4, Dim, CoordT>(grid);
+            break;
         case 8:
-            return detail::svo_upload_tree_cc<8, Dim, CoordT>(grid);
+            if constexpr (detail::cpn_v<Dim, 8> <= 16) return detail::svo_upload_tree_cc<8, Dim, CoordT>(grid);
+            break;
         default:
-            return std::unexpected(SvoUploadError{SvoUploadError::InvalidChildCount{config.child_count}});
+            break;
     }
+    return std::unexpected(SvoUploadError{SvoUploadError::InvalidChildCount{config.child_count, Dim}});
 }
 
 /**
@@ -716,22 +644,25 @@ std::expected<SvoBuffer, SvoUploadError> svo_upload(const G& grid, const SvoConf
  * @return SvoBuffer on success, or SvoUploadError (kind=InvalidChildCount) for unsupported child_count.
  */
 export template <epix::ext::grid::any_grid G>
-    requires(!epix::ext::grid::tree_based_grid<G> && epix::ext::grid::grid_trait<G>::dim >= 1 &&
-             epix::ext::grid::grid_trait<G>::dim <= 3)
+    requires(!epix::ext::grid::tree_based_grid<G> && epix::ext::grid::grid_trait<G>::dim >= 1)
 std::expected<SvoBuffer, SvoUploadError> svo_upload(const G& grid, const SvoConfig& config = {}) {
     using Trait               = epix::ext::grid::grid_trait<G>;
     constexpr std::size_t Dim = Trait::dim;
     using CoordT              = typename Trait::coord_type;
     switch (config.child_count) {
         case 2:
-            return detail::svo_upload_flat_cc<2, Dim, CoordT>(grid);
+            if constexpr (detail::cpn_v<Dim, 2> <= 16) return detail::svo_upload_flat_cc<2, Dim, CoordT>(grid);
+            break;
         case 4:
-            return detail::svo_upload_flat_cc<4, Dim, CoordT>(grid);
+            if constexpr (detail::cpn_v<Dim, 4> <= 16) return detail::svo_upload_flat_cc<4, Dim, CoordT>(grid);
+            break;
         case 8:
-            return detail::svo_upload_flat_cc<8, Dim, CoordT>(grid);
+            if constexpr (detail::cpn_v<Dim, 8> <= 16) return detail::svo_upload_flat_cc<8, Dim, CoordT>(grid);
+            break;
         default:
-            return std::unexpected(SvoUploadError{SvoUploadError::InvalidChildCount{config.child_count}});
+            break;
     }
+    return std::unexpected(SvoUploadError{SvoUploadError::InvalidChildCount{config.child_count, Dim}});
 }
 
 }  // namespace epix::ext::grid_gpu

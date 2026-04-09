@@ -1,4 +1,4 @@
-﻿#include <imgui.h>
+#include <imgui.h>
 import std;
 import glm;
 import webgpu;
@@ -555,7 +555,7 @@ struct GpuPressureProjector {
         // Buffer layout: one flat array<int32> for [D|S|P|U|V] field sections,
         // each kMaxChunks*kChunkCells elements; chunk index via SvoGrid2D.lookup(cx,cy).
         // -----------------------------------------------------------------------
-        // Slang shader sources 鈥?use epix.ext.grid.svo library (SvoGrid2D) for
+        // Slang shader sources �?use epix.ext.grid.svo library (SvoGrid2D) for
         // chunk-position lookup instead of hand-rolled WGSL SVO traversal.
         // -----------------------------------------------------------------------
 
@@ -580,7 +580,7 @@ static const int TARGET_DIV_GAIN_FX = 6554;
 int chunk_idx(int cx, int cy) {
     if (cx < 0 || cx >= CHUNKS_X || cy < 0 || cy >= CHUNKS_Y) return -1;
     epix::ext::grid::SvoGrid2D g; g.buf = chunk_svo;
-    return g.lookup(int2(cx, cy));
+    return g.lookup(int[2](cx, cy));
 }
 int fx_mul(int a, int b) {
     int ah = a >> 16; int bh = b >> 16; int al = a & 65535; int bl = b & 65535;
@@ -663,7 +663,7 @@ static const int MAXV_FX     = 524288;
 int chunk_idx(int cx, int cy) {
     if (cx < 0 || cx >= CHUNKS_X || cy < 0 || cy >= CHUNKS_Y) return -1;
     epix::ext::grid::SvoGrid2D g; g.buf = chunk_svo;
-    return g.lookup(int2(cx, cy));
+    return g.lookup(int[2](cx, cy));
 }
 int fx_mul(int a, int b) {
     int ah = a >> 16; int bh = b >> 16; int al = a & 65535; int bl = b & 65535;
@@ -1152,7 +1152,7 @@ void computeMain(uint3 gid : SV_DispatchThreadID) {
 }
 )slg";
 
-        // Clamp U (output, NO param 鈥?only 3 bindings)
+        // Clamp U (output, NO param �?only 3 bindings)
         static const std::string kShaderClampU = kSlangCommonOutput + R"slg(
 [shader("compute")]
 [numthreads(16,16,1)]
@@ -1165,7 +1165,7 @@ void computeMain(uint3 gid : SV_DispatchThreadID) {
 }
 )slg";
 
-        // Clamp V (output, NO param 鈥?only 3 bindings)
+        // Clamp V (output, NO param �?only 3 bindings)
         static const std::string kShaderClampV = kSlangCommonOutput + R"slg(
 [shader("compute")]
 [numthreads(16,16,1)]
@@ -1251,7 +1251,7 @@ static const int TARGET_DIV_GAIN_FX = 6554;
 int chunk_idx(int cx, int cy) {
     if (cx < 0 || cx >= CHUNKS_X || cy < 0 || cy >= CHUNKS_Y) return -1;
     epix::ext::grid::SvoGrid2D g; g.buf = chunk_svo;
-    return g.lookup(int2(cx, cy));
+    return g.lookup(int[2](cx, cy));
 }
 int fx_mul(int a, int b) {
     int ah = a >> 16; int bh = b >> 16; int al = a & 65535; int bl = b & 65535;
@@ -1334,7 +1334,7 @@ static const int MAXV_FX     = 524288;
 int chunk_idx(int cx, int cy) {
     if (cx < 0 || cx >= CHUNKS_X || cy < 0 || cy >= CHUNKS_Y) return -1;
     epix::ext::grid::SvoGrid2D g; g.buf = chunk_svo;
-    return g.lookup(int2(cx, cy));
+    return g.lookup(int[2](cx, cy));
 }
 int fx_mul(int a, int b) {
     int ah = a >> 16; int bh = b >> 16; int al = a & 65535; int bl = b & 65535;
@@ -1975,7 +1975,7 @@ void computeMain(uint3 gid : SV_DispatchThreadID) {
                     }));
         };
 
-        // Output without param: {chunk_data(0,rd), chunk_out(1,rw), chunk_svo(2,rd)} — for clamp shaders
+        // Output without param: {chunk_data(0,rd), chunk_out(1,rw), chunk_svo(2,rd)} �� for clamp shaders
         const auto make_output_noparam_bg = [&](const wgpu::ComputePipeline& p, std::string_view label,
                                                 const wgpu::Buffer& out_buf) {
             return device.createBindGroup(
@@ -2163,7 +2163,7 @@ void computeMain(uint3 gid : SV_DispatchThreadID) {
             pass.end();
         }
 
-        // 2. Surface tension → chunk_u_out_buf / chunk_v_out_buf
+        // 2. Surface tension �� chunk_u_out_buf / chunk_v_out_buf
         {
             auto pass = encoder.beginComputePass();
             pass.setPipeline(surface_u_pipeline);
@@ -2175,7 +2175,7 @@ void computeMain(uint3 gid : SV_DispatchThreadID) {
             pass.dispatchWorkgroups(gx_v, gy_v, 1);
             pass.end();
         }
-        // Copy out → chunk_data U/V sections
+        // Copy out �� chunk_data U/V sections
         encoder.copyBufferToBuffer(chunk_u_out_buf, 0, chunk_data_buf, static_cast<std::uint64_t>(kGpuUBase) * 4u,
                                    kGpuFieldSectionBytes);
         encoder.copyBufferToBuffer(chunk_v_out_buf, 0, chunk_data_buf, static_cast<std::uint64_t>(kGpuVBase) * 4u,
@@ -2244,7 +2244,7 @@ void computeMain(uint3 gid : SV_DispatchThreadID) {
             pass.end();
         }
 
-        // 7. Clamp velocities → chunk_u/v_out_buf
+        // 7. Clamp velocities �� chunk_u/v_out_buf
         {
             auto pass = encoder.beginComputePass();
             pass.setPipeline(clamp_u_pipeline);
@@ -2261,7 +2261,7 @@ void computeMain(uint3 gid : SV_DispatchThreadID) {
         encoder.copyBufferToBuffer(chunk_v_out_buf, 0, chunk_data_buf, static_cast<std::uint64_t>(kGpuVBase) * 4u,
                                    kGpuFieldSectionBytes);
 
-        // 8. Advect velocities → chunk_u/v_out_buf
+        // 8. Advect velocities �� chunk_u/v_out_buf
         {
             auto pass = encoder.beginComputePass();
             pass.setPipeline(advect_u_pipeline);
@@ -2278,7 +2278,7 @@ void computeMain(uint3 gid : SV_DispatchThreadID) {
         encoder.copyBufferToBuffer(chunk_v_out_buf, 0, chunk_data_buf, static_cast<std::uint64_t>(kGpuVBase) * 4u,
                                    kGpuFieldSectionBytes);
 
-        // 9. Density transport → chunk_d_out_buf
+        // 9. Density transport �� chunk_d_out_buf
         {
             auto pass = encoder.beginComputePass();
             pass.setPipeline(density_pipeline);

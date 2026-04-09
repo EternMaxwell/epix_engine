@@ -976,7 +976,7 @@ TEST(HotReload, LoadMissingFile_FailsGracefully) {
     // The asset must not be in the Loaded state.
     auto state = server.get_load_state(handle.id());
     ASSERT_TRUE(state.has_value());
-    EXPECT_TRUE(std::holds_alternative<AssetLoadError>(*state)) << "Expected a load error for a missing file";
+    EXPECT_TRUE(std::holds_alternative<std::shared_ptr<AssetLoadError>>(*state)) << "Expected a load error for a missing file";
 
     // Assets<T> must not contain the value.
     auto& assets = app.resource<Assets<std::string>>();
@@ -1139,11 +1139,11 @@ TEST(LoadFailure, MissingLoader_FailsWithMissingAssetLoaderError) {
 
     auto state = server.get_load_state(handle.id());
     ASSERT_TRUE(state.has_value());
-    EXPECT_TRUE(std::holds_alternative<AssetLoadError>(*state))
+    EXPECT_TRUE(std::holds_alternative<std::shared_ptr<AssetLoadError>>(*state))
         << "Expected a load error for a file with no registered loader";
 
-    if (std::holds_alternative<AssetLoadError>(*state)) {
-        auto& error = std::get<AssetLoadError>(*state);
+    if (std::holds_alternative<std::shared_ptr<AssetLoadError>>(*state)) {
+        auto& error = *std::get<std::shared_ptr<AssetLoadError>>(*state);
         EXPECT_TRUE(std::holds_alternative<load_error::MissingAssetLoader>(error))
             << "Expected MissingAssetLoader error variant";
     }
@@ -1171,10 +1171,10 @@ TEST(LoadFailure, LoaderError_FailsWithAssetLoaderException) {
 
     auto state = server.get_load_state(handle.id());
     ASSERT_TRUE(state.has_value());
-    EXPECT_TRUE(std::holds_alternative<AssetLoadError>(*state)) << "Expected a load error for malformed content";
+    EXPECT_TRUE(std::holds_alternative<std::shared_ptr<AssetLoadError>>(*state)) << "Expected a load error for malformed content";
 
-    if (std::holds_alternative<AssetLoadError>(*state)) {
-        auto& error = std::get<AssetLoadError>(*state);
+    if (std::holds_alternative<std::shared_ptr<AssetLoadError>>(*state)) {
+        auto& error = *std::get<std::shared_ptr<AssetLoadError>>(*state);
         EXPECT_TRUE(std::holds_alternative<load_error::AssetLoaderException>(error))
             << "Expected AssetLoaderException error variant";
     }
@@ -1218,16 +1218,16 @@ TEST(LoadFailure, MixedScenarios_CorrectStateForEach) {
     {
         auto state = server.get_load_state(h_missing.id());
         ASSERT_TRUE(state.has_value());
-        EXPECT_TRUE(std::holds_alternative<AssetLoadError>(*state)) << "Missing file should produce an error state";
+        EXPECT_TRUE(std::holds_alternative<std::shared_ptr<AssetLoadError>>(*state)) << "Missing file should produce an error state";
     }
 
     // 3. Loader error
     {
         auto state = server.get_load_state(h_error.id());
         ASSERT_TRUE(state.has_value());
-        EXPECT_TRUE(std::holds_alternative<AssetLoadError>(*state)) << "Failing loader should produce an error state";
-        if (std::holds_alternative<AssetLoadError>(*state)) {
-            EXPECT_TRUE(std::holds_alternative<load_error::AssetLoaderException>(std::get<AssetLoadError>(*state)));
+        EXPECT_TRUE(std::holds_alternative<std::shared_ptr<AssetLoadError>>(*state)) << "Failing loader should produce an error state";
+        if (std::holds_alternative<std::shared_ptr<AssetLoadError>>(*state)) {
+            EXPECT_TRUE(std::holds_alternative<load_error::AssetLoaderException>(*std::get<std::shared_ptr<AssetLoadError>>(*state)));
         }
     }
 }
@@ -1413,7 +1413,7 @@ TEST(LoadStates, FailedAsset_AllStatesReflectFailure) {
     flush_load_tasks(app);
 
     auto state = server.load_state(handle.id());
-    EXPECT_TRUE(std::holds_alternative<AssetLoadError>(state));
+    EXPECT_TRUE(std::holds_alternative<std::shared_ptr<AssetLoadError>>(state));
 
     EXPECT_FALSE(server.is_loaded(handle.id()));
     EXPECT_FALSE(server.is_loaded_with_direct_dependencies(handle.id()));
@@ -1533,8 +1533,8 @@ TEST(LoadStateEvents, DirectDependencyFailure_ParentStaysLoadedButDependencyStat
         ASSERT_TRUE(root_states.has_value());
         EXPECT_TRUE(std::holds_alternative<LoadStateOK>(std::get<0>(*root_states)));
         EXPECT_EQ(std::get<LoadStateOK>(std::get<0>(*root_states)), LoadStateOK::Loaded);
-        EXPECT_TRUE(std::holds_alternative<AssetLoadError>(std::get<1>(*root_states)));
-        EXPECT_TRUE(std::holds_alternative<AssetLoadError>(std::get<2>(*root_states)));
+        EXPECT_TRUE(std::holds_alternative<std::shared_ptr<AssetLoadError>>(std::get<1>(*root_states)));
+        EXPECT_TRUE(std::holds_alternative<std::shared_ptr<AssetLoadError>>(std::get<2>(*root_states)));
 
         EXPECT_TRUE(server.is_loaded(root.id()));
         EXPECT_FALSE(server.is_loaded_with_direct_dependencies(root.id()));
@@ -1542,7 +1542,7 @@ TEST(LoadStateEvents, DirectDependencyFailure_ParentStaysLoadedButDependencyStat
 
         auto child_state = server.get_load_state(child->id());
         ASSERT_TRUE(child_state.has_value());
-        EXPECT_TRUE(std::holds_alternative<AssetLoadError>(*child_state));
+        EXPECT_TRUE(std::holds_alternative<std::shared_ptr<AssetLoadError>>(*child_state));
 
         auto& root_events = app.resource<Events<AssetEvent<DependencyManifestAsset>>>();
         EXPECT_TRUE(any_recorded_event(
@@ -1597,14 +1597,14 @@ TEST(LoadStateEvents, RecursiveDependencyFailure_OnlyRecursiveStateFailsAcrossMo
         EXPECT_EQ(std::get<LoadStateOK>(std::get<0>(*root_states)), LoadStateOK::Loaded);
         EXPECT_TRUE(std::holds_alternative<LoadStateOK>(std::get<1>(*root_states)));
         EXPECT_EQ(std::get<LoadStateOK>(std::get<1>(*root_states)), LoadStateOK::Loaded);
-        EXPECT_TRUE(std::holds_alternative<AssetLoadError>(std::get<2>(*root_states)));
+        EXPECT_TRUE(std::holds_alternative<std::shared_ptr<AssetLoadError>>(std::get<2>(*root_states)));
 
         auto mid_states = server.get_load_states(mid->id());
         ASSERT_TRUE(mid_states.has_value());
         EXPECT_TRUE(std::holds_alternative<LoadStateOK>(std::get<0>(*mid_states)));
         EXPECT_EQ(std::get<LoadStateOK>(std::get<0>(*mid_states)), LoadStateOK::Loaded);
-        EXPECT_TRUE(std::holds_alternative<AssetLoadError>(std::get<1>(*mid_states)));
-        EXPECT_TRUE(std::holds_alternative<AssetLoadError>(std::get<2>(*mid_states)));
+        EXPECT_TRUE(std::holds_alternative<std::shared_ptr<AssetLoadError>>(std::get<1>(*mid_states)));
+        EXPECT_TRUE(std::holds_alternative<std::shared_ptr<AssetLoadError>>(std::get<2>(*mid_states)));
 
         EXPECT_TRUE(server.is_loaded(root.id()));
         EXPECT_TRUE(server.is_loaded_with_direct_dependencies(root.id()));
@@ -1801,12 +1801,14 @@ TEST(MetaFileIntegration, MetaFile_SelectsLoaderByName) {
     auto dir = memory::Directory::create({});
     ASSERT_TRUE(dir.insert_file("hello.txt", memory::Value::from_shared(make_bytes("hello"))).has_value());
 
-    AssetMetaMinimal meta_min;
-    meta_min.meta_format_version = std::string(META_FORMAT_VERSION);
-    meta_min.asset.action        = AssetActionType::Load;
-    meta_min.asset.loader        = std::string(meta::type_id<AltTextLoader>{}.name());
+    // Use the full meta format (not just minimal) so that full meta deserialization succeeds.
+    AssetMeta<AltTextLoader::Settings, EmptySettings> meta;
+    meta.meta_format_version = std::string(META_FORMAT_VERSION);
+    meta.action              = AssetActionType::Load;
+    meta.loader              = std::string(meta::type_id<AltTextLoader>{}.name());
+    meta.loader_settings_storage.value = AltTextLoader::Settings{};
 
-    auto meta_bytes_opt = serialize_meta_minimal(meta_min);
+    auto meta_bytes_opt = serialize_asset_meta(meta);
     ASSERT_TRUE(meta_bytes_opt.has_value());
     auto meta_data = std::make_shared<std::vector<std::byte>>(*meta_bytes_opt);
     ASSERT_TRUE(dir.insert_file("hello.txt.meta", memory::Value::from_shared(meta_data)).has_value());
@@ -1942,8 +1944,8 @@ TEST(DeserializeMetaIntegration, DefaultQuality_UsedWhenNoMetaFile) {
         << "No .meta file: loader should receive default quality=5";
 }
 
-TEST(DeserializeMetaIntegration, DefaultQuality_UsedWhenMetaFileBytesAreGarbage) {
-    // .meta file exists but contains unparseable garbage — server falls back to default_meta().
+TEST(DeserializeMetaIntegration, FailsWithDeserializeMeta_WhenMetaFileBytesAreGarbage) {
+    // .meta file exists but contains unparseable garbage — server should produce DeserializeMeta error (Bevy parity).
     auto dir = memory::Directory::create({});
     ASSERT_TRUE(dir.insert_file("asset.qtxt", memory::Value::from_shared(make_bytes("data"))).has_value());
 
@@ -1965,10 +1967,15 @@ TEST(DeserializeMetaIntegration, DefaultQuality_UsedWhenMetaFileBytesAreGarbage)
     auto handle  = server.load<std::string>(AssetPath("asset.qtxt"));
     flush_load_tasks(app);
 
-    // The asset should still load successfully using the default settings.
-    EXPECT_TRUE(server.is_loaded(handle.id()));
-    EXPECT_EQ(SettingsCapturingLoader::last_quality.load(), 5)
-        << "Garbage .meta file: loader should fall back to default quality=5";
+    // Asset should fail to load — meta bytes are unparseable (matches Bevy's DeserializeMeta error).
+    auto state = server.get_load_state(handle.id());
+    ASSERT_TRUE(state.has_value());
+    EXPECT_TRUE(std::holds_alternative<std::shared_ptr<AssetLoadError>>(*state))
+        << "Garbage .meta file should cause a DeserializeMeta load failure";
+    if (std::holds_alternative<std::shared_ptr<AssetLoadError>>(*state)) {
+        EXPECT_TRUE(std::holds_alternative<load_error::DeserializeMeta>(*std::get<std::shared_ptr<AssetLoadError>>(*state)))
+            << "Expected DeserializeMeta error variant for garbage meta bytes";
+    }
 }
 
 TEST(DeserializeMetaIntegration, DifferentQualities_LoadSamePathWithMetaTransform_Overrides) {

@@ -68,7 +68,6 @@ TEST(SavedAsset_FromTransformed, Dereference) {
 // ===========================================================================
 
 // Helper for creating a minimal AssetProcessor for ProcessContext tests
-namespace {
 AssetProcessor make_test_processor() {
     AssetSourceBuilders builders;
     auto dir            = memory::Directory::create({});
@@ -82,9 +81,8 @@ AssetProcessor make_test_processor() {
                                   return std::make_unique<MemoryAssetWriter>(dir);
                               });
     builders.insert(AssetSourceId{}, std::move(source_builder));
-    return AssetProcessor(builders, false);
+    return ::epix::assets::AssetProcessor(builders, false);
 }
-}  // namespace
 
 TEST(ProcessContext, ReaderAccess) {
     auto processor = make_test_processor();

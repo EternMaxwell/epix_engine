@@ -67,11 +67,7 @@ struct ProcessorAssetInfo {
     utils::BroadcastSender<ProcessStatus> status_sender;
     utils::BroadcastReceiver<ProcessStatus> status_receiver;
 
-    ProcessorAssetInfo() {
-        auto [sender, receiver] = utils::make_broadcast_channel<ProcessStatus>();
-        status_sender           = std::move(sender);
-        status_receiver         = std::move(receiver);
-    }
+    ProcessorAssetInfo();
 
     void update_status(ProcessStatus new_status);
 };
@@ -251,14 +247,11 @@ export struct AssetProcessor {
     AssetProcessor& operator=(AssetProcessor&& other) noexcept;
     ~AssetProcessor();
 
-    /** @brief Construct a new processor from source builders.
-     *  Matches bevy_asset's AssetProcessor::new(). */
-    AssetProcessor(AssetSourceBuilders& builders, bool watching_for_changes);
-
     /** @brief Construct a new processor from source builders and an explicit transaction log factory. */
-    AssetProcessor(AssetSourceBuilders& builders,
-                   bool watching_for_changes,
-                   std::unique_ptr<ProcessorTransactionLogFactory> log_factory);
+    AssetProcessor(
+        std::reference_wrapper<AssetSourceBuilders> builders,
+        bool watching_for_changes,
+        std::unique_ptr<ProcessorTransactionLogFactory> log_factory = std::make_unique<FileTransactionLogFactory>());
 
     /** @brief Get a reference to the internal AssetServer. */
     const AssetServer& get_server() const;

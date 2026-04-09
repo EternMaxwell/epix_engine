@@ -6,8 +6,6 @@ module epix.assets;
 
 import std;
 
-import :store;
-
 using namespace epix::assets;
 
 AssetServer::AssetServer(std::shared_ptr<AssetSources> sources, AssetServerMode mode, bool watching_for_changes)
@@ -160,123 +158,46 @@ void AssetServer::handle_internal_events(core::ParamSet<core::World&, core::Res<
         auto guard = server->data->infos.write();
 
         while (auto event = receiver.try_receive()) {
-            std::visit(
-                utils::visitor{
-                    [&](internal_asset_event::Loaded& loaded) {
-                        guard->process_asset_load(loaded.id, std::move(loaded.asset), world,
-                                                  server->data->asset_event_sender);
-                    },
-                    [&](internal_asset_event::LoadedWithDeps& loaded_with_deps) {
-                        // Dispatch typed LoadedWithDependencies event
-                        auto type_id = loaded_with_deps.id.type;
-                        if (auto it = guard->dependency_loaded_event_sender.find(type_id);
-                            it != guard->dependency_loaded_event_sender.end()) {
-                            auto index = std::get<AssetIndex>(loaded_with_deps.id.id);
-                            it->second(world, index);
-                        }
-                        // Resolve all promises waiting on this asset — full load complete
-                        if (auto info = guard->get_info_mut(loaded_with_deps.id)) {
-                            for (auto& task : info->get().waiting_tasks) {
-                                if (task) task->set_value({});
-                            }
-                            info->get().waiting_tasks.clear();
-                        }
-                    },
-                    [&](internal_asset_event::Failed& failed) {
-                        guard->process_asset_fail(failed.id, failed.error);
+            std::visit(utils::visitor{
+                           [&](internal_asset_event::Loaded& loaded) {
+                               guard->process_asset_load(loaded.id, std::move(loaded.asset), world,
+                                                         server->data->asset_event_sender);
+                           },
+                           [&](internal_asset_event::LoadedWithDeps& loaded_with_deps) {
+                               // Dispatch typed LoadedWithDependencies event
+                               auto type_id = loaded_with_deps.id.type;
+                               if (auto it = guard->dependency_loaded_event_sender.find(type_id);
+                                   it != guard->dependency_loaded_event_sender.end()) {
+                                   auto index = std::get<AssetIndex>(loaded_with_deps.id.id);
+                                   it->second(world, index);
+                               }
+                               // Resolve all promises waiting on this asset — full load complete
+                               if (auto info = guard->get_info_mut(loaded_with_deps.id)) {
+                                   for (auto& task : info->get().waiting_tasks) {
+                                       if (task) task->set_value({});
+                                   }
+                                   info->get().waiting_tasks.clear();
+                               }
+                           },
+                           [&](internal_asset_event::Failed& failed) {
+                               guard->process_asset_fail(failed.id, failed.error);
 
-                        // Collect untyped failure event
-                        untyped_failures.push_back(UntypedAssetLoadFailedEvent{
-                            failed.id, failed.path,
-                            std::visit(
-                                utils::visitor{
-                                    [](const load_error::RequestHandleMismatch& e)
-                                        -> std::variant<std::string, std::exception_ptr> {
-                                        return std::format(
-                                            "Type mismatch for '{}': requested '{}' but loader '{}' produces '{}'",
-                                            e.path.string(), e.requested_type.short_name(), e.loader_name,
-                                            e.actual_type.short_name());
-                                    },
-                                    [](const load_error::MissingAssetLoader& e)
-                                        -> std::variant<std::string, std::exception_ptr> {
-                                        if (!e.extension.empty()) {
-                                            return std::format("No loader for '{}' (extension(s): [{}])",
-                                                               e.path.string(),
-                                                               std::accumulate(std::next(e.extension.begin()),
-                                                                               e.extension.end(), e.extension.front(),
-                                                                               [](std::string a, const std::string& b) {
-                                                                                   return std::move(a) + ", " + b;
-                                                                               }));
-                                        } else if (e.asset_type) {
-                                            return std::format("No loader for '{}' (asset type: '{}')", e.path.string(),
-                                                               e.asset_type->short_name());
-                                        } else {
-                                            return std::format("No loader for '{}' (unknown extension and type)",
-                                                               e.path.string());
-                                        }
-                                    },
-                                    [](const load_error::AssetLoaderException& e)
-                                        -> std::variant<std::string, std::exception_ptr> { return e.exception; },
-                                },
-                                failed.error)});
+                               // Collect untyped failure event
+                               untyped_failures.push_back(UntypedAssetLoadFailedEvent{
+                                   failed.id, failed.path, format_asset_load_error(failed.error)});
 
-                        // Dispatch typed failure event
-                        auto type_id = failed.id.type;
-                        if (auto it = guard->dependency_failed_event_sender.find(type_id);
-                            it != guard->dependency_failed_event_sender.end()) {
-                            auto index = std::get<AssetIndex>(failed.id.id);
-                            it->second(world, index, failed.path, failed.error);
-                        }
+                               // Dispatch typed failure event
+                               auto type_id = failed.id.type;
+                               if (auto it = guard->dependency_failed_event_sender.find(type_id);
+                                   it != guard->dependency_failed_event_sender.end()) {
+                                   auto index = std::get<AssetIndex>(failed.id.id);
+                                   it->second(world, index, failed.path, failed.error);
+                               }
 
-                        std::visit(
-                            utils::visitor{
-                                [&](const load_error::RequestHandleMismatch& e) {
-                                    spdlog::error(
-                                        "[asset_server] Asset load failed for '{}': type mismatch — requested '{}' "
-                                        "but loader '{}' produces '{}'",
-                                        failed.path.string(), e.requested_type.short_name(), e.loader_name,
-                                        e.actual_type.short_name());
-                                },
-                                [&](const load_error::MissingAssetLoader& e) {
-                                    if (!e.extension.empty()) {
-                                        spdlog::error(
-                                            "[asset_server] Asset load failed for '{}': no loader registered for "
-                                            "extension(s) [{}]",
-                                            failed.path.string(),
-                                            std::accumulate(std::next(e.extension.begin()), e.extension.end(),
-                                                            e.extension.front(),
-                                                            [](std::string a, const std::string& b) {
-                                                                return std::move(a) + ", " + b;
-                                                            }));
-                                    } else if (e.asset_type) {
-                                        spdlog::error(
-                                            "[asset_server] Asset load failed for '{}': no loader registered for "
-                                            "asset type '{}'",
-                                            failed.path.string(), e.asset_type->short_name());
-                                    } else {
-                                        spdlog::error(
-                                            "[asset_server] Asset load failed for '{}': no loader found (unknown "
-                                            "extension and type)",
-                                            failed.path.string());
-                                    }
-                                },
-                                [&](const load_error::AssetLoaderException& e) {
-                                    std::string what = "(unknown exception)";
-                                    if (e.exception) {
-                                        try {
-                                            std::rethrow_exception(e.exception);
-                                        } catch (const std::exception& ex) {
-                                            what = ex.what();
-                                        } catch (...) {}
-                                    }
-                                    spdlog::error("[asset_server] Asset load failed for '{}' (loader '{}'): {}",
-                                                  failed.path.string(), e.loader_name, what);
-                                },
-                            },
-                            failed.error);
-                    },
-                },
-                *event);
+                               log_asset_load_error(failed.error, failed.path);
+                           },
+                       },
+                       *event);
         }
 
         if (!untyped_failures.empty()) {
@@ -410,7 +331,7 @@ std::optional<AssetServer::MetaLoaderReader> AssetServer::get_meta_loader_and_re
     // 1. Resolve the source
     auto source_opt = get_source(asset_path.source);
     if (!source_opt) {
-        out_error = AssetLoadError{load_error::MissingAssetLoader{std::nullopt, asset_type_id, asset_path, {}}};
+        out_error = AssetLoadError{load_error::MissingAssetSourceError{asset_path.source}};
         return std::nullopt;
     }
     const AssetSource& source = source_opt->get();
@@ -421,7 +342,7 @@ std::optional<AssetServer::MetaLoaderReader> AssetServer::get_meta_loader_and_re
     if (data->mode == AssetServerMode::Processed) {
         processed_reader_opt = source.processed_reader();
         if (!processed_reader_opt) {
-            out_error = AssetLoadError{load_error::MissingAssetLoader{std::nullopt, asset_type_id, asset_path, {}}};
+            out_error = AssetLoadError{load_error::MissingProcessedAssetReaderError{asset_path.source}};
             return std::nullopt;
         }
         reader_ptr = &processed_reader_opt->get();
@@ -489,40 +410,45 @@ std::optional<AssetServer::MetaLoaderReader> AssetServer::get_meta_loader_and_re
 
     // 5. Build meta from the loader.  Prefer the stored .meta file bytes so that
     //    user-customised loader settings are respected (matches Bevy's
-    //    ErasedAssetLoader::deserialize_meta path).  Fall back to default_meta()
-    //    when no .meta file exists or deserialization fails.
-    auto meta = [&]() -> std::unique_ptr<AssetMetaDyn> {
+    //    ErasedAssetLoader::deserialize_meta path).  Return a DeserializeMeta error
+    //    if the full meta bytes fail to deserialize (matches Bevy's load_internal).
+    auto meta = [&]() -> std::expected<std::unique_ptr<AssetMetaDyn>, AssetLoadError> {
         if (stored_meta_bytes) {
             auto dm = loader->deserialize_meta(*stored_meta_bytes);
             if (dm) return std::move(*dm);
-            spdlog::warn("Failed to deserialize .meta for '{}': {}; using defaults", asset_path.string(), dm.error());
+            return std::unexpected(AssetLoadError{load_error::DeserializeMeta{asset_path, std::string(dm.error())}});
         }
         return loader->default_meta();
     }();
+    if (!meta) {
+        out_error = meta.error();
+        return std::nullopt;
+    }
+
+    // 5b. Check meta action type: Ignore and Process are not loadable directly.
+    //     Matches bevy_asset AssetLoadError::CannotLoadIgnoredAsset / CannotLoadProcessedAsset.
+    switch ((*meta)->action_type()) {
+        case AssetActionType::Ignore:
+            out_error = AssetLoadError{load_error::CannotLoadIgnoredAsset{asset_path}};
+            return std::nullopt;
+        case AssetActionType::Process:
+            if (data->mode != AssetServerMode::Processed) {
+                out_error = AssetLoadError{load_error::CannotLoadProcessedAsset{asset_path}};
+                return std::nullopt;
+            }
+            break;
+        case AssetActionType::Load:
+            break;
+    }
 
     // 6. Open the asset file for reading
     auto read_result = reader_ptr->read(asset_path.path);
     if (!read_result) {
-        out_error = AssetLoadError{load_error::AssetLoaderException{
-            std::visit(
-                utils::visitor{
-                    [](const reader_errors::NotFound& e) -> std::exception_ptr {
-                        return std::make_exception_ptr(std::runtime_error("Asset not found: " + e.path.string()));
-                    },
-                    [](const reader_errors::IoError& e) -> std::exception_ptr {
-                        return std::make_exception_ptr(std::system_error(e.code));
-                    },
-                    [](const reader_errors::HttpError& e) -> std::exception_ptr {
-                        return std::make_exception_ptr(std::runtime_error("HTTP error " + std::to_string(e.status)));
-                    },
-                    [](const std::exception_ptr& ep) -> std::exception_ptr { return ep; },
-                },
-                read_result.error()),
-            asset_path, loader->loader_type().short_name()}};
+        out_error = AssetLoadError{load_error::AssetReaderError{read_result.error()}};
         return std::nullopt;
     }
 
-    return MetaLoaderReader{std::move(meta), std::move(loader), std::move(*read_result)};
+    return MetaLoaderReader{std::move(*meta), std::move(loader), std::move(*read_result)};
 }
 
 // ---------------------------------------------------------------------------

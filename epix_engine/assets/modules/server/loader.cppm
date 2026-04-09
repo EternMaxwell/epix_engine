@@ -10,6 +10,7 @@ import :concepts;
 import :store;
 import :handle;
 import :meta;
+import :io.reader;
 
 namespace epix::assets {
 template <typename E>
@@ -233,7 +234,8 @@ struct LoadedAsset {
 // without creating a circular module dependency (server.info imports server.loader).
 
 export namespace load_error {
-/** @brief Requested typed handle but loader produced a different asset type. */
+/** @brief Requested typed handle but loader produced a different asset type.
+ *  Matches bevy_asset AssetLoadError::RequestedHandleTypeMismatch. */
 struct RequestHandleMismatch {
     AssetPath path;
     meta::type_index requested_type;
@@ -241,7 +243,8 @@ struct RequestHandleMismatch {
     std::string_view loader_name;
     bool operator==(const RequestHandleMismatch&) const = default;
 };
-/** @brief No asset loader is registered for this extension/type. */
+/** @brief No asset loader is registered for this extension/type.
+ *  Matches bevy_asset AssetLoadError::MissingAssetLoader. */
 struct MissingAssetLoader {
     std::optional<std::string> loader_name;
     std::optional<meta::type_index> asset_type;
@@ -249,28 +252,90 @@ struct MissingAssetLoader {
     std::vector<std::string> extension;
     bool operator==(const MissingAssetLoader&) const = default;
 };
-/** @brief The asset loader threw an exception during loading. */
+/** @brief The asset loader returned an error or threw an exception.
+ *  Merges bevy_asset's AssetLoaderError and AssetLoaderPanic (no panic in C++). */
 struct AssetLoaderException {
     std::exception_ptr exception;
     AssetPath path;
     std::string_view loader_name;
     bool operator==(const AssetLoaderException&) const = default;
 };
+/** @brief The AssetReader returned an error while reading the asset file.
+ *  Matches bevy_asset AssetLoadError::AssetReaderError. */
+struct AssetReaderError {
+    epix::assets::AssetReaderError error;
+    bool operator==(const AssetReaderError&) const = default;
+};
+/** @brief The asset source does not exist.
+ *  Matches bevy_asset AssetLoadError::MissingAssetSourceError. */
+struct MissingAssetSourceError {
+    AssetSourceId source_id;
+    bool operator==(const MissingAssetSourceError&) const = default;
+};
+/** @brief No processed AssetReader is configured for the source.
+ *  Matches bevy_asset AssetLoadError::MissingProcessedAssetReaderError. */
+struct MissingProcessedAssetReaderError {
+    AssetSourceId source_id;
+    bool operator==(const MissingProcessedAssetReaderError&) const = default;
+};
+/** @brief Failed to read the asset metadata bytes from the reader.
+ *  Matches bevy_asset AssetLoadError::AssetMetaReadError. */
+struct AssetMetaReadError {
+    AssetPath path;
+    bool operator==(const AssetMetaReadError&) const = default;
+};
+/** @brief Failed to deserialize asset meta.
+ *  Matches bevy_asset AssetLoadError::DeserializeMeta. */
+struct DeserializeMeta {
+    AssetPath path;
+    std::string error;
+    bool operator==(const DeserializeMeta&) const = default;
+};
+/** @brief Asset is configured to be processed and cannot be loaded directly.
+ *  Matches bevy_asset AssetLoadError::CannotLoadProcessedAsset. */
+struct CannotLoadProcessedAsset {
+    AssetPath path;
+    bool operator==(const CannotLoadProcessedAsset&) const = default;
+};
+/** @brief Asset is configured to be ignored and cannot be loaded.
+ *  Matches bevy_asset AssetLoadError::CannotLoadIgnoredAsset. */
+struct CannotLoadIgnoredAsset {
+    AssetPath path;
+    bool operator==(const CannotLoadIgnoredAsset&) const = default;
+};
+/** @brief The loaded asset contains no labeled sub-asset matching the requested label.
+ *  Matches bevy_asset AssetLoadError::MissingLabel. */
+struct MissingLabel {
+    AssetPath base_path;
+    std::string label;
+    std::vector<std::string> all_labels;
+    bool operator==(const MissingLabel&) const = default;
+};
 }  // namespace load_error
 
 /** @brief Union of all asset load error variants. Matches bevy_asset's AssetLoadError. */
-export using AssetLoadError =
-    std::variant<load_error::RequestHandleMismatch, load_error::MissingAssetLoader, load_error::AssetLoaderException>;
+export using AssetLoadError = std::variant<load_error::RequestHandleMismatch,
+                                           load_error::MissingAssetLoader,
+                                           load_error::AssetLoaderException,
+                                           load_error::AssetReaderError,
+                                           load_error::MissingAssetSourceError,
+                                           load_error::MissingProcessedAssetReaderError,
+                                           load_error::AssetMetaReadError,
+                                           load_error::DeserializeMeta,
+                                           load_error::CannotLoadProcessedAsset,
+                                           load_error::CannotLoadIgnoredAsset,
+                                           load_error::MissingLabel>;
 
 /** @brief Simple load-state discriminant without associated error data. */
 export enum LoadStateOK { NotLoaded, Loading, Loaded };
 
-/** @brief Current state of an asset's loading lifecycle. */
-export using LoadState = std::variant<LoadStateOK, AssetLoadError>;
+/** @brief Current state of an asset's loading lifecycle.
+ *  Failed uses shared_ptr to share the same error across the dependency tree (matches Bevy's Arc<AssetLoadError>). */
+export using LoadState = std::variant<LoadStateOK, std::shared_ptr<AssetLoadError>>;
 
 /** @brief Load state of an asset's direct dependencies. */
-export struct DependencyLoadState : std::variant<LoadStateOK, AssetLoadError> {
-    using base = std::variant<LoadStateOK, AssetLoadError>;
+export struct DependencyLoadState : std::variant<LoadStateOK, std::shared_ptr<AssetLoadError>> {
+    using base = std::variant<LoadStateOK, std::shared_ptr<AssetLoadError>>;
     using base::base;
     DependencyLoadState() = default;
     bool is_loading() const {
@@ -279,12 +344,17 @@ export struct DependencyLoadState : std::variant<LoadStateOK, AssetLoadError> {
     bool is_loaded() const {
         return std::holds_alternative<LoadStateOK>(*this) && std::get<LoadStateOK>(*this) == LoadStateOK::Loaded;
     }
-    bool is_failed() const { return std::holds_alternative<AssetLoadError>(*this); }
+    bool is_failed() const { return std::holds_alternative<std::shared_ptr<AssetLoadError>>(*this); }
+    /** @brief Returns the shared error pointer if failed, null otherwise. */
+    std::shared_ptr<AssetLoadError> error() const {
+        if (auto* p = std::get_if<std::shared_ptr<AssetLoadError>>(this)) return *p;
+        return nullptr;
+    }
 };
 
 /** @brief Load state of an asset's full recursive dependency tree. */
-export struct RecursiveDependencyLoadState : std::variant<LoadStateOK, AssetLoadError> {
-    using base = std::variant<LoadStateOK, AssetLoadError>;
+export struct RecursiveDependencyLoadState : std::variant<LoadStateOK, std::shared_ptr<AssetLoadError>> {
+    using base = std::variant<LoadStateOK, std::shared_ptr<AssetLoadError>>;
     using base::base;
     RecursiveDependencyLoadState() = default;
     bool is_loading() const {
@@ -293,7 +363,12 @@ export struct RecursiveDependencyLoadState : std::variant<LoadStateOK, AssetLoad
     bool is_loaded() const {
         return std::holds_alternative<LoadStateOK>(*this) && std::get<LoadStateOK>(*this) == LoadStateOK::Loaded;
     }
-    bool is_failed() const { return std::holds_alternative<AssetLoadError>(*this); }
+    bool is_failed() const { return std::holds_alternative<std::shared_ptr<AssetLoadError>>(*this); }
+    /** @brief Returns the shared error pointer if failed, null otherwise. */
+    std::shared_ptr<AssetLoadError> error() const {
+        if (auto* p = std::get_if<std::shared_ptr<AssetLoadError>>(this)) return *p;
+        return nullptr;
+    }
 };
 
 export namespace wait_for_asset_error {
@@ -307,6 +382,15 @@ struct DependencyFailed {
 }  // namespace wait_for_asset_error
 export using WaitForAssetError =
     std::variant<wait_for_asset_error::NotLoaded, wait_for_asset_error::Failed, wait_for_asset_error::DependencyFailed>;
+
+/** @brief Format an AssetLoadError into either a human-readable string or an exception_ptr.
+ *  Used to populate UntypedAssetLoadFailedEvent and AssetLoadFailedEvent. */
+export std::variant<std::string, std::exception_ptr> format_asset_load_error(const AssetLoadError& error);
+
+/** @brief Log an AssetLoadError via spdlog::error with a consistent "[asset_server]" prefix.
+ *  @param error    The load error.
+ *  @param path     The asset path being loaded (used for context in multi-part errors). */
+export void log_asset_load_error(const AssetLoadError& error, const AssetPath& path);
 
 namespace internal_asset_event {
 struct Loaded {

@@ -61,12 +61,10 @@ static int svo_cpu_lookup(const SvoBuffer& buf, const std::vector<int32_t>& pos,
         uint32_t word       = w[node_idx];
         uint32_t valid_mask = word & ((1u << cpn) - 1u);
         uint32_t leaf_mask  = (word >> cpn) & ((1u << cpn) - 1u);
-        uint32_t ch_offset  = word >> (2u * cpn);
-
+        // child_offset is always 1 and is no longer encoded in the descriptor
         if (!((valid_mask >> ci) & 1u)) return -1;  // absent
-
         uint32_t pbc      = static_cast<uint32_t>(std::popcount(valid_mask & ((1u << ci) - 1u)));
-        uint32_t slot_pos = node_idx + ch_offset + pbc;
+        uint32_t slot_pos = node_idx + 1u + pbc;
 
         if ((leaf_mask >> ci) & 1u) return static_cast<int>(w[slot_pos]);  // data index
 
@@ -553,4 +551,3 @@ TEST(SvoUploadDenseExtGrid3D, BasicLookup) {
     }
     EXPECT_EQ(svo_cpu_lookup(buf, {0, 1, 0}), -1);
 }
-

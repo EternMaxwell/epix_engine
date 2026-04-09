@@ -14,6 +14,7 @@ import :server.loaders;
 
 import :meta;
 import :io.source;
+import :io.reader;
 
 namespace epix::assets {
 /** @brief Operational mode of the asset server. */
@@ -108,21 +109,8 @@ export struct AssetServer {
             meta::type_id<A>{}, +[](core::World& world, AssetIndex index, AssetPath path, AssetLoadError error) {
                 auto events_opt = world.get_resource_mut<core::Events<AssetLoadFailedEvent<A>>>();
                 if (events_opt) {
-                    events_opt->get().push(AssetLoadFailedEvent<A>{
-                        AssetId<A>(index), std::move(path),
-                        std::visit(utils::visitor{
-                                       [](const load_error::RequestHandleMismatch& e)
-                                           -> std::variant<std::string, std::exception_ptr> {
-                                           return std::string("Request handle type mismatch for ") + e.path.string();
-                                       },
-                                       [](const load_error::MissingAssetLoader& e)
-                                           -> std::variant<std::string, std::exception_ptr> {
-                                           return std::string("Missing asset loader for ") + e.path.string();
-                                       },
-                                       [](const load_error::AssetLoaderException& e)
-                                           -> std::variant<std::string, std::exception_ptr> { return e.exception; },
-                                   },
-                                   error)});
+                    events_opt->get().push(
+                        AssetLoadFailedEvent<A>{AssetId<A>(index), std::move(path), format_asset_load_error(error)});
                 }
             });
     }
@@ -520,12 +508,6 @@ Handle<A> NestedLoader::load(const AssetPath& path) {
         handle        = existing ? *existing : m_context.asset_server().template load<A>(path);
     }
     m_context.track_dependency(UntypedAssetId(handle.id()));
-    return handle;
-}
-
-UntypedHandle NestedLoader::load_untyped(const AssetPath& path) {
-    UntypedHandle handle = m_context.asset_server().load_untyped(path);
-    m_context.track_dependency(handle.id());
     return handle;
 }
 

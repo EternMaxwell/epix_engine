@@ -13,10 +13,7 @@ import :concepts;
 
 export namespace uuids {
 /** @brief Three-way comparison for uuids::uuid, providing strong ordering. */
-auto operator<=>(const uuids::uuid& lhs, const uuids::uuid& rhs) noexcept {
-    if (lhs == rhs) return std::strong_ordering::equal;
-    return lhs < rhs ? std::strong_ordering::less : std::strong_ordering::greater;
-}
+std::strong_ordering operator<=>(const uuids::uuid& lhs, const uuids::uuid& rhs) noexcept;
 }  // namespace uuids
 static_assert(std::three_way_comparable<uuids::uuid>);
 
@@ -132,26 +129,9 @@ export struct UntypedAssetId {
         return other == *this;
     }
     /** @brief Return a human-readable string including the type name and underlying id. */
-    std::string to_string() const {
-        return std::format("UntypedAssetId<{}>({})", type.name(),
-                           std::visit(utils::visitor{[](const AssetIndex& index) {
-                                                         return std::format("AssetIndex(index={}, generation={})",
-                                                                            index.index(), index.generation());
-                                                     },
-                                                     [](const uuids::uuid& id) {
-                                                         return std::format("UUID({})", uuids::to_string(id));
-                                                     }},
-                                      id));
-    }
+    std::string to_string() const;
     /** @brief Return a short string representation without the type name. */
-    std::string to_string_short() const {
-        return std::visit(
-            utils::visitor{[](const AssetIndex& index) {
-                               return std::format("AssetIndex({}, {})", index.index(), index.generation());
-                           },
-                           [](const uuids::uuid& id) { return std::format("UUID({})", uuids::to_string(id)); }},
-            id);
-    }
+    std::string to_string_short() const;
 };
 
 export template <typename T>
@@ -175,7 +155,7 @@ struct InternalAssetId : std::variant<AssetIndex, uuids::uuid> {
         return AssetId<T>(*this);
     }
 };
-}  // namespace assets
+}  // namespace epix::assets
 
 export namespace std {
 template <typename T>

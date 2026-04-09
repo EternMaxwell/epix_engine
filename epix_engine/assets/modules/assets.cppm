@@ -29,17 +29,6 @@ export import :io.embedded;
 using namespace epix::core;
 
 namespace epix::assets {
-AssetProcessor::AssetProcessor(AssetSourceBuilders& builders, bool watching_for_changes) {
-    auto state       = std::make_shared<ProcessingState>();
-    auto sources_val = builders.build_sources(true, watching_for_changes);
-    sources_val.gate_on_processor([state](AssetSourceId id, const AssetReader& reader) -> std::unique_ptr<AssetReader> {
-        return std::make_unique<ProcessorGatedReader>(std::move(id), reader, state);
-    });
-    auto sources = std::make_shared<AssetSources>(std::move(sources_val));
-    data         = std::shared_ptr<AssetProcessorData>(new AssetProcessorData(sources, std::move(state), std::make_unique<FileTransactionLogFactory>()));
-    server       = AssetServer(std::move(sources), AssetServerMode::Processed,
-                               AssetMetaCheck{asset_meta_check::Always{}}, false, UnapprovedPathMode::Forbid);
-}
 
 /** @brief Built-in system set labels for asset event processing order. */
 export enum class AssetSystems {

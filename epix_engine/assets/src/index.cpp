@@ -4,8 +4,6 @@ module;
 
 module epix.assets;
 
-import :index;
-
 namespace epix::assets {
 
 AssetIndexAllocator::AssetIndexAllocator() {

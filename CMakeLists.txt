@@ -114,8 +114,6 @@ endblock()
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/asio.cmake)
 
-set(CMAKE_CXX_SCAN_FOR_MODULES ON)
-
 # WebGPU integration
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/WebGPU.cmake)
 
@@ -128,6 +126,8 @@ target_sources(glm
   PUBLIC FILE_SET cxx_modules TYPE CXX_MODULES FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/libs/glm/glm/glm.cppm"
 )
+
+set(CMAKE_CXX_SCAN_FOR_MODULES ON)
 
 add_library(BSThreadPool STATIC)
 target_include_directories(BSThreadPool PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/libs/thread-pool/include)

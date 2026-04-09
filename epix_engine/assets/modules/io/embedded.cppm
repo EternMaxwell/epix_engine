@@ -30,28 +30,17 @@ export struct EmbeddedAssetRegistry {
     /** @brief Insert asset data into the embedded registry.
      *  @param asset_path Path relative to the "embedded" source root.
      *  @param data       Raw bytes of the asset. */
-    void insert_asset(const std::filesystem::path& asset_path, std::span<const std::byte> data) {
-        auto val = memory::Value::from_shared(std::make_shared<std::vector<std::byte>>(data.begin(), data.end()));
-        (void)m_dir.insert_file(asset_path, std::move(val));
-    }
+    void insert_asset(const std::filesystem::path& asset_path, std::span<const std::byte> data);
 
     /** @brief Insert asset data from a static/compile-time buffer (zero-copy view).
      *  @param asset_path Path relative to the "embedded" source root.
      *  @param data       Static byte span (must outlive the registry). */
-    void insert_asset_static(const std::filesystem::path& asset_path, std::span<const std::byte> data) {
-        auto val = memory::Value::from_span(data);
-        (void)m_dir.insert_file(asset_path, std::move(val));
-    }
+    void insert_asset_static(const std::filesystem::path& asset_path, std::span<const std::byte> data);
 
     /** @brief Insert metadata for an embedded asset.
      *  @param asset_path Path relative to the "embedded" source root.
      *  @param meta_data  Raw bytes of the meta file. */
-    void insert_meta(const std::filesystem::path& asset_path, std::span<const std::byte> meta_data) {
-        auto meta_path = std::filesystem::path(asset_path.string() + ".meta");
-        auto val =
-            memory::Value::from_shared(std::make_shared<std::vector<std::byte>>(meta_data.begin(), meta_data.end()));
-        (void)m_dir.insert_file(meta_path, std::move(val));
-    }
+    void insert_meta(const std::filesystem::path& asset_path, std::span<const std::byte> meta_data);
 
     /** @brief Remove a previously inserted asset.
      *  @param asset_path Path relative to the "embedded" source root.
@@ -60,17 +49,7 @@ export struct EmbeddedAssetRegistry {
 
     /** @brief Register this embedded registry as an asset source with the given source builders.
      *  Creates a "embedded" source backed by the in-memory directory. */
-    void register_source(AssetSourceBuilders& sources) {
-        auto dir = m_dir;
-        sources.insert(AssetSourceId(std::string(EMBEDDED)),
-                       AssetSourceBuilder::create([dir]() -> std::unique_ptr<AssetReader> {
-                           return std::make_unique<MemoryAssetReader>(dir);
-                       }).with_processed_reader([dir]() -> std::unique_ptr<AssetReader> {
-                           // Embedded assets are pre-compiled and treated as pre-processed.
-                           // The processed reader reads from the same in-memory directory.
-                           return std::make_unique<MemoryAssetReader>(dir);
-                       }));
-    }
+    void register_source(AssetSourceBuilders& sources);
 
     /** @brief Get the underlying in-memory directory (for advanced use). */
     const memory::Directory& directory() const { return m_dir; }
