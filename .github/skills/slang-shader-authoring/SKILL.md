@@ -113,7 +113,7 @@ Handle<Shader> handle = asset_server.load<Shader>("source://shaders/my_shader.sl
 ### 2 — Register in ShaderCache
 
 ```cpp
-ShaderId id = ShaderId::next();
+assets::AssetId<Shader> id = ...;  // from asset load or custom ID for inline shaders
 cache.set_shader(id, std::move(shader));
 ```
 

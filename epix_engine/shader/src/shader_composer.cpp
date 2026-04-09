@@ -24,6 +24,51 @@ static std::string_view trim_sv(std::string_view sv) {
     return sv.substr(start, end - start + 1);
 }
 
+static bool looks_like_asset_context(std::string_view name) {
+    return name.find("://") != std::string_view::npos || name.find('/') != std::string_view::npos ||
+           name.find('\\') != std::string_view::npos || name.ends_with(".wgsl") || name.ends_with(".slang") ||
+           name.ends_with(".spv");
+}
+
+static std::optional<epix::assets::AssetPath> asset_path_from_context_name(std::string_view context_name) {
+    if (context_name.size() >= 2 && context_name.front() == '"' && context_name.back() == '"') {
+        context_name.remove_prefix(1);
+        context_name.remove_suffix(1);
+    }
+
+    if (!looks_like_asset_context(context_name)) {
+        return std::nullopt;
+    }
+
+    return epix::assets::AssetPath(std::string(context_name));
+}
+
+static std::string canonicalize_import_name(std::string_view context_name, std::string_view raw_import) {
+    std::string_view literal = raw_import;
+    if (literal.starts_with('"')) {
+        auto end_quote = literal.find('"', 1);
+        literal        = end_quote == std::string_view::npos ? literal.substr(1) : literal.substr(1, end_quote - 1);
+    }
+
+    auto context_path = asset_path_from_context_name(context_name);
+    if (!context_path.has_value()) {
+        return '"' + std::string(literal) + '"';
+    }
+
+    epix::assets::AssetPath import_path{std::string(literal)};
+    epix::assets::AssetPath resolved = import_path;
+    if (import_path.source.is_default()) {
+        if (import_path.path.has_root_directory()) {
+            resolved =
+                epix::assets::AssetPath(context_path->source, import_path.path.relative_path(), import_path.label);
+        } else {
+            resolved = context_path->resolve(import_path);
+        }
+    }
+
+    return epix::shader::ShaderImport::asset_path(std::move(resolved)).module_name();
+}
+
 // ─── substitute_defs ───────────────────────────────────────────────────────
 // Replace #{NAME} and #NAME occurrences in a line with their def values.
 // #{NAME} is always matched (braced form); #NAME is matched only when the
@@ -235,13 +280,7 @@ std::expected<std::string, ComposeError> ShaderComposer::compose_internal(
                 std::string import_name;
                 std::string_view r = trim_sv(rest);
                 if (r.starts_with('"')) {
-                    // "asset/path.wgsl" → module name = '"asset/path.wgsl"'
-                    auto end_quote = r.find('"', 1);
-                    if (end_quote == std::string_view::npos) {
-                        import_name = std::string(r.substr(1));
-                    } else {
-                        import_name = '"' + std::string(r.substr(1, end_quote - 1)) + '"';
-                    }
+                    import_name = canonicalize_import_name(context_name, r);
                 } else {
                     // custom name (possibly "name as alias" - take first token)
                     auto sp2    = r.find_first_of(" \t");

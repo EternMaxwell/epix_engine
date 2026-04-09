@@ -275,7 +275,7 @@ void computeMain()
 {
     epix::ext::grid::SvoGrid2D grid;
     grid.buf     = svo_buf;
-    out_result[0] = grid.lookup(int2(0, 0));
+    out_result[0] = grid.lookup({0, 0});
 }
 )");
     EXPECT_TRUE(words.has_value());
@@ -294,7 +294,7 @@ void computeMain()
 {
     epix::ext::grid::SvoGrid3D grid;
     grid.buf     = svo_buf;
-    out_result[0] = grid.lookup(int3(0, 0, 0));
+    out_result[0] = grid.lookup({0, 0, 0});
 }
 )");
     EXPECT_TRUE(words.has_value());
@@ -313,7 +313,7 @@ void computeMain()
 {
     epix::ext::grid::SvoGrid2D grid;
     grid.buf      = svo_buf;
-    out_result[0] = grid.contains(int2(1, 2)) ? 1u : 0u;
+    out_result[0] = grid.contains({1, 2}) ? 1u : 0u;
 }
 )");
     EXPECT_TRUE(words.has_value());
@@ -332,7 +332,7 @@ void computeMain()
 {
     epix::ext::grid::SvoGrid1D grid;
     grid.buf     = svo_buf;
-    out_result[0] = grid.lookup(5);
+    out_result[0] = grid.lookup({5});
 }
 )");
     EXPECT_TRUE(words.has_value());
@@ -356,8 +356,8 @@ void computeMain()
 {
     epix::ext::grid::SvoGrid2D grid;
     grid.buf      = svo_buf;
-    out_result[0] = grid.lookup(int2(1, 2));   // present  鈫?0
-    out_result[1] = grid.lookup(int2(0, 0));   // absent   鈫?-1
+    out_result[0] = grid.lookup({1, 2});   // present  鈫?0
+    out_result[1] = grid.lookup({0, 0});   // absent   鈫?-1
     out_result[2] = grid.data_count();
 }
 )");
@@ -487,9 +487,9 @@ void computeMain()
 {
     epix::ext::grid::SvoGrid3D grid;
     grid.buf      = svo_buf;
-    out_result[0] = grid.lookup(int3(0, 0, 0));   // first cell
-    out_result[1] = grid.lookup(int3(1, 1, 1));   // second cell
-    out_result[2] = grid.lookup(int3(0, 1, 0));   // absent
+    out_result[0] = grid.lookup({0, 0, 0});   // first cell
+    out_result[1] = grid.lookup({1, 1, 1});   // second cell
+    out_result[2] = grid.lookup({0, 1, 0});   // absent
     out_result[3] = int(grid.data_count());
 }
 )",
@@ -606,7 +606,7 @@ void computeMain()
 {
     epix::ext::grid::SvoGrid2D grid;
     grid.buf      = svo_buf;
-    out_result[0] = grid.lookup(int2(0, 0));
+    out_result[0] = grid.lookup({0, 0});
     out_result[1] = int(grid.data_count());
 }
 )",
@@ -727,7 +727,7 @@ void computeMain(uint3 dtid : SV_DispatchThreadID)
     grid.buf   = svo_buf;
     uint i     = dtid.x;
     uint base  = i * 3u;
-    results[i] = grid.lookup(int3(queries[base], queries[base + 1u], queries[base + 2u]));
+    results[i] = grid.lookup({queries[base], queries[base + 1u], queries[base + 2u]});
 }
 )",
                                     "embedded://test/svo_large_scale.slang");
@@ -772,7 +772,7 @@ void computeMain(uint3 dtid : SV_DispatchThreadID)
     const std::uint32_t N_Q = static_cast<std::uint32_t>(query_expect.size());
 
     // ---- GPU buffers ----
-    SvoBuffer svo = svo_upload(grid).value();
+    SvoBuffer svo                     = svo_upload(grid).value();
     const std::uint32_t svo_bytes     = static_cast<std::uint32_t>(svo.words.size() * sizeof(std::uint32_t));
     const std::uint32_t queries_bytes = N_Q * 3u * sizeof(std::int32_t);
     const std::uint32_t results_bytes = N_Q * sizeof(std::int32_t);
@@ -892,5 +892,3 @@ void computeMain(uint3 dtid : SV_DispatchThreadID)
     read_buf.unmap();
     EXPECT_TRUE(gpu->errors->empty()) << gpu->errors->front();
 }
-
-

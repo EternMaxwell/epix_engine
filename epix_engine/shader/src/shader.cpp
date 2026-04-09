@@ -98,6 +98,17 @@ epix::assets::AssetPath resolve_dependency_path(const epix::assets::AssetPath& p
     return parent_path.resolve(resolved);
 }
 
+epix::assets::AssetPath resolve_asset_path_literal(const epix::assets::AssetPath& parent_path,
+                                                   epix::assets::AssetPath import_path) {
+    if (!import_path.source.is_default()) {
+        return import_path;
+    }
+    if (import_path.path.has_root_directory()) {
+        return epix::assets::AssetPath(parent_path.source, import_path.path.relative_path(), import_path.label);
+    }
+    return parent_path.resolve(import_path);
+}
+
 void ensure_slang_extension(std::string& path) {
     std::string_view path_part = path;
     if (auto scheme = path.find("://"); scheme != std::string::npos) {
@@ -132,12 +143,13 @@ std::string canonicalize_slang_custom_name(std::string_view name) {
     return file_path;
 }
 
-epix::assets::AssetPath parse_slang_asset_path_literal(std::string_view name) {
+epix::assets::AssetPath parse_slang_asset_path_literal(std::string_view name,
+                                                       const epix::assets::AssetPath& importer_path) {
     auto end_q   = name.find('"', 1);
     auto literal = end_q == std::string_view::npos ? name.substr(1) : name.substr(1, end_q - 1);
     auto path    = normalize_path_string(std::string(literal));
     ensure_slang_extension(path);
-    return epix::assets::AssetPath(std::move(path));
+    return resolve_asset_path_literal(importer_path, epix::assets::AssetPath(std::move(path)));
 }
 
 void write_u8(std::vector<std::uint8_t>& out, std::uint8_t v) { out.push_back(v); }
@@ -212,7 +224,7 @@ bool read_u32(const std::vector<char>& bytes, std::size_t& pos, std::uint32_t& o
     const auto b2 = static_cast<std::uint8_t>(bytes[pos + 2]);
     const auto b3 = static_cast<std::uint8_t>(bytes[pos + 3]);
     out           = static_cast<std::uint32_t>(b0) | (static_cast<std::uint32_t>(b1) << 8) |
-                    (static_cast<std::uint32_t>(b2) << 16) | (static_cast<std::uint32_t>(b3) << 24);
+          (static_cast<std::uint32_t>(b2) << 16) | (static_cast<std::uint32_t>(b3) << 24);
     pos += 4;
     return true;
 }
@@ -336,12 +348,12 @@ std::pair<ShaderImport, std::vector<ShaderImport>> Shader::preprocess(std::strin
         } else if (directive == "import" && !rest.empty()) {
             if (rest.starts_with('"')) {
                 // #import "asset/path.wgsl"  (optionally with source:// prefix)
-                // Preserve the full AssetPath including any source:// scheme so the
-                // loader can route to the right asset source.
+                // Resolve immediately to the concrete asset path visible from this shader.
                 auto end_q    = rest.find('"', 1);
                 std::string p = end_q == std::string_view::npos ? std::string(rest.substr(1))
                                                                 : std::string(rest.substr(1, end_q - 1));
-                imports.emplace_back(ShaderImport::asset_path(epix::assets::AssetPath(std::move(p))));
+                imports.emplace_back(
+                    ShaderImport::asset_path(resolve_asset_path_literal(path, epix::assets::AssetPath(std::move(p)))));
             } else {
                 // #import some::module::name  (possibly with "as alias")
                 std::size_t as_pos = rest.find(" as ");
@@ -412,7 +424,7 @@ std::pair<ShaderImport, std::vector<ShaderImport>> Shader::preprocess_slang(std:
             while (!name.empty() && (name.back() == ' ' || name.back() == '\t')) name.remove_suffix(1);
             if (!name.empty()) {
                 if (name.front() == '"') {
-                    imports.emplace_back(ShaderImport::asset_path(parse_slang_asset_path_literal(name)));
+                    imports.emplace_back(ShaderImport::asset_path(parse_slang_asset_path_literal(name, path)));
                 } else {
                     imports.emplace_back(ShaderImport::custom(canonicalize_slang_custom_name(name)));
                 }
@@ -431,7 +443,7 @@ std::pair<ShaderImport, std::vector<ShaderImport>> Shader::preprocess_slang(std:
             while (!name.empty() && (name.back() == ' ' || name.back() == '\t')) name.remove_suffix(1);
             if (!name.empty()) {
                 if (name.front() == '"') {
-                    imports.emplace_back(ShaderImport::asset_path(parse_slang_asset_path_literal(name)));
+                    imports.emplace_back(ShaderImport::asset_path(parse_slang_asset_path_literal(name, path)));
                 } else {
                     imports.emplace_back(ShaderImport::custom(canonicalize_slang_custom_name(name)));
                 }

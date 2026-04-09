@@ -208,7 +208,7 @@ export struct ShaderCache {
     LoadModuleFn load_module_;
     std::unordered_map<assets::AssetId<Shader>, Shader> shaders_;
     std::unordered_map<ShaderImport, assets::AssetId<Shader>> import_path_shaders_;
-    std::unordered_map<ShaderImport, std::vector<assets::AssetId<Shader>>> waiting_on_import_;
+    std::unordered_map<ShaderImport, std::unordered_set<assets::AssetId<Shader>>> waiting_on_import_;
     ShaderComposer composer_;
 
     struct SlangCompiler;
@@ -223,8 +223,9 @@ export struct ShaderCache {
 
     static std::expected<void, ShaderCacheError> add_import_to_composer(
         ShaderComposer& composer,
-        const std::unordered_map<ShaderImport, assets::AssetId<Shader>>& import_path_shaders,
+        const std::unordered_map<assets::AssetId<Shader>, ShaderData>& data,
         const std::unordered_map<assets::AssetId<Shader>, Shader>& shaders,
+        assets::AssetId<Shader> shader_id,
         const ShaderImport& import_ref);
 };
 

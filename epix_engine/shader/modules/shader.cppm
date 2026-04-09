@@ -32,26 +32,6 @@ inline std::string canonical_asset_path_string(const assets::AssetPath& path) {
     return normalized;
 }
 
-/** @brief Simple runtime id for shaders created inside the process.
- *
- * This is not the same thing as `assets::AssetId<Shader>`.
- * Use `ShaderId` when you only need a local unique id, for example in runtime
- * bookkeeping or temporary shader graphs.
- */
-export struct ShaderId {
-   private:
-    inline static std::atomic<std::uint32_t> s_counter{0};
-    std::uint32_t value;
-    explicit ShaderId(std::uint32_t v) : value(v) {}
-
-   public:
-    /** @brief Create the next unique local shader id. */
-    static ShaderId next() { return ShaderId{s_counter.fetch_add(1, std::memory_order_relaxed)}; }
-    /** @brief Get the raw integer value. */
-    std::uint32_t get() const { return value; }
-    auto operator<=>(const ShaderId&) const = default;
-};
-
 /** @brief One shader definition value.
  *
  * This is used for shader options such as `USE_FOG`, `MAX_LIGHTS`, or
@@ -179,9 +159,9 @@ export struct Source {
  * - WGSL `#import "common/math.wgsl"` or Slang
  *   `import "common/math.slang";` given this shader path `path://to/this/shader.[ext]`
  *   becomes `ShaderImport::asset_path("path://to/this/common/math.slang")`
- * 
+ *
  * This is also used for the shader to declare how other shaders can import a shader itself.
- * 
+ *
  *  - wgsl: use `#define_import_path ui::button` add `ShaderImport::custom("ui::button")`
  *  - slang: `module mod;` add ShaderImport::custom("mod") and `module "path/to/mod";` so others can use `path.to.mod`.
  *
@@ -450,14 +430,6 @@ export struct ShaderPlugin {
 };
 
 }  // namespace epix::shader
-
-// ─── std::hash specializations ─────────────────────────────────────────────
-template <>
-struct std::hash<epix::shader::ShaderId> {
-    std::size_t operator()(const epix::shader::ShaderId& id) const noexcept {
-        return std::hash<std::uint32_t>{}(id.get());
-    }
-};
 
 template <>
 struct std::hash<epix::shader::ShaderDefVal> {
