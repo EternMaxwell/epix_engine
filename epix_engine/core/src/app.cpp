@@ -5,10 +5,10 @@ module;
 #endif
 
 #include <spdlog/cfg/env.h>
+#include <spdlog/sinks/basic_file_sink.h>
 #include <spdlog/spdlog.h>
 
 #include <stacktrace>
-
 
 module epix.core;
 
@@ -242,6 +242,8 @@ void handle_terminate() {
 
 void App::run() {
     auto prev_terminate = std::set_terminate(handle_terminate);
+    auto file_sink      = std::make_shared<spdlog::sinks::basic_file_sink_mt>("epix.log", true);
+    spdlog::default_logger()->sinks().push_back(file_sink);
     spdlog::info("[app] App building. - {}", _label.to_string());
     resource_scope([&](Plugins& plugins) {
         spdlog::debug("[app] Finishing all plugins for '{}'.", _label.to_string());
@@ -267,5 +269,7 @@ void App::run() {
     resource_scope([&](Plugins& plugins) { plugins.finalize_all(*this); });
     spdlog::info("[app] App terminated. - {}", _label.to_string());
     std::set_terminate(prev_terminate);
+    auto& sinks = spdlog::default_logger()->sinks();
+    sinks.erase(std::remove(sinks.begin(), sinks.end(), file_sink), sinks.end());
 }
 }  // namespace epix::core
