@@ -103,8 +103,7 @@ export using ValidateLogError = std::variant<validate_log_errors::UnrecoverableE
 
 /** @brief Validate the previous state of the transaction log and determine any assets that need reprocessing.
  *  Matches bevy_asset's validate_transaction_log. */
-std::expected<void, ValidateLogError> validate_transaction_log(
-    const ProcessorTransactionLogFactory& log_factory);
+std::expected<void, ValidateLogError> validate_transaction_log(const ProcessorTransactionLogFactory& log_factory);
 
 // ---- FileTransactionLogFactory ----
 
@@ -115,28 +114,17 @@ inline constexpr std::string_view UNRECOVERABLE_ERR = "UnrecoverableError";
 
 /** @brief File-backed ProcessorTransactionLog implementation. */
 struct FileProcessorTransactionLog : ProcessorTransactionLog {
-    std::ofstream log_file;
+    std::filesystem::path file_path;
+    std::optional<std::ofstream> log_file;
 
-    explicit FileProcessorTransactionLog(std::ofstream file) : log_file(std::move(file)) {}
+    explicit FileProcessorTransactionLog(std::filesystem::path path) : file_path(std::move(path)) {}
 
-    std::expected<void, std::string> write_line(const std::string& line) {
-        log_file << line << '\n';
-        log_file.flush();
-        if (!log_file.good()) {
-            return std::unexpected("Failed to write to transaction log");
-        }
-        return {};
-    }
+    std::expected<void, std::string> ensure_open();
+    std::expected<void, std::string> write_line(const std::string& line);
 
-    std::expected<void, std::string> begin_processing(const AssetPath& asset) override {
-        return write_line(std::format("{}{}", ENTRY_BEGIN, asset.string()));
-    }
-
-    std::expected<void, std::string> end_processing(const AssetPath& asset) override {
-        return write_line(std::format("{}{}", ENTRY_END, asset.string()));
-    }
-
-    std::expected<void, std::string> unrecoverable() override { return write_line(std::string(UNRECOVERABLE_ERR)); }
+    std::expected<void, std::string> begin_processing(const AssetPath& asset) override;
+    std::expected<void, std::string> end_processing(const AssetPath& asset) override;
+    std::expected<void, std::string> unrecoverable() override;
 };
 
 /** @brief A transaction log factory that uses a file as its storage.

@@ -14,6 +14,7 @@ import epix.input;
 import epix.window;
 
 import epix.extension.grid;
+import epix.time;
 
 using namespace epix::core;
 
@@ -271,10 +272,10 @@ export struct SandSimulation : grid::ExtendibleChunkRefGrid<kDim> {
           element_registry(std::move(registry)),
           m_cell_size(cell_size) {
         auto sand_res  = element_registry->register_element(ElementBase{
-            .name    = "sand",
-            .density = 1.0f,
-            .type    = ElementType::Powder,
-            .color_func =
+             .name    = "sand",
+             .density = 1.0f,
+             .type    = ElementType::Powder,
+             .color_func =
                 [](std::uint64_t sd) {
                     float t = static_cast<float>(std::hash<std::uint64_t>{}(sd)) /
                               static_cast<float>(std::numeric_limits<std::uint64_t>::max());
@@ -413,11 +414,11 @@ export struct SandSimulation : grid::ExtendibleChunkRefGrid<kDim> {
                                                                    {x, y + cell_size, 0.0f}}};
                               }) |
                               std::views::join;
-        auto colors_view    = chunk.iter<Element>() | std::views::transform([&chunk](auto&& pair) {
+        auto colors_view = chunk.iter<Element>() | std::views::transform([&chunk](auto&& pair) {
                                auto&& [pos, elem] = pair;
                                return std::array<glm::vec4, 4>{elem.color, elem.color, elem.color, elem.color};
-                              }) |
-                              std::views::join;
+                           }) |
+                           std::views::join;
         auto indices_view =
             chunk.iter<Element>() | std::views::enumerate | std::views::transform([](auto&& indexed_pair) {
                 auto&& [i, pair]   = indexed_pair;
@@ -506,16 +507,16 @@ export struct SandSimulation : grid::ExtendibleChunkRefGrid<kDim> {
                 if (!tracked_children.outline_entity.has_value()) {
                     auto outline_mesh =
                         meshes->emplace(build_chunk_outline_mesh(sim->chunk_width(), current_cell_size));
-                    auto outline_entity             = cmd.entity(chunk_entity)
-                                                          .spawn(SandChunkOutline{}, mesh::Mesh2d{outline_mesh},
-                                                                 mesh::MeshMaterial2d{
-                                                                     .color      = glm::vec4(1.0f, 1.0f, 1.0f, 0.55f),
-                                                                     .alpha_mode = mesh::MeshAlphaMode2d::Blend,
-                                                                 },
-                                                                 transform::Transform{
-                                                                     .translation = glm::vec3(0.0f, 0.0f, 0.01f),
-                                                                 })
-                                                          .id();
+                    auto outline_entity = cmd.entity(chunk_entity)
+                                              .spawn(SandChunkOutline{}, mesh::Mesh2d{outline_mesh},
+                                                     mesh::MeshMaterial2d{
+                                                         .color      = glm::vec4(1.0f, 1.0f, 1.0f, 0.55f),
+                                                         .alpha_mode = mesh::MeshAlphaMode2d::Blend,
+                                                     },
+                                                     transform::Transform{
+                                                         .translation = glm::vec3(0.0f, 0.0f, 0.01f),
+                                                     })
+                                              .id();
                     tracked_children.outline_entity = outline_entity;
                 }
             } else {
@@ -608,8 +609,8 @@ export struct SimpleFallingSandPlugin {
                 }
             }).set_name("fallingsand setup"));
 
-        app.add_systems(core::Update, core::into(SandSimulation::step).set_name("fallingsand step"));
-        app.add_systems(core::PostUpdate,
+        app.add_systems(time::FixedUpdate, core::into(SandSimulation::step).set_name("fallingsand step"));
+        app.add_systems(time::FixedPostUpdate,
                         core::into(SandSimulation::sync_chunk_transforms, SandSimulation::build_meshes,
                                    SandSimulation::sync_chunk_outline_children)
                             .set_names(std::array{"fallingsand chunk transform sync", "fallingsand mesh sync",

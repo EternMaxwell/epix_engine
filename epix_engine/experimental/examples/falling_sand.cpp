@@ -11,6 +11,7 @@ import epix.transform;
 import epix.input;
 import epix.extension.grid;
 import epix.experimental.fallingsand;
+import epix.time;
 
 using namespace epix;
 using namespace epix::core;
@@ -62,6 +63,7 @@ int main() {
         .add_plugins(core_graph::CoreGraphPlugin{})
         .add_plugins(mesh::MeshRenderPlugin{})
         .add_plugins(imgui::ImGuiPlugin{})
+        .add_plugins(time::TimePlugin{})
         .add_plugins(ext::fallingsand::SimpleFallingSandPlugin{})
         .add_systems(PreUpdate, into(settings_ui).after(imgui::BeginFrameSet));
 

@@ -1,6 +1,7 @@
 epix_add_module_subdir(epix_ext_fallingsand fallingsand)
 target_link_libraries(epix_ext_fallingsand PUBLIC epix_core)
 target_link_libraries(epix_ext_fallingsand PUBLIC epix_mesh)
+target_link_libraries(epix_ext_fallingsand PUBLIC epix_time)
 target_link_libraries(epix_ext_fallingsand PUBLIC epix_transform)
 target_link_libraries(epix_ext_fallingsand PUBLIC epix_core_graph)
 target_link_libraries(epix_ext_fallingsand PUBLIC epix_ext_grid)

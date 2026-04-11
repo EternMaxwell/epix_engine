@@ -84,10 +84,38 @@ std::expected<std::unique_ptr<ProcessorTransactionLog>, std::string> FileTransac
             return std::unexpected(std::format("Failed to create log directory: {}", ec.message()));
         }
     }
-    std::ofstream file(file_path, std::ios::trunc);
-    if (!file.is_open()) {
-        return std::unexpected("Failed to create transaction log file");
+    return std::make_unique<FileProcessorTransactionLog>(file_path);
+}
+
+std::expected<void, std::string> FileProcessorTransactionLog::ensure_open() {
+    if (log_file.has_value()) return {};
+    std::ofstream f(file_path, std::ios::app);
+    if (!f.is_open()) {
+        return std::unexpected(std::format("Failed to open transaction log file: {}", file_path.string()));
     }
-    return std::make_unique<FileProcessorTransactionLog>(std::move(file));
+    log_file = std::move(f);
+    return {};
+}
+
+std::expected<void, std::string> FileProcessorTransactionLog::write_line(const std::string& line) {
+    if (auto r = ensure_open(); !r) return r;
+    *log_file << line << '\n';
+    log_file->flush();
+    if (!log_file->good()) {
+        return std::unexpected("Failed to write to transaction log");
+    }
+    return {};
+}
+
+std::expected<void, std::string> FileProcessorTransactionLog::begin_processing(const AssetPath& asset) {
+    return write_line(std::format("{}{}", ENTRY_BEGIN, asset.string()));
+}
+
+std::expected<void, std::string> FileProcessorTransactionLog::end_processing(const AssetPath& asset) {
+    return write_line(std::format("{}{}", ENTRY_END, asset.string()));
+}
+
+std::expected<void, std::string> FileProcessorTransactionLog::unrecoverable() {
+    return write_line(std::string(UNRECOVERABLE_ERR));
 }
 }  // namespace epix::assets
