@@ -260,7 +260,9 @@ export struct AssetProcessor {
     const std::shared_ptr<AssetProcessorData>& get_data() const;
 
     /** @brief Get a source by id from the internal server. */
-    std::optional<std::reference_wrapper<const AssetSource>> get_source(const AssetSourceId& source_id) const;
+    std::optional<std::reference_wrapper<const AssetSource>> get_source(const AssetSourceId& source_id) const {
+        return server.get_source(source_id);
+    }
 
     /** @brief Get all sources from the internal server. */
     const std::shared_ptr<AssetSources>& sources() const;

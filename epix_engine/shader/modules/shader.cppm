@@ -112,9 +112,19 @@ export struct Source {
     struct Slang {
         std::string code;
     };
+    /** @brief Pre-compiled Slang IR blob (content of a .slang-module file).
+     *
+     * The bytes are the raw output of Slang's `IModule::serialize()`.  These
+     * modules are loaded via `loadModuleFromIRBlob` and bypass source-level
+     * preprocessing.  The module's import graph is opaque — dependencies are
+     * resolved by Slang internally during deserialization.
+     */
+    struct SlangIr {
+        std::vector<std::uint8_t> bytes;
+    };
 
     /** @brief The active payload. */
-    std::variant<Wgsl, SpirV, Slang> data;
+    std::variant<Wgsl, SpirV, Slang, SlangIr> data;
 
     /** @brief Create WGSL source. */
     static Source wgsl(std::string code) { return {Wgsl{std::move(code)}}; }
@@ -122,6 +132,8 @@ export struct Source {
     static Source spirv(std::vector<std::uint8_t> bytes) { return {SpirV{std::move(bytes)}}; }
     /** @brief Create Slang source. */
     static Source slang(std::string code) { return {Slang{std::move(code)}}; }
+    /** @brief Create a pre-compiled Slang IR module source. */
+    static Source slang_ir(std::vector<std::uint8_t> bytes) { return {SlangIr{std::move(bytes)}}; }
 
     /** @brief Returns `true` when this source holds WGSL text. */
     bool is_wgsl() const { return std::holds_alternative<Wgsl>(data); }
@@ -129,6 +141,8 @@ export struct Source {
     bool is_spirv() const { return std::holds_alternative<SpirV>(data); }
     /** @brief Returns `true` when this source holds Slang text. */
     bool is_slang() const { return std::holds_alternative<Slang>(data); }
+    /** @brief Returns `true` when this source holds a pre-compiled Slang IR blob. */
+    bool is_slang_ir() const { return std::holds_alternative<SlangIr>(data); }
 
     /** @brief Read WGSL or Slang text as a string view.
      *
@@ -304,6 +318,13 @@ export struct Shader {
     static Shader from_slang_with_defs(std::string source,
                                        assets::AssetPath path,
                                        std::vector<ShaderDefVal> shader_defs);
+    /** @brief Create a shader from a pre-compiled Slang IR blob (.slang-module).
+     *
+     * The `import_path` defaults to `ShaderImport::asset_path(path)`.  No
+     * import scanning is performed — the module's dependency graph is embedded
+     * inside the IR blob and resolved by Slang at load time.
+     */
+    static Shader from_slang_ir(std::vector<std::uint8_t> bytes, assets::AssetPath path);
 };
 
 /** @brief Loader settings for shader assets. */
@@ -377,6 +398,15 @@ export struct ShaderProcessorSettings {
     bool preprocess_wgsl = true;
     /** @brief When `true`, Slang preprocessing is enabled. */
     bool preprocess_slang = true;
+    /** @brief When `true`, `.slang` files are compiled to a Slang IR blob during
+     *  asset processing.  The resulting blob is stored as
+     *  `ProcessedSourceKind::SlangIr` in the processed asset and loaded back as
+     *  `Source::SlangIr`.  Compilation uses a fresh Slang session that reads
+     *  transitive source dependencies from the asset source; if any dep cannot
+     *  be read or compilation fails the processor falls back to the normal
+     *  text-preprocessing path.
+     */
+    bool preprocess_slang_to_ir = true;
 };
 
 /** @brief Asset processor for shader sources. */
@@ -384,10 +414,16 @@ export struct ShaderProcessor {
     using Settings     = ShaderProcessorSettings;
     using OutputLoader = ShaderLoader;
 
+    ShaderProcessor() = default;
+    explicit ShaderProcessor(std::shared_ptr<void> custom_registry) : custom_registry_(std::move(custom_registry)) {}
+
     /** @brief Process one shader asset before it is loaded. */
     std::expected<OutputLoader::Settings, std::exception_ptr> process(assets::ProcessContext& context,
                                                                       const Settings& settings,
                                                                       std::ostream& writer) const;
+
+   private:
+    std::shared_ptr<void> custom_registry_;
 };
 
 /** @brief Reference to a shader.

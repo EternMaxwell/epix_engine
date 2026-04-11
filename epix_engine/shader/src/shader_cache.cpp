@@ -460,7 +460,12 @@ struct ShaderCache::SlangCompiler {
         }
 
         // Pre-load cached dependency modules from serialized IR blobs.
-        preload_cached_modules(session.get(), defs_key, shaders);
+        // Do not preload the root itself; it is loaded explicitly below as the
+        // compile target and double-loading the same identity can trip Slang's
+        // internal dictionary asserts.
+        std::unordered_map<assets::AssetId<Shader>, Shader> deps_only = shaders;
+        deps_only.erase(id);
+        preload_cached_modules(session.get(), defs_key, deps_only);
 
         // Load root module from preprocessed source.
         Slang::ComPtr<slang::IBlob> diagnostics;
@@ -520,6 +525,116 @@ struct ShaderCache::SlangCompiler {
         return std::vector<std::uint8_t>(ptr, ptr + spirv_code->getBufferSize());
     }
 
+    std::expected<std::vector<std::uint8_t>, ShaderCacheError> compile_ir_root(
+        assets::AssetId<Shader> id,
+        const Shader& shader,
+        std::span<const ShaderDefVal> shader_defs,
+        const std::unordered_map<assets::AssetId<Shader>, Shader>& shaders) {
+        using Stage = ShaderCacheError::SlangCompileError::Stage;
+
+        if (!global_session) {
+            return std::unexpected(
+                ShaderCacheError::slang_error(Stage::SessionCreation, "Slang global session not available"));
+        }
+
+        auto root_path = canonical_asset_path_string(shader.path);
+        auto defs_key  = defs_cache_key(shader_defs);
+
+        std::vector<std::string> def_values;
+        std::vector<slang::PreprocessorMacroDesc> macros;
+        def_values.reserve(shader_defs.size());
+        macros.reserve(shader_defs.size());
+        for (const auto& def : shader_defs) {
+            def_values.push_back(def.value_as_string());
+            macros.push_back({def.name.c_str(), def_values.back().c_str()});
+        }
+
+        slang::TargetDesc target_desc = {};
+        target_desc.format            = SLANG_SPIRV;
+        target_desc.profile           = global_session->findProfile("sm_6_0");
+
+        const char* search_paths[]                     = {""};
+        slang::CompilerOptionEntry compiler_options[1] = {};
+        compiler_options[0].name                       = slang::CompilerOptionName::VulkanUseEntryPointName;
+        compiler_options[0].value.kind                 = slang::CompilerOptionValueKind::Int;
+        compiler_options[0].value.intValue0            = 1;
+
+        slang::SessionDesc session_desc       = {};
+        session_desc.targets                  = &target_desc;
+        session_desc.targetCount              = 1;
+        session_desc.defaultMatrixLayoutMode  = SLANG_MATRIX_LAYOUT_COLUMN_MAJOR;
+        session_desc.searchPaths              = search_paths;
+        session_desc.searchPathCount          = 1;
+        session_desc.preprocessorMacros       = macros.data();
+        session_desc.preprocessorMacroCount   = static_cast<SlangInt>(macros.size());
+        session_desc.compilerOptionEntries    = compiler_options;
+        session_desc.compilerOptionEntryCount = 1;
+        session_desc.fileSystem               = &vfs_;
+
+        Slang::ComPtr<slang::ISession> session;
+        if (SLANG_FAILED(global_session->createSession(session_desc, session.writeRef()))) {
+            return std::unexpected(
+                ShaderCacheError::slang_error(Stage::SessionCreation, "Failed to create Slang session"));
+        }
+
+        preload_cached_modules(session.get(), defs_key, shaders);
+
+        const auto& ir_bytes = std::get<Source::SlangIr>(shader.source.data).bytes;
+        Slang::ComPtr<ISlangBlob> ir_blob;
+        ir_blob.attach(slang_createBlob(ir_bytes.data(), ir_bytes.size()));
+
+        Slang::ComPtr<slang::IBlob> diagnostics;
+        slang::IModule* mod =
+            session->loadModuleFromIRBlob(root_path.c_str(), root_path.c_str(), ir_blob.get(), diagnostics.writeRef());
+        if (!mod) {
+            return std::unexpected(ShaderCacheError::slang_error(
+                Stage::ModuleLoad, format_diagnostics("Slang IR root load failed", diagnostics.get())));
+        }
+
+        cache_loaded_modules(session.get(), defs_key, root_path);
+
+        std::vector<slang::IComponentType*> components;
+        components.push_back(mod);
+        SlangInt ep_count = mod->getDefinedEntryPointCount();
+        std::vector<Slang::ComPtr<slang::IEntryPoint>> entry_points(ep_count);
+        for (SlangInt i = 0; i < ep_count; ++i) {
+            mod->getDefinedEntryPoint(i, entry_points[i].writeRef());
+            components.push_back(entry_points[i].get());
+        }
+
+        Slang::ComPtr<slang::IComponentType> composed;
+        {
+            Slang::ComPtr<slang::IBlob> diag;
+            if (SLANG_FAILED(session->createCompositeComponentType(components.data(),
+                                                                   static_cast<SlangInt>(components.size()),
+                                                                   composed.writeRef(), diag.writeRef()))) {
+                return std::unexpected(ShaderCacheError::slang_error(
+                    Stage::Compose, format_diagnostics("Slang compose failed", diag.get())));
+            }
+        }
+
+        Slang::ComPtr<slang::IComponentType> linked;
+        {
+            Slang::ComPtr<slang::IBlob> diag;
+            if (SLANG_FAILED(composed->link(linked.writeRef(), diag.writeRef()))) {
+                return std::unexpected(
+                    ShaderCacheError::slang_error(Stage::Link, format_diagnostics("Slang link failed", diag.get())));
+            }
+        }
+
+        Slang::ComPtr<slang::IBlob> spirv_code;
+        {
+            Slang::ComPtr<slang::IBlob> diag;
+            if (SLANG_FAILED(linked->getTargetCode(0, spirv_code.writeRef(), diag.writeRef()))) {
+                return std::unexpected(ShaderCacheError::slang_error(
+                    Stage::CodeGeneration, format_diagnostics("Slang code generation failed", diag.get())));
+            }
+        }
+
+        auto ptr = static_cast<const std::uint8_t*>(spirv_code->getBufferPointer());
+        return std::vector<std::uint8_t>(ptr, ptr + spirv_code->getBufferSize());
+    }
+
    private:
     // Precompiled module IR cache: identity → (defs_key → serialized IR blob).
     // Session-level macros affect all modules, so blobs are keyed by both
@@ -543,31 +658,42 @@ struct ShaderCache::SlangCompiler {
     }
 
     // Pre-load cached dependency modules into the session from serialized IR.
-    // Iterates all registered Slang shaders (same policy as populate_vfs) so
-    // that modules whose blobs are available are pre-loaded regardless of
-    // whether the resolved_imports graph is complete.
-    // If a cached blob fails to load (e.g. stale), evict it so the VFS source
-    // path is used instead.
+    // Iterates all registered shaders (same policy as populate_vfs).
+    //
+    // For SlangIr shaders the IR bytes are read directly from dep.source — they
+    // bypass module_ir_cache_ entirely (no defs-key concept; IR has any defs
+    // baked in).
+    //
+    // For Slang-text shaders the blob is looked up in module_ir_cache_ for the
+    // exact defs_key; no fallback to other keys, preserving cache correctness.
     void preload_cached_modules(slang::ISession* session,
                                 const std::string& defs_key,
                                 const std::unordered_map<assets::AssetId<Shader>, Shader>& shaders) {
         for (const auto& [_, dep] : shaders) {
-            if (!dep.source.is_slang()) continue;
+            // Only handle Slang-family sources.
+            if (!dep.source.is_slang() && !dep.source.is_slang_ir()) continue;
 
-            auto identity = canonical_asset_path_string(dep.path);
-            auto outer_it = module_ir_cache_.find(identity);
-            if (outer_it == module_ir_cache_.end()) continue;
-
-            auto inner_it = outer_it->second.find(defs_key);
-            if (inner_it == outer_it->second.end()) continue;
-
-            // Use the module's declared name (from import_path) as the
-            // module-name arg so Slang's name-map lookup succeeds when the
-            // root shader imports by that same name.  The path arg stays
-            // as the file-system identity so the path-map is also correct.
+            auto identity    = canonical_asset_path_string(dep.path);
             auto import_name = dep.import_path.is_custom()
                                    ? canonical_asset_path_string(shader_custom_path(dep.import_path.as_custom_path()))
                                    : canonical_asset_path_string(dep.import_path.as_asset_path());
+
+            if (dep.source.is_slang_ir()) {
+                // Load the pre-compiled IR blob from the live source bytes —
+                // independent of any compiled-with-defs cache.
+                const auto& ir_bytes = std::get<Source::SlangIr>(dep.source.data).bytes;
+                Slang::ComPtr<ISlangBlob> ir_blob;
+                ir_blob.attach(slang_createBlob(ir_bytes.data(), ir_bytes.size()));
+                Slang::ComPtr<slang::IBlob> diag;
+                session->loadModuleFromIRBlob(import_name.c_str(), identity.c_str(), ir_blob.get(), diag.writeRef());
+                continue;
+            }
+
+            // Slang text shader: look up compiled IR for this exact defs_key.
+            auto outer_it = module_ir_cache_.find(identity);
+            if (outer_it == module_ir_cache_.end()) continue;
+            auto inner_it = outer_it->second.find(defs_key);
+            if (inner_it == outer_it->second.end()) continue;
 
             Slang::ComPtr<slang::IBlob> diag;
             auto* loaded = session->loadModuleFromIRBlob(import_name.c_str(), identity.c_str(), inner_it->second.get(),
@@ -709,6 +835,21 @@ std::expected<std::shared_ptr<wgpu::ShaderModule>, ShaderCacheError> ShaderCache
         source            = ShaderCacheSource{ShaderCacheSource::SpirV{std::span<const std::uint8_t>(bytes)}};
     } else if (std::holds_alternative<Source::Slang>(shader.source.data)) {
         auto spirv = slang_->compile(id, shader, merged_defs, shaders_);
+        if (!spirv) return std::unexpected(spirv.error());
+        spirv_storage = std::move(spirv.value());
+        source        = ShaderCacheSource{ShaderCacheSource::SpirV{std::span<const std::uint8_t>(spirv_storage)}};
+    } else if (std::holds_alternative<Source::SlangIr>(shader.source.data)) {
+        // Keep explicit .slang-module assets as dependency-only modules.
+        if (shader.path.path.extension() == ".slang-module") {
+            return std::unexpected(
+                ShaderCacheError::slang_error(ShaderCacheError::SlangCompileError::Stage::ModuleLoad,
+                                              "Root shader cannot be a pre-compiled Slang IR module (.slang-module); "
+                                              "SlangIr sources are only valid as imported dependencies"));
+        }
+
+        // Processed .slang assets may carry SlangIr roots when
+        // preprocess_slang_to_ir is enabled. Compile those as root modules.
+        auto spirv = slang_->compile_ir_root(id, shader, merged_defs, shaders_);
         if (!spirv) return std::unexpected(spirv.error());
         spirv_storage = std::move(spirv.value());
         source        = ShaderCacheSource{ShaderCacheSource::SpirV{std::span<const std::uint8_t>(spirv_storage)}};

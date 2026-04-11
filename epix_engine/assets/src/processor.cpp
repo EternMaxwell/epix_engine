@@ -279,10 +279,7 @@ const AssetServer& AssetProcessor::get_server() const { return server; }
 
 const std::shared_ptr<AssetProcessorData>& AssetProcessor::get_data() const { return data; }
 
-std::optional<std::reference_wrapper<const AssetSource>> AssetProcessor::get_source(
-    const AssetSourceId& source_id) const {
-    return server.get_source(source_id);
-}
+// AssetProcessor::get_source is now inline in mod.cppm
 
 const std::shared_ptr<AssetSources>& AssetProcessor::sources() const { return data->sources; }
 
@@ -468,7 +465,7 @@ std::expected<ProcessResult, ProcessError> AssetProcessor::process_asset_interna
                     for (const auto& dep : existing->processed_info->process_dependencies) {
                         const auto* dep_info = infos_guard->get(AssetPath(dep.path));
                         bool live_ok         = dep_info && dep_info->processed_info &&
-                                               dep_info->processed_info->full_hash == dep.full_hash;
+                                       dep_info->processed_info->full_hash == dep.full_hash;
                         if (!live_ok) {
                             dep_changed = true;
                             break;
