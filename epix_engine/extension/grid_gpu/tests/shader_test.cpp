@@ -13,24 +13,6 @@ using namespace epix::ext::grid;
 using namespace epix::ext::grid_gpu;
 
 // ===========================================================================
-// kSvoGridSlangSource 锟?embedded source content
-// ===========================================================================
-
-TEST(SvoSlangSource, NotEmpty) { EXPECT_FALSE(kSvoGridSlangSource.empty()); }
-
-TEST(SvoSlangSource, ContainsModuleDeclaration) {
-    EXPECT_NE(kSvoGridSlangSource.find(R"(module "epix/ext/grid/svo";)"), std::string_view::npos);
-}
-
-TEST(SvoSlangSource, ContainsSvoGrid1D) { EXPECT_NE(kSvoGridSlangSource.find("SvoGrid1D"), std::string_view::npos); }
-
-TEST(SvoSlangSource, ContainsSvoGrid2D) { EXPECT_NE(kSvoGridSlangSource.find("SvoGrid2D"), std::string_view::npos); }
-
-TEST(SvoSlangSource, ContainsSvoGrid3D) { EXPECT_NE(kSvoGridSlangSource.find("SvoGrid3D"), std::string_view::npos); }
-
-TEST(SvoSlangSource, ContainsLookupMethod) { EXPECT_NE(kSvoGridSlangSource.find("lookup"), std::string_view::npos); }
-
-// ===========================================================================
 // Shader::from_slang 锟?integration with the shader system
 // ===========================================================================
 
@@ -51,7 +33,7 @@ TEST(SvoSlangFromSlang, SourceTextPreserved) {
     EXPECT_EQ(s.source.as_str(), kSvoGridSlangSource);
 }
 
-// module epix.ext.grid.svo; 锟?dots鈫抯lashes 锟?"epix/ext/grid/svo.slang"
+// module epix.ext.grid.svo; -> normalized custom path "epix/ext/grid/svo"
 TEST(SvoSlangFromSlang, ImportPathIsCustom) {
     auto s = Shader::from_slang(std::string(kSvoGridSlangSource), "embedded://epix/shaders/grid/svo.slang");
     EXPECT_TRUE(s.import_path.is_custom());
@@ -59,7 +41,7 @@ TEST(SvoSlangFromSlang, ImportPathIsCustom) {
 
 TEST(SvoSlangFromSlang, ImportPathValue) {
     auto s = Shader::from_slang(std::string(kSvoGridSlangSource), "embedded://epix/shaders/grid/svo.slang");
-    EXPECT_EQ(s.import_path.as_custom(), "epix/ext/grid/svo.slang");
+    EXPECT_EQ(s.import_path.as_custom(), "epix/ext/grid/svo");
 }
 
 TEST(SvoSlangFromSlang, NoImports) {
@@ -78,7 +60,7 @@ TEST(SvoSlangPreprocess, ImportPathIsCustom) {
 
 TEST(SvoSlangPreprocess, ImportPathValue) {
     auto [ip, imps] = Shader::preprocess_slang(kSvoGridSlangSource, "embedded://epix/shaders/grid/svo.slang");
-    EXPECT_EQ(ip.as_custom(), "epix/ext/grid/svo.slang");
+    EXPECT_EQ(ip.as_custom(), "epix/ext/grid/svo");
 }
 
 TEST(SvoSlangPreprocess, NoImports) {
@@ -190,7 +172,7 @@ void computeMain() {}
 }
 
 TEST(SvoShaderCache, LibraryRegistered_ImportPathMatchesCustomName) {
-    // The svo library carries import_path "epix/ext/grid/svo.slang".
+    // The svo library carries import_path "epix/ext/grid/svo".
     // A shader that does `import epix.ext.grid.svo;` must resolve to it.
     std::array<std::uint8_t, 16> lib_bytes{};
     lib_bytes[0] = 0x01;

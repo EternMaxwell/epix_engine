@@ -117,11 +117,8 @@ export constexpr std::string_view kSvoGridSlangSource = R"slang(
 //
 // Register the SvoBuffer produced by svo_upload() as a StructuredBuffer<uint>
 // and use the SvoGrid1D / SvoGrid2D / SvoGrid3D structs for lookups.
-//
-// Declares module "epix/ext/grid/svo" so other Slang shaders can import it:
-//   import epix.ext.grid.svo;
 
-module "epix/ext/grid/svo";
+module epix.ext.grid.svo;
 
 // ---- Buffer layout (uint32 words, mirrors SvoBuffer::words) ----
 //   [0]             : header = dim(8b) | depth(8b) | cpn(8b) | reserved(8b)

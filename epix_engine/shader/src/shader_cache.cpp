@@ -14,31 +14,147 @@ namespace epix::shader {
 
 namespace {
 
+constexpr std::string_view k_shader_custom_source = "shader_custom";
+
 std::string normalize_path_string(std::string path) {
     std::ranges::replace(path, '\\', '/');
     return path;
 }
 
-std::string normalize_asset_path_string(const assets::AssetPath& path) {
+std::filesystem::path normalize_custom_shader_path(std::string_view name) {
+    if (name.size() >= 2 && name.front() == '"') {
+        auto end_q = name.find('"', 1);
+        name       = end_q == std::string_view::npos ? name.substr(1) : name.substr(1, end_q - 1);
+    }
+
+    if (auto scheme = name.find("://"); scheme != std::string_view::npos) {
+        name = name.substr(scheme + 3);
+    }
+
     std::string normalized;
-    if (!path.source.is_default()) {
-        normalized += *path.source.as_str();
-        normalized += "://";
+    normalized.reserve(name.size());
+    for (std::size_t i = 0; i < name.size(); ++i) {
+        const char current = name[i];
+        if (current == ':' && i + 1 < name.size() && name[i + 1] == ':') {
+            if (normalized.empty() || normalized.back() != '/') normalized.push_back('/');
+            ++i;
+            continue;
+        }
+        if (current == '.' || current == '/' || current == '\\') {
+            if (normalized.empty() || normalized.back() != '/') normalized.push_back('/');
+            continue;
+        }
+        normalized.push_back(current);
     }
 
-    if (path.path.has_root_directory()) {
-        normalized += '/';
-        normalized += path.path.relative_path().generic_string();
-    } else {
-        normalized += normalize_path_string(path.path.generic_string());
+    auto path = std::filesystem::path(normalized).lexically_normal();
+    if (path.extension() == ".slang") {
+        path.replace_extension();
     }
-
-    if (path.label) {
-        normalized += '#';
-        normalized += *path.label;
-    }
-    return normalized;
+    return path;
 }
+
+assets::AssetPath shader_custom_path(std::filesystem::path path) {
+    return assets::AssetPath(assets::AssetSourceId(std::string(k_shader_custom_source)),
+                             std::move(path).lexically_normal());
+}
+
+assets::AssetPath resolve_slang_compile_path(std::string_view name,
+                                             const assets::AssetPath& importer_path,
+                                             bool force_custom) {
+    if (force_custom || name.empty() || name.front() != '"') {
+        return shader_custom_path(normalize_custom_shader_path(name));
+    }
+
+    auto end_q     = name.find('"', 1);
+    auto literal   = end_q == std::string_view::npos ? name.substr(1) : name.substr(1, end_q - 1);
+    auto path_text = normalize_path_string(std::string(literal));
+    auto path_part = std::string_view(path_text);
+    if (auto scheme = path_text.find("://"); scheme != std::string::npos) {
+        path_part = std::string_view(path_text).substr(scheme + 3);
+    }
+    if (std::filesystem::path(path_part).extension().empty()) {
+        path_text += ".slang";
+    }
+
+    auto resolved = assets::AssetPath(std::move(path_text));
+    if (!resolved.source.is_default()) {
+        return resolved;
+    }
+    if (resolved.path.has_root_directory()) {
+        return assets::AssetPath(importer_path.source, resolved.path.relative_path(), resolved.label);
+    }
+    return importer_path.resolve(resolved);
+}
+
+std::string slang_literal(const assets::AssetPath& path) { return '"' + canonical_asset_path_string(path) + '"'; }
+
+std::string preprocess_slang_compile_source(std::string_view source, const assets::AssetPath& importer_path) {
+    std::string out;
+    out.reserve(source.size() + 64);
+
+    std::size_t pos = 0;
+    while (pos < source.size()) {
+        std::size_t nl        = source.find('\n', pos);
+        std::string_view line = (nl == std::string_view::npos) ? source.substr(pos) : source.substr(pos, nl - pos);
+        pos                   = (nl == std::string_view::npos) ? source.size() : nl + 1;
+
+        std::size_t ws = line.find_first_not_of(" \t\r");
+        if (ws == std::string_view::npos) {
+            out.append(line);
+            if (nl != std::string_view::npos) out.push_back('\n');
+            continue;
+        }
+
+        std::string_view indent  = line.substr(0, ws);
+        std::string_view trimmed = line.substr(ws);
+        if (trimmed.starts_with("//")) {
+            out.append(line);
+            if (nl != std::string_view::npos) out.push_back('\n');
+            continue;
+        }
+
+        auto rewrite = [&](std::string_view directive) -> bool {
+            if (!(trimmed.starts_with(directive) &&
+                  (trimmed.size() == directive.size() || trimmed[directive.size()] == ' ' ||
+                   trimmed[directive.size()] == '\t'))) {
+                return false;
+            }
+
+            auto rest      = trimmed.substr(directive.size());
+            std::size_t rs = rest.find_first_not_of(" \t");
+            if (rs == std::string_view::npos) return false;
+            rest                  = rest.substr(rs);
+            std::size_t semi      = rest.find(';');
+            std::string_view name = (semi == std::string_view::npos) ? rest : rest.substr(0, semi);
+            std::string_view tail = (semi == std::string_view::npos) ? std::string_view{} : rest.substr(semi + 1);
+            while (!name.empty() && (name.back() == ' ' || name.back() == '\t')) name.remove_suffix(1);
+            if (name.empty()) return false;
+
+            auto rewritten_path = resolve_slang_compile_path(name, importer_path, directive == "module");
+
+            out.append(indent);
+            out.append(directive);
+            out.push_back(' ');
+            out.append(slang_literal(rewritten_path));
+            out.push_back(';');
+            out.append(tail);
+            if (nl != std::string_view::npos) out.push_back('\n');
+            return true;
+        };
+
+        if (rewrite("module") || rewrite("import") || rewrite("__include")) {
+            continue;
+        }
+
+        out.append(line);
+        if (nl != std::string_view::npos) out.push_back('\n');
+    }
+
+    return out;
+}
+
+// ─── ShaderCache helpers ───────────────────────────────────────────────────
 
 std::vector<ShaderImport> visible_imports(const Shader& shader) {
     auto visible = std::vector<ShaderImport>{ShaderImport::asset_path(shader.path)};
@@ -46,86 +162,44 @@ std::vector<ShaderImport> visible_imports(const Shader& shader) {
     return visible;
 }
 
-assets::AssetPath resolve_dependency_path(const assets::AssetPath& parent_path, const ShaderImport& import_path) {
-    auto resolved = import_path.as_asset_path();
-    if (!resolved.source.is_default()) {
-        return resolved;
-    }
-    if (resolved.path.has_root_directory()) {
-        return assets::AssetPath(parent_path.source, resolved.path.relative_path(), resolved.label);
-    }
-    return parent_path.resolve(resolved);
-}
-
 ShaderImport resolve_import_key(const Shader& importer, const ShaderImport& import_ref) {
-    return import_ref.is_custom() ? import_ref
-                                  : ShaderImport::asset_path(resolve_dependency_path(importer.path, import_ref));
+    if (import_ref.is_custom()) return import_ref;
+    auto resolved = import_ref.as_asset_path();
+    if (!resolved.source.is_default()) return ShaderImport::asset_path(std::move(resolved));
+    if (resolved.path.has_root_directory()) {
+        return ShaderImport::asset_path(
+            assets::AssetPath(importer.path.source, resolved.path.relative_path(), resolved.label));
+    }
+    return ShaderImport::asset_path(importer.path.resolve(resolved));
 }
 
-bool all_imports_resolved(const Shader& shader, const ShaderData& shader_data) {
-    return std::ranges::all_of(shader.imports, [&](const ShaderImport& import_ref) {
-        return shader_data.resolved_imports.contains(import_ref);
-    });
-}
-
-bool shader_ready(const std::unordered_map<assets::AssetId<Shader>, Shader>& shaders,
-                  const std::unordered_map<assets::AssetId<Shader>, ShaderData>& data,
-                  assets::AssetId<Shader> shader_id,
-                  std::unordered_set<assets::AssetId<Shader>>& visiting) {
-    if (!visiting.insert(shader_id).second) return true;
-
-    auto shader_it = shaders.find(shader_id);
-    auto data_it   = data.find(shader_id);
-    if (shader_it == shaders.end() || data_it == data.end()) return false;
-
-    const Shader& shader          = shader_it->second;
-    const ShaderData& shader_data = data_it->second;
-    for (const auto& import_ref : shader.imports) {
-        auto resolved_it = shader_data.resolved_imports.find(import_ref);
-        if (resolved_it == shader_data.resolved_imports.end()) return false;
-        if (!shader_ready(shaders, data, resolved_it->second, visiting)) return false;
+std::vector<ShaderDefVal> merge_shader_defs(std::span<const ShaderDefVal> shader_defs, const Shader& shader) {
+    std::vector<ShaderDefVal> merged(shader_defs.begin(), shader_defs.end());
+    merged.reserve(shader_defs.size() + shader.shader_defs.size());
+    std::unordered_set<std::string_view> seen;
+    seen.reserve(merged.size() + shader.shader_defs.size());
+    for (const auto& d : merged) seen.insert(d.name);
+    for (const auto& d : shader.shader_defs) {
+        if (seen.insert(d.name).second) merged.push_back(d);
     }
-    return true;
-}
-
-void erase_waiting_shader(
-    std::unordered_map<ShaderImport, std::unordered_set<assets::AssetId<Shader>>>& waiting_on_import,
-    assets::AssetId<Shader> shader_id) {
-    for (auto it = waiting_on_import.begin(); it != waiting_on_import.end();) {
-        it->second.erase(shader_id);
-        if (it->second.empty()) {
-            it = waiting_on_import.erase(it);
-        } else {
-            ++it;
-        }
-    }
-}
-
-void disconnect_from_providers(std::unordered_map<assets::AssetId<Shader>, ShaderData>& data,
-                               assets::AssetId<Shader> shader_id) {
-    auto data_it = data.find(shader_id);
-    if (data_it == data.end()) {
-        return;
-    }
-
-    for (const auto& [_, provider_id] : data_it->second.resolved_imports) {
-        auto provider_it = data.find(provider_id);
-        if (provider_it != data.end()) {
-            provider_it->second.dependents.erase(shader_id);
-        }
-    }
-    data_it->second.resolved_imports.clear();
+    return merged;
 }
 
 void reset_shader_links(
     std::unordered_map<assets::AssetId<Shader>, ShaderData>& data,
     std::unordered_map<ShaderImport, std::unordered_set<assets::AssetId<Shader>>>& waiting_on_import,
     assets::AssetId<Shader> shader_id) {
-    erase_waiting_shader(waiting_on_import, shader_id);
-    disconnect_from_providers(data, shader_id);
-    auto& shader_data = data[shader_id];
-    shader_data.resolved_imports.clear();
-    shader_data.dependents.clear();
+    for (auto it = waiting_on_import.begin(); it != waiting_on_import.end();) {
+        it->second.erase(shader_id);
+        it = it->second.empty() ? waiting_on_import.erase(it) : std::next(it);
+    }
+    if (auto data_it = data.find(shader_id); data_it != data.end()) {
+        for (const auto& [_, provider_id] : data_it->second.resolved_imports) {
+            if (auto pit = data.find(provider_id); pit != data.end()) pit->second.dependents.erase(shader_id);
+        }
+        data_it->second.resolved_imports.clear();
+    }
+    data[shader_id].dependents.clear();
 }
 
 void invalidate_dependents(
@@ -133,63 +207,46 @@ void invalidate_dependents(
     std::unordered_map<assets::AssetId<Shader>, ShaderData>& data,
     std::unordered_map<ShaderImport, std::unordered_set<assets::AssetId<Shader>>>& waiting_on_import,
     assets::AssetId<Shader> provider_id) {
-    auto provider_data_it = data.find(provider_id);
-    if (provider_data_it == data.end()) {
-        return;
-    }
+    auto pit = data.find(provider_id);
+    if (pit == data.end()) return;
 
-    auto dependents = std::vector<assets::AssetId<Shader>>(provider_data_it->second.dependents.begin(),
-                                                           provider_data_it->second.dependents.end());
-    provider_data_it->second.dependents.clear();
+    auto dependents = std::vector(pit->second.dependents.begin(), pit->second.dependents.end());
+    pit->second.dependents.clear();
 
-    for (auto dependent_id : dependents) {
-        auto shader_it = shaders.find(dependent_id);
-        auto data_it   = data.find(dependent_id);
-        if (shader_it == shaders.end() || data_it == data.end()) {
-            continue;
-        }
+    for (auto dep_id : dependents) {
+        auto sit = shaders.find(dep_id);
+        auto dit = data.find(dep_id);
+        if (sit == shaders.end() || dit == data.end()) continue;
 
-        const Shader& dependent_shader = shader_it->second;
-        auto& dependent_data           = data_it->second;
-        for (const auto& import_ref : dependent_shader.imports) {
-            auto resolved_it = dependent_data.resolved_imports.find(import_ref);
-            if (resolved_it == dependent_data.resolved_imports.end() || resolved_it->second != provider_id) {
-                continue;
-            }
-
-            dependent_data.resolved_imports.erase(resolved_it);
-            waiting_on_import[resolve_import_key(dependent_shader, import_ref)].insert(dependent_id);
+        for (const auto& imp : sit->second.imports) {
+            auto rit = dit->second.resolved_imports.find(imp);
+            if (rit == dit->second.resolved_imports.end() || rit->second != provider_id) continue;
+            dit->second.resolved_imports.erase(rit);
+            waiting_on_import[resolve_import_key(sit->second, imp)].insert(dep_id);
         }
     }
 }
 
-std::string canonical_custom_request(std::string_view request) {
-    auto normalized_request = normalize_path_string(std::string(request));
-    std::ranges::replace(normalized_request, '.', '/');
-    std::ranges::replace(normalized_request, '_', '-');
-    if (std::filesystem::path(normalized_request).extension().empty()) {
-        normalized_request += ".slang";
+std::vector<ShaderImport> missing_imports_for_shader(
+    const std::unordered_map<assets::AssetId<Shader>, Shader>& shaders,
+    const std::unordered_map<assets::AssetId<Shader>, ShaderData>& data,
+    assets::AssetId<Shader> shader_id) {
+    auto sit = shaders.find(shader_id);
+    if (sit == shaders.end()) return {};
+
+    auto dit = data.find(shader_id);
+    std::vector<ShaderImport> missing;
+    for (const auto& imp : sit->second.imports) {
+        if (dit == data.end() || !dit->second.resolved_imports.contains(imp)) {
+            missing.push_back(resolve_import_key(sit->second, imp));
+        }
     }
-    return normalized_request;
+    return missing;
 }
 
-assets::AssetPath concrete_request_path(const assets::AssetPath& importer_path, std::string_view request) {
-    auto normalized_request = normalize_path_string(std::string(request));
-    if (std::filesystem::path(normalized_request).extension().empty()) {
-        normalized_request += ".slang";
-    }
-    return resolve_dependency_path(importer_path, ShaderImport::asset_path(assets::AssetPath(normalized_request)));
-}
+// ─── Slang compilation helpers ─────────────────────────────────────────────
 
-Slang::ComPtr<ISlangBlob> make_terminated_blob(std::string_view text) {
-    std::string terminated(text);
-    terminated.push_back('\0');
-    Slang::ComPtr<ISlangBlob> blob;
-    blob.attach(slang_createBlob(terminated.data(), terminated.size()));
-    return blob;
-}
-
-std::string format_slang_message(std::string prefix, slang::IBlob* diagnostics) {
+std::string format_diagnostics(std::string prefix, slang::IBlob* diagnostics) {
     if (diagnostics) {
         prefix += ": ";
         prefix += static_cast<const char*>(diagnostics->getBufferPointer());
@@ -197,21 +254,121 @@ std::string format_slang_message(std::string prefix, slang::IBlob* diagnostics) 
     return prefix;
 }
 
-std::vector<ShaderDefVal> merge_shader_defs(std::span<const ShaderDefVal> shader_defs, const Shader& shader) {
-    std::vector<ShaderDefVal> merged(shader_defs.begin(), shader_defs.end());
-    merged.reserve(shader_defs.size() + shader.shader_defs.size());
-    std::unordered_set<std::string_view> seen_names;
-    seen_names.reserve(merged.size() + shader.shader_defs.size());
-    for (const auto& def : merged) seen_names.insert(def.name);
-    for (const auto& def : shader.shader_defs) {
-        if (seen_names.insert(def.name).second) {
-            merged.push_back(def);
-        }
-    }
-    return merged;
+Slang::ComPtr<ISlangBlob> make_string_blob(std::string_view text) {
+    std::string terminated(text);
+    terminated.push_back('\0');
+    Slang::ComPtr<ISlangBlob> blob;
+    blob.attach(slang_createBlob(terminated.data(), terminated.size()));
+    return blob;
 }
 
+// VFS backed by canonical asset-path strings.  Preprocessing already rewrites
+// every import/module path to its canonical form, so no runtime path resolution
+// is needed — the VFS is a flat string→source map.
+class SlangVFS : public ISlangFileSystemExt {
+    struct Entry {
+        std::string source;
+        std::string identity;  // canonical file path (shared across aliases)
+    };
+    std::unordered_map<std::string, Entry> files_;
+
+    // Slang may append .slang when resolving imports — fall back to the
+    // base key when the suffixed lookup misses.
+    const Entry* find_entry(const char* path) const {
+        if (auto it = files_.find(path); it != files_.end()) return &it->second;
+        std::string_view sv(path);
+        if (sv.ends_with(".slang")) {
+            if (auto it = files_.find(std::string(sv.substr(0, sv.size() - 6))); it != files_.end()) return &it->second;
+        }
+        return nullptr;
+    }
+
+   public:
+    void add(const std::string& key, const std::string& source, const std::string& identity) {
+        files_.insert_or_assign(key, Entry{source, identity});
+    }
+
+    void remove(const std::string& key) { files_.erase(key); }
+
+    const std::string& get_source(const std::string& key) const { return files_.at(key).source; }
+
+    // ── ISlangUnknown / ISlangCastable ──
+    SLANG_NO_THROW SlangResult SLANG_MCALL queryInterface(SlangUUID const& uuid, void** outObject) override {
+        if (uuid == ISlangUnknown::getTypeGuid() || uuid == ISlangCastable::getTypeGuid() ||
+            uuid == ISlangFileSystem::getTypeGuid() || uuid == ISlangFileSystemExt::getTypeGuid()) {
+            *outObject = static_cast<ISlangFileSystemExt*>(this);
+            return SLANG_OK;
+        }
+        *outObject = nullptr;
+        return SLANG_E_NO_INTERFACE;
+    }
+    SLANG_NO_THROW uint32_t SLANG_MCALL addRef() override { return 1; }
+    SLANG_NO_THROW uint32_t SLANG_MCALL release() override { return 1; }
+    SLANG_NO_THROW void* SLANG_MCALL castAs(const SlangUUID& guid) override {
+        if (guid == ISlangUnknown::getTypeGuid() || guid == ISlangCastable::getTypeGuid())
+            return static_cast<ISlangCastable*>(this);
+        if (guid == ISlangFileSystem::getTypeGuid()) return static_cast<ISlangFileSystem*>(this);
+        if (guid == ISlangFileSystemExt::getTypeGuid()) return static_cast<ISlangFileSystemExt*>(this);
+        return nullptr;
+    }
+
+    // ── ISlangFileSystem ──
+    SLANG_NO_THROW SlangResult SLANG_MCALL loadFile(char const* path, ISlangBlob** outBlob) override {
+        auto* entry = find_entry(path);
+        if (!entry) {
+            *outBlob = nullptr;
+            return SLANG_E_NOT_FOUND;
+        }
+        *outBlob = slang_createBlob(entry->source.data(), entry->source.size());
+        return SLANG_OK;
+    }
+
+    // ── ISlangFileSystemExt ──
+    SLANG_NO_THROW SlangResult SLANG_MCALL getFileUniqueIdentity(const char* path,
+                                                                 ISlangBlob** outUniqueIdentity) override {
+        auto* entry = find_entry(path);
+        if (!entry) {
+            *outUniqueIdentity = nullptr;
+            return SLANG_E_NOT_FOUND;
+        }
+        *outUniqueIdentity = make_string_blob(entry->identity).detach();
+        return SLANG_OK;
+    }
+
+    // All paths are already canonical after preprocessing — return as-is.
+    SLANG_NO_THROW SlangResult SLANG_MCALL calcCombinedPath(SlangPathType,
+                                                            const char*,
+                                                            const char* path,
+                                                            ISlangBlob** pathOut) override {
+        *pathOut = make_string_blob(path).detach();
+        return SLANG_OK;
+    }
+
+    SLANG_NO_THROW SlangResult SLANG_MCALL getPathType(const char* path, SlangPathType* pathTypeOut) override {
+        if (find_entry(path)) {
+            *pathTypeOut = SLANG_PATH_TYPE_FILE;
+            return SLANG_OK;
+        }
+        return SLANG_E_NOT_FOUND;
+    }
+
+    SLANG_NO_THROW SlangResult SLANG_MCALL getPath(PathKind, const char* path, ISlangBlob** outPath) override {
+        *outPath = make_string_blob(path).detach();
+        return SLANG_OK;
+    }
+
+    SLANG_NO_THROW void SLANG_MCALL clearCache() override {}
+    SLANG_NO_THROW SlangResult SLANG_MCALL enumeratePathContents(const char*,
+                                                                 FileSystemContentsCallBack,
+                                                                 void*) override {
+        return SLANG_E_NOT_IMPLEMENTED;
+    }
+    SLANG_NO_THROW OSPathKind SLANG_MCALL getOSPathKind() override { return OSPathKind::None; }
+};
+
 }  // namespace
+
+// ─── SlangCompiler ─────────────────────────────────────────────────────────
 
 struct ShaderCache::SlangCompiler {
     Slang::ComPtr<slang::IGlobalSession> global_session;
@@ -222,232 +379,49 @@ struct ShaderCache::SlangCompiler {
         }
     }
 
-    class GlobalFileSystem {
-        const std::unordered_map<ShaderImport, assets::AssetId<Shader>>& import_map_;
-        const std::unordered_map<assets::AssetId<Shader>, Shader>& shaders_;
+    void invalidate(const assets::AssetPath& path) {
+        auto key = canonical_asset_path_string(path);
+        module_ir_cache_.erase(key);
+        vfs_.remove(key);
+    }
 
-       public:
-        GlobalFileSystem(const std::unordered_map<ShaderImport, assets::AssetId<Shader>>& import_map,
-                         const std::unordered_map<assets::AssetId<Shader>, Shader>& shaders)
-            : import_map_(import_map), shaders_(shaders) {}
-
-        std::optional<assets::AssetId<Shader>> find_shader_id(const ShaderImport& import_ref) const {
-            auto it = import_map_.find(import_ref);
-            return it == import_map_.end() ? std::nullopt : std::optional{it->second};
-        }
-
-        const Shader* get_shader(assets::AssetId<Shader> id) const {
-            auto it = shaders_.find(id);
-            return it == shaders_.end() ? nullptr : &it->second;
-        }
-
-        const Shader* get_shader_by_path(std::string_view path) const {
-            auto id = find_shader_id(ShaderImport::asset_path(assets::AssetPath(std::string(path))));
-            return id.has_value() ? get_shader(*id) : nullptr;
-        }
-
-        SlangResult load_shader_source(std::string_view path, ISlangBlob** outBlob) const {
-            auto shader = get_shader_by_path(path);
-            if (!shader || !shader->source.is_slang()) {
-                *outBlob = nullptr;
-                return SLANG_E_NOT_FOUND;
-            }
-
-            const auto& code = std::get<Source::Slang>(shader->source.data).code;
-            *outBlob         = slang_createBlob(code.data(), code.size());
-            return SLANG_OK;
-        }
-    };
-
-    class ScopedFileSystem : public ISlangFileSystemExt {
-        const GlobalFileSystem& global_;
-        std::unordered_map<std::string, std::string> logical_to_actual_;
-
-        static std::string asset_alias(const assets::AssetPath& path) { return normalize_asset_path_string(path); }
-
-        void register_alias(std::string key, const std::string& actual_path) {
-            key = normalize_path_string(std::move(key));
-            if (!key.empty()) {
-                logical_to_actual_.insert_or_assign(std::move(key), actual_path);
-            }
-        }
-
-        void seed_import_aliases(const Shader& shader, std::unordered_set<assets::AssetId<Shader>>& visited) {
-            for (const auto& import_ref : shader.imports) {
-                auto provider_id = global_.find_shader_id(resolve_import_key(shader, import_ref));
-                if (!provider_id.has_value()) {
-                    continue;
-                }
-
-                auto provider = global_.get_shader(*provider_id);
-                if (!provider) {
-                    continue;
-                }
-
-                auto actual_path = asset_alias(provider->path);
-                if (import_ref.is_custom()) {
-                    register_alias(import_ref.as_custom(), actual_path);
-                } else {
-                    register_alias(asset_alias(import_ref.as_asset_path()), actual_path);
-                    register_alias(import_ref.as_asset_path().path.generic_string(), actual_path);
-                    if (!import_ref.as_asset_path().source.is_default()) {
-                        register_alias('/' + import_ref.as_asset_path().path.generic_string(), actual_path);
-                    }
-                }
-
-                if (visited.insert(*provider_id).second) {
-                    seed_import_aliases(*provider, visited);
-                }
-            }
-        }
-
-        std::string resolve_alias(std::string_view path) const {
-            auto normalized = normalize_path_string(std::string(path));
-            auto it         = logical_to_actual_.find(normalized);
-            return it == logical_to_actual_.end() ? normalized : it->second;
-        }
-
-        struct ResolvedRequest {
-            std::string logical_path;
-            std::string actual_path;
-        };
-
-       public:
-        ScopedFileSystem(const GlobalFileSystem& global, const Shader& root_shader) : global_(global) {
-            std::unordered_set<assets::AssetId<Shader>> visited;
-            seed_import_aliases(root_shader, visited);
-        }
-
-        std::optional<ResolvedRequest> resolve_request_path(const Shader& importer, std::string_view request) const {
-            for (const auto& import_ref : importer.imports) {
-                auto import_key = resolve_import_key(importer, import_ref);
-                if (import_key.is_custom()) {
-                    if (canonical_custom_request(request) != import_key.as_custom()) {
-                        continue;
-                    }
-                } else if (concrete_request_path(importer.path, request) != import_key.as_asset_path()) {
-                    continue;
-                }
-
-                auto provider_id = global_.find_shader_id(import_key);
-                if (!provider_id.has_value()) {
-                    return std::nullopt;
-                }
-                auto provider = global_.get_shader(*provider_id);
-                if (!provider) {
-                    return std::nullopt;
-                }
-
-                auto actual_path = asset_alias(provider->path);
-                if (import_key.is_custom()) {
-                    return ResolvedRequest{import_key.as_custom(), std::move(actual_path)};
-                }
-                return ResolvedRequest{actual_path, std::move(actual_path)};
-            }
-
-            return std::nullopt;
-        }
-
-        const Shader* find_importer(std::string_view fromPath) const {
-            return global_.get_shader_by_path(resolve_alias(fromPath));
-        }
-
-        SLANG_NO_THROW SlangResult SLANG_MCALL queryInterface(SlangUUID const& uuid, void** outObject) override {
-            if (uuid == ISlangUnknown::getTypeGuid() || uuid == ISlangCastable::getTypeGuid() ||
-                uuid == ISlangFileSystem::getTypeGuid() || uuid == ISlangFileSystemExt::getTypeGuid()) {
-                *outObject = static_cast<ISlangFileSystemExt*>(this);
-                return SLANG_OK;
-            }
-            *outObject = nullptr;
-            return SLANG_E_NO_INTERFACE;
-        }
-        SLANG_NO_THROW uint32_t SLANG_MCALL addRef() override { return 1; }
-        SLANG_NO_THROW uint32_t SLANG_MCALL release() override { return 1; }
-        SLANG_NO_THROW void* SLANG_MCALL castAs(const SlangUUID& guid) override {
-            if (guid == ISlangUnknown::getTypeGuid() || guid == ISlangCastable::getTypeGuid())
-                return static_cast<ISlangCastable*>(this);
-            if (guid == ISlangFileSystem::getTypeGuid()) return static_cast<ISlangFileSystem*>(this);
-            if (guid == ISlangFileSystemExt::getTypeGuid()) return static_cast<ISlangFileSystemExt*>(this);
-            return nullptr;
-        }
-
-        SLANG_NO_THROW SlangResult SLANG_MCALL loadFile(char const* path, ISlangBlob** outBlob) override {
-            return global_.load_shader_source(resolve_alias(path), outBlob);
-        }
-
-        SLANG_NO_THROW SlangResult SLANG_MCALL getFileUniqueIdentity(const char* path,
-                                                                     ISlangBlob** outUniqueIdentity) override {
-            auto normalized    = resolve_alias(path);
-            auto blob          = make_terminated_blob(normalized);
-            *outUniqueIdentity = blob.detach();
-            return SLANG_OK;
-        }
-
-        SLANG_NO_THROW SlangResult SLANG_MCALL calcCombinedPath(SlangPathType fromPathType,
-                                                                const char* fromPath,
-                                                                const char* path,
-                                                                ISlangBlob** pathOut) override {
-            (void)fromPathType;
-
-            auto importer = find_importer(fromPath);
-            if (!importer) return *pathOut = nullptr, SLANG_E_NOT_FOUND;
-
-            auto resolved = resolve_request_path(*importer, path);
-            if (!resolved.has_value()) return *pathOut = nullptr, SLANG_E_NOT_FOUND;
-
-            logical_to_actual_.insert_or_assign(normalize_path_string(std::string(path)), resolved->actual_path);
-            logical_to_actual_.insert_or_assign(resolved->logical_path, resolved->actual_path);
-            logical_to_actual_.insert_or_assign(resolved->actual_path, resolved->actual_path);
-
-            auto blob = make_terminated_blob(resolved->logical_path);
-            *pathOut  = blob.detach();
-            return SLANG_OK;
-        }
-
-        SLANG_NO_THROW SlangResult SLANG_MCALL getPathType(const char* path, SlangPathType* pathTypeOut) override {
-            auto normalized = resolve_alias(path);
-            if (global_.get_shader_by_path(normalized)) {
-                *pathTypeOut = SLANG_PATH_TYPE_FILE;
-                return SLANG_OK;
-            }
-            return SLANG_E_NOT_FOUND;
-        }
-
-        SLANG_NO_THROW SlangResult SLANG_MCALL getPath(PathKind kind, const char* path, ISlangBlob** outPath) override {
-            (void)kind;
-            auto normalized = resolve_alias(path);
-            auto blob       = make_terminated_blob(normalized);
-            *outPath        = blob.detach();
-            return SLANG_OK;
-        }
-
-        SLANG_NO_THROW void SLANG_MCALL clearCache() override {}
-
-        SLANG_NO_THROW SlangResult SLANG_MCALL enumeratePathContents(const char* path,
-                                                                     FileSystemContentsCallBack callback,
-                                                                     void* userData) override {
-            (void)path;
-            (void)callback;
-            (void)userData;
-            return SLANG_E_NOT_IMPLEMENTED;
-        }
-
-        SLANG_NO_THROW OSPathKind SLANG_MCALL getOSPathKind() override { return OSPathKind::None; }
-    };
+    void set_preprocessed(const Shader& shader) {
+        if (!shader.source.is_slang()) return;
+        auto identity     = canonical_asset_path_string(shader.path);
+        auto import_key   = shader.import_path.is_custom()
+                                ? canonical_asset_path_string(shader_custom_path(shader.import_path.as_custom_path()))
+                                : canonical_asset_path_string(shader.import_path.as_asset_path());
+        auto preprocessed = preprocess_slang_compile_source(shader.source.as_str(), shader.path);
+        vfs_.add(identity, preprocessed, identity);
+        if (import_key != identity) vfs_.add(import_key, preprocessed, identity);
+    }
 
     std::expected<std::vector<std::uint8_t>, ShaderCacheError> compile(
+        assets::AssetId<Shader> id,
         const Shader& shader,
-        const std::string& source,
-        const assets::AssetPath& path,
         std::span<const ShaderDefVal> shader_defs,
-        const std::unordered_map<ShaderImport, assets::AssetId<Shader>>& import_map,
         const std::unordered_map<assets::AssetId<Shader>, Shader>& shaders) {
         using Stage = ShaderCacheError::SlangCompileError::Stage;
+
         if (!global_session) {
             return std::unexpected(
                 ShaderCacheError::slang_error(Stage::SessionCreation, "Slang global session not available"));
         }
 
+        auto root_path = canonical_asset_path_string(shader.path);
+        // Use the pre-cached preprocessed source (computed at set_shader time);
+        // fall back to computing it here if somehow absent.
+        const std::string* preprocessed_ptr = nullptr;
+        std::string preprocessed_fallback;
+        try {
+            preprocessed_ptr = &vfs_.get_source(root_path);
+        } catch (const std::out_of_range&) {
+            preprocessed_fallback = preprocess_slang_compile_source(shader.source.as_str(), shader.path);
+            preprocessed_ptr      = &preprocessed_fallback;
+        }
+        auto defs_key = defs_cache_key(shader_defs);
+
+        // Session-level preprocessor macros.
         std::vector<std::string> def_values;
         std::vector<slang::PreprocessorMacroDesc> macros;
         def_values.reserve(shader_defs.size());
@@ -460,9 +434,6 @@ struct ShaderCache::SlangCompiler {
         slang::TargetDesc target_desc = {};
         target_desc.format            = SLANG_SPIRV;
         target_desc.profile           = global_session->findProfile("sm_6_0");
-
-        GlobalFileSystem global_fs(import_map, shaders);
-        ScopedFileSystem fs(global_fs, shader);
 
         const char* search_paths[]                     = {""};
         slang::CompilerOptionEntry compiler_options[1] = {};
@@ -480,7 +451,7 @@ struct ShaderCache::SlangCompiler {
         session_desc.preprocessorMacroCount   = static_cast<SlangInt>(macros.size());
         session_desc.compilerOptionEntries    = compiler_options;
         session_desc.compilerOptionEntryCount = 1;
-        session_desc.fileSystem               = &fs;
+        session_desc.fileSystem               = &vfs_;
 
         Slang::ComPtr<slang::ISession> session;
         if (SLANG_FAILED(global_session->createSession(session_desc, session.writeRef()))) {
@@ -488,15 +459,22 @@ struct ShaderCache::SlangCompiler {
                 ShaderCacheError::slang_error(Stage::SessionCreation, "Failed to create Slang session"));
         }
 
+        // Pre-load cached dependency modules from serialized IR blobs.
+        preload_cached_modules(session.get(), defs_key, shaders);
+
+        // Load root module from preprocessed source.
         Slang::ComPtr<slang::IBlob> diagnostics;
-        auto normalized_path = normalize_asset_path_string(path);
-        slang::IModule* mod  = session->loadModuleFromSourceString("shader", normalized_path.c_str(), source.c_str(),
-                                                                   diagnostics.writeRef());
+        slang::IModule* mod = session->loadModuleFromSourceString("shader", root_path.c_str(),
+                                                                  preprocessed_ptr->c_str(), diagnostics.writeRef());
         if (!mod) {
             return std::unexpected(ShaderCacheError::slang_error(
-                Stage::ModuleLoad, format_slang_message("Slang compilation failed", diagnostics.get())));
+                Stage::ModuleLoad, format_diagnostics("Slang compilation failed", diagnostics.get())));
         }
 
+        // Cache any newly compiled dependency modules for future reuse.
+        cache_loaded_modules(session.get(), defs_key, root_path);
+
+        // Gather entry points.
         std::vector<slang::IComponentType*> components;
         components.push_back(mod);
         SlangInt ep_count = mod->getDefinedEntryPointCount();
@@ -506,6 +484,7 @@ struct ShaderCache::SlangCompiler {
             components.push_back(entry_points[i].get());
         }
 
+        // Compose.
         Slang::ComPtr<slang::IComponentType> composed;
         {
             Slang::ComPtr<slang::IBlob> diag;
@@ -513,30 +492,115 @@ struct ShaderCache::SlangCompiler {
                                                                    static_cast<SlangInt>(components.size()),
                                                                    composed.writeRef(), diag.writeRef()))) {
                 return std::unexpected(ShaderCacheError::slang_error(
-                    Stage::Compose, format_slang_message("Slang compose failed", diag.get())));
+                    Stage::Compose, format_diagnostics("Slang compose failed", diag.get())));
             }
         }
 
+        // Link.
         Slang::ComPtr<slang::IComponentType> linked;
         {
             Slang::ComPtr<slang::IBlob> diag;
             if (SLANG_FAILED(composed->link(linked.writeRef(), diag.writeRef()))) {
                 return std::unexpected(
-                    ShaderCacheError::slang_error(Stage::Link, format_slang_message("Slang link failed", diag.get())));
+                    ShaderCacheError::slang_error(Stage::Link, format_diagnostics("Slang link failed", diag.get())));
             }
         }
 
+        // Code generation → SPIR-V.
         Slang::ComPtr<slang::IBlob> spirv_code;
         {
             Slang::ComPtr<slang::IBlob> diag;
             if (SLANG_FAILED(linked->getTargetCode(0, spirv_code.writeRef(), diag.writeRef()))) {
                 return std::unexpected(ShaderCacheError::slang_error(
-                    Stage::CodeGeneration, format_slang_message("Slang code generation failed", diag.get())));
+                    Stage::CodeGeneration, format_diagnostics("Slang code generation failed", diag.get())));
             }
         }
 
         auto ptr = static_cast<const std::uint8_t*>(spirv_code->getBufferPointer());
         return std::vector<std::uint8_t>(ptr, ptr + spirv_code->getBufferSize());
+    }
+
+   private:
+    // Precompiled module IR cache: identity → (defs_key → serialized IR blob).
+    // Session-level macros affect all modules, so blobs are keyed by both
+    // the module identity and the definition set used during compilation.
+    // Invalidation by identity removes all def variants at once.
+    std::unordered_map<std::string, std::unordered_map<std::string, Slang::ComPtr<ISlangBlob>>> module_ir_cache_;
+    // Persistent VFS: populated at set_shader time with preprocessed Slang
+    // sources for all registered shaders.  Serves as both the preprocessed-
+    // source cache and the file system passed to each Slang session.
+    SlangVFS vfs_;
+
+    static std::string defs_cache_key(std::span<const ShaderDefVal> defs) {
+        std::string key;
+        for (const auto& d : defs) {
+            if (!key.empty()) key += '|';
+            key += d.name;
+            key += '=';
+            key += d.value_as_string();
+        }
+        return key;
+    }
+
+    // Pre-load cached dependency modules into the session from serialized IR.
+    // Iterates all registered Slang shaders (same policy as populate_vfs) so
+    // that modules whose blobs are available are pre-loaded regardless of
+    // whether the resolved_imports graph is complete.
+    // If a cached blob fails to load (e.g. stale), evict it so the VFS source
+    // path is used instead.
+    void preload_cached_modules(slang::ISession* session,
+                                const std::string& defs_key,
+                                const std::unordered_map<assets::AssetId<Shader>, Shader>& shaders) {
+        for (const auto& [_, dep] : shaders) {
+            if (!dep.source.is_slang()) continue;
+
+            auto identity = canonical_asset_path_string(dep.path);
+            auto outer_it = module_ir_cache_.find(identity);
+            if (outer_it == module_ir_cache_.end()) continue;
+
+            auto inner_it = outer_it->second.find(defs_key);
+            if (inner_it == outer_it->second.end()) continue;
+
+            // Use the module's declared name (from import_path) as the
+            // module-name arg so Slang's name-map lookup succeeds when the
+            // root shader imports by that same name.  The path arg stays
+            // as the file-system identity so the path-map is also correct.
+            auto import_name = dep.import_path.is_custom()
+                                   ? canonical_asset_path_string(shader_custom_path(dep.import_path.as_custom_path()))
+                                   : canonical_asset_path_string(dep.import_path.as_asset_path());
+
+            Slang::ComPtr<slang::IBlob> diag;
+            auto* loaded = session->loadModuleFromIRBlob(import_name.c_str(), identity.c_str(), inner_it->second.get(),
+                                                         diag.writeRef());
+            if (!loaded) {
+                spdlog::debug("[shader.cache] Cached IR blob stale for '{}', evicting.", identity);
+                outer_it->second.erase(inner_it);
+                if (outer_it->second.empty()) module_ir_cache_.erase(outer_it);
+            }
+        }
+    }
+
+    // After compilation, serialize any newly loaded dependency modules and
+    // store them in module_ir_cache_ for future sessions.
+    void cache_loaded_modules(slang::ISession* session, const std::string& defs_key, const std::string& root_identity) {
+        SlangInt count = session->getLoadedModuleCount();
+        for (SlangInt i = 0; i < count; ++i) {
+            auto* loaded_mod = session->getLoadedModule(i);
+            if (!loaded_mod) continue;
+            const char* uid = loaded_mod->getUniqueIdentity();
+            if (!uid) continue;
+            std::string identity(uid);
+            // Skip root module — it varies by preprocessor macros and is already
+            // cached at the ShaderData::processed_shaders level.
+            if (identity == root_identity) continue;
+            if (module_ir_cache_[identity].contains(defs_key)) continue;
+
+            Slang::ComPtr<ISlangBlob> blob;
+            if (SLANG_SUCCEEDED(loaded_mod->serialize(blob.writeRef())) && blob) {
+                spdlog::trace("[shader.cache] Cached serialized IR for '{}' (defs='{}').", identity, defs_key);
+                module_ir_cache_[identity].emplace(defs_key, std::move(blob));
+            }
+        }
     }
 };
 
@@ -550,19 +614,25 @@ std::expected<void, ShaderCacheError> ShaderCache::add_import_to_composer(
     assets::AssetId<Shader> shader_id,
     const ShaderImport& import_ref) {
     const std::string module_name = import_ref.module_name();
+    auto missing_import           = [&]() {
+        if (auto shader_it = shaders.find(shader_id); shader_it != shaders.end()) {
+            return resolve_import_key(shader_it->second, import_ref);
+        }
+        return import_ref;
+    };
 
     if (composer.contains_module(module_name)) return {};
 
     auto data_it = data.find(shader_id);
-    if (data_it == data.end()) return std::unexpected(ShaderCacheError::import_not_available());
+    if (data_it == data.end()) return std::unexpected(ShaderCacheError::import_not_available({missing_import()}));
 
     auto provider_it = data_it->second.resolved_imports.find(import_ref);
     if (provider_it == data_it->second.resolved_imports.end()) {
-        return std::unexpected(ShaderCacheError::import_not_available());
+        return std::unexpected(ShaderCacheError::import_not_available({missing_import()}));
     }
 
     auto sit = shaders.find(provider_it->second);
-    if (sit == shaders.end()) return std::unexpected(ShaderCacheError::import_not_available());
+    if (sit == shaders.end()) return std::unexpected(ShaderCacheError::import_not_available({missing_import()}));
     const Shader& shader = sit->second;
 
     for (const auto& dep : shader.imports) {
@@ -617,9 +687,9 @@ std::expected<std::shared_ptr<wgpu::ShaderModule>, ShaderCacheError> ShaderCache
 
     shader_data.pipelines.insert(pipeline);
 
-    std::unordered_set<assets::AssetId<Shader>> visiting;
-    if (!shader_ready(shaders_, data_, id, visiting)) {
-        return std::unexpected(ShaderCacheError::import_not_available());
+    auto missing_imports = missing_imports_for_shader(shaders_, data_, id);
+    if (!missing_imports.empty()) {
+        return std::unexpected(ShaderCacheError::import_not_available(std::move(missing_imports)));
     }
 
     auto merged_defs = merge_shader_defs(shader_defs, shader);
@@ -638,8 +708,7 @@ std::expected<std::shared_ptr<wgpu::ShaderModule>, ShaderCacheError> ShaderCache
         const auto& bytes = std::get<Source::SpirV>(shader.source.data).bytes;
         source            = ShaderCacheSource{ShaderCacheSource::SpirV{std::span<const std::uint8_t>(bytes)}};
     } else if (std::holds_alternative<Source::Slang>(shader.source.data)) {
-        auto spirv = slang_->compile(shader, std::get<Source::Slang>(shader.source.data).code, shader.path, merged_defs,
-                                     import_path_shaders_, shaders_);
+        auto spirv = slang_->compile(id, shader, merged_defs, shaders_);
         if (!spirv) return std::unexpected(spirv.error());
         spirv_storage = std::move(spirv.value());
         source        = ShaderCacheSource{ShaderCacheSource::SpirV{std::span<const std::uint8_t>(spirv_storage)}};
@@ -649,7 +718,7 @@ std::expected<std::shared_ptr<wgpu::ShaderModule>, ShaderCacheError> ShaderCache
                 return std::unexpected(res.error());
         }
         auto composed =
-            composer_.compose(shader.source.as_str(), normalize_asset_path_string(shader.path), merged_defs);
+            composer_.compose(shader.source.as_str(), canonical_asset_path_string(shader.path), merged_defs);
         if (!composed) return std::unexpected(ShaderCacheError::process_error(std::move(composed.error())));
         source = ShaderCacheSource{ShaderCacheSource::Wgsl{std::move(composed.value())}};
     }
@@ -679,8 +748,10 @@ std::vector<CachedPipelineId> ShaderCache::set_shader(assets::AssetId<Shader> id
     std::unordered_set<CachedPipelineId> affected(cleared.begin(), cleared.end());
 
     if (auto existing = shaders_.find(id); existing != shaders_.end()) {
+        slang_->invalidate(existing->second.path);
         unregister_import_names(existing->second);
     }
+    slang_->invalidate(shader.path);
     invalidate_dependents(shaders_, data_, waiting_on_import_, id);
     reset_shader_links(data_, waiting_on_import_, id);
 
@@ -688,6 +759,7 @@ std::vector<CachedPipelineId> ShaderCache::set_shader(assets::AssetId<Shader> id
     const Shader& stored_shader = shaders_.at(id);
     auto& shader_data           = data_[id];
 
+    slang_->set_preprocessed(stored_shader);
     register_import_names(stored_shader, id);
 
     auto resolve_waiters = [&](const ShaderImport& visible_name) {
@@ -713,7 +785,9 @@ std::vector<CachedPipelineId> ShaderCache::set_shader(assets::AssetId<Shader> id
                 shader_data.dependents.insert(waiting_id);
             }
 
-            if (all_imports_resolved(waiter_it->second, waiter_data)) {
+            if (std::ranges::all_of(waiter_it->second.imports, [&](const ShaderImport& import_ref) {
+                    return waiter_data.resolved_imports.contains(import_ref);
+                })) {
                 affected.insert(waiter_data.pipelines.begin(), waiter_data.pipelines.end());
             }
         }
@@ -739,8 +813,9 @@ std::vector<CachedPipelineId> ShaderCache::set_shader(assets::AssetId<Shader> id
 }
 
 std::vector<CachedPipelineId> ShaderCache::remove(assets::AssetId<Shader> id) {
+    auto sit = shaders_.find(id);
+    if (sit != shaders_.end()) slang_->invalidate(sit->second.path);
     auto affected = clear(id);
-    auto sit      = shaders_.find(id);
     if (sit == shaders_.end()) {
         return affected;
     }

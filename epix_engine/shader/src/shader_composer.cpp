@@ -43,6 +43,30 @@ static std::optional<epix::assets::AssetPath> asset_path_from_context_name(std::
     return epix::assets::AssetPath(std::string(context_name));
 }
 
+static std::string canonicalize_custom_module_name(std::string_view raw_import) {
+    std::string normalized;
+    normalized.reserve(raw_import.size());
+    for (std::size_t i = 0; i < raw_import.size(); ++i) {
+        const char current = raw_import[i];
+        if (current == ':' && i + 1 < raw_import.size() && raw_import[i + 1] == ':') {
+            if (normalized.empty() || normalized.back() != '/') normalized.push_back('/');
+            ++i;
+            continue;
+        }
+        if (current == '.' || current == '/' || current == '\\') {
+            if (normalized.empty() || normalized.back() != '/') normalized.push_back('/');
+            continue;
+        }
+        normalized.push_back(current);
+    }
+
+    auto path = std::filesystem::path(normalized).lexically_normal();
+    if (path.extension() == ".slang") {
+        path.replace_extension();
+    }
+    return path.generic_string();
+}
+
 static std::string canonicalize_import_name(std::string_view context_name, std::string_view raw_import) {
     std::string_view literal = raw_import;
     if (literal.starts_with('"')) {
@@ -119,20 +143,39 @@ static std::string substitute_defs(std::string_view line,
 std::expected<void, ComposeError> ShaderComposer::add_module(const std::string& module_name,
                                                              std::string_view source,
                                                              std::span<const ShaderDefVal> defs) {
-    if (module_name.empty()) {
+    auto normalized_name = module_name;
+    if (!looks_like_asset_context(normalized_name) &&
+        !(normalized_name.size() >= 2 && normalized_name.front() == '"' && normalized_name.back() == '"')) {
+        normalized_name = canonicalize_custom_module_name(module_name);
+    }
+
+    if (normalized_name.empty()) {
         return std::unexpected(ComposeError{ComposeError::ParseError{module_name, "empty module name"}});
     }
-    modules_[module_name] = ModuleEntry{
+    modules_[normalized_name] = ModuleEntry{
         std::string(source),
         std::vector<ShaderDefVal>(defs.begin(), defs.end()),
     };
-    spdlog::trace("[shader.composer] Registered module '{}'.", module_name);
+    spdlog::trace("[shader.composer] Registered module '{}'.", normalized_name);
     return {};
 }
 
-void ShaderComposer::remove_module(const std::string& module_name) { modules_.erase(module_name); }
+void ShaderComposer::remove_module(const std::string& module_name) {
+    if (!looks_like_asset_context(module_name) &&
+        !(module_name.size() >= 2 && module_name.front() == '"' && module_name.back() == '"')) {
+        modules_.erase(canonicalize_custom_module_name(module_name));
+        return;
+    }
+    modules_.erase(module_name);
+}
 
-bool ShaderComposer::contains_module(const std::string& module_name) const { return modules_.contains(module_name); }
+bool ShaderComposer::contains_module(const std::string& module_name) const {
+    if (!looks_like_asset_context(module_name) &&
+        !(module_name.size() >= 2 && module_name.front() == '"' && module_name.back() == '"')) {
+        return modules_.contains(canonicalize_custom_module_name(module_name));
+    }
+    return modules_.contains(module_name);
+}
 
 // ─── build_def_map ─────────────────────────────────────────────────────────
 std::unordered_map<std::string, const ShaderDefVal*> ShaderComposer::build_def_map(std::span<const ShaderDefVal> a,
@@ -284,7 +327,7 @@ std::expected<std::string, ComposeError> ShaderComposer::compose_internal(
                 } else {
                     // custom name (possibly "name as alias" - take first token)
                     auto sp2    = r.find_first_of(" \t");
-                    import_name = std::string(sp2 == std::string_view::npos ? r : r.substr(0, sp2));
+                    import_name = canonicalize_custom_module_name(sp2 == std::string_view::npos ? r : r.substr(0, sp2));
                 }
 
                 // Cycle detection

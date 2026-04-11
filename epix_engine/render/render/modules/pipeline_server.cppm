@@ -40,7 +40,7 @@ export struct LayoutCache {
     {
         LayoutCacheKey key = layouts | std::views::transform([](const auto& layout) { return layout.id(); }) |
                              std::ranges::to<std::vector>();
-        auto it            = cache.find(key);
+        auto it = cache.find(key);
         if (it != cache.end()) {
             return it->second;
         }
@@ -79,9 +79,19 @@ export struct GetPipelineInvalidId {};
 export using GetPipelineError = std::variant<GetPipelineNotReady, GetPipelineInvalidId, PipelineServerError>;
 export struct PipelineStateQueued {};
 export using PipelineStateCreating = std::future<std::expected<Pipeline, PipelineServerError>>;
+export struct PipelineStateRecoverableShaderError {
+    shader::ShaderCacheError error;
+    std::string signature;
+    std::chrono::steady_clock::time_point first_seen;
+    std::size_t repeat_count = 0;
+    bool logged              = false;
+};
 /** @brief Current state of a cached pipeline in its lifecycle. */
-export using CachedPipelineState =
-    std::variant<PipelineStateQueued, PipelineStateCreating, Pipeline, PipelineServerError>;
+export using CachedPipelineState = std::variant<PipelineStateQueued,
+                                                PipelineStateCreating,
+                                                PipelineStateRecoverableShaderError,
+                                                Pipeline,
+                                                PipelineServerError>;
 struct CachedPipeline {
     PipelineDescriptor descriptor;
     CachedPipelineState state;

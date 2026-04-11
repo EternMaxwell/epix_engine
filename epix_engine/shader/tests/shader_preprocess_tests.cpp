@@ -29,7 +29,7 @@ TEST(ShaderPreprocessWgsl, FallsBackToAssetPathWhenNoDirectivesExist) {
 TEST(ShaderPreprocessWgsl, ResolvesAllFourImportFormsToDistinctTargets) {
     const char* source =
         "#define_import_path ui::button\n"
-        "#import ui::custom\n"
+        "#import ui.custom\n"
         "#import \"embedded://explicit/shared/full.wgsl\"\n"
         "#import \"/shared/root.wgsl\"\n"
         "#import \"common/relative.wgsl\"\n";
@@ -37,11 +37,11 @@ TEST(ShaderPreprocessWgsl, ResolvesAllFourImportFormsToDistinctTargets) {
     auto [import_path, imports] = Shader::preprocess(source, "embedded://mesh/main.wgsl");
 
     ASSERT_TRUE(import_path.is_custom());
-    EXPECT_EQ(import_path.as_custom(), "ui::button");
+    EXPECT_EQ(import_path.as_custom(), "ui/button");
     ASSERT_EQ(imports.size(), 4u);
 
     ASSERT_TRUE(imports[0].is_custom());
-    EXPECT_EQ(imports[0].as_custom(), "ui::custom");
+    EXPECT_EQ(imports[0].as_custom(), "ui/custom");
 
     expect_asset_import(imports[1], "embedded", "explicit/shared/full.wgsl");
     expect_asset_import(imports[2], "embedded", "shared/root.wgsl");
@@ -64,7 +64,7 @@ TEST(ShaderPreprocessSlang, FallsBackToAssetPathWhenNoModuleExists) {
 TEST(ShaderPreprocessSlang, ResolvesAllFourImportFormsToDistinctTargets) {
     const char* source =
         "module scene.main;\n"
-        "import utility;\n"
+        "import utility::core;\n"
         "import \"embedded://explicit/shared/full\";\n"
         "import \"/shared/root\";\n"
         "__include \"common/relative\";\n";
@@ -72,11 +72,11 @@ TEST(ShaderPreprocessSlang, ResolvesAllFourImportFormsToDistinctTargets) {
     auto [import_path, imports] = Shader::preprocess_slang(source, "embedded://mesh/main.slang");
 
     ASSERT_TRUE(import_path.is_custom());
-    EXPECT_EQ(import_path.as_custom(), "scene/main.slang");
+    EXPECT_EQ(import_path.as_custom(), "scene/main");
     ASSERT_EQ(imports.size(), 4u);
 
     ASSERT_TRUE(imports[0].is_custom());
-    EXPECT_EQ(imports[0].as_custom(), "utility.slang");
+    EXPECT_EQ(imports[0].as_custom(), "utility/core");
 
     expect_asset_import(imports[1], "embedded", "explicit/shared/full.slang");
     expect_asset_import(imports[2], "embedded", "shared/root.slang");

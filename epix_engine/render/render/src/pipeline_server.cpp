@@ -9,6 +9,54 @@ import :pipeline_server;
 using namespace epix::shader;
 
 namespace epix::render {
+namespace {
+
+using Clock = std::chrono::steady_clock;
+
+constexpr auto k_recoverable_shader_error_log_timeout = std::chrono::seconds(2);
+constexpr std::size_t k_recoverable_shader_error_log_retry_count = 120;
+
+void note_recoverable_shader_error(PipelineStateRecoverableShaderError& state,
+                                   CachedPipelineId id,
+                                   std::string_view pipeline_name) {
+    if (state.logged) {
+        return;
+    }
+
+    const auto elapsed = Clock::now() - state.first_seen;
+    if (elapsed < k_recoverable_shader_error_log_timeout &&
+        state.repeat_count < k_recoverable_shader_error_log_retry_count) {
+        return;
+    }
+
+    spdlog::error(
+        "[render.pipeline] Shader still waiting for pipeline id={}, name='{}' after {:.3f}s ({} retries): {}",
+        id.get(), pipeline_name, std::chrono::duration<double>(elapsed).count(), state.repeat_count, state.signature);
+    state.logged = true;
+}
+
+PipelineStateRecoverableShaderError make_recoverable_shader_error_state(
+    const ShaderCacheError& shader_error,
+    const std::optional<PipelineStateRecoverableShaderError>& previous_state) {
+    auto state = PipelineStateRecoverableShaderError{
+        .error        = shader_error,
+        .signature    = shader_error.message(),
+        .first_seen   = Clock::now(),
+        .repeat_count = 1,
+        .logged       = false,
+    };
+
+    if (previous_state.has_value() && previous_state->signature == state.signature) {
+        state.first_seen   = previous_state->first_seen;
+        state.repeat_count = previous_state->repeat_count + 1;
+        state.logged       = previous_state->logged;
+    }
+
+    return state;
+}
+
+}  // namespace
+
 std::expected<wgpu::ShaderModule, ShaderCacheError> load_module(const wgpu::Device& device,
                                                                 const ShaderCacheSource& source,
                                                                 ValidateShader) {
@@ -237,27 +285,12 @@ void PipelineServer::process_pipeline(CachedPipeline& cached_pipeline, CachedPip
                                                 [](const ComputePipelineDescriptor& desc) { return desc.label; },
                                             },
                                             cached_pipeline.descriptor);
-    auto handle_pipeline_error = [&](const PipelineServerError& error) {
-        if (auto pipeline_error = std::get_if<PipelineError>(&error)) {
-            switch (*pipeline_error) {
-                case PipelineError::CreationFailure: {
-                    spdlog::error("Failed to create pipeline. Id: {}, name: {}", id.get(), pipeline_name);
-                    m_data->waiting_pipelines.insert(id);
-                    break;
-                }
-            }
-            return;
-        }
 
-        if (auto shader_error = std::get_if<ShaderCacheError>(&error)) {
-            if (shader_error->is_recoverable()) {
-                cached_pipeline.state = PipelineStateQueued{};
-            } else {
-                spdlog::error("[render.pipeline] Shader error for pipeline id={}, name='{}': {}", id.get(),
-                              pipeline_name, shader_error->message());
-            }
-        }
-    };
+    std::optional<PipelineStateRecoverableShaderError> previous_recoverable_shader_error;
+    if (auto* recoverable_error = std::get_if<PipelineStateRecoverableShaderError>(&cached_pipeline.state)) {
+        previous_recoverable_shader_error = *recoverable_error;
+        cached_pipeline.state             = PipelineStateQueued{};
+    }
 
     if (std::holds_alternative<PipelineStateQueued>(cached_pipeline.state)) {
         spdlog::trace("[render.pipeline] Creating pipeline id={} name='{}'.", id.get(), pipeline_name);
@@ -279,7 +312,7 @@ void PipelineServer::process_pipeline(CachedPipeline& cached_pipeline, CachedPip
         if (auto pipeline_error = std::get_if<PipelineError>(error)) {
             switch (*pipeline_error) {
                 case PipelineError::CreationFailure: {
-                    spdlog::error("Failed to create pipeline. Id: {}, name: {}", id.get(), pipeline_name);
+                    spdlog::error("[render.pipeline] Failed to create pipeline. Id: {}, name: {}", id.get(), pipeline_name);
                     m_data->waiting_pipelines.insert(id);
                     break;
                 }
@@ -289,7 +322,10 @@ void PipelineServer::process_pipeline(CachedPipeline& cached_pipeline, CachedPip
 
         if (auto shader_error = std::get_if<ShaderCacheError>(error)) {
             if (shader_error->is_recoverable()) {
-                // Not ready yet – will be re-queued
+                auto recoverable_state =
+                    make_recoverable_shader_error_state(*shader_error, previous_recoverable_shader_error);
+                note_recoverable_shader_error(recoverable_state, id, pipeline_name);
+                cached_pipeline.state = std::move(recoverable_state);
             } else {
                 spdlog::error("[render.pipeline] Shader error for pipeline id={}, name='{}': {}", id.get(),
                               pipeline_name, shader_error->message());

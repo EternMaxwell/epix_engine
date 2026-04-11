@@ -138,8 +138,8 @@ TEST(ShaderProcessingSlang, WritesProcessedShaderAssetAndPreservesCustomImports)
     auto source = memory::Directory::create({});
     (void)source.insert_file(
         "main.slang",
-        memory::Value::from_shared(
-            make_bytes("module main;\nimport utility;\n[shader(\"compute\")]\n[numthreads(1,1,1)]\nvoid main() {}")));
+        memory::Value::from_shared(make_bytes(
+            "module main.core;\nimport utility::core;\n[shader(\"compute\")]\n[numthreads(1,1,1)]\nvoid main() {}")));
 
     auto env = make_processed_shader_env(source);
     ASSERT_TRUE(preprocess_shader_assets(env, {"main.slang"}));
@@ -154,7 +154,7 @@ TEST(ShaderProcessingSlang, WritesProcessedShaderAssetAndPreservesCustomImports)
     EXPECT_TRUE(shader->get().source.is_slang());
     ASSERT_EQ(shader->get().imports.size(), 1u);
     EXPECT_TRUE(shader->get().imports[0].is_custom());
-    EXPECT_EQ(shader->get().imports[0].as_custom(), "utility.slang");
+    EXPECT_EQ(shader->get().imports[0].as_custom(), "utility/core");
     EXPECT_TRUE(shader->get().file_dependencies.empty());
 
     auto processed = read_bytes(env.processed_dir, "main.slang");

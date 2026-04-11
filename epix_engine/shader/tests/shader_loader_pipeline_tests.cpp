@@ -88,7 +88,7 @@ void add_wgsl_success_fixture(EmbeddedAssetRegistry& registry) {
 
 void add_slang_success_fixture(EmbeddedAssetRegistry& registry) {
     insert_text_asset(registry, "mesh/main.slang",
-                      "import utility;\n"
+                      "import utility::core;\n"
                       "import \"embedded://explicit/shared/full\";\n"
                       "import \"/shared/root\";\n"
                       "import \"common/relative\";\n"
@@ -98,7 +98,7 @@ void add_slang_success_fixture(EmbeddedAssetRegistry& registry) {
                       "    int value = customValue() + explicitValue() + rootValue() + relativeValue();\n"
                       "}\n");
     insert_text_asset(registry, "providers/custom.slang",
-                      "module utility;\n"
+                      "module utility.core;\n"
                       "public int customValue() { return 1; }\n");
     insert_text_asset(registry, "explicit/shared/full.slang",
                       "module \"explicit/shared/full\";\n"
@@ -121,6 +121,11 @@ void add_slang_success_fixture(EmbeddedAssetRegistry& registry) {
                       "public int wrongRelativeValue() { return 40; }\n");
 }
 
+AssetId<Shader> make_shader_id(std::uint8_t tag) {
+    auto uuid = uuids::uuid::from_string(std::format("00000000-0000-0000-0000-0000000000{:02x}", tag));
+    return AssetId<Shader>(uuid.value());
+}
+
 }  // namespace
 
 TEST(ShaderLoaderPipelineWgsl, ValidatesAndCompilesAllFourImportFormsWithExactFileSelection) {
@@ -141,7 +146,7 @@ TEST(ShaderLoaderPipelineWgsl, ValidatesAndCompilesAllFourImportFormsWithExactFi
     ASSERT_TRUE(shader.has_value());
     ASSERT_EQ(shader->get().imports.size(), 4u);
     ASSERT_TRUE(shader->get().imports[0].is_custom());
-    EXPECT_EQ(shader->get().imports[0].as_custom(), "ui::custom");
+    EXPECT_EQ(shader->get().imports[0].as_custom(), "ui/custom");
     ASSERT_TRUE(shader->get().imports[1].is_asset_path());
     EXPECT_EQ(shader->get().imports[1].as_asset_path(), AssetPath("embedded://explicit/shared/full.wgsl"));
     ASSERT_TRUE(shader->get().imports[2].is_asset_path());
@@ -166,7 +171,7 @@ TEST(ShaderLoaderPipelineWgsl, ValidatesAndCompilesAllFourImportFormsWithExactFi
 
     auto& cache = env.app.resource_mut<ShaderCache>();
     auto result = cache.get(CachedPipelineId{1}, main_handle.id(), {});
-    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result.has_value()) << result.error().message();
     EXPECT_EQ(*env.load_count, 1);
 
     EXPECT_NE(env.last_wgsl_source->find("fn custom_value()"), std::string::npos);
@@ -196,8 +201,43 @@ TEST(ShaderLoaderPipelineWgsl, MissingCustomImportReturnsRecoverableCacheError) 
     auto result = cache.get(CachedPipelineId{1}, main_handle.id(), {});
     ASSERT_FALSE(result.has_value());
     EXPECT_TRUE(result.error().is_recoverable());
-    EXPECT_TRUE(std::holds_alternative<ShaderCacheError::ShaderImportNotYetAvailable>(result.error().data));
+    auto* missing = std::get_if<ShaderCacheError::ShaderImportNotYetAvailable>(&result.error().data);
+    ASSERT_NE(missing, nullptr);
+    ASSERT_EQ(missing->missing_imports.size(), 1u);
+    EXPECT_TRUE(missing->missing_imports[0].is_custom());
+    EXPECT_EQ(missing->missing_imports[0].as_custom(), "ui/missing");
     EXPECT_EQ(*env.load_count, 0);
+}
+
+TEST(ShaderLoaderPipelineWgsl, MissingNestedCustomImportReportsLeafImport) {
+    auto env       = make_embedded_pipeline_env();
+    auto& registry = embedded_registry(env.app);
+    insert_text_asset(registry, "mesh/main.wgsl",
+                      "#import ui::parent\n"
+                      "@compute @workgroup_size(1)\n"
+                      "fn main() {}\n");
+    insert_text_asset(registry, "providers/parent.wgsl",
+                      "#define_import_path ui::parent\n"
+                      "#import ui::leaf\n"
+                      "fn parent_value() -> i32 { return 1; }\n");
+
+    auto& server       = env.app.resource<AssetServer>();
+    auto parent_handle = server.load<Shader>(AssetPath("embedded://providers/parent.wgsl"));
+    auto main_handle   = server.load<Shader>(AssetPath("embedded://mesh/main.wgsl"));
+    flush_and_sync(env.app);
+
+    ASSERT_TRUE(server.is_loaded_with_dependencies(parent_handle.id()));
+    ASSERT_TRUE(server.is_loaded_with_dependencies(main_handle.id()));
+
+    auto& cache = env.app.resource_mut<ShaderCache>();
+    auto result = cache.get(CachedPipelineId{1}, main_handle.id(), {});
+    ASSERT_FALSE(result.has_value());
+
+    auto* missing = std::get_if<ShaderCacheError::ShaderImportNotYetAvailable>(&result.error().data);
+    ASSERT_NE(missing, nullptr);
+    ASSERT_EQ(missing->missing_imports.size(), 1u);
+    EXPECT_TRUE(missing->missing_imports[0].is_custom());
+    EXPECT_EQ(missing->missing_imports[0].as_custom(), "ui/leaf");
 }
 
 TEST(ShaderLoaderPipelineWgsl, MissingFileImportFormsStayOutOfCache) {
@@ -257,7 +297,7 @@ TEST(ShaderLoaderPipelineSlang, ValidatesAndCompilesAllFourImportFormsWithExactF
     ASSERT_TRUE(shader.has_value());
     ASSERT_EQ(shader->get().imports.size(), 4u);
     ASSERT_TRUE(shader->get().imports[0].is_custom());
-    EXPECT_EQ(shader->get().imports[0].as_custom(), "utility.slang");
+    EXPECT_EQ(shader->get().imports[0].as_custom(), "utility/core");
     ASSERT_TRUE(shader->get().imports[1].is_asset_path());
     EXPECT_EQ(shader->get().imports[1].as_asset_path(), AssetPath("embedded://explicit/shared/full.slang"));
     ASSERT_TRUE(shader->get().imports[2].is_asset_path());
@@ -282,7 +322,7 @@ TEST(ShaderLoaderPipelineSlang, ValidatesAndCompilesAllFourImportFormsWithExactF
 
     auto& cache = env.app.resource_mut<ShaderCache>();
     auto result = cache.get(CachedPipelineId{1}, main_handle.id(), {});
-    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result.has_value()) << result.error().message();
     EXPECT_EQ(*env.load_count, 1);
 }
 
@@ -290,7 +330,7 @@ TEST(ShaderLoaderPipelineSlang, MissingCustomImportReturnsRecoverableCacheError)
     auto env       = make_embedded_pipeline_env();
     auto& registry = embedded_registry(env.app);
     insert_text_asset(registry, "mesh/main.slang",
-                      "import utility;\n"
+                      "import utility.core;\n"
                       "[shader(\"compute\")]\n"
                       "[numthreads(1,1,1)]\n"
                       "void computeMain() {}\n");
@@ -305,7 +345,11 @@ TEST(ShaderLoaderPipelineSlang, MissingCustomImportReturnsRecoverableCacheError)
     auto result = cache.get(CachedPipelineId{1}, main_handle.id(), {});
     ASSERT_FALSE(result.has_value());
     EXPECT_TRUE(result.error().is_recoverable());
-    EXPECT_TRUE(std::holds_alternative<ShaderCacheError::ShaderImportNotYetAvailable>(result.error().data));
+    auto* missing = std::get_if<ShaderCacheError::ShaderImportNotYetAvailable>(&result.error().data);
+    ASSERT_NE(missing, nullptr);
+    ASSERT_EQ(missing->missing_imports.size(), 1u);
+    EXPECT_TRUE(missing->missing_imports[0].is_custom());
+    EXPECT_EQ(missing->missing_imports[0].as_custom(), "utility/core");
     EXPECT_EQ(*env.load_count, 0);
 }
 
@@ -349,4 +393,159 @@ TEST(ShaderLoaderPipelineSlang, MissingFileImportFormsStayOutOfCache) {
     EXPECT_TRUE(std::holds_alternative<ShaderCacheError::ShaderNotLoaded>(root_result.error().data));
     EXPECT_TRUE(std::holds_alternative<ShaderCacheError::ShaderNotLoaded>(relative_result.error().data));
     EXPECT_EQ(*env.load_count, 0);
+}
+
+TEST(ShaderLoaderPipelineSlang, UpdatingRootShaderInvalidatesCachedPreprocessedSource) {
+    int load_count = 0;
+    ShaderCache cache(null_device(),
+                      [&load_count](const wgpu::Device&, const ShaderCacheSource&,
+                                    ValidateShader) -> std::expected<wgpu::ShaderModule, ShaderCacheError> {
+                          ++load_count;
+                          return wgpu::ShaderModule{};
+                      });
+
+    auto main_id = make_shader_id(0x41);
+    cache.set_shader(main_id, Shader::from_slang(R"(
+module main.core;
+[shader("compute")]
+[numthreads(1,1,1)]
+void computeMain() {}
+)",
+                                                 "embedded://mesh/main.slang"));
+
+    auto first = cache.get(CachedPipelineId{1}, main_id, {});
+    ASSERT_TRUE(first.has_value()) << first.error().message();
+    EXPECT_EQ(load_count, 1);
+
+    cache.set_shader(main_id, Shader::from_slang(R"(
+module main.core;
+[shader("compute")]
+[numthreads(1,1,1)]
+void computeMain( {}
+)",
+                                                 "embedded://mesh/main.slang"));
+
+    auto second = cache.get(CachedPipelineId{2}, main_id, {});
+    ASSERT_FALSE(second.has_value());
+    EXPECT_TRUE(std::holds_alternative<ShaderCacheError::SlangCompileError>(second.error().data));
+    EXPECT_EQ(load_count, 1);
+}
+
+TEST(ShaderLoaderPipelineSlang, UpdatingImportedShaderInvalidatesCachedPreprocessedSource) {
+    int load_count = 0;
+    ShaderCache cache(null_device(),
+                      [&load_count](const wgpu::Device&, const ShaderCacheSource&,
+                                    ValidateShader) -> std::expected<wgpu::ShaderModule, ShaderCacheError> {
+                          ++load_count;
+                          return wgpu::ShaderModule{};
+                      });
+
+    auto lib_id  = make_shader_id(0x51);
+    auto main_id = make_shader_id(0x52);
+
+    cache.set_shader(lib_id, Shader::from_slang(R"(
+module utility.core;
+public int customValue() { return 1; }
+)",
+                                                "embedded://providers/custom.slang"));
+    cache.set_shader(main_id, Shader::from_slang(R"(
+import utility.core;
+[shader("compute")]
+[numthreads(1,1,1)]
+void computeMain() {
+    int value = customValue();
+}
+)",
+                                                 "embedded://mesh/main.slang"));
+
+    auto first = cache.get(CachedPipelineId{1}, main_id, {});
+    ASSERT_TRUE(first.has_value()) << first.error().message();
+    EXPECT_EQ(load_count, 1);
+
+    cache.set_shader(lib_id, Shader::from_slang(R"(
+module utility.core;
+public int customValue( { return 2; }
+)",
+                                                "embedded://providers/custom.slang"));
+
+    auto second = cache.get(CachedPipelineId{2}, main_id, {});
+    ASSERT_FALSE(second.has_value());
+    EXPECT_TRUE(std::holds_alternative<ShaderCacheError::SlangCompileError>(second.error().data));
+    EXPECT_EQ(load_count, 1);
+}
+
+TEST(ShaderLoaderPipelineSlang, RootCompileInputCacheIsKeyedByDefinitionSet) {
+    int load_count = 0;
+    ShaderCache cache(null_device(),
+                      [&load_count](const wgpu::Device&, const ShaderCacheSource&,
+                                    ValidateShader) -> std::expected<wgpu::ShaderModule, ShaderCacheError> {
+                          ++load_count;
+                          return wgpu::ShaderModule{};
+                      });
+
+    auto main_id = make_shader_id(0x61);
+    cache.set_shader(main_id, Shader::from_slang(R"(
+#ifdef ENABLE_BAD
+[shader("compute")]
+[numthreads(1,1,1)]
+void computeMain( {}
+#else
+[shader("compute")]
+[numthreads(1,1,1)]
+void computeMain() {}
+#endif
+)",
+                                                 "embedded://mesh/main.slang"));
+
+    auto first = cache.get(CachedPipelineId{1}, main_id, {});
+    ASSERT_TRUE(first.has_value()) << first.error().message();
+    EXPECT_EQ(load_count, 1);
+
+    std::array<ShaderDefVal, 1> bad_defs{ShaderDefVal::from_bool("ENABLE_BAD")};
+    auto second = cache.get(CachedPipelineId{2}, main_id, bad_defs);
+    ASSERT_FALSE(second.has_value());
+    EXPECT_TRUE(std::holds_alternative<ShaderCacheError::SlangCompileError>(second.error().data));
+    EXPECT_EQ(load_count, 1);
+}
+
+TEST(ShaderLoaderPipelineSlang, SerializedLibraryCacheIsKeyedByDefinitionSet) {
+    int load_count = 0;
+    ShaderCache cache(null_device(),
+                      [&load_count](const wgpu::Device&, const ShaderCacheSource&,
+                                    ValidateShader) -> std::expected<wgpu::ShaderModule, ShaderCacheError> {
+                          ++load_count;
+                          return wgpu::ShaderModule{};
+                      });
+
+    auto lib_id  = make_shader_id(0x71);
+    auto main_id = make_shader_id(0x72);
+
+    cache.set_shader(lib_id, Shader::from_slang(R"(
+module utility.core;
+#ifdef ENABLE_BAD
+public int customValue( { return 1; }
+#else
+public int customValue() { return 1; }
+#endif
+)",
+                                                "embedded://providers/custom.slang"));
+    cache.set_shader(main_id, Shader::from_slang(R"(
+import utility.core;
+[shader("compute")]
+[numthreads(1,1,1)]
+void computeMain() {
+    int value = customValue();
+}
+)",
+                                                 "embedded://mesh/main.slang"));
+
+    auto first = cache.get(CachedPipelineId{1}, main_id, {});
+    ASSERT_TRUE(first.has_value()) << first.error().message();
+    EXPECT_EQ(load_count, 1);
+
+    std::array<ShaderDefVal, 1> bad_defs{ShaderDefVal::from_bool("ENABLE_BAD")};
+    auto second = cache.get(CachedPipelineId{2}, main_id, bad_defs);
+    ASSERT_FALSE(second.has_value());
+    EXPECT_TRUE(std::holds_alternative<ShaderCacheError::SlangCompileError>(second.error().data));
+    EXPECT_EQ(load_count, 1);
 }

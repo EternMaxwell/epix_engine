@@ -149,7 +149,7 @@ export struct Source {
  * There are four cases:
  *
  * - WGSL `#import some::mod` or Slang `import some.mod;` becomes
- *   `ShaderImport::custom("some::mod"\"some.mod")`.
+ *   `ShaderImport::custom("some/mod")`.
  * - WGSL `#import "embedded://shared/math.wgsl"` or Slang
  *   `import "source://shared/math.slang";` becomes
  *   `ShaderImport::asset_path("source://shared/math.slang")`.
@@ -162,8 +162,11 @@ export struct Source {
  *
  * This is also used for the shader to declare how other shaders can import a shader itself.
  *
- *  - wgsl: use `#define_import_path ui::button` add `ShaderImport::custom("ui::button")`
- *  - slang: `module mod;` add ShaderImport::custom("mod") and `module "path/to/mod";` so others can use `path.to.mod`.
+ *  - wgsl: use `#define_import_path ui::button` to expose `ui/button`
+ *  - slang: `module epix.core;` or `module "epix/core";` to expose `epix/core`
+ *
+ * Custom names are stored as normalized paths. `::`, `.`, `/`, and `\` are
+ * all accepted as separators and normalized to `/`.
  *
  * Custom imports are looked up by module name, while
  * asset-path imports are resolved as concrete files with the correct source and
@@ -173,35 +176,40 @@ export struct ShaderImport {
     /** @brief Stored import value.
      *
      * `assets::AssetPath` means "load this file".
-     * `std::string` means "load the module with this custom name".
+     * `std::filesystem::path` means "load the module with this custom name".
      */
-    std::variant<assets::AssetPath, std::string> data;
+    std::variant<assets::AssetPath, std::filesystem::path> data;
 
     /** @brief Create an empty import value. */
     ShaderImport() = default;
     /** @brief Create a file-backed import. */
     explicit ShaderImport(assets::AssetPath p) : data(std::move(p)) {}
     /** @brief Create a custom-name import. */
-    explicit ShaderImport(std::in_place_index_t<1>, std::string name) : data(std::in_place_index<1>, std::move(name)) {}
+    explicit ShaderImport(std::in_place_index_t<1>, std::filesystem::path name)
+        : data(std::in_place_index<1>, std::move(name).lexically_normal()) {}
 
     /** @brief Helper for `ShaderImport` from an asset path. */
     static ShaderImport asset_path(assets::AssetPath p) { return ShaderImport(std::move(p)); }
     /** @brief Helper for `ShaderImport` from a custom module name. */
-    static ShaderImport custom(std::string name) { return ShaderImport(std::in_place_index<1>, std::move(name)); }
+    static ShaderImport custom(std::filesystem::path name) {
+        return ShaderImport(std::in_place_index<1>, std::move(name));
+    }
 
     /** @brief Returns `true` when this import points to a file. */
     bool is_asset_path() const { return std::holds_alternative<assets::AssetPath>(data); }
     /** @brief Returns `true` when this import points to a custom module name. */
-    bool is_custom() const { return std::holds_alternative<std::string>(data); }
+    bool is_custom() const { return std::holds_alternative<std::filesystem::path>(data); }
 
     /** @brief Get the file-backed import path. */
     const assets::AssetPath& as_asset_path() const { return std::get<assets::AssetPath>(data); }
-    /** @brief Get the custom module name. */
-    const std::string& as_custom() const { return std::get<std::string>(data); }
+    /** @brief Get the custom module path. */
+    const std::filesystem::path& as_custom_path() const { return std::get<std::filesystem::path>(data); }
+    /** @brief Get the custom module name as a normalized string. */
+    std::string as_custom() const { return as_custom_path().generic_string(); }
 
     /** @brief Get the canonical module key used by shader composition.
      *
-     * A custom import returns the custom name unchanged.
+     * A custom import returns the normalized custom path unchanged.
      * A file import returns the canonical path wrapped in quotes so different
      * files with the same filename still stay distinct.
      */
@@ -256,7 +264,7 @@ export struct Shader {
      *
      * For `#import`, WGSL has the same four cases described by `ShaderImport`:
      *
-     * - `#import some::mod` -> custom import.
+     * - `#import some::mod` -> custom import stored as `some/mod`.
      * - `#import "embedded://shared/math.wgsl"` -> file import with explicit source.
      * - `#import "/shared/math.wgsl"` -> file import relative to the source root.
      * - `#import "common/math.wgsl"` -> file import relative to the importing shader.
@@ -271,7 +279,8 @@ export struct Shader {
      * For string-literal `import` and `__include`, Slang has the same three
      * file cases as WGSL:
      *
-     * - `import lighting.core;` or `__include helpers;` -> custom import.
+     * - `import lighting.core;` or `__include helpers;` -> custom import
+     *   stored as a normalized path like `lighting/core`.
      * - `import "source://shared/lighting.slang";` -> file import with explicit source.
      * - `import "/shared/lighting.slang";` -> file import relative to the source root.
      * - `import "lighting/common.slang";` -> file import relative to the importing shader.
@@ -457,7 +466,7 @@ struct std::hash<epix::shader::ShaderImport> {
                 if constexpr (std::same_as<T, epix::assets::AssetPath>) {
                     return std::hash<epix::assets::AssetPath>{}(v);
                 } else {
-                    return std::hash<std::string>{}(v) ^ std::size_t(0x1'0000);
+                    return std::hash<std::filesystem::path>{}(v) ^ std::size_t(0x1'0000);
                 }
             },
             import.data);
@@ -468,5 +477,14 @@ template <>
 struct std::hash<epix::assets::AssetId<epix::shader::Shader>> {
     std::size_t operator()(const epix::assets::AssetId<epix::shader::Shader>& id) const noexcept {
         return std::visit([]<typename T>(const T& index) { return std::hash<T>{}(index); }, id);
+    }
+};
+
+template <>
+struct std::formatter<epix::shader::ShaderImport> : std::formatter<std::string_view> {
+    template <typename FormatContext>
+    auto format(const epix::shader::ShaderImport& import, FormatContext& ctx) const {
+        const auto module_name = import.module_name();
+        return std::formatter<std::string_view>::format(module_name, ctx);
     }
 };

@@ -77,7 +77,9 @@ export struct ShaderCacheError {
         ComposeError error;
     };
     /** @brief At least one imported shader is not available yet. */
-    struct ShaderImportNotYetAvailable {};
+    struct ShaderImportNotYetAvailable {
+        std::vector<ShaderImport> missing_imports;
+    };
     /** @brief Backend shader-module creation failed. */
     struct CreateShaderModule {
         std::string wgpu_message;
@@ -108,7 +110,9 @@ export struct ShaderCacheError {
     /** @brief Create a `ProcessShaderError`. */
     static ShaderCacheError process_error(ComposeError error) { return {ProcessShaderError{std::move(error)}}; }
     /** @brief Create a `ShaderImportNotYetAvailable` error. */
-    static ShaderCacheError import_not_available() { return {ShaderImportNotYetAvailable{}}; }
+    static ShaderCacheError import_not_available(std::vector<ShaderImport> missing_imports = {}) {
+        return {ShaderImportNotYetAvailable{std::move(missing_imports)}};
+    }
     /** @brief Create a `CreateShaderModule` error. */
     static ShaderCacheError create_module_failed(std::string wgpu_message) {
         return {CreateShaderModule{std::move(wgpu_message)}};
@@ -138,7 +142,10 @@ export struct ShaderCacheError {
                 } else if constexpr (std::is_same_v<T, ProcessShaderError>) {
                     return "shader processing error";
                 } else if constexpr (std::is_same_v<T, ShaderImportNotYetAvailable>) {
-                    return "shader import not yet available";
+                    if (e.missing_imports.empty()) {
+                        return "shader import not yet available";
+                    }
+                    return std::format("shader imports not yet available: {}", e.missing_imports);
                 } else if constexpr (std::is_same_v<T, CreateShaderModule>) {
                     return std::format("create shader module failed: {}", e.wgpu_message);
                 } else if constexpr (std::is_same_v<T, SlangCompileError>) {
