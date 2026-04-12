@@ -15,13 +15,13 @@ using namespace epix::shader;
 namespace {
 
 struct ProcessorCustomShaderRegistry {
-    std::mutex mutex;
+    mutable std::mutex mutex;
     std::unordered_map<ShaderImport, Shader> shaders_by_import;
     std::unordered_map<epix::assets::AssetId<Shader>, std::vector<ShaderImport>> provided_imports_by_id;
     std::unordered_map<epix::assets::AssetId<Shader>, std::vector<ShaderImport>> required_imports_by_id;
     std::unordered_map<ShaderImport, std::unordered_set<epix::assets::AssetId<Shader>>> dependents_by_import;
 
-    std::unordered_set<epix::assets::AssetId<Shader>> remove_id(epix::assets::AssetId<Shader> id) {
+    std::unordered_set<epix::assets::AssetId<Shader>> remove_id_unlocked(epix::assets::AssetId<Shader> id) {
         std::unordered_set<epix::assets::AssetId<Shader>> affected;
 
         if (auto pit = provided_imports_by_id.find(id); pit != provided_imports_by_id.end()) {
@@ -48,8 +48,14 @@ struct ProcessorCustomShaderRegistry {
         return affected;
     }
 
+    std::unordered_set<epix::assets::AssetId<Shader>> remove_id(epix::assets::AssetId<Shader> id) {
+        std::scoped_lock lock(mutex);
+        return remove_id_unlocked(id);
+    }
+
     std::unordered_set<epix::assets::AssetId<Shader>> upsert(epix::assets::AssetId<Shader> id, const Shader& shader) {
-        auto affected = remove_id(id);
+        std::scoped_lock lock(mutex);
+        auto affected = remove_id_unlocked(id);
 
         std::vector<ShaderImport> provided_imports;
         if (shader.import_path.is_custom()) {
@@ -75,6 +81,7 @@ struct ProcessorCustomShaderRegistry {
     }
 
     std::optional<Shader> find_custom(const ShaderImport& import_ref) const {
+        std::scoped_lock lock(mutex);
         auto it = shaders_by_import.find(import_ref);
         if (it == shaders_by_import.end()) return std::nullopt;
         return it->second;
@@ -609,11 +616,7 @@ static void populate_processor_vfs(ProcessorSlangVFS& vfs,
 
     auto recurse_cached_custom = [&](const ShaderImport& custom_import) {
         if (!registry) return;
-        std::optional<Shader> dep_shader;
-        {
-            std::scoped_lock lock(registry->mutex);
-            dep_shader = registry->find_custom(custom_import);
-        }
+        auto dep_shader = registry->find_custom(custom_import);
         if (!dep_shader.has_value()) return;
 
         // Processor-side Slang compilation needs source text; ignore non-text shaders.
@@ -1136,7 +1139,6 @@ void ShaderPlugin::build(core::App& app) {
                                                         core::Res<assets::AssetServer> server,
                                                         core::EventReader<assets::AssetEvent<Shader>> events) {
                             std::vector<assets::AssetPath> reload_paths;
-                            std::scoped_lock lock(processor_registry->mutex);
                             for (const auto& event : events.read()) {
                                 if (event.is_loaded_with_dependencies() || event.is_modified()) {
                                     auto shader = shaders->get(event.id);

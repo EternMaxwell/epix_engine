@@ -400,6 +400,79 @@ TEST(ShaderProcessingSlangModule, ProcessEnabledManualCustomDepIsVisibleAndCompi
     EXPECT_EQ(load_count, 1);
 }
 
+TEST(ShaderProcessingSlangModule, ConcurrentIrProcessingWithRegistryUpdatesRemainsStable) {
+    // Stress path: many .slang roots are processed on the IO task pool while
+    // the custom provider registry is updated from asset events.
+    auto source = memory::Directory::create({});
+
+    constexpr int k_root_count = 48;
+    for (int i = 0; i < k_root_count; ++i) {
+        auto path = std::format("main_{}.slang", i);
+        (void)source.insert_file(
+            path, memory::Value::from_shared(make_bytes("import utility.helper;\n"
+                                                        "[shader(\"compute\")]\n"
+                                                        "[numthreads(1,1,1)]\n"
+                                                        "void computeMain() { int v = helperValue(); }\n")));
+        (void)source.insert_file(path + ".meta", memory::Value::from_shared(make_slang_ir_process_meta_bytes()));
+    }
+
+    auto env      = make_processed_shader_env(source);
+    auto& server  = env.app.resource<AssetServer>();
+    auto& shaders = env.app.resource_mut<Assets<Shader>>();
+
+    auto dep = Shader::from_slang(
+        "module utility.helper;\n"
+        "public int helperValue() { return 7; }\n",
+        AssetPath("embedded://manual/utility_helper.slang"));
+    dep.import_path = ShaderImport::custom(std::filesystem::path("utility/helper"));
+    auto dep_handle = server.add(std::move(dep));
+    auto dep_id     = dep_handle.id();
+
+    // Ensure initial provider registration before processing begins.
+    env.app.run_schedule(PreStartup);
+    env.app.run_schedule(Last);
+
+    env.app.run_schedule(Startup);
+
+    auto processor = env.app.get_resource<AssetProcessor>();
+    ASSERT_TRUE(processor.has_value());
+    processor->get().get_data()->wait_until_initialized();
+
+    // Repeated provider updates while processor jobs are active should not race.
+    for (int i = 0; i < 32; ++i) {
+        auto dep_updated = Shader::from_slang(
+            std::format("module utility.helper;\npublic int helperValue() {{ return {}; }}\n", i + 8),
+            AssetPath("embedded://manual/utility_helper.slang"));
+        dep_updated.import_path = ShaderImport::custom(std::filesystem::path("utility/helper"));
+        auto replaced           = shaders.insert(dep_id, dep_updated);
+        ASSERT_TRUE(replaced.has_value());
+        env.app.run_schedule(Last);
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+
+    for (int i = 0; i < k_root_count; ++i) {
+        auto path = AssetPath(std::format("main_{}.slang", i));
+        ASSERT_EQ(processor->get().get_data()->wait_until_processed(path), ProcessStatus::Processed);
+    }
+    processor->get().get_data()->wait_until_finished();
+
+    // Spot-check that processed roots load as Slang IR after concurrent activity.
+    auto handles = std::vector<Handle<Shader>>{};
+    handles.reserve(8);
+    for (int i = 0; i < 8; ++i) {
+        auto h = server.load<Shader>(AssetPath(std::format("main_{}.slang", i)));
+        ASSERT_TRUE(wait_for_loaded_allow_transient_errors(env.app, server, h.id()));
+        handles.push_back(h);
+    }
+
+    auto& shader_assets = env.app.resource<Assets<Shader>>();
+    for (const auto& h : handles) {
+        auto shader = shader_assets.get(h.id());
+        ASSERT_TRUE(shader.has_value());
+        EXPECT_TRUE(shader->get().source.is_slang_ir());
+    }
+}
+
 TEST(ShaderProcessingSlangModule, ManualCustomProviderModifyReloadsDependentRoot) {
     // Regression for dependency invalidation: if a manually-added custom
     // provider changes, dependent roots should be reloaded.
