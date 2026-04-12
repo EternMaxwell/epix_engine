@@ -21,6 +21,7 @@ App make_shader_asset_app() {
     App app = App::create();
 
     AssetPlugin asset_plugin;
+    asset_plugin.mode = AssetServerMode::Unprocessed;
     asset_plugin.build(app);
 
     ShaderPlugin shader_plugin;

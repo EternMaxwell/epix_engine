@@ -51,7 +51,9 @@ struct EmbeddedPipelineEnv {
 
 EmbeddedPipelineEnv make_embedded_pipeline_env() {
     App app = App::create();
-    AssetPlugin{}.build(app);
+    AssetPlugin plugin;
+    plugin.mode = AssetServerMode::Unprocessed;
+    plugin.build(app);
     ShaderPlugin{}.build(app);
 
     auto load_count       = std::make_shared<int>(0);

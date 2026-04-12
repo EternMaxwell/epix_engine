@@ -8,6 +8,16 @@ import std;
 
 using namespace epix::assets;
 
+namespace {
+
+std::optional<std::int64_t> to_persisted_mtime_ns(std::optional<std::filesystem::file_time_type> time) {
+    if (!time.has_value()) return std::nullopt;
+    auto ns = std::chrono::duration_cast<std::chrono::nanoseconds>(time->time_since_epoch()).count();
+    return static_cast<std::int64_t>(ns);
+}
+
+}  // namespace
+
 // ---- start ----
 
 void AssetProcessor::start(core::Res<AssetProcessor> processor) {
@@ -347,6 +357,8 @@ void AssetProcessor::initialize() const {
         for (auto& path : processed_paths) {
             // Skip the transaction log file - it lives in the processed dir but is not an asset.
             if (!log_path.empty() && path == log_path) continue;
+            // Skip .meta sidecar files - they are managed alongside their asset file.
+            if (path.extension() == ".meta") continue;
 
             std::vector<AssetPath> dependencies;
             auto asset_path = AssetPath(source.id(), path);
@@ -426,37 +438,47 @@ std::expected<ProcessResult, ProcessError> AssetProcessor::process_asset_interna
     // Find the processor for this extension
     auto processor = get_default_processor(*ext);
     if (!processor) {
-        // No processor - copy-through (load action)
-        auto meta_result = reader.read_meta_bytes(path);
-        if (!meta_result) {
-            // No meta file and no processor - check if there's a loader
-            auto loader = server.get_path_asset_loader(asset_path);
-            if (!loader) {
+        // No processor for this extension: the server reads from the source reader directly.
+        // Check there is a loader (or an explicit .meta file) so we can detect invalid assets early.
+        auto meta_raw = reader.read_meta_bytes(path);
+        if (!meta_raw) {
+            if (!server.get_path_asset_loader(asset_path)) {
                 return std::unexpected(ProcessError{process_errors::MissingAssetLoaderForExtension{std::string(*ext)}});
             }
         }
 
-        // Get default loader meta for canonical meta bytes
-        auto loader         = server.get_path_asset_loader(asset_path);
-        auto source_meta    = loader ? loader->default_meta() : nullptr;
-        auto meta_bytes_raw = reader.read_meta_bytes(path);
-        std::vector<std::byte> meta_bytes_for_hash;
-        if (meta_bytes_raw) {
-            meta_bytes_for_hash = std::move(*meta_bytes_raw);
-        } else if (source_meta) {
-            meta_bytes_for_hash = source_meta->serialize_bytes();
-        }
-
-        // Compute hash of (meta bytes + asset bytes)
-        AssetHash new_hash = {};
+        // Fast-path: if the source file's mtime matches what we saw last time and there are no
+        // dependency hash mismatches, skip without reading or hashing the file bytes.
+        auto current_mtime_ns = to_persisted_mtime_ns(reader.last_modified(path));
         {
-            auto hash_reader = reader.read(path);
-            if (hash_reader) {
-                new_hash = get_asset_hash(meta_bytes_for_hash, **hash_reader);
+            auto infos_guard = data->processing_state->m_asset_infos.read();
+            if (const auto* existing = infos_guard->get(asset_path)) {
+                if (existing->processed_info && current_mtime_ns.has_value() &&
+                    existing->processed_info->source_mtime_ns == current_mtime_ns) {
+                    bool dep_changed = false;
+                    for (const auto& dep : existing->processed_info->process_dependencies) {
+                        const auto* dep_info = infos_guard->get(AssetPath(dep.path));
+                        bool live_ok         = dep_info && dep_info->processed_info &&
+                                       dep_info->processed_info->full_hash == dep.full_hash;
+                        if (!live_ok) {
+                            dep_changed = true;
+                            break;
+                        }
+                    }
+                    if (!dep_changed) return ProcessResult::skipped_not_changed();
+                }
             }
         }
 
-        // Skip if unchanged
+        // Hash = (.meta bytes if present) + asset bytes — used only for in-memory skip-check.
+        std::vector<std::byte> meta_bytes_for_hash = meta_raw ? std::move(*meta_raw) : std::vector<std::byte>{};
+        AssetHash new_hash                         = {};
+        {
+            auto hash_reader = reader.read(path);
+            if (hash_reader) new_hash = get_asset_hash(meta_bytes_for_hash, **hash_reader);
+        }
+
+        // Skip if unchanged (in-memory; nothing is written to the processed output).
         {
             auto infos_guard = data->processing_state->m_asset_infos.read();
             if (const auto* existing = infos_guard->get(asset_path)) {
@@ -476,40 +498,11 @@ std::expected<ProcessResult, ProcessError> AssetProcessor::process_asset_interna
             }
         }
 
-        auto writer_opt = source.processed_writer();
-        if (!writer_opt) {
-            return std::unexpected(ProcessError{process_errors::MissingProcessedAssetWriter{}});
-        }
-        auto& processed_writer = writer_opt->get();
-
-        auto source_stream = reader.read(path);
-        if (!source_stream) return std::unexpected(reader_err(source_stream.error()));
-
-        auto dest_stream = processed_writer.write(path);
-        if (!dest_stream) return std::unexpected(writer_err(dest_stream.error()));
-
-        // Copy asset bytes
-        (**dest_stream) << (**source_stream).rdbuf();
-
-        // Build ProcessedInfo
+        // No disk writes — return processed info for in-memory deduplication within this run.
         ProcessedInfo new_processed_info;
-        new_processed_info.hash      = new_hash;
-        new_processed_info.full_hash = new_hash;  // no dependencies
-
-        // Write processed meta with embedded ProcessedInfo
-        if (source_meta) {
-            source_meta->processed_info_mut() = new_processed_info;
-            auto processed_meta_bytes         = source_meta->serialize_bytes();
-            if (!processed_meta_bytes.empty()) {
-                auto meta_write = processed_writer.write_meta_bytes(path, processed_meta_bytes);
-                if (!meta_write) return std::unexpected(writer_err(meta_write.error()));
-            }
-        } else if (!meta_bytes_for_hash.empty()) {
-            // Fall back to copying raw meta bytes
-            auto meta_write = processed_writer.write_meta_bytes(path, meta_bytes_for_hash);
-            if (!meta_write) return std::unexpected(writer_err(meta_write.error()));
-        }
-
+        new_processed_info.hash            = new_hash;
+        new_processed_info.full_hash       = new_hash;
+        new_processed_info.source_mtime_ns = current_mtime_ns;
         return ProcessResult{ProcessResultKind::Processed, std::move(new_processed_info)};
     }
 
@@ -546,7 +539,29 @@ std::expected<ProcessResult, ProcessError> AssetProcessor::process_asset_interna
         settings_to_use   = fallback_settings.get();
     }
 
-    // 2. Compute new_hash = hash(meta_bytes + asset_bytes)
+    // 2a. Fast-path: if source mtime matches, skip without hashing.
+    auto current_mtime_ns = to_persisted_mtime_ns(reader.last_modified(path));
+    {
+        auto infos_guard = data->processing_state->m_asset_infos.read();
+        if (const auto* existing = infos_guard->get(asset_path)) {
+            if (existing->processed_info && current_mtime_ns.has_value() &&
+                existing->processed_info->source_mtime_ns == current_mtime_ns) {
+                bool dep_changed = false;
+                for (const auto& dep : existing->processed_info->process_dependencies) {
+                    const auto* dep_info = infos_guard->get(AssetPath(dep.path));
+                    bool live_ok =
+                        dep_info && dep_info->processed_info && dep_info->processed_info->full_hash == dep.full_hash;
+                    if (!live_ok) {
+                        dep_changed = true;
+                        break;
+                    }
+                }
+                if (!dep_changed) return ProcessResult::skipped_not_changed();
+            }
+        }
+    }
+
+    // 2b. Compute new_hash = hash(meta_bytes + asset_bytes)
     AssetHash new_hash = {};
     {
         auto hash_reader = reader.read(path);
@@ -554,7 +569,7 @@ std::expected<ProcessResult, ProcessError> AssetProcessor::process_asset_interna
         new_hash = get_asset_hash(meta_bytes_for_hash, **hash_reader);
     }
 
-    // 3. Skip-unchanged check
+    // 3. Skip-unchanged check (hash-based fallback when mtime unavailable)
     {
         auto infos_guard = data->processing_state->m_asset_infos.read();
         if (const auto* existing = infos_guard->get(asset_path)) {
@@ -593,8 +608,9 @@ std::expected<ProcessResult, ProcessError> AssetProcessor::process_asset_interna
 
     // 6. Process
     ProcessedInfo new_processed_info;
-    new_processed_info.hash      = new_hash;
-    new_processed_info.full_hash = new_hash;
+    new_processed_info.hash            = new_hash;
+    new_processed_info.full_hash       = new_hash;
+    new_processed_info.source_mtime_ns = current_mtime_ns;
     ProcessContext context(*this, asset_path, **source_stream, new_processed_info);
 
     auto process_result = processor->process(context, *settings_to_use, **dest_stream);
@@ -774,7 +790,10 @@ void AssetProcessor::queue_processing_tasks_for_folder(
             queue_processing_tasks_for_folder(source, child_path, sender);
         }
     } else {
-        sender.send(std::pair{source.id(), folder});
+        // Skip .meta sidecar files - they are managed alongside their asset file.
+        if (folder.extension() != ".meta") {
+            sender.send(std::pair{source.id(), folder});
+        }
     }
 }
 

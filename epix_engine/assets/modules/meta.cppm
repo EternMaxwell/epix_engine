@@ -26,7 +26,7 @@ import :path;
 namespace epix::assets {
 
 /** @brief Version string for the meta format. */
-export inline constexpr std::string_view META_FORMAT_VERSION = "1.0";
+export inline constexpr std::string_view META_FORMAT_VERSION = "2.0";
 
 /** @brief Controls when and how asset metadata files are checked.
  *  Matches bevy_asset's AssetMetaCheck. */
@@ -57,6 +57,11 @@ export using AssetHash = std::array<uint8_t, 32>;
 
 /** @brief Information about a processed asset's dependency on another asset. */
 export struct ProcessDependencyInfo {
+   private:
+    friend zpp::bits::access;
+    using serialize = zpp::bits::members<2>;
+
+   public:
     /** @brief Full hash of the dependency. */
     AssetHash full_hash = {};
     /** @brief Path of the dependency asset. */
@@ -65,10 +70,18 @@ export struct ProcessDependencyInfo {
 
 /** @brief Information produced by the asset processor about a processed asset. */
 export struct ProcessedInfo {
+   private:
+    friend zpp::bits::access;
+    using serialize = zpp::bits::members<4>;
+
+   public:
     /** @brief Hash of the asset bytes combined with its meta. */
     AssetHash hash = {};
     /** @brief Hash including all transitive process dependencies. */
     AssetHash full_hash = {};
+    /** @brief Optional persisted source-file last-modified timestamp in nanoseconds.
+     *  Used as a cross-session fast-path to skip hashing when the source file timestamp matches. */
+    std::optional<std::int64_t> source_mtime_ns;
     /** @brief Dependencies that contributed to processing. */
     std::vector<ProcessDependencyInfo> process_dependencies;
 };

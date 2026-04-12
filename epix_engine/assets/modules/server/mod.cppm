@@ -33,6 +33,9 @@ struct AssetServerData {
     bool watching_for_changes               = false;
     AssetMetaCheck meta_check               = AssetMetaCheck{asset_meta_check::Always{}};
     UnapprovedPathMode unapproved_path_mode = UnapprovedPathMode::Forbid;
+    // Set by AssetProcessor when active: returns true if extension has a registered processor.
+    // When set and returns false in Processed mode, the source reader is used (no processed copy).
+    std::function<bool(std::string_view)> has_processor_for_ext;
 };
 
 /** @brief Error returned when attempting to reload an asset from an unrecognised source.
@@ -391,6 +394,11 @@ export struct AssetServer {
     AssetServerMode mode() const;
     /** @brief Check if the server is watching for file changes. */
     bool watching_for_changes() const;
+    /** @brief Install a callback used in Processed mode to decide whether an extension has a
+     *  processor. Extensions without a processor are loaded directly from the source reader
+     *  instead of the processed output directory. Call this after the AssetProcessor is fully
+     *  configured (all processors registered). */
+    void set_processor_check(std::function<bool(std::string_view)> check) const;
 
     /** @brief Get an asset source by id. Returns std::nullopt if not found. */
     std::optional<std::reference_wrapper<const AssetSource>> get_source(const AssetSourceId& source_id) const;

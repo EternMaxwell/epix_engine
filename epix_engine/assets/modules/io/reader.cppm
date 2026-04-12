@@ -35,6 +35,10 @@ export struct AssetReader {
         const std::filesystem::path& path) const = 0;
     /** @brief Check if a path is a directory */
     virtual std::expected<bool, AssetReaderError> is_directory(const std::filesystem::path& path) const = 0;
+    /** @brief Return the last-modified time of an asset, or nullopt if unsupported by this reader. */
+    virtual std::optional<std::filesystem::file_time_type> last_modified(const std::filesystem::path& path) const {
+        return std::nullopt;
+    }
     /** @brief Read metadata bytes of an asset */
     std::expected<std::vector<std::byte>, AssetReaderError> read_meta_bytes(const std::filesystem::path& path) const;
     virtual ~AssetReader() = default;

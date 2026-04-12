@@ -221,7 +221,7 @@ struct MyOtherSettings {
 TEST(SettingsBase, TryCast_CorrectType_ReturnsValue) {
     AssetMeta<MySettings, EmptySettings> meta;
     meta.loader_settings_storage.value.quality = 10;
-    Settings* base = meta.loader_settings();
+    Settings* base                             = meta.loader_settings();
     ASSERT_NE(base, nullptr);
     auto result = base->try_cast<MySettings>();
     ASSERT_TRUE(result.has_value());
@@ -488,12 +488,14 @@ TEST(SerializeAssetMeta, RoundTrip_WithProcessedInfo) {
     h1[0] = 1;
     h1[1] = 2;
     AssetHash h2{};
-    h2[31] = 255;
+    h2[31]                = 255;
+    std::int64_t mtime_ns = 123456789;
 
     ProcessDependencyInfo dep;
-    dep.full_hash  = h1;
-    dep.path       = "dep/texture.png";
-    meta.processed = ProcessedInfo{.hash = h1, .full_hash = h2, .process_dependencies = {dep}};
+    dep.full_hash = h1;
+    dep.path      = "dep/texture.png";
+    meta.processed =
+        ProcessedInfo{.hash = h1, .full_hash = h2, .source_mtime_ns = mtime_ns, .process_dependencies = {dep}};
 
     auto bytes = serialize_asset_meta(meta);
     ASSERT_TRUE(bytes.has_value());
@@ -505,6 +507,8 @@ TEST(SerializeAssetMeta, RoundTrip_WithProcessedInfo) {
     ASSERT_TRUE(result->processed.has_value());
     EXPECT_TRUE(result->processed->hash == h1);
     EXPECT_TRUE(result->processed->full_hash == h2);
+    ASSERT_TRUE(result->processed->source_mtime_ns.has_value());
+    EXPECT_EQ(*result->processed->source_mtime_ns, mtime_ns);
     ASSERT_EQ(result->processed->process_dependencies.size(), 1u);
     EXPECT_EQ(result->processed->process_dependencies[0].path, "dep/texture.png");
     EXPECT_TRUE(result->processed->process_dependencies[0].full_hash == h1);
@@ -717,7 +721,7 @@ TEST(DeserializeProcessedInfo, PresentInfo_RoundTrip) {
     AssetHash h{};
     h[0]           = 5;
     h[31]          = 200;
-    meta.processed = ProcessedInfo{.hash = h, .full_hash = h};
+    meta.processed = ProcessedInfo{.hash = h, .full_hash = h, .source_mtime_ns = 77};
 
     auto bytes  = meta.serialize_bytes();
     auto result = deserialize_processed_info(std::span<const std::byte>(bytes.data(), bytes.size()));
@@ -725,6 +729,8 @@ TEST(DeserializeProcessedInfo, PresentInfo_RoundTrip) {
     ASSERT_TRUE(result->has_value());
     EXPECT_TRUE((*result)->hash == h);
     EXPECT_TRUE((*result)->full_hash == h);
+    ASSERT_TRUE((*result)->source_mtime_ns.has_value());
+    EXPECT_EQ(*(*result)->source_mtime_ns, 77);
 }
 
 TEST(DeserializeProcessedInfo, WithDependencies_RoundTrip) {

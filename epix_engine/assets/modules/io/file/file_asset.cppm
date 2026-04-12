@@ -24,6 +24,12 @@ export struct FileAssetReader : public AssetReader {
     std::expected<utils::input_iterable<std::filesystem::path>, AssetReaderError> read_directory(
         const std::filesystem::path& path) const override;
     std::expected<bool, AssetReaderError> is_directory(const std::filesystem::path& path) const override;
+    std::optional<std::filesystem::file_time_type> last_modified(const std::filesystem::path& path) const override {
+        std::error_code ec;
+        auto t = std::filesystem::last_write_time(m_root / path, ec);
+        if (ec) return std::nullopt;
+        return t;
+    }
 };
 static_assert(!std::is_abstract_v<FileAssetReader>);
 

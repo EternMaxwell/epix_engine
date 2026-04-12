@@ -313,6 +313,9 @@ export struct AssetProcessor {
     /** @brief Get the default processor for a given extension. */
     std::shared_ptr<ErasedProcessor> get_default_processor(std::string_view extension) const;
 
+    /** @brief Check if an extension has a registered default processor. */
+    bool has_processor_for_extension(std::string_view ext) const { return bool(get_default_processor(ext)); }
+
     /** @brief Get a processor by type name (supports both short and full type path).
      *  Matches bevy_asset's AssetProcessor::get_processor. */
     std::expected<std::shared_ptr<ErasedProcessor>, GetProcessorError> get_processor(std::string_view type_name) const;

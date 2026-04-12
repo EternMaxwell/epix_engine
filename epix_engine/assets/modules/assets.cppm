@@ -46,6 +46,12 @@ export struct AssetPlugin {
     std::filesystem::path file_path = "assets";
     /** @brief Optional processed-asset directory path. */
     std::optional<std::filesystem::path> processed_file_path = "processed_assets";
+    /** @brief Optional processed-asset directory for the embedded source.
+     *  Defaults to nullopt so embedded assets stay on the in-memory source reader and do not
+     *  participate in the processed-asset pipeline unless explicitly opted in.
+     *  When set, a FileAssetReader/Writer rooted at {workspace}/{path} is used for the embedded
+     *  source's processed IO. */
+    std::optional<std::filesystem::path> embedded_processed_path = std::nullopt;
     /** @brief Asset server mode. */
     AssetServerMode mode = AssetServerMode::Processed;
     /** @brief Optional watch override (mirrors Bevy's watch_for_changes_override). */

@@ -58,6 +58,10 @@ bool ::epix::assets::asset_server_process_handle_destruction(const AssetServer& 
     return server.process_handle_destruction(id);
 }
 
+void AssetServer::set_processor_check(std::function<bool(std::string_view)> check) const {
+    data->has_processor_for_ext = std::move(check);
+}
+
 void ::epix::assets::log_asset_error(const AssetError& error,
                                      const std::string_view& header,
                                      const std::string_view& operation) {
@@ -340,12 +344,21 @@ std::optional<AssetServer::MetaLoaderReader> AssetServer::get_meta_loader_and_re
     const AssetReader* reader_ptr = nullptr;
     std::optional<std::reference_wrapper<const AssetReader>> processed_reader_opt;
     if (data->mode == AssetServerMode::Processed) {
-        processed_reader_opt = source.processed_reader();
-        if (!processed_reader_opt) {
-            out_error = AssetLoadError{load_error::MissingProcessedAssetReaderError{asset_path.source}};
-            return std::nullopt;
+        // When a processor-extension check is installed, extensions without a registered
+        // processor are not copied to the processed output directory, so we read them
+        // directly from the source reader.
+        bool use_source = data->has_processor_for_ext &&
+                          !data->has_processor_for_ext(asset_path.get_full_extension().value_or(std::string{}));
+        if (use_source) {
+            reader_ptr = &source.reader();
+        } else {
+            processed_reader_opt = source.processed_reader();
+            if (!processed_reader_opt) {
+                out_error = AssetLoadError{load_error::MissingProcessedAssetReaderError{asset_path.source}};
+                return std::nullopt;
+            }
+            reader_ptr = &processed_reader_opt->get();
         }
-        reader_ptr = &processed_reader_opt->get();
     } else {
         reader_ptr = &source.reader();
     }

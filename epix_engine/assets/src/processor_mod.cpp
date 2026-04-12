@@ -280,24 +280,35 @@ ProcessorState ProcessingState::get_state() const {
 }
 
 ProcessStatus ProcessingState::wait_until_processed(const AssetPath& path) const {
-    // First check if already processed
+    // Fast path: asset already tracked and has a final status.
+    {
+        auto guard = m_asset_infos.read();
+        if (auto* info = guard->get(path)) {
+            if (info->status) return *info->status;
+        }
+    }
+
+    // Asset not yet in the map — initialize() hasn't run yet.  Wait only for initialization
+    // (which registers every source path) rather than for ALL processing to finish.
+    wait_until_initialized();
+
+    // After initialization every source path is registered.  Check for a status or pick up
+    // the per-asset receiver so we block only on this one asset, not the entire pipeline.
     std::optional<utils::BroadcastReceiver<ProcessStatus>> pending_receiver;
     {
         auto guard = m_asset_infos.read();
         if (auto* info = guard->get(path)) {
-            if (info->status) {
-                return *info->status;
-            }
+            if (info->status) return *info->status;
             pending_receiver = info->status_receiver;
         }
     }
     if (pending_receiver) {
         auto status = pending_receiver->receive();
-        if (status) {
-            return *status;
-        }
+        if (status) return *status;
     }
-    // Asset not tracked yet, wait for finished state instead
+
+    // Asset not tracked even after initialization — unknown/nonexistent path.
+    // Fall back to the global finished signal as a safety net.
     wait_until_finished();
     {
         auto guard = m_asset_infos.read();
