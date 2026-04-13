@@ -551,3 +551,281 @@ TEST(SvoUploadDenseExtGrid3D, BasicLookup) {
     }
     EXPECT_EQ(svo_cpu_lookup(buf, {0, 1, 0}), -1);
 }
+
+// ============================================================
+// svo_cpu_lookup64 - mirrors GPU traversal for SvoBuffer64
+// ============================================================
+
+/// Walk the flat SvoBuffer64 and return the DATA INDEX at position `pos`
+/// (absolute coordinates), or -1 if absent.
+static int64_t svo_cpu_lookup64(const SvoBuffer64& buf, const std::vector<int64_t>& pos, uint64_t child_count = 2u) {
+    const auto& w = buf.words;
+    if (w.size() < 2u) return -1;
+
+    SvoHeader64 hdr = buf.header();
+    uint64_t dim    = hdr.dim;
+    uint64_t depth  = hdr.depth;
+    uint64_t cpn    = hdr.child_per_node;
+
+    if (depth == 0u || hdr.data_count == 0u) return -1;
+
+    // Read origin (stored as bit-cast uint64; reinterpret as int64 for signed coords)
+    std::vector<int64_t> origin(static_cast<std::size_t>(dim));
+    for (uint64_t i = 0; i < dim; ++i)
+        origin[static_cast<std::size_t>(i)] = static_cast<int64_t>(w[2u + static_cast<std::size_t>(i)]);
+
+    // Coverage at root
+    uint64_t coverage = 1u;
+    for (uint64_t i = 0; i < depth; ++i) coverage *= child_count;
+
+    // Relative coordinates
+    std::vector<uint64_t> rel(static_cast<std::size_t>(dim));
+    for (uint64_t axis = 0; axis < dim; ++axis) {
+        int64_t delta = pos[static_cast<std::size_t>(axis)] - origin[static_cast<std::size_t>(axis)];
+        if (delta < 0 || static_cast<uint64_t>(delta) >= coverage) return -1;
+        rel[static_cast<std::size_t>(axis)] = static_cast<uint64_t>(delta);
+    }
+
+    uint64_t pool_base = 2u + dim;
+    uint64_t node_idx  = pool_base;
+
+    for (uint64_t level = 0u; level < depth; ++level) {
+        uint64_t stride = 1u;
+        for (uint64_t i = 0u; i < depth - level - 1u; ++i) stride *= child_count;
+
+        // Flat child index (row-major, axis 0 MSB)
+        uint64_t ci = 0u;
+        for (uint64_t axis = 0u; axis < dim; ++axis) {
+            uint64_t digit = (rel[static_cast<std::size_t>(axis)] / stride) % child_count;
+            ci             = ci * child_count + digit;
+        }
+
+        uint64_t word       = w[static_cast<std::size_t>(node_idx)];
+        uint64_t valid_mask = word & ((uint64_t{1} << cpn) - 1u);
+        uint64_t leaf_mask  = (word >> cpn) & ((uint64_t{1} << cpn) - 1u);
+
+        if (!((valid_mask >> ci) & 1u)) return -1;
+
+        uint64_t pbc      = static_cast<uint64_t>(std::popcount(valid_mask & ((uint64_t{1} << ci) - 1u)));
+        uint64_t slot_pos = node_idx + 1u + pbc;
+
+        if ((leaf_mask >> ci) & 1u) return static_cast<int64_t>(w[static_cast<std::size_t>(slot_pos)]);
+
+        node_idx = w[static_cast<std::size_t>(slot_pos)];
+    }
+
+    return -1;
+}
+
+// ============================================================
+// SvoBuffer64 - tree_extendible_grid 2D
+// ============================================================
+
+TEST(SvoUpload64_2D, EmptyGrid) {
+    tree_extendible_grid<2, int> grid;
+    SvoBuffer64 buf = svo_upload64(grid).value();
+
+    ASSERT_GE(buf.size(), 2u);
+    SvoHeader64 hdr = buf.header();
+    EXPECT_EQ(hdr.dim, 2u);
+    EXPECT_EQ(hdr.data_count, 0u);
+    EXPECT_EQ(hdr.depth, 0u);
+    EXPECT_EQ(buf.byte_size(), buf.size() * sizeof(uint64_t));
+}
+
+TEST(SvoUpload64_2D, SingleCell) {
+    tree_extendible_grid<2, int> grid;
+    grid.set({3, 5}, 42);
+
+    SvoBuffer64 buf = svo_upload64(grid).value();
+    SvoHeader64 hdr = buf.header();
+
+    EXPECT_EQ(hdr.dim, 2u);
+    EXPECT_EQ(hdr.data_count, 1u);
+    EXPECT_GT(hdr.depth, 0u);
+    EXPECT_EQ(hdr.child_per_node, 4u);
+
+    EXPECT_EQ(svo_cpu_lookup64(buf, {3, 5}), 0);
+    EXPECT_EQ(svo_cpu_lookup64(buf, {0, 0}), -1);
+    EXPECT_EQ(svo_cpu_lookup64(buf, {3, 4}), -1);
+}
+
+TEST(SvoUpload64_2D, MultipleCells) {
+    tree_extendible_grid<2, int> grid;
+    grid.set({0, 0}, 10);
+    grid.set({1, 0}, 20);
+    grid.set({0, 1}, 30);
+    grid.set({3, 2}, 40);
+
+    SvoBuffer64 buf = svo_upload64(grid).value();
+    EXPECT_EQ(buf.header().data_count, 4u);
+
+    EXPECT_EQ(svo_cpu_lookup64(buf, {0, 0}), 0);
+    EXPECT_EQ(svo_cpu_lookup64(buf, {1, 0}), 1);
+    EXPECT_EQ(svo_cpu_lookup64(buf, {0, 1}), 2);
+    EXPECT_EQ(svo_cpu_lookup64(buf, {3, 2}), 3);
+    EXPECT_EQ(svo_cpu_lookup64(buf, {1, 1}), -1);
+}
+
+TEST(SvoUpload64_2D, IndexMatchesIterPosOrder) {
+    tree_extendible_grid<2, int> grid;
+    grid.set({-1, 2}, 0);
+    grid.set({0, 0}, 1);
+    grid.set({2, 3}, 2);
+    grid.set({-3, -3}, 3);
+
+    SvoBuffer64 buf = svo_upload64(grid).value();
+
+    std::vector<std::array<int32_t, 2>> positions;
+    for (const auto& pos : grid.iter_pos()) positions.push_back(pos);
+
+    for (uint32_t i = 0; i < static_cast<uint32_t>(positions.size()); ++i) {
+        int64_t idx = svo_cpu_lookup64(buf, {positions[i][0], positions[i][1]});
+        EXPECT_EQ(idx, static_cast<int64_t>(i));
+    }
+}
+
+// ============================================================
+// SvoBuffer64 - tree_extendible_grid 3D
+// ============================================================
+
+TEST(SvoUpload64_3D, SingleCell) {
+    tree_extendible_grid<3, int> grid;
+    grid.set({1, 2, 3}, 99);
+
+    SvoBuffer64 buf = svo_upload64(grid).value();
+    SvoHeader64 hdr = buf.header();
+
+    EXPECT_EQ(hdr.dim, 3u);
+    EXPECT_EQ(hdr.data_count, 1u);
+    EXPECT_EQ(hdr.child_per_node, 8u);  // 2^3
+
+    EXPECT_EQ(svo_cpu_lookup64(buf, {1, 2, 3}), 0);
+    EXPECT_EQ(svo_cpu_lookup64(buf, {1, 2, 4}), -1);
+}
+
+TEST(SvoUpload64_3D, IndexMatchesIterPosOrder) {
+    tree_extendible_grid<3, int> grid;
+    grid.set({0, 0, 0}, 1);
+    grid.set({1, 1, 1}, 2);
+    grid.set({0, 1, 0}, 3);
+    grid.set({5, 3, 2}, 4);
+
+    SvoBuffer64 buf = svo_upload64(grid).value();
+    EXPECT_EQ(buf.header().data_count, 4u);
+
+    std::vector<std::array<int32_t, 3>> positions;
+    for (const auto& pos : grid.iter_pos()) positions.push_back(pos);
+
+    for (uint32_t i = 0; i < static_cast<uint32_t>(positions.size()); ++i) {
+        auto& p = positions[i];
+        EXPECT_EQ(svo_cpu_lookup64(buf, {p[0], p[1], p[2]}), static_cast<int64_t>(i));
+    }
+}
+
+// ============================================================
+// SvoBuffer64 - dense_grid 2D (flat grid)
+// ============================================================
+
+TEST(SvoUpload64_DenseGrid2D, EmptyGrid) {
+    dense_grid<2, int> grid({8u, 8u});
+    SvoBuffer64 buf = svo_upload64(grid).value();
+    EXPECT_EQ(buf.header().data_count, 0u);
+    EXPECT_EQ(buf.header().dim, 2u);
+}
+
+TEST(SvoUpload64_DenseGrid2D, SingleCell) {
+    dense_grid<2, int> grid({8u, 8u});
+    grid.set({3u, 5u}, 42);
+
+    SvoBuffer64 buf = svo_upload64(grid).value();
+    SvoHeader64 hdr = buf.header();
+
+    EXPECT_EQ(hdr.data_count, 1u);
+    EXPECT_EQ(hdr.child_per_node, 4u);
+    EXPECT_EQ(svo_cpu_lookup64(buf, {3, 5}), 0);
+    EXPECT_EQ(svo_cpu_lookup64(buf, {0, 0}), -1);
+}
+
+TEST(SvoUpload64_DenseGrid2D, MultipleCells) {
+    dense_grid<2, int> grid({8u, 8u});
+    grid.set({0u, 0u}, 10);
+    grid.set({3u, 5u}, 20);
+    grid.set({7u, 7u}, 30);
+
+    SvoBuffer64 buf = svo_upload64(grid).value();
+    EXPECT_EQ(buf.header().data_count, 3u);
+
+    std::vector<std::array<uint32_t, 2>> positions;
+    for (const auto& pos : grid.iter_pos()) positions.push_back(pos);
+
+    for (uint32_t i = 0; i < static_cast<uint32_t>(positions.size()); ++i) {
+        auto& p = positions[i];
+        EXPECT_EQ(svo_cpu_lookup64(buf, {static_cast<int64_t>(p[0]), static_cast<int64_t>(p[1])}),
+                  static_cast<int64_t>(i));
+    }
+}
+
+// ============================================================
+// SvoBuffer64 header integrity
+// ============================================================
+
+TEST(SvoHeader64, FieldEncoding) {
+    tree_extendible_grid<2, int> grid;
+    grid.set({0, 0}, 1);
+    grid.set({1, 1}, 2);
+
+    SvoBuffer64 buf = svo_upload64(grid).value();
+    SvoHeader64 hdr = buf.header();
+
+    EXPECT_EQ(hdr.dim, 2u);
+    EXPECT_EQ(hdr.child_per_node, 4u);
+    EXPECT_GT(hdr.depth, 0u);
+    EXPECT_EQ(hdr.data_count, 2u);
+
+    ASSERT_NE(buf.data(), nullptr);
+    EXPECT_GT(buf.byte_size(), 0u);
+    EXPECT_EQ(buf.byte_size(), buf.size() * sizeof(uint64_t));
+}
+
+// ============================================================
+// SvoBuffer64 - 1D tree
+// ============================================================
+
+TEST(SvoUpload64_1D, BasicLookup) {
+    tree_extendible_grid<1, int> grid;
+    grid.set({0}, 10);
+    grid.set({3}, 20);
+    grid.set({7}, 30);
+
+    SvoBuffer64 buf = svo_upload64(grid).value();
+    SvoHeader64 hdr = buf.header();
+
+    EXPECT_EQ(hdr.dim, 1u);
+    EXPECT_EQ(hdr.data_count, 3u);
+    EXPECT_EQ(hdr.child_per_node, 2u);
+
+    std::vector<std::array<int32_t, 1>> positions;
+    for (const auto& pos : grid.iter_pos()) positions.push_back(pos);
+
+    for (uint32_t i = 0; i < static_cast<uint32_t>(positions.size()); ++i) {
+        EXPECT_EQ(svo_cpu_lookup64(buf, {positions[i][0]}), static_cast<int64_t>(i));
+    }
+}
+
+// ============================================================
+// SvoUploadError64 - invalid child_count
+// ============================================================
+
+TEST(SvoUploadError64Test, InvalidChildCount) {
+    tree_extendible_grid<2, int> grid;
+    grid.set({0, 0}, 1);
+
+    auto result = svo_upload64(grid, SvoConfig64{.child_count = 99});
+    ASSERT_FALSE(result.has_value());
+    EXPECT_TRUE(result.error().is<SvoUploadError64::InvalidChildCount>());
+    const auto* e = result.error().get<SvoUploadError64::InvalidChildCount>();
+    ASSERT_NE(e, nullptr);
+    EXPECT_EQ(e->provided, 99u);
+    EXPECT_EQ(e->dim, 2u);
+}
