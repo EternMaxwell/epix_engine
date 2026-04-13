@@ -1,4 +1,4 @@
-﻿#include <gtest/gtest.h>
+#include <gtest/gtest.h>
 #include <uuid.h>
 
 import std;
@@ -79,6 +79,10 @@ static std::vector<std::uint32_t> bytes_to_words(std::span<const std::uint8_t> b
     return words;
 }
 
+struct CompiledShader {
+    std::variant<std::vector<std::uint32_t>, std::string> data;
+};
+
 struct GpuCtx {
     wgpu::Instance instance;
     wgpu::Adapter adapter;
@@ -112,12 +116,12 @@ static std::optional<GpuCtx> make_gpu_ctx() {
                     .setMode(wgpu::CallbackMode::eAllowSpontaneous)
                     .setCallback([errors](const wgpu::Device&, wgpu::DeviceLostReason r, wgpu::StringView msg) {
                         errors->push_back(std::string("lost:") + std::string(wgpu::to_string(r)) + ":" +
-                                           std::string(std::string_view(msg)));
+                                          std::string(std::string_view(msg)));
                     }))
             .setUncapturedErrorCallbackInfo(wgpu::UncapturedErrorCallbackInfo().setCallback(
                 [errors](const wgpu::Device&, wgpu::ErrorType t, wgpu::StringView msg) {
                     errors->push_back(std::string("err:") + std::string(wgpu::to_string(t)) + ":" +
-                                       std::string(std::string_view(msg)));
+                                      std::string(std::string_view(msg)));
                 })));
     if (!ctx.device) return std::nullopt;
     ctx.queue = ctx.device.getQueue();
@@ -125,10 +129,10 @@ static std::optional<GpuCtx> make_gpu_ctx() {
     return ctx;
 }
 
-// Compile the svo library + a caller shader to SPIR-V via ShaderCache.
-// Returns the SPIR-V words for the main shader or nullopt on error.
-static std::optional<std::vector<std::uint32_t>> compile_svo_caller(
-    std::string caller_source, std::string caller_path = "embedded://test/svo_caller.slang") {
+// Compile the svo library + a caller shader via ShaderCache.
+// Returns the backend-ready shader source for the main shader or nullopt on error.
+static std::optional<CompiledShader> compile_svo_caller(std::string caller_source,
+                                                        std::string caller_path = "embedded://test/svo_caller.slang") {
     std::array<std::uint8_t, 16> lib_bytes{};
     lib_bytes[0] = 0xAB;
     std::array<std::uint8_t, 16> main_bytes{};
@@ -136,12 +140,14 @@ static std::optional<std::vector<std::uint32_t>> compile_svo_caller(
     auto lib_id   = AssetId<Shader>(uuids::uuid(lib_bytes));
     auto main_id  = AssetId<Shader>(uuids::uuid(main_bytes));
 
-    std::optional<std::vector<std::uint8_t>> spirv_out;
+    std::optional<CompiledShader> compiled_out;
     ShaderCache cache(wgpu::Device{},
                       [&](const wgpu::Device&, const ShaderCacheSource& src,
                           ValidateShader) -> std::expected<wgpu::ShaderModule, ShaderCacheError> {
                           if (auto* s = std::get_if<ShaderCacheSource::SpirV>(&src.data)) {
-                              spirv_out.emplace(s->bytes.begin(), s->bytes.end());
+                              compiled_out = CompiledShader{bytes_to_words(s->bytes)};
+                          } else if (auto* s = std::get_if<ShaderCacheSource::Wgsl>(&src.data)) {
+                              compiled_out = CompiledShader{std::string(s->source)};
                           }
                           return wgpu::ShaderModule{};
                       });
@@ -152,8 +158,26 @@ static std::optional<std::vector<std::uint32_t>> compile_svo_caller(
 
     auto result = cache.get(CachedPipelineId{1}, main_id, {});
     if (!result.has_value()) return std::nullopt;
-    if (!spirv_out.has_value() || spirv_out->size() % 4 != 0) return std::nullopt;
-    return bytes_to_words(*spirv_out);
+    if (!compiled_out.has_value()) return std::nullopt;
+    if (auto* spirv = std::get_if<std::vector<std::uint32_t>>(&compiled_out->data);
+        spirv != nullptr && spirv->empty()) {
+        return std::nullopt;
+    }
+    return compiled_out;
+}
+
+static wgpu::ShaderModule create_shader_module_from_compiled(const wgpu::Device& device,
+                                                             const CompiledShader& shader,
+                                                             std::string_view label) {
+    auto desc = wgpu::ShaderModuleDescriptor().setLabel(label);
+    if (const auto* spirv = std::get_if<std::vector<std::uint32_t>>(&shader.data)) {
+        return device.createShaderModule(desc.setNextInChain(
+            wgpu::ShaderSourceSPIRV().setCodeSize(static_cast<std::uint32_t>(spirv->size())).setCode(spirv->data())));
+    }
+
+    const auto& wgsl = std::get<std::string>(shader.data);
+    return device.createShaderModule(
+        desc.setNextInChain(wgpu::ShaderSourceWGSL().setCode(wgpu::StringView(std::string_view(wgsl)))));
 }
 
 // ===========================================================================
@@ -203,9 +227,8 @@ void computeMain() {}
     EXPECT_EQ(call_count, 1);
 }
 
-TEST(SvoShaderCache, LibraryOnly_CompileFails_WithoutCallerEntryPoint) {
-    // The library has no entry point, so Slang cannot produce SPIR-V (no exported symbols).
-    // Requesting the library module directly should fail compilation.
+TEST(SvoShaderCache, LibraryOnly_CompileSucceeds_WithoutCallerEntryPoint) {
+    // Under the WGSL backend, compiling the library module itself succeeds even without an entry point.
     std::array<std::uint8_t, 16> lib_bytes{};
     lib_bytes[0] = 0x03;
     auto lib_id  = AssetId<Shader>(uuids::uuid(lib_bytes));
@@ -218,7 +241,7 @@ TEST(SvoShaderCache, LibraryOnly_CompileFails_WithoutCallerEntryPoint) {
     cache.set_shader(lib_id,
                      Shader::from_slang(std::string(kSvoGridSlangSource), "embedded://epix/shaders/grid/svo.slang"));
     auto r = cache.get(CachedPipelineId{1}, lib_id, {});
-    EXPECT_FALSE(r.has_value());
+    EXPECT_TRUE(r.has_value()) << r.error().message();
 }
 
 TEST(SvoShaderCache, CallerWithoutLibrary_FailsWithImportNotAvailable) {
@@ -398,12 +421,7 @@ void computeMain()
         wgpu::PipelineLayoutDescriptor().setLabel("SvoLookupPL").setBindGroupLayouts(std::array{bgl}));
     ASSERT_TRUE(pl);
 
-    auto module =
-        gpu->device.createShaderModule(wgpu::ShaderModuleDescriptor()
-                                           .setLabel("SvoLookupModule")
-                                           .setNextInChain(wgpu::ShaderSourceSPIRV()
-                                                               .setCodeSize(static_cast<std::uint32_t>(words->size()))
-                                                               .setCode(words->data())));
+    auto module = create_shader_module_from_compiled(gpu->device, *words, "SvoLookupModule");
     ASSERT_TRUE(module);
 
     auto pipeline = gpu->device.createComputePipeline(
@@ -525,8 +543,7 @@ void computeMain()
     ASSERT_TRUE(bgl);
 
     auto pl = gpu->device.createPipelineLayout(wgpu::PipelineLayoutDescriptor().setBindGroupLayouts(std::array{bgl}));
-    auto module = gpu->device.createShaderModule(wgpu::ShaderModuleDescriptor().setNextInChain(
-        wgpu::ShaderSourceSPIRV().setCodeSize(static_cast<std::uint32_t>(words->size())).setCode(words->data())));
+    auto module = create_shader_module_from_compiled(gpu->device, *words, "SvoLookup3DModule");
     ASSERT_TRUE(pl);
     ASSERT_TRUE(module);
 
@@ -641,8 +658,7 @@ void computeMain()
     ASSERT_TRUE(bgl);
 
     auto pl = gpu->device.createPipelineLayout(wgpu::PipelineLayoutDescriptor().setBindGroupLayouts(std::array{bgl}));
-    auto module = gpu->device.createShaderModule(wgpu::ShaderModuleDescriptor().setNextInChain(
-        wgpu::ShaderSourceSPIRV().setCodeSize(static_cast<std::uint32_t>(words->size())).setCode(words->data())));
+    auto module = create_shader_module_from_compiled(gpu->device, *words, "SvoEmptyModule");
     ASSERT_TRUE(pl);
     ASSERT_TRUE(module);
 
@@ -810,12 +826,7 @@ void computeMain(uint3 dtid : SV_DispatchThreadID)
 
     auto pl = gpu->device.createPipelineLayout(
         wgpu::PipelineLayoutDescriptor().setLabel("LargePL").setBindGroupLayouts(std::array{bgl}));
-    auto module =
-        gpu->device.createShaderModule(wgpu::ShaderModuleDescriptor()
-                                           .setLabel("LargeModule")
-                                           .setNextInChain(wgpu::ShaderSourceSPIRV()
-                                                               .setCodeSize(static_cast<std::uint32_t>(words->size()))
-                                                               .setCode(words->data())));
+    auto module = create_shader_module_from_compiled(gpu->device, *words, "LargeModule");
     ASSERT_TRUE(pl);
     ASSERT_TRUE(module);
 
