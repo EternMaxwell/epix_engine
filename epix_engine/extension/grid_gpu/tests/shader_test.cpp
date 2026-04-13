@@ -278,8 +278,7 @@ import epix.ext.grid.svo;
 [numthreads(1,1,1)]
 void computeMain()
 {
-    epix::ext::grid::SvoGrid2D grid;
-    grid.buf     = svo_buf;
+    epix::ext::grid::SvoGrid2D grid = epix::ext::grid::SvoGrid2D(svo_buf);
     out_result[0] = grid.lookup({0, 0});
 }
 )");
@@ -297,8 +296,7 @@ import epix.ext.grid.svo;
 [numthreads(1,1,1)]
 void computeMain()
 {
-    epix::ext::grid::SvoGrid3D grid;
-    grid.buf     = svo_buf;
+    epix::ext::grid::SvoGrid3D grid = epix::ext::grid::SvoGrid3D(svo_buf);
     out_result[0] = grid.lookup({0, 0, 0});
 }
 )");
@@ -316,8 +314,7 @@ import epix.ext.grid.svo;
 [numthreads(1,1,1)]
 void computeMain()
 {
-    epix::ext::grid::SvoGrid2D grid;
-    grid.buf      = svo_buf;
+    epix::ext::grid::SvoGrid2D grid = epix::ext::grid::SvoGrid2D(svo_buf);
     out_result[0] = grid.contains({1, 2}) ? 1u : 0u;
 }
 )");
@@ -335,8 +332,7 @@ import epix.ext.grid.svo;
 [numthreads(1,1,1)]
 void computeMain()
 {
-    epix::ext::grid::SvoGrid1D grid;
-    grid.buf     = svo_buf;
+    epix::ext::grid::SvoGrid1D grid = epix::ext::grid::SvoGrid1D(svo_buf);
     out_result[0] = grid.lookup({5});
 }
 )");
@@ -359,8 +355,7 @@ import epix.ext.grid.svo;
 [numthreads(1,1,1)]
 void computeMain()
 {
-    epix::ext::grid::SvoGrid2D grid;
-    grid.buf      = svo_buf;
+    epix::ext::grid::SvoGrid2D grid = epix::ext::grid::SvoGrid2D(svo_buf);
     out_result[0] = grid.lookup({1, 2});   // present  鈫?0
     out_result[1] = grid.lookup({0, 0});   // absent   鈫?-1
     out_result[2] = grid.data_count();
@@ -485,8 +480,7 @@ import epix.ext.grid.svo;
 [numthreads(1,1,1)]
 void computeMain()
 {
-    epix::ext::grid::SvoGrid3D grid;
-    grid.buf      = svo_buf;
+    epix::ext::grid::SvoGrid3D grid = epix::ext::grid::SvoGrid3D(svo_buf);
     out_result[0] = grid.lookup({0, 0, 0});   // first cell
     out_result[1] = grid.lookup({1, 1, 1});   // second cell
     out_result[2] = grid.lookup({0, 1, 0});   // absent
@@ -603,8 +597,7 @@ import epix.ext.grid.svo;
 [numthreads(1,1,1)]
 void computeMain()
 {
-    epix::ext::grid::SvoGrid2D grid;
-    grid.buf      = svo_buf;
+    epix::ext::grid::SvoGrid2D grid = epix::ext::grid::SvoGrid2D(svo_buf);
     out_result[0] = grid.lookup({0, 0});
     out_result[1] = int(grid.data_count());
 }
@@ -721,8 +714,7 @@ import epix.ext.grid.svo;
 [numthreads(1,1,1)]
 void computeMain(uint3 dtid : SV_DispatchThreadID)
 {
-    epix::ext::grid::SvoGrid3D grid;
-    grid.buf   = svo_buf;
+    epix::ext::grid::SvoGrid3D grid = epix::ext::grid::SvoGrid3D(svo_buf);
     uint i     = dtid.x;
     uint base  = i * 3u;
     results[i] = grid.lookup({queries[base], queries[base + 1u], queries[base + 2u]});

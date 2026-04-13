@@ -51,6 +51,7 @@ import epix.ext.grid.svo;
 struct VoxelCamera {
     float4x4 inv_proj;
     float4x4 inv_view;
+    float4x4 prev_view_proj;
     float4x4 prev_inv_view;
     uint  frame_index;
     float taa_blend;
@@ -100,46 +101,88 @@ struct RayHit {
     float3 normal;  // face normal at entry
 };
 
-// General DDA voxel traversal.  max_steps lets callers limit cost for secondary rays.
-RayHit trace_ray(float3 origin, float3 dir, int max_steps) {
+struct BoxHit {
+    bool   hit;
+    float  t_enter;
+    float  t_exit;
+    float3 enter_normal;
+};
+
+float3 safe_inv_dir(float3 dir) {
+    float3 sign_dir = float3(dir.x >= 0.0f ? 1.0f : -1.0f,
+                             dir.y >= 0.0f ? 1.0f : -1.0f,
+                             dir.z >= 0.0f ? 1.0f : -1.0f);
+    return sign_dir / max(abs(dir), float3(1e-6f));
+}
+
+BoxHit intersect_box(float3 origin, float3 dir, float3 inv_dir, float3 box_min, float3 box_max) {
+    float3 t0 = (box_min - origin) * inv_dir;
+    float3 t1 = (box_max - origin) * inv_dir;
+    float3 lo = min(t0, t1);
+    float3 hi = max(t0, t1);
+
+    BoxHit hit;
+    hit.t_enter = max(max(lo.x, lo.y), lo.z);
+    hit.t_exit  = min(min(hi.x, hi.y), hi.z);
+    hit.hit     = hit.t_exit >= max(hit.t_enter, 0.0f);
+
+    float3 n = float3(0.0f);
+    if (lo.x >= lo.y && lo.x >= lo.z) {
+        n = float3(dir.x >= 0.0f ? -1.0f : 1.0f, 0.0f, 0.0f);
+    } else if (lo.y >= lo.z) {
+        n = float3(0.0f, dir.y >= 0.0f ? -1.0f : 1.0f, 0.0f);
+    } else {
+        n = float3(0.0f, 0.0f, dir.z >= 0.0f ? -1.0f : 1.0f);
+    }
+    hit.enter_normal = n;
+    return hit;
+}
+
+float3 probe_cell_min(epix::ext::grid::SvoProbe<3> probe) {
+    return float3(float(probe.cell_min[0]), float(probe.cell_min[1]), float(probe.cell_min[2]));
+}
+
+// Hierarchical SVO traversal. max_steps caps the number of octree probes, not unit voxels.
+RayHit trace_ray(epix::ext::grid::SvoGrid3D svo, float3 origin, float3 dir, int max_steps) {
     RayHit r;
     r.idx    = -1;
     r.t      = 0.0f;
     r.normal = float3(0.0f, 1.0f, 0.0f);
 
-    epix::ext::grid::SvoGrid3D svo;
-    svo.buf = svo_buf;
+    float3 inv_dir   = safe_inv_dir(dir);
+    float  scene_dim = float(svo.coverage());
+    float3 scene_min = float3(float(svo.origin(0)), float(svo.origin(1)), float(svo.origin(2)));
+    float3 scene_max = scene_min + scene_dim.xxx;
+    BoxHit scene_hit = intersect_box(origin, dir, inv_dir, scene_min, scene_max);
+    if (!scene_hit.hit) return r;
 
-    int[3] cell = { int(floor(origin.x)), int(floor(origin.y)), int(floor(origin.z)) };
-    float3 inv = float3(
-        abs(dir.x) > 1e-6f ? 1.0f / dir.x : 1e30f,
-        abs(dir.y) > 1e-6f ? 1.0f / dir.y : 1e30f,
-        abs(dir.z) > 1e-6f ? 1.0f / dir.z : 1e30f);
-    int[3] s = { dir.x >= 0.0f ? 1 : -1, dir.y >= 0.0f ? 1 : -1, dir.z >= 0.0f ? 1 : -1 };
-    float3 cf = float3(float(cell[0]), float(cell[1]), float(cell[2]));
-    float3 tm = float3(
-        (cf.x + (s[0] == 1 ? 1.0f : 0.0f) - origin.x) * inv.x,
-        (cf.y + (s[1] == 1 ? 1.0f : 0.0f) - origin.y) * inv.y,
-        (cf.z + (s[2] == 1 ? 1.0f : 0.0f) - origin.z) * inv.z);
-    float3 td = float3(abs(inv.x), abs(inv.y), abs(inv.z));
+    float t       = max(scene_hit.t_enter, 0.0f);
+    float t_limit = min(scene_hit.t_exit, 400.0f);
+    float3 eps3   = float3(1e-4f);
 
-    for (int i = 0; i < max_steps; ++i) {
-        int idx = svo.lookup(cell);
-        if (idx >= 0) { r.idx = idx; return r; }
+    for (int i = 0; i < max_steps && t <= t_limit; ++i) {
+        float sample_t = min(t + 1e-4f, t_limit);
+        float3 sample_pos = clamp(origin + dir * sample_t, scene_min + eps3, scene_max - eps3);
+        int[3] cell = { int(floor(sample_pos.x)), int(floor(sample_pos.y)), int(floor(sample_pos.z)) };
 
-        if (tm.x < tm.y && tm.x < tm.z) {
-            if (tm.x > 400.0f) return r;
-            r.t = tm.x; r.normal = float3(float(-s[0]), 0.0f, 0.0f);
-            cell[0] += s[0]; tm.x += td.x;
-        } else if (tm.y < tm.z) {
-            if (tm.y > 400.0f) return r;
-            r.t = tm.y; r.normal = float3(0.0f, float(-s[1]), 0.0f);
-            cell[1] += s[1]; tm.y += td.y;
-        } else {
-            if (tm.z > 400.0f) return r;
-            r.t = tm.z; r.normal = float3(0.0f, 0.0f, float(-s[2]));
-            cell[2] += s[2]; tm.z += td.z;
+        epix::ext::grid::SvoProbe<3> probe = svo.probe(cell);
+        if (probe.state == 0u || probe.cell_size == 0u) return r;
+
+        float cell_size = float(probe.cell_size);
+        float3 cell_min = probe_cell_min(probe);
+        float3 cell_max = cell_min + cell_size.xxx;
+        BoxHit cell_hit = intersect_box(origin, dir, inv_dir, cell_min, cell_max);
+        if (!cell_hit.hit) return r;
+
+        if (probe.state == 3u) {
+            r.idx    = probe.data_index;
+            r.t      = max(cell_hit.t_enter, 0.0f);
+            r.normal = cell_hit.enter_normal;
+            return r;
         }
+
+        float step_eps = max(1e-4f, cell_size * 1e-4f);
+        t = max(cell_hit.t_exit + step_eps, t + step_eps);
     }
     return r;
 }
@@ -163,9 +206,10 @@ void traceMain(uint3 id : SV_DispatchThreadID) {
     vr.xyz /= vr.w;
     float3 ray_orig = mul(camera.inv_view, float4(0.0f, 0.0f, 0.0f, 1.0f)).xyz;
     float3 ray_dir  = normalize(mul((float3x3)camera.inv_view, normalize(vr.xyz)));
+    epix::ext::grid::SvoGrid3D svo = epix::ext::grid::SvoGrid3D(svo_buf);
 
     // Primary ray.
-    RayHit primary = trace_ray(ray_orig, ray_dir, 1024);
+    RayHit primary = trace_ray(svo, ray_orig, ray_dir, 256);
 
     float3 radiance;
     if (primary.idx < 0) {
@@ -192,7 +236,7 @@ void traceMain(uint3 id : SV_DispatchThreadID) {
         float3 bounce = normalize(T * ld.x + B * ld.y + N * ld.z);
 
         // Secondary ray (offset origin to avoid self-intersection on entry face).
-        RayHit secondary = trace_ray(hit_pos + N * 0.02f, bounce, 512);
+        RayHit secondary = trace_ray(svo, hit_pos + N * 0.02f, bounce, 128);
 
         float3 incoming;
         if (secondary.idx < 0) {
@@ -213,7 +257,7 @@ void traceMain(uint3 id : SV_DispatchThreadID) {
             float phi2 = 6.28318f * u4;
             float3 ld2     = float3(rr2 * cos(phi2), rr2 * sin(phi2), sqrt(max(0.0f, 1.0f - u3)));
             float3 bounce2 = normalize(T2 * ld2.x + B2 * ld2.y + N2 * ld2.z);
-            RayHit tertiary = trace_ray(h2_pos + N2 * 0.02f, bounce2, 256);
+            RayHit tertiary = trace_ray(svo, h2_pos + N2 * 0.02f, bounce2, 64);
             float3 in2 = (tertiary.idx < 0) ? sky_color(bounce2)
                                              : colors[tertiary.idx].rgb * float3(0.25f, 0.30f, 0.38f);
             incoming = h2_albedo * in2;
@@ -239,6 +283,7 @@ constexpr std::string_view kVoxelTaaSlang     = R"slang(
 struct VoxelCamera {
     float4x4 inv_proj;
     float4x4 inv_view;
+    float4x4 prev_view_proj;
     float4x4 prev_inv_view;
     uint  frame_index;
     float taa_blend;
@@ -262,27 +307,44 @@ float3 reproject(float2 uv, float depth, float4x4 inv_proj, float4x4 inv_view) {
     return mul(inv_view, float4(view_pos, 1.0f)).xyz;
 }
 
-// Project world pos into NDC using a view matrix (which is inv_view^-1 = view).
-float2 project_to_uv(float3 world_pos, float4x4 inv_proj, float4x4 inv_view) {
-    // view = inverse(inv_view) - derive view from inv_view by extracting its inverse.
-    // For an RT camera inv_view is the camera-to-world matrix.  Multiplying by
-    // the transpose of the rotation block and negating translation gives view.
-    float3 rr = float3(inv_view[0][0], inv_view[1][0], inv_view[2][0]);
-    float3 ru = float3(inv_view[0][1], inv_view[1][1], inv_view[2][1]);
-    float3 rf = float3(inv_view[0][2], inv_view[1][2], inv_view[2][2]);
-    float3 t  = float3(inv_view[0][3], inv_view[1][3], inv_view[2][3]);
-    float3 view_pos = float3(dot(rr, world_pos - t),
-                              dot(ru, world_pos - t),
-                              dot(rf, world_pos - t));
-    // proj: use inv(inv_proj) = proj - reconstruct from inv_proj
-    // Use pinhole approximation: ndc = view_pos.xy / view_pos.z * (1/tan(fov/2))
-    // Extract focal lengths from inv_proj diagonal.
-    float inv_fx = inv_proj[0][0]; // inv_proj[0][0] = 1/fx in a standard LH proj
-    float inv_fy = inv_proj[1][1];
-    if (abs(view_pos.z) < 1e-4f) return float2(-2.0f);
-    float ndc_x = (view_pos.x / view_pos.z) / inv_fx;
-    float ndc_y = (view_pos.y / view_pos.z) / inv_fy;
-    return float2(ndc_x * 0.5f + 0.5f, ndc_y * 0.5f + 0.5f);
+float2 project_to_uv(float3 world_pos, float4x4 prev_view_proj) {
+    float4 clip = mul(prev_view_proj, float4(world_pos, 1.0f));
+    if (abs(clip.w) < 1e-4f) return float2(-2.0f);
+
+    float2 ndc = clip.xy / clip.w;
+    return float2(ndc.x * 0.5f + 0.5f, ndc.y * 0.5f + 0.5f);
+}
+
+float3 camera_origin(float4x4 inv_view) {
+    return mul(inv_view, float4(0.0f, 0.0f, 0.0f, 1.0f)).xyz;
+}
+
+float4 sample_history_4tap(float2 prev_uv, float expected_prev_d, float far_history, uint width, uint height, int2 fallback_px) {
+    float2 texel_pos = prev_uv * float2(float(width), float(height)) - 0.5f;
+    int2 base_px = int2(floor(texel_pos));
+    float2 frac_uv = frac(texel_pos);
+
+    float4 accum = float4(0.0f);
+    float weight_sum = 0.0f;
+    float depth_window = lerp(0.02f, 0.05f, far_history);
+
+    for (int oy = 0; oy <= 1; ++oy)
+        for (int ox = 0; ox <= 1; ++ox) {
+            int2 sample_px = clamp(base_px + int2(ox, oy), int2(0, 0), int2(int(width) - 1, int(height) - 1));
+            float bilinear_wx = ox == 0 ? (1.0f - frac_uv.x) : frac_uv.x;
+            float bilinear_wy = oy == 0 ? (1.0f - frac_uv.y) : frac_uv.y;
+            float bilinear_weight = bilinear_wx * bilinear_wy;
+
+            float sample_d = prev_depth.Load(int3(sample_px, 0));
+            float depth_diff = abs(sample_d - expected_prev_d) / max(expected_prev_d, 0.1f);
+            float depth_weight = saturate(1.0f - depth_diff / depth_window);
+            float sample_weight = bilinear_weight * depth_weight;
+            accum += prev_accum.Load(int3(sample_px, 0)) * sample_weight;
+            weight_sum += sample_weight;
+        }
+
+    if (weight_sum > 1e-4f) return accum / weight_sum;
+    return prev_accum.Load(int3(fallback_px, 0));
 }
 
 [shader("compute")]
@@ -302,27 +364,54 @@ void taaMain(uint3 id : SV_DispatchThreadID) {
 
     if (!sky) {
         float3 world_pos = reproject(uv, cur_d, camera.inv_proj, camera.inv_view);
-        float2 prev_uv   = project_to_uv(world_pos, camera.inv_proj, camera.prev_inv_view);
+        float2 prev_uv   = project_to_uv(world_pos, camera.prev_view_proj);
+        float3 prev_cam_pos = camera_origin(camera.prev_inv_view);
+        float expected_prev_d = length(world_pos - prev_cam_pos);
+        float far_history = saturate((expected_prev_d - 24.0f) / 96.0f);
 
         bool in_bounds   = all(prev_uv >= 0.0f) && all(prev_uv <= 1.0f);
         if (in_bounds) {
-            // Sample previous depth and check geometric validity.
-            int2   prev_px    = int2(prev_uv * float2(float(width), float(height)));
-            float  prev_d_val = prev_depth.Load(int3(prev_px, 0));
-            float  depth_diff = abs(prev_d_val - cur_d) / max(cur_d, 0.1f);
-            if (depth_diff < 0.1f) {
-                // History is valid - use slow blend (TAA accumulation).
-                float4 history = prev_accum.Load(int3(prev_px, 0));
+            int2 prev_px = int2(prev_uv * float2(float(width), float(height)));
+            prev_px = clamp(prev_px, int2(0, 0), int2(int(width) - 1, int(height) - 1));
+
+            float best_score = 1e30f;
+            float best_depth_diff = 1e30f;
+            float best_px_dist = 1e30f;
+            int2 best_px = prev_px;
+            for (int dy = -1; dy <= 1; ++dy)
+                for (int dx = -1; dx <= 1; ++dx) {
+                    int2 cand_px = clamp(prev_px + int2(dx, dy), int2(0, 0), int2(int(width) - 1, int(height) - 1));
+                    float cand_d = prev_depth.Load(int3(cand_px, 0));
+                    float cand_depth_diff = abs(cand_d - expected_prev_d) / max(expected_prev_d, 0.1f);
+                    float cand_px_dist = length(float2(cand_px - prev_px));
+                    float cand_score = cand_depth_diff + cand_px_dist * 0.02f;
+                    if (cand_score < best_score) {
+                        best_score = cand_score;
+                        best_depth_diff = cand_depth_diff;
+                        best_px_dist = cand_px_dist;
+                        best_px = cand_px;
+                    }
+                }
+
+            float max_depth_diff = best_px_dist > 0.0f ? 0.02f : 0.04f;
+            if (best_depth_diff < max_depth_diff && best_score < 0.06f) {
+                float4 history = sample_history_4tap(prev_uv, expected_prev_d, far_history, width, height, best_px);
                 // Neighbourhood colour clamp to avoid ghosting.
                 float3 cmin = current.rgb, cmax = current.rgb;
                 for (int dx = -1; dx <= 1; ++dx)
                     for (int dy = -1; dy <= 1; ++dy) {
-                        float3 s = hdr_tex.Load(int3(int2(id.xy) + int2(dx, dy), 0)).rgb;
+                        int2 sample_px = clamp(int2(id.xy) + int2(dx, dy), int2(0, 0), int2(int(width) - 1, int(height) - 1));
+                        float3 s = hdr_tex.Load(int3(sample_px, 0)).rgb;
                         cmin = min(cmin, s);
                         cmax = max(cmax, s);
                     }
-                float4 clamped = float4(clamp(history.rgb, cmin, cmax), 1.0f);
-                accum_out[id.xy] = lerp(clamped, current, blend);
+                float3 clamp_pad = max((cmax - cmin) * (0.08f + far_history * 0.17f), float3(0.01f + far_history * 0.03f));
+                float4 clamped = float4(clamp(history.rgb, cmin - clamp_pad, cmax + clamp_pad), 1.0f);
+                float fallback_blend = lerp(max(blend, 0.3f), max(blend, 0.12f), far_history);
+                float confidence = saturate(best_score / 0.06f);
+                float effective_blend = lerp(blend, fallback_blend, confidence);
+                effective_blend = lerp(effective_blend, blend * 0.35f, far_history * (1.0f - confidence));
+                accum_out[id.xy] = lerp(clamped, current, effective_blend);
                 return;
             }
         }
@@ -467,6 +556,7 @@ void bloomBlurVMain(uint3 id : SV_DispatchThreadID) {
 struct alignas(16) VoxelCameraUniform {
     glm::mat4 inv_proj;
     glm::mat4 inv_view;
+    glm::mat4 prev_view_proj;
     glm::mat4 prev_inv_view;
     uint32_t frame_index;
     float taa_blend;
@@ -619,11 +709,12 @@ struct VoxelTraceNode : graph::Node {
         if (vp.x == 0 || vp.y == 0 || state.output_size != vp) return;
 
         VoxelCameraUniform cam;
-        cam.inv_proj      = glm::inverse(exview.projection);
-        cam.inv_view      = exview.transform.matrix;
-        cam.prev_inv_view = state.prev_inv_view;
-        cam.frame_index   = state.frame_count++;
-        cam.taa_blend     = world.resource<VoxelConfig>().taa_blend;
+        cam.inv_proj       = glm::inverse(exview.projection);
+        cam.inv_view       = exview.transform.matrix;
+        cam.prev_view_proj = exview.projection * glm::inverse(state.prev_inv_view);
+        cam.prev_inv_view  = state.prev_inv_view;
+        cam.frame_index    = state.frame_count++;
+        cam.taa_blend      = world.resource<VoxelConfig>().taa_blend;
         cam._pad0 = cam._pad1 = 0;
         world.resource<wgpu::Queue>().writeBuffer(state.camera_uniform, 0, &cam, sizeof(cam));
 
@@ -881,9 +972,9 @@ void setup_voxel_scene(Commands cmd) {
     // Perspective camera, positioned outside the scene looking inward.
     CameraBundle cam = CameraBundle::with_render_graph(VoxelGraph);
     cam.projection   = Projection::perspective(PerspectiveProjection{
-          .fov        = glm::radians(65.0f),
-          .near_plane = 0.1f,
-          .far_plane  = 600.0f,
+        .fov        = glm::radians(65.0f),
+        .near_plane = 0.1f,
+        .far_plane  = 600.0f,
     });
     // perspectiveLH: view_z = world_z − cam_z must be > 0 for visibility.
     // Scene spans z=0..79; camera must be at z < 0 to see it with identity rotation (+Z forward).
@@ -1150,12 +1241,12 @@ void prepare_voxel_render(Res<wgpu::Device> device,
             FragmentState fs{.shader = handles->blit_frag, .entry_point = std::string("blitFrag")};
             fs.add_target(wgpu::ColorTargetState().setFormat(color_fmt).setWriteMask(wgpu::ColorWriteMask::eAll));
             state->blit_pipeline_id = pipeline_server->queue_render_pipeline(RenderPipelineDescriptor{
-                .label     = "voxel-blit",
-                .layouts   = {state->blit_layout},
-                .vertex    = std::move(vs),
-                .primitive = wgpu::PrimitiveState()
-                                 .setTopology(wgpu::PrimitiveTopology::eTriangleList)
-                                 .setCullMode(wgpu::CullMode::eNone),
+                .label       = "voxel-blit",
+                .layouts     = {state->blit_layout},
+                .vertex      = std::move(vs),
+                .primitive   = wgpu::PrimitiveState()
+                                   .setTopology(wgpu::PrimitiveTopology::eTriangleList)
+                                   .setCullMode(wgpu::CullMode::eNone),
                 .multisample = wgpu::MultisampleState().setCount(1).setMask(~0u).setAlphaToCoverageEnabled(false),
                 .fragment    = std::move(fs),
             });
@@ -1215,14 +1306,14 @@ void prepare_voxel_render(Res<wgpu::Device> device,
                                              .setSampleCount(1)
                                              .setDimension(wgpu::TextureDimension::e2D));
         auto vd  = wgpu::TextureViewDescriptor()
-                      .setFormat(fmt)
-                      .setDimension(wgpu::TextureViewDimension::e2D)
-                      .setBaseMipLevel(0)
-                      .setMipLevelCount(1)
-                      .setBaseArrayLayer(0)
-                      .setArrayLayerCount(1);
-        sv = tex.createView(vd);
-        tv = tex.createView(vd);
+                       .setFormat(fmt)
+                       .setDimension(wgpu::TextureViewDimension::e2D)
+                       .setBaseMipLevel(0)
+                       .setMipLevelCount(1)
+                       .setBaseArrayLayer(0)
+                       .setArrayLayerCount(1);
+        sv       = tex.createView(vd);
+        tv       = tex.createView(vd);
         return tex;
     };
 
@@ -1252,13 +1343,13 @@ void prepare_voxel_render(Res<wgpu::Device> device,
                                       .setMipLevelCount(1)
                                       .setSampleCount(1)
                                       .setDimension(wgpu::TextureDimension::e2D));
-        auto vd = wgpu::TextureViewDescriptor()
-                      .setFormat(wgpu::TextureFormat::eR32Float)
-                      .setDimension(wgpu::TextureViewDimension::e2D)
-                      .setBaseMipLevel(0)
-                      .setMipLevelCount(1)
-                      .setBaseArrayLayer(0)
-                      .setArrayLayerCount(1);
+        auto vd                        = wgpu::TextureViewDescriptor()
+                                             .setFormat(wgpu::TextureFormat::eR32Float)
+                                             .setDimension(wgpu::TextureViewDimension::e2D)
+                                             .setBaseMipLevel(0)
+                                             .setMipLevelCount(1)
+                                             .setBaseArrayLayer(0)
+                                             .setArrayLayerCount(1);
         state->prev_depth_tex          = tex;
         state->prev_depth_sampled_view = tex.createView(vd);
     }

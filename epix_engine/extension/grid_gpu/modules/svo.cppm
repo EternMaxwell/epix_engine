@@ -178,6 +178,7 @@ export constexpr std::string_view kSvoGridSlangSource = R"slang(
 //
 // Register the SvoBuffer produced by svo_upload() as a StructuredBuffer<uint>
 // and use the SvoGrid1D / SvoGrid2D / SvoGrid3D structs for lookups.
+// Construct with the bound buffer: `SvoGrid3D grid = SvoGrid3D(svo_buf);`
 
 module epix.ext.grid.svo;
 
@@ -225,14 +226,48 @@ void svo_decode_node(uint word, uint cpn, out uint valid_mask, out uint leaf_mas
 // SvoGrid<Dim, CC> - generic N-D / CC-ary SVO traversal
 // ============================================================
 
+public struct SvoProbe<let Dim : int>
+{
+    public int data_index;
+    public uint state;      // 0 = outside, 1 = empty child, 2 = interior node, 3 = leaf hit
+    public uint level;      // root = 0, first child level = 1
+    public uint cell_size;  // coverage per axis for the resolved cell
+    public int[Dim] cell_min;
+};
+
 public struct SvoGrid<let Dim : int, let CC : int>
 {
-    public StructuredBuffer<uint> buf;
+    StructuredBuffer<uint> buf;
 
-    public uint depth()          { return (buf[0] >> 8u) & 0xFFu; }
-    public uint data_count()     { return buf[1]; }
-    public uint pool_base()      { return 2u + uint(Dim); }
-    public int  origin(int axis) { return int(buf[2 + axis]); }
+    uint depth_cache_;
+    uint data_count_cache_;
+    uint pool_base_cache_;
+    uint coverage_cache_;
+    uint cpn_cache_;
+    int[Dim] origin_cache_;
+
+    public __init(StructuredBuffer<uint> buffer) {
+        this.buf          = buffer;
+        this.depth_cache_ = (buffer[0] >> 8u) & 0xFFu;
+        this.data_count_cache_ = buffer[1];
+        this.pool_base_cache_  = 2u + uint(Dim);
+        this.cpn_cache_        = 1u;
+        for (int a = 0; a < Dim; ++a) {
+            this.origin_cache_[a] = int(buffer[2 + a]);
+            this.cpn_cache_ *= uint(CC);
+        }
+        this.coverage_cache_ = __pow_cc(this.depth_cache_);
+    }
+
+    public uint depth() { return depth_cache_; }
+
+    public uint data_count() { return data_count_cache_; }
+
+    public uint pool_base() { return pool_base_cache_; }
+
+    public uint coverage() { return coverage_cache_; }
+
+    public int origin(int axis) { return origin_cache_[axis]; }
 
     uint __pow_cc(uint exp) {
         uint r = 1u;
@@ -240,43 +275,104 @@ public struct SvoGrid<let Dim : int, let CC : int>
         return r;
     }
 
-    uint __flat_ci(uint[Dim] rel, uint stride) {
-        // Guard: stride == 0 means __pow_cc overflowed (depth >= 32 for CC=2).
-        // All callers will have already returned -1 via the bounds check, but
-        // NVIDIA SIMT speculatively executes masked threads too; integer div-by-zero
-        // in SPIR-V is undefined and can cause a GPU hang / TDR.
-        if (stride == 0u) return 0u;
-        uint idx = 0u;
+    void __clear_probe(out SvoProbe<Dim> probe) {
+        probe.data_index = -1;
+        probe.state      = 0u;
+        probe.level      = 0u;
+        probe.cell_size  = 0u;
         for (int a = 0; a < Dim; ++a)
-            idx = idx * uint(CC) + (rel[a] / stride) % uint(CC);
+            probe.cell_min[a] = 0;
+    }
+
+    void __store_probe(out SvoProbe<Dim> probe, int data_index, uint state, uint level, uint cell_size, int[Dim] cell_min) {
+        probe.data_index = data_index;
+        probe.state      = state;
+        probe.level      = level;
+        probe.cell_size  = cell_size;
+        for (int a = 0; a < Dim; ++a)
+            probe.cell_min[a] = cell_min[a];
+    }
+
+    uint __flat_ci(uint[Dim] rel, uint stride, out uint[Dim] digits) {
+        if (stride == 0u) {
+            for (int a = 0; a < Dim; ++a)
+                digits[a] = 0u;
+            return 0u;
+        }
+        uint idx = 0u;
+        for (int a = 0; a < Dim; ++a) {
+            uint digit = (rel[a] / stride) % uint(CC);
+            digits[a]  = digit;
+            idx        = idx * uint(CC) + digit;
+        }
         return idx;
     }
 
-    public int lookup(int[Dim] pos) {
-        uint d = depth();
-        if (d == 0u) return -1;
-        uint cpn = 1u;
-        for (int i = 0; i < Dim; ++i) cpn *= uint(CC);
+    void __child_min(out int[Dim] dst, int[Dim] base_min, uint[Dim] digits, uint stride) {
+        for (int a = 0; a < Dim; ++a)
+            dst[a] = base_min[a] + int(digits[a] * stride);
+    }
+
+    public SvoProbe<Dim> probe_lod(int[Dim] pos, uint max_levels) {
+        SvoProbe<Dim> result;
+        __clear_probe(result);
+
+        if (depth_cache_ == 0u) return result;
+
         uint[Dim] rel;
         for (int a = 0; a < Dim; ++a)
-            rel[a] = uint(pos[a] - origin(a));
-        uint cov = __pow_cc(d);
+            rel[a] = uint(pos[a] - origin_cache_[a]);
         for (int a = 0; a < Dim; ++a)
-            if (rel[a] >= cov) return -1;
-        uint stride = cov / uint(CC);
-        uint node_idx = pool_base();
-        for (uint level = 0u; level < d; ++level) {
-            uint ci = __flat_ci(rel, stride);
-            stride /= uint(CC);
+            if (rel[a] >= coverage_cache_) return result;
+
+        __store_probe(result, -1, 2u, 0u, coverage_cache_, origin_cache_);
+        if (max_levels == 0u) return result;
+
+        uint stop_levels = min(max_levels, depth_cache_);
+        uint stride      = coverage_cache_ / uint(CC);
+        uint node_idx    = pool_base_cache_;
+        int[Dim] cell_min;
+        for (int a = 0; a < Dim; ++a)
+            cell_min[a] = origin_cache_[a];
+
+        for (uint level = 0u; level < stop_levels; ++level) {
+            uint[Dim] digits;
+            uint ci = __flat_ci(rel, stride, digits);
+            int[Dim] child_min;
+            __child_min(child_min, cell_min, digits, stride);
             uint word = buf[node_idx];
             uint valid_mask, leaf_mask;
-            svo_decode_node(word, cpn, valid_mask, leaf_mask);
-            if ((valid_mask & (1u << ci)) == 0u) return -1;
+            svo_decode_node(word, cpn_cache_, valid_mask, leaf_mask);
+            uint child_bit = 1u << ci;
+            if ((valid_mask & child_bit) == 0u) {
+                __store_probe(result, -1, 1u, level + 1u, stride, child_min);
+                return result;
+            }
             uint slot_pos = node_idx + 1u + svo_popcount_below(valid_mask, ci);
-            if ((leaf_mask & (1u << ci)) != 0u) return int(buf[slot_pos]);
+            if ((leaf_mask & child_bit) != 0u) {
+                __store_probe(result, int(buf[slot_pos]), 3u, level + 1u, stride, child_min);
+                return result;
+            }
+
+            __store_probe(result, -1, 2u, level + 1u, stride, child_min);
+            if (level + 1u >= stop_levels) return result;
+
             node_idx = buf[slot_pos];
+            for (int a = 0; a < Dim; ++a)
+                cell_min[a] = child_min[a];
+            stride /= uint(CC);
         }
-        return -1;
+
+        return result;
+    }
+
+    public SvoProbe<Dim> probe(int[Dim] pos) {
+        return probe_lod(pos, depth());
+    }
+
+    public int lookup(int[Dim] pos) {
+        SvoProbe<Dim> result = probe(pos);
+        return result.state == 3u ? result.data_index : -1;
     }
 
     public bool contains(int[Dim] pos) { return lookup(pos) >= 0; }
@@ -317,6 +413,7 @@ export constexpr std::string_view kSvoGridSlangSource64 = R"slang(
 // No shaderInt64 required — each uint64 word is stored as a little-endian pair of uint32:
 //   logical word W  →  buf[W * 2u]        (low  32 bits)
 //                      buf[W * 2u + 1u]   (high 32 bits, unused by traversal)
+// Construct with the bound buffer: `SvoGrid64_3D grid = SvoGrid64_3D(svo_buf);`
 //
 // GPU constraint: cpn = CC^Dim <= 16 (valid_mask + leaf_mask fit in the low uint32).
 // Returned data index is int (32-bit).
@@ -368,14 +465,48 @@ void svo64_decode_node(uint lo_word, uint cpn, out uint valid_mask, out uint lea
 // cpn = CC^Dim must be <= 16.
 // ============================================================
 
+public struct SvoProbe64<let Dim : int>
+{
+    public int data_index;
+    public uint state;      // 0 = outside, 1 = empty child, 2 = interior node, 3 = leaf hit
+    public uint level;      // root = 0, first child level = 1
+    public uint cell_size;  // coverage per axis for the resolved cell
+    public int[Dim] cell_min;
+};
+
 public struct SvoGrid64<let Dim : int, let CC : int>
 {
-    public StructuredBuffer<uint> buf;
+    StructuredBuffer<uint> buf;
 
-    public uint depth()      { return (svo64_lo(buf, 0u) >> 8u) & 0xFFu; }
-    public uint data_count() { return svo64_lo(buf, 1u); }
-    public uint pool_base()  { return 2u + uint(Dim); }
-    public int  origin(int axis) { return int(svo64_lo(buf, uint(2 + axis))); }
+    uint depth_cache_;
+    uint data_count_cache_;
+    uint pool_base_cache_;
+    uint coverage_cache_;
+    uint cpn_cache_;
+    int[Dim] origin_cache_;
+
+    public __init(StructuredBuffer<uint> buffer) {
+        this.buf          = buffer;
+        this.depth_cache_ = (svo64_lo(buffer, 0u) >> 8u) & 0xFFu;
+        this.data_count_cache_ = svo64_lo(buffer, 1u);
+        this.pool_base_cache_  = 2u + uint(Dim);
+        this.cpn_cache_        = 1u;
+        for (int a = 0; a < Dim; ++a) {
+            this.origin_cache_[a] = int(svo64_lo(buffer, uint(2 + a)));
+            this.cpn_cache_ *= uint(CC);
+        }
+        this.coverage_cache_ = __pow_cc(this.depth_cache_);
+    }
+
+    public uint depth() { return depth_cache_; }
+
+    public uint data_count() { return data_count_cache_; }
+
+    public uint pool_base() { return pool_base_cache_; }
+
+    public uint coverage() { return coverage_cache_; }
+
+    public int origin(int axis) { return origin_cache_[axis]; }
 
     uint __pow_cc(uint exp) {
         uint r = 1u;
@@ -383,43 +514,104 @@ public struct SvoGrid64<let Dim : int, let CC : int>
         return r;
     }
 
-    uint __flat_ci(uint[Dim] rel, uint stride) {
-        // Guard: stride == 0 means __pow_cc overflowed (depth >= 32 for CC=2).
-        // All callers will have already returned -1 via the bounds check, but
-        // NVIDIA SIMT speculatively executes masked threads too; integer div-by-zero
-        // in SPIR-V is undefined and can cause a GPU hang / TDR.
-        if (stride == 0u) return 0u;
-        uint idx = 0u;
+    void __clear_probe(out SvoProbe64<Dim> probe) {
+        probe.data_index = -1;
+        probe.state      = 0u;
+        probe.level      = 0u;
+        probe.cell_size  = 0u;
         for (int a = 0; a < Dim; ++a)
-            idx = idx * uint(CC) + (rel[a] / stride) % uint(CC);
+            probe.cell_min[a] = 0;
+    }
+
+    void __store_probe(out SvoProbe64<Dim> probe, int data_index, uint state, uint level, uint cell_size, int[Dim] cell_min) {
+        probe.data_index = data_index;
+        probe.state      = state;
+        probe.level      = level;
+        probe.cell_size  = cell_size;
+        for (int a = 0; a < Dim; ++a)
+            probe.cell_min[a] = cell_min[a];
+    }
+
+    uint __flat_ci(uint[Dim] rel, uint stride, out uint[Dim] digits) {
+        if (stride == 0u) {
+            for (int a = 0; a < Dim; ++a)
+                digits[a] = 0u;
+            return 0u;
+        }
+        uint idx = 0u;
+        for (int a = 0; a < Dim; ++a) {
+            uint digit = (rel[a] / stride) % uint(CC);
+            digits[a]  = digit;
+            idx        = idx * uint(CC) + digit;
+        }
         return idx;
     }
 
-    public int lookup(int[Dim] pos) {
-        uint d = depth();
-        if (d == 0u) return -1;
-        uint cpn = 1u;
-        for (int i = 0; i < Dim; ++i) cpn *= uint(CC);
+    void __child_min(out int[Dim] dst, int[Dim] base_min, uint[Dim] digits, uint stride) {
+        for (int a = 0; a < Dim; ++a)
+            dst[a] = base_min[a] + int(digits[a] * stride);
+    }
+
+    public SvoProbe64<Dim> probe_lod(int[Dim] pos, uint max_levels) {
+        SvoProbe64<Dim> result;
+        __clear_probe(result);
+
+        if (depth_cache_ == 0u) return result;
+
         uint[Dim] rel;
         for (int a = 0; a < Dim; ++a)
-            rel[a] = uint(pos[a] - origin(a));
-        uint cov = __pow_cc(d);
+            rel[a] = uint(pos[a] - origin_cache_[a]);
         for (int a = 0; a < Dim; ++a)
-            if (rel[a] >= cov) return -1;
-        uint stride = cov / uint(CC);
-        uint node_idx = pool_base();
-        for (uint level = 0u; level < d; ++level) {
-            uint ci = __flat_ci(rel, stride);
-            stride /= uint(CC);
+            if (rel[a] >= coverage_cache_) return result;
+
+        __store_probe(result, -1, 2u, 0u, coverage_cache_, origin_cache_);
+        if (max_levels == 0u) return result;
+
+        uint stop_levels = min(max_levels, depth_cache_);
+        uint stride      = coverage_cache_ / uint(CC);
+        uint node_idx    = pool_base_cache_;
+        int[Dim] cell_min;
+        for (int a = 0; a < Dim; ++a)
+            cell_min[a] = origin_cache_[a];
+
+        for (uint level = 0u; level < stop_levels; ++level) {
+            uint[Dim] digits;
+            uint ci = __flat_ci(rel, stride, digits);
+            int[Dim] child_min;
+            __child_min(child_min, cell_min, digits, stride);
             uint lo = svo64_lo(buf, node_idx);
             uint valid_mask, leaf_mask;
-            svo64_decode_node(lo, cpn, valid_mask, leaf_mask);
-            if ((valid_mask & (1u << ci)) == 0u) return -1;
+            svo64_decode_node(lo, cpn_cache_, valid_mask, leaf_mask);
+            uint child_bit = 1u << ci;
+            if ((valid_mask & child_bit) == 0u) {
+                __store_probe(result, -1, 1u, level + 1u, stride, child_min);
+                return result;
+            }
             uint slot_pos = node_idx + 1u + svo64_popcount_below(valid_mask, ci);
-            if ((leaf_mask & (1u << ci)) != 0u) return int(svo64_lo(buf, slot_pos));
+            if ((leaf_mask & child_bit) != 0u) {
+                __store_probe(result, int(svo64_lo(buf, slot_pos)), 3u, level + 1u, stride, child_min);
+                return result;
+            }
+
+            __store_probe(result, -1, 2u, level + 1u, stride, child_min);
+            if (level + 1u >= stop_levels) return result;
+
             node_idx = svo64_lo(buf, slot_pos);
+            for (int a = 0; a < Dim; ++a)
+                cell_min[a] = child_min[a];
+            stride /= uint(CC);
         }
-        return -1;
+
+        return result;
+    }
+
+    public SvoProbe64<Dim> probe(int[Dim] pos) {
+        return probe_lod(pos, depth());
+    }
+
+    public int lookup(int[Dim] pos) {
+        SvoProbe64<Dim> result = probe(pos);
+        return result.state == 3u ? result.data_index : -1;
     }
 
     public bool contains(int[Dim] pos) { return lookup(pos) >= 0; }

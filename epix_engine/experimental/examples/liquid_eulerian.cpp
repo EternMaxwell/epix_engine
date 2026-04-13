@@ -579,7 +579,7 @@ static const int OMEGA_FX           = 117965;
 static const int TARGET_DIV_GAIN_FX = 6554;
 int chunk_idx(int cx, int cy) {
     if (cx < 0 || cx >= CHUNKS_X || cy < 0 || cy >= CHUNKS_Y) return -1;
-    epix::ext::grid::SvoGrid2D g; g.buf = chunk_svo;
+    epix::ext::grid::SvoGrid2D g = epix::ext::grid::SvoGrid2D(chunk_svo);
     return g.lookup(int[2](cx, cy));
 }
 int fx_mul(int a, int b) {
@@ -662,7 +662,7 @@ static const int V_BASE      = 173056;
 static const int MAXV_FX     = 524288;
 int chunk_idx(int cx, int cy) {
     if (cx < 0 || cx >= CHUNKS_X || cy < 0 || cy >= CHUNKS_Y) return -1;
-    epix::ext::grid::SvoGrid2D g; g.buf = chunk_svo;
+    epix::ext::grid::SvoGrid2D g = epix::ext::grid::SvoGrid2D(chunk_svo);
     return g.lookup(int[2](cx, cy));
 }
 int fx_mul(int a, int b) {
@@ -1250,7 +1250,7 @@ static const int OMEGA_FX           = 117965;
 static const int TARGET_DIV_GAIN_FX = 6554;
 int chunk_idx(int cx, int cy) {
     if (cx < 0 || cx >= CHUNKS_X || cy < 0 || cy >= CHUNKS_Y) return -1;
-    epix::ext::grid::SvoGrid2D g; g.buf = chunk_svo;
+    epix::ext::grid::SvoGrid2D g = epix::ext::grid::SvoGrid2D(chunk_svo);
     return g.lookup(int[2](cx, cy));
 }
 int fx_mul(int a, int b) {
@@ -1333,7 +1333,7 @@ static const int V_BASE      = 173056;
 static const int MAXV_FX     = 524288;
 int chunk_idx(int cx, int cy) {
     if (cx < 0 || cx >= CHUNKS_X || cy < 0 || cy >= CHUNKS_Y) return -1;
-    epix::ext::grid::SvoGrid2D g; g.buf = chunk_svo;
+    epix::ext::grid::SvoGrid2D g = epix::ext::grid::SvoGrid2D(chunk_svo);
     return g.lookup(int[2](cx, cy));
 }
 int fx_mul(int a, int b) {
