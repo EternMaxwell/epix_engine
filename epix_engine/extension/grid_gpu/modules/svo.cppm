@@ -241,6 +241,11 @@ public struct SvoGrid<let Dim : int, let CC : int>
     }
 
     uint __flat_ci(uint[Dim] rel, uint stride) {
+        // Guard: stride == 0 means __pow_cc overflowed (depth >= 32 for CC=2).
+        // All callers will have already returned -1 via the bounds check, but
+        // NVIDIA SIMT speculatively executes masked threads too; integer div-by-zero
+        // in SPIR-V is undefined and can cause a GPU hang / TDR.
+        if (stride == 0u) return 0u;
         uint idx = 0u;
         for (int a = 0; a < Dim; ++a)
             idx = idx * uint(CC) + (rel[a] / stride) % uint(CC);
@@ -379,6 +384,11 @@ public struct SvoGrid64<let Dim : int, let CC : int>
     }
 
     uint __flat_ci(uint[Dim] rel, uint stride) {
+        // Guard: stride == 0 means __pow_cc overflowed (depth >= 32 for CC=2).
+        // All callers will have already returned -1 via the bounds check, but
+        // NVIDIA SIMT speculatively executes masked threads too; integer div-by-zero
+        // in SPIR-V is undefined and can cause a GPU hang / TDR.
+        if (stride == 0u) return 0u;
         uint idx = 0u;
         for (int a = 0; a < Dim; ++a)
             idx = idx * uint(CC) + (rel[a] / stride) % uint(CC);
