@@ -14,7 +14,7 @@ Implement `AssetLoader` to decode a byte stream into a typed asset.
 template<typename T>
 concept AssetLoader = requires {
     typename T::Asset;        // must satisfy Asset
-    typename T::Settings;     // must derive from epix::assets::Settings
+    typename T::Settings;     // must satisfy is_settings (plain aggregate, zpp::bits-serializable)
     typename T::Error;        // error type (e.g. std::exception_ptr)
 
     // Which file extensions this loader handles
@@ -33,7 +33,7 @@ concept AssetLoader = requires {
 ```cpp
 struct TextLoader {
     using Asset    = std::string;
-    struct Settings : epix::assets::Settings {};
+    struct Settings {};          // plain aggregate — no inheritance needed
     using Error    = std::exception_ptr;
 
     static std::span<std::string_view> extensions() {

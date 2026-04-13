@@ -15,7 +15,7 @@ Both concepts are used by the asset processing pipeline.
 template<typename T>
 concept AssetSaver = requires {
     typename T::Asset;         // must satisfy Asset
-    typename T::Settings;      // must derive from epix::assets::Settings
+    typename T::Settings;      // must satisfy is_settings (plain aggregate, zpp::bits-serializable)
     typename T::OutputLoader;  // an AssetLoader that can reload the saved bytes
     typename T::Error;
 
@@ -36,7 +36,7 @@ use when the file is read back. The returned settings are stored in the sidecar 
 ```cpp
 struct BinImageSaver {
     using Asset        = Image;
-    struct Settings    : epix::assets::Settings {};
+    struct Settings    {};                     // plain aggregate
     using OutputLoader = BinImageLoader;       // knows how to reload the file
     using Error        = std::exception_ptr;
 
@@ -84,7 +84,7 @@ template<typename T>
 concept AssetTransformer = requires {
     typename T::AssetInput;    // source asset type, must satisfy Asset
     typename T::AssetOutput;   // target asset type, must satisfy Asset
-    typename T::Settings;      // must derive from epix::assets::Settings
+    typename T::Settings;      // must satisfy is_settings (plain aggregate, zpp::bits-serializable)
     typename T::Error;
 
     { T::transform(std::declval<TransformedAsset<typename T::AssetInput>>(),
@@ -103,7 +103,7 @@ A transformer takes ownership of a `TransformedAsset<AssetInput>`, converts it, 
 struct DxtTransformer {
     using AssetInput  = RawImage;
     using AssetOutput = CompressedImage;
-    struct Settings   : epix::assets::Settings {
+    struct Settings {
         int quality = 4;
     };
     using Error = std::exception_ptr;

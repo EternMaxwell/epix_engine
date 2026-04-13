@@ -12,17 +12,20 @@ Configure and register the asset system into an `App`.
 
 ```cpp
 struct AssetPlugin {
-    std::string       file_path;              // default: "assets"
-    std::string       processed_file_path;    // default: "imported_assets/Default"
-    AssetServerMode   mode;                   // Unprocessed (default) | Processed
-    AssetMetaCheck    meta_check;             // Never (default) | Always | Paths{…}
-    UnapprovedPathMode unapproved_path_mode;  // Allow (default) | Deny | Forbid
+    std::filesystem::path                file_path;                // default: "assets"
+    std::optional<std::filesystem::path> processed_file_path;      // default: "processed_assets"
+    std::optional<std::filesystem::path> embedded_processed_path;  // default: std::nullopt
+    AssetServerMode    mode;                   // Processed (default)
+    std::optional<bool> watch_for_changes_override;      // default: std::nullopt
+    std::optional<bool> use_asset_processor_override;     // default: std::nullopt
+    AssetMetaCheck     meta_check;             // Always (default)
+    UnapprovedPathMode unapproved_path_mode;   // Forbid (default)
 
     void build(App&);
     void finish(App&);
 
     // Register a custom asset source before build() is called
-    AssetPlugin& register_asset_source(std::string id, AssetSourceBuilder);
+    AssetPlugin& register_asset_source(AssetSourceId id, AssetSourceBuilder);
 };
 ```
 
@@ -33,16 +36,29 @@ struct AssetPlugin {
 
 `AssetPlugin::finish()` starts background load workers and activates watch streams.
 
+### Fields
+
+| Field                          | Type                 | Default              | Description                                                                                                                                       |
+| ------------------------------ | -------------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `file_path`                    | `path`               | `"assets"`           | Filesystem root for the default asset source                                                                                                      |
+| `processed_file_path`          | `optional<path>`     | `"processed_assets"` | Directory for processed asset output                                                                                                              |
+| `embedded_processed_path`      | `optional<path>`     | `nullopt`            | Processed-asset directory for the embedded source. When `nullopt`, embedded assets stay on their in-memory reader and skip the processor pipeline |
+| `mode`                         | `AssetServerMode`    | `Processed`          | Server operating mode                                                                                                                             |
+| `watch_for_changes_override`   | `optional<bool>`     | `nullopt`            | Override for file-watching behaviour                                                                                                              |
+| `use_asset_processor_override` | `optional<bool>`     | `nullopt`            | Override for processor usage in Processed mode                                                                                                    |
+| `meta_check`                   | `AssetMetaCheck`     | `Always`             | When to look for `.meta` sidecar files                                                                                                            |
+| `unapproved_path_mode`         | `UnapprovedPathMode` | `Forbid`             | How unapproved asset paths are handled                                                                                                            |
+
 ### `AssetServerMode`
 
 ```cpp
 enum class AssetServerMode { Unprocessed, Processed };
 ```
 
-| Mode          | Description                                                    |
-| ------------- | -------------------------------------------------------------- |
-| `Unprocessed` | Loads raw files from `file_path` (default)                     |
-| `Processed`   | Loads from `processed_file_path` (asset build pipeline output) |
+| Mode          | Description                                                                  |
+| ------------- | ---------------------------------------------------------------------------- |
+| `Unprocessed` | Loads raw files from `file_path`                                             |
+| `Processed`   | Loads from `processed_file_path` (asset build pipeline output) — **default** |
 
 ---
 

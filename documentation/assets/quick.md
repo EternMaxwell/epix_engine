@@ -34,7 +34,7 @@ Asynchronous asset management: loading, caching, hot-reloading, and processing o
 - **[`AssetSourceBuilder`](./io-source.md)** — fluent builder for custom asset sources.
 - **[`EmbeddedAssetRegistry`](./io-source.md)** — in-binary asset source backed by a `memory::Directory`.
 - **[`MemoryAssetReader`](./io-source.md)** / **[`MemoryAssetWriter`](./io-source.md)** / **[`MemoryAssetWatcher`](./io-source.md)** — in-memory I/O implementations.
-- **[`Settings`](./asset-meta.md)** — base class every loader/processor settings type must derive from.
+- **[`Settings`](./asset-meta.md)** — base class for polymorphic settings storage; concrete settings are plain aggregates satisfying `is_settings`.
 - **[`AssetMetaCheck`](./asset-meta.md)** — controls when `.meta` sidecar files are checked.
 - **[`AssetHash`](./asset-meta.md)** — 32-byte BLAKE3 hash used by the processor pipeline.
 
@@ -55,7 +55,7 @@ struct Image {
 // 2. Define a loader
 struct PngLoader {
     using Asset    = Image;
-    struct Settings : epix::assets::Settings {};
+    struct Settings {};        // plain aggregate — no inheritance needed
     using Error    = std::exception_ptr;
 
     static std::span<std::string_view> extensions() {

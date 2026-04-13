@@ -8,22 +8,42 @@ Controls how `.meta` sidecar files and loader/processor settings interact with t
 
 ---
 
-## `Settings`
+## `Settings` / `SettingsImpl<T>` / `is_settings`
 
-Base class that every loader, saver, transformer, and processor settings struct must derive from.
+Polymorphic base class for loader/processor settings. Concrete settings types are **plain
+aggregates** — they do not inherit from `Settings`. The engine wraps them in `SettingsImpl<T>`
+for polymorphic storage.
 
 ```cpp
-struct Settings {};
+struct Settings {
+    virtual ~Settings() = default;
+    template<typename T> std::optional<std::reference_wrapper<const T>> try_cast() const;
+    template<typename T> const T& cast() const;
+};
+
+struct EmptySettings {};  // default when no settings are needed
+
+template<typename T>
+concept is_settings = std::is_default_constructible_v<T> && /* zpp::bits-serializable */;
+
+template<typename T>
+struct SettingsImpl : Settings { T value{}; };
 ```
 
+Settings must satisfy the `is_settings` concept, which requires the type to be
+default-constructible and serializable by zpp::bits (aggregates, containers,
+`std::optional`, `std::variant`, empty types, or types with an explicit serialize hook).
+
 ```cpp
-struct PngLoaderSettings : epix::assets::Settings {
+// Define settings as a plain aggregate — no inheritance required
+struct PngLoaderSettings {
     bool srgb    = true;
     bool mipmaps = false;
 };
+// The engine stores it as SettingsImpl<PngLoaderSettings> internally
 ```
 
-The settings struct is passed by the framework to every `load()`, `save()`, `transform()`, and `process()` call. Default-constructed settings are used unless overridden at the call site or (once implemented) by a `.meta` sidecar file.
+The settings struct is passed by the framework to every `load()`, `save()`, `transform()`, and `process()` call. Default-constructed settings are used unless overridden at the call site or by a `.meta` sidecar file.
 
 ---
 
@@ -43,20 +63,18 @@ using AssetMetaCheck = std::variant<
     asset_meta_check::Paths>;
 ```
 
-| Variant           | Behaviour                                       |
-| ----------------- | ----------------------------------------------- |
-| `Always`          | Check for `.meta` alongside every asset load    |
-| `Never` (default) | Never check; always use default loader settings |
-| `Paths{…}`        | Check only the listed paths                     |
+| Variant            | Behaviour                                       |
+| ------------------ | ----------------------------------------------- |
+| `Always` (default) | Check for `.meta` alongside every asset load    |
+| `Never`            | Never check; always use default loader settings |
+| `Paths{…}`         | Check only the listed paths                     |
 
 Set on `AssetPlugin`:
 
 ```cpp
 AssetPlugin plugin;
-plugin.meta_check = asset_meta_check::Always{};
+plugin.meta_check = asset_meta_check::Never{}; // override default Always
 ```
-
-> **Note:** `.meta` file *contents* cannot be serialized or deserialized yet — see [todo.md](./todo.md#meta-serialization).
 
 ---
 
@@ -68,11 +86,11 @@ Determines how the server handles asset paths that are not explicitly allow-list
 enum class UnapprovedPathMode { Allow, Deny, Forbid };
 ```
 
-| Value             | Behaviour                                      |
-| ----------------- | ---------------------------------------------- |
-| `Allow` (default) | Any path may be loaded                         |
-| `Deny`            | Unapproved paths emit a warning but still load |
-| `Forbid`          | Unapproved paths fail with an error            |
+| Value              | Behaviour                                      |
+| ------------------ | ---------------------------------------------- |
+| `Allow`            | Any path may be loaded                         |
+| `Deny`             | Unapproved paths emit a warning but still load |
+| `Forbid` (default) | Unapproved paths fail with an error            |
 
 ---
 
@@ -86,22 +104,42 @@ using AssetHash = std::array<uint8_t, 32>;
 
 ---
 
+## `META_FORMAT_VERSION`
+
+Version string for the binary `.meta` format. Bumped when the serialization layout changes.
+
+```cpp
+inline constexpr std::string_view META_FORMAT_VERSION = "2.0";
+```
+
+---
+
 ## `ProcessedInfo`
 
-Stored in the `.meta` file next to each processed asset. Records hash and dependencies.
+Stored in the `.meta` file next to each processed asset. Records hashes, dependencies, and an
+optional source-file timestamp for fast-path skip logic.
 
 ```cpp
 struct ProcessDependencyInfo {
-    AssetHash full_hash;
-    AssetPath path;
+    AssetHash   full_hash;   // hash of the dependency
+    std::string path;        // path of the dependency asset
 };
 
 struct ProcessedInfo {
     AssetHash                          hash;               // hash of the processed output
     AssetHash                          full_hash;          // hash of source + all dependencies
+    std::optional<std::int64_t>        source_mtime_ns;    // source last-modified (nanoseconds)
     std::vector<ProcessDependencyInfo> process_dependencies;
 };
 ```
+
+`source_mtime_ns` is a cross-session optimisation: when the source file's last-modified time
+(nanosecond precision) matches the stored value, the processor skips the expensive BLAKE3 hash
+comparison entirely. Readers that do not support timestamps (e.g. `EmbeddedAssetReader`) leave
+this field as `nullopt`, in which case the hash path is always taken.
+
+Both `ProcessedInfo` and `ProcessDependencyInfo` are serialized with **zpp::bits** and stored
+inside `.meta` sidecar files next to processed assets.
 
 ---
 

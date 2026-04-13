@@ -14,7 +14,7 @@ Requires `AssetServerMode::Processed`.
 ```cpp
 template<typename T>
 concept Process = requires {
-    typename T::Settings;      // must derive from epix::assets::Settings
+    typename T::Settings;      // must satisfy is_settings (plain aggregate, zpp::bits-serializable)
     typename T::OutputLoader;  // loader that can reload the processed output
 
     { T::process(std::declval<ProcessContext&>(),
@@ -31,7 +31,7 @@ A processor reads from `ProcessContext` (provides the raw input stream), writes 
 
 ```cpp
 struct OptimisePng {
-    struct Settings    : epix::assets::Settings { int level = 6; };
+    struct Settings { int level = 6; };  // plain aggregate — no inheritance needed
     using OutputLoader = PngLoader;
 
     static std::expected<PngLoader::Settings, std::exception_ptr> process(
