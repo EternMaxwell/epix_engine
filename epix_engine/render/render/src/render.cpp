@@ -64,6 +64,11 @@ void RenderPlugin::build(App& app) {
         wgpu::DeviceDescriptor()
             .setLabel("Render Device")
             .setDefaultQueue(wgpu::QueueDescriptor().setLabel("Render Queue"))
+            // NativeFeature::eTextureAdapterSpecificFormatFeatures:
+            // exposes per-hardware texture capabilities, including read-write
+            // storage access for formats like RGBA8Unorm on Vulkan/DX12/Metal.
+            .setRequiredFeatures(
+                std::array{wgpu::FeatureName(wgpu::NativeFeature::eTextureAdapterSpecificFormatFeatures)})
             .setDeviceLostCallbackInfo(wgpu::DeviceLostCallbackInfo().setCallback(
                 [](wgpu::Device const& device, wgpu::DeviceLostReason reason, wgpu::StringView message) {
                     std::stacktrace stack = std::stacktrace::current();
