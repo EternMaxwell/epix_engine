@@ -1,4 +1,4 @@
-﻿export module epix.extension.grid_gpu:svo;
+export module epix.extension.grid_gpu:svo;
 
 import std;
 import epix.extension.grid;
@@ -136,7 +136,7 @@ export struct SvoHeader64 {
  * Constraint: ChildCount^Dim <= 32  (so valid_mask+leaf_mask fit in 64 bits)
  *
  * GPU note: bind as StructuredBuffer<uint> (kSvoGridSlangSource64 shader).
- * No shaderInt64 required — each word is read as a little-endian uint32 pair.
+ * No shaderInt64 required -- each word is read as a little-endian uint32 pair.
  * The GPU shader further restricts cpn <= 16 so masks fit in the low uint32.
  */
 export struct SvoBuffer64 {
@@ -376,7 +376,133 @@ public struct SvoGrid<let Dim : int, let CC : int>
     }
 
     public bool contains(int[Dim] pos) { return lookup(pos) >= 0; }
+
+    public SvoRayHit<Dim> trace_ray(float[Dim] ray_origin, float[Dim] ray_dir, int max_steps) {
+        SvoRayHit<Dim> result;
+        result.data_index = -1;
+        result.t          = 0.0f;
+        result.hit_axis   = -1;
+        result.hit_sign   = 0;
+        for (int a = 0; a < Dim; ++a) result.cell_pos[a] = 0;
+    
+        // Compute safe inverse direction (avoid division by zero).
+        float[Dim] inv_dir;
+        float[Dim] sign_dir;
+        for (int a = 0; a < Dim; ++a) {
+            sign_dir[a] = ray_dir[a] >= 0.0f ? 1.0f : -1.0f;
+            inv_dir[a]  = sign_dir[a] / max(abs(ray_dir[a]), 1e-20f);
+        }
+    
+        // Scene AABB.
+        float[Dim] scene_min, scene_max;
+        float scene_dim = float(coverage());
+        for (int a = 0; a < Dim; ++a) {
+            scene_min[a] = float(origin(a));
+            scene_max[a] = scene_min[a] + scene_dim;
+        }
+    
+        // Ray-AABB intersection (dimension-generic slab method).
+        float t_enter = 0.0f;
+        float t_exit  = 1e30f;
+        int   enter_axis = -1;
+        for (int a = 0; a < Dim; ++a) {
+            float t0 = (scene_min[a] - ray_origin[a]) * inv_dir[a];
+            float t1 = (scene_max[a] - ray_origin[a]) * inv_dir[a];
+            float tlo = min(t0, t1);
+            float thi = max(t0, t1);
+            if (tlo > t_enter) { t_enter = tlo; enter_axis = a; }
+            t_exit = min(t_exit, thi);
+        }
+        if (t_exit < max(t_enter, 0.0f)) return result;
+    
+        float t_cur = max(t_enter, 0.0f);
+        float t_limit = min(t_exit, 1e20f);
+        float eps = 1e-4f;
+    
+        for (int step_i = 0; step_i < max_steps && t_cur <= t_limit; ++step_i) {
+            // Sample position along ray (slightly inside to avoid surface issues).
+            float sample_t = min(t_cur + eps, t_limit);
+            int[Dim] cell;
+            bool inside = true;
+            for (int a = 0; a < Dim; ++a) {
+                float p = clamp(ray_origin[a] + ray_dir[a] * sample_t, scene_min[a] + eps, scene_max[a] - eps);
+                cell[a] = int(floor(p));
+                if (float(cell[a]) < scene_min[a] || float(cell[a]) >= scene_max[a])
+                    inside = false;
+            }
+            if (!inside) return result;
+    
+            SvoProbe<Dim> probe = probe(cell);
+            if (probe.state == 0u || probe.cell_size == 0u) return result;
+    
+            // Cell AABB for the resolved node.
+            float cell_size = float(probe.cell_size);
+            float[Dim] cmin, cmax;
+            for (int a = 0; a < Dim; ++a) {
+                cmin[a] = float(probe.cell_min[a]);
+                cmax[a] = cmin[a] + cell_size;
+            }
+    
+            // Ray-cell AABB intersection.
+            float cell_t_enter = -1e30f;
+            float cell_t_exit  = 1e30f;
+            int   cell_hit_axis = -1;
+            for (int a = 0; a < Dim; ++a) {
+                float ct0 = (cmin[a] - ray_origin[a]) * inv_dir[a];
+                float ct1 = (cmax[a] - ray_origin[a]) * inv_dir[a];
+                float ctlo = min(ct0, ct1);
+                float cthi = max(ct0, ct1);
+                if (ctlo > cell_t_enter) { cell_t_enter = ctlo; cell_hit_axis = a; }
+                cell_t_exit = min(cell_t_exit, cthi);
+            }
+    
+            if (probe.state == 3u) {
+                // Leaf hit.
+                result.data_index = probe.data_index;
+                result.t          = max(cell_t_enter, 0.0f);
+                result.hit_axis   = cell_hit_axis;
+                result.hit_sign   = ray_dir[cell_hit_axis] >= 0.0f ? -1 : 1;
+                for (int a = 0; a < Dim; ++a) result.cell_pos[a] = probe.cell_min[a];
+                return result;
+            }
+    
+            // Empty or interior node -- skip past the cell.
+            float step_eps = max(eps, cell_size * eps);
+            t_cur = max(cell_t_exit + step_eps, t_cur + step_eps);
+        }
+        return result;
+    }
 };
+
+// ============================================================
+// SvoRayHit<Dim> -- result of a ray traversal through an SVO
+// ============================================================
+
+public struct SvoRayHit<let Dim : int>
+{
+    public int    data_index;    // voxel data index; -1 = miss
+    public float  t;             // entry distance along ray (from origin)
+    public int    hit_axis;      // axis of the face that was hit (-1 if miss)
+    public int    hit_sign;      // +1 or -1: sign of the normal along hit_axis
+    public int[Dim] cell_pos;    // integer coords of the hit voxel
+};
+
+// ============================================================
+// Free-standing ray march using SvoGrid<Dim, CC>.
+//
+// Uses hierarchical DDA: probes the SVO at the current ray position,
+// then advances by the resolved cell size (skipping large empty regions),
+// exactly like the AdamYuan/ESVO approach but dimension-generic.
+// ============================================================
+
+public SvoRayHit<Dim> svo_trace_ray<let Dim : int, let CC : int>(
+    SvoGrid<Dim, CC> svo,
+    float[Dim] origin,
+    float[Dim] dir,
+    int   max_steps
+) {
+    return svo.trace_ray(origin, dir, max_steps);
+}
 
 public typealias SvoGrid1D = SvoGrid<1, 2>;
 public typealias SvoGrid2D = SvoGrid<2, 2>;
@@ -410,7 +536,7 @@ export constexpr std::string_view kSvoGridSlangSource64 = R"slang(
 // Companion to epix.extension.grid_gpu (C++ module), 64-bit buffer variant.
 //
 // Bind the SvoBuffer64 produced by svo_upload64() as a StructuredBuffer<uint>.
-// No shaderInt64 required — each uint64 word is stored as a little-endian pair of uint32:
+// No shaderInt64 required -- each uint64 word is stored as a little-endian pair of uint32:
 //   logical word W  →  buf[W * 2u]        (low  32 bits)
 //                      buf[W * 2u + 1u]   (high 32 bits, unused by traversal)
 // Construct with the bound buffer: `SvoGrid64_3D grid = SvoGrid64_3D(svo_buf);`
@@ -460,7 +586,7 @@ void svo64_decode_node(uint lo_word, uint cpn, out uint valid_mask, out uint lea
 }
 
 // ============================================================
-// SvoGrid64<Dim, CC> — generic N-D / CC-ary SVO traversal
+// SvoGrid64<Dim, CC> -- generic N-D / CC-ary SVO traversal
 // Uses StructuredBuffer<uint>, 2 elements per uint64 word.
 // cpn = CC^Dim must be <= 16.
 // ============================================================
@@ -615,7 +741,121 @@ public struct SvoGrid64<let Dim : int, let CC : int>
     }
 
     public bool contains(int[Dim] pos) { return lookup(pos) >= 0; }
+
+    public SvoRayHit64<Dim> trace_ray(float[Dim] ray_origin, float[Dim] ray_dir, int max_steps) {
+        SvoRayHit64<Dim> result;
+        result.data_index = -1;
+        result.t          = 0.0f;
+        result.hit_axis   = -1;
+        result.hit_sign   = 0;
+        for (int a = 0; a < Dim; ++a) result.cell_pos[a] = 0;
+    
+        float[Dim] inv_dir;
+        for (int a = 0; a < Dim; ++a) {
+            float s = ray_dir[a] >= 0.0f ? 1.0f : -1.0f;
+            inv_dir[a] = s / max(abs(ray_dir[a]), 1e-20f);
+        }
+    
+        float[Dim] scene_min, scene_max;
+        float scene_dim = float(coverage());
+        for (int a = 0; a < Dim; ++a) {
+            scene_min[a] = float(origin(a));
+            scene_max[a] = scene_min[a] + scene_dim;
+        }
+    
+        float t_enter = 0.0f;
+        float t_exit  = 1e30f;
+        int   enter_axis = -1;
+        for (int a = 0; a < Dim; ++a) {
+            float t0 = (scene_min[a] - ray_origin[a]) * inv_dir[a];
+            float t1 = (scene_max[a] - ray_origin[a]) * inv_dir[a];
+            float tlo = min(t0, t1);
+            float thi = max(t0, t1);
+            if (tlo > t_enter) { t_enter = tlo; enter_axis = a; }
+            t_exit = min(t_exit, thi);
+        }
+        if (t_exit < max(t_enter, 0.0f)) return result;
+    
+        float t_cur = max(t_enter, 0.0f);
+        float t_limit = min(t_exit, 1e20f);
+        float eps = 1e-4f;
+    
+        for (int step_i = 0; step_i < max_steps && t_cur <= t_limit; ++step_i) {
+            float sample_t = min(t_cur + eps, t_limit);
+            int[Dim] cell;
+            bool inside = true;
+            for (int a = 0; a < Dim; ++a) {
+                float p = clamp(ray_origin[a] + ray_dir[a] * sample_t, scene_min[a] + eps, scene_max[a] - eps);
+                cell[a] = int(floor(p));
+                if (float(cell[a]) < scene_min[a] || float(cell[a]) >= scene_max[a])
+                    inside = false;
+            }
+            if (!inside) return result;
+    
+            SvoProbe64<Dim> probe = probe(cell);
+            if (probe.state == 0u || probe.cell_size == 0u) return result;
+    
+            float cell_size = float(probe.cell_size);
+            float[Dim] cmin, cmax;
+            for (int a = 0; a < Dim; ++a) {
+                cmin[a] = float(probe.cell_min[a]);
+                cmax[a] = cmin[a] + cell_size;
+            }
+    
+            float cell_t_enter = -1e30f;
+            float cell_t_exit  = 1e30f;
+            int   cell_hit_axis = -1;
+            for (int a = 0; a < Dim; ++a) {
+                float ct0 = (cmin[a] - ray_origin[a]) * inv_dir[a];
+                float ct1 = (cmax[a] - ray_origin[a]) * inv_dir[a];
+                float ctlo = min(ct0, ct1);
+                float cthi = max(ct0, ct1);
+                if (ctlo > cell_t_enter) { cell_t_enter = ctlo; cell_hit_axis = a; }
+                cell_t_exit = min(cell_t_exit, cthi);
+            }
+    
+            if (probe.state == 3u) {
+                result.data_index = probe.data_index;
+                result.t          = max(cell_t_enter, 0.0f);
+                result.hit_axis   = cell_hit_axis;
+                result.hit_sign   = ray_dir[cell_hit_axis] >= 0.0f ? -1 : 1;
+                for (int a = 0; a < Dim; ++a) result.cell_pos[a] = probe.cell_min[a];
+                return result;
+            }
+    
+            float step_eps = max(eps, cell_size * eps);
+            t_cur = max(cell_t_exit + step_eps, t_cur + step_eps);
+        }
+        return result;
+    }
 };
+
+// ============================================================
+// SvoRayHit64<Dim> -- result of a ray traversal through a 64-bit SVO
+// ============================================================
+
+public struct SvoRayHit64<let Dim : int>
+{
+    public int    data_index;    // voxel data index; -1 = miss
+    public float  t;             // entry distance along ray
+    public int    hit_axis;      // axis of the face that was hit (-1 if miss)
+    public int    hit_sign;      // +1 or -1: sign of the normal along hit_axis
+    public int[Dim] cell_pos;    // integer coords of the hit voxel
+};
+
+// ============================================================
+// Free-standing ray march using SvoGrid64<Dim, CC>.
+// ============================================================
+
+
+public SvoRayHit64<Dim> svo64_trace_ray<let Dim : int, let CC : int>(
+    SvoGrid64<Dim, CC> svo,
+    float[Dim] origin,
+    float[Dim] dir,
+    int   max_steps
+) {
+    return svo.trace_ray(origin, dir, max_steps);
+}
 
 public typealias SvoGrid64_1D = SvoGrid64<1, 2>;
 public typealias SvoGrid64_2D = SvoGrid64<2, 2>;
@@ -1258,7 +1498,7 @@ export struct SvoUploadError {
 /**
  * @brief Configuration for the GPU-side SVO produced by svo_upload().
  *
- * The GPU SVO structure is independent of the CPU grid's storage — it can use
+ * The GPU SVO structure is independent of the CPU grid's storage -- it can use
  * any branching factor regardless of how data is organised on the CPU.
  * Supported child_count values: 2, 4, 8.
  */

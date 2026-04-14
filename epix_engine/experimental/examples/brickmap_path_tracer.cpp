@@ -1,6 +1,7 @@
-﻿// Voxel Path Tracer — dedicated 3D sub-graph example
-// Uses dense_grid + SVO for scene storage, a custom render-graph sub-graph
-// (VoxelGraph) for a 3D perspective camera, compute path tracing + fullscreen blit.
+﻿// BrickMap Path Tracer — dedicated 3D sub-graph example
+// Uses tree_extendible_grid + BrickMap for scene storage, a custom render-graph
+// sub-graph (VoxelGraph) for a 3D perspective camera, compute path tracing +
+// fullscreen blit.
 
 #include <imgui.h>
 #include <spdlog/spdlog.h>
@@ -41,12 +42,12 @@ namespace tf     = epix::transform;
 
 // ---------------------------------------------------------------------------
 // Trace compute shader.
-// group 0: 0=VoxelCamera, 1=SVO, 2=colors
+// group 0: 0=VoxelCamera, 1=BrickmapBuffer, 2=colors
 // group 1: 0=hdr_tex (rgba16f write), 1=depth_tex (r32f write)
 // ---------------------------------------------------------------------------
-constexpr std::string_view kVoxelTraceSlangPath = "voxel/trace.slang";
+constexpr std::string_view kVoxelTraceSlangPath = "brickmap/trace.slang";
 constexpr std::string_view kVoxelTraceSlang     = R"slang(
-import epix.ext.grid.svo;
+import epix.ext.grid.brickmap;
 
 struct VoxelCamera {
     float4x4 inv_proj;
@@ -60,7 +61,7 @@ struct VoxelCamera {
 };
 
 [[vk::binding(0, 0)]] ConstantBuffer<VoxelCamera> camera;
-[[vk::binding(1, 0)]] StructuredBuffer<uint>   svo_buf;
+[[vk::binding(1, 0)]] StructuredBuffer<uint>   bm_buf;
 [[vk::binding(2, 0)]] StructuredBuffer<float4> colors;
 [[vk::binding(0, 1)]] [[vk::image_format("rgba16f")]] RWTexture2D<float4> hdr_tex;
 [[vk::binding(1, 1)]] [[vk::image_format("r32f")]]    RWTexture2D<float>  depth_tex;
@@ -101,8 +102,8 @@ struct RayHit {
     float3 normal;  // face normal at entry
 };
 
-// Convert SvoRayHit axis/sign to float3 normal.
-float3 hit_normal3(epix::ext::grid::SvoRayHit<3> h) {
+// Convert BrickmapRayHit axis/sign to float3 normal.
+float3 hit_normal(epix::ext::grid::BrickmapRayHit<3> h) {
     float3 n = float3(0.0f);
     if (h.hit_axis == 0) n.x = float(h.hit_sign);
     else if (h.hit_axis == 1) n.y = float(h.hit_sign);
@@ -110,15 +111,15 @@ float3 hit_normal3(epix::ext::grid::SvoRayHit<3> h) {
     return n;
 }
 
-// Thin wrapper: call SvoGrid3D member trace_ray and convert to RayHit.
-RayHit trace_ray(epix::ext::grid::SvoGrid3D svo, float3 origin, float3 dir, int max_steps) {
+// Thin wrapper: call brickmap member trace_ray and convert to RayHit.
+RayHit trace_ray(epix::ext::grid::BrickmapGrid<3, 4> bm, float3 origin, float3 dir, int max_steps) {
     float[3] o = { origin.x, origin.y, origin.z };
     float[3] d = { dir.x, dir.y, dir.z };
-    epix::ext::grid::SvoRayHit<3> h = svo.trace_ray(o, d, max_steps);
+    epix::ext::grid::BrickmapRayHit<3> h = bm.trace_ray(o, d, max_steps);
     RayHit r;
     r.idx    = h.data_index;
     r.t      = h.t;
-    r.normal = (h.data_index >= 0) ? hit_normal3(h) : float3(0.0f, 1.0f, 0.0f);
+    r.normal = (h.data_index >= 0) ? hit_normal(h) : float3(0.0f, 1.0f, 0.0f);
     return r;
 }
 
@@ -141,10 +142,10 @@ void traceMain(uint3 id : SV_DispatchThreadID) {
     vr.xyz /= vr.w;
     float3 ray_orig = mul(camera.inv_view, float4(0.0f, 0.0f, 0.0f, 1.0f)).xyz;
     float3 ray_dir  = normalize(mul((float3x3)camera.inv_view, normalize(vr.xyz)));
-    epix::ext::grid::SvoGrid3D svo = epix::ext::grid::SvoGrid3D(svo_buf);
+    epix::ext::grid::BrickmapGrid<3, 4> bm = epix::ext::grid::BrickmapGrid<3, 4>(bm_buf);
 
     // Primary ray.
-    RayHit primary = trace_ray(svo, ray_orig, ray_dir, 256);
+    RayHit primary = trace_ray(bm, ray_orig, ray_dir, 256);
 
     float3 radiance;
     if (primary.idx < 0) {
@@ -171,7 +172,7 @@ void traceMain(uint3 id : SV_DispatchThreadID) {
         float3 bounce = normalize(T * ld.x + B * ld.y + N * ld.z);
 
         // Secondary ray (offset origin to avoid self-intersection on entry face).
-        RayHit secondary = trace_ray(svo, hit_pos + N * 0.02f, bounce, 128);
+        RayHit secondary = trace_ray(bm, hit_pos + N * 0.02f, bounce, 128);
 
         float3 incoming;
         if (secondary.idx < 0) {
@@ -192,7 +193,7 @@ void traceMain(uint3 id : SV_DispatchThreadID) {
             float phi2 = 6.28318f * u4;
             float3 ld2     = float3(rr2 * cos(phi2), rr2 * sin(phi2), sqrt(max(0.0f, 1.0f - u3)));
             float3 bounce2 = normalize(T2 * ld2.x + B2 * ld2.y + N2 * ld2.z);
-            RayHit tertiary = trace_ray(svo, h2_pos + N2 * 0.02f, bounce2, 64);
+            RayHit tertiary = trace_ray(bm, h2_pos + N2 * 0.02f, bounce2, 64);
             float3 in2 = (tertiary.idx < 0) ? sky_color(bounce2)
                                              : colors[tertiary.idx].rgb * float3(0.25f, 0.30f, 0.38f);
             incoming = h2_albedo * in2;
@@ -213,7 +214,7 @@ void traceMain(uint3 id : SV_DispatchThreadID) {
 // group 1: 0=hdr_tex (read), 1=depth_tex (read), 2=prev_accum (read), 3=prev_depth (read)
 // group 2: 0=accum_out (rgba16f write)
 // ---------------------------------------------------------------------------
-constexpr std::string_view kVoxelTaaSlangPath = "voxel/taa.slang";
+constexpr std::string_view kVoxelTaaSlangPath = "brickmap/taa.slang";
 constexpr std::string_view kVoxelTaaSlang     = R"slang(
 struct VoxelCamera {
     float4x4 inv_proj;
@@ -362,7 +363,7 @@ void taaMain(uint3 id : SV_DispatchThreadID) {
 // ---------------------------------------------------------------------------
 // Blit vertex shader (fullscreen triangle, explicit float2 UV VBO)
 // ---------------------------------------------------------------------------
-constexpr std::string_view kVoxelBlitVertPath  = "voxel/blit_vert.slang";
+constexpr std::string_view kVoxelBlitVertPath  = "brickmap/blit_vert.slang";
 constexpr std::string_view kVoxelBlitVertSlang = R"slang(
 struct VOut {
     float4 pos : SV_Position;
@@ -378,7 +379,7 @@ VOut blitVert([[vk::location(0)]] float2 uv : TEXCOORD0) {
 )slang";
 
 // Blit fragment: composite TAA accum + bloom, Reinhard tone-map, gamma-correct.
-constexpr std::string_view kVoxelBlitFragPath  = "voxel/blit_frag.slang";
+constexpr std::string_view kVoxelBlitFragPath  = "brickmap/blit_frag.slang";
 constexpr std::string_view kVoxelBlitFragSlang = R"slang(
 [[vk::binding(0, 0)]] SamplerState blit_sampler;
 [[vk::binding(1, 0)]] Texture2D<float4> accum_tex;
@@ -406,7 +407,7 @@ float4 blitFrag(VIn input) : SV_Target {
 // group 0: 0=BloomParams uniform, 1=src_tex (sampled)
 // group 1: 0=dst_tex (rgba16f storage write)
 // ---------------------------------------------------------------------------
-constexpr std::string_view kVoxelBloomSlangPath = "voxel/bloom.slang";
+constexpr std::string_view kVoxelBloomSlangPath = "brickmap/bloom.slang";
 constexpr std::string_view kVoxelBloomSlang     = R"slang(
 struct BloomParams {
     float threshold;  // HDR luminance cutoff
@@ -518,18 +519,18 @@ struct VoxelConfig {
 };
 
 struct VoxelScene {
-    dense_grid<3, uint8_t> grid;
+    tree_extendible_grid<3, int32_t> grid;
     std::vector<glm::vec4> palette;
     bool dirty = true;
 };
 
-struct ExtractedVoxelSvo {
-    std::vector<uint32_t> svo_words;
+struct ExtractedVoxelBrickmap {
+    std::vector<uint32_t> bm_words;
     std::vector<glm::vec4> colors;
 };
 
 struct VoxelShaderHandles {
-    assets::Handle<shader::Shader> svo_lib;
+    assets::Handle<shader::Shader> bm_lib;
     assets::Handle<shader::Shader> trace;
     assets::Handle<shader::Shader> taa;
     assets::Handle<shader::Shader> blit_vert;
@@ -538,7 +539,7 @@ struct VoxelShaderHandles {
 };
 
 struct VoxelRenderState {
-    wgpu::Buffer svo_buffer;
+    wgpu::Buffer bm_buffer;
     wgpu::Buffer color_buffer;
     wgpu::Buffer camera_uniform;
     wgpu::Buffer vertex_buffer;  // 3 float2 UVs for fullscreen triangle
@@ -852,7 +853,7 @@ void camera_control(Res<input::ButtonInput<input::KeyCode>> keys,
 }
 
 void voxel_imgui_ui(imgui::Ctx /*imgui_ctx*/, core::ResMut<VoxelConfig> config) {
-    ImGui::Begin("Voxel Path Tracer");
+    ImGui::Begin("BrickMap Path Tracer");
 
     ImGui::SeparatorText("TAA");
     ImGui::SliderFloat("Blend Rate", &config->taa_blend, 0.001f, 1.0f, "%.3f");
@@ -885,7 +886,7 @@ void extract_voxel_config(Commands cmd, Extract<Res<VoxelConfig>> config) {
 }
 
 void setup_voxel_scene(Commands cmd) {
-    VoxelScene scene{.grid = dense_grid<3, uint8_t>({80u, 48u, 80u})};
+    VoxelScene scene{.grid = tree_extendible_grid<3, int32_t>()};
     scene.palette = {
         glm::vec4{0.0f},
         glm::vec4{0.55f, 0.55f, 0.55f, 1.0f},  // 1 grey stone
@@ -894,22 +895,22 @@ void setup_voxel_scene(Commands cmd) {
         glm::vec4{0.85f, 0.75f, 0.25f, 1.0f},  // 4 yellow
     };
     // Ground floor
-    for (uint32_t x = 0; x < 80; ++x)
-        for (uint32_t z = 0; z < 80; ++z) scene.grid.set({x, 0u, z}, uint8_t(1));
+    for (int32_t x = 0; x < 80; ++x)
+        for (int32_t z = 0; z < 80; ++z) scene.grid.set({x, 0, z}, int32_t(1));
     // 4x4 grid of coloured pillars
-    for (uint32_t i = 0; i < 4; ++i)
-        for (uint32_t j = 0; j < 4; ++j) {
-            uint32_t bx = 6 + i * 16, bz = 6 + j * 16;
-            for (uint32_t h = 1; h <= 10; ++h) scene.grid.set({bx, h, bz}, uint8_t(2 + (i + j) % 3));
+    for (int32_t i = 0; i < 4; ++i)
+        for (int32_t j = 0; j < 4; ++j) {
+            int32_t bx = 6 + i * 16, bz = 6 + j * 16;
+            for (int32_t h = 1; h <= 10; ++h) scene.grid.set({bx, h, bz}, int32_t(2 + (i + j) % 3));
         }
     cmd.spawn(std::move(scene));
 
     // Perspective camera, positioned outside the scene looking inward.
     CameraBundle cam = CameraBundle::with_render_graph(VoxelGraph);
     cam.projection   = Projection::perspective(PerspectiveProjection{
-        .fov        = glm::radians(65.0f),
-        .near_plane = 0.1f,
-        .far_plane  = 600.0f,
+          .fov        = glm::radians(65.0f),
+          .near_plane = 0.1f,
+          .far_plane  = 600.0f,
     });
     // perspectiveLH: view_z = world_z − cam_z must be > 0 for visibility.
     // Scene spans z=0..79; camera must be at z < 0 to see it with identity rotation (+Z forward).
@@ -919,21 +920,25 @@ void setup_voxel_scene(Commands cmd) {
 
 void extract_voxel_scene(Commands cmd, Extract<Query<Item<const VoxelScene&>>> scenes) {
     for (auto&& [scene] : scenes.iter()) {
-        auto result = svo_upload(scene.grid);
+        auto result = brickmap_upload(scene.grid, {.brick_size = 4});
         if (!result) {
-            spdlog::warn("[voxel] svo_upload failed");
+            spdlog::warn("[brickmap] brickmap_upload failed: {}", result.error().message());
             continue;
         }
 
+        // Build per-voxel color array.  data_index from the GPU shader is
+        // the iteration ordinal, so colors[i] = palette color for iteration i.
         std::vector<glm::vec4> colors;
-        colors.reserve(scene.grid.count());
+        colors.reserve(result->header().data_count);
         for (auto&& [pos, mat] : scene.grid.iter()) {
-            uint8_t m = mat;
-            colors.push_back(m < scene.palette.size() ? scene.palette[m] : glm::vec4(1.0f));
+            int32_t m = mat;
+            glm::vec4 c =
+                (m >= 0 && static_cast<size_t>(m) < scene.palette.size()) ? scene.palette[m] : glm::vec4(1.0f);
+            colors.push_back(c);
         }
-        cmd.insert_resource(ExtractedVoxelSvo{
-            .svo_words = std::move(result->words),
-            .colors    = std::move(colors),
+        cmd.insert_resource(ExtractedVoxelBrickmap{
+            .bm_words = std::move(result->words),
+            .colors   = std::move(colors),
         });
         break;
     }
@@ -944,13 +949,13 @@ void prepare_voxel_render(Res<wgpu::Device> device,
                           Res<VoxelShaderHandles> handles,
                           ResMut<PipelineServer> pipeline_server,
                           ResMut<VoxelRenderState> state,
-                          Res<ExtractedVoxelSvo> svo_res,
+                          Res<ExtractedVoxelBrickmap> bm_res,
                           Query<Item<const ExtractedView&, const ViewTarget&>, With<ExtractedCamera>> views) {
     // -----------------------------------------------------------------------
     // Phase 1: layouts, sampler, static buffers, pipeline kick-offs
     // -----------------------------------------------------------------------
     if (!state->resources_created) {
-        // group 0 shared by trace and TAA: camera uniform + SVO + colors
+        // group 0 shared by trace and TAA: camera uniform + BrickMap + colors
         state->trace_scene_layout = device->createBindGroupLayout(
             wgpu::BindGroupLayoutDescriptor()
                 .setLabel("VoxelSceneBGL")
@@ -1176,12 +1181,12 @@ void prepare_voxel_render(Res<wgpu::Device> device,
             FragmentState fs{.shader = handles->blit_frag, .entry_point = std::string("blitFrag")};
             fs.add_target(wgpu::ColorTargetState().setFormat(color_fmt).setWriteMask(wgpu::ColorWriteMask::eAll));
             state->blit_pipeline_id = pipeline_server->queue_render_pipeline(RenderPipelineDescriptor{
-                .label       = "voxel-blit",
-                .layouts     = {state->blit_layout},
-                .vertex      = std::move(vs),
-                .primitive   = wgpu::PrimitiveState()
-                                   .setTopology(wgpu::PrimitiveTopology::eTriangleList)
-                                   .setCullMode(wgpu::CullMode::eNone),
+                .label     = "voxel-blit",
+                .layouts   = {state->blit_layout},
+                .vertex    = std::move(vs),
+                .primitive = wgpu::PrimitiveState()
+                                 .setTopology(wgpu::PrimitiveTopology::eTriangleList)
+                                 .setCullMode(wgpu::CullMode::eNone),
                 .multisample = wgpu::MultisampleState().setCount(1).setMask(~0u).setAlphaToCoverageEnabled(false),
                 .fragment    = std::move(fs),
             });
@@ -1190,26 +1195,26 @@ void prepare_voxel_render(Res<wgpu::Device> device,
     }
 
     // -----------------------------------------------------------------------
-    // Phase 3: upload SVO + color data once
+    // Phase 3: upload BrickMap + color data once
     // -----------------------------------------------------------------------
-    if (!state->svo_valid && !svo_res->svo_words.empty()) {
-        size_t svo_bytes   = svo_res->svo_words.size() * sizeof(uint32_t);
-        size_t color_bytes = std::max(svo_res->colors.size() * sizeof(glm::vec4), sizeof(glm::vec4));
-        state->svo_buffer =
+    if (!state->svo_valid && !bm_res->bm_words.empty()) {
+        size_t bm_bytes    = bm_res->bm_words.size() * sizeof(uint32_t);
+        size_t color_bytes = std::max(bm_res->colors.size() * sizeof(glm::vec4), sizeof(glm::vec4));
+        state->bm_buffer =
             device->createBuffer(wgpu::BufferDescriptor()
-                                     .setLabel("VoxelSvoBuffer")
-                                     .setSize(svo_bytes)
+                                     .setLabel("BrickmapBuffer")
+                                     .setSize(bm_bytes)
                                      .setUsage(wgpu::BufferUsage::eStorage | wgpu::BufferUsage::eCopyDst));
-        queue->writeBuffer(state->svo_buffer, 0, svo_res->svo_words.data(), svo_bytes);
+        queue->writeBuffer(state->bm_buffer, 0, bm_res->bm_words.data(), bm_bytes);
 
         state->color_buffer =
             device->createBuffer(wgpu::BufferDescriptor()
-                                     .setLabel("VoxelColorBuffer")
+                                     .setLabel("BrickmapColorBuffer")
                                      .setSize(color_bytes)
                                      .setUsage(wgpu::BufferUsage::eStorage | wgpu::BufferUsage::eCopyDst));
-        if (!svo_res->colors.empty())
-            queue->writeBuffer(state->color_buffer, 0, svo_res->colors.data(),
-                               svo_res->colors.size() * sizeof(glm::vec4));
+        if (!bm_res->colors.empty())
+            queue->writeBuffer(state->color_buffer, 0, bm_res->colors.data(),
+                               bm_res->colors.size() * sizeof(glm::vec4));
         state->svo_valid = true;
     }
     if (!state->svo_valid) return;
@@ -1241,14 +1246,14 @@ void prepare_voxel_render(Res<wgpu::Device> device,
                                              .setSampleCount(1)
                                              .setDimension(wgpu::TextureDimension::e2D));
         auto vd  = wgpu::TextureViewDescriptor()
-                       .setFormat(fmt)
-                       .setDimension(wgpu::TextureViewDimension::e2D)
-                       .setBaseMipLevel(0)
-                       .setMipLevelCount(1)
-                       .setBaseArrayLayer(0)
-                       .setArrayLayerCount(1);
-        sv       = tex.createView(vd);
-        tv       = tex.createView(vd);
+                      .setFormat(fmt)
+                      .setDimension(wgpu::TextureViewDimension::e2D)
+                      .setBaseMipLevel(0)
+                      .setMipLevelCount(1)
+                      .setBaseArrayLayer(0)
+                      .setArrayLayerCount(1);
+        sv = tex.createView(vd);
+        tv = tex.createView(vd);
         return tex;
     };
 
@@ -1278,13 +1283,13 @@ void prepare_voxel_render(Res<wgpu::Device> device,
                                       .setMipLevelCount(1)
                                       .setSampleCount(1)
                                       .setDimension(wgpu::TextureDimension::e2D));
-        auto vd                        = wgpu::TextureViewDescriptor()
-                                             .setFormat(wgpu::TextureFormat::eR32Float)
-                                             .setDimension(wgpu::TextureViewDimension::e2D)
-                                             .setBaseMipLevel(0)
-                                             .setMipLevelCount(1)
-                                             .setBaseArrayLayer(0)
-                                             .setArrayLayerCount(1);
+        auto vd = wgpu::TextureViewDescriptor()
+                      .setFormat(wgpu::TextureFormat::eR32Float)
+                      .setDimension(wgpu::TextureViewDimension::e2D)
+                      .setBaseMipLevel(0)
+                      .setMipLevelCount(1)
+                      .setBaseArrayLayer(0)
+                      .setArrayLayerCount(1);
         state->prev_depth_tex          = tex;
         state->prev_depth_sampled_view = tex.createView(vd);
     }
@@ -1301,9 +1306,9 @@ void prepare_voxel_render(Res<wgpu::Device> device,
                                                                 .setSize(sizeof(VoxelCameraUniform)),
                                                             wgpu::BindGroupEntry()
                                                                 .setBinding(1)
-                                                                .setBuffer(state->svo_buffer)
+                                                                .setBuffer(state->bm_buffer)
                                                                 .setOffset(0)
-                                                                .setSize(state->svo_buffer.getSize()),
+                                                                .setSize(state->bm_buffer.getSize()),
                                                             wgpu::BindGroupEntry()
                                                                 .setBinding(2)
                                                                 .setBuffer(state->color_buffer)
@@ -1413,12 +1418,12 @@ void prepare_voxel_render(Res<wgpu::Device> device,
 // Plugin
 // ===========================================================================
 
-struct VoxelPathTracerPlugin {
+struct BrickmapPathTracerPlugin {
     void build(core::App& app) {
         app.world_mut().insert_resource(VoxelConfig{});
-        app.add_systems(core::Startup, into(setup_voxel_scene).set_name("setup voxel scene"));
+        app.add_systems(core::Startup, into(setup_voxel_scene).set_name("setup brickmap scene"));
         app.add_systems(core::Update, into(camera_control).set_name("camera control"));
-        app.add_systems(core::Update, into(voxel_imgui_ui).set_name("voxel imgui ui"));
+        app.add_systems(core::Update, into(voxel_imgui_ui).set_name("brickmap imgui ui"));
     }
 
     void finish(core::App& app) {
@@ -1429,7 +1434,7 @@ struct VoxelPathTracerPlugin {
             spdlog::error("[voxel] EmbeddedAssetRegistry or AssetServer not available");
             return;
         }
-        registry->get().insert_asset_static("epix/shaders/grid/svo.slang", to_bytes(kSvoGridSlangSource));
+        registry->get().insert_asset_static("epix/shaders/grid/brickmap.slang", to_bytes(kBrickmapGridSlangSource));
         registry->get().insert_asset_static(kVoxelTraceSlangPath, to_bytes(kVoxelTraceSlang));
         registry->get().insert_asset_static(kVoxelTaaSlangPath, to_bytes(kVoxelTaaSlang));
         registry->get().insert_asset_static(kVoxelBlitVertPath, to_bytes(kVoxelBlitVertSlang));
@@ -1438,7 +1443,7 @@ struct VoxelPathTracerPlugin {
 
         auto render_app = app.get_sub_app_mut(render::Render);
         if (!render_app) {
-            spdlog::error("[voxel] Render sub-app not found");
+            spdlog::error("[brickmap] Render sub-app not found");
             return;
         }
         auto& rapp  = render_app->get();
@@ -1446,27 +1451,27 @@ struct VoxelPathTracerPlugin {
 
         // All resources that render-world systems depend on go into the render world.
         world.insert_resource(VoxelShaderHandles{
-            .svo_lib   = server->get().load<shader::Shader>("embedded://epix/shaders/grid/svo.slang"),
-            .trace     = server->get().load<shader::Shader>("embedded://voxel/trace.slang"),
-            .taa       = server->get().load<shader::Shader>("embedded://voxel/taa.slang"),
-            .blit_vert = server->get().load<shader::Shader>("embedded://voxel/blit_vert.slang"),
-            .blit_frag = server->get().load<shader::Shader>("embedded://voxel/blit_frag.slang"),
-            .bloom     = server->get().load<shader::Shader>("embedded://voxel/bloom.slang"),
+            .bm_lib    = server->get().load<shader::Shader>("embedded://epix/shaders/grid/brickmap.slang"),
+            .trace     = server->get().load<shader::Shader>("embedded://brickmap/trace.slang"),
+            .taa       = server->get().load<shader::Shader>("embedded://brickmap/taa.slang"),
+            .blit_vert = server->get().load<shader::Shader>("embedded://brickmap/blit_vert.slang"),
+            .blit_frag = server->get().load<shader::Shader>("embedded://brickmap/blit_frag.slang"),
+            .bloom     = server->get().load<shader::Shader>("embedded://brickmap/bloom.slang"),
         });
 
         // Register the custom voxel sub-graph.
         VoxelGraph.register_to(world.resource_mut<RenderGraph>());
 
-        // Initialise resources (ExtractedVoxelSvo must exist for Res<> access).
+        // Initialise resources (ExtractedVoxelBrickmap must exist for Res<> access).
         world.insert_resource(VoxelRenderState{});
-        world.insert_resource(ExtractedVoxelSvo{});
+        world.insert_resource(ExtractedVoxelBrickmap{});
         world.insert_resource(VoxelConfig{});
 
-        rapp.add_systems(ExtractSchedule, into(extract_voxel_scene).set_name("extract voxel scene"))
-            .add_systems(ExtractSchedule, into(extract_voxel_config).set_name("extract voxel config"))
+        rapp.add_systems(ExtractSchedule, into(extract_voxel_scene).set_name("extract brickmap scene"))
+            .add_systems(ExtractSchedule, into(extract_voxel_config).set_name("extract brickmap config"))
             .add_systems(
                 Render,
-                into(prepare_voxel_render).in_set(RenderSet::PrepareResources).set_name("prepare voxel render"));
+                into(prepare_voxel_render).in_set(RenderSet::PrepareResources).set_name("prepare brickmap render"));
     }
 };
 
@@ -1478,7 +1483,7 @@ int main() {
     core::App app = core::App::create();
 
     epix::window::Window win;
-    win.title = "Voxel Path Tracer";
+    win.title = "BrickMap Path Tracer";
     win.size  = {1280, 720};
 
     app.add_plugins(epix::window::WindowPlugin{
@@ -1492,7 +1497,7 @@ int main() {
         .add_plugins(tf::TransformPlugin{})
         .add_plugins(render::RenderPlugin{}.set_validation(0))
         .add_plugins(imgui::ImGuiPlugin{})
-        .add_plugins(VoxelPathTracerPlugin{});
+        .add_plugins(BrickmapPathTracerPlugin{});
 
     app.run();
 }

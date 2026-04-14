@@ -98,97 +98,31 @@ float3 sky_color4(float4 dir) {
     return sky;
 }
 
-// Safe reciprocal direction (avoids division by zero)
-float4 safe_inv_dir4(float4 dir) {
-    float4 s = float4(dir.x >= 0.0f ? 1.0f : -1.0f,
-                      dir.y >= 0.0f ? 1.0f : -1.0f,
-                      dir.z >= 0.0f ? 1.0f : -1.0f,
-                      dir.w >= 0.0f ? 1.0f : -1.0f);
-    return s / max(abs(dir), float4(1e-6f));
-}
-
-struct BoxHit4 {
-    bool   hit;
-    float  t_enter;
-    float  t_exit;
-    float4 enter_normal;
-};
-
-BoxHit4 intersect_box4(float4 origin, float4 dir, float4 inv_dir, float4 box_min, float4 box_max) {
-    float4 t0 = (box_min - origin) * inv_dir;
-    float4 t1 = (box_max - origin) * inv_dir;
-    float4 lo = min(t0, t1);
-    float4 hi = max(t0, t1);
-
-    BoxHit4 hit;
-    hit.t_enter = max(max(max(lo.x, lo.y), lo.z), lo.w);
-    hit.t_exit  = min(min(min(hi.x, hi.y), hi.z), hi.w);
-    hit.hit     = hit.t_exit >= max(hit.t_enter, 0.0f);
-
-    float4 n  = float4(dir.x >= 0.0f ? -1.0f : 1.0f, 0.0f, 0.0f, 0.0f);
-    float  best = lo.x;
-    if (lo.y > best) { best = lo.y; n = float4(0.0f, dir.y >= 0.0f ? -1.0f : 1.0f, 0.0f, 0.0f); }
-    if (lo.z > best) { best = lo.z; n = float4(0.0f, 0.0f, dir.z >= 0.0f ? -1.0f : 1.0f, 0.0f); }
-    if (lo.w > best)               { n = float4(0.0f, 0.0f, 0.0f, dir.w >= 0.0f ? -1.0f : 1.0f); }
-    hit.enter_normal = n;
-    return hit;
-}
-
-float4 probe_cell_min4(epix::ext::grid::SvoProbe<4> probe) {
-    return float4(float(probe.cell_min[0]), float(probe.cell_min[1]),
-                  float(probe.cell_min[2]), float(probe.cell_min[3]));
-}
-
 struct RayHit4 {
     int    idx;
     float  t;
     float4 normal;
 };
 
-// Hierarchical SVO traversal in 4D using SvoGrid<4, 2> (CC=2, 2^4=16 <= 16 constraint).
+// Convert SvoRayHit axis/sign to float4 normal.
+float4 hit_normal4(epix::ext::grid::SvoRayHit<4> h) {
+    float4 n = float4(0.0f);
+    if (h.hit_axis == 0) n.x = float(h.hit_sign);
+    else if (h.hit_axis == 1) n.y = float(h.hit_sign);
+    else if (h.hit_axis == 2) n.z = float(h.hit_sign);
+    else n.w = float(h.hit_sign);
+    return n;
+}
+
+// Thin wrapper: call SvoGrid<4,2> member trace_ray and convert to RayHit4.
 RayHit4 trace_ray_4d(epix::ext::grid::SvoGrid<4, 2> svo, float4 origin, float4 dir, int max_steps) {
+    float[4] o = { origin.x, origin.y, origin.z, origin.w };
+    float[4] d = { dir.x, dir.y, dir.z, dir.w };
+    epix::ext::grid::SvoRayHit<4> h = svo.trace_ray(o, d, max_steps);
     RayHit4 r;
-    r.idx    = -1;
-    r.t      = 0.0f;
-    r.normal = float4(0.0f, 1.0f, 0.0f, 0.0f);
-
-    float4 inv_dir   = safe_inv_dir4(dir);
-    float  scene_dim = float(svo.coverage());
-    float4 scene_min = float4(float(svo.origin(0)), float(svo.origin(1)),
-                               float(svo.origin(2)), float(svo.origin(3)));
-    float4 scene_max = scene_min + float4(scene_dim, scene_dim, scene_dim, scene_dim);
-    BoxHit4 scene_hit = intersect_box4(origin, dir, inv_dir, scene_min, scene_max);
-    if (!scene_hit.hit) return r;
-
-    float  t       = max(scene_hit.t_enter, 0.0f);
-    float  t_limit = min(scene_hit.t_exit, 400.0f);
-    float4 eps4    = float4(1e-4f, 1e-4f, 1e-4f, 1e-4f);
-
-    for (int i = 0; i < max_steps && t <= t_limit; ++i) {
-        float  sample_t   = min(t + 1e-4f, t_limit);
-        float4 sample_pos = clamp(origin + dir * sample_t, scene_min + eps4, scene_max - eps4);
-        int[4] cell = { int(floor(sample_pos.x)), int(floor(sample_pos.y)),
-                        int(floor(sample_pos.z)), int(floor(sample_pos.w)) };
-
-        epix::ext::grid::SvoProbe<4> probe = svo.probe(cell);
-        if (probe.state == 0u || probe.cell_size == 0u) return r;
-
-        float  cell_size = float(probe.cell_size);
-        float4 cell_min  = probe_cell_min4(probe);
-        float4 cell_max  = cell_min + float4(cell_size, cell_size, cell_size, cell_size);
-        BoxHit4 cell_hit = intersect_box4(origin, dir, inv_dir, cell_min, cell_max);
-        if (!cell_hit.hit) return r;
-
-        if (probe.state == 3u) {
-            r.idx    = probe.data_index;
-            r.t      = max(cell_hit.t_enter, 0.0f);
-            r.normal = cell_hit.enter_normal;
-            return r;
-        }
-
-        float step_eps = max(1e-4f, cell_size * 1e-4f);
-        t = max(cell_hit.t_exit + step_eps, t + step_eps);
-    }
+    r.idx    = h.data_index;
+    r.t      = h.t;
+    r.normal = (h.data_index >= 0) ? hit_normal4(h) : float4(0.0f, 1.0f, 0.0f, 0.0f);
     return r;
 }
 
