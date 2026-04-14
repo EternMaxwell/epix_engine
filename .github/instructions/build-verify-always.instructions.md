@@ -8,7 +8,7 @@ After making any complete code changes, **always** build the relevant targets an
 
 1. **Build**: Compile the affected targets (e.g., `cmake --build build --target <target>`).
 2. **Run tests**: Execute unit tests, integration tests, or regression tests that cover the changed code.
-3. **Run examples**: If the work involved an example or the example exercises the changed code, run it to confirm it starts and behaves correctly. Set the `SPDLOG_LEVEL` environment variable to `trace` (or `debug`) before launching so the output is verbose enough to judge correctness:
+3. **Run examples**: If the work involved an example or the example exercises the changed code, run it to confirm it starts and behaves correctly. Set the `SPDLOG_LEVEL` environment variable to `trace` (or `debug`) before launching so the output is verbose enough to judge correctness (or its better to test in default, e.g. `info` level, and switch to `debug/trace` if you didn't see any error, or need detailed info, you can also add a custom sink to exit on error, and use that temporaryly for testing):
    ```powershell
    $env:SPDLOG_LEVEL = "trace"
    .\build\bin\<example_name>.exe   # or the appropriate output path
