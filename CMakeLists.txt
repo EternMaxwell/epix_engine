@@ -130,6 +130,8 @@ target_sources(glm
 )
 target_compile_features(glm PUBLIC cxx_std_23)
 set_target_properties(glm PROPERTIES CXX_STANDARD 23 CXX_STANDARD_REQUIRED ON)
+# Engine follows WebGPU conventions: left-handed, Y-up, depth [0,1]
+target_compile_definitions(glm PUBLIC GLM_FORCE_LEFT_HANDED GLM_FORCE_DEPTH_ZERO_TO_ONE)
 
 set(CMAKE_CXX_SCAN_FOR_MODULES ON)
 
