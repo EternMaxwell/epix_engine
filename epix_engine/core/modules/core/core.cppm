@@ -19,7 +19,3 @@ export import :world;
 export import :system;
 export import :schedule;
 export import :app;
-
-#ifdef EPIX_ENABLE_TEST
-export import :tests;
-#endif

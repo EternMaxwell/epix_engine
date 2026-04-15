@@ -1,6 +1,8 @@
 import std;
 import glm;
+import webgpu;
 import epix.core;
+import epix.assets;
 import epix.window;
 import epix.glfw.core;
 import epix.glfw.render;

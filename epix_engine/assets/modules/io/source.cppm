@@ -8,7 +8,7 @@ import :io.reader;
 import :io.file.asset;
 import :io.file.watcher;
 
-export namespace epix::assets {
+namespace epix::assets {
 export struct AssetSource {
    private:
     AssetSourceId m_id;
@@ -115,21 +115,21 @@ export struct AssetSources {
     auto iter() const {
         return std::views::join(std::ranges::owning_view(std::array<utils::input_iterable<const AssetSource&>, 2>{
             utils::input_iterable<const AssetSource&>(std::span(&m_default, &m_default + 1)),
-            utils::input_iterable<const AssetSource&>(m_sources | std::views::values)}));
+            utils::input_iterable<const AssetSource&>(std::views::values(m_sources))}));
     }
     auto iter_mut() {
         return std::views::join(std::ranges::owning_view(std::array<utils::input_iterable<AssetSource&>, 2>{
             utils::input_iterable<AssetSource&>(std::span(&m_default, &m_default + 1)),
-            utils::input_iterable<AssetSource&>(m_sources | std::views::values)}));
+            utils::input_iterable<AssetSource&>(std::views::values(m_sources))}));
     }
     auto iter_processed() const {
-        return iter() | std::views::filter([](const AssetSource& source) { return source.should_process(); });
+        return std::views::filter(iter(), [](const AssetSource& source) { return source.should_process(); });
     }
     auto iter_processed_mut() {
-        return iter_mut() | std::views::filter([](const AssetSource& source) { return source.should_process(); });
+        return std::views::filter(iter_mut(), [](const AssetSource& source) { return source.should_process(); });
     }
     auto ids() const {
-        return iter() | std::views::transform([](const AssetSource& source) { return source.id(); });
+        return std::views::transform(iter(), [](const AssetSource& source) { return source.id(); });
     }
     /** @brief Gate all processed sources through the given factory. */
     void gate_on_processor(

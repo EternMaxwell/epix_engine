@@ -1,13 +1,8 @@
-module;
-
 #include <gtest/gtest.h>
-
-export module epix.core:tests.untyped_vec;
 
 import std;
 import epix.meta;
-
-import :storage;
+import epix.core;
 
 namespace {
 struct Heavy {

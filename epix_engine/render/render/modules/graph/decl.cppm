@@ -26,7 +26,7 @@ export EPIX_MAKE_LABEL(GraphLabel);
 /** @brief Base class for render graph nodes. Override to implement custom
  * rendering logic. */
 export struct Node;
-struct NodeState;
+export struct NodeState;
 /** @brief Directed acyclic graph of render nodes that drives the rendering
  * pipeline. */
 export struct RenderGraph;

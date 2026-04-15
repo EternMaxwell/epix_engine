@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 import epix.mesh;
+import webgpu;
 import glm;
 
 namespace mesh = epix::mesh;

@@ -1,12 +1,7 @@
-module;
-
 #include <gtest/gtest.h>
 
-export module epix.core:tests.bitvector;
-
 import std;
-
-import :utils;
+import epix.core;
 
 using namespace epix::core;
 
@@ -46,7 +41,7 @@ TEST(core, bitvector) {
     EXPECT_TRUE(a.intersect(c));
     EXPECT_TRUE(a.intersect_count(c) == 1);
     auto iv = a.intersection(c);
-    auto v  = iv | std::ranges::to<std::vector>();
+    auto v  = std::ranges::to<std::vector>(iv);
     EXPECT_TRUE(v.size() == 1 && v[0] == 7);
 
     // iter_ones and iter_zeros (ranges)
@@ -118,7 +113,7 @@ TEST(core, bitvector) {
     small.set(1);
     small.set(3);
     small.set(6);
-    auto zeros                         = small.iter_zeros() | std::ranges::to<std::vector>();
+    auto zeros                         = std::ranges::to<std::vector>(small.iter_zeros());
     std::vector<size_t> expected_zeros = {0, 2, 4, 5, 7};
     EXPECT_TRUE(zeros == expected_zeros);
 

@@ -1,12 +1,7 @@
-module;
-
 #include <gtest/gtest.h>
 
-export module epix.core:tests.component_hooks;
-
 import std;
-
-import :world;
+import epix.core;
 
 using namespace epix::core;
 

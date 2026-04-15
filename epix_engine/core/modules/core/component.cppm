@@ -311,15 +311,16 @@ export struct Components : public SparseSet<TypeId, ComponentInfo> {
         TypeId requiree, TypeId required, RequiredComponents& required_components) {
         auto& required_info = get_mut(required).value().get();
         std::vector<std::pair<TypeId, RequiredComponent>> inherited_requirements =
-            required_info.required_components().components | std::views::transform([&](auto&& rc) {
-                auto&& [type_id, req_comp] = rc;
-                return std::pair(type_id,
-                                 RequiredComponent{
-                                     .constructor       = req_comp.constructor,
-                                     .inheritance_depth = static_cast<std::uint16_t>(req_comp.inheritance_depth + 1),
-                                 });
-            }) |
-            std::ranges::to<std::vector<std::pair<TypeId, RequiredComponent>>>();
+            std::ranges::to<std::vector<std::pair<TypeId, RequiredComponent>>>(std::views::transform(
+                required_info.required_components().components,
+                [&](auto&& rc) {
+                    auto&& [type_id, req_comp] = rc;
+                    return std::pair(type_id,
+                                     RequiredComponent{
+                                         .constructor       = req_comp.constructor,
+                                         .inheritance_depth = static_cast<std::uint16_t>(req_comp.inheritance_depth + 1),
+                                     });
+                }));
         for (auto&& [type_id, req_comp] : inherited_requirements) {
             required_components.register_dynamic(type_id, req_comp.inheritance_depth, req_comp.constructor);
             get_mut(type_id).value().get()._required_by.insert(requiree);

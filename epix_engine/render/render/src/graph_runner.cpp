@@ -39,9 +39,9 @@ bool RenderGraphRunner::run_graph(const RenderGraph& graph,
 
     spdlog::debug("Running graph {}.", sub_graph ? sub_graph->type_index().short_name() : "main");
 
-    auto node_queue =
-        graph.iter_nodes() | std::views::filter([](const NodeState& node) { return node.inputs.empty(); }) |
-        std::views::transform([](const NodeState& node) { return std::cref(node); }) | std::ranges::to<std::deque>();
+    auto node_queue = std::ranges::to<std::deque>(std::views::transform(
+        std::views::filter(graph.iter_nodes(), [](const NodeState& node) { return node.inputs.empty(); }),
+        [](const NodeState& node) { return std::cref(node); }));
 
     if (auto input_node = graph.get_input_node()) {
         std::vector<SlotValue> input_values;
@@ -60,8 +60,8 @@ bool RenderGraphRunner::run_graph(const RenderGraph& graph,
 
         node_outputs.emplace(input_node->get().label, std::move(input_values));
 
-        for (auto&& next_node : input_node->get().edges.output_edges() |
-                                    std::views::transform([](const Edge& e) { return e.input_node; })) {
+        for (auto&& next_node :
+             std::views::transform(input_node->get().edges.output_edges(), [](const Edge& e) { return e.input_node; })) {
             if (auto state = graph.get_node_state(next_node)) {
                 node_queue.push_back(*state);
             }
@@ -78,7 +78,7 @@ bool RenderGraphRunner::run_graph(const RenderGraph& graph,
         // check if all dependencies have finished running
         {
             bool break_loop = false;
-            for (auto&& [edge, input_node] : node_state.edges.input_edges() | std::views::transform([](const Edge& e) {
+            for (auto&& [edge, input_node] : std::views::transform(node_state.edges.input_edges(), [](const Edge& e) {
                                                  return std::pair{e, e.output_node};
                                              })) {
                 if (edge.is_slot_edge()) {
@@ -104,8 +104,8 @@ bool RenderGraphRunner::run_graph(const RenderGraph& graph,
         // construct the inputs for the node
         std::sort(slot_indices_and_inputs.begin(), slot_indices_and_inputs.end(),
                   [](const auto& a, const auto& b) { return a.first < b.first; });
-        auto inputs = slot_indices_and_inputs | std::views::transform([](const auto& pair) { return pair.second; }) |
-                      std::ranges::to<std::vector>();
+        auto inputs = std::ranges::to<std::vector>(
+            std::views::transform(slot_indices_and_inputs, [](const auto& pair) { return pair.second; }));
         if (inputs.size() != node_state.inputs.size()) {
             spdlog::warn("Node {} input size mismatch. Expected {}, got {}.",
                          node_state.label.type_index().short_name(), node_state.inputs.size(), inputs.size());
@@ -156,7 +156,7 @@ bool RenderGraphRunner::run_graph(const RenderGraph& graph,
         node_outputs.emplace(node_state.label, std::move(output_values));
 
         for (auto&& next_node :
-             node_state.edges.output_edges() | std::views::transform([](const Edge& e) { return e.input_node; })) {
+             std::views::transform(node_state.edges.output_edges(), [](const Edge& e) { return e.input_node; })) {
             if (auto state = graph.get_node_state(next_node)) {
                 node_queue.push_back(std::ref(*state));
             }

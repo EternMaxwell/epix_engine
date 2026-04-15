@@ -38,8 +38,8 @@ export struct LayoutCache {
     wgpu::PipelineLayout get(const wgpu::Device& device, std::ranges::range auto&& layouts)
         requires std::convertible_to<std::ranges::range_value_t<decltype(layouts)>, wgpu::BindGroupLayout>
     {
-        LayoutCacheKey key = layouts | std::views::transform([](const auto& layout) { return layout.id(); }) |
-                             std::ranges::to<std::vector>();
+        LayoutCacheKey key = std::ranges::to<std::vector>(
+            std::views::transform(layouts, [](const auto& layout) { return layout.id(); }));
         auto it = cache.find(key);
         if (it != cache.end()) {
             return it->second;

@@ -35,39 +35,40 @@ struct WorldQuery<std::tuple<Ts...>> {
     using Fetch = std::tuple<typename WorldQuery<Ts>::Fetch...>;
     using State = std::tuple<typename WorldQuery<Ts>::State...>;
     static Fetch init_fetch(World& world, const State& state, Tick last_run, Tick this_run) {
-        return []<size_t... Is>(std::index_sequence<Is...>, World& world, const State& state, Tick last_run,
-                                Tick this_run) {
+        return []<std::size_t... Is>(std::index_sequence<Is...>, World& world, const State& state, Tick last_run,
+                                     Tick this_run) {
             return std::make_tuple(WorldQuery<Ts>::init_fetch(world, std::get<Is>(state), last_run, this_run)...);
         }(std::index_sequence_for<Ts...>{}, world, state, last_run, this_run);
     }
     static void set_archetype(Fetch& fetch, const State& state, const Archetype& archetype, Table& table) {
-        []<size_t... Is>(std::index_sequence<Is...>, Fetch& fetch, const State& state, const Archetype& archetype,
-                         Table& table) {
+        []<std::size_t... Is>(std::index_sequence<Is...>, Fetch& fetch, const State& state,
+                              const Archetype& archetype, Table& table) {
             (WorldQuery<Ts>::set_archetype(std::get<Is>(fetch), std::get<Is>(state), archetype, table), ...);
         }(std::index_sequence_for<Ts...>{}, fetch, state, archetype, table);
     }
     // static void set_table(Fetch& fetch, State& state, const Table& table) {
-    //     []<size_t... Is>(std::index_sequence<Is...>, Fetch& fetch, State& state, const Table& table) {
+    //     []<std::size_t... Is>(std::index_sequence<Is...>, Fetch& fetch, State& state, const Table& table) {
     //         (WorldQuery<Ts>::set_table(std::get<Is>(fetch), std::get<Is>(state), table), ...);
     //     }(std::index_sequence_for<Ts...>{}, fetch, state, table);
     // }
     static void set_access(State& state, const FilteredAccess& access) {
-        []<size_t... Is>(std::index_sequence<Is...>, State& state, const FilteredAccess& access) {
+        []<std::size_t... Is>(std::index_sequence<Is...>, State& state, const FilteredAccess& access) {
             (WorldQuery<Ts>::set_access(std::get<Is>(state), access), ...);
         }(std::index_sequence_for<Ts...>{}, state, access);
     }
     static void update_access(const State& state, FilteredAccess& access) {
-        []<size_t... Is>(std::index_sequence<Is...>, const State& state, FilteredAccess& access) {
+        []<std::size_t... Is>(std::index_sequence<Is...>, const State& state, FilteredAccess& access) {
             (WorldQuery<Ts>::update_access(std::get<Is>(state), access), ...);
         }(std::index_sequence_for<Ts...>{}, state, access);
     }
     static State init_state(World& world) {
-        return []<size_t... Is>(std::index_sequence<Is...>, World& world) {
+        return []<std::size_t... Is>(std::index_sequence<Is...>, World& world) {
             return std::make_tuple(WorldQuery<Ts>::init_state(world)...);
         }(std::index_sequence_for<Ts...>{}, world);
     }
     static std::optional<State> get_state(const Components& components) {
-        return []<size_t... Is>(std::index_sequence<Is...>, const Components& components) -> std::optional<State> {
+        return []<std::size_t... Is>(std::index_sequence<Is...>,
+                                     const Components& components) -> std::optional<State> {
             std::tuple<std::optional<typename WorldQuery<Ts>::State>...> states{
                 WorldQuery<Ts>::get_state(components)...};
             bool all_found = (true && ... && (std::get<Is>(states).has_value()));
@@ -79,8 +80,8 @@ struct WorldQuery<std::tuple<Ts...>> {
         }(std::index_sequence_for<Ts...>{}, components);
     }
     static bool matches_component_set(const State& state, const std::function<bool(TypeId)>& contains_component) {
-        return []<size_t... Is>(std::index_sequence<Is...>, const State& state,
-                                const std::function<bool(TypeId)>& contains_component) {
+        return []<std::size_t... Is>(std::index_sequence<Is...>, const State& state,
+                                     const std::function<bool(TypeId)>& contains_component) {
             return true && (WorldQuery<Ts>::matches_component_set(std::get<Is>(state), contains_component) && ...);
         }(std::index_sequence_for<Ts...>{}, state, contains_component);
     }
@@ -94,8 +95,9 @@ struct QueryData<std::tuple<Ts...>> {
     using ReadOnly                        = std::tuple<typename QueryData<Ts>::ReadOnly...>;
     static inline constexpr bool readonly = (QueryData<Ts>::readonly && ...);
     static Item fetch(typename WorldQuery<std::tuple<Ts...>>::Fetch& fetch, Entity entity, TableRow row) {
-        return [&]<size_t... Is>(std::index_sequence<Is...>, typename WorldQuery<std::tuple<Ts...>>::Fetch& fetch,
-                                 Entity entity, TableRow row) {
+        return [&]<std::size_t... Is>(std::index_sequence<Is...>,
+                                      typename WorldQuery<std::tuple<Ts...>>::Fetch& fetch, Entity entity,
+                                      TableRow row) {
             return Item(QueryData<Ts>::fetch(std::get<Is>(fetch), entity, row)...);
         }(std::index_sequence_for<Ts...>{}, fetch, entity, row);
     }

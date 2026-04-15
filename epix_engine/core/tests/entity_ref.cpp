@@ -1,11 +1,7 @@
-module;
-
 #include <gtest/gtest.h>
 
-export module epix.core:tests.entity_ref;
-
-import :world;
-import :bundle;
+import std;
+import epix.core;
 
 namespace {
 struct A {

@@ -13,6 +13,7 @@ module epix.text;
 import epix.assets;
 import epix.image;
 import epix.mesh;
+import epix.meta;
 import webgpu;
 import std;
 
@@ -400,8 +401,6 @@ void register_default_embedded_font(core::App& app) {
         std::span<const std::byte>(reinterpret_cast<const std::byte*>(font_data_array), font_data_array_size));
 }
 }  // namespace
-
-import epix.meta;
 
 void FontPlugin::build(core::App& app) {
     spdlog::debug("[text] Building FontPlugin.");

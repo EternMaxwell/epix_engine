@@ -5,6 +5,7 @@ export module epix.mesh:gpumesh;
 import :mesh;
 
 import epix.render;
+import epix.assets;
 import std;
 import webgpu;
 

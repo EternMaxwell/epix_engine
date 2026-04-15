@@ -4,6 +4,7 @@ module;
 
 module epix.time;
 
+import epix.meta;
 import epix.core;
 import std;
 

@@ -11,9 +11,11 @@ import epix.utils;
 import :index;
 import :concepts;
 
-export namespace uuids {
+namespace uuids {
 /** @brief Three-way comparison for uuids::uuid, providing strong ordering. */
-std::strong_ordering operator<=>(const uuids::uuid& lhs, const uuids::uuid& rhs) noexcept;
+export std::strong_ordering operator<=>(const uuids::uuid& lhs, const uuids::uuid& rhs) noexcept;
+export using uuids::uuid;
+export using uuids::to_string;
 }  // namespace uuids
 static_assert(std::three_way_comparable<uuids::uuid>);
 
@@ -134,7 +136,7 @@ export struct UntypedAssetId {
     std::string to_string_short() const;
 };
 
-export template <typename T>
+template <typename T>
 bool AssetId<T>::operator==(const UntypedAssetId& other) const {
     return other.id == static_cast<const std::variant<AssetIndex, uuids::uuid>&>(*this) &&
            other.type == meta::type_id<T>{};

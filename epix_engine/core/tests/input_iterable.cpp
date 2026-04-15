@@ -1,16 +1,9 @@
-module;
-
-#ifdef EPIX_ENABLE_TEST
 #include <gtest/gtest.h>
-#endif
-
-export module epix.core:tests.utils.input_iterable;
 
 import std;
-
 import epix.utils;
+import epix.core;
 
-#ifdef EPIX_ENABLE_TEST
 TEST(core, input_iterable) {
     using namespace epix::utils;
 
@@ -34,23 +27,21 @@ TEST(core, input_iterable) {
     EXPECT_EQ(s1, 6);
     EXPECT_EQ(s2, 6);
 }
-#endif
 
-#ifdef EPIX_ENABLE_TEST
 TEST(core, input_iterable_views_transform_filter) {
     using namespace epix::utils;
 
     std::vector<int> v{1, 2, 3, 4, 5};
 
     // transform view (temporary) - owned by iterable
-    auto tv = v | std::views::transform([](int a) { return a * 2; });
+    auto tv = std::views::transform(v, [](int a) { return a * 2; });
     input_iterable<int> tit(tv);
     int tsum = 0;
     for (auto x : tit) tsum += x;
     EXPECT_EQ(tsum, (1 + 2 + 3 + 4 + 5) * 2);
 
     // filter view (borrowed) - lvalue view
-    auto fv = v | std::views::filter([](int a) { return (a % 2) == 1; });
+    auto fv = std::views::filter(v, [](int a) { return (a % 2) == 1; });
     input_iterable<int> fit(fv);
     int fsum = 0;
     for (auto x : fit) fsum += x;
@@ -62,9 +53,7 @@ TEST(core, input_iterable_views_transform_filter) {
     for (auto x : oit) osum += x;
     EXPECT_EQ(osum, 7 + 8 + 9);
 }
-#endif
 
-#ifdef EPIX_ENABLE_TEST
 TEST(core, input_iterable_istream_view_single_pass) {
     using namespace epix::utils;
 
@@ -85,4 +74,3 @@ TEST(core, input_iterable_istream_view_single_pass) {
     // but input_iterable should support reuse when possible; we accept either 0 or 60 depending on underlying range
     EXPECT_TRUE(s2 == 0 || s2 == 60);
 }
-#endif

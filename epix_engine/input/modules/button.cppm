@@ -30,15 +30,15 @@ struct ButtonInput<KeyCode> {
 
     /** @brief Get all keys that were pressed this frame. */
     auto just_pressed_keys() const {
-        return m_just_pressed | std::views::filter([b = m_bypass_just_pressed](const auto&) { return !b; });
+        return std::views::filter(m_just_pressed, [b = m_bypass_just_pressed](const auto&) { return !b; });
     }
     /** @brief Get all keys that were released this frame. */
     auto just_released_keys() const {
-        return m_just_released | std::views::filter([b = m_bypass_just_released](const auto&) { return !b; });
+        return std::views::filter(m_just_released, [b = m_bypass_just_released](const auto&) { return !b; });
     }
     /** @brief Get all keys currently held down. */
     auto pressed_keys() const {
-        return m_pressed | std::views::filter([b = m_bypass_pressed](const auto&) { return !b; });
+        return std::views::filter(m_pressed, [b = m_bypass_pressed](const auto&) { return !b; });
     }
 
     /** @brief Check if any of the given keys were pressed this frame. */
@@ -97,15 +97,15 @@ struct ButtonInput<MouseButton> {
 
     /** @brief Get all buttons that were pressed this frame. */
     auto just_pressed_buttons() const {
-        return m_just_pressed | std::views::filter([b = m_bypass_just_pressed](const auto&) { return !b; });
+        return std::views::filter(m_just_pressed, [b = m_bypass_just_pressed](const auto&) { return !b; });
     }
     /** @brief Get all buttons that were released this frame. */
     auto just_released_buttons() const {
-        return m_just_released | std::views::filter([b = m_bypass_just_released](const auto&) { return !b; });
+        return std::views::filter(m_just_released, [b = m_bypass_just_released](const auto&) { return !b; });
     }
     /** @brief Get all buttons currently held down. */
     auto pressed_buttons() const {
-        return m_pressed | std::views::filter([b = m_bypass_pressed](const auto&) { return !b; });
+        return std::views::filter(m_pressed, [b = m_bypass_pressed](const auto&) { return !b; });
     }
 
     /** @brief Check if any of the given buttons were pressed this frame. */
@@ -151,4 +151,4 @@ struct ButtonInput<MouseButton> {
     bool m_bypass_just_pressed  = false;
     bool m_bypass_just_released = false;
 };
-}  // namespace input
+}  // namespace epix::input

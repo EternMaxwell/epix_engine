@@ -17,19 +17,19 @@ BundleInfo BundleInfo::create(std::string_view bundle_type_name,
                               BundleId id) {
     spdlog::trace("[bundle] Creating BundleInfo '{}' id={} with {} components.", bundle_type_name, id.get(),
                   component_ids.size());
-    auto deduped = component_ids | std::ranges::to<std::unordered_set<TypeId>>();
+    auto deduped = std::ranges::to<std::unordered_set<TypeId>>(component_ids);
     if (deduped.size() != std::ranges::size(component_ids)) {
         auto seen  = std::unordered_set<TypeId>{};
-        auto duped = component_ids | std::views::filter([&](TypeId tid) {
-                         if (seen.contains(tid)) {
-                             return true;
-                         } else {
-                             seen.insert(tid);
-                             return false;
-                         }
-                     });
+        auto duped = std::views::filter(component_ids, [&](TypeId tid) {
+            if (seen.contains(tid)) {
+                return true;
+            } else {
+                seen.insert(tid);
+                return false;
+            }
+        });
         throw std::logic_error(std::format("bundle \"{}\" has duplicate component types {}", bundle_type_name,
-                                           duped | std::views::transform([&](TypeId tid) {
+                                           std::views::transform(duped, [&](TypeId tid) {
                                                return components.get(tid).value().get().type_index().name();
                                            })));
     }
@@ -41,17 +41,18 @@ BundleInfo BundleInfo::create(std::string_view bundle_type_name,
         required_components.merge(info.required_components());
         storage.prepare_component(info);
     }
-    auto required_constructors = required_components.components | std::views::filter([&](auto&& v) {
-                                     auto&& [type_id, rc] = v;
-                                     return !deduped.contains(type_id);
-                                 }) |
-                                 std::views::transform([&](auto&& v) {
-                                     auto&& [type_id, rc] = v;
-                                     storage.prepare_component(components.get(type_id).value().get());
-                                     component_ids.push_back(type_id);
-                                     return rc.constructor;
-                                 }) |
-                                 std::ranges::to<std::vector<RequiredComponentConstructor>>();
+    auto required_constructors = std::ranges::to<std::vector<RequiredComponentConstructor>>(
+        std::views::transform(std::views::filter(required_components.components,
+                                                 [&](auto&& v) {
+                                                     auto&& [type_id, rc] = v;
+                                                     return !deduped.contains(type_id);
+                                                 }),
+                              [&](auto&& v) {
+                                  auto&& [type_id, rc] = v;
+                                  storage.prepare_component(components.get(type_id).value().get());
+                                  component_ids.push_back(type_id);
+                                  return rc.constructor;
+                              }));
 
     return BundleInfo(id, std::move(component_ids), required_constructors, explicit_count);
 }
@@ -92,7 +93,7 @@ ArchetypeId BundleInfo::insert_bundle_into_archetype(Archetypes& archetypes,
         }
     }
 
-    for (auto&& [index, type_id] : required_components() | std::views::enumerate) {
+    for (auto&& [index, type_id] : std::views::enumerate(required_components())) {
         if (archetype.contains(type_id)) {
             // already exists
             continue;
@@ -118,7 +119,7 @@ ArchetypeId BundleInfo::insert_bundle_into_archetype(Archetypes& archetypes,
         std::vector<TypeId> table_components;
         if (new_table_components.empty()) {
             new_table_id     = archetype.table_id();
-            table_components = archetype.table_components() | std::ranges::to<std::vector>();
+            table_components = std::ranges::to<std::vector>(archetype.table_components());
             std::sort(table_components.begin(), table_components.end());
         } else {
             new_table_components.insert_range(new_table_components.end(), archetype.table_components());
@@ -160,9 +161,9 @@ std::optional<ArchetypeId> BundleInfo::remove_bundle_from_archetype(Archetypes& 
     {
         auto& archetype = archetypes.get_mut(archetype_id).value().get();
         std::unordered_set<TypeId> table_components_set =
-            archetype.table_components() | std::ranges::to<std::unordered_set<TypeId>>();
+            std::ranges::to<std::unordered_set<TypeId>>(archetype.table_components());
         std::unordered_set<TypeId> sparse_components_set =
-            archetype.sparse_components() | std::ranges::to<std::unordered_set<TypeId>>();
+            std::ranges::to<std::unordered_set<TypeId>>(archetype.sparse_components());
         bool table_changed = false;
         for (auto&& type_id : explicit_components()) {
             if (archetype.contains(type_id)) {
@@ -179,8 +180,8 @@ std::optional<ArchetypeId> BundleInfo::remove_bundle_from_archetype(Archetypes& 
                 return std::nullopt;
             }
         }
-        next_table_components  = table_components_set | std::ranges::to<std::vector>();
-        next_sparse_components = sparse_components_set | std::ranges::to<std::vector>();
+        next_table_components  = std::ranges::to<std::vector>(table_components_set);
+        next_sparse_components = std::ranges::to<std::vector>(sparse_components_set);
         std::sort(next_table_components.begin(), next_table_components.end());
         std::sort(next_sparse_components.begin(), next_sparse_components.end());
         if (!table_changed) {
@@ -208,10 +209,8 @@ BundleId Bundles::init_dynamic_info(Storage& storage, const Components& componen
         return it->second;
     } else {
         BundleId new_id                   = static_cast<BundleId>(_bundle_infos.size());
-        std::vector<StorageType> storages = ids | std::views::transform([&](TypeId type_id) {
-                                                return components.get(type_id).value().get().storage_type();
-                                            }) |
-                                            std::ranges::to<std::vector<StorageType>>();
+        std::vector<StorageType> storages = std::ranges::to<std::vector<StorageType>>(std::views::transform(
+            ids, [&](TypeId type_id) { return components.get(type_id).value().get().storage_type(); }));
         BundleInfo info                   = BundleInfo::create("dynamic bundle", storage, components, ids, new_id);
         _bundle_infos.emplace_back(std::move(info));
         _dynamic_bundle_storages.emplace(new_id, std::move(storages));

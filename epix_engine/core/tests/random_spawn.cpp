@@ -1,13 +1,7 @@
-module;
-
 #include <gtest/gtest.h>
 
-export module epix.core:tests.random_spawn;
-
 import std;
-import :world;
-import :query;
-import :bundle;
+import epix.core;
 
 namespace {
 struct T1 {
@@ -96,18 +90,18 @@ TEST(core, random_spawn) {
     // }
     std::println(std::cout, "Archetypes:");
     std::println(std::cout, "\ttable_ids:{}",
-                 std::views::iota(0u, world.archetypes_mut().size()) | std::views::transform([&](uint32_t ai) {
+                 std::views::transform(std::views::iota(0u, world.archetypes_mut().size()), [&](uint32_t ai) {
                      auto&& archetype = world.archetypes_mut().get_mut(ai).value().get();
                      return std::format("{}:{}", ai, archetype.table_id().get());
                  }));
     std::println(std::cout, "\tsizes:{}",
-                 std::views::iota(0u, world.archetypes_mut().size()) | std::views::transform([&](uint32_t ai) {
+                 std::views::transform(std::views::iota(0u, world.archetypes_mut().size()), [&](uint32_t ai) {
                      auto&& archetype = world.archetypes_mut().get_mut(ai).value().get();
                      return std::format("{}:{}", ai, archetype.size());
                  }));
     std::println(
         std::cout, "Table sizes -> {}",
-        std::views::iota(0u, world.storage_mut().tables.table_count()) | std::views::transform([&](uint32_t ti) {
+        std::views::transform(std::views::iota(0u, world.storage_mut().tables.table_count()), [&](uint32_t ti) {
             auto& t = world.storage_mut().tables.get_mut(TableId(ti)).value().get();
             return std::format("{:02}:->{:03}", ti, t.size());
         }));

@@ -25,7 +25,7 @@ Archetype Archetype::create(ComponentIndex& component_index,
     auto table_size    = std::ranges::size(table_components);
     auto sparse_size   = std::ranges::size(sparse_components);
     arch._components.reserve(table_size + sparse_size);
-    for (auto&& [idx, type_id] : table_components | std::views::enumerate) {
+    for (auto&& [idx, type_id] : std::views::enumerate(table_components)) {
         arch._components.emplace(type_id, StorageType::Table);
         component_index[type_id][id] = ArchetypeRecord{static_cast<size_t>(idx)};
     }

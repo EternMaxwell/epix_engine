@@ -90,7 +90,7 @@ export struct MeshInstanceBuffer {
 /** @brief Render command that binds the mesh instance buffer to a given slot.
  * @tparam Slot Bind group slot index.
  */
-export template <size_t Slot>
+export template <std::size_t Slot>
 struct BindMesh2dInstances {
     template <render::phase::PhaseItem PhaseItem>
     struct Command {
@@ -119,7 +119,7 @@ struct BindMesh2dInstances {
 
 /** @brief Render command that binds a mesh 2D texture at a given slot.
  * @tparam Slot Bind group slot index. */
-export template <size_t Slot>
+export template <std::size_t Slot>
 struct BindMesh2dTexture {
     template <render::phase::PhaseItem PhaseItem>
     struct Command {

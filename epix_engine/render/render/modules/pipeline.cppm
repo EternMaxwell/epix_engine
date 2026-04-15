@@ -76,8 +76,7 @@ export struct VertexState {
     auto&& set_buffers(this auto&& self, std::ranges::range auto&& buffers)
         requires std::convertible_to<std::ranges::range_value_t<decltype(buffers)>, wgpu::VertexBufferLayout>
     {
-        self.buffers =
-            std::forward<decltype(buffers)>(buffers) | std::ranges::to<std::vector<wgpu::VertexBufferLayout>>();
+        self.buffers = std::ranges::to<std::vector<wgpu::VertexBufferLayout>>(std::forward<decltype(buffers)>(buffers));
         return std::forward<decltype(self)>(self);
     }
 };
@@ -126,7 +125,7 @@ export struct RenderPipelineDescriptor {
     auto&& set_layouts(this auto&& self, std::ranges::range auto&& layouts)
         requires std::convertible_to<std::ranges::range_value_t<decltype(layouts)>, wgpu::BindGroupLayout>
     {
-        self.layouts = std::forward<decltype(layouts)>(layouts) | std::ranges::to<std::vector<wgpu::BindGroupLayout>>();
+        self.layouts = std::ranges::to<std::vector<wgpu::BindGroupLayout>>(std::forward<decltype(layouts)>(layouts));
         return std::forward<decltype(self)>(self);
     }
     auto&& set_vertex(this auto&& self, VertexState vertex) {
@@ -169,7 +168,7 @@ export struct ComputePipelineDescriptor {
     auto&& set_layouts(this auto&& self, std::ranges::range auto&& layouts)
         requires std::convertible_to<std::ranges::range_value_t<decltype(layouts)>, wgpu::BindGroupLayout>
     {
-        self.layouts = std::forward<decltype(layouts)>(layouts) | std::ranges::to<std::vector<wgpu::BindGroupLayout>>();
+        self.layouts = std::ranges::to<std::vector<wgpu::BindGroupLayout>>(std::forward<decltype(layouts)>(layouts));
         return std::forward<decltype(self)>(self);
     }
     auto&& set_shader(this auto&& self, assets::Handle<shader::Shader> shader) {

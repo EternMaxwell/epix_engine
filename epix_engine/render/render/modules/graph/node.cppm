@@ -41,9 +41,9 @@ struct Edge {
         return Edge{input_node, output_node};
     }
     static Edge slot_edge(const NodeLabel& output_node,
-                          uint32_t output_index,
+                          std::uint32_t output_index,
                           const NodeLabel& input_node,
-                          uint32_t input_index) {
+                          std::uint32_t input_index) {
         return Edge{input_node, output_node, input_index, output_index};
     }
 
@@ -73,8 +73,8 @@ struct Edges {
     void remove_output_edge(const Edge& edge);
     void add_input_edge(const Edge& edge);
     void add_output_edge(const Edge& edge);
-    const Edge* get_input_slot_edge(size_t index) const;
-    const Edge* get_output_slot_edge(size_t index) const;
+    const Edge* get_input_slot_edge(std::size_t index) const;
+    const Edge* get_output_slot_edge(std::size_t index) const;
 };
 /** @brief Runtime state tracking a node in the graph, including its slot
  * metadata, edges, and the polymorphic Node instance. */
@@ -111,7 +111,7 @@ export struct NodeState {
     }
 
     bool validate_input_slots() {
-        for (size_t i = 0; i < inputs.size(); i++) {
+        for (std::size_t i = 0; i < inputs.size(); i++) {
             auto edge = edges.get_input_slot_edge(i);
             if (!edge) {
                 return false;
@@ -120,7 +120,7 @@ export struct NodeState {
         return true;
     }
     bool validate_output_slots() {
-        for (size_t i = 0; i < outputs.size(); i++) {
+        for (std::size_t i = 0; i < outputs.size(); i++) {
             auto edge = edges.get_output_slot_edge(i);
             if (!edge) {
                 return false;

@@ -37,7 +37,7 @@ void MultithreadClassicExecutor::execute(ScheduleSystems& _data, World& world, c
         .wait_count          = std::vector<size_t>(cache->nodes.size(), 0),
         .child_count         = std::vector<size_t>(cache->nodes.size(), 0),
     };
-    for (auto&& [index, cached_node] : cache->nodes | std::views::enumerate) {
+    for (auto&& [index, cached_node] : std::views::enumerate(cache->nodes)) {
         exec_state.wait_count[index]  = cached_node.depends.size() + cached_node.parents.size();
         exec_state.child_count[index] = cached_node.children.size() + (cached_node.node->system ? 1 : 0);
         exec_state.untest_conditions[index].resize(cached_node.node->conditions.size(), true);
@@ -150,8 +150,7 @@ void MultithreadClassicExecutor::execute(ScheduleSystems& _data, World& world, c
     std::vector<size_t> pending_ready;  // ready nodes whose conditions can't be tested yet
     auto check_cond = [&](size_t index) -> bool {
         return std::ranges::fold_left(
-            exec_state.untest_conditions[index].iter_ones() | std::ranges::to<std::vector>() |
-                std::views::transform(
+            std::views::transform(exec_state.untest_conditions[index].iter_ones(),                
                     [&](size_t i) { return std::make_tuple(i, std::ref(*cache->nodes[index].node->conditions[i])); }),
             true, [&](bool v, auto&& pair) -> bool {
                 auto&& [cond_index, condition] = pair;
@@ -291,11 +290,13 @@ void MultithreadClassicExecutor::execute(ScheduleSystems& _data, World& world, c
         case DeferredApply::Ignore: {
             std::vector<std::shared_ptr<Node>> to_apply;
             to_apply.reserve(exec_state.finished_nodes.size());
-            std::ranges::for_each(exec_state.finished_nodes.iter_ones() | std::views::transform([&](size_t index) {
-                                      return cache->nodes[index].node;
-                                  }) | std::views::filter([&](auto&& node) {
-                                      return ((bool)node->system) && node->system.get()->is_deferred();
-                                  }),
+            std::ranges::for_each(std::views::filter(
+                                      std::views::transform(exec_state.finished_nodes.iter_ones(), [&](size_t index) {
+                                          return cache->nodes[index].node;
+                                      }),
+                                      [&](auto&& node) {
+                                          return ((bool)node->system) && node->system.get()->is_deferred();
+                                      }),
                                   [&](auto&& node) { to_apply.push_back(node); });
             _data.pending_applies = std::move(to_apply);
         } break;
@@ -312,16 +313,15 @@ void MultithreadClassicExecutor::execute(ScheduleSystems& _data, World& world, c
                 return std::format("(set {}#{})", node->label.type_index().short_name(), node->label.extra());
             }
         };
+        auto remaining_nodes = std::views::transform(exec_state.finished_nodes.iter_zeros(), index_to_name);
+        auto entered_nodes   = std::views::transform(exec_state.entered_nodes.iter_ones(), index_to_name);
+        auto remaining_depends = std::views::transform(exec_state.finished_nodes.iter_zeros(), [&](size_t i) {
+            return std::format("\n\t{}", std::views::transform(exec_state.dependencies[i].iter_ones(), index_to_name));
+        });
+        auto remaining_children = std::views::transform(exec_state.finished_nodes.iter_zeros(), [&](size_t i) {
+            return std::format("\n\t{}", std::views::transform(exec_state.children[i].iter_ones(), index_to_name));
+        });
         spdlog::error("\tRemaining: {}\tNot Exited: {}, with remaining depends:{}\n\tand remaining children:{}",
-                      exec_state.finished_nodes.iter_zeros() | std::views::transform(index_to_name),
-                      exec_state.entered_nodes.iter_ones() | std::views::transform(index_to_name),
-                      exec_state.finished_nodes.iter_zeros() | std::views::transform([&](size_t i) {
-                          return std::format(
-                              "\n\t{}", exec_state.dependencies[i].iter_ones() | std::views::transform(index_to_name));
-                      }),
-                      exec_state.finished_nodes.iter_zeros() | std::views::transform([&](size_t i) {
-                          return std::format("\n\t{}",
-                                             exec_state.children[i].iter_ones() | std::views::transform(index_to_name));
-                      }));
+                      remaining_nodes, entered_nodes, remaining_depends, remaining_children);
     }
 }

@@ -250,7 +250,7 @@ export struct AssetServer {
         // Create a handle for the not-yet-ready asset
         auto handle = [&] {
             auto guard = data->infos.write();
-            return guard->template create_loading_handle_untyped(meta::type_id<A>{});
+            return guard->create_loading_handle_untyped(meta::type_id<A>{});
         }();
         auto typed_handle = handle.template typed<A>();
         auto server       = *this;

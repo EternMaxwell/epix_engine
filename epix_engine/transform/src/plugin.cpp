@@ -39,8 +39,9 @@ void calculate_global_transform(
         }
     }
     std::unordered_map<Entity, GlobalTransform> not_added_globals;
-    for (auto entity : change_root | std::views::filter([&](const auto& pair) { return pair.first == pair.second; }) |
-                           std::views::keys) {
+    for (auto entity : std::views::keys(std::views::filter(change_root, [&](const auto& pair) {
+             return pair.first == pair.second;
+         }))) {
         auto [_, transform, children, parent, globalTransform] = query.get(entity).value();
 
         auto calculate_global = [&](this auto&& self, Entity ent, const GlobalTransform& parent_matrix) -> void {

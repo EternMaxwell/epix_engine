@@ -14,8 +14,8 @@ std::string GraphError::to_string() const {
                        },
                        [](const EdgeError& e) {
                            auto slot_label_name = [](const SlotLabel& slot) -> std::string {
-                               if (std::holds_alternative<uint32_t>(slot.label)) {
-                                   return std::to_string(std::get<uint32_t>(slot.label));
+                               if (std::holds_alternative<std::uint32_t>(slot.label)) {
+                                   return std::to_string(std::get<std::uint32_t>(slot.label));
                                } else {
                                    return std::get<std::string>(slot.label);
                                }

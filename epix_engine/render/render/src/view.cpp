@@ -80,8 +80,8 @@ void view::create_view_depth(Query<Item<Entity, const ExtractedView&>> views,
                              ResMut<ViewDepthCache> depth_cache,
                              Commands cmd) {
     wgpu::CommandEncoder encoder = device->createCommandEncoder();
-    for (auto&& [entity, view] : views.iter()) {
-        glm::uvec2 size = view.viewport_size;
+    for (auto&& [entity, ex_view] : views.iter()) {
+        glm::uvec2 size = ex_view.viewport_size;
         if (size.x == 0 || size.y == 0) {
             continue;  // invalid size
         }

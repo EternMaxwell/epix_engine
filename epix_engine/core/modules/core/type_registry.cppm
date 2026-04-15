@@ -121,10 +121,12 @@ export struct TypeRegistry {
         return typeInfos.size();
     }
 };
-}  // namespace core
+}  // namespace epix::core
 
 // temporary. currently partial specializations are errornous in modules in most compilers
 template <>
 struct std::hash<epix::core::TypeId> {
-    std::size_t operator()(const epix::core::TypeId& typeId) const noexcept { return std::hash<std::uint64_t>()(typeId); }
+    std::size_t operator()(const epix::core::TypeId& typeId) const noexcept {
+        return std::hash<std::uint64_t>()(typeId);
+    }
 };

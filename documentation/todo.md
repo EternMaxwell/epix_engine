@@ -19,3 +19,5 @@ Per-module details live in each module's `documentation/<module>/todo.md`.
 | `assets` | `AssetInfos::infos` uses `unordered_map` instead of SlotMap — potential perf gap                                 | perf     |
 
 See [documentation/core/todo.md](core/todo.md) and [documentation/assets/todo.md](assets/todo.md) for full details.
+
+| `grid`   | `ChunkLayer::supported_types` return input_iterable                                                              | feature  |

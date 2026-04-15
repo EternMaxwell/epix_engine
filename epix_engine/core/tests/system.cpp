@@ -1,12 +1,7 @@
-module;
-
 #include <gtest/gtest.h>
 
-export module epix.core:tests.system;
-
 import std;
-import :system;
-import :world;
+import epix.core;
 
 namespace {
 struct C1 {
@@ -83,7 +78,7 @@ TEST(core, system) {
     auto access  = sys->initialize(world);
     auto access2 = sys2->initialize(world);
     // std::println(std::cout, "Access conflicts: {}", access.get_conflicts(access2).to_string());
-    auto conflict_ids = access.get_conflicts(access2).ids.iter_ones() | std::ranges::to<std::vector<TypeId>>();
+    auto conflict_ids = std::ranges::to<std::vector<TypeId>>(access.get_conflicts(access2).ids.iter_ones());
     auto expected_ids = std::vector<TypeId>{registry->type_id<C1>(), registry->type_id<C2>(), registry->type_id<C3>(),
                                             registry->type_id<resource1>()};
     std::ranges::sort(expected_ids);

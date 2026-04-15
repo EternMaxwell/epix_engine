@@ -1,11 +1,7 @@
-module;
-
 #include <gtest/gtest.h>
 
-export module epix.core:tests.type_registry;
-
 import std;
-import :type_registry;
+import epix.core;
 
 using namespace epix::core;
 
@@ -17,7 +13,7 @@ struct CTType {
 }  // namespace
 
 template <size_t... Is>
-void register_all_impl(TypeRegistry* registry, size_t* out, std::index_sequence<Is...>) {
+void register_all_impl(TypeRegistry* registry, TypeId* out, std::index_sequence<Is...>) {
     ((out[Is] = registry->type_id<CTType<Is>>()), ...);
 }
 
@@ -28,7 +24,7 @@ TEST(core, type_registry) {
 
     auto registry = std::make_shared<TypeRegistry>();
 
-    std::vector<std::vector<size_t>> ids(THREADS, std::vector<size_t>(TYPE_COUNT, static_cast<size_t>(-1)));
+    std::vector<std::vector<TypeId>> ids(THREADS, std::vector<TypeId>(TYPE_COUNT, TypeId(UINT64_MAX)));
     std::atomic<bool> start{false};
     std::vector<std::thread> ths;
     ths.reserve(THREADS);
@@ -46,7 +42,7 @@ TEST(core, type_registry) {
     for (auto& th : ths) th.join();
 
     for (size_t i = 0; i < TYPE_COUNT; ++i) {
-        size_t ref = ids[0][i];
+        TypeId ref = ids[0][i];
         for (size_t t = 1; t < THREADS; ++t) {
             EXPECT_EQ(ids[t][i], ref);
         }

@@ -1,12 +1,6 @@
-module;
-
 #include <gtest/gtest.h>
 
-export module epix.core:tests.query_state;
-
-import :query;
-import :world;
-
+import epix.core;
 import std;
 
 namespace {

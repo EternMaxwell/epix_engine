@@ -3,6 +3,7 @@ module;
 export module epix.render.imgui:state;
 
 import epix.core;
+import epix.meta;
 import std;
 
 namespace epix::imgui {

@@ -91,9 +91,20 @@ void imgui::imgui_begin_frame(ResMut<ImGuiState> state,
     }
 
     if (state->initialized) {
-        ImGui_ImplGlfw_NewFrame();
-        ImGui::NewFrame();
-        state->frame_active = true;
+        // Find the primary GLFW window to check if it's still valid
+        std::optional<Entity> primary_entity;
+        for (auto&& [entity] : primary.iter()) {
+            primary_entity = entity;
+            break;
+        }
+        if (primary_entity) {
+            auto it = windows->find(*primary_entity);
+            if (it != windows->end() && !glfwWindowShouldClose(it->second)) {
+                ImGui_ImplGlfw_NewFrame();
+                ImGui::NewFrame();
+                state->frame_active = true;
+            }
+        }
     }
 }
 

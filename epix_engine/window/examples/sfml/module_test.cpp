@@ -1,5 +1,6 @@
 #include <spdlog/spdlog.h>
 
+import std;
 import epix.core;
 import epix.window;
 import epix.sfml.core;

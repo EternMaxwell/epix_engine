@@ -6,6 +6,7 @@ module epix.text;
 
 import epix.core_graph;
 import epix.render;
+import webgpu;
 import std;
 
 using namespace epix::core;
@@ -502,37 +503,37 @@ TextMesh TextMesh::from_shaped_text(const ShapedText& shaped,
                                     font::FontAtlas& atlas) {
     mesh::Mesh mesh;
     mesh.set_primitive_type(wgpu::PrimitiveTopology::eTriangleList);
-    (void)mesh.insert_attribute(mesh::Mesh::ATTRIBUTE_POSITION,
-                                shaped.glyphs() | std::views::transform([&](const GlyphInfo& glyph_info) {
-                                    std::array<glm::vec3, 4> positions;
-                                    auto glyph   = atlas.get_glyph(glyph_info.glyph_index);
-                                    float x0     = glyph_info.x_offset + glyph.horiBearingX;
-                                    float y0     = glyph_info.y_offset - glyph.height + glyph.horiBearingY;
-                                    float x1     = x0 + glyph.width;
-                                    float y1     = y0 + glyph.height;
-                                    positions[0] = glm::vec3{x0, y0, 0.0f};
-                                    positions[1] = glm::vec3{x1, y0, 0.0f};
-                                    positions[2] = glm::vec3{x1, y1, 0.0f};
-                                    positions[3] = glm::vec3{x0, y1, 0.0f};
-                                    return positions;
-                                }) | std::views::join);
-    (void)mesh.insert_attribute(kTextUvLayerAttribute,
-                                shaped.glyphs() | std::views::transform([&](const GlyphInfo& glyph_info) {
-                                    std::array<glm::vec3, 4> uvs;
-                                    auto uv = atlas.get_glyph_uv_rect(glyph_info.glyph_index);
-                                    uvs[0]  = glm::vec3{uv[0], uv[1], uv[4]};
-                                    uvs[1]  = glm::vec3{uv[2], uv[1], uv[4]};
-                                    uvs[2]  = glm::vec3{uv[2], uv[3], uv[4]};
-                                    uvs[3]  = glm::vec3{uv[0], uv[3], uv[4]};
-                                    return uvs;
-                                }) | std::views::join);
-    mesh.insert_indices<std::uint32_t>(std::views::iota(0u, static_cast<std::uint32_t>(shaped.glyphs().size())) |
-                                       std::views::transform([](std::uint32_t glyph_index) {
-                                           auto base = glyph_index * 4;
-                                           return std::array<std::uint32_t, 6>{base + 0, base + 1, base + 2,
-                                                                               base + 2, base + 3, base + 0};
-                                       }) |
-                                       std::views::join);
+    (void)mesh.insert_attribute(
+        mesh::Mesh::ATTRIBUTE_POSITION,
+        std::views::join(std::views::transform(shaped.glyphs(), [&](const GlyphInfo& glyph_info) {
+            std::array<glm::vec3, 4> positions;
+            auto glyph   = atlas.get_glyph(glyph_info.glyph_index);
+            float x0     = glyph_info.x_offset + glyph.horiBearingX;
+            float y0     = glyph_info.y_offset - glyph.height + glyph.horiBearingY;
+            float x1     = x0 + glyph.width;
+            float y1     = y0 + glyph.height;
+            positions[0] = glm::vec3{x0, y0, 0.0f};
+            positions[1] = glm::vec3{x1, y0, 0.0f};
+            positions[2] = glm::vec3{x1, y1, 0.0f};
+            positions[3] = glm::vec3{x0, y1, 0.0f};
+            return positions;
+        })));
+    (void)mesh.insert_attribute(
+        kTextUvLayerAttribute,
+        std::views::join(std::views::transform(shaped.glyphs(), [&](const GlyphInfo& glyph_info) {
+            std::array<glm::vec3, 4> uvs;
+            auto uv = atlas.get_glyph_uv_rect(glyph_info.glyph_index);
+            uvs[0]  = glm::vec3{uv[0], uv[1], uv[4]};
+            uvs[1]  = glm::vec3{uv[2], uv[1], uv[4]};
+            uvs[2]  = glm::vec3{uv[2], uv[3], uv[4]};
+            uvs[3]  = glm::vec3{uv[0], uv[3], uv[4]};
+            return uvs;
+        })));
+    mesh.insert_indices<std::uint32_t>(std::views::join(std::views::transform(
+        std::views::iota(0u, static_cast<std::uint32_t>(shaped.glyphs().size())), [](std::uint32_t glyph_index) {
+            auto base = glyph_index * 4;
+            return std::array<std::uint32_t, 6>{base + 0, base + 1, base + 2, base + 2, base + 3, base + 0};
+        })));
     auto mesh_handle = mesh_assets.emplace(std::move(mesh));
     return TextMesh(mesh_handle, shaped.left(), shaped.right(), shaped.top(), shaped.bottom(), shaped.ascent(),
                     shaped.descent());

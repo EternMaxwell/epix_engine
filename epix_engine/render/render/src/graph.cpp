@@ -23,7 +23,7 @@ bool RenderGraph::set_input(std::span<const SlotInfo> inputs) {
         spdlog::warn("Graph input node already exists. Ignoring set_input.");
         return false;
     }
-    nodes.emplace(GraphInput, NodeState(GraphInput, new GraphInputNode(inputs | std::ranges::to<std::vector>())));
+    nodes.emplace(GraphInput, NodeState(GraphInput, new GraphInputNode(std::ranges::to<std::vector>(inputs))));
     return true;
 }
 

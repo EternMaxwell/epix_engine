@@ -328,4 +328,6 @@ export struct AssetProcessor {
     static void start(core::Res<AssetProcessor> processor);
 };
 
+inline const AssetServer& ProcessContext::asset_server() const { return m_processor->get_server(); }
+
 }  // namespace epix::assets

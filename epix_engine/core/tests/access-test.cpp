@@ -1,16 +1,8 @@
-module;
-
-#ifdef EPIX_ENABLE_TEST
 #include <gtest/gtest.h>
-#endif
-
-export module epix.core:tests.query.access;
 
 import std;
+import epix.core;
 
-import :query.access;
-
-#ifdef EPIX_ENABLE_TEST
 TEST(core, access) {
     using namespace epix::core;
     // IDs (constructed directly from integers)
@@ -159,4 +151,3 @@ TEST(core, access) {
         EXPECT_TRUE(m.access().has_any_read() || m.access().has_any_write());
     }
 }
-#endif

@@ -43,34 +43,32 @@ struct ScheduleOrder {
     void insert_range_after(ScheduleLabel after, Rng&& new_labels)
         requires std::ranges::range<Rng> && std::same_as<std::ranges::range_value_t<Rng>, ScheduleLabel>
     {
-        auto existing = labels | std::ranges::to<std::unordered_set<ScheduleLabel>>();
+        auto existing = std::ranges::to<std::unordered_set<ScheduleLabel>>(labels);
         auto it       = std::find(labels.begin(), labels.end(), after);
         if (it != labels.end()) it++;
-        labels.insert_range(it, std::forward<Rng>(new_labels) | std::views::filter([&](const ScheduleLabel& label) {
-                                    return !existing.contains(label);
-                                }));
+        labels.insert_range(it, std::views::filter(std::forward<Rng>(new_labels), [&](const ScheduleLabel& label) {
+                                return !existing.contains(label);
+                            }));
     }
     /** @brief Insert a range of labels at the end, skipping duplicates. */
     template <typename Rng>
     void insert_range_end(Rng&& new_labels)
         requires std::ranges::range<Rng> && std::same_as<std::ranges::range_value_t<Rng>, ScheduleLabel>
     {
-        auto existing = labels | std::ranges::to<std::unordered_set<ScheduleLabel>>();
+        auto existing = std::ranges::to<std::unordered_set<ScheduleLabel>>(labels);
         labels.insert_range(labels.end(),
-                            std::forward<Rng>(new_labels) | std::views::filter([&](const ScheduleLabel& label) {
-                                return !existing.contains(label);
-                            }));
+                            std::views::filter(std::forward<Rng>(new_labels),
+                                               [&](const ScheduleLabel& label) { return !existing.contains(label); }));
     }
     /** @brief Insert a range of labels at the beginning, skipping duplicates. */
     template <typename Rng>
     void insert_range_begin(Rng&& new_labels)
         requires std::ranges::range<Rng> && std::same_as<std::ranges::range_value_t<Rng>, ScheduleLabel>
     {
-        auto existing = labels | std::ranges::to<std::unordered_set<ScheduleLabel>>();
+        auto existing = std::ranges::to<std::unordered_set<ScheduleLabel>>(labels);
         labels.insert_range(labels.begin(),
-                            std::forward<Rng>(new_labels) | std::views::filter([&](const ScheduleLabel& label) {
-                                return !existing.contains(label);
-                            }));
+                            std::views::filter(std::forward<Rng>(new_labels),
+                                               [&](const ScheduleLabel& label) { return !existing.contains(label); }));
     }
     /** @brief Remove a label, return true if found and removed. */
     bool remove(const ScheduleLabel& label) {
@@ -98,9 +96,9 @@ struct AppRunner {
  *  Provides a fluent API for configuration and execution. */
 struct App {
    public:
-    App(const AppLabel& label                            = AppLabel::from_type<App>(),
-        std::shared_ptr<TypeRegistry> type_registry      = std::make_shared<TypeRegistry>(),
-        std::shared_ptr<std::atomic<uint32_t>> world_ids = std::make_shared<std::atomic<uint32_t>>(0))
+    App(const AppLabel& label                                 = AppLabel::from_type<App>(),
+        std::shared_ptr<TypeRegistry> type_registry           = std::make_shared<TypeRegistry>(),
+        std::shared_ptr<std::atomic<std::uint32_t>> world_ids = std::make_shared<std::atomic<std::uint32_t>>(0))
         : _label(label), _world(world_ids->fetch_add(1), type_registry), _world_ids(world_ids) {}
     App(const App&)            = delete;
     App(App&&)                 = default;
@@ -462,16 +460,17 @@ struct App {
 
     std::unordered_map<AppLabel, std::unique_ptr<App>> _sub_apps;
 
-    std::shared_ptr<std::atomic<uint32_t>> _world_ids;
+    std::shared_ptr<std::atomic<std::uint32_t>> _world_ids;
     World _world;
 
     std::move_only_function<void(App&, World&)> extract_fn;
     std::unique_ptr<AppRunner> runner;
 
-    explicit App(DefaultCreateTag tag,
-                 const AppLabel& label                            = AppLabel::from_type<App>(),
-                 std::shared_ptr<TypeRegistry> type_registry      = std::make_shared<TypeRegistry>(),
-                 std::shared_ptr<std::atomic<uint32_t>> world_ids = std::make_shared<std::atomic<uint32_t>>(0));
+    explicit App(
+        DefaultCreateTag tag,
+        const AppLabel& label                                 = AppLabel::from_type<App>(),
+        std::shared_ptr<TypeRegistry> type_registry           = std::make_shared<TypeRegistry>(),
+        std::shared_ptr<std::atomic<std::uint32_t>> world_ids = std::make_shared<std::atomic<std::uint32_t>>(0));
 };
 static_assert(std::movable<App>);
-}  // namespace core
+}  // namespace epix::core

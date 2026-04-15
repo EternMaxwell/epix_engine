@@ -69,9 +69,9 @@ struct packed_grid {
                std::views::transform([this](std::size_t index) { return index_to_pos(index); });
     }
     /** @brief Iterate over the values of all cells (const). */
-    auto iter_cells() const { return m_cells | std::views::all; }
+    auto iter_cells() const { return std::views::all(m_cells); }
     /** @brief Iterate over the values of all cells (mutable). */
-    auto iter_cells_mut() { return m_cells | std::views::all; }
+    auto iter_cells_mut() { return std::views::all(m_cells); }
     /** @brief Iterate over (position, value) pairs for all cells (const). */
     auto iter() const { return std::views::zip(iter_pos(), m_cells); }
     /** @brief Iterate over (position, value) pairs for all cells (mutable). */
@@ -181,11 +181,11 @@ struct dense_grid {
         m_index_grid.clear();
     }
     /** @brief Iterate over the positions of all occupied cells. */
-    auto iter_pos() const { return m_positions | std::views::all; }
+    auto iter_pos() const { return std::views::all(m_positions); }
     /** @brief Iterate over the values of all occupied cells (const). */
-    auto iter_cells() const { return m_data | std::views::all; }
+    auto iter_cells() const { return std::views::all(m_data); }
     /** @brief Iterate over the values of all occupied cells (mutable). */
-    auto iter_cells_mut() { return m_data | std::views::all; }
+    auto iter_cells_mut() { return std::views::all(m_data); }
     /** @brief Iterate over (position, value) pairs for all occupied cells (const). */
     auto iter() const { return std::views::zip(m_positions, m_data); }
     /** @brief Iterate over (position, value) pairs for all occupied cells (mutable). */
@@ -436,11 +436,11 @@ struct dense_extendible_grid {
         m_origin.fill(0);
     }
     /** @brief Iterate over the positions of all occupied cells. */
-    auto iter_pos() const { return m_positions | std::views::all; }
+    auto iter_pos() const { return std::views::all(m_positions); }
     /** @brief Iterate over the values of all occupied cells (const). */
-    auto iter_cells() const { return m_data | std::views::all; }
+    auto iter_cells() const { return std::views::all(m_data); }
     /** @brief Iterate over the values of all occupied cells (mutable). */
-    auto iter_cells_mut() { return m_data | std::views::all; }
+    auto iter_cells_mut() { return std::views::all(m_data); }
     /** @brief Iterate over (position, value) pairs for all occupied cells (const). */
     auto iter() const { return std::views::zip(m_positions, m_data); }
     /** @brief Iterate over (position, value) pairs for all occupied cells (mutable). */
@@ -583,11 +583,11 @@ struct tree_extendible_grid {
     /** @brief Clear all cells in the grid. */
     void clear();
     /** @brief Iterate over the positions of all occupied cells. */
-    auto iter_pos() const { return m_positions | std::views::all; }
+    auto iter_pos() const { return std::views::all(m_positions); }
     /** @brief Iterate over the values of all occupied cells (const). */
-    auto iter_cells() const { return m_data | std::views::all; }
+    auto iter_cells() const { return std::views::all(m_data); }
     /** @brief Iterate over the values of all occupied cells (mutable). */
-    auto iter_cells_mut() { return m_data | std::views::all; }
+    auto iter_cells_mut() { return std::views::all(m_data); }
     /** @brief Iterate over (position, value) pairs for all occupied cells (const). */
     auto iter() const { return std::views::zip(m_positions, m_data); }
     /** @brief Iterate over (position, value) pairs for all occupied cells (mutable). */
@@ -726,11 +726,11 @@ struct tree_grid {
     void clear();
 
     /** @brief Iterate over the positions of all occupied cells. */
-    auto iter_pos() const { return m_positions | std::views::all; }
+    auto iter_pos() const { return std::views::all(m_positions); }
     /** @brief Iterate over the values of all occupied cells (const). */
-    auto iter_cells() const { return m_data | std::views::all; }
+    auto iter_cells() const { return std::views::all(m_data); }
     /** @brief Iterate over the values of all occupied cells (mutable). */
-    auto iter_cells_mut() { return m_data | std::views::all; }
+    auto iter_cells_mut() { return std::views::all(m_data); }
     /** @brief Iterate over (position, value) pairs for all occupied cells (const). */
     auto iter() const { return std::views::zip(m_positions, m_data); }
     /** @brief Iterate over (position, value) pairs for all occupied cells (mutable). */
@@ -966,9 +966,9 @@ std::expected<T, grid_error> dense_grid<Dim, T>::take(const std::array<std::uint
 template <std::size_t Dim, typename T>
     requires std::movable<T>
 auto sparse_grid<Dim, T>::iter_valid_indices() const {
-    return std::views::iota(0u, m_positions.size()) | std::views::filter([this](std::size_t index) {
-               return m_index_grid.get(m_positions[index]).value_or(npos) == index;
-           });
+    return std::views::filter(std::views::iota(0u, m_positions.size()), [this](std::size_t index) {
+        return m_index_grid.get(m_positions[index]).value_or(npos) == index;
+    });
 }
 template <std::size_t Dim, typename T>
     requires std::movable<T>

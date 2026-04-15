@@ -32,7 +32,7 @@ export struct TimeUpdateConfig {
     /** @brief Duration used when strategy is ManualDuration. */
     std::chrono::nanoseconds manual_duration{0};
     /** @brief Multiplier for fixed timestep when strategy is FixedTimesteps. */
-    uint32_t fixed_timestep_factor = 1;
+    std::uint32_t fixed_timestep_factor = 1;
 };
 
 /** @brief Schedule for fixed-timestep systems. Loops based on accumulated time.

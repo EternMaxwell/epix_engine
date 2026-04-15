@@ -21,7 +21,7 @@ export struct Virtual {
 
 /** @brief Virtual (game) time. Derived from real time, but can be paused,
  *  sped up, or slowed down. Delta is clamped to max_delta before scaling. */
-export template <>
+template <>
 struct Time<Virtual> : private Time<> {
     /** @brief Default maximum delta clamp (250 ms). */
     static constexpr std::chrono::nanoseconds DEFAULT_MAX_DELTA = std::chrono::milliseconds(250);

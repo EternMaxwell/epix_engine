@@ -82,7 +82,7 @@ void epix::render::window::prepare_windows(ResMut<ExtractedWindows> windows,
                                            Res<wgpu::Device> device,
                                            Res<wgpu::Instance> instance) {
     std::vector<std::pair<Entity, std::string>> errors;
-    for (auto&& window : std::views::all(windows->windows) | std::views::values) {
+    for (auto&& window : std::views::values(std::views::all(windows->windows))) {
         auto it = window_surfaces->surfaces.find(window.entity);
         if (it == window_surfaces->surfaces.end()) continue;
 
@@ -147,7 +147,7 @@ void epix::render::window::create_surfaces(Res<ExtractedWindows> windows,
                                            Res<wgpu::Instance> instance,
                                            Res<wgpu::Adapter> adapter,
                                            Res<wgpu::Device> device) {
-    for (auto&& window : std::views::all(windows->windows) | std::views::values) {
+    for (auto&& window : std::views::values(std::views::all(windows->windows))) {
         if (!window_surfaces->surfaces.contains(window.entity)) {
             spdlog::debug("[render.window] Creating surface for window entity {}.", window.entity.index);
             wgpu::Surface surface = window.create_surface(*instance);

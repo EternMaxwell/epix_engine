@@ -204,8 +204,8 @@ void MultithreadFlatExecutor::execute(ScheduleSystems& _data, World& world, cons
 
     auto check_cond = [&](size_t orig_index) -> bool {
         return std::ranges::fold_left(
-            untest_conditions[orig_index].iter_ones() | std::ranges::to<std::vector>() |
-                std::views::transform([&](size_t i) {
+            std::views::transform(untest_conditions[orig_index].iter_ones() ,
+                [&](size_t i) {
                     return std::make_tuple(i, std::ref(*cache->nodes[orig_index].node->conditions[i]));
                 }),
             true, [&](bool v, auto&& pair) -> bool {
@@ -358,6 +358,6 @@ void MultithreadFlatExecutor::execute(ScheduleSystems& _data, World& world, cons
                 return std::format("({} set {}#{})", tag, node->label.type_index().short_name(), node->label.extra());
             }
         };
-        spdlog::error("\tRemaining flat nodes: {}", finished_flat.iter_zeros() | std::views::transform(index_to_name));
+        spdlog::error("\tRemaining flat nodes: {}", std::views::transform(finished_flat.iter_zeros(), index_to_name));
     }
 }

@@ -150,7 +150,7 @@ export struct VecReader {
 
    public:
     /** @brief Construct from a byte vector. */
-    explicit VecReader(std::vector<uint8_t> bytes)
+    explicit VecReader(std::vector<std::uint8_t> bytes)
         : m_data(reinterpret_cast<const char*>(bytes.data()), bytes.size()), m_stream(m_data) {}
     /** @brief Construct from a string. */
     explicit VecReader(std::string data) : m_data(std::move(data)), m_stream(m_data) {}

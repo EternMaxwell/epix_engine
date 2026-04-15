@@ -18,12 +18,12 @@ export struct SingleThreadExecutor : ScheduleExecutor {
  *  Each original node is split into a pre node (runs system/conditions) and a post node
  *  (waits for all children to finish). Hierarchy is encoded as pure dependency edges. */
 struct FlatNode {
-    size_t original_index;
+    std::size_t original_index;
     bool is_post;
     bool has_system;
-    std::vector<size_t> flat_depends;
-    std::vector<size_t> flat_successors;
-    std::vector<size_t> parent_originals;  // pre nodes only: original parent indices for condition propagation
+    std::vector<std::size_t> flat_depends;
+    std::vector<std::size_t> flat_successors;
+    std::vector<std::size_t> parent_originals;  // pre nodes only: original parent indices for condition propagation
 };
 /** @brief Cached flat graph derived from ScheduleCache. */
 struct FlatGraphCache {
@@ -50,7 +50,7 @@ export struct TaskflowExecutor : ScheduleExecutor {
     std::unique_ptr<Impl> m_impl;
 
     TaskflowExecutor();
-    explicit TaskflowExecutor(size_t num_threads);
+    explicit TaskflowExecutor(std::size_t num_threads);
     ~TaskflowExecutor() override;
     TaskflowExecutor(TaskflowExecutor&&) noexcept;
     TaskflowExecutor& operator=(TaskflowExecutor&&) noexcept;

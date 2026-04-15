@@ -132,7 +132,7 @@ struct SpriteInstanceBuffer {
 /** @brief Render command that binds the sprite instance buffer at the given
  * bind group slot.
  * @tparam Slot Bind group index for the instance buffer. */
-template <size_t Slot>
+template <std::size_t Slot>
 struct BindSpriteInstances {
     template <render::phase::PhaseItem PhaseItem>
     struct Command {
@@ -162,7 +162,7 @@ struct BindSpriteInstances {
 /** @brief Render command that binds a sprite batch's texture at the given
  * bind group slot.
  * @tparam Slot Bind group index for the texture. */
-template <size_t Slot>
+template <std::size_t Slot>
 struct BindSpriteTexture {
     template <render::phase::PhaseItem PhaseItem>
     struct Command {

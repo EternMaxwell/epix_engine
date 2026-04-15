@@ -54,7 +54,7 @@ export struct RenderGraph {
     template <typename... Args>
     void add_node_edges(Args&&... args) {
         std::array<NodeLabel, sizeof...(args)> nodes{args...};
-        for (auto&& [node, next_node] : nodes | std::views::adjacent<2>) {
+        for (auto&& [node, next_node] : std::views::adjacent<2>(nodes)) {
             auto res = try_add_node_edge(node, next_node);
         }
     }
@@ -108,7 +108,7 @@ export struct RenderGraph {
     /** @brief Get a const sub-graph reference. Throws if not found. */
     const RenderGraph& sub_graph(const GraphLabel& id) const;
     /** @brief Iterate over all node states in this graph. */
-    auto iter_nodes() const { return nodes | std::views::values; }
+    auto iter_nodes() const { return std::views::values(nodes); }
 };
 
 struct RenderGraphRunner {

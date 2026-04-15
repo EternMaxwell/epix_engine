@@ -1,13 +1,7 @@
-module;
-
 #include <gtest/gtest.h>
 
-export module epix.core:tests.hierarchy;
-
 import std;
-
-import :hierarchy;
-import :world;
+import epix.core;
 
 TEST(core, hierarchy) {
     using namespace epix::core;
@@ -44,15 +38,10 @@ TEST(core, hierarchy) {
     EXPECT_EQ(children.entities().find(child1), children.entities().end())
         << "child1 still present in parent's Children after removing Parent from child1";
 
-    // spawn a child via CommandQueue (deferred command style)
-    CommandQueue q;
-    q.push([parent](World& w) {
-        // spawn a child under parent; spawn via entity_mut to ensure hooks run
-        if (auto pm = w.get_entity_mut(parent)) {
-            pm->spawn();
-        }
-    });
-    q.apply(world);
+    // spawn a child under parent; spawn via entity_mut to ensure hooks run
+    if (auto pm = world.get_entity_mut(parent)) {
+        pm->spawn();
+    }
 
     // find the newly spawned child (it should be present in parent's Children)
     maybe_parent_ref = world.get_entity(parent);

@@ -2,6 +2,7 @@
 
 import std;
 import epix.assets;
+import epix.meta;
 
 using namespace epix::assets;
 

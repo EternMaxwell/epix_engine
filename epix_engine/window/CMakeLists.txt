@@ -1,4 +1,8 @@
-﻿epix_add_module_subdir(epix_window window)
+﻿if(UNIX AND NOT APPLE)
+	find_package(X11 REQUIRED COMPONENTS Xrandr)
+endif()
+
+epix_add_module_subdir(epix_window window)
 target_link_libraries(epix_window PUBLIC epix_core)
 target_link_libraries(epix_window PUBLIC epix_input)
 target_link_libraries(epix_window PUBLIC epix_assets)
@@ -19,6 +23,9 @@ target_link_libraries(epix_sfml PUBLIC epix_input)
 target_link_libraries(epix_sfml PUBLIC epix_assets)
 target_link_libraries(epix_sfml PUBLIC epix_image)
 target_link_libraries(epix_sfml PUBLIC SFML::Window)
+if(UNIX AND NOT APPLE)
+	target_link_libraries(epix_sfml PRIVATE X11::X11 X11::Xrandr)
+endif()
 
 ## --- examples: auto-discover ---
 # GLFW examples

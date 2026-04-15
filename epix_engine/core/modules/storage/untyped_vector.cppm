@@ -202,16 +202,16 @@ export class untyped_vector {
 
     /** @brief Iterate over raw element pointers (mutable). */
     auto iter() {
-        return std::views::iota(std::size_t{0}, size()) | std::views::transform([this](std::size_t i) {
-                   return static_cast<void*>(static_cast<char*>(data_) + i * desc_->size);
-               });
+        return std::views::transform(std::views::iota(std::size_t{0}, size()), [this](std::size_t i) {
+            return static_cast<void*>(static_cast<char*>(data_) + i * desc_->size);
+        });
     }
 
     /** @brief Iterate over raw element pointers (const). */
     auto iter() const {
-        return std::views::iota(std::size_t{0}, size()) | std::views::transform([this](std::size_t i) {
-                   return static_cast<const void*>(static_cast<const char*>(data_) + i * desc_->size);
-               });
+        return std::views::transform(std::views::iota(std::size_t{0}, size()), [this](std::size_t i) {
+            return static_cast<const void*>(static_cast<const char*>(data_) + i * desc_->size);
+        });
     }
     /** @brief Const iteration alias. */
     auto citer() const { return iter(); }
@@ -518,4 +518,4 @@ export class untyped_vector {
         capacity_ = new_cap;
     }
 };
-}  // namespace core
+}  // namespace epix::core

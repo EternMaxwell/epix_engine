@@ -2,10 +2,11 @@ module;
 
 #include <spdlog/spdlog.h>
 
+#include <memory>
+
 #define WGPU_TARGET_MACOS 1
-#define WGPU_TARGET_LINUX_X11 2
+#define WGPU_TARGET_LINUX 2
 #define WGPU_TARGET_WINDOWS 3
-#define WGPU_TARGET_LINUX_WAYLAND 4
 #define WGPU_TARGET_EMSCRIPTEN 5
 
 #if defined(__EMSCRIPTEN__)
@@ -14,10 +15,8 @@ module;
 #define WGPU_TARGET WGPU_TARGET_WINDOWS
 #elif defined(__APPLE__)
 #define WGPU_TARGET WGPU_TARGET_MACOS
-#elif defined(_GLFW_WAYLAND)
-#define WGPU_TARGET WGPU_TARGET_LINUX_WAYLAND
 #else
-#define WGPU_TARGET WGPU_TARGET_LINUX_X11
+#define WGPU_TARGET WGPU_TARGET_LINUX
 #endif
 
 #if WGPU_TARGET == WGPU_TARGET_MACOS
@@ -34,6 +33,14 @@ module;
 
 #if WGPU_TARGET == WGPU_TARGET_WINDOWS
 #include <windows.h>
+#endif
+
+#if WGPU_TARGET == WGPU_TARGET_LINUX && !defined(SFML_USE_DRM)
+#include <X11/Xlib.h>
+
+namespace sf::priv {
+std::shared_ptr<Display> openDisplay();
+}
 #endif
 
 #include <webgpu/webgpu.h>
@@ -65,19 +72,21 @@ WGPUSurface sfmlGetWGPUSurfaceRaw(WGPUInstance instance, sf::WindowBase* window)
 
         return wgpuInstanceCreateSurface(instance, &surfaceDescriptor);
     }
-#elif WGPU_TARGET == WGPU_TARGET_LINUX_X11
+#elif WGPU_TARGET == WGPU_TARGET_LINUX
     {
-        // On X11, SFML's getNativeHandle() returns an X11 Window (unsigned long)
-        // We need to get the display separately
-        auto x11_window = static_cast<unsigned long>(reinterpret_cast<uintptr_t>(window->getNativeHandle()));
-
-        // SFML doesn't directly expose the X11 display; use the default display
-        Display* x11_display = XOpenDisplay(nullptr);
+#ifdef SFML_USE_DRM
+        throw std::runtime_error("SFML DRM backend is not supported for WebGPU surface creation");
+#else
+        auto x11_window  = static_cast<unsigned long>(reinterpret_cast<uintptr_t>(window->getNativeHandle()));
+        auto x11_display = sf::priv::openDisplay();
+        if (!x11_display || x11_window == 0) {
+            throw std::runtime_error("SFML X11 display/window handle is not available for WebGPU surface creation");
+        }
 
         WGPUSurfaceSourceXlibWindow fromXlibWindow;
         fromXlibWindow.chain.next  = NULL;
         fromXlibWindow.chain.sType = WGPUSType_SurfaceSourceXlibWindow;
-        fromXlibWindow.display     = x11_display;
+        fromXlibWindow.display     = x11_display.get();
         fromXlibWindow.window      = x11_window;
 
         WGPUSurfaceDescriptor surfaceDescriptor;
@@ -85,6 +94,7 @@ WGPUSurface sfmlGetWGPUSurfaceRaw(WGPUInstance instance, sf::WindowBase* window)
         surfaceDescriptor.label       = {NULL, WGPU_STRLEN};
 
         return wgpuInstanceCreateSurface(instance, &surfaceDescriptor);
+#endif
     }
 #elif WGPU_TARGET == WGPU_TARGET_MACOS
     {
@@ -146,16 +156,16 @@ void epix::sfml::render::SFMLRenderPlugin::build(App& app) {
                 }));
             }
         });
-    app.runner_scope([system = std::move(system)](SFMLRunner& runner) mutable {
-           runner.set_render_app(::epix::render::Render);
-           runner.append_system(std::move(system));
-       })
-        .transform_error([](App::RunnerError error) {
-            if (error == App::RunnerError::RunnerNotSet) {
-                throw std::runtime_error("SfmlRenderPlugin requires an AppRunner to be set before building");
-            } else if (error == App::RunnerError::RunnerMismatch) {
-                throw std::runtime_error("SfmlRenderPlugin requires a SFMLRunner as the AppRunner");
-            }
-            return error;
-        });
+    auto res = app.runner_scope([system = std::move(system)](SFMLRunner& runner) mutable {
+                      runner.set_render_app(::epix::render::Render);
+                      runner.append_system(std::move(system));
+                  })
+                   .transform_error([](App::RunnerError error) {
+                       if (error == App::RunnerError::RunnerNotSet) {
+                           throw std::runtime_error("SfmlRenderPlugin requires an AppRunner to be set before building");
+                       } else if (error == App::RunnerError::RunnerMismatch) {
+                           throw std::runtime_error("SfmlRenderPlugin requires a SFMLRunner as the AppRunner");
+                       }
+                       return error;
+                   });
 }

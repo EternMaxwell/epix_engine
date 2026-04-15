@@ -114,14 +114,14 @@ export struct Entities {
 
         // return std::views::concat(free_range, new_range);
 
-        return std::views::iota(range_start, range_end) | std::views::transform([this, base](std::int64_t idx) {
-                   if (idx < 0) {
-                       // This entity is newly allocated
-                       return Entity::from_index(static_cast<std::uint32_t>(base - idx - 1));
-                   } else {
-                       return Entity::from_parts(pending[idx], meta[pending[idx]].generation);
-                   }
-               });
+        return std::views::transform(std::views::iota(range_start, range_end), [this, base](std::int64_t idx) {
+            if (idx < 0) {
+                // This entity is newly allocated
+                return Entity::from_index(static_cast<std::uint32_t>(base - idx - 1));
+            } else {
+                return Entity::from_parts(pending[idx], meta[pending[idx]].generation);
+            }
+        });
     }
     /**
      * @brief Reserve a single entity ID.
@@ -231,7 +231,7 @@ export struct Entities {
             auto new_meta_len = old_meta_len + static_cast<std::size_t>(-n);
             meta.resize(new_meta_len);
 #ifdef __cpp_lib_ranges_enumerate
-            for (auto&& [index, meta] : std::views::enumerate(meta) | std::views::drop(old_meta_len)) {
+            for (auto&& [index, meta] : std::views::drop(std::views::enumerate(meta), old_meta_len)) {
                 fn(Entity::from_parts(index, meta.generation), meta.location);
             }
 #else
@@ -245,7 +245,7 @@ export struct Entities {
             n = 0;
         }
 
-        for (auto&& index : pending | std::views::drop(n)) {
+        for (auto&& index : std::views::drop(pending, n)) {
             auto& meta = this->meta[index];
             fn(Entity::from_parts(index, meta.generation), meta.location);
         }

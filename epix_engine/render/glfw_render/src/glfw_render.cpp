@@ -1,9 +1,8 @@
 module;
 
 #define WGPU_TARGET_MACOS 1
-#define WGPU_TARGET_LINUX_X11 2
+#define WGPU_TARGET_LINUX 2
 #define WGPU_TARGET_WINDOWS 3
-#define WGPU_TARGET_LINUX_WAYLAND 4
 #define WGPU_TARGET_EMSCRIPTEN 5
 
 #if defined(__EMSCRIPTEN__)
@@ -12,10 +11,8 @@ module;
 #define WGPU_TARGET WGPU_TARGET_WINDOWS
 #elif defined(__APPLE__)
 #define WGPU_TARGET WGPU_TARGET_MACOS
-#elif defined(_GLFW_WAYLAND)
-#define WGPU_TARGET WGPU_TARGET_LINUX_WAYLAND
 #else
-#define WGPU_TARGET WGPU_TARGET_LINUX_X11
+#define WGPU_TARGET WGPU_TARGET_LINUX
 #endif
 
 #if WGPU_TARGET == WGPU_TARGET_MACOS
@@ -31,9 +28,8 @@ module;
 
 #if WGPU_TARGET == WGPU_TARGET_MACOS
 #define GLFW_EXPOSE_NATIVE_COCOA
-#elif WGPU_TARGET == WGPU_TARGET_LINUX_X11
+#elif WGPU_TARGET == WGPU_TARGET_LINUX
 #define GLFW_EXPOSE_NATIVE_X11
-#elif WGPU_TARGET == WGPU_TARGET_LINUX_WAYLAND
 #define GLFW_EXPOSE_NATIVE_WAYLAND
 #elif WGPU_TARGET == WGPU_TARGET_WINDOWS
 #define GLFW_EXPOSE_NATIVE_WIN32
@@ -73,39 +69,51 @@ WGPUSurface glfwGetWGPUSurfaceRaw(WGPUInstance instance, GLFWwindow* window) {
 
         return wgpuInstanceCreateSurface(instance, &surfaceDescriptor);
     }
-#elif WGPU_TARGET == WGPU_TARGET_LINUX_X11
+#elif WGPU_TARGET == WGPU_TARGET_LINUX
     {
-        Display* x11_display = glfwGetX11Display();
-        Window x11_window    = glfwGetX11Window(window);
+        switch (glfwGetPlatform()) {
+            case GLFW_PLATFORM_X11: {
+                Display* x11_display = glfwGetX11Display();
+                Window x11_window    = glfwGetX11Window(window);
+                if (x11_display == nullptr || x11_window == 0) {
+                    throw std::runtime_error("GLFW selected X11, but no X11 display/window handle is available");
+                }
 
-        WGPUSurfaceSourceXlibWindow fromXlibWindow;
-        fromXlibWindow.chain.next  = NULL;
-        fromXlibWindow.chain.sType = WGPUSType_SurfaceSourceXlibWindow;
-        fromXlibWindow.display     = x11_display;
-        fromXlibWindow.window      = x11_window;
+                WGPUSurfaceSourceXlibWindow fromXlibWindow;
+                fromXlibWindow.chain.next  = NULL;
+                fromXlibWindow.chain.sType = WGPUSType_SurfaceSourceXlibWindow;
+                fromXlibWindow.display     = x11_display;
+                fromXlibWindow.window      = x11_window;
 
-        WGPUSurfaceDescriptor surfaceDescriptor;
-        surfaceDescriptor.nextInChain = &fromXlibWindow.chain;
-        surfaceDescriptor.label       = {NULL, WGPU_STRLEN};
+                WGPUSurfaceDescriptor surfaceDescriptor;
+                surfaceDescriptor.nextInChain = &fromXlibWindow.chain;
+                surfaceDescriptor.label       = {NULL, WGPU_STRLEN};
 
-        return wgpuInstanceCreateSurface(instance, &surfaceDescriptor);
-    }
-#elif WGPU_TARGET == WGPU_TARGET_LINUX_WAYLAND
-    {
-        struct wl_display* wayland_display = glfwGetWaylandDisplay();
-        struct wl_surface* wayland_surface = glfwGetWaylandWindow(window);
+                return wgpuInstanceCreateSurface(instance, &surfaceDescriptor);
+            }
+            case GLFW_PLATFORM_WAYLAND: {
+                wl_display* wayland_display = glfwGetWaylandDisplay();
+                wl_surface* wayland_surface = glfwGetWaylandWindow(window);
+                if (wayland_display == nullptr || wayland_surface == nullptr) {
+                    throw std::runtime_error(
+                        "GLFW selected Wayland, but no Wayland display/surface handle is available");
+                }
 
-        WGPUSurfaceSourceWaylandSurface fromWaylandSurface;
-        fromWaylandSurface.chain.next  = NULL;
-        fromWaylandSurface.chain.sType = WGPUSType_SurfaceSourceWaylandSurface;
-        fromWaylandSurface.display     = wayland_display;
-        fromWaylandSurface.surface     = wayland_surface;
+                WGPUSurfaceSourceWaylandSurface fromWaylandSurface;
+                fromWaylandSurface.chain.next  = NULL;
+                fromWaylandSurface.chain.sType = WGPUSType_SurfaceSourceWaylandSurface;
+                fromWaylandSurface.display     = wayland_display;
+                fromWaylandSurface.surface     = wayland_surface;
 
-        WGPUSurfaceDescriptor surfaceDescriptor;
-        surfaceDescriptor.nextInChain = &fromWaylandSurface.chain;
-        surfaceDescriptor.label       = {NULL, WGPU_STRLEN};
+                WGPUSurfaceDescriptor surfaceDescriptor;
+                surfaceDescriptor.nextInChain = &fromWaylandSurface.chain;
+                surfaceDescriptor.label       = {NULL, WGPU_STRLEN};
 
-        return wgpuInstanceCreateSurface(instance, &surfaceDescriptor);
+                return wgpuInstanceCreateSurface(instance, &surfaceDescriptor);
+            }
+            default:
+                throw std::runtime_error("GLFW selected an unsupported Linux platform for WebGPU surface creation");
+        }
     }
 #elif WGPU_TARGET == WGPU_TARGET_WINDOWS
     {
@@ -166,16 +174,16 @@ void epix::glfw::render::GLFWRenderPlugin::build(App& app) {
                 }));
             }
         });
-    app.runner_scope([system = std::move(system)](GLFWRunner& runner) mutable {
-           runner.set_render_app(::epix::render::Render);
-           runner.append_system(std::move(system));
-       })
-        .transform_error([](App::RunnerError error) {
-            if (error == App::RunnerError::RunnerNotSet) {
-                throw std::runtime_error("GlfwRenderPlugin requires an AppRunner to be set before building");
-            } else if (error == App::RunnerError::RunnerMismatch) {
-                throw std::runtime_error("GlfwRenderPlugin requires a GLFWRunner as the AppRunner");
-            }
-            return error;
-        });
+    auto res = app.runner_scope([system = std::move(system)](GLFWRunner& runner) mutable {
+                      runner.set_render_app(::epix::render::Render);
+                      runner.append_system(std::move(system));
+                  })
+                   .transform_error([](App::RunnerError error) {
+                       if (error == App::RunnerError::RunnerNotSet) {
+                           throw std::runtime_error("GlfwRenderPlugin requires an AppRunner to be set before building");
+                       } else if (error == App::RunnerError::RunnerMismatch) {
+                           throw std::runtime_error("GlfwRenderPlugin requires a GLFWRunner as the AppRunner");
+                       }
+                       return error;
+                   });
 }

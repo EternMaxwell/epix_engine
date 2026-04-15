@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
-#include <uuid.h>
 
 import std;
+import webgpu;
 import epix.assets;
 import epix.shader;
 import epix.extension.grid;

@@ -2,6 +2,7 @@ export module epix.experimental.fallingsand;
 
 import std;
 import glm;
+import webgpu;
 import BS.thread_pool;
 
 import epix.assets;
@@ -12,9 +13,9 @@ import epix.render;
 import epix.transform;
 import epix.input;
 import epix.window;
+import epix.time;
 
 import epix.extension.grid;
-import epix.time;
 
 using namespace epix::core;
 
@@ -75,13 +76,13 @@ export struct ElementRegistry {
     }
     const ElementBase& operator[](std::size_t id) const { return elements[id]; }  // TODO: contract check in cpp26
     auto iter() const {
-        return name_to_id | std::views::transform([&elements = this->elements](auto&& pair) {
-                   auto&& [name, id] = pair;
-                   return std::tuple<const std::string&, const ElementBase&>{name, elements[id]};
-               });
+        return std::views::transform(name_to_id, [&elements = this->elements](auto&& pair) {
+            auto&& [name, id] = pair;
+            return std::tuple<const std::string&, const ElementBase&>{name, elements[id]};
+        });
     }
-    auto iter_names() const { return name_to_id | std::views::keys; }
-    auto iter_elements() const { return elements | std::views::all; }
+    auto iter_names() const { return std::views::keys(name_to_id); }
+    auto iter_elements() const { return std::views::all(elements); }
 };
 
 export struct Element {
@@ -222,27 +223,28 @@ export struct SandSimulation : grid::ExtendibleChunkRefGrid<kDim> {
     void step_cells() {
         const std::int64_t cw = static_cast<std::int64_t>(chunk_width());
 
-        auto chunk_coords = iter_chunk_pos() | std::ranges::to<std::vector>();
+        auto chunk_coords = std::ranges::to<std::vector>(iter_chunk_pos());
         static auto rng   = std::mt19937{std::random_device{}()};
         std::shuffle(chunk_coords.begin(), chunk_coords.end(), rng);
 
         for (auto&& [rx, ry] : std::views::cartesian_product(std::views::iota(0, 3), std::views::iota(0, 3))) {
-            for (auto&& cpos : chunk_coords | std::views::filter([rx, ry](auto&& cpos) {
-                                   auto&& [cx, cy] = cpos;
-                                   auto x_r        = (cx % 3 + 3) % 3;
-                                   auto y_r        = (cy % 3 + 3) % 3;
-                                   return x_r == rx && y_r == ry;
-                               })) {
+            for (auto&& cpos : std::views::filter(chunk_coords, [rx, ry](auto&& cpos) {
+                     auto&& [cx, cy] = cpos;
+                     auto x_r        = (cx % 3 + 3) % 3;
+                     auto y_r        = (cy % 3 + 3) % 3;
+                     return x_r == rx && y_r == ry;
+                 })) {
                 thread_pool->detach_task([cpos, cw, this] {
-                    for (auto&& [x, y] : get_chunk(cpos).value().get().iter<Element>() | std::views::elements<0> |
-                                             std::views::transform([cpos, cw](auto&& cell_pos) {
-                                                 auto&& [cx, cy] = cpos;
-                                                 auto&& [lx, ly] = cell_pos;
-                                                 return std::array<std::int64_t, 2>{
-                                                     static_cast<std::int64_t>(cx) * cw + static_cast<std::int64_t>(lx),
-                                                     static_cast<std::int64_t>(cy) * cw + static_cast<std::int64_t>(ly),
-                                                 };
-                                             })) {
+                    for (auto&& [x, y] : std::views::transform(
+                             std::views::elements<0>(get_chunk(cpos).value().get().iter<Element>()),
+                             [cpos, cw](auto&& cell_pos) {
+                                 auto&& [cx, cy] = cpos;
+                                 auto&& [lx, ly] = cell_pos;
+                                 return std::array<std::int64_t, 2>{
+                                     static_cast<std::int64_t>(cx) * cw + static_cast<std::int64_t>(lx),
+                                     static_cast<std::int64_t>(cy) * cw + static_cast<std::int64_t>(ly),
+                                 };
+                             })) {
                         if (!has_cell(x, y)) continue;
 
                         if (move_cell(x, y, x, y - 1)) continue;
@@ -272,10 +274,10 @@ export struct SandSimulation : grid::ExtendibleChunkRefGrid<kDim> {
           element_registry(std::move(registry)),
           m_cell_size(cell_size) {
         auto sand_res  = element_registry->register_element(ElementBase{
-             .name    = "sand",
-             .density = 1.0f,
-             .type    = ElementType::Powder,
-             .color_func =
+            .name    = "sand",
+            .density = 1.0f,
+            .type    = ElementType::Powder,
+            .color_func =
                 [](std::uint64_t sd) {
                     float t = static_cast<float>(std::hash<std::uint64_t>{}(sd)) /
                               static_cast<float>(std::numeric_limits<std::uint64_t>::max());
@@ -404,28 +406,25 @@ export struct SandSimulation : grid::ExtendibleChunkRefGrid<kDim> {
     }
 
     static mesh::Mesh build_chunk_mesh(const grid::Chunk<kDim>& chunk, float cell_size) {
-        auto positions_view = chunk.iter<Element>() | std::views::elements<0> |
-                              std::views::transform([cell_size](std::array<std::uint32_t, kDim> pos) {
-                                  float x = static_cast<float>(pos[0]) * cell_size;
-                                  float y = static_cast<float>(pos[1]) * cell_size;
-                                  return std::array<glm::vec3, 4>{{{x, y, 0.0f},
-                                                                   {x + cell_size, y, 0.0f},
-                                                                   {x + cell_size, y + cell_size, 0.0f},
-                                                                   {x, y + cell_size, 0.0f}}};
-                              }) |
-                              std::views::join;
-        auto colors_view = chunk.iter<Element>() | std::views::transform([&chunk](auto&& pair) {
-                               auto&& [pos, elem] = pair;
-                               return std::array<glm::vec4, 4>{elem.color, elem.color, elem.color, elem.color};
-                           }) |
-                           std::views::join;
-        auto indices_view =
-            chunk.iter<Element>() | std::views::enumerate | std::views::transform([](auto&& indexed_pair) {
+        auto positions_view = std::views::join(std::views::transform(
+            std::views::elements<0>(chunk.iter<Element>()), [cell_size](std::array<std::uint32_t, kDim> pos) {
+                float x = static_cast<float>(pos[0]) * cell_size;
+                float y = static_cast<float>(pos[1]) * cell_size;
+                return std::array<glm::vec3, 4>{{{x, y, 0.0f},
+                                                 {x + cell_size, y, 0.0f},
+                                                 {x + cell_size, y + cell_size, 0.0f},
+                                                 {x, y + cell_size, 0.0f}}};
+            }));
+        auto colors_view    = std::views::join(std::views::transform(chunk.iter<Element>(), [&](auto&& pair) {
+            auto&& [pos, elem] = pair;
+            return std::array<glm::vec4, 4>{elem.color, elem.color, elem.color, elem.color};
+        }));
+        auto indices_view   = std::views::join(
+            std::views::transform(std::views::enumerate(chunk.iter<Element>()), [](auto&& indexed_pair) {
                 auto&& [i, pair]   = indexed_pair;
                 std::uint32_t base = static_cast<std::uint32_t>(i) * 4;
                 return std::array<std::uint32_t, 6>{{base + 0, base + 1, base + 2, base + 2, base + 3, base + 0}};
-            }) |
-            std::views::join;
+            }));
 
         return mesh::Mesh()
             .with_primitive_type(wgpu::PrimitiveTopology::eTriangleList)
@@ -507,16 +506,16 @@ export struct SandSimulation : grid::ExtendibleChunkRefGrid<kDim> {
                 if (!tracked_children.outline_entity.has_value()) {
                     auto outline_mesh =
                         meshes->emplace(build_chunk_outline_mesh(sim->chunk_width(), current_cell_size));
-                    auto outline_entity = cmd.entity(chunk_entity)
-                                              .spawn(SandChunkOutline{}, mesh::Mesh2d{outline_mesh},
-                                                     mesh::MeshMaterial2d{
-                                                         .color      = glm::vec4(1.0f, 1.0f, 1.0f, 0.55f),
-                                                         .alpha_mode = mesh::MeshAlphaMode2d::Blend,
-                                                     },
-                                                     transform::Transform{
-                                                         .translation = glm::vec3(0.0f, 0.0f, 0.01f),
-                                                     })
-                                              .id();
+                    auto outline_entity             = cmd.entity(chunk_entity)
+                                                          .spawn(SandChunkOutline{}, mesh::Mesh2d{outline_mesh},
+                                                                 mesh::MeshMaterial2d{
+                                                                     .color      = glm::vec4(1.0f, 1.0f, 1.0f, 0.55f),
+                                                                     .alpha_mode = mesh::MeshAlphaMode2d::Blend,
+                                                                 },
+                                                                 transform::Transform{
+                                                                     .translation = glm::vec3(0.0f, 0.0f, 0.01f),
+                                                                 })
+                                                          .id();
                     tracked_children.outline_entity = outline_entity;
                 }
             } else {

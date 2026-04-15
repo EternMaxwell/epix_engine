@@ -7,6 +7,7 @@ import epix.render;
 import epix.transform;
 
 import std;
+import webgpu;
 
 using namespace epix::core;
 using namespace epix::render;
@@ -43,14 +44,14 @@ export struct Transparent2D {
     /** @brief Draw function ID for rendering this item. */
     phase::DrawFunctionId draw_func;
     /** @brief Number of instances in this batch. */
-    size_t batch_count;
+    std::size_t batch_count;
 
     Entity entity() const { return id; }
     float sort_key() const { return -depth; }  // inverse depth for back-to-front rendering
     phase::DrawFunctionId draw_function() const { return draw_func; }
     CachedPipelineId pipeline() const { return pipeline_id; }
 
-    size_t batch_size() const { return batch_count; }
+    std::size_t batch_size() const { return batch_count; }
 };
 static_assert(phase::BatchedPhaseItem<Transparent2D>);
 static_assert(phase::CachedRenderPipelinePhaseItem<Transparent2D>);
@@ -67,7 +68,7 @@ export struct Opaque2D {
     /** @brief Draw function ID for rendering this item. */
     phase::DrawFunctionId draw_func;
     /** @brief Number of instances in this batch. */
-    size_t batch_count;
+    std::size_t batch_count;
     /** @brief Sort key for front-to-back opaque ordering. */
     phase::OpaqueSortKey batch_key;
 
@@ -75,7 +76,7 @@ export struct Opaque2D {
     const phase::OpaqueSortKey& sort_key() const { return batch_key; }
     phase::DrawFunctionId draw_function() const { return draw_func; }
     CachedPipelineId pipeline() const { return pipeline_id; }
-    size_t batch_size() const { return batch_count; }
+    std::size_t batch_size() const { return batch_count; }
 };
 static_assert(phase::BatchedPhaseItem<Opaque2D>);
 static_assert(phase::CachedRenderPipelinePhaseItem<Opaque2D>);
@@ -94,13 +95,13 @@ export struct UI2DItem {
     /** @brief Draw function ID for rendering this item. */
     phase::DrawFunctionId draw_func;
     /** @brief Number of instances in this batch. */
-    size_t batch_count;
+    std::size_t batch_count;
 
     Entity entity() const { return id; }
     int sort_key() const { return order; }
     phase::DrawFunctionId draw_function() const { return draw_func; }
     CachedPipelineId pipeline() const { return pipeline_id; }
-    size_t batch_size() const { return batch_count; }
+    std::size_t batch_size() const { return batch_count; }
 };
 
 template <typename P>
@@ -169,7 +170,7 @@ export struct Camera2DBundle {
 
 template <>
 struct epix::core::Bundle<epix::core_graph::core_2d::Camera2DBundle> {
-    static size_t write(epix::core_graph::core_2d::Camera2DBundle& bundle, std::span<void*> dest) {
+    static std::size_t write(epix::core_graph::core_2d::Camera2DBundle& bundle, std::span<void*> dest) {
         new (dest[0]) render::camera::Camera(std::move(bundle.camera));
         new (dest[1]) render::camera::Projection(std::move(bundle.projection));
         new (dest[2]) render::camera::CameraRenderGraph(std::move(bundle.render_graph));

@@ -48,7 +48,7 @@ export struct GraphContext {
      * @return Pointer to the value, or nullptr if not found. */
     const SlotValue* get_input(const SlotLabel& label) const {
         return m_node_state.inputs.get_slot_index(label)
-            .transform([&](uint32_t index) -> const SlotValue* { return &m_inputs[index]; })
+            .transform([&](std::uint32_t index) -> const SlotValue* { return &m_inputs[index]; })
             .value_or(nullptr);
     }
     /** @brief Get an Entity-typed input by label. */

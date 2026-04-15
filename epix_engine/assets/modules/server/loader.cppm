@@ -241,7 +241,6 @@ struct RequestHandleMismatch {
     meta::type_index requested_type;
     meta::type_index actual_type;
     std::string_view loader_name;
-    bool operator==(const RequestHandleMismatch&) const = default;
 };
 /** @brief No asset loader is registered for this extension/type.
  *  Matches bevy_asset AssetLoadError::MissingAssetLoader. */
@@ -250,7 +249,6 @@ struct MissingAssetLoader {
     std::optional<meta::type_index> asset_type;
     AssetPath path;
     std::vector<std::string> extension;
-    bool operator==(const MissingAssetLoader&) const = default;
 };
 /** @brief The asset loader returned an error or threw an exception.
  *  Merges bevy_asset's AssetLoaderError and AssetLoaderPanic (no panic in C++). */
@@ -258,50 +256,42 @@ struct AssetLoaderException {
     std::exception_ptr exception;
     AssetPath path;
     std::string_view loader_name;
-    bool operator==(const AssetLoaderException&) const = default;
 };
 /** @brief The AssetReader returned an error while reading the asset file.
  *  Matches bevy_asset AssetLoadError::AssetReaderError. */
 struct AssetReaderError {
     epix::assets::AssetReaderError error;
-    bool operator==(const AssetReaderError&) const = default;
 };
 /** @brief The asset source does not exist.
  *  Matches bevy_asset AssetLoadError::MissingAssetSourceError. */
 struct MissingAssetSourceError {
     AssetSourceId source_id;
-    bool operator==(const MissingAssetSourceError&) const = default;
 };
 /** @brief No processed AssetReader is configured for the source.
  *  Matches bevy_asset AssetLoadError::MissingProcessedAssetReaderError. */
 struct MissingProcessedAssetReaderError {
     AssetSourceId source_id;
-    bool operator==(const MissingProcessedAssetReaderError&) const = default;
 };
 /** @brief Failed to read the asset metadata bytes from the reader.
  *  Matches bevy_asset AssetLoadError::AssetMetaReadError. */
 struct AssetMetaReadError {
     AssetPath path;
-    bool operator==(const AssetMetaReadError&) const = default;
 };
 /** @brief Failed to deserialize asset meta.
  *  Matches bevy_asset AssetLoadError::DeserializeMeta. */
 struct DeserializeMeta {
     AssetPath path;
     std::string error;
-    bool operator==(const DeserializeMeta&) const = default;
 };
 /** @brief Asset is configured to be processed and cannot be loaded directly.
  *  Matches bevy_asset AssetLoadError::CannotLoadProcessedAsset. */
 struct CannotLoadProcessedAsset {
     AssetPath path;
-    bool operator==(const CannotLoadProcessedAsset&) const = default;
 };
 /** @brief Asset is configured to be ignored and cannot be loaded.
  *  Matches bevy_asset AssetLoadError::CannotLoadIgnoredAsset. */
 struct CannotLoadIgnoredAsset {
     AssetPath path;
-    bool operator==(const CannotLoadIgnoredAsset&) const = default;
 };
 /** @brief The loaded asset contains no labeled sub-asset matching the requested label.
  *  Matches bevy_asset AssetLoadError::MissingLabel. */
@@ -309,7 +299,6 @@ struct MissingLabel {
     AssetPath base_path;
     std::string label;
     std::vector<std::string> all_labels;
-    bool operator==(const MissingLabel&) const = default;
 };
 }  // namespace load_error
 

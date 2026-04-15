@@ -153,31 +153,31 @@ export class bit_vector {
      * bits. */
     auto intersection(const bit_vector& o) const noexcept {
         const size_type upper = std::min(bits_, o.bits_);
-        return std::views::iota((size_type)0, upper) |
-               std::views::filter([this, &o](size_type i) { return test(i) && o.test(i); });
+        return std::views::filter(std::views::iota((size_type)0, upper),
+                                  [this, &o](size_type i) { return test(i) && o.test(i); });
     }
 
     /** @brief Return a lazy view of indices where either bitvector has a set
      * bit. */
     auto set_union(const bit_vector& o) const noexcept {
         const size_type upper = std::max(bits_, o.bits_);
-        return std::views::iota((size_type)0, upper) |
-               std::views::filter([this, &o](size_type i) { return this->contains(i) || o.contains(i); });
+        return std::views::filter(std::views::iota((size_type)0, upper),
+                                  [this, &o](size_type i) { return this->contains(i) || o.contains(i); });
     }
 
     /** @brief Return a lazy view of indices set in this but not in @p o. */
     auto difference(const bit_vector& o) const noexcept {
         const size_type upper = bits_;
-        return std::views::iota((size_type)0, upper) |
-               std::views::filter([this, &o](size_type i) { return this->contains(i) && !o.contains(i); });
+        return std::views::filter(std::views::iota((size_type)0, upper),
+                                  [this, &o](size_type i) { return this->contains(i) && !o.contains(i); });
     }
 
     /** @brief Return a lazy view of indices set in exactly one of the two
      * bitvectors. */
     auto symmetric_difference(const bit_vector& o) const noexcept {
         const size_type upper = std::max(bits_, o.bits_);
-        return std::views::iota((size_type)0, upper) |
-               std::views::filter([this, &o](size_type i) { return this->contains(i) != o.contains(i); });
+        return std::views::filter(std::views::iota((size_type)0, upper),
+                                  [this, &o](size_type i) { return this->contains(i) != o.contains(i); });
     }
 
     /** @brief Count bits set in the intersection of this and @p o. */
@@ -290,14 +290,13 @@ export class bit_vector {
 
     /** @brief Return a lazy range of indices where bits are set. */
     auto iter_ones() const noexcept {
-        return std::views::iota((size_type)0, bits_) |
-               std::views::filter([this](size_type i) { return this->test(i); });
+        return std::views::filter(std::views::iota((size_type)0, bits_), [this](size_type i) { return this->test(i); });
     }
 
     /** @brief Return a lazy range of indices where bits are unset. */
     auto iter_zeros() const noexcept {
-        return std::views::iota((size_type)0, bits_) |
-               std::views::filter([this](size_type i) { return !this->test(i); });
+        return std::views::filter(std::views::iota((size_type)0, bits_),
+                                  [this](size_type i) { return !this->test(i); });
     }
 
     /** @brief Clear the bit at @p pos. */
@@ -509,7 +508,7 @@ export class bit_vector {
         resize(pos + 1, false);
     }
 };
-}  // namespace utils
+}  // namespace epix::utils
 
 template <>
 struct std::hash<::epix::utils::bit_vector> {

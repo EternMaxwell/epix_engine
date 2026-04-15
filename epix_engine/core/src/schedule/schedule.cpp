@@ -28,8 +28,9 @@ void Schedule::add_config(SetConfig config, bool accept_system) {
                 std::swap(node, _data.nodes.at(*config.label));
             }
             node->edges.merge(_data.nodes.at(*config.label)->edges);
-            node->conditions.insert_range(node->conditions.end(),
-                                          std::move(_data.nodes.at(*config.label)->conditions) | std::views::as_rvalue);
+            node->conditions.insert_range(node->conditions.end(), std::views::as_rvalue(
+                                                                     std::move(_data.nodes.at(*config.label)
+                                                                                   ->conditions)));
             _data.nodes.at(*config.label) = node;
         } else {
             _data.nodes.emplace(*config.label, node);
@@ -107,23 +108,19 @@ std::expected<void, SchedulePrepareError> Schedule::prepare(bool check_error) {
         CachedNode& cached_node = schedule_cache.nodes.emplace_back();
         cached_node.node        = node;
     }
-    for (auto&& [index, cached_node] : schedule_cache.nodes | std::views::enumerate) {
-        cached_node.depends =
-            cached_node.node->validated_edges.depends |
-            std::views::transform([&](const SystemSetLabel& label) { return schedule_cache.node_map.at(label); }) |
-            std::ranges::to<std::vector<size_t>>();
-        cached_node.successors =
-            cached_node.node->validated_edges.successors |
-            std::views::transform([&](const SystemSetLabel& label) { return schedule_cache.node_map.at(label); }) |
-            std::ranges::to<std::vector<size_t>>();
-        cached_node.parents =
-            cached_node.node->validated_edges.parents |
-            std::views::transform([&](const SystemSetLabel& label) { return schedule_cache.node_map.at(label); }) |
-            std::ranges::to<std::vector<size_t>>();
-        cached_node.children =
-            cached_node.node->validated_edges.children |
-            std::views::transform([&](const SystemSetLabel& label) { return schedule_cache.node_map.at(label); }) |
-            std::ranges::to<std::vector<size_t>>();
+    for (auto&& [index, cached_node] : std::views::enumerate(schedule_cache.nodes)) {
+        cached_node.depends = std::ranges::to<std::vector<size_t>>(std::views::transform(
+            cached_node.node->validated_edges.depends,
+            [&](const SystemSetLabel& label) { return schedule_cache.node_map.at(label); }));
+        cached_node.successors = std::ranges::to<std::vector<size_t>>(std::views::transform(
+            cached_node.node->validated_edges.successors,
+            [&](const SystemSetLabel& label) { return schedule_cache.node_map.at(label); }));
+        cached_node.parents = std::ranges::to<std::vector<size_t>>(std::views::transform(
+            cached_node.node->validated_edges.parents,
+            [&](const SystemSetLabel& label) { return schedule_cache.node_map.at(label); }));
+        cached_node.children = std::ranges::to<std::vector<size_t>>(std::views::transform(
+            cached_node.node->validated_edges.children,
+            [&](const SystemSetLabel& label) { return schedule_cache.node_map.at(label); }));
     }
     if (!check_error) {
         return {};
@@ -267,8 +264,7 @@ void Schedule::initialize_systems(World& world, bool force) {
             node->system_access = node->system->initialize(world);
         }
         node->condition_access.resize(node->conditions.size());
-        for (auto&& [index, condition] :
-             node->conditions | std::views::enumerate | std::views::filter([&](auto&& pair) {
+        for (auto&& [index, condition] : std::views::filter(std::views::enumerate(node->conditions), [&](auto&& pair) {
                  auto&& [index, condition] = pair;
                  return force || !condition->initialized();
              })) {

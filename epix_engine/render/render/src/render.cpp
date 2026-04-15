@@ -59,7 +59,15 @@ void RenderPlugin::build(App& app) {
     if (!adapter) {
         throw std::runtime_error("Failed to request WebGPU adapter");
     }
-    spdlog::debug("[render] WebGPU adapter acquired.");
+    // show info about acquired adapter
+    {
+        wgpu::AdapterInfo adapterInfo;
+        adapter.getInfo(&adapterInfo);
+        spdlog::info("[render] Acquired WebGPU adapter: vender={}, architecture={}, device={}, description={}",
+                     std::string_view(adapterInfo.vendor), std::string_view(adapterInfo.architecture),
+                     std::string_view(adapterInfo.device), std::string_view(adapterInfo.description));
+    }
+
     wgpu::DeviceDescriptor deviceDesc =
         wgpu::DeviceDescriptor()
             .setLabel("Render Device")

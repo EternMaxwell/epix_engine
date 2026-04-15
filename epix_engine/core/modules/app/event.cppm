@@ -84,7 +84,7 @@ struct Events {
     /** @brief Check if the queue contains no events. */
     bool empty() const { return m_events.empty(); }
     /** @brief Number of currently live events. */
-    size_t size() const { return m_events.size(); }
+    std::size_t size() const { return m_events.size(); }
     /** @brief Get the head (oldest live) event index. */
     std::uint32_t head() const { return m_head; }
     /** @brief Get the tail (next write) event index. */
@@ -139,20 +139,20 @@ struct EventReader {
 
     /** @brief Return a range of unread events, advancing the cursor past them. */
     auto read() {
-        return std::views::iota(_cursor->index, _events->tail()) |
-               std::views::transform([this](std::uint32_t index) mutable {
-                   _cursor->index++;
-                   return *_events->get(index);
-               });
+        return std::views::transform(std::views::iota(_cursor->index, _events->tail()),
+                                     [this](std::uint32_t index) mutable {
+                                         _cursor->index++;
+                                         return *_events->get(index);
+                                     });
     }
     /** @brief Return a range of (id, event) pairs for unread events. */
     auto read_with_id() {
-        return std::views::iota(_cursor->index, _events->tail()) |
-               std::views::transform([this](std::uint32_t index) mutable {
-                   auto event = _events->get(index);
-                   _cursor->index++;
-                   return std::tuple<std::uint32_t, const T&>(index, *event);
-               });
+        return std::views::transform(std::views::iota(_cursor->index, _events->tail()),
+                                     [this](std::uint32_t index) mutable {
+                                         auto event = _events->get(index);
+                                         _cursor->index++;
+                                         return std::tuple<std::uint32_t, const T&>(index, *event);
+                                     });
     }
     /** @brief Number of events not yet consumed by this reader. */
     std::uint32_t size() const { return _events->tail() - _cursor->index; }
@@ -173,12 +173,12 @@ struct EventReader {
         }
     }
     /** @brief Read one event with its index, or std::nullopt if none remain. */
-    std::optional<std::tuple<const T&, uint32_t>> read_one_index() {
+    std::optional<std::tuple<const T&, std::uint32_t>> read_one_index() {
         auto event = _events->get(_cursor->index);
         if (event) {
-            uint32_t current_index = _cursor->index;
+            std::uint32_t current_index = _cursor->index;
             _cursor->index++;
-            return std::tuple<const T&, uint32_t>(*event, current_index);
+            return std::tuple<const T&, std::uint32_t>(*event, current_index);
         } else {
             return std::nullopt;
         }
@@ -216,4 +216,4 @@ struct EventWriter {
 };
 static_assert(from_param<EventWriter<int>>);
 static_assert(system_param<EventWriter<int>>);
-}  // namespace core
+}  // namespace epix::core

@@ -238,7 +238,7 @@ export struct EntityWorldMut : public EntityRefMut {
         try {
             auto bundle_id =
                 world_bundles_mut(*world_).init_dynamic_info(world_storage_mut(*world_), world_components(*world_),
-                                                             type_ids | std::ranges::to<std::vector<TypeId>>());
+                                                             std::ranges::to<std::vector<TypeId>>(type_ids));
             remove_bundle(bundle_id);
         } catch (const std::bad_optional_access&) {
             return;  // some component not found, do nothing

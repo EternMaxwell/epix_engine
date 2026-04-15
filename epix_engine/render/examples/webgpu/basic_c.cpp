@@ -65,7 +65,7 @@ WGPUSurface glfwGetWGPUSurface(WGPUInstance instance, GLFWwindow* window) {
 
         WGPUSurfaceDescriptor surfaceDescriptor;
         surfaceDescriptor.nextInChain = &fromMetalLayer.chain;
-        surfaceDescriptor.label       = NULL;
+        surfaceDescriptor.label       = {NULL, WGPU_STRLEN};
 
         return wgpuInstanceCreateSurface(instance, &surfaceDescriptor);
     }
@@ -82,7 +82,7 @@ WGPUSurface glfwGetWGPUSurface(WGPUInstance instance, GLFWwindow* window) {
 
         WGPUSurfaceDescriptor surfaceDescriptor;
         surfaceDescriptor.nextInChain = &fromXlibWindow.chain;
-        surfaceDescriptor.label       = NULL;
+        surfaceDescriptor.label       = {NULL, WGPU_STRLEN};
 
         return wgpuInstanceCreateSurface(instance, &surfaceDescriptor);
     }
@@ -99,7 +99,7 @@ WGPUSurface glfwGetWGPUSurface(WGPUInstance instance, GLFWwindow* window) {
 
         WGPUSurfaceDescriptor surfaceDescriptor;
         surfaceDescriptor.nextInChain = &fromWaylandSurface.chain;
-        surfaceDescriptor.label       = NULL;
+        surfaceDescriptor.label       = {NULL, WGPU_STRLEN};
 
         return wgpuInstanceCreateSurface(instance, &surfaceDescriptor);
     }
@@ -129,7 +129,7 @@ WGPUSurface glfwGetWGPUSurface(WGPUInstance instance, GLFWwindow* window) {
 
         WGPUSurfaceDescriptor surfaceDescriptor;
         surfaceDescriptor.nextInChain = &fromCanvasHTMLSelector.chain;
-        surfaceDescriptor.label       = NULL;
+        surfaceDescriptor.label       = {NULL, WGPU_STRLEN};
 
         return wgpuInstanceCreateSurface(instance, &surfaceDescriptor);
     }

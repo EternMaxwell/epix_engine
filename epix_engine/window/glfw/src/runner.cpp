@@ -66,55 +66,47 @@ bool GLFWRunner::step(App& app) {
     GLFWPlugin::poll_events();
     app.world_scope([&](World& world) {
         for (auto&& sys : glfw_systems) {
-            sys->run({}, world)
-                .transform([&]() { sys->apply_deferred(world); })
-                .transform_error([&](const RunSystemError& error) {
-                    std::visit(
-                        visitor{[&](const ValidateParamError& validate_error) {
-                                    spdlog::error("GLFW System [{}] parameter validation error: type: {}, msg: {}",
-                                                  sys->name(), validate_error.param_type.short_name(),
-                                                  validate_error.message);
-                                },
-                                [&](const SystemException& sys_exception) {
-                                    try {
-                                        if (sys_exception.exception) std::rethrow_exception(sys_exception.exception);
-                                    } catch (const std::exception& e) {
-                                        spdlog::error("GLFW System [{}] exception during run: {}", sys->name(),
-                                                      e.what());
-                                    } catch (...) {
-                                        spdlog::error("GLFW System [{}] unknown exception during run.", sys->name());
-                                    }
-                                }},
-                        error);
-                    return error;
-                });
+            auto res = sys->run({}, world).transform_error([&](const RunSystemError& error) {
+                std::visit(visitor{[&](const ValidateParamError& validate_error) {
+                                       spdlog::error("GLFW System [{}] parameter validation error: type: {}, msg: {}",
+                                                     sys->name(), validate_error.param_type.short_name(),
+                                                     validate_error.message);
+                                   },
+                                   [&](const SystemException& sys_exception) {
+                                       try {
+                                           if (sys_exception.exception) std::rethrow_exception(sys_exception.exception);
+                                       } catch (const std::exception& e) {
+                                           spdlog::error("GLFW System [{}] exception during run: {}", sys->name(),
+                                                         e.what());
+                                       } catch (...) {
+                                           spdlog::error("GLFW System [{}] unknown exception during run.", sys->name());
+                                       }
+                                   }},
+                           error);
+                return error;
+            });
         }
         for (auto&& sys : extra_systems) {
             if (!sys->initialized()) sys->initialize(world);
-            sys->run({}, world)
-                .transform([&]() { sys->apply_deferred(world); })
-                .transform_error([&](const RunSystemError& error) {
-                    std::visit(visitor{[&](const ValidateParamError& validate_error) {
-                                           spdlog::error(
-                                               "GLFW extra system [{}] parameter validation error: type: {}, msg: {}",
-                                               sys->name(), validate_error.param_type.short_name(),
-                                               validate_error.message);
-                                       },
-                                       [&](const SystemException& sys_exception) {
-                                           try {
-                                               if (sys_exception.exception)
-                                                   std::rethrow_exception(sys_exception.exception);
-                                           } catch (const std::exception& e) {
-                                               spdlog::error("GLFW extra system [{}] exception during run: {}",
-                                                             sys->name(), e.what());
-                                           } catch (...) {
-                                               spdlog::error("GLFW extra system [{}] unknown exception during run.",
-                                                             sys->name());
-                                           }
-                                       }},
-                               error);
-                    return error;
-                });
+            auto res = sys->run({}, world).transform_error([&](const RunSystemError& error) {
+                std::visit(
+                    visitor{
+                        [&](const ValidateParamError& validate_error) {
+                            spdlog::error("GLFW extra system [{}] parameter validation error: type: {}, msg: {}",
+                                          sys->name(), validate_error.param_type.short_name(), validate_error.message);
+                        },
+                        [&](const SystemException& sys_exception) {
+                            try {
+                                if (sys_exception.exception) std::rethrow_exception(sys_exception.exception);
+                            } catch (const std::exception& e) {
+                                spdlog::error("GLFW extra system [{}] exception during run: {}", sys->name(), e.what());
+                            } catch (...) {
+                                spdlog::error("GLFW extra system [{}] unknown exception during run.", sys->name());
+                            }
+                        }},
+                    error);
+                return error;
+            });
         }
         // std::ranges::for_each(glfw_systems, [&](auto& sys) { sys->run({}, world); });
     });
@@ -147,8 +139,11 @@ void GLFWRunner::exit(App& app) {
     spdlog::debug("[glfw] Runner exiting, destroying windows and terminating GLFW.");
     if (render_app_future) {
         auto sub = render_app_future->get();
-        if (sub) app.insert_sub_app(*render_app_label, std::move(sub));
+        if (sub) sub.reset();  // destroy sub app
         render_app_future.reset();
+    }
+    if (render_app_label) {
+        app.take_sub_app(*render_app_label).reset();
     }
     app.world_scope([&](World& world) {
         auto res = remove_window->run({}, world);

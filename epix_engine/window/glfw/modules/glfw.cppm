@@ -4,6 +4,7 @@ module;
 
 export module epix.glfw.core;
 
+import std;
 import epix.core;
 import epix.input;
 import epix.window;
@@ -145,7 +146,8 @@ export struct GLFWPlugin {
     static void update_pos(
         Commands commands,
         Query<Item<Entity, Mut<window::Window>, Opt<const window::CachedWindow&>, Opt<const Parent&>>> windows,
-        ResMut<GLFWwindows> glfw_windows);
+        ResMut<GLFWwindows> glfw_windows,
+        Local<std::unordered_map<Entity, std::pair<int, int>>> pending_window_positions);
     /** @brief System that creates native GLFW windows for new Window entities. */
     static void create_windows(Commands cmd,
                                Query<Item<Entity, Mut<window::Window>, Opt<Ref<Parent>>, Opt<Ref<Children>>>> windows,
@@ -185,4 +187,4 @@ export struct GLFWPlugin {
    private:
     static GLFWwindow* create_window(Entity id, window::Window& window);
 };
-}  // namespace glfw
+}  // namespace epix::glfw

@@ -7,6 +7,7 @@ export module epix.mesh:mesh;
 import std;
 import webgpu;
 import epix.core;
+import epix.meta;
 import glm;
 
 namespace epix::mesh {
@@ -320,11 +321,11 @@ export struct Mesh {
     std::map<std::size_t, MeshAttributeData> _attributes;
     std::optional<MeshIndices> _indices;
 };
-export const MeshAttribute Mesh::ATTRIBUTE_POSITION{"position", 0, wgpu::VertexFormat::eFloat32x3};
-export const MeshAttribute Mesh::ATTRIBUTE_COLOR{"color", 1, wgpu::VertexFormat::eFloat32x4};
-export const MeshAttribute Mesh::ATTRIBUTE_NORMAL{"normal", 2, wgpu::VertexFormat::eFloat32x3};
-export const MeshAttribute Mesh::ATTRIBUTE_UV0{"uv0", 3, wgpu::VertexFormat::eFloat32x2};
-export const MeshAttribute Mesh::ATTRIBUTE_UV1{"uv1", 4, wgpu::VertexFormat::eFloat32x2};
+const MeshAttribute Mesh::ATTRIBUTE_POSITION{"position", 0, wgpu::VertexFormat::eFloat32x3};
+const MeshAttribute Mesh::ATTRIBUTE_COLOR{"color", 1, wgpu::VertexFormat::eFloat32x4};
+const MeshAttribute Mesh::ATTRIBUTE_NORMAL{"normal", 2, wgpu::VertexFormat::eFloat32x3};
+const MeshAttribute Mesh::ATTRIBUTE_UV0{"uv0", 3, wgpu::VertexFormat::eFloat32x2};
+const MeshAttribute Mesh::ATTRIBUTE_UV1{"uv1", 4, wgpu::VertexFormat::eFloat32x2};
 
 /** @brief Create a circle mesh centered at origin with given radius.
  * @param segment_count Number of line segments; auto-calculated if not provided.

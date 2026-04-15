@@ -130,7 +130,7 @@ struct SlotInfos {
     SlotInfos& operator=(const SlotInfos&) = default;
     SlotInfos& operator=(SlotInfos&&)      = default;
 
-    size_t size() const { return slots.size(); }
+    std::size_t size() const { return slots.size(); }
     bool empty() const { return slots.empty(); }
     std::optional<std::reference_wrapper<SlotInfo>> get_slot(const SlotLabel& label) {
         return get_slot_index(label).transform([this](std::uint32_t index) { return std::ref(slots[index]); });

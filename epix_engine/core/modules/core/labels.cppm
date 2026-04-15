@@ -8,7 +8,7 @@ import :label;
 
 #ifndef EPIX_MAKE_LABEL
 #define EPIX_MAKE_LABEL(type)                                                         \
-    struct type : public ::epix::core::Label {                                              \
+    struct type : public ::epix::core::Label {                                        \
        public:                                                                        \
         type() = default;                                                             \
         template <typename T>                                                         \
@@ -26,20 +26,26 @@ export EPIX_MAKE_LABEL(SystemSetLabel);
 export EPIX_MAKE_LABEL(ScheduleLabel);
 /** @brief Label type for identifying sub-applications. */
 export EPIX_MAKE_LABEL(AppLabel);
-}  // namespace core
+}  // namespace epix::core
 
 // Temporary. Partial specializations are errornous in modules in most compilers currently
 namespace std {
 template <>
 struct hash<::epix::core::AppLabel> {
-    size_t operator()(const ::epix::core::AppLabel& label) const noexcept { return std::hash<::epix::core::Label>()(label); }
+    std::size_t operator()(const ::epix::core::AppLabel& label) const noexcept {
+        return std::hash<::epix::core::Label>()(label);
+    }
 };
 template <>
 struct hash<::epix::core::ScheduleLabel> {
-    size_t operator()(const ::epix::core::ScheduleLabel& label) const noexcept { return std::hash<::epix::core::Label>()(label); }
+    std::size_t operator()(const ::epix::core::ScheduleLabel& label) const noexcept {
+        return std::hash<::epix::core::Label>()(label);
+    }
 };
 template <>
 struct hash<::epix::core::SystemSetLabel> {
-    size_t operator()(const ::epix::core::SystemSetLabel& label) const noexcept { return std::hash<::epix::core::Label>()(label); }
+    std::size_t operator()(const ::epix::core::SystemSetLabel& label) const noexcept {
+        return std::hash<::epix::core::Label>()(label);
+    }
 };
 }  // namespace std

@@ -26,7 +26,7 @@ std::expected<std::reference_wrapper<const MeshAttributeData>, MeshError> Mesh::
     return std::cref(it->second);
 }
 
-std::expected<std::reference_wrapper<const MeshAttributeData>, MeshError> Mesh::get_attribute(size_t slot) const {
+std::expected<std::reference_wrapper<const MeshAttributeData>, MeshError> Mesh::get_attribute(std::size_t slot) const {
     if (auto it = _attributes.find(slot); it != _attributes.end()) {
         return std::cref(it->second);
     }
@@ -46,7 +46,7 @@ std::expected<std::reference_wrapper<MeshAttributeData>, MeshError> Mesh::get_at
     return std::ref(it->second);
 }
 
-std::expected<std::reference_wrapper<MeshAttributeData>, MeshError> Mesh::get_attribute_mut(size_t slot) {
+std::expected<std::reference_wrapper<MeshAttributeData>, MeshError> Mesh::get_attribute_mut(std::size_t slot) {
     if (auto it = _attributes.find(slot); it != _attributes.end()) {
         return std::ref(it->second);
     }
@@ -66,7 +66,7 @@ std::expected<MeshAttributeData, MeshError> Mesh::remove_attribute(const MeshAtt
     _attributes.erase(it);
     return data;
 }
-std::expected<MeshAttributeData, MeshError> Mesh::remove_attribute(size_t slot) {
+std::expected<MeshAttributeData, MeshError> Mesh::remove_attribute(std::size_t slot) {
     if (auto it = _attributes.find(slot); it != _attributes.end()) {
         MeshAttributeData data = std::move(it->second);
         _attributes.erase(it);

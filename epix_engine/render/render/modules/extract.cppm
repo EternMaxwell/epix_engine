@@ -1,6 +1,7 @@
 export module epix.render:extract;
 
 import epix.core;
+import epix.meta;
 import std;
 
 import :schedule;

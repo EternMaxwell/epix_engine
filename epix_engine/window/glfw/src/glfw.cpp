@@ -31,32 +31,43 @@ GLFWwindow* GLFWPlugin::create_window(Entity id, Window& desc) {
     glfwWindowHint(GLFW_FOCUSED, GLFW_TRUE);
     glfwWindowHint(GLFW_AUTO_ICONIFY, GLFW_FALSE);
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+    glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
+    glfwWindowHint(GLFW_RESIZABLE, desc.resizable ? GLFW_TRUE : GLFW_FALSE);
+    glfwWindowHint(GLFW_DECORATED,
+                   desc.window_mode == WindowMode::Windowed && desc.decorations ? GLFW_TRUE : GLFW_FALSE);
+    glfwWindowHint(GLFW_MAXIMIZED, desc.maximized ? GLFW_TRUE : GLFW_FALSE);
+    glfwWindowHint(GLFW_FLOATING, desc.window_level == WindowLevel::AlwaysOnTop ? GLFW_TRUE : GLFW_FALSE);
 
     auto [width, height] = desc.size;
-    auto window          = glfwCreateWindow(width, height, desc.title.c_str(), nullptr, nullptr);
-    if (!window) {
-        throw std::runtime_error("Failed to create GLFW window");
-    }
-    spdlog::trace("[glfw] GLFW window handle created for entity {}.", id.index);
-    glfwSetWindowPos(window, desc.final_pos.first, desc.final_pos.second);
-    // window mode
-    int monitor_count = 0;
-    auto monitors     = glfwGetMonitors(&monitor_count);
+    int monitor_count    = 0;
+    auto monitors        = glfwGetMonitors(&monitor_count);
     if (desc.monitor >= monitor_count || desc.monitor < 0) {
         desc.monitor = 0;  // reset to default monitor
     }
     auto monitor    = monitors[desc.monitor];
     auto video_mode = glfwGetVideoMode(monitor);
-    if (desc.window_mode == WindowMode::Windowed) {
-        // switch to windowed mode
-        glfwSetWindowMonitor(window, nullptr, desc.final_pos.first, desc.final_pos.second, desc.size.first,
-                             desc.size.second, 0);
-    } else if (desc.window_mode == WindowMode::Fullscreen) {
-        // switch to fullscreen mode
-        glfwSetWindowMonitor(window, monitor, 0, 0, video_mode->width, video_mode->height, video_mode->refreshRate);
+
+    GLFWmonitor* create_monitor = nullptr;
+    if (desc.window_mode == WindowMode::Fullscreen) {
+        create_monitor = monitor;
+        width          = video_mode->width;
+        height         = video_mode->height;
     } else if (desc.window_mode == WindowMode::BorderlessFullscreen) {
-        // switch to borderless mode
-        glfwSetWindowMonitor(window, monitor, 0, 0, video_mode->width, video_mode->height, video_mode->refreshRate);
+        width  = video_mode->width;
+        height = video_mode->height;
+    }
+
+    auto window = glfwCreateWindow(width, height, desc.title.c_str(), create_monitor, nullptr);
+    if (!window) {
+        throw std::runtime_error("Failed to create GLFW window");
+    }
+    spdlog::trace("[glfw] GLFW window handle created for entity {}.", id.index);
+    if (desc.window_mode == WindowMode::Windowed) {
+        glfwSetWindowPos(window, desc.final_pos.first, desc.final_pos.second);
+    } else if (desc.window_mode == WindowMode::BorderlessFullscreen) {
+        glfwSetWindowPos(window, 0, 0);
+        glfwSetWindowAttrib(window, GLFW_DECORATED, GLFW_FALSE);
+        glfwSetWindowSize(window, video_mode->width, video_mode->height);
     }
     glfwSetWindowOpacity(window, desc.opacity);
     glfwSetWindowSizeLimits(window, desc.size_limits.min_width, desc.size_limits.min_height, desc.size_limits.max_width,
@@ -115,6 +126,9 @@ GLFWwindow* GLFWPlugin::create_window(Entity id, Window& desc) {
         auto* user_data = static_cast<UserData*>(glfwGetWindowUserPointer(window));
         user_data->moved.emplace(x, y);
     });
+    if (desc.visible) {
+        glfwShowWindow(window);
+    }
     return window;
 }
 
@@ -140,7 +154,8 @@ void GLFWPlugin::update_size(Query<Item<Entity, Mut<Window>, const CachedWindow&
 }
 void GLFWPlugin::update_pos(Commands commands,
                             Query<Item<Entity, Mut<Window>, Opt<const CachedWindow&>, Opt<const Parent&>>> windows,
-                            ResMut<GLFWwindows> glfw_windows) {
+                            ResMut<GLFWwindows> glfw_windows,
+                            Local<std::unordered_map<Entity, std::pair<int, int>>> pending_window_positions) {
     /// For all windows in the query, if it has been cached(created), then if
     /// the pos has been changed manually, e.g. different with cached, then
     /// the new pos should be calculated with new final pos and new pos_type if
@@ -188,7 +203,8 @@ void GLFWPlugin::update_pos(Commands commands,
                 }
                 if (desc.pos_type == PosType::Relative) {
                     if (parent_pos) {
-                        desc.pos = {parent_pos->first + desc.pos.first, parent_pos->second + desc.pos.second};
+                        desc.pos = {desc.final_pos.first - parent_pos->first,
+                                    desc.final_pos.second - parent_pos->second};
                     } else {
                         desc.pos_type = PosType::Centered;
                     }
@@ -221,14 +237,15 @@ void GLFWPlugin::update_pos(Commands commands,
                 }
                 if (desc.pos_type == PosType::Relative) {
                     if (parent_pos) {
-                        desc.pos = {parent_pos->first + desc.pos.first, parent_pos->second + desc.pos.second};
+                        desc.pos = {desc.final_pos.first - parent_pos->first,
+                                    desc.final_pos.second - parent_pos->second};
                     } else {
                         desc.pos_type = PosType::Centered;
                     }
                 }
                 if (desc.pos_type == PosType::Centered) {
-                    desc.pos = {desc.final_pos.first - (video_mode->width - desc.size.first) / 2,
-                                desc.final_pos.second - (video_mode->height - desc.size.second) / 2};
+                    desc.pos = {desc.final_pos.first - monitor_x - (video_mode->width - desc.size.first) / 2,
+                                desc.final_pos.second - monitor_y - (video_mode->height - desc.size.second) / 2};
                 }
             }
             // if this window has a parent, we need to recalculate the final pos
@@ -236,17 +253,32 @@ void GLFWPlugin::update_pos(Commands commands,
             if (desc.pos_type == PosType::Relative && parent_pos) {
                 desc.final_pos = {parent_pos->first + desc.pos.first, parent_pos->second + desc.pos.second};
             }
-            if (desc.final_pos != cached.final_pos || desc.pos != cached.pos || desc.pos_type != cached.pos_type) {
+            const bool requested_native_move =
+                desc.final_pos != cached.final_pos || desc.pos != cached.pos || desc.pos_type != cached.pos_type;
+            if (requested_native_move) {
                 // set the new position to the glfw window
                 glfwSetWindowPos(glfw_window, desc.final_pos.first, desc.final_pos.second);
                 cached.final_pos = desc.final_pos;
                 cached.pos       = desc.pos;
                 cached.pos_type  = desc.pos_type;
+                pending_window_positions->insert_or_assign(id, desc.final_pos);
+                final_positions[id] = desc.final_pos;
+                return desc.final_pos;
             }
             {
                 // read from glfw window, and guarantee that the ultimate
                 // position is correct.
-                glfwGetWindowPos(glfw_window, &desc.final_pos.first, &desc.final_pos.second);
+                int actual_x = 0;
+                int actual_y = 0;
+                glfwGetWindowPos(glfw_window, &actual_x, &actual_y);
+                if (auto pending = pending_window_positions->find(id); pending != pending_window_positions->end()) {
+                    if (pending->second.first != actual_x || pending->second.second != actual_y) {
+                        final_positions[id] = pending->second;
+                        return pending->second;
+                    }
+                    pending_window_positions->erase(pending);
+                }
+                desc.final_pos   = {actual_x, actual_y};
                 cached.final_pos = desc.final_pos;
                 // calculate the pos based on final_pos
                 const auto& final_pos = desc.final_pos;
@@ -262,8 +294,8 @@ void GLFWPlugin::update_pos(Commands commands,
                     }
                 }
                 if (desc.pos_type == PosType::Centered) {
-                    pos = {final_pos.first - (video_mode->width - desc.size.first) / 2,
-                           final_pos.second - (video_mode->height - desc.size.second) / 2};
+                    pos = {final_pos.first - monitor_x - (video_mode->width - desc.size.first) / 2,
+                           final_pos.second - monitor_y - (video_mode->height - desc.size.second) / 2};
                 }
                 desc.pos            = pos;
                 cached.final_pos    = desc.final_pos;
@@ -588,8 +620,11 @@ void GLFWPlugin::toggle_window_mode(Query<Item<Entity, Mut<Window>, const Cached
                 }
                 auto* monitor    = monitors[desc.monitor];
                 auto* video_mode = glfwGetVideoMode(monitor);
-                glfwSetWindowMonitor(window, monitor, 0, 0, video_mode->width, video_mode->height,
-                                     video_mode->refreshRate);
+                int monitor_x    = 0;
+                int monitor_y    = 0;
+                glfwGetMonitorPos(monitor, &monitor_x, &monitor_y);
+                glfwSetWindowMonitor(window, nullptr, monitor_x, monitor_y, video_mode->width, video_mode->height, 0);
+                glfwSetWindowAttrib(window, GLFW_DECORATED, GLFW_FALSE);
                 cached_window_sizes->emplace(id, CachedWindowPosSize{desc.final_pos.first, desc.final_pos.second,
                                                                      desc.size.first, desc.size.second});
             }
@@ -603,7 +638,16 @@ void GLFWPlugin::toggle_window_mode(Query<Item<Entity, Mut<Window>, const Cached
             }
             auto* monitor    = monitors[desc.monitor];
             auto* video_mode = glfwGetVideoMode(monitor);
-            glfwSetWindowMonitor(window, monitor, 0, 0, video_mode->width, video_mode->height, video_mode->refreshRate);
+            if (desc.window_mode == WindowMode::Fullscreen) {
+                glfwSetWindowMonitor(window, monitor, 0, 0, video_mode->width, video_mode->height,
+                                     video_mode->refreshRate);
+            } else {
+                int monitor_x = 0;
+                int monitor_y = 0;
+                glfwGetMonitorPos(monitor, &monitor_x, &monitor_y);
+                glfwSetWindowMonitor(window, nullptr, monitor_x, monitor_y, video_mode->width, video_mode->height, 0);
+                glfwSetWindowAttrib(window, GLFW_DECORATED, GLFW_FALSE);
+            }
             cached_window_sizes->emplace(id, CachedWindowPosSize{desc.final_pos.first, desc.final_pos.second,
                                                                  desc.size.first, desc.size.second});
         }
@@ -688,7 +732,7 @@ void GLFWPlugin::send_cached_events(Query<Item<const CachedWindow&>> cached_wind
         }
         auto cache_opt = cached_windows.get(id);
         if (!cache_opt.has_value()) continue;
-        auto&& [cached_window] = cached_windows.get(id).value();
+        auto&& [cached_window] = cache_opt.value();
         const auto& cached     = *reinterpret_cast<const Window*>(&cached_window);
         while (auto cursor_pos = user_data->cursor_pos.try_pop()) {
             // send out
@@ -708,10 +752,10 @@ void GLFWPlugin::destroy_windows(Query<Item<Entity, const Window&>> windows,
         still_alive.insert(id);
     }
     std::vector<Entity> to_erase;
-    for (auto&& [id, glfw_window] : std::views::all(*glfw_windows) | std::views::filter([&](auto&& tuple) {
-                                        auto&& [id, _] = tuple;
-                                        return !still_alive.contains(id);
-                                    })) {
+    for (auto&& [id, glfw_window] : std::views::filter(std::views::all(*glfw_windows), [&](auto&& tuple) {
+             auto&& [id, _] = tuple;
+             return !still_alive.contains(id);
+         })) {
         auto* window = glfw_window;
         window_closed.write(WindowClosed{id});
         auto user_data = static_cast<UserData*>(glfwGetWindowUserPointer(window));

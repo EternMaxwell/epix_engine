@@ -47,9 +47,9 @@ SFMLRunner::SFMLRunner(App& app) {
     clipboard_update_system->set_name("sfml_clipboard_update");
 
     auto sfml_systems = std::array{
-        toggle_window_mode_system.get(), update_size_system.get(),          update_pos_system.get(),
-        create_windows_system.get(),     poll_and_send_events_system.get(), update_window_states_system.get(),
-        destroy_windows_system.get(),    clipboard_set_text_system.get(),   clipboard_update_system.get(),
+        destroy_windows_system.get(),    toggle_window_mode_system.get(), update_size_system.get(),
+        update_pos_system.get(),         create_windows_system.get(),     update_window_states_system.get(),
+        clipboard_set_text_system.get(), clipboard_update_system.get(),   poll_and_send_events_system.get(),
     };
     app.world_scope(
         [&](World& world) { std::ranges::for_each(sfml_systems, [&](auto& sys) { sys->initialize(world); }); });
@@ -62,61 +62,53 @@ struct visitor : Ts... {
 
 bool SFMLRunner::step(App& app) {
     auto sfml_systems = std::array{
-        toggle_window_mode_system.get(), update_size_system.get(),          update_pos_system.get(),
-        create_windows_system.get(),     poll_and_send_events_system.get(), update_window_states_system.get(),
-        destroy_windows_system.get(),    clipboard_set_text_system.get(),   clipboard_update_system.get(),
+        destroy_windows_system.get(),    toggle_window_mode_system.get(), update_size_system.get(),
+        update_pos_system.get(),         create_windows_system.get(),     update_window_states_system.get(),
+        clipboard_set_text_system.get(), clipboard_update_system.get(),   poll_and_send_events_system.get(),
     };
     app.world_scope([&](World& world) {
         for (auto&& sys : sfml_systems) {
-            sys->run({}, world)
-                .transform([&]() { sys->apply_deferred(world); })
-                .transform_error([&](const RunSystemError& error) {
-                    std::visit(
-                        visitor{[&](const ValidateParamError& validate_error) {
-                                    spdlog::error("SFML System [{}] parameter validation error: type: {}, msg: {}",
-                                                  sys->name(), validate_error.param_type.short_name(),
-                                                  validate_error.message);
-                                },
-                                [&](const SystemException& sys_exception) {
-                                    try {
-                                        if (sys_exception.exception) std::rethrow_exception(sys_exception.exception);
-                                    } catch (const std::exception& e) {
-                                        spdlog::error("SFML System [{}] exception during run: {}", sys->name(),
-                                                      e.what());
-                                    } catch (...) {
-                                        spdlog::error("SFML System [{}] unknown exception during run.", sys->name());
-                                    }
-                                }},
-                        error);
-                    return error;
-                });
+            auto res = sys->run({}, world).transform_error([&](const RunSystemError& error) {
+                std::visit(visitor{[&](const ValidateParamError& validate_error) {
+                                       spdlog::error("SFML System [{}] parameter validation error: type: {}, msg: {}",
+                                                     sys->name(), validate_error.param_type.short_name(),
+                                                     validate_error.message);
+                                   },
+                                   [&](const SystemException& sys_exception) {
+                                       try {
+                                           if (sys_exception.exception) std::rethrow_exception(sys_exception.exception);
+                                       } catch (const std::exception& e) {
+                                           spdlog::error("SFML System [{}] exception during run: {}", sys->name(),
+                                                         e.what());
+                                       } catch (...) {
+                                           spdlog::error("SFML System [{}] unknown exception during run.", sys->name());
+                                       }
+                                   }},
+                           error);
+                return error;
+            });
         }
         for (auto&& sys : extra_systems) {
             if (!sys->initialized()) sys->initialize(world);
-            sys->run({}, world)
-                .transform([&]() { sys->apply_deferred(world); })
-                .transform_error([&](const RunSystemError& error) {
-                    std::visit(visitor{[&](const ValidateParamError& validate_error) {
-                                           spdlog::error(
-                                               "SFML extra system [{}] parameter validation error: type: {}, msg: {}",
-                                               sys->name(), validate_error.param_type.short_name(),
-                                               validate_error.message);
-                                       },
-                                       [&](const SystemException& sys_exception) {
-                                           try {
-                                               if (sys_exception.exception)
-                                                   std::rethrow_exception(sys_exception.exception);
-                                           } catch (const std::exception& e) {
-                                               spdlog::error("SFML extra system [{}] exception during run: {}",
-                                                             sys->name(), e.what());
-                                           } catch (...) {
-                                               spdlog::error("SFML extra system [{}] unknown exception during run.",
-                                                             sys->name());
-                                           }
-                                       }},
-                               error);
-                    return error;
-                });
+            auto res = sys->run({}, world).transform_error([&](const RunSystemError& error) {
+                std::visit(
+                    visitor{
+                        [&](const ValidateParamError& validate_error) {
+                            spdlog::error("SFML extra system [{}] parameter validation error: type: {}, msg: {}",
+                                          sys->name(), validate_error.param_type.short_name(), validate_error.message);
+                        },
+                        [&](const SystemException& sys_exception) {
+                            try {
+                                if (sys_exception.exception) std::rethrow_exception(sys_exception.exception);
+                            } catch (const std::exception& e) {
+                                spdlog::error("SFML extra system [{}] exception during run: {}", sys->name(), e.what());
+                            } catch (...) {
+                                spdlog::error("SFML extra system [{}] unknown exception during run.", sys->name());
+                            }
+                        }},
+                    error);
+                return error;
+            });
         }
     });
     app.update();
@@ -148,8 +140,11 @@ bool SFMLRunner::step(App& app) {
 void SFMLRunner::exit(App& app) {
     if (render_app_future) {
         auto sub = render_app_future->get();
-        if (sub) app.insert_sub_app(*render_app_label, std::move(sub));
+        if (sub) sub.reset();  // destroy sub app
         render_app_future.reset();
+    }
+    if (render_app_label) {
+        app.take_sub_app(*render_app_label).reset();
     }
     app.world_scope([&](World& world) {
         auto res = remove_window->run({}, world);

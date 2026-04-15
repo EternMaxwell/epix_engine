@@ -273,11 +273,11 @@ struct DrawFunctions {
         auto&& [m_mutex, m_functions] = *m_data;
         {
             std::shared_lock lock(m_mutex);
-            auto id = m_functions.get_id<T>();
+            auto id = m_functions.template get_id<T>();
             if (id) return *id;
         }
         std::unique_lock lock(m_mutex);
-        return m_functions.add<T>(std::forward<Args>(args)...);
+        return m_functions.template add<T>(std::forward<Args>(args)...);
     }
     std::optional<DrawFunctionId> get_id(const meta::type_index& type) const {
         auto&& [m_mutex, m_functions] = *m_data;
@@ -334,7 +334,7 @@ struct RenderPhase {
             std::ranges::sort(items, [](const T& a, const T& b) { return a.sort_key() < b.sort_key(); });
         }
     }
-    auto iter_entities() const { return items | std::views::transform(T::entity); }
+    auto iter_entities() const { return std::views::transform(items, T::entity); }
     void render(const wgpu::RenderPassEncoder& cmd, const World& world, Entity view) const {
         render_range(cmd, world, view, 0, items.size());
     }

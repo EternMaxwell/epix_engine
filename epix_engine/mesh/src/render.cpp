@@ -364,8 +364,8 @@ struct Mesh2dPipelineCache {
             return it->second;
         }
 
-        std::vector<wgpu::VertexBufferLayout> vertex_buffers =
-            layout | std::views::values | std::views::transform([](const MeshAttribute& attribute) {
+        std::vector<wgpu::VertexBufferLayout> vertex_buffers = std::ranges::to<std::vector>(
+            std::views::transform(std::views::values(layout), [](const MeshAttribute& attribute) {
                 return wgpu::VertexBufferLayout()
                     .setArrayStride(vertex_format_size(attribute.format))
                     .setStepMode(wgpu::VertexStepMode::eVertex)
@@ -375,8 +375,7 @@ struct Mesh2dPipelineCache {
                             .setFormat(attribute.format)
                             .setOffset(0),
                     });
-            }) |
-            std::ranges::to<std::vector>();
+            }));
 
         render::VertexState vertex_state{
             .shader = [&]() -> assets::Handle<shader::Shader> {

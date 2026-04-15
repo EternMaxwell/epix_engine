@@ -55,10 +55,10 @@ struct BundleInfo {
         BundleId id);
 
     BundleId id() const { return _id; }
-    auto explicit_components() const { return _component_ids | std::views::take(_explicit_components_count); }
-    auto required_components() const { return _component_ids | std::views::drop(_explicit_components_count); }
-    auto all_components() const { return _component_ids | std::views::all; }
-    auto required_component_constructors() const { return _required_components | std::views::all; }
+    auto explicit_components() const { return std::views::take(_component_ids, _explicit_components_count); }
+    auto required_components() const { return std::views::drop(_component_ids, _explicit_components_count); }
+    auto all_components() const { return std::views::all(_component_ids); }
+    auto required_component_constructors() const { return std::views::all(_required_components); }
 
     template <typename T1, typename T2, is_bundle T3>
     void write_components(
@@ -172,7 +172,7 @@ struct Bundles {
         BundleId new_id = static_cast<BundleId>(_bundle_infos.size());
         auto info =
             BundleInfo::create(meta::type_id<type>().name(), storage, components,
-                               Bundle<type>::type_ids(type_registry) | std::ranges::to<std::vector<TypeId>>(), new_id);
+                               std::ranges::to<std::vector<TypeId>>(Bundle<type>::type_ids(type_registry)), new_id);
         _bundle_infos.emplace_back(std::move(info));
         _bundle_ids.emplace(type_id, new_id);
         return new_id;
@@ -187,7 +187,7 @@ struct Bundles {
         }
         BundleId explicit_id = register_info<type>(type_registry, components, storage);
         BundleId dyn_id      = init_dynamic_info(
-            storage, components, _bundle_infos[explicit_id].all_components() | std::ranges::to<std::vector>());
+            storage, components, std::ranges::to<std::vector<TypeId>>(_bundle_infos[explicit_id].all_components()));
         _contributed_bundle_ids.emplace(type_id, dyn_id);
         return dyn_id;
     }
@@ -226,4 +226,4 @@ struct Bundles {
 
 const Bundles& world_bundles(const World& world);
 Bundles& world_bundles_mut(World& world);
-}  // namespace core
+}  // namespace epix::core

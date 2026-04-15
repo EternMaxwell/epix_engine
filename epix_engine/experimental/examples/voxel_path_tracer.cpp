@@ -836,8 +836,8 @@ void camera_control(Res<input::ButtonInput<input::KeyCode>> keys,
             // Decompose orientation into yaw (world-Y) + pitch (world-X) so
             // the horizon stays stable and roll never accumulates.
             glm::vec3 fwd   = tr.local_z();
-            float cur_yaw   = atan2f(fwd.x, fwd.z);
-            float cur_pitch = asinf(glm::clamp(fwd.y, -1.0f, 1.0f));
+            float cur_yaw   = std::atan2f(fwd.x, fwd.z);
+            float cur_pitch = std::asinf(glm::clamp(fwd.y, -1.0f, 1.0f));
 
             // dx>0 (drag right) → yaw right; dy>0 (drag down) → look down
             float new_yaw   = cur_yaw + float(dx) * sens;

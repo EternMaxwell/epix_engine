@@ -116,18 +116,18 @@ void AssetInfos::process_asset_load(const UntypedAssetId& loaded_asset_id,
     auto loading_rec_deps = loaded_asset.dependencies;
     std::unordered_set<UntypedAssetId> failed_rec_deps;
     std::shared_ptr<AssetLoadError> rec_dep_error;
-    auto loading_deps = loaded_asset.dependencies | std::views::filter([&, this](const UntypedAssetId& dep_id) {
-                            if (auto dep_info_opt = get_info_mut(dep_id)) {
-                                auto& dep_info = dep_info_opt->get();
-                                std::visit(epix::utils::visitor{
-                                               [&](LoadStateOK state) {
-                                                   switch (state) {
-                                                       case LoadStateOK::NotLoaded:
-                                                       case LoadStateOK::Loading: {
-                                                           dep_info.deps_wait_on_rec_dep_load.insert(loaded_asset_id);
-                                                           break;
-                                                       }
-                                                       case LoadStateOK::Loaded: {
+    auto loading_deps = std::views::filter(loaded_asset.dependencies, [&, this](const UntypedAssetId& dep_id) {
+        if (auto dep_info_opt = get_info_mut(dep_id)) {
+            auto& dep_info = dep_info_opt->get();
+            std::visit(epix::utils::visitor{
+                           [&](LoadStateOK state) {
+                               switch (state) {
+                                   case LoadStateOK::NotLoaded:
+                                   case LoadStateOK::Loading: {
+                                       dep_info.deps_wait_on_rec_dep_load.insert(loaded_asset_id);
+                                       break;
+                                   }
+                                   case LoadStateOK::Loaded: {
                                                            loading_rec_deps.erase(dep_id);
                                                            break;
                                                        }
@@ -354,7 +354,7 @@ std::optional<std::reference_wrapper<AssetInfo>> AssetInfos::get_info_mut(const 
 epix::utils::input_iterable<UntypedAssetId> AssetInfos::get_path_ids(const AssetPath& path) const {
     auto it = path_to_ids.find(path);
     if (it != path_to_ids.end()) {
-        return it->second | std::views::values;
+        return std::views::values(it->second);
     }
     return epix::utils::input_iterable<UntypedAssetId>{};
 }

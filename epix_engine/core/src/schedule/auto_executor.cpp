@@ -12,7 +12,7 @@ struct AutoExecutor::Impl {
     std::vector<std::size_t> used_time;
     std::size_t last_index = std::numeric_limits<std::size_t>::max();
 
-    AutoExecutor::Impl() {
+    Impl() {
         m_executors.emplace_back(std::make_unique<TaskflowExecutor>(), 0.0);
         m_executors.emplace_back(std::make_unique<MultithreadFlatExecutor>(), 0.0);
         m_executors.emplace_back(std::make_unique<MultithreadClassicExecutor>(), 0.0);
@@ -47,7 +47,7 @@ struct AutoExecutor::Impl {
     void execute(const ScheduleLabel& label, ScheduleSystems& schedule, World& world, const ExecutorConfig& config) {
         auto index = pick_executor();
         if (last_index != index) {
-            spdlog::debug("[schedule] AutoExecutor '{}' switching to {}.", label.to_string(),
+            spdlog::trace("[schedule] AutoExecutor '{}' switching to {}.", label.to_string(),
                           m_executors[index].first->type().name());
             last_index = index;
         }
@@ -68,7 +68,7 @@ struct AutoExecutor::Impl {
 AutoExecutor::AutoExecutor() : m_impl(std::make_unique<Impl>()) {}
 AutoExecutor::~AutoExecutor() {
     spdlog::debug("[schedule] AutoExecutor '{}' usage stats: {}", label.to_string(),
-                  m_impl->used_time | std::views::enumerate | std::views::transform([&](auto&& pair) {
+                  std::views::transform(std::views::enumerate(m_impl->used_time), [&](auto&& pair) {
                       auto&& [index, count] = pair;
                       return std::format("{}: {} times", index, count);
                   }));

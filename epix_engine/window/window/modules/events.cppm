@@ -1,5 +1,6 @@
 export module epix.window:events;
 
+import std;
 import epix.core;
 
 export namespace epix::window {

@@ -117,7 +117,7 @@ struct InitializeBundle<std::tuple<Ts...>, std::tuple<ArgTuples...>> {
         }(std::make_index_sequence<sizeof...(Ts)>());
     }
 };
-template <typename... Ts, typename... ArgTuples>
+export template <typename... Ts, typename... ArgTuples>
     requires((specialization_of<ArgTuples, std::tuple> && ...) && (sizeof...(Ts) == sizeof...(ArgTuples)) &&
              (constructible_from_tuple<Ts, ArgTuples> && ...)) &&
             (sizeof...(ArgTuples) > 0)
@@ -125,7 +125,7 @@ InitializeBundle<std::tuple<Ts...>, std::tuple<ArgTuples...>> make_bundle(ArgTup
     return InitializeBundle<std::tuple<Ts...>, std::tuple<ArgTuples...>>{
         std::make_tuple(std::forward<ArgTuples>(args)...)};
 }
-template <typename... Ts>
+export template <typename... Ts>
     requires(std::constructible_from<std::decay_t<Ts>, Ts> && ...)
 InitializeBundle<std::tuple<std::decay_t<Ts>...>, std::tuple<std::tuple<Ts>...>> make_bundle(Ts&&... args) {
     return InitializeBundle<std::tuple<std::decay_t<Ts>...>, std::tuple<std::tuple<Ts>...>>{
@@ -245,7 +245,7 @@ struct BundleInserter {
                 bundle_info.write_components(*table_, world_storage_mut(*world_).sparse_sets,
                                              world_type_registry(*world_), world_components(*world_),
                                              archetype_after_insert_->iter_status(),
-                                             archetype_after_insert_->required_components | std::views::all, entity,
+                                             std::views::all(archetype_after_insert_->required_components), entity,
                                              location.table_idx, change_tick_, bundle, replace_existing);
                 // location not changed
                 return location;
@@ -264,7 +264,7 @@ struct BundleInserter {
                 bundle_info.write_components(*table_, world_storage_mut(*world_).sparse_sets,
                                              world_type_registry(*world_), world_components(*world_),
                                              archetype_after_insert_->iter_status(),
-                                             archetype_after_insert_->required_components | std::views::all, entity,
+                                             std::views::all(archetype_after_insert_->required_components), entity,
                                              result.table_row, change_tick_, bundle, replace_existing);
                 return new_location;
             } else {
@@ -294,7 +294,7 @@ struct BundleInserter {
                 bundle_info.write_components(new_table, world_storage_mut(*world_).sparse_sets,
                                              world_type_registry(*world_), world_components(*world_),
                                              archetype_after_insert_->iter_status(),
-                                             archetype_after_insert_->required_components | std::views::all, entity,
+                                             std::views::all(archetype_after_insert_->required_components), entity,
                                              move_result.new_index, change_tick_, bundle, replace_existing);
                 return new_location;
             }
@@ -367,8 +367,8 @@ struct BundleSpawner {
         TableRow row      = table.allocate(entity);
         auto location     = archetype.allocate(entity, row);
         world_entities_mut(*world_).set(entity.index, location);
-        auto spawn_bundle_status = std::views::repeat(ComponentStatus::Added) |
-                                   std::views::take(std::ranges::size(bundle_info.explicit_components()));
+        auto spawn_bundle_status = std::views::take(std::views::repeat(ComponentStatus::Added),
+                                                    std::ranges::size(bundle_info.explicit_components()));
         bundle_info.write_components(table, world_storage_mut(*world_).sparse_sets, world_type_registry(*world_),
                                      world_components(*world_), spawn_bundle_status,
                                      bundle_info.required_component_constructors(), entity, row, change_tick_, bundle,
@@ -488,4 +488,4 @@ struct BundleRemover {
     Table* table_;
     Tick change_tick_;
 };
-}  // namespace core
+}  // namespace epix::core

@@ -74,9 +74,9 @@ struct ArchetypeAfterBundleInsert {
           _component_statuses(std::move(component_statuses)),
           required_components(std::move(required_components)) {}
 
-    auto inserted() const { return _inserted | std::views::all; }
-    auto added() const { return _inserted | std::views::take(_added_len); }
-    auto existing() const { return _inserted | std::views::drop(_added_len); }
+    auto inserted() const { return std::views::all(_inserted); }
+    auto added() const { return std::views::take(_inserted, _added_len); }
+    auto existing() const { return std::views::drop(_inserted, _added_len); }
 
     auto iter_status() const { return std::views::all(_component_statuses); }
 
@@ -171,13 +171,13 @@ export struct Archetype {
     ArchetypeEdges& edges_mut() { return _edges; }
     /** @brief Return a view of (Entity, EntityLocation) pairs for all entities in this archetype. */
     auto entities_with_location() const {
-        return std::views::iota(0u, static_cast<unsigned>(_entities.size())) |
-               std::views::transform([this](unsigned idx) -> std::pair<Entity, EntityLocation> {
-                   const auto& ae = _entities[idx];
-                   return std::pair<Entity, EntityLocation>{
-                       ae.entity,
-                       EntityLocation{_archetype_id, static_cast<std::uint32_t>(idx), _table_id, ae.table_idx}};
-               });
+        return std::views::transform(
+            std::views::iota(0u, static_cast<unsigned>(_entities.size())),
+            [this](unsigned idx) -> std::pair<Entity, EntityLocation> {
+                const auto& ae = _entities[idx];
+                return std::pair<Entity, EntityLocation>{
+                    ae.entity, EntityLocation{_archetype_id, static_cast<std::uint32_t>(idx), _table_id, ae.table_idx}};
+            });
     }
     struct IsTablePredicate {
         template <typename Pair>
@@ -194,14 +194,14 @@ export struct Archetype {
 
     /** @brief Return a view of TypeIds for components stored in the table. */
     auto table_components() const {
-        return _components.iter() | std::views::filter(IsTablePredicate{}) | std::views::keys;
+        return std::views::keys(std::views::filter(_components.iter(), IsTablePredicate{}));
     }
     /** @brief Return a view of TypeIds for components stored in sparse sets. */
     auto sparse_components() const {
-        return _components.iter() | std::views::filter(IsSparsePredicate{}) | std::views::keys;
+        return std::views::keys(std::views::filter(_components.iter(), IsSparsePredicate{}));
     }
     /** @brief Return a view of all component TypeIds in this archetype. */
-    auto components() const { return _components.indices() | std::views::all; }
+    auto components() const { return std::views::all(_components.indices()); }
     /** @brief Get the total number of component types in this archetype. */
     std::size_t component_count() const { return _components.size(); }
     /** @brief Get the table row for the entity at the given archetype row. */
@@ -346,4 +346,4 @@ void world_trigger_on_despawn(World& world, const Archetype& archetype, Entity e
         });
     }
 }
-}  // namespace core
+}  // namespace epix::core

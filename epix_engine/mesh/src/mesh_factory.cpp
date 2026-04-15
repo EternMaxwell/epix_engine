@@ -38,8 +38,9 @@ Mesh mesh::make_circle(float radius, std::optional<glm::vec4> color, std::option
                     .with_indices<std::uint32_t>(indices);
     if (color) {
         [[maybe_unused]] auto result =
-            mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, std::views::repeat(*color) |
-                                                             std::views::take(static_cast<std::size_t>(segments) + 1));
+            mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR,
+                                  std::views::take(std::views::repeat(*color),
+                                                   static_cast<std::size_t>(segments) + 1));
     }
     return mesh;
 }
@@ -61,8 +62,8 @@ Mesh mesh::make_box2d(float width, float height, std::optional<glm::vec4> color)
                     .with_attribute(Mesh::ATTRIBUTE_POSITION, positions)
                     .with_indices<std::uint16_t>(indices);
     if (color) {
-        [[maybe_unused]] auto result = mesh.insert_attribute(
-            Mesh::ATTRIBUTE_COLOR, std::views::repeat(*color) | std::views::take(positions.size()));
+        [[maybe_unused]] auto result =
+            mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, std::views::take(std::views::repeat(*color), positions.size()));
     }
     return mesh;
 }
@@ -92,7 +93,7 @@ Mesh mesh::make_box2d_uv(float width, float height, glm::vec4 uv_rect, std::opti
                     .with_indices<std::uint16_t>(indices);
     if (vertex_color) {
         [[maybe_unused]] auto result =
-            mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, std::views::repeat(*vertex_color) | std::views::take(4));
+            mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, std::views::take(std::views::repeat(*vertex_color), 4));
     }
     return mesh;
 }

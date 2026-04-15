@@ -1,12 +1,7 @@
-module;
-
 #include <gtest/gtest.h>
 
-export module epix.core:tests.schedule;
-
 import std;
-
-import :schedule;
+import epix.core;
 
 namespace {
 struct Comp1 {

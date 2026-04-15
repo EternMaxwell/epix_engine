@@ -177,7 +177,7 @@ std::pair<Handle<T>, bool> AssetInfos::get_or_create_handle(const AssetPath& pat
     return res
         .transform([](auto&& pair) {
             auto& [handle, should_load] = pair;
-            return std::make_pair(handle.typed<T>(), should_load);
+            return std::make_pair(handle.template typed<T>(), should_load);
         })
         .value();
 }

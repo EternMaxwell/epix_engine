@@ -503,7 +503,7 @@ export struct ExtractedCamera {
     glm::uvec2 target_size;
     std::optional<Viewport> viewport;
     CameraRenderGraph render_graph;
-    ptrdiff_t order;
+    std::ptrdiff_t order;
     std::optional<ClearColor> clear_color;
 };
 }  // namespace epix::render::camera
@@ -603,7 +603,7 @@ export struct ViewUniformBindingLayout {
 /** @brief Render command template that binds the view uniform buffer at
  * the specified bind group slot.
  * @tparam Slot Bind group index. */
-export template <size_t Slot>
+export template <std::size_t Slot>
 struct BindViewUniform {
     template <render::phase::PhaseItem P>
     struct Command {
@@ -658,7 +658,7 @@ export struct CameraBundle {
 
 template <>
 struct epix::core::Bundle<epix::render::camera::CameraBundle> {
-    static size_t write(render::camera::CameraBundle& bundle, std::span<void*> target) {
+    static std::size_t write(render::camera::CameraBundle& bundle, std::span<void*> target) {
         new (target[0]) render::camera::Camera(std::move(bundle.camera));
         new (target[1]) render::camera::Projection(std::move(bundle.projection));
         new (target[2]) render::camera::CameraRenderGraph(std::move(bundle.render_graph));

@@ -9,6 +9,7 @@ import epix.transform;
 import epix.input;
 import epix.image;
 import epix.sprite;
+import epix.assets;
 
 using namespace epix;
 

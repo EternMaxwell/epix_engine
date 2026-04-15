@@ -10,6 +10,7 @@ module;
 
 export module epix.sfml.core;
 
+import std;
 import epix.core;
 import epix.input;
 import epix.window;
@@ -25,6 +26,13 @@ input::MouseButton map_sfml_mouse_button_to_input(sf::Mouse::Button button);
 
 /** @brief Resource mapping entity IDs to their SFML window pointers. */
 export struct SFMLwindows : public std::unordered_map<Entity, std::shared_ptr<sf::WindowBase>> {};
+/** @brief Pending native position state while the window manager settles a move request. */
+export struct PendingWindowPosition {
+    std::pair<int, int> target = {0, 0};
+    int retries_remaining      = 0;
+};
+/** @brief Pending target positions that should be enforced until the native window settles. */
+export struct PendingWindowPositions : public std::unordered_map<Entity, PendingWindowPosition> {};
 
 /** @brief Event requesting the clipboard text to be set. */
 export struct SetClipboardString {
@@ -97,11 +105,13 @@ export struct SFMLPlugin {
         Commands commands,
         Query<Item<Entity, Mut<window::Window>, Opt<const window::CachedWindow&>, Opt<const Parent&>>> windows,
         ResMut<SFMLwindows> sfml_windows,
+        ResMut<PendingWindowPositions> pending_window_positions,
         EventWriter<window::WindowMoved> window_moved);
     /** @brief System that creates native SFML windows for new Window entities. */
     static void create_windows(Commands cmd,
                                Query<Item<Entity, Mut<window::Window>, Opt<Ref<Parent>>, Opt<Ref<Children>>>> windows,
                                ResMut<SFMLwindows> sfml_windows,
+                               ResMut<PendingWindowPositions> pending_window_positions,
                                EventWriter<window::WindowCreated> window_created);
     /** @brief System that applies window state changes (title, cursor, icon, etc.). */
     static void update_window_states(Query<Item<Entity, Mut<window::Window>, const window::CachedWindow&>> windows,
@@ -135,4 +145,4 @@ export struct SFMLPlugin {
    private:
     static std::shared_ptr<sf::WindowBase> create_window(Entity id, window::Window& window);
 };
-}  // namespace sfml
+}  // namespace epix::sfml

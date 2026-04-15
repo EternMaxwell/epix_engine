@@ -195,9 +195,9 @@ struct SparseSet {
             .value_or(false);
     }
 
-    auto values(this const SparseSet& self) { return self._dense | std::views::all; }
-    auto values_mut(this SparseSet& self) { return self._dense | std::views::all; }
-    auto indices(this const SparseSet& self) { return self._indices | std::views::all; }
+    auto values(this const SparseSet& self) { return std::views::all(self._dense); }
+    auto values_mut(this SparseSet& self) { return std::views::all(self._dense); }
+    auto indices(this const SparseSet& self) { return std::views::all(self._indices); }
     auto iter(this const SparseSet& self) { return std::views::zip(self._indices, self._dense); }
     auto iter_mut(this SparseSet& self) { return std::views::zip(self._indices, self._dense); }
 };

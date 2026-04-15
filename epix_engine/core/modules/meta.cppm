@@ -35,12 +35,12 @@ constexpr std::string shorten(std::string_view str) {
         constexpr std::array left_chars = std::array{
             '<', '(', '[', ',', ' ',  // characters that can appear before a template argument
         };
-        std::vector lefts = left_chars | std::views::transform([&](char c) { return result.rfind(c, last_colon); }) |
-                            std::views::filter([&](std::size_t pos) { return pos != std::string::npos; }) |
-                            std::ranges::to<std::vector>();
-        auto left_elem    = std::ranges::max_element(lefts);
-        auto left         = (left_elem != lefts.end()) ? *left_elem + 1 : 0;
-        result            = result.substr(0, left) + result.substr(last_colon + 2);
+        std::vector lefts = std::ranges::to<std::vector>(
+            std::views::filter(std::views::transform(left_chars, [&](char c) { return result.rfind(c, last_colon); }),
+                               [&](std::size_t pos) { return pos != std::string::npos; }));
+        auto left_elem = std::ranges::max_element(lefts);
+        auto left      = (left_elem != lefts.end()) ? *left_elem + 1 : 0;
+        result         = result.substr(0, left) + result.substr(last_colon + 2);
     }
     // remove all spaces
     // result.erase(std::remove_if(result.begin(), result.end(), [](char c) { return c == ' '; }), result.end());
@@ -168,7 +168,7 @@ struct type_id {
     static std::string_view name() { return type_info::of<T>().name; }
     static std::string_view short_name() { return type_info::of<T>().short_name; }
     static std::size_t hash_code() { return type_info::of<T>().hash; }
-    static const type_info& type_info() { return type_info::of<T>(); }
+    static const meta::type_info& type_info() { return type_info::of<T>(); }
 };
 export struct type_index {
    public:
@@ -187,7 +187,7 @@ export struct type_index {
     std::string_view name() const noexcept { return inter->name; }
     std::string_view short_name() const noexcept { return inter->short_name; }
     std::size_t hash_code() const noexcept { return inter->hash; }
-    const type_info& type_info() const noexcept { return *inter; }
+    const meta::type_info& type_info() const noexcept { return *inter; }
     bool valid() const noexcept { return inter != nullptr; }
 
    private:
@@ -198,7 +198,7 @@ export struct type_index {
         return type_info::of<T>();
     }
 };
-}  // namespace meta
+}  // namespace epix::meta
 
 template <>
 struct std::hash<epix::meta::type_index> {

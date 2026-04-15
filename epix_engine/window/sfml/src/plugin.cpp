@@ -4,7 +4,6 @@ module;
 
 #include <SFML/Window/WindowBase.hpp>
 
-
 module epix.sfml.core;
 
 using namespace epix::sfml;
@@ -15,5 +14,6 @@ void SFMLPlugin::build(App& app) {
     app.add_plugins(image::ImagePlugin{});
     app.world_mut().insert_resource(Clipboard{});
     app.world_mut().init_resource<SFMLwindows>();
+    app.world_mut().init_resource<PendingWindowPositions>();
     app.add_events<SetClipboardString>().set_runner(std::make_unique<SFMLRunner>(app));
 }

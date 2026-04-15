@@ -1,14 +1,7 @@
-module;
-
 #include <gtest/gtest.h>
 
-export module epix.core:tests.query_iter;
-
 import std;
-
-import :query;
-import :world;
-import :bundle;
+import epix.core;
 
 namespace {
 struct P {

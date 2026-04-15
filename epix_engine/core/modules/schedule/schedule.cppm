@@ -41,18 +41,18 @@ struct Node {
 };
 struct CachedNode {
     std::shared_ptr<Node> node;  // stores shared_ptr so you can safely add, remove nodes while executing
-    std::vector<size_t> depends;
-    std::vector<size_t> successors;
-    std::vector<size_t> parents;
-    std::vector<size_t> children;
+    std::vector<std::size_t> depends;
+    std::vector<std::size_t> successors;
+    std::vector<std::size_t> parents;
+    std::vector<std::size_t> children;
 };
 struct ScheduleCache {
     std::vector<CachedNode> nodes;
-    std::unordered_map<SystemSetLabel, size_t> node_map;
+    std::unordered_map<SystemSetLabel, std::size_t> node_map;
 };
 struct ExecutionState {
-    size_t running_count   = 0;
-    size_t remaining_count = 0;
+    std::size_t running_count   = 0;
+    std::size_t remaining_count = 0;
     bit_vector ready_nodes;
     bit_vector finished_nodes;
     bit_vector entered_nodes;
@@ -60,12 +60,12 @@ struct ExecutionState {
     std::vector<bit_vector> children;
     bit_vector condition_met_nodes;
     std::vector<bit_vector> untest_conditions;
-    std::vector<size_t> wait_count;  // number of dependencies + parents not yet satisfied
-    std::vector<size_t> child_count;
+    std::vector<std::size_t> wait_count;  // number of dependencies + parents not yet satisfied
+    std::vector<std::size_t> child_count;
     async_queue finished_queue;
-    std::vector<size_t> ready_stack;
+    std::vector<std::size_t> ready_stack;
 };
-struct SchedulePrepareError {
+export struct SchedulePrepareError {
     // labels involved in the error, 0 will be the same child if type is ParentsWithDeps
     std::vector<SystemSetLabel> associated_labels;
     // for ParentsWithDeps, the parents the have dependencies
@@ -107,7 +107,7 @@ export struct SetConfig {
     template <typename T>
     T&& set_name(this T&& self, std::string_view name) {
         if (self.system) self.system->set_name(name);
-        size_t index = 0;
+        std::size_t index = 0;
         std::ranges::for_each(self.sub_configs,
                               [&](SetConfig& config) { config.set_name(std::format("{}#{}", name, index++)); });
         return std::forward<T>(self);
@@ -142,7 +142,7 @@ export struct SetConfig {
     /** @brief Chain all sub-configs in order: each runs after the previous. */
     template <typename T>
     T&& chain(this T&& self) {
-        for (auto&& [c1, c2] : self.sub_configs | std::views::adjacent<2>) {
+        for (auto&& [c1, c2] : std::views::adjacent<2>(self.sub_configs)) {
             c1.before(c2);
         }
         return std::forward<T>(self);
@@ -155,13 +155,13 @@ export struct SetConfig {
         if (system) config.system.reset(system->clone());
         config.conditions.insert_range(
             config.conditions.end(),
-            conditions | std::views::transform([](const SystemUnique<std::tuple<>, bool>& cond) {
+            std::views::transform(conditions, [](const SystemUnique<std::tuple<>, bool>& cond) {
                 return SystemUnique<std::tuple<>, bool>(cond->clone());
             }));
         config.edges = edges;
         config.sub_configs.insert_range(
             config.sub_configs.end(),
-            sub_configs | std::views::transform([](const SetConfig& sub_config) { return sub_config.clone(); }));
+            std::views::transform(sub_configs, [](const SetConfig& sub_config) { return sub_config.clone(); }));
         return std::move(config);
     }
 

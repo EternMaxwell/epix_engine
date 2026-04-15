@@ -18,6 +18,9 @@ import epix.render.imgui;
 import epix.shader;
 import BS.thread_pool;
 
+using std::uint32_t;
+using std::size_t;
+
 namespace {
 using namespace epix;
 using namespace epix::core;

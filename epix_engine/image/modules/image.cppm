@@ -4,14 +4,14 @@ import epix.core;
 import epix.assets;
 import std;
 
-export namespace epix::image {
+namespace epix::image {
 
 /** @brief Pixel format for images.
  *
  * Each variant specifies channels and bit depth.
  */
 // Enum Format (8bit, 16bit, Float)
-enum class Format {
+export enum class Format {
     Unknown = 0,
     Grey8,       // 1 channel, 8-bit
     GreyAlpha8,  // 2 channels, 8-bit
@@ -26,7 +26,7 @@ enum class Format {
 };
 
 /** @brief Descriptive metadata for a pixel Format. */
-struct FormatInfo {
+export struct FormatInfo {
     /** @brief Number of color channels (1–4). */
     std::uint32_t channels;
     /** @brief Bytes per channel (1, 2, or 4). */
@@ -43,17 +43,17 @@ struct FormatInfo {
 /** @brief Look up the FormatInfo for a given pixel Format.
  * @param fmt The pixel format to query.
  * @return Reference to the static FormatInfo descriptor. */
-const FormatInfo& getFormatInfo(Format fmt);
+export const FormatInfo& getFormatInfo(Format fmt);
 
 /** @brief Error codes returned when loading an image from disk. */
-enum class ImageLoadError { FileNotFound, UnsupportedFormat, LoadFailed };
-std::exception_ptr to_exception_ptr(ImageLoadError error);
+export enum class ImageLoadError { FileNotFound, UnsupportedFormat, LoadFailed };
+export std::exception_ptr to_exception_ptr(ImageLoadError error);
 /** @brief Error codes returned when saving an image to disk. */
-enum class ImageSaveError { SaveFailed };
+export enum class ImageSaveError { SaveFailed };
 /** @brief Error codes returned when sampling a pixel out of bounds. */
-enum class ImageSampleError { OutOfBounds };
+export enum class ImageSampleError { OutOfBounds };
 /** @brief Error codes returned when writing pixel data to an image. */
-enum class ImageWriteError { OutOfBounds, DataSizeMismatch };
+export enum class ImageWriteError { OutOfBounds, DataSizeMismatch };
 
 template <typename T>
 struct span_type {
@@ -63,7 +63,7 @@ struct span_type {
 
 /** @brief Bitmask specifying how an image is used (main world, render
  * world, or both). */
-enum ImageUsage : std::uint8_t {
+export enum ImageUsage : std::uint8_t {
     /** @brief Used in the main world only. */
     Main = 0x1,
     /** @brief Used in the render world only. */
@@ -310,7 +310,7 @@ template <typename T>
         { std::span(std::forward<T>(t)) };
         requires std::is_trivially_copyable_v<typename span_type<T>::type>;
     }
-static std::optional<Image> Image::create(
+std::optional<Image> Image::create(
     ImageType type, std::uint32_t w, std::uint32_t h, std::uint32_t depth_or_layers, Format fmt, T&& initData) {
     std::optional<Image> img;
     auto& info               = getFormatInfo(fmt);
@@ -326,7 +326,7 @@ template <typename T>
         { std::span(std::forward<T>(t)) };
         requires std::is_trivially_copyable_v<typename span_type<T>::type>;
     }
-static std::optional<Image> Image::create1d(std::uint32_t w, Format fmt, T&& initData) {
+std::optional<Image> Image::create1d(std::uint32_t w, Format fmt, T&& initData) {
     std::optional<Image> img;
     auto& info               = getFormatInfo(fmt);
     std::size_t expectedSize = static_cast<std::size_t>(w) * info.pixelSize();
@@ -341,7 +341,7 @@ template <typename T>
         { std::span(std::forward<T>(t)) };
         requires std::is_trivially_copyable_v<typename span_type<T>::type>;
     }
-static std::optional<Image> Image::create2d(std::uint32_t w, std::uint32_t h, Format fmt, T&& initData) {
+std::optional<Image> Image::create2d(std::uint32_t w, std::uint32_t h, Format fmt, T&& initData) {
     std::optional<Image> img;
     auto& info               = getFormatInfo(fmt);
     std::size_t expectedSize = static_cast<std::size_t>(w) * h * info.pixelSize();
@@ -356,7 +356,7 @@ template <typename T>
         { std::span(std::forward<T>(t)) };
         requires std::is_trivially_copyable_v<typename span_type<T>::type>;
     }
-static std::optional<Image> Image::create2d_array(
+std::optional<Image> Image::create2d_array(
     std::uint32_t w, std::uint32_t h, std::uint32_t layers, Format fmt, T&& initData) {
     std::optional<Image> img;
     auto& info               = getFormatInfo(fmt);
@@ -372,7 +372,7 @@ template <typename T>
         { std::span(std::forward<T>(t)) };
         requires std::is_trivially_copyable_v<typename span_type<T>::type>;
     }
-static std::optional<Image> Image::create3d(
+std::optional<Image> Image::create3d(
     std::uint32_t w, std::uint32_t h, std::uint32_t depth, Format fmt, T&& initData) {
     std::optional<Image> img;
     auto& info               = getFormatInfo(fmt);

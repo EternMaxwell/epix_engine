@@ -19,7 +19,7 @@ export struct Real {
 
 /** @brief Wall-clock time. Advances based on real steady_clock measurements.
  *  Used as the root time source; virtual and fixed time derive from this. */
-export template <>
+template <>
 struct Time<Real> : private Time<> {
     // Re-export base methods
     using Time<>::wrap_period;

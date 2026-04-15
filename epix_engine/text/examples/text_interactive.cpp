@@ -1,4 +1,5 @@
 import std;
+import webgpu;
 import epix.assets;
 import epix.core;
 import epix.core_graph;

@@ -987,7 +987,7 @@ std::vector<CachedPipelineId> ShaderCache::sync(utils::input_iterable<assets::As
             affected.insert(ids.begin(), ids.end());
         }
     }
-    return affected | std::ranges::to<std::vector>();
+    return std::ranges::to<std::vector>(affected);
 }
 
 }  // namespace epix::shader

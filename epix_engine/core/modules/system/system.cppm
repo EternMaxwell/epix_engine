@@ -86,7 +86,7 @@ template <typename F>
     }
 struct function_system_traits {
     using Traits                  = function_traits<F>;
-    static constexpr size_t arity = Traits::arity;
+    static constexpr std::size_t arity = Traits::arity;
     using Output                  = typename Traits::return_type;
     // Input is the first argument of the function if it modules valid_system_input, otherwise it's std::tuple<>.
     using Input                     = std::remove_reference_t<decltype(*([] {

@@ -282,6 +282,8 @@ export struct ProcessContext {
     const AssetPath& path() const { return *m_path; }
     /** @brief Get the reader for the asset being processed. */
     std::istream& asset_reader() { return *m_reader; }
+    /** @brief Get the asset server associated with the processor. */
+    const AssetServer& asset_server() const;
     /** @brief Get a reference to the processor. */
     const AssetProcessor& processor() const { return *m_processor; }
     /** @brief Get mutable ref to the new processed info (for adding process dependencies). */
@@ -297,7 +299,7 @@ std::expected<typename LoadTransformAndSave<L, T, S>::OutputLoader::Settings, st
 LoadTransformAndSave<L, T, S>::process(ProcessContext& context, const Settings& settings, std::ostream& writer) {
     try {
         // Load the source asset
-        auto load_context    = LoadContext(context.processor().get_server(), context.path());
+        auto load_context    = LoadContext(context.asset_server(), context.path());
         auto loader_instance = L();
         auto load_result     = loader_instance.load(context.asset_reader(), settings.loader_settings, load_context);
         if (!load_result) {
