@@ -509,7 +509,7 @@ struct alignas(16) BloomParamsUniform {
 
 // Runtime-configurable rendering / camera parameters (main world + extracted to render world).
 struct VoxelConfig {
-    float taa_blend    = 0.1f;   // TAA history weight (0=full reset, 1=full history)
+    float taa_blend    = 0.01f;  // TAA history weight (0=full reset, 1=full history)
     float camera_speed = 20.0f;  // WASD movement speed in world units per second
     // Bloom
     bool bloom_enabled    = true;
@@ -804,8 +804,9 @@ static std::span<const std::byte> to_bytes(std::string_view sv) {
 
 void camera_control(Res<input::ButtonInput<input::KeyCode>> keys,
                     Res<input::ButtonInput<input::MouseButton>> mouse_btns,
-                    EventReader<input::MouseMove> mouse_moves,
                     Res<time::Time<>> game_time,
+                    Local<std::optional<glm::dvec2>> last_mouse_pos,
+                    Single<const epix::window::Window&, With<epix::window::PrimaryWindow>> window,
                     Res<VoxelConfig> config,
                     Query<Item<Mut<tf::Transform>>, With<Camera>> cameras) {
     const float dt    = game_time->delta_secs();
@@ -814,11 +815,15 @@ void camera_control(Res<input::ButtonInput<input::KeyCode>> keys,
 
     double dx = 0.0, dy = 0.0;
     const bool looking = mouse_btns->pressed(input::MouseButton::MouseButtonRight);
-    for (auto&& [delta] : mouse_moves.read()) {
-        if (looking) {
-            dx += delta.first;
-            dy += delta.second;
+    if (looking) {
+        auto [mx, my] = window->cursor_pos;
+        if (last_mouse_pos->has_value()) {
+            dx = mx - last_mouse_pos->value().x;
+            dy = my - last_mouse_pos->value().y;
         }
+        last_mouse_pos->emplace(mx, my);
+    } else {
+        last_mouse_pos->reset();
     }
 
     for (auto&& [transform_mut] : cameras.iter()) {
@@ -908,9 +913,9 @@ void setup_voxel_scene(Commands cmd) {
     // Perspective camera, positioned outside the scene looking inward.
     CameraBundle cam = CameraBundle::with_render_graph(VoxelGraph);
     cam.projection   = Projection::perspective(PerspectiveProjection{
-          .fov        = glm::radians(65.0f),
-          .near_plane = 0.1f,
-          .far_plane  = 600.0f,
+        .fov        = glm::radians(65.0f),
+        .near_plane = 0.1f,
+        .far_plane  = 600.0f,
     });
     // perspectiveLH: view_z = world_z − cam_z must be > 0 for visibility.
     // Scene spans z=0..79; camera must be at z < 0 to see it with identity rotation (+Z forward).
@@ -1181,12 +1186,12 @@ void prepare_voxel_render(Res<wgpu::Device> device,
             FragmentState fs{.shader = handles->blit_frag, .entry_point = std::string("blitFrag")};
             fs.add_target(wgpu::ColorTargetState().setFormat(color_fmt).setWriteMask(wgpu::ColorWriteMask::eAll));
             state->blit_pipeline_id = pipeline_server->queue_render_pipeline(RenderPipelineDescriptor{
-                .label     = "voxel-blit",
-                .layouts   = {state->blit_layout},
-                .vertex    = std::move(vs),
-                .primitive = wgpu::PrimitiveState()
-                                 .setTopology(wgpu::PrimitiveTopology::eTriangleList)
-                                 .setCullMode(wgpu::CullMode::eNone),
+                .label       = "voxel-blit",
+                .layouts     = {state->blit_layout},
+                .vertex      = std::move(vs),
+                .primitive   = wgpu::PrimitiveState()
+                                   .setTopology(wgpu::PrimitiveTopology::eTriangleList)
+                                   .setCullMode(wgpu::CullMode::eNone),
                 .multisample = wgpu::MultisampleState().setCount(1).setMask(~0u).setAlphaToCoverageEnabled(false),
                 .fragment    = std::move(fs),
             });
@@ -1246,14 +1251,14 @@ void prepare_voxel_render(Res<wgpu::Device> device,
                                              .setSampleCount(1)
                                              .setDimension(wgpu::TextureDimension::e2D));
         auto vd  = wgpu::TextureViewDescriptor()
-                      .setFormat(fmt)
-                      .setDimension(wgpu::TextureViewDimension::e2D)
-                      .setBaseMipLevel(0)
-                      .setMipLevelCount(1)
-                      .setBaseArrayLayer(0)
-                      .setArrayLayerCount(1);
-        sv = tex.createView(vd);
-        tv = tex.createView(vd);
+                       .setFormat(fmt)
+                       .setDimension(wgpu::TextureViewDimension::e2D)
+                       .setBaseMipLevel(0)
+                       .setMipLevelCount(1)
+                       .setBaseArrayLayer(0)
+                       .setArrayLayerCount(1);
+        sv       = tex.createView(vd);
+        tv       = tex.createView(vd);
         return tex;
     };
 
@@ -1283,13 +1288,13 @@ void prepare_voxel_render(Res<wgpu::Device> device,
                                       .setMipLevelCount(1)
                                       .setSampleCount(1)
                                       .setDimension(wgpu::TextureDimension::e2D));
-        auto vd = wgpu::TextureViewDescriptor()
-                      .setFormat(wgpu::TextureFormat::eR32Float)
-                      .setDimension(wgpu::TextureViewDimension::e2D)
-                      .setBaseMipLevel(0)
-                      .setMipLevelCount(1)
-                      .setBaseArrayLayer(0)
-                      .setArrayLayerCount(1);
+        auto vd                        = wgpu::TextureViewDescriptor()
+                                             .setFormat(wgpu::TextureFormat::eR32Float)
+                                             .setDimension(wgpu::TextureViewDimension::e2D)
+                                             .setBaseMipLevel(0)
+                                             .setMipLevelCount(1)
+                                             .setBaseArrayLayer(0)
+                                             .setArrayLayerCount(1);
         state->prev_depth_tex          = tex;
         state->prev_depth_sampled_view = tex.createView(vd);
     }

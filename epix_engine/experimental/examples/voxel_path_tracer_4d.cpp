@@ -790,7 +790,8 @@ static void ortho4(glm::vec4& f, glm::vec4& r, glm::vec4& u, glm::vec4& o) {
 
 void camera_control_4d(Res<input::ButtonInput<input::KeyCode>> keys,
                        Res<input::ButtonInput<input::MouseButton>> mouse_btns,
-                       EventReader<input::MouseMove> mouse_moves,
+                       Local<std::optional<glm::dvec2>> last_mouse_pos,
+                       Single<const epix::window::Window&, With<epix::window::PrimaryWindow>> window,
                        Res<time::Time<>> game_time,
                        core::ResMut<Voxel4DCameraState> cam) {
     const float dt    = game_time->delta_secs();
@@ -800,11 +801,15 @@ void camera_control_4d(Res<input::ButtonInput<input::KeyCode>> keys,
 
     double dx = 0.0, dy = 0.0;
     const bool looking = mouse_btns->pressed(input::MouseButton::MouseButtonRight);
-    for (auto&& [delta] : mouse_moves.read()) {
-        if (looking) {
-            dx += delta.first;
-            dy += delta.second;
+    if (looking) {
+        auto [mx, my] = window->cursor_pos;
+        if (last_mouse_pos->has_value()) {
+            dx = mx - last_mouse_pos->value().x;
+            dy = my - last_mouse_pos->value().y;
         }
+        last_mouse_pos->emplace(mx, my);
+    } else {
+        last_mouse_pos->reset();
     }
 
     glm::vec4& pos = cam->pos;
