@@ -465,9 +465,9 @@ struct alignas(16) BM4DCameraUniform {
     glm::vec4 prev_forward;
     glm::vec4 prev_right;
     glm::vec4 prev_up;
-    float    fov_y;
-    float    aspect;
-    float    taa_blend;
+    float fov_y;
+    float aspect;
+    float taa_blend;
     uint32_t frame_index;
 };
 static_assert(sizeof(BM4DCameraUniform) == 160);
@@ -495,7 +495,7 @@ struct BM4DCameraState {
 struct BM4DConfig {
     float taa_blend       = 0.01f;
     float camera_speed    = 10.0f;
-    bool  bloom_enabled   = true;
+    bool bloom_enabled    = true;
     float bloom_threshold = 1.0f;
     float bloom_knee      = 0.5f;
     float bloom_intensity = 0.2f;
@@ -504,11 +504,11 @@ struct BM4DConfig {
 // 4D voxel scene (main world).
 struct BM4DScene {
     tree_extendible_grid<4, int32_t> grid;
-    std::vector<glm::vec4>           palette;
+    std::vector<glm::vec4> palette;
 };
 
 struct ExtractedBM4DGrid {
-    std::vector<uint32_t>  bm_words;
+    std::vector<uint32_t> bm_words;
     std::vector<glm::vec4> colors;
 };
 
@@ -672,14 +672,17 @@ struct BM4DTraceNode : graph::Node {
         rc.flush_encoder();
 
         // Copy current depth → prev_depth for next frame
-        rc.command_encoder().copyTextureToTexture(
-            wgpu::TexelCopyTextureInfo()
-                .setTexture(state.depth_tex).setMipLevel(0)
-                .setOrigin(wgpu::Origin3D{0, 0, 0}).setAspect(wgpu::TextureAspect::eAll),
-            wgpu::TexelCopyTextureInfo()
-                .setTexture(state.prev_depth_tex).setMipLevel(0)
-                .setOrigin(wgpu::Origin3D{0, 0, 0}).setAspect(wgpu::TextureAspect::eAll),
-            wgpu::Extent3D{vp.x, vp.y, 1});
+        rc.command_encoder().copyTextureToTexture(wgpu::TexelCopyTextureInfo()
+                                                      .setTexture(state.depth_tex)
+                                                      .setMipLevel(0)
+                                                      .setOrigin(wgpu::Origin3D{0, 0, 0})
+                                                      .setAspect(wgpu::TextureAspect::eAll),
+                                                  wgpu::TexelCopyTextureInfo()
+                                                      .setTexture(state.prev_depth_tex)
+                                                      .setMipLevel(0)
+                                                      .setOrigin(wgpu::Origin3D{0, 0, 0})
+                                                      .setAspect(wgpu::TextureAspect::eAll),
+                                                  wgpu::Extent3D{vp.x, vp.y, 1});
         rc.flush_encoder();
 
         // Bloom passes: threshold → H-blur → V-blur on the TAA output
@@ -703,8 +706,8 @@ struct BM4DTraceNode : graph::Node {
                 rc.flush_encoder();
             };
             dispatch(bloom_thr_pl, state.bloom_src_accum_bg[next], state.bloom_dst_a_bg);
-            dispatch(bloom_h_pl,   state.bloom_src_a_bg,           state.bloom_dst_b_bg);
-            dispatch(bloom_v_pl,   state.bloom_src_b_bg,           state.bloom_dst_a_bg);
+            dispatch(bloom_h_pl, state.bloom_src_a_bg, state.bloom_dst_b_bg);
+            dispatch(bloom_v_pl, state.bloom_src_b_bg, state.bloom_dst_a_bg);
         }
 
         state.accum_idx    = next;
@@ -741,8 +744,10 @@ struct BM4DBlitNode : graph::Node {
 
         auto pass = rc.command_encoder().beginRenderPass(wgpu::RenderPassDescriptor().setColorAttachments(std::array{
             wgpu::RenderPassColorAttachment()
-                .setView(target.texture_view).setDepthSlice(~0u)
-                .setLoadOp(wgpu::LoadOp::eLoad).setStoreOp(wgpu::StoreOp::eStore),
+                .setView(target.texture_view)
+                .setDepthSlice(~0u)
+                .setLoadOp(wgpu::LoadOp::eLoad)
+                .setStoreOp(wgpu::StoreOp::eStore),
         }));
         pass.setPipeline(pipeline->get().pipeline());
         pass.setVertexBuffer(0, state.vertex_buffer, 0, sizeof(float) * 6);
@@ -779,25 +784,34 @@ static void ortho4(glm::vec4& f, glm::vec4& r, glm::vec4& u, glm::vec4& o) {
 }
 
 void camera_control_bm4d(Res<input::ButtonInput<input::KeyCode>> keys,
-                          Res<input::ButtonInput<input::MouseButton>> mouse_btns,
-                          Local<std::optional<glm::dvec2>> last_mouse_pos,
-                          Single<const epix::window::Window&, With<epix::window::PrimaryWindow>> window,
-                          Res<time::Time<>> game_time,
-                          core::ResMut<BM4DCameraState> cam) {
+                         Res<input::ButtonInput<input::MouseButton>> mouse_btns,
+                         EventReader<input::MouseScroll> scroll_input,
+                         Local<std::optional<glm::dvec2>> last_mouse_pos,
+                         Query<Item<const epix::window::Window&>, With<epix::window::PrimaryWindow>> windows,
+                         Res<time::Time<>> game_time,
+                         core::ResMut<BM4DCameraState> cam) {
     const float dt    = game_time->delta_secs();
     const float spd   = cam->move_speed;
     const float sens  = 0.002f;
     const float rsens = 1.2f;
 
+    float scroll_rot4 = 0.0f;
+    for (const auto& scroll : scroll_input.read()) scroll_rot4 += static_cast<float>(scroll.yoffset);
+
     double dx = 0.0, dy = 0.0;
     const bool looking = mouse_btns->pressed(input::MouseButton::MouseButtonRight);
     if (looking) {
-        auto [mx, my] = window->cursor_pos;
-        if (last_mouse_pos->has_value()) {
-            dx = mx - last_mouse_pos->value().x;
-            dy = my - last_mouse_pos->value().y;
+        if (auto window = windows.single(); window.has_value()) {
+            auto&& [primary_window] = *window;
+            auto [mx, my]           = primary_window.cursor_pos;
+            if (last_mouse_pos->has_value()) {
+                dx = mx - last_mouse_pos->value().x;
+                dy = my - last_mouse_pos->value().y;
+            }
+            last_mouse_pos->emplace(mx, my);
+        } else {
+            last_mouse_pos->reset();
         }
-        last_mouse_pos->emplace(mx, my);
     } else {
         last_mouse_pos->reset();
     }
@@ -815,8 +829,8 @@ void camera_control_bm4d(Res<input::ButtonInput<input::KeyCode>> keys,
     if (keys->pressed(input::KeyCode::KeyD)) move += r;
     if (keys->pressed(input::KeyCode::KeySpace)) move += u;
     if (keys->pressed(input::KeyCode::KeyLeftShift)) move -= u;
-    if (keys->pressed(input::KeyCode::KeyQ)) move += o;
-    if (keys->pressed(input::KeyCode::KeyE)) move -= o;
+    if (keys->pressed(input::KeyCode::KeyR)) move += o;
+    if (keys->pressed(input::KeyCode::KeyF)) move -= o;
     if (glm::length(move) > 0.001f) pos += glm::normalize(move) * spd * dt;
 
     if (dx != 0.0) {
@@ -824,24 +838,36 @@ void camera_control_bm4d(Res<input::ButtonInput<input::KeyCode>> keys,
         float c = std::cos(a), s = std::sin(a);
         auto newf = glm::normalize(c * f + s * r);
         auto newr = glm::normalize(-s * f + c * r);
-        f = newf; r = newr;
+        f         = newf;
+        r         = newr;
     }
     if (dy != 0.0) {
         float a = float(dy) * sens;
         float c = std::cos(a), s = std::sin(a);
         auto newf = glm::normalize(c * f - s * u);
         auto newu = glm::normalize(s * f + c * u);
-        f = newf; u = newu;
+        f         = newf;
+        u         = newu;
     }
 
-    float rot4 = 0.0f;
-    if (keys->pressed(input::KeyCode::KeyR)) rot4 =  rsens * dt;
-    if (keys->pressed(input::KeyCode::KeyF)) rot4 = -rsens * dt;
+    float roll = 0.0f;
+    if (keys->pressed(input::KeyCode::KeyQ)) roll = rsens * dt;
+    if (keys->pressed(input::KeyCode::KeyE)) roll = -rsens * dt;
+    if (std::abs(roll) > 1e-6f) {
+        float c = std::cos(roll), s = std::sin(roll);
+        auto newr = glm::normalize(c * r + s * u);
+        auto newu = glm::normalize(-s * r + c * u);
+        r         = newr;
+        u         = newu;
+    }
+
+    float rot4 = scroll_rot4 * sens;
     if (std::abs(rot4) > 1e-6f) {
         float c = std::cos(rot4), s = std::sin(rot4);
         auto newf = glm::normalize(c * f + s * o);
         auto newo = glm::normalize(-s * f + c * o);
-        f = newf; o = newo;
+        f         = newf;
+        o         = newo;
     }
     ortho4(f, r, u, o);
 }
@@ -853,7 +879,7 @@ void bm4d_imgui_ui(imgui::Ctx /*ctx*/, core::ResMut<BM4DConfig> cfg, core::ResMu
     ImGui::SeparatorText("Camera");
     ImGui::SliderFloat("Speed", &cam->move_speed, 1.0f, 100.0f, "%.1f");
     ImGui::Text("W/S=forward  A/D=strafe  Space/Shift=up/down");
-    ImGui::Text("Q/E=+w/-w (4th dim)   R/F=rotate into w");
+    ImGui::Text("Q/E=roll camera   R/F=move +/-w   Wheel=rotate through w");
     ImGui::Text("Right-drag=look");
     ImGui::SeparatorText("Bloom");
     ImGui::Checkbox("Enabled", &cfg->bloom_enabled);
@@ -910,13 +936,13 @@ void extract_bm4d_camera(Commands cmd, Extract<Res<BM4DCameraState>> cam) {
 void setup_bm4d_scene(Commands cmd) {
     BM4DScene scene{.grid = tree_extendible_grid<4, int32_t>()};
     scene.palette = {
-        glm::vec4{0.0f},                        // 0 empty
-        glm::vec4{0.55f, 0.55f, 0.55f, 1.0f},   // 1 grey stone
-        glm::vec4{0.80f, 0.25f, 0.15f, 1.0f},   // 2 red
-        glm::vec4{0.20f, 0.65f, 0.25f, 1.0f},   // 3 green
-        glm::vec4{0.85f, 0.75f, 0.25f, 1.0f},   // 4 yellow
-        glm::vec4{0.20f, 0.35f, 0.85f, 1.0f},   // 5 blue
-        glm::vec4{0.75f, 0.15f, 0.75f, 1.0f},   // 6 purple (4D-only)
+        glm::vec4{0.0f},                       // 0 empty
+        glm::vec4{0.55f, 0.55f, 0.55f, 1.0f},  // 1 grey stone
+        glm::vec4{0.80f, 0.25f, 0.15f, 1.0f},  // 2 red
+        glm::vec4{0.20f, 0.65f, 0.25f, 1.0f},  // 3 green
+        glm::vec4{0.85f, 0.75f, 0.25f, 1.0f},  // 4 yellow
+        glm::vec4{0.20f, 0.35f, 0.85f, 1.0f},  // 5 blue
+        glm::vec4{0.75f, 0.15f, 0.75f, 1.0f},  // 6 purple (4D-only)
     };
 
     // Floor at y=0 for all (x, z, w)
@@ -927,7 +953,7 @@ void setup_bm4d_scene(Commands cmd) {
     // 3×3 grid of pillars (x,z) at every w-slice
     for (int32_t i = 0; i < 3; ++i)
         for (int32_t j = 0; j < 3; ++j) {
-            int32_t bx  = 4 + i * 10, bz = 4 + j * 10;
+            int32_t bx = 4 + i * 10, bz = 4 + j * 10;
             int32_t col = int32_t(2 + (i + j) % 3);
             for (int32_t h = 1; h <= 8; ++h)
                 for (int32_t w = 0; w < 16; ++w) scene.grid.set({bx, h, bz, w}, col);
@@ -940,11 +966,11 @@ void setup_bm4d_scene(Commands cmd) {
 
     // Ring of blue pillars at w=10..13
     for (int32_t theta = 0; theta < 8; ++theta) {
-        float   angle = float(theta) * (2.0f * 3.14159f / 8.0f);
-        int32_t bx    = int32_t(16 + int(7.5f * std::cos(angle)));
-        int32_t bz    = int32_t(16 + int(7.5f * std::sin(angle)));
-        bx            = std::min(bx, 31);
-        bz            = std::min(bz, 31);
+        float angle = float(theta) * (2.0f * 3.14159f / 8.0f);
+        int32_t bx  = int32_t(16 + int(7.5f * std::cos(angle)));
+        int32_t bz  = int32_t(16 + int(7.5f * std::sin(angle)));
+        bx          = std::min(bx, 31);
+        bz          = std::min(bz, 31);
         for (int32_t h = 1; h <= 12; ++h)
             for (int32_t w = 10; w <= 13; ++w) scene.grid.set({bx, h, bz, w}, int32_t(5));
     }
@@ -957,7 +983,7 @@ void setup_bm4d_scene(Commands cmd) {
         .near_plane = 0.1f,
         .far_plane  = 600.0f,
     });
-    cam.transform = tf::Transform::from_xyz(16.0f, 12.0f, -30.0f);
+    cam.transform    = tf::Transform::from_xyz(16.0f, 12.0f, -30.0f);
     cmd.spawn(std::move(cam));
 }
 
@@ -971,10 +997,9 @@ void extract_bm4d_scene(Commands cmd, Extract<Query<Item<const BM4DScene&>>> sce
         std::vector<glm::vec4> colors;
         colors.reserve(result->header().data_count);
         for (auto&& [pos, mat] : scene.grid.iter()) {
-            int32_t   m = mat;
-            glm::vec4 c = (m >= 0 && static_cast<size_t>(m) < scene.palette.size())
-                              ? scene.palette[m]
-                              : glm::vec4(1.0f);
+            int32_t m = mat;
+            glm::vec4 c =
+                (m >= 0 && static_cast<size_t>(m) < scene.palette.size()) ? scene.palette[m] : glm::vec4(1.0f);
             colors.push_back(c);
         }
         cmd.insert_resource(ExtractedBM4DGrid{
@@ -986,12 +1011,12 @@ void extract_bm4d_scene(Commands cmd, Extract<Query<Item<const BM4DScene&>>> sce
 }
 
 void prepare_bm4d_render(Res<wgpu::Device> device,
-                          Res<wgpu::Queue> queue,
-                          Res<BM4DShaderHandles> handles,
-                          ResMut<PipelineServer> pipeline_server,
-                          ResMut<BM4DRenderState> state,
-                          Res<ExtractedBM4DGrid> bm_res,
-                          Query<Item<const ExtractedView&, const ViewTarget&>, With<ExtractedCamera>> views) {
+                         Res<wgpu::Queue> queue,
+                         Res<BM4DShaderHandles> handles,
+                         ResMut<PipelineServer> pipeline_server,
+                         ResMut<BM4DRenderState> state,
+                         Res<ExtractedBM4DGrid> bm_res,
+                         Query<Item<const ExtractedView&, const ViewTarget&>, With<ExtractedCamera>> views) {
     // ---- Phase 1: static resources + pipeline kick-offs ----
     if (!state->resources_created) {
         state->scene_layout = device->createBindGroupLayout(
@@ -999,15 +1024,18 @@ void prepare_bm4d_render(Res<wgpu::Device> device,
                 .setLabel("BM4DSceneBGL")
                 .setEntries(std::array{
                     wgpu::BindGroupLayoutEntry()
-                        .setBinding(0).setVisibility(wgpu::ShaderStage::eCompute)
+                        .setBinding(0)
+                        .setVisibility(wgpu::ShaderStage::eCompute)
                         .setBuffer(wgpu::BufferBindingLayout()
                                        .setType(wgpu::BufferBindingType::eUniform)
                                        .setMinBindingSize(sizeof(BM4DCameraUniform))),
                     wgpu::BindGroupLayoutEntry()
-                        .setBinding(1).setVisibility(wgpu::ShaderStage::eCompute)
+                        .setBinding(1)
+                        .setVisibility(wgpu::ShaderStage::eCompute)
                         .setBuffer(wgpu::BufferBindingLayout().setType(wgpu::BufferBindingType::eReadOnlyStorage)),
                     wgpu::BindGroupLayoutEntry()
-                        .setBinding(2).setVisibility(wgpu::ShaderStage::eCompute)
+                        .setBinding(2)
+                        .setVisibility(wgpu::ShaderStage::eCompute)
                         .setBuffer(wgpu::BufferBindingLayout().setType(wgpu::BufferBindingType::eReadOnlyStorage)),
                 }));
 
@@ -1016,13 +1044,15 @@ void prepare_bm4d_render(Res<wgpu::Device> device,
                 .setLabel("BM4DTraceOutBGL")
                 .setEntries(std::array{
                     wgpu::BindGroupLayoutEntry()
-                        .setBinding(0).setVisibility(wgpu::ShaderStage::eCompute)
+                        .setBinding(0)
+                        .setVisibility(wgpu::ShaderStage::eCompute)
                         .setStorageTexture(wgpu::StorageTextureBindingLayout()
                                                .setAccess(wgpu::StorageTextureAccess::eReadWrite)
                                                .setFormat(wgpu::TextureFormat::eRGBA16Float)
                                                .setViewDimension(wgpu::TextureViewDimension::e2D)),
                     wgpu::BindGroupLayoutEntry()
-                        .setBinding(1).setVisibility(wgpu::ShaderStage::eCompute)
+                        .setBinding(1)
+                        .setVisibility(wgpu::ShaderStage::eCompute)
                         .setStorageTexture(wgpu::StorageTextureBindingLayout()
                                                .setAccess(wgpu::StorageTextureAccess::eReadWrite)
                                                .setFormat(wgpu::TextureFormat::eR32Float)
@@ -1033,7 +1063,8 @@ void prepare_bm4d_render(Res<wgpu::Device> device,
             std::vector<wgpu::BindGroupLayoutEntry> ents;
             for (uint32_t i = 0; i < 4; ++i)
                 ents.push_back(wgpu::BindGroupLayoutEntry()
-                                   .setBinding(i).setVisibility(wgpu::ShaderStage::eCompute)
+                                   .setBinding(i)
+                                   .setVisibility(wgpu::ShaderStage::eCompute)
                                    .setTexture(wgpu::TextureBindingLayout()
                                                    .setSampleType(wgpu::TextureSampleType::eUnfilterableFloat)
                                                    .setViewDimension(wgpu::TextureViewDimension::e2D)));
@@ -1046,7 +1077,8 @@ void prepare_bm4d_render(Res<wgpu::Device> device,
                 .setLabel("BM4DTaaOutBGL")
                 .setEntries(std::array{
                     wgpu::BindGroupLayoutEntry()
-                        .setBinding(0).setVisibility(wgpu::ShaderStage::eCompute)
+                        .setBinding(0)
+                        .setVisibility(wgpu::ShaderStage::eCompute)
                         .setStorageTexture(wgpu::StorageTextureBindingLayout()
                                                .setAccess(wgpu::StorageTextureAccess::eReadWrite)
                                                .setFormat(wgpu::TextureFormat::eRGBA16Float)
@@ -1058,15 +1090,18 @@ void prepare_bm4d_render(Res<wgpu::Device> device,
                 .setLabel("BM4DBlitBGL")
                 .setEntries(std::array{
                     wgpu::BindGroupLayoutEntry()
-                        .setBinding(0).setVisibility(wgpu::ShaderStage::eFragment)
+                        .setBinding(0)
+                        .setVisibility(wgpu::ShaderStage::eFragment)
                         .setSampler(wgpu::SamplerBindingLayout().setType(wgpu::SamplerBindingType::eNonFiltering)),
                     wgpu::BindGroupLayoutEntry()
-                        .setBinding(1).setVisibility(wgpu::ShaderStage::eFragment)
+                        .setBinding(1)
+                        .setVisibility(wgpu::ShaderStage::eFragment)
                         .setTexture(wgpu::TextureBindingLayout()
                                         .setSampleType(wgpu::TextureSampleType::eUnfilterableFloat)
                                         .setViewDimension(wgpu::TextureViewDimension::e2D)),
                     wgpu::BindGroupLayoutEntry()
-                        .setBinding(2).setVisibility(wgpu::ShaderStage::eFragment)
+                        .setBinding(2)
+                        .setVisibility(wgpu::ShaderStage::eFragment)
                         .setTexture(wgpu::TextureBindingLayout()
                                         .setSampleType(wgpu::TextureSampleType::eUnfilterableFloat)
                                         .setViewDimension(wgpu::TextureViewDimension::e2D)),
@@ -1077,12 +1112,14 @@ void prepare_bm4d_render(Res<wgpu::Device> device,
                 .setLabel("BM4DBloomInBGL")
                 .setEntries(std::array{
                     wgpu::BindGroupLayoutEntry()
-                        .setBinding(0).setVisibility(wgpu::ShaderStage::eCompute)
+                        .setBinding(0)
+                        .setVisibility(wgpu::ShaderStage::eCompute)
                         .setBuffer(wgpu::BufferBindingLayout()
                                        .setType(wgpu::BufferBindingType::eUniform)
                                        .setMinBindingSize(sizeof(BM4DBloomParamsUniform))),
                     wgpu::BindGroupLayoutEntry()
-                        .setBinding(1).setVisibility(wgpu::ShaderStage::eCompute)
+                        .setBinding(1)
+                        .setVisibility(wgpu::ShaderStage::eCompute)
                         .setTexture(wgpu::TextureBindingLayout()
                                         .setSampleType(wgpu::TextureSampleType::eUnfilterableFloat)
                                         .setViewDimension(wgpu::TextureViewDimension::e2D)),
@@ -1093,7 +1130,8 @@ void prepare_bm4d_render(Res<wgpu::Device> device,
                 .setLabel("BM4DBloomOutBGL")
                 .setEntries(std::array{
                     wgpu::BindGroupLayoutEntry()
-                        .setBinding(0).setVisibility(wgpu::ShaderStage::eCompute)
+                        .setBinding(0)
+                        .setVisibility(wgpu::ShaderStage::eCompute)
                         .setStorageTexture(wgpu::StorageTextureBindingLayout()
                                                .setAccess(wgpu::StorageTextureAccess::eReadWrite)
                                                .setFormat(wgpu::TextureFormat::eRGBA16Float)
@@ -1132,25 +1170,25 @@ void prepare_bm4d_render(Res<wgpu::Device> device,
             .shader      = handles->trace,
             .entry_point = std::string("traceMain"),
         });
-        state->taa_pipeline_id = pipeline_server->queue_compute_pipeline(ComputePipelineDescriptor{
+        state->taa_pipeline_id   = pipeline_server->queue_compute_pipeline(ComputePipelineDescriptor{
             .label       = "bm4d-taa",
             .layouts     = {state->scene_layout, state->taa_in_layout, state->taa_out_layout},
             .shader      = handles->taa,
             .entry_point = std::string("taaMain"),
         });
-        state->bloom_thresh_id = pipeline_server->queue_compute_pipeline(ComputePipelineDescriptor{
+        state->bloom_thresh_id   = pipeline_server->queue_compute_pipeline(ComputePipelineDescriptor{
             .label       = "bm4d-bloom-thresh",
             .layouts     = {state->bloom_in_layout, state->bloom_out_layout},
             .shader      = handles->bloom,
             .entry_point = std::string("bloomThreshMain"),
         });
-        state->bloom_h_id = pipeline_server->queue_compute_pipeline(ComputePipelineDescriptor{
+        state->bloom_h_id        = pipeline_server->queue_compute_pipeline(ComputePipelineDescriptor{
             .label       = "bm4d-bloom-h",
             .layouts     = {state->bloom_in_layout, state->bloom_out_layout},
             .shader      = handles->bloom,
             .entry_point = std::string("bloomBlurHMain"),
         });
-        state->bloom_v_id = pipeline_server->queue_compute_pipeline(ComputePipelineDescriptor{
+        state->bloom_v_id        = pipeline_server->queue_compute_pipeline(ComputePipelineDescriptor{
             .label       = "bm4d-bloom-v",
             .layouts     = {state->bloom_in_layout, state->bloom_out_layout},
             .shader      = handles->bloom,
@@ -1162,15 +1200,18 @@ void prepare_bm4d_render(Res<wgpu::Device> device,
     // ---- Phase 2: blit render pipeline (needs surface format) ----
     if (state->resources_created && !state->pipelines_queued) {
         wgpu::TextureFormat fmt = wgpu::TextureFormat::eUndefined;
-        for (auto&& [exv, tgt] : views.iter()) { fmt = tgt.format; break; }
+        for (auto&& [exv, tgt] : views.iter()) {
+            fmt = tgt.format;
+            break;
+        }
         if (fmt != wgpu::TextureFormat::eUndefined) {
             VertexState vs{.shader = handles->blit_vert, .entry_point = std::string("blitVert")};
             vs.buffers.push_back(wgpu::VertexBufferLayout()
                                      .setArrayStride(sizeof(float) * 2)
                                      .setStepMode(wgpu::VertexStepMode::eVertex)
                                      .setAttributes(std::array{
-                                         wgpu::VertexAttribute().setShaderLocation(0).setOffset(0)
-                                             .setFormat(wgpu::VertexFormat::eFloat32x2),
+                                         wgpu::VertexAttribute().setShaderLocation(0).setOffset(0).setFormat(
+                                             wgpu::VertexFormat::eFloat32x2),
                                      }));
             FragmentState fs{.shader = handles->blit_frag, .entry_point = std::string("blitFrag")};
             fs.add_target(wgpu::ColorTargetState().setFormat(fmt).setWriteMask(wgpu::ColorWriteMask::eAll));
@@ -1194,12 +1235,14 @@ void prepare_bm4d_render(Res<wgpu::Device> device,
         size_t color_bytes = std::max(bm_res->colors.size() * sizeof(glm::vec4), sizeof(glm::vec4));
         state->bm_buffer =
             device->createBuffer(wgpu::BufferDescriptor()
-                                     .setLabel("BM4DBuffer").setSize(bm_bytes)
+                                     .setLabel("BM4DBuffer")
+                                     .setSize(bm_bytes)
                                      .setUsage(wgpu::BufferUsage::eStorage | wgpu::BufferUsage::eCopyDst));
         queue->writeBuffer(state->bm_buffer, 0, bm_res->bm_words.data(), bm_bytes);
         state->color_buffer =
             device->createBuffer(wgpu::BufferDescriptor()
-                                     .setLabel("BM4DColorBuffer").setSize(color_bytes)
+                                     .setLabel("BM4DColorBuffer")
+                                     .setSize(color_bytes)
                                      .setUsage(wgpu::BufferUsage::eStorage | wgpu::BufferUsage::eCopyDst));
         if (!bm_res->colors.empty())
             queue->writeBuffer(state->color_buffer, 0, bm_res->colors.data(),
@@ -1210,25 +1253,35 @@ void prepare_bm4d_render(Res<wgpu::Device> device,
 
     // ---- Phase 4: (re-)create per-resolution textures and bind groups ----
     glm::uvec2 vp{0, 0};
-    for (auto&& [exv, tgt] : views.iter()) { vp = exv.viewport_size; break; }
+    for (auto&& [exv, tgt] : views.iter()) {
+        vp = exv.viewport_size;
+        break;
+    }
     if (vp.x == 0 || vp.y == 0 || vp == state->output_size) return;
     state->output_size = vp;
     wgpu::Extent3D extent{vp.x, vp.y, 1};
 
-    auto make_tex = [&](const char* lbl, wgpu::TextureFormat fmt,
-                        wgpu::TextureView& sv, wgpu::TextureView& tv) -> wgpu::Texture {
+    auto make_tex = [&](const char* lbl, wgpu::TextureFormat fmt, wgpu::TextureView& sv,
+                        wgpu::TextureView& tv) -> wgpu::Texture {
         auto tex = device->createTexture(wgpu::TextureDescriptor()
-                                             .setLabel(lbl).setFormat(fmt)
+                                             .setLabel(lbl)
+                                             .setFormat(fmt)
                                              .setUsage(wgpu::TextureUsage::eStorageBinding |
                                                        wgpu::TextureUsage::eTextureBinding |
                                                        wgpu::TextureUsage::eCopySrc | wgpu::TextureUsage::eCopyDst)
-                                             .setSize(extent).setMipLevelCount(1)
-                                             .setSampleCount(1).setDimension(wgpu::TextureDimension::e2D));
-        auto vd = wgpu::TextureViewDescriptor()
-                      .setFormat(fmt).setDimension(wgpu::TextureViewDimension::e2D)
-                      .setBaseMipLevel(0).setMipLevelCount(1)
-                      .setBaseArrayLayer(0).setArrayLayerCount(1);
-        sv = tex.createView(vd); tv = tex.createView(vd);
+                                             .setSize(extent)
+                                             .setMipLevelCount(1)
+                                             .setSampleCount(1)
+                                             .setDimension(wgpu::TextureDimension::e2D));
+        auto vd  = wgpu::TextureViewDescriptor()
+                       .setFormat(fmt)
+                       .setDimension(wgpu::TextureViewDimension::e2D)
+                       .setBaseMipLevel(0)
+                       .setMipLevelCount(1)
+                       .setBaseArrayLayer(0)
+                       .setArrayLayerCount(1);
+        sv       = tex.createView(vd);
+        tv       = tex.createView(vd);
         return tex;
     };
 
@@ -1237,51 +1290,67 @@ void prepare_bm4d_render(Res<wgpu::Device> device,
     state->depth_tex =
         make_tex("BM4DDepthTex", wgpu::TextureFormat::eR32Float, state->depth_storage_view, state->depth_sampled_view);
     for (int i = 0; i < 2; ++i) {
-        auto lbl = "BM4DAccum" + std::to_string(i);
-        state->accum_tex[i] = make_tex(lbl.c_str(), wgpu::TextureFormat::eRGBA16Float,
-                                       state->accum_storage_view[i], state->accum_sampled_view[i]);
+        auto lbl            = "BM4DAccum" + std::to_string(i);
+        state->accum_tex[i] = make_tex(lbl.c_str(), wgpu::TextureFormat::eRGBA16Float, state->accum_storage_view[i],
+                                       state->accum_sampled_view[i]);
     }
-    state->bloom_a_tex = make_tex("BM4DBloomA", wgpu::TextureFormat::eRGBA16Float,
-                                  state->bloom_a_storage_view, state->bloom_a_sampled_view);
-    state->bloom_b_tex = make_tex("BM4DBloomB", wgpu::TextureFormat::eRGBA16Float,
-                                  state->bloom_b_storage_view, state->bloom_b_sampled_view);
+    state->bloom_a_tex = make_tex("BM4DBloomA", wgpu::TextureFormat::eRGBA16Float, state->bloom_a_storage_view,
+                                  state->bloom_a_sampled_view);
+    state->bloom_b_tex = make_tex("BM4DBloomB", wgpu::TextureFormat::eRGBA16Float, state->bloom_b_storage_view,
+                                  state->bloom_b_sampled_view);
     {
         auto tex =
             device->createTexture(wgpu::TextureDescriptor()
-                                      .setLabel("BM4DPrevDepth").setFormat(wgpu::TextureFormat::eR32Float)
+                                      .setLabel("BM4DPrevDepth")
+                                      .setFormat(wgpu::TextureFormat::eR32Float)
                                       .setUsage(wgpu::TextureUsage::eTextureBinding | wgpu::TextureUsage::eCopyDst)
-                                      .setSize(extent).setMipLevelCount(1).setSampleCount(1)
+                                      .setSize(extent)
+                                      .setMipLevelCount(1)
+                                      .setSampleCount(1)
                                       .setDimension(wgpu::TextureDimension::e2D));
-        auto vd = wgpu::TextureViewDescriptor()
-                      .setFormat(wgpu::TextureFormat::eR32Float)
-                      .setDimension(wgpu::TextureViewDimension::e2D)
-                      .setBaseMipLevel(0).setMipLevelCount(1).setBaseArrayLayer(0).setArrayLayerCount(1);
+        auto vd                        = wgpu::TextureViewDescriptor()
+                                             .setFormat(wgpu::TextureFormat::eR32Float)
+                                             .setDimension(wgpu::TextureViewDimension::e2D)
+                                             .setBaseMipLevel(0)
+                                             .setMipLevelCount(1)
+                                             .setBaseArrayLayer(0)
+                                             .setArrayLayerCount(1);
         state->prev_depth_tex          = tex;
         state->prev_depth_sampled_view = tex.createView(vd);
     }
 
-    state->scene_bg = device->createBindGroup(
-        wgpu::BindGroupDescriptor()
-            .setLabel("BM4DSceneBG").setLayout(state->scene_layout)
-            .setEntries(std::array{
-                wgpu::BindGroupEntry().setBinding(0).setBuffer(state->camera_uniform)
-                    .setOffset(0).setSize(sizeof(BM4DCameraUniform)),
-                wgpu::BindGroupEntry().setBinding(1).setBuffer(state->bm_buffer)
-                    .setOffset(0).setSize(state->bm_buffer.getSize()),
-                wgpu::BindGroupEntry().setBinding(2).setBuffer(state->color_buffer)
-                    .setOffset(0).setSize(state->color_buffer.getSize()),
-            }));
+    state->scene_bg = device->createBindGroup(wgpu::BindGroupDescriptor()
+                                                  .setLabel("BM4DSceneBG")
+                                                  .setLayout(state->scene_layout)
+                                                  .setEntries(std::array{
+                                                      wgpu::BindGroupEntry()
+                                                          .setBinding(0)
+                                                          .setBuffer(state->camera_uniform)
+                                                          .setOffset(0)
+                                                          .setSize(sizeof(BM4DCameraUniform)),
+                                                      wgpu::BindGroupEntry()
+                                                          .setBinding(1)
+                                                          .setBuffer(state->bm_buffer)
+                                                          .setOffset(0)
+                                                          .setSize(state->bm_buffer.getSize()),
+                                                      wgpu::BindGroupEntry()
+                                                          .setBinding(2)
+                                                          .setBuffer(state->color_buffer)
+                                                          .setOffset(0)
+                                                          .setSize(state->color_buffer.getSize()),
+                                                  }));
 
-    state->trace_out_bg = device->createBindGroup(
-        wgpu::BindGroupDescriptor()
-            .setLabel("BM4DTraceOutBG").setLayout(state->trace_out_layout)
-            .setEntries(std::array{
-                wgpu::BindGroupEntry().setBinding(0).setTextureView(state->hdr_storage_view),
-                wgpu::BindGroupEntry().setBinding(1).setTextureView(state->depth_storage_view),
-            }));
+    state->trace_out_bg =
+        device->createBindGroup(wgpu::BindGroupDescriptor()
+                                    .setLabel("BM4DTraceOutBG")
+                                    .setLayout(state->trace_out_layout)
+                                    .setEntries(std::array{
+                                        wgpu::BindGroupEntry().setBinding(0).setTextureView(state->hdr_storage_view),
+                                        wgpu::BindGroupEntry().setBinding(1).setTextureView(state->depth_storage_view),
+                                    }));
 
     for (int i = 0; i < 2; ++i) {
-        int prev = 1 - i;
+        int prev            = 1 - i;
         state->taa_in_bg[i] = device->createBindGroup(
             wgpu::BindGroupDescriptor()
                 .setLabel(("BM4DTaaIn" + std::to_string(i)).c_str())
@@ -1311,14 +1380,17 @@ void prepare_bm4d_render(Res<wgpu::Device> device,
     }
 
     auto make_bloom_src = [&](const char* lbl, wgpu::TextureView& tv) -> wgpu::BindGroup {
-        return device->createBindGroup(
-            wgpu::BindGroupDescriptor()
-                .setLabel(lbl).setLayout(state->bloom_in_layout)
-                .setEntries(std::array{
-                    wgpu::BindGroupEntry().setBinding(0).setBuffer(state->bloom_params_uniform)
-                        .setOffset(0).setSize(sizeof(BM4DBloomParamsUniform)),
-                    wgpu::BindGroupEntry().setBinding(1).setTextureView(tv),
-                }));
+        return device->createBindGroup(wgpu::BindGroupDescriptor()
+                                           .setLabel(lbl)
+                                           .setLayout(state->bloom_in_layout)
+                                           .setEntries(std::array{
+                                               wgpu::BindGroupEntry()
+                                                   .setBinding(0)
+                                                   .setBuffer(state->bloom_params_uniform)
+                                                   .setOffset(0)
+                                                   .setSize(sizeof(BM4DBloomParamsUniform)),
+                                               wgpu::BindGroupEntry().setBinding(1).setTextureView(tv),
+                                           }));
     };
     for (int i = 0; i < 2; ++i)
         state->bloom_src_accum_bg[i] =
@@ -1327,12 +1399,12 @@ void prepare_bm4d_render(Res<wgpu::Device> device,
     state->bloom_src_b_bg = make_bloom_src("BM4DBloomSrcB", state->bloom_b_sampled_view);
 
     auto make_bloom_dst = [&](const char* lbl, wgpu::TextureView& sv) -> wgpu::BindGroup {
-        return device->createBindGroup(
-            wgpu::BindGroupDescriptor()
-                .setLabel(lbl).setLayout(state->bloom_out_layout)
-                .setEntries(std::array{
-                    wgpu::BindGroupEntry().setBinding(0).setTextureView(sv),
-                }));
+        return device->createBindGroup(wgpu::BindGroupDescriptor()
+                                           .setLabel(lbl)
+                                           .setLayout(state->bloom_out_layout)
+                                           .setEntries(std::array{
+                                               wgpu::BindGroupEntry().setBinding(0).setTextureView(sv),
+                                           }));
     };
     state->bloom_dst_a_bg = make_bloom_dst("BM4DBloomDstA", state->bloom_a_storage_view);
     state->bloom_dst_b_bg = make_bloom_dst("BM4DBloomDstB", state->bloom_b_storage_view);
@@ -1359,11 +1431,11 @@ struct BM4DPathTracerPlugin {
             return;
         }
         registry->get().insert_asset_static("epix/shaders/grid/brickmap.slang",
-                                             to_bytes_bm4d(kBrickmapGridSlangSource));
+                                            to_bytes_bm4d(kBrickmapGridSlangSource));
         registry->get().insert_asset_static(kBM4DTraceSlangPath, to_bytes_bm4d(kBM4DTraceSlang));
-        registry->get().insert_asset_static(kBM4DTaaSlangPath,   to_bytes_bm4d(kBM4DTaaSlang));
-        registry->get().insert_asset_static(kBM4DBlitVertPath,   to_bytes_bm4d(kBM4DBlitVertSlang));
-        registry->get().insert_asset_static(kBM4DBlitFragPath,   to_bytes_bm4d(kBM4DBlitFragSlang));
+        registry->get().insert_asset_static(kBM4DTaaSlangPath, to_bytes_bm4d(kBM4DTaaSlang));
+        registry->get().insert_asset_static(kBM4DBlitVertPath, to_bytes_bm4d(kBM4DBlitVertSlang));
+        registry->get().insert_asset_static(kBM4DBlitFragPath, to_bytes_bm4d(kBM4DBlitFragSlang));
         registry->get().insert_asset_static(kBM4DBloomSlangPath, to_bytes_bm4d(kBM4DBloomSlang));
 
         auto render_app = app.get_sub_app_mut(render::Render);
@@ -1394,9 +1466,7 @@ struct BM4DPathTracerPlugin {
             .add_systems(ExtractSchedule, into(extract_bm4d_config).set_name("extract bm4d config"))
             .add_systems(ExtractSchedule, into(extract_bm4d_camera).set_name("extract bm4d camera"))
             .add_systems(Render,
-                         into(prepare_bm4d_render)
-                             .in_set(RenderSet::PrepareResources)
-                             .set_name("prepare bm4d render"));
+                         into(prepare_bm4d_render).in_set(RenderSet::PrepareResources).set_name("prepare bm4d render"));
     }
 };
 

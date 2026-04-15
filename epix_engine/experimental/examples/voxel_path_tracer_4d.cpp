@@ -790,8 +790,9 @@ static void ortho4(glm::vec4& f, glm::vec4& r, glm::vec4& u, glm::vec4& o) {
 
 void camera_control_4d(Res<input::ButtonInput<input::KeyCode>> keys,
                        Res<input::ButtonInput<input::MouseButton>> mouse_btns,
+                       EventReader<input::MouseScroll> scroll_input,
                        Local<std::optional<glm::dvec2>> last_mouse_pos,
-                       Single<const epix::window::Window&, With<epix::window::PrimaryWindow>> window,
+                       Query<Item<const epix::window::Window&>, With<epix::window::PrimaryWindow>> windows,
                        Res<time::Time<>> game_time,
                        core::ResMut<Voxel4DCameraState> cam) {
     const float dt    = game_time->delta_secs();
@@ -799,15 +800,23 @@ void camera_control_4d(Res<input::ButtonInput<input::KeyCode>> keys,
     const float sens  = 0.002f;
     const float rsens = 1.2f;  // 4D rotation speed (rad/s)
 
+    float scroll_rot4 = 0.0f;
+    for (const auto& scroll : scroll_input.read()) scroll_rot4 += static_cast<float>(scroll.yoffset);
+
     double dx = 0.0, dy = 0.0;
     const bool looking = mouse_btns->pressed(input::MouseButton::MouseButtonRight);
     if (looking) {
-        auto [mx, my] = window->cursor_pos;
-        if (last_mouse_pos->has_value()) {
-            dx = mx - last_mouse_pos->value().x;
-            dy = my - last_mouse_pos->value().y;
+        if (auto window = windows.single(); window.has_value()) {
+            auto&& [primary_window] = *window;
+            auto [mx, my]           = primary_window.cursor_pos;
+            if (last_mouse_pos->has_value()) {
+                dx = mx - last_mouse_pos->value().x;
+                dy = my - last_mouse_pos->value().y;
+            }
+            last_mouse_pos->emplace(mx, my);
+        } else {
+            last_mouse_pos->reset();
         }
-        last_mouse_pos->emplace(mx, my);
     } else {
         last_mouse_pos->reset();
     }
@@ -826,8 +835,8 @@ void camera_control_4d(Res<input::ButtonInput<input::KeyCode>> keys,
     if (keys->pressed(input::KeyCode::KeyD)) move += r;
     if (keys->pressed(input::KeyCode::KeySpace)) move += u;
     if (keys->pressed(input::KeyCode::KeyLeftShift)) move -= u;
-    if (keys->pressed(input::KeyCode::KeyQ)) move += o;  // +w (ana)
-    if (keys->pressed(input::KeyCode::KeyE)) move -= o;  // -w (kata)
+    if (keys->pressed(input::KeyCode::KeyR)) move += o;
+    if (keys->pressed(input::KeyCode::KeyF)) move -= o;
     if (glm::length(move) > 0.001f) pos += glm::normalize(move) * spd * dt;
 
     // Mouse yaw (rotate forward & right in their plane)
@@ -850,10 +859,20 @@ void camera_control_4d(Res<input::ButtonInput<input::KeyCode>> keys,
         u         = newu;
     }
 
-    // 4D rotation: R/F keys rotate forward into the over (w) direction
-    float rot4 = 0.0f;
-    if (keys->pressed(input::KeyCode::KeyR)) rot4 = rsens * dt;
-    if (keys->pressed(input::KeyCode::KeyF)) rot4 = -rsens * dt;
+    // 3D roll: Q/E rotate right/up around the current forward direction.
+    float roll = 0.0f;
+    if (keys->pressed(input::KeyCode::KeyQ)) roll = rsens * dt;
+    if (keys->pressed(input::KeyCode::KeyE)) roll = -rsens * dt;
+    if (std::abs(roll) > 1e-6f) {
+        float c = std::cos(roll), s = std::sin(roll);
+        auto newr = glm::normalize(c * r + s * u);
+        auto newu = glm::normalize(-s * r + c * u);
+        r         = newr;
+        u         = newu;
+    }
+
+    // Mouse wheel rotates the camera through the fourth dimension.
+    float rot4 = scroll_rot4 * sens;
     if (std::abs(rot4) > 1e-6f) {
         float c = std::cos(rot4), s = std::sin(rot4);
         auto newf = glm::normalize(c * f + s * o);
@@ -873,7 +892,7 @@ void v4d_imgui_ui(imgui::Ctx /*ctx*/, core::ResMut<Voxel4DConfig> cfg, core::Res
     ImGui::SeparatorText("Camera");
     ImGui::SliderFloat("Speed", &cam->move_speed, 1.0f, 100.0f, "%.1f");
     ImGui::Text("W/S=forward  A/D=strafe  Space/Shift=up/down");
-    ImGui::Text("Q/E=+w/-w (4th dim)   R/F=rotate into w");
+    ImGui::Text("Q/E=roll camera   R/F=move +/-w   Wheel=rotate through w");
     ImGui::Text("Right-drag=look");
     ImGui::SeparatorText("Bloom");
     ImGui::Checkbox("Enabled", &cfg->bloom_enabled);
