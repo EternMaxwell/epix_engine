@@ -279,8 +279,12 @@ export struct SandSimulation : grid::ExtendibleChunkRefGrid<kDim> {
             .type    = ElementType::Powder,
             .color_func =
                 [](std::uint64_t sd) {
-                    float t = static_cast<float>(std::hash<std::uint64_t>{}(sd)) /
-                              static_cast<float>(std::numeric_limits<std::uint64_t>::max());
+                    // splitmix64 avalanche — avoids the identity-hash problem on GCC/libstdc++
+                    sd += 0x9e3779b97f4a7c15ULL;
+                    sd = (sd ^ (sd >> 30)) * 0xbf58476d1ce4e5b9ULL;
+                    sd = (sd ^ (sd >> 27)) * 0x94d049bb133111ebULL;
+                    sd ^= (sd >> 31);
+                    float t = static_cast<float>(sd) / static_cast<float>(std::numeric_limits<std::uint64_t>::max());
                     return glm::vec4(0.80f + t * 0.18f, 0.68f + t * 0.15f, 0.18f + t * 0.08f, 1.0f);
                 },
         });
