@@ -831,13 +831,16 @@ std::expected<std::shared_ptr<wgpu::ShaderModule>, ShaderCacheError> ShaderCache
     spdlog::debug("[shader.cache] Compiling shader '{}' with {} defs.", assets::UntypedAssetId(id), merged_defs.size());
 
     ShaderCacheSource source;
+    std::vector<std::uint8_t> slang_spirv_bytes;  // backing storage for Slang-compiled SPIR-V
+    std::string composed_wgsl;                    // backing storage for WGSL composition
     if (std::holds_alternative<Source::SpirV>(shader.source.data)) {
         const auto& bytes = std::get<Source::SpirV>(shader.source.data).bytes;
-        source            = ShaderCacheSource{ShaderCacheSource::SpirV{bytes}};
+        source            = ShaderCacheSource{ShaderCacheSource::SpirV{std::span<const std::uint8_t>(bytes)}};
     } else if (std::holds_alternative<Source::Slang>(shader.source.data)) {
         auto spirv = slang_->compile(id, shader, merged_defs, shaders_);
         if (!spirv) return std::unexpected(spirv.error());
-        source = ShaderCacheSource{ShaderCacheSource::SpirV{std::move(spirv.value())}};
+        slang_spirv_bytes = std::move(spirv.value());
+        source = ShaderCacheSource{ShaderCacheSource::SpirV{std::span<const std::uint8_t>(slang_spirv_bytes)}};
     } else if (std::holds_alternative<Source::SlangIr>(shader.source.data)) {
         // Keep explicit .slang-module assets as dependency-only modules.
         if (shader.path.path.extension() == ".slang-module") {
@@ -851,7 +854,8 @@ std::expected<std::shared_ptr<wgpu::ShaderModule>, ShaderCacheError> ShaderCache
         // preprocess_slang_to_ir is enabled. Compile those as root modules.
         auto spirv = slang_->compile_ir_root(id, shader, merged_defs, shaders_);
         if (!spirv) return std::unexpected(spirv.error());
-        source = ShaderCacheSource{ShaderCacheSource::SpirV{std::move(spirv.value())}};
+        slang_spirv_bytes = std::move(spirv.value());
+        source = ShaderCacheSource{ShaderCacheSource::SpirV{std::span<const std::uint8_t>(slang_spirv_bytes)}};
     } else {
         for (const auto& imp : shader.imports) {
             if (auto res = add_import_to_composer(composer_, data_, shaders_, id, imp); !res)
@@ -860,7 +864,8 @@ std::expected<std::shared_ptr<wgpu::ShaderModule>, ShaderCacheError> ShaderCache
         auto composed =
             composer_.compose(shader.source.as_str(), canonical_asset_path_string(shader.path), merged_defs);
         if (!composed) return std::unexpected(ShaderCacheError::process_error(std::move(composed.error())));
-        source = ShaderCacheSource{ShaderCacheSource::Wgsl{std::move(composed.value())}};
+        composed_wgsl = std::move(composed.value());
+        source = ShaderCacheSource{ShaderCacheSource::Wgsl{std::string_view(composed_wgsl)}};
     }
 
     auto module_result = load_module_(device_, source, shader.validate_shader);
