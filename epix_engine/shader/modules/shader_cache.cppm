@@ -46,7 +46,7 @@ export struct ShaderData {
 export struct ShaderCacheSource {
     /** @brief SPIR-V bytes ready for backend module creation. */
     struct SpirV {
-        std::span<const std::uint8_t> bytes;
+        std::vector<std::uint8_t> bytes;
     };
     /** @brief Final WGSL text ready for backend module creation. */
     struct Wgsl {
