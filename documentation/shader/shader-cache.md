@@ -143,8 +143,8 @@ The processed source handed to `LoadModuleFn`. Only two forms reach the callback
 
 | Variant                    | Content                                             |
 | -------------------------- | --------------------------------------------------- |
-| `ShaderCacheSource::Wgsl`  | `std::string source` — final composed WGSL.           |
-| `ShaderCacheSource::SpirV` | `std::vector<uint8_t> bytes` — SPIR-V bytecode.       |
+| `ShaderCacheSource::Wgsl`  | `std::string_view source` — final composed WGSL.            |
+| `ShaderCacheSource::SpirV` | `std::span<const uint8_t> bytes` — SPIR-V bytecode.         |
 
 ---
 
