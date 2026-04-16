@@ -831,15 +831,13 @@ std::expected<std::shared_ptr<wgpu::ShaderModule>, ShaderCacheError> ShaderCache
     spdlog::debug("[shader.cache] Compiling shader '{}' with {} defs.", assets::UntypedAssetId(id), merged_defs.size());
 
     ShaderCacheSource source;
-    std::vector<std::uint8_t> slang_spirv_bytes;  // backing storage for Slang-compiled SPIR-V spans
     if (std::holds_alternative<Source::SpirV>(shader.source.data)) {
         const auto& bytes = std::get<Source::SpirV>(shader.source.data).bytes;
-        source            = ShaderCacheSource{ShaderCacheSource::SpirV{std::span<const std::uint8_t>(bytes)}};
+        source            = ShaderCacheSource{ShaderCacheSource::SpirV{bytes}};
     } else if (std::holds_alternative<Source::Slang>(shader.source.data)) {
         auto spirv = slang_->compile(id, shader, merged_defs, shaders_);
         if (!spirv) return std::unexpected(spirv.error());
-        slang_spirv_bytes = std::move(spirv.value());
-        source = ShaderCacheSource{ShaderCacheSource::SpirV{std::span<const std::uint8_t>(slang_spirv_bytes)}};
+        source = ShaderCacheSource{ShaderCacheSource::SpirV{std::move(spirv.value())}};
     } else if (std::holds_alternative<Source::SlangIr>(shader.source.data)) {
         // Keep explicit .slang-module assets as dependency-only modules.
         if (shader.path.path.extension() == ".slang-module") {
@@ -853,8 +851,7 @@ std::expected<std::shared_ptr<wgpu::ShaderModule>, ShaderCacheError> ShaderCache
         // preprocess_slang_to_ir is enabled. Compile those as root modules.
         auto spirv = slang_->compile_ir_root(id, shader, merged_defs, shaders_);
         if (!spirv) return std::unexpected(spirv.error());
-        slang_spirv_bytes = std::move(spirv.value());
-        source = ShaderCacheSource{ShaderCacheSource::SpirV{std::span<const std::uint8_t>(slang_spirv_bytes)}};
+        source = ShaderCacheSource{ShaderCacheSource::SpirV{std::move(spirv.value())}};
     } else {
         for (const auto& imp : shader.imports) {
             if (auto res = add_import_to_composer(composer_, data_, shaders_, id, imp); !res)
