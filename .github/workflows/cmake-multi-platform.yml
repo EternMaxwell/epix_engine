@@ -97,6 +97,7 @@ jobs:
       if: runner.os == 'Windows'
       shell: powershell
       run: |
+        $ProgressPreference = 'SilentlyContinue'
         $out = "$env:TEMP\vs_buildtools.exe"
         curl.exe -fsSL -o $out "https://aka.ms/vs/18/release/vs_buildtools.exe"
         $proc = Start-Process $out -ArgumentList (
