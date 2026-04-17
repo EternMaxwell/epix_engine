@@ -6,9 +6,7 @@ import std;
 
 namespace epix::core {
 template <typename I, typename V>
-    requires requires(I index) {
-        { static_cast<std::size_t>(index) } -> std::same_as<std::size_t>;
-    }
+    requires std::convertible_to<I, std::size_t> || std::same_as<I, std::size_t>
 struct SparseArray {
    private:
     std::vector<std::optional<V>> values;
