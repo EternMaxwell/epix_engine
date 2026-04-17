@@ -1,7 +1,7 @@
-﻿// 4D Voxel Path Tracer — example demonstrating a 4-dimensional voxel scene.
-// Uses dense_grid<4> + svo_upload() for scene storage, custom render-graph
-// sub-graph (V4DGraph) with a 4D perspective camera defined by explicit
-// pos/forward/right/up/over float4 vectors (no mat5x5 in the API).
+﻿// BrickMap 4D Path Tracer — 4D voxel scene with BrickMap GPU backend.
+// Combines the 4D camera system (pos/forward/right/up/over basis vectors)
+// from voxel_path_tracer_4d.cpp with the BrickMap GPU grid backend from
+// brickmap_path_tracer.cpp.  Uses tree_extendible_grid<4,int32_t> + brickmap_upload().
 
 #include <imgui.h>
 #include <spdlog/spdlog.h>
@@ -41,13 +41,13 @@ namespace tf     = epix::transform;
 // ===========================================================================
 
 // ---------------------------------------------------------------------------
-// 4D Trace compute shader.
-// group 0: 0=Voxel4DCamera, 1=SVO, 2=colors
+// 4D trace compute shader using BrickmapGrid<4, 4>.
+// group 0: 0=Voxel4DCamera, 1=BrickmapBuffer, 2=colors
 // group 1: 0=hdr_tex (rgba16f write), 1=depth_tex (r32f write)
 // ---------------------------------------------------------------------------
-constexpr std::string_view kV4DTraceSlangPath = "voxel4d/trace.slang";
-constexpr std::string_view kV4DTraceSlang     = R"slang(
-import epix.ext.grid.svo;
+constexpr std::string_view kBM4DTraceSlangPath = "brickmap4d/trace.slang";
+constexpr std::string_view kBM4DTraceSlang     = R"slang(
+import epix.ext.grid.brickmap;
 
 // 4D camera: pos + 4 orthonormal basis vectors + previous frame for TAA
 struct Voxel4DCamera {
@@ -61,18 +61,18 @@ struct Voxel4DCamera {
     float4 prev_right;
     float4 prev_up;
     float  fov_y;
-    float  aspect;   // width / height
+    float  aspect;
     float  taa_blend;
     uint   frame_index;
 };
 
 [[vk::binding(0, 0)]] ConstantBuffer<Voxel4DCamera> camera;
-[[vk::binding(1, 0)]] StructuredBuffer<uint>   svo_buf;
+[[vk::binding(1, 0)]] StructuredBuffer<uint>   bm_buf;
 [[vk::binding(2, 0)]] StructuredBuffer<float4> colors;
 [[vk::binding(0, 1)]] [[vk::image_format("rgba16f")]] RWTexture2D<float4> hdr_tex;
 [[vk::binding(1, 1)]] [[vk::image_format("r32f")]]    RWTexture2D<float>  depth_tex;
 
-// PCG hash
+// PCG hash - fast, good quality random numbers.
 uint pcg(uint v) {
     uint state = v * 747796405u + 2891336453u;
     uint word  = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
@@ -104,8 +104,8 @@ struct RayHit4 {
     float4 normal;
 };
 
-// Convert SvoRayHit axis/sign to float4 normal.
-float4 hit_normal4(epix::ext::grid::SvoRayHit<4> h) {
+// Convert BrickmapRayHit axis/sign to float4 normal.
+float4 hit_normal4(epix::ext::grid::BrickmapRayHit<4> h) {
     float4 n = float4(0.0f);
     if (h.hit_axis == 0) n.x = float(h.hit_sign);
     else if (h.hit_axis == 1) n.y = float(h.hit_sign);
@@ -114,11 +114,11 @@ float4 hit_normal4(epix::ext::grid::SvoRayHit<4> h) {
     return n;
 }
 
-// Thin wrapper: call SvoGrid<4,2> member trace_ray and convert to RayHit4.
-RayHit4 trace_ray_4d(epix::ext::grid::SvoGrid<4, 2> svo, float4 origin, float4 dir, int max_steps) {
+// Thin wrapper: call BrickmapGrid<4,4> member trace_ray and convert to RayHit4.
+RayHit4 trace_ray_4d(epix::ext::grid::BrickmapGrid<4, 4> bm, float4 origin, float4 dir, int max_steps) {
     float[4] o = { origin.x, origin.y, origin.z, origin.w };
     float[4] d = { dir.x, dir.y, dir.z, dir.w };
-    epix::ext::grid::SvoRayHit<4> h = svo.trace_ray(o, d, max_steps);
+    epix::ext::grid::BrickmapRayHit<4> h = bm.trace_ray(o, d, max_steps);
     RayHit4 r;
     r.idx    = h.data_index;
     r.t      = h.t;
@@ -142,9 +142,6 @@ float2 box_muller(float u1, float u2) {
 }
 
 // Cosine-weighted hemisphere sample in 4D via generalised Malley's method.
-// Samples a uniform point in a 3D unit ball then lifts to the 4D hemisphere.
-// PDF = cos(theta) / (4*pi/3),  estimate weight = albedo (cos/normalization cancel).
-// Requires 5 uniform random values u1..u5.
 float4 cosine_hemisphere4(float4 N, float4 T, float4 B, float4 C,
                            float u1, float u2, float u3, float u4, float u5) {
     float2 bm1 = box_muller(u1, u2);
@@ -152,8 +149,8 @@ float4 cosine_hemisphere4(float4 N, float4 T, float4 B, float4 C,
     float3 g   = float3(bm1.x, bm1.y, bm2.x);
     float  gl  = length(g);
     if (gl < 1e-6f) return N;
-    float3 dir3 = g / gl;                        // uniform direction on S2
-    float  r    = pow(u5, 1.0f / 3.0f);          // uniform radius in 3D ball
+    float3 dir3 = g / gl;
+    float  r    = pow(u5, 1.0f / 3.0f);
     float3 p    = dir3 * r;
     float  ww   = sqrt(max(0.0f, 1.0f - dot(p, p)));
     return normalize(p.x * T + p.y * B + p.z * C + ww * N);
@@ -166,7 +163,6 @@ void traceMain(uint3 id : SV_DispatchThreadID) {
     hdr_tex.GetDimensions(width, height);
     if (id.x >= width || id.y >= height) return;
 
-    // Build jittered ray in 4D from the 4D perspective camera.
     float jx = rand01(seed_for(id.xy, camera.frame_index, 0u)) - 0.5f;
     float jy = rand01(seed_for(id.xy, camera.frame_index, 1u)) - 0.5f;
     float nx = ((float(id.x) + 0.5f + jx) / float(width))  * 2.0f - 1.0f;
@@ -178,8 +174,8 @@ void traceMain(uint3 id : SV_DispatchThreadID) {
     float4 ray_dir  = normalize(camera.forward + nx * half_w * camera.right
                                                + ny * half_h * camera.up);
 
-    epix::ext::grid::SvoGrid<4, 2> svo = epix::ext::grid::SvoGrid<4, 2>(svo_buf);
-    RayHit4 primary = trace_ray_4d(svo, ray_orig, ray_dir, 256);
+    epix::ext::grid::BrickmapGrid<4, 4> bm = epix::ext::grid::BrickmapGrid<4, 4>(bm_buf);
+    RayHit4 primary = trace_ray_4d(bm, ray_orig, ray_dir, 256);
 
     float3 radiance;
     if (primary.idx < 0) {
@@ -200,13 +196,12 @@ void traceMain(uint3 id : SV_DispatchThreadID) {
         float u5 = rand01(seed_for(id.xy, camera.frame_index, 6u));
         float4 bounce = cosine_hemisphere4(N, T, B, C, u1, u2, u3, u4, u5);
 
-        RayHit4 secondary = trace_ray_4d(svo, hit_pos + N * 0.02f, bounce, 128);
+        RayHit4 secondary = trace_ray_4d(bm, hit_pos + N * 0.02f, bounce, 128);
 
         float3 incoming;
         if (secondary.idx < 0) {
             incoming = sky_color4(bounce);
         } else {
-            // One more cheap bounce: sample sky in a random direction from the second hit.
             float4 h2_pos    = hit_pos + bounce * secondary.t;
             float3 h2_albedo = colors[secondary.idx].rgb;
             float4 N2        = secondary.normal;
@@ -218,7 +213,7 @@ void traceMain(uint3 id : SV_DispatchThreadID) {
             float v4 = rand01(seed_for(id.xy, camera.frame_index, 10u));
             float v5 = rand01(seed_for(id.xy, camera.frame_index, 11u));
             float4 bounce2   = cosine_hemisphere4(N2, T2, B2, C2, v1, v2, v3, v4, v5);
-            RayHit4 tertiary = trace_ray_4d(svo, h2_pos + N2 * 0.02f, bounce2, 64);
+            RayHit4 tertiary = trace_ray_4d(bm, h2_pos + N2 * 0.02f, bounce2, 64);
             float3 in2 = (tertiary.idx < 0) ? sky_color4(bounce2)
                                              : colors[tertiary.idx].rgb * float3(0.25f, 0.30f, 0.38f);
             incoming = h2_albedo * in2;
@@ -232,11 +227,13 @@ void traceMain(uint3 id : SV_DispatchThreadID) {
 )slang";
 
 // ---------------------------------------------------------------------------
-// 4D TAA accumulation compute shader.
-// Reprojection uses the explicit 4D camera vectors instead of matrices.
+// 4D TAA accumulation compute shader — reprojection via explicit 4D basis vectors.
+// group 0: 0=Voxel4DCamera
+// group 1: 0=hdr_tex, 1=depth_tex, 2=prev_accum, 3=prev_depth (read)
+// group 2: 0=accum_out (rgba16f write)
 // ---------------------------------------------------------------------------
-constexpr std::string_view kV4DTaaSlangPath = "voxel4d/taa.slang";
-constexpr std::string_view kV4DTaaSlang     = R"slang(
+constexpr std::string_view kBM4DTaaSlangPath = "brickmap4d/taa.slang";
+constexpr std::string_view kBM4DTaaSlang     = R"slang(
 struct Voxel4DCamera {
     float4 pos;
     float4 forward;
@@ -260,7 +257,6 @@ struct Voxel4DCamera {
 [[vk::binding(3, 1)]] Texture2D<float>   prev_depth;
 [[vk::binding(0, 2)]] [[vk::image_format("rgba16f")]] RWTexture2D<float4> accum_out;
 
-// Reconstruct 4D world-space hit point from (2D uv, depth, current camera).
 float4 reproject4d(float2 uv, float depth) {
     float nx     = uv.x * 2.0f - 1.0f;
     float ny     = uv.y * 2.0f - 1.0f;
@@ -271,7 +267,6 @@ float4 reproject4d(float2 uv, float depth) {
     return camera.pos + dir * depth;
 }
 
-// Project a 4D world point through the previous frame's 4D camera to a 2D UV.
 float2 project4d_to_prev_uv(float4 world_pos) {
     float4 rel   = world_pos - camera.prev_pos;
     float  d     = dot(rel, camera.prev_forward);
@@ -285,7 +280,6 @@ float2 project4d_to_prev_uv(float4 world_pos) {
     return float2(ndc_x * 0.5f + 0.5f, ndc_y * 0.5f + 0.5f);
 }
 
-// Depth-aware bilinear 4-tap history gather (same as 3D TAA).
 float4 sample_history_4tap(float2 prev_uv, float expected_prev_d, float far_history,
                             uint width, uint height, int2 fallback_px) {
     float2 texel_pos  = prev_uv * float2(float(width), float(height)) - 0.5f;
@@ -294,7 +288,6 @@ float4 sample_history_4tap(float2 prev_uv, float expected_prev_d, float far_hist
     float4 accum      = float4(0.0f);
     float  weight_sum = 0.0f;
     float  depth_win  = lerp(0.02f, 0.05f, far_history);
-
     for (int oy = 0; oy <= 1; ++oy)
         for (int ox = 0; ox <= 1; ++ox) {
             int2   sp   = clamp(base_px + int2(ox, oy), int2(0, 0),
@@ -305,8 +298,8 @@ float4 sample_history_4tap(float2 prev_uv, float expected_prev_d, float far_hist
             float  dd   = abs(sd - expected_prev_d) / max(expected_prev_d, 0.1f);
             float  dw   = saturate(1.0f - dd / depth_win);
             float  sw   = bwx * bwy * dw;
-            accum       += prev_accum.Load(int3(sp, 0)) * sw;
-            weight_sum  += sw;
+            accum      += prev_accum.Load(int3(sp, 0)) * sw;
+            weight_sum += sw;
         }
     if (weight_sum > 1e-4f) return accum / weight_sum;
     return prev_accum.Load(int3(fallback_px, 0));
@@ -335,23 +328,20 @@ void taaMain(uint3 id : SV_DispatchThreadID) {
         if (in_bounds) {
             int2 prev_px = clamp(int2(prev_uv * float2(float(width), float(height))),
                                  int2(0, 0), int2(int(width) - 1, int(height) - 1));
-
             float best_score = 1e30f, best_dd = 1e30f, best_px_dist = 1e30f;
             int2  best_px = prev_px;
             for (int dy = -1; dy <= 1; ++dy)
                 for (int dx = -1; dx <= 1; ++dx) {
-                    int2  cp   = clamp(prev_px + int2(dx, dy), int2(0, 0),
-                                       int2(int(width) - 1, int(height) - 1));
-                    float cd   = prev_depth.Load(int3(cp, 0));
-                    float cdd  = abs(cd - expected_d) / max(expected_d, 0.1f);
-                    float cpd  = length(float2(cp - prev_px));
-                    float cs   = cdd + cpd * 0.02f;
+                    int2  cp  = clamp(prev_px + int2(dx, dy), int2(0, 0),
+                                      int2(int(width) - 1, int(height) - 1));
+                    float cd  = prev_depth.Load(int3(cp, 0));
+                    float cdd = abs(cd - expected_d) / max(expected_d, 0.1f);
+                    float cpd = length(float2(cp - prev_px));
+                    float cs  = cdd + cpd * 0.02f;
                     if (cs < best_score) {
-                        best_score = cs; best_dd = cdd;
-                        best_px_dist = cpd; best_px = cp;
+                        best_score = cs; best_dd = cdd; best_px_dist = cpd; best_px = cp;
                     }
                 }
-
             float max_dd = best_px_dist > 0.0f ? 0.02f : 0.04f;
             if (best_dd < max_dd && best_score < 0.06f) {
                 float4 history = sample_history_4tap(prev_uv, expected_d, far_history,
@@ -362,15 +352,14 @@ void taaMain(uint3 id : SV_DispatchThreadID) {
                         int2   sp = clamp(int2(id.xy) + int2(dx, dy), int2(0, 0),
                                           int2(int(width) - 1, int(height) - 1));
                         float3 s  = hdr_tex.Load(int3(sp, 0)).rgb;
-                        cmin = min(cmin, s);
-                        cmax = max(cmax, s);
+                        cmin = min(cmin, s); cmax = max(cmax, s);
                     }
-                float3 pad  = max((cmax - cmin) * (0.08f + far_history * 0.17f),
-                                   float3(0.01f + far_history * 0.03f));
-                float4 clamped   = float4(clamp(history.rgb, cmin - pad, cmax + pad), 1.0f);
-                float  fb_blend  = lerp(max(blend, 0.3f), max(blend, 0.12f), far_history);
-                float  conf      = saturate(best_score / 0.06f);
-                float  eff       = lerp(blend, fb_blend, conf);
+                float3 pad     = max((cmax - cmin) * (0.08f + far_history * 0.17f),
+                                     float3(0.01f + far_history * 0.03f));
+                float4 clamped = float4(clamp(history.rgb, cmin - pad, cmax + pad), 1.0f);
+                float  fb      = lerp(max(blend, 0.3f), max(blend, 0.12f), far_history);
+                float  conf    = saturate(best_score / 0.06f);
+                float  eff     = lerp(blend, fb, conf);
                 eff = lerp(eff, blend * 0.35f, far_history * (1.0f - conf));
                 accum_out[id.xy] = lerp(clamped, current, eff);
                 return;
@@ -382,10 +371,10 @@ void taaMain(uint3 id : SV_DispatchThreadID) {
 )slang";
 
 // ---------------------------------------------------------------------------
-// Blit + Bloom shaders — identical to 3D version.
+// Blit vertex/fragment shaders (fullscreen triangle)
 // ---------------------------------------------------------------------------
-constexpr std::string_view kV4DBlitVertPath  = "voxel4d/blit_vert.slang";
-constexpr std::string_view kV4DBlitVertSlang = R"slang(
+constexpr std::string_view kBM4DBlitVertPath  = "brickmap4d/blit_vert.slang";
+constexpr std::string_view kBM4DBlitVertSlang = R"slang(
 struct VOut { float4 pos : SV_Position; [[vk::location(0)]] float2 uv; };
 [shader("vertex")]
 VOut blitVert([[vk::location(0)]] float2 uv : TEXCOORD0) {
@@ -396,9 +385,9 @@ VOut blitVert([[vk::location(0)]] float2 uv : TEXCOORD0) {
 }
 )slang";
 
-constexpr std::string_view kV4DBlitFragPath  = "voxel4d/blit_frag.slang";
-constexpr std::string_view kV4DBlitFragSlang = R"slang(
-[[vk::binding(0, 0)]] SamplerState    blit_sampler;
+constexpr std::string_view kBM4DBlitFragPath  = "brickmap4d/blit_frag.slang";
+constexpr std::string_view kBM4DBlitFragSlang = R"slang(
+[[vk::binding(0, 0)]] SamplerState      blit_sampler;
 [[vk::binding(1, 0)]] Texture2D<float4> accum_tex;
 [[vk::binding(2, 0)]] Texture2D<float4> bloom_tex;
 struct VIn { [[vk::location(0)]] float2 uv; };
@@ -413,8 +402,12 @@ float4 blitFrag(VIn input) : SV_Target {
 }
 )slang";
 
-constexpr std::string_view kV4DBloomSlangPath = "voxel4d/bloom.slang";
-constexpr std::string_view kV4DBloomSlang     = R"slang(
+// ---------------------------------------------------------------------------
+// Bloom compute shader: threshold, horizontal Gaussian blur, vertical blur.
+// group 0: 0=BloomParams uniform, 1=src_tex  |  group 1: 0=dst_tex (write)
+// ---------------------------------------------------------------------------
+constexpr std::string_view kBM4DBloomSlangPath = "brickmap4d/bloom.slang";
+constexpr std::string_view kBM4DBloomSlang     = R"slang(
 struct BloomParams { float threshold; float knee; float intensity; float enabled; };
 [[vk::binding(0, 0)]] ConstantBuffer<BloomParams> bloom;
 [[vk::binding(1, 0)]] Texture2D<float4>   src_tex;
@@ -461,8 +454,8 @@ void bloomBlurVMain(uint3 id : SV_DispatchThreadID) {
 // C++ types
 // ===========================================================================
 
-// GPU-side camera: 9 float4s + 4 floats = 176 bytes (all 16-byte aligned).
-struct alignas(16) Voxel4DCameraUniform {
+// GPU-side 4D camera uniform: 9 float4s + 4 floats = 160 bytes (16-byte aligned).
+struct alignas(16) BM4DCameraUniform {
     glm::vec4 pos;
     glm::vec4 forward;
     glm::vec4 right;
@@ -477,9 +470,9 @@ struct alignas(16) Voxel4DCameraUniform {
     float taa_blend;
     uint32_t frame_index;
 };
-static_assert(sizeof(Voxel4DCameraUniform) == 160);
+static_assert(sizeof(BM4DCameraUniform) == 160);
 
-struct alignas(16) V4DBloomParamsUniform {
+struct alignas(16) BM4DBloomParamsUniform {
     float threshold;
     float knee;
     float intensity;
@@ -487,20 +480,20 @@ struct alignas(16) V4DBloomParamsUniform {
 };
 
 // ---------------------------------------------------------------------------
-// 4D camera resource (lives in main world, extracted to render world)
+// Camera state (main world, extracted to render world each frame)
 // ---------------------------------------------------------------------------
-struct Voxel4DCameraState {
-    glm::vec4 pos{16.0f, 12.0f, -6.0f, 8.0f};   // start outside the scene in z
-    glm::vec4 forward{0.0f, 0.0f, 1.0f, 0.0f};  // look in +z
+struct BM4DCameraState {
+    glm::vec4 pos{16.0f, 12.0f, -6.0f, 8.0f};
+    glm::vec4 forward{0.0f, 0.0f, 1.0f, 0.0f};
     glm::vec4 right{1.0f, 0.0f, 0.0f, 0.0f};
     glm::vec4 up{0.0f, 1.0f, 0.0f, 0.0f};
-    glm::vec4 over{0.0f, 0.0f, 0.0f, 1.0f};  // 4th dimension (+w)
+    glm::vec4 over{0.0f, 0.0f, 0.0f, 1.0f};
     float fov_y      = glm::radians(65.0f);
     float move_speed = 10.0f;
 };
 
-struct Voxel4DConfig {
-    float taa_blend       = 0.1f;
+struct BM4DConfig {
+    float taa_blend       = 0.01f;
     float camera_speed    = 10.0f;
     bool bloom_enabled    = true;
     float bloom_threshold = 1.0f;
@@ -508,27 +501,28 @@ struct Voxel4DConfig {
     float bloom_intensity = 0.2f;
 };
 
-struct Voxel4DScene {
-    dense_grid<4, uint8_t> grid;
+// 4D voxel scene (main world).
+struct BM4DScene {
+    tree_extendible_grid<4, int32_t> grid;
     std::vector<glm::vec4> palette;
 };
 
-struct ExtractedVoxel4DSvo {
-    std::vector<uint32_t> svo_words;
+struct ExtractedBM4DGrid {
+    std::vector<uint32_t> bm_words;
     std::vector<glm::vec4> colors;
 };
 
-struct ExtractedVoxel4DCamera {
-    glm::vec4 pos;
-    glm::vec4 forward;
-    glm::vec4 right;
-    glm::vec4 up;
-    glm::vec4 over;
+struct ExtractedBM4DCamera {
+    glm::vec4 pos{16.0f, 12.0f, -6.0f, 8.0f};
+    glm::vec4 forward{0.0f, 0.0f, 1.0f, 0.0f};
+    glm::vec4 right{1.0f, 0.0f, 0.0f, 0.0f};
+    glm::vec4 up{0.0f, 1.0f, 0.0f, 0.0f};
+    glm::vec4 over{0.0f, 0.0f, 0.0f, 1.0f};
     float fov_y = glm::radians(65.0f);
 };
 
-struct Voxel4DShaderHandles {
-    assets::Handle<shader::Shader> svo_lib;
+struct BM4DShaderHandles {
+    assets::Handle<shader::Shader> bm_lib;
     assets::Handle<shader::Shader> trace;
     assets::Handle<shader::Shader> taa;
     assets::Handle<shader::Shader> blit_vert;
@@ -536,8 +530,8 @@ struct Voxel4DShaderHandles {
     assets::Handle<shader::Shader> bloom;
 };
 
-struct Voxel4DRenderState {
-    wgpu::Buffer svo_buffer;
+struct BM4DRenderState {
+    wgpu::Buffer bm_buffer;
     wgpu::Buffer color_buffer;
     wgpu::Buffer camera_uniform;
     wgpu::Buffer vertex_buffer;
@@ -583,7 +577,7 @@ struct Voxel4DRenderState {
     // State
     glm::uvec2 output_size{0, 0};
     int accum_idx = 0;
-    // Previous-frame camera (used to fill the "prev_*" fields next frame)
+    // Previous-frame camera basis (used to fill prev_* fields next frame)
     glm::vec4 prev_pos{16.0f, 12.0f, -6.0f, 8.0f};
     glm::vec4 prev_forward{0.0f, 0.0f, 1.0f, 0.0f};
     glm::vec4 prev_right{1.0f, 0.0f, 0.0f, 0.0f};
@@ -591,7 +585,7 @@ struct Voxel4DRenderState {
     float prev_fov_y       = glm::radians(65.0f);
     bool resources_created = false;
     bool pipelines_queued  = false;
-    bool svo_valid         = false;
+    bool bm_valid          = false;
     uint32_t frame_count   = 0;
 };
 
@@ -599,17 +593,17 @@ struct Voxel4DRenderState {
 // Sub-graph
 // ===========================================================================
 
-struct V4DGraphTag {
+struct BM4DGraphTag {
     void register_to(RenderGraph& g);
 };
-inline V4DGraphTag V4DGraph;
-enum class V4DNode { Trace, Blit };
+inline BM4DGraphTag BM4DGraph;
+enum class BM4DNode { Trace, Blit };
 
 // ===========================================================================
 // Render graph nodes
 // ===========================================================================
 
-struct V4DTraceNode : graph::Node {
+struct BM4DTraceNode : graph::Node {
     std::optional<QueryState<Item<const ExtractedView&, const ViewTarget&>, Filter<>>> view_qs;
 
     void update(const World& world) override {
@@ -620,8 +614,8 @@ struct V4DTraceNode : graph::Node {
     }
 
     void run(GraphContext& ctx, RenderContext& rc, const World& world) override {
-        auto& state = const_cast<Voxel4DRenderState&>(world.resource<Voxel4DRenderState>());
-        if (!state.svo_valid || !state.resources_created) return;
+        auto& state = const_cast<BM4DRenderState&>(world.resource<BM4DRenderState>());
+        if (!state.bm_valid || !state.resources_created) return;
         const auto& ps = world.resource<PipelineServer>();
         auto trace_pl  = ps.get_compute_pipeline(state.trace_pipeline_id);
         auto taa_pl    = ps.get_compute_pipeline(state.taa_pipeline_id);
@@ -635,9 +629,9 @@ struct V4DTraceNode : graph::Node {
         if (vp.x == 0 || vp.y == 0 || state.output_size != vp) return;
 
         // Build camera uniform from the extracted 4D camera state.
-        const auto& ecam = world.resource<ExtractedVoxel4DCamera>();
-        const auto& cfg  = world.resource<Voxel4DConfig>();
-        Voxel4DCameraUniform cam;
+        const auto& ecam = world.resource<ExtractedBM4DCamera>();
+        const auto& cfg  = world.resource<BM4DConfig>();
+        BM4DCameraUniform cam;
         cam.pos          = ecam.pos;
         cam.forward      = ecam.forward;
         cam.right        = ecam.right;
@@ -691,12 +685,12 @@ struct V4DTraceNode : graph::Node {
                                                   wgpu::Extent3D{vp.x, vp.y, 1});
         rc.flush_encoder();
 
-        // Bloom passes
+        // Bloom passes: threshold → H-blur → V-blur on the TAA output
         auto bloom_thr_pl = ps.get_compute_pipeline(state.bloom_thresh_id);
         auto bloom_h_pl   = ps.get_compute_pipeline(state.bloom_h_id);
         auto bloom_v_pl   = ps.get_compute_pipeline(state.bloom_v_id);
         if (bloom_thr_pl && bloom_h_pl && bloom_v_pl) {
-            V4DBloomParamsUniform bp;
+            BM4DBloomParamsUniform bp;
             bp.threshold = cfg.bloom_threshold;
             bp.knee      = cfg.bloom_knee;
             bp.intensity = cfg.bloom_intensity;
@@ -725,7 +719,7 @@ struct V4DTraceNode : graph::Node {
     }
 };
 
-struct V4DBlitNode : graph::Node {
+struct BM4DBlitNode : graph::Node {
     std::optional<QueryState<Item<const ViewTarget&>, Filter<>>> view_qs;
 
     void update(const World& world) override {
@@ -736,8 +730,8 @@ struct V4DBlitNode : graph::Node {
     }
 
     void run(GraphContext& ctx, RenderContext& rc, const World& world) override {
-        const auto& state = world.resource<Voxel4DRenderState>();
-        if (!state.svo_valid || !state.pipelines_queued) return;
+        const auto& state = world.resource<BM4DRenderState>();
+        if (!state.bm_valid || !state.pipelines_queued) return;
         const auto& ps = world.resource<PipelineServer>();
         auto pipeline  = ps.get_render_pipeline(state.blit_pipeline_id);
         if (!pipeline) return;
@@ -764,19 +758,20 @@ struct V4DBlitNode : graph::Node {
     }
 };
 
-void V4DGraphTag::register_to(RenderGraph& g) {
+void BM4DGraphTag::register_to(RenderGraph& g) {
     RenderGraph vg;
-    vg.add_node(V4DNode::Trace, V4DTraceNode{});
-    vg.add_node(V4DNode::Blit, V4DBlitNode{});
-    vg.add_node_edges(V4DNode::Trace, V4DNode::Blit);
-    if (auto res = g.add_sub_graph(V4DGraph, std::move(vg)); !res) spdlog::error("[v4d] Failed to register sub-graph");
+    vg.add_node(BM4DNode::Trace, BM4DTraceNode{});
+    vg.add_node(BM4DNode::Blit, BM4DBlitNode{});
+    vg.add_node_edges(BM4DNode::Trace, BM4DNode::Blit);
+    if (auto res = g.add_sub_graph(BM4DGraph, std::move(vg)); !res)
+        spdlog::error("[bm4d] Failed to register sub-graph");
 }
 
 // ===========================================================================
 // ECS systems
 // ===========================================================================
 
-static std::span<const std::byte> to_bytes4d(std::string_view sv) {
+static std::span<const std::byte> to_bytes_bm4d(std::string_view sv) {
     return {reinterpret_cast<const std::byte*>(sv.data()), sv.size()};
 }
 
@@ -788,17 +783,17 @@ static void ortho4(glm::vec4& f, glm::vec4& r, glm::vec4& u, glm::vec4& o) {
     o = glm::normalize(o - glm::dot(o, f) * f - glm::dot(o, r) * r - glm::dot(o, u) * u);
 }
 
-void camera_control_4d(Res<input::ButtonInput<input::KeyCode>> keys,
-                       Res<input::ButtonInput<input::MouseButton>> mouse_btns,
-                       EventReader<input::MouseScroll> scroll_input,
-                       Local<std::optional<glm::dvec2>> last_mouse_pos,
-                       Query<Item<const epix::window::Window&>, With<epix::window::PrimaryWindow>> windows,
-                       Res<time::Time<>> game_time,
-                       core::ResMut<Voxel4DCameraState> cam) {
+void camera_control_bm4d(Res<input::ButtonInput<input::KeyCode>> keys,
+                         Res<input::ButtonInput<input::MouseButton>> mouse_btns,
+                         EventReader<input::MouseScroll> scroll_input,
+                         Local<std::optional<glm::dvec2>> last_mouse_pos,
+                         Query<Item<const epix::window::Window&>, With<epix::window::PrimaryWindow>> windows,
+                         Res<time::Time<>> game_time,
+                         core::ResMut<BM4DCameraState> cam) {
     const float dt    = game_time->delta_secs();
     const float spd   = cam->move_speed;
     const float sens  = 0.002f;
-    const float rsens = 1.2f;  // 4D rotation speed (rad/s)
+    const float rsens = 1.2f;
 
     float scroll_rot4 = 0.0f;
     for (const auto& scroll : scroll_input.read()) scroll_rot4 += static_cast<float>(scroll.yoffset);
@@ -827,7 +822,6 @@ void camera_control_4d(Res<input::ButtonInput<input::KeyCode>> keys,
     glm::vec4& u   = cam->up;
     glm::vec4& o   = cam->over;
 
-    // Translation
     glm::vec4 move{0.0f};
     if (keys->pressed(input::KeyCode::KeyW)) move += f;
     if (keys->pressed(input::KeyCode::KeyS)) move -= f;
@@ -839,7 +833,6 @@ void camera_control_4d(Res<input::ButtonInput<input::KeyCode>> keys,
     if (keys->pressed(input::KeyCode::KeyF)) move -= o;
     if (glm::length(move) > 0.001f) pos += glm::normalize(move) * spd * dt;
 
-    // Mouse yaw (rotate forward & right in their plane)
     if (dx != 0.0) {
         float a = float(dx) * sens;
         float c = std::cos(a), s = std::sin(a);
@@ -848,8 +841,6 @@ void camera_control_4d(Res<input::ButtonInput<input::KeyCode>> keys,
         f         = newf;
         r         = newr;
     }
-
-    // Mouse pitch (rotate forward & up)
     if (dy != 0.0) {
         float a = float(dy) * sens;
         float c = std::cos(a), s = std::sin(a);
@@ -859,7 +850,6 @@ void camera_control_4d(Res<input::ButtonInput<input::KeyCode>> keys,
         u         = newu;
     }
 
-    // 3D roll: Q/E rotate right/up around the current forward direction.
     float roll = 0.0f;
     if (keys->pressed(input::KeyCode::KeyQ)) roll = rsens * dt;
     if (keys->pressed(input::KeyCode::KeyE)) roll = -rsens * dt;
@@ -871,7 +861,6 @@ void camera_control_4d(Res<input::ButtonInput<input::KeyCode>> keys,
         u         = newu;
     }
 
-    // Mouse wheel rotates the camera through the fourth dimension.
     float rot4 = scroll_rot4 * sens;
     if (std::abs(rot4) > 1e-6f) {
         float c = std::cos(rot4), s = std::sin(rot4);
@@ -880,13 +869,11 @@ void camera_control_4d(Res<input::ButtonInput<input::KeyCode>> keys,
         f         = newf;
         o         = newo;
     }
-
     ortho4(f, r, u, o);
 }
 
-void v4d_imgui_ui(imgui::Ctx /*ctx*/, core::ResMut<Voxel4DConfig> cfg, core::ResMut<Voxel4DCameraState> cam) {
-    // ---- Settings window ----
-    ImGui::Begin("4D Voxel Path Tracer");
+void bm4d_imgui_ui(imgui::Ctx /*ctx*/, core::ResMut<BM4DConfig> cfg, core::ResMut<BM4DCameraState> cam) {
+    ImGui::Begin("4D BrickMap Path Tracer");
     ImGui::SeparatorText("TAA");
     ImGui::SliderFloat("Blend Rate", &cfg->taa_blend, 0.001f, 1.0f, "%.3f");
     ImGui::SeparatorText("Camera");
@@ -899,93 +886,21 @@ void v4d_imgui_ui(imgui::Ctx /*ctx*/, core::ResMut<Voxel4DConfig> cfg, core::Res
     ImGui::SliderFloat("Threshold", &cfg->bloom_threshold, 0.1f, 5.0f, "%.2f");
     ImGui::SliderFloat("Knee", &cfg->bloom_knee, 0.0f, 2.0f, "%.2f");
     ImGui::SliderFloat("Intensity", &cfg->bloom_intensity, 0.0f, 2.0f, "%.2f");
-    ImGui::End();
-
-    // ---- Camera control window ----
-    ImGui::Begin("4D Camera");
-
     ImGui::SeparatorText("Position");
-    ImGui::DragFloat("pos.x", &cam->pos.x, 0.1f, -1000.0f, 1000.0f, "%.2f");
-    ImGui::DragFloat("pos.y", &cam->pos.y, 0.1f, -1000.0f, 1000.0f, "%.2f");
-    ImGui::DragFloat("pos.z", &cam->pos.z, 0.1f, -1000.0f, 1000.0f, "%.2f");
-    ImGui::DragFloat("pos.w", &cam->pos.w, 0.1f, -1000.0f, 1000.0f, "%.2f");
-
-    // Helper: show a read-only float4 row with a label.
+    ImGui::DragFloat("pos.x", &cam->pos.x, 0.1f);
+    ImGui::DragFloat("pos.y", &cam->pos.y, 0.1f);
+    ImGui::DragFloat("pos.z", &cam->pos.z, 0.1f);
+    ImGui::DragFloat("pos.w", &cam->pos.w, 0.1f);
     auto show_vec4 = [](const char* label, const glm::vec4& v) {
         ImGui::Text("%-12s (%.3f, %.3f, %.3f, %.3f)", label, v.x, v.y, v.z, v.w);
     };
-
     ImGui::SeparatorText("Basis vectors (read-only)");
     show_vec4("forward:", cam->forward);
     show_vec4("right:", cam->right);
     show_vec4("up:", cam->up);
     show_vec4("over:", cam->over);
-
-    ImGui::SeparatorText("Orientation");
-    ImGui::Text("Yaw / Pitch (deg)");
-
-    // Yaw: rotate forward & right around the up axis.
-    if (ImGui::Button("Yaw +5")) {
-        float a      = glm::radians(5.0f);
-        auto nf      = glm::normalize(std::cos(a) * cam->forward + std::sin(a) * cam->right);
-        auto nr      = glm::normalize(-std::sin(a) * cam->forward + std::cos(a) * cam->right);
-        cam->forward = nf;
-        cam->right   = nr;
-        ortho4(cam->forward, cam->right, cam->up, cam->over);
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("Yaw -5")) {
-        float a      = glm::radians(-5.0f);
-        auto nf      = glm::normalize(std::cos(a) * cam->forward + std::sin(a) * cam->right);
-        auto nr      = glm::normalize(-std::sin(a) * cam->forward + std::cos(a) * cam->right);
-        cam->forward = nf;
-        cam->right   = nr;
-        ortho4(cam->forward, cam->right, cam->up, cam->over);
-    }
-
-    if (ImGui::Button("Pitch +5")) {
-        float a      = glm::radians(5.0f);
-        auto nf      = glm::normalize(std::cos(a) * cam->forward - std::sin(a) * cam->up);
-        auto nu      = glm::normalize(std::sin(a) * cam->forward + std::cos(a) * cam->up);
-        cam->forward = nf;
-        cam->up      = nu;
-        ortho4(cam->forward, cam->right, cam->up, cam->over);
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("Pitch -5")) {
-        float a      = glm::radians(-5.0f);
-        auto nf      = glm::normalize(std::cos(a) * cam->forward - std::sin(a) * cam->up);
-        auto nu      = glm::normalize(std::sin(a) * cam->forward + std::cos(a) * cam->up);
-        cam->forward = nf;
-        cam->up      = nu;
-        ortho4(cam->forward, cam->right, cam->up, cam->over);
-    }
-
-    ImGui::Text("4D rotation (forward <-> over)");
-    if (ImGui::Button("Rot4 +5")) {
-        float a      = glm::radians(5.0f);
-        auto nf      = glm::normalize(std::cos(a) * cam->forward + std::sin(a) * cam->over);
-        auto no      = glm::normalize(-std::sin(a) * cam->forward + std::cos(a) * cam->over);
-        cam->forward = nf;
-        cam->over    = no;
-        ortho4(cam->forward, cam->right, cam->up, cam->over);
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("Rot4 -5")) {
-        float a      = glm::radians(-5.0f);
-        auto nf      = glm::normalize(std::cos(a) * cam->forward + std::sin(a) * cam->over);
-        auto no      = glm::normalize(-std::sin(a) * cam->forward + std::cos(a) * cam->over);
-        cam->forward = nf;
-        cam->over    = no;
-        ortho4(cam->forward, cam->right, cam->up, cam->over);
-    }
-
-    ImGui::SeparatorText("FOV");
-    float fov_deg = glm::degrees(cam->fov_y);
-    if (ImGui::SliderFloat("fov_y (deg)", &fov_deg, 10.0f, 120.0f, "%.1f")) cam->fov_y = glm::radians(fov_deg);
-
     ImGui::SeparatorText("Reset");
-    if (ImGui::Button("Reset to default")) {
+    if (ImGui::Button("Reset camera")) {
         cam->pos     = glm::vec4{16.0f, 12.0f, -6.0f, 8.0f};
         cam->forward = glm::vec4{0.0f, 0.0f, 1.0f, 0.0f};
         cam->right   = glm::vec4{1.0f, 0.0f, 0.0f, 0.0f};
@@ -993,12 +908,11 @@ void v4d_imgui_ui(imgui::Ctx /*ctx*/, core::ResMut<Voxel4DConfig> cfg, core::Res
         cam->over    = glm::vec4{0.0f, 0.0f, 0.0f, 1.0f};
         cam->fov_y   = glm::radians(65.0f);
     }
-
     ImGui::End();
 }
 
-void extract_v4d_config(Commands cmd, Extract<Res<Voxel4DConfig>> cfg) {
-    cmd.insert_resource(Voxel4DConfig{
+void extract_bm4d_config(Commands cmd, Extract<Res<BM4DConfig>> cfg) {
+    cmd.insert_resource(BM4DConfig{
         .taa_blend       = cfg->taa_blend,
         .camera_speed    = cfg->camera_speed,
         .bloom_enabled   = cfg->bloom_enabled,
@@ -1008,8 +922,8 @@ void extract_v4d_config(Commands cmd, Extract<Res<Voxel4DConfig>> cfg) {
     });
 }
 
-void extract_v4d_camera(Commands cmd, Extract<Res<Voxel4DCameraState>> cam) {
-    cmd.insert_resource(ExtractedVoxel4DCamera{
+void extract_bm4d_camera(Commands cmd, Extract<Res<BM4DCameraState>> cam) {
+    cmd.insert_resource(ExtractedBM4DCamera{
         .pos     = cam->pos,
         .forward = cam->forward,
         .right   = cam->right,
@@ -1019,9 +933,8 @@ void extract_v4d_camera(Commands cmd, Extract<Res<Voxel4DCameraState>> cam) {
     });
 }
 
-void setup_v4d_scene(Commands cmd) {
-    // 32×32×32×16 4D grid.  Material 0 = empty (not stored in dense_grid).
-    Voxel4DScene scene{.grid = dense_grid<4, uint8_t>({32u, 32u, 32u, 16u})};
+void setup_bm4d_scene(Commands cmd) {
+    BM4DScene scene{.grid = tree_extendible_grid<4, int32_t>()};
     scene.palette = {
         glm::vec4{0.0f},                       // 0 empty
         glm::vec4{0.55f, 0.55f, 0.55f, 1.0f},  // 1 grey stone
@@ -1029,97 +942,93 @@ void setup_v4d_scene(Commands cmd) {
         glm::vec4{0.20f, 0.65f, 0.25f, 1.0f},  // 3 green
         glm::vec4{0.85f, 0.75f, 0.25f, 1.0f},  // 4 yellow
         glm::vec4{0.20f, 0.35f, 0.85f, 1.0f},  // 5 blue
-        glm::vec4{0.75f, 0.15f, 0.75f, 1.0f},  // 6 purple (w-only objects)
+        glm::vec4{0.75f, 0.15f, 0.75f, 1.0f},  // 6 purple (4D-only)
     };
 
-    // Floor at y=0 for all (x, z, w) — grey stone
-    for (uint32_t x = 0; x < 32; ++x)
-        for (uint32_t z = 0; z < 32; ++z)
-            for (uint32_t w = 0; w < 16; ++w) scene.grid.set({x, 0u, z, w}, uint8_t(1));
+    // Floor at y=0 for all (x, z, w)
+    for (int32_t x = 0; x < 32; ++x)
+        for (int32_t z = 0; z < 32; ++z)
+            for (int32_t w = 0; w < 16; ++w) scene.grid.set({x, 0, z, w}, int32_t(1));
 
-    // 3×3 grid of pillars (x,z) that exist at every w-slice (colour by (i+j)%3+2)
-    for (uint32_t i = 0; i < 3; ++i)
-        for (uint32_t j = 0; j < 3; ++j) {
-            uint32_t bx = 4 + i * 10, bz = 4 + j * 10;
-            uint8_t col = uint8_t(2 + (i + j) % 3);
-            for (uint32_t h = 1; h <= 8; ++h)
-                for (uint32_t w = 0; w < 16; ++w) scene.grid.set({bx, h, bz, w}, col);
+    // 3×3 grid of pillars (x,z) at every w-slice
+    for (int32_t i = 0; i < 3; ++i)
+        for (int32_t j = 0; j < 3; ++j) {
+            int32_t bx = 4 + i * 10, bz = 4 + j * 10;
+            int32_t col = int32_t(2 + (i + j) % 3);
+            for (int32_t h = 1; h <= 8; ++h)
+                for (int32_t w = 0; w < 16; ++w) scene.grid.set({bx, h, bz, w}, col);
         }
 
-    // 4D-only object: purple slab that only exists at w=4..7 (visible when you approach w≈5-6)
-    for (uint32_t x = 12; x < 20; ++x)
-        for (uint32_t z = 12; z < 20; ++z)
-            for (uint32_t w = 4; w <= 7; ++w) scene.grid.set({x, 5u, z, w}, uint8_t(6));
+    // 4D-only purple slab: exists only at w=4..7
+    for (int32_t x = 12; x < 20; ++x)
+        for (int32_t z = 12; z < 20; ++z)
+            for (int32_t w = 4; w <= 7; ++w) scene.grid.set({x, 5, z, w}, int32_t(6));
 
-    // Another unique structure: a ring of blue pillars only at w=10..13
-    for (uint32_t theta = 0; theta < 8; ++theta) {
+    // Ring of blue pillars at w=10..13
+    for (int32_t theta = 0; theta < 8; ++theta) {
         float angle = float(theta) * (2.0f * 3.14159f / 8.0f);
-        uint32_t bx = uint32_t(16 + int(7.5f * std::cos(angle)));
-        uint32_t bz = uint32_t(16 + int(7.5f * std::sin(angle)));
-        bx          = std::min(bx, 31u);
-        bz          = std::min(bz, 31u);
-        for (uint32_t h = 1; h <= 12; ++h)
-            for (uint32_t w = 10; w <= 13; ++w) scene.grid.set({bx, h, bz, w}, uint8_t(5));
+        int32_t bx  = int32_t(16 + int(7.5f * std::cos(angle)));
+        int32_t bz  = int32_t(16 + int(7.5f * std::sin(angle)));
+        bx          = std::min(bx, 31);
+        bz          = std::min(bz, 31);
+        for (int32_t h = 1; h <= 12; ++h)
+            for (int32_t w = 10; w <= 13; ++w) scene.grid.set({bx, h, bz, w}, int32_t(5));
     }
 
     cmd.spawn(std::move(scene));
 
-    // Spawn a standard Camera using our 4D render-graph sub-graph.
-    CameraBundle cam = CameraBundle::with_render_graph(V4DGraph);
+    CameraBundle cam = CameraBundle::with_render_graph(BM4DGraph);
     cam.projection   = Projection::perspective(PerspectiveProjection{
         .fov        = glm::radians(65.0f),
         .near_plane = 0.1f,
         .far_plane  = 600.0f,
     });
-    cam.transform    = tf::Transform::from_xyz(16.0f, 12.0f, -6.0f);
+    cam.transform    = tf::Transform::from_xyz(16.0f, 12.0f, -30.0f);
     cmd.spawn(std::move(cam));
 }
 
-void extract_v4d_scene(Commands cmd, Extract<Query<Item<const Voxel4DScene&>>> scenes) {
+void extract_bm4d_scene(Commands cmd, Extract<Query<Item<const BM4DScene&>>> scenes) {
     for (auto&& [scene] : scenes.iter()) {
-        auto result = svo_upload(scene.grid);
+        auto result = brickmap_upload(scene.grid, {.brick_size = 4});
         if (!result) {
-            spdlog::warn("[v4d] svo_upload failed: {}", result.error().message());
+            spdlog::warn("[bm4d] brickmap_upload failed: {}", result.error().message());
             continue;
         }
         std::vector<glm::vec4> colors;
-        colors.reserve(scene.grid.count());
+        colors.reserve(result->header().data_count);
         for (auto&& [pos, mat] : scene.grid.iter()) {
-            uint8_t m = mat;
-            colors.push_back(m < scene.palette.size() ? scene.palette[m] : glm::vec4(1.0f));
+            int32_t m = mat;
+            glm::vec4 c =
+                (m >= 0 && static_cast<size_t>(m) < scene.palette.size()) ? scene.palette[m] : glm::vec4(1.0f);
+            colors.push_back(c);
         }
-        cmd.insert_resource(ExtractedVoxel4DSvo{
-            .svo_words = std::move(result->words),
-            .colors    = std::move(colors),
+        cmd.insert_resource(ExtractedBM4DGrid{
+            .bm_words = std::move(result->words),
+            .colors   = std::move(colors),
         });
         break;
     }
 }
 
-// ---------------------------------------------------------------------------
-// Render-world prepare system — creates GPU resources on first run and
-// re-creates per-resolution textures/bind-groups when the window resizes.
-// ---------------------------------------------------------------------------
-void prepare_v4d_render(Res<wgpu::Device> device,
-                        Res<wgpu::Queue> queue,
-                        Res<Voxel4DShaderHandles> handles,
-                        ResMut<PipelineServer> pipeline_server,
-                        ResMut<Voxel4DRenderState> state,
-                        Res<ExtractedVoxel4DSvo> svo_res,
-                        Query<Item<const ExtractedView&, const ViewTarget&>, With<ExtractedCamera>> views) {
-    // ---- Phase 1: static resources and pipeline kick-offs ----
+void prepare_bm4d_render(Res<wgpu::Device> device,
+                         Res<wgpu::Queue> queue,
+                         Res<BM4DShaderHandles> handles,
+                         ResMut<PipelineServer> pipeline_server,
+                         ResMut<BM4DRenderState> state,
+                         Res<ExtractedBM4DGrid> bm_res,
+                         Query<Item<const ExtractedView&, const ViewTarget&>, With<ExtractedCamera>> views) {
+    // ---- Phase 1: static resources + pipeline kick-offs ----
     if (!state->resources_created) {
-        // group 0: camera uniform + SVO buffer + color buffer
         state->scene_layout = device->createBindGroupLayout(
             wgpu::BindGroupLayoutDescriptor()
-                .setLabel("V4DSceneBGL")
+                .setLabel("BM4DSceneBGL")
                 .setEntries(std::array{
                     wgpu::BindGroupLayoutEntry()
                         .setBinding(0)
                         .setVisibility(wgpu::ShaderStage::eCompute)
                         .setBuffer(wgpu::BufferBindingLayout()
                                        .setType(wgpu::BufferBindingType::eUniform)
-                                       .setMinBindingSize(sizeof(Voxel4DCameraUniform))),
+                                       .setMinBindingSize(sizeof(BM4DCameraUniform))),
                     wgpu::BindGroupLayoutEntry()
                         .setBinding(1)
                         .setVisibility(wgpu::ShaderStage::eCompute)
@@ -1130,42 +1039,42 @@ void prepare_v4d_render(Res<wgpu::Device> device,
                         .setBuffer(wgpu::BufferBindingLayout().setType(wgpu::BufferBindingType::eReadOnlyStorage)),
                 }));
 
-        auto make_storage_tex_bgl = [&](const char* lbl, wgpu::TextureFormat fmt) {
-            return device->createBindGroupLayout(wgpu::BindGroupLayoutDescriptor().setLabel(lbl).setEntries(std::array{
-                wgpu::BindGroupLayoutEntry()
-                    .setBinding(0)
-                    .setVisibility(wgpu::ShaderStage::eCompute)
-                    .setStorageTexture(wgpu::StorageTextureBindingLayout()
-                                           .setAccess(wgpu::StorageTextureAccess::eReadWrite)
-                                           .setFormat(fmt)
-                                           .setViewDimension(wgpu::TextureViewDimension::e2D)),
-                wgpu::BindGroupLayoutEntry()
-                    .setBinding(1)
-                    .setVisibility(wgpu::ShaderStage::eCompute)
-                    .setStorageTexture(wgpu::StorageTextureBindingLayout()
-                                           .setAccess(wgpu::StorageTextureAccess::eReadWrite)
-                                           .setFormat(wgpu::TextureFormat::eR32Float)
-                                           .setViewDimension(wgpu::TextureViewDimension::e2D)),
-            }));
-        };
-        state->trace_out_layout = make_storage_tex_bgl("V4DTraceOutBGL", wgpu::TextureFormat::eRGBA16Float);
+        state->trace_out_layout = device->createBindGroupLayout(
+            wgpu::BindGroupLayoutDescriptor()
+                .setLabel("BM4DTraceOutBGL")
+                .setEntries(std::array{
+                    wgpu::BindGroupLayoutEntry()
+                        .setBinding(0)
+                        .setVisibility(wgpu::ShaderStage::eCompute)
+                        .setStorageTexture(wgpu::StorageTextureBindingLayout()
+                                               .setAccess(wgpu::StorageTextureAccess::eReadWrite)
+                                               .setFormat(wgpu::TextureFormat::eRGBA16Float)
+                                               .setViewDimension(wgpu::TextureViewDimension::e2D)),
+                    wgpu::BindGroupLayoutEntry()
+                        .setBinding(1)
+                        .setVisibility(wgpu::ShaderStage::eCompute)
+                        .setStorageTexture(wgpu::StorageTextureBindingLayout()
+                                               .setAccess(wgpu::StorageTextureAccess::eReadWrite)
+                                               .setFormat(wgpu::TextureFormat::eR32Float)
+                                               .setViewDimension(wgpu::TextureViewDimension::e2D)),
+                }));
 
-        auto make_sampled_bgl = [&](const char* lbl, std::size_t count) {
-            std::vector<wgpu::BindGroupLayoutEntry> entries;
-            for (std::size_t i = 0; i < count; ++i)
-                entries.push_back(wgpu::BindGroupLayoutEntry()
-                                      .setBinding(uint32_t(i))
-                                      .setVisibility(wgpu::ShaderStage::eCompute)
-                                      .setTexture(wgpu::TextureBindingLayout()
-                                                      .setSampleType(wgpu::TextureSampleType::eUnfilterableFloat)
-                                                      .setViewDimension(wgpu::TextureViewDimension::e2D)));
-            return device->createBindGroupLayout(wgpu::BindGroupLayoutDescriptor().setLabel(lbl).setEntries(entries));
-        };
-        state->taa_in_layout = make_sampled_bgl("V4DTaaInBGL", 4);
+        {
+            std::vector<wgpu::BindGroupLayoutEntry> ents;
+            for (uint32_t i = 0; i < 4; ++i)
+                ents.push_back(wgpu::BindGroupLayoutEntry()
+                                   .setBinding(i)
+                                   .setVisibility(wgpu::ShaderStage::eCompute)
+                                   .setTexture(wgpu::TextureBindingLayout()
+                                                   .setSampleType(wgpu::TextureSampleType::eUnfilterableFloat)
+                                                   .setViewDimension(wgpu::TextureViewDimension::e2D)));
+            state->taa_in_layout = device->createBindGroupLayout(
+                wgpu::BindGroupLayoutDescriptor().setLabel("BM4DTaaInBGL").setEntries(ents));
+        }
 
         state->taa_out_layout = device->createBindGroupLayout(
             wgpu::BindGroupLayoutDescriptor()
-                .setLabel("V4DTaaOutBGL")
+                .setLabel("BM4DTaaOutBGL")
                 .setEntries(std::array{
                     wgpu::BindGroupLayoutEntry()
                         .setBinding(0)
@@ -1178,7 +1087,7 @@ void prepare_v4d_render(Res<wgpu::Device> device,
 
         state->blit_layout = device->createBindGroupLayout(
             wgpu::BindGroupLayoutDescriptor()
-                .setLabel("V4DBlitBGL")
+                .setLabel("BM4DBlitBGL")
                 .setEntries(std::array{
                     wgpu::BindGroupLayoutEntry()
                         .setBinding(0)
@@ -1200,14 +1109,14 @@ void prepare_v4d_render(Res<wgpu::Device> device,
 
         state->bloom_in_layout = device->createBindGroupLayout(
             wgpu::BindGroupLayoutDescriptor()
-                .setLabel("V4DBloomInBGL")
+                .setLabel("BM4DBloomInBGL")
                 .setEntries(std::array{
                     wgpu::BindGroupLayoutEntry()
                         .setBinding(0)
                         .setVisibility(wgpu::ShaderStage::eCompute)
                         .setBuffer(wgpu::BufferBindingLayout()
                                        .setType(wgpu::BufferBindingType::eUniform)
-                                       .setMinBindingSize(sizeof(V4DBloomParamsUniform))),
+                                       .setMinBindingSize(sizeof(BM4DBloomParamsUniform))),
                     wgpu::BindGroupLayoutEntry()
                         .setBinding(1)
                         .setVisibility(wgpu::ShaderStage::eCompute)
@@ -1218,7 +1127,7 @@ void prepare_v4d_render(Res<wgpu::Device> device,
 
         state->bloom_out_layout = device->createBindGroupLayout(
             wgpu::BindGroupLayoutDescriptor()
-                .setLabel("V4DBloomOutBGL")
+                .setLabel("BM4DBloomOutBGL")
                 .setEntries(std::array{
                     wgpu::BindGroupLayoutEntry()
                         .setBinding(0)
@@ -1231,61 +1140,60 @@ void prepare_v4d_render(Res<wgpu::Device> device,
 
         state->bloom_params_uniform =
             device->createBuffer(wgpu::BufferDescriptor()
-                                     .setLabel("V4DBloomParams")
-                                     .setSize(sizeof(V4DBloomParamsUniform))
+                                     .setLabel("BM4DBloomParams")
+                                     .setSize(sizeof(BM4DBloomParamsUniform))
                                      .setUsage(wgpu::BufferUsage::eUniform | wgpu::BufferUsage::eCopyDst));
 
         state->linear_sampler = device->createSampler(wgpu::SamplerDescriptor()
-                                                          .setLabel("V4DLinear")
+                                                          .setLabel("BM4DLinearSampler")
                                                           .setMagFilter(wgpu::FilterMode::eNearest)
                                                           .setMinFilter(wgpu::FilterMode::eNearest)
                                                           .setMaxAnisotropy(1));
 
         state->camera_uniform =
             device->createBuffer(wgpu::BufferDescriptor()
-                                     .setLabel("V4DCameraUniform")
-                                     .setSize(sizeof(Voxel4DCameraUniform))
+                                     .setLabel("BM4DCameraUniform")
+                                     .setSize(sizeof(BM4DCameraUniform))
                                      .setUsage(wgpu::BufferUsage::eUniform | wgpu::BufferUsage::eCopyDst));
 
         constexpr float kVerts[6] = {0.0f, 0.0f, 2.0f, 0.0f, 0.0f, 2.0f};
         state->vertex_buffer =
             device->createBuffer(wgpu::BufferDescriptor()
-                                     .setLabel("V4DBlitVBO")
+                                     .setLabel("BM4DBlitVBO")
                                      .setSize(sizeof(kVerts))
                                      .setUsage(wgpu::BufferUsage::eVertex | wgpu::BufferUsage::eCopyDst));
         queue->writeBuffer(state->vertex_buffer, 0, kVerts, sizeof(kVerts));
 
         state->trace_pipeline_id = pipeline_server->queue_compute_pipeline(ComputePipelineDescriptor{
-            .label       = "v4d-trace",
+            .label       = "bm4d-trace",
             .layouts     = {state->scene_layout, state->trace_out_layout},
             .shader      = handles->trace,
             .entry_point = std::string("traceMain"),
         });
         state->taa_pipeline_id   = pipeline_server->queue_compute_pipeline(ComputePipelineDescriptor{
-            .label       = "v4d-taa",
+            .label       = "bm4d-taa",
             .layouts     = {state->scene_layout, state->taa_in_layout, state->taa_out_layout},
             .shader      = handles->taa,
             .entry_point = std::string("taaMain"),
         });
         state->bloom_thresh_id   = pipeline_server->queue_compute_pipeline(ComputePipelineDescriptor{
-            .label       = "v4d-bloom-thresh",
+            .label       = "bm4d-bloom-thresh",
             .layouts     = {state->bloom_in_layout, state->bloom_out_layout},
             .shader      = handles->bloom,
             .entry_point = std::string("bloomThreshMain"),
         });
         state->bloom_h_id        = pipeline_server->queue_compute_pipeline(ComputePipelineDescriptor{
-            .label       = "v4d-bloom-h",
+            .label       = "bm4d-bloom-h",
             .layouts     = {state->bloom_in_layout, state->bloom_out_layout},
             .shader      = handles->bloom,
             .entry_point = std::string("bloomBlurHMain"),
         });
         state->bloom_v_id        = pipeline_server->queue_compute_pipeline(ComputePipelineDescriptor{
-            .label       = "v4d-bloom-v",
+            .label       = "bm4d-bloom-v",
             .layouts     = {state->bloom_in_layout, state->bloom_out_layout},
             .shader      = handles->bloom,
             .entry_point = std::string("bloomBlurVMain"),
         });
-
         state->resources_created = true;
     }
 
@@ -1308,7 +1216,7 @@ void prepare_v4d_render(Res<wgpu::Device> device,
             FragmentState fs{.shader = handles->blit_frag, .entry_point = std::string("blitFrag")};
             fs.add_target(wgpu::ColorTargetState().setFormat(fmt).setWriteMask(wgpu::ColorWriteMask::eAll));
             state->blit_pipeline_id = pipeline_server->queue_render_pipeline(RenderPipelineDescriptor{
-                .label       = "v4d-blit",
+                .label       = "bm4d-blit",
                 .layouts     = {state->blit_layout},
                 .vertex      = std::move(vs),
                 .primitive   = wgpu::PrimitiveState()
@@ -1321,27 +1229,27 @@ void prepare_v4d_render(Res<wgpu::Device> device,
         }
     }
 
-    // ---- Phase 3: upload SVO + colors once ----
-    if (!state->svo_valid && !svo_res->svo_words.empty()) {
-        size_t sb = svo_res->svo_words.size() * sizeof(uint32_t);
-        size_t cb = std::max(svo_res->colors.size() * sizeof(glm::vec4), sizeof(glm::vec4));
-        state->svo_buffer =
+    // ---- Phase 3: upload BrickMap + color data once ----
+    if (!state->bm_valid && !bm_res->bm_words.empty()) {
+        size_t bm_bytes    = bm_res->bm_words.size() * sizeof(uint32_t);
+        size_t color_bytes = std::max(bm_res->colors.size() * sizeof(glm::vec4), sizeof(glm::vec4));
+        state->bm_buffer =
             device->createBuffer(wgpu::BufferDescriptor()
-                                     .setLabel("V4DSvoBuffer")
-                                     .setSize(sb)
+                                     .setLabel("BM4DBuffer")
+                                     .setSize(bm_bytes)
                                      .setUsage(wgpu::BufferUsage::eStorage | wgpu::BufferUsage::eCopyDst));
-        queue->writeBuffer(state->svo_buffer, 0, svo_res->svo_words.data(), sb);
+        queue->writeBuffer(state->bm_buffer, 0, bm_res->bm_words.data(), bm_bytes);
         state->color_buffer =
             device->createBuffer(wgpu::BufferDescriptor()
-                                     .setLabel("V4DColorBuffer")
-                                     .setSize(cb)
+                                     .setLabel("BM4DColorBuffer")
+                                     .setSize(color_bytes)
                                      .setUsage(wgpu::BufferUsage::eStorage | wgpu::BufferUsage::eCopyDst));
-        if (!svo_res->colors.empty())
-            queue->writeBuffer(state->color_buffer, 0, svo_res->colors.data(),
-                               svo_res->colors.size() * sizeof(glm::vec4));
-        state->svo_valid = true;
+        if (!bm_res->colors.empty())
+            queue->writeBuffer(state->color_buffer, 0, bm_res->colors.data(),
+                               bm_res->colors.size() * sizeof(glm::vec4));
+        state->bm_valid = true;
     }
-    if (!state->svo_valid) return;
+    if (!state->bm_valid) return;
 
     // ---- Phase 4: (re-)create per-resolution textures and bind groups ----
     glm::uvec2 vp{0, 0};
@@ -1378,22 +1286,22 @@ void prepare_v4d_render(Res<wgpu::Device> device,
     };
 
     state->hdr_tex =
-        make_tex("V4DHdrTex", wgpu::TextureFormat::eRGBA16Float, state->hdr_storage_view, state->hdr_sampled_view);
+        make_tex("BM4DHdrTex", wgpu::TextureFormat::eRGBA16Float, state->hdr_storage_view, state->hdr_sampled_view);
     state->depth_tex =
-        make_tex("V4DDepthTex", wgpu::TextureFormat::eR32Float, state->depth_storage_view, state->depth_sampled_view);
+        make_tex("BM4DDepthTex", wgpu::TextureFormat::eR32Float, state->depth_storage_view, state->depth_sampled_view);
     for (int i = 0; i < 2; ++i) {
-        auto lbl            = "V4DAccum" + std::to_string(i);
+        auto lbl            = "BM4DAccum" + std::to_string(i);
         state->accum_tex[i] = make_tex(lbl.c_str(), wgpu::TextureFormat::eRGBA16Float, state->accum_storage_view[i],
                                        state->accum_sampled_view[i]);
     }
-    state->bloom_a_tex = make_tex("V4DBloomA", wgpu::TextureFormat::eRGBA16Float, state->bloom_a_storage_view,
+    state->bloom_a_tex = make_tex("BM4DBloomA", wgpu::TextureFormat::eRGBA16Float, state->bloom_a_storage_view,
                                   state->bloom_a_sampled_view);
-    state->bloom_b_tex = make_tex("V4DBloomB", wgpu::TextureFormat::eRGBA16Float, state->bloom_b_storage_view,
+    state->bloom_b_tex = make_tex("BM4DBloomB", wgpu::TextureFormat::eRGBA16Float, state->bloom_b_storage_view,
                                   state->bloom_b_sampled_view);
     {
         auto tex =
             device->createTexture(wgpu::TextureDescriptor()
-                                      .setLabel("V4DPrevDepth")
+                                      .setLabel("BM4DPrevDepth")
                                       .setFormat(wgpu::TextureFormat::eR32Float)
                                       .setUsage(wgpu::TextureUsage::eTextureBinding | wgpu::TextureUsage::eCopyDst)
                                       .setSize(extent)
@@ -1412,19 +1320,19 @@ void prepare_v4d_render(Res<wgpu::Device> device,
     }
 
     state->scene_bg = device->createBindGroup(wgpu::BindGroupDescriptor()
-                                                  .setLabel("V4DSceneBG")
+                                                  .setLabel("BM4DSceneBG")
                                                   .setLayout(state->scene_layout)
                                                   .setEntries(std::array{
                                                       wgpu::BindGroupEntry()
                                                           .setBinding(0)
                                                           .setBuffer(state->camera_uniform)
                                                           .setOffset(0)
-                                                          .setSize(sizeof(Voxel4DCameraUniform)),
+                                                          .setSize(sizeof(BM4DCameraUniform)),
                                                       wgpu::BindGroupEntry()
                                                           .setBinding(1)
-                                                          .setBuffer(state->svo_buffer)
+                                                          .setBuffer(state->bm_buffer)
                                                           .setOffset(0)
-                                                          .setSize(state->svo_buffer.getSize()),
+                                                          .setSize(state->bm_buffer.getSize()),
                                                       wgpu::BindGroupEntry()
                                                           .setBinding(2)
                                                           .setBuffer(state->color_buffer)
@@ -1434,7 +1342,7 @@ void prepare_v4d_render(Res<wgpu::Device> device,
 
     state->trace_out_bg =
         device->createBindGroup(wgpu::BindGroupDescriptor()
-                                    .setLabel("V4DTraceOutBG")
+                                    .setLabel("BM4DTraceOutBG")
                                     .setLayout(state->trace_out_layout)
                                     .setEntries(std::array{
                                         wgpu::BindGroupEntry().setBinding(0).setTextureView(state->hdr_storage_view),
@@ -1445,7 +1353,7 @@ void prepare_v4d_render(Res<wgpu::Device> device,
         int prev            = 1 - i;
         state->taa_in_bg[i] = device->createBindGroup(
             wgpu::BindGroupDescriptor()
-                .setLabel(("V4DTaaIn" + std::to_string(i)).c_str())
+                .setLabel(("BM4DTaaIn" + std::to_string(i)).c_str())
                 .setLayout(state->taa_in_layout)
                 .setEntries(std::array{
                     wgpu::BindGroupEntry().setBinding(0).setTextureView(state->hdr_sampled_view),
@@ -1455,14 +1363,14 @@ void prepare_v4d_render(Res<wgpu::Device> device,
                 }));
         state->taa_out_bg[i] = device->createBindGroup(
             wgpu::BindGroupDescriptor()
-                .setLabel(("V4DTaaOut" + std::to_string(i)).c_str())
+                .setLabel(("BM4DTaaOut" + std::to_string(i)).c_str())
                 .setLayout(state->taa_out_layout)
                 .setEntries(std::array{
                     wgpu::BindGroupEntry().setBinding(0).setTextureView(state->accum_storage_view[i]),
                 }));
         state->blit_bg[i] = device->createBindGroup(
             wgpu::BindGroupDescriptor()
-                .setLabel(("V4DBlitBG" + std::to_string(i)).c_str())
+                .setLabel(("BM4DBlitBG" + std::to_string(i)).c_str())
                 .setLayout(state->blit_layout)
                 .setEntries(std::array{
                     wgpu::BindGroupEntry().setBinding(0).setSampler(state->linear_sampler),
@@ -1471,7 +1379,7 @@ void prepare_v4d_render(Res<wgpu::Device> device,
                 }));
     }
 
-    auto make_bloom_src = [&](const char* lbl, wgpu::TextureView& tex_view) -> wgpu::BindGroup {
+    auto make_bloom_src = [&](const char* lbl, wgpu::TextureView& tv) -> wgpu::BindGroup {
         return device->createBindGroup(wgpu::BindGroupDescriptor()
                                            .setLabel(lbl)
                                            .setLayout(state->bloom_in_layout)
@@ -1480,15 +1388,15 @@ void prepare_v4d_render(Res<wgpu::Device> device,
                                                    .setBinding(0)
                                                    .setBuffer(state->bloom_params_uniform)
                                                    .setOffset(0)
-                                                   .setSize(sizeof(V4DBloomParamsUniform)),
-                                               wgpu::BindGroupEntry().setBinding(1).setTextureView(tex_view),
+                                                   .setSize(sizeof(BM4DBloomParamsUniform)),
+                                               wgpu::BindGroupEntry().setBinding(1).setTextureView(tv),
                                            }));
     };
     for (int i = 0; i < 2; ++i)
         state->bloom_src_accum_bg[i] =
-            make_bloom_src(("V4DBloomSrcAccum" + std::to_string(i)).c_str(), state->accum_sampled_view[i]);
-    state->bloom_src_a_bg = make_bloom_src("V4DBloomSrcA", state->bloom_a_sampled_view);
-    state->bloom_src_b_bg = make_bloom_src("V4DBloomSrcB", state->bloom_b_sampled_view);
+            make_bloom_src(("BM4DBloomSrcAccum" + std::to_string(i)).c_str(), state->accum_sampled_view[i]);
+    state->bloom_src_a_bg = make_bloom_src("BM4DBloomSrcA", state->bloom_a_sampled_view);
+    state->bloom_src_b_bg = make_bloom_src("BM4DBloomSrcB", state->bloom_b_sampled_view);
 
     auto make_bloom_dst = [&](const char* lbl, wgpu::TextureView& sv) -> wgpu::BindGroup {
         return device->createBindGroup(wgpu::BindGroupDescriptor()
@@ -1498,66 +1406,67 @@ void prepare_v4d_render(Res<wgpu::Device> device,
                                                wgpu::BindGroupEntry().setBinding(0).setTextureView(sv),
                                            }));
     };
-    state->bloom_dst_a_bg = make_bloom_dst("V4DBloomDstA", state->bloom_a_storage_view);
-    state->bloom_dst_b_bg = make_bloom_dst("V4DBloomDstB", state->bloom_b_storage_view);
+    state->bloom_dst_a_bg = make_bloom_dst("BM4DBloomDstA", state->bloom_a_storage_view);
+    state->bloom_dst_b_bg = make_bloom_dst("BM4DBloomDstB", state->bloom_b_storage_view);
 }
 
 // ===========================================================================
 // Plugin + main
 // ===========================================================================
 
-struct Voxel4DPathTracerPlugin {
+struct BM4DPathTracerPlugin {
     void build(core::App& app) {
-        app.world_mut().insert_resource(Voxel4DConfig{});
-        app.world_mut().insert_resource(Voxel4DCameraState{});
-        app.add_systems(core::Startup, into(setup_v4d_scene).set_name("setup 4d scene"));
-        app.add_systems(core::Update, into(camera_control_4d).set_name("camera control 4d"));
-        app.add_systems(core::Update, into(v4d_imgui_ui).set_name("4d imgui ui"));
+        app.world_mut().insert_resource(BM4DConfig{});
+        app.world_mut().insert_resource(BM4DCameraState{});
+        app.add_systems(core::Startup, into(setup_bm4d_scene).set_name("setup bm4d scene"));
+        app.add_systems(core::Update, into(camera_control_bm4d).set_name("camera control bm4d"));
+        app.add_systems(core::Update, into(bm4d_imgui_ui).set_name("bm4d imgui ui"));
     }
 
     void finish(core::App& app) {
         auto registry = app.world_mut().get_resource_mut<assets::EmbeddedAssetRegistry>();
         auto server   = app.world_mut().get_resource<assets::AssetServer>();
         if (!registry || !server) {
-            spdlog::error("[v4d] EmbeddedAssetRegistry or AssetServer not available");
+            spdlog::error("[bm4d] EmbeddedAssetRegistry or AssetServer not available");
             return;
         }
-        registry->get().insert_asset_static("epix/shaders/grid/svo.slang", to_bytes4d(kSvoGridSlangSource));
-        registry->get().insert_asset_static(kV4DTraceSlangPath, to_bytes4d(kV4DTraceSlang));
-        registry->get().insert_asset_static(kV4DTaaSlangPath, to_bytes4d(kV4DTaaSlang));
-        registry->get().insert_asset_static(kV4DBlitVertPath, to_bytes4d(kV4DBlitVertSlang));
-        registry->get().insert_asset_static(kV4DBlitFragPath, to_bytes4d(kV4DBlitFragSlang));
-        registry->get().insert_asset_static(kV4DBloomSlangPath, to_bytes4d(kV4DBloomSlang));
+        registry->get().insert_asset_static("epix/shaders/grid/brickmap.slang",
+                                            to_bytes_bm4d(kBrickmapGridSlangSource));
+        registry->get().insert_asset_static(kBM4DTraceSlangPath, to_bytes_bm4d(kBM4DTraceSlang));
+        registry->get().insert_asset_static(kBM4DTaaSlangPath, to_bytes_bm4d(kBM4DTaaSlang));
+        registry->get().insert_asset_static(kBM4DBlitVertPath, to_bytes_bm4d(kBM4DBlitVertSlang));
+        registry->get().insert_asset_static(kBM4DBlitFragPath, to_bytes_bm4d(kBM4DBlitFragSlang));
+        registry->get().insert_asset_static(kBM4DBloomSlangPath, to_bytes_bm4d(kBM4DBloomSlang));
 
         auto render_app = app.get_sub_app_mut(render::Render);
         if (!render_app) {
-            spdlog::error("[v4d] Render sub-app not found");
+            spdlog::error("[bm4d] Render sub-app not found");
             return;
         }
         auto& rapp  = render_app->get();
         auto& world = rapp.world_mut();
 
-        world.insert_resource(Voxel4DShaderHandles{
-            .svo_lib   = server->get().load<shader::Shader>("embedded://epix/shaders/grid/svo.slang"),
-            .trace     = server->get().load<shader::Shader>("embedded://voxel4d/trace.slang"),
-            .taa       = server->get().load<shader::Shader>("embedded://voxel4d/taa.slang"),
-            .blit_vert = server->get().load<shader::Shader>("embedded://voxel4d/blit_vert.slang"),
-            .blit_frag = server->get().load<shader::Shader>("embedded://voxel4d/blit_frag.slang"),
-            .bloom     = server->get().load<shader::Shader>("embedded://voxel4d/bloom.slang"),
+        world.insert_resource(BM4DShaderHandles{
+            .bm_lib    = server->get().load<shader::Shader>("embedded://epix/shaders/grid/brickmap.slang"),
+            .trace     = server->get().load<shader::Shader>("embedded://brickmap4d/trace.slang"),
+            .taa       = server->get().load<shader::Shader>("embedded://brickmap4d/taa.slang"),
+            .blit_vert = server->get().load<shader::Shader>("embedded://brickmap4d/blit_vert.slang"),
+            .blit_frag = server->get().load<shader::Shader>("embedded://brickmap4d/blit_frag.slang"),
+            .bloom     = server->get().load<shader::Shader>("embedded://brickmap4d/bloom.slang"),
         });
 
-        V4DGraph.register_to(world.resource_mut<RenderGraph>());
+        BM4DGraph.register_to(world.resource_mut<RenderGraph>());
 
-        world.insert_resource(Voxel4DRenderState{});
-        world.insert_resource(ExtractedVoxel4DSvo{});
-        world.insert_resource(Voxel4DConfig{});
-        world.insert_resource(ExtractedVoxel4DCamera{});
+        world.insert_resource(BM4DRenderState{});
+        world.insert_resource(ExtractedBM4DGrid{});
+        world.insert_resource(BM4DConfig{});
+        world.insert_resource(ExtractedBM4DCamera{});
 
-        rapp.add_systems(ExtractSchedule, into(extract_v4d_scene).set_name("extract v4d scene"))
-            .add_systems(ExtractSchedule, into(extract_v4d_config).set_name("extract v4d config"))
-            .add_systems(ExtractSchedule, into(extract_v4d_camera).set_name("extract v4d camera"))
+        rapp.add_systems(ExtractSchedule, into(extract_bm4d_scene).set_name("extract bm4d scene"))
+            .add_systems(ExtractSchedule, into(extract_bm4d_config).set_name("extract bm4d config"))
+            .add_systems(ExtractSchedule, into(extract_bm4d_camera).set_name("extract bm4d camera"))
             .add_systems(Render,
-                         into(prepare_v4d_render).in_set(RenderSet::PrepareResources).set_name("prepare v4d render"));
+                         into(prepare_bm4d_render).in_set(RenderSet::PrepareResources).set_name("prepare bm4d render"));
     }
 };
 
@@ -1565,7 +1474,7 @@ int main() {
     core::App app = core::App::create();
 
     epix::window::Window win;
-    win.title = "4D Voxel Path Tracer";
+    win.title = "4D BrickMap Path Tracer";
     win.size  = {1280, 720};
 
     app.add_plugins(epix::window::WindowPlugin{
@@ -1579,7 +1488,7 @@ int main() {
         .add_plugins(tf::TransformPlugin{})
         .add_plugins(render::RenderPlugin{}.set_validation(0))
         .add_plugins(imgui::ImGuiPlugin{})
-        .add_plugins(Voxel4DPathTracerPlugin{});
+        .add_plugins(BM4DPathTracerPlugin{});
 
     app.run();
 }

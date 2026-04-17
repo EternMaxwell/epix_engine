@@ -734,12 +734,16 @@ void GLFWPlugin::send_cached_events(Query<Item<const CachedWindow&>> cached_wind
         if (!cache_opt.has_value()) continue;
         auto&& [cached_window] = cache_opt.value();
         const auto& cached     = *reinterpret_cast<const Window*>(&cached_window);
-        while (auto cursor_pos = user_data->cursor_pos.try_pop()) {
-            // send out
-            auto [new_x, new_y] = *cursor_pos;
-            auto [old_x, old_y] = cached.cursor_pos;
-            cursor_moved.write(CursorMoved{id, {new_x, new_y}, {new_x - old_x, new_y - old_y}});
-            if (mouse_move_input) mouse_move_input->write(input::MouseMove{{new_x - old_x, new_y - old_y}});
+        {
+            auto [prev_x, prev_y] = cached.cursor_pos;
+            while (auto cursor_pos = user_data->cursor_pos.try_pop()) {
+                // send out
+                auto [new_x, new_y] = *cursor_pos;
+                cursor_moved.write(CursorMoved{id, {new_x, new_y}, {new_x - prev_x, new_y - prev_y}});
+                if (mouse_move_input) mouse_move_input->write(input::MouseMove{{new_x - prev_x, new_y - prev_y}});
+                prev_x = new_x;
+                prev_y = new_y;
+            }
         }
     }
 }

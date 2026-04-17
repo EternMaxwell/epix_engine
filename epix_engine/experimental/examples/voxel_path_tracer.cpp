@@ -803,7 +803,8 @@ static std::span<const std::byte> to_bytes(std::string_view sv) {
 
 void camera_control(Res<input::ButtonInput<input::KeyCode>> keys,
                     Res<input::ButtonInput<input::MouseButton>> mouse_btns,
-                    EventReader<input::MouseMove> mouse_moves,
+                    Local<std::optional<glm::dvec2>> last_mouse_pos,
+                    Single<const epix::window::Window&, With<epix::window::PrimaryWindow>> window,
                     Res<time::Time<>> game_time,
                     Res<VoxelConfig> config,
                     Query<Item<Mut<tf::Transform>>, With<Camera>> cameras) {
@@ -813,11 +814,15 @@ void camera_control(Res<input::ButtonInput<input::KeyCode>> keys,
 
     double dx = 0.0, dy = 0.0;
     const bool looking = mouse_btns->pressed(input::MouseButton::MouseButtonRight);
-    for (auto&& [delta] : mouse_moves.read()) {
-        if (looking) {
-            dx += delta.first;
-            dy += delta.second;
+    if (looking) {
+        auto [x, y] = window->cursor_pos;
+        if (last_mouse_pos->has_value()) {
+            dx = x - last_mouse_pos->value().x;
+            dy = y - last_mouse_pos->value().y;
         }
+        last_mouse_pos->emplace(x, y);
+    } else {
+        last_mouse_pos->reset();
     }
 
     for (auto&& [transform_mut] : cameras.iter()) {

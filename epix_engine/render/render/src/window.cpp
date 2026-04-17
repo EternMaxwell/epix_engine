@@ -114,7 +114,7 @@ void epix::render::window::prepare_windows(ResMut<ExtractedWindows> windows,
                     }
                     default: {
                         window.swapchain_texture_view = nullptr;
-                        window.swapchain_texture      = {};
+                        window.swapchain_texture      = wgpu::SurfaceTexture{};
                         errors.emplace_back(window.entity,
                                             "Failed to acquire swapchain image after reconfiguration: " +
                                                 std::string(wgpu::to_string(window.swapchain_texture.status)));
@@ -126,7 +126,7 @@ void epix::render::window::prepare_windows(ResMut<ExtractedWindows> windows,
             // case wgpu::SurfaceGetCurrentTextureStatus::eTimeout:
             default: {
                 window.swapchain_texture_view = nullptr;
-                window.swapchain_texture      = {};
+                window.swapchain_texture      = wgpu::SurfaceTexture{};
                 errors.emplace_back(window.entity, "Error acquiring swapchain image: " +
                                                        std::string(wgpu::to_string(window.swapchain_texture.status)));
                 break;
@@ -285,6 +285,6 @@ void epix::render::window::present_windows(ResMut<WindowSurfaces> window_surface
             surface_data.surface.present();
         }
         window.swapchain_texture_view = nullptr;
-        window.swapchain_texture      = {};
+        window.swapchain_texture      = wgpu::SurfaceTexture{};
     }
 }

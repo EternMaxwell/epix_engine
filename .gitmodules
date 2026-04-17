@@ -34,36 +34,18 @@
 [submodule "libs/uuid"]
 	path = libs/uuid
 	url = https://github.com/mariusbancila/stduuid.git
-[submodule "libs/vulkan-headers"]
-	path = libs/vulkan-headers
-	url = https://github.com/KhronosGroup/Vulkan-Headers.git
-[submodule "libs/volk"]
-	path = libs/volk
-	url = https://github.com/zeux/volk.git
 [submodule "libs/earcut"]
 	path = libs/earcut
 	url = https://github.com/mapbox/earcut.hpp.git
-[submodule "libs/spirv-cross"]
-	path = libs/spirv-cross
-	url = https://github.com/KhronosGroup/SPIRV-Cross.git
-[submodule "libs/utfcpp"]
-	path = libs/utfcpp
-	url = https://github.com/nemtrif/utfcpp.git
 [submodule "libs/harfbuzz"]
 	path = libs/harfbuzz
 	url = https://github.com/harfbuzz/harfbuzz.git
-[submodule "libs/webgpu-cpp"]
-	path = libs/webgpu-cpp
-	url = https://github.com/EternMaxwell/WebGPU-Cpp.git
 [submodule "libs/webgpu-wrapper"]
 	path = libs/webgpu-wrapper
 	url = https://github.com/EternMaxwell/webgpu-cpp-wrapper.git
 [submodule "libs/sfml"]
 	path = libs/sfml
 	url = https://github.com/SFML/SFML.git
-[submodule "libs/asio"]
-	path = libs/asio
-	url = https://github.com/chriskohlhoff/asio.git
 [submodule "libs/efsw"]
 	path = libs/efsw
 	url = https://github.com/SpartanJ/efsw.git

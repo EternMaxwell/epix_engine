@@ -132,13 +132,14 @@ struct SystemParam<Single<D, F>> : SystemParam<Query<D, F>> {
     static std::expected<void, ValidateParamError> validate_param(const State& state,
                                                                   const SystemMeta& meta,
                                                                   World& world) {
-        Query<D, F> query = Base::get_param(state, meta, world, world.change_tick());
+        Query<D, F> query = Base::get_param(const_cast<State&>(state), meta, world, world.change_tick());
         if (!query.single().has_value()) {
             return std::unexpected(ValidateParamError{
                 .param_type = meta::type_id<Single<D, F>>(),
                 .message    = "Associated Query for Single system param is empty.",
             });
         }
+        return {};
     }
 };
 static_assert(system_param<Single<int&, With<float>>>);
@@ -562,4 +563,4 @@ struct SystemParam<const Entities&> : ParamBase {
     static Item get_param(State&, const SystemMeta&, World& world, Tick) { return world.entities(); }
 };
 static_assert(system_param<const Entities&>);
-}  // namespace core
+}  // namespace epix::core
