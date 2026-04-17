@@ -64,6 +64,22 @@ jobs:
         sudo ./llvm.sh 23
         sudo apt-get install -y clang-23
 
+    - name: Install Linux dependencies (GLFW/Wayland/X11)
+      if: runner.os == 'Linux'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          libwayland-dev \
+          wayland-scanner++ \
+          wayland-protocols \
+          libxkbcommon-dev \
+          libx11-dev \
+          libxrandr-dev \
+          libxinerama-dev \
+          libxcursor-dev \
+          libxi-dev \
+          libgl-dev
+
     - name: Set reusable strings
       # Turn repeated input strings (such as the build output directory) into step outputs. These step outputs can be used throughout the workflow file.
       id: strings
