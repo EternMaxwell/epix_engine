@@ -6,7 +6,7 @@ include(${CMAKE_CURRENT_LIST_DIR}/utils.cmake)
 
 # Set default version if not specified
 if (NOT DEFINED EPIX_WGPU_NATIVE_VERSION)
-    set(EPIX_WGPU_NATIVE_VERSION "v27.0.4.0" CACHE STRING "Version of wgpu-native to fetch")
+    set(EPIX_WGPU_NATIVE_VERSION "v25.0.2.2" CACHE STRING "Version of wgpu-native to fetch")
 endif()
 
 # Set binary mirror

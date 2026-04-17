@@ -13,7 +13,7 @@ namespace {
 
 using Clock = std::chrono::steady_clock;
 
-constexpr auto k_recoverable_shader_error_log_timeout = std::chrono::seconds(2);
+constexpr auto k_recoverable_shader_error_log_timeout            = std::chrono::seconds(2);
 constexpr std::size_t k_recoverable_shader_error_log_retry_count = 120;
 
 void note_recoverable_shader_error(PipelineStateRecoverableShaderError& state,
@@ -29,15 +29,14 @@ void note_recoverable_shader_error(PipelineStateRecoverableShaderError& state,
         return;
     }
 
-    spdlog::error(
-        "[render.pipeline] Shader still waiting for pipeline id={}, name='{}' after {:.3f}s ({} retries): {}",
-        id.get(), pipeline_name, std::chrono::duration<double>(elapsed).count(), state.repeat_count, state.signature);
+    spdlog::error("[render.pipeline] Shader still waiting for pipeline id={}, name='{}' after {:.3f}s ({} retries): {}",
+                  id.get(), pipeline_name, std::chrono::duration<double>(elapsed).count(), state.repeat_count,
+                  state.signature);
     state.logged = true;
 }
 
 PipelineStateRecoverableShaderError make_recoverable_shader_error_state(
-    const ShaderCacheError& shader_error,
-    const std::optional<PipelineStateRecoverableShaderError>& previous_state) {
+    const ShaderCacheError& shader_error, const std::optional<PipelineStateRecoverableShaderError>& previous_state) {
     auto state = PipelineStateRecoverableShaderError{
         .error        = shader_error,
         .signature    = shader_error.message(),
@@ -64,15 +63,18 @@ std::expected<wgpu::ShaderModule, ShaderCacheError> load_module(const wgpu::Devi
     if (std::holds_alternative<ShaderCacheSource::Wgsl>(source.data)) {
         const auto& code = std::get<ShaderCacheSource::Wgsl>(source.data).source;
         desc.setNextInChain(wgpu::ShaderSourceWGSL().setCode(wgpu::StringView(std::string_view(code))));
+        auto mod = device.createShaderModule(desc);
+        if (!mod) return std::unexpected(ShaderCacheError::create_module_failed("WebGPU createShaderModule failed"));
+        return mod;
     } else {
         const auto& bytes = std::get<ShaderCacheSource::SpirV>(source.data).bytes;
-        desc.setNextInChain(wgpu::ShaderSourceSPIRV()
-                                .setCode(reinterpret_cast<const uint32_t*>(bytes.data()))
-                                .setCodeSize(bytes.size() / sizeof(uint32_t)));
+        auto mod = device.createShaderModuleSpirV(wgpu::ShaderModuleDescriptorSpirV()
+                                                      .setSource(reinterpret_cast<const uint32_t*>(bytes.data()))
+                                                      .setSourceSize(bytes.size() / sizeof(uint32_t)));
+        if (!mod)
+            return std::unexpected(ShaderCacheError::create_module_failed("WebGPU createShaderModuleSpirV failed"));
+        return mod;
     }
-    auto mod = device.createShaderModule(desc);
-    if (!mod) return std::unexpected(ShaderCacheError::create_module_failed("WebGPU createShaderModule failed"));
-    return mod;
 }
 
 PipelineServerData::PipelineServerData(wgpu::Device dev)
@@ -280,11 +282,11 @@ void PipelineServer::process_pipeline(CachedPipeline& cached_pipeline, CachedPip
                 }),
         };
     };
-    auto pipeline_name         = std::visit(utils::visitor{
-                                                [](const RenderPipelineDescriptor& desc) { return desc.label; },
-                                                [](const ComputePipelineDescriptor& desc) { return desc.label; },
-                                            },
-                                            cached_pipeline.descriptor);
+    auto pipeline_name = std::visit(utils::visitor{
+                                        [](const RenderPipelineDescriptor& desc) { return desc.label; },
+                                        [](const ComputePipelineDescriptor& desc) { return desc.label; },
+                                    },
+                                    cached_pipeline.descriptor);
 
     std::optional<PipelineStateRecoverableShaderError> previous_recoverable_shader_error;
     if (auto* recoverable_error = std::get_if<PipelineStateRecoverableShaderError>(&cached_pipeline.state)) {
@@ -312,7 +314,8 @@ void PipelineServer::process_pipeline(CachedPipeline& cached_pipeline, CachedPip
         if (auto pipeline_error = std::get_if<PipelineError>(error)) {
             switch (*pipeline_error) {
                 case PipelineError::CreationFailure: {
-                    spdlog::error("[render.pipeline] Failed to create pipeline. Id: {}, name: {}", id.get(), pipeline_name);
+                    spdlog::error("[render.pipeline] Failed to create pipeline. Id: {}, name: {}", id.get(),
+                                  pipeline_name);
                     m_data->waiting_pipelines.insert(id);
                     break;
                 }
