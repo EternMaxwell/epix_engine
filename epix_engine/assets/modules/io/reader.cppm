@@ -145,17 +145,25 @@ export struct AssetWatcher {
  *  Usage: pass the returned stream as the std::istream& argument to asset loaders. */
 export struct VecReader {
    private:
+    struct MemoryStreamBuffer : std::streambuf {
+        explicit MemoryStreamBuffer(std::string& data) {
+            char* begin = data.empty() ? nullptr : data.data();
+            setg(begin, begin, begin ? begin + static_cast<std::ptrdiff_t>(data.size()) : begin);
+        }
+    };
+
     std::string m_data;
-    std::istringstream m_stream;
+    MemoryStreamBuffer m_buffer;
+    std::istream m_stream;
 
    public:
     /** @brief Construct from a byte vector. */
     explicit VecReader(std::vector<std::uint8_t> bytes)
-        : m_data(reinterpret_cast<const char*>(bytes.data()), bytes.size()), m_stream(m_data) {}
+        : m_data(reinterpret_cast<const char*>(bytes.data()), bytes.size()), m_buffer(m_data), m_stream(&m_buffer) {}
     /** @brief Construct from a string. */
-    explicit VecReader(std::string data) : m_data(std::move(data)), m_stream(m_data) {}
+    explicit VecReader(std::string data) : m_data(std::move(data)), m_buffer(m_data), m_stream(&m_buffer) {}
     /** @brief Construct from a string_view. */
-    explicit VecReader(std::string_view data) : m_data(data), m_stream(m_data) {}
+    explicit VecReader(std::string_view data) : m_data(data), m_buffer(m_data), m_stream(&m_buffer) {}
 
     VecReader(const VecReader&)            = delete;
     VecReader& operator=(const VecReader&) = delete;

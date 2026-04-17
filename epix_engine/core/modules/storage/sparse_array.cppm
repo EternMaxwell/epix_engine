@@ -5,7 +5,10 @@ export module epix.core:storage.sparse_array;
 import std;
 
 namespace epix::core {
-template <std::convertible_to<std::size_t> I, typename V>
+template <typename I, typename V>
+    requires requires(I index) {
+        { static_cast<std::size_t>(index) } -> std::same_as<std::size_t>;
+    }
 struct SparseArray {
    private:
     std::vector<std::optional<V>> values;
@@ -54,4 +57,4 @@ struct SparseArray {
         return val;
     }
 };
-}  // namespace core
+}  // namespace epix::core

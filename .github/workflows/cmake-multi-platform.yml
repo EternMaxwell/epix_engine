@@ -66,7 +66,13 @@ jobs:
         wget https://apt.llvm.org/llvm.sh
         chmod +x llvm.sh
         sudo ./llvm.sh 23
-        sudo apt-get install -y clang-23
+        sudo apt-get install -y clang-23 libc++-23-dev libc++abi-23-dev libunwind-23-dev
+
+    - name: Configure Clang libc++ environment
+      if: matrix.c_compiler == 'clang-23'
+      run: |
+        echo "CXXFLAGS=-stdlib=libc++" >> "$GITHUB_ENV"
+        echo "LDFLAGS=-stdlib=libc++" >> "$GITHUB_ENV"
 
     - name: Install Linux dependencies (GLFW/Wayland/X11/UDev)
       if: runner.os == 'Linux'
@@ -84,6 +90,19 @@ jobs:
           libxi-dev \
           libgl-dev \
           libudev-dev
+
+    - name: Upgrade CMake (Linux)
+      if: runner.os == 'Linux'
+      run: |
+        . /etc/os-release
+        wget -O - https://apt.kitware.com/keys/kitware-archive-latest.asc 2>/dev/null \
+          | gpg --dearmor - \
+          | sudo tee /usr/share/keyrings/kitware-archive-keyring.gpg >/dev/null
+        echo "deb [signed-by=/usr/share/keyrings/kitware-archive-keyring.gpg] https://apt.kitware.com/ubuntu/ ${UBUNTU_CODENAME} main" \
+          | sudo tee /etc/apt/sources.list.d/kitware.list >/dev/null
+        sudo apt-get update
+        sudo apt-get install -y cmake
+        cmake --version
 
     - name: Set up MSVC developer environment
       if: runner.os == 'Windows'
