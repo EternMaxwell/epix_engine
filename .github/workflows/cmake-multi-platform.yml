@@ -66,7 +66,7 @@ jobs:
         wget https://apt.llvm.org/llvm.sh
         chmod +x llvm.sh
         sudo ./llvm.sh 23
-        sudo apt-get install -y clang-23 libc++-23-dev libc++abi-23-dev libunwind-23-dev clang-scan-deps-23
+        sudo apt-get install -y clang-23 libc++-23-dev libc++abi-23-dev libunwind-23-dev
         sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-23 100
         sudo update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-23 100
         sudo update-alternatives --install /usr/bin/clang-scan-deps clang-scan-deps /usr/bin/clang-scan-deps-23 100
@@ -102,6 +102,8 @@ jobs:
     - name: Set up MSVC developer environment
       if: runner.os == 'Windows'
       uses: ilammy/msvc-dev-cmd@v1
+      with:
+        vsversion: '2026'
 
     - name: Set reusable strings
       # Turn repeated input strings (such as the build output directory) into step outputs. These step outputs can be used throughout the workflow file.
