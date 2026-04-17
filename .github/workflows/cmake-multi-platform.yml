@@ -25,27 +25,44 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
         build_type: [Release]
-        c_compiler: [gcc, clang, cl]
+        c_compiler: [gcc-15, clang-20, cl]
         include:
           - os: windows-latest
             c_compiler: cl
             cpp_compiler: cl
           - os: ubuntu-latest
-            c_compiler: gcc
-            cpp_compiler: g++
+            c_compiler: gcc-15
+            cpp_compiler: g++-15
           - os: ubuntu-latest
-            c_compiler: clang
-            cpp_compiler: clang++
+            c_compiler: clang-20
+            cpp_compiler: clang++-20
         exclude:
           - os: windows-latest
-            c_compiler: gcc
+            c_compiler: gcc-15
           - os: windows-latest
-            c_compiler: clang
+            c_compiler: clang-20
           - os: ubuntu-latest
             c_compiler: cl
 
     steps:
     - uses: actions/checkout@v4
+
+    - name: Initialize submodules
+      run: git submodule update --init --recursive
+
+    - name: Install GCC 15
+      if: matrix.c_compiler == 'gcc-15'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y gcc-15 g++-15
+
+    - name: Install Clang 20
+      if: matrix.c_compiler == 'clang-20'
+      run: |
+        wget https://apt.llvm.org/llvm.sh
+        chmod +x llvm.sh
+        sudo ./llvm.sh 20
+        sudo apt-get install -y clang-20
 
     - name: Set reusable strings
       # Turn repeated input strings (such as the build output directory) into step outputs. These step outputs can be used throughout the workflow file.
