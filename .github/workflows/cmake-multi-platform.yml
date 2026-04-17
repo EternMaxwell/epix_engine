@@ -104,6 +104,38 @@ jobs:
           --includeRecommended
         if %errorlevel% neq 0 if %errorlevel% neq 3010 exit /b %errorlevel%
 
+    - name: Verify VS installation
+      if: runner.os == 'Windows'
+      shell: powershell
+      run: |
+        Write-Host "=== Installed VS versions ==="
+        $vsWhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+        if (Test-Path $vsWhere) {
+          & $vsWhere -all -format json | ConvertFrom-Json | ForEach-Object {
+            Write-Host "  $($_.displayName) -> $($_.installationPath)"
+          }
+        } else {
+          Write-Host "vswhere not found"
+        }
+        Write-Host "=== Checking standard paths ==="
+        $years = @('2019','2022','2026')
+        $editions = @('Enterprise','Professional','Community','BuildTools')
+        foreach ($y in $years) {
+          foreach ($e in $editions) {
+            $p = "C:\Program Files\Microsoft Visual Studio\$y\$e"
+            if (Test-Path $p) { Write-Host "FOUND: $p" }
+          }
+        }
+        # Wait up to 3 minutes for BuildTools to appear if install is still running
+        $target = "C:\Program Files\Microsoft Visual Studio\2026\BuildTools\VC\Auxiliary\Build\vcvarsall.bat"
+        $deadline = (Get-Date).AddMinutes(3)
+        while (-not (Test-Path $target) -and (Get-Date) -lt $deadline) {
+          Write-Host "Waiting for installation to complete..."
+          Start-Sleep -Seconds 10
+        }
+        if (Test-Path $target) { Write-Host "vcvarsall.bat found!" }
+        else { Write-Warning "vcvarsall.bat not found after waiting" }
+
     - name: Set up MSVC developer environment
       if: runner.os == 'Windows'
       uses: ilammy/msvc-dev-cmd@v1
@@ -136,4 +168,4 @@ jobs:
       working-directory: ${{ steps.strings.outputs.build-output-dir }}
       # Execute tests defined by the CMake configuration. Note that --build-config is needed because the default Windows generator is a multi-config generator (Visual Studio generator).
       # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
-      run: ctest --build-config ${{ matrix.build_type }}
+      run: ctest --build-config ${{ matrix.build_type }} --rerun-failed --output-on-failure
