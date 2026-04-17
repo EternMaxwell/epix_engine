@@ -1,6 +1,6 @@
 option(EPIX_WGPU_GENERATE_ON_CONFIGURE "Generate WebGPU wrapper during CMake configure (vs build time)" ON)
 
-set(EPIX_WGPU_NATIVE_VERSION "v27.0.4.0" CACHE STRING "Version of wgpu-native to fetch")
+set(EPIX_WGPU_NATIVE_VERSION "v25.0.2.2" CACHE STRING "Version of wgpu-native to fetch")
 set(EPIX_WGPU_LINK_TYPE "STATIC" CACHE STRING "Link type for wgpu-native (SHARED or STATIC)")
 
 include(${CMAKE_CURRENT_LIST_DIR}/utils.cmake)
