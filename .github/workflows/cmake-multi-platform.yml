@@ -98,7 +98,7 @@ jobs:
       shell: powershell
       run: |
         $out = "$env:TEMP\vs_buildtools.exe"
-        curl.exe -fsSL -o $out "https://aka.ms/vs/18/release/vs_buildtools.exe"
+        curl.exe -fsSL -o $out "https://aka.ms/vs/stable/vs_buildtools.exe"
         $proc = Start-Process $out -ArgumentList (
           "--quiet", "--wait", "--norestart",
           "--add", "Microsoft.VisualStudio.Workload.VCTools",
