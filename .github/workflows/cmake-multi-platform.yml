@@ -37,7 +37,7 @@ jobs:
             cmake_generator: Ninja
           - os: ubuntu-latest
             c_compiler: clang-23
-            cpp_compiler: clang++-23
+            cpp_compiler: clang++
             cmake_generator: Ninja
         exclude:
           - os: windows-latest
@@ -66,13 +66,17 @@ jobs:
         wget https://apt.llvm.org/llvm.sh
         chmod +x llvm.sh
         sudo ./llvm.sh 23
-        sudo apt-get install -y clang-23 libc++-23-dev libc++abi-23-dev libunwind-23-dev
+        sudo apt-get install -y clang-23 libc++-23-dev libc++abi-23-dev libunwind-23-dev clang-scan-deps-23
+        sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-23 100
+        sudo update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-23 100
+        sudo update-alternatives --install /usr/bin/clang-scan-deps clang-scan-deps /usr/bin/clang-scan-deps-23 100
 
     - name: Configure Clang libc++ environment
       if: matrix.c_compiler == 'clang-23'
       run: |
         echo "CXXFLAGS=-stdlib=libc++" >> "$GITHUB_ENV"
         echo "LDFLAGS=-stdlib=libc++" >> "$GITHUB_ENV"
+        echo "CMAKE_CXX_FLAGS=-stdlib=libc++" >> "$GITHUB_ENV"
 
     - name: Install Linux dependencies (GLFW/Wayland/X11/UDev)
       if: runner.os == 'Linux'

@@ -28,6 +28,7 @@ consteval StorageType storage_for() {
 /** @brief Opaque identifier for a registered component/resource type. */
 export struct TypeId : core::int_base<std::uint64_t> {
     using int_base::int_base;
+    using int_base::operator std::size_t;
 };
 struct TypeInfo {
     meta::type_index type_index;
