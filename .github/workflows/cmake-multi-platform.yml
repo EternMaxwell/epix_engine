@@ -95,18 +95,14 @@ jobs:
 
     - name: Install Visual Studio 2026 Build Tools
       if: runner.os == 'Windows'
-      shell: powershell
+      shell: cmd
       run: |
-        $out = "$env:TEMP\vs_buildtools.exe"
-        curl.exe -fsSL -o $out "https://aka.ms/vs/stable/vs_buildtools.exe"
-        $proc = Start-Process $out -ArgumentList (
-          "--quiet", "--wait", "--norestart",
-          "--add", "Microsoft.VisualStudio.Workload.VCTools",
-          "--add", "Microsoft.VisualStudio.Component.VC.Tools.x86.x64",
-          "--includeRecommended"
-        ) -PassThru -Wait
-        # 0 = success, 3010 = reboot required (acceptable in CI)
-        if ($proc.ExitCode -ne 0 -and $proc.ExitCode -ne 3010) { exit $proc.ExitCode }
+        curl -fsSL -o "%TEMP%\vs_buildtools.exe" "https://aka.ms/vs/stable/vs_buildtools.exe"
+        "%TEMP%\vs_buildtools.exe" --quiet --wait --norestart ^
+          --add Microsoft.VisualStudio.Workload.VCTools ^
+          --add Microsoft.VisualStudio.Component.VC.Tools.x86.x64 ^
+          --includeRecommended
+        if %errorlevel% neq 0 if %errorlevel% neq 3010 exit /b %errorlevel%
 
     - name: Set up MSVC developer environment
       if: runner.os == 'Windows'
