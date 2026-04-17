@@ -227,8 +227,10 @@ void computeMain() {}
     EXPECT_EQ(call_count, 1);
 }
 
-TEST(SvoShaderCache, LibraryOnly_CompileSucceeds_WithoutCallerEntryPoint) {
-    // Under the WGSL backend, compiling the library module itself succeeds even without an entry point.
+TEST(SvoShaderCache, LibraryOnly_NoEntryPoints_ReturnsError) {
+    // Library-only shaders (no entry points) cannot be compiled to SPIR-V as a
+    // root module.  ShaderCache must return a NoEntryPoints error instead of
+    // silently succeeding.
     std::array<std::uint8_t, 16> lib_bytes{};
     lib_bytes[0] = 0x03;
     auto lib_id  = AssetId<Shader>(uuids::uuid(lib_bytes));
@@ -241,7 +243,10 @@ TEST(SvoShaderCache, LibraryOnly_CompileSucceeds_WithoutCallerEntryPoint) {
     cache.set_shader(lib_id,
                      Shader::from_slang(std::string(kSvoGridSlangSource), "embedded://epix/shaders/grid/svo.slang"));
     auto r = cache.get(CachedPipelineId{1}, lib_id, {});
-    EXPECT_TRUE(r.has_value()) << r.error().message();
+    ASSERT_FALSE(r.has_value());
+    auto* slang_err = std::get_if<ShaderCacheError::SlangCompileError>(&r.error().data);
+    ASSERT_NE(slang_err, nullptr) << "Expected SlangCompileError, got: " << r.error().message();
+    EXPECT_EQ(slang_err->stage, ShaderCacheError::SlangCompileError::Stage::NoEntryPoints);
 }
 
 TEST(SvoShaderCache, CallerWithoutLibrary_FailsWithImportNotAvailable) {
@@ -455,7 +460,9 @@ void computeMain()
                                     ok   = s == wgpu::MapAsyncStatus::eSuccess;
                                     done = true;
                                 })));
-    while (!done) gpu->device.poll(true);
+    while (!done && gpu->errors->empty()) gpu->device.poll(false);
+    ASSERT_TRUE(done) << "GPU buffer map never completed"
+                      << (gpu->errors->empty() ? "" : ": " + gpu->errors->front());
     ASSERT_TRUE(ok);
 
     auto* r = static_cast<const std::int32_t*>(read_buf.getConstMappedRange(0, result_bytes));
@@ -570,7 +577,9 @@ void computeMain()
                                     ok   = s == wgpu::MapAsyncStatus::eSuccess;
                                     done = true;
                                 })));
-    while (!done) gpu->device.poll(true);
+    while (!done && gpu->errors->empty()) gpu->device.poll(false);
+    ASSERT_TRUE(done) << "GPU buffer map never completed"
+                      << (gpu->errors->empty() ? "" : ": " + gpu->errors->front());
     ASSERT_TRUE(ok);
 
     auto* r = static_cast<const std::int32_t*>(read_buf.getConstMappedRange(0, result_bytes));
@@ -684,7 +693,9 @@ void computeMain()
                                     ok   = s == wgpu::MapAsyncStatus::eSuccess;
                                     done = true;
                                 })));
-    while (!done) gpu->device.poll(true);
+    while (!done && gpu->errors->empty()) gpu->device.poll(false);
+    ASSERT_TRUE(done) << "GPU buffer map never completed"
+                      << (gpu->errors->empty() ? "" : ": " + gpu->errors->front());
     ASSERT_TRUE(ok);
 
     auto* r = static_cast<const std::int32_t*>(read_buf.getConstMappedRange(0, result_bytes));
@@ -856,7 +867,9 @@ void computeMain(uint3 dtid : SV_DispatchThreadID)
                                     ok   = s == wgpu::MapAsyncStatus::eSuccess;
                                     done = true;
                                 })));
-    while (!done) gpu->device.poll(true);
+    while (!done && gpu->errors->empty()) gpu->device.poll(false);
+    ASSERT_TRUE(done) << "GPU buffer map never completed"
+                      << (gpu->errors->empty() ? "" : ": " + gpu->errors->front());
     ASSERT_TRUE(ok);
 
     auto* r = static_cast<const std::int32_t*>(read_buf.getConstMappedRange(0, results_bytes));
