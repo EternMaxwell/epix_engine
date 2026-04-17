@@ -303,7 +303,8 @@ TEST(ShaderProcessingSlangModule, WritesSlangIrWhenPreprocessToIrIsEnabled) {
     auto proc = make_processor_for_direct_test();
     std::istringstream data{std::string(k_source)};
     ProcessedInfo info;
-    ProcessContext ctx(proc, AssetPath("helper.slang"), data, info);
+    AssetPath asset_path("helper.slang");
+    ProcessContext ctx(proc, asset_path, data, info);
 
     ShaderProcessor processor;
     ShaderProcessorSettings settings;
@@ -328,7 +329,8 @@ TEST(ShaderProcessingSlangModule, FallsBackToSlangTextWhenIrCompilationFails) {
     auto proc = make_processor_for_direct_test();
     std::istringstream data{std::string(k_bad_source)};
     ProcessedInfo info;
-    ProcessContext ctx(proc, AssetPath("broken.slang"), data, info);
+    AssetPath asset_path("broken.slang");
+    ProcessContext ctx(proc, asset_path, data, info);
 
     ShaderProcessor processor;
     ShaderProcessorSettings settings;

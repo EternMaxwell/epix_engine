@@ -47,7 +47,7 @@ TEST(AssetPath, DefaultConstruction) {
 TEST(AssetPath, FromSimpleString) {
     AssetPath p("textures/hero.png");
     EXPECT_TRUE(p.source.is_default());
-    EXPECT_EQ(p.path.string(), "textures\\hero.png");  // Win normalised
+    EXPECT_EQ(p.path, std::filesystem::path("textures/hero.png").lexically_normal());
     EXPECT_FALSE(p.label.has_value());
 }
 
