@@ -30,12 +30,15 @@ jobs:
           - os: windows-latest
             c_compiler: cl
             cpp_compiler: cl
+            cmake_generator: Ninja
           - os: ubuntu-latest
             c_compiler: gcc-15
             cpp_compiler: g++-15
+            cmake_generator: Ninja
           - os: ubuntu-latest
             c_compiler: clang-23
             cpp_compiler: clang++-23
+            cmake_generator: Ninja
         exclude:
           - os: windows-latest
             c_compiler: gcc-15
@@ -80,6 +83,10 @@ jobs:
           libxi-dev \
           libgl-dev
 
+    - name: Set up MSVC developer environment
+      if: runner.os == 'Windows'
+      uses: ilammy/msvc-dev-cmd@v1
+
     - name: Set reusable strings
       # Turn repeated input strings (such as the build output directory) into step outputs. These step outputs can be used throughout the workflow file.
       id: strings
@@ -92,6 +99,7 @@ jobs:
       # See https://cmake.org/cmake/help/latest/variable/CMAKE_BUILD_TYPE.html?highlight=cmake_build_type
       run: >
         cmake -B ${{ steps.strings.outputs.build-output-dir }}
+        -G "${{ matrix.cmake_generator }}"
         -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }}
         -DCMAKE_C_COMPILER=${{ matrix.c_compiler }}
         -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
