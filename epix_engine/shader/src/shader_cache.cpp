@@ -485,10 +485,14 @@ struct ShaderCache::SlangCompiler {
         components.push_back(mod);
         SlangInt ep_count = mod->getDefinedEntryPointCount();
 
-        // Library-only shaders (no entry points) have no executable GPU code.
-        // SPIR-V requires at least one entry point; return empty bytes so the
-        // cache layer still succeeds and the module can be used as a dependency.
-        if (ep_count == 0) return std::vector<std::uint8_t>{};
+        // SPIR-V requires at least one entry point.  Library-only shaders cannot
+        // be used as root pipeline modules; the caller must use them as imports.
+        if (ep_count == 0) {
+            return std::unexpected(ShaderCacheError::slang_error(
+                Stage::NoEntryPoints,
+                "shader has no entry points and cannot be compiled to SPIR-V directly; "
+                "use it as an imported library module instead"));
+        }
 
         std::vector<Slang::ComPtr<slang::IEntryPoint>> entry_points(ep_count);
         for (SlangInt i = 0; i < ep_count; ++i) {
@@ -605,8 +609,14 @@ struct ShaderCache::SlangCompiler {
         components.push_back(mod);
         SlangInt ep_count = mod->getDefinedEntryPointCount();
 
-        // Library-only shaders (no entry points) have no executable GPU code.
-        if (ep_count == 0) return std::vector<std::uint8_t>{};
+        // SPIR-V requires at least one entry point.  Library-only shaders cannot
+        // be used as root pipeline modules; the caller must use them as imports.
+        if (ep_count == 0) {
+            return std::unexpected(ShaderCacheError::slang_error(
+                Stage::NoEntryPoints,
+                "shader has no entry points and cannot be compiled to SPIR-V directly; "
+                "use it as an imported library module instead"));
+        }
 
         std::vector<Slang::ComPtr<slang::IEntryPoint>> entry_points(ep_count);
         for (SlangInt i = 0; i < ep_count; ++i) {

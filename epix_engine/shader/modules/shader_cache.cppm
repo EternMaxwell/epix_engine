@@ -93,6 +93,9 @@ export struct ShaderCacheError {
             Compose,
             Link,
             CodeGeneration,
+            /** @brief The shader has no entry points and cannot be compiled
+             *         as a root SPIR-V module.  Use it as an imported library. */
+            NoEntryPoints,
         };
         /** @brief Step where the failure happened. */
         Stage stage;
