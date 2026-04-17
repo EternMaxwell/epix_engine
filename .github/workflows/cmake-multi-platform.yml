@@ -56,6 +56,7 @@ jobs:
     - name: Install GCC 15
       if: matrix.c_compiler == 'gcc-15'
       run: |
+        sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
         sudo apt-get update
         sudo apt-get install -y gcc-15 g++-15
 
@@ -67,7 +68,7 @@ jobs:
         sudo ./llvm.sh 23
         sudo apt-get install -y clang-23
 
-    - name: Install Linux dependencies (GLFW/Wayland/X11)
+    - name: Install Linux dependencies (GLFW/Wayland/X11/UDev)
       if: runner.os == 'Linux'
       run: |
         sudo apt-get update
@@ -81,7 +82,8 @@ jobs:
           libxinerama-dev \
           libxcursor-dev \
           libxi-dev \
-          libgl-dev
+          libgl-dev \
+          libudev-dev
 
     - name: Set up MSVC developer environment
       if: runner.os == 'Windows'
