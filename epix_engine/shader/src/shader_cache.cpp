@@ -396,7 +396,7 @@ struct ShaderCache::SlangCompiler {
         if (import_key != identity) vfs_.add(import_key, preprocessed, identity);
     }
 
-    std::expected<std::string, ShaderCacheError> compile(
+    std::expected<std::vector<std::uint8_t>, ShaderCacheError> compile(
         assets::AssetId<Shader> id,
         const Shader& shader,
         std::span<const ShaderDefVal> shader_defs,
@@ -432,8 +432,9 @@ struct ShaderCache::SlangCompiler {
         }
 
         slang::TargetDesc target_desc = {};
-        target_desc.format            = SLANG_WGSL;
-        target_desc.profile           = global_session->findProfile("sm_6_0");
+        target_desc.format            = SLANG_SPIRV;
+        target_desc.profile           = global_session->findProfile("spirv_1_3");
+        target_desc.flags             = SLANG_TARGET_FLAG_GENERATE_SPIRV_DIRECTLY;
 
         const char* search_paths[]                     = {""};
         slang::CompilerOptionEntry compiler_options[1] = {};
@@ -483,6 +484,16 @@ struct ShaderCache::SlangCompiler {
         std::vector<slang::IComponentType*> components;
         components.push_back(mod);
         SlangInt ep_count = mod->getDefinedEntryPointCount();
+
+        // SPIR-V requires at least one entry point.  Library-only shaders cannot
+        // be used as root pipeline modules; the caller must use them as imports.
+        if (ep_count == 0) {
+            return std::unexpected(ShaderCacheError::slang_error(
+                Stage::NoEntryPoints,
+                "shader has no entry points and cannot be compiled to SPIR-V directly; "
+                "use it as an imported library module instead"));
+        }
+
         std::vector<Slang::ComPtr<slang::IEntryPoint>> entry_points(ep_count);
         for (SlangInt i = 0; i < ep_count; ++i) {
             mod->getDefinedEntryPoint(i, entry_points[i].writeRef());
@@ -511,23 +522,21 @@ struct ShaderCache::SlangCompiler {
             }
         }
 
-        // Code generation → WGSL.
-        Slang::ComPtr<slang::IBlob> wgsl_code;
+        // Code generation → SPIR-V.
+        Slang::ComPtr<slang::IBlob> spirv_code;
         {
             Slang::ComPtr<slang::IBlob> diag;
-            if (SLANG_FAILED(linked->getTargetCode(0, wgsl_code.writeRef(), diag.writeRef()))) {
+            if (SLANG_FAILED(linked->getTargetCode(0, spirv_code.writeRef(), diag.writeRef()))) {
                 return std::unexpected(ShaderCacheError::slang_error(
                     Stage::CodeGeneration, format_diagnostics("Slang code generation failed", diag.get())));
             }
         }
 
-        auto* ptr = static_cast<const char*>(wgsl_code->getBufferPointer());
-        std::string text(ptr, ptr + wgsl_code->getBufferSize());
-        if (!text.empty() && text.back() == '\0') text.pop_back();
-        return text;
+        auto* ptr = static_cast<const std::uint8_t*>(spirv_code->getBufferPointer());
+        return std::vector<std::uint8_t>(ptr, ptr + spirv_code->getBufferSize());
     }
 
-    std::expected<std::string, ShaderCacheError> compile_ir_root(
+    std::expected<std::vector<std::uint8_t>, ShaderCacheError> compile_ir_root(
         assets::AssetId<Shader> id,
         const Shader& shader,
         std::span<const ShaderDefVal> shader_defs,
@@ -552,8 +561,9 @@ struct ShaderCache::SlangCompiler {
         }
 
         slang::TargetDesc target_desc = {};
-        target_desc.format            = SLANG_WGSL;
-        target_desc.profile           = global_session->findProfile("sm_6_0");
+        target_desc.format            = SLANG_SPIRV;
+        target_desc.profile           = global_session->findProfile("spirv_1_3");
+        target_desc.flags             = SLANG_TARGET_FLAG_GENERATE_SPIRV_DIRECTLY;
 
         const char* search_paths[]                     = {""};
         slang::CompilerOptionEntry compiler_options[1] = {};
@@ -598,6 +608,16 @@ struct ShaderCache::SlangCompiler {
         std::vector<slang::IComponentType*> components;
         components.push_back(mod);
         SlangInt ep_count = mod->getDefinedEntryPointCount();
+
+        // SPIR-V requires at least one entry point.  Library-only shaders cannot
+        // be used as root pipeline modules; the caller must use them as imports.
+        if (ep_count == 0) {
+            return std::unexpected(ShaderCacheError::slang_error(
+                Stage::NoEntryPoints,
+                "shader has no entry points and cannot be compiled to SPIR-V directly; "
+                "use it as an imported library module instead"));
+        }
+
         std::vector<Slang::ComPtr<slang::IEntryPoint>> entry_points(ep_count);
         for (SlangInt i = 0; i < ep_count; ++i) {
             mod->getDefinedEntryPoint(i, entry_points[i].writeRef());
@@ -624,19 +644,17 @@ struct ShaderCache::SlangCompiler {
             }
         }
 
-        Slang::ComPtr<slang::IBlob> wgsl_code;
+        Slang::ComPtr<slang::IBlob> spirv_code;
         {
             Slang::ComPtr<slang::IBlob> diag;
-            if (SLANG_FAILED(linked->getTargetCode(0, wgsl_code.writeRef(), diag.writeRef()))) {
+            if (SLANG_FAILED(linked->getTargetCode(0, spirv_code.writeRef(), diag.writeRef()))) {
                 return std::unexpected(ShaderCacheError::slang_error(
                     Stage::CodeGeneration, format_diagnostics("Slang code generation failed", diag.get())));
             }
         }
 
-        auto* ptr = static_cast<const char*>(wgsl_code->getBufferPointer());
-        std::string text(ptr, ptr + wgsl_code->getBufferSize());
-        if (!text.empty() && text.back() == '\0') text.pop_back();
-        return text;
+        auto* ptr = static_cast<const std::uint8_t*>(spirv_code->getBufferPointer());
+        return std::vector<std::uint8_t>(ptr, ptr + spirv_code->getBufferSize());
     }
 
    private:
@@ -833,13 +851,16 @@ std::expected<std::shared_ptr<wgpu::ShaderModule>, ShaderCacheError> ShaderCache
     spdlog::debug("[shader.cache] Compiling shader '{}' with {} defs.", assets::UntypedAssetId(id), merged_defs.size());
 
     ShaderCacheSource source;
+    std::vector<std::uint8_t> slang_spirv_bytes;  // backing storage for Slang-compiled SPIR-V
+    std::string composed_wgsl;                    // backing storage for WGSL composition
     if (std::holds_alternative<Source::SpirV>(shader.source.data)) {
         const auto& bytes = std::get<Source::SpirV>(shader.source.data).bytes;
         source            = ShaderCacheSource{ShaderCacheSource::SpirV{std::span<const std::uint8_t>(bytes)}};
     } else if (std::holds_alternative<Source::Slang>(shader.source.data)) {
-        auto wgsl = slang_->compile(id, shader, merged_defs, shaders_);
-        if (!wgsl) return std::unexpected(wgsl.error());
-        source = ShaderCacheSource{ShaderCacheSource::Wgsl{std::move(wgsl.value())}};
+        auto spirv = slang_->compile(id, shader, merged_defs, shaders_);
+        if (!spirv) return std::unexpected(spirv.error());
+        slang_spirv_bytes = std::move(spirv.value());
+        source = ShaderCacheSource{ShaderCacheSource::SpirV{std::span<const std::uint8_t>(slang_spirv_bytes)}};
     } else if (std::holds_alternative<Source::SlangIr>(shader.source.data)) {
         // Keep explicit .slang-module assets as dependency-only modules.
         if (shader.path.path.extension() == ".slang-module") {
@@ -851,9 +872,10 @@ std::expected<std::shared_ptr<wgpu::ShaderModule>, ShaderCacheError> ShaderCache
 
         // Processed .slang assets may carry SlangIr roots when
         // preprocess_slang_to_ir is enabled. Compile those as root modules.
-        auto wgsl = slang_->compile_ir_root(id, shader, merged_defs, shaders_);
-        if (!wgsl) return std::unexpected(wgsl.error());
-        source = ShaderCacheSource{ShaderCacheSource::Wgsl{std::move(wgsl.value())}};
+        auto spirv = slang_->compile_ir_root(id, shader, merged_defs, shaders_);
+        if (!spirv) return std::unexpected(spirv.error());
+        slang_spirv_bytes = std::move(spirv.value());
+        source = ShaderCacheSource{ShaderCacheSource::SpirV{std::span<const std::uint8_t>(slang_spirv_bytes)}};
     } else {
         for (const auto& imp : shader.imports) {
             if (auto res = add_import_to_composer(composer_, data_, shaders_, id, imp); !res)
@@ -862,7 +884,8 @@ std::expected<std::shared_ptr<wgpu::ShaderModule>, ShaderCacheError> ShaderCache
         auto composed =
             composer_.compose(shader.source.as_str(), canonical_asset_path_string(shader.path), merged_defs);
         if (!composed) return std::unexpected(ShaderCacheError::process_error(std::move(composed.error())));
-        source = ShaderCacheSource{ShaderCacheSource::Wgsl{std::move(composed.value())}};
+        composed_wgsl = std::move(composed.value());
+        source = ShaderCacheSource{ShaderCacheSource::Wgsl{std::string_view(composed_wgsl)}};
     }
 
     auto module_result = load_module_(device_, source, shader.validate_shader);
