@@ -97,6 +97,7 @@ jobs:
       if: runner.os == 'Windows'
       shell: powershell
       run: |
+        $ProgressPreference = 'SilentlyContinue'
         $out = "$env:TEMP\vs_buildtools.exe"
         Invoke-WebRequest -Uri "https://aka.ms/vs/18/release/vs_buildtools.exe" -OutFile $out
         $proc = Start-Process $out -ArgumentList (
