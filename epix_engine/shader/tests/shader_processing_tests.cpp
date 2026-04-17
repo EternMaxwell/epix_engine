@@ -88,49 +88,74 @@ bool preprocess_shader_assets(ProcessedShaderEnv& env, std::initializer_list<std
     return true;
 }
 
-bool wait_for_loaded(App& app,
-                     const AssetServer& server,
-                     const UntypedAssetId& id,
-                     std::chrono::milliseconds timeout = std::chrono::milliseconds(5000)) {
-    const auto start = std::chrono::steady_clock::now();
-    while (std::chrono::steady_clock::now() - start < timeout) {
-        auto state = server.get_load_state(id);
-        if (state.has_value() && std::holds_alternative<std::shared_ptr<AssetLoadError>>(*state)) {
-            return false;
+// Spin a background thread that drives the given schedule(s) so that
+// server.wait_for_asset_id() — which blocks the calling thread — can have
+// its promises resolved by handle_internal_events without deadlock.
+// The pump is stopped (and joined) before returning, ensuring the caller
+// has exclusive access to the app world for subsequent mutations.
+
+bool wait_for_loaded(App& app, const AssetServer& server, const UntypedAssetId& id) {
+    std::atomic<bool> stop{false};
+    std::thread pump([&app, &stop]() {
+        while (!stop.load(std::memory_order_relaxed)) {
+            app.run_schedule(Last);
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
-        if (server.is_loaded_with_dependencies(id)) return true;
-        app.run_schedule(Last);
-        std::this_thread::sleep_for(std::chrono::milliseconds(2));
-    }
-    return false;
+    });
+    bool loaded = server.wait_for_asset_id(id).has_value();
+    stop.store(true, std::memory_order_relaxed);
+    pump.join();
+    return loaded;
 }
 
-bool wait_for_loaded_allow_transient_errors(App& app,
-                                            const AssetServer& server,
-                                            const UntypedAssetId& id,
-                                            std::chrono::milliseconds timeout = std::chrono::milliseconds(5000)) {
-    const auto start = std::chrono::steady_clock::now();
-    while (std::chrono::steady_clock::now() - start < timeout) {
-        if (server.is_loaded_with_dependencies(id)) return true;
-        app.run_schedule(PostUpdate);
-        app.run_schedule(Last);
-        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+bool wait_for_loaded_allow_transient_errors(App& app, const AssetServer& server, const UntypedAssetId& id) {
+    std::atomic<bool> stop{false};
+    std::thread pump([&app, &stop]() {
+        while (!stop.load(std::memory_order_relaxed)) {
+            app.run_schedule(PostUpdate);
+            app.run_schedule(Last);
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+    });
+    // Retry on all transient error kinds (NotLoaded during reload, DependencyFailed
+    // from an intermediate dep state). A 2-minute safety deadline guards against
+    // genuine bugs that would otherwise hang forever.
+    bool success        = false;
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::minutes(2);
+    while (!success && std::chrono::steady_clock::now() < deadline) {
+        auto result = server.wait_for_asset_id(id);
+        if (result.has_value()) {
+            success = true;
+        } else {
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        }
     }
-    return false;
+    stop.store(true, std::memory_order_relaxed);
+    pump.join();
+    return success;
 }
 
-bool wait_until_not_loaded_with_dependencies(App& app,
-                                             const AssetServer& server,
-                                             const UntypedAssetId& id,
-                                             std::chrono::milliseconds timeout = std::chrono::milliseconds(5000)) {
-    const auto start = std::chrono::steady_clock::now();
-    while (std::chrono::steady_clock::now() - start < timeout) {
-        if (!server.is_loaded_with_dependencies(id)) return true;
-        app.run_schedule(PostUpdate);
-        app.run_schedule(Last);
+bool wait_until_not_loaded_with_dependencies(App& app, const AssetServer& server, const UntypedAssetId& id) {
+    std::atomic<bool> stop{false};
+    std::thread pump([&app, &stop]() {
+        while (!stop.load(std::memory_order_relaxed)) {
+            app.run_schedule(PostUpdate);
+            app.run_schedule(Last);
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+    });
+    bool found          = false;
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::minutes(2);
+    while (std::chrono::steady_clock::now() < deadline) {
+        if (!server.is_loaded_with_dependencies(id)) {
+            found = true;
+            break;
+        }
         std::this_thread::sleep_for(std::chrono::milliseconds(2));
     }
-    return false;
+    stop.store(true, std::memory_order_relaxed);
+    pump.join();
+    return found;
 }
 
 std::vector<std::uint8_t> read_bytes(const memory::Directory& dir, const std::filesystem::path& path) {
