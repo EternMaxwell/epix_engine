@@ -106,9 +106,21 @@ jobs:
 
     - name: Set up MSVC developer environment
       if: runner.os == 'Windows'
-      uses: ilammy/msvc-dev-cmd@v1
-      with:
-        vsversion: '2026'
+      shell: powershell
+      run: |
+        $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+        $installPath = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+        if (-not $installPath) { throw "Could not find Visual Studio installation with VC tools" }
+        $vcvarsall = Join-Path $installPath "VC\Auxiliary\Build\vcvarsall.bat"
+        Write-Host "Using vcvarsall at: $vcvarsall"
+        $envOutput = cmd /c "`"$vcvarsall`" x64 && set"
+        foreach ($line in $envOutput) {
+          if ($line -match '^([^=]+)=(.*)$') {
+            $name  = $matches[1]
+            $value = $matches[2]
+            echo "$name=$value" >> $env:GITHUB_ENV
+          }
+        }
 
     - name: Set reusable strings
       # Turn repeated input strings (such as the build output directory) into step outputs. These step outputs can be used throughout the workflow file.
