@@ -31,10 +31,11 @@ jobs:
             c_compiler: cl
             cpp_compiler: cl
             cmake_generator: Ninja
-          - os: ubuntu-latest
-            c_compiler: gcc-16
-            cpp_compiler: g++-16
-            cmake_generator: Ninja
+          # Temporarily disable GCC 16, which is currently not stable, and may encounter internal compiler errors.
+          # - os: ubuntu-latest
+          #   c_compiler: gcc-16
+          #   cpp_compiler: g++-16
+          #   cmake_generator: Ninja
           - os: ubuntu-latest
             c_compiler: clang-23
             cpp_compiler: clang++-23
