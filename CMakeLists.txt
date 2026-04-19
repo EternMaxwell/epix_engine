@@ -135,6 +135,10 @@ target_compile_definitions(glm PUBLIC GLM_FORCE_LEFT_HANDED GLM_FORCE_DEPTH_ZERO
 
 set(CMAKE_CXX_SCAN_FOR_MODULES ON)
 
+# stdexec (NVIDIA sender/receiver, P2300) — header-only interface library
+add_library(stdexec INTERFACE)
+target_include_directories(stdexec INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/libs/stdexec/include)
+
 add_library(BSThreadPool STATIC)
 target_include_directories(BSThreadPool PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/libs/thread-pool/include)
 file(GLOB_RECURSE BSTHREADPOOL_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/libs/thread-pool/modules/*.cppm")

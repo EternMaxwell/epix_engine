@@ -45,6 +45,7 @@ function(epix_add_module_subdir MODULE_NAME SUBDIR)
 endfunction()
 
 add_subdirectory(core)
+add_subdirectory(tasks)
 add_subdirectory(time)
 add_subdirectory(input)
 add_subdirectory(assets)

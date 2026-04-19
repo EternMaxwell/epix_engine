@@ -9,9 +9,9 @@ argument-hint: '<module-name> [optional: specific struct/trait to focus on]'
 ## What This Produces
 
 1. `documentation/tmp/BEVY_MATCH_STATUS.md` — entity-level parity table (see format below)
-2. Implemented ❌/⚠️ items in the C++ module (all tests passing)
+2. Implemented ❌/⚠️/🚫 items in the C++ module (all tests passing)
 
-The tracker is the source of truth. It is created at the start and updated after every entity implementation.
+The tracker is the source of truth, but can be out-dated. It is created at the start and updated after every entity implementation.
 
 ---
 
@@ -146,7 +146,7 @@ Assign exactly one status symbol and write a note explaining any difference. Upd
 
 1. **Find the right `.cppm` file** using `epix-module-research` (read the module interface first)
 2. **Add the declaration** (`export` in the correct partition)
-3. **Add the implementation** (`.cpp` or `-impl.cppm`)
+3. **Add the implementation** (`.cpp` or `-impl.cppm`), when implementing, you should always re-read the Bevy source to confirm you are matching the behavior (1v1 match logic if possible), not just the signature
 4. Build: `cmake --build build --target epix_<module>`
 5. Fix any compile errors before continuing
 
@@ -155,6 +155,7 @@ Assign exactly one status symbol and write a note explaining any difference. Upd
 After any implementation change, **re-read both the Bevy source and the C++ file** to confirm:
 - Signatures match (accounting for Rust→C++ mapping)
 - Behavior semantics match (method names, return types, error types)
+- Logic matches, function body matches
 - No other entity in the same file was accidentally broken
 
 Update the tracking file status to ✅ or ⚠️ with notes.
@@ -181,7 +182,7 @@ After all entities are classified:
 ## Common Pitfalls
 
 - **File structure differs — that is fine.** Bevy may split across `asset.rs`, `server/mod.rs`, `loader.rs`. The C++ may consolidate into one partition. Match by **entity identity**, not file location.
-- **Never copy async Bevy patterns verbatim.** `async fn`, `select!`, `spawn` → use thread pool + blocking channels.
+- **Never copy async Bevy patterns verbatim.** `async fn`, `select!`, `spawn`, use `libs/stdexec`(or `std::execution` if using cpp26) and coroutines. Unless I **explicitly** told to use thread pool and blocking. Always confirm the intended async behavior and map to the correct C++ async pattern.
 - **Bevy `#[reflect]` traits** → only skip after confirming with user. Do not assume.
 - **Module partition import order matters.** Adding a new exported type used by an earlier partition may require a `-decl.cppm` forward declaration. See `epix-module-research`.
 - **Do not batch updates.** Classify → implement → verify → update tracker, one entity at a time.
