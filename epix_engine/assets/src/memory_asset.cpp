@@ -1,4 +1,7 @@
 ﻿module;
+
+#include <asio/awaitable.hpp>
+
 module epix.assets;
 
 import std;
@@ -45,97 +48,131 @@ static AssetWriterError dir_error_to_writer_error(const memory::DirectoryError& 
 
 // ---- MemoryAssetReader --------------------------------------------------
 
-std::expected<std::unique_ptr<std::istream>, assets::AssetReaderError> MemoryAssetReader::read(
+asio::awaitable<std::expected<std::unique_ptr<Reader>, assets::AssetReaderError>> MemoryAssetReader::read(
     const std::filesystem::path& path) const {
     auto res = dir_.get_file(path);
-    if (!res.has_value()) return std::unexpected(dir_error_to_reader_error(res.error(), path));
+    if (!res.has_value()) co_return std::unexpected(dir_error_to_reader_error(res.error(), path));
     auto data = res.value();
-    // extract bytes
+    // extract bytes into a VecReader
+    std::vector<uint8_t> bytes;
     if (std::holds_alternative<std::shared_ptr<std::vector<std::byte>>>(data.value.v)) {
         auto buf = std::get<std::shared_ptr<std::vector<std::byte>>>(data.value.v);
-        std::string s(reinterpret_cast<const char*>(buf->data()), buf->size());
-        auto stream = std::make_unique<std::istringstream>(s, std::ios::binary);
-        return std::expected<std::unique_ptr<std::istream>, assets::AssetReaderError>(std::move(stream));
+        bytes.resize(buf->size());
+        std::memcpy(bytes.data(), buf->data(), buf->size());
     } else if (std::holds_alternative<std::span<const std::byte>>(data.value.v)) {
         auto sp = std::get<std::span<const std::byte>>(data.value.v);
-        std::string s(reinterpret_cast<const char*>(sp.data()), sp.size());
-        auto stream = std::make_unique<std::istringstream>(s, std::ios::binary);
-        return std::expected<std::unique_ptr<std::istream>, assets::AssetReaderError>(std::move(stream));
+        bytes.resize(sp.size());
+        std::memcpy(bytes.data(), sp.data(), sp.size());
+    } else {
+        co_return std::unexpected(assets::AssetReaderError(std::current_exception()));
     }
-    return std::unexpected(assets::AssetReaderError(std::current_exception()));
+    co_return std::unique_ptr<Reader>(std::make_unique<VecReader>(std::move(bytes)));
 }
 
-std::expected<utils::input_iterable<std::filesystem::path>, assets::AssetReaderError> MemoryAssetReader::read_directory(
+asio::awaitable<std::expected<std::unique_ptr<Reader>, assets::AssetReaderError>> MemoryAssetReader::read_meta(
     const std::filesystem::path& path) const {
-    auto res = dir_.list_directory(path, false);
-    if (!res.has_value()) return std::unexpected(dir_error_to_reader_error(res.error(), path));
-    return res.value();
+    co_return co_await read(assets::get_meta_path(path));
 }
 
-std::expected<bool, assets::AssetReaderError> MemoryAssetReader::is_directory(const std::filesystem::path& path) const {
+asio::awaitable<std::expected<utils::input_iterable<std::filesystem::path>, assets::AssetReaderError>>
+MemoryAssetReader::read_directory(const std::filesystem::path& path) const {
+    auto res = dir_.list_directory(path, false);
+    if (!res.has_value()) co_return std::unexpected(dir_error_to_reader_error(res.error(), path));
+    co_return res.value();
+}
+
+asio::awaitable<std::expected<bool, assets::AssetReaderError>> MemoryAssetReader::is_directory(
+    const std::filesystem::path& path) const {
     auto res = dir_.is_directory(path);
-    if (!res.has_value()) return std::unexpected(dir_error_to_reader_error(res.error(), path));
-    return res.value();
+    if (!res.has_value()) co_return std::unexpected(dir_error_to_reader_error(res.error(), path));
+    co_return res.value();
 }
 
 // ---- MemoryAssetWriter --------------------------------------------------
 
-std::expected<std::unique_ptr<std::ostream>, assets::AssetWriterError> MemoryAssetWriter::write(
+// A Writer that accumulates bytes in memory and commits to the Directory on destruction.
+struct MemoryCommitWriter : assets::Writer {
+    std::vector<uint8_t> m_data;
+    assets::memory::Directory m_dir;
+    std::filesystem::path m_path;
+
+    MemoryCommitWriter(assets::memory::Directory dir, std::filesystem::path path)
+        : m_dir(std::move(dir)), m_path(std::move(path)) {}
+
+    ~MemoryCommitWriter() noexcept {
+        try {
+            auto sp = std::as_bytes(std::span(m_data));
+            auto val =
+                assets::memory::Value::from_shared(std::make_shared<std::vector<std::byte>>(sp.begin(), sp.end()));
+            (void)m_dir.insert_file(m_path, std::move(val));
+        } catch (...) {}
+    }
+
+    asio::awaitable<std::expected<size_t, std::error_code>> write(std::span<const uint8_t> data) override {
+        m_data.insert(m_data.end(), data.begin(), data.end());
+        co_return data.size();
+    }
+
+    asio::awaitable<std::expected<void, std::error_code>> flush() override {
+        co_return std::expected<void, std::error_code>{};
+    }
+};
+
+asio::awaitable<std::expected<std::unique_ptr<Writer>, assets::AssetWriterError>> MemoryAssetWriter::write(
     const std::filesystem::path& path) const {
-    // create an ostringstream that commits on destruction
-    struct CommitOStream : std::ostringstream {
-        assets::memory::Directory dir;
-        std::filesystem::path path;
-        CommitOStream(assets::memory::Directory d, std::filesystem::path p) : dir(std::move(d)), path(std::move(p)) {}
-        ~CommitOStream() noexcept {
-            try {
-                auto s  = this->str();
-                auto sp = std::as_bytes(std::span(s));
-                auto val =
-                    assets::memory::Value::from_shared(std::make_shared<std::vector<std::byte>>(sp.begin(), sp.end()));
-                auto res = dir.insert_file(path, std::move(val));
-            } catch (...) {}
-        }
-    };
-
-    auto stream = std::make_unique<CommitOStream>(dir_, path);
-    return std::expected<std::unique_ptr<std::ostream>, assets::AssetWriterError>(std::move(stream));
+    co_return std::unique_ptr<Writer>(std::make_unique<MemoryCommitWriter>(dir_, path));
 }
 
-std::expected<void, assets::AssetWriterError> MemoryAssetWriter::remove(const std::filesystem::path& path) const {
+asio::awaitable<std::expected<std::unique_ptr<Writer>, assets::AssetWriterError>> MemoryAssetWriter::write_meta(
+    const std::filesystem::path& path) const {
+    co_return co_await write(assets::get_meta_path(path));
+}
+
+asio::awaitable<std::expected<void, assets::AssetWriterError>> MemoryAssetWriter::remove(
+    const std::filesystem::path& path) const {
     auto res = dir_.remove_file(path);
-    if (!res.has_value()) return std::unexpected(dir_error_to_writer_error(res.error()));
-    return {};
+    if (!res.has_value()) co_return std::unexpected(dir_error_to_writer_error(res.error()));
+    co_return std::expected<void, assets::AssetWriterError>{};
 }
 
-std::expected<void, assets::AssetWriterError> MemoryAssetWriter::rename(const std::filesystem::path& old_path,
-                                                                        const std::filesystem::path& new_path) const {
+asio::awaitable<std::expected<void, assets::AssetWriterError>> MemoryAssetWriter::remove_meta(
+    const std::filesystem::path& path) const {
+    co_return co_await remove(assets::get_meta_path(path));
+}
+
+asio::awaitable<std::expected<void, assets::AssetWriterError>> MemoryAssetWriter::rename(
+    const std::filesystem::path& old_path, const std::filesystem::path& new_path) const {
     auto res = dir_.move(old_path, new_path);
-    if (!res.has_value()) return std::unexpected(dir_error_to_writer_error(res.error()));
-    return {};
+    if (!res.has_value()) co_return std::unexpected(dir_error_to_writer_error(res.error()));
+    co_return std::expected<void, assets::AssetWriterError>{};
 }
 
-std::expected<void, assets::AssetWriterError> MemoryAssetWriter::create_directory(
+asio::awaitable<std::expected<void, assets::AssetWriterError>> MemoryAssetWriter::rename_meta(
+    const std::filesystem::path& old_path, const std::filesystem::path& new_path) const {
+    co_return co_await rename(assets::get_meta_path(old_path), assets::get_meta_path(new_path));
+}
+
+asio::awaitable<std::expected<void, assets::AssetWriterError>> MemoryAssetWriter::create_directory(
     const std::filesystem::path& path) const {
     auto res = dir_.create_directory(path);
-    if (!res.has_value()) return std::unexpected(dir_error_to_writer_error(res.error()));
-    return {};
+    if (!res.has_value()) co_return std::unexpected(dir_error_to_writer_error(res.error()));
+    co_return std::expected<void, assets::AssetWriterError>{};
 }
 
-std::expected<void, assets::AssetWriterError> MemoryAssetWriter::remove_directory(
+asio::awaitable<std::expected<void, assets::AssetWriterError>> MemoryAssetWriter::remove_directory(
     const std::filesystem::path& path) const {
     auto res = dir_.remove_directory(path);
-    if (!res.has_value()) return std::unexpected(dir_error_to_writer_error(res.error()));
-    return {};
+    if (!res.has_value()) co_return std::unexpected(dir_error_to_writer_error(res.error()));
+    co_return std::expected<void, assets::AssetWriterError>{};
 }
 
-std::expected<void, assets::AssetWriterError> MemoryAssetWriter::clear_directory(
+asio::awaitable<std::expected<void, assets::AssetWriterError>> MemoryAssetWriter::clear_directory(
     const std::filesystem::path& path) const {
     // clear contents without removing the directory node itself to avoid DirRemoved/DirAdded on the parent
     auto list_res = dir_.list_directory(path, false);
-    if (!list_res.has_value()) return std::unexpected(dir_error_to_writer_error(list_res.error()));
+    if (!list_res.has_value()) co_return std::unexpected(dir_error_to_writer_error(list_res.error()));
 
-    // helper: recursive remove
+    // helper: recursive remove (sync since memory::Directory ops are sync)
     std::function<std::expected<void, assets::AssetWriterError>(const std::filesystem::path&)> remove_recursive;
     remove_recursive = [&](const std::filesystem::path& p) -> std::expected<void, assets::AssetWriterError> {
         auto lr = dir_.list_directory(p, false);
@@ -158,16 +195,16 @@ std::expected<void, assets::AssetWriterError> MemoryAssetWriter::clear_directory
 
     for (auto&& child : list_res.value()) {
         auto is_dir = dir_.is_directory(child);
-        if (!is_dir.has_value()) return std::unexpected(dir_error_to_writer_error(is_dir.error()));
+        if (!is_dir.has_value()) co_return std::unexpected(dir_error_to_writer_error(is_dir.error()));
         if (is_dir.value()) {
             auto r = remove_recursive(child);
-            if (!r.has_value()) return r;
+            if (!r.has_value()) co_return r;
         } else {
             auto r = dir_.remove_file(child);
-            if (!r.has_value()) return std::unexpected(dir_error_to_writer_error(r.error()));
+            if (!r.has_value()) co_return std::unexpected(dir_error_to_writer_error(r.error()));
         }
     }
-    return {};
+    co_return std::expected<void, assets::AssetWriterError>{};
 }
 
 // ---- MemoryAssetWatcher -------------------------------------------------

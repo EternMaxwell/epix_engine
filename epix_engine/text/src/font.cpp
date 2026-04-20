@@ -4,6 +4,7 @@ module;
 #include <freetype/ftglyph.h>
 #include <spdlog/spdlog.h>
 
+#include <asio/awaitable.hpp>
 #include <fstream>
 
 #include "font_array.hpp"
@@ -42,16 +43,19 @@ std::span<std::string_view> FontLoader::extensions() {
     return std::span<std::string_view>(exts.data(), exts.size());
 }
 
-std::expected<Font, FontLoader::Error> FontLoader::load(std::istream& reader, const Settings&, assets::LoadContext&) {
+asio::awaitable<std::expected<Font, FontLoader::Error>> FontLoader::load(assets::Reader& reader,
+                                                                         const Settings&,
+                                                                         assets::LoadContext&) {
     try {
-        std::vector<char> bytes =
-            std::ranges::subrange(std::istreambuf_iterator<char>(reader), std::istreambuf_iterator<char>()) |
-            std::ranges::to<std::vector<char>>();
+        std::vector<uint8_t> bytes;
+        auto read_result = co_await reader.read_to_end(bytes);
+        if (!read_result)
+            co_return std::unexpected(std::make_exception_ptr(std::runtime_error("Failed to read font data")));
         auto buffer = std::make_unique<std::byte[]>(bytes.size());
         std::memcpy(buffer.get(), bytes.data(), bytes.size());
-        return Font{std::move(buffer), bytes.size()};
+        co_return Font{std::move(buffer), bytes.size()};
     } catch (...) {
-        return std::unexpected(std::current_exception());
+        co_return std::unexpected(std::current_exception());
     }
 }
 

@@ -1,5 +1,10 @@
 #include <gtest/gtest.h>
 
+#include <asio/awaitable.hpp>
+#include <asio/co_spawn.hpp>
+#include <asio/detached.hpp>
+#include <asio/io_context.hpp>
+
 import std;
 import epix.assets;
 import epix.core;
@@ -50,10 +55,10 @@ struct TestTextLoader {
         return std::span<std::string_view>(exts.data(), exts.size());
     }
 
-    static std::expected<std::string, Error> load(std::istream& reader, const Settings&, LoadContext&) {
-        std::stringstream ss;
-        ss << reader.rdbuf();
-        return ss.str();
+    static asio::awaitable<std::expected<std::string, Error>> load(Reader& reader, const Settings&, LoadContext&) {
+        std::vector<uint8_t> buf;
+        co_await reader.read_to_end(buf);
+        co_return std::string(buf.begin(), buf.end());
     }
 };
 
@@ -65,12 +70,14 @@ struct TestTextSaver {
     struct Settings {};
     using Error = std::exception_ptr;
 
-    std::expected<OutputLoader::Settings, Error> save(std::ostream& writer,
-                                                      SavedAsset<std::string> asset,
-                                                      const Settings&,
-                                                      const AssetPath&) const {
-        writer << asset.get();
-        return OutputLoader::Settings{};
+    asio::awaitable<std::expected<OutputLoader::Settings, Error>> save(Writer& writer,
+                                                                       SavedAsset<std::string> asset,
+                                                                       const Settings&,
+                                                                       const AssetPath&) const {
+        auto& str = asset.get();
+        std::span<const uint8_t> data(reinterpret_cast<const uint8_t*>(str.data()), str.size());
+        co_await writer.write(data);
+        co_return OutputLoader::Settings{};
     }
 };
 
@@ -84,10 +91,10 @@ struct AddTextTransformer {
 
     std::string suffix;
 
-    std::expected<TransformedAsset<std::string>, Error> transform(TransformedAsset<std::string> asset,
-                                                                  const Settings&) const {
+    asio::awaitable<std::expected<TransformedAsset<std::string>, Error>> transform(TransformedAsset<std::string> asset,
+                                                                                   const Settings&) const {
         asset.get_mut() += suffix;
-        return asset;
+        co_return asset;
     }
 };
 
@@ -101,11 +108,13 @@ struct TestIdentityProcessor {
     struct Settings {};
     using OutputLoader = TestTextLoader;
 
-    std::expected<OutputLoader::Settings, std::exception_ptr> process(ProcessContext& ctx,
-                                                                      const Settings&,
-                                                                      std::ostream& writer) const {
-        writer << ctx.asset_reader().rdbuf();
-        return OutputLoader::Settings{};
+    asio::awaitable<std::expected<OutputLoader::Settings, std::exception_ptr>> process(ProcessContext& ctx,
+                                                                                       const Settings&,
+                                                                                       Writer& writer) const {
+        std::vector<uint8_t> buf;
+        co_await ctx.asset_reader().read_to_end(buf);
+        co_await writer.write(std::span<const uint8_t>(buf));
+        co_return OutputLoader::Settings{};
     }
 };
 
@@ -131,12 +140,16 @@ AssetProcessor create_empty_asset_processor() {
 TEST(ProcessContext, Construction) {
     auto processor = create_empty_asset_processor();
     AssetPath path("test.txt");
-    std::istringstream data("AB");
+    VecReader data(std::string("AB"));
     ProcessedInfo info;
     ProcessContext ctx(processor, path, data, info);
     EXPECT_EQ(ctx.path(), path);
-    char buf[2];
-    ctx.asset_reader().read(buf, 2);
+    std::vector<uint8_t> buf;
+    asio::io_context io;
+    asio::co_spawn(
+        io, [&]() -> asio::awaitable<void> { co_await ctx.asset_reader().read_to_end(buf); }, asio::detached);
+    io.run();
+    EXPECT_EQ(buf.size(), 2u);
     EXPECT_EQ(buf[0], 'A');
     EXPECT_EQ(buf[1], 'B');
 }
@@ -144,11 +157,10 @@ TEST(ProcessContext, Construction) {
 TEST(ProcessContext, WithProcessedInfo) {
     auto processor = create_empty_asset_processor();
     AssetPath path("model.obj");
-    std::istringstream data("");
+    VecReader data(std::string(""));
     ProcessedInfo info;
     ProcessContext ctx(processor, path, data, info);
     EXPECT_EQ(ctx.path(), path);
-    // new_processed_info should be accessible
     AssetHash test_hash           = {};
     test_hash[0]                  = 42;
     ctx.new_processed_info().hash = test_hash;
@@ -298,11 +310,12 @@ struct TemplatedProcessor {
     struct Settings {};
     using OutputLoader = TestTextLoader;
 
-    std::expected<OutputLoader::Settings, std::exception_ptr> process(ProcessContext&,
-                                                                      const Settings&,
-                                                                      std::ostream& writer) const {
-        writer << "hello";
-        return OutputLoader::Settings{};
+    asio::awaitable<std::expected<OutputLoader::Settings, std::exception_ptr>> process(ProcessContext&,
+                                                                                       const Settings&,
+                                                                                       Writer& writer) const {
+        std::string_view hello = "hello";
+        co_await writer.write(std::span<const uint8_t>(reinterpret_cast<const uint8_t*>(hello.data()), hello.size()));
+        co_return OutputLoader::Settings{};
     }
 };
 

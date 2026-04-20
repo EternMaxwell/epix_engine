@@ -4,6 +4,7 @@ module;
 #include <zpp_bits.h>
 
 #include <array>
+#include <asio/awaitable.hpp>
 #include <cstdint>
 #include <cstring>
 #include <expected>
@@ -21,6 +22,7 @@ module;
 export module epix.assets:meta;
 
 import epix.meta;
+import :io.reader;
 import :path;
 
 namespace epix::assets {
@@ -384,10 +386,10 @@ export inline std::expected<std::optional<ProcessedInfo>, std::errc> deserialize
 // to epix_engine and does not need to interoperate with bevy's binary format.
 // ---------------------------------------------------------------------------
 
-/** @brief Compute a 32-byte asset hash from meta bytes + asset stream contents.
+/** @brief Compute a 32-byte asset hash from meta bytes + asset reader contents.
  *  NOTE: changing the hashing algorithm requires a META_FORMAT_VERSION bump.
- *  Matches bevy_asset's get_asset_hash (synchronous version). */
-AssetHash get_asset_hash(std::span<const std::byte> meta_bytes, std::istream& reader);
+ *  Matches bevy_asset's get_asset_hash. */
+asio::awaitable<AssetHash> get_asset_hash(std::span<const std::byte> meta_bytes, Reader& reader);
 
 /** @brief Compute the full_hash by chaining an asset hash with all dependency full_hashes.
  *  Matches bevy_asset's get_full_asset_hash. */

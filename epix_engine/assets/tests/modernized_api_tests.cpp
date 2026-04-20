@@ -1,5 +1,10 @@
 #include <gtest/gtest.h>
 
+#include <asio/awaitable.hpp>
+#include <asio/co_spawn.hpp>
+#include <asio/detached.hpp>
+#include <asio/io_context.hpp>
+
 import std;
 import epix.assets;
 
@@ -64,7 +69,7 @@ TEST(SavedAsset_FromTransformed, Dereference) {
 }
 
 // ===========================================================================
-// ProcessContext — istream reader + ProcessedInfo
+// ProcessContext — Reader& + ProcessedInfo
 // ===========================================================================
 
 // Helper for creating a minimal AssetProcessor for ProcessContext tests
@@ -86,14 +91,17 @@ AssetProcessor make_test_processor() {
 
 TEST(ProcessContext, ReaderAccess) {
     auto processor = make_test_processor();
-    std::istringstream data("Hello, World!");
+    VecReader data(std::string("Hello, World!"));
     AssetPath path("test.txt");
     ProcessedInfo info;
     ProcessContext ctx(processor, path, data, info);
 
-    std::string result;
-    std::getline(ctx.asset_reader(), result);
-    EXPECT_EQ(result, "Hello, World!");
+    std::vector<uint8_t> buf;
+    asio::io_context io;
+    asio::co_spawn(
+        io, [&]() -> asio::awaitable<void> { co_await ctx.asset_reader().read_to_end(buf); }, asio::detached);
+    io.run();
+    EXPECT_EQ(std::string(buf.begin(), buf.end()), "Hello, World!");
 }
 
 TEST(ProcessContext, ProcessedInfoPresent) {
@@ -103,7 +111,7 @@ TEST(ProcessContext, ProcessedInfoPresent) {
     h[0]        = 12345 & 0xFF;
     h[1]        = (12345 >> 8) & 0xFF;
     info.hash   = h;
-    std::istringstream data("");
+    VecReader data(std::string(""));
     AssetPath path("test.txt");
     ProcessContext ctx(processor, path, data, info);
     EXPECT_EQ(ctx.path(), path);
@@ -111,7 +119,7 @@ TEST(ProcessContext, ProcessedInfoPresent) {
 
 TEST(ProcessContext, PathAccess) {
     auto processor = make_test_processor();
-    std::istringstream data("");
+    VecReader data(std::string(""));
     AssetPath path("assets/model.obj");
     ProcessedInfo info;
     ProcessContext ctx(processor, path, data, info);
@@ -156,7 +164,15 @@ TEST(ProcessError, DeserializeMetaError) {
 TEST(IdentityAssetTransformer, Roundtrip) {
     IdentityAssetTransformer<std::string> t;
     typename IdentityAssetTransformer<std::string>::Settings s;
-    auto result = t.transform(TransformedAsset<std::string>(std::string("data")), s);
+    asio::io_context io;
+    std::expected<TransformedAsset<std::string>, std::exception_ptr> result = std::unexpected(std::exception_ptr{});
+    asio::co_spawn(
+        io,
+        [&]() -> asio::awaitable<void> {
+            result = co_await t.transform(TransformedAsset<std::string>(std::string("data")), s);
+        },
+        asio::detached);
+    io.run();
     ASSERT_TRUE(result.has_value());
     EXPECT_EQ(result->get(), "data");
 }

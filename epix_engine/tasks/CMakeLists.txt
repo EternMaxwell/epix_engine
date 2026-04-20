@@ -1,9 +1,7 @@
 ﻿epix_add_module(epix_tasks)
 target_include_directories(epix_tasks PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(epix_tasks PUBLIC epix_core)
-target_link_libraries(epix_tasks PUBLIC stdexec)
-find_package(Threads REQUIRED)
-target_link_libraries(epix_tasks PUBLIC Threads::Threads)
+target_link_libraries(epix_tasks PUBLIC asio)
 
 if (EPIX_ENABLE_TEST)
 file(GLOB_RECURSE TASKS_TEST_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/tests/*.cpp")

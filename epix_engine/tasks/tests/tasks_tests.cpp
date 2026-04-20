@@ -1,9 +1,9 @@
 // epix.tasks comprehensive test suite — covers all public API
 
 #include <gtest/gtest.h>
-#include <stdexec/execution.hpp>
-#include <exec/task.hpp>
-#include <exec/static_thread_pool.hpp>
+
+#include <asio/awaitable.hpp>
+#include <asio/use_awaitable.hpp>
 
 import epix.tasks;
 import std;
@@ -84,49 +84,59 @@ TEST(Task, OperatorBoolFalseAfterDone) {
 
 // ─── Task<T> — co_await ──────────────────────────────────────────────────────
 
-TEST(Task, CoAwaitReturnsValue) {
-    TaskPool pool{2};
-    auto coro = [&]() -> exec::task<int> {
-        co_return co_await pool.spawn([]() { return 10; });
-    };
-    auto r = stdexec::sync_wait(stdexec::on(pool.get_scheduler(), coro()));
-    ASSERT_TRUE(r.has_value());
-    EXPECT_EQ(std::get<0>(*r), 10);
-}
+// asio::awaitable<T> coroutines run on the pool.
+// Task<T> is an async operation (has operator()(CompletionToken)),
+// so `co_await task` works natively inside asio::awaitable<T>.
 
-TEST(Task, CoAwaitChainedTasks) {
+TEST(Task, CoAwaitTaskInAsioCoroutine) {
     TaskPool pool{2};
-    auto coro = [&]() -> exec::task<int> {
+    auto coro = [&]() -> asio::awaitable<int> {
+        // pool.spawn() returns Task<int>; co_await works directly
         int a = co_await pool.spawn([]() { return 3; });
         int b = co_await pool.spawn([]() { return 4; });
         co_return a + b;
     };
-    auto r = stdexec::sync_wait(stdexec::on(pool.get_scheduler(), coro()));
-    ASSERT_TRUE(r.has_value());
-    EXPECT_EQ(std::get<0>(*r), 7);
+    auto v = pool.spawn(coro()).block();
+    ASSERT_TRUE(v.has_value());
+    EXPECT_EQ(*v, 7);
 }
 
-TEST(Task, CoAwaitExceptionPropagates) {
-    TaskPool pool{1};
-    auto coro = [&]() -> exec::task<int> {
-        co_return co_await pool.spawn([]() -> int { throw std::runtime_error("boom"); });
+TEST(Task, CoroutineReturnsValue) {
+    TaskPool pool{2};
+    auto v = pool.spawn([]() -> asio::awaitable<int> { co_return 10; }()).block();
+    ASSERT_TRUE(v.has_value());
+    EXPECT_EQ(*v, 10);
+}
+
+TEST(Task, CoroutineSequentialWork) {
+    TaskPool pool{2};
+    auto coro = []() -> asio::awaitable<int> {
+        int a = 3;
+        int b = 4;
+        co_return a + b;
     };
-    EXPECT_THROW(
-        stdexec::sync_wait(stdexec::on(pool.get_scheduler(), coro())),
-        std::runtime_error
-    );
+    auto v = pool.spawn(coro()).block();
+    ASSERT_TRUE(v.has_value());
+    EXPECT_EQ(*v, 7);
+}
+
+TEST(Task, CoroutineExceptionPropagates) {
+    TaskPool pool{1};
+    auto coro = []() -> asio::awaitable<int> {
+        throw std::runtime_error("boom");
+        co_return 0;
+    };
+    EXPECT_THROW(pool.spawn(coro()).block(), std::runtime_error);
 }
 
 TEST(Task, CoAwaitAlreadyFinishedSkipsSuspend) {
+    // Test that block() on a pre-fulfilled Task<T> returns immediately.
     auto [task, state] = Task<int>::make();
     state->set_value(55);
-    TaskPool pool{1};
-    auto coro = [t = std::move(task)]() mutable -> exec::task<int> {
-        co_return co_await std::move(t);
-    };
-    auto r = stdexec::sync_wait(stdexec::on(pool.get_scheduler(), coro()));
-    ASSERT_TRUE(r.has_value());
-    EXPECT_EQ(std::get<0>(*r), 55);
+    EXPECT_TRUE(task.is_finished());
+    auto v = task.block();
+    ASSERT_TRUE(v.has_value());
+    EXPECT_EQ(*v, 55);
 }
 
 // ─── Task<void> ──────────────────────────────────────────────────────────────
@@ -167,25 +177,23 @@ TEST(TaskVoid, DetachRunsWork) {
     EXPECT_EQ(x.load(), 7);
 }
 
-TEST(TaskVoid, CoAwaitCompletes) {
+TEST(TaskVoid, CoroutineCompletes) {
     TaskPool pool{2};
     std::atomic<int> x{0};
-    auto coro = [&]() -> exec::task<void> {
+    auto coro = [&]() -> asio::awaitable<void> {
+        // co_await Task<void> works natively inside asio::awaitable
         co_await pool.spawn([&]() { x.store(99); });
     };
-    stdexec::sync_wait(stdexec::on(pool.get_scheduler(), coro()));
+    pool.spawn(coro()).block();
     EXPECT_EQ(x.load(), 99);
 }
 
-TEST(TaskVoid, CoAwaitExceptionPropagates) {
+TEST(TaskVoid, CoroutineExceptionPropagates) {
     TaskPool pool{1};
-    auto coro = [&]() -> exec::task<void> {
+    auto coro = [&]() -> asio::awaitable<void> {
         co_await pool.spawn([]() { throw std::runtime_error("void boom"); });
     };
-    EXPECT_THROW(
-        stdexec::sync_wait(stdexec::on(pool.get_scheduler(), coro())),
-        std::runtime_error
-    );
+    EXPECT_THROW(pool.spawn(coro()).block(), std::runtime_error);
 }
 
 // ─── TaskPool ────────────────────────────────────────────────────────────────
@@ -217,8 +225,7 @@ TEST(TaskPool, SpawnVoid) {
 TEST(TaskPool, SpawnManyConcurrently) {
     TaskPool pool{4};
     std::vector<Task<int>> tasks;
-    for (int i = 0; i < 16; ++i)
-        tasks.push_back(pool.spawn([i]() { return i * i; }));
+    for (int i = 0; i < 16; ++i) tasks.push_back(pool.spawn([i]() { return i * i; }));
     for (int i = 0; i < 16; ++i) {
         auto v = tasks[i].block();
         ASSERT_TRUE(v.has_value());
@@ -240,17 +247,24 @@ TEST(TaskPool, ScopeCollectsResults) {
     });
     std::sort(r.begin(), r.end());
     ASSERT_EQ(r.size(), 3u);
-    EXPECT_EQ(r[0], 1); EXPECT_EQ(r[1], 2); EXPECT_EQ(r[2], 3);
+    EXPECT_EQ(r[0], 1);
+    EXPECT_EQ(r[1], 2);
+    EXPECT_EQ(r[2], 3);
 }
 
-TEST(TaskPool, GetSchedulerUsable) {
-    TaskPool pool{1};
-    std::atomic<bool> ran{false};
-    stdexec::sync_wait(
-        stdexec::schedule(pool.get_scheduler())
-        | stdexec::then([&]() { ran.store(true); })
-    );
-    EXPECT_TRUE(ran.load());
+TEST(TaskPool, IoContextBackend) {
+    TaskPool pool{2, TaskPoolBackend::IoContext};
+    EXPECT_EQ(pool.thread_num(), 2u);
+    auto v = pool.spawn([]() { return 55; }).block();
+    ASSERT_TRUE(v.has_value());
+    EXPECT_EQ(*v, 55);
+}
+
+TEST(TaskPool, IoContextBackendVoid) {
+    TaskPool pool{2, TaskPoolBackend::IoContext};
+    std::atomic<int> x{0};
+    pool.spawn([&x]() { x.store(77); }).block();
+    EXPECT_EQ(x.load(), 77);
 }
 
 // ─── TaskPoolBuilder ─────────────────────────────────────────────────────────
@@ -266,19 +280,37 @@ TEST(TaskPoolBuilder, NumThreadsOverride) {
 }
 
 TEST(TaskPoolBuilder, CallbacksAccepted) {
-    // Verify the builder fluent API compiles and pool works correctly
-    auto pool = TaskPoolBuilder{}
-        .num_threads(2)
-        .on_thread_spawn([]() {})
-        .on_thread_destroy([]() {})
-        .build();
-    EXPECT_EQ(pool.thread_num(), 2u);
-    EXPECT_EQ(*pool.spawn([]() { return 1; }).block(), 1);
+    // Verify callbacks are invoked on the worker threads (requires IoContext backend)
+    std::atomic<int> spawned{0}, destroyed{0};
+    {
+        auto pool = TaskPoolBuilder{}
+                        .num_threads(2)
+                        .on_thread_spawn([&spawned]() { spawned.fetch_add(1); })
+                        .on_thread_destroy([&destroyed]() { destroyed.fetch_add(1); })
+                        .build();
+        EXPECT_EQ(pool.thread_num(), 2u);
+        EXPECT_EQ(*pool.spawn([]() { return 1; }).block(), 1);
+    }  // pool destroyed here — drain waits for threads to exit
+    EXPECT_EQ(spawned.load(), 2);
+    EXPECT_EQ(destroyed.load(), 2);
 }
 
 TEST(TaskPoolBuilder, ThreadNameAccepted) {
     auto pool = TaskPoolBuilder{}.num_threads(1).thread_name("test-pool").build();
     EXPECT_EQ(pool.thread_num(), 1u);
+    EXPECT_EQ(*pool.spawn([]() { return 99; }).block(), 99);
+}
+
+TEST(TaskPoolBuilder, ExplicitIoContextBackend) {
+    auto pool = TaskPoolBuilder{}.num_threads(2).backend(TaskPoolBackend::IoContext).build();
+    EXPECT_EQ(pool.thread_num(), 2u);
+    EXPECT_EQ(*pool.spawn([]() { return 7; }).block(), 7);
+}
+
+TEST(TaskPoolBuilder, ExplicitThreadPoolBackend) {
+    auto pool = TaskPoolBuilder{}.num_threads(2).backend(TaskPoolBackend::ThreadPool).build();
+    EXPECT_EQ(pool.thread_num(), 2u);
+    EXPECT_EQ(*pool.spawn([]() { return 8; }).block(), 8);
 }
 
 // ─── Scope<T> ────────────────────────────────────────────────────────────────
@@ -301,7 +333,8 @@ TEST(Scope, SpawnOnScopeDelegates) {
     });
     std::sort(r.begin(), r.end());
     ASSERT_EQ(r.size(), 2u);
-    EXPECT_EQ(r[0], 10); EXPECT_EQ(r[1], 20);
+    EXPECT_EQ(r[0], 10);
+    EXPECT_EQ(r[1], 20);
 }
 
 TEST(Scope, MixedSpawnMethods) {
@@ -313,7 +346,9 @@ TEST(Scope, MixedSpawnMethods) {
     });
     std::sort(r.begin(), r.end());
     ASSERT_EQ(r.size(), 3u);
-    EXPECT_EQ(r[0], 1); EXPECT_EQ(r[1], 2); EXPECT_EQ(r[2], 3);
+    EXPECT_EQ(r[0], 1);
+    EXPECT_EQ(r[1], 2);
+    EXPECT_EQ(r[2], 3);
 }
 
 // ─── Global singleton pools ───────────────────────────────────────────────────
@@ -353,7 +388,8 @@ TEST(GlobalPools, ComputeScope) {
     });
     std::sort(r.begin(), r.end());
     ASSERT_EQ(r.size(), 2u);
-    EXPECT_EQ(r[0], 1); EXPECT_EQ(r[1], 2);
+    EXPECT_EQ(r[0], 1);
+    EXPECT_EQ(r[1], 2);
 }
 
 TEST(GlobalPools, AsyncComputeInit) {
@@ -366,7 +402,7 @@ TEST(GlobalPools, AsyncComputeInit) {
 
 TEST(GlobalPools, IoInit) {
     auto& p = IoTaskPool::get_or_init([]() { return TaskPool{2}; });
-    auto v = p.spawn([]() { return 42; }).block();
+    auto v  = p.spawn([]() { return 42; }).block();
     ASSERT_TRUE(v.has_value());
     EXPECT_EQ(*v, 42);
 }
@@ -422,22 +458,27 @@ TEST(Futures, CheckReadyVoid) {
 TEST(ParallelSlice, ParChunkMap) {
     TaskPool pool{2};
     const std::vector<int> data = {1, 2, 3, 4, 5, 6, 7, 8};
-    auto r = par_chunk_map<int>(std::span<const int>(data), pool, 2,
-        [](std::size_t, std::span<const int> c) {
-            int s = 0; for (auto v : c) s += v; return s;
-        });
+    auto r = par_chunk_map<int>(std::span<const int>(data), pool, 2, [](std::size_t, std::span<const int> c) {
+        int s = 0;
+        for (auto v : c) s += v;
+        return s;
+    });
     std::sort(r.begin(), r.end());
     ASSERT_EQ(r.size(), 4u);
-    EXPECT_EQ(r[0], 3); EXPECT_EQ(r[1], 7); EXPECT_EQ(r[2], 11); EXPECT_EQ(r[3], 15);
+    EXPECT_EQ(r[0], 3);
+    EXPECT_EQ(r[1], 7);
+    EXPECT_EQ(r[2], 11);
+    EXPECT_EQ(r[3], 15);
 }
 
 TEST(ParallelSlice, ParChunkMapSingleChunk) {
     TaskPool pool{2};
     const std::vector<int> data = {1, 2, 3};
-    auto r = par_chunk_map<int>(std::span<const int>(data), pool, 10,
-        [](std::size_t, std::span<const int> c) {
-            int s = 0; for (auto v : c) s += v; return s;
-        });
+    auto r = par_chunk_map<int>(std::span<const int>(data), pool, 10, [](std::size_t, std::span<const int> c) {
+        int s = 0;
+        for (auto v : c) s += v;
+        return s;
+    });
     ASSERT_EQ(r.size(), 1u);
     EXPECT_EQ(r[0], 6);
 }
@@ -446,20 +487,25 @@ TEST(ParallelSlice, ParSplatMapSumsTotal) {
     TaskPool pool{2};
     std::vector<int> data(100);
     std::iota(data.begin(), data.end(), 0);
-    auto r = par_splat_map<int>(std::span<const int>(data), pool, std::nullopt,
-        [](std::size_t, std::span<const int> c) {
-            int s = 0; for (auto v : c) s += v; return s;
+    auto r =
+        par_splat_map<int>(std::span<const int>(data), pool, std::nullopt, [](std::size_t, std::span<const int> c) {
+            int s = 0;
+            for (auto v : c) s += v;
+            return s;
         });
-    int total = 0; for (auto v : r) total += v;
+    int total = 0;
+    for (auto v : r) total += v;
     EXPECT_EQ(total, 4950);
 }
 
 TEST(ParallelSlice, ParSplatMapMaxTasks1) {
     TaskPool pool{2};
     const std::vector<int> data = {1, 2, 3, 4, 5};
-    auto r = par_splat_map<int>(std::span<const int>(data), pool, std::size_t{1},
-        [](std::size_t, std::span<const int> c) {
-            int s = 0; for (auto v : c) s += v; return s;
+    auto r =
+        par_splat_map<int>(std::span<const int>(data), pool, std::size_t{1}, [](std::size_t, std::span<const int> c) {
+            int s = 0;
+            for (auto v : c) s += v;
+            return s;
         });
     ASSERT_EQ(r.size(), 1u);
     EXPECT_EQ(r[0], 15);
@@ -468,23 +514,27 @@ TEST(ParallelSlice, ParSplatMapMaxTasks1) {
 TEST(ParallelSlice, ParChunkMapMut) {
     TaskPool pool{2};
     std::vector<int> data = {1, 2, 3, 4};
-    auto r = par_chunk_map_mut<int>(std::span<int>(data), pool, 2,
-        [](std::size_t, std::span<int> c) {
-            int s = 0; for (auto v : c) s += v; return s;
-        });
+    auto r                = par_chunk_map_mut<int>(std::span<int>(data), pool, 2, [](std::size_t, std::span<int> c) {
+        int s = 0;
+        for (auto v : c) s += v;
+        return s;
+    });
     std::sort(r.begin(), r.end());
     ASSERT_EQ(r.size(), 2u);
-    EXPECT_EQ(r[0], 3); EXPECT_EQ(r[1], 7);
+    EXPECT_EQ(r[0], 3);
+    EXPECT_EQ(r[1], 7);
 }
 
 TEST(ParallelSlice, ParSplatMapMut) {
     TaskPool pool{2};
     std::vector<int> data(6, 1);
-    auto r = par_splat_map_mut<int>(std::span<int>(data), pool, std::nullopt,
-        [](std::size_t, std::span<int> c) {
-            int s = 0; for (auto v : c) s += v; return s;
-        });
-    int total = 0; for (auto v : r) total += v;
+    auto r    = par_splat_map_mut<int>(std::span<int>(data), pool, std::nullopt, [](std::size_t, std::span<int> c) {
+        int s = 0;
+        for (auto v : c) s += v;
+        return s;
+    });
+    int total = 0;
+    for (auto v : r) total += v;
     EXPECT_EQ(total, 6);
 }
 
@@ -536,13 +586,10 @@ TEST(ThreadExecutor, IsSameDifferent) {
     EXPECT_FALSE(a.is_same(b));
 }
 
-TEST(ThreadExecutor, GetSchedulerUsable) {
+TEST(ThreadExecutor, SpawnRunsWork) {
     ThreadExecutor exec;
     std::atomic<bool> ran{false};
-    stdexec::sync_wait(
-        stdexec::schedule(exec.get_scheduler())
-        | stdexec::then([&]() { ran.store(true); })
-    );
+    exec.spawn([&]() { ran.store(true); }).block();
     EXPECT_TRUE(ran.load());
 }
 

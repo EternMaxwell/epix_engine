@@ -2,6 +2,8 @@ module;
 
 #include <spdlog/spdlog.h>
 
+#include <asio/awaitable.hpp>
+
 export module epix.assets:processor;
 
 import std;
@@ -202,32 +204,37 @@ export struct AssetProcessor {
 
     AssetProcessor(AssetServer srv, std::shared_ptr<AssetProcessorData> proc_data);
 
-    void initialize() const;
-    void process_asset(const AssetSourceId& source,
-                       const std::filesystem::path& path,
-                       utils::Sender<std::pair<AssetSourceId, std::filesystem::path>> reprocess_sender) const;
-    std::expected<ProcessResult, ProcessError> process_asset_internal(const AssetSource& source,
-                                                                      const AssetPath& asset_path) const;
-    void handle_asset_source_event(const AssetSource& source,
-                                   const AssetSourceEvent& event,
-                                   utils::Sender<std::pair<AssetSourceId, std::filesystem::path>>& sender) const;
-    void handle_added_folder(const AssetSource& source,
-                             const std::filesystem::path& path,
-                             utils::Sender<std::pair<AssetSourceId, std::filesystem::path>>& sender) const;
+    asio::awaitable<void> initialize() const;
+    asio::awaitable<void> process_asset(
+        const AssetSourceId& source,
+        const std::filesystem::path& path,
+        utils::Sender<std::pair<AssetSourceId, std::filesystem::path>> reprocess_sender) const;
+    asio::awaitable<std::expected<ProcessResult, ProcessError>> process_asset_internal(
+        const AssetSource& source, const AssetPath& asset_path) const;
+    asio::awaitable<void> handle_asset_source_event(
+        const AssetSource& source,
+        const AssetSourceEvent& event,
+        utils::Sender<std::pair<AssetSourceId, std::filesystem::path>>& sender) const;
+    asio::awaitable<void> handle_added_folder(
+        const AssetSource& source,
+        const std::filesystem::path& path,
+        utils::Sender<std::pair<AssetSourceId, std::filesystem::path>>& sender) const;
     void handle_removed_meta(const AssetSource& source,
                              const std::filesystem::path& path,
                              utils::Sender<std::pair<AssetSourceId, std::filesystem::path>>& sender) const;
-    void handle_removed_asset(const AssetSource& source, const std::filesystem::path& path) const;
-    void handle_removed_folder(const AssetSource& source, const std::filesystem::path& path) const;
-    void handle_renamed_asset(const AssetSource& source,
-                              const std::filesystem::path& old_path,
-                              const std::filesystem::path& new_path,
-                              utils::Sender<std::pair<AssetSourceId, std::filesystem::path>>& sender) const;
-    void queue_processing_tasks_for_folder(
+    asio::awaitable<void> handle_removed_asset(const AssetSource& source, const std::filesystem::path& path) const;
+    asio::awaitable<void> handle_removed_folder(const AssetSource& source, const std::filesystem::path& path) const;
+    asio::awaitable<void> handle_renamed_asset(
+        const AssetSource& source,
+        const std::filesystem::path& old_path,
+        const std::filesystem::path& new_path,
+        utils::Sender<std::pair<AssetSourceId, std::filesystem::path>>& sender) const;
+    asio::awaitable<void> queue_processing_tasks_for_folder(
         const AssetSource& source,
         const std::filesystem::path& folder,
         utils::Sender<std::pair<AssetSourceId, std::filesystem::path>>& sender) const;
-    void queue_initial_processing_tasks(utils::Sender<std::pair<AssetSourceId, std::filesystem::path>>& sender) const;
+    asio::awaitable<void> queue_initial_processing_tasks(
+        utils::Sender<std::pair<AssetSourceId, std::filesystem::path>>& sender) const;
     void spawn_source_change_event_listeners(
         utils::Sender<std::pair<AssetSourceId, std::filesystem::path>>& sender) const;
     void execute_processing_tasks(utils::Sender<std::pair<AssetSourceId, std::filesystem::path>> new_task_sender,
@@ -235,10 +242,13 @@ export struct AssetProcessor {
     void log_begin_processing(const AssetPath& path) const;
     void log_end_processing(const AssetPath& path) const;
     void log_unrecoverable() const;
-    std::filesystem::path validate_transaction_log_and_recover() const;
-    void remove_processed_asset_and_meta(const AssetSource& source, const std::filesystem::path& path) const;
-    void clean_empty_processed_ancestor_folders(const AssetSource& source, const std::filesystem::path& path) const;
-    void write_default_meta_file_for_path(const AssetSource& source, const AssetPath& asset_path) const;
+    asio::awaitable<std::filesystem::path> validate_transaction_log_and_recover() const;
+    asio::awaitable<void> remove_processed_asset_and_meta(const AssetSource& source,
+                                                          const std::filesystem::path& path) const;
+    asio::awaitable<void> clean_empty_processed_ancestor_folders(const AssetSource& source,
+                                                                 const std::filesystem::path& path) const;
+    asio::awaitable<void> write_default_meta_file_for_path(const AssetSource& source,
+                                                           const AssetPath& asset_path) const;
 
    public:
     AssetProcessor(const AssetProcessor& other);

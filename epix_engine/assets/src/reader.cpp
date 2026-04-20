@@ -1,64 +1,102 @@
 ﻿module;
+
+#include <asio/awaitable.hpp>
+
 module epix.assets;
 
 import std;
 
 namespace epix::assets {
 
-std::expected<std::vector<std::byte>, AssetReaderError> AssetReader::read_meta_bytes(
+asio::awaitable<std::expected<std::vector<std::byte>, AssetReaderError>> AssetReader::read_meta_bytes(
     const std::filesystem::path& path) const {
-    return read_meta(path).and_then(
-        [](std::unique_ptr<std::istream>&& stream) -> std::expected<std::vector<std::byte>, AssetReaderError> {
-            try {
-                auto bytes =
-                    std::ranges::subrange(std::istreambuf_iterator<char>(*stream), std::istreambuf_iterator<char>()) |
-                    std::views::transform([](char c) { return static_cast<std::byte>(c); }) |
-                    std::ranges::to<std::vector<std::byte>>();
-                return std::expected<std::vector<std::byte>, AssetReaderError>(std::move(bytes));
-            } catch (const std::ios_base::failure& e) {
-                return std::unexpected(AssetReaderError(reader_errors::IoError{e.code()}));
-            } catch (...) {
-                return std::unexpected(AssetReaderError(std::current_exception()));
-            }
-        });
+    auto reader_result = co_await read_meta(path);
+    if (!reader_result) {
+        co_return std::unexpected(reader_result.error());
+    }
+    auto& reader = *reader_result;
+    try {
+        std::vector<uint8_t> buf;
+        auto read_result = co_await reader->read_to_end(buf);
+        if (!read_result) {
+            co_return std::unexpected(AssetReaderError(reader_errors::IoError{read_result.error()}));
+        }
+        std::vector<std::byte> bytes(buf.size());
+        std::memcpy(bytes.data(), buf.data(), buf.size());
+        co_return bytes;
+    } catch (...) {
+        co_return std::unexpected(AssetReaderError(std::current_exception()));
+    }
 }
 
-std::expected<void, AssetWriterError> AssetWriter::write_bytes(const std::filesystem::path& path,
-                                                               std::span<const std::byte> bytes) const {
-    return write(path).and_then(
-        [&bytes](std::unique_ptr<std::ostream>&& stream) -> std::expected<void, AssetWriterError> {
-            try {
-                stream->write(reinterpret_cast<const char*>(bytes.data()), bytes.size());
-                if (!*stream) {
-                    return std::unexpected(AssetWriterError(writer_errors::IoError{
-                        std::error_code(static_cast<int>(stream->rdstate()), std::iostream_category())}));
-                }
-                return {};
-            } catch (const std::ios_base::failure& e) {
-                return std::unexpected(AssetWriterError(writer_errors::IoError{e.code()}));
-            } catch (...) {
-                return std::unexpected(AssetWriterError(std::current_exception()));
-            }
-        });
+asio::awaitable<std::expected<void, AssetWriterError>> AssetWriter::write_bytes(
+    const std::filesystem::path& path, std::span<const std::byte> bytes) const {
+    auto writer_result = co_await write(path);
+    if (!writer_result) {
+        co_return std::unexpected(writer_result.error());
+    }
+    auto& writer = *writer_result;
+    try {
+        auto data         = std::span<const uint8_t>(reinterpret_cast<const uint8_t*>(bytes.data()), bytes.size());
+        auto write_result = co_await writer->write(data);
+        if (!write_result) {
+            co_return std::unexpected(AssetWriterError(writer_errors::IoError{write_result.error()}));
+        }
+        auto flush_result = co_await writer->flush();
+        if (!flush_result) {
+            co_return std::unexpected(AssetWriterError(writer_errors::IoError{flush_result.error()}));
+        }
+        co_return std::expected<void, AssetWriterError>{};
+    } catch (...) {
+        co_return std::unexpected(AssetWriterError(std::current_exception()));
+    }
 }
 
-std::expected<void, AssetWriterError> AssetWriter::write_meta_bytes(const std::filesystem::path& path,
-                                                                    std::span<const std::byte> bytes) const {
-    return write_meta(path).and_then(
-        [&bytes](std::unique_ptr<std::ostream>&& stream) -> std::expected<void, AssetWriterError> {
-            try {
-                stream->write(reinterpret_cast<const char*>(bytes.data()), bytes.size());
-                if (!*stream) {
-                    return std::unexpected(AssetWriterError(writer_errors::IoError{
-                        std::error_code(static_cast<int>(stream->rdstate()), std::iostream_category())}));
-                }
-                return {};
-            } catch (const std::ios_base::failure& e) {
-                return std::unexpected(AssetWriterError(writer_errors::IoError{e.code()}));
-            } catch (...) {
-                return std::unexpected(AssetWriterError(std::current_exception()));
-            }
-        });
+asio::awaitable<std::expected<void, AssetWriterError>> AssetWriter::write_meta_bytes(
+    const std::filesystem::path& path, std::span<const std::byte> bytes) const {
+    auto writer_result = co_await write_meta(path);
+    if (!writer_result) {
+        co_return std::unexpected(writer_result.error());
+    }
+    auto& writer = *writer_result;
+    try {
+        auto data         = std::span<const uint8_t>(reinterpret_cast<const uint8_t*>(bytes.data()), bytes.size());
+        auto write_result = co_await writer->write(data);
+        if (!write_result) {
+            co_return std::unexpected(AssetWriterError(writer_errors::IoError{write_result.error()}));
+        }
+        auto flush_result = co_await writer->flush();
+        if (!flush_result) {
+            co_return std::unexpected(AssetWriterError(writer_errors::IoError{flush_result.error()}));
+        }
+        co_return std::expected<void, AssetWriterError>{};
+    } catch (...) {
+        co_return std::unexpected(AssetWriterError(std::current_exception()));
+    }
+}
+
+// --- VecReader implementation ---
+
+asio::awaitable<std::expected<size_t, std::error_code>> VecReader::read_to_end(std::vector<uint8_t>& buf) {
+    if (m_bytes_read >= m_bytes.size()) {
+        co_return size_t{0};
+    }
+    auto remaining = std::span<const uint8_t>(m_bytes).subspan(m_bytes_read);
+    buf.insert(buf.end(), remaining.begin(), remaining.end());
+    auto len     = remaining.size();
+    m_bytes_read = m_bytes.size();
+    co_return len;
+}
+
+// --- VecWriter implementation ---
+
+asio::awaitable<std::expected<size_t, std::error_code>> VecWriter::write(std::span<const uint8_t> data) {
+    m_data.insert(m_data.end(), data.begin(), data.end());
+    co_return data.size();
+}
+
+asio::awaitable<std::expected<void, std::error_code>> VecWriter::flush() {
+    co_return std::expected<void, std::error_code>{};
 }
 
 }  // namespace epix::assets

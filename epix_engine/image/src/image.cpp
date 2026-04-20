@@ -5,6 +5,8 @@ module;
 #include <stb_image_resize2.h>
 #include <stb_image_write.h>
 
+#include <asio/awaitable.hpp>
+
 module epix.image;
 
 import epix.assets;
@@ -539,17 +541,6 @@ Image Image::blur(std::uint32_t radius) const {
 }
 
 namespace {
-std::expected<std::vector<unsigned char>, ImageLoadError> read_stream_bytes(std::istream& stream) {
-    try {
-        auto bytes = std::ranges::subrange(std::istreambuf_iterator<char>(stream), std::istreambuf_iterator<char>()) |
-                     std::views::transform([](char value) { return static_cast<unsigned char>(value); }) |
-                     std::ranges::to<std::vector<unsigned char>>();
-        return bytes;
-    } catch (...) {
-        return std::unexpected(ImageLoadError::LoadFailed);
-    }
-}
-
 std::expected<Image, ImageLoadError> load_image_from_memory(const unsigned char* buffer, int size) {
     int w, h, channels;
     if (stbi_is_hdr_from_memory(buffer, size)) {
@@ -599,15 +590,16 @@ std::span<std::string_view> ImageLoader::extensions() noexcept {
                    std::string_view{"gif"}, std::string_view{"ppm"}, std::string_view{"pgm"},  std::string_view{"pnm"}};
     return std::span<std::string_view>(exts.data(), exts.size());
 }
-std::expected<Image, ImageLoadError> ImageLoader::load(std::istream& reader,
-                                                       const Settings&,
-                                                       assets::LoadContext& context) {
+asio::awaitable<std::expected<Image, ImageLoadError>> ImageLoader::load(assets::Reader& reader,
+                                                                        const Settings&,
+                                                                        assets::LoadContext& context) {
     spdlog::trace("[image] Loading image from '{}'.", context.path().path.string());
-    auto bytes = read_stream_bytes(reader);
-    if (!bytes) return std::unexpected(bytes.error());
+    std::vector<uint8_t> bytes;
+    auto read_result = co_await reader.read_to_end(bytes);
+    if (!read_result) co_return std::unexpected(ImageLoadError::LoadFailed);
 
-    auto image = load_image_from_memory(bytes->data(), static_cast<int>(bytes->size()));
-    if (!image) return std::unexpected(image.error());
+    auto image = load_image_from_memory(bytes.data(), static_cast<int>(bytes.size()));
+    if (!image) co_return std::unexpected(image.error());
 
     auto result = std::move(*image);
     // three channel images not supported in webgpu, convert to 4
@@ -625,7 +617,7 @@ std::expected<Image, ImageLoadError> ImageLoader::load(std::istream& reader,
             break;
     }
     result.set_usage(ImageUsage::Render);  // default to render usage, can be changed later
-    return result;
+    co_return result;
 }
 
 void ImagePlugin::build(core::App& app) {

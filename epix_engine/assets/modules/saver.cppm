@@ -1,5 +1,7 @@
 module;
 
+#include <asio/awaitable.hpp>
+
 export module epix.assets:saver;
 
 import std;
@@ -107,11 +109,11 @@ struct SavedAsset {
 /** @brief Type-erased asset saver interface, analogous to bevy_asset's ErasedAssetSaver. */
 export struct ErasedAssetSaver {
     virtual ~ErasedAssetSaver() = default;
-    /** @brief Save a type-erased loaded asset to an output stream. */
-    virtual std::expected<void, std::exception_ptr> save(std::ostream& writer,
-                                                         const ErasedLoadedAsset& asset,
-                                                         const Settings& settings,
-                                                         const AssetPath& asset_path) const = 0;
+    /** @brief Save a type-erased loaded asset to an async Writer. */
+    virtual asio::awaitable<std::expected<void, std::exception_ptr>> save(Writer& writer,
+                                                                          const ErasedLoadedAsset& asset,
+                                                                          const Settings& settings,
+                                                                          const AssetPath& asset_path) const = 0;
     /** @brief Get the type name of this saver. */
     virtual std::string_view type_name() const = 0;
 };
@@ -125,23 +127,23 @@ struct ErasedAssetSaverImpl : T, ErasedAssetSaver {
 
     const T& as_concrete() const { return static_cast<const T&>(*this); }
 
-    std::expected<void, std::exception_ptr> save(std::ostream& writer,
-                                                 const ErasedLoadedAsset& asset,
-                                                 const Settings& settings,
-                                                 const AssetPath& asset_path) const override {
+    asio::awaitable<std::expected<void, std::exception_ptr>> save(Writer& writer,
+                                                                  const ErasedLoadedAsset& asset,
+                                                                  const Settings& settings,
+                                                                  const AssetPath& asset_path) const override {
         try {
             auto* typed_settings = dynamic_cast<const typename T::Settings*>(&settings);
             if (!typed_settings) {
                 throw std::runtime_error("Settings type mismatch in saver");
             }
             auto saved  = SavedAsset<typename T::Asset>::from_loaded(asset);
-            auto result = as_concrete().save(writer, saved, *typed_settings, asset_path);
+            auto result = co_await as_concrete().save(writer, saved, *typed_settings, asset_path);
             if (!result) {
                 throw std::runtime_error("Asset saver failed");
             }
-            return {};
+            co_return std::expected<void, std::exception_ptr>{};
         } catch (...) {
-            return std::unexpected(std::current_exception());
+            co_return std::unexpected(std::current_exception());
         }
     }
 

@@ -1,5 +1,7 @@
 ﻿module;
 
+#include <asio/awaitable.hpp>
+
 export module epix.assets:server.loader;
 
 import std;
@@ -208,7 +210,7 @@ struct LoadedAsset {
     /** @brief Get a const reference to the contained asset. */
     const A& get() const { return value; }
     /** @brief Take the contained asset out. */
-    A take() { return std::move(value); }
+    A take() && { return std::move(value); }
     /** @brief Get a labeled sub-asset by label. */
     std::optional<std::reference_wrapper<const ErasedLoadedAsset>> get_labeled(const std::string& label) const {
         auto it = labeled_assets.find(label);
@@ -466,18 +468,18 @@ export struct LoadContext {
      *  Matches bevy_asset's LoadContext::loader(). */
     NestedLoader loader();
 
-    /** @brief Directly load an asset at path, running the full loader pipeline synchronously.
+    /** @brief Directly load an asset at path, running the loader pipeline asynchronously.
      *  @tparam A The expected asset type.
-     *  Matches bevy_asset's LoadContext::load_direct (async in Bevy, sync here). */
+     *  Matches bevy_asset's LoadContext::load_direct (async). */
     template <Asset A>
-    std::expected<LoadedAsset<A>, AssetLoadError> load_direct(const AssetPath& path) const;
+    asio::awaitable<std::expected<LoadedAsset<A>, AssetLoadError>> load_direct(const AssetPath& path) const;
 
-    /** @brief Load an asset directly using an already-open reader stream.
+    /** @brief Load an asset directly using an already-open reader.
      *  @tparam A The expected asset type.
      *  Matches bevy_asset's LoadContext::load_direct_with_reader. */
     template <Asset A>
-    std::expected<LoadedAsset<A>, AssetLoadError> load_direct_with_reader(const AssetPath& path,
-                                                                          std::istream& reader) const;
+    asio::awaitable<std::expected<LoadedAsset<A>, AssetLoadError>> load_direct_with_reader(const AssetPath& path,
+                                                                                           Reader& reader) const;
 
     /** @brief Begin a labeled asset scope, returning a new LoadContext
      *  whose path includes the given label. The caller is responsible for
@@ -499,7 +501,7 @@ export struct LoadContext {
      *  @tparam A The asset type.
      *  @param value The loaded asset value. */
     template <Asset A>
-    LoadedAsset<A> finish(A value) {
+    LoadedAsset<A> finish(A value) && {
         LoadedAsset<A> result(std::move(value));
         result.dependencies        = std::move(m_dependencies);
         result.loader_dependencies = std::move(m_loader_dependencies);
@@ -545,7 +547,7 @@ export struct NestedLoader {
     }
 };
 export template <typename T>
-concept AssetLoader = requires(const T& t, std::istream& stream, LoadContext& context) {
+concept AssetLoader = requires(const T& t, Reader& reader, LoadContext& context) {
     typename T::Asset;
     typename T::Settings;
     typename T::Error;
@@ -554,8 +556,8 @@ concept AssetLoader = requires(const T& t, std::istream& stream, LoadContext& co
     requires std::is_default_constructible_v<typename T::Settings>;
     { t.extensions() } -> std::same_as<std::span<std::string_view>>;
     {
-        t.load(stream, std::declval<const typename T::Settings&>(), context)
-    } -> std::same_as<std::expected<typename T::Asset, typename T::Error>>;
+        t.load(reader, std::declval<const typename T::Settings&>(), context)
+    } -> std::same_as<asio::awaitable<std::expected<typename T::Asset, typename T::Error>>>;
     { asset_loader_error_to_exception(std::declval<const typename T::Error&>()) } -> std::same_as<std::exception_ptr>;
 };
 export struct ErasedAssetLoader {
@@ -580,10 +582,10 @@ export struct ErasedAssetLoader {
      *  Returns an error string on failure; use default_meta() when bytes are unavailable.
      *  Matches bevy_asset's ErasedAssetLoader::deserialize_meta. */
     virtual std::expected<std::unique_ptr<AssetMetaDyn>, std::string> deserialize_meta(
-        std::span<const std::byte> bytes) const                                                   = 0;
-    virtual std::expected<ErasedLoadedAsset, std::exception_ptr> load(std::istream& stream,
-                                                                      const Settings& settings,
-                                                                      LoadContext& context) const = 0;
+        std::span<const std::byte> bytes) const                                                                    = 0;
+    virtual asio::awaitable<std::expected<ErasedLoadedAsset, std::exception_ptr>> load(Reader& reader,
+                                                                                       const Settings& settings,
+                                                                                       LoadContext& context) const = 0;
 };
 template <typename T>
 struct ErasedAssetLoaderImpl : T, ErasedAssetLoader {
@@ -613,32 +615,32 @@ struct ErasedAssetLoaderImpl : T, ErasedAssetLoader {
         }
         return std::make_unique<AssetMeta<typename T::Settings, EmptySettings>>(std::move(*result));
     }
-    std::expected<ErasedLoadedAsset, std::exception_ptr> load(std::istream& stream,
-                                                              const Settings& settings,
-                                                              LoadContext& context) const override {
+    asio::awaitable<std::expected<ErasedLoadedAsset, std::exception_ptr>> load(Reader& reader,
+                                                                               const Settings& settings,
+                                                                               LoadContext& context) const override {
         try {
             auto* settings_ptr = dynamic_cast<const SettingsImpl<typename T::Settings>*>(&settings);
             if (!settings_ptr) {
                 throw std::runtime_error("Invalid settings type for loader " + std::string(loader_type().short_name()));
             }
-            auto loaded_asset = as_concrete().load(stream, settings_ptr->value, context);
+            auto loaded_asset = co_await as_concrete().load(reader, settings_ptr->value, context);
             if (!loaded_asset) {
-                return std::unexpected(asset_loader_error_to_exception(loaded_asset.error()));
+                co_return std::unexpected(asset_loader_error_to_exception(loaded_asset.error()));
             }
             auto erased_asset = std::make_unique<AssetContainerImpl<typename T::Asset>>(std::move(*loaded_asset));
-            return ErasedLoadedAsset{std::move(erased_asset), std::move(context.m_dependencies),
-                                     std::move(context.m_loader_dependencies), std::move(context.m_labeled_assets)};
+            co_return ErasedLoadedAsset{std::move(erased_asset), std::move(context.m_dependencies),
+                                        std::move(context.m_loader_dependencies), std::move(context.m_labeled_assets)};
         } catch (...) {
-            return std::unexpected(std::current_exception());
+            co_return std::unexpected(std::current_exception());
         }
     }
 };
 
-/** @brief Concept for an asset saver. Savers write assets to a stream.
+/** @brief Concept for an asset saver. Savers write assets to a Writer.
  *  Implementations must provide: Asset, Settings, save().
- *  Matches bevy_asset's AssetSaver trait �?associated type is named `Asset`. */
+ *  Matches bevy_asset's AssetSaver trait — associated type is named `Asset`. */
 export template <typename T>
-concept AssetSaver = requires(const T& t, std::ostream& writer, const typename T::Settings& settings) {
+concept AssetSaver = requires(const T& t, Writer& writer, const typename T::Settings& settings) {
     typename T::Asset;
     typename T::Settings;
     typename T::OutputLoader;
@@ -647,7 +649,7 @@ concept AssetSaver = requires(const T& t, std::ostream& writer, const typename T
     requires std::is_default_constructible_v<typename T::Settings>;
     {
         t.save(writer, std::declval<SavedAsset<typename T::Asset>>(), settings, std::declval<const AssetPath&>())
-    } -> std::same_as<std::expected<typename T::OutputLoader::Settings, typename T::Error>>;
+    } -> std::same_as<asio::awaitable<std::expected<typename T::OutputLoader::Settings, typename T::Error>>>;
 };
 
 /** @brief Concept for an asset transformer. Transforms one asset type to another.
@@ -664,7 +666,7 @@ concept AssetTransformer = requires(const T& t, const typename T::Settings& sett
     requires std::is_default_constructible_v<typename T::Settings>;
     {
         t.transform(std::declval<TransformedAsset<typename T::AssetInput>>(), settings)
-    } -> std::same_as<std::expected<TransformedAsset<typename T::AssetOutput>, typename T::Error>>;
+    } -> std::same_as<asio::awaitable<std::expected<TransformedAsset<typename T::AssetOutput>, typename T::Error>>>;
 };
 
 // --- Template implementations for LoadContext / NestedLoader ---

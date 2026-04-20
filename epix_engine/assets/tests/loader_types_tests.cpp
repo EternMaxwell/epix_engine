@@ -1,5 +1,10 @@
 #include <gtest/gtest.h>
 
+#include <asio/awaitable.hpp>
+#include <asio/co_spawn.hpp>
+#include <asio/detached.hpp>
+#include <asio/io_context.hpp>
+
 import std;
 import epix.assets;
 import epix.meta;
@@ -19,7 +24,7 @@ TEST(LoadedAsset, Construction) {
 
 TEST(LoadedAsset, Take) {
     LoadedAsset<std::string> loaded(std::string("take_me"));
-    auto taken = loaded.take();
+    auto taken = std::move(loaded).take();
     EXPECT_EQ(taken, "take_me");
 }
 
@@ -55,7 +60,7 @@ TEST(TransformedAsset, GetMut) {
 
 TEST(TransformedAsset, ReplaceAsset) {
     TransformedAsset<std::string> ta(std::string("str"));
-    auto replaced = ta.replace_asset(42);
+    auto replaced = std::move(ta).replace_asset(42);
     EXPECT_EQ(replaced.get(), 42);
 }
 
@@ -90,7 +95,15 @@ TEST(TransformedAsset, GetErasedLabeled_NotFound) {
 TEST(IdentityAssetTransformer, PassesThrough) {
     IdentityAssetTransformer<std::string> t;
     typename IdentityAssetTransformer<std::string>::Settings s;
-    auto result = t.transform(TransformedAsset<std::string>(std::string("unchanged")), s);
+    asio::io_context io;
+    std::expected<TransformedAsset<std::string>, std::exception_ptr> result = std::unexpected(std::exception_ptr{});
+    asio::co_spawn(
+        io,
+        [&]() -> asio::awaitable<void> {
+            result = co_await t.transform(TransformedAsset<std::string>(std::string("unchanged")), s);
+        },
+        asio::detached);
+    io.run();
     ASSERT_TRUE(result.has_value());
     EXPECT_EQ(result->get(), "unchanged");
 }
@@ -109,8 +122,10 @@ struct SimpleLoader {
         static std::array<std::string_view, 1> exts = {"txt"};
         return exts;
     }
-    std::expected<std::string, std::string> load(std::istream& stream, const EmptySettings&, LoadContext& ctx) const {
-        return std::string("loaded");
+    asio::awaitable<std::expected<std::string, std::string>> load(Reader& reader,
+                                                                  const EmptySettings&,
+                                                                  LoadContext& ctx) const {
+        co_return std::string("loaded");
     }
 };
 }  // namespace

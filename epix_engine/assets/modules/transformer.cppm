@@ -1,5 +1,7 @@
 module;
 
+#include <asio/awaitable.hpp>
+
 export module epix.assets:transformer;
 
 import std;
@@ -51,7 +53,7 @@ struct TransformedAsset {
 
     /** @brief Replace the contained asset with one of a different type. */
     template <Asset B>
-    TransformedAsset<B> replace_asset(B new_asset) {
+    TransformedAsset<B> replace_asset(B new_asset) && {
         return TransformedAsset<B>(std::move(new_asset), std::move(m_labeled_assets));
     }
 
@@ -233,8 +235,9 @@ struct IdentityAssetTransformer {
     struct Settings {};
     using Error = std::exception_ptr;
 
-    std::expected<TransformedAsset<A>, Error> transform(TransformedAsset<A> asset, const Settings&) const {
-        return asset;
+    asio::awaitable<std::expected<TransformedAsset<A>, Error>> transform(TransformedAsset<A> asset,
+                                                                         const Settings&) const {
+        co_return asset;
     }
 };
 

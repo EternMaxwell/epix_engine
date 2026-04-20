@@ -3,6 +3,8 @@
 #include <spdlog/spdlog.h>
 #include <zpp_bits.h>
 
+#include <asio/awaitable.hpp>
+
 module epix.assets;
 
 import std;
@@ -82,16 +84,13 @@ std::expected<std::optional<ProcessedInfo>, std::errc> deserialize_processed_inf
 // Asset hashing utilities
 // ---------------------------------------------------------------------------
 
-AssetHash get_asset_hash(std::span<const std::byte> meta_bytes, std::istream& reader) {
+asio::awaitable<AssetHash> get_asset_hash(std::span<const std::byte> meta_bytes, Reader& reader) {
     AssetHasher hasher;
     hasher.update(meta_bytes);
-    char buf[8192];
-    while (reader.read(buf, sizeof(buf)) || reader.gcount() > 0) {
-        hasher.update(std::span<const std::byte>(reinterpret_cast<const std::byte*>(buf),
-                                                 static_cast<std::size_t>(reader.gcount())));
-        if (reader.eof()) break;
-    }
-    return hasher.finish();
+    std::vector<uint8_t> bytes;
+    co_await reader.read_to_end(bytes);
+    hasher.update(std::span<const std::byte>(reinterpret_cast<const std::byte*>(bytes.data()), bytes.size()));
+    co_return hasher.finish();
 }
 
 AssetHash get_full_asset_hash(AssetHash asset_hash, const std::vector<AssetHash>& dependency_hashes) {

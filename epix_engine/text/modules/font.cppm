@@ -1,5 +1,7 @@
 module;
 
+#include <asio/awaitable.hpp>
+
 export module epix.text:font;
 
 import epix.assets;
@@ -66,9 +68,9 @@ struct FontLoader {
     using Error = std::exception_ptr;
 
     static std::span<std::string_view> extensions();
-    static std::expected<Font, Error> load(std::istream& reader,
-                                           const Settings& settings,
-                                           assets::LoadContext& context);
+    static asio::awaitable<std::expected<Font, Error>> load(assets::Reader& reader,
+                                                            const Settings& settings,
+                                                            assets::LoadContext& context);
 };
 
 struct FontLibrary {

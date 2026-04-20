@@ -2,6 +2,8 @@ module;
 
 #include <spdlog/spdlog.h>
 
+#include <asio/awaitable.hpp>
+
 export module epix.assets:server;
 
 import std;
@@ -430,18 +432,18 @@ export struct AssetServer {
 
     // ---- Direct (uncached) loading ----
 
-    /** @brief Load an asset at path synchronously without caching the result.
+    /** @brief Load an asset at path asynchronously without caching the result.
      *  Runs the full loader pipeline (meta check, loader selection, read, load).
-     *  Matches bevy_asset's AssetServer::load_direct (async in Bevy).
+     *  Matches bevy_asset's AssetServer::load_direct (async).
      *  Returns the type-erased loaded asset or an error. */
-    std::expected<ErasedLoadedAsset, AssetLoadError> load_direct_untyped(const AssetPath& path) const;
+    asio::awaitable<std::expected<ErasedLoadedAsset, AssetLoadError>> load_direct_untyped(const AssetPath& path) const;
 
-    /** @brief Load an asset using an already-open reader stream, without caching.
+    /** @brief Load an asset using an already-open Reader, without caching.
      *  @param path   The logical asset path (used for meta/loader selection).
-     *  @param reader An open input stream positioned at the start of the asset data.
-     *  Matches bevy_asset's AssetServer::load_direct_with_reader (async in Bevy). */
-    std::expected<ErasedLoadedAsset, AssetLoadError> load_direct_with_reader_untyped(const AssetPath& path,
-                                                                                     std::istream& reader) const;
+     *  @param reader An open Reader positioned at the start of the asset data.
+     *  Matches bevy_asset's AssetServer::load_direct_with_reader (async). */
+    asio::awaitable<std::expected<ErasedLoadedAsset, AssetLoadError>> load_direct_with_reader_untyped(
+        const AssetPath& path, Reader& reader) const;
 
     // ---- Internal ----
 
@@ -462,31 +464,26 @@ export struct AssetServer {
     void load_folder_internal(const UntypedAssetId& id, const AssetPath& path) const;
 
     /** @brief Core loading pipeline: read meta, pick loader, load asset, send event.
-     *  Matches bevy_asset's AssetServer::load_internal. */
-    void load_internal(std::optional<UntypedHandle> input_handle,
-                       AssetPath path,
-                       bool force,
-                       std::optional<MetaTransform> meta_transform) const;
+     *  Matches bevy_asset's AssetServer::load_internal (async). */
+    asio::awaitable<void> load_internal(std::optional<UntypedHandle> input_handle,
+                                        AssetPath path,
+                                        bool force,
+                                        std::optional<MetaTransform> meta_transform) const;
 
-    /** @brief Get the meta, loader, and a reader stream for an asset path.
-     *  Matches bevy_asset's AssetServer::get_meta_loader_and_reader.
-     *  Returns nullopt on failure (error already sent on input_handle if provided). */
+    /** @brief Get the meta, loader, and a Reader for an asset path.
+     *  Matches bevy_asset's AssetServer::get_meta_loader_and_reader (async). */
     struct MetaLoaderReader {
         std::unique_ptr<AssetMetaDyn> meta;
         std::shared_ptr<ErasedAssetLoader> loader;
-        std::unique_ptr<std::istream> reader;
+        std::unique_ptr<Reader> reader;
     };
-    std::optional<MetaLoaderReader> get_meta_loader_and_reader(const AssetPath& asset_path,
-                                                               std::optional<meta::type_index> asset_type_id,
-                                                               std::optional<AssetLoadError>& out_error) const;
+    asio::awaitable<std::expected<MetaLoaderReader, AssetLoadError>> get_meta_loader_and_reader(
+        const AssetPath& asset_path, std::optional<meta::type_index> asset_type_id) const;
 
-    /** @brief Run loader and return ErasedLoadedAsset, catching panics (exceptions).
-     *  Matches bevy_asset's AssetServer::load_with_settings_loader_and_reader. */
-    std::expected<ErasedLoadedAsset, AssetLoadError> load_with_settings_loader_and_reader(
-        const AssetPath& asset_path,
-        const Settings& settings,
-        const ErasedAssetLoader& loader,
-        std::istream& reader) const;
+    /** @brief Run loader and return ErasedLoadedAsset, catching exceptions.
+     *  Matches bevy_asset's AssetServer::load_with_settings_loader_and_reader (async). */
+    asio::awaitable<std::expected<ErasedLoadedAsset, AssetLoadError>> load_with_settings_loader_and_reader(
+        const AssetPath& asset_path, const Settings& settings, const ErasedAssetLoader& loader, Reader& reader) const;
 
     /** @brief Spawn a task that calls load_internal for each existing handle to the path.
      *  Matches bevy_asset's AssetServer::reload_internal. */
@@ -522,30 +519,30 @@ Handle<A> NestedLoader::load(const AssetPath& path) {
 // --- LoadContext template implementations (AssetServer must be complete) ---
 
 template <Asset A>
-std::expected<LoadedAsset<A>, AssetLoadError> LoadContext::load_direct(const AssetPath& path) const {
-    auto result = m_server.load_direct_untyped(path);
-    if (!result) return std::unexpected(result.error());
+asio::awaitable<std::expected<LoadedAsset<A>, AssetLoadError>> LoadContext::load_direct(const AssetPath& path) const {
+    auto result = co_await m_server.load_direct_untyped(path);
+    if (!result) co_return std::unexpected(result.error());
     auto found_type = result->asset_type_id();
     auto down       = std::move(*result).template downcast<A>();
     if (!down) {
-        return std::unexpected(
+        co_return std::unexpected(
             AssetLoadError{load_error::RequestHandleMismatch{path, meta::type_id<A>{}, found_type, "load_direct"}});
     }
-    return std::move(*down);
+    co_return std::move(*down);
 }
 
 template <Asset A>
-std::expected<LoadedAsset<A>, AssetLoadError> LoadContext::load_direct_with_reader(const AssetPath& path,
-                                                                                   std::istream& reader) const {
-    auto result = m_server.load_direct_with_reader_untyped(path, reader);
-    if (!result) return std::unexpected(result.error());
+asio::awaitable<std::expected<LoadedAsset<A>, AssetLoadError>> LoadContext::load_direct_with_reader(
+    const AssetPath& path, Reader& reader) const {
+    auto result = co_await m_server.load_direct_with_reader_untyped(path, reader);
+    if (!result) co_return std::unexpected(result.error());
     auto found_type = result->asset_type_id();
     auto down       = std::move(*result).template downcast<A>();
     if (!down) {
-        return std::unexpected(AssetLoadError{
+        co_return std::unexpected(AssetLoadError{
             load_error::RequestHandleMismatch{path, meta::type_id<A>{}, found_type, "load_direct_with_reader"}});
     }
-    return std::move(*down);
+    co_return std::move(*down);
 }
 
 }  // namespace epix::assets

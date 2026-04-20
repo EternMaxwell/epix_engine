@@ -2,6 +2,8 @@ module;
 
 #include <spdlog/spdlog.h>
 
+#include <asio/awaitable.hpp>
+
 export module epix.assets:processor.process;
 
 import std;
@@ -27,7 +29,7 @@ export struct ProcessContext;
  *  A processor reads input bytes, processes the value in some way,
  *  and writes processed bytes that can be loaded with Process::OutputLoader. */
 export template <typename P>
-concept Process = requires(P& p, ProcessContext& ctx, const typename P::Settings& settings, std::ostream& writer) {
+concept Process = requires(P& p, ProcessContext& ctx, const typename P::Settings& settings, Writer& writer) {
     typename P::Settings;
     typename P::OutputLoader;
     requires is_settings<typename P::Settings>;
@@ -35,7 +37,7 @@ concept Process = requires(P& p, ProcessContext& ctx, const typename P::Settings
     requires AssetLoader<typename P::OutputLoader>;
     {
         p.process(ctx, settings, writer)
-    } -> std::same_as<std::expected<typename P::OutputLoader::Settings, std::exception_ptr>>;
+    } -> std::same_as<asio::awaitable<std::expected<typename P::OutputLoader::Settings, std::exception_ptr>>>;
 };
 
 // ---- ProcessError ----
@@ -136,9 +138,8 @@ export enum class ProcessStatus {
 export struct ErasedProcessor {
     virtual ~ErasedProcessor() = default;
     /** @brief Process the asset described by context, writing results to writer. */
-    virtual std::expected<std::unique_ptr<AssetMetaDyn>, ProcessError> process(ProcessContext& context,
-                                                                               const Settings& settings,
-                                                                               std::ostream& writer) const = 0;
+    virtual asio::awaitable<std::expected<std::unique_ptr<AssetMetaDyn>, ProcessError>> process(
+        ProcessContext& context, const Settings& settings, Writer& writer) const = 0;
     /** @brief Deserialize metadata bytes into type-erased AssetMetaDyn. */
     virtual std::expected<std::unique_ptr<AssetMetaDyn>, std::string> deserialize_meta(
         std::span<const std::byte> meta_bytes) const = 0;
@@ -162,23 +163,23 @@ struct ErasedProcessorImpl : P, ErasedProcessor {
     const P& as_concrete() const { return static_cast<const P&>(*this); }
     P& as_concrete_mut() { return static_cast<P&>(*this); }
 
-    std::expected<std::unique_ptr<AssetMetaDyn>, ProcessError> process(ProcessContext& context,
-                                                                       const Settings& settings,
-                                                                       std::ostream& writer) const override {
+    asio::awaitable<std::expected<std::unique_ptr<AssetMetaDyn>, ProcessError>> process(ProcessContext& context,
+                                                                                        const Settings& settings,
+                                                                                        Writer& writer) const override {
         auto* typed_settings = dynamic_cast<const SettingsImpl<typename P::Settings>*>(&settings);
         if (!typed_settings) {
-            return std::unexpected(ProcessError{process_errors::WrongMetaType{}});
+            co_return std::unexpected(ProcessError{process_errors::WrongMetaType{}});
         }
-        auto result = const_cast<P&>(as_concrete()).process(context, typed_settings->value, writer);
+        auto result = co_await const_cast<P&>(as_concrete()).process(context, typed_settings->value, writer);
         if (!result) {
-            return std::unexpected(ProcessError{process_errors::AssetSaveError{result.error()}});
+            co_return std::unexpected(ProcessError{process_errors::AssetSaveError{result.error()}});
         }
         // Build an AssetMeta with a Load action using the output loader settings
         auto meta    = std::make_unique<AssetMeta<typename P::OutputLoader::Settings, typename P::Settings>>();
         meta->action = AssetActionType::Load;
         meta->loader = std::string(epix::meta::type_id<typename P::OutputLoader>{}.short_name());
         meta->loader_settings_storage.value = std::move(*result);
-        return meta;
+        co_return meta;
     }
 
     std::expected<std::unique_ptr<AssetMetaDyn>, std::string> deserialize_meta(
@@ -236,9 +237,8 @@ struct LoadTransformAndSave {
         requires std::same_as<T, IdentityAssetTransformer<typename L::Asset>>
         : transformer(), saver(std::move(saver)) {}
 
-    std::expected<typename OutputLoader::Settings, std::exception_ptr> process(ProcessContext& context,
-                                                                               const Settings& settings,
-                                                                               std::ostream& writer);
+    asio::awaitable<std::expected<typename OutputLoader::Settings, std::exception_ptr>> process(
+        ProcessContext& context, const Settings& settings, Writer& writer);
 };
 
 // ---- GetProcessorError ----
@@ -266,7 +266,7 @@ export struct ProcessContext {
    private:
     const AssetProcessor* m_processor;
     const AssetPath* m_path;
-    std::istream* m_reader;
+    Reader* m_reader;
     ProcessedInfo* m_new_processed_info;
 
     friend struct AssetProcessor;
@@ -274,14 +274,14 @@ export struct ProcessContext {
    public:
     ProcessContext(const AssetProcessor& processor,
                    const AssetPath& path,
-                   std::istream& reader,
+                   Reader& reader,
                    ProcessedInfo& new_processed_info)
         : m_processor(&processor), m_path(&path), m_reader(&reader), m_new_processed_info(&new_processed_info) {}
 
     /** @brief Get the path of the asset being processed. */
     const AssetPath& path() const { return *m_path; }
     /** @brief Get the reader for the asset being processed. */
-    std::istream& asset_reader() { return *m_reader; }
+    Reader& asset_reader() { return *m_reader; }
     /** @brief Get the asset server associated with the processor. */
     const AssetServer& asset_server() const;
     /** @brief Get a reference to the processor. */
@@ -295,33 +295,35 @@ export struct ProcessContext {
 template <AssetLoader L, AssetTransformer T, AssetSaver S>
     requires std::same_as<typename L::Asset, typename T::AssetInput> &&
              std::same_as<typename T::AssetOutput, typename S::Asset>
-std::expected<typename LoadTransformAndSave<L, T, S>::OutputLoader::Settings, std::exception_ptr>
-LoadTransformAndSave<L, T, S>::process(ProcessContext& context, const Settings& settings, std::ostream& writer) {
+asio::awaitable<std::expected<typename LoadTransformAndSave<L, T, S>::OutputLoader::Settings, std::exception_ptr>>
+LoadTransformAndSave<L, T, S>::process(ProcessContext& context, const Settings& settings, Writer& writer) {
     try {
         // Load the source asset
         auto load_context    = LoadContext(context.asset_server(), context.path());
         auto loader_instance = L();
-        auto load_result     = loader_instance.load(context.asset_reader(), settings.loader_settings, load_context);
+        auto load_result =
+            co_await loader_instance.load(context.asset_reader(), settings.loader_settings, load_context);
         if (!load_result) {
-            return std::unexpected(asset_loader_error_to_exception(load_result.error()));
+            co_return std::unexpected(asset_loader_error_to_exception(load_result.error()));
         }
         auto pre_transformed = TransformedAsset<typename L::Asset>(std::move(*load_result));
 
         // Transform
-        auto post_transformed = transformer.transform(std::move(pre_transformed), settings.transformer_settings);
+        auto post_transformed =
+            co_await transformer.transform(std::move(pre_transformed), settings.transformer_settings);
         if (!post_transformed) {
-            return std::unexpected(std::make_exception_ptr(std::runtime_error("Asset transformation failed")));
+            co_return std::unexpected(std::make_exception_ptr(std::runtime_error("Asset transformation failed")));
         }
 
         // Save
         auto saved       = SavedAsset<typename T::AssetOutput>::from_transformed(*post_transformed);
-        auto save_result = saver.save(writer, saved, settings.saver_settings, context.path());
+        auto save_result = co_await saver.save(writer, saved, settings.saver_settings, context.path());
         if (!save_result) {
-            return std::unexpected(std::make_exception_ptr(std::runtime_error("Asset save failed")));
+            co_return std::unexpected(std::make_exception_ptr(std::runtime_error("Asset save failed")));
         }
-        return std::move(*save_result);
+        co_return std::move(*save_result);
     } catch (...) {
-        return std::unexpected(std::current_exception());
+        co_return std::unexpected(std::current_exception());
     }
 }
 

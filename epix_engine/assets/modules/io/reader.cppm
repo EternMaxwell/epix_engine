@@ -1,5 +1,7 @@
 module;
 
+#include <asio/awaitable.hpp>
+
 export module epix.assets:io.reader;
 
 import std;
@@ -21,26 +23,44 @@ struct HttpError {
 export using AssetReaderError =
     std::variant<reader_errors::NotFound, reader_errors::IoError, reader_errors::HttpError, std::exception_ptr>;
 
-// TODO: use coroutines async operation for readers, and return a future/awaitable instead of blocking the thread
+/** @brief Abstract async byte reader. Matches bevy's Reader trait (AsyncRead + Unpin + Send + Sync).
+ *  Concrete implementations: VecReader (in-memory), future FileReader, etc. */
+export struct Reader {
+    /** @brief Read all remaining bytes into buf, returning the number of bytes read.
+     *  Matches bevy's Reader::read_to_end. */
+    virtual asio::awaitable<std::expected<size_t, std::error_code>> read_to_end(std::vector<uint8_t>& buf) = 0;
+    virtual ~Reader()                                                                                      = default;
+};
+
+/** @brief Abstract async byte writer. Matches bevy's Writer (dyn AsyncWrite + Unpin + Send + Sync). */
+export struct Writer {
+    /** @brief Write the given data, returning the number of bytes written. */
+    virtual asio::awaitable<std::expected<size_t, std::error_code>> write(std::span<const uint8_t> data) = 0;
+    /** @brief Flush any buffered output. */
+    virtual asio::awaitable<std::expected<void, std::error_code>> flush() = 0;
+    virtual ~Writer()                                                     = default;
+};
 
 export struct AssetReader {
-    /** @brief Get a stream to read an asset */
-    virtual std::expected<std::unique_ptr<std::istream>, AssetReaderError> read(
+    /** @brief Get an async reader for an asset. Matches bevy's AssetReader::read. */
+    virtual asio::awaitable<std::expected<std::unique_ptr<Reader>, AssetReaderError>> read(
         const std::filesystem::path& path) const = 0;
-    /** @brief Get a stream to read meta data of an asset */
-    virtual std::expected<std::unique_ptr<std::istream>, AssetReaderError> read_meta(
+    /** @brief Get an async reader for meta data of an asset. Matches bevy's AssetReader::read_meta. */
+    virtual asio::awaitable<std::expected<std::unique_ptr<Reader>, AssetReaderError>> read_meta(
         const std::filesystem::path& path) const = 0;
-    /** @brief Get an iterator of directory entries */
-    virtual std::expected<epix::utils::input_iterable<std::filesystem::path>, AssetReaderError> read_directory(
+    /** @brief Get an iterator of directory entries. Matches bevy's AssetReader::read_directory. */
+    virtual asio::awaitable<std::expected<epix::utils::input_iterable<std::filesystem::path>, AssetReaderError>>
+    read_directory(const std::filesystem::path& path) const = 0;
+    /** @brief Check if a path is a directory. Matches bevy's AssetReader::is_directory. */
+    virtual asio::awaitable<std::expected<bool, AssetReaderError>> is_directory(
         const std::filesystem::path& path) const = 0;
-    /** @brief Check if a path is a directory */
-    virtual std::expected<bool, AssetReaderError> is_directory(const std::filesystem::path& path) const = 0;
     /** @brief Return the last-modified time of an asset, or nullopt if unsupported by this reader. */
     virtual std::optional<std::filesystem::file_time_type> last_modified(const std::filesystem::path& path) const {
         return std::nullopt;
     }
-    /** @brief Read metadata bytes of an asset */
-    std::expected<std::vector<std::byte>, AssetReaderError> read_meta_bytes(const std::filesystem::path& path) const;
+    /** @brief Read metadata bytes of an asset. Matches bevy's AssetReader::read_meta_bytes. */
+    asio::awaitable<std::expected<std::vector<std::byte>, AssetReaderError>> read_meta_bytes(
+        const std::filesystem::path& path) const;
     virtual ~AssetReader() = default;
 };
 export namespace writer_errors {
@@ -50,30 +70,33 @@ struct IoError {
 }  // namespace writer_errors
 export using AssetWriterError = std::variant<writer_errors::IoError, std::exception_ptr>;
 export struct AssetWriter {
-    /** @brief Get a stream to write an asset */
-    virtual std::expected<std::unique_ptr<std::ostream>, AssetWriterError> write(
+    /** @brief Get an async writer for an asset. Matches bevy's AssetWriter::write. */
+    virtual asio::awaitable<std::expected<std::unique_ptr<Writer>, AssetWriterError>> write(
         const std::filesystem::path& path) const = 0;
-    /** @brief Get a stream to write meta data of an asset.
-     * The path should not include storage specific extensions like `.meta` */
-    virtual std::expected<std::unique_ptr<std::ostream>, AssetWriterError> write_meta(
+    /** @brief Get an async writer for meta data of an asset. Matches bevy's AssetWriter::write_meta. */
+    virtual asio::awaitable<std::expected<std::unique_ptr<Writer>, AssetWriterError>> write_meta(
         const std::filesystem::path& path) const = 0;
-    /** @brief Removes the asset stored at the specified path */
-    virtual std::expected<void, AssetWriterError> remove(const std::filesystem::path& path) const = 0;
-    /** @brief Removes the meta data stored at the specified path */
-    virtual std::expected<void, AssetWriterError> remove_meta(const std::filesystem::path& path) const = 0;
-    /** @brief Renames the asset stored at `old_path` to `new_path` */
-    virtual std::expected<void, AssetWriterError> rename(const std::filesystem::path& old_path,
-                                                         const std::filesystem::path& new_path) const = 0;
-    /* @brief Renames the meta data stored at `old_path` to `new_path` */
-    virtual std::expected<void, AssetWriterError> rename_meta(const std::filesystem::path& old_path,
-                                                              const std::filesystem::path& new_path) const  = 0;
-    virtual std::expected<void, AssetWriterError> create_directory(const std::filesystem::path& path) const = 0;
-    virtual std::expected<void, AssetWriterError> remove_directory(const std::filesystem::path& path) const = 0;
-    virtual std::expected<void, AssetWriterError> clear_directory(const std::filesystem::path& path) const  = 0;
-    std::expected<void, AssetWriterError> write_bytes(const std::filesystem::path& path,
-                                                      std::span<const std::byte> bytes) const;
-    std::expected<void, AssetWriterError> write_meta_bytes(const std::filesystem::path& path,
-                                                           std::span<const std::byte> bytes) const;
+    /** @brief Removes the asset stored at the specified path. */
+    virtual asio::awaitable<std::expected<void, AssetWriterError>> remove(const std::filesystem::path& path) const = 0;
+    /** @brief Removes the meta data stored at the specified path. */
+    virtual asio::awaitable<std::expected<void, AssetWriterError>> remove_meta(
+        const std::filesystem::path& path) const = 0;
+    /** @brief Renames the asset stored at `old_path` to `new_path`. */
+    virtual asio::awaitable<std::expected<void, AssetWriterError>> rename(
+        const std::filesystem::path& old_path, const std::filesystem::path& new_path) const = 0;
+    /** @brief Renames the meta data stored at `old_path` to `new_path`. */
+    virtual asio::awaitable<std::expected<void, AssetWriterError>> rename_meta(
+        const std::filesystem::path& old_path, const std::filesystem::path& new_path) const = 0;
+    virtual asio::awaitable<std::expected<void, AssetWriterError>> create_directory(
+        const std::filesystem::path& path) const = 0;
+    virtual asio::awaitable<std::expected<void, AssetWriterError>> remove_directory(
+        const std::filesystem::path& path) const = 0;
+    virtual asio::awaitable<std::expected<void, AssetWriterError>> clear_directory(
+        const std::filesystem::path& path) const = 0;
+    asio::awaitable<std::expected<void, AssetWriterError>> write_bytes(const std::filesystem::path& path,
+                                                                       std::span<const std::byte> bytes) const;
+    asio::awaitable<std::expected<void, AssetWriterError>> write_meta_bytes(const std::filesystem::path& path,
+                                                                            std::span<const std::byte> bytes) const;
     virtual ~AssetWriter() = default;
 };
 
@@ -139,41 +162,47 @@ export struct AssetWatcher {
     virtual ~AssetWatcher() = default;
 };
 
-/** @brief An in-memory reader backed by a byte vector.
+/** @brief An in-memory async reader backed by a byte vector.
  *  Matches bevy_asset's VecReader, which wraps a Vec<u8> into an AsyncRead stream.
- *  C++ equivalent: an istream backed by an in-memory byte buffer.
- *  Usage: pass the returned stream as the std::istream& argument to asset loaders. */
-export struct VecReader {
+ *  Implements the Reader interface for use with AssetLoader. */
+export struct VecReader : Reader {
    private:
-    struct MemoryStreamBuffer : std::streambuf {
-        explicit MemoryStreamBuffer(std::string& data) {
-            char* begin = data.empty() ? nullptr : data.data();
-            setg(begin, begin, begin ? begin + static_cast<std::ptrdiff_t>(data.size()) : begin);
-        }
-    };
-
-    std::string m_data;
-    MemoryStreamBuffer m_buffer;
-    std::istream m_stream;
+    std::vector<uint8_t> m_bytes;
+    size_t m_bytes_read = 0;
 
    public:
     /** @brief Construct from a byte vector. */
-    explicit VecReader(std::vector<std::uint8_t> bytes)
-        : m_data(reinterpret_cast<const char*>(bytes.data()), bytes.size()), m_buffer(m_data), m_stream(&m_buffer) {}
+    explicit VecReader(std::vector<uint8_t> bytes) : m_bytes(std::move(bytes)) {}
     /** @brief Construct from a string. */
-    explicit VecReader(std::string data) : m_data(std::move(data)), m_buffer(m_data), m_stream(&m_buffer) {}
+    explicit VecReader(std::string data) : m_bytes(data.begin(), data.end()) {}
     /** @brief Construct from a string_view. */
-    explicit VecReader(std::string_view data) : m_data(data), m_buffer(m_data), m_stream(&m_buffer) {}
+    explicit VecReader(std::string_view data) : m_bytes(data.begin(), data.end()) {}
 
     VecReader(const VecReader&)            = delete;
     VecReader& operator=(const VecReader&) = delete;
-    VecReader(VecReader&&)                 = delete;
-    VecReader& operator=(VecReader&&)      = delete;
+    VecReader(VecReader&&)                 = default;
+    VecReader& operator=(VecReader&&)      = default;
 
-    /** @brief Get the underlying istream. Pass this to asset loaders. */
-    std::istream& stream() { return m_stream; }
-    /** @brief Implicit conversion to std::istream& for use as loader argument. */
-    operator std::istream&() { return m_stream; }
+    asio::awaitable<std::expected<size_t, std::error_code>> read_to_end(std::vector<uint8_t>& buf) override;
+
+    /** @brief Get a view of the underlying bytes. */
+    std::span<const uint8_t> bytes() const { return m_bytes; }
+};
+
+/** @brief An in-memory async writer backed by a byte vector.
+ *  Matches bevy's pattern of writing to a buffer.
+ *  Implements the Writer interface for use with AssetSaver. */
+export struct VecWriter : Writer {
+   private:
+    std::vector<uint8_t> m_data;
+
+   public:
+    asio::awaitable<std::expected<size_t, std::error_code>> write(std::span<const uint8_t> data) override;
+    asio::awaitable<std::expected<void, std::error_code>> flush() override;
+
+    /** @brief Get the written bytes. */
+    std::vector<uint8_t>& bytes() { return m_data; }
+    const std::vector<uint8_t>& bytes() const { return m_data; }
 };
 
 }  // namespace epix::assets

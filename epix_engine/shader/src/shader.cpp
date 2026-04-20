@@ -4,6 +4,8 @@ module;
 #include <slang.h>
 #include <spdlog/spdlog.h>
 
+#include <asio/awaitable.hpp>
+
 module epix.shader;
 
 import epix.meta;
@@ -109,7 +111,7 @@ struct ProcessedDecodedShader {
     std::vector<ShaderImport> imports;
 };
 
-bool validate_utf8_bytes(const std::vector<char>& bytes, std::size_t& invalid_offset) {
+bool validate_utf8_bytes(const std::vector<uint8_t>& bytes, std::size_t& invalid_offset) {
     for (std::size_t i = 0; i < bytes.size();) {
         unsigned char c = static_cast<unsigned char>(bytes[i]);
         int seq         = 0;
@@ -295,32 +297,31 @@ std::vector<std::uint8_t> serialize_processed_shader(const Shader& shader) {
     return out;
 }
 
-bool has_processed_magic(const std::vector<char>& bytes) {
+bool has_processed_magic(const std::vector<uint8_t>& bytes) {
     if (bytes.size() < k_processed_shader_magic.size()) return false;
-    return std::equal(k_processed_shader_magic.begin(), k_processed_shader_magic.end(),
-                      reinterpret_cast<const std::uint8_t*>(bytes.data()));
+    return std::equal(k_processed_shader_magic.begin(), k_processed_shader_magic.end(), bytes.data());
 }
 
-bool read_u8(const std::vector<char>& bytes, std::size_t& pos, std::uint8_t& out) {
+bool read_u8(const std::vector<uint8_t>& bytes, std::size_t& pos, std::uint8_t& out) {
     if (pos + 1 > bytes.size()) return false;
     out = static_cast<std::uint8_t>(bytes[pos]);
     ++pos;
     return true;
 }
 
-bool read_u32(const std::vector<char>& bytes, std::size_t& pos, std::uint32_t& out) {
+bool read_u32(const std::vector<uint8_t>& bytes, std::size_t& pos, std::uint32_t& out) {
     if (pos + 4 > bytes.size()) return false;
     const auto b0 = static_cast<std::uint8_t>(bytes[pos + 0]);
     const auto b1 = static_cast<std::uint8_t>(bytes[pos + 1]);
     const auto b2 = static_cast<std::uint8_t>(bytes[pos + 2]);
     const auto b3 = static_cast<std::uint8_t>(bytes[pos + 3]);
     out           = static_cast<std::uint32_t>(b0) | (static_cast<std::uint32_t>(b1) << 8) |
-          (static_cast<std::uint32_t>(b2) << 16) | (static_cast<std::uint32_t>(b3) << 24);
+                    (static_cast<std::uint32_t>(b2) << 16) | (static_cast<std::uint32_t>(b3) << 24);
     pos += 4;
     return true;
 }
 
-bool read_string(const std::vector<char>& bytes, std::size_t& pos, std::string& out) {
+bool read_string(const std::vector<uint8_t>& bytes, std::size_t& pos, std::string& out) {
     std::uint32_t len = 0;
     if (!read_u32(bytes, pos, len)) return false;
     if (pos + len > bytes.size()) return false;
@@ -329,7 +330,7 @@ bool read_string(const std::vector<char>& bytes, std::size_t& pos, std::string& 
     return true;
 }
 
-bool read_import(const std::vector<char>& bytes, std::size_t& pos, ShaderImport& out) {
+bool read_import(const std::vector<uint8_t>& bytes, std::size_t& pos, ShaderImport& out) {
     std::uint8_t kind_raw = 0;
     if (!read_u8(bytes, pos, kind_raw)) return false;
 
@@ -348,7 +349,7 @@ bool read_import(const std::vector<char>& bytes, std::size_t& pos, ShaderImport&
     return false;
 }
 
-std::optional<ProcessedDecodedShader> deserialize_processed_shader(const std::vector<char>& bytes) {
+std::optional<ProcessedDecodedShader> deserialize_processed_shader(const std::vector<uint8_t>& bytes) {
     if (!has_processed_magic(bytes)) return std::nullopt;
     std::size_t pos = k_processed_shader_magic.size();
 
@@ -592,14 +593,14 @@ static std::string processor_preprocess_slang_source(std::string_view source,
 
 // Recursively populate the VFS with all transitive source deps of `current_path`.
 // Reads directly from the asset source (not processed) so this works during processing.
-static void populate_processor_vfs(ProcessorSlangVFS& vfs,
-                                   const epix::assets::AssetPath& current_path,
-                                   std::string_view source_text,
-                                   const epix::assets::AssetProcessor& processor,
-                                   const std::shared_ptr<ProcessorCustomShaderRegistry>& registry,
-                                   std::unordered_set<std::string>& visited) {
+static asio::awaitable<void> populate_processor_vfs(ProcessorSlangVFS& vfs,
+                                                    const epix::assets::AssetPath& current_path,
+                                                    std::string_view source_text,
+                                                    const epix::assets::AssetProcessor& processor,
+                                                    const std::shared_ptr<ProcessorCustomShaderRegistry>& registry,
+                                                    std::unordered_set<std::string>& visited) {
     auto identity = normalize_asset_path_string(current_path);
-    if (!visited.insert(identity).second) return;
+    if (!visited.insert(identity).second) co_return;
 
     auto preprocessed = processor_preprocess_slang_source(source_text, current_path);
     vfs.add(identity, preprocessed, identity);
@@ -614,17 +615,6 @@ static void populate_processor_vfs(ProcessorSlangVFS& vfs,
         if (import_key != identity) vfs.add(import_key, preprocessed, identity);
     }
 
-    auto recurse_cached_custom = [&](const ShaderImport& custom_import) {
-        if (!registry) return;
-        auto dep_shader = registry->find_custom(custom_import);
-        if (!dep_shader.has_value()) return;
-
-        // Processor-side Slang compilation needs source text; ignore non-text shaders.
-        if (!dep_shader->source.is_slang()) return;
-
-        populate_processor_vfs(vfs, dep_shader->path, dep_shader->source.as_str(), processor, registry, visited);
-    };
-
     // Recurse into imports.
     for (const auto& imp : imports) {
         if (imp.is_asset_path()) {
@@ -635,36 +625,43 @@ static void populate_processor_vfs(ProcessorSlangVFS& vfs,
             auto source_ref = processor.get_source(dep_path.source);
             if (!source_ref.has_value()) continue;
 
-            auto stream = source_ref->get().reader().read(dep_path.path);
-            if (!stream.has_value()) continue;
+            auto reader_result = co_await source_ref->get().reader().read(dep_path.path);
+            if (!reader_result.has_value()) continue;
 
-            std::vector<char> dep_bytes =
-                std::ranges::subrange(std::istreambuf_iterator<char>(**stream), std::istreambuf_iterator<char>()) |
-                std::ranges::to<std::vector<char>>();
+            std::vector<uint8_t> dep_bytes;
+            auto dep_read = co_await (*reader_result)->read_to_end(dep_bytes);
+            if (!dep_read) continue;
 
             if (dep_bytes.empty()) continue;
             std::string dep_source(dep_bytes.begin(), dep_bytes.end());
-            populate_processor_vfs(vfs, dep_path, dep_source, processor, registry, visited);
+            co_await populate_processor_vfs(vfs, dep_path, dep_source, processor, registry, visited);
             continue;
         }
 
-        recurse_cached_custom(imp);
+        // recurse_cached_custom inline
+        if (registry) {
+            auto dep_shader = registry->find_custom(imp);
+            if (dep_shader.has_value() && dep_shader->source.is_slang()) {
+                co_await populate_processor_vfs(vfs, dep_shader->path, dep_shader->source.as_str(), processor, registry,
+                                                visited);
+            }
+        }
     }
 }
 
 // Try to compile a Slang module to a serialized IR blob.
 // Returns the blob bytes on success, nullopt on any failure.
-static std::optional<std::vector<std::uint8_t>> try_compile_slang_to_ir(
+static asio::awaitable<std::optional<std::vector<std::uint8_t>>> try_compile_slang_to_ir(
     const std::string& source_text,
     const epix::assets::AssetPath& path,
     const epix::assets::AssetProcessor& processor,
     const std::shared_ptr<ProcessorCustomShaderRegistry>& registry) {
     Slang::ComPtr<slang::IGlobalSession> global_session;
-    if (SLANG_FAILED(slang::createGlobalSession(global_session.writeRef()))) return std::nullopt;
+    if (SLANG_FAILED(slang::createGlobalSession(global_session.writeRef()))) co_return std::nullopt;
 
     ProcessorSlangVFS vfs;
     std::unordered_set<std::string> visited;
-    populate_processor_vfs(vfs, path, source_text, processor, registry, visited);
+    co_await populate_processor_vfs(vfs, path, source_text, processor, registry, visited);
 
     const char* search_paths[]      = {""};
     slang::SessionDesc session_desc = {};
@@ -673,7 +670,7 @@ static std::optional<std::vector<std::uint8_t>> try_compile_slang_to_ir(
     session_desc.fileSystem         = &vfs;
 
     Slang::ComPtr<slang::ISession> session;
-    if (SLANG_FAILED(global_session->createSession(session_desc, session.writeRef()))) return std::nullopt;
+    if (SLANG_FAILED(global_session->createSession(session_desc, session.writeRef()))) co_return std::nullopt;
 
     auto identity     = normalize_asset_path_string(path);
     auto preprocessed = processor_preprocess_slang_source(source_text, path);
@@ -681,13 +678,13 @@ static std::optional<std::vector<std::uint8_t>> try_compile_slang_to_ir(
     Slang::ComPtr<slang::IBlob> diag;
     slang::IModule* mod =
         session->loadModuleFromSourceString("module", identity.c_str(), preprocessed.c_str(), diag.writeRef());
-    if (!mod) return std::nullopt;
+    if (!mod) co_return std::nullopt;
 
     Slang::ComPtr<ISlangBlob> blob;
-    if (SLANG_FAILED(mod->serialize(blob.writeRef())) || !blob) return std::nullopt;
+    if (SLANG_FAILED(mod->serialize(blob.writeRef())) || !blob) co_return std::nullopt;
 
     const auto* ptr = static_cast<const std::uint8_t*>(blob->getBufferPointer());
-    return std::vector<std::uint8_t>(ptr, ptr + blob->getBufferSize());
+    co_return std::vector<std::uint8_t>(ptr, ptr + blob->getBufferSize());
 }
 
 }  // namespace
@@ -900,21 +897,19 @@ std::span<std::string_view> ShaderLoader::extensions() {
     return exts;
 }
 
-std::expected<Shader, ShaderLoaderError> ShaderLoader::load(std::istream& reader,
-                                                            const Settings& settings,
-                                                            assets::LoadContext& context) {
+asio::awaitable<std::expected<Shader, ShaderLoaderError>> ShaderLoader::load(assets::Reader& reader,
+                                                                             const Settings& settings,
+                                                                             assets::LoadContext& context) {
     const auto& asset_path = context.path();
     const auto& raw_path   = asset_path.path;
 
     spdlog::trace("[shader] Loading shader from '{}'.", normalize_asset_path_string(asset_path));
 
     // Read all bytes
-    std::vector<char> bytes =
-        std::ranges::subrange(std::istreambuf_iterator<char>(reader), std::istreambuf_iterator<char>()) |
-        std::ranges::to<std::vector<char>>();
-
-    if (reader.fail() && !reader.eof()) {
-        return std::unexpected(ShaderLoaderError::io(std::make_error_code(std::io_errc::stream), raw_path));
+    std::vector<uint8_t> bytes;
+    auto read_result = co_await reader.read_to_end(bytes);
+    if (!read_result) {
+        co_return std::unexpected(ShaderLoaderError::io(std::make_error_code(std::io_errc::stream), raw_path));
     }
 
     auto attach_dependencies = [&](Shader& shader) {
@@ -931,7 +926,7 @@ std::expected<Shader, ShaderLoaderError> ShaderLoader::load(std::istream& reader
     if (has_processed_magic(bytes)) {
         auto decoded = deserialize_processed_shader(bytes);
         if (!decoded.has_value()) {
-            return std::unexpected(ShaderLoaderError::parse(raw_path, 0));
+            co_return std::unexpected(ShaderLoaderError::parse(raw_path, 0));
         }
 
         Shader shader;
@@ -941,7 +936,7 @@ std::expected<Shader, ShaderLoaderError> ShaderLoader::load(std::istream& reader
         shader.imports     = std::move(decoded->imports);
         shader.shader_defs = settings.shader_defs;
         attach_dependencies(shader);
-        return shader;
+        co_return shader;
     }
 
     auto ext = raw_path.extension().string();
@@ -950,10 +945,9 @@ std::expected<Shader, ShaderLoaderError> ShaderLoader::load(std::istream& reader
 
     if (ext == "spv") {
         if (bytes.size() % sizeof(std::uint8_t) != 0) {
-            return std::unexpected(ShaderLoaderError::parse(raw_path, 0));
+            co_return std::unexpected(ShaderLoaderError::parse(raw_path, 0));
         }
-        std::vector<std::uint8_t> code(bytes.begin(), bytes.end());
-        return Shader::from_spirv(std::move(code), asset_path);
+        co_return Shader::from_spirv(std::move(bytes), asset_path);
     }
 
     if (ext == "wgsl") {
@@ -963,45 +957,42 @@ std::expected<Shader, ShaderLoaderError> ShaderLoader::load(std::istream& reader
         }
         std::size_t bad_utf8 = 0;
         if (!validate_utf8_bytes(bytes, bad_utf8)) {
-            return std::unexpected(ShaderLoaderError::parse(raw_path, bad_utf8));
+            co_return std::unexpected(ShaderLoaderError::parse(raw_path, bad_utf8));
         }
         std::string text(bytes.begin(), bytes.end());
         auto shader = Shader::from_wgsl_with_defs(std::move(text), asset_path, settings.shader_defs);
         attach_dependencies(shader);
-        return shader;
+        co_return shader;
     }
 
     if (ext == "slang") {
         std::size_t bad_utf8 = 0;
         if (!validate_utf8_bytes(bytes, bad_utf8)) {
-            return std::unexpected(ShaderLoaderError::parse(raw_path, bad_utf8));
+            co_return std::unexpected(ShaderLoaderError::parse(raw_path, bad_utf8));
         }
         std::string text(bytes.begin(), bytes.end());
         auto shader = Shader::from_slang_with_defs(std::move(text), asset_path, settings.shader_defs);
         attach_dependencies(shader);
-        return shader;
+        co_return shader;
     }
 
     if (ext == "slang-module") {
         // Raw Slang IR blob — no text to parse, no imports to infer.
-        std::vector<std::uint8_t> ir_bytes(bytes.begin(), bytes.end());
-        return Shader::from_slang_ir(std::move(ir_bytes), asset_path);
+        co_return Shader::from_slang_ir(std::move(bytes), asset_path);
     }
 
-    return std::unexpected(ShaderLoaderError::parse(raw_path, 0));
+    co_return std::unexpected(ShaderLoaderError::parse(raw_path, 0));
 }
 
-std::expected<ShaderProcessor::OutputLoader::Settings, std::exception_ptr> ShaderProcessor::process(
-    assets::ProcessContext& context, const Settings& settings, std::ostream& writer) const {
+asio::awaitable<std::expected<ShaderProcessor::OutputLoader::Settings, std::exception_ptr>> ShaderProcessor::process(
+    assets::ProcessContext& context, const Settings& settings, assets::Writer& writer) const {
     try {
         const auto& raw_path = context.path().path;
 
-        std::vector<char> bytes = std::ranges::subrange(std::istreambuf_iterator<char>(context.asset_reader()),
-                                                        std::istreambuf_iterator<char>()) |
-                                  std::ranges::to<std::vector<char>>();
-
-        if (context.asset_reader().fail() && !context.asset_reader().eof()) {
-            return std::unexpected(
+        std::vector<uint8_t> bytes;
+        auto read_result = co_await context.asset_reader().read_to_end(bytes);
+        if (!read_result) {
+            co_return std::unexpected(
                 std::make_exception_ptr(std::runtime_error("Failed to read shader source for processing")));
         }
 
@@ -1017,31 +1008,32 @@ std::expected<ShaderProcessor::OutputLoader::Settings, std::exception_ptr> Shade
             }
         };
 
-        auto write_serialized = [&](const Shader& shader) -> bool {
+        auto write_serialized = [&](const Shader& shader) -> asio::awaitable<bool> {
             auto encoded = serialize_processed_shader(shader);
-            writer.write(reinterpret_cast<const char*>(encoded.data()), static_cast<std::streamsize>(encoded.size()));
-            return writer.good();
+            auto result  = co_await writer.write(std::span<const uint8_t>(encoded.data(), encoded.size()));
+            co_return result.has_value();
         };
 
         if (ext == "wgsl" && settings.preprocess_wgsl) {
             std::size_t bad_utf8 = 0;
             if (!validate_utf8_bytes(bytes, bad_utf8)) {
-                return std::unexpected(std::make_exception_ptr(std::runtime_error("Invalid UTF-8 in WGSL")));
+                co_return std::unexpected(std::make_exception_ptr(std::runtime_error("Invalid UTF-8 in WGSL")));
             }
 
             auto shader = Shader::from_wgsl_with_defs(std::string(bytes.begin(), bytes.end()), context.path(),
                                                       settings.loader_settings.shader_defs);
             register_process_deps(shader);
-            if (!write_serialized(shader)) {
-                return std::unexpected(std::make_exception_ptr(std::runtime_error("Failed to write processed WGSL")));
+            if (!co_await write_serialized(shader)) {
+                co_return std::unexpected(
+                    std::make_exception_ptr(std::runtime_error("Failed to write processed WGSL")));
             }
-            return settings.loader_settings;
+            co_return settings.loader_settings;
         }
 
         if (ext == "slang" && settings.preprocess_slang) {
             std::size_t bad_utf8 = 0;
             if (!validate_utf8_bytes(bytes, bad_utf8)) {
-                return std::unexpected(std::make_exception_ptr(std::runtime_error("Invalid UTF-8 in Slang")));
+                co_return std::unexpected(std::make_exception_ptr(std::runtime_error("Invalid UTF-8 in Slang")));
             }
 
             auto source_str = std::string(bytes.begin(), bytes.end());
@@ -1052,7 +1044,8 @@ std::expected<ShaderProcessor::OutputLoader::Settings, std::exception_ptr> Shade
             // the code falls through to the normal text-preprocessing path.
             if (settings.preprocess_slang_to_ir) {
                 auto registry = std::static_pointer_cast<ProcessorCustomShaderRegistry>(custom_registry_);
-                auto ir_opt   = try_compile_slang_to_ir(source_str, context.path(), context.processor(), registry);
+                auto ir_opt =
+                    co_await try_compile_slang_to_ir(source_str, context.path(), context.processor(), registry);
                 if (ir_opt.has_value()) {
                     // Build a Shader with SlangIr source for serialization.
                     Shader ir_shader;
@@ -1066,11 +1059,11 @@ std::expected<ShaderProcessor::OutputLoader::Settings, std::exception_ptr> Shade
                         ir_shader.import_path = std::move(ip);
                     }
                     register_process_deps(ir_shader);
-                    if (!write_serialized(ir_shader)) {
-                        return std::unexpected(
+                    if (!co_await write_serialized(ir_shader)) {
+                        co_return std::unexpected(
                             std::make_exception_ptr(std::runtime_error("Failed to write processed Slang IR")));
                     }
-                    return settings.loader_settings;
+                    co_return settings.loader_settings;
                 }
                 // Compilation failed — fall through to text-processing path.
                 spdlog::debug("[shader] Slang IR compilation failed for '{}', falling back to text.",
@@ -1080,32 +1073,33 @@ std::expected<ShaderProcessor::OutputLoader::Settings, std::exception_ptr> Shade
             auto shader = Shader::from_slang_with_defs(std::move(source_str), context.path(),
                                                        settings.loader_settings.shader_defs);
             register_process_deps(shader);
-            if (!write_serialized(shader)) {
-                return std::unexpected(std::make_exception_ptr(std::runtime_error("Failed to write processed Slang")));
+            if (!co_await write_serialized(shader)) {
+                co_return std::unexpected(
+                    std::make_exception_ptr(std::runtime_error("Failed to write processed Slang")));
             }
-            return settings.loader_settings;
+            co_return settings.loader_settings;
         }
 
         // slang-module: pass the raw bytes through unchanged.  The loader will
         // handle them as a raw Slang IR blob (identified by the extension).
         if (ext == "slang-module") {
-            writer.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
-            if (!writer.good()) {
-                return std::unexpected(
+            auto wr = co_await writer.write(std::span<const uint8_t>(bytes.data(), bytes.size()));
+            if (!wr.has_value()) {
+                co_return std::unexpected(
                     std::make_exception_ptr(std::runtime_error("Failed to write slang-module bytes")));
             }
-            return settings.loader_settings;
+            co_return settings.loader_settings;
         }
 
         // Copy-through for all other formats/extensions.
-        writer.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
-        if (!writer.good()) {
-            return std::unexpected(
+        auto wr = co_await writer.write(std::span<const uint8_t>(bytes.data(), bytes.size()));
+        if (!wr.has_value()) {
+            co_return std::unexpected(
                 std::make_exception_ptr(std::runtime_error("Failed to write processed shader bytes")));
         }
-        return settings.loader_settings;
+        co_return settings.loader_settings;
     } catch (...) {
-        return std::unexpected(std::current_exception());
+        co_return std::unexpected(std::current_exception());
     }
 }
 

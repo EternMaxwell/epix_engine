@@ -2,6 +2,11 @@ module;
 
 #include <spdlog/spdlog.h>
 
+#include <asio/awaitable.hpp>
+#include <asio/co_spawn.hpp>
+#include <asio/detached.hpp>
+#include <asio/io_context.hpp>
+
 module epix.assets;
 
 import std;
@@ -26,20 +31,26 @@ void AssetProcessor::start(core::Res<AssetProcessor> processor) {
         auto start_time = std::chrono::steady_clock::now();
         spdlog::debug("Processing Assets");
 
-        proc.initialize();
+        {
+            asio::io_context ctx;
+            asio::co_spawn(ctx, proc.initialize(), asio::detached);
+            ctx.run();
+        }
 
         auto [new_task_sender, new_task_receiver] =
             utils::make_channel<std::pair<AssetSourceId, std::filesystem::path>>();
         proc.data->set_task_sender(new_task_sender);
 
-        proc.queue_initial_processing_tasks(new_task_sender);
+        {
+            asio::io_context ctx;
+            asio::co_spawn(ctx, proc.queue_initial_processing_tasks(new_task_sender), asio::detached);
+            ctx.run();
+        }
 
         // Spawn task executor in background.
-        // Pass a copy of new_task_sender so the executor can immediately downgrade it to a
-        // WeakSender (matching Bevy's pattern), avoiding keeping the channel artificially open.
         {
             auto p = proc;
-            auto s = new_task_sender;  // copy: executor will downgrade and drop this
+            auto s = new_task_sender;
             auto r = new_task_receiver;
             utils::IOTaskPool::instance().detach_task(
                 [p, s, r]() mutable { p.execute_processing_tasks(std::move(s), r); });
@@ -87,13 +98,13 @@ void AssetProcessor::log_unrecoverable() const {
 
 // ---- validate_transaction_log_and_recover ----
 
-std::filesystem::path AssetProcessor::validate_transaction_log_and_recover() const {
+asio::awaitable<std::filesystem::path> AssetProcessor::validate_transaction_log_and_recover() const {
     std::unique_ptr<ProcessorTransactionLogFactory> log_factory;
     {
         auto guarded_log_factory = data->log_factory.lock();
         if (!guarded_log_factory->has_value()) {
             spdlog::error("Asset processor log factory not set. Cannot validate transaction log.");
-            return {};
+            co_return std::filesystem::path{};
         }
         log_factory = std::move(guarded_log_factory->value());
         guarded_log_factory->reset();
@@ -101,45 +112,15 @@ std::filesystem::path AssetProcessor::validate_transaction_log_and_recover() con
 
     if (!log_factory) {
         spdlog::error("Asset processor log factory not set. Cannot validate transaction log.");
-        return {};
+        co_return std::filesystem::path{};
     }
     auto log_path = log_factory->log_path();
     auto result   = validate_transaction_log(*log_factory);
     if (!result) {
-        auto& err              = result.error();
-        bool state_valid       = true;
-        auto handle_unfinished = [&](const AssetPath& path) {
-            spdlog::debug("Asset {:?} did not finish processing. Clearing state.", path.string());
-            auto source_opt = get_source(path.source);
-            if (!source_opt) {
-                spdlog::error("Failed to remove asset {}: AssetSource does not exist", path.string());
-                state_valid = false;
-                return;
-            }
-            auto& source    = source_opt->get();
-            auto writer_opt = source.processed_writer();
-            if (!writer_opt) {
-                spdlog::error("Failed to remove asset {}: no processed writer", path.string());
-                state_valid = false;
-                return;
-            }
-            auto& writer = writer_opt->get();
-            auto rm1     = writer.remove(path.path);
-            if (!rm1) {
-                // NotFound is ok, anything else is bad
-                if (!std::holds_alternative<writer_errors::IoError>(rm1.error())) {
-                    spdlog::error("Failed to remove asset {}", path.string());
-                    state_valid = false;
-                }
-            }
-            auto rm2 = writer.remove_meta(path.path);
-            if (!rm2) {
-                if (!std::holds_alternative<writer_errors::IoError>(rm2.error())) {
-                    spdlog::error("Failed to remove meta for {}", path.string());
-                    state_valid = false;
-                }
-            }
-        };
+        auto& err        = result.error();
+        bool state_valid = true;
+        // Collect paths that need cleanup — can't co_await inside std::visit lambdas
+        std::vector<AssetPath> unfinished_paths;
         std::visit(utils::visitor{
                        [&](const validate_log_errors::ReadLogError& e) {
                            spdlog::error(
@@ -166,7 +147,7 @@ std::filesystem::path AssetProcessor::validate_transaction_log_and_recover() con
                                                   state_valid = false;
                                               },
                                               [&](const log_entry_errors::UnfinishedTransaction& t) {
-                                                  handle_unfinished(t.path);
+                                                  unfinished_paths.push_back(t.path);
                                               },
                                           },
                                           entry_err);
@@ -175,6 +156,38 @@ std::filesystem::path AssetProcessor::validate_transaction_log_and_recover() con
                        },
                    },
                    err);
+        // Process unfinished paths (async writer calls)
+        for (auto& upath : unfinished_paths) {
+            spdlog::debug("Asset {:?} did not finish processing. Clearing state.", upath.string());
+            auto source_opt = get_source(upath.source);
+            if (!source_opt) {
+                spdlog::error("Failed to remove asset {}: AssetSource does not exist", upath.string());
+                state_valid = false;
+                continue;
+            }
+            auto& source    = source_opt->get();
+            auto writer_opt = source.processed_writer();
+            if (!writer_opt) {
+                spdlog::error("Failed to remove asset {}: no processed writer", upath.string());
+                state_valid = false;
+                continue;
+            }
+            auto& writer = writer_opt->get();
+            auto rm1     = co_await writer.remove(upath.path);
+            if (!rm1) {
+                if (!std::holds_alternative<writer_errors::IoError>(rm1.error())) {
+                    spdlog::error("Failed to remove asset {}", upath.string());
+                    state_valid = false;
+                }
+            }
+            auto rm2 = co_await writer.remove_meta(upath.path);
+            if (!rm2) {
+                if (!std::holds_alternative<writer_errors::IoError>(rm2.error())) {
+                    spdlog::error("Failed to remove meta for {}", upath.string());
+                    state_valid = false;
+                }
+            }
+        }
         if (!state_valid) {
             spdlog::error(
                 "Processed asset transaction log state was invalid and unrecoverable. "
@@ -183,7 +196,7 @@ std::filesystem::path AssetProcessor::validate_transaction_log_and_recover() con
                 auto writer_opt = source.processed_writer();
                 if (!writer_opt) continue;
                 auto& writer = writer_opt->get();
-                auto result  = writer.clear_directory(std::filesystem::path(""));
+                auto result  = co_await writer.clear_directory(std::filesystem::path(""));
                 if (!result) {
                     spdlog::critical(
                         "Processed assets were in a bad state. Attempted to remove all processed "
@@ -202,23 +215,23 @@ std::filesystem::path AssetProcessor::validate_transaction_log_and_recover() con
         spdlog::error("Failed to create new transaction log: {}", new_log.error());
     }
 
-    return log_path;
+    co_return log_path;
 }
 
 // ---- initialize ----
 
-static void get_asset_paths(const AssetReader& reader,
-                            const std::filesystem::path& path,
-                            std::vector<std::filesystem::path>& paths,
-                            std::vector<std::filesystem::path>* empty_dirs) {
-    auto is_dir = reader.is_directory(path);
+static asio::awaitable<void> get_asset_paths(const AssetReader& reader,
+                                             const std::filesystem::path& path,
+                                             std::vector<std::filesystem::path>& paths,
+                                             std::vector<std::filesystem::path>* empty_dirs) {
+    auto is_dir = co_await reader.is_directory(path);
     if (is_dir && *is_dir) {
-        auto dir_result = reader.read_directory(path);
-        if (!dir_result) return;
+        auto dir_result = co_await reader.read_directory(path);
+        if (!dir_result) co_return;
         bool contains_files = false;
         for (auto child_path : *dir_result) {
             auto before = paths.size();
-            get_asset_paths(reader, child_path, paths, empty_dirs);
+            co_await get_asset_paths(reader, child_path, paths, empty_dirs);
             contains_files |= (paths.size() > before);
         }
         if (!contains_files && path.has_parent_path() && empty_dirs) {
@@ -326,8 +339,8 @@ std::expected<std::shared_ptr<ErasedProcessor>, GetProcessorError> AssetProcesso
     return std::unexpected(GetProcessorError{get_processor_errors::Missing{std::string(type_name)}});
 }
 
-void AssetProcessor::initialize() const {
-    auto log_path    = validate_transaction_log_and_recover();
+asio::awaitable<void> AssetProcessor::initialize() const {
+    auto log_path    = co_await validate_transaction_log_and_recover();
     auto infos_guard = data->processing_state->m_asset_infos.write();
 
     for (auto& source : sources()->iter_processed()) {
@@ -339,15 +352,15 @@ void AssetProcessor::initialize() const {
         auto& processed_writer = writer_opt->get();
 
         std::vector<std::filesystem::path> unprocessed_paths;
-        get_asset_paths(source.reader(), std::filesystem::path(""), unprocessed_paths, nullptr);
+        co_await get_asset_paths(source.reader(), std::filesystem::path(""), unprocessed_paths, nullptr);
 
         std::vector<std::filesystem::path> processed_paths;
         std::vector<std::filesystem::path> empty_dirs;
-        get_asset_paths(processed_reader, std::filesystem::path(""), processed_paths, &empty_dirs);
+        co_await get_asset_paths(processed_reader, std::filesystem::path(""), processed_paths, &empty_dirs);
 
         // Clean up empty dirs in processed output
         for (auto& empty_dir : empty_dirs) {
-            (void)processed_writer.remove_directory(empty_dir);
+            (void)co_await processed_writer.remove_directory(empty_dir);
         }
 
         for (auto& path : unprocessed_paths) {
@@ -364,11 +377,8 @@ void AssetProcessor::initialize() const {
             auto asset_path = AssetPath(source.id(), path);
             auto* info      = infos_guard->get(asset_path);
             if (info) {
-                auto meta_bytes = processed_reader.read_meta_bytes(asset_path.path);
+                auto meta_bytes = co_await processed_reader.read_meta_bytes(asset_path.path);
                 if (meta_bytes) {
-                    // Deserialize ProcessedInfo from the stored processed meta to enable
-                    // the skip-unchanged check on next run.  We only read the first two
-                    // fields (version + processed) so we don't need to know the settings types.
                     auto pi = deserialize_processed_info(*meta_bytes);
                     if (pi && pi->has_value()) {
                         info->processed_info = std::move(**pi);
@@ -379,11 +389,11 @@ void AssetProcessor::initialize() const {
                     }
                 } else {
                     spdlog::trace("Removing processed data for {} because meta failed to load", asset_path.string());
-                    remove_processed_asset_and_meta(source, asset_path.path);
+                    co_await remove_processed_asset_and_meta(source, asset_path.path);
                 }
             } else {
                 spdlog::trace("Removing processed data for non-existent asset {}", asset_path.string());
-                remove_processed_asset_and_meta(source, asset_path.path);
+                co_await remove_processed_asset_and_meta(source, asset_path.path);
             }
 
             for (auto& dep : dependencies) {
@@ -397,7 +407,7 @@ void AssetProcessor::initialize() const {
 
 // ---- process_asset ----
 
-void AssetProcessor::process_asset(
+asio::awaitable<void> AssetProcessor::process_asset(
     const AssetSourceId& source_id,
     const std::filesystem::path& path,
     utils::Sender<std::pair<AssetSourceId, std::filesystem::path>> reprocess_sender) const {
@@ -405,19 +415,19 @@ void AssetProcessor::process_asset(
     if (!source_opt) {
         spdlog::error("AssetSource {} not found for processing",
                       source_id.is_default() ? "default" : source_id.value());
-        return;
+        co_return;
     }
     auto& source     = source_opt->get();
     auto asset_path  = AssetPath(source.id(), path);
-    auto result      = process_asset_internal(source, asset_path);
+    auto result      = co_await process_asset_internal(source, asset_path);
     auto infos_guard = data->processing_state->m_asset_infos.write();
     infos_guard->finish_processing(asset_path, result, reprocess_sender);
 }
 
 // ---- process_asset_internal ----
 
-std::expected<ProcessResult, ProcessError> AssetProcessor::process_asset_internal(const AssetSource& source,
-                                                                                  const AssetPath& asset_path) const {
+asio::awaitable<std::expected<ProcessResult, ProcessError>> AssetProcessor::process_asset_internal(
+    const AssetSource& source, const AssetPath& asset_path) const {
     spdlog::debug("Processing {}", asset_path.string());
     auto path    = asset_path.path;
     auto& reader = source.reader();
@@ -432,23 +442,20 @@ std::expected<ProcessResult, ProcessError> AssetProcessor::process_asset_interna
     // Get full extension to determine processor
     auto ext = asset_path.get_full_extension();
     if (!ext || ext->empty()) {
-        return std::unexpected(ProcessError{process_errors::ExtensionRequired{}});
+        co_return std::unexpected(ProcessError{process_errors::ExtensionRequired{}});
     }
 
     // Find the processor for this extension
     auto processor = get_default_processor(*ext);
     if (!processor) {
-        // No processor for this extension: the server reads from the source reader directly.
-        // Check there is a loader (or an explicit .meta file) so we can detect invalid assets early.
-        auto meta_raw = reader.read_meta_bytes(path);
+        auto meta_raw = co_await reader.read_meta_bytes(path);
         if (!meta_raw) {
             if (!server.get_path_asset_loader(asset_path)) {
-                return std::unexpected(ProcessError{process_errors::MissingAssetLoaderForExtension{std::string(*ext)}});
+                co_return std::unexpected(
+                    ProcessError{process_errors::MissingAssetLoaderForExtension{std::string(*ext)}});
             }
         }
 
-        // Fast-path: if the source file's mtime matches what we saw last time and there are no
-        // dependency hash mismatches, skip without reading or hashing the file bytes.
         auto current_mtime_ns = to_persisted_mtime_ns(reader.last_modified(path));
         {
             auto infos_guard = data->processing_state->m_asset_infos.read();
@@ -459,26 +466,24 @@ std::expected<ProcessResult, ProcessError> AssetProcessor::process_asset_interna
                     for (const auto& dep : existing->processed_info->process_dependencies) {
                         const auto* dep_info = infos_guard->get(AssetPath(dep.path));
                         bool live_ok         = dep_info && dep_info->processed_info &&
-                                       dep_info->processed_info->full_hash == dep.full_hash;
+                                               dep_info->processed_info->full_hash == dep.full_hash;
                         if (!live_ok) {
                             dep_changed = true;
                             break;
                         }
                     }
-                    if (!dep_changed) return ProcessResult::skipped_not_changed();
+                    if (!dep_changed) co_return ProcessResult::skipped_not_changed();
                 }
             }
         }
 
-        // Hash = (.meta bytes if present) + asset bytes — used only for in-memory skip-check.
         std::vector<std::byte> meta_bytes_for_hash = meta_raw ? std::move(*meta_raw) : std::vector<std::byte>{};
         AssetHash new_hash                         = {};
         {
-            auto hash_reader = reader.read(path);
-            if (hash_reader) new_hash = get_asset_hash(meta_bytes_for_hash, **hash_reader);
+            auto hash_reader = co_await reader.read(path);
+            if (hash_reader) new_hash = co_await get_asset_hash(meta_bytes_for_hash, **hash_reader);
         }
 
-        // Skip if unchanged (in-memory; nothing is written to the processed output).
         {
             auto infos_guard = data->processing_state->m_asset_infos.read();
             if (const auto* existing = infos_guard->get(asset_path)) {
@@ -487,37 +492,36 @@ std::expected<ProcessResult, ProcessError> AssetProcessor::process_asset_interna
                     for (const auto& dep : existing->processed_info->process_dependencies) {
                         const auto* dep_info = infos_guard->get(AssetPath(dep.path));
                         bool live_ok         = dep_info && dep_info->processed_info &&
-                                       dep_info->processed_info->full_hash == dep.full_hash;
+                                               dep_info->processed_info->full_hash == dep.full_hash;
                         if (!live_ok) {
                             dep_changed = true;
                             break;
                         }
                     }
-                    if (!dep_changed) return ProcessResult::skipped_not_changed();
+                    if (!dep_changed) co_return ProcessResult::skipped_not_changed();
                 }
             }
         }
 
-        // No disk writes — return processed info for in-memory deduplication within this run.
         ProcessedInfo new_processed_info;
         new_processed_info.hash            = new_hash;
         new_processed_info.full_hash       = new_hash;
         new_processed_info.source_mtime_ns = current_mtime_ns;
-        return ProcessResult{ProcessResultKind::Processed, std::move(new_processed_info)};
+        co_return ProcessResult{ProcessResultKind::Processed, std::move(new_processed_info)};
     }
 
     // --- We have a processor - use it ---
     auto writer_opt = source.processed_writer();
     if (!writer_opt) {
-        return std::unexpected(ProcessError{process_errors::MissingProcessedAssetWriter{}});
+        co_return std::unexpected(ProcessError{process_errors::MissingProcessedAssetWriter{}});
     }
     auto& processed_writer = writer_opt->get();
 
-    // 1. Get source meta (deserialize from file if available, else use default)
+    // 1. Get source meta
     std::unique_ptr<AssetMetaDyn> source_meta;
     std::vector<std::byte> meta_bytes_for_hash;
     {
-        auto mb_opt = reader.read_meta_bytes(path);
+        auto mb_opt = co_await reader.read_meta_bytes(path);
         if (mb_opt) {
             auto dm = processor->deserialize_meta(*mb_opt);
             if (dm) {
@@ -531,7 +535,6 @@ std::expected<ProcessResult, ProcessError> AssetProcessor::process_asset_interna
         }
     }
 
-    // Settings to use for processing (from meta, falling back to default)
     const Settings* settings_to_use = source_meta->process_settings();
     std::unique_ptr<Settings> fallback_settings;
     if (!settings_to_use) {
@@ -539,7 +542,7 @@ std::expected<ProcessResult, ProcessError> AssetProcessor::process_asset_interna
         settings_to_use   = fallback_settings.get();
     }
 
-    // 2a. Fast-path: if source mtime matches, skip without hashing.
+    // 2a. Fast-path: mtime check
     auto current_mtime_ns = to_persisted_mtime_ns(reader.last_modified(path));
     {
         auto infos_guard = data->processing_state->m_asset_infos.read();
@@ -556,20 +559,20 @@ std::expected<ProcessResult, ProcessError> AssetProcessor::process_asset_interna
                         break;
                     }
                 }
-                if (!dep_changed) return ProcessResult::skipped_not_changed();
+                if (!dep_changed) co_return ProcessResult::skipped_not_changed();
             }
         }
     }
 
-    // 2b. Compute new_hash = hash(meta_bytes + asset_bytes)
+    // 2b. Compute new_hash
     AssetHash new_hash = {};
     {
-        auto hash_reader = reader.read(path);
-        if (!hash_reader) return std::unexpected(reader_err(hash_reader.error()));
-        new_hash = get_asset_hash(meta_bytes_for_hash, **hash_reader);
+        auto hash_reader = co_await reader.read(path);
+        if (!hash_reader) co_return std::unexpected(reader_err(hash_reader.error()));
+        new_hash = co_await get_asset_hash(meta_bytes_for_hash, **hash_reader);
     }
 
-    // 3. Skip-unchanged check (hash-based fallback when mtime unavailable)
+    // 3. Skip-unchanged check
     {
         auto infos_guard = data->processing_state->m_asset_infos.read();
         if (const auto* existing = infos_guard->get(asset_path)) {
@@ -584,7 +587,7 @@ std::expected<ProcessResult, ProcessError> AssetProcessor::process_asset_interna
                         break;
                     }
                 }
-                if (!dep_changed) return ProcessResult::skipped_not_changed();
+                if (!dep_changed) co_return ProcessResult::skipped_not_changed();
             }
         }
     }
@@ -599,27 +602,27 @@ std::expected<ProcessResult, ProcessError> AssetProcessor::process_asset_interna
 
     log_begin_processing(asset_path);
 
-    // 5. Open streams for the actual process
-    auto source_stream = reader.read(path);
-    if (!source_stream) return std::unexpected(reader_err(source_stream.error()));
+    // 5. Open reader and writer for the actual process
+    auto source_reader = co_await reader.read(path);
+    if (!source_reader) co_return std::unexpected(reader_err(source_reader.error()));
 
-    auto dest_stream = processed_writer.write(path);
-    if (!dest_stream) return std::unexpected(writer_err(dest_stream.error()));
+    auto dest_writer = co_await processed_writer.write(path);
+    if (!dest_writer) co_return std::unexpected(writer_err(dest_writer.error()));
 
     // 6. Process
     ProcessedInfo new_processed_info;
     new_processed_info.hash            = new_hash;
     new_processed_info.full_hash       = new_hash;
     new_processed_info.source_mtime_ns = current_mtime_ns;
-    ProcessContext context(*this, asset_path, **source_stream, new_processed_info);
+    ProcessContext context(*this, asset_path, **source_reader, new_processed_info);
 
-    auto process_result = processor->process(context, *settings_to_use, **dest_stream);
+    auto process_result = co_await processor->process(context, *settings_to_use, **dest_writer);
     if (!process_result) {
-        return std::unexpected(std::move(process_result.error()));
+        co_return std::unexpected(std::move(process_result.error()));
     }
     auto& processed_meta = *process_result;
 
-    // 7. Compute full_hash = hash(new_hash, dep full_hashes)
+    // 7. Compute full_hash
     {
         std::vector<AssetHash> dep_hashes;
         dep_hashes.reserve(new_processed_info.process_dependencies.size());
@@ -629,80 +632,84 @@ std::expected<ProcessResult, ProcessError> AssetProcessor::process_asset_interna
         new_processed_info.full_hash = get_full_asset_hash(new_hash, dep_hashes);
     }
 
-    // 8. Embed ProcessedInfo in the processed meta and write meta file
+    // 8. Write processed meta
     processed_meta->processed_info_mut() = new_processed_info;
     auto processed_meta_bytes            = processed_meta->serialize_bytes();
     if (!processed_meta_bytes.empty()) {
-        auto meta_write = processed_writer.write_meta_bytes(path, processed_meta_bytes);
-        if (!meta_write) return std::unexpected(writer_err(meta_write.error()));
+        auto meta_write = co_await processed_writer.write_meta_bytes(path, processed_meta_bytes);
+        if (!meta_write) co_return std::unexpected(writer_err(meta_write.error()));
     }
 
     log_end_processing(asset_path);
 
-    return ProcessResult{ProcessResultKind::Processed, std::move(new_processed_info)};
+    co_return ProcessResult{ProcessResultKind::Processed, std::move(new_processed_info)};
 }
 
 // ---- Event handling ----
 
-void AssetProcessor::handle_asset_source_event(
+asio::awaitable<void> AssetProcessor::handle_asset_source_event(
     const AssetSource& source,
     const AssetSourceEvent& event,
     utils::Sender<std::pair<AssetSourceId, std::filesystem::path>>& sender) const {
-    std::visit(utils::visitor{
-                   [&](const source_events::AddedAsset& e) { sender.send(std::pair{source.id(), e.path}); },
-                   [&](const source_events::ModifiedAsset& e) { sender.send(std::pair{source.id(), e.path}); },
-                   [&](const source_events::AddedMeta& e) { sender.send(std::pair{source.id(), e.path}); },
-                   [&](const source_events::ModifiedMeta& e) { sender.send(std::pair{source.id(), e.path}); },
-                   [&](const source_events::RemovedAsset& e) { handle_removed_asset(source, e.path); },
-                   [&](const source_events::RemovedMeta& e) { handle_removed_meta(source, e.path, sender); },
-                   [&](const source_events::AddedDirectory& e) { handle_added_folder(source, e.path, sender); },
-                   [&](const source_events::RemovedDirectory& e) { handle_removed_folder(source, e.path); },
-                   [&](const source_events::RenamedAsset& e) {
-                       if (e.old_path == e.new_path) {
-                           sender.send(std::pair{source.id(), e.new_path});
-                       } else {
-                           handle_renamed_asset(source, e.old_path, e.new_path, sender);
-                       }
-                   },
-                   [&](const source_events::RenamedMeta& e) {
-                       if (e.old_path == e.new_path) {
-                           sender.send(std::pair{source.id(), e.new_path});
-                       } else {
-                           spdlog::debug("Meta renamed from {} to {}", e.old_path.string(), e.new_path.string());
-                           sender.send(std::pair{source.id(), e.old_path});
-                           sender.send(std::pair{source.id(), e.new_path});
-                       }
-                   },
-                   [&](const source_events::RenamedDirectory& e) {
-                       if (e.old_path == e.new_path) {
-                           handle_added_folder(source, e.new_path, sender);
-                       } else {
-                           handle_removed_folder(source, e.old_path);
-                           handle_added_folder(source, e.new_path, sender);
-                       }
-                   },
-                   [&](const source_events::RemovedUnknown& e) {
-                       auto ungated_opt = source.ungated_processed_reader();
-                       if (!ungated_opt) return;
-                       auto& processed_reader = ungated_opt->get();
-                       auto is_dir            = processed_reader.is_directory(e.path);
-                       if (is_dir && *is_dir) {
-                           handle_removed_folder(source, e.path);
-                       } else if (e.is_meta) {
-                           handle_removed_meta(source, e.path, sender);
-                       } else {
-                           handle_removed_asset(source, e.path);
-                       }
-                   },
-               },
-               event);
+    if (auto* e = std::get_if<source_events::AddedAsset>(&event)) {
+        sender.send(std::pair{source.id(), e->path});
+    } else if (auto* e = std::get_if<source_events::ModifiedAsset>(&event)) {
+        sender.send(std::pair{source.id(), e->path});
+    } else if (auto* e = std::get_if<source_events::AddedMeta>(&event)) {
+        sender.send(std::pair{source.id(), e->path});
+    } else if (auto* e = std::get_if<source_events::ModifiedMeta>(&event)) {
+        sender.send(std::pair{source.id(), e->path});
+    } else if (auto* e = std::get_if<source_events::RemovedAsset>(&event)) {
+        co_await handle_removed_asset(source, e->path);
+    } else if (auto* e = std::get_if<source_events::RemovedMeta>(&event)) {
+        handle_removed_meta(source, e->path, sender);
+    } else if (auto* e = std::get_if<source_events::AddedDirectory>(&event)) {
+        co_await handle_added_folder(source, e->path, sender);
+    } else if (auto* e = std::get_if<source_events::RemovedDirectory>(&event)) {
+        co_await handle_removed_folder(source, e->path);
+    } else if (auto* e = std::get_if<source_events::RenamedAsset>(&event)) {
+        if (e->old_path == e->new_path) {
+            sender.send(std::pair{source.id(), e->new_path});
+        } else {
+            co_await handle_renamed_asset(source, e->old_path, e->new_path, sender);
+        }
+    } else if (auto* e = std::get_if<source_events::RenamedMeta>(&event)) {
+        if (e->old_path == e->new_path) {
+            sender.send(std::pair{source.id(), e->new_path});
+        } else {
+            spdlog::debug("Meta renamed from {} to {}", e->old_path.string(), e->new_path.string());
+            sender.send(std::pair{source.id(), e->old_path});
+            sender.send(std::pair{source.id(), e->new_path});
+        }
+    } else if (auto* e = std::get_if<source_events::RenamedDirectory>(&event)) {
+        if (e->old_path == e->new_path) {
+            co_await handle_added_folder(source, e->new_path, sender);
+        } else {
+            co_await handle_removed_folder(source, e->old_path);
+            co_await handle_added_folder(source, e->new_path, sender);
+        }
+    } else if (auto* e = std::get_if<source_events::RemovedUnknown>(&event)) {
+        auto ungated_opt = source.ungated_processed_reader();
+        if (ungated_opt) {
+            auto& processed_reader = ungated_opt->get();
+            auto is_dir            = co_await processed_reader.is_directory(e->path);
+            if (is_dir && *is_dir) {
+                co_await handle_removed_folder(source, e->path);
+            } else if (e->is_meta) {
+                handle_removed_meta(source, e->path, sender);
+            } else {
+                co_await handle_removed_asset(source, e->path);
+            }
+        }
+    }
 }
 
-void AssetProcessor::handle_added_folder(const AssetSource& source,
-                                         const std::filesystem::path& path,
-                                         utils::Sender<std::pair<AssetSourceId, std::filesystem::path>>& sender) const {
+asio::awaitable<void> AssetProcessor::handle_added_folder(
+    const AssetSource& source,
+    const std::filesystem::path& path,
+    utils::Sender<std::pair<AssetSourceId, std::filesystem::path>>& sender) const {
     spdlog::debug("Folder {} was added. Attempting to re-process", AssetPath(source.id(), path).string());
-    queue_processing_tasks_for_folder(source, path, sender);
+    co_await queue_processing_tasks_for_folder(source, path, sender);
 }
 
 void AssetProcessor::handle_removed_meta(const AssetSource& source,
@@ -712,28 +719,29 @@ void AssetProcessor::handle_removed_meta(const AssetSource& source,
     sender.send(std::pair{source.id(), path});
 }
 
-void AssetProcessor::handle_removed_asset(const AssetSource& source, const std::filesystem::path& path) const {
+asio::awaitable<void> AssetProcessor::handle_removed_asset(const AssetSource& source,
+                                                           const std::filesystem::path& path) const {
     auto asset_path = AssetPath(source.id(), path);
     spdlog::debug("Removing processed {} because source was removed", asset_path.string());
     auto lock = [&]() -> std::shared_ptr<std::shared_mutex> {
         auto infos_guard = data->processing_state->m_asset_infos.write();
         return infos_guard->remove(asset_path);
     }();
-    if (!lock) return;
-    // Wait for uncontested write access
+    if (!lock) co_return;
     std::unique_lock write_lock(*lock);
-    remove_processed_asset_and_meta(source, path);
+    co_await remove_processed_asset_and_meta(source, path);
 }
 
-void AssetProcessor::handle_removed_folder(const AssetSource& source, const std::filesystem::path& path) const {
+asio::awaitable<void> AssetProcessor::handle_removed_folder(const AssetSource& source,
+                                                            const std::filesystem::path& path) const {
     spdlog::debug("Removing folder {} because source was removed", path.string());
     auto ungated_opt = source.ungated_processed_reader();
-    if (!ungated_opt) return;
+    if (!ungated_opt) co_return;
     auto& processed_reader = ungated_opt->get();
-    auto dir_result        = processed_reader.read_directory(path);
+    auto dir_result        = co_await processed_reader.read_directory(path);
     if (dir_result) {
         for (auto child_path : *dir_result) {
-            handle_removed_asset(source, child_path);
+            co_await handle_removed_asset(source, child_path);
         }
     } else {
         auto& err = dir_result.error();
@@ -747,11 +755,11 @@ void AssetProcessor::handle_removed_folder(const AssetSource& source, const std:
     }
     auto writer_opt = source.processed_writer();
     if (writer_opt) {
-        (void)writer_opt->get().remove_directory(path);
+        (void)co_await writer_opt->get().remove_directory(path);
     }
 }
 
-void AssetProcessor::handle_renamed_asset(
+asio::awaitable<void> AssetProcessor::handle_renamed_asset(
     const AssetSource& source,
     const std::filesystem::path& old_path,
     const std::filesystem::path& new_path,
@@ -759,7 +767,7 @@ void AssetProcessor::handle_renamed_asset(
     auto old_asset  = AssetPath(source.id(), old_path);
     auto new_asset  = AssetPath(source.id(), new_path);
     auto writer_opt = source.processed_writer();
-    if (!writer_opt) return;
+    if (!writer_opt) co_return;
     auto& processed_writer = writer_opt->get();
 
     auto lock_pair =
@@ -767,40 +775,39 @@ void AssetProcessor::handle_renamed_asset(
         auto infos_guard = data->processing_state->m_asset_infos.write();
         return infos_guard->rename(old_asset, new_asset, sender);
     }();
-    if (!lock_pair) return;
+    if (!lock_pair) co_return;
 
     auto& [old_lock, new_lock] = *lock_pair;
     std::unique_lock old_write_lock(*old_lock);
     std::unique_lock new_write_lock(*new_lock);
-    (void)processed_writer.rename(old_path, new_path);
-    (void)processed_writer.rename_meta(old_path, new_path);
+    (void)co_await processed_writer.rename(old_path, new_path);
+    (void)co_await processed_writer.rename_meta(old_path, new_path);
 }
 
 // ---- Task dispatching ----
 
-void AssetProcessor::queue_processing_tasks_for_folder(
+asio::awaitable<void> AssetProcessor::queue_processing_tasks_for_folder(
     const AssetSource& source,
     const std::filesystem::path& folder,
     utils::Sender<std::pair<AssetSourceId, std::filesystem::path>>& sender) const {
-    auto is_dir = source.reader().is_directory(folder);
+    auto is_dir = co_await source.reader().is_directory(folder);
     if (is_dir && *is_dir) {
-        auto dir_result = source.reader().read_directory(folder);
-        if (!dir_result) return;
+        auto dir_result = co_await source.reader().read_directory(folder);
+        if (!dir_result) co_return;
         for (auto child_path : *dir_result) {
-            queue_processing_tasks_for_folder(source, child_path, sender);
+            co_await queue_processing_tasks_for_folder(source, child_path, sender);
         }
     } else {
-        // Skip .meta sidecar files - they are managed alongside their asset file.
         if (folder.extension() != ".meta") {
             sender.send(std::pair{source.id(), folder});
         }
     }
 }
 
-void AssetProcessor::queue_initial_processing_tasks(
+asio::awaitable<void> AssetProcessor::queue_initial_processing_tasks(
     utils::Sender<std::pair<AssetSourceId, std::filesystem::path>>& sender) const {
     for (auto& source : sources()->iter_processed()) {
-        queue_processing_tasks_for_folder(source, std::filesystem::path(""), sender);
+        co_await queue_processing_tasks_for_folder(source, std::filesystem::path(""), sender);
     }
 }
 
@@ -837,7 +844,10 @@ void AssetProcessor::spawn_source_change_event_listeners(
                 AssetProcessor proc(std::move(tmp_server), locked_data);
                 auto source_opt = proc.get_source(source_id);
                 if (!source_opt) return;
-                proc.handle_asset_source_event(source_opt->get(), *event, task_sender);
+                asio::io_context ctx;
+                asio::co_spawn(ctx, proc.handle_asset_source_event(source_opt->get(), *event, task_sender),
+                               asio::detached);
+                ctx.run();
             }
         });
     }
@@ -923,7 +933,9 @@ void AssetProcessor::execute_processing_tasks(
                            auto t  = std::move(e.task);
                            utils::IOTaskPool::instance().detach_task([p, s, es, t]() mutable {
                                auto& [source_id, path] = t;
-                               p.process_asset(source_id, path, std::move(s));
+                               asio::io_context ctx;
+                               asio::co_spawn(ctx, p.process_asset(source_id, path, std::move(s)), asio::detached);
+                               ctx.run();
                                es.send(FinishedTaskEvent{});
                            });
                            data->processing_state->set_state(ProcessorState::Processing);
@@ -948,58 +960,58 @@ void AssetProcessor::execute_processing_tasks(
 
 // ---- File system helpers ----
 
-void AssetProcessor::remove_processed_asset_and_meta(const AssetSource& source,
-                                                     const std::filesystem::path& path) const {
+asio::awaitable<void> AssetProcessor::remove_processed_asset_and_meta(const AssetSource& source,
+                                                                      const std::filesystem::path& path) const {
     auto writer_opt = source.processed_writer();
-    if (!writer_opt) return;
+    if (!writer_opt) co_return;
     auto& writer = writer_opt->get();
 
-    auto rm1 = writer.remove(path);
+    auto rm1 = co_await writer.remove(path);
     if (!rm1) {
         spdlog::warn("Failed to remove non-existent asset {}", path.string());
     }
-    auto rm2 = writer.remove_meta(path);
+    auto rm2 = co_await writer.remove_meta(path);
     if (!rm2) {
         spdlog::warn("Failed to remove non-existent meta {}", path.string());
     }
-    clean_empty_processed_ancestor_folders(source, path);
+    co_await clean_empty_processed_ancestor_folders(source, path);
 }
 
-void AssetProcessor::clean_empty_processed_ancestor_folders(const AssetSource& source,
-                                                            const std::filesystem::path& path) const {
+asio::awaitable<void> AssetProcessor::clean_empty_processed_ancestor_folders(const AssetSource& source,
+                                                                             const std::filesystem::path& path) const {
     if (path.is_absolute()) {
         spdlog::error("Attempted to clean up ancestor folders of an absolute path. Skipping.");
-        return;
+        co_return;
     }
     auto writer_opt = source.processed_writer();
-    if (!writer_opt) return;
+    if (!writer_opt) co_return;
     auto& writer = writer_opt->get();
 
     auto current = path.parent_path();
     while (!current.empty()) {
-        auto result = writer.remove_directory(current);
-        if (!result) break;  // stop walking up if removal fails
+        auto result = co_await writer.remove_directory(current);
+        if (!result) break;
         current = current.parent_path();
     }
 }
 
-void AssetProcessor::write_default_meta_file_for_path(const AssetSource& source, const AssetPath& asset_path) const {
+asio::awaitable<void> AssetProcessor::write_default_meta_file_for_path(const AssetSource& source,
+                                                                       const AssetPath& asset_path) const {
     auto ext = asset_path.get_full_extension();
-    if (!ext) return;
+    if (!ext) co_return;
 
     auto processor = get_default_processor(*ext);
-    if (!processor) return;
+    if (!processor) co_return;
 
-    // Check if meta already exists
     auto& reader       = source.reader();
-    auto existing_meta = reader.read_meta_bytes(asset_path.path);
-    if (existing_meta) return;  // meta already exists
+    auto existing_meta = co_await reader.read_meta_bytes(asset_path.path);
+    if (existing_meta) co_return;
 
     auto meta       = processor->default_meta();
     auto meta_bytes = meta->serialize_bytes();
-    if (meta_bytes.empty()) return;
+    if (meta_bytes.empty()) co_return;
 
     auto writer_opt = source.writer();
-    if (!writer_opt) return;
-    (void)writer_opt->get().write_meta_bytes(asset_path.path, meta_bytes);
+    if (!writer_opt) co_return;
+    (void)co_await writer_opt->get().write_meta_bytes(asset_path.path, meta_bytes);
 }

@@ -1,3 +1,7 @@
+module;
+
+#include <asio/awaitable.hpp>
+
 export module epix.image;
 
 import epix.core;
@@ -295,9 +299,9 @@ export struct ImageLoader {
     static std::span<std::string_view> extensions() noexcept;
     /** @brief Load an image asset from a reader.
      * @param context Asset loading context. */
-    static std::expected<Image, ImageLoadError> load(std::istream& reader,
-                                                     const Settings& settings,
-                                                     assets::LoadContext& context);
+    static asio::awaitable<std::expected<Image, ImageLoadError>> load(assets::Reader& reader,
+                                                                      const Settings& settings,
+                                                                      assets::LoadContext& context);
 };
 /** @brief Plugin that registers the image asset loader and related
  * systems. */
@@ -372,8 +376,7 @@ template <typename T>
         { std::span(std::forward<T>(t)) };
         requires std::is_trivially_copyable_v<typename span_type<T>::type>;
     }
-std::optional<Image> Image::create3d(
-    std::uint32_t w, std::uint32_t h, std::uint32_t depth, Format fmt, T&& initData) {
+std::optional<Image> Image::create3d(std::uint32_t w, std::uint32_t h, std::uint32_t depth, Format fmt, T&& initData) {
     std::optional<Image> img;
     auto& info               = getFormatInfo(fmt);
     std::size_t expectedSize = static_cast<std::size_t>(w) * h * std::max(depth, 1u) * info.pixelSize();

@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 
+#include <asio/awaitable.hpp>
+
 import std;
 import epix.core;
 import epix.meta;
@@ -81,11 +83,13 @@ struct TestTextLoader {
         return std::span<std::string_view>(exts.data(), exts.size());
     }
 
-    static std::expected<std::string, Error> load(std::istream& reader, const Settings&, epix::assets::LoadContext&) {
+    static asio::awaitable<std::expected<std::string, Error>> load(Reader& reader,
+                                                                   const Settings&,
+                                                                   epix::assets::LoadContext&) {
         load_count.fetch_add(1);
-        std::stringstream ss;
-        ss << reader.rdbuf();
-        return ss.str();
+        std::vector<uint8_t> buf;
+        co_await reader.read_to_end(buf);
+        co_return std::string(buf.begin(), buf.end());
     }
 };
 
@@ -93,10 +97,10 @@ struct TestProcess {
     struct Settings {};
     using OutputLoader = TestTextLoader;
 
-    std::expected<OutputLoader::Settings, std::exception_ptr> process(ProcessContext&,
-                                                                      const Settings&,
-                                                                      std::ostream&) const {
-        return OutputLoader::Settings{};
+    asio::awaitable<std::expected<OutputLoader::Settings, std::exception_ptr>> process(ProcessContext&,
+                                                                                       const Settings&,
+                                                                                       Writer&) const {
+        co_return OutputLoader::Settings{};
     }
 };
 
@@ -115,12 +119,12 @@ struct DependencyManifestLoader {
         return std::span<std::string_view>(exts.data(), exts.size());
     }
 
-    static std::expected<DependencyManifestAsset, Error> load(std::istream& reader,
-                                                              const Settings&,
-                                                              epix::assets::LoadContext& context) {
-        std::stringstream ss;
-        ss << reader.rdbuf();
-        auto dependency_path = ss.str();
+    static asio::awaitable<std::expected<DependencyManifestAsset, Error>> load(Reader& reader,
+                                                                               const Settings&,
+                                                                               epix::assets::LoadContext& context) {
+        std::vector<uint8_t> buf;
+        co_await reader.read_to_end(buf);
+        auto dependency_path = std::string(buf.begin(), buf.end());
         while (!dependency_path.empty() && (dependency_path.back() == '\n' || dependency_path.back() == '\r' ||
                                             dependency_path.back() == ' ' || dependency_path.back() == '\t')) {
             dependency_path.pop_back();
@@ -128,7 +132,7 @@ struct DependencyManifestLoader {
 
         auto dep_handle = context.asset_server().load_untyped(AssetPath(dependency_path));
         context.track_dependency(UntypedAssetId(dep_handle.id()));
-        return DependencyManifestAsset{std::string("manifest:") + dependency_path, std::move(dep_handle)};
+        co_return DependencyManifestAsset{std::string("manifest:") + dependency_path, std::move(dep_handle)};
     }
 };
 
@@ -198,11 +202,13 @@ struct AltTextLoader {
         return std::span<std::string_view>(exts.data(), exts.size());
     }
 
-    static std::expected<std::string, Error> load(std::istream& reader, const Settings&, epix::assets::LoadContext&) {
+    static asio::awaitable<std::expected<std::string, Error>> load(Reader& reader,
+                                                                   const Settings&,
+                                                                   epix::assets::LoadContext&) {
         load_count.fetch_add(1);
-        std::stringstream ss;
-        ss << reader.rdbuf();
-        return ss.str();
+        std::vector<uint8_t> buf;
+        co_await reader.read_to_end(buf);
+        co_return std::string(buf.begin(), buf.end());
     }
 };
 
@@ -224,11 +230,13 @@ struct SettingsCapturingLoader {
         return std::span<std::string_view>(exts.data(), exts.size());
     }
 
-    static std::expected<std::string, Error> load(std::istream& reader, const Settings& s, epix::assets::LoadContext&) {
+    static asio::awaitable<std::expected<std::string, Error>> load(Reader& reader,
+                                                                   const Settings& s,
+                                                                   epix::assets::LoadContext&) {
         last_quality.store(s.quality);
-        std::stringstream ss;
-        ss << reader.rdbuf();
-        return ss.str();
+        std::vector<uint8_t> buf;
+        co_await reader.read_to_end(buf);
+        co_return std::string(buf.begin(), buf.end());
     }
 };
 
@@ -976,7 +984,8 @@ TEST(HotReload, LoadMissingFile_FailsGracefully) {
     // The asset must not be in the Loaded state.
     auto state = server.get_load_state(handle.id());
     ASSERT_TRUE(state.has_value());
-    EXPECT_TRUE(std::holds_alternative<std::shared_ptr<AssetLoadError>>(*state)) << "Expected a load error for a missing file";
+    EXPECT_TRUE(std::holds_alternative<std::shared_ptr<AssetLoadError>>(*state))
+        << "Expected a load error for a missing file";
 
     // Assets<T> must not contain the value.
     auto& assets = app.resource<Assets<std::string>>();
@@ -1114,8 +1123,10 @@ struct FailingLoader {
         return std::span<std::string_view>(exts.data(), exts.size());
     }
 
-    static std::expected<std::string, Error> load(std::istream&, const Settings&, epix::assets::LoadContext&) {
-        return std::unexpected(std::make_exception_ptr(std::runtime_error("simulated parse error")));
+    static asio::awaitable<std::expected<std::string, Error>> load(Reader&,
+                                                                   const Settings&,
+                                                                   epix::assets::LoadContext&) {
+        co_return std::unexpected(std::make_exception_ptr(std::runtime_error("simulated parse error")));
     }
 };
 
@@ -1171,7 +1182,8 @@ TEST(LoadFailure, LoaderError_FailsWithAssetLoaderException) {
 
     auto state = server.get_load_state(handle.id());
     ASSERT_TRUE(state.has_value());
-    EXPECT_TRUE(std::holds_alternative<std::shared_ptr<AssetLoadError>>(*state)) << "Expected a load error for malformed content";
+    EXPECT_TRUE(std::holds_alternative<std::shared_ptr<AssetLoadError>>(*state))
+        << "Expected a load error for malformed content";
 
     if (std::holds_alternative<std::shared_ptr<AssetLoadError>>(*state)) {
         auto& error = *std::get<std::shared_ptr<AssetLoadError>>(*state);
@@ -1218,16 +1230,19 @@ TEST(LoadFailure, MixedScenarios_CorrectStateForEach) {
     {
         auto state = server.get_load_state(h_missing.id());
         ASSERT_TRUE(state.has_value());
-        EXPECT_TRUE(std::holds_alternative<std::shared_ptr<AssetLoadError>>(*state)) << "Missing file should produce an error state";
+        EXPECT_TRUE(std::holds_alternative<std::shared_ptr<AssetLoadError>>(*state))
+            << "Missing file should produce an error state";
     }
 
     // 3. Loader error
     {
         auto state = server.get_load_state(h_error.id());
         ASSERT_TRUE(state.has_value());
-        EXPECT_TRUE(std::holds_alternative<std::shared_ptr<AssetLoadError>>(*state)) << "Failing loader should produce an error state";
+        EXPECT_TRUE(std::holds_alternative<std::shared_ptr<AssetLoadError>>(*state))
+            << "Failing loader should produce an error state";
         if (std::holds_alternative<std::shared_ptr<AssetLoadError>>(*state)) {
-            EXPECT_TRUE(std::holds_alternative<load_error::AssetLoaderException>(*std::get<std::shared_ptr<AssetLoadError>>(*state)));
+            EXPECT_TRUE(std::holds_alternative<load_error::AssetLoaderException>(
+                *std::get<std::shared_ptr<AssetLoadError>>(*state)));
         }
     }
 }
@@ -1803,9 +1818,9 @@ TEST(MetaFileIntegration, MetaFile_SelectsLoaderByName) {
 
     // Use the full meta format (not just minimal) so that full meta deserialization succeeds.
     AssetMeta<AltTextLoader::Settings, EmptySettings> meta;
-    meta.meta_format_version = std::string(META_FORMAT_VERSION);
-    meta.action              = AssetActionType::Load;
-    meta.loader              = std::string(meta::type_id<AltTextLoader>{}.name());
+    meta.meta_format_version           = std::string(META_FORMAT_VERSION);
+    meta.action                        = AssetActionType::Load;
+    meta.loader                        = std::string(meta::type_id<AltTextLoader>{}.name());
     meta.loader_settings_storage.value = AltTextLoader::Settings{};
 
     auto meta_bytes_opt = serialize_asset_meta(meta);
@@ -1973,7 +1988,8 @@ TEST(DeserializeMetaIntegration, FailsWithDeserializeMeta_WhenMetaFileBytesAreGa
     EXPECT_TRUE(std::holds_alternative<std::shared_ptr<AssetLoadError>>(*state))
         << "Garbage .meta file should cause a DeserializeMeta load failure";
     if (std::holds_alternative<std::shared_ptr<AssetLoadError>>(*state)) {
-        EXPECT_TRUE(std::holds_alternative<load_error::DeserializeMeta>(*std::get<std::shared_ptr<AssetLoadError>>(*state)))
+        EXPECT_TRUE(
+            std::holds_alternative<load_error::DeserializeMeta>(*std::get<std::shared_ptr<AssetLoadError>>(*state)))
             << "Expected DeserializeMeta error variant for garbage meta bytes";
     }
 }

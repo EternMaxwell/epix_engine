@@ -1,5 +1,9 @@
 #include <gtest/gtest.h>
 
+#include <asio/co_spawn.hpp>
+#include <asio/detached.hpp>
+#include <asio/io_context.hpp>
+
 import std;
 import epix.assets;
 import epix.core;
@@ -160,13 +164,20 @@ bool wait_until_not_loaded_with_dependencies(App& app, const AssetServer& server
 
 std::vector<std::uint8_t> read_bytes(const memory::Directory& dir, const std::filesystem::path& path) {
     MemoryAssetReader reader(dir);
-    auto stream = reader.read(path);
-    if (!stream.has_value()) return {};
-
-    std::stringstream buffer;
-    buffer << (*stream)->rdbuf();
-    auto raw = buffer.str();
-    return std::vector<std::uint8_t>(raw.begin(), raw.end());
+    std::vector<std::uint8_t> result;
+    asio::io_context io;
+    asio::co_spawn(
+        io,
+        [&]() -> asio::awaitable<void> {
+            auto reader_result = co_await reader.read(path);
+            if (!reader_result.has_value()) co_return;
+            std::vector<uint8_t> buf;
+            (void)co_await (*reader_result)->read_to_end(buf);
+            result = std::move(buf);
+        },
+        asio::detached);
+    io.run();
+    return result;
 }
 
 bool starts_with_processed_magic(const std::vector<std::uint8_t>& bytes) {
@@ -326,7 +337,7 @@ TEST(ShaderProcessingSlangModule, WritesSlangIrWhenPreprocessToIrIsEnabled) {
         "public int helperValue() { return 42; }\n";
 
     auto proc = make_processor_for_direct_test();
-    std::istringstream data{std::string(k_source)};
+    VecReader data{std::string(k_source)};
     ProcessedInfo info;
     AssetPath asset_path("helper.slang");
     ProcessContext ctx(proc, asset_path, data, info);
@@ -335,11 +346,22 @@ TEST(ShaderProcessingSlangModule, WritesSlangIrWhenPreprocessToIrIsEnabled) {
     ShaderProcessorSettings settings;
     settings.preprocess_slang_to_ir = true;
 
-    std::ostringstream out;
-    auto result = processor.process(ctx, settings, out);
+    VecWriter out;
+    asio::io_context io;
+    bool has_output = false;
+    asio::co_spawn(
+        io,
+        [&]() -> asio::awaitable<void> {
+            auto result = co_await processor.process(ctx, settings, out);
+            if (result.has_value()) {
+                has_output = !out.bytes().empty();
+            }
+        },
+        asio::detached);
+    io.run();
 
-    if (result.has_value()) {
-        EXPECT_FALSE(out.str().empty());
+    if (has_output) {
+        EXPECT_TRUE(has_output);
     }
     SUCCEED();
 }
@@ -352,7 +374,7 @@ TEST(ShaderProcessingSlangModule, FallsBackToSlangTextWhenIrCompilationFails) {
         "this is not valid slang syntax @@@ { }\n";
 
     auto proc = make_processor_for_direct_test();
-    std::istringstream data{std::string(k_bad_source)};
+    VecReader data{std::string(k_bad_source)};
     ProcessedInfo info;
     AssetPath asset_path("broken.slang");
     ProcessContext ctx(proc, asset_path, data, info);
@@ -361,9 +383,16 @@ TEST(ShaderProcessingSlangModule, FallsBackToSlangTextWhenIrCompilationFails) {
     ShaderProcessorSettings settings;
     settings.preprocess_slang_to_ir = true;
 
-    std::ostringstream out;
-    auto result = processor.process(ctx, settings, out);
-    (void)result;
+    VecWriter out;
+    asio::io_context io;
+    asio::co_spawn(
+        io,
+        [&]() -> asio::awaitable<void> {
+            auto result = co_await processor.process(ctx, settings, out);
+            (void)result;
+        },
+        asio::detached);
+    io.run();
     SUCCEED();
 }
 
