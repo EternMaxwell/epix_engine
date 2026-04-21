@@ -1,10 +1,24 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <algorithm>
+#include <expected>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <ranges>
+#include <stdexcept>
+#include <string>
+#include <unordered_set>
+#include <utility>
+#include <variant>
+#endif
 #include <spdlog/spdlog.h>
 
 module epix.assets;
-
+#ifdef EPIX_IMPORT_STD
 import std;
+#endif
 import epix.meta;
 import epix.utils;
 import epix.core;

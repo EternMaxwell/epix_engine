@@ -1,11 +1,14 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <optional>
+#endif
 #include <spdlog/spdlog.h>
 
 module epix.core;
-
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 import :entities;
 import :world.entity_ref;
 import :world.interface;

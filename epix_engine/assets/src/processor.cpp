@@ -1,5 +1,22 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <cstddef>
+#include <cstdint>
+#include <expected>
+#include <filesystem>
+#include <functional>
+#include <memory>
+#include <mutex>
+#include <optional>
+#include <shared_mutex>
+#include <string>
+#include <string_view>
+#include <utility>
+#include <variant>
+#include <vector>
+#include <chrono>
+#endif
 #include <spdlog/spdlog.h>
 
 #include <asio/awaitable.hpp>
@@ -8,9 +25,9 @@ module;
 #include <asio/io_context.hpp>
 
 module epix.assets;
-
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 using namespace epix::assets;
 
 namespace {

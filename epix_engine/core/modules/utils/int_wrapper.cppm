@@ -1,9 +1,14 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <concepts>
+#include <cstddef>
+#include <functional>
+#endif
 export module epix.utils:int_wrapper;
-
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 namespace epix::utils {
 /** @brief CRTP-style wrapper for integral types providing strong typing.
  *

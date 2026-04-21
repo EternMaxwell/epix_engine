@@ -1,12 +1,23 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <cstddef>
+#include <cstdint>
+#include <functional>
+#include <optional>
+#include <ranges>
+#include <variant>
+#include <vector>
+#endif
 export module epix.mesh:gpumesh;
 
 import :mesh;
 
 import epix.render;
 import epix.assets;
+#ifdef EPIX_IMPORT_STD
 import std;
+#endif
 import webgpu;
 
 namespace epix::mesh {

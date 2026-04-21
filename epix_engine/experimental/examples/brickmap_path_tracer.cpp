@@ -1,12 +1,25 @@
-﻿// BrickMap Path Tracer — dedicated 3D sub-graph example
+// BrickMap Path Tracer — dedicated 3D sub-graph example
 // Uses tree_extendible_grid + BrickMap for scene storage, a custom render-graph
 // sub-graph (VoxelGraph) for a 3D perspective camera, compute path tracing +
 // fullscreen blit.
 
 #include <imgui.h>
 #include <spdlog/spdlog.h>
-
+#ifndef EPIX_IMPORT_STD
+#include <algorithm>
+#include <array>
+#include <cstddef>
+#include <cstdint>
+#include <optional>
+#include <span>
+#include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
+#endif
+#ifdef EPIX_IMPORT_STD
 import std;
+#endif
 import glm;
 import webgpu;
 import epix.core;

@@ -1,6 +1,14 @@
-export module epix.window:events;
+module;
+#ifndef EPIX_IMPORT_STD
+#include <string>
+#include <utility>
+#include <vector>
+#endif
 
+export module epix.window:events;
+#ifdef EPIX_IMPORT_STD
 import std;
+#endif
 import epix.core;
 
 export namespace epix::window {

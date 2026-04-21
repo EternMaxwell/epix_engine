@@ -1,8 +1,17 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <concepts>
+#include <expected>
+#include <format>
+#include <functional>
+#include <stdexcept>
+#include <utility>
+#endif
 export module epix.core:app.extract;
-
+#ifdef EPIX_IMPORT_STD
 import std;
+#endif
 import epix.meta;
 
 import :world;

@@ -1,5 +1,11 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <cstdint>
+#include <memory>
+#include <stdexcept>
+#include <utility>
+#endif
 #include <spdlog/spdlog.h>
 
 #include <memory>
@@ -46,8 +52,9 @@ std::shared_ptr<Display> openDisplay();
 #include <webgpu/webgpu.h>
 
 module epix.sfml.render;
-
+#ifdef EPIX_IMPORT_STD
 import std;
+#endif
 import epix.core;
 import epix.render;
 import epix.sfml.core;

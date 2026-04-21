@@ -1,9 +1,20 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <algorithm>
+#include <bit>
+#include <concepts>
+#include <cstddef>
+#include <cstdint>
+#include <functional>
+#include <ranges>
+#include <utility>
+#include <vector>
+#endif
 export module epix.utils:bit_vector;
-
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 namespace epix::utils {
 /** @brief Dynamic bitset with set-theoretic operations (intersection, union, difference, etc.).
  *

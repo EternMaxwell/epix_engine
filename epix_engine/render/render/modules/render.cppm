@@ -1,9 +1,15 @@
+module;
+#ifndef EPIX_IMPORT_STD
+#include <functional>
+#endif
+
 export module epix.render;
 
 import epix.core;
 import webgpu;
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 export import epix.shader;
 
 export import :schedule;

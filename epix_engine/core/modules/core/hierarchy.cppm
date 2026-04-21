@@ -1,9 +1,12 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <unordered_set>
+#endif
 export module epix.core:hierarchy;
-
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 import :entities;
 import :world.decl;
 import :component;

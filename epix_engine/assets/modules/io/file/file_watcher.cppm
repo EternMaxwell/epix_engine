@@ -1,10 +1,15 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <filesystem>
+#include <memory>
+#endif
 #include <efsw/efsw.hpp>
 
 export module epix.assets:io.file.watcher;
-
+#ifdef EPIX_IMPORT_STD
 import std;
+#endif
 import epix.meta;
 import epix.utils;
 

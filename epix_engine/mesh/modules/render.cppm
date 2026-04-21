@@ -1,5 +1,14 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <cstddef>
+#include <cstdint>
+#include <expected>
+#include <format>
+#include <optional>
+#include <span>
+#include <vector>
+#endif
 export module epix.mesh:render;
 
 import glm;
@@ -8,8 +17,9 @@ import epix.assets;
 import epix.core;
 import epix.image;
 import epix.render;
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 import :mesh;
 import :gpumesh;
 

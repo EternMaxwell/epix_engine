@@ -1,9 +1,17 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <concepts>
+#include <cstddef>
+#include <functional>
+#include <type_traits>
+#include <utility>
+#include <vector>
+#endif
 export module epix.core:world.commands;
-
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 import :world.decl;
 
 namespace epix::core {

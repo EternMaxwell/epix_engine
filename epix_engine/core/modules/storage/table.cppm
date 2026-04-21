@@ -1,9 +1,22 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <ranges>
+#include <span>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+#endif
 export module epix.core:storage.table;
-
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 import :storage.sparse_set;
 import :storage.dense;
 

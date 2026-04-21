@@ -9,9 +9,9 @@ import epix.transform;
 import epix.render;
 import epix.sfml.core;
 import epix.sfml.render;
-
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 using namespace epix::core;
 using namespace epix;
 

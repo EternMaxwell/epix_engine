@@ -1,5 +1,11 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <array>
+#include <cstddef>
+#include <span>
+#include <utility>
+#endif
 export module epix.text:render;
 
 import :font;
@@ -10,8 +16,9 @@ import epix.image;
 import epix.mesh;
 import epix.transform;
 import glm;
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 namespace epix::text {
 /** @brief Component holding a generated mesh and bounding metrics for
  * rendered text.

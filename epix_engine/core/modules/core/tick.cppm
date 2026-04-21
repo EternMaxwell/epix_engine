@@ -1,9 +1,14 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <algorithm>
+#include <cstdint>
+#include <limits>
+#endif
 export module epix.core:tick;
-
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 namespace epix::core {
 constexpr std::uint32_t CHECK_TICK_THRESHOLD = 518400000;
 constexpr std::uint32_t MAX_CHANGE_AGE = std::numeric_limits<std::uint32_t>::max() - (2 * CHECK_TICK_THRESHOLD - 1);

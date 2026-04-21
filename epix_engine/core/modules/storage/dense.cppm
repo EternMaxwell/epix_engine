@@ -1,11 +1,22 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <cassert>
+#include <cstddef>
+#include <cstdint>
+#include <functional>
+#include <optional>
+#include <ranges>
+#include <span>
+#include <utility>
+#include <vector>
+#endif
 #include <cassert>
 
 export module epix.core:storage.dense;
-
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 import :tick;
 import :storage.untyped_vector;
 

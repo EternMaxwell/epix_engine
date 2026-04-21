@@ -1,8 +1,25 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <concepts>
+#include <cstddef>
+#include <cstdint>
+#include <expected>
+#include <format>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <stdexcept>
+#include <string>
+#include <tuple>
+#include <type_traits>
+#include <utility>
+#include <variant>
+#endif
 export module epix.core:system.param;
-
+#ifdef EPIX_IMPORT_STD
 import std;
+#endif
 import epix.meta;
 
 import :query;

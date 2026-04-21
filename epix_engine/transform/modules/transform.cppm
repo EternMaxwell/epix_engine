@@ -1,9 +1,15 @@
+module;
+#ifndef EPIX_IMPORT_STD
+#include <utility>
+#endif
+
 export module epix.transform;
 
 export import glm;
 import epix.core;
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 export namespace epix::transform {
 /** @brief Generic transform component with translation, rotation, and scale.
  *

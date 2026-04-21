@@ -1,10 +1,32 @@
-﻿module;
+module;
 
+#ifndef EPIX_IMPORT_STD
+#include <concepts>
+#include <cstddef>
+#include <exception>
+#include <expected>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <ranges>
+#include <span>
+#include <stdexcept>
+#include <string>
+#include <string_view>
+#include <tuple>
+#include <type_traits>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <variant>
+#include <vector>
+#endif
 #include <asio/awaitable.hpp>
 
 export module epix.assets:server.loader;
-
+#ifdef EPIX_IMPORT_STD
 import std;
+#endif
 import epix.meta;
 import epix.utils;
 import :concepts;

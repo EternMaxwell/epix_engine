@@ -1,8 +1,18 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <concepts>
+#include <cstddef>
+#include <optional>
+#include <tuple>
+#include <type_traits>
+#include <utility>
+#include <variant>
+#endif
 export module epix.core:system.commands;
-
+#ifdef EPIX_IMPORT_STD
 import std;
+#endif
 import epix.meta;
 
 import :world.commands;

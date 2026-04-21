@@ -4,8 +4,27 @@
 #include <asio/co_spawn.hpp>
 #include <asio/detached.hpp>
 #include <asio/io_context.hpp>
-
+#ifndef EPIX_IMPORT_STD
+#include <array>
+#include <cstddef>
+#include <cstdint>
+#include <exception>
+#include <expected>
+#include <filesystem>
+#include <memory>
+#include <span>
+#include <stdexcept>
+#include <string>
+#include <string_view>
+#include <system_error>
+#include <tuple>
+#include <utility>
+#include <variant>
+#include <vector>
+#endif
+#ifdef EPIX_IMPORT_STD
 import std;
+#endif
 import epix.assets;
 import epix.core;
 import epix.utils;

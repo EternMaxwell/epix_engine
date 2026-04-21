@@ -1,7 +1,12 @@
+module;
+#ifndef EPIX_IMPORT_STD
+#include <variant>
+#endif
+
 export module epix.utils:variant_visitor;
-
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 namespace epix::utils {
 /** @brief Overload set helper for std::visit on std::variant.
  *

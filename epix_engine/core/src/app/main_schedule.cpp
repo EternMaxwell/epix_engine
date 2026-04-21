@@ -1,11 +1,17 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <algorithm>
+#include <array>
+#include <ranges>
+#include <utility>
+#endif
 #include <spdlog/spdlog.h>
 
 module epix.core;
-
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 import :app.main_schedule;
 import :labels;
 

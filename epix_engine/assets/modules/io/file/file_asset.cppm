@@ -1,10 +1,19 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <expected>
+#include <filesystem>
+#include <memory>
+#include <optional>
+#include <system_error>
+#include <utility>
+#endif
 #include <asio/awaitable.hpp>
 
 export module epix.assets:io.file.asset;
-
+#ifdef EPIX_IMPORT_STD
 import std;
+#endif
 import epix.meta;
 import epix.utils;
 

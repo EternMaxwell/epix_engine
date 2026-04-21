@@ -1,14 +1,25 @@
-﻿module;
+module;
 
+#ifndef EPIX_IMPORT_STD
+#include <atomic>
+#include <condition_variable>
+#include <exception>
+#include <functional>
+#include <memory>
+#include <mutex>
+#include <optional>
+#include <utility>
+#include <vector>
+#endif
 #include <asio/associated_executor.hpp>
 #include <asio/async_result.hpp>
 #include <asio/post.hpp>
 #include <coroutine>
 
 export module epix.tasks:task;
-
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 namespace epix::tasks {
 
 // ─── Internal shared state ────────────────────────────────────────────────────
@@ -201,7 +212,7 @@ struct Task {
 /**
  * @brief Void specialisation — no value, just completion/exception.
  */
-export template <>
+template <>
 struct Task<void> {
    private:
     std::shared_ptr<detail::TaskState<void>> m_state;

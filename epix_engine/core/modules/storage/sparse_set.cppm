@@ -1,9 +1,20 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <concepts>
+#include <cstddef>
+#include <cstdint>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <ranges>
+#include <utility>
+#include <vector>
+#endif
 export module epix.core:storage.sparse_set;
-
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 import :entities;
 import :tick;
 import :type_registry;

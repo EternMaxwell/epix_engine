@@ -1,5 +1,23 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <array>
+#include <cstddef>
+#include <cstdint>
+#include <exception>
+#include <expected>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <ranges>
+#include <span>
+#include <string_view>
+#include <tuple>
+#include <unordered_map>
+#include <utility>
+#include <variant>
+#include <vector>
+#endif
 #include <asio/awaitable.hpp>
 
 export module epix.text:font;
@@ -7,8 +25,9 @@ export module epix.text:font;
 import epix.assets;
 import epix.core;
 import epix.image;
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 namespace epix::text::font {
 /** @brief Font resource holding raw font file data (e.g. TTF/OTF) in memory. */
 export struct Font {

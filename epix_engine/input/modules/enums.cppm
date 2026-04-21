@@ -1,7 +1,14 @@
+module;
+#ifndef EPIX_IMPORT_STD
+#include <cstddef>
+#include <functional>
+#include <string_view>
+#endif
+
 export module epix.input:enums;
-
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 export namespace epix::input {
 /** @brief Keyboard key codes corresponding to physical keys. */
 enum class KeyCode : int {

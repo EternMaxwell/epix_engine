@@ -1,7 +1,14 @@
+module;
+#ifndef EPIX_IMPORT_STD
+#include <cstdlib>
+#include <utility>
+#include <chrono>
+#endif
+
 export module epix.time:time_clock;
-
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 namespace epix::time {
 
 inline std::chrono::nanoseconds duration_rem(std::chrono::nanoseconds dividend, std::chrono::nanoseconds divisor) {

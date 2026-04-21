@@ -1,11 +1,24 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <algorithm>
+#include <cstddef>
+#include <format>
+#include <functional>
+#include <optional>
+#include <ranges>
+#include <stdexcept>
+#include <string_view>
+#include <unordered_set>
+#include <utility>
+#include <vector>
+#endif
 #include <spdlog/spdlog.h>
 
 module epix.core;
-
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 import :bundle;
 import :entities;
 

@@ -1,10 +1,27 @@
-﻿module;
+module;
 
+#ifndef EPIX_IMPORT_STD
+#include <algorithm>
+#include <cstddef>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <ranges>
+#include <span>
+#include <string_view>
+#include <tuple>
+#include <type_traits>
+#include <unordered_map>
+#include <utility>
+#include <variant>
+#include <vector>
+#endif
 #include <spdlog/spdlog.h>
 
 export module epix.assets:server.loaders;
-
+#ifdef EPIX_IMPORT_STD
 import std;
+#endif
 import epix.meta;
 import epix.utils;
 

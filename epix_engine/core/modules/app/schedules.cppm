@@ -1,9 +1,16 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <functional>
+#include <optional>
+#include <ranges>
+#include <unordered_map>
+#include <utility>
+#endif
 export module epix.core:app.schedules;
-
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 import :schedule;
 
 namespace epix::core {

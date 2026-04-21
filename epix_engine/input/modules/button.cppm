@@ -1,6 +1,15 @@
-export module epix.input:button;
+module;
+#ifndef EPIX_IMPORT_STD
+#include <algorithm>
+#include <ranges>
+#include <unordered_set>
+#include <vector>
+#endif
 
+export module epix.input:button;
+#ifdef EPIX_IMPORT_STD
 import std;
+#endif
 import epix.core;
 
 import :enums;

@@ -1,9 +1,17 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <algorithm>
+#include <format>
+#include <ranges>
+#include <string>
+#include <utility>
+#include <vector>
+#endif
 export module epix.core:query.access;
-
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 import :utils;
 import :type_registry;
 

@@ -1,12 +1,28 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <expected>
+#include <filesystem>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <shared_mutex>
+#include <string>
+#include <string_view>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <variant>
+#include <vector>
+#endif
 #include <spdlog/spdlog.h>
 
 #include <asio/awaitable.hpp>
 
 export module epix.assets:processor;
-
+#ifdef EPIX_IMPORT_STD
 import std;
+#endif
 import epix.meta;
 import epix.utils;
 import epix.core;

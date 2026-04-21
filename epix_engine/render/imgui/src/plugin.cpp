@@ -1,5 +1,14 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <array>
+#include <cstddef>
+#include <cstring>
+#include <memory>
+#include <optional>
+#include <utility>
+#include <vector>
+#endif
 #include <GLFW/glfw3.h>
 #include <imgui.h>
 #include <imgui_impl_glfw.h>
@@ -14,8 +23,9 @@ import epix.render;
 import epix.window;
 import epix.glfw.core;
 import webgpu;
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 using namespace epix;
 using namespace epix::core;
 

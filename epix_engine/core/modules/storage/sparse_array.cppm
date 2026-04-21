@@ -1,9 +1,17 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <concepts>
+#include <cstddef>
+#include <functional>
+#include <optional>
+#include <utility>
+#include <vector>
+#endif
 export module epix.core:storage.sparse_array;
-
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 namespace epix::core {
 template <typename I, typename V>
     requires std::convertible_to<I, std::size_t> || std::same_as<I, std::size_t>

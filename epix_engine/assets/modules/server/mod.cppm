@@ -1,12 +1,28 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <concepts>
+#include <exception>
+#include <expected>
+#include <functional>
+#include <future>
+#include <memory>
+#include <optional>
+#include <span>
+#include <stdexcept>
+#include <string_view>
+#include <tuple>
+#include <utility>
+#include <vector>
+#endif
 #include <spdlog/spdlog.h>
 
 #include <asio/awaitable.hpp>
 
 export module epix.assets:server;
-
+#ifdef EPIX_IMPORT_STD
 import std;
+#endif
 import epix.meta;
 import epix.utils;
 

@@ -1,9 +1,22 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <algorithm>
+#include <array>
+#include <cassert>
+#include <cstddef>
+#include <functional>
+#include <optional>
+#include <ranges>
+#include <tuple>
+#include <type_traits>
+#include <utility>
+#include <variant>
+#endif
 export module epix.core:query.filter;
-
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 import :query.decl;
 import :query.access;
 import :world.decl;

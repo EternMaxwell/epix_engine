@@ -1,11 +1,19 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <expected>
+#include <format>
+#include <memory>
+#include <stdexcept>
+#include <vector>
+#endif
 export module epix.render.imgui:state;
 
 import epix.core;
 import epix.meta;
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 namespace epix::imgui {
 
 /** @brief Thread-safe snapshot of ImDrawData for pipelined rendering.

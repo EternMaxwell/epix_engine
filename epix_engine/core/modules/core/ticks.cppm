@@ -1,9 +1,14 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <concepts>
+#include <memory>
+#include <type_traits>
+#endif
 export module epix.core:ticks;
-
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 import :tick;
 
 namespace epix::core {

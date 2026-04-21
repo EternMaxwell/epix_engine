@@ -1,9 +1,13 @@
-﻿module;
+module;
 
+#ifndef EPIX_IMPORT_STD
+#include <cstddef>
+#include <tuple>
+#endif
 export module epix.traits:function;
-
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 export {
     /** @brief Trait that extracts return type, argument types, and arity from callable types.
      * @tparam F The function/callable type to introspect.

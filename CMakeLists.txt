@@ -17,8 +17,6 @@ option(EPIX_ENABLE_TEST "Enable epix test" ON)
 option(EPIX_CXX_MODULE "Enable C++20 modules" ON)
 option(EPIX_IMPORT_STD "Enable C++ import std" ON)
 
-set(EPIX_IMPORT_STD ON) # Currently having issue with clang with msvc
-
 if (EPIX_IMPORT_STD AND NOT EPIX_CXX_MODULE)
   message(WARNING "EPIX_IMPORT_STD option requires EPIX_CXX_MODULE to be enabled. Disabling EPIX_IMPORT_STD.")
   set(EPIX_IMPORT_STD OFF)

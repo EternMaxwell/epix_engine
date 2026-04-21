@@ -1,7 +1,19 @@
+module;
+#ifndef EPIX_IMPORT_STD
+#include <algorithm>
+#include <concepts>
+#include <cstddef>
+#include <iterator>
+#include <memory>
+#include <ranges>
+#include <type_traits>
+#include <utility>
+#endif
+
 export module epix.utils:input_iterable;
-
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 export namespace epix::utils {
 template <typename T>
 class input_iterable : public std::ranges::view_interface<input_iterable<T>> {

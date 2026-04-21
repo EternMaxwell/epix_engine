@@ -1,9 +1,17 @@
+module;
+#ifndef EPIX_IMPORT_STD
+#include <concepts>
+#include <format>
+#include <optional>
+#endif
+
 export module epix.render:extract;
 
 import epix.core;
 import epix.meta;
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 import :schedule;
 
 namespace epix::render {

@@ -1,11 +1,22 @@
-﻿module;
+module;
 
+#ifndef EPIX_IMPORT_STD
+#include <cstddef>
+#include <cstdint>
+#include <cstring>
+#include <exception>
+#include <expected>
+#include <filesystem>
+#include <span>
+#include <system_error>
+#include <vector>
+#endif
 #include <asio/awaitable.hpp>
 
 module epix.assets;
-
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 namespace epix::assets {
 
 asio::awaitable<std::expected<std::vector<std::byte>, AssetReaderError>> AssetReader::read_meta_bytes(

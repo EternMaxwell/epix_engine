@@ -1,6 +1,28 @@
-﻿module;
+module;
+#ifndef EPIX_IMPORT_STD
+#include <atomic>
+#include <cstddef>
+#include <cstdint>
+#include <deque>
+#include <exception>
+#include <expected>
+#include <filesystem>
+#include <functional>
+#include <map>
+#include <memory>
+#include <optional>
+#include <span>
+#include <string>
+#include <system_error>
+#include <unordered_map>
+#include <utility>
+#include <variant>
+#include <vector>
+#endif
 export module epix.assets:io.memory;
+#ifdef EPIX_IMPORT_STD
 import std;
+#endif
 import epix.meta;
 import epix.utils;
 

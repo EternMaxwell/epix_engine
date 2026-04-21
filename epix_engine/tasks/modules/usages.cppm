@@ -1,8 +1,17 @@
-﻿module;
+module;
 
+#ifndef EPIX_IMPORT_STD
+#include <cstddef>
+#include <exception>
+#include <functional>
+#include <mutex>
+#include <utility>
+#include <vector>
+#endif
 export module epix.tasks:usages;
-
+#ifdef EPIX_IMPORT_STD
 import std;
+#endif
 import :task_pool;
 
 namespace epix::tasks {

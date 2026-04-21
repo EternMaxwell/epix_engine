@@ -1,9 +1,13 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <optional>
+#include <utility>
+#endif
 export module epix.core:query;
-
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 export import :query.decl;
 export import :query.access;
 export import :query.state;

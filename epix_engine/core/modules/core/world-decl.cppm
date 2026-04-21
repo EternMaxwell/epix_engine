@@ -1,9 +1,13 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <cstdint>
+#include <memory>
+#endif
 export module epix.core:world.decl;
-
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 import :utils;
 import :tick;
 import :type_registry;

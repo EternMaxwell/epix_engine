@@ -1,7 +1,15 @@
 #include <gtest/gtest.h>
 #include <spdlog/spdlog.h>
-
+#ifndef EPIX_IMPORT_STD
+#include <format>
+#include <memory>
+#include <optional>
+#include <string>
+#include <vector>
+#endif
+#ifdef EPIX_IMPORT_STD
 import std;
+#endif
 import epix.core;
 
 using namespace epix::core;

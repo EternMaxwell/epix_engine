@@ -1,5 +1,18 @@
-﻿module;
+module;
 
+#ifndef EPIX_IMPORT_STD
+#include <concepts>
+#include <cstddef>
+#include <exception>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <string>
+#include <thread>
+#include <type_traits>
+#include <utility>
+#include <vector>
+#endif
 #include <asio/any_io_executor.hpp>
 #include <asio/awaitable.hpp>
 #include <asio/co_spawn.hpp>
@@ -11,8 +24,9 @@
 #include <asio/use_awaitable.hpp>
 
 export module epix.tasks:task_pool;
-
+#ifdef EPIX_IMPORT_STD
 import std;
+#endif
 import BS.thread_pool;
 import :task;
 

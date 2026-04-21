@@ -1,6 +1,10 @@
 #include <gtest/gtest.h>
-
+#ifndef EPIX_IMPORT_STD
+#include <string>
+#endif
+#ifdef EPIX_IMPORT_STD
 import std;
+#endif
 import epix.assets;
 
 using namespace epix::assets;

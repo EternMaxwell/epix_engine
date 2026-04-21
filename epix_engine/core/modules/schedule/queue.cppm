@@ -1,8 +1,18 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <algorithm>
+#include <condition_variable>
+#include <cstddef>
+#include <mutex>
+#include <ranges>
+#include <thread>
+#include <vector>
+#endif
 export module epix.core:schedule.queue;
-
+#ifdef EPIX_IMPORT_STD
 import std;
+#endif
 import epix.traits;
 import BS.thread_pool;
 

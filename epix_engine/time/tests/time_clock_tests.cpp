@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
-
+#ifdef EPIX_IMPORT_STD
 import std;
+#endif
 import epix.time;
 
 using namespace epix::time;
@@ -117,4 +118,4 @@ TEST(TimeClock, AsGeneric) {
     EXPECT_EQ(g.elapsed(), 500ms);
     EXPECT_EQ(g.wrap_period(), t.wrap_period());
 }
-
+

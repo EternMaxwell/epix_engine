@@ -1,5 +1,15 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <future>
+#include <memory>
+#include <optional>
+#include <string>
+#include <tuple>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+#endif
 #include <SFML/Window/Clipboard.hpp>
 #include <SFML/Window/Cursor.hpp>
 #include <SFML/Window/Event.hpp>
@@ -9,8 +19,9 @@ module;
 #include <SFML/Window/WindowHandle.hpp>
 
 export module epix.sfml.core;
-
+#ifdef EPIX_IMPORT_STD
 import std;
+#endif
 import epix.core;
 import epix.input;
 import epix.window;

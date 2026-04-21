@@ -1,9 +1,17 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <algorithm>
+#include <array>
+#include <cstddef>
+#include <mutex>
+#include <utility>
+#include <vector>
+#endif
 module epix.core;
-
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 import :schedule.queue;
 
 namespace epix::core {

@@ -1,8 +1,15 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <atomic>
+#include <cstddef>
+#include <cstdint>
+#include <functional>
+#endif
 export module epix.assets:index;
-
+#ifdef EPIX_IMPORT_STD
 import std;
+#endif
 import epix.core;
 import :concepts;
 

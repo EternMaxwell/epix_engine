@@ -1,12 +1,20 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <array>
+#include <cstddef>
+#include <optional>
+#include <span>
+#include <utility>
+#endif
 export module epix.core_graph:core2d;
 
 import epix.core;
 import epix.render;
 import epix.transform;
-
+#ifdef EPIX_IMPORT_STD
 import std;
+#endif
 import webgpu;
 
 using namespace epix::core;

@@ -1,5 +1,21 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <array>
+#include <bit>
+#include <cstddef>
+#include <cstdint>
+#include <expected>
+#include <format>
+#include <optional>
+#include <ranges>
+#include <span>
+#include <string>
+#include <string_view>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+#endif
 #include <spdlog/spdlog.h>
 
 module epix.text;
@@ -7,8 +23,9 @@ module epix.text;
 import epix.core_graph;
 import epix.render;
 import webgpu;
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 using namespace epix::core;
 using namespace epix::text;
 using namespace epix;

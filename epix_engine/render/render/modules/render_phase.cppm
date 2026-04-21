@@ -1,5 +1,30 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <algorithm>
+#include <concepts>
+#include <cstddef>
+#include <cstdint>
+#include <expected>
+#include <format>
+#include <functional>
+#include <limits>
+#include <memory>
+#include <mutex>
+#include <optional>
+#include <ranges>
+#include <shared_mutex>
+#include <stdexcept>
+#include <string>
+#include <string_view>
+#include <tuple>
+#include <type_traits>
+#include <typeinfo>
+#include <unordered_map>
+#include <utility>
+#include <variant>
+#include <vector>
+#endif
 #include <spdlog/spdlog.h>
 
 export module epix.render:render_phase;
@@ -8,9 +33,9 @@ import epix.core;
 import epix.meta;
 import epix.utils;
 import epix.traits;
-
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 import :graph;
 import :pipeline;
 import :pipeline_server;

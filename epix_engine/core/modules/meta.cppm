@@ -1,5 +1,20 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <algorithm>
+#include <array>
+#include <concepts>
+#include <cstddef>
+#include <cstdlib>
+#include <functional>
+#include <memory>
+#include <ranges>
+#include <string>
+#include <string_view>
+#include <type_traits>
+#include <utility>
+#include <vector>
+#endif
 #if defined __clang__ || defined __GNUC__
 #define EPIX_PRETTY_FUNCTION __PRETTY_FUNCTION__
 #define EPIX_PRETTY_FUNCTION_PREFIX '='
@@ -11,9 +26,9 @@ module;
 #endif
 
 export module epix.meta;
-
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 namespace epix::meta {
 template <typename T>
 constexpr const char* pretty_function() {

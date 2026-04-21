@@ -1,7 +1,13 @@
+module;
+#ifndef EPIX_IMPORT_STD
+#include <optional>
+#include <chrono>
+#endif
+
 export module epix.time:real;
-
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 import :time_clock;
 
 namespace epix::time {

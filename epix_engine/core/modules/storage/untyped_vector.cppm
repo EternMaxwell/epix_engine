@@ -1,10 +1,24 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <cassert>
+#include <cstddef>
+#include <cstring>
+#include <limits>
+#include <memory>
+#include <memory_resource>
+#include <ranges>
+#include <span>
+#include <stdexcept>
+#include <type_traits>
+#include <utility>
+#endif
 #include <cassert>
 
 export module epix.core:storage.untyped_vector;
-
+#ifdef EPIX_IMPORT_STD
 import std;
+#endif
 import epix.meta;
 
 namespace epix::core {

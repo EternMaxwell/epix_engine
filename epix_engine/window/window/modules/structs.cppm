@@ -1,10 +1,20 @@
+module;
+#ifndef EPIX_IMPORT_STD
+#include <cstdint>
+#include <optional>
+#include <string>
+#include <utility>
+#include <variant>
+#endif
+
 export module epix.window:structs;
 
 import epix.core;
 import epix.assets;
 import epix.image;
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 export namespace epix::window {
 /** @brief Controls how the window position is interpreted. */
 enum PosType {

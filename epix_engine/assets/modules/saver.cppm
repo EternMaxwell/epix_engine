@@ -1,10 +1,24 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <concepts>
+#include <exception>
+#include <expected>
+#include <functional>
+#include <optional>
+#include <ranges>
+#include <stdexcept>
+#include <string>
+#include <string_view>
+#include <unordered_map>
+#include <utility>
+#endif
 #include <asio/awaitable.hpp>
 
 export module epix.assets:saver;
-
+#ifdef EPIX_IMPORT_STD
 import std;
+#endif
 import epix.meta;
 import :concepts;
 

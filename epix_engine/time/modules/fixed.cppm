@@ -1,7 +1,14 @@
+module;
+#ifndef EPIX_IMPORT_STD
+#include <cmath>
+#include <cstdlib>
+#include <chrono>
+#endif
+
 export module epix.time:fixed;
-
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 import :time_clock;
 import :virt;
 
@@ -19,7 +26,7 @@ export struct Fixed {
 /** @brief Fixed-timestep time. Each tick advances by exactly one timestep.
  *  Used in the FixedMain schedule loop; `expend()` is called repeatedly
  *  to consume accumulated overstep one timestep at a time. */
-export template <>
+template <>
 struct Time<Fixed> : private Time<> {
     /** @brief Default timestep (64 Hz, ~15.625 ms). */
     static constexpr std::chrono::nanoseconds DEFAULT_TIMESTEP = std::chrono::microseconds(15625);

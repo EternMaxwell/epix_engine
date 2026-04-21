@@ -1,8 +1,14 @@
+module;
+#ifndef EPIX_IMPORT_STD
+#include <utility>
+#endif
+
 export module epix.input:events;
 
 import epix.core;
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 import :enums;
 
 using namespace epix::core;

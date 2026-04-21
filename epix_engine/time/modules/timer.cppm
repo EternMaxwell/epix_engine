@@ -1,7 +1,15 @@
+module;
+#ifndef EPIX_IMPORT_STD
+#include <algorithm>
+#include <cstdint>
+#include <limits>
+#include <chrono>
+#endif
+
 export module epix.time:timer;
-
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 import :stopwatch;
 
 namespace epix::time {

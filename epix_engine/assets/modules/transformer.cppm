@@ -1,10 +1,21 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <exception>
+#include <expected>
+#include <functional>
+#include <optional>
+#include <ranges>
+#include <string>
+#include <unordered_map>
+#include <utility>
+#endif
 #include <asio/awaitable.hpp>
 
 export module epix.assets:transformer;
-
+#ifdef EPIX_IMPORT_STD
 import std;
+#endif
 import epix.meta;
 import :concepts;
 

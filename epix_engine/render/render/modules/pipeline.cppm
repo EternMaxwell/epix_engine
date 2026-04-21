@@ -1,5 +1,17 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <algorithm>
+#include <atomic>
+#include <concepts>
+#include <cstddef>
+#include <cstdint>
+#include <optional>
+#include <ranges>
+#include <string>
+#include <utility>
+#include <vector>
+#endif
 #define make_atomic_id(name)                                                                   \
     struct name {                                                                              \
         inline static std::atomic<std::uint64_t> counter{1};                                   \
@@ -13,8 +25,9 @@ export module epix.render:pipeline;
 import epix.shader;
 import epix.assets;
 import webgpu;
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 namespace epix::render {
 make_atomic_id(RenderPipelineId);
 make_atomic_id(ComputePipelineId);

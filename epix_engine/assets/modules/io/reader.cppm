@@ -1,10 +1,27 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <cstddef>
+#include <cstdint>
+#include <exception>
+#include <expected>
+#include <filesystem>
+#include <memory>
+#include <optional>
+#include <span>
+#include <string>
+#include <string_view>
+#include <system_error>
+#include <utility>
+#include <variant>
+#include <vector>
+#endif
 #include <asio/awaitable.hpp>
 
 export module epix.assets:io.reader;
-
+#ifdef EPIX_IMPORT_STD
 import std;
+#endif
 import epix.meta;
 import epix.utils;
 

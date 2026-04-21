@@ -9,8 +9,9 @@ import epix.render;
 import epix.window;
 import epix.glfw.core;
 import webgpu;
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 using namespace epix::core;
 
 namespace epix::imgui {

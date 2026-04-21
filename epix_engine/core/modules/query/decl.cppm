@@ -1,9 +1,15 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <concepts>
+#include <functional>
+#include <optional>
+#include <type_traits>
+#endif
 export module epix.core:query.decl;
-
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 import :archetype;
 import :component;
 import :world.decl;

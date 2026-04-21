@@ -10,9 +10,12 @@ import epix.core_graph;
 import epix.glfw.core;
 import epix.glfw.render;
 import epix.render.imgui;
-
+#ifndef EPIX_IMPORT_STD
+#include <array>
+#endif
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 using namespace epix;
 using namespace epix::core;
 

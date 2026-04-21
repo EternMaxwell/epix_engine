@@ -1,8 +1,24 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <algorithm>
+#include <concepts>
+#include <cstddef>
+#include <cstdint>
+#include <functional>
+#include <optional>
+#include <ranges>
+#include <span>
+#include <tuple>
+#include <unordered_map>
+#include <utility>
+#include <variant>
+#include <vector>
+#endif
 export module epix.core:archetype;
-
+#ifdef EPIX_IMPORT_STD
 import std;
+#endif
 import epix.traits;
 
 import :utils;

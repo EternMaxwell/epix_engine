@@ -1,3 +1,17 @@
+module;
+#ifndef EPIX_IMPORT_STD
+#include <array>
+#include <concepts>
+#include <expected>
+#include <functional>
+#include <optional>
+#include <ranges>
+#include <span>
+#include <type_traits>
+#include <unordered_map>
+#include <utility>
+#endif
+
 export module epix.render:graph;
 
 export import :graph.decl;
@@ -5,9 +19,9 @@ export import :graph.slot;
 export import :graph.node;
 export import :graph.context;
 export import :graph.error;
-
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 namespace epix::render::graph {
 /** @brief Directed acyclic graph of render nodes.
  *

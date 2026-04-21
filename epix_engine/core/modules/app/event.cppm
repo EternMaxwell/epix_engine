@@ -1,9 +1,21 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <algorithm>
+#include <concepts>
+#include <cstddef>
+#include <cstdint>
+#include <deque>
+#include <functional>
+#include <optional>
+#include <ranges>
+#include <tuple>
+#include <utility>
+#endif
 export module epix.core:app.event;
-
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 import :system;
 import :ticks;
 import :world;

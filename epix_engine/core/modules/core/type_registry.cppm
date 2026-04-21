@@ -1,8 +1,21 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <cstddef>
+#include <cstdint>
+#include <functional>
+#include <mutex>
+#include <optional>
+#include <shared_mutex>
+#include <string_view>
+#include <type_traits>
+#include <unordered_map>
+#include <vector>
+#endif
 export module epix.core:type_registry;
-
+#ifdef EPIX_IMPORT_STD
 import std;
+#endif
 import epix.meta;
 
 import :utils;

@@ -1,5 +1,20 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <array>
+#include <bit>
+#include <cmath>
+#include <cstddef>
+#include <cstdint>
+#include <format>
+#include <limits>
+#include <optional>
+#include <span>
+#include <string_view>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+#endif
 #include <spdlog/spdlog.h>
 
 module epix.sprite;
@@ -9,8 +24,9 @@ import epix.core_graph;
 import epix.image;
 import epix.render;
 import epix.transform;
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 using namespace epix;
 using namespace epix::core;
 using namespace epix::sprite;

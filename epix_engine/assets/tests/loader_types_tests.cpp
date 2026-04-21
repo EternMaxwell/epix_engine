@@ -4,8 +4,20 @@
 #include <asio/co_spawn.hpp>
 #include <asio/detached.hpp>
 #include <asio/io_context.hpp>
-
+#ifndef EPIX_IMPORT_STD
+#include <algorithm>
+#include <array>
+#include <exception>
+#include <expected>
+#include <ranges>
+#include <span>
+#include <string>
+#include <string_view>
+#include <utility>
+#endif
+#ifdef EPIX_IMPORT_STD
 import std;
+#endif
 import epix.assets;
 import epix.meta;
 

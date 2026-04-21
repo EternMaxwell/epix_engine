@@ -1,10 +1,28 @@
-﻿module;
+module;
 
+#ifndef EPIX_IMPORT_STD
+#include <algorithm>
+#include <cstddef>
+#include <deque>
+#include <exception>
+#include <format>
+#include <functional>
+#include <memory>
+#include <mutex>
+#include <ranges>
+#include <string>
+#include <thread>
+#include <tuple>
+#include <utility>
+#include <variant>
+#include <vector>
+#endif
 #include <spdlog/spdlog.h>
 
 module epix.core;
-
+#ifdef EPIX_IMPORT_STD
 import std;
+#endif
 import :schedule;
 
 using namespace epix::core;

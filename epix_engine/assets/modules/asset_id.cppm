@@ -1,10 +1,22 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <concepts>
+#include <cstddef>
+#include <format>
+#include <functional>
+#include <optional>
+#include <string>
+#include <tuple>
+#include <utility>
+#include <variant>
+#endif
 #include <uuid.h>
 
 export module epix.assets:id;
-
+#ifdef EPIX_IMPORT_STD
 import std;
+#endif
 import epix.meta;
 import epix.utils;
 

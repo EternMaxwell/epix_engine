@@ -1,9 +1,21 @@
+module;
+#ifndef EPIX_IMPORT_STD
+#include <concepts>
+#include <cstddef>
+#include <cstdint>
+#include <memory>
+#include <type_traits>
+#include <utility>
+#include <vector>
+#endif
+
 export module epix.render:graph.node;
 
 import :graph.decl;
 import :graph.slot;
-
+#ifdef EPIX_IMPORT_STD
 import std;
+#endif
 import epix.core;
 
 using namespace epix::core;

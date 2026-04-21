@@ -1,14 +1,25 @@
-﻿module;
+module;
 
+#ifndef EPIX_IMPORT_STD
+#include <cstddef>
+#include <cstdint>
+#include <cstring>
+#include <expected>
+#include <optional>
+#include <span>
+#include <string>
+#include <system_error>
+#include <vector>
+#endif
 #include <spdlog/spdlog.h>
 #include <zpp_bits.h>
 
 #include <asio/awaitable.hpp>
 
 module epix.assets;
-
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 namespace epix::assets {
 
 // ---------------------------------------------------------------------------

@@ -1,9 +1,21 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <concepts>
+#include <cstddef>
+#include <filesystem>
+#include <functional>
+#include <optional>
+#include <string>
+#include <string_view>
+#include <utility>
+#include <variant>
+#include <vector>
+#endif
 export module epix.assets:path;
-
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 namespace epix::assets {
 /**
  * @brief A reference to an 'asset source', which maps to an `AssetReader` or `AssetWriter`

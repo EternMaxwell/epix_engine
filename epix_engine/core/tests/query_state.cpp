@@ -1,8 +1,14 @@
 #include <gtest/gtest.h>
 
 import epix.core;
+#ifndef EPIX_IMPORT_STD
+#include <memory>
+#include <tuple>
+#include <utility>
+#endif
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 namespace {
 struct X {
     int v = 0;

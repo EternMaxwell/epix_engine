@@ -1,10 +1,20 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <algorithm>
+#include <cmath>
+#include <cstddef>
+#include <cstdint>
+#include <optional>
+#include <ranges>
+#include <vector>
+#endif
 #include <glm/gtc/constants.hpp>
 
 module epix.mesh;
-
+#ifdef EPIX_IMPORT_STD
 import std;
+#endif
 import glm;
 
 using namespace epix::mesh;

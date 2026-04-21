@@ -9,9 +9,9 @@ import epix.transform;
 import epix.render;
 import epix.glfw.core;
 import epix.glfw.render;
-
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 using namespace epix;
 using namespace epix::core;
 

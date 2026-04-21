@@ -1,9 +1,17 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <concepts>
+#include <cstddef>
+#include <memory>
+#include <tuple>
+#include <utility>
+#include <variant>
+#endif
 export module epix.core:system.input;
-
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 namespace epix::core {
 template <typename T>
 struct SystemInput;

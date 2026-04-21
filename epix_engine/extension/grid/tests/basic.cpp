@@ -1,6 +1,16 @@
-﻿#include <gtest/gtest.h>
-
+#include <gtest/gtest.h>
+#ifndef EPIX_IMPORT_STD
+#include <algorithm>
+#include <array>
+#include <cstddef>
+#include <cstdint>
+#include <set>
+#include <utility>
+#include <vector>
+#endif
+#ifdef EPIX_IMPORT_STD
 import std;
+#endif
 import epix.extension.grid;
 
 using namespace epix::ext::grid;

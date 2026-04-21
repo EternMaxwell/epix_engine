@@ -1,13 +1,24 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <algorithm>
+#include <array>
+#include <exception>
+#include <future>
+#include <memory>
+#include <optional>
+#include <ranges>
+#include <utility>
+#include <variant>
+#endif
 #include <spdlog/spdlog.h>
 
 #include <SFML/Window/WindowBase.hpp>
 
 module epix.sfml.core;
-
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 using namespace epix::core;
 using namespace epix::sfml;
 using namespace epix::window;

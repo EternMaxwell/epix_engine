@@ -1,10 +1,17 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <expected>
+#include <filesystem>
+#include <memory>
+#include <utility>
+#endif
 #include <asio/awaitable.hpp>
 
 export module epix.assets:io.processor_gated;
-
+#ifdef EPIX_IMPORT_STD
 import std;
+#endif
 import epix.utils;
 
 import :path;

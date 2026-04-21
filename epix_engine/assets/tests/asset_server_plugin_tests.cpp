@@ -1,8 +1,32 @@
 #include <gtest/gtest.h>
 
 #include <asio/awaitable.hpp>
-
+#ifndef EPIX_IMPORT_STD
+#include <algorithm>
+#include <array>
+#include <atomic>
+#include <cstddef>
+#include <cstdint>
+#include <exception>
+#include <expected>
+#include <filesystem>
+#include <memory>
+#include <mutex>
+#include <optional>
+#include <ranges>
+#include <span>
+#include <stdexcept>
+#include <string>
+#include <string_view>
+#include <thread>
+#include <tuple>
+#include <utility>
+#include <variant>
+#include <vector>
+#endif
+#ifdef EPIX_IMPORT_STD
 import std;
+#endif
 import epix.core;
 import epix.meta;
 import epix.assets;

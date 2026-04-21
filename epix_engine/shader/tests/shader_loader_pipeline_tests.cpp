@@ -1,8 +1,9 @@
 #include <gtest/gtest.h>
 #include <slang-com-ptr.h>
 #include <slang.h>
-
+#ifdef EPIX_IMPORT_STD
 import std;
+#endif
 import epix.assets;
 import epix.core;
 import epix.shader;
@@ -437,6 +438,24 @@ TEST(ShaderLoaderPipelineSlang, UpdatingRootShaderInvalidatesCachedPreprocessedS
 
     auto main_id = make_shader_id(0x41);
     cache.set_shader(main_id, Shader::from_slang(R"(
+module;
+#ifndef EPIX_IMPORT_STD
+#include <array>
+#include <cstddef>
+#include <cstdint>
+#include <expected>
+#include <filesystem>
+#include <format>
+#include <memory>
+#include <span>
+#include <stdexcept>
+#include <string>
+#include <string_view>
+#include <utility>
+#include <variant>
+#include <vector>
+#endif
+
 module main.core;
 [shader("compute")]
 [numthreads(1,1,1)]

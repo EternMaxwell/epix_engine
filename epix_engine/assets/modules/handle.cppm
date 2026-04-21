@@ -1,10 +1,24 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <cassert>
+#include <concepts>
+#include <expected>
+#include <format>
+#include <memory>
+#include <optional>
+#include <stdexcept>
+#include <string>
+#include <string_view>
+#include <utility>
+#include <variant>
+#endif
 #include <cassert>
 
 export module epix.assets:handle;
-
+#ifdef EPIX_IMPORT_STD
 import std;
+#endif
 import epix.utils;
 
 import :id;

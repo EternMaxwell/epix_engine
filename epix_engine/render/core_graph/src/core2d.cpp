@@ -1,11 +1,17 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <array>
+#include <functional>
+#include <optional>
+#include <utility>
+#endif
 #include <spdlog/spdlog.h>
 
 module epix.core_graph;
-
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 using namespace epix::render;
 using namespace epix::core_graph::core_2d;
 

@@ -1,7 +1,17 @@
+module;
+#ifndef EPIX_IMPORT_STD
+#include <concepts>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <type_traits>
+#include <utility>
+#endif
+
 export module epix.utils:function;
-
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 namespace epix::utils {
 export template <typename Signature>
 class function_ref;

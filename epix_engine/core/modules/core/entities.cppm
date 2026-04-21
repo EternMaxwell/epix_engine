@@ -1,14 +1,27 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <algorithm>
+#include <atomic>
+#include <concepts>
+#include <cstddef>
+#include <cstdint>
+#include <functional>
+#include <limits>
+#include <memory>
+#include <optional>
+#include <ranges>
+#include <vector>
+#endif
 #define EPIX_MAKE_INT_WRAPPER(name, type) \
     struct name : core::int_base<type> {  \
         using int_base::int_base;         \
     };
 
 export module epix.core:entities;
-
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 import :utils;
 
 namespace epix::core {

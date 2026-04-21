@@ -1,6 +1,20 @@
 #include <gtest/gtest.h>
-
+#ifndef EPIX_IMPORT_STD
+#include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <filesystem>
+#include <memory>
+#include <thread>
+#include <tuple>
+#include <utility>
+#include <variant>
+#include <vector>
+#include <chrono>
+#endif
+#ifdef EPIX_IMPORT_STD
 import std;
+#endif
 import epix.assets;
 import epix.core;
 import epix.shader;

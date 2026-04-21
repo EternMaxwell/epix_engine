@@ -1,13 +1,25 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <array>
+#include <cstddef>
+#include <cstdint>
+#include <optional>
+#include <span>
+#include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
+#endif
 export module epix.text:text;
 
 import :font;
 import epix.assets;
 import epix.core;
 import epix.image;
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 namespace epix::text {
 /** @brief Re-export of font::Font for convenience. */
 export using font::Font;

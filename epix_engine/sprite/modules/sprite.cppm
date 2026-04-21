@@ -1,5 +1,12 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <array>
+#include <cstddef>
+#include <optional>
+#include <span>
+#include <utility>
+#endif
 export module epix.sprite:sprite;
 
 import epix.assets;
@@ -7,8 +14,9 @@ import epix.core;
 import epix.image;
 import epix.transform;
 import glm;
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 export namespace epix::sprite {
 /** @brief Visual sprite component with color, flipping, UV region, and anchor
  * settings.

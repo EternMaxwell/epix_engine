@@ -1,11 +1,21 @@
-﻿module;
+module;
 
+#ifndef EPIX_IMPORT_STD
+#include <expected>
+#include <filesystem>
+#include <memory>
+#include <optional>
+#include <shared_mutex>
+#include <utility>
+#include <variant>
+#include <vector>
+#endif
 #include <spdlog/spdlog.h>
 
 module epix.assets;
-
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 using namespace epix::assets;
 
 // ---- ProcessorAssetInfo ----

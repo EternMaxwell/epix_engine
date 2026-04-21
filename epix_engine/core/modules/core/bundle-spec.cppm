@@ -1,11 +1,26 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <algorithm>
+#include <cassert>
+#include <concepts>
+#include <cstddef>
+#include <optional>
+#include <ranges>
+#include <span>
+#include <stdexcept>
+#include <tuple>
+#include <type_traits>
+#include <utility>
+#include <variant>
+#include <vector>
+#endif
 #include <cassert>
 
 export module epix.core:bundle.spec;
-
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 import :bundle.interface;
 import :world.decl;
 

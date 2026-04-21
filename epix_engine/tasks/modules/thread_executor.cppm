@@ -1,13 +1,22 @@
-﻿module;
+module;
 
+#ifndef EPIX_IMPORT_STD
+#include <concepts>
+#include <exception>
+#include <optional>
+#include <thread>
+#include <type_traits>
+#include <utility>
+#endif
 #include <asio/awaitable.hpp>
 #include <asio/co_spawn.hpp>
 #include <asio/detached.hpp>
 #include <asio/thread_pool.hpp>
 
 export module epix.tasks:thread_executor;
-
+#ifdef EPIX_IMPORT_STD
 import std;
+#endif
 import :task;
 
 namespace epix::tasks {

@@ -1,11 +1,26 @@
+module;
+#ifndef EPIX_IMPORT_STD
+#include <cstddef>
+#include <cstdint>
+#include <functional>
+#include <optional>
+#include <ranges>
+#include <span>
+#include <string>
+#include <string_view>
+#include <variant>
+#include <vector>
+#endif
+
 export module epix.render:graph.slot;
 
 import epix.assets;
 import epix.core;
 import epix.utils;
 import webgpu;
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 using namespace epix::core;
 
 namespace epix::render::graph {

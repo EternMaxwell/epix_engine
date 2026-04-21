@@ -1,10 +1,25 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <algorithm>
+#include <concepts>
+#include <cstddef>
+#include <exception>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <ranges>
+#include <type_traits>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+#endif
 #include <spdlog/spdlog.h>
 
 export module epix.core:app.plugin;
-
+#ifdef EPIX_IMPORT_STD
 import std;
+#endif
 import epix.meta;
 
 import :app.decl;

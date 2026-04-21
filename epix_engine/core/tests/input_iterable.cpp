@@ -1,6 +1,13 @@
 #include <gtest/gtest.h>
-
+#ifndef EPIX_IMPORT_STD
+#include <algorithm>
+#include <ranges>
+#include <sstream>
+#include <vector>
+#endif
+#ifdef EPIX_IMPORT_STD
 import std;
+#endif
 import epix.utils;
 import epix.core;
 

@@ -1,9 +1,16 @@
-﻿module;
+module;
 
+#ifndef EPIX_IMPORT_STD
+#include <algorithm>
+#include <concepts>
+#include <ranges>
+#include <tuple>
+#include <type_traits>
+#endif
 export module epix.traits:templates;
-
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 template <typename T, template <typename...> typename Templated>
 struct is_specialization_of : std::false_type {};
 template <template <typename...> typename Templated, typename... Ts>

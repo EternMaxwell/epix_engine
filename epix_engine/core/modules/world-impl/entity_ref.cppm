@@ -1,11 +1,22 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <algorithm>
+#include <cassert>
+#include <concepts>
+#include <functional>
+#include <optional>
+#include <ranges>
+#include <type_traits>
+#include <utility>
+#include <vector>
+#endif
 #include <cassert>
 
 export module epix.core:world.entity_ref;
-
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 import :world.entity_ref.decl;
 import :entities;
 import :ticks;

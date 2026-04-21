@@ -1,6 +1,21 @@
-﻿#include <gtest/gtest.h>
-
+#include <gtest/gtest.h>
+#ifndef EPIX_IMPORT_STD
+#include <atomic>
+#include <cstddef>
+#include <filesystem>
+#include <memory>
+#include <mutex>
+#include <set>
+#include <span>
+#include <string>
+#include <string_view>
+#include <thread>
+#include <vector>
+#include <chrono>
+#endif
+#ifdef EPIX_IMPORT_STD
 import std;
+#endif
 import epix.assets;
 
 using namespace epix::assets::memory;

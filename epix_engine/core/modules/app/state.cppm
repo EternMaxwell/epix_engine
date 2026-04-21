@@ -1,9 +1,12 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <type_traits>
+#endif
 export module epix.core:app.state;
-
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 import :app.decl;
 import :ticks;
 

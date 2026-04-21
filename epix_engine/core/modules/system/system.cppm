@@ -1,9 +1,24 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <concepts>
+#include <cstddef>
+#include <exception>
+#include <expected>
+#include <memory>
+#include <optional>
+#include <string>
+#include <string_view>
+#include <tuple>
+#include <type_traits>
+#include <utility>
+#include <variant>
+#include <vector>
+#endif
 export module epix.core:system;
-
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 import :label;
 import :labels;
 

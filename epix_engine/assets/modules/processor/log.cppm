@@ -1,10 +1,23 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <expected>
+#include <filesystem>
+#include <fstream>
+#include <memory>
+#include <optional>
+#include <string>
+#include <string_view>
+#include <utility>
+#include <variant>
+#include <vector>
+#endif
 #include <spdlog/spdlog.h>
 
 export module epix.assets:processor.log;
-
+#ifdef EPIX_IMPORT_STD
 import std;
+#endif
 import epix.utils;
 
 import :path;

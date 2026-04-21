@@ -1,5 +1,26 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <algorithm>
+#include <array>
+#include <bit>
+#include <cmath>
+#include <cstddef>
+#include <cstdint>
+#include <cstring>
+#include <exception>
+#include <expected>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <span>
+#include <stdexcept>
+#include <string_view>
+#include <tuple>
+#include <unordered_set>
+#include <utility>
+#include <vector>
+#endif
 #include <freetype/freetype.h>
 #include <freetype/ftglyph.h>
 #include <spdlog/spdlog.h>
@@ -16,8 +37,9 @@ import epix.image;
 import epix.mesh;
 import epix.meta;
 import webgpu;
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 using namespace epix;
 using namespace epix::text::font;
 

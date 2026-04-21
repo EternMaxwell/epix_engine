@@ -1,10 +1,20 @@
+module;
+#ifndef EPIX_IMPORT_STD
+#include <functional>
+#include <optional>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#endif
+
 export module epix.render:window;
 
 import epix.core;
 import epix.window;
 import webgpu;
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 using namespace epix::core;
 using namespace epix::window;
 

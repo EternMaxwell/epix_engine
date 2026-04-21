@@ -1,6 +1,24 @@
-export module epix.extension.grid_gpu:brickmap;
+module;
+#ifndef EPIX_IMPORT_STD
+#include <algorithm>
+#include <array>
+#include <bit>
+#include <concepts>
+#include <cstddef>
+#include <cstdint>
+#include <expected>
+#include <format>
+#include <string>
+#include <string_view>
+#include <utility>
+#include <variant>
+#include <vector>
+#endif
 
+export module epix.extension.grid_gpu:brickmap;
+#ifdef EPIX_IMPORT_STD
 import std;
+#endif
 import epix.extension.grid;
 
 using std::int32_t;

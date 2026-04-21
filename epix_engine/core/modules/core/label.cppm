@@ -1,8 +1,18 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <concepts>
+#include <cstddef>
+#include <cstdint>
+#include <format>
+#include <functional>
+#include <string>
+#include <type_traits>
+#endif
 export module epix.core:label;
-
+#ifdef EPIX_IMPORT_STD
 import std;
+#endif
 import epix.meta;
 
 namespace epix::core {

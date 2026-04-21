@@ -1,5 +1,26 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <concepts>
+#include <cstddef>
+#include <cstdint>
+#include <exception>
+#include <expected>
+#include <filesystem>
+#include <format>
+#include <functional>
+#include <memory>
+#include <span>
+#include <stdexcept>
+#include <string>
+#include <string_view>
+#include <system_error>
+#include <tuple>
+#include <type_traits>
+#include <utility>
+#include <variant>
+#include <vector>
+#endif
 #include <zpp_bits.h>
 
 #include <asio/awaitable.hpp>
@@ -9,8 +30,9 @@ export module epix.shader:shader;
 import epix.assets;
 import epix.core;
 import webgpu;
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 namespace epix::shader {
 
 inline std::string canonical_asset_path_string(const assets::AssetPath& path) {

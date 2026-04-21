@@ -1,11 +1,15 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <optional>
+#include <unordered_set>
+#endif
 #include <spdlog/spdlog.h>
 
 module epix.core;
-
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 import :hierarchy;
 import :world;
 import :world.entity_ref;

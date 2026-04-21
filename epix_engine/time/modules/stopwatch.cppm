@@ -1,7 +1,12 @@
+module;
+#ifndef EPIX_IMPORT_STD
+#include <chrono>
+#endif
+
 export module epix.time:stopwatch;
-
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 namespace epix::time {
 
 /** @brief A pausable stopwatch that accumulates elapsed time from explicit ticks. */

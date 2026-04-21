@@ -1,8 +1,12 @@
-﻿module;
+module;
 
+#ifndef EPIX_IMPORT_STD
+#include <optional>
+#endif
 export module epix.tasks:futures;
-
+#ifdef EPIX_IMPORT_STD
 import std;
+#endif
 import :task;
 
 namespace epix::tasks {

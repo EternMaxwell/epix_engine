@@ -1,8 +1,20 @@
-﻿export module epix.shader:shader_composer;
+module;
+#ifndef EPIX_IMPORT_STD
+#include <expected>
+#include <span>
+#include <string>
+#include <string_view>
+#include <unordered_map>
+#include <variant>
+#include <vector>
+#endif
+
+export module epix.shader:shader_composer;
 
 import :shader;
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 namespace epix::shader {
 
 /** @brief Error returned while composing WGSL source. */

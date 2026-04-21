@@ -1,7 +1,27 @@
+module;
+#ifndef EPIX_IMPORT_STD
+#include <algorithm>
+#include <array>
+#include <concepts>
+#include <cstddef>
+#include <cstdint>
+#include <expected>
+#include <functional>
+#include <limits>
+#include <memory>
+#include <ranges>
+#include <tuple>
+#include <type_traits>
+#include <unordered_map>
+#include <utility>
+#include <variant>
+#include <vector>
+#endif
+
 export module epix.extension.grid;
-
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 import epix.meta;
 import epix.utils;
 

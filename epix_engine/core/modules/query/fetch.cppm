@@ -1,11 +1,21 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <cassert>
+#include <cstddef>
+#include <functional>
+#include <optional>
+#include <tuple>
+#include <type_traits>
+#include <utility>
+#include <variant>
+#endif
 #include <cassert>
 
 export module epix.core:query.fetch;
-
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 import :query.decl;
 import :query.access;
 import :storage;

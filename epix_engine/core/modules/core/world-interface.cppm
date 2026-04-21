@@ -1,11 +1,26 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <atomic>
+#include <concepts>
+#include <cstddef>
+#include <cstdint>
+#include <exception>
+#include <expected>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <tuple>
+#include <type_traits>
+#include <utility>
+#include <variant>
+#endif
 #include <spdlog/spdlog.h>
 
 export module epix.core:world.interface;
-
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 import :utils;
 import :type_registry;
 import :component;

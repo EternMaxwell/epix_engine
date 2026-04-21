@@ -1,13 +1,22 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <cassert>
+#include <cstddef>
+#include <cstdint>
+#include <optional>
+#include <utility>
+#include <vector>
+#endif
 #include <spdlog/spdlog.h>
 
 #include <cassert>
 
 
 module epix.core;
-
+#ifdef EPIX_IMPORT_STD
 import std;
+#endif
 import epix.meta;
 
 import :storage.table;

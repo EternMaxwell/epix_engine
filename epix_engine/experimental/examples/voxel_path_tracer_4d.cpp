@@ -1,12 +1,26 @@
-﻿// 4D Voxel Path Tracer — example demonstrating a 4-dimensional voxel scene.
+// 4D Voxel Path Tracer — example demonstrating a 4-dimensional voxel scene.
 // Uses dense_grid<4> + svo_upload() for scene storage, custom render-graph
 // sub-graph (V4DGraph) with a 4D perspective camera defined by explicit
 // pos/forward/right/up/over float4 vectors (no mat5x5 in the API).
 
 #include <imgui.h>
 #include <spdlog/spdlog.h>
-
+#ifndef EPIX_IMPORT_STD
+#include <algorithm>
+#include <array>
+#include <cmath>
+#include <cstddef>
+#include <cstdint>
+#include <optional>
+#include <span>
+#include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
+#endif
+#ifdef EPIX_IMPORT_STD
 import std;
+#endif
 import glm;
 import webgpu;
 import epix.core;

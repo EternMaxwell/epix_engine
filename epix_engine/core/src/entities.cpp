@@ -1,14 +1,22 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <atomic>
+#include <cassert>
+#include <cstddef>
+#include <cstdint>
+#include <limits>
+#include <optional>
+#endif
 #include <spdlog/spdlog.h>
 
 #include <cassert>
 
 
 module epix.core;
-
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 import :entities;
 
 namespace epix::core {

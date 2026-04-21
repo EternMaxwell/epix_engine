@@ -1,6 +1,12 @@
 #include <gtest/gtest.h>
-
+#ifndef EPIX_IMPORT_STD
+#include <bit>
+#include <cstdint>
+#include <vector>
+#endif
+#ifdef EPIX_IMPORT_STD
 import std;
+#endif
 import epix.extension.grid;
 import epix.extension.grid_gpu;
 

@@ -1,9 +1,17 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <concepts>
+#include <cstddef>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <utility>
+#endif
 export module epix.core:storage.resource;
-
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 import :storage.sparse_set;
 
 namespace epix::core {

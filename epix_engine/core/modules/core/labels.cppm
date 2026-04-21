@@ -1,9 +1,15 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <concepts>
+#include <cstddef>
+#include <functional>
+#include <type_traits>
+#endif
 export module epix.core:labels;
-
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 import :label;
 
 #ifndef EPIX_MAKE_LABEL

@@ -1,8 +1,15 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <cstddef>
+#include <filesystem>
+#include <span>
+#include <string_view>
+#endif
 export module epix.assets:io.embedded;
-
+#ifdef EPIX_IMPORT_STD
 import std;
+#endif
 import epix.utils;
 
 import :io.memory;

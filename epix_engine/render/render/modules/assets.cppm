@@ -1,9 +1,28 @@
+module;
+#ifndef EPIX_IMPORT_STD
+#include <concepts>
+#include <cstdint>
+#include <exception>
+#include <format>
+#include <memory>
+#include <ranges>
+#include <sstream>
+#include <stdexcept>
+#include <string>
+#include <type_traits>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <vector>
+#endif
+
 export module epix.render:assets;
 
 import epix.assets;
 import epix.core;
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 import :extract;
 
 using namespace epix::core;

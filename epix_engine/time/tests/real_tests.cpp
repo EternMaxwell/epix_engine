@@ -1,6 +1,10 @@
 #include <gtest/gtest.h>
-
+#ifndef EPIX_IMPORT_STD
+#include <chrono>
+#endif
+#ifdef EPIX_IMPORT_STD
 import std;
+#endif
 import epix.time;
 
 using namespace epix::time;
@@ -89,4 +93,4 @@ TEST(TimeReal, AsGeneric) {
     EXPECT_EQ(g.delta(), 500ms);
     EXPECT_EQ(g.elapsed(), 500ms);
 }
-
+

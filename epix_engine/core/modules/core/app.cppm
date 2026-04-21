@@ -1,10 +1,32 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <algorithm>
+#include <atomic>
+#include <concepts>
+#include <cstddef>
+#include <cstdint>
+#include <expected>
+#include <functional>
+#include <list>
+#include <memory>
+#include <optional>
+#include <ranges>
+#include <string>
+#include <tuple>
+#include <type_traits>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <variant>
+#include <vector>
+#endif
 #include <spdlog/spdlog.h>
 
 export module epix.core:app;
-
+#ifdef EPIX_IMPORT_STD
 import std;
+#endif
 import epix.traits;
 
 import :label;

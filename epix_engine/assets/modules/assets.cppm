@@ -1,7 +1,5 @@
 module;
 
-#include <gtest/gtest.h>
-
 export module epix.assets;
 
 export import :concepts;

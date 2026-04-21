@@ -1,6 +1,19 @@
-﻿export module epix.tasks:slice;
+module;
+#ifndef EPIX_IMPORT_STD
+#include <algorithm>
+#include <concepts>
+#include <cstddef>
+#include <optional>
+#include <span>
+#include <type_traits>
+#include <utility>
+#include <vector>
+#endif
 
+export module epix.tasks:slice;
+#ifdef EPIX_IMPORT_STD
 import std;
+#endif
 import :task_pool;
 
 namespace epix::tasks {

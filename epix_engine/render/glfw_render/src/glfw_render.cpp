@@ -1,5 +1,9 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <stdexcept>
+#include <utility>
+#endif
 #define WGPU_TARGET_MACOS 1
 #define WGPU_TARGET_LINUX 2
 #define WGPU_TARGET_WINDOWS 3
@@ -42,8 +46,9 @@ module;
 #include <webgpu/webgpu.h>
 
 module epix.glfw.render;
-
+#ifdef EPIX_IMPORT_STD
 import std;
+#endif
 import epix.core;
 import epix.render;
 import epix.glfw.core;

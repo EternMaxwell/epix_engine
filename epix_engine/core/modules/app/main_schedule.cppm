@@ -1,9 +1,14 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <functional>
+#include <type_traits>
+#include <vector>
+#endif
 export module epix.core:app.main_schedule;
-
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 import :app.decl;
 import :app.state;
 import :ticks;

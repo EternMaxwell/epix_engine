@@ -1,9 +1,12 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <memory>
+#endif
 export module epix.core:storage;
-
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 export import :storage.untyped_vector;
 export import :storage.sparse_array;
 export import :storage.sparse_set;

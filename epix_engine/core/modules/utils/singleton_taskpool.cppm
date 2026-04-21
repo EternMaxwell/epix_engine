@@ -1,8 +1,13 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <algorithm>
+#include <thread>
+#endif
 export module epix.utils:singleton_taskpool;
-
+#ifdef EPIX_IMPORT_STD
 import std;
+#endif
 import BS.thread_pool;
 
 namespace epix::utils {

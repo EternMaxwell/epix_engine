@@ -1,9 +1,25 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <algorithm>
+#include <concepts>
+#include <condition_variable>
+#include <cstddef>
+#include <deque>
+#include <expected>
+#include <memory>
+#include <mutex>
+#include <optional>
+#include <shared_mutex>
+#include <stdexcept>
+#include <type_traits>
+#include <utility>
+#include <vector>
+#endif
 export module epix.utils:async;
-
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 namespace epix::utils {
 /** @brief Policy controlling sender behavior when a bounded ConQueue is full. */
 export enum class OverflowPolicy {

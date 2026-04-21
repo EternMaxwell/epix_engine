@@ -1,9 +1,21 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <algorithm>
+#include <cstddef>
+#include <iterator>
+#include <numeric>
+#include <optional>
+#include <ranges>
+#include <span>
+#include <stdexcept>
+#include <type_traits>
+#include <utility>
+#endif
 export module epix.core:query.iter;
-
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 import :query.decl;
 import :query.state;
 import :query.fetch;

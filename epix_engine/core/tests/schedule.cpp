@@ -1,6 +1,16 @@
 #include <gtest/gtest.h>
-
+#ifndef EPIX_IMPORT_STD
+#include <iostream>
+#include <memory>
+#include <print>
+#include <random>
+#include <string>
+#include <type_traits>
+#include <utility>
+#endif
+#ifdef EPIX_IMPORT_STD
 import std;
+#endif
 import epix.core;
 
 namespace {

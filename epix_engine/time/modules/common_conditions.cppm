@@ -1,7 +1,12 @@
+module;
+#ifndef EPIX_IMPORT_STD
+#include <chrono>
+#endif
+
 export module epix.time:common_conditions;
-
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 import :time_clock;
 import :real;
 import :virt;

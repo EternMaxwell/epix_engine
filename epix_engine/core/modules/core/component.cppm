@@ -1,11 +1,26 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <algorithm>
+#include <cassert>
+#include <concepts>
+#include <cstddef>
+#include <cstdint>
+#include <functional>
+#include <memory>
+#include <ranges>
+#include <type_traits>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <vector>
+#endif
 #include <cassert>
 
 export module epix.core:component;
-
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 import :entities;
 import :world.decl;
 import :type_registry;

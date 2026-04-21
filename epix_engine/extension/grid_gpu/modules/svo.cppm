@@ -1,6 +1,26 @@
-export module epix.extension.grid_gpu:svo;
+module;
+#ifndef EPIX_IMPORT_STD
+#include <algorithm>
+#include <array>
+#include <bit>
+#include <concepts>
+#include <cstddef>
+#include <cstdint>
+#include <expected>
+#include <format>
+#include <print>
+#include <string>
+#include <string_view>
+#include <type_traits>
+#include <utility>
+#include <variant>
+#include <vector>
+#endif
 
+export module epix.extension.grid_gpu:svo;
+#ifdef EPIX_IMPORT_STD
 import std;
+#endif
 import epix.extension.grid;
 
 // Bring fixed-width integer types into scope (MSVC only exports them under std::)

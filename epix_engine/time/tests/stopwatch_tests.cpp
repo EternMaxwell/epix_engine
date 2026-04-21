@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
-
+#ifdef EPIX_IMPORT_STD
 import std;
+#endif
 import epix.time;
 
 using namespace epix::time;
@@ -61,4 +62,4 @@ TEST(Stopwatch, SetElapsed) {
     EXPECT_EQ(sw.elapsed(), 3s);
     EXPECT_FLOAT_EQ(sw.elapsed_secs(), 3.0f);
 }
-
+

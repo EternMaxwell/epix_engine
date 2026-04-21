@@ -1,12 +1,23 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <algorithm>
+#include <array>
+#include <exception>
+#include <future>
+#include <memory>
+#include <optional>
+#include <ranges>
+#include <utility>
+#include <variant>
+#endif
 #include <GLFW/glfw3.h>
 #include <spdlog/spdlog.h>
 
 module epix.glfw.core;
-
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 using namespace epix::core;
 using namespace epix::glfw;
 using namespace epix::window;

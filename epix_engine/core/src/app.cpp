@@ -1,5 +1,19 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <algorithm>
+#include <atomic>
+#include <cstdint>
+#include <cstdlib>
+#include <exception>
+#include <functional>
+#include <memory>
+#include <mutex>
+#include <optional>
+#include <ranges>
+#include <stdexcept>
+#include <utility>
+#endif
 #ifdef EPIX_ENABLE_TRACY
 #include <tracy/Tracy.hpp>
 #endif
@@ -11,8 +25,9 @@ module;
 #include <stacktrace>
 
 module epix.core;
-
+#ifdef EPIX_IMPORT_STD
 import std;
+#endif
 import epix.meta;
 
 import :app;

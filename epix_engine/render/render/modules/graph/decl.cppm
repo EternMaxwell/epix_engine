@@ -1,8 +1,17 @@
+module;
+#ifndef EPIX_IMPORT_STD
+#include <concepts>
+#include <cstddef>
+#include <functional>
+#include <type_traits>
+#endif
+
 export module epix.render:graph.decl;
 
 import epix.core;
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 #ifndef EPIX_MAKE_LABEL
 #define EPIX_MAKE_LABEL(type)                                                         \
     struct type : public ::epix::core::Label {                                              \

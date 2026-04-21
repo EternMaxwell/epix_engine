@@ -1,3 +1,9 @@
+module;
+#ifndef EPIX_IMPORT_STD
+#include <cstdint>
+#include <chrono>
+#endif
+
 export module epix.time;
 
 export import :time_clock;
@@ -9,8 +15,9 @@ export import :timer;
 export import :common_conditions;
 
 import epix.core;
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 using namespace epix::core;
 
 namespace epix::time {

@@ -1,8 +1,28 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <algorithm>
+#include <concepts>
+#include <cstddef>
+#include <expected>
+#include <format>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <ranges>
+#include <string_view>
+#include <tuple>
+#include <type_traits>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <variant>
+#include <vector>
+#endif
 export module epix.core:schedule.schedule;
-
+#ifdef EPIX_IMPORT_STD
 import std;
+#endif
 import BS.thread_pool;
 import epix.meta;
 

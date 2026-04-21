@@ -1,7 +1,24 @@
+module;
+#ifndef EPIX_IMPORT_STD
+#include <algorithm>
+#include <array>
+#include <concepts>
+#include <cstddef>
+#include <cstdint>
+#include <expected>
+#include <functional>
+#include <limits>
+#include <ranges>
+#include <tuple>
+#include <type_traits>
+#include <utility>
+#include <vector>
+#endif
+
 export module epix.extension.grid:basic_grid;
-
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 namespace epix::ext::grid {
 constexpr std::size_t npos = std::numeric_limits<std::size_t>::max();
 bool is_npos(std::size_t index) { return index == npos; }

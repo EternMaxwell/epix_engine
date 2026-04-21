@@ -1,6 +1,33 @@
-export module epix.experimental.fallingsand;
+module;
+#ifndef EPIX_IMPORT_STD
+#include <algorithm>
+#include <array>
+#include <cmath>
+#include <concepts>
+#include <cstddef>
+#include <cstdint>
+#include <expected>
+#include <functional>
+#include <future>
+#include <limits>
+#include <memory>
+#include <optional>
+#include <random>
+#include <ranges>
+#include <string>
+#include <thread>
+#include <tuple>
+#include <type_traits>
+#include <unordered_map>
+#include <utility>
+#include <variant>
+#include <vector>
+#endif
 
+export module epix.experimental.fallingsand;
+#ifdef EPIX_IMPORT_STD
 import std;
+#endif
 import glm;
 import webgpu;
 import BS.thread_pool;

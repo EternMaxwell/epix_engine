@@ -1,12 +1,26 @@
-﻿// BrickMap 4D Path Tracer — 4D voxel scene with BrickMap GPU backend.
+// BrickMap 4D Path Tracer — 4D voxel scene with BrickMap GPU backend.
 // Combines the 4D camera system (pos/forward/right/up/over basis vectors)
 // from voxel_path_tracer_4d.cpp with the BrickMap GPU grid backend from
 // brickmap_path_tracer.cpp.  Uses tree_extendible_grid<4,int32_t> + brickmap_upload().
 
 #include <imgui.h>
 #include <spdlog/spdlog.h>
-
+#ifndef EPIX_IMPORT_STD
+#include <algorithm>
+#include <array>
+#include <cmath>
+#include <cstddef>
+#include <cstdint>
+#include <optional>
+#include <span>
+#include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
+#endif
+#ifdef EPIX_IMPORT_STD
 import std;
+#endif
 import glm;
 import webgpu;
 import epix.core;

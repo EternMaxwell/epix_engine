@@ -1,7 +1,14 @@
+module;
+#ifndef EPIX_IMPORT_STD
+#include <cmath>
+#include <cstddef>
+#include <cstdint>
+#endif
+
 export module epix.utils:fixed_point;
-
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 namespace epix::utils {
 export template <std::size_t IntBits>
     requires(IntBits > 0 && IntBits < 32)

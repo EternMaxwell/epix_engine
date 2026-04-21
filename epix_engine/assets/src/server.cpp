@@ -1,5 +1,23 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <cstddef>
+#include <exception>
+#include <expected>
+#include <filesystem>
+#include <format>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <stdexcept>
+#include <string>
+#include <string_view>
+#include <tuple>
+#include <unordered_set>
+#include <utility>
+#include <variant>
+#include <vector>
+#endif
 #include <spdlog/spdlog.h>
 
 #include <asio/awaitable.hpp>
@@ -8,9 +26,9 @@ module;
 #include <asio/io_context.hpp>
 
 module epix.assets;
-
+#ifdef EPIX_IMPORT_STD
 import std;
-
+#endif
 using namespace epix::assets;
 
 AssetServer::AssetServer(std::shared_ptr<AssetSources> sources, AssetServerMode mode, bool watching_for_changes)
