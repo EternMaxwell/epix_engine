@@ -384,11 +384,6 @@ TEST(GlobalPools, ComputeTryGetNonNull) {
     EXPECT_NE(ComputeTaskPool::try_get(), nullptr);
 }
 
-TEST(GlobalPools, ComputePoolAccessor) {
-    TaskPool& inner = ComputeTaskPool::get().pool();
-    EXPECT_GT(inner.thread_num(), 0u);
-}
-
 TEST(GlobalPools, ComputeSpawn) {
     auto v = ComputeTaskPool::get().spawn([]() { return 99; }).block();
     ASSERT_TRUE(v.has_value());

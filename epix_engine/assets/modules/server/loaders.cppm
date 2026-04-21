@@ -24,6 +24,7 @@ import std;
 #endif
 import epix.meta;
 import epix.utils;
+import epix.tasks;
 
 import :server.info;
 import :server.loader;
@@ -89,15 +90,17 @@ struct AssetLoaders {
         } else {
             MaybeAssetLoader maybe_loader = std::move(loaders[loader_index]);
             loaders[loader_index]         = std::move(erased_loader);
-            std::visit(utils::visitor{[&](std::shared_ptr<ErasedAssetLoader>&) { std::unreachable(); },
-                                      [&](PendingAssetLoader& pending) {
-                                          auto loader = std::get<std::shared_ptr<ErasedAssetLoader>>(
-                                              loaders[loader_index].as_base());
-                                          auto sender = std::move(pending.sender);
-                                          utils::IOTaskPool::instance().detach_task(
-                                              [sender = std::move(sender), loader]() mutable { sender.send(loader); });
-                                      }},
-                       maybe_loader.as_base());
+            std::visit(
+                utils::visitor{[&](std::shared_ptr<ErasedAssetLoader>&) { std::unreachable(); },
+                               [&](PendingAssetLoader& pending) {
+                                   auto loader =
+                                       std::get<std::shared_ptr<ErasedAssetLoader>>(loaders[loader_index].as_base());
+                                   auto sender = std::move(pending.sender);
+                                   tasks::IoTaskPool::get()
+                                       .spawn([sender = std::move(sender), loader]() mutable { sender.send(loader); })
+                                       .detach();
+                               }},
+                maybe_loader.as_base());
         }
     }
     template <AssetLoader loader_type>

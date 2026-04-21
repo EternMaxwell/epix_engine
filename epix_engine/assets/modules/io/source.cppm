@@ -18,6 +18,7 @@ export module epix.assets:io.source;
 import std;
 #endif
 import epix.utils;
+import :async_channel;
 
 import :path;
 import :io.reader;
@@ -35,8 +36,8 @@ export struct AssetSource {
     std::unique_ptr<AssetWriter> m_processed_writer;          // optional
     std::unique_ptr<AssetWatcher> m_watcher;                  // optional
     std::unique_ptr<AssetWatcher> m_processed_watcher;        // optional
-    std::optional<utils::Receiver<AssetSourceEvent>> m_event_receiver;
-    std::optional<utils::Receiver<AssetSourceEvent>> m_processed_event_receiver;
+    std::optional<async_channel::Receiver<AssetSourceEvent>> m_event_receiver;
+    std::optional<async_channel::Receiver<AssetSourceEvent>> m_processed_event_receiver;
 
     friend struct AssetSourceBuilder;
 
@@ -47,8 +48,9 @@ export struct AssetSource {
     std::optional<std::reference_wrapper<const AssetReader>> processed_reader() const;
     std::optional<std::reference_wrapper<const AssetReader>> ungated_processed_reader() const;
     std::optional<std::reference_wrapper<const AssetWriter>> processed_writer() const;
-    std::optional<std::reference_wrapper<const utils::Receiver<AssetSourceEvent>>> event_receiver() const;
-    std::optional<std::reference_wrapper<const utils::Receiver<AssetSourceEvent>>> processed_event_receiver() const;
+    std::optional<std::reference_wrapper<const async_channel::Receiver<AssetSourceEvent>>> event_receiver() const;
+    std::optional<std::reference_wrapper<const async_channel::Receiver<AssetSourceEvent>>> processed_event_receiver()
+        const;
     bool should_process() const { return m_processed_writer != nullptr; }
 
     /** @brief Gate the processed reader through a factory function.
@@ -60,7 +62,7 @@ export struct AssetSource {
 
     static std::function<std::unique_ptr<AssetReader>()> get_default_reader(std::filesystem::path path);
     static std::function<std::unique_ptr<AssetWriter>()> get_default_writer(std::filesystem::path path);
-    static std::function<std::unique_ptr<AssetWatcher>(utils::Sender<AssetSourceEvent>)> get_default_watcher(
+    static std::function<std::unique_ptr<AssetWatcher>(async_channel::Sender<AssetSourceEvent>)> get_default_watcher(
         std::filesystem::path path);
 };
 
@@ -70,9 +72,9 @@ export struct AssetSourceBuilder {
     std::optional<std::function<std::unique_ptr<AssetReader>()>> processed_reader_factory;          // optional
     std::optional<std::function<std::unique_ptr<AssetReader>()>> ungated_processed_reader_factory;  // optional
     std::optional<std::function<std::unique_ptr<AssetWriter>()>> processed_writer_factory;          // optional
-    std::optional<std::function<std::unique_ptr<AssetWatcher>(utils::Sender<AssetSourceEvent>)>>
+    std::optional<std::function<std::unique_ptr<AssetWatcher>(async_channel::Sender<AssetSourceEvent>)>>
         watcher_factory;  // optional
-    std::optional<std::function<std::unique_ptr<AssetWatcher>(utils::Sender<AssetSourceEvent>)>>
+    std::optional<std::function<std::unique_ptr<AssetWatcher>(async_channel::Sender<AssetSourceEvent>)>>
         processed_watcher_factory;  // optional
 
    public:
@@ -105,12 +107,13 @@ export struct AssetSourceBuilder {
         return std::forward<decltype(self)>(self);
     }
     auto&& with_watcher(this auto&& self,
-                        std::function<std::unique_ptr<AssetWatcher>(utils::Sender<AssetSourceEvent>)> factory) {
+                        std::function<std::unique_ptr<AssetWatcher>(async_channel::Sender<AssetSourceEvent>)> factory) {
         self.watcher_factory = std::move(factory);
         return std::forward<decltype(self)>(self);
     }
     auto&& with_processed_watcher(
-        this auto&& self, std::function<std::unique_ptr<AssetWatcher>(utils::Sender<AssetSourceEvent>)> factory) {
+        this auto&& self,
+        std::function<std::unique_ptr<AssetWatcher>(async_channel::Sender<AssetSourceEvent>)> factory) {
         self.processed_watcher_factory = std::move(factory);
         return std::forward<decltype(self)>(self);
     }

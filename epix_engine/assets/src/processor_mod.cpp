@@ -12,6 +12,8 @@ module;
 #endif
 #include <spdlog/spdlog.h>
 
+#include <asio/awaitable.hpp>
+
 module epix.assets;
 #ifdef EPIX_IMPORT_STD
 import std;
@@ -21,15 +23,16 @@ using namespace epix::assets;
 // ---- ProcessorAssetInfo ----
 
 ProcessorAssetInfo::ProcessorAssetInfo() {
-    auto [sender, receiver] = utils::make_broadcast_channel<ProcessStatus>();
-    status_sender           = std::move(sender);
-    status_receiver         = std::move(receiver);
+    auto [sender, receiver] = async_broadcast::broadcast<ProcessStatus>(1);
+    sender.set_overflow(true);
+    status_sender   = std::move(sender);
+    status_receiver = std::move(receiver);
 }
 
-void ProcessorAssetInfo::update_status(ProcessStatus new_status) {
+asio::awaitable<void> ProcessorAssetInfo::update_status(ProcessStatus new_status) {
     if (status != new_status) {
         status = new_status;
-        status_sender.send(new_status);
+        (void)co_await status_sender.broadcast(new_status);
     }
 }
 
@@ -64,28 +67,28 @@ void ProcessorAssetInfos::add_dependent(const AssetPath& asset_path, AssetPath d
     }
 }
 
-std::shared_ptr<std::shared_mutex> ProcessorAssetInfos::remove(const AssetPath& asset_path) {
+asio::awaitable<std::shared_ptr<std::shared_mutex>> ProcessorAssetInfos::remove(const AssetPath& asset_path) {
     auto it = infos.find(asset_path);
-    if (it == infos.end()) return nullptr;
+    if (it == infos.end()) co_return nullptr;
     auto info = std::move(it->second);
     infos.erase(it);
     if (info.processed_info) {
         clear_dependencies(asset_path, *info.processed_info);
     }
-    info.status_sender.send(ProcessStatus::NonExistent);
+    (void)co_await info.status_sender.broadcast(ProcessStatus::NonExistent);
     if (!info.dependents.empty()) {
         spdlog::error("Asset {} was removed but had dependents. Consider updating paths.", asset_path.string());
         non_existent_dependents[asset_path] = std::move(info.dependents);
     }
-    return info.file_transaction_lock;
+    co_return info.file_transaction_lock;
 }
 
-std::optional<std::pair<std::shared_ptr<std::shared_mutex>, std::shared_ptr<std::shared_mutex>>>
+asio::awaitable<std::optional<std::pair<std::shared_ptr<std::shared_mutex>, std::shared_ptr<std::shared_mutex>>>>
 ProcessorAssetInfos::rename(const AssetPath& old_path,
                             const AssetPath& new_path,
-                            utils::Sender<std::pair<AssetSourceId, std::filesystem::path>>& reprocess_sender) {
+                            async_channel::Sender<std::pair<AssetSourceId, std::filesystem::path>>& reprocess_sender) {
     auto it = infos.find(old_path);
-    if (it == infos.end()) return std::nullopt;
+    if (it == infos.end()) co_return std::nullopt;
 
     auto info = std::move(it->second);
     infos.erase(it);
@@ -111,29 +114,29 @@ ProcessorAssetInfos::rename(const AssetPath& old_path,
         }
     }
 
-    info.status_sender.send(ProcessStatus::NonExistent);
+    (void)co_await info.status_sender.broadcast(ProcessStatus::NonExistent);
 
     auto old_lock           = info.file_transaction_lock;
     auto& new_info          = get_or_insert(new_path);
     new_info.processed_info = std::move(info.processed_info);
     new_info.status         = info.status;
     if (new_info.status) {
-        new_info.status_sender.send(*new_info.status);
+        (void)co_await new_info.status_sender.broadcast(*new_info.status);
     }
 
-    reprocess_sender.send(std::pair{new_path.source, new_path.path});
+    (void)co_await reprocess_sender.send(std::pair{new_path.source, new_path.path});
     auto dependents = std::vector<AssetPath>(new_info.dependents.begin(), new_info.dependents.end());
     for (const auto& dependent : dependents) {
-        reprocess_sender.send(std::pair{dependent.source, dependent.path});
+        (void)co_await reprocess_sender.send(std::pair{dependent.source, dependent.path});
     }
 
-    return std::pair{std::move(old_lock), new_info.file_transaction_lock};
+    co_return std::pair{std::move(old_lock), new_info.file_transaction_lock};
 }
 
-void ProcessorAssetInfos::finish_processing(
+asio::awaitable<void> ProcessorAssetInfos::finish_processing(
     const AssetPath& asset_path,
     std::expected<ProcessResult, ProcessError>& result,
-    utils::Sender<std::pair<AssetSourceId, std::filesystem::path>>& reprocess_sender) {
+    async_channel::Sender<std::pair<AssetSourceId, std::filesystem::path>>& reprocess_sender) {
     if (result) {
         switch (result->kind) {
             case ProcessResultKind::Processed: {
@@ -147,17 +150,17 @@ void ProcessorAssetInfos::finish_processing(
                 }
                 auto& info          = get_or_insert(asset_path);
                 info.processed_info = std::move(result->processed_info);
-                info.update_status(ProcessStatus::Processed);
+                co_await info.update_status(ProcessStatus::Processed);
                 auto dependents = std::vector<AssetPath>(info.dependents.begin(), info.dependents.end());
                 for (auto& path : dependents) {
-                    reprocess_sender.send(std::pair{path.source, path.path});
+                    (void)co_await reprocess_sender.send(std::pair{path.source, path.path});
                 }
                 break;
             }
             case ProcessResultKind::SkippedNotChanged: {
                 spdlog::debug("Skipping processing (unchanged) \"{}\"", asset_path.string());
                 auto* info = get(asset_path);
-                if (info) info->update_status(ProcessStatus::Processed);
+                if (info) co_await info->update_status(ProcessStatus::Processed);
                 break;
             }
             case ProcessResultKind::Ignored:
@@ -183,7 +186,7 @@ void ProcessorAssetInfos::finish_processing(
         if (!handled) {
             spdlog::error("Failed to process asset {}", asset_path.string());
             auto* info = get(asset_path);
-            if (info) info->update_status(ProcessStatus::Failed);
+            if (info) co_await info->update_status(ProcessStatus::Failed);
         }
     }
 }
@@ -215,7 +218,8 @@ AssetProcessorData::AssetProcessorData(std::shared_ptr<AssetSources> sources,
       sources(std::move(sources)),
       task_sender(AssetProcessorData::TaskSenderState{}) {}
 
-void AssetProcessorData::set_task_sender(utils::Sender<std::pair<AssetSourceId, std::filesystem::path>> sender) const {
+void AssetProcessorData::set_task_sender(
+    async_channel::Sender<std::pair<AssetSourceId, std::filesystem::path>> sender) const {
     auto guarded    = task_sender.lock();
     guarded->sender = std::move(sender);
     if (guarded->shutdown_requested) {
@@ -246,99 +250,113 @@ std::expected<void, SetTransactionLogFactoryError> AssetProcessorData::set_log_f
     return {};
 }
 
-ProcessStatus AssetProcessorData::wait_until_processed(const AssetPath& path) const {
-    return processing_state->wait_until_processed(path);
+asio::awaitable<ProcessStatus> AssetProcessorData::wait_until_processed(const AssetPath& path) const {
+    co_return co_await processing_state->wait_until_processed(path);
 }
 
-void AssetProcessorData::wait_until_initialized() const { processing_state->wait_until_initialized(); }
+asio::awaitable<void> AssetProcessorData::wait_until_initialized() const {
+    co_await processing_state->wait_until_initialized();
+}
 
-void AssetProcessorData::wait_until_finished() const { processing_state->wait_until_finished(); }
+asio::awaitable<void> AssetProcessorData::wait_until_finished() const {
+    co_await processing_state->wait_until_finished();
+}
 
-ProcessorState AssetProcessorData::state() const { return processing_state->get_state(); }
+asio::awaitable<ProcessorState> AssetProcessorData::state() const { co_return co_await processing_state->get_state(); }
 
 // ---- ProcessingState ----
 
 ProcessingState::ProcessingState() {
-    auto [is, ir]          = utils::make_broadcast_channel<bool>();
-    auto [fs, fr]          = utils::make_broadcast_channel<bool>();
+    auto [is, ir] = async_broadcast::broadcast<bool>(1);
+    auto [fs, fr] = async_broadcast::broadcast<bool>(1);
+    is.set_overflow(true);
+    fs.set_overflow(true);
     m_initialized_sender   = std::move(is);
     m_initialized_receiver = std::move(ir);
     m_finished_sender      = std::move(fs);
     m_finished_receiver    = std::move(fr);
 }
 
-void ProcessingState::set_state(ProcessorState state) {
+asio::awaitable<void> ProcessingState::set_state(ProcessorState state) {
+    ProcessorState last_state;
     {
         auto guard = m_state.write();
+        last_state = *guard;
         *guard     = state;
     }
-    switch (state) {
-        case ProcessorState::Processing:
-            m_initialized_sender.send(true);
-            break;
-        case ProcessorState::Finished:
-            m_finished_sender.send(true);
-            break;
-        default:
-            break;
+    if (last_state != ProcessorState::Finished && state == ProcessorState::Finished) {
+        (void)co_await m_finished_sender.broadcast(true);
+    } else if (last_state != ProcessorState::Processing && state == ProcessorState::Processing) {
+        (void)co_await m_initialized_sender.broadcast(true);
     }
 }
 
-ProcessorState ProcessingState::get_state() const {
+asio::awaitable<ProcessorState> ProcessingState::get_state() const {
     auto guard = m_state.read();
-    return *guard;
+    co_return *guard;
 }
 
-ProcessStatus ProcessingState::wait_until_processed(const AssetPath& path) const {
+asio::awaitable<ProcessStatus> ProcessingState::wait_until_processed(const AssetPath& path) const {
     // Fast path: asset already tracked and has a final status.
     {
         auto guard = m_asset_infos.read();
         if (auto* info = guard->get(path)) {
-            if (info->status) return *info->status;
+            if (info->status) co_return *info->status;
         }
     }
 
-    // Asset not yet in the map — initialize() hasn't run yet.  Wait only for initialization
-    // (which registers every source path) rather than for ALL processing to finish.
-    wait_until_initialized();
+    // Wait until initialization (which registers every source path).
+    co_await wait_until_initialized();
 
-    // After initialization every source path is registered.  Check for a status or pick up
-    // the per-asset receiver so we block only on this one asset, not the entire pipeline.
-    std::optional<utils::BroadcastReceiver<ProcessStatus>> pending_receiver;
+    // After initialization, check for a status or subscribe to the per-asset receiver.
+    std::optional<async_broadcast::Receiver<ProcessStatus>> pending_receiver;
     {
         auto guard = m_asset_infos.read();
         if (auto* info = guard->get(path)) {
-            if (info->status) return *info->status;
+            if (info->status) co_return *info->status;
             pending_receiver = info->status_receiver;
         }
     }
     if (pending_receiver) {
-        auto status = pending_receiver->receive();
-        if (status) return *status;
+        auto result = co_await pending_receiver->recv();
+        if (result) co_return *result;
     }
 
-    // Asset not tracked even after initialization — unknown/nonexistent path.
-    // Fall back to the global finished signal as a safety net.
-    wait_until_finished();
+    // Fall back to waiting for the global finished signal.
+    co_await wait_until_finished();
     {
         auto guard = m_asset_infos.read();
         if (auto* info = guard->get(path)) {
-            return info->status.value_or(ProcessStatus::NonExistent);
+            co_return info->status.value_or(ProcessStatus::NonExistent);
         }
     }
-    return ProcessStatus::NonExistent;
+    co_return ProcessStatus::NonExistent;
 }
 
-void ProcessingState::wait_until_initialized() const {
-    auto receiver = m_initialized_receiver;
-    auto ready    = receiver.receive();
-    (void)ready;
+asio::awaitable<void> ProcessingState::wait_until_initialized() const {
+    std::optional<async_broadcast::Receiver<bool>> receiver;
+    {
+        auto guard = m_state.read();
+        if (*guard == ProcessorState::Initializing) {
+            receiver = m_initialized_receiver;
+        }
+    }
+    if (receiver) {
+        (void)co_await receiver->recv();
+    }
 }
 
-void ProcessingState::wait_until_finished() const {
-    auto receiver = m_finished_receiver;
-    auto ready    = receiver.receive();
-    (void)ready;
+asio::awaitable<void> ProcessingState::wait_until_finished() const {
+    std::optional<async_broadcast::Receiver<bool>> receiver;
+    {
+        auto guard = m_state.read();
+        if (*guard != ProcessorState::Finished) {
+            receiver = m_finished_receiver;
+        }
+    }
+    if (receiver) {
+        (void)co_await receiver->recv();
+    }
 }
 
 void ProcessingState::shutdown() {
@@ -350,12 +368,12 @@ void ProcessingState::shutdown() {
     }
 }
 
-std::expected<std::shared_ptr<std::shared_mutex>, AssetReaderError> ProcessingState::get_transaction_lock(
-    const AssetPath& path) const {
+asio::awaitable<std::expected<std::shared_ptr<std::shared_mutex>, AssetReaderError>>
+ProcessingState::get_transaction_lock(const AssetPath& path) const {
     auto guard = m_asset_infos.read();
     auto* info = guard->get(path);
     if (!info) {
-        return std::unexpected(AssetReaderError(reader_errors::NotFound{path.path}));
+        co_return std::unexpected(AssetReaderError(reader_errors::NotFound{path.path}));
     }
-    return info->file_transaction_lock;
+    co_return info->file_transaction_lock;
 }

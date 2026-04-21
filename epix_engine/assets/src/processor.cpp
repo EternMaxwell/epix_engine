@@ -28,6 +28,8 @@ module epix.assets;
 #ifdef EPIX_IMPORT_STD
 import std;
 #endif
+import epix.tasks;
+
 using namespace epix::assets;
 
 namespace {
@@ -44,44 +46,44 @@ std::optional<std::int64_t> to_persisted_mtime_ns(std::optional<std::filesystem:
 
 void AssetProcessor::start(core::Res<AssetProcessor> processor) {
     auto proc = *processor;
-    utils::IOTaskPool::instance().detach_task([proc]() mutable {
-        auto start_time = std::chrono::steady_clock::now();
-        spdlog::debug("Processing Assets");
+    tasks::IoTaskPool::get()
+        .spawn([](AssetProcessor proc) mutable -> asio::awaitable<void> {
+            auto start_time = std::chrono::steady_clock::now();
+            spdlog::debug("Processing Assets");
 
-        {
-            asio::io_context ctx;
-            asio::co_spawn(ctx, proc.initialize(), asio::detached);
-            ctx.run();
-        }
+            co_await proc.initialize();
 
-        auto [new_task_sender, new_task_receiver] =
-            utils::make_channel<std::pair<AssetSourceId, std::filesystem::path>>();
-        proc.data->set_task_sender(new_task_sender);
+            auto [new_task_sender, new_task_receiver] =
+                async_channel::unbounded<std::pair<AssetSourceId, std::filesystem::path>>();
+            proc.data->set_task_sender(new_task_sender);
 
-        {
-            asio::io_context ctx;
-            asio::co_spawn(ctx, proc.queue_initial_processing_tasks(new_task_sender), asio::detached);
-            ctx.run();
-        }
+            co_await proc.queue_initial_processing_tasks(new_task_sender);
 
-        // Spawn task executor in background.
-        {
-            auto p = proc;
-            auto s = new_task_sender;
-            auto r = new_task_receiver;
-            utils::IOTaskPool::instance().detach_task(
-                [p, s, r]() mutable { p.execute_processing_tasks(std::move(s), r); });
-        }
+            // Spawn task executor in background.
+            {
+                auto p = proc;
+                auto s = new_task_sender;
+                auto r = new_task_receiver;
+                tasks::IoTaskPool::get()
+                    .spawn([](AssetProcessor p,
+                              async_channel::Sender<std::pair<AssetSourceId, std::filesystem::path>> s,
+                              async_channel::Receiver<std::pair<AssetSourceId, std::filesystem::path>> r)
+                               -> asio::awaitable<void> {
+                        co_await p.execute_processing_tasks(std::move(s), std::move(r));
+                    }(std::move(p), std::move(s), std::move(r)))
+                    .detach();
+            }
 
-        proc.data->wait_until_finished();
+            co_await proc.data->wait_until_finished();
 
-        auto end_time = std::chrono::steady_clock::now();
-        auto elapsed  = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-        spdlog::debug("Processing finished in {}ms", elapsed.count());
+            auto end_time = std::chrono::steady_clock::now();
+            auto elapsed  = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+            spdlog::debug("Processing finished in {}ms", elapsed.count());
 
-        spdlog::debug("Listening for changes to source assets");
-        proc.spawn_source_change_event_listeners(new_task_sender);
-    });
+            spdlog::debug("Listening for changes to source assets");
+            proc.spawn_source_change_event_listeners(new_task_sender);
+        }(std::move(proc)))
+        .detach();
 }
 
 // ---- Logging helpers ----
@@ -419,7 +421,7 @@ asio::awaitable<void> AssetProcessor::initialize() const {
         }
     }
 
-    data->processing_state->set_state(ProcessorState::Processing);
+    co_await data->processing_state->set_state(ProcessorState::Processing);
 }
 
 // ---- process_asset ----
@@ -427,18 +429,20 @@ asio::awaitable<void> AssetProcessor::initialize() const {
 asio::awaitable<void> AssetProcessor::process_asset(
     const AssetSourceId& source_id,
     const std::filesystem::path& path,
-    utils::Sender<std::pair<AssetSourceId, std::filesystem::path>> reprocess_sender) const {
+    async_channel::Sender<std::pair<AssetSourceId, std::filesystem::path>> reprocess_sender) const {
     auto source_opt = get_source(source_id);
     if (!source_opt) {
         spdlog::error("AssetSource {} not found for processing",
                       source_id.is_default() ? "default" : source_id.value());
         co_return;
     }
-    auto& source     = source_opt->get();
-    auto asset_path  = AssetPath(source.id(), path);
-    auto result      = co_await process_asset_internal(source, asset_path);
-    auto infos_guard = data->processing_state->m_asset_infos.write();
-    infos_guard->finish_processing(asset_path, result, reprocess_sender);
+    auto& source    = source_opt->get();
+    auto asset_path = AssetPath(source.id(), path);
+    auto result     = co_await process_asset_internal(source, asset_path);
+    // finish_processing may co_await async_broadcast sends, but utils::RwLock is sync.
+    // We must NOT hold infos_guard across a co_await. finish_processing handles this by
+    // doing all mutations while internally managing lock scope before awaiting.
+    co_await data->processing_state->m_asset_infos.write()->finish_processing(asset_path, result, reprocess_sender);
 }
 
 // ---- process_asset_internal ----
@@ -667,36 +671,36 @@ asio::awaitable<std::expected<ProcessResult, ProcessError>> AssetProcessor::proc
 asio::awaitable<void> AssetProcessor::handle_asset_source_event(
     const AssetSource& source,
     const AssetSourceEvent& event,
-    utils::Sender<std::pair<AssetSourceId, std::filesystem::path>>& sender) const {
+    async_channel::Sender<std::pair<AssetSourceId, std::filesystem::path>>& sender) const {
     if (auto* e = std::get_if<source_events::AddedAsset>(&event)) {
-        sender.send(std::pair{source.id(), e->path});
+        (void)co_await sender.send(std::pair{source.id(), e->path});
     } else if (auto* e = std::get_if<source_events::ModifiedAsset>(&event)) {
-        sender.send(std::pair{source.id(), e->path});
+        (void)co_await sender.send(std::pair{source.id(), e->path});
     } else if (auto* e = std::get_if<source_events::AddedMeta>(&event)) {
-        sender.send(std::pair{source.id(), e->path});
+        (void)co_await sender.send(std::pair{source.id(), e->path});
     } else if (auto* e = std::get_if<source_events::ModifiedMeta>(&event)) {
-        sender.send(std::pair{source.id(), e->path});
+        (void)co_await sender.send(std::pair{source.id(), e->path});
     } else if (auto* e = std::get_if<source_events::RemovedAsset>(&event)) {
         co_await handle_removed_asset(source, e->path);
     } else if (auto* e = std::get_if<source_events::RemovedMeta>(&event)) {
-        handle_removed_meta(source, e->path, sender);
+        co_await handle_removed_meta(source, e->path, sender);
     } else if (auto* e = std::get_if<source_events::AddedDirectory>(&event)) {
         co_await handle_added_folder(source, e->path, sender);
     } else if (auto* e = std::get_if<source_events::RemovedDirectory>(&event)) {
         co_await handle_removed_folder(source, e->path);
     } else if (auto* e = std::get_if<source_events::RenamedAsset>(&event)) {
         if (e->old_path == e->new_path) {
-            sender.send(std::pair{source.id(), e->new_path});
+            (void)co_await sender.send(std::pair{source.id(), e->new_path});
         } else {
             co_await handle_renamed_asset(source, e->old_path, e->new_path, sender);
         }
     } else if (auto* e = std::get_if<source_events::RenamedMeta>(&event)) {
         if (e->old_path == e->new_path) {
-            sender.send(std::pair{source.id(), e->new_path});
+            (void)co_await sender.send(std::pair{source.id(), e->new_path});
         } else {
             spdlog::debug("Meta renamed from {} to {}", e->old_path.string(), e->new_path.string());
-            sender.send(std::pair{source.id(), e->old_path});
-            sender.send(std::pair{source.id(), e->new_path});
+            (void)co_await sender.send(std::pair{source.id(), e->old_path});
+            (void)co_await sender.send(std::pair{source.id(), e->new_path});
         }
     } else if (auto* e = std::get_if<source_events::RenamedDirectory>(&event)) {
         if (e->old_path == e->new_path) {
@@ -713,7 +717,7 @@ asio::awaitable<void> AssetProcessor::handle_asset_source_event(
             if (is_dir && *is_dir) {
                 co_await handle_removed_folder(source, e->path);
             } else if (e->is_meta) {
-                handle_removed_meta(source, e->path, sender);
+                co_await handle_removed_meta(source, e->path, sender);
             } else {
                 co_await handle_removed_asset(source, e->path);
             }
@@ -724,26 +728,25 @@ asio::awaitable<void> AssetProcessor::handle_asset_source_event(
 asio::awaitable<void> AssetProcessor::handle_added_folder(
     const AssetSource& source,
     const std::filesystem::path& path,
-    utils::Sender<std::pair<AssetSourceId, std::filesystem::path>>& sender) const {
+    async_channel::Sender<std::pair<AssetSourceId, std::filesystem::path>>& sender) const {
     spdlog::debug("Folder {} was added. Attempting to re-process", AssetPath(source.id(), path).string());
     co_await queue_processing_tasks_for_folder(source, path, sender);
 }
 
-void AssetProcessor::handle_removed_meta(const AssetSource& source,
-                                         const std::filesystem::path& path,
-                                         utils::Sender<std::pair<AssetSourceId, std::filesystem::path>>& sender) const {
+asio::awaitable<void> AssetProcessor::handle_removed_meta(
+    const AssetSource& source,
+    const std::filesystem::path& path,
+    async_channel::Sender<std::pair<AssetSourceId, std::filesystem::path>>& sender) const {
     spdlog::debug("Meta for asset {} was removed. Attempting to re-process", AssetPath(source.id(), path).string());
-    sender.send(std::pair{source.id(), path});
+    (void)co_await sender.send(std::pair{source.id(), path});
 }
 
 asio::awaitable<void> AssetProcessor::handle_removed_asset(const AssetSource& source,
                                                            const std::filesystem::path& path) const {
     auto asset_path = AssetPath(source.id(), path);
     spdlog::debug("Removing processed {} because source was removed", asset_path.string());
-    auto lock = [&]() -> std::shared_ptr<std::shared_mutex> {
-        auto infos_guard = data->processing_state->m_asset_infos.write();
-        return infos_guard->remove(asset_path);
-    }();
+    // remove() is async; same-as above note: unbounded send + overflow broadcast never suspend
+    auto lock = co_await data->processing_state->m_asset_infos.write()->remove(asset_path);
     if (!lock) co_return;
     std::unique_lock write_lock(*lock);
     co_await remove_processed_asset_and_meta(source, path);
@@ -780,18 +783,15 @@ asio::awaitable<void> AssetProcessor::handle_renamed_asset(
     const AssetSource& source,
     const std::filesystem::path& old_path,
     const std::filesystem::path& new_path,
-    utils::Sender<std::pair<AssetSourceId, std::filesystem::path>>& sender) const {
+    async_channel::Sender<std::pair<AssetSourceId, std::filesystem::path>>& sender) const {
     auto old_asset  = AssetPath(source.id(), old_path);
     auto new_asset  = AssetPath(source.id(), new_path);
     auto writer_opt = source.processed_writer();
     if (!writer_opt) co_return;
     auto& processed_writer = writer_opt->get();
 
-    auto lock_pair =
-        [&]() -> std::optional<std::pair<std::shared_ptr<std::shared_mutex>, std::shared_ptr<std::shared_mutex>>> {
-        auto infos_guard = data->processing_state->m_asset_infos.write();
-        return infos_guard->rename(old_asset, new_asset, sender);
-    }();
+    // rename() is async; unbounded send + overflow broadcast never suspend
+    auto lock_pair = co_await data->processing_state->m_asset_infos.write()->rename(old_asset, new_asset, sender);
     if (!lock_pair) co_return;
 
     auto& [old_lock, new_lock] = *lock_pair;
@@ -806,7 +806,7 @@ asio::awaitable<void> AssetProcessor::handle_renamed_asset(
 asio::awaitable<void> AssetProcessor::queue_processing_tasks_for_folder(
     const AssetSource& source,
     const std::filesystem::path& folder,
-    utils::Sender<std::pair<AssetSourceId, std::filesystem::path>>& sender) const {
+    async_channel::Sender<std::pair<AssetSourceId, std::filesystem::path>>& sender) const {
     auto is_dir = co_await source.reader().is_directory(folder);
     if (is_dir && *is_dir) {
         auto dir_result = co_await source.reader().read_directory(folder);
@@ -816,162 +816,140 @@ asio::awaitable<void> AssetProcessor::queue_processing_tasks_for_folder(
         }
     } else {
         if (folder.extension() != ".meta") {
-            sender.send(std::pair{source.id(), folder});
+            (void)co_await sender.send(std::pair{source.id(), folder});
         }
     }
 }
 
 asio::awaitable<void> AssetProcessor::queue_initial_processing_tasks(
-    utils::Sender<std::pair<AssetSourceId, std::filesystem::path>>& sender) const {
+    async_channel::Sender<std::pair<AssetSourceId, std::filesystem::path>>& sender) const {
     for (auto& source : sources()->iter_processed()) {
         co_await queue_processing_tasks_for_folder(source, std::filesystem::path(""), sender);
     }
 }
 
 void AssetProcessor::spawn_source_change_event_listeners(
-    utils::Sender<std::pair<AssetSourceId, std::filesystem::path>>& sender) const {
+    async_channel::Sender<std::pair<AssetSourceId, std::filesystem::path>>& sender) const {
     for (auto& source : sources()->iter_processed()) {
         auto receiver_opt = source.event_receiver();
         if (!receiver_opt) continue;
-        auto source_id = source.id();
-        // Use weak_ptr to data and server.data to avoid a reference cycle:
-        // listener task -> proc -> server.data -> sources -> watcher (sender to r).
-        // If the processor is destroyed (e.g. App exits), the sources are freed,
-        // the watcher's sender is dropped, r.receive() returns Closed, and the task exits.
-        auto weak_data        = std::weak_ptr<AssetProcessorData>(data);
-        auto weak_server_data = std::weak_ptr<AssetServerData>(server.data);
-        auto task_sender      = sender;
-        auto r                = receiver_opt->get();
-        utils::IOTaskPool::instance().detach_task([weak_data, weak_server_data, source_id, task_sender, r]() mutable {
-            while (true) {
-                auto event = r.receive();
-                if (!event) {
-                    spdlog::trace("[assets.processor] Source change listener exiting after receiver closed.");
-                    return;
+        auto source_id   = source.id();
+        auto proc        = *this;
+        auto task_sender = sender;
+        auto r           = receiver_opt->get();
+        tasks::IoTaskPool::get()
+            .spawn([](AssetProcessor proc, AssetSourceId source_id,
+                      async_channel::Sender<std::pair<AssetSourceId, std::filesystem::path>> task_sender,
+                      async_channel::Receiver<AssetSourceEvent> r) mutable -> asio::awaitable<void> {
+                while (true) {
+                    auto event = co_await r.recv();
+                    if (!event) {
+                        spdlog::trace("[assets.processor] Source change listener exiting after receiver closed.");
+                        co_return;
+                    }
+                    auto source_opt = proc.get_source(source_id);
+                    if (!source_opt) co_return;
+                    co_await proc.handle_asset_source_event(source_opt->get(), *event, task_sender);
                 }
-                auto locked_data        = weak_data.lock();
-                auto locked_server_data = weak_server_data.lock();
-                if (!locked_data || !locked_server_data) {
-                    spdlog::trace("[assets.processor] Source change listener exiting after processor data expired.");
-                    return;
-                }
-                // Reconstruct a temporary AssetProcessor from the locked weak_ptr data.
-                AssetServer tmp_server;
-                tmp_server.data = locked_server_data;
-                AssetProcessor proc(std::move(tmp_server), locked_data);
-                auto source_opt = proc.get_source(source_id);
-                if (!source_opt) return;
-                asio::io_context ctx;
-                asio::co_spawn(ctx, proc.handle_asset_source_event(source_opt->get(), *event, task_sender),
-                               asio::detached);
-                ctx.run();
-            }
-        });
+            }(std::move(proc), std::move(source_id), task_sender, std::move(r)))
+            .detach();
     }
 }
 
-void AssetProcessor::execute_processing_tasks(
-    utils::Sender<std::pair<AssetSourceId, std::filesystem::path>> new_task_sender,
-    utils::Receiver<std::pair<AssetSourceId, std::filesystem::path>>& receiver) const {
+asio::awaitable<void> AssetProcessor::execute_processing_tasks(
+    async_channel::Sender<std::pair<AssetSourceId, std::filesystem::path>> new_task_sender,
+    async_channel::Receiver<std::pair<AssetSourceId, std::filesystem::path>> receiver) const {
     // Convert the Sender into a WeakSender so that once all task producers terminate (and drop
-    // their sender), this executor doesn't keep itself alive. We can still upgrade when spawning
-    // tasks that need to queue dependency assets. Matches Bevy's WeakSender downgrade pattern.
+    // their sender), this task doesn't keep itself alive. Matches Bevy's WeakSender downgrade pattern.
     auto weak_sender = new_task_sender.downgrade();
     new_task_sender  = {};
 
-    // If there are no initial tasks in the channel, go straight to Finished (matches Bevy check:
-    // `if new_task_receiver.is_empty() { set_state(Finished) }`).
-    // We use try_receive: if it returns Empty the channel has no items yet (but may receive more
-    // from file-watcher senders later); if it returns a value we'll re-inject it below.
-    using Task = std::pair<AssetSourceId, std::filesystem::path>;
-
-    struct StartTaskEvent {
-        Task task;
-    };
-    struct FinishedTaskEvent {};
-    struct InputClosedEvent {};
-    using ProcessingTaskEvent = std::variant<StartTaskEvent, FinishedTaskEvent, InputClosedEvent>;
-
-    auto [event_sender, event_receiver] = utils::make_channel<ProcessingTaskEvent>();
-
-    // Handle the initial-empty check using try_receive so we don't block.
-    // If a value is present we forward it into the event queue first.
-    {
-        auto first = receiver.try_receive();
-        if (!first) {
-            if (first.error() == utils::ReceiveError::Empty) {
-                // No tasks are queued right now; go to Finished immediately.
-                data->processing_state->set_state(ProcessorState::Finished);
-            }
-            // If Closed, the InputClosedEvent from the forwarding thread handles it.
-        } else {
-            event_sender.send(StartTaskEvent{std::move(*first)});
-        }
+    // If there are no initial tasks in the channel, go straight to Finished.
+    if (receiver.is_empty()) {
+        co_await data->processing_state->set_state(ProcessorState::Finished);
     }
 
-    // Background forwarding thread: pulls from the outer task receiver and forwards as
-    // StartTaskEvent/InputClosedEvent into the unified event queue.  This mirrors Bevy's
-    // `new_task_receiver.recv()` arm inside `select_biased!`.
-    auto fwd_receiver = receiver;
-    auto fwd_sender   = event_sender;
-    utils::IOTaskPool::instance().detach_task([fwd_receiver, fwd_sender]() mutable {
-        while (true) {
-            auto task = fwd_receiver.receive();
-            if (!task) {
-                fwd_sender.send(InputClosedEvent{});
-                break;
-            }
-            fwd_sender.send(StartTaskEvent{std::move(*task)});
-        }
-    });
+    using Task = std::pair<AssetSourceId, std::filesystem::path>;
+    enum class ProcessorTaskEventKind { Start, Finished };
+    struct ProcessorTaskEvent {
+        ProcessorTaskEventKind kind;
+        std::optional<Task> task;
+    };
+
+    auto [task_finished_sender, task_finished_receiver] = async_channel::unbounded<std::monostate>();
 
     int pending_tasks = 0;
-    bool input_closed = false;
 
-    // Unified event loop, equivalent to Bevy's `select_biased!` over new_task_receiver and
-    // task_finished_receiver.  We prefer StartTaskEvent (start tasks) over FinishedTaskEvent so
-    // we don't prematurely mark as Finished before all queued tasks are dispatched.
-    while (!input_closed || pending_tasks > 0) {
-        auto event = event_receiver.receive();
-        if (!event) {
-            break;
+    // Unified event queue: forward both new tasks and finished events here.
+    // This mirrors Bevy's select_biased! over new_task_receiver and task_finished_receiver.
+    auto [event_sender, event_receiver] = async_channel::unbounded<ProcessorTaskEvent>();
+
+    // Spawn a forwarder coroutine that reads from receiver and feeds events.
+    {
+        auto fwd_recv   = receiver;
+        auto fwd_sender = event_sender;
+        tasks::IoTaskPool::get()
+            .spawn([](async_channel::Receiver<Task> fwd_recv,
+                      async_channel::Sender<ProcessorTaskEvent> fwd_sender) -> asio::awaitable<void> {
+                while (true) {
+                    auto task = co_await fwd_recv.recv();
+                    if (!task) {
+                        fwd_sender.close();
+                        co_return;
+                    }
+                    if (!(co_await fwd_sender.send(
+                            ProcessorTaskEvent{ProcessorTaskEventKind::Start, std::move(*task)}))) {
+                        co_return;
+                    }
+                }
+            }(std::move(fwd_recv), std::move(fwd_sender)))
+            .detach();
+    }
+    // Spawn a forwarder for task_finished_receiver.
+    {
+        auto fin_recv   = task_finished_receiver;
+        auto fwd_sender = event_sender;
+        tasks::IoTaskPool::get()
+            .spawn([](async_channel::Receiver<std::monostate> fin_recv,
+                      async_channel::Sender<ProcessorTaskEvent> fwd_sender) -> asio::awaitable<void> {
+                while (true) {
+                    auto fin = co_await fin_recv.recv();
+                    if (!fin) co_return;
+                    if (!(co_await fwd_sender.send(ProcessorTaskEvent{ProcessorTaskEventKind::Finished, {}}))) {
+                        co_return;
+                    }
+                }
+            }(std::move(fin_recv), std::move(fwd_sender)))
+            .detach();
+    }
+
+    while (true) {
+        auto event = co_await event_receiver.recv();
+        if (!event) break;
+
+        if (event->kind == ProcessorTaskEventKind::Start) {
+            auto upgraded = weak_sender.upgrade();
+            if (!upgraded) continue;
+            auto p  = *this;
+            auto s  = std::move(*upgraded);
+            auto es = task_finished_sender;
+            auto t  = std::move(*event->task);
+            pending_tasks++;
+            tasks::IoTaskPool::get()
+                .spawn([](AssetProcessor p, async_channel::Sender<std::pair<AssetSourceId, std::filesystem::path>> s,
+                          async_channel::Sender<std::monostate> es, Task t) -> asio::awaitable<void> {
+                    co_await p.process_asset(t.first, t.second, std::move(s));
+                    (void)co_await es.send(std::monostate{});
+                }(std::move(p), std::move(s), es, std::move(t)))
+                .detach();
+            co_await data->processing_state->set_state(ProcessorState::Processing);
+        } else {
+            // Finished
+            pending_tasks--;
+            if (pending_tasks == 0) {
+                co_await data->processing_state->set_state(ProcessorState::Finished);
+            }
         }
-
-        std::visit(utils::visitor{
-                       [&](StartTaskEvent& e) {
-                           auto upgraded = weak_sender.upgrade();
-                           if (!upgraded) {
-                               return;
-                           }
-                           pending_tasks++;
-                           auto p  = *this;
-                           auto s  = std::move(*upgraded);
-                           auto es = event_sender;
-                           auto t  = std::move(e.task);
-                           utils::IOTaskPool::instance().detach_task([p, s, es, t]() mutable {
-                               auto& [source_id, path] = t;
-                               asio::io_context ctx;
-                               asio::co_spawn(ctx, p.process_asset(source_id, path, std::move(s)), asio::detached);
-                               ctx.run();
-                               es.send(FinishedTaskEvent{});
-                           });
-                           data->processing_state->set_state(ProcessorState::Processing);
-                       },
-                       [&](FinishedTaskEvent&) {
-                           pending_tasks--;
-                           if (pending_tasks == 0) {
-                               data->processing_state->set_state(ProcessorState::Finished);
-                           }
-                       },
-                       [&](InputClosedEvent&) {
-                           input_closed = true;
-                           // If there are no in-flight tasks left, processing is done now.
-                           if (pending_tasks == 0) {
-                               data->processing_state->set_state(ProcessorState::Finished);
-                           }
-                       },
-                   },
-                   *event);
     }
 }
 

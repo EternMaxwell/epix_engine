@@ -41,11 +41,11 @@ struct TransactionLockedReader : Reader {
 asio::awaitable<std::expected<std::unique_ptr<Reader>, AssetReaderError>> ProcessorGatedReader::read(
     const std::filesystem::path& path) const {
     auto asset_path = AssetPath(m_source, path);
-    auto status     = m_processing_state->wait_until_processed(asset_path);
+    auto status     = co_await m_processing_state->wait_until_processed(asset_path);
     if (status != ProcessStatus::Processed) {
         co_return std::unexpected(AssetReaderError(reader_errors::NotFound{path}));
     }
-    auto lock_result = m_processing_state->get_transaction_lock(asset_path);
+    auto lock_result = co_await m_processing_state->get_transaction_lock(asset_path);
     if (!lock_result) co_return std::unexpected(lock_result.error());
     auto mutex       = lock_result.value();
     auto lock        = std::shared_lock(*mutex);
@@ -57,11 +57,11 @@ asio::awaitable<std::expected<std::unique_ptr<Reader>, AssetReaderError>> Proces
 asio::awaitable<std::expected<std::unique_ptr<Reader>, AssetReaderError>> ProcessorGatedReader::read_meta(
     const std::filesystem::path& path) const {
     auto asset_path = AssetPath(m_source, path);
-    auto status     = m_processing_state->wait_until_processed(asset_path);
+    auto status     = co_await m_processing_state->wait_until_processed(asset_path);
     if (status != ProcessStatus::Processed) {
         co_return std::unexpected(AssetReaderError(reader_errors::NotFound{path}));
     }
-    auto lock_result = m_processing_state->get_transaction_lock(asset_path);
+    auto lock_result = co_await m_processing_state->get_transaction_lock(asset_path);
     if (!lock_result) co_return std::unexpected(lock_result.error());
     auto mutex       = lock_result.value();
     auto lock        = std::shared_lock(*mutex);
@@ -72,13 +72,13 @@ asio::awaitable<std::expected<std::unique_ptr<Reader>, AssetReaderError>> Proces
 
 asio::awaitable<std::expected<utils::input_iterable<std::filesystem::path>, AssetReaderError>>
 ProcessorGatedReader::read_directory(const std::filesystem::path& path) const {
-    m_processing_state->wait_until_finished();
+    co_await m_processing_state->wait_until_finished();
     co_return co_await m_reader->read_directory(path);
 }
 
 asio::awaitable<std::expected<bool, AssetReaderError>> ProcessorGatedReader::is_directory(
     const std::filesystem::path& path) const {
-    m_processing_state->wait_until_finished();
+    co_await m_processing_state->wait_until_finished();
     co_return co_await m_reader->is_directory(path);
 }
 

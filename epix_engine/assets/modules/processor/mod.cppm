@@ -35,6 +35,8 @@ import :server.loader;
 import :server;
 import :processor.process;
 import :processor.log;
+import :async_channel;
+import :async_broadcast;
 
 namespace epix::assets {
 
@@ -82,12 +84,12 @@ struct ProcessorAssetInfo {
     /** @brief A lock that controls read/write access to processed asset files.
      *  Shared for both asset bytes and meta bytes. */
     std::shared_ptr<std::shared_mutex> file_transaction_lock = std::make_shared<std::shared_mutex>();
-    utils::BroadcastSender<ProcessStatus> status_sender;
-    utils::BroadcastReceiver<ProcessStatus> status_receiver;
+    async_broadcast::Sender<ProcessStatus> status_sender;
+    async_broadcast::Receiver<ProcessStatus> status_receiver;
 
     ProcessorAssetInfo();
 
-    void update_status(ProcessStatus new_status);
+    asio::awaitable<void> update_status(ProcessStatus new_status);
 };
 
 // ---- ProcessorAssetInfos ----
@@ -107,19 +109,20 @@ struct ProcessorAssetInfos {
     void add_dependent(const AssetPath& asset_path, AssetPath dependent);
 
     /** @brief Remove an asset from tracking. Returns the transaction lock if it existed. */
-    std::shared_ptr<std::shared_mutex> remove(const AssetPath& asset_path);
+    asio::awaitable<std::shared_ptr<std::shared_mutex>> remove(const AssetPath& asset_path);
 
     /** @brief Rename an asset in tracking, preserving status and requeueing affected work.
      *  Matches bevy_asset's ProcessorAssetInfos::rename. */
-    std::optional<std::pair<std::shared_ptr<std::shared_mutex>, std::shared_ptr<std::shared_mutex>>> rename(
-        const AssetPath& old_path,
-        const AssetPath& new_path,
-        utils::Sender<std::pair<AssetSourceId, std::filesystem::path>>& reprocess_sender);
+    asio::awaitable<std::optional<std::pair<std::shared_ptr<std::shared_mutex>, std::shared_ptr<std::shared_mutex>>>>
+    rename(const AssetPath& old_path,
+           const AssetPath& new_path,
+           async_channel::Sender<std::pair<AssetSourceId, std::filesystem::path>>& reprocess_sender);
 
     /** @brief Finalize processing for an asset, incorporating the result. */
-    void finish_processing(const AssetPath& asset_path,
-                           std::expected<ProcessResult, ProcessError>& result,
-                           utils::Sender<std::pair<AssetSourceId, std::filesystem::path>>& reprocess_sender);
+    asio::awaitable<void> finish_processing(
+        const AssetPath& asset_path,
+        std::expected<ProcessResult, ProcessError>& result,
+        async_channel::Sender<std::pair<AssetSourceId, std::filesystem::path>>& reprocess_sender);
 
     void clear_dependencies(const AssetPath& asset_path, const ProcessedInfo& removed_info);
 };
@@ -127,15 +130,15 @@ struct ProcessorAssetInfos {
 // ---- ProcessingState ----
 
 /** @brief The current state of processing, including the overall state and the state of all assets.
- *  Matches bevy_asset's ProcessingState. Uses blocking primitives instead of async. */
+ *  Matches bevy_asset's ProcessingState. */
 struct ProcessingState {
    private:
     mutable utils::RwLock<ProcessorState> m_state{ProcessorState::Initializing};
 
-    utils::BroadcastSender<bool> m_initialized_sender;
-    utils::BroadcastReceiver<bool> m_initialized_receiver;
-    utils::BroadcastSender<bool> m_finished_sender;
-    utils::BroadcastReceiver<bool> m_finished_receiver;
+    async_broadcast::Sender<bool> m_initialized_sender;
+    async_broadcast::Receiver<bool> m_initialized_receiver;
+    async_broadcast::Sender<bool> m_finished_sender;
+    async_broadcast::Receiver<bool> m_finished_receiver;
 
     mutable utils::RwLock<ProcessorAssetInfos> m_asset_infos;
 
@@ -146,20 +149,20 @@ struct ProcessingState {
     ProcessingState();
 
     /** @brief Set the overall state of processing and broadcast appropriate events. */
-    void set_state(ProcessorState state);
+    asio::awaitable<void> set_state(ProcessorState state);
     /** @brief Retrieve the current ProcessorState. */
-    ProcessorState get_state() const;
+    asio::awaitable<ProcessorState> get_state() const;
 
-    /** @brief Block until the path has been processed. Returns the ProcessStatus. */
-    ProcessStatus wait_until_processed(const AssetPath& path) const;
+    /** @brief Await until the path has been processed. Returns the ProcessStatus. */
+    asio::awaitable<ProcessStatus> wait_until_processed(const AssetPath& path) const;
     /** @brief Get a transaction lock for the given asset path (shared read lock).
      *  Used by ProcessorGatedReader to hold the lock while reading. */
-    std::expected<std::shared_ptr<std::shared_mutex>, AssetReaderError> get_transaction_lock(
+    asio::awaitable<std::expected<std::shared_ptr<std::shared_mutex>, AssetReaderError>> get_transaction_lock(
         const AssetPath& path) const;
-    /** @brief Block until the processor has been initialized. */
-    void wait_until_initialized() const;
-    /** @brief Block until processing has finished. */
-    void wait_until_finished() const;
+    /** @brief Await until the processor has been initialized. */
+    asio::awaitable<void> wait_until_initialized() const;
+    /** @brief Await until processing has finished. */
+    asio::awaitable<void> wait_until_finished() const;
     /** @brief Close all wait channels so blocked receivers wake and exit. */
     void shutdown();
 };
@@ -184,7 +187,7 @@ export struct AssetProcessorData {
     utils::RwLock<Processors> processors;
     std::shared_ptr<AssetSources> sources;
     struct TaskSenderState {
-        std::optional<utils::Sender<std::pair<AssetSourceId, std::filesystem::path>>> sender;
+        std::optional<async_channel::Sender<std::pair<AssetSourceId, std::filesystem::path>>> sender;
         bool shutdown_requested = false;
     };
     utils::Mutex<TaskSenderState> task_sender;
@@ -196,16 +199,16 @@ export struct AssetProcessorData {
 
     friend struct AssetProcessor;
 
-    void set_task_sender(utils::Sender<std::pair<AssetSourceId, std::filesystem::path>> sender) const;
+    void set_task_sender(async_channel::Sender<std::pair<AssetSourceId, std::filesystem::path>> sender) const;
     void shutdown() const;
 
    public:
     std::expected<void, SetTransactionLogFactoryError> set_log_factory(
         std::unique_ptr<ProcessorTransactionLogFactory> factory) const;
-    ProcessStatus wait_until_processed(const AssetPath& path) const;
-    void wait_until_initialized() const;
-    void wait_until_finished() const;
-    ProcessorState state() const;
+    asio::awaitable<ProcessStatus> wait_until_processed(const AssetPath& path) const;
+    asio::awaitable<void> wait_until_initialized() const;
+    asio::awaitable<void> wait_until_finished() const;
+    asio::awaitable<ProcessorState> state() const;
 };
 
 // ---- AssetProcessor ----
@@ -224,37 +227,39 @@ export struct AssetProcessor {
     asio::awaitable<void> process_asset(
         const AssetSourceId& source,
         const std::filesystem::path& path,
-        utils::Sender<std::pair<AssetSourceId, std::filesystem::path>> reprocess_sender) const;
+        async_channel::Sender<std::pair<AssetSourceId, std::filesystem::path>> reprocess_sender) const;
     asio::awaitable<std::expected<ProcessResult, ProcessError>> process_asset_internal(
         const AssetSource& source, const AssetPath& asset_path) const;
     asio::awaitable<void> handle_asset_source_event(
         const AssetSource& source,
         const AssetSourceEvent& event,
-        utils::Sender<std::pair<AssetSourceId, std::filesystem::path>>& sender) const;
+        async_channel::Sender<std::pair<AssetSourceId, std::filesystem::path>>& sender) const;
     asio::awaitable<void> handle_added_folder(
         const AssetSource& source,
         const std::filesystem::path& path,
-        utils::Sender<std::pair<AssetSourceId, std::filesystem::path>>& sender) const;
-    void handle_removed_meta(const AssetSource& source,
-                             const std::filesystem::path& path,
-                             utils::Sender<std::pair<AssetSourceId, std::filesystem::path>>& sender) const;
+        async_channel::Sender<std::pair<AssetSourceId, std::filesystem::path>>& sender) const;
+    asio::awaitable<void> handle_removed_meta(
+        const AssetSource& source,
+        const std::filesystem::path& path,
+        async_channel::Sender<std::pair<AssetSourceId, std::filesystem::path>>& sender) const;
     asio::awaitable<void> handle_removed_asset(const AssetSource& source, const std::filesystem::path& path) const;
     asio::awaitable<void> handle_removed_folder(const AssetSource& source, const std::filesystem::path& path) const;
     asio::awaitable<void> handle_renamed_asset(
         const AssetSource& source,
         const std::filesystem::path& old_path,
         const std::filesystem::path& new_path,
-        utils::Sender<std::pair<AssetSourceId, std::filesystem::path>>& sender) const;
+        async_channel::Sender<std::pair<AssetSourceId, std::filesystem::path>>& sender) const;
     asio::awaitable<void> queue_processing_tasks_for_folder(
         const AssetSource& source,
         const std::filesystem::path& folder,
-        utils::Sender<std::pair<AssetSourceId, std::filesystem::path>>& sender) const;
+        async_channel::Sender<std::pair<AssetSourceId, std::filesystem::path>>& sender) const;
     asio::awaitable<void> queue_initial_processing_tasks(
-        utils::Sender<std::pair<AssetSourceId, std::filesystem::path>>& sender) const;
+        async_channel::Sender<std::pair<AssetSourceId, std::filesystem::path>>& sender) const;
     void spawn_source_change_event_listeners(
-        utils::Sender<std::pair<AssetSourceId, std::filesystem::path>>& sender) const;
-    void execute_processing_tasks(utils::Sender<std::pair<AssetSourceId, std::filesystem::path>> new_task_sender,
-                                  utils::Receiver<std::pair<AssetSourceId, std::filesystem::path>>& receiver) const;
+        async_channel::Sender<std::pair<AssetSourceId, std::filesystem::path>>& sender) const;
+    asio::awaitable<void> execute_processing_tasks(
+        async_channel::Sender<std::pair<AssetSourceId, std::filesystem::path>> new_task_sender,
+        async_channel::Receiver<std::pair<AssetSourceId, std::filesystem::path>> receiver) const;
     void log_begin_processing(const AssetPath& path) const;
     void log_end_processing(const AssetPath& path) const;
     void log_unrecoverable() const;

@@ -12,6 +12,7 @@ import std;
 #endif
 import epix.meta;
 import epix.utils;
+import :async_channel;
 
 import :io.reader;
 
@@ -22,6 +23,6 @@ export struct FileAssetWatcher : public AssetWatcher {
     std::unique_ptr<efsw::FileWatchListener> m_listener;
 
    public:
-    FileAssetWatcher(std::filesystem::path root, utils::Sender<AssetSourceEvent> event_sender);
+    FileAssetWatcher(std::filesystem::path root, async_channel::Sender<AssetSourceEvent> event_sender);
 };
 }  // namespace epix::assets

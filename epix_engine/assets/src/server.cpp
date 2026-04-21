@@ -29,6 +29,8 @@ module epix.assets;
 #ifdef EPIX_IMPORT_STD
 import std;
 #endif
+import epix.tasks;
+
 using namespace epix::assets;
 
 AssetServer::AssetServer(std::shared_ptr<AssetSources> sources, AssetServerMode mode, bool watching_for_changes)
@@ -146,38 +148,33 @@ void AssetServer::load_folder_internal(const UntypedAssetId& id, const AssetPath
     auto asset_id   = id;
     auto asset_path = path;
 
-    utils::IOTaskPool::instance().detach_task([server, asset_id, asset_path]() {
-        auto source = server.data->sources->get(asset_path.source);
-        if (!source) {
-            spdlog::error("Failed to load folder {}. AssetSource does not exist", asset_path.string());
-            return;
-        }
-
-        const AssetReader* reader_ptr = nullptr;
-        if (server.data->mode == AssetServerMode::Processed) {
-            auto processed_reader_opt = source->get().processed_reader();
-            if (!processed_reader_opt) {
-                spdlog::error("Failed to load folder {}. No processed reader available", asset_path.string());
-                return;
+    tasks::IoTaskPool::get()
+        .spawn([](AssetServer server, UntypedAssetId asset_id, AssetPath asset_path) -> asio::awaitable<void> {
+            auto source = server.data->sources->get(asset_path.source);
+            if (!source) {
+                spdlog::error("Failed to load folder {}. AssetSource does not exist", asset_path.string());
+                co_return;
             }
-            reader_ptr = &processed_reader_opt->get();
-        } else {
-            reader_ptr = &source->get().reader();
-        }
 
-        asio::io_context ctx;
-        asio::co_spawn(
-            ctx,
-            [&]() -> asio::awaitable<void> {
-                std::vector<UntypedHandle> handles;
-                co_await load_folder_recursive(asset_path.source, asset_path.path, *reader_ptr, server, handles);
+            const AssetReader* reader_ptr = nullptr;
+            if (server.data->mode == AssetServerMode::Processed) {
+                auto processed_reader_opt = source->get().processed_reader();
+                if (!processed_reader_opt) {
+                    spdlog::error("Failed to load folder {}. No processed reader available", asset_path.string());
+                    co_return;
+                }
+                reader_ptr = &processed_reader_opt->get();
+            } else {
+                reader_ptr = &source->get().reader();
+            }
 
-                server.data->asset_event_sender.send(internal_asset_event::Loaded{
-                    asset_id, ErasedLoadedAsset::from_asset(LoadedFolder{std::move(handles)})});
-            }(),
-            asio::detached);
-        ctx.run();
-    });
+            std::vector<UntypedHandle> handles;
+            co_await load_folder_recursive(asset_path.source, asset_path.path, *reader_ptr, server, handles);
+
+            server.data->asset_event_sender.send(internal_asset_event::Loaded{
+                asset_id, ErasedLoadedAsset::from_asset(LoadedFolder{std::move(handles)})});
+        }(server, asset_id, asset_path))
+        .detach();
 }
 
 void AssetServer::handle_internal_events(core::ParamSet<core::World&, core::Res<AssetServer>> params) {
@@ -299,7 +296,7 @@ void AssetServer::handle_internal_events(core::ParamSet<core::World&, core::Res<
                 switch (server->data->mode) {
                     case AssetServerMode::Unprocessed: {
                         if (auto receiver_opt = source.event_receiver()) {
-                            while (auto ev = receiver_opt->get().try_receive()) {
+                            while (auto ev = receiver_opt->get().try_recv()) {
                                 handle_source_event(source.id(), *ev);
                             }
                         }
@@ -307,7 +304,7 @@ void AssetServer::handle_internal_events(core::ParamSet<core::World&, core::Res<
                     }
                     case AssetServerMode::Processed: {
                         if (auto receiver_opt = source.processed_event_receiver()) {
-                            while (auto ev = receiver_opt->get().try_receive()) {
+                            while (auto ev = receiver_opt->get().try_recv()) {
                                 handle_source_event(source.id(), *ev);
                             }
                         }
@@ -554,23 +551,31 @@ asio::awaitable<void> AssetServer::load_internal(std::optional<UntypedHandle> in
 // Matches bevy_asset's AssetServer::spawn_load_task.
 // ---------------------------------------------------------------------------
 void AssetServer::spawn_load_task(const UntypedHandle& handle, const AssetPath& path, AssetInfos& infos) const {
+    // Increment counter while caller holds the lock, but the actual spawn happens without the lock.
+    // Callers MUST drop the infos guard before invoking this function, OR call spawn_load_task_unlocked
+    // directly after releasing the guard.
     infos.stats.started_load_tasks++;
+}
 
+void AssetServer::spawn_load_task_unlocked(const UntypedHandle& handle, const AssetPath& path) const {
+    // Spawn the load coroutine. Must be called WITHOUT holding any infos lock.
     auto server       = *this;
     auto owned_handle = handle;
     auto asset_path   = path;
 
-    utils::IOTaskPool::instance().detach_task([server, owned_handle, asset_path]() mutable {
-        asio::io_context ctx;
-        asio::co_spawn(ctx, server.load_internal(std::move(owned_handle), std::move(asset_path), false, std::nullopt),
-                       asio::detached);
-        ctx.run();
-    });
+    tasks::IoTaskPool::get()
+        .spawn([](AssetServer server, UntypedHandle owned_handle, AssetPath asset_path) -> asio::awaitable<void> {
+            co_await server.load_internal(std::move(owned_handle), std::move(asset_path), false, std::nullopt);
+        }(server, std::move(owned_handle), asset_path))
+        .detach();
 }
 
 void AssetServer::spawn_load_task(const UntypedHandle& handle, const AssetPath& path) const {
-    auto guard = data->infos.write();
-    spawn_load_task(handle, path, *guard);
+    {
+        auto guard = data->infos.write();
+        guard->stats.started_load_tasks++;
+    }
+    spawn_load_task_unlocked(handle, path);
 }
 
 // ---------------------------------------------------------------------------
@@ -664,39 +669,38 @@ void AssetServer::reload_internal(const AssetPath& path, bool log) const {
         }
     }
 
-    utils::IOTaskPool::instance().detach_task([server, asset_path, log]() {
-        bool reloaded = false;
+    tasks::IoTaskPool::get()
+        .spawn([](AssetServer server, AssetPath asset_path, bool log) -> asio::awaitable<void> {
+            bool reloaded = false;
 
-        // Collect handles while holding the lock, then release before calling load_internal
-        std::vector<UntypedHandle> handles;
-        {
-            auto guard = server.data->infos.write();
-            for (auto h : guard->get_handles_by_path(asset_path)) {
-                guard->stats.started_load_tasks++;
-                handles.push_back(h);
+            // Collect handles while holding the lock, then release before calling load_internal
+            std::vector<UntypedHandle> handles;
+            {
+                auto guard = server.data->infos.write();
+                for (auto h : guard->get_handles_by_path(asset_path)) {
+                    guard->stats.started_load_tasks++;
+                    handles.push_back(h);
+                }
             }
-        }
 
-        asio::io_context ctx;
-        for (auto& h : handles) {
-            asio::co_spawn(ctx, server.load_internal(h, asset_path, true, std::nullopt), asio::detached);
-            reloaded = true;
-        }
-
-        // If no handles were alive but the path still has living subassets, do an untyped reload
-        if (!reloaded) {
-            bool should = server.data->infos.read()->should_reload(asset_path);
-            if (should) {
-                server.data->infos.write()->stats.started_load_tasks++;
-                asio::co_spawn(ctx, server.load_internal(std::nullopt, asset_path, true, std::nullopt), asio::detached);
+            for (auto& h : handles) {
+                co_await server.load_internal(h, asset_path, true, std::nullopt);
                 reloaded = true;
             }
-        }
 
-        ctx.run();
+            // If no handles were alive but the path still has living subassets, do an untyped reload
+            if (!reloaded) {
+                bool should = server.data->infos.read()->should_reload(asset_path);
+                if (should) {
+                    server.data->infos.write()->stats.started_load_tasks++;
+                    co_await server.load_internal(std::nullopt, asset_path, true, std::nullopt);
+                    reloaded = true;
+                }
+            }
 
-        if (log && reloaded) {
-            spdlog::info("Reloaded {}", asset_path.string());
-        }
-    });
+            if (log && reloaded) {
+                spdlog::info("Reloaded {}", asset_path.string());
+            }
+        }(server, asset_path, log))
+        .detach();
 }

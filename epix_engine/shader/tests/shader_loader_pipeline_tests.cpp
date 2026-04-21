@@ -1,3 +1,19 @@
+#ifndef EPIX_IMPORT_STD
+#include <array>
+#include <cstddef>
+#include <cstdint>
+#include <expected>
+#include <filesystem>
+#include <format>
+#include <memory>
+#include <span>
+#include <stdexcept>
+#include <string>
+#include <string_view>
+#include <utility>
+#include <variant>
+#include <vector>
+#endif
 #include <gtest/gtest.h>
 #include <slang-com-ptr.h>
 #include <slang.h>
@@ -7,6 +23,7 @@ import std;
 import epix.assets;
 import epix.core;
 import epix.shader;
+import epix.tasks;
 import webgpu;
 
 using namespace epix::assets;
@@ -14,6 +31,12 @@ using namespace epix::core;
 using namespace epix::shader;
 
 namespace {
+
+struct IoTaskPoolInit {
+    IoTaskPoolInit() {
+        epix::tasks::IoTaskPool::get_or_init([] { return epix::tasks::TaskPool{4}; });
+    }
+} g_io_task_pool_init;
 
 static auto make_bytes(std::string_view text) {
     auto bytes = std::as_bytes(std::span(text));
@@ -31,9 +54,11 @@ void insert_bytes_asset(EmbeddedAssetRegistry& registry, std::string_view path, 
 wgpu::Device null_device() { return wgpu::Device{}; }
 
 void flush_and_sync(App& app) {
-    epix::utils::IOTaskPool::instance().wait();
-    app.run_schedule(Last);
-    app.run_schedule(Last);
+    static constexpr int LARGE_ITERATION_COUNT = 10000;
+    for (int i = 0; i < LARGE_ITERATION_COUNT; ++i) {
+        app.run_schedule(Last);
+        std::this_thread::yield();
+    }
 }
 
 EmbeddedAssetRegistry& embedded_registry(App& app) {
@@ -438,24 +463,6 @@ TEST(ShaderLoaderPipelineSlang, UpdatingRootShaderInvalidatesCachedPreprocessedS
 
     auto main_id = make_shader_id(0x41);
     cache.set_shader(main_id, Shader::from_slang(R"(
-module;
-#ifndef EPIX_IMPORT_STD
-#include <array>
-#include <cstddef>
-#include <cstdint>
-#include <expected>
-#include <filesystem>
-#include <format>
-#include <memory>
-#include <span>
-#include <stdexcept>
-#include <string>
-#include <string_view>
-#include <utility>
-#include <variant>
-#include <vector>
-#endif
-
 module main.core;
 [shader("compute")]
 [numthreads(1,1,1)]

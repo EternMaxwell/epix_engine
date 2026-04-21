@@ -48,8 +48,6 @@ namespace epix::tasks {
             if (!p) std::terminate();                                                     \
             return *p;                                                                    \
         }                                                                                 \
-        TaskPool& pool() { return m_pool; }                                               \
-        const TaskPool& pool() const { return m_pool; }                                   \
         /** @brief Delegate spawn to inner pool. */                                       \
         template <typename F>                                                             \
         auto spawn(F&& f) {                                                               \

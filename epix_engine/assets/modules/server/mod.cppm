@@ -25,6 +25,7 @@ import std;
 #endif
 import epix.meta;
 import epix.utils;
+import epix.tasks;
 
 import :server.info;
 import :server.loader;
@@ -191,13 +192,22 @@ export struct AssetServer {
                 return Handle<A>(AssetId<A>::invalid());
             }
         }
-        auto mode                  = force ? HandleLoadingMode::Force : HandleLoadingMode::Request;
-        auto guard                 = data->infos.write();
-        auto [handle, should_load] = guard->template get_or_create_handle<A>(path, mode, std::move(meta_transform));
+        auto mode = force ? HandleLoadingMode::Force : HandleLoadingMode::Request;
+        std::optional<Handle<A>> handle_opt;
+        bool should_load = false;
+        {
+            auto guard   = data->infos.write();
+            auto [h, sl] = guard->template get_or_create_handle<A>(path, mode, std::move(meta_transform));
+            handle_opt   = std::move(h);
+            should_load  = sl;
+            if (should_load) {
+                guard->stats.started_load_tasks++;
+            }
+        }  // infos write lock released before spawning
         if (should_load) {
-            spawn_load_task(handle.untyped(), path, *guard);
+            spawn_load_task_unlocked(handle_opt->untyped(), path);
         }
-        return handle;
+        return std::move(*handle_opt);
     }
 
     // ---- Loading (untyped) ----
@@ -258,7 +268,7 @@ export struct AssetServer {
         return load_asset_untyped(std::nullopt, std::move(erased)).template typed<A>();
     }
 
-    /** @brief Add an asset asynchronously. The future is run on the IOTaskPool.
+    /** @brief Add an asset asynchronously. The future is run on the IoTaskPool.
      *  When the future resolves, the asset is inserted via load_asset_untyped.
      *  Matches bevy_asset's AssetServer::add_async.
      *  @tparam A  Asset type.
@@ -273,30 +283,32 @@ export struct AssetServer {
         auto typed_handle = handle.template typed<A>();
         auto server       = *this;
         auto owned_handle = handle;
-        utils::IOTaskPool::instance().detach_task([server, owned_handle, future = std::move(future)]() mutable {
-            auto result = future();
-            if (result) {
-                auto erased = ErasedLoadedAsset::from_asset(std::move(*result));
-                server.send_asset_event(
-                    InternalAssetEvent{internal_asset_event::Loaded{owned_handle.id(), std::move(erased)}});
-            } else {
-                auto err_ptr = [&]() -> std::exception_ptr {
-                    if constexpr (std::same_as<E, std::exception_ptr>) {
-                        return result.error();
-                    } else {
-                        // Wrap in a generic exception
-                        try {
-                            throw result.error();
-                        } catch (...) {
-                            return std::current_exception();
+        tasks::IoTaskPool::get()
+            .spawn([server, owned_handle, future = std::move(future)]() mutable {
+                auto result = future();
+                if (result) {
+                    auto erased = ErasedLoadedAsset::from_asset(std::move(*result));
+                    server.send_asset_event(
+                        InternalAssetEvent{internal_asset_event::Loaded{owned_handle.id(), std::move(erased)}});
+                } else {
+                    auto err_ptr = [&]() -> std::exception_ptr {
+                        if constexpr (std::same_as<E, std::exception_ptr>) {
+                            return result.error();
+                        } else {
+                            // Wrap in a generic exception
+                            try {
+                                throw result.error();
+                            } catch (...) {
+                                return std::current_exception();
+                            }
                         }
-                    }
-                }();
-                server.send_asset_event(InternalAssetEvent{internal_asset_event::Failed{
-                    owned_handle.id(), AssetPath{},
-                    AssetLoadError{load_error::AssetLoaderException{err_ptr, AssetPath{}, "add_async"}}}});
-            }
-        });
+                    }();
+                    server.send_asset_event(InternalAssetEvent{internal_asset_event::Failed{
+                        owned_handle.id(), AssetPath{},
+                        AssetLoadError{load_error::AssetLoaderException{err_ptr, AssetPath{}, "add_async"}}}});
+                }
+            })
+            .detach();
         return typed_handle;
     }
 
@@ -471,11 +483,12 @@ export struct AssetServer {
     static void handle_internal_events(core::ParamSet<core::World&, core::Res<AssetServer>> params);
 
    private:
-    /** @brief Spawn an IO task to load an asset. Takes the handle (which carries meta_transform)
-     *  and the infos write guard for pending_tasks tracking.
-     *  Matches bevy_asset's AssetServer::spawn_load_task. */
+    /** @brief Increment started_load_tasks counter while caller holds the infos write lock.
+     *  Callers must call spawn_load_task_unlocked() AFTER releasing the lock to actually spawn. */
     void spawn_load_task(const UntypedHandle& handle, const AssetPath& path, AssetInfos& infos) const;
-    /** @brief Overload without infos guard, for reload path. */
+    /** @brief Actually spawn the load coroutine. Must be called WITHOUT holding any infos lock. */
+    void spawn_load_task_unlocked(const UntypedHandle& handle, const AssetPath& path) const;
+    /** @brief Overload that acquires the lock, increments counter, releases, then spawns. */
     void spawn_load_task(const UntypedHandle& handle, const AssetPath& path) const;
     void load_folder_internal(const UntypedAssetId& id, const AssetPath& path) const;
 

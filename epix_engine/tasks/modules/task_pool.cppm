@@ -342,33 +342,27 @@ export struct TaskPool {
         requires(!std::is_void_v<T>)
     Task<T> spawn(asio::awaitable<T> coro) {
         auto [task, state] = Task<T>::make();
-        asio::co_spawn(
-            m_executor,
-            [s = state, c = std::move(coro)]() mutable -> asio::awaitable<void> {
-                try {
-                    s->set_value(co_await std::move(c));
-                } catch (...) {
-                    s->set_exception(std::current_exception());
-                }
-            },
-            asio::detached);
+        // Use a completion handler (not a coroutine wrapper) so that captures
+        // live in the handler object, which asio keeps alive until the coroutine
+        // completes — no dangling reference possible.
+        asio::co_spawn(m_executor, std::move(coro), [state = std::move(state)](std::exception_ptr eptr, T val) mutable {
+            if (eptr)
+                state->set_exception(eptr);
+            else
+                state->set_value(std::move(val));
+        });
         return std::move(task);
     }
 
     /** @brief Spawn `asio::awaitable<void>` coroutine, returns Task<void>. */
     Task<void> spawn(asio::awaitable<void> coro) {
         auto [task, state] = Task<void>::make();
-        asio::co_spawn(
-            m_executor,
-            [s = state, c = std::move(coro)]() mutable -> asio::awaitable<void> {
-                try {
-                    co_await std::move(c);
-                    s->set_done();
-                } catch (...) {
-                    s->set_exception(std::current_exception());
-                }
-            },
-            asio::detached);
+        asio::co_spawn(m_executor, std::move(coro), [state = std::move(state)](std::exception_ptr eptr) mutable {
+            if (eptr)
+                state->set_exception(eptr);
+            else
+                state->set_done();
+        });
         return std::move(task);
     }
 

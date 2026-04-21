@@ -17,11 +17,11 @@ import epix.utils;
 
 namespace epix::assets {
 
-FileAssetWatcher::FileAssetWatcher(std::filesystem::path root, utils::Sender<AssetSourceEvent> event_sender) {
+FileAssetWatcher::FileAssetWatcher(std::filesystem::path root, async_channel::Sender<AssetSourceEvent> event_sender) {
     m_watcher = std::make_unique<efsw::FileWatcher>();
     struct Listener : public efsw::FileWatchListener {
-        utils::Sender<AssetSourceEvent> sender;
-        Listener(utils::Sender<AssetSourceEvent> sender) : sender(std::move(sender)) {}
+        async_channel::Sender<AssetSourceEvent> sender;
+        Listener(async_channel::Sender<AssetSourceEvent> sender) : sender(std::move(sender)) {}
         void handleFileAction(efsw::WatchID watchid,
                               const std::string& dir,
                               const std::string& filename,
@@ -41,11 +41,11 @@ FileAssetWatcher::FileAssetWatcher(std::filesystem::path root, utils::Sender<Ass
                     if (!exists) {
                         break;
                     } else if (is_directory) {
-                        sender.send(AssetSourceEvent(source_events::AddedDirectory{full_path}));
+                        (void)sender.try_send(AssetSourceEvent(source_events::AddedDirectory{full_path}));
                     } else if (is_meta) {
-                        sender.send(AssetSourceEvent(source_events::AddedMeta{full_path}));
+                        (void)sender.try_send(AssetSourceEvent(source_events::AddedMeta{full_path}));
                     } else {
-                        sender.send(AssetSourceEvent(source_events::AddedAsset{full_path}));
+                        (void)sender.try_send(AssetSourceEvent(source_events::AddedAsset{full_path}));
                     }
                     break;
                 case efsw::Action::Modified:
@@ -54,28 +54,28 @@ FileAssetWatcher::FileAssetWatcher(std::filesystem::path root, utils::Sender<Ass
                     } else if (is_directory) {
                         // we shouldn't have modified events for directories, but just in case
                     } else if (is_meta) {
-                        sender.send(AssetSourceEvent(source_events::ModifiedMeta{full_path}));
+                        (void)sender.try_send(AssetSourceEvent(source_events::ModifiedMeta{full_path}));
                     } else {
-                        sender.send(AssetSourceEvent(source_events::ModifiedAsset{full_path}));
+                        (void)sender.try_send(AssetSourceEvent(source_events::ModifiedAsset{full_path}));
                     }
                     break;
                 case efsw::Action::Delete:
                     if (is_directory) {
-                        sender.send(AssetSourceEvent(source_events::RemovedDirectory{full_path}));
+                        (void)sender.try_send(AssetSourceEvent(source_events::RemovedDirectory{full_path}));
                     } else if (is_meta) {
-                        sender.send(AssetSourceEvent(source_events::RemovedMeta{full_path}));
+                        (void)sender.try_send(AssetSourceEvent(source_events::RemovedMeta{full_path}));
                     } else {
-                        sender.send(AssetSourceEvent(source_events::RemovedAsset{full_path}));
+                        (void)sender.try_send(AssetSourceEvent(source_events::RemovedAsset{full_path}));
                     }
                     break;
                 case efsw::Action::Moved:
                     if (old_full_path) {
                         if (is_directory) {
-                            sender.send(AssetSourceEvent(source_events::RenamedDirectory{*old_full_path, full_path}));
+                            (void)sender.try_send(AssetSourceEvent(source_events::RenamedDirectory{*old_full_path, full_path}));
                         } else if (is_meta) {
-                            sender.send(AssetSourceEvent(source_events::RenamedMeta{*old_full_path, full_path}));
+                            (void)sender.try_send(AssetSourceEvent(source_events::RenamedMeta{*old_full_path, full_path}));
                         } else {
-                            sender.send(AssetSourceEvent(source_events::RenamedAsset{*old_full_path, full_path}));
+                            (void)sender.try_send(AssetSourceEvent(source_events::RenamedAsset{*old_full_path, full_path}));
                         }
                     }
                     break;

@@ -18,12 +18,19 @@ import std;
 import epix.assets;
 import epix.core;
 import epix.shader;
+import epix.tasks;
 
 using namespace epix::assets;
 using namespace epix::core;
 using namespace epix::shader;
 
 namespace {
+
+struct IoTaskPoolInit {
+    IoTaskPoolInit() {
+        epix::tasks::IoTaskPool::get_or_init([] { return epix::tasks::TaskPool{4}; });
+    }
+} g_io_task_pool_init;
 
 bool wait_for_loaded(App& app,
                      const AssetServer& server,

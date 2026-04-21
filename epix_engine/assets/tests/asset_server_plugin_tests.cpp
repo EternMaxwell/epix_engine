@@ -30,10 +30,22 @@ import std;
 import epix.core;
 import epix.meta;
 import epix.assets;
+import epix.tasks;
+import epix.async_channel;
 
 using namespace epix::assets;
 using namespace epix::core;
 namespace meta = epix::meta;
+
+// Initialize task pools before any test runs (required by loaders.cppm and server.cpp which call
+// IoTaskPool::get() unconditionally).
+namespace {
+struct IoTaskPoolInit {
+    IoTaskPoolInit() {
+        epix::tasks::IoTaskPool::get_or_init([] { return epix::tasks::TaskPool{4}; });
+    }
+} g_io_task_pool_init;
+}  // namespace
 
 namespace {
 
@@ -66,17 +78,19 @@ AssetSourceBuilder make_memory_source_builder_with_watchers(const memory::Direct
                                                             bool with_processed_watcher = true) {
     auto builder =
         make_memory_source_builder(dir, with_processed_reader)
-            .with_watcher([dir](epix::utils::Sender<AssetSourceEvent> sender) -> std::unique_ptr<AssetWatcher> {
+            .with_watcher([dir](epix::async_channel::Sender<AssetSourceEvent> sender) -> std::unique_ptr<AssetWatcher> {
                 return std::make_unique<MemoryAssetWatcher>(
-                    dir,
-                    [sender = std::move(sender)](AssetSourceEvent event) mutable { sender.send(std::move(event)); });
+                    dir, [sender = std::move(sender)](AssetSourceEvent event) mutable {
+                        (void)sender.try_send(std::move(event));
+                    });
             });
     if (with_processed_watcher) {
         builder.with_processed_watcher(
-            [dir](epix::utils::Sender<AssetSourceEvent> sender) -> std::unique_ptr<AssetWatcher> {
+            [dir](epix::async_channel::Sender<AssetSourceEvent> sender) -> std::unique_ptr<AssetWatcher> {
                 return std::make_unique<MemoryAssetWatcher>(
-                    dir,
-                    [sender = std::move(sender)](AssetSourceEvent event) mutable { sender.send(std::move(event)); });
+                    dir, [sender = std::move(sender)](AssetSourceEvent event) mutable {
+                        (void)sender.try_send(std::move(event));
+                    });
             });
     }
     return builder;
@@ -181,12 +195,12 @@ const char* asset_server_mode_name(AssetServerMode mode) {
     return "Unknown";
 }
 
-std::vector<AssetSourceEvent> drain_source_events(const epix::utils::Receiver<AssetSourceEvent>& receiver,
+std::vector<AssetSourceEvent> drain_source_events(const epix::async_channel::Receiver<AssetSourceEvent>& receiver,
                                                   std::size_t max_count = 16) {
     std::vector<AssetSourceEvent> events;
     events.reserve(max_count);
     for (std::size_t i = 0; i < max_count; ++i) {
-        auto maybe = receiver.try_receive();
+        auto maybe = receiver.try_recv();
         if (!maybe) break;
         events.push_back(std::move(*maybe));
     }
@@ -782,8 +796,11 @@ PluginTestEnv make_plugin_env_for_mode(AssetServerMode mode,
 
 /// Wait for all IOTaskPool tasks and then run the Last schedule to process internal events.
 void flush_load_tasks(App& app) {
-    epix::utils::IOTaskPool::instance().wait();
-    app.run_schedule(Last);
+    static constexpr int LARGE_ITERATION_COUNT = 10000;
+    for (int i = 0; i < LARGE_ITERATION_COUNT; ++i) {
+        app.run_schedule(Last);
+        std::this_thread::yield();
+    }
 }
 
 }  // namespace

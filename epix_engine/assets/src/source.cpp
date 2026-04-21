@@ -36,13 +36,14 @@ std::optional<std::reference_wrapper<const AssetWriter>> AssetSource::processed_
     return std::nullopt;
 }
 
-std::optional<std::reference_wrapper<const utils::Receiver<AssetSourceEvent>>> AssetSource::event_receiver() const {
+std::optional<std::reference_wrapper<const async_channel::Receiver<AssetSourceEvent>>> AssetSource::event_receiver()
+    const {
     if (m_event_receiver) return *m_event_receiver;
     return std::nullopt;
 }
 
-std::optional<std::reference_wrapper<const utils::Receiver<AssetSourceEvent>>> AssetSource::processed_event_receiver()
-    const {
+std::optional<std::reference_wrapper<const async_channel::Receiver<AssetSourceEvent>>>
+AssetSource::processed_event_receiver() const {
     if (m_processed_event_receiver) return *m_processed_event_receiver;
     return std::nullopt;
 }
@@ -65,9 +66,9 @@ std::function<std::unique_ptr<AssetWriter>()> AssetSource::get_default_writer(st
         [path = std::move(path)]() -> std::unique_ptr<AssetWriter> { return std::make_unique<FileAssetWriter>(path); };
 }
 
-std::function<std::unique_ptr<AssetWatcher>(utils::Sender<AssetSourceEvent>)> AssetSource::get_default_watcher(
+std::function<std::unique_ptr<AssetWatcher>(async_channel::Sender<AssetSourceEvent>)> AssetSource::get_default_watcher(
     std::filesystem::path path) {
-    return [path = std::move(path)](utils::Sender<AssetSourceEvent> sender) -> std::unique_ptr<AssetWatcher> {
+    return [path = std::move(path)](async_channel::Sender<AssetSourceEvent> sender) -> std::unique_ptr<AssetWatcher> {
         return std::make_unique<FileAssetWatcher>(path, std::move(sender));
     };
 }
@@ -91,12 +92,12 @@ AssetSource AssetSourceBuilder::build(AssetSourceId id, bool watch, bool watch_p
         source.m_processed_writer = (*processed_writer_factory)();
     }
     if (watch && watcher_factory) {
-        auto [sender, receiver] = utils::make_channel<AssetSourceEvent>();
+        auto [sender, receiver] = async_channel::unbounded<AssetSourceEvent>();
         source.m_watcher        = (*watcher_factory)(std::move(sender));
         source.m_event_receiver = std::move(receiver);
     }
     if (watch_processed && processed_watcher_factory) {
-        auto [sender, receiver]           = utils::make_channel<AssetSourceEvent>();
+        auto [sender, receiver]           = async_channel::unbounded<AssetSourceEvent>();
         source.m_processed_watcher        = (*processed_watcher_factory)(std::move(sender));
         source.m_processed_event_receiver = std::move(receiver);
     }

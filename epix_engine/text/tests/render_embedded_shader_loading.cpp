@@ -5,6 +5,7 @@ import epix.core;
 import epix.mesh;
 import epix.shader;
 import epix.sprite;
+import epix.tasks;
 import epix.text;
 
 using namespace epix::assets;
@@ -16,6 +17,12 @@ namespace sprite = epix::sprite;
 namespace text   = epix::text;
 
 namespace {
+
+struct IoTaskPoolInit {
+    IoTaskPoolInit() {
+        epix::tasks::IoTaskPool::get_or_init([] { return epix::tasks::TaskPool{4}; });
+    }
+} g_io_task_pool_init;
 
 App make_shader_asset_app() {
     App app = App::create();
@@ -31,9 +38,11 @@ App make_shader_asset_app() {
 }
 
 void flush_load_tasks(App& app) {
-    epix::utils::IOTaskPool::instance().wait();
-    app.run_schedule(Last);
-    app.run_schedule(Last);
+    static constexpr int LARGE_ITERATION_COUNT = 10000;
+    for (int i = 0; i < LARGE_ITERATION_COUNT; ++i) {
+        app.run_schedule(Last);
+        std::this_thread::yield();
+    }
 }
 
 void expect_embedded_shader_loaded(App& app, std::string_view asset_path) {
