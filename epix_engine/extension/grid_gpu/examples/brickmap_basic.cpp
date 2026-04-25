@@ -1,4 +1,10 @@
+#ifndef EPIX_IMPORT_STD
+#include <cstdint>
+#include <print>
+#endif
+#ifdef EPIX_IMPORT_STD
 import std;
+#endif
 import epix.extension.grid;
 import epix.extension.grid_gpu;
 

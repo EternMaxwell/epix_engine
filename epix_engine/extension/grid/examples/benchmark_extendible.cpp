@@ -1,5 +1,19 @@
-﻿import std;
+﻿#ifndef EPIX_IMPORT_STD
+#include <array>
+#include <chrono>
+#include <cstddef>
+#include <cstdint>
+#include <format>
+#include <limits>
+#include <print>
+#include <string>
+#include <vector>
+#endif
 import epix.extension.grid;
+
+#ifdef EPIX_IMPORT_STD
+import std;
+#endif
 
 using namespace epix::ext::grid;
 

@@ -1,5 +1,13 @@
+module;
+
+#ifndef EPIX_IMPORT_STD
+#include <memory>
+#endif
 module epix.core;
 
+#ifdef EPIX_IMPORT_STD
+import std;
+#endif
 import :world;
 
 namespace epix::core {

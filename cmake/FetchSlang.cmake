@@ -5,7 +5,7 @@ include(FetchContent)
 
 # Set default version if not specified
 if (NOT DEFINED EPIX_SLANG_VERSION)
-    set(EPIX_SLANG_VERSION "v2026.5.2" CACHE STRING "Version of Slang to fetch")
+    set(EPIX_SLANG_VERSION "v2026.7" CACHE STRING "Version of Slang to fetch" FORCE)
 endif()
 
 # ── Configure Slang build options BEFORE fetching ────────────────────────────

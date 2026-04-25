@@ -1,5 +1,15 @@
-﻿export module epix.core:schedule.executors;
+﻿module;
 
+#ifndef EPIX_IMPORT_STD
+#include <cstddef>
+#include <memory>
+#include <vector>
+#endif
+export module epix.core:schedule.executors;
+
+#ifdef EPIX_IMPORT_STD
+import std;
+#endif
 import :schedule.schedule;
 
 namespace epix::core::executors {
