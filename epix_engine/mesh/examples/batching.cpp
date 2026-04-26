@@ -113,10 +113,11 @@ int main() {
         "Mesh Batching Pressure Test (3000 opaque + 300 transparent) | WASD pan, scroll zoom, Space reset";
     primary_window.size = {1280, 720};
 
-    app.add_plugins(window::WindowPlugin{
-                        .primary_window = primary_window,
-                        .exit_condition = window::ExitCondition::OnPrimaryClosed,
-                    })
+    app.add_plugins(core::TaskPoolPlugin{})
+        .add_plugins(window::WindowPlugin{
+            .primary_window = primary_window,
+            .exit_condition = window::ExitCondition::OnPrimaryClosed,
+        })
         .add_plugins(input::InputPlugin{})
         .add_plugins(glfw::GLFWPlugin{})
         .add_plugins(glfw::GLFWRenderPlugin{})

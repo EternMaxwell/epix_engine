@@ -1,6 +1,7 @@
 ﻿epix_add_module(epix_core)
 target_link_libraries(epix_core PUBLIC BSThreadPool)
 target_link_libraries(epix_core PUBLIC spdlog::spdlog)
+target_link_libraries(epix_core PUBLIC epix_tasks)
 target_link_libraries(epix_core PRIVATE Taskflow)
 if (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang" AND NOT WIN32)
   target_link_libraries(epix_core PUBLIC stdc++exp)

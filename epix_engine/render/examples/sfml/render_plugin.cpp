@@ -21,7 +21,8 @@ constexpr struct Test {
 int main() {
     App app = App::create();
 
-    app.add_plugins(window::WindowPlugin{})
+    app.add_plugins(TaskPoolPlugin{})
+        .add_plugins(window::WindowPlugin{})
         .add_plugins(input::InputPlugin{})
         .add_plugins(sfml::SFMLPlugin{})
         .add_plugins(sfml::SFMLRenderPlugin{})

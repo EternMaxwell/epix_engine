@@ -51,10 +51,11 @@ int main() {
     primary_window.title = "Falling Sand Interactive Test (LMB add, RMB erase, Space pause, R reset)";
     primary_window.size  = {1280, 720};
 
-    app.add_plugins(window::WindowPlugin{
-                        .primary_window = primary_window,
-                        .exit_condition = window::ExitCondition::OnPrimaryClosed,
-                    })
+    app.add_plugins(core::TaskPoolPlugin{})
+        .add_plugins(window::WindowPlugin{
+            .primary_window = primary_window,
+            .exit_condition = window::ExitCondition::OnPrimaryClosed,
+        })
         .add_plugins(input::InputPlugin{})
         .add_plugins(glfw::GLFWPlugin{})
         .add_plugins(glfw::GLFWRenderPlugin{})

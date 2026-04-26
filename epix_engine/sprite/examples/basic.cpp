@@ -47,10 +47,11 @@ int main() {
     primary_window.title = "Sprite Basic Visual Test";
     primary_window.size  = {1280, 720};
 
-    app.add_plugins(window::WindowPlugin{
-                        .primary_window = primary_window,
-                        .exit_condition = window::ExitCondition::OnPrimaryClosed,
-                    })
+    app.add_plugins(core::TaskPoolPlugin{})
+        .add_plugins(window::WindowPlugin{
+            .primary_window = primary_window,
+            .exit_condition = window::ExitCondition::OnPrimaryClosed,
+        })
         .add_plugins(input::InputPlugin{})
         .add_plugins(glfw::GLFWPlugin{})
         .add_plugins(glfw::GLFWRenderPlugin{})

@@ -135,7 +135,8 @@ int main(int argc, char** argv) {
     }
 
     core::App app = core::App::create();
-    app.add_plugins(window::WindowPlugin{})
+    app.add_plugins(core::TaskPoolPlugin{})
+        .add_plugins(window::WindowPlugin{})
         .add_plugins(input::InputPlugin{})
         .add_plugins(glfw::GLFWPlugin{})
         .add_plugins(glfw::GLFWRenderPlugin{})

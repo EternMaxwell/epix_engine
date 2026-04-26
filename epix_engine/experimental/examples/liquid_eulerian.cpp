@@ -38,8 +38,8 @@ import epix.render.imgui;
 import epix.shader;
 import BS.thread_pool;
 
-using std::uint32_t;
 using std::size_t;
+using std::uint32_t;
 
 namespace {
 using namespace epix;
@@ -2729,10 +2729,11 @@ int main() {
         "Liquid HTML Port | 1/2/3 tool | [ ] pen | -/= dt | ,/. stick | 0 no-lat | 9 one-frame | Space pause | R reset";
     primary_window.size = {1280, 800};
 
-    app.add_plugins(window::WindowPlugin{
-                        .primary_window = primary_window,
-                        .exit_condition = window::ExitCondition::OnPrimaryClosed,
-                    })
+    app.add_plugins(core::TaskPoolPlugin{})
+        .add_plugins(window::WindowPlugin{
+            .primary_window = primary_window,
+            .exit_condition = window::ExitCondition::OnPrimaryClosed,
+        })
         .add_plugins(input::InputPlugin{})
         .add_plugins(glfw::GLFWPlugin{})
         .add_plugins(glfw::GLFWRenderPlugin{})

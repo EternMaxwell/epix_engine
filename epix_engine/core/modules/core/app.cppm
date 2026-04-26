@@ -40,6 +40,7 @@ export import :app.main_schedule;
 export import :app.event;
 export import :app.extract;
 export import :app.plugin;
+export import :app.task_pool_plugin;
 
 export namespace epix::core {
 /** @brief Error returned when the app's world has been moved to a system dispatcher. */

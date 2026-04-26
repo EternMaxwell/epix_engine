@@ -1499,10 +1499,11 @@ int main() {
     win.title = "Voxel Path Tracer";
     win.size  = {1280, 720};
 
-    app.add_plugins(epix::window::WindowPlugin{
-                        .primary_window = win,
-                        .exit_condition = epix::window::ExitCondition::OnPrimaryClosed,
-                    })
+    app.add_plugins(core::TaskPoolPlugin{})
+        .add_plugins(epix::window::WindowPlugin{
+            .primary_window = win,
+            .exit_condition = epix::window::ExitCondition::OnPrimaryClosed,
+        })
         .add_plugins(input::InputPlugin{})
         .add_plugins(time::TimePlugin{})
         .add_plugins(glfw::GLFWPlugin{})

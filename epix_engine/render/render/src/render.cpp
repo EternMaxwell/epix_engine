@@ -57,6 +57,20 @@ void RenderPlugin::build(App& app) {
                                     return anonymous_surface.create_surface(instance);
                                 })
                                 .value_or(wgpu::Surface{});
+    if (auto print_adapters = std::getenv("EPIX_PRINT_WEBGPU_ADAPTERS"); print_adapters && print_adapters[0] != '0') {
+        // enumerate all adapters
+        std::size_t count = instance.enumerateAdapters(nullptr);
+        std::vector<wgpu::Adapter> adapters(count);
+        instance.enumerateAdapters(&adapters[0]);
+        spdlog::info("[render] Available WebGPU adapters:");
+        for (const auto& adapter : adapters) {
+            wgpu::AdapterInfo adapterInfo;
+            adapter.getInfo(&adapterInfo);
+            spdlog::info("  vender={}, architecture={}, device={}, description={}",
+                         std::string_view(adapterInfo.vendor), std::string_view(adapterInfo.architecture),
+                         std::string_view(adapterInfo.device), std::string_view(adapterInfo.description));
+        }
+    }
     wgpu::Adapter adapter = instance.requestAdapter(wgpu::RequestAdapterOptions()
                                                         .setCompatibleSurface(surface)
                                                         .setPowerPreference(wgpu::PowerPreference::eHighPerformance)

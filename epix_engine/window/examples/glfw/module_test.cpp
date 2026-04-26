@@ -50,7 +50,8 @@ int main() {
 
     app.world_mut().spawn(window_desc2).then([&](EntityWorldMut& parent_mut) { parent_mut.spawn(window_desc3); });
     app.insert_state(TestFuncState::Off);
-    app.add_plugins(WindowPlugin{})
+    app.add_plugins(TaskPoolPlugin{})
+        .add_plugins(WindowPlugin{})
         .plugin_scope([&](WindowPlugin& plugin) {
             plugin.exit_condition = ExitCondition::OnAllClosed;
             plugin.primary_window = window_desc;
