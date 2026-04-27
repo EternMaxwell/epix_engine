@@ -764,21 +764,22 @@ void SandSimulation::step_cells() {
     }
 
     // ── 2. Collect and shuffle chunk coordinates ──────────────────────────────
-    auto chunk_coords = std::ranges::to<std::vector>(iter_chunk_pos());
-    static auto rng   = std::mt19937{std::random_device{}()};
-    std::shuffle(chunk_coords.begin(), chunk_coords.end(), rng);
+    auto offset_coords =
+        std::ranges::to<std::vector>(std::views::cartesian_product(std::views::iota(0, 3), std::views::iota(0, 3)));
+    static auto rng = std::mt19937{std::random_device{}()};
+    std::shuffle(offset_coords.begin(), offset_coords.end(), rng);
 
     auto& pool = tasks::ComputeTaskPool::get();
 
     // ── 3. Process in 3×3 modulo groups (no two adjacent chunks run in parallel)
-    for (auto&& [rx, ry] : std::views::cartesian_product(std::views::iota(0, 3), std::views::iota(0, 3))) {
-        std::vector<tasks::Task<void>> group_tasks;
-        for (auto&& cpos : std::views::filter(chunk_coords, [rx, ry](auto&& cpos) {
+    for (auto&& [rx, ry] : offset_coords) {
+        thread_local static std::vector<tasks::Task<void>> group_tasks;
+        for (auto&& cpos : std::views::filter(iter_chunk_pos(), [rx, ry](auto&& cpos) {
                  return (cpos[0] % 3 + 3) % 3 == rx && (cpos[1] % 3 + 3) % 3 == ry;
              })) {
             group_tasks.push_back(pool.spawn([cpos, cw, tick, this] {
                 // Snapshot positions first — prevents iterator invalidation during steps.
-                std::vector<std::array<std::int64_t, 2>> positions;
+                thread_local static std::vector<std::array<std::int64_t, 2>> positions;
                 for (auto&& [lpos, _] : get_chunk(cpos).value().get().iter<Element>()) {
                     positions.push_back({
                         static_cast<std::int64_t>(cpos[0]) * cw + static_cast<std::int64_t>(lpos[0]),
@@ -788,9 +789,11 @@ void SandSimulation::step_cells() {
                 for (auto&& [x, y] : positions) {
                     step_particle(x, y, tick);
                 }
+                positions.clear();
             }));
         }
         for (auto& t : group_tasks) t.block();
+        group_tasks.clear();
     }
 }
 
