@@ -195,6 +195,8 @@ void imgui::imgui_render(Res<ImGuiState> state,
 
     auto snap = state->draw_snapshot;
     if (!snap || !snap->valid || snap->draw_lists.empty()) return;
+    // Guard: skip rendering if display size is degenerate (e.g. during resize to 0)
+    if (snap->display_size_x <= 0.0f || snap->display_size_y <= 0.0f) return;
 
     // Find the first window with a valid swapchain texture view
     const render::window::ExtractedWindow* target_window = nullptr;
@@ -221,6 +223,16 @@ void imgui::imgui_render(Res<ImGuiState> state,
                       static_cast<int>(window.swapchain_texture_format));
     }
     ImGui_ImplWGPU_NewFrame();
+
+    // Guard: if window physical size doesn't match snapshot display size (mid-resize),
+    // skip this frame to avoid WebGPU viewport validation errors.
+    if (window.physical_width > 0 && window.physical_height > 0) {
+        float expected_w = snap->display_size_x * snap->fb_scale_x;
+        float expected_h = snap->display_size_y * snap->fb_scale_y;
+        float actual_w   = static_cast<float>(window.physical_width);
+        float actual_h   = static_cast<float>(window.physical_height);
+        if (expected_w > actual_w + 1.0f || expected_h > actual_h + 1.0f) return;
+    }
 
     // Reconstruct temporary ImDrawList/ImDrawData from the snapshot so
     // RenderDrawData works with self-contained, race-free data.
