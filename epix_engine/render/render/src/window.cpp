@@ -63,6 +63,9 @@ void epix::render::window::extract_windows(
                                                            .alpha_mode      = window.composite_alpha_mode,
                                                        });
         }
+        if (primary) {
+            extracted_windows->primary = entity;
+        }
     }
 
     // Remove closed windows
@@ -169,7 +172,8 @@ void epix::render::window::create_surfaces(Res<ExtractedWindows> windows,
             }
             auto config = wgpu::SurfaceConfiguration()
                               .setDevice(*device)
-                              .setUsage(wgpu::TextureUsage::eRenderAttachment)
+                              .setUsage(wgpu::TextureUsage::eRenderAttachment | wgpu::TextureUsage::eCopySrc |
+                                        wgpu::TextureUsage::eCopyDst)
                               .setFormat(format)
                               .setWidth(window.physical_width)
                               .setHeight(window.physical_height)

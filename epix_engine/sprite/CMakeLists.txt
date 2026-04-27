@@ -19,6 +19,6 @@ foreach(EXAMPLE_SRC IN LISTS SPRITE_EXAMPLE_SOURCES)
 
 	add_executable(${EXAMPLE_NAME} "${EXAMPLE_SRC}")
 	target_link_libraries(${EXAMPLE_NAME} PRIVATE epix_sprite)
-	target_link_libraries(${EXAMPLE_NAME} PRIVATE epix_glfw epix_glfw_render epix_input)
+	target_link_libraries(${EXAMPLE_NAME} PRIVATE epix_glfw epix_glfw_render epix_input epix_screenshot)
 endforeach()
 endif()

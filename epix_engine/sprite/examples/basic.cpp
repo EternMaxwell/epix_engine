@@ -4,6 +4,7 @@ import epix.window;
 import epix.glfw.core;
 import epix.glfw.render;
 import epix.render;
+import epix.render.screenshot;
 import epix.core_graph;
 import epix.transform;
 import epix.input;
@@ -57,6 +58,7 @@ int main() {
         .add_plugins(glfw::GLFWRenderPlugin{})
         .add_plugins(transform::TransformPlugin{})
         .add_plugins(render::RenderPlugin{}.set_validation(0))
+        .add_plugins(render::screenshot::ScreenshotPlugin{})
         .add_plugins(core_graph::CoreGraphPlugin{})
         .add_plugins(sprite::SpritePlugin{})
         .add_plugins(CamControllPlugin{})
