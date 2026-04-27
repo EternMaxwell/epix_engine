@@ -5,6 +5,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <expected>
+#include <functional>
+#include <limits>
 #include <optional>
 #include <ranges>
 #include <tuple>
@@ -65,6 +67,7 @@ export struct SandWorld {
     float m_cell_size          = 4.0f;
     bool m_paused              = false;
     bool m_show_chunk_outlines = true;
+    glm::vec2 m_gravity        = {0.0f, -300.0f};  ///< Gravity acceleration in cells/s².
 
    public:
     SandWorld() = default;
@@ -77,11 +80,62 @@ export struct SandWorld {
     void set_paused(bool p) { m_paused = p; }
     bool show_chunk_outlines() const { return m_show_chunk_outlines; }
     void set_show_chunk_outlines(bool s) { m_show_chunk_outlines = s; }
+    glm::vec2 gravity() const { return m_gravity; }
+    void set_gravity(glm::vec2 g) { m_gravity = g; }
+};
+
+/**
+ * @brief Per-chunk dirty-rectangle that tracks the active simulation area.
+ *
+ * Place this component on chunk entities alongside SandChunkPos.
+ * Call `touch(x, y)` (chunk-local coordinates) whenever a cell moves or is disturbed
+ * so that subsequent ticks can skip fully idle chunks.
+ * `active()` returns false when the rectangle is in the reset/empty state.
+ */
+export struct SandChunkDirtyRect {
+    std::int32_t xmin = std::numeric_limits<std::int32_t>::max();
+    std::int32_t xmax = std::numeric_limits<std::int32_t>::min();
+    std::int32_t ymin = std::numeric_limits<std::int32_t>::max();
+    std::int32_t ymax = std::numeric_limits<std::int32_t>::min();
+
+    bool active() const noexcept { return xmin <= xmax && ymin <= ymax; }
+
+    void touch(std::int32_t x, std::int32_t y) noexcept {
+        xmin = std::min(xmin, x);
+        xmax = std::max(xmax, x);
+        ymin = std::min(ymin, y);
+        ymax = std::max(ymax, y);
+    }
+
+    void expand(std::int32_t margin) noexcept {
+        xmin -= margin;
+        xmax += margin;
+        ymin -= margin;
+        ymax += margin;
+    }
+
+    void reset() noexcept {
+        xmin = std::numeric_limits<std::int32_t>::max();
+        xmax = std::numeric_limits<std::int32_t>::min();
+        ymin = std::numeric_limits<std::int32_t>::max();
+        ymax = std::numeric_limits<std::int32_t>::min();
+    }
 };
 
 // ──────────────────────────────────────────────────────────────────────────────
 // SandSimulation — transient wrapper for a single simulation step.
 // ──────────────────────────────────────────────────────────────────────────────
+
+/** @brief Error variants returned by SandSimulation::create. */
+export namespace sand_sim_error {
+/** @brief Two chunks share the same SandChunkPos under the same world. */
+struct DuplicateChunkPos {
+    std::array<std::int32_t, kDim> pos;
+};
+}  // namespace sand_sim_error
+
+/** @brief Error type returned by SandSimulation::create. */
+export using SandSimCreateError = std::variant<sand_sim_error::DuplicateChunkPos, grid::ChunkGridError>;
 
 /**
  * @brief Transient simulation handle assembled from a SandWorld and its chunk children.
@@ -102,17 +156,6 @@ export struct SandWorld {
  *   SandSimulation sim(world, range);
  * @endcode
  */
-/** @brief Error variants returned by SandSimulation::create. */
-export namespace sand_sim_error {
-/** @brief Two chunks share the same SandChunkPos under the same world. */
-struct DuplicateChunkPos {
-    std::array<std::int32_t, kDim> pos;
-};
-}  // namespace sand_sim_error
-
-/** @brief Error type returned by SandSimulation::create. */
-export using SandSimCreateError = std::variant<sand_sim_error::DuplicateChunkPos, grid::ChunkGridError>;
-
 export struct SandSimulation : grid::ExtendibleChunkRefGrid<kDim> {
    private:
     SandWorld* m_world;
@@ -127,6 +170,31 @@ export struct SandSimulation : grid::ExtendibleChunkRefGrid<kDim> {
     bool set_cell(std::int64_t x, std::int64_t y, Element value);
     bool clear_cell(std::int64_t x, std::int64_t y);
     bool move_cell(std::int64_t fx, std::int64_t fy, std::int64_t tx, std::int64_t ty);
+    bool swap_cells(std::int64_t fx, std::int64_t fy, std::int64_t tx, std::int64_t ty);
+    void mutate_cell(std::int64_t x, std::int64_t y, epix::utils::function_ref<void(Element&)> fn);
+
+    /// @brief Raycast step result.
+    struct RaycastResult {
+        int steps;
+        std::int64_t new_x, new_y;
+        std::optional<std::pair<std::int64_t, std::int64_t>> hit;
+    };
+
+    Element* get_elem_ptr(std::int64_t x, std::int64_t y);
+    bool valid(std::int64_t x, std::int64_t y) const;
+    RaycastResult raycast_to(std::int64_t x, std::int64_t y, std::int64_t tx, std::int64_t ty);
+    bool collide(std::int64_t x, std::int64_t y, std::int64_t tx, std::int64_t ty);
+    void touch(std::int64_t x, std::int64_t y);
+    glm::vec2 get_grav(std::int64_t x, std::int64_t y) const;
+    glm::vec2 get_default_vel(std::int64_t x, std::int64_t y) const;
+    float air_density(std::int64_t x, std::int64_t y) const;
+    int not_moving_threshold(glm::vec2 grav) const;
+
+    void step_particle_powder(std::int64_t x, std::int64_t y, std::uint64_t tick, float delta);
+    void step_particle_liquid(std::int64_t x, std::int64_t y, std::uint64_t tick, float delta);
+    void step_particle_gas(std::int64_t x, std::int64_t y, std::uint64_t tick, float delta);
+
+    void step_particle(std::int64_t x, std::int64_t y, std::uint64_t tick);
     void step_cells();
 
    public:

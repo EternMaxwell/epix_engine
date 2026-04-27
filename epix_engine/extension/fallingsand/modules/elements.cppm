@@ -37,8 +37,11 @@ export enum class ElementType {
  */
 export struct ElementBase {
     std::string name;
-    float density;
-    ElementType type;
+    float density     = 1.0f;
+    ElementType type  = ElementType::Solid;
+    float restitution = 0.1f;  ///< Collision elasticity (0 = inelastic, 1 = elastic).
+    float friction    = 0.5f;  ///< Surface friction coefficient.
+    float awake_rate  = 1.0f;  ///< Probability of waking when a neighbour moves (0..1).
     /** @brief Procedural colour generator that maps a per-cell seed → RGBA. */
     std::function<glm::vec4(std::uint64_t seed)> color_func;
     // TODO: per-element step function interface (not yet implemented)
@@ -96,8 +99,20 @@ export struct ElementRegistry {
 
 /** @brief Per-cell element data stored in a grid::Chunk layer. */
 export struct Element {
-    std::size_t base_id;
-    glm::vec4 color;
+    std::size_t base_id          = 0;
+    glm::vec4 color              = {1.0f, 1.0f, 1.0f, 1.0f};
+    glm::vec2 velocity           = {0.0f, 0.0f};  ///< Velocity in cells/s.
+    glm::vec2 inpos              = {0.0f, 0.0f};  ///< Sub-cell fractional position.
+    std::uint8_t flags           = 0;             ///< Status flags (FREEFALL | UPDATED).
+    std::uint16_t not_move_count = 0;             ///< Ticks since last successful move.
+
+    static constexpr std::uint8_t kFreefall = 1 << 0;  ///< Cell is in free-fall.
+    static constexpr std::uint8_t kUpdated  = 1 << 1;  ///< Cell was stepped this tick.
+
+    bool freefall() const noexcept { return (flags & kFreefall) != 0; }
+    void set_freefall(bool v) noexcept { flags = v ? flags | kFreefall : flags & ~kFreefall; }
+    bool updated() const noexcept { return (flags & kUpdated) != 0; }
+    void set_updated(bool v) noexcept { flags = v ? flags | kUpdated : flags & ~kUpdated; }
 };
 
 }  // namespace epix::ext::fallingsand
