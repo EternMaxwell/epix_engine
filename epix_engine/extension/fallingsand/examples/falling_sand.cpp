@@ -61,6 +61,10 @@ struct SandAppState {
     bool map_dragging            = false;
     ImVec2 map_drag_start_mouse  = {};
     glm::vec2 map_drag_start_pan = {};
+    // Camera pan-drag state (middle mouse)
+    bool cam_dragging              = false;
+    glm::vec2 cam_drag_start_mouse = {};
+    glm::vec3 cam_drag_start_pos   = {};
 };
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -312,6 +316,73 @@ void chunk_map_ui(imgui::Ctx imgui_ctx,
                 static_cast<double>(zoom));
 
     ImGui::End();
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Camera control: scroll-to-zoom, MMB-drag-to-pan, arrow-key pan.
+// ──────────────────────────────────────────────────────────────────────────────
+void camera_control(ResMut<SandAppState> app_state,
+                    EventReader<input::MouseScroll> scroll_events,
+                    Res<input::ButtonInput<input::MouseButton>> mouse_buttons,
+                    Res<input::ButtonInput<input::KeyCode>> keys,
+                    Query<Item<const window::CachedWindow&>, With<window::PrimaryWindow>> windows,
+                    Query<Item<Mut<transform::Transform>, Mut<render::camera::Projection>>,
+                          With<core_graph::core_2d::Camera2D>> cameras) {
+    if (ImGui::GetIO().WantCaptureMouse && ImGui::GetIO().WantCaptureKeyboard) return;
+
+    auto cam_opt = cameras.single();
+    if (!cam_opt.has_value()) return;
+    auto&& [cam_tf, cam_proj] = *cam_opt;
+    auto& tf                  = cam_tf.get_mut();
+    auto& proj                = cam_proj.get_mut();
+    auto& st                  = app_state.get_mut();
+
+    auto ortho_opt = proj.as_orthographic();
+    if (!ortho_opt.has_value()) return;
+    auto* ortho = *ortho_opt;
+
+    // ── Scroll-to-zoom (when ImGui is NOT capturing mouse) ────────────────────
+    if (!ImGui::GetIO().WantCaptureMouse) {
+        for (auto&& ev : scroll_events.read()) {
+            float factor = std::pow(1.15f, -(float)ev.yoffset);
+            ortho->scale = std::clamp(ortho->scale * factor, 0.05f, 50.0f);
+        }
+    }
+
+    // ── MMB drag to pan ───────────────────────────────────────────────────────
+    auto win_opt = windows.single();
+    if (win_opt.has_value() && !ImGui::GetIO().WantCaptureMouse) {
+        auto&& [win]    = *win_opt;
+        auto [cx, cy]   = win.cursor_pos;
+        glm::vec2 mouse = {(float)cx, (float)cy};
+
+        if (mouse_buttons->just_pressed(input::MouseButton::MouseButtonMiddle)) {
+            st.cam_dragging         = true;
+            st.cam_drag_start_mouse = mouse;
+            st.cam_drag_start_pos   = tf.translation;
+        }
+        if (st.cam_dragging) {
+            if (mouse_buttons->pressed(input::MouseButton::MouseButtonMiddle)) {
+                glm::vec2 delta = mouse - st.cam_drag_start_mouse;
+                // pixel delta → world delta (scale maps 1 world unit to 1/scale pixels roughly)
+                float s          = ortho->scale;
+                tf.translation.x = st.cam_drag_start_pos.x - delta.x * s;
+                tf.translation.y = st.cam_drag_start_pos.y + delta.y * s;
+            } else {
+                st.cam_dragging = false;
+            }
+        }
+    }
+
+    // ── Arrow key pan ─────────────────────────────────────────────────────────
+    if (!ImGui::GetIO().WantCaptureKeyboard) {
+        constexpr float kPanSpeed = 200.0f;
+        float s                   = ortho->scale;
+        if (keys->pressed(input::KeyCode::KeyLeft)) tf.translation.x -= kPanSpeed * s * (1.0f / 60.0f);
+        if (keys->pressed(input::KeyCode::KeyRight)) tf.translation.x += kPanSpeed * s * (1.0f / 60.0f);
+        if (keys->pressed(input::KeyCode::KeyUp)) tf.translation.y += kPanSpeed * s * (1.0f / 60.0f);
+        if (keys->pressed(input::KeyCode::KeyDown)) tf.translation.y -= kPanSpeed * s * (1.0f / 60.0f);
+    }
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -567,7 +638,8 @@ int main() {
         .add_systems(Startup, into(seed).set_name("fallingsand example seed"))
         .add_systems(PreUpdate, into(settings_ui).after(imgui::BeginFrameSet))
         .add_systems(PreUpdate, into(chunk_map_ui).after(imgui::BeginFrameSet))
-        .add_systems(Update, into(input_system));
+        .add_systems(Update, into(input_system))
+        .add_systems(Update, into(camera_control));
 
     app.run();
 }
