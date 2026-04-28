@@ -68,6 +68,92 @@ export struct ClearColorConfig {
     static ClearColorConfig global() { return ClearColorConfig{Type::Global}; }
     static ClearColorConfig custom(const glm::vec4& color) { return ClearColorConfig{Type::Custom, color}; }
 };
+/** @brief Identifies which render layers a camera renders or an entity belongs to.
+ *
+ * Backed by a dynamic bit vector.  When `inverted` is false (the default) the
+ * component represents a finite set of active layer indices.  When `inverted`
+ * is true it represents the complement — i.e. "all layers except those in
+ * `bits`" — which allows expressing "render everything" without enumerating
+ * every possible index.
+ *
+ * Matching rule (camera vs entity):
+ *   `camera_layer.intersects(entity_layer)` returns true when there exists at
+ *   least one layer index that is active in both.
+ *
+ * Default construction yields layer 0 (`bits = {0}`, `inverted = false`).
+ */
+export struct RenderLayer {
+    utils::bit_vector bits;
+    bool inverted = false;
+
+    /** @brief Default: entity is on layer 0. */
+    RenderLayer() { bits.set(0); }
+
+    /** @brief Internal constructor for factory methods. */
+    RenderLayer(utils::bit_vector b, bool inv) : bits(std::move(b)), inverted(inv) {}
+
+    /** @brief Matches all layers (camera default). */
+    static RenderLayer all() { return RenderLayer(utils::bit_vector{}, true); }
+
+    /** @brief Matches no layers. */
+    static RenderLayer none() { return RenderLayer(utils::bit_vector{}, false); }
+
+    /** @brief Matches exactly one layer. */
+    static RenderLayer layer(std::size_t n) {
+        utils::bit_vector b;
+        b.set(n);
+        return RenderLayer(std::move(b), false);
+    }
+
+    /** @brief Matches a set of layers (accepts any input range of `std::size_t`). */
+    template <std::ranges::input_range R>
+        requires std::convertible_to<std::ranges::range_value_t<R>, std::size_t>
+    static RenderLayer layers(R&& ns) {
+        utils::bit_vector b;
+        for (auto n : ns) b.set(static_cast<std::size_t>(n));
+        return RenderLayer(std::move(b), false);
+    }
+    /** @brief Matches all layers except those in the range. */
+    template <std::ranges::input_range R>
+        requires std::convertible_to<std::ranges::range_value_t<R>, std::size_t>
+    static RenderLayer all_except(R&& ns) {
+        utils::bit_vector b;
+        for (auto n : ns) b.set(static_cast<std::size_t>(n));
+        return RenderLayer(std::move(b), true);
+    }
+
+    /** @brief Returns true if layer index @p n is active on this RenderLayer. */
+    bool contains(std::size_t n) const noexcept {
+        bool in_bits = bits.contains(n);
+        return inverted ? !in_bits : in_bits;
+    }
+
+    /** @brief Returns true if this and @p other share at least one active layer.
+     *
+     * Truth table for the four (inverted, inverted) combinations:
+     *  - normal ∩ normal   → any shared set bit
+     *  - normal ∩ inverted → any bit in self not excluded by other
+     *  - inverted ∩ normal → any bit in other not excluded by self
+     *  - inverted ∩ inverted → always true (both cover infinitely many layers
+     *                           beyond their finite exclusion sets)
+     */
+    bool intersects(const RenderLayer& other) const noexcept {
+        if (!inverted && !other.inverted) {
+            return bits.intersect(other.bits);
+        }
+        if (!inverted && other.inverted) {
+            // any bit in self.bits that is NOT excluded by other
+            return bits.difference_count(other.bits) > 0;
+        }
+        if (inverted && !other.inverted) {
+            // any bit in other.bits that is NOT excluded by self
+            return other.bits.difference_count(bits) > 0;
+        }
+        // inverted ∩ inverted: both represent infinite sets — always overlap
+        return true;
+    }
+};
+
 /** @brief Camera component that controls viewport, render target, ordering,
  * and clear colour.
  *
@@ -505,6 +591,8 @@ export struct ExtractedCamera {
     CameraRenderGraph render_graph;
     std::ptrdiff_t order;
     std::optional<ClearColor> clear_color;
+    /** @brief Which render layers this camera renders. Default: all layers. */
+    RenderLayer render_layer = RenderLayer::all();
 };
 }  // namespace epix::render::camera
 namespace epix::render::view {
@@ -625,9 +713,11 @@ namespace epix::render::camera {
 export void extract_cameras(
     Commands cmd,
     Res<ClearColor> global_clear_color,
-    Extract<Query<
-        Item<const Camera&, const CameraRenderGraph&, const transform::GlobalTransform&, const view::VisibleEntities&>>>
-        cameras,
+    Extract<Query<Item<const Camera&,
+                       const CameraRenderGraph&,
+                       const transform::GlobalTransform&,
+                       const view::VisibleEntities&,
+                       Opt<const RenderLayer&>>>> cameras,
     Extract<Query<Entity, With<::epix::window::PrimaryWindow, ::epix::window::Window>>> primary_window);
 
 /** @brief Label for the camera driver node in the render graph. */
@@ -646,6 +736,8 @@ export struct CameraBundle {
     CameraRenderGraph render_graph;
     transform::Transform transform;
     view::VisibleEntities visible;
+    /** @brief Which layers this camera renders. Default: all layers. */
+    RenderLayer render_layer = RenderLayer::all();
 
     CameraBundle(const CameraRenderGraph& graph) : render_graph(graph) {}
 
@@ -664,7 +756,8 @@ struct epix::core::Bundle<epix::render::camera::CameraBundle> {
         new (target[2]) render::camera::CameraRenderGraph(std::move(bundle.render_graph));
         new (target[3]) transform::Transform(std::move(bundle.transform));
         new (target[4]) render::view::VisibleEntities(std::move(bundle.visible));
-        return 5;
+        new (target[5]) render::camera::RenderLayer(std::move(bundle.render_layer));
+        return 6;
     }
     static auto type_ids(const core::TypeRegistry& registry) {
         return std::array{
@@ -673,6 +766,7 @@ struct epix::core::Bundle<epix::render::camera::CameraBundle> {
             registry.type_id<render::camera::CameraRenderGraph>(),
             registry.type_id<transform::Transform>(),
             registry.type_id<render::view::VisibleEntities>(),
+            registry.type_id<render::camera::RenderLayer>(),
         };
     }
     static void register_components(const core::TypeRegistry& registry, core::Components& components) {
@@ -681,6 +775,7 @@ struct epix::core::Bundle<epix::render::camera::CameraBundle> {
         components.register_info<render::camera::CameraRenderGraph>();
         components.register_info<transform::Transform>();
         components.register_info<render::view::VisibleEntities>();
+        components.register_info<render::camera::RenderLayer>();
     }
 };
 static_assert(epix::core::is_bundle<epix::render::camera::CameraBundle>);

@@ -173,8 +173,10 @@ export struct Camera2DBundle {
     transform::Transform transform;
     view::VisibleEntities visible_entities;
     Camera2D camera_2d;
+    /** @brief Which layers this camera renders. Default: all layers. */
+    render::camera::RenderLayer render_layer = render::camera::RenderLayer::all();
 };
-}  // namespace core_graph::core_2d
+}  // namespace epix::core_graph::core_2d
 
 template <>
 struct epix::core::Bundle<epix::core_graph::core_2d::Camera2DBundle> {
@@ -185,9 +187,10 @@ struct epix::core::Bundle<epix::core_graph::core_2d::Camera2DBundle> {
         new (dest[3]) transform::Transform(std::move(bundle.transform));
         new (dest[4]) render::view::VisibleEntities(std::move(bundle.visible_entities));
         new (dest[5]) core_graph::core_2d::Camera2D(std::move(bundle.camera_2d));
-        return 6;
+        new (dest[6]) render::camera::RenderLayer(std::move(bundle.render_layer));
+        return 7;
     }
-    static std::array<TypeId, 6> type_ids(const core::TypeRegistry& registry) {
+    static std::array<TypeId, 7> type_ids(const core::TypeRegistry& registry) {
         return std::array{
             registry.type_id<render::camera::Camera>(),
             registry.type_id<render::camera::Projection>(),
@@ -195,6 +198,7 @@ struct epix::core::Bundle<epix::core_graph::core_2d::Camera2DBundle> {
             registry.type_id<transform::Transform>(),
             registry.type_id<render::view::VisibleEntities>(),
             registry.type_id<core_graph::core_2d::Camera2D>(),
+            registry.type_id<render::camera::RenderLayer>(),
         };
     }
     static void register_components(const core::TypeRegistry& registry, core::Components& components) {
@@ -204,6 +208,7 @@ struct epix::core::Bundle<epix::core_graph::core_2d::Camera2DBundle> {
         components.register_info<transform::Transform>();
         components.register_info<render::view::VisibleEntities>();
         components.register_info<core_graph::core_2d::Camera2D>();
+        components.register_info<render::camera::RenderLayer>();
     }
 };
 static_assert(epix::core::is_bundle<epix::core_graph::core_2d::Camera2DBundle>);

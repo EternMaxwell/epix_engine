@@ -148,7 +148,10 @@ SandSimulation::RaycastResult SandSimulation::raycast_to(std::int64_t x,
             result.hit = {nx, ny};
             break;
         }
-        if (!valid(nx, ny)) break;
+        if (!valid(nx, ny)) {
+            if (m_world->missing_chunk_as_solid()) result.hit = {nx, ny};
+            break;
+        }
         result.new_x = nx;
         result.new_y = ny;
         result.steps++;
@@ -219,6 +222,20 @@ bool SandSimulation::collide(std::int64_t x, std::int64_t y, std::int64_t tx, st
 }
 
 void SandSimulation::touch(std::int64_t x, std::int64_t y) {
+    // Update the chunk dirty rect (matches old Simulation::touch -> chunk.touch)
+    if (valid(x, y)) {
+        const std::size_t shift             = chunk_width_shift();
+        const std::int64_t mask             = static_cast<std::int64_t>((1 << shift) - 1);
+        std::array<std::int32_t, kDim> cpos = {
+            static_cast<std::int32_t>(x >> shift),
+            static_cast<std::int32_t>(y >> shift),
+        };
+        auto dr_opt = m_chunk_dirty_rects.get_mut(cpos);
+        if (dr_opt.has_value()) {
+            dr_opt->get()->touch(static_cast<std::int32_t>(x & mask), static_cast<std::int32_t>(y & mask));
+        }
+    }
+    // Wake sleeping cell (matches old Simulation::touch probability-based wake)
     Element* cell = get_elem_ptr(x, y);
     if (!cell) return;
     const ElementBase& base = (*m_registry)[cell->base_id];
@@ -272,6 +289,8 @@ void SandSimulation::step_particle_powder(std::int64_t x_, std::int64_t y_, std:
             }
         } else if (s == CellState::EmptyInChunk) {
             empty_count++;
+        } else if (s == CellState::Blocked && m_world->missing_chunk_as_solid()) {
+            b_lr_not_freefall++;
         }
     }
     // above
@@ -311,6 +330,8 @@ void SandSimulation::step_particle_powder(std::int64_t x_, std::int64_t y_, std:
             }
         } else if (s == CellState::EmptyInChunk) {
             empty_count++;
+        } else if (s == CellState::Blocked && m_world->missing_chunk_as_solid()) {
+            b_lr_not_freefall++;
         }
     }
 
@@ -332,7 +353,7 @@ void SandSimulation::step_particle_powder(std::int64_t x_, std::int64_t y_, std:
     if (!cell->freefall()) {
         // Check if below is blocked by solid or sleeping powder
         std::int64_t bx = x_ + gd.x, by = y_ + gd.y;
-        if (!valid(bx, by)) return;
+        if (!valid(bx, by)) return;  // missing chunk: stay asleep (solid wall or out-of-bounds)
         bool below_blocked = false;
         {
             auto s = cell_state(bx, by);
@@ -343,6 +364,8 @@ void SandSimulation::step_particle_powder(std::int64_t x_, std::int64_t y_, std:
                     if (ne.type == ElementType::Solid || ne.type == ElementType::Body) below_blocked = true;
                     if (ne.type == ElementType::Powder && !nc->freefall()) below_blocked = true;
                 }
+            } else if (s == CellState::Blocked && m_world->missing_chunk_as_solid()) {
+                below_blocked = true;
             }
         }
         if (below_blocked) return;
@@ -369,7 +392,6 @@ void SandSimulation::step_particle_powder(std::int64_t x_, std::int64_t y_, std:
 
     // ── Physics integration ───────────────────────────────────────────────────
     touch(x_, y_);
-
     cell->velocity += grav * delta;
     cell->velocity *= 0.99f;
     cell->inpos += cell->velocity * delta;
@@ -405,7 +427,19 @@ void SandSimulation::step_particle_powder(std::int64_t x_, std::int64_t y_, std:
                 collide(cx, cy, hx, hy);
                 blocking_freefall = hc->freefall();
             } else {
-                // Lighter material: swap through
+                // Lighter material: push upward first if liquid, then swap.
+                if (hb.type == ElementType::Liquid) {
+                    for (auto [px, py] : std::array<std::pair<std::int64_t, std::int64_t>, 3>{{
+                             {hx + ag.x, hy + ag.y},
+                             {hx + ag.x + lp.x, hy + ag.y + lp.y},
+                             {hx + ag.x + rp.x, hy + ag.y + rp.y},
+                         }}) {
+                        if (valid(px, py) && cell_state(px, py) == CellState::EmptyInChunk) {
+                            swap_cells(hx, hy, px, py);
+                            break;
+                        }
+                    }
+                }
                 if (swap_cells(cx, cy, hx, hy)) {
                     cx   = hx;
                     cy   = hy;
@@ -449,17 +483,29 @@ void SandSimulation::step_particle_powder(std::int64_t x_, std::int64_t y_, std:
                     std::int64_t ddy = (std::int64_t)std::round(dirs[i].y);
                     if (ddx == 0 && ddy == 0) continue;
                     auto tx = cx + ddx, ty = cy + ddy;
-                    auto ux = cx + (std::int64_t)std::round(idirs[i].x);
-                    auto uy = cy + (std::int64_t)std::round(idirs[i].y);
                     if (!valid(tx, ty)) continue;
-                    auto ts  = cell_state(tx, ty);
-                    bool can = (ts == CellState::EmptyInChunk);
+                    auto ts        = cell_state(tx, ty);
+                    bool can       = (ts == CellState::EmptyInChunk);
+                    bool is_liquid = false;
                     if (!can && ts == CellState::Occupied) {
                         Element* nc = get_elem_ptr(tx, ty);
-                        can         = nc && (*m_registry)[nc->base_id].type == ElementType::Liquid;
+                        is_liquid   = nc && (*m_registry)[nc->base_id].type == ElementType::Liquid;
+                        can         = is_liquid;
                     }
                     if (!can) continue;
-                    if (valid(ux, uy) && cell_state(ux, uy) == CellState::EmptyInChunk) swap_cells(tx, ty, ux, uy);
+                    // Push liquid upward (anti-gravity) before sliding into its cell.
+                    if (is_liquid) {
+                        for (auto [px, py] : std::array<std::pair<std::int64_t, std::int64_t>, 3>{{
+                                 {tx + ag.x, ty + ag.y},
+                                 {tx + ag.x + lp.x, ty + ag.y + lp.y},
+                                 {tx + ag.x + rp.x, ty + ag.y + rp.y},
+                             }}) {
+                            if (valid(px, py) && cell_state(px, py) == CellState::EmptyInChunk) {
+                                swap_cells(tx, ty, px, py);
+                                break;
+                            }
+                        }
+                    }
                     if (swap_cells(cx, cy, tx, ty)) {
                         cx   = tx;
                         cy   = ty;
@@ -674,11 +720,12 @@ void SandSimulation::step_particle_gas(std::int64_t x_, std::int64_t y_, std::ui
     // Random horizontal drift + drag
     static thread_local std::mt19937 rng{std::random_device{}()};
     std::uniform_real_distribution<float> rand_f{-1.0f, 1.0f};
-    glm::vec2 horiz = glm::vec2{(float)lp.x, (float)lp.y} * rand_f(rng) * 5.0f;
+    glm::vec2 horiz = glm::vec2{(float)lp.x, (float)lp.y} * rand_f(rng) * 1.0f;
     float vlen      = glm::length(cell->velocity);
     glm::vec2 drag  = vlen > 0.001f ? -0.1f * vlen * cell->velocity / 20.0f : glm::vec2{};
 
     cell->velocity += (grav + horiz) * delta + drag;
+    cell->velocity *= 0.9f;
     cell->inpos += cell->velocity * delta;
     auto di = static_cast<std::int64_t>(std::round(cell->inpos.x));
     auto dj = static_cast<std::int64_t>(std::round(cell->inpos.y));
@@ -716,8 +763,8 @@ void SandSimulation::step_particle_gas(std::int64_t x_, std::int64_t y_, std::ui
         }
     }
 
-    // Horizontal spread
-    if (!moved && cell) {
+    // Horizontal spread — only when blocked (raycast hit something)
+    if (!moved && cell && res.hit.has_value()) {
         bool pl = ((x_ + y_ + (std::int64_t)tick) & 1) == 0;
         for (auto dp : pl ? std::array{lp, rp} : std::array{rp, lp}) {
             if (moved) break;
@@ -776,13 +823,8 @@ void SandSimulation::step_cells() {
         thread_local static std::vector<tasks::Task<void>> group_tasks;
         for (auto&& cpos : std::views::filter(iter_chunk_pos(), [rx, ry, this](auto&& cpos) {
                  if (!((cpos[0] % 3 + 3) % 3 == rx && (cpos[1] % 3 + 3) % 3 == ry)) return false;
-                 if (m_active_chunks.empty()) return true;
-                 auto cx = static_cast<std::int32_t>(cpos[0]);
-                 auto cy = static_cast<std::int32_t>(cpos[1]);
-                 for (auto& ac : m_active_chunks) {
-                     if (ac[0] == cx && ac[1] == cy) return true;
-                 }
-                 return false;
+                 auto dr_opt = m_chunk_dirty_rects.get_mut(cpos);
+                 return dr_opt.has_value() && dr_opt->get()->active();
              })) {
             group_tasks.push_back(pool.spawn([cpos, cw, tick, this] {
                 // Snapshot positions first — prevents iterator invalidation during steps.

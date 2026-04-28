@@ -64,16 +64,57 @@ static mesh::Mesh build_chunk_outline_mesh(std::size_t chunk_width, float cell_s
         .with_attribute(mesh::Mesh::ATTRIBUTE_COLOR, colors)
         .with_indices<std::uint16_t>(indices);
 }
-
 // ──────────────────────────────────────────────────────────────────────────────
 // setup_chunk_dirty_rects
 // ──────────────────────────────────────────────────────────────────────────────
 
 void setup_chunk_dirty_rects(
     Commands cmd,
-    Query<Entity, Filter<With<grid::Chunk<kDim>, SandChunkPos>, Without<SandChunkDirtyRect>>> new_chunks) {
-    for (auto entity : new_chunks.iter()) {
-        cmd.entity(entity).insert(SandChunkDirtyRect{.xmin = 0, .xmax = 0, .ymin = 0, .ymax = 0});
+    Query<Item<Entity, const Parent&>, Filter<With<grid::Chunk<kDim>, SandChunkPos>, Without<SandChunkDirtyRect>>>
+        new_chunks,
+    Query<Item<const SandWorld&>> worlds,
+    Query<Item<Entity, const SandChunkPos&, Opt<Mut<SandChunkDirtyRect>>, const Parent&>, With<grid::Chunk<kDim>>>
+        all_chunks) {
+    for (auto&& [entity, parent] : new_chunks.iter()) {
+        auto world_opt = worlds.get(parent.entity());
+        if (!world_opt.has_value()) continue;
+        auto&& [sand_world] = *world_opt;
+        auto cw             = static_cast<std::int32_t>(std::size_t(1) << sand_world.chunk_shift());
+        cmd.entity(entity).insert(SandChunkDirtyRect::make_full(cw));
+
+        // Wake the 1-cell-thick border of each existing neighboring chunk that
+        // faces the newly-added chunk, so settled particles re-evaluate.
+        auto self_opt = all_chunks.get(entity);
+        if (!self_opt.has_value()) continue;
+        auto&& [self_ent, self_pos, self_dr_opt, self_par] = *self_opt;
+
+        // For each cardinal neighbor: find it, touch the facing edge cells.
+        //   +x neighbor → its local x=0    column
+        //   -x neighbor → its local x=cw-1 column
+        //   +y neighbor → its local y=0    row
+        //   -y neighbor → its local y=cw-1 row
+        const std::array<std::array<std::int32_t, 2>, 4> offsets{{
+            {{1, 0}}, {{-1, 0}}, {{0, 1}}, {{0, -1}}
+        }};
+        // Two extreme local points to touch for each direction's facing edge.
+        const std::array<std::pair<std::int32_t, std::int32_t>, 4> p0{{{0, 0}, {cw-1, 0}, {0, 0}, {0, cw-1}}};
+        const std::array<std::pair<std::int32_t, std::int32_t>, 4> p1{{{0, cw-1}, {cw-1, cw-1}, {cw-1, 0}, {cw-1, cw-1}}};
+
+        for (std::size_t i = 0; i < 4; ++i) {
+            std::array<std::int32_t, kDim> npos = {
+                self_pos.value[0] + offsets[i][0],
+                self_pos.value[1] + offsets[i][1],
+            };
+            for (auto&& [nent, nchunk_pos, ndr_opt, npar] : all_chunks.iter()) {
+                if (npar.entity() != parent.entity()) continue;
+                if (nchunk_pos.value != npos) continue;
+                if (!ndr_opt.has_value()) break;  // neighbor is also new, skip
+                auto& dr = ndr_opt->get_mut();
+                dr.touch(p0[i].first, p0[i].second);
+                dr.touch(p1[i].first, p1[i].second);
+                break;
+            }
+        }
     }
 }
 
@@ -126,9 +167,10 @@ void simulate_worlds(
         worlds,
     Query<Item<Mut<grid::Chunk<kDim>>, const SandChunkPos&, Mut<SandChunkDirtyRect>, const Parent&>> all_chunks) {
     for (auto&& [world_entity, sand_world, world_transform, maybe_children] : worlds.iter()) {
-        if (sand_world.get().paused()) continue;
         if (!maybe_children.has_value()) continue;
         const auto& child_entities = maybe_children->get().entities();
+
+        if (sand_world.get().paused()) continue;
 
         auto chunk_range =
             child_entities | std::views::filter([&all_chunks](Entity e) { return all_chunks.get(e).has_value(); }) |
@@ -161,40 +203,19 @@ void simulate_worlds(
         }
         sim_result->step();
 
-        // Reset all dirty rects for this world's chunks.
+        // Per-chunk: count time, swap buffers when threshold reached;
+        // if settled, force-sleep all cells (matches old ChunkMap::count_time + swap_area).
         for (Entity ce : child_entities) {
             auto c = all_chunks.get(ce);
             if (!c.has_value()) continue;
-            auto&& [_ch, _cpos, dirty_rect, _par] = *c;
-            dirty_rect.get_mut().reset();
-        }
-
-        // Re-mark dirty rects: scan for freefall elements after the step.
-        std::vector<std::array<std::int32_t, 2>> active_cpos;
-        for (Entity ce : child_entities) {
-            auto c = all_chunks.get(ce);
-            if (!c.has_value()) continue;
-            auto&& [chunk, pos, _dr, par] = *c;
-            for (auto&& [lpos, elem] : chunk.get().iter<Element>()) {
-                if (elem.freefall()) {
-                    active_cpos.push_back(pos.value);
-                    break;
+            auto&& [chunk, pos, dirty_rect, par] = *c;
+            bool settled                         = dirty_rect.get_mut().count_time();
+            if (settled) {
+                for (auto&& [lpos, elem] : chunk.get_mut().iter_mut<Element>()) {
+                    elem.set_freefall(false);
+                    elem.velocity = {};
                 }
-            }
-        }
-
-        if (active_cpos.empty()) continue;
-
-        // Mark dirty for chunks within Chebyshev-1 of any active chunk.
-        for (Entity ce : child_entities) {
-            auto c = all_chunks.get(ce);
-            if (!c.has_value()) continue;
-            auto&& [_ch2, cpos, dirty_rect2, _par2] = *c;
-            for (auto& ap : active_cpos) {
-                if (std::abs(cpos.value[0] - ap[0]) <= 1 && std::abs(cpos.value[1] - ap[1]) <= 1) {
-                    dirty_rect2.get_mut().touch(0, 0);
-                    break;
-                }
+                dirty_rect.get_mut().needs_rebuild = true;
             }
         }
     }
@@ -230,8 +251,10 @@ void build_chunk_meshes(
     Query<Item<const SandWorld&>, Filter<With<SandWorld, MeshBuildByPlugin>>> worlds,
     ResMut<assets::Assets<mesh::Mesh>> meshes) {
     for (auto&& [chunk_entity, chunk, render_children, dirty_rect, parent_comp] : chunks.iter()) {
-        if (!dirty_rect.get().active()) continue;  // skip chunks that haven't changed
-        dirty_rect.get_mut().reset();
+        auto& dr = dirty_rect.get_mut();
+        if (!dr.active() && !dr.needs_rebuild) continue;  // skip chunks that haven't changed
+        dr.needs_rebuild = false;
+        // Note: dirty rects are reset by simulate_worlds at the start of each tick.
 
         if (!render_children.mesh_entity.has_value()) continue;
         auto world_data = worlds.get(parent_comp.entity());
@@ -278,7 +301,8 @@ void update_chunk_outlines(Commands cmd,
                                                   .color      = glm::vec4(1.0f, 1.0f, 1.0f, 0.55f),
                                                   .alpha_mode = mesh::MeshAlphaMode2d::Blend,
                                               },
-                                              transform::Transform{.translation = glm::vec3(0.0f, 0.0f, 0.01f)})
+                                              transform::Transform{.translation = glm::vec3(0.0f, 0.0f, 0.01f)},
+                                              render::camera::RenderLayer::layer(2))
                                        .id();
             rc.outline_entity    = oe;
             rc.outline_cell_size = current_cell_size;

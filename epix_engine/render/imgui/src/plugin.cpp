@@ -198,12 +198,13 @@ void imgui::imgui_render(Res<ImGuiState> state,
     // Guard: skip rendering if display size is degenerate (e.g. during resize to 0)
     if (snap->display_size_x <= 0.0f || snap->display_size_y <= 0.0f) return;
 
-    // Find the first window with a valid swapchain texture view
+    // Find the primary window with a valid swapchain texture view
     const render::window::ExtractedWindow* target_window = nullptr;
-    for (const auto& [entity, window] : windows->windows) {
-        if (window.swapchain_texture_view) {
-            target_window = &window;
-            break;
+    if (windows->primary) {
+        if (auto it = windows->windows.find(*windows->primary); it != windows->windows.end()) {
+            if (it->second.swapchain_texture_view) {
+                target_window = &it->second;
+            }
         }
     }
     if (!target_window) return;

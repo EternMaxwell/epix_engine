@@ -303,16 +303,18 @@ void OrthographicProjection::update(float width, float height) {
 void camera::extract_cameras(
     Commands cmd,
     Res<ClearColor> global_clear_color,
-    Extract<Query<
-        Item<const Camera&, const CameraRenderGraph&, const transform::GlobalTransform&, const view::VisibleEntities&>>>
-        cameras,
+    Extract<Query<Item<const Camera&,
+                       const CameraRenderGraph&,
+                       const transform::GlobalTransform&,
+                       const view::VisibleEntities&,
+                       Opt<const RenderLayer&>>>> cameras,
     Extract<Query<Entity, With<::epix::window::PrimaryWindow, ::epix::window::Window>>> primary_window) {
     // extract camera entities to render world, this will spawn an related
     // entity with ExtractedCamera, ExtractedView and other components.
 
     auto primary = primary_window.single();
 
-    for (auto&& [camera, graph, gtransform, visible_entities] : cameras.iter()) {
+    for (auto&& [camera, graph, gtransform, visible_entities, opt_render_layer] : cameras.iter()) {
         if (!camera.active) continue;
         auto target_size = camera.get_target_size();
         if (target_size.x == 0 || target_size.y == 0) continue;
@@ -341,6 +343,7 @@ void camera::extract_cameras(
                         return std::nullopt;
                     }
                 }(),
+                .render_layer = opt_render_layer ? *opt_render_layer : RenderLayer::all(),
             },
             view::ExtractedView{
                 .projection      = camera.computed.projection,

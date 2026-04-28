@@ -63,11 +63,12 @@ export struct SandChunkRenderChildren {
  */
 export struct SandWorld {
    private:
-    std::size_t m_chunk_shift  = 5;
-    float m_cell_size          = 4.0f;
-    bool m_paused              = false;
-    bool m_show_chunk_outlines = true;
-    glm::vec2 m_gravity        = {0.0f, -300.0f};  ///< Gravity acceleration in cells/s².
+    std::size_t m_chunk_shift     = 5;
+    float m_cell_size             = 4.0f;
+    bool m_paused                 = false;
+    bool m_show_chunk_outlines    = true;
+    bool m_missing_chunk_as_solid = false;            ///< Treat absent chunks as solid walls.
+    glm::vec2 m_gravity           = {0.0f, -300.0f};  ///< Gravity acceleration in cells/s².
 
    public:
     SandWorld() = default;
@@ -80,6 +81,8 @@ export struct SandWorld {
     void set_paused(bool p) { m_paused = p; }
     bool show_chunk_outlines() const { return m_show_chunk_outlines; }
     void set_show_chunk_outlines(bool s) { m_show_chunk_outlines = s; }
+    bool missing_chunk_as_solid() const { return m_missing_chunk_as_solid; }
+    void set_missing_chunk_as_solid(bool v) { m_missing_chunk_as_solid = v; }
     glm::vec2 gravity() const { return m_gravity; }
     void set_gravity(glm::vec2 g) { m_gravity = g; }
 };
@@ -87,38 +90,114 @@ export struct SandWorld {
 /**
  * @brief Per-chunk dirty-rectangle that tracks the active simulation area.
  *
- * Place this component on chunk entities alongside SandChunkPos.
- * Call `touch(x, y)` (chunk-local coordinates) whenever a cell moves or is disturbed
- * so that subsequent ticks can skip fully idle chunks.
- * `active()` returns false when the rectangle is in the reset/empty state.
+ * Two-buffer system matching old feature/pixel_b2d:
+ *   - Current buffer (xmin/xmax/ymin/ymax): active area this frame.
+ *   - Next buffer (xmin_next/xmax_next/ymin_next/ymax_next): accumulates touches this frame.
+ *   - count_time() is called each tick; when time_threshold is reached it swaps
+ *     next → current and resets next.  Returns true (settled) when the chunk
+ *     has no active area after the swap — caller should force-sleep all cells.
+ *   - touch(x, y): updates both buffers.  If current is not active it is first
+ *     expanded to the full chunk so the step loop covers everything.
  */
 export struct SandChunkDirtyRect {
-    std::int32_t xmin = std::numeric_limits<std::int32_t>::max();
-    std::int32_t xmax = std::numeric_limits<std::int32_t>::min();
-    std::int32_t ymin = std::numeric_limits<std::int32_t>::max();
-    std::int32_t ymax = std::numeric_limits<std::int32_t>::min();
+    // Current active area (empty = xmin > xmax)
+    std::int32_t xmin = 0;
+    std::int32_t xmax = 0;
+    std::int32_t ymin = 0;
+    std::int32_t ymax = 0;
+    // Next-frame accumulated area
+    std::int32_t xmin_next = 0;
+    std::int32_t xmax_next = 0;
+    std::int32_t ymin_next = 0;
+    std::int32_t ymax_next = 0;
+    // Timer
+    std::int32_t time_since_last_swap = 0;
+    std::int32_t time_threshold       = 12;
+    // Chunk side length in cells (needed to represent "empty" as xmin=width, xmax=0)
+    std::int32_t width = 0;
+    // Set to true when chunk just settled (force-slept); triggers one final mesh rebuild.
+    bool needs_rebuild = false;
+
+    /** Initialize in the "not active" / empty state for a chunk of the given width. */
+    static SandChunkDirtyRect make_empty(std::int32_t chunk_width) noexcept {
+        SandChunkDirtyRect r;
+        r.width     = chunk_width;
+        r.xmin      = chunk_width;
+        r.xmax      = 0;
+        r.ymin      = chunk_width;
+        r.ymax      = 0;
+        r.xmin_next = chunk_width;
+        r.xmax_next = 0;
+        r.ymin_next = chunk_width;
+        r.ymax_next = 0;
+        return r;
+    }
+
+    /** Initialize in the "full chunk active" state. */
+    static SandChunkDirtyRect make_full(std::int32_t chunk_width) noexcept {
+        SandChunkDirtyRect r;
+        r.width     = chunk_width;
+        r.xmin      = 0;
+        r.xmax      = chunk_width - 1;
+        r.ymin      = 0;
+        r.ymax      = chunk_width - 1;
+        r.xmin_next = 0;
+        r.xmax_next = chunk_width - 1;
+        r.ymin_next = 0;
+        r.ymax_next = chunk_width - 1;
+        return r;
+    }
 
     bool active() const noexcept { return xmin <= xmax && ymin <= ymax; }
 
+    // touch: update both current and next buffers (matches old Chunk::touch)
     void touch(std::int32_t x, std::int32_t y) noexcept {
-        xmin = std::min(xmin, x);
-        xmax = std::max(xmax, x);
-        ymin = std::min(ymin, y);
-        ymax = std::max(ymax, y);
+        if (!active()) {
+            xmin = 0;
+            xmax = width - 1;
+            ymin = 0;
+            ymax = width - 1;
+        }
+        if (x < xmin) xmin = x;
+        if (x > xmax) xmax = x;
+        if (y < ymin) ymin = y;
+        if (y > ymax) ymax = y;
+        if (x < xmin_next) xmin_next = x;
+        if (x > xmax_next) xmax_next = x;
+        if (y < ymin_next) ymin_next = y;
+        if (y > ymax_next) ymax_next = y;
     }
 
-    void expand(std::int32_t margin) noexcept {
-        xmin -= margin;
-        xmax += margin;
-        ymin -= margin;
-        ymax += margin;
+    // swap_area: copy next → current, reset next.
+    // Returns true when chunk has no active area after swap (settled).
+    bool swap_area() noexcept {
+        xmin      = xmin_next;
+        xmax      = xmax_next;
+        ymin      = ymin_next;
+        ymax      = ymax_next;
+        xmin_next = width;
+        xmax_next = 0;
+        ymin_next = width;
+        ymax_next = 0;
+        return !active();
     }
 
-    void reset() noexcept {
-        xmin = std::numeric_limits<std::int32_t>::max();
-        xmax = std::numeric_limits<std::int32_t>::min();
-        ymin = std::numeric_limits<std::int32_t>::max();
-        ymax = std::numeric_limits<std::int32_t>::min();
+    // count_time: increment timer; swap when threshold reached.
+    // Returns true when chunk settled (caller should force-sleep all cells).
+    bool count_time() noexcept {
+        time_since_last_swap++;
+        bool settled = false;
+        if (time_since_last_swap >= time_threshold) {
+            time_since_last_swap = 0;
+            settled              = swap_area();
+        }
+        time_threshold = 12;
+        return settled;
+    }
+
+    // in_area: check next-frame buffer (matches old Chunk::in_area)
+    bool in_area(std::int32_t x, std::int32_t y) const noexcept {
+        return x >= xmin_next && x <= xmax_next && y >= ymin_next && y <= ymax_next;
     }
 };
 
@@ -160,7 +239,7 @@ export struct SandSimulation : grid::ExtendibleChunkRefGrid<kDim> {
    private:
     SandWorld* m_world;
     const ElementRegistry* m_registry;
-    std::vector<std::array<std::int32_t, 2>> m_active_chunks;
+    grid::tree_extendible_grid<kDim, SandChunkDirtyRect*> m_chunk_dirty_rects;
 
     explicit SandSimulation(SandWorld& world, const ElementRegistry& registry)
         : grid::ExtendibleChunkRefGrid<kDim>(world.chunk_shift()), m_world(&world), m_registry(&registry) {}
@@ -185,7 +264,6 @@ export struct SandSimulation : grid::ExtendibleChunkRefGrid<kDim> {
     bool valid(std::int64_t x, std::int64_t y) const;
     RaycastResult raycast_to(std::int64_t x, std::int64_t y, std::int64_t tx, std::int64_t ty);
     bool collide(std::int64_t x, std::int64_t y, std::int64_t tx, std::int64_t ty);
-    void touch(std::int64_t x, std::int64_t y);
     glm::vec2 get_grav(std::int64_t x, std::int64_t y) const;
     glm::vec2 get_default_vel(std::int64_t x, std::int64_t y) const;
     float air_density(std::int64_t x, std::int64_t y) const;
@@ -199,6 +277,8 @@ export struct SandSimulation : grid::ExtendibleChunkRefGrid<kDim> {
     void step_cells();
 
    public:
+    /** @brief Mark cell (x,y) as active: expand its chunk's dirty rect and wake the cell. */
+    void touch(std::int64_t x, std::int64_t y);
     /**
      * @brief Factory: build a SandSimulation from a SandWorld and a range of
      *        `(Chunk<kDim>&, SandChunkPos, SandChunkDirtyRect&)` triples.
@@ -212,6 +292,8 @@ export struct SandSimulation : grid::ExtendibleChunkRefGrid<kDim> {
      * Any other grid insert failure is returned as `std::unexpected(ChunkGridError{...})`.
      */
     template <std::ranges::input_range R>
+        requires std::same_as<std::tuple<grid::Chunk<kDim>&, const SandChunkPos&, SandChunkDirtyRect&>,
+                              std::ranges::range_value_t<R>>
     static std::expected<SandSimulation, SandSimCreateError> create(SandWorld& world,
                                                                     const ElementRegistry& registry,
                                                                     R&& chunks) {
@@ -227,7 +309,7 @@ export struct SandSimulation : grid::ExtendibleChunkRefGrid<kDim> {
                 }
                 return std::unexpected(SandSimCreateError{err});
             }
-            if (dirty_rect.active()) sim.m_active_chunks.push_back(pos.value);
+            (void)sim.m_chunk_dirty_rects.set(pos.value, &dirty_rect);
         }
         return sim;
     }

@@ -69,6 +69,8 @@ export struct ExtractedMesh2d {
     MeshAlphaMode2d alpha_mode;
     /** @brief Optional texture asset ID. */
     std::optional<assets::AssetId<image::Image>> texture;
+    /** @brief Render layers this entity belongs to. Default: layer 0. */
+    render::camera::RenderLayer render_layer = render::camera::RenderLayer::layer(0);
 };
 
 /** @brief Batching key for 2D mesh draw commands (groups by texture). */
@@ -223,4 +225,4 @@ export struct MeshRenderPlugin {
     void build(core::App& app);
     void finish(core::App& app);
 };
-}  // namespace mesh
+}  // namespace epix::mesh

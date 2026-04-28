@@ -32,7 +32,12 @@ using namespace epix::core;
  *  (i.e., entities with Chunk<kDim>+SandChunkPos but no SandChunkDirtyRect yet).
  *  Runs before simulate_worlds so the simulation always has a dirty rect to read. */
 void setup_chunk_dirty_rects(
-    Commands cmd, Query<Entity, Filter<With<grid::Chunk<kDim>, SandChunkPos>, Without<SandChunkDirtyRect>>> new_chunks);
+    Commands cmd,
+    Query<Item<Entity, const Parent&>, Filter<With<grid::Chunk<kDim>, SandChunkPos>, Without<SandChunkDirtyRect>>>
+        new_chunks,
+    Query<Item<const SandWorld&>> worlds,
+    Query<Item<Entity, const SandChunkPos&, Opt<Mut<SandChunkDirtyRect>>, const Parent&>, With<grid::Chunk<kDim>>>
+        all_chunks);
 
 /** @brief Creates SandChunkRenderChildren on newly spawned chunk entities.
  *  If the parent world has MeshBuildByPlugin, spawns an empty mesh child entity.

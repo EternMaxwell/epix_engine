@@ -41,6 +41,8 @@ struct ExtractedSprite {
     assets::AssetId<image::Image> texture;
     /** @brief Pixel dimensions of the source image. */
     glm::vec2 image_size;
+    /** @brief Render layers this entity belongs to. Default: layer 0. */
+    render::camera::RenderLayer render_layer = render::camera::RenderLayer::layer(0);
 };
 
 /** @brief GPU batch for sprites sharing the same texture bind group.
@@ -246,4 +248,4 @@ struct SpritePlugin {
     void build(core::App& app);
     void finish(core::App& app);
 };
-}  // namespace sprite
+}  // namespace epix::sprite
