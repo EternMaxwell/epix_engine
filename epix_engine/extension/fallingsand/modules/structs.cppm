@@ -160,6 +160,7 @@ export struct SandSimulation : grid::ExtendibleChunkRefGrid<kDim> {
    private:
     SandWorld* m_world;
     const ElementRegistry* m_registry;
+    std::vector<std::array<std::int32_t, 2>> m_active_chunks;
 
     explicit SandSimulation(SandWorld& world, const ElementRegistry& registry)
         : grid::ExtendibleChunkRefGrid<kDim>(world.chunk_shift()), m_world(&world), m_registry(&registry) {}
@@ -200,22 +201,15 @@ export struct SandSimulation : grid::ExtendibleChunkRefGrid<kDim> {
    public:
     /**
      * @brief Factory: build a SandSimulation from a SandWorld and a range of
-     *        `(Chunk<kDim>&, SandChunkPos)` pairs.
+     *        `(Chunk<kDim>&, SandChunkPos, SandChunkDirtyRect&)` triples.
+     *
+     * Only chunks whose SandChunkDirtyRect is active are scheduled for stepping
+     * (stored in m_active_chunks).  Pass an active rect to guarantee a chunk is
+     * stepped on the first frame after spawn.
      *
      * Conflict detection is performed automatically; on duplicate chunk position the
      * factory returns `std::unexpected(sand_sim_error::DuplicateChunkPos{pos})`.
      * Any other grid insert failure is returned as `std::unexpected(ChunkGridError{...})`.
-     *
-     * Example (building from children query in a system):
-     * @code
-     *   auto range = children
-     *       | std::views::filter([&cq](Entity e) { return cq.get(e).has_value(); })
-     *       | std::views::transform([&cq](Entity e)
-     *             -> std::tuple<grid::Chunk<kDim>&, const SandChunkPos&> {
-     *           auto&& [c, p, _] = *cq.get(e); return {c.get_mut(), p};
-     *         });
-     *   auto sim = SandSimulation::create(world, range);
-     * @endcode
      */
     template <std::ranges::input_range R>
     static std::expected<SandSimulation, SandSimCreateError> create(SandWorld& world,
@@ -223,8 +217,8 @@ export struct SandSimulation : grid::ExtendibleChunkRefGrid<kDim> {
                                                                     R&& chunks) {
         SandSimulation sim(world, registry);
         for (auto&& item : std::forward<R>(chunks)) {
-            auto&& [chunk, pos] = item;
-            auto result         = sim.insert_chunk(pos.value, chunk);
+            auto&& [chunk, pos, dirty_rect] = item;
+            auto result                     = sim.insert_chunk(pos.value, chunk);
             if (!result.has_value()) {
                 auto& err = result.error();
                 if (std::holds_alternative<grid::grid_error>(err) &&
@@ -233,6 +227,7 @@ export struct SandSimulation : grid::ExtendibleChunkRefGrid<kDim> {
                 }
                 return std::unexpected(SandSimCreateError{err});
             }
+            if (dirty_rect.active()) sim.m_active_chunks.push_back(pos.value);
         }
         return sim;
     }

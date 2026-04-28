@@ -66,6 +66,18 @@ static mesh::Mesh build_chunk_outline_mesh(std::size_t chunk_width, float cell_s
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
+// setup_chunk_dirty_rects
+// ──────────────────────────────────────────────────────────────────────────────
+
+void setup_chunk_dirty_rects(
+    Commands cmd,
+    Query<Entity, Filter<With<grid::Chunk<kDim>, SandChunkPos>, Without<SandChunkDirtyRect>>> new_chunks) {
+    for (auto entity : new_chunks.iter()) {
+        cmd.entity(entity).insert(SandChunkDirtyRect{.xmin = 0, .xmax = 0, .ymin = 0, .ymax = 0});
+    }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
 // setup_chunk_render_children
 // ──────────────────────────────────────────────────────────────────────────────
 
@@ -108,10 +120,11 @@ void setup_chunk_render_children(
 // simulate_worlds
 // ──────────────────────────────────────────────────────────────────────────────
 
-void simulate_worlds(Res<ElementRegistry> registry,
-                     Query<Item<Entity, Mut<SandWorld>, const transform::Transform&, Opt<const Children&>>,
-                           With<SimulatedByPlugin>> worlds,
-                     Query<Item<Mut<grid::Chunk<kDim>>, const SandChunkPos&, const Parent&>> all_chunks) {
+void simulate_worlds(
+    Res<ElementRegistry> registry,
+    Query<Item<Entity, Mut<SandWorld>, const transform::Transform&, Opt<const Children&>>,
+          With<SimulatedByPlugin>> worlds,
+    Query<Item<Mut<grid::Chunk<kDim>>, const SandChunkPos&, Mut<SandChunkDirtyRect>, const Parent&>> all_chunks) {
     for (auto&& [world_entity, sand_world, world_transform, maybe_children] : worlds.iter()) {
         if (sand_world.get().paused()) continue;
         if (!maybe_children.has_value()) continue;
@@ -119,11 +132,12 @@ void simulate_worlds(Res<ElementRegistry> registry,
 
         auto chunk_range =
             child_entities | std::views::filter([&all_chunks](Entity e) { return all_chunks.get(e).has_value(); }) |
-            std::views::transform([&all_chunks](Entity e) -> std::tuple<grid::Chunk<kDim>&, const SandChunkPos&> {
-                auto opt                     = all_chunks.get(e);
-                auto&& [chunk, pos, par_ref] = *opt;
-                return {chunk.get_mut(), pos};
-            });
+            std::views::transform(
+                [&all_chunks](Entity e) -> std::tuple<grid::Chunk<kDim>&, const SandChunkPos&, SandChunkDirtyRect&> {
+                    auto opt                              = all_chunks.get(e);
+                    auto&& [chunk, pos, dirty_rect, par_ref] = *opt;
+                    return {chunk.get_mut(), pos, dirty_rect.get_mut()};
+                });
 
         auto sim_result = SandSimulation::create(sand_world.get_mut(), registry.get(), chunk_range);
         if (!sim_result.has_value()) {
@@ -146,6 +160,43 @@ void simulate_worlds(Res<ElementRegistry> registry,
             continue;
         }
         sim_result->step();
+
+        // Reset all dirty rects for this world's chunks.
+        for (Entity ce : child_entities) {
+            auto c = all_chunks.get(ce);
+            if (!c.has_value()) continue;
+            auto&& [_ch, _cpos, dirty_rect, _par] = *c;
+            dirty_rect.get_mut().reset();
+        }
+
+        // Re-mark dirty rects: scan for freefall elements after the step.
+        std::vector<std::array<std::int32_t, 2>> active_cpos;
+        for (Entity ce : child_entities) {
+            auto c = all_chunks.get(ce);
+            if (!c.has_value()) continue;
+            auto&& [chunk, pos, _dr, par] = *c;
+            for (auto&& [lpos, elem] : chunk.get().iter<Element>()) {
+                if (elem.freefall()) {
+                    active_cpos.push_back(pos.value);
+                    break;
+                }
+            }
+        }
+
+        if (active_cpos.empty()) continue;
+
+        // Mark dirty for chunks within Chebyshev-1 of any active chunk.
+        for (Entity ce : child_entities) {
+            auto c = all_chunks.get(ce);
+            if (!c.has_value()) continue;
+            auto&& [_ch2, cpos, dirty_rect2, _par2] = *c;
+            for (auto& ap : active_cpos) {
+                if (std::abs(cpos.value[0] - ap[0]) <= 1 && std::abs(cpos.value[1] - ap[1]) <= 1) {
+                    dirty_rect2.get_mut().touch(0, 0);
+                    break;
+                }
+            }
+        }
     }
 }
 
@@ -173,27 +224,22 @@ void sync_chunk_transforms(Query<Item<Entity, transform::Transform&, const SandC
 
 void build_chunk_meshes(
     Commands cmd,
-    Query<Item<Entity, const grid::Chunk<kDim>&, const SandChunkRenderChildren&, const Parent&>> chunks,
+    Query<Item<Entity, const grid::Chunk<kDim>&, const SandChunkRenderChildren&,
+               Mut<SandChunkDirtyRect>, const Parent&>> chunks,
     Query<Item<const SandWorld&>, Filter<With<SandWorld, MeshBuildByPlugin>>> worlds,
     ResMut<assets::Assets<mesh::Mesh>> meshes) {
-    struct WorkItem {
-        Entity mesh_entity;
-        const grid::Chunk<kDim>* chunk_ptr;
-        float cell_size;
-    };
-    std::vector<WorkItem> work;
-    for (auto&& [chunk_entity, chunk, render_children, parent_comp] : chunks.iter()) {
+    for (auto&& [chunk_entity, chunk, render_children, dirty_rect, parent_comp] : chunks.iter()) {
+        if (!dirty_rect.get().active()) continue;  // skip chunks that haven't changed
+        dirty_rect.get_mut().reset();
+
         if (!render_children.mesh_entity.has_value()) continue;
         auto world_data = worlds.get(parent_comp.entity());
         if (!world_data.has_value()) continue;
         auto&& [sand_world] = *world_data;
-        work.push_back(WorkItem{*render_children.mesh_entity, &chunk, sand_world.cell_size()});
-    }
 
-    for (auto& item : work) {
-        auto new_mesh = build_chunk_mesh(*item.chunk_ptr, item.cell_size);
+        auto new_mesh = build_chunk_mesh(chunk, sand_world.cell_size());
         auto handle   = meshes->emplace(std::move(new_mesh));
-        cmd.entity(item.mesh_entity).insert(mesh::Mesh2d{handle});
+        cmd.entity(*render_children.mesh_entity).insert(mesh::Mesh2d{handle});
     }
 }
 
@@ -247,7 +293,9 @@ void update_chunk_outlines(Commands cmd,
 // ──────────────────────────────────────────────────────────────────────────────
 
 void FallingSandPlugin::build(core::App& app) {
-    app.add_systems(core::Update, into(setup_chunk_render_children).set_name("fallingsand setup_render_children"));
+    app.add_systems(core::Update,
+                    into(setup_chunk_dirty_rects, setup_chunk_render_children)
+                        .set_names(std::array{"fallingsand setup_dirty_rects", "fallingsand setup_render_children"}));
 
     app.add_systems(time::FixedUpdate, into(simulate_worlds).set_name("fallingsand simulate"));
 

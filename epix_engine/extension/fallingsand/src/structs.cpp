@@ -774,8 +774,15 @@ void SandSimulation::step_cells() {
     // ── 3. Process in 3×3 modulo groups (no two adjacent chunks run in parallel)
     for (auto&& [rx, ry] : offset_coords) {
         thread_local static std::vector<tasks::Task<void>> group_tasks;
-        for (auto&& cpos : std::views::filter(iter_chunk_pos(), [rx, ry](auto&& cpos) {
-                 return (cpos[0] % 3 + 3) % 3 == rx && (cpos[1] % 3 + 3) % 3 == ry;
+        for (auto&& cpos : std::views::filter(iter_chunk_pos(), [rx, ry, this](auto&& cpos) {
+                 if (!((cpos[0] % 3 + 3) % 3 == rx && (cpos[1] % 3 + 3) % 3 == ry)) return false;
+                 if (m_active_chunks.empty()) return true;
+                 auto cx = static_cast<std::int32_t>(cpos[0]);
+                 auto cy = static_cast<std::int32_t>(cpos[1]);
+                 for (auto& ac : m_active_chunks) {
+                     if (ac[0] == cx && ac[1] == cy) return true;
+                 }
+                 return false;
              })) {
             group_tasks.push_back(pool.spawn([cpos, cw, tick, this] {
                 // Snapshot positions first — prevents iterator invalidation during steps.

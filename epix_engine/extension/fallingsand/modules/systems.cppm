@@ -28,6 +28,13 @@ using namespace epix::core;
 // System declarations
 // ──────────────────────────────────────────────────────────────────────────────
 
+/** @brief Inserts an active SandChunkDirtyRect on every newly spawned chunk entity
+ *  (i.e., entities with Chunk<kDim>+SandChunkPos but no SandChunkDirtyRect yet).
+ *  Runs before simulate_worlds so the simulation always has a dirty rect to read. */
+void setup_chunk_dirty_rects(
+    Commands cmd,
+    Query<Entity, Filter<With<grid::Chunk<kDim>, SandChunkPos>, Without<SandChunkDirtyRect>>> new_chunks);
+
 /** @brief Creates SandChunkRenderChildren on newly spawned chunk entities.
  *  If the parent world has MeshBuildByPlugin, spawns an empty mesh child entity.
  *  Also always prepares for outline management (outline_entity starts as nullopt). */
@@ -39,21 +46,25 @@ void setup_chunk_render_children(
     Query<Entity, With<SandWorld, transform::Transform, MeshBuildByPlugin>> mesh_worlds);
 
 /** @brief Simulation step: for each unpaused world with SimulatedByPlugin, assembles a
- *  transient SandSimulation from child chunks and calls step(). */
+ *  transient SandSimulation from child chunks (those with SandChunkDirtyRect) and calls step().
+ *  The factory reads dirty rects to determine which chunks to simulate; after stepping,
+ *  dirty rects are reset and re-marked based on freefall elements. */
 void simulate_worlds(Res<ElementRegistry> registry,
                      Query<Item<Entity, Mut<SandWorld>, const transform::Transform&, Opt<const Children&>>,
                            With<SimulatedByPlugin>> worlds,
-                     Query<Item<Mut<grid::Chunk<kDim>>, const SandChunkPos&, const Parent&>> all_chunks);
+                     Query<Item<Mut<grid::Chunk<kDim>>, const SandChunkPos&, Mut<SandChunkDirtyRect>, const Parent&>>
+                         all_chunks);
 
 /** @brief Syncs the world-space Transform of each chunk entity to match its SandChunkPos. */
 void sync_chunk_transforms(Query<Item<Entity, transform::Transform&, const SandChunkPos&, const Parent&>> chunks,
                            Query<Item<const SandWorld&>, With<SandWorld>> worlds);
 
 /** @brief Builds/updates chunk content meshes for worlds with MeshBuildByPlugin.
- *  Assumes mesh child entities were already created by setup_chunk_render_children. */
+ *  Only rebuilds chunks whose SandChunkDirtyRect is active; clears the rect after rebuild. */
 void build_chunk_meshes(
     Commands cmd,
-    Query<Item<Entity, const grid::Chunk<kDim>&, const SandChunkRenderChildren&, const Parent&>> chunks,
+    Query<Item<Entity, const grid::Chunk<kDim>&, const SandChunkRenderChildren&,
+               Mut<SandChunkDirtyRect>, const Parent&>> chunks,
     Query<Item<const SandWorld&>, Filter<With<SandWorld, MeshBuildByPlugin>>> worlds,
     ResMut<assets::Assets<mesh::Mesh>> meshes);
 
