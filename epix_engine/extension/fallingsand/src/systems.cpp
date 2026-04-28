@@ -122,8 +122,8 @@ void setup_chunk_render_children(
 
 void simulate_worlds(
     Res<ElementRegistry> registry,
-    Query<Item<Entity, Mut<SandWorld>, const transform::Transform&, Opt<const Children&>>,
-          With<SimulatedByPlugin>> worlds,
+    Query<Item<Entity, Mut<SandWorld>, const transform::Transform&, Opt<const Children&>>, With<SimulatedByPlugin>>
+        worlds,
     Query<Item<Mut<grid::Chunk<kDim>>, const SandChunkPos&, Mut<SandChunkDirtyRect>, const Parent&>> all_chunks) {
     for (auto&& [world_entity, sand_world, world_transform, maybe_children] : worlds.iter()) {
         if (sand_world.get().paused()) continue;
@@ -134,7 +134,7 @@ void simulate_worlds(
             child_entities | std::views::filter([&all_chunks](Entity e) { return all_chunks.get(e).has_value(); }) |
             std::views::transform(
                 [&all_chunks](Entity e) -> std::tuple<grid::Chunk<kDim>&, const SandChunkPos&, SandChunkDirtyRect&> {
-                    auto opt                              = all_chunks.get(e);
+                    auto opt                                 = all_chunks.get(e);
                     auto&& [chunk, pos, dirty_rect, par_ref] = *opt;
                     return {chunk.get_mut(), pos, dirty_rect.get_mut()};
                 });
@@ -224,8 +224,9 @@ void sync_chunk_transforms(Query<Item<Entity, transform::Transform&, const SandC
 
 void build_chunk_meshes(
     Commands cmd,
-    Query<Item<Entity, const grid::Chunk<kDim>&, const SandChunkRenderChildren&,
-               Mut<SandChunkDirtyRect>, const Parent&>> chunks,
+    Query<
+        Item<Entity, const grid::Chunk<kDim>&, const SandChunkRenderChildren&, Mut<SandChunkDirtyRect>, const Parent&>>
+        chunks,
     Query<Item<const SandWorld&>, Filter<With<SandWorld, MeshBuildByPlugin>>> worlds,
     ResMut<assets::Assets<mesh::Mesh>> meshes) {
     for (auto&& [chunk_entity, chunk, render_children, dirty_rect, parent_comp] : chunks.iter()) {

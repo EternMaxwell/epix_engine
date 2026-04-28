@@ -74,20 +74,20 @@ static std::optional<fs::SandSimulation> make_sim(
     fs::SandWorld& world,
     const fs::ElementRegistry& registry,
     std::optional<std::reference_wrapper<const Children>> maybe_children,
-    Query<Item<Mut<ext::grid::Chunk<fs::kDim>>, const fs::SandChunkPos&, Mut<fs::SandChunkDirtyRect>, const Parent&>>& all_chunks) {
+    Query<Item<Mut<ext::grid::Chunk<fs::kDim>>, const fs::SandChunkPos&, Mut<fs::SandChunkDirtyRect>, const Parent&>>&
+        all_chunks) {
     if (!maybe_children.has_value()) return std::nullopt;
     const auto& child_entities = maybe_children->get().entities();
-    auto chunk_range = child_entities |
-                       std::views::filter([&all_chunks](Entity e) { return all_chunks.get(e).has_value(); }) |
-                       std::views::transform(
-                           [&all_chunks](Entity e) -> std::tuple<ext::grid::Chunk<fs::kDim>&,
-                                                                  const fs::SandChunkPos&,
-                                                                  fs::SandChunkDirtyRect&> {
-                               auto o                               = all_chunks.get(e);
-                               auto&& [chunk, pos, dirty_rect, par_ref] = *o;
-                               return {chunk.get_mut(), pos, dirty_rect.get_mut()};
-                           });
-    auto result      = fs::SandSimulation::create(world, registry, chunk_range);
+    auto chunk_range =
+        child_entities | std::views::filter([&all_chunks](Entity e) { return all_chunks.get(e).has_value(); }) |
+        std::views::transform(
+            [&all_chunks](
+                Entity e) -> std::tuple<ext::grid::Chunk<fs::kDim>&, const fs::SandChunkPos&, fs::SandChunkDirtyRect&> {
+                auto o                                   = all_chunks.get(e);
+                auto&& [chunk, pos, dirty_rect, par_ref] = *o;
+                return {chunk.get_mut(), pos, dirty_rect.get_mut()};
+            });
+    auto result = fs::SandSimulation::create(world, registry, chunk_range);
     if (!result.has_value()) return std::nullopt;
     return std::move(*result);
 }
@@ -95,11 +95,13 @@ static std::optional<fs::SandSimulation> make_sim(
 // ──────────────────────────────────────────────────────────────────────────────
 // Per-frame imgui settings panel.
 // ──────────────────────────────────────────────────────────────────────────────
-void settings_ui(imgui::Ctx imgui_ctx,
-                 ResMut<SandAppState> app_state,
-                 Query<Item<Mut<fs::SandWorld>, Opt<const Children&>>, With<fs::SimulatedByPlugin>> worlds,
-                 Res<fs::ElementRegistry> registry,
-                 Query<Item<Mut<ext::grid::Chunk<fs::kDim>>, const fs::SandChunkPos&, Mut<fs::SandChunkDirtyRect>, const Parent&>> all_chunks) {
+void settings_ui(
+    imgui::Ctx imgui_ctx,
+    ResMut<SandAppState> app_state,
+    Query<Item<Mut<fs::SandWorld>, Opt<const Children&>>, With<fs::SimulatedByPlugin>> worlds,
+    Res<fs::ElementRegistry> registry,
+    Query<Item<Mut<ext::grid::Chunk<fs::kDim>>, const fs::SandChunkPos&, Mut<fs::SandChunkDirtyRect>, const Parent&>>
+        all_chunks) {
     auto opt = worlds.single();
     if (!opt.has_value()) return;
     auto&& [sand_world, maybe_children] = *opt;
@@ -390,14 +392,16 @@ void camera_control(ResMut<SandAppState> app_state,
 // ──────────────────────────────────────────────────────────────────────────────
 // Input system: keyboard shortcuts and mouse painting.
 // ──────────────────────────────────────────────────────────────────────────────
-void input_system(ResMut<SandAppState> app_state,
-                  Res<fs::ElementRegistry> registry,
-                  Query<Item<Mut<fs::SandWorld>, Opt<const Children&>>, With<fs::SimulatedByPlugin>> worlds,
-                  Res<input::ButtonInput<input::KeyCode>> keys,
-                  Res<input::ButtonInput<input::MouseButton>> mouse_buttons,
-                  Query<Item<const window::CachedWindow&>, With<window::PrimaryWindow>> windows,
-                  Query<Item<const render::camera::Camera&, const transform::Transform&>> cameras,
-                  Query<Item<Mut<ext::grid::Chunk<fs::kDim>>, const fs::SandChunkPos&, Mut<fs::SandChunkDirtyRect>, const Parent&>> all_chunks) {
+void input_system(
+    ResMut<SandAppState> app_state,
+    Res<fs::ElementRegistry> registry,
+    Query<Item<Mut<fs::SandWorld>, Opt<const Children&>>, With<fs::SimulatedByPlugin>> worlds,
+    Res<input::ButtonInput<input::KeyCode>> keys,
+    Res<input::ButtonInput<input::MouseButton>> mouse_buttons,
+    Query<Item<const window::CachedWindow&>, With<window::PrimaryWindow>> windows,
+    Query<Item<const render::camera::Camera&, const transform::Transform&>> cameras,
+    Query<Item<Mut<ext::grid::Chunk<fs::kDim>>, const fs::SandChunkPos&, Mut<fs::SandChunkDirtyRect>, const Parent&>>
+        all_chunks) {
     auto opt = worlds.single();
     if (!opt.has_value()) return;
     auto&& [sand_world, maybe_children] = *opt;
@@ -480,10 +484,12 @@ void input_system(ResMut<SandAppState> app_state,
 // ──────────────────────────────────────────────────────────────────────────────
 // Startup: seed an initial sand pile once chunks exist.
 // ──────────────────────────────────────────────────────────────────────────────
-void seed(Query<Item<Mut<fs::SandWorld>, Opt<const Children&>>, With<fs::SimulatedByPlugin>> worlds,
-          Res<fs::ElementRegistry> registry,
-          Res<SandAppState> app_state,
-          Query<Item<Mut<ext::grid::Chunk<fs::kDim>>, const fs::SandChunkPos&, Mut<fs::SandChunkDirtyRect>, const Parent&>> all_chunks) {
+void seed(
+    Query<Item<Mut<fs::SandWorld>, Opt<const Children&>>, With<fs::SimulatedByPlugin>> worlds,
+    Res<fs::ElementRegistry> registry,
+    Res<SandAppState> app_state,
+    Query<Item<Mut<ext::grid::Chunk<fs::kDim>>, const fs::SandChunkPos&, Mut<fs::SandChunkDirtyRect>, const Parent&>>
+        all_chunks) {
     auto opt = worlds.single();
     if (!opt.has_value()) return;
     auto&& [sand_world, maybe_children] = *opt;
