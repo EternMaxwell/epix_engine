@@ -279,6 +279,34 @@ export struct SandSimulation : grid::ExtendibleChunkRefGrid<kDim> {
    public:
     /** @brief Mark cell (x,y) as active: expand its chunk's dirty rect and wake the cell. */
     void touch(std::int64_t x, std::int64_t y);
+
+    /**
+     * @brief Insert or overwrite a cell and immediately touch it to wake simulation.
+     *
+     * Combines `insert_cell<Element>` + `touch` in one call.
+     * Returns false when the target position is outside all registered chunks.
+     */
+    bool put_cell(std::array<std::int64_t, kDim> pos, Element elem);
+
+    /**
+     * @brief Remove a cell and immediately touch the position to wake neighbours.
+     *
+     * Combines `remove_cell<Element>` + `touch`.
+     * Returns false when the position is outside all registered chunks.
+     */
+    bool erase_cell(std::array<std::int64_t, kDim> pos);
+
+    /**
+     * @brief Apply a reusable simulation command (e.g. ops::Spawn, ops::Explode).
+     *
+     * The command is any callable convertible to
+     * `epix::utils::function_ref<void(SandSimulation&)>`.
+     */
+    void apply(epix::utils::function_ref<void(SandSimulation&)> cmd) { cmd(*this); }
+
+    /** @brief Access the element registry this simulation was constructed with. */
+    const ElementRegistry& registry() const { return *m_registry; }
+
     /**
      * @brief Factory: build a SandSimulation from a SandWorld and a range of
      *        `(Chunk<kDim>&, SandChunkPos, SandChunkDirtyRect&)` triples.

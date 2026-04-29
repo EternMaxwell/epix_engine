@@ -5,6 +5,7 @@ export module epix.extension.fallingsand;
 export import :elements;
 export import :structs;
 export import :helpers;
+export import :ops;
 export import :systems;
 
 import epix.core;

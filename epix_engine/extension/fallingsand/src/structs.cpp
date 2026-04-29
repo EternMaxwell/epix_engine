@@ -251,6 +251,31 @@ void SandSimulation::touch(std::int64_t x, std::int64_t y) {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
+// SandSimulation::put_cell / erase_cell — convenience wrappers.
+// ──────────────────────────────────────────────────────────────────────────────
+
+bool SandSimulation::put_cell(std::array<std::int64_t, kDim> pos, Element elem) {
+    auto res = insert_cell<Element>(pos, std::move(elem));
+    if (!res.has_value()) return false;
+    touch(pos[0], pos[1]);
+    touch(pos[0] + 1, pos[1]);
+    touch(pos[0] - 1, pos[1]);
+    touch(pos[0], pos[1] + 1);
+    touch(pos[0], pos[1] - 1);
+    return true;
+}
+
+bool SandSimulation::erase_cell(std::array<std::int64_t, kDim> pos) {
+    auto res = remove_cell<Element>(pos);
+    touch(pos[0], pos[1]);
+    touch(pos[0] + 1, pos[1]);
+    touch(pos[0] - 1, pos[1]);
+    touch(pos[0], pos[1] + 1);
+    touch(pos[0], pos[1] - 1);
+    return res.has_value();
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
 // SandSimulation::step_particle — per-element behaviour dispatch.
 // ──────────────────────────────────────────────────────────────────────────────
 

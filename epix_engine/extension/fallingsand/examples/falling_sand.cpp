@@ -73,6 +73,11 @@ struct SandAppState {
     bool show_freefall         = false;
     std::unordered_map<Entity, Entity> dirty_rect_overlays;  // chunk_entity → overlay_entity
     std::unordered_map<Entity, Entity> freefall_overlays;    // chunk_entity → overlay_entity
+    // Explosion test parameters
+    float explosion_intensity  = 300.0f;
+    int explosion_blast_radius = 10;  ///< Inner radius — cells removed.
+    int explosion_push_radius  = 25;  ///< Outer radius — cells receive outward impulse.
+
     // Camera pan-drag state (middle mouse)
     bool cam_dragging              = false;
     glm::vec2 cam_drag_start_mouse = {};
@@ -175,20 +180,21 @@ void settings_ui(
         if (auto sim = make_sim(w, registry.get(), maybe_children, all_chunks)) {
             for (auto&& chunk : sim->iter_chunks_mut()) chunk.get().clear();
             if (!st.elements.empty()) {
-                const auto& ei   = st.elements[0];
-                const auto& base = registry.get()[ei.id];
-                for (std::int64_t y = -4; y <= 4; ++y)
-                    for (std::int64_t x = -8; x <= 8; ++x) {
-                        std::uint64_t sd = (static_cast<std::uint64_t>(static_cast<std::uint32_t>(x)) << 32) |
-                                           static_cast<std::uint64_t>(static_cast<std::uint32_t>(y));
-                        (void)sim->insert_cell({x, y}, fs::Element{ei.id, base.color_func(sd)});
-                    }
+                const auto& ei = st.elements[0];
+                sim->apply(fs::ops::Spawn::rect({-8, -4}, {8, 4}, ei.id));
             }
         }
     }
 
     ImGui::Separator();
     ImGui::Text("R=reset  C=clear  Q/E=brush  Space=pause  Tab=next element");
+
+    ImGui::Separator();
+    ImGui::Text("Explosion (F key):");
+    ImGui::SliderFloat("Intensity##expl", &st.explosion_intensity, 10.0f, 5000.0f, "%.0f");
+    ImGui::SliderInt("Blast Radius##expl", &st.explosion_blast_radius, 1, 64);
+    ImGui::SliderInt("Push Radius##expl", &st.explosion_push_radius, 1, 128);
+
     ImGui::End();
 }
 
@@ -384,16 +390,7 @@ void input_system(
 
     if (need_reset) {
         for (auto&& chunk : sim->iter_chunks_mut()) chunk.get().clear();
-        if (!st.elements.empty()) {
-            const auto& ei   = st.elements[0];
-            const auto& base = registry.get()[ei.id];
-            for (std::int64_t y = -4; y <= 4; ++y)
-                for (std::int64_t x = -8; x <= 8; ++x) {
-                    std::uint64_t sd = (static_cast<std::uint64_t>(static_cast<std::uint32_t>(x)) << 32) |
-                                       static_cast<std::uint64_t>(static_cast<std::uint32_t>(y));
-                    (void)sim->insert_cell({x, y}, fs::Element{ei.id, base.color_func(sd)});
-                }
-        }
+        if (!st.elements.empty()) sim->apply(fs::ops::Spawn::rect({-8, -4}, {8, 4}, st.elements[0].id));
     }
 
     if ((lmb || rmb) && !ImGui::GetIO().WantCaptureMouse) {
@@ -410,30 +407,60 @@ void input_system(
         std::int32_t cy_ = static_cast<std::int32_t>(std::floor(world_cursor.y / cs));
         std::int32_t br  = st.brush_radius;
 
-        if (lmb && !st.elements.empty()) {
-            const auto& ei   = st.elements[st.selected_idx];
-            const auto& base = registry.get()[ei.id];
-            std::int32_t r2  = br * br;
-            for (std::int32_t dy = -br; dy <= br; ++dy)
-                for (std::int32_t dx = -br; dx <= br; ++dx) {
-                    if (dx * dx + dy * dy > r2) continue;
-                    std::int32_t px = cx_ + dx, py = cy_ + dy;
-                    std::uint64_t sd = (static_cast<std::uint64_t>(static_cast<std::uint32_t>(px)) << 32) |
-                                       static_cast<std::uint64_t>(static_cast<std::uint32_t>(py));
-                    (void)sim->insert_cell({px, py}, fs::Element{ei.id, base.color_func(sd)});
-                    sim->touch(px, py);
-                }
-        }
-        if (rmb) {
-            std::int32_t r2 = br * br;
-            for (std::int32_t dy = -br; dy <= br; ++dy)
-                for (std::int32_t dx = -br; dx <= br; ++dx) {
-                    if (dx * dx + dy * dy > r2) continue;
-                    (void)sim->remove_cell<fs::Element>({cx_ + dx, cy_ + dy});
-                    sim->touch(cx_ + dx, cy_ + dy);
-                }
-        }
+        if (lmb && !st.elements.empty())
+            sim->apply(fs::ops::Spawn::circle({cx_, cy_}, st.elements[st.selected_idx].id, br));
+        if (rmb) sim->apply(fs::ops::Remove::circle({cx_, cy_}, br));
     }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Explosion test: press F to detonate at cursor position.
+//   blast_radius  — inner circle, cells removed.
+//   push_radius   — outer circle, cells receive an outward velocity impulse
+//                   scaled by intensity * (1 - dist/push_radius).
+// ──────────────────────────────────────────────────────────────────────────────
+void explosion_system(
+    ResMut<SandAppState> app_state,
+    Res<input::ButtonInput<input::KeyCode>> keys,
+    Res<fs::ElementRegistry> registry,
+    Query<Item<Mut<fs::SandWorld>, Opt<const Children&>>, With<fs::SimulatedByPlugin>> worlds,
+    Query<Item<const window::CachedWindow&>, With<window::PrimaryWindow>> windows,
+    Query<Item<const render::camera::Camera&, const transform::Transform&>, With<MainCamera>> cameras,
+    Query<Item<Mut<ext::grid::Chunk<fs::kDim>>, const fs::SandChunkPos&, Mut<fs::SandChunkDirtyRect>, const Parent&>>
+        all_chunks) {
+    if (!keys->just_pressed(input::KeyCode::KeyF)) return;
+    if (ImGui::GetIO().WantCaptureKeyboard) return;
+
+    auto win_opt = windows.single();
+    if (!win_opt.has_value()) return;
+    auto&& [primary_window] = *win_opt;
+    if (!primary_window.focused) return;
+
+    auto cam_opt = cameras.single();
+    if (!cam_opt.has_value()) return;
+    auto&& [cam, cam_tf] = *cam_opt;
+
+    auto world_opt = worlds.single();
+    if (!world_opt.has_value()) return;
+    auto&& [sand_world, maybe_children] = *world_opt;
+    auto& w                             = sand_world.get_mut();
+
+    auto sim = make_sim(w, registry.get(), maybe_children, all_chunks);
+    if (!sim.has_value()) return;
+
+    auto [rel_x, rel_y] = primary_window.relative_cursor_pos();
+    glm::vec2 world_cursor =
+        fs::relative_to_world(glm::vec2(static_cast<float>(rel_x), static_cast<float>(rel_y)), cam, cam_tf);
+
+    float cs       = w.cell_size();
+    const auto& st = app_state.get();
+    auto origin_cx = static_cast<std::int32_t>(std::floor(world_cursor.x / cs));
+    auto origin_cy = static_cast<std::int32_t>(std::floor(world_cursor.y / cs));
+
+    sim->apply(fs::ops::Explode({origin_cx, origin_cy})
+                   .with_intensity(st.explosion_intensity)
+                   .with_blast_radius(st.explosion_blast_radius)
+                   .with_push_radius(st.explosion_push_radius));
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -527,14 +554,8 @@ void seed(
     if (!sim.has_value()) return;
     const auto& st = app_state.get();
     if (st.elements.empty()) return;
-    const auto& ei   = st.elements[0];  // seed with sand
-    const auto& base = registry.get()[ei.id];
-    for (std::int64_t y = -4; y <= 4; ++y)
-        for (std::int64_t x = -8; x <= 8; ++x) {
-            std::uint64_t sd = (static_cast<std::uint64_t>(static_cast<std::uint32_t>(x)) << 32) |
-                               static_cast<std::uint64_t>(static_cast<std::uint32_t>(y));
-            (void)sim->insert_cell({x, y}, fs::Element{ei.id, base.color_func(sd)});
-        }
+    const auto& ei = st.elements[0];  // seed with sand
+    sim->apply(fs::ops::Spawn::rect({-8, -4}, {8, 4}, ei.id));
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -877,6 +898,7 @@ int main() {
         .add_systems(Update, into(input_system))
         .add_systems(Update, into(camera_control))
         .add_systems(Update, into(debug_camera_control))
+        .add_systems(Update, into(explosion_system))
         .add_systems(Update, into(debug_window_chunk_input))
         .add_systems(time::FixedPostUpdate, into(freefall_overlay_system))
         .add_systems(time::FixedPostUpdate, into(dirty_rect_overlay_system));
