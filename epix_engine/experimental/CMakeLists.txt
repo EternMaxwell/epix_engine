@@ -23,3 +23,5 @@ foreach(EXAMPLE_SRC IN LISTS EXAMPLE_SOURCES)
 	target_link_libraries(${EXAMPLE_NAME} PRIVATE epix_sprite)
 	target_link_libraries(${EXAMPLE_NAME} PRIVATE epix_text)
 endforeach()
+
+add_subdirectory(pixelbody)

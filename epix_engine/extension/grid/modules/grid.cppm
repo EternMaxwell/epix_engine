@@ -26,6 +26,7 @@ import epix.meta;
 import epix.utils;
 
 export import :basic_grid;
+export import :polygon;
 
 namespace epix::ext::grid {
 /** @brief Error codes for chunk layer operations. */

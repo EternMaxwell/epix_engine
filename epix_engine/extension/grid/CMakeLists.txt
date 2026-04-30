@@ -1,5 +1,6 @@
 ﻿epix_add_module(epix_ext_grid)
 target_link_libraries(epix_ext_grid PUBLIC epix_core)
+target_link_libraries(epix_ext_grid PUBLIC glm)
 
 # --- tests: auto-discover ---
 file(GLOB_RECURSE TEST_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/tests/*.cpp")
