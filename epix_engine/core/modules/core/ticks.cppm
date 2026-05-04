@@ -33,6 +33,8 @@ struct Ticks {
 
     Ticks(const Tick* added, const Tick* modified, Tick last_run, Tick this_run)
         : added(added), modified(modified), last_run(last_run), this_run(this_run) {}
+
+    friend struct TicksMut;
 };
 struct TicksMut {
     static TicksMut from_ticks(Tick& added, Tick& modified, Tick last_run, Tick this_run) {
@@ -52,6 +54,7 @@ struct TicksMut {
         added->set(this_run.get());
         modified->set(this_run.get());
     }
+    operator Ticks() const { return Ticks(added, modified, last_run, this_run); }
 
    private:
     Tick* added;
@@ -204,6 +207,8 @@ export {
         Tick last_modified() const { return ticks.last_modified(); }
         /** @brief Get the tick when the value was added. */
         Tick added_tick() const { return ticks.added_tick(); }
+        /** @brief Convertable to Ref */
+        operator Ref<T>() const { return Ref<T>(value, ticks); }
     };
 
     /** @brief Immutable resource reference, extending Ref<T> for use with resources.
@@ -225,4 +230,4 @@ export {
         using Mut<T>::Mut;
     };
 }
-}  // namespace core
+}  // namespace epix::core

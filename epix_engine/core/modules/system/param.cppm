@@ -456,7 +456,7 @@ struct ParamSet {
     using State = std::tuple<typename SystemParam<Ts>::State...>;
 
     template <std::size_t I>
-    typename SystemParam<std::tuple<Ts...>>::Item get() {
+    typename SystemParam<std::tuple_element_t<I, std::tuple<Ts...>>>::Item get() {
         return SystemParam<std::tuple_element_t<I, std::tuple<Ts...>>>::get_param(std::get<I>(states_), *meta_, *world_,
                                                                                   change_tick_);
     }
