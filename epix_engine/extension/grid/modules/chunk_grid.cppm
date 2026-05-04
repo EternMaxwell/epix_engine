@@ -770,7 +770,7 @@ struct ExtendibleMutChunkRefGrid {
 
         auto [chunk_pos, cell_pos] = coords_result.value();
         return get_chunk_mut(chunk_pos).transform_error(map_err).and_then(
-            [&cell_pos, &value](epix::core::Mut<Chunk<Dim>>& chunk_mut) -> std::expected<void, ChunkGridError> {
+            [&cell_pos, &value](auto&& chunk_mut) -> std::expected<void, ChunkGridError> {
                 return chunk_mut.get_mut().set(cell_pos, std::forward<T>(value));
             });
     }
@@ -782,7 +782,7 @@ struct ExtendibleMutChunkRefGrid {
 
         auto [chunk_pos, cell_pos] = coords_result.value();
         return get_chunk_mut(chunk_pos).transform_error(map_err).and_then(
-            [&cell_pos, &value...](epix::core::Mut<Chunk<Dim>>& chunk_mut) -> std::expected<void, ChunkGridError> {
+            [&cell_pos, &value...](auto&& chunk_mut) -> std::expected<void, ChunkGridError> {
                 return chunk_mut.get_mut().set_multi(cell_pos, std::forward<Args>(value)...);
             });
     }
@@ -810,7 +810,7 @@ struct ExtendibleMutChunkRefGrid {
         auto chunk_result          = get_chunk_mut(chunk_pos).transform_error(map_err);
         if (!chunk_result.has_value()) return std::unexpected(chunk_result.error());
 
-        ChunkLayer<Dim>& layer = chunk_result.value().get().get_mut();
+        ChunkLayer<Dim>& layer = chunk_result.value().get_mut();
         return layer.template get_mut<T>(cell_pos).transform_error(map_err);
     }
     template <typename T>
@@ -822,7 +822,7 @@ struct ExtendibleMutChunkRefGrid {
         auto chunk_result          = get_chunk_mut(chunk_pos).transform_error(map_err);
         if (!chunk_result.has_value()) return std::unexpected(chunk_result.error());
 
-        ChunkLayer<Dim>& layer = chunk_result.value().get().get_mut();
+        ChunkLayer<Dim>& layer = chunk_result.value().get_mut();
         return layer.template remove<T>(cell_pos).transform_error(map_err);
     }
     auto remove_cell_all(std::array<std::int64_t, Dim> pos) -> std::expected<void, ChunkGridError> {
@@ -833,7 +833,7 @@ struct ExtendibleMutChunkRefGrid {
         auto chunk_result          = get_chunk_mut(chunk_pos).transform_error(map_err);
         if (!chunk_result.has_value()) return std::unexpected(chunk_result.error());
 
-        return chunk_result.value().get().get_mut().remove_all(cell_pos).transform_error(map_err);
+        return chunk_result.value().get_mut().remove_all(cell_pos).transform_error(map_err);
     }
 };
 
@@ -918,6 +918,153 @@ struct ExtendibleRefChunkRefGrid {
         return layer.template get<T>(cell_pos).transform_error(map_err);
     }
 };
+
+}  // namespace epix::ext::grid
+
+// ─────────────────────────────────────────────────────────────────────────────
+// chunk_element_view — wrap a Chunk as a typed any_grid / iterable_grid
+// ─────────────────────────────────────────────────────────────────────────────
+
+namespace epix::ext::grid {
+
+/** @brief Map LayerError to grid_error for chunk_element_view operations. */
+inline grid_error map_layer_to_grid(LayerError e) {
+    switch (e) {
+        case LayerError::OutOfBounds:
+            return grid_error::OutOfBounds;
+        case LayerError::EmptyCell:
+            return grid_error::EmptyCell;
+        case LayerError::InvalidValue:
+        case LayerError::UnsupportedType:
+        default:
+            return grid_error::InvalidPos;
+    }
+}
+
+/**
+ * @brief Read-only view of a Chunk<Dim> exposing cells of type T as a grid.
+ *
+ * Satisfies any_grid_view and iterable_grid_view.
+ */
+export template <std::size_t Dim, typename T>
+struct chunk_element_const_view {
+    using pos_type  = std::array<std::uint32_t, Dim>;
+    using cell_type = T;
+
+    const Chunk<Dim>& chunk;
+
+    pos_type dimensions() const {
+        auto w = static_cast<std::uint32_t>(chunk.width());
+        pos_type d;
+        d.fill(w);
+        return d;
+    }
+
+    bool contains(const pos_type& pos) const {
+        return static_cast<const ChunkLayer<Dim>&>(chunk).template get<T>(pos).has_value();
+    }
+
+    auto get(const pos_type& pos) const -> std::expected<std::reference_wrapper<const cell_type>, grid_error> {
+        return static_cast<const ChunkLayer<Dim>&>(chunk).template get<T>(pos).transform_error(map_layer_to_grid);
+    }
+
+    // ─── iterable_grid_view ────────────────────────────────────────────
+
+    auto iter_pos() const { return chunk.template iter<T>() | std::views::elements<0>; }
+
+    auto iter_cells() const {
+        return chunk.template iter<T>() |
+               std::views::transform([](const auto& kv) -> const cell_type& { return std::get<1>(kv); });
+    }
+
+    auto iter() const { return chunk.template iter<T>(); }
+};
+
+/**
+ * @brief Mutable view of a Chunk<Dim> exposing cells of type T as a grid.
+ *
+ * Satisfies any_grid (read + write) and iterable_grid.
+ */
+export template <std::size_t Dim, typename T>
+struct chunk_element_view {
+    using pos_type  = std::array<std::uint32_t, Dim>;
+    using cell_type = T;
+
+    Chunk<Dim>& chunk;
+
+    pos_type dimensions() const {
+        auto w = static_cast<std::uint32_t>(chunk.width());
+        pos_type d;
+        d.fill(w);
+        return d;
+    }
+
+    bool contains(const pos_type& pos) const {
+        return static_cast<const ChunkLayer<Dim>&>(chunk).template get<T>(pos).has_value();
+    }
+
+    auto get(const pos_type& pos) const -> std::expected<std::reference_wrapper<const cell_type>, grid_error> {
+        return static_cast<const ChunkLayer<Dim>&>(chunk).template get<T>(pos).transform_error(map_layer_to_grid);
+    }
+
+    auto get_mut(const pos_type& pos) -> std::expected<std::reference_wrapper<cell_type>, grid_error> {
+        return static_cast<ChunkLayer<Dim>&>(chunk).template get_mut<T>(pos).transform_error(map_layer_to_grid);
+    }
+
+    auto set(const pos_type& pos, cell_type val) -> std::expected<std::reference_wrapper<cell_type>, grid_error> {
+        auto& layer = static_cast<ChunkLayer<Dim>&>(chunk);
+        return layer.set(pos, std::move(val))
+            .transform_error(map_layer_to_grid)
+            .and_then([&]() -> std::expected<std::reference_wrapper<cell_type>, grid_error> { return get_mut(pos); });
+    }
+
+    auto remove(const pos_type& pos) -> std::expected<void, grid_error> {
+        return static_cast<ChunkLayer<Dim>&>(chunk).template remove<T>(pos).transform_error(map_layer_to_grid);
+    }
+
+    auto take(const pos_type& pos) -> std::expected<cell_type, grid_error> {
+        auto r = get(pos);
+        if (!r.has_value()) return std::unexpected(r.error());
+        cell_type val = std::move(r->get());
+        auto rem      = remove(pos);
+        if (!rem.has_value()) return std::unexpected(rem.error());
+        return val;
+    }
+
+    // ─── iterable_grid ─────────────────────────────────────────────────
+
+    auto iter_pos() const { return chunk.template iter<T>() | std::views::elements<0>; }
+
+    auto iter_cells() const {
+        return chunk.template iter<T>() |
+               std::views::transform([](const auto& kv) -> const cell_type& { return std::get<1>(kv); });
+    }
+
+    auto iter_cells_mut() {
+        return chunk.template iter_mut<T>() |
+               std::views::transform([](auto& kv) -> cell_type& { return std::get<1>(kv); });
+    }
+
+    auto iter() const { return chunk.template iter<T>(); }
+
+    auto iter_mut() { return chunk.template iter_mut<T>(); }
+};
+
+/**
+ * @brief Wrap a const Chunk as a read-only typed grid view.
+ */
+export template <typename T, std::size_t Dim>
+chunk_element_const_view<Dim, T> chunk_element(const Chunk<Dim>& c) {
+    return {c};
+}
+
+/**
+ * @brief Wrap a mutable Chunk as a mutable typed grid view.
+ */
+export template <typename T, std::size_t Dim>
+chunk_element_view<Dim, T> chunk_element(Chunk<Dim>& c) {
+    return {c};
+}
 
 }  // namespace epix::ext::grid
 

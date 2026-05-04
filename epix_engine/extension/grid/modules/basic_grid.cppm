@@ -132,6 +132,23 @@ struct packed_grid {
     T& set_unsafe(const std::array<std::uint32_t, Dim>& pos, Args&&... value) {
         return m_cells[offset_unsafe(pos)] = T(std::forward<Args>(value)...);
     }
+    /** @brief set_new always returns AlreadyOccupied: every cell in a packed grid is occupied. */
+    template <typename... Args>
+        requires std::constructible_from<T, Args...>
+    std::expected<std::reference_wrapper<T>, grid_error> set_new(const std::array<std::uint32_t, Dim>& pos, Args&&...) {
+        return offset(pos).and_then([](std::size_t) -> std::expected<std::reference_wrapper<T>, grid_error> {
+            return std::unexpected(grid_error::AlreadyOccupied);
+        });
+    }
+    /** @brief Reset cell to default value without bounds check. */
+    void remove_unsafe(const std::array<std::uint32_t, Dim>& pos) { m_cells[offset_unsafe(pos)] = m_default_value; }
+    /** @brief Take current value, reset to default, without bounds check. */
+    T take_unsafe(const std::array<std::uint32_t, Dim>& pos) {
+        const std::size_t idx = offset_unsafe(pos);
+        T value               = std::move(m_cells[idx]);
+        m_cells[idx]          = m_default_value;
+        return value;
+    }
     /**
      * @brief Reset the cell at the given position to the default value.
      * @param pos Position in the grid.
@@ -270,6 +287,8 @@ struct dense_grid {
         requires std::constructible_from<T, Args...>
     std::expected<std::reference_wrapper<T>, grid_error> set_new(const std::array<std::uint32_t, Dim>& pos,
                                                                  Args&&... value);
+    void remove_unsafe(const std::array<std::uint32_t, Dim>& pos);
+    T take_unsafe(const std::array<std::uint32_t, Dim>& pos);
     /**
      * @brief Remove the cell at the given position, discarding its value.
      * @param pos Position in the grid.
@@ -411,6 +430,8 @@ struct sparse_grid {
         requires std::constructible_from<T, Args...>
     std::expected<std::reference_wrapper<T>, grid_error> set_new(const std::array<std::uint32_t, Dim>& pos,
                                                                  Args&&... value);
+    void remove_unsafe(const std::array<std::uint32_t, Dim>& pos);
+    T take_unsafe(const std::array<std::uint32_t, Dim>& pos);
     /**
      * @brief Remove the cell at the given position, discarding its value.
      * @param pos Position in the grid.
@@ -538,6 +559,8 @@ struct dense_extendible_grid {
         requires std::constructible_from<T, Args...>
     std::expected<std::reference_wrapper<T>, grid_error> set_new(const std::array<std::int32_t, Dim>& pos,
                                                                  Args&&... value);
+    void remove_unsafe(const std::array<std::int32_t, Dim>& pos);
+    T take_unsafe(const std::array<std::int32_t, Dim>& pos);
     /**
      * @brief Remove the cell at the given signed position, discarding its value.
      * @param pos Signed position in the grid.
@@ -684,6 +707,8 @@ struct tree_extendible_grid {
         requires std::constructible_from<T, Args...>
     std::expected<std::reference_wrapper<T>, grid_error> set_new(const std::array<std::int32_t, Dim>& pos,
                                                                  Args&&... value);
+    void remove_unsafe(const std::array<std::int32_t, Dim>& pos);
+    T take_unsafe(const std::array<std::int32_t, Dim>& pos);
     /**
      * @brief Remove the cell at the given position, discarding its value.
      * @param pos Position in the grid.
@@ -826,7 +851,8 @@ struct tree_grid {
         requires std::constructible_from<T, Args...>
     std::expected<std::reference_wrapper<T>, grid_error> set_new(const std::array<std::uint32_t, Dim>& pos,
                                                                  Args&&... value);
-
+    void remove_unsafe(const std::array<std::uint32_t, Dim>& pos);
+    T take_unsafe(const std::array<std::uint32_t, Dim>& pos);
     /** @brief Remove the cell at the given position, discarding its value.
      *  @param pos Position in the grid.
      *  @return void on success, or grid_error::EmptyCell / grid_error::OutOfBounds.
@@ -1015,6 +1041,36 @@ std::expected<T, grid_error> dense_grid<Dim, T>::take(const std::array<std::uint
     index = npos;
     return value;
 }
+template <std::size_t Dim, typename T>
+    requires std::movable<T>
+void dense_grid<Dim, T>::remove_unsafe(const std::array<std::uint32_t, Dim>& pos) {
+    std::size_t& index           = m_index_grid.get_mut_unsafe(pos);
+    const std::size_t last_index = m_data.size() - 1;
+    if (index != last_index) {
+        std::swap(m_data[index], m_data[last_index]);
+        std::swap(m_positions[index], m_positions[last_index]);
+        m_index_grid.set_unsafe(m_positions[index], index);
+    }
+    m_data.pop_back();
+    m_positions.pop_back();
+    index = npos;
+}
+template <std::size_t Dim, typename T>
+    requires std::movable<T>
+T dense_grid<Dim, T>::take_unsafe(const std::array<std::uint32_t, Dim>& pos) {
+    std::size_t& index           = m_index_grid.get_mut_unsafe(pos);
+    T value                      = std::move(m_data[index]);
+    const std::size_t last_index = m_data.size() - 1;
+    if (index != last_index) {
+        std::swap(m_data[index], m_data[last_index]);
+        std::swap(m_positions[index], m_positions[last_index]);
+        m_index_grid.set_unsafe(m_positions[index], index);
+    }
+    m_data.pop_back();
+    m_positions.pop_back();
+    index = npos;
+    return value;
+}
 
 template <std::size_t Dim, typename T>
     requires std::movable<T>
@@ -1158,6 +1214,22 @@ std::expected<T, grid_error> sparse_grid<Dim, T>::take(const std::array<std::uin
     // mark index as recycled
     m_recycled_indices.push_back(index);
     // data, pos invalid, but don't need destruct or reset
+    index = npos;
+    return value;
+}
+template <std::size_t Dim, typename T>
+    requires std::movable<T>
+void sparse_grid<Dim, T>::remove_unsafe(const std::array<std::uint32_t, Dim>& pos) {
+    std::size_t& index = m_index_grid.get_mut_unsafe(pos);
+    m_recycled_indices.push_back(index);
+    index = npos;
+}
+template <std::size_t Dim, typename T>
+    requires std::movable<T>
+T sparse_grid<Dim, T>::take_unsafe(const std::array<std::uint32_t, Dim>& pos) {
+    std::size_t& index = m_index_grid.get_mut_unsafe(pos);
+    T value            = std::move(m_data[index]);
+    m_recycled_indices.push_back(index);
     index = npos;
     return value;
 }
@@ -1421,6 +1493,36 @@ std::expected<T, grid_error> dense_extendible_grid<Dim, T>::take(const std::arra
         if (!set_res.has_value()) return std::unexpected(set_res.error());
     }
 
+    m_data.pop_back();
+    m_positions.pop_back();
+    index = npos;
+    return value;
+}
+template <std::size_t Dim, typename T>
+    requires std::movable<T>
+void dense_extendible_grid<Dim, T>::remove_unsafe(const std::array<std::int32_t, Dim>& pos) {
+    std::size_t& index           = m_index_grid.get_mut_unsafe(relative_pos_unsafe(pos));
+    const std::size_t last_index = m_data.size() - 1;
+    if (index != last_index) {
+        std::swap(m_data[index], m_data[last_index]);
+        std::swap(m_positions[index], m_positions[last_index]);
+        m_index_grid.set_unsafe(relative_pos_unsafe(m_positions[index]), index);
+    }
+    m_data.pop_back();
+    m_positions.pop_back();
+    index = npos;
+}
+template <std::size_t Dim, typename T>
+    requires std::movable<T>
+T dense_extendible_grid<Dim, T>::take_unsafe(const std::array<std::int32_t, Dim>& pos) {
+    std::size_t& index           = m_index_grid.get_mut_unsafe(relative_pos_unsafe(pos));
+    T value                      = std::move(m_data[index]);
+    const std::size_t last_index = m_data.size() - 1;
+    if (index != last_index) {
+        std::swap(m_data[index], m_data[last_index]);
+        std::swap(m_positions[index], m_positions[last_index]);
+        m_index_grid.set_unsafe(relative_pos_unsafe(m_positions[index]), index);
+    }
     m_data.pop_back();
     m_positions.pop_back();
     index = npos;
@@ -1828,6 +1930,38 @@ std::expected<T, grid_error> tree_extendible_grid<Dim, T, ChildCount>::take(cons
         auto moved_slot_res = find_index_slot(m_positions[index]);
         if (!moved_slot_res.has_value()) return std::unexpected(moved_slot_res.error());
         moved_slot_res.value().get() = index;
+    }
+    m_data.pop_back();
+    m_positions.pop_back();
+    removed_slot = npos;
+    return value;
+}
+template <std::size_t Dim, typename T, std::size_t ChildCount>
+    requires std::movable<T>
+void tree_extendible_grid<Dim, T, ChildCount>::remove_unsafe(const std::array<std::int32_t, Dim>& pos) {
+    std::size_t& removed_slot    = find_index_slot_unsafe(pos);
+    const std::size_t index      = removed_slot;
+    const std::size_t last_index = m_data.size() - 1;
+    if (index != last_index) {
+        std::swap(m_data[index], m_data[last_index]);
+        std::swap(m_positions[index], m_positions[last_index]);
+        find_index_slot_unsafe(m_positions[index]) = index;
+    }
+    m_data.pop_back();
+    m_positions.pop_back();
+    removed_slot = npos;
+}
+template <std::size_t Dim, typename T, std::size_t ChildCount>
+    requires std::movable<T>
+T tree_extendible_grid<Dim, T, ChildCount>::take_unsafe(const std::array<std::int32_t, Dim>& pos) {
+    std::size_t& removed_slot    = find_index_slot_unsafe(pos);
+    const std::size_t index      = removed_slot;
+    T value                      = std::move(m_data[index]);
+    const std::size_t last_index = m_data.size() - 1;
+    if (index != last_index) {
+        std::swap(m_data[index], m_data[last_index]);
+        std::swap(m_positions[index], m_positions[last_index]);
+        find_index_slot_unsafe(m_positions[index]) = index;
     }
     m_data.pop_back();
     m_positions.pop_back();
@@ -2255,6 +2389,38 @@ template <std::size_t Dim, typename T, std::size_t ChildCount>
 void tree_grid<Dim, T, ChildCount>::shrink() {
     // rebuild nodes to compact internal structure; depth and origin remain fixed
     rebuild_tree();
+}
+template <std::size_t Dim, typename T, std::size_t ChildCount>
+    requires std::movable<T>
+void tree_grid<Dim, T, ChildCount>::remove_unsafe(const std::array<std::uint32_t, Dim>& pos) {
+    std::size_t& removed_slot    = find_index_slot_unsafe(pos);
+    const std::size_t index      = removed_slot;
+    const std::size_t last_index = m_data.size() - 1;
+    if (index != last_index) {
+        std::swap(m_data[index], m_data[last_index]);
+        std::swap(m_positions[index], m_positions[last_index]);
+        find_index_slot_unsafe(m_positions[index]) = index;
+    }
+    m_data.pop_back();
+    m_positions.pop_back();
+    removed_slot = npos;
+}
+template <std::size_t Dim, typename T, std::size_t ChildCount>
+    requires std::movable<T>
+T tree_grid<Dim, T, ChildCount>::take_unsafe(const std::array<std::uint32_t, Dim>& pos) {
+    std::size_t& removed_slot    = find_index_slot_unsafe(pos);
+    const std::size_t index      = removed_slot;
+    T value                      = std::move(m_data[index]);
+    const std::size_t last_index = m_data.size() - 1;
+    if (index != last_index) {
+        std::swap(m_data[index], m_data[last_index]);
+        std::swap(m_positions[index], m_positions[last_index]);
+        find_index_slot_unsafe(m_positions[index]) = index;
+    }
+    m_data.pop_back();
+    m_positions.pop_back();
+    removed_slot = npos;
+    return value;
 }
 
 }  // namespace epix::ext::grid

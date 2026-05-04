@@ -28,7 +28,7 @@ namespace epix::ext::grid {
 /**
  * @brief Minimal structural concept for 2-D boolean-queryable grids.
  *
- * Satisfied by `bit_grid<2>` and by any `any_grid<G>` whose pos_type is
+ * Satisfied by `bit_grid<2>` and by any `viewable_grid<G>` whose pos_type is
  * `std::array<std::uint32_t, 2>`.
  * Used only internally so that algorithm implementations can be shared between
  * external grids and the internal `bit_grid<2>` bitmap.
@@ -78,23 +78,6 @@ bit_grid<2> rasterise(const G& g) {
     for (std::uint32_t y = 0; y < dims[1]; ++y)
         for (std::uint32_t x = 0; x < dims[0]; ++x)
             if (g.contains({x, y})) (void)out.set({x, y});
-    return out;
-}
-
-/// @brief Rasterise an any_grid with a predicate: only cells where pred(value) is true are set.
-template <typename G, typename Pred>
-    requires any_grid<G> && (std::tuple_size_v<typename G::pos_type> == 2) &&
-             std::invocable<Pred, const typename G::cell_type&>
-bit_grid<2> rasterise_with_pred(const G& g, Pred&& pred) {
-    auto dims = g.dimensions();
-    bit_grid<2> out(dims);
-    for (std::uint32_t y = 0; y < dims[1]; ++y)
-        for (std::uint32_t x = 0; x < dims[0]; ++x) {
-            std::array<std::uint32_t, 2> pos{x, y};
-            if (!g.contains(pos)) continue;
-            auto r = g.get(pos);
-            if (r && static_cast<bool>(pred(r->get()))) (void)out.set(pos);
-        }
     return out;
 }
 
@@ -212,14 +195,8 @@ inline std::vector<bit_grid<2>> split(const bit_grid<2>& g, bool include_diagona
 export using BinaryGrid = bit_grid<2>;
 
 /// @brief Rasterise any 2-D any_grid into a BinaryGrid snapshot.
-export template <typename G>
-    requires any_grid<G> && (std::tuple_size_v<typename G::pos_type> == 2)
+export template <poly_grid G>
 BinaryGrid rasterise(const G& g) {
-    return detail::rasterise(g);
-}
-
-/// @brief Rasterise a bit_grid<2> (identity snapshot — bit_grid is not any_grid).
-export inline BinaryGrid rasterise(const bit_grid<2>& g) {
     return detail::rasterise(g);
 }
 

@@ -99,9 +99,9 @@ export struct BrickmapBuffer {
 
     BrickmapHeader header() const noexcept {
         if (words.size() < 2) return {};
-        uint32_t h = words[0];
-        uint32_t dim = h & 0xFFu;
-        uint32_t bs  = (h >> 8u) & 0xFFu;
+        uint32_t h          = words[0];
+        uint32_t dim        = h & 0xFFu;
+        uint32_t bs         = (h >> 8u) & 0xFFu;
         uint32_t bc_offset  = 2u + 2u * dim;
         uint32_t wpb_offset = bc_offset + 1u;
         return {
@@ -362,12 +362,10 @@ inline constexpr uint32_t voxels_per_brick_v = [] {
 }();
 
 template <std::size_t Dim, std::size_t BS>
-inline constexpr uint32_t occ_words_v =
-    (voxels_per_brick_v<Dim, BS> + 31u) / 32u;
+inline constexpr uint32_t occ_words_v = (voxels_per_brick_v<Dim, BS> + 31u) / 32u;
 
 template <std::size_t Dim, std::size_t BS>
-inline constexpr uint32_t words_per_brick_v =
-    1u + occ_words_v<Dim, BS>; // base_data_index + occ words
+inline constexpr uint32_t words_per_brick_v = 1u + occ_words_v<Dim, BS>;  // base_data_index + occ words
 
 template <std::size_t Dim, std::size_t BS>
 uint32_t flat_local(const std::array<uint32_t, Dim>& local) noexcept {
@@ -380,8 +378,7 @@ uint32_t flat_local(const std::array<uint32_t, Dim>& local) noexcept {
 }
 
 template <std::size_t Dim>
-uint32_t flat_grid_index(const std::array<uint32_t, Dim>& bp,
-                         const std::array<uint32_t, Dim>& extent) noexcept {
+uint32_t flat_grid_index(const std::array<uint32_t, Dim>& bp, const std::array<uint32_t, Dim>& extent) noexcept {
     uint32_t idx = 0, stride = 1;
     for (std::size_t a = 0; a < Dim; ++a) {
         idx += bp[a] * stride;
@@ -390,14 +387,14 @@ uint32_t flat_grid_index(const std::array<uint32_t, Dim>& bp,
     return idx;
 }
 
-} // namespace detail
+}  // namespace detail
 
 // -------------------------------------------------------
 // Configuration and error types
 // -------------------------------------------------------
 
 export struct BrickmapConfig {
-    std::size_t brick_size = 8; // per-axis (2, 4, 8, or 16)
+    std::size_t brick_size = 8;  // per-axis (2, 4, 8, or 16)
 };
 
 export struct BrickmapUploadError {
@@ -407,14 +404,11 @@ export struct BrickmapUploadError {
 
         std::string message() const {
             if (provided != 2 && provided != 4 && provided != 8 && provided != 16)
-                return std::format(
-                    "brickmap_upload: unsupported brick_size {} (must be 2, 4, 8, or 16)",
-                    provided);
+                return std::format("brickmap_upload: unsupported brick_size {} (must be 2, 4, 8, or 16)", provided);
             return std::format(
                 "brickmap_upload: brick_size {} with dim {} yields {} voxels per brick "
                 "(too large for efficient bitmask storage)",
-                provided, dim,
-                [&] {
+                provided, dim, [&] {
                     std::size_t r = 1;
                     for (std::size_t i = 0; i < dim; ++i) r *= provided;
                     return r;
@@ -430,10 +424,14 @@ export struct BrickmapUploadError {
     explicit BrickmapUploadError(E&& e) : data(std::forward<E>(e)) {}
 
     template <typename E>
-    bool is() const noexcept { return std::holds_alternative<E>(data); }
+    bool is() const noexcept {
+        return std::holds_alternative<E>(data);
+    }
 
     template <typename E>
-    const E* get() const noexcept { return std::get_if<E>(&data); }
+    const E* get() const noexcept {
+        return std::get_if<E>(&data);
+    }
 
     std::string message() const {
         return std::visit([](const auto& e) { return e.message(); }, data);
@@ -445,8 +443,7 @@ export struct BrickmapUploadError {
 // -------------------------------------------------------
 namespace detail {
 
-template <std::size_t BS, std::size_t Dim, typename CoordT,
-          epix::ext::grid::any_grid G>
+template <std::size_t BS, std::size_t Dim, typename CoordT, epix::ext::grid::viewable_grid G>
 BrickmapBuffer brickmap_upload_cc(const G& grid) {
     constexpr uint32_t OCC_WORDS = occ_words_v<Dim, BS>;
     constexpr uint32_t WPB       = words_per_brick_v<Dim, BS>;
@@ -469,7 +466,12 @@ BrickmapBuffer brickmap_upload_cc(const G& grid) {
     {
         bool first = true;
         for (const auto& pos : grid.iter_pos()) {
-            if (first) { min_pos = pos; max_pos = pos; first = false; continue; }
+            if (first) {
+                min_pos = pos;
+                max_pos = pos;
+                first   = false;
+                continue;
+            }
             for (std::size_t a = 0; a < Dim; ++a) {
                 min_pos[a] = std::min(min_pos[a], pos[a]);
                 max_pos[a] = std::max(max_pos[a], pos[a]);
@@ -481,11 +483,9 @@ BrickmapBuffer brickmap_upload_cc(const G& grid) {
     std::array<int32_t, Dim> origin;
     std::array<uint32_t, Dim> extent;
     for (std::size_t a = 0; a < Dim; ++a) {
-        auto lo = static_cast<int32_t>(min_pos[a]);
-        auto hi = static_cast<int32_t>(max_pos[a]);
-        origin[a] = (lo >= 0)
-            ? (lo / int32_t(BS)) * int32_t(BS)
-            : ((lo - int32_t(BS) + 1) / int32_t(BS)) * int32_t(BS);
+        auto lo   = static_cast<int32_t>(min_pos[a]);
+        auto hi   = static_cast<int32_t>(max_pos[a]);
+        origin[a] = (lo >= 0) ? (lo / int32_t(BS)) * int32_t(BS) : ((lo - int32_t(BS) + 1) / int32_t(BS)) * int32_t(BS);
         extent[a] = static_cast<uint32_t>((hi - origin[a]) / int32_t(BS)) + 1u;
     }
 
@@ -503,7 +503,10 @@ BrickmapBuffer brickmap_upload_cc(const G& grid) {
     std::vector<BrickOcc> bricks;
 
     // Track iter_pos ordinal -> (brick_idx, flat_bit) for reorder
-    struct VoxelRef { uint32_t brick_idx; uint32_t flat_bit; };
+    struct VoxelRef {
+        uint32_t brick_idx;
+        uint32_t flat_bit;
+    };
     std::vector<VoxelRef> voxel_refs;
     voxel_refs.reserve(n);
 
@@ -511,8 +514,7 @@ BrickmapBuffer brickmap_upload_cc(const G& grid) {
     for (const auto& pos : grid.iter_pos()) {
         std::array<uint32_t, Dim> bp, local;
         for (std::size_t a = 0; a < Dim; ++a) {
-            auto rel = static_cast<uint32_t>(
-                static_cast<int32_t>(pos[a]) - origin[a]);
+            auto rel = static_cast<uint32_t>(static_cast<int32_t>(pos[a]) - origin[a]);
             bp[a]    = rel / uint32_t(BS);
             local[a] = rel % uint32_t(BS);
         }
@@ -540,9 +542,8 @@ BrickmapBuffer brickmap_upload_cc(const G& grid) {
         std::vector<uint32_t> brick_reindex(brick_count, EMPTY);
         for (uint32_t gi = 0; gi < grid_total; ++gi) {
             if (brick_grid[gi] != EMPTY) {
-                uint32_t old_bi = brick_grid[gi];
-                brick_reindex[old_bi] =
-                    static_cast<uint32_t>(grid_order_bricks.size());
+                uint32_t old_bi       = brick_grid[gi];
+                brick_reindex[old_bi] = static_cast<uint32_t>(grid_order_bricks.size());
                 grid_order_bricks.push_back(old_bi);
             }
         }
@@ -550,19 +551,15 @@ BrickmapBuffer brickmap_upload_cc(const G& grid) {
             uint32_t old_bi = grid_order_bricks[i];
             base_data[i]    = running;
             for (uint32_t w = 0; w < OCC_WORDS; ++w)
-                running += static_cast<uint32_t>(
-                    std::popcount(bricks[old_bi].occ[w]));
+                running += static_cast<uint32_t>(std::popcount(bricks[old_bi].occ[w]));
         }
         // Remap brick_grid and voxel_refs to grid-order indices
         for (uint32_t gi = 0; gi < grid_total; ++gi)
-            if (brick_grid[gi] != EMPTY)
-                brick_grid[gi] = brick_reindex[brick_grid[gi]];
-        for (auto& vr : voxel_refs)
-            vr.brick_idx = brick_reindex[vr.brick_idx];
+            if (brick_grid[gi] != EMPTY) brick_grid[gi] = brick_reindex[brick_grid[gi]];
+        for (auto& vr : voxel_refs) vr.brick_idx = brick_reindex[vr.brick_idx];
         // Reorder bricks to grid order
         std::vector<BrickOcc> ordered_bricks(brick_count);
-        for (uint32_t i = 0; i < brick_count; ++i)
-            ordered_bricks[i] = std::move(bricks[grid_order_bricks[i]]);
+        for (uint32_t i = 0; i < brick_count; ++i) ordered_bricks[i] = std::move(bricks[grid_order_bricks[i]]);
         bricks = std::move(ordered_bricks);
     }
 
@@ -573,12 +570,9 @@ BrickmapBuffer brickmap_upload_cc(const G& grid) {
         // popcount of bits below flat in brick bi
         uint32_t below = 0;
         uint32_t fw = flat / 32u, rb = flat % 32u;
-        for (uint32_t w = 0; w < fw; ++w)
-            below += static_cast<uint32_t>(std::popcount(bricks[bi].occ[w]));
-        if (rb > 0u)
-            below += static_cast<uint32_t>(
-                std::popcount(bricks[bi].occ[fw] & ((1u << rb) - 1u)));
-        uint32_t packed_idx = base_data[bi] + below;
+        for (uint32_t w = 0; w < fw; ++w) below += static_cast<uint32_t>(std::popcount(bricks[bi].occ[w]));
+        if (rb > 0u) below += static_cast<uint32_t>(std::popcount(bricks[bi].occ[fw] & ((1u << rb) - 1u)));
+        uint32_t packed_idx        = base_data[bi] + below;
         data_index_map[packed_idx] = ordinal;
     }
 
@@ -587,39 +581,33 @@ BrickmapBuffer brickmap_upload_cc(const G& grid) {
     uint32_t h = (uint32_t(Dim) & 0xFFu) | ((uint32_t(BS) & 0xFFu) << 8u);
     buf.words.push_back(h);
     buf.words.push_back(n);
-    for (std::size_t a = 0; a < Dim; ++a)
-        buf.words.push_back(extent[a]);
-    for (std::size_t a = 0; a < Dim; ++a)
-        buf.words.push_back(static_cast<uint32_t>(origin[a]));
+    for (std::size_t a = 0; a < Dim; ++a) buf.words.push_back(extent[a]);
+    for (std::size_t a = 0; a < Dim; ++a) buf.words.push_back(static_cast<uint32_t>(origin[a]));
     buf.words.push_back(brick_count);
     buf.words.push_back(WPB);
     // Grid section: 1-based brick indices
     for (uint32_t gi = 0; gi < grid_total; ++gi) {
-        buf.words.push_back(
-            brick_grid[gi] == EMPTY ? 0u : brick_grid[gi] + 1u);
+        buf.words.push_back(brick_grid[gi] == EMPTY ? 0u : brick_grid[gi] + 1u);
     }
     // Brick pool
     for (uint32_t bi = 0; bi < brick_count; ++bi) {
         buf.words.push_back(base_data[bi]);
-        for (uint32_t w = 0; w < OCC_WORDS; ++w)
-            buf.words.push_back(bricks[bi].occ[w]);
+        for (uint32_t w = 0; w < OCC_WORDS; ++w) buf.words.push_back(bricks[bi].occ[w]);
     }
     // Data index map: packed_spatial_idx -> iter_pos ordinal
-    for (uint32_t i = 0; i < n; ++i)
-        buf.words.push_back(data_index_map[i]);
+    for (uint32_t i = 0; i < n; ++i) buf.words.push_back(data_index_map[i]);
     return buf;
 }
 
-} // namespace detail
+}  // namespace detail
 
 // -------------------------------------------------------
 // Public upload API
 // -------------------------------------------------------
 
-export template <epix::ext::grid::any_grid G>
+export template <epix::ext::grid::viewable_grid G>
     requires(epix::ext::grid::grid_trait<G>::dim >= 1)
-std::expected<BrickmapBuffer, BrickmapUploadError>
-brickmap_upload(const G& grid, const BrickmapConfig& config = {}) {
+std::expected<BrickmapBuffer, BrickmapUploadError> brickmap_upload(const G& grid, const BrickmapConfig& config = {}) {
     using Trait               = epix::ext::grid::grid_trait<G>;
     constexpr std::size_t Dim = Trait::dim;
     using CoordT              = typename Trait::coord_type;
@@ -636,8 +624,7 @@ brickmap_upload(const G& grid, const BrickmapConfig& config = {}) {
         default:
             break;
     }
-    return std::unexpected(BrickmapUploadError{
-        BrickmapUploadError::InvalidBrickSize{config.brick_size, Dim}});
+    return std::unexpected(BrickmapUploadError{BrickmapUploadError::InvalidBrickSize{config.brick_size, Dim}});
 }
 
-} // namespace epix::ext::grid_gpu
+}  // namespace epix::ext::grid_gpu

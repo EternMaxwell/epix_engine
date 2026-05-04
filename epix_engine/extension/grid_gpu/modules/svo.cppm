@@ -1120,7 +1120,7 @@ SvoBuffer svo_upload_tree_cc(const G& grid) {
     return buf;
 }
 
-template <std::size_t CC, std::size_t Dim, typename CoordT, epix::ext::grid::any_grid G>
+template <std::size_t CC, std::size_t Dim, typename CoordT, epix::ext::grid::viewable_grid G>
     requires(!epix::ext::grid::tree_based_grid<G> && cpn_v<Dim, CC> <= 16)
 SvoBuffer svo_upload_flat_cc(const G& grid) {
     constexpr uint32_t CPN = cpn_v<Dim, CC>;
@@ -1392,7 +1392,7 @@ SvoBuffer64 svo_upload_tree_cc64(const G& grid) {
     return buf;
 }
 
-template <std::size_t CC, std::size_t Dim, typename CoordT, epix::ext::grid::any_grid G>
+template <std::size_t CC, std::size_t Dim, typename CoordT, epix::ext::grid::viewable_grid G>
     requires(!epix::ext::grid::tree_based_grid<G> && cpn_v<Dim, CC> <= 32)
 SvoBuffer64 svo_upload_flat_cc64(const G& grid) {
     constexpr uint32_t CPN = cpn_v<Dim, CC>;
@@ -1570,12 +1570,12 @@ std::expected<SvoBuffer, SvoUploadError> svo_upload(const G& grid, const SvoConf
  * any other grid type without coverage(). Depth is computed from the occupied
  * bounding box.
  *
- * @tparam G      Grid type satisfying any_grid but not tree_based_grid.
+ * @tparam G      Grid type satisfying viewable_grid but not tree_based_grid.
  * @param  grid   Source grid.
  * @param  config GPU tree configuration (default: binary tree with child_count=2).
  * @return SvoBuffer on success, or SvoUploadError (kind=InvalidChildCount) for unsupported child_count.
  */
-export template <epix::ext::grid::any_grid G>
+export template <epix::ext::grid::viewable_grid G>
     requires(!epix::ext::grid::tree_based_grid<G> && epix::ext::grid::grid_trait<G>::dim >= 1)
 std::expected<SvoBuffer, SvoUploadError> svo_upload(const G& grid, const SvoConfig& config = {}) {
     using Trait               = epix::ext::grid::grid_trait<G>;
@@ -1704,12 +1704,12 @@ std::expected<SvoBuffer64, SvoUploadError64> svo_upload64(const G& grid, const S
  * Works for dense_grid, sparse_grid, dense_extendible_grid, packed_grid, and any other
  * grid type without coverage().  Same relaxed constraint: cpn <= 32.
  *
- * @tparam G      Grid type satisfying any_grid but not tree_based_grid.
+ * @tparam G      Grid type satisfying viewable_grid but not tree_based_grid.
  * @param  grid   Source grid.
  * @param  config GPU tree configuration (default: binary tree with child_count=2).
  * @return SvoBuffer64 on success, or SvoUploadError64 on invalid child_count.
  */
-export template <epix::ext::grid::any_grid G>
+export template <epix::ext::grid::viewable_grid G>
     requires(!epix::ext::grid::tree_based_grid<G> && epix::ext::grid::grid_trait<G>::dim >= 1)
 std::expected<SvoBuffer64, SvoUploadError64> svo_upload64(const G& grid, const SvoConfig64& config = {}) {
     using Trait               = epix::ext::grid::grid_trait<G>;

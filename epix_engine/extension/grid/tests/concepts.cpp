@@ -17,42 +17,43 @@ using namespace epix::ext::grid;
 // ────────────────────────────────────────────────────────────
 
 // ────────────────────────────────────────────────────────────
-// any_grid — all basic grid types must satisfy this
+// viewable_grid — all basic grid types must satisfy this
 // ────────────────────────────────────────────────────────────
 
-static_assert(any_grid<packed_grid<2, int>>);
-static_assert(any_grid<dense_grid<2, int>>);
-static_assert(any_grid<sparse_grid<2, int>>);
-static_assert(any_grid<dense_extendible_grid<2, int>>);
-static_assert(any_grid<tree_extendible_grid<2, int>>);
-static_assert(any_grid<tree_grid<2, int>>);
+static_assert(viewable_grid<packed_grid<2, int>>);
+static_assert(viewable_grid<dense_grid<2, int>>);
+static_assert(viewable_grid<sparse_grid<2, int>>);
+static_assert(viewable_grid<dense_extendible_grid<2, int>>);
+static_assert(viewable_grid<tree_extendible_grid<2, int>>);
+static_assert(viewable_grid<tree_grid<2, int>>);
 
-static_assert(any_grid<packed_grid<3, float>>);
-static_assert(any_grid<dense_grid<3, double>>);
-static_assert(any_grid<tree_extendible_grid<3, int>>);
-static_assert(any_grid<tree_grid<3, int>>);
-
-// ────────────────────────────────────────────────────────────
-// unsafe_grid
-// ────────────────────────────────────────────────────────────
-
-static_assert(unsafe_grid<packed_grid<2, int>>);
-static_assert(unsafe_grid<dense_grid<2, int>>);
-static_assert(unsafe_grid<sparse_grid<2, int>>);
-static_assert(unsafe_grid<dense_extendible_grid<2, int>>);
-static_assert(unsafe_grid<tree_extendible_grid<2, int>>);
-static_assert(unsafe_grid<tree_grid<2, int>>);
+static_assert(viewable_grid<packed_grid<3, float>>);
+static_assert(viewable_grid<dense_grid<3, double>>);
+static_assert(viewable_grid<tree_extendible_grid<3, int>>);
+static_assert(viewable_grid<tree_grid<3, int>>);
 
 // ────────────────────────────────────────────────────────────
-// new_settable_grid
+// unsafe_grid_container — all basic grid types must satisfy this
 // ────────────────────────────────────────────────────────────
 
-static_assert(!new_settable_grid<packed_grid<2, int>>);
-static_assert(new_settable_grid<dense_grid<2, int>>);
-static_assert(new_settable_grid<sparse_grid<2, int>>);
-static_assert(new_settable_grid<dense_extendible_grid<2, int>>);
-static_assert(new_settable_grid<tree_extendible_grid<2, int>>);
-static_assert(new_settable_grid<tree_grid<2, int>>);
+static_assert(unsafe_grid_container<packed_grid<2, int>>);
+static_assert(unsafe_grid_container<dense_grid<2, int>>);
+static_assert(unsafe_grid_container<sparse_grid<2, int>>);
+static_assert(unsafe_grid_container<dense_extendible_grid<2, int>>);
+static_assert(unsafe_grid_container<tree_extendible_grid<2, int>>);
+static_assert(unsafe_grid_container<tree_grid<2, int>>);
+
+// ────────────────────────────────────────────────────────────
+// grid_container — all basic grid types must satisfy this
+// (packed_grid::set_new always returns AlreadyOccupied but the method exists)
+// ────────────────────────────────────────────────────────────
+
+static_assert(grid_container<packed_grid<2, int>>);
+static_assert(grid_container<dense_grid<2, int>>);
+static_assert(grid_container<sparse_grid<2, int>>);
+static_assert(grid_container<dense_extendible_grid<2, int>>);
+static_assert(grid_container<tree_extendible_grid<2, int>>);
+static_assert(grid_container<tree_grid<2, int>>);
 
 // ────────────────────────────────────────────────────────────
 // iterable_grid
@@ -122,17 +123,17 @@ static_assert(tree_based_grid<tree_extendible_grid<2, int>>);
 static_assert(tree_based_grid<tree_grid<2, int>>);
 
 // ────────────────────────────────────────────────────────────
-// filter_view & shadow_view — satisfy any_grid unconditionally
+// filter_view & shadow_view — satisfy viewable_grid and unsafe_viewable_grid
 // ────────────────────────────────────────────────────────────
 
 using fv_t = filter_view<dense_grid<2, int>, decltype([](const int& v) { return v > 0; })>;
-static_assert(any_grid<fv_t>);
-static_assert(unsafe_grid<fv_t>);
+static_assert(viewable_grid<fv_t>);
+static_assert(unsafe_viewable_grid<fv_t>);
 static_assert(iterable_grid<fv_t>);
 
 using sv_t = shadow_view<dense_grid<2, int>, decltype([](const std::array<std::uint32_t, 2>&) { return true; })>;
-static_assert(any_grid<sv_t>);
-static_assert(unsafe_grid<sv_t>);
+static_assert(viewable_grid<sv_t>);
+static_assert(unsafe_viewable_grid<sv_t>);
 
 // ────────────────────────────────────────────────────────────
 // Runtime: dimensions() returns unsigned array for all grids

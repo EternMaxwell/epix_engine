@@ -20,31 +20,32 @@ namespace epix::ext::grid {
  * @brief A lazy view that wraps a grid and a predicate: a cell is considered
  *        "occupied" only when the predicate returns true for its value.
  *
- * The predicate receives `const cell_type&` and must return something
- * convertible to bool.
+ * Stores G directly — if G is an lvalue-reference type (e.g. `dense_grid<2,int>&`),
+ * the view holds a reference; if G is a value type, the view owns a copy.
+ * The factory function @ref filter deduces G as a reference for lvalues.
  *
- * `filter_view` satisfies `any_grid` (when G satisfies `any_grid`).
- * It also conditionally satisfies `unsafe_grid` and `iterable_grid`
- * when the underlying grid G satisfies those concepts.
- *
- * The view stores a non-const reference to the underlying grid; the grid
- * must outlive the view.  Use @ref filter to construct one.
+ * Methods are added conditionally based on what concepts G satisfies:
+ *  - always:                          `dimensions()`, `contains()`, `get()`
+ *  - `mutable_viewable_grid<G>`:      `get_mut()`
+ *  - `grid_container<G>`:             `set()`, `set_new()`, `remove()`, `take()`
+ *  - `unsafe_viewable_grid<G>`:       `get_unsafe()`
+ *  - `unsafe_mutable_viewable_grid<G>`: `get_mut_unsafe()`
+ *  - `unsafe_grid_container<G>`:      `set_unsafe()`, `remove_unsafe()`, `take_unsafe()`
+ *  - `iterable_grid<G>`:              `iter_pos()`, `iter_cells()`, `iter()`
+ *  - `mutable_iterable_grid<G>`:      `iter_cells_mut()`, `iter_mut()`
  */
-export template <any_grid G, typename Pred>
-    requires std::invocable<Pred, const typename G::cell_type&>
+export template <viewable_grid G, std::invocable<const typename std::decay_t<G>::cell_type&> Pred>
 struct filter_view {
-    using pos_type  = typename G::pos_type;
-    using cell_type = typename G::cell_type;
+    using pos_type  = typename std::decay_t<G>::pos_type;
+    using cell_type = typename std::decay_t<G>::cell_type;
 
-    G& grid;
+    G grid;
     Pred pred;
 
-    /** @brief Forward dimensions() from the underlying grid. */
+    // ─── viewable_grid interface (always present) ─────────────────────────
+
     pos_type dimensions() const { return grid.dimensions(); }
 
-    // ─── any_grid interface ────────────────────────────────────────────────
-
-    /** @brief A cell is occupied only when grid.contains(pos) && pred(value). */
     bool contains(const pos_type& pos) const {
         return grid.get(pos)
             .transform([&](const cell_type& cell) { return static_cast<bool>(pred(cell)); })
@@ -59,7 +60,11 @@ struct filter_view {
             });
     }
 
-    auto get_mut(const pos_type& pos) -> std::expected<std::reference_wrapper<cell_type>, grid_error> {
+    // ─── mutable_viewable_grid interface ─────────────────────────────────
+
+    auto get_mut(const pos_type& pos) -> std::expected<std::reference_wrapper<cell_type>, grid_error>
+        requires mutable_viewable_grid<G>
+    {
         return grid.get_mut(pos).and_then(
             [&](cell_type& cell) -> std::expected<std::reference_wrapper<cell_type>, grid_error> {
                 if (!pred(cell)) return std::unexpected(grid_error::EmptyCell);
@@ -67,42 +72,71 @@ struct filter_view {
             });
     }
 
-    /** @brief Unconditionally delegates to the underlying grid (no pred check). */
-    auto set(const pos_type& pos, cell_type val) -> std::expected<std::reference_wrapper<cell_type>, grid_error> {
+    // ─── grid_container interface ─────────────────────────────────────────
+
+    auto set(const pos_type& pos, cell_type val) -> std::expected<std::reference_wrapper<cell_type>, grid_error>
+        requires grid_container<G>
+    {
         return grid.set(pos, std::move(val));
     }
 
-    /** @brief Unconditionally delegates to the underlying grid. */
-    auto remove(const pos_type& pos) -> std::expected<void, grid_error> { return grid.remove(pos); }
+    template <typename... Args>
+        requires grid_container<G> && std::constructible_from<cell_type, Args...>
+    auto set_new(const pos_type& pos, Args&&... args) -> std::expected<std::reference_wrapper<cell_type>, grid_error> {
+        return grid.set_new(pos, std::forward<Args>(args)...);
+    }
 
-    auto take(const pos_type& pos) -> std::expected<cell_type, grid_error> {
+    auto remove(const pos_type& pos) -> std::expected<void, grid_error>
+        requires grid_container<G>
+    {
+        return grid.remove(pos);
+    }
+
+    auto take(const pos_type& pos) -> std::expected<cell_type, grid_error>
+        requires grid_container<G>
+    {
         if (!contains(pos)) return std::unexpected(grid_error::EmptyCell);
         return grid.take(pos);
     }
 
-    // ─── unsafe_grid interface (conditional) ──────────────────────────────
+    // ─── unsafe_viewable_grid interface ──────────────────────────────────
 
     const cell_type& get_unsafe(const pos_type& pos) const
-        requires unsafe_grid<G>
+        requires unsafe_viewable_grid<G>
     {
         return grid.get_unsafe(pos);
     }
 
+    // ─── unsafe_mutable_viewable_grid interface ───────────────────────────
+
     cell_type& get_mut_unsafe(const pos_type& pos)
-        requires unsafe_grid<G>
+        requires unsafe_mutable_viewable_grid<G>
     {
         return grid.get_mut_unsafe(pos);
     }
 
+    // ─── unsafe_grid_container interface ─────────────────────────────────
+
     cell_type& set_unsafe(const pos_type& pos, cell_type val)
-        requires unsafe_grid<G>
+        requires unsafe_grid_container<G>
     {
         return grid.set_unsafe(pos, std::move(val));
     }
 
-    // ─── iterable_grid interface (conditional) ────────────────────────────
+    void remove_unsafe(const pos_type& pos)
+        requires unsafe_grid_container<G>
+    {
+        grid.remove_unsafe(pos);
+    }
 
-    /** @brief Iterate over positions of cells visible through the filter. */
+    cell_type take_unsafe(const pos_type& pos)
+        requires unsafe_grid_container<G>
+    {
+        return grid.take_unsafe(pos);
+    }
+
+    // ─── iterable_grid interface ──────────────────────────────────────────
+
     auto iter_pos() const
         requires iterable_grid<G>
     {
@@ -111,7 +145,6 @@ struct filter_view {
                std::views::elements<0>;
     }
 
-    /** @brief Iterate over const-refs of cells visible through the filter. */
     auto iter_cells() const
         requires iterable_grid<G>
     {
@@ -119,15 +152,6 @@ struct filter_view {
                std::views::filter([this](const cell_type& cell) { return static_cast<bool>(pred(cell)); });
     }
 
-    /** @brief Iterate over mutable refs of cells visible through the filter. */
-    auto iter_cells_mut()
-        requires iterable_grid<G>
-    {
-        return grid.iter_cells_mut() |
-               std::views::filter([this](const cell_type& cell) { return static_cast<bool>(pred(cell)); });
-    }
-
-    /** @brief Iterate over (pos, const_ref) pairs visible through the filter. */
     auto iter() const
         requires iterable_grid<G>
     {
@@ -135,9 +159,17 @@ struct filter_view {
                std::views::filter([this](const auto& kv) { return static_cast<bool>(pred(std::get<1>(kv))); });
     }
 
-    /** @brief Iterate over (pos, mutable_ref) pairs visible through the filter. */
+    // ─── mutable_iterable_grid interface ─────────────────────────────────
+
+    auto iter_cells_mut()
+        requires mutable_iterable_grid<G>
+    {
+        return grid.iter_cells_mut() |
+               std::views::filter([this](const cell_type& cell) { return static_cast<bool>(pred(cell)); });
+    }
+
     auto iter_mut()
-        requires iterable_grid<G>
+        requires mutable_iterable_grid<G>
     {
         return grid.iter_mut() |
                std::views::filter([this](const auto& kv) { return static_cast<bool>(pred(std::get<1>(kv))); });
@@ -147,13 +179,12 @@ struct filter_view {
 /**
  * @brief Construct a @ref filter_view wrapping @p g with @p pred.
  *
- * @p pred must be callable as `bool(const cell_type&)`.
- * The view stores a reference to @p g which must outlive the view.
+ * G is deduced as `decltype(g)` — a reference type for named lvalue variables,
+ * or a value type when an rvalue is passed.
  */
-export template <any_grid G, typename Pred>
-    requires std::invocable<Pred, const typename G::cell_type&>
-filter_view<G, std::decay_t<Pred>> filter(G& g, Pred&& pred) {
-    return {g, std::forward<Pred>(pred)};
+export template <viewable_grid G, std::invocable<const typename std::decay_t<G>::cell_type&> Pred>
+filter_view<G, std::decay_t<Pred>> filter(G&& g, Pred&& pred) {
+    return {std::forward<G>(g), std::forward<Pred>(pred)};
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -163,30 +194,32 @@ filter_view<G, std::decay_t<Pred>> filter(G& g, Pred&& pred) {
  *        considered "occupied" only when the predicate returns true for its
  *        position (regardless of the stored value).
  *
- * The predicate receives `const pos_type&` and must return something
- * convertible to bool.
+ * Stores G directly — if G is an lvalue-reference type (e.g. `dense_grid<2,int>&`),
+ * the view holds a reference; if G is a value type, the view owns a copy.
+ * The factory function @ref shadow deduces G as a reference for lvalues.
  *
- * `shadow_view` satisfies `any_grid` unconditionally and conditionally
- * satisfies `unsafe_grid` / `iterable_grid` when the underlying grid G does.
- *
- * The view stores a non-const reference to the underlying grid; the grid must
- * outlive the view.  Use @ref shadow to construct one.
+ * Methods are added conditionally based on what concepts G satisfies:
+ *  - always:                          `dimensions()`, `contains()`, `get()`
+ *  - `mutable_viewable_grid<G>`:      `get_mut()`
+ *  - `grid_container<G>`:             `set()`, `set_new()`, `remove()`, `take()`
+ *  - `unsafe_viewable_grid<G>`:       `get_unsafe()`
+ *  - `unsafe_mutable_viewable_grid<G>`: `get_mut_unsafe()`
+ *  - `unsafe_grid_container<G>`:      `set_unsafe()`, `remove_unsafe()`, `take_unsafe()`
+ *  - `iterable_grid<G>`:              `iter_pos()`, `iter_cells()`, `iter()`
+ *  - `mutable_iterable_grid<G>`:      `iter_cells_mut()`, `iter_mut()`
  */
-export template <any_grid G, typename Pred>
-    requires std::invocable<Pred, const typename G::pos_type&>
+export template <viewable_grid G, std::invocable<const typename std::decay_t<G>::pos_type&> Pred>
 struct shadow_view {
-    using pos_type  = typename G::pos_type;
-    using cell_type = typename G::cell_type;
+    using pos_type  = typename std::decay_t<G>::pos_type;
+    using cell_type = typename std::decay_t<G>::cell_type;
 
-    G& grid;
+    G grid;
     Pred pred;
 
-    /** @brief Forward dimensions() from the underlying grid. */
+    // ─── viewable_grid interface (always present) ─────────────────────────
+
     pos_type dimensions() const { return grid.dimensions(); }
 
-    // ─── any_grid interface ────────────────────────────────────────────────
-
-    /** @brief A position is occupied only when grid.contains(pos) && pred(pos). */
     bool contains(const pos_type& pos) const { return static_cast<bool>(pred(pos)) && grid.contains(pos); }
 
     auto get(const pos_type& pos) const -> std::expected<std::reference_wrapper<const cell_type>, grid_error> {
@@ -194,47 +227,80 @@ struct shadow_view {
         return grid.get(pos);
     }
 
-    auto get_mut(const pos_type& pos) -> std::expected<std::reference_wrapper<cell_type>, grid_error> {
+    // ─── mutable_viewable_grid interface ─────────────────────────────────
+
+    auto get_mut(const pos_type& pos) -> std::expected<std::reference_wrapper<cell_type>, grid_error>
+        requires mutable_viewable_grid<G>
+    {
         if (!pred(pos)) return std::unexpected(grid_error::EmptyCell);
         return grid.get_mut(pos);
     }
 
-    /** @brief Unconditionally delegates to the underlying grid (no pred check). */
-    auto set(const pos_type& pos, cell_type val) -> std::expected<std::reference_wrapper<cell_type>, grid_error> {
+    // ─── grid_container interface ─────────────────────────────────────────
+
+    auto set(const pos_type& pos, cell_type val) -> std::expected<std::reference_wrapper<cell_type>, grid_error>
+        requires grid_container<G>
+    {
         return grid.set(pos, std::move(val));
     }
 
-    /** @brief Unconditionally delegates to the underlying grid. */
-    auto remove(const pos_type& pos) -> std::expected<void, grid_error> { return grid.remove(pos); }
+    template <typename... Args>
+        requires grid_container<G> && std::constructible_from<cell_type, Args...>
+    auto set_new(const pos_type& pos, Args&&... args) -> std::expected<std::reference_wrapper<cell_type>, grid_error> {
+        return grid.set_new(pos, std::forward<Args>(args)...);
+    }
 
-    auto take(const pos_type& pos) -> std::expected<cell_type, grid_error> {
+    auto remove(const pos_type& pos) -> std::expected<void, grid_error>
+        requires grid_container<G>
+    {
+        return grid.remove(pos);
+    }
+
+    auto take(const pos_type& pos) -> std::expected<cell_type, grid_error>
+        requires grid_container<G>
+    {
         if (!pred(pos)) return std::unexpected(grid_error::EmptyCell);
         return grid.take(pos);
     }
 
-    // ─── unsafe_grid interface (conditional) ──────────────────────────────
+    // ─── unsafe_viewable_grid interface ──────────────────────────────────
 
     const cell_type& get_unsafe(const pos_type& pos) const
-        requires unsafe_grid<G>
+        requires unsafe_viewable_grid<G>
     {
         return grid.get_unsafe(pos);
     }
 
+    // ─── unsafe_mutable_viewable_grid interface ───────────────────────────
+
     cell_type& get_mut_unsafe(const pos_type& pos)
-        requires unsafe_grid<G>
+        requires unsafe_mutable_viewable_grid<G>
     {
         return grid.get_mut_unsafe(pos);
     }
 
+    // ─── unsafe_grid_container interface ─────────────────────────────────
+
     cell_type& set_unsafe(const pos_type& pos, cell_type val)
-        requires unsafe_grid<G>
+        requires unsafe_grid_container<G>
     {
         return grid.set_unsafe(pos, std::move(val));
     }
 
-    // ─── iterable_grid interface (conditional) ────────────────────────────
+    void remove_unsafe(const pos_type& pos)
+        requires unsafe_grid_container<G>
+    {
+        grid.remove_unsafe(pos);
+    }
 
-    /** @brief Iterate over positions passing the predicate. */
+    cell_type take_unsafe(const pos_type& pos)
+        requires unsafe_grid_container<G>
+    {
+        return grid.take_unsafe(pos);
+    }
+
+    // ─── iterable_grid interface ──────────────────────────────────────────
+
     auto iter_pos() const
         requires iterable_grid<G>
     {
@@ -242,21 +308,12 @@ struct shadow_view {
                std::views::filter([this](const pos_type& pos) { return static_cast<bool>(pred(pos)); });
     }
 
-    /** @brief Iterate over const-refs of cells at positions passing the predicate. */
     auto iter_cells() const
         requires iterable_grid<G>
     {
         return iter() | std::views::transform([](const auto& kv) -> const cell_type& { return std::get<1>(kv); });
     }
 
-    /** @brief Iterate over mutable refs of cells at positions passing the predicate. */
-    auto iter_cells_mut()
-        requires iterable_grid<G>
-    {
-        return iter_mut() | std::views::transform([](auto& kv) -> cell_type& { return std::get<1>(kv); });
-    }
-
-    /** @brief Iterate over (pos, const_ref) pairs at positions passing the predicate. */
     auto iter() const
         requires iterable_grid<G>
     {
@@ -264,9 +321,16 @@ struct shadow_view {
                std::views::filter([this](const auto& kv) { return static_cast<bool>(pred(std::get<0>(kv))); });
     }
 
-    /** @brief Iterate over (pos, mutable_ref) pairs at positions passing the predicate. */
+    // ─── mutable_iterable_grid interface ─────────────────────────────────
+
+    auto iter_cells_mut()
+        requires mutable_iterable_grid<G>
+    {
+        return iter_mut() | std::views::transform([](auto& kv) -> cell_type& { return std::get<1>(kv); });
+    }
+
     auto iter_mut()
-        requires iterable_grid<G>
+        requires mutable_iterable_grid<G>
     {
         return grid.iter_mut() |
                std::views::filter([this](const auto& kv) { return static_cast<bool>(pred(std::get<0>(kv))); });
@@ -276,13 +340,12 @@ struct shadow_view {
 /**
  * @brief Construct a @ref shadow_view wrapping @p g with @p pred.
  *
- * @p pred must be callable as `bool(const pos_type&)`.
- * The view stores a reference to @p g which must outlive the view.
+ * G is deduced as `decltype(g)` — a reference type for named lvalue variables,
+ * or a value type when an rvalue is passed.
  */
-export template <any_grid G, typename Pred>
-    requires std::invocable<Pred, const typename G::pos_type&>
-shadow_view<G, std::decay_t<Pred>> shadow(G& g, Pred&& pred) {
-    return {g, std::forward<Pred>(pred)};
+export template <viewable_grid G, std::invocable<const typename std::decay_t<G>::pos_type&> Pred>
+shadow_view<G, std::decay_t<Pred>> shadow(G&& g, Pred&& pred) {
+    return {std::forward<G>(g), std::forward<Pred>(pred)};
 }
 
 }  // namespace epix::ext::grid

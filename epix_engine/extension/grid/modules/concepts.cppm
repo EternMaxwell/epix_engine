@@ -23,188 +23,245 @@ export enum class grid_error {
     AlreadyOccupied, /**< The cell at the given position is already occupied. */
 };
 // ============================================================
-// Grid concepts — purely structural, no grid_trait dependency
+// Grid concepts — view series (read-only) + mutable extensions
 // ============================================================
 
 /**
- * @brief Fundamental structural concept satisfied by any grid type.
+ * @brief Read-only structural concept: query dimensions, containment, and cell values.
  *
- * Requires:
- *  - pos_type nested type
- *  - cell_type nested type
- *  - dimensions() method returning std::array<pos_type::value_type, Dim> (the extent along each axis).
- *  - contains(pos) method for occupancy query, returning bool.
- *  - get(pos) method for const access to cell values, returning expected<reference_wrapper<const T>, grid_error>.
- *  - get_mut(pos) method for mutable access to cell values, returning expected<reference_wrapper<T>, grid_error>.
- *  - set(pos, ...) method for mutable access to cell values, returning expected<reference_wrapper<T>, grid_error>.
- *  - remove(pos) method for removing cell values, returning expected<void, grid_error>.
- *  - take(pos) method for removing and returning cell values, returning expected<T, grid_error>.
+ * A `viewable_grid` exposes:
+ *  - `pos_type`       — std::array<unsigned_or_signed_integral, N>
+ *  - `cell_type`      — the stored element type
+ *  - `dimensions()`  → array<unsigned_integral, N> matching pos_type arity
+ *  - `contains(pos)` → bool
+ *  - `get(pos)`      → expected<reference_wrapper<const cell_type>, grid_error>
  */
 export template <typename G>
-concept any_grid = requires(const G& g, G& gm) {
-    typename G::pos_type;
-    typename G::cell_type;
+concept viewable_grid = requires(G g) {
+    typename std::decay_t<G>::pos_type;
+    typename std::decay_t<G>::cell_type;
 
-    // dimensions() must return array<unsigned_integral, std::tuple_size_v<pos_type>>
     requires std::unsigned_integral<typename std::remove_cvref_t<decltype(g.dimensions())>::value_type>;
     requires std::tuple_size_v<std::remove_cvref_t<decltype(g.dimensions())>> ==
-                 std::tuple_size_v<typename G::pos_type>;
-    { g.contains(std::declval<const typename G::pos_type&>()) } -> std::same_as<bool>;
+                 std::tuple_size_v<typename std::decay_t<G>::pos_type>;
+    { g.contains(std::declval<const typename std::decay_t<G>::pos_type&>()) } -> std::same_as<bool>;
     {
-        g.get(std::declval<const typename G::pos_type&>())
-    } -> std::same_as<std::expected<std::reference_wrapper<const typename G::cell_type>, grid_error>>;
-    {
-        gm.get_mut(std::declval<const typename G::pos_type&>())
-    } -> std::same_as<std::expected<std::reference_wrapper<typename G::cell_type>, grid_error>>;
-    {
-        gm.set(std::declval<const typename G::pos_type&>(), std::declval<typename G::cell_type>())
-    } -> std::same_as<std::expected<std::reference_wrapper<typename G::cell_type>, grid_error>>;
-    { gm.remove(std::declval<const typename G::pos_type&>()) } -> std::same_as<std::expected<void, grid_error>>;
-    {
-        gm.take(std::declval<const typename G::pos_type&>())
-    } -> std::same_as<std::expected<typename G::cell_type, grid_error>>;
+        g.get(std::declval<const typename std::decay_t<G>::pos_type&>())
+    } -> std::same_as<std::expected<std::reference_wrapper<const typename std::decay_t<G>::cell_type>, grid_error>>;
 };
 
 /**
- * @brief Concept for grids that also provide unsafe get/set operations without error handling.
+ * @brief Mutable extension of `viewable_grid`: adds `get_mut(pos)`.
  *
- * get_unsafe(pos) must return reference to cell value or throw on invalid pos.
- * get_mut_unsafe(pos) must return mutable reference to cell value or throw on invalid pos.
- * set_unsafe(pos, val) must set cell value and return reference to it, or throw on invalid pos.
+ * Allows in-place modification of an existing cell without replacing it.
+ *  - `get_mut(pos)` → expected<reference_wrapper<cell_type>, grid_error>
  */
 export template <typename G>
-concept unsafe_grid = any_grid<G> && requires(const G& g, G& gm) {
-    { g.get_unsafe(std::declval<const typename G::pos_type&>()) } -> std::same_as<const typename G::cell_type&>;
-    { gm.get_mut_unsafe(std::declval<const typename G::pos_type&>()) } -> std::same_as<typename G::cell_type&>;
+concept mutable_viewable_grid = viewable_grid<G> && requires(G g) {
     {
-        gm.set_unsafe(std::declval<const typename G::pos_type&>(), std::declval<typename G::cell_type>())
-    } -> std::same_as<typename G::cell_type&>;
-};
-
-export template <typename G>
-concept new_settable_grid = any_grid<G> && requires(G& g) {
-    {
-        g.set_new(std::declval<const typename G::pos_type&>(), std::declval<typename G::cell_type>())
-    } -> std::same_as<std::expected<std::reference_wrapper<typename G::cell_type>, grid_error>>;
-};
-export template <typename G>
-concept unsafe_new_settable_grid = any_grid<G> && requires(G& g) {
-    {
-        g.set_new_unsafe(std::declval<const typename G::pos_type&>(), std::declval<typename G::cell_type>())
-    } -> std::same_as<typename G::cell_type&>;
+        g.get_mut(std::declval<const typename std::decay_t<G>::pos_type&>())
+    } -> std::same_as<std::expected<std::reference_wrapper<typename std::decay_t<G>::cell_type>, grid_error>>;
 };
 
 /**
- * @brief Concept for grids that provide iteration over occupied cells.
+ * @brief Full read/write container concept.
  *
- * Requires:
- *  - iter_pos()     → input_range of pos_type
- *  - iter_cells()    → input_range of const cell references/values
- *  - iter_cells_mut() → input_range of mutable cell references/values
- *  - iter()          → input_range of (pos_type, const_cell_ref) pairs
- *  - iter_mut()      → input_range of (pos_type, mutable_cell_ref) pairs
- *
- * The value types of iter_cells/iter_cells_mut must be convertible from
- * cell_type (plain values or reference_wrappers are both accepted).
- * The second element of iter/iter_mut pairs must be convertible to a
- * cell_type reference.
+ * Extends `mutable_viewable_grid` with mutation primitives:
+ *  - `set(pos, value)`     → expected<reference_wrapper<cell_type>, grid_error>  (insert or overwrite)
+ *  - `set_new(pos, value)` → expected<reference_wrapper<cell_type>, grid_error>  (insert; fails if occupied)
+ *  - `remove(pos)`         → expected<void, grid_error>                          (erase cell)
+ *  - `take(pos)`           → expected<cell_type, grid_error>                     (move-out and erase)
  */
 export template <typename G>
-concept iterable_grid = any_grid<G> && requires(const G& g, G& gm) {
+concept grid_container = mutable_viewable_grid<G> && requires(G g) {
+    {
+        g.set(std::declval<const typename std::decay_t<G>::pos_type&>(),
+              std::declval<typename std::decay_t<G>::cell_type>())
+    } -> std::same_as<std::expected<std::reference_wrapper<typename std::decay_t<G>::cell_type>, grid_error>>;
+    {
+        g.set_new(std::declval<const typename std::decay_t<G>::pos_type&>(),
+                  std::declval<typename std::decay_t<G>::cell_type>())
+    } -> std::same_as<std::expected<std::reference_wrapper<typename std::decay_t<G>::cell_type>, grid_error>>;
+    {
+        g.remove(std::declval<const typename std::decay_t<G>::pos_type&>())
+    } -> std::same_as<std::expected<void, grid_error>>;
+    {
+        g.take(std::declval<const typename std::decay_t<G>::pos_type&>())
+    } -> std::same_as<std::expected<typename std::decay_t<G>::cell_type, grid_error>>;
+};
+
+/**
+ * @brief Read-only bounds-unchecked access via `get_unsafe(pos)`.
+ *
+ * Returns `cell_type&` directly — no bounds check, no error path.
+ * Typically satisfied by packed/dense grids with fixed dimensions.
+ */
+export template <typename G>
+concept unsafe_viewable_grid = viewable_grid<G> && requires(G g) {
+    {
+        g.get_unsafe(std::declval<const typename std::decay_t<G>::pos_type&>())
+    } -> std::same_as<const typename std::decay_t<G>::cell_type&>;
+};
+
+/**
+ * @brief Mutable bounds-unchecked access via `get_mut_unsafe(pos)`.
+ *
+ * Returns `cell_type&` directly — no bounds check, no error path.
+ */
+export template <typename G>
+concept unsafe_mutable_viewable_grid = viewable_grid<G> && requires(G g) {
+    {
+        g.get_mut_unsafe(std::declval<const typename std::decay_t<G>::pos_type&>())
+    } -> std::same_as<typename std::decay_t<G>::cell_type&>;
+};
+
+/**
+ * @brief Full unsafe container: unchecked set/remove/take.
+ *
+ * Extends `unsafe_mutable_viewable_grid` with:
+ *  - `set_unsafe(pos, value)` → cell_type&
+ *  - `remove_unsafe(pos)`     → void
+ *  - `take_unsafe(pos)`       → cell_type
+ */
+export template <typename G>
+concept unsafe_grid_container = unsafe_mutable_viewable_grid<G> && requires(G g) {
+    {
+        g.set_unsafe(std::declval<const typename std::decay_t<G>::pos_type&>(),
+                     std::declval<typename std::decay_t<G>::cell_type>())
+    } -> std::same_as<typename std::decay_t<G>::cell_type&>;
+    { g.remove_unsafe(std::declval<const typename std::decay_t<G>::pos_type&>()) } -> std::same_as<void>;
+    {
+        g.take_unsafe(std::declval<const typename std::decay_t<G>::pos_type&>())
+    } -> std::same_as<typename std::decay_t<G>::cell_type>;
+};
+
+/**
+ * @brief Read-only iteration: produces positions, cell values, and (pos, cell) pairs.
+ *
+ *  - `iter_pos()`   → input_range of pos_type
+ *  - `iter_cells()` → input_range whose references are convertible to `const cell_type&`
+ *  - `iter()`       → input_range of (pos_type, const cell_type&) tuples
+ */
+export template <typename G>
+concept iterable_grid = viewable_grid<G> && requires(G g) {
     { g.iter_pos() } -> std::ranges::input_range;
     { g.iter_cells() } -> std::ranges::input_range;
-    { gm.iter_cells_mut() } -> std::ranges::input_range;
     { g.iter() } -> std::ranges::input_range;
-    { gm.iter_mut() } -> std::ranges::input_range;
-    // pos_type must be the value type of iter_pos()
-    requires std::same_as<std::ranges::range_value_t<decltype(g.iter_pos())>, typename G::pos_type>;
-    // iter_cells() values must be usable as const cell_type references
+    requires std::same_as<std::ranges::range_value_t<decltype(g.iter_pos())>, typename std::decay_t<G>::pos_type>;
     requires std::convertible_to<std::ranges::range_reference_t<decltype(g.iter_cells())>,
-                                 const typename G::cell_type&>;
-    // iter_cells_mut() references must be usable as mutable cell_type references
-    requires std::convertible_to<std::ranges::range_reference_t<decltype(gm.iter_cells_mut())>, typename G::cell_type&>;
-    // iter() first element is pos_type
+                                 const typename std::decay_t<G>::cell_type&>;
     requires std::same_as<std::remove_cvref_t<std::tuple_element_t<0, std::ranges::range_value_t<decltype(g.iter())>>>,
-                          typename G::pos_type>;
-    // iter() second element must be usable as const cell_type reference
+                          typename std::decay_t<G>::pos_type>;
     requires std::convertible_to<std::tuple_element_t<1, std::ranges::range_reference_t<decltype(g.iter())>>,
-                                 const typename G::cell_type&>;
-    // iter_mut() first element is pos_type
-    requires std::same_as<
-        std::remove_cvref_t<std::tuple_element_t<0, std::ranges::range_value_t<decltype(gm.iter_mut())>>>,
-        typename G::pos_type>;
-    // iter_mut() second element must be usable as mutable cell_type reference
-    requires std::convertible_to<std::tuple_element_t<1, std::ranges::range_reference_t<decltype(gm.iter_mut())>>,
-                                 typename G::cell_type&>;
+                                 const typename std::decay_t<G>::cell_type&>;
 };
 
 /**
- * @brief A grid with unsigned (non-negative) coordinates.
- *        Covers: packed_grid, dense_grid, sparse_grid, tree_grid.
+ * @brief Mutable iteration: extends `iterable_grid` with mutable ranges.
+ *
+ *  - `iter_cells_mut()` → input_range whose references are convertible to `cell_type&`
+ *  - `iter_mut()`       → input_range of (pos_type, cell_type&) tuples
  */
 export template <typename G>
-concept maybe_fixed_grid = any_grid<G> && std::unsigned_integral<typename G::pos_type::value_type>;
+concept mutable_iterable_grid = iterable_grid<G> && mutable_viewable_grid<G> && requires(G g) {
+    { g.iter_cells_mut() } -> std::ranges::input_range;
+    { g.iter_mut() } -> std::ranges::input_range;
+    requires std::convertible_to<std::ranges::range_reference_t<decltype(g.iter_cells_mut())>,
+                                 typename std::decay_t<G>::cell_type&>;
+    requires std::same_as<
+        std::remove_cvref_t<std::tuple_element_t<0, std::ranges::range_value_t<decltype(g.iter_mut())>>>,
+        typename std::decay_t<G>::pos_type>;
+    requires std::convertible_to<std::tuple_element_t<1, std::ranges::range_reference_t<decltype(g.iter_mut())>>,
+                                 typename std::decay_t<G>::cell_type&>;
+};
 
 /**
- * @brief A grid with signed (possibly negative) coordinates.
- *        Covers: dense_extendible_grid, tree_extendible_grid.
+ * @brief A grid with unsigned (non-negative) coordinates — i.e. a fixed-bounds grid.
+ *
+ * Covered by: `packed_grid`, `dense_grid`, `sparse_grid`, `tree_grid`.
  */
 export template <typename G>
-concept maybe_extendible_grid = any_grid<G> && std::signed_integral<typename G::pos_type::value_type>;
+concept maybe_fixed_grid = viewable_grid<G> && std::unsigned_integral<typename std::decay_t<G>::pos_type::value_type>;
 
 /**
- * @brief A grid that supports negative coordinates and extends implicitly on insert.
- *        Covers: dense_extendible_grid, tree_extendible_grid.
+ * @brief A grid with signed coordinates — can hold negative positions.
+ *
+ * Covered by: `dense_extendible_grid`, `tree_extendible_grid`.
+ */
+export template <typename G>
+concept maybe_extendible_grid =
+    viewable_grid<G> && std::signed_integral<typename std::decay_t<G>::pos_type::value_type>;
+
+/**
+ * @brief A grid that supports negative coordinates and extends its bounds implicitly on insert.
+ *
+ * Alias for `maybe_extendible_grid` — extension is structural (signed coords imply implicit growth).
+ * Covered by: `dense_extendible_grid`, `tree_extendible_grid`.
  */
 export template <typename G>
 concept extendible_grid = maybe_extendible_grid<G>;
 
 /**
- * @brief A grid backed by a tree structure that exposes coverage().
- *        Covers: tree_grid, tree_extendible_grid.
+ * @brief A grid backed by a tree structure that exposes `coverage()`.
+ *
+ * `coverage()` returns the number of occupied cells as a `uint32_t`.
+ * Covered by: `tree_grid`, `tree_extendible_grid`.
  */
 export template <typename G>
-concept tree_based_grid = any_grid<G> && requires(const G& g) {
+concept tree_based_grid = viewable_grid<G> && requires(G g) {
     { g.coverage() } -> std::convertible_to<std::uint32_t>;
 };
 
 /**
- * @brief A basic grid concept combining gettable, settable, and containable.
+ * @brief Composite concept: full read/write grid with iteration.
+ *
+ * Satisfied by any type that is simultaneously:
+ *   `viewable_grid` + `mutable_viewable_grid` + `grid_container` + `iterable_grid` + `mutable_iterable_grid`
  */
 export template <typename G>
-concept basic_grid = any_grid<G> && iterable_grid<G>;
+concept basic_grid =
+    viewable_grid<G> && mutable_viewable_grid<G> && grid_container<G> && iterable_grid<G> && mutable_iterable_grid<G>;
 
 /**
- * @brief An extendible grid concept combining basic_grid and extendible_grid.
+ * @brief `basic_grid` over a signed-coordinate (extendible) domain.
  */
 export template <typename G>
 concept basic_extendible_grid = basic_grid<G> && extendible_grid<G>;
 
 // ============================================================
-// grid_trait — constrained on any_grid, derives facts from the interface
+// grid_trait — constrained on viewable_grid, derives facts from the interface
 // ============================================================
 
 /**
- * @brief Auto-detecting traits struct for any grid type.
+ * @brief Compile-time traits for any grid type, constrained on `viewable_grid<G>`.
  *
- * Constrained on any_grid<G>; no user specialization needed.
- * value_type unwraps reference_wrapper<T> if iter_cells() yields one.
+ * No user specialization is needed — all fields are derived from the grid interface.
  *
- * Members:
- *   - `using pos_type`              — std::array<coord_type, dim>
- *   - `using coord_type`               — element type of pos_array_t
- *   - `using value_type`               — T (reference_wrapper<T> is unwrapped)
- *   - `static constexpr dim`           — number of spatial dimensions
- *   - `static constexpr is_extendible` — true when coord_type is signed
- *   - `static constexpr has_coverage`  — true when the grid satisfies tree_based_grid
+ * Type members:
+ *   - `pos_type`   — `std::array<coord_type, dim>` (the grid's position type)
+ *   - `coord_type` — element type of `pos_type` (signed ⇒ extendible, unsigned ⇒ fixed)
+ *   - `value_type` — `cell_type` of the grid
  *
- *   - functions from those concepts, constrained by concepts
+ * Constants:
+ *   - `dim`            — number of spatial dimensions
+ *   - `is_extendible`  — true when `coord_type` is signed (`extendible_grid<G>`)
+ *   - `has_coverage`   — true when the grid satisfies `tree_based_grid<G>`
+ *
+ * Methods (conditionally enabled by the corresponding concept):
+ *   - `contains` / `get`                           — always (viewable_grid)
+ *   - `get_mut`                                    — mutable_viewable_grid
+ *   - `set` / `set_new` / `remove` / `take`        — grid_container
+ *   - `get_unsafe` / `get_mut_unsafe`              — unsafe_viewable/mutable_viewable_grid
+ *   - `set_unsafe` / `remove_unsafe` / `take_unsafe`                  — unsafe_grid_container
+ *   - `iter_pos` / `iter_cells` / `iter`           — iterable_grid
+ *   - `iter_cells_mut` / `iter_mut`                — mutable_iterable_grid
+ *   - `coverage`                                   — tree_based_grid
  */
-export template <any_grid G>
+export template <viewable_grid G>
 struct grid_trait {
-    using pos_type   = typename G::pos_type;
+    using pos_type   = typename std::decay_t<G>::pos_type;
     using coord_type = typename pos_type::value_type;
-    using value_type = typename G::cell_type;
+    using value_type = typename std::decay_t<G>::cell_type;
 
     static constexpr std::size_t dim    = std::tuple_size_v<pos_type>;
     static constexpr bool is_extendible = extendible_grid<G>;
@@ -215,41 +272,48 @@ struct grid_trait {
         -> std::expected<std::reference_wrapper<const value_type>, grid_error> {
         return g.get(pos);
     }
-    auto get_mut(G& g, const pos_type& pos) const -> std::expected<std::reference_wrapper<value_type>, grid_error> {
+    auto get_mut(G& g, const pos_type& pos) const -> std::expected<std::reference_wrapper<value_type>, grid_error>
+        requires mutable_viewable_grid<G>
+    {
         return g.get_mut(pos);
     }
     template <typename... Args>
-        requires std::constructible_from<value_type, Args...>
+        requires std::constructible_from<value_type, Args...> && grid_container<G>
     auto set(G& g, const pos_type& pos, Args&&... value) const
         -> std::expected<std::reference_wrapper<value_type>, grid_error> {
         return g.set(pos, std::forward<Args>(value)...);
     }
     template <typename... Args>
-        requires std::constructible_from<value_type, Args...> && new_settable_grid<G>
+        requires std::constructible_from<value_type, Args...> && grid_container<G>
     auto set_new(G& g, const pos_type& pos, Args&&... value)
         -> std::expected<std::reference_wrapper<value_type>, grid_error> {
         return g.set_new(pos, std::forward<Args>(value)...);
     }
 
     auto get_unsafe(const G& g, const pos_type& pos) const -> const value_type&
-        requires unsafe_grid<G>
+        requires unsafe_viewable_grid<G>
     {
         return g.get_unsafe(pos);
     }
     auto get_mut_unsafe(G& g, const pos_type& pos) const -> value_type&
-        requires unsafe_grid<G>
+        requires unsafe_mutable_viewable_grid<G>
     {
         return g.get_mut_unsafe(pos);
     }
     template <typename... Args>
-        requires std::constructible_from<value_type, Args...> && unsafe_grid<G>
+        requires std::constructible_from<value_type, Args...> && unsafe_grid_container<G>
     auto set_unsafe(G& g, const pos_type& pos, Args&&... value) const -> value_type& {
         return g.set_unsafe(pos, std::forward<Args>(value)...);
     }
-    template <typename... Args>
-        requires std::constructible_from<value_type, Args...> && unsafe_new_settable_grid<G>
-    auto set_new_unsafe(G& g, const pos_type& pos, Args&&... value) const -> value_type& {
-        return g.set_new_unsafe(pos, std::forward<Args>(value)...);
+    auto remove_unsafe(G& g, const pos_type& pos) const -> void
+        requires unsafe_grid_container<G>
+    {
+        return g.remove_unsafe(pos);
+    }
+    auto take_unsafe(G& g, const pos_type& pos) const -> value_type
+        requires unsafe_grid_container<G>
+    {
+        return g.take_unsafe(pos);
     }
 
     auto iter_pos(const G& g) const
@@ -263,7 +327,7 @@ struct grid_trait {
         return g.iter_cells();
     }
     auto iter_cells_mut(G& g) const
-        requires iterable_grid<G>
+        requires mutable_iterable_grid<G>
     {
         return g.iter_cells_mut();
     }
@@ -273,7 +337,7 @@ struct grid_trait {
         return g.iter();
     }
     auto iter_mut(G& g) const
-        requires iterable_grid<G>
+        requires mutable_iterable_grid<G>
     {
         return g.iter_mut();
     }
