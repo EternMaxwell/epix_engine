@@ -18,15 +18,19 @@ module;
 #include <vector>
 #endif
 
-export module epix.extension.grid;
+export module epix.extension.grid:chunk_grid;
 #ifdef EPIX_IMPORT_STD
 import std;
 #endif
 import epix.meta;
 import epix.utils;
+import epix.core;
 
-export import :basic_grid;
-export import :polygon;
+import :concepts;
+import :basic_grid;
+import :bit_grid;
+import :grid_view;
+import :polygon;
 
 namespace epix::ext::grid {
 /** @brief Error codes for chunk layer operations. */
@@ -664,6 +668,254 @@ struct ExtendibleChunkRefGrid {
         if (!chunk_result.has_value()) return std::unexpected(chunk_result.error());
 
         return chunk_result.value().get().remove_all(cell_pos).transform_error(map_err);
+    }
+};
+
+/** @brief Non-owning chunk-ref grid wrapping each chunk in a `Mut<Chunk<Dim>>`.
+ *
+ * Behaves like `ExtendibleChunkRefGrid` but stores `epix::core::Mut<Chunk<Dim>>`
+ * per chunk so that change-detection ticks travel with the reference. Cell-level
+ * mutating helpers (`insert_cell`, `get_cell_mut`, `remove_cell`,
+ * `remove_cell_all`) go through `Mut::get_mut()` and therefore automatically
+ * mark the owning chunk component as modified. Read-only helpers (`get_cell`,
+ * `iter_chunks`) go through `Mut::get()` and leave the modified tick alone.
+ *
+ * Construction: `insert_chunk(pos, Mut<Chunk<Dim>>)` — typically you obtain the
+ * `Mut<Chunk<Dim>>` from a `Query<Item<Mut<Chunk<Dim>>, ...>>` and forward it
+ * directly into the grid.
+ */
+export template <std::size_t Dim>
+struct ExtendibleMutChunkRefGrid {
+   private:
+    struct ChunkRef {
+        epix::core::Mut<Chunk<Dim>> value;
+    };
+
+    tree_extendible_grid<Dim, ChunkRef> m_chunk_grid;
+    std::size_t m_chunk_width_shift;
+
+    auto chunk_coords(std::array<std::int64_t, Dim> pos) const
+        -> std::expected<std::tuple<std::array<std::int32_t, Dim>, std::array<std::uint32_t, Dim>>, ChunkGridError> {
+        std::tuple<std::array<std::int32_t, Dim>, std::array<std::uint32_t, Dim>> result;
+        for (std::size_t i = 0; i < Dim; i++) {
+            std::int64_t chunk_coord = pos[i] >> m_chunk_width_shift;
+            if (chunk_coord < std::numeric_limits<std::int32_t>::min() ||
+                chunk_coord > std::numeric_limits<std::int32_t>::max()) {
+                return std::unexpected(grid_error::OutOfBounds);
+            }
+            std::get<0>(result)[i] = static_cast<std::int32_t>(chunk_coord);
+            std::get<1>(result)[i] = static_cast<std::uint32_t>(pos[i] & ((1 << m_chunk_width_shift) - 1));
+        }
+        return result;
+    }
+    constexpr static auto deref = [](std::reference_wrapper<const ChunkRef> ref) -> epix::core::Ref<Chunk<Dim>> {
+        return ref.get().value;
+    };
+    constexpr static auto deref_mut = [](std::reference_wrapper<ChunkRef> ref) -> epix::core::Mut<Chunk<Dim>> {
+        return ref.get().value;
+    };
+
+   public:
+    /** @brief Creates an empty Mut-tracked chunk-ref grid. */
+    ExtendibleMutChunkRefGrid(std::size_t chunk_width_shift) : m_chunk_width_shift(chunk_width_shift) {}
+    ExtendibleMutChunkRefGrid(const ExtendibleMutChunkRefGrid&)            = delete;
+    ExtendibleMutChunkRefGrid(ExtendibleMutChunkRefGrid&&)                 = default;
+    ExtendibleMutChunkRefGrid& operator=(const ExtendibleMutChunkRefGrid&) = delete;
+    ExtendibleMutChunkRefGrid& operator=(ExtendibleMutChunkRefGrid&&)      = default;
+
+    std::size_t chunk_width_shift() const { return m_chunk_width_shift; }
+    std::size_t chunk_width() const { return static_cast<std::size_t>(1) << m_chunk_width_shift; }
+
+    /** @brief Read-only access to the `Mut<Chunk>` wrapper at chunk coordinates.
+     *
+     *  Use `result->get()` to read the chunk without marking it modified,
+     *  or `result->is_modified()` to query change detection.
+     */
+    auto get_chunk(std::array<std::int32_t, Dim> pos) const
+        -> std::expected<epix::core::Ref<Chunk<Dim>>, ChunkGridError> {
+        return m_chunk_grid.get(pos).transform(deref);
+    }
+    /** @brief Mutable access to the `Mut<Chunk>` wrapper at chunk coordinates. */
+    auto get_chunk_mut(std::array<std::int32_t, Dim> pos)
+        -> std::expected<epix::core::Mut<Chunk<Dim>>, ChunkGridError> {
+        return m_chunk_grid.get_mut(pos).transform(deref_mut);
+    }
+
+    void shrink_grid() { m_chunk_grid.shrink(); }
+    void clear_grid() { m_chunk_grid.clear(); }
+
+    /** @brief Inserts a `Mut<Chunk>` reference at chunk coordinates (takes ownership of the wrapper). */
+    auto insert_chunk(std::array<std::int32_t, Dim> pos, epix::core::Mut<Chunk<Dim>> chunk)
+        -> std::expected<void, ChunkGridError> {
+        if (chunk.get().width_shift() != m_chunk_width_shift) return std::unexpected(ChunkLayerError::WidthMismatch);
+        auto result = m_chunk_grid.set_new(pos, ChunkRef{std::move(chunk)});
+        if (!result.has_value()) return std::unexpected(ChunkGridError{result.error()});
+        return {};
+    }
+    auto remove_chunk(std::array<std::int32_t, Dim> pos) -> std::expected<void, ChunkGridError> {
+        return m_chunk_grid.remove(pos);
+    }
+
+    auto iter_chunks() const { return std::views::transform(m_chunk_grid.iter_cells(), deref); }
+    auto iter_chunks_mut() { return std::views::transform(m_chunk_grid.iter_cells_mut(), deref_mut); }
+    auto iter_chunk_pos() const { return m_chunk_grid.iter_pos(); }
+    auto iter_chunk_with_pos() const { return std::views::zip(iter_chunk_pos(), iter_chunks()); }
+    auto iter_chunk_with_pos_mut() { return std::views::zip(iter_chunk_pos(), iter_chunks_mut()); }
+
+    /** @brief Inserts a typed value at world-space coordinates. Marks owning chunk modified. */
+    template <typename T>
+    auto insert_cell(std::array<std::int64_t, Dim> pos, T&& value) -> std::expected<void, ChunkGridError> {
+        auto coords_result = chunk_coords(pos);
+        if (!coords_result.has_value()) return std::unexpected(coords_result.error());
+
+        auto [chunk_pos, cell_pos] = coords_result.value();
+        return get_chunk_mut(chunk_pos).transform_error(map_err).and_then(
+            [&cell_pos, &value](epix::core::Mut<Chunk<Dim>>& chunk_mut) -> std::expected<void, ChunkGridError> {
+                return chunk_mut.get_mut().set(cell_pos, std::forward<T>(value));
+            });
+    }
+    /** @brief Inserts multiple typed values at one world-space cell. Marks owning chunk modified. */
+    template <typename... Args>
+    auto insert_cell_multi(std::array<std::int64_t, Dim> pos, Args&&... value) -> std::expected<void, ChunkGridError> {
+        auto coords_result = chunk_coords(pos);
+        if (!coords_result.has_value()) return std::unexpected(coords_result.error());
+
+        auto [chunk_pos, cell_pos] = coords_result.value();
+        return get_chunk_mut(chunk_pos).transform_error(map_err).and_then(
+            [&cell_pos, &value...](epix::core::Mut<Chunk<Dim>>& chunk_mut) -> std::expected<void, ChunkGridError> {
+                return chunk_mut.get_mut().set_multi(cell_pos, std::forward<Args>(value)...);
+            });
+    }
+    /** @brief Read-only typed cell access. Does NOT mark owning chunk modified. */
+    template <typename T>
+    auto get_cell(std::array<std::int64_t, Dim> pos) const
+        -> std::expected<std::reference_wrapper<const T>, ChunkGridError> {
+        auto coords_result = chunk_coords(pos);
+        if (!coords_result.has_value()) return std::unexpected(coords_result.error());
+
+        auto [chunk_pos, cell_pos] = coords_result.value();
+        auto chunk_result          = get_chunk(chunk_pos).transform_error(map_err);
+        if (!chunk_result.has_value()) return std::unexpected(chunk_result.error());
+
+        const ChunkLayer<Dim>& layer = chunk_result.value().get();
+        return layer.template get<T>(cell_pos).transform_error(map_err);
+    }
+    /** @brief Mutable typed cell access. Marks owning chunk modified. */
+    template <typename T>
+    auto get_cell_mut(std::array<std::int64_t, Dim> pos) -> std::expected<std::reference_wrapper<T>, ChunkGridError> {
+        auto coords_result = chunk_coords(pos);
+        if (!coords_result.has_value()) return std::unexpected(coords_result.error());
+
+        auto [chunk_pos, cell_pos] = coords_result.value();
+        auto chunk_result          = get_chunk_mut(chunk_pos).transform_error(map_err);
+        if (!chunk_result.has_value()) return std::unexpected(chunk_result.error());
+
+        ChunkLayer<Dim>& layer = chunk_result.value().get().get_mut();
+        return layer.template get_mut<T>(cell_pos).transform_error(map_err);
+    }
+    template <typename T>
+    auto remove_cell(std::array<std::int64_t, Dim> pos) -> std::expected<void, ChunkGridError> {
+        auto coords_result = chunk_coords(pos);
+        if (!coords_result.has_value()) return std::unexpected(coords_result.error());
+
+        auto [chunk_pos, cell_pos] = coords_result.value();
+        auto chunk_result          = get_chunk_mut(chunk_pos).transform_error(map_err);
+        if (!chunk_result.has_value()) return std::unexpected(chunk_result.error());
+
+        ChunkLayer<Dim>& layer = chunk_result.value().get().get_mut();
+        return layer.template remove<T>(cell_pos).transform_error(map_err);
+    }
+    auto remove_cell_all(std::array<std::int64_t, Dim> pos) -> std::expected<void, ChunkGridError> {
+        auto coords_result = chunk_coords(pos);
+        if (!coords_result.has_value()) return std::unexpected(coords_result.error());
+
+        auto [chunk_pos, cell_pos] = coords_result.value();
+        auto chunk_result          = get_chunk_mut(chunk_pos).transform_error(map_err);
+        if (!chunk_result.has_value()) return std::unexpected(chunk_result.error());
+
+        return chunk_result.value().get().get_mut().remove_all(cell_pos).transform_error(map_err);
+    }
+};
+
+/** @brief Read-only chunk-ref grid wrapping each chunk in a `Ref<Chunk<Dim>>`.
+ *
+ * The companion to `ExtendibleMutChunkRefGrid`. Use this when a system only
+ * needs to read chunk data but still wants `Ref::is_modified()` change-detection
+ * propagation (e.g. mesh rebuild deciding whether to skip a chunk).
+ */
+export template <std::size_t Dim>
+struct ExtendibleRefChunkRefGrid {
+   private:
+    struct ChunkRef {
+        epix::core::Ref<Chunk<Dim>> value;
+    };
+
+    tree_extendible_grid<Dim, ChunkRef> m_chunk_grid;
+    std::size_t m_chunk_width_shift;
+
+    auto chunk_coords(std::array<std::int64_t, Dim> pos) const
+        -> std::expected<std::tuple<std::array<std::int32_t, Dim>, std::array<std::uint32_t, Dim>>, ChunkGridError> {
+        std::tuple<std::array<std::int32_t, Dim>, std::array<std::uint32_t, Dim>> result;
+        for (std::size_t i = 0; i < Dim; i++) {
+            std::int64_t chunk_coord = pos[i] >> m_chunk_width_shift;
+            if (chunk_coord < std::numeric_limits<std::int32_t>::min() ||
+                chunk_coord > std::numeric_limits<std::int32_t>::max()) {
+                return std::unexpected(grid_error::OutOfBounds);
+            }
+            std::get<0>(result)[i] = static_cast<std::int32_t>(chunk_coord);
+            std::get<1>(result)[i] = static_cast<std::uint32_t>(pos[i] & ((1 << m_chunk_width_shift) - 1));
+        }
+        return result;
+    }
+    constexpr static auto deref = [](std::reference_wrapper<const ChunkRef> ref) -> const epix::core::Ref<Chunk<Dim>> {
+        return ref.get().value;
+    };
+
+   public:
+    ExtendibleRefChunkRefGrid(std::size_t chunk_width_shift) : m_chunk_width_shift(chunk_width_shift) {}
+    ExtendibleRefChunkRefGrid(const ExtendibleRefChunkRefGrid&)            = delete;
+    ExtendibleRefChunkRefGrid(ExtendibleRefChunkRefGrid&&)                 = default;
+    ExtendibleRefChunkRefGrid& operator=(const ExtendibleRefChunkRefGrid&) = delete;
+    ExtendibleRefChunkRefGrid& operator=(ExtendibleRefChunkRefGrid&&)      = default;
+
+    std::size_t chunk_width_shift() const { return m_chunk_width_shift; }
+    std::size_t chunk_width() const { return static_cast<std::size_t>(1) << m_chunk_width_shift; }
+
+    auto get_chunk(std::array<std::int32_t, Dim> pos) const
+        -> std::expected<epix::core::Ref<Chunk<Dim>>, ChunkGridError> {
+        return m_chunk_grid.get(pos).transform(deref);
+    }
+
+    void shrink_grid() { m_chunk_grid.shrink(); }
+    void clear_grid() { m_chunk_grid.clear(); }
+
+    auto insert_chunk(std::array<std::int32_t, Dim> pos, epix::core::Ref<Chunk<Dim>> chunk)
+        -> std::expected<void, ChunkGridError> {
+        if (chunk.get().width_shift() != m_chunk_width_shift) return std::unexpected(ChunkLayerError::WidthMismatch);
+        auto result = m_chunk_grid.set_new(pos, ChunkRef{std::move(chunk)});
+        if (!result.has_value()) return std::unexpected(ChunkGridError{result.error()});
+        return {};
+    }
+    auto remove_chunk(std::array<std::int32_t, Dim> pos) -> std::expected<void, ChunkGridError> {
+        return m_chunk_grid.remove(pos);
+    }
+
+    auto iter_chunks() const { return std::views::transform(m_chunk_grid.iter_cells(), deref); }
+    auto iter_chunk_pos() const { return m_chunk_grid.iter_pos(); }
+    auto iter_chunk_with_pos() const { return std::views::zip(iter_chunk_pos(), iter_chunks()); }
+
+    template <typename T>
+    auto get_cell(std::array<std::int64_t, Dim> pos) const
+        -> std::expected<std::reference_wrapper<const T>, ChunkGridError> {
+        auto coords_result = chunk_coords(pos);
+        if (!coords_result.has_value()) return std::unexpected(coords_result.error());
+
+        auto [chunk_pos, cell_pos] = coords_result.value();
+        auto chunk_result          = get_chunk(chunk_pos).transform_error(map_err);
+        if (!chunk_result.has_value()) return std::unexpected(chunk_result.error());
+
+        const ChunkLayer<Dim>& layer = chunk_result.value().get().get();
+        return layer.template get<T>(cell_pos).transform_error(map_err);
     }
 };
 

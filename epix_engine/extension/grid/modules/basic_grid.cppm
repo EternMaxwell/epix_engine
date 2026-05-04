@@ -19,28 +19,26 @@ export module epix.extension.grid:basic_grid;
 #ifdef EPIX_IMPORT_STD
 import std;
 #endif
+import :concepts;
+
 namespace epix::ext::grid {
 constexpr std::size_t npos = std::numeric_limits<std::size_t>::max();
 bool is_npos(std::size_t index) { return index == npos; }
 bool not_npos(std::size_t index) { return index != npos; }
-/** @brief Error codes returned by grid operations. */
-export enum class grid_error {
-    OutOfBounds,     /**< Position is outside the grid bounds. */
-    InvalidPos,      /**< Position is invalid. */
-    EmptyCell,       /**< The cell at the given position is empty. */
-    AlreadyOccupied, /**< The cell at the given position is already occupied. */
-};
 /**
  * @brief A fixed-size, densely packed N-dimensional grid where every cell holds a value.
  *
  * All cells are initialized with a default value. Every position within the
  * grid dimensions is always occupied.
  * @tparam Dim Number of dimensions.
- * @tparam T   Cell value type (must be default-constructible and movable).
+ * @tparam T   Cell value type (must be default-constructible, movable, and copyable).
  */
 export template <std::size_t Dim, typename T>
-    requires std::constructible_from<T> && std::movable<T>
+    requires std::constructible_from<T> && std::movable<T> && std::copyable<T>
 struct packed_grid {
+    using pos_type  = std::array<std::uint32_t, Dim>;
+    using cell_type = T;
+
    private:
     std::vector<T> m_cells;
     std::array<std::uint32_t, Dim> m_dimensions;
@@ -62,6 +60,10 @@ struct packed_grid {
      * @param value New default value.
      */
     void set_default(T value) { m_default_value = std::move(value); }
+    /**
+     * @brief Contains function for satisfying concept.
+     */
+    bool contains(const std::array<std::uint32_t, Dim>& pos) const { return offset(pos).has_value(); }
     /**
      * @brief Get the dimensions of the grid.
      * @return Array of sizes along each axis.
@@ -138,6 +140,25 @@ struct packed_grid {
     std::expected<void, grid_error> reset(const std::array<std::uint32_t, Dim>& pos) {
         return offset(pos).transform([&](std::size_t index) { m_cells[index] = m_default_value; });
     }
+    /**
+     * @brief Remove the cell at given pos, here meaning reset to default value. Alias for reset().
+     * @param pos Position in the grid.
+     * @return void on success, or grid_error::OutOfBounds.
+     */
+    std::expected<void, grid_error> remove(const std::array<std::uint32_t, Dim>& pos) { return reset(pos); }
+    /**
+     * @brief Take the cell at given pos, here meaning return current value and reset to default. Not really "take"
+     * since it doesn't leave an empty cell, but provided for interface compatibility with other grid types.
+     * @param pos Position in the grid.
+     * @return Cell value on success, or grid_error::OutOfBounds.
+     */
+    std::expected<T, grid_error> take(const std::array<std::uint32_t, Dim>& pos) {
+        return offset(pos).transform([&](std::size_t index) {
+            T value        = std::move(m_cells[index]);
+            m_cells[index] = m_default_value;
+            return value;
+        });
+    }
 };
 /**
  * @brief A fixed-size N-dimensional grid that stores only occupied cells densely.
@@ -151,6 +172,9 @@ struct packed_grid {
 export template <std::size_t Dim, typename T>
     requires std::movable<T>
 struct dense_grid {
+    using pos_type  = std::array<std::uint32_t, Dim>;
+    using cell_type = T;
+
    private:
     std::vector<T> m_data;
     std::vector<std::array<std::uint32_t, Dim>> m_positions;  // positions of each cell in m_data
@@ -270,6 +294,9 @@ struct dense_grid {
 export template <std::size_t Dim, typename T>
     requires std::movable<T>
 struct sparse_grid {
+    using pos_type  = std::array<std::uint32_t, Dim>;
+    using cell_type = T;
+
    private:
     std::vector<T> m_data;
     std::vector<std::array<std::uint32_t, Dim>> m_positions;  // positions of each cell in m_data
@@ -408,6 +435,9 @@ struct sparse_grid {
 export template <std::size_t Dim, typename T>
     requires std::movable<T>
 struct dense_extendible_grid {
+    using pos_type  = std::array<std::int32_t, Dim>;
+    using cell_type = T;
+
    private:
     std::vector<T> m_data;
     std::vector<std::array<std::int32_t, Dim>> m_positions;  // positions of each cell in m_data, can be negative
@@ -534,6 +564,9 @@ struct dense_extendible_grid {
 export template <std::size_t Dim, typename T, std::size_t ChildCount = 2>
     requires std::movable<T>
 struct tree_extendible_grid {
+    using pos_type  = std::array<std::int32_t, Dim>;
+    using cell_type = T;
+
    private:
     constexpr static std::size_t child_per_node = [] consteval {
         std::size_t count = 1;
@@ -680,6 +713,9 @@ struct tree_extendible_grid {
 export template <std::size_t Dim, typename T, std::size_t ChildCount = 2>
     requires std::movable<T>
 struct tree_grid {
+    using pos_type  = std::array<std::uint32_t, Dim>;
+    using cell_type = T;
+
    private:
     constexpr static std::size_t child_per_node = [] consteval {
         std::size_t count = 1;
@@ -810,7 +846,7 @@ struct tree_grid {
 
 namespace epix::ext::grid {
 template <std::size_t Dim, typename T>
-    requires std::constructible_from<T> && std::movable<T>
+    requires std::constructible_from<T> && std::movable<T> && std::copyable<T>
 std::size_t packed_grid<Dim, T>::offset_unsafe(const std::array<std::uint32_t, Dim>& pos) const {
     std::size_t index = 0;
     for (std::size_t i = 0; i < Dim; i++) {
@@ -820,7 +856,7 @@ std::size_t packed_grid<Dim, T>::offset_unsafe(const std::array<std::uint32_t, D
     return index;
 }
 template <std::size_t Dim, typename T>
-    requires std::constructible_from<T> && std::movable<T>
+    requires std::constructible_from<T> && std::movable<T> && std::copyable<T>
 std::expected<std::size_t, grid_error> packed_grid<Dim, T>::offset(const std::array<std::uint32_t, Dim>& pos) const {
     std::size_t index = 0;
     for (std::size_t i = 0; i < Dim; i++) {
@@ -834,7 +870,7 @@ std::expected<std::size_t, grid_error> packed_grid<Dim, T>::offset(const std::ar
     return index;
 }
 template <std::size_t Dim, typename T>
-    requires std::constructible_from<T> && std::movable<T>
+    requires std::constructible_from<T> && std::movable<T> && std::copyable<T>
 std::array<std::uint32_t, Dim> packed_grid<Dim, T>::index_to_pos(std::size_t index) const {
     std::array<std::uint32_t, Dim> pos;
     for (std::size_t i = Dim; i-- > 0;) {
@@ -844,7 +880,7 @@ std::array<std::uint32_t, Dim> packed_grid<Dim, T>::index_to_pos(std::size_t ind
     return pos;
 }
 template <std::size_t Dim, typename T>
-    requires std::constructible_from<T> && std::movable<T>
+    requires std::constructible_from<T> && std::movable<T> && std::copyable<T>
 packed_grid<Dim, T>::packed_grid(const std::array<std::uint32_t, Dim>& dimensions, T default_value)
     : m_dimensions(dimensions), m_default_value(std::move(default_value)) {
     std::size_t total_size = 1;
@@ -2220,175 +2256,5 @@ void tree_grid<Dim, T, ChildCount>::shrink() {
     // rebuild nodes to compact internal structure; depth and origin remain fixed
     rebuild_tree();
 }
-
-// ============================================================
-// Internal helpers
-// ============================================================
-
-namespace detail {
-
-/** @brief Strips std::reference_wrapper<T> to its underlying type T. */
-template <typename T>
-struct unwrap_ref {
-    using type = T;
-};
-template <typename T>
-struct unwrap_ref<std::reference_wrapper<T>> {
-    using type = T;
-};
-/** @brief Removes cv-qualifiers then unwraps reference_wrapper, giving the plain value type. */
-template <typename T>
-using unwrap_ref_t = typename unwrap_ref<std::remove_cv_t<T>>::type;
-
-}  // namespace detail
-
-// ============================================================
-// Grid concepts — purely structural, no grid_trait dependency
-// ============================================================
-
-/**
- * @brief Fundamental structural concept satisfied by any grid type.
- *
- * Requires:
- *   - count()      → convertible to std::size_t
- *   - iter_pos()   → input_range whose value_type is a fixed-size std::array
- *                    (detected via std::tuple_size and ::value_type)
- *   - iter_cells() → input_range
- *   - iter()       → input_range (position–value pairs)
- */
-export template <typename G>
-concept any_grid = requires(const G& g) {
-    { g.count() } -> std::convertible_to<std::size_t>;
-    { g.iter_pos() } -> std::ranges::input_range;
-    requires requires {
-        typename std::tuple_size<std::ranges::range_value_t<decltype(g.iter_pos())>>::type;
-        typename std::ranges::range_value_t<decltype(g.iter_pos())>::value_type;
-    };
-    { g.iter_cells() } -> std::ranges::input_range;
-    { g.iter() } -> std::ranges::input_range;
-};
-
-/**
- * @brief A grid with unsigned (non-negative) coordinates.
- *        Covers: packed_grid, dense_grid, sparse_grid, tree_grid.
- */
-export template <typename G>
-concept fixed_grid =
-    any_grid<G> && std::unsigned_integral<
-                       typename std::ranges::range_value_t<decltype(std::declval<const G&>().iter_pos())>::value_type>;
-
-/**
- * @brief A grid with signed (possibly negative) coordinates.
- *        Covers: dense_extendible_grid, tree_extendible_grid.
- */
-export template <typename G>
-concept extendible_grid =
-    any_grid<G> && std::signed_integral<
-                       typename std::ranges::range_value_t<decltype(std::declval<const G&>().iter_pos())>::value_type>;
-
-/**
- * @brief A grid backed by a tree structure that exposes coverage().
- *        Covers: tree_grid, tree_extendible_grid.
- */
-export template <typename G>
-concept tree_based_grid = any_grid<G> && requires(const G& g) {
-    { g.coverage() } -> std::convertible_to<std::uint32_t>;
-};
-
-/**
- * @brief Extends any_grid with a contains() occupancy query.
- *
- * Satisfied by all grid types except packed_grid (which always has all cells full).
- */
-export template <typename G>
-concept containable_grid =
-    any_grid<G> &&
-    requires(const G& g, const std::ranges::range_value_t<decltype(std::declval<const G&>().iter_pos())>& pos) {
-        { g.contains(pos) } -> std::convertible_to<bool>;
-    };
-
-/**
- * @brief Extends any_grid with a const get() operation.
- *
- * get(pos) must return expected<reference_wrapper<const T>, grid_error>
- * where T is the unwrapped cell value type.
- */
-export template <typename G>
-concept gettable_grid =
-    any_grid<G> &&
-    requires(const G& g, const std::ranges::range_value_t<decltype(std::declval<const G&>().iter_pos())>& pos) {
-        {
-            g.get(pos)
-        }
-        -> std::same_as<std::expected<std::reference_wrapper<const detail::unwrap_ref_t<
-                                          std::ranges::range_value_t<decltype(std::declval<const G&>().iter_cells())>>>,
-                                      grid_error>>;
-    };
-
-/**
- * @brief Extends any_grid with a mutable set() operation.
- *
- * set(pos, val) must return expected<reference_wrapper<T>, grid_error>
- * where T is the unwrapped cell value type.
- */
-export template <typename G>
-concept settable_grid =
-    any_grid<G> &&
-    requires(G& g,
-             const std::ranges::range_value_t<decltype(std::declval<const G&>().iter_pos())>& pos,
-             detail::unwrap_ref_t<std::ranges::range_value_t<decltype(std::declval<const G&>().iter_cells())>> val) {
-        {
-            g.set(pos, std::move(val))
-        }
-        -> std::same_as<std::expected<std::reference_wrapper<detail::unwrap_ref_t<
-                                          std::ranges::range_value_t<decltype(std::declval<const G&>().iter_cells())>>>,
-                                      grid_error>>;
-    };
-
-/**
- * @brief A basic grid concept combining gettable, settable, and containable.
- */
-export template <typename G>
-concept basic_grid = any_grid<G> && gettable_grid<G> && settable_grid<G> && containable_grid<G>;
-
-/**
- * @brief An extendible grid concept combining basic_grid and extendible_grid.
- */
-export template <typename G>
-concept basic_extendible_grid = basic_grid<G> && extendible_grid<G>;
-
-// ============================================================
-// grid_trait — constrained on any_grid, derives facts from the interface
-// ============================================================
-
-/**
- * @brief Auto-detecting traits struct for any grid type.
- *
- * Constrained on any_grid<G>; no user specialization needed.
- * value_type unwraps reference_wrapper<T> if iter_cells() yields one.
- *
- * Members:
- *   - `using pos_array_t`              — std::array<coord_type, dim>
- *   - `using coord_type`               — element type of pos_array_t
- *   - `using value_type`               — T (reference_wrapper<T> is unwrapped)
- *   - `static constexpr dim`           — number of spatial dimensions
- *   - `static constexpr is_extendible` — true when coord_type is signed
- *   - `static constexpr has_coverage`  — true when the grid satisfies tree_based_grid
- */
-export template <any_grid G>
-struct grid_trait {
-    using pos_array_t = std::ranges::range_value_t<decltype(std::declval<const G&>().iter_pos())>;
-    using coord_type  = typename pos_array_t::value_type;
-
-    static constexpr std::size_t dim = std::tuple_size_v<pos_array_t>;
-
-    // range_value_t removes const& but leaves reference_wrapper intact;
-    // unwrap_ref_t then strips reference_wrapper<T> → T.
-    using value_type =
-        detail::unwrap_ref_t<std::ranges::range_value_t<decltype(std::declval<const G&>().iter_cells())>>;
-
-    static constexpr bool is_extendible = extendible_grid<G>;
-    static constexpr bool has_coverage  = tree_based_grid<G>;
-};
 
 }  // namespace epix::ext::grid
