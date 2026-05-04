@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <unordered_set>
 #include <vector>
 #endif
 
@@ -119,6 +120,10 @@ export struct SandStaticBody {
     b2BodyId b2_body = b2_nullBodyId;
     std::vector<b2ChainId> chains;
     bool dirty = true;
+    /// Snapshot of the chunk's "is solid" bit grid the last time chains were
+    /// rebuilt. Used to detect structural changes (the only thing that can
+    /// change the chain topology) without rebuilding every frame.
+    grid::BinaryGrid solid_snapshot;
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -128,6 +133,15 @@ export struct SandStaticBody {
 
 export struct PixelBodyOf {
     core::Entity world;
+};
+
+/**
+ * @brief Per-world component tracking which sand-grid cells held a body-element
+ * blocker last frame.  Used by sync_pixel_body_to_sand to detect vacated cells
+ * (body moved away) and touch them so that settled sand starts falling again.
+ */
+export struct PixelBodySandBlockers {
+    std::unordered_set<std::int64_t> cells;  ///< encoded (x,y) in sand-cell coords
 };
 
 }  // namespace epix::experimental::pixelbody

@@ -18,6 +18,7 @@ module;
 #include <cstdint>
 #include <optional>
 #include <ranges>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 #endif
@@ -112,46 +113,26 @@ namespace {
 inline b2Vec2 to_b2(glm::vec2 v) { return b2Vec2{v.x, v.y}; }
 inline glm::vec2 from_b2(b2Vec2 v) { return glm::vec2(v.x, v.y); }
 
-/// Adapter so dense_grid<2, fs::Element> satisfies grid::DataGrid (and
-/// grid::BoolGrid via `contains(x, y)`).
-struct DenseElementGridView {
-    const grid::dense_grid<2, fs::Element>& g;
+/// Adapter so dense_grid<2, fs::Element> satisfies grid::poly_grid directly
+/// — since dense_grid already satisfies any_grid with pos_type = array<uint32_t, 2>,
+/// it can be passed directly to polygon functions without an adapter.
 
-    std::array<std::int32_t, 2> size() const {
-        auto d = g.dimensions();
-        return {static_cast<std::int32_t>(d[0]), static_cast<std::int32_t>(d[1])};
-    }
-    bool contains(std::int32_t x, std::int32_t y) const {
-        if (x < 0 || y < 0) return false;
-        auto d = g.dimensions();
-        if (static_cast<std::uint32_t>(x) >= d[0] || static_cast<std::uint32_t>(y) >= d[1]) return false;
-        return g.contains({static_cast<std::uint32_t>(x), static_cast<std::uint32_t>(y)});
-    }
-    const fs::Element& get(std::int32_t x, std::int32_t y) const {
-        return g.get({static_cast<std::uint32_t>(x), static_cast<std::uint32_t>(y)})->get();
-    }
-};
-
-/// Adapter so a Chunk<2> satisfies grid::DataGrid for the Element layer.
-struct ChunkElementGridView {
+/// Adapter wrapping a Chunk<2> to expose only Solid cells, satisfying grid::poly_grid.
+struct ChunkSolidGridView {
     const grid::Chunk<fs::kDim>& chunk;
+    const fs::ElementRegistry& registry;
 
-    std::array<std::int32_t, 2> size() const {
-        auto w = static_cast<std::int32_t>(chunk.width());
+    std::array<std::uint32_t, 2> dimensions() const {
+        auto w = static_cast<std::uint32_t>(chunk.width());
         return {w, w};
     }
-    bool contains(std::int32_t x, std::int32_t y) const {
-        if (x < 0 || y < 0) return false;
-        auto w = static_cast<std::int32_t>(chunk.width());
-        if (x >= w || y >= w) return false;
-        auto r = static_cast<const grid::ChunkLayer<fs::kDim>&>(chunk).template get<fs::Element>(
-            {static_cast<std::uint32_t>(x), static_cast<std::uint32_t>(y)});
-        return r.has_value();
-    }
-    const fs::Element& get(std::int32_t x, std::int32_t y) const {
-        return static_cast<const grid::ChunkLayer<fs::kDim>&>(chunk)
-            .template get<fs::Element>({static_cast<std::uint32_t>(x), static_cast<std::uint32_t>(y)})
-            ->get();
+    bool contains(const std::array<std::uint32_t, 2>& pos) const {
+        auto w = static_cast<std::uint32_t>(chunk.width());
+        if (pos[0] >= w || pos[1] >= w) return false;
+        auto r = static_cast<const grid::ChunkLayer<fs::kDim>&>(chunk).template get<fs::Element>(pos);
+        if (!r.has_value()) return false;
+        auto base = registry.get(r->get().base_id);
+        return base.has_value() && base->get().type == fs::ElementType::Solid;
     }
 };
 
@@ -175,8 +156,8 @@ void init_pixel_bodies(Query<Item<Entity, Mut<PixelBody>, const transform::Trans
                        Query<Item<Mut<PixelBodyWorld>>> worlds,
                        Res<fs::ElementRegistry> registry) {
     for (auto&& [e, body_mut, tf, parent] : bodies.iter()) {
+        if (B2_IS_NON_NULL(body_mut.get().b2_body)) continue;
         auto& body = body_mut.get_mut();
-        if (B2_IS_NON_NULL(body.b2_body)) continue;
         // Look up parent world.
         auto world_opt = worlds.get(parent.entity());
         if (!world_opt.has_value()) continue;
@@ -198,11 +179,18 @@ void init_pixel_bodies(Query<Item<Entity, Mut<PixelBody>, const transform::Trans
 void rebuild_pixel_body_shapes(Query<Item<Mut<PixelBody>, const Parent&>> bodies,
                                Query<Item<const PixelBodyWorld&>> worlds,
                                Res<fs::ElementRegistry> registry) {
-    (void)worlds;
     for (auto&& [body_mut, parent] : bodies.iter()) {
+        if (B2_IS_NULL(body_mut.get().b2_body)) continue;
+        if (!body_mut.get().shapes_dirty) continue;
         auto& body = body_mut.get_mut();
-        if (B2_IS_NULL(body.b2_body)) continue;
-        if (!body.shapes_dirty) continue;
+
+        // Look up cell_size from the parent PixelBodyWorld so shapes are built in
+        // world (pixel) units rather than cell units.
+        float cell_size = 1.0f;
+        if (auto wopt = worlds.get(parent.entity()); wopt.has_value()) {
+            auto&& [w] = *wopt;
+            cell_size  = w.cell_size;
+        }
 
         // Destroy old shapes.
         for (auto& sid : body.shapes) {
@@ -235,9 +223,8 @@ void rebuild_pixel_body_shapes(Query<Item<Mut<PixelBody>, const Parent&>> bodies
             }
         }
 
-        // Extract polygons from the cell grid.
-        DenseElementGridView view{body.cells};
-        auto polys = grid::get_polygons_simplified_multi(view, 0.5f);
+        // Extract polygons from the cell grid (dense_grid satisfies poly_grid directly).
+        auto polys = grid::get_polygons_simplified_multi(body.cells, 0.5f);
         for (const auto& poly : polys) {
             if (poly.outer.points.size() < 3) continue;
 
@@ -252,9 +239,12 @@ void rebuild_pixel_body_shapes(Query<Item<Mut<PixelBody>, const Parent&>> bodies
 
             for (std::size_t t = 0; t + 2 < idx.size(); t += 3) {
                 std::array<b2Vec2, 3> pts = {
-                    b2Vec2{static_cast<float>(verts[idx[t]].x), static_cast<float>(verts[idx[t]].y)},
-                    b2Vec2{static_cast<float>(verts[idx[t + 1]].x), static_cast<float>(verts[idx[t + 1]].y)},
-                    b2Vec2{static_cast<float>(verts[idx[t + 2]].x), static_cast<float>(verts[idx[t + 2]].y)},
+                    b2Vec2{static_cast<float>(verts[idx[t]].x) * cell_size,
+                           static_cast<float>(verts[idx[t]].y) * cell_size},
+                    b2Vec2{static_cast<float>(verts[idx[t + 1]].x) * cell_size,
+                           static_cast<float>(verts[idx[t + 1]].y) * cell_size},
+                    b2Vec2{static_cast<float>(verts[idx[t + 2]].x) * cell_size,
+                           static_cast<float>(verts[idx[t + 2]].y) * cell_size},
                 };
                 b2Hull hull = b2ComputeHull(pts.data(), 3);
                 if (hull.count < 3) continue;
@@ -273,6 +263,12 @@ void rebuild_pixel_body_shapes(Query<Item<Mut<PixelBody>, const Parent&>> bodies
 void sync_transforms_to_b2(Query<Item<const PixelBody&, const transform::Transform&, const Velocity&>> bodies) {
     for (auto&& [body, tf, vel] : bodies.iter()) {
         if (B2_IS_NULL(body.b2_body)) continue;
+        // Skip sleeping bodies — b2Body_SetTransform always wakes the body in
+        // Box2D v3, so calling it unconditionally prevents bodies from ever
+        // staying asleep.  If Box2D owns the authoritative position (sleeping),
+        // the ECS transform was already updated by sync_b2_to_transforms and
+        // there is nothing to write back.
+        if (!b2Body_IsAwake(body.b2_body)) continue;
         // Extract z-axis rotation from quaternion.
         float angle = std::atan2(2.0f * (tf.rotation.w * tf.rotation.z + tf.rotation.x * tf.rotation.y),
                                  1.0f - 2.0f * (tf.rotation.y * tf.rotation.y + tf.rotation.z * tf.rotation.z));
@@ -287,7 +283,7 @@ void update_sand_static_bodies(
     Res<fs::ElementRegistry> registry,
     Query<Item<Entity, const PixelBodyWorld&, const fs::SandWorld&, Opt<const Children&>>> worlds,
     Query<Item<Entity,
-               const grid::Chunk<fs::kDim>&,
+               Ref<grid::Chunk<fs::kDim>>,
                const fs::SandChunkPos&,
                Opt<Mut<fs::SandChunkDirtyRect>>,
                Opt<Mut<SandStaticBody>>>> chunks) {
@@ -302,16 +298,30 @@ void update_sand_static_bodies(
         for (Entity child_ent : maybe_children->get().entities()) {
             auto chunk_opt = chunks.get(child_ent);
             if (!chunk_opt.has_value()) continue;
-            auto&& [c_ent, chunk, cpos, dr_opt, ssb_opt] = *chunk_opt;
+            auto&& [c_ent, chunk_ref, cpos, dr_opt, ssb_opt] = *chunk_opt;
 
-            // Decide rebuild trigger.
+            // Skip entirely if the chunk data hasn't changed and we already
+            // have an up-to-date static body — avoids unnecessary BinaryGrid
+            // snapshot work and prevents spurious SandStaticBody modification.
+            if (!chunk_ref.is_modified() && !chunk_ref.is_added() && ssb_opt.has_value() && !ssb_opt->get().dirty) {
+                continue;
+            }
+
+            // Build a "is solid" snapshot for this chunk using BinaryGrid
+            // from the grid module so we can compare structurally next frame.
+            ChunkSolidGridView solid_view{chunk_ref.get(), *registry};
+            auto snapshot = grid::rasterise(solid_view);
+
+            // Decide rebuild trigger: structural change of solid cells, or
+            // the static body component is missing entirely, or an explicit
+            // dirty flag was set.
             bool need_rebuild = false;
             if (!ssb_opt.has_value()) {
                 need_rebuild = true;
             } else {
-                auto& ssb = ssb_opt->get_mut();
+                const auto& ssb = ssb_opt->get();
                 if (ssb.dirty) need_rebuild = true;
-                if (dr_opt.has_value() && dr_opt->get_mut().active()) need_rebuild = true;
+                if (ssb.solid_snapshot != snapshot) need_rebuild = true;
             }
             if (!need_rebuild) continue;
 
@@ -329,19 +339,21 @@ void update_sand_static_bodies(
             }
 
             // Extract solid polygons in chunk-local pixel space.
-            ChunkElementGridView view{chunk};
-            auto polys = grid::get_polygons_simplified_multi(
-                view,
-                [&](const ChunkElementGridView& g, std::int32_t x, std::int32_t y) {
-                    if (!g.contains(x, y)) return false;
-                    const auto& cell = g.get(x, y);
-                    auto base        = (*registry).get(cell.base_id);
-                    return base.has_value() && base->get().type == fs::ElementType::Solid;
-                },
-                0.5f);
+            auto polys = grid::get_polygons_simplified_multi(solid_view, 0.5f);
 
             if (polys.empty()) {
-                if (ssb_opt.has_value()) ssb_opt->get_mut().dirty = false;
+                if (ssb_opt.has_value()) {
+                    auto& ssb          = ssb_opt->get_mut();
+                    ssb.dirty          = false;
+                    ssb.solid_snapshot = std::move(snapshot);
+                } else {
+                    cmd.entity(c_ent).insert(SandStaticBody{
+                        .b2_body        = b2_nullBodyId,
+                        .chains         = {},
+                        .dirty          = false,
+                        .solid_snapshot = std::move(snapshot),
+                    });
+                }
                 continue;
             }
 
@@ -379,15 +391,17 @@ void update_sand_static_bodies(
             }
 
             if (ssb_opt.has_value()) {
-                auto& ssb   = ssb_opt->get_mut();
-                ssb.b2_body = static_body;
-                ssb.chains  = std::move(chains);
-                ssb.dirty   = false;
+                auto& ssb          = ssb_opt->get_mut();
+                ssb.b2_body        = static_body;
+                ssb.chains         = std::move(chains);
+                ssb.dirty          = false;
+                ssb.solid_snapshot = std::move(snapshot);
             } else {
                 cmd.entity(c_ent).insert(SandStaticBody{
-                    .b2_body = static_body,
-                    .chains  = std::move(chains),
-                    .dirty   = false,
+                    .b2_body        = static_body,
+                    .chains         = std::move(chains),
+                    .dirty          = false,
+                    .solid_snapshot = std::move(snapshot),
                 });
             }
         }
@@ -425,82 +439,238 @@ void sync_b2_to_transforms(Query<Item<const PixelBody&, Mut<transform::Transform
     }
 }
 
-void interact_pixel_body_with_sand(
-    Res<fs::ElementRegistry> registry,
-    Query<Item<Entity, const PixelBodyWorld&, Mut<fs::SandWorld>, Opt<const Children&>>> worlds,
+void sync_pixel_body_to_sand(
+    Commands cmd,
+    ResMut<fs::ElementRegistry> registry,
+    Query<
+        Item<Entity, const PixelBodyWorld&, Mut<fs::SandWorld>, Opt<const Children&>, Opt<Mut<PixelBodySandBlockers>>>>
+        worlds,
     Query<Item<const PixelBody&, const transform::Transform&>> bodies,
     Query<Item<Mut<grid::Chunk<fs::kDim>>, const fs::SandChunkPos&, Mut<fs::SandChunkDirtyRect>>> chunks) {
+    // Auto-register the blocker element once.
+    static std::size_t blocker_id   = std::numeric_limits<std::size_t>::max();
+    static bool blocker_id_resolved = false;
+    if (!blocker_id_resolved) {
+        auto id_res = registry->get_id("pixel_body_blocker");
+        if (id_res.has_value()) {
+            blocker_id          = *id_res;
+            blocker_id_resolved = true;
+        } else {
+            auto reg_res = registry->register_element(fs::ElementBase{
+                .name       = "pixel_body_blocker",
+                .density    = 0.0f,
+                .type       = fs::ElementType::Body,
+                .color_func = [](std::uint64_t) { return glm::vec4(0.0f); },
+            });
+            if (reg_res.has_value()) {
+                blocker_id          = *reg_res;
+                blocker_id_resolved = true;
+            }
+        }
+    }
+    if (!blocker_id_resolved) return;
+
+    const fs::Element blocker_elem{blocker_id, glm::vec4(0.0f)};
+
+    // Helper: pack two int32s into one int64 key.
+    auto encode = [](std::int64_t x, std::int64_t y) -> std::int64_t {
+        return (x & 0xFFFFFFFFLL) | ((y & 0xFFFFFFFFLL) << 32);
+    };
+
     constexpr int kMaxPush = 64;
-    for (auto&& [world_ent, w, sand_world_mut, world_children_opt] : worlds.iter()) {
-        (void)world_ent;
+
+    for (auto&& [world_ent, w, sand_world_mut, world_children_opt, blockers_opt] : worlds.iter()) {
         if (B2_IS_NULL(w.b2_world)) continue;
         if (!world_children_opt.has_value()) continue;
+
+        // Ensure PixelBodySandBlockers component exists on the world entity.
+        if (!blockers_opt.has_value()) {
+            cmd.entity(world_ent).insert(PixelBodySandBlockers{});
+            continue;  // will run with the component next frame
+        }
+
         auto& sw  = sand_world_mut.get_mut();
         float scs = sw.cell_size();
         if (scs <= 0.0f) continue;
 
-        // Collect sand chunks (chunks are children of the same entity).
         auto chunk_range =
             world_children_opt->get().entities() |
             std::views::filter([&](Entity e) { return chunks.get(e).has_value(); }) |
             std::views::transform(
-                [&](Entity e) -> std::tuple<grid::Chunk<fs::kDim>&, const fs::SandChunkPos&, fs::SandChunkDirtyRect&> {
+                [&](Entity e)
+                    -> std::tuple<Mut<grid::Chunk<fs::kDim>>, const fs::SandChunkPos&, fs::SandChunkDirtyRect&> {
                     auto opt         = chunks.get(e);
                     auto&& [c, p, d] = *opt;
-                    return {c.get_mut(), p, d.get_mut()};
+                    return {std::move(c), p, d.get_mut()};
                 });
         auto sim_res = fs::SandSimulation::create(sw, registry.get(), chunk_range);
         if (!sim_res.has_value()) continue;
         auto& sim = *sim_res;
 
-        // Anti-gravity direction (Y axis).
         std::int64_t dir_y = (w.gravity_cells.y < 0.0f) ? 1 : -1;
 
-        // Iterate body children of this world.
+        // ── Step 1: Build current occupied set (AABB-based) ──────────────────
+        // Instead of mapping each body-cell centre to one sand cell (which
+        // leaves rotation-induced holes), we compute the world AABB of every
+        // body cell, enumerate all sand cells in that AABB, then inverse-
+        // transform each sand-cell centre back into body-local space to test
+        // whether it truly falls inside a body cell.  This guarantees no holes
+        // and produces a stable set that doesn't change on sub-cell movements.
+        std::unordered_set<std::int64_t> current_set;
         for (Entity body_ent : world_children_opt->get().entities()) {
             auto body_opt = bodies.get(body_ent);
             if (!body_opt.has_value()) continue;
             auto&& [body, body_tf] = *body_opt;
+            if (body.cells.count() == 0) continue;
 
-            for (auto&& [pos, e] : body.cells.iter()) {
-                glm::vec3 local(static_cast<float>(pos[0]) + 0.5f, static_cast<float>(pos[1]) + 0.5f, 0.0f);
-                glm::vec3 wpos = body_tf.translation + body_tf.rotation * local;
-
-                std::int64_t sx = static_cast<std::int64_t>(std::floor(wpos.x / scs));
-                std::int64_t sy = static_cast<std::int64_t>(std::floor(wpos.y / scs));
-
-                auto src = sim.get_cell<fs::Element>({sx, sy});
-                if (!src.has_value()) continue;
-                fs::Element to_move = src->get();
-
-                auto base_opt = (*registry).get(to_move.base_id);
-                if (base_opt.has_value() && base_opt->get().type == fs::ElementType::Solid) {
-                    continue;
-                }
-
-                for (int k = 1; k <= kMaxPush; ++k) {
-                    std::int64_t ty = sy + dir_y * static_cast<std::int64_t>(k);
-                    auto target     = sim.get_cell<fs::Element>({sx, ty});
-                    if (target.has_value()) continue;
-                    if (sim.put_cell({sx, ty}, to_move)) {
-                        sim.erase_cell({sx, sy});
+            // World-space AABB: test all 4 corners of every occupied cell.
+            float min_wx = std::numeric_limits<float>::max();
+            float max_wx = std::numeric_limits<float>::lowest();
+            float min_wy = std::numeric_limits<float>::max();
+            float max_wy = std::numeric_limits<float>::lowest();
+            for (auto&& [pos, elem] : body.cells.iter()) {
+                (void)elem;
+                for (int cx_i = 0; cx_i <= 1; ++cx_i) {
+                    for (int cy_i = 0; cy_i <= 1; ++cy_i) {
+                        glm::vec3 corner_local(static_cast<float>(pos[0] + static_cast<std::uint32_t>(cx_i)) * scs,
+                                               static_cast<float>(pos[1] + static_cast<std::uint32_t>(cy_i)) * scs,
+                                               0.0f);
+                        glm::vec3 w = body_tf.translation + body_tf.rotation * corner_local;
+                        min_wx      = std::min(min_wx, w.x);
+                        max_wx      = std::max(max_wx, w.x);
+                        min_wy      = std::min(min_wy, w.y);
+                        max_wy      = std::max(max_wy, w.y);
                     }
-                    break;
                 }
-                (void)e;
+            }
+
+            std::int64_t sx_min = static_cast<std::int64_t>(std::floor(min_wx / scs));
+            std::int64_t sx_max = static_cast<std::int64_t>(std::floor(max_wx / scs));
+            std::int64_t sy_min = static_cast<std::int64_t>(std::floor(min_wy / scs));
+            std::int64_t sy_max = static_cast<std::int64_t>(std::floor(max_wy / scs));
+
+            glm::quat inv_rot = glm::inverse(body_tf.rotation);
+            auto body_dims    = body.cells.dimensions();
+
+            for (std::int64_t sy = sy_min; sy <= sy_max; ++sy) {
+                for (std::int64_t sx = sx_min; sx <= sx_max; ++sx) {
+                    // Sand-cell centre in world space.
+                    glm::vec3 world_center((static_cast<float>(sx) + 0.5f) * scs, (static_cast<float>(sy) + 0.5f) * scs,
+                                           0.0f);
+                    // Transform to body-local space.
+                    glm::vec3 local = inv_rot * (world_center - body_tf.translation);
+                    auto bx         = static_cast<std::int32_t>(std::floor(local.x / scs));
+                    auto by         = static_cast<std::int32_t>(std::floor(local.y / scs));
+                    if (bx < 0 || by < 0) continue;
+                    if (static_cast<std::uint32_t>(bx) >= body_dims[0] ||
+                        static_cast<std::uint32_t>(by) >= body_dims[1])
+                        continue;
+                    if (!body.cells.contains({static_cast<std::uint32_t>(bx), static_cast<std::uint32_t>(by)}))
+                        continue;
+                    current_set.insert(encode(sx, sy));
+                }
             }
         }
+
+        auto& old_cells = blockers_opt->get_mut().cells;
+
+        // ── Step 2: Remove stale blockers ─────────────────────────────────────
+        // Cells the body vacated: erase WITH touch so sleeping sand above falls.
+        // Cells still occupied: remove WITHOUT touch (body is still there).
+        for (std::int64_t key : old_cells) {
+            std::int64_t ox = key & 0xFFFFFFFFLL;
+            std::int64_t oy = (key >> 32) & 0xFFFFFFFFLL;
+            // Sign-extend from 32-bit.
+            if (ox >= (1LL << 31)) ox -= (1LL << 32);
+            if (oy >= (1LL << 31)) oy -= (1LL << 32);
+
+            // Only remove cells that actually hold our blocker.
+            auto cell = sim.get_cell<fs::Element>({ox, oy});
+            if (!cell.has_value()) continue;
+            bool is_blocker = (cell->get().base_id == blocker_id);
+            if (!is_blocker) continue;
+
+            if (!current_set.contains(key)) {
+                // Body moved away — wake the sand above so it falls.
+                sim.erase_cell({ox, oy});
+            } else {
+                // Body still here — remove quietly (will be re-inserted below).
+                (void)sim.remove_cell<fs::Element>({ox, oy});
+            }
+        }
+
+        // ── Step 3: Push real sand out of body cells, then insert blockers ───
+        // Iterate current_set (the AABB-derived coverage) instead of iterating
+        // per body cell.  This covers every sand cell whose centre maps inside
+        // a body cell, with no holes.
+        bool any_displaced = false;
+        for (std::int64_t key : current_set) {
+            std::int64_t sx = key & 0xFFFFFFFFLL;
+            std::int64_t sy = (key >> 32) & 0xFFFFFFFFLL;
+            if (sx >= (1LL << 31)) sx -= (1LL << 32);
+            if (sy >= (1LL << 31)) sy -= (1LL << 32);
+
+            auto existing = sim.get_cell<fs::Element>({sx, sy});
+            if (existing.has_value()) {
+                auto base_opt = (*registry).get(existing->get().base_id);
+                if (!base_opt.has_value()) continue;
+                auto etype = base_opt->get().type;
+                // Push displaceable sand out of the way.
+                if (etype != fs::ElementType::Body && etype != fs::ElementType::Solid) {
+                    fs::Element to_move = existing->get();
+                    for (int k = 1; k <= kMaxPush; ++k) {
+                        std::int64_t ty = sy + dir_y * static_cast<std::int64_t>(k);
+                        if (current_set.contains(encode(sx, ty))) continue;
+                        auto target = sim.get_cell<fs::Element>({sx, ty});
+                        if (target.has_value()) continue;
+                        if (sim.put_cell({sx, ty}, to_move)) {
+                            sim.erase_cell({sx, sy});
+                            any_displaced = true;
+                        }
+                        break;
+                    }
+                }
+                // If anything still occupies this cell, respect it — do not overwrite.
+                if (sim.get_cell<fs::Element>({sx, sy}).has_value()) continue;
+            }
+
+            // Insert blocker without touch — no dirty rect for static body.
+            (void)sim.insert_cell({sx, sy}, fs::Element(blocker_elem));
+        }
+
+        // Wake every body in this world if any sand was displaced.
+        if (any_displaced) {
+            for (Entity body_ent : world_children_opt->get().entities()) {
+                auto body_opt = bodies.get(body_ent);
+                if (!body_opt.has_value()) continue;
+                auto&& [body, body_tf] = *body_opt;
+                (void)body_tf;
+                if (B2_IS_NON_NULL(body.b2_body)) b2Body_SetAwake(body.b2_body, true);
+            }
+        }
+
+        // ── Step 4: Store current set for next frame ──────────────────────────
+        old_cells = current_set;
     }
 }
 
 void build_pixel_body_meshes(Commands cmd,
                              ResMut<assets::Assets<mesh::Mesh>> meshes,
-                             Query<Item<Entity, Mut<PixelBody>>> bodies) {
-    for (auto&& [body_ent, body_mut] : bodies.iter()) {
+                             Query<Item<Entity, Mut<PixelBody>, const Parent&>> bodies,
+                             Query<Item<const PixelBodyWorld&>> worlds) {
+    for (auto&& [body_ent, body_mut, parent] : bodies.iter()) {
+        if (!body_mut.get().mesh_dirty) continue;
         auto& body = body_mut.get_mut();
-        if (!body.mesh_dirty) continue;
 
-        // Build per-cell quads (cell size = 1 unit in body-local space).
+        // Look up cell_size from the parent PixelBodyWorld so the mesh is built in
+        // world (pixel) units, matching the Box2D shapes.
+        float cell_size = 1.0f;
+        if (auto wopt = worlds.get(parent.entity()); wopt.has_value()) {
+            auto&& [w] = *wopt;
+            cell_size  = w.cell_size;
+        }
+
+        // Build per-cell quads (cell size = cell_size units in body-local space).
         std::vector<glm::vec3> positions;
         std::vector<glm::vec4> colors;
         std::vector<std::uint32_t> indices;
@@ -509,12 +679,12 @@ void build_pixel_body_meshes(Commands cmd,
         indices.reserve(body.cells.count() * 6);
         std::uint32_t base = 0;
         for (auto&& [pos, e] : body.cells.iter()) {
-            float x = static_cast<float>(pos[0]);
-            float y = static_cast<float>(pos[1]);
+            float x = static_cast<float>(pos[0]) * cell_size;
+            float y = static_cast<float>(pos[1]) * cell_size;
             positions.push_back({x, y, 0.0f});
-            positions.push_back({x + 1.0f, y, 0.0f});
-            positions.push_back({x + 1.0f, y + 1.0f, 0.0f});
-            positions.push_back({x, y + 1.0f, 0.0f});
+            positions.push_back({x + cell_size, y, 0.0f});
+            positions.push_back({x + cell_size, y + cell_size, 0.0f});
+            positions.push_back({x, y + cell_size, 0.0f});
             for (int i = 0; i < 4; ++i) colors.push_back(e.color);
             indices.push_back(base);
             indices.push_back(base + 1);
@@ -563,12 +733,12 @@ void PixelBodyPlugin::build(epix::core::App& app) {
                                     "pixelbody update_static_bodies",
                                     "pixelbody step_worlds",
                                 }));
-    app.add_systems(PostUpdate, into(sync_b2_to_transforms, interact_pixel_body_with_sand, build_pixel_body_meshes)
+    app.add_systems(PostUpdate, into(sync_b2_to_transforms, build_pixel_body_meshes)
                                     .set_names(std::array{
                                         "pixelbody sync_from_b2",
-                                        "pixelbody interact_with_sand",
                                         "pixelbody build_meshes",
                                     }));
+    app.add_systems(time::FixedPreUpdate, into(sync_pixel_body_to_sand).set_name("pixelbody sync_to_sand"));
 }
 
 }  // namespace epix::experimental::pixelbody

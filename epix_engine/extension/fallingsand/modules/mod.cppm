@@ -28,4 +28,12 @@ export struct FallingSandPlugin {
     void build(epix::core::App& app);
 };
 
+/** @brief Optional plugin that renders a debug overlay for Body-type sentinel
+ *  cells placed by the pixel-body plugin.  Add it to your App in addition to
+ *  FallingSandPlugin; toggle the overlay at runtime via
+ *  SandWorld::set_show_body_debug(). */
+export struct BodyDebugPlugin {
+    void build(epix::core::App& app);
+};
+
 }  // namespace epix::ext::fallingsand

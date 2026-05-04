@@ -179,10 +179,11 @@ void seed(
     auto chunk_range =
         children | std::views::filter([&](Entity e) { return all_chunks.get(e).has_value(); }) |
         std::views::transform(
-            [&](Entity e) -> std::tuple<ext::grid::Chunk<fs::kDim>&, const fs::SandChunkPos&, fs::SandChunkDirtyRect&> {
+            [&](Entity e)
+                -> std::tuple<Mut<ext::grid::Chunk<fs::kDim>>, const fs::SandChunkPos&, fs::SandChunkDirtyRect&> {
                 auto opt              = all_chunks.get(e);
                 auto&& [c, p, d, par] = *opt;
-                return {c.get_mut(), p, d.get_mut()};
+                return {std::move(c), p, d.get_mut()};
             });
     auto sim_res = fs::SandSimulation::create(sand_world.get_mut(), registry.get(), chunk_range);
     if (!sim_res.has_value()) return;
@@ -321,10 +322,11 @@ void paint_sand_on_drag(
     auto chunk_range =
         children_opt->get().entities() | std::views::filter([&](Entity e) { return chunks_q.get(e).has_value(); }) |
         std::views::transform(
-            [&](Entity e) -> std::tuple<ext::grid::Chunk<fs::kDim>&, const fs::SandChunkPos&, fs::SandChunkDirtyRect&> {
+            [&](Entity e)
+                -> std::tuple<Mut<ext::grid::Chunk<fs::kDim>>, const fs::SandChunkPos&, fs::SandChunkDirtyRect&> {
                 auto opt         = chunks_q.get(e);
                 auto&& [c, p, d] = *opt;
-                return {c.get_mut(), p, d.get_mut()};
+                return {std::move(c), p, d.get_mut()};
             });
     auto sim_res = fs::SandSimulation::create(sw, registry.get(), chunk_range);
     if (!sim_res.has_value()) return;
@@ -369,7 +371,9 @@ void paint_sand_on_drag(
 // ──────────────────────────────────────────────────────────────────────────────
 // Tiny imgui status panel.
 // ──────────────────────────────────────────────────────────────────────────────
-void status_ui(imgui::Ctx imgui_ctx, ResMut<AppState> app_state) {
+void status_ui(imgui::Ctx imgui_ctx,
+               ResMut<AppState> app_state,
+               Query<Item<Mut<fs::SandWorld>, Opt<Mut<fs::SandWorldDebug>>>, With<fs::SimulatedByPlugin>> sand_worlds) {
     (void)imgui_ctx;
     auto& st = *app_state;
     ImGui::Begin("Pixel Body Demo");
@@ -392,6 +396,13 @@ void status_ui(imgui::Ctx imgui_ctx, ResMut<AppState> app_state) {
     ImGui::Checkbox("Freefall cells", &st.show_freefall);
     ImGui::Checkbox("Chunk chain outlines", &st.show_chunk_chains);
     ImGui::Checkbox("Pixel body outlines", &st.show_body_outlines);
+    if (auto sw_opt = sand_worlds.single(); sw_opt.has_value()) {
+        auto&& [sw_mut, debug_opt] = *sw_opt;
+        bool body_debug            = debug_opt.has_value() && debug_opt->get().show_body_debug;
+        if (ImGui::Checkbox("Body cell debug", &body_debug)) {
+            if (debug_opt.has_value()) debug_opt->get_mut().show_body_debug = body_debug;
+        }
+    }
     ImGui::End();
 }
 
@@ -457,11 +468,11 @@ void dirty_rect_overlay_system(
 
     for (auto& [c, ar] : active) {
         auto& [origin, rect] = ar;
-        float x0             = origin.x + static_cast<float>(rect.xmin) * cell_size;
-        float x1             = origin.x + static_cast<float>(rect.xmax + 1) * cell_size;
-        float y0             = origin.y + static_cast<float>(rect.ymin) * cell_size;
-        float y1             = origin.y + static_cast<float>(rect.ymax + 1) * cell_size;
-        glm::vec3 center{(x0 + x1) * 0.5f, (y0 + y1) * 0.5f, 1.0f};
+        float x0             = origin.x + static_cast<float>(rect.get_xmin()) * cell_size;
+        float x1             = origin.x + static_cast<float>(rect.get_xmax() + 1) * cell_size;
+        float y0             = origin.y + static_cast<float>(rect.get_ymin()) * cell_size;
+        float y1             = origin.y + static_cast<float>(rect.get_ymax() + 1) * cell_size;
+        glm::vec3 center{(x0 + x1) * 0.5f, (y0 + y1) * 0.5f, -1.0f};
         glm::vec3 scaler{x1 - x0, y1 - y0, 1.0f};
         auto overlay_transforms = std::get<1>(qs.get());
         if (auto it = st.dirty_rect_overlays.find(c); it != st.dirty_rect_overlays.end()) {
@@ -544,7 +555,7 @@ void freefall_overlay_system(Commands cmd,
             auto e = cmd.spawn(FreefallOverlay{}, mesh::Mesh2d{handle},
                                mesh::MeshMaterial2d{.color      = {0.0f, 0.9f, 1.0f, 0.45f},
                                                     .alpha_mode = mesh::MeshAlphaMode2d::Blend},
-                               transform::Transform{.translation = tf.translation + glm::vec3{0.0f, 0.0f, 0.5f}})
+                               transform::Transform{.translation = tf.translation + glm::vec3{0.0f, 0.0f, -0.5f}})
                          .id();
             st.freefall_overlays[c] = e;
         }
@@ -555,7 +566,7 @@ void chunk_chain_overlay_system(
     Commands cmd,
     ResMut<AppState> app_state,
     ResMut<assets::Assets<mesh::Mesh>> meshes,
-    ParamSet<Query<Item<Entity, const pb::SandStaticBody&, const transform::Transform&>>,
+    ParamSet<Query<Item<Entity, Ref<pb::SandStaticBody>, const transform::Transform&>>,
              Query<Item<Mut<mesh::Mesh2d>, Mut<transform::Transform>>, With<ChunkChainOverlay>>> qs) {
     auto& st = *app_state;
     if (!st.show_chunk_chains) {
@@ -569,7 +580,6 @@ void chunk_chain_overlay_system(
     auto build_mesh = [&](const pb::SandStaticBody& ssb) {
         std::vector<glm::vec3> positions;
         std::vector<glm::vec4> colors;
-        std::vector<std::uint32_t> indices;
         for (auto cid : ssb.chains) {
             if (!B2_IS_NON_NULL(cid)) continue;
             int seg_count = b2Chain_GetSegmentCount(cid);
@@ -579,16 +589,16 @@ void chunk_chain_overlay_system(
             for (auto sid : seg_ids) {
                 if (b2Shape_GetType(sid) != b2_chainSegmentShape) continue;
                 b2ChainSegment cs = b2Shape_GetChainSegment(sid);
-                glm::vec2 a{cs.segment.point1.x, cs.segment.point1.y};
-                glm::vec2 b{cs.segment.point2.x, cs.segment.point2.y};
-                append_thick_segment(positions, colors, indices, a, b, thickness, color);
+                positions.push_back(glm::vec3(cs.segment.point1.x, cs.segment.point1.y, 0.0f));
+                positions.push_back(glm::vec3(cs.segment.point2.x, cs.segment.point2.y, 0.0f));
+                colors.push_back(color);
+                colors.push_back(color);
             }
         }
         return mesh::Mesh()
-            .with_primitive_type(wgpu::PrimitiveTopology::eTriangleList)
+            .with_primitive_type(wgpu::PrimitiveTopology::eLineList)
             .with_attribute(mesh::Mesh::ATTRIBUTE_POSITION, positions)
-            .with_attribute(mesh::Mesh::ATTRIBUTE_COLOR, colors)
-            .with_indices<std::uint32_t>(indices);
+            .with_attribute(mesh::Mesh::ATTRIBUTE_COLOR, colors);
     };
 
     std::vector<Entity> to_remove;
@@ -606,29 +616,36 @@ void chunk_chain_overlay_system(
     struct ChainEntry {
         Entity entity;
         const pb::SandStaticBody* ssb;
+        glm::vec3 translation;
+        bool needs_rebuild;
     };
     std::vector<ChainEntry> active;
     {
         auto chunks = std::get<0>(qs.get());
-        for (auto&& [c, ssb, tf] : chunks.iter()) {
-            if (!B2_IS_NON_NULL(ssb.b2_body)) continue;
-            active.push_back({c, &ssb});
+        for (auto&& [c, ssb_ref, tf] : chunks.iter()) {
+            if (!B2_IS_NON_NULL(ssb_ref.get().b2_body)) continue;
+            bool needs_rebuild = ssb_ref.is_modified() || ssb_ref.is_added() || !st.chunk_chain_overlays.contains(c);
+            active.push_back({c, &ssb_ref.get(), tf.translation, needs_rebuild});
         }
     }
     auto overlays = std::get<1>(qs.get());
     for (auto& entry : active) {
-        auto handle = meshes->emplace(build_mesh(*entry.ssb));
+        glm::vec3 overlay_tr = entry.translation + glm::vec3{0.0f, 0.0f, -1.5f};
         if (auto it = st.chunk_chain_overlays.find(entry.entity); it != st.chunk_chain_overlays.end()) {
             if (auto opt = overlays.get(it->second)) {
-                auto&& [m2d, t]         = *opt;
-                m2d.get_mut()           = mesh::Mesh2d{handle};
-                t.get_mut().translation = glm::vec3{0.0f, 0.0f, 1.5f};
+                auto&& [m2d, t] = *opt;
+                if (entry.needs_rebuild) {
+                    auto handle   = meshes->emplace(build_mesh(*entry.ssb));
+                    m2d.get_mut() = mesh::Mesh2d{handle};
+                }
+                t.get_mut().translation = overlay_tr;
             }
         } else {
-            auto e = cmd.spawn(ChunkChainOverlay{}, mesh::Mesh2d{handle},
-                               mesh::MeshMaterial2d{.color = color, .alpha_mode = mesh::MeshAlphaMode2d::Blend},
-                               transform::Transform{.translation = glm::vec3{0.0f, 0.0f, 1.5f}})
-                         .id();
+            auto handle = meshes->emplace(build_mesh(*entry.ssb));
+            auto e      = cmd.spawn(ChunkChainOverlay{}, mesh::Mesh2d{handle},
+                                    mesh::MeshMaterial2d{.color = color, .alpha_mode = mesh::MeshAlphaMode2d::Blend},
+                                    transform::Transform{.translation = overlay_tr})
+                              .id();
             st.chunk_chain_overlays[entry.entity] = e;
         }
     }
@@ -638,8 +655,9 @@ void body_outline_overlay_system(
     Commands cmd,
     ResMut<AppState> app_state,
     ResMut<assets::Assets<mesh::Mesh>> meshes,
-    ParamSet<Query<Item<Entity, const pb::PixelBody&, const transform::Transform&>>,
-             Query<Item<Mut<mesh::Mesh2d>, Mut<transform::Transform>>, With<BodyOutlineOverlay>>> qs) {
+    ParamSet<Query<Item<Entity, Ref<pb::PixelBody>, const transform::Transform&>>,
+             Query<Item<Mut<mesh::Mesh2d>, Mut<mesh::MeshMaterial2d>, Mut<transform::Transform>>,
+                   With<BodyOutlineOverlay>>> qs) {
     auto& st = *app_state;
     if (!st.show_body_outlines) {
         for (auto& [c, o] : st.body_outline_overlays) cmd.entity(o).despawn();
@@ -647,28 +665,29 @@ void body_outline_overlay_system(
         return;
     }
     constexpr float thickness = 0.4f;
-    glm::vec4 color{0.2f, 1.0f, 0.4f, 0.95f};
+    glm::vec4 color_awake{0.2f, 1.0f, 0.4f, 0.95f};
+    glm::vec4 color_sleeping{1.0f, 0.2f, 0.2f, 0.95f};
 
     auto build_mesh = [&](const pb::PixelBody& body) {
         std::vector<glm::vec3> positions;
         std::vector<glm::vec4> colors;
-        std::vector<std::uint32_t> indices;
         for (auto sid : body.shapes) {
             if (!B2_IS_NON_NULL(sid)) continue;
             if (b2Shape_GetType(sid) != b2_polygonShape) continue;
             b2Polygon poly = b2Shape_GetPolygon(sid);
             for (int i = 0; i < poly.count; ++i) {
-                int j = (i + 1) % poly.count;
-                glm::vec2 a{poly.vertices[i].x, poly.vertices[i].y};
-                glm::vec2 b{poly.vertices[j].x, poly.vertices[j].y};
-                append_thick_segment(positions, colors, indices, a, b, thickness, color);
+                int j       = (i + 1) % poly.count;
+                glm::vec4 c = glm::vec4(1.0f);
+                positions.push_back(glm::vec3(poly.vertices[i].x, poly.vertices[i].y, 0.0f));
+                positions.push_back(glm::vec3(poly.vertices[j].x, poly.vertices[j].y, 0.0f));
+                colors.push_back(c);
+                colors.push_back(c);
             }
         }
         return mesh::Mesh()
-            .with_primitive_type(wgpu::PrimitiveTopology::eTriangleList)
+            .with_primitive_type(wgpu::PrimitiveTopology::eLineList)
             .with_attribute(mesh::Mesh::ATTRIBUTE_POSITION, positions)
-            .with_attribute(mesh::Mesh::ATTRIBUTE_COLOR, colors)
-            .with_indices<std::uint32_t>(indices);
+            .with_attribute(mesh::Mesh::ATTRIBUTE_COLOR, colors);
     };
 
     std::vector<Entity> to_remove;
@@ -688,30 +707,38 @@ void body_outline_overlay_system(
         const pb::PixelBody* body;
         glm::vec3 translation;
         glm::quat rotation;
+        bool needs_rebuild;
     };
     std::vector<BodyEntry> active;
     {
         auto bodies = std::get<0>(qs.get());
-        for (auto&& [c, body, tf] : bodies.iter()) {
-            if (!B2_IS_NON_NULL(body.b2_body)) continue;
-            active.push_back({c, &body, tf.translation, tf.rotation});
+        for (auto&& [c, body_ref, tf] : bodies.iter()) {
+            if (!B2_IS_NON_NULL(body_ref.get().b2_body)) continue;
+            bool needs_rebuild = body_ref.is_modified() || body_ref.is_added() || !st.body_outline_overlays.contains(c);
+            active.push_back({c, &body_ref.get(), tf.translation, tf.rotation, needs_rebuild});
         }
     }
     auto overlays = std::get<1>(qs.get());
     for (auto& entry : active) {
-        auto handle = meshes->emplace(build_mesh(*entry.body));
-        glm::vec3 t = entry.translation + glm::vec3{0.0f, 0.0f, 2.0f};
+        bool awake      = b2Body_IsAwake(entry.body->b2_body);
+        glm::vec4 color = awake ? color_awake : color_sleeping;
+        glm::vec3 t     = entry.translation + glm::vec3{0.0f, 0.0f, -2.0f};
         if (auto it = st.body_outline_overlays.find(entry.entity); it != st.body_outline_overlays.end()) {
             if (auto opt = overlays.get(it->second)) {
-                auto&& [m2d, ovt] = *opt;
-                m2d.get_mut()     = mesh::Mesh2d{handle};
-                ovt.get_mut()     = transform::Transform{.translation = t, .rotation = entry.rotation};
+                auto&& [m2d, mat, ovt] = *opt;
+                if (entry.needs_rebuild) {
+                    auto handle   = meshes->emplace(build_mesh(*entry.body));
+                    m2d.get_mut() = mesh::Mesh2d{handle};
+                }
+                mat.get_mut().color = color;
+                ovt.get_mut()       = transform::Transform{.translation = t, .rotation = entry.rotation};
             }
         } else {
-            auto e = cmd.spawn(BodyOutlineOverlay{}, mesh::Mesh2d{handle},
-                               mesh::MeshMaterial2d{.color = color, .alpha_mode = mesh::MeshAlphaMode2d::Blend},
-                               transform::Transform{.translation = t, .rotation = entry.rotation})
-                         .id();
+            auto handle = meshes->emplace(build_mesh(*entry.body));
+            auto e      = cmd.spawn(BodyOutlineOverlay{}, mesh::Mesh2d{handle},
+                                    mesh::MeshMaterial2d{.color = color, .alpha_mode = mesh::MeshAlphaMode2d::Blend},
+                                    transform::Transform{.translation = t, .rotation = entry.rotation})
+                              .id();
             st.body_outline_overlays[entry.entity] = e;
         }
     }
@@ -739,6 +766,7 @@ int main() {
         .add_plugins(imgui::ImGuiPlugin{})
         .add_plugins(time::TimePlugin{})
         .add_plugins(fs::FallingSandPlugin{})
+        .add_plugins(fs::BodyDebugPlugin{})
         .add_plugins(pb::PixelBodyPlugin{})
         .add_systems(PreStartup, into(setup).set_name("pixel_body_sand setup"))
         .add_systems(Startup, into(seed).set_name("pixel_body_sand seed"))

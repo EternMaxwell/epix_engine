@@ -98,8 +98,8 @@ Element* SandSimulation::get_elem_ptr(std::int64_t x, std::int64_t y) {
     auto ly               = static_cast<std::uint32_t>(((y % cw) + cw) % cw);
     auto chunk_res        = get_chunk_mut({cx, cy});
     if (!chunk_res.has_value()) return nullptr;
-    auto& layer   = static_cast<grid::ChunkLayer<kDim>&>(chunk_res->get());
-    auto elem_res = layer.template get_mut<Element>({lx, ly});
+    auto cv       = grid::chunk_element<Element>(chunk_res->get_mut());
+    auto elem_res = cv.get_mut({lx, ly});
     return elem_res.has_value() ? &elem_res->get() : nullptr;
 }
 
@@ -827,15 +827,7 @@ void SandSimulation::step_cells() {
     const std::uint64_t tick    = s_tick++;
     const std::int64_t cw       = static_cast<std::int64_t>(chunk_width());
 
-    // ── 1. Clear `updated` flags on every live cell ───────────────────────────
-    for (auto chunk_ref : iter_chunks_mut()) {
-        for (auto&& [lpos, elem] : chunk_ref.get().iter_mut<Element>()) {
-            (void)lpos;
-            elem.set_updated(false);
-        }
-    }
-
-    // ── 2. Collect and shuffle chunk coordinates ──────────────────────────────
+    // ── 1. Collect and shuffle chunk coordinates ──────────────────────────────
     auto offset_coords =
         std::ranges::to<std::vector>(std::views::cartesian_product(std::views::iota(0, 3), std::views::iota(0, 3)));
     static auto rng = std::mt19937{std::random_device{}()};
@@ -843,7 +835,7 @@ void SandSimulation::step_cells() {
 
     auto& pool = tasks::ComputeTaskPool::get();
 
-    // ── 3. Process in 3×3 modulo groups (no two adjacent chunks run in parallel)
+    // ── 2. Process in 3×3 modulo groups (no two adjacent chunks run in parallel)
     for (auto&& [rx, ry] : offset_coords) {
         thread_local static std::vector<tasks::Task<void>> group_tasks;
         for (auto&& cpos : std::views::filter(iter_chunk_pos(), [rx, ry, this](auto&& cpos) {
@@ -854,7 +846,7 @@ void SandSimulation::step_cells() {
             group_tasks.push_back(pool.spawn([cpos, cw, tick, this] {
                 // Snapshot positions first — prevents iterator invalidation during steps.
                 thread_local static std::vector<std::array<std::int64_t, 2>> positions;
-                for (auto&& [lpos, _] : get_chunk(cpos).value().get().iter<Element>()) {
+                for (auto&& [lpos, _] : grid::chunk_element<Element>(get_chunk(cpos).value().get()).iter()) {
                     positions.push_back({
                         static_cast<std::int64_t>(cpos[0]) * cw + static_cast<std::int64_t>(lpos[0]),
                         static_cast<std::int64_t>(cpos[1]) * cw + static_cast<std::int64_t>(lpos[1]),
@@ -868,6 +860,16 @@ void SandSimulation::step_cells() {
         }
         for (auto& t : group_tasks) t.block();
         group_tasks.clear();
+    }
+
+    // ── 3. Clear `updated` flags on every live cell in modified chunk ───────────────────────────
+    for (auto chunk_ref :
+         iter_chunks_mut() | std::views::filter([this](auto&& chunk_ref) { return chunk_ref.is_modified(); })) {
+        auto cv = grid::chunk_element<Element>(chunk_ref.get_mut());
+        for (auto&& [lpos, elem] : cv.iter_mut()) {
+            (void)lpos;
+            elem.set_updated(false);
+        }
     }
 }
 

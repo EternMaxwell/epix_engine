@@ -102,11 +102,11 @@ static std::optional<fs::SandSimulation> make_sim(
     auto chunk_range =
         child_entities | std::views::filter([&all_chunks](Entity e) { return all_chunks.get(e).has_value(); }) |
         std::views::transform(
-            [&all_chunks](
-                Entity e) -> std::tuple<ext::grid::Chunk<fs::kDim>&, const fs::SandChunkPos&, fs::SandChunkDirtyRect&> {
+            [&all_chunks](Entity e)
+                -> std::tuple<Mut<ext::grid::Chunk<fs::kDim>>, const fs::SandChunkPos&, fs::SandChunkDirtyRect&> {
                 auto o                                   = all_chunks.get(e);
                 auto&& [chunk, pos, dirty_rect, par_ref] = *o;
-                return {chunk.get_mut(), pos, dirty_rect.get_mut()};
+                return {std::move(chunk), pos, dirty_rect.get_mut()};
             });
     auto result = fs::SandSimulation::create(world, registry, chunk_range);
     if (!result.has_value()) return std::nullopt;
@@ -119,7 +119,8 @@ static std::optional<fs::SandSimulation> make_sim(
 void settings_ui(
     imgui::Ctx imgui_ctx,
     ResMut<SandAppState> app_state,
-    Query<Item<Mut<fs::SandWorld>, Opt<const Children&>>, With<fs::SimulatedByPlugin>> worlds,
+    Query<Item<Mut<fs::SandWorld>, Opt<const Children&>, Opt<Mut<fs::SandWorldDebug>>>, With<fs::SimulatedByPlugin>>
+        worlds,
     Res<fs::ElementRegistry> registry,
     Query<Item<Mut<ext::grid::Chunk<fs::kDim>>, const fs::SandChunkPos&, Mut<fs::SandChunkDirtyRect>, const Parent&>>
         all_chunks,
@@ -127,17 +128,19 @@ void settings_ui(
         main_cameras) {
     auto opt = worlds.single();
     if (!opt.has_value()) return;
-    auto&& [sand_world, maybe_children] = *opt;
-    auto& w                             = sand_world.get_mut();
-    auto& st                            = app_state.get_mut();
+    auto&& [sand_world, maybe_children, maybe_debug] = *opt;
+    auto& w                                          = sand_world.get_mut();
+    auto& st                                         = app_state.get_mut();
 
     ImGui::Begin("Falling Sand Settings");
 
     bool paused = w.paused();
     if (ImGui::Checkbox("Paused (Space)", &paused)) w.set_paused(paused);
 
-    bool show_outlines = w.show_chunk_outlines();
-    if (ImGui::Checkbox("Show Chunk Outlines", &show_outlines)) w.set_show_chunk_outlines(show_outlines);
+    bool show_outlines = maybe_debug.has_value() && maybe_debug->get().show_chunk_outlines;
+    if (ImGui::Checkbox("Show Chunk Outlines", &show_outlines)) {
+        if (maybe_debug.has_value()) maybe_debug->get_mut().show_chunk_outlines = show_outlines;
+    }
 
     bool& show_dirty = st.show_dirty_rects;
     if (ImGui::Checkbox("Show Dirty Rects (debug window)", &show_dirty)) {
@@ -173,12 +176,12 @@ void settings_ui(
     ImGui::Separator();
     if (ImGui::Button("Clear (C)")) {
         if (auto sim = make_sim(w, registry.get(), maybe_children, all_chunks))
-            for (auto&& chunk : sim->iter_chunks_mut()) chunk.get().clear();
+            for (auto&& chunk : sim->iter_chunks_mut()) chunk.get_mut().clear();
     }
     ImGui::SameLine();
     if (ImGui::Button("Reset (R)")) {
         if (auto sim = make_sim(w, registry.get(), maybe_children, all_chunks)) {
-            for (auto&& chunk : sim->iter_chunks_mut()) chunk.get().clear();
+            for (auto&& chunk : sim->iter_chunks_mut()) chunk.get_mut().clear();
             if (!st.elements.empty()) {
                 const auto& ei = st.elements[0];
                 sim->apply(fs::ops::Spawn::rect({-8, -4}, {8, 4}, ei.id));
@@ -386,10 +389,10 @@ void input_system(
     if (!sim.has_value()) return;
 
     if (need_clear)
-        for (auto&& chunk : sim->iter_chunks_mut()) chunk.get().clear();
+        for (auto&& chunk : sim->iter_chunks_mut()) chunk.get_mut().clear();
 
     if (need_reset) {
-        for (auto&& chunk : sim->iter_chunks_mut()) chunk.get().clear();
+        for (auto&& chunk : sim->iter_chunks_mut()) chunk.get_mut().clear();
         if (!st.elements.empty()) sim->apply(fs::ops::Spawn::rect({-8, -4}, {8, 4}, st.elements[0].id));
     }
 
@@ -702,10 +705,10 @@ void dirty_rect_overlay_system(Commands cmd,
     // Create or update overlays for active chunks.
     auto&& [chunks, overlay_transforms] = queries.get();
     for (auto& [chunk_ent, ar] : active) {
-        float x0       = ar.chunk_origin.x + static_cast<float>(ar.dirty_rect.xmin) * cell_size;
-        float x1       = ar.chunk_origin.x + static_cast<float>(ar.dirty_rect.xmax + 1) * cell_size;
-        float y0       = ar.chunk_origin.y + static_cast<float>(ar.dirty_rect.ymin) * cell_size;
-        float y1       = ar.chunk_origin.y + static_cast<float>(ar.dirty_rect.ymax + 1) * cell_size;
+        float x0       = ar.chunk_origin.x + static_cast<float>(ar.dirty_rect.get_xmin()) * cell_size;
+        float x1       = ar.chunk_origin.x + static_cast<float>(ar.dirty_rect.get_xmax() + 1) * cell_size;
+        float y0       = ar.chunk_origin.y + static_cast<float>(ar.dirty_rect.get_ymin()) * cell_size;
+        float y1       = ar.chunk_origin.y + static_cast<float>(ar.dirty_rect.get_ymax() + 1) * cell_size;
         float center_x = (x0 + x1) * 0.5f;
         float center_y = (y0 + y1) * 0.5f;
         float width    = x1 - x0;
@@ -850,8 +853,8 @@ void setup(Commands cmd) {
 
     fs::SandWorld sand_world(chunk_shift, cell_size);
     sand_world.set_missing_chunk_as_solid(true);
-    auto world_cmds =
-        cmd.spawn(std::move(sand_world), transform::Transform{}, fs::SimulatedByPlugin{}, fs::MeshBuildByPlugin{});
+    auto world_cmds = cmd.spawn(std::move(sand_world), transform::Transform{}, fs::SimulatedByPlugin{},
+                                fs::MeshBuildByPlugin{}, fs::SandWorldDebug{});
     st.world_entity = world_cmds.id();
 
     for (std::int32_t cy = -chunks_y; cy < chunks_y; ++cy) {

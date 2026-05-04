@@ -42,6 +42,9 @@ export struct SandChunkMesh {};
 /** @brief Tag for the chunk outline mesh child entity. */
 export struct SandChunkOutline {};
 
+/** @brief Tag for the body-cell debug mesh child entity. */
+export struct SandChunkBodyDebug {};
+
 /**
  * @brief Tracks render-child entities for a chunk entity.
  *
@@ -51,7 +54,7 @@ export struct SandChunkOutline {};
 export struct SandChunkRenderChildren {
     std::optional<core::Entity> mesh_entity;
     std::optional<core::Entity> outline_entity;
-    float outline_cell_size = 0.0f;  ///< Cell size used when outline_entity was built.
+    std::optional<core::Entity> body_debug_entity;  ///< Separate mesh for Body-type elements (debug).
 };
 
 /**
@@ -63,28 +66,30 @@ export struct SandChunkRenderChildren {
  */
 export struct SandWorld {
    private:
-    std::size_t m_chunk_shift     = 5;
-    float m_cell_size             = 4.0f;
+    std::size_t m_chunk_shift = 5;
+    float m_cell_size         = 4.0f;
+
+   public:
     bool m_paused                 = false;
-    bool m_show_chunk_outlines    = true;
-    bool m_missing_chunk_as_solid = false;            ///< Treat absent chunks as solid walls.
-    glm::vec2 m_gravity           = {0.0f, -300.0f};  ///< Gravity acceleration in cells/s².
+    bool m_missing_chunk_as_solid = false;             ///< Treat absent chunks as solid walls.
+    glm::vec2 m_gravity           = {0.0f, -1200.0f};  ///< Gravity acceleration in units/s².
 
    public:
     SandWorld() = default;
     SandWorld(std::size_t chunk_shift, float cell_size) : m_chunk_shift(chunk_shift), m_cell_size(cell_size) {}
-
     std::size_t chunk_shift() const { return m_chunk_shift; }
     float cell_size() const { return m_cell_size; }
     void set_cell_size(float s) { m_cell_size = s; }
     bool paused() const { return m_paused; }
     void set_paused(bool p) { m_paused = p; }
-    bool show_chunk_outlines() const { return m_show_chunk_outlines; }
-    void set_show_chunk_outlines(bool s) { m_show_chunk_outlines = s; }
+    const glm::vec2& gravity() const { return m_gravity; }
     bool missing_chunk_as_solid() const { return m_missing_chunk_as_solid; }
     void set_missing_chunk_as_solid(bool v) { m_missing_chunk_as_solid = v; }
-    glm::vec2 gravity() const { return m_gravity; }
-    void set_gravity(glm::vec2 g) { m_gravity = g; }
+};
+
+export struct SandWorldDebug {
+    bool show_body_debug     = false;  ///< Whether to build/render the body debug mesh.
+    bool show_chunk_outlines = false;  ///< Whether to build/render chunk outline meshes.
 };
 
 /**
@@ -100,6 +105,7 @@ export struct SandWorld {
  *     expanded to the full chunk so the step loop covers everything.
  */
 export struct SandChunkDirtyRect {
+   private:
     // Current active area (empty = xmin > xmax)
     std::int32_t xmin = 0;
     std::int32_t xmax = 0;
@@ -115,9 +121,8 @@ export struct SandChunkDirtyRect {
     std::int32_t time_threshold       = 12;
     // Chunk side length in cells (needed to represent "empty" as xmin=width, xmax=0)
     std::int32_t width = 0;
-    // Set to true when chunk just settled (force-slept); triggers one final mesh rebuild.
-    bool needs_rebuild = false;
 
+   public:
     /** Initialize in the "not active" / empty state for a chunk of the given width. */
     static SandChunkDirtyRect make_empty(std::int32_t chunk_width) noexcept {
         SandChunkDirtyRect r;
@@ -199,6 +204,17 @@ export struct SandChunkDirtyRect {
     bool in_area(std::int32_t x, std::int32_t y) const noexcept {
         return x >= xmin_next && x <= xmax_next && y >= ymin_next && y <= ymax_next;
     }
+
+    void set_time_threshold(std::int32_t t) noexcept { time_threshold = t; }
+    std::int32_t get_time_threshold() const noexcept { return time_threshold; }
+
+    std::tuple<std::int32_t, std::int32_t, std::int32_t, std::int32_t> get_current_area() const noexcept {
+        return {xmin, xmax, ymin, ymax};
+    }
+    std::int32_t get_xmin() const noexcept { return xmin; }
+    std::int32_t get_xmax() const noexcept { return xmax; }
+    std::int32_t get_ymin() const noexcept { return ymin; }
+    std::int32_t get_ymax() const noexcept { return ymax; }
 };
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -235,14 +251,14 @@ export using SandSimCreateError = std::variant<sand_sim_error::DuplicateChunkPos
  *   SandSimulation sim(world, range);
  * @endcode
  */
-export struct SandSimulation : grid::ExtendibleChunkRefGrid<kDim> {
+export struct SandSimulation : grid::ExtendibleMutChunkRefGrid<kDim> {
    private:
     SandWorld* m_world;
     const ElementRegistry* m_registry;
     grid::tree_extendible_grid<kDim, SandChunkDirtyRect*> m_chunk_dirty_rects;
 
     explicit SandSimulation(SandWorld& world, const ElementRegistry& registry)
-        : grid::ExtendibleChunkRefGrid<kDim>(world.chunk_shift()), m_world(&world), m_registry(&registry) {}
+        : grid::ExtendibleMutChunkRefGrid<kDim>(world.chunk_shift()), m_world(&world), m_registry(&registry) {}
 
     enum class CellState { Occupied, EmptyInChunk, Blocked };
     CellState cell_state(std::int64_t x, std::int64_t y) const;
@@ -320,7 +336,7 @@ export struct SandSimulation : grid::ExtendibleChunkRefGrid<kDim> {
      * Any other grid insert failure is returned as `std::unexpected(ChunkGridError{...})`.
      */
     template <std::ranges::input_range R>
-        requires std::same_as<std::tuple<grid::Chunk<kDim>&, const SandChunkPos&, SandChunkDirtyRect&>,
+        requires std::same_as<std::tuple<epix::core::Mut<grid::Chunk<kDim>>, const SandChunkPos&, SandChunkDirtyRect&>,
                               std::ranges::range_value_t<R>>
     static std::expected<SandSimulation, SandSimCreateError> create(SandWorld& world,
                                                                     const ElementRegistry& registry,
@@ -328,7 +344,7 @@ export struct SandSimulation : grid::ExtendibleChunkRefGrid<kDim> {
         SandSimulation sim(world, registry);
         for (auto&& item : std::forward<R>(chunks)) {
             auto&& [chunk, pos, dirty_rect] = item;
-            auto result                     = sim.insert_chunk(pos.value, chunk);
+            auto result                     = sim.insert_chunk(pos.value, std::move(chunk));
             if (!result.has_value()) {
                 auto& err = result.error();
                 if (std::holds_alternative<grid::grid_error>(err) &&

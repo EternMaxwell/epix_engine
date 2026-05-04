@@ -53,7 +53,7 @@ void update_sand_static_bodies(
     Res<fs::ElementRegistry> registry,
     Query<Item<Entity, const PixelBodyWorld&, const fs::SandWorld&, Opt<const Children&>>> worlds,
     Query<Item<Entity,
-               const grid::Chunk<fs::kDim>&,
+               Ref<grid::Chunk<fs::kDim>>,
                const fs::SandChunkPos&,
                Opt<Mut<fs::SandChunkDirtyRect>>,
                Opt<Mut<SandStaticBody>>>> chunks);
@@ -65,16 +65,29 @@ void step_pixel_body_worlds(Res<time::Time<>> time, Query<Item<Mut<PixelBodyWorl
 void sync_b2_to_transforms(Query<Item<const PixelBody&, Mut<transform::Transform>, Mut<Velocity>>> bodies);
 
 /** @brief For each occupied body cell, push the underlying sand cell up the
- *  anti-gravity column until an empty cell is found.  Stone cells block. */
-void interact_pixel_body_with_sand(
-    Res<fs::ElementRegistry> registry,
-    Query<Item<Entity, const PixelBodyWorld&, Mut<fs::SandWorld>, Opt<const Children&>>> worlds,
+ *  anti-gravity column until an empty cell is found.  Stone cells block.
+ *
+ *  Also manages Body-type sentinel elements in the sand grid:
+ *  - Removes stale blockers from cells the body vacated (with touch, so sand falls)
+ *  - Pushes out any real sand occupying body cells (sand displaced → b2Body woken)
+ *  - Inserts new blockers at body cell positions using insert_cell (no dirty-rect
+ *    touch) so the sand simulation treats those cells as immovable obstacles
+ *    without constantly re-waking settled sand.
+ *
+ *  Runs in FixedPreUpdate, immediately before the fallingsand simulate step. */
+void sync_pixel_body_to_sand(
+    Commands cmd,
+    ResMut<fs::ElementRegistry> registry,
+    Query<
+        Item<Entity, const PixelBodyWorld&, Mut<fs::SandWorld>, Opt<const Children&>, Opt<Mut<PixelBodySandBlockers>>>>
+        worlds,
     Query<Item<const PixelBody&, const transform::Transform&>> bodies,
     Query<Item<Mut<grid::Chunk<fs::kDim>>, const fs::SandChunkPos&, Mut<fs::SandChunkDirtyRect>>> chunks);
 
 /** @brief Rebuild the render mesh for any PixelBody with mesh_dirty. */
 void build_pixel_body_meshes(Commands cmd,
                              ResMut<assets::Assets<mesh::Mesh>> meshes,
-                             Query<Item<Entity, Mut<PixelBody>>> bodies);
+                             Query<Item<Entity, Mut<PixelBody>, const Parent&>> bodies,
+                             Query<Item<const PixelBodyWorld&>> worlds);
 
 }  // namespace epix::experimental::pixelbody
