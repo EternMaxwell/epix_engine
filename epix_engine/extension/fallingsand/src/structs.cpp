@@ -663,6 +663,14 @@ void SandSimulation::step_particle_liquid(std::int64_t x_, std::int64_t y_, std:
                     if (cell) cell->set_updated(true);
                     moved = true;
                 }
+            } else if (hb.type == ElementType::Gas && cell) {
+                if (swap_cells(cx, cy, hx, hy)) {
+                    cx   = hx;
+                    cy   = hy;
+                    cell = get_elem_ptr(cx, cy);
+                    if (cell) cell->set_updated(true);
+                    moved = true;
+                }
             }
         }
     }
@@ -678,8 +686,11 @@ void SandSimulation::step_particle_liquid(std::int64_t x_, std::int64_t y_, std:
             bool can = (s == CellState::EmptyInChunk);
             if (!can && s == CellState::Occupied) {
                 Element* nc = get_elem_ptr(nx, ny);
-                can         = nc && (*m_registry)[nc->base_id].type == ElementType::Liquid &&
-                              (*m_registry)[nc->base_id].density < base_elem.density;
+                if (nc) {
+                    const ElementBase& nb = (*m_registry)[nc->base_id];
+                    can                   = (nb.type == ElementType::Liquid && nb.density < base_elem.density) ||
+                                            nb.type == ElementType::Gas;
+                }
             }
             if (can && swap_cells(cx, cy, nx, ny)) {
                 cx   = nx;
