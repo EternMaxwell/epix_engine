@@ -33,7 +33,14 @@ namespace epix::imgui {
  *      }
  */
 export struct ImGuiPlugin {
+    bool enable_docking   = false;
+    bool enable_viewports = false;
+
+    ImGuiPlugin& set_docking(bool enabled = true);
+    ImGuiPlugin& set_viewports(bool enabled = true);
+
     void build(App& app);
+    void finalize(App& app);
 };
 
 export inline struct BeginFrameSetT {
@@ -58,6 +65,8 @@ void imgui_consume_input(Res<ImGuiState> state,
 // Render system (render sub-app)
 void imgui_render(Res<ImGuiState> state,
                   Res<epix::render::window::ExtractedWindows> windows,
+                  Res<wgpu::Instance> instance,
+                  Res<wgpu::Adapter> adapter,
                   Res<wgpu::Device> device,
                   Res<wgpu::Queue> queue);
-}  // namespace imgui
+}  // namespace epix::imgui

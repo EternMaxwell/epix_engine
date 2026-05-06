@@ -892,7 +892,10 @@ int main() {
         .add_plugins(render::RenderPlugin{}.set_validation(0))
         .add_plugins(core_graph::CoreGraphPlugin{})
         .add_plugins(mesh::MeshRenderPlugin{})
-        .add_plugins(imgui::ImGuiPlugin{})
+        .add_plugins(imgui::ImGuiPlugin{
+            .enable_docking   = true,
+            .enable_viewports = true,
+        })
         .add_plugins(time::TimePlugin{})
         .add_plugins(fs::FallingSandPlugin{})
         .add_systems(PreStartup, into(setup).set_name("fallingsand example setup"))

@@ -37,13 +37,24 @@ export struct DrawDataSnapshot {
     std::vector<DrawListClone> draw_lists;
 };
 
+export struct ViewportDrawDataSnapshot : DrawDataSnapshot {
+    unsigned int viewport_id = 0;
+    void* platform_handle    = nullptr;
+    bool minimized           = false;
+    int fb_width             = 0;  // captured on main thread (GLFW not thread-safe)
+    int fb_height            = 0;
+};
+
 /** @brief Resource holding the ImGui context and frame state.
  *  Stored as a resource in the main world and extracted to the render world. */
 export struct ImGuiState {
-    void* ctx         = nullptr;
-    bool initialized  = false;
-    bool frame_active = false;
+    void* ctx             = nullptr;
+    bool initialized      = false;
+    bool frame_active     = false;
+    bool enable_docking   = false;
+    bool enable_viewports = false;
     std::shared_ptr<DrawDataSnapshot> draw_snapshot;
+    std::shared_ptr<std::vector<ViewportDrawDataSnapshot>> viewport_snapshots;
 
     /** @brief Set ImGui context for the current thread. */
     void activate() const;
@@ -57,7 +68,7 @@ export struct ImGuiState {
  *
  *  After this, ImGui:: functions can be called directly. */
 export struct Ctx {};
-}  // namespace imgui
+}  // namespace epix::imgui
 
 namespace epix::core {
 template <>
@@ -90,4 +101,4 @@ struct SystemParam<imgui::Ctx> : ParamBase {
         return imgui::Ctx{};
     }
 };
-}  // namespace core
+}  // namespace epix::core

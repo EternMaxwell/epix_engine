@@ -160,6 +160,10 @@ wgpu::Surface glfwGetWGPUSurface(const wgpu::Instance& instance, GLFWwindow* win
     return std::move(*reinterpret_cast<wgpu::Surface*>(&res));
 }
 
+wgpu::Surface epix::glfw::render::get_wgpu_surface(const wgpu::Instance& instance, GLFWwindow* window) {
+    return glfwGetWGPUSurface(instance, window);
+}
+
 using namespace epix::core;
 
 using epix::render::window::SurfaceCreation;

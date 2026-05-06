@@ -50,7 +50,10 @@ int main() {
         .add_plugins(transform::TransformPlugin{})
         .add_plugins(render::RenderPlugin{})
         .add_plugins(core_graph::core_2d::Core2dPlugin{})
-        .add_plugins(imgui::ImGuiPlugin{});
+        .add_plugins(imgui::ImGuiPlugin{
+            .enable_docking   = true,
+            .enable_viewports = true,
+        });
 
     app.add_systems(Startup, into([](Commands cmd) { cmd.spawn(core_graph::core_2d::Camera2DBundle{}); }));
 
