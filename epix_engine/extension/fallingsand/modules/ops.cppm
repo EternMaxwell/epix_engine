@@ -34,18 +34,12 @@ namespace epix::ext::fallingsand::ops {
  */
 export struct Spawn {
    private:
-    std::function<void(SandSimulation&)> m_fn;
-    explicit Spawn(std::function<void(SandSimulation&)> fn) : m_fn(std::move(fn)) {}
+    struct Circle {
+        glm::ivec2 center;
+        std::size_t id;
+        int radius;
 
-   public:
-    void operator()(SandSimulation& sim) const { m_fn(sim); }
-
-    /**
-     * @brief Fill a circle of @p radius cells centred at @p center with element @p id.
-     * Cells that already contain an element are overwritten.
-     */
-    static Spawn circle(glm::ivec2 center, std::size_t id, int radius) {
-        return Spawn([center, id, radius](SandSimulation& sim) {
+        void operator()(SandSimulation& sim) const {
             const ElementRegistry& registry = sim.registry();
             const ElementBase& base         = registry[id];
             int r2                          = radius * radius;
@@ -59,15 +53,14 @@ export struct Spawn {
                     sim.put_cell({px, py}, Element{id, base.color_func(sd)});
                 }
             }
-        });
-    }
+        }
+    };
+    struct Rect {
+        glm::ivec2 min;
+        glm::ivec2 max;
+        std::size_t id;
 
-    /**
-     * @brief Fill the axis-aligned rectangle from @p min (inclusive) to @p max (inclusive)
-     * with element @p id.
-     */
-    static Spawn rect(glm::ivec2 min, glm::ivec2 max, std::size_t id) {
-        return Spawn([min, max, id](SandSimulation& sim) {
+        void operator()(SandSimulation& sim) const {
             const ElementRegistry& registry = sim.registry();
             const ElementBase& base         = registry[id];
             for (int dy = min.y; dy <= max.y; ++dy) {
@@ -78,8 +71,35 @@ export struct Spawn {
                     sim.put_cell({px, py}, Element{id, base.color_func(sd)});
                 }
             }
-        });
+        }
+    };
+
+    std::variant<Circle, Rect> m_shape;
+    template <typename Shape>
+        requires std::constructible_from<decltype(m_shape), Shape>
+    Spawn(Shape&& shape) : m_shape(std::forward<Shape>(shape)) {}
+
+   public:
+    Spawn(const Spawn&)            = default;
+    Spawn(Spawn&&)                 = default;
+    Spawn& operator=(const Spawn&) = default;
+    Spawn& operator=(Spawn&&)      = default;
+
+    void operator()(SandSimulation& sim) const {
+        std::visit([&sim](const auto& shape) { shape(sim); }, m_shape);
     }
+
+    /**
+     * @brief Fill a circle of @p radius cells centred at @p center with element @p id.
+     * Cells that already contain an element are overwritten.
+     */
+    static Spawn circle(glm::ivec2 center, std::size_t id, int radius) { return Spawn::Circle{center, id, radius}; }
+
+    /**
+     * @brief Fill the axis-aligned rectangle from @p min (inclusive) to @p max (inclusive)
+     * with element @p id.
+     */
+    static Spawn rect(glm::ivec2 min, glm::ivec2 max, std::size_t id) { return Spawn::Rect{min, max, id}; }
 
     /**
      * @brief Fill a rectangle centred at @p center of the given @p half-extents.
@@ -104,29 +124,46 @@ export struct Spawn {
  */
 export struct Remove {
    private:
-    std::function<void(SandSimulation&)> m_fn;
-    explicit Remove(std::function<void(SandSimulation&)> fn) : m_fn(std::move(fn)) {}
+    struct Circle {
+        glm::ivec2 center;
+        int radius;
 
-   public:
-    void operator()(SandSimulation& sim) const { m_fn(sim); }
-
-    static Remove circle(glm::ivec2 center, int radius) {
-        return Remove([center, radius](SandSimulation& sim) {
+        void operator()(SandSimulation& sim) const {
             int r2 = radius * radius;
             for (int dy = -radius; dy <= radius; ++dy)
                 for (int dx = -radius; dx <= radius; ++dx) {
                     if (dx * dx + dy * dy > r2) continue;
                     sim.erase_cell({center.x + dx, center.y + dy});
                 }
-        });
-    }
-
-    static Remove rect(glm::ivec2 min, glm::ivec2 max) {
-        return Remove([min, max](SandSimulation& sim) {
+        }
+    };
+    struct Rect {
+        glm::ivec2 min;
+        glm::ivec2 max;
+        void operator()(SandSimulation& sim) const {
             for (int dy = min.y; dy <= max.y; ++dy)
                 for (int dx = min.x; dx <= max.x; ++dx) sim.erase_cell({dx, dy});
-        });
+        }
+    };
+
+    std::variant<Circle, Rect> m_shape;
+    template <typename Shape>
+        requires std::constructible_from<decltype(m_shape), Shape>
+    Remove(Shape&& shape) : m_shape(std::forward<Shape>(shape)) {}
+
+   public:
+    Remove(const Remove&)            = default;
+    Remove(Remove&&)                 = default;
+    Remove& operator=(const Remove&) = default;
+    Remove& operator=(Remove&&)      = default;
+
+    void operator()(SandSimulation& sim) const {
+        std::visit([&sim](const auto& shape) { shape(sim); }, m_shape);
     }
+
+    static Remove circle(glm::ivec2 center, int radius) { return Remove(Remove::Circle{center, radius}); }
+
+    static Remove rect(glm::ivec2 min, glm::ivec2 max) { return Remove(Remove::Rect{min, max}); }
 
     static Remove rect_centered(glm::ivec2 center, glm::ivec2 half_ext) {
         return rect({center.x - half_ext.x, center.y - half_ext.y}, {center.x + half_ext.x, center.y + half_ext.y});
