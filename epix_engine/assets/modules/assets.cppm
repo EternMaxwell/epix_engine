@@ -23,6 +23,8 @@ export import :io.processor_gated;
 export import :io.memory;
 export import :io.memory.asset;
 export import :io.reader;
+export import :io.file.asset;
+export import :io.file.watcher;
 export import :io.source;
 export import :io.embedded;
 

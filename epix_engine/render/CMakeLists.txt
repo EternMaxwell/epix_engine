@@ -47,28 +47,12 @@ target_link_libraries(epix_screenshot PUBLIC epix_tasks)
 target_link_libraries(epix_screenshot PUBLIC epix_input)
 target_link_libraries(epix_screenshot PUBLIC webgpu)
 
-if(EPIX_ENABLE_TEST)
-# --- screenshot tests: auto-discover ---
-file(GLOB_RECURSE SCREENSHOT_TEST_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/screen_shot/tests/*.cpp")
-foreach(TEST_SRC IN LISTS SCREENSHOT_TEST_SOURCES)
-	file(RELATIVE_PATH TEST_REL "${CMAKE_CURRENT_SOURCE_DIR}/screen_shot/tests" "${TEST_SRC}")
-	string(CONCAT TEST_NAME "test_screenshot_" "${TEST_REL}")
-	string(REPLACE "/" "_" TEST_NAME "${TEST_NAME}")
-	string(REPLACE "\\" "_" TEST_NAME "${TEST_NAME}")
-	string(REPLACE ".cpp" "" TEST_NAME "${TEST_NAME}")
+epix_add_tests(screenshot
+  TESTS_DIR screen_shot/tests
+  LINK_LIBS epix_screenshot epix_render epix_core epix_image epix_assets epix_tasks
+)
 
-	add_executable(${TEST_NAME} "${TEST_SRC}")
-	target_link_libraries(${TEST_NAME} PRIVATE epix_screenshot)
-	target_link_libraries(${TEST_NAME} PRIVATE epix_render)
-	target_link_libraries(${TEST_NAME} PRIVATE epix_core)
-	target_link_libraries(${TEST_NAME} PRIVATE epix_image)
-	target_link_libraries(${TEST_NAME} PRIVATE epix_assets)
-	target_link_libraries(${TEST_NAME} PRIVATE epix_tasks)
-	target_link_libraries(${TEST_NAME} PRIVATE GTest::gtest_main)
-	add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
-endforeach()
-endif()
-
+if(EPIX_ENABLE_EXAMPLE)
 # --- examples: auto-discover ---
 # GLFW render examples (top-level .cpp files in examples/, excluding imgui*)
 file(GLOB GLFW_EXAMPLE_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/examples/*.cpp")
@@ -122,3 +106,4 @@ foreach(EXAMPLE_SRC IN LISTS WEBGPU_EXAMPLE_SOURCES)
 	add_executable(${EXAMPLE_NAME} "${EXAMPLE_SRC}")
 	target_link_libraries(${EXAMPLE_NAME} PRIVATE epix_render epix_glfw_render webgpu glfw)
 endforeach()
+endif()

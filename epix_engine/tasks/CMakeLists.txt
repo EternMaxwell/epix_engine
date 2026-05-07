@@ -3,17 +3,4 @@ target_include_directories(epix_tasks PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include
 target_link_libraries(epix_tasks PUBLIC BSThreadPool)
 target_link_libraries(epix_tasks PUBLIC asio)
 
-if (EPIX_ENABLE_TEST)
-file(GLOB_RECURSE TASKS_TEST_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/tests/*.cpp")
-foreach(TEST_SRC IN LISTS TASKS_TEST_SOURCES)
-  file(RELATIVE_PATH TEST_REL "${CMAKE_CURRENT_SOURCE_DIR}/tests" "${TEST_SRC}")
-  string(CONCAT TEST_NAME "test_tasks_" "${TEST_REL}")
-  string(REPLACE "/" "_" TEST_NAME "${TEST_NAME}")
-  string(REPLACE "\\" "_" TEST_NAME "${TEST_NAME}")
-  string(REPLACE ".cpp" "" TEST_NAME "${TEST_NAME}")
-
-  add_executable(${TEST_NAME} "${TEST_SRC}")
-  target_link_libraries(${TEST_NAME} PRIVATE epix_tasks GTest::gtest_main)
-  add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
-endforeach()
-endif()
+epix_add_tests(tasks LINK_LIBS epix_tasks)

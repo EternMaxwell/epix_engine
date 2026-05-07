@@ -14,6 +14,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 option(EPIX_ENABLE_TRACY "Enable tracy profiling" OFF)
 option(EPIX_USE_VOLK "Use Vulkan Loader" ON)
 option(EPIX_ENABLE_TEST "Enable epix test" ON)
+option(EPIX_ENABLE_EXAMPLE "Enable epix examples" ON)
 option(EPIX_CXX_MODULE "Enable C++20 modules" ON)
 option(EPIX_IMPORT_STD "Enable C++ import std" ON)
 
@@ -168,6 +169,11 @@ message(STATUS "  EPIX_USE_VOLK     (optional): ${EPIX_USE_VOLK}")
 message(STATUS "  EPIX_ENABLE_TEST  (optional): ${EPIX_ENABLE_TEST}")
 message(STATUS "  EPIX_CXX_MODULE   (optional): ${EPIX_CXX_MODULE}")
 message(STATUS "  EPIX_IMPORT_STD   (optional): ${EPIX_IMPORT_STD}")
+
+# Engine source root — always the directory of this CMakeLists.txt, even when
+# epix_engine is used as an add_subdirectory() target. Used as WORKING_DIRECTORY
+# for all engine tests so that "assets/..." paths resolve correctly.
+set(EPIX_ENGINE_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}" CACHE PATH "Root source directory of the epix engine (this CMakeLists.txt's directory)")
 
 if (EPIX_ENABLE_TEST)
   enable_testing()
