@@ -20,4 +20,10 @@ Per-module details live in each module's `documentation/<module>/todo.md`.
 
 See [documentation/core/todo.md](core/todo.md) and [documentation/assets/todo.md](assets/todo.md) for full details.
 
+| `tasks`  | `ThreadExecutorTicker::try_tick()` stub — always returns false, no real tick mechanism                           | feature  |
+| `tasks`  | `Scope::spawn_on_external` delegates to `spawn` — no separate external executor                                  | feature  |
+| `tasks`  | `TaskPoolBuilder::stack_size` stored but never applied to the backend thread creation                            | feature  |
+
+See [documentation/tasks/todo.md](tasks/todo.md) for full details.
+
 | `grid`   | `ChunkLayer::supported_types` return input_iterable                                                              | feature  |
