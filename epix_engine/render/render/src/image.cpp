@@ -8,7 +8,7 @@ import :image;
 
 namespace epix::render {
 
-wgpu::TextureFormat format_cast(image::Format format) {
+wgpu::TextureFormat format_cast(image::Format format) noexcept {
     switch (format) {
         case image::Format::Grey8:
             return wgpu::TextureFormat::eR8Unorm;
@@ -35,7 +35,7 @@ wgpu::TextureFormat format_cast(image::Format format) {
     }
 }
 
-wgpu::TextureDimension dimension_cast(image::ImageType type) {
+wgpu::TextureDimension dimension_cast(image::ImageType type) noexcept {
     switch (type) {
         case image::ImageType::e1D:
             return wgpu::TextureDimension::e1D;
@@ -49,7 +49,7 @@ wgpu::TextureDimension dimension_cast(image::ImageType type) {
     }
 }
 
-wgpu::TextureViewDimension view_dimension_cast(image::ImageType type) {
+wgpu::TextureViewDimension view_dimension_cast(image::ImageType type) noexcept {
     switch (type) {
         case image::ImageType::e1D:
             return wgpu::TextureViewDimension::e1D;
@@ -107,7 +107,7 @@ GPUImage RenderAsset<image::Image>::process(image::Image&& asset, Param param) {
     return gpu_image;
 }
 
-RenderAssetUsage RenderAsset<image::Image>::usage(const image::Image& asset) {
+RenderAssetUsage RenderAsset<image::Image>::usage(const image::Image& asset) noexcept {
     return static_cast<RenderAssetUsage>(asset.usage());
 }
 

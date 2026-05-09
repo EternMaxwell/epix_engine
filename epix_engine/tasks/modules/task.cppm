@@ -121,18 +121,18 @@ struct Task {
     std::shared_ptr<detail::TaskState<T>> m_state;
 
    public:
-    Task() = default;
-    explicit Task(std::shared_ptr<detail::TaskState<T>> s) : m_state(std::move(s)) {}
+    Task() noexcept = default;
+    explicit Task(std::shared_ptr<detail::TaskState<T>> s) noexcept : m_state(std::move(s)) {}
     Task(Task&&)                 = default;
     Task& operator=(Task&&)      = default;
     Task(const Task&)            = delete;
     Task& operator=(const Task&) = delete;
 
     /** Detach: drop the handle; work keeps running in the background. */
-    void detach() { m_state.reset(); }
+    void detach() noexcept { m_state.reset(); }
 
     /** Non-blocking: returns true if the work has completed. */
-    bool is_finished() const { return !m_state || m_state->done.load(std::memory_order_acquire); }
+    bool is_finished() const noexcept { return !m_state || m_state->done.load(std::memory_order_acquire); }
 
     /**
      * @brief Cancel the task and wait for it to stop running.
@@ -166,7 +166,7 @@ struct Task {
         return std::move(m_state->value);
     }
 
-    explicit operator bool() const { return m_state && !m_state->done.load(); }
+    explicit operator bool() const noexcept { return m_state && !m_state->done.load(); }
 
     /**
      * @brief Make Task<T> usable as `co_await task` inside `asio::awaitable<T>`.
@@ -218,16 +218,16 @@ struct Task<void> {
     std::shared_ptr<detail::TaskState<void>> m_state;
 
    public:
-    Task() = default;
-    explicit Task(std::shared_ptr<detail::TaskState<void>> s) : m_state(std::move(s)) {}
+    Task() noexcept = default;
+    explicit Task(std::shared_ptr<detail::TaskState<void>> s) noexcept : m_state(std::move(s)) {}
     Task(Task&&)                 = default;
     Task& operator=(Task&&)      = default;
     Task(const Task&)            = delete;
     Task& operator=(const Task&) = delete;
 
-    void detach() { m_state.reset(); }
+    void detach() noexcept { m_state.reset(); }
 
-    bool is_finished() const { return !m_state || m_state->done.load(std::memory_order_acquire); }
+    bool is_finished() const noexcept { return !m_state || m_state->done.load(std::memory_order_acquire); }
 
     /**
      * @brief Cancel the task and wait for it to stop running.
@@ -251,7 +251,7 @@ struct Task<void> {
         if (m_state->exception) std::rethrow_exception(m_state->exception);
     }
 
-    explicit operator bool() const { return m_state && !m_state->done.load(); }
+    explicit operator bool() const noexcept { return m_state && !m_state->done.load(); }
 
     /** @brief Make Task<void> usable as `co_await task` inside `asio::awaitable<void>`. */
     template <ASIO_COMPLETION_TOKEN_FOR(void(std::exception_ptr)) CompletionToken>

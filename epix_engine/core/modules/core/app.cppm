@@ -49,7 +49,7 @@ struct WorldNotOwnedError {};
 struct ScheduleOrder {
    public:
     /** @brief Iterate over the schedule labels in order. */
-    auto iter() const { return std::views::all(labels); }
+    auto iter() const noexcept { return std::views::all(labels); }
     /** @brief Insert a schedule label at the beginning. */
     void insert_begin(const ScheduleLabel& label) { labels.insert(labels.begin(), label); }
     /** @brief Insert a schedule label at the end. */
@@ -94,7 +94,7 @@ struct ScheduleOrder {
                                                [&](const ScheduleLabel& label) { return !existing.contains(label); }));
     }
     /** @brief Remove a label, return true if found and removed. */
-    bool remove(const ScheduleLabel& label) {
+    bool remove(const ScheduleLabel& label) noexcept {
         auto it = std::find(labels.begin(), labels.end(), label);
         if (it != labels.end()) {
             labels.erase(it);
@@ -140,7 +140,7 @@ struct App {
     // === App Info and sub-apps ===
 
     /** @brief Get the label of the app. */
-    AppLabel label() const { return _label; }
+    AppLabel label() const noexcept { return _label; }
     /** @brief Get or create a sub-app with the given label. */
     App& sub_app_or_insert(const AppLabel& label);
     /** @brief Add a sub-app. If a sub-app with the same label exists, nothing happens.
@@ -158,9 +158,9 @@ struct App {
     // === World Access ===
 
     /** @brief Get a const reference to the world. */
-    const World& world() const { return _world; }
+    const World& world() const noexcept { return _world; }
     /** @brief Get a mutable reference to the world. */
-    World& world_mut() { return _world; }
+    World& world_mut() noexcept { return _world; }
     /** @brief Execute a function with access to the world. */
     App& world_scope(std::invocable<World&> auto&& func) {
         func(_world);
@@ -430,7 +430,7 @@ struct App {
     void insert_sub_app(const AppLabel& label, std::unique_ptr<App> app);
 
     /** @brief Check if the app has an extract function set. */
-    bool has_extract() const { return static_cast<bool>(extract_fn); }
+    bool has_extract() const noexcept { return static_cast<bool>(extract_fn); }
     /** @brief Extract data from another app into this app using the extract function. */
     void extract(App& other);
     /** @brief Set the extract function. First argument is this app, second is the source world. */
@@ -439,11 +439,11 @@ struct App {
         return *this;
     }
     /** @brief Check if the app has a runner set. */
-    bool has_runner() const { return static_cast<bool>(runner); }
+    bool has_runner() const noexcept { return static_cast<bool>(runner); }
     /** @brief Set the runner for the app. Called when run() is invoked. */
-    void set_runner(std::unique_ptr<AppRunner> fn) { runner = std::move(fn); }
+    void set_runner(std::unique_ptr<AppRunner> fn) noexcept { runner = std::move(fn); }
     /** @brief Pop and return the current runner (leaves runner as nullptr). */
-    std::unique_ptr<AppRunner> pop_runner() {
+    std::unique_ptr<AppRunner> pop_runner() noexcept {
         return std::move(runner);  // runner should be nullptr after move
     }
     /** @brief Error codes for runner scope access. */

@@ -70,11 +70,11 @@ struct BundleInfo {
         std::vector<TypeId> component_ids,  // should be the same order as bundle write and bundle type ids
         BundleId id);
 
-    BundleId id() const { return _id; }
-    auto explicit_components() const { return std::views::take(_component_ids, _explicit_components_count); }
-    auto required_components() const { return std::views::drop(_component_ids, _explicit_components_count); }
-    auto all_components() const { return std::views::all(_component_ids); }
-    auto required_component_constructors() const { return std::views::all(_required_components); }
+    BundleId id() const noexcept { return _id; }
+    auto explicit_components() const noexcept { return std::views::take(_component_ids, _explicit_components_count); }
+    auto required_components() const noexcept { return std::views::drop(_component_ids, _explicit_components_count); }
+    auto all_components() const noexcept { return std::views::all(_component_ids); }
+    auto required_component_constructors() const noexcept { return std::views::all(_required_components); }
 
     template <typename T1, typename T2, is_bundle T3>
     void write_components(
@@ -161,16 +161,16 @@ struct BundleInfo {
 };
 struct Bundles {
    public:
-    std::size_t size() const { return _bundle_infos.size(); }
-    bool empty() const { return _bundle_infos.empty(); }
-    auto iter() const { return std::views::all(_bundle_infos); }
-    std::optional<std::reference_wrapper<const BundleInfo>> get(BundleId id) const {
+    std::size_t size() const noexcept { return _bundle_infos.size(); }
+    bool empty() const noexcept { return _bundle_infos.empty(); }
+    auto iter() const noexcept { return std::views::all(_bundle_infos); }
+    std::optional<std::reference_wrapper<const BundleInfo>> get(BundleId id) const noexcept {
         if (id.get() >= _bundle_infos.size()) {
             return std::nullopt;
         }
         return std::cref(_bundle_infos[id.get()]);
     }
-    std::optional<BundleId> get_id(TypeId type_id) const {
+    std::optional<BundleId> get_id(TypeId type_id) const noexcept {
         if (auto it = _dynamic_component_ids.find(type_id); it != _dynamic_component_ids.end()) {
             return it->second;
         }
@@ -213,14 +213,14 @@ struct Bundles {
     BundleId init_component_info(Storage& storage, const Components& components, TypeId type_id);
 
     // Get the storage type of a single-component dynamic bundle
-    std::optional<StorageType> get_storage(BundleId id) const {
+    std::optional<StorageType> get_storage(BundleId id) const noexcept {
         if (auto it = _dynamic_component_storages.find(id); it != _dynamic_component_storages.end()) {
             return it->second;
         }
         return std::nullopt;
     }
     // Get the storage types of a multi-component dynamic bundle
-    std::optional<std::span<const StorageType>> get_storages(BundleId id) const {
+    std::optional<std::span<const StorageType>> get_storages(BundleId id) const noexcept {
         if (auto it = _dynamic_bundle_storages.find(id); it != _dynamic_bundle_storages.end()) {
             return std::span<const StorageType>(it->second);
         }
@@ -240,6 +240,6 @@ struct Bundles {
     std::unordered_map<BundleId, StorageType, std::hash<std::size_t>> _dynamic_component_storages;
 };
 
-const Bundles& world_bundles(const World& world);
-Bundles& world_bundles_mut(World& world);
+const Bundles& world_bundles(const World& world) noexcept;
+Bundles& world_bundles_mut(World& world) noexcept;
 }  // namespace epix::core

@@ -29,7 +29,7 @@ import epix.meta;
 import glm;
 
 namespace epix::mesh {
-constexpr std::size_t vertex_format_size(wgpu::VertexFormat format) {
+constexpr std::size_t vertex_format_size(wgpu::VertexFormat format) noexcept {
     switch (format) {
         case wgpu::VertexFormat::eFloat32:
             return sizeof(float);
@@ -60,7 +60,7 @@ export struct MeshAttribute {
     std::uint32_t slot;
     wgpu::VertexFormat format;
 
-    bool operator==(const MeshAttribute& other) const {
+    bool operator==(const MeshAttribute& other) const noexcept {
         return name == other.name && slot == other.slot && format == other.format;
     }
 };
@@ -68,13 +68,13 @@ export struct MeshAttribute {
 export struct MeshAttributeLayout : std::map<std::uint32_t, MeshAttribute> {
     wgpu::PrimitiveTopology primitive_type = wgpu::PrimitiveTopology::eTriangleList;
 
-    bool operator==(const MeshAttributeLayout& other) const {
+    bool operator==(const MeshAttributeLayout& other) const noexcept {
         return primitive_type == other.primitive_type &&
                static_cast<const std::map<std::uint32_t, MeshAttribute>&>(*this) ==
                    static_cast<const std::map<std::uint32_t, MeshAttribute>&>(other);
     }
 
-    bool contains_attribute(const MeshAttribute& attribute) const {
+    bool contains_attribute(const MeshAttribute& attribute) const noexcept {
         auto it = this->find(attribute.slot);
         return it != this->end() && it->second == attribute;
     }
@@ -129,27 +129,27 @@ export struct MeshAttributeData {
     MeshAttribute attribute;
     core::untyped_vector data;
 
-    std::size_t size() const { return data.size(); }
-    bool empty() const { return data.empty(); }
+    std::size_t size() const noexcept { return data.size(); }
+    bool empty() const noexcept { return data.empty(); }
 };
 /** @brief Index buffer data, stored as either uint16 or uint32 values. */
 export struct MeshIndices {
    public:
-    MeshIndices(const meta::type_info& desc) : data(desc) {}
-    MeshIndices(core::untyped_vector&& vec) : data(std::move(vec)) {}
+    MeshIndices(const meta::type_info& desc) noexcept : data(desc) {}
+    MeshIndices(core::untyped_vector&& vec) noexcept : data(std::move(vec)) {}
 
     /** @brief Check if this is a uint16 index buffer. */
-    bool is_u16() const { return data.type_info() == meta::type_info::of<std::uint16_t>(); }
+    bool is_u16() const noexcept { return data.type_info() == meta::type_info::of<std::uint16_t>(); }
     /** @brief Check if this is a uint32 index buffer. */
-    bool is_u32() const { return data.type_info() == meta::type_info::of<std::uint32_t>(); }
+    bool is_u32() const noexcept { return data.type_info() == meta::type_info::of<std::uint32_t>(); }
     /** @brief Get the index data as a span of uint16 values. */
-    std::span<const std::uint16_t> as_u16() const { return data.cspan_as<std::uint16_t>(); }
+    std::span<const std::uint16_t> as_u16() const noexcept { return data.cspan_as<std::uint16_t>(); }
     /** @brief Get the index data as a span of uint32 values. */
-    std::span<const std::uint32_t> as_u32() const { return data.cspan_as<std::uint32_t>(); }
+    std::span<const std::uint32_t> as_u32() const noexcept { return data.cspan_as<std::uint32_t>(); }
     /** @brief Number of indices. */
-    std::size_t size() const { return data.size(); }
+    std::size_t size() const noexcept { return data.size(); }
     /** @brief Whether the index buffer is empty. */
-    bool empty() const { return data.empty(); }
+    bool empty() const noexcept { return data.empty(); }
 
    public:
     core::untyped_vector data;
@@ -169,17 +169,17 @@ export struct Mesh {
     static const MeshAttribute ATTRIBUTE_UV1;
 
    public:
-    Mesh() : primitive_type(wgpu::PrimitiveTopology::eTriangleList) {}
-    Mesh(wgpu::PrimitiveTopology primitive_type) : primitive_type(primitive_type) {}
+    Mesh() noexcept : primitive_type(wgpu::PrimitiveTopology::eTriangleList) {}
+    Mesh(wgpu::PrimitiveTopology primitive_type) noexcept : primitive_type(primitive_type) {}
     Mesh(const Mesh&)            = delete;
     Mesh(Mesh&&)                 = default;
     Mesh& operator=(const Mesh&) = delete;
     Mesh& operator=(Mesh&&)      = default;
 
     /** @brief Get the primitive topology. */
-    wgpu::PrimitiveTopology get_primitive_type() const { return primitive_type; }
+    wgpu::PrimitiveTopology get_primitive_type() const noexcept { return primitive_type; }
     /** @brief Set the primitive topology. */
-    void set_primitive_type(wgpu::PrimitiveTopology type) { primitive_type = type; }
+    void set_primitive_type(wgpu::PrimitiveTopology type) noexcept { primitive_type = type; }
     /** @brief Builder-style setter for primitive topology. */
     auto&& with_primitive_type(this auto&& self, wgpu::PrimitiveTopology type) {
         self.set_primitive_type(type);
@@ -226,7 +226,7 @@ export struct Mesh {
         requires(std::is_trivially_copyable_v<std::ranges::range_value_t<T>> &&
                  std::is_trivially_destructible_v<std::ranges::range_value_t<T>>)
     auto&& with_attribute(this auto&& self, MeshAttribute attribute, T&& data) {
-        self.insert_attribute(attribute, std::forward<decltype(data)>(data));
+        (void)self.insert_attribute(attribute, std::forward<decltype(data)>(data));
         return std::forward<decltype(self)>(self);
     }
     /** @brief Get a const attribute data by descriptor. */
@@ -293,11 +293,11 @@ export struct Mesh {
         return std::forward<decltype(self)>(self);
     }
     /** @brief Get a const reference to the index data, if present. */
-    std::optional<std::reference_wrapper<const MeshIndices>> get_indices() const {
+    std::optional<std::reference_wrapper<const MeshIndices>> get_indices() const noexcept {
         return _indices.transform([](const MeshIndices& indices) { return std::cref(indices); });
     }
     /** @brief Get a mutable reference to the index data, if present. */
-    std::optional<std::reference_wrapper<MeshIndices>> get_indices_mut() {
+    std::optional<std::reference_wrapper<MeshIndices>> get_indices_mut() noexcept {
         return _indices.transform([](MeshIndices& indices) { return std::ref(indices); });
     }
     /** @brief Remove and return the index data. */
@@ -363,4 +363,4 @@ export Mesh make_box2d_uv(float width,
 export struct MeshPlugin {
     void build(core::App& app);
 };
-}  // namespace mesh
+}  // namespace epix::mesh

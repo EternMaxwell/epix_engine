@@ -76,15 +76,15 @@ export struct SandWorld {
 
    public:
     SandWorld() = default;
-    SandWorld(std::size_t chunk_shift, float cell_size) : m_chunk_shift(chunk_shift), m_cell_size(cell_size) {}
-    std::size_t chunk_shift() const { return m_chunk_shift; }
-    float cell_size() const { return m_cell_size; }
-    void set_cell_size(float s) { m_cell_size = s; }
-    bool paused() const { return m_paused; }
-    void set_paused(bool p) { m_paused = p; }
-    const glm::vec2& gravity() const { return m_gravity; }
-    bool missing_chunk_as_solid() const { return m_missing_chunk_as_solid; }
-    void set_missing_chunk_as_solid(bool v) { m_missing_chunk_as_solid = v; }
+    SandWorld(std::size_t chunk_shift, float cell_size) noexcept : m_chunk_shift(chunk_shift), m_cell_size(cell_size) {}
+    std::size_t chunk_shift() const noexcept { return m_chunk_shift; }
+    float cell_size() const noexcept { return m_cell_size; }
+    void set_cell_size(float s) noexcept { m_cell_size = s; }
+    bool paused() const noexcept { return m_paused; }
+    void set_paused(bool p) noexcept { m_paused = p; }
+    const glm::vec2& gravity() const noexcept { return m_gravity; }
+    bool missing_chunk_as_solid() const noexcept { return m_missing_chunk_as_solid; }
+    void set_missing_chunk_as_solid(bool v) noexcept { m_missing_chunk_as_solid = v; }
 };
 
 export struct SandWorldDebug {

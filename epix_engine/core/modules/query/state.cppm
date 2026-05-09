@@ -75,7 +75,7 @@ struct QueryState {
     }
 
     /** @brief Check if the given archetype is matched by this query. */
-    bool contains_archetype(ArchetypeId id) const { return _matched_archetypes.contains(id); }
+    bool contains_archetype(ArchetypeId id) const noexcept { return _matched_archetypes.contains(id); }
 
     /** @brief Re-scan the world for newly added archetypes and add matches. */
     void update_archetypes(const World& world) {
@@ -112,23 +112,23 @@ struct QueryState {
                  && (sizeof(typename WorldQuery<NewD>::State) == sizeof(typename WorldQuery<D>::State)) &&
                  (sizeof(typename WorldQuery<NewF>::State) == sizeof(typename WorldQuery<F>::State))
     /** @brief Reinterpret this QueryState as a different query type (unsafe). */
-    QueryState<NewD, NewF>& as_transmuted_state() const {
+    QueryState<NewD, NewF>& as_transmuted_state() const noexcept {
         // This is unsafe if the new query data or filter's state cannot be reinterpreted from the old one's state.
         return *reinterpret_cast<QueryState<NewD, NewF>*>(const_cast<QueryState<D, F>*>(this));
     }
     /** @brief Get a read-only view of this QueryState. */
-    QueryState<typename QueryData<D>::ReadOnly, F>& as_readonly() const {
+    QueryState<typename QueryData<D>::ReadOnly, F>& as_readonly() const noexcept {
         return as_transmuted_state<typename QueryData<D>::ReadOnly, F>();
     }
 
     /** @brief Get the list of matched archetype ids. */
-    std::span<const ArchetypeId> matched_archetype_ids() const { return _matched_archetype_ids; }
+    std::span<const ArchetypeId> matched_archetype_ids() const noexcept { return _matched_archetype_ids; }
     /** @brief Get the fetch state. */
-    const WorldQuery<D>::State& fetch_state() const { return _fetch_state; }
+    const WorldQuery<D>::State& fetch_state() const noexcept { return _fetch_state; }
     /** @brief Get the filter state. */
-    const WorldQuery<F>::State& filter_state() const { return _filter_state; }
+    const WorldQuery<F>::State& filter_state() const noexcept { return _filter_state; }
     /** @brief Get the component access descriptor. */
-    const FilteredAccess& component_access() const { return _component_access; }
+    const FilteredAccess& component_access() const noexcept { return _component_access; }
     /** @brief Create a Query handle, updating archetypes first. */
     Query<D, F> query_with_ticks(World& world, Tick last_run, Tick this_run) {
         update_archetypes(world);
@@ -338,4 +338,4 @@ struct QueryState {
     template <query_data DD, query_filter FF>
     friend struct QueryIter;
 };
-}  // namespace core
+}  // namespace epix::core

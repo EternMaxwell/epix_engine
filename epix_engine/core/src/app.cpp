@@ -204,8 +204,9 @@ bool App::run_schedule(const ScheduleLabel& label) {
 
 void App::update() {
     spdlog::trace("[app] Update tick for '{}'.", _label.to_string());
-    _world.check_change_tick(
-        [&](Tick tick) { _world.resource_scope([&](Schedules& schedules) { schedules.check_change_tick(tick); }); });
+    _world.check_change_tick([&](Tick tick) {
+        (void)_world.resource_scope([&](Schedules& schedules) { schedules.check_change_tick(tick); });
+    });
     auto order_opt = _world.take_resource<ScheduleOrder>();
     if (order_opt) {
         for (const auto& label : order_opt->iter()) {

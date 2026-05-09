@@ -14,6 +14,15 @@ import epix.extension.grid;
 using namespace epix::ext::grid;
 
 // ============================================================
+
+#if defined(_MSC_VER)
+#pragma warning(disable : 4834)
+#elif defined(__clang__)
+#pragma clang diagnostic ignored "-Wunused-value"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic ignored "-Wunused-result"
+#pragma GCC diagnostic ignored "-Wunused-value"
+#endif
 // Helpers
 // ============================================================
 static constexpr std::array<std::uint32_t, 1> pos1(std::uint32_t x) { return {x}; }

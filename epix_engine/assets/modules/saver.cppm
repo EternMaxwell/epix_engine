@@ -35,7 +35,7 @@ struct SavedAsset {
     std::reference_wrapper<const A> m_asset;
     std::reference_wrapper<const std::unordered_map<std::string, LabeledAsset>> m_labeled;
 
-    SavedAsset(const A& asset, const std::unordered_map<std::string, LabeledAsset>& labeled)
+    SavedAsset(const A& asset, const std::unordered_map<std::string, LabeledAsset>& labeled) noexcept
         : m_asset(asset), m_labeled(labeled) {}
 
    public:
@@ -47,7 +47,7 @@ struct SavedAsset {
     }
 
     /** @brief Create from a transformed asset. */
-    static SavedAsset from_transformed(const TransformedAsset<A>& ta) {
+    static SavedAsset from_transformed(const TransformedAsset<A>& ta) noexcept {
         return SavedAsset(ta.m_asset, ta.m_labeled_assets);
     }
 
@@ -58,10 +58,10 @@ struct SavedAsset {
     }
 
     /** @brief Access the underlying asset. */
-    const A& get() const { return m_asset.get(); }
+    const A& get() const noexcept { return m_asset.get(); }
     /** @brief Dereference to the underlying asset. */
-    const A& operator*() const { return m_asset.get(); }
-    const A* operator->() const { return &m_asset.get(); }
+    const A& operator*() const noexcept { return m_asset.get(); }
+    const A* operator->() const noexcept { return &m_asset.get(); }
 
     /** @brief Try to get a labeled sub-asset by label. */
     template <Asset B>
@@ -72,7 +72,8 @@ struct SavedAsset {
     }
 
     /** @brief Get a type-erased labeled sub-asset by label. */
-    std::optional<std::reference_wrapper<const ErasedLoadedAsset>> get_erased_labeled(const std::string& label) const {
+    std::optional<std::reference_wrapper<const ErasedLoadedAsset>> get_erased_labeled(
+        const std::string& label) const noexcept {
         auto it = m_labeled.get().find(label);
         if (it == m_labeled.get().end()) return std::nullopt;
         return std::cref(it->second.asset);
@@ -89,7 +90,7 @@ struct SavedAsset {
 
     /** @brief Get a type-erased labeled sub-asset by handle id. */
     std::optional<std::reference_wrapper<const ErasedLoadedAsset>> get_erased_labeled_by_id(
-        const UntypedAssetId& id) const {
+        const UntypedAssetId& id) const noexcept {
         for (const auto& [_, labeled] : m_labeled.get()) {
             if (labeled.handle.id() == id) return std::cref(labeled.asset);
         }
@@ -97,7 +98,7 @@ struct SavedAsset {
     }
 
     /** @brief Get the untyped handle of a labeled sub-asset by label. */
-    std::optional<UntypedHandle> get_untyped_handle(const std::string& label) const {
+    std::optional<UntypedHandle> get_untyped_handle(const std::string& label) const noexcept {
         auto it = m_labeled.get().find(label);
         if (it == m_labeled.get().end()) return std::nullopt;
         return it->second.handle;
@@ -114,7 +115,7 @@ struct SavedAsset {
     }
 
     /** @brief Get a range over all label strings. */
-    auto labels() const {
+    auto labels() const noexcept {
         return m_labeled.get() |
                std::views::transform([](const auto& pair) -> const std::string& { return pair.first; });
     }
@@ -129,7 +130,7 @@ export struct ErasedAssetSaver {
                                                                           const Settings& settings,
                                                                           const AssetPath& asset_path) const = 0;
     /** @brief Get the type name of this saver. */
-    virtual std::string_view type_name() const = 0;
+    virtual std::string_view type_name() const noexcept = 0;
 };
 
 /** @brief Blanket implementation of ErasedAssetSaver for any type satisfying the AssetSaver concept. */
@@ -139,7 +140,7 @@ struct ErasedAssetSaverImpl : T, ErasedAssetSaver {
         requires std::constructible_from<T, Args...>
     ErasedAssetSaverImpl(Args&&... args) : T(std::forward<Args>(args)...) {}
 
-    const T& as_concrete() const { return static_cast<const T&>(*this); }
+    const T& as_concrete() const noexcept { return static_cast<const T&>(*this); }
 
     asio::awaitable<std::expected<void, std::exception_ptr>> save(Writer& writer,
                                                                   const ErasedLoadedAsset& asset,
@@ -161,7 +162,7 @@ struct ErasedAssetSaverImpl : T, ErasedAssetSaver {
         }
     }
 
-    std::string_view type_name() const override { return meta::type_id<T>{}.short_name(); }
+    std::string_view type_name() const noexcept override { return meta::type_id<T>{}.short_name(); }
 };
 
 }  // namespace epix::assets

@@ -36,14 +36,14 @@ export struct GraphContext {
     GraphContext(const RenderGraph& graph,
                  const NodeState& node_state,
                  const std::vector<SlotValue>& inputs,
-                 std::vector<std::optional<SlotValue>>& outputs)
+                 std::vector<std::optional<SlotValue>>& outputs) noexcept
         : m_graph(graph), m_node_state(node_state), m_inputs(inputs), m_outputs(outputs) {}
     /** @brief Get all input slot values. */
-    const std::vector<SlotValue>& inputs() const { return m_inputs; }
+    const std::vector<SlotValue>& inputs() const noexcept { return m_inputs; }
     /** @brief Get the input slot declarations. */
-    const SlotInfos& input_info() const { return m_node_state.inputs; }
+    const SlotInfos& input_info() const noexcept { return m_node_state.inputs; }
     /** @brief Get the output slot declarations. */
-    const SlotInfos& output_info() const { return m_node_state.outputs; }
+    const SlotInfos& output_info() const noexcept { return m_node_state.outputs; }
     /** @brief Get a specific input slot value by label.
      * @return Pointer to the value, or nullptr if not found. */
     const SlotValue* get_input(const SlotLabel& label) const {
@@ -90,9 +90,9 @@ export struct GraphContext {
      * @note Throws if no view entity is set. */
     Entity view_entity() const { return m_view_entity.value(); }
     /** @brief Get the view entity, or std::nullopt if none is set. */
-    std::optional<Entity> get_view_entity() const { return m_view_entity; }
+    std::optional<Entity> get_view_entity() const noexcept { return m_view_entity; }
     /** @brief Assign a view entity to this context. */
-    void set_view_entity(Entity entity) { m_view_entity = entity; }
+    void set_view_entity(Entity entity) noexcept { m_view_entity = entity; }
 
     /** @brief Schedule a sub-graph to run after this node finishes.
      * @param label The sub-graph label.
@@ -104,7 +104,7 @@ export struct GraphContext {
                        std::optional<Entity> view_entity = std::nullopt);
 
     /** @brief Consume and return all queued sub-graph runs. */
-    std::vector<RunSubGraph> finish() { return std::move(m_sub_graphs); }
+    std::vector<RunSubGraph> finish() noexcept { return std::move(m_sub_graphs); }
 };
 /**
  * @brief RenderContext, stores the wgpu device and command encoder.
@@ -117,10 +117,10 @@ export struct RenderContext {
 
    public:
     /** @brief Construct a render context with the given WebGPU device. */
-    RenderContext(wgpu::Device device) : m_device(std::move(device)) {}
+    RenderContext(wgpu::Device device) noexcept : m_device(std::move(device)) {}
 
     /** @brief Get the WebGPU device. */
-    const wgpu::Device& device() const { return m_device; }
+    const wgpu::Device& device() const noexcept { return m_device; }
     /** @brief Get or lazily create the command encoder. */
     wgpu::CommandEncoder& command_encoder() {
         if (!m_command_encoder) {
@@ -147,4 +147,4 @@ export struct RenderContext {
         return std::move(m_queued_commands);
     }
 };
-}  // namespace render::graph
+}  // namespace epix::render::graph

@@ -45,9 +45,9 @@ export struct RenderPlugin {
      * 2 - Vulkan validation layers
      * @param level the validation level to set
      */
-    RenderPlugin& set_validation(int level = 0);
+    RenderPlugin& set_validation(int level = 0) noexcept;
     void build(core::App&);
-    void finalize(core::App&);
+    void finalize(core::App&) noexcept;
 };
 void render_system(core::World& world);
-}  // namespace render
+}  // namespace epix::render

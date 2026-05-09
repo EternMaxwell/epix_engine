@@ -22,7 +22,7 @@ namespace epix::core {
 export template <query_data D, query_filter F>
 struct Query {
    public:
-    Query(World& world, const QueryState<D, F>& state, Tick last_run, Tick this_run)
+    Query(World& world, const QueryState<D, F>& state, Tick last_run, Tick this_run) noexcept
         : world_(&world), state_(&state), last_run_(last_run), this_run_(this_run) {}
 
     /** @brief Get a read-only version of this query. */
@@ -98,13 +98,13 @@ struct Query {
 export template <query_data D, query_filter F>
 struct Single {
    public:
-    Single(QueryData<D>::Item item) : _item(std::move(item)) {}
-    operator typename QueryData<D>::Item&() { return _item; }
-    QueryData<D>::Item& get() { return _item; }
-    auto operator->() { return &_item; }  // use auto here to avoid error when Item is a reference
-    QueryData<D>::Item& operator*() { return _item; }
+    Single(QueryData<D>::Item item) noexcept : _item(std::move(item)) {}
+    operator typename QueryData<D>::Item&() noexcept { return _item; }
+    QueryData<D>::Item& get() noexcept { return _item; }
+    auto operator->() noexcept { return &_item; }  // use auto here to avoid error when Item is a reference
+    QueryData<D>::Item& operator*() noexcept { return _item; }
 
    private:
     typename QueryData<D>::Item _item;
 };
-}  // namespace core
+}  // namespace epix::core

@@ -48,7 +48,7 @@ struct Edges {
     }
 };
 struct Node {
-    Node(const SystemSetLabel& label) : label(label) {}
+    Node(const SystemSetLabel& label) noexcept : label(label) {}
 
     SystemSetLabel label;
     SystemUnique<> system;
@@ -296,7 +296,7 @@ export struct ScheduleExecutor {
     ScheduleLabel label;
     virtual ~ScheduleExecutor()                                                                 = default;
     virtual void execute(ScheduleSystems& schedule, World& world, const ExecutorConfig& config) = 0;
-    virtual meta::type_index type() const                                                       = 0;
+    virtual meta::type_index type() const noexcept                                              = 0;
 };
 /** @brief A named collection of systems with dependency ordering and parallel execution support.
  *  Systems are organized into sets with before/after/in_set relationships. */
@@ -324,7 +324,7 @@ export struct Schedule {
     static void extract_systems_from_config(SetConfig& config, std::vector<PrePostSystem>& target);
 
    public:
-    Schedule(const ScheduleLabel& label) : _label(label) {}
+    Schedule(const ScheduleLabel& label) noexcept : _label(label) {}
     Schedule(const Schedule&)            = delete;
     Schedule(Schedule&&)                 = default;
     Schedule& operator=(const Schedule&) = delete;
@@ -333,7 +333,7 @@ export struct Schedule {
     static std::optional<ScheduleLabel> current_label();
 
     /** @brief Get the schedule's label. */
-    ScheduleLabel label() const { return _label; }
+    ScheduleLabel label() const noexcept { return _label; }
 
     /** @brief Chain a configuration function on an rvalue schedule. */
     template <std::invocable<Schedule&> F>
@@ -349,9 +349,9 @@ export struct Schedule {
     }
 
     /** @brief Check if the schedule contains a set with the given label. */
-    bool contains_set(const SystemSetLabel& label) const { return _data.nodes.contains(label); }
+    bool contains_set(const SystemSetLabel& label) const noexcept { return _data.nodes.contains(label); }
     /** @brief Check if the schedule contains a set with the given label and has a system. */
-    bool contains_system(const SystemSetLabel& label) const {
+    bool contains_system(const SystemSetLabel& label) const noexcept {
         if (auto it = _data.nodes.find(label); it != _data.nodes.end()) {
             return (bool)it->second->system;
         }
@@ -396,9 +396,9 @@ export struct Schedule {
         return *this;
     }
     /** @brief Get the default schedule configuration (const). */
-    const ScheduleConfig& default_schedule_config() const { return _default_schedule_config; }
+    const ScheduleConfig& default_schedule_config() const noexcept { return _default_schedule_config; }
     /** @brief Get the default schedule configuration (mutable). */
-    ScheduleConfig& default_schedule_config() { return _default_schedule_config; }
+    ScheduleConfig& default_schedule_config() noexcept { return _default_schedule_config; }
 
     void set_executor(std::unique_ptr<ScheduleExecutor> exec) {
         executor        = std::move(exec);

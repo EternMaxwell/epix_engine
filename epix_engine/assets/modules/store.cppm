@@ -79,18 +79,18 @@ struct AssetStorage {
     std::uint32_t m_size;
 
    public:
-    AssetStorage() : m_size(0) {}
+    AssetStorage() noexcept : m_size(0) {}
     AssetStorage(const AssetStorage&)            = delete;
     AssetStorage(AssetStorage&&)                 = delete;
     AssetStorage& operator=(const AssetStorage&) = delete;
     AssetStorage& operator=(AssetStorage&&)      = delete;
 
-    std::uint32_t size() const { return m_size; }
-    bool empty() const { return m_size == 0; }
+    std::uint32_t size() const noexcept { return m_size; }
+    bool empty() const noexcept { return m_size == 0; }
 
     void resize_slots(std::uint32_t new_size) { m_storage.resize(new_size); }
 
-    std::expected<Entry<T>*, AssetError> get_entry(const AssetIndex& index) {
+    std::expected<Entry<T>*, AssetError> get_entry(const AssetIndex& index) noexcept {
         if (index.index() >= m_storage.size()) {
             return std::unexpected(IndexOutOfBound{index.index()});
         }
@@ -103,7 +103,7 @@ struct AssetStorage {
         }
         return &m_storage[index.index()].value();
     }
-    std::expected<const Entry<T>*, AssetError> get_entry(const AssetIndex& index) const {
+    std::expected<const Entry<T>*, AssetError> get_entry(const AssetIndex& index) const noexcept {
         if (index.index() >= m_storage.size()) {
             return std::unexpected(IndexOutOfBound{index.index()});
         }
@@ -155,7 +155,7 @@ struct AssetStorage {
      * @param index The index to check.
      * @return True if the asset is valid and has a value, false otherwise.
      */
-    bool contains(const AssetIndex& index) const {
+    bool contains(const AssetIndex& index) const noexcept {
         return index.index() < m_storage.size() && m_storage[index.index()] &&
                m_storage[index.index()]->asset.has_value() &&
                m_storage[index.index()]->generation == index.generation();
@@ -227,7 +227,7 @@ struct AssetStorage {
         });
     }
 
-    std::expected<std::reference_wrapper<T>, AssetError> try_get_mut(const AssetIndex& index) {
+    std::expected<std::reference_wrapper<T>, AssetError> try_get_mut(const AssetIndex& index) noexcept {
         return get_entry(index).and_then(
             [&index](Entry<T>* entry) -> std::expected<std::reference_wrapper<T>, AssetError> {
                 if (entry->asset.has_value()) {
@@ -238,7 +238,7 @@ struct AssetStorage {
             });
     }
 
-    std::expected<std::reference_wrapper<const T>, AssetError> try_get(const AssetIndex& index) const {
+    std::expected<std::reference_wrapper<const T>, AssetError> try_get(const AssetIndex& index) const noexcept {
         return get_entry(index).and_then(
             [&index](const Entry<T>* entry) -> std::expected<std::reference_wrapper<const T>, AssetError> {
                 if (entry->asset.has_value()) {
@@ -248,11 +248,11 @@ struct AssetStorage {
                 }
             });
     }
-    std::optional<std::reference_wrapper<T>> get_mut(const AssetIndex& index) {
+    std::optional<std::reference_wrapper<T>> get_mut(const AssetIndex& index) noexcept {
         auto res = try_get_mut(index);
         return res.has_value() ? std::make_optional<std::reference_wrapper<T>>(res.value()) : std::nullopt;
     }
-    std::optional<std::reference_wrapper<const T>> get(const AssetIndex& index) const {
+    std::optional<std::reference_wrapper<const T>> get(const AssetIndex& index) const noexcept {
         auto res = try_get(index);
         return res.has_value() ? std::make_optional<std::reference_wrapper<const T>>(res.value()) : std::nullopt;
     }
@@ -297,26 +297,28 @@ struct AssetEvent {
     AssetId<T> id;
 
     /** @brief Create an Added event. */
-    static AssetEvent<T> added(const AssetId<T>& id) { return {Type::Added, id}; }
+    static AssetEvent<T> added(const AssetId<T>& id) noexcept { return {Type::Added, id}; }
     /** @brief Create a Removed event. */
-    static AssetEvent<T> removed(const AssetId<T>& id) { return {Type::Removed, id}; }
+    static AssetEvent<T> removed(const AssetId<T>& id) noexcept { return {Type::Removed, id}; }
     /** @brief Create a Modified event. */
-    static AssetEvent<T> modified(const AssetId<T>& id) { return {Type::Modified, id}; }
+    static AssetEvent<T> modified(const AssetId<T>& id) noexcept { return {Type::Modified, id}; }
     /** @brief Create an Unused event (all strong handles dropped). */
-    static AssetEvent<T> unused(const AssetId<T>& id) { return {Type::Unused, id}; }
+    static AssetEvent<T> unused(const AssetId<T>& id) noexcept { return {Type::Unused, id}; }
     /** @brief Create a LoadedWithDependencies event. */
-    static AssetEvent<T> loaded_with_dependencies(const AssetId<T>& id) { return {Type::LoadedWithDependencies, id}; }
+    static AssetEvent<T> loaded_with_dependencies(const AssetId<T>& id) noexcept {
+        return {Type::LoadedWithDependencies, id};
+    }
 
     /** @brief Check if this is an Added event. */
-    bool is_added() const { return type == Type::Added; }
+    bool is_added() const noexcept { return type == Type::Added; }
     /** @brief Check if this is a Removed event. */
-    bool is_removed() const { return type == Type::Removed; }
+    bool is_removed() const noexcept { return type == Type::Removed; }
     /** @brief Check if this is a Modified event. */
-    bool is_modified() const { return type == Type::Modified; }
+    bool is_modified() const noexcept { return type == Type::Modified; }
     /** @brief Check if this is an Unused event. */
-    bool is_unused() const { return type == Type::Unused; }
+    bool is_unused() const noexcept { return type == Type::Unused; }
     /** @brief Check if this is a LoadedWithDependencies event. */
-    bool is_loaded_with_dependencies() const { return type == Type::LoadedWithDependencies; }
+    bool is_loaded_with_dependencies() const noexcept { return type == Type::LoadedWithDependencies; }
 
     /** @brief Check if this is an Added event for a specific asset. */
     bool is_added(const AssetId<T>& asset_id) const { return type == Type::Added && id == asset_id; }
@@ -433,7 +435,7 @@ struct Assets {
             m_references[index.index()]--;
             if (m_references[index.index()] == 0) {
                 m_cached_events.emplace_back(AssetEvent<T>::unused(AssetId<T>(index)));
-                m_assets.remove_dereferenced(index).transform(
+                (void)m_assets.remove_dereferenced(index).transform(
                     [&]() { m_cached_events.emplace_back(AssetEvent<T>::removed(AssetId<T>(index))); });
                 m_handle_provider->index_allocator.release(index);
                 return true;
@@ -474,7 +476,7 @@ struct Assets {
      *
      * @return The handle provider shared pointer.
      */
-    std::shared_ptr<HandleProvider> get_handle_provider() const { return m_handle_provider; }
+    std::shared_ptr<HandleProvider> get_handle_provider() const noexcept { return m_handle_provider; }
 
     /**
      * @brief Emplace an asset at a new index. This will create a new asset and
@@ -525,7 +527,7 @@ struct Assets {
      *
      * This is used internally.
      */
-    bool contains(const AssetId<T>& id) const {
+    bool contains(const AssetId<T>& id) const noexcept {
         return std::visit(visitor{[this](const AssetIndex& index) { return m_assets.contains(index); },
                                   [this](const uuids::uuid& id) {
                                       return m_mapped_assets.contains(id) && m_mapped_assets_ref.contains(id);
@@ -560,12 +562,12 @@ struct Assets {
      * @param id The asset identifier.
      * @return A const reference to the asset, or std::nullopt if not found.
      */
-    std::optional<std::reference_wrapper<const T>> get(const AssetId<T>& id) const {
+    std::optional<std::reference_wrapper<const T>> get(const AssetId<T>& id) const noexcept {
         auto res = try_get(id);
         return res.has_value() ? std::make_optional<std::reference_wrapper<const T>>(res.value()) : std::nullopt;
     }
     /** @brief Try to get a const reference to the asset, returning an error on failure. */
-    std::expected<std::reference_wrapper<const T>, AssetError> try_get(const AssetId<T>& id) const {
+    std::expected<std::reference_wrapper<const T>, AssetError> try_get(const AssetId<T>& id) const noexcept {
         return std::visit(
             visitor{[this](const AssetIndex& index) { return m_assets.try_get(index); },
                     [this](const uuids::uuid& id) -> std::expected<std::reference_wrapper<const T>, AssetError> {
@@ -711,7 +713,7 @@ struct Assets {
      * @param id The asset identifier.
      * @return A mutable reference, or std::nullopt if not found.
      */
-    std::optional<std::reference_wrapper<T>> get_mut_untracked(const AssetId<T>& id) {
+    std::optional<std::reference_wrapper<T>> get_mut_untracked(const AssetId<T>& id) noexcept {
         auto res =
             std::visit(visitor{[this](const AssetIndex& index) { return m_assets.try_get_mut(index); },
                                [this](const uuids::uuid& id) -> std::expected<std::reference_wrapper<T>, AssetError> {
@@ -748,9 +750,9 @@ struct Assets {
     }
 
     /** @brief Check if the collection is empty. */
-    bool is_empty() const { return m_assets.empty() && m_mapped_assets.empty(); }
+    bool is_empty() const noexcept { return m_assets.empty() && m_mapped_assets.empty(); }
     /** @brief Get the total number of assets stored. */
-    std::size_t len() const { return m_assets.size() + m_mapped_assets.size(); }
+    std::size_t len() const noexcept { return m_assets.size() + m_mapped_assets.size(); }
 
     /**
      * @brief Collect all asset ids into a vector.

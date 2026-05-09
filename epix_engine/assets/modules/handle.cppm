@@ -81,11 +81,11 @@ struct Handle {
 
    public:
     /** @brief Construct a strong handle from a shared StrongHandle pointer. */
-    Handle(const std::shared_ptr<StrongHandle>& handle) : ref(handle) {}
+    Handle(const std::shared_ptr<StrongHandle>& handle) noexcept : ref(handle) {}
     /** @brief Construct a weak handle from an AssetId. */
-    Handle(const AssetId<T>& id) : ref(id) {}
+    Handle(const AssetId<T>& id) noexcept : ref(id) {}
     /** @brief Construct a weak handle from a UUID. */
-    Handle(const uuids::uuid& id) : ref(AssetId<T>(id)) {}
+    Handle(const uuids::uuid& id) noexcept(noexcept(AssetId<T>(id))) : ref(AssetId<T>(id)) {}
     /** @brief Construct from an UntypedHandle (throws on type mismatch). */
     Handle(const UntypedHandle& handle);
     /** @brief Move-construct from an UntypedHandle (throws on type mismatch). */
@@ -103,7 +103,7 @@ struct Handle {
     Handle& operator=(UntypedHandle&& other);
 
     /** @brief Assign from a bare AssetId, making this a weak handle. */
-    Handle& operator=(const AssetId<T>& id) {
+    Handle& operator=(const AssetId<T>& id) noexcept {
         ref = id;
         return *this;
     }
@@ -122,15 +122,15 @@ struct Handle {
     }
 
     /** @brief Equality comparison between two handles. */
-    bool operator==(const Handle& other) const { return ref == other.ref; }
+    bool operator==(const Handle& other) const noexcept { return ref == other.ref; }
     /** @brief Check if this is a strong (reference-counted) handle. */
-    bool is_strong() const { return std::holds_alternative<std::shared_ptr<StrongHandle>>(ref); }
+    bool is_strong() const noexcept { return std::holds_alternative<std::shared_ptr<StrongHandle>>(ref); }
     /** @brief Check if this is a weak (id-only) handle. */
-    bool is_weak() const { return std::holds_alternative<AssetId<T>>(ref); }
+    bool is_weak() const noexcept { return std::holds_alternative<AssetId<T>>(ref); }
     /** @brief Return a weak copy that holds only the id. */
-    Handle<T> weak() const { return id(); }
+    Handle<T> weak() const noexcept { return id(); }
     /** @brief Get the underlying asset id regardless of strong/weak status. */
-    AssetId<T> id() const {
+    AssetId<T> id() const noexcept {
         return std::visit(
             utils::visitor{[](const std::shared_ptr<StrongHandle>& handle) { return handle->id.typed<T>(); },
                            [](const AssetId<T>& index) { return index; }},
@@ -143,14 +143,14 @@ struct Handle {
                           ref);
     }
     /** @brief Convert this typed handle to an UntypedHandle. */
-    UntypedHandle untyped() const;
+    UntypedHandle untyped() const noexcept;
     /** @brief Upgrade this weak handle to a strong one if the asset exists.
      *  If already strong, does nothing. If weak and the asset is found in
      *  `assets`, upgrades to a strong reference-counted handle.
      *  Matches bevy_asset's Handle::make_strong. */
     void make_strong(Assets<T>& assets);
     /** @brief Implicit conversion to the underlying AssetId. */
-    operator AssetId<T>() const { return id(); }
+    operator AssetId<T>() const noexcept { return id(); }
     /** @brief Visit this handle as an asset dependency.
      *  Matches bevy_asset's VisitAssetDependencies impl for Handle<A>. */
     void visit_dependencies(utils::function_ref<void(UntypedAssetId)> visit) const { visit(UntypedAssetId(id())); }
@@ -173,9 +173,9 @@ export struct UntypedHandle {
 
    public:
     /** @brief Construct a strong untyped handle from a StrongHandle pointer. */
-    UntypedHandle(const std::shared_ptr<StrongHandle>& handle) : ref(handle) {}
+    UntypedHandle(const std::shared_ptr<StrongHandle>& handle) noexcept : ref(handle) {}
     /** @brief Construct a weak untyped handle from an UntypedAssetId. */
-    UntypedHandle(const UntypedAssetId& id) : ref(id) {}
+    UntypedHandle(const UntypedAssetId& id) noexcept : ref(id) {}
     /** @brief Construct from a typed Handle, erasing the type. */
     template <typename T>
     UntypedHandle(const Handle<T>& handle) : UntypedHandle(handle.ref) {}
@@ -189,35 +189,35 @@ export struct UntypedHandle {
     /** @brief Assign from a StrongHandle pointer. */
     UntypedHandle& operator=(const std::shared_ptr<StrongHandle>& handle);
     /** @brief Assign from an UntypedAssetId, making this a weak handle. */
-    UntypedHandle& operator=(const UntypedAssetId& id) {
+    UntypedHandle& operator=(const UntypedAssetId& id) noexcept {
         ref = id;
         return *this;
     }
 
     /** @brief Equality comparison. */
-    bool operator==(const UntypedHandle& other) const { return ref == other.ref; }
+    bool operator==(const UntypedHandle& other) const noexcept { return ref == other.ref; }
     /** @brief Check if this is a strong (reference-counted) handle. */
-    bool is_strong() const { return std::holds_alternative<std::shared_ptr<StrongHandle>>(ref); }
+    bool is_strong() const noexcept { return std::holds_alternative<std::shared_ptr<StrongHandle>>(ref); }
     /** @brief Check if this is a weak (id-only) handle. */
-    bool is_weak() const { return std::holds_alternative<UntypedAssetId>(ref); }
+    bool is_weak() const noexcept { return std::holds_alternative<UntypedAssetId>(ref); }
     /** @brief Get the runtime type_index of the asset this handle refers to.
      *  Matches bevy_asset's UntypedHandle::type_id(). */
-    meta::type_index type_id() const;
+    meta::type_index type_id() const noexcept;
     /** @brief Alias for type_id(). */
-    meta::type_index type() const { return type_id(); }
+    meta::type_index type() const noexcept { return type_id(); }
     /** @brief Get the type-erased id. */
-    UntypedAssetId id() const;
+    UntypedAssetId id() const noexcept;
     /** @brief Get the path associated with this asset, if available (only for strong handles). */
     std::optional<AssetPath> path() const;
     /** @brief Implicit conversion to UntypedAssetId. */
-    operator UntypedAssetId() const { return id(); }
+    operator UntypedAssetId() const noexcept { return id(); }
     /** @brief Return a weak copy holding only the id. */
-    UntypedHandle weak() const { return id(); }
+    UntypedHandle weak() const noexcept { return id(); }
     /** @brief Visit this handle as an asset dependency.
      *  Matches bevy_asset's VisitAssetDependencies impl for UntypedHandle. */
     void visit_dependencies(utils::function_ref<void(UntypedAssetId)> visit) const { visit(id()); }
     /** @brief Get the meta transform associated with this handle, if any (strong handles only). */
-    const MetaTransform* meta_transform() const;
+    const MetaTransform* meta_transform() const noexcept;
 
     /** @brief Try to downcast to a typed Handle.
      *  @tparam T Expected asset type.
@@ -243,7 +243,7 @@ export struct UntypedHandle {
     /** @brief Converts to a typed Handle without checking the type.
      *  Matches bevy_asset's UntypedHandle::typed_unchecked<A>(). */
     template <typename T>
-    Handle<T> typed_unchecked() const {
+    Handle<T> typed_unchecked() const noexcept {
         return std::visit(utils::visitor{[](const std::shared_ptr<StrongHandle>& handle) { return Handle<T>(handle); },
                                          [](const UntypedAssetId& id) { return Handle<T>(AssetId<T>(id.id)); }},
                           ref);
@@ -251,7 +251,7 @@ export struct UntypedHandle {
     /** @brief Converts to a typed Handle. Asserts type match in debug builds only.
      *  Matches bevy_asset's UntypedHandle::typed_debug_checked<A>(). */
     template <typename T>
-    Handle<T> typed_debug_checked() const {
+    Handle<T> typed_debug_checked() const noexcept {
         assert(type_id() == meta::type_id<T>{} && "UntypedHandle type does not match target Handle<T> type");
         return typed_unchecked<T>();
     }
@@ -270,7 +270,7 @@ Handle<T>::Handle(const UntypedHandle& handle) {
                handle.ref);
 }
 template <typename T>
-UntypedHandle Handle<T>::untyped() const {
+UntypedHandle Handle<T>::untyped() const noexcept {
     return UntypedHandle(*this);
 }
 template <typename T>

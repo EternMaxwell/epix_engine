@@ -54,12 +54,12 @@ export struct Transparent2D {
     /** @brief Number of instances in this batch. */
     std::size_t batch_count;
 
-    Entity entity() const { return id; }
-    float sort_key() const { return -depth; }  // inverse depth for back-to-front rendering
-    phase::DrawFunctionId draw_function() const { return draw_func; }
-    CachedPipelineId pipeline() const { return pipeline_id; }
+    Entity entity() const noexcept { return id; }
+    float sort_key() const noexcept { return -depth; }  // inverse depth for back-to-front rendering
+    phase::DrawFunctionId draw_function() const noexcept { return draw_func; }
+    CachedPipelineId pipeline() const noexcept { return pipeline_id; }
 
-    std::size_t batch_size() const { return batch_count; }
+    std::size_t batch_size() const noexcept { return batch_count; }
 };
 static_assert(phase::BatchedPhaseItem<Transparent2D>);
 static_assert(phase::CachedRenderPipelinePhaseItem<Transparent2D>);
@@ -80,11 +80,11 @@ export struct Opaque2D {
     /** @brief Sort key for front-to-back opaque ordering. */
     phase::OpaqueSortKey batch_key;
 
-    Entity entity() const { return id; }
-    const phase::OpaqueSortKey& sort_key() const { return batch_key; }
-    phase::DrawFunctionId draw_function() const { return draw_func; }
-    CachedPipelineId pipeline() const { return pipeline_id; }
-    std::size_t batch_size() const { return batch_count; }
+    Entity entity() const noexcept { return id; }
+    const phase::OpaqueSortKey& sort_key() const noexcept { return batch_key; }
+    phase::DrawFunctionId draw_function() const noexcept { return draw_func; }
+    CachedPipelineId pipeline() const noexcept { return pipeline_id; }
+    std::size_t batch_size() const noexcept { return batch_count; }
 };
 static_assert(phase::BatchedPhaseItem<Opaque2D>);
 static_assert(phase::CachedRenderPipelinePhaseItem<Opaque2D>);
@@ -105,11 +105,11 @@ export struct UI2DItem {
     /** @brief Number of instances in this batch. */
     std::size_t batch_count;
 
-    Entity entity() const { return id; }
-    int sort_key() const { return order; }
-    phase::DrawFunctionId draw_function() const { return draw_func; }
-    CachedPipelineId pipeline() const { return pipeline_id; }
-    std::size_t batch_size() const { return batch_count; }
+    Entity entity() const noexcept { return id; }
+    int sort_key() const noexcept { return order; }
+    phase::DrawFunctionId draw_function() const noexcept { return draw_func; }
+    CachedPipelineId pipeline() const noexcept { return pipeline_id; }
+    std::size_t batch_size() const noexcept { return batch_count; }
 };
 
 template <typename P>

@@ -149,7 +149,7 @@ template <std::size_t Slot>
 struct BindSpriteInstances {
     template <render::phase::PhaseItem PhaseItem>
     struct Command {
-        void prepare(const core::World&) {}
+        void prepare(const core::World&) noexcept {}
 
         std::expected<void, render::phase::RenderCommandError> render(
             const PhaseItem& item,
@@ -179,7 +179,7 @@ template <std::size_t Slot>
 struct BindSpriteTexture {
     template <render::phase::PhaseItem PhaseItem>
     struct Command {
-        void prepare(const core::World&) {}
+        void prepare(const core::World&) noexcept {}
 
         std::expected<void, render::phase::RenderCommandError> render(
             const PhaseItem& item,
@@ -215,7 +215,7 @@ struct BindSpriteTexture {
  * @tparam PhaseItem The render phase item type driving draw ordering. */
 template <render::phase::PhaseItem PhaseItem>
 struct DrawSpriteBatch {
-    void prepare(const core::World&) {}
+    void prepare(const core::World&) noexcept {}
 
     std::expected<void, render::phase::RenderCommandError> render(
         const PhaseItem& item,

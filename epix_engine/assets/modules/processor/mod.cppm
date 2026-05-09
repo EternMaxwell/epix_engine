@@ -285,18 +285,18 @@ export struct AssetProcessor {
         std::unique_ptr<ProcessorTransactionLogFactory> log_factory = std::make_unique<FileTransactionLogFactory>());
 
     /** @brief Get a reference to the internal AssetServer. */
-    const AssetServer& get_server() const;
+    const AssetServer& get_server() const noexcept;
 
     /** @brief Get a reference to the processor data. */
-    const std::shared_ptr<AssetProcessorData>& get_data() const;
+    const std::shared_ptr<AssetProcessorData>& get_data() const noexcept;
 
     /** @brief Get a source by id from the internal server. */
-    std::optional<std::reference_wrapper<const AssetSource>> get_source(const AssetSourceId& source_id) const {
+    std::optional<std::reference_wrapper<const AssetSource>> get_source(const AssetSourceId& source_id) const noexcept {
         return server.get_source(source_id);
     }
 
     /** @brief Get all sources from the internal server. */
-    const std::shared_ptr<AssetSources>& sources() const;
+    const std::shared_ptr<AssetSources>& sources() const noexcept;
 
     // ---- Processor Registration (templates, inline) ----
 
@@ -359,6 +359,6 @@ export struct AssetProcessor {
     static void start(core::Res<AssetProcessor> processor);
 };
 
-inline const AssetServer& ProcessContext::asset_server() const { return m_processor->get_server(); }
+inline const AssetServer& ProcessContext::asset_server() const noexcept { return m_processor->get_server(); }
 
 }  // namespace epix::assets

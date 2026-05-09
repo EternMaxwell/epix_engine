@@ -1,6 +1,7 @@
 module;
 
 #ifndef EPIX_IMPORT_STD
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
@@ -15,7 +16,6 @@ module;
 #include <utility>
 #include <variant>
 #include <vector>
-#include <chrono>
 #endif
 #include <spdlog/spdlog.h>
 
@@ -317,13 +317,13 @@ AssetProcessor::~AssetProcessor() {
     }
 }
 
-const AssetServer& AssetProcessor::get_server() const { return server; }
+const AssetServer& AssetProcessor::get_server() const noexcept { return server; }
 
-const std::shared_ptr<AssetProcessorData>& AssetProcessor::get_data() const { return data; }
+const std::shared_ptr<AssetProcessorData>& AssetProcessor::get_data() const noexcept { return data; }
 
 // AssetProcessor::get_source is now inline in mod.cppm
 
-const std::shared_ptr<AssetSources>& AssetProcessor::sources() const { return data->sources; }
+const std::shared_ptr<AssetSources>& AssetProcessor::sources() const noexcept { return data->sources; }
 
 std::shared_ptr<ErasedProcessor> AssetProcessor::get_default_processor(std::string_view extension) const {
     auto guard  = data->processors.read();

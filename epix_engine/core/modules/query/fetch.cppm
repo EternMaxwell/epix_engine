@@ -51,8 +51,8 @@ struct WorldQuery<std::tuple<Ts...>> {
         }(std::index_sequence_for<Ts...>{}, world, state, last_run, this_run);
     }
     static void set_archetype(Fetch& fetch, const State& state, const Archetype& archetype, Table& table) {
-        []<std::size_t... Is>(std::index_sequence<Is...>, Fetch& fetch, const State& state,
-                              const Archetype& archetype, Table& table) {
+        []<std::size_t... Is>(std::index_sequence<Is...>, Fetch& fetch, const State& state, const Archetype& archetype,
+                              Table& table) {
             (WorldQuery<Ts>::set_archetype(std::get<Is>(fetch), std::get<Is>(state), archetype, table), ...);
         }(std::index_sequence_for<Ts...>{}, fetch, state, archetype, table);
     }
@@ -77,8 +77,7 @@ struct WorldQuery<std::tuple<Ts...>> {
         }(std::index_sequence_for<Ts...>{}, world);
     }
     static std::optional<State> get_state(const Components& components) {
-        return []<std::size_t... Is>(std::index_sequence<Is...>,
-                                     const Components& components) -> std::optional<State> {
+        return []<std::size_t... Is>(std::index_sequence<Is...>, const Components& components) -> std::optional<State> {
             std::tuple<std::optional<typename WorldQuery<Ts>::State>...> states{
                 WorldQuery<Ts>::get_state(components)...};
             bool all_found = (true && ... && (std::get<Is>(states).has_value()));
@@ -105,9 +104,8 @@ struct QueryData<std::tuple<Ts...>> {
     using ReadOnly                        = std::tuple<typename QueryData<Ts>::ReadOnly...>;
     static inline constexpr bool readonly = (QueryData<Ts>::readonly && ...);
     static Item fetch(typename WorldQuery<std::tuple<Ts...>>::Fetch& fetch, Entity entity, TableRow row) {
-        return [&]<std::size_t... Is>(std::index_sequence<Is...>,
-                                      typename WorldQuery<std::tuple<Ts...>>::Fetch& fetch, Entity entity,
-                                      TableRow row) {
+        return [&]<std::size_t... Is>(std::index_sequence<Is...>, typename WorldQuery<std::tuple<Ts...>>::Fetch& fetch,
+                                      Entity entity, TableRow row) {
             return Item(QueryData<Ts>::fetch(std::get<Is>(fetch), entity, row)...);
         }(std::index_sequence_for<Ts...>{}, fetch, entity, row);
     }
@@ -125,14 +123,14 @@ template <>
 struct WorldQuery<Entity> {
     struct Fetch {};
     using State = std::tuple<>;
-    static Fetch init_fetch(World&, const State&, Tick, Tick) { return Fetch{}; }
-    static void set_archetype(Fetch&, const State&, const Archetype&, Table&) {}
+    static Fetch init_fetch(World&, const State&, Tick, Tick) noexcept { return Fetch{}; }
+    static void set_archetype(Fetch&, const State&, const Archetype&, Table&) noexcept {}
     // static void set_table(Fetch&, State&, const Table&) {}
-    static void set_access(State&, const FilteredAccess&) {}
-    static void update_access(const State&, FilteredAccess&) {}
-    static State init_state(World&) { return State{}; }
-    static std::optional<State> get_state(const Components&) { return State{}; }
-    static bool matches_component_set(const State&, const std::function<bool(TypeId)>& contains_component) {
+    static void set_access(State&, const FilteredAccess&) noexcept {}
+    static void update_access(const State&, FilteredAccess&) noexcept {}
+    static State init_state(World&) noexcept { return State{}; }
+    static std::optional<State> get_state(const Components&) noexcept { return State{}; }
+    static bool matches_component_set(const State&, const std::function<bool(TypeId)>& contains_component) noexcept {
         return true;
     }
 };
@@ -142,7 +140,7 @@ struct QueryData<Entity> {
     using Item                            = Entity;
     using ReadOnly                        = Entity;
     static inline constexpr bool readonly = true;
-    static Item fetch(WorldQuery<Entity>::Fetch&, Entity entity, TableRow) { return entity; }
+    static Item fetch(WorldQuery<Entity>::Fetch&, Entity entity, TableRow) noexcept { return entity; }
 };
 static_assert(query_data<Entity>);
 
@@ -151,14 +149,14 @@ template <>
 struct WorldQuery<EntityLocation> {
     using Fetch = const Entities*;
     using State = std::tuple<>;
-    static Fetch init_fetch(World& world, const State&, Tick, Tick) { return &world_entities(world); }
-    static void set_archetype(Fetch&, const State&, const Archetype&, Table&) {}
+    static Fetch init_fetch(World& world, const State&, Tick, Tick) noexcept { return &world_entities(world); }
+    static void set_archetype(Fetch&, const State&, const Archetype&, Table&) noexcept {}
     // static void set_table(Fetch&, State&, const Table&) {}
-    static void set_access(State&, const FilteredAccess&) {}
-    static void update_access(const State&, FilteredAccess&) {}
-    static State init_state(World&) { return State{}; }
-    static std::optional<State> get_state(const Components&) { return State{}; }
-    static bool matches_component_set(const State&, const std::function<bool(TypeId)>& contains_component) {
+    static void set_access(State&, const FilteredAccess&) noexcept {}
+    static void update_access(const State&, FilteredAccess&) noexcept {}
+    static State init_state(World&) noexcept { return State{}; }
+    static std::optional<State> get_state(const Components&) noexcept { return State{}; }
+    static bool matches_component_set(const State&, const std::function<bool(TypeId)>& contains_component) noexcept {
         return true;
     }
 };
@@ -179,19 +177,19 @@ template <>
 struct WorldQuery<EntityRef> {
     using Fetch = World*;
     using State = std::tuple<>;
-    static Fetch init_fetch(World& world, const State&, Tick, Tick) { return &world; }
-    static void set_archetype(Fetch&, const State&, const Archetype&, Table&) {}
+    static Fetch init_fetch(World& world, const State&, Tick, Tick) noexcept { return &world; }
+    static void set_archetype(Fetch&, const State&, const Archetype&, Table&) noexcept {}
     // static void set_table(Fetch&, State&, const Table&) {}
-    static void set_access(State&, const FilteredAccess&) {}
-    static void update_access(const State&, FilteredAccess& access) {
+    static void set_access(State&, const FilteredAccess&) noexcept {}
+    static void update_access(const State&, FilteredAccess& access) noexcept {
         assert(!access.access().has_any_component_write() &&
                "EntityRef conflicts with a previous access in this query. Shared access cannot coincide with exclusive "
                "access.");
         access.access_mut().read_all_components();
     }
-    static State init_state(World&) { return State{}; }
-    static std::optional<State> get_state(const Components&) { return State{}; }
-    static bool matches_component_set(const State&, const std::function<bool(TypeId)>& contains_component) {
+    static State init_state(World&) noexcept { return State{}; }
+    static std::optional<State> get_state(const Components&) noexcept { return State{}; }
+    static bool matches_component_set(const State&, const std::function<bool(TypeId)>& contains_component) noexcept {
         return true;
     }
 };
@@ -210,19 +208,19 @@ template <>
 struct WorldQuery<EntityRefMut> {
     using Fetch = World*;
     using State = std::tuple<>;
-    static Fetch init_fetch(World& world, const State&, Tick, Tick) { return &world; }
-    static void set_archetype(Fetch&, const State&, const Archetype&, Table&) {}
+    static Fetch init_fetch(World& world, const State&, Tick, Tick) noexcept { return &world; }
+    static void set_archetype(Fetch&, const State&, const Archetype&, Table&) noexcept {}
     // static void set_table(Fetch&, State&, const Table&) {}
-    static void set_access(State&, const FilteredAccess&) {}
-    static void update_access(const State&, FilteredAccess& access) {
+    static void set_access(State&, const FilteredAccess&) noexcept {}
+    static void update_access(const State&, FilteredAccess& access) noexcept {
         assert(!access.access().has_any_component_read() &&
                "EntityRefMut conflicts with a previous access in this query. Exclusive access cannot coincide with "
                "shared access.");
         access.access_mut().write_all_components();
     }
-    static State init_state(World&) { return State{}; }
-    static std::optional<State> get_state(const Components&) { return State{}; }
-    static bool matches_component_set(const State&, const std::function<bool(TypeId)>& contains_component) {
+    static State init_state(World&) noexcept { return State{}; }
+    static std::optional<State> get_state(const Components&) noexcept { return State{}; }
+    static bool matches_component_set(const State&, const std::function<bool(TypeId)>& contains_component) noexcept {
         return true;
     }
 };
@@ -246,14 +244,14 @@ struct WorldQuery<const Archetype&> {
         const Archetypes* archetypes = nullptr;
     };
     using State = std::tuple<>;
-    static Fetch init_fetch(World&, const State&, Tick, Tick) { return Fetch{}; }
-    static void set_archetype(Fetch&, const State&, const Archetype&, Table&) {}
+    static Fetch init_fetch(World&, const State&, Tick, Tick) noexcept { return Fetch{}; }
+    static void set_archetype(Fetch&, const State&, const Archetype&, Table&) noexcept {}
     // static void set_table(Fetch&, State&, const Table&) {}
-    static void set_access(State&, const FilteredAccess&) {}
-    static void update_access(const State&, FilteredAccess&) {}
-    static State init_state(World&) { return State{}; }
-    static std::optional<State> get_state(const Components&) { return State{}; }
-    static bool matches_component_set(const State&, const std::function<bool(TypeId)>& contains_component) {
+    static void set_access(State&, const FilteredAccess&) noexcept {}
+    static void update_access(const State&, FilteredAccess&) noexcept {}
+    static State init_state(World&) noexcept { return State{}; }
+    static std::optional<State> get_state(const Components&) noexcept { return State{}; }
+    static bool matches_component_set(const State&, const std::function<bool(TypeId)>& contains_component) noexcept {
         return true;
     }
 };
@@ -431,7 +429,7 @@ struct QueryData<const T&> : QueryData<Ref<std::remove_const_t<T>>> {
     using Item                            = const T&;
     using ReadOnly                        = const T&;
     static inline constexpr bool readonly = true;
-    static Item fetch(WorldQuery<const T&>::Fetch& fetch, Entity entity, TableRow row) {
+    static Item fetch(WorldQuery<const T&>::Fetch& fetch, Entity entity, TableRow row) noexcept {
         return QueryData<Ref<std::remove_const_t<T>>>::fetch(fetch, entity, row).get();
     }
 };
@@ -448,7 +446,7 @@ struct QueryData<T&> : QueryData<Mut<T>> {
     using Item                            = T&;
     using ReadOnly                        = const T&;
     static inline constexpr bool readonly = false;
-    static Item fetch(WorldQuery<T&>::Fetch& fetch, Entity entity, TableRow row) {
+    static Item fetch(WorldQuery<T&>::Fetch& fetch, Entity entity, TableRow row) noexcept {
         return QueryData<Mut<T>>::fetch(fetch, entity, row).get_mut();
     }
 };
@@ -492,7 +490,8 @@ struct WorldQuery<Opt<T>> {
     }
     static State init_state(World& world) { return WorldQuery<T>::init_state(world); }
     static std::optional<State> get_state(const Components& components) { return WorldQuery<T>::get_state(components); }
-    static bool matches_component_set(const State& state, const std::function<bool(TypeId)>& contains_component) {
+    static bool matches_component_set(const State& state,
+                                      const std::function<bool(TypeId)>& contains_component) noexcept {
         return true;  // always true, because it is optional
     }
 };
@@ -527,18 +526,19 @@ template <typename T>
 struct WorldQuery<Has<T>> {
     using Fetch = bool;
     using State = TypeId;
-    static Fetch init_fetch(World&, const State&, Tick, Tick) { return false; }
-    static void set_archetype(Fetch& fetch, const State& state, const Archetype& archetype, Table&) {
+    static Fetch init_fetch(World&, const State&, Tick, Tick) noexcept { return false; }
+    static void set_archetype(Fetch& fetch, const State& state, const Archetype& archetype, Table&) noexcept {
         fetch = archetype.contains(state);
     }
     // static void set_table(Fetch& fetch, const State& state, const Table& table) {
     //     fetch = table.has_dense(state);
     // }
-    static void set_access(State&, const FilteredAccess&) {}
+    static void set_access(State&, const FilteredAccess&) noexcept {}
     static void update_access(const State& state, FilteredAccess& access) { access.access_mut().add_archetypal(state); }
     static State init_state(World& world) { return world_type_registry(world).type_id<T>(); }
     static std::optional<State> get_state(const Components& components) { return components.registry().type_id<T>(); }
-    static bool matches_component_set(const State& state, const std::function<bool(TypeId)>& contains_component) {
+    static bool matches_component_set(const State& state,
+                                      const std::function<bool(TypeId)>& contains_component) noexcept {
         return true;  // always true, because it is just a marker
     }
 };
@@ -550,10 +550,10 @@ struct QueryData<Has<T>> {
     using Item                            = bool;
     using ReadOnly                        = Has<T>;
     static inline constexpr bool readonly = true;
-    static Item fetch(WorldQuery<Has<T>>::Fetch& fetch, Entity, TableRow) { return fetch; }
+    static Item fetch(WorldQuery<Has<T>>::Fetch& fetch, Entity, TableRow) noexcept { return fetch; }
 };
 static_assert(query_data<Has<int>>);
 
 static_assert(world_query<Item<int&, const float&, EntityRef, Entity, Ref<double>, Mut<char>>>);
 static_assert(query_data<Item<int&, const float&, EntityRef, Entity, Ref<double>, Mut<char>>>);
-}  // namespace core
+}  // namespace epix::core

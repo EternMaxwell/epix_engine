@@ -56,7 +56,7 @@ export struct AtlasRect {
 
     /** @brief Create a 3D rect with the given dimensions starting at origin.
      * @return AtlasRect with x=0, y=0, layer=0. */
-    static AtlasRect rect3d(std::uint32_t width, std::uint32_t height, std::uint32_t depth) {
+    static AtlasRect rect3d(std::uint32_t width, std::uint32_t height, std::uint32_t depth) noexcept {
         return AtlasRect{.width = width, .height = height, .depth = depth};
     }
 
@@ -67,7 +67,7 @@ export struct AtlasRect {
                             std::uint32_t layer,
                             std::uint32_t width,
                             std::uint32_t height,
-                            std::uint32_t depth) {
+                            std::uint32_t depth) noexcept {
         return AtlasRect{.x = x, .y = y, .layer = layer, .width = width, .height = height, .depth = depth};
     }
 };
@@ -86,7 +86,7 @@ struct FontLoader {
     struct Settings {};
     using Error = std::exception_ptr;
 
-    static std::span<std::string_view> extensions();
+    static std::span<std::string_view> extensions() noexcept;
     static asio::awaitable<std::expected<Font, Error>> load(assets::Reader& reader,
                                                             const Settings& settings,
                                                             assets::LoadContext& context);
@@ -138,26 +138,26 @@ export struct FontAtlas {
     FontAtlas& operator=(FontAtlas&&)      = default;
 
     /** @brief Get the handle to the atlas image asset, if created. */
-    const std::optional<assets::Handle<image::Image>>& image_handle() const { return image; }
+    const std::optional<assets::Handle<image::Image>>& image_handle() const noexcept { return image; }
     /** @brief Upload all pending rasterized glyphs to the image asset. */
     void apply_pending(assets::Assets<image::Image>& assets);
     /** @brief Map a Unicode codepoint to its glyph index, rasterizing if needed. */
     std::uint32_t get_glyph_index(char32_t codepoint);
     /** @brief Get the underlying FreeType font face pointer. */
-    void* get_font_face() const { return font_face; }
+    void* get_font_face() const noexcept { return font_face; }
     /** @brief Get the font size in pixels used for this atlas. */
-    float get_font_size() const { return font_size; }
+    float get_font_size() const noexcept { return font_size; }
 
     /** @brief Get the atlas rectangle location for a glyph by index. */
     AtlasRect get_glyph_atlas_loc(std::uint32_t glyph_index);
     /** @brief Get the glyph metrics for a glyph by index. */
     const Glyph& get_glyph(std::uint32_t glyph_index);
     /** @brief Get the atlas image width in pixels. */
-    std::uint32_t get_image_width() const { return atlas_width; }
+    std::uint32_t get_image_width() const noexcept { return atlas_width; }
     /** @brief Get the atlas image height in pixels. */
-    std::uint32_t get_image_height() const { return atlas_height; }
+    std::uint32_t get_image_height() const noexcept { return atlas_height; }
     /** @brief Get the number of atlas image layers. */
-    std::uint32_t get_image_layers() const { return atlas_layers; }
+    std::uint32_t get_image_layers() const noexcept { return atlas_layers; }
 
     /** @brief Get the UV rect [u0, v0, u1, v1, layer] for a glyph. */
     std::array<float, 5> get_glyph_uv_rect(std::uint32_t glyph_index);
@@ -301,9 +301,9 @@ export struct FontAtlasSets {
     FontAtlasSets& operator=(FontAtlasSets&&)      = default;
 
     /** @brief Get the maximum 2D texture dimension for atlases. */
-    std::uint32_t get_max_texture_dimension_2d() const { return max_texture_dimension_2d; }
+    std::uint32_t get_max_texture_dimension_2d() const noexcept { return max_texture_dimension_2d; }
     /** @brief Get the maximum texture array layer count. */
-    std::uint32_t get_max_texture_array_layers() const { return max_texture_array_layers; }
+    std::uint32_t get_max_texture_array_layers() const noexcept { return max_texture_array_layers; }
 
     /** @brief Get a mutable reference to the atlas set for a font, if it exists. */
     std::optional<std::reference_wrapper<FontAtlasSet>> get_mut(const assets::AssetId<Font>& font_id);

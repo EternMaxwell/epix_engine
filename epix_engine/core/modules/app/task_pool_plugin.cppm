@@ -35,7 +35,7 @@ export struct TaskPoolThreadAssignmentPolicy {
     float percent = 0.25f;
 
     /** @brief Compute thread count given remaining and total logical cores. */
-    [[nodiscard]] std::size_t get_num_threads(std::size_t remaining, std::size_t total) const {
+    [[nodiscard]] std::size_t get_num_threads(std::size_t remaining, std::size_t total) const noexcept {
         float proportion    = static_cast<float>(total) * percent;
         std::size_t desired = static_cast<std::size_t>(proportion);
         // round half-up

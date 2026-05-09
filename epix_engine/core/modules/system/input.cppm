@@ -34,30 +34,30 @@ export template <typename T>
 struct In {
    public:
     /** @brief Default-construct with a value-initialized T. */
-    In() = default;
+    In() noexcept = default;
     /** @brief Copy-construct from a const reference. */
-    In(const T& value)
+    In(const T& value) noexcept(std::is_nothrow_copy_constructible_v<T>)
         requires std::copyable<T>
         : value(value) {}
     /** @brief Move-construct from an rvalue. */
-    In(T&& value)
+    In(T&& value) noexcept(std::is_nothrow_move_constructible_v<T>)
         requires std::movable<T>
         : value(std::move(value)) {}
 
     /** @brief Get a const reference to the wrapped value. */
-    const T& get() const { return value; }
+    const T& get() const noexcept { return value; }
     /** @brief Get a mutable reference to the wrapped value. */
-    T& get() { return value; }
+    T& get() noexcept { return value; }
     /** @brief Const pointer access to the wrapped value. */
-    const T* operator->() const { return std::addressof(value); }
+    const T* operator->() const noexcept { return std::addressof(value); }
     /** @brief Mutable pointer access to the wrapped value. */
-    T* operator->() { return std::addressof(value); }
+    T* operator->() noexcept { return std::addressof(value); }
     /** @brief Const dereference. */
-    const T& operator*() const { return value; }
+    const T& operator*() const noexcept { return value; }
     /** @brief Mutable dereference. */
-    T& operator*() { return value; }
-    operator const T&() const { return value; }
-    operator T&() { return value; }
+    T& operator*() noexcept { return value; }
+    operator const T&() const noexcept { return value; }
+    operator T&() noexcept { return value; }
 
    private:
     T value;
@@ -82,15 +82,15 @@ export template <typename T>
 struct InRef {
    public:
     /** @brief Construct from a const reference. */
-    InRef(const T& value) : value(std::addressof(value)) {}
+    InRef(const T& value) noexcept : value(std::addressof(value)) {}
 
     /** @brief Get the referenced value. */
-    const T& get() const { return *value; }
+    const T& get() const noexcept { return *value; }
     /** @brief Const pointer access. */
-    const T* operator->() const { return value; }
+    const T* operator->() const noexcept { return value; }
     /** @brief Const dereference. */
-    const T& operator*() const { return *value; }
-    operator const T&() const { return *value; }
+    const T& operator*() const noexcept { return *value; }
+    operator const T&() const noexcept { return *value; }
 
    private:
     const T* value;
@@ -101,24 +101,24 @@ export template <typename T>
 struct InMut {
    public:
     /** @brief Construct from a mutable reference. */
-    InMut(T& value) : value(std::addressof(value)) {}
+    InMut(T& value) noexcept : value(std::addressof(value)) {}
 
     /** @brief Get a mutable reference. */
-    T& get() { return *value; }
+    T& get() noexcept { return *value; }
     /** @brief Mutable pointer access. */
-    T* operator->() { return value; }
+    T* operator->() noexcept { return value; }
     /** @brief Mutable dereference. */
-    T& operator*() { return *value; }
+    T& operator*() noexcept { return *value; }
     /** @brief Implicit conversion to mutable reference. */
-    operator T&() { return *value; }
+    operator T&() noexcept { return *value; }
     /** @brief Get a const reference. */
-    const T& get() const { return *value; }
+    const T& get() const noexcept { return *value; }
     /** @brief Const pointer access. */
-    const T* operator->() const { return value; }
+    const T* operator->() const noexcept { return value; }
     /** @brief Const dereference. */
-    const T& operator*() const { return *value; }
+    const T& operator*() const noexcept { return *value; }
     /** @brief Implicit conversion to const reference. */
-    operator const T&() const { return *value; }
+    operator const T&() const noexcept { return *value; }
 
    private:
     T* value;
@@ -129,33 +129,43 @@ template <typename T>
 struct SystemInput<In<T>> {
     using Param = In<T>;
     using Input = T;
-    static Param wrap_input(Input input) { return Param(std::move(input)); }
+    static Param wrap_input(Input input) noexcept(std::is_nothrow_constructible_v<Param, Input>) {
+        return Param(std::move(input));
+    }
 };
 template <typename T>
     requires std::copyable<T>
 struct SystemInput<InCopy<T>> {
     using Param = InCopy<T>;
     using Input = const T&;
-    static Param wrap_input(Input input) { return Param(input); }
+    static Param wrap_input(Input input) noexcept(std::is_nothrow_constructible_v<Param, Input>) {
+        return Param(input);
+    }
 };
 template <typename T>
     requires std::movable<T>
 struct SystemInput<InMove<T>> {
     using Param = InMove<T>;
     using Input = T&&;
-    static Param wrap_input(Input input) { return Param(std::move(input)); }
+    static Param wrap_input(Input input) noexcept(std::is_nothrow_constructible_v<Param, Input>) {
+        return Param(std::move(input));
+    }
 };
 template <typename T>
 struct SystemInput<InRef<T>> {
     using Param = InRef<T>;
     using Input = const T&;
-    static Param wrap_input(Input input) { return Param(input); }
+    static Param wrap_input(Input input) noexcept(std::is_nothrow_constructible_v<Param, Input>) {
+        return Param(input);
+    }
 };
 template <typename T>
 struct SystemInput<InMut<T>> {
     using Param = InMut<T>;
     using Input = T&;
-    static Param wrap_input(Input input) { return Param(input); }
+    static Param wrap_input(Input input) noexcept(std::is_nothrow_constructible_v<Param, Input>) {
+        return Param(input);
+    }
 };
 
 template <system_input... Ts>
@@ -168,4 +178,4 @@ struct SystemInput<std::tuple<Ts...>> {
         }(std::index_sequence_for<Ts...>{}, std::move(input));
     }
 };
-}  // namespace core
+}  // namespace epix::core

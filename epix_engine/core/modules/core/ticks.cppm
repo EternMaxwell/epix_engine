@@ -13,17 +13,17 @@ import :tick;
 
 namespace epix::core {
 struct Ticks {
-    static Ticks from_ticks(const Tick& added, const Tick& modified, Tick last_run, Tick this_run) {
+    static Ticks from_ticks(const Tick& added, const Tick& modified, Tick last_run, Tick this_run) noexcept {
         return Ticks{&added, &modified, last_run, this_run};
     }
-    static Ticks from_refs(TickRefs refs, Tick last_run, Tick this_run) {
+    static Ticks from_refs(TickRefs refs, Tick last_run, Tick this_run) noexcept {
         return Ticks{&refs.added(), &refs.modified(), last_run, this_run};
     }
 
-    bool is_added() const { return added->newer_than(last_run, this_run); }
-    bool is_modified() const { return modified->newer_than(last_run, this_run); }
-    Tick last_modified() const { return *modified; }
-    Tick added_tick() const { return *added; }
+    bool is_added() const noexcept { return added->newer_than(last_run, this_run); }
+    bool is_modified() const noexcept { return modified->newer_than(last_run, this_run); }
+    Tick last_modified() const noexcept { return *modified; }
+    Tick added_tick() const noexcept { return *added; }
 
    private:
     const Tick* added;
@@ -31,30 +31,30 @@ struct Ticks {
     Tick last_run;
     Tick this_run;
 
-    Ticks(const Tick* added, const Tick* modified, Tick last_run, Tick this_run)
+    Ticks(const Tick* added, const Tick* modified, Tick last_run, Tick this_run) noexcept
         : added(added), modified(modified), last_run(last_run), this_run(this_run) {}
 
     friend struct TicksMut;
 };
 struct TicksMut {
-    static TicksMut from_ticks(Tick& added, Tick& modified, Tick last_run, Tick this_run) {
+    static TicksMut from_ticks(Tick& added, Tick& modified, Tick last_run, Tick this_run) noexcept {
         return TicksMut{&added, &modified, last_run, this_run};
     }
-    static TicksMut from_refs(TickRefs refs, Tick last_run, Tick this_run) {
+    static TicksMut from_refs(TickRefs refs, Tick last_run, Tick this_run) noexcept {
         return TicksMut{&refs.added(), &refs.modified(), last_run, this_run};
     }
 
-    bool is_added() const { return added->newer_than(last_run, this_run); }
-    bool is_modified() const { return modified->newer_than(last_run, this_run); }
-    Tick last_modified() const { return *modified; }
-    Tick added_tick() const { return *added; }
+    bool is_added() const noexcept { return added->newer_than(last_run, this_run); }
+    bool is_modified() const noexcept { return modified->newer_than(last_run, this_run); }
+    Tick last_modified() const noexcept { return *modified; }
+    Tick added_tick() const noexcept { return *added; }
 
-    void set_modified() { modified->set(this_run.get()); }
-    void set_added() {
+    void set_modified() noexcept { modified->set(this_run.get()); }
+    void set_added() noexcept {
         added->set(this_run.get());
         modified->set(this_run.get());
     }
-    operator Ticks() const { return Ticks(added, modified, last_run, this_run); }
+    operator Ticks() const noexcept { return Ticks(added, modified, last_run, this_run); }
 
    private:
     Tick* added;
@@ -62,7 +62,7 @@ struct TicksMut {
     Tick last_run;
     Tick this_run;
 
-    TicksMut(Tick* added, Tick* modified, Tick last_run, Tick this_run)
+    TicksMut(Tick* added, Tick* modified, Tick last_run, Tick this_run) noexcept
         : added(added), modified(modified), last_run(last_run), this_run(this_run) {}
 };
 /** @brief Trait to opt into copy semantics for Ref<T>.
@@ -93,25 +93,25 @@ export {
         Ticks ticks;
 
        public:
-        Ref(const T* value, Ticks ticks) : value(value), ticks(ticks) {}
+        Ref(const T* value, Ticks ticks) noexcept : value(value), ticks(ticks) {}
 
         /** @brief Get a const pointer to the value. */
-        const T* ptr() const { return value; }
+        const T* ptr() const noexcept { return value; }
         /** @brief Get a const reference to the value. */
-        const T& get() const { return *value; }
+        const T& get() const noexcept { return *value; }
         /** @brief Dereference to const pointer. */
-        const T* operator->() const { return value; }
+        const T* operator->() const noexcept { return value; }
         /** @brief Dereference to const reference. */
-        const T& operator*() const { return *value; }
-        operator const T&() const { return *value; }
+        const T& operator*() const noexcept { return *value; }
+        operator const T&() const noexcept { return *value; }
         /** @brief Check whether the value was added since the last system run. */
-        bool is_added() const { return ticks.is_added(); }
+        bool is_added() const noexcept { return ticks.is_added(); }
         /** @brief Check whether the value was modified since the last system run. */
-        bool is_modified() const { return ticks.is_modified(); }
+        bool is_modified() const noexcept { return ticks.is_modified(); }
         /** @brief Get the tick when the value was last modified. */
-        Tick last_modified() const { return ticks.last_modified(); }
+        Tick last_modified() const noexcept { return ticks.last_modified(); }
         /** @brief Get the tick when the value was added. */
-        Tick added_tick() const { return ticks.added_tick(); }
+        Tick added_tick() const noexcept { return ticks.added_tick(); }
     };
     template <refable T>
         requires(copy_ref<T>::value && std::copy_constructible<T>)
@@ -124,31 +124,31 @@ export {
         Ref(const T* value, Ticks ticks) : value(*value), ticks(ticks) {}
 
         /** @brief Get a const pointer to the copied value. */
-        const T* ptr() const { return std::addressof(value); }
+        const T* ptr() const noexcept { return std::addressof(value); }
         /** @brief Get a mutable pointer to the copied value. */
-        T* ptr_mut() { return std::addressof(value); }
+        T* ptr_mut() noexcept { return std::addressof(value); }
         /** @brief Get a const reference to the copied value. */
-        const T& get() const { return value; }
+        const T& get() const noexcept { return value; }
         /** @brief Get a mutable reference to the copied value. */
-        T& get_mut() { return value; }
+        T& get_mut() noexcept { return value; }
         /** @brief Dereference to const pointer. */
-        const T* operator->() const { return std::addressof(value); }
+        const T* operator->() const noexcept { return std::addressof(value); }
         /** @brief Dereference to mutable pointer. */
-        T* operator->() { return std::addressof(value); }
+        T* operator->() noexcept { return std::addressof(value); }
         /** @brief Dereference to const reference. */
-        const T& operator*() const { return value; }
+        const T& operator*() const noexcept { return value; }
         /** @brief Dereference to mutable reference. */
-        T& operator*() { return value; }
-        operator const T&() const { return value; }
-        operator T&() { return value; }
+        T& operator*() noexcept { return value; }
+        operator const T&() const noexcept { return value; }
+        operator T&() noexcept { return value; }
         /** @brief Check whether the value was added since the last system run. */
-        bool is_added() const { return ticks.is_added(); }
+        bool is_added() const noexcept { return ticks.is_added(); }
         /** @brief Check whether the value was modified since the last system run. */
-        bool is_modified() const { return ticks.is_modified(); }
+        bool is_modified() const noexcept { return ticks.is_modified(); }
         /** @brief Get the tick when the value was last modified. */
-        Tick last_modified() const { return ticks.last_modified(); }
+        Tick last_modified() const noexcept { return ticks.last_modified(); }
         /** @brief Get the tick when the value was added. */
-        Tick added_tick() const { return ticks.added_tick(); }
+        Tick added_tick() const noexcept { return ticks.added_tick(); }
     };
     /** @brief Mutable reference wrapper with change-detection tick metadata.
      *
@@ -163,50 +163,50 @@ export {
         TicksMut ticks;
 
        public:
-        Mut(T* value, TicksMut ticks) : value(value), ticks(ticks) {}
+        Mut(T* value, TicksMut ticks) noexcept : value(value), ticks(ticks) {}
 
         /** @brief Get a const pointer to the value without marking as modified. */
-        const T* ptr() const { return value; }
+        const T* ptr() const noexcept { return value; }
         /** @brief Get a mutable pointer, marking the value as modified. */
-        T* ptr_mut() {
+        T* ptr_mut() noexcept {
             ticks.set_modified();
             return value;
         }
         /** @brief Get a const reference to the value without marking as modified. */
-        const T& get() const { return *value; }
+        const T& get() const noexcept { return *value; }
         /** @brief Get a mutable reference, marking the value as modified. */
-        T& get_mut() {
+        T& get_mut() noexcept {
             ticks.set_modified();
             return *value;
         }
         /** @brief Dereference to const pointer. */
-        const T* operator->() const { return value; }
+        const T* operator->() const noexcept { return value; }
         /** @brief Dereference to mutable pointer, marking the value as modified. */
-        T* operator->() {
+        T* operator->() noexcept {
             ticks.set_modified();
             return value;
         }
         /** @brief Dereference to const reference. */
-        const T& operator*() const { return *value; }
+        const T& operator*() const noexcept { return *value; }
         /** @brief Dereference to mutable reference, marking the value as modified. */
-        T& operator*() {
+        T& operator*() noexcept {
             ticks.set_modified();
             return *value;
         }
         /** @brief Implicit conversion to mutable reference, marking as modified. */
-        operator T&() {
+        operator T&() noexcept {
             ticks.set_modified();
             return *value;
         }
-        operator const T&() const { return *value; }
+        operator const T&() const noexcept { return *value; }
         /** @brief Check whether the value was added since the last system run. */
-        bool is_added() const { return ticks.is_added(); }
+        bool is_added() const noexcept { return ticks.is_added(); }
         /** @brief Check whether the value was modified since the last system run. */
-        bool is_modified() const { return ticks.is_modified(); }
+        bool is_modified() const noexcept { return ticks.is_modified(); }
         /** @brief Get the tick when the value was last modified. */
-        Tick last_modified() const { return ticks.last_modified(); }
+        Tick last_modified() const noexcept { return ticks.last_modified(); }
         /** @brief Get the tick when the value was added. */
-        Tick added_tick() const { return ticks.added_tick(); }
+        Tick added_tick() const noexcept { return ticks.added_tick(); }
         /** @brief Convertable to Ref */
         operator Ref<T>() const { return Ref<T>(value, ticks); }
     };

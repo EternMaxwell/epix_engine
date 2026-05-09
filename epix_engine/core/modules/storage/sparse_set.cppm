@@ -35,10 +35,12 @@ struct ComponentSparseSet {
         self.entities.clear();
         self.sparse.clear();
     }
-    std::size_t size(this const ComponentSparseSet& self) { return self.dense.len(); }
-    bool empty(this const ComponentSparseSet& self) { return self.size() == 0; }
+    std::size_t size(this const ComponentSparseSet& self) noexcept { return self.dense.len(); }
+    bool empty(this const ComponentSparseSet& self) noexcept { return self.size() == 0; }
 
-    const ::epix::meta::type_info& type_info(this const ComponentSparseSet& self) { return self.dense.type_info(); }
+    const ::epix::meta::type_info& type_info(this const ComponentSparseSet& self) noexcept {
+        return self.dense.type_info();
+    }
 
     void alloc_uninitialized(this ComponentSparseSet& self, Entity entity) {
         std::uint32_t dense_index = static_cast<std::uint32_t>(self.dense.len());
@@ -64,48 +66,59 @@ struct ComponentSparseSet {
             });
     }
 
-    bool contains(this const ComponentSparseSet& self, Entity entity) { return self.sparse.contains(entity.index); }
-    std::optional<const void*> get(this const ComponentSparseSet& self, Entity entity) {
-        return self.sparse.get(entity.index).and_then([&](std::uint32_t dense_index) {
-            return self.dense.get(dense_index);
-        });
+    bool contains(this const ComponentSparseSet& self, Entity entity) noexcept {
+        return self.sparse.contains(entity.index);
     }
-    std::optional<void*> get_mut(this ComponentSparseSet& self, Entity entity) {
-        return self.sparse.get(entity.index).and_then([&](std::uint32_t dense_index) {
-            return self.dense.get_mut(dense_index);
-        });
+    std::optional<const void*> get(this const ComponentSparseSet& self, Entity entity) noexcept {
+        if (auto dense_index = self.sparse.get(entity.index)) {
+            return self.dense.get(dense_index->get());
+        }
+        return std::nullopt;
     }
-    template <typename T>
-    std::optional<std::reference_wrapper<const T>> get_as(this const ComponentSparseSet& self, Entity entity) {
-        return self.sparse.get(entity.index).and_then([&](std::uint32_t dense_index) {
-            return self.dense.get_as<T>(dense_index);
-        });
+    std::optional<void*> get_mut(this ComponentSparseSet& self, Entity entity) noexcept {
+        if (auto dense_index = self.sparse.get(entity.index)) {
+            return self.dense.get_mut(dense_index->get());
+        }
+        return std::nullopt;
     }
     template <typename T>
-    std::optional<std::reference_wrapper<T>> get_as_mut(this ComponentSparseSet& self, Entity entity) {
-        return self.sparse.get(entity.index).and_then([&](std::uint32_t dense_index) {
-            return self.dense.get_as_mut<T>(dense_index);
-        });
+    std::optional<std::reference_wrapper<const T>> get_as(this const ComponentSparseSet& self, Entity entity) noexcept {
+        if (auto dense_index = self.sparse.get(entity.index)) {
+            return self.dense.get_as<T>(dense_index->get());
+        }
+        return std::nullopt;
     }
-    std::optional<ComponentTicks> get_ticks(this const ComponentSparseSet& self, Entity entity) {
-        return self.sparse.get(entity.index).and_then([&](std::uint32_t dense_index) {
-            return self.dense.get_ticks(dense_index);
-        });
+    template <typename T>
+    std::optional<std::reference_wrapper<T>> get_as_mut(this ComponentSparseSet& self, Entity entity) noexcept {
+        if (auto dense_index = self.sparse.get(entity.index)) {
+            return self.dense.get_as_mut<T>(dense_index->get());
+        }
+        return std::nullopt;
     }
-    std::optional<std::reference_wrapper<Tick>> get_added_tick(this ComponentSparseSet& self, Entity entity) {
-        return self.sparse.get(entity.index).and_then([&](std::uint32_t dense_index) {
-            return self.dense.get_added_tick(dense_index);
-        });
+    std::optional<ComponentTicks> get_ticks(this const ComponentSparseSet& self, Entity entity) noexcept {
+        if (auto dense_index = self.sparse.get(entity.index)) {
+            return self.dense.get_ticks(dense_index->get());
+        }
+        return std::nullopt;
     }
-    std::optional<std::reference_wrapper<Tick>> get_modified_tick(this ComponentSparseSet& self, Entity entity) {
-        return self.sparse.get(entity.index).and_then([&](std::uint32_t dense_index) {
-            return self.dense.get_modified_tick(dense_index);
-        });
+    std::optional<std::reference_wrapper<Tick>> get_added_tick(this ComponentSparseSet& self, Entity entity) noexcept {
+        if (auto dense_index = self.sparse.get(entity.index)) {
+            return self.dense.get_added_tick(dense_index->get());
+        }
+        return std::nullopt;
     }
-    std::optional<TickRefs> get_tick_refs(this const ComponentSparseSet& self, Entity entity) {
-        return self.sparse.get(entity.index).and_then([&](std::uint32_t dense_index) {
-            return self.dense.get_tick_refs(dense_index);
-        });
+    std::optional<std::reference_wrapper<Tick>> get_modified_tick(this ComponentSparseSet& self,
+                                                                  Entity entity) noexcept {
+        if (auto dense_index = self.sparse.get(entity.index)) {
+            return self.dense.get_modified_tick(dense_index->get());
+        }
+        return std::nullopt;
+    }
+    std::optional<TickRefs> get_tick_refs(this const ComponentSparseSet& self, Entity entity) noexcept {
+        if (auto dense_index = self.sparse.get(entity.index)) {
+            return self.dense.get_tick_refs(dense_index->get());
+        }
+        return std::nullopt;
     }
 
     bool remove(this ComponentSparseSet& self, Entity entity) {
@@ -126,7 +139,7 @@ struct ComponentSparseSet {
             })
             .value_or(false);
     }
-    void check_change_ticks(this ComponentSparseSet& self, Tick tick) { self.dense.check_change_ticks(tick); }
+    void check_change_ticks(this ComponentSparseSet& self, Tick tick) noexcept { self.dense.check_change_ticks(tick); }
 };
 template <typename I, typename V>
 struct SparseSet {
@@ -148,8 +161,8 @@ struct SparseSet {
         self._indices.clear();
         self._sparse.clear();
     }
-    std::size_t size(this const SparseSet& self) { return self._dense.size(); }
-    bool empty(this const SparseSet& self) { return self.size() == 0; }
+    std::size_t size(this const SparseSet& self) noexcept { return self._dense.size(); }
+    bool empty(this const SparseSet& self) noexcept { return self.size() == 0; }
     void reserve(this SparseSet& self, std::size_t new_cap) {
         self._dense.reserve(new_cap);
         self._indices.reserve(new_cap);
@@ -173,18 +186,18 @@ struct SparseSet {
                 return std::nullopt;
             });
     }
-    bool contains(this const SparseSet& self, I index) { return self._sparse.contains(index); }
-    std::optional<std::reference_wrapper<const V>> get(this const SparseSet& self, I index) {
-        return self._sparse.get(index).and_then(
-            [&](std::size_t dense_index) -> std::optional<std::reference_wrapper<const V>> {
-                return std::cref(self._dense[dense_index]);
-            });
+    bool contains(this const SparseSet& self, I index) noexcept { return self._sparse.contains(index); }
+    std::optional<std::reference_wrapper<const V>> get(this const SparseSet& self, I index) noexcept {
+        if (auto dense_index = self._sparse.get(index)) {
+            return std::cref(self._dense[dense_index->get()]);
+        }
+        return std::nullopt;
     }
-    std::optional<std::reference_wrapper<V>> get_mut(this SparseSet& self, I index) {
-        return self._sparse.get(index).and_then(
-            [&](std::size_t dense_index) -> std::optional<std::reference_wrapper<V>> {
-                return std::ref(self._dense[dense_index]);
-            });
+    std::optional<std::reference_wrapper<V>> get_mut(this SparseSet& self, I index) noexcept {
+        if (auto dense_index = self._sparse.get(index)) {
+            return std::ref(self._dense[dense_index->get()]);
+        }
+        return std::nullopt;
     }
 
     bool remove(this SparseSet& self, I index) {
@@ -221,17 +234,18 @@ struct SparseSets {
    public:
     SparseSets(const std::shared_ptr<TypeRegistry>& registry) : registry(registry) {}
 
-    std::size_t size(this const SparseSets& self) { return self.sets.size(); }
-    bool empty(this const SparseSets& self) { return self.sets.empty(); }
+    std::size_t size(this const SparseSets& self) noexcept { return self.sets.size(); }
+    bool empty(this const SparseSets& self) noexcept { return self.sets.empty(); }
 
     auto iter(this const SparseSets& self) { return self.sets.iter(); }
     auto iter_mut(this SparseSets& self) { return self.sets.iter_mut(); }
 
     std::optional<std::reference_wrapper<const ComponentSparseSet>> get(this const SparseSets& self,
-                                                                        std::size_t type_id) {
+                                                                        std::size_t type_id) noexcept {
         return self.sets.get(type_id);
     }
-    std::optional<std::reference_wrapper<ComponentSparseSet>> get_mut(this SparseSets& self, std::size_t type_id) {
+    std::optional<std::reference_wrapper<ComponentSparseSet>> get_mut(this SparseSets& self,
+                                                                      std::size_t type_id) noexcept {
         return self.sets.get_mut(type_id);
     }
     void insert(this SparseSets& self, std::size_t type_id, ComponentSparseSet set) {
@@ -257,10 +271,10 @@ struct SparseSets {
             set.clear();
         }
     }
-    void check_change_ticks(this SparseSets& self, Tick tick) {
+    void check_change_ticks(this SparseSets& self, Tick tick) noexcept {
         for (auto&& [_, set] : self.sets.iter_mut()) {
             set.check_change_ticks(tick);
         }
     }
 };
-}  // namespace core
+}  // namespace epix::core

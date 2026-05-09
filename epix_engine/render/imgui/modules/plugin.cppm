@@ -36,8 +36,8 @@ export struct ImGuiPlugin {
     bool enable_docking   = false;
     bool enable_viewports = false;
 
-    ImGuiPlugin& set_docking(bool enabled = true);
-    ImGuiPlugin& set_viewports(bool enabled = true);
+    ImGuiPlugin& set_docking(bool enabled = true) noexcept;
+    ImGuiPlugin& set_viewports(bool enabled = true) noexcept;
 
     void build(App& app);
     void finalize(App& app);

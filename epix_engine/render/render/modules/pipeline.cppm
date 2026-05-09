@@ -12,12 +12,12 @@ module;
 #include <utility>
 #include <vector>
 #endif
-#define make_atomic_id(name)                                                                   \
-    struct name {                                                                              \
-        inline static std::atomic<std::uint64_t> counter{1};                                   \
-        static name create() { return name{counter.fetch_add(1, std::memory_order_relaxed)}; } \
-        operator std::uint64_t() const { return id; }                                          \
-        std::uint64_t id{0};                                                                   \
+#define make_atomic_id(name)                                                                            \
+    struct name {                                                                                       \
+        inline static std::atomic<std::uint64_t> counter{1};                                            \
+        static name create() noexcept { return name{counter.fetch_add(1, std::memory_order_relaxed)}; } \
+        operator std::uint64_t() const noexcept { return id; }                                          \
+        std::uint64_t id{0};                                                                            \
     };
 
 export module epix.render:pipeline;
@@ -35,8 +35,8 @@ make_atomic_id(ComputePipelineId);
 export struct RenderPipeline {
     friend struct PipelineServer;  // Only PipelineServer can create pipelines
    public:
-    RenderPipelineId id() const { return _id; }
-    const wgpu::RenderPipeline& pipeline() const { return _pipeline; }
+    RenderPipelineId id() const noexcept { return _id; }
+    const wgpu::RenderPipeline& pipeline() const noexcept { return _pipeline; }
 
    private:
     RenderPipeline(wgpu::RenderPipeline pipeline) : _id(RenderPipelineId::create()), _pipeline(std::move(pipeline)) {}
@@ -48,8 +48,8 @@ export struct RenderPipeline {
 export struct ComputePipeline {
     friend struct PipelineServer;  // Only PipelineServer can create pipelines
    public:
-    ComputePipelineId id() const { return _id; }
-    const wgpu::ComputePipeline& pipeline() const { return _pipeline; }
+    ComputePipelineId id() const noexcept { return _id; }
+    const wgpu::ComputePipeline& pipeline() const noexcept { return _pipeline; }
 
    private:
     ComputePipeline(wgpu::ComputePipeline pipeline)

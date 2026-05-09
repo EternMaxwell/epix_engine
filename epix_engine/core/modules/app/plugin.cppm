@@ -73,7 +73,8 @@ struct PluginWrapper : PluginBase {
    public:
     template <typename... Args>
         requires std::constructible_from<T, Args...>
-    PluginWrapper(Args&&... args) : instance(std::forward<Args>(args)...) {}
+    PluginWrapper(Args&&... args) noexcept(std::is_nothrow_constructible_v<T, Args...>)
+        : instance(std::forward<Args>(args)...) {}
     PluginWrapper(const PluginWrapper&)            = delete;
     PluginWrapper(PluginWrapper&&)                 = delete;
     PluginWrapper& operator=(const PluginWrapper&) = delete;
@@ -83,8 +84,8 @@ struct PluginWrapper : PluginBase {
     void finish(App& app) override { PluginTraits<T>().finish(instance, app); }
     void finalize(App& app) override { PluginTraits<T>().finalize(instance, app); }
 
-    T& get() { return instance; }
-    const T& get() const { return instance; }
+    T& get() noexcept { return instance; }
+    const T& get() const noexcept { return instance; }
 
    private:
     T instance;
@@ -109,7 +110,7 @@ struct Plugins {
         add_plugin_internal<std::decay_t<T>>(app, std::forward<T>(plugin));
     }
     template <typename T>
-    std::optional<std::reference_wrapper<T>> get_plugin_mut() {
+    std::optional<std::reference_wrapper<T>> get_plugin_mut() noexcept {
         meta::type_index type_id = meta::type_id<T>();
         if (auto it = _plugin_index.find(type_id); it != _plugin_index.end()) {
             std::size_t index = it->second;
@@ -121,7 +122,7 @@ struct Plugins {
         return std::nullopt;
     }
     template <typename T>
-    std::optional<std::reference_wrapper<const T>> get_plugin() const {
+    std::optional<std::reference_wrapper<const T>> get_plugin() const noexcept {
         meta::type_index type_id = meta::type_id<T>();
         if (auto it = _plugin_index.find(type_id); it != _plugin_index.end()) {
             std::size_t index = it->second;

@@ -40,8 +40,8 @@ struct TrySendError {
     enum Kind { Full, Closed };
     Kind kind;
     T msg;
-    bool is_full() const { return kind == Full; }
-    bool is_closed() const { return kind == Closed; }
+    bool is_full() const noexcept { return kind == Full; }
+    bool is_closed() const noexcept { return kind == Closed; }
 };
 
 // ── Forward declarations ──
@@ -89,7 +89,7 @@ struct Sender {
     }
 
    public:
-    Sender() = default;
+    Sender() noexcept = default;
     explicit Sender(std::shared_ptr<Channel<T>> ch) : m_ch(std::move(ch)) { inc(); }
     Sender(const Sender& o) : m_ch(o.m_ch) { inc(); }
     Sender(Sender&& o) noexcept : m_ch(std::exchange(o.m_ch, nullptr)) {}
@@ -110,7 +110,7 @@ struct Sender {
     }
     ~Sender() { dec(); }
 
-    explicit operator bool() const { return m_ch != nullptr; }
+    explicit operator bool() const noexcept { return m_ch != nullptr; }
 
     std::expected<void, TrySendError<T>> try_send(T msg) const {
         if (!m_ch) return std::unexpected(TrySendError<T>{TrySendError<T>::Closed, std::move(msg)});
@@ -187,7 +187,7 @@ struct Sender {
         return m_ch->queue.size();
     }
 
-    std::optional<std::size_t> capacity() const {
+    std::optional<std::size_t> capacity() const noexcept {
         if (!m_ch) return std::nullopt;
         return m_ch->cap;
     }
@@ -204,9 +204,9 @@ struct Sender {
         return m_ch->sender_count;
     }
 
-    WeakSender<T> downgrade() const;
+    WeakSender<T> downgrade() const noexcept;
 
-    bool same_channel(const Sender& o) const { return m_ch == o.m_ch; }
+    bool same_channel(const Sender& o) const noexcept { return m_ch == o.m_ch; }
 
     template <typename U>
     friend struct Receiver;
@@ -235,7 +235,7 @@ struct Receiver {
     }
 
    public:
-    Receiver() = default;
+    Receiver() noexcept = default;
     explicit Receiver(std::shared_ptr<Channel<T>> ch) : m_ch(std::move(ch)) { inc(); }
     Receiver(const Receiver& o) : m_ch(o.m_ch) { inc(); }
     Receiver(Receiver&& o) noexcept : m_ch(std::exchange(o.m_ch, nullptr)) {}
@@ -256,7 +256,7 @@ struct Receiver {
     }
     ~Receiver() { dec(); }
 
-    explicit operator bool() const { return m_ch != nullptr; }
+    explicit operator bool() const noexcept { return m_ch != nullptr; }
 
     std::expected<T, TryRecvError> try_recv() const {
         if (!m_ch) return std::unexpected(TryRecvError::Closed);
@@ -334,7 +334,7 @@ struct Receiver {
         return m_ch->queue.size();
     }
 
-    std::optional<std::size_t> capacity() const {
+    std::optional<std::size_t> capacity() const noexcept {
         if (!m_ch) return std::nullopt;
         return m_ch->cap;
     }
@@ -351,9 +351,9 @@ struct Receiver {
         return m_ch->sender_count;
     }
 
-    WeakReceiver<T> downgrade() const;
+    WeakReceiver<T> downgrade() const noexcept;
 
-    bool same_channel(const Receiver& o) const { return m_ch == o.m_ch; }
+    bool same_channel(const Receiver& o) const noexcept { return m_ch == o.m_ch; }
 
     template <typename U>
     friend struct Sender;
@@ -369,8 +369,8 @@ struct WeakSender {
     std::weak_ptr<Channel<T>> m_ch;
 
    public:
-    WeakSender() = default;
-    explicit WeakSender(std::weak_ptr<Channel<T>> ch) : m_ch(std::move(ch)) {}
+    WeakSender() noexcept = default;
+    explicit WeakSender(std::weak_ptr<Channel<T>> ch) noexcept : m_ch(std::move(ch)) {}
     WeakSender(const WeakSender&)            = default;
     WeakSender(WeakSender&&)                 = default;
     WeakSender& operator=(const WeakSender&) = default;
@@ -397,8 +397,8 @@ struct WeakReceiver {
     std::weak_ptr<Channel<T>> m_ch;
 
    public:
-    WeakReceiver() = default;
-    explicit WeakReceiver(std::weak_ptr<Channel<T>> ch) : m_ch(std::move(ch)) {}
+    WeakReceiver() noexcept = default;
+    explicit WeakReceiver(std::weak_ptr<Channel<T>> ch) noexcept : m_ch(std::move(ch)) {}
     WeakReceiver(const WeakReceiver&)            = default;
     WeakReceiver(WeakReceiver&&)                 = default;
     WeakReceiver& operator=(const WeakReceiver&) = default;
@@ -420,12 +420,12 @@ struct WeakReceiver {
 // ── Deferred downgrade implementations ──
 
 template <typename T>
-WeakSender<T> Sender<T>::downgrade() const {
+WeakSender<T> Sender<T>::downgrade() const noexcept {
     return WeakSender<T>(m_ch);
 }
 
 template <typename T>
-WeakReceiver<T> Receiver<T>::downgrade() const {
+WeakReceiver<T> Receiver<T>::downgrade() const noexcept {
     return WeakReceiver<T>(m_ch);
 }
 

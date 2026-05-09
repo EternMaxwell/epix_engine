@@ -102,7 +102,7 @@ export struct AssetServer {
                 UnapprovedPathMode unapproved_path_mode = UnapprovedPathMode::Forbid);
 
     /** @brief Get the shared loaders handle (for sharing between processor and main server). */
-    const std::shared_ptr<utils::RwLock<AssetLoaders>>& get_loaders() const { return data->loaders; }
+    const std::shared_ptr<utils::RwLock<AssetLoaders>>& get_loaders() const noexcept { return data->loaders; }
 
     // ---- Loader Registration ----
 
@@ -421,9 +421,9 @@ export struct AssetServer {
     /** @brief Check if an asset id is managed by this server. */
     bool is_managed(const UntypedAssetId& id) const;
     /** @brief Get the current server mode (Unprocessed or Processed). */
-    AssetServerMode mode() const;
+    AssetServerMode mode() const noexcept;
     /** @brief Check if the server is watching for file changes. */
-    bool watching_for_changes() const;
+    bool watching_for_changes() const noexcept;
     /** @brief Install a callback used in Processed mode to decide whether an extension has a
      *  processor. Extensions without a processor are loaded directly from the source reader
      *  instead of the processed output directory. Call this after the AssetProcessor is fully
@@ -431,7 +431,7 @@ export struct AssetServer {
     void set_processor_check(std::function<bool(std::string_view)> check) const;
 
     /** @brief Get an asset source by id. Returns std::nullopt if not found. */
-    std::optional<std::reference_wrapper<const AssetSource>> get_source(const AssetSourceId& source_id) const;
+    std::optional<std::reference_wrapper<const AssetSource>> get_source(const AssetSourceId& source_id) const noexcept;
 
     // ---- Loader Queries ----
 

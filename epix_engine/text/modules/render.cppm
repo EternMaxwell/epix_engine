@@ -30,25 +30,25 @@ namespace epix::text {
 export struct TextMesh {
    public:
     /** @brief Get the handle to the generated mesh asset. */
-    const assets::Handle<mesh::Mesh>& mesh() const { return mesh_handle_; }
+    const assets::Handle<mesh::Mesh>& mesh() const noexcept { return mesh_handle_; }
     /** @brief Get the left edge of the text bounding box. */
-    float left() const { return left_; }
+    float left() const noexcept { return left_; }
     /** @brief Get the right edge of the text bounding box. */
-    float right() const { return right_; }
+    float right() const noexcept { return right_; }
     /** @brief Get the top edge of the text bounding box. */
-    float top() const { return top_; }
+    float top() const noexcept { return top_; }
     /** @brief Get the bottom edge of the text bounding box. */
-    float bottom() const { return bottom_; }
+    float bottom() const noexcept { return bottom_; }
     /** @brief Get the font ascent metric. */
-    float ascent() const { return ascent_; }
+    float ascent() const noexcept { return ascent_; }
     /** @brief Get the font descent metric. */
-    float descent() const { return descent_; }
+    float descent() const noexcept { return descent_; }
     /** @brief Get the line height (ascent minus descent). */
-    float line_height() const { return ascent_ - descent_; }
+    float line_height() const noexcept { return ascent_ - descent_; }
     /** @brief Get the total width of the text bounding box. */
-    float width() const { return right_ - left_; }
+    float width() const noexcept { return right_ - left_; }
     /** @brief Get the total height of the text bounding box. */
-    float height() const { return top_ - bottom_; }
+    float height() const noexcept { return top_ - bottom_; }
 
     /** @brief Create a TextMesh from shaped text, generating a glyph quad
      * mesh.
@@ -115,7 +115,7 @@ export struct TextRenderPlugin {
     void build(core::App& app);
     void finish(core::App& app);
 };
-}  // namespace text
+}  // namespace epix::text
 
 template <>
 struct epix::core::Bundle<epix::text::Text2dBundle> {

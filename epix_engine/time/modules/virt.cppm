@@ -1,8 +1,8 @@
 module;
 #ifndef EPIX_IMPORT_STD
+#include <chrono>
 #include <cmath>
 #include <cstdlib>
-#include <chrono>
 #endif
 
 export module epix.time:virt;
@@ -48,64 +48,64 @@ struct Time<Virtual> : private Time<> {
     using Time<>::advance_by;
     using Time<>::advance_to;
 
-    Time() = default;
+    Time() noexcept = default;
 
     /** @brief Create a Virtual time with a custom max delta clamp. */
-    static Time from_max_delta(std::chrono::nanoseconds max_delta) {
+    static Time from_max_delta(std::chrono::nanoseconds max_delta) noexcept {
         Time ret;
         ret.set_max_delta(max_delta);
         return ret;
     }
 
     /** @brief Get the maximum delta clamp. */
-    std::chrono::nanoseconds max_delta() const { return m_context.max_delta; }
+    std::chrono::nanoseconds max_delta() const noexcept { return m_context.max_delta; }
 
     /** @brief Set the maximum delta clamp. Must be non-zero. */
-    void set_max_delta(std::chrono::nanoseconds max_delta) {
+    void set_max_delta(std::chrono::nanoseconds max_delta) noexcept {
         if (max_delta.count() == 0) std::abort();
         m_context.max_delta = max_delta;
     }
 
     /** @brief Get the user-set relative speed as float. */
-    float relative_speed() const { return static_cast<float>(relative_speed_f64()); }
+    float relative_speed() const noexcept { return static_cast<float>(relative_speed_f64()); }
 
     /** @brief Get the user-set relative speed as double. */
-    double relative_speed_f64() const { return m_context.relative_speed; }
+    double relative_speed_f64() const noexcept { return m_context.relative_speed; }
 
     /** @brief Get the effective speed (accounting for pause) as float. */
-    float effective_speed() const { return static_cast<float>(m_context.effective_speed); }
+    float effective_speed() const noexcept { return static_cast<float>(m_context.effective_speed); }
 
     /** @brief Get the effective speed (accounting for pause) as double. */
-    double effective_speed_f64() const { return m_context.effective_speed; }
+    double effective_speed_f64() const noexcept { return m_context.effective_speed; }
 
     /** @brief Set the relative speed multiplier (float). Must be finite and >= 0. */
-    void set_relative_speed(float ratio) { set_relative_speed_f64(static_cast<double>(ratio)); }
+    void set_relative_speed(float ratio) noexcept { set_relative_speed_f64(static_cast<double>(ratio)); }
 
     /** @brief Set the relative speed multiplier (double). Must be finite and >= 0. */
-    void set_relative_speed_f64(double ratio) {
+    void set_relative_speed_f64(double ratio) noexcept {
         if (!std::isfinite(ratio)) std::abort();
         if (ratio < 0.0) std::abort();
         m_context.relative_speed = ratio;
     }
 
     /** @brief Toggle between paused and unpaused. */
-    void toggle() { m_context.paused = !m_context.paused; }
+    void toggle() noexcept { m_context.paused = !m_context.paused; }
 
     /** @brief Pause virtual time (effective speed becomes 0). */
-    void pause() { m_context.paused = true; }
+    void pause() noexcept { m_context.paused = true; }
 
     /** @brief Unpause virtual time. */
-    void unpause() { m_context.paused = false; }
+    void unpause() noexcept { m_context.paused = false; }
 
     /** @brief Check whether virtual time is currently paused. */
-    bool is_paused() const { return m_context.paused; }
+    bool is_paused() const noexcept { return m_context.paused; }
 
     /** @brief Check whether virtual time was effectively paused last tick (speed was 0). */
-    bool was_paused() const { return m_context.effective_speed == 0.0; }
+    bool was_paused() const noexcept { return m_context.effective_speed == 0.0; }
 
     /** @brief Advance virtual time from a raw (real) delta. The delta is clamped to
      *  max_delta, then multiplied by relative_speed (or 0 if paused). */
-    void advance_with_raw_delta(std::chrono::nanoseconds raw_delta) {
+    void advance_with_raw_delta(std::chrono::nanoseconds raw_delta) noexcept {
         auto max_d         = m_context.max_delta;
         auto clamped_delta = (raw_delta > max_d) ? max_d : raw_delta;
         double eff_speed   = m_context.paused ? 0.0 : m_context.relative_speed;
@@ -121,12 +121,12 @@ struct Time<Virtual> : private Time<> {
     }
 
     /** @brief Get const reference to the Virtual context. */
-    const Virtual& context() const { return m_context; }
+    const Virtual& context() const noexcept { return m_context; }
     /** @brief Get mutable reference to the Virtual context. */
-    Virtual& context_mut() { return m_context; }
+    Virtual& context_mut() noexcept { return m_context; }
 
     /** @brief Convert to a generic `Time<>` by copying all timing fields. */
-    Time<> as_generic() const { return static_cast<const Time<>&>(*this); }
+    Time<> as_generic() const noexcept { return static_cast<const Time<>&>(*this); }
 
    private:
     Virtual m_context{};
@@ -134,7 +134,7 @@ struct Time<Virtual> : private Time<> {
 
 /** @brief Update virtual time from real time. Feeds real delta into virtual advance,
  *  then copies virtual time into the generic `Time<>` current clock. */
-export inline void update_virtual_time(Time<>& current, Time<Virtual>& virt, const Time<Real>& real) {
+export inline void update_virtual_time(Time<>& current, Time<Virtual>& virt, const Time<Real>& real) noexcept {
     auto raw_delta = real.delta();
     virt.advance_with_raw_delta(raw_delta);
     current = virt.as_generic();

@@ -49,19 +49,19 @@ struct Edge {
     std::uint32_t input_index  = static_cast<std::uint32_t>(-1);  // set to -1 if not used
     std::uint32_t output_index = static_cast<std::uint32_t>(-1);  // set to -1 if not used
 
-    static Edge node_edge(const NodeLabel& output_node, const NodeLabel& input_node) {
+    static Edge node_edge(const NodeLabel& output_node, const NodeLabel& input_node) noexcept {
         return Edge{input_node, output_node};
     }
     static Edge slot_edge(const NodeLabel& output_node,
                           std::uint32_t output_index,
                           const NodeLabel& input_node,
-                          std::uint32_t input_index) {
+                          std::uint32_t input_index) noexcept {
         return Edge{input_node, output_node, input_index, output_index};
     }
 
     bool operator==(const Edge& other) const = default;
     bool operator!=(const Edge& other) const = default;
-    bool is_slot_edge() const { return input_index != -1 && output_index != -1; }
+    bool is_slot_edge() const noexcept { return input_index != -1 && output_index != -1; }
 };
 struct Edges {
    private:
@@ -70,15 +70,15 @@ struct Edges {
     std::vector<Edge> m_output_edges;
 
    public:
-    Edges(NodeLabel label) : m_label(label) {}
+    Edges(NodeLabel label) noexcept : m_label(label) {}
     Edges(const Edges&)            = default;
     Edges(Edges&&)                 = default;
     Edges& operator=(const Edges&) = default;
     Edges& operator=(Edges&&)      = default;
 
-    NodeLabel label() const { return m_label; }
-    const std::vector<Edge>& input_edges() const { return m_input_edges; }
-    const std::vector<Edge>& output_edges() const { return m_output_edges; }
+    NodeLabel label() const noexcept { return m_label; }
+    const std::vector<Edge>& input_edges() const noexcept { return m_input_edges; }
+    const std::vector<Edge>& output_edges() const noexcept { return m_output_edges; }
     bool has_input_edge(const Edge& edge) const;
     bool has_output_edge(const Edge& edge) const;
     void remove_input_edge(const Edge& edge);
@@ -114,11 +114,11 @@ export struct NodeState {
           outputs(node.outputs()) {}
 
     template <typename T>
-    T* node() {
+    T* node() noexcept {
         return dynamic_cast<T*>(pnode.get());
     }
     template <typename T>
-    const T* node() const {
+    const T* node() const noexcept {
         return dynamic_cast<const T*>(pnode.get());
     }
 
@@ -159,4 +159,4 @@ export struct GraphInputNode : public Node {
 export struct EmptyNode : public Node {
     void run(GraphContext&, RenderContext&, const World&) override {}
 };
-}  // namespace render::graph
+}  // namespace epix::render::graph

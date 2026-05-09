@@ -44,7 +44,7 @@ export struct TextFont {
     bool anti_aliased : 1 = true;
 
     /** @brief Convert to a FontAtlasKey for atlas lookup. */
-    operator font::FontAtlasKey() const { return font::FontAtlasKey{size, anti_aliased}; }
+    operator font::FontAtlasKey() const noexcept { return font::FontAtlasKey{size, anti_aliased}; }
 };
 
 /** @brief Component holding the text content string to render. */
@@ -86,25 +86,25 @@ export struct TextBounds;
  */
 export struct ShapedText {
     /** @brief Get the line height (ascent minus descent). */
-    float line_height() const { return ascent_ - descent_; }
+    float line_height() const noexcept { return ascent_ - descent_; }
     /** @brief Get the total width of the shaped text bounding box. */
-    float width() const { return right_ - left_; }
+    float width() const noexcept { return right_ - left_; }
     /** @brief Get the total height of the shaped text bounding box. */
-    float height() const { return top_ - bottom_; }
+    float height() const noexcept { return top_ - bottom_; }
     /** @brief Get the left edge of the bounding box. */
-    float left() const { return left_; }
+    float left() const noexcept { return left_; }
     /** @brief Get the right edge of the bounding box. */
-    float right() const { return right_; }
+    float right() const noexcept { return right_; }
     /** @brief Get the top edge of the bounding box. */
-    float top() const { return top_; }
+    float top() const noexcept { return top_; }
     /** @brief Get the bottom edge of the bounding box. */
-    float bottom() const { return bottom_; }
+    float bottom() const noexcept { return bottom_; }
     /** @brief Get the font ascent metric. */
-    float ascent() const { return ascent_; }
+    float ascent() const noexcept { return ascent_; }
     /** @brief Get the font descent metric (typically negative). */
-    float descent() const { return descent_; }
+    float descent() const noexcept { return descent_; }
     /** @brief Get a read-only span of the shaped glyph positions. */
-    std::span<const GlyphInfo> glyphs() const { return std::span<const GlyphInfo>(glyphs_); }
+    std::span<const GlyphInfo> glyphs() const noexcept { return std::span<const GlyphInfo>(glyphs_); }
 
    private:
     std::vector<GlyphInfo> glyphs_;
@@ -227,7 +227,7 @@ export struct TextBundle {
 export struct TextPlugin {
     void build(core::App& app);
 };
-}  // namespace text
+}  // namespace epix::text
 
 template <>
 struct epix::core::Bundle<epix::text::TextBundle> {

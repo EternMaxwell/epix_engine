@@ -106,7 +106,7 @@ export template <std::size_t Slot>
 struct BindMesh2dInstances {
     template <render::phase::PhaseItem PhaseItem>
     struct Command {
-        void prepare(const core::World&) {}
+        void prepare(const core::World&) noexcept {}
 
         std::expected<void, render::phase::RenderCommandError> render(
             const PhaseItem& item,
@@ -135,7 +135,7 @@ export template <std::size_t Slot>
 struct BindMesh2dTexture {
     template <render::phase::PhaseItem PhaseItem>
     struct Command {
-        void prepare(const core::World&) {}
+        void prepare(const core::World&) noexcept {}
 
         std::expected<void, render::phase::RenderCommandError> render(
             const PhaseItem& item,
@@ -175,7 +175,7 @@ struct BindMesh2dTexture {
  * @tparam PhaseItem The phase item type providing entity/batch info. */
 export template <render::phase::PhaseItem PhaseItem>
 struct DrawMesh2dBatch {
-    void prepare(const core::World&) {}
+    void prepare(const core::World&) noexcept {}
 
     std::expected<void, render::phase::RenderCommandError> render(
         const PhaseItem& item,

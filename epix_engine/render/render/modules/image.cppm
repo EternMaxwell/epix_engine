@@ -32,5 +32,5 @@ struct epix::render::RenderAsset<epix::image::Image> {
     using ProcessedAsset = GPUImage;
 
     ProcessedAsset process(image::Image&& asset, Param param);
-    RenderAssetUsage usage(const image::Image& asset);
+    RenderAssetUsage usage(const image::Image& asset) noexcept;
 };

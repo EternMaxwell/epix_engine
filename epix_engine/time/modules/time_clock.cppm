@@ -1,8 +1,8 @@
 module;
 #ifndef EPIX_IMPORT_STD
+#include <chrono>
 #include <cstdlib>
 #include <utility>
-#include <chrono>
 #endif
 
 export module epix.time:time_clock;
@@ -11,7 +11,8 @@ import std;
 #endif
 namespace epix::time {
 
-inline std::chrono::nanoseconds duration_rem(std::chrono::nanoseconds dividend, std::chrono::nanoseconds divisor) {
+inline std::chrono::nanoseconds duration_rem(std::chrono::nanoseconds dividend,
+                                             std::chrono::nanoseconds divisor) noexcept {
     return std::chrono::nanoseconds(dividend.count() % divisor.count());
 }
 
@@ -26,13 +27,13 @@ struct Time {
     /** @brief Default wrap period (1 hour). Elapsed time wraps around this period. */
     static constexpr std::chrono::nanoseconds DEFAULT_WRAP_PERIOD = std::chrono::hours(1);
 
-    Time() = default;
+    Time() noexcept = default;
 
     /** @brief Construct with an explicit context value. */
     explicit Time(T ctx) : m_context(std::move(ctx)), m_wrap_period(DEFAULT_WRAP_PERIOD) {}
 
     /** @brief Advance the clock by the given delta, updating all cached fields. */
-    void advance_by(std::chrono::nanoseconds delta) {
+    void advance_by(std::chrono::nanoseconds delta) noexcept {
         m_delta          = delta;
         m_delta_secs     = std::chrono::duration<float>(delta).count();
         m_delta_secs_f64 = std::chrono::duration<double>(delta).count();
@@ -45,47 +46,47 @@ struct Time {
     }
 
     /** @brief Advance the clock to the given absolute elapsed time. Must be >= current elapsed. */
-    void advance_to(std::chrono::nanoseconds elapsed) {
+    void advance_to(std::chrono::nanoseconds elapsed) noexcept {
         m_assert(elapsed >= m_elapsed);
         advance_by(elapsed - m_elapsed);
     }
 
     /** @brief Get the wrap period for elapsed_wrapped calculations. */
-    std::chrono::nanoseconds wrap_period() const { return m_wrap_period; }
+    std::chrono::nanoseconds wrap_period() const noexcept { return m_wrap_period; }
     /** @brief Set the wrap period. Must be non-zero. */
-    void set_wrap_period(std::chrono::nanoseconds wrap_period) {
+    void set_wrap_period(std::chrono::nanoseconds wrap_period) noexcept {
         m_assert(wrap_period.count() != 0);
         m_wrap_period = wrap_period;
     }
 
     /** @brief Duration of the last advance (delta time). */
-    std::chrono::nanoseconds delta() const { return m_delta; }
+    std::chrono::nanoseconds delta() const noexcept { return m_delta; }
     /** @brief Delta time as float seconds. */
-    float delta_secs() const { return m_delta_secs; }
+    float delta_secs() const noexcept { return m_delta_secs; }
     /** @brief Delta time as double seconds. */
-    double delta_secs_f64() const { return m_delta_secs_f64; }
+    double delta_secs_f64() const noexcept { return m_delta_secs_f64; }
 
     /** @brief Total elapsed time since start. */
-    std::chrono::nanoseconds elapsed() const { return m_elapsed; }
+    std::chrono::nanoseconds elapsed() const noexcept { return m_elapsed; }
     /** @brief Total elapsed time as float seconds. */
-    float elapsed_secs() const { return m_elapsed_secs; }
+    float elapsed_secs() const noexcept { return m_elapsed_secs; }
     /** @brief Total elapsed time as double seconds. */
-    double elapsed_secs_f64() const { return m_elapsed_secs_f64; }
+    double elapsed_secs_f64() const noexcept { return m_elapsed_secs_f64; }
 
     /** @brief Elapsed time wrapped by wrap_period. */
-    std::chrono::nanoseconds elapsed_wrapped() const { return m_elapsed_wrapped; }
+    std::chrono::nanoseconds elapsed_wrapped() const noexcept { return m_elapsed_wrapped; }
     /** @brief Wrapped elapsed time as float seconds. */
-    float elapsed_secs_wrapped() const { return m_elapsed_secs_wrapped; }
+    float elapsed_secs_wrapped() const noexcept { return m_elapsed_secs_wrapped; }
     /** @brief Wrapped elapsed time as double seconds. */
-    double elapsed_secs_wrapped_f64() const { return m_elapsed_secs_wrapped_f64; }
+    double elapsed_secs_wrapped_f64() const noexcept { return m_elapsed_secs_wrapped_f64; }
 
     /** @brief Get const reference to the context value. */
-    const T& context() const { return m_context; }
+    const T& context() const noexcept { return m_context; }
     /** @brief Get mutable reference to the context value. */
-    T& context_mut() { return m_context; }
+    T& context_mut() noexcept { return m_context; }
 
     /** @brief Convert to a `Time<GenericTag>` by copying all timing fields. */
-    Time<GenericTag> as_generic() const {
+    Time<GenericTag> as_generic() const noexcept {
         Time<GenericTag> g;
         g.m_wrap_period              = m_wrap_period;
         g.m_delta                    = m_delta;
@@ -104,7 +105,7 @@ struct Time {
     friend struct Time;
 
    private:
-    static void m_assert(bool cond) {
+    static void m_assert(bool cond) noexcept {
         if (!cond) std::abort();
     }
 

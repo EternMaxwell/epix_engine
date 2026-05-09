@@ -110,7 +110,7 @@ struct AssetAction {
 
     std::variant<Load, Process, Ignore> inner = Load{};
 
-    AssetActionType type() const {
+    AssetActionType type() const noexcept {
         return std::visit(
             [](auto&& v) -> AssetActionType {
                 using V = std::decay_t<decltype(v)>;
@@ -130,9 +130,9 @@ struct AssetAction {
 export struct Settings {
     virtual ~Settings() = default;
     template <typename T>
-    std::optional<std::reference_wrapper<const T>> try_cast() const;
+    std::optional<std::reference_wrapper<const T>> try_cast() const noexcept;
     template <typename T>
-    std::optional<std::reference_wrapper<T>> try_cast();
+    std::optional<std::reference_wrapper<T>> try_cast() noexcept;
     template <typename T>
     const T& cast() const;
     template <typename T>
@@ -168,14 +168,14 @@ struct SettingsImpl : Settings {
 };
 
 template <typename T>
-std::optional<std::reference_wrapper<const T>> Settings::try_cast() const {
+std::optional<std::reference_wrapper<const T>> Settings::try_cast() const noexcept {
     if (auto* derived = dynamic_cast<const SettingsImpl<T>*>(this)) {
         return std::cref(derived->value);
     }
     return std::nullopt;
 }
 template <typename T>
-std::optional<std::reference_wrapper<T>> Settings::try_cast() {
+std::optional<std::reference_wrapper<T>> Settings::try_cast() noexcept {
     if (auto* derived = dynamic_cast<SettingsImpl<T>*>(this)) {
         return std::ref(derived->value);
     }
@@ -198,25 +198,25 @@ T& Settings::cast() {
 export struct AssetMetaDyn {
     virtual ~AssetMetaDyn() = default;
     /** @brief Get the loader name, if this meta specifies a Load action. */
-    virtual std::optional<std::string_view> loader_name() const = 0;
+    virtual std::optional<std::string_view> loader_name() const noexcept = 0;
     /** @brief Get the processor name, if this meta specifies a Process action. */
-    virtual std::optional<std::string_view> processor_name() const = 0;
+    virtual std::optional<std::string_view> processor_name() const noexcept = 0;
     /** @brief Get the action type. */
-    virtual AssetActionType action_type() const = 0;
+    virtual AssetActionType action_type() const noexcept = 0;
     /** @brief Get processed info (const), if available. */
-    virtual const ProcessedInfo* processed_info() const = 0;
+    virtual const ProcessedInfo* processed_info() const noexcept = 0;
     /** @brief Get mutable reference to the stored ProcessedInfo optional.
      *  Matches bevy_asset's AssetMetaDyn::processed_info_mut. */
-    virtual std::optional<ProcessedInfo>& processed_info_mut() = 0;
+    virtual std::optional<ProcessedInfo>& processed_info_mut() noexcept = 0;
     /** @brief Get the loader settings, if this meta specifies a Load action. */
-    virtual Settings* loader_settings() = 0;
+    virtual Settings* loader_settings() noexcept = 0;
     /** @brief Get the loader settings (const), if this meta specifies a Load action. */
-    virtual const Settings* loader_settings() const = 0;
+    virtual const Settings* loader_settings() const noexcept = 0;
     /** @brief Get the processor settings, if this meta specifies a Process action.
      *  Matches bevy_asset's AssetMetaDyn::process_settings. */
-    virtual Settings* process_settings() = 0;
+    virtual Settings* process_settings() noexcept = 0;
     /** @brief Get the processor settings (const), if this meta specifies a Process action. */
-    virtual const Settings* process_settings() const = 0;
+    virtual const Settings* process_settings() const noexcept = 0;
     /** @brief Serialize this meta to binary bytes for writing to disk.
      *  Matches bevy_asset's AssetMetaDyn::serialize. */
     virtual std::vector<std::byte> serialize_bytes() const = 0;
@@ -246,32 +246,32 @@ struct AssetMeta : AssetMetaDyn {
     /** @brief Processor-specific settings (wrapped in SettingsImpl for polymorphism). */
     SettingsImpl<ProcessSettings> processor_settings_storage{};
 
-    std::optional<std::string_view> loader_name() const override {
+    std::optional<std::string_view> loader_name() const noexcept override {
         if (action == AssetActionType::Load) return loader;
         return std::nullopt;
     }
-    std::optional<std::string_view> processor_name() const override {
+    std::optional<std::string_view> processor_name() const noexcept override {
         if (action == AssetActionType::Process) return processor;
         return std::nullopt;
     }
-    AssetActionType action_type() const override { return action; }
-    const ProcessedInfo* processed_info() const override {
+    AssetActionType action_type() const noexcept override { return action; }
+    const ProcessedInfo* processed_info() const noexcept override {
         return processed.has_value() ? &processed.value() : nullptr;
     }
-    std::optional<ProcessedInfo>& processed_info_mut() override { return processed; }
-    Settings* loader_settings() override {
+    std::optional<ProcessedInfo>& processed_info_mut() noexcept override { return processed; }
+    Settings* loader_settings() noexcept override {
         if (action == AssetActionType::Load) return &loader_settings_storage;
         return nullptr;
     }
-    const Settings* loader_settings() const override {
+    const Settings* loader_settings() const noexcept override {
         if (action == AssetActionType::Load) return &loader_settings_storage;
         return nullptr;
     }
-    Settings* process_settings() override {
+    Settings* process_settings() noexcept override {
         if (action == AssetActionType::Process) return &processor_settings_storage;
         return nullptr;
     }
-    const Settings* process_settings() const override {
+    const Settings* process_settings() const noexcept override {
         if (action == AssetActionType::Process) return &processor_settings_storage;
         return nullptr;
     }

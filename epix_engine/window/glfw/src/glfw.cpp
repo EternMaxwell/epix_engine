@@ -10,7 +10,7 @@ import epix.utils;
 using namespace epix::glfw;
 using namespace epix::window;
 
-const std::string& Clipboard::get_text() const { return text; }
+const std::string& Clipboard::get_text() const noexcept { return text; }
 void Clipboard::update(ResMut<Clipboard> clipboard) {
     const char* str = glfwGetClipboardString(nullptr);
     if (str == nullptr) {

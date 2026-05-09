@@ -130,61 +130,64 @@ void AssetInfos::process_asset_load(const UntypedAssetId& loaded_asset_id,
     auto loading_rec_deps = loaded_asset.dependencies;
     std::unordered_set<UntypedAssetId> failed_rec_deps;
     std::shared_ptr<AssetLoadError> rec_dep_error;
-    auto loading_deps = std::views::filter(loaded_asset.dependencies, [&, this](const UntypedAssetId& dep_id) {
-        if (auto dep_info_opt = get_info_mut(dep_id)) {
-            auto& dep_info = dep_info_opt->get();
-            std::visit(epix::utils::visitor{
-                           [&](LoadStateOK state) {
-                               switch (state) {
-                                   case LoadStateOK::NotLoaded:
-                                   case LoadStateOK::Loading: {
-                                       dep_info.deps_wait_on_rec_dep_load.insert(loaded_asset_id);
-                                       break;
-                                   }
-                                   case LoadStateOK::Loaded: {
-                                                           loading_rec_deps.erase(dep_id);
-                                                           break;
-                                                       }
+    auto loading_deps =
+        std::views::filter(loaded_asset.dependencies,
+                           [&, this](const UntypedAssetId& dep_id) {
+                               if (auto dep_info_opt = get_info_mut(dep_id)) {
+                                   auto& dep_info = dep_info_opt->get();
+                                   std::visit(
+                                       epix::utils::visitor{
+                                           [&](LoadStateOK state) {
+                                               switch (state) {
+                                                   case LoadStateOK::NotLoaded:
+                                                   case LoadStateOK::Loading: {
+                                                       dep_info.deps_wait_on_rec_dep_load.insert(loaded_asset_id);
+                                                       break;
                                                    }
-                                               },
-                                               [&](std::shared_ptr<AssetLoadError> error_ptr) {
-                                                   if (!rec_dep_error) rec_dep_error = error_ptr;
-                                                   failed_rec_deps.insert(dep_id);
-                                                   loading_rec_deps.erase(dep_id);
-                                               },
+                                                   case LoadStateOK::Loaded: {
+                                                       loading_rec_deps.erase(dep_id);
+                                                       break;
+                                                   }
+                                               }
                                            },
-                                           dep_info.rec_dep_state);
-                                return std::visit(epix::utils::visitor{
-                                                      [&](LoadStateOK state) {
-                                                          switch (state) {
-                                                              case LoadStateOK::NotLoaded:
-                                                              case LoadStateOK::Loading: {
-                                                                  dep_info.deps_wait_on_load.insert(loaded_asset_id);
-                                                                  return true;
-                                                              }
-                                                              case LoadStateOK::Loaded: {
-                                                                  return false;
-                                                              }
-                                                              default:
-                                                                  std::unreachable();
-                                                          }
-                                                      },
-                                                      [&](std::shared_ptr<AssetLoadError> error_ptr) {
-                                                          if (!dep_error) dep_error = error_ptr;
-                                                          failed_deps.insert(dep_id);
-                                                          return false;
-                                                      },
-                                                  },
-                                                  dep_info.state);
-                            } else {
-                                spdlog::warn(
-                                    "Dependency {} of asset {} is unknown. The dependency load state will not "
-                                    "switch to 'Loaded' until it is loaded.",
-                                    dep_id.to_string_short(), loaded_asset_id.to_string_short());
-                                return true;
-                            }
-                        }) |
-                        std::ranges::to<std::unordered_set>();
+                                           [&](std::shared_ptr<AssetLoadError> error_ptr) {
+                                               if (!rec_dep_error) rec_dep_error = error_ptr;
+                                               failed_rec_deps.insert(dep_id);
+                                               loading_rec_deps.erase(dep_id);
+                                           },
+                                       },
+                                       dep_info.rec_dep_state);
+                                   return std::visit(epix::utils::visitor{
+                                                         [&](LoadStateOK state) {
+                                                             switch (state) {
+                                                                 case LoadStateOK::NotLoaded:
+                                                                 case LoadStateOK::Loading: {
+                                                                     dep_info.deps_wait_on_load.insert(loaded_asset_id);
+                                                                     return true;
+                                                                 }
+                                                                 case LoadStateOK::Loaded: {
+                                                                     return false;
+                                                                 }
+                                                                 default:
+                                                                     std::unreachable();
+                                                             }
+                                                         },
+                                                         [&](std::shared_ptr<AssetLoadError> error_ptr) {
+                                                             if (!dep_error) dep_error = error_ptr;
+                                                             failed_deps.insert(dep_id);
+                                                             return false;
+                                                         },
+                                                     },
+                                                     dep_info.state);
+                               } else {
+                                   spdlog::warn(
+                                       "Dependency {} of asset {} is unknown. The dependency load state will not "
+                                       "switch to 'Loaded' until it is loaded.",
+                                       dep_id.to_string_short(), loaded_asset_id.to_string_short());
+                                   return true;
+                               }
+                           }) |
+        std::ranges::to<std::unordered_set>();
 
     auto dep_load_state = [&]() -> DependencyLoadState {
         if (failed_deps.empty()) {
@@ -278,7 +281,7 @@ void AssetInfos::process_asset_load(const UntypedAssetId& loaded_asset_id,
                    rec_dep_load_state);
     }
 }
-bool AssetInfos::is_path_alive(const AssetPath& path) const {
+bool AssetInfos::is_path_alive(const AssetPath& path) const noexcept {
     if (auto it = path_to_ids.find(path); it != path_to_ids.end()) {
         for (const auto& [type, id] : it->second) {
             if (auto info = get_info(id); info && !info->get().weak_handle.expired()) {
@@ -288,7 +291,7 @@ bool AssetInfos::is_path_alive(const AssetPath& path) const {
     }
     return false;
 }
-bool AssetInfos::should_reload(const AssetPath& path) const {
+bool AssetInfos::should_reload(const AssetPath& path) const noexcept {
     if (is_path_alive(path)) {
         return true;
     }
@@ -351,28 +354,28 @@ bool AssetInfos::process_handle_destruction(const UntypedAssetId& id) {
     }
     return true;
 }
-std::optional<std::reference_wrapper<const AssetInfo>> AssetInfos::get_info(const UntypedAssetId& id) const {
+std::optional<std::reference_wrapper<const AssetInfo>> AssetInfos::get_info(const UntypedAssetId& id) const noexcept {
     auto it = infos.find(id);
     if (it != infos.end()) {
         return std::cref(it->second);
     }
     return std::nullopt;
 }
-std::optional<std::reference_wrapper<AssetInfo>> AssetInfos::get_info_mut(const UntypedAssetId& id) {
+std::optional<std::reference_wrapper<AssetInfo>> AssetInfos::get_info_mut(const UntypedAssetId& id) noexcept {
     auto it = infos.find(id);
     if (it != infos.end()) {
         return std::ref(it->second);
     }
     return std::nullopt;
 }
-epix::utils::input_iterable<UntypedAssetId> AssetInfos::get_path_ids(const AssetPath& path) const {
+epix::utils::input_iterable<UntypedAssetId> AssetInfos::get_path_ids(const AssetPath& path) const noexcept {
     auto it = path_to_ids.find(path);
     if (it != path_to_ids.end()) {
         return std::views::values(it->second);
     }
     return epix::utils::input_iterable<UntypedAssetId>{};
 }
-std::optional<UntypedHandle> AssetInfos::get_handle_by_id(const UntypedAssetId& id) const {
+std::optional<UntypedHandle> AssetInfos::get_handle_by_id(const UntypedAssetId& id) const noexcept {
     return get_info(id).and_then([](const AssetInfo& info) -> std::optional<UntypedHandle> {
         if (auto handle = info.weak_handle.lock()) return UntypedHandle(handle);
         return std::nullopt;

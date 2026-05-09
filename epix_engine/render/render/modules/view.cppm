@@ -38,8 +38,10 @@ export struct WindowRef {
 export struct RenderTarget : std::variant<wgpu::Texture, WindowRef> {
     using std::variant<wgpu::Texture, WindowRef>::variant;
     static RenderTarget from_texture(wgpu::Texture texture) { return RenderTarget(std::move(texture)); }
-    static RenderTarget from_primary() { return RenderTarget(WindowRef{true}); }
-    static RenderTarget from_window(Entity window_entity) { return RenderTarget(WindowRef{false, window_entity}); }
+    static RenderTarget from_primary() noexcept { return RenderTarget(WindowRef{true}); }
+    static RenderTarget from_window(Entity window_entity) noexcept {
+        return RenderTarget(WindowRef{false, window_entity});
+    }
     std::optional<RenderTarget> normalize(std::optional<Entity> primary) const;
 };
 struct ComputedCameraValues {
@@ -50,8 +52,8 @@ struct ComputedCameraValues {
 /** @brief RGBA clear color for render targets. */
 export struct ClearColor : public glm::vec4 {
     using glm::vec4::vec4;
-    ClearColor(const glm::vec4& v) : glm::vec4(v) {}
-    glm::vec4 to_vec4() const { return glm::vec4(*this); }
+    ClearColor(const glm::vec4& v) noexcept : glm::vec4(v) {}
+    glm::vec4 to_vec4() const noexcept { return glm::vec4(*this); }
 };
 /** @brief Controls how the render target is cleared before rendering. */
 export struct ClearColorConfig {
@@ -63,10 +65,10 @@ export struct ClearColorConfig {
     } type = Type::Default;
     ClearColor clear_color{0.0f, 0.0f, 0.0f, 1.0f};
 
-    static ClearColorConfig none() { return ClearColorConfig{Type::None}; }
-    static ClearColorConfig def() { return ClearColorConfig{Type::Default}; }
-    static ClearColorConfig global() { return ClearColorConfig{Type::Global}; }
-    static ClearColorConfig custom(const glm::vec4& color) { return ClearColorConfig{Type::Custom, color}; }
+    static ClearColorConfig none() noexcept { return ClearColorConfig{Type::None}; }
+    static ClearColorConfig def() noexcept { return ClearColorConfig{Type::Default}; }
+    static ClearColorConfig global() noexcept { return ClearColorConfig{Type::Global}; }
+    static ClearColorConfig custom(const glm::vec4& color) noexcept { return ClearColorConfig{Type::Custom, color}; }
 };
 /** @brief Identifies which render layers a camera renders or an entity belongs to.
  *
@@ -178,13 +180,13 @@ export struct Camera {
     ClearColorConfig clear_color = ClearColorConfig::global();
 
     /** @brief Get the effective viewport size, falling back to target size. */
-    glm::uvec2 get_viewport_size() const {
+    glm::uvec2 get_viewport_size() const noexcept {
         return viewport.transform([](const Viewport& vp) { return vp.size; }).value_or(computed.target_size);
     }
     /** @brief Get the render target's pixel dimensions. */
-    glm::uvec2 get_target_size() const { return computed.target_size; }
+    glm::uvec2 get_target_size() const noexcept { return computed.target_size; }
     /** @brief Get the viewport origin, defaulting to (0, 0). */
-    glm::uvec2 get_viewport_origin() const {
+    glm::uvec2 get_viewport_origin() const noexcept {
         return viewport.transform([](const Viewport& vp) { return vp.pos; }).value_or(glm::uvec2(0, 0));
     }
 };
@@ -229,41 +231,41 @@ export struct ScalingMode {
     };
 
    public:
-    ScalingMode() : mode(Mode::WindowSize) { _window_size.pixels_per_unit = 1.0f; }
-    static ScalingMode fixed(float width, float height) {
+    ScalingMode() noexcept : mode(Mode::WindowSize) { _window_size.pixels_per_unit = 1.0f; }
+    static ScalingMode fixed(float width, float height) noexcept {
         ScalingMode mode;
         mode.mode          = Mode::Fixed;
         mode._fixed.width  = width;
         mode._fixed.height = height;
         return mode;
     }
-    static ScalingMode window_size(float pixels_per_unit) {
+    static ScalingMode window_size(float pixels_per_unit) noexcept {
         ScalingMode mode;
         mode.mode                         = Mode::WindowSize;
         mode._window_size.pixels_per_unit = pixels_per_unit;
         return mode;
     }
-    static ScalingMode auto_min(float min_width, float min_height) {
+    static ScalingMode auto_min(float min_width, float min_height) noexcept {
         ScalingMode mode;
         mode.mode                 = Mode::AutoMin;
         mode._auto_min.min_width  = min_width;
         mode._auto_min.min_height = min_height;
         return mode;
     }
-    static ScalingMode auto_max(float max_width, float max_height) {
+    static ScalingMode auto_max(float max_width, float max_height) noexcept {
         ScalingMode mode;
         mode.mode                 = Mode::AutoMax;
         mode._auto_max.max_width  = max_width;
         mode._auto_max.max_height = max_height;
         return mode;
     }
-    static ScalingMode fixed_vertical(float vertical) {
+    static ScalingMode fixed_vertical(float vertical) noexcept {
         ScalingMode mode;
         mode.mode                     = Mode::FixedVertical;
         mode._fixed_vertical.vertical = vertical;
         return mode;
     }
-    static ScalingMode fixed_horizontal(float horizontal) {
+    static ScalingMode fixed_horizontal(float horizontal) noexcept {
         ScalingMode mode;
         mode.mode                         = Mode::FixedHorizontal;
         mode._fixed_horizontal.horizontal = horizontal;

@@ -41,7 +41,7 @@ constexpr uuids::uuid INVALID_UUID = uuids::uuid::from_string("1038587c-0b8d-4f2
 export template <typename T>
 struct AssetId : public std::variant<AssetIndex, uuids::uuid> {
     /** @brief Return a sentinel id that compares unequal to any valid id. */
-    static AssetId<T> invalid() { return AssetId<T>(INVALID_UUID); }
+    static AssetId<T> invalid() noexcept { return AssetId<T>(INVALID_UUID); }
 
     AssetId()                             = delete;
     AssetId(const AssetId<T>&)            = default;
@@ -57,12 +57,12 @@ struct AssetId : public std::variant<AssetIndex, uuids::uuid> {
     auto operator<=>(const AssetId<T>& other) const = default;
     bool operator==(const AssetId<T>& other) const  = default;
     /** @brief Compare with a type-erased UntypedAssetId. */
-    bool operator==(const UntypedAssetId& other) const;
+    bool operator==(const UntypedAssetId& other) const noexcept;
 
     /** @brief Check whether this id stores a UUID. */
-    bool is_uuid() const { return std::holds_alternative<uuids::uuid>(*this); }
+    bool is_uuid() const noexcept { return std::holds_alternative<uuids::uuid>(*this); }
     /** @brief Check whether this id stores an AssetIndex. */
-    bool is_index() const { return std::holds_alternative<AssetIndex>(*this); }
+    bool is_index() const noexcept { return std::holds_alternative<AssetIndex>(*this); }
 
     /** @brief Return a human-readable string including the type name and underlying id. */
     std::string to_string() const {
@@ -106,7 +106,7 @@ export struct UntypedAssetId {
     /** @brief Create a sentinel invalid id for the given type.
      *  @tparam T The asset type; defaults to void. */
     template <typename T = void>
-    static UntypedAssetId invalid(const meta::type_index& type = meta::type_id<T>{}) {
+    static UntypedAssetId invalid(const meta::type_index& type = meta::type_id<T>{}) noexcept {
         return UntypedAssetId(type, AssetId<T>::invalid());
     }
 
@@ -120,7 +120,7 @@ export struct UntypedAssetId {
      *  @tparam T Expected asset type.
      *  @return The typed id, or std::nullopt on type mismatch. */
     template <typename T>
-    std::optional<AssetId<T>> try_typed() const {
+    std::optional<AssetId<T>> try_typed() const noexcept {
         if (type != meta::type_id<T>{}) {
             return std::nullopt;
         }
@@ -128,9 +128,9 @@ export struct UntypedAssetId {
     }
 
     /** @brief Check whether this id stores a UUID. */
-    bool is_uuid() const { return std::holds_alternative<uuids::uuid>(id); }
+    bool is_uuid() const noexcept { return std::holds_alternative<uuids::uuid>(id); }
     /** @brief Check whether this id stores an AssetIndex. */
-    bool is_index() const { return std::holds_alternative<AssetIndex>(id); }
+    bool is_index() const noexcept { return std::holds_alternative<AssetIndex>(id); }
     /** @brief Get the stored AssetIndex. Throws std::bad_variant_access if it holds a UUID. */
     const AssetIndex& index() const { return std::get<AssetIndex>(id); }
     /** @brief Get the stored UUID. Throws std::bad_variant_access if it holds an AssetIndex. */
@@ -149,7 +149,7 @@ export struct UntypedAssetId {
 };
 
 template <typename T>
-bool AssetId<T>::operator==(const UntypedAssetId& other) const {
+bool AssetId<T>::operator==(const UntypedAssetId& other) const noexcept {
     return other.id == static_cast<const std::variant<AssetIndex, uuids::uuid>&>(*this) &&
            other.type == meta::type_id<T>{};
 }
@@ -163,7 +163,7 @@ struct InternalAssetId : std::variant<AssetIndex, uuids::uuid> {
     auto operator<=>(const InternalAssetId& other) const = default;
     bool operator==(const InternalAssetId& other) const  = default;
 
-    UntypedAssetId untyped(const meta::type_index& type) const { return UntypedAssetId(type, *this); }
+    UntypedAssetId untyped(const meta::type_index& type) const noexcept { return UntypedAssetId(type, *this); }
     template <typename T>
     AssetId<T> typed() const {
         return AssetId<T>(*this);
@@ -174,14 +174,14 @@ struct InternalAssetId : std::variant<AssetIndex, uuids::uuid> {
 export namespace std {
 template <typename T>
 struct hash<epix::assets::AssetId<T>> {
-    std::size_t operator()(const epix::assets::AssetId<T>& id) const {
+    std::size_t operator()(const epix::assets::AssetId<T>& id) const noexcept {
         return std::visit([]<typename U>(const U& index) { return std::hash<U>()(index); }, id);
     }
 };
 
 template <>
 struct hash<epix::assets::UntypedAssetId> {
-    std::size_t operator()(const epix::assets::UntypedAssetId& id) const {
+    std::size_t operator()(const epix::assets::UntypedAssetId& id) const noexcept {
         std::size_t type_hash = std::hash<epix::meta::type_index>()(id.type);
         std::size_t id_hash   = std::visit([]<typename T>(const T& index) { return std::hash<T>()(index); }, id.id);
         return type_hash ^ (id_hash + 0x9e3779b9 + (type_hash << 6) + (type_hash >> 2));

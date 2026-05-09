@@ -325,7 +325,7 @@ class Chunk : public ChunkLayer<Dim> {
 export using ChunkGridError = std::variant<ChunkLayerError, LayerError, grid_error>;
 
 // this won't work if using function instead of lambda, don't know why
-constexpr auto map_err = [](auto&& error) -> ChunkGridError {
+constexpr auto map_err = [](auto&& error) noexcept -> ChunkGridError {
     return ChunkGridError{std::forward<decltype(error)>(error)};
 };
 
@@ -339,7 +339,7 @@ struct ExtendibleChunkGrid {
     tree_extendible_grid<Dim, Chunk<Dim>> m_chunk_grid;
     std::size_t m_chunk_width_shift;
 
-    auto chunk_coords(std::array<std::int64_t, Dim> pos) const
+    auto chunk_coords(std::array<std::int64_t, Dim> pos) const noexcept
         -> std::expected<std::tuple<std::array<std::int32_t, Dim>, std::array<std::uint32_t, Dim>>, ChunkGridError> {
         std::tuple<std::array<std::int32_t, Dim>, std::array<std::uint32_t, Dim>> result;
         // if coords don't fit in int32 with width shift, return error, negative allowd
@@ -370,14 +370,14 @@ struct ExtendibleChunkGrid {
     ExtendibleChunkGrid& operator=(ExtendibleChunkGrid&&) = default;
 
     /** @brief Returns chunk width as log2(width). */
-    std::size_t chunk_width_shift() const { return m_chunk_width_shift; }
+    std::size_t chunk_width_shift() const noexcept { return m_chunk_width_shift; }
     /** @brief Returns chunk width in cells for each dimension. */
-    std::size_t chunk_width() const { return static_cast<std::size_t>(1) << m_chunk_width_shift; }
+    std::size_t chunk_width() const noexcept { return static_cast<std::size_t>(1) << m_chunk_width_shift; }
 
     /** @brief Retrieves an immutable chunk reference at chunk coordinates. */
-    auto get_chunk(std::array<std::int32_t, Dim> pos) const { return m_chunk_grid.get(pos); }
+    auto get_chunk(std::array<std::int32_t, Dim> pos) const noexcept { return m_chunk_grid.get(pos); }
     /** @brief Retrieves a mutable chunk reference at chunk coordinates. */
-    auto get_chunk_mut(std::array<std::int32_t, Dim> pos) { return m_chunk_grid.get_mut(pos); }
+    auto get_chunk_mut(std::array<std::int32_t, Dim> pos) noexcept { return m_chunk_grid.get_mut(pos); }
 
     /** @brief Compacts internal sparse tree storage. */
     void shrink_grid() { m_chunk_grid.shrink(); }
@@ -512,7 +512,7 @@ struct ExtendibleChunkRefGrid {
     tree_extendible_grid<Dim, ChunkRef> m_chunk_grid;
     std::size_t m_chunk_width_shift;
 
-    auto chunk_coords(std::array<std::int64_t, Dim> pos) const
+    auto chunk_coords(std::array<std::int64_t, Dim> pos) const noexcept
         -> std::expected<std::tuple<std::array<std::int32_t, Dim>, std::array<std::uint32_t, Dim>>, ChunkGridError> {
         std::tuple<std::array<std::int32_t, Dim>, std::array<std::uint32_t, Dim>> result;
         // if coords don't fit in int32 with width shift, return error, negative allowd
@@ -528,10 +528,11 @@ struct ExtendibleChunkRefGrid {
         return result;
     }
     constexpr static auto deref =
-        [](std::reference_wrapper<const ChunkRef> ref) -> std::reference_wrapper<const Chunk<Dim>> {
+        [](std::reference_wrapper<const ChunkRef> ref) noexcept -> std::reference_wrapper<const Chunk<Dim>> {
         return std::cref(ref.get().value.get());
     };
-    constexpr static auto deref_mut = [](std::reference_wrapper<ChunkRef> ref) -> std::reference_wrapper<Chunk<Dim>> {
+    constexpr static auto deref_mut =
+        [](std::reference_wrapper<ChunkRef> ref) noexcept -> std::reference_wrapper<Chunk<Dim>> {
         return std::ref(ref.get().value.get());
     };
 
@@ -548,14 +549,16 @@ struct ExtendibleChunkRefGrid {
     ExtendibleChunkRefGrid& operator=(ExtendibleChunkRefGrid&&) = default;
 
     /** @brief Returns chunk width as log2(width). */
-    std::size_t chunk_width_shift() const { return m_chunk_width_shift; }
+    std::size_t chunk_width_shift() const noexcept { return m_chunk_width_shift; }
     /** @brief Returns chunk width in cells for each dimension. */
-    std::size_t chunk_width() const { return static_cast<std::size_t>(1) << m_chunk_width_shift; }
+    std::size_t chunk_width() const noexcept { return static_cast<std::size_t>(1) << m_chunk_width_shift; }
 
     /** @brief Retrieves an immutable referenced chunk at chunk coordinates. */
-    auto get_chunk(std::array<std::int32_t, Dim> pos) const { return m_chunk_grid.get(pos).transform(deref); }
+    auto get_chunk(std::array<std::int32_t, Dim> pos) const noexcept { return m_chunk_grid.get(pos).transform(deref); }
     /** @brief Retrieves a mutable referenced chunk at chunk coordinates. */
-    auto get_chunk_mut(std::array<std::int32_t, Dim> pos) { return m_chunk_grid.get_mut(pos).transform(deref_mut); }
+    auto get_chunk_mut(std::array<std::int32_t, Dim> pos) noexcept {
+        return m_chunk_grid.get_mut(pos).transform(deref_mut);
+    }
 
     /** @brief Compacts internal sparse tree storage. */
     void shrink_grid() { m_chunk_grid.shrink(); }
@@ -694,7 +697,7 @@ struct ExtendibleMutChunkRefGrid {
     tree_extendible_grid<Dim, ChunkRef> m_chunk_grid;
     std::size_t m_chunk_width_shift;
 
-    auto chunk_coords(std::array<std::int64_t, Dim> pos) const
+    auto chunk_coords(std::array<std::int64_t, Dim> pos) const noexcept
         -> std::expected<std::tuple<std::array<std::int32_t, Dim>, std::array<std::uint32_t, Dim>>, ChunkGridError> {
         std::tuple<std::array<std::int32_t, Dim>, std::array<std::uint32_t, Dim>> result;
         for (std::size_t i = 0; i < Dim; i++) {
@@ -708,10 +711,11 @@ struct ExtendibleMutChunkRefGrid {
         }
         return result;
     }
-    constexpr static auto deref = [](std::reference_wrapper<const ChunkRef> ref) -> epix::core::Ref<Chunk<Dim>> {
+    constexpr static auto deref =
+        [](std::reference_wrapper<const ChunkRef> ref) noexcept -> epix::core::Ref<Chunk<Dim>> {
         return ref.get().value;
     };
-    constexpr static auto deref_mut = [](std::reference_wrapper<ChunkRef> ref) -> epix::core::Mut<Chunk<Dim>> {
+    constexpr static auto deref_mut = [](std::reference_wrapper<ChunkRef> ref) noexcept -> epix::core::Mut<Chunk<Dim>> {
         return ref.get().value;
     };
 
@@ -723,8 +727,8 @@ struct ExtendibleMutChunkRefGrid {
     ExtendibleMutChunkRefGrid& operator=(const ExtendibleMutChunkRefGrid&) = delete;
     ExtendibleMutChunkRefGrid& operator=(ExtendibleMutChunkRefGrid&&)      = default;
 
-    std::size_t chunk_width_shift() const { return m_chunk_width_shift; }
-    std::size_t chunk_width() const { return static_cast<std::size_t>(1) << m_chunk_width_shift; }
+    std::size_t chunk_width_shift() const noexcept { return m_chunk_width_shift; }
+    std::size_t chunk_width() const noexcept { return static_cast<std::size_t>(1) << m_chunk_width_shift; }
 
     /** @brief Read-only access to the `Mut<Chunk>` wrapper at chunk coordinates.
      *
@@ -853,7 +857,7 @@ struct ExtendibleRefChunkRefGrid {
     tree_extendible_grid<Dim, ChunkRef> m_chunk_grid;
     std::size_t m_chunk_width_shift;
 
-    auto chunk_coords(std::array<std::int64_t, Dim> pos) const
+    auto chunk_coords(std::array<std::int64_t, Dim> pos) const noexcept
         -> std::expected<std::tuple<std::array<std::int32_t, Dim>, std::array<std::uint32_t, Dim>>, ChunkGridError> {
         std::tuple<std::array<std::int32_t, Dim>, std::array<std::uint32_t, Dim>> result;
         for (std::size_t i = 0; i < Dim; i++) {
@@ -867,7 +871,8 @@ struct ExtendibleRefChunkRefGrid {
         }
         return result;
     }
-    constexpr static auto deref = [](std::reference_wrapper<const ChunkRef> ref) -> const epix::core::Ref<Chunk<Dim>> {
+    constexpr static auto deref =
+        [](std::reference_wrapper<const ChunkRef> ref) noexcept -> const epix::core::Ref<Chunk<Dim>> {
         return ref.get().value;
     };
 
@@ -878,8 +883,8 @@ struct ExtendibleRefChunkRefGrid {
     ExtendibleRefChunkRefGrid& operator=(const ExtendibleRefChunkRefGrid&) = delete;
     ExtendibleRefChunkRefGrid& operator=(ExtendibleRefChunkRefGrid&&)      = default;
 
-    std::size_t chunk_width_shift() const { return m_chunk_width_shift; }
-    std::size_t chunk_width() const { return static_cast<std::size_t>(1) << m_chunk_width_shift; }
+    std::size_t chunk_width_shift() const noexcept { return m_chunk_width_shift; }
+    std::size_t chunk_width() const noexcept { return static_cast<std::size_t>(1) << m_chunk_width_shift; }
 
     auto get_chunk(std::array<std::int32_t, Dim> pos) const
         -> std::expected<epix::core::Ref<Chunk<Dim>>, ChunkGridError> {
@@ -928,7 +933,7 @@ struct ExtendibleRefChunkRefGrid {
 namespace epix::ext::grid {
 
 /** @brief Map LayerError to grid_error for chunk_element_view operations. */
-inline grid_error map_layer_to_grid(LayerError e) {
+inline grid_error map_layer_to_grid(LayerError e) noexcept {
     switch (e) {
         case LayerError::OutOfBounds:
             return grid_error::OutOfBounds;
@@ -1069,7 +1074,7 @@ chunk_element_view<Dim, T> chunk_element(Chunk<Dim>& c) {
 }  // namespace epix::ext::grid
 
 namespace epix::ext::grid::layers {
-auto map_err(grid_error err) -> LayerError {
+auto map_err(grid_error err) noexcept -> LayerError {
     switch (err) {
         case grid_error::OutOfBounds:
             return LayerError::OutOfBounds;

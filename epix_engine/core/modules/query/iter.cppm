@@ -38,13 +38,13 @@ struct QueryIterCursor {
           filter(WorldQuery<F>::init_fetch(*world, state->filter_state(), last_run, this_run)),
           current_idx(0) {}
     /** @brief Advance the cursor past all remaining elements to the end. */
-    void to_end() {
+    void to_end() noexcept {
         archetype_ids      = archetype_ids.subspan(archetype_ids.size());
         archetype_entities = {};
         current_idx        = 0;
     }
     /** @brief Reset the cursor to the beginning of matched archetypes. */
-    void reset(const QueryState<D, F>* state) {
+    void reset(const QueryState<D, F>* state) noexcept {
         archetype_ids      = state->matched_archetype_ids();
         archetype_entities = {};
         current_idx        = 0;
@@ -61,7 +61,7 @@ struct QueryIterCursor {
         return QueryData<D>::fetch(fetch, entity, row);
     }
     /** @brief Check whether the cursor points to a valid element. */
-    bool current() const { return current_idx < archetype_entities.size(); }
+    bool current() const noexcept { return current_idx < archetype_entities.size(); }
     /** @brief Advance to the next matching entity.
      *  @return True if a valid element was found, false if exhausted. */
     bool next(Tables& tables, const Archetypes& archetypes, const QueryState<D, F>& state) {
@@ -107,7 +107,7 @@ struct QueryIterCursor {
         return true;
     }
     /** @brief Check whether the cursor has reached the end. */
-    bool end() const { return archetype_ids.empty() && !current(); }
+    bool end() const noexcept { return archetype_ids.empty() && !current(); }
     /** @brief Get an upper bound on remaining elements. */
     std::size_t max_remaining(const Archetypes& archetypes) const {
         return std::accumulate(
@@ -116,10 +116,10 @@ struct QueryIterCursor {
                current_idx;
     }
 
-    bool operator==(const QueryIterCursor& other) const {
+    bool operator==(const QueryIterCursor& other) const noexcept {
         return archetype_ids.data() == other.archetype_ids.data() && current_idx == other.current_idx;
     }
-    bool operator!=(const QueryIterCursor& other) const { return !(*this == other); }
+    bool operator!=(const QueryIterCursor& other) const noexcept { return !(*this == other); }
 
    private:
     std::span<const ArchetypeId> archetype_ids;
@@ -182,7 +182,7 @@ struct QueryIter : std::ranges::view_interface<QueryIter<D, F>> {
     /** @brief Advance to the next matching entity. */
     bool next() { return cursor->next(*tables, *archetypes, *state); }
     /** @brief Check whether the cursor points to a valid element. */
-    bool current() const { return cursor->current(); }
+    bool current() const noexcept { return cursor->current(); }
     /** @brief Get an upper bound on remaining elements. */
     std::size_t max_remaining() const { return cursor->max_remaining(*archetypes); }
     QueryIter& operator++() {
@@ -194,11 +194,11 @@ struct QueryIter : std::ranges::view_interface<QueryIter<D, F>> {
         ++(*this);
         return temp;
     }
-    bool operator==(const QueryIter& other) const {
+    bool operator==(const QueryIter& other) const noexcept {
         // tables and archetypes are always the same for the same world
         return world == other.world && state == other.state && cursor == other.cursor;
     }
-    bool operator!=(const QueryIter& other) const { return !(*this == other); }
+    bool operator!=(const QueryIter& other) const noexcept { return !(*this == other); }
 
     QueryIter() = default;
 

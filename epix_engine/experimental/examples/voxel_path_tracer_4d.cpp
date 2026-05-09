@@ -38,6 +38,10 @@ import epix.input;
 import epix.time;
 import epix.render.imgui;
 
+#if defined(__clang__)
+#pragma clang diagnostic ignored "-Wunused-value"
+#endif
+
 using namespace epix;
 using namespace epix::core;
 using namespace epix::ext::grid;

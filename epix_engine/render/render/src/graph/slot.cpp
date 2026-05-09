@@ -5,7 +5,7 @@ import :graph.slot;
 using namespace epix::render;
 using namespace epix::render::graph;
 
-std::string_view graph::type_name(SlotType type) {
+std::string_view graph::type_name(SlotType type) noexcept {
     switch (type) {
         case SlotType::Buffer:
             return "Buffer";
@@ -19,7 +19,7 @@ std::string_view graph::type_name(SlotType type) {
             return "Unknown";
     }
 }
-std::optional<std::uint32_t> SlotInfos::get_slot_index(const SlotLabel& label) const {
+std::optional<std::uint32_t> SlotInfos::get_slot_index(const SlotLabel& label) const noexcept {
     return std::visit(
         utils::visitor{
             [](std::uint32_t l) -> std::optional<std::uint32_t> { return l; },

@@ -26,9 +26,10 @@ struct SystemParam<T> : public SystemParam<typename function_traits<decltype(T::
     using Base  = SystemParam<typename function_traits<decltype(T::from_param)>::args_tuple>;
     using State = typename Base::State;
     using Item  = T;
-    static Item get_param(State& state, const SystemMeta& meta, World& world, Tick tick) {
+    static Item get_param(State& state, const SystemMeta& meta, World& world, Tick tick) noexcept(
+        noexcept(std::apply(&T::from_param, Base::get_param(state, meta, world, tick)))) {
         return std::apply(&T::from_param, Base::get_param(state, meta, world, tick));
     }
     // other methods are inherited from Base
 };
-}  // namespace core
+}  // namespace epix::core

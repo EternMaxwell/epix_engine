@@ -30,14 +30,14 @@ struct Dense {
         }
     }
 
-    const ::epix::meta::type_info& type_info(this const Dense& self) { return self.values.type_info(); }
+    const ::epix::meta::type_info& type_info(this const Dense& self) noexcept { return self.values.type_info(); }
 
     void reserve(this Dense& self, std::size_t new_cap) {
         self.values.reserve(new_cap);
         self.added_ticks.reserve(new_cap);
         self.modified_ticks.reserve(new_cap);
     }
-    std::size_t len(this const Dense& self) { return self.values.size(); }
+    std::size_t len(this const Dense& self) noexcept { return self.values.size(); }
     void clear(this Dense& self) {
         self.values.clear();
         self.added_ticks.clear();
@@ -125,68 +125,69 @@ struct Dense {
         self.modified_ticks[index] = ticks.modified;
     }
 
-    std::pair<const void*, const void*> get_data(this const Dense& self) {
+    std::pair<const void*, const void*> get_data(this const Dense& self) noexcept {
         return {self.values.cdata(),
                 reinterpret_cast<const char*>(self.values.cdata()) + self.values.size() * self.values.type_info().size};
     }
     template <typename T>
-    std::span<const T> get_data_as(this const Dense& self) {
+    std::span<const T> get_data_as(this const Dense& self) noexcept {
         return self.values.cspan_as<T>();
     }
-    std::span<Tick> get_added_ticks(this const Dense& self) { return std::span(self.added_ticks); }
-    std::span<Tick> get_modified_ticks(this const Dense& self) { return std::span(self.modified_ticks); }
+    std::span<Tick> get_added_ticks(this const Dense& self) noexcept { return std::span(self.added_ticks); }
+    std::span<Tick> get_modified_ticks(this const Dense& self) noexcept { return std::span(self.modified_ticks); }
 
-    std::optional<const void*> get(this const Dense& self, std::uint32_t index) {
+    std::optional<const void*> get(this const Dense& self, std::uint32_t index) noexcept {
         if (index < self.values.size()) {
             return self.values.get(index);
         }
         return std::nullopt;
     }
-    std::optional<void*> get_mut(this Dense& self, std::uint32_t index) {
+    std::optional<void*> get_mut(this Dense& self, std::uint32_t index) noexcept {
         if (index < self.values.size()) {
             return self.values.get(index);
         }
         return std::nullopt;
     }
     template <typename T>
-    std::optional<std::reference_wrapper<const T>> get_as(this const Dense& self, std::uint32_t index) {
+    std::optional<std::reference_wrapper<const T>> get_as(this const Dense& self, std::uint32_t index) noexcept {
         if (index < self.values.size()) {
             return self.values.get_as<T>(index);
         }
         return std::nullopt;
     }
     template <typename T>
-    std::optional<std::reference_wrapper<T>> get_as_mut(this Dense& self, std::uint32_t index) {
+    std::optional<std::reference_wrapper<T>> get_as_mut(this Dense& self, std::uint32_t index) noexcept {
         if (index < self.values.size()) {
             return self.values.get_as<T>(index);
         }
         return std::nullopt;
     }
-    std::optional<std::reference_wrapper<Tick>> get_added_tick(this const Dense& self, std::uint32_t index) {
+    std::optional<std::reference_wrapper<Tick>> get_added_tick(this const Dense& self, std::uint32_t index) noexcept {
         if (index < self.added_ticks.size()) {
             return self.added_ticks[index];
         }
         return std::nullopt;
     }
-    std::optional<std::reference_wrapper<Tick>> get_modified_tick(this const Dense& self, std::uint32_t index) {
+    std::optional<std::reference_wrapper<Tick>> get_modified_tick(this const Dense& self,
+                                                                  std::uint32_t index) noexcept {
         if (index < self.modified_ticks.size()) {
             return self.modified_ticks[index];
         }
         return std::nullopt;
     }
-    std::optional<ComponentTicks> get_ticks(this const Dense& self, std::uint32_t index) {
+    std::optional<ComponentTicks> get_ticks(this const Dense& self, std::uint32_t index) noexcept {
         if (index < self.modified_ticks.size()) {
             return ComponentTicks{self.added_ticks[index], self.modified_ticks[index]};
         }
         return std::nullopt;
     }
-    std::optional<TickRefs> get_tick_refs(this const Dense& self, std::uint32_t index) {
+    std::optional<TickRefs> get_tick_refs(this const Dense& self, std::uint32_t index) noexcept {
         if (index < self.modified_ticks.size()) {
             return TickRefs{&self.added_ticks[index], &self.modified_ticks[index]};
         }
         return std::nullopt;
     }
-    void check_change_ticks(this Dense& self, Tick tick) {
+    void check_change_ticks(this Dense& self, Tick tick) noexcept {
         for (auto&& [added, modified] : std::views::zip(self.added_ticks, self.modified_ticks)) {
             added.check_tick(tick);
             modified.check_tick(tick);
@@ -198,4 +199,4 @@ struct Dense {
     mutable std::vector<Tick> added_ticks;
     mutable std::vector<Tick> modified_ticks;
 };
-}  // namespace core
+}  // namespace epix::core

@@ -39,7 +39,7 @@ export struct EntityCommands;
  *  Commands are queued and applied when the world is flushed. */
 export struct Commands {
    public:
-    Commands(Deferred<CommandQueue> queue, const Entities& entities)
+    Commands(Deferred<CommandQueue> queue, const Entities& entities) noexcept
         : command_queue(std::move(queue)), entities(&entities) {}
 
     /** @brief Append all commands from another CommandQueue. */
@@ -52,9 +52,9 @@ export struct Commands {
         command_queue->push(std::forward<T>(command));
     }
     /** @brief Spawn a new empty entity and return an EntityCommands handle. */
-    EntityCommands spawn_empty();
+    EntityCommands spawn_empty() noexcept;
     /** @brief Get an EntityCommands handle for an existing entity. */
-    EntityCommands entity(Entity entity);
+    EntityCommands entity(Entity entity) noexcept;
     /** @brief Spawn a new entity with the given components. */
     template <typename... Ts>
     EntityCommands spawn(Ts&&... components)
@@ -126,7 +126,7 @@ export struct Commands {
  */
 export struct EntityCommands {
    public:
-    EntityCommands(Entity entity, Commands commands) : entity(entity), commands(std::move(commands)) {}
+    EntityCommands(Entity entity, Commands commands) noexcept : entity(entity), commands(std::move(commands)) {}
 
     /** @brief Insert one or more components into this entity.
      * @tparam Ts Component types (must be movable).
@@ -244,17 +244,17 @@ export struct EntityCommands {
         return *this;
     }
     /** @brief Get the Entity id for this EntityCommands. */
-    Entity id() const { return entity; }
+    Entity id() const noexcept { return entity; }
 
    private:
     Entity entity;
     Commands commands;
 };
-inline EntityCommands Commands::spawn_empty() {
+inline EntityCommands Commands::spawn_empty() noexcept {
     Entity entity = entities->reserve_entity();
     return EntityCommands{entity, *this};
 }
-inline EntityCommands Commands::entity(Entity entity) { return EntityCommands{entity, *this}; }
+inline EntityCommands Commands::entity(Entity entity) noexcept { return EntityCommands{entity, *this}; }
 template <typename... Ts>
 inline EntityCommands Commands::spawn(Ts&&... components)
     requires(std::movable<std::decay_t<Ts>> && ...)
@@ -277,4 +277,4 @@ struct SystemParam<Commands> : SystemParam<std::tuple<Deferred<CommandQueue>, co
     }
 };
 static_assert(system_param<Commands>);
-}  // namespace core
+}  // namespace epix::core

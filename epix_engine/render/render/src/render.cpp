@@ -21,7 +21,7 @@ import std;
 using namespace epix::render;
 using namespace epix::core;
 
-RenderPlugin& RenderPlugin::set_validation(int level) {
+RenderPlugin& RenderPlugin::set_validation(int level) noexcept {
     validation = level;
     return *this;
 }
@@ -173,4 +173,4 @@ void RenderPlugin::build(App& app) {
     app.add_plugins(render::camera::CameraPlugin{});
     app.add_plugins(render::view::ViewPlugin{});
 }
-void RenderPlugin::finalize(App& app) {}
+void RenderPlugin::finalize(App& app) noexcept {}

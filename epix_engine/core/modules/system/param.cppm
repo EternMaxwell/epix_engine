@@ -54,19 +54,17 @@ export struct SystemMeta {
     Tick last_run = 0;
 
     /** @brief Check if this system requires exclusive world access. */
-    bool is_exclusive() const { return (SystemFlagBits::EXCLUSIVE & flags) != (SystemFlagBits)0; }
+    bool is_exclusive() const noexcept { return (SystemFlagBits::EXCLUSIVE & flags) != (SystemFlagBits)0; }
     /** @brief Check if this system produces deferred commands. */
-    bool is_deferred() const { return (SystemFlagBits::DEFERRED & flags) != (SystemFlagBits)0; }
+    bool is_deferred() const noexcept { return (SystemFlagBits::DEFERRED & flags) != (SystemFlagBits)0; }
 };
 
 /** @brief Concept for types usable as system parameters.
  *  Requires SystemParam specialization with State, Item, init_state, get_param, etc. */
 export template <typename T>
 concept system_param = requires(World& world, SystemMeta& meta, FilteredAccessSet& access) {
-    // used to store data that persists across system runs
     typename SystemParam<T>::State;
     requires std::movable<typename SystemParam<T>::State>;
-    // the item type returned when accessing the param, the item returned may not be T itself, it may be reference.
     typename SystemParam<T>::Item;
     requires std::same_as<T, typename SystemParam<T>::Item>;
     typename std::bool_constant<SystemParam<T>::readonly>;
@@ -96,7 +94,7 @@ export template <readonly_system_param T>
 struct ROSystemParam : SystemParam<T> {
     using State = typename SystemParam<T>::State;
     using Item  = typename SystemParam<T>::Item;
-    // validate and get function will accept const World& and const_cast to base.
+
     static std::expected<void, ValidateParamError> validate_param(State& state,
                                                                   const SystemMeta& meta,
                                                                   const World& world) {
@@ -109,11 +107,13 @@ struct ROSystemParam : SystemParam<T> {
 
 /** @brief Base struct providing default no-op implementations for SystemParam static methods. */
 export struct ParamBase {
-    static void init_access(const auto&, SystemMeta&, FilteredAccessSet&, const World&) {}
-    static void new_archetype(auto&, const Archetype&, SystemMeta&) {}
-    static void apply(auto&, const SystemMeta&, World&) {}
-    static void queue(auto&, const SystemMeta&, DeferredWorld) {}
-    static std::expected<void, ValidateParamError> validate_param(auto&, const SystemMeta&, World&) { return {}; }
+    static void init_access(const auto&, SystemMeta&, FilteredAccessSet&, const World&) noexcept {}
+    static void new_archetype(auto&, const Archetype&, SystemMeta&) noexcept {}
+    static void apply(auto&, const SystemMeta&, World&) noexcept {}
+    static void queue(auto&, const SystemMeta&, DeferredWorld) noexcept {}
+    static std::expected<void, ValidateParamError> validate_param(auto&, const SystemMeta&, World&) noexcept {
+        return {};
+    }
 };
 
 template <query_data D, query_filter F>

@@ -26,8 +26,8 @@ namespace epix::assets {
 export struct AssetSourceId : std::optional<std::string> {
     using base = std::optional<std::string>;
     using base::base;
-    bool is_default() const { return !this->has_value(); }
-    std::optional<std::string_view> as_str() const { return static_cast<const base&>(*this); }
+    bool is_default() const noexcept { return !this->has_value(); }
+    std::optional<std::string_view> as_str() const noexcept { return static_cast<const base&>(*this); }
     auto operator<=>(const AssetSourceId& other) const = default;
     bool operator==(const AssetSourceId& other) const  = default;
 };
@@ -40,8 +40,10 @@ export struct AssetPath {
     std::filesystem::path path;
     std::optional<std::string> label;
 
-    AssetPath() = default;
-    AssetPath(AssetSourceId source, std::filesystem::path path, std::optional<std::string> label = std::nullopt)
+    AssetPath() noexcept = default;
+    AssetPath(AssetSourceId source,
+              std::filesystem::path path,
+              std::optional<std::string> label = std::nullopt) noexcept
         : source(std::move(source)), path(std::move(path).lexically_normal()), label(std::move(label)) {}
     AssetPath(std::convertible_to<std::string_view> auto&& str) {
         // Format: [source://]path/to/asset[#label]
@@ -69,9 +71,9 @@ export struct AssetPath {
     /** @brief Return a copy of this path without the label. */
     AssetPath without_label() const { return AssetPath(source, path); }
     /** @brief Remove the label from this path in place. */
-    void remove_label() { label.reset(); }
+    void remove_label() noexcept { label.reset(); }
     /** @brief Take the label out of this path, leaving it empty. */
-    std::optional<std::string> take_label();
+    std::optional<std::string> take_label() noexcept;
     /** @brief Return the parent directory of this asset path, or std::nullopt if there is no parent. */
     std::optional<AssetPath> parent() const;
     /** @brief Resolve a relative path against this path's directory. */
@@ -82,7 +84,7 @@ export struct AssetPath {
     AssetPath resolve_embed(const AssetPath& relative) const;
     /** @brief Returns true if this path escapes the asset directory (has a prefix, root, or parent dirs).
      *  Matches bevy_asset's AssetPath::is_unapproved(). */
-    bool is_unapproved() const;
+    bool is_unapproved() const noexcept;
     /** @brief Get the full extension (e.g. "gltf.json" for "model.gltf.json"). */
     std::optional<std::string> get_full_extension() const;
     /** @brief Get the short extension (e.g. "json" for "model.gltf.json"). */

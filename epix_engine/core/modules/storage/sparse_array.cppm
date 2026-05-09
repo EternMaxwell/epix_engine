@@ -20,14 +20,14 @@ struct SparseArray {
     std::vector<std::optional<V>> values;
 
    public:
-    bool contains(this const SparseArray& self, I index) {
+    bool contains(this const SparseArray& self, I index) noexcept {
         std::size_t idx = static_cast<std::size_t>(index);
         if (idx < self.values.size()) {
             return self.values[idx].has_value();
         }
         return false;
     }
-    std::optional<std::reference_wrapper<V>> get_mut(this SparseArray& self, I index) {
+    std::optional<std::reference_wrapper<V>> get_mut(this SparseArray& self, I index) noexcept {
         std::size_t idx = static_cast<std::size_t>(index);
         if (idx < self.values.size()) {
             if (self.values[idx].has_value()) {
@@ -36,7 +36,7 @@ struct SparseArray {
         }
         return std::nullopt;
     }
-    std::optional<std::reference_wrapper<const V>> get(this const SparseArray& self, I index) {
+    std::optional<std::reference_wrapper<const V>> get(this const SparseArray& self, I index) noexcept {
         std::size_t idx = static_cast<std::size_t>(index);
         if (idx < self.values.size()) {
             if (self.values[idx].has_value()) {
@@ -53,7 +53,7 @@ struct SparseArray {
         }
         self.values[idx].emplace(std::forward<Args>(args)...);
     }
-    void clear(this SparseArray& self) { self.values.clear(); }
+    void clear(this SparseArray& self) noexcept { self.values.clear(); }
     std::optional<V> remove(this SparseArray& self, I index) {
         std::size_t idx      = static_cast<std::size_t>(index);
         std::optional<V> val = std::nullopt;

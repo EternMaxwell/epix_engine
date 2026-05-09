@@ -19,39 +19,39 @@ struct fixed32 {
     static constexpr std::int64_t scale   = std::int64_t(1) << FracBits;
     static constexpr std::int64_t mask    = scale - 1;
 
-    constexpr fixed32() = default;
-    explicit constexpr fixed32(float f) : value(static_cast<std::int32_t>(std::round(f * scale))) {}
-    explicit constexpr fixed32(double d) : value(static_cast<std::int32_t>(std::round(d * scale))) {}
-    explicit constexpr fixed32(std::int32_t raw_value) : value(raw_value) {}
+    constexpr fixed32() noexcept = default;
+    explicit constexpr fixed32(float f) noexcept : value(static_cast<std::int32_t>(std::round(f * scale))) {}
+    explicit constexpr fixed32(double d) noexcept : value(static_cast<std::int32_t>(std::round(d * scale))) {}
+    explicit constexpr fixed32(std::int32_t raw_value) noexcept : value(raw_value) {}
 
-    explicit constexpr operator float() const { return static_cast<float>(value) / scale; }
-    explicit constexpr operator double() const { return static_cast<double>(value) / scale; }
+    explicit constexpr operator float() const noexcept { return static_cast<float>(value) / scale; }
+    explicit constexpr operator double() const noexcept { return static_cast<double>(value) / scale; }
 
-    constexpr fixed32 operator+(const fixed32& rhs) const { return fixed32(value + rhs.value); }
-    constexpr fixed32 operator-(const fixed32& rhs) const { return fixed32(value - rhs.value); }
-    constexpr fixed32 operator*(const fixed32& rhs) const {
+    constexpr fixed32 operator+(const fixed32& rhs) const noexcept { return fixed32(value + rhs.value); }
+    constexpr fixed32 operator-(const fixed32& rhs) const noexcept { return fixed32(value - rhs.value); }
+    constexpr fixed32 operator*(const fixed32& rhs) const noexcept {
         std::int64_t temp = static_cast<std::int64_t>(value) * rhs.value;
         return fixed32(static_cast<std::int32_t>((temp + (scale / 2)) >> FracBits));
     }
-    constexpr fixed32 operator/(const fixed32& rhs) const {
+    constexpr fixed32 operator/(const fixed32& rhs) const noexcept {
         std::int64_t temp = (static_cast<std::int64_t>(value) << FracBits) / rhs.value;
         return fixed32(static_cast<std::int32_t>(temp));
     }
 
-    constexpr fixed32& operator+=(const fixed32& rhs) {
+    constexpr fixed32& operator+=(const fixed32& rhs) noexcept {
         value += rhs.value;
         return *this;
     }
-    constexpr fixed32& operator-=(const fixed32& rhs) {
+    constexpr fixed32& operator-=(const fixed32& rhs) noexcept {
         value -= rhs.value;
         return *this;
     }
-    constexpr fixed32& operator*=(const fixed32& rhs) {
+    constexpr fixed32& operator*=(const fixed32& rhs) noexcept {
         std::int64_t temp = static_cast<std::int64_t>(value) * rhs.value;
         value             = static_cast<std::int32_t>((temp + (scale / 2)) >> FracBits);
         return *this;
     }
-    constexpr fixed32& operator/=(const fixed32& rhs) {
+    constexpr fixed32& operator/=(const fixed32& rhs) noexcept {
         std::int64_t temp = (static_cast<std::int64_t>(value) << FracBits) / rhs.value;
         value             = static_cast<std::int32_t>(temp);
         return *this;
@@ -67,17 +67,17 @@ struct fixed64 {
     static constexpr std::int64_t scale   = std::int64_t(1) << FracBits;
     static constexpr std::int64_t mask    = scale - 1;
 
-    constexpr fixed64() = default;
-    explicit constexpr fixed64(float f) : value(static_cast<std::int64_t>(std::round(f * scale))) {}
-    explicit constexpr fixed64(double d) : value(static_cast<std::int64_t>(std::round(d * scale))) {}
-    explicit constexpr fixed64(std::int64_t raw_value) : value(raw_value) {}
+    constexpr fixed64() noexcept = default;
+    explicit constexpr fixed64(float f) noexcept : value(static_cast<std::int64_t>(std::round(f * scale))) {}
+    explicit constexpr fixed64(double d) noexcept : value(static_cast<std::int64_t>(std::round(d * scale))) {}
+    explicit constexpr fixed64(std::int64_t raw_value) noexcept : value(raw_value) {}
 
-    explicit constexpr operator float() const { return static_cast<float>(value) / scale; }
-    explicit constexpr operator double() const { return static_cast<double>(value) / scale; }
+    explicit constexpr operator float() const noexcept { return static_cast<float>(value) / scale; }
+    explicit constexpr operator double() const noexcept { return static_cast<double>(value) / scale; }
 
-    constexpr fixed64 operator+(const fixed64& rhs) const { return fixed64(value + rhs.value); }
-    constexpr fixed64 operator-(const fixed64& rhs) const { return fixed64(value - rhs.value); }
-    constexpr fixed64 operator*(const fixed64& rhs) const {
+    constexpr fixed64 operator+(const fixed64& rhs) const noexcept { return fixed64(value + rhs.value); }
+    constexpr fixed64 operator-(const fixed64& rhs) const noexcept { return fixed64(value - rhs.value); }
+    constexpr fixed64 operator*(const fixed64& rhs) const noexcept {
         std::uint64_t mask32 = (std::uint64_t(1) << 32) - 1;
         bool sign            = (value < 0) ^ (rhs.value < 0);
         std::uint64_t a      = value < 0 ? -value : value;
@@ -101,7 +101,7 @@ struct fixed64 {
         std::uint64_t tmp = (hh << (64 - FracBits)) + (hl << (32 - FracBits)) + (ll >> FracBits);
         return fixed64(sign ? -static_cast<std::int64_t>(tmp) : static_cast<std::int64_t>(tmp));
     }
-    constexpr fixed64 operator/(const fixed64& rhs) const {
+    constexpr fixed64 operator/(const fixed64& rhs) const noexcept {
         bool sign       = (value < 0) ^ (rhs.value < 0);
         std::uint64_t a = value < 0 ? -value : value;
         std::uint64_t b = rhs.value < 0 ? -rhs.value : rhs.value;
@@ -124,21 +124,21 @@ struct fixed64 {
         return fixed64(sign ? -static_cast<std::int64_t>(quotient) : static_cast<std::int64_t>(quotient));
     }
 
-    constexpr fixed64& operator+=(const fixed64& rhs) {
+    constexpr fixed64& operator+=(const fixed64& rhs) noexcept {
         value += rhs.value;
         return *this;
     }
-    constexpr fixed64& operator-=(const fixed64& rhs) {
+    constexpr fixed64& operator-=(const fixed64& rhs) noexcept {
         value -= rhs.value;
         return *this;
     }
-    constexpr fixed64& operator*=(const fixed64& rhs) {
+    constexpr fixed64& operator*=(const fixed64& rhs) noexcept {
         *this = *this * rhs;
         return *this;
     }
-    constexpr fixed64& operator/=(const fixed64& rhs) {
+    constexpr fixed64& operator/=(const fixed64& rhs) noexcept {
         *this = *this / rhs;
         return *this;
     }
 };
-}  // namespace utils
+}  // namespace epix::utils

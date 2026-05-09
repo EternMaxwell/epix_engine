@@ -26,12 +26,12 @@ class function_ref<R(Args...)> {
     template <std::invocable<Args...> F>
         requires(!std::is_same_v<std::remove_cvref_t<F>, function_ref>) &&
                     std::same_as<std::invoke_result_t<F, Args...>, R>
-    function_ref(const F& f)
+    function_ref(const F& f) noexcept
         : m_ref(static_cast<const void*>(&f)), m_invoke([](const void* fn, Args&&... args) -> R {
               return std::invoke(*static_cast<const F*>(fn), std::forward<Args>(args)...);
           }) {}
-    function_ref(const function_ref&)            = default;
-    function_ref& operator=(const function_ref&) = default;
+    function_ref(const function_ref&) noexcept            = default;
+    function_ref& operator=(const function_ref&) noexcept = default;
 
     R operator()(Args... args) const { return m_invoke(m_ref, std::forward<Args>(args)...); }
 };
@@ -64,7 +64,7 @@ class function<R(Args...)> {
    private:
     std::unique_ptr<function_base<R, Args...>> m_impl;  // never empty
 
-    function(std::unique_ptr<function_base<R, Args...>> impl) : m_impl(std::move(impl)) {}
+    function(std::unique_ptr<function_base<R, Args...>> impl) noexcept : m_impl(std::move(impl)) {}
 
    public:
     template <std::invocable<Args...> F>
@@ -88,4 +88,4 @@ class function<R(Args...)> {
         return m_impl->invoke(std::forward<Args>(args)...);
     }
 };
-}  // namespace utils
+}  // namespace epix::utils

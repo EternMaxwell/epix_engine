@@ -52,7 +52,7 @@ export struct ComponentHooks {
     /** @brief Populate hook function pointers from static member functions defined on type T.
      *  @tparam T The component type potentially defining on_add/on_insert/on_replace/on_remove/on_despawn. */
     template <typename T>
-    ComponentHooks& update_from_component() {
+    ComponentHooks& update_from_component() noexcept {
         if constexpr (requires(World& world, HookContext ctx) { T::on_add(world, ctx); }) {
             on_add = T::on_add;
         }
@@ -71,7 +71,7 @@ export struct ComponentHooks {
         return *this;
     }
     /** @brief Set the on_add hook if not already set. @return true if it was set. */
-    bool try_on_add(HookFunc func) {
+    bool try_on_add(HookFunc func) noexcept {
         if (on_add) {
             on_add = func;
             return true;
@@ -79,7 +79,7 @@ export struct ComponentHooks {
         return false;
     }
     /** @brief Set the on_insert hook if not already set. @return true if it was set. */
-    bool try_on_insert(HookFunc func) {
+    bool try_on_insert(HookFunc func) noexcept {
         if (on_insert) {
             on_insert = func;
             return true;
@@ -87,7 +87,7 @@ export struct ComponentHooks {
         return false;
     }
     /** @brief Set the on_replace hook if not already set. @return true if it was set. */
-    bool try_on_replace(HookFunc func) {
+    bool try_on_replace(HookFunc func) noexcept {
         if (on_replace) {
             on_replace = func;
             return true;
@@ -95,7 +95,7 @@ export struct ComponentHooks {
         return false;
     }
     /** @brief Set the on_remove hook if not already set. @return true if it was set. */
-    bool try_on_remove(HookFunc func) {
+    bool try_on_remove(HookFunc func) noexcept {
         if (on_remove) {
             on_remove = func;
             return true;
@@ -103,7 +103,7 @@ export struct ComponentHooks {
         return false;
     }
     /** @brief Set the on_despawn hook if not already set. @return true if it was set. */
-    bool try_on_despawn(HookFunc func) {
+    bool try_on_despawn(HookFunc func) noexcept {
         if (on_despawn) {
             on_despawn = func;
             return true;
@@ -181,19 +181,19 @@ struct ComponentInfo {
         : _id(id), _index(index), _storage_type(storage_type) {}
 
     /** @brief Get the component's type id. */
-    TypeId type_id() const { return _id; }
+    TypeId type_id() const noexcept { return _id; }
     /** @brief Get the component's runtime type index. */
-    ::epix::meta::type_index type_index() const { return _index; }
+    ::epix::meta::type_index type_index() const noexcept { return _index; }
     /** @brief Get the component's storage type (Table or SparseSet). */
-    StorageType storage_type() const { return _storage_type; }
+    StorageType storage_type() const noexcept { return _storage_type; }
     /** @brief Get the component's lifecycle hooks. */
-    const ComponentHooks& hooks() const { return _hooks; }
+    const ComponentHooks& hooks() const noexcept { return _hooks; }
     /** @brief Get the components that are automatically added when this component is inserted. */
-    const RequiredComponents& required_components() const { return _required_components; }
+    const RequiredComponents& required_components() const noexcept { return _required_components; }
     /** @brief Update lifecycle hooks from static members defined on type T.
      *  @tparam T The component type. */
     template <typename T>
-    void update_hooks() {
+    void update_hooks() noexcept {
         _hooks.update_from_component<T>();
     }
 
@@ -206,10 +206,10 @@ export struct Components : public SparseSet<TypeId, ComponentInfo> {
     std::shared_ptr<TypeRegistry> type_registry;
 
    public:
-    Components(std::shared_ptr<TypeRegistry> type_registry)
+    Components(std::shared_ptr<TypeRegistry> type_registry) noexcept
         : SparseSet<TypeId, ComponentInfo>(), type_registry(std::move(type_registry)) {}
     /** @brief Get a const reference to the underlying type registry. */
-    const TypeRegistry& registry() const { return *type_registry; }
+    const TypeRegistry& registry() const noexcept { return *type_registry; }
     /** @brief Register component info for type T, creating it if not already registered.
      *  @tparam T The component type.
      *  @return The assigned TypeId. */
@@ -225,7 +225,7 @@ export struct Components : public SparseSet<TypeId, ComponentInfo> {
     }
     /** @brief Overwrite lifecycle hooks for the given component type.
      *  Only non-null hook pointers in `hooks` are applied. */
-    void update_hooks(TypeId type_id, ComponentHooks hooks) {
+    void update_hooks(TypeId type_id, ComponentHooks hooks) noexcept {
         get_mut(type_id).transform([&](ComponentInfo& info) -> bool {
             if (hooks.on_add) {
                 info._hooks.on_add = std::move(hooks.on_add);
@@ -326,15 +326,14 @@ export struct Components : public SparseSet<TypeId, ComponentInfo> {
         TypeId requiree, TypeId required, RequiredComponents& required_components) {
         auto& required_info = get_mut(required).value().get();
         std::vector<std::pair<TypeId, RequiredComponent>> inherited_requirements =
-            std::ranges::to<std::vector<std::pair<TypeId, RequiredComponent>>>(std::views::transform(
-                required_info.required_components().components,
-                [&](auto&& rc) {
+            std::ranges::to<std::vector<std::pair<TypeId, RequiredComponent>>>(
+                std::views::transform(required_info.required_components().components, [&](auto&& rc) {
                     auto&& [type_id, req_comp] = rc;
-                    return std::pair(type_id,
-                                     RequiredComponent{
-                                         .constructor       = req_comp.constructor,
-                                         .inheritance_depth = static_cast<std::uint16_t>(req_comp.inheritance_depth + 1),
-                                     });
+                    return std::pair(
+                        type_id, RequiredComponent{
+                                     .constructor       = req_comp.constructor,
+                                     .inheritance_depth = static_cast<std::uint16_t>(req_comp.inheritance_depth + 1),
+                                 });
                 }));
         for (auto&& [type_id, req_comp] : inherited_requirements) {
             required_components.register_dynamic(type_id, req_comp.inheritance_depth, req_comp.constructor);
@@ -345,6 +344,6 @@ export struct Components : public SparseSet<TypeId, ComponentInfo> {
     }
 };
 
-const Components& world_components(const World& world);
-Components& world_components_mut(World& world);
-}  // namespace core
+const Components& world_components(const World& world) noexcept;
+Components& world_components_mut(World& world) noexcept;
+}  // namespace epix::core

@@ -67,9 +67,9 @@ class input_iterable : public std::ranges::view_interface<input_iterable<T>> {
    public:
     using value_type = std::remove_cvref_t<T>;
 
-    input_iterable()                                 = default;
-    input_iterable(const input_iterable&)            = default;
-    input_iterable& operator=(const input_iterable&) = default;
+    input_iterable() noexcept                                 = default;
+    input_iterable(const input_iterable&) noexcept            = default;
+    input_iterable& operator=(const input_iterable&) noexcept = default;
 
     template <std::ranges::input_range R>
         requires(std::convertible_to<std::ranges::range_reference_t<std::remove_cvref_t<R>>, T> &&
@@ -92,8 +92,8 @@ class input_iterable : public std::ranges::view_interface<input_iterable<T>> {
 
         std::unique_ptr<iter_base> impl_;
 
-        iterator() = default;
-        explicit iterator(std::unique_ptr<iter_base> p) : impl_(std::move(p)) {}
+        iterator() noexcept = default;
+        explicit iterator(std::unique_ptr<iter_base> p) noexcept : impl_(std::move(p)) {}
 
         T operator*() const { return impl_->get(); }
 
@@ -106,7 +106,7 @@ class input_iterable : public std::ranges::view_interface<input_iterable<T>> {
     };
 
     iterator begin() const { return factory_ ? iterator{factory_->make()} : iterator{}; }
-    sentinel end() const { return {}; }
+    sentinel end() const noexcept { return {}; }
 };
 
-}  // namespace utils
+}  // namespace epix::utils

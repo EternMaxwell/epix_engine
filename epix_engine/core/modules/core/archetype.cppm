@@ -44,7 +44,7 @@ struct ArchetypeComponents {
     std::vector<TypeId> sparse_components;
 };
 struct ArchetypeComponentsHash {
-    std::size_t operator()(const ArchetypeComponents& ac) const {
+    std::size_t operator()(const ArchetypeComponents& ac) const noexcept {
         std::size_t hash = 0;
         for (auto type_id : ac.table_components) {
             hash ^= std::hash<std::uint32_t>()(type_id) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
@@ -56,7 +56,7 @@ struct ArchetypeComponentsHash {
     }
 };
 struct ArchetypeComponentsEqual {
-    bool operator()(const ArchetypeComponents& a, const ArchetypeComponents& b) const {
+    bool operator()(const ArchetypeComponents& a, const ArchetypeComponents& b) const noexcept {
         return a.table_components == b.table_components && a.sparse_components == b.sparse_components;
     }
 };
@@ -83,18 +83,18 @@ struct ArchetypeAfterBundleInsert {
                                std::vector<TypeId> inserted,
                                std::size_t added_len,
                                std::vector<ComponentStatus> component_statuses,
-                               std::vector<RequiredComponentConstructor> required_components)
+                               std::vector<RequiredComponentConstructor> required_components) noexcept
         : archetype_id(archetype_id),
           _inserted(std::move(inserted)),
           _added_len(added_len),
           _component_statuses(std::move(component_statuses)),
           required_components(std::move(required_components)) {}
 
-    auto inserted() const { return std::views::all(_inserted); }
-    auto added() const { return std::views::take(_inserted, _added_len); }
-    auto existing() const { return std::views::drop(_inserted, _added_len); }
+    auto inserted() const noexcept { return std::views::all(_inserted); }
+    auto added() const noexcept { return std::views::take(_inserted, _added_len); }
+    auto existing() const noexcept { return std::views::drop(_inserted, _added_len); }
 
-    auto iter_status() const { return std::views::all(_component_statuses); }
+    auto iter_status() const noexcept { return std::views::all(_component_statuses); }
 
     ArchetypeId archetype_id;
     std::vector<RequiredComponentConstructor> required_components;
@@ -108,19 +108,19 @@ struct ArchetypeAfterBundleInsert {
 };
 struct ArchetypeEdges {
    public:
-    std::optional<ArchetypeId> get_archetype_after_bundle_insert(BundleId bundle_id) const {
+    std::optional<ArchetypeId> get_archetype_after_bundle_insert(BundleId bundle_id) const noexcept {
         return insert_bundle.get(bundle_id).transform(
             [](const ArchetypeAfterBundleInsert& abi) { return abi.archetype_id; });
     }
     std::optional<std::reference_wrapper<const ArchetypeAfterBundleInsert>> get_archetype_after_bundle_insert_detail(
-        BundleId bundle_id) const {
+        BundleId bundle_id) const noexcept {
         return insert_bundle.get(bundle_id).transform(
             [](const ArchetypeAfterBundleInsert& abi) { return std::cref(abi); });
     }
-    std::optional<std::optional<ArchetypeId>> get_archetype_after_bundle_remove(BundleId bundle_id) const {
+    std::optional<std::optional<ArchetypeId>> get_archetype_after_bundle_remove(BundleId bundle_id) const noexcept {
         return remove_bundle.get(bundle_id).transform([](const std::optional<ArchetypeId>& abi) { return abi; });
     }
-    std::optional<std::optional<ArchetypeId>> get_archetype_after_bundle_take(BundleId bundle_id) const {
+    std::optional<std::optional<ArchetypeId>> get_archetype_after_bundle_take(BundleId bundle_id) const noexcept {
         return take_bundle.get(bundle_id).transform([](const std::optional<ArchetypeId>& abi) { return abi; });
     }
 
@@ -135,10 +135,10 @@ struct ArchetypeEdges {
         insert_bundle.insert(bundle_id, archetype_id, std::move(added_components), added_len,
                              std::move(component_status), std::move(required_components));
     }
-    void cache_archetype_after_bundle_remove(BundleId bundle_id, std::optional<ArchetypeId> archetype_id) {
+    void cache_archetype_after_bundle_remove(BundleId bundle_id, std::optional<ArchetypeId> archetype_id) noexcept {
         remove_bundle.insert(bundle_id, archetype_id);
     }
-    void cache_archetype_after_bundle_take(BundleId bundle_id, std::optional<ArchetypeId> archetype_id) {
+    void cache_archetype_after_bundle_take(BundleId bundle_id, std::optional<ArchetypeId> archetype_id) noexcept {
         take_bundle.insert(bundle_id, archetype_id);
     }
 
@@ -164,7 +164,7 @@ export struct Archetype {
                             std::vector<TypeId> sparse_components);
     /** @brief Create an empty archetype with no components.
      *  @param id Unique archetype identifier. */
-    static Archetype empty(ArchetypeId id) {
+    static Archetype empty(ArchetypeId id) noexcept {
         Archetype arch;
         arch._archetype_id = id;
         arch._table_id     = 0;  // 0 is always the empty table
@@ -172,21 +172,21 @@ export struct Archetype {
     }
 
     /** @brief Get this archetype's unique identifier. */
-    ArchetypeId id() const { return _archetype_id; }
+    ArchetypeId id() const noexcept { return _archetype_id; }
     /** @brief Get the table id that stores dense components for this archetype. */
-    TableId table_id() const { return _table_id; }
+    TableId table_id() const noexcept { return _table_id; }
     /** @brief Get a read-only span of all entities in this archetype. */
-    std::span<const ArchetypeEntity> entities() const { return _entities; }
+    std::span<const ArchetypeEntity> entities() const noexcept { return _entities; }
     /** @brief Get the number of entities in this archetype. */
-    std::size_t size() const { return _entities.size(); }
+    std::size_t size() const noexcept { return _entities.size(); }
     /** @brief Check whether this archetype contains no entities. */
-    bool empty() const { return _entities.empty(); }
+    bool empty() const noexcept { return _entities.empty(); }
     /** @brief Get a const reference to the archetype's edge cache. */
-    const ArchetypeEdges& edges() const { return _edges; }
+    const ArchetypeEdges& edges() const noexcept { return _edges; }
     /** @brief Get a mutable reference to the archetype's edge cache. */
-    ArchetypeEdges& edges_mut() { return _edges; }
+    ArchetypeEdges& edges_mut() noexcept { return _edges; }
     /** @brief Return a view of (Entity, EntityLocation) pairs for all entities in this archetype. */
-    auto entities_with_location() const {
+    auto entities_with_location() const noexcept {
         return std::views::transform(
             std::views::iota(0u, static_cast<unsigned>(_entities.size())),
             [this](unsigned idx) -> std::pair<Entity, EntityLocation> {
@@ -209,21 +209,23 @@ export struct Archetype {
     };
 
     /** @brief Return a view of TypeIds for components stored in the table. */
-    auto table_components() const {
+    auto table_components() const noexcept {
         return std::views::keys(std::views::filter(_components.iter(), IsTablePredicate{}));
     }
     /** @brief Return a view of TypeIds for components stored in sparse sets. */
-    auto sparse_components() const {
+    auto sparse_components() const noexcept {
         return std::views::keys(std::views::filter(_components.iter(), IsSparsePredicate{}));
     }
     /** @brief Return a view of all component TypeIds in this archetype. */
-    auto components() const { return std::views::all(_components.indices()); }
+    auto components() const noexcept { return std::views::all(_components.indices()); }
     /** @brief Get the total number of component types in this archetype. */
-    std::size_t component_count() const { return _components.size(); }
+    std::size_t component_count() const noexcept { return _components.size(); }
     /** @brief Get the table row for the entity at the given archetype row. */
-    TableRow entity_table_row(ArchetypeRow arch_idx) const { return _entities[arch_idx].table_idx; }
+    TableRow entity_table_row(ArchetypeRow arch_idx) const noexcept { return _entities[arch_idx].table_idx; }
     /** @brief Update the table row for the entity at the given archetype row. */
-    void set_entity_table_row(ArchetypeRow arch_idx, TableRow table_idx) { _entities[arch_idx].table_idx = table_idx; }
+    void set_entity_table_row(ArchetypeRow arch_idx, TableRow table_idx) noexcept {
+        _entities[arch_idx].table_idx = table_idx;
+    }
     /** @brief Add an entity to this archetype and return its location.
      *  @param entity The entity to allocate.
      *  @param table_idx The row assigned in the component table. */
@@ -238,14 +240,14 @@ export struct Archetype {
      *  @return The swapped entity (if any) and the removed entity's table row. */
     ArchetypeSwapRemoveResult swap_remove(ArchetypeRow arch_idx);
     /** @brief Check whether this archetype contains the given component type. */
-    bool contains(TypeId type_id) const { return _components.contains(type_id); }
+    bool contains(TypeId type_id) const noexcept { return _components.contains(type_id); }
     /** @brief Get the storage type (Table or SparseSet) for a component, if present. */
-    std::optional<StorageType> get_storage_type(TypeId type_id) const {
+    std::optional<StorageType> get_storage_type(TypeId type_id) const noexcept {
         return _components.get(type_id).transform(
             [](std::reference_wrapper<const StorageType> storage_type) { return storage_type.get(); });
     }
     /** @brief Remove all entities from this archetype without deallocating. */
-    void clear_entities() { _entities.clear(); }
+    void clear_entities() noexcept { _entities.clear(); }
 
    private:
     Archetype() = default;
@@ -270,31 +272,31 @@ export struct Archetypes {
     }
 
     /** @brief Get the number of archetypes. */
-    std::size_t size() const { return archetypes.size(); }
+    std::size_t size() const noexcept { return archetypes.size(); }
 
     /** @brief Get a const reference to the empty archetype (index 0). */
-    const Archetype& get_empty() const { return archetypes[0]; }
+    const Archetype& get_empty() const noexcept { return archetypes[0]; }
     /** @brief Get a mutable reference to the empty archetype (index 0). */
-    Archetype& get_empty_mut() { return archetypes[0]; }
+    Archetype& get_empty_mut() noexcept { return archetypes[0]; }
 
     /** @brief Get a const reference to the archetype with the given id, if it exists. */
-    std::optional<std::reference_wrapper<const Archetype>> get(this const Archetypes& self, ArchetypeId id) {
+    std::optional<std::reference_wrapper<const Archetype>> get(this const Archetypes& self, ArchetypeId id) noexcept {
         if (id.get() >= self.archetypes.size()) {
             return std::nullopt;
         }
         return std::cref(self.archetypes[id.get()]);
     }
     /** @brief Get a mutable reference to the archetype with the given id, if it exists. */
-    std::optional<std::reference_wrapper<Archetype>> get_mut(this Archetypes& self, ArchetypeId id) {
+    std::optional<std::reference_wrapper<Archetype>> get_mut(this Archetypes& self, ArchetypeId id) noexcept {
         if (id.get() >= self.archetypes.size()) {
             return std::nullopt;
         }
         return std::ref(self.archetypes[id.get()]);
     }
     /** @brief Return a const view over all archetypes. */
-    auto iter() const { return std::views::all(archetypes); }
+    auto iter() const noexcept { return std::views::all(archetypes); }
     /** @brief Return a mutable view over all archetypes. */
-    auto iter_mut() { return std::views::all(archetypes); }
+    auto iter_mut() noexcept { return std::views::all(archetypes); }
 
     /** @brief Look up an archetype by its component set, or create a new one.
      *  @return A pair of (archetype id, was_newly_inserted). */
@@ -302,15 +304,15 @@ export struct Archetypes {
                                                   std::vector<TypeId> table_components,
                                                   std::vector<TypeId> sparse_components);
     /** @brief Clear all entities from every archetype. */
-    void clear_entities() {
+    void clear_entities() noexcept {
         for (auto& arch : archetypes) {
             arch.clear_entities();
         }
     }
 };
 
-const Archetypes& world_archetypes(const World& world);
-Archetypes& world_archetypes_mut(World& world);
+const Archetypes& world_archetypes(const World& world) noexcept;
+Archetypes& world_archetypes_mut(World& world) noexcept;
 
 void world_trigger_on_add(World& world, const Archetype& archetype, Entity entity, type_id_view auto&& targets) {
     for (auto&& target : targets) {

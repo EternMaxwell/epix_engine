@@ -42,16 +42,17 @@ export struct AssetSource {
     friend struct AssetSourceBuilder;
 
    public:
-    AssetSourceId id() const { return m_id; }
-    const AssetReader& reader() const { return *m_reader; }  // this is always present
-    std::optional<std::reference_wrapper<const AssetWriter>> writer() const;
-    std::optional<std::reference_wrapper<const AssetReader>> processed_reader() const;
-    std::optional<std::reference_wrapper<const AssetReader>> ungated_processed_reader() const;
-    std::optional<std::reference_wrapper<const AssetWriter>> processed_writer() const;
-    std::optional<std::reference_wrapper<const async_channel::Receiver<AssetSourceEvent>>> event_receiver() const;
+    AssetSourceId id() const noexcept { return m_id; }
+    const AssetReader& reader() const noexcept { return *m_reader; }  // this is always present
+    std::optional<std::reference_wrapper<const AssetWriter>> writer() const noexcept;
+    std::optional<std::reference_wrapper<const AssetReader>> processed_reader() const noexcept;
+    std::optional<std::reference_wrapper<const AssetReader>> ungated_processed_reader() const noexcept;
+    std::optional<std::reference_wrapper<const AssetWriter>> processed_writer() const noexcept;
+    std::optional<std::reference_wrapper<const async_channel::Receiver<AssetSourceEvent>>> event_receiver()
+        const noexcept;
     std::optional<std::reference_wrapper<const async_channel::Receiver<AssetSourceEvent>>> processed_event_receiver()
-        const;
-    bool should_process() const { return m_processed_writer != nullptr; }
+        const noexcept;
+    bool should_process() const noexcept { return m_processed_writer != nullptr; }
 
     /** @brief Gate the processed reader through a factory function.
      *  Moves the current processed_reader to ungated_processed_reader,
@@ -130,7 +131,7 @@ export struct AssetSources {
     friend struct AssetSourceBuilders;
 
    public:
-    std::optional<std::reference_wrapper<const AssetSource>> get(AssetSourceId name) const;
+    std::optional<std::reference_wrapper<const AssetSource>> get(AssetSourceId name) const noexcept;
     auto iter() const {
         return std::views::join(std::ranges::owning_view(std::array<utils::input_iterable<const AssetSource&>, 2>{
             utils::input_iterable<const AssetSource&>(std::span(&m_default, &m_default + 1)),
@@ -162,7 +163,7 @@ export struct AssetSourceBuilders {
 
    public:
     void insert(AssetSourceId id, AssetSourceBuilder builder);
-    std::optional<std::reference_wrapper<AssetSourceBuilder>> get(const AssetSourceId& id);
+    std::optional<std::reference_wrapper<AssetSourceBuilder>> get(const AssetSourceId& id) noexcept;
     void init_default(std::filesystem::path path, std::optional<std::filesystem::path> processed_path = std::nullopt) {
         m_default = AssetSourceBuilder::platform_default(std::move(path), std::move(processed_path));
     }

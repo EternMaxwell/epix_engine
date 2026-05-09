@@ -17,7 +17,7 @@ namespace epix::render {
 export using LayoutCacheKey   = std::vector<wgpu::BindGroupLayoutId>;
 export using CachedPipelineId = shader::CachedPipelineId;
 struct LayoutKeyHash {
-    std::size_t operator()(const LayoutCacheKey& key) const {
+    std::size_t operator()(const LayoutCacheKey& key) const noexcept {
         std::size_t hash = 0;
         for (const auto& id : key) {
             hash ^= std::hash<std::size_t>()(id) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
@@ -95,7 +95,7 @@ export using CachedPipelineState = std::variant<PipelineStateQueued,
 struct CachedPipeline {
     PipelineDescriptor descriptor;
     CachedPipelineState state;
-    std::optional<std::reference_wrapper<const Pipeline>> get_pipeline() const {
+    std::optional<std::reference_wrapper<const Pipeline>> get_pipeline() const noexcept {
         if (std::holds_alternative<Pipeline>(state)) {
             return std::get<Pipeline>(state);
         }
@@ -137,19 +137,19 @@ export struct PipelineServer {
     PipelineServer(wgpu::Device device);
 
     /** @brief Get the current state of a cached pipeline by id. */
-    auto get_pipeline_state(CachedPipelineId id) const
+    auto get_pipeline_state(CachedPipelineId id) const noexcept
         -> std::optional<std::reference_wrapper<const CachedPipelineState>>;
     /** @brief Get the render pipeline descriptor for a cached pipeline. */
-    auto get_render_pipeline_descriptor(CachedPipelineId id) const
+    auto get_render_pipeline_descriptor(CachedPipelineId id) const noexcept
         -> std::optional<std::reference_wrapper<const RenderPipelineDescriptor>>;
     /** @brief Get the compute pipeline descriptor for a cached pipeline. */
-    auto get_compute_pipeline_descriptor(CachedPipelineId id) const
+    auto get_compute_pipeline_descriptor(CachedPipelineId id) const noexcept
         -> std::optional<std::reference_wrapper<const ComputePipelineDescriptor>>;
     /** @brief Get the compiled render pipeline, or an error if not ready. */
-    auto get_render_pipeline(CachedPipelineId id) const
+    auto get_render_pipeline(CachedPipelineId id) const noexcept
         -> std::expected<std::reference_wrapper<const RenderPipeline>, GetPipelineError>;
     /** @brief Get the compiled compute pipeline, or an error if not ready. */
-    auto get_compute_pipeline(CachedPipelineId id) const
+    auto get_compute_pipeline(CachedPipelineId id) const noexcept
         -> std::expected<std::reference_wrapper<const ComputePipeline>, GetPipelineError>;
     /** @brief Queue a render pipeline for asynchronous creation. */
     CachedPipelineId queue_render_pipeline(RenderPipelineDescriptor descriptor) const;

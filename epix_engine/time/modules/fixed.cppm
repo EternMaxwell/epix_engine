@@ -1,8 +1,8 @@
 module;
 #ifndef EPIX_IMPORT_STD
+#include <chrono>
 #include <cmath>
 #include <cstdlib>
-#include <chrono>
 #endif
 
 export module epix.time:fixed;
@@ -46,61 +46,61 @@ struct Time<Fixed> : private Time<> {
     using Time<>::advance_by;
     using Time<>::advance_to;
 
-    Time() = default;
+    Time() noexcept = default;
 
     /** @brief Create with a custom timestep duration. */
-    static Time from_duration(std::chrono::nanoseconds timestep) {
+    static Time from_duration(std::chrono::nanoseconds timestep) noexcept {
         Time ret;
         ret.set_timestep(timestep);
         return ret;
     }
 
     /** @brief Create with a timestep specified in seconds. */
-    static Time from_seconds(double seconds) {
+    static Time from_seconds(double seconds) noexcept {
         Time ret;
         ret.set_timestep_seconds(seconds);
         return ret;
     }
 
     /** @brief Create with a timestep specified as a frequency in Hz. */
-    static Time from_hz(double hz) {
+    static Time from_hz(double hz) noexcept {
         Time ret;
         ret.set_timestep_hz(hz);
         return ret;
     }
 
     /** @brief Get the fixed timestep duration. */
-    std::chrono::nanoseconds timestep() const { return m_context.timestep; }
+    std::chrono::nanoseconds timestep() const noexcept { return m_context.timestep; }
 
     /** @brief Set the fixed timestep duration. Must be non-zero. */
-    void set_timestep(std::chrono::nanoseconds timestep) {
+    void set_timestep(std::chrono::nanoseconds timestep) noexcept {
         if (timestep.count() == 0) std::abort();
         m_context.timestep = timestep;
     }
 
     /** @brief Set the timestep from a duration in seconds. Must be positive and finite. */
-    void set_timestep_seconds(double seconds) {
+    void set_timestep_seconds(double seconds) noexcept {
         if (seconds <= 0.0) std::abort();
         if (!std::isfinite(seconds)) std::abort();
         set_timestep(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::duration<double>(seconds)));
     }
 
     /** @brief Set the timestep from a frequency in Hz. Must be positive and finite. */
-    void set_timestep_hz(double hz) {
+    void set_timestep_hz(double hz) noexcept {
         if (hz <= 0.0) std::abort();
         if (!std::isfinite(hz)) std::abort();
         set_timestep_seconds(1.0 / hz);
     }
 
     /** @brief Get the accumulated overstep (unconsumed real time). */
-    std::chrono::nanoseconds overstep() const { return m_context.overstep; }
+    std::chrono::nanoseconds overstep() const noexcept { return m_context.overstep; }
 
     /** @brief Add delta time to the overstep accumulator. Called once per frame
      *  from virtual time delta before the fixed loop begins. */
-    void accumulate_overstep(std::chrono::nanoseconds delta) { m_context.overstep += delta; }
+    void accumulate_overstep(std::chrono::nanoseconds delta) noexcept { m_context.overstep += delta; }
 
     /** @brief Subtract from accumulated overstep, clamping to zero. */
-    void discard_overstep(std::chrono::nanoseconds discard) {
+    void discard_overstep(std::chrono::nanoseconds discard) noexcept {
         if (m_context.overstep > discard) {
             m_context.overstep -= discard;
         } else {
@@ -109,13 +109,13 @@ struct Time<Fixed> : private Time<> {
     }
 
     /** @brief Fraction of one timestep that has been accumulated (overstep / timestep) as float. */
-    float overstep_fraction() const {
+    float overstep_fraction() const noexcept {
         return std::chrono::duration<float>(m_context.overstep).count() /
                std::chrono::duration<float>(m_context.timestep).count();
     }
 
     /** @brief Fraction of one timestep that has been accumulated (overstep / timestep) as double. */
-    double overstep_fraction_f64() const {
+    double overstep_fraction_f64() const noexcept {
         return std::chrono::duration<double>(m_context.overstep).count() /
                std::chrono::duration<double>(m_context.timestep).count();
     }
@@ -123,7 +123,7 @@ struct Time<Fixed> : private Time<> {
     /** @brief Try to consume one timestep from overstep. If enough time has
      *  accumulated, subtracts one timestep, advances the clock, and returns true.
      *  Returns false if not enough overstep remains. */
-    bool expend() {
+    bool expend() noexcept {
         auto ts = timestep();
         if (m_context.overstep >= ts) {
             m_context.overstep -= ts;
@@ -134,12 +134,12 @@ struct Time<Fixed> : private Time<> {
     }
 
     /** @brief Get const reference to the Fixed context. */
-    const Fixed& context() const { return m_context; }
+    const Fixed& context() const noexcept { return m_context; }
     /** @brief Get mutable reference to the Fixed context. */
-    Fixed& context_mut() { return m_context; }
+    Fixed& context_mut() noexcept { return m_context; }
 
     /** @brief Convert to a generic `Time<>` by copying all timing fields. */
-    Time<> as_generic() const { return static_cast<const Time<>&>(*this); }
+    Time<> as_generic() const noexcept { return static_cast<const Time<>&>(*this); }
 
    private:
     Fixed m_context{};

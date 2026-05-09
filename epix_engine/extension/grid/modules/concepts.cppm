@@ -267,35 +267,36 @@ struct grid_trait {
     static constexpr bool is_extendible = extendible_grid<G>;
     static constexpr bool has_coverage  = tree_based_grid<G>;
 
-    auto contains(const G& g, const pos_type& pos) const -> bool { return g.contains(pos); }
-    auto get(const G& g, const pos_type& pos) const
+    auto contains(const G& g, const pos_type& pos) const noexcept -> bool { return g.contains(pos); }
+    auto get(const G& g, const pos_type& pos) const noexcept
         -> std::expected<std::reference_wrapper<const value_type>, grid_error> {
         return g.get(pos);
     }
-    auto get_mut(G& g, const pos_type& pos) const -> std::expected<std::reference_wrapper<value_type>, grid_error>
+    auto get_mut(G& g, const pos_type& pos) const noexcept
+        -> std::expected<std::reference_wrapper<value_type>, grid_error>
         requires mutable_viewable_grid<G>
     {
         return g.get_mut(pos);
     }
     template <typename... Args>
         requires std::constructible_from<value_type, Args...> && grid_container<G>
-    auto set(G& g, const pos_type& pos, Args&&... value) const
+    auto set(G& g, const pos_type& pos, Args&&... value) const noexcept
         -> std::expected<std::reference_wrapper<value_type>, grid_error> {
         return g.set(pos, std::forward<Args>(value)...);
     }
     template <typename... Args>
         requires std::constructible_from<value_type, Args...> && grid_container<G>
-    auto set_new(G& g, const pos_type& pos, Args&&... value)
+    auto set_new(G& g, const pos_type& pos, Args&&... value) noexcept
         -> std::expected<std::reference_wrapper<value_type>, grid_error> {
         return g.set_new(pos, std::forward<Args>(value)...);
     }
 
-    auto get_unsafe(const G& g, const pos_type& pos) const -> const value_type&
+    auto get_unsafe(const G& g, const pos_type& pos) const noexcept -> const value_type&
         requires unsafe_viewable_grid<G>
     {
         return g.get_unsafe(pos);
     }
-    auto get_mut_unsafe(G& g, const pos_type& pos) const -> value_type&
+    auto get_mut_unsafe(G& g, const pos_type& pos) const noexcept -> value_type&
         requires unsafe_mutable_viewable_grid<G>
     {
         return g.get_mut_unsafe(pos);
@@ -316,33 +317,33 @@ struct grid_trait {
         return g.take_unsafe(pos);
     }
 
-    auto iter_pos(const G& g) const
+    auto iter_pos(const G& g) const noexcept
         requires iterable_grid<G>
     {
         return g.iter_pos();
     }
-    auto iter_cells(const G& g) const
+    auto iter_cells(const G& g) const noexcept
         requires iterable_grid<G>
     {
         return g.iter_cells();
     }
-    auto iter_cells_mut(G& g) const
+    auto iter_cells_mut(G& g) const noexcept
         requires mutable_iterable_grid<G>
     {
         return g.iter_cells_mut();
     }
-    auto iter(const G& g) const
+    auto iter(const G& g) const noexcept
         requires iterable_grid<G>
     {
         return g.iter();
     }
-    auto iter_mut(G& g) const
+    auto iter_mut(G& g) const noexcept
         requires mutable_iterable_grid<G>
     {
         return g.iter_mut();
     }
 
-    auto coverage(const G& g) const
+    auto coverage(const G& g) const noexcept
         requires tree_based_grid<G>
     {
         return g.coverage();

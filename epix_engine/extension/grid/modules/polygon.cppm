@@ -50,8 +50,8 @@ concept poly_grid = requires(const G& g) {
 export struct Ring {
     std::vector<glm::ivec2> points;
 
-    bool empty() const { return points.empty(); }
-    std::size_t size() const { return points.size(); }
+    bool empty() const noexcept { return points.empty(); }
+    std::size_t size() const noexcept { return points.size(); }
 };
 
 /**
@@ -61,7 +61,7 @@ export struct Polygon {
     Ring outer;
     std::vector<Ring> holes;
 
-    bool empty() const { return outer.empty(); }
+    bool empty() const noexcept { return outer.empty(); }
 };
 
 // ─────────────────────────────────────────────────────────────────────────────

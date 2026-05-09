@@ -137,8 +137,8 @@ export struct ProcessResult {
     std::optional<ProcessedInfo> processed_info;
 
     static ProcessResult make_processed(ProcessedInfo info) { return {ProcessResultKind::Processed, std::move(info)}; }
-    static ProcessResult skipped_not_changed() { return {ProcessResultKind::SkippedNotChanged, std::nullopt}; }
-    static ProcessResult ignored() { return {ProcessResultKind::Ignored, std::nullopt}; }
+    static ProcessResult skipped_not_changed() noexcept { return {ProcessResultKind::SkippedNotChanged, std::nullopt}; }
+    static ProcessResult ignored() noexcept { return {ProcessResultKind::Ignored, std::nullopt}; }
 };
 
 /** @brief The final status of processing an asset.
@@ -296,15 +296,15 @@ export struct ProcessContext {
         : m_processor(&processor), m_path(&path), m_reader(&reader), m_new_processed_info(&new_processed_info) {}
 
     /** @brief Get the path of the asset being processed. */
-    const AssetPath& path() const { return *m_path; }
+    const AssetPath& path() const noexcept { return *m_path; }
     /** @brief Get the reader for the asset being processed. */
-    Reader& asset_reader() { return *m_reader; }
+    Reader& asset_reader() noexcept { return *m_reader; }
     /** @brief Get the asset server associated with the processor. */
-    const AssetServer& asset_server() const;
+    const AssetServer& asset_server() const noexcept;
     /** @brief Get a reference to the processor. */
-    const AssetProcessor& processor() const { return *m_processor; }
+    const AssetProcessor& processor() const noexcept { return *m_processor; }
     /** @brief Get mutable ref to the new processed info (for adding process dependencies). */
-    ProcessedInfo& new_processed_info() { return *m_new_processed_info; }
+    ProcessedInfo& new_processed_info() noexcept { return *m_new_processed_info; }
 };
 
 // ---- LoadTransformAndSave::process implementation ----

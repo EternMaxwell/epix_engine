@@ -32,7 +32,7 @@ struct ProcessorGatedReader : public AssetReader {
    public:
     ProcessorGatedReader(AssetSourceId source,
                          const AssetReader& reader,
-                         std::shared_ptr<ProcessingState> processing_state)
+                         std::shared_ptr<ProcessingState> processing_state) noexcept
         : m_source(std::move(source)), m_reader(&reader), m_processing_state(std::move(processing_state)) {}
 
     asio::awaitable<std::expected<std::unique_ptr<Reader>, AssetReaderError>> read(

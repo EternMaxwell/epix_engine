@@ -18,10 +18,10 @@ namespace epix::core {
 export struct Parent {
    public:
     /** @brief Construct a Parent linking to the given parent entity. */
-    Parent(Entity parent_entity) : _entity(parent_entity) {}
+    Parent(Entity parent_entity) noexcept : _entity(parent_entity) {}
 
     /** @brief Get the parent entity. */
-    Entity entity() const { return _entity; }
+    Entity entity() const noexcept { return _entity; }
 
     /** @brief Hook called when a Parent component is removed from an entity. */
     static void on_remove(World& world, HookContext ctx);
@@ -38,10 +38,10 @@ export struct Parent {
  *  When this entity is despawned, all children are recursively despawned. */
 export struct Children {
    public:
-    Children() = default;
+    Children() noexcept = default;
 
     /** @brief Get a const reference to the set of child entities. */
-    auto& entities() const { return _entities; }
+    auto& entities() const noexcept { return _entities; }
 
     /** @brief Hook called when a Children component is removed. */
     static void on_remove(World& world, HookContext ctx);
@@ -54,4 +54,4 @@ export struct Children {
 
     std::unordered_set<Entity> _entities;
 };
-}  // namespace core
+}  // namespace epix::core

@@ -38,7 +38,7 @@ struct bit_grid {
     std::size_t row_stride() const noexcept { return (m_dimensions[0] + 7u) / 8u; }
 
     // first 24 bits of the index are the position of the word, the last 8 bits is for bit-and
-    std::expected<std::size_t, grid_error> offset(const std::array<std::uint32_t, Dim>& pos) const {
+    std::expected<std::size_t, grid_error> offset(const std::array<std::uint32_t, Dim>& pos) const noexcept {
         for (std::size_t i = 0; i < Dim; ++i) {
             if (pos[i] >= m_dimensions[i]) return std::unexpected(grid_error::OutOfBounds);
         }
@@ -54,7 +54,7 @@ struct bit_grid {
         return (byte_offset << 8u) | bit_mask;
     }
 
-    std::array<std::uint32_t, Dim> index_to_pos(std::size_t index) const {
+    std::array<std::uint32_t, Dim> index_to_pos(std::size_t index) const noexcept {
         std::array<std::uint32_t, Dim> pos{};
         for (std::size_t i = 0; i < Dim; ++i) {
             pos[i] = static_cast<std::uint32_t>(index % m_dimensions[i]);
@@ -126,17 +126,17 @@ struct bit_grid {
         m_words.resize(total_words, std::uint8_t(0));
     }
 
-    std::array<std::uint32_t, Dim> dimensions() const { return m_dimensions; }
+    std::array<std::uint32_t, Dim> dimensions() const noexcept { return m_dimensions; }
 
     /** @brief Test whether the bit at @p pos is set (returns false if out of bounds). */
-    bool contains(const std::array<std::uint32_t, Dim>& pos) const {
+    bool contains(const std::array<std::uint32_t, Dim>& pos) const noexcept {
         auto enc = offset(pos);
         if (!enc) return false;
         return (m_words[enc.value() >> 8u] & std::uint8_t(enc.value() & 0xFFu)) != 0;
     }
 
     /** @brief Get the bit at @p pos; returns error if out of bounds. */
-    std::expected<bool, grid_error> get(const std::array<std::uint32_t, Dim>& pos) const {
+    std::expected<bool, grid_error> get(const std::array<std::uint32_t, Dim>& pos) const noexcept {
         auto enc = offset(pos);
         if (!enc) return std::unexpected(enc.error());
         return (m_words[enc.value() >> 8u] & std::uint8_t(enc.value() & 0xFFu)) != 0;

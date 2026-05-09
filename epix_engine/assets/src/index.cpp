@@ -23,7 +23,7 @@ AssetIndex AssetIndexAllocator::reserve() const {
         return AssetIndex(i, 0);
     }
 }
-core::Receiver<AssetIndex> AssetIndexAllocator::reserved_receiver() const { return m_reserved; }
+core::Receiver<AssetIndex> AssetIndexAllocator::reserved_receiver() const noexcept { return m_reserved; }
 void AssetIndexAllocator::release(const AssetIndex& index) const {
     spdlog::trace("[assets] AssetIndexAllocator::release: index={}/gen={}.", index.index(), index.generation());
     m_free_indices_sender.send(index);

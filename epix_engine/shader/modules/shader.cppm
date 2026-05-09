@@ -76,22 +76,22 @@ export struct ShaderDefVal {
     std::variant<bool, std::int32_t, std::uint32_t> value;
 
     /** @brief Create a boolean definition that defaults to `true`. */
-    explicit ShaderDefVal(std::string n) : name(std::move(n)), value(true) {}
+    explicit ShaderDefVal(std::string n) noexcept : name(std::move(n)), value(true) {}
 
     /** @brief Create a boolean definition, for example `from_bool("USE_FOG")`. */
-    static ShaderDefVal from_bool(std::string n, bool v = true) {
+    static ShaderDefVal from_bool(std::string n, bool v = true) noexcept {
         ShaderDefVal d(std::move(n));
         d.value = v;
         return d;
     }
     /** @brief Create a signed integer definition, for example `from_int("LOD", -1)`. */
-    static ShaderDefVal from_int(std::string n, std::int32_t v) {
+    static ShaderDefVal from_int(std::string n, std::int32_t v) noexcept {
         ShaderDefVal d(std::move(n));
         d.value = v;
         return d;
     }
     /** @brief Create an unsigned integer definition, for example `from_uint("MSAA_SAMPLES", 4)`. */
-    static ShaderDefVal from_uint(std::string n, std::uint32_t v) {
+    static ShaderDefVal from_uint(std::string n, std::uint32_t v) noexcept {
         ShaderDefVal d(std::move(n));
         d.value = v;
         return d;
@@ -151,30 +151,30 @@ export struct Source {
     std::variant<Wgsl, SpirV, Slang, SlangIr> data;
 
     /** @brief Create WGSL source. */
-    static Source wgsl(std::string code) {
+    static Source wgsl(std::string code) noexcept {
         return {Wgsl{std::move(code)}};
     }
     /** @brief Create SPIR-V source. */
-    static Source spirv(std::vector<std::uint8_t> bytes) {
+    static Source spirv(std::vector<std::uint8_t> bytes) noexcept {
         return {SpirV{std::move(bytes)}};
     }
     /** @brief Create Slang source. */
-    static Source slang(std::string code) {
+    static Source slang(std::string code) noexcept {
         return {Slang{std::move(code)}};
     }
     /** @brief Create a pre-compiled Slang IR module source. */
-    static Source slang_ir(std::vector<std::uint8_t> bytes) {
+    static Source slang_ir(std::vector<std::uint8_t> bytes) noexcept {
         return {SlangIr{std::move(bytes)}};
     }
 
     /** @brief Returns `true` when this source holds WGSL text. */
-    bool is_wgsl() const { return std::holds_alternative<Wgsl>(data); }
+    bool is_wgsl() const noexcept { return std::holds_alternative<Wgsl>(data); }
     /** @brief Returns `true` when this source holds SPIR-V bytes. */
-    bool is_spirv() const { return std::holds_alternative<SpirV>(data); }
+    bool is_spirv() const noexcept { return std::holds_alternative<SpirV>(data); }
     /** @brief Returns `true` when this source holds Slang text. */
-    bool is_slang() const { return std::holds_alternative<Slang>(data); }
+    bool is_slang() const noexcept { return std::holds_alternative<Slang>(data); }
     /** @brief Returns `true` when this source holds a pre-compiled Slang IR blob. */
-    bool is_slang_ir() const { return std::holds_alternative<SlangIr>(data); }
+    bool is_slang_ir() const noexcept { return std::holds_alternative<SlangIr>(data); }
 
     /** @brief Read WGSL or Slang text as a string view.
      *
@@ -242,9 +242,9 @@ export struct ShaderImport {
     }
 
     /** @brief Returns `true` when this import points to a file. */
-    bool is_asset_path() const { return std::holds_alternative<assets::AssetPath>(data); }
+    bool is_asset_path() const noexcept { return std::holds_alternative<assets::AssetPath>(data); }
     /** @brief Returns `true` when this import points to a custom module name. */
-    bool is_custom() const { return std::holds_alternative<std::filesystem::path>(data); }
+    bool is_custom() const noexcept { return std::holds_alternative<std::filesystem::path>(data); }
 
     /** @brief Get the file-backed import path. */
     const assets::AssetPath& as_asset_path() const { return std::get<assets::AssetPath>(data); }
@@ -481,7 +481,7 @@ export struct ShaderRef {
     std::variant<Default, ByHandle, ByPath> value;
 
     /** @brief Create a default shader reference. */
-    ShaderRef() : value(Default{}) {}
+    ShaderRef() noexcept : value(Default{}) {}
     /** @brief Create a handle-based shader reference. */
     ShaderRef(ByHandle h) : value(std::move(h)) {}
     /** @brief Create a path-based shader reference. */
@@ -501,11 +501,11 @@ export struct ShaderRef {
     }
 
     /** @brief Returns `true` when this is the default shader. */
-    bool is_default() const { return std::holds_alternative<Default>(value); }
+    bool is_default() const noexcept { return std::holds_alternative<Default>(value); }
     /** @brief Returns `true` when this stores a handle. */
-    bool is_handle() const { return std::holds_alternative<ByHandle>(value); }
+    bool is_handle() const noexcept { return std::holds_alternative<ByHandle>(value); }
     /** @brief Returns `true` when this stores a path. */
-    bool is_path() const { return std::holds_alternative<ByPath>(value); }
+    bool is_path() const noexcept { return std::holds_alternative<ByPath>(value); }
 };
 
 /** @brief App plugin that registers shader loading and processing. */

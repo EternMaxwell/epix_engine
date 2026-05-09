@@ -24,26 +24,26 @@ import :tick;
 namespace epix::core {
 struct smallvec : std::ranges::view_interface<smallvec> {
    public:
-    smallvec();
+    smallvec() noexcept;
     smallvec(const smallvec& other);
     smallvec(smallvec&& other) noexcept;
-    smallvec& operator=(const smallvec& other) noexcept;
+    smallvec& operator=(const smallvec& other);
     smallvec& operator=(smallvec&& other) noexcept;
     ~smallvec();
 
     void push_back(std::size_t value);
-    std::size_t pop_back();
+    std::size_t pop_back() noexcept;
 
-    bool empty() const { return size_ == 0; }
-    std::size_t size() const { return size_; }
-    std::size_t* begin() {
+    bool empty() const noexcept { return size_ == 0; }
+    std::size_t size() const noexcept { return size_; }
+    std::size_t* begin() noexcept {
         if (is_small()) {
             return &small_array[0];
         } else {
             return large_array.data();
         }
     }
-    std::size_t* end() {
+    std::size_t* end() noexcept {
         if (is_small()) {
             return &small_array[size_];
         } else {
@@ -58,7 +58,7 @@ struct smallvec : std::ranges::view_interface<smallvec> {
     };
     std::size_t size_ = 0;
 
-    bool is_small() const { return size_ <= 4; }
+    bool is_small() const noexcept { return size_ <= 4; }
 };
 struct async_queue {
     mutable std::mutex mutex;

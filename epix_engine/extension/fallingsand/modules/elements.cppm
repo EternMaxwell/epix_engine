@@ -68,7 +68,7 @@ export struct ElementRegistry {
         return id;
     }
 
-    std::expected<std::reference_wrapper<const ElementBase>, ElementRegistryError> get(std::size_t id) const {
+    std::expected<std::reference_wrapper<const ElementBase>, ElementRegistryError> get(std::size_t id) const noexcept {
         if (id >= m_elements.size()) return std::unexpected(ElementRegistryError::InvalidBaseId);
         return std::cref(m_elements[id]);
     }
@@ -85,7 +85,7 @@ export struct ElementRegistry {
         return get(*id_res);
     }
 
-    const ElementBase& operator[](std::size_t id) const { return m_elements[id]; }
+    const ElementBase& operator[](std::size_t id) const noexcept { return m_elements[id]; }
 
     auto iter() const {
         return std::views::transform(m_name_to_id, [&elems = m_elements](const auto& pair) {
@@ -94,7 +94,7 @@ export struct ElementRegistry {
     }
     auto iter_names() const { return std::views::keys(m_name_to_id); }
     auto iter_elements() const { return std::views::all(m_elements); }
-    std::size_t size() const { return m_elements.size(); }
+    std::size_t size() const noexcept { return m_elements.size(); }
 };
 
 /** @brief Per-cell element data stored in a grid::Chunk layer. */

@@ -158,7 +158,7 @@ struct Bundle<T> {
 
 template <typename... Ts>
 struct RemoveBundle {
-    std::size_t write(std::span<void*> pointers) {
+    std::size_t write(std::span<void*> pointers) noexcept {
         // A bundle used for remove only.
         return 0;
     }

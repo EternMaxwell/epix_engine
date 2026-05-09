@@ -99,7 +99,7 @@ export struct Clipboard {
 
    public:
     /** @brief Get the current clipboard text. */
-    const std::string& get_text() const;
+    const std::string& get_text() const noexcept;
     /** @brief System that reads clipboard text from the OS. */
     static void update(ResMut<Clipboard> clipboard);
     /** @brief System that writes pending clipboard text to the OS. */
@@ -124,9 +124,9 @@ export struct GLFWRunner : public AppRunner {
     void exit(App& app) override;
 
     /** @brief Set the sub-app label used for rendering on a separate thread. */
-    void set_render_app(const core::AppLabel& label) { render_app_label = label; }
+    void set_render_app(const core::AppLabel& label) noexcept { render_app_label = label; }
     /** @brief Clear the render sub-app, running everything on the main thread. */
-    void reset_render_app() { render_app_label = std::nullopt; }
+    void reset_render_app() noexcept { render_app_label = std::nullopt; }
 
     /** @brief Append an extra system to run each frame. */
     void append_system(std::unique_ptr<core::System<std::tuple<>, void>> system) {

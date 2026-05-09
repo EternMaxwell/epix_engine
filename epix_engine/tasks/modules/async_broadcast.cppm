@@ -37,9 +37,9 @@ struct TrySendError {
     enum Kind { Full, Closed, Inactive };
     Kind kind;
     T msg;
-    bool is_full() const { return kind == Full; }
-    bool is_closed() const { return kind == Closed; }
-    bool is_inactive() const { return kind == Inactive; }
+    bool is_full() const noexcept { return kind == Full; }
+    bool is_closed() const noexcept { return kind == Closed; }
+    bool is_inactive() const noexcept { return kind == Inactive; }
 };
 
 export enum class TryRecvError {
@@ -90,7 +90,7 @@ struct Sender {
     }
 
    public:
-    Sender() = default;
+    Sender() noexcept = default;
     explicit Sender(std::shared_ptr<BroadcastState<T>> st) : m_st(std::move(st)) { inc(); }
     Sender(const Sender& o) : m_st(o.m_st) { inc(); }
     Sender(Sender&& o) noexcept : m_st(std::exchange(o.m_st, nullptr)) {}
@@ -111,7 +111,7 @@ struct Sender {
     }
     ~Sender() { dec(); }
 
-    explicit operator bool() const { return m_st != nullptr; }
+    explicit operator bool() const noexcept { return m_st != nullptr; }
 
     void set_overflow(bool v) const {
         if (!m_st) return;
@@ -189,7 +189,7 @@ struct Sender {
         return m_st->queue.size();
     }
 
-    std::size_t capacity_val() const {
+    std::size_t capacity_val() const noexcept {
         if (!m_st) return 0;
         return m_st->capacity;
     }
@@ -235,7 +235,7 @@ struct Receiver {
     }
 
    public:
-    Receiver() = default;
+    Receiver() noexcept = default;
     explicit Receiver(std::shared_ptr<BroadcastState<T>> st, std::size_t cursor)
         : m_st(std::move(st)), m_cursor(cursor) {
         inc();
@@ -263,7 +263,7 @@ struct Receiver {
     }
     ~Receiver() { dec(); }
 
-    explicit operator bool() const { return m_st != nullptr; }
+    explicit operator bool() const noexcept { return m_st != nullptr; }
 
     std::expected<T, TryRecvError> try_recv() {
         if (!m_st) return std::unexpected(TryRecvError::Closed);
@@ -333,7 +333,7 @@ struct Receiver {
         return m_st->queue.size();
     }
 
-    std::size_t capacity_val() const {
+    std::size_t capacity_val() const noexcept {
         if (!m_st) return 0;
         return m_st->capacity;
     }
@@ -369,8 +369,8 @@ struct InactiveReceiver {
     std::size_t m_cursor = 0;
 
    public:
-    InactiveReceiver() = default;
-    InactiveReceiver(std::shared_ptr<BroadcastState<T>> st, std::size_t cursor)
+    InactiveReceiver() noexcept = default;
+    InactiveReceiver(std::shared_ptr<BroadcastState<T>> st, std::size_t cursor) noexcept
         : m_st(std::move(st)), m_cursor(cursor) {}
     InactiveReceiver(const InactiveReceiver&)            = default;
     InactiveReceiver(InactiveReceiver&&)                 = default;

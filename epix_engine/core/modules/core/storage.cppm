@@ -33,6 +33,6 @@ struct Storage {
     }
 };
 
-const Storage& world_storage(const World& world);
-Storage& world_storage_mut(World& world);
-}  // namespace core
+const Storage& world_storage(const World& world) noexcept;
+Storage& world_storage_mut(World& world) noexcept;
+}  // namespace epix::core

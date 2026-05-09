@@ -44,15 +44,18 @@ struct filter_view {
 
     // ─── viewable_grid interface (always present) ─────────────────────────
 
-    pos_type dimensions() const { return grid.dimensions(); }
+    pos_type dimensions() const noexcept(noexcept(grid.dimensions())) { return grid.dimensions(); }
 
-    bool contains(const pos_type& pos) const {
+    bool contains(const pos_type& pos) const
+        noexcept(noexcept(grid.get(pos)) && noexcept(pred(std::declval<const cell_type&>()))) {
         return grid.get(pos)
             .transform([&](const cell_type& cell) { return static_cast<bool>(pred(cell)); })
             .value_or(false);
     }
 
-    auto get(const pos_type& pos) const -> std::expected<std::reference_wrapper<const cell_type>, grid_error> {
+    auto get(const pos_type& pos) const
+        noexcept(noexcept(grid.get(pos)) && noexcept(pred(std::declval<const cell_type&>())))
+            -> std::expected<std::reference_wrapper<const cell_type>, grid_error> {
         return grid.get(pos).and_then(
             [&](const cell_type& cell) -> std::expected<std::reference_wrapper<const cell_type>, grid_error> {
                 if (!pred(cell)) return std::unexpected(grid_error::EmptyCell);
@@ -62,7 +65,9 @@ struct filter_view {
 
     // ─── mutable_viewable_grid interface ─────────────────────────────────
 
-    auto get_mut(const pos_type& pos) -> std::expected<std::reference_wrapper<cell_type>, grid_error>
+    auto get_mut(const pos_type& pos) noexcept(noexcept(grid.get_mut(pos)) &&
+                                               noexcept(pred(std::declval<const cell_type&>())))
+        -> std::expected<std::reference_wrapper<cell_type>, grid_error>
         requires mutable_viewable_grid<G>
     {
         return grid.get_mut(pos).and_then(
@@ -74,7 +79,8 @@ struct filter_view {
 
     // ─── grid_container interface ─────────────────────────────────────────
 
-    auto set(const pos_type& pos, cell_type val) -> std::expected<std::reference_wrapper<cell_type>, grid_error>
+    auto set(const pos_type& pos, cell_type val) noexcept(noexcept(grid.set(pos, std::move(val))))
+        -> std::expected<std::reference_wrapper<cell_type>, grid_error>
         requires grid_container<G>
     {
         return grid.set(pos, std::move(val));
@@ -82,17 +88,19 @@ struct filter_view {
 
     template <typename... Args>
         requires grid_container<G> && std::constructible_from<cell_type, Args...>
-    auto set_new(const pos_type& pos, Args&&... args) -> std::expected<std::reference_wrapper<cell_type>, grid_error> {
+    auto set_new(const pos_type& pos, Args&&... args) noexcept(noexcept(grid.set_new(pos, std::forward<Args>(args)...)))
+        -> std::expected<std::reference_wrapper<cell_type>, grid_error> {
         return grid.set_new(pos, std::forward<Args>(args)...);
     }
 
-    auto remove(const pos_type& pos) -> std::expected<void, grid_error>
+    auto remove(const pos_type& pos) noexcept(noexcept(grid.remove(pos))) -> std::expected<void, grid_error>
         requires grid_container<G>
     {
         return grid.remove(pos);
     }
 
-    auto take(const pos_type& pos) -> std::expected<cell_type, grid_error>
+    auto take(const pos_type& pos) noexcept(noexcept(contains(pos)) && noexcept(grid.take(pos)))
+        -> std::expected<cell_type, grid_error>
         requires grid_container<G>
     {
         if (!contains(pos)) return std::unexpected(grid_error::EmptyCell);
@@ -101,7 +109,7 @@ struct filter_view {
 
     // ─── unsafe_viewable_grid interface ──────────────────────────────────
 
-    const cell_type& get_unsafe(const pos_type& pos) const
+    const cell_type& get_unsafe(const pos_type& pos) const noexcept(noexcept(grid.get_unsafe(pos)))
         requires unsafe_viewable_grid<G>
     {
         return grid.get_unsafe(pos);
@@ -109,7 +117,7 @@ struct filter_view {
 
     // ─── unsafe_mutable_viewable_grid interface ───────────────────────────
 
-    cell_type& get_mut_unsafe(const pos_type& pos)
+    cell_type& get_mut_unsafe(const pos_type& pos) noexcept(noexcept(grid.get_mut_unsafe(pos)))
         requires unsafe_mutable_viewable_grid<G>
     {
         return grid.get_mut_unsafe(pos);
@@ -117,19 +125,19 @@ struct filter_view {
 
     // ─── unsafe_grid_container interface ─────────────────────────────────
 
-    cell_type& set_unsafe(const pos_type& pos, cell_type val)
+    cell_type& set_unsafe(const pos_type& pos, cell_type val) noexcept(noexcept(grid.set_unsafe(pos, std::move(val))))
         requires unsafe_grid_container<G>
     {
         return grid.set_unsafe(pos, std::move(val));
     }
 
-    void remove_unsafe(const pos_type& pos)
+    void remove_unsafe(const pos_type& pos) noexcept(noexcept(grid.remove_unsafe(pos)))
         requires unsafe_grid_container<G>
     {
         grid.remove_unsafe(pos);
     }
 
-    cell_type take_unsafe(const pos_type& pos)
+    cell_type take_unsafe(const pos_type& pos) noexcept(noexcept(grid.take_unsafe(pos)))
         requires unsafe_grid_container<G>
     {
         return grid.take_unsafe(pos);
@@ -183,7 +191,8 @@ struct filter_view {
  * or a value type when an rvalue is passed.
  */
 export template <viewable_grid G, std::invocable<const typename std::decay_t<G>::cell_type&> Pred>
-filter_view<G, std::decay_t<Pred>> filter(G&& g, Pred&& pred) {
+filter_view<G, std::decay_t<Pred>> filter(G&& g, Pred&& pred) noexcept(
+    std::is_nothrow_constructible_v<filter_view<G, std::decay_t<Pred>>, G, Pred>) {
     return {std::forward<G>(g), std::forward<Pred>(pred)};
 }
 
@@ -218,18 +227,22 @@ struct shadow_view {
 
     // ─── viewable_grid interface (always present) ─────────────────────────
 
-    pos_type dimensions() const { return grid.dimensions(); }
+    pos_type dimensions() const noexcept(noexcept(grid.dimensions())) { return grid.dimensions(); }
 
-    bool contains(const pos_type& pos) const { return static_cast<bool>(pred(pos)) && grid.contains(pos); }
+    bool contains(const pos_type& pos) const noexcept(noexcept(pred(pos)) && noexcept(grid.contains(pos))) {
+        return static_cast<bool>(pred(pos)) && grid.contains(pos);
+    }
 
-    auto get(const pos_type& pos) const -> std::expected<std::reference_wrapper<const cell_type>, grid_error> {
+    auto get(const pos_type& pos) const noexcept(noexcept(pred(pos)) && noexcept(grid.get(pos)))
+        -> std::expected<std::reference_wrapper<const cell_type>, grid_error> {
         if (!pred(pos)) return std::unexpected(grid_error::EmptyCell);
         return grid.get(pos);
     }
 
     // ─── mutable_viewable_grid interface ─────────────────────────────────
 
-    auto get_mut(const pos_type& pos) -> std::expected<std::reference_wrapper<cell_type>, grid_error>
+    auto get_mut(const pos_type& pos) noexcept(noexcept(pred(pos)) && noexcept(grid.get_mut(pos)))
+        -> std::expected<std::reference_wrapper<cell_type>, grid_error>
         requires mutable_viewable_grid<G>
     {
         if (!pred(pos)) return std::unexpected(grid_error::EmptyCell);
@@ -238,7 +251,8 @@ struct shadow_view {
 
     // ─── grid_container interface ─────────────────────────────────────────
 
-    auto set(const pos_type& pos, cell_type val) -> std::expected<std::reference_wrapper<cell_type>, grid_error>
+    auto set(const pos_type& pos, cell_type val) noexcept(noexcept(grid.set(pos, std::move(val))))
+        -> std::expected<std::reference_wrapper<cell_type>, grid_error>
         requires grid_container<G>
     {
         return grid.set(pos, std::move(val));
@@ -246,17 +260,19 @@ struct shadow_view {
 
     template <typename... Args>
         requires grid_container<G> && std::constructible_from<cell_type, Args...>
-    auto set_new(const pos_type& pos, Args&&... args) -> std::expected<std::reference_wrapper<cell_type>, grid_error> {
+    auto set_new(const pos_type& pos, Args&&... args) noexcept(noexcept(grid.set_new(pos, std::forward<Args>(args)...)))
+        -> std::expected<std::reference_wrapper<cell_type>, grid_error> {
         return grid.set_new(pos, std::forward<Args>(args)...);
     }
 
-    auto remove(const pos_type& pos) -> std::expected<void, grid_error>
+    auto remove(const pos_type& pos) noexcept(noexcept(grid.remove(pos))) -> std::expected<void, grid_error>
         requires grid_container<G>
     {
         return grid.remove(pos);
     }
 
-    auto take(const pos_type& pos) -> std::expected<cell_type, grid_error>
+    auto take(const pos_type& pos) noexcept(noexcept(pred(pos)) && noexcept(grid.take(pos)))
+        -> std::expected<cell_type, grid_error>
         requires grid_container<G>
     {
         if (!pred(pos)) return std::unexpected(grid_error::EmptyCell);
@@ -265,7 +281,7 @@ struct shadow_view {
 
     // ─── unsafe_viewable_grid interface ──────────────────────────────────
 
-    const cell_type& get_unsafe(const pos_type& pos) const
+    const cell_type& get_unsafe(const pos_type& pos) const noexcept(noexcept(grid.get_unsafe(pos)))
         requires unsafe_viewable_grid<G>
     {
         return grid.get_unsafe(pos);
@@ -273,7 +289,7 @@ struct shadow_view {
 
     // ─── unsafe_mutable_viewable_grid interface ───────────────────────────
 
-    cell_type& get_mut_unsafe(const pos_type& pos)
+    cell_type& get_mut_unsafe(const pos_type& pos) noexcept(noexcept(grid.get_mut_unsafe(pos)))
         requires unsafe_mutable_viewable_grid<G>
     {
         return grid.get_mut_unsafe(pos);
@@ -281,19 +297,19 @@ struct shadow_view {
 
     // ─── unsafe_grid_container interface ─────────────────────────────────
 
-    cell_type& set_unsafe(const pos_type& pos, cell_type val)
+    cell_type& set_unsafe(const pos_type& pos, cell_type val) noexcept(noexcept(grid.set_unsafe(pos, std::move(val))))
         requires unsafe_grid_container<G>
     {
         return grid.set_unsafe(pos, std::move(val));
     }
 
-    void remove_unsafe(const pos_type& pos)
+    void remove_unsafe(const pos_type& pos) noexcept(noexcept(grid.remove_unsafe(pos)))
         requires unsafe_grid_container<G>
     {
         grid.remove_unsafe(pos);
     }
 
-    cell_type take_unsafe(const pos_type& pos)
+    cell_type take_unsafe(const pos_type& pos) noexcept(noexcept(grid.take_unsafe(pos)))
         requires unsafe_grid_container<G>
     {
         return grid.take_unsafe(pos);
@@ -344,7 +360,8 @@ struct shadow_view {
  * or a value type when an rvalue is passed.
  */
 export template <viewable_grid G, std::invocable<const typename std::decay_t<G>::pos_type&> Pred>
-shadow_view<G, std::decay_t<Pred>> shadow(G&& g, Pred&& pred) {
+shadow_view<G, std::decay_t<Pred>> shadow(G&& g, Pred&& pred) noexcept(
+    std::is_nothrow_constructible_v<shadow_view<G, std::decay_t<Pred>>, G, Pred>) {
     return {std::forward<G>(g), std::forward<Pred>(pred)};
 }
 

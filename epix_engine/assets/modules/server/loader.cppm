@@ -230,7 +230,7 @@ struct LoadedAsset {
     /** @brief Construct from a value. */
     explicit LoadedAsset(A asset) : value(std::move(asset)) {}
     /** @brief Get a const reference to the contained asset. */
-    const A& get() const { return value; }
+    const A& get() const noexcept { return value; }
     /** @brief Take the contained asset out. */
     A take() && { return std::move(value); }
     /** @brief Get a labeled sub-asset by label. */
@@ -351,15 +351,15 @@ export struct DependencyLoadState : std::variant<LoadStateOK, std::shared_ptr<As
     using base = std::variant<LoadStateOK, std::shared_ptr<AssetLoadError>>;
     using base::base;
     DependencyLoadState() = default;
-    bool is_loading() const {
+    bool is_loading() const noexcept {
         return std::holds_alternative<LoadStateOK>(*this) && std::get<LoadStateOK>(*this) == LoadStateOK::Loading;
     }
-    bool is_loaded() const {
+    bool is_loaded() const noexcept {
         return std::holds_alternative<LoadStateOK>(*this) && std::get<LoadStateOK>(*this) == LoadStateOK::Loaded;
     }
-    bool is_failed() const { return std::holds_alternative<std::shared_ptr<AssetLoadError>>(*this); }
+    bool is_failed() const noexcept { return std::holds_alternative<std::shared_ptr<AssetLoadError>>(*this); }
     /** @brief Returns the shared error pointer if failed, null otherwise. */
-    std::shared_ptr<AssetLoadError> error() const {
+    std::shared_ptr<AssetLoadError> error() const noexcept {
         if (auto* p = std::get_if<std::shared_ptr<AssetLoadError>>(this)) return *p;
         return nullptr;
     }
@@ -370,15 +370,15 @@ export struct RecursiveDependencyLoadState : std::variant<LoadStateOK, std::shar
     using base = std::variant<LoadStateOK, std::shared_ptr<AssetLoadError>>;
     using base::base;
     RecursiveDependencyLoadState() = default;
-    bool is_loading() const {
+    bool is_loading() const noexcept {
         return std::holds_alternative<LoadStateOK>(*this) && std::get<LoadStateOK>(*this) == LoadStateOK::Loading;
     }
-    bool is_loaded() const {
+    bool is_loaded() const noexcept {
         return std::holds_alternative<LoadStateOK>(*this) && std::get<LoadStateOK>(*this) == LoadStateOK::Loaded;
     }
-    bool is_failed() const { return std::holds_alternative<std::shared_ptr<AssetLoadError>>(*this); }
+    bool is_failed() const noexcept { return std::holds_alternative<std::shared_ptr<AssetLoadError>>(*this); }
     /** @brief Returns the shared error pointer if failed, null otherwise. */
-    std::shared_ptr<AssetLoadError> error() const {
+    std::shared_ptr<AssetLoadError> error() const noexcept {
         if (auto* p = std::get_if<std::shared_ptr<AssetLoadError>>(this)) return *p;
         return nullptr;
     }
@@ -446,9 +446,9 @@ export struct LoadContext {
 
    public:
     /** @brief Get the asset path being loaded. */
-    const AssetPath& path() const { return m_path; }
+    const AssetPath& path() const noexcept { return m_path; }
     /** @brief Get a reference to the asset server. */
-    const AssetServer& asset_server() const { return m_server; }
+    const AssetServer& asset_server() const noexcept { return m_server; }
 
     /** @brief Register an asset id as a direct dependency of this load.
      *  Used by loaders that call AssetServer::load directly instead of NestedLoader. */
@@ -457,10 +457,10 @@ export struct LoadContext {
     /** @brief Whether nested loads should actually schedule load tasks.
      *  When false, NestedLoader::load only reserves/looks up handles without scheduling.
      *  Matches bevy_asset's LoadContext::should_load_dependencies. */
-    bool should_load_dependencies() const { return m_should_load_dependencies; }
+    bool should_load_dependencies() const noexcept { return m_should_load_dependencies; }
     /** @brief Set whether nested loads schedule load tasks.
      *  Matches bevy_asset's LoadContext::should_load_dependencies field. */
-    void set_should_load_dependencies(bool v) { m_should_load_dependencies = v; }
+    void set_should_load_dependencies(bool v) noexcept { m_should_load_dependencies = v; }
 
     /** @brief Check whether a labeled asset with the given label exists. */
     bool has_labeled_asset(const std::string& label) const { return m_labeled_assets.contains(label); }

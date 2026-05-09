@@ -29,7 +29,7 @@ export struct AccessConflicts {
         if (!all) ids.union_with(other.ids);
     }
     /** @brief Check whether there are no conflicts. */
-    bool empty() const { return !all && ids.is_clear(); }
+    bool empty() const noexcept { return !all && ids.is_clear(); }
     /** @brief Get a human-readable string of the conflict set. */
     std::string to_string() const {
         if (all) return "[<all>]";
@@ -89,90 +89,94 @@ export struct Access {
     void add_archetypal(TypeId type_id) { archetypal.set(type_id.get()); }
 
     /** @brief Check if a specific component has read access. */
-    bool has_component_read(TypeId type_id) const {
+    bool has_component_read(TypeId type_id) const noexcept {
         return component_read_writes_inverted ^ component_read_writes.contains(type_id.get());
     }
     /** @brief Check if any component has read access. */
-    bool has_any_component_read() const { return component_read_writes_inverted || !component_read_writes.is_clear(); }
+    bool has_any_component_read() const noexcept {
+        return component_read_writes_inverted || !component_read_writes.is_clear();
+    }
     /** @brief Check if a specific component has write access. */
-    bool has_component_write(TypeId type_id) const {
+    bool has_component_write(TypeId type_id) const noexcept {
         return component_writes_inverted ^ component_writes.contains(type_id.get());
     }
     /** @brief Check if any component has write access. */
-    bool has_any_component_write() const { return component_writes_inverted || !component_writes.is_clear(); }
+    bool has_any_component_write() const noexcept { return component_writes_inverted || !component_writes.is_clear(); }
     /** @brief Check if a specific resource has read access. */
-    bool has_resource_read(TypeId type_id) const {
+    bool has_resource_read(TypeId type_id) const noexcept {
         return reads_all_resources || resource_read_writes.contains(type_id.get());
     }
     /** @brief Check if any resource has read access. */
-    bool has_any_resource_read() const { return reads_all_resources || !resource_read_writes.is_clear(); }
+    bool has_any_resource_read() const noexcept { return reads_all_resources || !resource_read_writes.is_clear(); }
     /** @brief Check if a specific resource has write access. */
-    bool has_resource_write(TypeId type_id) const {
+    bool has_resource_write(TypeId type_id) const noexcept {
         return writes_all_resources || resource_writes.contains(type_id.get());
     }
     /** @brief Check if any resource has write access. */
-    bool has_any_resource_write() const { return writes_all_resources || !resource_writes.is_clear(); }
+    bool has_any_resource_write() const noexcept { return writes_all_resources || !resource_writes.is_clear(); }
 
     /** @brief Check if any read access (component or resource) is recorded. */
-    bool has_any_read() const { return has_any_component_read() || has_any_resource_read(); }
+    bool has_any_read() const noexcept { return has_any_component_read() || has_any_resource_read(); }
     /** @brief Check if any write access (component or resource) is recorded. */
-    bool has_any_write() const { return has_any_component_write() || has_any_resource_write(); }
+    bool has_any_write() const noexcept { return has_any_component_write() || has_any_resource_write(); }
 
     /** @brief Check if a component is used for archetype filtering. */
-    bool has_archetypal(TypeId type_id) const { return archetypal.contains(type_id.get()); }
+    bool has_archetypal(TypeId type_id) const noexcept { return archetypal.contains(type_id.get()); }
 
     /** @brief Mark all components as read-accessed. */
-    void read_all_components() {
+    void read_all_components() noexcept {
         component_read_writes_inverted = true;
         component_read_writes.clear();
     }
     /** @brief Mark all components as write-accessed. */
-    void write_all_components() {
+    void write_all_components() noexcept {
         component_writes_inverted = true;
         component_writes.clear();
         read_all_components();
     }
     /** @brief Mark all resources as read-accessed. */
-    void read_all_resources() { reads_all_resources = true; }
+    void read_all_resources() noexcept { reads_all_resources = true; }
     /** @brief Mark all resources as write-accessed. */
-    void write_all_resources() {
+    void write_all_resources() noexcept {
         writes_all_resources = true;
         read_all_resources();
     }
 
     /** @brief Mark all components and resources as read-accessed. */
-    void read_all() {
+    void read_all() noexcept {
         read_all_components();
         read_all_resources();
     }
     /** @brief Mark all components and resources as write-accessed. */
-    void write_all() {
+    void write_all() noexcept {
         write_all_components();
         write_all_resources();
     }
 
     /** @brief Check if all components are read-accessed. */
-    bool is_read_all_components() const { return component_read_writes_inverted && component_read_writes.is_clear(); }
+    bool is_read_all_components() const noexcept {
+        return component_read_writes_inverted && component_read_writes.is_clear();
+    }
     /** @brief Check if all components are write-accessed. */
-    bool is_write_all_components() const { return component_writes_inverted && component_writes.is_clear(); }
+    bool is_write_all_components() const noexcept { return component_writes_inverted && component_writes.is_clear(); }
     /** @brief Check if all resources are read-accessed. */
-    bool is_read_all_resources() const { return reads_all_resources; }
+    bool is_read_all_resources() const noexcept { return reads_all_resources; }
     /** @brief Check if all resources are write-accessed. */
-    bool is_write_all_resources() const { return writes_all_resources; }
+    bool is_write_all_resources() const noexcept { return writes_all_resources; }
     /** @brief Check if all components and resources are read-accessed. */
-    bool is_read_all() const { return is_read_all_components() && is_read_all_resources(); }
+    bool is_read_all() const noexcept { return is_read_all_components() && is_read_all_resources(); }
     /** @brief Check if all components and resources are write-accessed. */
-    bool is_write_all() const { return is_write_all_components() && is_write_all_resources(); }
+    bool is_write_all() const noexcept { return is_write_all_components() && is_write_all_resources(); }
 
     /** @brief Clear all write access records. */
-    void clear_writes() {
+    void clear_writes() noexcept {
         component_writes_inverted = false;
         component_writes.clear();
         writes_all_resources = false;
         resource_writes.clear();
     }
     /** @brief Clear all access records. */
-    void clear() {
+    void clear() noexcept {
         component_read_writes_inverted = false;
         component_read_writes.clear();
         component_writes_inverted = false;
@@ -219,7 +223,7 @@ export struct AccessFilters {
     bit_vector without;
 
     /** @brief Check if this filter's with/without masks are mutually exclusive with another. */
-    bool ruled_out(const AccessFilters& other) const {
+    bool ruled_out(const AccessFilters& other) const noexcept {
         return !with.is_disjoint(other.without) || !without.is_disjoint(other.with);
     }
 };
@@ -236,17 +240,17 @@ export struct FilteredAccess {
     static FilteredAccess matches_nothing() { return FilteredAccess(); }
 
     /** @brief Get the underlying Access. */
-    const Access& access() const { return _access; }
+    const Access& access() const noexcept { return _access; }
     /** @brief Get a mutable reference to the underlying Access. */
-    Access& access_mut() { return _access; }
+    Access& access_mut() noexcept { return _access; }
     /** @brief Get the set of required component type ids. */
-    const bit_vector& required() const { return _required; }
+    const bit_vector& required() const noexcept { return _required; }
     /** @brief Get a mutable reference to the required component set. */
-    bit_vector& required_mut() { return _required; }
+    bit_vector& required_mut() noexcept { return _required; }
     /** @brief Get a const view of the filter masks. */
-    auto filters() const { return std::views::all(_filters); }
+    auto filters() const noexcept { return std::views::all(_filters); }
     /** @brief Get a mutable view of the filter masks. */
-    auto filters_mut() { return std::views::all(_filters); }
+    auto filters_mut() noexcept { return std::views::all(_filters); }
 
     /** @brief Add a required component id. */
     void add_required(TypeId type_id) { _required.set(type_id.get()); }
@@ -285,7 +289,7 @@ export struct FilteredAccess {
     /** @brief Merge another FilteredAccess fully into this one. */
     void merge(const FilteredAccess& other);
     /** @brief Check if this filtered access references the given component. */
-    bool contains(TypeId type_id) const {
+    bool contains(TypeId type_id) const noexcept {
         return _access.has_component_read(type_id) || _access.has_archetypal(type_id) ||
                std::ranges::any_of(_filters, [&](const AccessFilters& f) {
                    return f.with.contains(type_id) || f.without.contains(type_id);
@@ -305,7 +309,7 @@ export struct FilteredAccess {
 export struct FilteredAccessSet {
    public:
     /** @brief Get the combined Access of all entries. */
-    const Access& combined_access() const { return _combined_access; }
+    const Access& combined_access() const noexcept { return _combined_access; }
     /** @brief Check if this set is compatible with another set. */
     bool is_compatible(const FilteredAccessSet& other) const;
     /** @brief Get conflicts between this set and another set. */
@@ -362,7 +366,7 @@ export struct FilteredAccessSet {
     }
 
     /** @brief Remove all entries and combined access. */
-    void clear() {
+    void clear() noexcept {
         _combined_access.clear();
         _filtered_access.clear();
     }
@@ -371,4 +375,4 @@ export struct FilteredAccessSet {
     Access _combined_access;
     std::vector<FilteredAccess> _filtered_access;
 };
-}  // namespace core
+}  // namespace epix::core

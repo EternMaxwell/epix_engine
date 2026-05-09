@@ -160,14 +160,18 @@ enum class MouseButton : int {
 
 /** @brief Get the human-readable name of a MouseButton. */
 std::string_view mouse_button_name(MouseButton button);
-}  // namespace input
+}  // namespace epix::input
 
 template <>
 struct std::hash<epix::input::KeyCode> {
-    size_t operator()(const epix::input::KeyCode& key) const { return std::hash<int>()(static_cast<int>(key)); }
+    size_t operator()(const epix::input::KeyCode& key) const noexcept {
+        return std::hash<int>()(static_cast<int>(key));
+    }
 };
 
 template <>
 struct std::hash<epix::input::MouseButton> {
-    size_t operator()(const epix::input::MouseButton& button) const { return std::hash<int>()(static_cast<int>(button)); }
+    size_t operator()(const epix::input::MouseButton& button) const noexcept {
+        return std::hash<int>()(static_cast<int>(button));
+    }
 };

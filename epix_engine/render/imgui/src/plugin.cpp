@@ -234,12 +234,12 @@ void render_viewport_snapshot(const epix::imgui::ViewportDrawDataSnapshot& snap,
 }
 }  // namespace
 
-imgui::ImGuiPlugin& imgui::ImGuiPlugin::set_docking(bool enabled) {
+imgui::ImGuiPlugin& imgui::ImGuiPlugin::set_docking(bool enabled) noexcept {
     enable_docking = enabled;
     return *this;
 }
 
-imgui::ImGuiPlugin& imgui::ImGuiPlugin::set_viewports(bool enabled) {
+imgui::ImGuiPlugin& imgui::ImGuiPlugin::set_viewports(bool enabled) noexcept {
     enable_viewports = enabled;
     return *this;
 }

@@ -32,7 +32,7 @@ static AssetWriterError dir_error_to_writer_error(const memory::DirectoryError& 
 // Implement polymorphic adapters that satisfy the engine AssetReader/AssetWriter/AssetWatcher
 export struct MemoryAssetReader : public assets::AssetReader {
    public:
-    explicit MemoryAssetReader(assets::memory::Directory dir) : dir_(std::move(dir)) {}
+    explicit MemoryAssetReader(assets::memory::Directory dir) noexcept : dir_(std::move(dir)) {}
 
     asio::awaitable<std::expected<std::unique_ptr<Reader>, assets::AssetReaderError>> read(
         const std::filesystem::path& path) const override;
@@ -52,7 +52,7 @@ export struct MemoryAssetReader : public assets::AssetReader {
 
 export struct MemoryAssetWriter : public assets::AssetWriter {
    public:
-    explicit MemoryAssetWriter(assets::memory::Directory dir) : dir_(std::move(dir)) {}
+    explicit MemoryAssetWriter(assets::memory::Directory dir) noexcept : dir_(std::move(dir)) {}
 
     asio::awaitable<std::expected<std::unique_ptr<Writer>, assets::AssetWriterError>> write(
         const std::filesystem::path& path) const override;

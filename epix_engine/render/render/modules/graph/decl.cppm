@@ -14,11 +14,11 @@ import std;
 #endif
 #ifndef EPIX_MAKE_LABEL
 #define EPIX_MAKE_LABEL(type)                                                         \
-    struct type : public ::epix::core::Label {                                              \
+    struct type : public ::epix::core::Label {                                        \
        public:                                                                        \
-        type() = default;                                                             \
+        type() noexcept = default;                                                    \
         template <typename T>                                                         \
-        type(T t)                                                                     \
+        type(T t) noexcept                                                            \
             requires(!std::is_same_v<std::decay_t<T>, type> && std::is_object_v<T> && \
                      std::constructible_from<Label, T>)                               \
             : Label(t) {}                                                             \
@@ -46,7 +46,7 @@ export struct GraphContext;
  * pass creation during graph execution. */
 export struct RenderContext;
 struct RunSubGraph;
-}  // namespace render::graph
+}  // namespace epix::render::graph
 
 template <>
 struct std::hash<epix::render::graph::NodeLabel> {

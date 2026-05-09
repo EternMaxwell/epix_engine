@@ -31,12 +31,12 @@ concept valid_command = requires {
 template <std::invocable<World&> F>
 struct Command<F> {
     using Type = F;
-    static void apply(F& f, World& world) { std::invoke(f, world); }
+    static void apply(F& f, World& world) noexcept(noexcept(std::invoke(f, world))) { std::invoke(f, world); }
 };
 template <is_command T>
 struct Command<T> {
     using Type = T;
-    static void apply(T& cmd, World& world) { cmd.apply(world); }
+    static void apply(T& cmd, World& world) noexcept(noexcept(cmd.apply(world))) { cmd.apply(world); }
 };
 
 struct CommandQueue {
@@ -108,4 +108,4 @@ struct CommandQueue {
     std::size_t size_     = 0;
     std::vector<const CommandMeta*> metas_;
 };
-}  // namespace core
+}  // namespace epix::core

@@ -30,7 +30,7 @@ struct TransactionLockedReader : Reader {
 
     TransactionLockedReader(std::unique_ptr<Reader> r,
                             std::shared_ptr<std::shared_mutex> m,
-                            std::shared_lock<std::shared_mutex> l)
+                            std::shared_lock<std::shared_mutex> l) noexcept
         : m_reader(std::move(r)), m_mutex(std::move(m)), m_lock(std::move(l)) {}
 
     asio::awaitable<std::expected<size_t, std::error_code>> read_to_end(std::vector<uint8_t>& buf) override {

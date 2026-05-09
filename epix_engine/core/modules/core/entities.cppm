@@ -39,12 +39,14 @@ export struct Entity {
         std::uint64_t uid = 0;
     };
 
-    bool operator==(const Entity& other) const { return uid == other.uid; }
-    auto operator<=>(const Entity& other) const { return uid <=> other.uid; }
+    bool operator==(const Entity& other) const noexcept { return uid == other.uid; }
+    auto operator<=>(const Entity& other) const noexcept { return uid <=> other.uid; }
     /** @brief Create an entity with generation 0 from a slot index. */
-    static Entity from_index(std::uint32_t index) { return Entity{0, index}; }
+    static Entity from_index(std::uint32_t index) noexcept { return Entity{0, index}; }
     /** @brief Create an entity from a slot index and generation counter. */
-    static Entity from_parts(std::uint32_t index, std::uint32_t generation) { return Entity{generation, index}; }
+    static Entity from_parts(std::uint32_t index, std::uint32_t generation) noexcept {
+        return Entity{generation, index};
+    }
 };
 /** @brief Strongly-typed archetype identifier. */
 export EPIX_MAKE_INT_WRAPPER(ArchetypeId, std::uint32_t);
@@ -72,7 +74,7 @@ export struct EntityLocation {
     bool operator!=(const EntityLocation& other) const = default;
 
     /** @brief Return a sentinel location with all fields set to max value. */
-    static constexpr EntityLocation invalid() {
+    static constexpr EntityLocation invalid() noexcept {
         return {std::numeric_limits<std::uint32_t>::max(), std::numeric_limits<std::uint32_t>::max(),
                 std::numeric_limits<std::uint32_t>::max(), std::numeric_limits<std::uint32_t>::max()};
     }
@@ -81,7 +83,7 @@ struct EntityMeta {
     std::uint32_t generation = 0;
     EntityLocation location  = EntityLocation::invalid();
 
-    static constexpr EntityMeta empty() { return {0, EntityLocation::invalid()}; }
+    static constexpr EntityMeta empty() noexcept { return {0, EntityLocation::invalid()}; }
 };
 /** @brief Central entity allocator that manages entity ids and metadata.
  *  Supports concurrent id reservation via reserve_entities(). */
@@ -106,7 +108,7 @@ export struct Entities {
      * @param count Number of entities to reserve.
      * @return A viewable range of reserved entities.
      */
-    auto reserve_entities(std::uint32_t count) const {
+    auto reserve_entities(std::uint32_t count) const noexcept {
         std::int64_t range_end   = free_cursor->fetch_sub(count, std::memory_order_relaxed);
         std::int64_t range_start = range_end - count;
 
@@ -143,7 +145,7 @@ export struct Entities {
      *
      * @return The reserved entity.
      */
-    Entity reserve_entity() const {
+    Entity reserve_entity() const noexcept {
         std::int64_t n = free_cursor->fetch_sub(1, std::memory_order_relaxed);
         if (n > 0) {
             // from free list
@@ -159,7 +161,7 @@ export struct Entities {
      * @brief Check that we do not have pending work requiring `flush()`.
      *
      */
-    void verify_flush();
+    void verify_flush() noexcept;
 
     /**
      * @brief Allocate a Entity id directly.
@@ -190,23 +192,23 @@ export struct Entities {
      *
      * Entities that are freed will return false.
      */
-    bool contains(Entity entity) const;
+    bool contains(Entity entity) const noexcept;
 
     /**
      * @brief Clear all entities, making the manager empty.
      */
-    void clear();
+    void clear() noexcept;
 
     /**
      * @brief Get the location of an entity. Will return std::nullopt for pending entities.
      */
-    std::optional<EntityLocation> get(Entity entity) const;
+    std::optional<EntityLocation> get(Entity entity) const noexcept;
 
     /**
      * @brief Updates the location of an entity. Must be called when moving the components of the entity around in
      * storage.
      */
-    void set(std::uint32_t index, EntityLocation location);
+    void set(std::uint32_t index, EntityLocation location) noexcept;
 
     /**
      * @brief Increments the `generation` of a freed entity by `generations`.
@@ -215,7 +217,7 @@ export struct Entities {
      *
      * @return true if successful.
      */
-    bool reserve_generations(std::uint32_t index, std::uint32_t generations);
+    bool reserve_generations(std::uint32_t index, std::uint32_t generations) noexcept;
 
     /**
      * @brief Get the entity with the given index, if it exists. Returns std::nullopt if the index is out of range of
@@ -223,10 +225,10 @@ export struct Entities {
      *
      * Note that this function will return currently freed entities.
      */
-    std::optional<Entity> resolve_index(std::uint32_t index) const;
+    std::optional<Entity> resolve_index(std::uint32_t index) const noexcept;
 
     /** @brief Check whether there are reserved entities that need to be flushed. */
-    bool needs_flush() const;
+    bool needs_flush() const noexcept;
 
     /**
      * @brief Allocate space for entities previously reserved by `reserve_entities` or `reserve_entity`, then initialize
@@ -275,13 +277,13 @@ export struct Entities {
      *
      * Does not include entities that have been reserved but not yet allocated.
      */
-    std::size_t total_count() const { return meta.size(); }
+    std::size_t total_count() const noexcept { return meta.size(); }
     /**
      * @brief Count of entities that are used.
      *
      * Including ones that are allocated and reserved but not those that are freed.
      */
-    std::size_t used_count() const {
+    std::size_t used_count() const noexcept {
         std::int64_t size = meta.size();
         return size - free_cursor->load(std::memory_order_relaxed);
     }
@@ -290,25 +292,25 @@ export struct Entities {
      *
      * This is the value that `total_count()` would return if `flush()` were called right now.
      */
-    std::size_t total_prospective_count() const {
+    std::size_t total_prospective_count() const noexcept {
         return meta.size() +
                static_cast<std::size_t>(-std::min(free_cursor->load(std::memory_order_relaxed), std::int64_t{0}));
     }
     /**
      * @brief Count of currently allocated entities.
      */
-    std::size_t size() const { return meta.size() - pending.size(); }
+    std::size_t size() const noexcept { return meta.size() - pending.size(); }
     /**
      * @brief Checks if any entity is currently active.
      */
-    bool empty() const { return size() == 0; }
+    bool empty() const noexcept { return size() == 0; }
 };
-}  // namespace core
+}  // namespace epix::core
 
 namespace std {
 template <>
 struct hash<::epix::core::Entity> {
-    std::size_t operator()(::epix::core::Entity e) const { return std::hash<std::uint64_t>()(e.uid); }
+    std::size_t operator()(::epix::core::Entity e) const noexcept { return std::hash<std::uint64_t>()(e.uid); }
 };
 // temporary. currently partial specializations are errornous in modules in most compilers
 template <>

@@ -44,8 +44,8 @@ namespace epix::render::phase {
 /** @brief Strongly-typed index identifying a registered draw function. */
 export struct DrawFunctionId : core::int_base<uint32_t> {
     using core::int_base<uint32_t>::int_base;
-    auto operator<=>(const DrawFunctionId&) const = default;
-    bool operator==(const DrawFunctionId&) const  = default;
+    auto operator<=>(const DrawFunctionId&) const noexcept = default;
+    bool operator==(const DrawFunctionId&) const noexcept  = default;
 };
 
 /**
@@ -76,11 +76,11 @@ export struct OpaqueSortKey {
     std::unique_ptr<Concept> impl;
 
    public:
-    OpaqueSortKey()                                = default;
-    OpaqueSortKey(OpaqueSortKey&&)                 = default;
-    OpaqueSortKey& operator=(OpaqueSortKey&&)      = default;
-    OpaqueSortKey(const OpaqueSortKey&)            = delete;
-    OpaqueSortKey& operator=(const OpaqueSortKey&) = delete;
+    OpaqueSortKey() noexcept                           = default;
+    OpaqueSortKey(OpaqueSortKey&&) noexcept            = default;
+    OpaqueSortKey& operator=(OpaqueSortKey&&) noexcept = default;
+    OpaqueSortKey(const OpaqueSortKey&)                = delete;
+    OpaqueSortKey& operator=(const OpaqueSortKey&)     = delete;
 
     template <typename T>
         requires std::three_way_comparable<T, std::strong_ordering>
@@ -142,24 +142,24 @@ export struct DrawError {
     } type;
     std::string message;
 
-    static DrawError skip(std::string message = {}) {
+    static DrawError skip(std::string message = {}) noexcept {
         return DrawError{.type = ErrorType::Skip, .message = std::move(message)};
     }
-    static DrawError render_command_failure(std::string message = {}) {
+    static DrawError render_command_failure(std::string message = {}) noexcept {
         return DrawError{.type = ErrorType::RenderCommandFailure, .message = std::move(message)};
     }
-    static DrawError invalid_view_query(std::string message = {}) {
+    static DrawError invalid_view_query(std::string message = {}) noexcept {
         return DrawError{.type = ErrorType::InvalidViewQuery, .message = std::move(message)};
     }
-    static DrawError invalid_entity_query(std::string message = {}) {
+    static DrawError invalid_entity_query(std::string message = {}) noexcept {
         return DrawError{.type = ErrorType::InvalidEntityQuery, .message = std::move(message)};
     }
-    static DrawError view_entity_missing(std::string message = {}) {
+    static DrawError view_entity_missing(std::string message = {}) noexcept {
         return DrawError{.type = ErrorType::ViewEntityMissing, .message = std::move(message)};
     }
 };
 
-std::string_view to_str(DrawError error) {
+std::string_view to_str(DrawError error) noexcept {
     switch (error.type) {
         case DrawError::ErrorType::Skip:
             return "Skipped";
@@ -224,7 +224,10 @@ struct DrawFunctionImpl : DrawFunction<P> {
 /** @brief A draw function that does nothing — useful as a placeholder. */
 export template <PhaseItem P>
 struct EmptyDrawFunction : DrawFunction<P> {
-    std::expected<void, DrawError> draw(const World&, const wgpu::RenderPassEncoder&, Entity, const P&) override {
+    std::expected<void, DrawError> draw(const World&,
+                                        const wgpu::RenderPassEncoder&,
+                                        Entity,
+                                        const P&) noexcept override {
         return {};
     }
 };
@@ -504,7 +507,7 @@ struct RenderCommandState {
  * @tparam P The phase item type. */
 export template <CachedRenderPipelinePhaseItem P>
 struct SetItemPipeline {
-    void prepare(const World&) {}
+    void prepare(const World&) noexcept {}
 
     std::expected<void, RenderCommandError> render(const P& item,
                                                    Item<>,

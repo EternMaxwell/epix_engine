@@ -34,7 +34,7 @@ struct Events {
     std::uint32_t m_tail;  // m_tail - m_head should be equal to m_events.size()
 
    public:
-    Events() : m_head(0), m_tail(0) {}
+    Events() noexcept : m_head(0), m_tail(0) {}
     Events(const Events&) = delete;
     Events(Events&& other) {
         m_events    = std::move(other.m_events);
@@ -94,22 +94,22 @@ struct Events {
         m_head = m_tail;
     }
     /** @brief Check if the queue contains no events. */
-    bool empty() const { return m_events.empty(); }
+    bool empty() const noexcept { return m_events.empty(); }
     /** @brief Number of currently live events. */
-    std::size_t size() const { return m_events.size(); }
+    std::size_t size() const noexcept { return m_events.size(); }
     /** @brief Get the head (oldest live) event index. */
-    std::uint32_t head() const { return m_head; }
+    std::uint32_t head() const noexcept { return m_head; }
     /** @brief Get the tail (next write) event index. */
-    std::uint32_t tail() const { return m_tail; }
+    std::uint32_t tail() const noexcept { return m_tail; }
     /** @brief Get a mutable pointer to the event at the given index, or nullptr. */
-    T* get(std::uint32_t index) {
+    T* get(std::uint32_t index) noexcept {
         if (index >= m_head && index < m_tail) {
             return &m_events[index - m_head];
         }
         return nullptr;
     }
     /** @brief Get a const pointer to the event at the given index, or nullptr. */
-    const T* get(std::uint32_t index) const {
+    const T* get(std::uint32_t index) const noexcept {
         if (index >= m_head && index < m_tail) {
             return &m_events[index - m_head];
         }
@@ -139,7 +139,7 @@ struct EventReader {
    private:
     Local<EventCursor<T>> _cursor;
     Res<Events<T>> _events;
-    EventReader(Local<EventCursor<T>> cursor, Res<Events<T>> events) : _cursor(cursor), _events(events) {}
+    EventReader(Local<EventCursor<T>> cursor, Res<Events<T>> events) noexcept : _cursor(cursor), _events(events) {}
 
    public:
     /** @brief Construct an EventReader from system parameters. */
@@ -167,13 +167,13 @@ struct EventReader {
                                      });
     }
     /** @brief Number of events not yet consumed by this reader. */
-    std::uint32_t size() const { return _events->tail() - _cursor->index; }
+    std::uint32_t size() const noexcept { return _events->tail() - _cursor->index; }
     /** @brief True if all events have been consumed. */
-    bool empty() const { return _cursor->index == _events->tail(); }
+    bool empty() const noexcept { return _cursor->index == _events->tail(); }
     /** @brief Get the current read position (cursor index). */
-    std::uint32_t position() const { return _cursor->index; }
+    std::uint32_t position() const noexcept { return _cursor->index; }
     /** @brief Skip all unread events. */
-    void clear() { _cursor->index = _events->tail(); }
+    void clear() noexcept { _cursor->index = _events->tail(); }
     /** @brief Read exactly one event, or std::nullopt if none remain. */
     std::optional<std::reference_wrapper<const T>> read_one() {
         auto event = _events->get(_cursor->index);
@@ -206,14 +206,14 @@ export template <typename T>
 struct EventWriter {
    private:
     ResMut<Events<T>> m_events;
-    EventWriter(ResMut<Events<T>> events) : m_events(events) {}
+    EventWriter(ResMut<Events<T>> events) noexcept : m_events(events) {}
 
    public:
     /** @brief Construct an EventWriter from system parameters. */
     static EventWriter<T> from_param(ResMut<Events<T>> events) { return EventWriter<T>(events); }
 
     /** @brief Get the current write position (tail index). */
-    std::uint32_t position() const { return m_events->tail(); }
+    std::uint32_t position() const noexcept { return m_events->tail(); }
     /** @brief Advance the head past consumed events so later readers skip them. */
     void advance_head(std::uint32_t new_head) { m_events->advance_head(new_head); }
     /** @brief Push an event by const reference. */

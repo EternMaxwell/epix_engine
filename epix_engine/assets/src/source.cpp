@@ -16,34 +16,34 @@ namespace epix::assets {
 
 // ---- AssetSource --------------------------------------------------------
 
-std::optional<std::reference_wrapper<const AssetWriter>> AssetSource::writer() const {
+std::optional<std::reference_wrapper<const AssetWriter>> AssetSource::writer() const noexcept {
     if (m_writer) return *m_writer;
     return std::nullopt;
 }
 
-std::optional<std::reference_wrapper<const AssetReader>> AssetSource::processed_reader() const {
+std::optional<std::reference_wrapper<const AssetReader>> AssetSource::processed_reader() const noexcept {
     if (m_processed_reader) return *m_processed_reader;
     return std::nullopt;
 }
 
-std::optional<std::reference_wrapper<const AssetReader>> AssetSource::ungated_processed_reader() const {
+std::optional<std::reference_wrapper<const AssetReader>> AssetSource::ungated_processed_reader() const noexcept {
     if (m_ungated_processed_reader) return *m_ungated_processed_reader;
     return std::nullopt;
 }
 
-std::optional<std::reference_wrapper<const AssetWriter>> AssetSource::processed_writer() const {
+std::optional<std::reference_wrapper<const AssetWriter>> AssetSource::processed_writer() const noexcept {
     if (m_processed_writer) return *m_processed_writer;
     return std::nullopt;
 }
 
 std::optional<std::reference_wrapper<const async_channel::Receiver<AssetSourceEvent>>> AssetSource::event_receiver()
-    const {
+    const noexcept {
     if (m_event_receiver) return *m_event_receiver;
     return std::nullopt;
 }
 
 std::optional<std::reference_wrapper<const async_channel::Receiver<AssetSourceEvent>>>
-AssetSource::processed_event_receiver() const {
+AssetSource::processed_event_receiver() const noexcept {
     if (m_processed_event_receiver) return *m_processed_event_receiver;
     return std::nullopt;
 }
@@ -119,7 +119,7 @@ AssetSourceBuilder AssetSourceBuilder::platform_default(std::filesystem::path pa
 
 // ---- AssetSources -------------------------------------------------------
 
-std::optional<std::reference_wrapper<const AssetSource>> AssetSources::get(AssetSourceId name) const {
+std::optional<std::reference_wrapper<const AssetSource>> AssetSources::get(AssetSourceId name) const noexcept {
     if (name.is_default()) return m_default;
     if (auto it = m_sources.find(name.value()); it != m_sources.end()) {
         return it->second;
@@ -144,7 +144,7 @@ void AssetSourceBuilders::insert(AssetSourceId id, AssetSourceBuilder builder) {
     }
 }
 
-std::optional<std::reference_wrapper<AssetSourceBuilder>> AssetSourceBuilders::get(const AssetSourceId& id) {
+std::optional<std::reference_wrapper<AssetSourceBuilder>> AssetSourceBuilders::get(const AssetSourceId& id) noexcept {
     if (!id.has_value()) {
         if (m_default) return *m_default;
         return std::nullopt;

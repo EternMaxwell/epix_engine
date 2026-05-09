@@ -44,11 +44,11 @@ struct int_base {
     /** @brief Underlying integral value. */
     T value;
 };
-}  // namespace utils
+}  // namespace epix::utils
 
 template <std::integral T>
 struct std::hash<::epix::utils::int_base<T>> {
-    std::size_t operator()(const ::epix::utils::int_base<T>& v) const { return std::hash<T>()(v.get()); }
+    std::size_t operator()(const ::epix::utils::int_base<T>& v) const noexcept { return std::hash<T>()(v.get()); }
 };
 template <typename T>
     requires requires {
@@ -56,5 +56,7 @@ template <typename T>
         requires std::derived_from<T, ::epix::utils::int_base<typename T::value_type>>;
     }
 struct std::hash<T> {
-    std::size_t operator()(const T& v) const { return std::hash<::epix::utils::int_base<typename T::value_type>>()(v); }
+    std::size_t operator()(const T& v) const noexcept {
+        return std::hash<::epix::utils::int_base<typename T::value_type>>()(v);
+    }
 };

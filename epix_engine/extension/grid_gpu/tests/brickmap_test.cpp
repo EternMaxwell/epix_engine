@@ -10,6 +10,10 @@ import std;
 import epix.extension.grid;
 import epix.extension.grid_gpu;
 
+#if defined(__clang__)
+#pragma clang diagnostic ignored "-Wunused-value"
+#endif
+
 using namespace epix::ext::grid;
 using namespace epix::ext::grid_gpu;
 
@@ -78,7 +82,7 @@ static int brickmap_cpu_lookup(const BrickmapBuffer& buf, const std::vector<int3
     if (bit_pos > 0) below += static_cast<uint32_t>(std::popcount(w[occ_base + bit_word] & ((1u << bit_pos) - 1u)));
 
     uint32_t base_data_idx = w[pool_base + bpi * words_per_brick];
-    uint32_t packed_idx = base_data_idx + below;
+    uint32_t packed_idx    = base_data_idx + below;
 
     // Resolve through data_index_map (appended after brick pool)
     uint32_t map_base = pool_base + brick_count * words_per_brick;

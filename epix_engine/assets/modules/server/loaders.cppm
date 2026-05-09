@@ -38,8 +38,8 @@ struct MaybeAssetLoader : std::variant<std::shared_ptr<ErasedAssetLoader>, Pendi
     using variant::variant;
     using base = std::variant<std::shared_ptr<ErasedAssetLoader>, PendingAssetLoader>;
     std::shared_ptr<ErasedAssetLoader> get() const;
-    base& as_base() { return static_cast<base&>(*this); }
-    const base& as_base() const { return static_cast<const base&>(*this); }
+    base& as_base() noexcept { return static_cast<base&>(*this); }
+    const base& as_base() const noexcept { return static_cast<const base&>(*this); }
 };
 struct AssetLoaders {
     std::vector<MaybeAssetLoader> loaders;

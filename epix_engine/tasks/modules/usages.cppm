@@ -28,7 +28,7 @@ namespace epix::tasks {
        private:                                                                           \
         TaskPool m_pool;                                                                  \
         explicit Name(TaskPool p) : m_pool(std::move(p)) {}                               \
-        static Name*& global_ptr() {                                                      \
+        static Name*& global_ptr() noexcept {                                             \
             static Name* ptr = nullptr;                                                   \
             return ptr;                                                                   \
         }                                                                                 \
@@ -41,9 +41,9 @@ namespace epix::tasks {
             return *global_ptr();                                                         \
         }                                                                                 \
         /** @brief Return the global instance or nullptr if not initialized. */           \
-        static Name* try_get() { return global_ptr(); }                                   \
+        static Name* try_get() noexcept { return global_ptr(); }                          \
         /** @brief Return the global instance. Panics (terminates) if not initialized. */ \
-        static Name& get() {                                                              \
+        static Name& get() noexcept {                                                     \
             auto* p = global_ptr();                                                       \
             if (!p) std::terminate();                                                     \
             return *p;                                                                    \
@@ -58,7 +58,7 @@ namespace epix::tasks {
         std::vector<T> scope(Fn&& fn) {                                                   \
             return m_pool.scope<T>(std::forward<Fn>(fn));                                 \
         }                                                                                 \
-        std::size_t thread_num() const { return m_pool.thread_num(); }                    \
+        std::size_t thread_num() const noexcept { return m_pool.thread_num(); }           \
     }
 
 EPIX_DEFINE_TASK_POOL(ComputeTaskPool);

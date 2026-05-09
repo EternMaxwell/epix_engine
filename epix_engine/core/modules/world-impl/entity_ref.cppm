@@ -39,20 +39,22 @@ export struct EntityRef {
 
    public:
     /** @brief Construct an EntityRef from an entity handle and a const world pointer. */
-    EntityRef(Entity entity, const World* world)
+    EntityRef(Entity entity, const World* world) noexcept
         : entity_(entity),
           world_(world),
           location_(world_entities(*world).get(entity).value_or(EntityLocation::invalid())) {}
     /** @brief Refresh the cached entity location from the world. */
-    void update_location() { location_ = world_entities(*world_).get(entity_).value_or(EntityLocation::invalid()); }
+    void update_location() noexcept {
+        location_ = world_entities(*world_).get(entity_).value_or(EntityLocation::invalid());
+    }
     /** @brief Assert that the entity has not been despawned. */
-    void assert_not_despawned() const {
+    void assert_not_despawned() const noexcept {
         assert(location_.archetype_id != EntityLocation::invalid().archetype_id && "Entity has been despawned");
     }
     /** @brief Get the Entity handle. */
-    Entity id() const { return entity_; }
+    Entity id() const noexcept { return entity_; }
     /** @brief Get the cached entity location. */
-    EntityLocation location() const { return location_; }
+    EntityLocation location() const noexcept { return location_; }
     /** @brief Get a reference to the archetype this entity belongs to. */
     const Archetype& archetype() const { return world_archetypes(*world_).get(location_.archetype_id).value().get(); }
     /** @brief Check whether this entity has a component with the given type id. */
@@ -141,7 +143,7 @@ export struct EntityRefMut : public EntityRef {
 
    public:
     /** @brief Construct an EntityRefMut from an entity handle and a mutable world pointer. */
-    EntityRefMut(Entity entity, World* world) : EntityRef(entity, world), world_(world) {}
+    EntityRefMut(Entity entity, World* world) noexcept : EntityRef(entity, world), world_(world) {}
     /** @brief Get a mutable Mut<T> (with change-detection ticks) for the component. */
     template <typename T>
     std::optional<Mut<T>> get_mut() {
@@ -247,9 +249,8 @@ export struct EntityWorldMut : public EntityRefMut {
     /** @brief Remove components identified by a range of TypeIds. */
     void remove_by_ids(type_id_view auto&& type_ids) {
         try {
-            auto bundle_id =
-                world_bundles_mut(*world_).init_dynamic_info(world_storage_mut(*world_), world_components(*world_),
-                                                             std::ranges::to<std::vector<TypeId>>(type_ids));
+            auto bundle_id = world_bundles_mut(*world_).init_dynamic_info(
+                world_storage_mut(*world_), world_components(*world_), std::ranges::to<std::vector<TypeId>>(type_ids));
             remove_bundle(bundle_id);
         } catch (const std::bad_optional_access&) {
             return;  // some component not found, do nothing
@@ -289,4 +290,4 @@ export struct EntityWorldMut : public EntityRefMut {
         return *this;
     }
 };
-}  // namespace core
+}  // namespace epix::core

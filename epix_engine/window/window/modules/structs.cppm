@@ -42,11 +42,11 @@ struct SizeLimits {
     int max_width  = -1;  // -1 means no limit
     int max_height = -1;  // -1 means no limit
 
-    bool operator==(const SizeLimits& other) const {
+    bool operator==(const SizeLimits& other) const noexcept {
         return min_width == other.min_width && min_height == other.min_height && max_width == other.max_width &&
                max_height == other.max_height;
     }
-    bool operator!=(const SizeLimits& other) const { return !(*this == other); }
+    bool operator!=(const SizeLimits& other) const noexcept { return !(*this == other); }
 };
 /** @brief Standard system cursor shapes. */
 enum class StandardCursor {
@@ -82,10 +82,10 @@ struct CustomCursor {
     /** @brief Y coordinate of the cursor hotspot within the image. */
     std::uint32_t hot_y = 0;
 
-    bool operator==(const CustomCursor& other) const {
+    bool operator==(const CustomCursor& other) const noexcept {
         return image == other.image && hot_x == other.hot_x && hot_y == other.hot_y;
     }
-    bool operator!=(const CustomCursor& other) const { return !(*this == other); }
+    bool operator!=(const CustomCursor& other) const noexcept { return !(*this == other); }
 };
 /** @brief Cursor icon variant: either a StandardCursor or a CustomCursor.
  */
@@ -217,14 +217,14 @@ struct Window {
     bool attention_request = false;
 
     /** @brief Request user attention (e.g. taskbar flash). */
-    void request_attention(bool request = true) { attention_request = request; }
+    void request_attention(bool request = true) noexcept { attention_request = request; }
 
     /** @brief Get a relative cursor position to the window's current position and size.
      *
      * Origin will be center of the window, +x right, +y up.
      * Values will be [-0.5, 0.5] when the cursor is within the window bounds.
      */
-    std::pair<double, double> relative_cursor_pos() const {
+    std::pair<double, double> relative_cursor_pos() const noexcept {
         double rel_x = (cursor_pos.first / size.first) - 0.5;
         double rel_y = 0.5 - (cursor_pos.second / size.second);
         return {rel_x, rel_y};

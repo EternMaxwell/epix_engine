@@ -126,7 +126,7 @@ PendingWindowPosition make_pending_window_position(const std::pair<int, int>& ta
 
 }  // namespace
 
-const std::string& Clipboard::get_text() const { return text; }
+const std::string& Clipboard::get_text() const noexcept { return text; }
 void Clipboard::update(ResMut<Clipboard> clipboard) {
     sf::String str  = sf::Clipboard::getString();
     clipboard->text = str.toAnsiString();

@@ -59,7 +59,7 @@ Font make_default_embedded_font() {
 }
 }  // namespace
 
-std::span<std::string_view> FontLoader::extensions() {
+std::span<std::string_view> FontLoader::extensions() noexcept {
     static auto exts = std::array{std::string_view{"ttf"}, std::string_view{"otf"}, std::string_view{"woff"},
                                   std::string_view{"woff2"}};
     return std::span<std::string_view>(exts.data(), exts.size());

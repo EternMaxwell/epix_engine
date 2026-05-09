@@ -38,9 +38,9 @@ export struct LogEntry {
     LogEntryKind kind;
     std::optional<AssetPath> path;  // populated for Begin/End
 
-    static LogEntry begin_processing(AssetPath p) { return {LogEntryKind::BeginProcessing, std::move(p)}; }
-    static LogEntry end_processing(AssetPath p) { return {LogEntryKind::EndProcessing, std::move(p)}; }
-    static LogEntry unrecoverable_error() { return {LogEntryKind::UnrecoverableError, std::nullopt}; }
+    static LogEntry begin_processing(AssetPath p) noexcept { return {LogEntryKind::BeginProcessing, std::move(p)}; }
+    static LogEntry end_processing(AssetPath p) noexcept { return {LogEntryKind::EndProcessing, std::move(p)}; }
+    static LogEntry unrecoverable_error() noexcept { return {LogEntryKind::UnrecoverableError, std::nullopt}; }
 };
 
 // ---- ProcessorTransactionLogFactory ----

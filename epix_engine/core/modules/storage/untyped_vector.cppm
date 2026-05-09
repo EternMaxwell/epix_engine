@@ -160,13 +160,13 @@ export class untyped_vector {
     const void* cdata() const noexcept { return data(); }
 
     /** @brief Get a raw pointer to the element at the given index. */
-    void* get(std::size_t idx) {
+    void* get(std::size_t idx) noexcept {
         assert(idx < size_);
         return static_cast<char*>(data_) + idx * desc_->size;
     }
 
     /** @brief Get a const raw pointer to the element at the given index. */
-    const void* get(std::size_t idx) const {
+    const void* get(std::size_t idx) const noexcept {
         assert(idx < size_);
         return static_cast<const char*>(data_) + idx * desc_->size;
     }
@@ -262,7 +262,7 @@ export class untyped_vector {
     /** @brief Get a mutable typed reference to the element at idx.
      *  @tparam T Element type. */
     template <typename T>
-    T& get_as(std::size_t idx) {
+    T& get_as(std::size_t idx) noexcept {
         assert(idx < size_);
         return *std::launder(reinterpret_cast<T*>(get(idx)));
     }
@@ -270,7 +270,7 @@ export class untyped_vector {
     /** @brief Get a const typed reference to the element at idx.
      *  @tparam T Element type. */
     template <typename T>
-    const T& get_as(std::size_t idx) const {
+    const T& get_as(std::size_t idx) const noexcept {
         assert(idx < size_);
         return *std::launder(reinterpret_cast<const T*>(get(idx)));
     }
@@ -278,7 +278,7 @@ export class untyped_vector {
     /** @brief Const typed reference alias.
      *  @tparam T Element type. */
     template <typename T>
-    const T& cget_as(std::size_t idx) const {
+    const T& cget_as(std::size_t idx) const noexcept {
         return get_as<T>(idx);
     }
 

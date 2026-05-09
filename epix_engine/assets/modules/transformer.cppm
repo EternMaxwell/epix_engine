@@ -53,14 +53,14 @@ struct TransformedAsset {
     }
 
     /** @brief Get a const reference to the wrapped asset. */
-    const A& get() const { return m_asset; }
+    const A& get() const noexcept { return m_asset; }
     /** @brief Get a mutable reference to the wrapped asset. */
-    A& get_mut() { return m_asset; }
+    A& get_mut() noexcept { return m_asset; }
     /** @brief Dereference to the wrapped asset. */
-    const A& operator*() const { return m_asset; }
-    A& operator*() { return m_asset; }
-    const A* operator->() const { return &m_asset; }
-    A* operator->() { return &m_asset; }
+    const A& operator*() const noexcept { return m_asset; }
+    A& operator*() noexcept { return m_asset; }
+    const A* operator->() const noexcept { return &m_asset; }
+    A* operator->() noexcept { return &m_asset; }
 
     /** @brief Replace the contained asset with one of a different type. */
     template <Asset B>
@@ -91,7 +91,8 @@ struct TransformedAsset {
     }
 
     /** @brief Get a type-erased labeled sub-asset by label. */
-    std::optional<std::reference_wrapper<const ErasedLoadedAsset>> get_erased_labeled(const std::string& label) const {
+    std::optional<std::reference_wrapper<const ErasedLoadedAsset>> get_erased_labeled(
+        const std::string& label) const noexcept {
         auto it = m_labeled_assets.find(label);
         if (it == m_labeled_assets.end()) return std::nullopt;
         return std::cref(it->second.asset);
@@ -99,7 +100,7 @@ struct TransformedAsset {
 
     /** @brief Get a type-erased labeled sub-asset by handle id. */
     std::optional<std::reference_wrapper<const ErasedLoadedAsset>> get_erased_labeled_by_id(
-        const UntypedAssetId& id) const {
+        const UntypedAssetId& id) const noexcept {
         for (const auto& [_, labeled] : m_labeled_assets) {
             if (labeled.handle.id() == id) return std::cref(labeled.asset);
         }
@@ -116,7 +117,7 @@ struct TransformedAsset {
     }
 
     /** @brief Get the untyped handle of a labeled sub-asset. */
-    std::optional<UntypedHandle> get_untyped_handle(const std::string& label) const {
+    std::optional<UntypedHandle> get_untyped_handle(const std::string& label) const noexcept {
         auto it = m_labeled_assets.find(label);
         if (it == m_labeled_assets.end()) return std::nullopt;
         return it->second.handle;
@@ -139,7 +140,7 @@ struct TransformedAsset {
     }
 
     /** @brief Get a range over all label strings. */
-    auto labels() const {
+    auto labels() const noexcept {
         return m_labeled_assets |
                std::views::transform([](const auto& pair) -> const std::string& { return pair.first; });
     }
@@ -163,12 +164,12 @@ struct TransformedSubAsset {
         return TransformedSubAsset<A>(value->get(), asset.labeled_assets);
     }
 
-    const A& get() const { return m_asset.get(); }
-    A& get_mut() { return m_asset.get(); }
-    const A& operator*() const { return m_asset.get(); }
-    A& operator*() { return m_asset.get(); }
-    const A* operator->() const { return &m_asset.get(); }
-    A* operator->() { return &m_asset.get(); }
+    const A& get() const noexcept { return m_asset.get(); }
+    A& get_mut() noexcept { return m_asset.get(); }
+    const A& operator*() const noexcept { return m_asset.get(); }
+    A& operator*() noexcept { return m_asset.get(); }
+    const A* operator->() const noexcept { return &m_asset.get(); }
+    A* operator->() noexcept { return &m_asset.get(); }
 
     /** @brief Try to get a nested labeled sub-asset by label string. */
     template <Asset B>
@@ -181,7 +182,8 @@ struct TransformedSubAsset {
     }
 
     /** @brief Get a type-erased nested labeled sub-asset by label. */
-    std::optional<std::reference_wrapper<const ErasedLoadedAsset>> get_erased_labeled(const std::string& label) const {
+    std::optional<std::reference_wrapper<const ErasedLoadedAsset>> get_erased_labeled(
+        const std::string& label) const noexcept {
         auto it = m_labeled.get().find(label);
         if (it == m_labeled.get().end()) return std::nullopt;
         return std::cref(it->second.asset);
@@ -201,7 +203,7 @@ struct TransformedSubAsset {
 
     /** @brief Get a type-erased nested labeled sub-asset by handle id. */
     std::optional<std::reference_wrapper<const ErasedLoadedAsset>> get_erased_labeled_by_id(
-        const UntypedAssetId& id) const {
+        const UntypedAssetId& id) const noexcept {
         for (const auto& [_, labeled] : m_labeled.get()) {
             if (labeled.handle.id() == id) return std::cref(labeled.asset);
         }
@@ -209,7 +211,7 @@ struct TransformedSubAsset {
     }
 
     /** @brief Get the untyped handle of a nested labeled sub-asset. */
-    std::optional<UntypedHandle> get_untyped_handle(const std::string& label) const {
+    std::optional<UntypedHandle> get_untyped_handle(const std::string& label) const noexcept {
         auto it = m_labeled.get().find(label);
         if (it == m_labeled.get().end()) return std::nullopt;
         return it->second.handle;
@@ -231,7 +233,7 @@ struct TransformedSubAsset {
     }
 
     /** @brief Get a range over all nested label strings. */
-    auto labels() const {
+    auto labels() const noexcept {
         return m_labeled.get() |
                std::views::transform([](const auto& pair) -> const std::string& { return pair.first; });
     }

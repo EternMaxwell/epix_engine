@@ -50,9 +50,9 @@ struct System {
     /** @brief Get the system's flag bits (exclusive, deferred, etc.). */
     virtual SystemFlagBits flags() const = 0;
     /** @brief Check if this system requires exclusive world access. */
-    bool is_exclusive() const { return (flags() & SystemFlagBits::EXCLUSIVE) != 0; }
+    bool is_exclusive() const noexcept { return (flags() & SystemFlagBits::EXCLUSIVE) != 0; }
     /** @brief Check if this system produces deferred commands. */
-    bool is_deferred() const { return (flags() & SystemFlagBits::DEFERRED) != 0; }
+    bool is_deferred() const noexcept { return (flags() & SystemFlagBits::DEFERRED) != 0; }
     /** @brief Execute the system logic without parameter validation. */
     virtual std::expected<Out, RunSystemError> run_internal(typename SystemInput<In>::Input input, World& world) = 0;
     /** @brief Validate that all required parameters can be fetched from the world. */
@@ -100,9 +100,9 @@ template <typename F>
         typename function_traits<F>::args_tuple;
     }
 struct function_system_traits {
-    using Traits                  = function_traits<F>;
+    using Traits                       = function_traits<F>;
     static constexpr std::size_t arity = Traits::arity;
-    using Output                  = typename Traits::return_type;
+    using Output                       = typename Traits::return_type;
     // Input is the first argument of the function if it modules valid_system_input, otherwise it's std::tuple<>.
     using Input                     = std::remove_reference_t<decltype(*([] {
         if constexpr (arity == 0) {
@@ -168,10 +168,10 @@ struct FunctionSystem
     using SInput  = SystemInput<typename function_system_traits<F>::Input>;
     using SParam  = SystemParam<typename function_system_traits<F>::ParamTuple>;
 
-    std::string_view name() const override { return meta_.name; }
-    void set_name(std::string_view n) override { meta_.name = std::string(n); }
-    meta::type_index type_index() const override { return type_index_; }
-    SystemFlagBits flags() const override { return meta_.flags; }
+    std::string_view name() const noexcept override { return meta_.name; }
+    void set_name(std::string_view new_name) noexcept override { meta_.name = new_name; }
+    meta::type_index type_index() const noexcept override { return type_index_; }
+    SystemFlagBits flags() const noexcept override { return meta_.flags; }
     std::expected<void, ValidateParamError> validate_param(World& world) override {
         return SParam::validate_param(state_.value(), meta_, world);
     }
@@ -196,7 +196,7 @@ struct FunctionSystem
     }
     bool initialized() const noexcept override { return state_.has_value(); }
     void check_change_tick(Tick tick) override { meta_.last_run.check_tick(tick); }
-    Tick get_last_run() const override { return meta_.last_run; }
+    Tick get_last_run() const noexcept override { return meta_.last_run; }
     std::vector<SystemSetLabel> default_sets() const override {
         if constexpr (std::constructible_from<SystemSetLabel, Storage>) {
             return {SystemSetLabel(func_)};
@@ -276,4 +276,4 @@ make_system_shared(F&& func) {
         System<typename function_system_traits<F>::Input, typename function_system_traits<F>::Output>>(
         make_system(std::forward<F>(func)));
 }
-}  // namespace core
+}  // namespace epix::core

@@ -12,6 +12,15 @@ import std;
 import epix.extension.grid;
 import epix.extension.grid_gpu;
 
+#if defined(_MSC_VER)
+#pragma warning(disable : 4834)
+#elif defined(__clang__)
+#pragma clang diagnostic ignored "-Wunused-value"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic ignored "-Wunused-result"
+#pragma GCC diagnostic ignored "-Wunused-value"
+#endif
+
 using namespace epix::ext::grid;
 using namespace epix::ext::grid_gpu;
 

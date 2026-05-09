@@ -27,11 +27,11 @@ export struct Schedules {
     Schedules& operator=(Schedules&&)      = default;
 
     /** @brief Try get const reference to a schedule by its label. */
-    std::optional<std::reference_wrapper<const Schedule>> get_schedule(const ScheduleLabel& label) const;
+    std::optional<std::reference_wrapper<const Schedule>> get_schedule(const ScheduleLabel& label) const noexcept;
     /** @brief Get a const reference to a schedule by its label, throws if not found. */
     const Schedule& schedule(const ScheduleLabel& label) const { return get_schedule(label).value(); }
     /** @brief Try get mutable reference to a schedule by its label. */
-    std::optional<std::reference_wrapper<Schedule>> get_schedule_mut(const ScheduleLabel& label);
+    std::optional<std::reference_wrapper<Schedule>> get_schedule_mut(const ScheduleLabel& label) noexcept;
     /** @brief Get a mutable reference to a schedule by its label, throws if not found. */
     Schedule& schedule_mut(const ScheduleLabel& label) { return get_schedule_mut(label).value(); }
     /** @brief Get or insert a schedule by its label. */
@@ -46,9 +46,9 @@ export struct Schedules {
     std::optional<Schedule> remove_schedule(const ScheduleLabel& label);
 
     /** @brief Iterate over all schedules with const access. */
-    auto iter() const { return std::views::all(_schedules); }
+    auto iter() const noexcept { return std::views::all(_schedules); }
     /** @brief Iterate over all schedules with mutable access. */
-    auto iter_mut() { return std::views::all(_schedules); }
+    auto iter_mut() noexcept { return std::views::all(_schedules); }
 
     /** @brief Propagate tick to all schedules for change detection. */
     void check_change_tick(Tick tick) {
@@ -61,4 +61,4 @@ export struct Schedules {
     // schedule is movable, no need to use pointer
     std::unordered_map<ScheduleLabel, Schedule> _schedules;
 };
-}  // namespace core
+}  // namespace epix::core

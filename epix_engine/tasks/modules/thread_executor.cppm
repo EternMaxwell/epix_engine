@@ -87,13 +87,13 @@ export struct ThreadExecutor {
      * @brief Returns true if other is the same executor object.
      * Matches `ThreadExecutor::is_same`.
      */
-    bool is_same(const ThreadExecutor& other) const { return this == &other; }
+    bool is_same(const ThreadExecutor& other) const noexcept { return this == &other; }
 
     /**
      * @brief Returns a ticker only if called from the owning thread.
      * Matches `ThreadExecutor::ticker() -> Option<ThreadExecutorTicker>`.
      */
-    std::optional<ThreadExecutorTicker> ticker();
+    std::optional<ThreadExecutorTicker> ticker() noexcept;
 };
 
 /**
@@ -105,7 +105,7 @@ export struct ThreadExecutorTicker {
     ThreadExecutor* m_executor;
 
    public:
-    explicit ThreadExecutorTicker(ThreadExecutor* exec) : m_executor(exec) {}
+    explicit ThreadExecutorTicker(ThreadExecutor* exec) noexcept : m_executor(exec) {}
     ThreadExecutorTicker(const ThreadExecutorTicker&)            = delete;
     ThreadExecutorTicker& operator=(const ThreadExecutorTicker&) = delete;
     ThreadExecutorTicker(ThreadExecutorTicker&&)                 = default;
@@ -115,14 +115,14 @@ export struct ThreadExecutorTicker {
      * @brief Try to tick one task. Returns false if no task is ready.
      * Matches `ThreadExecutorTicker::try_tick`.
      */
-    bool try_tick() {
+    bool try_tick() noexcept {
         // single_thread_context runs on its own thread, so we can't "tick" from outside.
         // This is a no-op placeholder that returns false.
         return false;
     }
 };
 
-inline std::optional<ThreadExecutorTicker> ThreadExecutor::ticker() {
+inline std::optional<ThreadExecutorTicker> ThreadExecutor::ticker() noexcept {
     if (std::this_thread::get_id() == m_thread_id) {
         return ThreadExecutorTicker{this};
     }

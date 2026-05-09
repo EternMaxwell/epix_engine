@@ -85,14 +85,14 @@ PipelineServerData::PipelineServerData(wgpu::Device dev)
 
 PipelineServer::PipelineServer(wgpu::Device device) : m_data(std::make_shared<PipelineServerData>(std::move(device))) {}
 
-auto PipelineServer::get_pipeline_state(CachedPipelineId id) const
+auto PipelineServer::get_pipeline_state(CachedPipelineId id) const noexcept
     -> std::optional<std::reference_wrapper<const CachedPipelineState>> {
     if (m_data->pipelines.size() <= id.get()) {
         return std::nullopt;
     }
     return std::cref(m_data->pipelines[id].state);
 }
-auto PipelineServer::get_render_pipeline_descriptor(CachedPipelineId id) const
+auto PipelineServer::get_render_pipeline_descriptor(CachedPipelineId id) const noexcept
     -> std::optional<std::reference_wrapper<const RenderPipelineDescriptor>> {
     if (m_data->pipelines.size() <= id.get()) {
         return std::nullopt;
@@ -102,7 +102,7 @@ auto PipelineServer::get_render_pipeline_descriptor(CachedPipelineId id) const
     }
     return std::nullopt;
 }
-auto PipelineServer::get_compute_pipeline_descriptor(CachedPipelineId id) const
+auto PipelineServer::get_compute_pipeline_descriptor(CachedPipelineId id) const noexcept
     -> std::optional<std::reference_wrapper<const ComputePipelineDescriptor>> {
     if (m_data->pipelines.size() <= id.get()) {
         return std::nullopt;
@@ -112,7 +112,7 @@ auto PipelineServer::get_compute_pipeline_descriptor(CachedPipelineId id) const
     }
     return std::nullopt;
 }
-auto PipelineServer::get_render_pipeline(CachedPipelineId id) const
+auto PipelineServer::get_render_pipeline(CachedPipelineId id) const noexcept
     -> std::expected<std::reference_wrapper<const RenderPipeline>, GetPipelineError> {
     if (m_data->pipelines.size() <= id.get()) {
         if (m_data->new_pipelines.lock()->size() > (id.get() - m_data->pipelines.size())) {
@@ -133,7 +133,7 @@ auto PipelineServer::get_render_pipeline(CachedPipelineId id) const
     }
     return std::unexpected(GetPipelineNotReady{});
 }
-auto PipelineServer::get_compute_pipeline(CachedPipelineId id) const
+auto PipelineServer::get_compute_pipeline(CachedPipelineId id) const noexcept
     -> std::expected<std::reference_wrapper<const ComputePipeline>, GetPipelineError> {
     if (m_data->pipelines.size() <= id.get()) {
         if (m_data->new_pipelines.lock()->size() > (id.get() - m_data->pipelines.size())) {

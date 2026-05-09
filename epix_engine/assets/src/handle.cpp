@@ -61,13 +61,13 @@ UntypedHandle& UntypedHandle::operator=(const std::shared_ptr<StrongHandle>& han
     return *this;
 }
 
-meta::type_index UntypedHandle::type_id() const {
+meta::type_index UntypedHandle::type_id() const noexcept {
     return std::visit(utils::visitor{[](const std::shared_ptr<StrongHandle>& handle) { return handle->id.type; },
                                      [](const UntypedAssetId& id) { return id.type; }},
                       ref);
 }
 
-UntypedAssetId UntypedHandle::id() const {
+UntypedAssetId UntypedHandle::id() const noexcept {
     return std::visit(utils::visitor{[](const std::shared_ptr<StrongHandle>& handle) { return handle->id; },
                                      [](const UntypedAssetId& id) { return id; }},
                       ref);
@@ -79,7 +79,7 @@ std::optional<AssetPath> UntypedHandle::path() const {
                       ref);
 }
 
-const MetaTransform* UntypedHandle::meta_transform() const {
+const MetaTransform* UntypedHandle::meta_transform() const noexcept {
     return std::visit(utils::visitor{[](const std::shared_ptr<StrongHandle>& handle) -> const MetaTransform* {
                                          return handle->meta_transform ? &*handle->meta_transform : nullptr;
                                      },

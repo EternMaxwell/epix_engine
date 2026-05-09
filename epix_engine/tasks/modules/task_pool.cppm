@@ -38,7 +38,7 @@ namespace epix::tasks {
  * return a default value of 1 if it returns 0.
  * Matches `bevy_tasks::available_parallelism`.
  */
-export inline std::size_t available_parallelism() {
+export inline std::size_t available_parallelism() noexcept {
     auto n = std::thread::hardware_concurrency();
     return n > 0 ? n : 1;
 }
@@ -194,16 +194,16 @@ export struct TaskPoolBuilder {
     std::function<void()> m_on_thread_destroy;
     std::optional<TaskPoolBackend> m_backend;
 
-    TaskPoolBuilder() = default;
+    TaskPoolBuilder() noexcept = default;
 
     /** @brief Override the thread count. */
-    TaskPoolBuilder& num_threads(std::size_t n) {
+    TaskPoolBuilder& num_threads(std::size_t n) noexcept {
         m_num_threads = n;
         return *this;
     }
 
     /** @brief Override the stack size of threads created for the pool. */
-    TaskPoolBuilder& stack_size(std::size_t n) {
+    TaskPoolBuilder& stack_size(std::size_t n) noexcept {
         m_stack_size = n;
         return *this;
     }
@@ -227,7 +227,7 @@ export struct TaskPoolBuilder {
     }
 
     /** @brief Explicitly select the backend (overrides auto-detection). */
-    TaskPoolBuilder& backend(TaskPoolBackend b) {
+    TaskPoolBuilder& backend(TaskPoolBackend b) noexcept {
         m_backend = b;
         return *this;
     }
@@ -311,10 +311,10 @@ export struct TaskPool {
     TaskPool& operator=(const TaskPool&) = delete;
 
     /** @brief Return number of worker threads. */
-    std::size_t thread_num() const { return m_thread_count; }
+    std::size_t thread_num() const noexcept { return m_thread_count; }
 
     /** @brief The underlying type-erased executor. */
-    const asio::any_io_executor& executor() const { return m_executor; }
+    const asio::any_io_executor& executor() const noexcept { return m_executor; }
 
     /** @brief Spawn a callable, returns Task<T> or Task<void>. */
     template <typename F>

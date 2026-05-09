@@ -148,12 +148,12 @@ struct AssetInfos {
                                        HandleLoadingMode loading_mode,
                                        std::optional<MetaTransform> meta_transform = std::nullopt)
         -> std::expected<std::pair<UntypedHandle, bool>, GetOrCreateHandleInternalError>;
-    bool contains_key(const UntypedAssetId& id) const { return infos.contains(id); }
-    std::optional<std::reference_wrapper<const AssetInfo>> get_info(const UntypedAssetId& id) const;
-    std::optional<std::reference_wrapper<AssetInfo>> get_info_mut(const UntypedAssetId& id);
-    epix::utils::input_iterable<UntypedAssetId> get_path_ids(const AssetPath& path) const;
-    std::optional<UntypedHandle> get_handle_by_id(const UntypedAssetId& id) const;
-    auto get_handles_by_path(const AssetPath& path) const {
+    bool contains_key(const UntypedAssetId& id) const noexcept { return infos.contains(id); }
+    std::optional<std::reference_wrapper<const AssetInfo>> get_info(const UntypedAssetId& id) const noexcept;
+    std::optional<std::reference_wrapper<AssetInfo>> get_info_mut(const UntypedAssetId& id) noexcept;
+    epix::utils::input_iterable<UntypedAssetId> get_path_ids(const AssetPath& path) const noexcept;
+    std::optional<UntypedHandle> get_handle_by_id(const UntypedAssetId& id) const noexcept;
+    auto get_handles_by_path(const AssetPath& path) const noexcept {
         return get_path_ids(path) |
                std::views::transform([this](const UntypedAssetId& id) { return get_handle_by_id(id); }) |
                std::views::filter([](const std::optional<UntypedHandle>& handle) { return handle.has_value(); }) |
@@ -161,8 +161,8 @@ struct AssetInfos {
     }
     auto get_handle_by_path_type(const AssetPath& path, epix::meta::type_index type) const
         -> std::optional<UntypedHandle>;
-    bool is_path_alive(const AssetPath& path) const;
-    bool should_reload(const AssetPath& path) const;
+    bool is_path_alive(const AssetPath& path) const noexcept;
+    bool should_reload(const AssetPath& path) const noexcept;
     /** @brief Returns `true` if the asset should be removed from collection. */
     bool process_handle_destruction(const UntypedAssetId& id);
     void process_asset_load(const UntypedAssetId& loaded_asset_id,

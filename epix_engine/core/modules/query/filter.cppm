@@ -56,10 +56,10 @@ template <typename... Ts>
 struct WorldQuery<With<Ts...>> {
     struct Fetch {};
     using State = std::array<TypeId, sizeof...(Ts)>;
-    static Fetch init_fetch(World&, const State&, Tick, Tick) { return Fetch{}; }
-    static void set_archetype(Fetch&, const State&, const Archetype&, Table&) {}
+    static Fetch init_fetch(World&, const State&, Tick, Tick) noexcept { return Fetch{}; }
+    static void set_archetype(Fetch&, const State&, const Archetype&, Table&) noexcept {}
     // static void set_table(Fetch&, State&, const Table&) {}
-    static void set_access(State&, const FilteredAccess&) {}
+    static void set_access(State&, const FilteredAccess&) noexcept {}
     static void update_access(const State& state, FilteredAccess& access) {
         std::ranges::for_each(state, [&](TypeId id) { access.add_with(id); });
     }
@@ -77,7 +77,7 @@ template <typename... Ts>
     requires((!std::is_reference_v<Ts> && !std::is_const_v<Ts>) && ...)
 struct QueryFilter<With<Ts...>> {
     constexpr static inline bool archetypal = true;
-    static bool filter_fetch(WorldQuery<With<Ts...>>::Fetch&, Entity, TableRow) {
+    static bool filter_fetch(WorldQuery<With<Ts...>>::Fetch&, Entity, TableRow) noexcept {
         // always true, because the filter is applied at archetype level. (e.g. access compatible)
         return true;
     }
@@ -90,10 +90,10 @@ template <typename... Ts>
 struct WorldQuery<Without<Ts...>> {
     struct Fetch {};
     using State = std::array<TypeId, sizeof...(Ts)>;
-    static Fetch init_fetch(World&, const State&, Tick, Tick) { return Fetch{}; }
-    static void set_archetype(Fetch&, const State&, const Archetype&, Table&) {}
+    static Fetch init_fetch(World&, const State&, Tick, Tick) noexcept { return Fetch{}; }
+    static void set_archetype(Fetch&, const State&, const Archetype&, Table&) noexcept {}
     // static void set_table(Fetch&, State&, const Table&) {}
-    static void set_access(State&, const FilteredAccess&) {}
+    static void set_access(State&, const FilteredAccess&) noexcept {}
     static void update_access(const State& state, FilteredAccess& access) {
         std::ranges::for_each(state, [&](TypeId id) { access.add_without(id); });
     }
@@ -111,7 +111,7 @@ template <typename... Ts>
     requires((!std::is_reference_v<Ts> && !std::is_const_v<Ts>) && ...)
 struct QueryFilter<Without<Ts...>> {
     constexpr static inline bool archetypal = true;
-    static bool filter_fetch(WorldQuery<Without<Ts...>>::Fetch&, Entity, TableRow) {
+    static bool filter_fetch(WorldQuery<Without<Ts...>>::Fetch&, Entity, TableRow) noexcept {
         // always true, because the filter is applied at archetype level. (e.g. access compatible)
         return true;
     }
@@ -164,7 +164,7 @@ struct WorldQuery<Or<Fs...>> {
     //             ...);
     //     }(std::index_sequence_for<Fs...>{});
     // }
-    static void set_access(State& state, const FilteredAccess& access) {}
+    static void set_access(State& state, const FilteredAccess& access) noexcept {}
     static void update_access(const State& state, FilteredAccess& access) {
         FilteredAccess new_access = FilteredAccess::matches_nothing();
         [&]<std::size_t... Is>(std::index_sequence<Is...>) {
@@ -268,7 +268,7 @@ struct WorldQuery<Added<T>> {
     //         fetch.is_sparse_set = false;
     //     }
     // }
-    static void set_access(State& state, const FilteredAccess& access) {}
+    static void set_access(State& state, const FilteredAccess& access) noexcept {}
     static void update_access(const State& state, FilteredAccess& access) {
         assert(access.access().has_component_write(state.component_id) &&
                "Added<T> conflicts with a previous access in this query. Shared access cannot coincide with exclusive "

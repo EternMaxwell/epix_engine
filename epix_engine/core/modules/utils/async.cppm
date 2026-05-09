@@ -186,7 +186,7 @@ struct Sender {
 
    public:
     Sender(const std::shared_ptr<queue_type>& queue) : m_queue(queue) { connect(m_queue); }
-    Sender() = default;
+    Sender() noexcept = default;
     Sender(const Sender& other) : m_queue(other.m_queue) { connect(m_queue); }
     Sender(Sender&& other) noexcept : m_queue(std::exchange(other.m_queue, nullptr)) {}
     Sender& operator=(const Sender& other) {
@@ -205,9 +205,9 @@ struct Sender {
     ~Sender() { disconnect(m_queue); }
 
     /** @brief Check whether this sender is connected to a queue. */
-    operator bool() const { return m_queue.operator bool(); }
+    operator bool() const noexcept { return m_queue.operator bool(); }
     /** @brief Check whether this sender is disconnected. */
-    bool operator!() const { return !m_queue; }
+    bool operator!() const noexcept { return !m_queue; }
 
     /** @brief Send a value by constructing it in-place into the queue.
      * @tparam Args Constructor argument types.
@@ -224,7 +224,7 @@ struct Sender {
         m_queue->close();
     }
 
-    WeakSender<T, Alloc> downgrade() const;
+    WeakSender<T, Alloc> downgrade() const noexcept;
 };
 
 /** @brief Weak sender handle that does not keep a channel open by itself. */
@@ -236,8 +236,8 @@ struct WeakSender {
     std::weak_ptr<queue_type> m_queue;
 
    public:
-    WeakSender() = default;
-    WeakSender(const std::shared_ptr<queue_type>& queue) : m_queue(queue) {}
+    WeakSender() noexcept = default;
+    WeakSender(const std::shared_ptr<queue_type>& queue) noexcept : m_queue(queue) {}
 
     std::optional<Sender<T, Alloc>> upgrade() const {
         auto queue = m_queue.lock();
@@ -248,7 +248,7 @@ struct WeakSender {
 };
 
 template <std::movable T, typename Alloc>
-WeakSender<T, Alloc> Sender<T, Alloc>::downgrade() const {
+WeakSender<T, Alloc> Sender<T, Alloc>::downgrade() const noexcept {
     return WeakSender<T, Alloc>(m_queue);
 }
 /** @brief Thread-safe receiver that pops values from a shared ConQueue.
@@ -265,18 +265,18 @@ struct Receiver {
     std::shared_ptr<queue_type> m_queue;
 
    public:
-    Receiver(const std::shared_ptr<queue_type>& queue) : m_queue(queue) {}
-    Receiver()                           = default;
-    Receiver(const Receiver&)            = default;
-    Receiver(Receiver&&)                 = default;
-    Receiver& operator=(const Receiver&) = default;
-    Receiver& operator=(Receiver&&)      = default;
-    ~Receiver()                          = default;
+    Receiver(const std::shared_ptr<queue_type>& queue) noexcept : m_queue(queue) {}
+    Receiver() noexcept                           = default;
+    Receiver(const Receiver&) noexcept            = default;
+    Receiver(Receiver&&) noexcept                 = default;
+    Receiver& operator=(const Receiver&) noexcept = default;
+    Receiver& operator=(Receiver&&) noexcept      = default;
+    ~Receiver()                                   = default;
 
     /** @brief Check whether this receiver is connected to a queue. */
-    operator bool() const { return m_queue.operator bool(); }
+    operator bool() const noexcept { return m_queue.operator bool(); }
     /** @brief Check whether this receiver is disconnected. */
-    bool operator!() const { return !m_queue; }
+    bool operator!() const noexcept { return !m_queue; }
 
     /** @brief Block until a value is available, then return it.
      * @throws std::runtime_error If the receiver is not initialized.
@@ -509,7 +509,7 @@ struct BroadcastSender {
     }
 
    public:
-    BroadcastSender() = default;
+    BroadcastSender() noexcept = default;
     BroadcastSender(const std::shared_ptr<queue_type>& queue) : m_queue(queue) { connect(m_queue); }
     BroadcastSender(const BroadcastSender& other) : m_queue(other.m_queue) { connect(m_queue); }
     BroadcastSender(BroadcastSender&& other) noexcept : m_queue(std::exchange(other.m_queue, nullptr)) {}
@@ -528,8 +528,8 @@ struct BroadcastSender {
     }
     ~BroadcastSender() { disconnect(m_queue); }
 
-    operator bool() const { return m_queue != nullptr; }
-    bool operator!() const { return m_queue == nullptr; }
+    operator bool() const noexcept { return m_queue != nullptr; }
+    bool operator!() const noexcept { return m_queue == nullptr; }
 
     void send(T value) const {
         if (!m_queue) return;
@@ -566,7 +566,7 @@ struct BroadcastReceiver {
     }
 
    public:
-    BroadcastReceiver() = default;
+    BroadcastReceiver() noexcept = default;
     BroadcastReceiver(std::shared_ptr<queue_type> queue, cursor_type cursor)
         : m_queue(std::move(queue)), m_cursor(std::move(cursor)) {
         connect(m_queue);
@@ -599,8 +599,8 @@ struct BroadcastReceiver {
     }
     ~BroadcastReceiver() { disconnect(m_queue); }
 
-    operator bool() const { return m_queue != nullptr && m_cursor != nullptr; }
-    bool operator!() const { return !m_queue || !m_cursor; }
+    operator bool() const noexcept { return m_queue != nullptr && m_cursor != nullptr; }
+    bool operator!() const noexcept { return !m_queue || !m_cursor; }
 
     std::expected<T, ReceiveError> receive() const {
         if (!m_queue || !m_cursor) {

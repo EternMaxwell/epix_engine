@@ -253,11 +253,12 @@ bool AssetServer::is_managed(const UntypedAssetId& id) const {
     return guard->contains_key(id);
 }
 
-AssetServerMode AssetServer::mode() const { return data->mode; }
+AssetServerMode AssetServer::mode() const noexcept { return data->mode; }
 
-bool AssetServer::watching_for_changes() const { return data->watching_for_changes; }
+bool AssetServer::watching_for_changes() const noexcept { return data->watching_for_changes; }
 
-std::optional<std::reference_wrapper<const AssetSource>> AssetServer::get_source(const AssetSourceId& source_id) const {
+std::optional<std::reference_wrapper<const AssetSource>> AssetServer::get_source(
+    const AssetSourceId& source_id) const noexcept {
     if (!data->sources) return std::nullopt;
     return data->sources->get(source_id);
 }

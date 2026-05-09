@@ -77,7 +77,8 @@ export struct Spawn {
     std::variant<Circle, Rect> m_shape;
     template <typename Shape>
         requires std::constructible_from<decltype(m_shape), Shape>
-    Spawn(Shape&& shape) : m_shape(std::forward<Shape>(shape)) {}
+    Spawn(Shape&& shape) noexcept(std::is_nothrow_constructible_v<decltype(m_shape), Shape>)
+        : m_shape(std::forward<Shape>(shape)) {}
 
    public:
     Spawn(const Spawn&)            = default;
@@ -93,18 +94,20 @@ export struct Spawn {
      * @brief Fill a circle of @p radius cells centred at @p center with element @p id.
      * Cells that already contain an element are overwritten.
      */
-    static Spawn circle(glm::ivec2 center, std::size_t id, int radius) { return Spawn::Circle{center, id, radius}; }
+    static Spawn circle(glm::ivec2 center, std::size_t id, int radius) noexcept {
+        return Spawn::Circle{center, id, radius};
+    }
 
     /**
      * @brief Fill the axis-aligned rectangle from @p min (inclusive) to @p max (inclusive)
      * with element @p id.
      */
-    static Spawn rect(glm::ivec2 min, glm::ivec2 max, std::size_t id) { return Spawn::Rect{min, max, id}; }
+    static Spawn rect(glm::ivec2 min, glm::ivec2 max, std::size_t id) noexcept { return Spawn::Rect{min, max, id}; }
 
     /**
      * @brief Fill a rectangle centred at @p center of the given @p half-extents.
      */
-    static Spawn rect_centered(glm::ivec2 center, std::size_t id, glm::ivec2 half_ext) {
+    static Spawn rect_centered(glm::ivec2 center, std::size_t id, glm::ivec2 half_ext) noexcept {
         return rect({center.x - half_ext.x, center.y - half_ext.y}, {center.x + half_ext.x, center.y + half_ext.y}, id);
     }
 };
@@ -149,7 +152,8 @@ export struct Remove {
     std::variant<Circle, Rect> m_shape;
     template <typename Shape>
         requires std::constructible_from<decltype(m_shape), Shape>
-    Remove(Shape&& shape) : m_shape(std::forward<Shape>(shape)) {}
+    Remove(Shape&& shape) noexcept(std::is_nothrow_constructible_v<decltype(m_shape), Shape>)
+        : m_shape(std::forward<Shape>(shape)) {}
 
    public:
     Remove(const Remove&)            = default;
@@ -161,11 +165,11 @@ export struct Remove {
         std::visit([&sim](const auto& shape) { shape(sim); }, m_shape);
     }
 
-    static Remove circle(glm::ivec2 center, int radius) { return Remove(Remove::Circle{center, radius}); }
+    static Remove circle(glm::ivec2 center, int radius) noexcept { return Remove(Remove::Circle{center, radius}); }
 
-    static Remove rect(glm::ivec2 min, glm::ivec2 max) { return Remove(Remove::Rect{min, max}); }
+    static Remove rect(glm::ivec2 min, glm::ivec2 max) noexcept { return Remove(Remove::Rect{min, max}); }
 
-    static Remove rect_centered(glm::ivec2 center, glm::ivec2 half_ext) {
+    static Remove rect_centered(glm::ivec2 center, glm::ivec2 half_ext) noexcept {
         return rect({center.x - half_ext.x, center.y - half_ext.y}, {center.x + half_ext.x, center.y + half_ext.y});
     }
 };
@@ -195,17 +199,17 @@ export struct Explode {
     int blast_radius  = 5;
     int push_radius   = 15;
 
-    explicit Explode(glm::ivec2 center_) : center(center_) {}
+    explicit Explode(glm::ivec2 center_) noexcept : center(center_) {}
 
-    Explode& with_intensity(float v) {
+    Explode& with_intensity(float v) noexcept {
         intensity = v;
         return *this;
     }
-    Explode& with_blast_radius(int r) {
+    Explode& with_blast_radius(int r) noexcept {
         blast_radius = r;
         return *this;
     }
-    Explode& with_push_radius(int r) {
+    Explode& with_push_radius(int r) noexcept {
         push_radius = r;
         return *this;
     }

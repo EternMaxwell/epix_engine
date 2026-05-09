@@ -189,7 +189,7 @@ export struct VecReader : Reader {
 
    public:
     /** @brief Construct from a byte vector. */
-    explicit VecReader(std::vector<uint8_t> bytes) : m_bytes(std::move(bytes)) {}
+    explicit VecReader(std::vector<uint8_t> bytes) noexcept : m_bytes(std::move(bytes)) {}
     /** @brief Construct from a string. */
     explicit VecReader(std::string data) : m_bytes(data.begin(), data.end()) {}
     /** @brief Construct from a string_view. */
@@ -203,7 +203,7 @@ export struct VecReader : Reader {
     asio::awaitable<std::expected<size_t, std::error_code>> read_to_end(std::vector<uint8_t>& buf) override;
 
     /** @brief Get a view of the underlying bytes. */
-    std::span<const uint8_t> bytes() const { return m_bytes; }
+    std::span<const uint8_t> bytes() const noexcept { return m_bytes; }
 };
 
 /** @brief An in-memory async writer backed by a byte vector.
@@ -218,8 +218,8 @@ export struct VecWriter : Writer {
     asio::awaitable<std::expected<void, std::error_code>> flush() override;
 
     /** @brief Get the written bytes. */
-    std::vector<uint8_t>& bytes() { return m_data; }
-    const std::vector<uint8_t>& bytes() const { return m_data; }
+    std::vector<uint8_t>& bytes() noexcept { return m_data; }
+    const std::vector<uint8_t>& bytes() const noexcept { return m_data; }
 };
 
 }  // namespace epix::assets

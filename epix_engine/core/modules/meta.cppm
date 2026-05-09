@@ -31,11 +31,11 @@ import std;
 #endif
 namespace epix::meta {
 template <typename T>
-constexpr const char* pretty_function() {
+constexpr const char* pretty_function() noexcept {
     return EPIX_PRETTY_FUNCTION;
 }
 template <typename T>
-constexpr std::string_view type_name() {
+constexpr std::string_view type_name() noexcept {
     std::string_view full_name = pretty_function<T>();
     auto first = full_name.find_first_not_of(' ', full_name.find_first_of(EPIX_PRETTY_FUNCTION_PREFIX) + 1);
     auto last  = full_name.find_last_of(EPIX_PRETTY_FUNCTION_SUFFIX);
@@ -115,8 +115,8 @@ export struct type_info {
     bool noexcept_move_constructible : 1;
     bool noexcept_copy_constructible : 1;
 
-    auto operator<=>(const type_info& other) const { return name <=> other.name; }
-    bool operator==(const type_info& other) const { return name == other.name; }
+    auto operator<=>(const type_info& other) const noexcept { return name <=> other.name; }
+    bool operator==(const type_info& other) const noexcept { return name == other.name; }
 
     template <typename T>
     static const type_info& of() {
@@ -188,8 +188,8 @@ struct type_id {
 export struct type_index {
    public:
     template <typename T>
-    type_index(type_id<T> id) : inter(std::addressof(id.type_info())) {}
-    type_index() : inter(std::addressof(type_info::of<void>())) {}
+    type_index(type_id<T> id) noexcept : inter(std::addressof(id.type_info())) {}
+    type_index() noexcept : inter(std::addressof(type_info::of<void>())) {}
 
     auto operator<=>(const type_index& other) const noexcept {
         if (inter == other.inter) return std::strong_ordering::equal;

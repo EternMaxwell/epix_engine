@@ -120,7 +120,7 @@ export class bit_vector {
      * @param pos Bit index.
      * @param value True to set, false to clear.
      */
-    void set(size_type pos, bool value = true) noexcept {
+    void set(size_type pos, bool value = true) {
         ensure_size_for_index(pos);
         const size_type wi = pos / word_bits;
         const word_type m  = word_type(1) << static_cast<unsigned>(pos % word_bits);
@@ -131,7 +131,7 @@ export class bit_vector {
     }
 
     /** @brief Set all bits in [start, end) to 1 (auto-grows). */
-    void set_range(size_type start, size_type end) noexcept {
+    void set_range(size_type start, size_type end) {
         if (start >= end) return;
         ensure_size_for_index(end - 1);
         end              = std::min(end, bits_);
@@ -146,7 +146,7 @@ export class bit_vector {
     }
     /** @brief Set bits at indices from a range to @p value. */
     template <typename R>
-    void set_range(R&& range, bool value = true) noexcept
+    void set_range(R&& range, bool value = true)
         requires std::ranges::input_range<R> && std::convertible_to<std::ranges::range_value_t<R>, size_type>
     {
         for (auto i : range) set(i, value);
@@ -335,7 +335,7 @@ export class bit_vector {
     }
 
     /** @brief Toggle the bit at @p pos (auto-grows). */
-    void toggle(size_type pos) noexcept {
+    void toggle(size_type pos) {
         ensure_size_for_index(pos);
         const size_type wi = pos / word_bits;
         const word_type m  = word_type(1) << static_cast<unsigned>(pos % word_bits);
@@ -347,7 +347,7 @@ export class bit_vector {
         trim_tail();
     }
     /** @brief Toggle all bits in [start, end). */
-    void toggle_range(size_type start, size_type end) noexcept {
+    void toggle_range(size_type start, size_type end) {
         if (start >= end) return;
         ensure_size_for_index(end - 1);
         end              = std::min(end, bits_);
@@ -364,7 +364,7 @@ export class bit_vector {
 
     /** @brief Return a new bit_vector that is the bitwise AND of this and @p
      * o. */
-    bit_vector bit_and(const bit_vector& o) const noexcept {
+    bit_vector bit_and(const bit_vector& o) const {
         bit_vector out;
         const size_type max_bits = std::max(bits_, o.bits_);
         out.resize(max_bits, false);
@@ -376,7 +376,7 @@ export class bit_vector {
     }
     /** @brief Return a new bit_vector that is the bitwise OR of this and @p
      * o. */
-    bit_vector bit_or(const bit_vector& o) const noexcept {
+    bit_vector bit_or(const bit_vector& o) const {
         bit_vector out;
         const size_type max_bits = std::max(bits_, o.bits_);
         out.resize(max_bits, false);
@@ -392,7 +392,7 @@ export class bit_vector {
     }
     /** @brief Return a new bit_vector that is the bitwise XOR of this and @p
      * o. */
-    bit_vector bit_xor(const bit_vector& o) const noexcept {
+    bit_vector bit_xor(const bit_vector& o) const {
         bit_vector out;
         const size_type max_bits = std::max(bits_, o.bits_);
         out.resize(max_bits, false);
@@ -416,7 +416,7 @@ export class bit_vector {
         return *this;
     }
     /** @brief In-place bitwise OR with @p o. */
-    bit_vector& bit_or_assign(const bit_vector& o) noexcept {
+    bit_vector& bit_or_assign(const bit_vector& o) {
         const size_type max_bits = std::max(bits_, o.bits_);
         if (max_bits != bits_) resize(max_bits, false);
         for (size_type i = 0; i < o.words_.size(); ++i) words_[i] |= o.words_[i];
@@ -424,7 +424,7 @@ export class bit_vector {
         return *this;
     }
     /** @brief In-place bitwise XOR with @p o. */
-    bit_vector& bit_xor_assign(const bit_vector& o) noexcept {
+    bit_vector& bit_xor_assign(const bit_vector& o) {
         const size_type max_bits = std::max(bits_, o.bits_);
         if (max_bits != bits_) resize(max_bits, false);
         for (size_type i = 0; i < o.words_.size(); ++i) words_[i] ^= o.words_[i];
@@ -435,9 +435,9 @@ export class bit_vector {
     /** @brief Alias for bit_and_assign. */
     bit_vector& intersect_with(const bit_vector& o) noexcept { return bit_and_assign(o); }
     /** @brief Alias for bit_or_assign. */
-    bit_vector& union_with(const bit_vector& o) noexcept { return bit_or_assign(o); }
+    bit_vector& union_with(const bit_vector& o) { return bit_or_assign(o); }
     /** @brief Alias for bit_xor_assign. */
-    bit_vector& symmetric_difference_with(const bit_vector& o) noexcept { return bit_xor_assign(o); }
+    bit_vector& symmetric_difference_with(const bit_vector& o) { return bit_xor_assign(o); }
 
     /** @brief Remove bits set in @p o from this (this = this \ o). */
     bit_vector& difference_with(const bit_vector& o) noexcept {
@@ -513,7 +513,7 @@ export class bit_vector {
         if (!words_.empty()) words_.back() &= mask;
     }
 
-    void ensure_size_for_index(size_type pos) noexcept {
+    void ensure_size_for_index(size_type pos) {
         if (pos < bits_) return;
         // grow to contain pos
         resize(pos + 1, false);

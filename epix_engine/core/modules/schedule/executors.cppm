@@ -16,13 +16,13 @@ namespace epix::core::executors {
 /** @brief Default executor using thread-pool-based parallel dispatch. */
 export struct MultithreadClassicExecutor : ScheduleExecutor {
     void execute(ScheduleSystems& schedule, World& world, const ExecutorConfig& config) override;
-    meta::type_index type() const override { return meta::type_id<MultithreadClassicExecutor>(); }
+    meta::type_index type() const noexcept override { return meta::type_id<MultithreadClassicExecutor>(); }
 };
 /** @brief Single-thread executor that follows classic scheduling logic
  *  while running every condition/system on the caller thread. */
 export struct SingleThreadExecutor : ScheduleExecutor {
     void execute(ScheduleSystems& schedule, World& world, const ExecutorConfig& config) override;
-    meta::type_index type() const override { return meta::type_id<SingleThreadExecutor>(); }
+    meta::type_index type() const noexcept override { return meta::type_id<SingleThreadExecutor>(); }
 };
 /** @brief A flat node in the expanded dependency graph used by FlatGraphExecutor.
  *  Each original node is split into a pre node (runs system/conditions) and a post node
@@ -49,7 +49,7 @@ export struct MultithreadFlatExecutor : ScheduleExecutor {
 
     void rebuild_flat_cache(const std::shared_ptr<ScheduleCache>& cache);
     void execute(ScheduleSystems& schedule, World& world, const ExecutorConfig& config) override;
-    meta::type_index type() const override { return meta::type_id<MultithreadFlatExecutor>(); }
+    meta::type_index type() const noexcept override { return meta::type_id<MultithreadFlatExecutor>(); }
 };
 /** @brief Executor backed by taskflow's work-stealing scheduler.
  *  Converts the flat pre/post graph into a pure taskflow graph at cache-build time.
@@ -65,7 +65,7 @@ export struct TaskflowExecutor : ScheduleExecutor {
     TaskflowExecutor(TaskflowExecutor&&) noexcept;
     TaskflowExecutor& operator=(TaskflowExecutor&&) noexcept;
     void execute(ScheduleSystems& schedule, World& world, const ExecutorConfig& config) override;
-    meta::type_index type() const override { return meta::type_id<TaskflowExecutor>(); }
+    meta::type_index type() const noexcept override { return meta::type_id<TaskflowExecutor>(); }
 };
 
 export struct AutoExecutor : ScheduleExecutor {
@@ -77,6 +77,6 @@ export struct AutoExecutor : ScheduleExecutor {
     AutoExecutor(AutoExecutor&&) noexcept;
     AutoExecutor& operator=(AutoExecutor&&) noexcept;
     void execute(ScheduleSystems& schedule, World& world, const ExecutorConfig& config) override;
-    meta::type_index type() const override { return meta::type_id<AutoExecutor>(); }
+    meta::type_index type() const noexcept override { return meta::type_id<AutoExecutor>(); }
 };
 }  // namespace epix::core::executors

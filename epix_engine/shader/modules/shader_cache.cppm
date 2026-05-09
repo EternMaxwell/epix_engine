@@ -109,9 +109,13 @@ export struct ShaderCacheError {
             data;
 
     /** @brief Create a `ShaderNotLoaded` error. */
-    static ShaderCacheError not_loaded(assets::AssetId<Shader> id) { return {ShaderNotLoaded{id}}; }
+    static ShaderCacheError not_loaded(assets::AssetId<Shader> id) {
+        return {ShaderNotLoaded{id}};
+    }
     /** @brief Create a `ProcessShaderError`. */
-    static ShaderCacheError process_error(ComposeError error) { return {ProcessShaderError{std::move(error)}}; }
+    static ShaderCacheError process_error(ComposeError error) {
+        return {ProcessShaderError{std::move(error)}};
+    }
     /** @brief Create a `ShaderImportNotYetAvailable` error. */
     static ShaderCacheError import_not_available(std::vector<ShaderImport> missing_imports = {}) {
         return {ShaderImportNotYetAvailable{std::move(missing_imports)}};
@@ -130,7 +134,7 @@ export struct ShaderCacheError {
      * For example, a missing import may become available after another shader is
      * loaded.
      */
-    bool is_recoverable() const {
+    bool is_recoverable() const noexcept {
         return std::holds_alternative<ShaderNotLoaded>(data) ||
                std::holds_alternative<ShaderImportNotYetAvailable>(data);
     }

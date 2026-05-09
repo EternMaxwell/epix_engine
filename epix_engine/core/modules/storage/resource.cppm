@@ -23,47 +23,47 @@ struct ResourceData {
    public:
     ResourceData(const ::epix::meta::type_info& desc) : data(desc, 1), added_tick(0), modified_tick(0) {}
 
-    bool is_present(this const ResourceData& self) { return !self.data.empty(); }
-    std::optional<const void*> get(this const ResourceData& self) {
+    bool is_present(this const ResourceData& self) noexcept { return !self.data.empty(); }
+    std::optional<const void*> get(this const ResourceData& self) noexcept {
         if (!self.data.empty()) {
             return self.data.cdata();
         }
         return std::nullopt;
     }
-    std::optional<void*> get_mut(this ResourceData& self) {
+    std::optional<void*> get_mut(this ResourceData& self) noexcept {
         if (!self.data.empty()) {
             return self.data.data();
         }
         return std::nullopt;
     }
     template <typename T>
-    std::optional<std::reference_wrapper<const T>> get_as(this const ResourceData& self) {
+    std::optional<std::reference_wrapper<const T>> get_as(this const ResourceData& self) noexcept {
         return self.get().transform([&](const void* ptr) { return std::cref(*static_cast<const T*>(ptr)); });
     }
     template <typename T>
-    std::optional<std::reference_wrapper<T>> get_as_mut(this ResourceData& self) {
+    std::optional<std::reference_wrapper<T>> get_as_mut(this ResourceData& self) noexcept {
         return self.get_mut().transform([&](void* ptr) { return std::ref(*static_cast<T*>(ptr)); });
     }
 
-    std::optional<ComponentTicks> get_ticks(this const ResourceData& self) {
+    std::optional<ComponentTicks> get_ticks(this const ResourceData& self) noexcept {
         if (self.is_present()) {
             return ComponentTicks{self.added_tick, self.modified_tick};
         }
         return std::nullopt;
     }
-    std::optional<TickRefs> get_tick_refs(this const ResourceData& self) {
+    std::optional<TickRefs> get_tick_refs(this const ResourceData& self) noexcept {
         if (self.is_present()) {
             return TickRefs{&self.added_tick, &self.modified_tick};
         }
         return std::nullopt;
     }
-    std::optional<std::reference_wrapper<Tick>> get_added_tick(this const ResourceData& self) {
+    std::optional<std::reference_wrapper<Tick>> get_added_tick(this const ResourceData& self) noexcept {
         if (self.is_present()) {
             return std::ref(self.added_tick);
         }
         return std::nullopt;
     }
-    std::optional<std::reference_wrapper<Tick>> get_modified_tick(this const ResourceData& self) {
+    std::optional<std::reference_wrapper<Tick>> get_modified_tick(this const ResourceData& self) noexcept {
         if (self.is_present()) {
             return std::ref(self.modified_tick);
         }
@@ -170,15 +170,16 @@ struct Resources {
    public:
     Resources(std::shared_ptr<TypeRegistry> registry) : registry(std::move(registry)) {}
 
-    std::size_t resource_count(this const Resources& self) { return self.resources.size(); }
-    bool empty(this const Resources& self) { return self.resources.empty(); }
+    std::size_t resource_count(this const Resources& self) noexcept { return self.resources.size(); }
+    bool empty(this const Resources& self) noexcept { return self.resources.empty(); }
     auto iter(this Resources& self) { return self.resources.iter(); }
     void clear(this Resources& self) { self.resources.clear(); }
 
-    std::optional<std::reference_wrapper<const ResourceData>> get(this const Resources& self, TypeId resource_id) {
+    std::optional<std::reference_wrapper<const ResourceData>> get(this const Resources& self,
+                                                                  TypeId resource_id) noexcept {
         return self.resources.get(resource_id);
     }
-    std::optional<std::reference_wrapper<ResourceData>> get_mut(this Resources& self, TypeId resource_id) {
+    std::optional<std::reference_wrapper<ResourceData>> get_mut(this Resources& self, TypeId resource_id) noexcept {
         return self.resources.get_mut(resource_id);
     }
 
@@ -201,4 +202,4 @@ struct Resources {
     std::shared_ptr<TypeRegistry> registry;
     SparseSet<std::size_t, ResourceData> resources;
 };
-}  // namespace core
+}  // namespace epix::core

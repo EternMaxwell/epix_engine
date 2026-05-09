@@ -31,7 +31,8 @@ struct Extract : public T {
    public:
     template <typename... Args>
         requires std::constructible_from<T, Args...>
-    explicit Extract(Args&&... args) : T(std::forward<Args>(args)...) {}
+    explicit Extract(Args&&... args) noexcept(std::is_nothrow_constructible_v<T, Args...>)
+        : T(std::forward<Args>(args)...) {}
 
     Extract(const Extract&)            = default;
     Extract(Extract&&)                 = default;
@@ -60,8 +61,8 @@ struct SystemParam<Extract<T>> : SystemParam<T> {
             throw std::runtime_error(
                 std::format("Extract<T> with deferred param T=[{}] is not allowed.", meta::type_id<T>::short_name()));
     }
-    static void apply(State& state, const SystemMeta& meta, World& world) {}
-    static void queue(State& state, const SystemMeta& meta, DeferredWorld deferred_world) {}
+    static void apply(State& state, const SystemMeta& meta, World& world) noexcept {}
+    static void queue(State& state, const SystemMeta& meta, DeferredWorld deferred_world) noexcept {}
     static std::expected<void, ValidateParamError> validate_param(State& state, const SystemMeta& meta, World& world) {
         return Base::validate_param(state, meta, world.resource_mut<ExtractedWorld>().world);
     }
@@ -75,4 +76,4 @@ struct SystemParam<Extract<T>> : SystemParam<T> {
     }
 };
 static_assert(system_param<Extract<ResMut<int>>>);
-}  // namespace core
+}  // namespace epix::core

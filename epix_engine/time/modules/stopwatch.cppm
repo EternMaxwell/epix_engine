@@ -14,19 +14,19 @@ export struct Stopwatch {
     Stopwatch() = default;
 
     /** @brief Get total elapsed time (only accumulated while unpaused). */
-    std::chrono::nanoseconds elapsed() const { return m_elapsed; }
+    std::chrono::nanoseconds elapsed() const noexcept { return m_elapsed; }
 
     /** @brief Get elapsed time as float seconds. */
-    float elapsed_secs() const { return std::chrono::duration<float>(m_elapsed).count(); }
+    float elapsed_secs() const noexcept { return std::chrono::duration<float>(m_elapsed).count(); }
 
     /** @brief Get elapsed time as double seconds. */
-    double elapsed_secs_f64() const { return std::chrono::duration<double>(m_elapsed).count(); }
+    double elapsed_secs_f64() const noexcept { return std::chrono::duration<double>(m_elapsed).count(); }
 
     /** @brief Set elapsed time directly. */
-    void set_elapsed(std::chrono::nanoseconds time) { m_elapsed = time; }
+    void set_elapsed(std::chrono::nanoseconds time) noexcept { m_elapsed = time; }
 
     /** @brief Advance the stopwatch by delta. Does nothing if paused. */
-    Stopwatch& tick(std::chrono::nanoseconds delta) {
+    Stopwatch& tick(std::chrono::nanoseconds delta) noexcept {
         if (!m_paused) {
             m_elapsed += delta;
         }
@@ -34,16 +34,16 @@ export struct Stopwatch {
     }
 
     /** @brief Pause the stopwatch. Subsequent ticks will not accumulate. */
-    void pause() { m_paused = true; }
+    void pause() noexcept { m_paused = true; }
 
     /** @brief Unpause the stopwatch. */
-    void unpause() { m_paused = false; }
+    void unpause() noexcept { m_paused = false; }
 
     /** @brief Check whether the stopwatch is paused. */
-    bool is_paused() const { return m_paused; }
+    bool is_paused() const noexcept { return m_paused; }
 
     /** @brief Reset elapsed time to zero. */
-    void reset() { m_elapsed = std::chrono::nanoseconds(0); }
+    void reset() noexcept { m_elapsed = std::chrono::nanoseconds(0); }
 
    private:
     std::chrono::nanoseconds m_elapsed{0};

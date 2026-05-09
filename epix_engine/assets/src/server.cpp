@@ -317,7 +317,7 @@ void AssetServer::handle_internal_events(core::ParamSet<core::World&, core::Res<
 
     // Reload paths outside the lock to avoid deadlock
     for (auto& path : paths_to_reload) {
-        server->reload(path);
+        (void)server->reload(path);
     }
 }
 

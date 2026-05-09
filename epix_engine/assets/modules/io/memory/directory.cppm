@@ -57,8 +57,8 @@ export struct DirEvent {
 // Public value type: either a read-only view (std::span) or an owned shared buffer
 export struct Value {
     std::variant<std::span<const std::byte>, std::shared_ptr<std::vector<std::byte>>> v;
-    static Value from_span(std::span<const std::byte> s) { return Value{.v = s}; }
-    static Value from_shared(std::shared_ptr<std::vector<std::byte>> b) { return Value{.v = b}; }
+    static Value from_span(std::span<const std::byte> s) noexcept { return Value{.v = s}; }
+    static Value from_shared(std::shared_ptr<std::vector<std::byte>> b) noexcept { return Value{.v = b}; }
 };
 
 export struct Data {
@@ -139,7 +139,7 @@ export class Directory {
     /** @brief Remove a event callback by its ID */
     void remove_callback(std::uint64_t id) const;
     /** @brief Poll for and process any pending directory events recursively, and clear the event queue */
-    void poll_events() const;
+    void poll_events() const noexcept;
     /** @brief Get the path of this directory relative to the virtual root */
     std::filesystem::path get_path() const;
 

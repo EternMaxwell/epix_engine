@@ -60,7 +60,7 @@ export struct FormatInfo {
     bool is16Bit;
 
     /** @brief Get the total byte size of a single pixel. */
-    std::size_t pixelSize() const { return channels * bytesPerChannel; }
+    std::size_t pixelSize() const noexcept { return channels * bytesPerChannel; }
 };
 
 /** @brief Look up the FormatInfo for a given pixel Format.
@@ -124,11 +124,11 @@ export class Image {
     std::vector<std::byte> data;
 
     template <typename T>
-    T* raw() {
+    T* raw() noexcept {
         return reinterpret_cast<T*>(data.data());
     }
     template <typename T>
-    const T* raw() const {
+    const T* raw() const noexcept {
         return reinterpret_cast<const T*>(data.data());
     }
 
@@ -226,30 +226,30 @@ export class Image {
     static std::expected<void, ImageSaveError> save(const std::filesystem::path& path, const Image& image);
 
     /** @brief Get the image width in pixels. */
-    std::uint32_t width() const { return m_width; }
+    std::uint32_t width() const noexcept { return m_width; }
     /** @brief Get the image height in pixels. */
-    std::uint32_t height() const { return m_height; }
+    std::uint32_t height() const noexcept { return m_height; }
     /** @brief Get the raw depth-or-layers value. */
-    std::uint32_t depth_or_layers() const { return m_depth_or_layers; }
+    std::uint32_t depth_or_layers() const noexcept { return m_depth_or_layers; }
     /** @brief Get the depth (1 if not a 3D image). */
-    std::uint32_t depth() const { return m_type == ImageType::e3D ? m_depth_or_layers : 1; }
+    std::uint32_t depth() const noexcept { return m_type == ImageType::e3D ? m_depth_or_layers : 1; }
     /** @brief Get the layer count (1 if not a 2D array image). */
-    std::uint32_t layers() const { return m_type == ImageType::e2DArray ? m_depth_or_layers : 1; }
+    std::uint32_t layers() const noexcept { return m_type == ImageType::e2DArray ? m_depth_or_layers : 1; }
     /** @brief Get the image dimension type. */
-    ImageType type() const { return m_type; }
+    ImageType type() const noexcept { return m_type; }
     /** @brief Get the pixel format. */
-    Format format() const { return m_format; }
+    Format format() const noexcept { return m_format; }
     /** @brief Get the format metadata for this image's pixel format. */
-    const FormatInfo& format_info() const { return getFormatInfo(m_format); }
+    const FormatInfo& format_info() const noexcept { return getFormatInfo(m_format); }
     /** @brief Get the usage flags for this image. */
-    ImageUsage usage() const { return m_usage; }
+    ImageUsage usage() const noexcept { return m_usage; }
     /** @brief Set the usage flags.
      * @param usage New usage bitmask. */
-    void set_usage(ImageUsage usage) { m_usage = usage; }
+    void set_usage(ImageUsage usage) noexcept { m_usage = usage; }
 
     /** @brief Get a read-only byte span of the raw pixel data. */
-    std::span<const std::byte> raw_view() const { return std::as_bytes(std::span(data)); }
-    std::span<std::byte> raw_view_mut() { return std::as_writable_bytes(std::span(data)); }
+    std::span<const std::byte> raw_view() const noexcept { return std::as_bytes(std::span(data)); }
+    std::span<std::byte> raw_view_mut() noexcept { return std::as_writable_bytes(std::span(data)); }
 
     /**
      * @brief Sample a pixel at (x, y), returning an array of 4 floats, each representing a channel. Missing channels

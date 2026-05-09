@@ -34,7 +34,7 @@ export enum class SlotType {
 /** @brief Get a human-readable name for a SlotType.
  * @param type The slot type.
  * @return String view of the type name. */
-export std::string_view type_name(SlotType type);
+export std::string_view type_name(SlotType type) noexcept;
 /** @brief Describes a named slot with its data type. */
 export struct SlotInfo {
     /** @brief Name of the slot. */
@@ -79,7 +79,7 @@ export struct SlotValue {
     SlotValue(const wgpu::Sampler& sampler) : value(sampler.clone()) {}
     /** @brief Get the type of the stored slot value.
      *  @return The SlotType enum value. */
-    SlotType type() const {
+    SlotType type() const noexcept {
         return std::visit(utils::visitor{
                               [](const Entity&) { return SlotType::Entity; },
                               [](const wgpu::Buffer&) { return SlotType::Buffer; },
@@ -89,13 +89,13 @@ export struct SlotValue {
                           value);
     }
     /** @brief Check if the slot holds an Entity. */
-    bool is_entity() const { return std::holds_alternative<Entity>(value); }
+    bool is_entity() const noexcept { return std::holds_alternative<Entity>(value); }
     /** @brief Check if the slot holds a wgpu::Buffer. */
-    bool is_buffer() const { return std::holds_alternative<wgpu::Buffer>(value); }
+    bool is_buffer() const noexcept { return std::holds_alternative<wgpu::Buffer>(value); }
     /** @brief Check if the slot holds a wgpu::TextureView. */
-    bool is_texture() const { return std::holds_alternative<wgpu::TextureView>(value); }
+    bool is_texture() const noexcept { return std::holds_alternative<wgpu::TextureView>(value); }
     /** @brief Check if the slot holds a wgpu::Sampler. */
-    bool is_sampler() const { return std::holds_alternative<wgpu::Sampler>(value); }
+    bool is_sampler() const noexcept { return std::holds_alternative<wgpu::Sampler>(value); }
     /** @brief Get the stored Entity, if present.
      *  @return The Entity, or std::nullopt. */
     std::optional<Entity> entity() const {
@@ -126,13 +126,13 @@ export struct SlotValue {
 /** @brief Label identifying a slot by index or name. */
 export struct SlotLabel {
     std::variant<std::uint32_t, std::string> label;
-    SlotLabel(std::uint32_t l) : label(l) {}
+    SlotLabel(std::uint32_t l) noexcept : label(l) {}
     SlotLabel(const std::string& l) : label(l) {}
     SlotLabel(const char* l) : label(std::string(l)) {}
-    SlotLabel(const SlotLabel&)            = default;
-    SlotLabel(SlotLabel&&)                 = default;
-    SlotLabel& operator=(const SlotLabel&) = default;
-    SlotLabel& operator=(SlotLabel&&)      = default;
+    SlotLabel(const SlotLabel&)                = default;
+    SlotLabel(SlotLabel&&) noexcept            = default;
+    SlotLabel& operator=(const SlotLabel&)     = default;
+    SlotLabel& operator=(SlotLabel&&) noexcept = default;
 };
 struct SlotInfos {
    private:
@@ -141,20 +141,20 @@ struct SlotInfos {
    public:
     SlotInfos(std::span<const SlotInfo> slot_infos) : slots(slot_infos.begin(), slot_infos.end()) {};
     SlotInfos(const SlotInfos&)            = default;
-    SlotInfos(SlotInfos&&)                 = default;
+    SlotInfos(SlotInfos&&) noexcept        = default;
     SlotInfos& operator=(const SlotInfos&) = default;
     SlotInfos& operator=(SlotInfos&&)      = default;
 
-    std::size_t size() const { return slots.size(); }
-    bool empty() const { return slots.empty(); }
-    std::optional<std::reference_wrapper<SlotInfo>> get_slot(const SlotLabel& label) {
+    std::size_t size() const noexcept { return slots.size(); }
+    bool empty() const noexcept { return slots.empty(); }
+    std::optional<std::reference_wrapper<SlotInfo>> get_slot(const SlotLabel& label) noexcept {
         return get_slot_index(label).transform([this](std::uint32_t index) { return std::ref(slots[index]); });
     }
-    std::optional<std::reference_wrapper<const SlotInfo>> get_slot(const SlotLabel& label) const {
+    std::optional<std::reference_wrapper<const SlotInfo>> get_slot(const SlotLabel& label) const noexcept {
         return get_slot_index(label).transform([this](std::uint32_t index) { return std::cref(slots[index]); });
     }
-    std::optional<std::uint32_t> get_slot_index(const SlotLabel& label) const;
-    auto iter() { return std::views::all(slots); }
-    auto iter() const { return std::views::all(slots); }
+    std::optional<std::uint32_t> get_slot_index(const SlotLabel& label) const noexcept;
+    auto iter() noexcept { return std::views::all(slots); }
+    auto iter() const noexcept { return std::views::all(slots); }
 };
-}  // namespace render::graph
+}  // namespace epix::render::graph

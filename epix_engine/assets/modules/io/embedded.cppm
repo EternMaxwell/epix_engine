@@ -59,8 +59,8 @@ export struct EmbeddedAssetRegistry {
     void register_source(AssetSourceBuilders& sources);
 
     /** @brief Get the underlying in-memory directory (for advanced use). */
-    const memory::Directory& directory() const { return m_dir; }
-    memory::Directory& directory() { return m_dir; }
+    const memory::Directory& directory() const noexcept { return m_dir; }
+    memory::Directory& directory() noexcept { return m_dir; }
 };
 
 }  // namespace epix::assets

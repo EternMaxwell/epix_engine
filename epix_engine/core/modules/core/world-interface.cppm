@@ -150,37 +150,37 @@ export struct World {
     World& operator=(World&&)      = default;
 
     /** @brief Get the world's unique identifier. */
-    WorldId id() const { return _id; }
+    WorldId id() const noexcept { return _id; }
     /** @brief Get a const reference to the type registry. */
-    const TypeRegistry& type_registry() const { return *_type_registry; }
+    const TypeRegistry& type_registry() const noexcept { return *_type_registry; }
     /** @brief Get a shared pointer to the type registry. */
-    std::shared_ptr<TypeRegistry> type_registry_ptr() const { return _type_registry; }
+    std::shared_ptr<TypeRegistry> type_registry_ptr() const noexcept { return _type_registry; }
     /** @brief Get a const reference to the component metadata store. */
-    const Components& components() const { return _components; }
+    const Components& components() const noexcept { return _components; }
     /** @brief Get a mutable reference to the component metadata store. */
-    Components& components_mut() { return _components; }
+    Components& components_mut() noexcept { return _components; }
     /** @brief Get a const reference to the entity allocator. */
-    const Entities& entities() const { return _entities; }
+    const Entities& entities() const noexcept { return _entities; }
     /** @brief Get a mutable reference to the entity allocator. */
-    Entities& entities_mut() { return _entities; }
+    Entities& entities_mut() noexcept { return _entities; }
     /** @brief Get a const reference to the storage (tables, sparse sets, resources). */
-    const Storage& storage() const { return _storage; }
+    const Storage& storage() const noexcept { return _storage; }
     /** @brief Get a mutable reference to the storage. */
-    Storage& storage_mut() { return _storage; }
+    Storage& storage_mut() noexcept { return _storage; }
     /** @brief Get a const reference to all archetypes. */
-    const Archetypes& archetypes() const { return _archetypes; }
+    const Archetypes& archetypes() const noexcept { return _archetypes; }
     /** @brief Get a mutable reference to all archetypes. */
-    Archetypes& archetypes_mut() { return _archetypes; }
+    Archetypes& archetypes_mut() noexcept { return _archetypes; }
     /** @brief Get a const reference to the bundle registry. */
-    const Bundles& bundles() const { return _bundles; }
+    const Bundles& bundles() const noexcept { return _bundles; }
     /** @brief Get a mutable reference to the bundle registry. */
-    Bundles& bundles_mut() { return _bundles; }
+    Bundles& bundles_mut() noexcept { return _bundles; }
     /** @brief Get the current change tick (monotonically increasing). */
-    Tick change_tick() const { return _change_tick->load(std::memory_order_relaxed); }
+    Tick change_tick() const noexcept { return _change_tick->load(std::memory_order_relaxed); }
     /** @brief Atomically increment and return the previous change tick. */
-    Tick increment_change_tick() { return Tick(_change_tick->fetch_add(1, std::memory_order_relaxed)); }
+    Tick increment_change_tick() noexcept { return Tick(_change_tick->fetch_add(1, std::memory_order_relaxed)); }
     /** @brief Get the tick value from the last time change ticks were checked. */
-    Tick last_change_tick() const { return _last_change_tick; }
+    Tick last_change_tick() const noexcept { return _last_change_tick; }
     /** @brief Check and clamp stale change ticks in tables, sparse sets, and resources.
      *  @param additional_checks Extra tick-checking logic invoked with the current change tick. */
     void check_change_tick(std::invocable<Tick> auto&& additional_checks) {
@@ -195,7 +195,7 @@ export struct World {
         _last_change_tick = change_tick;
     }
     /** @brief Get a mutable reference to the deferred command queue. */
-    CommandQueue& command_queue() { return _command_queue; }
+    CommandQueue& command_queue() noexcept { return _command_queue; }
 
     /** @brief Despawn all entities and clear archetype/table/sparse-set data. */
     void clear_entities() {
@@ -490,9 +490,9 @@ export struct World {
     /** @brief Get a mutable reference to a living entity. Panics if the entity is invalid. */
     EntityWorldMut entity_mut(Entity entity);
     /** @brief Try to get a read-only reference to an entity. Returns std::nullopt if invalid. */
-    std::optional<EntityRef> get_entity(Entity entity) const;
+    std::optional<EntityRef> get_entity(Entity entity) const noexcept;
     /** @brief Try to get a mutable reference to an entity. Returns std::nullopt if invalid. */
-    std::optional<EntityWorldMut> get_entity_mut(Entity entity);
+    std::optional<EntityWorldMut> get_entity_mut(Entity entity) noexcept;
 
     /** @brief Flush pending reserved entities into the empty archetype. */
     void flush_entities() {
@@ -526,27 +526,27 @@ export struct World {
  *  and deferred command submission. Does not allow direct mutation. */
 struct DeferredWorld {
    public:
-    DeferredWorld(World& world) : world_(&world) {}
+    DeferredWorld(World& world) noexcept : world_(&world) {}
     /** @brief Get the world's unique identifier. */
-    WorldId id() const { return world_->id(); }
+    WorldId id() const noexcept { return world_->id(); }
     /** @brief Get a const reference to the type registry. */
-    const TypeRegistry& type_registry() const { return world_->type_registry(); }
+    const TypeRegistry& type_registry() const noexcept { return world_->type_registry(); }
     /** @brief Get a const reference to the component metadata store. */
-    const Components& components() const { return world_->components(); }
+    const Components& components() const noexcept { return world_->components(); }
     /** @brief Get a const reference to the entity allocator. */
-    const Entities& entities() const { return world_->entities(); }
+    const Entities& entities() const noexcept { return world_->entities(); }
     /** @brief Get a const reference to the storage. */
-    const Storage& storage() const { return world_->storage(); }
+    const Storage& storage() const noexcept { return world_->storage(); }
     /** @brief Get a const reference to all archetypes. */
-    const Archetypes& archetypes() const { return world_->archetypes(); }
+    const Archetypes& archetypes() const noexcept { return world_->archetypes(); }
     /** @brief Get a const reference to the bundle registry. */
-    const Bundles& bundles() const { return world_->bundles(); }
+    const Bundles& bundles() const noexcept { return world_->bundles(); }
     /** @brief Get the current change tick. */
-    Tick change_tick() const { return world_->change_tick(); }
+    Tick change_tick() const noexcept { return world_->change_tick(); }
     /** @brief Get the last change tick. */
-    Tick last_change_tick() const { return world_->last_change_tick(); }
+    Tick last_change_tick() const noexcept { return world_->last_change_tick(); }
     /** @brief Get a mutable reference to the deferred command queue. */
-    CommandQueue& command_queue() { return world_->command_queue(); }
+    CommandQueue& command_queue() noexcept { return world_->command_queue(); }
 
     /** @brief Get a read-only reference to a living entity. */
     EntityRef entity(Entity entity);
@@ -592,4 +592,4 @@ struct DeferredWorld {
     World* world_;
 };
 static_assert(std::movable<World>);
-}  // namespace core
+}  // namespace epix::core

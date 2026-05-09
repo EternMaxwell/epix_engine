@@ -99,7 +99,7 @@ asio::awaitable<AssetHash> get_asset_hash(std::span<const std::byte> meta_bytes,
     AssetHasher hasher;
     hasher.update(meta_bytes);
     std::vector<uint8_t> bytes;
-    co_await reader.read_to_end(bytes);
+    (void)co_await reader.read_to_end(bytes);
     hasher.update(std::span<const std::byte>(reinterpret_cast<const std::byte*>(bytes.data()), bytes.size()));
     co_return hasher.finish();
 }
