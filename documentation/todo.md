@@ -27,3 +27,12 @@ See [documentation/core/todo.md](core/todo.md) and [documentation/assets/todo.md
 See [documentation/tasks/todo.md](tasks/todo.md) for full details.
 
 | `grid`   | `ChunkLayer::supported_types` return input_iterable                                                              | feature  |
+
+See [documentation/input/todo.md](input/todo.md) for the input module. No stubs found; all exported APIs are fully implemented.
+
+See [documentation/time/todo.md](time/todo.md) for the time module. No stubs found; all exported APIs are fully implemented.
+
+See [documentation/render/render/todo.md](render/render/todo.md) for the render module. No stubs found in the exported API. Two implementation-level TODOs: `DrawFunctions<P>` RCU upgrade (perf, C++26) and MSVC `AssetId` cast workaround.
+
+See [documentation/render/imgui/todo.md](render/imgui/todo.md) for the render/imgui module. No stubs or unfinished code found; the module is feature-complete.
+
