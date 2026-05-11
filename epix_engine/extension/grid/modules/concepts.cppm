@@ -262,6 +262,7 @@ struct grid_trait {
     using pos_type   = typename std::decay_t<G>::pos_type;
     using coord_type = typename pos_type::value_type;
     using value_type = typename std::decay_t<G>::cell_type;
+    using cell_type  = value_type;  ///< Alias used by BasicGridLayer/BasicGridRefLayer.
 
     static constexpr std::size_t dim    = std::tuple_size_v<pos_type>;
     static constexpr bool is_extendible = extendible_grid<G>;
