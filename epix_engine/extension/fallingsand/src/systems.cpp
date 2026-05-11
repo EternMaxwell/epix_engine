@@ -24,10 +24,9 @@ namespace epix::ext::fallingsand {
 // Static helpers
 // ──────────────────────────────────────────────────────────────────────────────
 
-static mesh::Mesh build_chunk_mesh(const grid::Chunk<kDim>& chunk, float cell_size) {
+static mesh::Mesh build_chunk_mesh(const ChunkElementGrid& chunk, float cell_size) {
     // Skip Body-type elements (alpha == 0) — they are invisible placeholders.
-    auto visible =
-        std::views::filter(chunk.iter<Element>(), [](const auto& pair) { return pair.second.color.a >= 0.001f; });
+    auto visible = std::views::filter(chunk.iter(), [](const auto& t) { return std::get<1>(t).color.a >= 0.001f; });
     std::vector<glm::vec3> positions;
     std::vector<glm::vec4> colors;
     std::vector<std::uint32_t> indices;
@@ -39,7 +38,9 @@ static mesh::Mesh build_chunk_mesh(const grid::Chunk<kDim>& chunk, float cell_si
         positions.push_back({x + cell_size, y, 0.0f});
         positions.push_back({x + cell_size, y + cell_size, 0.0f});
         positions.push_back({x, y + cell_size, 0.0f});
-        for (int i = 0; i < 4; ++i) colors.push_back(elem.color);
+        glm::vec4 c = elem.color;
+        if (elem.burning()) c = glm::mix(c, glm::vec4(0.95f, 0.45f, 0.05f, 1.0f), 0.6f);
+        for (int i = 0; i < 4; ++i) colors.push_back(c);
         indices.insert(indices.end(), {base, base + 1, base + 2, base + 2, base + 3, base});
         base += 4;
     }
@@ -52,13 +53,13 @@ static mesh::Mesh build_chunk_mesh(const grid::Chunk<kDim>& chunk, float cell_si
 
 /// Build a debug mesh that highlights Body-type sentinel elements (alpha == 0)
 /// with a distinct debug colour.  Used when SandWorld::show_body_debug() is true.
-static mesh::Mesh build_chunk_body_debug_mesh(const grid::Chunk<kDim>& chunk, float cell_size) {
+static mesh::Mesh build_chunk_body_debug_mesh(const ChunkElementGrid& chunk, float cell_size) {
     constexpr glm::vec4 kDebugColor{1.0f, 0.15f, 1.0f, 0.65f};  // magenta semi-transparent
     std::vector<glm::vec3> positions;
     std::vector<glm::vec4> colors;
     std::vector<std::uint32_t> indices;
     std::uint32_t base = 0;
-    for (auto&& [pos, elem] : chunk.iter<Element>()) {
+    for (auto&& [pos, elem] : chunk.iter()) {
         if (elem.color.a >= 0.001f) continue;  // only body (invisible) elements
         float x = static_cast<float>(pos[0]) * cell_size;
         float y = static_cast<float>(pos[1]) * cell_size;
@@ -67,6 +68,42 @@ static mesh::Mesh build_chunk_body_debug_mesh(const grid::Chunk<kDim>& chunk, fl
         positions.push_back({x + cell_size, y + cell_size, 0.0f});
         positions.push_back({x, y + cell_size, 0.0f});
         for (int i = 0; i < 4; ++i) colors.push_back(kDebugColor);
+        indices.insert(indices.end(), {base, base + 1, base + 2, base + 2, base + 3, base});
+        base += 4;
+    }
+    return mesh::Mesh()
+        .with_primitive_type(wgpu::PrimitiveTopology::eTriangleList)
+        .with_attribute(mesh::Mesh::ATTRIBUTE_POSITION, positions)
+        .with_attribute(mesh::Mesh::ATTRIBUTE_COLOR, colors)
+        .with_indices<std::uint32_t>(indices);
+}
+
+static glm::vec4 heat_map_color(float t) {
+    // Blue (cold) → white (293K) → red (hot)
+    float v = (t - 250.0f) / (1500.0f - 250.0f);
+    v       = std::clamp(v, 0.0f, 1.0f);
+    if (v < 0.5f)
+        return glm::mix(glm::vec4(0.1f, 0.2f, 1.0f, 1.0f), glm::vec4(1.0f), v * 2.0f);
+    else
+        return glm::mix(glm::vec4(1.0f), glm::vec4(1.0f, 0.1f, 0.1f, 1.0f), (v - 0.5f) * 2.0f);
+}
+
+static mesh::Mesh build_heat_map_mesh(const ChunkElementGrid& chunk, const ChunkThermalGrid& thermal, float cell_size) {
+    std::vector<glm::vec3> positions;
+    std::vector<glm::vec4> colors;
+    std::vector<std::uint32_t> indices;
+    std::uint32_t base = 0;
+    for (auto&& [pos, elem] : chunk.iter()) {
+        float x = static_cast<float>(pos[0]) * cell_size;
+        float y = static_cast<float>(pos[1]) * cell_size;
+        positions.push_back({x, y, 0.0f});
+        positions.push_back({x + cell_size, y, 0.0f});
+        positions.push_back({x + cell_size, y + cell_size, 0.0f});
+        positions.push_back({x, y + cell_size, 0.0f});
+        float t = 293.0f;
+        if (auto cell = thermal.get(pos); cell.has_value()) t = cell->get().temperature;
+        glm::vec4 c = heat_map_color(t);
+        for (int i = 0; i < 4; ++i) colors.push_back(c);
         indices.insert(indices.end(), {base, base + 1, base + 2, base + 2, base + 3, base});
         base += 4;
     }
@@ -96,10 +133,10 @@ static mesh::Mesh build_chunk_outline_mesh(std::size_t chunk_width, float cell_s
 
 void setup_chunk_dirty_rects(
     Commands cmd,
-    Query<Item<Entity, const Parent&>, Filter<With<grid::Chunk<kDim>, SandChunkPos>, Without<SandChunkDirtyRect>>>
+    Query<Item<Entity, const Parent&>, Filter<With<ChunkElementGrid, SandChunkPos>, Without<SandChunkDirtyRect>>>
         new_chunks,
     Query<Item<const SandWorld&>> worlds,
-    Query<Item<Entity, const SandChunkPos&, Opt<Mut<SandChunkDirtyRect>>, const Parent&>, With<grid::Chunk<kDim>>>
+    Query<Item<Entity, const SandChunkPos&, Opt<Mut<SandChunkDirtyRect>>, const Parent&>, With<ChunkElementGrid>>
         all_chunks) {
     for (auto&& [entity, parent] : new_chunks.iter()) {
         auto world_opt = worlds.get(parent.entity());
@@ -150,7 +187,7 @@ void setup_chunk_dirty_rects(
 void setup_chunk_render_children(
     Commands cmd,
     ResMut<assets::Assets<mesh::Mesh>> meshes,
-    Query<Item<Entity, const Parent&>, Filter<With<grid::Chunk<kDim>, SandChunkPos>, Without<SandChunkRenderChildren>>>
+    Query<Item<Entity, const Parent&>, Filter<With<ChunkElementGrid, SandChunkPos>, Without<SandChunkRenderChildren>>>
         new_chunks,
     Query<Entity, With<SandWorld, transform::Transform, MeshBuildByPlugin>> mesh_worlds) {
     for (auto&& [chunk_entity, parent] : new_chunks.iter()) {
@@ -186,27 +223,44 @@ void setup_chunk_render_children(
 // simulate_worlds
 // ──────────────────────────────────────────────────────────────────────────────
 
-void simulate_worlds(
-    Res<ElementRegistry> registry,
-    Query<Item<Entity, Mut<SandWorld>, const transform::Transform&, Opt<const Children&>>, With<SimulatedByPlugin>>
-        worlds,
-    Query<Item<Mut<grid::Chunk<kDim>>, const SandChunkPos&, Mut<SandChunkDirtyRect>, const Parent&>> all_chunks) {
+void simulate_worlds(Res<ElementRegistry> registry,
+                     Query<Item<Entity, Mut<SandWorld>, const transform::Transform&, Opt<const Children&>>,
+                           With<SimulatedByPlugin>> worlds,
+                     Query<Item<Mut<ChunkElementGrid>,
+                                Mut<ChunkAirGrid>,
+                                Mut<ChunkThermalGrid>,
+                                const SandChunkPos&,
+                                Mut<SandChunkDirtyRect>,
+                                const Parent&>> all_chunks) {
     for (auto&& [world_entity, sand_world, world_transform, maybe_children] : worlds.iter()) {
         if (!maybe_children.has_value()) continue;
         const auto& child_entities = maybe_children->get().entities();
 
         if (sand_world.get().paused()) continue;
 
-        auto chunk_range =
-            child_entities | std::views::filter([&all_chunks](Entity e) { return all_chunks.get(e).has_value(); }) |
-            std::views::transform([&all_chunks](Entity e)
-                                      -> std::tuple<Mut<grid::Chunk<kDim>>, const SandChunkPos&, SandChunkDirtyRect&> {
-                auto opt                                 = all_chunks.get(e);
-                auto&& [chunk, pos, dirty_rect, par_ref] = *opt;
-                return {chunk, pos, dirty_rect.get_mut()};
-            });
+        const std::size_t shift = sand_world.get().chunk_shift();
 
-        auto sim_result = SandSimulation::create(sand_world.get_mut(), registry.get(), chunk_range);
+        // Materialize per-chunk transient grid::Chunk wrappers in advance.  Each
+        // wrapper holds three BasicGridRefLayers over the per-grid Mut refs;
+        // moving the chunk into SandSimulation::create transfers ownership of
+        // those Mut holds to the simulation for the tick.
+        std::vector<std::tuple<grid::Chunk<kDim>, const SandChunkPos&, SandChunkDirtyRect&>> chunk_tuples;
+        for (Entity e : child_entities) {
+            auto opt = all_chunks.get(e);
+            if (!opt.has_value()) continue;
+            auto&& [elem_g, air_g, therm_g, pos, dirty_rect, par_ref] = *opt;
+            grid::Chunk<kDim> chunk(shift);
+            (void)chunk.add_layer(
+                std::make_unique<grid::layers::BasicGridRefLayer<ChunkElementGrid>>(shift, std::move(elem_g)));
+            (void)chunk.add_layer(
+                std::make_unique<grid::layers::BasicGridRefLayer<ChunkAirGrid>>(shift, std::move(air_g)));
+            (void)chunk.add_layer(
+                std::make_unique<grid::layers::BasicGridRefLayer<ChunkThermalGrid>>(shift, std::move(therm_g)));
+            chunk_tuples.emplace_back(std::move(chunk), pos, dirty_rect.get_mut());
+        }
+
+        auto chunk_range = chunk_tuples | std::views::as_rvalue;
+        auto sim_result  = SandSimulation::create(sand_world.get_mut(), registry.get(), chunk_range);
         if (!sim_result.has_value()) {
             std::visit(
                 [&world_entity](const auto& err) {
@@ -215,6 +269,11 @@ void simulate_worlds(
                         spdlog::error(
                             "[FallingSandPlugin] duplicate SandChunkPos ({},{}) under world "
                             "entity index={}. Skipping simulation this tick.",
+                            err.pos[0], err.pos[1], world_entity.index);
+                    } else if constexpr (std::is_same_v<T, sand_sim_error::MissingRequiredLayer>) {
+                        spdlog::error(
+                            "[FallingSandPlugin] chunk ({},{}) missing required layer "
+                            "under world entity index={}. Skipping simulation this tick.",
                             err.pos[0], err.pos[1], world_entity.index);
                     } else {
                         spdlog::error(
@@ -233,10 +292,13 @@ void simulate_worlds(
         for (Entity ce : child_entities) {
             auto c = all_chunks.get(ce);
             if (!c.has_value()) continue;
-            auto&& [chunk, pos, dirty_rect, par] = *c;
-            bool settled                         = dirty_rect.get_mut().count_time();
+            auto&& [elem_g, air_g, therm_g, pos, dirty_rect, par] = *c;
+            (void)air_g;
+            (void)therm_g;
+            bool settled = dirty_rect.get_mut().count_time();
             if (settled) {
-                for (auto&& [lpos, elem] : chunk.get_mut().iter_mut<Element>()) {
+                for (auto&& [lpos, elem] : elem_g.get_mut().iter_mut()) {
+                    (void)lpos;
                     elem.set_freefall(false);
                     elem.velocity = {};
                 }
@@ -269,23 +331,32 @@ void sync_chunk_transforms(Query<Item<Entity, transform::Transform&, const SandC
 
 void build_chunk_meshes(
     Commands cmd,
-    Query<Item<Entity, Ref<grid::Chunk<kDim>>, const SandChunkRenderChildren&, Mut<SandChunkDirtyRect>, const Parent&>>
-        chunks,
-    Query<Item<const SandWorld&>, Filter<With<SandWorld, MeshBuildByPlugin>>> worlds,
+    Query<Item<Entity,
+               Ref<ChunkElementGrid>,
+               Ref<ChunkThermalGrid>,
+               const SandChunkRenderChildren&,
+               Mut<SandChunkDirtyRect>,
+               const Parent&>> chunks,
+    Query<Item<const SandWorld&, Opt<const SandWorldDebug&>>, Filter<With<SandWorld, MeshBuildByPlugin>>> worlds,
     ResMut<assets::Assets<mesh::Mesh>> meshes) {
-    for (auto&& [chunk_entity, chunk_ref, render_children, dirty_rect, parent_comp] : chunks.iter()) {
+    for (auto&& [chunk_entity, elem_ref, therm_ref, render_children, dirty_rect, parent_comp] : chunks.iter()) {
         auto& dr = dirty_rect.get_mut();
-        // Skip chunks whose Chunk component was not modified since the last
-        // build_chunk_meshes run.
-        if (!chunk_ref.is_modified()) continue;
+        (void)dr;
 
         if (!render_children.mesh_entity.has_value()) continue;
         auto world_data = worlds.get(parent_comp.entity());
         if (!world_data.has_value()) continue;
-        auto&& [sand_world] = *world_data;
+        auto&& [sand_world, debug_opt] = *world_data;
+        bool show_heat_map             = debug_opt.has_value() && debug_opt->get().show_heat_map;
 
-        auto new_mesh = build_chunk_mesh(chunk_ref.get(), sand_world.cell_size());
-        auto handle   = meshes->emplace(std::move(new_mesh));
+        // Rebuild only when the data backing the mesh actually changed.
+        bool need_rebuild = elem_ref.is_modified() || (show_heat_map && therm_ref.is_modified());
+        if (!need_rebuild) continue;
+
+        mesh::Mesh new_mesh = show_heat_map
+                                  ? build_heat_map_mesh(elem_ref.get(), therm_ref.get(), sand_world.cell_size())
+                                  : build_chunk_mesh(elem_ref.get(), sand_world.cell_size());
+        auto handle         = meshes->emplace(std::move(new_mesh));
         cmd.entity(*render_children.mesh_entity).insert(mesh::Mesh2d{handle});
     }
 }
@@ -296,11 +367,11 @@ void build_chunk_meshes(
 
 void build_body_debug_meshes(
     Commands cmd,
-    Query<Item<Entity, Ref<grid::Chunk<kDim>>, Mut<SandChunkRenderChildren>, Mut<SandChunkDirtyRect>, const Parent&>>
+    Query<Item<Entity, Ref<ChunkElementGrid>, Mut<SandChunkRenderChildren>, Mut<SandChunkDirtyRect>, const Parent&>>
         chunks,
     Query<Item<const SandWorld&, Opt<const SandWorldDebug&>>, Filter<With<SandWorld, MeshBuildByPlugin>>> worlds,
     ResMut<assets::Assets<mesh::Mesh>> meshes) {
-    for (auto&& [chunk_entity, chunk_ref, render_children_mut, dirty_rect, parent_comp] : chunks.iter()) {
+    for (auto&& [chunk_entity, elem_ref, render_children_mut, dirty_rect, parent_comp] : chunks.iter()) {
         auto world_data = worlds.get(parent_comp.entity());
         if (!world_data.has_value()) continue;
         auto&& [sand_world, debug_opt] = *world_data;
@@ -309,10 +380,10 @@ void build_body_debug_meshes(
         auto& rc = render_children_mut.get_mut();
         if (show_body_debug) {
             // Only rebuild when chunk data changed.
-            if (!chunk_ref.is_modified()) {
+            if (!elem_ref.is_modified()) {
                 if (rc.body_debug_entity.has_value()) continue;  // already exists, nothing changed
             }
-            auto debug_mesh = build_chunk_body_debug_mesh(chunk_ref.get(), sand_world.cell_size());
+            auto debug_mesh = build_chunk_body_debug_mesh(elem_ref.get(), sand_world.cell_size());
             auto handle     = meshes->emplace(std::move(debug_mesh));
             if (rc.body_debug_entity.has_value()) {
                 cmd.entity(*rc.body_debug_entity).insert(mesh::Mesh2d{handle});

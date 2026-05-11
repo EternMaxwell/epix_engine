@@ -10,6 +10,7 @@
 #include <optional>
 #include <random>
 #include <utility>
+#include <variant>
 #include <vector>
 #endif
 #include <spdlog/spdlog.h>
@@ -43,18 +44,37 @@ SandSimulation::CellState SandSimulation::cell_state(std::int64_t x, std::int64_
 bool SandSimulation::has_cell(std::int64_t x, std::int64_t y) const { return cell_state(x, y) == CellState::Occupied; }
 
 bool SandSimulation::set_cell(std::int64_t x, std::int64_t y, Element value) {
-    return insert_cell({x, y}, std::move(value)).has_value();
+    std::size_t bid = value.base_id;
+    if (!insert_cell({x, y}, std::move(value)).has_value()) return false;
+    // Initialize the ThermalCell for this position via the element's thermal factory.
+    if (bid < m_registry->size()) {
+        const ElementBase& base = (*m_registry)[bid];
+        // Per-cell seed packed from world coords; gives deterministic variation.
+        std::uint64_t seed = (static_cast<std::uint64_t>(static_cast<std::uint32_t>(x)) << 32) |
+                             static_cast<std::uint64_t>(static_cast<std::uint32_t>(y));
+        ThermalCell t      = base.thermal_construct_func(bid, base, seed);
+        (void)insert_cell<ThermalCell>({x, y}, std::move(t));
+    }
+    return true;
 }
 
-bool SandSimulation::clear_cell(std::int64_t x, std::int64_t y) { return remove_cell<Element>({x, y}).has_value(); }
+bool SandSimulation::clear_cell(std::int64_t x, std::int64_t y) {
+    (void)remove_cell<ThermalCell>({x, y});
+    return remove_cell<Element>({x, y}).has_value();
+}
 
 bool SandSimulation::move_cell(std::int64_t fx, std::int64_t fy, std::int64_t tx, std::int64_t ty) {
     if (cell_state(tx, ty) != CellState::EmptyInChunk) return false;
     auto from = get_cell<Element>({fx, fy});
     if (!from.has_value()) return false;
     Element moved = from->get();
+    // Move thermal cell along with the element so heat follows the matter.
+    ThermalCell thermal_moved{};
+    if (auto t = get_cell<ThermalCell>({fx, fy}); t.has_value()) thermal_moved = t->get();
     if (!remove_cell<Element>({fx, fy}).has_value()) return false;
     if (!insert_cell({tx, ty}, std::move(moved)).has_value()) return false;
+    (void)insert_cell<ThermalCell>({tx, ty}, ThermalCell{thermal_moved});
+    (void)remove_cell<ThermalCell>({fx, fy});
     return true;
 }
 
@@ -65,6 +85,10 @@ bool SandSimulation::swap_cells(std::int64_t fx, std::int64_t fy, std::int64_t t
     bool from_occ = (fs == CellState::Occupied);
     bool to_occ   = (ts == CellState::Occupied);
     if (!from_occ && !to_occ) return false;
+    // Snapshot thermal cells (sparse; absent means default-temperature).
+    ThermalCell tf{}, tt{};
+    if (auto t = get_cell<ThermalCell>({fx, fy}); t.has_value()) tf = t->get();
+    if (auto t = get_cell<ThermalCell>({tx, ty}); t.has_value()) tt = t->get();
     if (from_occ && to_occ) {
         Element fc = get_cell<Element>({fx, fy})->get();
         Element tc = get_cell<Element>({tx, ty})->get();
@@ -72,17 +96,25 @@ bool SandSimulation::swap_cells(std::int64_t fx, std::int64_t fy, std::int64_t t
         (void)remove_cell<Element>({tx, ty});
         (void)insert_cell({fx, fy}, std::move(tc));
         (void)insert_cell({tx, ty}, std::move(fc));
+        (void)insert_cell<ThermalCell>({fx, fy}, ThermalCell{tt});
+        (void)insert_cell<ThermalCell>({tx, ty}, ThermalCell{tf});
         return true;
     }
     if (from_occ) {
+        // to was empty: move element and its thermal to tx,ty; clear thermal at fx,fy
         Element fc = get_cell<Element>({fx, fy})->get();
         (void)remove_cell<Element>({fx, fy});
         (void)insert_cell({tx, ty}, std::move(fc));
+        (void)insert_cell<ThermalCell>({tx, ty}, ThermalCell{tf});
+        (void)remove_cell<ThermalCell>({fx, fy});
         return true;
     }
+    // to was occupied, from was empty: move element and its thermal to fx,fy; clear thermal at tx,ty
     Element tc = get_cell<Element>({tx, ty})->get();
     (void)remove_cell<Element>({tx, ty});
     (void)insert_cell({fx, fy}, std::move(tc));
+    (void)insert_cell<ThermalCell>({fx, fy}, ThermalCell{tt});
+    (void)remove_cell<ThermalCell>({tx, ty});
     return true;
 }
 
@@ -98,9 +130,14 @@ Element* SandSimulation::get_elem_ptr(std::int64_t x, std::int64_t y) {
     auto ly               = static_cast<std::uint32_t>(((y % cw) + cw) % cw);
     auto chunk_res        = get_chunk_mut({cx, cy});
     if (!chunk_res.has_value()) return nullptr;
-    auto cv       = grid::chunk_element<Element>(chunk_res->get_mut());
+    auto cv       = grid::chunk_element<Element>(chunk_res->get());
     auto elem_res = cv.get_mut({lx, ly});
     return elem_res.has_value() ? &elem_res->get() : nullptr;
+}
+
+ThermalCell* SandSimulation::get_thermal_ptr(std::int64_t x, std::int64_t y) {
+    auto cell = get_cell_mut<ThermalCell>({x, y});
+    return cell.has_value() ? &cell->get() : nullptr;
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -255,8 +292,16 @@ void SandSimulation::touch(std::int64_t x, std::int64_t y) {
 // ──────────────────────────────────────────────────────────────────────────────
 
 bool SandSimulation::put_cell(std::array<std::int64_t, kDim> pos, Element elem) {
-    auto res = insert_cell<Element>(pos, std::move(elem));
+    std::size_t bid = elem.base_id;
+    auto res        = insert_cell<Element>(pos, std::move(elem));
     if (!res.has_value()) return false;
+    if (bid < m_registry->size()) {
+        const ElementBase& base = (*m_registry)[bid];
+        std::uint64_t seed      = (static_cast<std::uint64_t>(static_cast<std::uint32_t>(pos[0])) << 32) |
+                                  static_cast<std::uint64_t>(static_cast<std::uint32_t>(pos[1]));
+        ThermalCell t           = base.thermal_construct_func(bid, base, seed);
+        (void)insert_cell<ThermalCell>(pos, std::move(t));
+    }
     touch(pos[0], pos[1]);
     touch(pos[0] + 1, pos[1]);
     touch(pos[0] - 1, pos[1]);
@@ -266,6 +311,7 @@ bool SandSimulation::put_cell(std::array<std::int64_t, kDim> pos, Element elem) 
 }
 
 bool SandSimulation::erase_cell(std::array<std::int64_t, kDim> pos) {
+    (void)remove_cell<ThermalCell>(pos);
     auto res = remove_cell<Element>(pos);
     touch(pos[0], pos[1]);
     touch(pos[0] + 1, pos[1]);
@@ -273,6 +319,481 @@ bool SandSimulation::erase_cell(std::array<std::int64_t, kDim> pos) {
     touch(pos[0], pos[1] + 1);
     touch(pos[0], pos[1] - 1);
     return res.has_value();
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// SandSimulation — temperature / heat transfer
+// ──────────────────────────────────────────────────────────────────────────────
+
+// ElementBase::density is a dimensionless game unit (water = 1.0).
+// Physical thermal-mass calculations require kg/m³.  Multiply game density by
+// this factor.
+static constexpr float kPhysDensityScale = 1.0f;
+
+void SandSimulation::conduct_thermal_thermal(
+    ThermalCell& t1, const ElementBase& b1, ThermalCell& t2, const ElementBase& b2, float delta) {
+    float dT = t2.temperature - t1.temperature;
+    if (std::abs(dT) < 0.01f) return;
+    float cell_area = m_world->cell_size() * m_world->cell_size();
+    // Geometric mean of conductivities × contact factor for granular direct contact.
+    constexpr float kContactFactor = 20.0f;
+    float k_eff                    = std::sqrt(b1.thermal_conductivity * b2.thermal_conductivity) * kContactFactor;
+    float flux                     = k_eff * dT * delta;
+    float inv_m1                   = 1.0f / (b1.specific_heat * b1.density * kPhysDensityScale * cell_area + 1e-6f);
+    float inv_m2                   = 1.0f / (b2.specific_heat * b2.density * kPhysDensityScale * cell_area + 1e-6f);
+    constexpr float kMaxDT         = 500.0f;  // cap per-tick temperature change
+    t1.temperature += std::clamp(flux * inv_m1, -kMaxDT, kMaxDT);
+    t2.temperature -= std::clamp(flux * inv_m2, -kMaxDT, kMaxDT);
+}
+
+void SandSimulation::convect_thermal_air(ThermalCell& t, const ElementBase& base, AirCell& air, float delta) {
+    float dT = air.temperature - t.temperature;
+    if (std::abs(dT) < 0.01f) return;
+    float cell_area        = m_world->cell_size() * m_world->cell_size();
+    constexpr float h      = 50.0f;  // convective + radiative, W/(m²·K)
+    float flux             = h * dT * delta;
+    float inv_m_elem       = 1.0f / (base.specific_heat * base.density * kPhysDensityScale * cell_area + 1e-6f);
+    float inv_m_air        = 1.0f / (kAirSpecificHeat * air.density * cell_area + 1e-6f);
+    constexpr float kMaxDT = 500.0f;
+    t.temperature += std::clamp(flux * inv_m_elem, -kMaxDT, kMaxDT);
+    air.temperature -= std::clamp(flux * inv_m_air, -kMaxDT, kMaxDT);
+}
+
+void SandSimulation::spread_heat(std::int64_t wx, std::int64_t wy, float delta) {
+    // Read element via const path so heat-only updates do NOT mark the
+    // element grid as modified.  Mut access is acquired only when an action
+    // actually mutates the element (set_burning / try_transition / clear).
+    auto curr_ref = get_cell<Element>({wx, wy});
+    if (!curr_ref.has_value()) return;
+    const Element& curr_const    = curr_ref->get();
+    const ElementBase& curr_base = (*m_registry)[curr_const.base_id];
+
+    // Always-mutable thermal cell at this position.
+    ThermalCell* therm = get_thermal_ptr(wx, wy);
+    if (!therm) return;
+
+    static constexpr std::array<std::pair<std::int64_t, std::int64_t>, 4> kCardinals = {{
+        {1, 0},
+        {-1, 0},
+        {0, 1},
+        {0, -1},
+    }};
+
+    for (auto [dx, dy] : kCardinals) {
+        auto nx = wx + dx, ny = wy + dy;
+        auto ns = cell_state(nx, ny);
+        if (ns == CellState::Occupied) {
+            // Read neighbor element via const, get its thermal mut.
+            auto neighbor_elem    = get_cell<Element>({nx, ny});
+            ThermalCell* nthermal = get_thermal_ptr(nx, ny);
+            if (neighbor_elem.has_value() && nthermal) {
+                const ElementBase& nb = (*m_registry)[neighbor_elem->get().base_id];
+                conduct_thermal_thermal(*therm, curr_base, *nthermal, nb, delta);
+            }
+        } else if (ns == CellState::EmptyInChunk) {
+            auto air = get_cell_mut<AirCell>({nx, ny});
+            if (air.has_value()) {
+                convect_thermal_air(*therm, curr_base, air->get(), delta);
+            }
+        }
+        // Blocked cells: no heat exchange
+    }
+
+    // ── Phase-transition staging heat ─────────────────────────────────────
+    // Scan actions for TemperatureAbove/Below conditions and manage staging heat.
+    float cell_area = m_world->cell_size() * m_world->cell_size();
+    for (const auto& act : curr_base.actions) {
+        for (const auto& cond : act.conditions) {
+            std::visit(
+                [&](const auto& c) {
+                    using T = std::decay_t<decltype(c)>;
+                    if constexpr (std::is_same_v<T, TemperatureAbove>) {
+                        if (!c.clamp) return;  // pure condition, no staging
+                        float t = c.target;
+                        if (therm->staging_heat > 0.0f && therm->temperature < t) {
+                            float dT_release =
+                                therm->staging_heat /
+                                (curr_base.specific_heat * curr_base.density * kPhysDensityScale * cell_area + 1e-6f);
+                            therm->temperature += dT_release;
+                            therm->staging_heat = 0.0f;
+                        }
+                        if (therm->temperature > t) {
+                            float dT = therm->temperature - t;
+                            float excess =
+                                dT * curr_base.specific_heat * curr_base.density * kPhysDensityScale * cell_area;
+                            therm->temperature  = t;
+                            therm->staging_heat = std::clamp(therm->staging_heat + excess, -1e8f, 1e8f);
+                        }
+                    } else if constexpr (std::is_same_v<T, TemperatureBelow>) {
+                        if (!c.clamp) return;  // pure condition, no staging
+                        float t = c.target;
+                        if (therm->staging_heat < 0.0f && therm->temperature > t) {
+                            float dT_release =
+                                -therm->staging_heat /
+                                (curr_base.specific_heat * curr_base.density * kPhysDensityScale * cell_area + 1e-6f);
+                            therm->temperature += dT_release;
+                            therm->staging_heat = 0.0f;
+                        }
+                        if (therm->temperature < t) {
+                            float dT = therm->temperature - t;
+                            float deficit =
+                                dT * curr_base.specific_heat * curr_base.density * kPhysDensityScale * cell_area;
+                            therm->temperature  = t;
+                            therm->staging_heat = std::clamp(therm->staging_heat + deficit, -1e8f, 1e8f);
+                        }
+                    }
+                },
+                cond);
+        }
+    }
+
+    // Clamp temperature to sane bounds
+    therm->temperature = std::clamp(therm->temperature, 0.0f, 10000.0f);
+
+    // Fire actions with TemperatureAbove/Below + StagingHeat immediately
+    for (const auto& act : curr_base.actions) {
+        // Only fire actions that have BOTH a temperature threshold and StagingHeat
+        bool has_temp = false, has_staging = false;
+        for (const auto& cond : act.conditions) {
+            if (std::holds_alternative<TemperatureAbove>(cond) || std::holds_alternative<TemperatureBelow>(cond))
+                has_temp = true;
+            if (std::holds_alternative<StagingHeat>(cond)) has_staging = true;
+        }
+        if (!has_temp || !has_staging) continue;
+
+        // Check all conditions (skip RandomTick — immediate actions don't need it)
+        bool all_met = true;
+        for (const auto& cond : act.conditions) {
+            bool met = std::visit(
+                [&](const auto& c) -> bool {
+                    using T = std::decay_t<decltype(c)>;
+                    if constexpr (std::is_same_v<T, TemperatureAbove>)
+                        return therm->temperature >= c.target;
+                    else if constexpr (std::is_same_v<T, TemperatureBelow>)
+                        return therm->temperature <= c.target;
+                    else if constexpr (std::is_same_v<T, StagingHeat>) {
+                        bool is_above = false;
+                        for (const auto& oc : act.conditions)
+                            if (std::holds_alternative<TemperatureAbove>(oc)) {
+                                is_above = true;
+                                break;
+                            }
+                        float required = c.latent_heat_j_per_kg * curr_base.density * kPhysDensityScale * cell_area;
+                        return is_above ? therm->staging_heat >= required : therm->staging_heat <= -required;
+                    } else if constexpr (std::is_same_v<T, RandomTick>)
+                        return true;  // skip random tick for immediate actions
+                    else if constexpr (std::is_same_v<T, IsBurning>)
+                        return curr_const.burning();
+                    else if constexpr (std::is_same_v<T, HasTag>)
+                        return curr_const.transition_tag == c.tag;
+                    else
+                        return true;
+                },
+                cond);
+            if (!met) {
+                all_met = false;
+                break;
+            }
+        }
+        if (all_met) {
+            // Mut access required for transition.
+            Element* curr_mut = get_elem_ptr(wx, wy);
+            if (!curr_mut) return;
+            auto old_id = curr_mut->base_id;
+            try_transition(wx, wy, *curr_mut, *therm, curr_base);
+            // If despawned or transformed, stop processing this cell
+            Element* check = get_elem_ptr(wx, wy);
+            if (!check || check->base_id != old_id) return;
+        }
+    }
+
+    // Visual burning flag: set when above ignition temperature.
+    // Only acquire mut access when the flag value actually needs to change.
+    if (curr_base.ignition_temperature > 0.0f && therm->temperature >= curr_base.ignition_temperature &&
+        !curr_const.burning()) {
+        if (Element* m = get_elem_ptr(wx, wy)) m->set_burning(true);
+    }
+    // Exothermic reaction: burning element self-heats.
+    // Total energy = heat_of_combustion * mass, released over burn duration.
+    if (curr_const.burning() && curr_base.heat_of_combustion > 0.0f) {
+        constexpr float kBurnDurationTicks = 1200.0f;  // ~20 s at 60 fps
+        float dT_per_tick = curr_base.heat_of_combustion / (curr_base.specific_heat * kBurnDurationTicks + 1e-6f);
+        therm->temperature += dT_per_tick;
+
+        // Track total heat emitted; despawn when fully burned
+        therm->heat_emitted +=
+            dT_per_tick * curr_base.specific_heat * curr_base.density * kPhysDensityScale * cell_area;
+        float total_heat = curr_base.heat_of_combustion * curr_base.density * kPhysDensityScale * cell_area;
+        if (therm->heat_emitted >= total_heat) {
+            clear_cell(wx, wy);
+            touch(wx, wy);
+            return;
+        }
+    }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// SandSimulation — air simulation
+// ──────────────────────────────────────────────────────────────────────────────
+
+void SandSimulation::step_air_full(grid::chunk_element_view<kDim, AirCell>& air_view,
+                                   const std::array<std::int32_t, kDim>& cpos,
+                                   float delta) {
+    const std::int64_t cw = static_cast<std::int64_t>(chunk_width());
+    float cell_area       = m_world->cell_size() * m_world->cell_size();
+    static constexpr std::array<std::pair<std::int64_t, std::int64_t>, 4> kCardinals = {{
+        {1, 0},
+        {-1, 0},
+        {0, 1},
+        {0, -1},
+    }};
+
+    for (auto&& [lpos, air] : air_view.iter_mut()) {
+        (void)lpos;
+        std::int64_t wx = static_cast<std::int64_t>(cpos[0]) * cw + static_cast<std::int64_t>(lpos[0]);
+        std::int64_t wy = static_cast<std::int64_t>(cpos[1]) * cw + static_cast<std::int64_t>(lpos[1]);
+
+        if (has_cell(wx, wy)) continue;  // dormant under particle
+
+        // Buoyancy: hot air rises, cold air sinks
+        float temp_factor = (air.temperature - 293.0f) / 293.0f;
+        air.velocity.y += temp_factor * 200.0f * delta;
+
+        // Air-to-air temperature diffusion (const-read neighbors)
+        for (auto [dx, dy] : kCardinals) {
+            auto neighbor = get_cell<AirCell>({wx + dx, wy + dy});
+            if (!neighbor.has_value()) continue;
+            float dT               = neighbor->get().temperature - air.temperature;
+            float flux             = kAirThermalConductivity * dT * delta;
+            constexpr float kMaxDT = 500.0f;
+            air.temperature += std::clamp(flux / (kAirSpecificHeat * air.density * cell_area + 1e-6f), -kMaxDT, kMaxDT);
+        }
+
+        // Velocity damping
+        air.velocity *= 0.95f;
+
+        // Density equalization toward neighbours (simple diffusion)
+        for (auto [dx, dy] : kCardinals) {
+            auto neighbor = get_cell<AirCell>({wx + dx, wy + dy});
+            if (!neighbor.has_value()) continue;
+            air.density += (neighbor->get().density - air.density) * 0.1f * delta;
+        }
+    }
+}
+
+void SandSimulation::step_air_decay(grid::chunk_element_view<kDim, AirCell>& air_view,
+                                    const std::array<std::int32_t, kDim>& cpos,
+                                    float delta) {
+    const std::int64_t cw = static_cast<std::int64_t>(chunk_width());
+
+    for (auto&& [lpos, air] : air_view.iter_mut()) {
+        (void)lpos;
+        std::int64_t wx = static_cast<std::int64_t>(cpos[0]) * cw + static_cast<std::int64_t>(lpos[0]);
+        std::int64_t wy = static_cast<std::int64_t>(cpos[1]) * cw + static_cast<std::int64_t>(lpos[1]);
+
+        if (has_cell(wx, wy)) continue;  // dormant under particle
+
+        // Gentle decay toward ambient — no neighbour access
+        air.temperature += (293.0f - air.temperature) * 0.5f * delta;
+    }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// SandSimulation — random tick / state transitions
+// ──────────────────────────────────────────────────────────────────────────────
+
+void SandSimulation::spawn_nearby(
+    std::int64_t x, std::int64_t y, std::size_t element_id, int count, std::uint8_t spawn_tag) {
+    if (count <= 0) return;
+    const ElementBase& target = (*m_registry)[element_id];
+
+    // 8-neighbourhood in random order
+    static thread_local std::mt19937 rng{std::random_device{}()};
+    std::array<std::pair<std::int64_t, std::int64_t>, 8> offsets = {{
+        {1, 0},
+        {-1, 0},
+        {0, 1},
+        {0, -1},
+        {1, 1},
+        {-1, -1},
+        {1, -1},
+        {-1, 1},
+    }};
+    std::shuffle(offsets.begin(), offsets.end(), rng);
+
+    int placed = 0;
+    for (auto [dx, dy] : offsets) {
+        if (placed >= count) break;
+        auto nx = x + dx, ny = y + dy;
+        if (cell_state(nx, ny) != CellState::EmptyInChunk) continue;
+        std::uint64_t seed     = (static_cast<std::uint64_t>(static_cast<std::uint32_t>(nx)) << 32) |
+                                 static_cast<std::uint64_t>(static_cast<std::uint32_t>(ny));
+        Element spawned        = target.construct_func(element_id, target, seed);
+        spawned.transition_tag = spawn_tag;
+        if (set_cell(nx, ny, std::move(spawned))) {
+            touch(nx, ny);
+            ++placed;
+        }
+    }
+}
+
+void SandSimulation::try_transition(
+    std::int64_t x, std::int64_t y, Element& elem, ThermalCell& thermal, const ElementBase& base) {
+    static thread_local std::mt19937 rng{std::random_device{}()};
+    static thread_local std::uniform_real_distribution<float> dist{0.0f, 1.0f};
+    float cell_area = m_world->cell_size() * m_world->cell_size();
+
+    for (const auto& act : base.actions) {
+        // Evaluate all conditions (all must be true)
+        bool all_met = true;
+        for (const auto& cond : act.conditions) {
+            bool met = std::visit(
+                [&](const auto& c) -> bool {
+                    using T = std::decay_t<decltype(c)>;
+                    if constexpr (std::is_same_v<T, TemperatureAbove>) {
+                        return thermal.temperature >= c.target;
+                    } else if constexpr (std::is_same_v<T, TemperatureBelow>) {
+                        return thermal.temperature <= c.target;
+                    } else if constexpr (std::is_same_v<T, IsBurning>) {
+                        return elem.burning();
+                    } else if constexpr (std::is_same_v<T, HasTag>) {
+                        return elem.transition_tag == c.tag;
+                    } else if constexpr (std::is_same_v<T, ContactWith>) {
+                        static constexpr std::array<std::pair<std::int64_t, std::int64_t>, 4> kCardinals = {{
+                            {1, 0},
+                            {-1, 0},
+                            {0, 1},
+                            {0, -1},
+                        }};
+                        for (auto [dx, dy] : kCardinals) {
+                            Element* nb = get_elem_ptr(x + dx, y + dy);
+                            if (nb && nb->base_id == c.element_id) return true;
+                        }
+                        return false;
+                    } else if constexpr (std::is_same_v<T, StagingHeat>) {
+                        float required = c.latent_heat_j_per_kg * base.density * kPhysDensityScale * cell_area;
+                        bool is_above  = false;
+                        for (const auto& oc : act.conditions) {
+                            if (std::holds_alternative<TemperatureAbove>(oc)) {
+                                is_above = true;
+                                break;
+                            }
+                        }
+                        if (is_above)
+                            return thermal.staging_heat >= required;
+                        else
+                            return thermal.staging_heat <= -required;
+                    } else if constexpr (std::is_same_v<T, RandomTick>) {
+                        float prob = c.probability;
+                        if (prob <= 0.0f && c.compute_prob) prob = c.compute_prob(elem);
+                        // Burning elements: scale probability with temperature
+                        if (elem.burning() && base.ignition_temperature > 0.0f && prob > 0.0f)
+                            prob *= thermal.temperature / base.ignition_temperature;
+                        return dist(rng) < prob;
+                    }
+                    return false;
+                },
+                cond);
+            if (!met) {
+                all_met = false;
+                break;
+            }
+        }
+
+        if (!all_met) continue;
+
+        // Execute action
+        std::visit(
+            [&](const auto& a) {
+                using T = std::decay_t<decltype(a)>;
+                if constexpr (std::is_same_v<T, Ignite>) {
+                    elem.set_burning(true);
+                } else if constexpr (std::is_same_v<T, Extinguish>) {
+                    elem.set_burning(false);
+                } else if constexpr (std::is_same_v<T, SpawnNearby>) {
+                    int count = a.count_min;
+                    if (a.count_max > a.count_min) {
+                        std::uniform_int_distribution<int> count_dist(a.count_min, a.count_max);
+                        count = count_dist(rng);
+                    }
+                    spawn_nearby(x, y, a.element_id, count, a.spawn_tag);
+                } else if constexpr (std::is_same_v<T, TransformTo>) {
+                    if (a.target_id != elem.base_id) {
+                        const ElementBase& target = (*m_registry)[a.target_id];
+                        std::uint64_t seed        = (static_cast<std::uint64_t>(static_cast<std::uint32_t>(x)) << 32) |
+                                                    static_cast<std::uint64_t>(static_cast<std::uint32_t>(y));
+                        // Element is replaced; thermal state is preserved (matter stays at the same cell).
+                        elem = target.construct_func(a.target_id, target, seed);
+                    }
+                    thermal.staging_heat = 0.0f;
+                    touch(x, y);
+                } else if constexpr (std::is_same_v<T, Despawn>) {
+                    clear_cell(x, y);
+                }
+            },
+            act.action);
+
+        // Destructive actions (TransformTo/Despawn) invalidate elem — stop.
+        if (std::holds_alternative<Despawn>(act.action) || std::holds_alternative<TransformTo>(act.action)) {
+            return;
+        }
+        // Non-destructive actions (Ignite, Extinguish, SpawnNearby) — continue
+        // to allow multiple actions to fire in sequence.
+    }
+}
+
+void SandSimulation::random_tick_chunk(const std::array<std::int32_t, kDim>& cpos,
+                                       grid::chunk_element_view<kDim, Element>& elem_view) {
+    const std::int64_t cw = static_cast<std::int64_t>(chunk_width());
+    auto cw_u32           = static_cast<std::uint32_t>(cw);
+
+    static thread_local std::mt19937 rng{std::random_device{}()};
+    std::uniform_int_distribution<std::uint32_t> pos_dist(0, cw_u32 - 1);
+
+    std::array<int, 6> cell_counts = {0, 16, 8, 4, 2, 1};
+
+    constexpr int kBudget    = 32;
+    int ticked               = 0;
+    constexpr int kMaxTicked = 24;
+
+    for (int i = 0; i < kBudget && ticked < kMaxTicked; ++i) {
+        auto lx = pos_dist(rng);
+        auto ly = pos_dist(rng);
+        // Const lookup first — does NOT mark element grid modified.
+        auto elem_const = elem_view.get({lx, ly});
+        if (!elem_const.has_value()) continue;
+        const Element& el       = elem_const->get();
+        const ElementBase& base = (*m_registry)[el.base_id];
+        if (base.actions.empty()) continue;
+
+        // Use the highest (most frequent) RandomTick intensity across all actions
+        int best_intensity = 0;
+        for (const auto& act : base.actions) {
+            for (const auto& cond : act.conditions) {
+                if (auto* rt = std::get_if<RandomTick>(&cond)) {
+                    if (best_intensity == 0 || rt->intensity < best_intensity) best_intensity = rt->intensity;
+                }
+            }
+        }
+        if (best_intensity <= 0) continue;
+
+        int cells = cell_counts[static_cast<std::size_t>(std::min(best_intensity, 5))];
+        if (cells <= 0) continue;
+
+        float pick_chance = static_cast<float>(cells) / static_cast<float>(cw_u32 * cw_u32);
+        static thread_local std::uniform_real_distribution<float> dist{0.0f, 1.0f};
+        if (dist(rng) > pick_chance) continue;
+
+        std::int64_t wx = static_cast<std::int64_t>(cpos[0]) * cw + static_cast<std::int64_t>(lx);
+        std::int64_t wy = static_cast<std::int64_t>(cpos[1]) * cw + static_cast<std::int64_t>(ly);
+
+        // Only NOW grab mut access to element + thermal — marks them modified.
+        Element* el_mut        = get_elem_ptr(wx, wy);
+        ThermalCell* therm_mut = get_thermal_ptr(wx, wy);
+        if (!el_mut || !therm_mut) continue;
+        try_transition(wx, wy, *el_mut, *therm_mut, base);
+        ++ticked;
+    }
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -837,6 +1358,7 @@ void SandSimulation::step_cells() {
     static std::uint64_t s_tick = 0;
     const std::uint64_t tick    = s_tick++;
     const std::int64_t cw       = static_cast<std::int64_t>(chunk_width());
+    constexpr float delta       = 1.0f / 60.0f;
 
     // ── 1. Collect and shuffle chunk coordinates ──────────────────────────────
     auto offset_coords =
@@ -846,41 +1368,70 @@ void SandSimulation::step_cells() {
 
     auto& pool = tasks::ComputeTaskPool::get();
 
-    // ── 2. Process in 3×3 modulo groups (no two adjacent chunks run in parallel)
+    // ── 2. Process ALL chunks in 3×3 modulo groups ────────────────────────────
     for (auto&& [rx, ry] : offset_coords) {
         thread_local static std::vector<tasks::Task<void>> group_tasks;
-        for (auto&& cpos : std::views::filter(iter_chunk_pos(), [rx, ry, this](auto&& cpos) {
-                 if (!((cpos[0] % 3 + 3) % 3 == rx && (cpos[1] % 3 + 3) % 3 == ry)) return false;
-                 auto dr_opt = m_chunk_dirty_rects.get_mut(cpos);
-                 return dr_opt.has_value() && dr_opt->get()->active();
+        for (auto&& cpos : std::views::filter(iter_chunk_pos(), [rx, ry](auto&& cpos) {
+                 return ((cpos[0] % 3 + 3) % 3 == rx && (cpos[1] % 3 + 3) % 3 == ry);
              })) {
-            group_tasks.push_back(pool.spawn([cpos, cw, tick, this] {
-                // Snapshot positions first — prevents iterator invalidation during steps.
-                thread_local static std::vector<std::array<std::int64_t, 2>> positions;
-                for (auto&& [lpos, _] : grid::chunk_element<Element>(get_chunk(cpos).value().get()).iter()) {
-                    positions.push_back({
-                        static_cast<std::int64_t>(cpos[0]) * cw + static_cast<std::int64_t>(lpos[0]),
-                        static_cast<std::int64_t>(cpos[1]) * cw + static_cast<std::int64_t>(lpos[1]),
-                    });
+            group_tasks.push_back(pool.spawn([cpos, cw, tick, delta, this] {
+                auto chunk_mut = get_chunk_mut(cpos);
+                if (!chunk_mut.has_value()) return;
+                auto& chunk    = chunk_mut->get();
+                auto elem_view = grid::chunk_element<Element>(chunk);
+                auto air_view  = grid::chunk_element<AirCell>(chunk);
+
+                // Check dirty status (const read — thread-safe)
+                bool is_dirty = false;
+                auto dr_opt   = m_chunk_dirty_rects.get(cpos);
+                if (dr_opt.has_value()) {
+                    is_dirty = dr_opt->get()->active();
                 }
-                for (auto&& [x, y] : positions) {
-                    step_particle(x, y, tick);
+
+                // ── Heat transfer (every chunk, every tick) ─────────────────
+                // Iterate const — heat-only updates must NOT mark the element grid modified.
+                for (auto&& [lpos, elem] : elem_view.iter()) {
+                    (void)elem;
+                    std::int64_t wx = static_cast<std::int64_t>(cpos[0]) * cw + static_cast<std::int64_t>(lpos[0]);
+                    std::int64_t wy = static_cast<std::int64_t>(cpos[1]) * cw + static_cast<std::int64_t>(lpos[1]);
+                    spread_heat(wx, wy, delta);
                 }
-                positions.clear();
+
+                // ── Random ticks (every chunk, every tick) ─────────────────
+                random_tick_chunk(cpos, elem_view);
+
+                if (is_dirty) {
+                    // Snapshot element positions
+                    thread_local static std::vector<std::array<std::int64_t, 2>> positions;
+                    for (auto&& [lpos, _] : elem_view.iter()) {
+                        positions.push_back({
+                            static_cast<std::int64_t>(cpos[0]) * cw + static_cast<std::int64_t>(lpos[0]),
+                            static_cast<std::int64_t>(cpos[1]) * cw + static_cast<std::int64_t>(lpos[1]),
+                        });
+                    }
+                    for (auto&& [x, y] : positions) {
+                        step_particle(x, y, tick);
+                    }
+                    positions.clear();
+
+                    // Clear `updated` flags on every live cell in this chunk.
+                    // Only run on dirty chunks so quiescent chunks don't get their
+                    // element grid marked modified for nothing.
+                    for (auto&& [lpos, elem] : elem_view.iter_mut()) {
+                        (void)lpos;
+                        elem.set_updated(false);
+                    }
+
+                    // Full air simulation
+                    step_air_full(air_view, cpos, delta);
+                } else {
+                    // Simplified air update only
+                    step_air_decay(air_view, cpos, delta);
+                }
             }));
         }
         for (auto& t : group_tasks) t.block();
         group_tasks.clear();
-    }
-
-    // ── 3. Clear `updated` flags on every live cell in modified chunk ───────────────────────────
-    for (auto chunk_ref :
-         iter_chunks_mut() | std::views::filter([this](auto&& chunk_ref) { return chunk_ref.is_modified(); })) {
-        auto cv = grid::chunk_element<Element>(chunk_ref.get_mut());
-        for (auto&& [lpos, elem] : cv.iter_mut()) {
-            (void)lpos;
-            elem.set_updated(false);
-        }
     }
 }
 

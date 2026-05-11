@@ -62,11 +62,16 @@ struct DebugCamera {};
 // ──────────────────────────────────────────────────────────────────────────────
 // Per-example state shared between systems.
 // ──────────────────────────────────────────────────────────────────────────────
+enum class OpMode { Paint, Erase, Heat, Cool };
+
 struct SandAppState {
     std::vector<ElementInfo> elements;
     std::size_t selected_idx  = 0;
     std::int32_t brush_radius = 2;
     Entity world_entity       = {};
+    // Operation mode
+    OpMode op_mode    = OpMode::Paint;
+    float heat_energy = 200.0f;  ///< Joules per cell for Heat/Cool operations.
     // Debug window / dirty-rect overlay state
     Entity debug_window_entity = {};
     bool show_dirty_rects      = false;
@@ -91,24 +96,36 @@ struct SandAppState {
 // ──────────────────────────────────────────────────────────────────────────────
 // Helper: build a transient SandSimulation, or nullopt on failure.
 // ──────────────────────────────────────────────────────────────────────────────
-static std::optional<fs::SandSimulation> make_sim(
-    fs::SandWorld& world,
-    const fs::ElementRegistry& registry,
-    std::optional<std::reference_wrapper<const Children>> maybe_children,
-    Query<Item<Mut<ext::grid::Chunk<fs::kDim>>, const fs::SandChunkPos&, Mut<fs::SandChunkDirtyRect>, const Parent&>>&
-        all_chunks) {
+static std::optional<fs::SandSimulation> make_sim(fs::SandWorld& world,
+                                                  const fs::ElementRegistry& registry,
+                                                  std::optional<std::reference_wrapper<const Children>> maybe_children,
+                                                  Query<Item<Mut<fs::ChunkElementGrid>,
+                                                             Mut<fs::ChunkAirGrid>,
+                                                             Mut<fs::ChunkThermalGrid>,
+                                                             const fs::SandChunkPos&,
+                                                             Mut<fs::SandChunkDirtyRect>,
+                                                             const Parent&>>& all_chunks) {
     if (!maybe_children.has_value()) return std::nullopt;
     const auto& child_entities = maybe_children->get().entities();
-    auto chunk_range =
-        child_entities | std::views::filter([&all_chunks](Entity e) { return all_chunks.get(e).has_value(); }) |
-        std::views::transform(
-            [&all_chunks](Entity e)
-                -> std::tuple<Mut<ext::grid::Chunk<fs::kDim>>, const fs::SandChunkPos&, fs::SandChunkDirtyRect&> {
-                auto o                                   = all_chunks.get(e);
-                auto&& [chunk, pos, dirty_rect, par_ref] = *o;
-                return {std::move(chunk), pos, dirty_rect.get_mut()};
-            });
-    auto result = fs::SandSimulation::create(world, registry, chunk_range);
+    const std::size_t shift    = world.chunk_shift();
+
+    namespace grid = epix::ext::grid;
+    std::vector<std::tuple<grid::Chunk<fs::kDim>, const fs::SandChunkPos&, fs::SandChunkDirtyRect&>> chunk_tuples;
+    for (Entity e : child_entities) {
+        auto opt = all_chunks.get(e);
+        if (!opt.has_value()) continue;
+        auto&& [elem_g, air_g, therm_g, pos, dirty_rect, par_ref] = *opt;
+        grid::Chunk<fs::kDim> chunk(shift);
+        (void)chunk.add_layer(
+            std::make_unique<grid::layers::BasicGridRefLayer<fs::ChunkElementGrid>>(shift, std::move(elem_g)));
+        (void)chunk.add_layer(
+            std::make_unique<grid::layers::BasicGridRefLayer<fs::ChunkAirGrid>>(shift, std::move(air_g)));
+        (void)chunk.add_layer(
+            std::make_unique<grid::layers::BasicGridRefLayer<fs::ChunkThermalGrid>>(shift, std::move(therm_g)));
+        chunk_tuples.emplace_back(std::move(chunk), pos, dirty_rect.get_mut());
+    }
+    auto chunk_range = chunk_tuples | std::views::as_rvalue;
+    auto result      = fs::SandSimulation::create(world, registry, chunk_range);
     if (!result.has_value()) return std::nullopt;
     return std::move(*result);
 }
@@ -116,16 +133,19 @@ static std::optional<fs::SandSimulation> make_sim(
 // ──────────────────────────────────────────────────────────────────────────────
 // Per-frame imgui settings panel.
 // ──────────────────────────────────────────────────────────────────────────────
-void settings_ui(
-    imgui::Ctx imgui_ctx,
-    ResMut<SandAppState> app_state,
-    Query<Item<Mut<fs::SandWorld>, Opt<const Children&>, Opt<Mut<fs::SandWorldDebug>>>, With<fs::SimulatedByPlugin>>
-        worlds,
-    Res<fs::ElementRegistry> registry,
-    Query<Item<Mut<ext::grid::Chunk<fs::kDim>>, const fs::SandChunkPos&, Mut<fs::SandChunkDirtyRect>, const Parent&>>
-        all_chunks,
-    Query<Item<Mut<render::camera::RenderLayer>>, Filter<With<core_graph::core_2d::Camera2D, MainCamera>>>
-        main_cameras) {
+void settings_ui(imgui::Ctx imgui_ctx,
+                 ResMut<SandAppState> app_state,
+                 Query<Item<Mut<fs::SandWorld>, Opt<const Children&>, Opt<Mut<fs::SandWorldDebug>>>,
+                       With<fs::SimulatedByPlugin>> worlds,
+                 Res<fs::ElementRegistry> registry,
+                 Query<Item<Mut<fs::ChunkElementGrid>,
+                            Mut<fs::ChunkAirGrid>,
+                            Mut<fs::ChunkThermalGrid>,
+                            const fs::SandChunkPos&,
+                            Mut<fs::SandChunkDirtyRect>,
+                            const Parent&>> all_chunks,
+                 Query<Item<Mut<render::camera::RenderLayer>>, Filter<With<core_graph::core_2d::Camera2D, MainCamera>>>
+                     main_cameras) {
     auto opt = worlds.single();
     if (!opt.has_value()) return;
     auto&& [sand_world, maybe_children, maybe_debug] = *opt;
@@ -140,6 +160,10 @@ void settings_ui(
     bool show_outlines = maybe_debug.has_value() && maybe_debug->get().show_chunk_outlines;
     if (ImGui::Checkbox("Show Chunk Outlines", &show_outlines)) {
         if (maybe_debug.has_value()) maybe_debug->get_mut().show_chunk_outlines = show_outlines;
+    }
+    bool show_heat = maybe_debug.has_value() && maybe_debug->get().show_heat_map;
+    if (ImGui::Checkbox("Show Heat Map", &show_heat)) {
+        if (maybe_debug.has_value()) maybe_debug->get_mut().show_heat_map = show_heat;
     }
 
     bool& show_dirty = st.show_dirty_rects;
@@ -174,14 +198,24 @@ void settings_ui(
     }
 
     ImGui::Separator();
+    ImGui::Text("Operation mode (LMB):");
+    const char* mode_names[] = {"Paint", "Erase", "Heat", "Cool"};
+    int mode_idx             = static_cast<int>(st.op_mode);
+    if (ImGui::Combo("##opmode", &mode_idx, mode_names, 4)) st.op_mode = static_cast<OpMode>(mode_idx);
+
+    if (st.op_mode == OpMode::Heat || st.op_mode == OpMode::Cool) {
+        ImGui::SliderFloat("Heat Energy (J/cell)", &st.heat_energy, 1.0f, 10000.0f, "%.0f");
+    }
+
+    ImGui::Separator();
     if (ImGui::Button("Clear (C)")) {
         if (auto sim = make_sim(w, registry.get(), maybe_children, all_chunks))
-            for (auto&& chunk : sim->iter_chunks_mut()) chunk.get_mut().clear();
+            for (auto&& chunk : sim->iter_chunks_mut()) chunk.clear();
     }
     ImGui::SameLine();
     if (ImGui::Button("Reset (R)")) {
         if (auto sim = make_sim(w, registry.get(), maybe_children, all_chunks)) {
-            for (auto&& chunk : sim->iter_chunks_mut()) chunk.get_mut().clear();
+            for (auto&& chunk : sim->iter_chunks_mut()) chunk.clear();
             if (!st.elements.empty()) {
                 const auto& ei = st.elements[0];
                 sim->apply(fs::ops::Spawn::rect({-8, -4}, {8, 4}, ei.id));
@@ -233,7 +267,7 @@ void camera_control(ResMut<SandAppState> app_state,
         for (auto&& ev : scroll_events.read()) {
             if (ev.window != win_ent) continue;
             float factor = std::pow(1.15f, -(float)ev.yoffset);
-            ortho->scale = std::clamp(ortho->scale * factor, 0.05f, 50.0f);
+            ortho->scale = std::clamp(ortho->scale * factor, 0.001f, 50.0f);
         }
     }
 
@@ -322,7 +356,7 @@ void debug_camera_control(ResMut<SandAppState> app_state,
     // Scroll-to-zoom works even without focus.
     if (scroll_delta != 0.0f) {
         float factor = std::pow(1.15f, -scroll_delta);
-        ortho->scale = std::clamp(ortho->scale * factor, 0.05f, 50.0f);
+        ortho->scale = std::clamp(ortho->scale * factor, 0.001f, 50.0f);
     }
 
     if (!win.focused) return;
@@ -350,16 +384,19 @@ void debug_camera_control(ResMut<SandAppState> app_state,
 // ──────────────────────────────────────────────────────────────────────────────
 // Input system: keyboard shortcuts and mouse painting.
 // ──────────────────────────────────────────────────────────────────────────────
-void input_system(
-    ResMut<SandAppState> app_state,
-    Res<fs::ElementRegistry> registry,
-    Query<Item<Mut<fs::SandWorld>, Opt<const Children&>>, With<fs::SimulatedByPlugin>> worlds,
-    Res<input::ButtonInput<input::KeyCode>> keys,
-    Res<input::ButtonInput<input::MouseButton>> mouse_buttons,
-    Query<Item<const window::CachedWindow&>, With<window::PrimaryWindow>> windows,
-    Query<Item<const render::camera::Camera&, const transform::Transform&>, With<MainCamera>> cameras,
-    Query<Item<Mut<ext::grid::Chunk<fs::kDim>>, const fs::SandChunkPos&, Mut<fs::SandChunkDirtyRect>, const Parent&>>
-        all_chunks) {
+void input_system(ResMut<SandAppState> app_state,
+                  Res<fs::ElementRegistry> registry,
+                  Query<Item<Mut<fs::SandWorld>, Opt<const Children&>>, With<fs::SimulatedByPlugin>> worlds,
+                  Res<input::ButtonInput<input::KeyCode>> keys,
+                  Res<input::ButtonInput<input::MouseButton>> mouse_buttons,
+                  Query<Item<const window::CachedWindow&>, With<window::PrimaryWindow>> windows,
+                  Query<Item<const render::camera::Camera&, const transform::Transform&>, With<MainCamera>> cameras,
+                  Query<Item<Mut<fs::ChunkElementGrid>,
+                             Mut<fs::ChunkAirGrid>,
+                             Mut<fs::ChunkThermalGrid>,
+                             const fs::SandChunkPos&,
+                             Mut<fs::SandChunkDirtyRect>,
+                             const Parent&>> all_chunks) {
     auto opt = worlds.single();
     if (!opt.has_value()) return;
     auto&& [sand_world, maybe_children] = *opt;
@@ -389,10 +426,10 @@ void input_system(
     if (!sim.has_value()) return;
 
     if (need_clear)
-        for (auto&& chunk : sim->iter_chunks_mut()) chunk.get_mut().clear();
+        for (auto&& chunk : sim->iter_chunks_mut()) chunk.clear();
 
     if (need_reset) {
-        for (auto&& chunk : sim->iter_chunks_mut()) chunk.get_mut().clear();
+        for (auto&& chunk : sim->iter_chunks_mut()) chunk.clear();
         if (!st.elements.empty()) sim->apply(fs::ops::Spawn::rect({-8, -4}, {8, 4}, st.elements[0].id));
     }
 
@@ -410,8 +447,22 @@ void input_system(
         std::int32_t cy_ = static_cast<std::int32_t>(std::floor(world_cursor.y / cs));
         std::int32_t br  = st.brush_radius;
 
-        if (lmb && !st.elements.empty())
-            sim->apply(fs::ops::Spawn::circle({cx_, cy_}, st.elements[st.selected_idx].id, br));
+        if (lmb && !st.elements.empty()) {
+            switch (st.op_mode) {
+                case OpMode::Paint:
+                    sim->apply(fs::ops::Spawn::circle({cx_, cy_}, st.elements[st.selected_idx].id, br));
+                    break;
+                case OpMode::Erase:
+                    sim->apply(fs::ops::Remove::circle({cx_, cy_}, br));
+                    break;
+                case OpMode::Heat:
+                    sim->apply(fs::ops::Heat::circle({cx_, cy_}, st.heat_energy, br));
+                    break;
+                case OpMode::Cool:
+                    sim->apply(fs::ops::Heat::circle({cx_, cy_}, -st.heat_energy, br));
+                    break;
+            }
+        }
         if (rmb) sim->apply(fs::ops::Remove::circle({cx_, cy_}, br));
     }
 }
@@ -422,15 +473,18 @@ void input_system(
 //   push_radius   — outer circle, cells receive an outward velocity impulse
 //                   scaled by intensity * (1 - dist/push_radius).
 // ──────────────────────────────────────────────────────────────────────────────
-void explosion_system(
-    ResMut<SandAppState> app_state,
-    Res<input::ButtonInput<input::KeyCode>> keys,
-    Res<fs::ElementRegistry> registry,
-    Query<Item<Mut<fs::SandWorld>, Opt<const Children&>>, With<fs::SimulatedByPlugin>> worlds,
-    Query<Item<const window::CachedWindow&>, With<window::PrimaryWindow>> windows,
-    Query<Item<const render::camera::Camera&, const transform::Transform&>, With<MainCamera>> cameras,
-    Query<Item<Mut<ext::grid::Chunk<fs::kDim>>, const fs::SandChunkPos&, Mut<fs::SandChunkDirtyRect>, const Parent&>>
-        all_chunks) {
+void explosion_system(ResMut<SandAppState> app_state,
+                      Res<input::ButtonInput<input::KeyCode>> keys,
+                      Res<fs::ElementRegistry> registry,
+                      Query<Item<Mut<fs::SandWorld>, Opt<const Children&>>, With<fs::SimulatedByPlugin>> worlds,
+                      Query<Item<const window::CachedWindow&>, With<window::PrimaryWindow>> windows,
+                      Query<Item<const render::camera::Camera&, const transform::Transform&>, With<MainCamera>> cameras,
+                      Query<Item<Mut<fs::ChunkElementGrid>,
+                                 Mut<fs::ChunkAirGrid>,
+                                 Mut<fs::ChunkThermalGrid>,
+                                 const fs::SandChunkPos&,
+                                 Mut<fs::SandChunkDirtyRect>,
+                                 const Parent&>> all_chunks) {
     if (!keys->just_pressed(input::KeyCode::KeyF)) return;
     if (ImGui::GetIO().WantCaptureKeyboard) return;
 
@@ -521,10 +575,11 @@ void debug_window_chunk_input(Commands cmd,
             }
         }
         if (!exists) {
-            ext::grid::Chunk<fs::kDim> chunk(shift);
-            (void)chunk.add_layer(std::make_unique<ext::grid::layers::TreeLayer<fs::kDim, fs::Element>>(shift));
+            std::array<std::uint32_t, fs::kDim> dims;
+            dims.fill(static_cast<std::uint32_t>(chunk_w));
             cmd.entity(world_ent).spawn(
-                std::move(chunk), fs::SandChunkPos{{tcx, tcy}},
+                fs::ChunkElementGrid(dims), fs::ChunkAirGrid(dims, fs::AirCell{}), fs::ChunkThermalGrid(dims),
+                fs::SandChunkPos{{tcx, tcy}},
                 transform::Transform{.translation = glm::vec3(static_cast<float>(tcx * chunk_w) * cs,
                                                               static_cast<float>(tcy * chunk_w) * cs, 0.0f)});
         }
@@ -544,12 +599,15 @@ void debug_window_chunk_input(Commands cmd,
 // ──────────────────────────────────────────────────────────────────────────────
 // Startup: seed an initial sand pile once chunks exist.
 // ──────────────────────────────────────────────────────────────────────────────
-void seed(
-    Query<Item<Mut<fs::SandWorld>, Opt<const Children&>>, With<fs::SimulatedByPlugin>> worlds,
-    Res<fs::ElementRegistry> registry,
-    Res<SandAppState> app_state,
-    Query<Item<Mut<ext::grid::Chunk<fs::kDim>>, const fs::SandChunkPos&, Mut<fs::SandChunkDirtyRect>, const Parent&>>
-        all_chunks) {
+void seed(Query<Item<Mut<fs::SandWorld>, Opt<const Children&>>, With<fs::SimulatedByPlugin>> worlds,
+          Res<fs::ElementRegistry> registry,
+          Res<SandAppState> app_state,
+          Query<Item<Mut<fs::ChunkElementGrid>,
+                     Mut<fs::ChunkAirGrid>,
+                     Mut<fs::ChunkThermalGrid>,
+                     const fs::SandChunkPos&,
+                     Mut<fs::SandChunkDirtyRect>,
+                     const Parent&>> all_chunks) {
     auto opt = worlds.single();
     if (!opt.has_value()) return;
     auto&& [sand_world, maybe_children] = *opt;
@@ -571,7 +629,7 @@ void freefall_overlay_system(
     ResMut<SandAppState> app_state,
     ResMut<assets::Assets<mesh::Mesh>> meshes,
     Query<Item<const fs::SandWorld&>, With<fs::SimulatedByPlugin>> worlds,
-    Query<Item<Entity, const ext::grid::Chunk<fs::kDim>&, const transform::Transform&, const Parent&>> chunks,
+    Query<Item<Entity, const fs::ChunkElementGrid&, const transform::Transform&, const Parent&>> chunks,
     Query<Item<Mut<mesh::Mesh2d>>, With<FreefallOverlay>> overlay_meshes) {
     auto& st = app_state.get_mut();
 
@@ -588,12 +646,12 @@ void freefall_overlay_system(
     float cell_size     = sand_world.cell_size();
 
     // Helper: build a mesh of cyan quads for all freefalling cells in a chunk.
-    auto build_freefall_mesh = [cell_size](const ext::grid::Chunk<fs::kDim>& chunk) -> mesh::Mesh {
+    auto build_freefall_mesh = [cell_size](const fs::ChunkElementGrid& chunk) -> mesh::Mesh {
         std::vector<glm::vec3> positions;
         std::vector<glm::vec4> colors;
         std::vector<std::uint32_t> indices;
         std::uint32_t base = 0;
-        for (auto&& [pos, elem] : chunk.iter<fs::Element>()) {
+        for (auto&& [pos, elem] : chunk.iter()) {
             if (!elem.freefall()) continue;
             float x = static_cast<float>(pos[0]) * cell_size;
             float y = static_cast<float>(pos[1]) * cell_size;
@@ -749,40 +807,62 @@ void setup(Commands cmd) {
         if (res.has_value()) st.elements.push_back({*res, registry[*res].name, repr_color});
     };
 
+    constexpr std::uint8_t kTagCondensable = 1;
+
     // ── Sand (Powder) ─────────────────────────────────────────────────────────
     reg(
         fs::ElementBase{
-            .name    = "sand",
-            .density = 1.5f,
-            .type    = fs::ElementType::Powder,
-            .color_func =
-                [](std::uint64_t sd) {
+            .name                 = "sand",
+            .density              = 1.5f,
+            .type                 = fs::ElementType::Powder,
+            .specific_heat        = 800.0f,
+            .thermal_conductivity = 0.25f,
+            .construct_func =
+                [](std::size_t id, const fs::ElementBase&, std::uint64_t sd) {
                     sd += 0x9e3779b97f4a7c15ULL;
                     sd = (sd ^ (sd >> 30)) * 0xbf58476d1ce4e5b9ULL;
                     sd = (sd ^ (sd >> 27)) * 0x94d049bb133111ebULL;
                     sd ^= (sd >> 31);
                     float t = static_cast<float>(sd) / static_cast<float>(std::numeric_limits<std::uint64_t>::max());
-                    return glm::vec4(0.80f + t * 0.18f, 0.68f + t * 0.15f, 0.18f + t * 0.08f, 1.0f);
+                    return fs::Element{id, glm::vec4(0.80f + t * 0.18f, 0.68f + t * 0.15f, 0.18f + t * 0.08f, 1.0f)};
                 },
         },
         glm::vec4(0.80f, 0.68f, 0.18f, 1.0f));
 
     // ── Water (Liquid) ────────────────────────────────────────────────────────
+    // Boils at 100 °C → steam; spawned steam is tagged condensable.
     reg(
         fs::ElementBase{
-            .name        = "water",
-            .density     = 1.0f,
-            .type        = fs::ElementType::Liquid,
-            .restitution = 0.05f,
-            .friction    = 0.1f,
-            .awake_rate  = 1.0f,
-            .color_func =
-                [](std::uint64_t sd) {
+            .name                 = "water",
+            .density              = 1.0f,
+            .type                 = fs::ElementType::Liquid,
+            .restitution          = 0.05f,
+            .friction             = 0.1f,
+            .awake_rate           = 1.0f,
+            .specific_heat        = 4184.0f,
+            .thermal_conductivity = 0.6f,
+            .actions =
+                {
+                    fs::ElementAction{
+                        .conditions = {fs::TemperatureBelow{273.0f, true}, fs::StagingHeat{334000.0f}},
+                        .action     = fs::TransformTo{"ice", 0},
+                    },
+                    fs::ElementAction{
+                        .conditions = {fs::TemperatureAbove{373.0f, true}, fs::StagingHeat{2260000.0f}},
+                        .action     = fs::TransformTo{"steam", 0},
+                    },
+                    fs::ElementAction{
+                        .conditions = {fs::TemperatureAbove{373.0f}, fs::RandomTick{0.3f, {}, 1}},
+                        .action     = fs::SpawnNearby{"steam", 0, 1, 3, kTagCondensable},
+                    },
+                },
+            .construct_func =
+                [](std::size_t id, const fs::ElementBase&, std::uint64_t sd) {
                     sd += 0x6c62272e07bb0142ULL;
                     sd = (sd ^ (sd >> 30)) * 0xbf58476d1ce4e5b9ULL;
                     sd ^= (sd >> 31);
                     float t = static_cast<float>(sd & 0xFFFF) / 65535.0f;
-                    return glm::vec4(0.15f + t * 0.15f, 0.45f + t * 0.15f, 0.85f + t * 0.12f, 1.0f);
+                    return fs::Element{id, glm::vec4(0.15f + t * 0.15f, 0.45f + t * 0.15f, 0.85f + t * 0.12f, 1.0f)};
                 },
         },
         glm::vec4(0.20f, 0.50f, 0.90f, 1.0f));
@@ -790,35 +870,181 @@ void setup(Commands cmd) {
     // ── Stone (Solid) ─────────────────────────────────────────────────────────
     reg(
         fs::ElementBase{
-            .name    = "stone",
-            .density = 5.0f,
-            .type    = fs::ElementType::Solid,
-            .color_func =
-                [](std::uint64_t sd) {
+            .name                 = "stone",
+            .density              = 5.0f,
+            .type                 = fs::ElementType::Solid,
+            .specific_heat        = 800.0f,
+            .thermal_conductivity = 2.0f,
+            .construct_func =
+                [](std::size_t id, const fs::ElementBase&, std::uint64_t sd) {
                     sd      = (sd ^ (sd >> 30)) * 0xbf58476d1ce4e5b9ULL;
                     float t = static_cast<float>(sd & 0xFF) / 255.0f;
                     float v = 0.40f + t * 0.20f;
-                    return glm::vec4(v, v, v, 1.0f);
+                    return fs::Element{id, glm::vec4(v, v, v, 1.0f)};
                 },
         },
         glm::vec4(0.50f, 0.50f, 0.50f, 1.0f));
 
     // ── Smoke (Gas) ───────────────────────────────────────────────────────────
+    // Dissipates via random tick.
     reg(
         fs::ElementBase{
-            .name       = "smoke",
-            .density    = 0.001f,
-            .type       = fs::ElementType::Gas,
-            .awake_rate = 1.0f,
-            .color_func =
-                [](std::uint64_t sd) {
+            .name                 = "smoke",
+            .density              = 0.001f,
+            .type                 = fs::ElementType::Gas,
+            .awake_rate           = 1.0f,
+            .specific_heat        = 1000.0f,
+            .thermal_conductivity = 0.02f,
+            .actions =
+                {
+                    fs::ElementAction{
+                        .conditions = {fs::RandomTick{0.15f, {}, 2}},
+                        .action     = fs::Despawn{},
+                    },
+                },
+            .construct_func =
+                [](std::size_t id, const fs::ElementBase&, std::uint64_t sd) {
                     sd      = (sd ^ (sd >> 27)) * 0x94d049bb133111ebULL;
                     float t = static_cast<float>(sd & 0xFF) / 255.0f;
                     float v = 0.55f + t * 0.25f;
-                    return glm::vec4(v, v, v, 0.8f);
+                    return fs::Element{id, glm::vec4(v, v, v, 0.8f)};
                 },
         },
         glm::vec4(0.70f, 0.70f, 0.70f, 0.8f));
+
+    // ── Wood (Solid) ──────────────────────────────────────────────────────────
+    // Burns at 500K, smokes while burning, despawns at high temperature.
+    reg(
+        fs::ElementBase{
+            .name                 = "wood",
+            .density              = 0.8f,
+            .type                 = fs::ElementType::Solid,
+            .specific_heat        = 2000.0f,
+            .thermal_conductivity = 0.15f,
+            .ignition_temperature = 500.0f,
+            .heat_of_combustion   = 17000000.0f,  // 17 MJ/kg, dry wood
+            .actions =
+                {
+                    fs::ElementAction{
+                        .conditions = {fs::TemperatureAbove{500.0f}, fs::RandomTick{0.3f, {}, 3}},
+                        .action     = fs::Ignite{},
+                    },
+                    fs::ElementAction{
+                        .conditions = {fs::TemperatureBelow{500.0f}, fs::IsBurning{}, fs::RandomTick{0.2f, {}, 3}},
+                        .action     = fs::Extinguish{},
+                    },
+                    fs::ElementAction{
+                        .conditions = {fs::IsBurning{}, fs::RandomTick{0.4f, {}, 1}},
+                        .action     = fs::SpawnNearby{"smoke", 0, 1, 3},
+                    },
+                },
+            .construct_func =
+                [](std::size_t id, const fs::ElementBase&, std::uint64_t sd) {
+                    sd      = (sd ^ (sd >> 27)) * 0x94d049bb133111ebULL;
+                    float t = static_cast<float>(sd & 0xFF) / 255.0f;
+                    return fs::Element{id, glm::vec4(0.55f + t * 0.20f, 0.30f + t * 0.15f, 0.10f + t * 0.10f, 1.0f)};
+                },
+        },
+        glm::vec4(0.60f, 0.35f, 0.15f, 1.0f));
+
+    // ── Steam (Gas) ───────────────────────────────────────────────────────────
+    // Condensable steam (from boiling water) can return to water; all steam
+    // eventually despawns.
+    reg(
+        fs::ElementBase{
+            .name                 = "steam",
+            .density              = 0.0006f,
+            .type                 = fs::ElementType::Gas,
+            .awake_rate           = 1.0f,
+            .specific_heat        = 2000.0f,
+            .thermal_conductivity = 0.02f,
+            .actions =
+                {
+                    fs::ElementAction{
+                        .conditions = {fs::HasTag{kTagCondensable}, fs::RandomTick{0.1f, {}, 2}},
+                        .action     = fs::TransformTo{"water", 0},
+                    },
+                    fs::ElementAction{
+                        .conditions = {fs::RandomTick{0.08f, {}, 2}},
+                        .action     = fs::Despawn{},
+                    },
+                },
+            .construct_func =
+                [](std::size_t id, const fs::ElementBase&, std::uint64_t sd) {
+                    sd      = (sd ^ (sd >> 30)) * 0xbf58476d1ce4e5b9ULL;
+                    float t = static_cast<float>(sd & 0xFF) / 255.0f;
+                    float v = 0.85f + t * 0.12f;
+                    return fs::Element{id, glm::vec4(v, v, v, 0.55f)};
+                },
+        },
+        glm::vec4(0.90f, 0.90f, 0.95f, 0.55f));
+
+    // ── Lava (Liquid) ──────────────────────────────────────────────────────────
+    // Starts hot, cools to stone below ~900 K.
+    reg(fs::ElementBase{
+            .name                 = "lava",
+            .density              = 3.0f,
+            .type                 = fs::ElementType::Liquid,
+            .restitution          = 0.1f,
+            .friction             = 0.3f,
+            .awake_rate           = 1.0f,
+            .specific_heat        = 1130.0f,
+            .thermal_conductivity = 1.5f,
+            .actions =
+                {
+                    fs::ElementAction{
+                        .conditions = {fs::TemperatureBelow{900.0f, true}, fs::StagingHeat{500000.0f}},
+                        .action     = fs::TransformTo{"stone", 0},
+                    },
+                },
+            .construct_func =
+                [](std::size_t id, const fs::ElementBase&, std::uint64_t sd) {
+                    sd      = (sd ^ (sd >> 27)) * 0x94d049bb133111ebULL;
+                    float t = static_cast<float>(sd & 0xFF) / 255.0f;
+                    float r = 0.85f + t * 0.15f;
+                    float g = 0.25f + t * 0.25f;
+                    float b = t * 0.12f;
+                    return fs::Element{id, glm::vec4(r, g, b, 1.0f)};
+                },
+            .thermal_construct_func = [](std::size_t, const fs::ElementBase&,
+                                         std::uint64_t) { return fs::ThermalCell{1500.0f}; },
+        },
+        glm::vec4(0.95f, 0.40f, 0.05f, 1.0f));
+
+    // ── Ice (Solid) ────────────────────────────────────────────────────────────
+    // Melts to water above 0 °C.
+    reg(fs::ElementBase{
+            .name                 = "ice",
+            .density              = 0.92f,
+            .type                 = fs::ElementType::Solid,
+            .restitution          = 0.05f,
+            .friction             = 0.1f,
+            .specific_heat        = 2100.0f,
+            .thermal_conductivity = 2.2f,
+            .actions =
+                {
+                    fs::ElementAction{
+                        .conditions = {fs::TemperatureAbove{273.0f, true}, fs::StagingHeat{334000.0f}},
+                        .action     = fs::TransformTo{"water", 0},
+                    },
+                },
+            .construct_func =
+                [](std::size_t id, const fs::ElementBase&, std::uint64_t sd) {
+                    sd      = (sd ^ (sd >> 30)) * 0xbf58476d1ce4e5b9ULL;
+                    float t = static_cast<float>(sd & 0xFF) / 255.0f;
+                    float v = 0.80f + t * 0.18f;
+                    return fs::Element{id, glm::vec4(v, v, 1.0f, 0.85f)};
+                },
+            .thermal_construct_func = [](std::size_t, const fs::ElementBase&,
+                                         std::uint64_t) { return fs::ThermalCell{250.0f}; },
+        },
+        glm::vec4(0.75f, 0.85f, 1.0f, 0.85f));
+
+    // ── Resolve cross-reference element names in transitions ────────────────
+    auto resolve_res = registry.resolve_all_references();
+    if (!resolve_res.has_value()) {
+        return;  // Failed to resolve element transition references
+    }
 
     cmd.insert_resource(std::move(registry));
 
@@ -832,6 +1058,8 @@ void setup(Commands cmd) {
     // ── Main camera: renders layers 0+ except layer 1 (dirty rects hidden) ───
     {
         core_graph::core_2d::Camera2DBundle bundle{};
+        // scale = 1/64 so that 1/16 m cells render at ~4 px each (64 px/world-unit)
+        bundle.projection   = render::camera::Projection(render::camera::OrthographicProjection{.scale = 1.0f / 64.0f});
         bundle.render_layer = render::camera::RenderLayer::all_except(std::array{std::size_t{1}});
         cmd.spawn(std::move(bundle)).insert(MainCamera{});
     }
@@ -846,7 +1074,7 @@ void setup(Commands cmd) {
     }
 
     constexpr std::size_t chunk_shift = 5;
-    constexpr float cell_size         = 4.0f;
+    constexpr float cell_size         = 1.0f / 16.0f;  // 1/16 m per cell, 1 unit = 1 m
     constexpr std::int32_t chunk_w    = static_cast<std::int32_t>(std::size_t(1) << chunk_shift);
     constexpr std::int32_t chunks_x   = 4;
     constexpr std::int32_t chunks_y   = 3;
@@ -859,12 +1087,11 @@ void setup(Commands cmd) {
 
     for (std::int32_t cy = -chunks_y; cy < chunks_y; ++cy) {
         for (std::int32_t cx = -chunks_x; cx < chunks_x; ++cx) {
-            ext::grid::Chunk<fs::kDim> chunk(chunk_shift);
-            auto layer_res =
-                chunk.add_layer(std::make_unique<ext::grid::layers::TreeLayer<fs::kDim, fs::Element>>(chunk_shift));
-            if (!layer_res.has_value()) continue;
+            std::array<std::uint32_t, fs::kDim> dims;
+            dims.fill(static_cast<std::uint32_t>(chunk_w));
             world_cmds.spawn(
-                std::move(chunk), fs::SandChunkPos{{cx, cy}},
+                fs::ChunkElementGrid(dims), fs::ChunkAirGrid(dims, fs::AirCell{}), fs::ChunkThermalGrid(dims),
+                fs::SandChunkPos{{cx, cy}},
                 transform::Transform{.translation = glm::vec3(static_cast<float>(cx * chunk_w) * cell_size,
                                                               static_cast<float>(cy * chunk_w) * cell_size, 0.0f)});
         }
@@ -873,11 +1100,145 @@ void setup(Commands cmd) {
     cmd.insert_resource(std::move(st));
 }
 
+// ──────────────────────────────────────────────────────────────────────────────
+// Element hover info — show element data when hovering over a cell.
+// ──────────────────────────────────────────────────────────────────────────────
+void element_hover_info(
+    Res<fs::ElementRegistry> registry,
+    Query<Item<Mut<fs::SandWorld>, Opt<const Children&>>, With<fs::SimulatedByPlugin>> worlds,
+    Query<Item<const window::CachedWindow&>, With<window::PrimaryWindow>> windows,
+    Query<Item<const render::camera::Camera&, const transform::Transform&>, With<MainCamera>> cameras,
+    Query<Item<Mut<fs::ChunkElementGrid>,
+               Mut<fs::ChunkAirGrid>,
+               Mut<fs::ChunkThermalGrid>,
+               const fs::SandChunkPos&,
+               Mut<fs::SandChunkDirtyRect>,
+               const Parent&>> all_chunks) {
+    auto world_opt = worlds.single();
+    if (!world_opt.has_value()) return;
+    auto&& [sand_world, maybe_children] = *world_opt;
+    auto& w                             = sand_world.get_mut();
+
+    auto win_opt = windows.single();
+    if (!win_opt.has_value()) return;
+    auto&& [primary_window] = *win_opt;
+
+    auto cam_opt = cameras.single();
+    if (!cam_opt.has_value()) return;
+    auto&& [cam, cam_transform] = *cam_opt;
+
+    auto [rel_x, rel_y] = primary_window.relative_cursor_pos();
+    glm::vec2 world_cursor =
+        fs::relative_to_world(glm::vec2(static_cast<float>(rel_x), static_cast<float>(rel_y)), cam, cam_transform);
+
+    float cs         = w.cell_size();
+    std::int32_t cx_ = static_cast<std::int32_t>(std::floor(world_cursor.x / cs));
+    std::int32_t cy_ = static_cast<std::int32_t>(std::floor(world_cursor.y / cs));
+
+    auto sim = make_sim(w, registry.get(), maybe_children, all_chunks);
+    if (!sim.has_value()) return;
+
+    auto cell = sim->get_cell<fs::Element>({cx_, cy_});
+
+    ImGui::Begin("Cell Info", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
+    ImGui::Text("Position: (%d, %d)", cx_, cy_);
+
+    if (cell.has_value()) {
+        const fs::ElementBase& base = registry.get()[cell->get().base_id];
+        const auto& elem            = cell->get();
+        auto therm_cell             = sim->get_cell<fs::ThermalCell>({cx_, cy_});
+        float temp                  = therm_cell.has_value() ? therm_cell->get().temperature : 293.0f;
+        float staging               = therm_cell.has_value() ? therm_cell->get().staging_heat : 0.0f;
+
+        ImGui::Text("Element: %s", base.name.c_str());
+        ImGui::Text("Type: %s", [](fs::ElementType t) {
+            switch (t) {
+                case fs::ElementType::Solid:
+                    return "Solid";
+                case fs::ElementType::Powder:
+                    return "Powder";
+                case fs::ElementType::Liquid:
+                    return "Liquid";
+                case fs::ElementType::Gas:
+                    return "Gas";
+                case fs::ElementType::Body:
+                    return "Body";
+                default:
+                    return "?";
+            }
+        }(base.type));
+        ImGui::Text("Temperature: %.1f K (%.1f °C)", temp, temp - 273.15f);
+        if (std::abs(staging) > 1.0f) ImGui::Text("Staging heat: %.0f J", staging);
+        ImGui::Text("Density: %.2f kg/m³", base.density);
+        ImGui::Text("Specific heat: %.0f J/(kg·K)", base.specific_heat);
+        ImGui::Text("Thermal cond: %.2f W/(m·K)", base.thermal_conductivity);
+        if (base.ignition_temperature > 0.0f) ImGui::Text("Ignition: %.0f K", base.ignition_temperature);
+        if (elem.burning()) ImGui::TextColored({1.0f, 0.5f, 0.1f, 1.0f}, "BURNING");
+        ImGui::Separator();
+        if (!base.actions.empty()) {
+            ImGui::Text("Actions:");
+            for (const auto& act : base.actions) {
+                std::string desc;
+                std::visit(
+                    [&](const auto& a) {
+                        using T = std::decay_t<decltype(a)>;
+                        if constexpr (std::is_same_v<T, fs::Ignite>)
+                            desc = "Ignite";
+                        else if constexpr (std::is_same_v<T, fs::Extinguish>)
+                            desc = "Extinguish";
+                        else if constexpr (std::is_same_v<T, fs::Despawn>)
+                            desc = "Despawn";
+                        else if constexpr (std::is_same_v<T, fs::TransformTo>)
+                            desc = "→ " + a.target_name;
+                        else if constexpr (std::is_same_v<T, fs::SpawnNearby>)
+                            desc = "Spawn " + a.element_name;
+                    },
+                    act.action);
+                for (const auto& c : act.conditions) {
+                    std::visit(
+                        [&](const auto& cv) {
+                            using T = std::decay_t<decltype(cv)>;
+                            if constexpr (std::is_same_v<T, fs::TemperatureAbove>)
+                                desc += " [T≥" + std::to_string((int)cv.target) + "K]";
+                            else if constexpr (std::is_same_v<T, fs::TemperatureBelow>)
+                                desc += " [T≤" + std::to_string((int)cv.target) + "K]";
+                            else if constexpr (std::is_same_v<T, fs::RandomTick>)
+                                desc += " [RT]";
+                            else if constexpr (std::is_same_v<T, fs::IsBurning>)
+                                desc += " [Burning]";
+                            else if constexpr (std::is_same_v<T, fs::HasTag>)
+                                desc += " [Tag:" + std::to_string(cv.tag) + "]";
+                            else if constexpr (std::is_same_v<T, fs::StagingHeat>)
+                                desc += " [Staging:" + std::to_string((int)(cv.latent_heat_j_per_kg / 1000)) + "kJ/kg]";
+                        },
+                        c);
+                }
+                ImGui::Text("  %s", desc.c_str());
+            }
+        }
+    } else {
+        // No element — show air info
+        auto air = sim->get_cell<fs::AirCell>({cx_, cy_});
+        if (air.has_value()) {
+            const auto& a = air->get();
+            ImGui::Text("Air");
+            ImGui::Text("Temperature: %.1f K (%.1f °C)", a.temperature, a.temperature - 273.15f);
+            ImGui::Text("Density: %.4f kg/m³", a.density);
+            ImGui::Text("Velocity: (%.2f, %.2f)", a.velocity.x, a.velocity.y);
+        } else {
+            ImGui::Text("(out of bounds)");
+        }
+    }
+    ImGui::End();
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+
 int main() {
     core::App app = core::App::create();
 
     window::Window primary_window;
-    primary_window.title = "Falling Sand  |  LMB paint  RMB erase  Tab cycle element  Space pause";
+    primary_window.title = "Falling Sand  |  LMB paint/op  RMB erase  Tab cycle  Space pause";
     primary_window.size  = {1280, 720};
 
     app.add_plugins(core::TaskPoolPlugin{})
@@ -906,6 +1267,7 @@ int main() {
         .add_systems(Update, into(debug_camera_control))
         .add_systems(Update, into(explosion_system))
         .add_systems(Update, into(debug_window_chunk_input))
+        .add_systems(Update, into(element_hover_info).after(imgui::BeginFrameSet))
         .add_systems(time::FixedPostUpdate, into(freefall_overlay_system))
         .add_systems(time::FixedPostUpdate, into(dirty_rect_overlay_system));
 

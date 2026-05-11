@@ -7,6 +7,7 @@
 #include <expected>
 #include <functional>
 #include <limits>
+#include <memory>
 #include <optional>
 #include <ranges>
 #include <tuple>
@@ -21,7 +22,9 @@ import std;
 import glm;
 import epix.core;
 import epix.extension.grid;
+import epix.meta;
 import :elements;
+import :temperature;
 
 namespace epix::ext::fallingsand {
 
@@ -29,6 +32,20 @@ namespace epix::ext::fallingsand {
 export struct SandChunkPos {
     std::array<std::int32_t, kDim> value;
 };
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Chunk grid components — replace the unified ext::grid::Chunk<kDim> component.
+// Storing each grid as its own ECS component lets change-detection track them
+// independently: e.g. mesh build can react only to ChunkElementGrid changes
+// while heat / air updates touch only their own grids.
+// ──────────────────────────────────────────────────────────────────────────────
+
+/** @brief Sparse element grid stored on a chunk entity (one per chunk). */
+export using ChunkElementGrid = grid::tree_grid<kDim, Element>;
+/** @brief Dense air grid stored on a chunk entity (one per chunk). */
+export using ChunkAirGrid = grid::packed_grid<kDim, AirCell>;
+/** @brief Dense thermal grid stored on a chunk entity (one per chunk). */
+export using ChunkThermalGrid = grid::tree_grid<kDim, ThermalCell>;
 
 /** @brief Marker: entity is simulated automatically by FallingSandPlugin. */
 export struct SimulatedByPlugin {};
@@ -90,6 +107,7 @@ export struct SandWorld {
 export struct SandWorldDebug {
     bool show_body_debug     = false;  ///< Whether to build/render the body debug mesh.
     bool show_chunk_outlines = false;  ///< Whether to build/render chunk outline meshes.
+    bool show_heat_map       = false;  ///< Colour elements by temperature instead of their own colour.
 };
 
 /**
@@ -227,38 +245,46 @@ export namespace sand_sim_error {
 struct DuplicateChunkPos {
     std::array<std::int32_t, kDim> pos;
 };
+/** @brief A chunk is missing a required layer (Element or AirCell). */
+struct MissingRequiredLayer {
+    std::array<std::int32_t, kDim> pos;
+    meta::type_index missing_type;
+};
 }  // namespace sand_sim_error
 
 /** @brief Error type returned by SandSimulation::create. */
-export using SandSimCreateError = std::variant<sand_sim_error::DuplicateChunkPos, grid::ChunkGridError>;
+export using SandSimCreateError =
+    std::variant<sand_sim_error::DuplicateChunkPos, sand_sim_error::MissingRequiredLayer, grid::ChunkGridError>;
 
 /**
- * @brief Transient simulation handle assembled from a SandWorld and its chunk children.
+ * @brief Transient simulation handle assembled from a SandWorld and a range of
+ *        per-chunk `(grid::Chunk<kDim>, SandChunkPos&, SandChunkDirtyRect&)` tuples.
  *
- * Construct at step time from:
- *   - a mutable SandWorld reference (provides settings and registry), and
- *   - a range whose elements are `std::tuple<grid::Chunk<kDim>&, const SandChunkPos&>`.
+ * `SandSimulation` is generic over the actual layer types stored inside each
+ * supplied `grid::Chunk<kDim>`.  The user (typically the FallingSandPlugin or an
+ * application-level system) is responsible for building each transient Chunk
+ * from whichever grid types they choose — for example, three `BasicGridRefLayer`s
+ * wrapping per-grid ECS components (`tree_grid<kDim, Element>` +
+ * `packed_grid<kDim, AirCell>` + `tree_grid<kDim, ThermalCell>`).
  *
- * Example using iter-children-with-filter:
- * @code
- *   auto range = std::views::transform(
- *       std::views::filter(children.entities(),
- *           [&cq](Entity e) { return cq.get(e).has_value(); }),
- *       [&cq](Entity e) -> std::tuple<grid::Chunk<kDim>&, const SandChunkPos&> {
- *           auto&& [c, p] = *cq.get(e);
- *           return {c, p};
- *       });
- *   SandSimulation sim(world, range);
- * @endcode
+ * SandSimulation only requires that, for every inserted chunk,
+ *   - `chunk.supports_type(meta::type_id<Element>())`
+ *   - `chunk.supports_type(meta::type_id<AirCell>())`
+ *   - `chunk.supports_type(meta::type_id<ThermalCell>())`
+ * are all true — otherwise `create` fails with `MissingRequiredLayer`.
+ *
+ * The ownership model is OWNING: the caller `std::move`s each transient Chunk
+ * into `create`, and SandSimulation holds them for the duration of the tick via
+ * its `grid::ExtendibleChunkGrid<kDim>` base.
  */
-export struct SandSimulation : grid::ExtendibleMutChunkRefGrid<kDim> {
+export struct SandSimulation : grid::ExtendibleChunkGrid<kDim> {
    private:
     SandWorld* m_world;
     const ElementRegistry* m_registry;
     grid::tree_extendible_grid<kDim, SandChunkDirtyRect*> m_chunk_dirty_rects;
 
     explicit SandSimulation(SandWorld& world, const ElementRegistry& registry)
-        : grid::ExtendibleMutChunkRefGrid<kDim>(world.chunk_shift()), m_world(&world), m_registry(&registry) {}
+        : grid::ExtendibleChunkGrid<kDim>(world.chunk_shift()), m_world(&world), m_registry(&registry) {}
 
     enum class CellState { Occupied, EmptyInChunk, Blocked };
     CellState cell_state(std::int64_t x, std::int64_t y) const;
@@ -277,6 +303,7 @@ export struct SandSimulation : grid::ExtendibleMutChunkRefGrid<kDim> {
     };
 
     Element* get_elem_ptr(std::int64_t x, std::int64_t y);
+    ThermalCell* get_thermal_ptr(std::int64_t x, std::int64_t y);
     bool valid(std::int64_t x, std::int64_t y) const;
     RaycastResult raycast_to(std::int64_t x, std::int64_t y, std::int64_t tx, std::int64_t ty);
     bool collide(std::int64_t x, std::int64_t y, std::int64_t tx, std::int64_t ty);
@@ -291,6 +318,25 @@ export struct SandSimulation : grid::ExtendibleMutChunkRefGrid<kDim> {
 
     void step_particle(std::int64_t x, std::int64_t y, std::uint64_t tick);
     void step_cells();
+
+    // ── Temperature / air / transitions ────────────────────────────────────
+
+    void step_air_full(grid::chunk_element_view<kDim, AirCell>& air_view,
+                       const std::array<std::int32_t, kDim>& cpos,
+                       float delta);
+    void step_air_decay(grid::chunk_element_view<kDim, AirCell>& air_view,
+                        const std::array<std::int32_t, kDim>& cpos,
+                        float delta);
+
+    void spread_heat(std::int64_t wx, std::int64_t wy, float delta);
+    void conduct_thermal_thermal(
+        ThermalCell& t1, const ElementBase& b1, ThermalCell& t2, const ElementBase& b2, float delta);
+    void convect_thermal_air(ThermalCell& t, const ElementBase& base, AirCell& air, float delta);
+
+    void random_tick_chunk(const std::array<std::int32_t, kDim>& cpos,
+                           grid::chunk_element_view<kDim, Element>& elem_view);
+    void try_transition(std::int64_t x, std::int64_t y, Element& elem, ThermalCell& thermal, const ElementBase& base);
+    void spawn_nearby(std::int64_t x, std::int64_t y, std::size_t element_id, int count, std::uint8_t spawn_tag);
 
    public:
     /** @brief Mark cell (x,y) as active: expand its chunk's dirty rect and wake the cell. */
@@ -325,18 +371,18 @@ export struct SandSimulation : grid::ExtendibleMutChunkRefGrid<kDim> {
 
     /**
      * @brief Factory: build a SandSimulation from a SandWorld and a range of
-     *        `(Chunk<kDim>&, SandChunkPos, SandChunkDirtyRect&)` triples.
+     *        `(grid::Chunk<kDim>, const SandChunkPos&, SandChunkDirtyRect&)` tuples.
      *
-     * Only chunks whose SandChunkDirtyRect is active are scheduled for stepping
-     * (stored in m_active_chunks).  Pass an active rect to guarantee a chunk is
-     * stepped on the first frame after spawn.
+     * The caller is responsible for constructing each transient `grid::Chunk<kDim>`
+     * with whichever layer types they need (see class docs).  Each chunk is
+     * `std::move`-d into the simulation; SandSimulation owns it for the tick.
      *
-     * Conflict detection is performed automatically; on duplicate chunk position the
-     * factory returns `std::unexpected(sand_sim_error::DuplicateChunkPos{pos})`.
-     * Any other grid insert failure is returned as `std::unexpected(ChunkGridError{...})`.
+     * Validates per chunk that `Element`, `AirCell`, `ThermalCell` layers are
+     * supported; on failure returns `MissingRequiredLayer`.  On duplicate chunk
+     * position returns `DuplicateChunkPos`.  Other failures forward as `ChunkGridError`.
      */
     template <std::ranges::input_range R>
-        requires std::same_as<std::tuple<epix::core::Mut<grid::Chunk<kDim>>, const SandChunkPos&, SandChunkDirtyRect&>,
+        requires std::same_as<std::tuple<grid::Chunk<kDim>, const SandChunkPos&, SandChunkDirtyRect&>,
                               std::ranges::range_value_t<R>>
     static std::expected<SandSimulation, SandSimCreateError> create(SandWorld& world,
                                                                     const ElementRegistry& registry,
@@ -344,7 +390,21 @@ export struct SandSimulation : grid::ExtendibleMutChunkRefGrid<kDim> {
         SandSimulation sim(world, registry);
         for (auto&& item : std::forward<R>(chunks)) {
             auto&& [chunk, pos, dirty_rect] = item;
-            auto result                     = sim.insert_chunk(pos.value, std::move(chunk));
+
+            if (!chunk.supports_type(meta::type_id<Element>())) {
+                return std::unexpected(
+                    SandSimCreateError{sand_sim_error::MissingRequiredLayer{pos.value, meta::type_id<Element>()}});
+            }
+            if (!chunk.supports_type(meta::type_id<AirCell>())) {
+                return std::unexpected(
+                    SandSimCreateError{sand_sim_error::MissingRequiredLayer{pos.value, meta::type_id<AirCell>()}});
+            }
+            if (!chunk.supports_type(meta::type_id<ThermalCell>())) {
+                return std::unexpected(
+                    SandSimCreateError{sand_sim_error::MissingRequiredLayer{pos.value, meta::type_id<ThermalCell>()}});
+            }
+
+            auto result = sim.insert_chunk(pos.value, std::move(chunk));
             if (!result.has_value()) {
                 auto& err = result.error();
                 if (std::holds_alternative<grid::grid_error>(err) &&

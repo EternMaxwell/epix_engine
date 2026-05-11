@@ -83,11 +83,11 @@ void setup(Commands cmd) {
         .name    = "sand",
         .density = 1.5f,
         .type    = fs::ElementType::Powder,
-        .color_func =
-            [](std::uint64_t sd) {
+        .construct_func =
+            [](std::size_t id, const fs::ElementBase&, std::uint64_t sd) {
                 sd      = (sd ^ (sd >> 30)) * 0xbf58476d1ce4e5b9ULL;
                 float t = static_cast<float>(sd & 0xFFFF) / 65535.0f;
-                return glm::vec4(0.85f + t * 0.10f, 0.70f + t * 0.10f, 0.20f + t * 0.05f, 1.0f);
+                return fs::Element{id, glm::vec4(0.85f + t * 0.10f, 0.70f + t * 0.10f, 0.20f + t * 0.05f, 1.0f)};
             },
     });
     if (reg_sand.has_value()) st.sand_id = *reg_sand;
@@ -98,12 +98,12 @@ void setup(Commands cmd) {
         .type        = fs::ElementType::Solid,
         .restitution = 0.05f,
         .friction    = 0.6f,
-        .color_func =
-            [](std::uint64_t sd) {
+        .construct_func =
+            [](std::size_t id, const fs::ElementBase&, std::uint64_t sd) {
                 sd      = (sd ^ (sd >> 30)) * 0xbf58476d1ce4e5b9ULL;
                 float t = static_cast<float>(sd & 0xFF) / 255.0f;
                 float v = 0.40f + t * 0.20f;
-                return glm::vec4(v, v, v, 1.0f);
+                return fs::Element{id, glm::vec4(v, v, v, 1.0f)};
             },
     });
     if (reg_stone.has_value()) st.stone_id = *reg_stone;
@@ -112,11 +112,11 @@ void setup(Commands cmd) {
         .name    = "water",
         .density = 1.0f,
         .type    = fs::ElementType::Liquid,
-        .color_func =
-            [](std::uint64_t sd) {
+        .construct_func =
+            [](std::size_t id, const fs::ElementBase&, std::uint64_t sd) {
                 sd      = (sd ^ (sd >> 30)) * 0xbf58476d1ce4e5b9ULL;
                 float t = static_cast<float>(sd & 0xFF) / 255.0f;
-                return glm::vec4(0.20f + t * 0.05f, 0.40f + t * 0.10f, 0.85f + t * 0.10f, 0.85f);
+                return fs::Element{id, glm::vec4(0.20f + t * 0.05f, 0.40f + t * 0.10f, 0.85f + t * 0.10f, 0.85f)};
             },
     });
     if (reg_water.has_value()) st.water_id = *reg_water;
@@ -145,9 +145,10 @@ void setup(Commands cmd) {
     st.world_entity = world_cmds.id();
     for (std::int32_t cy = -chunks_y; cy < chunks_y; ++cy) {
         for (std::int32_t cx = -chunks_x; cx < chunks_x; ++cx) {
-            ext::grid::Chunk<fs::kDim> chunk(chunk_shift);
-            (void)chunk.add_layer(std::make_unique<ext::grid::layers::TreeLayer<fs::kDim, fs::Element>>(chunk_shift));
-            world_cmds.spawn(std::move(chunk), fs::SandChunkPos{{cx, cy}},
+            std::array<std::uint32_t, fs::kDim> dims{static_cast<std::uint32_t>(chunk_w),
+                                                     static_cast<std::uint32_t>(chunk_w)};
+            world_cmds.spawn(fs::ChunkElementGrid(dims), fs::ChunkAirGrid(dims, fs::AirCell{}),
+                             fs::ChunkThermalGrid(dims), fs::SandChunkPos{{cx, cy}},
                              transform::Transform{
                                  .translation = glm::vec3(static_cast<float>(cx * chunk_w) * cell_size,
                                                           static_cast<float>(cy * chunk_w) * cell_size, 0.0f),
@@ -161,13 +162,16 @@ void setup(Commands cmd) {
 // ──────────────────────────────────────────────────────────────────────────────
 // Startup: paint a stone floor in the sand world and spawn one initial body.
 // ──────────────────────────────────────────────────────────────────────────────
-void seed(
-    Res<AppState> app_state,
-    Res<fs::ElementRegistry> registry,
-    Commands cmd,
-    Query<Item<Mut<fs::SandWorld>, Opt<const Children&>>, With<fs::SimulatedByPlugin>> worlds,
-    Query<Item<Mut<ext::grid::Chunk<fs::kDim>>, const fs::SandChunkPos&, Mut<fs::SandChunkDirtyRect>, const Parent&>>
-        all_chunks) {
+void seed(Res<AppState> app_state,
+          Res<fs::ElementRegistry> registry,
+          Commands cmd,
+          Query<Item<Mut<fs::SandWorld>, Opt<const Children&>>, With<fs::SimulatedByPlugin>> worlds,
+          Query<Item<Mut<fs::ChunkElementGrid>,
+                     Mut<fs::ChunkAirGrid>,
+                     Mut<fs::ChunkThermalGrid>,
+                     const fs::SandChunkPos&,
+                     Mut<fs::SandChunkDirtyRect>,
+                     const Parent&>> all_chunks) {
     const auto& st = app_state.get();
     auto opt       = worlds.single();
     if (!opt.has_value()) return;
@@ -175,17 +179,25 @@ void seed(
     if (!maybe_children.has_value()) return;
 
     // Build a SandSimulation from the parent's chunks (matches falling_sand pattern).
-    const auto& children = maybe_children->get().entities();
-    auto chunk_range =
-        children | std::views::filter([&](Entity e) { return all_chunks.get(e).has_value(); }) |
-        std::views::transform(
-            [&](Entity e)
-                -> std::tuple<Mut<ext::grid::Chunk<fs::kDim>>, const fs::SandChunkPos&, fs::SandChunkDirtyRect&> {
-                auto opt              = all_chunks.get(e);
-                auto&& [c, p, d, par] = *opt;
-                return {std::move(c), p, d.get_mut()};
-            });
-    auto sim_res = fs::SandSimulation::create(sand_world.get_mut(), registry.get(), chunk_range);
+    const auto& children    = maybe_children->get().entities();
+    auto& sw                = sand_world.get_mut();
+    const std::size_t shift = sw.chunk_shift();
+    std::vector<std::tuple<ext::grid::Chunk<fs::kDim>, const fs::SandChunkPos&, fs::SandChunkDirtyRect&>> chunk_tuples;
+    for (Entity e : children) {
+        auto co = all_chunks.get(e);
+        if (!co.has_value()) continue;
+        auto&& [elem_g, air_g, therm_g, p, d, par] = *co;
+        ext::grid::Chunk<fs::kDim> chunk(shift);
+        (void)chunk.add_layer(
+            std::make_unique<ext::grid::layers::BasicGridRefLayer<fs::ChunkElementGrid>>(shift, std::move(elem_g)));
+        (void)chunk.add_layer(
+            std::make_unique<ext::grid::layers::BasicGridRefLayer<fs::ChunkAirGrid>>(shift, std::move(air_g)));
+        (void)chunk.add_layer(
+            std::make_unique<ext::grid::layers::BasicGridRefLayer<fs::ChunkThermalGrid>>(shift, std::move(therm_g)));
+        chunk_tuples.emplace_back(std::move(chunk), p, d.get_mut());
+    }
+    auto chunk_range = chunk_tuples | std::views::as_rvalue;
+    auto sim_res     = fs::SandSimulation::create(sw, registry.get(), chunk_range);
     if (!sim_res.has_value()) return;
     auto& sim = *sim_res;
 
@@ -296,7 +308,11 @@ void paint_sand_on_drag(
     Query<Item<const window::CachedWindow&>, With<window::PrimaryWindow>> windows,
     Query<Item<const render::camera::Camera&, const transform::Transform&>, With<MainCamera>> cameras,
     Query<Item<Mut<fs::SandWorld>, Opt<const Children&>>, With<fs::SimulatedByPlugin>> worlds,
-    Query<Item<Mut<ext::grid::Chunk<fs::kDim>>, const fs::SandChunkPos&, Mut<fs::SandChunkDirtyRect>>> chunks_q) {
+    Query<Item<Mut<fs::ChunkElementGrid>,
+               Mut<fs::ChunkAirGrid>,
+               Mut<fs::ChunkThermalGrid>,
+               const fs::SandChunkPos&,
+               Mut<fs::SandChunkDirtyRect>>> chunks_q) {
     if (ImGui::GetIO().WantCaptureMouse) return;
     if (!mouse_buttons->pressed(input::MouseButton::MouseButtonLeft)) return;
 
@@ -319,16 +335,23 @@ void paint_sand_on_drag(
     glm::vec2 world_cursor =
         fs::relative_to_world(glm::vec2(static_cast<float>(rel_x), static_cast<float>(rel_y)), cam, cam_tf);
 
-    auto chunk_range =
-        children_opt->get().entities() | std::views::filter([&](Entity e) { return chunks_q.get(e).has_value(); }) |
-        std::views::transform(
-            [&](Entity e)
-                -> std::tuple<Mut<ext::grid::Chunk<fs::kDim>>, const fs::SandChunkPos&, fs::SandChunkDirtyRect&> {
-                auto opt         = chunks_q.get(e);
-                auto&& [c, p, d] = *opt;
-                return {std::move(c), p, d.get_mut()};
-            });
-    auto sim_res = fs::SandSimulation::create(sw, registry.get(), chunk_range);
+    const std::size_t shift = sw.chunk_shift();
+    std::vector<std::tuple<ext::grid::Chunk<fs::kDim>, const fs::SandChunkPos&, fs::SandChunkDirtyRect&>> chunk_tuples;
+    for (Entity e : children_opt->get().entities()) {
+        auto co = chunks_q.get(e);
+        if (!co.has_value()) continue;
+        auto&& [elem_g, air_g, therm_g, p, d] = *co;
+        ext::grid::Chunk<fs::kDim> chunk(shift);
+        (void)chunk.add_layer(
+            std::make_unique<ext::grid::layers::BasicGridRefLayer<fs::ChunkElementGrid>>(shift, std::move(elem_g)));
+        (void)chunk.add_layer(
+            std::make_unique<ext::grid::layers::BasicGridRefLayer<fs::ChunkAirGrid>>(shift, std::move(air_g)));
+        (void)chunk.add_layer(
+            std::make_unique<ext::grid::layers::BasicGridRefLayer<fs::ChunkThermalGrid>>(shift, std::move(therm_g)));
+        chunk_tuples.emplace_back(std::move(chunk), p, d.get_mut());
+    }
+    auto chunk_range = chunk_tuples | std::views::as_rvalue;
+    auto sim_res     = fs::SandSimulation::create(sw, registry.get(), chunk_range);
     if (!sim_res.has_value()) return;
     auto& sim = *sim_res;
 
@@ -357,8 +380,9 @@ void paint_sand_on_drag(
                 fs::Element e;
                 e.base_id = paint_id;
                 auto base = registry->get(paint_id);
-                if (base.has_value() && base->get().color_func) {
-                    e.color = base->get().color_func(seed_base + static_cast<std::uint64_t>(dy * 64 + dx));
+                if (base.has_value()) {
+                    const auto& b = base->get();
+                    e.color       = b.construct_func(0, b, seed_base + static_cast<std::uint64_t>(dy * 64 + dx)).color;
                 } else {
                     e.color = glm::vec4(1.0f);
                 }

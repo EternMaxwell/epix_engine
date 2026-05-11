@@ -72,13 +72,11 @@ namespace epix::experimental::pixelbody {
 PixelBody PixelBody::make_solid(
     std::uint32_t w, std::uint32_t h, std::size_t base_id, const fs::ElementRegistry& registry, std::uint64_t seed) {
     PixelBody body;
-    body.cells          = grid::dense_grid<2, fs::Element>(std::array<std::uint32_t, 2>{w, h});
-    auto color_func_opt = registry.get(base_id);
-    auto get_color      = [&](std::uint64_t s) -> glm::vec4 {
-        if (!color_func_opt) return glm::vec4(1, 1, 1, 1);
-        const auto& base = color_func_opt->get();
-        if (!base.color_func) return glm::vec4(1, 1, 1, 1);
-        return base.color_func(s);
+    body.cells     = grid::dense_grid<2, fs::Element>(std::array<std::uint32_t, 2>{w, h});
+    auto base_opt  = registry.get(base_id);
+    auto get_color = [&](std::uint64_t s) -> glm::vec4 {
+        if (!base_opt) return glm::vec4(1, 1, 1, 1);
+        return base_opt->get().construct_func(0, base_opt->get(), s).color;
     };
     std::uint64_t i = 0;
     for (std::uint32_t y = 0; y < h; ++y) {
@@ -117,19 +115,20 @@ inline glm::vec2 from_b2(b2Vec2 v) { return glm::vec2(v.x, v.y); }
 /// — since dense_grid already satisfies any_grid with pos_type = array<uint32_t, 2>,
 /// it can be passed directly to polygon functions without an adapter.
 
-/// Adapter wrapping a Chunk<2> to expose only Solid cells, satisfying grid::poly_grid.
+/// Adapter wrapping a ChunkElementGrid (tree_grid<2, fs::Element>) to expose only Solid cells,
+/// satisfying grid::poly_grid.
 struct ChunkSolidGridView {
-    const grid::Chunk<fs::kDim>& chunk;
+    const fs::ChunkElementGrid& chunk;
     const fs::ElementRegistry& registry;
 
     std::array<std::uint32_t, 2> dimensions() const {
-        auto w = static_cast<std::uint32_t>(chunk.width());
-        return {w, w};
+        auto d = chunk.dimensions();
+        return {d[0], d[1]};
     }
     bool contains(const std::array<std::uint32_t, 2>& pos) const {
-        auto w = static_cast<std::uint32_t>(chunk.width());
-        if (pos[0] >= w || pos[1] >= w) return false;
-        auto r = static_cast<const grid::ChunkLayer<fs::kDim>&>(chunk).template get<fs::Element>(pos);
+        auto d = chunk.dimensions();
+        if (pos[0] >= d[0] || pos[1] >= d[1]) return false;
+        auto r = chunk.get(pos);
         if (!r.has_value()) return false;
         auto base = registry.get(r->get().base_id);
         return base.has_value() && base->get().type == fs::ElementType::Solid;
@@ -283,7 +282,7 @@ void update_sand_static_bodies(
     Res<fs::ElementRegistry> registry,
     Query<Item<Entity, const PixelBodyWorld&, const fs::SandWorld&, Opt<const Children&>>> worlds,
     Query<Item<Entity,
-               Ref<grid::Chunk<fs::kDim>>,
+               Ref<fs::ChunkElementGrid>,
                const fs::SandChunkPos&,
                Opt<Mut<fs::SandChunkDirtyRect>>,
                Opt<Mut<SandStaticBody>>>> chunks) {
@@ -446,7 +445,11 @@ void sync_pixel_body_to_sand(
         Item<Entity, const PixelBodyWorld&, Mut<fs::SandWorld>, Opt<const Children&>, Opt<Mut<PixelBodySandBlockers>>>>
         worlds,
     Query<Item<const PixelBody&, const transform::Transform&>> bodies,
-    Query<Item<Mut<grid::Chunk<fs::kDim>>, const fs::SandChunkPos&, Mut<fs::SandChunkDirtyRect>>> chunks) {
+    Query<Item<Mut<fs::ChunkElementGrid>,
+               Mut<fs::ChunkAirGrid>,
+               Mut<fs::ChunkThermalGrid>,
+               const fs::SandChunkPos&,
+               Mut<fs::SandChunkDirtyRect>>> chunks) {
     // Auto-register the blocker element once.
     static std::size_t blocker_id   = std::numeric_limits<std::size_t>::max();
     static bool blocker_id_resolved = false;
@@ -457,10 +460,11 @@ void sync_pixel_body_to_sand(
             blocker_id_resolved = true;
         } else {
             auto reg_res = registry->register_element(fs::ElementBase{
-                .name       = "pixel_body_blocker",
-                .density    = 0.0f,
-                .type       = fs::ElementType::Body,
-                .color_func = [](std::uint64_t) { return glm::vec4(0.0f); },
+                .name           = "pixel_body_blocker",
+                .density        = 0.0f,
+                .type           = fs::ElementType::Body,
+                .construct_func = [](std::size_t id, const fs::ElementBase&,
+                                     std::uint64_t) { return fs::Element{id, glm::vec4(0.0f)}; },
             });
             if (reg_res.has_value()) {
                 blocker_id          = *reg_res;
@@ -493,17 +497,23 @@ void sync_pixel_body_to_sand(
         float scs = sw.cell_size();
         if (scs <= 0.0f) continue;
 
-        auto chunk_range =
-            world_children_opt->get().entities() |
-            std::views::filter([&](Entity e) { return chunks.get(e).has_value(); }) |
-            std::views::transform(
-                [&](Entity e)
-                    -> std::tuple<Mut<grid::Chunk<fs::kDim>>, const fs::SandChunkPos&, fs::SandChunkDirtyRect&> {
-                    auto opt         = chunks.get(e);
-                    auto&& [c, p, d] = *opt;
-                    return {std::move(c), p, d.get_mut()};
-                });
-        auto sim_res = fs::SandSimulation::create(sw, registry.get(), chunk_range);
+        const std::size_t shift = sw.chunk_shift();
+        std::vector<std::tuple<grid::Chunk<fs::kDim>, const fs::SandChunkPos&, fs::SandChunkDirtyRect&>> chunk_tuples;
+        for (Entity e : world_children_opt->get().entities()) {
+            auto opt = chunks.get(e);
+            if (!opt.has_value()) continue;
+            auto&& [elem_g, air_g, therm_g, p, d] = *opt;
+            grid::Chunk<fs::kDim> chunk(shift);
+            (void)chunk.add_layer(
+                std::make_unique<grid::layers::BasicGridRefLayer<fs::ChunkElementGrid>>(shift, std::move(elem_g)));
+            (void)chunk.add_layer(
+                std::make_unique<grid::layers::BasicGridRefLayer<fs::ChunkAirGrid>>(shift, std::move(air_g)));
+            (void)chunk.add_layer(
+                std::make_unique<grid::layers::BasicGridRefLayer<fs::ChunkThermalGrid>>(shift, std::move(therm_g)));
+            chunk_tuples.emplace_back(std::move(chunk), p, d.get_mut());
+        }
+        auto chunk_range = chunk_tuples | std::views::as_rvalue;
+        auto sim_res     = fs::SandSimulation::create(sw, registry.get(), chunk_range);
         if (!sim_res.has_value()) continue;
         auto& sim = *sim_res;
 

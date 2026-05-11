@@ -53,7 +53,7 @@ void update_sand_static_bodies(
     Res<fs::ElementRegistry> registry,
     Query<Item<Entity, const PixelBodyWorld&, const fs::SandWorld&, Opt<const Children&>>> worlds,
     Query<Item<Entity,
-               Ref<grid::Chunk<fs::kDim>>,
+               Ref<fs::ChunkElementGrid>,
                const fs::SandChunkPos&,
                Opt<Mut<fs::SandChunkDirtyRect>>,
                Opt<Mut<SandStaticBody>>>> chunks);
@@ -82,7 +82,11 @@ void sync_pixel_body_to_sand(
         Item<Entity, const PixelBodyWorld&, Mut<fs::SandWorld>, Opt<const Children&>, Opt<Mut<PixelBodySandBlockers>>>>
         worlds,
     Query<Item<const PixelBody&, const transform::Transform&>> bodies,
-    Query<Item<Mut<grid::Chunk<fs::kDim>>, const fs::SandChunkPos&, Mut<fs::SandChunkDirtyRect>>> chunks);
+    Query<Item<Mut<fs::ChunkElementGrid>,
+               Mut<fs::ChunkAirGrid>,
+               Mut<fs::ChunkThermalGrid>,
+               const fs::SandChunkPos&,
+               Mut<fs::SandChunkDirtyRect>>> chunks);
 
 /** @brief Rebuild the render mesh for any PixelBody with mesh_dirty. */
 void build_pixel_body_meshes(Commands cmd,
