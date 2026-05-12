@@ -212,21 +212,6 @@ void render_viewport_snapshot(const epix::imgui::ViewportDrawDataSnapshot& snap,
     wgpu::TextureView texture_view = surface_texture.texture.createView();
     ReconstructedDrawData reconstructed(snap);
 
-    // Fix potential viewport size mismatch during resize: the surface is configured
-    // to fb_width×fb_height, but DrawData's DisplaySize×FramebufferScale may still
-    // reflect an earlier frame's dimensions.  Recompute FramebufferScale from the
-    // actual surface texture so that SetViewport never exceeds the texture bounds.
-    {
-        uint32_t tex_w = surface_texture.texture.getWidth();
-        uint32_t tex_h = surface_texture.texture.getHeight();
-        if (tex_w > 0 && tex_h > 0 && reconstructed.draw_data.DisplaySize.x > 0.0f &&
-            reconstructed.draw_data.DisplaySize.y > 0.0f) {
-            reconstructed.draw_data.FramebufferScale =
-                ImVec2(static_cast<float>(tex_w) / reconstructed.draw_data.DisplaySize.x,
-                       static_cast<float>(tex_h) / reconstructed.draw_data.DisplaySize.y);
-        }
-    }
-
     wgpu::CommandEncoder encoder =
         device.createCommandEncoder(wgpu::CommandEncoderDescriptor().setLabel("ImGui Platform Viewport Encoder"));
     wgpu::RenderPassEncoder pass = encoder.beginRenderPass(wgpu::RenderPassDescriptor()
@@ -408,6 +393,15 @@ void imgui::imgui_end_frame(ResMut<ImGuiState> state) {
                 glfwGetFramebufferSize(win, &viewport_snap.fb_width, &viewport_snap.fb_height);
             }
             clone_draw_data(viewport->DrawData, viewport_snap);
+            // Override display_size with the framebuffer-derived value so that
+            // display_size * fb_scale equals exactly the integer pixel size.
+            // ImDrawData::DisplaySize can be fractionally off from the actual
+            // framebuffer during resize, causing wgpu SetViewport to reject it.
+            if (viewport_snap.fb_width > 0 && viewport_snap.fb_height > 0 && viewport_snap.fb_scale_x > 0.0f &&
+                viewport_snap.fb_scale_y > 0.0f) {
+                viewport_snap.display_size_x = static_cast<float>(viewport_snap.fb_width) / viewport_snap.fb_scale_x;
+                viewport_snap.display_size_y = static_cast<float>(viewport_snap.fb_height) / viewport_snap.fb_scale_y;
+            }
             viewport_snaps->push_back(std::move(viewport_snap));
         }
         state->viewport_snapshots = std::move(viewport_snaps);
