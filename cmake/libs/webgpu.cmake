@@ -3,8 +3,7 @@ option(EPIX_WGPU_GENERATE_ON_CONFIGURE "Generate WebGPU wrapper during CMake con
 set(EPIX_WGPU_NATIVE_VERSION "v25.0.2.2" CACHE STRING "Version of wgpu-native to fetch")
 set(EPIX_WGPU_LINK_TYPE "STATIC" CACHE STRING "Link type for wgpu-native (SHARED or STATIC)")
 
-include(${CMAKE_CURRENT_LIST_DIR}/utils.cmake)
-include(${CMAKE_CURRENT_LIST_DIR}/FetchWgpuNative.cmake)
+include(${CMAKE_CURRENT_LIST_DIR}/wgpu_native.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/webgpu_gen_module.cmake)
 
 # Set output directory for generated files
@@ -16,7 +15,7 @@ if (EPIX_WGPU_GENERATE_ON_CONFIGURE AND WEBGPU_CPP_GENERATOR_AVAILABLE)
     set(WEBGPU_HEADERS
         "${WGPU_NATIVE_DIR}/include/webgpu/webgpu.h"
     )
-    
+
     # Check if wgpu.h exists (backend-specific extensions)
     if (EXISTS "${WGPU_NATIVE_DIR}/include/webgpu/wgpu.h")
         list(APPEND WEBGPU_HEADERS "${WGPU_NATIVE_DIR}/include/webgpu/wgpu.h")

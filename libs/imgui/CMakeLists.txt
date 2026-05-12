@@ -20,8 +20,8 @@ target_include_directories(imgui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_include_directories(imgui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src/backends)
 
 target_link_libraries(imgui PRIVATE glfw)
-target_link_libraries(imgui PRIVATE Vulkan-Headers)
+# target_link_libraries(imgui PRIVATE Vulkan-Headers)
 target_link_libraries(imgui PRIVATE webgpu)
 
-target_compile_definitions(imgui PRIVATE IMGUI_IMPL_VULKAN)
+# target_compile_definitions(imgui PRIVATE IMGUI_IMPL_VULKAN)
 target_compile_definitions(imgui PRIVATE IMGUI_IMPL_WEBGPU_BACKEND_WGPU)

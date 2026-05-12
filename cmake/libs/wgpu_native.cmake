@@ -2,7 +2,6 @@
 # Based on WebGPU-distribution patterns
 
 include(FetchContent)
-include(${CMAKE_CURRENT_LIST_DIR}/utils.cmake)
 
 # Set default version if not specified
 if (NOT DEFINED EPIX_WGPU_NATIVE_VERSION)
@@ -135,19 +134,7 @@ if (USE_SHARED_LIB)
 
     message(STATUS "Using wgpu-native runtime from '${WGPU_RUNTIME_LIB}'")
     set(WGPU_RUNTIME_LIB ${WGPU_RUNTIME_LIB} CACHE INTERNAL "Path to wgpu-native library binary")
-
-    # Helper function to copy binaries
-    function(target_copy_wgpu_binaries Target)
-        add_custom_command(
-            TARGET ${Target} POST_BUILD
-            COMMAND
-                ${CMAKE_COMMAND} -E copy_if_different
-                ${WGPU_RUNTIME_LIB}
-                $<TARGET_FILE_DIR:${Target}>
-            COMMENT
-                "Copying '${WGPU_RUNTIME_LIB}' to '$<TARGET_FILE_DIR:${Target}>'..."
-        )
-    endfunction()
+    set(EPIX_RUNTIME_SHARED_LIBS "${EPIX_RUNTIME_SHARED_LIBS};wgpu_native" CACHE INTERNAL "Shared libs the engine needs at runtime")
 else()
     # Static linking - add platform-specific system libraries
     if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
@@ -177,8 +164,11 @@ else()
                 "-framework MetalKit"
         )
     endif()
+endif()
 
-    function(target_copy_wgpu_binaries Target)
-        # No-op for static linking
-    endfunction()
+if(USE_SHARED_LIB AND EPIX_ENABLE_INSTALL)
+  install(TARGETS wgpu_native
+    LIBRARY DESTINATION lib
+    RUNTIME DESTINATION bin
+  )
 endif()

@@ -212,6 +212,21 @@ void render_viewport_snapshot(const epix::imgui::ViewportDrawDataSnapshot& snap,
     wgpu::TextureView texture_view = surface_texture.texture.createView();
     ReconstructedDrawData reconstructed(snap);
 
+    // Fix potential viewport size mismatch during resize: the surface is configured
+    // to fb_width×fb_height, but DrawData's DisplaySize×FramebufferScale may still
+    // reflect an earlier frame's dimensions.  Recompute FramebufferScale from the
+    // actual surface texture so that SetViewport never exceeds the texture bounds.
+    {
+        uint32_t tex_w = surface_texture.texture.getWidth();
+        uint32_t tex_h = surface_texture.texture.getHeight();
+        if (tex_w > 0 && tex_h > 0 && reconstructed.draw_data.DisplaySize.x > 0.0f &&
+            reconstructed.draw_data.DisplaySize.y > 0.0f) {
+            reconstructed.draw_data.FramebufferScale =
+                ImVec2(static_cast<float>(tex_w) / reconstructed.draw_data.DisplaySize.x,
+                       static_cast<float>(tex_h) / reconstructed.draw_data.DisplaySize.y);
+        }
+    }
+
     wgpu::CommandEncoder encoder =
         device.createCommandEncoder(wgpu::CommandEncoderDescriptor().setLabel("ImGui Platform Viewport Encoder"));
     wgpu::RenderPassEncoder pass = encoder.beginRenderPass(wgpu::RenderPassDescriptor()

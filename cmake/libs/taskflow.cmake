@@ -1,0 +1,6 @@
+block()
+  set(TF_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+  set(TF_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+  set(TF_BUILD_MODULES OFF CACHE BOOL "" FORCE)
+  add_subdirectory (libs/taskflow)
+endblock()

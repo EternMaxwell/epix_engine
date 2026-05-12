@@ -5,7 +5,7 @@ target_link_libraries(epix_render PUBLIC epix_assets)
 target_link_libraries(epix_render PUBLIC epix_image)
 target_link_libraries(epix_render PUBLIC epix_transform)
 target_link_libraries(epix_render PUBLIC epix_shader)
-target_link_libraries(epix_render PUBLIC Vulkan-Headers)
+# target_link_libraries(epix_render PUBLIC Vulkan-Headers)
 target_link_libraries(epix_render PUBLIC webgpu)
 
 epix_add_module_subdir(epix_glfw_render glfw_render)

@@ -1,6 +1,3 @@
-# Utility functions for WebGPU integration
-# Based on patterns from WebGPU-distribution
-
 # Detect system architecture
 function(detect_system_architecture)
     if (CMAKE_SIZEOF_VOID_P EQUAL 8)
@@ -39,4 +36,214 @@ function(build_lib_filename OUT_VAR LIB_NAME IS_SHARED)
             set(${OUT_VAR} "lib${LIB_NAME}.a" PARENT_SCOPE)
         endif()
     endif()
+endfunction()
+
+# ── Transitive shared-lib collector ──────────────────────────────────────
+
+function(_epix_collect_shared_deps OUT_VAR)
+  set(_result "")
+  set(_visited "")
+  _epix_collect_shared_deps_recurse(_result _visited ${ARGN})
+  if(_result)
+    list(REMOVE_DUPLICATES _result)
+  endif()
+  set(${OUT_VAR} "${_result}" PARENT_SCOPE)
+endfunction()
+
+function(_epix_collect_shared_deps_recurse RESULT_VAR VISITED_VAR)
+  foreach(_LIB IN LISTS ARGN)
+    if(NOT TARGET ${_LIB})
+      continue()
+    endif()
+    get_target_property(_alias ${_LIB} ALIASED_TARGET)
+    if(_alias)
+      set(_LIB ${_alias})
+    endif()
+    if(${_LIB} IN_LIST _visited)
+      continue()
+    endif()
+    list(APPEND _visited ${_LIB})
+    set(_visited "${_visited}" PARENT_SCOPE)
+
+    get_target_property(_type ${_LIB} TYPE)
+    if(_type STREQUAL "SHARED_LIBRARY")
+      list(APPEND _result ${_LIB})
+    endif()
+
+    get_target_property(_link_libs ${_LIB} LINK_LIBRARIES)
+    if(_link_libs)
+      _epix_collect_shared_deps_recurse(_sub_result _visited ${_link_libs})
+      if(_sub_result)
+        list(APPEND _result ${_sub_result})
+      endif()
+    endif()
+    get_target_property(_iface_libs ${_LIB} INTERFACE_LINK_LIBRARIES)
+    if(_iface_libs)
+      _epix_collect_shared_deps_recurse(_sub_iface _visited ${_iface_libs})
+      if(_sub_iface)
+        list(APPEND _result ${_sub_iface})
+      endif()
+    endif()
+  endforeach()
+  set(${RESULT_VAR} "${_result}" PARENT_SCOPE)
+  set(${VISITED_VAR} "${_visited}" PARENT_SCOPE)
+endfunction()
+
+# ── Engine helper functions ────────────────────────────────────────────────
+
+function(epix_parse_options)
+  if(EPIX_ENABLE_TRACY)
+    target_compile_definitions(${ARGN} PRIVATE EPIX_ENABLE_TRACY)
+  endif()
+  if(EPIX_USE_VOLK)
+    target_compile_definitions(${ARGN} PUBLIC EPIX_USE_VOLK)
+  endif()
+  if (EPIX_IMPORT_STD AND EPIX_CXX_MODULE)
+    target_compile_definitions(${ARGN} PUBLIC EPIX_IMPORT_STD)
+  endif()
+  if(EPIX_ENABLE_TEST)
+    target_compile_definitions(${ARGN} PRIVATE EPIX_ENABLE_TEST)
+    target_link_libraries(${ARGN} PRIVATE GTest::gtest_main)
+  endif()
+endfunction()
+
+function(epix_add_tests GROUP_NAME)
+  if(NOT EPIX_ENABLE_TEST)
+    return()
+  endif()
+  cmake_parse_arguments(PARSE_ARGV 1 _T "" "TESTS_DIR" "LINK_LIBS;SHARED_DEPS")
+  if(NOT _T_TESTS_DIR)
+    set(_T_TESTS_DIR "tests")
+  endif()
+  set(_dir "${CMAKE_CURRENT_SOURCE_DIR}/${_T_TESTS_DIR}")
+  file(GLOB_RECURSE _SRCS CONFIGURE_DEPENDS "${_dir}/*.cpp")
+  foreach(_SRC IN LISTS _SRCS)
+    file(RELATIVE_PATH _REL "${_dir}" "${_SRC}")
+    set(_NAME "test_${GROUP_NAME}_${_REL}")
+    string(REPLACE "/" "_" _NAME "${_NAME}")
+    string(REPLACE "\\" "_" _NAME "${_NAME}")
+    string(REPLACE ".cpp" "" _NAME "${_NAME}")
+    add_executable(${_NAME} "${_SRC}")
+    target_link_libraries(${_NAME} PRIVATE GTest::gtest_main ${_T_LINK_LIBS})
+    add_test(NAME ${_NAME} COMMAND ${_NAME}
+      WORKING_DIRECTORY "${EPIX_ENGINE_SOURCE_DIR}")
+    # collect shared libs: explicit SHARED_DEPS + auto-detected transitive
+    set(_shared_deps ${_T_SHARED_DEPS})
+    _epix_collect_shared_deps(_auto_deps ${_T_LINK_LIBS} GTest::gtest_main)
+    if(_auto_deps)
+      list(APPEND _shared_deps ${_auto_deps})
+    endif()
+    if(_shared_deps)
+      list(REMOVE_DUPLICATES _shared_deps)
+      epix_deploy_runtime_libs(${_NAME} DEPENDENCY_TARGETS ${_shared_deps})
+    endif()
+  endforeach()
+endfunction()
+
+function(epix_add_examples GROUP_NAME)
+  if(NOT EPIX_ENABLE_EXAMPLE)
+    return()
+  endif()
+  cmake_parse_arguments(PARSE_ARGV 1 _E "" "EXAMPLES_DIR;GLOB_TYPE;EXCLUDE_REGEX" "LINK_LIBS;SHARED_DEPS")
+  if(NOT _E_EXAMPLES_DIR)
+    set(_E_EXAMPLES_DIR "examples")
+  endif()
+  if(NOT _E_GLOB_TYPE)
+    set(_E_GLOB_TYPE "GLOB_RECURSE")
+  endif()
+  set(_dir "${CMAKE_CURRENT_SOURCE_DIR}/${_E_EXAMPLES_DIR}")
+  file(${_E_GLOB_TYPE} _SRCS CONFIGURE_DEPENDS "${_dir}/*.cpp")
+  if(_E_EXCLUDE_REGEX)
+    list(FILTER _SRCS EXCLUDE REGEX "${_E_EXCLUDE_REGEX}")
+  endif()
+  foreach(_SRC IN LISTS _SRCS)
+    file(RELATIVE_PATH _REL "${_dir}" "${_SRC}")
+    set(_NAME "example_${GROUP_NAME}_${_REL}")
+    string(REPLACE "/" "_" _NAME "${_NAME}")
+    string(REPLACE "\\" "_" _NAME "${_NAME}")
+    string(REPLACE ".cpp" "" _NAME "${_NAME}")
+    add_executable(${_NAME} "${_SRC}")
+    target_link_libraries(${_NAME} PRIVATE ${_E_LINK_LIBS})
+    # collect shared libs: explicit SHARED_DEPS + auto-detected transitive
+    set(_shared_deps ${_E_SHARED_DEPS})
+    _epix_collect_shared_deps(_auto_deps ${_E_LINK_LIBS})
+    if(_auto_deps)
+      list(APPEND _shared_deps ${_auto_deps})
+    endif()
+    if(_shared_deps)
+      list(REMOVE_DUPLICATES _shared_deps)
+      epix_deploy_runtime_libs(${_NAME} DEPENDENCY_TARGETS ${_shared_deps})
+    endif()
+  endforeach()
+endfunction()
+
+function(epix_add_module MODULE_NAME)
+  add_library(${MODULE_NAME} STATIC)
+  epix_parse_options(${MODULE_NAME})
+  file(GLOB_RECURSE MODULES CONFIGURE_DEPENDS "modules/*.ixx" "modules/*.cppm")
+  file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS "src/*.c" "src/*.cpp")
+  target_include_directories(${MODULE_NAME} PUBLIC "include")
+  if (EPIX_CXX_MODULE)
+    target_sources(${MODULE_NAME}
+      PUBLIC FILE_SET cxx_modules TYPE CXX_MODULES FILES ${MODULES}
+      PRIVATE ${SOURCES}
+    )
+  endif()
+  if(EPIX_ENABLE_INSTALL)
+    install(TARGETS ${MODULE_NAME}
+      ARCHIVE DESTINATION lib
+      FILE_SET cxx_modules DESTINATION lib/modules/${MODULE_NAME}
+    )
+    install(DIRECTORY include/ DESTINATION include)
+  endif()
+endfunction()
+
+function(epix_add_module_subdir MODULE_NAME SUBDIR)
+  add_library(${MODULE_NAME} STATIC)
+  epix_parse_options(${MODULE_NAME})
+  file(GLOB_RECURSE MODULES CONFIGURE_DEPENDS "${SUBDIR}/modules/*.ixx" "${SUBDIR}/modules/*.cppm")
+  file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS "${SUBDIR}/src/*.c" "${SUBDIR}/src/*.cpp")
+  target_include_directories(${MODULE_NAME} PUBLIC "include")
+  if (EPIX_CXX_MODULE)
+    target_sources(${MODULE_NAME}
+      PUBLIC FILE_SET cxx_modules TYPE CXX_MODULES FILES ${MODULES}
+      PRIVATE ${SOURCES}
+    )
+  endif()
+  if(EPIX_ENABLE_INSTALL)
+    install(TARGETS ${MODULE_NAME}
+      ARCHIVE DESTINATION lib
+      FILE_SET cxx_modules DESTINATION lib/modules/${MODULE_NAME}
+    )
+    install(DIRECTORY include/ DESTINATION include)
+  endif()
+endfunction()
+
+# ── Runtime library deployment ──────────────────────────────────────────────
+
+set(EPIX_RUNTIME_SHARED_LIBS "" CACHE INTERNAL "Shared library targets the engine needs at runtime")
+
+function(epix_deploy_runtime_libs TARGET_NAME)
+  cmake_parse_arguments(PARSE_ARGV 1 _DEPLOY "" "" "DEPENDENCY_TARGETS")
+  foreach(DEP IN LISTS _DEPLOY_DEPENDENCY_TARGETS)
+    add_custom_command(
+      TARGET ${TARGET_NAME} POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        $<TARGET_FILE:${DEP}>
+        $<TARGET_FILE_DIR:${TARGET_NAME}>
+      COMMENT "Copying runtime library ${DEP} to $<TARGET_FILE_DIR:${TARGET_NAME}>..."
+    )
+  endforeach()
+endfunction()
+
+function(deploy_epix_runtime_deps TARGET_NAME)
+  foreach(DEP IN LISTS EPIX_RUNTIME_SHARED_LIBS)
+    add_custom_command(
+      TARGET ${TARGET_NAME} POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        $<TARGET_FILE:${DEP}>
+        $<TARGET_FILE_DIR:${TARGET_NAME}>
+      COMMENT "Deploying epix runtime library ${DEP} to $<TARGET_FILE_DIR:${TARGET_NAME}>..."
+    )
+  endforeach()
 endfunction()
