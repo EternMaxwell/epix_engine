@@ -9,7 +9,7 @@ file(GLOB MODULE_SOURCES
     "src/imgui_widgets.cpp"
     "src/imgui_tables.cpp"
     "src/backends/imgui_impl_glfw.cpp"
-    "src/backends/imgui_impl_vulkan.cpp"
+    # "src/backends/imgui_impl_vulkan.cpp"
     "src/backends/imgui_impl_wgpu.cpp"
 )
 set(IMGUI_SOURCES ${IMGUI_SOURCES} ${MODULE_SOURCES} PARENT_SCOPE)
