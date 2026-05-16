@@ -57,11 +57,10 @@ struct SpriteBundle {
 
 template <>
 struct epix::core::Bundle<epix::sprite::SpriteBundle> {
-    static std::size_t write(sprite::SpriteBundle& bundle, std::span<void*> dests) {
-        new (dests[0]) sprite::Sprite(std::move(bundle.sprite));
-        new (dests[1]) transform::Transform(std::move(bundle.transform));
-        new (dests[2]) assets::Handle<image::Image>(std::move(bundle.texture));
-        return 3;
+    static void get_components(sprite::SpriteBundle& bundle, utils::function_ref<void(utils::function_ref<void(void*)>)> write_component) noexcept {
+        write_component([&](void* ptr) { new (ptr) sprite::Sprite(std::move(bundle.sprite)); });
+        write_component([&](void* ptr) { new (ptr) transform::Transform(std::move(bundle.transform)); });
+        write_component([&](void* ptr) { new (ptr) assets::Handle<image::Image>(std::move(bundle.texture)); });
     }
 
     static std::array<TypeId, 3> type_ids(const TypeRegistry& registry) {

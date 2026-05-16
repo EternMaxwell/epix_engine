@@ -180,15 +180,14 @@ export struct Camera2DBundle {
 
 template <>
 struct epix::core::Bundle<epix::core_graph::core_2d::Camera2DBundle> {
-    static std::size_t write(epix::core_graph::core_2d::Camera2DBundle& bundle, std::span<void*> dest) {
-        new (dest[0]) render::camera::Camera(std::move(bundle.camera));
-        new (dest[1]) render::camera::Projection(std::move(bundle.projection));
-        new (dest[2]) render::camera::CameraRenderGraph(std::move(bundle.render_graph));
-        new (dest[3]) transform::Transform(std::move(bundle.transform));
-        new (dest[4]) render::view::VisibleEntities(std::move(bundle.visible_entities));
-        new (dest[5]) core_graph::core_2d::Camera2D(std::move(bundle.camera_2d));
-        new (dest[6]) render::camera::RenderLayer(std::move(bundle.render_layer));
-        return 7;
+    static void get_components(epix::core_graph::core_2d::Camera2DBundle& bundle, utils::function_ref<void(utils::function_ref<void(void*)>)> write_component) noexcept {
+        write_component([&](void* ptr) { new (ptr) render::camera::Camera(std::move(bundle.camera)); });
+        write_component([&](void* ptr) { new (ptr) render::camera::Projection(std::move(bundle.projection)); });
+        write_component([&](void* ptr) { new (ptr) render::camera::CameraRenderGraph(std::move(bundle.render_graph)); });
+        write_component([&](void* ptr) { new (ptr) transform::Transform(std::move(bundle.transform)); });
+        write_component([&](void* ptr) { new (ptr) render::view::VisibleEntities(std::move(bundle.visible_entities)); });
+        write_component([&](void* ptr) { new (ptr) core_graph::core_2d::Camera2D(std::move(bundle.camera_2d)); });
+        write_component([&](void* ptr) { new (ptr) render::camera::RenderLayer(std::move(bundle.render_layer)); });
     }
     static std::array<TypeId, 7> type_ids(const core::TypeRegistry& registry) {
         return std::array{

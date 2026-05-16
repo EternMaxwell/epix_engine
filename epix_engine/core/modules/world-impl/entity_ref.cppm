@@ -21,7 +21,7 @@ import :world.entity_ref.decl;
 import :entities;
 import :ticks;
 import :world.decl;
-import :bundle.spec;
+import :bundle;
 import :storage;
 import :hierarchy;
 
@@ -182,17 +182,15 @@ export struct EntityWorldMut : public EntityRefMut {
    public:
     using EntityRefMut::EntityRefMut;
 
-    /** @brief Internal method to insert a bundle, optionally replacing existing components.
-     * @param replace_existing If true, replace existing components; if false, skip.
-     */
+    /** @brief Internal method to insert a bundle with the requested insertion mode. */
     template <typename T>
-    void insert_internal(T&& bundle, bool replace_existing)
+    void insert_internal(T&& bundle, InsertMode insert_mode)
         requires(is_bundle<std::decay_t<T>>)
     {
         assert_not_despawned();
         auto inserter =
             BundleInserter::create<std::decay_t<T>>(*world_, location_.archetype_id, world_change_tick(*world_));
-        location_ = inserter.insert(entity_, location_, std::forward<T>(bundle), replace_existing);
+        location_ = inserter.insert(entity_, location_, std::forward<T>(bundle), insert_mode);
         world_flush(*world_);
         update_location();
     }
@@ -201,39 +199,40 @@ export struct EntityWorldMut : public EntityRefMut {
     void emplace(Args&&... args)
         requires(sizeof...(Args) == sizeof...(Ts))
     {
-        insert_internal(make_bundle<Ts...>(std::forward<Args>(args)...), true);
+        insert_internal(make_bundle<Ts...>(std::forward<Args>(args)...), InsertMode::Replace);
     }
     /** @brief Emplace components only if they are not already present. */
     template <typename... Ts, typename... Args>
     void emplace_if_new(Args&&... args)
         requires(sizeof...(Args) == sizeof...(Ts))
     {
-        insert_internal(make_bundle<Ts...>(std::forward<Args>(args)...), false);
+        insert_internal(make_bundle<Ts...>(std::forward<Args>(args)...), InsertMode::Keep);
     }
     /** @brief Insert one or more components, replacing existing ones. */
     template <typename... Ts>
     void insert(Ts&&... components) {
-        insert_internal(make_bundle<std::decay_t<Ts>...>(std::forward_as_tuple(std::forward<Ts>(components))...), true);
+        insert_internal(make_bundle<std::decay_t<Ts>...>(std::forward_as_tuple(std::forward<Ts>(components))...),
+                        InsertMode::Replace);
     }
     /** @brief Insert components only if they are not already present. */
     template <typename... Ts>
     void insert_if_new(Ts&&... components) {
         insert_internal(make_bundle<std::decay_t<Ts>...>(std::forward_as_tuple(std::forward<Ts>(components))...),
-                        false);
+                        InsertMode::Keep);
     }
     /** @brief Insert a bundle, replacing existing components. */
     template <typename B>
     void insert_bundle(B&& bundle)
         requires(is_bundle<std::decay_t<B>>)
     {
-        insert_internal(std::forward<B>(bundle), true);
+        insert_internal(std::forward<B>(bundle), InsertMode::Replace);
     }
     /** @brief Insert a bundle only if its components are not already present. */
     template <typename B>
     void insert_bundle_if_new(B&& bundle)
         requires(is_bundle<std::decay_t<B>>)
     {
-        insert_internal(std::forward<B>(bundle), false);
+        insert_internal(std::forward<B>(bundle), InsertMode::Keep);
     }
     /** @brief Remove components of the given types from this entity. */
     template <typename... Ts>

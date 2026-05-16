@@ -231,12 +231,12 @@ export struct TextPlugin {
 
 template <>
 struct epix::core::Bundle<epix::text::TextBundle> {
-    static std::size_t write(text::TextBundle& bundle, std::span<void*> dests) {
-        new (dests[0]) text::Text(std::move(bundle.text));
-        new (dests[1]) text::TextFont(std::move(bundle.font));
-        new (dests[2]) text::TextLayout(std::move(bundle.layout));
-        new (dests[3]) text::TextBounds(std::move(bundle.bounds));
-        return 4;
+    static void get_components(text::TextBundle& bundle,
+                               utils::function_ref<void(utils::function_ref<void(void*)>)> write_component) noexcept {
+        write_component([&](void* ptr) { new (ptr) text::Text(std::move(bundle.text)); });
+        write_component([&](void* ptr) { new (ptr) text::TextFont(std::move(bundle.font)); });
+        write_component([&](void* ptr) { new (ptr) text::TextLayout(std::move(bundle.layout)); });
+        write_component([&](void* ptr) { new (ptr) text::TextBounds(std::move(bundle.bounds)); });
     }
 
     static std::array<TypeId, 4> type_ids(const TypeRegistry& registry) {

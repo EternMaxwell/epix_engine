@@ -752,14 +752,15 @@ export struct CameraBundle {
 
 template <>
 struct epix::core::Bundle<epix::render::camera::CameraBundle> {
-    static std::size_t write(render::camera::CameraBundle& bundle, std::span<void*> target) {
-        new (target[0]) render::camera::Camera(std::move(bundle.camera));
-        new (target[1]) render::camera::Projection(std::move(bundle.projection));
-        new (target[2]) render::camera::CameraRenderGraph(std::move(bundle.render_graph));
-        new (target[3]) transform::Transform(std::move(bundle.transform));
-        new (target[4]) render::view::VisibleEntities(std::move(bundle.visible));
-        new (target[5]) render::camera::RenderLayer(std::move(bundle.render_layer));
-        return 6;
+    static void get_components(render::camera::CameraBundle& bundle,
+                               utils::function_ref<void(utils::function_ref<void(void*)>)> write_component) noexcept {
+        write_component([&](void* ptr) { new (ptr) render::camera::Camera(std::move(bundle.camera)); });
+        write_component([&](void* ptr) { new (ptr) render::camera::Projection(std::move(bundle.projection)); });
+        write_component(
+            [&](void* ptr) { new (ptr) render::camera::CameraRenderGraph(std::move(bundle.render_graph)); });
+        write_component([&](void* ptr) { new (ptr) transform::Transform(std::move(bundle.transform)); });
+        write_component([&](void* ptr) { new (ptr) render::view::VisibleEntities(std::move(bundle.visible)); });
+        write_component([&](void* ptr) { new (ptr) render::camera::RenderLayer(std::move(bundle.render_layer)); });
     }
     static auto type_ids(const core::TypeRegistry& registry) {
         return std::array{

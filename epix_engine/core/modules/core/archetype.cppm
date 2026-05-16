@@ -1,5 +1,7 @@
 module;
 
+#include <cassert>
+
 #ifndef EPIX_IMPORT_STD
 #include <algorithm>
 #include <concepts>
@@ -116,6 +118,9 @@ struct ArchetypeEdges {
         BundleId bundle_id) const noexcept {
         return insert_bundle.get(bundle_id).transform(
             [](const ArchetypeAfterBundleInsert& abi) { return std::cref(abi); });
+    }
+    const ArchetypeAfterBundleInsert& unsafe_archetype_after_bundle_insert_detail(BundleId bundle_id) const noexcept {
+        return insert_bundle.unsafe_get(bundle_id);
     }
     std::optional<std::optional<ArchetypeId>> get_archetype_after_bundle_remove(BundleId bundle_id) const noexcept {
         return remove_bundle.get(bundle_id).transform([](const std::optional<ArchetypeId>& abi) { return abi; });
@@ -292,6 +297,10 @@ export struct Archetypes {
             return std::nullopt;
         }
         return std::ref(self.archetypes[id.get()]);
+    }
+    Archetype& unsafe_get_mut(this Archetypes& self, ArchetypeId id) noexcept {
+        assert(id.get() < self.archetypes.size());
+        return self.archetypes[id.get()];
     }
     /** @brief Return a const view over all archetypes. */
     auto iter() const noexcept { return std::views::all(archetypes); }

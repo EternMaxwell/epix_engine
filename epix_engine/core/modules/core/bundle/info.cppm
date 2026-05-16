@@ -17,11 +17,12 @@ module;
 #endif
 #include <cassert>
 
-export module epix.core:bundle.interface;
+export module epix.core:bundle.info;
 #ifdef EPIX_IMPORT_STD
 import std;
 #endif
 import epix.traits;
+import epix.utils;
 
 import :utils;
 import :type_registry;
@@ -33,16 +34,19 @@ namespace epix::core {
 export template <typename T>
 struct Bundle {};
 
-template <typename R>
-concept is_void_ptr_view = std::ranges::sized_range<R> && view_of_value<R, void*>;
-
 export template <typename B>
 concept is_bundle = requires(std::decay_t<B>& b) {
     {
-        Bundle<std::decay_t<B>>::write(b, std::declval<std::span<void*>>())
-    } -> std::same_as<std::size_t>;  // return number of written components
+        Bundle<std::decay_t<B>>::get_components(
+            b, std::declval<utils::function_ref<void(utils::function_ref<void(void*)>)>>())
+    } -> std::same_as<void>;
     { Bundle<std::decay_t<B>>::type_ids(std::declval<const TypeRegistry&>()) } -> type_id_view;
     { Bundle<std::decay_t<B>>::register_components(std::declval<const TypeRegistry&>(), std::declval<Components&>()) };
+};
+
+export enum class InsertMode {
+    Replace,
+    Keep,
 };
 
 struct BundleInfo {
@@ -88,7 +92,7 @@ struct BundleInfo {
         TableRow row,
         Tick tick,
         T3&& bundle,
-        bool replace_existing = true) const
+        InsertMode insert_mode = InsertMode::Replace) const
         requires std::ranges::view<std::decay_t<T2>> &&
                  std::same_as<std::ranges::range_value_t<T2>, RequiredComponentConstructor> &&
                  std::ranges::view<std::decay_t<T1>> && std::same_as<std::ranges::range_value_t<T1>, ComponentStatus>
@@ -101,48 +105,47 @@ struct BundleInfo {
                                        return bundle_id == explicit_id;
                                    }) &&
                std::ranges::size(BundleType::type_ids(type_registry)) == std::ranges::size(explicit_components()));
-        std::vector<void*> pointers;
-        pointers.reserve(_explicit_components_count);
-        for (auto&& [type_id, status] : std::views::zip(explicit_components(), component_statuses)) {
-            auto storage_type = components.get(type_id).value().get().storage_type();
+        auto component_id_status_view = std::views::zip(explicit_components(), component_statuses);
+        auto component_iter           = component_id_status_view.begin();
+        BundleType::get_components(std::forward<T3>(bundle), [&](utils::function_ref<void(void*)> write_component) {
+            auto&& [type_id, status] = *component_iter;
+            auto storage_type        = components.unsafe_get(type_id).storage_type();
             if (storage_type == StorageType::Table) {
-                Dense& dense = table.get_dense_mut(type_id).value().get();
-                void* ptr    = dense.get_mut(row).value();  // resize uninitialized already called
+                Dense& dense = table.unsafe_dense_mut(type_id);
+                void* ptr    = dense.unsafe_get_mut(row);  // resize uninitialized already called
                 if (status == ComponentStatus::Added) {
-                    pointers.push_back(ptr);
-                    dense.get_added_tick(row).value().get()    = tick;
-                    dense.get_modified_tick(row).value().get() = tick;
-                } else if (replace_existing) {
+                    write_component(ptr);
+                    dense.unsafe_added_tick_mut(row)    = tick;
+                    dense.unsafe_modified_tick_mut(row) = tick;
+                } else if (insert_mode == InsertMode::Replace) {
                     // manually destroy existing component before replacing
                     dense.type_info().destruct(ptr);
-                    pointers.push_back(ptr);
-                    dense.get_modified_tick(row).value().get() = tick;
+                    write_component(ptr);
+                    dense.unsafe_modified_tick_mut(row) = tick;
                 } else {
                     // keep existing, do nothing
-                    pointers.push_back(nullptr);
                 }
             } else {
-                ComponentSparseSet& sparse_set = sparse_sets.get_mut(type_id).value().get();
+                ComponentSparseSet& sparse_set = sparse_sets.unsafe_get_mut(type_id);
                 assert(((status == ComponentStatus::Added) == !sparse_set.contains(entity)));
                 if (status == ComponentStatus::Added) {
                     sparse_set.alloc_uninitialized(entity);
-                    void* ptr = sparse_set.get_mut(entity).value();
-                    pointers.push_back(ptr);
-                    sparse_set.get_added_tick(entity).value().get()    = tick;
-                    sparse_set.get_modified_tick(entity).value().get() = tick;
-                } else if (replace_existing) {
+                    void* ptr = sparse_set.unsafe_get_mut(entity);
+                    write_component(ptr);
+                    sparse_set.unsafe_added_tick_mut(entity)    = tick;
+                    sparse_set.unsafe_modified_tick_mut(entity) = tick;
+                } else if (insert_mode == InsertMode::Replace) {
                     // manually destroy existing component before replacing
-                    void* ptr = sparse_set.get_mut(entity).value();
+                    void* ptr = sparse_set.unsafe_get_mut(entity);
                     sparse_set.type_info().destruct(ptr);
-                    pointers.push_back(ptr);
-                    sparse_set.get_modified_tick(entity).value().get() = tick;
+                    write_component(ptr);
+                    sparse_set.unsafe_modified_tick_mut(entity) = tick;
                 } else {
                     // keep existing, do nothing
-                    pointers.push_back(nullptr);
                 }
             }
-        }
-        Bundle<std::decay_t<T3>>::write(std::forward<T3>(bundle), pointers);
+            ++component_iter;
+        });
 
         for (auto&& rc : required_components) {
             (*rc)(table, sparse_sets, tick, row, entity);
@@ -169,6 +172,10 @@ struct Bundles {
             return std::nullopt;
         }
         return std::cref(_bundle_infos[id.get()]);
+    }
+    const BundleInfo& unsafe_get(BundleId id) const noexcept {
+        assert(id.get() < _bundle_infos.size());
+        return _bundle_infos[id.get()];
     }
     std::optional<BundleId> get_id(TypeId type_id) const noexcept {
         if (auto it = _dynamic_component_ids.find(type_id); it != _dynamic_component_ids.end()) {

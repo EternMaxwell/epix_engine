@@ -1,5 +1,7 @@
 module;
 
+#include <cassert>
+
 #ifndef EPIX_IMPORT_STD
 #include <concepts>
 #include <cstddef>
@@ -51,7 +53,7 @@ struct ComponentSparseSet {
     template <typename T, typename... Args>
     void emplace(this ComponentSparseSet& self, Entity entity, Tick change_tick, Args&&... args) {
         self.sparse.get(entity.index)
-            .and_then([&](std::uint32_t& dense_index) -> std::optional<bool> {
+            .and_then([&](const std::uint32_t& dense_index) -> std::optional<bool> {
                 // Already exists, replace
                 self.dense.replace<T>(dense_index, change_tick, std::forward<Args>(args)...);
                 return true;
@@ -81,6 +83,10 @@ struct ComponentSparseSet {
         }
         return std::nullopt;
     }
+    void* unsafe_get_mut(this ComponentSparseSet& self, Entity entity) noexcept {
+        auto dense_index = self.sparse.unsafe_get(entity.index);
+        return self.dense.unsafe_get_mut(dense_index);
+    }
     template <typename T>
     std::optional<std::reference_wrapper<const T>> get_as(this const ComponentSparseSet& self, Entity entity) noexcept {
         if (auto dense_index = self.sparse.get(entity.index)) {
@@ -107,12 +113,20 @@ struct ComponentSparseSet {
         }
         return std::nullopt;
     }
+    Tick& unsafe_added_tick_mut(this ComponentSparseSet& self, Entity entity) noexcept {
+        auto dense_index = self.sparse.unsafe_get(entity.index);
+        return self.dense.unsafe_added_tick_mut(dense_index);
+    }
     std::optional<std::reference_wrapper<Tick>> get_modified_tick(this ComponentSparseSet& self,
                                                                   Entity entity) noexcept {
         if (auto dense_index = self.sparse.get(entity.index)) {
             return self.dense.get_modified_tick(dense_index->get());
         }
         return std::nullopt;
+    }
+    Tick& unsafe_modified_tick_mut(this ComponentSparseSet& self, Entity entity) noexcept {
+        auto dense_index = self.sparse.unsafe_get(entity.index);
+        return self.dense.unsafe_modified_tick_mut(dense_index);
     }
     std::optional<TickRefs> get_tick_refs(this const ComponentSparseSet& self, Entity entity) noexcept {
         if (auto dense_index = self.sparse.get(entity.index)) {
@@ -193,11 +207,19 @@ struct SparseSet {
         }
         return std::nullopt;
     }
+    const V& unsafe_get(this const SparseSet& self, I index) noexcept {
+        auto dense_index = self._sparse.unsafe_get(index);
+        return self._dense[dense_index];
+    }
     std::optional<std::reference_wrapper<V>> get_mut(this SparseSet& self, I index) noexcept {
         if (auto dense_index = self._sparse.get(index)) {
             return std::ref(self._dense[dense_index->get()]);
         }
         return std::nullopt;
+    }
+    V& unsafe_get_mut(this SparseSet& self, I index) noexcept {
+        auto dense_index = self._sparse.unsafe_get(index);
+        return self._dense[dense_index];
     }
 
     bool remove(this SparseSet& self, I index) {
@@ -247,6 +269,9 @@ struct SparseSets {
     std::optional<std::reference_wrapper<ComponentSparseSet>> get_mut(this SparseSets& self,
                                                                       std::size_t type_id) noexcept {
         return self.sets.get_mut(type_id);
+    }
+    ComponentSparseSet& unsafe_get_mut(this SparseSets& self, std::size_t type_id) noexcept {
+        return self.sets.unsafe_get_mut(type_id);
     }
     void insert(this SparseSets& self, std::size_t type_id, ComponentSparseSet set) {
         self.sets.emplace(type_id, std::move(set));

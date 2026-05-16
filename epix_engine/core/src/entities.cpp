@@ -95,6 +95,14 @@ std::optional<EntityLocation> Entities::get(Entity entity) const noexcept {
     return meta.location;
 }
 
+EntityLocation Entities::unsafe_get(Entity entity) const noexcept {
+    assert(entity.index < meta.size());
+    auto& meta = this->meta[entity.index];
+    assert(meta.generation == entity.generation);
+    assert(meta.location.archetype_id.get() != std::numeric_limits<std::uint32_t>::max());
+    return meta.location;
+}
+
 void Entities::set(std::uint32_t index, EntityLocation location) noexcept { meta[index].location = location; }
 
 bool Entities::reserve_generations(std::uint32_t index, std::uint32_t generations) noexcept {

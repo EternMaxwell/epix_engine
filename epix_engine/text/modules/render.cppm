@@ -119,11 +119,10 @@ export struct TextRenderPlugin {
 
 template <>
 struct epix::core::Bundle<epix::text::Text2dBundle> {
-    static std::size_t write(text::Text2dBundle& bundle, std::span<void*> dests) {
-        new (dests[0]) text::Text2d(std::move(bundle.text2d));
-        new (dests[1]) transform::Transform(std::move(bundle.transform));
-        new (dests[2]) text::TextColor(std::move(bundle.color));
-        return 3;
+    static void get_components(text::Text2dBundle& bundle, utils::function_ref<void(utils::function_ref<void(void*)>)> write_component) noexcept {
+        write_component([&](void* ptr) { new (ptr) text::Text2d(std::move(bundle.text2d)); });
+        write_component([&](void* ptr) { new (ptr) transform::Transform(std::move(bundle.transform)); });
+        write_component([&](void* ptr) { new (ptr) text::TextColor(std::move(bundle.color)); });
     }
 
     static std::array<TypeId, 3> type_ids(const TypeRegistry& registry) {

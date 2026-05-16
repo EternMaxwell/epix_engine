@@ -134,7 +134,7 @@ struct RequiredComponents {
         requires std::invocable<F> && std::same_as<C, std::invoke_result_t<F>>
     {
         register_dynamic(type_id, inheritance_depth,
-                         RequiredComponentConstructor(
+                         std::make_shared<std::function<void(Table&, SparseSets&, Tick, TableRow, Entity)>>(
                              [ctor = std::forward<F>(constructor), type_id](Table& table, SparseSets& sparse_sets,
                                                                             Tick tick, TableRow row, Entity entity) {
                                  auto storage_type = storage_for<C>();
@@ -148,7 +148,7 @@ struct RequiredComponents {
                                      }
                                  } else {
                                      auto& sparse_set = sparse_sets.get_mut(type_id).value().get();
-                                     sparse_set.emplace<C>(entity, ctor());
+                                     sparse_set.emplace<C>(entity, tick, ctor());
                                  }
                              }));
     }
@@ -220,6 +220,13 @@ export struct Components : public SparseSet<TypeId, ComponentInfo> {
             auto info = ComponentInfo(id, type_registry->type_index(id), type_registry->storage_type(id));
             info.update_hooks<T>();
             emplace(id, std::move(info));
+            if constexpr (requires(Components& components, TypeId type_id) {
+                              T::register_required_components(components, type_id);
+                          }) {
+                T::register_required_components(*this, id);
+            } else if constexpr (requires(Components& components) { T::register_required_components(components); }) {
+                T::register_required_components(*this);
+            }
         }
         return id;
     }
@@ -246,6 +253,18 @@ export struct Components : public SparseSet<TypeId, ComponentInfo> {
             return true;
         });
     }
+    /** @brief Register a required component for `Requiree` using a typed constructor.
+     *  @tparam Requiree Component that requires another.
+     *  @tparam F Invocable returning the required component value.
+     *  @param constructor Factory producing the default value of the required component. */
+    template <typename Requiree, typename F>
+    void register_required(F&& constructor)
+        requires std::invocable<F> && std::is_object_v<std::invoke_result_t<F>>
+    {
+        auto requiree = register_info<Requiree>();
+        auto required = register_info<std::invoke_result_t<F>>();
+        register_required_by_id(requiree, required, std::forward<F>(constructor));
+    }
     /** @brief Register a required component for `requiree` using a typed constructor.
      *  @tparam F Invocable returning the required component value.
      *  @param requiree The component that requires another.
@@ -254,7 +273,7 @@ export struct Components : public SparseSet<TypeId, ComponentInfo> {
     void register_required(TypeId requiree, F&& constructor)
         requires std::invocable<F> && std::is_object_v<std::invoke_result_t<F>>
     {
-        auto required = registry().type_id<std::invoke_result_t<F>>();
+        auto required = register_info<std::invoke_result_t<F>>();
         register_required_by_id(requiree, required, std::forward<F>(constructor));
     }
     /** @brief Register a required component by explicit TypeId pair.

@@ -1,5 +1,7 @@
 module;
 
+#include <cassert>
+
 #ifndef EPIX_IMPORT_STD
 #include <concepts>
 #include <cstddef>
@@ -36,6 +38,11 @@ struct SparseArray {
         }
         return std::nullopt;
     }
+    V& unsafe_get_mut(this SparseArray& self, I index) noexcept {
+        std::size_t idx = static_cast<std::size_t>(index);
+        assert(idx < self.values.size() && self.values[idx].has_value());
+        return self.values[idx].value();
+    }
     std::optional<std::reference_wrapper<const V>> get(this const SparseArray& self, I index) noexcept {
         std::size_t idx = static_cast<std::size_t>(index);
         if (idx < self.values.size()) {
@@ -44,6 +51,11 @@ struct SparseArray {
             }
         }
         return std::nullopt;
+    }
+    const V& unsafe_get(this const SparseArray& self, I index) noexcept {
+        std::size_t idx = static_cast<std::size_t>(index);
+        assert(idx < self.values.size() && self.values[idx].has_value());
+        return self.values[idx].value();
     }
     template <typename... Args>
     void insert(this SparseArray& self, I index, Args&&... args) {

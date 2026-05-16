@@ -1,5 +1,7 @@
 module;
 
+#include <cassert>
+
 #ifndef EPIX_IMPORT_STD
 #include <algorithm>
 #include <cstddef>
@@ -103,6 +105,9 @@ struct Table {
     std::optional<std::reference_wrapper<Dense>> get_dense_mut(this Table& self, std::size_t type_id) noexcept {
         return self._denses.get_mut(type_id);
     }
+    Dense& unsafe_dense_mut(this Table& self, std::size_t type_id) noexcept {
+        return self._denses.unsafe_get_mut(type_id);
+    }
     TableRow allocate(this Table& self, Entity entity) {
         std::size_t row = self._entities.size();
         self._entities.push_back(entity);
@@ -155,6 +160,10 @@ struct Tables {
             return std::nullopt;
         }
         return std::ref(self._tables[table_id]);
+    }
+    Table& unsafe_get_mut(this Tables& self, std::size_t table_id) noexcept {
+        assert(table_id < self._tables.size());
+        return self._tables[table_id];
     }
     std::optional<std::reference_wrapper<const Table>> get(this const Tables& self,
                                                            const std::vector<TypeId>& type_ids) noexcept {

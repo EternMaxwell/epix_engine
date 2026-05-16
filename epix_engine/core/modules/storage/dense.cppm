@@ -148,6 +148,10 @@ struct Dense {
         }
         return std::nullopt;
     }
+    void* unsafe_get_mut(this Dense& self, std::uint32_t index) noexcept {
+        assert(index < self.values.size());
+        return self.values.get(index);
+    }
     template <typename T>
     std::optional<std::reference_wrapper<const T>> get_as(this const Dense& self, std::uint32_t index) noexcept {
         if (index < self.values.size()) {
@@ -168,12 +172,20 @@ struct Dense {
         }
         return std::nullopt;
     }
+    Tick& unsafe_added_tick_mut(this const Dense& self, std::uint32_t index) noexcept {
+        assert(index < self.added_ticks.size());
+        return self.added_ticks[index];
+    }
     std::optional<std::reference_wrapper<Tick>> get_modified_tick(this const Dense& self,
                                                                   std::uint32_t index) noexcept {
         if (index < self.modified_ticks.size()) {
             return self.modified_ticks[index];
         }
         return std::nullopt;
+    }
+    Tick& unsafe_modified_tick_mut(this const Dense& self, std::uint32_t index) noexcept {
+        assert(index < self.modified_ticks.size());
+        return self.modified_ticks[index];
     }
     std::optional<ComponentTicks> get_ticks(this const Dense& self, std::uint32_t index) noexcept {
         if (index < self.modified_ticks.size()) {

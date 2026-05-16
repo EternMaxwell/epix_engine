@@ -203,6 +203,7 @@ export struct Entities {
      * @brief Get the location of an entity. Will return std::nullopt for pending entities.
      */
     std::optional<EntityLocation> get(Entity entity) const noexcept;
+    EntityLocation unsafe_get(Entity entity) const noexcept;
 
     /**
      * @brief Updates the location of an entity. Must be called when moving the components of the entity around in
