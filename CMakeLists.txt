@@ -18,6 +18,7 @@ option(EPIX_ENABLE_EXAMPLE "Enable epix examples" ON)
 option(EPIX_CXX_MODULE "Enable C++20 modules" ON)
 option(EPIX_IMPORT_STD "Enable C++ import std" ON)
 option(EPIX_ENABLE_INSTALL "Enable install rules (for packaging/distribution)" OFF)
+option(EPIX_EXAMPLE_USE_MIMALLOC "Link mimalloc (static) into all examples" ON)
 
 if (NOT EPIX_CXX_MODULE)
   message(FATAL_ERROR "EPIX_CXX_MODULE option is mandatory for this project and must be enabled.")
@@ -45,11 +46,12 @@ endif ()
 
 # Print option statuses
 message(STATUS "EPIX options:")
-message(STATUS "  EPIX_ENABLE_TRACY (optional): ${EPIX_ENABLE_TRACY}")
-message(STATUS "  EPIX_USE_VOLK     (optional): ${EPIX_USE_VOLK}")
-message(STATUS "  EPIX_ENABLE_TEST  (optional): ${EPIX_ENABLE_TEST}")
-message(STATUS "  EPIX_CXX_MODULE   (optional): ${EPIX_CXX_MODULE}")
-message(STATUS "  EPIX_IMPORT_STD   (optional): ${EPIX_IMPORT_STD}")
+message(STATUS "  EPIX_ENABLE_TRACY         (optional): ${EPIX_ENABLE_TRACY}")
+message(STATUS "  EPIX_USE_VOLK             (optional): ${EPIX_USE_VOLK}")
+message(STATUS "  EPIX_ENABLE_TEST          (optional): ${EPIX_ENABLE_TEST}")
+message(STATUS "  EPIX_CXX_MODULE           (optional): ${EPIX_CXX_MODULE}")
+message(STATUS "  EPIX_IMPORT_STD           (optional): ${EPIX_IMPORT_STD}")
+message(STATUS "  EPIX_EXAMPLE_USE_MIMALLOC (optional): ${EPIX_EXAMPLE_USE_MIMALLOC}")
 
 # Engine source root — always the directory of this CMakeLists.txt, even when
 # epix_engine is used as an add_subdirectory() target. Used as WORKING_DIRECTORY
