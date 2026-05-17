@@ -11,6 +11,13 @@ using namespace epix::render;
 using namespace epix::render::view;
 using namespace epix::render::camera;
 
+void Camera::register_required_components(Components& components) {
+    components.register_required<Camera>([] { return Projection{}; });
+    components.register_required<Camera>([] { return transform::Transform{}; });
+    components.register_required<Camera>([] { return view::VisibleEntities{}; });
+    components.register_required<Camera>([] { return RenderLayer::all(); });
+}
+
 namespace {
 constexpr std::string_view kViewShaderWgsl = R"(
 #define_import_path epix::view

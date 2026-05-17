@@ -27,6 +27,11 @@ using namespace epix;
 using namespace epix::core;
 using namespace epix::text;
 
+void Text::register_required_components(Components& components) {
+    components.register_required<Text>([] { return TextLayout{}; });
+    components.register_required<Text>([] { return TextBounds{}; });
+}
+
 namespace {
 void shape_changed_text(
     Commands cmd,

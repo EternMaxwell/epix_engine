@@ -62,6 +62,21 @@ struct ExplicitBundleRoot {
         });
     }
 };
+struct RecursiveSharedRequired {
+    int value;
+};
+struct RecursiveMiddleRequired {
+    int value;
+    static void register_required_components(Components& components) {
+        components.register_required<RecursiveMiddleRequired>([] { return RecursiveSharedRequired{11}; });
+    }
+};
+struct RecursiveRootRequired {
+    static void register_required_components(Components& components) {
+        components.register_required<RecursiveRootRequired>([] { return RecursiveMiddleRequired{22}; });
+        components.register_required<RecursiveRootRequired>([] { return RecursiveSharedRequired{33}; });
+    }
+};
 }  // namespace
 
 template <>
@@ -121,4 +136,15 @@ TEST(core, required_components_keep_explicit_bundle_component) {
     ASSERT_TRUE(ref.contains<ExplicitBundleRequired>());
     EXPECT_EQ(ref.get<ExplicitBundleRequired>()->get().value, 99);
     EXPECT_EQ(ExplicitBundleRoot::required_constructor_calls, 0);
+}
+
+TEST(core, required_components_recursive_registration_uses_least_depth_constructor) {
+    World world(0, std::make_shared<TypeRegistry>());
+
+    auto entity = world.spawn(RecursiveRootRequired{}).id();
+    auto ref    = world.get_entity(entity).value();
+    ASSERT_TRUE(ref.contains<RecursiveMiddleRequired>());
+    ASSERT_TRUE(ref.contains<RecursiveSharedRequired>());
+    EXPECT_EQ(ref.get<RecursiveMiddleRequired>()->get().value, 22);
+    EXPECT_EQ(ref.get<RecursiveSharedRequired>()->get().value, 33);
 }

@@ -287,7 +287,11 @@ export struct Components : public SparseSet<TypeId, ComponentInfo> {
         using C = std::invoke_result_t<F>;
         assert(required == registry().type_id<C>() && "required type must match the constructor return type");
         auto& required_components = get_mut(requiree).value().get()._required_components;
-        if (required_components.components.contains(required)) return;
+        auto existing_required = required_components.components.find(required);
+        if (existing_required != required_components.components.end() &&
+            existing_required->second.inheritance_depth == 0) {
+            return;
+        }
         required_components.register_id<C>(required, 0, std::forward<F>(constructor));
         auto& required_by = get_mut(required).value().get()._required_by;
         required_by.insert(requiree);
@@ -316,7 +320,11 @@ export struct Components : public SparseSet<TypeId, ComponentInfo> {
      *  @param constructor Type-erased factory for the required component. */
     void register_required_dyn(TypeId requiree, TypeId required, RequiredComponentConstructor constructor) {
         auto& required_components = get_mut(requiree).value().get()._required_components;
-        if (required_components.components.contains(required)) return;
+        auto existing_required = required_components.components.find(required);
+        if (existing_required != required_components.components.end() &&
+            existing_required->second.inheritance_depth == 0) {
+            return;
+        }
         required_components.register_dynamic(required, 0, std::move(constructor));
         auto& required_by = get_mut(required).value().get()._required_by;
         required_by.insert(requiree);

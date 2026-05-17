@@ -96,6 +96,8 @@ export struct TextImage {
 export struct Text2d {
     /** @brief Pixel offset from the entity's transform position. */
     glm::vec2 offset = glm::vec2(0.0f);
+
+    static void register_required_components(core::Components& components);
 };
 
 /** @brief Bundle for spawning a 2D text rendering entity with transform
@@ -119,7 +121,8 @@ export struct TextRenderPlugin {
 
 template <>
 struct epix::core::Bundle<epix::text::Text2dBundle> {
-    static void get_components(text::Text2dBundle& bundle, utils::function_ref<void(utils::function_ref<void(void*)>)> write_component) noexcept {
+    static void get_components(text::Text2dBundle& bundle,
+                               utils::function_ref<void(utils::function_ref<void(void*)>)> write_component) noexcept {
         write_component([&](void* ptr) { new (ptr) text::Text2d(std::move(bundle.text2d)); });
         write_component([&](void* ptr) { new (ptr) transform::Transform(std::move(bundle.transform)); });
         write_component([&](void* ptr) { new (ptr) text::TextColor(std::move(bundle.color)); });

@@ -179,6 +179,8 @@ export struct Camera {
     /** @brief Clear color configuration for this camera. */
     ClearColorConfig clear_color = ClearColorConfig::global();
 
+    static void register_required_components(core::Components& components);
+
     /** @brief Get the effective viewport size, falling back to target size. */
     glm::uvec2 get_viewport_size() const noexcept {
         return viewport.transform([](const Viewport& vp) { return vp.size; }).value_or(computed.target_size);

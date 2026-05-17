@@ -15,6 +15,11 @@ import std;
 using namespace epix::render;
 using namespace epix::core_graph::core_2d;
 
+void Camera2D::register_required_components(epix::core::Components& components) {
+    components.register_required<Camera2D>([] { return camera::Camera{}; });
+    components.register_required<Camera2D>([] { return camera::CameraRenderGraph{Core2d}; });
+}
+
 void Core2dGraph::add_to(graph::RenderGraph& g) {
     spdlog::debug("[render.core_graph] Adding Core2D sub-graph to render graph.");
     graph::RenderGraph g2d;

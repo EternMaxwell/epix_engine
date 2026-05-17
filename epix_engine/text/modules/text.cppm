@@ -54,6 +54,8 @@ export struct Text {
     /** @brief Create a Text with the given string view.
      * @param s String view to copy into content. */
     static Text with_str(std::string_view s) { return Text{std::string(s)}; }
+
+    static void register_required_components(core::Components& components);
 };
 
 /** @brief Information about a single shaped glyph within a text layout. */

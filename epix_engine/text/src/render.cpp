@@ -30,6 +30,11 @@ using namespace epix::core;
 using namespace epix::text;
 using namespace epix;
 
+void Text2d::register_required_components(Components& components) {
+    components.register_required<Text2d>([] { return transform::Transform{}; });
+    components.register_required<Text2d>([] { return TextColor{}; });
+}
+
 namespace {
 constexpr std::string_view kTextVertexShader = R"(
 import epix.view;
