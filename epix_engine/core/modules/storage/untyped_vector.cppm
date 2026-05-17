@@ -6,7 +6,6 @@ module;
 #include <cstring>
 #include <limits>
 #include <memory>
-#include <memory_resource>
 #include <ranges>
 #include <span>
 #include <stdexcept>
@@ -28,24 +27,34 @@ namespace epix::core {
  * construction, destruction, move, and copy operations. Used internally
  * as the underlying storage for Dense columns, resources, and sparse sets.
  */
-export class untyped_vector {
+export template <typename Alloc = std::allocator<std::byte>>
+class basic_untyped_vector {
+    using byte_alloc   = typename std::allocator_traits<Alloc>::template rebind_alloc<std::byte>;
+    using alloc_traits = std::allocator_traits<byte_alloc>;
+
    public:
     /** @brief Construct with the given type descriptor and optional initial capacity. */
-    explicit untyped_vector(const ::epix::meta::type_info& desc, std::size_t reserve_cnt = 0)
-        : desc_(std::addressof(desc)), size_(0), capacity_(0), data_(nullptr) {
+    explicit basic_untyped_vector(const ::epix::meta::type_info& desc,
+                                  std::size_t reserve_cnt = 0,
+                                  const Alloc& alloc      = Alloc{})
+        : desc_(std::addressof(desc)), alloc_(alloc), size_(0), capacity_(0), data_(nullptr) {
         if (!desc_ || desc_->size == 0) throw std::invalid_argument("element size must be > 0");
         if (reserve_cnt) reserve(reserve_cnt);
     }
 
     /** @brief Destructor; destroys all elements and frees memory. */
-    ~untyped_vector() {
+    ~basic_untyped_vector() {
         clear();
         deallocate(data_);
     }
 
     [[deprecated("untyped_vector copy is not recommended; use clone() instead")]]
-    untyped_vector(const untyped_vector& other)
-        : desc_(other.desc_), mem_res_(other.mem_res_), size_(0), capacity_(0), data_(nullptr) {
+    basic_untyped_vector(const basic_untyped_vector& other)
+        : desc_(other.desc_),
+          alloc_(alloc_traits::select_on_container_copy_construction(other.alloc_)),
+          size_(0),
+          capacity_(0),
+          data_(nullptr) {
         reserve(other.size_);
         if (other.size_ > 0) {
             // copy-construct elements
@@ -65,7 +74,7 @@ export class untyped_vector {
     }
 
     [[deprecated("untyped_vector copy is not recommended; use clone() instead")]]
-    untyped_vector& operator=(const untyped_vector& other) {
+    basic_untyped_vector& operator=(const basic_untyped_vector& other) {
         if (this == &other) return *this;
         clear();
         if (type_info() != other.type_info()) {
@@ -73,6 +82,9 @@ export class untyped_vector {
             desc_     = other.desc_;
             data_     = nullptr;
             capacity_ = 0;
+        }
+        if constexpr (alloc_traits::propagate_on_container_copy_assignment::value) {
+            alloc_ = other.alloc_;
         }
         if (other.size_ > 0) {
             reserve(other.size_);
@@ -94,24 +106,26 @@ export class untyped_vector {
     }
 
     /** @brief Move constructor; takes ownership of other's memory. */
-    untyped_vector(untyped_vector&& other) noexcept
+    basic_untyped_vector(basic_untyped_vector&& other) noexcept
         : desc_(other.desc_),
+          alloc_(std::move(other.alloc_)),
           size_(other.size_),
           capacity_(other.capacity_),
-          data_(other.data_),
-          mem_res_(other.mem_res_) {
+          data_(other.data_) {
         other.data_     = nullptr;
         other.size_     = 0;
         other.capacity_ = 0;
     }
 
     /** @brief Move assignment operator. */
-    untyped_vector& operator=(untyped_vector&& other) noexcept {
+    basic_untyped_vector& operator=(basic_untyped_vector&& other) noexcept {
         if (this != &other) {
             clear();
             deallocate(data_);
-            desc_           = other.desc_;
-            mem_res_        = other.mem_res_;
+            desc_ = other.desc_;
+            if constexpr (alloc_traits::propagate_on_container_move_assignment::value) {
+                alloc_ = std::move(other.alloc_);
+            }
             data_           = other.data_;
             size_           = other.size_;
             capacity_       = other.capacity_;
@@ -123,8 +137,8 @@ export class untyped_vector {
     }
 
     /** @brief Create a deep copy of this vector. */
-    untyped_vector clone() const {
-        untyped_vector copy(*desc_, size_);
+    basic_untyped_vector clone() const {
+        basic_untyped_vector copy(*desc_, size_, alloc_);
         if (desc_->trivially_copyable) {
             std::memcpy(copy.data_, data_, size_ * desc_->size);
         } else {
@@ -460,7 +474,7 @@ export class untyped_vector {
 
    private:
     const ::epix::meta::type_info* desc_;
-    std::pmr::memory_resource* mem_res_ = std::pmr::get_default_resource();
+    [[no_unique_address]] byte_alloc alloc_;
     std::size_t size_;
     std::size_t capacity_;
     void* data_;
@@ -483,14 +497,14 @@ export class untyped_vector {
         }
     }
 
-    // allocate raw bytes with proper alignment
+    // allocate raw bytes (alignment is the responsibility of the Alloc)
     void* allocate(std::size_t bytes) {
         if (bytes == 0) return nullptr;
-        return mem_res_->allocate(bytes, desc_->align);
+        return static_cast<void*>(alloc_traits::allocate(alloc_, bytes));
     }
     void deallocate(void* p) noexcept {
         if (!p) return;
-        mem_res_->deallocate(p, capacity_ * desc_->size, desc_->align);
+        alloc_traits::deallocate(alloc_, static_cast<std::byte*>(p), capacity_ * desc_->size);
     }
 
     void reallocate(std::size_t new_cap) {
@@ -532,4 +546,5 @@ export class untyped_vector {
         capacity_ = new_cap;
     }
 };
+export using untyped_vector = basic_untyped_vector<>;
 }  // namespace epix::core
