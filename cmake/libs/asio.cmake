@@ -36,13 +36,14 @@ elseif(UNIX AND NOT APPLE)
     pkg_check_modules(LIBURING QUIET liburing)
   endif()
   if(LIBURING_FOUND)
-    message(STATUS "ASIO file I/O: io_uring found — enabling ASIO_HAS_IO_URING")
-    target_compile_definitions(asio INTERFACE
-        ASIO_HAS_IO_URING
-        ASIO_DISABLE_EPOLL
-    )
+    message(STATUS "ASIO file I/O: io_uring headers found — runtime lazy-loading enabled (no hard link to liburing)")
+    # Provide liburing headers so file_asset.cpp can use io_uring types and inline helpers.
+    # We do NOT link liburing here; the library is opened at runtime via dlopen so that
+    # binaries can run on machines that do not have liburing installed (graceful sync fallback).
+    # Note: ASIO_HAS_IO_URING is intentionally NOT set — we bypass ASIO's io_uring integration
+    # and implement our own dlopen-based path in file_asset.cpp.
     target_include_directories(asio INTERFACE ${LIBURING_INCLUDE_DIRS})
-    target_link_libraries(asio INTERFACE ${LIBURING_LIBRARIES})
+    target_compile_definitions(asio INTERFACE EPIX_HAS_URING_HEADERS)
   else()
     message(STATUS "ASIO file I/O: io_uring not found — using synchronous fallback (install liburing-dev to enable)")
   endif()
