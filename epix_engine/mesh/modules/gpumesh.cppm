@@ -75,7 +75,7 @@ export struct GPUMesh {
     std::optional<IndexBindingInfo> _index_binding;
     std::size_t _vertex_count;  // or index count if indexed
 };
-}  // namespace mesh
+}  // namespace epix::mesh
 
 template <>
 struct epix::render::RenderAsset<epix::mesh::Mesh> {

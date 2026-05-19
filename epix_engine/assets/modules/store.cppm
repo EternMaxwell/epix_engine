@@ -1,6 +1,5 @@
 module;
 
-#include <gtest/gtest.h>
 #include <spdlog/spdlog.h>
 
 export module epix.assets:store;
@@ -73,9 +72,6 @@ struct AssetStorage {
     std::expected<Entry<T>*, AssetError> get_entry(const AssetIndex& index) {
         if (index.index() >= m_storage.size()) {
             return std::unexpected(IndexOutOfBound{index.index()});
-        }
-        if (!m_storage[index.index()]) {
-            return std::unexpected(SlotEmpty{index.index()});
         }
         if (m_storage[index.index()]->generation != index.generation()) {
             return std::unexpected(

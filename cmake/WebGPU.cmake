@@ -32,7 +32,9 @@ endif()
 # Create WebGPU wrapper target
 add_library(webgpu STATIC)
 target_sources(webgpu
-    PUBLIC FILE_SET cxx_modules TYPE CXX_MODULES FILES
+    PUBLIC FILE_SET cxx_modules TYPE CXX_MODULES
+    BASE_DIRS "${WEBGPU_GENERATED_DIR}"
+    FILES
         "${WEBGPU_GENERATED_DIR}/webgpu.cppm"
 )
 target_link_libraries(webgpu PUBLIC wgpu_native)

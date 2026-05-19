@@ -169,7 +169,7 @@ void epix::render::window::create_surfaces(Res<ExtractedWindows> windows,
             }
             auto config = wgpu::SurfaceConfiguration()
                               .setDevice(*device)
-                              .setUsage(wgpu::TextureUsage::eRenderAttachment)
+                              .setUsage(wgpu::TextureUsage::eRenderAttachment | wgpu::TextureUsage::eCopySrc)
                               .setFormat(format)
                               .setWidth(window.physical_width)
                               .setHeight(window.physical_height)
