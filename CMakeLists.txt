@@ -31,10 +31,9 @@ project ("epix_engine.cmake" LANGUAGES CXX C)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 include(cmake/utils.cmake)
+include(cmake/libs.cmake)
 
 set(CMAKE_CXX_SCAN_FOR_MODULES ON)
-
-include(cmake/libs.cmake)
 
 if (MSVC)
   add_compile_options(/bigobj)

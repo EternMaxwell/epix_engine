@@ -8,3 +8,5 @@ target_compile_definitions(BSThreadPool PRIVATE BS_THREAD_POOL_NATIVE_EXTENSIONS
 if (EPIX_IMPORT_STD)
   target_compile_definitions(BSThreadPool PRIVATE BS_THREAD_POOL_IMPORT_STD)
 endif()
+# set scan for modules on for bs thread pool
+set_target_properties(BSThreadPool PROPERTIES CXX_SCAN_FOR_MODULES ON)
