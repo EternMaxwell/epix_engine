@@ -90,8 +90,8 @@ void calculate_global_transform(
     }
 }
 
-void TransformPlugin::build(App& app) {
-    spdlog::debug("[transform] Building TransformPlugin.");
+void TransformPlugin::attach(App& app) {
+    spdlog::debug("[transform] Attaching TransformPlugin.");
     app.configure_sets(sets(TransformSets::CalculateGlobalTransform));
     app.add_systems(Last, into(calculate_global_transform)
                               .in_set(TransformSets::CalculateGlobalTransform)

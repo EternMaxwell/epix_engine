@@ -325,7 +325,7 @@ export struct ImageLoader {
 /** @brief Plugin that registers the image asset loader and related
  * systems. */
 export struct ImagePlugin {
-    void build(core::App& app);
+    void attach(core::App& app);
 };
 
 template <typename T>

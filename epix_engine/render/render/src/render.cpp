@@ -34,8 +34,8 @@ void epix::render::render_system(World& world) {
     graph::RenderGraphRunner::run(graph, device, queue, world, {});
 }
 
-void RenderPlugin::build(App& app) {
-    spdlog::debug("[render] Building RenderPlugin.");
+void RenderPlugin::attach(App& app) {
+    spdlog::debug("[render] Attaching RenderPlugin.");
     app.add_sub_app(Render);
     app.sub_app_mut(Render).then([](App& render_app) {
         render_app
@@ -173,4 +173,4 @@ void RenderPlugin::build(App& app) {
     app.add_plugins(render::camera::CameraPlugin{});
     app.add_plugins(render::view::ViewPlugin{});
 }
-void RenderPlugin::finalize(App& app) noexcept {}
+void RenderPlugin::detach(App& app) noexcept {}

@@ -24,7 +24,7 @@ namespace epix::experimental::pixelbody {
  * `fs::ElementRegistry` provided by `FallingSandPlugin`.
  */
 export struct PixelBodyPlugin {
-    void build(epix::core::App& app);
+    void attach(epix::core::App& app);
 };
 
 }  // namespace epix::experimental::pixelbody

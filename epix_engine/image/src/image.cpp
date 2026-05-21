@@ -639,8 +639,8 @@ asio::awaitable<std::expected<Image, ImageLoadError>> ImageLoader::load(assets::
     co_return result;
 }
 
-void ImagePlugin::build(core::App& app) {
-    spdlog::debug("[image] Building ImagePlugin.");
+void ImagePlugin::attach(core::App& app) {
+    spdlog::debug("[image] Attaching ImagePlugin.");
     app.add_plugins(assets::AssetPlugin{});
     assets::app_register_asset<Image>(app);
     assets::app_register_loader<ImageLoader>(app);

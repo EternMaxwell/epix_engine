@@ -28,8 +28,8 @@ struct WindowPlugin {
     ExitCondition exit_condition = ExitCondition::OnPrimaryClosed;
     /** @brief Whether to despawn window entities on close request. */
     bool close_when_requested = true;
-    void build(core::App& app);
-    void finish(core::App& app);
+    void attach(core::App& app);
+    void ready(core::App& app);
 };
 
 /** @brief Debug system that logs all window events to the logger. */

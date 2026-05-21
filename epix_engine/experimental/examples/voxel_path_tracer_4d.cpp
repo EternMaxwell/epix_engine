@@ -1525,7 +1525,7 @@ void prepare_v4d_render(Res<wgpu::Device> device,
 // ===========================================================================
 
 struct Voxel4DPathTracerPlugin {
-    void build(core::App& app) {
+    void attach(core::App& app) {
         app.world_mut().insert_resource(Voxel4DConfig{});
         app.world_mut().insert_resource(Voxel4DCameraState{});
         app.add_systems(core::Startup, into(setup_v4d_scene).set_name("setup 4d scene"));
@@ -1533,7 +1533,7 @@ struct Voxel4DPathTracerPlugin {
         app.add_systems(core::Update, into(v4d_imgui_ui).set_name("4d imgui ui"));
     }
 
-    void finish(core::App& app) {
+    void ready(core::App& app) {
         auto registry = app.world_mut().get_resource_mut<assets::EmbeddedAssetRegistry>();
         auto server   = app.world_mut().get_resource<assets::AssetServer>();
         if (!registry || !server) {

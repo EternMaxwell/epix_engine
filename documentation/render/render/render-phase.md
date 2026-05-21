@@ -238,7 +238,7 @@ function for phase `P`.  Returns the `DrawFunctionId` of the registered
 sequence.
 
 ```cpp
-// In plugin build():
+// In plugin attach():
 render::phase::app_add_render_commands<
     Transparent2D,
     render::view::BindViewUniform<0>::Command,  // bind view UBO at slot 0

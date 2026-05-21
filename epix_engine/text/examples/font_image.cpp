@@ -24,7 +24,7 @@ auto run_once = [run = false]() mutable {
 };
 
 struct CamControllPlugin {
-    void build(core::App& app) {
+    void attach(core::App& app) {
         app.add_systems(
             core::Update,
             core::into([](core::Query<core::Item<const render::camera::Camera&, render::camera::Projection&,

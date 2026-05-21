@@ -229,8 +229,8 @@ struct App {
 
     // === Plugin Management ===
 
-    /** @brief Add a plugin to the app. build() is called immediately;
-     *  finish() before running, finalize() after running.
+    /** @brief Add a plugin to the app. attach() is called immediately;
+     *  ready() before running, detach() after running.
      *  @tparam T Plugin type satisfying is_plugin. */
     template <typename T, typename... Args>
     App& add_plugin(Args&&... args)
@@ -305,8 +305,8 @@ struct App {
         struct Updates {
             std::vector<void (*)(World&)> updates;
         };
-        void build(App& app) { app.world_mut().init_resource<Updates>(); }
-        void finish(App& app) {
+        void attach(App& app) { app.world_mut().init_resource<Updates>(); }
+        void ready(App& app) {
             app.add_systems(Last, into([](World& world) {
                                       for (auto&& update : world.resource_mut<Updates>().updates) {
                                           update(world);
@@ -354,8 +354,8 @@ struct App {
             std::vector<std::unique_ptr<System<std::tuple<>, void>>> update_system;
         };
         std::unordered_set<meta::type_index> registered_states;
-        void build(App& app) { app.world_mut().init_resource<Updates>(); }
-        void finish(App& app) {
+        void attach(App& app) { app.world_mut().init_resource<Updates>(); }
+        void ready(App& app) {
             app.add_systems(StateTransition, into([](ParamSet<World&, ResMut<Updates>> params) {
                                                  auto&& [world, updates] = params.get();
                                                  for (auto&& sys : updates->update_system) {

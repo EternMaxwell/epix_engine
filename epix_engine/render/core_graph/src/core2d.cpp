@@ -36,7 +36,7 @@ void Core2dGraph::add_to(graph::RenderGraph& g) {
     });
 }
 
-void Core2dPlugin::build(App& app) {
+void Core2dPlugin::attach(App& app) {
     app.get_sub_app_mut(render::Render).and_then([&](App& render_app) {
         render_app.world_mut().insert_resource(phase::DrawFunctions<Transparent2D>{});
         render_app.world_mut().insert_resource(phase::DrawFunctions<Opaque2D>{});

@@ -116,6 +116,6 @@ export struct WindowRenderPlugin {
     /** @brief Whether this plugin handles presenting the swapchain
      * (default true). */
     bool handle_present = true;
-    void build(App&);
+    void attach(App&);
 };
 }  // namespace epix::render::window

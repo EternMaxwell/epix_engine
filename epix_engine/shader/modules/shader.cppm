@@ -511,7 +511,7 @@ export struct ShaderRef {
 /** @brief App plugin that registers shader loading and processing. */
 export struct ShaderPlugin {
     /** @brief Register shader systems and asset support into the app. */
-    void build(core::App& app);
+    void attach(core::App& app);
 };
 
 }  // namespace epix::shader

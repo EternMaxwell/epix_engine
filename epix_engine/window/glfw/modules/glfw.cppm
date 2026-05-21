@@ -148,8 +148,8 @@ export struct GLFWRunner : public AppRunner {
 /** @brief Plugin that registers the GLFW windowing backend, including
  * window creation, event dispatch, and lifecycle systems. */
 export struct GLFWPlugin {
-    void build(App& app);
-    void finalize(App& app);
+    void attach(App& app);
+    void detach(App& app);
 
     /** @brief System that syncs window size from GLFW to the Window component. */
     static void update_size(Query<Item<Entity, Mut<window::Window>, const window::CachedWindow&>> windows,

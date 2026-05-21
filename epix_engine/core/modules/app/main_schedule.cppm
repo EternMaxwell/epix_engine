@@ -113,6 +113,6 @@ export inline struct OnChangeT {
 /** @brief Plugin that registers all built-in schedules (Startup, Update, etc.). */
 export struct MainSchedulePlugin {
     /** @brief Register all built-in schedules with the app. */
-    void build(App& app);
+    void attach(App& app);
 };
 }  // namespace core

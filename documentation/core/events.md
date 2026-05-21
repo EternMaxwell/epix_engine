@@ -72,7 +72,7 @@ void manual_events(ResMut<Events<MyEvent>> events) {
 
 ## Constraints / Gotchas
 
-- `add_event<T>()` must be called before any system that uses `EventReader<T>` or `EventWriter<T>`. Call it in a plugin's `build()`.
+- `add_event<T>()` must be called before any system that uses `EventReader<T>` or `EventWriter<T>`. Call it in a plugin's `attach()`.
 - Events are expired after `update()` is called (automatically in `Last` via `add_event`). A reader that misses the event frame will see nothing.
 - `EventReader::read()` consumes the events for that reader (advances its cursor). Calling `read()` again on the same reader in the same system returns an empty range.
 - `EventReader` is a `from_param` system parameter — the cursor state is stored in a `Local<EventCursor<T>>`, so it persists across frames correctly.

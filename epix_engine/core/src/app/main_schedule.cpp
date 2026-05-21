@@ -16,8 +16,8 @@ import :app.main_schedule;
 import :labels;
 
 namespace epix::core {
-void MainSchedulePlugin::build(App& app) {
-    spdlog::debug("[app] Building MainSchedulePlugin: registering {} standard schedules.", 12);
+void MainSchedulePlugin::attach(App& app) {
+    spdlog::debug("[app] Attaching MainSchedulePlugin: registering {} standard schedules.", 12);
     auto schedules = std::array{
         Schedule(PreStartup)
             .with_schedule_config({.executor_config = {.deferred = DeferredApply::ApplyDirect}, .run_once = true}),

@@ -25,7 +25,7 @@ void log_inputs(EventReader<KeyInput> key_reader,
     }
 }
 
-void InputPlugin::build(App& app) {
+void InputPlugin::attach(App& app) {
     app.add_events<KeyInput>().add_events<MouseButtonInput>().add_events<MouseMove>().add_events<MouseScroll>();
 
     app.world_mut().init_resource<ButtonInput<KeyCode>>();

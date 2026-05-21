@@ -245,7 +245,7 @@ struct DrawSpriteBatch {
 /** @brief Plugin that registers the sprite rendering pipeline, including
  * extraction, batching, and draw commands. */
 struct SpritePlugin {
-    void build(core::App& app);
-    void finish(core::App& app);
+    void attach(core::App& app);
+    void ready(core::App& app);
 };
 }  // namespace epix::sprite

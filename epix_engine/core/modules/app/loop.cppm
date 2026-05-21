@@ -14,6 +14,6 @@ export struct AppExit {
 /** @brief Plugin that installs the main application loop. */
 export struct LoopPlugin {
     /** @brief Register the main loop and exit event with the app. */
-    void build(App& app);
+    void attach(App& app);
 };
 }  // namespace core

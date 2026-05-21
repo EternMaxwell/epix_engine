@@ -99,7 +99,7 @@ void render_meshes(Res<render::RenderAssets<MyMesh>> gpu_meshes,
 ```cpp
 template <RenderAssetImpl T>
 struct ExtractAssetPlugin {
-    void build(App& app);
+    void attach(App& app);
 };
 ```
 
@@ -113,7 +113,7 @@ Registers two systems inside `ExtractSchedule` in the render sub-app:
 The `Extract` and `Process` sets run in order (chained).
 
 ```cpp
-// In MyPlugin::build():
+// In MyPlugin::attach():
 app.add_plugins(render::ExtractAssetPlugin<MyMesh>{});
 ```
 

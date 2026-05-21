@@ -34,7 +34,7 @@ void extract_fn(Commands cmd, ParamSet<std::optional<ResMut<T>>, Extract<ResMut<
  * @tparam T A copyable resource type. */
 export template <std::copyable T>
 struct ExtractResourcePlugin {
-    void build(App& app) {
+    void attach(App& app) {
         app.sub_app_mut(Render).add_systems(
             ExtractSchedule,
             into(extract_fn<T>).set_name(std::format("extract resource '{}'", meta::type_id<T>().short_name())));

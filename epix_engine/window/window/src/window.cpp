@@ -7,7 +7,7 @@ module epix.window;
 using namespace epix::window;
 using namespace epix::core;
 
-void WindowPlugin::build(App& app) {
+void WindowPlugin::attach(App& app) {
     app.add_events<WindowResized>()
         .add_events<WindowMoved>()
         .add_events<WindowCreated>()
@@ -20,7 +20,7 @@ void WindowPlugin::build(App& app) {
         .add_events<WindowFocused>()
         .add_events<FileDrop>();
 }
-void WindowPlugin::finish(App& app) {
+void WindowPlugin::ready(App& app) {
     if (primary_window) {
         auto window = app.world_mut().spawn(primary_window.value(), PrimaryWindow{});
     }

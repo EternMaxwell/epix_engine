@@ -160,7 +160,7 @@ struct TimeUpdateConfig {
 
 Registers all time resources and the fixed-timestep schedule infrastructure into the `App`.
 
-**What `build()` does:**
+**What `attach()` does:**
 1. `init_resource` for `Time<>`, `Time<Real>`, `Time<Virtual>`, `Time<Fixed>`, and `TimeUpdateConfig`.
 2. Adds the real-time update system to the `First` schedule, which reads `TimeUpdateConfig` and advances all four clocks.
 3. Registers `FixedFirst`, `FixedPreUpdate`, `FixedUpdate`, `FixedPostUpdate`, and `FixedLast` schedules.

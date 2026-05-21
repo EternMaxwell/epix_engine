@@ -120,14 +120,14 @@ struct WindowPlugin {
     std::optional<Window> primary_window = Window{};   // nullopt = no auto-spawn
     ExitCondition exit_condition = ExitCondition::OnPrimaryClosed;
     bool close_when_requested   = true;                // despawn entity on close request
-    void build(App& app);
-    void finish(App& app);
+    void attach(App& app);
+    void ready(App& app);
 };
 ```
 
 **What it does:**
 - Registers all window events (`WindowResized`, `WindowMoved`, `WindowCreated`, etc.).
-- In `finish()`: spawns the primary window entity if `primary_window` has a value.
+- In `ready()`: spawns the primary window entity if `primary_window` has a value.
 - Adds exit systems (`exit_on_all_closed` or `exit_on_primary_closed`) to `PostUpdate`.
 - Adds `close_requested` system to `Update` that despawns an entity when `WindowCloseRequested` is received (if `close_when_requested = true`).
 

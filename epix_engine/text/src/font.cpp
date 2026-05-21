@@ -428,8 +428,8 @@ void register_default_embedded_font(core::App& app) {
 }
 }  // namespace
 
-void FontPlugin::build(core::App& app) {
-    spdlog::debug("[text] Building FontPlugin.");
+void FontPlugin::attach(core::App& app) {
+    spdlog::debug("[text] Attaching FontPlugin.");
     app.add_plugins(image::ImagePlugin{});
     assets::app_register_asset<Font>(app);
     assets::app_register_loader<FontLoader>(app);
@@ -446,7 +446,7 @@ void FontPlugin::build(core::App& app) {
                                           .set_name("apply pending font atlas updates"));
 }
 
-void FontPlugin::finish(core::App& app) {
+void FontPlugin::ready(core::App& app) {
     spdlog::debug("[text] Registering default embedded font.");
     register_default_embedded_font(app);
 }

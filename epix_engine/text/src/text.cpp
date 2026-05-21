@@ -451,7 +451,7 @@ ShapedText epix::text::shape_text(const Text& text,
     return out;
 }
 
-void TextPlugin::build(App& app) {
+void TextPlugin::attach(App& app) {
     app.add_plugins(font::FontPlugin{});
     app.add_plugins(mesh::MeshPlugin{});
     app.add_systems(PostUpdate, into(shape_changed_text)

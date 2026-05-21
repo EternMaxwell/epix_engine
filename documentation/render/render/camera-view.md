@@ -221,7 +221,7 @@ Source: `epix_engine/render/examples/render_plugin.cpp`
 
 ```cpp
 struct ViewPlugin {
-    void build(App& app);
+    void attach(App& app);
 };
 ```
 

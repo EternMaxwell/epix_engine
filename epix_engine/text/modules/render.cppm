@@ -114,8 +114,8 @@ export struct Text2dBundle {
 /** @brief Plugin that registers text mesh generation, texture extraction,
  * and 2D text draw systems. */
 export struct TextRenderPlugin {
-    void build(core::App& app);
-    void finish(core::App& app);
+    void attach(core::App& app);
+    void ready(core::App& app);
 };
 }  // namespace epix::text
 

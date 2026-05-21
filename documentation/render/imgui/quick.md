@@ -68,11 +68,11 @@ systems, preventing concurrent ImGui API calls.
 
 | Lifecycle stage | What happens |
 |-----------------|--------------|
-| Plugin `build()` | Creates `ImGuiContext`, sets `NavEnableKeyboard`, stores `ImGuiState` in the world |
+| Plugin `attach()` | Creates `ImGuiContext`, sets `NavEnableKeyboard`, stores `ImGuiState` in the world |
 | `PreUpdate` (`BeginFrameSet`) | Lazy-inits GLFW backend on first available primary window; calls `ImGui_ImplGlfw_NewFrame()` + `ImGui::NewFrame()` |
 | After every schedule | `imgui_consume_input` checks `WantCaptureKeyboard` / `WantCaptureMouse`; blocks key/mouse events from reaching other systems when ImGui owns them |
 | `Last` | Calls `ImGui::EndFrame()` + `ImGui::Render()`; snapshots draw data for pipelined rendering |
 | Render sub-app (after `RenderSet::Render`) | `imgui_render` lazy-inits the WebGPU backend; reconstructs draw data and submits a render pass that composites ImGui on top of the scene |
-| Plugin `finalize()` | Shuts down WebGPU + GLFW backends; destroys the ImGui context |
+| Plugin `detach()` | Shuts down WebGPU + GLFW backends; destroys the ImGui context |
 
 Source: `epix_engine/render/examples/imgui_basic.cpp`

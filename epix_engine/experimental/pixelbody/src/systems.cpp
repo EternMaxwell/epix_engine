@@ -728,7 +728,7 @@ void build_pixel_body_meshes(Commands cmd,
     }
 }
 
-void PixelBodyPlugin::build(epix::core::App& app) {
+void PixelBodyPlugin::attach(epix::core::App& app) {
     using namespace epix::core;
     app.add_systems(PreUpdate,
                     into(init_pixel_body_worlds, init_pixel_bodies, rebuild_pixel_body_shapes, sync_transforms_to_b2)

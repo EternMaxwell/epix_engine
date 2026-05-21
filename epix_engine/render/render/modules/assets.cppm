@@ -235,7 +235,7 @@ export enum class ExtractAssetSet {
  * specialization). */
 export template <RenderAssetImpl T>
 struct ExtractAssetPlugin {
-    void build(App& app) {
+    void attach(App& app) {
         if (auto render_app = app.get_sub_app_mut(Render)) {
             render_app->get().world_mut().init_resource<RenderAssets<T>>();
             render_app->get().world_mut().init_resource<CachedExtractedAssets<T>>();

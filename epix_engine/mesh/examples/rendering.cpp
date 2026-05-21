@@ -42,7 +42,7 @@ mesh::Mesh make_gradient_quad(float width, float height) {
 }
 
 struct MeshRenderingVisualTestPlugin {
-    void finish(core::App& app) {
+    void ready(core::App& app) {
         auto& world        = app.world_mut();
         auto& mesh_assets  = world.resource_mut<assets::Assets<mesh::Mesh>>();
         auto& image_assets = world.resource_mut<assets::Assets<image::Image>>();

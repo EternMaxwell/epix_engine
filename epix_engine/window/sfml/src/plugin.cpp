@@ -9,8 +9,8 @@ module epix.sfml.core;
 using namespace epix::sfml;
 using namespace epix::core;
 
-void SFMLPlugin::build(App& app) {
-    spdlog::debug("[sfml] Building SFMLPlugin.");
+void SFMLPlugin::attach(App& app) {
+    spdlog::debug("[sfml] Attaching SFMLPlugin.");
     app.add_plugins(image::ImagePlugin{});
     app.world_mut().insert_resource(Clipboard{});
     app.world_mut().init_resource<SFMLwindows>();

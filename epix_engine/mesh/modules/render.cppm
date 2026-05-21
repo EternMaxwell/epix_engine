@@ -222,7 +222,7 @@ struct DrawMesh2dBatch {
 
 /** @brief Plugin that sets up 2D mesh extraction, batching, and rendering. */
 export struct MeshRenderPlugin {
-    void build(core::App& app);
-    void finish(core::App& app);
+    void attach(core::App& app);
+    void ready(core::App& app);
 };
 }  // namespace epix::mesh

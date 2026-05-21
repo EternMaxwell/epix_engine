@@ -21,20 +21,20 @@ struct AssetPlugin {
     AssetMetaCheck     meta_check;             // Always (default)
     UnapprovedPathMode unapproved_path_mode;   // Forbid (default)
 
-    void build(App&);
-    void finish(App&);
+    void attach(App&);
+    void ready(App&);
 
-    // Register a custom asset source before build() is called
+    // Register a custom asset source before attach() is called
     AssetPlugin& register_asset_source(AssetSourceId id, AssetSourceBuilder);
 };
 ```
 
-`AssetPlugin::build()` inserts:
+`AssetPlugin::attach()` inserts:
 - `AssetServer` resource (backed by IOTaskPool)
 - `AssetSources` resource (built from registered sources)
 - Default OS filesystem source reading from `file_path`
 
-`AssetPlugin::finish()` starts background load workers and activates watch streams.
+`AssetPlugin::ready()` starts background load workers and activates watch streams.
 
 ### Fields
 

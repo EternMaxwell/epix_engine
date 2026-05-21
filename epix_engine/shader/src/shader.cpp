@@ -1104,8 +1104,8 @@ asio::awaitable<std::expected<ShaderProcessor::OutputLoader::Settings, std::exce
 }
 
 // ─── ShaderPlugin ──────────────────────────────────────────────────────────
-void ShaderPlugin::build(core::App& app) {
-    spdlog::debug("[shader] Building ShaderPlugin, registering shader asset loader.");
+void ShaderPlugin::attach(core::App& app) {
+    spdlog::debug("[shader] Attaching ShaderPlugin, registering shader asset loader.");
     assets::app_register_asset<Shader>(app);
     assets::app_register_loader<ShaderLoader>(app);
 

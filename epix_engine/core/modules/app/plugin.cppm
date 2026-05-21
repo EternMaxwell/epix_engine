@@ -27,46 +27,46 @@ import :app.decl;
 namespace epix::core {
 template <typename T>
 concept is_plugin = requires(T t, App& app) {
-    { t.build(app) } -> std::same_as<void>;
+    { t.attach(app) } -> std::same_as<void>;
 } || requires(T t, App& app) {
-    { t.finish(app) } -> std::same_as<void>;
+    { t.ready(app) } -> std::same_as<void>;
 } || std::invocable<T, App&>;
 template <is_plugin T>
 struct PluginTraits {
-    static constexpr bool has_build = requires(T t, App& app) {
-        { t.build(app) } -> std::same_as<void>;
+    static constexpr bool has_attach = requires(T t, App& app) {
+        { t.attach(app) } -> std::same_as<void>;
     };
-    static constexpr bool has_finish = requires(T t, App& app) {
-        { t.finish(app) } -> std::same_as<void>;
+    static constexpr bool has_ready = requires(T t, App& app) {
+        { t.ready(app) } -> std::same_as<void>;
     };
-    static constexpr bool has_finalize = requires(T t, App& app) {
-        { t.finalize(app) } -> std::same_as<void>;
+    static constexpr bool has_detach = requires(T t, App& app) {
+        { t.detach(app) } -> std::same_as<void>;
     };
     static constexpr bool callable = std::invocable<T, App&>;
 
-    void build(T& instance, App& app) {
+    void attach(T& instance, App& app) {
         if constexpr (callable) {
             instance(app);
-        } else if constexpr (has_build) {
-            instance.build(app);
+        } else if constexpr (has_attach) {
+            instance.attach(app);
         }
     }
-    void finish(T& instance, App& app) {
-        if constexpr (has_finish) {
-            instance.finish(app);
+    void ready(T& instance, App& app) {
+        if constexpr (has_ready) {
+            instance.ready(app);
         }
     }
-    void finalize(T& instance, App& app) {
-        if constexpr (has_finalize) {
-            instance.finalize(app);
+    void detach(T& instance, App& app) {
+        if constexpr (has_detach) {
+            instance.detach(app);
         }
     }
 };
 struct PluginBase {
-    virtual ~PluginBase()           = default;
-    virtual void build(App& app)    = 0;
-    virtual void finish(App& app)   = 0;
-    virtual void finalize(App& app) = 0;
+    virtual ~PluginBase()         = default;
+    virtual void attach(App& app) = 0;
+    virtual void ready(App& app)  = 0;
+    virtual void detach(App& app) = 0;
 };
 template <is_plugin T>
 struct PluginWrapper : PluginBase {
@@ -80,9 +80,9 @@ struct PluginWrapper : PluginBase {
     PluginWrapper& operator=(const PluginWrapper&) = delete;
     PluginWrapper& operator=(PluginWrapper&&)      = delete;
 
-    void build(App& app) override { PluginTraits<T>().build(instance, app); }
-    void finish(App& app) override { PluginTraits<T>().finish(instance, app); }
-    void finalize(App& app) override { PluginTraits<T>().finalize(instance, app); }
+    void attach(App& app) override { PluginTraits<T>().attach(instance, app); }
+    void ready(App& app) override { PluginTraits<T>().ready(instance, app); }
+    void detach(App& app) override { PluginTraits<T>().detach(instance, app); }
 
     T& get() noexcept { return instance; }
     const T& get() const noexcept { return instance; }
@@ -134,26 +134,26 @@ struct Plugins {
         return std::nullopt;
     }
 
-    // No build all since build will be called when added to app.
+    // No attach all since attach is called when added to app.
 
-    /// Finish building.
-    void finish_all(App& app) {
-        built = true;
-        spdlog::debug("[app] Finishing {} plugins.", _plugins.size());
-        std::ranges::for_each(_plugins, [&](auto& plugin) { plugin->finish(app); });
+    /// Mark plugins ready after all plugins have attached.
+    void ready_all(App& app) {
+        readied = true;
+        spdlog::debug("[app] Readying {} plugins.", _plugins.size());
+        std::ranges::for_each(_plugins, [&](auto& plugin) { plugin->ready(app); });
     }
     /// Called at the end of the app's lifetime.
-    void finalize_all(App& app) {
-        spdlog::debug("[app] Finalizing {} plugins.", _plugins.size());
-        std::ranges::for_each(std::ranges::reverse_view(_plugins), [&](auto& plugin) { plugin->finalize(app); });
+    void detach_all(App& app) {
+        spdlog::debug("[app] Detaching {} plugins.", _plugins.size());
+        std::ranges::for_each(std::ranges::reverse_view(_plugins), [&](auto& plugin) { plugin->detach(app); });
     }
 
    private:
     template <typename T, typename... Args>
         requires std::constructible_from<T, Args...> && is_plugin<T>
     void add_plugin_internal(App& app, Args&&... args) {
-        if (built) {
-            spdlog::error("Cannot add plugin after build phase. Plugin[type = {}] will be ignored.",
+        if (readied) {
+            spdlog::error("Cannot add plugin after in/ready phase. Plugin[type = {}] will be ignored.",
                           meta::type_id<T>::name());
             return;
         }
@@ -165,16 +165,16 @@ struct Plugins {
         _plugins.push_back(std::unique_ptr<PluginBase>(wrapper));
         _plugin_index[type_id] = index;
         try {
-            spdlog::debug("[app] Building plugin [type = {}].", meta::type_id<T>::name());
-            wrapper->build(app);
+            spdlog::debug("[app] Attaching plugin [type = {}].", meta::type_id<T>::name());
+            wrapper->attach(app);
         } catch (const std::exception& e) {
-            spdlog::error("Error building plugin[type = {}]: {}", meta::type_id<T>::name(), e.what());
+            spdlog::error("Error attaching plugin[type = {}]: {}", meta::type_id<T>::name(), e.what());
         } catch (...) {
-            spdlog::error("Unknown error building plugin[type = {}]", meta::type_id<T>::name());
+            spdlog::error("Unknown error attaching plugin[type = {}]", meta::type_id<T>::name());
         }
     }
 
-    bool built = false;
+    bool readied = false;
     std::vector<std::unique_ptr<PluginBase>> _plugins;
     std::unordered_map<meta::type_index, std::size_t> _plugin_index;
 };

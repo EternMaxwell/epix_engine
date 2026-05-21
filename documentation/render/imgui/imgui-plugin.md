@@ -11,8 +11,8 @@ struct ImGuiPlugin {
     ImGuiPlugin& set_docking(bool enabled = true) noexcept;
     ImGuiPlugin& set_viewports(bool enabled = true) noexcept;
 
-    void build(App& app);
-    void finalize(App& app);
+    void attach(App& app);
+    void detach(App& app);
 };
 }
 ```
@@ -21,7 +21,7 @@ struct ImGuiPlugin {
 Adding it to the app handles every aspect of the ImGui lifecycle — there is
 nothing else to configure.
 
-### What `build()` does
+### What `attach()` does
 
 1. Creates an `ImGuiContext` and configures:
    - `ImGuiConfigFlags_NavEnableKeyboard` — always on
@@ -38,9 +38,9 @@ nothing else to configure.
 6. Adds `imgui_render` to the render sub-app, scheduled after `RenderSet::Render`
    and before `RenderSet::Cleanup`.
 
-### What `finalize()` does
+### What `detach()` does
 
-Called during `App::run()` after all plugins are built.  Shuts down WebGPU and
+Called during `App::run()` after the app exits.  Shuts down WebGPU and
 GLFW backends and destroys the ImGui context when the app exits.
 
 ### Options

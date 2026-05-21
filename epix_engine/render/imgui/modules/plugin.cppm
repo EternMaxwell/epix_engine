@@ -39,8 +39,8 @@ export struct ImGuiPlugin {
     ImGuiPlugin& set_docking(bool enabled = true) noexcept;
     ImGuiPlugin& set_viewports(bool enabled = true) noexcept;
 
-    void build(App& app);
-    void finalize(App& app);
+    void attach(App& app);
+    void detach(App& app);
 };
 
 export inline struct BeginFrameSetT {

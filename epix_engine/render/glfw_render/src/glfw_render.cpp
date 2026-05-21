@@ -168,8 +168,8 @@ using namespace epix::core;
 
 using epix::render::window::SurfaceCreation;
 
-void epix::glfw::render::GLFWRenderPlugin::build(App& app) {
-    spdlog::debug("[glfw.render] Building GLFWRenderPlugin.");
+void epix::glfw::render::GLFWRenderPlugin::attach(App& app) {
+    spdlog::debug("[glfw.render] Attaching GLFWRenderPlugin.");
     auto system = make_system_unique(
         [](Commands commands, Query<Item<Entity>, Filter<With<epix::window::Window>, Without<SurfaceCreation>>> windows,
            ResMut<GLFWwindows> glfw_windows) {

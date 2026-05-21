@@ -53,11 +53,11 @@ void startup(Commands cmd) {
 
 ### Plugins
 
-A plugin is any type that exposes `void build(App&)` and/or `void finish(App&)`, or is directly callable as `void(App&)`.
+A plugin is any type that exposes `void attach(App&)` and/or `void ready(App&)`, or is directly callable as `void(App&)`.
 
 ```cpp
 struct MyPlugin {
-    void build(App& app) {
+    void attach(App& app) {
         app.add_systems(Update, into(my_system));
     }
 };
@@ -67,9 +67,9 @@ app.add_plugin<MyPlugin>();
 app.add_plugins(MyPlugin{});
 ```
 
-`build()` runs immediately when `add_plugin` is called.
-`finish()` runs just before `run()`.
-`finalize()` (optional) runs after the main loop exits.
+`attach()` runs immediately when `add_plugin` is called.
+`ready()` runs just before `run()`.
+`detach()` (optional) runs after the main loop exits.
 
 Plugin access after construction:
 ```cpp
@@ -129,18 +129,18 @@ app.run();
 struct PhysicsPlugin {
     float gravity = 9.81f;
 
-    void build(App& app) {
+    void attach(App& app) {
         app.world_mut().insert_resource(Gravity{gravity});
         app.add_systems(Update, into(physics_step));
     }
-    // void finish(App& app) — optional, called just before run()
-    // void finalize(App& app) — optional, called after loop exits
+    // void ready(App& app) — optional, called just before run()
+    // void detach(App& app) — optional, called after loop exits
 };
 ```
 
 The `is_plugin` concept accepts:
-- Struct with `void build(App&)`
-- Struct with `void finish(App&)` (no `build` required)
+- Struct with `void attach(App&)`
+- Struct with `void ready(App&)` (no `attach` required)
 - Callable `void(App&)` (e.g. a lambda)
 
 ## Constraints / Gotchas

@@ -10,17 +10,17 @@ and registers all core rendering systems.
 struct RenderPlugin {
     int validation = 0;             // 0 = none, 1 = nvrhi, 2 = Vulkan layers
     RenderPlugin& set_validation(int level = 0) noexcept;
-    void build(core::App&);
-    void finalize(core::App&) noexcept;
+    void attach(core::App&);
+    void detach(core::App&) noexcept;
 };
 ```
 
-`build()` is called immediately when the plugin is added; `finalize()` runs after
-all plugins have been added (during `App::run()` startup).  The render sub-app is
-identified by the [`Render`](#render-schedule) sentinel.
+`attach()` is called immediately when the plugin is added; `detach()` runs after
+the app exits. The render sub-app is identified by the [`Render`](#render-schedule)
+sentinel.
 
 **Requirements:** A window backend must have registered an `AnonymousSurface`
-resource **before** `RenderPlugin::finalize()` runs, so the adapter/device can
+resource **before** `RenderPlugin::attach()` runs, so the adapter/device can
 be created against a real surface.
 
 ### Usage
@@ -125,7 +125,7 @@ world into the render world each frame.
 ```cpp
 export template <std::copyable T>
 struct ExtractResourcePlugin {
-    void build(App& app);
+    void attach(App& app);
 };
 ```
 

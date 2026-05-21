@@ -104,7 +104,7 @@ export struct TaskPoolOptions {
 };
 
 /**
- * @brief Initialises the three default task pools on `App::build()`.
+ * @brief Initialises the three default task pools when the plugin attaches.
  *
  * Mirrors `bevy_app::TaskPoolPlugin`. Add this plugin before any plugin
  * that uses IoTaskPool / AsyncComputeTaskPool / ComputeTaskPool (e.g. AssetPlugin).
@@ -117,7 +117,7 @@ export struct TaskPoolOptions {
 export struct TaskPoolPlugin {
     TaskPoolOptions task_pool_options;
 
-    void build(App& /* app */) const { task_pool_options.create_default_pools(); }
+    void attach(App& /* app */) const { task_pool_options.create_default_pools(); }
 };
 
 }  // namespace epix::core

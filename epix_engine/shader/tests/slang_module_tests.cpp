@@ -105,8 +105,8 @@ TEST(SlangIrLoader, LoadsRawSlangModuleFile) {
                                  AssetSourceBuilder::create([source_dir]() -> std::unique_ptr<AssetReader> {
                                      return std::make_unique<MemoryAssetReader>(source_dir);
                                  }));
-    plugin.build(app);
-    ShaderPlugin{}.build(app);
+    plugin.attach(app);
+    ShaderPlugin{}.attach(app);
 
     app.run_schedule(Startup);
     auto& server = app.resource<AssetServer>();

@@ -195,8 +195,8 @@ void create_uniform_for_view(Commands cmd,
     queue->writeBuffer(buffer, 0, view_vec->data(), view_vec->size());
 }
 
-void view::ViewPlugin::build(App& app) {
-    spdlog::debug("[render.view] Building ViewPlugin.");
+void view::ViewPlugin::attach(App& app) {
+    spdlog::debug("[render.view] Attaching ViewPlugin.");
 
     // Register view shader libraries into the embedded asset registry
     {
@@ -390,7 +390,7 @@ void CameraDriverNode::run(graph::GraphContext& graph, graph::RenderContext& ren
     }
 }
 
-void CameraPlugin::build(App& app) {
+void CameraPlugin::attach(App& app) {
     app.configure_sets(sets(CameraUpdateSystems::CameraUpdateSystem));
     app.add_plugins(CameraProjectionPlugin<Projection>{}, CameraProjectionPlugin<OrthographicProjection>{},
                     CameraProjectionPlugin<PerspectiveProjection>{}, ExtractResourcePlugin<ClearColor>{});

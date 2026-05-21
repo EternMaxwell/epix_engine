@@ -106,7 +106,7 @@ export struct SFMLRunner : public AppRunner {
 /** @brief Plugin that registers the SFML windowing backend, including
  * window creation, event dispatch, and lifecycle systems. */
 export struct SFMLPlugin {
-    void build(App& app);
+    void attach(App& app);
 
     /** @brief System that syncs window size from SFML to the Window component. */
     static void update_size(Query<Item<Entity, Mut<window::Window>, const window::CachedWindow&>> windows,

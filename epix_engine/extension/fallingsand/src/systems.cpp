@@ -444,10 +444,10 @@ void update_chunk_outlines(
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// FallingSandPlugin::build
+// FallingSandPlugin::attach
 // ──────────────────────────────────────────────────────────────────────────────
 
-void FallingSandPlugin::build(core::App& app) {
+void FallingSandPlugin::attach(core::App& app) {
     app.add_systems(core::Update,
                     into(setup_chunk_dirty_rects, setup_chunk_render_children)
                         .set_names(std::array{"fallingsand setup_dirty_rects", "fallingsand setup_render_children"}));
@@ -460,7 +460,7 @@ void FallingSandPlugin::build(core::App& app) {
                                               "fallingsand update_outlines"}));
 }
 
-void BodyDebugPlugin::build(core::App& app) {
+void BodyDebugPlugin::attach(core::App& app) {
     app.add_systems(time::FixedPostUpdate, into(build_body_debug_meshes).set_name("fallingsand body_debug_meshes"));
 }
 

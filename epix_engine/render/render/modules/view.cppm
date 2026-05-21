@@ -575,7 +575,7 @@ void camera_system(Query<Item<Mut<Camera>, Mut<ProjType>>> query,               
  * @tparam ProjType Camera projection type satisfying CameraProjection. */
 export template <CameraProjection ProjType>
 struct CameraProjectionPlugin {
-    void build(App& app) {
+    void attach(App& app) {
         app.add_systems(PostUpdate, into(camera_system<ProjType>).in_set(CameraUpdateSystems::CameraUpdateSystem));
     }
 };
@@ -649,7 +649,7 @@ export struct ViewDepthCache {
 /** @brief Plugin that registers view extraction, target preparation, and
  * depth buffer creation systems. */
 export struct ViewPlugin {
-    void build(App& app);
+    void attach(App& app);
 };
 
 void prepare_view_target(Query<Item<Entity, const camera::ExtractedCamera&, const ExtractedView&>> views,
@@ -729,7 +729,7 @@ export inline constexpr struct CameraDriverNodeLabelT {
 } CameraDriverNodeLabel;
 
 struct CameraPlugin {
-    void build(App& app);
+    void attach(App& app);
 };
 /** @brief Bundle for spawning a camera entity with all required
  * components (Camera, Projection, RenderGraph, Transform, VisibleEntities).

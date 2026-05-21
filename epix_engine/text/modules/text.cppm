@@ -227,7 +227,7 @@ export struct TextBundle {
 /** @brief Plugin that registers text shaping, layout, and measurement
  * systems. */
 export struct TextPlugin {
-    void build(core::App& app);
+    void attach(core::App& app);
 };
 }  // namespace epix::text
 

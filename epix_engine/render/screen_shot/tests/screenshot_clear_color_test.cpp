@@ -48,13 +48,13 @@ TEST(ScreenshotPlugin, CaptureClearColorTexture) {
 
     // Build RenderPlugin first; skip test if GPU/Vulkan is unavailable.
     try {
-        RenderPlugin{}.build(app);
+        RenderPlugin{}.attach(app);
     } catch (const std::exception& e) {
         GTEST_SKIP() << "GPU/Vulkan not available, skipping GPU test: " << e.what();
         return;
     }
 
-    ScreenshotPlugin{}.build(app);
+    ScreenshotPlugin{}.attach(app);
 
     // Run startup schedule so plugin-registered startup systems can execute.
     app.run_schedule(Startup);

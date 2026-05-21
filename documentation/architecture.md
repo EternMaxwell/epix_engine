@@ -67,9 +67,9 @@ See [core/built-in-schedules.md](core/built-in-schedules.md) and
 Plugins add resources, systems, events, schedules, sub-apps, and other plugins.
 The typical lifecycle is:
 
-- `build(App&)`: register most resources and systems.
-- `finish(App&)`: complete setup after all plugins have had a chance to build.
-- `finalize(App&)`: perform final startup or shutdown-sensitive initialization.
+- `attach(App&)`: register most resources and systems when the plugin is added.
+- `ready(App&)`: complete setup after all plugins have had a chance to attach.
+- `detach(App&)`: perform shutdown-sensitive cleanup after the app exits.
 
 Feature modules expose plugins so applications can opt into only the engine
 subsystems they use.

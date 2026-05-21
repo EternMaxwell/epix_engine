@@ -43,8 +43,8 @@ struct LoopRunner : public AppRunner {
         app.run_schedules(PreExit, Exit, PostExit);
     }
 };
-void LoopPlugin::build(App& app) {
-    spdlog::debug("[app] Building LoopPlugin.");
+void LoopPlugin::attach(App& app) {
+    spdlog::debug("[app] Attaching LoopPlugin.");
     app.add_event<AppExit>();
     auto check_exit = make_system_unique([](EventReader<AppExit> exits) {
         if (!exits.empty()) {

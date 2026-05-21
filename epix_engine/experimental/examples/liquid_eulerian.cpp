@@ -1232,7 +1232,7 @@ void computeMain(uint3 gid : SV_DispatchThreadID) {
     }
 
     // Registers compute shaders and queues GPU pipelines via the embedded asset system.
-    // Call once from Plugin::finish() before inserting FluidState into the world.
+    // Call once from Plugin::ready() before inserting FluidState into the world.
     void register_pipelines(core::World& world) {
         if (queued_) return;
 
@@ -2607,7 +2607,7 @@ void liquid_imgui_ui(imgui::Ctx imgui_ctx, core::ResMut<FluidState> state) {
 }
 
 struct Plugin {
-    void finish(core::App& app) {
+    void ready(core::App& app) {
         auto& world       = app.world_mut();
         auto& mesh_assets = world.resource_mut<assets::Assets<mesh::Mesh>>();
 

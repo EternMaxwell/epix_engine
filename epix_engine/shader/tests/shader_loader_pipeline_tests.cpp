@@ -79,8 +79,8 @@ EmbeddedPipelineEnv make_embedded_pipeline_env() {
     App app = App::create();
     AssetPlugin plugin;
     plugin.mode = AssetServerMode::Unprocessed;
-    plugin.build(app);
-    ShaderPlugin{}.build(app);
+    plugin.attach(app);
+    ShaderPlugin{}.attach(app);
 
     auto load_count       = std::make_shared<int>(0);
     auto last_wgsl_source = std::make_shared<std::string>();

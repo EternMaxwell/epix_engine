@@ -6,7 +6,7 @@ namespace epix::sfml::render {
 /** @brief Plugin that registers SFML-specific render target (surface)
  * creation for the render pipeline. */
 export struct SFMLRenderPlugin {
-    void build(core::App& app);
+    void attach(core::App& app);
 };
 }  // namespace sfml::render
 

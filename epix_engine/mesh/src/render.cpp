@@ -743,8 +743,8 @@ void queue_meshes_2d_transparent(Query<Item<render::phase::RenderPhase<core_grap
 }
 }  // namespace
 
-void MeshRenderPlugin::build(core::App& app) {
-    spdlog::debug("[mesh] Building MeshRenderPlugin.");
+void MeshRenderPlugin::attach(core::App& app) {
+    spdlog::debug("[mesh] Attaching MeshRenderPlugin.");
     app.add_plugins(MeshPlugin{});
     app.add_plugins(core_graph::core_2d::Core2dPlugin{});
     app.add_plugins(render::ExtractAssetPlugin<Mesh>{});
@@ -756,8 +756,8 @@ void MeshRenderPlugin::build(core::App& app) {
     }
 }
 
-void MeshRenderPlugin::finish(core::App& app) {
-    spdlog::debug("[mesh] Finishing MeshRenderPlugin.");
+void MeshRenderPlugin::ready(core::App& app) {
+    spdlog::debug("[mesh] Readying MeshRenderPlugin.");
     if (!app.world_mut().get_resource<MeshShaderHandles>()) {
         if (auto shader_handles = load_mesh_shader_handles(app.world_mut())) {
             app.world_mut().insert_resource(std::move(*shader_handles));

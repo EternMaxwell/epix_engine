@@ -567,8 +567,8 @@ TextMesh TextMesh::from_shaped_text(const ShapedText& shaped,
                     shaped.descent());
 }
 
-void TextRenderPlugin::build(App& app) {
-    spdlog::debug("[text] Building TextRenderPlugin.");
+void TextRenderPlugin::attach(App& app) {
+    spdlog::debug("[text] Attaching TextRenderPlugin.");
     app.add_plugins(core_graph::core_2d::Core2dPlugin{});
 
     if (!app.world_mut().get_resource<TextShaderHandles>()) {
@@ -578,8 +578,8 @@ void TextRenderPlugin::build(App& app) {
     }
 }
 
-void TextRenderPlugin::finish(App& app) {
-    spdlog::debug("[text] Finishing TextRenderPlugin.");
+void TextRenderPlugin::ready(App& app) {
+    spdlog::debug("[text] Readying TextRenderPlugin.");
     if (!app.world_mut().get_resource<TextShaderHandles>()) {
         if (auto shader_handles = load_text_shader_handles(app.world_mut())) {
             app.world_mut().insert_resource(std::move(*shader_handles));

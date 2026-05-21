@@ -11,7 +11,7 @@ using namespace epix::core;
 export namespace epix::input {
 /** @brief Plugin that registers input event handling systems. */
 struct InputPlugin {
-    void build(App& app);
+    void attach(App& app);
 };
 /** @brief Debug system that logs all received input events to the console. */
 void log_inputs(EventReader<KeyInput> key_reader,

@@ -15,7 +15,7 @@ void epix::render::window::WindowSurfaces::remove(const Entity& entity) {
     configured_windows.erase(entity);
 }
 
-void WindowRenderPlugin::build(App& app) {
+void WindowRenderPlugin::attach(App& app) {
     auto& render_app = app.sub_app_mut(epix::render::Render);
     render_app.world_mut().insert_resource(ExtractedWindows{});
     render_app.world_mut().insert_resource(WindowSurfaces{});

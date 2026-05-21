@@ -535,7 +535,7 @@ TEST(AssetPlugin, BuildAndFinish_RegistersAssetsAndLoader) {
     App app = App::create();
 
     AssetPlugin plugin;
-    plugin.build(app);
+    plugin.attach(app);
     app_register_asset<std::string>(app);
     app_register_loader<TestTextLoader>(app);
 
@@ -556,7 +556,7 @@ TEST(AssetPlugin, Build_PropagatesModeWatchingAndCustomSource) {
     plugin.watch_for_changes_override = true;
     plugin.register_asset_source(AssetSourceId(std::string("mem")), make_memory_source_builder(dir));
 
-    plugin.build(app);
+    plugin.attach(app);
 
     auto& server = app.resource<AssetServer>();
     EXPECT_EQ(server.mode(), AssetServerMode::Processed);
@@ -569,7 +569,7 @@ TEST(AssetPlugin, BuildInProcessedMode_DefaultSourceProvidesProcessedIo) {
 
     AssetPlugin plugin;
     plugin.mode = AssetServerMode::Processed;
-    plugin.build(app);
+    plugin.attach(app);
 
     auto& server        = app.resource<AssetServer>();
     auto default_source = server.get_source(AssetSourceId{});
@@ -583,7 +583,7 @@ TEST(AssetPlugin, BuildInProcessedMode_WithProcessorCreatesProcessorResource) {
 
     AssetPlugin plugin;
     plugin.mode = AssetServerMode::Processed;
-    plugin.build(app);
+    plugin.attach(app);
 
     auto processor = app.get_resource<AssetProcessor>();
     ASSERT_TRUE(processor.has_value());
@@ -605,7 +605,7 @@ TEST(AssetPlugin, ProcessedMode_EmbeddedSourceProvidesExplicitProcessedReader) {
 
     AssetPlugin plugin;
     plugin.mode = AssetServerMode::Processed;
-    plugin.build(app);
+    plugin.attach(app);
     app_register_asset<std::string>(app);
     app_register_loader<TestTextLoader>(app);
 
@@ -638,7 +638,7 @@ TEST(AssetPlugin, BuildWithWatching_WiresReceiversForCustomSourceWatchers) {
     plugin.register_asset_source(AssetSourceId(std::string("mem")),
                                  make_memory_source_builder_with_watchers(dir, true, true));
 
-    plugin.build(app);
+    plugin.attach(app);
 
     auto& server = app.resource<AssetServer>();
     auto source  = server.get_source(AssetSourceId(std::string("mem")));
@@ -665,7 +665,7 @@ TEST(AssetPlugin, BuildWithoutWatching_InProcessedModeKeepsSourceReceiverButNotP
     plugin.register_asset_source(AssetSourceId(std::string("mem")),
                                  make_memory_source_builder_with_watchers(dir, true, true));
 
-    plugin.build(app);
+    plugin.attach(app);
 
     auto& server = app.resource<AssetServer>();
     auto source  = server.get_source(AssetSourceId(std::string("mem")));
@@ -688,7 +688,7 @@ TEST(AssetPlugin, BuildWithoutWatching_WithoutProcessor_DoesNotWireAnyReceivers)
     plugin.register_asset_source(AssetSourceId(std::string("mem")),
                                  make_memory_source_builder_with_watchers(dir, true, true));
 
-    plugin.build(app);
+    plugin.attach(app);
 
     auto& server = app.resource<AssetServer>();
     auto source  = server.get_source(AssetSourceId(std::string("mem")));
@@ -700,8 +700,8 @@ TEST(AssetPlugin, BuildWithoutWatching_WithoutProcessor_DoesNotWireAnyReceivers)
 TEST(AssetPlugin, FinishWithoutRegistrations_DoesNotFail) {
     App app = App::create();
     AssetPlugin plugin;
-    plugin.build(app);
-    plugin.finish(app);
+    plugin.attach(app);
+    plugin.ready(app);
 
     EXPECT_TRUE(app.get_resource<AssetServer>().has_value());
 }
@@ -711,7 +711,7 @@ TEST(AssetAppFunctions, AppRegisterApis_DispatchToExistingServer) {
 
     AssetPlugin plugin;
     plugin.mode = AssetServerMode::Processed;
-    plugin.build(app);
+    plugin.attach(app);
 
     app_register_asset<std::string>(app);
     app_preregister_loader<TestTextLoader>(app, TestTextLoader::extensions());
@@ -733,7 +733,7 @@ TEST(AssetAppFunctions, AppRegisterApis_DispatchToExistingServer) {
 TEST(AssetAppFunctions, RegisterAsset_IsIdempotent) {
     App app = App::create();
     AssetPlugin plugin;
-    plugin.build(app);
+    plugin.attach(app);
 
     app_register_asset<std::string>(app);
     app_register_asset<std::string>(app);
@@ -772,7 +772,7 @@ PluginTestEnv make_plugin_env(bool watching, std::string_view initial_content = 
     } else {
         plugin.register_asset_source(AssetSourceId{}, make_memory_source_builder(dir));
     }
-    plugin.build(app);
+    plugin.attach(app);
     app_register_asset<std::string>(app);
     app_register_loader<TestTextLoader>(app);
 
@@ -796,7 +796,7 @@ PluginTestEnv make_plugin_env_for_mode(AssetServerMode mode,
     } else {
         plugin.register_asset_source(AssetSourceId{}, make_memory_source_builder(dir));
     }
-    plugin.build(app);
+    plugin.attach(app);
     app_register_asset<std::string>(app);
     app_register_loader<TestTextLoader>(app);
 
@@ -1141,7 +1141,7 @@ TEST(HotReload, ProcessedMode_LoadsFromProcessedReader) {
     // Supply the same dir for both unprocessed and processed readers.
     auto builder = make_memory_source_builder(dir, /*with_processed_reader=*/true);
     plugin.register_asset_source(AssetSourceId{}, std::move(builder));
-    plugin.build(app);
+    plugin.attach(app);
     app_register_asset<std::string>(app);
     app_register_loader<TestTextLoader>(app);
 
@@ -1218,7 +1218,7 @@ TEST(LoadFailure, LoaderError_FailsWithAssetLoaderException) {
     App app = App::create();
     AssetPlugin plugin;
     plugin.register_asset_source(AssetSourceId{}, make_memory_source_builder(dir));
-    plugin.build(app);
+    plugin.attach(app);
     app_register_asset<std::string>(app);
     app_register_loader<FailingLoader>(app);
 
@@ -1250,7 +1250,7 @@ TEST(LoadFailure, MixedScenarios_CorrectStateForEach) {
     App app = App::create();
     AssetPlugin plugin;
     plugin.register_asset_source(AssetSourceId{}, make_memory_source_builder(dir));
-    plugin.build(app);
+    plugin.attach(app);
     app_register_asset<std::string>(app);
     app_register_loader<TestTextLoader>(app);
     app_register_loader<FailingLoader>(app);
@@ -1466,7 +1466,7 @@ TEST(LoadStates, FailedAsset_AllStatesReflectFailure) {
     App app = App::create();
     AssetPlugin plugin;
     plugin.register_asset_source(AssetSourceId{}, make_memory_source_builder(dir));
-    plugin.build(app);
+    plugin.attach(app);
     app_register_asset<std::string>(app);
     app_register_loader<FailingLoader>(app);
 
@@ -1882,7 +1882,7 @@ TEST(MetaFileIntegration, MetaFile_SelectsLoaderByName) {
     AssetPlugin plugin;
     plugin.watch_for_changes_override = false;
     plugin.register_asset_source(AssetSourceId{}, make_memory_source_builder(dir));
-    plugin.build(app);
+    plugin.attach(app);
     app_register_asset<std::string>(app);
     app_register_loader<TestTextLoader>(app);
     app_register_loader<AltTextLoader>(app);
@@ -1970,7 +1970,7 @@ TEST(DeserializeMetaIntegration, CustomQuality_RestoredFromMetaFile) {
     AssetPlugin plugin;
     plugin.watch_for_changes_override = false;
     plugin.register_asset_source(AssetSourceId{}, make_memory_source_builder(dir));
-    plugin.build(app);
+    plugin.attach(app);
     app_register_asset<std::string>(app);
     app_register_loader<SettingsCapturingLoader>(app);
 
@@ -1994,7 +1994,7 @@ TEST(DeserializeMetaIntegration, DefaultQuality_UsedWhenNoMetaFile) {
     AssetPlugin plugin;
     plugin.watch_for_changes_override = false;
     plugin.register_asset_source(AssetSourceId{}, make_memory_source_builder(dir));
-    plugin.build(app);
+    plugin.attach(app);
     app_register_asset<std::string>(app);
     app_register_loader<SettingsCapturingLoader>(app);
 
@@ -2022,7 +2022,7 @@ TEST(DeserializeMetaIntegration, FailsWithDeserializeMeta_WhenMetaFileBytesAreGa
     AssetPlugin plugin;
     plugin.watch_for_changes_override = false;
     plugin.register_asset_source(AssetSourceId{}, make_memory_source_builder(dir));
-    plugin.build(app);
+    plugin.attach(app);
     app_register_asset<std::string>(app);
     app_register_loader<SettingsCapturingLoader>(app);
 
@@ -2056,7 +2056,7 @@ TEST(DeserializeMetaIntegration, DifferentQualities_LoadSamePathWithMetaTransfor
     AssetPlugin plugin;
     plugin.watch_for_changes_override = false;
     plugin.register_asset_source(AssetSourceId{}, make_memory_source_builder(dir));
-    plugin.build(app);
+    plugin.attach(app);
     app_register_asset<std::string>(app);
     app_register_loader<SettingsCapturingLoader>(app);
 

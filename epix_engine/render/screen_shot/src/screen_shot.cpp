@@ -301,7 +301,7 @@ static void screenshot_capture_on_key(Res<ScreenshotHotkey> hotkey,
     }
 }
 
-void ScreenshotPlugin::build(epix::core::App& app) {
+void ScreenshotPlugin::attach(epix::core::App& app) {
     app.add_event<ScreenCapture>();
     app.add_event<ScreenCaptureResult>();
 

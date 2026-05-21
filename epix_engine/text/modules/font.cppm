@@ -337,7 +337,7 @@ export enum class FontSystems {
 /** @brief Plugin that registers font loading, atlas management, and glyph
  * update systems. */
 export struct FontPlugin {
-    void build(core::App& app);
-    void finish(core::App& app);
+    void attach(core::App& app);
+    void ready(core::App& app);
 };
 }  // namespace epix::text::font

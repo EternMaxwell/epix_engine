@@ -445,8 +445,8 @@ void prepare_sprite_batches(Query<Item<render::phase::RenderPhase<core_graph::co
 }
 }  // namespace
 
-void SpritePlugin::build(core::App& app) {
-    spdlog::debug("[sprite] Building SpritePlugin.");
+void SpritePlugin::attach(core::App& app) {
+    spdlog::debug("[sprite] Attaching SpritePlugin.");
     app.add_plugins(core_graph::core_2d::Core2dPlugin{});
 
     if (!app.world_mut().get_resource<SpriteShaderHandles>()) {
@@ -456,8 +456,8 @@ void SpritePlugin::build(core::App& app) {
     }
 }
 
-void SpritePlugin::finish(core::App& app) {
-    spdlog::debug("[sprite] Finishing SpritePlugin.");
+void SpritePlugin::ready(core::App& app) {
+    spdlog::debug("[sprite] Readying SpritePlugin.");
     if (!app.world_mut().get_resource<SpriteShaderHandles>()) {
         if (auto shader_handles = load_sprite_shader_handles(app.world_mut())) {
             app.world_mut().insert_resource(std::move(*shader_handles));

@@ -39,8 +39,8 @@ struct FixedMainExecutor : ScheduleExecutor {
     meta::type_index type() const noexcept override { return meta::type_id<FixedMainExecutor>(); }
 };
 
-void TimePlugin::build(App& app) {
-    spdlog::debug("[time] Building TimePlugin.");
+void TimePlugin::attach(App& app) {
+    spdlog::debug("[time] Attaching TimePlugin.");
     app.world_mut().init_resource<Time<>>();
     app.world_mut().init_resource<Time<Real>>();
     app.world_mut().init_resource<Time<Virtual>>();

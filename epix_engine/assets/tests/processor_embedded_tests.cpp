@@ -152,7 +152,7 @@ AssetProcessor create_empty_asset_processor() {
     auto app = epix::core::App::create();
     AssetPlugin plugin;
     plugin.mode = AssetServerMode::Processed;
-    plugin.build(app);
+    plugin.attach(app);
 
     auto processor = app.get_resource<AssetProcessor>();
     EXPECT_TRUE(processor.has_value());

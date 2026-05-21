@@ -1436,14 +1436,14 @@ void prepare_voxel_render(Res<wgpu::Device> device,
 // ===========================================================================
 
 struct VoxelPathTracerPlugin {
-    void build(core::App& app) {
+    void attach(core::App& app) {
         app.world_mut().insert_resource(VoxelConfig{});
         app.add_systems(core::Startup, into(setup_voxel_scene).set_name("setup voxel scene"));
         app.add_systems(core::Update, into(camera_control).set_name("camera control"));
         app.add_systems(core::Update, into(voxel_imgui_ui).set_name("voxel imgui ui"));
     }
 
-    void finish(core::App& app) {
+    void ready(core::App& app) {
         // Register embedded shader assets.
         auto registry = app.world_mut().get_resource_mut<assets::EmbeddedAssetRegistry>();
         auto server   = app.world_mut().get_resource<assets::AssetServer>();

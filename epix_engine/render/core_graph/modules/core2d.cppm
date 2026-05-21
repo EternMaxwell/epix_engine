@@ -158,7 +158,7 @@ export inline struct Core2dGraph {
 /** @brief Plugin that sets up the core 2D render graph and camera
  * projection. */
 export struct Core2dPlugin {
-    void build(App& app);
+    void attach(App& app);
 };
 
 /** @brief Marker component for 2D camera entities. */

@@ -18,7 +18,7 @@ using namespace epix;
 
 namespace {
 struct BasicSpriteVisualTestPlugin {
-    void finish(core::App& app) {
+    void ready(core::App& app) {
         auto& world  = app.world_mut();
         auto& images = world.resource_mut<assets::Assets<image::Image>>();
 

@@ -64,7 +64,7 @@ export struct ScreenshotPlugin {
     /** @brief Key that triggers an automatic capture. nullopt disables the hotkey. */
     std::optional<epix::input::KeyCode> capture_key = epix::input::KeyCode::KeyF12;
 
-    void build(epix::core::App& app);
+    void attach(epix::core::App& app);
 };
 
 }  // namespace epix::render::screenshot

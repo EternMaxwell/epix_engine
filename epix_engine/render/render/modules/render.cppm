@@ -46,8 +46,8 @@ export struct RenderPlugin {
      * @param level the validation level to set
      */
     RenderPlugin& set_validation(int level = 0) noexcept;
-    void build(core::App&);
-    void finalize(core::App&) noexcept;
+    void attach(core::App&);
+    void detach(core::App&) noexcept;
 };
 void render_system(core::World& world);
 }  // namespace epix::render

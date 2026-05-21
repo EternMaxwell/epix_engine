@@ -4,7 +4,7 @@ Registers all input infrastructure — events, resources, and frame-update syste
 
 ## Overview
 
-`InputPlugin::build()` does three things:
+`InputPlugin::attach()` does three things:
 
 1. Calls `app.add_events<T>()` for `KeyInput`, `MouseButtonInput`, `MouseMove`, and `MouseScroll`.
 2. Calls `app.world_mut().init_resource<ButtonInput<KeyCode>>()` and `init_resource<ButtonInput<MouseButton>>()`.

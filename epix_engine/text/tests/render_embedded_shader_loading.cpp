@@ -29,10 +29,10 @@ App make_shader_asset_app() {
 
     AssetPlugin asset_plugin;
     asset_plugin.mode = AssetServerMode::Unprocessed;
-    asset_plugin.build(app);
+    asset_plugin.attach(app);
 
     ShaderPlugin shader_plugin;
-    shader_plugin.build(app);
+    shader_plugin.attach(app);
 
     return app;
 }
@@ -67,7 +67,7 @@ TEST(MeshRenderPlugin, Build_RegistersAndLoadsEmbeddedShadersThroughAssetServer)
     auto app = make_shader_asset_app();
 
     mesh::MeshRenderPlugin plugin;
-    plugin.build(app);
+    plugin.attach(app);
     flush_load_tasks(app);
 
     expect_embedded_shader_loaded(app, "embedded://mesh/solid_vertex.slang");
@@ -82,7 +82,7 @@ TEST(SpritePlugin, Build_RegistersAndLoadsEmbeddedShadersThroughAssetServer) {
     auto app = make_shader_asset_app();
 
     sprite::SpritePlugin plugin;
-    plugin.build(app);
+    plugin.attach(app);
     flush_load_tasks(app);
 
     expect_embedded_shader_loaded(app, "embedded://sprite/sprite_vertex.slang");
@@ -93,7 +93,7 @@ TEST(TextRenderPlugin, Build_RegistersAndLoadsEmbeddedShadersThroughAssetServer)
     auto app = make_shader_asset_app();
 
     text::TextRenderPlugin plugin;
-    plugin.build(app);
+    plugin.attach(app);
     flush_load_tasks(app);
 
     expect_embedded_shader_loaded(app, "embedded://text/text_vertex.slang");

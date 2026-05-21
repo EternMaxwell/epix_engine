@@ -18,7 +18,7 @@ using namespace epix;
 // Camera controls: WASD to pan, scroll to zoom, Space to reset
 namespace {
 struct CamControlPlugin {
-    void build(core::App& app) {
+    void attach(core::App& app) {
         app.add_systems(core::Update,
                         core::into([](core::Query<core::Item<const render::camera::Camera&, render::camera::Projection&,
                                                              transform::Transform&>> camera,
@@ -56,7 +56,7 @@ struct CamControlPlugin {
 // Spawns a grid of N x N mesh instances sharing the same mesh handles,
 // so the batching system can merge them into fewer draw calls.
 struct MeshBatchingTestPlugin {
-    void finish(core::App& app) {
+    void ready(core::App& app) {
         auto& world       = app.world_mut();
         auto& mesh_assets = world.resource_mut<assets::Assets<mesh::Mesh>>();
 

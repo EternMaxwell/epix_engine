@@ -26,7 +26,7 @@ namespace epix::ext::fallingsand {
  * and the affected world is skipped for that tick.
  */
 export struct FallingSandPlugin {
-    void build(epix::core::App& app);
+    void attach(epix::core::App& app);
 };
 
 /** @brief Optional plugin that renders a debug overlay for Body-type sentinel
@@ -34,7 +34,7 @@ export struct FallingSandPlugin {
  *  FallingSandPlugin; toggle the overlay at runtime via
  *  SandWorld::set_show_body_debug(). */
 export struct BodyDebugPlugin {
-    void build(epix::core::App& app);
+    void attach(epix::core::App& app);
 };
 
 }  // namespace epix::ext::fallingsand

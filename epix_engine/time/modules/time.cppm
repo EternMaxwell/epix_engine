@@ -67,7 +67,7 @@ export inline struct FixedLastT {
  *  the real-time update system in First, and the FixedMain schedule with its sub-schedules. */
 export struct TimePlugin {
     /** @brief Build the plugin into the app. */
-    void build(App& app);
+    void attach(App& app);
 };
 
 }  // namespace epix::time

@@ -13,7 +13,7 @@ export wgpu::Surface get_wgpu_surface(const wgpu::Instance& instance, GLFWwindow
 /** @brief Plugin that registers GLFW-specific render target (surface)
  * creation for the render pipeline. */
 export struct GLFWRenderPlugin {
-    void build(core::App& app);
+    void attach(core::App& app);
 };
 }  // namespace epix::glfw::render
 

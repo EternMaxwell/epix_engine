@@ -192,6 +192,6 @@ enum class TransformSets {
 };
 /** @brief Plugin that registers transform propagation systems. */
 struct TransformPlugin {
-    void build(core::App& app);
+    void attach(core::App& app);
 };
 }  // namespace epix::transform

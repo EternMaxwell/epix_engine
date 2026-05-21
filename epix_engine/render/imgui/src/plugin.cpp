@@ -244,8 +244,8 @@ imgui::ImGuiPlugin& imgui::ImGuiPlugin::set_viewports(bool enabled) noexcept {
     return *this;
 }
 
-void imgui::ImGuiPlugin::build(App& app) {
-    spdlog::debug("[imgui] Building ImGuiPlugin.");
+void imgui::ImGuiPlugin::attach(App& app) {
+    spdlog::debug("[imgui] Attaching ImGuiPlugin.");
     // Create ImGui context and store in main world
     ImGuiContext* ctx = ImGui::CreateContext();
     ImGui::SetCurrentContext(ctx);
@@ -292,7 +292,7 @@ void imgui::ImGuiPlugin::build(App& app) {
     });
 }
 
-void imgui::ImGuiPlugin::finalize(App&) {
+void imgui::ImGuiPlugin::detach(App&) {
     if (ImGui::GetCurrentContext()) {
         ImGuiIO& io = ImGui::GetIO();
         if (enable_viewports) ImGui::DestroyPlatformWindows();

@@ -361,6 +361,6 @@ export Mesh make_box2d_uv(float width,
 
 /** @brief Plugin that registers mesh asset loading and GPU upload systems. */
 export struct MeshPlugin {
-    void build(core::App& app);
+    void attach(core::App& app);
 };
 }  // namespace epix::mesh

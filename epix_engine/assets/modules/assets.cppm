@@ -68,9 +68,9 @@ export struct AssetPlugin {
     /** @brief Register a named asset source builder. */
     AssetPlugin& register_asset_source(AssetSourceId id, AssetSourceBuilder source);
     /** @brief Build the plugin, inserting asset resources into the app. */
-    void build(App& app);
+    void attach(App& app);
     /** @brief Finalize the plugin after all other plugins have built. */
-    void finish(App& app);
+    void ready(App& app);
 };
 
 /** @brief AssetApp-style helper: register an asset type directly on an App with an existing AssetServer. */
