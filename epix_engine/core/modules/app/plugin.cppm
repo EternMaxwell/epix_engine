@@ -145,7 +145,7 @@ struct Plugins {
     /// Called at the end of the app's lifetime.
     void finalize_all(App& app) {
         spdlog::debug("[app] Finalizing {} plugins.", _plugins.size());
-        std::ranges::for_each(_plugins, [&](auto& plugin) { plugin->finalize(app); });
+        std::ranges::for_each(std::ranges::reverse_view(_plugins), [&](auto& plugin) { plugin->finalize(app); });
     }
 
    private:
