@@ -160,6 +160,5 @@ void GLFWRunner::exit(App& app) {
         auto res = remove_window->run({}, world);
         res      = destroy_windows_system->run({}, world);
     });
-    glfwTerminate();
     app.run_schedules(PreExit, Exit, PostExit);
 }

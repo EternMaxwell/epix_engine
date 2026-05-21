@@ -149,6 +149,7 @@ export struct GLFWRunner : public AppRunner {
  * window creation, event dispatch, and lifecycle systems. */
 export struct GLFWPlugin {
     void build(App& app);
+    void finalize(App& app);
 
     /** @brief System that syncs window size from GLFW to the Window component. */
     static void update_size(Query<Item<Entity, Mut<window::Window>, const window::CachedWindow&>> windows,
