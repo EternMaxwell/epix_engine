@@ -1,4 +1,11 @@
-﻿export module epix.window:system;
+﻿module;
+
+#ifndef EPIX_IMPORT_STD
+#include <optional>
+#include <unordered_set>
+#endif
+
+export module epix.window:system;
 
 import epix.core;
 

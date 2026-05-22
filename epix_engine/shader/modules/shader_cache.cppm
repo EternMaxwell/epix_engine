@@ -1,5 +1,22 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <cstdint>
+#include <expected>
+#include <format>
+#include <functional>
+#include <memory>
+#include <span>
+#include <string>
+#include <string_view>
+#include <type_traits>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <variant>
+#include <vector>
+#endif
+
 export module epix.shader:shader_cache;
 
 import epix.core;

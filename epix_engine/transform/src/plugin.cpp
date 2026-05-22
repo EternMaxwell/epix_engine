@@ -1,5 +1,11 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <functional>
+#include <ranges>
+#include <stack>
+#include <unordered_map>
+#endif
 #include <spdlog/spdlog.h>
 
 module epix.transform;
@@ -39,9 +45,8 @@ void calculate_global_transform(
         }
     }
     std::unordered_map<Entity, GlobalTransform> not_added_globals;
-    for (auto entity : std::views::keys(std::views::filter(change_root, [&](const auto& pair) {
-             return pair.first == pair.second;
-         }))) {
+    for (auto entity : std::views::keys(
+             std::views::filter(change_root, [&](const auto& pair) { return pair.first == pair.second; }))) {
         auto [_, transform, children, parent, globalTransform] = query.get(entity).value();
 
         auto calculate_global = [&](this auto&& self, Entity ent, const GlobalTransform& parent_matrix) -> void {

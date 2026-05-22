@@ -1,5 +1,17 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <algorithm>
+#include <cstdint>
+#include <deque>
+#include <functional>
+#include <optional>
+#include <ranges>
+#include <span>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+#endif
 #include <spdlog/spdlog.h>
 
 module epix.render;
@@ -60,8 +72,8 @@ bool RenderGraphRunner::run_graph(const RenderGraph& graph,
 
         node_outputs.emplace(input_node->get().label, std::move(input_values));
 
-        for (auto&& next_node :
-             std::views::transform(input_node->get().edges.output_edges(), [](const Edge& e) { return e.input_node; })) {
+        for (auto&& next_node : std::views::transform(input_node->get().edges.output_edges(),
+                                                      [](const Edge& e) { return e.input_node; })) {
             if (auto state = graph.get_node_state(next_node)) {
                 node_queue.push_back(*state);
             }
@@ -78,9 +90,8 @@ bool RenderGraphRunner::run_graph(const RenderGraph& graph,
         // check if all dependencies have finished running
         {
             bool break_loop = false;
-            for (auto&& [edge, input_node] : std::views::transform(node_state.edges.input_edges(), [](const Edge& e) {
-                                                 return std::pair{e, e.output_node};
-                                             })) {
+            for (auto&& [edge, input_node] : std::views::transform(
+                     node_state.edges.input_edges(), [](const Edge& e) { return std::pair{e, e.output_node}; })) {
                 if (edge.is_slot_edge()) {
                     if (auto outputs_it = node_outputs.find(input_node); outputs_it != node_outputs.end()) {
                         auto&& outputs = outputs_it->second;

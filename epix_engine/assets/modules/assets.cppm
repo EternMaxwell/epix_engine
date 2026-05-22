@@ -1,5 +1,19 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <array>
+#include <concepts>
+#include <filesystem>
+#include <format>
+#include <optional>
+#include <span>
+#include <stdexcept>
+#include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
+#endif
+
 export module epix.assets;
 
 export import :concepts;

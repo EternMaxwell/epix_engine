@@ -1,10 +1,12 @@
 ﻿module;
 #ifndef EPIX_IMPORT_STD
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <limits>
+#include <variant>
 #endif
 
 export module epix.extension.fallingsand:ops;

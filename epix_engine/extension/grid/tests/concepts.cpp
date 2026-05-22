@@ -126,12 +126,13 @@ static_assert(tree_based_grid<tree_grid<2, int>>);
 // filter_view & shadow_view — satisfy viewable_grid and unsafe_viewable_grid
 // ────────────────────────────────────────────────────────────
 
-using fv_t = filter_view<dense_grid<2, int>, decltype([](const int& v) { return v > 0; })>;
+using fv_t = epix::ext::grid::views::filter_view<dense_grid<2, int>, decltype([](const int& v) { return v > 0; })>;
 static_assert(viewable_grid<fv_t>);
 static_assert(unsafe_viewable_grid<fv_t>);
 static_assert(iterable_grid<fv_t>);
 
-using sv_t = shadow_view<dense_grid<2, int>, decltype([](const std::array<std::uint32_t, 2>&) { return true; })>;
+using sv_t = epix::ext::grid::views::shadow_view<dense_grid<2, int>,
+                                                 decltype([](const std::array<std::uint32_t, 2>&) { return true; })>;
 static_assert(viewable_grid<sv_t>);
 static_assert(unsafe_viewable_grid<sv_t>);
 

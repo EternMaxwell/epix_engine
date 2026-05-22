@@ -1,5 +1,23 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <cstdint>
+#include <expected>
+#include <filesystem>
+#include <iterator>
+#include <memory>
+#include <queue>
+#include <ranges>
+#include <span>
+#include <stdexcept>
+#include <string>
+#include <string_view>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <variant>
+#include <vector>
+#endif
 #include <slang-com-ptr.h>
 #include <slang.h>
 #include <spdlog/spdlog.h>
@@ -488,10 +506,10 @@ struct ShaderCache::SlangCompiler {
         // SPIR-V requires at least one entry point.  Library-only shaders cannot
         // be used as root pipeline modules; the caller must use them as imports.
         if (ep_count == 0) {
-            return std::unexpected(ShaderCacheError::slang_error(
-                Stage::NoEntryPoints,
-                "shader has no entry points and cannot be compiled to SPIR-V directly; "
-                "use it as an imported library module instead"));
+            return std::unexpected(
+                ShaderCacheError::slang_error(Stage::NoEntryPoints,
+                                              "shader has no entry points and cannot be compiled to SPIR-V directly; "
+                                              "use it as an imported library module instead"));
         }
 
         std::vector<Slang::ComPtr<slang::IEntryPoint>> entry_points(ep_count);
@@ -612,10 +630,10 @@ struct ShaderCache::SlangCompiler {
         // SPIR-V requires at least one entry point.  Library-only shaders cannot
         // be used as root pipeline modules; the caller must use them as imports.
         if (ep_count == 0) {
-            return std::unexpected(ShaderCacheError::slang_error(
-                Stage::NoEntryPoints,
-                "shader has no entry points and cannot be compiled to SPIR-V directly; "
-                "use it as an imported library module instead"));
+            return std::unexpected(
+                ShaderCacheError::slang_error(Stage::NoEntryPoints,
+                                              "shader has no entry points and cannot be compiled to SPIR-V directly; "
+                                              "use it as an imported library module instead"));
         }
 
         std::vector<Slang::ComPtr<slang::IEntryPoint>> entry_points(ep_count);
@@ -885,7 +903,7 @@ std::expected<std::shared_ptr<wgpu::ShaderModule>, ShaderCacheError> ShaderCache
             composer_.compose(shader.source.as_str(), canonical_asset_path_string(shader.path), merged_defs);
         if (!composed) return std::unexpected(ShaderCacheError::process_error(std::move(composed.error())));
         composed_wgsl = std::move(composed.value());
-        source = ShaderCacheSource{ShaderCacheSource::Wgsl{std::string_view(composed_wgsl)}};
+        source        = ShaderCacheSource{ShaderCacheSource::Wgsl{std::string_view(composed_wgsl)}};
     }
 
     auto module_result = load_module_(device_, source, shader.validate_shader);

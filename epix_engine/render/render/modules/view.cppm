@@ -1,5 +1,20 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <array>
+#include <concepts>
+#include <cstddef>
+#include <cstdint>
+#include <expected>
+#include <optional>
+#include <ranges>
+#include <span>
+#include <unordered_map>
+#include <utility>
+#include <variant>
+#include <vector>
+#endif
+
 export module epix.render:view;
 
 import epix.transform;

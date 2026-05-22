@@ -1,5 +1,9 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <tuple>
+#endif
+
 export module epix.render:image;
 
 import :assets;

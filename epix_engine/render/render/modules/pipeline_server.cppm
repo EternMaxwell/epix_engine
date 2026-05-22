@@ -1,5 +1,22 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <chrono>
+#include <concepts>
+#include <cstddef>
+#include <expected>
+#include <functional>
+#include <future>
+#include <memory>
+#include <optional>
+#include <ranges>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
+#include <variant>
+#include <vector>
+#endif
+
 export module epix.render:pipeline_server;
 
 import epix.core;

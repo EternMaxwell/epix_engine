@@ -1,5 +1,27 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <algorithm>
+#include <array>
+#include <cstdint>
+#include <exception>
+#include <expected>
+#include <filesystem>
+#include <memory>
+#include <mutex>
+#include <optional>
+#include <ranges>
+#include <span>
+#include <stdexcept>
+#include <string>
+#include <string_view>
+#include <system_error>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <variant>
+#include <vector>
+#endif
 #include <slang-com-ptr.h>
 #include <slang.h>
 #include <spdlog/spdlog.h>

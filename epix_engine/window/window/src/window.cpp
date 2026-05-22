@@ -1,5 +1,8 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <ranges>
+#endif
 #include <spdlog/spdlog.h>
 
 module epix.window;
@@ -37,17 +40,17 @@ void WindowPlugin::ready(App& app) {
 }
 
 void epix::window::log_events(EventReader<WindowResized> resized,
-                        EventReader<WindowMoved> moved,
-                        EventReader<WindowCreated> created,
-                        EventReader<WindowClosed> closed,
-                        EventReader<WindowCloseRequested> close_requested,
-                        EventReader<WindowDestroyed> destroyed,
-                        EventReader<CursorMoved> cursor_moved,
-                        EventReader<CursorEntered> cursor_entered,
-                        EventReader<FileDrop> file_drop,
-                        EventReader<ReceivedCharacter> received_character,
-                        EventReader<WindowFocused> window_focused,
-                        Query<Item<const Window&>> windows) {
+                              EventReader<WindowMoved> moved,
+                              EventReader<WindowCreated> created,
+                              EventReader<WindowClosed> closed,
+                              EventReader<WindowCloseRequested> close_requested,
+                              EventReader<WindowDestroyed> destroyed,
+                              EventReader<CursorMoved> cursor_moved,
+                              EventReader<CursorEntered> cursor_entered,
+                              EventReader<FileDrop> file_drop,
+                              EventReader<ReceivedCharacter> received_character,
+                              EventReader<WindowFocused> window_focused,
+                              Query<Item<const Window&>> windows) {
     for (auto&& [id, width, height] : resized.read()) {
         auto&& window_t = windows.get(id);
         if (window_t) {

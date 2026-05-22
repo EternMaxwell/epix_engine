@@ -1,4 +1,13 @@
-﻿import std;
+﻿#ifndef EPIX_IMPORT_STD
+#include <cmath>
+#include <optional>
+#include <string_view>
+#include <utility>
+#include <vector>
+#endif
+#ifdef EPIX_IMPORT_STD
+import std;
+#endif
 import epix.assets;
 import epix.core;
 import epix.core_graph;

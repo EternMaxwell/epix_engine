@@ -1,3 +1,14 @@
+module;
+
+#ifndef EPIX_IMPORT_STD
+#include <cstdint>
+#include <optional>
+#include <ranges>
+#include <string>
+#include <string_view>
+#include <variant>
+#endif
+
 module epix.render;
 
 import :graph.slot;

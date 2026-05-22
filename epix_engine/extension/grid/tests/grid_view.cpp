@@ -19,6 +19,7 @@ import epix.extension.grid;
 #endif
 
 using namespace epix::ext::grid;
+using namespace epix::ext::grid::views;
 
 // ────────────────────────────────────────────────────────────
 // filter_view tests
@@ -105,6 +106,163 @@ TEST(FilterView, UnsafeAccessorsDelegate) {
     EXPECT_EQ(fv.get_unsafe({0, 0}), 42);
     fv.get_mut_unsafe({0, 0}) = 99;
     EXPECT_EQ(fv.get_unsafe({0, 0}), 99);
+}
+
+// ────────────────────────────────────────────────────────────
+// transform_view tests
+// ────────────────────────────────────────────────────────────
+
+namespace {
+struct TransformViewCell {
+    int value;
+    int other;
+};
+}  // namespace
+
+TEST(TransformView, GetProjectsReference) {
+    dense_grid<2, TransformViewCell> g({4, 4});
+    g.set({1, 2}, TransformViewCell{42, 7});
+
+    auto tv = transform(g, [](const TransformViewCell& cell) -> const int& { return cell.value; });
+
+    EXPECT_TRUE(tv.contains({1, 2}));
+    auto r = tv.get({1, 2});
+    ASSERT_TRUE(r.has_value());
+    EXPECT_EQ(r->get(), 42);
+    EXPECT_EQ(tv.get({0, 0}).error(), grid_error::EmptyCell);
+}
+
+TEST(TransformView, GetCanReturnProjectedValue) {
+    dense_grid<2, int> g({4, 4});
+    g.set({1, 1}, 21);
+
+    auto tv = transform(g, [](const int& value) { return value * 2; });
+
+    auto r = tv.get({1, 1});
+    ASSERT_TRUE(r.has_value());
+    EXPECT_EQ(r.value(), 42);
+}
+
+TEST(TransformView, GetMutProjectsMutableReference) {
+    dense_grid<2, TransformViewCell> g({4, 4});
+    g.set({0, 0}, TransformViewCell{10, 3});
+
+    auto tv = transform(g, [](auto& cell) -> auto& { return cell.value; });
+    static_assert(viewable_grid<decltype(tv)>);
+    static_assert(mutable_viewable_grid<decltype(tv)>);
+    static_assert(iterable_grid<decltype(tv)>);
+    static_assert(mutable_iterable_grid<decltype(tv)>);
+
+    auto r = tv.get_mut({0, 0});
+    ASSERT_TRUE(r.has_value());
+    r->get() = 99;
+    EXPECT_EQ(g.get({0, 0})->get().value, 99);
+}
+
+TEST(TransformView, IterCellsProjectsValues) {
+    dense_grid<2, int> g({4, 4});
+    g.set({0, 0}, 2);
+    g.set({1, 0}, 3);
+
+    auto tv = transform(g, [](const int& value) { return value * 10; });
+
+    std::vector<int> values;
+    for (auto value : tv.iter_cells()) {
+        values.push_back(value);
+    }
+
+    ASSERT_EQ(values.size(), 2u);
+    EXPECT_EQ(values[0], 20);
+    EXPECT_EQ(values[1], 30);
+}
+
+TEST(TransformView, IterPairsKeepPositions) {
+    dense_grid<2, int> g({4, 4});
+    g.set({2, 1}, 5);
+
+    auto tv = transform(g, [](const int& value) { return value + 1; });
+
+    auto it           = tv.iter().begin();
+    auto [pos, value] = *it;
+    EXPECT_EQ(pos[0], 2u);
+    EXPECT_EQ(pos[1], 1u);
+    EXPECT_EQ(value, 6);
+}
+
+// ────────────────────────────────────────────────────────────
+// offset_view tests
+// ────────────────────────────────────────────────────────────
+
+TEST(OffsetView, GetUsesNewOriginAndDimensions) {
+    dense_grid<2, int> g({6, 6});
+    g.set({2, 3}, 42);
+    g.set({3, 3}, 7);
+
+    auto ov = offset(g, std::array<std::uint32_t, 2>{2, 3}, std::array<std::uint32_t, 2>{2, 2});
+    static_assert(viewable_grid<decltype(ov)>);
+    static_assert(mutable_viewable_grid<decltype(ov)>);
+    static_assert(basic_grid<decltype(ov)>);
+
+    auto dims = ov.dimensions();
+    EXPECT_EQ(dims[0], 2u);
+    EXPECT_EQ(dims[1], 2u);
+    EXPECT_TRUE(ov.contains({0, 0}));
+    EXPECT_TRUE(ov.contains({1, 0}));
+    EXPECT_FALSE(ov.contains({2, 0}));
+    EXPECT_EQ(ov.get({0, 0})->get(), 42);
+    EXPECT_EQ(ov.get({1, 0})->get(), 7);
+    EXPECT_EQ(ov.get({2, 0}).error(), grid_error::OutOfBounds);
+}
+
+TEST(OffsetView, MutationsDelegateToTranslatedPosition) {
+    dense_grid<2, int> g({6, 6});
+    auto ov = offset(g, std::array<std::uint32_t, 2>{2, 3}, std::array<std::uint32_t, 2>{2, 2});
+
+    ASSERT_TRUE(ov.set({0, 1}, 99).has_value());
+    EXPECT_EQ(g.get({2, 4})->get(), 99);
+
+    auto r = ov.get_mut({0, 1});
+    ASSERT_TRUE(r.has_value());
+    r->get() = 100;
+    EXPECT_EQ(g.get({2, 4})->get(), 100);
+
+    ASSERT_TRUE(ov.remove({0, 1}).has_value());
+    EXPECT_FALSE(g.contains({2, 4}));
+}
+
+TEST(OffsetView, IterationReturnsViewRelativePositions) {
+    dense_grid<2, int> g({6, 6});
+    g.set({2, 3}, 11);
+    g.set({3, 4}, 22);
+    g.set({4, 4}, 33);
+
+    auto ov = offset(g, std::array<std::uint32_t, 2>{2, 3}, std::array<std::uint32_t, 2>{2, 2});
+
+    std::vector<std::array<std::uint32_t, 2>> positions;
+    std::vector<int> values;
+    for (auto&& [pos, value] : ov.iter()) {
+        positions.push_back(pos);
+        values.push_back(value);
+    }
+
+    ASSERT_EQ(positions.size(), 2u);
+    EXPECT_EQ(positions[0], (std::array<std::uint32_t, 2>{0, 0}));
+    EXPECT_EQ(positions[1], (std::array<std::uint32_t, 2>{1, 1}));
+    EXPECT_EQ(values[0], 11);
+    EXPECT_EQ(values[1], 22);
+}
+
+TEST(OffsetView, SupportsSignedOrigins) {
+    tree_extendible_grid<2, int> g;
+    g.set({-2, 3}, 5);
+
+    auto ov = offset(g, std::array<std::int32_t, 2>{-2, 3}, std::array<std::uint32_t, 2>{3, 3});
+
+    EXPECT_TRUE(ov.contains({0, 0}));
+    EXPECT_EQ(ov.get({0, 0})->get(), 5);
+    ASSERT_TRUE(ov.set({2, 2}, 9).has_value());
+    EXPECT_EQ(g.get({0, 5})->get(), 9);
+    EXPECT_EQ(ov.get({-1, 0}).error(), grid_error::OutOfBounds);
 }
 
 // ────────────────────────────────────────────────────────────

@@ -1,4 +1,13 @@
+#ifndef EPIX_IMPORT_STD
+#include <cmath>
+#include <cstdint>
+#include <optional>
+#include <random>
+#include <vector>
+#endif
+#ifdef EPIX_IMPORT_STD
 import std;
+#endif
 import glm;
 import webgpu;
 import epix.core;

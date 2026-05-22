@@ -1,3 +1,13 @@
+module;
+
+#ifndef EPIX_IMPORT_STD
+#include <cstdint>
+#include <optional>
+#include <span>
+#include <utility>
+#include <vector>
+#endif
+
 export module epix.render:graph.context;
 
 import webgpu;

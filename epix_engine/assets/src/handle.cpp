@@ -1,5 +1,8 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <variant>
+#endif
 #include <spdlog/spdlog.h>
 
 module epix.assets;

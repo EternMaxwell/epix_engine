@@ -182,7 +182,7 @@ TEST(PolygonViaView, FilterViewWithPredicate) {
     g.set({1, 2}, 0);  // filtered out
     g.set({2, 2}, 5);
 
-    auto fv   = filter(g, [](const int& v) { return v > 0; });
+    auto fv   = epix::ext::grid::views::filter(g, [](const int& v) { return v > 0; });
     auto ring = find_outline(fv);
     EXPECT_FALSE(ring.empty());
 }
@@ -193,7 +193,8 @@ TEST(PolygonViaView, ShadowViewWithPredicate) {
     g.set({1, 1}, 2);
     g.set({2, 2}, 3);
 
-    auto sv   = shadow(g, [](const std::array<std::uint32_t, 2>& p) { return p[0] < 2 && p[1] < 2; });
+    auto sv =
+        epix::ext::grid::views::shadow(g, [](const std::array<std::uint32_t, 2>& p) { return p[0] < 2 && p[1] < 2; });
     auto ring = find_outline(sv);
     EXPECT_FALSE(ring.empty());
 }

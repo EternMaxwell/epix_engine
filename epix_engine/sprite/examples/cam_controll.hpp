@@ -1,5 +1,9 @@
 ﻿#pragma once
 
+#ifndef EPIX_IMPORT_STD
+#include <cmath>
+#endif
+
 struct CamControllPlugin {
     void attach(core::App& app) {
         app.add_systems(

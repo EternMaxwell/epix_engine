@@ -1,3 +1,9 @@
+module;
+
+#ifndef EPIX_IMPORT_STD
+#include <optional>
+#endif
+
 export module epix.window;
 
 export import :events;
@@ -45,4 +51,4 @@ void log_events(core::EventReader<WindowResized> resized,
                 core::EventReader<ReceivedCharacter> received_character,
                 core::EventReader<WindowFocused> window_focused,
                 core::Query<core::Item<const Window&>> windows);
-}  // namespace window
+}  // namespace epix::window

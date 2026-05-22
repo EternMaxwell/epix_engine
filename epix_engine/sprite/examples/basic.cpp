@@ -1,4 +1,11 @@
-﻿import std;
+﻿#ifndef EPIX_IMPORT_STD
+#include <cstdint>
+#include <utility>
+#include <vector>
+#endif
+#ifdef EPIX_IMPORT_STD
+import std;
+#endif
 import epix.core;
 import epix.window;
 import epix.glfw.core;

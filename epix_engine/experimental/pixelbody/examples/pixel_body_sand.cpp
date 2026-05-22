@@ -6,6 +6,7 @@
 #include <box2d/types.h>
 #include <imgui.h>
 #ifndef EPIX_IMPORT_STD
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>

@@ -1,5 +1,21 @@
 ﻿module;
 
+#ifndef EPIX_IMPORT_STD
+#include <array>
+#include <cctype>
+#include <charconv>
+#include <cstdint>
+#include <expected>
+#include <filesystem>
+#include <optional>
+#include <span>
+#include <string>
+#include <string_view>
+#include <system_error>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+#endif
 #include <spdlog/spdlog.h>
 
 module epix.shader;

@@ -1,5 +1,10 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <ranges>
+#include <unordered_set>
+#include <variant>
+#endif
 #include <GLFW/glfw3.h>
 #include <spdlog/spdlog.h>
 

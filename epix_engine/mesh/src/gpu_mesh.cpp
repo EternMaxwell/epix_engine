@@ -1,5 +1,13 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <optional>
+#include <ranges>
+#endif
+
 #include <spdlog/spdlog.h>
 
 module epix.mesh;

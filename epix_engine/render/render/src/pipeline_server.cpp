@@ -1,5 +1,18 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <chrono>
+#include <cstddef>
+#include <cstdint>
+#include <expected>
+#include <future>
+#include <memory>
+#include <optional>
+#include <string_view>
+#include <thread>
+#include <utility>
+#include <variant>
+#endif
 #include <spdlog/spdlog.h>
 
 module epix.render;

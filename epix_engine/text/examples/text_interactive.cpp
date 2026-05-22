@@ -1,4 +1,15 @@
+#ifndef EPIX_IMPORT_STD
+#include <cmath>
+#include <cstdint>
+#include <format>
+#include <optional>
+#include <string_view>
+#include <utility>
+#include <vector>
+#endif
+#ifdef EPIX_IMPORT_STD
 import std;
+#endif
 import webgpu;
 import epix.assets;
 import epix.core;

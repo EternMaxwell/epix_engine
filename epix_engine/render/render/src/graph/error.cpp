@@ -1,3 +1,12 @@
+module;
+
+#ifndef EPIX_IMPORT_STD
+#include <cstdint>
+#include <format>
+#include <string>
+#include <variant>
+#endif
+
 module epix.render;
 
 import :graph.error;
@@ -60,4 +69,4 @@ std::string GraphError::to_string() const {
         *this);
 }
 
-    }  // namespace epix::render::graph
+}  // namespace epix::render::graph

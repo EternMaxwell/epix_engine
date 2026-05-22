@@ -6,6 +6,8 @@
 #include <cstdint>
 #include <future>
 #include <optional>
+#include <ranges>
+#include <variant>
 #include <vector>
 #endif
 #include <spdlog/spdlog.h>

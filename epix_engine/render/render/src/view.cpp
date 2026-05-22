@@ -1,5 +1,11 @@
 module;
 
+#ifndef EPIX_IMPORT_STD
+#include <cstring>
+#include <optional>
+#include <string_view>
+#include <variant>
+#endif
 #include <spdlog/spdlog.h>
 
 module epix.render;

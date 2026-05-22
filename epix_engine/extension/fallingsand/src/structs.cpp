@@ -9,6 +9,7 @@
 #include <limits>
 #include <optional>
 #include <random>
+#include <ranges>
 #include <utility>
 #include <variant>
 #include <vector>
