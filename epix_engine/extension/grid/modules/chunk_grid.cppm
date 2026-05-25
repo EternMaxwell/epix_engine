@@ -57,15 +57,15 @@ class ChunkLayer {
     virtual ~ChunkLayer() = default;
 
    private:
-    virtual std::expected<void*, LayerError> get_mut(meta::type_index, std::array<std::uint32_t, Dim>)              = 0;
-    virtual std::expected<const void*, LayerError> get(meta::type_index, std::array<std::uint32_t, Dim>) const      = 0;
-    virtual std::expected<void, LayerError> set_copy(meta::type_index, std::array<std::uint32_t, Dim>, const void*) = 0;
-    virtual std::expected<void, LayerError> set_move(meta::type_index, std::array<std::uint32_t, Dim>, void*)       = 0;
+    virtual std::expected<void*, LayerError> get_mut(meta::type_index, std::array<std::int32_t, Dim>)              = 0;
+    virtual std::expected<const void*, LayerError> get(meta::type_index, std::array<std::int32_t, Dim>) const      = 0;
+    virtual std::expected<void, LayerError> set_copy(meta::type_index, std::array<std::int32_t, Dim>, const void*) = 0;
+    virtual std::expected<void, LayerError> set_move(meta::type_index, std::array<std::int32_t, Dim>, void*)       = 0;
     /// might not actually remove the cell based on the implementation, might be reset.
-    virtual std::expected<void, LayerError> remove(meta::type_index, std::array<std::uint32_t, Dim>) = 0;
-    virtual std::expected<utils::input_iterable<std::pair<std::array<std::uint32_t, Dim>, const void*>>, LayerError>
+    virtual std::expected<void, LayerError> remove(meta::type_index, std::array<std::int32_t, Dim>) = 0;
+    virtual std::expected<utils::input_iterable<std::pair<std::array<std::int32_t, Dim>, const void*>>, LayerError>
         try_iter_type(meta::type_index) const = 0;
-    virtual std::expected<utils::input_iterable<std::pair<std::array<std::uint32_t, Dim>, void*>>, LayerError>
+    virtual std::expected<utils::input_iterable<std::pair<std::array<std::int32_t, Dim>, void*>>, LayerError>
         try_iter_type_mut(meta::type_index) = 0;
 
     template <std::size_t D>
@@ -90,7 +90,7 @@ class ChunkLayer {
     /** @brief Checks whether local chunk coordinates are valid.
      * @param pos Local cell position within the chunk.
      */
-    bool in_bounds(std::array<std::uint32_t, Dim> pos) const {
+    bool in_bounds(std::array<std::int32_t, Dim> pos) const {
         for (std::size_t i = 0; i < Dim; i++) {
             if (pos[i] >= width()) return false;
         }
@@ -102,7 +102,7 @@ class ChunkLayer {
      * @param value Value to copy or move into storage.
      */
     template <typename T>
-    std::expected<void, LayerError> set(std::array<std::uint32_t, Dim> pos, T&& value) {
+    std::expected<void, LayerError> set(std::array<std::int32_t, Dim> pos, T&& value) {
         using type = std::remove_cvref_t<T>;
         if constexpr (std::is_rvalue_reference_v<T>) {
             return set_move(meta::type_id<type>(), pos, static_cast<void*>(std::addressof(value)));
@@ -115,7 +115,7 @@ class ChunkLayer {
      * Values are applied in argument order, and the last operation result is returned.
      */
     template <typename... Args>
-    std::expected<void, LayerError> set_multi(std::array<std::uint32_t, Dim> pos, Args&&... value) {
+    std::expected<void, LayerError> set_multi(std::array<std::int32_t, Dim> pos, Args&&... value) {
         std::expected<void, LayerError> result = std::unexpected(LayerError::UnsupportedType);
         ((result = set(pos, std::forward<Args>(value))), ...);
         return result;
@@ -124,7 +124,7 @@ class ChunkLayer {
      * @tparam T Requested value type.
      */
     template <typename T>
-    std::expected<std::reference_wrapper<T>, LayerError> get_mut(std::array<std::uint32_t, Dim> pos) {
+    std::expected<std::reference_wrapper<T>, LayerError> get_mut(std::array<std::int32_t, Dim> pos) {
         return get_mut(meta::type_id<std::remove_cvref_t<T>>(), pos).transform([](void* ptr) {
             return std::ref(*static_cast<T*>(ptr));
         });
@@ -133,7 +133,7 @@ class ChunkLayer {
      * @tparam T Requested value type.
      */
     template <typename T>
-    std::expected<std::reference_wrapper<const T>, LayerError> get(std::array<std::uint32_t, Dim> pos) const {
+    std::expected<std::reference_wrapper<const T>, LayerError> get(std::array<std::int32_t, Dim> pos) const {
         return get(meta::type_id<std::remove_cvref_t<T>>(), pos).transform([](const void* ptr) {
             return std::cref(*static_cast<const T*>(ptr));
         });
@@ -142,11 +142,11 @@ class ChunkLayer {
      * @tparam T Value type to remove.
      */
     template <typename T>
-    std::expected<void, LayerError> remove(std::array<std::uint32_t, Dim> pos) {
+    std::expected<void, LayerError> remove(std::array<std::int32_t, Dim> pos) {
         return remove(meta::type_id<std::remove_cvref_t<T>>(), pos);
     }
     /** @brief Removes all supported value types at a local cell position. */
-    std::expected<void, LayerError> remove_all(std::array<std::uint32_t, Dim> pos) {
+    std::expected<void, LayerError> remove_all(std::array<std::int32_t, Dim> pos) {
         std::expected<void, LayerError> result = std::unexpected(LayerError::UnsupportedType);
         for (const auto& type : supported_types()) {
             auto res = remove(type, pos);
@@ -162,8 +162,8 @@ class ChunkLayer {
     auto try_iter() const {
         return try_iter_type(meta::type_id<std::remove_cvref_t<T>>()).transform([](auto iterable) {
             return std::views::transform(iterable, [](auto&& pair) {
-                return std::pair<std::array<std::uint32_t, Dim>, const T&>(std::move(pair.first),
-                                                                           *static_cast<const T*>(pair.second));
+                return std::pair<std::array<std::int32_t, Dim>, const T&>(std::move(pair.first),
+                                                                          *static_cast<const T*>(pair.second));
             });
         });
     }
@@ -181,8 +181,8 @@ class ChunkLayer {
     auto try_iter_mut() {
         return try_iter_type_mut(meta::type_id<std::remove_cvref_t<T>>()).transform([](auto iterable) {
             return std::views::transform(iterable, [](auto&& pair) {
-                return std::pair<std::array<std::uint32_t, Dim>, T&>(std::move(pair.first),
-                                                                     *static_cast<T*>(pair.second));
+                return std::pair<std::array<std::int32_t, Dim>, T&>(std::move(pair.first),
+                                                                    *static_cast<T*>(pair.second));
             });
         });
     }
@@ -216,38 +216,38 @@ class Chunk : public ChunkLayer<Dim> {
     std::vector<std::unique_ptr<ChunkLayer<Dim>>> m_layers;
     std::unordered_map<meta::type_index, std::size_t> m_type_to_layer;
 
-    std::expected<void*, LayerError> get_mut(meta::type_index type, std::array<std::uint32_t, Dim> pos) override {
+    std::expected<void*, LayerError> get_mut(meta::type_index type, std::array<std::int32_t, Dim> pos) override {
         if (!m_type_to_layer.contains(type)) return std::unexpected(LayerError::UnsupportedType);
         return m_layers.at(m_type_to_layer.at(type))->get_mut(type, pos);
     }
     std::expected<const void*, LayerError> get(meta::type_index type,
-                                               std::array<std::uint32_t, Dim> pos) const override {
+                                               std::array<std::int32_t, Dim> pos) const override {
         if (!m_type_to_layer.contains(type)) return std::unexpected(LayerError::UnsupportedType);
         return m_layers.at(m_type_to_layer.at(type))->get(type, pos);
     }
     std::expected<void, LayerError> set_copy(meta::type_index type,
-                                             std::array<std::uint32_t, Dim> pos,
+                                             std::array<std::int32_t, Dim> pos,
                                              const void* value) override {
         if (!m_type_to_layer.contains(type)) return std::unexpected(LayerError::UnsupportedType);
         return m_layers.at(m_type_to_layer.at(type))->set_copy(type, pos, value);
     }
     std::expected<void, LayerError> set_move(meta::type_index type,
-                                             std::array<std::uint32_t, Dim> pos,
+                                             std::array<std::int32_t, Dim> pos,
                                              void* value) override {
         if (!m_type_to_layer.contains(type)) return std::unexpected(LayerError::UnsupportedType);
         return m_layers.at(m_type_to_layer.at(type))->set_move(type, pos, value);
     }
-    std::expected<void, LayerError> remove(meta::type_index type, std::array<std::uint32_t, Dim> pos) override {
+    std::expected<void, LayerError> remove(meta::type_index type, std::array<std::int32_t, Dim> pos) override {
         if (!m_type_to_layer.contains(type)) return std::unexpected(LayerError::UnsupportedType);
         return m_layers.at(m_type_to_layer.at(type))->remove(type, pos);
     }
-    std::expected<utils::input_iterable<std::pair<std::array<std::uint32_t, Dim>, const void*>>, LayerError>
+    std::expected<utils::input_iterable<std::pair<std::array<std::int32_t, Dim>, const void*>>, LayerError>
     try_iter_type(meta::type_index type) const override {
         if (!m_type_to_layer.contains(type)) return std::unexpected(LayerError::UnsupportedType);
         return m_layers.at(m_type_to_layer.at(type))->try_iter_type(type);
     }
-    std::expected<utils::input_iterable<std::pair<std::array<std::uint32_t, Dim>, void*>>, LayerError>
-    try_iter_type_mut(meta::type_index type) override {
+    std::expected<utils::input_iterable<std::pair<std::array<std::int32_t, Dim>, void*>>, LayerError> try_iter_type_mut(
+        meta::type_index type) override {
         if (!m_type_to_layer.contains(type)) return std::unexpected(LayerError::UnsupportedType);
         return m_layers.at(m_type_to_layer.at(type))->try_iter_type_mut(type);
     }
@@ -340,8 +340,8 @@ struct ExtendibleChunkGrid {
     std::size_t m_chunk_width_shift;
 
     auto chunk_coords(std::array<std::int64_t, Dim> pos) const noexcept
-        -> std::expected<std::tuple<std::array<std::int32_t, Dim>, std::array<std::uint32_t, Dim>>, ChunkGridError> {
-        std::tuple<std::array<std::int32_t, Dim>, std::array<std::uint32_t, Dim>> result;
+        -> std::expected<std::tuple<std::array<std::int32_t, Dim>, std::array<std::int32_t, Dim>>, ChunkGridError> {
+        std::tuple<std::array<std::int32_t, Dim>, std::array<std::int32_t, Dim>> result;
         // if coords don't fit in int32 with width shift, return error, negative allowd
         for (std::size_t i = 0; i < Dim; i++) {
             std::int64_t chunk_coord = pos[i] >> m_chunk_width_shift;
@@ -350,7 +350,7 @@ struct ExtendibleChunkGrid {
                 return std::unexpected(grid_error::OutOfBounds);
             }
             std::get<0>(result)[i] = static_cast<std::int32_t>(chunk_coord);
-            std::get<1>(result)[i] = static_cast<std::uint32_t>(pos[i] & ((1 << m_chunk_width_shift) - 1));
+            std::get<1>(result)[i] = static_cast<std::int32_t>(pos[i] & ((1 << m_chunk_width_shift) - 1));
         }
         return result;
     }
@@ -509,8 +509,8 @@ struct ExtendibleChunkRefGrid {
     std::size_t m_chunk_width_shift;
 
     auto chunk_coords(std::array<std::int64_t, Dim> pos) const noexcept
-        -> std::expected<std::tuple<std::array<std::int32_t, Dim>, std::array<std::uint32_t, Dim>>, ChunkGridError> {
-        std::tuple<std::array<std::int32_t, Dim>, std::array<std::uint32_t, Dim>> result;
+        -> std::expected<std::tuple<std::array<std::int32_t, Dim>, std::array<std::int32_t, Dim>>, ChunkGridError> {
+        std::tuple<std::array<std::int32_t, Dim>, std::array<std::int32_t, Dim>> result;
         // if coords don't fit in int32 with width shift, return error, negative allowd
         for (std::size_t i = 0; i < Dim; i++) {
             std::int64_t chunk_coord = pos[i] >> m_chunk_width_shift;
@@ -519,7 +519,7 @@ struct ExtendibleChunkRefGrid {
                 return std::unexpected(grid_error::OutOfBounds);
             }
             std::get<0>(result)[i] = static_cast<std::int32_t>(chunk_coord);
-            std::get<1>(result)[i] = static_cast<std::uint32_t>(pos[i] & ((1 << m_chunk_width_shift) - 1));
+            std::get<1>(result)[i] = static_cast<std::int32_t>(pos[i] & ((1 << m_chunk_width_shift) - 1));
         }
         return result;
     }
@@ -694,8 +694,8 @@ struct ExtendibleMutChunkRefGrid {
     std::size_t m_chunk_width_shift;
 
     auto chunk_coords(std::array<std::int64_t, Dim> pos) const noexcept
-        -> std::expected<std::tuple<std::array<std::int32_t, Dim>, std::array<std::uint32_t, Dim>>, ChunkGridError> {
-        std::tuple<std::array<std::int32_t, Dim>, std::array<std::uint32_t, Dim>> result;
+        -> std::expected<std::tuple<std::array<std::int32_t, Dim>, std::array<std::int32_t, Dim>>, ChunkGridError> {
+        std::tuple<std::array<std::int32_t, Dim>, std::array<std::int32_t, Dim>> result;
         for (std::size_t i = 0; i < Dim; i++) {
             std::int64_t chunk_coord = pos[i] >> m_chunk_width_shift;
             if (chunk_coord < std::numeric_limits<std::int32_t>::min() ||
@@ -703,7 +703,7 @@ struct ExtendibleMutChunkRefGrid {
                 return std::unexpected(grid_error::OutOfBounds);
             }
             std::get<0>(result)[i] = static_cast<std::int32_t>(chunk_coord);
-            std::get<1>(result)[i] = static_cast<std::uint32_t>(pos[i] & ((1 << m_chunk_width_shift) - 1));
+            std::get<1>(result)[i] = static_cast<std::int32_t>(pos[i] & ((1 << m_chunk_width_shift) - 1));
         }
         return result;
     }
@@ -854,8 +854,8 @@ struct ExtendibleRefChunkRefGrid {
     std::size_t m_chunk_width_shift;
 
     auto chunk_coords(std::array<std::int64_t, Dim> pos) const noexcept
-        -> std::expected<std::tuple<std::array<std::int32_t, Dim>, std::array<std::uint32_t, Dim>>, ChunkGridError> {
-        std::tuple<std::array<std::int32_t, Dim>, std::array<std::uint32_t, Dim>> result;
+        -> std::expected<std::tuple<std::array<std::int32_t, Dim>, std::array<std::int32_t, Dim>>, ChunkGridError> {
+        std::tuple<std::array<std::int32_t, Dim>, std::array<std::int32_t, Dim>> result;
         for (std::size_t i = 0; i < Dim; i++) {
             std::int64_t chunk_coord = pos[i] >> m_chunk_width_shift;
             if (chunk_coord < std::numeric_limits<std::int32_t>::min() ||
@@ -863,7 +863,7 @@ struct ExtendibleRefChunkRefGrid {
                 return std::unexpected(grid_error::OutOfBounds);
             }
             std::get<0>(result)[i] = static_cast<std::int32_t>(chunk_coord);
-            std::get<1>(result)[i] = static_cast<std::uint32_t>(pos[i] & ((1 << m_chunk_width_shift) - 1));
+            std::get<1>(result)[i] = static_cast<std::int32_t>(pos[i] & ((1 << m_chunk_width_shift) - 1));
         }
         return result;
     }
@@ -949,14 +949,14 @@ inline grid_error map_layer_to_grid(LayerError e) noexcept {
  */
 export template <std::size_t Dim, typename T>
 struct chunk_element_const_view {
-    using pos_type  = std::array<std::uint32_t, Dim>;
+    using pos_type  = std::array<std::int32_t, Dim>;
     using cell_type = T;
 
     const Chunk<Dim>& chunk;
 
-    pos_type dimensions() const {
+    std::array<std::uint32_t, Dim> dimensions() const {
         auto w = static_cast<std::uint32_t>(chunk.width());
-        pos_type d;
+        std::array<std::uint32_t, Dim> d;
         d.fill(w);
         return d;
     }
@@ -988,14 +988,14 @@ struct chunk_element_const_view {
  */
 export template <std::size_t Dim, typename T>
 struct chunk_element_view {
-    using pos_type  = std::array<std::uint32_t, Dim>;
+    using pos_type  = std::array<std::int32_t, Dim>;
     using cell_type = T;
 
     Chunk<Dim>& chunk;
 
-    pos_type dimensions() const {
+    std::array<std::uint32_t, Dim> dimensions() const {
         auto w = static_cast<std::uint32_t>(chunk.width());
-        pos_type d;
+        std::array<std::uint32_t, Dim> d;
         d.fill(w);
         return d;
     }
@@ -1117,34 +1117,34 @@ class PackedLayer : public ChunkLayer<Dim> {
     void clear() override { m_grid.clear(); }
 
    private:
-    std::expected<void*, LayerError> get_mut(meta::type_index type, std::array<std::uint32_t, Dim> pos) override {
+    std::expected<void*, LayerError> get_mut(meta::type_index type, std::array<std::int32_t, Dim> pos) override {
         if (type != meta::type_id<T>()) return std::unexpected(LayerError::UnsupportedType);
         return m_grid.get_mut(pos).transform_error(map_err).transform(
             [](std::reference_wrapper<T> ref) { return static_cast<void*>(std::addressof(ref.get())); });
     }
     std::expected<const void*, LayerError> get(meta::type_index type,
-                                               std::array<std::uint32_t, Dim> pos) const override {
+                                               std::array<std::int32_t, Dim> pos) const override {
         if (type != meta::type_id<T>()) return std::unexpected(LayerError::UnsupportedType);
         return m_grid.get(pos).transform_error(map_err).transform(
             [](std::reference_wrapper<const T> ref) { return static_cast<const void*>(std::addressof(ref.get())); });
     }
     std::expected<void, LayerError> set_copy(meta::type_index type,
-                                             std::array<std::uint32_t, Dim> pos,
+                                             std::array<std::int32_t, Dim> pos,
                                              const void* value) override {
         if (type != meta::type_id<T>()) return std::unexpected(LayerError::UnsupportedType);
         return m_grid.set(pos, *static_cast<const T*>(value)).transform_error(map_err).transform([](auto&&) {});
     }
     std::expected<void, LayerError> set_move(meta::type_index type,
-                                             std::array<std::uint32_t, Dim> pos,
+                                             std::array<std::int32_t, Dim> pos,
                                              void* value) override {
         if (type != meta::type_id<T>()) return std::unexpected(LayerError::UnsupportedType);
         return m_grid.set(pos, std::move(*static_cast<T*>(value))).transform_error(map_err).transform([](auto&&) {});
     }
-    std::expected<void, LayerError> remove(meta::type_index type, std::array<std::uint32_t, Dim> pos) override {
+    std::expected<void, LayerError> remove(meta::type_index type, std::array<std::int32_t, Dim> pos) override {
         if (type != meta::type_id<T>()) return std::unexpected(LayerError::UnsupportedType);
         return m_grid.reset(pos).transform_error(map_err);
     }
-    std::expected<utils::input_iterable<std::pair<std::array<std::uint32_t, Dim>, const void*>>, LayerError>
+    std::expected<utils::input_iterable<std::pair<std::array<std::int32_t, Dim>, const void*>>, LayerError>
     try_iter_type(meta::type_index type) const override {
         if (type != meta::type_id<T>()) return std::unexpected(LayerError::UnsupportedType);
         return std::views::transform(m_grid.iter(), [](auto&& pair) {
@@ -1152,8 +1152,8 @@ class PackedLayer : public ChunkLayer<Dim> {
             return std::make_pair(std::move(pos), static_cast<const void*>(std::addressof(value)));
         });
     }
-    std::expected<utils::input_iterable<std::pair<std::array<std::uint32_t, Dim>, void*>>, LayerError>
-    try_iter_type_mut(meta::type_index type) override {
+    std::expected<utils::input_iterable<std::pair<std::array<std::int32_t, Dim>, void*>>, LayerError> try_iter_type_mut(
+        meta::type_index type) override {
         if (type != meta::type_id<T>()) return std::unexpected(LayerError::UnsupportedType);
         return std::views::transform(m_grid.iter_mut(), [](auto&& pair) {
             auto&& [pos, value] = pair;
@@ -1193,34 +1193,34 @@ class TreeLayer : public ChunkLayer<Dim> {
     void clear() override { m_grid.clear(); }
 
    private:
-    std::expected<void*, LayerError> get_mut(meta::type_index type, std::array<std::uint32_t, Dim> pos) override {
+    std::expected<void*, LayerError> get_mut(meta::type_index type, std::array<std::int32_t, Dim> pos) override {
         if (type != meta::type_id<T>()) return std::unexpected(LayerError::UnsupportedType);
         return m_grid.get_mut(pos).transform_error(map_err).transform(
             [](std::reference_wrapper<T> ref) { return static_cast<void*>(std::addressof(ref.get())); });
     }
     std::expected<const void*, LayerError> get(meta::type_index type,
-                                               std::array<std::uint32_t, Dim> pos) const override {
+                                               std::array<std::int32_t, Dim> pos) const override {
         if (type != meta::type_id<T>()) return std::unexpected(LayerError::UnsupportedType);
         return m_grid.get(pos).transform_error(map_err).transform(
             [](std::reference_wrapper<const T> ref) { return static_cast<const void*>(std::addressof(ref.get())); });
     }
     std::expected<void, LayerError> set_copy(meta::type_index type,
-                                             std::array<std::uint32_t, Dim> pos,
+                                             std::array<std::int32_t, Dim> pos,
                                              const void* value) override {
         if (type != meta::type_id<T>()) return std::unexpected(LayerError::UnsupportedType);
         return m_grid.set(pos, *static_cast<const T*>(value)).transform_error(map_err).transform([](auto&&) {});
     }
     std::expected<void, LayerError> set_move(meta::type_index type,
-                                             std::array<std::uint32_t, Dim> pos,
+                                             std::array<std::int32_t, Dim> pos,
                                              void* value) override {
         if (type != meta::type_id<T>()) return std::unexpected(LayerError::UnsupportedType);
         return m_grid.set(pos, std::move(*static_cast<T*>(value))).transform_error(map_err).transform([](auto&&) {});
     }
-    std::expected<void, LayerError> remove(meta::type_index type, std::array<std::uint32_t, Dim> pos) override {
+    std::expected<void, LayerError> remove(meta::type_index type, std::array<std::int32_t, Dim> pos) override {
         if (type != meta::type_id<T>()) return std::unexpected(LayerError::UnsupportedType);
         return m_grid.remove(pos).transform_error(map_err);
     }
-    std::expected<utils::input_iterable<std::pair<std::array<std::uint32_t, Dim>, const void*>>, LayerError>
+    std::expected<utils::input_iterable<std::pair<std::array<std::int32_t, Dim>, const void*>>, LayerError>
     try_iter_type(meta::type_index type) const override {
         if (type != meta::type_id<T>()) return std::unexpected(LayerError::UnsupportedType);
         return std::views::transform(m_grid.iter(), [](auto&& pair) {
@@ -1228,8 +1228,8 @@ class TreeLayer : public ChunkLayer<Dim> {
             return std::make_pair(std::move(pos), static_cast<const void*>(std::addressof(value)));
         });
     }
-    std::expected<utils::input_iterable<std::pair<std::array<std::uint32_t, Dim>, void*>>, LayerError>
-    try_iter_type_mut(meta::type_index type) override {
+    std::expected<utils::input_iterable<std::pair<std::array<std::int32_t, Dim>, void*>>, LayerError> try_iter_type_mut(
+        meta::type_index type) override {
         if (type != meta::type_id<T>()) return std::unexpected(LayerError::UnsupportedType);
         return std::views::transform(m_grid.iter_mut(), [](auto&& pair) {
             auto&& [pos, value] = pair;
@@ -1269,34 +1269,34 @@ class DenseLayer : public ChunkLayer<Dim> {
     void clear() override { m_grid.clear(); }
 
    private:
-    std::expected<void*, LayerError> get_mut(meta::type_index type, std::array<std::uint32_t, Dim> pos) override {
+    std::expected<void*, LayerError> get_mut(meta::type_index type, std::array<std::int32_t, Dim> pos) override {
         if (type != meta::type_id<T>()) return std::unexpected(LayerError::UnsupportedType);
         return m_grid.get_mut(pos).transform_error(map_err).transform(
             [](std::reference_wrapper<T> ref) { return static_cast<void*>(std::addressof(ref.get())); });
     }
     std::expected<const void*, LayerError> get(meta::type_index type,
-                                               std::array<std::uint32_t, Dim> pos) const override {
+                                               std::array<std::int32_t, Dim> pos) const override {
         if (type != meta::type_id<T>()) return std::unexpected(LayerError::UnsupportedType);
         return m_grid.get(pos).transform_error(map_err).transform(
             [](std::reference_wrapper<const T> ref) { return static_cast<const void*>(std::addressof(ref.get())); });
     }
     std::expected<void, LayerError> set_copy(meta::type_index type,
-                                             std::array<std::uint32_t, Dim> pos,
+                                             std::array<std::int32_t, Dim> pos,
                                              const void* value) override {
         if (type != meta::type_id<T>()) return std::unexpected(LayerError::UnsupportedType);
         return m_grid.set(pos, *static_cast<const T*>(value)).transform_error(map_err).transform([](auto&&) {});
     }
     std::expected<void, LayerError> set_move(meta::type_index type,
-                                             std::array<std::uint32_t, Dim> pos,
+                                             std::array<std::int32_t, Dim> pos,
                                              void* value) override {
         if (type != meta::type_id<T>()) return std::unexpected(LayerError::UnsupportedType);
         return m_grid.set(pos, std::move(*static_cast<T*>(value))).transform_error(map_err).transform([](auto&&) {});
     }
-    std::expected<void, LayerError> remove(meta::type_index type, std::array<std::uint32_t, Dim> pos) override {
+    std::expected<void, LayerError> remove(meta::type_index type, std::array<std::int32_t, Dim> pos) override {
         if (type != meta::type_id<T>()) return std::unexpected(LayerError::UnsupportedType);
         return m_grid.remove(pos).transform_error(map_err);
     }
-    std::expected<utils::input_iterable<std::pair<std::array<std::uint32_t, Dim>, const void*>>, LayerError>
+    std::expected<utils::input_iterable<std::pair<std::array<std::int32_t, Dim>, const void*>>, LayerError>
     try_iter_type(meta::type_index type) const override {
         if (type != meta::type_id<T>()) return std::unexpected(LayerError::UnsupportedType);
         return std::views::transform(m_grid.iter(), [](auto&& pair) {
@@ -1304,8 +1304,8 @@ class DenseLayer : public ChunkLayer<Dim> {
             return std::make_pair(std::move(pos), static_cast<const void*>(std::addressof(value)));
         });
     }
-    std::expected<utils::input_iterable<std::pair<std::array<std::uint32_t, Dim>, void*>>, LayerError>
-    try_iter_type_mut(meta::type_index type) override {
+    std::expected<utils::input_iterable<std::pair<std::array<std::int32_t, Dim>, void*>>, LayerError> try_iter_type_mut(
+        meta::type_index type) override {
         if (type != meta::type_id<T>()) return std::unexpected(LayerError::UnsupportedType);
         return std::views::transform(m_grid.iter_mut(), [](auto&& pair) {
             auto&& [pos, value] = pair;
@@ -1345,34 +1345,34 @@ class SparseLayer : public ChunkLayer<Dim> {
     void clear() override { m_grid.clear(); }
 
    private:
-    std::expected<void*, LayerError> get_mut(meta::type_index type, std::array<std::uint32_t, Dim> pos) override {
+    std::expected<void*, LayerError> get_mut(meta::type_index type, std::array<std::int32_t, Dim> pos) override {
         if (type != meta::type_id<T>()) return std::unexpected(LayerError::UnsupportedType);
         return m_grid.get_mut(pos).transform_error(map_err).transform(
             [](std::reference_wrapper<T> ref) { return static_cast<void*>(std::addressof(ref.get())); });
     }
     std::expected<const void*, LayerError> get(meta::type_index type,
-                                               std::array<std::uint32_t, Dim> pos) const override {
+                                               std::array<std::int32_t, Dim> pos) const override {
         if (type != meta::type_id<T>()) return std::unexpected(LayerError::UnsupportedType);
         return m_grid.get(pos).transform_error(map_err).transform(
             [](std::reference_wrapper<const T> ref) { return static_cast<const void*>(std::addressof(ref.get())); });
     }
     std::expected<void, LayerError> set_copy(meta::type_index type,
-                                             std::array<std::uint32_t, Dim> pos,
+                                             std::array<std::int32_t, Dim> pos,
                                              const void* value) override {
         if (type != meta::type_id<T>()) return std::unexpected(LayerError::UnsupportedType);
         return m_grid.set(pos, *static_cast<const T*>(value)).transform_error(map_err).transform([](auto&&) {});
     }
     std::expected<void, LayerError> set_move(meta::type_index type,
-                                             std::array<std::uint32_t, Dim> pos,
+                                             std::array<std::int32_t, Dim> pos,
                                              void* value) override {
         if (type != meta::type_id<T>()) return std::unexpected(LayerError::UnsupportedType);
         return m_grid.set(pos, std::move(*static_cast<T*>(value))).transform_error(map_err).transform([](auto&&) {});
     }
-    std::expected<void, LayerError> remove(meta::type_index type, std::array<std::uint32_t, Dim> pos) override {
+    std::expected<void, LayerError> remove(meta::type_index type, std::array<std::int32_t, Dim> pos) override {
         if (type != meta::type_id<T>()) return std::unexpected(LayerError::UnsupportedType);
         return m_grid.remove(pos).transform_error(map_err);
     }
-    std::expected<utils::input_iterable<std::pair<std::array<std::uint32_t, Dim>, const void*>>, LayerError>
+    std::expected<utils::input_iterable<std::pair<std::array<std::int32_t, Dim>, const void*>>, LayerError>
     try_iter_type(meta::type_index type) const override {
         if (type != meta::type_id<T>()) return std::unexpected(LayerError::UnsupportedType);
         return std::views::transform(m_grid.iter(), [](auto&& pair) {
@@ -1380,8 +1380,8 @@ class SparseLayer : public ChunkLayer<Dim> {
             return std::make_pair(std::move(pos), static_cast<const void*>(std::addressof(value)));
         });
     }
-    std::expected<utils::input_iterable<std::pair<std::array<std::uint32_t, Dim>, void*>>, LayerError>
-    try_iter_type_mut(meta::type_index type) override {
+    std::expected<utils::input_iterable<std::pair<std::array<std::int32_t, Dim>, void*>>, LayerError> try_iter_type_mut(
+        meta::type_index type) override {
         if (type != meta::type_id<T>()) return std::unexpected(LayerError::UnsupportedType);
         return std::views::transform(m_grid.iter_mut(), [](auto&& pair) {
             auto&& [pos, value] = pair;

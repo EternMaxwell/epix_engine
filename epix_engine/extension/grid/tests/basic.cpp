@@ -54,7 +54,7 @@ TEST(PackedGrid, SetAndGet) {
 
 TEST(PackedGrid, GetMut) {
     packed_grid<2, int> g({2, 2}, 0);
-    auto ref = g.get_mut({0, 1});
+    auto ref = g.get({0, 1});
     ASSERT_TRUE(ref.has_value());
     ref->get() = 7;
     EXPECT_EQ(g.get({0, 1})->get(), 7);
@@ -66,7 +66,7 @@ TEST(PackedGrid, UnsafeAccessors) {
     EXPECT_EQ(g.set_unsafe({1, 2}, 11), 11);
     EXPECT_EQ(g.get_unsafe({1, 2}), 11);
 
-    g.get_mut_unsafe({1, 2}) = 23;
+    g.get_unsafe({1, 2}) = 23;
     EXPECT_EQ(g.get_unsafe({1, 2}), 23);
 }
 
@@ -93,8 +93,8 @@ TEST(PackedGrid, ClearResetsToDefault) {
 
     g.clear();
 
-    for (std::uint32_t i = 0; i < 2; i++) {
-        for (std::uint32_t j = 0; j < 3; j++) {
+    for (std::int32_t i = 0; i < 2; i++) {
+        for (std::int32_t j = 0; j < 3; j++) {
             auto cell = g.get({i, j});
             ASSERT_TRUE(cell.has_value());
             EXPECT_EQ(cell->get(), 7);
@@ -112,7 +112,7 @@ TEST(PackedGrid, OutOfBounds) {
 
 TEST(PackedGrid, HigherDimensional) {
     packed_grid<3, int> g({2, 3, 4}, 0);
-    auto ref = g.get_mut({1, 2, 3});
+    auto ref = g.get({1, 2, 3});
     ASSERT_TRUE(ref.has_value());
     ref->get() = 42;
     EXPECT_EQ(g.get({1, 2, 3})->get(), 42);
@@ -121,8 +121,8 @@ TEST(PackedGrid, HigherDimensional) {
 
 TEST(PackedGrid, Iterators) {
     packed_grid<2, int> g({2, 3}, 0);
-    for (std::uint32_t i = 0; i < 2; i++) {
-        for (std::uint32_t j = 0; j < 3; j++) {
+    for (std::int32_t i = 0; i < 2; i++) {
+        for (std::int32_t j = 0; j < 3; j++) {
             g.set({i, j}, static_cast<int>(i * 10 + j));
         }
     }
@@ -134,7 +134,7 @@ TEST(PackedGrid, Iterators) {
     EXPECT_EQ(sum, 36);
 
     std::size_t pos_count = 0;
-    std::set<std::pair<std::uint32_t, std::uint32_t>> visited;
+    std::set<std::pair<std::int32_t, std::int32_t>> visited;
     for (auto&& [p, value] : g.iter()) {
         pos_count++;
         visited.emplace(p[0], p[1]);
@@ -143,8 +143,8 @@ TEST(PackedGrid, Iterators) {
 
     EXPECT_EQ(pos_count, 6u);
     EXPECT_EQ(visited.size(), 6u);
-    for (std::uint32_t i = 0; i < 2; i++) {
-        for (std::uint32_t j = 0; j < 3; j++) {
+    for (std::int32_t i = 0; i < 2; i++) {
+        for (std::int32_t j = 0; j < 3; j++) {
             EXPECT_TRUE(visited.contains({i, j}));
         }
     }
@@ -194,7 +194,7 @@ TEST(DenseGrid, GetEmpty) {
 TEST(DenseGrid, GetMut) {
     dense_grid<2, int> g({3, 3});
     g.set({0, 0}, 5);
-    auto ref = g.get_mut({0, 0});
+    auto ref = g.get({0, 0});
     ASSERT_TRUE(ref.has_value());
     ref->get() = 99;
     EXPECT_EQ(g.get({0, 0})->get(), 99);
@@ -207,7 +207,7 @@ TEST(DenseGrid, UnsafeAccessors) {
     EXPECT_TRUE(g.contains({1, 1}));
     EXPECT_EQ(g.get_unsafe({1, 1}), 7);
 
-    g.get_mut_unsafe({1, 1}) = 19;
+    g.get_unsafe({1, 1}) = 19;
     EXPECT_EQ(g.get_unsafe({1, 1}), 19);
 
     EXPECT_EQ(g.set_unsafe({1, 1}, 31), 31);
@@ -265,13 +265,13 @@ TEST(DenseGrid, Iterators) {
 
 TEST(DenseGrid, MultipleSetRemove) {
     dense_grid<2, int> g({4, 4});
-    for (std::uint32_t i = 0; i < 4; i++) {
-        for (std::uint32_t j = 0; j < 4; j++) {
+    for (std::int32_t i = 0; i < 4; i++) {
+        for (std::int32_t j = 0; j < 4; j++) {
             g.set({i, j}, static_cast<int>(i * 4 + j));
         }
     }
-    for (std::uint32_t i = 0; i < 4; i++) {
-        for (std::uint32_t j = 0; j < 4; j++) {
+    for (std::int32_t i = 0; i < 4; i++) {
+        for (std::int32_t j = 0; j < 4; j++) {
             EXPECT_TRUE(g.contains({i, j}));
             EXPECT_EQ(g.get({i, j})->get(), static_cast<int>(i * 4 + j));
         }
@@ -339,7 +339,7 @@ TEST(SparseGrid, GetEmpty) {
 TEST(SparseGrid, GetMut) {
     sparse_grid<2, int> g({3, 3});
     g.set({0, 0}, 5);
-    g.get_mut({0, 0})->get() = 99;
+    g.get({0, 0})->get() = 99;
     EXPECT_EQ(g.get({0, 0})->get(), 99);
 }
 
@@ -350,7 +350,7 @@ TEST(SparseGrid, UnsafeAccessors) {
     EXPECT_TRUE(g.contains({2, 1}));
     EXPECT_EQ(g.get_unsafe({2, 1}), 13);
 
-    g.get_mut_unsafe({2, 1}) = 29;
+    g.get_unsafe({2, 1}) = 29;
     EXPECT_EQ(g.get_unsafe({2, 1}), 29);
 
     EXPECT_TRUE(g.remove({2, 1}).has_value());
@@ -482,7 +482,7 @@ TEST(DenseExtendibleGrid, SetNew) {
 TEST(DenseExtendibleGrid, GetMut) {
     dense_extendible_grid<2, int> g;
     g.set({0, 0}, 5);
-    g.get_mut({0, 0})->get() = 99;
+    g.get({0, 0})->get() = 99;
     EXPECT_EQ(g.get({0, 0})->get(), 99);
 }
 
@@ -493,7 +493,7 @@ TEST(DenseExtendibleGrid, UnsafeAccessors) {
     EXPECT_TRUE(g.contains({-2, 3}));
     EXPECT_EQ(g.get_unsafe({-2, 3}), 17);
 
-    g.get_mut_unsafe({-2, 3}) = 35;
+    g.get_unsafe({-2, 3}) = 35;
     EXPECT_EQ(g.get_unsafe({-2, 3}), 35);
 
     EXPECT_EQ(g.set_unsafe({-2, 3}, 49), 49);
@@ -628,7 +628,7 @@ TEST(TreeExtendibleGrid, GetEmpty) {
 TEST(TreeExtendibleGrid, GetMut) {
     tree_extendible_grid<2, int> g;
     g.set({0, 0}, 5);
-    g.get_mut({0, 0})->get() = 99;
+    g.get({0, 0})->get() = 99;
     EXPECT_EQ(g.get({0, 0})->get(), 99);
 }
 
@@ -639,7 +639,7 @@ TEST(TreeExtendibleGrid, UnsafeAccessors) {
     EXPECT_TRUE(g.contains({12, 9}));
     EXPECT_EQ(g.get_unsafe({12, 9}), 21);
 
-    g.get_mut_unsafe({12, 9}) = 43;
+    g.get_unsafe({12, 9}) = 43;
     EXPECT_EQ(g.get_unsafe({12, 9}), 43);
 
     EXPECT_EQ(g.set_unsafe({12, 9}, 57), 57);
@@ -786,7 +786,7 @@ TEST(TreeGrid, GetEmptyAndGetMut) {
     tree_grid<2, int> g({4, 4});
     EXPECT_EQ(g.get({0, 0}).error(), grid_error::EmptyCell);
     g.set({2, 2}, 5);
-    g.get_mut({2, 2})->get() = 99;
+    g.get({2, 2})->get() = 99;
     EXPECT_EQ(g.get({2, 2})->get(), 99);
 }
 
@@ -797,7 +797,7 @@ TEST(TreeGrid, UnsafeAccessors) {
     EXPECT_TRUE(g.contains({5, 6}));
     EXPECT_EQ(g.get_unsafe({5, 6}), 15);
 
-    g.get_mut_unsafe({5, 6}) = 27;
+    g.get_unsafe({5, 6}) = 27;
     EXPECT_EQ(g.get_unsafe({5, 6}), 27);
 
     EXPECT_EQ(g.set_unsafe({5, 6}, 39), 39);
@@ -825,7 +825,7 @@ TEST(TreeGrid, OutOfBoundsAndOrigin) {
     EXPECT_EQ(g.get({0, 100}).error(), grid_error::OutOfBounds);
 
     // custom origin
-    tree_grid<2, int> g2({4, 4}, std::array<std::uint32_t, 2>{10, 10});
+    tree_grid<2, int> g2({4, 4}, std::array<std::int32_t, 2>{10, 10});
     EXPECT_TRUE(g2.set({10, 10}, 5).has_value());
     EXPECT_EQ(g2.get({9, 9}).error(), grid_error::OutOfBounds);
 }
@@ -841,8 +841,8 @@ TEST(TreeGrid, IteratorsAndMultipleInserts) {
     EXPECT_EQ(sum, 6);
 
     // multiple inserts
-    for (std::uint32_t i = 0; i < 4; i++) {
-        for (std::uint32_t j = 0; j < 4; j++) {
+    for (std::int32_t i = 0; i < 4; i++) {
+        for (std::int32_t j = 0; j < 4; j++) {
             g.set({i, j}, static_cast<int>(i * 4 + j));
         }
     }

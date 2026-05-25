@@ -34,9 +34,11 @@ namespace epix::ext::grid {
  * external grids and the internal `bit_grid<2>` bitmap.
  */
 template <typename G>
-concept poly_grid = requires(const G& g) {
-    { g.dimensions() } -> std::convertible_to<std::array<std::uint32_t, 2>>;
-    { g.contains(std::declval<const std::array<std::uint32_t, 2>&>()) } -> std::convertible_to<bool>;
+concept poly_grid = requires(G g) {
+    requires std::unsigned_integral<typename grid_dimensions_type<G>::value_type>;
+    requires std::tuple_size_v<grid_dimensions_type<G>> == 2;
+    requires std::tuple_size_v<grid_pos_type<G>> == 2;
+    { g.contains(std::declval<const grid_pos_type<G>&>()) } -> std::convertible_to<bool>;
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -72,11 +74,14 @@ namespace detail {
 
 /// @brief Rasterise any poly_grid into a bit_grid<2> snapshot.
 template <poly_grid G>
-bit_grid<2> rasterise(const G& g) {
+bit_grid<2> rasterise(G&& g) {
+    using coord_type = typename grid_pos_type<G>::value_type;
+    using dim_type   = typename grid_dimensions_type<G>::value_type;
+
     auto dims = g.dimensions();
     bit_grid<2> out(dims);
-    for (std::uint32_t y = 0; y < dims[1]; ++y)
-        for (std::uint32_t x = 0; x < dims[0]; ++x)
+    for (coord_type y = 0; static_cast<dim_type>(y) < dims[1]; ++y)
+        for (coord_type x = 0; static_cast<dim_type>(x) < dims[0]; ++x)
             if (g.contains({x, y})) (void)out.set({x, y});
     return out;
 }
@@ -87,12 +92,8 @@ inline bit_grid<2> get_outland(const bit_grid<2>& g, bool include_diagonal = fal
     bit_grid<2> outland(dims);
     std::stack<std::pair<std::int32_t, std::int32_t>> stack;
 
-    auto gc = [&](const bit_grid<2>& gr, std::int32_t x, std::int32_t y) {
-        return gr.contains({static_cast<std::uint32_t>(x), static_cast<std::uint32_t>(y)});
-    };
-    auto gs = [&](bit_grid<2>& gr, std::int32_t x, std::int32_t y) {
-        (void)gr.set({static_cast<std::uint32_t>(x), static_cast<std::uint32_t>(y)});
-    };
+    auto gc       = [&](const bit_grid<2>& gr, std::int32_t x, std::int32_t y) { return gr.contains({x, y}); };
+    auto gs       = [&](bit_grid<2>& gr, std::int32_t x, std::int32_t y) { (void)gr.set({x, y}); };
     auto inbounds = [&](std::int32_t x, std::int32_t y) {
         return x >= 0 && y >= 0 && static_cast<std::uint32_t>(x) < dims[0] && static_cast<std::uint32_t>(y) < dims[1];
     };
@@ -136,12 +137,8 @@ inline std::vector<bit_grid<2>> split(const bit_grid<2>& g, bool include_diagona
     std::vector<bit_grid<2>> components;
     bit_grid<2> visited = get_outland(g, include_diagonal);
 
-    auto gc = [&](const bit_grid<2>& gr, std::int32_t x, std::int32_t y) {
-        return gr.contains({static_cast<std::uint32_t>(x), static_cast<std::uint32_t>(y)});
-    };
-    auto gs = [&](bit_grid<2>& gr, std::int32_t x, std::int32_t y) {
-        (void)gr.set({static_cast<std::uint32_t>(x), static_cast<std::uint32_t>(y)});
-    };
+    auto gc       = [&](const bit_grid<2>& gr, std::int32_t x, std::int32_t y) { return gr.contains({x, y}); };
+    auto gs       = [&](bit_grid<2>& gr, std::int32_t x, std::int32_t y) { (void)gr.set({x, y}); };
     auto inbounds = [&](std::int32_t x, std::int32_t y) {
         return x >= 0 && y >= 0 && static_cast<std::uint32_t>(x) < dims[0] && static_cast<std::uint32_t>(y) < dims[1];
     };
@@ -196,8 +193,8 @@ export using BinaryGrid = bit_grid<2>;
 
 /// @brief Rasterise any 2-D any_grid into a BinaryGrid snapshot.
 export template <poly_grid G>
-BinaryGrid rasterise(const G& g) {
-    return detail::rasterise(g);
+BinaryGrid rasterise(G&& g) {
+    return detail::rasterise(std::forward<G>(g));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -212,30 +209,32 @@ BinaryGrid rasterise(const G& g) {
  * @return Outline as a Ring of integer vertex coordinates.  Empty if grid is empty.
  */
 export template <poly_grid G>
-Ring find_outline(const G& grid, bool include_diagonal = false) {
+Ring find_outline(G&& grid, bool include_diagonal = false) {
+    using coord_type = typename grid_pos_type<G>::value_type;
+    using dim_type   = typename grid_dimensions_type<G>::value_type;
+
     Ring out;
     static constexpr std::array<glm::ivec2, 4> move    = {glm::ivec2(-1, 0), glm::ivec2(0, 1), glm::ivec2(1, 0),
                                                           glm::ivec2(0, -1)};
     static constexpr std::array<glm::ivec2, 4> offsets = {glm::ivec2{-1, -1}, glm::ivec2{-1, 0}, glm::ivec2{0, 0},
                                                           glm::ivec2{0, -1}};
     auto dims                                          = grid.dimensions();
-    auto gc                                            = [&](std::int32_t x, std::int32_t y) -> bool {
-        if (x < 0 || y < 0 || static_cast<std::uint32_t>(x) >= dims[0] || static_cast<std::uint32_t>(y) >= dims[1])
-            return false;
-        return grid.contains({static_cast<std::uint32_t>(x), static_cast<std::uint32_t>(y)});
+    auto gc                                            = [&](coord_type x, coord_type y) -> bool {
+        if (x < 0 || y < 0 || static_cast<dim_type>(x) >= dims[0] || static_cast<dim_type>(y) >= dims[1]) return false;
+        return grid.contains({x, y});
     };
-    glm::ivec2 start(-1, -1);
-    for (std::int32_t y = 0; y < static_cast<std::int32_t>(dims[1]) && start.x == -1; ++y)
-        for (std::int32_t x = 0; x < static_cast<std::int32_t>(dims[0]); ++x)
+    glm::vec<2, coord_type> start(-1, -1);
+    for (coord_type y = 0; static_cast<dim_type>(y) < dims[1] && start.x == -1; ++y)
+        for (coord_type x = 0; static_cast<dim_type>(x) < dims[0]; ++x)
             if (gc(x, y)) {
                 start = {x, y};
                 break;
             }
     if (start.x == -1) return out;
-    glm::ivec2 current = start;
-    int dir            = 0;
+    glm::vec<2, coord_type> current = start;
+    int dir                         = 0;
     do {
-        out.points.push_back(current);
+        out.points.push_back(glm::ivec2(static_cast<int>(current.x), static_cast<int>(current.y)));
         for (int ndir = (include_diagonal ? dir + 3 : dir + 1) % 4; ndir != (dir + 2) % 4;
              ndir     = (include_diagonal ? ndir + 1 : ndir + 3) % 4) {
             auto outside = current + offsets[ndir];
@@ -256,14 +255,14 @@ Ring find_outline(const G& grid, bool include_diagonal = false) {
  * Each ring is in CCW order (mapbox::earcut-friendly).
  */
 export template <poly_grid G>
-std::vector<Ring> find_holes(const G& grid, bool include_diagonal = false) {
+std::vector<Ring> find_holes(G&& grid, bool include_diagonal = false) {
     auto bg      = detail::rasterise(grid);
     auto dims    = bg.dimensions();
     auto outland = detail::get_outland(bg, !include_diagonal);
     bit_grid<2> voids(dims);
-    for (std::uint32_t y = 0; y < dims[1]; ++y)
-        for (std::uint32_t x = 0; x < dims[0]; ++x) {
-            std::array<std::uint32_t, 2> p{x, y};
+    for (std::int32_t y = 0; static_cast<std::uint32_t>(y) < dims[1]; ++y)
+        for (std::int32_t x = 0; static_cast<std::uint32_t>(x) < dims[0]; ++x) {
+            std::array<std::int32_t, 2> p{x, y};
             if (!bg.contains(p) && !outland.contains(p)) (void)voids.set(p);
         }
     auto components = detail::split(voids, !include_diagonal);
@@ -349,7 +348,7 @@ export inline Ring douglas_peucker(std::span<const glm::ivec2> pts, float epsilo
  * use @ref get_polygons_multi for multi-component grids.
  */
 export template <poly_grid G>
-Polygon get_polygon(const G& grid, bool include_diagonal = false) {
+Polygon get_polygon(G&& grid, bool include_diagonal = false) {
     Polygon p;
     p.outer = find_outline(grid, include_diagonal);
     if (p.outer.empty()) return p;
@@ -359,7 +358,7 @@ Polygon get_polygon(const G& grid, bool include_diagonal = false) {
 
 /** @brief Like @ref get_polygon but simplifies all rings via Douglas–Peucker. */
 export template <poly_grid G>
-Polygon get_polygon_simplified(const G& grid, float epsilon = 1.0f, bool include_diagonal = false) {
+Polygon get_polygon_simplified(G&& grid, float epsilon = 1.0f, bool include_diagonal = false) {
     Polygon p = get_polygon(grid, include_diagonal);
     if (p.empty()) return p;
     p.outer = douglas_peucker(p.outer.points, epsilon);
@@ -369,7 +368,7 @@ Polygon get_polygon_simplified(const G& grid, float epsilon = 1.0f, bool include
 
 /** @brief Extract one polygon per connected component of @p grid. */
 export template <poly_grid G>
-std::vector<Polygon> get_polygons_multi(const G& grid, bool include_diagonal = false) {
+std::vector<Polygon> get_polygons_multi(G&& grid, bool include_diagonal = false) {
     auto bg    = detail::rasterise(grid);
     auto comps = detail::split(bg, include_diagonal);
     std::vector<Polygon> result;
@@ -380,7 +379,7 @@ std::vector<Polygon> get_polygons_multi(const G& grid, bool include_diagonal = f
 
 /** @brief Extract one simplified polygon per connected component of @p grid. */
 export template <poly_grid G>
-std::vector<Polygon> get_polygons_simplified_multi(const G& grid, float epsilon = 1.0f, bool include_diagonal = false) {
+std::vector<Polygon> get_polygons_simplified_multi(G&& grid, float epsilon = 1.0f, bool include_diagonal = false) {
     auto bg    = detail::rasterise(grid);
     auto comps = detail::split(bg, include_diagonal);
     std::vector<Polygon> result;

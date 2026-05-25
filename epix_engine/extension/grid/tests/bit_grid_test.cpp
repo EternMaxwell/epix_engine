@@ -25,11 +25,9 @@ using namespace epix::ext::grid;
 #endif
 // Helpers
 // ============================================================
-static constexpr std::array<std::uint32_t, 1> pos1(std::uint32_t x) { return {x}; }
-static constexpr std::array<std::uint32_t, 2> pos2(std::uint32_t x, std::uint32_t y) { return {x, y}; }
-static constexpr std::array<std::uint32_t, 3> pos3(std::uint32_t x, std::uint32_t y, std::uint32_t z) {
-    return {x, y, z};
-}
+static constexpr std::array<std::int32_t, 1> pos1(std::int32_t x) { return {x}; }
+static constexpr std::array<std::int32_t, 2> pos2(std::int32_t x, std::int32_t y) { return {x, y}; }
+static constexpr std::array<std::int32_t, 3> pos3(std::int32_t x, std::int32_t y, std::int32_t z) { return {x, y, z}; }
 
 // ============================================================
 // 1D tests
@@ -99,7 +97,7 @@ TEST(BitGrid1D, ResetClearsAll) {
 
 TEST(BitGrid1D, CountOneByte) {
     bit_grid<1> g({8});
-    for (std::uint32_t i = 0; i < 8; ++i) g.set(pos1(i));
+    for (std::int32_t i = 0; i < 8; ++i) g.set(pos1(i));
     EXPECT_EQ(g.count(), 8u);
 }
 
@@ -107,7 +105,7 @@ TEST(BitGrid1D, CountNonMultipleOf8NoPaddingLeak) {
     // dim0=5: bits 5,6,7 are padding — set them manually to confirm count ignores padding
     // (bit_grid uses offset() for set, which bounds-checks, so padding cannot be set via API)
     bit_grid<1> g({5});
-    for (std::uint32_t i = 0; i < 5; ++i) g.set(pos1(i));
+    for (std::int32_t i = 0; i < 5; ++i) g.set(pos1(i));
     EXPECT_EQ(g.count(), 5u);
 }
 
@@ -178,7 +176,7 @@ TEST(BitGrid1D, BitNot) {
     auto n = ~g;
     EXPECT_FALSE(n.contains(pos1(0)));
     EXPECT_FALSE(n.contains(pos1(7)));
-    for (std::uint32_t i = 1; i <= 6; ++i) EXPECT_TRUE(n.contains(pos1(i)));
+    for (std::int32_t i = 1; i <= 6; ++i) EXPECT_TRUE(n.contains(pos1(i)));
     EXPECT_EQ(n.count(), 6u);
 }
 
@@ -323,7 +321,7 @@ TEST(BitGrid1D, IterSet) {
     g.set(pos1(1));
     g.set(pos1(4));
     g.set(pos1(7));
-    std::vector<std::array<std::uint32_t, 1>> result;
+    std::vector<std::array<std::int32_t, 1>> result;
     for (auto p : g.iter_set()) result.push_back(p);
     std::sort(result.begin(), result.end());
     ASSERT_EQ(result.size(), 3u);
@@ -336,7 +334,7 @@ TEST(BitGrid1D, IterUnset) {
     bit_grid<1> g({4});
     g.set(pos1(1));
     g.set(pos1(3));
-    std::vector<std::array<std::uint32_t, 1>> result;
+    std::vector<std::array<std::int32_t, 1>> result;
     for (auto p : g.iter_unset()) result.push_back(p);
     std::sort(result.begin(), result.end());
     ASSERT_EQ(result.size(), 2u);
@@ -346,7 +344,7 @@ TEST(BitGrid1D, IterUnset) {
 
 TEST(BitGrid1D, IterSetEmpty) {
     bit_grid<1> g({8});
-    std::vector<std::array<std::uint32_t, 1>> result;
+    std::vector<std::array<std::int32_t, 1>> result;
     for (auto p : g.iter_set()) result.push_back(p);
     EXPECT_TRUE(result.empty());
 }
@@ -363,7 +361,7 @@ TEST(BitGrid1D, IntersectionView) {
     b.set(pos1(5));
     b.set(pos1(7));
     auto c = a.intersection(b);
-    std::vector<std::array<std::uint32_t, 1>> result;
+    std::vector<std::array<std::int32_t, 1>> result;
     for (auto p : c) result.push_back(p);
     std::sort(result.begin(), result.end());
     ASSERT_EQ(result.size(), 2u);
@@ -378,7 +376,7 @@ TEST(BitGrid1D, UnionView) {
     b.set(pos1(3));
     b.set(pos1(5));
     auto c = a.set_union(b);
-    std::vector<std::array<std::uint32_t, 1>> result;
+    std::vector<std::array<std::int32_t, 1>> result;
     for (auto p : c) result.push_back(p);
     std::sort(result.begin(), result.end());
     ASSERT_EQ(result.size(), 3u);
@@ -394,7 +392,7 @@ TEST(BitGrid1D, DifferenceView) {
     a.set(pos1(5));
     b.set(pos1(3));
     auto c = a.difference(b);
-    std::vector<std::array<std::uint32_t, 1>> result;
+    std::vector<std::array<std::int32_t, 1>> result;
     for (auto p : c) result.push_back(p);
     std::sort(result.begin(), result.end());
     ASSERT_EQ(result.size(), 2u);
@@ -409,7 +407,7 @@ TEST(BitGrid1D, SymmetricDifferenceView) {
     b.set(pos1(3));
     b.set(pos1(5));
     auto c = a.symmetric_difference(b);
-    std::vector<std::array<std::uint32_t, 1>> result;
+    std::vector<std::array<std::int32_t, 1>> result;
     for (auto p : c) result.push_back(p);
     std::sort(result.begin(), result.end());
     ASSERT_EQ(result.size(), 2u);
@@ -454,8 +452,8 @@ TEST(BitGrid2D, NonMultipleOf8Width) {
     // width=5: row_stride=1; each row occupies 1 byte with 3 padding bits
     bit_grid<2> g({5, 3});
     EXPECT_EQ(g.count(), 0u);
-    for (std::uint32_t row = 0; row < 3; ++row)
-        for (std::uint32_t col = 0; col < 5; ++col) g.set(pos2(col, row));
+    for (std::int32_t row = 0; row < 3; ++row)
+        for (std::int32_t col = 0; col < 5; ++col) g.set(pos2(col, row));
     EXPECT_EQ(g.count(), 15u);
 }
 
@@ -489,7 +487,7 @@ TEST(BitGrid2D, IterSet2D) {
     g.set(pos2(0, 0));
     g.set(pos2(2, 1));
     g.set(pos2(3, 3));
-    std::vector<std::array<std::uint32_t, 2>> result;
+    std::vector<std::array<std::int32_t, 2>> result;
     for (auto p : g.iter_set()) result.push_back(p);
     EXPECT_EQ(result.size(), 3u);
     auto has = [&](auto p) { return std::find(result.begin(), result.end(), p) != result.end(); };
@@ -509,9 +507,9 @@ TEST(BitGrid3D, Constructor) {
 
 TEST(BitGrid3D, SetAllAndCount) {
     bit_grid<3> g({4, 3, 2});
-    for (std::uint32_t z = 0; z < 2; ++z)
-        for (std::uint32_t y = 0; y < 3; ++y)
-            for (std::uint32_t x = 0; x < 4; ++x) g.set(pos3(x, y, z));
+    for (std::int32_t z = 0; z < 2; ++z)
+        for (std::int32_t y = 0; y < 3; ++y)
+            for (std::int32_t x = 0; x < 4; ++x) g.set(pos3(x, y, z));
     EXPECT_EQ(g.count(), 24u);
 }
 
@@ -528,9 +526,9 @@ TEST(BitGrid3D, IndexToPosRoundTrip) {
     bit_grid<3> g({5, 4, 3});
     // Set positions where (x+y+z) is even
     std::size_t expected = 0;
-    for (std::uint32_t z = 0; z < 3; ++z)
-        for (std::uint32_t y = 0; y < 4; ++y)
-            for (std::uint32_t x = 0; x < 5; ++x)
+    for (std::int32_t z = 0; z < 3; ++z)
+        for (std::int32_t y = 0; y < 4; ++y)
+            for (std::int32_t x = 0; x < 5; ++x)
                 if ((x + y + z) % 2 == 0) {
                     g.set(pos3(x, y, z));
                     ++expected;
@@ -577,14 +575,14 @@ TEST(BitGrid1D, Dim0Equals1) {
 
 TEST(BitGrid1D, Dim0Equals8ExactByte) {
     bit_grid<1> g({8});
-    for (std::uint32_t i = 0; i < 8; ++i) g.set(pos1(i));
+    for (std::int32_t i = 0; i < 8; ++i) g.set(pos1(i));
     auto n = ~g;
     EXPECT_EQ(n.count(), 0u);
 }
 
 TEST(BitGrid1D, Dim0Equals9StradlesTwoBytes) {
     bit_grid<1> g({9});
-    for (std::uint32_t i = 0; i < 9; ++i) g.set(pos1(i));
+    for (std::int32_t i = 0; i < 9; ++i) g.set(pos1(i));
     EXPECT_EQ(g.count(), 9u);
     auto n = ~g;
     EXPECT_EQ(n.count(), 0u);  // padding bit 9 must stay 0
@@ -599,8 +597,8 @@ TEST(BitGrid2D, EmptyGrid) {
 
 TEST(BitGrid2D, FullGrid) {
     bit_grid<2> g({8, 4});
-    for (std::uint32_t y = 0; y < 4; ++y)
-        for (std::uint32_t x = 0; x < 8; ++x) g.set(pos2(x, y));
+    for (std::int32_t y = 0; y < 4; ++y)
+        for (std::int32_t x = 0; x < 8; ++x) g.set(pos2(x, y));
     EXPECT_EQ(g.count(), 32u);
     EXPECT_TRUE(g.is_superset(g));
     EXPECT_TRUE(g.is_subset(g));
@@ -818,7 +816,7 @@ TEST(BitGridCrossDim, SetUnionView_IncludesPositionsBeyondThisDomain) {
     bit_grid<1> a({4}), b({8});
     a.set(pos1(1));
     b.set(pos1(5));
-    std::vector<std::array<std::uint32_t, 1>> result;
+    std::vector<std::array<std::int32_t, 1>> result;
     for (auto p : a.set_union(b)) result.push_back(p);
     // should include pos1(1) from a AND pos1(5) from b (outside a's original domain)
     auto has = [&](auto p) { return std::find(result.begin(), result.end(), p) != result.end(); };
@@ -833,7 +831,7 @@ TEST(BitGridCrossDim, SymDiffView_IncludesPositionsBeyondThisDomain) {
     a.set(pos1(3));
     b.set(pos1(1));
     b.set(pos1(6));  // pos 1 shared, pos 3 only in a, pos 6 only in b
-    std::vector<std::array<std::uint32_t, 1>> result;
+    std::vector<std::array<std::int32_t, 1>> result;
     for (auto p : a.symmetric_difference(b)) result.push_back(p);
     std::sort(result.begin(), result.end());
     ASSERT_EQ(result.size(), 2u);

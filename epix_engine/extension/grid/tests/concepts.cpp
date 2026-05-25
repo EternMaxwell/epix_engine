@@ -77,51 +77,6 @@ static_assert(basic_grid<dense_extendible_grid<2, int>>);
 static_assert(basic_grid<tree_extendible_grid<2, int>>);
 static_assert(basic_grid<tree_grid<2, int>>);
 
-// basic_extendible_grid
-static_assert(!basic_extendible_grid<packed_grid<2, int>>);
-static_assert(!basic_extendible_grid<dense_grid<2, int>>);
-static_assert(basic_extendible_grid<dense_extendible_grid<2, int>>);
-static_assert(basic_extendible_grid<tree_extendible_grid<2, int>>);
-static_assert(!basic_extendible_grid<tree_grid<2, int>>);
-
-// ────────────────────────────────────────────────────────────
-// maybe_fixed_grid / maybe_extendible_grid
-// ────────────────────────────────────────────────────────────
-
-static_assert(maybe_fixed_grid<packed_grid<2, int>>);
-static_assert(maybe_fixed_grid<dense_grid<2, int>>);
-static_assert(maybe_fixed_grid<sparse_grid<2, int>>);
-static_assert(maybe_fixed_grid<tree_grid<2, int>>);
-
-static_assert(!maybe_fixed_grid<dense_extendible_grid<2, int>>);
-static_assert(!maybe_fixed_grid<tree_extendible_grid<2, int>>);
-
-static_assert(!maybe_extendible_grid<packed_grid<2, int>>);
-static_assert(!maybe_extendible_grid<dense_grid<2, int>>);
-static_assert(maybe_extendible_grid<dense_extendible_grid<2, int>>);
-static_assert(maybe_extendible_grid<tree_extendible_grid<2, int>>);
-
-// ────────────────────────────────────────────────────────────
-// extendible_grid (= maybe_extendible_grid, implicit extension)
-// ────────────────────────────────────────────────────────────
-
-static_assert(!extendible_grid<packed_grid<2, int>>);
-static_assert(!extendible_grid<dense_grid<2, int>>);
-static_assert(!extendible_grid<sparse_grid<2, int>>);
-static_assert(extendible_grid<dense_extendible_grid<2, int>>);
-static_assert(extendible_grid<tree_extendible_grid<2, int>>);
-static_assert(!extendible_grid<tree_grid<2, int>>);
-
-// ────────────────────────────────────────────────────────────
-// tree_based_grid
-// ────────────────────────────────────────────────────────────
-
-static_assert(!tree_based_grid<packed_grid<2, int>>);
-static_assert(!tree_based_grid<dense_grid<2, int>>);
-static_assert(!tree_based_grid<sparse_grid<2, int>>);
-static_assert(tree_based_grid<tree_extendible_grid<2, int>>);
-static_assert(tree_based_grid<tree_grid<2, int>>);
-
 // ────────────────────────────────────────────────────────────
 // filter_view & shadow_view — satisfy viewable_grid and unsafe_viewable_grid
 // ────────────────────────────────────────────────────────────
@@ -132,9 +87,24 @@ static_assert(unsafe_viewable_grid<fv_t>);
 static_assert(iterable_grid<fv_t>);
 
 using sv_t = epix::ext::grid::views::shadow_view<dense_grid<2, int>,
-                                                 decltype([](const std::array<std::uint32_t, 2>&) { return true; })>;
+                                                 decltype([](const std::array<std::int32_t, 2>&) { return true; })>;
 static_assert(viewable_grid<sv_t>);
 static_assert(unsafe_viewable_grid<sv_t>);
+
+// ────────────────────────────────────────────────────────────
+// untyped_grid / untyped_grid_view — must satisfy viewable + iterable
+// ────────────────────────────────────────────────────────────
+
+static_assert(viewable_grid<untyped_grid<2, int>>);
+static_assert(iterable_grid<untyped_grid<2, int>>);
+static_assert(viewable_grid<untyped_grid_view<2, int&>>);
+static_assert(viewable_grid<untyped_grid_view<2, int&, grid_category::iterable>>);
+static_assert(iterable_grid<untyped_grid_view<2, int&, grid_category::iterable>>);
+
+// transform_view with value-returning get() must satisfy viewable_grid
+static_assert(viewable_grid<
+              decltype(views::transform(std::declval<dense_grid<2, int>&>(),
+                                        std::declval<const decltype([](const int& v) -> int { return v * 2; })&>()))>);
 
 // ────────────────────────────────────────────────────────────
 // Runtime: dimensions() returns unsigned array for all grids
@@ -163,20 +133,113 @@ TEST(ConceptDimensions, FixedGridDimensionsMatchesPosType) {
 TEST(GridTrait, FixedGridHasCorrectDim) {
     grid_trait<packed_grid<3, float>> t;
     static_assert(decltype(t)::dim == 3);
-    EXPECT_FALSE(decltype(t)::is_extendible);
-    EXPECT_FALSE(decltype(t)::has_coverage);
 }
 
 TEST(GridTrait, ExtendibleGridHasCorrectTraits) {
     grid_trait<dense_extendible_grid<2, int>> t;
     static_assert(decltype(t)::dim == 2);
-    EXPECT_TRUE(decltype(t)::is_extendible);
-    EXPECT_FALSE(decltype(t)::has_coverage);  // dense_extendible is not tree-based
 }
 
-TEST(GridTrait, TreeGridHasCoverage) {
-    grid_trait<tree_grid<2, int>> t;
-    static_assert(decltype(t)::dim == 2);
-    EXPECT_FALSE(decltype(t)::is_extendible);
-    EXPECT_TRUE(decltype(t)::has_coverage);
+// ────────────────────────────────────────────────────────────
+// recursive_grid tests
+//
+// Nested grid types for testing.  Only dense_extendible_grid
+// and tree_extendible_grid are default-constructible, so they
+// are the only grid types that can appear as the cell_type of
+// packed_grid or dense_grid (which require std::constructible_from<T>).
+// tree_grid, sparse_grid, dense_extendible_grid, and tree_extendible_grid
+// only require std::movable<T>, so they accept any grid as cell_type.
+// ────────────────────────────────────────────────────────────
+
+// Depth = 0: only checks that G is viewable_grid (base case)
+static_assert(recursive_grid<packed_grid<2, int>, 0>);
+static_assert(recursive_grid<dense_grid<2, int>, 0>);
+static_assert(recursive_grid<sparse_grid<2, int>, 0>);
+static_assert(recursive_grid<dense_extendible_grid<2, int>, 0>);
+static_assert(recursive_grid<tree_extendible_grid<2, int>, 0>);
+static_assert(recursive_grid<tree_grid<2, int>, 0>);
+
+// Depth = 0 still requires viewable_grid, so non-grid types fail
+static_assert(!recursive_grid<int, 0>);
+static_assert(!recursive_grid<float, 0>);
+static_assert(!recursive_grid<std::array<int, 3>, 0>);
+
+// Depth = 1 (default): G must be viewable_grid AND G::cell_type must be viewable_grid
+// Single-level grids (cell_type is a non-grid like int/float) should FAIL
+static_assert(!recursive_grid<packed_grid<2, int>>);
+static_assert(!recursive_grid<dense_grid<2, int>>);
+static_assert(!recursive_grid<sparse_grid<2, int>>);
+static_assert(!recursive_grid<dense_extendible_grid<2, int>>);
+static_assert(!recursive_grid<tree_extendible_grid<2, int>>);
+static_assert(!recursive_grid<tree_grid<2, int>>);
+
+// Depth = 1: nested grids using default-constructible inner types
+static_assert(recursive_grid<dense_extendible_grid<2, dense_extendible_grid<2, int>>>);
+static_assert(recursive_grid<tree_extendible_grid<2, tree_extendible_grid<2, int>>>);
+
+// Depth = 1: tree_grid and sparse_grid accept any movable grid as cell_type
+static_assert(recursive_grid<tree_grid<2, tree_grid<2, int>>>);
+static_assert(recursive_grid<tree_grid<2, dense_extendible_grid<2, int>>>);
+static_assert(recursive_grid<tree_grid<2, tree_extendible_grid<2, int>>>);
+
+// Depth = 1: packed_grid / dense_grid can hold default-constructible grids
+static_assert(recursive_grid<packed_grid<2, dense_extendible_grid<2, int>>>);
+static_assert(recursive_grid<dense_grid<2, dense_extendible_grid<2, int>>>);
+static_assert(recursive_grid<packed_grid<2, tree_extendible_grid<2, int>>>);
+
+// Depth = 1 explicit: same as default
+static_assert(recursive_grid<tree_extendible_grid<2, tree_extendible_grid<2, int>>, 1>);
+static_assert(!recursive_grid<tree_extendible_grid<2, int>, 1>);
+
+// Depth = 2: triple nesting with default-constructible grids
+static_assert(recursive_grid<dense_extendible_grid<2, dense_extendible_grid<2, dense_extendible_grid<2, int>>>, 2>);
+static_assert(recursive_grid<tree_extendible_grid<2, tree_extendible_grid<2, tree_extendible_grid<2, int>>>, 2>);
+
+// Depth = 2: tree_grid triple nesting (only needs movable)
+static_assert(recursive_grid<tree_grid<2, tree_grid<2, tree_grid<2, int>>>, 2>);
+
+// Depth = 2: should FAIL when only one level of nesting exists
+static_assert(!recursive_grid<tree_extendible_grid<2, tree_extendible_grid<2, int>>, 2>);
+static_assert(!recursive_grid<tree_grid<2, tree_grid<2, int>>, 2>);
+
+// Depth = 2: should PASS (depth is sufficient but not exceeded)
+static_assert(recursive_grid<tree_extendible_grid<2, tree_extendible_grid<2, tree_extendible_grid<2, int>>>, 1>);
+
+// Heterogeneous mixing — packed_grid holding d_e_g, holding tree_grid
+static_assert(recursive_grid<packed_grid<2, dense_extendible_grid<2, tree_grid<2, int>>>, 2>);
+
+// ────────────────────────────────────────────────────────────
+// Runtime recursive_grid verification
+// ────────────────────────────────────────────────────────────
+
+TEST(RecursiveGrid, DepthZeroEqualsViewableGrid) {
+    // Depth 0: any viewable_grid satisfies it
+    EXPECT_TRUE((recursive_grid<packed_grid<2, int>, 0>));
+    EXPECT_TRUE((recursive_grid<tree_grid<2, int>, 0>));
+    EXPECT_FALSE((recursive_grid<int, 0>));
+}
+
+TEST(RecursiveGrid, SingleLevelGridFailsDepthOne) {
+    // A plain grid whose cell_type is int is NOT recursive at depth >= 1
+    EXPECT_FALSE((recursive_grid<packed_grid<2, int>>));
+    EXPECT_FALSE((recursive_grid<dense_grid<2, float>>));
+    EXPECT_FALSE((recursive_grid<tree_grid<2, double>>));
+}
+
+TEST(RecursiveGrid, NestedGridPassesDepthOne) {
+    // A grid whose cell_type is itself a viewable_grid passes depth 1
+    EXPECT_TRUE((recursive_grid<tree_extendible_grid<2, tree_extendible_grid<2, int>>>));
+    EXPECT_TRUE((recursive_grid<tree_grid<2, dense_extendible_grid<2, int>>>));
+}
+
+TEST(RecursiveGrid, DoubleNestingPassesDepthTwo) {
+    EXPECT_TRUE((recursive_grid<tree_extendible_grid<2, tree_extendible_grid<2, tree_extendible_grid<2, int>>>, 2>));
+    EXPECT_TRUE((recursive_grid<tree_grid<2, tree_grid<2, tree_grid<2, int>>>, 2>));
+}
+
+TEST(RecursiveGrid, InsufficientNestingFailsDeeperDepth) {
+    // Only 1 nesting level but depth=2 requested → fails
+    EXPECT_FALSE((recursive_grid<tree_extendible_grid<2, tree_extendible_grid<2, int>>, 2>));
+    // Only 2 nesting levels but depth=3 requested → fails
+    EXPECT_FALSE((recursive_grid<tree_extendible_grid<2, tree_extendible_grid<2, tree_extendible_grid<2, int>>>, 3>));
 }
