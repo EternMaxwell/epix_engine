@@ -410,8 +410,8 @@ offset_view<G> offset(
  */
 export template <viewable_grid G, std::invocable<const typename std::decay_t<G>::pos_type&> Pred>
 struct shadow_view {
-    using pos_type  = typename std::decay_t<G>::pos_type;
-    using cell_type = typename std::decay_t<G>::cell_type;
+    using pos_type  = grid_trait<G>::pos_type;
+    using cell_type = grid_trait<G>::cell_type;
 
     G grid;
     Pred pred;

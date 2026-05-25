@@ -79,7 +79,7 @@ TEST(PolygonOutline, EmptyGridReturnsEmptyRing) {
 TEST(PolygonOutline, SolidRectangle) {
     bit_grid<2> g({4, 4});
     for (std::int32_t y = 1; y < 3; ++y)
-        for (std::int32_t x = 1; x < 3; ++x) g.set({x, y});
+        for (std::int32_t x = 1; x < 3; ++x) g.set({static_cast<std::uint32_t>(x), static_cast<std::uint32_t>(y)});
 
     auto ring = find_outline(g);
     EXPECT_FALSE(ring.empty());
@@ -94,7 +94,7 @@ TEST(PolygonOutline, SolidRectangle) {
 TEST(PolygonHoles, SolidRectangleNoHoles) {
     bit_grid<2> g({6, 6});
     for (std::int32_t y = 1; y < 5; ++y)
-        for (std::int32_t x = 1; x < 5; ++x) g.set({x, y});
+        for (std::int32_t x = 1; x < 5; ++x) g.set({static_cast<std::uint32_t>(x), static_cast<std::uint32_t>(y)});
 
     auto holes = find_holes(g);
     EXPECT_TRUE(holes.empty());
@@ -103,10 +103,10 @@ TEST(PolygonHoles, SolidRectangleNoHoles) {
 TEST(PolygonHoles, RingHasHole) {
     bit_grid<2> g({6, 6});
     // outer ring
-    for (std::int32_t x = 1; x < 5; ++x) g.set({x, 1});
-    for (std::int32_t x = 1; x < 5; ++x) g.set({x, 4});
-    for (std::int32_t y = 1; y < 5; ++y) g.set({1, y});
-    for (std::int32_t y = 1; y < 5; ++y) g.set({4, y});
+    for (std::int32_t x = 1; x < 5; ++x) g.set({static_cast<std::uint32_t>(x), 1u});
+    for (std::int32_t x = 1; x < 5; ++x) g.set({static_cast<std::uint32_t>(x), 4u});
+    for (std::int32_t y = 1; y < 5; ++y) g.set({1u, static_cast<std::uint32_t>(y)});
+    for (std::int32_t y = 1; y < 5; ++y) g.set({4u, static_cast<std::uint32_t>(y)});
 
     auto holes = find_holes(g);
     EXPECT_FALSE(holes.empty());
@@ -119,7 +119,7 @@ TEST(PolygonHoles, RingHasHole) {
 TEST(PolygonExtraction, SingleComponent) {
     bit_grid<2> g({4, 4});
     for (std::int32_t y = 1; y < 3; ++y)
-        for (std::int32_t x = 1; x < 3; ++x) g.set({x, y});
+        for (std::int32_t x = 1; x < 3; ++x) g.set({static_cast<std::uint32_t>(x), static_cast<std::uint32_t>(y)});
 
     auto poly = get_polygon(g);
     EXPECT_FALSE(poly.empty());
@@ -194,7 +194,7 @@ TEST(PolygonViaView, ShadowViewWithPredicate) {
     g.set({2, 2}, 3);
 
     auto sv =
-        epix::ext::grid::views::shadow(g, [](const std::array<std::int32_t, 2>& p) { return p[0] < 2 && p[1] < 2; });
+        epix::ext::grid::views::shadow(g, [](const std::array<std::uint32_t, 2>& p) { return p[0] < 2 && p[1] < 2; });
     auto ring = find_outline(sv);
     EXPECT_FALSE(ring.empty());
 }

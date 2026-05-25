@@ -25,9 +25,11 @@ using namespace epix::ext::grid;
 #endif
 // Helpers
 // ============================================================
-static constexpr std::array<std::int32_t, 1> pos1(std::int32_t x) { return {x}; }
-static constexpr std::array<std::int32_t, 2> pos2(std::int32_t x, std::int32_t y) { return {x, y}; }
-static constexpr std::array<std::int32_t, 3> pos3(std::int32_t x, std::int32_t y, std::int32_t z) { return {x, y, z}; }
+static constexpr std::array<std::uint32_t, 1> pos1(std::uint32_t x) { return {x}; }
+static constexpr std::array<std::uint32_t, 2> pos2(std::uint32_t x, std::uint32_t y) { return {x, y}; }
+static constexpr std::array<std::uint32_t, 3> pos3(std::uint32_t x, std::uint32_t y, std::uint32_t z) {
+    return {x, y, z};
+}
 
 // ============================================================
 // 1D tests
@@ -321,7 +323,7 @@ TEST(BitGrid1D, IterSet) {
     g.set(pos1(1));
     g.set(pos1(4));
     g.set(pos1(7));
-    std::vector<std::array<std::int32_t, 1>> result;
+    std::vector<std::array<std::uint32_t, 1>> result;
     for (auto p : g.iter_set()) result.push_back(p);
     std::sort(result.begin(), result.end());
     ASSERT_EQ(result.size(), 3u);
@@ -334,7 +336,7 @@ TEST(BitGrid1D, IterUnset) {
     bit_grid<1> g({4});
     g.set(pos1(1));
     g.set(pos1(3));
-    std::vector<std::array<std::int32_t, 1>> result;
+    std::vector<std::array<std::uint32_t, 1>> result;
     for (auto p : g.iter_unset()) result.push_back(p);
     std::sort(result.begin(), result.end());
     ASSERT_EQ(result.size(), 2u);
@@ -344,7 +346,7 @@ TEST(BitGrid1D, IterUnset) {
 
 TEST(BitGrid1D, IterSetEmpty) {
     bit_grid<1> g({8});
-    std::vector<std::array<std::int32_t, 1>> result;
+    std::vector<std::array<std::uint32_t, 1>> result;
     for (auto p : g.iter_set()) result.push_back(p);
     EXPECT_TRUE(result.empty());
 }
@@ -361,7 +363,7 @@ TEST(BitGrid1D, IntersectionView) {
     b.set(pos1(5));
     b.set(pos1(7));
     auto c = a.intersection(b);
-    std::vector<std::array<std::int32_t, 1>> result;
+    std::vector<std::array<std::uint32_t, 1>> result;
     for (auto p : c) result.push_back(p);
     std::sort(result.begin(), result.end());
     ASSERT_EQ(result.size(), 2u);
@@ -376,7 +378,7 @@ TEST(BitGrid1D, UnionView) {
     b.set(pos1(3));
     b.set(pos1(5));
     auto c = a.set_union(b);
-    std::vector<std::array<std::int32_t, 1>> result;
+    std::vector<std::array<std::uint32_t, 1>> result;
     for (auto p : c) result.push_back(p);
     std::sort(result.begin(), result.end());
     ASSERT_EQ(result.size(), 3u);
@@ -392,7 +394,7 @@ TEST(BitGrid1D, DifferenceView) {
     a.set(pos1(5));
     b.set(pos1(3));
     auto c = a.difference(b);
-    std::vector<std::array<std::int32_t, 1>> result;
+    std::vector<std::array<std::uint32_t, 1>> result;
     for (auto p : c) result.push_back(p);
     std::sort(result.begin(), result.end());
     ASSERT_EQ(result.size(), 2u);
@@ -407,7 +409,7 @@ TEST(BitGrid1D, SymmetricDifferenceView) {
     b.set(pos1(3));
     b.set(pos1(5));
     auto c = a.symmetric_difference(b);
-    std::vector<std::array<std::int32_t, 1>> result;
+    std::vector<std::array<std::uint32_t, 1>> result;
     for (auto p : c) result.push_back(p);
     std::sort(result.begin(), result.end());
     ASSERT_EQ(result.size(), 2u);
@@ -487,7 +489,7 @@ TEST(BitGrid2D, IterSet2D) {
     g.set(pos2(0, 0));
     g.set(pos2(2, 1));
     g.set(pos2(3, 3));
-    std::vector<std::array<std::int32_t, 2>> result;
+    std::vector<std::array<std::uint32_t, 2>> result;
     for (auto p : g.iter_set()) result.push_back(p);
     EXPECT_EQ(result.size(), 3u);
     auto has = [&](auto p) { return std::find(result.begin(), result.end(), p) != result.end(); };
@@ -816,7 +818,7 @@ TEST(BitGridCrossDim, SetUnionView_IncludesPositionsBeyondThisDomain) {
     bit_grid<1> a({4}), b({8});
     a.set(pos1(1));
     b.set(pos1(5));
-    std::vector<std::array<std::int32_t, 1>> result;
+    std::vector<std::array<std::uint32_t, 1>> result;
     for (auto p : a.set_union(b)) result.push_back(p);
     // should include pos1(1) from a AND pos1(5) from b (outside a's original domain)
     auto has = [&](auto p) { return std::find(result.begin(), result.end(), p) != result.end(); };
@@ -831,7 +833,7 @@ TEST(BitGridCrossDim, SymDiffView_IncludesPositionsBeyondThisDomain) {
     a.set(pos1(3));
     b.set(pos1(1));
     b.set(pos1(6));  // pos 1 shared, pos 3 only in a, pos 6 only in b
-    std::vector<std::array<std::int32_t, 1>> result;
+    std::vector<std::array<std::uint32_t, 1>> result;
     for (auto p : a.symmetric_difference(b)) result.push_back(p);
     std::sort(result.begin(), result.end());
     ASSERT_EQ(result.size(), 2u);

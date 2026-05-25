@@ -27,24 +27,35 @@ namespace {
 constexpr auto kFullCat = grid_category::iterable | grid_category::container | grid_category::unsafe_viewable |
                           grid_category::unsafe_container | grid_category::constness;
 template <std::size_t Dim, typename T>
-using ugrid = untyped_grid<Dim, T, kFullCat>;
+using ugrid = untyped_grid<Dim, T, kFullCat, std::uint32_t, std::uint32_t>;
 }  // namespace
 
 // ============================================================
 // category conversion — compile-time verification
 // ============================================================
 
-using full_grid = untyped_grid<2, int&>;
-static_assert(std::is_constructible_v<untyped_grid<2, int&, grid_category::none>, full_grid&&>);
-static_assert(std::is_constructible_v<untyped_grid<2, int&, grid_category::iterable>, full_grid&&>);
-static_assert(std::is_constructible_v<untyped_grid<2, int&, grid_category::container>, full_grid&&>);
-static_assert(!std::is_constructible_v<untyped_grid<2, int&, grid_category::copyable>, full_grid&&>);
+using full_grid = untyped_grid<2, int&, kFullCat, std::uint32_t, std::uint32_t>;
+static_assert(
+    std::is_constructible_v<untyped_grid<2, int&, grid_category::none, std::uint32_t, std::uint32_t>, full_grid&&>);
+static_assert(
+    std::is_constructible_v<untyped_grid<2, int&, grid_category::iterable, std::uint32_t, std::uint32_t>, full_grid&&>);
+static_assert(std::is_constructible_v<untyped_grid<2, int&, grid_category::container, std::uint32_t, std::uint32_t>,
+                                      full_grid&&>);
+static_assert(!std::is_constructible_v<untyped_grid<2, int&, grid_category::copyable, std::uint32_t, std::uint32_t>,
+                                       full_grid&&>);
 
-using full_view = untyped_grid_view<2, int&, grid_category::iterable | grid_category::container>;
-static_assert(std::is_constructible_v<untyped_grid_view<2, int&, grid_category::none>, const full_view&>);
-static_assert(std::is_constructible_v<untyped_grid_view<2, int&, grid_category::iterable>, const full_view&>);
-static_assert(std::is_constructible_v<untyped_grid_view<2, int&, grid_category::container>, const full_view&>);
-static_assert(!std::is_constructible_v<untyped_grid_view<2, int&, grid_category::constness>, const full_view&>);
+using full_view =
+    untyped_grid_view<2, int&, grid_category::iterable | grid_category::container, std::uint32_t, std::uint32_t>;
+static_assert(std::is_constructible_v<untyped_grid_view<2, int&, grid_category::none, std::uint32_t, std::uint32_t>,
+                                      const full_view&>);
+static_assert(std::is_constructible_v<untyped_grid_view<2, int&, grid_category::iterable, std::uint32_t, std::uint32_t>,
+                                      const full_view&>);
+static_assert(
+    std::is_constructible_v<untyped_grid_view<2, int&, grid_category::container, std::uint32_t, std::uint32_t>,
+                            const full_view&>);
+static_assert(
+    !std::is_constructible_v<untyped_grid_view<2, int&, grid_category::constness, std::uint32_t, std::uint32_t>,
+                             const full_view&>);
 
 // ============================================================
 // untyped_grid tests
@@ -52,18 +63,9 @@ static_assert(!std::is_constructible_v<untyped_grid_view<2, int&, grid_category:
 
 // ── construction & CTAD ─────────────────────────────────────
 
-TEST(UntypedGrid, DefaultConstructedIsEmpty) {
-    untyped_grid<2, int&> g;
-    EXPECT_FALSE(static_cast<bool>(g));
-    EXPECT_EQ(g.dimensions(), (std::array<std::uint32_t, 2>{0, 0}));
-    EXPECT_FALSE(g.contains({0, 0}));
-    EXPECT_EQ(g.get({0, 0}).error(), grid_error::NotSupportedOperation);
-}
-
 TEST(UntypedGrid, ConstructFromDenseGrid) {
     dense_grid<2, int> dg({4, 5});
-    untyped_grid<2, int&> g(std::move(dg));
-    EXPECT_TRUE(static_cast<bool>(g));
+    ugrid<2, int&> g(std::move(dg));
     EXPECT_EQ(g.dimensions(), (std::array<std::uint32_t, 2>{4, 5}));
 }
 
@@ -76,18 +78,15 @@ TEST(UntypedGrid, CtadDeducesDimAndCellType) {
 TEST(UntypedGrid, MoveConstruction) {
     auto g1 = untyped_grid(dense_grid<2, int>({3, 3}));
     g1.set({0, 0}, 42);
-    untyped_grid<2, int&> g2(std::move(g1));
-    EXPECT_FALSE(static_cast<bool>(g1));  // moved-from
-    EXPECT_TRUE(static_cast<bool>(g2));
+    ugrid<2, int&> g2(std::move(g1));
     EXPECT_EQ(g2.get({0, 0}).value(), 42);
 }
 
 TEST(UntypedGrid, MoveAssignment) {
     auto g1 = untyped_grid(dense_grid<2, int>({3, 3}));
     g1.set({1, 1}, 77);
-    untyped_grid<2, int&> g2;
-    g2 = std::move(g1);
-    EXPECT_TRUE(static_cast<bool>(g2));
+    auto g2 = untyped_grid(dense_grid<2, int>({1, 1}));
+    g2      = std::move(g1);
     EXPECT_EQ(g2.get({1, 1}).value(), 77);
 }
 
@@ -95,7 +94,6 @@ TEST(UntypedGrid, CopyConstructionPreservesData) {
     auto g1 = untyped_grid(dense_grid<2, int>({3, 3}));
     g1.set({2, 2}, 99);
     auto g2 = g1;  // copy
-    EXPECT_TRUE(static_cast<bool>(g2));
     EXPECT_EQ(g2.get({2, 2}).value(), 99);
     // modifying copy does not affect original
     g2.set({2, 2}, 11);
@@ -133,18 +131,13 @@ TEST(UntypedGrid, GetReturnsErrorForEmpty) {
     EXPECT_EQ(g.get({0, 0}).error(), grid_error::EmptyCell);
 }
 
-TEST(UntypedGrid, GetOnDefaultConstructedReturnsNotSupported) {
-    untyped_grid<2, int&> g;
-    EXPECT_EQ(g.get({0, 0}).error(), grid_error::NotSupportedOperation);
-}
-
 // ── iterable_grid ───────────────────────────────────────────
 
 TEST(UntypedGrid, IterPosYieldsAllPositions) {
     auto g = untyped_grid(dense_grid<2, int>({2, 2}));
     g.set({0, 0}, 1);
     g.set({1, 1}, 2);
-    std::vector<std::array<std::int32_t, 2>> positions;
+    std::vector<std::array<std::uint32_t, 2>> positions;
     for (auto pos : g.iter_pos()) positions.push_back(pos);
     EXPECT_EQ(positions.size(), 2u);
 }
@@ -171,13 +164,6 @@ TEST(UntypedGrid, IterYieldsPosValuePairs) {
     EXPECT_EQ(sum, 300);
 }
 
-TEST(UntypedGrid, IterOnEmptyGridReturnsEmpty) {
-    untyped_grid<2, int&> g;
-    int count = 0;
-    for (auto _ [[maybe_unused]] : g.iter()) ++count;
-    EXPECT_EQ(count, 0);
-}
-
 // ── mutable_viewable_grid ───────────────────────────────────
 
 TEST(UntypedGrid, GetMutSupported) {
@@ -187,11 +173,6 @@ TEST(UntypedGrid, GetMutSupported) {
     ASSERT_TRUE(r.has_value());
     r->get() = 99;
     EXPECT_EQ(g.get({0, 0}).value(), 99);
-}
-
-TEST(UntypedGrid, GetMutOnEmptyReturnsError) {
-    untyped_grid<2, int&> g;
-    EXPECT_EQ(g.get({0, 0}).error(), grid_error::NotSupportedOperation);
 }
 
 TEST(UntypedGrid, GetMutOnFilterViewStillWorks) {
@@ -248,44 +229,32 @@ TEST(UntypedGrid, TakeMovesOutAndErases) {
     EXPECT_FALSE(g.contains({2, 2}));
 }
 
-TEST(UntypedGrid, SetOnEmptyGridReturnsError) {
-    ugrid<2, int&> g;
-    EXPECT_EQ(g.set({0, 0}, 1).error(), grid_error::NotSupportedOperation);
-}
-
-TEST(UntypedGrid, RemoveOnEmptyGridReturnsError) {
-    ugrid<2, int&> g;
-    EXPECT_EQ(g.remove({0, 0}).error(), grid_error::NotSupportedOperation);
-}
-
-TEST(UntypedGrid, TakeOnEmptyGridReturnsError) {
-    ugrid<2, int&> g;
-    EXPECT_EQ(g.take({0, 0}).error(), grid_error::NotSupportedOperation);
-}
-
 // ── not supported: filter_view lacks grid_container ────────
 
-TEST(UntypedGrid, SetOnFilterViewReturnsNotSupported) {
+TEST(UntypedGrid, SetOnFilterViewNotAvailable) {
     dense_grid<2, int> dg({4, 4});
     auto fv = views::filter(dg, [](const int& v) { return v > 0; });
     auto g  = untyped_grid(std::move(fv));
-    EXPECT_EQ(g.set({0, 0}, 1).error(), grid_error::NotSupportedOperation);
+    static_assert(!grid_container<decltype(g)>);
+    EXPECT_TRUE(true);
 }
 
-TEST(UntypedGrid, RemoveOnFilterViewReturnsNotSupported) {
+TEST(UntypedGrid, RemoveOnFilterViewNotAvailable) {
     dense_grid<2, int> dg({4, 4});
     dg.set({0, 0}, 1);
     auto fv = views::filter(dg, [](const int& v) { return v > 0; });
     auto g  = untyped_grid(std::move(fv));
-    EXPECT_EQ(g.remove({0, 0}).error(), grid_error::NotSupportedOperation);
+    static_assert(!grid_container<decltype(g)>);
+    EXPECT_TRUE(true);
 }
 
-TEST(UntypedGrid, TakeOnFilterViewReturnsNotSupported) {
+TEST(UntypedGrid, TakeOnFilterViewNotAvailable) {
     dense_grid<2, int> dg({4, 4});
     dg.set({0, 0}, 1);
     auto fv = views::filter(dg, [](const int& v) { return v > 0; });
     auto g  = untyped_grid(std::move(fv));
-    EXPECT_EQ(g.take({0, 0}).error(), grid_error::NotSupportedOperation);
+    static_assert(!grid_container<decltype(g)>);
+    EXPECT_TRUE(true);
 }
 
 // ── iterable / mutable_iterable on filter_view still works ──
@@ -345,41 +314,23 @@ TEST(UntypedGrid, TakeUnsafeMovesOut) {
     EXPECT_FALSE(g.contains({2, 2}));
 }
 
-TEST(UntypedGrid, GetUnsafeOnEmptyGridThrows) {
-    ugrid<2, int&> g;
-    EXPECT_THROW(g.get_unsafe({0, 0}), std::logic_error);
-}
+// ── mutable_iterable_grid ───────────────────────────────────
 
-TEST(UntypedGrid, GetMutUnsafeOnEmptyGridThrows) {
-    ugrid<2, int&> g;
-    EXPECT_THROW(g.get_unsafe({0, 0}), std::logic_error);
-}
-
-TEST(UntypedGrid, SetUnsafeOnEmptyGridThrows) {
-    ugrid<2, int&> g;
-    EXPECT_THROW(g.set_unsafe({0, 0}, 1), std::logic_error);
-}
-
-TEST(UntypedGrid, TakeUnsafeOnEmptyGridThrows) {
-    ugrid<2, int&> g;
-    EXPECT_THROW(g.take_unsafe({0, 0}), std::logic_error);
-}
-
-// ── not supported: views lack unsafe_grid_container ─────────
-
-TEST(UntypedGrid, SetUnsafeOnFilterViewThrows) {
+TEST(UntypedGrid, SetUnsafeOnFilterViewNotAvailable) {
     dense_grid<2, int> dg({4, 4});
     auto fv = views::filter(dg, [](const int& v) { return v > 0; });
     auto g  = untyped_grid(std::move(fv));
-    EXPECT_THROW(g.set_unsafe({0, 0}, 1), std::logic_error);
+    static_assert(!unsafe_grid_container<decltype(g)>);
+    EXPECT_TRUE(true);
 }
 
-TEST(UntypedGrid, TakeUnsafeOnFilterViewThrows) {
+TEST(UntypedGrid, TakeUnsafeOnFilterViewNotAvailable) {
     dense_grid<2, int> dg({4, 4});
     dg.set({0, 0}, 1);
     auto fv = views::filter(dg, [](const int& v) { return v > 0; });
     auto g  = untyped_grid(std::move(fv));
-    EXPECT_THROW(g.take_unsafe({0, 0}), std::logic_error);
+    static_assert(!unsafe_grid_container<decltype(g)>);
+    EXPECT_TRUE(true);
 }
 
 TEST(UntypedGrid, GetUnsafeOnFilterViewStillWorks) {
@@ -395,17 +346,18 @@ TEST(UntypedGrid, GetMutUnsafeOnFilterViewStillWorks) {
     // filter_view HAS unsafe_mutable_viewable_grid
     dense_grid<2, int> dg({4, 4});
     dg.set({0, 0}, 1);
-    auto fv                  = views::filter(dg, [](const int& v) { return v > 0; });
-    auto g                   = untyped_grid(std::move(fv));
+    auto fv              = views::filter(dg, [](const int& v) { return v > 0; });
+    auto g               = untyped_grid(std::move(fv));
     g.get_unsafe({0, 0}) = 88;
     EXPECT_EQ(g.get({0, 0}).value(), 88);
 }
 
-TEST(UntypedGrid, SetUnsafeOnTransformViewThrows) {
+TEST(UntypedGrid, SetUnsafeOnTransformViewNotAvailable) {
     dense_grid<2, int> dg({4, 4});
     auto tv = views::transform(dg, [](const int& v) -> int { return v * 2; });
     auto g  = untyped_grid(std::move(tv));
-    EXPECT_THROW(g.set_unsafe({0, 0}, 1), std::logic_error);
+    static_assert(!unsafe_grid_container<decltype(g)>);
+    EXPECT_TRUE(true);
 }
 
 // ── mutable_iterable_grid ───────────────────────────────────
@@ -426,13 +378,6 @@ TEST(UntypedGrid, IterMutYieldsMutablePairs) {
         cell += static_cast<int>(pos[0] + pos[1]);
     }
     EXPECT_EQ(g.get({0, 0}).value(), 5);
-}
-
-TEST(UntypedGrid, IterCellsMutOnEmptyReturnsEmpty) {
-    untyped_grid<2, int&> g;
-    int count = 0;
-    for (auto _ [[maybe_unused]] : g.iter_cells()) ++count;
-    EXPECT_EQ(count, 0);
 }
 
 // ── construction from other grid types ──────────────────────
@@ -466,27 +411,33 @@ TEST(UntypedGrid, CopyConstructedFromNonCopyableIsEmpty) {
 // untyped_grid_view tests
 // ============================================================
 
-// ── construction ────────────────────────────────────────────
+using uview_base = untyped_grid_view<2, int&, grid_category::none, std::uint32_t, std::uint32_t>;
+using uview_iter = untyped_grid_view<2, int&, grid_category::iterable, std::uint32_t, std::uint32_t>;
+using uview_ctr =
+    untyped_grid_view<2, int&, grid_category::iterable | grid_category::container, std::uint32_t, std::uint32_t>;
+using uview_unsafe =
+    untyped_grid_view<2, int&, grid_category::iterable | grid_category::unsafe_viewable, std::uint32_t, std::uint32_t>;
+using uview_full =
+    untyped_grid_view<2,
+                      int&,
+                      grid_category::iterable | grid_category::container | grid_category::unsafe_viewable |
+                          grid_category::unsafe_container | grid_category::constness,
+                      std::uint32_t,
+                      std::uint32_t>;
+using uview_all = untyped_grid_view<2,
+                                    int&,
+                                    grid_category::iterable | grid_category::container |
+                                        grid_category::unsafe_viewable | grid_category::unsafe_container,
+                                    std::uint32_t,
+                                    std::uint32_t>;
 
-TEST(UntypedGridView, DefaultConstructedIsEmpty) {
-    untyped_grid_view<2, int&> ref;
-    EXPECT_FALSE(static_cast<bool>(ref));
-    EXPECT_EQ(ref.get({0, 0}).error(), grid_error::NotSupportedOperation);
-}
+// ── construction ────────────────────────────────────────────
 
 TEST(UntypedGridView, ConstructFromLvalueGrid) {
     dense_grid<2, int> dg({4, 4});
     dg.set({0, 0}, 42);
-    untyped_grid_view<2, int&> ref(dg);
-    EXPECT_TRUE(static_cast<bool>(ref));
+    uview_all ref(dg);
     EXPECT_EQ(ref.get({0, 0})->get(), 42);
-}
-
-TEST(UntypedGridView, ConstructFromRvalueTemporary) {
-    // The temporary outlives the function call — safe.
-    auto use  = [](untyped_grid_view<2, int&> r) { return r.dimensions(); };
-    auto dims = use(dense_grid<2, int>({3, 3}));
-    EXPECT_EQ(dims, (std::array<std::uint32_t, 2>{3, 3}));
 }
 
 TEST(UntypedGridView, CtadDeducesTypes) {
@@ -499,14 +450,14 @@ TEST(UntypedGridView, CtadDeducesTypes) {
 
 TEST(UntypedGridView, DimensionsDelegates) {
     dense_grid<2, int> dg({5, 6});
-    untyped_grid_view<2, int&> ref(dg);
+    uview_all ref(dg);
     EXPECT_EQ(ref.dimensions(), (std::array<std::uint32_t, 2>{5, 6}));
 }
 
 TEST(UntypedGridView, ContainsDelegates) {
     dense_grid<2, int> dg({4, 4});
     dg.set({0, 0}, 1);
-    untyped_grid_view<2, int&> ref(dg);
+    uview_all ref(dg);
     EXPECT_TRUE(ref.contains({0, 0}));
     EXPECT_FALSE(ref.contains({3, 3}));
 }
@@ -514,7 +465,7 @@ TEST(UntypedGridView, ContainsDelegates) {
 TEST(UntypedGridView, GetReturnsMutableRef) {
     dense_grid<2, int> dg({4, 4});
     dg.set({1, 2}, 99);
-    untyped_grid_view<2, int&> ref(dg);
+    uview_all ref(dg);
     auto r = ref.get({1, 2});
     ASSERT_TRUE(r.has_value());
     EXPECT_EQ(r->get(), 99);
@@ -526,8 +477,8 @@ TEST(UntypedGridView, IterPosYieldsAll) {
     dense_grid<2, int> dg({2, 2});
     dg.set({0, 0}, 1);
     dg.set({1, 1}, 2);
-    untyped_grid_view<2, int&> ref(dg);
-    std::vector<std::array<std::int32_t, 2>> positions;
+    uview_all ref(dg);
+    std::vector<std::array<std::uint32_t, 2>> positions;
     for (auto pos : ref.iter_pos()) positions.push_back(pos);
     EXPECT_EQ(positions.size(), 2u);
 }
@@ -536,7 +487,7 @@ TEST(UntypedGridView, IterCellsYieldsValues) {
     dense_grid<2, int> dg({2, 2});
     dg.set({0, 0}, 5);
     dg.set({0, 1}, 7);
-    untyped_grid_view<2, int&> ref(dg);
+    uview_all ref(dg);
     int sum = 0;
     for (const int& cell : ref.iter_cells()) sum += cell;
     EXPECT_EQ(sum, 12);
@@ -546,7 +497,7 @@ TEST(UntypedGridView, IterYieldsPairs) {
     dense_grid<2, int> dg({2, 2});
     dg.set({0, 0}, 10);
     dg.set({1, 1}, 20);
-    untyped_grid_view<2, int&> ref(dg);
+    uview_all ref(dg);
     int sum = 0;
     for (auto [pos, cell] : ref.iter()) sum += cell;
     EXPECT_EQ(sum, 30);
@@ -557,7 +508,7 @@ TEST(UntypedGridView, IterYieldsPairs) {
 TEST(UntypedGridView, GetModifiesUnderlying) {
     dense_grid<2, int> dg({3, 3});
     dg.set({0, 0}, 1);
-    untyped_grid_view<2, int&> ref(dg);
+    uview_all ref(dg);
     auto r = ref.get({0, 0});
     ASSERT_TRUE(r.has_value());
     r->get() = 77;
@@ -568,7 +519,7 @@ TEST(UntypedGridView, GetModifiesUnderlying) {
 
 TEST(UntypedGridView, SetModifiesUnderlying) {
     dense_grid<2, int> dg({3, 3});
-    untyped_grid_view<2, int&> ref(dg);
+    uview_all ref(dg);
     EXPECT_TRUE(ref.set({1, 1}, 55).has_value());
     EXPECT_EQ(dg.get({1, 1})->get(), 55);
 }
@@ -576,7 +527,7 @@ TEST(UntypedGridView, SetModifiesUnderlying) {
 TEST(UntypedGridView, RemoveErasesFromUnderlying) {
     dense_grid<2, int> dg({3, 3});
     dg.set({2, 2}, 33);
-    untyped_grid_view<2, int&> ref(dg);
+    uview_all ref(dg);
     EXPECT_TRUE(ref.remove({2, 2}).has_value());
     EXPECT_FALSE(dg.contains({2, 2}));
 }
@@ -584,55 +535,54 @@ TEST(UntypedGridView, RemoveErasesFromUnderlying) {
 TEST(UntypedGridView, TakeRemovesFromUnderlying) {
     dense_grid<2, int> dg({3, 3});
     dg.set({2, 2}, 88);
-    untyped_grid_view<2, int&> ref(dg);
+    uview_all ref(dg);
     auto r = ref.take({2, 2});
     ASSERT_TRUE(r.has_value());
     EXPECT_EQ(r.value(), 88);
     EXPECT_FALSE(dg.contains({2, 2}));
 }
 
-TEST(UntypedGridView, SetOnEmptyRefReturnsError) {
-    untyped_grid_view<2, int&> ref;
-    EXPECT_EQ(ref.set({0, 0}, 1).error(), grid_error::NotSupportedOperation);
-}
-
 // ── not supported: view-wrapped underlying ─────────────────
 
-TEST(UntypedGridView, SetOnFilterViewReturnsNotSupported) {
+TEST(UntypedGridView, SetOnFilterViewNotAvailable) {
     dense_grid<2, int> dg({4, 4});
     auto fv = views::filter(dg, [](const int& v) { return v > 0; });
-    untyped_grid_view<2, int&> ref(fv);
-    EXPECT_EQ(ref.set({0, 0}, 1).error(), grid_error::NotSupportedOperation);
+    uview_base ref(fv);
+    static_assert(!grid_container<decltype(ref)>);
+    EXPECT_TRUE(true);
 }
 
-TEST(UntypedGridView, RemoveOnFilterViewReturnsNotSupported) {
+TEST(UntypedGridView, RemoveOnFilterViewNotAvailable) {
     dense_grid<2, int> dg({4, 4});
     dg.set({0, 0}, 1);
     auto fv = views::filter(dg, [](const int& v) { return v > 0; });
-    untyped_grid_view<2, int&> ref(fv);
-    EXPECT_EQ(ref.remove({0, 0}).error(), grid_error::NotSupportedOperation);
+    uview_base ref(fv);
+    static_assert(!grid_container<decltype(ref)>);
+    EXPECT_TRUE(true);
 }
 
-TEST(UntypedGridView, TakeOnFilterViewReturnsNotSupported) {
+TEST(UntypedGridView, TakeOnFilterViewNotAvailable) {
     dense_grid<2, int> dg({4, 4});
     dg.set({0, 0}, 1);
     auto fv = views::filter(dg, [](const int& v) { return v > 0; });
-    untyped_grid_view<2, int&> ref(fv);
-    EXPECT_EQ(ref.take({0, 0}).error(), grid_error::NotSupportedOperation);
+    uview_base ref(fv);
+    static_assert(!grid_container<decltype(ref)>);
+    EXPECT_TRUE(true);
 }
 
-TEST(UntypedGridView, SetUnsafeOnFilterViewThrows) {
+TEST(UntypedGridView, SetUnsafeOnFilterViewNotAvailable) {
     dense_grid<2, int> dg({4, 4});
     auto fv = views::filter(dg, [](const int& v) { return v > 0; });
-    untyped_grid_view<2, int&> ref(fv);
-    EXPECT_THROW(ref.set_unsafe({0, 0}, 1), std::logic_error);
+    uview_base ref(fv);
+    static_assert(!unsafe_grid_container<decltype(ref)>);
+    EXPECT_TRUE(true);
 }
 
 TEST(UntypedGridView, GetUnsafeOnFilterViewStillWorks) {
     dense_grid<2, int> dg({4, 4});
     dg.set({0, 0}, 42);
     auto fv = views::filter(dg, [](const int& v) { return v > 0; });
-    untyped_grid_view<2, int&> ref(fv);
+    uview_unsafe ref(fv);
     EXPECT_EQ(ref.get_unsafe({0, 0}), 42);
 }
 
@@ -640,7 +590,7 @@ TEST(UntypedGridView, GetOnFilterViewStillWorks) {
     dense_grid<2, int> dg({4, 4});
     dg.set({0, 0}, 10);
     auto fv = views::filter(dg, [](const int& v) { return v > 0; });
-    untyped_grid_view<2, int&> ref(fv);
+    uview_base ref(fv);
     auto r = ref.get({0, 0});
     ASSERT_TRUE(r.has_value());
     r->get() = 77;
@@ -652,21 +602,21 @@ TEST(UntypedGridView, GetOnFilterViewStillWorks) {
 TEST(UntypedGridView, GetUnsafeReadsFromUnderlying) {
     dense_grid<2, int> dg({3, 3});
     dg.set({0, 0}, 42);
-    untyped_grid_view<2, int&> ref(dg);
+    uview_all ref(dg);
     EXPECT_EQ(ref.get_unsafe({0, 0}), 42);
 }
 
 TEST(UntypedGridView, GetMutUnsafeModifiesUnderlying) {
     dense_grid<2, int> dg({3, 3});
     dg.set({0, 0}, 1);
-    untyped_grid_view<2, int&> ref(dg);
+    uview_all ref(dg);
     ref.get_unsafe({0, 0}) = 88;
     EXPECT_EQ(dg.get({0, 0})->get(), 88);
 }
 
 TEST(UntypedGridView, SetUnsafeModifiesUnderlying) {
     dense_grid<2, int> dg({3, 3});
-    untyped_grid_view<2, int&> ref(dg);
+    uview_all ref(dg);
     ref.set_unsafe({1, 1}, 77);
     EXPECT_EQ(dg.get({1, 1})->get(), 77);
 }
@@ -674,7 +624,7 @@ TEST(UntypedGridView, SetUnsafeModifiesUnderlying) {
 TEST(UntypedGridView, RemoveUnsafeErasesFromUnderlying) {
     dense_grid<2, int> dg({3, 3});
     dg.set({2, 2}, 33);
-    untyped_grid_view<2, int&> ref(dg);
+    uview_all ref(dg);
     ref.remove_unsafe({2, 2});
     EXPECT_FALSE(dg.contains({2, 2}));
 }
@@ -682,14 +632,9 @@ TEST(UntypedGridView, RemoveUnsafeErasesFromUnderlying) {
 TEST(UntypedGridView, TakeUnsafeRemovesFromUnderlying) {
     dense_grid<2, int> dg({3, 3});
     dg.set({2, 2}, 99);
-    untyped_grid_view<2, int&> ref(dg);
+    uview_all ref(dg);
     EXPECT_EQ(ref.take_unsafe({2, 2}), 99);
     EXPECT_FALSE(dg.contains({2, 2}));
-}
-
-TEST(UntypedGridView, GetUnsafeOnEmptyRefThrows) {
-    untyped_grid_view<2, int&> ref;
-    EXPECT_THROW(ref.get_unsafe({0, 0}), std::logic_error);
 }
 
 // ── mutable_iterable_grid ───────────────────────────────────
@@ -698,7 +643,7 @@ TEST(UntypedGridView, IterCellsMutModifiesUnderlying) {
     dense_grid<2, int> dg({2, 2});
     dg.set({0, 0}, 1);
     dg.set({0, 1}, 3);
-    untyped_grid_view<2, int&> ref(dg);
+    uview_all ref(dg);
     for (int& cell : ref.iter_cells()) cell *= 2;
     EXPECT_EQ(dg.get({0, 0})->get(), 2);
     EXPECT_EQ(dg.get({0, 1})->get(), 6);
@@ -707,7 +652,7 @@ TEST(UntypedGridView, IterCellsMutModifiesUnderlying) {
 TEST(UntypedGridView, IterMutModifiesUnderlying) {
     dense_grid<2, int> dg({2, 2});
     dg.set({0, 0}, 5);
-    untyped_grid_view<2, int&> ref(dg);
+    uview_all ref(dg);
     for (auto [pos, cell] : ref.iter()) cell += 10;
     EXPECT_EQ(dg.get({0, 0})->get(), 15);
 }
@@ -717,6 +662,6 @@ TEST(UntypedGridView, IterMutModifiesUnderlying) {
 TEST(UntypedGridView, ReferencesTreeGrid) {
     tree_grid<2, int> tg({4, 4});
     tg.set({0, 0}, 42);
-    untyped_grid_view<2, int&> ref(tg);
+    uview_full ref(tg);
     EXPECT_EQ(ref.get({0, 0})->get(), 42);
 }

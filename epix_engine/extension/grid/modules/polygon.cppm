@@ -92,8 +92,12 @@ inline bit_grid<2> get_outland(const bit_grid<2>& g, bool include_diagonal = fal
     bit_grid<2> outland(dims);
     std::stack<std::pair<std::int32_t, std::int32_t>> stack;
 
-    auto gc       = [&](const bit_grid<2>& gr, std::int32_t x, std::int32_t y) { return gr.contains({x, y}); };
-    auto gs       = [&](bit_grid<2>& gr, std::int32_t x, std::int32_t y) { (void)gr.set({x, y}); };
+    auto gc = [&](const bit_grid<2>& gr, std::int32_t x, std::int32_t y) {
+        return gr.contains({static_cast<std::uint32_t>(x), static_cast<std::uint32_t>(y)});
+    };
+    auto gs = [&](bit_grid<2>& gr, std::int32_t x, std::int32_t y) {
+        (void)gr.set({static_cast<std::uint32_t>(x), static_cast<std::uint32_t>(y)});
+    };
     auto inbounds = [&](std::int32_t x, std::int32_t y) {
         return x >= 0 && y >= 0 && static_cast<std::uint32_t>(x) < dims[0] && static_cast<std::uint32_t>(y) < dims[1];
     };
@@ -137,8 +141,12 @@ inline std::vector<bit_grid<2>> split(const bit_grid<2>& g, bool include_diagona
     std::vector<bit_grid<2>> components;
     bit_grid<2> visited = get_outland(g, include_diagonal);
 
-    auto gc       = [&](const bit_grid<2>& gr, std::int32_t x, std::int32_t y) { return gr.contains({x, y}); };
-    auto gs       = [&](bit_grid<2>& gr, std::int32_t x, std::int32_t y) { (void)gr.set({x, y}); };
+    auto gc = [&](const bit_grid<2>& gr, std::int32_t x, std::int32_t y) {
+        return gr.contains({static_cast<std::uint32_t>(x), static_cast<std::uint32_t>(y)});
+    };
+    auto gs = [&](bit_grid<2>& gr, std::int32_t x, std::int32_t y) {
+        (void)gr.set({static_cast<std::uint32_t>(x), static_cast<std::uint32_t>(y)});
+    };
     auto inbounds = [&](std::int32_t x, std::int32_t y) {
         return x >= 0 && y >= 0 && static_cast<std::uint32_t>(x) < dims[0] && static_cast<std::uint32_t>(y) < dims[1];
     };
@@ -219,22 +227,22 @@ Ring find_outline(G&& grid, bool include_diagonal = false) {
     static constexpr std::array<glm::ivec2, 4> offsets = {glm::ivec2{-1, -1}, glm::ivec2{-1, 0}, glm::ivec2{0, 0},
                                                           glm::ivec2{0, -1}};
     auto dims                                          = grid.dimensions();
-    auto gc                                            = [&](coord_type x, coord_type y) -> bool {
+    auto gc                                            = [&](std::int32_t x, std::int32_t y) -> bool {
         if (x < 0 || y < 0 || static_cast<dim_type>(x) >= dims[0] || static_cast<dim_type>(y) >= dims[1]) return false;
-        return grid.contains({x, y});
+        return grid.contains({static_cast<coord_type>(x), static_cast<coord_type>(y)});
     };
-    glm::vec<2, coord_type> start(-1, -1);
-    for (coord_type y = 0; static_cast<dim_type>(y) < dims[1] && start.x == -1; ++y)
-        for (coord_type x = 0; static_cast<dim_type>(x) < dims[0]; ++x)
+    glm::ivec2 start(-1, -1);
+    for (std::int32_t y = 0; static_cast<dim_type>(y) < dims[1] && start.x == -1; ++y)
+        for (std::int32_t x = 0; static_cast<dim_type>(x) < dims[0]; ++x)
             if (gc(x, y)) {
                 start = {x, y};
                 break;
             }
     if (start.x == -1) return out;
-    glm::vec<2, coord_type> current = start;
-    int dir                         = 0;
+    glm::ivec2 current = start;
+    int dir            = 0;
     do {
-        out.points.push_back(glm::ivec2(static_cast<int>(current.x), static_cast<int>(current.y)));
+        out.points.push_back(glm::ivec2(current.x, current.y));
         for (int ndir = (include_diagonal ? dir + 3 : dir + 1) % 4; ndir != (dir + 2) % 4;
              ndir     = (include_diagonal ? ndir + 1 : ndir + 3) % 4) {
             auto outside = current + offsets[ndir];
@@ -262,7 +270,7 @@ std::vector<Ring> find_holes(G&& grid, bool include_diagonal = false) {
     bit_grid<2> voids(dims);
     for (std::int32_t y = 0; static_cast<std::uint32_t>(y) < dims[1]; ++y)
         for (std::int32_t x = 0; static_cast<std::uint32_t>(x) < dims[0]; ++x) {
-            std::array<std::int32_t, 2> p{x, y};
+            std::array<std::uint32_t, 2> p{static_cast<std::uint32_t>(x), static_cast<std::uint32_t>(y)};
             if (!bg.contains(p) && !outland.contains(p)) (void)voids.set(p);
         }
     auto components = detail::split(voids, !include_diagonal);

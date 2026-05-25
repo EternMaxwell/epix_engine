@@ -87,11 +87,11 @@ TEST(FilterView, IterPosYieldsFilteredPositions) {
     g.set({1, 1}, -5);
     g.set({2, 2}, 3);
     auto fv = filter(g, [](const int& v) { return v > 0; });
-    std::vector<std::array<std::int32_t, 2>> positions;
+    std::vector<std::array<std::uint32_t, 2>> positions;
     for (auto pos : fv.iter_pos()) positions.push_back(pos);
     ASSERT_EQ(positions.size(), 2u);
-    EXPECT_EQ(positions[0], (std::array<std::int32_t, 2>{0, 0}));
-    EXPECT_EQ(positions[1], (std::array<std::int32_t, 2>{2, 2}));
+    EXPECT_EQ(positions[0], (std::array<std::uint32_t, 2>{0, 0}));
+    EXPECT_EQ(positions[1], (std::array<std::uint32_t, 2>{2, 2}));
 }
 
 TEST(FilterView, IterCellsYieldsFilteredValues) {
@@ -224,7 +224,7 @@ TEST(OffsetView, GetUsesNewOriginAndDimensions) {
     g.set({2, 3}, 42);
     g.set({3, 3}, 7);
 
-    auto ov = offset(g, std::array<std::int32_t, 2>{2, 3}, std::array<std::uint32_t, 2>{2, 2});
+    auto ov = offset(g, std::array<std::uint32_t, 2>{2, 3}, std::array<std::uint32_t, 2>{2, 2});
     static_assert(viewable_grid<decltype(ov)>);
     static_assert(iterable_grid<decltype(ov)>);
 
@@ -241,7 +241,7 @@ TEST(OffsetView, GetUsesNewOriginAndDimensions) {
 
 TEST(OffsetView, MutationsDelegateToTranslatedPosition) {
     dense_grid<2, int> g({6, 6});
-    auto ov = offset(g, std::array<std::int32_t, 2>{2, 3}, std::array<std::uint32_t, 2>{2, 2});
+    auto ov = offset(g, std::array<std::uint32_t, 2>{2, 3}, std::array<std::uint32_t, 2>{2, 2});
 
     ASSERT_TRUE(ov.set({0, 1}, 99).has_value());
     EXPECT_EQ(g.get({2, 4})->get(), 99);
@@ -261,9 +261,9 @@ TEST(OffsetView, IterationReturnsViewRelativePositions) {
     g.set({3, 4}, 22);
     g.set({4, 4}, 33);
 
-    auto ov = offset(g, std::array<std::int32_t, 2>{2, 3}, std::array<std::uint32_t, 2>{2, 2});
+    auto ov = offset(g, std::array<std::uint32_t, 2>{2, 3}, std::array<std::uint32_t, 2>{2, 2});
 
-    std::vector<std::array<std::int32_t, 2>> positions;
+    std::vector<std::array<std::uint32_t, 2>> positions;
     std::vector<int> values;
     for (auto&& [pos, value] : ov.iter()) {
         positions.push_back(pos);
@@ -271,8 +271,8 @@ TEST(OffsetView, IterationReturnsViewRelativePositions) {
     }
 
     ASSERT_EQ(positions.size(), 2u);
-    EXPECT_EQ(positions[0], (std::array<std::int32_t, 2>{0, 0}));
-    EXPECT_EQ(positions[1], (std::array<std::int32_t, 2>{1, 1}));
+    EXPECT_EQ(positions[0], (std::array<std::uint32_t, 2>{0, 0}));
+    EXPECT_EQ(positions[1], (std::array<std::uint32_t, 2>{1, 1}));
     EXPECT_EQ(values[0], 11);
     EXPECT_EQ(values[1], 22);
 }
@@ -295,8 +295,8 @@ TEST(OffsetView, IterPosYieldsViewRelativePositions) {
     g.set({2, 3}, 1);
     g.set({3, 4}, 2);
 
-    auto ov = offset(g, std::array<std::int32_t, 2>{2, 3}, std::array<std::uint32_t, 2>{2, 2});
-    std::vector<std::array<std::int32_t, 2>> positions;
+    auto ov = offset(g, std::array<std::uint32_t, 2>{2, 3}, std::array<std::uint32_t, 2>{2, 2});
+    std::vector<std::array<std::uint32_t, 2>> positions;
     for (auto pos : ov.iter_pos()) positions.push_back(pos);
     ASSERT_EQ(positions.size(), 2u);
 }
@@ -306,7 +306,7 @@ TEST(OffsetView, IterCellsYieldsValuesInWindow) {
     g.set({2, 3}, 10);
     g.set({3, 4}, 20);
 
-    auto ov = offset(g, std::array<std::int32_t, 2>{2, 3}, std::array<std::uint32_t, 2>{2, 2});
+    auto ov = offset(g, std::array<std::uint32_t, 2>{2, 3}, std::array<std::uint32_t, 2>{2, 2});
     int sum = 0;
     for (const int& cell : ov.iter_cells()) sum += cell;
     EXPECT_EQ(sum, 30);
@@ -322,7 +322,7 @@ TEST(ShadowView, ContainsOnlyWhenPredTrue) {
     g.set({1, 1}, 2);
     g.set({2, 2}, 3);
 
-    auto sv = shadow(g, [](const std::array<std::int32_t, 2>& p) {
+    auto sv = shadow(g, [](const std::array<std::uint32_t, 2>& p) {
         return p[0] == 0 && p[1] == 0;  // only {0,0}
     });
     EXPECT_TRUE(sv.contains({0, 0}));
@@ -334,7 +334,7 @@ TEST(ShadowView, ContainsOnlyWhenPredTrue) {
 TEST(ShadowView, GetReturnsEmptyCellWhenPosPredFalse) {
     dense_grid<2, int> g({4, 4});
     g.set({0, 0}, 42);
-    auto sv = shadow(g, [](const std::array<std::int32_t, 2>&) { return false; });
+    auto sv = shadow(g, [](const std::array<std::uint32_t, 2>&) { return false; });
     EXPECT_FALSE(sv.contains({0, 0}));
     EXPECT_EQ(sv.get({0, 0}).error(), grid_error::EmptyCell);
 }
@@ -343,14 +343,14 @@ TEST(ShadowView, GetMutGatedByPosPred) {
     dense_grid<2, int> g({4, 4});
     g.set({0, 0}, 10);
     g.set({1, 1}, 20);
-    auto sv = shadow(g, [](const std::array<std::int32_t, 2>& p) { return p[0] == 0; });
+    auto sv = shadow(g, [](const std::array<std::uint32_t, 2>& p) { return p[0] == 0; });
     EXPECT_TRUE(sv.get({0, 0}).has_value());
     EXPECT_EQ(sv.get({1, 1}).error(), grid_error::EmptyCell);
 }
 
 TEST(ShadowView, DimensionsDelegates) {
     dense_grid<2, int> g({3, 8});
-    auto sv   = shadow(g, [](const std::array<std::int32_t, 2>&) { return true; });
+    auto sv   = shadow(g, [](const std::array<std::uint32_t, 2>&) { return true; });
     auto dims = sv.dimensions();
     EXPECT_EQ(dims[0], 3u);
     EXPECT_EQ(dims[1], 8u);
@@ -359,7 +359,7 @@ TEST(ShadowView, DimensionsDelegates) {
 TEST(ShadowView, UnsafeAccessorsDelegate) {
     dense_grid<2, int> g({4, 4});
     g.set({0, 0}, 42);
-    auto sv = shadow(g, [](const std::array<std::int32_t, 2>&) { return true; });
+    auto sv = shadow(g, [](const std::array<std::uint32_t, 2>&) { return true; });
     EXPECT_EQ(sv.get_unsafe({0, 0}), 42);
     sv.get_unsafe({0, 0}) = 88;
     EXPECT_EQ(sv.get_unsafe({0, 0}), 88);
@@ -370,8 +370,8 @@ TEST(ShadowView, IterPosYieldsShadowedPositions) {
     g.set({0, 0}, 1);
     g.set({1, 1}, 2);
     g.set({2, 2}, 3);
-    auto sv = shadow(g, [](const std::array<std::int32_t, 2>& p) { return p[0] <= 1; });
-    std::vector<std::array<std::int32_t, 2>> positions;
+    auto sv = shadow(g, [](const std::array<std::uint32_t, 2>& p) { return p[0] <= 1; });
+    std::vector<std::array<std::uint32_t, 2>> positions;
     for (auto pos : sv.iter_pos()) positions.push_back(pos);
     ASSERT_EQ(positions.size(), 2u);
 }
@@ -381,7 +381,7 @@ TEST(ShadowView, IterCellsYieldsShadowedValues) {
     g.set({0, 0}, 10);
     g.set({1, 1}, 20);
     g.set({3, 3}, 30);
-    auto sv = shadow(g, [](const std::array<std::int32_t, 2>& p) { return p[0] <= 1; });
+    auto sv = shadow(g, [](const std::array<std::uint32_t, 2>& p) { return p[0] <= 1; });
     int sum = 0;
     for (const int& cell : sv.iter_cells()) sum += cell;
     EXPECT_EQ(sum, 30);
@@ -392,7 +392,7 @@ TEST(ShadowView, IterYieldsShadowedPairs) {
     g.set({0, 0}, 5);
     g.set({1, 1}, 7);
     g.set({3, 3}, 9);
-    auto sv = shadow(g, [](const std::array<std::int32_t, 2>& p) { return p[0] <= 1; });
+    auto sv = shadow(g, [](const std::array<std::uint32_t, 2>& p) { return p[0] <= 1; });
     int sum = 0;
     for (auto [pos, cell] : sv.iter()) sum += cell;
     EXPECT_EQ(sum, 12);
@@ -403,7 +403,7 @@ TEST(ShadowView, IterCellsMutYieldsMutableShadowedValues) {
     g.set({0, 0}, 1);
     g.set({1, 1}, 3);
     g.set({2, 2}, 5);
-    auto sv = shadow(g, [](const std::array<std::int32_t, 2>& p) { return p[0] <= 1; });
+    auto sv = shadow(g, [](const std::array<std::uint32_t, 2>& p) { return p[0] <= 1; });
     for (int& cell : sv.iter_cells()) cell *= 10;
     EXPECT_EQ(g.get({0, 0})->get(), 10);
     EXPECT_EQ(g.get({1, 1})->get(), 30);
@@ -413,7 +413,7 @@ TEST(ShadowView, IterMutYieldsMutableShadowedPairs) {
     dense_grid<2, int> g({4, 4});
     g.set({0, 0}, 2);
     g.set({2, 2}, 4);
-    auto sv = shadow(g, [](const std::array<std::int32_t, 2>& p) { return p[0] == 0; });
+    auto sv = shadow(g, [](const std::array<std::uint32_t, 2>& p) { return p[0] == 0; });
     for (auto [pos, cell] : sv.iter()) cell += 10;
     EXPECT_EQ(g.get({0, 0})->get(), 12);
 }

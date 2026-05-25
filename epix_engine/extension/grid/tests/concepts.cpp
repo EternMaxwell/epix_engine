@@ -26,6 +26,7 @@ static_assert(viewable_grid<sparse_grid<2, int>>);
 static_assert(viewable_grid<dense_extendible_grid<2, int>>);
 static_assert(viewable_grid<tree_extendible_grid<2, int>>);
 static_assert(viewable_grid<tree_grid<2, int>>);
+static_assert(viewable_grid<bit_grid<2>>);
 
 static_assert(viewable_grid<packed_grid<3, float>>);
 static_assert(viewable_grid<dense_grid<3, double>>);
@@ -87,7 +88,7 @@ static_assert(unsafe_viewable_grid<fv_t>);
 static_assert(iterable_grid<fv_t>);
 
 using sv_t = epix::ext::grid::views::shadow_view<dense_grid<2, int>,
-                                                 decltype([](const std::array<std::int32_t, 2>&) { return true; })>;
+                                                 decltype([](const std::array<std::uint32_t, 2>&) { return true; })>;
 static_assert(viewable_grid<sv_t>);
 static_assert(unsafe_viewable_grid<sv_t>);
 

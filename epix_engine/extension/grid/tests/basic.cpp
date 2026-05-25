@@ -93,8 +93,8 @@ TEST(PackedGrid, ClearResetsToDefault) {
 
     g.clear();
 
-    for (std::int32_t i = 0; i < 2; i++) {
-        for (std::int32_t j = 0; j < 3; j++) {
+    for (std::uint32_t i = 0; i < 2; i++) {
+        for (std::uint32_t j = 0; j < 3; j++) {
             auto cell = g.get({i, j});
             ASSERT_TRUE(cell.has_value());
             EXPECT_EQ(cell->get(), 7);
@@ -121,8 +121,8 @@ TEST(PackedGrid, HigherDimensional) {
 
 TEST(PackedGrid, Iterators) {
     packed_grid<2, int> g({2, 3}, 0);
-    for (std::int32_t i = 0; i < 2; i++) {
-        for (std::int32_t j = 0; j < 3; j++) {
+    for (std::uint32_t i = 0; i < 2; i++) {
+        for (std::uint32_t j = 0; j < 3; j++) {
             g.set({i, j}, static_cast<int>(i * 10 + j));
         }
     }
@@ -265,13 +265,13 @@ TEST(DenseGrid, Iterators) {
 
 TEST(DenseGrid, MultipleSetRemove) {
     dense_grid<2, int> g({4, 4});
-    for (std::int32_t i = 0; i < 4; i++) {
-        for (std::int32_t j = 0; j < 4; j++) {
+    for (std::uint32_t i = 0; i < 4; i++) {
+        for (std::uint32_t j = 0; j < 4; j++) {
             g.set({i, j}, static_cast<int>(i * 4 + j));
         }
     }
-    for (std::int32_t i = 0; i < 4; i++) {
-        for (std::int32_t j = 0; j < 4; j++) {
+    for (std::uint32_t i = 0; i < 4; i++) {
+        for (std::uint32_t j = 0; j < 4; j++) {
             EXPECT_TRUE(g.contains({i, j}));
             EXPECT_EQ(g.get({i, j})->get(), static_cast<int>(i * 4 + j));
         }
@@ -825,7 +825,7 @@ TEST(TreeGrid, OutOfBoundsAndOrigin) {
     EXPECT_EQ(g.get({0, 100}).error(), grid_error::OutOfBounds);
 
     // custom origin
-    tree_grid<2, int> g2({4, 4}, std::array<std::int32_t, 2>{10, 10});
+    tree_grid<2, int> g2({4, 4}, std::array<std::uint32_t, 2>{10, 10});
     EXPECT_TRUE(g2.set({10, 10}, 5).has_value());
     EXPECT_EQ(g2.get({9, 9}).error(), grid_error::OutOfBounds);
 }
@@ -841,8 +841,8 @@ TEST(TreeGrid, IteratorsAndMultipleInserts) {
     EXPECT_EQ(sum, 6);
 
     // multiple inserts
-    for (std::int32_t i = 0; i < 4; i++) {
-        for (std::int32_t j = 0; j < 4; j++) {
+    for (std::uint32_t i = 0; i < 4; i++) {
+        for (std::uint32_t j = 0; j < 4; j++) {
             g.set({i, j}, static_cast<int>(i * 4 + j));
         }
     }

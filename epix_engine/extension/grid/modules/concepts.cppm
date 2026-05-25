@@ -76,8 +76,8 @@ struct unwrap_get_return<std::expected<Cell, grid_error>> {
 /** @brief Derive cell_type: prefer explicit member, else unwrap from get() return via function_traits. */
 template <typename G, typename = void>
 struct _grid_cell_type {
-    using type = typename unwrap_get_return<
-        std::remove_cvref_t<typename function_traits<decltype(&std::decay_t<G>::get)>::return_type>>::type;
+    using type =
+        typename unwrap_get_return<decltype(std::declval<G>().get(std::declval<const grid_pos_type<G>&>()))>::type;
 };
 template <typename G>
 struct _grid_cell_type<G, std::void_t<typename std::decay_t<G>::cell_type>> {
@@ -134,8 +134,8 @@ using grid_dimensions_type = detail::grid_dimensions_type<G>;
  */
 export template <typename G>
 concept viewable_grid = requires(G g) {
-    requires std::unsigned_integral<typename detail::grid_dimensions_type<G>::value_type>;
-    requires std::signed_integral<typename detail::grid_pos_type<G>::value_type>;
+    // requires std::unsigned_integral<typename detail::grid_dimensions_type<G>::value_type>;
+    // requires std::signed_integral<typename detail::grid_pos_type<G>::value_type>;
     requires std::tuple_size_v<detail::grid_dimensions_type<G>> == std::tuple_size_v<detail::grid_pos_type<G>>;
     { g.dimensions() } -> std::same_as<detail::grid_dimensions_type<G>>;
     { g.contains(std::declval<const detail::grid_pos_type<G>&>()) } -> std::same_as<bool>;

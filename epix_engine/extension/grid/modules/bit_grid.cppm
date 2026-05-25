@@ -30,8 +30,7 @@ namespace epix::ext::grid {
  */
 export template <std::size_t Dim>
 struct bit_grid {
-   public:
-    using pos_type = std::array<std::int32_t, Dim>;
+    using pos_type = std::array<std::uint32_t, Dim>;
 
    private:
     std::array<std::uint32_t, Dim> m_dimensions;
@@ -41,10 +40,9 @@ struct bit_grid {
     std::size_t row_stride() const noexcept { return (m_dimensions[0] + 7u) / 8u; }
 
     // first 24 bits of the index are the position of the word, the last 8 bits is for bit-and
-    std::expected<std::size_t, grid_error> offset(const std::array<std::int32_t, Dim>& pos) const noexcept {
+    std::expected<std::size_t, grid_error> offset(const std::array<std::uint32_t, Dim>& pos) const noexcept {
         for (std::size_t i = 0; i < Dim; ++i) {
-            if (pos[i] < 0 || static_cast<std::uint32_t>(pos[i]) >= m_dimensions[i])
-                return std::unexpected(grid_error::OutOfBounds);
+            if (pos[i] >= m_dimensions[i]) return std::unexpected(grid_error::OutOfBounds);
         }
         // compute row index from higher dimensions (row-major over axes 1..Dim-1)
         std::size_t row_index     = 0;
@@ -58,10 +56,10 @@ struct bit_grid {
         return (byte_offset << 8u) | bit_mask;
     }
 
-    std::array<std::int32_t, Dim> index_to_pos(std::size_t index) const noexcept {
-        std::array<std::int32_t, Dim> pos{};
+    std::array<std::uint32_t, Dim> index_to_pos(std::size_t index) const noexcept {
+        std::array<std::uint32_t, Dim> pos{};
         for (std::size_t i = 0; i < Dim; ++i) {
-            pos[i] = static_cast<std::int32_t>(index % m_dimensions[i]);
+            pos[i] = static_cast<std::uint32_t>(index % m_dimensions[i]);
             index /= m_dimensions[i];
         }
         return pos;
@@ -74,7 +72,7 @@ struct bit_grid {
     }
 
     /** Set or clear a bit without bounds checking — pos must be within bounds. */
-    void set_unsafe(const std::array<std::int32_t, Dim>& pos, bool value = true) noexcept {
+    void set_unsafe(const std::array<std::uint32_t, Dim>& pos, bool value = true) noexcept {
         std::size_t row_index = 0, rs = 1;
         for (std::size_t i = 1; i < Dim; ++i) {
             row_index += pos[i] * rs;
@@ -133,21 +131,21 @@ struct bit_grid {
     std::array<std::uint32_t, Dim> dimensions() const noexcept { return m_dimensions; }
 
     /** @brief Test whether the bit at @p pos is set (returns false if out of bounds). */
-    bool contains(const std::array<std::int32_t, Dim>& pos) const noexcept {
+    bool contains(const std::array<std::uint32_t, Dim>& pos) const noexcept {
         auto enc = offset(pos);
         if (!enc) return false;
         return (m_words[enc.value() >> 8u] & std::uint8_t(enc.value() & 0xFFu)) != 0;
     }
 
     /** @brief Get the bit at @p pos; returns error if out of bounds. */
-    std::expected<bool, grid_error> get(const std::array<std::int32_t, Dim>& pos) const noexcept {
+    std::expected<bool, grid_error> get(const std::array<std::uint32_t, Dim>& pos) const noexcept {
         auto enc = offset(pos);
         if (!enc) return std::unexpected(enc.error());
         return (m_words[enc.value() >> 8u] & std::uint8_t(enc.value() & 0xFFu)) != 0;
     }
 
     /** @brief Set or clear the bit at @p pos; returns error if out of bounds. */
-    std::expected<void, grid_error> set(const std::array<std::int32_t, Dim>& pos, bool value = true) {
+    std::expected<void, grid_error> set(const std::array<std::uint32_t, Dim>& pos, bool value = true) {
         auto enc = offset(pos);
         if (!enc) return std::unexpected(enc.error());
         const std::size_t wi = enc.value() >> 8u;
@@ -332,19 +330,19 @@ struct bit_grid {
         std::size_t total = 1;
         for (auto d : max_dims) total *= d;
         return std::views::iota(std::size_t(0), total) | std::views::filter([this, &other, max_dims](std::size_t idx) {
-                   std::array<std::int32_t, Dim> pos{};
+                   std::array<std::uint32_t, Dim> pos{};
                    std::size_t tmp = idx;
                    for (std::size_t i = 0; i < Dim; ++i) {
-                       pos[i] = static_cast<std::int32_t>(tmp % max_dims[i]);
+                       pos[i] = static_cast<std::uint32_t>(tmp % max_dims[i]);
                        tmp /= max_dims[i];
                    }
                    return contains(pos) || other.contains(pos);
                }) |
                std::views::transform([max_dims](std::size_t idx) {
-                   std::array<std::int32_t, Dim> pos{};
+                   std::array<std::uint32_t, Dim> pos{};
                    std::size_t tmp = idx;
                    for (std::size_t i = 0; i < Dim; ++i) {
-                       pos[i] = static_cast<std::int32_t>(tmp % max_dims[i]);
+                       pos[i] = static_cast<std::uint32_t>(tmp % max_dims[i]);
                        tmp /= max_dims[i];
                    }
                    return pos;
@@ -370,19 +368,19 @@ struct bit_grid {
         std::size_t total = 1;
         for (auto d : max_dims) total *= d;
         return std::views::iota(std::size_t(0), total) | std::views::filter([this, &other, max_dims](std::size_t idx) {
-                   std::array<std::int32_t, Dim> pos{};
+                   std::array<std::uint32_t, Dim> pos{};
                    std::size_t tmp = idx;
                    for (std::size_t i = 0; i < Dim; ++i) {
-                       pos[i] = static_cast<std::int32_t>(tmp % max_dims[i]);
+                       pos[i] = static_cast<std::uint32_t>(tmp % max_dims[i]);
                        tmp /= max_dims[i];
                    }
                    return contains(pos) != other.contains(pos);
                }) |
                std::views::transform([max_dims](std::size_t idx) {
-                   std::array<std::int32_t, Dim> pos{};
+                   std::array<std::uint32_t, Dim> pos{};
                    std::size_t tmp = idx;
                    for (std::size_t i = 0; i < Dim; ++i) {
-                       pos[i] = static_cast<std::int32_t>(tmp % max_dims[i]);
+                       pos[i] = static_cast<std::uint32_t>(tmp % max_dims[i]);
                        tmp /= max_dims[i];
                    }
                    return pos;
